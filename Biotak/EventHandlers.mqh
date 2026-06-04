@@ -48,21 +48,13 @@ int OnInitHandler() {
             g_thLabelsVisible = (g_thLabelsMode != 0);
         } else {
             _LOG_GATE_E Print("[E][GEN] OnInit: Corrupted TH labels state (", DoubleToString(gvarValue, 10), "), resetting");
-            int defaultMode = 0;
-            if(inpShowFractalTHs && inpShowStandardTHs) defaultMode = 3;
-            else if(inpShowFractalTHs) defaultMode = 1;
-            else if(inpShowStandardTHs) defaultMode = 2;
+            int defaultMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
             GlobalVariableSet(thLabelsGvarName, (double)defaultMode);
             g_thLabelsMode = defaultMode;
             g_thLabelsVisible = (g_thLabelsMode != 0);
         }
     } else {
-        int defaultMode = 0;
-        if(inpShowTHLabels) {
-            if(inpShowFractalTHs && inpShowStandardTHs) defaultMode = 3;
-            else if(inpShowFractalTHs) defaultMode = 1;
-            else if(inpShowStandardTHs) defaultMode = 2;
-        }
+        int defaultMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
         g_thLabelsMode = defaultMode;
         g_thLabelsVisible = (g_thLabelsMode != 0);
     }
@@ -1519,10 +1511,17 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
             
-            // Cycle: BOTH (3) -> FRACTAL (1) -> OFF (0) -> BOTH (3)
-            if(g_thLabelsMode == 3) g_thLabelsMode = 1;
-            else if(g_thLabelsMode == 1) g_thLabelsMode = 0;
-            else g_thLabelsMode = 3; // Handles mode 0, 2, or any other
+            // Cycle: FRACTAL (1) -> BOTH (3) [if enabled] -> OFF (0)
+            if(g_thLabelsMode == 1) {
+                if(inpShowStandardTHs) g_thLabelsMode = 3;
+                else g_thLabelsMode = 0;
+            }
+            else if(g_thLabelsMode == 3) {
+                g_thLabelsMode = 0;
+            }
+            else {
+                g_thLabelsMode = 1;
+            }
 
             g_thLabelsVisible = (g_thLabelsMode != 0);
             GlobalVariableSet(thGvar, (double)g_thLabelsMode);
@@ -1531,7 +1530,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             SetTHLabelsVisibility(objectPrefix, g_thLabelsMode);
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
-            LOG_IP1(LOG_CAT_LABELS, "TH Labels mode=", IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL,3=BOTH)");
+            string logMsg = "TH Labels mode=" + IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL";
+            if(inpShowStandardTHs) logMsg += ",3=BOTH";
+            logMsg += ")";
+            LOG_I(LOG_CAT_LABELS, logMsg);
             ThrottledChartRedraw();
             return;
         }
@@ -1593,14 +1595,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_linesVisible = inpShowLines;
             InvalidateAllVisibilityCaches();
             g_atrLabelsVisible = inpShowATRLabels;
-            if(inpShowTHLabels) {
-                if(inpShowFractalTHs && inpShowStandardTHs) g_thLabelsMode = 3;
-                else if(inpShowFractalTHs) g_thLabelsMode = 1;
-                else if(inpShowStandardTHs) g_thLabelsMode = 2;
-                else g_thLabelsMode = 0;
-            } else {
-                g_thLabelsMode = 0;
-            }
+            g_thLabelsMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
             if(inpEnableTH3Tool) {
                 UpdateAllTH3Objects();
