@@ -552,12 +552,15 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
 
     if (!mainExists) {
         if (!ObjectCreate(0, mainObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, mainObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
     if (!stepsExists) {
         if (!ObjectCreate(0, stepsObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, stepsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
     if (inpShowATRTargets && !targetsExists) {
         if (!ObjectCreate(0, targetsObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, targetsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
     if(inpShowATRTargets) {
         ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
@@ -617,83 +620,52 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     return true;
 }
 
-void DisplayATRLabels(const string objectPrefix) {
-    if(!g_atrLabelsVisible) return;
+//+------------------------------------------------------------------+
+//| Clear all labels to prevent ghosting or overlaps                |
+//+------------------------------------------------------------------+
+void ClearAllLabels(const string objectPrefix) {
+    // 1. Delete all labels with the standard LBL_ prefix (New thorough way)
+    string labelPrefix = objectPrefix + "LBL_";
+    ObjectsDeleteAll(0, labelPrefix);
     
-    ATR_PRINT("=== DisplayATRLabels: Starting ===");
+    // 2. Delete labels that might have different timeframe prefixes (cleanup old logic)
+    int total = ObjectsTotal(0, -1, -1);
+    string tfSearch = objectPrefix + "TF";
+    int tfSearchLen = StringLen(tfSearch);
+    
+    for(int i = total - 1; i >= 0; i--) {
+        string objName = ObjectName(0, i, -1, -1);
+        if(StringSubstr(objName, 0, tfSearchLen) == tfSearch) {
+            ObjectDelete(0, objName);
+        }
+    }
+}
+
+void DisplayATRLabels(const string objectPrefix) {
+    if(!g_atrLabelsVisible) {
+        ClearAllLabels(objectPrefix);
+        return;
+    }
+    
     double point = GetCachedPoint();
     double pipSize = GetCachedPipSize();
     int digits = GetCachedDigits();
     if(IsZero(point, EPSILON_PRICE) || IsZero(pipSize, EPSILON_PRICE) || digits == 0) return;
 
-    TH3_PROF_START(ATRLabels);
-    
-    string currentTFStr = IntegerToString(GetCachedPeriod());
-    string uniquePrefix = objectPrefix + "TF" + currentTFStr + "_";
-    
+    string labelPrefix = objectPrefix + "LBL_";
     string timeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
     int tfMinutes[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
 
-    static double s_lastATRPips[8] = {0,0,0,0,0,0,0,0};
-    static double s_cachedATRValues[8] = {0,0,0,0,0,0,0,0};
-    static int s_lastATRPeriod = -1;
-    static int s_lastATROffsetContribution = 0;
-    static uint s_lastATRFetchMs = 0;
-    static string s_lastATRLayoutSig = "";
-
-    uint nowMs = GetTickCount();
-    bool periodChanged = (s_lastATRPeriod != GetCachedPeriod());
-    bool refreshATRValues = periodChanged || s_lastATRFetchMs == 0 || (nowMs - s_lastATRFetchMs >= 1500);
-
-    double currentATRValues[8] = {0,0,0,0,0,0,0,0};
-    double currentATRPips[8] = {0,0,0,0,0,0,0,0};
-    bool anyChanged = periodChanged;
-    for(int i = 0; i < 8; i++) {
-        double atrVal = refreshATRValues ? GetATRForTimeframe(tfMinutes[i]) : s_cachedATRValues[i];
-        currentATRValues[i] = atrVal;
-        double pips = (atrVal > 0 && !IsZero(pipSize, EPSILON_PRICE))
-                      ? NormalizeDouble(atrVal / pipSize, 1) : 0.0;
-        currentATRPips[i] = pips;
-        if(!anyChanged && MathAbs(pips - s_lastATRPips[i]) > 0.05) anyChanged = true;
-    }
-
-    if(refreshATRValues) {
-        for(int i = 0; i < 8; i++) {
-            s_cachedATRValues[i] = currentATRValues[i];
-        }
-        s_lastATRFetchMs = nowMs;
-    }
-
-    string layoutSig = IntegerToString((int)inpLabelArrangement) + "|" +
-                      IntegerToString(inpLabelsMarginLeft) + "|" +
-                      IntegerToString(inpLabelsMarginTop) + "|" +
-                      IntegerToString(inpFontSize) + "|" +
-                      IntegerToString(inpLabelRowGap) + "|" +
-                      IntegerToString(inpLabelColumnGap) + "|" +
-                      IntegerToString(inpSectionGap) + "|" +
-                      IntegerToString(inpShowATRTargets ? 1 : 0) + "|" +
-                      IntegerToString(GetCachedChartWidth());
-    bool layoutChanged = (layoutSig != s_lastATRLayoutSig);
-
-    if(!anyChanged && !layoutChanged) {
-        g_currentLabelYOffset += s_lastATROffsetContribution;
-        TH3_PROF_END(ATRLabels);
-        return;
-    }
-    for(int i = 0; i < 8; i++) s_lastATRPips[i] = currentATRPips[i];
-    s_lastATRPeriod = GetCachedPeriod();
-    s_lastATRLayoutSig = layoutSig;
-
-    // Original color scheme per timeframe (Matches MT5)
+    // Use TH colors for ATR
     color colors[] = {
-        clrGray,         // M1
-        clrGray,         // M5
-        clrGray,         // M15
-        clrDodgerBlue,   // H1
-        clrTomato,       // H4
-        clrLimeGreen,    // D1
-        clrSlateGray,    // W1
-        clrSlateGray     // MN1
+        clrBlack,        // M1
+        clrBlack,        // M5
+        clrBlack,        // M15
+        clrBlue,         // H1
+        clrRed,          // H4
+        clrGreen,        // D1
+        clrBlack,        // W1
+        clrBlack         // MN1
     };
     
     bool isVerticalLayout = (inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL);
@@ -702,28 +674,23 @@ void DisplayATRLabels(const string objectPrefix) {
     int startXPos = inpLabelsMarginLeft;
     int lineGap = rowSpacing;
     int singleLineHeight = inpFontSize + lineGap;
-    int titleHeight = singleLineHeight;
     int titleYPos = inpLabelsMarginTop + g_currentLabelYOffset;
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
     int sectionGap = inpSectionGap;
     
-    string titleObjName = uniquePrefix + "ATR_Title";
-    bool atrTitleCreated = false;
+    string titleObjName = labelPrefix + "ATR_Title";
     if(ObjectFind(0, titleObjName) < 0) {
         ObjectCreate(0, titleObjName, OBJ_LABEL, 0, 0, 0);
-        atrTitleCreated = true;
+        ObjectSetString(0, titleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
-    if(atrTitleCreated) {
-        ObjectSetString(0, titleObjName, OBJPROP_TEXT, "ATR:");
-        ObjectSetInteger(0, titleObjName, OBJPROP_COLOR, clrDarkBlue);
-        ObjectSetString(0, titleObjName, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, titleObjName, OBJPROP_FONTSIZE, inpFontSize);
-        ObjectSetInteger(0, titleObjName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-        ObjectSetInteger(0, titleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-        ObjectSetInteger(0, titleObjName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, titleObjName, OBJPROP_HIDDEN, false);
-        ObjectSetInteger(0, titleObjName, OBJPROP_BACK, false);
-    }
+    ObjectSetString(0, titleObjName, OBJPROP_TEXT, "ATR:");
+    ObjectSetInteger(0, titleObjName, OBJPROP_COLOR, clrDarkBlue);
+    ObjectSetString(0, titleObjName, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, titleObjName, OBJPROP_FONTSIZE, inpFontSize);
+    ObjectSetInteger(0, titleObjName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, titleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+    ObjectSetInteger(0, titleObjName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, titleObjName, OBJPROP_HIDDEN, false);
     ObjectSetInteger(0, titleObjName, OBJPROP_XDISTANCE, inpLabelsMarginLeft);
     ObjectSetInteger(0, titleObjName, OBJPROP_YDISTANCE, titleYPos);
     ObjectSetInteger(0, titleObjName, OBJPROP_TIMEFRAMES, IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
@@ -732,64 +699,43 @@ void DisplayATRLabels(const string objectPrefix) {
     int labelStartX = GetLabelStartX(startXPos, titleWidth, horizontalPadding, isVerticalLayout);
     int currentXPos = labelStartX;
     int currentYPos = startYPos;
-    int yStep = rowSpacing;
     int xStep = horizontalPadding;
     int maxWidth = GetCachedChartWidth() - startXPos * 2;
     int lineHeight = GetLabelLineHeight(inpShowATRTargets, rowSpacing);
     
     int renderedCount = 0;
     for(int i = 0; i < ArraySize(timeframes); i++) {
-        string timeframeName = timeframes[i];
-        int targetMinutes = tfMinutes[i];
-
-        double atrValue = currentATRValues[i];
-        if(atrValue <= 0 || atrValue == EMPTY_VALUE) {
-            ATR_PRINTF2("=== DisplayATRLabels: Invalid ATR for ", timeframeName, " ===");
-            continue;
-        }
+        double atrValue = GetATRForTimeframe(tfMinutes[i]);
+        if(atrValue <= 0 || atrValue == EMPTY_VALUE) continue;
+        
         double atrPoints = atrValue / point;
         double atrPips = NormalizeDouble(atrValue / pipSize, 1);
-        double shortStepPips = NormalizeDouble(atrPips * 1.5, 1);
-        double longStepPips = NormalizeDouble(atrPips * 2.0, 1);
-        double midStepPips = NormalizeDouble((shortStepPips + longStepPips) / 2.0, 1);
-        double target3x = MathFloor(atrPips * 3.0);
-        double target5x = MathFloor(atrPips * 5.0);
-        double target15x = MathFloor(atrPips * 15.0);
-    
         color labelColor = colors[i];
     
         string mainText = inpShowTimeframeInLabels ?
-            timeframeName + ": " + DoubleToString(atrPips, 1) :
+            timeframes[i] + ": " + DoubleToString(atrPips, 1) :
             DoubleToString(atrPips, 1);
-        string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
-        string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
+        string stepsText = "(" + DoubleToString(atrPips * 1.5, 1) + " - " + DoubleToString(atrPips * 1.75, 1) + " - " + DoubleToString(atrPips * 2.0, 1) + ")";
+        string targetsText = DoubleToString(MathFloor(atrPips * 3.0), 0) + " - " + DoubleToString(MathFloor(atrPips * 5.0), 0) + " - " + DoubleToString(MathFloor(atrPips * 15.0), 0);
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowATRTargets);
     
-        if(inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL) {
-            if(!CreateATRLabelSimple(uniquePrefix, timeframeName, atrPoints, currentXPos, currentYPos, labelColor, xStep, yStep)) continue;
+        if(isVerticalLayout) {
+            if(!CreateATRLabelSimple(labelPrefix, timeframes[i], atrPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentYPos += lineHeight;
         } else {
             if(currentXPos + labelWidth + xStep > maxWidth) {
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
-            if(!CreateATRLabelSimple(uniquePrefix, timeframeName, atrPoints, currentXPos, currentYPos, labelColor, xStep, yStep)) continue;
+            if(!CreateATRLabelSimple(labelPrefix, timeframes[i], atrPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentXPos += labelWidth + xStep;
         }
         renderedCount++;
     }
     
     if(renderedCount > 0) {
-        int consumedY = (currentYPos - startYPos) + lineHeight;
-        int offsetContribution = consumedY + sectionGap;
-        g_currentLabelYOffset += offsetContribution;
-        s_lastATROffsetContribution = offsetContribution;
-    } else {
-        s_lastATROffsetContribution = 0;
+        g_currentLabelYOffset += (currentYPos - startYPos) + lineHeight + sectionGap;
     }
-    
-    ATR_PRINT("=== DisplayATRLabels: Completed ===");
-    TH3_PROF_END(ATRLabels);
 }
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
@@ -842,8 +788,6 @@ void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
 //| TH label helpers (ported from MT5)                               |
 //+------------------------------------------------------------------+
 bool CreateTHLabel(const string objectPrefix, const string timeframeName, const double thValuePoints, const int xPos, const int yPos, const color textColor, const int horizontalSpacing, const int verticalSpacing) {
-    if (!inpShowTHLabels) return true;
-    
     double point = GetCachedPoint();
     double pipSize = GetCachedPipSize();
     if(IsZero(point, EPSILON_PRICE) || IsZero(pipSize, EPSILON_PRICE)) return false;
@@ -866,14 +810,17 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     
     if (ObjectFind(0, mainObjName) < 0) {
         if (!ObjectCreate(0, mainObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, mainObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
         mainCreated = true;
     }
     if (ObjectFind(0, stepsObjName) < 0) {
         if (!ObjectCreate(0, stepsObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, stepsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
         stepsCreated = true;
     }
     if (inpShowTHTargets && ObjectFind(0, targetsObjName) < 0) {
         if (!ObjectCreate(0, targetsObjName, OBJ_LABEL, 0, 0, 0)) return false;
+        ObjectSetString(0, targetsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
         targetsCreated = true;
     }
     
@@ -981,67 +928,38 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
 }
 
 void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
+    if(!g_thLabelsVisible || (g_thLabelsMode != 1 && g_thLabelsMode != 3)) return;
+    
     double point = GetCachedPoint();
     int digits = GetCachedDigits();
     if(IsZero(point, EPSILON_PRICE) || digits == 0) return;
 
-    static double s_lastFractalTHPrice = 0.0;
-    static int s_lastFractalTHOffsetContribution = 0;
-    static uint s_lastFractalLayoutHash = 0;
-
-    uint fractalLayoutHash = (uint)((int)inpLabelArrangement * 73856093) ^
-                             (uint)(inpLabelsMarginLeft * 19349663) ^
-                             (uint)(inpFontSize * 48611383) ^
-                             (uint)(inpLabelRowGap * 27644437) ^
-                             (uint)(inpLabelColumnGap * 63197219) ^
-                             (uint)(inpSectionGap * 91573241) ^
-                             (uint)((inpShowTHTargets ? 1 : 0) * 37139213) ^
-                             (uint)(GetCachedChartWidth() * 52429867);
-
-    bool fractalPriceChanged = MathAbs(dailyPriceForTH - s_lastFractalTHPrice) > EPSILON_PRICE;
-    bool fractalLayoutChanged = (fractalLayoutHash != s_lastFractalLayoutHash);
-
-    if(!fractalPriceChanged && !fractalLayoutChanged) {
-        g_currentLabelYOffsetBottom += s_lastFractalTHOffsetContribution;
-        return;
-    }
-
-    s_lastFractalTHPrice = dailyPriceForTH;
-    s_lastFractalLayoutHash = fractalLayoutHash;
-
+    string labelPrefix = objectPrefix + "LBL_";
     bool isVerticalLayout = (inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL);
     int rowSpacing = inpLabelRowGap;
     int horizontalPadding = inpLabelColumnGap;
     int startXPos = inpLabelsMarginLeft;
     int lineGap = rowSpacing;
     int singleLineHeight = inpFontSize + lineGap;
-    int safeBottomPad = inpFontSize + 6;
-    int titleYPos = inpTHLabelsMarginBottom + safeBottomPad + g_currentLabelYOffsetBottom;
-    int titleAdjustment = inpShowTHTargets ? (singleLineHeight * 2) : singleLineHeight;
+    int titleYPos = inpTHLabelsMarginBottom + g_currentLabelYOffsetBottom;
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
     int sectionGap = inpSectionGap;
 
-    string thTitleObjName = objectPrefix + "TH_Title";
-    bool thTitleCreated = false;
+    string thTitleObjName = labelPrefix + "TH_Title";
     if(ObjectFind(0, thTitleObjName) < 0) {
         ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
-        thTitleCreated = true;
+        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
-
-    if(thTitleCreated) {
-        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, "TH:");
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_COLOR, clrDarkBlue);
-        ObjectSetString(0, thTitleObjName, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_FONTSIZE, inpFontSize);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_CORNER, CORNER_LEFT_LOWER);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_HIDDEN, false);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_BACK, false);
-    }
-
+    ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, "TH:");
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_COLOR, clrDarkBlue);
+    ObjectSetString(0, thTitleObjName, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_FONTSIZE, inpFontSize);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_CORNER, CORNER_LEFT_LOWER);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_SELECTABLE, false);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_HIDDEN, false);
     ObjectSetInteger(0, thTitleObjName, OBJPROP_XDISTANCE, inpLabelsMarginLeft);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + titleAdjustment);
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
     ObjectSetInteger(0, thTitleObjName, OBJPROP_TIMEFRAMES, IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
 
     int titleWidth = (int)CalculateTextWidth("TH:");
@@ -1052,94 +970,59 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int maxWidth = GetCachedChartWidth() - startXPos * 2;
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
-    int fractalCount = ArraySize(FRACTAL_TIMEFRAMES);
-    ArrayResize(g_storedTHs, fractalCount);
-    ArrayResize(g_labelPositions, fractalCount);
-    int storedCount = 0;
-
-    for(int i = 0; i < fractalCount; i++) {
+    for(int i = 0; i < ArraySize(FRACTAL_TIMEFRAMES); i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
         double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
         
-        g_storedTHs[storedCount].timeframeName = timeframeName;
-        g_storedTHs[storedCount].thValue = thPoints;
-        storedCount++;
-        StoreLabelPosition(timeframeName, currentXPos, currentYPos);
-
-        double cachedPipSz = GetCachedPipSize();
-        double thValuePips = IsZero(cachedPipSz, EPSILON_PRICE) ? 0.0 : NormalizeDouble((thPoints * GetCachedPoint()) / cachedPipSz, 1);
-        double shortStepPips = NormalizeDouble(thValuePips * SS_MULTIPLIER, 1);
-        double longStepPips = NormalizeDouble(thValuePips * LS_MULTIPLIER, 1);
-        double midStepPips = NormalizeDouble((shortStepPips + longStepPips) / 2.0, 1);
-        double target3x = MathFloor(thValuePips * 3.0);
-        double target5x = MathFloor(thValuePips * 5.0);
-        double target15x = MathFloor(thValuePips * 15.0);
-
-        string mainText = inpShowTimeframeInLabels ?
-            GetBaseTimeframeName(timeframeName) + ": " + DoubleToString(thValuePips, 1) :
-            DoubleToString(thValuePips, 1);
-        string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
-        string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
+        color labelColor = FRACTAL_COLORS[i];
+        string mainText = inpShowTimeframeInLabels ? GetBaseTimeframeName(timeframeName) + ": " + DoubleToString(thPoints / 10.0, 1) : DoubleToString(thPoints / 10.0, 1);
+        string stepsText = "(" + DoubleToString(thPoints / 10.0 * 1.5, 1) + " - " + DoubleToString(thPoints / 10.0 * 1.75, 1) + " - " + DoubleToString(thPoints / 10.0 * 2.0, 1) + ")";
+        string targetsText = DoubleToString(MathFloor(thPoints / 10.0 * 3.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 5.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 15.0), 0);
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowTHTargets);
 
         if(isVerticalLayout) {
-            if(!CreateTHLabel(objectPrefix, timeframeName, thPoints, currentXPos, currentYPos, FRACTAL_COLORS[i], xStep, rowSpacing)) continue;
+            if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentYPos += lineHeight;
         } else {
             if(currentXPos + labelWidth + xStep > maxWidth) {
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
-            if(!CreateTHLabel(objectPrefix, timeframeName, thPoints, currentXPos, currentYPos, FRACTAL_COLORS[i], xStep, rowSpacing)) continue;
+            if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentXPos += labelWidth + xStep;
         }
     }
 
-    int fractalConsumedY = (currentYPos - startYPos) + lineHeight;
-    s_lastFractalTHOffsetContribution = fractalConsumedY + sectionGap;
-    g_currentLabelYOffsetBottom += s_lastFractalTHOffsetContribution;
+    g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
 }
 
 void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
+    if(!g_thLabelsVisible || (g_thLabelsMode != 2 && g_thLabelsMode != 3)) return;
+
     double point = GetCachedPoint();
     int digits = GetCachedDigits();
     if(IsZero(point, EPSILON_PRICE) || digits == 0) return;
 
-    static double s_lastStdTHPrice = 0.0;
-    static int s_lastStdTHOffsetContribution = 0;
-    static uint s_lastStdLayoutHash = 0;
-
-    uint stdLayoutHash = (uint)((int)inpLabelArrangement * 73856093) ^
-                         (uint)(inpLabelsMarginLeft * 19349663) ^
-                         (uint)(inpFontSize * 48611383) ^
-                         (uint)(inpLabelRowGap * 27644437) ^
-                         (uint)(inpLabelColumnGap * 63197219) ^
-                         (uint)(inpSectionGap * 91573241) ^
-                         (uint)((inpShowTHTargets ? 1 : 0) * 37139213) ^
-                         (uint)(GetCachedChartWidth() * 52429867);
-
-    bool stdPriceChanged = MathAbs(dailyPriceForTH - s_lastStdTHPrice) > EPSILON_PRICE;
-    bool stdLayoutChanged = (stdLayoutHash != s_lastStdLayoutHash);
-
-    if(!stdPriceChanged && !stdLayoutChanged) {
-        g_currentLabelYOffsetBottom += s_lastStdTHOffsetContribution;
-        return;
-    }
-
-    s_lastStdTHPrice = dailyPriceForTH;
-    s_lastStdLayoutHash = stdLayoutHash;
-
+    string labelPrefix = objectPrefix + "LBL_";
     bool isVerticalLayout = (inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL);
     int rowSpacing = inpLabelRowGap;
     int horizontalPadding = inpLabelColumnGap;
     int startXPos = inpLabelsMarginLeft;
     int lineGap = rowSpacing;
     int singleLineHeight = inpFontSize + lineGap;
-    int safeBottomPad = inpFontSize + 6;
-    int titleYPos = inpTHLabelsMarginBottom + safeBottomPad + g_currentLabelYOffsetBottom;
-    int titleAdjustment = inpShowTHTargets ? (singleLineHeight * 2) : singleLineHeight;
+    int titleYPos = inpTHLabelsMarginBottom + g_currentLabelYOffsetBottom;
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
+    int sectionGap = inpSectionGap;
+
+    string thTitleObjName = labelPrefix + "TH_Title";
+    if(ObjectFind(0, thTitleObjName) < 0) {
+        ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
+        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
+    }
+    // Title already set in DisplayFractalTHs if BOTH mode, but we update Y position here
+    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
+
     int titleWidth = (int)CalculateTextWidth("TH:");
     int labelStartX = GetLabelStartX(startXPos, titleWidth, horizontalPadding, isVerticalLayout);
     int currentXPos = labelStartX;
@@ -1147,73 +1030,32 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int xStep = horizontalPadding;
     int maxWidth = GetCachedChartWidth() - startXPos * 2;
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
-
-    string thTitleObjName = objectPrefix + "TH_Title";
-    bool thTitleCreated = false;
-    if(ObjectFind(0, thTitleObjName) < 0) {
-        ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
-        thTitleCreated = true;
-    }
-
-    if(thTitleCreated) {
-        ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, "TH:");
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_COLOR, clrDarkBlue);
-        ObjectSetString(0, thTitleObjName, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_FONTSIZE, inpFontSize);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_CORNER, CORNER_LEFT_LOWER);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_HIDDEN, false);
-        ObjectSetInteger(0, thTitleObjName, OBJPROP_BACK, false);
-    }
-
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_XDISTANCE, inpLabelsMarginLeft);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + titleAdjustment);
-    ObjectSetInteger(0, thTitleObjName, OBJPROP_TIMEFRAMES, IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
 
     for(int i = 0; i < ArraySize(STANDARD_TIMEFRAMES); i++) {
         string timeframeName = STANDARD_TIMEFRAMES[i];
         double percentage = CalculateStandardPercentage(STANDARD_MINUTES[i]);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
         
-        int thIndex = ArraySize(g_storedTHs);
-        ArrayResize(g_storedTHs, thIndex + 1, ArraySize(STANDARD_TIMEFRAMES));
-        g_storedTHs[thIndex].timeframeName = timeframeName;
-        g_storedTHs[thIndex].thValue = thPoints;
-        StoreLabelPosition(timeframeName, currentXPos, currentYPos);
-
-        double stdPipSz = GetCachedPipSize();
-        double thValuePips = IsZero(stdPipSz, EPSILON_PRICE) ? 0.0 : NormalizeDouble((thPoints * GetCachedPoint()) / stdPipSz, 1);
-        double shortStepPips = NormalizeDouble(thValuePips * SS_MULTIPLIER, 1);
-        double longStepPips = NormalizeDouble(thValuePips * LS_MULTIPLIER, 1);
-        double midStepPips = NormalizeDouble((shortStepPips + longStepPips) / 2.0, 1);
-        double target3x = MathFloor(thValuePips * 3.0);
-        double target5x = MathFloor(thValuePips * 5.0);
-        double target15x = MathFloor(thValuePips * 15.0);
-
-        string mainText = inpShowTimeframeInLabels ?
-            GetBaseTimeframeName(timeframeName) + ": " + DoubleToString(thValuePips, 1) :
-            DoubleToString(thValuePips, 1);
-        string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
-        string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
+        color labelColor = STANDARD_COLORS[i];
+        string mainText = inpShowTimeframeInLabels ? timeframeName + ": " + DoubleToString(thPoints / 10.0, 1) : DoubleToString(thPoints / 10.0, 1);
+        string stepsText = "(" + DoubleToString(thPoints / 10.0 * 1.5, 1) + " - " + DoubleToString(thPoints / 10.0 * 1.75, 1) + " - " + DoubleToString(thPoints / 10.0 * 2.0, 1) + ")";
+        string targetsText = DoubleToString(MathFloor(thPoints / 10.0 * 3.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 5.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 15.0), 0);
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowTHTargets);
 
         if(isVerticalLayout) {
-            if(!CreateTHLabel(objectPrefix, timeframeName, thPoints, currentXPos, currentYPos, STANDARD_COLORS[0], xStep, rowSpacing)) continue;
+            if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentYPos += lineHeight;
         } else {
             if(currentXPos + labelWidth + xStep > maxWidth) {
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
-            if(!CreateTHLabel(objectPrefix, timeframeName, thPoints, currentXPos, currentYPos, STANDARD_COLORS[0], xStep, rowSpacing)) continue;
+            if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentXPos += labelWidth + xStep;
         }
     }
 
-    int standardConsumedY = (currentYPos - startYPos) + lineHeight;
-    s_lastStdTHOffsetContribution = standardConsumedY + inpSectionGap;
-    g_currentLabelYOffsetBottom += s_lastStdTHOffsetContribution;
+    g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
 }
 
 void StoreLabelPosition(const string name, const int xPos, const int yPos) {

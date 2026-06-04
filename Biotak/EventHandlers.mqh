@@ -66,10 +66,6 @@ int OnInitHandler() {
         g_thLabelsMode = defaultMode;
         g_thLabelsVisible = (g_thLabelsMode != 0);
     }
-    if(!inpShowTHLabels) {
-        g_thLabelsMode = 0;
-        g_thLabelsVisible = false;
-    }
 
     int validationResult = ValidateInputs();
     if(validationResult != INIT_SUCCEEDED) return validationResult;
@@ -1021,15 +1017,18 @@ void RedrawAllObjects(bool force_redraw=false)
         {
             g_dailyClosePriceForTH = thBasePrice;
         }
+        
+        // CRITICAL: Reset stacking offsets and clear old labels for clean layout
         g_currentLabelYOffset = 0;  // Reset top label stacking offset
         g_currentLabelYOffsetBottom = 0;  // Reset bottom label stacking offset
+        ClearAllLabels(objectPrefix);
 
         TH3_PROF_START(Labels);
         if(g_atrLabelsVisible && inpShowATRLabels) DisplayATRLabels(objectPrefix);
         bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
         bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
-        if(inpShowTHLabels && g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
-        if(inpShowTHLabels && g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
+        if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
+        if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         TH3_PROF_END(Labels);
 
         // FIX: Snapshot final Y offset so mode/lock/factor labels always appear below all data labels
@@ -1137,6 +1136,7 @@ void RedrawAllObjects(bool force_redraw=false)
     }
 
     CheckAlerts(objectPrefix, g_currentPrice);
+    ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -1518,21 +1518,20 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpTHLabelsKey))
         {
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
-            if(!inpShowTHLabels) {
-                g_thLabelsMode = 0;
-                g_thLabelsVisible = false;
-                GlobalVariableSet(thGvar, 0.0);
-            } else {
-                if(g_thLabelsMode < 0 || g_thLabelsMode > 3) g_thLabelsMode = 0;
-                g_thLabelsMode = (g_thLabelsMode + 1) % 4;
-                g_thLabelsVisible = (g_thLabelsMode != 0);
-                GlobalVariableSet(thGvar, (double)g_thLabelsMode);
-            }
+            
+            // Cycle: BOTH (3) -> FRACTAL (1) -> OFF (0) -> BOTH (3)
+            if(g_thLabelsMode == 3) g_thLabelsMode = 1;
+            else if(g_thLabelsMode == 1) g_thLabelsMode = 0;
+            else g_thLabelsMode = 3; // Handles mode 0, 2, or any other
+
+            g_thLabelsVisible = (g_thLabelsMode != 0);
+            GlobalVariableSet(thGvar, (double)g_thLabelsMode);
+            
             string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
-            SetTHLabelsVisibility(objectPrefix, (inpShowTHLabels ? g_thLabelsMode : 0));
+            SetTHLabelsVisibility(objectPrefix, g_thLabelsMode);
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
-            LOG_IP1(LOG_CAT_LABELS, "TH Labels mode=", IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL,2=STANDARD,3=BOTH)");
+            LOG_IP1(LOG_CAT_LABELS, "TH Labels mode=", IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL,3=BOTH)");
             ThrottledChartRedraw();
             return;
         }
@@ -2113,8 +2112,10 @@ void RedrawLabelsOnly() {
     datetime currentTime = TimeGMT();
     string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
 
+    // CRITICAL: Reset stacking offsets and clear old labels
     g_currentLabelYOffset = 0;
     g_currentLabelYOffsetBottom = 0;
+    ClearAllLabels(objectPrefix);
 
     if(g_atrLabelsVisible && inpShowATRLabels) {
         DisplayATRLabels(objectPrefix);
@@ -2122,12 +2123,13 @@ void RedrawLabelsOnly() {
 
     bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
     bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
-    if(inpShowTHLabels && g_thLabelsMode != 0 && g_dailyClosePriceForTH != EMPTY_VALUE && g_dailyClosePriceForTH > 0.0) {
+    if(g_thLabelsMode != 0 && g_dailyClosePriceForTH != EMPTY_VALUE && g_dailyClosePriceForTH > 0.0) {
         if(showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
     }
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
+    ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
