@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //| Event Handlers - Version 3.09 GOLD                              |
 //| Security & Performance Audit Complete                           |
 //+------------------------------------------------------------------+
@@ -1018,14 +1018,15 @@ void RedrawAllObjects(bool force_redraw=false)
         if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         TH3_PROF_END(Labels);
 
-        // FIX: Snapshot final Y offset so mode/lock/factor labels always appear below all data labels
-        g_modeLabelYOffset = g_currentLabelYOffset;
-        // FIX: Reposition ALL overlay labels (mode, lock, ABCD info) to match new layout offset
-        RepositionAllOverlayLabels();
         if(!g_calculatedOnce && inpShowTHLevels) g_redrawTHLevelsNeeded = true;
         g_calculatedOnce = true;
         g_labelsRelayoutNeeded = false;
     }
+
+    // FIX: Snapshot final Y offset so mode/lock/factor labels always appear below all data labels
+    // Move outside needLabels block to ensure overlay labels are always correctly positioned
+    g_modeLabelYOffset = g_currentLabelYOffset;
+    RepositionAllOverlayLabels();
 
     g_dailyClosePriceForTH = thBasePrice;
 

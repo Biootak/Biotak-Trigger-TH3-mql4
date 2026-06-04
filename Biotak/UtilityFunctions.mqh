@@ -342,17 +342,7 @@ void UpdateStepModeLabel() {
     string labelText = BuildUnifiedModeLabelText();
     ObjectSetString(0, g_stepModeLabelName, OBJPROP_TEXT, labelText);
     
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_CORNER, inpModeLabelCorner);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_XDISTANCE, inpModeLabelXDistance);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_YDISTANCE, inpModeLabelYDistance);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    
-    ObjectSetString(0, g_stepModeLabelName, OBJPROP_FONT, inpFontName);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_FONTSIZE, inpModeLabelFontSize);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_COLOR, inpModeLabelColor);
-    
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_HIDDEN, true);
+    ApplyModeLabelStyle(g_stepModeLabelName, inpModeLabelColor);
     
     if(inpModeLabelDuration > 0) {
         // In MT4, we use the enum duration or manual seconds
@@ -410,22 +400,7 @@ void UpdateFactorLabel(double factorValue) {
     ObjectSetString(0, g_factorLabelName, OBJPROP_TEXT, 
         "[ F: " + DoubleToString(factorValue, 2) + stepText + " ]");
     
-    // Position: top-left corner with minimal space usage (same as step mode)
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_XDISTANCE, 15);
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_YDISTANCE, 25); // First line (temporary display)
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    
-    // Font: bold for better visibility (same as step mode)
-    ObjectSetString(0, g_factorLabelName, OBJPROP_FONT, "Arial Bold");
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_FONTSIZE, 11);
-    
-    // Color: Use Factor level color from settings (same as Factor lines)
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_COLOR, inpFactorLevelColor);
-    
-    // Make sure it's visible
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, g_factorLabelName, OBJPROP_HIDDEN, true);
+    ApplyModeLabelStyle(g_factorLabelName, inpFactorLevelColor);
     
     // Set timer based on user setting (0=permanent, >0=auto-hide after N seconds)
     if(inpModeLabelDuration > 0) {
@@ -504,24 +479,7 @@ void UpdateTH3FrequencyLabel(double frequency) {
     ObjectSetString(0, g_th3FreqLabelName, OBJPROP_TEXT, 
         "[ TH3 Freq: " + DoubleToString(frequency, 3) + "%" + stepInfo + " ]");
     
-    // Position: offset below step mode label to prevent overlap
-    // موقعیت: زیر لیبل step mode برای جلوگیری از همپوشانی
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_CORNER, inpModeLabelCorner);
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_XDISTANCE, inpModeLabelXDistance);
-    // Add 20 pixels offset to Y position to place below step mode label
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_YDISTANCE, inpModeLabelYDistance + 20);
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    
-    // Font: use input parameters for customization
-    ObjectSetString(0, g_th3FreqLabelName, OBJPROP_FONT, inpFontName);
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_FONTSIZE, inpModeLabelFontSize);
-    
-    // Color: use input parameter for customization
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_COLOR, inpModeLabelColor);
-    
-    // Make visible
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_HIDDEN, true);
+    ApplyModeLabelStyle(g_th3FreqLabelName, inpModeLabelColor);
     
     // Set timer for auto-hide (5 seconds for frequency - longer than other labels)
     EventSetTimer(5);
@@ -763,7 +721,9 @@ void ApplyModeLabelStyle(const string name, const color textColor, const int yOf
     ObjectSetInteger(0, name, OBJPROP_CORNER, inpModeLabelCorner);
     ObjectSetInteger(0, name, OBJPROP_XDISTANCE, inpModeLabelXDistance);
     int rowOffset = GetModeLabelRowOffset(name);
-    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, inpModeLabelYDistance + yOffsetExtra + g_modeLabelYOffset + rowOffset);
+    // Add extra padding (40 pixels) to ensure it's always below ATR/TH labels
+    int basePadding = 40;
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, inpModeLabelYDistance + yOffsetExtra + g_modeLabelYOffset + rowOffset + basePadding);
     ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
     ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpModeLabelFontSize);
