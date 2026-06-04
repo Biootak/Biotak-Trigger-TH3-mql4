@@ -747,9 +747,19 @@ void ApplyModeLabelStyle(const string name, const color textColor, const int yOf
     ObjectSetInteger(0, name, OBJPROP_CORNER, inpModeLabelCorner);
     ObjectSetInteger(0, name, OBJPROP_XDISTANCE, inpModeLabelXDistance);
     int rowOffset = GetModeLabelRowOffset(name);
-    // Add extra padding (40 pixels) to ensure it's always below ATR/TH labels
-    int basePadding = 40;
-    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, inpModeLabelYDistance + yOffsetExtra + g_modeLabelYOffset + rowOffset + basePadding);
+    
+    int finalY = inpModeLabelYDistance + yOffsetExtra + rowOffset;
+    
+    // Smart stacking: Avoid overlapping with ATR (top) or TH (bottom) labels
+    if(inpModeLabelCorner == CORNER_LEFT_UPPER || inpModeLabelCorner == CORNER_RIGHT_UPPER) {
+        // Offset for top-aligned corners (below ATR labels)
+        finalY += g_modeLabelYOffset + 45; 
+    } else {
+        // Offset for bottom-aligned corners (above TH labels)
+        finalY += g_currentLabelYOffsetBottom + inpTHLabelsMarginBottom + 15;
+    }
+    
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, finalY);
     ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
     ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpModeLabelFontSize);

@@ -271,7 +271,7 @@ input int inpModeLabelDuration = 5;              // Label Duration (sec, 0=Perma
 input ENUM_BASE_CORNER inpModeLabelCorner = CORNER_LEFT_UPPER;
 input int inpModeLabelXDistance = 15;
 input int inpModeLabelYDistance = 25;
-input int inpModeLabelFontSize = 11;
+input int inpModeLabelFontSize = 12;
 input color inpModeLabelColor = clrDarkBlue;
 
 input group "19) HOTKEYS"
@@ -300,13 +300,13 @@ input int inpLabelSpacing = 18;             // MT4-only: kept for compat
 
 input group "21) ADVANCED - LABEL LAYOUT"
 input string S21 = "[21] ADVANCED / LABEL LAYOUT";
-input int inpLabelsMarginTop = 25;        // Distance from top of chart
-input int inpLabelsMarginLeft = 20;       // Distance from left edge
-input int inpLabelsMarginBottom = 5;      // Distance from bottom of chart
-input int inpTHLabelsMarginBottom = 15;   // TH labels distance from bottom (bottom-left)
-input int inpLabelRowGap = 16;            // Vertical gap between rows
-input int inpLabelColumnGap = 45;         // Horizontal gap between columns
-input int inpSectionGap = 23;             // Gap between ATR and TH sections
+input int inpLabelsMarginTop = 30;        // Distance from top of chart
+input int inpLabelsMarginLeft = 25;       // Distance from left edge
+input int inpLabelsMarginBottom = 25;      // Distance from bottom of chart
+input int inpTHLabelsMarginBottom = 40;   // TH labels distance from bottom (bottom-left)
+input int inpLabelRowGap = 18;            // Vertical gap between rows
+input int inpLabelColumnGap = 50;         // Horizontal gap between columns
+input int inpSectionGap = 30;             // Gap between ATR and TH sections
 input int inpMaxLabelWidth = 250;
 
 input group "22) ADVANCED - HISTORY & LOG"

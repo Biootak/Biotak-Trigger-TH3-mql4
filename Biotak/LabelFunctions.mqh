@@ -1132,9 +1132,9 @@ string StringRepeat(string str, int count) {
 //+------------------------------------------------------------------+
 void UpdateLockStatusLabel()
 {
-    // Position: Top-left corner, small and unobtrusive
+    // Position: Top-left corner, very top
     int xDistance = 5;
-    int yDistance = 15;
+    int yDistance = 5;
     
     if(g_timeframeLocked)
     {
@@ -1151,8 +1151,8 @@ void UpdateLockStatusLabel()
         }
         
         ObjectSetString(0, g_lockStatusLabelName, OBJPROP_TEXT, lockText);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_COLOR, clrYellow);
-        ObjectSetString(0, g_lockStatusLabelName, OBJPROP_FONT, "Arial Bold");
+        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_COLOR, clrGold);
+        ObjectSetString(0, g_lockStatusLabelName, OBJPROP_FONT, inpFontName);
         ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_FONTSIZE, 8);
         ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
         ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
