@@ -43,8 +43,10 @@ static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
 static int g_stepModeOverride = -1;        // -1 = use input, 0-5 = override
 static double g_factorValueOverride = 0;   // 0 = use input, >0 = override
 static int g_factorColorOverride = -1;     // -1 = use input
+#ifndef BUILD_LITE
 static double g_th3FreqOverride = 0;       // 0 = use input, >0 = override
 static int    g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX; // Binary subdivision index
+#endif
 
 // Alert Tracking
 static datetime g_lastAlertTime = 0;
@@ -56,12 +58,16 @@ static int g_lockedPeriod = 0;
 static string g_lockStatusLabelName = "Biotak_LockStatus_Label";
 static string g_stepModeLabelName = "Biotak_StepMode_Label";
 static string g_factorLabelName = "Biotak_Factor_Label";
+#ifndef BUILD_LITE
 static string g_th3FreqLabelName = "Biotak_TH3Freq_Label";
+#endif
 
 // Independent label expiry timestamps (tick count)
 static uint g_stepModeLabelCreateTime = 0;
 static uint g_factorLabelCreateTime = 0;
+#ifndef BUILD_LITE
 static uint g_th3FreqLabelCreateTime = 0;
+#endif
 static uint g_resetCommentCreateTime = 0;  // For "[ RESET ]" comment auto-clear
 
 // ChartRedraw Throttling
@@ -73,6 +79,7 @@ static uint g_lastDragRedrawTime = 0;
 // Suppression flag: prevents CHARTEVENT_OBJECT_DELETE cascade during programmatic deletions
 static bool g_suppressDeleteEvents = false;
 
+#ifndef BUILD_LITE
 // AB=CD Pattern State
 static bool g_abcdDrawing = false;
 static int g_abcdPointCount = 0;
@@ -94,6 +101,7 @@ FrequencyResult g_lastFreqResult;
 FrequencyHistoryEntry g_freqHistory[FREQ_HISTORY_SIZE];
 int g_freqHistoryCount = 0;   // Total entries added (for < FREQ_HISTORY_SIZE check)
 int g_freqHistoryHead  = 0;   // Next write position (wraps around)
+#endif
 
 // TH Storage
 struct TimeframeTH {

@@ -249,9 +249,12 @@ void ClearAllModeLabels() {
     if(ObjectFind(0, g_factorLabelName) >= 0) {
         ObjectDelete(0, g_factorLabelName);
     }
+#ifndef BUILD_LITE
     if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
         ObjectDelete(0, g_th3FreqLabelName);
     }
+#endif
+}
     Comment("");
 }
 
@@ -412,6 +415,7 @@ void UpdateFactorLabel(double factorValue, bool clearFirst = true) {
     }
 }
 
+#ifndef BUILD_LITE
 //+------------------------------------------------------------------+
 //| Update TH3 Frequency Label (configurable duration)              |
 //| نمایش فرکانس TH3 روی چارت (با حذف خودکار بر اساس تنظیمات)        |
@@ -491,6 +495,7 @@ void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
         EventSetTimer(inpModeLabelDuration);
     }
 }
+#endif
 
 
 //+------------------------------------------------------------------+
@@ -500,16 +505,11 @@ void ShowAllStatusLabels() {
     ClearAllModeLabels();
     
     UpdateStepModeLabel(false);
-    
-    double factor = g_factorValueOverride;
-    if(factor <= 0) {
-        if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0) factor = inpFactorValue;
-        else factor = GetDefaultFactorValue(g_dailyClosePriceForTH);
-    }
-    UpdateFactorLabel(factor, false);
-    
+    UpdateFactorLabel(g_factorValueOverride > 0 ? g_factorValueOverride : inpFactorValue, false);
+#ifndef BUILD_LITE
     double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
     UpdateTH3FrequencyLabel(freq, false);
+#endif
 }
 
 //+------------------------------------------------------------------+
@@ -679,6 +679,7 @@ bool CheckAndClearExpiredLabels() {
                 anyRemaining = true;
             }
         }
+#ifndef BUILD_LITE
         if(g_th3FreqLabelCreateTime > 0) {
             if((now - g_th3FreqLabelCreateTime) >= durationMs) {
                 ClearSingleModeLabel(g_th3FreqLabelName, g_th3FreqLabelCreateTime);
@@ -687,9 +688,16 @@ bool CheckAndClearExpiredLabels() {
                 anyRemaining = true;
             }
         }
+#endif
     } else {
-        if(g_stepModeLabelCreateTime > 0 || g_factorLabelCreateTime > 0 || g_th3FreqLabelCreateTime > 0)
-            anyRemaining = false;
+        bool labelsExist = (g_stepModeLabelCreateTime > 0 || g_factorLabelCreateTime > 0);
+#ifndef BUILD_LITE
+        labelsExist = labelsExist || (g_th3FreqLabelCreateTime > 0);
+#endif
+        if(labelsExist)
+            RepositionModeLabels();
+        anyRemaining = false;
+    }
     }
 
     if(g_resetCommentCreateTime > 0) {
@@ -719,12 +727,14 @@ int GetModeLabelRowOffset(const string labelName) {
         if(g_stepModeLabelCreateTime > 0) row++;
         return row * rowHeight;
     }
+#ifndef BUILD_LITE
     if(labelName == g_th3FreqLabelName) {
         int row = 0;
         if(g_stepModeLabelCreateTime > 0) row++;
         if(g_factorLabelCreateTime > 0) row++;
         return row * rowHeight;
     }
+#endif
     return 0;
 }
 
@@ -735,7 +745,9 @@ int GetModeLabelBlockHeight() {
     int activeCount = 0;
     if(g_stepModeLabelCreateTime > 0) activeCount++;
     if(g_factorLabelCreateTime > 0) activeCount++;
+#ifndef BUILD_LITE
     if(g_th3FreqLabelCreateTime > 0) activeCount++;
+#endif
     int rowHeight = inpModeLabelFontSize + 12;
     return activeCount * rowHeight;
 }
@@ -777,11 +789,15 @@ void RepositionAllOverlayLabels() {
         ApplyModeLabelStyle(g_stepModeLabelName, (color)ObjectGetInteger(0, g_stepModeLabelName, OBJPROP_COLOR));
     if(ObjectFind(0, g_factorLabelName) >= 0)
         ApplyModeLabelStyle(g_factorLabelName, (color)ObjectGetInteger(0, g_factorLabelName, OBJPROP_COLOR));
+#ifndef BUILD_LITE
     if(ObjectFind(0, g_th3FreqLabelName) >= 0)
         ApplyModeLabelStyle(g_th3FreqLabelName, (color)ObjectGetInteger(0, g_th3FreqLabelName, OBJPROP_COLOR));
+#endif
 
     UpdateLockStatusLabel();
+#ifndef BUILD_LITE
     RepositionABCDInfoLabels();
+#endif
 }
 
 #endif // UTILITY_FUNCTIONS_MQH

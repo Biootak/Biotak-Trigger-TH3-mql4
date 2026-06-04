@@ -205,6 +205,7 @@ int OnInitHandler() {
         }
     }
 
+#ifndef BUILD_LITE
     // Restore TH3 frequency with dynamic max validation (binary subdivision)
     string freqGvarName = "Biotak_TH3Freq_" + chartIdStr;
     if(GlobalVariableCheck(freqGvarName)) {
@@ -241,6 +242,7 @@ int OnInitHandler() {
                               " freq=", DoubleToString(g_th3FreqOverride, 4));
         }
     }
+#endif
 
     InitializeATRCache();
 
@@ -261,12 +263,14 @@ int OnInitHandler() {
     UpdateLockStatusLabel();
     PrintBuildInfo();
 
+#ifndef BUILD_LITE
     // Check if TH3 objects need update (after settings change)
     string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStr;
     if(GlobalVariableCheck(th3UpdateFlag) && GlobalVariableGet(th3UpdateFlag) > 0) {
         UpdateAllTH3Objects();
         GlobalVariableDel(th3UpdateFlag);
     }
+#endif
 
     #ifdef ENABLE_DEBUG_LOGS
     Print("[D][GEN] OnInit complete: deferred=", deferHeavyInit, " hidden=", shouldBeHidden);
@@ -1434,12 +1438,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // P key â€” Toggle TH3 Tool
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#ifndef BUILD_LITE
         if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
         {
             ToggleTH3Tool();
             ThrottledChartRedraw();
             return;
         }
+#endif
 
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // E key â€” Cycle Step Mode
@@ -1470,8 +1476,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // 3/4 keys â€” Adjust TH3 Frequency
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#ifndef BUILD_LITE
         else if(lparam == '3') { DecrementTH3Frequency(); return; }
         else if(lparam == '4') { CycleTH3Frequency(); return; }
+#endif
 
         // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // W key â€” Show Current Status
@@ -1490,8 +1498,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             g_stepModeOverride = -1;
             g_factorValueOverride = 0;
+#ifndef BUILD_LITE
             g_th3FreqOverride = 0;
             g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
+#endif
             g_timeframeLocked = false;
             g_lockedPeriod = 0;
             g_triggerLevelsEnabled = inpShowTrigger;
@@ -1500,9 +1510,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_atrLabelsVisible = inpShowATRLabels;
             g_thLabelsMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
+#ifndef BUILD_LITE
             if(inpEnableTH3Tool) {
                 UpdateAllTH3Objects();
             }
+#endif
+#ifndef BUILD_LITE
             // Cancel any active ABCD drawing
             if(g_abcdDrawing) {
                 g_abcdDrawing = false;
@@ -1512,6 +1525,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 ObjectsDeleteAll(0, TH3_TEMP_LINE_PREFIX);
                 g_suppressDeleteEvents = false;
             }
+#endif
             g_customPriceKeyboardOverride = false;
             g_thStartPointType = inpTHStartPointType;
             g_customTHStartPrice = inpCustomTHStartPrice;
@@ -1526,8 +1540,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_ATRLabels_" + chartIdStr);
             GlobalVariableDel("Biotak_THLabels_" + chartIdStr);
             GlobalVariableDel("Biotak_CustomPriceOverride_" + symbolName);
+#ifndef BUILD_LITE
             GlobalVariableDel("Biotak_TH3Freq_" + chartIdStr);
             GlobalVariableDel("Biotak_TH3FreqIdx_" + chartIdStr);
+#endif
             if(inpCustomTHStartPrice > 0.0) {
                 GlobalVariableSet("Biotak_CustomPrice_" + symbolName, inpCustomTHStartPrice);
                 CreateCustomPriceLine(inpCustomTHStartPrice, Digits);
@@ -1605,6 +1621,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // ABCD Mouse Event Routing
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#ifndef BUILD_LITE
     if(g_abcdDrawing || 
        id == CHARTEVENT_OBJECT_DRAG || 
        id == CHARTEVENT_OBJECT_DELETE ||
@@ -1614,6 +1631,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
     }
+#endif
 
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // CHARTEVENT_CHART_CHANGE â€” Layout/Resize/Scroll/Zoom
@@ -1809,6 +1827,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // CHARTEVENT_OBJECT_CLICK â€” ABCD Pattern Selection
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+#ifndef BUILD_LITE
     if(id == CHARTEVENT_OBJECT_CLICK)
     {
         if(StringFind(sparam, "ABCD_Pattern_") == 0)
@@ -1834,6 +1853,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             SetActiveABCDPattern("");
         }
     }
+#endif
 }
 
 //+------------------------------------------------------------------+

@@ -22,9 +22,23 @@
 // ══════════════════════════════════════════════════════════════════
 
 
+// ══════════════════════════════════════════════════════════════════
+// برای حالت LITE (حذف ویژگی‌های غیرضروری) این خط رو فعال کن:
+// ══════════════════════════════════════════════════════════════════
+//#define BUILD_LITE
+
 //+------------------------------------------------------------------+
 //| Automatic flag setup - DO NOT MODIFY BELOW                       |
 //+------------------------------------------------------------------+
+#ifdef BUILD_LITE
+    #define LITE_MODE_STR "LITE"
+    // Disable profiler in Lite mode
+    #define TH3_PROF_START(tag)
+    #define TH3_PROF_END(tag)
+#else
+    #define LITE_MODE_STR "FULL"
+#endif
+
 #ifdef DEBUG_BUILD
     #define ENABLE_DEBUG_LOGS
     // Performance logs disabled permanently

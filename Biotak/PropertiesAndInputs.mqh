@@ -126,6 +126,7 @@ input string S10b = "[10.2] ZONES / VISUAL DENSITY";
 input int inpMidZoneTransparency = 60;
 input double inpMidZoneHeightPercent = 12.5;
 
+#ifndef BUILD_LITE
 input group "11) STYLE - HARMONIC"
 input string S11 = "[11] STYLE / HARMONIC";
 input bool inpEnableHarmonicPattern = false;
@@ -152,7 +153,9 @@ input int inpTH3ZoneTransparency = 60;
 input double inpTH3ZoneHeightPercent = 12.5;
 input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
 input int inpTH3ZoneBorderWidth = 1;
+#endif
 
+#ifndef BUILD_LITE
 input group "13) AB=CD"
 input string S13 = "[13] AB=CD";
 input bool inpABCDShowLabels = false;             // Visual align MT5: was true
@@ -166,6 +169,7 @@ input int inpABCDInfoXDistance = 10;
 input int inpABCDInfoYDistance = 20;
 input int inpABCDInfoFontSize = 9;
 input color inpABCDInfoColor = clrDarkBlue;       // Visual align MT5: was clrNavy
+#endif
 
 input group "14) STYLE - HIGH/LOW"
 input string S14 = "[14] STYLE / HIGH-LOW";
@@ -279,7 +283,9 @@ input string inpLockKey = "G";
 input string inpCustomPriceKey = "C";
 input string inpTriggerLevelsKey = "T";
 input string inpStepModeKey = "E";
+#ifndef BUILD_LITE
 input string inpTH3ToolKey = "V";
+#endif
 input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status

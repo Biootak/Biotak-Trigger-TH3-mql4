@@ -1,17 +1,20 @@
 //+------------------------------------------------------------------+
-//|                                           Biotak Trigger TH3.mq4 |
+//|                                      Biotak Trigger TH3 Lite.mq4 |
 //+------------------------------------------------------------------+
 #property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
 #property version   "3.10"
 #property strict
 #property indicator_chart_window
-#property description "Version 3.10 - GOLD: Post-Audit - All Critical Issues Fixed"
-#property description "Race conditions fixed | Memory leaks eliminated | Buffer overflow prevented"
+#property description "Version 3.10 - LITE: Features like Profiler and Freq Optimizer removed"
+
+// ═══════════════════════════════════════════════════════════════════
+// LITE MODE ACTIVATION
+// ═══════════════════════════════════════════════════════════════════
+#define BUILD_LITE
 
 // ═══════════════════════════════════════════════════════════════════
 // BUILD CONFIG - Must be first include!
-// برای تغییر مود، فایل BuildConfig.mqh را ویرایش کنید
 // ═══════════════════════════════════════════════════════════════════
 #include "Biotak\BuildConfig.mqh"
 
