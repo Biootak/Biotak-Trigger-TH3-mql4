@@ -29,13 +29,10 @@ int OnInitHandler() {
     g_triggerLevelsEnabled = RestoreBoolGlobalVar("Biotak_TriggerLevels_" + chartIdStr, inpShowTrigger);
     g_linesVisible = RestoreBoolGlobalVar("Biotak_LinesVisible_" + chartIdStr, inpShowLines);
 
-    // Restore ATR labels visibility (early, matching MT5 order)
-    g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + chartIdStr, inpShowATRLabels);
-    if(!inpShowATRLabels) {
-        g_atrLabelsVisible = false;
-    }
+    // Restore ATR labels visibility (Default to OFF on first load)
+    g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + chartIdStr, false);
 
-    // Restore TH labels mode (0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH)
+    // Restore TH labels mode (Default to OFF on first load: 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH)
     string thLabelsGvarName = "Biotak_THLabels_" + chartIdStr;
     if(GlobalVariableCheck(thLabelsGvarName)) {
         double gvarValue = GlobalVariableGet(thLabelsGvarName);
@@ -48,15 +45,13 @@ int OnInitHandler() {
             g_thLabelsVisible = (g_thLabelsMode != 0);
         } else {
             _LOG_GATE_E Print("[E][GEN] OnInit: Corrupted TH labels state (", DoubleToString(gvarValue, 10), "), resetting");
-            int defaultMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
-            GlobalVariableSet(thLabelsGvarName, (double)defaultMode);
-            g_thLabelsMode = defaultMode;
-            g_thLabelsVisible = (g_thLabelsMode != 0);
+            g_thLabelsMode = 0; // Default to OFF
+            GlobalVariableSet(thLabelsGvarName, 0.0);
+            g_thLabelsVisible = false;
         }
     } else {
-        int defaultMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
-        g_thLabelsMode = defaultMode;
-        g_thLabelsVisible = (g_thLabelsMode != 0);
+        g_thLabelsMode = 0; // Default to OFF
+        g_thLabelsVisible = false;
     }
 
     int validationResult = ValidateInputs();
@@ -1016,7 +1011,7 @@ void RedrawAllObjects(bool force_redraw=false)
         ClearAllLabels(objectPrefix);
 
         TH3_PROF_START(Labels);
-        if(g_atrLabelsVisible && inpShowATRLabels) DisplayATRLabels(objectPrefix);
+        if(g_atrLabelsVisible) DisplayATRLabels(objectPrefix);
         bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
         bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
         if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
@@ -1488,15 +1483,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpATRLabelsKey))
         {
             string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
-            if(!inpShowATRLabels) {
-                g_atrLabelsVisible = false;
-                GlobalVariableSet(atrGvarNameKey, 0.0);
-            } else {
-                g_atrLabelsVisible = !g_atrLabelsVisible;
-                GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
-            }
+            g_atrLabelsVisible = !g_atrLabelsVisible;
+            GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
+            
             string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
-            SetATRLabelsVisibility(objectPrefix, g_atrLabelsVisible && inpShowATRLabels);
+            SetATRLabelsVisibility(objectPrefix, g_atrLabelsVisible); 
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
             LOG_I(LOG_CAT_LABELS, "ATR Labels " + (g_atrLabelsVisible ? "VISIBLE" : "HIDDEN"));
@@ -2112,7 +2103,7 @@ void RedrawLabelsOnly() {
     g_currentLabelYOffsetBottom = 0;
     ClearAllLabels(objectPrefix);
 
-    if(g_atrLabelsVisible && inpShowATRLabels) {
+    if(g_atrLabelsVisible) {
         DisplayATRLabels(objectPrefix);
     }
 

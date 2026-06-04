@@ -20,14 +20,14 @@ input group "01) DISPLAY - VISIBILITY"
 input string S1 = "[01] DISPLAY / VISIBILITY";
 input bool inpShowLines = true;
 input bool inpShowTHLevels = true;
-input bool inpShowTHLabels = true;
+input bool inpShowTHLabels = false;
 input bool inpShowTHTargets = true;              // Show TH Targets
 input bool inpShowPipDistanceLabels = true;
 input bool inpShowMidpointLine = true;
 input bool inpShowTimeframeInLabels = true;
 input bool inpShowFractalTHs = false;
 input bool inpShowStandardTHs = false;
-input bool inpShowATRLabels = true;              // Show ATR Labels
+input bool inpShowATRLabels = false;              // Show ATR Labels
 input bool inpShowATRTargets = true;             // Show ATR Targets
 input int inpMaxTHLevelsAbove = 1000;            // MT4-only: max levels above (fallback)
 input int inpMaxTHLevelsBelow = 1000;            // MT4-only: max levels below (fallback)
