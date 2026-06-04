@@ -206,6 +206,7 @@ SModeDefinition GetModeDefinition(
             factorValue = NormalizeDouble(MathMax(0.01, MathMin(10000, factorValue)), 2);
             UpdateFactorLabel(factorValue);
             
+#ifndef BUILD_LITE
             if(inpEnableHarmonicPattern) {
                 def.config = BuildFactorHarmonicConfig(objectPrefix);
                 double baseStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
@@ -218,6 +219,7 @@ SModeDefinition GetModeDefinition(
                     def.success = true;
                 }
             } else {
+#endif
                 def.config = BuildFactorConfig(objectPrefix);
                 double factorStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
                 if(factorStep > 0) {
@@ -227,7 +229,9 @@ SModeDefinition GetModeDefinition(
                     def.classifyMode = CLASSIFY_STANDARD;
                     def.success = true;
                 }
+#ifndef BUILD_LITE
             }
+#endif
             break;
         }
         

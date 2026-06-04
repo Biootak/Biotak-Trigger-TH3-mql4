@@ -2225,6 +2225,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
     Print("   Operation=", EnumToString(operation));
     #endif
 }
+
 ENUM_TIMEFRAMES GetPatternTimeframe() {
     int currentMinutes = Period();
     int patternMinutes = currentMinutes * 4;
@@ -3951,6 +3952,7 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
 //| رسم سطوح فاکتور با الگوی هارمونیک متناوب                          |
 //| Alternates between Base Step (÷2) and Large Step (÷ratio)        |
 //| Creates macro symmetry with micro variation                       |
+#ifndef BUILD_LITE
 //+------------------------------------------------------------------+
 void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice, 
                               const double lowPrice, const double factor, 
@@ -4251,6 +4253,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     Print("Total: ", (levelsAbove + levelsBelow + 1), " levels (including midpoint)");
     #endif
 }
+#endif
 
 //+------------------------------------------------------------------+
 void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice, 
@@ -4493,6 +4496,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
 //| رسم سطوح Harmonic Factor از مرکز (پشتیبانی از Custom Price)      |
 //| Alternates between base and large steps from center              |
 //+------------------------------------------------------------------+
+#ifndef BUILD_LITE
 //+------------------------------------------------------------------+
 //| Draw Factor Harmonic levels FROM CENTER                         |
 //| Alternates between base and large steps from center              |
@@ -4808,6 +4812,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
           ", Below=", levelsBelowCount, "/", maxLevelsBelow);
     #endif
 }
+#endif
 
 //+------------------------------------------------------------------+
 //| Draw Factor levels FROM CENTER (supports Custom Price)          |

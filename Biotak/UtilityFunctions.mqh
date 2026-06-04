@@ -255,8 +255,6 @@ void ClearAllModeLabels() {
     }
 #endif
 }
-    Comment("");
-}
 
 //+------------------------------------------------------------------+
 //| Get primary step price for current mode                          |
@@ -695,9 +693,8 @@ bool CheckAndClearExpiredLabels() {
         labelsExist = labelsExist || (g_th3FreqLabelCreateTime > 0);
 #endif
         if(labelsExist)
-            RepositionModeLabels();
+            RepositionAllOverlayLabels();
         anyRemaining = false;
-    }
     }
 
     if(g_resetCommentCreateTime > 0) {

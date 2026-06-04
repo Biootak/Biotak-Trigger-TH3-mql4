@@ -32,6 +32,7 @@ int ValidateInputs()
     }
     
     // 2. Harmonic Ratio (1.01-2.0)
+#ifndef BUILD_LITE
     if(inpEnableHarmonicPattern) {
         if(inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
             Print("❌ ERROR: Harmonic Ratio (", DoubleToString(inpHarmonicRatio, 3), ") out of range");
@@ -40,6 +41,7 @@ int ValidateInputs()
             return INIT_PARAMETERS_INCORRECT;
         }
     }
+#endif
     
     // 3. Structure Base Multiplier (2-9)
     // NOTE: ENUM_STRUCTURE_BASE_MULTIPLIER enforces valid range at UI level
@@ -126,6 +128,7 @@ int ValidateInputs()
     }
     
     // 9. TH3 Zone Transparency (0-100)
+#ifndef BUILD_LITE
     if(inpTH3ZoneTransparency < 0 || inpTH3ZoneTransparency > 100) {
         Print("❌ ERROR: TH3 Zone Transparency (", inpTH3ZoneTransparency, ") out of range");
         Print("   Valid range: 0 - 100");
@@ -138,6 +141,7 @@ int ValidateInputs()
         Print("   Valid range: 1.0 - 100.0");
         return INIT_PARAMETERS_INCORRECT;
     }
+#endif
     
     // 9.2 Mid-Zone Height Percent (1-100)
     if(inpMidZoneHeightPercent < 1.0 || inpMidZoneHeightPercent > 100.0) {
@@ -185,7 +189,7 @@ int ValidateInputs()
     // ═══════════════════════════════════════════════════════════════
     // HARMONIC PATTERN VALIDATIONS
     // ═══════════════════════════════════════════════════════════════
-    
+#ifndef BUILD_LITE
     if(inpEnableHarmonicPattern) {
         // Warning if ratio is too close to 1.0 (subtle alternation)
         if(inpHarmonicRatio < 1.05) {
@@ -227,6 +231,7 @@ int ValidateInputs()
         Print("   Ratio: ", DoubleToString(inpHarmonicRatio, 3));
         #endif
     }
+#endif
     
     // ═══════════════════════════════════════════════════════════════
     // FACTOR STEP VALIDATIONS
@@ -244,6 +249,7 @@ int ValidateInputs()
     }
     
     // SECURITY FIX: Validate harmonic ratio
+#ifndef BUILD_LITE
     if(inpEnableHarmonicPattern) {
         if(inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
             Print("❌ ERROR: Harmonic Ratio (", DoubleToString(inpHarmonicRatio, 3), ") out of range");
@@ -252,6 +258,7 @@ int ValidateInputs()
             return INIT_PARAMETERS_INCORRECT;
         }
     }
+#endif
     
     if(inpFactorAdjustStep <= 0 || inpFactorAdjustStep > 100) {
         Print("❌ ERROR: Factor Adjust Step (", DoubleToString(inpFactorAdjustStep, 2), ") out of range");
@@ -309,7 +316,7 @@ int ValidateInputs()
     // ═══════════════════════════════════════════════════════════════
     // TH3 TOOL VALIDATIONS
     // ═══════════════════════════════════════════════════════════════
-    
+#ifndef BUILD_LITE
     if(inpTH3BaseStepPercent < 0.1 || inpTH3BaseStepPercent > 120.0) {
         Print("❌ ERROR: TH3 Base Step Percent (", DoubleToString(inpTH3BaseStepPercent, 3), ") out of range");
         Print("   Valid range: 0.1 - 120.0 (extended range)");
@@ -341,6 +348,7 @@ int ValidateInputs()
         Print("   X: ", inpABCDInfoXDistance, ", Y: ", inpABCDInfoYDistance);
         return INIT_PARAMETERS_INCORRECT;
     }
+#endif
     
     // ═══════════════════════════════════════════════════════════════
     // STRUCTURE LEVEL VALIDATIONS

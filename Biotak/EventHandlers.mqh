@@ -340,7 +340,9 @@ void HideAllTHObjects()
     // PERF: Batch special label hide - ObjectSetInteger is no-op if object doesn't exist
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
+#ifndef BUILD_LITE
     ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
+#endif
     ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     if(g_customPriceLineCreated)
         ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, noPeriodsVal);
@@ -397,7 +399,9 @@ void OnDeinitHandler(const int reason) {
     // Eliminates ObjectFind syscalls
     ObjectDelete(0, g_stepModeLabelName);
     ObjectDelete(0, g_factorLabelName);
+#ifndef BUILD_LITE
     ObjectDelete(0, g_th3FreqLabelName);
+#endif
     ObjectDelete(0, g_lockStatusLabelName);
     ObjectDelete(0, g_customPriceHorizontalLineName);
 
@@ -407,8 +411,10 @@ void OnDeinitHandler(const int reason) {
         CleanupAllGlobalVariables();
         DeleteAllIndicatorObjects(true);
         ObjectsDeleteAll(0, "TH3_Structure_");
+#ifndef BUILD_LITE
         ObjectsDeleteAll(0, TH3_PATTERN_PREFIX);  // Clean up AB=CD pattern objects
         ObjectsDeleteAll(0, TH3_TEMP_PREFIX);     // Clean up any temp drawing objects
+#endif
     }
     else if(reason == REASON_PARAMETERS)
     {
@@ -1004,8 +1010,10 @@ void RedrawAllObjects(bool force_redraw=false)
                           IntegerToString(inpMaxLevels) + "|" +
                           IntegerToString((int)g_thStartPointType) + "|" +
                           IntegerToString(inpLSFirst ? 1 : 0) + "|" +
+#ifndef BUILD_LITE
                           IntegerToString(inpEnableHarmonicPattern ? 1 : 0) + "|" +
                           DoubleToString(inpHarmonicRatio, 3) + "|" +
+#endif
                           IntegerToString((int)inpMStepBasisType);
         bool levelTopologyChanged = (levelSig != s_lastLevelSig);
         bool shouldClearLevels = g_forceClearOnNextDraw || levelTopologyChanged;
@@ -1180,6 +1188,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             if(isBecomingHidden)
             {
                 LOG_I(LOG_CAT_KEYS, "F key: Hiding all objects");
+#ifndef BUILD_LITE
                 // Cancel ABCD drawing mode if active
                 if(g_abcdDrawing) {
                     g_abcdDrawing = false;
@@ -1191,6 +1200,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
                     Comment("");
                 }
+#endif
                 HideAllTHObjects();
                 CleanupCustomPriceObjects(false, true);
                 g_redrawTHLevelsNeeded = false;
@@ -1251,7 +1261,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // Restore label visibility
                 ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
                 ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+#ifndef BUILD_LITE
                 ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+#endif
                 ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
                 // Restore custom price line if active
                 if(g_customPriceKeyboardOverride && g_customPriceLineCreated)

@@ -1,3 +1,6 @@
+#ifndef PROPERTIES_AND_INPUTS_MQH
+#define PROPERTIES_AND_INPUTS_MQH
+
 #property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link "@biotak"
 #property version "3.10"
@@ -366,3 +369,5 @@ color GetTriggerRenderColor()
     s_cachedRenderColor = (color)(outR | (outG << 8) | (outB << 16));
     return s_cachedRenderColor;
 }
+
+#endif // PROPERTIES_AND_INPUTS_MQH

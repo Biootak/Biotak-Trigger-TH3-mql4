@@ -1,4 +1,4 @@
-﻿//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
 //|                                                      TH3Tool.mqh |
 //|                     TH3 Structure Tool (Proprietary Logic)       |
 //|                     Supports: Steps Mode & AB=CD Pattern Mode    |
@@ -16,10 +16,6 @@
 #define ABCD_MAX_PRICE_MULTIPLIER 10.0
 #define ABCD_COLLINEARITY_THRESHOLD 0.0001
 
-// Object naming constants (from MT5)
-#define TH3_PATTERN_PREFIX      "ABCD_Pattern_"
-#define TH3_TEMP_PREFIX         "ABCD_Temp_"
-#define TH3_TEMP_LINE_PREFIX    "ABCD_Temp_Line_"
 #define TH3_PATTERN_PREFIX_LEN  13
 
 // Drawing constants (from MT5)

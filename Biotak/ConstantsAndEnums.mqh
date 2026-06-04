@@ -2,6 +2,11 @@
 #define CONSTANTS_AND_ENUMS_MQH
 
 #define MAX_LINES 10
+
+// Object naming constants (for cleanup)
+#define TH3_PATTERN_PREFIX      "ABCD_Pattern_"
+#define TH3_TEMP_PREFIX         "ABCD_Temp_"
+#define TH3_TEMP_LINE_PREFIX    "ABCD_Temp_Line_"
 #define CACHE_TIMEOUT 60
 
 // Performance & Safety Constants

@@ -122,8 +122,13 @@ void PrintBuildInfo()
 {
     Print("╔═══════════════════════════════════════════════════════════════╗");
     Print("║  ", BUILD_MODE_EMOJI, " Biotak Trigger TH3 - Version ", INDICATOR_VERSION);
-    Print("║  Build Mode: ", BUILD_MODE_STR);
+    Print("║  Build Mode: ", BUILD_MODE_STR, " (", LITE_MODE_STR, ")");
     Print("║  Compiled: ", __DATE__);
+    #ifdef BUILD_LITE
+    Print("║  ⚡ LITE VERSION - Performance optimized (Core features only)");
+    #else
+    Print("║  💎 FULL VERSION - All advanced features enabled");
+    #endif
     #ifdef DEBUG_BUILD
     Print("║  ⚠️ DEBUG BUILD - Not for production use!");
     Print("║  Features: Logs, Assertions ENABLED");
