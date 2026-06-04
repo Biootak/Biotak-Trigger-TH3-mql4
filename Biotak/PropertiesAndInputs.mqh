@@ -267,7 +267,7 @@ input bool inpSendEmail = false;                  // Send Email
 input group "18) MODE LABEL"
 input string S18 = "[18] MODE LABEL";
 input bool inpShowModeChangeLabel = true;
-input ENUM_MODE_LABEL_DURATION inpModeLabelDuration = MODE_LABEL_2_SEC;
+input int inpModeLabelDuration = 5;              // Label Duration (sec, 0=Permanent)
 input ENUM_BASE_CORNER inpModeLabelCorner = CORNER_LEFT_UPPER;
 input int inpModeLabelXDistance = 15;
 input int inpModeLabelYDistance = 25;

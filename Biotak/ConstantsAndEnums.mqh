@@ -419,17 +419,6 @@ enum ENUM_COMBO_PRESET {
     COMBO_PRESET_MANUAL_TRIPLE = 14         // Advanced Triple: User-defined (3 components) â†’ Redirects to Advanced Mode
 };
 
-// Mode label duration options
-// Ù…Ø¯Øª Ø²Ù…Ø§Ù† Ù†Ù…Ø§ÛŒØ´ Ù„ÛŒØ¨Ù„ ØªØºÛŒÛŒØ± Ù…ÙˆØ¯
-enum ENUM_MODE_LABEL_DURATION {
-    MODE_LABEL_1_SEC = 1,       // 1 Second
-    MODE_LABEL_2_SEC = 2,       // 2 Seconds (Default)
-    MODE_LABEL_3_SEC = 3,       // 3 Seconds
-    MODE_LABEL_5_SEC = 5,       // 5 Seconds
-    MODE_LABEL_10_SEC = 10,     // 10 Seconds
-    MODE_LABEL_PERMANENT = 0    // Permanent (Always Show)
-};
-
 // TH3 Label Position
 // Ù…ÙˆÙ‚Ø¹ÛŒØª Ù†Ù…Ø§ÛŒØ´ label Ù‡Ø§ÛŒ TH3
 enum ENUM_TH3_LABEL_POSITION {

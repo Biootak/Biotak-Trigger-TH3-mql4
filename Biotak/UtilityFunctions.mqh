@@ -307,32 +307,36 @@ double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
 }
 
 //+------------------------------------------------------------------+
-//| Build unified mode label text matching MT5 style                 |
+//| Get ATR Info string for status display                           |
 //+------------------------------------------------------------------+
+string GetBasePriceStatusInfo() {
+    double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+    if(g_thStartPointType == TH_START_POINT_CUSTOM_PRICE) {
+        basePrice = (g_customTHStartPrice > 0) ? g_customTHStartPrice : inpCustomTHStartPrice;
+    }
+    return StringFormat(" | B: %.5f", basePrice);
+}
+
 string BuildUnifiedModeLabelText()
 {
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
     string modeName = GetStepModeName(currentMode);
-
     double pipSize = GetCachedPipSize();
-    if(IsZero(pipSize, EPSILON_PRICE) || pipSize <= 0)
-        return "[ " + modeName + " ]";
-
     double stepPrice = GetCurrentModePrimaryStepPrice(currentMode);
-    if(stepPrice <= 0)
-        return "[ " + modeName + " ]";
 
-    double stepPips = stepPrice / pipSize;
-    return "[ " + modeName + " | Step: " + DoubleToString(stepPips, 1) + " pips ]";
+    if(pipSize <= 0 || stepPrice <= 0) return "[ " + modeName + " ]";
+
+    return StringFormat("[ %s | S: %.1f%s ]", 
+        modeName, stepPrice / pipSize, GetBasePriceStatusInfo());
 }
 
 //+------------------------------------------------------------------+
 //| Update step mode label on chart (configurable duration)         |
 //+------------------------------------------------------------------+
-void UpdateStepModeLabel() {
+void UpdateStepModeLabel(bool clearFirst = true) {
     if(!inpShowModeChangeLabel) return;
     
-    ClearAllModeLabels();
+    if(clearFirst) ClearAllModeLabels();
     if(IsIndicatorHidden()) return;
     
     if(ObjectFind(0, g_stepModeLabelName) < 0) {
@@ -346,9 +350,7 @@ void UpdateStepModeLabel() {
     ApplyModeLabelStyle(g_stepModeLabelName, inpModeLabelColor);
     
     if(inpModeLabelDuration > 0) {
-        // In MT4, we use the enum duration or manual seconds
-        int durationSec = (int)inpModeLabelDuration;
-        if(durationSec > 0) EventSetTimer(durationSec);
+        EventSetTimer(inpModeLabelDuration);
     }
 }
 
@@ -367,12 +369,12 @@ void UpdateBasisModeLabel(ENUM_CALCULATION_BASIS basis) {
 //| نمایش مقدار فاکتور و استپ روی چارت (با مدت زمان قابل تنظیم)      |
 //| Shows: "F: 2.50 | Step: 12.5 pips" with auto-hide               |
 //+------------------------------------------------------------------+
-void UpdateFactorLabel(double factorValue) {
+void UpdateFactorLabel(double factorValue, bool clearFirst = true) {
     // Check if mode label display is enabled
     if(!inpShowModeChangeLabel) return;
     
     // Clear ALL temporary labels first (prevents overlap)
-    ClearAllModeLabels();
+    if(clearFirst) ClearAllModeLabels();
     
     // CRITICAL FIX: Don't show label if indicator is hidden
     if(IsIndicatorHidden()) return; // Don't show mode labels when hidden
@@ -411,15 +413,15 @@ void UpdateFactorLabel(double factorValue) {
 }
 
 //+------------------------------------------------------------------+
-//| Update TH3 Frequency Label (auto-hide after 5 seconds)          |
-//| نمایش فرکانس TH3 روی چارت (با حذف خودکار بعد از 5 ثانیه)         |
+//| Update TH3 Frequency Label (configurable duration)              |
+//| نمایش فرکانس TH3 روی چارت (با حذف خودکار بر اساس تنظیمات)        |
 //+------------------------------------------------------------------+
-void UpdateTH3FrequencyLabel(double frequency) {
+void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
     // Check if mode label display is enabled
     if(!inpShowModeChangeLabel) return;
     
     // Clear ALL temporary labels first (prevents overlap)
-    ClearAllModeLabels();
+    if(clearFirst) ClearAllModeLabels();
     
     // CRITICAL FIX: Don't show label if indicator is hidden
     // PERFORMANCE: Use cached ChartID string
@@ -483,6 +485,11 @@ void UpdateTH3FrequencyLabel(double frequency) {
     
     g_th3FreqLabelCreateTime = GetTickCount();
     ApplyModeLabelStyle(g_th3FreqLabelName, inpModeLabelColor);
+
+    // Set timer based on user setting (0=permanent, >0=auto-hide after N seconds)
+    if(inpModeLabelDuration > 0) {
+        EventSetTimer(inpModeLabelDuration);
+    }
 }
 
 
@@ -490,17 +497,19 @@ void UpdateTH3FrequencyLabel(double frequency) {
 //| Show all status labels without changing modes                    |
 //+------------------------------------------------------------------+
 void ShowAllStatusLabels() {
-    UpdateStepModeLabel();
+    ClearAllModeLabels();
+    
+    UpdateStepModeLabel(false);
     
     double factor = g_factorValueOverride;
     if(factor <= 0) {
         if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0) factor = inpFactorValue;
         else factor = GetDefaultFactorValue(g_dailyClosePriceForTH);
     }
-    UpdateFactorLabel(factor);
+    UpdateFactorLabel(factor, false);
     
     double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
-    UpdateTH3FrequencyLabel(freq);
+    UpdateTH3FrequencyLabel(freq, false);
 }
 
 //+------------------------------------------------------------------+
@@ -703,7 +712,7 @@ bool CheckAndClearExpiredLabels() {
 //| Get Y row offset for a specific label type (stacked vertically) |
 //+------------------------------------------------------------------+
 int GetModeLabelRowOffset(const string labelName) {
-    int rowHeight = inpModeLabelFontSize + 6;
+    int rowHeight = inpModeLabelFontSize + 12;
     if(labelName == g_stepModeLabelName)  return 0;
     if(labelName == g_factorLabelName) {
         int row = 0;
@@ -727,7 +736,7 @@ int GetModeLabelBlockHeight() {
     if(g_stepModeLabelCreateTime > 0) activeCount++;
     if(g_factorLabelCreateTime > 0) activeCount++;
     if(g_th3FreqLabelCreateTime > 0) activeCount++;
-    int rowHeight = inpModeLabelFontSize + 6;
+    int rowHeight = inpModeLabelFontSize + 12;
     return activeCount * rowHeight;
 }
 
