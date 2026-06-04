@@ -175,6 +175,9 @@ const int ERROR_CODE_FILE_OPERATION = -3;
 const int ERROR_CODE_STATE_CONFLICT = -4;
 const int ERROR_CODE_OVERFLOW = -5;
 
+// Visual Alignment Constants
+const double FONT_CHAR_WIDTH_FACTOR = 0.6;
+
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // HELPER FUNCTIONS
 // ØªÙˆØ§Ø¨Ø¹ Ú©Ù…Ú©ÛŒ

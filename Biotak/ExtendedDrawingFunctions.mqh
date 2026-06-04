@@ -56,6 +56,12 @@ bool CreateOrUpdateHLine(const string name, double price,
         if(!hasCached || cachedEntry.lastColor != clr) {
             ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
         }
+        if(!hasCached || cachedEntry.lastStyle != (int)style) {
+            ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+        }
+        if(!hasCached || cachedEntry.lastWidth != width) {
+            ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+        }
         CacheUpdateObject(name, normPrice, clr, style, width);
         ApplyVisibilityStateIfUnchangedSkip(name, true);
         return false;

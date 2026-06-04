@@ -124,6 +124,12 @@ void OnChartEvent(const int id,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+    // FIX: If indicator is not yet fully initialized (e.g. waiting for history), 
+    // retry drawing periodically even without new ticks.
+    if(!g_initialized) {
+        RedrawAllObjects(false);
+    }
+
     // Periodic housekeeping runs here (kept lightweight by internal throttles)
     RunIncrementalObjectCleanup();
     // Keep label expiry logic; no timer kill because cleanup also depends on timer cadence

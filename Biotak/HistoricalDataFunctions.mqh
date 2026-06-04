@@ -16,7 +16,12 @@ bool UpdateHistoricalValues() {
                    inpHistoricalPeriods;
     
     if(totalBars <= 0) {
-        Print("UpdateHistoricalValues: Invalid totalBars=", totalBars);
+        // FIX: Don't just fail, log that we're waiting for data
+        static datetime s_lastBarsWarning = 0;
+        if(currentTime - s_lastBarsWarning > 30) {
+            Print("UpdateHistoricalValues: Waiting for historical data (", EnumToString(inpHistoricalTimeframe), ")...");
+            s_lastBarsWarning = currentTime;
+        }
         return false;
     }
 

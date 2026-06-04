@@ -47,6 +47,48 @@ struct SZoneCreationResult {
     int errorCode;            // Error code
 };
 
+// PERF: Per-frame cached chart background color
+static color g_cachedBgColor = clrBlack;
+static datetime g_cachedBgColorFrameTime = 0;
+
+color GetCachedChartBgColor() {
+    datetime frameTime = CacheGetFrameTime();
+    if(frameTime == g_cachedBgColorFrameTime && g_cachedBgColorFrameTime != 0) {
+        return g_cachedBgColor;
+    }
+    g_cachedBgColor = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    g_cachedBgColorFrameTime = frameTime;
+    return g_cachedBgColor;
+}
+
+// Compute visually reliable zone color for chart objects by blending with background.
+// This simulates transparency in MT4 which doesn't support alpha channel in standard objects.
+color GetZoneRenderColor(const color sourceColor, const int transparency)
+{
+    int t = (int)MathMax(0, MathMin(100, transparency));
+    // Stronger visual fade (same concept as trigger transparency mapping)
+    int tVis = 100 - ((100 - t) * (100 - t)) / 100;
+
+    if(tVis <= 0) return sourceColor;
+
+    color bg = GetCachedChartBgColor();
+    if(tVis >= 100) return bg;
+
+    int fr = ((int)sourceColor) & 0xFF;
+    int fg = (((int)sourceColor) >> 8) & 0xFF;
+    int fb = (((int)sourceColor) >> 16) & 0xFF;
+
+    int br = ((int)bg) & 0xFF;
+    int bgc = (((int)bg) >> 8) & 0xFF;
+    int bb = (((int)bg) >> 16) & 0xFF;
+
+    int outR = (fr * (100 - tVis) + br * tVis) / 100;
+    int outG = (fg * (100 - tVis) + bgc * tVis) / 100;
+    int outB = (fb * (100 - tVis) + bb * tVis) / 100;
+
+    return (color)(outR | (outG << 8) | (outB << 16));
+}
+
 //+------------------------------------------------------------------+
 //| Create Zone with Full Validation - GOLD VERSION v3 FINAL         |
 //| ساخت Zone با اعتبارسنجی کامل - نسخه طلایی v3 نهایی               |
@@ -315,22 +357,8 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     // PHASE 3: CALCULATE FINAL COLOR (Before Object Creation)
     // ═══════════════════════════════════════════════════════════════
     
-    // Calculate final color with clamped transparency
-    color finalColor = request.zoneColor;
-    if(clampedTransparency > 0) {
-        int r = (int)((finalColor >> 0) & 0xFF);
-        int g = (int)((finalColor >> 8) & 0xFF);
-        int b = (int)((finalColor >> 16) & 0xFF);
-        
-        // Calculate alpha (already clamped)
-        int alpha = (int)((100 - clampedTransparency) * 255 / 100);
-        
-        // CRITICAL: Double-check alpha bounds (defense in depth)
-        if(alpha < MIN_ALPHA_VALUE) alpha = MIN_ALPHA_VALUE;
-        if(alpha > MAX_ALPHA_VALUE) alpha = MAX_ALPHA_VALUE;
-        
-        finalColor = (color)((alpha << 24) | (b << 16) | (g << 8) | r);
-    }
+    // Use background blending to simulate transparency (matching MT5 logic)
+    color finalColor = GetZoneRenderColor(request.zoneColor, clampedTransparency);
     
     // ═══════════════════════════════════════════════════════════════
     // PHASE 4: ZONE CREATION/UPDATE (Atomic Operation)

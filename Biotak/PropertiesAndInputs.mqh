@@ -272,7 +272,7 @@ input ENUM_BASE_CORNER inpModeLabelCorner = CORNER_LEFT_UPPER;
 input int inpModeLabelXDistance = 15;
 input int inpModeLabelYDistance = 25;
 input int inpModeLabelFontSize = 11;
-input color inpModeLabelColor = clrNavy;
+input color inpModeLabelColor = clrDarkBlue;
 
 input group "19) HOTKEYS"
 input string S19 = "[19] HOTKEYS";

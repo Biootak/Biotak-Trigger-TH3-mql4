@@ -984,15 +984,26 @@ void RedrawAllObjects(bool force_redraw=false)
 
     g_dailyClosePriceForTH = thBasePrice;
 
+    // PERFORMANCE: Use cached historical values
     if(currentTime - g_lastHistoricalUpdate >= 3600 || !g_initialized)
     {
         if(!UpdateHistoricalValues()) {
-            _LOG_GATE_E Print("[E][GEN] RedrawAllObjects: UpdateHistoricalValues failed.");
-            return; 
+            // FIX: If historical data is not ready, don't return early if we already have a base price
+            // This allows drawing levels even if full history isn't loaded yet
+            _LOG_GATE_W Print("[W][GEN] RedrawAllObjects: UpdateHistoricalValues failed, retrying later...");
+            // Keep g_initialized = false to trigger retry next frame
+            if(!g_initialized && thBasePrice > 0) {
+                // We have a base price, so we can at least try to draw something
+                g_highestHigh = thBasePrice * 1.01;
+                g_lowestLow = thBasePrice * 0.99;
+            } else {
+                return; 
+            }
+        } else {
+            g_initialized = true;
+            g_calculatedOnce = false;
+            g_redrawTHLevelsNeeded = true;
         }
-        g_initialized = true;
-        g_calculatedOnce = false;
-        g_redrawTHLevelsNeeded = true;
     }
 
     // Early exit when hidden - skip all drawing
@@ -1183,7 +1194,8 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 
     if(rates_total > 0)
     {
-        if(tickThrottled && !isNewBar && !g_redrawTHLevelsNeeded &&
+        // FIX: If not fully initialized, don't throttle redraws to ensure levels appear as soon as data is ready
+        if(tickThrottled && !isNewBar && !g_redrawTHLevelsNeeded && g_initialized &&
            !g_forceClearOnNextDraw && !significantPriceChange &&
            !timeframeChanged && !customPriceChanged) {
             return rates_total;

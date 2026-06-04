@@ -73,13 +73,12 @@ void CheckArraySizes() {
 //+------------------------------------------------------------------+
 //| Calculate pips distance between two prices                       |
 //| Note: Uses g_currentPrice which is Close of last completed bar  |
-//| OPTIMIZED: Uses cached Point value via GetSymbolPoint()         |
+//| OPTIMIZED: Uses cached PipSize value via GetCachedPipSize()     |
 //+------------------------------------------------------------------+
 double CalculatePipsDistance(const double price1, const double price2) {
-    // OPTIMIZATION: Use centralized cached Point from PerformanceOptimizations.mqh
-    double cachedPoint = GetCachedPoint();
-    if(IsZero(cachedPoint, EPSILON_PRICE)) return 0.0;  // Prevent division by zero
-    return NormalizeDouble(MathAbs(price1 - price2) / cachedPoint / 10.0, 1);
+    double pipSize = GetCachedPipSize();
+    if(IsZero(pipSize, EPSILON_PRICE)) return 0.0;
+    return NormalizeDouble(MathAbs(price1 - price2) / pipSize, 1);
 }
 
 //+------------------------------------------------------------------+
@@ -87,7 +86,12 @@ double CalculatePipsDistance(const double price1, const double price2) {
 //+------------------------------------------------------------------+
 string FormatTooltipWithDistance(const string baseTooltip, const double priceLevel) {
     double pips = CalculatePipsDistance(priceLevel, g_currentPrice);
-    return StringFormat("%s, Distance: +/- %.1f pips", baseTooltip, pips);
+    return baseTooltip + ", Distance: +/- " + DoubleToString(pips, 1) + " pips";
+}
+
+// PERF: Overload accepting pre-computed pips to avoid redundant CalculatePipsDistance
+string FormatTooltipWithDistanceFast(const string baseTooltip, const double precomputedPips) {
+    return baseTooltip + ", Distance: +/- " + DoubleToString(precomputedPips, 1) + " pips";
 }
 
 //+------------------------------------------------------------------+
@@ -252,75 +256,108 @@ void ClearAllModeLabels() {
 }
 
 //+------------------------------------------------------------------+
-//| Update step mode label on chart (configurable duration)         |
-//| Uses Label object for larger font and better positioning        |
-//| Shows both basis and step mode: "TH | SS/LS"                    |
-//| Duration: inpModeLabelDuration (0=permanent, >0=seconds)        |
+//| Get primary step price for current mode                          |
 //+------------------------------------------------------------------+
-void UpdateStepModeLabel() {
-    // Check if mode label display is enabled
-    if(!inpShowModeChangeLabel) return;
-    
+double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
+{
+    int digits = GetCachedDigits();
+    double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+    if(basePrice <= 0) return 0.0;
+
+    double timeframePercentage = GetTimeframeTH();
+    double thValue = CalculateTH(basePrice, digits, timeframePercentage);
+    if(thValue <= 0) return 0.0;
+    thValue = GetAdaptedStepSize(thValue);
+
+    switch(mode)
+    {
+        case TH_STEP:
+            return thValue;
+
+        case FACTOR_STEP:
+        {
+            double factorValue = (g_factorValueOverride > 0) ? g_factorValueOverride : 
+                                ((inpFactorMode == FACTOR_MODE_MANUAL) ? inpFactorValue : GetDefaultFactorValue(basePrice));
+            return CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
+        }
+
+        case SS_LS_STEP:
+        case M_STEP:
+        {
+            double structureValue, patternValue, triggerValue;
+            CalculateFractalValues(thValue, structureValue, patternValue, triggerValue);
+            double shortStep = structureValue * 1.5; // SS_MULTIPLIER = 1.5
+            if(mode == M_STEP && inpMStepBasisType == MSTEP_BASIS_M_EQUAL)
+                return CalculateMDistance(shortStep);
+            return shortStep;
+        }
+
+        case TP_STEP:
+        {
+            double eValue = CalculateEStep(thValue);
+            return CalculateTPStep(eValue);
+        }
+
+        case COMBO_STEP:
+            return CalculateComboStepSize(basePrice);
+
+        default:
+            return thValue;
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Build unified mode label text matching MT5 style                 |
+//+------------------------------------------------------------------+
+string BuildUnifiedModeLabelText()
+{
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
     string modeName = GetStepModeName(currentMode);
-    // ATR basis removed - always TH (matching MT5)
-    string basisName = "TH";
+
+    double pipSize = GetCachedPipSize();
+    if(IsZero(pipSize, EPSILON_PRICE) || pipSize <= 0)
+        return "[ " + modeName + " ]";
+
+    double stepPrice = GetCurrentModePrimaryStepPrice(currentMode);
+    if(stepPrice <= 0)
+        return "[ " + modeName + " ]";
+
+    double stepPips = stepPrice / pipSize;
+    return "[ " + modeName + " | Step: " + DoubleToString(stepPips, 1) + " pips ]";
+}
+
+//+------------------------------------------------------------------+
+//| Update step mode label on chart (configurable duration)         |
+//+------------------------------------------------------------------+
+void UpdateStepModeLabel() {
+    if(!inpShowModeChangeLabel) return;
     
-    // For Combo mode, add Mode and Preset/Operation info
-    // THREAD-SAFE: Read values once to avoid race conditions
-    if(currentMode == COMBO_STEP) {
-        ENUM_COMBO_MODE currentComboMode = inpComboMode;  // Atomic read
-        
-        if(currentComboMode == COMBO_MODE_PRESET) {
-            // Preset Mode: Show preset name
-            ENUM_COMBO_PRESET currentPreset = inpComboPreset;  // Atomic read
-            string presetName = GetComboPresetName(currentPreset);
-            modeName = modeName + " [" + presetName + "]";
-        } else {
-            // Manual Mode: Calculator Mode
-            modeName = modeName + " [Calculator]";
-        }
-    }
-    
-    // Clear ALL temporary labels first (prevents overlap)
-    // CRITICAL: Must be done BEFORE creating new label
     ClearAllModeLabels();
+    if(IsIndicatorHidden()) return;
     
-    // CRITICAL FIX: Don't show label if indicator is hidden
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
-    if(isHidden) return; // Don't show mode labels when hidden
-    
-    // GOLD FIX: Check if object exists before creating
     if(ObjectFind(0, g_stepModeLabelName) < 0) {
         ObjectCreate(0, g_stepModeLabelName, OBJ_LABEL, 0, 0, 0);
     }
     
-    // Set text with basis AND mode name: "TH | SS/LS"
-    ObjectSetString(0, g_stepModeLabelName, OBJPROP_TEXT, "[ " + basisName + " | " + modeName + " ]");
+    string labelText = BuildUnifiedModeLabelText();
+    ObjectSetString(0, g_stepModeLabelName, OBJPROP_TEXT, labelText);
     
-    // Position: top-left corner with minimal space usage
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_XDISTANCE, 15);
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_YDISTANCE, 25); // First line
+    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_CORNER, inpModeLabelCorner);
+    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_XDISTANCE, inpModeLabelXDistance);
+    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_YDISTANCE, inpModeLabelYDistance);
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
     
-    // Font: bold for better visibility
-    ObjectSetString(0, g_stepModeLabelName, OBJPROP_FONT, "Arial Bold");
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_FONTSIZE, 11);
+    ObjectSetString(0, g_stepModeLabelName, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_FONTSIZE, inpModeLabelFontSize);
+    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_COLOR, inpModeLabelColor);
     
-    // Color: use dark color for better visibility on light backgrounds (lavender)
-    // رنگ: استفاده از رنگ تیره برای دیده شدن بهتر روی پس‌زمینه روشن (لاوندر)
-    ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_COLOR, clrDarkBlue);
-    
-    // Make sure it's visible
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_HIDDEN, true);
     
-    // Set timer based on user setting (0=permanent, >0=auto-hide after N seconds)
     if(inpModeLabelDuration > 0) {
-        EventSetTimer(inpModeLabelDuration);
+        // In MT4, we use the enum duration or manual seconds
+        int durationSec = (int)inpModeLabelDuration;
+        if(durationSec > 0) EventSetTimer(durationSec);
     }
 }
 
@@ -623,101 +660,12 @@ void ThrottledChartRedraw(bool forceRedraw = false) {
 }
 
 //+------------------------------------------------------------------+
-//| PERF: Fast tooltip with pre-computed pips (avoids recalculation)|
-//+------------------------------------------------------------------+
-string FormatTooltipWithDistanceFast(const string baseTooltip, const double precomputedPips) {
-    return baseTooltip + ", Distance: +/- " + DoubleToString(precomputedPips, 1) + " pips";
-}
-
-//+------------------------------------------------------------------+
 //| Clear a single temporary label by name and reset its timestamp  |
 //+------------------------------------------------------------------+
 void ClearSingleModeLabel(const string labelName, uint &createTime) {
     if(ObjectFind(0, labelName) >= 0)
         ObjectDelete(0, labelName);
     createTime = 0;
-}
-
-//+------------------------------------------------------------------+
-//| Get primary step price for a given mode                         |
-//+------------------------------------------------------------------+
-double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
-{
-    int digits = GetCachedDigits();
-    if(digits <= 0) digits = Digits;
-
-    double basePrice = g_dailyClosePriceForTH;
-    if(basePrice <= 0 || basePrice == EMPTY_VALUE) {
-        if(g_currentPrice > 0) basePrice = g_currentPrice;
-        else if(g_highestHigh > 0 && g_lowestLow > 0) basePrice = (g_highestHigh + g_lowestLow) * 0.5;
-    }
-    if(basePrice <= 0) return 0.0;
-
-    double timeframePercentage = GetTimeframeTH();
-    double thValue = CalculateTH(basePrice, digits, timeframePercentage);
-    if(thValue <= 0) return 0.0;
-    thValue = GetAdaptedStepSize(thValue);
-
-    switch(mode)
-    {
-        case TH_STEP:
-            return thValue;
-
-        case FACTOR_STEP:
-        {
-            double factorValue = g_factorValueOverride;
-            if(factorValue <= 0) {
-                if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0)
-                    factorValue = inpFactorValue;
-                else
-                    factorValue = GetDefaultFactorValue(basePrice);
-            }
-            return CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-        }
-
-        case SS_LS_STEP:
-        case M_STEP:
-        {
-            double structureValue = 0, patternValue = 0, triggerValue = 0;
-            CalculateFractalValues(thValue, structureValue, patternValue, triggerValue);
-            double shortStep = structureValue * 1.5;
-            if(mode == M_STEP && inpMStepBasisType == MSTEP_BASIS_M_EQUAL)
-                return CalculateMDistance(shortStep);
-            return shortStep;
-        }
-
-        case TP_STEP:
-        {
-            double eValue = CalculateEStep(thValue);
-            return CalculateTPStep(eValue);
-        }
-
-        case COMBO_STEP:
-            return CalculateComboStepSize(basePrice);
-
-        default:
-            return thValue;
-    }
-}
-
-//+------------------------------------------------------------------+
-//| Build unified mode label text with step pips                    |
-//+------------------------------------------------------------------+
-string BuildUnifiedModeLabelText()
-{
-    ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
-    string modeName = GetStepModeName(currentMode);
-
-    double pipSize = GetCachedPipSize();
-    if(IsZero(pipSize, EPSILON_PRICE) || pipSize <= 0)
-        return "[ " + modeName + " ]";
-
-    double stepPrice = GetCurrentModePrimaryStepPrice(currentMode);
-    if(stepPrice <= 0)
-        return "[ " + modeName + " ]";
-
-    double stepPips = stepPrice / pipSize;
-    return "[ " + modeName + " | Step: " + DoubleToString(stepPips, 1) + " pips ]";
 }
 
 //+------------------------------------------------------------------+
