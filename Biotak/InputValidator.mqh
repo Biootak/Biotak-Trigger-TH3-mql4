@@ -392,7 +392,7 @@ int ValidateInputs()
     // COMBO MODE CONFIGURATION VALIDATION
     // ═══════════════════════════════════════════════════════════════
     
-    ValidateComboModeConfiguration();
+    if(!ValidateComboModeConfiguration()) return INIT_PARAMETERS_INCORRECT;
     
     // ═══════════════════════════════════════════════════════════════
     // SUCCESS
@@ -412,7 +412,23 @@ int ValidateInputs()
 //| CRITICAL: This function provides user-visible guidance           |
 //| Shows which settings are active/ignored based on selected mode   |
 //+------------------------------------------------------------------+
-void ValidateComboModeConfiguration() {
+// BUG FIX (Phase 1I): Return bool and validate enums instead of just logging.
+// Also runs even when ENABLE_DEBUG_LOGS is off - critical validations must always run.
+bool ValidateComboModeConfiguration() {
+    // Validate inpComboMode is in valid range
+    if(inpComboMode < COMBO_MODE_PRESET || inpComboMode > COMBO_MODE_ADVANCED) {
+        Print("❌ ERROR: Invalid inpComboMode=", (int)inpComboMode,
+                          " (valid range: ", (int)COMBO_MODE_PRESET, "..", (int)COMBO_MODE_ADVANCED, ")");
+        return false;
+    }
+    // Validate inpComboPreset is in valid range
+    if(inpComboPreset < COMBO_PRESET_LEGACY_ADD || inpComboPreset > COMBO_PRESET_QT_TRIGGER_ONLY) {
+        Print("❌ ERROR: Invalid inpComboPreset=", (int)inpComboPreset,
+                          " (valid range: ", (int)COMBO_PRESET_LEGACY_ADD, "..",
+                          (int)COMBO_PRESET_QT_TRIGGER_ONLY, ")");
+        return false;
+    }
+
     Print("═══════════════════════════════════════════════════════════════");
     Print("📊 COMBO MODE CONFIGURATION VALIDATION");
     Print("═══════════════════════════════════════════════════════════════");
@@ -422,7 +438,6 @@ void ValidateComboModeConfiguration() {
     // ═══════════════════════════════════════════════════════════════
     string modeName = "";
     switch(inpComboMode) {
-        case COMBO_MODE_QUICK_TEST: modeName = "Quick Test"; break;
         case COMBO_MODE_PRESET: modeName = "Preset"; break;
         case COMBO_MODE_ADVANCED: modeName = "Advanced"; break;
         default: modeName = "UNKNOWN"; break;
@@ -554,5 +569,6 @@ void ValidateComboModeConfiguration() {
     Print("   ℹ️  Example: COMP_TRIGGER_MEAN = Mean(Trigger_TH, Trigger_SS, Trigger_LS)");
     
     Print("═══════════════════════════════════════════════════════════════");
+    return true;
 }
 

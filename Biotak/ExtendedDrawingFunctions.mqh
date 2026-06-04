@@ -522,218 +522,144 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
 //| @param operation Operation to apply (Average, Min, Max only)   |
 //| @return Calculated triple combo step size (> 0), or 0 on error |
 //+------------------------------------------------------------------+
-double CalculateTripleComboStepSize(const double basePrice,
-                                    const ENUM_COMBO_TIMEFRAME_TYPE tf1,
-                                    const ENUM_COMBO_STEP_TYPE step1,
-                                    const ENUM_COMBO_TIMEFRAME_TYPE tf2,
-                                    const ENUM_COMBO_STEP_TYPE step2,
-                                    const ENUM_COMBO_TIMEFRAME_TYPE tf3,
-                                    const ENUM_COMBO_STEP_TYPE step3,
-                                    const ENUM_COMBO_OPERATION operation) {
-    // ═══════════════════════════════════════════════════════════════
-    // CRITICAL INPUT VALIDATION
-    // ═══════════════════════════════════════════════════════════════
-    
-    if(basePrice <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid basePrice=", basePrice);
-        #endif
-        return 0;
-    }
-    
-    // GOLD FIX: Validate enum inputs
-    if(tf1 < COMBO_TF_SUB || tf1 > COMBO_TF_STRUCTURE) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid tf1=", tf1);
-        #endif
-        return 0;
-    }
-    
-    if(tf2 < COMBO_TF_SUB || tf2 > COMBO_TF_STRUCTURE) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid tf2=", tf2);
-        #endif
-        return 0;
-    }
-    
-    if(tf3 < COMBO_TF_SUB || tf3 > COMBO_TF_STRUCTURE) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid tf3=", tf3);
-        #endif
-        return 0;
-    }
-    
-    if(step1 < COMBO_STEP_TH || step1 > COMBO_STEP_LS) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid step1=", step1);
-        #endif
-        return 0;
-    }
-    
-    if(step2 < COMBO_STEP_TH || step2 > COMBO_STEP_LS) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid step2=", step2);
-        #endif
-        return 0;
-    }
-    
-    if(step3 < COMBO_STEP_TH || step3 > COMBO_STEP_LS) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid step3=", step3);
-        #endif
-        return 0;
-    }
-    
-    if(operation < COMBO_OP_AVERAGE || operation > COMBO_OP_WEIGHTED) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid operation=", operation);
-        #endif
-        return 0;
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // CALCULATE TIMEFRAMES AND MULTIPLIERS
-    // ═══════════════════════════════════════════════════════════════
-    
-    ENUM_TIMEFRAMES timeframe1 = GetTimeframeByType(tf1);
-    ENUM_TIMEFRAMES timeframe2 = GetTimeframeByType(tf2);
-    ENUM_TIMEFRAMES timeframe3 = GetTimeframeByType(tf3);
-    
-    double multiplier1 = GetStepMultiplier(step1);
-    double multiplier2 = GetStepMultiplier(step2);
-    double multiplier3 = GetStepMultiplier(step3);
-    
-    // ═══════════════════════════════════════════════════════════════
-    // CALCULATE STEP SIZES
-    // ═══════════════════════════════════════════════════════════════
-    
-    double stepValue1 = GetStepSizeForBasisType(basePrice, multiplier1, timeframe1);
-    double stepValue2 = GetStepSizeForBasisType(basePrice, multiplier2, timeframe2);
-    double stepValue3 = GetStepSizeForBasisType(basePrice, multiplier3, timeframe3);
-    
-    // CRITICAL: Validate all steps
-    if(stepValue1 <= 0 || stepValue2 <= 0 || stepValue3 <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid step values");
-        #endif
-        return 0;
-    }
-    
-    // ═══════════════════════════════════════════════════════════════
-    // APPLY OPERATION (only Average, Min, Max for Triple)
-    // ═══════════════════════════════════════════════════════════════
+double CalculateComboStepSize(const double basePrice) {
+    if(basePrice <= 0) return 0;
+
+    SComboConfig config;
+    GetComboConfiguration(basePrice, config);
+
+    double step1 = GetStepSizeForBasisType(basePrice, GetStepMultiplier(config.step1), GetTimeframeByType(config.tf1));
+    if(config.activeComponents == 1) return step1;
+
+    double step2 = GetStepSizeForBasisType(basePrice, GetStepMultiplier(config.step2), GetTimeframeByType(config.tf2));
     
     double result = 0;
-    
-    switch(operation) {
-        case COMBO_OP_AVERAGE:
-            // Average: (A + B + C) / 3
-            result = (stepValue1 + stepValue2 + stepValue3) / 3.0;
-            break;
-            
-        case COMBO_OP_ADD:
-            // GOLD FIX #7: Overflow protection for triple addition
-            {
-                double maxSafeValue = DBL_MAX / 3.0;
-                if(stepValue1 > maxSafeValue || stepValue2 > maxSafeValue || stepValue3 > maxSafeValue) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("❌ Overflow risk in COMBO_OP_ADD (triple), using safe fallback");
-                    #endif
-                    result = MathMax(stepValue1, MathMax(stepValue2, stepValue3));
-                } else {
-                    result = stepValue1 + stepValue2 + stepValue3;
-                }
-            }
-            break;
-            
-        case COMBO_OP_MIN:
-            // Minimum: min(A, B, C)
-            result = MathMin(stepValue1, MathMin(stepValue2, stepValue3));
-            break;
-            
-        case COMBO_OP_MAX:
-            // Maximum: max(A, B, C)
-            result = MathMax(stepValue1, MathMax(stepValue2, stepValue3));
-            break;
-            
-        default:
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ CalculateTripleComboStepSize: Unsupported operation=", operation, 
-                  ", using Average");
-            #endif
-            // Fallback to Average
-            result = (stepValue1 + stepValue2 + stepValue3) / 3.0;
-            break;
+    if(config.isTriple) {
+        double step3 = GetStepSizeForBasisType(basePrice, GetStepMultiplier(config.step3), GetTimeframeByType(config.tf3));
+        if(config.operation == COMBO_OP_MIN) result = MathMin(step1, MathMin(step2, step3));
+        else if(config.operation == COMBO_OP_MAX) result = MathMax(step1, MathMax(step2, step3));
+        else result = (step1 + step2 + step3) / 3.0;
+    } else {
+        result = ApplyComboOperation(step1, step2, config.operation, 0.5, 0.5);
     }
-    
-    // SAFETY: Validate result
-    if(result <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateTripleComboStepSize: Invalid result=", result);
-        #endif
-        return 0;
-    }
-    
-    // GOLD FIX: Sanity check for Triple operations
-    double maxStep = MathMax(stepValue1, MathMax(stepValue2, stepValue3));
-    double minStep = MathMin(stepValue1, MathMin(stepValue2, stepValue3));
-    bool isSuspicious = false;
-    
-    switch(operation) {
-        case COMBO_OP_AVERAGE:
-            // AVERAGE: result should be between min and max
-            if(result < minStep * 0.9 || result > maxStep * 1.1) {
-                isSuspicious = true;
-            }
-            break;
-            
-        case COMBO_OP_ADD:
-            // ADD: result should be larger than max step
-            if(result < maxStep) {
-                isSuspicious = true;
-            }
-            break;
-            
-        case COMBO_OP_MIN:
-            // MIN: result should equal min step
-            if(MathAbs(result - minStep) > minStep * 0.001) {  // 0.1% tolerance
-                isSuspicious = true;
-            }
-            break;
-            
-        case COMBO_OP_MAX:
-            // MAX: result should equal max step
-            if(MathAbs(result - maxStep) > maxStep * 0.001) {  // 0.1% tolerance
-                isSuspicious = true;
-            }
-            break;
-    }
-    
-    if(isSuspicious) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateTripleComboStepSize: Suspicious result detected");
-        Print("   Operation=", EnumToString(operation));
-        Print("   Step1=", DoubleToString(stepValue1, Digits), 
-              ", Step2=", DoubleToString(stepValue2, Digits), 
-              ", Step3=", DoubleToString(stepValue3, Digits));
-        Print("   Result=", DoubleToString(result, Digits), 
-              " (min=", DoubleToString(minStep, Digits), 
-              ", max=", DoubleToString(maxStep, Digits), ")");
-        Print("   Using fallback: average");
-        #endif
-        // Fallback to average for safety
-        result = (stepValue1 + stepValue2 + stepValue3) / 3.0;
-    }
-    
+
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ CalculateTripleComboStepSize: SUCCESS");
-    Print("   TF1=", EnumToString(tf1), ", Step1=", DoubleToString(stepValue1, Digits));
-    Print("   TF2=", EnumToString(tf2), ", Step2=", DoubleToString(stepValue2, Digits));
-    Print("   TF3=", EnumToString(tf3), ", Step3=", DoubleToString(stepValue3, Digits));
-    Print("   Operation=", EnumToString(operation), ", Result=", DoubleToString(result, Digits));
+    Print("[D][DRAW] Combo Step [", EnumToString(inpComboMode), "]: ", DoubleToString(result, Digits));
     #endif
-    
     return result;
+}
+
+void GetComboConfiguration(const double basePrice, SComboConfig &config) {
+    // Default initialization
+    config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_TH; config.weight1 = 1.0;
+    config.tf2 = COMBO_TF_TRIGGER; config.step2 = COMBO_STEP_TH; config.weight2 = 0.0;
+    config.tf3 = COMBO_TF_TRIGGER; config.step3 = COMBO_STEP_TH; config.weight3 = 0.0;
+    config.operation = COMBO_OP_AVERAGE;
+    config.activeComponents = 1;
+    config.isTriple = false;
+
+    if(inpComboMode == COMBO_MODE_ADVANCED) {
+        config.tf1 = (ENUM_COMBO_TIMEFRAME_TYPE)(inpComboComp1 / 3);
+        config.step1 = (ENUM_COMBO_STEP_TYPE)(inpComboComp1 % 3);
+        config.tf2 = (ENUM_COMBO_TIMEFRAME_TYPE)(inpComboComp2 / 3);
+        config.step2 = (ENUM_COMBO_STEP_TYPE)(inpComboComp2 % 3);
+        config.operation = (ENUM_COMBO_OPERATION)inpComboOp1;
+        config.activeComponents = (inpComboComp2 != COMP_IGNORE) ? 2 : 1;
+        return;
+    }
+
+    switch(inpComboPreset) {
+        case COMBO_PRESET_LEGACY_ADD:
+            config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_SS;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_SS;
+            config.operation = COMBO_OP_ADD; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_BALANCED_MEDIUM:
+            config.tf1 = COMBO_TF_PATTERN; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_TRIGGER; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_BALANCED_LONG:
+            config.tf1 = COMBO_TF_STRUCTURE; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_BALANCED_TRIPLE:
+            config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_TH;
+            config.tf3 = COMBO_TF_STRUCTURE; config.step3 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 3; config.isTriple = true;
+            break;
+        case COMBO_PRESET_BALANCED_MIN:
+            config.tf1 = COMBO_TF_PATTERN; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_TRIGGER; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MIN; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_CONSERVATIVE:
+            config.tf1 = COMBO_TF_STRUCTURE; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MAX; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_ULTRA_CONSERVATIVE:
+            config.tf1 = COMBO_TF_STRUCTURE; config.step1 = COMBO_STEP_TH;
+            config.activeComponents = 1;
+            break;
+        case COMBO_PRESET_TRIPLE_CONSERVATIVE:
+            config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_TH;
+            config.tf3 = COMBO_TF_STRUCTURE; config.step3 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MAX; config.activeComponents = 3; config.isTriple = true;
+            break;
+        case COMBO_PRESET_AGGRESSIVE:
+            config.tf1 = COMBO_TF_PATTERN; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_TRIGGER; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MIN; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_ULTRA_AGGRESSIVE:
+            config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_SUB; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MIN; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_TRIPLE_AGGRESSIVE:
+            config.tf1 = COMBO_TF_TRIGGER; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_PATTERN; config.step2 = COMBO_STEP_TH;
+            config.tf3 = COMBO_TF_STRUCTURE; config.step3 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_MIN; config.activeComponents = 3; config.isTriple = true;
+            break;
+        case COMBO_PRESET_TREND_FILTER:
+            config.tf1 = COMBO_TF_STRUCTURE; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_SUB; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_SUBTRACT; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_VOLATILITY_ADAPTIVE:
+            config.tf1 = COMBO_TF_STRUCTURE; config.step1 = COMBO_STEP_TH;
+            config.tf2 = COMBO_TF_SUB; config.step2 = COMBO_STEP_TH;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_QT_TRIGGER_PATTERN:
+            config.tf1 = COMBO_TF_TRIGGER; config.tf2 = COMBO_TF_PATTERN;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_QT_ALL_4TF:
+            config.tf1 = COMBO_TF_SUB; config.tf2 = COMBO_TF_TRIGGER; config.tf3 = COMBO_TF_PATTERN;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 3; config.isTriple = true;
+            break;
+        case COMBO_PRESET_QT_TRIGGER_PATTERN_STRUCTURE:
+            config.tf1 = COMBO_TF_TRIGGER; config.tf2 = COMBO_TF_PATTERN; config.tf3 = COMBO_TF_STRUCTURE;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 3; config.isTriple = true;
+            break;
+        case COMBO_PRESET_QT_PATTERN_STRUCTURE:
+            config.tf1 = COMBO_TF_PATTERN; config.tf2 = COMBO_TF_STRUCTURE;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+        case COMBO_PRESET_QT_TRIGGER_ONLY:
+            config.tf1 = COMBO_TF_TRIGGER; config.activeComponents = 1;
+            break;
+        default:
+            config.tf1 = COMBO_TF_PATTERN; config.tf2 = COMBO_TF_TRIGGER;
+            config.operation = COMBO_OP_AVERAGE; config.activeComponents = 2;
+            break;
+    }
 }
 
 //+------------------------------------------------------------------+

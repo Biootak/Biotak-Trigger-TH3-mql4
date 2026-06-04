@@ -313,37 +313,45 @@ enum ENUM_COMBO_OPERATION {
 };
 
 //+------------------------------------------------------------------+
-//| Combo Mode Selection (Quick Test / Preset / Advanced)            |
-//| Ø§Ù†ØªØ®Ø§Ø¨ Ø­Ø§Ù„Øª Combo (ØªØ³Øª Ø³Ø±ÛŒØ¹ / Preset / Ù¾ÛŒØ´Ø±ÙØªÙ‡)                 |
+//| Combo Mode Selection (Preset / Advanced)                         |
+//| انتخاب حالت Combo (Preset / پیشرفته)                             |
 //|                                                                  |
-//| THREE INDEPENDENT MODES - No overlap, no conflicts              |
+//| TWO INDEPENDENT MODES - Simplified and user-friendly             |
 //|                                                                  |
-//| QUICK_TEST: Fast testing with presets (For testing combinations)|
-//|   - Select preset (which timeframes)                            |
-//|   - Select step type (TH/SS/LS for all)                         |
-//|   - Select mean type (how to combine)                           |
-//|   Uses: inpQuickTestPreset, inpQuickTestStepType, inpQuickTestMeanType |
+//| PRESET: Quick select from ready-to-use combinations              |
+//|   - 18 predefined combinations                                   |
+//|   - Includes Quick Test options                                  |
+//|   - Recommended for daily use                                    |
+//|   Uses: inpComboPreset                                           |
 //|                                                                  |
-//| PRESET: Quick select from ready-to-use combinations             |
-//|   - 15 predefined combinations                                  |
-//|   - Each preset has fixed components and operation              |
-//|   - Recommended for daily use                                   |
-//|   Uses: inpComboPreset                                          |
-//|                                                                  |
-//| ADVANCED: Full manual control (For power users)                 |
-//|   - Select topology (Linear/Dual Group)                         |
-//|   - Select 4 components and 3 operators                         |
-//|   - Supports N-ary operators (work on all components)           |
+//| ADVANCED: Full manual control (For power users)                  |
+//|   - Select topology (Linear/Dual Group)                          |
+//|   - Select 4 components and 3 operators                          |
 //|   - Maximum flexibility                                         |
-//|   Uses: inpComboTopology, inpComboComp1-4, inpComboOp1-3       |
-//|                                                                  |
-//| GLOBAL SETTING (All modes):                                     |
-//|   - inpAggregateMeanType: ONLY for COMP_*_MEAN components       |
+//|   Uses: inpComboTopology, inpComboComp1-4, inpComboOp1-3        |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_MODE {
-    COMBO_MODE_QUICK_TEST = 0,  // Quick Test (Fast testing)
-    COMBO_MODE_PRESET = 1,      // Preset Mode (Recommended)
-    COMBO_MODE_ADVANCED = 2     // Advanced Mode (Full control)
+    COMBO_MODE_PRESET = 0,      // Preset Mode (Recommended)
+    COMBO_MODE_ADVANCED = 1     // Advanced Mode (Full control)
+};
+
+//+------------------------------------------------------------------+
+//| Combo Calculation Configuration Struct                           |
+//| ساختار تنظیمات محاسبات ترکیبی                                    |
+//+------------------------------------------------------------------+
+struct SComboConfig {
+    ENUM_COMBO_TIMEFRAME_TYPE tf1;
+    ENUM_COMBO_STEP_TYPE      step1;
+    ENUM_COMBO_TIMEFRAME_TYPE tf2;
+    ENUM_COMBO_STEP_TYPE      step2;
+    ENUM_COMBO_TIMEFRAME_TYPE tf3;
+    ENUM_COMBO_STEP_TYPE      step3;
+    ENUM_COMBO_OPERATION      operation;
+    double                    weight1;
+    double                    weight2;
+    double                    weight3;
+    int                       activeComponents;
+    bool                      isTriple;
 };
 
 //+------------------------------------------------------------------+
