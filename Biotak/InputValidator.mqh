@@ -450,22 +450,7 @@ bool ValidateComboModeConfiguration() {
     // MODE-SPECIFIC VALIDATION AND GUIDANCE
     // ═══════════════════════════════════════════════════════════════
     
-    if(inpComboMode == COMBO_MODE_QUICK_TEST) {
-        // ═══════════════════════════════════════════════════════════
-        // QUICK TEST MODE
-        // ═══════════════════════════════════════════════════════════
-        Print("📌 ACTIVE SETTINGS (Quick Test Mode):");
-        Print("   • Preset: ", EnumToString(inpQuickTestPreset));
-        Print("   • Step Type: ", EnumToString(inpQuickTestStepType));
-        Print("   • Mean Type: ", EnumToString(inpQuickTestMeanType));
-        Print("");
-        Print("❌ IGNORED SETTINGS:");
-        Print("   • Preset Mode settings (inpComboPreset)");
-        Print("   • Advanced Mode settings (Topology, Components, Operators)");
-        Print("");
-        Print("ℹ️  FLOW: Preset → Step Type → Mean Type → Result");
-        
-    } else if(inpComboMode == COMBO_MODE_PRESET) {
+    if(inpComboMode == COMBO_MODE_PRESET) {
         // ═══════════════════════════════════════════════════════════
         // PRESET MODE
         // ═══════════════════════════════════════════════════════════
@@ -473,7 +458,6 @@ bool ValidateComboModeConfiguration() {
         Print("   • Selected Preset: ", EnumToString(inpComboPreset));
         Print("");
         Print("❌ IGNORED SETTINGS:");
-        Print("   • Quick Test settings (Preset, Step Type, Mean Type)");
         Print("   • Advanced Mode settings (Topology, Components, Operators)");
         Print("");
         Print("ℹ️  FLOW: Select Preset → Automatic calculation → Result");
@@ -493,7 +477,6 @@ bool ValidateComboModeConfiguration() {
         Print("   • Component 4: ", EnumToString(inpComboComp4));
         Print("");
         Print("❌ IGNORED SETTINGS:");
-        Print("   • Quick Test settings (Preset, Step Type, Mean Type)");
         Print("   • Preset Mode settings (inpComboPreset)");
         Print("");
         

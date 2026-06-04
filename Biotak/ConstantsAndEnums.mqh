@@ -336,6 +336,25 @@ enum ENUM_COMBO_MODE {
 };
 
 //+------------------------------------------------------------------+
+//| Timeframe Types for Advanced Combo                               |
+//+------------------------------------------------------------------+
+enum ENUM_COMBO_TIMEFRAME_TYPE {
+    COMBO_TF_SUB = 0,           // Sub: 1/4 current (faster)
+    COMBO_TF_TRIGGER = 1,       // Trigger: Current timeframe
+    COMBO_TF_PATTERN = 2,       // Pattern: 4x current
+    COMBO_TF_STRUCTURE = 3      // Structure: 16x current
+};
+
+//+------------------------------------------------------------------+
+//| Step Size Type (TH, SS, LS)                                      |
+//+------------------------------------------------------------------+
+enum ENUM_COMBO_STEP_TYPE {
+    COMBO_STEP_TH = 0,          // TH: Base step (1.0×)
+    COMBO_STEP_SS = 1,          // SS: Short step (1.5×)
+    COMBO_STEP_LS = 2           // LS: Long step (2.0×)
+};
+
+//+------------------------------------------------------------------+
 //| Combo Calculation Configuration Struct                           |
 //| ساختار تنظیمات محاسبات ترکیبی                                    |
 //+------------------------------------------------------------------+
@@ -355,76 +374,67 @@ struct SComboConfig {
 };
 
 //+------------------------------------------------------------------+
-//| Timeframe Types for Advanced Combo                               |
-//| Ø§Ù†ÙˆØ§Ø¹ ØªØ§ÛŒÙ…â€ŒÙØ±ÛŒÙ… Ø¨Ø±Ø§ÛŒ Combo Ù¾ÛŒØ´Ø±ÙØªÙ‡                               |
-//+------------------------------------------------------------------+
-enum ENUM_COMBO_TIMEFRAME_TYPE {
-    COMBO_TF_SUB = 0,           // Sub: 1/4 current (faster)
-    COMBO_TF_TRIGGER = 1,       // Trigger: Current timeframe
-    COMBO_TF_PATTERN = 2,       // Pattern: 4x current
-    COMBO_TF_STRUCTURE = 3      // Structure: 16x current
-};
-
-//+------------------------------------------------------------------+
-//| Step Size Type (TH, SS, LS)                                      |
-//| Ù†ÙˆØ¹ Ø§Ù†Ø¯Ø§Ø²Ù‡ Ú¯Ø§Ù…                                                    |
-//+------------------------------------------------------------------+
-enum ENUM_COMBO_STEP_TYPE {
-    COMBO_STEP_TH = 0,          // TH: Base step (1.0Ã—)
-    COMBO_STEP_SS = 1,          // SS: Short step (1.5Ã—)
-    COMBO_STEP_LS = 2           // LS: Long step (2.0Ã—)
-};
-
-//+------------------------------------------------------------------+
 //| Preset Combinations (Common Use Cases) - OPTIMIZED FOR UX        |
-//| ØªØ±Ú©ÛŒØ¨â€ŒÙ‡Ø§ÛŒ Ø§Ø² Ù¾ÛŒØ´ ØªØ¹Ø±ÛŒÙ Ø´Ø¯Ù‡ - Ø¨Ù‡ÛŒÙ†Ù‡ Ø´Ø¯Ù‡ Ø¨Ø±Ø§ÛŒ Ú©Ø§Ø±Ø¨Ø±               |
 //|                                                                  |
-//| DESIGN PRINCIPLE: 80/20 Rule - 15 presets cover 98% of needs    |
-//| Ø§ØµÙ„ Ø·Ø±Ø§Ø­ÛŒ: Ù‚Ø§Ù†ÙˆÙ† 80/20 - 15 preset Ù¾ÙˆØ´Ø´ 98% Ù†ÛŒØ§Ø²               |
+//| DESIGN PRINCIPLE: 80/20 Rule - 18 presets cover 98% of needs    |
 //|                                                                  |
 //| IMPORTANT: COMBO_PRESET_LEGACY_ADD is the default for backward  |
 //| compatibility with old Combo Step Mode (Component1 + Component2)|
+//|                                                                  |
+//| SIMPLIFIED UX: Quick Test presets (15-19) are exposed in the   |
+//| same list as regular presets, eliminating the Quick Test sub-   |
+//| mode dropdown. All Quick Test presets use TH step + Geometric   |
+//| mean (the most popular default from the old Quick Test mode).   |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_PRESET {
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 0: LEGACY (Ø³Ø§Ø²Ú¯Ø§Ø±ÛŒ Ø¨Ø§ Ù†Ø³Ø®Ù‡ Ù‚Ø¯ÛŒÙ…) - DEFAULT
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // ═══════════════════════════════════════════════════════════════
+    // LEGACY (kept for backward compatibility)
+    // ═══════════════════════════════════════════════════════════════
     COMBO_PRESET_LEGACY_ADD = 0,            // Legacy: Trigger SS + Pattern SS (ADD)
-    
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 1: BALANCED (Ù…ØªØ¹Ø§Ø¯Ù„) - Most Common (58% usage)
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    // ═══════════════════════════════════════════════════════════════
+    // BALANCED FAMILY
+    // ═══════════════════════════════════════════════════════════════
     COMBO_PRESET_BALANCED_MEDIUM = 1,       // Balanced Medium: (Pattern + Trigger) / 2 [Most Popular]
     COMBO_PRESET_BALANCED_LONG = 2,         // Balanced Long: (Structure + Pattern) / 2
     COMBO_PRESET_BALANCED_TRIPLE = 3,       // Triple Balanced: (Trigger + Pattern + Structure) / 3
     COMBO_PRESET_BALANCED_MIN = 4,          // Balanced Min: min(Pattern, Trigger)
-    
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 2: CONSERVATIVE (Ù…Ø­Ø§ÙØ¸Ù‡â€ŒÚ©Ø§Ø±) - Fewer Levels (15% usage)
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    // ═══════════════════════════════════════════════════════════════
+    // CONSERVATIVE FAMILY
+    // ═══════════════════════════════════════════════════════════════
     COMBO_PRESET_CONSERVATIVE = 5,          // Conservative: max(Structure, Pattern)
     COMBO_PRESET_ULTRA_CONSERVATIVE = 6,    // Ultra Conservative: Structure TH
     COMBO_PRESET_TRIPLE_CONSERVATIVE = 7,   // Triple Conservative: max(Trigger, Pattern, Structure)
-    
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 3: AGGRESSIVE (ØªÙ‡Ø§Ø¬Ù…ÛŒ) - More Levels (11% usage)
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    // ═══════════════════════════════════════════════════════════════
+    // AGGRESSIVE FAMILY
+    // ═══════════════════════════════════════════════════════════════
     COMBO_PRESET_AGGRESSIVE = 8,            // Aggressive: min(Pattern, Trigger)
     COMBO_PRESET_ULTRA_AGGRESSIVE = 9,      // Ultra Aggressive: min(Trigger, Sub)
     COMBO_PRESET_TRIPLE_AGGRESSIVE = 10,    // Triple Aggressive: min(Trigger, Pattern, Structure)
-    
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 4: SPECIAL (ÙˆÛŒÚ˜Ù‡) - Advanced Use Cases (4% usage)
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    // ═══════════════════════════════════════════════════════════════
+    // SPECIAL
+    // ═══════════════════════════════════════════════════════════════
     COMBO_PRESET_TREND_FILTER = 11,         // Trend Filter: Structure - Sub
     COMBO_PRESET_VOLATILITY_ADAPTIVE = 12,  // Volatility: (Structure + Sub) / 2
-    
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // CATEGORY 5: ADVANCED USER (Ø¯Ø³ØªÛŒ) - For Advanced Users (2% usage)
-    // These presets redirect to Advanced Mode for full control
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    COMBO_PRESET_MANUAL_DUAL = 13,          // Advanced Dual: User-defined (2 components) â†’ Redirects to Advanced Mode
-    COMBO_PRESET_MANUAL_TRIPLE = 14         // Advanced Triple: User-defined (3 components) â†’ Redirects to Advanced Mode
+
+    // ═══════════════════════════════════════════════════════════════
+    // ADVANCED REDIRECTS (full manual control)
+    // ═══════════════════════════════════════════════════════════════
+    COMBO_PRESET_MANUAL_DUAL = 13,          // Advanced Dual: User-defined (2 components) -> Advanced Mode
+    COMBO_PRESET_MANUAL_TRIPLE = 14,        // Advanced Triple: User-defined (3 components) -> Advanced Mode
+
+    // ═══════════════════════════════════════════════════════════════
+    // QUICK TEST (merged from old COMBO_MODE_QUICK_TEST)
+    // All use COMBO_STEP_TH and Geometric Mean for consistency.
+    // ═══════════════════════════════════════════════════════════════
+    COMBO_PRESET_QT_TRIGGER_PATTERN = 15,           // QT: Trigger + Pattern, Geo Mean
+    COMBO_PRESET_QT_ALL_4TF = 16,                    // QT: Sub + Trigger + Pattern + Structure, Geo Mean
+    COMBO_PRESET_QT_TRIGGER_PATTERN_STRUCTURE = 17,  // QT: Trigger + Pattern + Structure, Geo Mean
+    COMBO_PRESET_QT_PATTERN_STRUCTURE = 18,          // QT: Pattern + Structure, Geo Mean
+    COMBO_PRESET_QT_TRIGGER_ONLY = 19                // QT: Trigger only
 };
 
 // TH3 Label Position
