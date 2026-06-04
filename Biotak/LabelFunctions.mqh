@@ -1,3 +1,6 @@
+#ifndef LABEL_FUNCTIONS_MQH
+#define LABEL_FUNCTIONS_MQH
+
 #property strict
 
 bool DrawMainLevels(const string prefix) {
@@ -1193,3 +1196,5 @@ string PeriodToString(int period)
 }
 
 
+
+#endif // LABEL_FUNCTIONS_MQH

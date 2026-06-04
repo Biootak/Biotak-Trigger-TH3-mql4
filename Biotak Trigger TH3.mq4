@@ -69,6 +69,7 @@
 #include "Biotak\ObjectFunctions.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
 #include "Biotak\LevelPipeline.mqh"
+#include "Biotak\ModeDefinitions.mqh"
 
 #include "Biotak\LabelFunctions.mqh"
 #include "Biotak\AlertFunctions.mqh"

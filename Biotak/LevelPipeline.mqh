@@ -883,110 +883,8 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
     return cfg;
 }
 
-SModeConfig BuildSSLSConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "SSLS");
-    cfg.fallbackColor = inpSSLevelColor;
-    cfg.fallbackStyle = inpSSLevelStyle;
-    cfg.fallbackWidth = inpSSLevelWidth;
-    cfg.fallbackColor2 = inpLSLevelColor;
-    cfg.fallbackStyle2 = inpLSLevelStyle;
-    cfg.fallbackWidth2 = inpLSLevelWidth;
-    cfg.midpointColor = inpLSLevelColor;
-    cfg.midpointStyle = inpLSLevelStyle;
-    cfg.midpointWidth = inpLSLevelWidth;
-    return cfg;
-}
-
-SModeConfig BuildMConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "M");
-    cfg.midpointColor = inpMLevelColor;
-    cfg.midpointStyle = inpMLevelStyle;
-    cfg.midpointWidth = inpMLevelWidth;
-    return cfg;
-}
-
-SModeConfig BuildMEqualConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "MEq");
-    cfg.useStepFilter = false;
-    cfg.midpointColor = inpMLevelColor;
-    cfg.midpointStyle = inpMLevelStyle;
-    cfg.midpointWidth = inpMLevelWidth;
-    cfg.fallbackColor = inpStructureL1Color;
-    cfg.fallbackStyle = inpStructureL1Style;
-    cfg.fallbackWidth = inpStructureL1Width;
-    return cfg;
-}
-
-SModeConfig BuildTPConfig(const string objectPrefix)
-{
-    return BuildModeConfig(objectPrefix, "TP");
-}
-
-SModeConfig BuildComboConfig(const string objectPrefix)
-{
-    return BuildModeConfig(objectPrefix, "Combo");
-}
-
-SModeConfig BuildFactorConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "Factor");
-    cfg.useObjPropBack = true;
-    cfg.zOrder = 1;
-    // Keep factor lines visible regardless of Trigger toggle state.
-    // Trigger key should not unexpectedly blank factor lines.
-    cfg.hideLineWhenTriggerOnly = false;
-    cfg.fallbackColor = inpFactorLevelColor;
-    cfg.fallbackStyle = inpFactorLevelStyle;
-    cfg.fallbackWidth = inpFactorLevelWidth;
-    cfg.midpointColor = inpFactorLevelColor;
-    cfg.midpointStyle = inpFactorLevelStyle;
-    cfg.midpointWidth = inpFactorLevelWidth;
-    return cfg;
-}
-
-SModeConfig BuildFactorHarmonicConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "Factor_Harmonic");
-    cfg.useObjPropBack = true;
-    // Keep factor-harmonic lines visible regardless of Trigger toggle state.
-    cfg.hideLineWhenTriggerOnly = false;
-    cfg.fallbackColor = inpFactorLevelColor;
-    cfg.fallbackStyle = inpFactorLevelStyle;
-    cfg.fallbackWidth = inpFactorLevelWidth;
-    cfg.midpointColor = inpFactorLevelColor;
-    cfg.midpointStyle = inpFactorLevelStyle;
-    cfg.midpointWidth = inpFactorLevelWidth;
-    return cfg;
-}
-
-SModeConfig BuildTHConfig(const string objectPrefix)
-{
-    // Keep legacy-compatible TH family naming for cleanup/prefix matching
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "TH_Level");
-
-    // TH mode: non-structure levels use C-level styling as fallback when triggers off
-    // When triggers are on, ClassifyLevels applies trigger render color directly
-    cfg.fallbackColor = inpCLevelColor;
-    cfg.fallbackStyle = inpCLevelStyle;
-    cfg.fallbackWidth = inpCLevelWidth;
-    cfg.midpointColor = inpTriggerColor;
-    cfg.midpointStyle = inpTriggerStyle;
-    cfg.midpointWidth = inpTriggerWidth;
-    return cfg;
-}
-
 //+------------------------------------------------------------------+
 //| UNIFIED PIPELINE EXECUTOR                                        |
-//|                                                                  |
-//| Runs stages in order:                                            |
-//|   1. Calculate → 2. Classify → 3+4. BuildZonesAndLines           |
-//|   5a. RenderZones → 5b. RenderLines → 5c. Cleanup                |
-//|                                                                  |
-//| All modes use this single entry point.                           |
-//| Step calculation mode and classify mode are parameterized.       |
 //+------------------------------------------------------------------+
 SPipelineResult ExecutePipeline(
     const SModeConfig &config,
@@ -1083,67 +981,24 @@ struct SModeSuffixEntry {
     string zoneCenter;      // e.g., "SSLS_Zone_Center_" — zone on midpoint/anchor level
 };
 
-// All registered mode suffixes — used by ClearAllLevels and DeleteAllIndicatorObjects
+// GetAll registered mode suffixes — used by ClearAllLevels and DeleteAllIndicatorObjects
 void GetAllModeSuffixes(SModeSuffixEntry &entries[], int &count)
 {
-    count = 8;
+    static string modeNames[] = {"SSLS", "M", "MEq", "TP", "Combo", "Factor", "Factor_Harmonic", "TH_Level"};
+    count = ArraySize(modeNames);
     ArrayResize(entries, count);
     
-    // SSLS
-    entries[0].zoneSuffix = "SSLS_Zone_";
-    entries[0].levelAbove = "SSLS_Above_";
-    entries[0].levelBelow = "SSLS_Below_";
-    entries[0].midpoint = "SSLS_Midpoint_";
-    entries[0].zoneCenter = "SSLS_Zone_Center_";
-    
-    // M (Control-based)
-    entries[1].zoneSuffix = "M_Zone_";
-    entries[1].levelAbove = "M_Above_";
-    entries[1].levelBelow = "M_Below_";
-    entries[1].midpoint = "M_Midpoint_";
-    entries[1].zoneCenter = "M_Zone_Center_";
-    
-    // MEq (Equal spacing)
-    entries[2].zoneSuffix = "MEq_Zone_";
-    entries[2].levelAbove = "MEq_Above_";
-    entries[2].levelBelow = "MEq_Below_";
-    entries[2].midpoint = "MEq_Midpoint_";
-    entries[2].zoneCenter = "MEq_Zone_Center_";
-    
-    // TP
-    entries[3].zoneSuffix = "TP_Zone_";
-    entries[3].levelAbove = "TP_Above_";
-    entries[3].levelBelow = "TP_Below_";
-    entries[3].midpoint = "TP_Midpoint_";
-    entries[3].zoneCenter = "TP_Zone_Center_";
-    
-    // Combo
-    entries[4].zoneSuffix = "Combo_Zone_";
-    entries[4].levelAbove = "Combo_Above_";
-    entries[4].levelBelow = "Combo_Below_";
-    entries[4].midpoint = "Combo_Midpoint_";
-    entries[4].zoneCenter = "Combo_Zone_Center_";
-    
-    // Factor (Standard)
-    entries[5].zoneSuffix = "Factor_Zone_";
-    entries[5].levelAbove = "Factor_Above_";
-    entries[5].levelBelow = "Factor_Below_";
-    entries[5].midpoint = "Factor_Center_";
-    entries[5].zoneCenter = "Factor_Zone_Center_";
-    
-    // Factor (Harmonic)
-    entries[6].zoneSuffix = "Factor_Harmonic_Zone_";
-    entries[6].levelAbove = "Factor_Harmonic_Above_";
-    entries[6].levelBelow = "Factor_Harmonic_Below_";
-    entries[6].midpoint = "Factor_Harmonic_Center_";
-    entries[6].zoneCenter = "Factor_Harmonic_Zone_Center_";
-    
-    // TH (Traditional)
-    entries[7].zoneSuffix = "TH_Level_Zone_";
-    entries[7].levelAbove = "TH_Level_Above_";
-    entries[7].levelBelow = "TH_Level_Below_";
-    entries[7].midpoint = "TH_Level_Midpoint_";
-    entries[7].zoneCenter = "TH_Level_Zone_Center_";
+    for(int i = 0; i < count; i++) {
+        entries[i].zoneSuffix = modeNames[i] + "_Zone_";
+        entries[i].levelAbove = modeNames[i] + "_Above_";
+        entries[i].levelBelow = modeNames[i] + "_Below_";
+        entries[i].midpoint = modeNames[i] + "_Midpoint_";
+        entries[i].zoneCenter = modeNames[i] + "_Zone_Center_";
+        
+        // Manual overrides for non-standard legacy suffixes
+        if(modeNames[i] == "Factor") entries[i].midpoint = "Factor_Center_";
+        if(modeNames[i] == "Factor_Harmonic") entries[i].midpoint = "Factor_Harmonic_Center_";
+    }
 }
 
 // Get all zone suffixes as a flat array (for ClearAllLevels compatibility)

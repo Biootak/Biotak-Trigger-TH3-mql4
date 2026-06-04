@@ -1,3 +1,6 @@
+#ifndef ALERT_FUNCTIONS_MQH
+#define ALERT_FUNCTIONS_MQH
+
 #property strict
 
 // Helper function to check if alert should be triggered (prevents spam)
@@ -99,3 +102,4 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
         }
     }
 }
+#endif // ALERT_FUNCTIONS_MQH

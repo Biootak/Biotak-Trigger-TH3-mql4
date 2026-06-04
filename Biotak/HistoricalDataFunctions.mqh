@@ -1,3 +1,6 @@
+#ifndef HISTORICAL_DATA_FUNCTIONS_MQH
+#define HISTORICAL_DATA_FUNCTIONS_MQH
+
 #property strict
 
 bool UpdateHistoricalValues() {
@@ -89,3 +92,4 @@ double GetPriceForPreviousDay(ENUM_APPLIED_PRICE priceType) {
     }
     return EMPTY_VALUE;
 }
+#endif // HISTORICAL_DATA_FUNCTIONS_MQH

@@ -600,27 +600,10 @@ void GetAdaptiveLevelCounts(int &maxAbove, int &maxBelow)
     if(maxAbove < 1) maxAbove = 1;
     if(maxBelow < 1) maxBelow = 1;
 }
-//+------------------------------------------------------------------+
-//| Helper structure to hold common calculation values              |
-//| All values are in PRICE units (matching MotiveWave)             |
-//+------------------------------------------------------------------+
-struct StepCalculationData {
-    double thValue;              // TH value in PRICE units
-    double structureValue;       // Structure value in PRICE units
-    double patternValue;         // Pattern value in PRICE units
-    double triggerValue;         // Trigger value in PRICE units
-    double shortStep;            // SS = 1.5 * Structure (PRICE units)
-    double longStep;             // LS = 2.0 * Structure (PRICE units)
-    double pointSize;            // DEPRECATED: No longer used (set to 1.0)
-    double midpointPrice;        // Start point price
-    int maxLevelsAbove;          // Adaptive max levels above
-    int maxLevelsBelow;          // Adaptive max levels below
-};
-
 //| Calculate common values used across all step modes              |
 //| TH-based only (ATR basis removed, matching MT5)                |
 //+------------------------------------------------------------------+
-bool CalculateCommonStepData(const double dailyClosePrice, StepCalculationData &data)
+bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data)
 {
     if(dailyClosePrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
@@ -630,7 +613,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, StepCalculationData &
     }
 
     // OPTIMIZATION: Cache calculation results
-    static StepCalculationData s_cachedData;
+    static SCommonStepData s_cachedData;
     static double s_lastDailyClose = 0;
     static string s_lastTF = "";
     static int s_lastStartPointType = -1;
@@ -722,6 +705,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, StepCalculationData &
 
 //+------------------------------------------------------------------+
 //| Wrapper function to handle different step calculation modes     |
+//| REFACTORED: Uses centralized ModeDefinitions factory             |
 //+------------------------------------------------------------------+
 void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePrice)
 {
@@ -730,112 +714,29 @@ void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePri
     
     // Draw based on selected mode (respects keyboard override)
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
-    StepCalculationData data;
+    SCommonStepData data;
     if(!CalculateCommonStepData(dailyClosePrice, data)) return;
     
-    double stepSizes[];
-    ArrayResize(stepSizes, 2);
-
-    switch(currentMode) {
-        case SS_LS_STEP:
-        {
-            SModeConfig cfg = BuildSSLSConfig(objectPrefix);
-            stepSizes[0] = data.shortStep;
-            stepSizes[1] = data.longStep;
-            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 2,
-                           LEVEL_STEP_CUMULATIVE, CLASSIFY_ALTERNATING, inpLSFirst,
-                           data.maxLevelsAbove, data.maxLevelsBelow);
-            break;
+    // Use the modular Mode Factory
+    SModeDefinition def = GetModeDefinition(currentMode, objectPrefix, data, dailyClosePrice);
+    
+    if(def.success) {
+        // Convert static array to dynamic for ExecutePipeline compatibility
+        double sizes[];
+        ArrayResize(sizes, def.stepSizeCount);
+        for(int i = 0; i < def.stepSizeCount; i++) {
+            sizes[i] = def.stepSizes[i];
         }
         
-        case M_STEP:
-        {
-            double controlValue = CalculateControlValue(data.shortStep, data.longStep);
-            if(inpMStepBasisType == MSTEP_BASIS_C_BASED) {
-                SModeConfig cfg = BuildMConfig(objectPrefix);
-                stepSizes[0] = controlValue;
-                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                               LEVEL_STEP_UNIFORM, CLASSIFY_MMODE, false,
-                               data.maxLevelsAbove, data.maxLevelsBelow);
-            } else {
-                SModeConfig cfg = BuildMEqualConfig(objectPrefix);
-                double mDistance = CalculateMDistance(controlValue);
-                stepSizes[0] = mDistance;
-                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                               LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
-                               data.maxLevelsAbove, data.maxLevelsBelow);
-            }
-            break;
-        }
+        ExecutePipeline(def.config, data.midpointPrice, sizes, def.stepSizeCount,
+                       def.stepMode, def.classifyMode, def.lsFirst,
+                       data.maxLevelsAbove, data.maxLevelsBelow);
         
-        case TP_STEP:
-        {
-            SModeConfig cfg = BuildTPConfig(objectPrefix);
-            double eValue = CalculateEStep(data.thValue);
-            double tpValue = CalculateTPStep(eValue);
-            stepSizes[0] = tpValue;
-            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
-                           data.maxLevelsAbove, data.maxLevelsBelow);
-            break;
-        }
-        
-        case COMBO_STEP:
-        {
-            double comboStep = CalculateComboStepSize(dailyClosePrice);
-            if(comboStep <= 0) return;
-            
-            SModeConfig cfg = BuildComboConfig(objectPrefix);
-            stepSizes[0] = comboStep;
-            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
-                           data.maxLevelsAbove, data.maxLevelsBelow);
-            break;
-        }
-        
-        case FACTOR_STEP:
-        {
-            double factorValue;
-            if(g_factorValueOverride > 0) factorValue = g_factorValueOverride;
-            else if(inpFactorMode == FACTOR_MODE_MANUAL) factorValue = inpFactorValue;
-            else factorValue = GetDefaultFactorValue(dailyClosePrice);
-            
-            factorValue = NormalizeDouble(MathMax(0.01, MathMin(10000, factorValue)), 2);
-            UpdateFactorLabel(factorValue);
-            
-            if(inpEnableHarmonicPattern) {
-                SModeConfig cfg = BuildFactorHarmonicConfig(objectPrefix);
-                double baseStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-                if(baseStep <= 0) return;
-                
-                stepSizes[0] = baseStep;
-                stepSizes[1] = baseStep * inpHarmonicRatio;
-                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 2,
-                               LEVEL_STEP_CUMULATIVE, CLASSIFY_STANDARD, false,
-                               data.maxLevelsAbove, data.maxLevelsBelow);
-            } else {
-                SModeConfig cfg = BuildFactorConfig(objectPrefix);
-                double factorStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-                if(factorStep <= 0) return;
-                
-                stepSizes[0] = factorStep;
-                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                               LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
-                               data.maxLevelsAbove, data.maxLevelsBelow);
-            }
-            break;
-        }
-        
-        case TH_STEP:
-        default:
-        {
-            SModeConfig cfg = BuildTHConfig(objectPrefix);
-            stepSizes[0] = data.thValue;
-            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
-                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
-                           data.maxLevelsAbove, data.maxLevelsBelow);
-            break;
-        }
+        ArrayFree(sizes);
+    } else {
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[E][DRAW] DrawLevelsBasedOnMode: Failed to get mode definition for ", EnumToString(currentMode));
+        #endif
     }
 }
 

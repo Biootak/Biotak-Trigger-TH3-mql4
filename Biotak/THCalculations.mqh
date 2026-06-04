@@ -1,6 +1,9 @@
 //+------------------------------------------------------------------+
 //|                                           THCalculations.mqh     |
 //+------------------------------------------------------------------+
+#ifndef TH_CALCULATIONS_MQH
+#define TH_CALCULATIONS_MQH
+
 #property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
 #property strict
@@ -313,3 +316,5 @@ double CalculateMDistance(const double controlValue) {
     return controlValue / ATR_FACTOR_M;
 }
 
+
+#endif // TH_CALCULATIONS_MQH

@@ -3,6 +3,9 @@
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Clean Architecture Pipeline   |
 //+------------------------------------------------------------------+
+#ifndef DRAWING_PIPELINE_MQH
+#define DRAWING_PIPELINE_MQH
+
 #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
@@ -175,3 +178,5 @@ void ResolveStylesLinear(const SLevelRawData &levels[],
 void Cleanup(string prefix) {
     CleanupZoneObjects(prefix);
 }
+
+#endif // DRAWING_PIPELINE_MQH

@@ -1,3 +1,6 @@
+#ifndef CONSTANTS_AND_ENUMS_MQH
+#define CONSTANTS_AND_ENUMS_MQH
+
 #define MAX_LINES 10
 #define CACHE_TIMEOUT 60
 
@@ -296,6 +299,23 @@ enum ENUM_COMBO_OPERATOR {
 enum ENUM_CALCULATOR_TOPOLOGY {
     TOPOLOGY_LINEAR = 0,        // Linear: ((A op B) op C) op D [Sequential]
     TOPOLOGY_DUAL_GROUP = 1     // Dual Group: (A op B) MainOp (C op D) [Structural]
+};
+
+//+------------------------------------------------------------------+
+//| Helper structure to hold common calculation values              |
+//| All values are in PRICE units (matching MotiveWave)             |
+//+------------------------------------------------------------------+
+struct SCommonStepData {
+    double thValue;              // TH value in PRICE units
+    double structureValue;       // Structure value in PRICE units
+    double patternValue;         // Pattern value in PRICE units
+    double triggerValue;         // Trigger value in PRICE units
+    double shortStep;            // SS = 1.5 * Structure (PRICE units)
+    double longStep;             // LS = 2.0 * Structure (PRICE units)
+    double pointSize;            // DEPRECATED: No longer used (set to 1.0)
+    double midpointPrice;        // Start point price
+    int maxLevelsAbove;          // Adaptive max levels above
+    int maxLevelsBelow;          // Adaptive max levels below
 };
 
 //+------------------------------------------------------------------+
@@ -648,3 +668,5 @@ struct FrequencyHistoryEntry {
         isUsed = false;
     }
 };
+
+#endif // CONSTANTS_AND_ENUMS_MQH
