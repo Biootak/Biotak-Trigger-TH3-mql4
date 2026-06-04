@@ -14,11 +14,11 @@
 //+------------------------------------------------------------------+
 //| Helper functions (ported from MT5)                                |
 //+------------------------------------------------------------------+
-void CleanupSurplusObjects(const string prefix, int startIdx, int maxConsecutiveMiss = 6) {
+void CleanupSurplusObjects(const string prefix, int startIdx, int maxConsecutiveMiss = 6, const string suffix = "") {
     if(g_customPriceLineDragging && StringFind(prefix, "_Zone_") >= 0) return;
     int misses = 0;
     for(int idx = startIdx; misses < maxConsecutiveMiss; idx++) {
-        string name = prefix + IntegerToString(idx);
+        string name = prefix + IntegerToString(idx) + suffix;
         if(ObjectFind(0, name) >= 0) {
             CacheRemoveObject(name);
             ObjectDelete(0, name);

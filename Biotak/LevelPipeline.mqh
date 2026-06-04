@@ -56,6 +56,7 @@ struct SLevelClassified {
     ENUM_LINE_STYLE levelStyle;
     int    levelWidth;
     color  zoneColor;       // Color for zone touching this level
+    string labelText;
 };
 
 //+------------------------------------------------------------------+
@@ -96,6 +97,8 @@ struct STriggerLine {
     ENUM_LINE_STYLE lineStyle;
     int    lineWidth;
     string tooltip;
+    color  clr;
+    string labelText;
     bool   inViewport;      // false = skip render
     bool   isMidpoint;
     bool   setBack;         // OBJPROP_BACK value (mode-specific)
@@ -286,6 +289,22 @@ int CalculateLevels(
 }
 
 //+------------------------------------------------------------------+
+//| HELPER: Get descriptive label text for a level                   |
+//+------------------------------------------------------------------+
+string GetLabelTextForLevel(const SLevelClassified &level, const int baseMultiplier) {
+    if(level.isMidpoint) return "Midpoint";
+    
+    string direction = (level.direction > 0) ? "+" : "-";
+    
+    if(level.structureLevel > 0) {
+        return StringFormat("L%d %s%d", level.structureLevel, direction, level.logicalStep);
+    }
+    
+    // For trigger subdivisions, show distance in base multiplier units if possible
+    return StringFormat("%s%d", direction, level.logicalStep);
+}
+
+//+------------------------------------------------------------------+
 //| STAGE 2: Classify all levels                                     |
 //|                                                                  |
 //| Assigns color/style/width based on structure/trigger priority.   |
@@ -317,6 +336,7 @@ int ClassifyLevels(
         classified[i].levelStyle = config.fallbackStyle;
         classified[i].levelWidth = config.fallbackWidth;
         classified[i].zoneColor = clrNONE;
+        classified[i].labelText = "";
         
         int step = rawLevels[i].logicalStep;
         
@@ -332,16 +352,11 @@ int ClassifyLevels(
                 classified[i].levelStyle = config.midpointStyle;
                 classified[i].levelWidth = config.midpointWidth;
             }
+            classified[i].labelText = GetLabelTextForLevel(classified[i], baseMultiplier);
             continue;
         }
         
         // BASE PLAYER: Structure/Trigger classification
-        // Every step is classified as either structural or trigger subdivision.
-        // Structural: step divisible by L1..L5 intervals → structure color/style
-        // Trigger subdivision: steps between structural levels → trigger or fallback color/style
-        // With base=4: steps 4,8,12.. = structural L1, steps between = trigger subdivisions
-        // This ensures exactly (base) equal zones between each pair of structural levels.
-        
         classified[i].structureLevel = GetHighestStructureLevel(step, g_cachedIntervals);
         classified[i].isStructure = (classified[i].structureLevel > 0);
         
@@ -374,6 +389,9 @@ int ClassifyLevels(
         if(classified[i].zoneColor == clrNONE) {
             classified[i].zoneColor = classified[i].levelColor;
         }
+        
+        // Populate label text
+        classified[i].labelText = GetLabelTextForLevel(classified[i], baseMultiplier);
     }
     
     return rawCount;
@@ -570,6 +588,8 @@ void BuildZonesAndLines(
         lines[lIdx].lineColor = s_aboveLevels[i].levelColor;
         lines[lIdx].lineStyle = s_aboveLevels[i].levelStyle;
         lines[lIdx].lineWidth = s_aboveLevels[i].levelWidth;
+        lines[lIdx].clr = s_aboveLevels[i].levelColor;
+        lines[lIdx].labelText = s_aboveLevels[i].labelText;
         lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -623,6 +643,8 @@ void BuildZonesAndLines(
         lines[lIdx].lineColor = s_belowLevels[i].levelColor;
         lines[lIdx].lineStyle = s_belowLevels[i].levelStyle;
         lines[lIdx].lineWidth = s_belowLevels[i].levelWidth;
+        lines[lIdx].clr = s_belowLevels[i].levelColor;
+        lines[lIdx].labelText = s_belowLevels[i].labelText;
         lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -732,6 +754,7 @@ void RenderTriggerLines(
     const SModeConfig &config)
 {
     bool triggerEnabled = IsTriggerLevelsEnabled();
+    double currentPrice = GetCurrentPriceForLabels();
     
     for(int i = 0; i < lineCount; i++) {
         // Factor mode: hide lines when trigger-only enabled
@@ -741,13 +764,17 @@ void RenderTriggerLines(
                 if(ObjectFind(0, lines[i].name) >= 0) {
                     ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
                 }
+                string labelName = lines[i].name + "_Label";
+                if(ObjectFind(0, labelName) >= 0) {
+                    ObjectSetInteger(0, labelName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+                }
                 continue;
             }
         }
         
-        // Use the unified create-or-update pattern
+        // Use the individual line color instead of config.triggerColor
         bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
-                                          lines[i].lineColor, lines[i].lineStyle, lines[i].lineWidth,
+                                          lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,
                                           lines[i].tooltip);
         
         // Set mode-specific properties on new objects
@@ -759,21 +786,31 @@ void RenderTriggerLines(
                 ObjectSetInteger(0, lines[i].name, OBJPROP_ZORDER, config.zOrder);
             }
         }
+
+        // Render Pip Distance Label
+        if(inpShowPipDistanceLabels) {
+            string labelName = lines[i].name + "_Label";
+            double pips = MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
+            CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
+        }
     }
 }
 
 //+------------------------------------------------------------------+
+//| HELPER: Get current price for distance labels                    |
+//+------------------------------------------------------------------+
+double GetCurrentPriceForLabels() {
+    return (g_currentPrice > 0) ? g_currentPrice : Bid;
+}
+
+//+------------------------------------------------------------------+
 //| STAGE 5c: Cleanup surplus objects from previous render           |
-//|                                                                  |
-//| Removes zone and line objects that no longer exist in current    |
-//| pipeline output. Uses the mode name for prefix matching.         |
 //+------------------------------------------------------------------+
 void CleanupSurplusPipeline(
     const SModeConfig &config,
     const int maxLogicalStep)
 {
     // During custom-price drag, do lightweight throttled cleanup instead of skipping entirely.
-    // Skipping caused stale previous-step objects to accumulate and clutter the chart.
     if(g_customPriceLineDragging) {
         static uint s_lastDragCleanupMs = 0;
         uint nowMs = GetTickCount();
@@ -782,18 +819,20 @@ void CleanupSurplusPipeline(
         s_lastDragCleanupMs = nowMs;
     }
     
-    // Cleanup surplus zones (above, below, and center)
+    // Cleanup surplus zones
     if(config.zonesEnabled) {
         CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Above_", maxLogicalStep + 1);
         CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Below_", maxLogicalStep + 1);
-        CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Center_", 1); // Only index 0 exists
+        CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Center_", 1);
     }
     
-    // Cleanup surplus lines (above and below direction)
+    // Cleanup surplus lines and their labels
     CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Above_", maxLogicalStep + 1);
     CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Below_", maxLogicalStep + 1);
+    CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Above_", maxLogicalStep + 1, 6, "_Label");
+    CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Below_", maxLogicalStep + 1, 6, "_Label");
     
-    // Legacy cleanup: remove old midpoint line (step 0 now gets a zone, not a line)
+    // Legacy cleanup
     string midpointName = config.objectPrefix + config.modeName + "_Midpoint_0";
     if(ObjectFind(0, midpointName) >= 0) {
         CacheRemoveObject(midpointName);

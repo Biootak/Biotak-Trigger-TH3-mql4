@@ -57,12 +57,12 @@ const double MODIFIED_FRACTAL_PERCENTAGES[] = {
     5.3328    // D45+H12+M16: 533.28%
 };
 const color FRACTAL_COLORS[] = {
-    clrBlack, clrBlack, clrBlack, clrBlue, clrRed,
-    clrRed, clrGreen, clrBlack, clrBlack
+    clrGray, clrGray, clrGray, clrDodgerBlue, clrTomato,
+    clrOrangeRed, clrLimeGreen, clrSlateGray, clrSlateGray
 };
 const string STANDARD_TIMEFRAMES[] = {"D1", "W1", "MN1"};
 const int STANDARD_MINUTES[] = {1440, 10080, 43200};
-const color STANDARD_COLORS[] = {clrBlue, clrBlue, clrBlue};
+const color STANDARD_COLORS[] = {clrDeepSkyBlue, clrDeepSkyBlue, clrDeepSkyBlue};
 
 enum ENUM_TH_START_POINT_TYPE {
     TH_START_POINT_MIDPOINT = 0,      // Midpoint

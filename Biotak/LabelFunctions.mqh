@@ -684,14 +684,14 @@ void DisplayATRLabels(const string objectPrefix) {
     s_lastATRLayoutSig = layoutSig;
 
     color colors[] = {
-        clrBlack,        // M1
-        clrBlack,        // M5
-        clrBlack,        // M15
-        clrBlue,         // H1
-        clrRed,          // H4
-        clrGreen,        // D1
-        clrBlack,        // W1
-        clrBlack         // MN1
+        clrGray,         // M1
+        clrGray,         // M5
+        clrGray,         // M15
+        clrDodgerBlue,   // H1
+        clrTomato,       // H4
+        clrLimeGreen,    // D1
+        clrSlateGray,    // W1
+        clrSlateGray     // MN1
     };
     
     bool isVerticalLayout = (inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL);

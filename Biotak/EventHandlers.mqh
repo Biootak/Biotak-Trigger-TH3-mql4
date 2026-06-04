@@ -747,276 +747,113 @@ void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePri
     
     // Draw based on selected mode (respects keyboard override)
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
+    StepCalculationData data;
+    if(!CalculateCommonStepData(dailyClosePrice, data)) return;
+    
+    double stepSizes[];
+    ArrayResize(stepSizes, 2);
+
     switch(currentMode) {
         case SS_LS_STEP:
         {
-            StepCalculationData data;
-            if(!CalculateCommonStepData(dailyClosePrice, data)) return;
-            
-            // SS and LS are already in PRICE units (no conversion needed)
-            double ssValuePrice = data.shortStep;
-            double lsValuePrice = data.longStep;
-            
-            DrawSSLSLevels(objectPrefix, data.midpointPrice, ssValuePrice, lsValuePrice, inpLSFirst,
-                          data.maxLevelsAbove, data.maxLevelsBelow);
+            SModeConfig cfg = BuildSSLSConfig(objectPrefix);
+            stepSizes[0] = data.shortStep;
+            stepSizes[1] = data.longStep;
+            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 2,
+                           LEVEL_STEP_CUMULATIVE, CLASSIFY_ALTERNATING, inpLSFirst,
+                           data.maxLevelsAbove, data.maxLevelsBelow);
             break;
         }
         
         case M_STEP:
         {
-            StepCalculationData data;
-            if(!CalculateCommonStepData(dailyClosePrice, data)) return;
-            
-            // Control value is already in PRICE units (no conversion needed)
             double controlValue = CalculateControlValue(data.shortStep, data.longStep);
-            double controlValuePrice = controlValue;
-            
             if(inpMStepBasisType == MSTEP_BASIS_C_BASED) {
-                DrawMLevels(objectPrefix, data.midpointPrice, controlValuePrice,
-                           data.maxLevelsAbove, data.maxLevelsBelow);
+                SModeConfig cfg = BuildMConfig(objectPrefix);
+                stepSizes[0] = controlValue;
+                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                               LEVEL_STEP_UNIFORM, CLASSIFY_MMODE, false,
+                               data.maxLevelsAbove, data.maxLevelsBelow);
             } else {
+                SModeConfig cfg = BuildMEqualConfig(objectPrefix);
                 double mDistance = CalculateMDistance(controlValue);
-                double mDistancePrice = mDistance;
-                DrawMEqualLevels(objectPrefix, data.midpointPrice, mDistancePrice,
-                                data.maxLevelsAbove, data.maxLevelsBelow);
+                stepSizes[0] = mDistance;
+                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                               LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
+                               data.maxLevelsAbove, data.maxLevelsBelow);
             }
             break;
         }
         
         case TP_STEP:
         {
-            StepCalculationData data;
-            if(!CalculateCommonStepData(dailyClosePrice, data)) return;
-            
-            // TP = E Ã— 3 = TH Ã— 0.75 Ã— 3 = TH Ã— 2.25 (matching Java TP_STEP)
-            double eValue = CalculateEStep(data.thValue);  // E = TH Ã— 0.75
-            double tpValue = CalculateTPStep(eValue);       // TP = E Ã— 3
-            
-            // Use DrawTHLevelsWithStep for TP mode
-            DrawTHLevelsWithStep(objectPrefix, data.midpointPrice, tpValue, "TP",
-                                data.maxLevelsAbove, data.maxLevelsBelow);
+            SModeConfig cfg = BuildTPConfig(objectPrefix);
+            double eValue = CalculateEStep(data.thValue);
+            double tpValue = CalculateTPStep(eValue);
+            stepSizes[0] = tpValue;
+            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
+                           data.maxLevelsAbove, data.maxLevelsBelow);
             break;
         }
         
         case COMBO_STEP:
         {
-            StepCalculationData data;
-            if(!CalculateCommonStepData(dailyClosePrice, data)) return;
-            
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // UNIFIED COMBO SYSTEM: Uses Preset/Operation configuration
-            // Ø³ÛŒØ³ØªÙ… ÛŒÚ©Ù¾Ø§Ø±Ú†Ù‡ Ú©Ø§Ù…Ø¨Ùˆ: Ø§Ø² ØªÙ†Ø¸ÛŒÙ…Ø§Øª Preset/Operation Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ø¯
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            
-            // Calculate combo step using unified function (shared with Factor mode)
-            // Ù…Ø­Ø§Ø³Ø¨Ù‡ Ú¯Ø§Ù… Ú©Ø§Ù…Ø¨Ùˆ Ø¨Ø§ ØªØ§Ø¨Ø¹ ÛŒÚ©Ù¾Ø§Ø±Ú†Ù‡ (Ù…Ø´ØªØ±Ú© Ø¨Ø§ Ø­Ø§Ù„Øª Factor)
             double comboStep = CalculateComboStepSize(dailyClosePrice);
+            if(comboStep <= 0) return;
             
-            // CRITICAL: Check for errors with user-friendly message
-            if(comboStep <= 0) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("âŒ COMBO_STEP: Failed to calculate combo step");
-                Print("   Base Price: ", dailyClosePrice);
-                Print("   Preset: ", EnumToString(inpComboPreset));
-                #endif
-                
-                // Show error to user
-                string errorMsg = "Failed to calculate Combo Step!\n\n";
-                errorMsg += "Preset: " + EnumToString(inpComboPreset) + "\n";
-                errorMsg += "Base Price: " + DoubleToString(dailyClosePrice, Digits) + "\n\n";
-                errorMsg += "Please check:\n";
-                errorMsg += "1. Preset configuration is valid\n";
-                errorMsg += "2. Base price is positive\n";
-                errorMsg += "3. Timeframe settings are correct";
-                Alert(errorMsg);
-                
-                return;
-            }
-            
-            // ALWAYS log Combo calculations (throttled to once per mode switch)
-            // Ù‡Ù…ÛŒØ´Ù‡ Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ú©Ø§Ù…Ø¨Ùˆ Ø±Ùˆ Ù„Ø§Ú¯ Ú©Ù† (Ø¨Ø±Ø§ÛŒ Ø§Ø·Ù…ÛŒÙ†Ø§Ù† Ø§Ø² ØµØ­Øª Ù…Ø­Ø§Ø³Ø¨Ø§Øª)
-            static double s_lastLoggedComboStep = 0;
-            if(MathAbs(comboStep - s_lastLoggedComboStep) > 0.0000001) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("========== COMBO STEP (UNIFIED) ==========");
-                Print("TF: ", GetCurrentTimeframe(), " | TH: ", DoubleToString(data.thValue, Digits));
-                Print("Preset: ", EnumToString(inpComboPreset));
-                Print("Combo Step = ", DoubleToString(comboStep, Digits));
-                Print("Structure: ", DoubleToString(data.structureValue, Digits), 
-                      " | Pattern: ", DoubleToString(data.patternValue, Digits),
-                      " | Trigger: ", DoubleToString(data.triggerValue, Digits));
-                Print("==========================================");
-                #endif
-                s_lastLoggedComboStep = comboStep;
-            }
-            
-            // Use DrawTHLevelsWithStep for Combo Step mode
-            DrawTHLevelsWithStep(objectPrefix, data.midpointPrice, comboStep, "Combo",
-                                data.maxLevelsAbove, data.maxLevelsBelow);
+            SModeConfig cfg = BuildComboConfig(objectPrefix);
+            stepSizes[0] = comboStep;
+            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
+                           data.maxLevelsAbove, data.maxLevelsBelow);
             break;
         }
         
         case FACTOR_STEP:
         {
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            // FACTOR MODE: Uses same structure as other modes
-            // Ø­Ø§Ù„Øª Factor: Ø§Ø² Ù‡Ù…Ø§Ù† Ø³Ø§Ø®ØªØ§Ø± Ø³Ø§ÛŒØ± Ù…Ø¯Ù‡Ø§ Ø§Ø³ØªÙØ§Ø¯Ù‡ Ù…ÛŒâ€ŒÚ©Ù†Ø¯
-            // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            
-            // Calculate common step data (like other modes)
-            StepCalculationData data;
-            if(!CalculateCommonStepData(dailyClosePrice, data)) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("âŒ FACTOR_STEP: Failed to calculate common step data");
-                #endif
-                return;
-            }
-            
-            // Get Factor value - priority: keyboard override > input parameter > auto
             double factorValue;
-            if(g_factorValueOverride > 0) {
-                // Keyboard override (user pressed +/-)
-                factorValue = g_factorValueOverride;
-            } else if(inpFactorMode == FACTOR_MODE_MANUAL) {
-                // Manual mode: Use user-defined value from settings
-                factorValue = inpFactorValue;
-            } else {
-                // Auto mode: Calculate factor so each level equals current TF's TH
-                factorValue = GetDefaultFactorValue(dailyClosePrice);
-            }
+            if(g_factorValueOverride > 0) factorValue = g_factorValueOverride;
+            else if(inpFactorMode == FACTOR_MODE_MANUAL) factorValue = inpFactorValue;
+            else factorValue = GetDefaultFactorValue(dailyClosePrice);
             
-            // Validate and clamp Factor range (minimum 0.01, maximum 10000)
             factorValue = NormalizeDouble(MathMax(0.01, MathMin(10000, factorValue)), 2);
-            
-            #ifdef ENABLE_DEBUG_LOGS
-            string modeStr = (g_factorValueOverride > 0) ? "KEYBOARD" : 
-                            ((inpFactorMode == FACTOR_MODE_AUTO) ? "AUTO" : "MANUAL");
-            Print("FACTOR_STEP: Mode=", modeStr, ", Factor=", DoubleToString(factorValue, 2));
-            Print("   Center=", DoubleToString(data.midpointPrice, Digits),
-                  " (", (g_thStartPointType == TH_START_POINT_CUSTOM_PRICE ? "Custom" : "Midpoint"), ")");
-            Print("   MaxLevels: Above=", data.maxLevelsAbove, ", Below=", data.maxLevelsBelow);
-            #endif
-            
-            // Show Factor label
             UpdateFactorLabel(factorValue);
             
-            // Check if Harmonic Alternating Pattern is enabled
             if(inpEnableHarmonicPattern) {
-                // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-                // HARMONIC MODE: Alternating pattern with base and large steps
-                // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                SModeConfig cfg = BuildFactorHarmonicConfig(objectPrefix);
+                double baseStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
+                if(baseStep <= 0) return;
                 
-                // Validate harmonic ratio with strict bounds
-                double harmonicRatio = inpHarmonicRatio;
-                if(harmonicRatio < MIN_HARMONIC_RATIO) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("âš ï¸ FACTOR_STEP: Harmonic ratio too small (", harmonicRatio, 
-                          "), clamping to ", MIN_HARMONIC_RATIO);
-                    #endif
-                    harmonicRatio = MIN_HARMONIC_RATIO;
-                } else if(harmonicRatio > MAX_HARMONIC_RATIO) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("âš ï¸ FACTOR_STEP: Harmonic ratio too large (", harmonicRatio, 
-                          "), clamping to ", MAX_HARMONIC_RATIO);
-                    #endif
-                    harmonicRatio = MAX_HARMONIC_RATIO;
-                }
-                
-                // Normalize to 3 decimal places
-                harmonicRatio = NormalizeDouble(harmonicRatio, 3);
-                
-                // Calculate base step size
-                double baseStepSize = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-                if(baseStepSize <= 0) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("âŒ FACTOR_STEP: Invalid base step size calculated");
-                    #endif
-                    return;
-                }
-                
-                // Validate base step is not too small
-                if(baseStepSize < Point * 2) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("âŒ FACTOR_STEP: Base step too small (", baseStepSize, 
-                          ") - Factor too large or range too small");
-                    #endif
-                    return;
-                }
-                
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("ðŸŽµ FACTOR_STEP: Harmonic Mode");
-                Print("   BaseStep=", DoubleToString(baseStepSize, Digits), 
-                      " (", DoubleToString(baseStepSize / Point, 1), " pips)");
-                Print("   Ratio=", harmonicRatio, 
-                      " (", DoubleToString((harmonicRatio - 1.0) * 100, 1), "% larger)");
-                Print("   LargeStep=", DoubleToString(baseStepSize * harmonicRatio, Digits),
-                      " (", DoubleToString(baseStepSize * harmonicRatio / Point, 1), " pips)");
-                #endif
-                
-                // Draw Harmonic Alternating levels from center (like other modes)
-                DrawFactorLevelsHarmonicFromCenter(objectPrefix, data.midpointPrice, 
-                                                   g_highestHigh, g_lowestLow,
-                                                   factorValue, baseStepSize, harmonicRatio,
-                                                   data.maxLevelsAbove, data.maxLevelsBelow);
-                
+                stepSizes[0] = baseStep;
+                stepSizes[1] = baseStep * inpHarmonicRatio;
+                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 2,
+                               LEVEL_STEP_CUMULATIVE, CLASSIFY_STANDARD, false,
+                               data.maxLevelsAbove, data.maxLevelsBelow);
             } else {
-                // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-                // STANDARD MODE: Equal spacing
-                // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+                SModeConfig cfg = BuildFactorConfig(objectPrefix);
+                double factorStep = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
+                if(factorStep <= 0) return;
                 
-                // Calculate step size for Factor mode
-                double factorStepSize = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-                if(factorStepSize <= 0) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("âŒ FACTOR_STEP: Invalid step size calculated");
-                    #endif
-                    return;
-                }
-                
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("ðŸ“ FACTOR_STEP: Standard Mode");
-                Print("   StepSize=", DoubleToString(factorStepSize, Digits),
-                      " (", DoubleToString(factorStepSize / Point, 1), " pips)");
-                #endif
-                
-                // Draw Factor levels from center (like other modes)
-                DrawFactorLevelsFromCenter(objectPrefix, data.midpointPrice, 
-                                          g_highestHigh, g_lowestLow, 
-                                          factorValue, factorStepSize,
-                                          data.maxLevelsAbove, data.maxLevelsBelow);
+                stepSizes[0] = factorStep;
+                ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                               LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
+                               data.maxLevelsAbove, data.maxLevelsBelow);
             }
-            
-            // Also draw Historical High/Low reference lines
-            // NOTE: Boundary lines always use actual historical high/low
-            double referenceStepSize = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
-            DrawFactorBoundaryLines(objectPrefix, g_highestHigh, g_lowestLow, factorValue, referenceStepSize);
-            
-            // GOLD FIX: Memory cleanup for Factor mode
-            // No dynamic arrays in StepCalculationData, but good practice to reset
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("âœ… FACTOR_STEP: Completed successfully");
-            #endif
-            
             break;
         }
         
         case TH_STEP:
         default:
         {
-            // TH-based step mode - always use DrawTHLevels
-            DrawTHLevels(objectPrefix, dailyClosePrice);
-
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("[D][GEN] TH_STEP: Completed successfully");
-            #endif
+            SModeConfig cfg = BuildTHConfig(objectPrefix);
+            stepSizes[0] = data.thValue;
+            ExecutePipeline(cfg, data.midpointPrice, stepSizes, 1,
+                           LEVEL_STEP_UNIFORM, CLASSIFY_STANDARD, false,
+                           data.maxLevelsAbove, data.maxLevelsBelow);
             break;
         }
     }
-    
-    // GOLD FIX: Final cleanup after all modes
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("âœ… DrawLevelsBasedOnMode: All operations completed");
-    #endif
 }
 
 // DEPRECATED: Old helper functions removed
