@@ -285,6 +285,7 @@ input string inpStepModeKey = "E";
 input string inpTH3ToolKey = "V";
 input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
+input string inpShowStatusKey = "W";        // Show current mode status
 input string inpResetKey = "Q";
 
 input group "20) ADVANCED - OBJECTS"

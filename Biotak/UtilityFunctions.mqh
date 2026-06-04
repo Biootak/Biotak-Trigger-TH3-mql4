@@ -342,6 +342,7 @@ void UpdateStepModeLabel() {
     string labelText = BuildUnifiedModeLabelText();
     ObjectSetString(0, g_stepModeLabelName, OBJPROP_TEXT, labelText);
     
+    g_stepModeLabelCreateTime = GetTickCount();
     ApplyModeLabelStyle(g_stepModeLabelName, inpModeLabelColor);
     
     if(inpModeLabelDuration > 0) {
@@ -400,6 +401,7 @@ void UpdateFactorLabel(double factorValue) {
     ObjectSetString(0, g_factorLabelName, OBJPROP_TEXT, 
         "[ F: " + DoubleToString(factorValue, 2) + stepText + " ]");
     
+    g_factorLabelCreateTime = GetTickCount();
     ApplyModeLabelStyle(g_factorLabelName, inpFactorLevelColor);
     
     // Set timer based on user setting (0=permanent, >0=auto-hide after N seconds)
@@ -479,12 +481,27 @@ void UpdateTH3FrequencyLabel(double frequency) {
     ObjectSetString(0, g_th3FreqLabelName, OBJPROP_TEXT, 
         "[ TH3 Freq: " + DoubleToString(frequency, 3) + "%" + stepInfo + " ]");
     
+    g_th3FreqLabelCreateTime = GetTickCount();
     ApplyModeLabelStyle(g_th3FreqLabelName, inpModeLabelColor);
-    
-    // Set timer for auto-hide (5 seconds for frequency - longer than other labels)
-    EventSetTimer(5);
 }
 
+
+//+------------------------------------------------------------------+
+//| Show all status labels without changing modes                    |
+//+------------------------------------------------------------------+
+void ShowAllStatusLabels() {
+    UpdateStepModeLabel();
+    
+    double factor = g_factorValueOverride;
+    if(factor <= 0) {
+        if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0) factor = inpFactorValue;
+        else factor = GetDefaultFactorValue(g_dailyClosePriceForTH);
+    }
+    UpdateFactorLabel(factor);
+    
+    double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
+    UpdateTH3FrequencyLabel(freq);
+}
 
 //+------------------------------------------------------------------+
 //| Create Mid-Range Zone (Generic function for all modes)          |
@@ -730,13 +747,6 @@ void ApplyModeLabelStyle(const string name, const color textColor, const int yOf
     ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
     ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-}
-
-//+------------------------------------------------------------------+
-//| Update TH3 Frequency label on chart (stub — unified label)     |
-//+------------------------------------------------------------------+
-void UpdateTH3FreqLabel(double freqValue) {
-    ClearSingleModeLabel(g_th3FreqLabelName, g_th3FreqLabelCreateTime);
 }
 
 //+------------------------------------------------------------------+
