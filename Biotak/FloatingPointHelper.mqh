@@ -209,11 +209,11 @@ double CalculateRatio(double numerator, double denominator, double defaultValue 
 
 //+------------------------------------------------------------------+
 //| Round to Nearest Pip                                             |
-//|                                                             |
+//| CRITICAL FIX: Uses centralized pip size calculation              |
 //+------------------------------------------------------------------+
 double RoundToPip(double value)
 {
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     
     if(IsZero(pipSize, EPSILON_GENERAL)) {
         return value; // Cannot round

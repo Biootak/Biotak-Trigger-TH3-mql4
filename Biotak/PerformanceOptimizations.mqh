@@ -34,7 +34,7 @@ void InitializeGlobalCache() {
     g_cachedPoint = Point;
     g_cachedChartId = ChartID();
     g_cachedChartIdStr = IntegerToString(g_cachedChartId);
-    g_cachedPipSize = (g_cachedDigits == 3 || g_cachedDigits == 5) ? g_cachedPoint * 10.0 : g_cachedPoint;
+    g_cachedPipSize = 0.0;  // Will be calculated by GetCachedPipSize() with proper asset detection
     g_globalCacheInitialized = true;
     
     #ifdef ENABLE_DEBUG_LOGS
@@ -130,15 +130,66 @@ long GetCachedChartId() {
 }
 
 //+------------------------------------------------------------------+
-//| Get Cached Pip Size                                               |
-//|                                                      |
+//| Get Cached Pip Size with Proper Asset Detection                  |
+//| CRITICAL FIX: Handles Gold, JPY pairs, and standard forex        |
+//|                                                                  |
+//| Logic:                                                           |
+//| - Gold (XAUUSD): Digits=2, Point=0.01, PipSize=0.1 (10 points)  |
+//| - JPY pairs: Digits=3, Point=0.001, PipSize=0.01 (10 points)    |
+//| - Standard forex: Digits=5, Point=0.00001, PipSize=0.0001       |
+//| - Exotic pairs: Digits=4, Point=0.0001, PipSize=0.0001          |
 //+------------------------------------------------------------------+
 static double g_cachedPipSize = 0.0;
 double GetCachedPipSize() {
     if(g_cachedPipSize > 0.0) return g_cachedPipSize;
+    
     int d = GetCachedDigits();
     double p = GetCachedPoint();
-    g_cachedPipSize = (d == 3 || d == 5) ? p * 10.0 : p;
+    string symbol = GetCachedSymbol();
+    
+    // Detect asset type and calculate appropriate pip size
+    if(d == 2) {
+        // Gold, Silver, or 2-digit instruments
+        // For XAUUSD: Point=0.01, Pip should be 0.1 (10 points)
+        if(StringFind(symbol, "XAU") >= 0 || StringFind(symbol, "GOLD") >= 0 || 
+           StringFind(symbol, "XAG") >= 0 || StringFind(symbol, "SILVER") >= 0) {
+            g_cachedPipSize = p * 10.0;  // 1 pip = 10 points for metals
+        }
+        else {
+            g_cachedPipSize = p;  // Standard 2-digit instrument
+        }
+    }
+    else if(d == 3) {
+        // JPY pairs or 3-digit instruments
+        // Point=0.001, Pip=0.01 (10 points)
+        g_cachedPipSize = p * 10.0;
+    }
+    else if(d == 5) {
+        // Standard 5-digit forex pairs
+        // Point=0.00001, Pip=0.0001 (10 points)
+        g_cachedPipSize = p * 10.0;
+    }
+    else if(d == 4) {
+        // 4-digit forex pairs
+        // Point=0.0001, Pip=0.0001 (1 point)
+        g_cachedPipSize = p;
+    }
+    else if(d == 1) {
+        // 1-digit instruments (rare, but possible)
+        g_cachedPipSize = p * 10.0;
+    }
+    else {
+        // Fallback for unknown digits
+        g_cachedPipSize = p;
+    }
+    
+    #ifdef ENABLE_DEBUG_LOGS
+    Print("==================== PipSize initialized: Symbol=", symbol, 
+          ", Digits=", d, 
+          ", Point=", DoubleToString(p, d+2), 
+          ", PipSize=", DoubleToString(g_cachedPipSize, d+2));
+    #endif
+    
     return g_cachedPipSize;
 }
 

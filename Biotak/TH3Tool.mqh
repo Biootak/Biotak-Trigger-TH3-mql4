@@ -137,6 +137,7 @@ void BuildPatternNamesFromRegistry(string &patternNames[], int &patternCount)
 
 double SnapToOHLC(datetime barTime, double price, double pipSize)
 {
+    if(pipSize <= 0) pipSize = GetCachedPipSize();
     if(pipSize <= 0) return price;
     int barIndex = iBarShift(Symbol(), Period(), barTime);
     if(barIndex < 0) return price;
@@ -229,7 +230,9 @@ double GetCachedDailyATR()
         
         // CRITICAL FIX: Check for EMPTY_VALUE which iATR returns on error
         // Also check for invalid values using epsilon comparison
-        if(atrValue == EMPTY_VALUE || IsZero(atrValue, EPSILON_PRICE) || atrValue < Point * 10) {
+        double pipSize = GetCachedPipSize();
+        double minATR = pipSize * 10;  // Minimum 10 pips
+        if(atrValue == EMPTY_VALUE || IsZero(atrValue, EPSILON_PRICE) || atrValue < minATR) {
             // Fallback: Calculate average range manually
             double avgRange = 0;
             int validBars = 0;
@@ -242,7 +245,7 @@ double GetCachedDailyATR()
                     validBars++;
                 }
             }
-            cachedATR = (validBars > 0) ? (avgRange / validBars) : Point * 100;
+            cachedATR = (validBars > 0) ? (avgRange / validBars) : pipSize * 100;  // Default to 100 pips
         } else {
             cachedATR = atrValue;
         }
@@ -433,7 +436,7 @@ WaveAnalysis AnalyzeThreeWaves(datetime tX, double pX, datetime tA, double pA,
                                 datetime tB, double pB, datetime tC, double pC)
 {
     WaveAnalysis analysis;
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     
     // SECURITY: Validate time ordering (X < A < B < C)
     if(!(tX < tA && tA < tB && tB < tC)) {
@@ -708,14 +711,15 @@ double CalculateWaveAngle(datetime tStart, double pStart, datetime tEnd, double 
     if(timeChangeMinutes <= 0) timeChangeMinutes = 1;
     
     //          
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     double priceInPips = priceChange / pipSize;
     
     //       (degrees)
     //     1 pip per minute = 45 degrees (Gann 1 
     // OPTIMIZATION: Use cached ATR instead of repeated iATR() calls
     double dailyATR = GetCachedDailyATR();
-    if(dailyATR <= 0 || dailyATR < Point * 10) {
+    double minATR = pipSize * 10;  // Minimum 10 pips worth of ATR
+    if(dailyATR <= 0 || dailyATR < minATR) {
         double avgRange = 0;
         for(int i = 1; i <= 20; i++) {
             avgRange += (iHigh(NULL, PERIOD_D1, i) - iLow(NULL, PERIOD_D1, i));
@@ -1023,9 +1027,10 @@ double CalculateFrequencyFromWaves(WaveAnalysis &waves)
     //               ATR
     // OPTIMIZATION: Use cached ATR instead of repeated iATR() calls
     double dailyATR = GetCachedDailyATR();
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
+    double minATR = pipSize * 10;  // Minimum 10 pips worth of ATR
     
-    if(dailyATR <= 0 || dailyATR < Point * 10) {
+    if(dailyATR <= 0 || dailyATR < minATR) {
         double avgRange = 0;
         for(int i = 1; i <= 20; i++) {
             avgRange += (iHigh(NULL, PERIOD_D1, i) - iLow(NULL, PERIOD_D1, i));
@@ -1110,7 +1115,7 @@ double CalculateMovementSpeed(datetime tA, double pA, datetime tB, double pB)
     if(timeChangeMinutes <= 0) return 1.0; // Default to balanced
     
     //          
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     double priceInPips = priceChange / pipSize;
     
     //          
@@ -1295,7 +1300,8 @@ double CalculateFrequencyError(double pA, double pB, double pC,
 {
     // SECURITY: Validate AB distance to prevent division by zero
     double AB_Distance = MathAbs(pB - pA);
-    double minDistance = Point * 10; // Minimum 10 pips
+    double pipSize = GetCachedPipSize();
+    double minDistance = pipSize * 10; // Minimum 10 pips
     
     if(AB_Distance < minDistance) {
         Print("==================== CalculateFrequencyError: AB distance too small (", 
@@ -1385,7 +1391,7 @@ int FindOptimalFrequencyForABCD(datetime tX, double pX, datetime tA, double pA,
     double AB_Distance = MathAbs(pB - pA);
     if(AB_Distance <= 0) return 0;
     
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     
     // ========================================
     //   1:         (Wave Analysis)
@@ -2211,11 +2217,12 @@ bool AutoSelectBestFrequency(string patternName)
     }
     
     //              
+    double pipSize = GetCachedPipSize();
     Print("========================================");
     Print("==================== FREQUENCY SEARCH RESULTS");
     Print("Pattern: ", patternName);
     Print("AB Distance: ", DoubleToString(MathAbs(pB - pA), Digits), " (", 
-          DoubleToString(MathAbs(pB - pA) / ((Digits == 3 || Digits == 5) ? Point * 10 : Point), 1), " pips)");
+          DoubleToString(MathAbs(pB - pA) / pipSize, 1), " pips)");
     Print("========================================");
     Print("==================== BEST MATCH:");
     Print("   Frequency: ", DoubleToString(results[0].frequency, 3), "% (Index: ", results[0].frequencyIndex, ")");
@@ -2396,7 +2403,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     double frequency = GetCurrentTH3Frequency();
     double baseUnit = AB_Distance * (frequency / 100.0);
     
-    double pipSize = (Digits == 3 || Digits == 5) ? Point * 10 : Point;
+    double pipSize = GetCachedPipSize();
     
     // DYNAMIC OFFSET: Calculate based on candle size for better positioning
     // Offset                          
@@ -2467,7 +2474,8 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             // Offset point slightly outside candle for visibility
             //                           
             double offset = (high - low) * 0.15; // 15% of candle range
-            if(offset < Point * 10) offset = Point * 10; // Minimum offset
+            double minOffset = pipSize * 10;  // Minimum 10 pips
+            if(offset < minOffset) offset = minOffset; // Minimum offset
             
             if(isAtTop) {
                 // Point at top - place above high
@@ -3171,7 +3179,7 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
                 double close = iClose(NULL, 0, barIndex);
                 
                 // Calculate distances in pips
-                double pipSize = (Digits == 5 || Digits == 3) ? Point * 10 : Point;
+                double pipSize = GetCachedPipSize();
                 double distToHigh = MathAbs(newPrice - high) / pipSize;
                 double distToLow = MathAbs(newPrice - low) / pipSize;
                 double distToOpen = MathAbs(newPrice - open) / pipSize;

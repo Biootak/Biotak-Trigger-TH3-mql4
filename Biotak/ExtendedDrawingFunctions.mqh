@@ -3073,7 +3073,7 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
     }
     
     // Calculate pip size for tooltip
-    double pipSize = (Digits <= 3) ? 0.01 : 0.0001;
+    double pipSize = GetCachedPipSize();
     double rangePips = (highPrice - lowPrice) / pipSize;
     double stepPips = stepSize / pipSize;
     
@@ -4431,15 +4431,9 @@ void DrawFactorLevels(const string objectPrefix, const double highPrice,
     
     // Get Point value safely for tooltip
     // Calculate pip size based on Digits (works for ALL symbols)
-    // Digits <= 3 (JPY pairs, some metals): 1 pip = 0.01
-    // Digits >= 4 (most forex pairs): 1 pip = 0.0001
-    // This handles: EURUSD(5), USDJPY(3), XAUUSD(2), indices, etc.
-    double pipSize;
-    if(Digits <= 3) {
-        pipSize = 0.01;  // JPY pairs, Gold (2 digits), etc.
-    } else {
-        pipSize = 0.0001;  // Standard forex pairs (4 or 5 digits)
-    }
+    // Calculate pip size correctly for all asset types
+    // Uses centralized GetCachedPipSize() for proper Gold/JPY/Forex handling
+    double pipSize = GetCachedPipSize();
     
     // Calculate range in pips (using correct pip size)
     double rangePips = (highPrice - lowPrice) / pipSize;

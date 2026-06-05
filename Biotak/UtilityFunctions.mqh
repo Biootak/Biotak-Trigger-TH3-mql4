@@ -376,8 +376,8 @@ void UpdateFactorLabel(double factorValue, bool clearFirst = true) {
         stepSize = CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
         
         if(stepSize > 0) {
-            // Calculate pip size based on Digits
-            double pipSize = (Digits <= 3) ? 0.01 : 0.0001;
+            // Use centralized pip size calculation for accuracy
+            double pipSize = GetCachedPipSize();
             double stepPips = stepSize / pipSize;
             stepText = " | Step: " + DoubleToString(stepPips, 1) + " pips";
         }
