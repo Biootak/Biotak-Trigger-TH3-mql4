@@ -250,55 +250,50 @@ void RenderLines(const SLineRenderInfo &lines[])
     int count = ArraySize(lines);
     int visibleCount = 0;
     
-    // CRITICAL FIX: Check if indicator is hidden
-    //                                        
-    // PERFORMANCE: Use cached ChartID string
+    // PERFORMANCE: Use cached ChartID string and move outside loop
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
     bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
     
-    // PERF FIX: Batch property updates to reduce API calls
     for(int i = 0; i < count; i++) {
-        // Create or update line object
-        bool objectExists = (ObjectFind(0, lines[i].name) >= 0);
+        // PERFORMANCE: Check cache to skip redundant API calls
+        SObjectCacheEntry cache;
+        bool inCache = CacheGetObject(lines[i].name, cache);
+        bool objectExists = inCache ? cache.exists : (ObjectFind(0, lines[i].name) >= 0);
         
         if(!objectExists) {
             if(!ObjectCreate(0, lines[i].name, OBJ_HLINE, 0, 0, lines[i].price)) {
-                int error = GetLastError();
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("  RenderLines: Failed to create line: ", lines[i].name,
-                      ", Error: ", error);
+                Print("  RenderLines: Failed to create line: ", lines[i].name);
                 #endif
-                
-                // CRITICAL: Cleanup partial object before continue
-                if(ObjectFind(0, lines[i].name) >= 0) {
-                    ObjectDelete(0, lines[i].name);
-                }
                 continue;
             }
         }
         else {
-            ObjectSetDouble(0, lines[i].name, OBJPROP_PRICE, lines[i].price);
+            // Update price ONLY if changed
+            if(!inCache || cache.lastPrice != lines[i].price) {
+                ObjectSetDouble(0, lines[i].name, OBJPROP_PRICE, lines[i].price);
+            }
         }
         
-        // PERF FIX: Set visual properties in batch (reduces overhead)
-        ObjectSetInteger(0, lines[i].name, OBJPROP_COLOR, lines[i].clr);
-        ObjectSetInteger(0, lines[i].name, OBJPROP_STYLE, lines[i].style);
-        ObjectSetInteger(0, lines[i].name, OBJPROP_WIDTH, lines[i].width);
-        ObjectSetInteger(0, lines[i].name, OBJPROP_SELECTABLE, lines[i].selectable);
-        ObjectSetInteger(0, lines[i].name, OBJPROP_BACK, false);
-        ObjectSetString(0, lines[i].name, OBJPROP_TOOLTIP, lines[i].tooltip);
+        // Update visual properties ONLY if changed
+        bool visualChanged = !inCache || (cache.lastColor != lines[i].clr || cache.lastStyle != (int)lines[i].style || cache.lastWidth != lines[i].width);
+        if(visualChanged) {
+            ObjectSetInteger(0, lines[i].name, OBJPROP_COLOR, lines[i].clr);
+            ObjectSetInteger(0, lines[i].name, OBJPROP_STYLE, lines[i].style);
+            ObjectSetInteger(0, lines[i].name, OBJPROP_WIDTH, lines[i].width);
+            ObjectSetInteger(0, lines[i].name, OBJPROP_SELECTABLE, lines[i].selectable);
+            ObjectSetInteger(0, lines[i].name, OBJPROP_BACK, false);
+            ObjectSetString(0, lines[i].name, OBJPROP_TOOLTIP, lines[i].tooltip);
+        }
         
-        // Control visibility via TIMEFRAMES property (hide/show without deleting)
-        //                     TIMEFRAMES (    /              )
-        // CRITICAL FIX: Respect both Hide state AND Lines visibility toggle
-        if(isHidden || !lines[i].isVisible) {
-            // Hidden by F key OR hidden by L key
-            ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-        }
-        else {
-            ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-            visibleCount++;
-        }
+        // Visibility toggle
+        long tf = (isHidden || !lines[i].isVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+        ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, tf);
+        
+        if(tf == OBJ_ALL_PERIODS) visibleCount++;
+        
+        // Update cache
+        CacheUpdateObject(lines[i].name, lines[i].price, lines[i].clr, lines[i].style, lines[i].width);
     }
     
     #ifdef ENABLE_DEBUG_LOGS

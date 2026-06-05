@@ -6,11 +6,15 @@
 
 struct SObjectCacheEntry {
     string name;           // Object name
-    double lastPrice;      // Last known price (for lines/zones)
+    double lastPrice;      // Last known price (for lines/zones - Price 1)
+    double lastPrice2;     // Last known price 2 (for zones)
+    datetime lastTime1;    // Last known time 1 (for zones)
+    datetime lastTime2;    // Last known time 2 (for zones)
     color lastColor;       // Last known color
     int lastStyle;         // Last known line style
     int lastWidth;         // Last known line width
     string lastText;       // Last known text (for labels)
+    bool lastFilled;       // Last known fill state (for zones)
     bool exists;           // True if object exists on chart
     datetime lastUpdate;   // Last update timestamp
 };
@@ -260,6 +264,49 @@ void CacheUpdateObject(const string name, const double price,
     g_objectCacheHash[idx].entry.lastColor = clr;
     g_objectCacheHash[idx].entry.lastStyle = style;
     g_objectCacheHash[idx].entry.lastWidth = width;
+    g_objectCacheHash[idx].entry.exists = true;
+    g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
+    g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();
+}
+
+void CacheUpdateZone(const string name, const double price1, const double price2,
+                      const datetime time1, const datetime time2,
+                      const color clr, const bool filled) {
+    int idx = CacheFindIndex(name);
+    if(idx < 0) {
+        if(!g_objectCacheHashInitialized) InitializeObjectCacheHash();
+        if(g_objectCacheSize >= MAX_CACHE_SIZE) EvictLRUEntry();
+        
+        int slot = HashObjectName(name);
+        for(int probe = 0; probe < CACHE_MAX_PROBE; probe++) {
+            int insertIdx = (slot + probe) % CACHE_HASH_BUCKETS;
+            if(!g_objectCacheHash[insertIdx].occupied || g_objectCacheHash[insertIdx].deleted) {
+                g_objectCacheHash[insertIdx].name = name;
+                g_objectCacheHash[insertIdx].entry.name = name;
+                g_objectCacheHash[insertIdx].entry.lastPrice = price1;
+                g_objectCacheHash[insertIdx].entry.lastPrice2 = price2;
+                g_objectCacheHash[insertIdx].entry.lastTime1 = time1;
+                g_objectCacheHash[insertIdx].entry.lastTime2 = time2;
+                g_objectCacheHash[insertIdx].entry.lastColor = clr;
+                g_objectCacheHash[insertIdx].entry.lastFilled = filled;
+                g_objectCacheHash[insertIdx].entry.exists = true;
+                g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
+                g_objectCacheHash[insertIdx].occupied = true;
+                g_objectCacheHash[insertIdx].deleted = false;
+                g_objectCacheHash[insertIdx].lastAccess = CacheGetFrameTime();
+                g_objectCacheSize++;
+                return;
+            }
+        }
+        return;
+    }
+    
+    g_objectCacheHash[idx].entry.lastPrice = price1;
+    g_objectCacheHash[idx].entry.lastPrice2 = price2;
+    g_objectCacheHash[idx].entry.lastTime1 = time1;
+    g_objectCacheHash[idx].entry.lastTime2 = time2;
+    g_objectCacheHash[idx].entry.lastColor = clr;
+    g_objectCacheHash[idx].entry.lastFilled = filled;
     g_objectCacheHash[idx].entry.exists = true;
     g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();

@@ -776,8 +776,15 @@ void RedrawAllObjects(bool force_redraw=false)
     int currentServerMinute = TimeMinute(CacheGetFrameTime());
     bool basePriceBoundary = (currentServerMinute == 0 || currentServerMinute == 30);
     bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary);
+    
+    // PERFORMANCE FIX: Hard millisecond gate for ALL redraws (except forced UI events)
+    // This prevents price vibrations from hammering the CPU
+    if(!force_redraw) {
+        uint minWait = g_redrawTHLevelsNeeded ? 200 : 500; // 5 FPS for levels, 2 FPS for housekeeping
+        if(nowMs - s_lastRedrawAttemptMs < minWait) return;
+    }
+
     if(!hasPendingWork) {
-        if(nowMs - s_lastRedrawAttemptMs < 35) return;
         s_lastRedrawAttemptMs = nowMs;
         return;
     }
