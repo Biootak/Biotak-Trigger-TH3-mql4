@@ -150,21 +150,6 @@ double CalculateLongStep(const double thValue) {
     return thValue * LS_MULTIPLIER;
 }
 
-double CalculateEStep(const double thValue) {
-    // Formula from EventHandlers.mqh: E = TH * E_MULTIPLIER
-    return thValue * E_MULTIPLIER;
-}
-
-double CalculateTPStep(const double eValue) {
-    // Formula from EventHandlers.mqh: TP = E * 3
-    return eValue * 3.0;
-}
-
-double CalculateControlValue(const double shortStep, const double longStep) {
-    // Logic deduced from typical Biotak patterns
-    return shortStep;
-}
-
 // Reconstructed CalculateSharedPatternStep
 double CalculateSharedPatternStep(const double currentStructure, const double currentPattern,
                                  const double higherPatternStructure, const double higherPatternPattern) {
@@ -305,16 +290,5 @@ void CalculateFractalValues(const double thValue, double &structureValue, double
     // Trigger = 0.25 * Structure (half of Pattern)
     triggerValue = structureValue * 0.25;
 }
-
-//+------------------------------------------------------------------+
-//| Calculate M Distance based on Control Value                      |
-//| محاسبه فاصله M بر اساس مقدار کنترل                               |
-//+------------------------------------------------------------------+
-double CalculateMDistance(const double controlValue) {
-    // M Distance is Control Value divided by ATR_FACTOR_M (3.0)
-    // If Control Value is SS (1.5 * Structure), then M Distance = 0.5 * Structure (Pattern)
-    return controlValue / ATR_FACTOR_M;
-}
-
 
 #endif // TH_CALCULATIONS_MQH

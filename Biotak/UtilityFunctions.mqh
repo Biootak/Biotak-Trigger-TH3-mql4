@@ -116,12 +116,12 @@ double GetMidpointPrice(ENUM_TH_START_POINT_TYPE startPointType) {
 
 //+------------------------------------------------------------------+
 //| Get current step calculation mode (respects keyboard override)  |
-//| Supports modes 0-5: TH, SS/LS, M, TP, Combo, Factor             |
+//| Supports modes 0-3: TH, SS/LS, Combo, Factor                    |
 //+------------------------------------------------------------------+
 ENUM_STEP_CALCULATION_MODE GetCurrentStepMode() {
     // If user has overridden via keyboard, use that
-    // Range 0-5 includes FACTOR_STEP (mode 5)
-    if(g_stepModeOverride >= 0 && g_stepModeOverride <= 5) {
+    // Range 0-3 includes FACTOR_STEP (mode 3)
+    if(g_stepModeOverride >= 0 && g_stepModeOverride <= 3) {
         return (ENUM_STEP_CALCULATION_MODE)g_stepModeOverride;
     }
     // Otherwise use input parameter
@@ -135,8 +135,6 @@ string GetStepModeName(ENUM_STEP_CALCULATION_MODE mode) {
     switch(mode) {
         case TH_STEP:           return "S";      // Structure step (was TH - renamed to avoid confusion with TH/ATR basis)
         case SS_LS_STEP:        return "SS/LS";
-        case M_STEP:            return "M";
-        case TP_STEP:           return "TP";
         case COMBO_STEP:        return "Combo";
         case FACTOR_STEP:       return "F";      // Factor step mode
         default:                return "Unknown";
@@ -283,20 +281,10 @@ double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
         }
 
         case SS_LS_STEP:
-        case M_STEP:
         {
             double structureValue, patternValue, triggerValue;
             CalculateFractalValues(thValue, structureValue, patternValue, triggerValue);
-            double shortStep = structureValue * 1.5; // SS_MULTIPLIER = 1.5
-            if(mode == M_STEP && inpMStepBasisType == MSTEP_BASIS_M_EQUAL)
-                return CalculateMDistance(shortStep);
-            return shortStep;
-        }
-
-        case TP_STEP:
-        {
-            double eValue = CalculateEStep(thValue);
-            return CalculateTPStep(eValue);
+            return structureValue * 1.5; // SS_MULTIPLIER = 1.5
         }
 
         case COMBO_STEP:

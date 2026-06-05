@@ -99,10 +99,8 @@ enum ENUM_LABEL_ARRANGEMENT {
 enum ENUM_STEP_CALCULATION_MODE {
     TH_STEP = 0,        // Traditional TH step mode
     SS_LS_STEP = 1,     // Short Step / Long Step alternating mode
-    M_STEP = 2,         // M levels mode (Control-based)
-    TP_STEP = 3,        // TP levels mode (TH Ã— 0.75 Ã— 3 = TH Ã— 2.25)
-    COMBO_STEP = 4,     // Combo Step mode (customizable: Component1 + Component2)
-    FACTOR_STEP = 5     // Factor Step mode (divides High-Low range by Factor Ã— 2)
+    COMBO_STEP = 2,     // Combo Step mode (customizable: Component1 + Component2)
+    FACTOR_STEP = 3     // Factor Step mode (divides High-Low range by Factor × 2)
 };
 
 // Factor calculation mode (Auto vs Manual)
@@ -208,12 +206,6 @@ enum ENUM_SSLS_BASIS_TYPE {
 enum ENUM_CALCULATION_BASIS {
     CALC_BASIS_TH = 0,          // TH-Based (Theoretical) - Ù¾ÛŒØ´â€ŒÙØ±Ø¶
     CALC_BASIS_ATR = 1          // ATR-Based (Actual) - ÙˆØ§Ù‚Ø¹ÛŒ
-};
-
-// M step basis type
-enum ENUM_MSTEP_BASIS_TYPE {
-    MSTEP_BASIS_C_BASED = 0,    // Control-based (C ladder with every 3rd as M)
-    MSTEP_BASIS_M_EQUAL = 1     // Equal M spacing
 };
 
 // Smart Combo Component Selection (Unified)

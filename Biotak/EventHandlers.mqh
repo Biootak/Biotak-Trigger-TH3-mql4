@@ -168,11 +168,11 @@ int OnInitHandler() {
         GlobalVariableTemp(lockPeriodName);
     }
 
-    // Restore step mode with range validation (0..5)
+    // Restore step mode with range validation (0..3)
     string stepModeGvarName = "Biotak_StepMode_" + chartIdStr;
     if(GlobalVariableCheck(stepModeGvarName)) {
         int tempMode = (int)GlobalVariableGet(stepModeGvarName);
-        if(tempMode >= 0 && tempMode <= 5) {
+        if(tempMode >= 0 && tempMode <= 3) {
             g_stepModeOverride = tempMode;
         } else {
             _LOG_GATE_W Print("[W][GEN] OnInit: Corrupted StepMode (", tempMode, "), resetting.");
@@ -524,10 +524,8 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
         GetAllLevelSuffixes(LEVEL_SUFFIXES, levelCount);
 
         // Legacy suffixes for backward compatibility
-        ArrayResize(LEGACY_SUFFIXES, 18);
+        ArrayResize(LEGACY_SUFFIXES, 16);
         int k = 0;
-        LEGACY_SUFFIXES[k++] = "MLabel_";
-        LEGACY_SUFFIXES[k++] = "MEqLabel_";
         LEGACY_SUFFIXES[k++] = "SharedPattern_";
         LEGACY_SUFFIXES[k++] = "TH_Level_";
         LEGACY_SUFFIXES[k++] = "S_";
@@ -1012,9 +1010,10 @@ void RedrawAllObjects(bool force_redraw=false)
                           IntegerToString(inpLSFirst ? 1 : 0) + "|" +
 #ifndef BUILD_LITE
                           IntegerToString(inpEnableHarmonicPattern ? 1 : 0) + "|" +
-                          DoubleToString(inpHarmonicRatio, 3) + "|" +
+                          DoubleToString(inpHarmonicRatio, 3) + "|";
+#else
+                          "|";
 #endif
-                          IntegerToString((int)inpMStepBasisType);
         bool levelTopologyChanged = (levelSig != s_lastLevelSig);
         bool shouldClearLevels = g_forceClearOnNextDraw || levelTopologyChanged;
 
@@ -1465,7 +1464,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
             ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
-            ENUM_STEP_CALCULATION_MODE newMode = (ENUM_STEP_CALCULATION_MODE)(((int)currentMode + 1) % 6);
+            ENUM_STEP_CALCULATION_MODE newMode = (ENUM_STEP_CALCULATION_MODE)(((int)currentMode + 1) % 4);
             g_stepModeOverride = (int)newMode;
             string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
             GlobalVariableSet(stepModeGvarName, g_stepModeOverride);

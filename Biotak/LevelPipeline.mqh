@@ -159,8 +159,7 @@ enum ENUM_LEVEL_STEP_MODE {
 //+------------------------------------------------------------------+
 enum ENUM_CLASSIFY_MODE {
     CLASSIFY_STANDARD = 0,        // Standard structure/trigger classification
-    CLASSIFY_ALTERNATING = 1,     // SSLS: alternating SS/LS fallback colors
-    CLASSIFY_MMODE = 2            // M mode: C/M level distinction
+    CLASSIFY_ALTERNATING = 1      // SSLS: alternating SS/LS fallback colors
 };
 
 //+------------------------------------------------------------------+
@@ -430,39 +429,6 @@ int ClassifyLevelsAlternating(
             classified[i].levelColor = config.fallbackColor2;
             classified[i].levelStyle = config.fallbackStyle2;
             classified[i].levelWidth = config.fallbackWidth2;
-        }
-    }
-    
-    return result;
-}
-
-//+------------------------------------------------------------------+
-//| STAGE 2 VARIANT: Classify for M mode (C vs M distinction)       |
-//+------------------------------------------------------------------+
-int ClassifyLevelsMMode(
-    const SCalculatedLevel &rawLevels[],
-    const int rawCount,
-    const SModeConfig &config,
-    const bool triggerEnabled,
-    const int baseMultiplier,
-    SLevelClassified &classified[])
-{
-    int result = ClassifyLevels(rawLevels, rawCount, config, triggerEnabled, baseMultiplier, classified);
-    
-    for(int i = 0; i < result; i++) {
-        if(classified[i].isMidpoint) continue;
-        if(classified[i].isStructure || classified[i].isTrigger) continue;
-        
-        // M mode: every 3rd step is M level, others are C levels
-        bool isM = (classified[i].logicalStep % 3 == 0);
-        if(isM) {
-            classified[i].levelColor = inpMLevelColor;
-            classified[i].levelStyle = inpMLevelStyle;
-            classified[i].levelWidth = inpMLevelWidth;
-        } else {
-            classified[i].levelColor = inpCLevelColor;
-            classified[i].levelStyle = inpCLevelStyle;
-            classified[i].levelWidth = inpCLevelWidth;
         }
     }
     
@@ -864,15 +830,15 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
     cfg.useStepFilter = true;
     
     // Defaults for fallback colors (overridden per mode)
-    cfg.fallbackColor = inpCLevelColor;
-    cfg.fallbackStyle = inpCLevelStyle;
-    cfg.fallbackWidth = inpCLevelWidth;
-    cfg.fallbackColor2 = inpCLevelColor;
-    cfg.fallbackStyle2 = inpCLevelStyle;
-    cfg.fallbackWidth2 = inpCLevelWidth;
-    cfg.midpointColor = inpCLevelColor;
-    cfg.midpointStyle = inpCLevelStyle;
-    cfg.midpointWidth = inpCLevelWidth;
+    cfg.fallbackColor = clrDodgerBlue;
+    cfg.fallbackStyle = STYLE_DOT;
+    cfg.fallbackWidth = 1;
+    cfg.fallbackColor2 = clrDodgerBlue;
+    cfg.fallbackStyle2 = STYLE_DOT;
+    cfg.fallbackWidth2 = 1;
+    cfg.midpointColor = clrDodgerBlue;
+    cfg.midpointStyle = STYLE_DOT;
+    cfg.midpointWidth = 1;
     
     // Price boundaries
     bool isCustomPrice = (g_thStartPointType == TH_START_POINT_CUSTOM_PRICE);
@@ -940,10 +906,6 @@ SPipelineResult ExecutePipeline(
                                                         triggerEnabled, baseMultiplier, lsFirst,
                                                         classified);
             break;
-        case CLASSIFY_MMODE:
-            classifiedCount = ClassifyLevelsMMode(rawLevels, rawCount, config,
-                                                   triggerEnabled, baseMultiplier, classified);
-            break;
         default: // CLASSIFY_STANDARD
             classifiedCount = ClassifyLevels(rawLevels, rawCount, config,
                                               triggerEnabled, baseMultiplier, classified);
@@ -984,7 +946,7 @@ struct SModeSuffixEntry {
 // GetAll registered mode suffixes — used by ClearAllLevels and DeleteAllIndicatorObjects
 void GetAllModeSuffixes(SModeSuffixEntry &entries[], int &count)
 {
-    static string modeNames[] = {"SSLS", "M", "MEq", "TP", "Combo", "Factor", "Factor_Harmonic", "TH_Level"};
+    static string modeNames[] = {"SSLS", "Combo", "Factor", "Factor_Harmonic", "TH_Level"};
     count = ArraySize(modeNames);
     ArrayResize(entries, count);
     

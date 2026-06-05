@@ -44,7 +44,7 @@ input group "03) CALCULATION - CORE"
 input string S3 = "[03] CALCULATION / CORE";
 input int inpMaxLevels = 144;                                    // Max Levels
 input ENUM_CALCULATION_BASIS inpCalculationBasis = CALC_BASIS_TH; // MT4-only: kept for compat
-input ENUM_STEP_CALCULATION_MODE inpStepCalculationMode = M_STEP;
+input ENUM_STEP_CALCULATION_MODE inpStepCalculationMode = TH_STEP;
 input ENUM_TH_START_POINT_TYPE inpTHStartPointType = TH_START_POINT_CUSTOM_PRICE;
 input ENUM_APPLIED_PRICE inpTHPriceType = PRICE_CLOSE;
 input ENUM_LINE_STYLE inpTHLineStyle = STYLE_DOT;
@@ -64,16 +64,6 @@ input int inpCustomPriceLevelWidth = 1;            // Custom Line Width
 input bool inpEnableMagnet = true;                 // Enable Magnet
 input int inpMagnetSensitivityPips = 10;           // Magnet Sensitivity (pips)
 
-input group "05) STYLE - M STEP"
-input string S5 = "[05] STYLE / M STEP";
-input ENUM_MSTEP_BASIS_TYPE inpMStepBasisType = MSTEP_BASIS_C_BASED;
-input color inpCLevelColor = clrDodgerBlue;
-input color inpMLevelColor = clrGold;
-input ENUM_LINE_STYLE inpCLevelStyle = STYLE_DOT;
-input ENUM_LINE_STYLE inpMLevelStyle = STYLE_DOT;
-input int inpCLevelWidth = 1;
-input int inpMLevelWidth = 1;
-
 input group "06) STYLE - SS/LS STEP"
 input string S6 = "[06] STYLE / SS-LS STEP";
 input bool inpLSFirst = true;
@@ -83,12 +73,6 @@ input ENUM_LINE_STYLE inpSSLevelStyle = STYLE_DOT;
 input ENUM_LINE_STYLE inpLSLevelStyle = STYLE_DOT;
 input int inpSSLevelWidth = 1;
 input int inpLSLevelWidth = 1;
-
-input group "07) STYLE - TP STEP"
-input string S7 = "[07] STYLE / TP STEP";
-input color inpTPLevelColor = clrCrimson;
-input ENUM_LINE_STYLE inpTPLevelStyle = STYLE_DOT;
-input int inpTPLevelWidth = 1;
 
 input group "08) STYLE - COMBO STEP"
 input string S8 = "[08] STYLE / COMBO STEP";

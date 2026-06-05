@@ -275,18 +275,6 @@ int ValidateInputs()
     // STEP MODE VALIDATIONS
     // ═══════════════════════════════════════════════════════════════
     
-    // M Step Mode
-    if(inpCLevelWidth <= 0 || inpCLevelWidth > 10) {
-        Print("❌ ERROR: C Level Width (", inpCLevelWidth, ") out of range");
-        Print("   Valid range: 1 - 10");
-        return INIT_PARAMETERS_INCORRECT;
-    }
-    if(inpMLevelWidth <= 0 || inpMLevelWidth > 10) {
-        Print("❌ ERROR: M Level Width (", inpMLevelWidth, ") out of range");
-        Print("   Valid range: 1 - 10");
-        return INIT_PARAMETERS_INCORRECT;
-    }
-    
     // SS/LS Step Mode
     if(inpSSLevelWidth <= 0 || inpSSLevelWidth > 10) {
         Print("❌ ERROR: SS Level Width (", inpSSLevelWidth, ") out of range");
@@ -302,13 +290,6 @@ int ValidateInputs()
     // Combo Step Mode
     if(inpComboLevelWidth <= 0 || inpComboLevelWidth > 10) {
         Print("❌ ERROR: Combo Level Width (", inpComboLevelWidth, ") out of range");
-        Print("   Valid range: 1 - 10");
-        return INIT_PARAMETERS_INCORRECT;
-    }
-    
-    // TP Step Mode
-    if(inpTPLevelWidth <= 0 || inpTPLevelWidth > 10) {
-        Print("❌ ERROR: TP Level Width (", inpTPLevelWidth, ") out of range");
         Print("   Valid range: 1 - 10");
         return INIT_PARAMETERS_INCORRECT;
     }

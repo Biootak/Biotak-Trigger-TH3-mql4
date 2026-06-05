@@ -44,33 +44,6 @@ SModeConfig BuildSSLSConfig(const string objectPrefix)
     return cfg;
 }
 
-SModeConfig BuildMConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "M");
-    cfg.midpointColor = inpMLevelColor;
-    cfg.midpointStyle = inpMLevelStyle;
-    cfg.midpointWidth = inpMLevelWidth;
-    return cfg;
-}
-
-SModeConfig BuildMEqualConfig(const string objectPrefix)
-{
-    SModeConfig cfg = BuildModeConfig(objectPrefix, "MEq");
-    cfg.useStepFilter = false;
-    cfg.midpointColor = inpMLevelColor;
-    cfg.midpointStyle = inpMLevelStyle;
-    cfg.midpointWidth = inpMLevelWidth;
-    cfg.fallbackColor = inpStructureL1Color;
-    cfg.fallbackStyle = inpStructureL1Style;
-    cfg.fallbackWidth = inpStructureL1Width;
-    return cfg;
-}
-
-SModeConfig BuildTPConfig(const string objectPrefix)
-{
-    return BuildModeConfig(objectPrefix, "TP");
-}
-
 SModeConfig BuildComboConfig(const string objectPrefix)
 {
     return BuildModeConfig(objectPrefix, "Combo");
@@ -108,9 +81,9 @@ SModeConfig BuildFactorHarmonicConfig(const string objectPrefix)
 SModeConfig BuildTHConfig(const string objectPrefix)
 {
     SModeConfig cfg = BuildModeConfig(objectPrefix, "TH_Level");
-    cfg.fallbackColor = inpCLevelColor;
-    cfg.fallbackStyle = inpCLevelStyle;
-    cfg.fallbackWidth = inpCLevelWidth;
+    cfg.fallbackColor = clrDodgerBlue;
+    cfg.fallbackStyle = STYLE_DOT;
+    cfg.fallbackWidth = 1;
     cfg.midpointColor = inpTriggerColor;
     cfg.midpointStyle = inpTriggerStyle;
     cfg.midpointWidth = inpTriggerWidth;
@@ -144,40 +117,6 @@ SModeDefinition GetModeDefinition(
             def.stepMode = LEVEL_STEP_CUMULATIVE;
             def.classifyMode = CLASSIFY_ALTERNATING;
             def.lsFirst = inpLSFirst;
-            def.success = true;
-            break;
-        }
-            
-        case M_STEP:
-        {
-            double controlValue = CalculateControlValue(data.shortStep, data.longStep);
-            if(inpMStepBasisType == MSTEP_BASIS_C_BASED) {
-                def.config = BuildMConfig(objectPrefix);
-                def.stepSizes[0] = controlValue;
-                def.stepSizeCount = 1;
-                def.stepMode = LEVEL_STEP_UNIFORM;
-                def.classifyMode = CLASSIFY_MMODE;
-            } else {
-                def.config = BuildMEqualConfig(objectPrefix);
-                double mDistance = CalculateMDistance(controlValue);
-                def.stepSizes[0] = mDistance;
-                def.stepSizeCount = 1;
-                def.stepMode = LEVEL_STEP_UNIFORM;
-                def.classifyMode = CLASSIFY_STANDARD;
-            }
-            def.success = true;
-            break;
-        }
-        
-        case TP_STEP:
-        {
-            def.config = BuildTPConfig(objectPrefix);
-            double eValue = CalculateEStep(data.thValue);
-            double tpValue = CalculateTPStep(eValue);
-            def.stepSizes[0] = tpValue;
-            def.stepSizeCount = 1;
-            def.stepMode = LEVEL_STEP_UNIFORM;
-            def.classifyMode = CLASSIFY_STANDARD;
             def.success = true;
             break;
         }
