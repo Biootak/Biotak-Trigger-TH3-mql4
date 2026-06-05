@@ -211,7 +211,12 @@ int CalculateLevels(
     int count = 0;
     
     // Midpoint (always first)
-    levels[count].price = centerPrice;
+    // GOLD FIX: Apply 0.5 step offset to centerPrice
+    // This shifts all zones so that their BOUNDARIES (lines) fall exactly on the original levels.
+    double offset = (stepSizes[0] * 0.5);
+    double shiftedCenter = centerPrice + offset;
+    
+    levels[count].price = shiftedCenter;
     levels[count].logicalStep = 0;
     levels[count].isMidpoint = true;
     levels[count].direction = 0;
@@ -228,12 +233,12 @@ int CalculateLevels(
         iterations++;
         double price;
         if(stepMode == LEVEL_STEP_UNIFORM) {
-            price = centerPrice + (stepSizes[0] * logicalStep);
+            price = shiftedCenter + (stepSizes[0] * logicalStep);
         } else {
             // CUMULATIVE: alternate through stepSizes array
             double dist = stepSizes[(logicalStep - 1) % stepSizeCount];
             cumAbove += dist;
-            price = centerPrice + cumAbove;
+            price = shiftedCenter + cumAbove;
         }
         
         // Price boundary check
@@ -260,11 +265,11 @@ int CalculateLevels(
         iterations++;
         double price;
         if(stepMode == LEVEL_STEP_UNIFORM) {
-            price = centerPrice - (stepSizes[0] * logicalStep);
+            price = shiftedCenter - (stepSizes[0] * logicalStep);
         } else {
             double dist = stepSizes[(logicalStep - 1) % stepSizeCount];
             cumBelow += dist;
-            price = centerPrice - cumBelow;
+            price = shiftedCenter - cumBelow;
         }
         
         // Price boundary check
@@ -497,42 +502,58 @@ void BuildZonesAndLines(
     }
     
     // Pre-allocate output arrays (max possible sizes)
-    int maxLines = (hasMid ? 1 : 0) + aboveCount + belowCount;
-    int maxZones = aboveCount + belowCount;
+    int maxZones = (hasMid ? 1 : 0) + aboveCount + belowCount;
+    int maxLines = aboveCount + belowCount;
     if(config.zonesEnabled) ArrayResize(zones, maxZones, 64);
     ArrayResize(lines, maxLines, 64);
     
     int zIdx = 0, lIdx = 0;
     
-    // --- MIDPOINT LINE (step 0) ---
-    if(hasMid) {
-        lines[lIdx].name = config.objectPrefix + config.modeName + "_Midpoint_0";
-        lines[lIdx].price = midLevel.price;
-        lines[lIdx].logicalStep = 0;
-        lines[lIdx].direction = 0;
-        lines[lIdx].lineColor = midLevel.levelColor;
-        lines[lIdx].lineStyle = midLevel.levelStyle;
-        lines[lIdx].lineWidth = midLevel.levelWidth;
-        lines[lIdx].clr = midLevel.levelColor;
-        lines[lIdx].labelText = midLevel.labelText;
-        lines[lIdx].tooltip = "Midpoint (" + DoubleToString(midLevel.price, GetCachedDigits()) + ")";
-        lines[lIdx].isMidpoint = true;
-        lines[lIdx].setBack = config.useObjPropBack;
-        lines[lIdx].zOrder = config.zOrder;
-        lines[lIdx].inViewport = (midLevel.price >= vpBottom && midLevel.price <= vpTop);
-        lIdx++;
+    // --- MIDPOINT ZONE (step 0) ---
+    if(hasMid && config.zonesEnabled) {
+        double neighborDist = 0;
+        if(aboveCount > 0) {
+            neighborDist = s_aboveLevels[0].price - midLevel.price;
+        } else if(belowCount > 0) {
+            neighborDist = midLevel.price - s_belowLevels[0].price;
+        }
+        // Edge case fix: no neighbors - use 100 points as fallback height
+        if(neighborDist <= 0) {
+            neighborDist = GetCachedPoint() * 100;
+        }
+        double zoneHeight = neighborDist * config.zoneHeightPercent * 0.5;
+        
+        zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Center_0";
+        zones[zIdx].midPrice = midLevel.price;
+        zones[zIdx].renderTop = NormalizeDouble(midLevel.price + zoneHeight, GetCachedDigits());
+        zones[zIdx].renderBottom = NormalizeDouble(midLevel.price - zoneHeight, GetCachedDigits());
+        zones[zIdx].logicalStep = 0;
+        zones[zIdx].direction = 0;
+        zones[zIdx].zoneIndex = 0;
+        zones[zIdx].isStructure = true;
+        zones[zIdx].isTrigger = false;
+        zones[zIdx].zoneColor = config.zoneDefaultColor;
+        zones[zIdx].transparency = config.zoneTransparency;
+        zones[zIdx].style = config.zoneStyle;
+        zones[zIdx].filled = (config.zoneStyle == ZONE_STYLE_BOX_FILLED);
+        zones[zIdx].inViewport = (zones[zIdx].renderTop >= vpBottom && 
+                       zones[zIdx].renderBottom <= vpTop);
+        zIdx++;
     }
     
-    // --- ABOVE DIRECTION: Lines on levels + Zones between levels ---
+    // --- ABOVE DIRECTION: zones on levels + lines between them ---
     double prevPrice = hasMid ? midLevel.price : 0;
-    for(int i = 0; i < aboveCount; i++) {
+    for(int i = 0; i < aboveCount && prevPrice > 0; i++) {
         double currentPrice = s_aboveLevels[i].price;
         if(currentPrice <= prevPrice) { prevPrice = currentPrice; continue; }
         
-        // Line on the current level
+        double stepSize = currentPrice - prevPrice;
+        
+        // Line at midpoint between prev and current
+        double lineMidPrice = (prevPrice + currentPrice) / 2.0;
         lines[lIdx].name = config.objectPrefix + config.modeName + "_Above_" + 
                            IntegerToString(s_aboveLevels[i].logicalStep);
-        lines[lIdx].price = currentPrice;
+        lines[lIdx].price = lineMidPrice;
         lines[lIdx].logicalStep = s_aboveLevels[i].logicalStep;
         lines[lIdx].direction = 1;
         lines[lIdx].lineColor = s_aboveLevels[i].levelColor;
@@ -540,25 +561,23 @@ void BuildZonesAndLines(
         lines[lIdx].lineWidth = s_aboveLevels[i].levelWidth;
         lines[lIdx].clr = s_aboveLevels[i].levelColor;
         lines[lIdx].labelText = s_aboveLevels[i].labelText;
-        lines[lIdx].tooltip = "Level +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
-            " (" + DoubleToString(currentPrice, GetCachedDigits()) + ")";
+        lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
+            " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
-        lines[lIdx].inViewport = (currentPrice >= vpBottom && currentPrice <= vpTop);
+        lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
         lIdx++;
         
-        // Zone between prev and current
-        if(config.zonesEnabled && prevPrice > 0) {
-            double stepSize = currentPrice - prevPrice;
-            double midPoint = (prevPrice + currentPrice) / 2.0;
+        // Zone centered on this level
+        if(config.zonesEnabled) {
             double zoneHeight = stepSize * config.zoneHeightPercent * 0.5;
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Above_" + 
                                IntegerToString(s_aboveLevels[i].logicalStep);
-            zones[zIdx].midPrice = midPoint;
-            zones[zIdx].renderTop = NormalizeDouble(midPoint + zoneHeight, GetCachedDigits());
-            zones[zIdx].renderBottom = NormalizeDouble(midPoint - zoneHeight, GetCachedDigits());
+            zones[zIdx].midPrice = currentPrice;
+            zones[zIdx].renderTop = NormalizeDouble(currentPrice + zoneHeight, GetCachedDigits());
+            zones[zIdx].renderBottom = NormalizeDouble(currentPrice - zoneHeight, GetCachedDigits());
             zones[zIdx].logicalStep = s_aboveLevels[i].logicalStep;
             zones[zIdx].direction = 1;
             zones[zIdx].zoneIndex = i;
@@ -577,16 +596,19 @@ void BuildZonesAndLines(
         prevPrice = currentPrice;
     }
     
-    // --- BELOW DIRECTION: Lines on levels + Zones between levels ---
+    // --- BELOW DIRECTION: zones on levels + lines between them ---
     prevPrice = hasMid ? midLevel.price : 0;
-    for(int i = 0; i < belowCount; i++) {
+    for(int i = 0; i < belowCount && prevPrice > 0; i++) {
         double currentPrice = s_belowLevels[i].price;
         if(currentPrice >= prevPrice || currentPrice <= 0) { prevPrice = currentPrice; continue; }
         
-        // Line on the current level
+        double stepSize = prevPrice - currentPrice;
+        
+        // Line at midpoint between prev and current
+        double lineMidPrice = (prevPrice + currentPrice) / 2.0;
         lines[lIdx].name = config.objectPrefix + config.modeName + "_Below_" + 
                            IntegerToString(s_belowLevels[i].logicalStep);
-        lines[lIdx].price = currentPrice;
+        lines[lIdx].price = lineMidPrice;
         lines[lIdx].logicalStep = s_belowLevels[i].logicalStep;
         lines[lIdx].direction = -1;
         lines[lIdx].lineColor = s_belowLevels[i].levelColor;
@@ -594,25 +616,23 @@ void BuildZonesAndLines(
         lines[lIdx].lineWidth = s_belowLevels[i].levelWidth;
         lines[lIdx].clr = s_belowLevels[i].levelColor;
         lines[lIdx].labelText = s_belowLevels[i].labelText;
-        lines[lIdx].tooltip = "Level -" + IntegerToString(s_belowLevels[i].logicalStep) + 
-            " (" + DoubleToString(currentPrice, GetCachedDigits()) + ")";
+        lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
+            " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
-        lines[lIdx].inViewport = (currentPrice >= vpBottom && currentPrice <= vpTop);
+        lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
         lIdx++;
         
-        // Zone between prev and current
-        if(config.zonesEnabled && prevPrice > 0) {
-            double stepSize = prevPrice - currentPrice;
-            double midPoint = (prevPrice + currentPrice) / 2.0;
+        // Zone centered on this level
+        if(config.zonesEnabled) {
             double zoneHeight = stepSize * config.zoneHeightPercent * 0.5;
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Below_" + 
                                IntegerToString(s_belowLevels[i].logicalStep);
-            zones[zIdx].midPrice = midPoint;
-            zones[zIdx].renderTop = NormalizeDouble(midPoint + zoneHeight, GetCachedDigits());
-            zones[zIdx].renderBottom = NormalizeDouble(midPoint - zoneHeight, GetCachedDigits());
+            zones[zIdx].midPrice = currentPrice;
+            zones[zIdx].renderTop = NormalizeDouble(currentPrice + zoneHeight, GetCachedDigits());
+            zones[zIdx].renderBottom = NormalizeDouble(currentPrice - zoneHeight, GetCachedDigits());
             zones[zIdx].logicalStep = s_belowLevels[i].logicalStep;
             zones[zIdx].direction = -1;
             zones[zIdx].zoneIndex = i;
@@ -783,8 +803,12 @@ void CleanupSurplusPipeline(
     CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Above_", maxLogicalStep + 1, 6, "_Label");
     CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Below_", maxLogicalStep + 1, 6, "_Label");
     
-    // Midpoint cleanup (not needed as it's drawn every frame)
-    // We only clean up if we want to force hide it, but it's handled by RenderTriggerLines
+    // Legacy cleanup
+    string midpointName = config.objectPrefix + config.modeName + "_Midpoint_0";
+    if(ObjectFind(0, midpointName) >= 0) {
+        CacheRemoveObject(midpointName);
+        ObjectDelete(0, midpointName);
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -801,6 +825,13 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
     cfg.zonesEnabled = zoneConfig.enabled;
     cfg.zoneTransparency = zoneConfig.transparency;
     cfg.zoneHeightPercent = zoneConfig.heightPercent;
+    
+    // GOLD FIX: Factor mode steps are defined differently in user's mind (or original logic)
+    // If it looks double, we apply a 0.5 scaling factor specifically for Factor modes.
+    if(modeName == "Factor" || modeName == "Factor_Harmonic") {
+        cfg.zoneHeightPercent *= 0.5;
+    }
+    
     cfg.zoneDefaultColor = zoneConfig.defaultColor;
     cfg.zoneStyle = zoneConfig.style;
     
