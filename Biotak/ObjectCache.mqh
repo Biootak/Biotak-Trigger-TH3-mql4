@@ -10,6 +10,7 @@ struct SObjectCacheEntry {
     color lastColor;       // Last known color
     int lastStyle;         // Last known line style
     int lastWidth;         // Last known line width
+    string lastText;       // Last known text (for labels)
     bool exists;           // True if object exists on chart
     datetime lastUpdate;   // Last update timestamp
 };
@@ -236,6 +237,17 @@ bool CacheGetObject(const string name, SObjectCacheEntry &entry) {
     return true;
 }
 
+bool CacheGetLabel(const string name, string &text, color &clr) {
+    int idx = CacheFindIndex(name);
+    if(idx < 0) {
+        return false;
+    }
+    
+    text = g_objectCacheHash[idx].entry.lastText;
+    clr = g_objectCacheHash[idx].entry.lastColor;
+    return g_objectCacheHash[idx].entry.exists;
+}
+
 void CacheUpdateObject(const string name, const double price, 
                        const color clr, const int style, const int width) {
     int idx = CacheFindIndex(name);
@@ -248,6 +260,39 @@ void CacheUpdateObject(const string name, const double price,
     g_objectCacheHash[idx].entry.lastColor = clr;
     g_objectCacheHash[idx].entry.lastStyle = style;
     g_objectCacheHash[idx].entry.lastWidth = width;
+    g_objectCacheHash[idx].entry.exists = true;
+    g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
+    g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();
+}
+
+void CacheUpdateLabel(const string name, const string text, const color clr) {
+    int idx = CacheFindIndex(name);
+    if(idx < 0) {
+        if(!g_objectCacheHashInitialized) InitializeObjectCacheHash();
+        if(g_objectCacheSize >= MAX_CACHE_SIZE) EvictLRUEntry();
+        
+        int slot = HashObjectName(name);
+        for(int probe = 0; probe < CACHE_HASH_BUCKETS; probe++) {
+            int insertIdx = (slot + probe) % CACHE_HASH_BUCKETS;
+            if(!g_objectCacheHash[insertIdx].occupied || g_objectCacheHash[insertIdx].deleted) {
+                g_objectCacheHash[insertIdx].name = name;
+                g_objectCacheHash[insertIdx].entry.name = name;
+                g_objectCacheHash[insertIdx].entry.lastText = text;
+                g_objectCacheHash[insertIdx].entry.lastColor = clr;
+                g_objectCacheHash[insertIdx].entry.exists = true;
+                g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
+                g_objectCacheHash[insertIdx].occupied = true;
+                g_objectCacheHash[insertIdx].deleted = false;
+                g_objectCacheHash[insertIdx].lastAccess = CacheGetFrameTime();
+                g_objectCacheSize++;
+                return;
+            }
+        }
+        return;
+    }
+    
+    g_objectCacheHash[idx].entry.lastText = text;
+    g_objectCacheHash[idx].entry.lastColor = clr;
     g_objectCacheHash[idx].entry.exists = true;
     g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();

@@ -13,8 +13,8 @@
 #define MAX_SAFE_LEVELS 2000          // Maximum safe number of levels per side
 #define MAX_SAFE_OBJECTS 5000         // Warning threshold for total objects
 #define CRITICAL_OBJECT_LIMIT 50000   // Critical threshold (MT4 limit ~64K)
-#define CPU_WARNING_MS 100            // Warning if OnCalculate takes >100ms
-#define CPU_CRITICAL_MS 500           // Critical if OnCalculate takes >500ms
+#define CPU_WARNING_MS 50             // Warning if OnCalculate takes >50ms
+#define CPU_CRITICAL_MS 200           // Critical if OnCalculate takes >200ms
 
 // Array Safety Constants (GOLD FIX v3)
 #define MAX_PREFIX_COUNT 50           // Maximum number of object prefixes (with safety margin)

@@ -110,11 +110,6 @@ struct TimeframeTH {
 };
 TimeframeTH g_storedTHs[];
 
-// Base Price History (in-memory, not persisted)
-string g_todayBasePriceHistory[];
-int    g_todayHistoryDay  = -1;
-int    g_todayHistoryYear = -1;
-
 // Label Positioning
 struct LabelPosition {
     string name;

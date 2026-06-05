@@ -37,10 +37,11 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
     datetime futureTime = currentTime + PeriodSeconds(Period()) * 10000;
     int objectType = (lineObjectType == LINE_OBJECT_RAY_LINE) ? OBJ_TREND : OBJ_HLINE;
     
-    // Check if object already exists
-    bool objectExists = (ObjectFind(0, name) >= 0);
+    // Check if object already exists in cache
+    SObjectCacheEntry cachedEntry;
+    bool objectExistsInCache = CacheGetObject(name, cachedEntry);
     
-    if(!objectExists) {
+    if(!objectExistsInCache) {
         // Create new object
         if(!ObjectCreate(0, name, objectType, 0, currentTime, normalizedPrice, (objectType == OBJ_TREND ? futureTime : 0), normalizedPrice)) {
             #ifdef ENABLE_DEBUG_LOGS
@@ -50,10 +51,8 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
             return false;
         }
     } else {
-        // Object exists - just update price
-        // OPTIMIZATION: Only update if price actually changed (reduces terminal calls)
-        double currentObjPrice = ObjectGetDouble(0, name, OBJPROP_PRICE);
-        if(MathAbs(currentObjPrice - normalizedPrice) > Point * 0.1) {
+        // Object exists - just update price if changed
+        if(MathAbs(cachedEntry.lastPrice - normalizedPrice) > Point * 0.1) {
             if(!ObjectSetDouble(0, name, OBJPROP_PRICE, normalizedPrice)) {
                 #ifdef ENABLE_DEBUG_LOGS
                 Print("⚠️ CreateTHLineObject: Failed to update price for '", name, "'");
@@ -62,18 +61,33 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
         }
     }
     
-    // Set properties (always, whether new or existing)
-    ObjectSetInteger(0, name, OBJPROP_COLOR, lineColor);
-    ObjectSetInteger(0, name, OBJPROP_STYLE, style);
-    ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+    // Set properties only if they changed
+    if(!objectExistsInCache || cachedEntry.lastColor != lineColor)
+        ObjectSetInteger(0, name, OBJPROP_COLOR, lineColor);
+    
+    if(!objectExistsInCache || cachedEntry.lastStyle != (int)style)
+        ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+    
+    if(!objectExistsInCache || cachedEntry.lastWidth != width)
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+    
+    // TOOLTIP PERF: String comparison is faster than syscall
+    // Note: Tooltip isn't in SObjectCacheEntry, but we can assume if price/color/style/width didn't change, 
+    // tooltip likely didn't change enough to matter, or we can just update it.
+    // For now, let's just update it since it's a single string call.
     ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
-    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, isSelectable);
-    ObjectSetInteger(0, name, OBJPROP_BACK, false);
+    
+    if(!objectExistsInCache) {
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, isSelectable);
+        ObjectSetInteger(0, name, OBJPROP_BACK, false);
+    }
+    
+    // Update cache
+    CacheUpdateObject(name, normalizedPrice, lineColor, (int)style, width);
     
     // CRITICAL FIX: Respect BOTH Hide state (F key) AND Lines visibility (L key)
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
+    // PERFORMANCE: Use TTL-cached IsIndicatorHidden() instead of GlobalVariableGet
+    bool isHidden = IsIndicatorHidden();
     
     if(isHidden || !g_linesVisible) {
         ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);

@@ -499,36 +499,30 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     string mainText = timeframeName + ": " + DoubleToString(atrPips, 1);
     string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
 
-    bool mainExists = (ObjectFind(0, mainObjName) >= 0);
-    bool stepsExists = (ObjectFind(0, stepsObjName) >= 0);
-    bool targetsExists = (inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0);
+    // PERF: Only update text/color if changed (using Cache)
+    string cachedText;
+    color cachedColor;
+    bool exists = CacheGetLabel(mainObjName, cachedText, cachedColor);
+    
+    bool textChanged = !exists || (cachedText != mainText);
+    bool colorChanged = !exists || (cachedColor != textColor);
 
-    if(mainExists && stepsExists) {
-        string curMainText = ObjectGetString(0, mainObjName, OBJPROP_TEXT);
-        string curStepsText = ObjectGetString(0, stepsObjName, OBJPROP_TEXT);
-        bool textChanged = (curMainText != mainText || curStepsText != stepsText);
+    if(exists) {
         if(textChanged) {
             ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);
             ObjectSetString(0, stepsObjName, OBJPROP_TEXT, stepsText);
+            if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+                ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
+            }
+            CacheUpdateLabel(mainObjName, mainText, textColor);
         }
-        color curColor = (color)ObjectGetInteger(0, mainObjName, OBJPROP_COLOR);
-        if(curColor != textColor) {
+        if(colorChanged) {
             ObjectSetInteger(0, mainObjName, OBJPROP_COLOR, textColor);
             ObjectSetInteger(0, stepsObjName, OBJPROP_COLOR, textColor);
-        }
-        if(inpShowATRTargets) {
-            if(targetsExists) {
-                string curTargets = ObjectGetString(0, targetsObjName, OBJPROP_TEXT);
-                if(curTargets != targetsText) ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
-                color curTColor = (color)ObjectGetInteger(0, targetsObjName, OBJPROP_COLOR);
-                if(curTColor != textColor) ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
-            } else {
-                if(ObjectCreate(0, targetsObjName, OBJ_LABEL, 0, 0, 0)) {
-                    ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
-                    ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
-                    SetLabelFont(targetsObjName);
-                }
+            if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+                ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
             }
+            CacheUpdateLabel(mainObjName, mainText, textColor);
         }
         int baseY = MathAbs(yPos);
         int singleLineHeight_u = inpFontSize + inpLabelRowGap;
@@ -553,15 +547,16 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
         return true;
     }
 
-    if (!mainExists) {
+    // Creation path
+    if (ObjectFind(0, mainObjName) < 0) {
         if (!ObjectCreate(0, mainObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, mainObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
-    if (!stepsExists) {
+    if (ObjectFind(0, stepsObjName) < 0) {
         if (!ObjectCreate(0, stepsObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, stepsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
-    if (inpShowATRTargets && !targetsExists) {
+    if (inpShowATRTargets && ObjectFind(0, targetsObjName) < 0) {
         if (!ObjectCreate(0, targetsObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, targetsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
@@ -835,13 +830,13 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
     string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
     
-    // PERF: Only update text/color if changed
-    bool textChanged = mainCreated || stepsCreated;
-    if(!textChanged) {
-        string prevMain = ObjectGetString(0, mainObjName, OBJPROP_TEXT);
-        textChanged = (prevMain != mainText);
-    }
-    bool colorChanged = mainCreated || ((color)ObjectGetInteger(0, mainObjName, OBJPROP_COLOR) != textColor);
+    // PERF: Only update text/color if changed (using Cache)
+    string cachedText;
+    color cachedColor;
+    bool exists = CacheGetLabel(mainObjName, cachedText, cachedColor);
+    
+    bool textChanged = !exists || (cachedText != mainText);
+    bool colorChanged = !exists || (cachedColor != textColor);
     
     if(textChanged) {
         ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);
@@ -849,6 +844,7 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
         if(inpShowTHTargets && ObjectFind(0, targetsObjName) >= 0) {
             ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
         }
+        CacheUpdateLabel(mainObjName, mainText, textColor);
     }
     
     if(colorChanged) {
@@ -857,6 +853,7 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
         if(inpShowTHTargets && ObjectFind(0, targetsObjName) >= 0) {
             ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
         }
+        CacheUpdateLabel(mainObjName, mainText, textColor);
     }
     
     if(mainCreated) SetLabelFont(mainObjName);
@@ -1085,10 +1082,31 @@ int GetStoredXPosition(const string name) {
 }
 
 double CalculateTextWidth(string text) {
-    double averageCharWidth=inpFontSize*0.7;
-    double plusFactor=StringFind(text,"+")>=0?inpFontSize*0.3:0;
-    double numberFactor=StringLen(text)-StringReplace(text,"0123456789","")>0?inpFontSize*0.2:0;
-    return StringLen(text)*averageCharWidth+plusFactor+numberFactor;
+    static int lastFontSize = -1;
+    static double charWidth = 0;
+    static double plusAdd = 0;
+    static double numAdd = 0;
+    
+    if(inpFontSize != lastFontSize) {
+        lastFontSize = inpFontSize;
+        charWidth = lastFontSize * 0.7;
+        plusAdd = lastFontSize * 0.3;
+        numAdd = lastFontSize * 0.2;
+    }
+    
+    int len = StringLen(text);
+    if(len == 0) return 0;
+    
+    bool hasPlus = false;
+    bool hasNum = false;
+    for(int i=0; i<len; i++) {
+        ushort c = StringGetCharacter(text, i);
+        if(c >= '0' && c <= '9') hasNum = true;
+        else if(c == '+') hasPlus = true;
+        if(hasPlus && hasNum) break;
+    }
+    
+    return len * charWidth + (hasPlus ? plusAdd : 0) + (hasNum ? numAdd : 0);
 }
 
 //+------------------------------------------------------------------+

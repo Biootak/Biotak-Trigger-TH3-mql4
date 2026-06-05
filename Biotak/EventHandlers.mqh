@@ -477,6 +477,8 @@ void OnDeinitHandler(const int reason) {
     CleanupBasePriceManager();
     CleanupATRCache();
     CleanupObjectCountManager();
+    CleanupPerformanceOptimizations();
+    CacheClear();
     g_initialized = false;
     g_calculatedOnce = false;
     g_redrawTHLevelsNeeded = true;
@@ -717,9 +719,6 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 //+------------------------------------------------------------------+
 void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePrice)
 {
-    // Clear all existing levels from all modes to prevent overlapping
-    ClearAllLevels(objectPrefix);
-    
     // Draw based on selected mode (respects keyboard override)
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
     SCommonStepData data;
@@ -1047,13 +1046,13 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
     static int s_cpuWarningCount = 0;
     uint startTime = GetTickCount();
 
-    // PERF: Cache Bid/Ask once per tick
-    CacheTickPrices();
-
     if(IsIndicatorHidden())
     {
         return(rates_total);
     }
+
+    // PERF: Cache Bid/Ask once per tick (moved after hidden check)
+    CacheTickPrices();
 
     static uint s_lastTickMs = 0;
     static double s_lastPrice = 0;
