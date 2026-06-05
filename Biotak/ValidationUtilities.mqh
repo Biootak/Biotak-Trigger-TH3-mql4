@@ -1,7 +1,7 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                        ValidationUtilities.mqh   |
 //|                     Centralized Validation Functions             |
-//|                     توابع متمرکز اعتبارسنجی                      |
+//|                                                                  |
 //|                     DRY Principle Implementation                 |
 //+------------------------------------------------------------------+
 #property strict
@@ -21,17 +21,17 @@ struct ValidationResult {
 
 //+------------------------------------------------------------------+
 //| Validate Array Index                                             |
-//| اعتبارسنجی ایندکس آرایه                                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateArrayIndex(int index, int arraySize, const string context = "") {
     if(index < 0) {
-        Print("❌ ValidateArrayIndex: Negative index (", index, ")", 
+        Print("  ValidateArrayIndex: Negative index (", index, ")", 
               (StringLen(context) > 0) ? " in " + context : "");
         return false;
     }
     
     if(index >= arraySize) {
-        Print("❌ ValidateArrayIndex: Index out of bounds (", index, " >= ", arraySize, ")",
+        Print("  ValidateArrayIndex: Index out of bounds (", index, " >= ", arraySize, ")",
               (StringLen(context) > 0) ? " in " + context : "");
         return false;
     }
@@ -41,11 +41,11 @@ bool ValidateArrayIndex(int index, int arraySize, const string context = "") {
 
 //+------------------------------------------------------------------+
 //| Validate Array Sizes Match                                       |
-//| اعتبارسنجی تطابق اندازه آرایه‌ها                                 |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateArraySizesMatch(int size1, int size2, const string name1, const string name2) {
     if(size1 != size2) {
-        Print("❌ Array size mismatch: ", name1, "=", size1, ", ", name2, "=", size2);
+        Print("  Array size mismatch: ", name1, "=", size1, ", ", name2, "=", size2);
         return false;
     }
     return true;
@@ -53,7 +53,7 @@ bool ValidateArraySizesMatch(int size1, int size2, const string name1, const str
 
 //+------------------------------------------------------------------+
 //| Validate Price Value                                             |
-//| اعتبارسنجی مقدار قیمت                                            |
+//|                                                                  |
 //+------------------------------------------------------------------+
 ValidationResult ValidatePrice(double price, const string paramName = "price") {
     ValidationResult result;
@@ -112,7 +112,7 @@ ValidationResult ValidatePrice(double price, const string paramName = "price") {
 
 //+------------------------------------------------------------------+
 //| Validate Percentage Value                                        |
-//| اعتبارسنجی مقدار درصد                                            |
+//|                                                                  |
 //+------------------------------------------------------------------+
 ValidationResult ValidatePercentage(double percentage, double minValue = 0.001, 
                                     double maxValue = 100.0, const string paramName = "percentage") {
@@ -146,11 +146,11 @@ ValidationResult ValidatePercentage(double percentage, double minValue = 0.001,
 
 //+------------------------------------------------------------------+
 //| Validate Integer Range                                           |
-//| اعتبارسنجی محدوده عدد صحیح                                       |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateIntRange(int value, int minValue, int maxValue, const string paramName = "value") {
     if(value < minValue || value > maxValue) {
-        Print("❌ ", paramName, " out of range: ", value, " (valid: ", minValue, "-", maxValue, ")");
+        Print("  ", paramName, " out of range: ", value, " (valid: ", minValue, "-", maxValue, ")");
         return false;
     }
     return true;
@@ -158,11 +158,11 @@ bool ValidateIntRange(int value, int minValue, int maxValue, const string paramN
 
 //+------------------------------------------------------------------+
 //| Validate String Not Empty                                        |
-//| اعتبارسنجی رشته غیرخالی                                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateStringNotEmpty(const string str, const string paramName = "string") {
     if(StringLen(str) == 0) {
-        Print("❌ ", paramName, " is empty");
+        Print("  ", paramName, " is empty");
         return false;
     }
     return true;
@@ -170,7 +170,7 @@ bool ValidateStringNotEmpty(const string str, const string paramName = "string")
 
 //+------------------------------------------------------------------+
 //| Validate Timeframe                                               |
-//| اعتبارسنجی تایم‌فریم                                             |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateTimeframe(int timeframe) {
     // Valid MT4 timeframes
@@ -186,26 +186,26 @@ bool ValidateTimeframe(int timeframe) {
         case PERIOD_MN1:
             return true;
         default:
-            Print("❌ Invalid timeframe: ", timeframe);
+            Print("  Invalid timeframe: ", timeframe);
             return false;
     }
 }
 
 //+------------------------------------------------------------------+
 //| Validate Color Value                                             |
-//| اعتبارسنجی مقدار رنگ                                             |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateColor(color clr, const string paramName = "color") {
     // In MQL4, color is uint, so always >= 0
     // Check for clrNONE (special value)
     if(clr == clrNONE) {
-        Print("⚠️ ", paramName, " is clrNONE");
+        Print("   ", paramName, " is clrNONE");
         return true; // Not an error, just a warning
     }
     
     // Check for valid RGB range (0x00RRGGBB)
     if(clr > 0x00FFFFFF) {
-        Print("❌ ", paramName, " invalid: ", ColorToString(clr));
+        Print("  ", paramName, " invalid: ", ColorToString(clr));
         return false;
     }
     
@@ -214,19 +214,19 @@ bool ValidateColor(color clr, const string paramName = "color") {
 
 //+------------------------------------------------------------------+
 //| Batch Validation Helper                                          |
-//| کمک‌کننده اعتبارسنجی دسته‌ای                                     |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidatePriceRange(double price1, double price2, const string name1, const string name2) {
     ValidationResult result1 = ValidatePrice(price1, name1);
     ValidationResult result2 = ValidatePrice(price2, name2);
     
     if(!result1.isValid) {
-        Print("❌ ", result1.errorMessage);
+        Print("  ", result1.errorMessage);
         return false;
     }
     
     if(!result2.isValid) {
-        Print("❌ ", result2.errorMessage);
+        Print("  ", result2.errorMessage);
         return false;
     }
     
@@ -235,18 +235,18 @@ bool ValidatePriceRange(double price1, double price2, const string name1, const 
 
 //+------------------------------------------------------------------+
 //| Validate Division Operands                                       |
-//| اعتبارسنجی عملوندهای تقسیم                                       |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateDivisionOperands(double numerator, double denominator, const string context = "") {
     if(IsZero(denominator, EPSILON_GENERAL)) {
-        Print("❌ Division by zero", (StringLen(context) > 0) ? " in " + context : "",
+        Print("  Division by zero", (StringLen(context) > 0) ? " in " + context : "",
               " (denominator=", DoubleToString(denominator, 10), ")");
         return false;
     }
     
     // Check for potential overflow
     if(MathAbs(numerator) > DBL_MAX / 2.0 && MathAbs(denominator) < 1.0) {
-        Print("⚠️ Potential overflow in division", (StringLen(context) > 0) ? " in " + context : "");
+        Print("   Potential overflow in division", (StringLen(context) > 0) ? " in " + context : "");
         return false;
     }
     

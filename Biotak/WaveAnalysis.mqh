@@ -1,9 +1,9 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //| WaveAnalysis.mqh - Wave Data Structures & Analysis               |
 //| Core theory: Every reversal is a reaction to a key retracement   |
 //| level of a reference wave. Uses Gilmore's three ratio families:  |
 //| Harmonic (50%,25%,75%), Geometric (38.2%,61.8%,78.6%), + Gann.  |
-//| v5.0: Confluence zone detection — clusters of midpoints from     |
+//| v5.0: Confluence zone detection   clusters of midpoints from     |
 //| multiple waves converging on the same price = high-probability   |
 //+------------------------------------------------------------------+
 #ifndef WAVE_ANALYSIS_MQH
@@ -12,7 +12,7 @@
 #property strict
 
 // Maximum number of reference midpoints to evaluate
-// 6 waves × 7 types (50%, Gann, 25%, 75%, 38.2%, 61.8%, 78.6%) = 42, + safety
+// 6 waves   7 types (50%, Gann, 25%, 75%, 38.2%, 61.8%, 78.6%) = 42, + safety
 #define MAX_REFERENCE_MIDPOINTS 48
 // Number of primary + compound waves from XABC pattern
 #define WAVE_COUNT 6
@@ -35,11 +35,11 @@ struct WaveData {
     double    quarter25;        // start + 0.25 * (end - start)
     double    quarter75;        // start + 0.75 * (end - start)
     // Gilmore sacred ratios from "Geometry of Markets Vol II" page 11
-    // The three ratio families: Geometric(φ), Harmonic(√2), Arithmetic(√3)
-    // φ-based retracements are among the most important market reversal levels
-    double    fib382;           // start + 0.382 * (end - start) — φ² reciprocal
-    double    fib618;           // start + 0.618 * (end - start) — φ reciprocal (Golden Ratio)
-    double    fib786;           // start + 0.786 * (end - start) — √φ reciprocal
+    // The three ratio families: Geometric( ), Harmonic( 2), Arithmetic( 3)
+    //  -based retracements are among the most important market reversal levels
+    double    fib382;           // start + 0.382 * (end - start)      reciprocal
+    double    fib618;           // start + 0.618 * (end - start)     reciprocal (Golden Ratio)
+    double    fib786;           // start + 0.786 * (end - start)      reciprocal
     int       barDuration;      // bars between start and end
     double    speed;            // distance / barDuration (Gann angle proxy)
     bool      isBullish;        // endPrice > startPrice
@@ -64,18 +64,18 @@ struct ReferenceMidpoint {
     int       waveIndex;       // Which wave (0-5) it belongs to
     string    label;           // e.g. "XA-50%", "AB-Gann", "BC-38.2%"
     int       type;            // 0=arithmetic50, 1=gann50, 2=quarter25, 3=quarter75,
-                               // 4=fib382, 5=fib618, 6=fib786 (Gilmore sacred φ ratios)
+                               // 4=fib382, 5=fib618, 6=fib786 (Gilmore sacred   ratios)
 };
 
 //+------------------------------------------------------------------+
-//| Confluence Zone — cluster of midpoints from multiple waves at    |
+//| Confluence Zone   cluster of midpoints from multiple waves at    |
 //| similar price levels (Gilmore's "Windows of Opportunity")        |
 //| Confluence is the strongest confirmation in technical analysis:  |
 //| independent measurements converging = high-probability level     |
 //+------------------------------------------------------------------+
 struct ConfluenceZone {
     double    centerPrice;     // Weighted average price of cluster members
-    double    strength;        // Quality metric: uniqueWaves × uniqueTypes / 6
+    double    strength;        // Quality metric: uniqueWaves   uniqueTypes / 6
     int       memberCount;     // Total midpoints in this cluster
     int       uniqueWaves;     // How many different waves contribute
     int       uniqueTypes;     // How many different level types contribute
@@ -88,14 +88,14 @@ struct ConfluenceZone {
 //+------------------------------------------------------------------+
 struct WaveAnalysisResult {
     // Primary waves
-    WaveData  waveXA;          // X → A
-    WaveData  waveAB;          // A → B
-    WaveData  waveBC;          // B → C
+    WaveData  waveXA;          // X   A
+    WaveData  waveAB;          // A   B
+    WaveData  waveBC;          // B   C
 
     // Compound waves
-    WaveData  waveXB;          // X → B
-    WaveData  waveAC;          // A → C
-    WaveData  waveXC;          // X → C
+    WaveData  waveXB;          // X   B
+    WaveData  waveAC;          // A   C
+    WaveData  waveXC;          // X   C
 
     // Input points
     double    priceX, priceA, priceB, priceC;
@@ -115,7 +115,7 @@ struct WaveAnalysisResult {
     ReferenceMidpoint midpoints[];
     int       midpointCount;
 
-    // Confluence zones — clusters of converging midpoints
+    // Confluence zones   clusters of converging midpoints
     ConfluenceZone confluenceZones[];
     int       confluenceCount;
 
@@ -134,8 +134,8 @@ struct WaveAnalysisResult {
 };
 
 //+------------------------------------------------------------------+
-//| Calculate Gann geometric midpoint: (√H + √L)² / 4              |
-//| Gann's "square root" mean — the true geometric center            |
+//| Calculate Gann geometric midpoint: ( H +  L)  / 4              |
+//| Gann's "square root" mean   the true geometric center            |
 //+------------------------------------------------------------------+
 double CalculateGannMidpoint(double price1, double price2) {
     if(price1 <= 0 || price2 <= 0) return 0;
@@ -168,13 +168,13 @@ void BuildWaveData(WaveData &wave, double p1, datetime t1, double p2, datetime t
     wave.quarter25 = p1 + 0.25 * dir;
     wave.quarter75 = p1 + 0.75 * dir;
 
-    // Gilmore sacred φ ratios (Geometry of Markets Vol II, page 11)
+    // Gilmore sacred   ratios (Geometry of Markets Vol II, page 11)
     // These are the Geometric ratio family: most important retracement/extension levels
-    wave.fib382 = p1 + 0.382 * dir;   // φ² reciprocal — key retracement
-    wave.fib618 = p1 + 0.618 * dir;   // φ reciprocal — the Golden Ratio
-    wave.fib786 = p1 + 0.786 * dir;   // √φ reciprocal — deep retracement
+    wave.fib382 = p1 + 0.382 * dir;   //    reciprocal   key retracement
+    wave.fib618 = p1 + 0.618 * dir;   //   reciprocal   the Golden Ratio
+    wave.fib786 = p1 + 0.786 * dir;   //    reciprocal   deep retracement
 
-    // Time/speed — iBarShift is native to MT4
+    // Time/speed   iBarShift is native to MT4
     wave.barDuration = iBarShift(Symbol(), Period(), t1) - iBarShift(Symbol(), Period(), t2);
     if(wave.barDuration < 0) wave.barDuration = -wave.barDuration;
     if(wave.barDuration < 1) wave.barDuration = 1;
@@ -200,18 +200,18 @@ void AddReferenceMidpoint(WaveAnalysisResult &result, double price, int waveIdx,
 }
 
 //+------------------------------------------------------------------+
-//| Collect all reference midpoints from 6 waves × 4 levels         |
+//| Collect all reference midpoints from 6 waves   4 levels         |
 //| = up to 24 midpoints                                             |
 //+------------------------------------------------------------------+
 void CollectReferenceMidpoints(WaveAnalysisResult &result) {
-    // PERF: Pre-allocate to max capacity — avoids up to 42 incremental ArrayResize calls
+    // PERF: Pre-allocate to max capacity   avoids up to 42 incremental ArrayResize calls
     ArrayResize(result.midpoints, MAX_REFERENCE_MIDPOINTS);
     // Wave names for labels
     string waveNames[6];
     waveNames[0] = "XA"; waveNames[1] = "AB"; waveNames[2] = "BC";
     waveNames[3] = "XB"; waveNames[4] = "AC"; waveNames[5] = "XC";
 
-    // Type suffixes — 7 retracement levels per wave
+    // Type suffixes   7 retracement levels per wave
     string typeSuffix[7];
     typeSuffix[0] = "50%"; typeSuffix[1] = "Gann"; typeSuffix[2] = "25%";
     typeSuffix[3] = "75%"; typeSuffix[4] = "38.2%"; typeSuffix[5] = "61.8%";
@@ -241,38 +241,38 @@ void CollectReferenceMidpoints(WaveAnalysisResult &result) {
         // 75%
         AddReferenceMidpoint(result, waves[w].quarter75, w,
                              waveNames[w] + "-" + typeSuffix[3], 3);
-        // 38.2% — Gilmore Geometric (φ² reciprocal)
+        // 38.2%   Gilmore Geometric (   reciprocal)
         AddReferenceMidpoint(result, waves[w].fib382, w,
                              waveNames[w] + "-" + typeSuffix[4], 4);
-        // 61.8% — Gilmore Geometric (Golden Ratio)
+        // 61.8%   Gilmore Geometric (Golden Ratio)
         AddReferenceMidpoint(result, waves[w].fib618, w,
                              waveNames[w] + "-" + typeSuffix[5], 5);
-        // 78.6% — Gilmore Geometric (√φ reciprocal)
+        // 78.6%   Gilmore Geometric (   reciprocal)
         AddReferenceMidpoint(result, waves[w].fib786, w,
                              waveNames[w] + "-" + typeSuffix[6], 6);
     }
 }
 
 //+------------------------------------------------------------------+
-//| Detect Confluence Zones — clusters of midpoints from multiple    |
+//| Detect Confluence Zones   clusters of midpoints from multiple    |
 //| waves converging at the same price level                         |
 //| Based on Gilmore's "Windows of Opportunity" (pages 84-97):      |
-//| When 3+ independent reference levels cluster within ±0.5% of AB |
+//| When 3+ independent reference levels cluster within  0.5% of AB |
 //| distance, that price zone has extraordinary reversal probability |
 //|                                                                  |
-//| Algorithm: Sort midpoints by price → sliding window → find      |
-//| clusters of ≥3 from ≥2 different waves within tolerance.        |
-//| Strength = uniqueWaves × uniqueTypes (max: 6 × 7 = 42)         |
+//| Algorithm: Sort midpoints by price   sliding window   find      |
+//| clusters of  3 from  2 different waves within tolerance.        |
+//| Strength = uniqueWaves   uniqueTypes (max: 6   7 = 42)         |
 //+------------------------------------------------------------------+
 void DetectConfluenceZones(WaveAnalysisResult &result, double abDistance) {
     result.confluenceCount = 0;
     if(result.midpointCount < MIN_CONFLUENCE_COUNT || abDistance <= 0) return;
 
-    // FIX Bug 5: Widened from ±0.5% to ±2% of AB distance
+    // FIX Bug 5: Widened from  0.5% to  2% of AB distance
     double tolerance = abDistance * 0.02;
     if(tolerance <= 0) return;
 
-    // Sort midpoints by price (insertion sort — small array)
+    // Sort midpoints by price (insertion sort   small array)
     int sortedIdx[];
     ArrayResize(sortedIdx, result.midpointCount);
     for(int i = 0; i < result.midpointCount; i++) sortedIdx[i] = i;
@@ -303,7 +303,7 @@ void DetectConfluenceZones(WaveAnalysisResult &result, double abDistance) {
         double basePrice = result.midpoints[si].price;
         if(basePrice <= 0) continue;
 
-        // Collect all midpoints within ±tolerance of this base
+        // Collect all midpoints within  tolerance of this base
         int clusterMembers[];
         int clusterSize = 0;
         ArrayResize(clusterMembers, result.midpointCount);
@@ -430,7 +430,7 @@ bool AnalyzeWaves(double pX, datetime tX, double pA, datetime tA,
     // Collect ALL reference midpoints (42 potential)
     CollectReferenceMidpoints(result);
 
-    // Detect confluence zones — clusters of converging midpoints
+    // Detect confluence zones   clusters of converging midpoints
     DetectConfluenceZones(result, result.waveAB.distance);
 
     result.isValid = true;

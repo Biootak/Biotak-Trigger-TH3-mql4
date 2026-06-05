@@ -1,104 +1,104 @@
-# مستندات پروژه Biotak Trigger TH3
+﻿#               Biotak Trigger TH3
 
-## نمای کلی
+##         
 
-**Biotak Trigger TH3** یک اندیکاتور سفارشی MetaTrader 4 است که فرمول سطوح TH (Time Harmonic) پروفسور سعید خاکستر را پیاده‌سازی می‌کند.
+**Biotak Trigger TH3**                     MetaTrader 4                   TH (Time Harmonic)                                         .
 
-**نسخه فعلی:** 3.04 - Performance & Memory Audit Complete
-
----
-
-## معماری پروژه
-
-### ساختار فایل‌ها
-
-```
-├── Biotak Trigger TH3.mq4          # فایل اصلی اندیکاتور
-├── Biotak Trigger TH3.ex4          # فایل کامپایل شده
-└── Biotak/                          # ماژول‌های اصلی
-    ├── Configuration/               # تنظیمات و پیکربندی
-    ├── Core/                        # منطق اصلی محاسبات
-    ├── UI/                          # رابط کاربری و نمایش
-    ├── Events/                      # مدیریت رویدادها
-    └── Tests/                       # تست‌های خودکار
-```
-
-### لایه‌های معماری
-
-```
-Event Handlers → UI/Visualization → Core Logic → Configuration
-```
-
-وابستگی‌ها فقط به سمت پایین جریان دارند. محاسبات اصلی هیچ وابستگی به UI ندارند.
+**         :** 3.04 - Performance & Memory Audit Complete
 
 ---
 
-## ماژول‌های اصلی
+##             
 
-### 1. پیکربندی و راه‌اندازی
-- **PropertiesAndInputs.mqh** - پارامترهای ورودی و تنظیمات اندیکاتور
-- **ConstantsAndEnums.mqh** - ثابت‌ها، enum ها و مقادیر پیکربندی
-- **GlobalVariables.mqh** - متغیرهای سراسری و ساختارهای کش
+###               
 
-### 2. عملکرد اصلی
-- **THCalculations.mqh** - الگوریتم‌های محاسبه سطوح TH
-- **BasePriceManager.mqh** - مدیریت قیمت پایه و به‌روزرسانی هر 30 دقیقه
-- **TimeframeFunctions.mqh** - توابع کمکی تایم‌فریم
-- **FractalTimeframes.mqh** - محاسبات تایم‌فریم فراکتال
-- **StandardTimeframes.mqh** - مدیریت تایم‌فریم‌های استاندارد
+```
+    Biotak Trigger TH3.mq4          #                    
+    Biotak Trigger TH3.ex4          #                 
+    Biotak/                          #               
+        Configuration/               #                   
+        Core/                        #                  
+        UI/                          #                    
+        Events/                      #                
+        Tests/                       #               
+```
 
-### 3. رابط کاربری و نمایش
-- **ObjectFunctions.mqh** - ایجاد و مدیریت اشیاء چارت
-- **ObjectManager.mqh** - مدیریت چرخه حیات اشیاء
-- **LabelFunctions.mqh** - ایجاد و موقعیت‌یابی برچسب‌ها
-- **ExtendedDrawingFunctions.mqh** - توابع پیشرفته رسم
-- **DynamicColorFunctions.mqh** - مدیریت رنگ و تم‌ها
+###                
 
-### 4. مدیریت رویدادها
-- **EventHandlers.mqh** - منطق پردازش رویدادهای اصلی
-- **EventHandlers_DEBUG.mqh** - هندلرهای رویداد برای حالت دیباگ
+```
+Event Handlers   UI/Visualization   Core Logic   Configuration
+```
 
-### 5. ابزارها و پشتیبانی
-- **UtilityFunctions.mqh** - توابع کمکی عمومی
-- **HistoricalDataFunctions.mqh** - پردازش داده‌های تاریخی
-- **AlertFunctions.mqh** - سیستم هشدار
-- **PerformanceMonitor.mqh** - ردیابی عملکرد و بهینه‌سازی
-
-### 6. داده‌های بازار و تشخیص
-- **MarketHoursDetector.mqh** - تشخیص ساعات معاملاتی
-- **DynamicTradingDayDetector.mqh** - تشخیص مرزهای روز معاملاتی
-- **BasePriceHistoryManager.mqh** - مدیریت تاریخچه قیمت پایه
-- **GlobalVariablesManager.mqh** - ماندگاری متغیرهای سراسری
+                                       .                             UI       .
 
 ---
 
-## سیستم محاسبات
+##               
 
-### 1. فرمول اصلی TH (Time Harmonic)
+### 1.                      
+- **PropertiesAndInputs.mqh** -                                     
+- **ConstantsAndEnums.mqh** -          enum                     
+- **GlobalVariables.mqh** -                               
 
-فرمول پایه که توسط پروفسور سعید خاکستر ارائه شده:
+### 2.            
+- **THCalculations.mqh** -                          TH
+- **BasePriceManager.mqh** -                                   30      
+- **TimeframeFunctions.mqh** -                     
+- **FractalTimeframes.mqh** -                          
+- **StandardTimeframes.mqh** -                               
+
+### 3.                    
+- **ObjectFunctions.mqh** -                          
+- **ObjectManager.mqh** -                       
+- **LabelFunctions.mqh** -                             
+- **ExtendedDrawingFunctions.mqh** -                  
+- **DynamicColorFunctions.mqh** -                   
+
+### 4.                
+- **EventHandlers.mqh** -                           
+- **EventHandlers_DEBUG.mqh** -                                
+
+### 5.                   
+- **UtilityFunctions.mqh** -                 
+- **HistoricalDataFunctions.mqh** -                       
+- **AlertFunctions.mqh** -            
+- **PerformanceMonitor.mqh** -                           
+
+### 6.                       
+- **MarketHoursDetector.mqh** -                     
+- **DynamicTradingDayDetector.mqh** -                          
+- **BasePriceHistoryManager.mqh** -                         
+- **GlobalVariablesManager.mqh** -                         
+
+---
+
+##              
+
+### 1.            TH (Time Harmonic)
+
+                                                :
 
 ```
-TH = (BasePrice × Percentage) / 100
+TH = (BasePrice   Percentage) / 100
 ```
 
-**پارامترها:**
-- **BasePrice:** قیمت پایه (به‌روزرسانی هر 30 دقیقه)
-- **Percentage:** درصد فراکتال برای هر تایم‌فریم
+**         :**
+- **BasePrice:**           (               30      )
+- **Percentage:**                               
 
-**مثال:**
+**    :**
 ```
-اگر BasePrice = 1.10000 و Percentage = 2.08% (M1)
-TH = (1.10000 × 2.08) / 100 = 0.02288
+    BasePrice = 1.10000   Percentage = 2.08% (M1)
+TH = (1.10000   2.08) / 100 = 0.02288
 ```
 
 ---
 
-### 2. درصدهای فراکتال اصلاح شده
+### 2.                          
 
-هر تایم‌فریم درصد مخصوص خود را دارد:
+                                   :
 
-| تایم‌فریم | نام فراکتال | درصد (%) |
+|           |             |      (%) |
 |----------|-------------|----------|
 | M1 | M1 | 2.08 |
 | M5 | M4 | 4.17 |
@@ -109,139 +109,139 @@ TH = (1.10000 × 2.08) / 100 = 0.02288
 | W1 | D11+H9+M4 | 500.00 |
 | MN1 | D45+H12+M16 | 2083.33 |
 
-**نکته:** این درصدها بر اساس نسبت‌های فراکتالی بین تایم‌فریم‌ها محاسبه شده‌اند.
+**    :**                                                                     .
 
 ---
 
-### 3. محاسبات فراکتالی
+### 3.                 
 
-بازار فراکتال است - هر تایم‌فریم می‌تواند:
-- **تریگر** باشد برای تایم‌های بالاتر
-- **ساختار** باشد برای تایم‌های پایین‌تر
+                  -                      :
+- **     **                          
+- **      **                            
 
 ```
-Structure = TH (تایم‌فریم فعلی)
-Pattern = 0.5 × Structure (نصف ساختار)
-Trigger = 0.25 × Structure (یک‌چهارم ساختار)
+Structure = TH (              )
+Pattern = 0.5   Structure (          )
+Trigger = 0.25   Structure (               )
 ```
 
-**مثال روی M15:**
+**         M15:**
 ```
 Structure = M15 TH = 0.08330
-Pattern = 0.08330 × 0.5 = 0.04165 (معادل ~H1 trigger)
-Trigger = 0.08330 × 0.25 = 0.02083 (معادل ~M4 structure)
+Pattern = 0.08330   0.5 = 0.04165 (      ~H1 trigger)
+Trigger = 0.08330   0.25 = 0.02083 (      ~M4 structure)
 ```
 
 ---
 
-### 4. محاسبات گام‌های پیشرفته
+### 4.                        
 
-#### Short Step (SS) و Long Step (LS)
+#### Short Step (SS)   Long Step (LS)
 ```
-SS = Structure × 1.5
-LS = Structure × 2.0
+SS = Structure   1.5
+LS = Structure   2.0
 ```
 
 #### Control (C)
 ```
-Control = (SS + LS) / 2 = Structure × 1.75
+Control = (SS + LS) / 2 = Structure   1.75
 ```
 
 #### M Distance
 ```
-M = Control × 3 = Structure × 5.25
+M = Control   3 = Structure   5.25
 ```
 
-#### E Step و TP
+#### E Step   TP
 ```
-E = Structure × 0.75
-TP = E × 3 = Structure × 2.25
+E = Structure   0.75
+TP = E   3 = Structure   2.25
 ```
 
-**مثال کامل:**
+**         :**
 ```
-اگر Structure = 0.08330 (M16)
-SS = 0.08330 × 1.5 = 0.12495
-LS = 0.08330 × 2.0 = 0.16660
-Control = 0.08330 × 1.75 = 0.14578
-M = 0.08330 × 5.25 = 0.43733
-E = 0.08330 × 0.75 = 0.06248
-TP = 0.08330 × 2.25 = 0.18743
+    Structure = 0.08330 (M16)
+SS = 0.08330   1.5 = 0.12495
+LS = 0.08330   2.0 = 0.16660
+Control = 0.08330   1.75 = 0.14578
+M = 0.08330   5.25 = 0.43733
+E = 0.08330   0.75 = 0.06248
+TP = 0.08330   2.25 = 0.18743
 ```
 
 ---
 
-### 5. مدیریت قیمت پایه (Base Price)
+### 5.                  (Base Price)
 
-#### استراتژی به‌روزرسانی
-- **فرکانس:** هر 30 دقیقه (بلوک‌های 00:00، 00:30، 01:00، ...)
-- **منبع داده:** آخرین کندل کامل شده M30
-- **زمان:** استفاده از GMT/UTC برای سازگاری
+####                     
+- **      :**    30       (         00:00  00:30  01:00  ...)
+- **         :**                     M30
+- **    :**            GMT/UTC             
 
-#### الگوریتم به‌روزرسانی
-
-```
-1. هر 30 دقیقه (در دقیقه 00 یا 30):
-   - دریافت قیمت بسته شدن آخرین کندل M30
-   
-2. محاسبه M1 Power:
-   M1_Power = BasePrice × 0.0208
-   
-3. محاسبه تغییر:
-   Delta% = |M1_New - M1_Old| / |M1_Old| × 100
-   
-4. اعمال آستانه (Threshold):
-   اگر Delta% >= 0.066%:
-      ✅ ACCEPT: به‌روزرسانی BasePrice
-   وگرنه:
-      ⛔ SKIP: نگه‌داشتن BasePrice قبلی
-```
-
-#### مثال عملی
+####                     
 
 ```
-زمان: 14:30 GMT
+1.    30       (         00    30):
+   -                                 M30
+   
+2.        M1 Power:
+   M1_Power = BasePrice   0.0208
+   
+3.             :
+   Delta% = |M1_New - M1_Old| / |M1_Old|   100
+   
+4.              (Threshold):
+       Delta% >= 0.066%:
+        ACCEPT:             BasePrice
+        :
+        SKIP:           BasePrice     
+```
+
+####          
+
+```
+    : 14:30 GMT
 M30 Close (14:00-14:30): 1.10250
-BasePrice قبلی: 1.10000
+BasePrice     : 1.10000
 
-محاسبه:
-M1_Old = 1.10000 × 0.0208 = 0.022880
-M1_New = 1.10250 × 0.0208 = 0.023012
-Delta% = |0.023012 - 0.022880| / 0.022880 × 100 = 0.577%
+      :
+M1_Old = 1.10000   0.0208 = 0.022880
+M1_New = 1.10250   0.0208 = 0.023012
+Delta% = |0.023012 - 0.022880| / 0.022880   100 = 0.577%
 
-نتیجه: 0.577% >= 0.066% → ✅ ACCEPT
-BasePrice جدید = 1.10250
+     : 0.577% >= 0.066%     ACCEPT
+BasePrice      = 1.10250
 ```
 
-#### اعتبارسنجی (Sanity Check)
+####            (Sanity Check)
 
-برای جلوگیری از قیمت‌های نامعتبر:
+                                :
 ```
-اگر |RestoredPrice - CurrentBid| / CurrentBid × 100 > 10%:
-   ⚠️ REJECT: استفاده از Bid فعلی
-وگرنه:
-   ✅ ACCEPT: استفاده از قیمت بازیابی شده
+    |RestoredPrice - CurrentBid| / CurrentBid   100 > 10%:
+      REJECT:            Bid     
+     :
+     ACCEPT:                            
 ```
 
 ---
 
-### 6. محاسبات مبتنی بر ATR
+### 6.                  ATR
 
 #### Weighted ATR
-ترکیب وزن‌دار از 6 دوره مختلف:
+                 6           :
 
 ```
-ATR = (ATR₅×1 + ATR₁₀×1 + ATR₂₁×2 + ATR₆₆×3 + ATR₁₃₂×5 + ATR₂₆₄×8) / 20
+ATR = (ATR  1 + ATR   1 + ATR   2 + ATR   3 + ATR    5 + ATR    8) / 20
 ```
 
-**وزن‌ها:**
-- ATR₅: وزن 1
-- ATR₁₀: وزن 1
-- ATR₂₁: وزن 2
-- ATR₆₆: وزن 3
-- ATR₁₃₂: وزن 5
-- ATR₂₆₄: وزن 8
-- **مجموع:** 20
+**      :**
+- ATR :     1
+- ATR  :     1
+- ATR  :     2
+- ATR  :     3
+- ATR   :     5
+- ATR   :     8
+- **     :** 20
 
 #### True Range (TR)
 ```
@@ -249,32 +249,32 @@ TR = max(High - Low, |High - PrevClose|, |Low - PrevClose|)
 ```
 
 #### Hybrid ATR
-برای تایم‌فریم‌های مختلف:
+                        :
 ```
-ATR_target = ATR_current × √(target_minutes / current_minutes)
+ATR_target = ATR_current    (target_minutes / current_minutes)
 ```
 
-**مثال:**
+**    :**
 ```
 ATR_H1 = 0.00150
-محاسبه ATR_H4:
-ATR_H4 = 0.00150 × √(240 / 60) = 0.00150 × 2 = 0.00300
+       ATR_H4:
+ATR_H4 = 0.00150    (240 / 60) = 0.00150   2 = 0.00300
 ```
 
-#### محاسبات فراکتال ATR
+####                 ATR
 ```
 Structure = Weighted ATR
-Pattern = Structure × 0.5
-Trigger = Structure × 0.25
+Pattern = Structure   0.5
+Trigger = Structure   0.25
 ```
 
 ---
 
-### 7. تبدیلات تایم‌فریم
+### 7.                  
 
-#### تایم‌فریم‌های استاندارد به فراکتال
+####                                   
 
-| استاندارد | فراکتال | دقیقه |
+|           |         |       |
 |----------|---------|-------|
 | M1 | M1 | 1 |
 | M5 | M4 | 4 |
@@ -286,336 +286,336 @@ Trigger = Structure × 0.25
 | W1 | D11+H9+M4 | 16384 |
 | MN1 | D45+H12+M16 | 65536 |
 
-#### نام‌های کوتاه
+####              
 ```
-"H1+M4" → "H1.4"
-"H4+M16" → "H4.16"
-"D11+H9+M4" → "D11.9.4"
+"H1+M4"   "H1.4"
+"H4+M16"   "H4.16"
+"D11+H9+M4"   "D11.9.4"
 ```
 
 ---
 
-### 8. سطوح ساختاری (L1-L5)
+### 8.              (L1-L5)
 
-هر سطح نشان‌دهنده یک لایه فراکتالی است:
+                                      :
 
 ```
-L1 = تایم‌فریم فعلی
-L2 = یک سطح بالاتر (4× مدت زمان)
-L3 = دو سطح بالاتر (16× مدت زمان)
-L4 = سه سطح بالاتر (64× مدت زمان)
-L5 = چهار سطح بالاتر (256× مدت زمان)
-```
-
-**مثال روی M15:**
-```
-L1 = M16 (16 دقیقه)
-L2 = H1+M4 (64 دقیقه)
-L3 = H4+M16 (256 دقیقه)
-L4 = H17+M4 (1024 دقیقه)
-L5 = D11+H9+M4 (16384 دقیقه)
+L1 =               
+L2 =               (4          )
+L3 =               (16          )
+L4 =               (64          )
+L5 =                 (256          )
 ```
 
-#### تشخیص همپوشانی (Overlap)
+**         M15:**
 ```
-اگر Step % Interval[L] == 0:
-   این Step با سطح L همپوشانی دارد
+L1 = M16 (16      )
+L2 = H1+M4 (64      )
+L3 = H4+M16 (256      )
+L4 = H17+M4 (1024      )
+L5 = D11+H9+M4 (16384      )
 ```
 
-**مثال:**
+####                (Overlap)
 ```
-اگر Interval[L1]=2, Interval[L2]=6, Interval[L3]=18
-Step 6: همپوشانی با L1+L2
-Step 18: همپوشانی با L1+L2+L3
+    Step % Interval[L] == 0:
+       Step        L              
+```
+
+**    :**
+```
+    Interval[L1]=2, Interval[L2]=6, Interval[L3]=18
+Step 6:             L1+L2
+Step 18:             L1+L2+L3
 ```
 
 ---
 
 ### 9. Shared Pattern Step
 
-ترکیب SS از دو تایم‌فریم:
+      SS                :
 
 ```
 Shared Pattern Step = Current_SS + Higher_Pattern_SS
 ```
 
-**فرمول کامل:**
+**          :**
 ```
-Current_SS = (2 × Current_Structure) - Current_Pattern
-Higher_Pattern_SS = (2 × Higher_Structure) - Higher_Pattern
+Current_SS = (2   Current_Structure) - Current_Pattern
+Higher_Pattern_SS = (2   Higher_Structure) - Higher_Pattern
 Shared_Step = Current_SS + Higher_Pattern_SS
 ```
 
-**مثال:**
+**    :**
 ```
 Current (M16): Structure=0.0833, Pattern=0.0417
 Higher (H1.4): Structure=0.1667, Pattern=0.0833
 
-Current_SS = (2 × 0.0833) - 0.0417 = 0.1249
-Higher_SS = (2 × 0.1667) - 0.0833 = 0.2501
+Current_SS = (2   0.0833) - 0.0417 = 0.1249
+Higher_SS = (2   0.1667) - 0.0833 = 0.2501
 Shared_Step = 0.1249 + 0.2501 = 0.3750
 ```
 
 ---
 
-### 10. کش و بهینه‌سازی
+### 10.                
 
-#### کش محاسبات TH
+####            TH
 ```
-ساختار کش:
-- lastPrice: آخرین قیمت محاسبه شده
-- lastDigits: تعداد ارقام اعشار
-- lastPercentage: درصد استفاده شده
-- lastResult: نتیجه محاسبه
-- lastCacheTime: زمان آخرین به‌روزرسانی
+         :
+- lastPrice:                      
+- lastDigits:                  
+- lastPercentage:                 
+- lastResult:             
+- lastCacheTime:                       
 
-شرط استفاده از کش:
+                 :
 |price - lastPrice| < tolerance
 AND digits == lastDigits
 AND percentage == lastPercentage
 
-tolerance = price × 0.0000001 (0.00001%)
+tolerance = price   0.0000001 (0.00001%)
 ```
 
-#### کش ATR
+####    ATR
 ```
-ساختار کش:
-- weightedATR: مقدار ATR وزن‌دار
-- lastUpdate: زمان آخرین به‌روزرسانی
-- barCount: تعداد کندل‌ها
-- cachedTimeframe: تایم‌فریم کش شده
-- valid: معتبر بودن کش
+         :
+- weightedATR:       ATR        
+- lastUpdate:                       
+- barCount:              
+- cachedTimeframe:                 
+- valid:              
 
-شرط استفاده از کش:
+                 :
 |barCount - cachedBarCount| <= 1
 AND (currentTime - lastUpdate) < 30 seconds
 AND timeframe == cachedTimeframe
 ```
 
-#### محاسبات دسته‌ای (Batch)
+####                 (Batch)
 ```
-بهینه‌سازی: محاسبه TR یک بار، استفاده برای همه دوره‌ها
+          :        TR                                 
 
-1. محاسبه TR برای 264 کندل اخیر
-2. استفاده مجدد برای ATR₅, ATR₁₀, ..., ATR₂₆₄
-3. کاهش محاسبات از O(n×m) به O(n+m)
-```
-
----
-
-## ویژگی‌های کلیدی
-
-### نمایش سطوح TH
-- خطوط افقی و برچسب‌ها برای سطوح محاسبه شده
-- پشتیبانی از حالت‌های مختلف: TH_BASIS, ATR_BASIS
-- نمایش همپوشانی سطوح ساختاری (L1-L5)
-
-### مدیریت قیمت پایه
-- به‌روزرسانی خودکار قیمت پایه هر 30 دقیقه
-- استفاده از داده‌های کندل کامل شده
-- امکان انتخاب دستی نقطه قیمت
-
-### نظارت بر عملکرد
-- ردیابی زمان اجرای OnCalculate (هشدار < 100ms، بحرانی < 500ms)
-- نظارت بر تعداد اشیاء (محدودیت MT4: ~64K)
-- کش کردن محاسبات پرهزینه با TTL
-
-### سیستم هشدار
-- اعلان‌ها هنگام نزدیک شدن قیمت به سطوح TH
-- هشدارهای قابل تنظیم
-
----
-
-## پشته فناوری
-
-### پلتفرم و زبان
-- **پلتفرم:** MetaTrader 4 (MT4)
-- **زبان:** MQL4 (MetaQuotes Language 4)
-- **پسوندهای فایل:** `.mq4` (فایل‌های اصلی), `.mqh` (فایل‌های include), `.ex4` (فایل‌های کامپایل شده)
-
-### سیستم ساخت
-- **کامپایلر:** MetaEditor (داخلی MT4)
-- **کامپایل:** خودکار هنگام ذخیره فایل‌های `.mq4`
-- **خروجی:** تولید فایل‌های اجرایی `.ex4`
-
-### دستورات رایج
-
-#### کامپایل در MetaEditor
-```
-F7 - کامپایل فایل فعلی
-F5 - کامپایل و اجرا در Strategy Tester
-Ctrl+F5 - شروع دیباگ
-```
-
-#### استقرار
-```
-# کپی فایل‌ها به نصب MT4:
-# اندیکاتورها: MT4_Data_Folder/MQL4/Indicators/
-# فایل‌های Include: MT4_Data_Folder/MQL4/Include/
+1.        TR      264          
+2.                   ATR , ATR  , ..., ATR   
+3.                 O(n m)    O(n+m)
 ```
 
 ---
 
-## الگوهای طراحی
+##                
 
-### اصول SOLID برای MQL4
-- **S**ingle Responsibility: یک فایل `.mqh`، یک مسئولیت معاملاتی
-- **O**pen/Closed: توسعه از طریق ماژول‌های جدید، نه تغییر محاسبات اصلی
-- **L**iskov Substitution: هندلرهای تایم‌فریم باید قابل تعویض باشند
-- **I**nterface Segregation: گروه‌های کوچک و متمرکز از توابع در هر ماژول
-- **D**ependency Inversion: وابستگی به رابط‌های مدیر، نه پیاده‌سازی‌ها
+###            TH
+-                                          
+-                           : TH_BASIS, ATR_BASIS
+-                             (L1-L5)
 
-### الگوهای کلیدی
+###                 
+-                                 30      
+-                                  
+-                            
+
+###                
+-                   OnCalculate (      < 100ms         < 500ms)
+-                      (        MT4: ~64K)
+-                            TTL
+
+###            
+-                                       TH
+-                    
+
+---
+
+##            
+
+###              
+- **      :** MetaTrader 4 (MT4)
+- **    :** MQL4 (MetaQuotes Language 4)
+- **             :** `.mq4` (             ), `.mqh` (         include), `.ex4` (                    )
+
+###           
+- **        :** MetaEditor (      MT4)
+- **       :**                             `.mq4`
+- **     :**                       `.ex4`
+
+###             
+
+####            MetaEditor
+```
+F7 -                  
+F5 -                   Strategy Tester
+Ctrl+F5 -           
+```
+
+####        
+```
+#                    MT4:
+#            : MT4_Data_Folder/MQL4/Indicators/
+#          Include: MT4_Data_Folder/MQL4/Include/
+```
+
+---
+
+##              
+
+###      SOLID      MQL4
+- **S**ingle Responsibility:         `.mqh`                     
+- **O**pen/Closed:                                                    
+- **L**iskov Substitution:                                         
+- **I**nterface Segregation:                                            
+- **D**ependency Inversion:                                           
+
+###              
 - **Manager Pattern:** BasePriceManager, ObjectManager
-- **Factory Functions:** ایجاد اشیاء (خطوط، برچسب‌ها)
+- **Factory Functions:**             (              )
 - **Event Handler:** OnInit, OnCalculate, OnChartEvent
 
 ---
 
-## بهینه‌سازی عملکرد
+##                  
 
-### استراتژی کش
+###            
 ```
-Memory Cache (متغیرهای static) < 1ms 
-→ Global Variables < 10ms 
-→ محاسبه مجدد < 100ms
-```
-
-### قوانین عملکرد MT4
-- کش کردن محاسبات پرهزینه TH
-- کمینه کردن ایجاد/حذف اشیاء
-- استفاده از متغیرهای static برای داده‌های پرتکرار
-- به‌روزرسانی دسته‌ای اشیاء برای کاهش ترسیم مجدد
-
----
-
-## تست‌ها
-
-### هرم تست برای MQL4
-```
-تست دستی (کم، روی چارت‌های واقعی)
-↑
-تست‌های یکپارچه (متوسط، چند تایم‌فریم)
-↑
-تست‌های Property-Based (زیاد، سریع، ویژگی‌های ریاضی)
+Memory Cache (         static) < 1ms 
+  Global Variables < 10ms 
+              < 100ms
 ```
 
-### تست‌های موجود
-- `TestBasePriceHistoryManager.mqh` - تست تاریخچه قیمت پایه
-- `TestBasePriceValidation.mqh` - تست اعتبارسنجی قیمت پایه
-- `TestFindLastM1CandleInBlock.mqh` - تست بلوک کندل
-- `TestMergeHistoryLists.mqh` - تست ادغام تاریخچه
-- `TestMultiChartSupport.mqh` - تست عملکرد چند چارتی
-- `TestRebuildProperties.mqh` - تست بازسازی ویژگی‌ها
+###               MT4
+-                         TH
+-                 /         
+-                     static                      
+-                                               
 
 ---
 
-## امنیت و اعتبارسنجی
+##       
 
-### اصول
-- **اعتبارسنجی ورودی:** تمام ورودی‌های کاربر (قیمت‌ها، تایم‌فریم‌ها)
-- **بررسی محدوده:** سطوح قیمت در محدوده معقول
-- **ایمنی حافظه:** پاکسازی صحیح اشیاء در OnDeinit
-
-### چک‌لیست کد معاملاتی
-- ✓ اعتبارسنجی تمام ورودی‌های قیمت (> 0، محدوده معقول)
-- ✓ بررسی مرزهای آرایه قبل از دسترسی
-- ✓ پاکسازی اشیاء هنگام حذف اندیکاتور
-- ✓ اعتبارسنجی پارامترهای تایم‌فریم
-- ✓ مدیریت سناریوهای بسته بودن بازار
-
----
-
-## مدیریت خطا
-
-### سطوح خطا
+###              MQL4
 ```
-L0: تمام داده‌ها موجود → نمایش کامل سطوح TH
-L1: داده جزئی → فقط نمایش سطوح موجود
-L2: خطای محاسبه → نمایش سطوح کش شده/تاریخی
-L3: خرابی بحرانی → مخفی کردن اندیکاتور به صورت ایمن
+         (                      )
+ 
+                (                    )
+ 
+        Property-Based (                           )
 ```
 
-### استراتژی‌ها
-- **Fail Fast:** اعتبارسنجی زودهنگام ورودی‌ها در OnInit
-- **Graceful Degradation:** نمایش سطوح کش شده هنگام خرابی محاسبه
-- **Safe Defaults:** استفاده از EMPTY_VALUE برای محاسبات نامعتبر
+###              
+- `TestBasePriceHistoryManager.mqh` -                      
+- `TestBasePriceValidation.mqh` -                         
+- `TestFindLastM1CandleInBlock.mqh` -              
+- `TestMergeHistoryLists.mqh` -                  
+- `TestMultiChartSupport.mqh` -                     
+- `TestRebuildProperties.mqh` -                     
 
 ---
 
-## استانداردهای کیفیت کد
+##                   
 
-### توابع
-- فقط یک هدف (محاسبه یک سطح TH، رسم یک شیء)
-- حداکثر 3-4 پارامتر
-- حداکثر 30 خط برای خوانایی MQL4
-- یک سطح انتزاع در هر تابع
+###     
+- **                :**                      (                     )
+- **            :**                          
+- **           :**                       OnDeinit
 
-### قراردادهای نام‌گذاری (سبک MQL4)
-- **توابع:** `CalculateTHLevel()`, `DrawHorizontalLine()`
-- **متغیرها:** پیشوند `g_` برای سراسری، `inp` برای ورودی‌ها
-- **ثابت‌ها:** `UPPER_CASE` با نام‌های توصیفی
-- **فایل‌ها:** `PascalCase.mqh`
-
----
-
-## محدودیت‌های پلتفرم MT4
-
-- **محدودیت اشیاء:** ~64K شیء کل
-- **مدیریت حافظه:** پاکسازی دستی مورد نیاز
-- **تک‌نخی:** بدون عملیات async
-- **زمان واقعی:** OnCalculate باید سریع باشد
+###                    
+-                                  (> 0              )
+-                                   
+-                                    
+-                                  
+-                                   
 
 ---
 
-## نکات توسعه
+##           
 
-### قبل از نوشتن کد
-1. **درک:** چه مشکل معاملاتی/اندیکاتوری را حل می‌کنیم؟
-2. **تحلیل:** کدام فایل‌های `.mqh` تحت تأثیر هستند؟
-3. **طراحی:** این به کدام لایه ماژول تعلق دارد؟
-4. **اعتبارسنجی:** آیا این معماری ماژولار را ضعیف می‌کند؟
+###         
+```
+L0:                                      TH
+L1:                                 
+L2:                                /      
+L3:                                                
+```
 
-### بهترین شیوه‌ها
-- استفاده از متغیرهای static برای کش
-- کمینه کردن فراخوانی‌های Print() در تولید
-- عملیات دسته‌ای اشیاء
-- مدیریت ایمن کامپایل مجدد اندیکاتور
-- تست روی تایم‌فریم‌ها و نمادهای متعدد
-
----
-
-## مشارکت و توسعه
-
-### ساختار ماژولار
-هر ویژگی جدید باید:
-- در یک فایل `.mqh` جداگانه باشد
-- یک مسئولیت واحد داشته باشد
-- وابستگی‌های واضح داشته باشد
-- تست‌های property-based داشته باشد
-
-### فرآیند توسعه
-1. تحلیل نیاز و طراحی
-2. پیاده‌سازی در ماژول مناسب
-3. نوشتن تست‌ها
-4. بررسی عملکرد
-5. مستندسازی
+###            
+- **Fail Fast:**                                 OnInit
+- **Graceful Degradation:**                                     
+- **Safe Defaults:**            EMPTY_VALUE                     
 
 ---
 
-## منابع و پشتیبانی
+##                      
 
-### مستندات
-- این فایل: نمای کلی پروژه
-- `README.md`: راهنمای شروع سریع
-- کامنت‌های کد: توضیحات منطق معاملاتی
+###      
+-            (              TH            )
+-        3-4        
+-        30                 MQL4
+-                         
 
-### ابزارهای توسعه
-- MetaEditor: IDE رسمی MT4
-- Strategy Tester: تست اندیکاتور
-- Performance Monitor: نظارت بر عملکرد
+###                      (    MQL4)
+- **     :** `CalculateTHLevel()`, `DrawHorizontalLine()`
+- **       :**        `g_`              `inp`              
+- **       :** `UPPER_CASE`                  
+- **       :** `PascalCase.mqh`
 
 ---
 
-**تاریخ به‌روزرسانی:** نسخه 3.04
-**وضعیت:** فعال و در حال نگهداری
+##                    MT4
+
+- **             :** ~64K       
+- **            :**                       
+- **      :**             async
+- **          :** OnCalculate               
+
+---
+
+##           
+
+###                
+1. **   :**                 /                         
+2. **     :**               `.mqh`                 
+3. **     :**                                  
+4. **          :**                                       
+
+###               
+-                     static        
+-                         Print()         
+-                     
+-                                   
+-                                     
+
+---
+
+##               
+
+###               
+                  :
+-            `.mqh`             
+-                           
+-                            
+-         property-based           
+
+###             
+1.                   
+2.                          
+3.             
+4.             
+5.          
+
+---
+
+##                 
+
+###        
+-         :               
+- `README.md`:                  
+-             :                      
+
+###               
+- MetaEditor: IDE      MT4
+- Strategy Tester:              
+- Performance Monitor:                
+
+---
+
+**                 :**      3.04
+**     :**                      

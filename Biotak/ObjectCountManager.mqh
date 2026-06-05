@@ -1,7 +1,7 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                          ObjectCountManager.mqh  |
 //|                     Object Count Management & Overflow Prevention|
-//|                     مدیریت تعداد اشیاء و جلوگیری از Overflow      |
+//|                                                     Overflow      |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -30,14 +30,14 @@ static datetime g_lastEmergencyCleanup = 0;
 
 //+------------------------------------------------------------------+
 //| Check if we can safely create new objects                        |
-//| بررسی امکان ایجاد اشیاء جدید                                     |
+//|                                                                  |
 //| Returns: true if safe, false if limit reached                   |
 //+------------------------------------------------------------------+
 bool CanCreateObject()
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // OPTIMIZATION: Cache check (update every 5 seconds)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     datetime currentTime = TimeCurrent();
     if(currentTime - g_lastObjectCountCheck < 5 && g_lastObjectCount > 0) {
         // Use cached count
@@ -46,18 +46,18 @@ bool CanCreateObject()
         }
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Get current object count
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     int totalObjects = ObjectsTotal(0, -1, -1);
     g_lastObjectCount = totalObjects;
     g_lastObjectCountCheck = currentTime;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL: Check if limit reached
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(totalObjects >= CRITICAL_OBJECT_LIMIT) {
-        Print("❌ CRITICAL: Object limit reached (", totalObjects, "/", MT4_OBJECT_LIMIT, ")");
+        Print("  CRITICAL: Object limit reached (", totalObjects, "/", MT4_OBJECT_LIMIT, ")");
         Print("   Forcing emergency cleanup...");
         
         // Emergency cleanup
@@ -68,23 +68,23 @@ bool CanCreateObject()
         g_lastObjectCount = totalObjects;
         
         if(totalObjects >= CRITICAL_OBJECT_LIMIT) {
-            Print("❌ FATAL: Cannot free objects (", totalObjects, " remaining)");
+            Print("  FATAL: Cannot free objects (", totalObjects, " remaining)");
             Print("   Please close some charts or remove other indicators");
             return false;
         }
         
-        Print("✅ Emergency cleanup successful: ", cleanedCount, " objects removed");
+        Print("  Emergency cleanup successful: ", cleanedCount, " objects removed");
         Print("   Current count: ", totalObjects);
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // WARNING: Approaching limit
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(totalObjects >= MAX_SAFE_OBJECTS) {
         // Throttle warning (once per minute)
         static datetime s_lastWarning = 0;
         if(currentTime - s_lastWarning > 60) {
-            Print("⚠️ WARNING: Approaching object limit (", totalObjects, "/", MAX_SAFE_OBJECTS, ")");
+            Print("   WARNING: Approaching object limit (", totalObjects, "/", MAX_SAFE_OBJECTS, ")");
             Print("   Consider reducing Max Levels in settings");
             s_lastWarning = currentTime;
         }
@@ -95,18 +95,18 @@ bool CanCreateObject()
 
 //+------------------------------------------------------------------+
 //| Emergency Object Cleanup                                         |
-//| پاکسازی اضطراری اشیاء                                            |
+//|                                                                  |
 //| Returns: Number of objects deleted                               |
 //+------------------------------------------------------------------+
 int EmergencyCleanupObjects()
 {
     datetime currentTime = TimeCurrent();
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Prevent cleanup spam (minimum 30 seconds between cleanups)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(currentTime - g_lastEmergencyCleanup < 30) {
-        Print("⚠️ EmergencyCleanup: Too soon since last cleanup, skipping");
+        Print("   EmergencyCleanup: Too soon since last cleanup, skipping");
         return 0;
     }
     
@@ -115,13 +115,13 @@ int EmergencyCleanupObjects()
     int deletedCount = 0;
     datetime cutoffTime = currentTime - EMERGENCY_CLEANUP_AGE;
     
-    Print("🧹 Emergency cleanup starting...");
+    Print("   Emergency cleanup starting...");
     Print("   Cutoff time: ", TimeToString(cutoffTime, TIME_DATE|TIME_MINUTES));
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: Delete old temporary objects (labels, zones)
     // OPTIMIZATION: Cache prefix and length
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     string cachedPrefix = inpObjectPrefix;
     int prefixLen = StringLen(cachedPrefix);
     
@@ -160,12 +160,12 @@ int EmergencyCleanupObjects()
     
     Print("   Phase 1: Deleted ", deletedCount, " old objects");
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: If still critical, delete ALL non-essential objects
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalObjects = ObjectsTotal(0, -1, -1);
     if(totalObjects >= CRITICAL_OBJECT_LIMIT) {
-        Print("⚠️ Still critical after Phase 1, starting Phase 2...");
+        Print("   Still critical after Phase 1, starting Phase 2...");
         
         int phase2Deleted = 0;
         
@@ -200,19 +200,19 @@ int EmergencyCleanupObjects()
         Print("   Phase 2: Deleted ", phase2Deleted, " non-essential objects");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 3: Force chart redraw
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     ChartRedraw();
     
-    Print("✅ Emergency cleanup complete: ", deletedCount, " total objects removed");
+    Print("  Emergency cleanup complete: ", deletedCount, " total objects removed");
     
     return deletedCount;
 }
 
 //+------------------------------------------------------------------+
 //| Get Current Object Count (cached)                                |
-//| دریافت تعداد فعلی اشیاء (با کش)                                  |
+//|                         (     )                                  |
 //+------------------------------------------------------------------+
 int GetCurrentObjectCount()
 {
@@ -241,7 +241,7 @@ void InvalidateObjectCountCache()
 
 //+------------------------------------------------------------------+
 //| Cleanup Object Count Manager                                     |
-//| پاکسازی مدیر تعداد اشیاء                                         |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void CleanupObjectCountManager()
 {
@@ -250,13 +250,13 @@ void CleanupObjectCountManager()
     g_lastEmergencyCleanup = 0;
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ ObjectCountManager cleaned up");
+    Print("  ObjectCountManager cleaned up");
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Print Object Count Statistics                                    |
-//| چاپ آمار تعداد اشیاء                                             |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void PrintObjectCountStats()
 {
@@ -292,16 +292,16 @@ void PrintObjectCountStats()
         }
     }
     
-    Print("╔═══════════════════════════════════════════════════════════════╗");
-    Print("║  OBJECT COUNT STATISTICS                                      ║");
-    Print("╠═══════════════════════════════════════════════════════════════╣");
-    Print("║  Total Objects: ", totalObjects, " / ", MT4_OBJECT_LIMIT);
-    Print("║  Usage: ", DoubleToString(100.0 * totalObjects / MT4_OBJECT_LIMIT, 1), "%");
-    Print("╠═══════════════════════════════════════════════════════════════╣");
-    Print("║  Lines:      ", lines);
-    Print("║  Labels:     ", labels);
-    Print("║  Rectangles: ", rectangles);
-    Print("║  Trends:     ", trends);
-    Print("║  Other:      ", other);
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
+    Print("   OBJECT COUNT STATISTICS                                       ");
+    Print("====================");
+    Print("   Total Objects: ", totalObjects, " / ", MT4_OBJECT_LIMIT);
+    Print("   Usage: ", DoubleToString(100.0 * totalObjects / MT4_OBJECT_LIMIT, 1), "%");
+    Print("====================");
+    Print("   Lines:      ", lines);
+    Print("   Labels:     ", labels);
+    Print("   Rectangles: ", rectangles);
+    Print("   Trends:     ", trends);
+    Print("   Other:      ", other);
+    Print("====================");
 }

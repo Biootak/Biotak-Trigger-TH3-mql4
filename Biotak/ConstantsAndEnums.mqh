@@ -1,4 +1,4 @@
-#ifndef CONSTANTS_AND_ENUMS_MQH
+﻿   #ifndef CONSTANTS_AND_ENUMS_MQH
 #define CONSTANTS_AND_ENUMS_MQH
 
 #define MAX_LINES 10
@@ -37,7 +37,7 @@
 #define OBJ_NO_PERIODS 0            // Hide on all timeframes
 #endif
 
-// ØªØ¹Ø±ÛŒÙ Ø«Ø§Ø¨Øªâ€ŒÙ‡Ø§ÛŒ Ù…ÙˆØ±Ø¯ Ù†ÛŒØ§Ø² Ø¨Ø±Ø§ÛŒ ØªÙ†Ø¸ÛŒÙ… Ø®ØµÙˆØµÛŒØ§Øª Ø¢Ø¨Ø¬Ú©Øªâ€ŒÙ‡Ø§
+//                         
 #ifndef OBJPROP_BOLD
 #define OBJPROP_BOLD 5
 #endif
@@ -46,7 +46,7 @@ const string FRACTAL_TIMEFRAMES[] = {
     "M1", "M4", "M16", "H1+M4", "H4+M16", "H17+M4",
     "D2+H20+M16", "D11+H9+M4", "D45+H12+M16"
 };
-// FRACTAL_SHORT_NAMES (visual align MT5 — used for compact label rendering)
+// FRACTAL_SHORT_NAMES (visual align MT5     used for compact label rendering)
 const string FRACTAL_SHORT_NAMES[] = {
     "M1", "M4", "M16", "H1.4", "H4.16", "H17.4",
     "D2.20.16", "D11.9.4", "D45.12.16"
@@ -59,7 +59,7 @@ const double MODIFIED_FRACTAL_PERCENTAGES[] = {
     0.0833,   // M16: 8.33%
     0.1666,   // H1+M4: 16.66%
     0.3333,   // H4+M16: 33.33%
-    0.6666,   // H17+M4: 66.66% âœ“
+    0.6666,   // H17+M4: 66.66%  
     1.3332,   // D2+H20+M16: 133.32%
     2.6664,   // D11+H9+M4: 266.64%
     5.3328    // D45+H12+M16: 533.28%
@@ -100,7 +100,7 @@ enum ENUM_STEP_CALCULATION_MODE {
     TH_STEP = 0,        // Traditional TH step mode
     SS_LS_STEP = 1,     // Short Step / Long Step alternating mode
     COMBO_STEP = 2,     // Combo Step mode (customizable: Component1 + Component2)
-    FACTOR_STEP = 3     // Factor Step mode (divides High-Low range by Factor × 2)
+    FACTOR_STEP = 3     // Factor Step mode (divides High-Low range by Factor    2)
 };
 
 // Factor calculation mode (Auto vs Manual)
@@ -111,22 +111,22 @@ enum ENUM_FACTOR_MODE {
 
 //+------------------------------------------------------------------+
 //| Factor Auto Basis - What to base the auto calculation on         |
-//| Ù…Ø¨Ù†Ø§ÛŒ Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø®ÙˆØ¯Ú©Ø§Ø± Factor                                       |
+//|           Factor                                       |
 //|                                                                  |
-//| CONTROL: Average of SS and LS (THÃ—1.75) - Balanced [DEFAULT]    |
-//| SS: Short Step (THÃ—1.5) - Closer levels, more lines             |
-//| LS: Long Step (THÃ—2.0) - Wider levels, fewer lines              |
-//| TH: Pure TH (THÃ—1.0) - Standard spacing                         |
+//| CONTROL: Average of SS and LS (TH  - Balanced [DEFAULT]    |
+//| SS: Short Step (TH  - Closer levels, more lines             |
+//| LS: Long Step (TH  - Wider levels, fewer lines              |
+//| TH: Pure TH (TH  - Standard spacing                         |
 //| TRIGGER: Current timeframe TH - Responsive to current TF        |
 //| PATTERN: 4x timeframe TH - Medium-term structure                |
 //| STRUCTURE: 16x timeframe TH - Long-term structure               |
 //| COMBO: Average of 2 components - Custom mix like Combo Mode     |
 //+------------------------------------------------------------------+
 enum ENUM_FACTOR_AUTO_BASIS {
-    FACTOR_BASIS_CONTROL = 0,      // Control: (SS+LS)/2 = THÃ—1.75 [Balanced]
-    FACTOR_BASIS_SS = 1,           // Short Step: THÃ—1.5 (More levels)
-    FACTOR_BASIS_LS = 2,           // Long Step: THÃ—2.0 (Fewer levels)
-    FACTOR_BASIS_TH = 3,           // Pure TH: THÃ—1.0 (Standard)
+    FACTOR_BASIS_CONTROL = 0,      // Control: (SS+LS)/2 = TH  [Balanced]
+    FACTOR_BASIS_SS = 1,           // Short Step: TH  (More levels)
+    FACTOR_BASIS_LS = 2,           // Long Step: TH  (Fewer levels)
+    FACTOR_BASIS_TH = 3,           // Pure TH: TH  (Standard)
     FACTOR_BASIS_TRIGGER = 4,      // Trigger: Current TF (Responsive)
     FACTOR_BASIS_PATTERN = 5,      // Pattern: 4x TF (Medium-term)
     FACTOR_BASIS_STRUCTURE = 6,    // Structure: 16x TF (Long-term)
@@ -135,7 +135,7 @@ enum ENUM_FACTOR_AUTO_BASIS {
 
 //+------------------------------------------------------------------+
 //| Structure Base Multiplier - Valid range 2-9                      |
-//| Ø¶Ø±ÛŒØ¨ Ù¾Ø§ÛŒÙ‡ Ø³Ø§Ø®ØªØ§Ø± - Ù…Ø­Ø¯ÙˆØ¯Ù‡ Ù…Ø¹ØªØ¨Ø± Û² ØªØ§ Û¹                          |
+//|        -                                            |
 //|                                                                  |
 //| Defines the hierarchical structure levels:                      |
 //| L1 = base^1, L2 = base^2, L3 = base^3, L4 = base^4, L5 = base^5|
@@ -158,17 +158,17 @@ enum ENUM_STRUCTURE_BASE_MULTIPLIER {
 };
 
 // Harmonic Ratio validation constants
-#define MIN_HARMONIC_RATIO 1.01   // Ø­Ø¯Ø§Ù‚Ù„ 1% ØªÙØ§ÙˆØª (meaningful alternation)
-#define MAX_HARMONIC_RATIO 2.0    // Ø­Ø¯Ø§Ú©Ø«Ø± 2x (maximum variation)
+#define MIN_HARMONIC_RATIO 1.01   //   1%   (meaningful alternation)
+#define MAX_HARMONIC_RATIO 2.0    //   2x (maximum variation)
 #define DEFAULT_HARMONIC_RATIO 1.333  // Golden-like ratio (4/3)
 
 //+------------------------------------------------------------------+
 //| Mean Type Selection (for aggregates and quick test)              |
-//| Ø§Ù†ØªØ®Ø§Ø¨ Ù†ÙˆØ¹ Ù…ÛŒØ§Ù†Ú¯ÛŒÙ† (Ø¨Ø±Ø§ÛŒ aggregates Ùˆ ØªØ³Øª Ø³Ø±ÛŒØ¹)                 |
+//|                        (  aggregates                       |
 //+------------------------------------------------------------------+
 enum ENUM_MEAN_TYPE {
     MEAN_ARITHMETIC = 0,    // Arithmetic Mean: (A + B + ...) / n
-    MEAN_GEOMETRIC = 1,     // Geometric Mean: â¿âˆš(A Ã— B Ã— ...)
+    MEAN_GEOMETRIC = 1,     // Geometric Mean:     B   ...)
     MEAN_HARMONIC = 2       // Harmonic Mean: n / (1/A + 1/B + ...)
 };
 
@@ -177,7 +177,7 @@ enum ENUM_MEAN_TYPE {
 
 //+------------------------------------------------------------------+
 //| Quick Test Presets (Simplified Component Selection)              |
-//| Presetâ€ŒÙ‡Ø§ÛŒ ØªØ³Øª Ø³Ø±ÛŒØ¹ (Ø§Ù†ØªØ®Ø§Ø¨ Ø³Ø§Ø¯Ù‡ components)                     |
+//| Preset        (      components)                     |
 //|                                                                  |
 //| NOTE: CUSTOM removed - use Advanced mode for full control       |
 //+------------------------------------------------------------------+
@@ -198,18 +198,18 @@ enum ENUM_SSLS_BASIS_TYPE {
 
 //+------------------------------------------------------------------+
 //| Calculation Basis (matching Java CalculationBasis enum)          |
-//| Ù…Ø¨Ù†Ø§ÛŒ Ù…Ø­Ø§Ø³Ø¨Ø§Øª (Ù…Ø·Ø§Ø¨Ù‚ Ø¨Ø§ Ø¬Ø§ÙˆØ§)                                    |
+//|         (                                          |
 //|                                                                  |
-//| TH_BASIS - Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ø¨Ø± Ø§Ø³Ø§Ø³ TH (Ø¯Ø±ØµØ¯ Ù‚ÛŒÙ…Øª Ã— âˆšØ¯Ù‚ÛŒÙ‚Ù‡)               |
-//| ATR_BASIS - Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ø¨Ø± Ø§Ø³Ø§Ø³ ATR ÙˆØ§Ù‚Ø¹ÛŒ (Weighted ATR)             |
+//| TH_BASIS -        TH (                        |
+//| ATR_BASIS -        ATR    (Weighted ATR)             |
 //+------------------------------------------------------------------+
 enum ENUM_CALCULATION_BASIS {
-    CALC_BASIS_TH = 0,          // TH-Based (Theoretical) - Ù¾ÛŒØ´â€ŒÙØ±Ø¶
-    CALC_BASIS_ATR = 1          // ATR-Based (Actual) - ÙˆØ§Ù‚Ø¹ÛŒ
+    CALC_BASIS_TH = 0,          // TH-Based (Theoretical) -   
+    CALC_BASIS_ATR = 1          // ATR-Based (Actual) -   
 };
 
 // Smart Combo Component Selection (Unified)
-// Ø§Ù†ØªØ®Ø§Ø¨ Ù‡ÙˆØ´Ù…Ù†Ø¯ Ø§Ø¬Ø²Ø§ÛŒ ØªØ±Ú©ÛŒØ¨ÛŒ (ÛŒÚ©Ù¾Ø§Ø±Ú†Ù‡)
+//              (            
 enum ENUM_COMBO_COMPONENT_ITEM {
     // Sub Components (Fastest - 1/4x)
     COMP_SUB_TH = 0,            // Sub TH
@@ -231,10 +231,10 @@ enum ENUM_COMBO_COMPONENT_ITEM {
     COMP_STRUCTURE_SS = 10,     // Structure SS
     COMP_STRUCTURE_LS = 11,     // Structure LS
     
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // AGGREGATE COMPONENTS (Ù…ÛŒØ§Ù†Ú¯ÛŒÙ†â€ŒÙ‡Ø§ÛŒ ØªØ±Ú©ÛŒØ¨ÛŒ)
+    //  
+    // AGGREGATE COMPONENTS (                  
     // These calculate the mean of TH, SS, LS for a timeframe
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    //  
     COMP_SUB_MEAN = 12,         // Sub Mean: (Sub_TH + Sub_SS + Sub_LS) / 3
     COMP_TRIGGER_MEAN = 13,     // Trigger Mean: (Trigger_TH + Trigger_SS + Trigger_LS) / 3
     COMP_PATTERN_MEAN = 14,     // Pattern Mean: (Pattern_TH + Pattern_SS + Pattern_LS) / 3
@@ -246,52 +246,52 @@ enum ENUM_COMBO_COMPONENT_ITEM {
 
 //+------------------------------------------------------------------+
 //| Combo Operators for Calculator Mode (Manual)                     |
-//| Ø¹Ù…Ù„Ú¯Ø±Ù‡Ø§ÛŒ ØªØ±Ú©ÛŒØ¨ÛŒ Ø¨Ø±Ø§ÛŒ Ø­Ø§Ù„Øª Ù…Ø§Ø´ÛŒÙ† Ø­Ø³Ø§Ø¨ (Ø¯Ø³ØªÛŒ)                      |
+//|               (                       |
 //|                                                                  |
 //| BINARY OPERATORS (2 operands): OP_PLUS to OP_HARMONIC_MEAN      |
 //| N-ARY OPERATORS (all components): OP_GEOMETRIC_MEAN_ALL to end  |
 //|                                                                  |
 //| USAGE EXAMPLE (N-ARY):                                           |
 //| Component 1: Trigger SS                                          |
-//| Operator 1: Geometric Mean (All)  â† Collects ALL components     |
+//| Operator 1: Geometric Mean (All)       Collects ALL components     |
 //| Component 2: Pattern LS                                          |
 //| Operator 2: [Ignored]                                            |
 //| Component 3: Structure TH                                        |
 //| Operator 3: [Ignored]                                            |
 //| Component 4: Ignore                                              |
-//| Result: Â³âˆš(Trigger_SS Ã— Pattern_LS Ã— Structure_TH)              |
+//| Result:         Pattern_LS   Structure_TH)              |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_OPERATOR {
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // BINARY OPERATORS (Ø¹Ù…Ù„Ú¯Ø±Ù‡Ø§ÛŒ Ø¯ÙˆØªØ§ÛŒÛŒ) - Work on 2 values
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    //  
+    // BINARY OPERATORS (    - Work on 2 values
+    //  
     OP_PLUS = 0,                // Plus: A + B
     OP_MINUS = 1,               // Minus: A - B
-    OP_MULTIPLY = 2,            // Multiply: A Ã— B
-    OP_DIVIDE = 3,              // Divide: A Ã· B
+    OP_MULTIPLY = 2,            // Multiply: A   B
+    OP_DIVIDE = 3,              // Divide: A   B
     OP_AVERAGE = 4,             // Arithmetic Mean: (A + B) / 2
-    OP_GEOMETRIC_MEAN = 5,      // Geometric Mean: âˆš(A Ã— B)
+    OP_GEOMETRIC_MEAN = 5,      // Geometric Mean:     B)
     OP_HARMONIC_MEAN = 6,       // Harmonic Mean: 2AB / (A + B)
     
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    // N-ARY OPERATORS (Ø¹Ù…Ù„Ú¯Ø±Ù‡Ø§ÛŒ Ú†Ù†Ø¯ØªØ§ÛŒÛŒ) - Work on ALL active components
+    //  
+    // N-ARY OPERATORS (           - Work on ALL active components
     // When used as Operator 1, collects ALL non-IGNORE components
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-    OP_GEOMETRIC_MEAN_ALL = 7,  // Geometric Mean (All): â¿âˆš(C1 Ã— C2 Ã— ... Ã— Cn)
+    //  
+    OP_GEOMETRIC_MEAN_ALL = 7,  // Geometric Mean (All):     C2   ...   Cn)
     OP_ARITHMETIC_MEAN_ALL = 8, // Arithmetic Mean (All): (C1 + C2 + ... + Cn) / n
     OP_HARMONIC_MEAN_ALL = 9,   // Harmonic Mean (All): n / (1/C1 + 1/C2 + ... + 1/Cn)
     OP_MIN_ALL = 10,            // Minimum (All): min(C1, C2, ..., Cn)
     OP_MAX_ALL = 11,            // Maximum (All): max(C1, C2, ..., Cn)
     
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    //  
     // SPECIAL
-    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    //  
     OP_NONE = 12                // None (End Chain)
 };
 
 //+------------------------------------------------------------------+
 //| Calculator Topology (Architecture of Calculation)                |
-//| Ù…Ø¹Ù…Ø§Ø±ÛŒ Ù…Ø­Ø§Ø³Ø¨Ø§Øª Ù…Ø§Ø´ÛŒÙ† Ø­Ø³Ø§Ø¨ (Ø³Ø§Ø®ØªØ§Ø± ÙØ±Ù…ÙˆÙ„)                         |
+//|             (                             |
 //+------------------------------------------------------------------+
 enum ENUM_CALCULATOR_TOPOLOGY {
     TOPOLOGY_LINEAR = 0,        // Linear: ((A op B) op C) op D [Sequential]
@@ -317,21 +317,21 @@ struct SCommonStepData {
 
 //+------------------------------------------------------------------+
 //| Advanced Combo Operations for Factor Auto Basis                  |
-//| Ø¹Ù…Ù„ÛŒØ§Øªâ€ŒÙ‡Ø§ÛŒ Ù¾ÛŒØ´Ø±ÙØªÙ‡ Combo Ø¨Ø±Ø§ÛŒ Factor Auto Basis                  |
+//|      Combo   Factor Auto Basis                  |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_OPERATION {
     COMBO_OP_AVERAGE = 0,       // Average: (A + B) / 2 [Default]
     COMBO_OP_ADD = 1,           // Add: A + B
     COMBO_OP_SUBTRACT = 2,      // Subtract: A - B (or |A - B|)
-    COMBO_OP_MULTIPLY = 3,      // Multiply: A Ã— B
+    COMBO_OP_MULTIPLY = 3,      // Multiply: A   B
     COMBO_OP_MIN = 4,           // Minimum: min(A, B) or min(A, B, C)
     COMBO_OP_MAX = 5,           // Maximum: max(A, B) or max(A, B, C)
-    COMBO_OP_WEIGHTED = 6       // Weighted: AÃ—W1 + BÃ—W2 (W1+W2=1)
+    COMBO_OP_WEIGHTED = 6       // Weighted: A  + B  (W1+W2=1)
 };
 
 //+------------------------------------------------------------------+
 //| Combo Mode Selection (Preset / Advanced)                         |
-//| انتخاب حالت Combo (Preset / پیشرفته)                             |
+//|                       Combo (Preset /               )                             |
 //|                                                                  |
 //| TWO INDEPENDENT MODES - Simplified and user-friendly             |
 //|                                                                  |
@@ -366,14 +366,14 @@ enum ENUM_COMBO_TIMEFRAME_TYPE {
 //| Step Size Type (TH, SS, LS)                                      |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_STEP_TYPE {
-    COMBO_STEP_TH = 0,          // TH: Base step (1.0×)
-    COMBO_STEP_SS = 1,          // SS: Short step (1.5×)
-    COMBO_STEP_LS = 2           // LS: Long step (2.0×)
+    COMBO_STEP_TH = 0,          // TH: Base step (1.0  )
+    COMBO_STEP_SS = 1,          // SS: Short step (1.5  )
+    COMBO_STEP_LS = 2           // LS: Long step (2.0  )
 };
 
 //+------------------------------------------------------------------+
 //| Combo Calculation Configuration Struct                           |
-//| ساختار تنظیمات محاسبات ترکیبی                                    |
+//|                                                                                            |
 //+------------------------------------------------------------------+
 struct SComboConfig {
     ENUM_COMBO_TIMEFRAME_TYPE tf1;
@@ -404,49 +404,49 @@ struct SComboConfig {
 //| mean (the most popular default from the old Quick Test mode).   |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_PRESET {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // LEGACY (kept for backward compatibility)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_LEGACY_ADD = 0,            // Legacy: Trigger SS + Pattern SS (ADD)
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // BALANCED FAMILY
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_BALANCED_MEDIUM = 1,       // Balanced Medium: (Pattern + Trigger) / 2 [Most Popular]
     COMBO_PRESET_BALANCED_LONG = 2,         // Balanced Long: (Structure + Pattern) / 2
     COMBO_PRESET_BALANCED_TRIPLE = 3,       // Triple Balanced: (Trigger + Pattern + Structure) / 3
     COMBO_PRESET_BALANCED_MIN = 4,          // Balanced Min: min(Pattern, Trigger)
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // CONSERVATIVE FAMILY
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_CONSERVATIVE = 5,          // Conservative: max(Structure, Pattern)
     COMBO_PRESET_ULTRA_CONSERVATIVE = 6,    // Ultra Conservative: Structure TH
     COMBO_PRESET_TRIPLE_CONSERVATIVE = 7,   // Triple Conservative: max(Trigger, Pattern, Structure)
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // AGGRESSIVE FAMILY
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_AGGRESSIVE = 8,            // Aggressive: min(Pattern, Trigger)
     COMBO_PRESET_ULTRA_AGGRESSIVE = 9,      // Ultra Aggressive: min(Trigger, Sub)
     COMBO_PRESET_TRIPLE_AGGRESSIVE = 10,    // Triple Aggressive: min(Trigger, Pattern, Structure)
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // SPECIAL
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_TREND_FILTER = 11,         // Trend Filter: Structure - Sub
     COMBO_PRESET_VOLATILITY_ADAPTIVE = 12,  // Volatility: (Structure + Sub) / 2
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // ADVANCED REDIRECTS (full manual control)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_MANUAL_DUAL = 13,          // Advanced Dual: User-defined (2 components) -> Advanced Mode
     COMBO_PRESET_MANUAL_TRIPLE = 14,        // Advanced Triple: User-defined (3 components) -> Advanced Mode
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     // QUICK TEST (merged from old COMBO_MODE_QUICK_TEST)
     // All use COMBO_STEP_TH and Geometric Mean for consistency.
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                                                                                                                                              
     COMBO_PRESET_QT_TRIGGER_PATTERN = 15,           // QT: Trigger + Pattern, Geo Mean
     COMBO_PRESET_QT_ALL_4TF = 16,                    // QT: Sub + Trigger + Pattern + Structure, Geo Mean
     COMBO_PRESET_QT_TRIGGER_PATTERN_STRUCTURE = 17,  // QT: Trigger + Pattern + Structure, Geo Mean
@@ -455,7 +455,7 @@ enum ENUM_COMBO_PRESET {
 };
 
 // TH3 Label Position
-// Ù…ÙˆÙ‚Ø¹ÛŒØª Ù†Ù…Ø§ÛŒØ´ label Ù‡Ø§ÛŒ TH3
+//         label    TH3
 enum ENUM_TH3_LABEL_POSITION {
     TH3_LABEL_START = 0,        // Start (Beginning of line)
     TH3_LABEL_MIDDLE = 1,       // Middle (Center of visible range)
@@ -464,7 +464,7 @@ enum ENUM_TH3_LABEL_POSITION {
 };
 
 // Unified Zone Display Style (Used by ALL modes)
-// Ù†Ø­ÙˆÙ‡ Ù†Ù…Ø§ÛŒØ´ Zone Ù‡Ø§ (Ø¨Ø±Ø§ÛŒ ØªÙ…Ø§Ù… Ù…ÙˆØ¯Ù‡Ø§)
+//          Zone    (      
 enum ENUM_ZONE_STYLE {
     ZONE_STYLE_LINES = 0,         // Lines Only (Two boundary lines)
     ZONE_STYLE_BOX_FILLED = 1,    // Filled Box (Rectangle with fill)
@@ -473,7 +473,7 @@ enum ENUM_ZONE_STYLE {
 };
 
 // Legacy aliases for backward compatibility
-// Ù†Ø§Ù…â€ŒÙ‡Ø§ÛŒ Ù‚Ø¯ÛŒÙ…ÛŒ Ø¨Ø±Ø§ÛŒ Ø³Ø§Ø²Ú¯Ø§Ø±ÛŒ Ø¨Ø§ Ú©Ø¯ Ù‚Ø¨Ù„ÛŒ
+//                      
 #define ENUM_TH3_ZONE_STYLE ENUM_ZONE_STYLE
 #define ENUM_FACTOR_ZONE_STYLE ENUM_ZONE_STYLE
 #define TH3_ZONE_LINES ZONE_STYLE_LINES
@@ -486,18 +486,18 @@ enum ENUM_ZONE_STYLE {
 #define FACTOR_ZONE_HIDDEN ZONE_STYLE_HIDDEN
 
 // TH3 Drawing Mode
-// Ø­Ø§Ù„Øª Ø±Ø³Ù… TH3 (Steps ÛŒØ§ AB=CD)
+//     TH3 (Steps       AB=CD)
 enum ENUM_TH3_DRAWING_MODE {
     TH3_MODE_STEPS = 0,         // Steps Mode (2-point drag)
-    TH3_MODE_ABCD = 1           // AB=CD Mode (3-point click: A, B, C â†’ calculates D)
+    TH3_MODE_ABCD = 1           // AB=CD Mode (3-point click: A, B, C       calculates D)
 };
 
-// NOTE: TH3_TEST_FREQUENCIES[] removed â€” replaced by Binary Subdivision Frequency System
+// NOTE: TH3_TEST_FREQUENCIES[] removed   replaced by Binary Subdivision Frequency System
 // in ProjectConstants.mqh (runtime calculation via GetFrequencyByIndex())
 
 //+------------------------------------------------------------------+
 //| ENUM: Adaptive Scaling Mode                                      |
-//| Ø­Ø§Ù„Øª Ù…Ù‚ÛŒØ§Ø³â€ŒØ¯Ù‡ÛŒ ØªØ·Ø¨ÛŒÙ‚ÛŒ                                             |
+//|                                                    |
 //+------------------------------------------------------------------+
 enum ENUM_ADAPTIVE_MODE {
     ADAPTIVE_FIXED   = 0,    // Fixed (No Adaptation)
@@ -513,7 +513,7 @@ enum ENUM_ADAPTIVE_MODE {
 
 //+------------------------------------------------------------------+
 //| TH3 Object Name Suffixes (Magic Numbers Elimination)            |
-//| Ù¾Ø³ÙˆÙ†Ø¯Ù‡Ø§ÛŒ Ù†Ø§Ù… Ø§Ø´ÛŒØ§Ø¡ TH3 (Ø­Ø°Ù Magic Numbers)                       |
+//|            TH3 (  Magic Numbers)                       |
 //+------------------------------------------------------------------+
 #define TH3_SUFFIX_LINE_AB "_Line_AB"
 #define TH3_SUFFIX_LINE_BC "_Line_BC"
@@ -523,9 +523,9 @@ enum ENUM_ADAPTIVE_MODE {
 #define TH3_SUFFIX_INFO    "_Info"
 #define TH3_SUFFIX_ZONE    "_Zone"
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  
 // ZONE ERROR CODES (used by ZoneValidator / ZoneCalculator)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  
 #define ZONE_ERROR_NONE             0
 #define ZONE_ERROR_INVALID_PRICES   1
 #define ZONE_ERROR_EQUAL_PRICES     2
@@ -533,9 +533,9 @@ enum ENUM_ADAPTIVE_MODE {
 #define ZONE_ERROR_INVERTED_BOUNDS  4
 #define ZONE_ERROR_OUT_OF_RANGE     5
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  
 // PIPELINE STRUCTS (used by Zone system)
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+//  
 
 struct SLevelRawData {
     double price;

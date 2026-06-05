@@ -1,9 +1,9 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                    LogLevels.mqh |
 //|                                  GOLD VERSION: Unified Logging   |
 //|                                  Centralized Log Level Management|
 //+------------------------------------------------------------------+
-#property copyright "© Biotak - GOLD Version v3"
+#property copyright "  Biotak - GOLD Version v3"
 #property strict
 
 #ifndef LOG_LEVELS_MQH
@@ -48,28 +48,28 @@ ENUM_LOG_LEVEL GetLogLevel() {
 // Log Error (always shown unless LOG_LEVEL_NONE)
 void LogError(string message) {
     if(g_currentLogLevel >= LOG_LEVEL_ERROR) {
-        Print("❌ ERROR: ", message);
+        Print("  ERROR: ", message);
     }
 }
 
 // Log Warning
 void LogWarning(string message) {
     if(g_currentLogLevel >= LOG_LEVEL_WARNING) {
-        Print("⚠️ WARNING: ", message);
+        Print("   WARNING: ", message);
     }
 }
 
 // Log Info
 void LogInfo(string message) {
     if(g_currentLogLevel >= LOG_LEVEL_INFO) {
-        Print("ℹ️ INFO: ", message);
+        Print("   INFO: ", message);
     }
 }
 
 // Log Debug (verbose)
 void LogDebug(string message) {
     if(g_currentLogLevel >= LOG_LEVEL_DEBUG) {
-        Print("🔍 DEBUG: ", message);
+        Print("   DEBUG: ", message);
     }
 }
 

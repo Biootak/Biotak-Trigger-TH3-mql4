@@ -1,4 +1,4 @@
-#ifndef MATH_CONSTANTS_MQH
+﻿  #ifndef MATH_CONSTANTS_MQH
 #define MATH_CONSTANTS_MQH
 
 #property copyright " Biotak"

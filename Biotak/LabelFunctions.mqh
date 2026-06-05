@@ -1,4 +1,4 @@
-#ifndef LABEL_FUNCTIONS_MQH
+﻿  #ifndef LABEL_FUNCTIONS_MQH
 #define LABEL_FUNCTIONS_MQH
 
 #property strict
@@ -121,10 +121,10 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
     double quintupleStructureTFTHStepSizePoints=CalculateTHPoints(dailyClosePrice,digits,structurePercentages[4]);
     if (thStepSizePoints <= 0 || structureTFTHStepSizePoints <= 0 || doubleStructureTFTHStepSizePoints <= 0) return;
     
-    // ═══════════════════════════════════════════════════════════════════
+    //                                                                    
     // FIX: Use configurable Base Multiplier instead of hardcoded values
     // Matches Java implementation in LevelDrawer.java (getPathForStep)
-    // ═══════════════════════════════════════════════════════════════════
+    //                                                                    
     int baseMultiplier = GetValidatedBaseMultiplier(); // Use central validation
     
     // Get cached intervals for the base multiplier (base^1, base^2, base^3, base^4, base^5)
@@ -134,16 +134,16 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
     // GOLD FIX #11: Array bounds checking - get size for safe access
     int intervalSize = ArraySize(intervals);
     if(intervalSize == 0) {
-        Print("❌ DrawTHLevels: Empty intervals array, cannot draw structure levels");
+        Print("  DrawTHLevels: Empty intervals array, cannot draw structure levels");
         return;
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("📊 DrawTHLevels using Base Multiplier: ", baseMultiplier,
-          " → L1=", intervals[0], ", L2=", intervals[1], ", L3=", intervals[2],
+    Print("   DrawTHLevels using Base Multiplier: ", baseMultiplier,
+          "   L1=", intervals[0], ", L2=", intervals[1], ", L3=", intervals[2],
           ", L4=", intervals[3], ", L5=", intervals[4]);
     #endif
-    // ═══════════════════════════════════════════════════════════════════
+    //                                                                    
     
     // Get midpoint price using utility function
     double midpointPrice = GetMidpointPrice(g_thStartPointType);
@@ -162,10 +162,10 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
     // OPTIMIZATION: Cache IsTriggerLevelsEnabled() result BEFORE the loops
     bool triggerEnabled = IsTriggerLevelsEnabled();
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // ZONE SUPPORT: Cleanup old zones
-    // پشتیبانی Zone: پاکسازی zone های قدیمی
-    // ═══════════════════════════════════════════════════════════════
+    //          Zone:         zone          
+    //                                                                
     if(inpShowMidZones) {
         ObjectsDeleteAll(0, prefix + "Zone_", -1, -1);
     }
@@ -188,10 +188,10 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
         double cachedLongStep = timeframePercentage * 2.0;
         double cachedShortStep = timeframePercentage * 1.5;
         
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         // ZONE SUPPORT: Tracking variables for Structure/Trigger separation
-        // پشتیبانی Zone: متغیرهای ردیابی برای جداسازی Structure/Trigger
-        // ═══════════════════════════════════════════════════════════════
+        //          Zone:                              Structure/Trigger
+        //                                                                
         double lastDrawnPriceAbove = midpointPrice;  // Track last structure level
         double lastTriggerPriceAbove = 0;            // Track last trigger level
         int zoneCountAbove = 0;
@@ -282,15 +282,15 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
             CreateTHLineObject(lineNameAbove, priceLevelAbove, lineColor, lineStyle, lineWidth, tooltipAbove, inpTHLineObjectType, false);
             if(inpShowPipDistanceLabels) CreatePipDistanceLabel(lineNameAbove+"_PipsLabel", priceLevelAbove, pipsToLevelAbove, lineColor, levelInfoAbove);
             
-            // ═══════════════════════════════════════════════════════════
+            //                                                            
             // ZONE SUPPORT: Create zone between levels
-            // پشتیبانی Zone: ساخت zone بین سطوح
+            //          Zone:      zone         
             // 
             // UNIFIED APPROACH: Use CreateZoneWithSmartFallback
-            // رویکرد یکپارچه: از CreateZoneWithSmartFallback استفاده کن
+            //               :    CreateZoneWithSmartFallback           
             // GOLD VERSION: Uses GetHighestStructureLevel for clean logic
             // CRITICAL FIX: Pass fixed step size for consistent zone height
-            // ═══════════════════════════════════════════════════════════
+            //                                                            
             if(inpShowMidZones) {
                 // GOLD FIX: Use centralized function instead of repeated else-if
                 int highestLevel = GetHighestStructureLevel(stepCountAbove, intervals);
@@ -318,10 +318,10 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
             levelCountAbove++;
         }
         
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         // ZONE SUPPORT: Tracking variables for levels below
-        // پشتیبانی Zone: متغیرهای ردیابی برای سطوح پایین
-        // ═══════════════════════════════════════════════════════════════
+        //          Zone:                                
+        //                                                                
         double lastDrawnPriceBelow = midpointPrice;  // Track last structure level
         double lastTriggerPriceBelow = 0;            // Track last trigger level
         int zoneCountBelow = 0;
@@ -412,15 +412,15 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
             CreateTHLineObject(lineNameBelow, priceLevelBelow, lineColor, lineStyle, lineWidth, tooltipBelow, inpTHLineObjectType, false);
             if(inpShowPipDistanceLabels) CreatePipDistanceLabel(lineNameBelow+"_PipsLabel", priceLevelBelow, pipsToLevelBelow, lineColor, levelInfoBelow);
             
-            // ═══════════════════════════════════════════════════════════
+            //                                                            
             // ZONE SUPPORT: Create zone between levels
-            // پشتیبانی Zone: ساخت zone بین سطوح
+            //          Zone:      zone         
             // 
             // UNIFIED APPROACH: Use CreateZoneWithSmartFallback
-            // رویکرد یکپارچه: از CreateZoneWithSmartFallback استفاده کن
+            //               :    CreateZoneWithSmartFallback           
             // GOLD VERSION: Uses GetHighestStructureLevel for clean logic
             // CRITICAL FIX: Pass fixed step size for consistent zone height
-            // ═══════════════════════════════════════════════════════════
+            //                                                            
             if(inpShowMidZones) {
                 // GOLD FIX: Use centralized function instead of repeated else-if
                 int highestLevel = GetHighestStructureLevel(stepCountBelow, intervals);
@@ -448,7 +448,7 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
         
         #ifdef ENABLE_DEBUG_LOGS
         if(inpShowMidZones) {
-            Print("✅ DrawTHLevels: Drew ", zoneCountAbove, " zones above, ", 
+            Print("  DrawTHLevels: Drew ", zoneCountAbove, " zones above, ", 
                   zoneCountBelow, " zones below");
         }
         #endif

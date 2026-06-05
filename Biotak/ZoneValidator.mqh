@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                ZoneValidator.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Zone Validation & Safety      |
@@ -12,7 +12,7 @@
 
 //+------------------------------------------------------------------+
 //| Validate Input Arrays                                            |
-//| اعتبارسنجی آرایه‌های ورودی                                        |
+//|                                                                   |
 //+------------------------------------------------------------------+
 bool ValidateInputArrays(const SLevelRawData &levels[], int &outCount)
 {
@@ -20,7 +20,7 @@ bool ValidateInputArrays(const SLevelRawData &levels[], int &outCount)
     
     if(outCount <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateInputArrays: Empty levels array");
+        Print("  ValidateInputArrays: Empty levels array");
         #endif
         return false;
     }
@@ -29,7 +29,7 @@ bool ValidateInputArrays(const SLevelRawData &levels[], int &outCount)
     for(int i = 0; i < outCount; i++) {
         if(levels[i].price <= 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ ValidateInputArrays: Invalid price at index ", i, ": ", levels[i].price);
+            Print("  ValidateInputArrays: Invalid price at index ", i, ": ", levels[i].price);
             #endif
             return false;
         }
@@ -40,13 +40,13 @@ bool ValidateInputArrays(const SLevelRawData &levels[], int &outCount)
 
 //+------------------------------------------------------------------+
 //| Validate Step Size                                               |
-//| اعتبارسنجی اندازه گام                                             |
+//|                                                                   |
 //+------------------------------------------------------------------+
 bool ValidateStepSize(double stepSize)
 {
     if(stepSize <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateStepSize: Invalid stepSize=", stepSize);
+        Print("  ValidateStepSize: Invalid stepSize=", stepSize);
         #endif
         return false;
     }
@@ -55,7 +55,7 @@ bool ValidateStepSize(double stepSize)
     double typicalPrice = (Bid + Ask) / 2.0;
     if(typicalPrice > 0 && stepSize > typicalPrice * 0.5) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ValidateStepSize: Suspiciously large stepSize=", stepSize, 
+        Print("   ValidateStepSize: Suspiciously large stepSize=", stepSize, 
               " (> 50% of price=", typicalPrice, ")");
         #endif
         // Don't fail, just warn
@@ -66,14 +66,14 @@ bool ValidateStepSize(double stepSize)
 
 //+------------------------------------------------------------------+
 //| Validate Style Config                                            |
-//| اعتبارسنجی تنظیمات استایل                                         |
+//|                                                                   |
 //+------------------------------------------------------------------+
 bool ValidateStyleConfig(const SStyleConfig &config)
 {
     // Validate zone height percent
     if(config.zoneHeightPercent < 0 || config.zoneHeightPercent > 1.0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateStyleConfig: Invalid zoneHeightPercent=", config.zoneHeightPercent,
+        Print("  ValidateStyleConfig: Invalid zoneHeightPercent=", config.zoneHeightPercent,
               " (must be 0.0-1.0)");
         #endif
         return false;
@@ -82,7 +82,7 @@ bool ValidateStyleConfig(const SStyleConfig &config)
     // Validate transparency
     if(config.zoneTransparency < 0 || config.zoneTransparency > 100) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateStyleConfig: Invalid zoneTransparency=", config.zoneTransparency,
+        Print("  ValidateStyleConfig: Invalid zoneTransparency=", config.zoneTransparency,
               " (must be 0-100)");
         #endif
         return false;
@@ -91,7 +91,7 @@ bool ValidateStyleConfig(const SStyleConfig &config)
     // Validate base multiplier (CRITICAL: prevent division by zero)
     if(config.baseMultiplier < 1) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateStyleConfig: Invalid baseMultiplier=", config.baseMultiplier,
+        Print("  ValidateStyleConfig: Invalid baseMultiplier=", config.baseMultiplier,
               " (must be >= 1)");
         #endif
         return false;
@@ -102,13 +102,13 @@ bool ValidateStyleConfig(const SStyleConfig &config)
 
 //+------------------------------------------------------------------+
 //| Validate Zone Height                                             |
-//| اعتبارسنجی ارتفاع زون                                            |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateZoneHeight(double zoneHeight, double stepSize)
 {
     if(zoneHeight <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateZoneHeight: Invalid zoneHeight=", zoneHeight);
+        Print("  ValidateZoneHeight: Invalid zoneHeight=", zoneHeight);
         #endif
         return false;
     }
@@ -116,7 +116,7 @@ bool ValidateZoneHeight(double zoneHeight, double stepSize)
     // Zone height should not exceed step size
     if(zoneHeight > stepSize) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ValidateZoneHeight: Zone height (", zoneHeight, 
+        Print("   ValidateZoneHeight: Zone height (", zoneHeight, 
               ") exceeds step size (", stepSize, ")");
         #endif
         // Don't fail, just warn
@@ -127,7 +127,7 @@ bool ValidateZoneHeight(double zoneHeight, double stepSize)
 
 //+------------------------------------------------------------------+
 //| Validate Zone Geometry                                           |
-//| اعتبارسنجی هندسه زون                                             |
+//|                                                                  |
 //+------------------------------------------------------------------+
 SZoneValidationResult ValidateZoneGeometry(
     double prevPrice, 
@@ -179,7 +179,7 @@ SZoneValidationResult ValidateZoneGeometry(
     }
     
     // Check for reasonable range (not too far from current price)
-    // استفاده از cached market price برای بهینه‌سازی
+    //            cached market price                
     double currentMarketPrice = GetCachedMarketPrice();
     if(currentMarketPrice > 0) {
         double maxReasonableDistance = currentMarketPrice * 2.0; // 200% of current price
@@ -190,7 +190,7 @@ SZoneValidationResult ValidateZoneGeometry(
             result.errorMessage = "Zone too far from current price";
             // Don't fail, just warn
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ ValidateZoneGeometry: ", result.errorMessage);
+            Print("   ValidateZoneGeometry: ", result.errorMessage);
             #endif
         }
     }
@@ -202,7 +202,7 @@ SZoneValidationResult ValidateZoneGeometry(
 
 //+------------------------------------------------------------------+
 //| Validate Complete Configuration                                  |
-//| اعتبارسنجی کامل تنظیمات                                          |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool ValidateCompleteConfig(
     const SLevelRawData &levels[],
@@ -216,7 +216,7 @@ bool ValidateCompleteConfig(
     // Validate input arrays
     if(!ValidateInputArrays(levels, outCount)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateCompleteConfig: Input array validation failed");
+        Print("  ValidateCompleteConfig: Input array validation failed");
         #endif
         return false;
     }
@@ -224,7 +224,7 @@ bool ValidateCompleteConfig(
     // Validate step size
     if(!ValidateStepSize(stepSize)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateCompleteConfig: Step size validation failed");
+        Print("  ValidateCompleteConfig: Step size validation failed");
         #endif
         return false;
     }
@@ -232,7 +232,7 @@ bool ValidateCompleteConfig(
     // Validate style config
     if(!ValidateStyleConfig(config)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateCompleteConfig: Style config validation failed");
+        Print("  ValidateCompleteConfig: Style config validation failed");
         #endif
         return false;
     }
@@ -241,7 +241,7 @@ bool ValidateCompleteConfig(
     outZoneHeight = stepSize * config.zoneHeightPercent * 0.5;
     if(outZoneHeight <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ValidateCompleteConfig: Invalid zoneHeight=", outZoneHeight);
+        Print("  ValidateCompleteConfig: Invalid zoneHeight=", outZoneHeight);
         #endif
         return false;
     }
@@ -250,7 +250,7 @@ bool ValidateCompleteConfig(
     // OPTIMIZATION: Use centralized cached Digits value
     int s_cachedDigitsConfig = GetCachedDigits();
     
-    Print("✅ ValidateCompleteConfig: All validations passed");
+    Print("  ValidateCompleteConfig: All validations passed");
     Print("   Count=", outCount, ", StepSize=", DoubleToString(stepSize, s_cachedDigitsConfig),
           ", ZoneHeight=", DoubleToString(outZoneHeight, s_cachedDigitsConfig));
     #endif

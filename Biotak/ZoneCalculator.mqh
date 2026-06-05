@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                               ZoneCalculator.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                Zone Geometry Calculations         |
@@ -12,22 +12,22 @@
 
 //+------------------------------------------------------------------+
 //| Helper: Check if Structure Level (FIXED: Proper hierarchy)      |
-//| کمک: بررسی سطح ساختاری (اصلاح شده: سلسله‌مراتب صحیح)            |
+//|    :                   (         :                 )            |
 //|                                                                  |
 //| OLD LOGIC (WRONG):                                               |
-//| Step 16 with Base=4 → 16%4=0 → L1 ✅ AND 16%16=0 → L2 ✅        |
+//| Step 16 with Base=4   16%4=0   L1   AND 16%16=0   L2          |
 //| This causes overlaps!                                            |
 //|                                                                  |
 //| NEW LOGIC (CORRECT):                                             |
-//| Step 16 with Base=4 → Highest level only = L2                   |
-//| A step is Structure if it's divisible by base BUT NOT by base²  |
-//| unless it's also divisible by base², then it's higher level     |
+//| Step 16 with Base=4   Highest level only = L2                   |
+//| A step is Structure if it's divisible by base BUT NOT by base   |
+//| unless it's also divisible by base , then it's higher level     |
 //|                                                                  |
 //| EXAMPLES with Base=4:                                            |
-//| Step 4:  4%4=0, 4%16≠0 → Structure L1 ✅                         |
-//| Step 8:  8%4=0, 8%16≠0 → Structure L1 ✅                         |
-//| Step 12: 12%4=0, 12%16≠0 → Structure L1 ✅                       |
-//| Step 16: 16%4=0, 16%16=0 → Structure L2 (not L1) ✅             |
+//| Step 4:  4%4=0, 4%16 0   Structure L1                           |
+//| Step 8:  8%4=0, 8%16 0   Structure L1                           |
+//| Step 12: 12%4=0, 12%16 0   Structure L1                         |
+//| Step 16: 16%4=0, 16%16=0   Structure L2 (not L1)               |
 //|                                                                  |
 //| @param step The step number to check                            |
 //| @param baseMult The power base multiplier (2-9)                 |
@@ -44,7 +44,7 @@ bool IsStructureLevel(int step, int baseMult)
 
 //+------------------------------------------------------------------+
 //| Classify Levels (Active/Inactive, Structure/Trigger)            |
-//| طبقه‌بندی سطوح (فعال/غیرفعال، ساختار/تریگر)                      |
+//|                (    /               /     )                      |
 //+------------------------------------------------------------------+
 void ClassifyLevels(
     const SLevelRawData &levels[],
@@ -58,16 +58,16 @@ void ClassifyLevels(
     int s_cachedDigits = GetCachedDigits();
     
     // DIAGNOSTIC LOG: Configuration State
-    Print("═══════════════════════════════════════════════════════════");
-    Print("🔍 ZONE CLASSIFICATION DIAGNOSTIC");
-    Print("═══════════════════════════════════════════════════════════");
-    Print("📋 Config State:");
+    Print("====================");
+    Print("   ZONE CLASSIFICATION DIAGNOSTIC");
+    Print("====================");
+    Print("   Config State:");
     Print("   showStructure: ", config.showStructure ? "TRUE" : "FALSE");
     Print("   showTrigger: ", config.showTrigger ? "TRUE" : "FALSE");
     Print("   baseMultiplier: ", config.baseMultiplier);
     Print("   structColorL1: ", ColorToString(config.structColorL1));
     Print("   triggerColor: ", ColorToString(config.triggerColor));
-    Print("───────────────────────────────────────────────────────────");
+    Print("====================");
     
     for(int i = 0; i < count; i++) {
         // Determine if Structure Level
@@ -113,7 +113,7 @@ void ClassifyLevels(
         
         // DIAGNOSTIC LOG: Per-Level Classification
         if(isActive) {
-            Print("📍 Level ", i, " [Step ", levels[i].logicalStep, "]:");
+            Print("   Level ", i, " [Step ", levels[i].logicalStep, "]:");
             Print("   Price: ", DoubleToString(levels[i].price, s_cachedDigits));
             Print("   Type: ", isStructure ? "STRUCTURE" : "TRIGGER");
             Print("   Color: ", ColorToString(levelColor));
@@ -132,19 +132,19 @@ void ClassifyLevels(
             else triggerCount++;
         }
     }
-    Print("───────────────────────────────────────────────────────────");
-    Print("✅ ClassifyLevels Summary:");
+    Print("====================");
+    Print("  ClassifyLevels Summary:");
     Print("   Total Levels: ", count);
     Print("   Active Levels: ", activeCount);
     Print("   Structure Levels: ", structureCount);
     Print("   Trigger Levels: ", triggerCount);
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Calculate Zone Geometries                                        |
-//| محاسبه هندسه زون‌ها                                              |
+//|                                                                  |
 //| CRITICAL FIX: Array bounds validation                            |
 //+------------------------------------------------------------------+
 void CalculateZoneGeometries(
@@ -159,12 +159,12 @@ void CalculateZoneGeometries(
     // OPTIMIZATION: Use centralized cached Digits from PerformanceOptimizations.mqh
     int s_cachedDigits = GetCachedDigits();
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX: Array size validation
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(classCount != count) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateZoneGeometries: Array size mismatch - levels=", count, 
+        Print("  CalculateZoneGeometries: Array size mismatch - levels=", count, 
               ", classifications=", classCount);
         #endif
         ArrayResize(outGeometries, 0);
@@ -174,7 +174,7 @@ void CalculateZoneGeometries(
     // SECURITY: Validate count is within safe limits
     if(count <= 0 || count > MAX_SAFE_LEVELS) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateZoneGeometries: Invalid level count=", count);
+        Print("  CalculateZoneGeometries: Invalid level count=", count);
         #endif
         ArrayResize(outGeometries, 0);
         return;
@@ -183,13 +183,13 @@ void CalculateZoneGeometries(
     ArrayResize(outGeometries, count);
     
     // DIAGNOSTIC LOG: Start
-    Print("═══════════════════════════════════════════════════════════");
-    Print("🔍 ZONE GEOMETRY CALCULATION DIAGNOSTIC");
-    Print("═══════════════════════════════════════════════════════════");
-    Print("📋 Input Parameters:");
+    Print("====================");
+    Print("   ZONE GEOMETRY CALCULATION DIAGNOSTIC");
+    Print("====================");
+    Print("   Input Parameters:");
     Print("   Total Levels: ", count);
     Print("   Zone Height: ", DoubleToString(zoneHeight, s_cachedDigits));
-    Print("───────────────────────────────────────────────────────────");
+    Print("====================");
     
     // GOLD FIX: Initialize ALL trackers (structure + trigger) with midpoint
     double lastStructurePriceAbove = -1;
@@ -202,7 +202,7 @@ void CalculateZoneGeometries(
     for(int i = 0; i < count; i++) {
         // CRITICAL FIX: Bounds check before access
         if(i >= count || i >= classCount) {
-            Print("❌ Index out of bounds: i=", i, ", count=", count, ", classCount=", classCount);
+            Print("  Index out of bounds: i=", i, ", count=", count, ", classCount=", classCount);
             break;
         }
         
@@ -212,15 +212,15 @@ void CalculateZoneGeometries(
             lastTriggerPriceAbove = levels[i].price;
             lastTriggerPriceBelow = levels[i].price;
             midpointFound = true;
-            Print("📍 Midpoint Found at Index ", i, ": ", DoubleToString(levels[i].price, s_cachedDigits));
+            Print("   Midpoint Found at Index ", i, ": ", DoubleToString(levels[i].price, s_cachedDigits));
             break;
         }
     }
     
-    // CRITICAL: بررسی وجود midpoint
+    // CRITICAL:            midpoint
     if(!midpointFound) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateZoneGeometries: Midpoint not found in levels array");
+        Print("  CalculateZoneGeometries: Midpoint not found in levels array");
         #endif
         ArrayResize(outGeometries, 0);
         return;
@@ -229,13 +229,13 @@ void CalculateZoneGeometries(
     // Calculate Zone Geometries
     int validZoneCount = 0;
     
-    Print("───────────────────────────────────────────────────────────");
-    Print("🎨 Zone Calculation Process:");
+    Print("====================");
+    Print("   Zone Calculation Process:");
     
     for(int i = 0; i < count; i++) {
         // CRITICAL FIX: Bounds check
         if(i >= count || i >= classCount) {
-            Print("❌ Index out of bounds in loop: i=", i);
+            Print("  Index out of bounds in loop: i=", i);
             break;
         }
         
@@ -244,13 +244,13 @@ void CalculateZoneGeometries(
         
         // Skip if level is not active
         if(!classifications[i].isActive) {
-            Print("⏭️ Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Inactive)");
+            Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Inactive)");
             continue;
         }
         
         // Skip midpoint (no zone for midpoint itself)
         if(levels[i].logicalStep == 0) {
-            Print("⏭️ Level ", i, " [Step 0]: SKIPPED (Midpoint - no zone)");
+            Print("   Level ", i, " [Step 0]: SKIPPED (Midpoint - no zone)");
             continue;
         }
         
@@ -312,26 +312,26 @@ void CalculateZoneGeometries(
                 validZoneCount++;
                 
                 // DIAGNOSTIC LOG: Zone Created
-                Print("✅ Zone ", validZoneCount, " [Level ", i, ", Step ", levels[i].logicalStep, "]:");
+                Print("  Zone ", validZoneCount, " [Level ", i, ", Step ", levels[i].logicalStep, "]:");
                 Print("   Type: ", isStructure ? "STRUCTURE" : "TRIGGER");
-                Print("   Between: ", DoubleToString(prevPrice, s_cachedDigits), " → ", DoubleToString(levels[i].price, s_cachedDigits));
+                Print("   Between: ", DoubleToString(prevPrice, s_cachedDigits), "   ", DoubleToString(levels[i].price, s_cachedDigits));
                 Print("   Zone Top: ", DoubleToString(topPrice, s_cachedDigits));
                 Print("   Zone Mid: ", DoubleToString(midPoint, s_cachedDigits));
                 Print("   Zone Bottom: ", DoubleToString(bottomPrice, s_cachedDigits));
                 Print("   Color: ", ColorToString(classifications[i].levelColor));
             }
             else {
-                Print("❌ Level ", i, " [Step ", levels[i].logicalStep, "]: Invalid Geometry - ", validation.errorMessage);
+                Print("  Level ", i, " [Step ", levels[i].logicalStep, "]: Invalid Geometry - ", validation.errorMessage);
             }
         }
         else {
-            Print("⏭️ Level ", i, " [Step ", levels[i].logicalStep, "]: Cannot Calculate (No Previous ", 
+            Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: Cannot Calculate (No Previous ", 
                   isStructure ? "Structure" : "Trigger", " Price)");
         }
     }
     
-    Print("───────────────────────────────────────────────────────────");
-    Print("✅ CalculateZoneGeometries Summary:");
+    Print("====================");
+    Print("  CalculateZoneGeometries Summary:");
     Print("   Valid Zones Created: ", validZoneCount);
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
 }

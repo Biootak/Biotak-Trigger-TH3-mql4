@@ -1,7 +1,7 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                              MemoryManager.mqh   |
 //|                     Memory Management & Leak Detection           |
-//|                     مدیریت حافظه و تشخیص نشتی                    |
+//|                                                                  |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -42,7 +42,7 @@ void InitializeMemoryManager()
     g_memoryStats.criticalIssued = false;
     g_memoryStatsInitialized = true;
     
-    Print("✅ Memory Manager initialized");
+    Print("  Memory Manager initialized");
 }
 
 //+------------------------------------------------------------------+
@@ -61,7 +61,7 @@ void TrackObjectCreation(const string objectName)
     
     #ifdef ENABLE_DEBUG_LOGS
     if(g_memoryStats.totalObjectsCreated % 100 == 0) {
-        Print("📊 Memory: ", g_memoryStats.currentObjectCount, " objects (Peak: ", 
+        Print("   Memory: ", g_memoryStats.currentObjectCount, " objects (Peak: ", 
               g_memoryStats.peakObjectCount, ")");
     }
     #endif
@@ -78,7 +78,7 @@ void TrackObjectDeletion(const string objectName)
     g_memoryStats.currentObjectCount--;
     
     if(g_memoryStats.currentObjectCount < 0) {
-        Print("⚠️ WARNING: Negative object count detected - resetting");
+        Print("   WARNING: Negative object count detected - resetting");
         g_memoryStats.currentObjectCount = 0;
     }
 }
@@ -102,7 +102,7 @@ void CheckMemoryHealth()
     
     // Sync our tracking with reality
     if(MathAbs(actualCount - g_memoryStats.currentObjectCount) > 10) {
-        Print("⚠️ Memory tracking drift detected: tracked=", g_memoryStats.currentObjectCount,
+        Print("   Memory tracking drift detected: tracked=", g_memoryStats.currentObjectCount,
               ", actual=", actualCount, " - syncing");
         g_memoryStats.currentObjectCount = actualCount;
     }
@@ -113,7 +113,7 @@ void CheckMemoryHealth()
     // Issue warnings
     if(usagePercent >= MEMORY_CRITICAL_THRESHOLD) {
         if(!g_memoryStats.criticalIssued) {
-            Print("❌ CRITICAL: Memory usage at ", DoubleToString(usagePercent * 100, 1), "%");
+            Print("  CRITICAL: Memory usage at ", DoubleToString(usagePercent * 100, 1), "%");
             Print("   Objects: ", actualCount, "/", MT4_OBJECT_LIMIT);
             Print("   Consider reducing Max Levels or closing other indicators");
             g_memoryStats.criticalIssued = true;
@@ -121,7 +121,7 @@ void CheckMemoryHealth()
     }
     else if(usagePercent >= MEMORY_WARNING_THRESHOLD) {
         if(!g_memoryStats.warningIssued) {
-            Print("⚠️ WARNING: Memory usage at ", DoubleToString(usagePercent * 100, 1), "%");
+            Print("   WARNING: Memory usage at ", DoubleToString(usagePercent * 100, 1), "%");
             Print("   Objects: ", actualCount, "/", MT4_OBJECT_LIMIT);
             g_memoryStats.warningIssued = true;
         }
@@ -146,7 +146,7 @@ bool DetectMemoryLeaks()
     int difference = actualCount - expectedCount;
     
     if(difference > 50) { // Threshold for leak detection
-        Print("⚠️ MEMORY LEAK DETECTED:");
+        Print("   MEMORY LEAK DETECTED:");
         Print("   Expected objects: ", expectedCount);
         Print("   Actual objects: ", actualCount);
         Print("   Leaked objects: ", difference);
@@ -169,15 +169,15 @@ void PrintMemoryStatistics()
     int actualCount = ObjectsTotal(0, -1, -1);
     double usagePercent = (double)actualCount / MT4_OBJECT_LIMIT * 100.0;
     
-    Print("╔═══════════════════════════════════════════════════════════╗");
-    Print("║  MEMORY STATISTICS                                        ║");
-    Print("╠═══════════════════════════════════════════════════════════╣");
-    Print("║  Current Objects: ", actualCount, " (", DoubleToString(usagePercent, 1), "%)");
-    Print("║  Peak Objects: ", g_memoryStats.peakObjectCount);
-    Print("║  Total Created: ", g_memoryStats.totalObjectsCreated);
-    Print("║  Total Deleted: ", g_memoryStats.totalObjectsDeleted);
-    Print("║  MT4 Limit: ", MT4_OBJECT_LIMIT);
-    Print("╚═══════════════════════════════════════════════════════════╝");
+    Print("====================");
+    Print("   MEMORY STATISTICS                                         ");
+    Print("====================");
+    Print("   Current Objects: ", actualCount, " (", DoubleToString(usagePercent, 1), "%)");
+    Print("   Peak Objects: ", g_memoryStats.peakObjectCount);
+    Print("   Total Created: ", g_memoryStats.totalObjectsCreated);
+    Print("   Total Deleted: ", g_memoryStats.totalObjectsDeleted);
+    Print("   MT4 Limit: ", MT4_OBJECT_LIMIT);
+    Print("====================");
 }
 
 //+------------------------------------------------------------------+
@@ -196,7 +196,7 @@ void CleanupAllObjects(const string prefix = "")
     }
     
     if(deletedCount > 0) {
-        Print("✅ Cleaned up ", deletedCount, " objects", 
+        Print("  Cleaned up ", deletedCount, " objects", 
               (StringLen(prefix) > 0) ? " with prefix: " + prefix : "");
     }
     
@@ -214,15 +214,15 @@ void DeinitializeMemoryManager()
 {
     if(!g_memoryStatsInitialized) return;
     
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
     Print("Memory Manager Shutdown");
     PrintMemoryStatistics();
     
     // Check for leaks one last time
     if(DetectMemoryLeaks()) {
-        Print("⚠️ Memory leaks detected during shutdown");
+        Print("   Memory leaks detected during shutdown");
     }
     
     g_memoryStatsInitialized = false;
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
 }

@@ -1,4 +1,4 @@
-#property copyright "Copyright 2025, Biotak Project"
+﻿  #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
 
@@ -6,18 +6,18 @@
 #define LEVEL_PIPELINE_MQH
 
 //+------------------------------------------------------------------+
-//| LEVEL PIPELINE — Zone-First Architecture                         |
+//| LEVEL PIPELINE   Zone-First Architecture                         |
 //|                                                                  |
 //| PHILOSOPHY: Zone is the PRIMARY entity. Lines (triggers) are     |
 //| derived from zone boundaries. Zones define the structure;        |
 //| lines are visual markers at the edges where zones meet.          |
 //|                                                                  |
 //| PIPELINE STAGES:                                                 |
-//|   Stage 1: CalculateLevels  → SCalculatedLevel[]                 |
-//|   Stage 2: ClassifyLevels   → update classification in-place     |
-//|   Stage 3: BuildZones       → SZoneDefinition[] (PRIMARY)        |
-//|   Stage 4: DeriveTriggers   → STriggerLine[] (from zone bounds)  |
-//|   Stage 5: RenderAll        → MT5 objects (zones first, lines)   |
+//|   Stage 1: CalculateLevels    SCalculatedLevel[]                 |
+//|   Stage 2: ClassifyLevels     update classification in-place     |
+//|   Stage 3: BuildZones         SZoneDefinition[] (PRIMARY)        |
+//|   Stage 4: DeriveTriggers     STriggerLine[] (from zone bounds)  |
+//|   Stage 5: RenderAll          MT5 objects (zones first, lines)   |
 //|                                                                  |
 //| BENEFITS:                                                        |
 //|   - Zones are always geometrically correct (no state mutation)   |
@@ -150,8 +150,8 @@ struct SModeConfig {
 //| STEP MODE: How price is computed at each level                   |
 //+------------------------------------------------------------------+
 enum ENUM_LEVEL_STEP_MODE {
-    LEVEL_STEP_UNIFORM = 0,       // price = center ± stepSize × N (no drift)
-    LEVEL_STEP_CUMULATIVE = 1     // price = center ± cumulative(steps[N % count])
+    LEVEL_STEP_UNIFORM = 0,       // price = center   stepSize   N (no drift)
+    LEVEL_STEP_CUMULATIVE = 1     // price = center   cumulative(steps[N % count])
 };
 
 //+------------------------------------------------------------------+
@@ -176,11 +176,11 @@ struct SPipelineResult {
 //| STAGE 1: Unified level price calculator                          |
 //|                                                                  |
 //| Handles ALL modes via stepMode enum:                             |
-//|   LEVEL_STEP_UNIFORM:    price = center ± step × N              |
-//|   LEVEL_STEP_CUMULATIVE: price = center ± Σ steps[i % count]    |
+//|   LEVEL_STEP_UNIFORM:    price = center   step   N              |
+//|   LEVEL_STEP_CUMULATIVE: price = center     steps[i % count]    |
 //|                                                                  |
 //| KEY PRINCIPLE: ALL levels are calculated. Every step is always   |
-//| included — there is no filtering/skipping.                       |
+//| included   there is no filtering/skipping.                       |
 //+------------------------------------------------------------------+
 int CalculateLevels(
     const double centerPrice,
@@ -281,7 +281,7 @@ int CalculateLevels(
         logicalStep++;
     }
     
-    // PERF: maxStep is known — drawnAbove and drawnBelow track the actual max logicalStep
+    // PERF: maxStep is known   drawnAbove and drawnBelow track the actual max logicalStep
     maxStepOut = (drawnAbove > drawnBelow) ? drawnAbove : drawnBelow;
     ArrayResize(levels, count);
     return count;
@@ -360,7 +360,7 @@ int ClassifyLevels(
         classified[i].isStructure = (classified[i].structureLevel > 0);
         
         if(classified[i].isStructure) {
-            // Structural level — get styling from GetPathForLevelOptimized
+            // Structural level   get styling from GetPathForLevelOptimized
             color outColor; ENUM_LINE_STYLE outStyle; int outWidth;
             if(GetPathForLevelOptimized(step, outColor, outStyle, outWidth, triggerEnabled)) {
                 classified[i].levelColor = outColor;
@@ -368,15 +368,15 @@ int ClassifyLevels(
                 classified[i].levelWidth = outWidth;
             }
         } else {
-            // Trigger subdivision — between structural levels
+            // Trigger subdivision   between structural levels
             classified[i].isTrigger = true;
             if(triggerEnabled) {
-                // User has trigger styling enabled — use trigger colors
+                // User has trigger styling enabled   use trigger colors
                 classified[i].levelColor = GetTriggerRenderColor();
                 classified[i].levelStyle = inpTriggerStyle;
                 classified[i].levelWidth = inpTriggerWidth;
             } else {
-                // Trigger styling disabled — use mode fallback colors
+                // Trigger styling disabled   use mode fallback colors
                 classified[i].levelColor = config.fallbackColor;
                 classified[i].levelStyle = config.fallbackStyle;
                 classified[i].levelWidth = config.fallbackWidth;
@@ -478,7 +478,7 @@ void BuildZonesAndLines(
     midLevel.isMidpoint = false;
     bool hasMid = false;
     
-    // Ensure capacity (only grows, never shrinks — eliminates per-frame allocation)
+    // Ensure capacity (only grows, never shrinks   eliminates per-frame allocation)
     if(s_aboveCapacity < classifiedCount) {
         ArrayResize(s_aboveLevels, classifiedCount, 64);
         s_aboveCapacity = classifiedCount;
@@ -512,7 +512,7 @@ void BuildZonesAndLines(
         } else if(belowCount > 0) {
             neighborDist = midLevel.price - s_belowLevels[0].price;
         }
-        // Edge case fix: no neighbors → use 100 points as fallback height
+        // Edge case fix: no neighbors   use 100 points as fallback height
         if(neighborDist <= 0) {
             neighborDist = GetCachedPoint() * 100;
         }
@@ -654,7 +654,7 @@ void BuildZonesAndLines(
 }
 
 //+------------------------------------------------------------------+
-//| STAGE 5a: Render zones (FIRST — zones are primary)               |
+//| STAGE 5a: Render zones (FIRST   zones are primary)               |
 //|                                                                  |
 //| Creates/updates MT5 rectangle objects for each zone.             |
 //| Handles all zone styles: Lines, Filled Box, Empty Box, Hidden.   |
@@ -709,7 +709,7 @@ void RenderZones(
 }
 
 //+------------------------------------------------------------------+
-//| STAGE 5b: Render trigger lines (SECOND — derived from zones)     |
+//| STAGE 5b: Render trigger lines (SECOND   derived from zones)     |
 //|                                                                  |
 //| Creates/updates MT5 horizontal line objects.                     |
 //| Uses CreateOrUpdateHLine for consistency.                        |
@@ -912,7 +912,7 @@ SPipelineResult ExecutePipeline(
             break;
     }
     
-    // Stages 3+4: Build zones and lines (merged — single pass)
+    // Stages 3+4: Build zones and lines (merged   single pass)
     SZoneDefinition zones[];
     STriggerLine lines[];
     BuildZonesAndLines(classified, classifiedCount, config, vpTop, vpBottom,
@@ -940,10 +940,10 @@ struct SModeSuffixEntry {
     string levelAbove;      // e.g., "SSLS_Above_"
     string levelBelow;      // e.g., "SSLS_Below_"
     string midpoint;        // e.g., "SSLS_Midpoint_"
-    string zoneCenter;      // e.g., "SSLS_Zone_Center_" — zone on midpoint/anchor level
+    string zoneCenter;      // e.g., "SSLS_Zone_Center_"   zone on midpoint/anchor level
 };
 
-// GetAll registered mode suffixes — used by ClearAllLevels and DeleteAllIndicatorObjects
+// GetAll registered mode suffixes   used by ClearAllLevels and DeleteAllIndicatorObjects
 void GetAllModeSuffixes(SModeSuffixEntry &entries[], int &count)
 {
     static string modeNames[] = {"SSLS", "Combo", "Factor", "Factor_Harmonic", "TH_Level"};

@@ -1,4 +1,4 @@
-#ifndef CALCULATION_CACHE_MQH
+﻿  #ifndef CALCULATION_CACHE_MQH
 #define CALCULATION_CACHE_MQH
 
 #property copyright "Biotak"

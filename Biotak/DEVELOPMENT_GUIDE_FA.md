@@ -1,51 +1,51 @@
-# راهنمای فنی و توسعه اندیکاتور Biotak Trigger TH3
+﻿#                               Biotak Trigger TH3
 
-این مستند برای راهنمایی توسعه‌دهندگان در جهت نگهداری، به‌روزرسانی و درک معماری جدید ماژولار اندیکاتور تهیه شده است.
+                                                                                                                  .
 
-## ۱. معماری سیستم رسم (Level Pipeline)
+##  .                  (Level Pipeline)
 
-سیستم رسم از یک ساختار ۵ مرحله‌ای (Pipeline) استفاده می‌کند که در فایل `LevelPipeline.mqh` پیاده‌سازی شده است:
-1. **CalculateLevels**: محاسبه قیمت‌های خام سطوح بر اساس گام (Step) و مود انتخاب شده.
-2. **ClassifyLevels**: دسته‌بندی سطوح (مثلاً SS، LS، ساختار و غیره) و تعیین ویژگی‌های ظاهری.
-3. **BuildZones**: ایجاد تعاریف نواحی (Zones) بر اساس تلاقی سطوح.
-4. **DeriveTriggers**: استخراج خطوط تریگر از لبه‌های نواحی.
-5. **Render**: رسم نهایی اشیاء در متاتریدر.
+                                  (Pipeline)                           `LevelPipeline.mqh`                   :
+1. **CalculateLevels**:                                      (Step)                 .
+2. **ClassifyLevels**:                (      SS  LS               )                        .
+3. **BuildZones**:                    (Zones)                   .
+4. **DeriveTriggers**:                                    .
+5. **Render**:                            .
 
-### افزودن مود جدید
-برای افزودن یک مود رسم جدید، مراحل زیر را دنبال کنید:
-1. تعریف مود در `ENUM_STEP_CALCULATION_MODE` (فایل `ConstantsAndEnums.mqh`).
-2. ایجاد تابع پیکربندی در `ModeDefinitions.mqh` (مثلاً `BuildNewModeConfig`).
-3. اضافه کردن منطق محاسبه در تابع `GetModeDefinition` در فایل `ModeDefinitions.mqh`.
-4. ثبت پسوندهای (Suffix) جدید در تابع `GetAllModeSuffixes` در `LevelPipeline.mqh` جهت مدیریت پاک‌سازی خودکار.
+###                
+                                                    :
+1.              `ENUM_STEP_CALCULATION_MODE` (     `ConstantsAndEnums.mqh`).
+2.                        `ModeDefinitions.mqh` (      `BuildNewModeConfig`).
+3.                                `GetModeDefinition`         `ModeDefinitions.mqh`.
+4.              (Suffix)              `GetAllModeSuffixes`    `LevelPipeline.mqh`                           .
 
-## ۲. مدیریت نسخه‌های Full و Lite
+##  .                 Full   Lite
 
-اندیکاتور دارای دو نسخه مجزا است که از طریق پرچم `BUILD_LITE` مدیریت می‌شوند:
+                                                 `BUILD_LITE`               :
 
-### نسخه Full (کامل)
-- شامل تمام ابزارهای تحلیلی: **Profiler**، **Frequency Optimizer** و **TH3 Tool (ABCD)**.
-- مناسب برای تحلیل‌های پیشرفته و محیط‌های با سخت‌افزار مناسب.
+###      Full (    )
+-                          : **Profiler**  **Frequency Optimizer**   **TH3 Tool (ABCD)**.
+-                                                           .
 
-### نسخه Lite (سبک)
-- با فعال کردن `#define BUILD_LITE` در ابتدای فایل اصلی یا در `BuildConfig.mqh` فعال می‌شود.
-- ابزارهای سنگین و غیرضروری حذف شده‌اند تا سرعت اجرا در چارت‌های شلوغ و سیستم‌های ضعیف افزایش یابد.
-- ورودی‌های کاربر (Inputs) برای سادگی بیشتر خلوت شده‌اند.
+###      Lite (   )
+-              `#define BUILD_LITE`                           `BuildConfig.mqh`            .
+-                                                                                                 .
+-                 (Inputs)                              .
 
-## ۳. امنیت و پایداری (Validation)
+##  .                 (Validation)
 
-موارد زیر برای اطمینان از صحت عملکرد در کد تعبیه شده است:
-- **جلوگیری از تقسیم بر صفر**: تمام محاسبات گام با استفاده از تابع `SafeDivide` و بررسی اپسیلون انجام می‌شود.
-- **کنترل اشیاء (Object Management)**: استفاده از پسوندهای متمرکز برای اطمینان از پاک‌سازی کامل اشیاء مود قبلی هنگام تغییر مود.
-- **اعتبارسنجی قیمت**: بررسی قیمت‌های ورودی برای جلوگیری از مقادیر منفی یا بیش از حد بزرگ (MAX_SAFE_PRICE).
-- **Include Guards**: تمام فایل‌های هدر دارای محافظ هستند تا از خطای تعریف مجدد جلوگیری شود.
+                                                        :
+- **                       **:                                     `SafeDivide`                             .
+- **            (Object Management)**:                                                                                        .
+- **               **:                                                                    (MAX_SAFE_PRICE).
+- **Include Guards**:                                                                      .
 
-## ۴. فایل‌های کلیدی
+##  .               
 
-- `Biotak Trigger TH3.mq4`: فایل اصلی نسخه کامل.
-- `Biotak Trigger TH3 Lite.mq4`: فایل اصلی نسخه سبک.
-- `ModeDefinitions.mqh`: مرکز تنظیمات و پیکربندی تمام مودهای رسم.
-- `LevelPipeline.mqh`: هسته پردازشی و رندرینگ سطوح.
-- `BuildConfig.mqh`: تنظیمات مربوط به مودهای کامپایل (Debug/Production/Lite).
+- `Biotak Trigger TH3.mq4`:                    .
+- `Biotak Trigger TH3 Lite.mq4`:                   .
+- `ModeDefinitions.mqh`:                                        .
+- `LevelPipeline.mqh`:                            .
+- `BuildConfig.mqh`:                                 (Debug/Production/Lite).
 
 ---
-*توسعه داده شده توسط تیم Biotak - ۲۰۲۶*
+*                        Biotak -     *

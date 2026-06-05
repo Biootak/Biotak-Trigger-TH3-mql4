@@ -1,4 +1,4 @@
-#ifndef ALERT_FUNCTIONS_MQH
+﻿  #ifndef ALERT_FUNCTIONS_MQH
 #define ALERT_FUNCTIONS_MQH
 
 #property strict
@@ -20,15 +20,15 @@ bool ShouldTriggerAlert(const string levelName) {
     return false; // Same bar and same level, don't trigger
 }
 
-// بهینه‌سازی شده برای سرعت و امنیت بیشتر
+//                                       
 void CheckAlerts(const string objectPrefix, double currentPrice) {
-    // بررسی اعتبار پارامترهای ورودی
+    //                              
     if(objectPrefix == "" || currentPrice <= 0) {
         Print("CheckAlerts: Invalid parameters - objectPrefix: ", objectPrefix, ", currentPrice: ", currentPrice);
         return;
     }
     
-    // هشدارهای سطوح بالا/پایین تاریخی
+    //                   /            
     // Skip High/Low alerts when Custom Price mode is active
     if(inpEnableHighLowAlerts && g_thStartPointType != TH_START_POINT_CUSTOM_PRICE) {
         if(currentPrice >= g_highestHigh && ShouldTriggerAlert("HistoricalHigh")) {
@@ -45,13 +45,13 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
         }
     }
     
-    // هشدارهای سطوح TH
+    //               TH
     if(inpEnableTHAlerts && IsTriggerLevelsEnabled()) {
         string prefix = objectPrefix + "TH_Level_";
         string lineNameMid = prefix + "Mid";
         double midpointLevel = ObjectGetDouble(0, lineNameMid, OBJPROP_PRICE1);
         
-        // بررسی سطح میانی
+        //                
         if(midpointLevel != EMPTY_VALUE && MathAbs(currentPrice - midpointLevel) < Point) {
             if(ShouldTriggerAlert("MidpointLevel")) {
                 if(inpPlaySound) PlaySound(inpAlertSoundFile);
@@ -61,15 +61,15 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
             }
         }
         
-        // بهینه‌سازی: فقط سطوح فعال را بررسی کنید
+        //           :                            
         int maxLevelsToCheck = MathMin(inpMaxTHLevelsAbove, inpMaxTHLevelsBelow);
-        maxLevelsToCheck = MathMin(maxLevelsToCheck, 256); // محدودیت ایمنی
+        maxLevelsToCheck = MathMin(maxLevelsToCheck, 256); //              
         
         for(int stepCount = 1; stepCount <= maxLevelsToCheck; stepCount++) {
-            // بررسی سطوح بالا
+            //                
             if(stepCount <= inpMaxTHLevelsAbove) {
                 string lineNameAbove = prefix + "TriggerTH_Up_" + IntegerToString(stepCount);
-                if(ObjectFind(0, lineNameAbove) >= 0) { // بررسی وجود آبجکت
+                if(ObjectFind(0, lineNameAbove) >= 0) { //                 
                     double levelAbove = ObjectGetDouble(0, lineNameAbove, OBJPROP_PRICE1);
                     if(levelAbove != EMPTY_VALUE && currentPrice >= levelAbove) {
                         string alertKey = "TriggerTH_Up_" + IntegerToString(stepCount);
@@ -83,10 +83,10 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
                 }
             }
             
-            // بررسی سطوح پایین
+            //                 
             if(stepCount <= inpMaxTHLevelsBelow) {
                 string lineNameBelow = prefix + "TriggerTH_Down_" + IntegerToString(stepCount);
-                if(ObjectFind(0, lineNameBelow) >= 0) { // بررسی وجود آبجکت
+                if(ObjectFind(0, lineNameBelow) >= 0) { //                 
                     double levelBelow = ObjectGetDouble(0, lineNameBelow, OBJPROP_PRICE1);
                     if(levelBelow != EMPTY_VALUE && currentPrice <= levelBelow) {
                         string alertKey = "TriggerTH_Down_" + IntegerToString(stepCount);

@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //| FrequencyOptimizer.mqh - Spectral Resonance Frequency Engine     |
 //| v5.1: + Gann Square Root Price Harmony scoring                   |
 //| Theory: The best frequency makes ALL steps (1,3,5,7) land on    |
@@ -7,9 +7,9 @@
 //| all harmonics align with structural nodes.                       |
 //| Scoring: 35% multi-step + 12% pattern + 18% time + 12% sqrt    |
 //|          + 13% harmonic + 10% history. Confidence = consistency. |
-//| Uses binary subdivision: freq = index × 1.5625% (depth=6, 64ths)|
-//| Gilmore enhancement: adds φ-based sacred ratios + confluence.   |
-//| Gann enhancement: √price levels as independent scoring axis.    |
+//| Uses binary subdivision: freq = index   1.5625% (depth=6, 64ths)|
+//| Gilmore enhancement: adds  -based sacred ratios + confluence.   |
+//| Gann enhancement:  price levels as independent scoring axis.    |
 //+------------------------------------------------------------------+
 #ifndef FREQUENCY_OPTIMIZER_MQH
 #define FREQUENCY_OPTIMIZER_MQH
@@ -57,7 +57,7 @@ struct FreqCandidate {
 
 //+------------------------------------------------------------------+
 //| Calculate Step3 price for a given frequency and ABCD pattern     |
-//| Step3 = C ± 3 × baseUnit, where baseUnit = AB × (freq/100)     |
+//| Step3 = C   3   baseUnit, where baseUnit = AB   (freq/100)     |
 //+------------------------------------------------------------------+
 double CalculateStep3Price(double pA, double pB, double pC, double frequency) {
     double abDistance = MathAbs(pB - pA);
@@ -72,7 +72,7 @@ double CalculateStep3Price(double pA, double pB, double pC, double frequency) {
 
 //+------------------------------------------------------------------+
 //| Calculate Step-N price for a given frequency and ABCD pattern    |
-//| StepN = C ± N × baseUnit, where baseUnit = AB × (freq/100)     |
+//| StepN = C   N   baseUnit, where baseUnit = AB   (freq/100)     |
 //+------------------------------------------------------------------+
 double CalculateStepNPrice(double pA, double pB, double pC, double frequency, double multiplier) {
     double abDistance = MathAbs(pB - pA);
@@ -95,17 +95,17 @@ double CalculateStepNPrice(double pA, double pB, double pC, double frequency, do
 //| natural support points, the stronger the resonance.             |
 //|                                                                  |
 //| Probabilistic argument for multi-step vs single-step:           |
-//|   P(1 random match) ≈ 0.1 → weak signal                       |
-//|   P(4 independent matches) ≈ 0.0001 → strong signal (1000×)   |
+//|   P(1 random match)   0.1   weak signal                       |
+//|   P(4 independent matches)   0.0001   strong signal (1000 )   |
 //| Each additional step exponentially reduces false positive rate.  |
 //|                                                                  |
 //| Step weights: 3 (40%), 1 (25%), 5 (20%), 7 (15%)               |
-//| Convergence bonus: (matchCount/4)² — explosive reward for       |
+//| Convergence bonus: (matchCount/4)    explosive reward for       |
 //| frequencies where all steps converge simultaneously.            |
 //| Confluence bonus: steps landing in detected confluence zones    |
 //| get multiplied by zone strength (Gilmore "Window of Opp.")     |
 //|                                                                  |
-//| Returns: weighted sum of step matches × convergence bonus       |
+//| Returns: weighted sum of step matches   convergence bonus       |
 //| Also outputs: matchedSteps count, bestMidpointIdx for Step3     |
 //+------------------------------------------------------------------+
 double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency,
@@ -141,7 +141,7 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
         double score;
     };
 
-    // Build score matrix (4 steps × all midpoints) — find top match per step
+    // Build score matrix (4 steps   all midpoints)   find top match per step
     double stepScores[4] = {0, 0, 0, 0};
     int    stepBestMid[4] = {-1, -1, -1, -1};
 
@@ -149,7 +149,7 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
     int stepOrder[4] = {1, 0, 2, 3};  // indices into stepMult: 3, 1, 5, 7
 
     // Determine step direction: bearish steps go DOWN from C, bullish go UP
-    bool stepsGoDown = (pB < pA);  // bearish AB → steps go below C
+    bool stepsGoDown = (pB < pA);  // bearish AB   steps go below C
 
     for(int pri = 0; pri < 4; pri++) {
         int s = stepOrder[pri];
@@ -161,7 +161,7 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
             double midPrice = analysis.midpoints[m].price;
             if(midPrice <= 0) continue;
 
-            // FIX Bug 6: Directional filter — skip midpoints on wrong side of C
+            // FIX Bug 6: Directional filter   skip midpoints on wrong side of C
             // For bearish pattern (steps go down): only consider midpoints BELOW C
             // For bullish pattern (steps go up): only consider midpoints ABOVE C
             if(stepsGoDown && midPrice > pC) continue;
@@ -170,8 +170,8 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
             double error = MathAbs(stepPrices[s] - midPrice);
             double normalizedError = error / abDistance;
             // FIX Bug 3/6: Sharper Lorentzian decay (k=20 instead of 10)
-            // k=10: 20% error → 0.33 (too generous, creates noise floor)
-            // k=20: 20% error → 0.20 (properly penalizes weak matches)
+            // k=10: 20% error   0.33 (too generous, creates noise floor)
+            // k=20: 20% error   0.20 (properly penalizes weak matches)
             double rawScore = 1.0 / (1.0 + normalizedError * 20.0);
             double score = rawScore * 0.75;
 
@@ -192,7 +192,7 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
         stepBestMid[s] = bestIdx;
 
         // Claim this midpoint (greedy: higher-priority step gets first pick)
-        // FIX Bug 7: Raised threshold from 0.3 → 0.5 to prevent weak claims
+        // FIX Bug 7: Raised threshold from 0.3   0.5 to prevent weak claims
         if(bestIdx >= 0 && bestScore > 0.5) {
             midpointUsed[bestIdx] = true;
         }
@@ -223,10 +223,10 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
     }
 
     // Convergence bonus: exponential reward for multi-step alignment
-    // 1 step matched: ×(0.25)² = 0.0625 → ×0.5 after scaling
-    // 2 steps:        ×(0.50)² = 0.25   → ×0.7
-    // 3 steps:        ×(0.75)² = 0.5625 → ×0.9
-    // 4 steps:        ×(1.00)² = 1.0    → ×1.2 (reward)
+    // 1 step matched:  (0.25)  = 0.0625    0.5 after scaling
+    // 2 steps:         (0.50)  = 0.25      0.7
+    // 3 steps:         (0.75)  = 0.5625    0.9
+    // 4 steps:         (1.00)  = 1.0       1.2 (reward)
     double convergenceRatio = (double)matchedSteps / 4.0;
     double convergenceBonus = 0.5 + 0.7 * (convergenceRatio * convergenceRatio);
     // At 0 steps: 0.5, at 1: 0.544, at 2: 0.675, at 3: 0.894, at 4: 1.2
@@ -235,7 +235,7 @@ double ScoreMultiStepResonance(double pA, double pB, double pC, double frequency
 }
 
 //+------------------------------------------------------------------+
-//| TIME SCORE (25% weight) — Gann: Price = Time                    |
+//| TIME SCORE (25% weight)   Gann: Price = Time                    |
 //| Checks if the implied CD duration forms harmonic ratio with      |
 //| AB and BC durations. Uses frequency for cycle-time resonance.    |
 //+------------------------------------------------------------------+
@@ -273,7 +273,7 @@ double ScoreTimeAlignment(double step3Price, double pC, double frequency,
         // Score: 1.0 at exact harmonic, 0.0 at deviation >= 0.5
         double score = MathMax(0, 1.0 - deviation * 2.0);
 
-        // Bonus for 1:1 (Gann's ideal 45° angle)
+        // Bonus for 1:1 (Gann's ideal 45  angle)
         if(MathAbs(nearestHarmonic - 1.0) < 0.01) {
             score = MathMin(1.0, score * 1.15);
         }
@@ -293,7 +293,7 @@ double ScoreTimeAlignment(double step3Price, double pC, double frequency,
         }
     }
 
-    // 3. Frequency-time resonance (10% of time score) — NEW
+    // 3. Frequency-time resonance (10% of time score)   NEW
     //    Check if frequency/100 harmonizes with BC/AB time ratio
     double freqTimeScore = 0;
     if(analysis.waveAB.barDuration > 0 && analysis.waveBC.barDuration > 0 && frequency > 0) {
@@ -324,16 +324,16 @@ double ScoreTimeAlignment(double step3Price, double pC, double frequency,
 //| predicts the ideal D reversal point with high precision.        |
 //|                                                                  |
 //| The ratio BC/AB determines pattern type:                        |
-//| • Bat:       BC/AB = 0.382-0.50  → D = X + 0.886×XA           |
-//| • Gartley:   BC/AB = 0.618       → D = X + 0.786×XA           |
-//| • Butterfly: BC/AB = 0.786       → D = A + 1.272×XA (extends) |
-//| • Alt Bat:   BC/AB = 0.886       → D = X + 1.130×XA           |
-//| • Crab:      BC/AB = 1.27-1.618  → D = A + 1.618×XA (extends) |
-//| • Deep Crab: BC/AB = 0.886       → D = A + 1.618×XA           |
+//|   Bat:       BC/AB = 0.382-0.50    D = X + 0.886 XA           |
+//|   Gartley:   BC/AB = 0.618         D = X + 0.786 XA           |
+//|   Butterfly: BC/AB = 0.786         D = A + 1.272 XA (extends) |
+//|   Alt Bat:   BC/AB = 0.886         D = X + 1.130 XA           |
+//|   Crab:      BC/AB = 1.27-1.618    D = A + 1.618 XA (extends) |
+//|   Deep Crab: BC/AB = 0.886         D = A + 1.618 XA           |
 //|                                                                  |
 //| This provides a COMPLETELY INDEPENDENT prediction of where      |
 //| price should reverse, validating the frequency selection.       |
-//| When Step3 aligns with a pattern's ideal D → strong signal.     |
+//| When Step3 aligns with a pattern's ideal D   strong signal.     |
 //+------------------------------------------------------------------+
 double ScorePatternProjection(double step3Price, const WaveAnalysisResult &analysis,
                               double abDistance, string &detectedPattern) {
@@ -354,25 +354,25 @@ double ScorePatternProjection(double step3Price, const WaveAnalysisResult &analy
         double bcabMin;       // Minimum BC/AB ratio
         double bcabMax;       // Maximum BC/AB ratio  
         double dRatio;        // D projection ratio (of XA distance)
-        bool   fromX;         // true: D = X ± ratio×XA, false: D = A ± ratio×XA (extension)
-        double quality;       // Base quality — how reliable this pattern is historically
+        bool   fromX;         // true: D = X   ratio XA, false: D = A   ratio XA (extension)
+        double quality;       // Base quality   how reliable this pattern is historically
     };
 
     // 6 patterns ordered by retracement depth
     PatternDef patterns[6];
-    // Bat: shallow pullback → deep D
+    // Bat: shallow pullback   deep D
     patterns[0].bcabMin = 0.33;  patterns[0].bcabMax = 0.52;
     patterns[0].dRatio  = 0.886; patterns[0].fromX   = true; patterns[0].quality = 0.85;
-    // Gartley: classic 61.8% pullback → 78.6% D
+    // Gartley: classic 61.8% pullback   78.6% D
     patterns[1].bcabMin = 0.55;  patterns[1].bcabMax = 0.67;
     patterns[1].dRatio  = 0.786; patterns[1].fromX   = true; patterns[1].quality = 0.90;
-    // Butterfly: deep pullback → extension D  
+    // Butterfly: deep pullback   extension D  
     patterns[2].bcabMin = 0.72;  patterns[2].bcabMax = 0.82;
     patterns[2].dRatio  = 1.272; patterns[2].fromX   = false; patterns[2].quality = 0.80;
-    // Alt Bat: deep pullback → moderate extension
+    // Alt Bat: deep pullback   moderate extension
     patterns[3].bcabMin = 0.82;  patterns[3].bcabMax = 0.92;
     patterns[3].dRatio  = 1.130; patterns[3].fromX   = true; patterns[3].quality = 0.75;
-    // Crab: very wide BC → extreme extension D
+    // Crab: very wide BC   extreme extension D
     patterns[4].bcabMin = 1.20;  patterns[4].bcabMax = 1.70;
     patterns[4].dRatio  = 1.618; patterns[4].fromX   = false; patterns[4].quality = 0.80;
     // Deep Crab: moderate but extending
@@ -402,14 +402,14 @@ double ScorePatternProjection(double step3Price, const WaveAnalysisResult &analy
         // Calculate ideal D price for this pattern
         double idealD;
         if(patterns[p].fromX) {
-            // D = X + ratio × XA (same direction as XA)
-            // e.g. Gartley: D = X + 0.786 × (A-X) → 78.6% of XA from X
+            // D = X + ratio   XA (same direction as XA)
+            // e.g. Gartley: D = X + 0.786   (A-X)   78.6% of XA from X
             idealD = pX + patterns[p].dRatio * xaSigned;
         } else {
             // FIX Bug 1: Extension from A (not from X!)
-            // D extends BEYOND A in the XA direction by ratio × XA distance
-            // e.g. Butterfly: D = A + 1.272 × (A-X) → 127.2% extension from A
-            // e.g. Crab:      D = A + 1.618 × (A-X) → 161.8% extension from A
+            // D extends BEYOND A in the XA direction by ratio   XA distance
+            // e.g. Butterfly: D = A + 1.272   (A-X)   127.2% extension from A
+            // e.g. Crab:      D = A + 1.618   (A-X)   161.8% extension from A
             idealD = pA + patterns[p].dRatio * xaSigned;
         }
 
@@ -419,10 +419,10 @@ double ScorePatternProjection(double step3Price, const WaveAnalysisResult &analy
         double dError = MathAbs(step3Price - idealD);
         double normalizedDError = dError / xaDistance;
         // D-point matching: tighter tolerance than midpoint matching
-        // k=8 gives moderate sensitivity: 5% error → 0.71 score, 10% → 0.56
+        // k=8 gives moderate sensitivity: 5% error   0.71 score, 10%   0.56
         double matchScore = 1.0 / (1.0 + normalizedDError * 8.0);
 
-        // Final score: match quality × ratio fit × pattern reliability
+        // Final score: match quality   ratio fit   pattern reliability
         double score = matchScore * ratioFit * patterns[p].quality;
 
         if(score > bestScore) {
@@ -449,7 +449,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
     int depth = GetBinaryDepthLevel(freqIndex);
 
     // Score based on depth: deeper = more harmonic
-    // v5.0: reduced from 0.40→0.35 to make room for BC/AB ratio (sub-score 5)
+    // v5.0: reduced from 0.40 0.35 to make room for BC/AB ratio (sub-score 5)
     if(depth >= BINARY_SUBDIVISION_DEPTH)      score += 0.35;  // Pure octave (100%)
     else if(depth >= 5)                         score += 0.31;  // Halves
     else if(depth >= 4)                         score += 0.28;  // Quarters
@@ -459,18 +459,18 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
     else                                        score += 0.10;  // 64ths
 
     // 2. Check if index is power-of-2 OR a Gilmore sacred ratio (max 0.15)
-    //    Power-of-2: indices 1,2,4,8,16,32,64,128 → Harmonic family (√2)
-    //    Perfect-fifth: 3× power-of-2 → e.g. 3,6,12,24,48,96
-    //    Gilmore sacred ratios: φ-based indices from "Geometry of Markets"
-    //    φ=1.618, 1/φ=0.618, 1/φ²=0.382, √(1/φ)=0.786, √2=1.414, etc.
+    //    Power-of-2: indices 1,2,4,8,16,32,64,128   Harmonic family ( 2)
+    //    Perfect-fifth: 3  power-of-2   e.g. 3,6,12,24,48,96
+    //    Gilmore sacred ratios:  -based indices from "Geometry of Markets"
+    //     =1.618, 1/ =0.618, 1/  =0.382,  (1/ )=0.786,  2=1.414, etc.
     if(freqIndex > 0) {
         double specialBonus = 0;
 
         // Power-of-2 (Harmonic family)
         if((freqIndex & (freqIndex - 1)) == 0) {
-            specialBonus = 0.15;  // Pure octave — index is exact power of 2
+            specialBonus = 0.15;  // Pure octave   index is exact power of 2
         } else {
-            // Perfect-fifth (3× power-of-2)
+            // Perfect-fifth (3  power-of-2)
             int idx3 = freqIndex;
             if(idx3 % 3 == 0) {
                 idx3 /= 3;
@@ -480,45 +480,45 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
             }
         }
 
-        // Gilmore Geometric (φ-based) sacred ratios — if not already a power-of-2
+        // Gilmore Geometric ( -based) sacred ratios   if not already a power-of-2
         // Check if frequency% is close to a sacred proportion from the book
-        // Tolerance: ±1 index step (1.5625%) = Gilmore's "lost motion" of ~1-2%
+        // Tolerance:  1 index step (1.5625%) = Gilmore's "lost motion" of ~1-2%
         if(specialBonus < 0.08) {
-            // Sacred ratios expressed as percentages (= ratio × 100)
+            // Sacred ratios expressed as percentages (= ratio   100)
             // Source: Geometry of Markets Vol II, pages 11, 116
-            //   Geometric: φ series spiral of √φ
-            //   Also includes √2 (Harmonic crossover) and √3 (Arithmetic crossover)
+            //   Geometric:   series spiral of   
+            //   Also includes  2 (Harmonic crossover) and  3 (Arithmetic crossover)
             static const double GILMORE_SACRED_PCT[] = {
-                14.6,    // 1/φ⁵ = 0.146
-                18.6,    // 1/φ⁴ = 0.186
-                23.6,    // 1/φ³ = 0.236  (also √5-based)
-                30.0,    // 1/φ² × √φ = 0.300
-                38.2,    // 1/φ² = 0.382  *** PRIMARY ***
-                44.7,    // 1/√5 = 0.447 (root family)
-                48.6,    // √φ/φ = 0.486
+                14.6,    // 1/   = 0.146
+                18.6,    // 1/   = 0.186
+                23.6,    // 1/   = 0.236  (also  5-based)
+                30.0,    // 1/        = 0.300
+                38.2,    // 1/   = 0.382  *** PRIMARY ***
+                44.7,    // 1/ 5 = 0.447 (root family)
+                48.6,    //   /  = 0.486
                 52.6,    // 1/1.902 = 0.526
-                57.7,    // 1/√3 = 0.577 (arithmetic family)
-                61.8,    // 1/φ = 0.618   *** PRIMARY ***
-                70.7,    // 1/√2 = 0.707 (harmonic crossover)
-                78.6,    // 1/√φ = 0.786  *** PRIMARY ***
+                57.7,    // 1/ 3 = 0.577 (arithmetic family)
+                61.8,    // 1/  = 0.618   *** PRIMARY ***
+                70.7,    // 1/ 2 = 0.707 (harmonic crossover)
+                78.6,    // 1/   = 0.786  *** PRIMARY ***
                 87.5,    // 7/8 = 0.875
-                127.2,   // √φ = 1.272
-                141.4,   // √2 = 1.414
-                161.8,   // φ = 1.618     *** PRIMARY ***
-                173.2,   // √3 = 1.732
-                190.2    // √(φ²+1) = 1.902
+                127.2,   //    = 1.272
+                141.4,   //  2 = 1.414
+                161.8,   //   = 1.618     *** PRIMARY ***
+                173.2,   //  3 = 1.732
+                190.2    //  (  +1) = 1.902
             };
             int sacredCount = 18;
 
             for(int s = 0; s < sacredCount; s++) {
                 double sacredFreq = GILMORE_SACRED_PCT[s];
                 double deviation = MathAbs(frequency - sacredFreq);
-                // ±1 index step tolerance (1.5625%) — Gilmore's "lost motion" of 1-2%
+                //  1 index step tolerance (1.5625%)   Gilmore's "lost motion" of 1-2%
                 if(deviation <= 1.5625) {
                     // Primary sacred ratios (38.2%, 61.8%, 78.6%, 161.8%) get higher bonus
                     bool isPrimary = (s == 4 || s == 9 || s == 11 || s == 15);
                     double sacredBonus = isPrimary ? 0.12 : 0.07;
-                    // Scale by proximity: exact match → full bonus, 1.5625 away → 60%
+                    // Scale by proximity: exact match   full bonus, 1.5625 away   60%
                     double proximity = 1.0 - (deviation / 1.5625) * 0.40;
                     specialBonus = MathMax(specialBonus, sacredBonus * proximity);
                     break;
@@ -532,12 +532,12 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
     // 3. Check if frequency relates to wave ratio AB/XA (max 0.20)
     //    FIX: also check sub-multiples (freq < ratio). Old code only checked
     //    nearestMult >= 1, missing valid sub-harmonics like 1/2, 1/3, 1/4 of ratio.
-    //    v5.0: reduced from 0.25→0.20 to make room for BC/AB ratio (sub-score 5)
+    //    v5.0: reduced from 0.25 0.20 to make room for BC/AB ratio (sub-score 5)
     if(analysis.ratioAB_XA > 0) {
         double freqRatio = frequency / 100.0;
         double abxaScore = 0;
 
-        // Check super-multiples: freq ≈ N × ratio (N=1..4)
+        // Check super-multiples: freq   N   ratio (N=1..4)
         double nearestMult = MathRound(freqRatio / analysis.ratioAB_XA);
         if(nearestMult >= 1 && nearestMult <= 4) {
             double expected = nearestMult * analysis.ratioAB_XA;
@@ -548,7 +548,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
                 abxaScore = 0.12;
         }
 
-        // Check sub-multiples: ratio ≈ N × freq (N=2..4) → freq is 1/N of ratio
+        // Check sub-multiples: ratio   N   freq (N=2..4)   freq is 1/N of ratio
         if(abxaScore < 0.20 && freqRatio > 0) {
             double nearestSub = MathRound(analysis.ratioAB_XA / freqRatio);
             if(nearestSub >= 2 && nearestSub <= 4) {
@@ -568,16 +568,16 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
     //    Check if frequency matches a fractal percentage or its binary multiples
     //    MODIFIED_FRACTAL_PERCENTAGES[9] from ConstantsAndEnums.mqh
     //    NOTE: fractal values are ratios (0.0208 = 2.08%), multiply by 100 for percentage
-    //    v5.0: reduced from 0.20→0.15 to make room for BC/AB ratio (sub-score 5)
+    //    v5.0: reduced from 0.20 0.15 to make room for BC/AB ratio (sub-score 5)
     double bestFractalScore = 0;
     for(int f = 0; f < 9; f++) {
         double fracPct = MODIFIED_FRACTAL_PERCENTAGES[f];
         if(fracPct <= 0) continue;
 
-        // Convert ratio → percentage
+        // Convert ratio   percentage
         double baseFracFreq = fracPct * 100.0;
 
-        // Check binary multiples: ×1, ×2, ×4, ×8, ×16, ×32, ×64
+        // Check binary multiples:  1,  2,  4,  8,  16,  32,  64
         double mult = baseFracFreq;
         for(int m = 0; m < 7 && mult <= 200.0; m++) {
             double fracError = MathAbs(frequency - mult) / MathMax(frequency, mult);
@@ -588,7 +588,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
                 bestFractalScore = MathMax(bestFractalScore, fs);
             }
 
-            // Also check intermediate ×1.5 and ×3 multiples at this level
+            // Also check intermediate  1.5 and  3 multiples at this level
             double mult15 = mult * 1.5;
             if(mult15 <= 200.0) {
                 double err15 = MathAbs(frequency - mult15) / MathMax(frequency, mult15);
@@ -616,7 +616,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
     }
     score += bestFractalScore;
 
-    // 5. Check if frequency relates to wave ratio BC/AB (max 0.15) — NEW in v5.0
+    // 5. Check if frequency relates to wave ratio BC/AB (max 0.15)   NEW in v5.0
     //    Previously computed but NEVER used. BC/AB tells us the retracement depth
     //    which is completely independent of AB/XA. Using both doubles our ratio info.
     //    Same logic as AB/XA check: super-multiples and sub-multiples of the ratio.
@@ -624,7 +624,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
         double freqRatio = frequency / 100.0;
         double bcabScore = 0;
 
-        // Check super-multiples: freq ≈ N × BC/AB ratio (N=1..4)
+        // Check super-multiples: freq   N   BC/AB ratio (N=1..4)
         double nearestMult = MathRound(freqRatio / analysis.ratioBC_AB);
         if(nearestMult >= 1 && nearestMult <= 4) {
             double expected = nearestMult * analysis.ratioBC_AB;
@@ -635,7 +635,7 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
                 bcabScore = 0.09;
         }
 
-        // Check sub-multiples: BC/AB ≈ N × freq (N=2..4)
+        // Check sub-multiples: BC/AB   N   freq (N=2..4)
         if(bcabScore < 0.15 && freqRatio > 0) {
             double nearestSub = MathRound(analysis.ratioBC_AB / freqRatio);
             if(nearestSub >= 2 && nearestSub <= 4) {
@@ -660,41 +660,41 @@ double ScoreHarmonicPhase(double frequency, const WaveAnalysisResult &analysis) 
 //| GANN SQUARE ROOT PRICE HARMONY SCORE (12% weight)                |
 //|                                                                  |
 //| Gann's fundamental insight: markets move on a SQUARE ROOT scale. |
-//| Equally-spaced levels in the √price domain are natural support & |
+//| Equally-spaced levels in the  price domain are natural support & |
 //| resistance. Gilmore (page 116, "Sacred Proportions") formalizes  |
-//| this: √(P2/P1) should equal a sacred proportion for harmonically |
+//| this:  (P2/P1) should equal a sacred proportion for harmonically |
 //| related price levels.                                            |
 //|                                                                  |
-//| This scoring checks TWO independent √-domain properties:        |
+//| This scoring checks TWO independent  -domain properties:        |
 //|                                                                  |
 //| 1. SQRT-RATIO HARMONY (60% of sub-score):                       |
 //|    For each Step price and each anchor (X,A,B,C), compute the    |
 //|    price ratio r = Step/Anchor (or Anchor/Step if r < 1).        |
-//|    Then check if √r ≈ a sacred proportion (Gilmore page 116):   |
-//|    1/φ(0.786), 1/√2(0.707), 1(unity), √φ(1.272), √2(1.414),   |
-//|    φ(1.618), √3(1.732), 2, √5(2.236)                           |
-//|    Why: prices at sacred √-ratios act as harmonic nodes.        |
+//|    Then check if  r   a sacred proportion (Gilmore page 116):   |
+//|    1/ (0.786), 1/ 2(0.707), 1(unity),   (1.272),  2(1.414),   |
+//|     (1.618),  3(1.732), 2,  5(2.236)                           |
+//|    Why: prices at sacred  -ratios act as harmonic nodes.        |
 //|    Gann's "Squaring Price" = step prices related to anchors by  |
-//|    sacred proportions in the √ domain.                           |
+//|    sacred proportions in the   domain.                           |
 //|                                                                  |
 //| 2. SQRT-DOMAIN SPACING (40% of sub-score):                      |
-//|    In the √ domain, compute the distance from C to each Step:   |
-//|    Δ√s = |√Step_n - √C|                                        |
-//|    The AB distance in √ domain = |√B - √A| = "√-unit"          |
-//|    Check if Δ√s / √-unit ≈ sacred proportion × multiplier      |
+//|    In the   domain, compute the distance from C to each Step:   |
+//|      s = | Step_n -  C|                                        |
+//|    The AB distance in   domain = | B -  A| = " -unit"          |
+//|    Check if   s /  -unit   sacred proportion   multiplier      |
 //|    Why: this verifies that the frequency creates steps that are  |
 //|    harmonically spaced not just linearly (in price), but also   |
-//|    in the √-price domain — a completely independent axis.        |
+//|    in the  -price domain   a completely independent axis.        |
 //|                                                                  |
 //| The mathematical justification: linear % analysis (midpoints)   |
-//| and √-domain analysis probe DIFFERENT geometric properties of   |
+//| and  -domain analysis probe DIFFERENT geometric properties of   |
 //| price structure. A frequency that scores well on BOTH is far    |
 //| more likely to capture a genuine structural resonance.           |
 //|                                                                  |
 //| False-positive control:                                          |
-//|   Tight tolerance (±2.5% exact, ±7% good). Convergence bonus   |
-//|   requires ≥2 steps to have √-harmony. Single random match      |
-//|   scores low; only systematic √-alignment scores high.          |
+//|   Tight tolerance ( 2.5% exact,  7% good). Convergence bonus   |
+//|   requires  2 steps to have  -harmony. Single random match      |
+//|   scores low; only systematic  -alignment scores high.          |
 //+------------------------------------------------------------------+
 double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
                               double frequency, double abDistance,
@@ -710,36 +710,36 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
         if(stepPrices[s] <= 0) stepPrices[s] = 0;
     }
 
-    // Sacred proportions for √(ratio) check — from Gilmore page 116
-    // "Three families of ratios": Geometric (φ), Harmonic (√2), Arithmetic (√3)
-    // In the √ domain these become the fundamental resonant intervals
+    // Sacred proportions for  (ratio) check   from Gilmore page 116
+    // "Three families of ratios": Geometric ( ), Harmonic ( 2), Arithmetic ( 3)
+    // In the   domain these become the fundamental resonant intervals
     static const double SQRT_SACRED[] = {
-        0.618,    // 1/φ (golden cut reciprocal)
-        0.707,    // 1/√2 (harmonic family)
-        0.786,    // √(1/φ) = 1/√φ (geometric family)
+        0.618,    // 1/  (golden cut reciprocal)
+        0.707,    // 1/ 2 (harmonic family)
+        0.786,    //  (1/ ) = 1/   (geometric family)
         1.000,    // Unity (fundamental)
-        1.272,    // √φ (geometric family)
-        1.414,    // √2 (harmonic family)
-        1.618,    // φ (golden ratio itself)
-        1.732,    // √3 (arithmetic family)
+        1.272,    //    (geometric family)
+        1.414,    //  2 (harmonic family)
+        1.618,    //   (golden ratio itself)
+        1.732,    //  3 (arithmetic family)
         2.000,    // Octave (Gann's "full revolution")
-        2.236     // √5 (root-five family, also φ + 1/φ = √5)
+        2.236     //  5 (root-five family, also   + 1/  =  5)
     };
     static const int SQRT_SACRED_COUNT = 10;
 
     // Tolerance bands: tight to avoid false positives
     // With 10 sacred values in range [0.618, 2.236] (span=1.618),
-    // ±0.07 tolerance per value = 1.40/1.618 = 86.5% coverage of full range.
-    // But we require ≥2 step matches (convergence) which makes
-    // random P(2 out of 4 steps matching) ≈ 0.865⁴ × C(4,2)/total ≈ 10-20%.
+    //  0.07 tolerance per value = 1.40/1.618 = 86.5% coverage of full range.
+    // But we require  2 step matches (convergence) which makes
+    // random P(2 out of 4 steps matching)   0.865    C(4,2)/total   10-20%.
     // Combined with other scoring, this is discriminating enough.
-    // FIX Bug 4: Tightened from ±2.5%/±7% to ±1.5%/±4%
-    // Old tolerance gave ~87% per-step coverage → nearly constant score
-    // New tolerance: ~40% per-step coverage → meaningful discrimination
-    static const double EXACT_TOL = 0.015;   // ±1.5% for near-perfect match
-    static const double GOOD_TOL  = 0.040;   // ±4.0% for good match
+    // FIX Bug 4: Tightened from  2.5%/ 7% to  1.5%/ 4%
+    // Old tolerance gave ~87% per-step coverage   nearly constant score
+    // New tolerance: ~40% per-step coverage   meaningful discrimination
+    static const double EXACT_TOL = 0.015;   //  1.5% for near-perfect match
+    static const double GOOD_TOL  = 0.040;   //  4.0% for good match
 
-    // Anchor prices to check √-ratios against
+    // Anchor prices to check  -ratios against
     double anchors[4] = {0, 0, 0, 0};
     int anchorCount = 0;
     anchors[anchorCount++] = pA;
@@ -751,8 +751,8 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
     double stepWeight[4] = {0.20, 0.40, 0.25, 0.15};
 
     //------------------------------------------------------------------
-    // PART 1: √-RATIO HARMONY (60% of score)
-    //   For each step, find best √(step/anchor) match with any sacred
+    // PART 1:  -RATIO HARMONY (60% of score)
+    //   For each step, find best  (step/anchor) match with any sacred
     //------------------------------------------------------------------
     double ratioScore = 0;
     int ratioMatchCount = 0;
@@ -764,7 +764,7 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
         for(int a = 0; a < anchorCount; a++) {
             if(anchors[a] <= 0) continue;
 
-            // Compute ratio (always ≥ 1)
+            // Compute ratio (always   1)
             double ratio = stepPrices[s] / anchors[a];
             if(ratio < 1.0) ratio = 1.0 / ratio;
             if(ratio <= 0 || ratio > 6.0) continue;  // Skip extreme ratios
@@ -774,10 +774,10 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
             for(int p = 0; p < SQRT_SACRED_COUNT; p++) {
                 double dev = MathAbs(sqrtRatio - SQRT_SACRED[p]);
                 if(dev < EXACT_TOL) {
-                    // Near-perfect √-harmony
+                    // Near-perfect  -harmony
                     bestStepMatch = MathMax(bestStepMatch, 1.0);
                 } else if(dev < GOOD_TOL) {
-                    // Good √-harmony — linear decay from 0.85 to 0
+                    // Good  -harmony   linear decay from 0.85 to 0
                     double quality = 0.85 * (1.0 - (dev - EXACT_TOL) / (GOOD_TOL - EXACT_TOL));
                     bestStepMatch = MathMax(bestStepMatch, quality);
                 }
@@ -789,11 +789,11 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
     }
 
     //------------------------------------------------------------------
-    // PART 2: √-DOMAIN SPACING (40% of score)
-    //   Check if steps are harmonically spaced in the √-price domain
-    //   √-unit = |√B - √A| (AB distance in √ domain)
-    //   Δ√s = |√Step_n - √C| (step distance in √ domain)
-    //   Check if Δ√s / √-unit ≈ sacred × multiplier
+    // PART 2:  -DOMAIN SPACING (40% of score)
+    //   Check if steps are harmonically spaced in the  -price domain
+    //    -unit = | B -  A| (AB distance in   domain)
+    //     s = | Step_n -  C| (step distance in   domain)
+    //   Check if   s /  -unit   sacred   multiplier
     //------------------------------------------------------------------
     double spacingScore = 0;
     int spacingMatchCount = 0;
@@ -801,7 +801,7 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
     double sqrtA = MathSqrt(pA);
     double sqrtB = MathSqrt(pB);
     double sqrtC = MathSqrt(pC);
-    double sqrtUnit = MathAbs(sqrtB - sqrtA);  // AB distance in √ domain
+    double sqrtUnit = MathAbs(sqrtB - sqrtA);  // AB distance in   domain
 
     if(sqrtUnit > 0) {
         for(int s = 0; s < 4; s++) {
@@ -811,8 +811,8 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
             double deltaSqrt = MathAbs(sqrtStep - sqrtC);
             double normalizedDelta = deltaSqrt / sqrtUnit;
 
-            // Check if normalizedDelta ≈ sacred proportion (± small integer multiples)
-            // Multiples 0.5×, 1×, 2×, 3× of each sacred proportion
+            // Check if normalizedDelta   sacred proportion (  small integer multiples)
+            // Multiples 0.5 , 1 , 2 , 3  of each sacred proportion
             double bestSpacingMatch = 0;
             double spacingMult[4] = {0.5, 1.0, 2.0, 3.0};
 
@@ -823,10 +823,10 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
 
                     double dev = MathAbs(normalizedDelta - expected) / expected;
                     if(dev < 0.02) {
-                        // Near-exact √-spacing (tightened from 3% to 2%)
+                        // Near-exact  -spacing (tightened from 3% to 2%)
                         bestSpacingMatch = MathMax(bestSpacingMatch, 1.0);
                     } else if(dev < 0.06) {
-                        // Good √-spacing (tightened from 10% to 6%)
+                        // Good  -spacing (tightened from 10% to 6%)
                         double quality = 0.80 * (1.0 - (dev - 0.02) / 0.04);
                         bestSpacingMatch = MathMax(bestSpacingMatch, quality);
                     }
@@ -841,13 +841,13 @@ double ScoreSquareRootHarmony(double pX, double pA, double pB, double pC,
     // Combine parts: 60% ratio + 40% spacing
     double rawScore = ratioScore * 0.60 + spacingScore * 0.40;
 
-    // Convergence bonus: multiple steps with √-harmony → much stronger signal
+    // Convergence bonus: multiple steps with  -harmony   much stronger signal
     // Single match could be coincidence; 3-4 matches = systematic resonance
     int totalMatches = MathMin(ratioMatchCount, 4) + MathMin(spacingMatchCount, 4);
     // totalMatches: 0..8 (from both sub-scores combined)
     double convBonus = 1.0;
-    if(totalMatches >= 6)      convBonus = 1.30;  // ≥3 ratio + ≥3 spacing matches
-    else if(totalMatches >= 4) convBonus = 1.15;  // ≥2 + ≥2
+    if(totalMatches >= 6)      convBonus = 1.30;  //  3 ratio +  3 spacing matches
+    else if(totalMatches >= 4) convBonus = 1.15;  //  2 +  2
     else if(totalMatches >= 3) convBonus = 1.05;
 
     return MathMin(1.0, rawScore * convBonus);
@@ -873,19 +873,19 @@ double ScoreHistoryCoherence(int candidateIndex, double abDistance) {
 
         // 1. Frequency harmonic relationship (max 0.6)
         //    Check if candidate is a binary multiple/divisor of past freq
-        //    FIX: reduced same-index bonus from 0.60→0.40 to prevent lock-in.
+        //    FIX: reduced same-index bonus from 0.60 0.40 to prevent lock-in.
         //    Added recency weighting: newer history entries count more.
         int pastIdx = g_freqHistory[i].freqIndex;
 
         // Recency factor: newer entries weighted more (slot 0=oldest)
         // Position of this entry relative to the newest
         int age = (g_freqHistoryHead - 1 - i + FREQ_HISTORY_SIZE) % FREQ_HISTORY_SIZE;
-        double recencyWeight = 1.0 - (double)age / (double)(FREQ_HISTORY_SIZE * 2);  // 1.0→0.625
+        double recencyWeight = 1.0 - (double)age / (double)(FREQ_HISTORY_SIZE * 2);  // 1.0 0.625
 
         if(pastIdx > 0 && candidateIndex > 0) {
             double harmBonus = 0;
             if(candidateIndex == pastIdx) {
-                harmBonus = 0.40;  // Same index (was 0.60 — reduced to prevent lock-in)
+                harmBonus = 0.40;  // Same index (was 0.60   reduced to prevent lock-in)
             } else {
                 double ratio;
                 if(candidateIndex >= pastIdx)
@@ -964,7 +964,7 @@ void InsertTopN(FreqCandidate &topN[], int &topCount, const FreqCandidate &cand,
 //+------------------------------------------------------------------+
 //| Compute confidence score from component score consistency        |
 //| Uses coefficient of variation: lower CV = higher confidence     |
-//| All high + consistent → ★★★, mixed → ★★, erratic → ★          |
+//| All high + consistent      , mixed     , erratic              |
 //+------------------------------------------------------------------+
 double ComputeConfidence(double sMulti, double sPat, double sTime, double sSqrt, double sHarm, double sHist) {
     double scores[6];
@@ -988,7 +988,7 @@ double ComputeConfidence(double sMulti, double sPat, double sTime, double sSqrt,
     // Coefficient of variation: 0 = perfectly consistent, >1 = erratic
     double cv = stddev / mean;
 
-    // Confidence: high mean + low CV → high confidence
+    // Confidence: high mean + low CV   high confidence
     // Mean component (0..1): how good the scores are overall
     // Consistency component (0..1): how consistent they are (1 - cv)
     double consistency = MathMax(0, 1.0 - cv);
@@ -999,7 +999,7 @@ double ComputeConfidence(double sMulti, double sPat, double sTime, double sSqrt,
 
 //+------------------------------------------------------------------+
 //| MAIN: Find optimal frequency for an ABCD pattern                 |
-//| v5.1: Spectral Resonance Frequency Engine + Gann √Price          |
+//| v5.1: Spectral Resonance Frequency Engine + Gann  Price          |
 //| Tests all binary subdivision frequencies (index 1..128),         |
 //| scores each with 6 components (multi-step, pattern, time,       |
 //| sqrt, harmonic, history), tie-breaks by depth, logs top-3       |
@@ -1012,7 +1012,7 @@ bool FindOptimalFrequency(double pX, datetime tX, double pA, datetime tA,
     // Step 1: Analyze all waves + detect confluence zones
     WaveAnalysisResult analysis;
     if(!AnalyzeWaves(pX, tX, pA, tA, pB, tB, pC, tC, analysis)) {
-        _LOG_GATE_E Print("[E][FreqOpt] AnalyzeWaves failed — invalid XABC points");
+        _LOG_GATE_E Print("[E][FreqOpt] AnalyzeWaves failed   invalid XABC points");
         return false;
     }
 

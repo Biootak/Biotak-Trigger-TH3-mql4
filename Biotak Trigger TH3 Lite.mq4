@@ -1,21 +1,21 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                      Biotak Trigger TH3 Lite.mq4 |
 //+------------------------------------------------------------------+
-#property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
 #property version   "3.10"
 #property strict
 #property indicator_chart_window
 #property description "Version 3.10 - LITE: Features like Profiler and Freq Optimizer removed"
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // LITE MODE ACTIVATION
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #define BUILD_LITE
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // BUILD CONFIG - Must be first include!
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #include "Biotak\BuildConfig.mqh"
 
 #include "Biotak\MathConstants.mqh"
@@ -30,9 +30,9 @@
 #include "Biotak\ProjectConstants.mqh"
 #include "Biotak\InputValidator.mqh"
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // Security & Performance Foundations (must precede GlobalVariables)
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #include "Biotak\FloatingPointHelper.mqh"
 #include "Biotak\ObjectCountManager.mqh"
 #include "Biotak\PerformanceOptimizations.mqh"
@@ -42,9 +42,9 @@
 
 #include "Biotak\UtilityFunctions.mqh"
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // Cache & Object Management Systems
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #include "Biotak\CalculationCache.mqh"
 #include "Biotak\ZoneFactory.mqh"
 #include "Biotak\ZoneValidator.mqh"
@@ -54,9 +54,9 @@
 #include "Biotak\PropertyChangeDetector.mqh"
 #include "Biotak\VisibilityManager.mqh"
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // Timeframe & Calculation Modules
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #include "Biotak\TimeframeFunctions.mqh"
 #include "Biotak\FractalTimeframes.mqh"
 #include "Biotak\StandardTimeframes.mqh"
@@ -72,9 +72,9 @@
 #include "Biotak\TH3Tool.mqh"
 #endif
 
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 // Drawing & Rendering Pipeline
-// ═══════════════════════════════════════════════════════════════════
+//                                                                    
 #include "Biotak\ObjectFunctions.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
 #include "Biotak\LevelPipeline.mqh"

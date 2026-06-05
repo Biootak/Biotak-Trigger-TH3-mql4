@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿   //+------------------------------------------------------------------+
 //| Event Handlers - Version 3.09 GOLD                              |
 //| Security & Performance Audit Complete                           |
 //+------------------------------------------------------------------+
@@ -495,7 +495,7 @@ void OnDeinitHandler(const int reason) {
 
 //+------------------------------------------------------------------+
 //| Clear all level objects from all modes (OPTIMIZED + SAFE)       |
-//| Ù¾Ø§Ú© Ú©Ø±Ø¯Ù† ØªÙ…Ø§Ù… Ø³Ø·ÙˆØ­ Ø§Ø² Ù‡Ù…Ù‡ Ù…ÙˆØ¯Ù‡Ø§ Ø¨Ø±Ø§ÛŒ Ø¬Ù„ÙˆÚ¯ÛŒØ±ÛŒ Ø§Ø² ØªØ¯Ø§Ø®Ù„           |
+//|                                        |
 //| CRITICAL FIX: Added error handling and retry logic              |
 //+------------------------------------------------------------------+
 //| Clear all level objects from all modes (OPTIMIZED + SAFE)       |
@@ -764,13 +764,13 @@ void RedrawAllObjects(bool force_redraw=false)
         s_lastForcedRedrawMs = nowMs;
     }
 
-    // PERF: Refresh cached frame time once â€” eliminates ~2000+ TimeCurrent() syscalls in cache ops
+    // PERF: Refresh cached frame time once   eliminates ~2000+ TimeCurrent() syscalls in cache ops
     CacheRefreshFrameTime();
-    // PERF: Cache visibility state once per frame â€” skips ~800 ObjectSetInteger calls when unchanged
+    // PERF: Cache visibility state once per frame   skips ~800 ObjectSetInteger calls when unchanged
     CacheRefreshVisibilityState();
     datetime currentTime = TimeGMT();
 
-    // PERF: Idle fast-path â€” when no work is pending, skip expensive UpdateBasePrice/ATR path.
+    // PERF: Idle fast-path   when no work is pending, skip expensive UpdateBasePrice/ATR path.
     bool customPriceLineExists = g_customPriceLineCreated;
     bool historicalRefreshDue = (currentTime - g_lastHistoricalUpdate >= 3600 || !g_initialized);
     int currentServerMinute = TimeMinute(CacheGetFrameTime());
@@ -1155,7 +1155,7 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 
 //+------------------------------------------------------------------+
 //| Apply Lines Visibility State to All Line Objects                 |
-//| Ø§Ø¹Ù…Ø§Ù„ ÙˆØ¶Ø¹ÛŒØª Ù†Ù…Ø§ÛŒØ´ Ø®Ø·ÙˆØ· Ø¨Ù‡ Ù‡Ù…Ù‡ Ø§Ø´ÛŒØ§Ø¡ Ø®Ø·                          |
+//|                                              |
 //|                                                                  |
 //| Called after RedrawAllObjects to ensure g_linesVisible is       |
 //| respected for all line objects (HLINE and TREND)                 |
@@ -1164,9 +1164,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 {
     if(id == CHARTEVENT_KEYDOWN)
     {
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // F key â€” Hide/Show All Objects (fast visibility toggle)
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // F key   Hide/Show All Objects (fast visibility toggle)
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpHideKey))
         {
             string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
@@ -1278,9 +1278,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // L key â€” Toggle Lines Visibility
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // L key   Toggle Lines Visibility
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpLinesToggleKey))
         {
             g_linesVisible = !g_linesVisible;
@@ -1312,9 +1312,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // C key â€” Set Custom Price
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // C key   Set Custom Price
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpCustomPriceKey))
         {
             g_waitingForCustomPriceClick = true;
@@ -1348,9 +1348,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // ESC key â€” Cancel Custom Price
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // ESC key   Cancel Custom Price
+        //  
         if(lparam == 27)
         {
             string symbolName = GetCachedSymbol();
@@ -1372,9 +1372,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             }
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // T key â€” Toggle Trigger Levels
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // T key   Toggle Trigger Levels
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpTriggerLevelsKey))
         {
             g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
@@ -1393,9 +1393,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // A key â€” Toggle ATR Labels
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // A key   Toggle ATR Labels
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpATRLabelsKey))
         {
             string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
@@ -1411,9 +1411,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // S key â€” Cycle TH Labels Mode
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // S key   Cycle TH Labels Mode
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpTHLabelsKey))
         {
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
@@ -1445,9 +1445,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // P key â€” Toggle TH3 Tool
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // P key   Toggle TH3 Tool
+        //  
 #ifndef BUILD_LITE
         if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
         {
@@ -1457,9 +1457,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 #endif
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // E key â€” Cycle Step Mode
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // E key   Cycle Step Mode
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
             ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
@@ -1477,23 +1477,23 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // 1/2 keys â€” Adjust Factor (always active)
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // 1/2 keys   Adjust Factor (always active)
+        //  
         if(lparam == '1') { AdjustFactorValue(-1); return; }
         else if(lparam == '2') { AdjustFactorValue(+1); return; }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // 3/4 keys â€” Adjust TH3 Frequency
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // 3/4 keys   Adjust TH3 Frequency
+        //  
 #ifndef BUILD_LITE
         else if(lparam == '3') { DecrementTH3Frequency(); return; }
         else if(lparam == '4') { CycleTH3Frequency(); return; }
 #endif
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // W key â€” Show Current Status
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // W key   Show Current Status
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpShowStatusKey))
         {
             ShowAllStatusLabels();
@@ -1501,9 +1501,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // R key â€” Reset All Overrides
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // R key   Reset All Overrides
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpResetKey))
         {
             g_stepModeOverride = -1;
@@ -1576,9 +1576,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        // K key â€” Toggle Timeframe Lock
-        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        //  
+        // K key   Toggle Timeframe Lock
+        //  
         if(IsHotkeyPressed(lparam, sparam, inpLockKey))
         {
             bool hadCustomPrice = (ObjectFind(0, g_customPriceHorizontalLineName) >= 0);
@@ -1628,9 +1628,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     } // end CHARTEVENT_KEYDOWN
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
     // ABCD Mouse Event Routing
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
 #ifndef BUILD_LITE
     if(g_abcdDrawing || 
        id == CHARTEVENT_OBJECT_DRAG || 
@@ -1643,9 +1643,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     }
 #endif
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_CHART_CHANGE â€” Layout/Resize/Scroll/Zoom
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_CHART_CHANGE   Layout/Resize/Scroll/Zoom
+    //  
     if(id == CHARTEVENT_CHART_CHANGE) {
         if(IsIndicatorHidden()) return;
         static uint s_lastLayoutMs = 0;
@@ -1679,9 +1679,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         return;
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_CLICK â€” Custom Price Click
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_CLICK   Custom Price Click
+    //  
     if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick)
     {
         if(StringFind(sparam, "r") >= 0)
@@ -1736,9 +1736,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         ThrottledChartRedraw();
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_OBJECT_CLICK â€” Custom Price Line / ABCD Pattern
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_OBJECT_CLICK   Custom Price Line / ABCD Pattern
+    //  
     if(id == CHARTEVENT_OBJECT_CLICK && sparam == g_customPriceHorizontalLineName)
     {
         uint currentTickCount = GetTickCount();
@@ -1765,9 +1765,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_MOUSE_MOVE â€” Custom Price Drag Detection
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_MOUSE_MOVE   Custom Price Drag Detection
+    //  
     if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)
     {
         int mouseFlags = (int)StringToInteger(sparam);
@@ -1806,9 +1806,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_OBJECT_DRAG â€” Custom Price Line Drag End
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_OBJECT_DRAG   Custom Price Line Drag End
+    //  
     if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)
     {
         g_customPriceLineDragging = false;
@@ -1834,9 +1834,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         RedrawAllObjects(true);
     }
 
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // CHARTEVENT_OBJECT_CLICK â€” ABCD Pattern Selection
-    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  
+    // CHARTEVENT_OBJECT_CLICK   ABCD Pattern Selection
+    //  
 #ifndef BUILD_LITE
     if(id == CHARTEVENT_OBJECT_CLICK)
     {

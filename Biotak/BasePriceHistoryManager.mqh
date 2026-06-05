@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //| BasePriceHistoryManager.mqh                                       |
 //| Persistent storage for base price history                         |
 //| Matches Java BasePriceHistoryManager.java implementation         |

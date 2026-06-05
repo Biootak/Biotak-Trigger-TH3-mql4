@@ -1,9 +1,9 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                   ErrorCodes.mqh |
 //|                                  GOLD VERSION: Unified Errors    |
 //|                                  Centralized Error Management    |
 //+------------------------------------------------------------------+
-#property copyright "© Biotak - GOLD Version"
+#property copyright "  Biotak - GOLD Version"
 #property strict
 
 #ifndef ERROR_CODES_MQH

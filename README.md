@@ -1,4 +1,4 @@
-# Biotak Trigger TH3
+﻿# Biotak Trigger TH3
 
 **MetaTrader 4 Custom Indicator** implementing Professor Saeed Khakestar's TH (Time Harmonic) levels formula.
 
@@ -15,33 +15,33 @@
 
 ---
 
-## 🔧 Build Configuration (Debug/Production)
+##    Build Configuration (Debug/Production)
 
 ### Quick Start
 
 | Mode | Action |
 |------|--------|
-| **Production** 🚀 | Default - no changes needed |
-| **Debug** 🔧 | Uncomment `#define DEBUG_BUILD` in `Biotak/BuildConfig.mqh` |
+| **Production**    | Default - no changes needed |
+| **Debug**    | Uncomment `#define DEBUG_BUILD` in `Biotak/BuildConfig.mqh` |
 
 ### How to Switch Modes
 
 Edit `Biotak/BuildConfig.mqh`:
 
 ```mql4
-// ══════════════════════════════════════════════════════════════════
-// 🔧 UNCOMMENT FOR DEBUG BUILD | برای حالت توسعه آنکامنت کنید
-// ══════════════════════════════════════════════════════════════════
-//#define DEBUG_BUILD    // ← Uncomment this line for Debug mode
+//                                                                   
+//    UNCOMMENT FOR DEBUG BUILD |                             
+//                                                                   
+//#define DEBUG_BUILD    //   Uncomment this line for Debug mode
 ```
 
 ### What's Different?
 
-| Feature | Production 🚀 | Debug 🔧 |
+| Feature | Production    | Debug    |
 |---------|--------------|----------|
-| Debug logs | ❌ Removed at compile | ✅ Active |
-| Performance tracking | ❌ Removed | ✅ Active |
-| Assertions | ❌ Removed | ✅ Active |
+| Debug logs |   Removed at compile |   Active |
+| Performance tracking |   Removed |   Active |
+| Assertions |   Removed |   Active |
 | Binary size | Smaller | Larger |
 | Speed | Faster | Normal |
 
@@ -51,14 +51,14 @@ Check the Experts tab when indicator loads:
 
 ```
 // Production:
-🚀 Biotak Trigger TH3 - Version 3.05
+   Biotak Trigger TH3 - Version 3.05
 Build Mode: PRODUCTION
-✅ PRODUCTION BUILD - Optimized for performance
+  PRODUCTION BUILD - Optimized for performance
 
 // Debug:
-🔧 Biotak Trigger TH3 - Version 3.05
+   Biotak Trigger TH3 - Version 3.05
 Build Mode: DEBUG
-⚠️ DEBUG BUILD - Not for production use!
+   DEBUG BUILD - Not for production use!
 ```
 
 ---
@@ -75,21 +75,21 @@ Build Mode: DEBUG
 ## File Structure
 
 ```
-├── Biotak Trigger TH3.mq4      # Main indicator file
-├── Biotak/
-│   ├── BuildConfig.mqh         # 🆕 Build configuration (Debug/Production)
-│   ├── PropertiesAndInputs.mqh # Input parameters
-│   ├── ConstantsAndEnums.mqh   # Constants and enums
-│   ├── GlobalVariables.mqh     # Global state
-│   ├── THCalculations.mqh      # TH calculation logic
-│   ├── BasePriceManager.mqh    # 30-min base price updates
-│   ├── TimeframeFunctions.mqh  # Timeframe utilities
-│   ├── ObjectFunctions.mqh     # Chart object creation
-│   ├── LabelFunctions.mqh      # Label management
-│   ├── EventHandlers.mqh       # Event processing
-│   ├── AlertFunctions.mqh      # Alert system
-│   ├── PerformanceMonitor.mqh  # Performance tracking
-│   └── Tests/                  # Property-based tests
+    Biotak Trigger TH3.mq4      # Main indicator file
+    Biotak/
+        BuildConfig.mqh         #    Build configuration (Debug/Production)
+        PropertiesAndInputs.mqh # Input parameters
+        ConstantsAndEnums.mqh   # Constants and enums
+        GlobalVariables.mqh     # Global state
+        THCalculations.mqh      # TH calculation logic
+        BasePriceManager.mqh    # 30-min base price updates
+        TimeframeFunctions.mqh  # Timeframe utilities
+        ObjectFunctions.mqh     # Chart object creation
+        LabelFunctions.mqh      # Label management
+        EventHandlers.mqh       # Event processing
+        AlertFunctions.mqh      # Alert system
+        PerformanceMonitor.mqh  # Performance tracking
+        Tests/                  # Property-based tests
 ```
 
 ---
@@ -109,5 +109,5 @@ Build Mode: DEBUG
 
 ## License
 
-© Formula by Professor Saeed Khakestar, Indicator by Biotak.
+  Formula by Professor Saeed Khakestar, Indicator by Biotak.
 

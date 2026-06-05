@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                ZoneConstants.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Global Constants & Settings   |
@@ -13,17 +13,17 @@
 
 //+------------------------------------------------------------------+
 //| GLOBAL CONSTANTS: Zone Drawing Configuration                     |
-//| ثوابت جهانی: تنظیمات رسم زون                                     |
+//|            :                                                     |
 //+------------------------------------------------------------------+
 
-// Performance Constants (unique to ZoneConstants — duplicates removed, see ProjectConstants.mqh)
-const int VALIDATION_CACHE_TTL = 60;           // مدت اعتبار کش اعتبارسنجی (ثانیه)
-const int CACHE_CLEANUP_INTERVAL = 300;        // فاصله cleanup کش (5 دقیقه)
-const int MAX_ALPHA_VALUE = 255;               // حداکثر مقدار آلفا برای transparency
-const int MIN_ALPHA_VALUE = 0;                 // حداقل مقدار آلفا
+// Performance Constants (unique to ZoneConstants   duplicates removed, see ProjectConstants.mqh)
+const int VALIDATION_CACHE_TTL = 60;           //                          (     )
+const int CACHE_CLEANUP_INTERVAL = 300;        //       cleanup    (5      )
+const int MAX_ALPHA_VALUE = 255;               //                        transparency
+const int MIN_ALPHA_VALUE = 0;                 //                 
 
-// Safety Limits (unique — duplicates removed, see ProjectConstants.mqh)
-const double MIN_STEP_SIZE_RATIO = 0.000001;   // حداقل نسبت اندازه گام به قیمت
+// Safety Limits (unique   duplicates removed, see ProjectConstants.mqh)
+const double MIN_STEP_SIZE_RATIO = 0.000001;   //                              
 
 // Error Codes
 const int ERR_ZONE_NONE = 0;
@@ -49,7 +49,7 @@ const int ERR_ZONE_ARRAY_MISMATCH = 6;
 
 //+------------------------------------------------------------------+
 //| STRUCTURE: Performance Metrics                                    |
-//| ساختار: معیارهای عملکرد                                          |
+//|       :                                                          |
 //+------------------------------------------------------------------+
 struct SZonePerformanceMetrics {
     int totalZonesCreated;
@@ -64,20 +64,20 @@ struct SZonePerformanceMetrics {
 
 //+------------------------------------------------------------------+
 //| GLOBAL VARIABLES: Performance Tracking                           |
-//| متغیرهای جهانی: ردیابی عملکرد                                    |
+//|               :                                                  |
 //+------------------------------------------------------------------+
 static SZonePerformanceMetrics g_zoneMetrics;
 // NOTE: SObjectCacheEntry and g_objectCache moved to ObjectCache.mqh
 static datetime g_lastCacheCleanup = 0;
 
-// Market Price Cache (برای جلوگیری از محاسبات تکراری)
+// Market Price Cache (                              )
 static double g_cachedMarketPrice = 0;
 static datetime g_cachedMarketPriceTime = 0;
-static int g_cachedMarketPriceTTL = 1; // 1 ثانیه
+static int g_cachedMarketPriceTTL = 1; // 1      
 
 //+------------------------------------------------------------------+
 //| Initialize Performance Metrics                                    |
-//| مقداردهی اولیه معیارهای عملکرد                                   |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void InitializeZoneMetrics() {
     g_zoneMetrics.totalZonesCreated = 0;
@@ -92,7 +92,7 @@ void InitializeZoneMetrics() {
 
 //+------------------------------------------------------------------+
 //| Reset Performance Metrics                                         |
-//| بازنشانی معیارهای عملکرد                                          |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void ResetZoneMetrics() {
     InitializeZoneMetrics();
@@ -100,7 +100,7 @@ void ResetZoneMetrics() {
 
 //+------------------------------------------------------------------+
 //| Get Performance Metrics                                           |
-//| دریافت معیارهای عملکرد                                            |
+//|                                                                   |
 //+------------------------------------------------------------------+
 SZonePerformanceMetrics GetZoneMetrics() {
     return g_zoneMetrics;
@@ -108,28 +108,28 @@ SZonePerformanceMetrics GetZoneMetrics() {
 
 //+------------------------------------------------------------------+
 //| Print Performance Report                                          |
-//| چاپ گزارش عملکرد                                                  |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void PrintZonePerformanceReport() {
     #ifdef ENABLE_DEBUG_LOGS
-    Print("═══════════════════════════════════════════════════════════");
-    Print("📊 Zone Drawing Performance Report");
-    Print("═══════════════════════════════════════════════════════════");
-    Print("✅ Zones Created: ", g_zoneMetrics.totalZonesCreated);
-    Print("🔄 Zones Updated: ", g_zoneMetrics.totalZonesUpdated);
-    Print("❌ Zones Failed: ", g_zoneMetrics.totalZonesFailed);
-    Print("🔍 Validation Calls: ", g_zoneMetrics.totalValidationCalls);
-    Print("🎨 Render Calls: ", g_zoneMetrics.totalRenderCalls);
-    Print("⏱️ Avg Validation Time: ", DoubleToString(g_zoneMetrics.avgValidationTime, 2), " ms");
-    Print("⏱️ Avg Render Time: ", DoubleToString(g_zoneMetrics.avgRenderTime, 2), " ms");
-    Print("📅 Last Reset: ", TimeToString(g_zoneMetrics.lastResetTime));
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
+    Print("   Zone Drawing Performance Report");
+    Print("====================");
+    Print("  Zones Created: ", g_zoneMetrics.totalZonesCreated);
+    Print("   Zones Updated: ", g_zoneMetrics.totalZonesUpdated);
+    Print("  Zones Failed: ", g_zoneMetrics.totalZonesFailed);
+    Print("   Validation Calls: ", g_zoneMetrics.totalValidationCalls);
+    Print("   Render Calls: ", g_zoneMetrics.totalRenderCalls);
+    Print("   Avg Validation Time: ", DoubleToString(g_zoneMetrics.avgValidationTime, 2), " ms");
+    Print("   Avg Render Time: ", DoubleToString(g_zoneMetrics.avgRenderTime, 2), " ms");
+    Print("   Last Reset: ", TimeToString(g_zoneMetrics.lastResetTime));
+    Print("====================");
     #endif
 }
 
 //+------------------------------------------------------------------+
-//| Cleanup Zone System (برای OnDeinit)                              |
-//| پاک‌سازی سیستم زون                                               |
+//| Cleanup Zone System (     OnDeinit)                              |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void CleanupZoneSystem() {
     // Reset metrics
@@ -149,18 +149,18 @@ void CleanupZoneSystem() {
     g_cachedMarketPriceTime = 0;
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ CleanupZoneSystem: System cleaned up successfully");
+    Print("  CleanupZoneSystem: System cleaned up successfully");
     #endif
 }
 
 //+------------------------------------------------------------------+
-//| Get Cached Market Price (با TTL)                                 |
-//| دریافت قیمت بازار از کش                                          |
+//| Get Cached Market Price (   TTL)                                 |
+//|                                                                  |
 //+------------------------------------------------------------------+
 double GetCachedMarketPrice() {
     datetime currentTime = TimeCurrent();
     
-    // بررسی اعتبار کش
+    //                
     if(g_cachedMarketPriceTime > 0 && 
        (currentTime - g_cachedMarketPriceTime) < g_cachedMarketPriceTTL) {
         return g_cachedMarketPrice;
@@ -170,7 +170,7 @@ double GetCachedMarketPrice() {
     double cachedBid = Bid;
     double cachedAsk = Ask;
     
-    // محاسبه و ذخیره در کش
+    //                     
     g_cachedMarketPrice = (cachedBid + cachedAsk) / 2.0;
     g_cachedMarketPriceTime = currentTime;
     
@@ -178,8 +178,8 @@ double GetCachedMarketPrice() {
 }
 
 //+------------------------------------------------------------------+
-//| Cleanup Object Cache (پاک‌سازی دوره‌ای)                          |
-//| پاک‌سازی کش اشیاء                                                 |
+//| Cleanup Object Cache (                )                          |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void CleanupObjectCache() {
     // Object cache now managed by ObjectCache.mqh (hash-based)

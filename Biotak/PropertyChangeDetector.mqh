@@ -1,4 +1,4 @@
-#ifndef PROPERTY_CHANGE_DETECTOR_MQH
+﻿  #ifndef PROPERTY_CHANGE_DETECTOR_MQH
 #define PROPERTY_CHANGE_DETECTOR_MQH
 
 #property copyright "Biotak"

@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     MQL4 Compiler Script for MetaTrader 4
     Compiles .mq4 files using metaeditor.exe from the command line.

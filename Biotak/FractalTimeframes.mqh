@@ -1,4 +1,4 @@
-#property strict
+﻿  #property strict
 
 string GetFractalTimeframeForCurrent() {
     string currentTimeframe=GetCurrentTimeframe();
@@ -170,7 +170,7 @@ string GetOverlapLevelsInfo(int step, const int &intervals[]) {
     int arraySize = ArraySize(intervals);
     if(arraySize != 5) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetOverlapLevelsInfo: Invalid intervals array size=", arraySize);
+        Print("  GetOverlapLevelsInfo: Invalid intervals array size=", arraySize);
         #endif
         return "";
     }
@@ -195,7 +195,7 @@ string GetOverlapTimeframesInfo(int step, const int &intervals[]) {
     int arraySize = ArraySize(intervals);
     if(arraySize != 5) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetOverlapTimeframesInfo: Invalid intervals array size=", arraySize);
+        Print("  GetOverlapTimeframesInfo: Invalid intervals array size=", arraySize);
         #endif
         return "";
     }

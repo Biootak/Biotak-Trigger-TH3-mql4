@@ -1,32 +1,32 @@
-#property strict
+﻿  #property strict
 
 bool CreateTHLineObject(const string name, const double price, const color lineColor, const ENUM_LINE_STYLE style, const int width, const string tooltip, ENUM_LINE_OBJECT_TYPE lineObjectType, bool isSelectable = false) {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #1: Check object count BEFORE creation
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(!CanCreateObject()) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateTHLineObject: Object limit reached, cannot create '", name, "'");
+        Print("  CreateTHLineObject: Object limit reached, cannot create '", name, "'");
         #endif
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #2: Validate object name
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(StringLen(name) == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateTHLineObject: Empty object name");
+        Print("  CreateTHLineObject: Empty object name");
         #endif
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #3: Validate price using FloatingPointHelper
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(!IsValidPrice(price)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateTHLineObject: Invalid price (", price, ") for '", name, "'");
+        Print("  CreateTHLineObject: Invalid price (", price, ") for '", name, "'");
         #endif
         return false;
     }
@@ -46,7 +46,7 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
         if(!ObjectCreate(0, name, objectType, 0, currentTime, normalizedPrice, (objectType == OBJ_TREND ? futureTime : 0), normalizedPrice)) {
             #ifdef ENABLE_DEBUG_LOGS
             int error = GetLastError();
-            Print("❌ CreateTHLineObject: Failed to create '", name, "', error=", error);
+            Print("  CreateTHLineObject: Failed to create '", name, "', error=", error);
             #endif
             return false;
         }
@@ -55,7 +55,7 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
         if(MathAbs(cachedEntry.lastPrice - normalizedPrice) > Point * 0.1) {
             if(!ObjectSetDouble(0, name, OBJPROP_PRICE, normalizedPrice)) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ CreateTHLineObject: Failed to update price for '", name, "'");
+                Print("   CreateTHLineObject: Failed to update price for '", name, "'");
                 #endif
             }
         }
@@ -101,29 +101,29 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
 bool CreatePipDistanceLabel(const string name, const double price, const double pips, const color textColor, const string levelInfo = "") {
     if(!inpShowPipDistanceLabels) return true;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #1: Check object count BEFORE creation
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(!CanCreateObject()) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreatePipDistanceLabel: Object limit reached, cannot create '", name, "'");
+        Print("  CreatePipDistanceLabel: Object limit reached, cannot create '", name, "'");
         #endif
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #2: Validate inputs
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(StringLen(name) == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreatePipDistanceLabel: Empty label name");
+        Print("  CreatePipDistanceLabel: Empty label name");
         #endif
         return false;
     }
     
     if(!IsValidPrice(price)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreatePipDistanceLabel: Invalid price (", price, ")");
+        Print("  CreatePipDistanceLabel: Invalid price (", price, ")");
         #endif
         return false;
     }
@@ -133,7 +133,7 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
         if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, price)) {
             #ifdef ENABLE_DEBUG_LOGS
             int error = GetLastError();
-            Print("❌ CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
+            Print("  CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
             #endif
             return false;
         }
@@ -152,7 +152,7 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
     ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpFontSize);
     // Visual align MT5: Use ANCHOR_LEFT (not ANCHOR_LEFT_UPPER) and don't set explicit
-    // X/YDISTANCE — these match MT5's default behavior and keep label positioning consistent.
+    // X/YDISTANCE   these match MT5's default behavior and keep label positioning consistent.
     ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT);
     ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, name, OBJPROP_BACK, false);

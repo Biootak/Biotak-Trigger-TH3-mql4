@@ -1,4 +1,4 @@
-#ifndef OBJECT_CACHE_MQH
+﻿  #ifndef OBJECT_CACHE_MQH
 #define OBJECT_CACHE_MQH
 
 #property copyright "Biotak"

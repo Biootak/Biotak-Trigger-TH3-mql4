@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //| BasePriceManager.mqh                                              |
 //| Base Price Management with 30-minute block updates                |
 //| Matches MotiveWave/Java implementation exactly                    |
@@ -33,9 +33,9 @@
 #ifdef ENABLE_DEBUG_LOGS
 void PrintRecentM30Bars(int count = 5)
 {
-    Print("[BasePriceManager] ╔═══════════════════════════════════════════════════════════════╗");
-    Print("[BasePriceManager] ║  RECENT M30 BARS (Last ", count, " completed bars)                    ║");
-    Print("[BasePriceManager] ╠═══════════════════════════════════════════════════════════════╣");
+    Print("[BasePriceManager] ====================");
+    Print("[BasePriceManager]    RECENT M30 BARS (Last ", count, " completed bars)                     ");
+    Print("[BasePriceManager] ====================");
     
     for(int i = 1; i <= count; i++)  // Start from 1 (skip current incomplete bar)
     {
@@ -47,13 +47,13 @@ void PrintRecentM30Bars(int count = 5)
         // FIXED: Use centralized conversion function
         datetime barTimeGMT = ConvertServerToGMT(barTime);
         
-        Print("[BasePriceManager] ║  Bar ", i, ":");
-        Print("[BasePriceManager] ║    Server Time: ", TimeToString(barTime, TIME_DATE|TIME_MINUTES));
-        Print("[BasePriceManager] ║    GMT Time:    ", TimeToString(barTimeGMT, TIME_DATE|TIME_MINUTES));
-        Print("[BasePriceManager] ║    Close:       ", DoubleToString(barClose, Digits));
+        Print("[BasePriceManager]    Bar ", i, ":");
+        Print("[BasePriceManager]      Server Time: ", TimeToString(barTime, TIME_DATE|TIME_MINUTES));
+        Print("[BasePriceManager]      GMT Time:    ", TimeToString(barTimeGMT, TIME_DATE|TIME_MINUTES));
+        Print("[BasePriceManager]      Close:       ", DoubleToString(barClose, Digits));
     }
     
-    Print("[BasePriceManager] ╚═══════════════════════════════════════════════════════════════╝");
+    Print("[BasePriceManager] ====================");
 }
 #else
 #define PrintRecentM30Bars(count)
@@ -91,7 +91,7 @@ static int g_symbolStateCount = 0;
 #define LOCK_MAX_ATTEMPTS 5                // Maximum lock acquisition attempts
 #define LOCK_RETRY_DELAY_MS 20             // Delay between lock attempts
 
-// Cached symbol state index (performance: 50+ calls/tick → 1 call/tick)
+// Cached symbol state index (performance: 50+ calls/tick   1 call/tick)
 static int _g_cachedStateIdx = -1;
 static string _g_cachedStateSymbol = "";
 
@@ -103,25 +103,25 @@ int GetSymbolStateIndex()
 {
     string currentSymbol = Symbol();
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #1: Buffer Overflow Prevention
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(g_symbolStateCount < 0) {
-        Print("❌ CRITICAL: Corrupted symbol state count (", g_symbolStateCount, ")");
+        Print("  CRITICAL: Corrupted symbol state count (", g_symbolStateCount, ")");
         g_symbolStateCount = 0;
         ArrayResize(g_symbolStates, 0);
         return -1;
     }
     
     if(g_symbolStateCount >= MAX_SYMBOL_STATES) {
-        Print("❌ CRITICAL: Symbol state limit reached (", MAX_SYMBOL_STATES, ")");
+        Print("  CRITICAL: Symbol state limit reached (", MAX_SYMBOL_STATES, ")");
         Print("   Cannot track more symbols. Consider increasing MAX_SYMBOL_STATES.");
         return -1;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #2: Enhanced Lock with Stale Detection
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     string lockName = "Biotak_StateAccess_Lock_" + currentSymbol;
     string lockTimeName = lockName + "_Time";
     
@@ -129,7 +129,7 @@ int GetSymbolStateIndex()
     if(GlobalVariableCheck(lockTimeName)) {
         datetime lockTime = (datetime)GlobalVariableGet(lockTimeName);
         if(TimeCurrent() - lockTime > LOCK_TIMEOUT_SECONDS) {
-            Print("⚠️ Stale lock detected (", TimeCurrent() - lockTime, "s old), forcing release");
+            Print("   Stale lock detected (", TimeCurrent() - lockTime, "s old), forcing release");
             GlobalVariableDel(lockName);
             GlobalVariableDel(lockTimeName);
         }
@@ -153,20 +153,20 @@ int GetSymbolStateIndex()
     
     if(!lockAcquired)
     {
-        Print("❌ CRITICAL: GetSymbolStateIndex failed to acquire lock after ", LOCK_MAX_ATTEMPTS, " attempts");
+        Print("  CRITICAL: GetSymbolStateIndex failed to acquire lock after ", LOCK_MAX_ATTEMPTS, " attempts");
         Print("   Symbol: ", currentSymbol, " - Aborting to prevent race condition");
         return -1; // CRITICAL FIX: Return error instead of proceeding
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #3: Bounds-Checked Search
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     int resultIndex = -1;
     int arraySize = ArraySize(g_symbolStates);
     
     // Validate array size matches count
     if(arraySize != g_symbolStateCount) {
-        Print("⚠️ WARNING: Array size mismatch (size=", arraySize, ", count=", g_symbolStateCount, ")");
+        Print("   WARNING: Array size mismatch (size=", arraySize, ", count=", g_symbolStateCount, ")");
         g_symbolStateCount = arraySize; // Sync
     }
     
@@ -188,11 +188,11 @@ int GetSymbolStateIndex()
         return resultIndex;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX #4: Safe State Creation with Bounds Check
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(g_symbolStateCount >= MAX_SYMBOL_STATES) {
-        Print("❌ Cannot create new state - limit reached");
+        Print("  Cannot create new state - limit reached");
         return -1;
     }
     
@@ -201,7 +201,7 @@ int GetSymbolStateIndex()
     
     // Safe resize with validation
     if(ArrayResize(g_symbolStates, newIndex + 1) != newIndex + 1) {
-        Print("❌ CRITICAL: Failed to resize symbol states array");
+        Print("  CRITICAL: Failed to resize symbol states array");
         return -1;
     }
     
@@ -218,7 +218,7 @@ int GetSymbolStateIndex()
     
     g_symbolStateCount++;
     
-    Print("✅ Created new state for symbol: ", currentSymbol, " (Index: ", newIndex, ")");
+    Print("  Created new state for symbol: ", currentSymbol, " (Index: ", newIndex, ")");
     return newIndex;
     ArrayResize(g_symbolStates, g_symbolStateCount + 1);
     g_symbolStates[g_symbolStateCount].symbol = currentSymbol;
@@ -325,14 +325,14 @@ bool ValidateRestoredBasePrice(const double restoredPrice, const double currentB
     {
         // ACCEPT: Restored price is reasonable
         validatedPrice = restoredPrice;
-        DEBUG_PRINTF2("[BasePriceManager] ValidateRestoredBasePrice() - ✅ ACCEPTED (diff=", DoubleToString(percentDiff, 2), "%)");
+        DEBUG_PRINTF2("[BasePriceManager] ValidateRestoredBasePrice() -   ACCEPTED (diff=", DoubleToString(percentDiff, 2), "%)");
         return true;
     }
     else
     {
         // REJECT: Restored price is stale/invalid
         validatedPrice = currentBid;
-        DEBUG_PRINTF5("[BasePriceManager] ValidateRestoredBasePrice() - ⚠️ REJECTED (diff=", DoubleToString(percentDiff, 2), "% > ", DoubleToString(SANITY_CHECK_THRESHOLD_PERCENT, 1), "%), using bid", "");
+        DEBUG_PRINTF5("[BasePriceManager] ValidateRestoredBasePrice() -    REJECTED (diff=", DoubleToString(percentDiff, 2), "% > ", DoubleToString(SANITY_CHECK_THRESHOLD_PERCENT, 1), "%), using bid", "");
         return false;
     }
 }
@@ -347,19 +347,19 @@ void InitializeBasePriceSystem()
     if(!CheckHistoryFormatVersion(HISTORY_FORMAT_VERSION))
     {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("╔═══════════════════════════════════════════════════════════════╗");
-        Print("║  🔄 HISTORY FORMAT UPGRADE DETECTED                          ║");
-        Print("║  Cleaning up old history files with incorrect timestamps...  ║");
-        Print("╚═══════════════════════════════════════════════════════════════╝");
+        Print("====================");
+        Print("      HISTORY FORMAT UPGRADE DETECTED                           ");
+        Print("   Cleaning up old history files with incorrect timestamps...   ");
+        Print("====================");
         #endif
         
         DeleteAllHistoryFiles();
         UpdateHistoryFormatVersion(HISTORY_FORMAT_VERSION);
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("╔═══════════════════════════════════════════════════════════════╗");
-        Print("║  ✅ History cleanup complete. Will rebuild from M30 data.    ║");
-        Print("╚═══════════════════════════════════════════════════════════════╝");
+        Print("====================");
+        Print("     History cleanup complete. Will rebuild from M30 data.     ");
+        Print("====================");
         #endif
     }
     
@@ -374,21 +374,21 @@ void InitializeBasePriceSystem()
     // FIXED: Calculate timezone offset as Server - GMT for correct conversion
     // If server is GMT-2 (behind): offset = -7200 (negative)
     // If server is GMT+2 (ahead): offset = +7200 (positive)
-    // To convert Server→GMT: serverTime - offset
-    // To convert GMT→Server: gmtTime + offset
+    // To convert Server GMT: serverTime - offset
+    // To convert GMT Server: gmtTime + offset
     int timezoneOffsetSeconds = (int)(serverTime - gmtTime);
     int timezoneOffsetHours = timezoneOffsetSeconds / 3600;
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ╔═══════════════════════════════════════════════════════════════╗");
-    Print("[BasePriceManager] ║  TIMEZONE INFORMATION                                         ║");
-    Print("[BasePriceManager] ╠═══════════════════════════════════════════════════════════════╣");
-    Print("[BasePriceManager] ║  Server Time: ", TimeToString(serverTime, TIME_DATE|TIME_MINUTES));
-    Print("[BasePriceManager] ║  GMT Time:    ", TimeToString(gmtTime, TIME_DATE|TIME_MINUTES));
-    Print("[BasePriceManager] ║  Offset:      Server = GMT", (timezoneOffsetHours >= 0 ? "+" : ""), timezoneOffsetHours, " hours");
-    Print("[BasePriceManager] ║  Day (Server): ", dtServer.day_of_year + 1);
-    Print("[BasePriceManager] ║  Day (GMT):    ", dtGMT.day_of_year + 1);
-    Print("[BasePriceManager] ╚═══════════════════════════════════════════════════════════════╝");
+    Print("[BasePriceManager] ====================");
+    Print("[BasePriceManager]    TIMEZONE INFORMATION                                          ");
+    Print("[BasePriceManager] ====================");
+    Print("[BasePriceManager]    Server Time: ", TimeToString(serverTime, TIME_DATE|TIME_MINUTES));
+    Print("[BasePriceManager]    GMT Time:    ", TimeToString(gmtTime, TIME_DATE|TIME_MINUTES));
+    Print("[BasePriceManager]    Offset:      Server = GMT", (timezoneOffsetHours >= 0 ? "+" : ""), timezoneOffsetHours, " hours");
+    Print("[BasePriceManager]    Day (Server): ", dtServer.day_of_year + 1);
+    Print("[BasePriceManager]    Day (GMT):    ", dtGMT.day_of_year + 1);
+    Print("[BasePriceManager] ====================");
     #endif
     
     // Debug: Show recent M30 bars
@@ -448,7 +448,7 @@ void InitializeBasePriceSystem()
                 {
                     needsMigration = true;
                     #ifdef ENABLE_DEBUG_LOGS
-                    Print("[BasePriceManager] ✅ Migration needed: Found entry at ", timeStr, " (yesterday's data)");
+                    Print("[BasePriceManager]   Migration needed: Found entry at ", timeStr, " (yesterday's data)");
                     #endif
                     break;  // No need to check more
                 }
@@ -458,7 +458,7 @@ void InitializeBasePriceSystem()
         #ifdef ENABLE_DEBUG_LOGS
         if(!needsMigration)
         {
-            Print("[BasePriceManager] ✓ No migration needed: All entries are from today");
+            Print("[BasePriceManager]   No migration needed: All entries are from today");
         }
         #endif
     }
@@ -466,10 +466,10 @@ void InitializeBasePriceSystem()
     if(needsMigration && loadedCount > 0)
     {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("╔═══════════════════════════════════════════════════════════════╗");
-        Print("║  🔄 MIGRATION DETECTED - OLD FORMAT WITH SERVER TIME         ║");
-        Print("║  Deleting old file and rebuilding with GMT format...         ║");
-        Print("╚═══════════════════════════════════════════════════════════════╝");
+        Print("====================");
+        Print("      MIGRATION DETECTED - OLD FORMAT WITH SERVER TIME          ");
+        Print("   Deleting old file and rebuilding with GMT format...          ");
+        Print("====================");
         #endif
         
         // Delete old file
@@ -477,13 +477,13 @@ void InitializeBasePriceSystem()
         if(FileDelete(filePath))
         {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("[BasePriceManager] ✅ Old history file deleted successfully");
+            Print("[BasePriceManager]   Old history file deleted successfully");
             #endif
         }
         else
         {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("[BasePriceManager] ⚠️ Could not delete old file (error: ", GetLastError(), ")");
+            Print("[BasePriceManager]    Could not delete old file (error: ", GetLastError(), ")");
             #endif
         }
         
@@ -534,7 +534,7 @@ void InitializeBasePriceSystem()
             
             if(partCount >= 3)
             {
-                // Extract refPrice (field 2, format: "price (±change)")
+                // Extract refPrice (field 2, format: "price ( change)")
                 string refPriceStr = parts[2];
                 int spacePos = StringFind(refPriceStr, " ");
                 if(spacePos > 0)
@@ -557,16 +557,16 @@ void InitializeBasePriceSystem()
                 #ifdef ENABLE_DEBUG_LOGS
                 if(!g_systemInitialized)
                 {
-                    Print("╔═══════════════════════════════════════════════════════════════╗");
+                    Print("====================");
                     if(isValid)
                     {
-                        Print("║  ✅ BASE PRICE RESTORED: ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
+                        Print("     BASE PRICE RESTORED: ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
                     }
                     else
                     {
-                        Print("║  ⚠️ STALE PRICE REJECTED: ", DoubleToString(restoredPrice, Digits), " → ", DoubleToString(g_basePriceCached, Digits));
+                        Print("      STALE PRICE REJECTED: ", DoubleToString(restoredPrice, Digits), "   ", DoubleToString(g_basePriceCached, Digits));
                     }
-                    Print("╚═══════════════════════════════════════════════════════════════╝");
+                    Print("====================");
                 }
                 #endif
             }
@@ -583,9 +583,9 @@ void InitializeBasePriceSystem()
                 #ifdef ENABLE_DEBUG_LOGS
                 if(!g_systemInitialized)
                 {
-                    Print("╔═══════════════════════════════════════════════════════════════╗");
-                    Print("║  🆕 BASE PRICE INIT: ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
-                    Print("╚═══════════════════════════════════════════════════════════════╝");
+                    Print("====================");
+                    Print("      BASE PRICE INIT: ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
+                    Print("====================");
                 }
                 #endif
             }
@@ -603,9 +603,9 @@ void InitializeBasePriceSystem()
             #ifdef ENABLE_DEBUG_LOGS
             if(!g_systemInitialized)
             {
-                Print("╔═══════════════════════════════════════════════════════════════╗");
-                Print("║  🆕 BASE PRICE INIT (First Run): ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
-                Print("╚═══════════════════════════════════════════════════════════════╝");
+                Print("====================");
+                Print("      BASE PRICE INIT (First Run): ", DoubleToString(g_basePriceCached, Digits), " | M1: ", DoubleToString(g_referenceM1Power, 5));
+                Print("====================");
             }
             #endif
         }
@@ -621,21 +621,21 @@ void InitializeBasePriceSystem()
         #ifdef ENABLE_DEBUG_LOGS
         if(g_historyCount > 0)
         {
-            Print("╔═══════════════════════════════════════════════════════════════╗");
-            Print("║  CHART REOPENED - RESTORING TODAY'S BASE PRICE               ║");
-            Print("║  Date: Day ", dayOfYear, " of Year ", year);
-            Print("║  Base Price: ", DoubleToString(g_basePriceCached, Digits));
-            Print("║  Total Entries: ", g_historyCount);
-            Print("╚═══════════════════════════════════════════════════════════════╝");
+            Print("====================");
+            Print("   CHART REOPENED - RESTORING TODAY'S BASE PRICE                ");
+            Print("   Date: Day ", dayOfYear, " of Year ", year);
+            Print("   Base Price: ", DoubleToString(g_basePriceCached, Digits));
+            Print("   Total Entries: ", g_historyCount);
+            Print("====================");
             PrintBasePriceHistory();
             SaveBasePriceHistoryToFile();
         }
         else
         {
-            Print("╔═══════════════════════════════════════════════════════════════╗");
-            Print("║  🆕 FIRST RUN TODAY - REBUILDING HISTORY FROM START OF DAY   ║");
-            Print("║  Current time: ", TimeToString(gmtTime, TIME_DATE|TIME_MINUTES));
-            Print("╚═══════════════════════════════════════════════════════════════╝");
+            Print("====================");
+            Print("      FIRST RUN TODAY - REBUILDING HISTORY FROM START OF DAY    ");
+            Print("   Current time: ", TimeToString(gmtTime, TIME_DATE|TIME_MINUTES));
+            Print("====================");
         }
         #endif
             
@@ -648,11 +648,11 @@ void InitializeBasePriceSystem()
             #ifdef ENABLE_DEBUG_LOGS
             if(g_historyCount > 0)
             {
-                Print("╔═══════════════════════════════════════════════════════════════╗");
-                Print("║  ✅ HISTORY REBUILT SUCCESSFULLY                             ║");
-                Print("║  Total Entries: ", g_historyCount);
-                Print("║  Base Price: ", DoubleToString(g_basePriceCached, Digits));
-                Print("╚═══════════════════════════════════════════════════════════════╝");
+                Print("====================");
+                Print("     HISTORY REBUILT SUCCESSFULLY                              ");
+                Print("   Total Entries: ", g_historyCount);
+                Print("   Base Price: ", DoubleToString(g_basePriceCached, Digits));
+                Print("====================");
                 PrintBasePriceHistory();
                 SaveBasePriceHistoryToFile();
             }
@@ -676,9 +676,9 @@ datetime ConvertServerToGMT(const datetime serverTime)
     datetime serverNow = TimeCurrent();
     int timezoneOffsetSeconds = (int)(serverNow - gmtNow);
     
-    // Convert Server→GMT: SUBTRACT offset
-    // If GMT+2: serverTime - 7200 = serverTime - 2 hours ✅
-    // If GMT-2: serverTime - (-7200) = serverTime + 2 hours ✅
+    // Convert Server GMT: SUBTRACT offset
+    // If GMT+2: serverTime - 7200 = serverTime - 2 hours  
+    // If GMT-2: serverTime - (-7200) = serverTime + 2 hours  
     datetime gmtTime = serverTime - timezoneOffsetSeconds;
     
     // CRITICAL: Ensure seconds are zero to prevent rounding issues
@@ -701,9 +701,9 @@ datetime ConvertGMTToServer(const datetime gmtTime)
     datetime serverNow = TimeCurrent();
     int timezoneOffsetSeconds = (int)(serverNow - gmtNow);
     
-    // Convert GMT→Server: ADD offset
-    // If GMT+2: gmtTime + 7200 = gmtTime + 2 hours ✅
-    // If GMT-2: gmtTime + (-7200) = gmtTime - 2 hours ✅
+    // Convert GMT Server: ADD offset
+    // If GMT+2: gmtTime + 7200 = gmtTime + 2 hours  
+    // If GMT-2: gmtTime + (-7200) = gmtTime - 2 hours  
     datetime serverTime = gmtTime + timezoneOffsetSeconds;
     
     // CRITICAL: Ensure seconds are zero
@@ -824,7 +824,7 @@ void MergeHistoryLists(const string &existingHistory[], const int existingCount,
     // Validate array sizes before allocation
     if(safeMaxSize <= 0 || safeMaxSize > 10000) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ MergeHistoryLists: Invalid array size: ", safeMaxSize);
+        Print("  MergeHistoryLists: Invalid array size: ", safeMaxSize);
         #endif
         ArrayResize(mergedHistory, 0);
         mergedCount = 0;
@@ -835,7 +835,7 @@ void MergeHistoryLists(const string &existingHistory[], const int existingCount,
     ArrayResize(entries, safeMaxSize);
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("📊 MergeHistoryLists: Allocated ", safeMaxSize, " slots (", maxSize, " + safety margin)");
+    Print("   MergeHistoryLists: Allocated ", safeMaxSize, " slots (", maxSize, " + safety margin)");
     #endif
     
     // Add existing entries first (they take precedence)
@@ -865,13 +865,13 @@ void MergeHistoryLists(const string &existingHistory[], const int existingCount,
         {
             // CRITICAL: Double-check bounds before adding
             if(totalEntries >= safeMaxSize) {
-                Print("❌ MergeHistoryLists: Buffer overflow prevented at ", totalEntries, " entries");
+                Print("  MergeHistoryLists: Buffer overflow prevented at ", totalEntries, " entries");
                 break;
             }
             
             // Additional validation: Check array size
             if(totalEntries >= ArraySize(timeBlocks) || totalEntries >= ArraySize(entries)) {
-                Print("❌ MergeHistoryLists: Array size mismatch detected");
+                Print("  MergeHistoryLists: Array size mismatch detected");
                 break;
             }
             
@@ -908,13 +908,13 @@ void MergeHistoryLists(const string &existingHistory[], const int existingCount,
         {
             // CRITICAL: Double-check bounds before adding
             if(totalEntries >= safeMaxSize) {
-                Print("❌ MergeHistoryLists: Buffer overflow prevented (rebuilt) at ", totalEntries, " entries");
+                Print("  MergeHistoryLists: Buffer overflow prevented (rebuilt) at ", totalEntries, " entries");
                 break;
             }
             
             // Additional validation: Check array size
             if(totalEntries >= ArraySize(timeBlocks) || totalEntries >= ArraySize(entries)) {
-                Print("❌ MergeHistoryLists: Array size mismatch detected (rebuilt)");
+                Print("  MergeHistoryLists: Array size mismatch detected (rebuilt)");
                 break;
             }
             
@@ -1019,7 +1019,7 @@ void AddBasePriceHistoryEntry(const datetime blockTime, const double thirtyMinPr
         refPriceStr = StringFormat("%.5f (%+.5f)", refPrice, priceChange);
     }
     
-    // Format: "HH:mm|30minPrice|refPrice (±change)|status|refM1|M1Old|M1New"
+    // Format: "HH:mm|30minPrice|refPrice ( change)|status|refM1|M1Old|M1New"
     // Use 5 decimal places for all numeric values to match Java precision
     string entry = StringFormat("%s|%.5f|%s|%s|%.5f|%.5f|%.5f",
                                  timeStr, thirtyMinPrice, refPriceStr,
@@ -1033,7 +1033,7 @@ void AddBasePriceHistoryEntry(const datetime blockTime, const double thirtyMinPr
         g_historyCount++;
         
 #ifdef ENABLE_DEBUG_LOGS
-        Print("📝 History: ", entry);
+        Print("   History: ", entry);
 #endif
         
         // Persist to file
@@ -1043,14 +1043,14 @@ void AddBasePriceHistoryEntry(const datetime blockTime, const double thirtyMinPr
         if(!AppendBasePriceHistoryEntry(dt.year, dayOfYear, entry))
         {
 #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ WARNING: Failed to persist history entry to file");
+            Print("   WARNING: Failed to persist history entry to file");
 #endif
         }
     }
     else
     {
 #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Skipping duplicate history entry for block ", timeStr);
+        Print("   Skipping duplicate history entry for block ", timeStr);
 #endif
     }
 }
@@ -1117,25 +1117,25 @@ bool UpdateBasePrice()
     {
         // New day - reset history
 #ifdef ENABLE_DEBUG_LOGS
-        Print("╔═══════════════════════════════════════════════════════════════╗");
+        Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("║  🆕 NEW DAY DETECTED - RESETTING BASE PRICE HISTORY           ║");
+        Print("      NEW DAY DETECTED - RESETTING BASE PRICE HISTORY            ");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("╠═══════════════════════════════════════════════════════════════╣");
+        Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("║  Old Date: ", g_lastHistoryYear, "/", g_lastHistoryDay);
+        Print("   Old Date: ", g_lastHistoryYear, "/", g_lastHistoryDay);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("║  New Date: ", dt.year, "/", currentDayOfYear);
+        Print("   New Date: ", dt.year, "/", currentDayOfYear);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("║  Action: Clearing all history and resetting base price");
+        Print("   Action: Clearing all history and resetting base price");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-        Print("╚═══════════════════════════════════════════════════════════════╝");
+        Print("====================");
 #endif
         
         ResizeHistory(0);
@@ -1181,34 +1181,34 @@ bool UpdateBasePrice()
     int timezoneOffsetHours = (int)((serverNow - gmtNow) / 3600);
     
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ╔═══════════════════════════════════════════════════════════════╗");
+    Print("[BasePriceManager] ====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  M30 BAR DETAILS                                              ║");
+    Print("[BasePriceManager]    M30 BAR DETAILS                                               ");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ╠═══════════════════════════════════════════════════════════════╣");
+    Print("[BasePriceManager] ====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  Bar Index:        ", m30BarIdx);
+    Print("[BasePriceManager]    Bar Index:        ", m30BarIdx);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  Server Time:      ", TimeToString(m30BarTime, TIME_DATE|TIME_MINUTES));
+    Print("[BasePriceManager]    Server Time:      ", TimeToString(m30BarTime, TIME_DATE|TIME_MINUTES));
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  GMT Time:         ", TimeToString(m30BarTimeGMT, TIME_DATE|TIME_MINUTES));
+    Print("[BasePriceManager]    GMT Time:         ", TimeToString(m30BarTimeGMT, TIME_DATE|TIME_MINUTES));
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  Expected Block:   ", TimeToString(previousBlockStartGMT, TIME_DATE|TIME_MINUTES), " (GMT)");
+    Print("[BasePriceManager]    Expected Block:   ", TimeToString(previousBlockStartGMT, TIME_DATE|TIME_MINUTES), " (GMT)");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  Close Price:      ", DoubleToString(newBasePrice, Digits));
+    Print("[BasePriceManager]    Close Price:      ", DoubleToString(newBasePrice, Digits));
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ║  Timezone Offset:  GMT", (timezoneOffsetHours >= 0 ? "+" : ""), timezoneOffsetHours, " hours");
+    Print("[BasePriceManager]    Timezone Offset:  GMT", (timezoneOffsetHours >= 0 ? "+" : ""), timezoneOffsetHours, " hours");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("[BasePriceManager] ╚═══════════════════════════════════════════════════════════════╝");
+    Print("[BasePriceManager] ====================");
 #endif
     
     // Check if this is first update of the day
@@ -1296,17 +1296,17 @@ bool UpdateBasePrice()
 void RebuildHistoryFromStartOfDay()
 {
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╔═══════════════════════════════════════════════════════════════╗");
+    Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  REBUILD HISTORY FROM START OF DAY                           ║");
+    Print("   REBUILD HISTORY FROM START OF DAY                            ");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
 #endif
     
     // CRITICAL: Find start of trading day
-    // Strategy: Dynamic Detection → Market Type Default
+    // Strategy: Dynamic Detection   Market Type Default
     datetime gmtTime = TimeGMT();
     datetime serverTime = TimeCurrent();
     datetime startOfDayGMT;
@@ -1443,7 +1443,7 @@ void RebuildHistoryFromStartOfDay()
         {
             // No M30 data available for this block
 #ifdef ENABLE_DEBUG_LOGS
-            Print("[BasePriceManager] ⚠️ No M30 data for block ", blockTimeStr, 
+            Print("[BasePriceManager]    No M30 data for block ", blockTimeStr, 
                   " (GMT), Server: ", TimeToString(blockStartServer, TIME_MINUTES));
 #endif
             missingDataCount++;
@@ -1457,7 +1457,7 @@ void RebuildHistoryFromStartOfDay()
         if(closePrice <= 0.0)
         {
 #ifdef ENABLE_DEBUG_LOGS
-            Print("[BasePriceManager] ⚠️ Invalid M30 candle price for block ", blockTimeStr, ": ", closePrice);
+            Print("[BasePriceManager]    Invalid M30 candle price for block ", blockTimeStr, ": ", closePrice);
 #endif
             missingDataCount++;
             continue;
@@ -1556,34 +1556,34 @@ void RebuildHistoryFromStartOfDay()
     }
     
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╔═══════════════════════════════════════════════════════════════╗");
+    Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  REBUILD STATISTICS                                           ║");
+    Print("   REBUILD STATISTICS                                            ");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╠═══════════════════════════════════════════════════════════════╣");
+    Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Total Blocks: ", totalBlocks);
+    Print("   Total Blocks: ", totalBlocks);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Success: ", successCount);
+    Print("   Success: ", successCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Skipped: ", skipCount);
+    Print("   Skipped: ", skipCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Missing Data: ", missingDataCount);
+    Print("   Missing Data: ", missingDataCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Rebuilt Entries: ", rebuiltCount);
+    Print("   Rebuilt Entries: ", rebuiltCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Existing Entries: ", existingCount);
+    Print("   Existing Entries: ", existingCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
 #endif
     
     // Merge existing and rebuilt history
@@ -1608,22 +1608,22 @@ void RebuildHistoryFromStartOfDay()
     SaveBasePriceHistory(dtSave.year, dtSave.day_of_year + 1, mergedHistory, g_historyCount);
     
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╔═══════════════════════════════════════════════════════════════╗");
+    Print("====================");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  ✅ REBUILD COMPLETE                                          ║");
+    Print("     REBUILD COMPLETE                                           ");
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Total Entries: ", g_historyCount);
+    Print("   Total Entries: ", g_historyCount);
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  Base Price: ", DoubleToString(g_basePriceCached, Digits));
+    Print("   Base Price: ", DoubleToString(g_basePriceCached, Digits));
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("║  M1 Power: ", DoubleToString(g_referenceM1Power, 5));
+    Print("   M1 Power: ", DoubleToString(g_referenceM1Power, 5));
 #endif
 #ifdef ENABLE_DEBUG_LOGS
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
 #endif
 }
 
@@ -1649,7 +1649,7 @@ void PrintBasePriceHistory()
 {
     if(g_historyCount == 0)
     {
-        Print("📊 Base Price History: No entries yet");
+        Print("   Base Price History: No entries yet");
         return;
     }
     
@@ -1657,7 +1657,7 @@ void PrintBasePriceHistory()
     TimeToStruct(TimeGMT(), dt);
     
     Print("+---------------------------------------------------------------------------------------------------------------------+");
-    Print("|  📊 BASE PRICE HISTORY TODAY (All 30-min updates) - ", g_historyCount, " entries                                                    |");
+    Print("|     BASE PRICE HISTORY TODAY (All 30-min updates) - ", g_historyCount, " entries                                                    |");
     Print("+---------------------------------------------------------------------------------------------------------------------+");
     Print("|  Time  | 30-Min Price    | Ref Price (Used)      | Status/D%           | Ref M1     | M1 Old     | M1 New     |");
     Print("|        |                 |                       |                     |            |            |            |");
@@ -1932,10 +1932,10 @@ void CleanupBasePriceManager()
 {
     DEBUG_PRINTF("[BasePriceManager] CleanupBasePriceManager() - Freeing ", IntegerToString(g_symbolStateCount) + " symbol states");
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL FIX: Free nested arrays within each state
     // This prevents memory leak when indicator is removed
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     for(int i = 0; i < g_symbolStateCount; i++)
     {
         if(ArraySize(g_symbolStates[i].basePriceHistory) > 0)

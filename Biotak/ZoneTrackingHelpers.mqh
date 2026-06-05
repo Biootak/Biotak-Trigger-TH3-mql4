@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                       ZoneTrackingHelpers.mqh    |
 //|                                  Copyright 2025, Biotak Project  |
 //|                    Helper Functions for Zone Tracking            |
@@ -11,7 +11,7 @@
 
 //+------------------------------------------------------------------+
 //| Initialize Zone Tracking Variables - GOLD VERSION                |
-//| مقداردهی اولیه متغیرهای ردیابی Zone - نسخه طلایی                 |
+//|                                Zone -                            |
 //|                                                                  |
 //| ARCHITECTURE:                                                    |
 //| - Structure tracking: Draws zones between structure levels      |
@@ -34,13 +34,13 @@ bool InitializeZoneTracking(const double centerPrice,
                             double &lastTriggerPrice,
                             double &lastFallbackPrice)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: VALIDATION (Fail Fast)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(centerPrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ InitializeZoneTracking: Invalid centerPrice=", centerPrice);
+        Print("  InitializeZoneTracking: Invalid centerPrice=", centerPrice);
         #endif
         // Set to safe defaults
         lastStructurePrice = 0;
@@ -52,15 +52,15 @@ bool InitializeZoneTracking(const double centerPrice,
     // Additional safety: Check for extreme values
     if(centerPrice > 1000000000.0) {  // 1 billion
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ InitializeZoneTracking: Suspiciously large centerPrice=", centerPrice);
+        Print("   InitializeZoneTracking: Suspiciously large centerPrice=", centerPrice);
         #endif
         // Continue but log warning
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: NORMALIZE FOR PRECISION
     // OPTIMIZATION: Use centralized cached Digits from PerformanceOptimizations.mqh
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     int s_cachedDigits = GetCachedDigits();
     
@@ -69,7 +69,7 @@ bool InitializeZoneTracking(const double centerPrice,
     // Validate normalization didn't break the value
     if(normalizedCenter <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ InitializeZoneTracking: Normalization failed - result=", normalizedCenter);
+        Print("  InitializeZoneTracking: Normalization failed - result=", normalizedCenter);
         #endif
         lastStructurePrice = 0;
         lastTriggerPrice = 0;
@@ -77,9 +77,9 @@ bool InitializeZoneTracking(const double centerPrice,
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 3: INITIALIZE TRACKING VARIABLES
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Structure: Start from center to draw zones between structure levels
     lastStructurePrice = normalizedCenter;
@@ -92,7 +92,7 @@ bool InitializeZoneTracking(const double centerPrice,
     lastFallbackPrice = normalizedCenter;
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ InitializeZoneTracking: SUCCESS");
+    Print("  InitializeZoneTracking: SUCCESS");
     Print("   Center=", DoubleToString(normalizedCenter, s_cachedDigits));
     Print("   Structure=", DoubleToString(lastStructurePrice, s_cachedDigits));
     Print("   Trigger=", DoubleToString(lastTriggerPrice, s_cachedDigits), " (0=skip first zone)");
@@ -104,10 +104,10 @@ bool InitializeZoneTracking(const double centerPrice,
 
 //+------------------------------------------------------------------+
 //| Validate Zone Tracking State - GOLD VERSION                      |
-//| اعتبارسنجی وضعیت ردیابی Zone - نسخه طلایی                        |
+//|                         Zone -                                   |
 //|                                                                  |
 //| Use this to verify tracking variables are in valid state        |
-//| برای تأیید معتبر بودن متغیرهای tracking استفاده کن              |
+//|                                tracking                         |
 //|                                                                  |
 //| @param lastStructurePrice Structure tracking variable           |
 //| @param lastTriggerPrice Trigger tracking variable               |
@@ -128,14 +128,14 @@ bool ValidateZoneTrackingState(const double lastStructurePrice,
     // Structure and Fallback should be > 0 (or both 0 if not initialized)
     if(lastStructurePrice < 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ", contextName, ": Invalid lastStructurePrice=", lastStructurePrice);
+        Print("  ", contextName, ": Invalid lastStructurePrice=", lastStructurePrice);
         #endif
         isValid = false;
     }
     
     if(lastFallbackPrice < 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ", contextName, ": Invalid lastFallbackPrice=", lastFallbackPrice);
+        Print("  ", contextName, ": Invalid lastFallbackPrice=", lastFallbackPrice);
         #endif
         isValid = false;
     }
@@ -143,7 +143,7 @@ bool ValidateZoneTrackingState(const double lastStructurePrice,
     // Trigger can be 0 (intentionally, to skip first zone) or > 0
     if(lastTriggerPrice < 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ", contextName, ": Invalid lastTriggerPrice=", lastTriggerPrice);
+        Print("  ", contextName, ": Invalid lastTriggerPrice=", lastTriggerPrice);
         #endif
         isValid = false;
     }
@@ -153,7 +153,7 @@ bool ValidateZoneTrackingState(const double lastStructurePrice,
         double ratio = lastStructurePrice / lastFallbackPrice;
         if(ratio < 0.5 || ratio > 2.0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ ", contextName, ": Structure/Fallback mismatch - S=", 
+            Print("   ", contextName, ": Structure/Fallback mismatch - S=", 
                   DoubleToString(lastStructurePrice, s_cachedDigitsValidate), 
                   ", F=", DoubleToString(lastFallbackPrice, s_cachedDigitsValidate));
             #endif

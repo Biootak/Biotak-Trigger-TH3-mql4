@@ -1,7 +1,7 @@
-//+------------------------------------------------------------------+
+﻿   //+------------------------------------------------------------------+
 //|                                        FloatingPointHelper.mqh   |
 //|                     Floating-Point Precision & Comparison Helpers|
-//|                     Ú©Ù…Ú©â€ŒÚ©Ù†Ù†Ø¯Ù‡â€ŒÙ‡Ø§ÛŒ Ø¯Ù‚Øª Ùˆ Ù…Ù‚Ø§ÛŒØ³Ù‡ Ø§Ø¹Ø´Ø§Ø±ÛŒ             |
+//|                                                    |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -18,7 +18,7 @@
 
 //+------------------------------------------------------------------+
 //| Dynamic epsilon based on price magnitude                          |
-//| اپسیلون پویا بر اساس بزرگی قیمت                                    |
+//|                                                                                              |
 //+------------------------------------------------------------------+
 double GetDynamicEpsilonForPrice(double price) {
     double epsilon = MathAbs(price) * EPSILON_PRICE_SCALE;
@@ -28,12 +28,12 @@ double GetDynamicEpsilonForPrice(double price) {
 
 //+------------------------------------------------------------------+
 //| Safe Floating-Point Comparison Functions                         |
-//| ØªÙˆØ§Ø¨Ø¹ Ù…Ù‚Ø§ÛŒØ³Ù‡ Ø§Ù…Ù† Ø§Ø¹Ø´Ø§Ø±ÛŒ                                          |
+//|                                                    |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
 //| Check if value is effectively zero                               |
-//| Ø¨Ø±Ø±Ø³ÛŒ ØµÙØ± Ø¨ÙˆØ¯Ù† Ù…Ù‚Ø¯Ø§Ø±                                             |
+//|                                                       |
 //+------------------------------------------------------------------+
 bool IsZero(double value, double epsilon = EPSILON_GENERAL)
 {
@@ -42,7 +42,7 @@ bool IsZero(double value, double epsilon = EPSILON_GENERAL)
 
 //+------------------------------------------------------------------+
 //| Check if two values are effectively equal                        |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ø¨Ø±Ø§Ø¨Ø±ÛŒ Ø¯Ùˆ Ù…Ù‚Ø¯Ø§Ø±                                            |
+//|                                                     |
 //+------------------------------------------------------------------+
 bool AreEqual(double value1, double value2, double epsilon = EPSILON_GENERAL)
 {
@@ -51,7 +51,7 @@ bool AreEqual(double value1, double value2, double epsilon = EPSILON_GENERAL)
 
 //+------------------------------------------------------------------+
 //| Check if value1 > value2 (with epsilon tolerance)               |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ø¨Ø²Ø±Ú¯ØªØ± Ø¨ÙˆØ¯Ù†                                                |
+//|                                                       |
 //+------------------------------------------------------------------+
 bool IsGreater(double value1, double value2, double epsilon = EPSILON_GENERAL)
 {
@@ -60,7 +60,7 @@ bool IsGreater(double value1, double value2, double epsilon = EPSILON_GENERAL)
 
 //+------------------------------------------------------------------+
 //| Check if value1 < value2 (with epsilon tolerance)               |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ú©ÙˆÚ†Ú©ØªØ± Ø¨ÙˆØ¯Ù†                                                |
+//|                                                                 |
 //+------------------------------------------------------------------+
 bool IsLess(double value1, double value2, double epsilon = EPSILON_GENERAL)
 {
@@ -69,7 +69,7 @@ bool IsLess(double value1, double value2, double epsilon = EPSILON_GENERAL)
 
 //+------------------------------------------------------------------+
 //| Check if value1 >= value2 (with epsilon tolerance)              |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ø¨Ø²Ø±Ú¯ØªØ± ÛŒØ§ Ù…Ø³Ø§ÙˆÛŒ Ø¨ÙˆØ¯Ù†                                       |
+//|                                                       |
 //+------------------------------------------------------------------+
 bool IsGreaterOrEqual(double value1, double value2, double epsilon = EPSILON_GENERAL)
 {
@@ -78,7 +78,7 @@ bool IsGreaterOrEqual(double value1, double value2, double epsilon = EPSILON_GEN
 
 //+------------------------------------------------------------------+
 //| Check if value1 <= value2 (with epsilon tolerance)              |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ú©ÙˆÚ†Ú©ØªØ± ÛŒØ§ Ù…Ø³Ø§ÙˆÛŒ Ø¨ÙˆØ¯Ù†                                       |
+//|                                                                 |
 //+------------------------------------------------------------------+
 bool IsLessOrEqual(double value1, double value2, double epsilon = EPSILON_GENERAL)
 {
@@ -87,13 +87,13 @@ bool IsLessOrEqual(double value1, double value2, double epsilon = EPSILON_GENERA
 
 //+------------------------------------------------------------------+
 //| Safe Division with Zero Check                                    |
-//| ØªÙ‚Ø³ÛŒÙ… Ø§Ù…Ù† Ø¨Ø§ Ø¨Ø±Ø±Ø³ÛŒ ØµÙØ±                                           |
+//|                                                      |
 //+------------------------------------------------------------------+
 double SafeDivide(double numerator, double denominator, double defaultValue = 0.0, double epsilon = EPSILON_GENERAL)
 {
     if(IsZero(denominator, epsilon)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("âš ï¸ SafeDivide: Division by zero avoided (denominator=", 
+        Print("==================== SafeDivide: Division by zero avoided (denominator=", 
               DoubleToString(denominator, 10), ")");
         #endif
         return defaultValue;
@@ -104,13 +104,13 @@ double SafeDivide(double numerator, double denominator, double defaultValue = 0.
 
 //+------------------------------------------------------------------+
 //| Safe Square Root with Negative Check                             |
-//| Ø¬Ø°Ø± Ø§Ù…Ù† Ø¨Ø§ Ø¨Ø±Ø±Ø³ÛŒ Ù…Ù†ÙÛŒ                                            |
+//|                                                         |
 //+------------------------------------------------------------------+
 double SafeSqrt(double value, double defaultValue = 0.0, double epsilon = EPSILON_GENERAL)
 {
     if(value < -epsilon) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("âš ï¸ SafeSqrt: Negative value (", DoubleToString(value, 10), 
+        Print("==================== SafeSqrt: Negative value (", DoubleToString(value, 10), 
               "), returning default: ", defaultValue);
         #endif
         return defaultValue;
@@ -126,7 +126,7 @@ double SafeSqrt(double value, double defaultValue = 0.0, double epsilon = EPSILO
 
 //+------------------------------------------------------------------+
 //| Clamp Value to Range                                             |
-//| Ù…Ø­Ø¯ÙˆØ¯ Ú©Ø±Ø¯Ù† Ù…Ù‚Ø¯Ø§Ø± Ø¨Ù‡ Ø¨Ø§Ø²Ù‡                                         |
+//|                                                          |
 //+------------------------------------------------------------------+
 double ClampValue(double value, double minVal, double maxVal)
 {
@@ -137,7 +137,7 @@ double ClampValue(double value, double minVal, double maxVal)
 
 //+------------------------------------------------------------------+
 //| Normalize Price to Symbol Digits                                 |
-//| Ù†Ø±Ù…Ø§Ù„â€ŒØ³Ø§Ø²ÛŒ Ù‚ÛŒÙ…Øª Ø¨Ù‡ ØªØ¹Ø¯Ø§Ø¯ Ø§Ø±Ù‚Ø§Ù… Ø³ÛŒÙ…Ø¨Ù„                             |
+//|                                            |
 //+------------------------------------------------------------------+
 double NormalizePrice(double price)
 {
@@ -146,7 +146,7 @@ double NormalizePrice(double price)
 
 //+------------------------------------------------------------------+
 //| Check if Price is Valid                                          |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ù…Ø¹ØªØ¨Ø± Ø¨ÙˆØ¯Ù† Ù‚ÛŒÙ…Øª                                            |
+//|                                                       |
 //+------------------------------------------------------------------+
 bool IsValidPrice(double price, double epsilon = EPSILON_PRICE)
 {
@@ -159,7 +159,7 @@ bool IsValidPrice(double price, double epsilon = EPSILON_PRICE)
 
 //+------------------------------------------------------------------+
 //| Check if Percentage is Valid                                     |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ù…Ø¹ØªØ¨Ø± Ø¨ÙˆØ¯Ù† Ø¯Ø±ØµØ¯                                            |
+//|                                                      |
 //+------------------------------------------------------------------+
 bool IsValidPercentage(double percentage, double minPercent = 0.0, double maxPercent = 100.0)
 {
@@ -171,7 +171,7 @@ bool IsValidPercentage(double percentage, double minPercent = 0.0, double maxPer
 
 //+------------------------------------------------------------------+
 //| Check if Ratio is Valid                                          |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ù…Ø¹ØªØ¨Ø± Ø¨ÙˆØ¯Ù† Ù†Ø³Ø¨Øª                                            |
+//|                                                        |
 //+------------------------------------------------------------------+
 bool IsValidRatio(double ratio, double minRatio = 0.0, double maxRatio = 10.0)
 {
@@ -183,7 +183,7 @@ bool IsValidRatio(double ratio, double minRatio = 0.0, double maxRatio = 10.0)
 
 //+------------------------------------------------------------------+
 //| Safe Percentage Calculation                                      |
-//| Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø§Ù…Ù† Ø¯Ø±ØµØ¯                                                  |
+//|                                                          |
 //+------------------------------------------------------------------+
 double CalculatePercentage(double part, double whole, double defaultValue = 0.0)
 {
@@ -196,7 +196,7 @@ double CalculatePercentage(double part, double whole, double defaultValue = 0.0)
 
 //+------------------------------------------------------------------+
 //| Safe Ratio Calculation                                           |
-//| Ù…Ø­Ø§Ø³Ø¨Ù‡ Ø§Ù…Ù† Ù†Ø³Ø¨Øª                                                  |
+//|                                                            |
 //+------------------------------------------------------------------+
 double CalculateRatio(double numerator, double denominator, double defaultValue = 1.0)
 {
@@ -209,7 +209,7 @@ double CalculateRatio(double numerator, double denominator, double defaultValue 
 
 //+------------------------------------------------------------------+
 //| Round to Nearest Pip                                             |
-//| Ú¯Ø±Ø¯ Ú©Ø±Ø¯Ù† Ø¨Ù‡ Ù†Ø²Ø¯ÛŒÚ©â€ŒØªØ±ÛŒÙ† Ù¾ÛŒÙ¾                                       |
+//|                                                             |
 //+------------------------------------------------------------------+
 double RoundToPip(double value)
 {
@@ -224,7 +224,7 @@ double RoundToPip(double value)
 
 //+------------------------------------------------------------------+
 //| Check if value is within range (inclusive)                       |
-//| Ø¨Ø±Ø±Ø³ÛŒ Ù‚Ø±Ø§Ø± Ú¯Ø±ÙØªÙ† Ù…Ù‚Ø¯Ø§Ø± Ø¯Ø± Ø¨Ø§Ø²Ù‡                                   |
+//|                                                      |
 //+------------------------------------------------------------------+
 bool IsInRange(double value, double minVal, double maxVal, double epsilon = EPSILON_GENERAL)
 {
@@ -234,7 +234,7 @@ bool IsInRange(double value, double minVal, double maxVal, double epsilon = EPSI
 
 //+------------------------------------------------------------------+
 //| Linear Interpolation (Lerp)                                      |
-//| Ø¯Ø±ÙˆÙ†â€ŒÛŒØ§Ø¨ÛŒ Ø®Ø·ÛŒ                                                     |
+//|                                                            |
 //+------------------------------------------------------------------+
 double Lerp(double start, double end, double t)
 {
@@ -246,7 +246,7 @@ double Lerp(double start, double end, double t)
 
 //+------------------------------------------------------------------+
 //| Inverse Linear Interpolation                                     |
-//| Ø¯Ø±ÙˆÙ†â€ŒÛŒØ§Ø¨ÛŒ Ø®Ø·ÛŒ Ù…Ø¹Ú©ÙˆØ³                                              |
+//|                                                        |
 //+------------------------------------------------------------------+
 double InverseLerp(double start, double end, double value)
 {
@@ -259,7 +259,7 @@ double InverseLerp(double start, double end, double value)
 
 //+------------------------------------------------------------------+
 //| Map value from one range to another                              |
-//| Ù†Ú¯Ø§Ø´Øª Ù…Ù‚Ø¯Ø§Ø± Ø§Ø² ÛŒÚ© Ø¨Ø§Ø²Ù‡ Ø¨Ù‡ Ø¨Ø§Ø²Ù‡ Ø¯ÛŒÚ¯Ø±                              |
+//|                                                            |
 //+------------------------------------------------------------------+
 double MapRange(double value, double fromMin, double fromMax, double toMin, double toMax)
 {
@@ -272,13 +272,13 @@ double MapRange(double value, double fromMin, double fromMax, double toMin, doub
 
 //+------------------------------------------------------------------+
 //| Test Floating-Point Helper Functions                             |
-//| ØªØ³Øª ØªÙˆØ§Ø¨Ø¹ Ú©Ù…Ú©ÛŒ Ø§Ø¹Ø´Ø§Ø±ÛŒ                                            |
+//|                                                        |
 //+------------------------------------------------------------------+
 void TestFloatingPointHelper()
 {
-    Print("â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—");
-    Print("â•‘  FLOATING-POINT HELPER TESTS                                  â•‘");
-    Print("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
+    Print("====================");
+    Print("====================  FLOATING-POINT HELPER TESTS                                  ====================");
+    Print("====================");
     
     // Test 1: IsZero
     bool test1 = IsZero(0.0000000001, EPSILON_GENERAL);
@@ -304,5 +304,5 @@ void TestFloatingPointHelper()
     double test6 = MapRange(50.0, 0.0, 100.0, 0.0, 1.0);
     Print("Test 6 (MapRange): ", AreEqual(test6, 0.5, EPSILON_GENERAL) ? "PASS" : "FAIL");
     
-    Print("â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
+    Print("====================");
 }

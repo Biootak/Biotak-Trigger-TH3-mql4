@@ -1,30 +1,30 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                  BuildConfig.mqh |
 //|                        Build Configuration for Debug/Production  |
 //+------------------------------------------------------------------+
-#property copyright "© Biotak"
+#property copyright "  Biotak"
 #property strict
 
 //+------------------------------------------------------------------+
 //| BUILD MODE SWITCH                                                |
-//| ═══════════════════════════════════════════════════════════════  |
+//|                                                                  |
 //|                                                                  |
 //|   PRODUCTION: Comment out DEBUG_BUILD (default)                  |
 //|   DEBUG:      Uncomment DEBUG_BUILD                              |
 //|                                                                  |
 //+------------------------------------------------------------------+
 
-// ══════════════════════════════════════════════════════════════════
-// برای حالت DEBUG این خط رو از کامنت دربیار:
-// ══════════════════════════════════════════════════════════════════
+//                                                                   
+//           DEBUG                          :
+//                                                                   
 //#define DEBUG_BUILD
 
-// ══════════════════════════════════════════════════════════════════
+//                                                                   
 
 
-// ══════════════════════════════════════════════════════════════════
-// برای حالت LITE (حذف ویژگی‌های غیرضروری) این خط رو فعال کن:
-// ══════════════════════════════════════════════════════════════════
+//                                                                   
+//           LITE (                      )                  :
+//                                                                   
 //#define BUILD_LITE
 
 //+------------------------------------------------------------------+
@@ -120,21 +120,21 @@
 //+------------------------------------------------------------------+
 void PrintBuildInfo()
 {
-    Print("╔═══════════════════════════════════════════════════════════════╗");
-    Print("║  ", BUILD_MODE_EMOJI, " Biotak Trigger TH3 - Version ", INDICATOR_VERSION);
-    Print("║  Build Mode: ", BUILD_MODE_STR, " (", LITE_MODE_STR, ")");
-    Print("║  Compiled: ", __DATE__);
+    Print("====================");
+    Print("   ", BUILD_MODE_EMOJI, " Biotak Trigger TH3 - Version ", INDICATOR_VERSION);
+    Print("   Build Mode: ", BUILD_MODE_STR, " (", LITE_MODE_STR, ")");
+    Print("   Compiled: ", __DATE__);
     #ifdef BUILD_LITE
-    Print("║  ⚡ LITE VERSION - Performance optimized (Core features only)");
+    Print("     LITE VERSION - Performance optimized (Core features only)");
     #else
-    Print("║  💎 FULL VERSION - All advanced features enabled");
+    Print("      FULL VERSION - All advanced features enabled");
     #endif
     #ifdef DEBUG_BUILD
-    Print("║  ⚠️ DEBUG BUILD - Not for production use!");
-    Print("║  Features: Logs, Assertions ENABLED");
+    Print("      DEBUG BUILD - Not for production use!");
+    Print("   Features: Logs, Assertions ENABLED");
     #else
-    Print("║  ✅ PRODUCTION BUILD - Optimized for performance");
+    Print("     PRODUCTION BUILD - Optimized for performance");
     #endif
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
 }
 

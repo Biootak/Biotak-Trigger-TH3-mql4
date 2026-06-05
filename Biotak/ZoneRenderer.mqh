@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                 ZoneRenderer.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Zone Rendering & MT4 Objects  |
@@ -9,12 +9,12 @@
 
 #include "ConstantsAndEnums.mqh"
 #include "ZoneConstants.mqh"
-#include "GlobalVariables.mqh"  // برای دسترسی به g_linesVisible
-#include "ZoneFactory.mqh"      // استفاده از Factory Pattern برای یکپارچگی
+#include "GlobalVariables.mqh"  //                g_linesVisible
+#include "ZoneFactory.mqh"      //            Factory Pattern              
 
 //+------------------------------------------------------------------+
 //| Resolve Line Styles                                              |
-//| تعیین استایل خطوط                                                |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void ResolveLineStyles(
     const SLevelRawData &levels[],
@@ -28,7 +28,7 @@ void ResolveLineStyles(
     // CRITICAL FIX: Validate array size before resize
     if(count <= 0 || count > MAX_SAFE_LEVELS) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ResolveLineStyles: Invalid level count=", count);
+        Print("  ResolveLineStyles: Invalid level count=", count);
         #endif
         ArrayResize(outLines, 0);
         return;
@@ -36,7 +36,7 @@ void ResolveLineStyles(
     
     ArrayResize(outLines, count);
     
-    // CRITICAL: بررسی خالی نبودن objectPrefix
+    // CRITICAL:                  objectPrefix
     string safePrefix = (StringLen(objectPrefix) > 0) ? objectPrefix : "Zone_";
     
     // PERF FIX: Use centralized cached Digits from PerformanceOptimizations.mqh
@@ -47,7 +47,7 @@ void ResolveLineStyles(
         
         if(classifications[i].isActive) {
             // Line visibility controlled by config (which uses g_linesVisible)
-            // نمایش خطوط توسط config کنترل می‌شه (که از g_linesVisible استفاده می‌کند)
+            //                 config             (      g_linesVisible               )
             outLines[i].isVisible = config.globalShowLines;
             outLines[i].clr = classifications[i].levelColor;
             outLines[i].style = (ENUM_LINE_STYLE)classifications[i].style;
@@ -70,13 +70,13 @@ void ResolveLineStyles(
     for(int i = 0; i < count; i++) {
         if(outLines[i].isVisible) visibleCount++;
     }
-    Print("✅ ResolveLineStyles: ", visibleCount, " visible lines");
+    Print("  ResolveLineStyles: ", visibleCount, " visible lines");
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Resolve Zone Styles                                              |
-//| تعیین استایل زون‌ها                                              |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void ResolveZoneStyles(
     const SLevelRawData &levels[],
@@ -90,21 +90,21 @@ void ResolveZoneStyles(
     int zoneCount = 0;
     ArrayResize(outZones, count); // Max possible
     
-    // CRITICAL: بررسی خالی نبودن objectPrefix
+    // CRITICAL:                  objectPrefix
     string safePrefix = (StringLen(objectPrefix) > 0) ? objectPrefix : "Zone_";
     
     // DIAGNOSTIC LOG: Start
-    Print("═══════════════════════════════════════════════════════════");
-    Print("🔍 ZONE STYLE RESOLUTION DIAGNOSTIC");
-    Print("═══════════════════════════════════════════════════════════");
-    Print("📋 Configuration:");
+    Print("====================");
+    Print("   ZONE STYLE RESOLUTION DIAGNOSTIC");
+    Print("====================");
+    Print("   Configuration:");
     Print("   Show Zones: ", config.showZones ? "TRUE" : "FALSE");
     Print("   Zone Transparency: ", config.zoneTransparency, "%");
     Print("   Object Prefix: ", safePrefix);
-    Print("───────────────────────────────────────────────────────────");
+    Print("====================");
     
     if(config.showZones) {
-        Print("🎨 Zone Style Assignment:");
+        Print("   Zone Style Assignment:");
         
         for(int i = 0; i < count; i++) {
             if(geometries[i].isValid && classifications[i].isActive) {
@@ -120,7 +120,7 @@ void ResolveZoneStyles(
                 outZones[zoneCount].bottomPrice = geometries[i].bottomPrice;
                 
                 // DIAGNOSTIC LOG: Zone Style
-                Print("✅ Zone ", zoneCount + 1, " [Level ", i, ", Step ", levels[i].logicalStep, "]:");
+                Print("  Zone ", zoneCount + 1, " [Level ", i, ", Step ", levels[i].logicalStep, "]:");
                 Print("   Name: ", outZones[zoneCount].name);
                 Print("   Color: ", ColorToString(outZones[zoneCount].clr));
                 Print("   Top: ", DoubleToString(outZones[zoneCount].topPrice, Digits));
@@ -131,32 +131,32 @@ void ResolveZoneStyles(
             }
             else {
                 if(!geometries[i].isValid) {
-                    Print("⏭️ Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Invalid Geometry)");
+                    Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Invalid Geometry)");
                 }
                 else if(!classifications[i].isActive) {
-                    Print("⏭️ Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Inactive)");
+                    Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Inactive)");
                 }
             }
         }
     }
     else {
-        Print("⚠️ Zone Display is DISABLED (config.showZones = false)");
+        Print("   Zone Display is DISABLED (config.showZones = false)");
     }
     
     ArrayResize(outZones, zoneCount);
     
-    Print("───────────────────────────────────────────────────────────");
-    Print("✅ ResolveZoneStyles Summary:");
+    Print("====================");
+    Print("  ResolveZoneStyles Summary:");
     Print("   Zones Prepared for Rendering: ", zoneCount);
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
 }
 
 //+------------------------------------------------------------------+
 //| Render Zones (Optimized - Using ZoneFactory)                     |
-//| رسم زون‌ها (بهینه‌شده - با استفاده از ZoneFactory)              |
+//|            (          -               ZoneFactory)              |
 //|                                                                  |
 //| REFACTORED: Now uses ZoneFactory for consistency and DRY        |
-//| REFACTOR شده: حالا از ZoneFactory برای یکپارچگی استفاده می‌کند  |
+//| REFACTOR    :         ZoneFactory                               |
 //| FIXED: Respects Hide state when rendering zones                 |
 //+------------------------------------------------------------------+
 void RenderZones(const SZoneRenderInfo &zones[])
@@ -166,13 +166,13 @@ void RenderZones(const SZoneRenderInfo &zones[])
     // CRITICAL: Enforce zone limit
     if(count > MAX_ZONES_PER_CHART) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ RenderZones: Zone count (", count, ") exceeds limit (", MAX_ZONES_PER_CHART, ")");
+        Print("   RenderZones: Zone count (", count, ") exceeds limit (", MAX_ZONES_PER_CHART, ")");
         #endif
         count = MAX_ZONES_PER_CHART;
     }
     
     // CRITICAL FIX: Check if indicator is hidden
-    // اگر اندیکاتور مخفی است، زون‌ها را رسم نکن
+    //                                          
     // PERFORMANCE: Use cached ChartID string
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
     bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
@@ -181,18 +181,18 @@ void RenderZones(const SZoneRenderInfo &zones[])
     int zonesCreated = 0;
     int zonesFailed = 0;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // BATCH RENDERING USING ZONE FACTORY
-    // رسم دسته‌ای با استفاده از Zone Factory
-    // ═══════════════════════════════════════════════════════════════
+    //                           Zone Factory
+    //                                                                
     
     for(int i = 0; i < count; i++) {
         if(!zones[i].isVisible) continue;
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DELEGATE TO ZONE FACTORY (DRY Principle)
-        // واگذاری به Zone Factory (اصل DRY)
-        // ═══════════════════════════════════════════════════════════
+        //            Zone Factory (    DRY)
+        //                                                            
         
         SZoneCreationRequest request;
         request.name = zones[i].name;
@@ -210,7 +210,7 @@ void RenderZones(const SZoneRenderInfo &zones[])
             zonesCreated++;
             
             // CRITICAL FIX: If indicator is hidden, hide the zone immediately
-            // اگر اندیکاتور مخفی است، زون را فوراً مخفی کن
+            //                                             
             if(isHidden) {
                 ObjectSetInteger(0, zones[i].name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
             }
@@ -218,31 +218,31 @@ void RenderZones(const SZoneRenderInfo &zones[])
         else {
             zonesFailed++;
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ RenderZones: Factory failed for '", zones[i].name, "' - ", 
+            Print("  RenderZones: Factory failed for '", zones[i].name, "' - ", 
                   result.errorMessage, " (Code: ", result.errorCode, ")");
             #endif
         }
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // UPDATE METRICS
-    // به‌روزرسانی معیارها
+    //                    
     // Note: Factory handles both create and update internally
-    // توجه: Factory هم create و هم update را داخلی مدیریت می‌کند
-    // ═══════════════════════════════════════════════════════════════
+    //     : Factory    create      update                       
+    //                                                                
     g_zoneMetrics.totalZonesCreated += zonesCreated;
     g_zoneMetrics.totalZonesFailed += zonesFailed;
     g_zoneMetrics.totalRenderCalls++;
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ RenderZones (Factory): Processed=", zonesCreated, ", Failed=", zonesFailed, 
+    Print("  RenderZones (Factory): Processed=", zonesCreated, ", Failed=", zonesFailed, 
           ", Hidden=", (isHidden ? "YES" : "NO"));
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Render Lines                                                      |
-//| رسم خطوط                                                          |
+//|                                                                   |
 //| FIXED: Respects Hide state and Lines visibility toggle          |
 //+------------------------------------------------------------------+
 void RenderLines(const SLineRenderInfo &lines[])
@@ -251,7 +251,7 @@ void RenderLines(const SLineRenderInfo &lines[])
     int visibleCount = 0;
     
     // CRITICAL FIX: Check if indicator is hidden
-    // اگر اندیکاتور مخفی است، خطوط را رسم نکن
+    //                                        
     // PERFORMANCE: Use cached ChartID string
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
     bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
@@ -265,7 +265,7 @@ void RenderLines(const SLineRenderInfo &lines[])
             if(!ObjectCreate(0, lines[i].name, OBJ_HLINE, 0, 0, lines[i].price)) {
                 int error = GetLastError();
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ RenderLines: Failed to create line: ", lines[i].name,
+                Print("  RenderLines: Failed to create line: ", lines[i].name,
                       ", Error: ", error);
                 #endif
                 
@@ -289,7 +289,7 @@ void RenderLines(const SLineRenderInfo &lines[])
         ObjectSetString(0, lines[i].name, OBJPROP_TOOLTIP, lines[i].tooltip);
         
         // Control visibility via TIMEFRAMES property (hide/show without deleting)
-        // کنترل نمایش از طریق TIMEFRAMES (مخفی/نمایش بدون حذف)
+        //                     TIMEFRAMES (    /              )
         // CRITICAL FIX: Respect both Hide state AND Lines visibility toggle
         if(isHidden || !lines[i].isVisible) {
             // Hidden by F key OR hidden by L key
@@ -302,14 +302,14 @@ void RenderLines(const SLineRenderInfo &lines[])
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ RenderLines: Rendered ", visibleCount, " visible lines out of ", count,
+    Print("  RenderLines: Rendered ", visibleCount, " visible lines out of ", count,
           ", Hidden=", (isHidden ? "YES" : "NO"));
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Batch Render (Zones First, Then Lines)                           |
-//| رسم دسته‌ای (ابتدا زون‌ها، سپس خطوط)                            |
+//|             (                      )                            |
 //+------------------------------------------------------------------+
 void RenderBatch(const SLineRenderInfo &lines[], const SZoneRenderInfo &zones[])
 {
@@ -322,13 +322,13 @@ void RenderBatch(const SLineRenderInfo &lines[], const SZoneRenderInfo &zones[])
 
 //+------------------------------------------------------------------+
 //| Cleanup Objects by Prefix                                        |
-//| پاک‌سازی اشیاء با پیشوند                                          |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void CleanupZoneObjects(const string &prefix)
 {
     ObjectsDeleteAll(0, prefix, -1, -1);
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ CleanupZoneObjects: Deleted all objects with prefix: ", prefix);
+    Print("  CleanupZoneObjects: Deleted all objects with prefix: ", prefix);
     #endif
 }

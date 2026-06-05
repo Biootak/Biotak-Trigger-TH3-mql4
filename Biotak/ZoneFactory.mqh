@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                                   ZoneFactory.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                          Factory Pattern for Zone Creation       |
@@ -12,7 +12,7 @@
 
 //+------------------------------------------------------------------+
 //| Zone Factory - Centralized Zone Creation                         |
-//| فکتوری Zone - ساخت متمرکز Zone‌ها                                |
+//|        Zone -             Zone                                   |
 //|                                                                  |
 //| BENEFITS:                                                        |
 //| - Single point of zone creation (DRY)                           |
@@ -23,7 +23,7 @@
 
 //+------------------------------------------------------------------+
 //| Zone Creation Request                                            |
-//| درخواست ساخت Zone                                                |
+//|              Zone                                                |
 //+------------------------------------------------------------------+
 struct SZoneCreationRequest {
     string name;              // Zone name
@@ -38,7 +38,7 @@ struct SZoneCreationRequest {
 
 //+------------------------------------------------------------------+
 //| Zone Creation Result                                             |
-//| نتیجه ساخت Zone                                                  |
+//|            Zone                                                  |
 //+------------------------------------------------------------------+
 struct SZoneCreationResult {
     bool success;             // Was creation successful?
@@ -91,7 +91,7 @@ color GetZoneRenderColor(const color sourceColor, const int transparency)
 
 //+------------------------------------------------------------------+
 //| Create Zone with Full Validation - GOLD VERSION v3 FINAL         |
-//| ساخت Zone با اعتبارسنجی کامل - نسخه طلایی v3 نهایی               |
+//|      Zone                    -            v3                     |
 //|                                                                  |
 //| IMPROVEMENTS v3 (FINAL):                                         |
 //| - Fixed: Removed duplicate property setting (performance)       |
@@ -111,9 +111,9 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     result.errorMessage = "";
     result.errorCode = ERR_ZONE_NONE;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: VALIDATION (Fail Fast)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Validate name
     if(StringLen(request.name) == 0) {
@@ -146,19 +146,19 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     if(clampedTransparency < 0) {
         clampedTransparency = 0;
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CreateZone: Transparency clamped from ", originalTransparency, " to 0");
+        Print("   CreateZone: Transparency clamped from ", originalTransparency, " to 0");
         #endif
     }
     if(clampedTransparency > 100) {
         clampedTransparency = 100;
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CreateZone: Transparency clamped from ", originalTransparency, " to 100");
+        Print("   CreateZone: Transparency clamped from ", originalTransparency, " to 100");
         #endif
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: TIME CALCULATION (Race Condition Prevention - GOLD v3 FINAL)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // GOLD FIX v3: Use GlobalVariable mutex for true atomic operation
     // PERFORMANCE: Use cached ChartID string
@@ -170,7 +170,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         datetime lockTime = (datetime)GlobalVariableGet(mutexTimeName);
         if(TimeCurrent() - lockTime > 2) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ ZoneFactory: Stale mutex detected, forcing release");
+            Print("   ZoneFactory: Stale mutex detected, forcing release");
             #endif
             GlobalVariableDel(mutexName);
             GlobalVariableDel(mutexTimeName);
@@ -223,7 +223,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     // Fallback strategy if mutex acquisition failed
     if(!atomicReadSuccess) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ZoneFactory: Mutex acquisition failed, using fallback");
+        Print("   ZoneFactory: Mutex acquisition failed, using fallback");
         #endif
         
         // Enhanced fallback with multiple retries
@@ -308,7 +308,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         int periodSeconds = PeriodSeconds(Period());
         if(periodSeconds <= 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ CreateZone: Invalid PeriodSeconds=", periodSeconds, " for Period=", Period());
+            Print("  CreateZone: Invalid PeriodSeconds=", periodSeconds, " for Period=", Period());
             #endif
             result.success = false;
             result.errorCode = ZONE_ERROR_INVALID_PRICES;
@@ -319,7 +319,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         // Additional validation: Check for reasonable period
         if(periodSeconds > 2592000) {  // 30 days in seconds
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ CreateZone: Suspiciously large PeriodSeconds=", periodSeconds);
+            Print("   CreateZone: Suspiciously large PeriodSeconds=", periodSeconds);
             #endif
         }
         
@@ -353,18 +353,18 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         return result;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 3: CALCULATE FINAL COLOR (Before Object Creation)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Use background blending to simulate transparency (matching MT5 logic)
     color finalColor = GetZoneRenderColor(request.zoneColor, clampedTransparency);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 4: ZONE CREATION/UPDATE (Atomic Operation)
     // FIX BUG #10: Set properties ONCE, not twice
     // FIX BUG #11: Check all ObjectSet return values
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     bool objectExists = (ObjectFind(0, request.name) >= 0);
     bool needsPropertyUpdate = true;
@@ -392,7 +392,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
             }
             
             if(ObjectFind(0, request.name) >= 0) {
-                Print("⚠️ Failed to cleanup partial zone object after ", cleanupAttempts, " attempts");
+                Print("   Failed to cleanup partial zone object after ", cleanupAttempts, " attempts");
             }
             
             return result;
@@ -418,11 +418,11 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         needsPropertyUpdate = true;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 5: APPLY VISUAL PROPERTIES (Once, with error checking)
     // FIX BUG #10: Properties set ONCE here for both create and update
     // FIX BUG #11: Check all return values
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(needsPropertyUpdate) {
         bool propsSuccess = true;
@@ -436,15 +436,15 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         if(!propsSuccess) {
             int error = GetLastError();
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ CreateZone: Failed to set some properties for '", request.name, "': MT4 Error ", error);
+            Print("   CreateZone: Failed to set some properties for '", request.name, "': MT4 Error ", error);
             #endif
             // Don't fail completely - zone is created, just properties might be incomplete
         }
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // SUCCESS
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     result.success = true;
     result.zoneName = request.name;
@@ -454,7 +454,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
 
 //+------------------------------------------------------------------+
 //| Batch Create Zones                                               |
-//| ساخت دسته‌ای Zone‌ها                                             |
+//|              Zone                                                |
 //+------------------------------------------------------------------+
 int CreateZonesBatch(const SZoneCreationRequest &requests[], 
                      SZoneCreationResult &results[])
@@ -474,7 +474,7 @@ int CreateZonesBatch(const SZoneCreationRequest &requests[],
 
 //+------------------------------------------------------------------+
 //| Delete Zone Safely                                               |
-//| حذف امن Zone                                                      |
+//|         Zone                                                      |
 //+------------------------------------------------------------------+
 bool DeleteZone(const string &zoneName)
 {
@@ -489,7 +489,7 @@ bool DeleteZone(const string &zoneName)
 
 //+------------------------------------------------------------------+
 //| Delete Zones by Prefix                                           |
-//| حذف Zone‌ها با پیشوند                                             |
+//|     Zone                                                          |
 //+------------------------------------------------------------------+
 int DeleteZonesByPrefix(const string &prefix)
 {

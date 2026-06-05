@@ -1,8 +1,8 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                            ATRCalculations.mqh   |
 //|                                                                  |
 //| ATR-Based Calculations for Biotak Trigger TH3                   |
-//| محاسبات مبتنی بر ATR برای بایوتک تریگر                          |
+//|                  ATR                                            |
 //|                                                                  |
 //| This module implements ATR_BASIS calculation mode matching       |
 //| the Java/MotiveWave implementation exactly.                      |
@@ -14,25 +14,25 @@
 //| - Full compatibility with existing TH_BASIS mode                 |
 //|                                                                  |
 //| AUDIT UPDATE v3.11 (2026-02-02):                                 |
-//| ✅ Added FloatingPointHelper integration for safe comparisons    |
-//| ✅ Implemented SafeDivide/SafeSqrt for all calculations          |
-//| ✅ Enhanced validation for all inputs and outputs                |
-//| ✅ Multi-timeframe caching for better performance                |
-//| ✅ Comprehensive error handling with debug logs                  |
-//| ✅ Overflow protection in weighted calculations                  |
-//| ✅ Array bounds checking in batch operations                     |
+//|   Added FloatingPointHelper integration for safe comparisons    |
+//|   Implemented SafeDivide/SafeSqrt for all calculations          |
+//|   Enhanced validation for all inputs and outputs                |
+//|   Multi-timeframe caching for better performance                |
+//|   Comprehensive error handling with debug logs                  |
+//|   Overflow protection in weighted calculations                  |
+//|   Array bounds checking in batch operations                     |
 //+------------------------------------------------------------------+
-#property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link "@biotak"
 #property strict
 
 //+------------------------------------------------------------------+
 //| ATR Calculation Constants (matching Java OptimizedCalculations)  |
-//| ثابت‌های محاسبه ATR (مطابق با جاوا)                              |
+//|                 ATR (             )                              |
 //+------------------------------------------------------------------+
 
 // Default periods for Weighted ATR (matching Java)
-// دوره‌های پیش‌فرض برای ATR وزن‌دار
+//                       ATR        
 #define ATR_PERIOD_1    5
 #define ATR_PERIOD_2    10
 #define ATR_PERIOD_3    21
@@ -41,7 +41,7 @@
 #define ATR_PERIOD_6    264
 
 // Weights for each period (matching Java)
-// وزن‌ها برای هر دوره
+//                    
 #define ATR_WEIGHT_1    1
 #define ATR_WEIGHT_2    1
 #define ATR_WEIGHT_3    2
@@ -58,7 +58,7 @@
 
 //+------------------------------------------------------------------+
 //| ATR Cache Structure for Performance                              |
-//| ساختار کش ATR برای بهینه‌سازی                                    |
+//|           ATR                                                    |
 //| AUDIT FIX: Enhanced with multi-timeframe support                 |
 //+------------------------------------------------------------------+
 struct ATRCacheEntry {
@@ -134,11 +134,11 @@ void ReleaseATRHandle() {
 
 //+------------------------------------------------------------------+
 //| Get effective timeframe (respects timeframe lock)                |
-//| دریافت تایم‌فریم مؤثر (با احترام به قفل تایم‌فریم)               |
+//|                       (                          )               |
 //+------------------------------------------------------------------+
 int GetEffectiveTimeframe() {
     // Use locked timeframe if lock is active, otherwise use chart timeframe
-    // اگه قفل فعاله از تایم‌فریم قفل شده استفاده کن، وگرنه از تایم‌فریم چارت
+    //                                                                       
     if(g_timeframeLocked && g_lockedPeriod > 0) {
         return g_lockedPeriod;
     }
@@ -147,7 +147,7 @@ int GetEffectiveTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Get bar count for effective timeframe                            |
-//| دریافت تعداد کندل‌ها برای تایم‌فریم مؤثر                         |
+//|                                                                  |
 //+------------------------------------------------------------------+
 int GetEffectiveBars() {
     int tf = GetEffectiveTimeframe();
@@ -159,7 +159,7 @@ int GetEffectiveBars() {
 
 //+------------------------------------------------------------------+
 //| Calculate True Range for a single bar                            |
-//| محاسبه True Range برای یک کندل                                   |
+//|        True Range                                                |
 //|                                                                  |
 //| Formula: TR = max(High-Low, |High-PrevClose|, |Low-PrevClose|)  |
 //| NOTE: Respects timeframe lock - uses locked TF data if active    |
@@ -172,7 +172,7 @@ double CalculateTrueRange(const int barIndex) {
     // AUDIT FIX: Validate bar index
     if(barIndex < 0 || barIndex >= totalBars) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateTrueRange: Invalid bar index (", barIndex, "/", totalBars, ")");
+        Print("   CalculateTrueRange: Invalid bar index (", barIndex, "/", totalBars, ")");
         #endif
         return 0.0;
     }
@@ -180,13 +180,13 @@ double CalculateTrueRange(const int barIndex) {
     double high, low, prevClose;
     
     // Use iHigh/iLow/iClose/iOpen for timeframe-aware access
-    // استفاده از iHigh/iLow/iClose/iOpen برای دسترسی آگاه از تایم‌فریم
+    //            iHigh/iLow/iClose/iOpen                              
     if(tf == Period()) {
         // Current chart timeframe - use direct array access (faster)
         // CRITICAL FIX: Validate array bounds before access
         if(barIndex >= Bars) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ CalculateTrueRange: barIndex exceeds Bars (", barIndex, "/", Bars, ")");
+            Print("   CalculateTrueRange: barIndex exceeds Bars (", barIndex, "/", Bars, ")");
             #endif
             return 0.0;
         }
@@ -220,7 +220,7 @@ double CalculateTrueRange(const int barIndex) {
        !IsValidPrice(low, EPSILON_PRICE) || 
        !IsValidPrice(prevClose, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateTrueRange: Invalid price data (H:", high, " L:", low, " PC:", prevClose, ")");
+        Print("   CalculateTrueRange: Invalid price data (H:", high, " L:", low, " PC:", prevClose, ")");
         #endif
         return 0.0;
     }
@@ -228,7 +228,7 @@ double CalculateTrueRange(const int barIndex) {
     // AUDIT FIX: Validate high >= low
     if(IsLess(high, low, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateTrueRange: High < Low (H:", high, " L:", low, ")");
+        Print("   CalculateTrueRange: High < Low (H:", high, " L:", low, ")");
         #endif
         return 0.0;
     }
@@ -248,7 +248,7 @@ double CalculateTrueRange(const int barIndex) {
 
 //+------------------------------------------------------------------+
 //| Calculate Simple ATR for a given period                          |
-//| محاسبه ATR ساده برای یک دوره مشخص                                |
+//|        ATR                                                       |
 //|                                                                  |
 //| Matches Java: OptimizedCalculations.calculateATROptimized()      |
 //| NOTE: Respects timeframe lock - uses GetEffectiveBars()          |
@@ -258,17 +258,17 @@ double CalculateSimpleATR(const int period) {
     // AUDIT FIX: Validate period range
     if(period <= 0 || period > 10000) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateSimpleATR: Invalid period (", period, ")");
+        Print("   CalculateSimpleATR: Invalid period (", period, ")");
         #endif
         return 0.0;
     }
     
     // Use GetEffectiveBars() to respect timeframe lock
-    // استفاده از GetEffectiveBars() برای احترام به قفل تایم‌فریم
+    //            GetEffectiveBars()                             
     int barsAvailable = GetEffectiveBars();
     if(barsAvailable <= period) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateSimpleATR: Not enough bars (", barsAvailable, " < ", period, ")");
+        Print("   CalculateSimpleATR: Not enough bars (", barsAvailable, " < ", period, ")");
         #endif
         return 0.0;
     }
@@ -293,7 +293,7 @@ double CalculateSimpleATR(const int period) {
 
 //+------------------------------------------------------------------+
 //| Batch ATR Calculation for Multiple Periods                       |
-//| محاسبه دسته‌ای ATR برای چند دوره                                 |
+//|                ATR                                               |
 //|                                                                  |
 //| OPTIMIZATION: Calculates TR once and reuses for all periods      |
 //| Matches Java: OptimizedCalculations.calculateATRBatch()          |
@@ -306,13 +306,13 @@ void CalculateATRBatch(double &results[]) {
     ArrayInitialize(results, 0.0);
     
     // Use GetEffectiveBars() to respect timeframe lock
-    // استفاده از GetEffectiveBars() برای احترام به قفل تایم‌فریم
+    //            GetEffectiveBars()                             
     int barsAvailable = GetEffectiveBars();
     
     // AUDIT FIX: Validate bars available
     if(barsAvailable <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateATRBatch: No bars available");
+        Print("   CalculateATRBatch: No bars available");
         #endif
         return;
     }
@@ -320,7 +320,7 @@ void CalculateATRBatch(double &results[]) {
     if(barsAvailable <= ATR_PERIOD_6) {
         // Not enough data - calculate what we can
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateATRBatch: Limited bars (", barsAvailable, "), using fallback");
+        Print("   CalculateATRBatch: Limited bars (", barsAvailable, "), using fallback");
         #endif
         results[0] = CalculateSimpleATR(ATR_PERIOD_1);
         results[1] = CalculateSimpleATR(ATR_PERIOD_2);
@@ -338,7 +338,7 @@ void CalculateATRBatch(double &results[]) {
     // AUDIT FIX: Check array resize success
     if(ArrayResize(trValues, maxPeriod) != maxPeriod) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateATRBatch: Failed to resize TR array");
+        Print("  CalculateATRBatch: Failed to resize TR array");
         #endif
         return;
     }
@@ -379,10 +379,10 @@ void CalculateATRBatch(double &results[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate Weighted ATR                                           |
-//| محاسبه ATR وزن‌دار                                                |
+//|        ATR                                                        |
 //|                                                                  |
 //| Formula (matching Java OptimizedCalculations.calculateWeightedATR): |
-//| ATR = (ATR₅×1 + ATR₁₀×1 + ATR₂₁×2 + ATR₆₆×3 + ATR₁₃₂×5 + ATR₂₆₄×8) / 20 |
+//| ATR = (ATR  1 + ATR   1 + ATR   2 + ATR   3 + ATR    5 + ATR    8) / 20 |
 //|                                                                  |
 //| This provides a more stable ATR value by combining multiple      |
 //| periods with different weights.                                  |
@@ -397,7 +397,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate bars available
     if(effectiveBars <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateWeightedATR: No bars available");
+        Print("   CalculateWeightedATR: No bars available");
         #endif
         return 0.0;
     }
@@ -406,7 +406,7 @@ double CalculateWeightedATR() {
     datetime currentTime = TimeCurrent();
     if(currentTime == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateWeightedATR: TimeCurrent() returned 0");
+        Print("   CalculateWeightedATR: TimeCurrent() returned 0");
         #endif
         // Use cached value if available
         if(g_atrCacheInitialized && g_atrCache.valid) {
@@ -441,7 +441,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate array size before access
     if(ArraySize(atrValues) < 6) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateWeightedATR: ATR batch calculation failed, array size=", ArraySize(atrValues));
+        Print("  CalculateWeightedATR: ATR batch calculation failed, array size=", ArraySize(atrValues));
         #endif
         return 0.0;
     }
@@ -456,7 +456,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate weights array size
     if(ArraySize(weights) != 6) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateWeightedATR: Invalid weights array size");
+        Print("  CalculateWeightedATR: Invalid weights array size");
         #endif
         return 0.0;
     }
@@ -468,7 +468,7 @@ double CalculateWeightedATR() {
             double temp = atrValues[i] * weights[i];
             if(temp > 1e10) {  // Sanity check
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ CalculateWeightedATR: Overflow detected in weighted sum");
+                Print("   CalculateWeightedATR: Overflow detected in weighted sum");
                 #endif
                 continue;
             }
@@ -483,7 +483,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate result
     if(!IsValidPrice(result, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateWeightedATR: Invalid result (", result, ")");
+        Print("   CalculateWeightedATR: Invalid result (", result, ")");
         #endif
         return 0.0;
     }
@@ -500,12 +500,12 @@ double CalculateWeightedATR() {
     static datetime s_lastATRLog = 0;
     if(currentTime - s_lastATRLog > 300) {  // Log every 5 minutes
         Print("========== WEIGHTED ATR CALCULATION ==========");
-        Print("ATR₅: ", DoubleToString(atrValues[0], Digits));
-        Print("ATR₁₀: ", DoubleToString(atrValues[1], Digits));
-        Print("ATR₂₁: ", DoubleToString(atrValues[2], Digits));
-        Print("ATR₆₆: ", DoubleToString(atrValues[3], Digits));
-        Print("ATR₁₃₂: ", DoubleToString(atrValues[4], Digits));
-        Print("ATR₂₆₄: ", DoubleToString(atrValues[5], Digits));
+        Print("ATR : ", DoubleToString(atrValues[0], Digits));
+        Print("ATR  : ", DoubleToString(atrValues[1], Digits));
+        Print("ATR  : ", DoubleToString(atrValues[2], Digits));
+        Print("ATR  : ", DoubleToString(atrValues[3], Digits));
+        Print("ATR====================: ", DoubleToString(atrValues[4], Digits));
+        Print("ATR====================: ", DoubleToString(atrValues[5], Digits));
         Print("Weighted ATR: ", DoubleToString(result, Digits));
         Print("Effective TF: ", effectiveTF, " Bars: ", effectiveBars);
         Print("==============================================");
@@ -521,20 +521,20 @@ double CalculateWeightedATR() {
 
 //+------------------------------------------------------------------+
 //| Calculate Hybrid ATR for Target Timeframe                        |
-//| محاسبه ATR ترکیبی برای تایم‌فریم هدف                             |
+//|        ATR                                                       |
 //|                                                                  |
 //| Uses Weighted ATR for current timeframe and scales using         |
 //| fractal relationship for other timeframes.                       |
 //|                                                                  |
 //| Formula (matching Java OptimizedCalculations.calculateHybridATR): |
-//| ATR_target = ATR_current × √(target_minutes / current_minutes)   |
+//| ATR_target = ATR_current    (target_minutes / current_minutes)   |
 //| AUDIT FIX: Added validation and SafeSqrt                         |
 //+------------------------------------------------------------------+
 double CalculateHybridATR(const int currentMinutes, const int targetMinutes) {
     // AUDIT FIX: Validate input parameters
     if(currentMinutes <= 0 || targetMinutes <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateHybridATR: Invalid timeframe minutes (current:", currentMinutes, " target:", targetMinutes, ")");
+        Print("   CalculateHybridATR: Invalid timeframe minutes (current:", currentMinutes, " target:", targetMinutes, ")");
         #endif
         return 0.0;
     }
@@ -545,7 +545,7 @@ double CalculateHybridATR(const int currentMinutes, const int targetMinutes) {
     // AUDIT FIX: Use IsZero for comparison
     if(IsZero(currentATR, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateHybridATR: Current ATR is zero");
+        Print("   CalculateHybridATR: Current ATR is zero");
         #endif
         return 0.0;
     }
@@ -564,19 +564,19 @@ double CalculateHybridATR(const int currentMinutes, const int targetMinutes) {
     // AUDIT FIX: Validate ratio range (sanity check)
     if(ratio < 0.01 || ratio > 100.0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateHybridATR: Ratio out of range (", ratio, ")");
+        Print("   CalculateHybridATR: Ratio out of range (", ratio, ")");
         #endif
         return currentATR; // Return current ATR as fallback
     }
     
-    // Scale using fractal relationship: ATR scales with √(timeframe ratio)
-    // ATR_target = ATR_current × √(target_minutes / current_minutes)
+    // Scale using fractal relationship: ATR scales with  (timeframe ratio)
+    // ATR_target = ATR_current    (target_minutes / current_minutes)
     double result = currentATR * ratio;
     
     // AUDIT FIX: Validate result
     if(!IsValidPrice(result, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateHybridATR: Invalid result (", result, ")");
+        Print("   CalculateHybridATR: Invalid result (", result, ")");
         #endif
         return currentATR; // Return current ATR as fallback
     }
@@ -586,7 +586,7 @@ double CalculateHybridATR(const int currentMinutes, const int targetMinutes) {
 
 //+------------------------------------------------------------------+
 //| Get Current Timeframe in Minutes                                 |
-//| دریافت تایم‌فریم فعلی به دقیقه                                   |
+//|                                                                  |
 //| AUDIT FIX: Added validation for Period()                         |
 //+------------------------------------------------------------------+
 int GetCurrentTimeframeMinutes() {
@@ -595,7 +595,7 @@ int GetCurrentTimeframeMinutes() {
     // AUDIT FIX: Validate period
     if(period <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetCurrentTimeframeMinutes: Invalid period (", period, ")");
+        Print("   GetCurrentTimeframeMinutes: Invalid period (", period, ")");
         #endif
         return 0;
     }
@@ -617,7 +617,7 @@ int GetCurrentTimeframeMinutes() {
                 return period;
             }
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetCurrentTimeframeMinutes: Unusual period (", period, ")");
+            Print("   GetCurrentTimeframeMinutes: Unusual period (", period, ")");
             #endif
             return period;
     }
@@ -625,7 +625,7 @@ int GetCurrentTimeframeMinutes() {
 
 //+------------------------------------------------------------------+
 //| Calculate ATR-Based Step Value                                   |
-//| محاسبه مقدار Step بر اساس ATR                                    |
+//|              Step         ATR                                    |
 //|                                                                  |
 //| This replaces TH calculation when ATR_BASIS is selected.         |
 //| Returns step value in PRICE units (same as TH).                  |
@@ -637,13 +637,13 @@ double CalculateATRBasedStep() {
     
     // AUDIT FIX: Use IsZero for comparison
     if(IsZero(weightedATR, EPSILON_PRICE)) {
-        Print("⚠️ CalculateATRBasedStep: Invalid weighted ATR value");
+        Print("   CalculateATRBasedStep: Invalid weighted ATR value");
         return 0.0;
     }
     
     // AUDIT FIX: Validate result
     if(!IsValidPrice(weightedATR, EPSILON_PRICE)) {
-        Print("⚠️ CalculateATRBasedStep: ATR value out of valid range (", weightedATR, ")");
+        Print("   CalculateATRBasedStep: ATR value out of valid range (", weightedATR, ")");
         return 0.0;
     }
     
@@ -654,11 +654,11 @@ double CalculateATRBasedStep() {
 
 //+------------------------------------------------------------------+
 //| Calculate ATR-Based Fractal Values                               |
-//| محاسبه مقادیر فراکتال بر اساس ATR                                |
+//|                               ATR                                |
 //|                                                                  |
 //| Structure = ATR (current timeframe)                              |
-//| Pattern = 0.5 × Structure                                        |
-//| Trigger = 0.25 × Structure                                       |
+//| Pattern = 0.5   Structure                                        |
+//| Trigger = 0.25   Structure                                       |
 //| AUDIT FIX: Added validation and error handling                   |
 //+------------------------------------------------------------------+
 void CalculateATRFractalValues(double &structureValue, double &patternValue, double &triggerValue) {
@@ -673,7 +673,7 @@ void CalculateATRFractalValues(double &structureValue, double &patternValue, dou
     // AUDIT FIX: Validate structure value
     if(IsZero(structureValue, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateATRFractalValues: Structure value is zero");
+        Print("   CalculateATRFractalValues: Structure value is zero");
         #endif
         return;
     }
@@ -688,7 +688,7 @@ void CalculateATRFractalValues(double &structureValue, double &patternValue, dou
     if(!IsValidPrice(patternValue, EPSILON_PRICE) || 
        !IsValidPrice(triggerValue, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CalculateATRFractalValues: Invalid calculated values");
+        Print("   CalculateATRFractalValues: Invalid calculated values");
         #endif
         structureValue = 0.0;
         patternValue = 0.0;
@@ -698,7 +698,7 @@ void CalculateATRFractalValues(double &structureValue, double &patternValue, dou
 
 //+------------------------------------------------------------------+
 //| Get ATR for Specific Timeframe (with fractal scaling)            |
-//| دریافت ATR برای تایم‌فریم مشخص (با مقیاس‌بندی فراکتالی)          |
+//|        ATR                     (                      )          |
 //|                                                                  |
 //| Uses hybrid approach: actual ATR for current TF, scaled for others |
 //| AUDIT FIX: Added validation and multi-TF caching                 |
@@ -707,7 +707,7 @@ double GetATRForTimeframe(const int targetMinutes) {
     // AUDIT FIX: Validate target minutes
     if(targetMinutes <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetATRForTimeframe: Invalid target minutes (", targetMinutes, ")");
+        Print("   GetATRForTimeframe: Invalid target minutes (", targetMinutes, ")");
         #endif
         return 0.0;
     }
@@ -717,7 +717,7 @@ double GetATRForTimeframe(const int targetMinutes) {
     // AUDIT FIX: Validate current minutes
     if(currentMinutes <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetATRForTimeframe: Invalid current minutes (", currentMinutes, ")");
+        Print("   GetATRForTimeframe: Invalid current minutes (", currentMinutes, ")");
         #endif
         return 0.0;
     }
@@ -726,7 +726,7 @@ double GetATRForTimeframe(const int targetMinutes) {
     datetime currentTime = TimeCurrent();
     if(currentTime == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetATRForTimeframe: TimeCurrent() returned 0");
+        Print("   GetATRForTimeframe: TimeCurrent() returned 0");
         #endif
         // Try to find cached value
         if(g_multiTFCacheInitialized) {
@@ -765,21 +765,21 @@ double GetATRForTimeframe(const int targetMinutes) {
 
 //+------------------------------------------------------------------+
 //| Update Multi-Timeframe Cache                                     |
-//| به‌روزرسانی کش چند تایم‌فریمی                                    |
+//|                                                                  |
 //| AUDIT FIX: New function for multi-TF cache management            |
 //+------------------------------------------------------------------+
 void UpdateMultiTFCache(const int timeframeMinutes, const double atrValue) {
     // AUDIT FIX: Validate inputs
     if(timeframeMinutes <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ UpdateMultiTFCache: Invalid timeframe minutes (", timeframeMinutes, ")");
+        Print("   UpdateMultiTFCache: Invalid timeframe minutes (", timeframeMinutes, ")");
         #endif
         return;
     }
     
     if(!IsValidPrice(atrValue, EPSILON_PRICE)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ UpdateMultiTFCache: Invalid ATR value (", atrValue, ")");
+        Print("   UpdateMultiTFCache: Invalid ATR value (", atrValue, ")");
         #endif
         return;
     }
@@ -792,7 +792,7 @@ void UpdateMultiTFCache(const int timeframeMinutes, const double atrValue) {
     datetime currentTime = TimeCurrent();
     if(currentTime == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ UpdateMultiTFCache: TimeCurrent() returned 0, skipping cache update");
+        Print("   UpdateMultiTFCache: TimeCurrent() returned 0, skipping cache update");
         #endif
         return;
     }
@@ -829,7 +829,7 @@ void UpdateMultiTFCache(const int timeframeMinutes, const double atrValue) {
         targetIndex = oldestIndex;
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("ℹ️ UpdateMultiTFCache: Cache full, replacing oldest entry (TF=", 
+        Print("   UpdateMultiTFCache: Cache full, replacing oldest entry (TF=", 
               g_multiTFCache[oldestIndex].timeframeMinutes, " min)");
         #endif
     }
@@ -844,21 +844,21 @@ void UpdateMultiTFCache(const int timeframeMinutes, const double atrValue) {
         #ifdef ENABLE_DEBUG_LOGS
         static datetime s_lastCacheLog = 0;
         if(currentTime - s_lastCacheLog > 300) { // Log every 5 minutes
-            Print("✅ UpdateMultiTFCache: Updated cache entry [", targetIndex, "] TF=", 
+            Print("  UpdateMultiTFCache: Updated cache entry [", targetIndex, "] TF=", 
                   timeframeMinutes, " min, ATR=", DoubleToString(atrValue, Digits));
             s_lastCacheLog = currentTime;
         }
         #endif
     } else {
         // AUDIT FIX: Log error if index is invalid
-        Print("❌ UpdateMultiTFCache: Invalid target index (", targetIndex, 
+        Print("  UpdateMultiTFCache: Invalid target index (", targetIndex, 
               "), cache update failed");
     }
 }
 
 //+------------------------------------------------------------------+
 //| Invalidate ATR Cache (call when data changes significantly)      |
-//| باطل کردن کش ATR                                                 |
+//|              ATR                                                 |
 //| AUDIT FIX: Invalidate both caches with logging                   |
 //+------------------------------------------------------------------+
 void InvalidateATRCache() {
@@ -886,14 +886,14 @@ void InvalidateATRCache() {
     
     #ifdef ENABLE_DEBUG_LOGS
     if(invalidatedCount > 0) {
-        Print("ℹ️ InvalidateATRCache: Invalidated ", invalidatedCount, " cache entries");
+        Print("   InvalidateATRCache: Invalidated ", invalidatedCount, " cache entries");
     }
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| Get ATR Cache Statistics (for debugging)                         |
-//| دریافت آمار کش ATR (برای دیباگ)                                  |
+//|                ATR (          )                                  |
 //| AUDIT FIX: Include multi-TF cache stats                          |
 //+------------------------------------------------------------------+
 string GetATRCacheStats() {
@@ -1166,250 +1166,250 @@ void WarmupATRMultiTFCache() {
 
 //+------------------------------------------------------------------+
 //| Test ATR Calculations Module                                     |
-//| تست ماژول محاسبات ATR                                            |
+//|                   ATR                                            |
 //| AUDIT FIX: Comprehensive test suite for all ATR functions        |
 //+------------------------------------------------------------------+
 void TestATRCalculations() {
-    Print("╔═══════════════════════════════════════════════════════════════╗");
-    Print("║  ATR CALCULATIONS MODULE TESTS                                ║");
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
+    Print("   ATR CALCULATIONS MODULE TESTS                                 ");
+    Print("====================");
     
     int passCount = 0;
     int totalTests = 0;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 1: Cache Initialization
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     InitializeATRCache();
     if(g_atrCacheInitialized && g_multiTFCacheInitialized) {
-        Print("✅ Test 1: Cache initialization - PASS");
+        Print("  Test 1: Cache initialization - PASS");
         passCount++;
     } else {
-        Print("❌ Test 1: Cache initialization - FAIL");
+        Print("  Test 1: Cache initialization - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 2: GetEffectiveTimeframe
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     int effectiveTF = GetEffectiveTimeframe();
     if(effectiveTF > 0) {
-        Print("✅ Test 2: GetEffectiveTimeframe (", effectiveTF, ") - PASS");
+        Print("  Test 2: GetEffectiveTimeframe (", effectiveTF, ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 2: GetEffectiveTimeframe - FAIL");
+        Print("  Test 2: GetEffectiveTimeframe - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 3: GetEffectiveBars
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     int effectiveBars = GetEffectiveBars();
     if(effectiveBars > 0) {
-        Print("✅ Test 3: GetEffectiveBars (", effectiveBars, ") - PASS");
+        Print("  Test 3: GetEffectiveBars (", effectiveBars, ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 3: GetEffectiveBars - FAIL");
+        Print("  Test 3: GetEffectiveBars - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 4: CalculateTrueRange
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double tr = CalculateTrueRange(1);
     if(!IsZero(tr, EPSILON_PRICE) && IsValidPrice(tr, EPSILON_PRICE)) {
-        Print("✅ Test 4: CalculateTrueRange (", DoubleToString(tr, Digits), ") - PASS");
+        Print("  Test 4: CalculateTrueRange (", DoubleToString(tr, Digits), ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 4: CalculateTrueRange - FAIL (TR=", tr, ")");
+        Print("  Test 4: CalculateTrueRange - FAIL (TR=", tr, ")");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 5: CalculateSimpleATR
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double simpleATR = CalculateSimpleATR(14);
     if(!IsZero(simpleATR, EPSILON_PRICE) && IsValidPrice(simpleATR, EPSILON_PRICE)) {
-        Print("✅ Test 5: CalculateSimpleATR(14) (", DoubleToString(simpleATR, Digits), ") - PASS");
+        Print("  Test 5: CalculateSimpleATR(14) (", DoubleToString(simpleATR, Digits), ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 5: CalculateSimpleATR - FAIL (ATR=", simpleATR, ")");
+        Print("  Test 5: CalculateSimpleATR - FAIL (ATR=", simpleATR, ")");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 6: CalculateATRBatch
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double batchResults[];
     CalculateATRBatch(batchResults);
     if(ArraySize(batchResults) == 6 && !IsZero(batchResults[0], EPSILON_PRICE)) {
-        Print("✅ Test 6: CalculateATRBatch - PASS");
-        Print("   ATR₅=", DoubleToString(batchResults[0], Digits));
-        Print("   ATR₁₀=", DoubleToString(batchResults[1], Digits));
-        Print("   ATR₂₁=", DoubleToString(batchResults[2], Digits));
+        Print("  Test 6: CalculateATRBatch - PASS");
+        Print("   ATR =", DoubleToString(batchResults[0], Digits));
+        Print("   ATR  =", DoubleToString(batchResults[1], Digits));
+        Print("   ATR  =", DoubleToString(batchResults[2], Digits));
         passCount++;
     } else {
-        Print("❌ Test 6: CalculateATRBatch - FAIL");
+        Print("  Test 6: CalculateATRBatch - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 7: CalculateWeightedATR
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double weightedATR = CalculateWeightedATR();
     if(!IsZero(weightedATR, EPSILON_PRICE) && IsValidPrice(weightedATR, EPSILON_PRICE)) {
-        Print("✅ Test 7: CalculateWeightedATR (", DoubleToString(weightedATR, Digits), ") - PASS");
+        Print("  Test 7: CalculateWeightedATR (", DoubleToString(weightedATR, Digits), ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 7: CalculateWeightedATR - FAIL (ATR=", weightedATR, ")");
+        Print("  Test 7: CalculateWeightedATR - FAIL (ATR=", weightedATR, ")");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 8: Cache Validation
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     if(g_atrCache.valid && AreEqual(g_atrCache.weightedATR, weightedATR, EPSILON_PRICE)) {
-        Print("✅ Test 8: Cache validation - PASS");
+        Print("  Test 8: Cache validation - PASS");
         passCount++;
     } else {
-        Print("❌ Test 8: Cache validation - FAIL");
+        Print("  Test 8: Cache validation - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 9: GetCurrentTimeframeMinutes
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     int currentMinutes = GetCurrentTimeframeMinutes();
     if(currentMinutes > 0) {
-        Print("✅ Test 9: GetCurrentTimeframeMinutes (", currentMinutes, ") - PASS");
+        Print("  Test 9: GetCurrentTimeframeMinutes (", currentMinutes, ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 9: GetCurrentTimeframeMinutes - FAIL");
+        Print("  Test 9: GetCurrentTimeframeMinutes - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 10: CalculateHybridATR
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double hybridATR = CalculateHybridATR(currentMinutes, 60); // Scale to H1
     if(!IsZero(hybridATR, EPSILON_PRICE) && IsValidPrice(hybridATR, EPSILON_PRICE)) {
-        Print("✅ Test 10: CalculateHybridATR (", DoubleToString(hybridATR, Digits), ") - PASS");
+        Print("  Test 10: CalculateHybridATR (", DoubleToString(hybridATR, Digits), ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 10: CalculateHybridATR - FAIL (ATR=", hybridATR, ")");
+        Print("  Test 10: CalculateHybridATR - FAIL (ATR=", hybridATR, ")");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 11: GetATRForTimeframe with Multi-TF Cache
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double tfATR1 = GetATRForTimeframe(60);
     double tfATR2 = GetATRForTimeframe(60); // Should hit cache
     if(AreEqual(tfATR1, tfATR2, EPSILON_PRICE) && g_multiTFCacheCount > 0) {
-        Print("✅ Test 11: Multi-TF cache - PASS (", g_multiTFCacheCount, " entries)");
+        Print("  Test 11: Multi-TF cache - PASS (", g_multiTFCacheCount, " entries)");
         passCount++;
     } else {
-        Print("❌ Test 11: Multi-TF cache - FAIL");
+        Print("  Test 11: Multi-TF cache - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 12: CalculateATRBasedStep
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double atrStep = CalculateATRBasedStep();
     if(!IsZero(atrStep, EPSILON_PRICE) && IsValidPrice(atrStep, EPSILON_PRICE)) {
-        Print("✅ Test 12: CalculateATRBasedStep (", DoubleToString(atrStep, Digits), ") - PASS");
+        Print("  Test 12: CalculateATRBasedStep (", DoubleToString(atrStep, Digits), ") - PASS");
         passCount++;
     } else {
-        Print("❌ Test 12: CalculateATRBasedStep - FAIL");
+        Print("  Test 12: CalculateATRBasedStep - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 13: CalculateATRFractalValues
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double structure, pattern, trigger;
     CalculateATRFractalValues(structure, pattern, trigger);
     if(!IsZero(structure, EPSILON_PRICE) && 
        AreEqual(pattern, structure * 0.5, EPSILON_PRICE) &&
        AreEqual(trigger, structure * 0.25, EPSILON_PRICE)) {
-        Print("✅ Test 13: CalculateATRFractalValues - PASS");
+        Print("  Test 13: CalculateATRFractalValues - PASS");
         Print("   Structure=", DoubleToString(structure, Digits));
         Print("   Pattern=", DoubleToString(pattern, Digits));
         Print("   Trigger=", DoubleToString(trigger, Digits));
         passCount++;
     } else {
-        Print("❌ Test 13: CalculateATRFractalValues - FAIL");
+        Print("  Test 13: CalculateATRFractalValues - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 14: InvalidateATRCache
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     InvalidateATRCache();
     if(!g_atrCache.valid) {
-        Print("✅ Test 14: InvalidateATRCache - PASS");
+        Print("  Test 14: InvalidateATRCache - PASS");
         passCount++;
     } else {
-        Print("❌ Test 14: InvalidateATRCache - FAIL");
+        Print("  Test 14: InvalidateATRCache - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 15: GetATRCacheStats
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     // Recalculate to populate cache
     CalculateWeightedATR();
     string stats = GetATRCacheStats();
     if(StringLen(stats) > 0) {
-        Print("✅ Test 15: GetATRCacheStats - PASS");
+        Print("  Test 15: GetATRCacheStats - PASS");
         Print(stats);
         passCount++;
     } else {
-        Print("❌ Test 15: GetATRCacheStats - FAIL");
+        Print("  Test 15: GetATRCacheStats - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 16: Edge Case - Invalid Period
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double invalidATR = CalculateSimpleATR(-1);
     if(IsZero(invalidATR, EPSILON_PRICE)) {
-        Print("✅ Test 16: Edge case (invalid period) - PASS");
+        Print("  Test 16: Edge case (invalid period) - PASS");
         passCount++;
     } else {
-        Print("❌ Test 16: Edge case (invalid period) - FAIL");
+        Print("  Test 16: Edge case (invalid period) - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Test 17: Edge Case - Zero Division Protection
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     totalTests++;
     double zeroATR = CalculateHybridATR(0, 60);
     if(IsZero(zeroATR, EPSILON_PRICE)) {
-        Print("✅ Test 17: Edge case (zero division) - PASS");
+        Print("  Test 17: Edge case (zero division) - PASS");
         passCount++;
     } else {
-        Print("❌ Test 17: Edge case (zero division) - FAIL");
+        Print("  Test 17: Edge case (zero division) - FAIL");
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // Final Results
-    // ═══════════════════════════════════════════════════════════════
-    Print("╔═══════════════════════════════════════════════════════════════╗");
-    Print("║  TEST RESULTS                                                 ║");
-    Print("╠═══════════════════════════════════════════════════════════════╣");
-    Print("║  Passed: ", passCount, " / ", totalTests);
-    Print("║  Success Rate: ", DoubleToString(100.0 * passCount / totalTests, 1), "%");
+    //                                                                
+    Print("====================");
+    Print("   TEST RESULTS                                                  ");
+    Print("====================");
+    Print("   Passed: ", passCount, " / ", totalTests);
+    Print("   Success Rate: ", DoubleToString(100.0 * passCount / totalTests, 1), "%");
     
     if(passCount == totalTests) {
-        Print("║  Status: ✅ ALL TESTS PASSED                                 ║");
+        Print("   Status:   ALL TESTS PASSED                                  ");
     } else {
-        Print("║  Status: ⚠️ SOME TESTS FAILED                                ║");
+        Print("   Status:    SOME TESTS FAILED                                 ");
     }
     
-    Print("╚═══════════════════════════════════════════════════════════════╝");
+    Print("====================");
     
     // Cleanup
     CleanupATRCache();

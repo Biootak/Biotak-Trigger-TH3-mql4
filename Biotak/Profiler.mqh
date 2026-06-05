@@ -1,4 +1,4 @@
-#ifndef TH3_PROFILER_MQH
+﻿  #ifndef TH3_PROFILER_MQH
 #define TH3_PROFILER_MQH
 
 #property strict

@@ -1,4 +1,4 @@
-#ifndef LOGGER_MQH
+﻿  #ifndef LOGGER_MQH
 #define LOGGER_MQH
 
 #property strict

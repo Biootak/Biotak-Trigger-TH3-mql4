@@ -1,20 +1,20 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                            AdaptiveScaling.mqh   |
 //|                                                                  |
 //| ATR-Based Volatility Adaptive Scaling for Biotak Trigger TH3    |
 //|                                                                  |
 //| Normalizes TH-based level spacing to match real market           |
 //| volatility using Weighted ATR, while preserving the fractal      |
-//| 2× ratio between consecutive structure levels.                   |
+//| 2  ratio between consecutive structure levels.                   |
 //|                                                                  |
 //| Three modes:                                                     |
 //| FIXED: No adaptation (original behavior)                         |
 //| ATR_ADAPTIVE: Full ATR normalization (scalingFactor = ATR/TH)   |
-//| BLENDED: Weighted mix (α × ATR + (1-α) × TH)                   |
+//| BLENDED: Weighted mix (    ATR + (1- )   TH)                   |
 //|                                                                  |
 //| Smoothing: EMA on scaling factor, updated on bar close only.    |
 //+------------------------------------------------------------------+
-#property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
 
 #property strict
@@ -47,7 +47,7 @@ void InitializeAdaptiveScaling() {
 
 //+------------------------------------------------------------------+
 //| Calculate EMA Alpha from period                                  |
-//| α = 2 / (period + 1)                                            |
+//|   = 2 / (period + 1)                                            |
 //+------------------------------------------------------------------+
 double GetEMAAlpha(const int period) {
     int safePeriod = MathMax(1, period);
@@ -125,7 +125,7 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
         g_smoothedScalingFactor = rawFactor;
         g_scalingInitialized = true;
     } else {
-        // EMA: smoothed = prev × (1 - α) + raw × α
+        // EMA: smoothed = prev   (1 -  ) + raw    
         g_smoothedScalingFactor = g_smoothedScalingFactor * (1.0 - alpha) + rawFactor * alpha;
     }
     
@@ -159,7 +159,7 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
 //| Get Adapted Step Size                                            |
 //|                                                                  |
 //| Applies the appropriate scaling to a step size based on the     |
-//| selected adaptive mode. Preserves fractal 2× ratio because     |
+//| selected adaptive mode. Preserves fractal 2  ratio because     |
 //| the same scaling factor is applied to ALL levels uniformly.     |
 //|                                                                  |
 //| @param originalStepSize  The raw TH-based step size             |
@@ -180,15 +180,15 @@ double GetAdaptedStepSize(const double originalStepSize) {
     switch(inpAdaptiveMode) {
         case ADAPTIVE_ATR:
         {
-            // Full ATR adaptation: stepSize × scalingFactor
+            // Full ATR adaptation: stepSize   scalingFactor
             return originalStepSize * factor;
         }
         
         case ADAPTIVE_BLENDED:
         {
             // Blended: interpolate between original and ATR-adapted
-            // result = original × (1 - blendRatio) + (original × scalingFactor) × blendRatio
-            // Simplified: result = original × ((1 - blendRatio) + scalingFactor × blendRatio)
+            // result = original   (1 - blendRatio) + (original   scalingFactor)   blendRatio
+            // Simplified: result = original   ((1 - blendRatio) + scalingFactor   blendRatio)
             double blendRatio = MathMax(0.0, MathMin(1.0, inpAdaptiveBlendRatio));
             double blendedFactor = (1.0 - blendRatio) + factor * blendRatio;
             return originalStepSize * blendedFactor;

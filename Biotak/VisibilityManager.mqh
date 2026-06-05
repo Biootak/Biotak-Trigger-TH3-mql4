@@ -1,4 +1,4 @@
-#ifndef VISIBILITY_MANAGER_MQH
+﻿  #ifndef VISIBILITY_MANAGER_MQH
 #define VISIBILITY_MANAGER_MQH
 
 #property strict

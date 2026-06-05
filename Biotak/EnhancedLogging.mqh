@@ -1,7 +1,7 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                      EnhancedLogging.mqh         |
 //|                     Professional Logging System                  |
-//|                     سیستم لاگ‌گذاری حرفه‌ای                       |
+//|                                                                   |
 //|                                                                  |
 //| FEATURES:                                                        |
 //| - Multiple log levels (ERROR, WARN, INFO, DEBUG, DIAGNOSTIC)    |
@@ -12,35 +12,35 @@
 //+------------------------------------------------------------------+
 #property strict
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // LOG LEVELS
-// سطوح لاگ
-// ═══════════════════════════════════════════════════════════════
+//         
+//                                                                
 enum ENUM_LOG_LEVEL {
-    LOG_LEVEL_ERROR = 0,        // فقط خطاها
-    LOG_LEVEL_WARNING = 1,      // خطاها + هشدارها
-    LOG_LEVEL_INFO = 2,         // خطاها + هشدارها + اطلاعات
-    LOG_LEVEL_DEBUG = 3,        // همه + دیباگ
-    LOG_LEVEL_DIAGNOSTIC = 4    // همه + تشخیصی (خیلی جزئی)
+    LOG_LEVEL_ERROR = 0,        //          
+    LOG_LEVEL_WARNING = 1,      //       +        
+    LOG_LEVEL_INFO = 2,         //       +         +        
+    LOG_LEVEL_DEBUG = 3,        //     +      
+    LOG_LEVEL_DIAGNOSTIC = 4    //     +        (         )
 };
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // GLOBAL CONFIGURATION
-// تنظیمات سراسری
-// ═══════════════════════════════════════════════════════════════
+//               
+//                                                                
 static ENUM_LOG_LEVEL g_currentLogLevel = LOG_LEVEL_INFO;
 static bool g_logTimestamp = true;
 static bool g_logSymbol = true;
 static bool g_logTimeframe = true;
-static bool g_logThreadId = false;  // برای آینده
+static bool g_logThreadId = false;  //           
 
 // Module filtering (empty = all modules)
-static string g_enabledModules = "";  // مثال: "ZoneFactory,BasePriceManager"
+static string g_enabledModules = "";  //     : "ZoneFactory,BasePriceManager"
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // LOG STATISTICS
-// آمار لاگ
-// ═══════════════════════════════════════════════════════════════
+//         
+//                                                                
 struct LogStatistics {
     int errorCount;
     int warningCount;
@@ -52,14 +52,14 @@ struct LogStatistics {
 
 static LogStatistics g_logStats;
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // CONFIGURATION FUNCTIONS
-// توابع تنظیمات
-// ═══════════════════════════════════════════════════════════════
+//              
+//                                                                
 
 //+------------------------------------------------------------------+
 //| Set Log Level                                                    |
-//| تنظیم سطح لاگ                                                    |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void SetLogLevel(ENUM_LOG_LEVEL level)
 {
@@ -79,7 +79,7 @@ void SetLogLevel(ENUM_LOG_LEVEL level)
 
 //+------------------------------------------------------------------+
 //| Enable Module Logging                                            |
-//| فعال‌سازی لاگ ماژول                                              |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void EnableModuleLogging(string modules)
 {
@@ -94,7 +94,7 @@ void EnableModuleLogging(string modules)
 
 //+------------------------------------------------------------------+
 //| Check if Module is Enabled                                       |
-//| بررسی فعال بودن ماژول                                            |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool IsModuleEnabled(string module)
 {
@@ -105,14 +105,14 @@ bool IsModuleEnabled(string module)
     return (StringFind(g_enabledModules, module) >= 0);
 }
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // CORE LOGGING FUNCTION
-// تابع اصلی لاگ‌گذاری
-// ═══════════════════════════════════════════════════════════════
+//                    
+//                                                                
 
 //+------------------------------------------------------------------+
 //| Enhanced Log Message with Context                                |
-//| پیام لاگ پیشرفته با context                                     |
+//|                     context                                     |
 //+------------------------------------------------------------------+
 void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
 {
@@ -137,11 +137,11 @@ void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
     
     // Level prefix with emoji
     switch(level) {
-        case LOG_LEVEL_ERROR:      logMsg += "❌ ERROR  "; break;
-        case LOG_LEVEL_WARNING:    logMsg += "⚠️ WARN   "; break;
-        case LOG_LEVEL_INFO:       logMsg += "ℹ️ INFO   "; break;
-        case LOG_LEVEL_DEBUG:      logMsg += "🔍 DEBUG  "; break;
-        case LOG_LEVEL_DIAGNOSTIC: logMsg += "🔬 DIAG   "; break;
+        case LOG_LEVEL_ERROR:      logMsg += "  ERROR  "; break;
+        case LOG_LEVEL_WARNING:    logMsg += "   WARN   "; break;
+        case LOG_LEVEL_INFO:       logMsg += "   INFO   "; break;
+        case LOG_LEVEL_DEBUG:      logMsg += "   DEBUG  "; break;
+        case LOG_LEVEL_DIAGNOSTIC: logMsg += "   DIAG   "; break;
     }
     
     // Context
@@ -165,10 +165,10 @@ void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
     Print(logMsg);
 }
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // CONVENIENCE MACROS
-// ماکروهای راحتی
-// ═══════════════════════════════════════════════════════════════
+//               
+//                                                                
 
 #define LOG_ERROR(module, msg)   LogMessage(LOG_LEVEL_ERROR, module, msg)
 #define LOG_WARN(module, msg)    LogMessage(LOG_LEVEL_WARNING, module, msg)
@@ -183,20 +183,20 @@ void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
 #define LOG_DEBUG_FMT(module, fmt, ...) LogMessage(LOG_LEVEL_DEBUG, module, StringFormat(fmt, __VA_ARGS__))
 #define LOG_DIAG_FMT(module, fmt, ...)  LogMessage(LOG_LEVEL_DIAGNOSTIC, module, StringFormat(fmt, __VA_ARGS__))
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // SPECIALIZED LOGGING FUNCTIONS
-// توابع لاگ‌گذاری تخصصی
-// ═══════════════════════════════════════════════════════════════
+//                      
+//                                                                
 
 //+------------------------------------------------------------------+
 //| Log Function Entry (for debugging)                              |
-//| لاگ ورود به تابع (برای دیباگ)                                   |
+//|                  (          )                                   |
 //+------------------------------------------------------------------+
 void LogFunctionEntry(string module, string functionName, string params = "")
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
     
-    string msg = "→ " + functionName + "()";
+    string msg = "  " + functionName + "()";
     if(StringLen(params) > 0) {
         msg += " | Params: " + params;
     }
@@ -206,13 +206,13 @@ void LogFunctionEntry(string module, string functionName, string params = "")
 
 //+------------------------------------------------------------------+
 //| Log Function Exit (for debugging)                               |
-//| لاگ خروج از تابع (برای دیباگ)                                   |
+//|                  (          )                                   |
 //+------------------------------------------------------------------+
 void LogFunctionExit(string module, string functionName, string result = "")
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
     
-    string msg = "← " + functionName + "()";
+    string msg = "  " + functionName + "()";
     if(StringLen(result) > 0) {
         msg += " | Result: " + result;
     }
@@ -222,13 +222,13 @@ void LogFunctionExit(string module, string functionName, string result = "")
 
 //+------------------------------------------------------------------+
 //| Log Performance Metric                                           |
-//| لاگ معیار عملکرد                                                 |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void LogPerformance(string module, string operation, uint elapsedMs)
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
     
-    string msg = "⏱️ " + operation + " took " + IntegerToString(elapsedMs) + " ms";
+    string msg = "   " + operation + " took " + IntegerToString(elapsedMs) + " ms";
     
     // Warning if slow
     if(elapsedMs > 100) {
@@ -240,13 +240,13 @@ void LogPerformance(string module, string operation, uint elapsedMs)
 
 //+------------------------------------------------------------------+
 //| Log Memory Usage                                                 |
-//| لاگ مصرف حافظه                                                   |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void LogMemoryUsage(string module, string arrayName, int size)
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
     
-    string msg = "💾 " + arrayName + " size: " + IntegerToString(size) + " elements";
+    string msg = "   " + arrayName + " size: " + IntegerToString(size) + " elements";
     
     // Warning if large
     if(size > 1000) {
@@ -256,32 +256,32 @@ void LogMemoryUsage(string module, string arrayName, int size)
     }
 }
 
-// ═══════════════════════════════════════════════════════════════
+//                                                                
 // STATISTICS & REPORTING
-// آمار و گزارش‌دهی
-// ═══════════════════════════════════════════════════════════════
+//                 
+//                                                                
 
 //+------------------------------------------------------------------+
 //| Print Log Statistics                                             |
-//| چاپ آمار لاگ                                                     |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void PrintLogStatistics()
 {
-    Print("═══════════════════════════════════════════════════════════");
-    Print("📊 LOGGING STATISTICS");
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
+    Print("   LOGGING STATISTICS");
+    Print("====================");
     Print("Errors: ", g_logStats.errorCount);
     Print("Warnings: ", g_logStats.warningCount);
     Print("Info: ", g_logStats.infoCount);
     Print("Debug: ", g_logStats.debugCount);
     Print("Diagnostic: ", g_logStats.diagnosticCount);
     Print("Last Log: ", TimeToString(g_logStats.lastLogTime, TIME_DATE|TIME_SECONDS));
-    Print("═══════════════════════════════════════════════════════════");
+    Print("====================");
 }
 
 //+------------------------------------------------------------------+
 //| Reset Log Statistics                                             |
-//| ریست آمار لاگ                                                    |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void ResetLogStatistics()
 {
@@ -297,7 +297,7 @@ void ResetLogStatistics()
 
 //+------------------------------------------------------------------+
 //| Initialize Logging System                                        |
-//| مقداردهی اولیه سیستم لاگ                                         |
+//|                                                                  |
 //+------------------------------------------------------------------+
 void InitializeLogging(ENUM_LOG_LEVEL level = LOG_LEVEL_INFO)
 {
@@ -307,9 +307,9 @@ void InitializeLogging(ENUM_LOG_LEVEL level = LOG_LEVEL_INFO)
     LOG_INFO("EnhancedLogging", "Logging system initialized");
 }
 
-// ═══════════════════════════════════════════════════════════════
-// USAGE EXAMPLES (در کامنت)
-// ═══════════════════════════════════════════════════════════════
+//                                                                
+// USAGE EXAMPLES (        )
+//                                                                
 
 /*
 // Example 1: Basic logging
@@ -335,8 +335,8 @@ uint elapsed = GetTickCount() - start;
 LogPerformance("MyModule", "Heavy calculation", elapsed);
 
 // Example 5: Module filtering
-EnableModuleLogging("ZoneFactory,BasePriceManager");  // فقط این ماژول‌ها
-EnableModuleLogging("");  // همه ماژول‌ها
+EnableModuleLogging("ZoneFactory,BasePriceManager");  //                 
+EnableModuleLogging("");  //             
 
 // Example 6: Statistics
 PrintLogStatistics();

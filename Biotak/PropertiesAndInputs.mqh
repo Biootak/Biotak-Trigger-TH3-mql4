@@ -1,7 +1,7 @@
-#ifndef PROPERTIES_AND_INPUTS_MQH
+﻿  #ifndef PROPERTIES_AND_INPUTS_MQH
 #define PROPERTIES_AND_INPUTS_MQH
 
-#property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link "@biotak"
 #property version "3.10"
 #property strict
@@ -110,7 +110,7 @@ input ENUM_ZONE_STYLE inpMidZoneStyle = ZONE_STYLE_BOX_FILLED;
 
 input group "10.2) ZONES - VISUAL DENSITY"
 input string S10b = "[10.2] ZONES / VISUAL DENSITY";
-input int inpMidZoneTransparency = 60;
+input int inpMidZoneTransparency = 30;
 input double inpMidZoneHeightPercent = 12.5;
 
 #ifndef BUILD_LITE
@@ -182,7 +182,7 @@ input string S15 = "[15] STYLE / TRIGGER";
 input group "15.1) TRIGGER - ENABLE & VISIBILITY"
 input string S15a = "[15.1] TRIGGER / ENABLE & VISIBILITY";
 input bool inpShowTrigger = false;       // Show Trigger Levels
-input int inpTriggerTransparency = 70;   // Trigger Transparency (0=Solid, 100=Invisible)
+input int inpTriggerTransparency = 30;   // Trigger Transparency (0=Solid, 100=Invisible)
 
 input group "15.2) TRIGGER - LINE"
 input string S15b = "[15.2] TRIGGER / LINE";

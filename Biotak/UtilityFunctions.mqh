@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                            UtilityFunctions.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                      General Utility Functions   |
@@ -143,7 +143,7 @@ string GetStepModeName(ENUM_STEP_CALCULATION_MODE mode) {
 
 //+------------------------------------------------------------------+
 //| Get Preset name for display (user-friendly)                     |
-//| دریافت نام Preset برای نمایش (کاربرپسند)                        |
+//|            Preset            (         )                        |
 //+------------------------------------------------------------------+
 string GetComboPresetName(const ENUM_COMBO_PRESET preset) {
     switch(preset) {
@@ -174,7 +174,7 @@ string GetComboPresetName(const ENUM_COMBO_PRESET preset) {
 //+------------------------------------------------------------------+
 double GetSharedComponentValue(ENUM_COMBO_COMPONENT_ITEM component, double structure, double pattern, double trigger) {
     #ifdef ENABLE_DEBUG_LOGS
-    Print("⚠️ DEPRECATED: GetSharedComponentValue called - use CalculateComboStepSize instead");
+    Print("   DEPRECATED: GetSharedComponentValue called - use CalculateComboStepSize instead");
     #endif
     
     switch(component) {
@@ -210,7 +210,7 @@ double GetSharedComponentValue(ENUM_COMBO_COMPONENT_ITEM component, double struc
 //+------------------------------------------------------------------+
 string GetSharedComponentName(ENUM_COMBO_COMPONENT_ITEM component) {
     #ifdef ENABLE_DEBUG_LOGS
-    Print("⚠️ DEPRECATED: GetSharedComponentName called - use Preset system instead");
+    Print("   DEPRECATED: GetSharedComponentName called - use Preset system instead");
     #endif
     
     switch(component) {
@@ -238,7 +238,7 @@ string GetSharedComponentName(ENUM_COMBO_COMPONENT_ITEM component) {
 
 //+------------------------------------------------------------------+
 //| Clear all temporary mode labels (call before showing new one)   |
-//| پاک کردن همه label های موقت (قبل از نمایش جدید صدا بزن)         |
+//|              label          (                         )         |
 //+------------------------------------------------------------------+
 void ClearAllModeLabels() {
     if(ObjectFind(0, g_stepModeLabelName) >= 0) {
@@ -355,7 +355,7 @@ void UpdateBasisModeLabel(ENUM_CALCULATION_BASIS basis) {
 
 //+------------------------------------------------------------------+
 //| Update Factor value label on chart (configurable duration)      |
-//| نمایش مقدار فاکتور و استپ روی چارت (با مدت زمان قابل تنظیم)      |
+//|                                    (                      )      |
 //| Shows: "F: 2.50 | Step: 12.5 pips" with auto-hide               |
 //+------------------------------------------------------------------+
 void UpdateFactorLabel(double factorValue, bool clearFirst = true) {
@@ -404,7 +404,7 @@ void UpdateFactorLabel(double factorValue, bool clearFirst = true) {
 #ifndef BUILD_LITE
 //+------------------------------------------------------------------+
 //| Update TH3 Frequency Label (configurable duration)              |
-//| نمایش فرکانس TH3 روی چارت (با حذف خودکار بر اساس تنظیمات)        |
+//|              TH3          (                             )        |
 //+------------------------------------------------------------------+
 void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
     // Check if mode label display is enabled
@@ -440,7 +440,7 @@ void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
             // CRITICAL FIX: Validate ObjectGet results
             if(t1 <= 0 || t2 <= 0 || p1 <= 0 || p2 <= 0) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ GetStructureRangeFromTH3: Invalid object data for ", name);
+                Print("   GetStructureRangeFromTH3: Invalid object data for ", name);
                 #endif
                 continue;
             }
@@ -500,18 +500,18 @@ void ShowAllStatusLabels() {
 
 //+------------------------------------------------------------------+
 //| Create Mid-Range Zone (Generic function for all modes)          |
-//| رسم محدوده میانی (تابع عمومی برای همه مودها)                     |
+//|                  (                         )                     |
 //| Logic: Draw zone with specified height around midpoint          |
 //| Compatible with CreateFactorMidZone logic                        |
 //| @param zoneName - Unique name for zone object                   |
 //| @param prevPrice - Previous level price                         |
 //| @param currentPrice - Current level price                       |
-//| @param zoneHeight - Height of zone (±from midpoint)             |
+//| @param zoneHeight - Height of zone ( from midpoint)             |
 //| @param zoneColor - Color of zone                                |
 //| @param transparency - Transparency (0-100)                      |
 //+------------------------------------------------------------------+
 //| Create Generic Mid Zone - GOLD VERSION v2                        |
-//| ایجاد Zone میانی عمومی - نسخه طلایی v2                           |
+//|       Zone             -            v2                           |
 //|                                                                  |
 //| ARCHITECTURE: Delegates to ZoneFactory with comprehensive        |
 //| validation, error handling, and NO unnecessary deletion          |
@@ -525,19 +525,19 @@ void ShowAllStatusLabels() {
 bool CreateGenericMidZone(const string zoneName, const double prevPrice, const double currentPrice,
                           const double zoneHeight, const color zoneColor, const int transparency)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: QUICK VALIDATION (Fail Fast)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(StringLen(zoneName) == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateGenericMidZone: Empty zone name");
+        Print("  CreateGenericMidZone: Empty zone name");
         #endif
         return false;
     }
     
     if(prevPrice <= 0 || currentPrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateGenericMidZone: Invalid prices - Prev=", DoubleToString(prevPrice, Digits), 
+        Print("  CreateGenericMidZone: Invalid prices - Prev=", DoubleToString(prevPrice, Digits), 
               ", Current=", DoubleToString(currentPrice, Digits));
         #endif
         return false;
@@ -545,26 +545,26 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     
     if(prevPrice == currentPrice) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ CreateGenericMidZone: Prices are equal - no zone needed");
+        Print("   CreateGenericMidZone: Prices are equal - no zone needed");
         #endif
         return false;
     }
     
     if(zoneHeight <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateGenericMidZone: Invalid zone height: ", DoubleToString(zoneHeight, Digits));
+        Print("  CreateGenericMidZone: Invalid zone height: ", DoubleToString(zoneHeight, Digits));
         #endif
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: CALCULATE ZONE BOUNDARIES (Optimized)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Calculate midpoint between previous and current
     double midPoint = (prevPrice + currentPrice) / 2.0;
     
-    // Calculate zone boundaries (±zoneHeight from midpoint)
+    // Calculate zone boundaries ( zoneHeight from midpoint)
     // OPTIMIZATION: Single NormalizeDouble call per value
     double upperPrice = NormalizeDouble(midPoint + zoneHeight, Digits);
     double lowerPrice = NormalizeDouble(midPoint - zoneHeight, Digits);
@@ -572,16 +572,16 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     // Validate zone boundaries
     if(upperPrice <= lowerPrice) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateGenericMidZone: Invalid zone boundaries - Upper=", DoubleToString(upperPrice, Digits), 
+        Print("  CreateGenericMidZone: Invalid zone boundaries - Upper=", DoubleToString(upperPrice, Digits), 
               ", Lower=", DoubleToString(lowerPrice, Digits));
         #endif
         return false;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 3: DELEGATE TO ZONE FACTORY (Centralized Creation)
     // OPTIMIZATION: Let factory handle update vs create decision
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     SZoneCreationRequest request;
     request.name = zoneName;
@@ -597,14 +597,14 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     
     if(!result.success) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CreateGenericMidZone: Factory failed for '", zoneName, "' - ", result.errorMessage, 
+        Print("  CreateGenericMidZone: Factory failed for '", zoneName, "' - ", result.errorMessage, 
               " (Code: ", result.errorCode, ")");
         #endif
         return false;
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ CreateGenericMidZone: Created/Updated '", zoneName, "' [", 
+    Print("  CreateGenericMidZone: Created/Updated '", zoneName, "' [", 
           DoubleToString(lowerPrice, Digits), " - ", DoubleToString(upperPrice, Digits), "]");
     #endif
     

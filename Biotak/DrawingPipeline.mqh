@@ -1,4 +1,4 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                              DrawingPipeline.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Clean Architecture Pipeline   |
@@ -18,10 +18,10 @@
 
 //+------------------------------------------------------------------+
 //| MAIN ORCHESTRATOR: Draw Levels and Zones                         |
-//| هماهنگ‌کننده اصلی: رسم سطوح و زون‌ها                             |
+//|                  :                                               |
 //|                                                                  |
 //| This function orchestrates the complete 5-phase pipeline         |
-//| این تابع کل خط لوله 5 مرحله‌ای را هماهنگ می‌کند                  |
+//|                     5                                            |
 //+------------------------------------------------------------------+
 void DrawLevelsAndZones(
     const SLevelRawData &levels[],
@@ -29,48 +29,48 @@ void DrawLevelsAndZones(
     const SStyleConfig &config,
     const string objectPrefix)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: VALIDATION & PREPARATION
-    // مرحله 1: اعتبارسنجی و آماده‌سازی
-    // ═══════════════════════════════════════════════════════════════
+    //       1:                        
+    //                                                                
     int count;
     double zoneHeight;
     
     if(!ValidateCompleteConfig(levels, stepSize, config, count, zoneHeight)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawLevelsAndZones: Validation failed");
+        Print("  DrawLevelsAndZones: Validation failed");
         #endif
         return;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: LEVEL CLASSIFICATION
-    // مرحله 2: طبقه‌بندی سطوح
-    // ═══════════════════════════════════════════════════════════════
+    //       2:               
+    //                                                                
     SLevelClassification classifications[];
     ClassifyLevels(levels, config, classifications);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 3: ZONE GEOMETRY CALCULATION
-    // مرحله 3: محاسبه هندسه زون‌ها
-    // ═══════════════════════════════════════════════════════════════
+    //       3:                    
+    //                                                                
     SZoneGeometry geometries[];
     CalculateZoneGeometries(levels, classifications, zoneHeight, geometries);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 4: STYLE RESOLUTION
-    // مرحله 4: تعیین استایل
-    // ═══════════════════════════════════════════════════════════════
+    //       4:             
+    //                                                                
     SLineRenderInfo lines[];
     SZoneRenderInfo zones[];
     
     ResolveLineStyles(levels, classifications, config, objectPrefix, lines);
     ResolveZoneStyles(levels, classifications, geometries, config, objectPrefix, zones);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 5: BATCH RENDERING
-    // مرحله 5: رسم دسته‌ای
-    // ═══════════════════════════════════════════════════════════════
+    //       5:            
+    //                                                                
     RenderBatch(lines, zones);
     
     // MEMORY FIX: Free arrays after use
@@ -78,13 +78,13 @@ void DrawLevelsAndZones(
     ArrayFree(zones);
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ DrawLevelsAndZones: Pipeline completed successfully");
+    Print("  DrawLevelsAndZones: Pipeline completed successfully");
     #endif
 }
 
 //+------------------------------------------------------------------+
 //| LEGACY SUPPORT: Calculate Linear Levels                          |
-//| پشتیبانی قدیمی: محاسبه سطوح خطی                                  |
+//|               :                                                  |
 //+------------------------------------------------------------------+
 void CalculateLinearLevels(double startPrice, double stepSize, 
                            int countAbove, int countBelow, 
@@ -137,7 +137,7 @@ void CalculateLinearLevels(double startPrice, double stepSize,
     ArrayResize(outLevels, validCount);
     
     // DIAGNOSTIC LOG
-    Print("✅ CalculateLinearLevels: Generated ", validCount, " levels");
+    Print("  CalculateLinearLevels: Generated ", validCount, " levels");
     Print("   Start Price: ", DoubleToString(startPrice, Digits));
     Print("   Step Size: ", DoubleToString(stepSize, Digits));
     Print("   Requested Above: ", countAbove, ", Generated: ", validCount - 1 - (validCount - 1 - countAbove));
@@ -146,10 +146,10 @@ void CalculateLinearLevels(double startPrice, double stepSize,
 
 //+------------------------------------------------------------------+
 //| LEGACY SUPPORT: Old Style Resolver (Deprecated)                  |
-//| پشتیبانی قدیمی: حل‌کننده استایل قدیمی (منسوخ شده)                |
+//|               :                       (         )                |
 //|                                                                  |
 //| NOTE: Use DrawLevelsAndZones() instead for new code              |
-//| توجه: برای کد جدید از DrawLevelsAndZones() استفاده کنید         |
+//|     :                 DrawLevelsAndZones()                      |
 //+------------------------------------------------------------------+
 void ResolveStylesLinear(const SLevelRawData &levels[], 
                         double stepSize,
@@ -159,7 +159,7 @@ void ResolveStylesLinear(const SLevelRawData &levels[],
                         SZoneRenderInfo &outZones[])
 {
     #ifdef ENABLE_DEBUG_LOGS
-    Print("⚠️ ResolveStylesLinear: DEPRECATED - Use DrawLevelsAndZones() instead");
+    Print("   ResolveStylesLinear: DEPRECATED - Use DrawLevelsAndZones() instead");
     #endif
     
     // Delegate to new pipeline
@@ -173,7 +173,7 @@ void ResolveStylesLinear(const SLevelRawData &levels[],
 
 //+------------------------------------------------------------------+
 //| Cleanup Helper                                                    |
-//| کمک پاک‌سازی                                                      |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void Cleanup(string prefix) {
     CleanupZoneObjects(prefix);

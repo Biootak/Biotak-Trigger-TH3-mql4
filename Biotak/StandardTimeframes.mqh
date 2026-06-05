@@ -1,8 +1,8 @@
-#property strict
+﻿  #property strict
 
 double CalculateStandardPercentage(const int timeInMinutes) {
     if(timeInMinutes <= 0) return 0.0;
-    // PERF: Cache results — input is always one of 3 fixed values (1440, 10080, 43200)
+    // PERF: Cache results   input is always one of 3 fixed values (1440, 10080, 43200)
     // MathLog/MathPow are expensive, result is purely a function of timeInMinutes and never changes
     static int    s_cachedMinutes[3] = {0, 0, 0};
     static double s_cachedResults[3] = {0, 0, 0};

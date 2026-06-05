@@ -1,4 +1,4 @@
-#property strict
+﻿  #property strict
 
 string GetCurrentTimeframe() {
     int timeframe = (g_timeframeLocked && g_lockedPeriod > 0) ? g_lockedPeriod : Period();
@@ -18,9 +18,9 @@ string GetCurrentTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Get higher pattern timeframe (one fractal level up = 4x duration)|
-//| For any timeframe, the higher pattern is exactly 4× the current |
+//| For any timeframe, the higher pattern is exactly 4  the current |
 //| For example: M15 -> H1 (60 minutes), M5 -> M20, H1 -> H4        |
-//| دریافت تایم‌فریم پترن بالاتر (یک سطح فراکتال بالاتر = 4 برابر)  |
+//|                              (                      = 4      )  |
 //+------------------------------------------------------------------+
 string GetHigherPatternTimeframeString() {
     int currentPeriod = (g_timeframeLocked && g_lockedPeriod > 0) ? g_lockedPeriod : Period();
@@ -30,7 +30,7 @@ string GetHigherPatternTimeframeString() {
 
 //+------------------------------------------------------------------+
 //| Convert minutes to timeframe string                             |
-//| تبدیل دقیقه به رشته تایم‌فریم                                    |
+//|                                                                  |
 //+------------------------------------------------------------------+
 string GetTimeframeStringFromMinutes(int minutes) {
     // Map to standard timeframes

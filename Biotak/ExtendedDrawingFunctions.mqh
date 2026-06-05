@@ -1,10 +1,10 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                   ExtendedDrawingFunctions.mqh   |
 //+------------------------------------------------------------------+
 #ifndef EXTENDED_DRAWING_FUNCTIONS_MQH
 #define EXTENDED_DRAWING_FUNCTIONS_MQH
 
-#property copyright "© Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link "@biotak"
 #property strict
 
@@ -102,10 +102,10 @@ bool ValidateComboParam(bool isInvalid, const string paramName, const string par
 
 //+------------------------------------------------------------------+
 //| Create Factor Mid Zone - REFACTORED to use Unified System        |
-//| ایجاد Zone Factor - Refactor شده با Unified System               |
+//|       Zone Factor - Refactor        Unified System               |
 //|                                                                  |
 //| ARCHITECTURE: Now uses UnifiedZoneSystem for consistency         |
-//| معماری: حالا از UnifiedZoneSystem برای یکپارچگی استفاده می‌کنه  |
+//|       :         UnifiedZoneSystem                               |
 //| FIXED: Respects Hide state when creating zones                  |
 //|                                                                  |
 //| @param zoneName Unique name for the zone object                 |
@@ -123,9 +123,9 @@ bool CreateFactorMidZone(const string zoneName,
                          const ENUM_ZONE_STYLE zoneStyle,
                          const int transparency)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: HANDLE SPECIAL STYLES
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // STYLE: HIDDEN - Delete and return
     if(zoneStyle == FACTOR_ZONE_HIDDEN) {
@@ -134,15 +134,15 @@ bool CreateFactorMidZone(const string zoneName,
     }
     
     // STYLE: LINES ONLY - Use old implementation (special case)
-    // این style نیاز به HLINE داره که در Factory پشتیبانی نمی‌شه
+    //     style         HLINE            Factory                
     if(zoneStyle == FACTOR_ZONE_LINES) {
         return CreateFactorMidZone_LinesStyle(zoneName, upperPrice, lowerPrice, 
                                               zoneColor, transparency);
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: USE UNIFIED SYSTEM FOR BOX STYLES
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // For FILLED and EMPTY styles, use Unified System
     SUnifiedZoneConfig config;
@@ -170,7 +170,7 @@ bool CreateFactorMidZone(const string zoneName,
     SZoneCreationResult result = CreateZone(request);
     
     // CRITICAL FIX: If indicator is hidden, hide the zone immediately
-    // اگر اندیکاتور مخفی است، زون را فوراً مخفی کن
+    //                                             
     // PERFORMANCE: Use cached ChartID string
     if(result.success) {
         string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
@@ -186,9 +186,9 @@ bool CreateFactorMidZone(const string zoneName,
 
 //+------------------------------------------------------------------+
 //| Create Factor Mid Zone - LINES STYLE (Legacy)                    |
-//| ساخت Zone Factor - استایل خطوط (قدیمی)                          |
+//|      Zone Factor -             (     )                          |
 //|                                                                  |
-//| این تابع فقط برای LINES style استفاده می‌شود                     |
+//|                   LINES style                                    |
 //| FIXED: Respects Hide state when creating line zones             |
 //+------------------------------------------------------------------+
 bool CreateFactorMidZone_LinesStyle(const string zoneName,
@@ -251,11 +251,11 @@ bool CreateFactorMidZone_LinesStyle(const string zoneName,
 
 //+------------------------------------------------------------------+
 //| Get default Factor value from Control step size                  |
-//| دریافت مقدار پیش‌فرض فاکتور با فاصله Control                      |
-//| Simple Formula: Step = Range / (Factor × 2)                      |
-//| We want: Step = Control = (SS + LS) / 2 = TH × 1.75              |
-//| So: TH × 1.75 = Range / (Factor × 2)                             |
-//| Therefore: Factor = Range / (TH × 1.75 × 2)                      |
+//|                                      Control                      |
+//| Simple Formula: Step = Range / (Factor   2)                      |
+//| We want: Step = Control = (SS + LS) / 2 = TH   1.75              |
+//| So: TH   1.75 = Range / (Factor   2)                             |
+//| Therefore: Factor = Range / (TH   1.75   2)                      |
 //|                                                                  |
 //| NOW SUPPORTS MULTIPLE BASIS TYPES:                               |
 //| - Control, SS, LS, TH, Trigger, Pattern, Structure, Combo       |
@@ -314,7 +314,7 @@ double GetDefaultFactorValue(const double basePrice) {
         return 1000.0;
     }
     
-    // Calculate Factor: Factor = Range / (StepSize × 2)
+    // Calculate Factor: Factor = Range / (StepSize   2)
     double factor = range / denominator;
     
     // Range validation with intelligent clamping
@@ -348,14 +348,14 @@ double GetDefaultFactorValue(const double basePrice) {
 
 //+------------------------------------------------------------------+
 //| Get step size based on Factor Auto Basis selection               |
-//| دریافت اندازه گام براساس مبنای انتخاب شده                        |
+//|                                                                  |
 //| GOLD VERSION: Complete validation and error handling             |
 //+------------------------------------------------------------------+
 double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_BASIS basis) {
     // CRITICAL: Validate base price
     if(basePrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForFactorBasis: Invalid basePrice=", basePrice);
+        Print("  GetStepSizeForFactorBasis: Invalid basePrice=", basePrice);
         #endif
         return 0;
     }
@@ -364,22 +364,22 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
     
     switch(basis) {
         case FACTOR_BASIS_CONTROL:
-            // Control = (SS + LS) / 2 = TH × 1.75
+            // Control = (SS + LS) / 2 = TH   1.75
             stepSize = GetStepSizeForBasisType(basePrice, 1.75, PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_SS:
-            // Short Step = TH × 1.5
+            // Short Step = TH   1.5
             stepSize = GetStepSizeForBasisType(basePrice, 1.5, PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_LS:
-            // Long Step = TH × 2.0
+            // Long Step = TH   2.0
             stepSize = GetStepSizeForBasisType(basePrice, 2.0, PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_TH:
-            // Pure TH = TH × 1.0
+            // Pure TH = TH   1.0
             stepSize = GetStepSizeForBasisType(basePrice, 1.0, PERIOD_CURRENT);
             break;
             
@@ -405,7 +405,7 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
             
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetStepSizeForFactorBasis: Unknown basis=", basis, ", using Control");
+            Print("   GetStepSizeForFactorBasis: Unknown basis=", basis, ", using Control");
             #endif
             // Fallback to Control
             stepSize = GetStepSizeForBasisType(basePrice, 1.75, PERIOD_CURRENT);
@@ -415,14 +415,14 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
     // CRITICAL: Validate result
     if(stepSize <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForFactorBasis: Failed to calculate step for basis=", 
+        Print("  GetStepSizeForFactorBasis: Failed to calculate step for basis=", 
               EnumToString(basis));
         #endif
         return 0;
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ GetStepSizeForFactorBasis: Basis=", EnumToString(basis), 
+    Print("  GetStepSizeForFactorBasis: Basis=", EnumToString(basis), 
           ", Step=", DoubleToString(stepSize, Digits));
     #endif
     
@@ -431,7 +431,7 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
 
 //+------------------------------------------------------------------+
 //| Get step size for specific multiplier and timeframe              |
-//| دریافت اندازه گام برای ضریب و تایم‌فریم مشخص                     |
+//|                                                                  |
 //| FIXED: Comprehensive error handling and validation               |
 //+------------------------------------------------------------------+
 double GetStepSizeForBasisType(const double basePrice, const double multiplier, 
@@ -439,14 +439,14 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     // CRITICAL: Validate inputs
     if(basePrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForBasisType: Invalid basePrice=", basePrice);
+        Print("  GetStepSizeForBasisType: Invalid basePrice=", basePrice);
         #endif
         return 0;
     }
     
     if(multiplier <= 0 || multiplier > 10.0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForBasisType: Invalid multiplier=", multiplier);
+        Print("  GetStepSizeForBasisType: Invalid multiplier=", multiplier);
         #endif
         return 0;
     }
@@ -455,7 +455,7 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     double thPercentage = GetTimeframeTHForPeriod(timeframe);
     if(thPercentage <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForBasisType: Invalid TH%=", thPercentage, " for TF=", timeframe);
+        Print("  GetStepSizeForBasisType: Invalid TH%=", thPercentage, " for TF=", timeframe);
         #endif
         return 0;
     }
@@ -464,7 +464,7 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     double thPriceUnits = (basePrice * thPercentage) / 100.0;
     if(thPriceUnits <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForBasisType: Invalid TH price units=", thPriceUnits);
+        Print("  GetStepSizeForBasisType: Invalid TH price units=", thPriceUnits);
         #endif
         return 0;
     }
@@ -476,7 +476,7 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     // 1. Check for zero or negative (should never happen, but safety first)
     if(stepSize <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepSizeForBasisType: Zero or negative stepSize=", stepSize);
+        Print("  GetStepSizeForBasisType: Zero or negative stepSize=", stepSize);
         #endif
         return 0;
     }
@@ -485,7 +485,7 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     // This would indicate a calculation error or extreme parameters
     if(stepSize > basePrice * 0.5) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetStepSizeForBasisType: Suspiciously large stepSize=", stepSize, 
+        Print("   GetStepSizeForBasisType: Suspiciously large stepSize=", stepSize, 
               " (> 50% of basePrice=", basePrice, ")");
         Print("   TH%=", DoubleToString(thPercentage, 4), ", Mult=", multiplier);
         #endif
@@ -497,14 +497,14 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
     double minReasonableStep = basePrice * 0.000001;  // 0.0001%
     if(stepSize < minReasonableStep) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetStepSizeForBasisType: Suspiciously small stepSize=", stepSize, 
+        Print("   GetStepSizeForBasisType: Suspiciously small stepSize=", stepSize, 
               " (< 0.0001% of basePrice=", basePrice, ")");
         #endif
         // Don't return 0, just log warning
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ GetStepSizeForBasisType: TF=", timeframe, ", Mult=", multiplier, 
+    Print("  GetStepSizeForBasisType: TF=", timeframe, ", Mult=", multiplier, 
           ", TH%=", DoubleToString(thPercentage, 4), ", Step=", DoubleToString(stepSize, Digits));
     #endif
     
@@ -513,7 +513,7 @@ double GetStepSizeForBasisType(const double basePrice, const double multiplier,
 
 //+------------------------------------------------------------------+
 //| Calculate Triple Combo Step Size (3 components)                  |
-//| محاسبه گام ترکیبی سه‌تایی (3 کامپوننت)                           |
+//|                           (3         )                           |
 //|                                                                  |
 //| Used for Triple presets: Balanced, Conservative, Aggressive     |
 //|                                                                  |
@@ -669,7 +669,7 @@ void GetComboConfiguration(const double basePrice, SComboConfig &config) {
 
 //+------------------------------------------------------------------+
 //| Helper to decode Smart Combo Component Item to TF and Step       |
-//| کمک برای تبدیل آیتم هوشمند به تایم‌فریم و گام                     |
+//|                                                                   |
 //+------------------------------------------------------------------+
 bool GetComboComponentParams(const ENUM_COMBO_COMPONENT_ITEM item, 
                              ENUM_COMBO_TIMEFRAME_TYPE &outTF, 
@@ -707,9 +707,9 @@ bool GetComboComponentParams(const ENUM_COMBO_COMPONENT_ITEM item,
 double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONENT_ITEM comp) {
     if (comp == COMP_IGNORE) return 0;
     
-    // ═══════════════════════════════════════════════════════════════
-    // AGGREGATE COMPONENTS (Mean of TH, SS, LS) - با نوع قابل تنظیم
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
+    // AGGREGATE COMPONENTS (Mean of TH, SS, LS) -                  
+    //                                                                
     if(comp >= COMP_SUB_MEAN && comp <= COMP_STRUCTURE_MEAN) {
         ENUM_COMBO_TIMEFRAME_TYPE tfType;
         
@@ -738,7 +738,7 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
         
         if(validCount == 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ GetStepSizeFromComponent: All MEAN components invalid for ", EnumToString(comp));
+            Print("  GetStepSizeFromComponent: All MEAN components invalid for ", EnumToString(comp));
             #endif
             return 0;
         }
@@ -746,7 +746,7 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
         // OBSERVABILITY FIX: Warn if not all values are valid
         if(validCount < 3) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetStepSizeFromComponent: Only ", validCount, "/3 values valid for ", EnumToString(comp));
+            Print("   GetStepSizeFromComponent: Only ", validCount, "/3 values valid for ", EnumToString(comp));
             Print("   TH: ", (th > 0 ? DoubleToString(th, Digits) : "INVALID"));
             Print("   SS: ", (ss > 0 ? DoubleToString(ss, Digits) : "INVALID"));
             Print("   LS: ", (ls > 0 ? DoubleToString(ls, Digits) : "INVALID"));
@@ -754,10 +754,10 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
             
             // Production warning for incomplete mean calculation
             if(validCount == 1) {
-                Print("ℹ️ MEAN COMPONENT INFO: ", EnumToString(comp), 
+                Print("   MEAN COMPONENT INFO: ", EnumToString(comp), 
                       " - Only 1/3 values valid. Result equals the single valid value.");
             } else if(validCount == 2) {
-                Print("ℹ️ MEAN COMPONENT INFO: ", EnumToString(comp), 
+                Print("   MEAN COMPONENT INFO: ", EnumToString(comp), 
                       " - Only 2/3 values valid. Mean calculated from 2 values.");
             }
         }
@@ -774,7 +774,7 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
         double result = CalculateMeanByType(validValues, inpAggregateMeanType);
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("✅ GetStepSizeFromComponent: MEAN component ", EnumToString(comp), 
+        Print("  GetStepSizeFromComponent: MEAN component ", EnumToString(comp), 
               " = ", DoubleToString(result, Digits), " (", validCount, "/3 valid values, ",
               EnumToString(inpAggregateMeanType), " mean)");
         #endif
@@ -782,9 +782,9 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
         return result;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // REGULAR COMPONENTS (Individual TH, SS, LS)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     ENUM_COMBO_TIMEFRAME_TYPE tfType;
     ENUM_COMBO_STEP_TYPE stepType;
     
@@ -803,12 +803,12 @@ double GetStepSizeFromComponent(const double basePrice, const ENUM_COMBO_COMPONE
 
 //+------------------------------------------------------------------+
 //| N-ARY MEAN CALCULATORS - For Multi-Component Operations          |
-//| محاسبه‌گرهای میانگین چندتایی - برای عملیات چند جزئی              |
+//|                              -                                   |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| Calculate Geometric Mean of N values: ⁿ√(v1 × v2 × ... × vn)    |
-//| محاسبه میانگین هندسی N مقدار                                      |
+//| Calculate Geometric Mean of N values:   (v1   v2   ...   vn)    |
+//|                      N                                            |
 //|                                                                  |
 //| GOLD FIX: Uses logarithmic approach to prevent overflow          |
 //| Formula: exp((ln(v1) + ln(v2) + ... + ln(vn)) / n)              |
@@ -818,9 +818,9 @@ double CalculateGeometricMeanN(const double &values[]) {
     if(n == 0) return 0;
     if(n == 1) return values[0];
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // LOGARITHMIC APPROACH (Prevents overflow for large values)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     double logSum = 0;
     
@@ -828,7 +828,7 @@ double CalculateGeometricMeanN(const double &values[]) {
         // Check for non-positive values
         if(values[i] <= 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ CalculateGeometricMeanN: Non-positive value at index ", i, ": ", values[i]);
+            Print("  CalculateGeometricMeanN: Non-positive value at index ", i, ": ", values[i]);
             #endif
             return 0;
         }
@@ -844,7 +844,7 @@ double CalculateGeometricMeanN(const double &values[]) {
     // SAFETY: Validate result
     if(result <= 0 || result > DBL_MAX / 2.0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateGeometricMeanN: Invalid result=", result);
+        Print("  CalculateGeometricMeanN: Invalid result=", result);
         #endif
         return 0;
     }
@@ -854,7 +854,7 @@ double CalculateGeometricMeanN(const double &values[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate Arithmetic Mean of N values: (v1 + v2 + ... + vn) / n |
-//| محاسبه میانگین حسابی N مقدار                                      |
+//|                      N                                            |
 //+------------------------------------------------------------------+
 double CalculateArithmeticMeanN(const double &values[]) {
     int n = ArraySize(values);
@@ -871,7 +871,7 @@ double CalculateArithmeticMeanN(const double &values[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate Harmonic Mean of N values: n / (1/v1 + 1/v2 + ... + 1/vn) |
-//| محاسبه میانگین هارمونیک N مقدار                                   |
+//|                         N                                         |
 //+------------------------------------------------------------------+
 double CalculateHarmonicMeanN(const double &values[]) {
     int n = ArraySize(values);
@@ -882,7 +882,7 @@ double CalculateHarmonicMeanN(const double &values[]) {
     for(int i = 0; i < n; i++) {
         if(MathAbs(values[i]) < 0.000001) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ CalculateHarmonicMeanN: Zero/near-zero value at index ", i, ": ", values[i]);
+            Print("  CalculateHarmonicMeanN: Zero/near-zero value at index ", i, ": ", values[i]);
             #endif
             return 0;
         }
@@ -896,7 +896,7 @@ double CalculateHarmonicMeanN(const double &values[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate Minimum of N values: min(v1, v2, ..., vn)             |
-//| محاسبه حداقل N مقدار                                             |
+//|              N                                                   |
 //+------------------------------------------------------------------+
 double CalculateMinN(const double &values[]) {
     int n = ArraySize(values);
@@ -913,7 +913,7 @@ double CalculateMinN(const double &values[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate Maximum of N values: max(v1, v2, ..., vn)             |
-//| محاسبه حداکثر N مقدار                                            |
+//|               N                                                  |
 //+------------------------------------------------------------------+
 double CalculateMaxN(const double &values[]) {
     int n = ArraySize(values);
@@ -930,7 +930,7 @@ double CalculateMaxN(const double &values[]) {
 
 //+------------------------------------------------------------------+
 //| Calculate mean based on type (Unified Interface)                 |
-//| محاسبه میانگین بر اساس نوع (رابط یکپارچه)                        |
+//|                            (            )                        |
 //|                                                                  |
 //| This is the MAIN interface for all mean calculations             |
 //| Used by: Quick Test, Aggregate Components, N-ary Operators      |
@@ -941,7 +941,7 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
     // Validation
     if(n == 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateMeanByType: Empty array");
+        Print("  CalculateMeanByType: Empty array");
         #endif
         return 0;
     }
@@ -955,7 +955,7 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
         case MEAN_ARITHMETIC:
             result = CalculateArithmeticMeanN(values);
             #ifdef ENABLE_DEBUG_LOGS
-            Print("✅ CalculateMeanByType: Arithmetic Mean of ", n, " values = ", 
+            Print("  CalculateMeanByType: Arithmetic Mean of ", n, " values = ", 
                   DoubleToString(result, Digits));
             #endif
             break;
@@ -963,7 +963,7 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
         case MEAN_GEOMETRIC:
             result = CalculateGeometricMeanN(values);
             #ifdef ENABLE_DEBUG_LOGS
-            Print("✅ CalculateMeanByType: Geometric Mean of ", n, " values = ", 
+            Print("  CalculateMeanByType: Geometric Mean of ", n, " values = ", 
                   DoubleToString(result, Digits));
             #endif
             break;
@@ -971,14 +971,14 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
         case MEAN_HARMONIC:
             result = CalculateHarmonicMeanN(values);
             #ifdef ENABLE_DEBUG_LOGS
-            Print("✅ CalculateMeanByType: Harmonic Mean of ", n, " values = ", 
+            Print("  CalculateMeanByType: Harmonic Mean of ", n, " values = ", 
                   DoubleToString(result, Digits));
             #endif
             break;
             
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ CalculateMeanByType: Unknown mean type ", meanType);
+            Print("  CalculateMeanByType: Unknown mean type ", meanType);
             #endif
             return 0;
     }
@@ -988,12 +988,12 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
 
 //+------------------------------------------------------------------+
 //| QUICK TEST MODE FUNCTIONS                                        |
-//| توابع حالت تست سریع                                              |
+//|                                                                  |
 //+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
 //| Collect components from Quick Test preset or checkboxes          |
-//| جمع‌آوری components از preset یا چک‌باکس‌های Quick Test          |
+//|          components    preset                Quick Test          |
 //|                                                                  |
 //| Returns: Number of selected components                           |
 //+------------------------------------------------------------------+
@@ -1003,7 +1003,7 @@ double CalculateMeanByType(const double &values[], const ENUM_MEAN_TYPE meanType
 
 //+------------------------------------------------------------------+
 //| Helper: Apply Combo Operator (Calculator Mode) - GOLDEN VERSION  |
-//| اعمال عملگر ترکیبی (حالت ماشین حساب) - نسخه اصلاح شده             |
+//|                    (               ) -                            |
 //+------------------------------------------------------------------+
 double ApplyCalculatorOperator(const double value1, const double value2, 
                           const ENUM_COMBO_OPERATOR op) {
@@ -1023,7 +1023,7 @@ double ApplyCalculatorOperator(const double value1, const double value2,
             // CRITICAL FIX: Use epsilon check for floating-point safety
             if(MathAbs(value2) < 0.000001) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ ApplyCalculatorOperator: Division by zero/near-zero detected! value2=", DoubleToString(value2, 8));
+                Print("  ApplyCalculatorOperator: Division by zero/near-zero detected! value2=", DoubleToString(value2, 8));
                 #endif
                 return 0; // Fail explicitly instead of silent fallback
             }
@@ -1034,10 +1034,10 @@ double ApplyCalculatorOperator(const double value1, const double value2,
             return (value1 + value2) / 2.0;
             
         case OP_GEOMETRIC_MEAN:
-            // Geometric Mean: √(A × B)
+            // Geometric Mean:  (A   B)
             if(value1 <= 0 || value2 <= 0) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ ApplyCalculatorOperator: Geometric mean requires positive values! value1=", value1, " value2=", value2);
+                Print("  ApplyCalculatorOperator: Geometric mean requires positive values! value1=", value1, " value2=", value2);
                 #endif
                 return 0;
             }
@@ -1047,7 +1047,7 @@ double ApplyCalculatorOperator(const double value1, const double value2,
             // Harmonic Mean: 2 / (1/A + 1/B) = 2AB / (A + B)
             if(MathAbs(value1) < 0.000001 || MathAbs(value2) < 0.000001) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ ApplyCalculatorOperator: Harmonic mean requires non-zero values! value1=", value1, " value2=", value2);
+                Print("  ApplyCalculatorOperator: Harmonic mean requires non-zero values! value1=", value1, " value2=", value2);
                 #endif
                 return 0;
             }
@@ -1069,56 +1069,56 @@ double ApplyCalculatorOperator(const double value1, const double value2,
 //| Refactored: Uses shared helper for consistency                   |
 //+------------------------------------------------------------------+
 double CalculateDualGroupTopology(const double basePrice) {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // GROUP 1: (Comp1 Op1 Comp2)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // 1. Start with Component 1
     if(inpComboComp1 == COMP_IGNORE) {
-        Print("❌ Calculator Mode (Dual): Component 1 cannot be IGNORE");
-        Alert("⚠️ ADVANCED MODE ERROR (Dual Group Topology)\n\nComponent 1 cannot be IGNORE!\nDual Group topology requires at least Component 1.");
+        Print("  Calculator Mode (Dual): Component 1 cannot be IGNORE");
+        Alert("   ADVANCED MODE ERROR (Dual Group Topology)\n\nComponent 1 cannot be IGNORE!\nDual Group topology requires at least Component 1.");
         return 0;
     }
     
     double valG1 = GetStepSizeFromComponent(basePrice, inpComboComp1);
     if(valG1 <= 0) {
-        Print("❌ Calculator Mode (Dual): Component 1 calculation failed");
-        Alert("⚠️ ADVANCED MODE ERROR\n\nFailed to calculate Component 1.\nPlease check your component selection.");
+        Print("  Calculator Mode (Dual): Component 1 calculation failed");
+        Alert("   ADVANCED MODE ERROR\n\nFailed to calculate Component 1.\nPlease check your component selection.");
         return 0;
     }
     
     // 2. Apply Op1 with Component 2
     valG1 = ApplyOperationWithComponent(valG1, inpComboOp1, inpComboComp2, basePrice);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CHECK MAIN OPERATOR
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(inpComboOp2 == OP_NONE || inpComboComp3 == COMP_IGNORE) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("ℹ️ Dual Group: Only Group 1 active (Op2=NONE or Comp3=IGNORE)");
+        Print("   Dual Group: Only Group 1 active (Op2=NONE or Comp3=IGNORE)");
         Print("   Group 1 Result: ", DoubleToString(valG1, Digits));
         #endif
         return valG1;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // GROUP 2: (Comp3 Op3 Comp4)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     double valG2 = GetStepSizeFromComponent(basePrice, inpComboComp3);
     
     // CRITICAL: Validate Component 3
     if(valG2 <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Dual Group: Component 3 invalid or failed");
+        Print("   Dual Group: Component 3 invalid or failed");
         Print("   Component 3: ", EnumToString(inpComboComp3));
         Print("   Fallback: Using Group 1 result only");
         Print("   Group 1 Result: ", DoubleToString(valG1, Digits));
         #endif
         
         // Production warning (always show, not just debug)
-        Print("⚠️ DUAL GROUP TOPOLOGY WARNING: Component 3 (", EnumToString(inpComboComp3), 
+        Print("   DUAL GROUP TOPOLOGY WARNING: Component 3 (", EnumToString(inpComboComp3), 
               ") calculation failed. Using Group 1 result only.");
         
         return valG1;
@@ -1130,28 +1130,28 @@ double CalculateDualGroupTopology(const double basePrice) {
     // Validate Group 2 result after Op3
     if(valG2 <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Dual Group: Group 2 calculation failed after Op3");
+        Print("   Dual Group: Group 2 calculation failed after Op3");
         Print("   Op3: ", EnumToString(inpComboOp3));
         Print("   Component 4: ", EnumToString(inpComboComp4));
         Print("   Fallback: Using Group 1 result only");
         Print("   Group 1 Result: ", DoubleToString(valG1, Digits));
         #endif
         
-        Print("⚠️ DUAL GROUP TOPOLOGY WARNING: Group 2 calculation failed. Using Group 1 result only.");
+        Print("   DUAL GROUP TOPOLOGY WARNING: Group 2 calculation failed. Using Group 1 result only.");
         
         return valG1;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // FINAL COMBINATION: Group1 Op2 Group2
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     double finalResult = ApplyCalculatorOperator(valG1, valG2, inpComboOp2);
     
     // CRITICAL: Validate final result
     if(finalResult <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Dual Group: Final combination failed");
+        Print("   Dual Group: Final combination failed");
         Print("   Group 1: ", DoubleToString(valG1, Digits));
         Print("   Op2: ", EnumToString(inpComboOp2));
         Print("   Group 2: ", DoubleToString(valG2, Digits));
@@ -1159,14 +1159,14 @@ double CalculateDualGroupTopology(const double basePrice) {
         Print("   Fallback: Using Group 1 result only");
         #endif
         
-        Print("⚠️ DUAL GROUP TOPOLOGY WARNING: Final combination (", EnumToString(inpComboOp2), 
+        Print("   DUAL GROUP TOPOLOGY WARNING: Final combination (", EnumToString(inpComboOp2), 
               ") produced invalid result. Using Group 1 result only.");
         
         return valG1;
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ Dual Group: SUCCESS");
+    Print("  Dual Group: SUCCESS");
     Print("   Group 1: ", DoubleToString(valG1, Digits));
     Print("   Op2: ", EnumToString(inpComboOp2));
     Print("   Group 2: ", DoubleToString(valG2, Digits));
@@ -1190,9 +1190,9 @@ double ApplyOperationWithComponent(const double currentVal,
     if (op == OP_NONE || nextComp == COMP_IGNORE) {
         #ifdef ENABLE_DEBUG_LOGS
         if(op == OP_NONE) {
-            Print("ℹ️ ApplyOperationWithComponent: Operator is NONE, skipping");
+            Print("   ApplyOperationWithComponent: Operator is NONE, skipping");
         } else {
-            Print("ℹ️ ApplyOperationWithComponent: Component is IGNORE, skipping");
+            Print("   ApplyOperationWithComponent: Component is IGNORE, skipping");
         }
         #endif
         return currentVal;
@@ -1204,13 +1204,13 @@ double ApplyOperationWithComponent(const double currentVal,
     // 3. Validation: If next component is invalid (e.g., 0), skip operation
     if (nextVal <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ApplyOperationWithComponent: Next component invalid");
+        Print("   ApplyOperationWithComponent: Next component invalid");
         Print("   Component: ", EnumToString(nextComp));
         Print("   Operator: ", EnumToString(op));
         Print("   Keeping current value: ", DoubleToString(currentVal, Digits));
         #endif
         
-        Print("⚠️ CALCULATOR WARNING: Component ", EnumToString(nextComp), 
+        Print("   CALCULATOR WARNING: Component ", EnumToString(nextComp), 
               " calculation failed. Skipping operation ", EnumToString(op));
         
         return currentVal;
@@ -1222,7 +1222,7 @@ double ApplyOperationWithComponent(const double currentVal,
     // 5. Final Safety Check
     if (result <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ApplyOperationWithComponent: Operation produced invalid result");
+        Print("   ApplyOperationWithComponent: Operation produced invalid result");
         Print("   Current: ", DoubleToString(currentVal, Digits));
         Print("   Operator: ", EnumToString(op));
         Print("   Next: ", DoubleToString(nextVal, Digits));
@@ -1230,14 +1230,14 @@ double ApplyOperationWithComponent(const double currentVal,
         Print("   Fallback to current value");
         #endif
         
-        Print("⚠️ CALCULATOR WARNING: Operation ", EnumToString(op), 
+        Print("   CALCULATOR WARNING: Operation ", EnumToString(op), 
               " produced invalid result. Keeping previous value.");
         
         return currentVal; // Fallback to previous valid value
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ ApplyOperationWithComponent: ", DoubleToString(currentVal, Digits), 
+    Print("  ApplyOperationWithComponent: ", DoubleToString(currentVal, Digits), 
           " ", EnumToString(op), " ", DoubleToString(nextVal, Digits), 
           " = ", DoubleToString(result, Digits));
     #endif
@@ -1254,15 +1254,15 @@ double ApplyOperationWithComponent(const double currentVal,
 double CalculateLinearTopology(const double basePrice) {
     // 1. Start with Component 1 (Foundation)
     if(inpComboComp1 == COMP_IGNORE) {
-        Print("❌ Calculator Mode (Linear): Component 1 is IGNORE");
-        Alert("⚠️ ADVANCED MODE ERROR (Linear Topology)\n\nComponent 1 cannot be IGNORE!\nLinear topology requires at least Component 1.");
+        Print("  Calculator Mode (Linear): Component 1 is IGNORE");
+        Alert("   ADVANCED MODE ERROR (Linear Topology)\n\nComponent 1 cannot be IGNORE!\nLinear topology requires at least Component 1.");
         return 0;
     }
 
     double result = GetStepSizeFromComponent(basePrice, inpComboComp1);
     if(result <= 0) {
-        Print("❌ Calculator Mode (Linear): Component 1 calculation failed");
-        Alert("⚠️ ADVANCED MODE ERROR\n\nFailed to calculate Component 1.\nPlease check your component selection.");
+        Print("  Calculator Mode (Linear): Component 1 calculation failed");
+        Alert("   ADVANCED MODE ERROR\n\nFailed to calculate Component 1.\nPlease check your component selection.");
         return 0;
     }
     
@@ -1280,7 +1280,7 @@ double CalculateLinearTopology(const double basePrice) {
 
 //+------------------------------------------------------------------+
 //| Calculator Mode Logic (Unified Entry Point) - GOLDEN VERSION     |
-//| منطق ماشین حساب (ورودی اصلی) - نسخه طلایی (بدون باگ و بهینه)     |
+//|                 (          ) -            (                )     |
 //|                                                                  |
 //| SUPPORTS:                                                        |
 //| 1. N-ARY OPERATORS: If Op1 is N-ary, collects all components    |
@@ -1290,14 +1290,14 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
     // 1. Security & Validation Check
     if(basePrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ CalculateCalculatorModeStepSize: Invalid basePrice=", basePrice);
+        Print("  CalculateCalculatorModeStepSize: Invalid basePrice=", basePrice);
         #endif
         return 0;
     }
 
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // 2. CHECK FOR N-ARY OPERATORS (Multi-Component Mode)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(inpComboOp1 >= OP_GEOMETRIC_MEAN_ALL && inpComboOp1 <= OP_MAX_ALL) {
         // N-ARY MODE: Collect all non-IGNORE components
@@ -1343,8 +1343,8 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
         // Validate: Need at least 1 component
         int componentCount = ArraySize(componentValues);
         if(componentCount == 0) {
-            Print("❌ N-ARY Mode: No valid components found");
-            Alert("⚠️ ADVANCED MODE ERROR (N-ary Operator)\n\nAll components are set to IGNORE!\nPlease select at least one component.");
+            Print("  N-ARY Mode: No valid components found");
+            Alert("   ADVANCED MODE ERROR (N-ary Operator)\n\nAll components are set to IGNORE!\nPlease select at least one component.");
             return 0;
         }
         
@@ -1357,14 +1357,14 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
         
         if(componentCount < expectedComponents) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ N-ARY Mode: Only ", componentCount, "/", expectedComponents, " components valid");
+            Print("   N-ARY Mode: Only ", componentCount, "/", expectedComponents, " components valid");
             #endif
-            Print("ℹ️ N-ARY OPERATOR INFO: Using ", componentCount, " valid components out of ", 
+            Print("   N-ARY OPERATOR INFO: Using ", componentCount, " valid components out of ", 
                   expectedComponents, " selected.");
         }
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("ℹ️ N-ARY Mode: Collected ", componentCount, " valid components");
+        Print("   N-ARY Mode: Collected ", componentCount, " valid components");
         for(int i = 0; i < componentCount; i++) {
             Print("   Component[", i, "] = ", DoubleToString(componentValues[i], Digits));
         }
@@ -1377,7 +1377,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
             case OP_GEOMETRIC_MEAN_ALL:
                 naryResult = CalculateGeometricMeanN(componentValues);
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("✅ N-ARY Mode: Geometric Mean of ", componentCount, " components = ", 
+                Print("  N-ARY Mode: Geometric Mean of ", componentCount, " components = ", 
                       DoubleToString(naryResult, Digits));
                 #endif
                 break;
@@ -1385,7 +1385,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
             case OP_ARITHMETIC_MEAN_ALL:
                 naryResult = CalculateArithmeticMeanN(componentValues);
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("✅ N-ARY Mode: Arithmetic Mean of ", componentCount, " components = ", 
+                Print("  N-ARY Mode: Arithmetic Mean of ", componentCount, " components = ", 
                       DoubleToString(naryResult, Digits));
                 #endif
                 break;
@@ -1393,7 +1393,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
             case OP_HARMONIC_MEAN_ALL:
                 naryResult = CalculateHarmonicMeanN(componentValues);
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("✅ N-ARY Mode: Harmonic Mean of ", componentCount, " components = ", 
+                Print("  N-ARY Mode: Harmonic Mean of ", componentCount, " components = ", 
                       DoubleToString(naryResult, Digits));
                 #endif
                 break;
@@ -1401,7 +1401,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
             case OP_MIN_ALL:
                 naryResult = CalculateMinN(componentValues);
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("✅ N-ARY Mode: Minimum of ", componentCount, " components = ", 
+                Print("  N-ARY Mode: Minimum of ", componentCount, " components = ", 
                       DoubleToString(naryResult, Digits));
                 #endif
                 break;
@@ -1409,14 +1409,14 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
             case OP_MAX_ALL:
                 naryResult = CalculateMaxN(componentValues);
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("✅ N-ARY Mode: Maximum of ", componentCount, " components = ", 
+                Print("  N-ARY Mode: Maximum of ", componentCount, " components = ", 
                       DoubleToString(naryResult, Digits));
                 #endif
                 break;
                 
             default:
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ N-ARY Mode: Unknown operator ", inpComboOp1);
+                Print("  N-ARY Mode: Unknown operator ", inpComboOp1);
                 #endif
                 return 0;
         }
@@ -1424,7 +1424,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
         // Validate and return
         if(naryResult <= 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ N-ARY Mode: Result is <= 0");
+            Print("  N-ARY Mode: Result is <= 0");
             #endif
             return 0;
         }
@@ -1432,9 +1432,9 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
         return NormalizeDouble(naryResult, Digits);
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // 3. BINARY MODE: Normal Topology-Based Calculation
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
 
     double finalResult = 0;
 
@@ -1449,7 +1449,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
     // 4. Final Validation
     if(finalResult <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ Calculator Mode Result is <= 0");
+        Print("  Calculator Mode Result is <= 0");
         #endif
         return 0;
     }
@@ -1459,7 +1459,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
     
     #ifdef ENABLE_DEBUG_LOGS
     string topoName = (inpComboTopology == TOPOLOGY_LINEAR) ? "LINEAR" : "DUAL_GROUP";
-    Print("✅ Calculator Mode [", topoName, "]: Result=", DoubleToString(finalResult, Digits));
+    Print("  Calculator Mode [", topoName, "]: Result=", DoubleToString(finalResult, Digits));
     #endif
     
     return finalResult;
@@ -1467,7 +1467,7 @@ double CalculateCalculatorModeStepSize(const double basePrice) {
 
 //+------------------------------------------------------------------+
 //| UNIFIED Combo Step Calculation (used by both modes)              |
-//| محاسبه گام ترکیبی یکپارچه (برای هر دو حالت)                      |
+//|                           (               )                      |
 //|                                                                  |
 //| Used by:                                                         |
 //| 1. Combo Step Mode (COMBO_STEP) - for drawing TH levels         |
@@ -1492,7 +1492,7 @@ bool IsTriggerLevelsEnabled() {
 
 //+------------------------------------------------------------------+
 //| Get current timeframe as fractal string                          |
-//| دریافت تایم‌فریم جاری به صورت رشته فراکتال                       |
+//|                                                                  |
 //+------------------------------------------------------------------+
 string GetCurrentFractalTimeframe() {
     int minutes = Period();
@@ -1512,7 +1512,7 @@ string GetCurrentFractalTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Get TH percentage for specific timeframe period                  |
-//| دریافت درصد TH برای تایم‌فریم مشخص                               |
+//|             TH                                                   |
 //| FIXED: No recursion, proper error handling                       |
 //+------------------------------------------------------------------+
 double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
@@ -1553,7 +1553,7 @@ double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
                 minutes = seconds / 60;
             } else {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ GetTimeframeTHForPeriod: Unknown period=", period, ", using D45+H12+M16");
+                Print("   GetTimeframeTHForPeriod: Unknown period=", period, ", using D45+H12+M16");
                 #endif
                 return CalculateTimeframeTH("D45+H12+M16");
             }
@@ -1585,7 +1585,7 @@ double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
 
 //+------------------------------------------------------------------+
 //| Get Sub timeframe (1/4 current - faster than current)            |
-//| دریافت تایم‌فریم Sub (1/4 جاری - سریع‌تر از جاری)                |
+//|                  Sub (1/4      -                )                |
 //+------------------------------------------------------------------+
 ENUM_TIMEFRAMES GetSubTimeframe() {
     int currentMinutes = Period();
@@ -1610,7 +1610,7 @@ ENUM_TIMEFRAMES GetSubTimeframe() {
     
     #ifdef ENABLE_DEBUG_LOGS
     Print("GetSubTimeframe: Current=", currentMinutes, "min, Sub=", 
-          subMinutes, "min (÷4) -> ", result);
+          subMinutes, "min ( 4) -> ", result);
     #endif
     
     return result;
@@ -1618,14 +1618,14 @@ ENUM_TIMEFRAMES GetSubTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Get timeframe based on type                                       |
-//| دریافت تایم‌فریم براساس نوع                                       |
+//|                                                                   |
 //| GOLD FIX: Added validation and error logging                     |
 //+------------------------------------------------------------------+
 ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
     // CRITICAL: Validate input
     if(tfType < COMBO_TF_SUB || tfType > COMBO_TF_STRUCTURE) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetTimeframeByType: Invalid tfType=", tfType, ", using current period");
+        Print("  GetTimeframeByType: Invalid tfType=", tfType, ", using current period");
         #endif
         return (ENUM_TIMEFRAMES)Period();  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
     }
@@ -1670,7 +1670,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
 
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetTimeframeByType: Unexpected tfType=", tfType, ", using current period");
+            Print("   GetTimeframeByType: Unexpected tfType=", tfType, ", using current period");
             #endif
             result = (ENUM_TIMEFRAMES)Period();
             break;
@@ -1679,7 +1679,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
     // SAFETY: Validate result
     if(result <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetTimeframeByType: Invalid result=", result, " for tfType=", tfType);
+        Print("  GetTimeframeByType: Invalid result=", result, " for tfType=", tfType);
         #endif
         return (ENUM_TIMEFRAMES)Period();  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
     }
@@ -1689,14 +1689,14 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
 
 //+------------------------------------------------------------------+
 //| Get step multiplier based on step type                           |
-//| دریافت ضریب گام براساس نوع گام                                   |
+//|                                                                  |
 //| GOLD FIX: Added validation and error logging                     |
 //+------------------------------------------------------------------+
 double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
     // CRITICAL: Validate input
     if(stepType < COMBO_STEP_TH || stepType > COMBO_STEP_LS) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepMultiplier: Invalid stepType=", stepType, ", using 1.0 (TH)");
+        Print("  GetStepMultiplier: Invalid stepType=", stepType, ", using 1.0 (TH)");
         #endif
         return 1.0;
     }
@@ -1715,7 +1715,7 @@ double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
             break;
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetStepMultiplier: Unexpected stepType=", stepType, ", using 1.0 (TH)");
+            Print("   GetStepMultiplier: Unexpected stepType=", stepType, ", using 1.0 (TH)");
             #endif
             multiplier = 1.0;
             break;
@@ -1724,7 +1724,7 @@ double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
     // SAFETY: Validate result (should always be valid, but double-check)
     if(multiplier <= 0 || multiplier > 10.0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetStepMultiplier: Invalid multiplier=", multiplier, " for stepType=", stepType);
+        Print("  GetStepMultiplier: Invalid multiplier=", multiplier, " for stepType=", stepType);
         #endif
         return 1.0;
     }
@@ -1734,7 +1734,7 @@ double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
 
 //+------------------------------------------------------------------+
 //| Apply operation on two values (GOLD VERSION)                     |
-//| اعمال عملیات روی دو مقدار (نسخه طلایی)                           |
+//|                           (          )                           |
 //|                                                                  |
 //| @param value1 First value (must be > 0)                         |
 //| @param value2 Second value (must be > 0)                        |
@@ -1751,22 +1751,22 @@ double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
 double ApplyComboOperation(const double value1, const double value2, 
                            const ENUM_COMBO_OPERATION operation,
                            const double weight1 = 0.5, const double weight2 = 0.5) {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL INPUT VALIDATION
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(value1 <= 0 || value2 <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ApplyComboOperation: Invalid values - v1=", value1, ", v2=", value2);
+        Print("  ApplyComboOperation: Invalid values - v1=", value1, ", v2=", value2);
         #endif
         return 0;
     }
     
     double result = 0;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // APPLY OPERATION
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     switch(operation) {
         case COMBO_OP_AVERAGE:
@@ -1783,15 +1783,15 @@ double ApplyComboOperation(const double value1, const double value2,
             // Subtract: |A - B| (absolute value to avoid negative)
             result = MathAbs(value1 - value2);
             
-            // GOLD FIX: اگر نتیجه خیلی کوچک است (< 1% of average)، یعنی دو مقدار تقریباً برابرند
-            // در این صورت، از میانگین استفاده می‌کنیم
+            // GOLD FIX:                         (< 1% of average)                               
+            //                                        
             double avgValue = (value1 + value2) / 2.0;
-            double minThreshold = avgValue * 0.01;  // ✅ 1% of average (dynamic threshold)
+            double minThreshold = avgValue * 0.01;  //   1% of average (dynamic threshold)
             
             if(result < minThreshold) {
-                result = avgValue;  // ✅ Use average when difference is negligible
+                result = avgValue;  //   Use average when difference is negligible
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ ApplyComboOperation: Subtract result too small (", 
+                Print("   ApplyComboOperation: Subtract result too small (", 
                       DoubleToString(result, Digits), " < ", DoubleToString(minThreshold, Digits), 
                       "), using average=", DoubleToString(avgValue, Digits));
                 #endif
@@ -1800,7 +1800,7 @@ double ApplyComboOperation(const double value1, const double value2,
         }
             
         case COMBO_OP_MULTIPLY: {
-            // Multiply: A × B
+            // Multiply: A   B
             result = value1 * value2;
             
             // GOLD FIX: Check for overflow using dynamic threshold
@@ -1810,7 +1810,7 @@ double ApplyComboOperation(const double value1, const double value2,
             
             if(result > overflowThreshold) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("⚠️ ApplyComboOperation: Multiply overflow detected");
+                Print("   ApplyComboOperation: Multiply overflow detected");
                 Print("   v1=", DoubleToString(value1, Digits), 
                       ", v2=", DoubleToString(value2, Digits), 
                       ", result=", DoubleToString(result, Digits), 
@@ -1833,13 +1833,13 @@ double ApplyComboOperation(const double value1, const double value2,
             break;
             
         case COMBO_OP_WEIGHTED: {
-            // Weighted: (A×W1 + B×W2) / (W1+W2)
+            // Weighted: (A W1 + B W2) / (W1+W2)
             // CRITICAL FIX: Normalize weights to handle any sum
             
             // Validate weights
             if(weight1 < 0 || weight2 < 0) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ ApplyComboOperation: Negative weights - w1=", weight1, ", w2=", weight2);
+                Print("  ApplyComboOperation: Negative weights - w1=", weight1, ", w2=", weight2);
                 #endif
                 // Fallback to average
                 result = (value1 + value2) / 2.0;
@@ -1852,7 +1852,7 @@ double ApplyComboOperation(const double value1, const double value2,
             // CRITICAL: Check for zero sum
             if(weightSum <= 0) {
                 #ifdef ENABLE_DEBUG_LOGS
-                Print("❌ ApplyComboOperation: Zero weight sum - w1=", weight1, ", w2=", weight2);
+                Print("  ApplyComboOperation: Zero weight sum - w1=", weight1, ", w2=", weight2);
                 #endif
                 // Fallback to average
                 result = (value1 + value2) / 2.0;
@@ -1864,7 +1864,7 @@ double ApplyComboOperation(const double value1, const double value2,
             result = (value1 * weight1 + value2 * weight2) / weightSum;
             
             #ifdef ENABLE_DEBUG_LOGS
-            Print("✅ ApplyComboOperation: Weighted - w1=", weight1, ", w2=", weight2, 
+            Print("  ApplyComboOperation: Weighted - w1=", weight1, ", w2=", weight2, 
                   ", sum=", weightSum, ", normalized result=", result);
             #endif
             break;
@@ -1872,20 +1872,20 @@ double ApplyComboOperation(const double value1, const double value2,
             
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ ApplyComboOperation: Unknown operation=", operation);
+            Print("  ApplyComboOperation: Unknown operation=", operation);
             #endif
             // Fallback to average
             result = (value1 + value2) / 2.0;
             break;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // FINAL VALIDATION
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     if(result <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ ApplyComboOperation: Invalid result=", result, 
+        Print("  ApplyComboOperation: Invalid result=", result, 
               " for op=", EnumToString(operation));
         #endif
         return 0;
@@ -1945,7 +1945,7 @@ double ApplyComboOperation(const double value1, const double value2,
     
     if(isSuspicious) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ ApplyComboOperation: Suspicious result detected");
+        Print("   ApplyComboOperation: Suspicious result detected");
         Print("   Operation=", EnumToString(operation));
         Print("   v1=", DoubleToString(value1, Digits), 
               ", v2=", DoubleToString(value2, Digits));
@@ -1959,7 +1959,7 @@ double ApplyComboOperation(const double value1, const double value2,
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ ApplyComboOperation: v1=", DoubleToString(value1, Digits), 
+    Print("  ApplyComboOperation: v1=", DoubleToString(value1, Digits), 
           ", v2=", DoubleToString(value2, Digits), 
           ", op=", EnumToString(operation), 
           ", result=", DoubleToString(result, Digits));
@@ -1970,11 +1970,11 @@ double ApplyComboOperation(const double value1, const double value2,
 
 //+------------------------------------------------------------------+
 //| Get preset configuration (OPTIMIZED VERSION with all presets)    |
-//| دریافت تنظیمات از پیش تعریف شده (نسخه بهینه با همه preset ها)    |
+//|                                 (                  preset   )    |
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 //| Get preset configuration (UNIFIED VERSION with Mode support)    |
-//| دریافت تنظیمات از پیش تعریف شده (نسخه یکپارچه با پشتیبانی Mode)  |
+//|                                 (                         Mode)  |
 //|                                                                  |
 //| Supports two modes:                                             |
 //| 1. PRESET Mode: Quick select from 9 ready-to-use presets       |
@@ -1994,33 +1994,33 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
                             ENUM_COMBO_STEP_TYPE &step2,
                             ENUM_COMBO_OPERATION &operation) {
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // GOLD FIX: Initialize output parameters to safe defaults
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     tf1 = COMBO_TF_TRIGGER;
     step1 = COMBO_STEP_TH;
     tf2 = COMBO_TF_PATTERN;
     step2 = COMBO_STEP_TH;
     operation = COMBO_OP_AVERAGE;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // GOLD FIX: Manual Mode check removed - handled by preset cases
-    // حذف چک Manual Mode - توسط preset case ها handle می‌شود
-    // ═══════════════════════════════════════════════════════════════
+    //        Manual Mode -      preset case    handle       
+    //                                                                
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PRESET MODE: Use predefined combinations
-    // حالت Preset: استفاده از ترکیبات از پیش تعریف شده
-    // ═══════════════════════════════════════════════════════════════
+    //      Preset:                                    
+    //                                                                
     
     switch(preset) {
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 0: LEGACY (سازگاری با نسخه قدیم)
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
+        // CATEGORY 0: LEGACY (                    )
+        //                                                            
         
         case COMBO_PRESET_LEGACY_ADD:
             // Legacy: Trigger SS + Pattern SS (ADD)
-            // سازگاری کامل با نسخه قدیم Combo Step Mode
+            //                           Combo Step Mode
             // Old: Component1 (Trigger SS) + Component2 (Pattern SS)
             tf1 = COMBO_TF_TRIGGER;
             step1 = COMBO_STEP_SS;
@@ -2029,13 +2029,13 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             operation = COMBO_OP_ADD;  // ADD, not AVERAGE!
             break;
         
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 1: BALANCED (متعادل)
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
+        // CATEGORY 1: BALANCED (      )
+        //                                                            
         
         case COMBO_PRESET_BALANCED_MEDIUM:
             // Balanced Medium: (Pattern + Trigger) / 2
-            // میانگین میان‌مدت - برای اکثر کاربران
+            //                  -                  
             tf1 = COMBO_TF_PATTERN;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_TRIGGER;
@@ -2045,7 +2045,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             
         case COMBO_PRESET_BALANCED_LONG:
             // Balanced Long: (Structure + Pattern) / 2
-            // میانگین بلندمدت - برای تایم‌فریم‌های بالاتر
+            //                 -                          
             tf1 = COMBO_TF_STRUCTURE;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_PATTERN;
@@ -2055,7 +2055,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
         
         case COMBO_PRESET_BALANCED_TRIPLE:
             // Triple Balanced: (Trigger + Pattern + Structure) / 3
-            // میانگین سه تایم‌فریم - متعادل‌ترین حالت
+            //                      -                 
             // NOTE: This is handled in CalculateComboStepSize()
             tf1 = COMBO_TF_TRIGGER;
             step1 = COMBO_STEP_TH;
@@ -2066,7 +2066,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
         
         case COMBO_PRESET_BALANCED_MIN:
             // Balanced Min: min(Pattern TH, Trigger TH)
-            // کمترین از دو تایم‌فریم میانی
+            //                             
             // Uses TH for consistency with other Balanced presets
             tf1 = COMBO_TF_PATTERN;
             step1 = COMBO_STEP_TH;
@@ -2075,13 +2075,13 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             operation = COMBO_OP_MIN;
             break;
         
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 2: CONSERVATIVE (محافظه‌کار)
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
+        // CATEGORY 2: CONSERVATIVE (          )
+        //                                                            
         
         case COMBO_PRESET_CONSERVATIVE:
             // Conservative: max(Structure, Pattern)
-            // بزرگترین گام - سطوح کمتر و دورتر
+            //              -                  
             tf1 = COMBO_TF_STRUCTURE;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_PATTERN;
@@ -2091,9 +2091,9 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             
         case COMBO_PRESET_ULTRA_CONSERVATIVE:
             // Ultra Conservative: Structure TH only
-            // فقط ساختار - خیلی محافظه‌کارانه
-            // GOLD FIX: برای اینکه فقط Structure TH باشه، باید از MAX استفاده کنیم
-            // چون MAX(Structure, Structure) = Structure
+            //            -                   
+            // GOLD FIX:                Structure TH               MAX             
+            //     MAX(Structure, Structure) = Structure
             tf1 = COMBO_TF_STRUCTURE;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_STRUCTURE;  // Same as tf1
@@ -2103,7 +2103,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
         
         case COMBO_PRESET_TRIPLE_CONSERVATIVE:
             // Triple Conservative: max(Trigger, Pattern, Structure)
-            // بزرگترین از سه تایم‌فریم
+            //                         
             // NOTE: This is handled in CalculateComboStepSize()
             tf1 = COMBO_TF_TRIGGER;
             step1 = COMBO_STEP_TH;
@@ -2112,13 +2112,13 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             operation = COMBO_OP_MAX;
             break;
         
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 3: AGGRESSIVE (تهاجمی)
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
+        // CATEGORY 3: AGGRESSIVE (      )
+        //                                                            
         
         case COMBO_PRESET_AGGRESSIVE:
             // Aggressive: min(Pattern, Trigger)
-            // کوچکترین گام - سطوح بیشتر و نزدیک‌تر
+            //              -                      
             tf1 = COMBO_TF_PATTERN;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_TRIGGER;
@@ -2128,7 +2128,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             
         case COMBO_PRESET_ULTRA_AGGRESSIVE:
             // Ultra Aggressive: min(Trigger, Sub)
-            // خیلی تهاجمی - سطوح خیلی زیاد
+            //             -               
             tf1 = COMBO_TF_TRIGGER;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_SUB;
@@ -2138,7 +2138,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
         
         case COMBO_PRESET_TRIPLE_AGGRESSIVE:
             // Triple Aggressive: min(Trigger, Pattern, Structure)
-            // کمترین از سه تایم‌فریم
+            //                       
             // NOTE: This is handled in CalculateComboStepSize()
             tf1 = COMBO_TF_TRIGGER;
             step1 = COMBO_STEP_TH;
@@ -2147,13 +2147,13 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             operation = COMBO_OP_MIN;
             break;
         
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 4: SPECIAL (ویژه)
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
+        // CATEGORY 4: SPECIAL (    )
+        //                                                            
         
         case COMBO_PRESET_TREND_FILTER:
             // Trend Filter: Structure - Sub
-            // فیلتر ترند - تفاوت بلندمدت و کوتاه‌مدت
+            //            -                          
             tf1 = COMBO_TF_STRUCTURE;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_SUB;
@@ -2163,7 +2163,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             
         case COMBO_PRESET_VOLATILITY_ADAPTIVE:
             // Volatility Adaptive: (Structure + Sub) / 2
-            // سازگار با نوسان - ترکیب سریع و کند
+            //                 -                 
             tf1 = COMBO_TF_STRUCTURE;
             step1 = COMBO_STEP_TH;
             tf2 = COMBO_TF_SUB;
@@ -2171,14 +2171,14 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             operation = COMBO_OP_AVERAGE;
             break;
         
-        // ═══════════════════════════════════════════════════════════
-        // CATEGORY 5: ADVANCED USER PRESETS (دستی)
+        //                                                            
+        // CATEGORY 5: ADVANCED USER PRESETS (    )
         // These presets redirect to Advanced Mode for full control
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         
         case COMBO_PRESET_MANUAL_DUAL:
         case COMBO_PRESET_MANUAL_TRIPLE:
-            // 🔧 Advanced User Presets: Use Smart Component Inputs
+            //    Advanced User Presets: Use Smart Component Inputs
             // These are legacy presets that redirect to Advanced Mode
             {
                 ENUM_COMBO_TIMEFRAME_TYPE t1, t2;
@@ -2200,13 +2200,13 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
             }
             break;
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DEFAULT: Fallback to Legacy
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         
         default:
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ GetPresetConfiguration: Unknown preset=", preset, ", using Legacy");
+            Print("   GetPresetConfiguration: Unknown preset=", preset, ", using Legacy");
             #endif
             
             // Fallback to Legacy
@@ -2219,7 +2219,7 @@ void GetPresetConfiguration(const ENUM_COMBO_PRESET preset,
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ GetPresetConfiguration: PRESET MODE - Preset=", EnumToString(preset));
+    Print("  GetPresetConfiguration: PRESET MODE - Preset=", EnumToString(preset));
     Print("   TF1=", EnumToString(tf1), ", Step1=", EnumToString(step1));
     Print("   TF2=", EnumToString(tf2), ", Step2=", EnumToString(step2));
     Print("   Operation=", EnumToString(operation));
@@ -2255,7 +2255,7 @@ ENUM_TIMEFRAMES GetPatternTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Get Structure timeframe (16x current)                            |
-//| دریافت تایم‌فریم Structure (16 برابر جاری)                       |
+//|                  Structure (16           )                       |
 //| FIXED: Proper bounds checking and logging                        |
 //+------------------------------------------------------------------+
 ENUM_TIMEFRAMES GetStructureTimeframe() {
@@ -2287,7 +2287,7 @@ ENUM_TIMEFRAMES GetStructureTimeframe() {
 
 //+------------------------------------------------------------------+
 //| Calculate Structure level interval based on base multiplier     |
-//| محاسبه فاصله سطح ساختار بر اساس ضریب پایه                       |
+//|                                                                 |
 //|                                                                  |
 //| EXAMPLES:                                                        |
 //| Base=2: L1=2, L2=4, L3=8, L4=16, L5=32                          |
@@ -2296,34 +2296,34 @@ ENUM_TIMEFRAMES GetStructureTimeframe() {
 //|                                                                  |
 //| USAGE:                                                           |
 //| Check from HIGHEST to LOWEST level for proper hierarchy:        |
-//| if(step % L5 == 0) → Level 5                                    |
-//| else if(step % L4 == 0) → Level 4                               |
-//| else if(step % L3 == 0) → Level 3                               |
-//| else if(step % L2 == 0) → Level 2                               |
-//| else if(step % L1 == 0) → Level 1                               |
-//| else → Trigger                                                   |
+//| if(step % L5 == 0)   Level 5                                    |
+//| else if(step % L4 == 0)   Level 4                               |
+//| else if(step % L3 == 0)   Level 3                               |
+//| else if(step % L2 == 0)   Level 2                               |
+//| else if(step % L1 == 0)   Level 1                               |
+//| else   Trigger                                                   |
 //+------------------------------------------------------------------+
 int CalculateStructureInterval(const int baseMultiplier, const int level) {
     // Defensive checks for invalid inputs
     if(baseMultiplier < 2 || baseMultiplier > 9) {
-        Print("⚠️ Invalid base multiplier: ", baseMultiplier, " (must be 2-9)");
+        Print("   Invalid base multiplier: ", baseMultiplier, " (must be 2-9)");
         return 0;
     }
     
     if(level < 1 || level > 5) {
-        Print("⚠️ Invalid level: ", level, " (must be 1-5)");
+        Print("   Invalid level: ", level, " (must be 1-5)");
         return 0;
     }
     
-    // FRACTAL formula: base × 2^(level-1) instead of base^level
-    // This preserves the fractal 2× ratio: L(n+1)/L(n) = 2
+    // FRACTAL formula: base   2^(level-1) instead of base^level
+    // This preserves the fractal 2  ratio: L(n+1)/L(n) = 2
     // And ensures all L1-L5 are always reachable within maxLevels
     return baseMultiplier * (int)MathPow(2, level - 1);
 }
 
 //+------------------------------------------------------------------+
 //| Get validated base multiplier with auto-correction               |
-//| دریافت ضریب پایه معتبر با اصلاح خودکار                          |
+//|                                                                 |
 //|                                                                  |
 //| This function ensures baseMultiplier is always in valid range    |
 //| If invalid value is detected, auto-corrects to default (3)      |
@@ -2336,7 +2336,7 @@ int GetValidatedBaseMultiplier() {
     // AUTO-CORRECTION: Ensure value is in valid range (2-9)
     if(baseMultiplier < 2 || baseMultiplier > 9) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetValidatedBaseMultiplier: Invalid value ", baseMultiplier, 
+        Print("   GetValidatedBaseMultiplier: Invalid value ", baseMultiplier, 
               " detected, auto-correcting to default: 3");
         #endif
         return 3; // Default fallback
@@ -2379,7 +2379,7 @@ bool ShouldDrawStep(const int step) {
 
 //+------------------------------------------------------------------+
 //| Cache for structure intervals to avoid repeated MathPow() calls |
-//| کش برای فواصل ساختار جهت جلوگیری از فراخوانی مکرر MathPow       |
+//|                                                   MathPow       |
 //+------------------------------------------------------------------+
 static int g_cachedBaseMultiplier = -1;
 static int g_cachedIntervals[5]; // L1-L5
@@ -2390,7 +2390,7 @@ static int g_cachedIntervals[5]; // L1-L5
 //| AUTO-CORRECTS invalid baseMultiplier to default (3)             |
 //|                                                                  |
 //| FIXED: Returns intervals in REVERSE priority order              |
-//| This ensures proper hierarchy checking (L5 → L4 → L3 → L2 → L1) |
+//| This ensures proper hierarchy checking (L5   L4   L3   L2   L1) |
 //+------------------------------------------------------------------+
 void GetCachedIntervals(const int baseMultiplier, int &intervals[]) {
     // SAFETY: Validate baseMultiplier before caching
@@ -2398,7 +2398,7 @@ void GetCachedIntervals(const int baseMultiplier, int &intervals[]) {
     if(validatedMultiplier < 2 || validatedMultiplier > 9) {
         validatedMultiplier = 3; // Auto-correct to default
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetCachedIntervals: Invalid base ", baseMultiplier, 
+        Print("   GetCachedIntervals: Invalid base ", baseMultiplier, 
               " auto-corrected to ", validatedMultiplier);
         #endif
     }
@@ -2411,7 +2411,7 @@ void GetCachedIntervals(const int baseMultiplier, int &intervals[]) {
         g_cachedBaseMultiplier = validatedMultiplier;
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("📊 Structure intervals calculated for base ", validatedMultiplier, 
+        Print("   Structure intervals calculated for base ", validatedMultiplier, 
               ": L1=", g_cachedIntervals[0], ", L2=", g_cachedIntervals[1], 
               ", L3=", g_cachedIntervals[2], ", L4=", g_cachedIntervals[3], 
               ", L5=", g_cachedIntervals[4]);
@@ -2427,7 +2427,7 @@ void GetCachedIntervals(const int baseMultiplier, int &intervals[]) {
 
 //+------------------------------------------------------------------+
 //| Get highest structure level for a given step                     |
-//| دریافت بالاترین سطح ساختاری برای یک گام مشخص                    |
+//|                                                                 |
 //|                                                                  |
 //| Returns the highest level (1-5) that this step belongs to       |
 //| Returns 0 if step is not a structure level (i.e., trigger)      |
@@ -2452,7 +2452,7 @@ int GetHighestStructureLevel(const int step, const int &intervals[]) {
     int absStep = MathAbs(step);
     if(absStep <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ GetHighestStructureLevel: Invalid step=", step);
+        Print("   GetHighestStructureLevel: Invalid step=", step);
         #endif
         return 0;
     }
@@ -2461,7 +2461,7 @@ int GetHighestStructureLevel(const int step, const int &intervals[]) {
     int arraySize = ArraySize(intervals);
     if(arraySize != 5) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ GetHighestStructureLevel: Invalid intervals array size=", arraySize, " (expected 5)");
+        Print("  GetHighestStructureLevel: Invalid intervals array size=", arraySize, " (expected 5)");
         #endif
         return 0;
     }
@@ -2470,20 +2470,20 @@ int GetHighestStructureLevel(const int step, const int &intervals[]) {
     for(int i = 0; i < 5; i++) {
         if(intervals[i] <= 0) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ GetHighestStructureLevel: Invalid interval[", i, "]=", intervals[i]);
+            Print("  GetHighestStructureLevel: Invalid interval[", i, "]=", intervals[i]);
             #endif
             return 0;
         }
         // Check ascending order (L2 > L1, L3 > L2, etc.)
         if(i > 0 && intervals[i] <= intervals[i-1]) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("❌ GetHighestStructureLevel: Intervals not in ascending order at index ", i);
+            Print("  GetHighestStructureLevel: Intervals not in ascending order at index ", i);
             #endif
             return 0;
         }
     }
     
-    // Check from highest to lowest (L5 → L4 → L3 → L2 → L1)
+    // Check from highest to lowest (L5   L4   L3   L2   L1)
     // Use absStep to handle both positive and negative steps
     if(absStep % intervals[4] == 0) return 5;
     if(absStep % intervals[3] == 0) return 4;
@@ -2569,13 +2569,13 @@ bool GetPathForLevelOptimized(const int stepCount, color &outColor, ENUM_LINE_ST
 
 //+------------------------------------------------------------------+
 //| Get Zone Color for level (uses CURRENT level's color)           |
-//| دریافت رنگ Zone برای سطح (از رنگ سطح فعلی استفاده می‌کند)        |
+//|            Zone          (                              )        |
 //|                                                                  |
 //| Logic: Zone uses SAME logic as level drawing                    |
-//| منطق: Zone از همان منطق رسم سطوح استفاده می‌کند                 |
+//|     : Zone                                                      |
 //|                                                                  |
 //| Priority: Structure (L5>L4>L3>L2>L1) > Trigger > Mode Color     |
-//| اولویت: ساختاری (L5>L4>L3>L2>L1) > تریگر > رنگ Mode              |
+//|       :         (L5>L4>L3>L2>L1) >       >     Mode              |
 //|                                                                  |
 //| @param currentStep Current step number (must be > 0)            |
 //| @param triggerEnabled Whether trigger levels are enabled        |
@@ -2590,7 +2590,7 @@ color GetZoneColorForLevel(const int currentStep, const bool triggerEnabled, con
     if(currentStep <= 0) return clrNONE;
     
     // PRIORITY 1: Check structure levels first (L5 > L4 > L3 > L2 > L1)
-    // اولویت ۱: ابتدا سطوح ساختاری را بررسی کن
+    //         :                               
     if(inpShowStructure) {
         // VALIDATION: Ensure baseMultiplier is valid before using it
         // Use GetValidatedBaseMultiplier for consistency
@@ -2623,12 +2623,12 @@ color GetZoneColorForLevel(const int currentStep, const bool triggerEnabled, con
     }
     
     // PRIORITY 2: If Trigger is enabled, DON'T use trigger color for zones
-    // اولویت ۲: اگر Trigger فعال است، از رنگ Trigger برای zone استفاده نکن
+    //         :     Trigger                  Trigger      zone            
     // Zones should ONLY be drawn between structure levels, not trigger levels
-    // Zone‌ها فقط باید بین structure levels رسم بشن، نه trigger levels
+    // Zone                 structure levels             trigger levels
     
     // PRIORITY 3: Fallback to mode's default color
-    // اولویت ۳: استفاده از رنگ پیش‌فرض mode
+    //         :                        mode
     return clrNONE;  // Signal to use level's own color (SS/LS/M/TP)
 }
 
@@ -2649,10 +2649,10 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
     
     // Note: ClearAllLevels is called in DrawLevelsBasedOnMode before this function
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CLEANUP OLD ZONES
-    // پاکسازی محدوده‌های قدیمی
-    // ═══════════════════════════════════════════════════════════════
+    //                         
+    //                                                                
     if(inpShowMidZones) {
         ObjectsDeleteAll(0, objectPrefix + "SSLS_Zone_", -1, -1);
     }
@@ -2709,7 +2709,7 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
     if(!InitializeZoneTracking(midpointPrice, lastStructurePriceAbove, 
                                lastTriggerPriceAbove, lastFallbackPriceAbove)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawSSLSLevels: Failed to initialize zone tracking (Above)");
+        Print("  DrawSSLSLevels: Failed to initialize zone tracking (Above)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -2735,7 +2735,7 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
             Print("First level price: ", DoubleToString(priceLevel, 10));
             Print("Formula: ", DoubleToString(midpointPrice, 10), " + ", DoubleToString(dist, 10), " = ", DoubleToString(priceLevel, 10));
             Print("===========================================");
-            Print("🔵 MT4 FIRST LEVEL: ", DoubleToString(priceLevel, 10), " (LS=", DoubleToString(dist, 10), ")");
+            Print("   MT4 FIRST LEVEL: ", DoubleToString(priceLevel, 10), " (LS=", DoubleToString(dist, 10), ")");
         }
         #endif
         
@@ -2791,13 +2791,13 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
         
         drawnAbove++;
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DRAW MID-RANGE ZONE (AFTER drawing this level)
-        // رسم محدوده میانی (بعد از رسم این سطح)
+        //                  (                  )
         // 
         // UNIFIED APPROACH: Use CreateZoneWithSmartFallback
-        // رویکرد یکپارچه: از CreateZoneWithSmartFallback استفاده کن
-        // ═══════════════════════════════════════════════════════════
+        //               :    CreateZoneWithSmartFallback           
+        //                                                            
         if(inpShowMidZones) {
             // Determine if this is a structure level
             bool isStructureLevel = false;
@@ -2840,7 +2840,7 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
     if(!InitializeZoneTracking(midpointPrice, lastStructurePriceBelow, 
                                lastTriggerPriceBelow, lastFallbackPriceBelow)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawSSLSLevels: Failed to initialize zone tracking (Below)");
+        Print("  DrawSSLSLevels: Failed to initialize zone tracking (Below)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -2909,13 +2909,13 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
         
         drawnBelow++;
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DRAW MID-RANGE ZONE (AFTER drawing this level)
-        // رسم محدوده میانی (بعد از رسم این سطح)
+        //                  (                  )
         // 
         // UNIFIED APPROACH: Use CreateZoneWithSmartFallback
-        // رویکرد یکپارچه: از CreateZoneWithSmartFallback استفاده کن
-        // ═══════════════════════════════════════════════════════════
+        //               :    CreateZoneWithSmartFallback           
+        //                                                            
         if(inpShowMidZones) {
             // Determine if this is a structure level
             bool isStructureLevel = false;
@@ -2949,7 +2949,7 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
     
     #ifdef ENABLE_DEBUG_LOGS
     if(inpShowMidZones) {
-        Print("✅ DrawSSLSLevels: Drew ", zoneCountAbove, " zones above, ", 
+        Print("  DrawSSLSLevels: Drew ", zoneCountAbove, " zones above, ", 
               zoneCountBelow, " zones below");
     }
     #endif
@@ -2959,10 +2959,10 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
 //| Draw M levels based on Control ladder                           |
 //+------------------------------------------------------------------+
 //| UNIFIED HELPER: Draw Single Level with Unified Logic             |
-//| تابع کمکی یکپارچه: رسم یک سطح با منطق یکپارچه                    |
+//|                  :                                               |
 //|                                                                  |
 //| This function encapsulates the common logic used by all modes   |
-//| این تابع منطق مشترک همه مودها را در بر می‌گیرد                   |
+//|                                                                  |
 //+------------------------------------------------------------------+
 bool DrawUnifiedLevel(
     const string levelName,
@@ -3015,7 +3015,7 @@ bool DrawUnifiedLevel(
 
 //+------------------------------------------------------------------+
 //| UNIFIED HELPER: Draw Single Zone with Unified Logic              |
-//| تابع کمکی یکپارچه: رسم یک زون با منطق یکپارچه                    |
+//|                  :                                               |
 //+------------------------------------------------------------------+
 bool DrawUnifiedZone(
     const string zoneName,
@@ -3055,7 +3055,7 @@ bool DrawUnifiedZone(
 //+------------------------------------------------------------------+
 //| Draw Factor boundary lines (Historical High/Low reference)       |
 //| Draw Factor boundary lines (Historical High/Low reference)       |
-//| رسم خطوط مرجع High/Low تاریخی برای Factor mode                    |
+//|               High/Low             Factor mode                    |
 //+------------------------------------------------------------------+
 void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice, 
                               const double lowPrice, const double factor, const double stepSize)
@@ -3141,12 +3141,12 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
 
 //+------------------------------------------------------------------+
 //| Draw Factor levels with perfect equal spacing (aligned)          |
-//| رسم سطوح فاکتور با فاصله‌گذاری کاملاً مساوی (تراز شده)            |
+//|                                             (        )            |
 //| Ensures all spacing is equal including at chart boundaries       |
 //+------------------------------------------------------------------+
 //| Draw Factor Levels with Harmonic Alternating Pattern             |
-//| رسم سطوح فاکتور با الگوی هارمونیک متناوب                          |
-//| Alternates between Base Step (÷2) and Large Step (÷ratio)        |
+//|                                                                   |
+//| Alternates between Base Step ( 2) and Large Step ( ratio)        |
 //| Creates macro symmetry with micro variation                       |
 #ifndef BUILD_LITE
 //+------------------------------------------------------------------+
@@ -3154,56 +3154,56 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
                               const double lowPrice, const double factor, 
                               const double baseStepSize, const double harmonicRatio)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CRITICAL INPUT VALIDATION
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Validate object prefix
     if(StringLen(objectPrefix) == 0) {
-        Print("❌ DrawFactorLevelsHarmonic: Empty object prefix");
+        Print("  DrawFactorLevelsHarmonic: Empty object prefix");
         return;
     }
     
     // Validate price range
     if(highPrice <= 0 || lowPrice <= 0) {
-        Print("❌ DrawFactorLevelsHarmonic: Invalid prices - High=", highPrice, ", Low=", lowPrice);
+        Print("  DrawFactorLevelsHarmonic: Invalid prices - High=", highPrice, ", Low=", lowPrice);
         return;
     }
     if(highPrice <= lowPrice) {
-        Print("❌ DrawFactorLevelsHarmonic: Invalid range - High must be > Low");
+        Print("  DrawFactorLevelsHarmonic: Invalid range - High must be > Low");
         return;
     }
     
     // Validate base step size
     if(baseStepSize <= 0) {
-        Print("❌ DrawFactorLevelsHarmonic: Invalid base step size: ", baseStepSize);
+        Print("  DrawFactorLevelsHarmonic: Invalid base step size: ", baseStepSize);
         return;
     }
     
     // CRITICAL: Validate harmonic ratio with strict bounds
     if(harmonicRatio < MIN_HARMONIC_RATIO) {
-        Print("❌ DrawFactorLevelsHarmonic: Ratio too small (", harmonicRatio, 
+        Print("  DrawFactorLevelsHarmonic: Ratio too small (", harmonicRatio, 
               ") - must be >= ", MIN_HARMONIC_RATIO, " for meaningful alternation");
         return;
     }
     if(harmonicRatio > MAX_HARMONIC_RATIO) {
-        Print("❌ DrawFactorLevelsHarmonic: Ratio too large (", harmonicRatio, 
+        Print("  DrawFactorLevelsHarmonic: Ratio too large (", harmonicRatio, 
               ") - must be <= ", MAX_HARMONIC_RATIO);
         return;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CLEANUP OLD OBJECTS (prevent visual clutter)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Delete old harmonic objects before drawing new ones
     ObjectsDeleteAll(0, objectPrefix + "Factor_Mid_", -1, -1);
     ObjectsDeleteAll(0, objectPrefix + "Factor_Up_", -1, -1);
     ObjectsDeleteAll(0, objectPrefix + "Factor_Down_", -1, -1);
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CALCULATE STEP SIZES
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Calculate large step size
     double largeStepSize = baseStepSize * harmonicRatio;
@@ -3211,7 +3211,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     // Validate large step doesn't exceed range
     double range = highPrice - lowPrice;
     if(largeStepSize > range) {
-        Print("⚠️ DrawFactorLevelsHarmonic: Large step (", largeStepSize, 
+        Print("   DrawFactorLevelsHarmonic: Large step (", largeStepSize, 
               ") exceeds range (", range, ") - adjusting");
         largeStepSize = range * 0.5;  // Max 50% of range
     }
@@ -3220,21 +3220,21 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     double midpoint = NormalizeDouble((highPrice + lowPrice) / 2.0, Digits);
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("═══ DrawFactorLevelsHarmonic ═══");
+    Print("==================== DrawFactorLevelsHarmonic ====================");
     Print("High=", highPrice, ", Low=", lowPrice, ", Range=", range);
     Print("Midpoint=", midpoint, ", Factor=", factor);
     Print("BaseStep=", baseStepSize, ", LargeStep=", largeStepSize);
     Print("Ratio=", harmonicRatio, " (", DoubleToString((harmonicRatio - 1.0) * 100, 1), "% larger)");
     #endif
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // DRAW MIDPOINT LEVEL
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     string midName = objectPrefix + "Factor_Mid_0";
     if(ObjectFind(0, midName) < 0) {
         if(!ObjectCreate(0, midName, OBJ_HLINE, 0, 0, midpoint)) {
-            Print("❌ Failed to create midpoint level. Error: ", GetLastError());
+            Print("  Failed to create midpoint level. Error: ", GetLastError());
             return;
         }
     }
@@ -3247,21 +3247,21 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     ObjectSetInteger(0, midName, OBJPROP_SELECTED, false);
     ObjectSetInteger(0, midName, OBJPROP_BACK, false);
     ObjectSetString(0, midName, OBJPROP_TOOLTIP, 
-        StringFormat("🎯 Harmonic Center | %s | F=%.2f | R=%.3f", 
+        StringFormat("   Harmonic Center | %s | F=%.2f | R=%.3f", 
             DoubleToString(midpoint, Digits), factor, harmonicRatio));
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PREPARE PATTERN ARRAY (optimization)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Pattern: [baseStep, largeStep, baseStep, largeStep, ...]
     double stepPattern[2];
-    stepPattern[0] = baseStepSize;   // Smaller step (÷2)
-    stepPattern[1] = largeStepSize;  // Larger step (÷ratio)
+    stepPattern[0] = baseStepSize;   // Smaller step ( 2)
+    stepPattern[1] = largeStepSize;  // Larger step ( ratio)
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CALCULATE MAX LEVELS (with safety limits)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Calculate approximate max levels per side
     double halfRange = range / 2.0;
@@ -3272,29 +3272,29 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     const int MAX_HARMONIC_LEVELS = 2500;
     if(maxLevelsPerSide > MAX_HARMONIC_LEVELS) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Clamping levels from ", maxLevelsPerSide, " to ", MAX_HARMONIC_LEVELS);
+        Print("   Clamping levels from ", maxLevelsPerSide, " to ", MAX_HARMONIC_LEVELS);
         #endif
         maxLevelsPerSide = MAX_HARMONIC_LEVELS;
     }
     
     // Additional safety: minimum step size check
     if(baseStepSize < Point * 2) {
-        Print("❌ DrawFactorLevelsHarmonic: Base step too small (", baseStepSize, 
+        Print("  DrawFactorLevelsHarmonic: Base step too small (", baseStepSize, 
               ") - must be >= ", Point * 2);
         return;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CACHE TRIGGER STATE (optimization)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     bool triggerEnabled = IsTriggerLevelsEnabled();
     bool structureEnabled = inpShowStructure;
     int baseMultiplier = GetValidatedBaseMultiplier(); // Use central validation
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // DRAW LEVELS ABOVE MIDPOINT
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     double cumulative = 0;
     int levelsAbove = 0;
@@ -3309,7 +3309,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         // CRITICAL: Stop if we exceed high price
         if(priceLevel > highPrice) {
             #ifdef ENABLE_DEBUG_LOGS
-            if(i == 0) Print("⚠️ First level above midpoint exceeds high - step too large");
+            if(i == 0) Print("   First level above midpoint exceeds high - step too large");
             #endif
             break;
         }
@@ -3320,16 +3320,16 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         // Determine if this is base or large step
         bool isBase = (i % 2 == 0);
         
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         // PRIORITY SYSTEM FOR COLORS AND STYLES
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         // PRIORITY 1: Harmonic Pattern (always takes precedence)
         //   - Preserves alternating rhythm
         //   - No filtering (all levels drawn)
         // PRIORITY 2: Structure/Trigger (if Harmonic disabled)
         //   - Applies filtering based on baseMultiplier
         // PRIORITY 3: Default Factor colors
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         
         color levelColor;
         ENUM_LINE_STYLE levelStyle;
@@ -3352,7 +3352,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         // Create or update level
         if(ObjectFind(0, levelName) < 0) {
             if(!ObjectCreate(0, levelName, OBJ_HLINE, 0, 0, priceLevel)) {
-                Print("⚠️ Failed to create level above ", i + 1, ". Error: ", GetLastError());
+                Print("   Failed to create level above ", i + 1, ". Error: ", GetLastError());
                 continue;
             }
         }
@@ -3365,16 +3365,16 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         ObjectSetInteger(0, levelName, OBJPROP_SELECTED, false);
         ObjectSetInteger(0, levelName, OBJPROP_BACK, false);
         ObjectSetString(0, levelName, OBJPROP_TOOLTIP, 
-            StringFormat("%s Step %d | %s | F=%.2f | Δ=%.1f", 
-                (isBase ? "📏 Base" : "📐 Large"), i + 1, 
+            StringFormat("%s Step %d | %s | F=%.2f |  =%.1f", 
+                (isBase ? "   Base" : "   Large"), i + 1, 
                 DoubleToString(priceLevel, Digits), factor, step / Point));
         
         levelsAbove++;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // DRAW LEVELS BELOW MIDPOINT
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     cumulative = 0;
     int levelsBelow = 0;
@@ -3388,7 +3388,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         // CRITICAL: Stop if we go below low price
         if(priceLevel < lowPrice) {
             #ifdef ENABLE_DEBUG_LOGS
-            if(i == 0) Print("⚠️ First level below midpoint goes below low - step too large");
+            if(i == 0) Print("   First level below midpoint goes below low - step too large");
             #endif
             break;
         }
@@ -3398,9 +3398,9 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         
         bool isBase = (i % 2 == 0);
         
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         // PRIORITY SYSTEM FOR COLORS AND STYLES (same as above)
-        // ═══════════════════════════════════════════════════════════════
+        //                                                                
         
         color levelColor;
         ENUM_LINE_STYLE levelStyle;
@@ -3419,7 +3419,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         
         if(ObjectFind(0, levelName) < 0) {
             if(!ObjectCreate(0, levelName, OBJ_HLINE, 0, 0, priceLevel)) {
-                Print("⚠️ Failed to create level below ", i + 1, ". Error: ", GetLastError());
+                Print("   Failed to create level below ", i + 1, ". Error: ", GetLastError());
                 continue;
             }
         }
@@ -3432,19 +3432,19 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         ObjectSetInteger(0, levelName, OBJPROP_SELECTED, false);
         ObjectSetInteger(0, levelName, OBJPROP_BACK, false);
         ObjectSetString(0, levelName, OBJPROP_TOOLTIP, 
-            StringFormat("%s Step %d | %s | F=%.2f | Δ=%.1f", 
-                (isBase ? "📏 Base" : "📐 Large"), i + 1, 
+            StringFormat("%s Step %d | %s | F=%.2f |  =%.1f", 
+                (isBase ? "   Base" : "   Large"), i + 1, 
                 DoubleToString(priceLevel, Digits), factor, step / Point));
         
         levelsBelow++;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // FINAL REPORT
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ DrawFactorLevelsHarmonic: Drew ", levelsAbove, " levels above, ", 
+    Print("  DrawFactorLevelsHarmonic: Drew ", levelsAbove, " levels above, ", 
           levelsBelow, " levels below midpoint");
     Print("Total: ", (levelsAbove + levelsBelow + 1), " levels (including midpoint)");
     #endif
@@ -3477,17 +3477,17 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     // GOAL: Put any unequal gap at the FARTHER boundary from current price
     // 
     // LOGIC:
-    // - Starting from HIGH and going DOWN → last level ends near LOW
-    // - Starting from LOW and going UP → last level ends near HIGH
+    // - Starting from HIGH and going DOWN   last level ends near LOW
+    // - Starting from LOW and going UP   last level ends near HIGH
     // - The "gap" (if any) appears where we END, not where we START
     // 
     // Therefore:
-    // - To put gap at LOW (bottom) → start from HIGH (top)
-    // - To put gap at HIGH (top) → start from LOW (bottom)
+    // - To put gap at LOW (bottom)   start from HIGH (top)
+    // - To put gap at HIGH (top)   start from LOW (bottom)
     // 
     // User wants gap at FARTHER boundary:
-    // - If price closer to HIGH → gap should be at LOW → start from HIGH
-    // - If price closer to LOW → gap should be at HIGH → start from LOW
+    // - If price closer to HIGH   gap should be at LOW   start from HIGH
+    // - If price closer to LOW   gap should be at HIGH   start from LOW
     // 
     // CONCLUSION: Start from the boundary that is FARTHER from current price
     
@@ -3507,7 +3507,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     
     // Calculate how many levels fit in the range
     // Formula: totalLevels = floor(range / stepSize)
-    // Example: range=0.78, stepSize=0.09 → totalLevels = floor(8.67) = 8
+    // Example: range=0.78, stepSize=0.09   totalLevels = floor(8.67) = 8
     // This means we can fit 8 steps in the range
     // Since loop starts at i=1, we draw levels at: boundary + 1*step, boundary + 2*step, ..., boundary + 8*step
     double range = highPrice - lowPrice;
@@ -3543,10 +3543,10 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     double startPrice = startFromHigh ? highPrice : lowPrice;
     double direction = startFromHigh ? -1.0 : 1.0;  // -1 = downward, +1 = upward
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CLEANUP OLD ZONES
-    // پاکسازی محدوده‌های قدیمی
-    // ═══════════════════════════════════════════════════════════════
+    //                         
+    //                                                                
     if(inpShowMidZones) {
         ObjectsDeleteAll(0, objectPrefix + "Factor_Zone_", -1, -1);
     }
@@ -3554,18 +3554,18 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     int levelsDrawn = 0;
     int zoneCount = 0;  // Track zones drawn
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CALCULATE halfStep and zoneHeight ONCE (DRY principle)
-    // محاسبه یکبار برای استفاده در همه جا
+    //                                    
     // Zone height = 25% of halfStep (12.5% above + 12.5% below midpoint)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     double halfStep = stepSize / 2.0;
     double zoneHeight = halfStep * 0.25;  // 25% of halfStep (12.5% each side)
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // MAIN LOOP: Draw levels and zones
-    // حلقه اصلی: رسم سطوح و محدوده‌ها
-    // ═══════════════════════════════════════════════════════════════
+    //          :                     
+    //                                                                
     for(int i = 1; i <= totalLevels; i++) {
         // Calculate price for this level (aligned to boundary)
         double levelPrice = startPrice + (direction * stepSize * i);
@@ -3573,7 +3573,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
         // Validate level is within range
         if(levelPrice < lowPrice || levelPrice > highPrice) {
             #ifdef ENABLE_DEBUG_LOGS
-            Print("⚠️ Level ", i, " outside range: ", DoubleToString(levelPrice, Digits));
+            Print("   Level ", i, " outside range: ", DoubleToString(levelPrice, Digits));
             #endif
             continue;  // Skip levels outside range
         }
@@ -3581,14 +3581,14 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
         // Normalize price to symbol's digits
         double normalizedPrice = NormalizeDouble(levelPrice, Digits);
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DRAW MID-RANGE ZONE (BEFORE this level)
-        // رسم محدوده میانی (قبل از این سطح)
+        //                  (              )
         // 
         // LOGIC: Draw zone between previous boundary/level and current level
         // - For i=1: Zone between start boundary and first level
         // - For i>1: Zone between previous level and current level
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         if(inpShowMidZones) {
             // Determine previous price (boundary for i=1, previous level for i>1)
             double prevPrice = (i == 1) ? startPrice : (startPrice + (direction * stepSize * (i-1)));
@@ -3597,7 +3597,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
             // Calculate midpoint between previous and current
             double midPoint = (normalizedPrice + prevPrice) / 2.0;
             
-            // Calculate zone boundaries (±12.5% of halfStep from midpoint)
+            // Calculate zone boundaries ( 12.5% of halfStep from midpoint)
             double zoneTop = midPoint + zoneHeight;
             double zoneBottom = midPoint - zoneHeight;
             
@@ -3615,7 +3615,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
                                       inpMidZoneTransparency)) {
                     zoneCount++;
                     #ifdef ENABLE_DEBUG_LOGS
-                    Print("✅ Zone ", i, ": Between ", DoubleToString(prevPrice, Digits),
+                    Print("  Zone ", i, ": Between ", DoubleToString(prevPrice, Digits),
                           " and ", DoubleToString(normalizedPrice, Digits),
                           " | Mid=", DoubleToString(midPoint, Digits),
                           " | Height=", DoubleToString(zoneHeight, Digits),
@@ -3625,17 +3625,17 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
             }
         }
         
-        // ═══════════════════════════════════════════════════════════
+        //                                                            
         // DRAW FACTOR LEVEL LINE
-        // رسم خط سطح فاکتور
+        //                  
         // 
         // CRITICAL: Factor lines controlled by Trigger Levels (INVERTED)
-        // مهم: خطوط Factor توسط Trigger Levels کنترل می‌شوند (معکوس)
-        // Logic: Trigger OFF → Factor lines VISIBLE
-        //        Trigger ON  → Factor lines HIDDEN
-        // منطق: تریگر خاموش → خطوط Factor نمایش داده می‌شوند
-        //       تریگر روشن → خطوط Factor مخفی می‌شوند
-        // ═══════════════════════════════════════════════════════════
+        //    :      Factor      Trigger Levels               (     )
+        // Logic: Trigger OFF   Factor lines VISIBLE
+        //        Trigger ON    Factor lines HIDDEN
+        //     :                    Factor                   
+        //                         Factor             
+        //                                                            
         
         // Create level name
         string levelName = objectPrefix + "Factor_" + IntegerToString(i);
@@ -3681,7 +3681,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ DrawFactorLevelsAligned: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
+    Print("  DrawFactorLevelsAligned: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
     Print("   halfStep=", DoubleToString(halfStep, Digits), 
           ", zoneHeight=", DoubleToString(zoneHeight, Digits), " (25% of halfStep = 12.5% each side)");
     #endif
@@ -3689,7 +3689,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
 
 //+------------------------------------------------------------------+
 //| Draw Harmonic Factor levels FROM CENTER (supports Custom Price) |
-//| رسم سطوح Harmonic Factor از مرکز (پشتیبانی از Custom Price)      |
+//|          Harmonic Factor         (            Custom Price)      |
 //| Alternates between base and large steps from center              |
 //+------------------------------------------------------------------+
 #ifndef BUILD_LITE
@@ -3704,29 +3704,29 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
                                         const double harmonicRatio,
                                         const int maxLevelsAbove, const int maxLevelsBelow)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: INPUT VALIDATION (Security Layer)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(StringLen(objectPrefix) == 0 || centerPrice <= 0 || highPrice <= 0 || lowPrice <= 0) {
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Invalid inputs");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Invalid inputs");
         return;
     }
     if(highPrice <= lowPrice) {
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Invalid range - High must be > Low");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Invalid range - High must be > Low");
         return;
     }
     if(baseStepSize <= 0 || harmonicRatio < MIN_HARMONIC_RATIO || harmonicRatio > MAX_HARMONIC_RATIO) {
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Invalid step or ratio");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Invalid step or ratio");
         return;
     }
     if(maxLevelsAbove < 1 || maxLevelsBelow < 1) {
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Invalid level counts");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Invalid level counts");
         return;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: SAFETY CHECKS (Performance Protection)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Calculate historical range and viewport
     double historicalRange = highPrice - lowPrice;
@@ -3744,7 +3744,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
         safeMaxBelow = (int)MathMin(maxLevelsBelow, 100);
         
         #ifdef ENABLE_DEBUG_LOGS
-        Print("⚠️ Harmonic: Center outside viewport - limiting to ", safeMaxAbove, "/", safeMaxBelow);
+        Print("   Harmonic: Center outside viewport - limiting to ", safeMaxAbove, "/", safeMaxBelow);
         #endif
     }
     
@@ -3754,10 +3754,10 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
     // CRITICAL FIX: Calculate average step size for consistent zone height
     double avgStepSize = (baseStepSize + largeStepSize) / 2.0;
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // CLEANUP OLD OBJECTS (including zones)
-    // پاکسازی اشیاء قدیمی (شامل zone ها)
-    // ═══════════════════════════════════════════════════════════════
+    //                     (     zone   )
+    //                                                                
     ObjectsDeleteAll(0, objectPrefix + "Factor_Harmonic_", -1, -1);
     if(inpShowMidZones) {
         ObjectsDeleteAll(0, objectPrefix + "Factor_Harmonic_Zone_", -1, -1);
@@ -3809,7 +3809,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
     if(!InitializeZoneTracking(normalizedCenter, lastStructurePriceAbove, 
                                lastTriggerPriceAbove, lastFallbackPriceAbove)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Failed to initialize zone tracking (Above)");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Failed to initialize zone tracking (Above)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -3911,7 +3911,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
     if(!InitializeZoneTracking(normalizedCenter, lastStructurePriceBelow, 
                                lastTriggerPriceBelow, lastFallbackPriceBelow)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawFactorLevelsHarmonicFromCenter: Failed to initialize zone tracking (Below)");
+        Print("  DrawFactorLevelsHarmonicFromCenter: Failed to initialize zone tracking (Below)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -4003,7 +4003,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ DrawFactorLevelsHarmonicFromCenter: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
+    Print("  DrawFactorLevelsHarmonicFromCenter: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
     Print("   Above=", levelsAboveCount, "/", maxLevelsAbove,
           ", Below=", levelsBelowCount, "/", maxLevelsBelow);
     #endif
@@ -4012,7 +4012,7 @@ void DrawFactorLevelsHarmonicFromCenter(const string objectPrefix, const double 
 
 //+------------------------------------------------------------------+
 //| Draw Factor levels FROM CENTER (supports Custom Price)          |
-//| رسم سطوح Factor از مرکز (پشتیبانی از Custom Price)               |
+//|          Factor         (            Custom Price)               |
 //| Draws levels upward and downward from center point               |
 //| Like other modes (TH, SS/LS, M, TP), respects Custom Price      |
 //| GOLD VERSION: With safety checks and performance optimization    |
@@ -4022,34 +4022,34 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
                                 const double factor, const double stepSize,
                                 const int maxLevelsAbove, const int maxLevelsBelow)
 {
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 1: INPUT VALIDATION (Security Layer)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     if(StringLen(objectPrefix) == 0) {
-        Print("❌ DrawFactorLevelsFromCenter: Empty object prefix");
+        Print("  DrawFactorLevelsFromCenter: Empty object prefix");
         return;
     }
     if(centerPrice <= 0 || highPrice <= 0 || lowPrice <= 0) {
-        Print("❌ DrawFactorLevelsFromCenter: Invalid prices - Center=", centerPrice, 
+        Print("  DrawFactorLevelsFromCenter: Invalid prices - Center=", centerPrice, 
               ", High=", highPrice, ", Low=", lowPrice);
         return;
     }
     if(highPrice <= lowPrice) {
-        Print("❌ DrawFactorLevelsFromCenter: Invalid range - High must be > Low");
+        Print("  DrawFactorLevelsFromCenter: Invalid range - High must be > Low");
         return;
     }
     if(stepSize <= 0) {
-        Print("❌ DrawFactorLevelsFromCenter: Invalid step size: ", stepSize);
+        Print("  DrawFactorLevelsFromCenter: Invalid step size: ", stepSize);
         return;
     }
     if(maxLevelsAbove < 1 || maxLevelsBelow < 1) {
-        Print("❌ DrawFactorLevelsFromCenter: Invalid level counts");
+        Print("  DrawFactorLevelsFromCenter: Invalid level counts");
         return;
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // PHASE 2: SAFETY CHECKS (Performance Protection)
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Use user-defined level counts directly
     int safeMaxAbove = maxLevelsAbove;
@@ -4068,23 +4068,23 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
         ObjectsDeleteAll(0, objectPrefix + "Factor_Zone_", -1, -1);
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // ZONE HEIGHT CALCULATION (Unified Formula)
-    // محاسبه ارتفاع Zone (فرمول یکپارچه)
+    //               Zone (             )
     // Formula: zoneHeight = stepSize * 0.25 * 0.5 = stepSize * 0.125
-    // This means: 25% of step, split equally (±12.5% each side of midpoint)
-    // ═══════════════════════════════════════════════════════════════
+    // This means: 25% of step, split equally ( 12.5% each side of midpoint)
+    //                                                                
     const double ZONE_HEIGHT_PERCENT = 0.25;  // 25% of step
-    double zoneHeight = stepSize * ZONE_HEIGHT_PERCENT * 0.5;  // ±12.5% each side
+    double zoneHeight = stepSize * ZONE_HEIGHT_PERCENT * 0.5;  //  12.5% each side
     
     int levelsDrawn = 0;
     int zoneCount = 0;
     bool shouldShowLine = !IsTriggerLevelsEnabled();  // Cache trigger state
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // DRAW CENTER LEVEL (step 0)
-    // رسم سطح مرکزی
-    // ═══════════════════════════════════════════════════════════════
+    //              
+    //                                                                
     string centerLevelName = objectPrefix + "Factor_Center";
     double normalizedCenter = NormalizeDouble(centerPrice, Digits);
     
@@ -4110,11 +4110,11 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
         }
     }
     
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     // DRAW LEVELS ABOVE CENTER (respects maxLevelsAbove)
-    // رسم سطوح بالای مرکز (با احترام به maxLevelsAbove)
+    //                     (             maxLevelsAbove)
     // UNIFIED LOGIC: Matches M Mode exactly
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // OPTIMIZATION: Cache frequently called values BEFORE the loop
     bool triggerEnabled = IsTriggerLevelsEnabled();
@@ -4126,7 +4126,7 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
     if(!InitializeZoneTracking(normalizedCenter, lastStructurePriceAbove, 
                                lastTriggerPriceAbove, lastFallbackPriceAbove)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawFactorLevelsFromCenter: Failed to initialize zone tracking (Above)");
+        Print("  DrawFactorLevelsFromCenter: Failed to initialize zone tracking (Above)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -4236,19 +4236,19 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
         levelsAboveCount++;
     }
     
-    // ═══════════════════════════════════════════════════════════════
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
+    //                                                                
     // DRAW LEVELS BELOW CENTER (respects maxLevelsBelow)
-    // رسم سطوح پایین مرکز (با احترام به maxLevelsBelow)
+    //                     (             maxLevelsBelow)
     // UNIFIED LOGIC: Matches M Mode exactly
-    // ═══════════════════════════════════════════════════════════════
+    //                                                                
     
     // Initialize zone tracking with validation (Gold Version)
     double lastStructurePriceBelow, lastTriggerPriceBelow, lastFallbackPriceBelow;
     if(!InitializeZoneTracking(normalizedCenter, lastStructurePriceBelow, 
                                lastTriggerPriceBelow, lastFallbackPriceBelow)) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("❌ DrawFactorLevelsFromCenter: Failed to initialize zone tracking (Below)");
+        Print("  DrawFactorLevelsFromCenter: Failed to initialize zone tracking (Below)");
         #endif
         return;  // Abort if initialization failed
     }
@@ -4358,7 +4358,7 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("✅ DrawFactorLevelsFromCenter: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
+    Print("  DrawFactorLevelsFromCenter: Drew ", levelsDrawn, " levels and ", zoneCount, " zones");
     Print("   Center=", DoubleToString(normalizedCenter, Digits),
           ", Above=", levelsAboveCount, "/", maxLevelsAbove, 
           ", Below=", levelsBelowCount, "/", maxLevelsBelow);
@@ -4368,8 +4368,8 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
 //+------------------------------------------------------------------+
 //| DEPRECATED: Use DrawFactorLevelsAligned instead                 |
 //| Draw Factor levels between Historical High and Low               |
-//| رسم سطوح فاکتور بین High و Low تاریخی                            |
-//| Divides the range into (Factor × 2) equal parts                  |
+//|                     High   Low                                   |
+//| Divides the range into (Factor   2) equal parts                  |
 //| NOTE: This function is kept for backward compatibility only      |
 //+------------------------------------------------------------------+
 
@@ -4406,7 +4406,7 @@ void DrawFactorLevels(const string objectPrefix, const double highPrice,
     }
     
     // IMPROVED: Calculate exact number of levels that fit in the range
-    // Instead of using Factor × 2 - 1, we calculate how many complete steps fit
+    // Instead of using Factor   2 - 1, we calculate how many complete steps fit
     double range = highPrice - lowPrice;
     int totalLevels = (int)MathFloor(range / stepSize) - 1;  // -1 to exclude boundaries
     
@@ -4611,7 +4611,7 @@ void DrawFactorLevels(const string objectPrefix, const double highPrice,
 
 //+------------------------------------------------------------------+
 //| Clear all Factor level objects                                    |
-//| پاکسازی همه آبجکت‌های سطوح فاکتور                                 |
+//|                                                                   |
 //+------------------------------------------------------------------+
 void ClearFactorLevels(const string objectPrefix)
 {

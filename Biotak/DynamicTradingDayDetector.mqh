@@ -1,8 +1,8 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                   DynamicTradingDayDetector.mqh |
 //|                                                                  |
 //|  Dynamic Trading Day Detection from actual market data          |
-//|  تشخیص دینامیک روز معاملاتی از دیتای واقعی بازار               |
+//|                                                                |
 //+------------------------------------------------------------------+
 #property copyright "Biotak"
 #property strict
@@ -100,17 +100,17 @@ string GetSessionStatistics()
     int totalBlocks = totalMinutes / 30;
     
     string stats = "\n";
-    stats += "╔═══════════════════════════════════════════════════════════════╗\n";
-    stats += "║  TRADING SESSION STATISTICS                                  ║\n";
-    stats += "╠═══════════════════════════════════════════════════════════════╣\n";
-    stats += "║  Current Time:        " + TimeToString(currentTime, TIME_DATE|TIME_SECONDS) + "                    ║\n";
-    stats += "║  Session Start:       " + TimeToString(sessionStart, TIME_DATE|TIME_SECONDS) + "                    ║\n";
-    stats += "║  First Bar:           " + TimeToString(firstBarTime, TIME_DATE|TIME_SECONDS) + "                    ║\n";
-    stats += "║  Last Bar:            " + TimeToString(lastBarTime, TIME_DATE|TIME_SECONDS) + "                    ║\n";
-    stats += "║  Total M1 Bars:       " + IntegerToString(totalBars) + "                                   ║\n";
-    stats += "║  30-Min Blocks:       " + IntegerToString(totalBlocks) + "                                   ║\n";
-    stats += "║  Market Status:       " + (marketOpen ? "OPEN" : "CLOSED") + "                                   ║\n";
-    stats += "╚═══════════════════════════════════════════════════════════════╝\n";
+    stats += "====================\n";
+    stats += "   TRADING SESSION STATISTICS                                   \n";
+    stats += "====================\n";
+    stats += "   Current Time:        " + TimeToString(currentTime, TIME_DATE|TIME_SECONDS) + "                     \n";
+    stats += "   Session Start:       " + TimeToString(sessionStart, TIME_DATE|TIME_SECONDS) + "                     \n";
+    stats += "   First Bar:           " + TimeToString(firstBarTime, TIME_DATE|TIME_SECONDS) + "                     \n";
+    stats += "   Last Bar:            " + TimeToString(lastBarTime, TIME_DATE|TIME_SECONDS) + "                     \n";
+    stats += "   Total M1 Bars:       " + IntegerToString(totalBars) + "                                    \n";
+    stats += "   30-Min Blocks:       " + IntegerToString(totalBlocks) + "                                    \n";
+    stats += "   Market Status:       " + (marketOpen ? "OPEN" : "CLOSED") + "                                    \n";
+    stats += "====================\n";
     
     return stats;
 }

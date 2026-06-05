@@ -1,9 +1,9 @@
-//+------------------------------------------------------------------+
+﻿  //+------------------------------------------------------------------+
 //|                                   InputValidationEnhanced.mqh     |
 //|                                  GOLD FIX: Input Security Layer   |
 //|                                  Comprehensive Validation         |
 //+------------------------------------------------------------------+
-#property copyright "© Biotak - Security Enhanced"
+#property copyright "  Biotak - Security Enhanced"
 #property strict
 
 //+------------------------------------------------------------------+
@@ -145,14 +145,14 @@ ValidationResult ValidateIntegerInput(int value, const string paramName,
 bool ValidateColorInput(color clr, const string paramName) {
     // Check if color is valid (not clrNONE unless explicitly allowed)
     if(clr == clrNONE) {
-        Print("⚠️ ", paramName, " is clrNONE - using default");
+        Print("   ", paramName, " is clrNONE - using default");
         return false;
     }
     
     // MQL4 colors are 32-bit integers, check if in valid range
     int colorValue = (int)clr;
     if(colorValue < 0 || colorValue > 0xFFFFFF) {
-        Print("❌ ", paramName, " has invalid color value: ", colorValue);
+        Print("  ", paramName, " has invalid color value: ", colorValue);
         return false;
     }
     
@@ -200,12 +200,12 @@ ValidationResult ValidateStringInput(const string value, const string paramName,
 bool ValidateArraySize(const int size, const string arrayName, 
                        int minSize = 0, int maxSize = 100000) {
     if(size < minSize) {
-        Print("❌ ", arrayName, " size too small: ", size, " (min: ", minSize, ")");
+        Print("  ", arrayName, " size too small: ", size, " (min: ", minSize, ")");
         return false;
     }
     
     if(size > maxSize) {
-        Print("❌ ", arrayName, " size too large: ", size, " (max: ", maxSize, ")");
+        Print("  ", arrayName, " size too large: ", size, " (max: ", maxSize, ")");
         return false;
     }
     

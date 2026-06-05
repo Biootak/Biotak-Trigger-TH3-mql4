@@ -1,4 +1,4 @@
-#ifndef GLOBAL_VARIABLES_MQH
+﻿  #ifndef GLOBAL_VARIABLES_MQH
 #define GLOBAL_VARIABLES_MQH
 
 // Core State
@@ -13,7 +13,7 @@ static bool g_labelsRelayoutNeeded = false;
 static double g_dailyClosePriceForTH = EMPTY_VALUE;
 bool g_redrawTHLevelsNeeded = true;
 bool g_forceClearOnNextDraw = false;
-// g_viewportOnlyRedraw removed — scroll no longer triggers level redraw
+// g_viewportOnlyRedraw removed   scroll no longer triggers level redraw
 int g_currentLabelYOffset = 0;       // Cumulative Y offset for stacking top label sections (ATR)
 int g_currentLabelYOffsetBottom = 0;  // Cumulative Y offset for stacking bottom label sections (TH)
 int g_modeLabelYOffset = 0;           // Final Y offset after all labels rendered
@@ -97,7 +97,7 @@ static string g_activeABCDPattern = "";
 // Frequency Optimizer Result (last auto-find result for info label)
 FrequencyResult g_lastFreqResult;
 
-// Frequency History Ring Buffer — last FREQ_HISTORY_SIZE patterns
+// Frequency History Ring Buffer   last FREQ_HISTORY_SIZE patterns
 FrequencyHistoryEntry g_freqHistory[FREQ_HISTORY_SIZE];
 int g_freqHistoryCount = 0;   // Total entries added (for < FREQ_HISTORY_SIZE check)
 int g_freqHistoryHead  = 0;   // Next write position (wraps around)
