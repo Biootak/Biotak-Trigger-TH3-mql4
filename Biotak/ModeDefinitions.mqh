@@ -84,7 +84,7 @@ SModeConfig BuildTHConfig(const string objectPrefix)
     cfg.fallbackColor = clrDodgerBlue;
     cfg.fallbackStyle = STYLE_DOT;
     cfg.fallbackWidth = 1;
-    cfg.midpointColor = inpTriggerColor;
+    cfg.midpointColor = GetTriggerRenderColor();
     cfg.midpointStyle = inpTriggerStyle;
     cfg.midpointWidth = inpTriggerWidth;
     return cfg;

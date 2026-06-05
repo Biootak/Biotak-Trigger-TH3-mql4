@@ -2557,7 +2557,7 @@ bool GetPathForLevelOptimized(const int stepCount, color &outColor, ENUM_LINE_ST
     
     // If Trigger lines are enabled, all steps use trigger path (matching Java line 139-140)
     if(triggerEnabled) {
-        outColor = inpTriggerColor;
+        outColor = GetTriggerRenderColor();
         outStyle = inpTriggerStyle;
         outWidth = inpTriggerWidth;
         return true;

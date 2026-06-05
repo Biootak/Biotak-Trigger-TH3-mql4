@@ -372,7 +372,7 @@ int ClassifyLevels(
             classified[i].isTrigger = true;
             if(triggerEnabled) {
                 // User has trigger styling enabled — use trigger colors
-                classified[i].levelColor = inpTriggerColor;
+                classified[i].levelColor = GetTriggerRenderColor();
                 classified[i].levelStyle = inpTriggerStyle;
                 classified[i].levelWidth = inpTriggerWidth;
             } else {
