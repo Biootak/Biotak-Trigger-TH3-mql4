@@ -252,10 +252,10 @@ bool CreateFactorMidZone_LinesStyle(const string zoneName,
 //+------------------------------------------------------------------+
 //| Get default Factor value from Control step size                  |
 //|                                      Control                      |
-//| Simple Formula: Step = Range / (Factor   2)                      |
-//| We want: Step = Control = (SS + LS) / 2 = TH   1.75              |
-//| So: TH   1.75 = Range / (Factor   2)                             |
-//| Therefore: Factor = Range / (TH   1.75   2)                      |
+//| Simple Formula: Step = Range / Factor                            |
+//| We want: Step = Control = (SS + LS) / 2 = TH * 1.75              |
+//| So: TH * 1.75 = Range / Factor                                   |
+//| Therefore: Factor = Range / (TH * 1.75)                          |
 //|                                                                  |
 //| NOW SUPPORTS MULTIPLE BASIS TYPES:                               |
 //| - Control, SS, LS, TH, Trigger, Pattern, Structure, Combo       |
@@ -296,7 +296,8 @@ double GetDefaultFactorValue(const double basePrice) {
     }
     
     // CRITICAL: Check for potential division overflow BEFORE calculation
-    double denominator = stepSize * 2.0;
+    // FIX: Removed * 2.0 to restore correct factor calculation in Zone-First architecture
+    double denominator = stepSize;
     if(denominator <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("GetDefaultFactorValue: Invalid denominator, using fallback");
@@ -314,7 +315,7 @@ double GetDefaultFactorValue(const double basePrice) {
         return 1000.0;
     }
     
-    // Calculate Factor: Factor = Range / (StepSize   2)
+    // Calculate Factor: Factor = Range / StepSize
     double factor = range / denominator;
     
     // Range validation with intelligent clamping
