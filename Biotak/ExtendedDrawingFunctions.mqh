@@ -296,8 +296,8 @@ double GetDefaultFactorValue(const double basePrice) {
     }
     
     // CRITICAL: Check for potential division overflow BEFORE calculation
-    // FIX: Removed * 2.0 to restore correct factor calculation in Zone-First architecture
-    double denominator = stepSize;
+    // GOLD REVERT: Re-added * 2.0 as requested to maintain Factor/Step relationship
+    double denominator = stepSize * 2.0;
     if(denominator <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("GetDefaultFactorValue: Invalid denominator, using fallback");

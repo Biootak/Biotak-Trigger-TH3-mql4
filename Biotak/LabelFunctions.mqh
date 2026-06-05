@@ -1,4 +1,4 @@
-﻿  #ifndef LABEL_FUNCTIONS_MQH
+  #ifndef LABEL_FUNCTIONS_MQH
 #define LABEL_FUNCTIONS_MQH
 
 #property strict
@@ -504,114 +504,95 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     color cachedColor;
     bool exists = CacheGetLabel(mainObjName, cachedText, cachedColor);
     
-    bool textChanged = !exists || (cachedText != mainText);
-    bool colorChanged = !exists || (cachedColor != textColor);
+    bool mainCreated = false;
+    bool stepsCreated = false;
+    bool targetsCreated = false;
 
-    if(exists) {
-        if(textChanged) {
-            ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);
-            ObjectSetString(0, stepsObjName, OBJPROP_TEXT, stepsText);
-            if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
-                ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
-            }
-            CacheUpdateLabel(mainObjName, mainText, textColor);
-        }
-        if(colorChanged) {
-            ObjectSetInteger(0, mainObjName, OBJPROP_COLOR, textColor);
-            ObjectSetInteger(0, stepsObjName, OBJPROP_COLOR, textColor);
-            if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
-                ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
-            }
-            CacheUpdateLabel(mainObjName, mainText, textColor);
-        }
-        int baseY = MathAbs(yPos);
-        int singleLineHeight_u = inpFontSize + inpLabelRowGap;
-        ObjectSetInteger(0, mainObjName, OBJPROP_YDISTANCE, baseY);
-        ObjectSetInteger(0, stepsObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight_u);
-        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
-            ObjectSetInteger(0, targetsObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight_u * 2);
-        }
-        int labelXDistance = MathAbs(xPos);
-        int mainTextWidth = (int)(StringLen(mainText) * inpFontSize * 0.6);
-        int stepsTextWidth = (int)(StringLen(stepsText) * inpFontSize * 0.6);
-        int mainOffset = (stepsTextWidth - mainTextWidth) / 2;
-        if(mainOffset < 0) mainOffset = 0;
-        ObjectSetInteger(0, mainObjName, OBJPROP_XDISTANCE, labelXDistance + mainOffset);
-        ObjectSetInteger(0, stepsObjName, OBJPROP_XDISTANCE, labelXDistance);
-        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
-            int targetsTextWidth = (int)(StringLen(targetsText) * inpFontSize * 0.6);
-            int targetsOffset = (mainTextWidth - targetsTextWidth) / 2 + mainOffset;
-            if(targetsOffset < 0) targetsOffset = 0;
-            ObjectSetInteger(0, targetsObjName, OBJPROP_XDISTANCE, labelXDistance + targetsOffset);
-        }
-        return true;
-    }
-
-    // Creation path
+    // Creation path - ensure objects exist
     if (ObjectFind(0, mainObjName) < 0) {
         if (!ObjectCreate(0, mainObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, mainObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
+        mainCreated = true;
     }
     if (ObjectFind(0, stepsObjName) < 0) {
         if (!ObjectCreate(0, stepsObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, stepsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
+        stepsCreated = true;
     }
     if (inpShowATRTargets && ObjectFind(0, targetsObjName) < 0) {
         if (!ObjectCreate(0, targetsObjName, OBJ_LABEL, 0, 0, 0)) return false;
         ObjectSetString(0, targetsObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
+        targetsCreated = true;
     }
-    if(inpShowATRTargets) {
-        ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
-        ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
-        SetLabelFont(targetsObjName);
+
+    // CRITICAL FIX: If any object was just created, force updates even if cache says they match
+    bool textChanged = mainCreated || stepsCreated || targetsCreated || !exists || (cachedText != mainText);
+    bool colorChanged = mainCreated || stepsCreated || targetsCreated || !exists || (cachedColor != textColor);
+
+    if(textChanged) {
+        ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);
+        ObjectSetString(0, stepsObjName, OBJPROP_TEXT, stepsText);
+        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+            ObjectSetString(0, targetsObjName, OBJPROP_TEXT, targetsText);
+        }
+        CacheUpdateLabel(mainObjName, mainText, textColor);
     }
-    ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);
-    ObjectSetString(0, stepsObjName, OBJPROP_TEXT, stepsText);
-    ObjectSetInteger(0, mainObjName, OBJPROP_COLOR, textColor);
-    ObjectSetInteger(0, stepsObjName, OBJPROP_COLOR, textColor);
-    SetLabelFont(mainObjName);
-    SetLabelFont(stepsObjName);
+    
+    if(colorChanged) {
+        ObjectSetInteger(0, mainObjName, OBJPROP_COLOR, textColor);
+        ObjectSetInteger(0, stepsObjName, OBJPROP_COLOR, textColor);
+        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+            ObjectSetInteger(0, targetsObjName, OBJPROP_COLOR, textColor);
+        }
+        CacheUpdateLabel(mainObjName, mainText, textColor);
+    }
+
+    if(mainCreated) SetLabelFont(mainObjName);
+    if(stepsCreated) SetLabelFont(stepsObjName);
+    if(targetsCreated) SetLabelFont(targetsObjName);
     
     ENUM_BASE_CORNER corner = CORNER_LEFT_UPPER;
     ENUM_ANCHOR_POINT anchor = ANCHOR_LEFT_UPPER;
-    InitATRChartLabel(mainObjName, corner, anchor);
-    InitATRChartLabel(stepsObjName, corner, anchor);
-    if(inpShowATRTargets) {
-        InitATRChartLabel(targetsObjName, corner, anchor);
-    }
-    int labelXDistance = MathAbs(xPos);
-    int bottomPadding = 20;
+    
+    if(mainCreated) InitATRChartLabel(mainObjName, corner, anchor);
+    if(stepsCreated) InitATRChartLabel(stepsObjName, corner, anchor);
+    if(targetsCreated) InitATRChartLabel(targetsObjName, corner, anchor);
+
+    int baseY = MathAbs(yPos);
     int lineGap = inpLabelRowGap;
     int singleLineHeight = inpFontSize + lineGap;
+    
+    if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+        ObjectSetInteger(0, targetsObjName, OBJPROP_YDISTANCE, baseY);
+        ObjectSetInteger(0, stepsObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight);
+        ObjectSetInteger(0, mainObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight * 2);
+    } else {
+        ObjectSetInteger(0, stepsObjName, OBJPROP_YDISTANCE, baseY);
+        ObjectSetInteger(0, mainObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight);
+    }
+
+    int labelXDistance = MathAbs(xPos);
     int mainTextWidth = (int)(StringLen(mainText) * inpFontSize * 0.6);
     int stepsTextWidth = (int)(StringLen(stepsText) * inpFontSize * 0.6);
     int mainOffset = (stepsTextWidth - mainTextWidth) / 2;
     if(mainOffset < 0) mainOffset = 0;
-    int targetsOffset = 0;
-    if(inpShowATRTargets) {
-        int targetsTextWidth = (int)(StringLen(targetsText) * inpFontSize * 0.6);
-        targetsOffset = (mainTextWidth - targetsTextWidth) / 2 + mainOffset;
-        if(targetsOffset < 0) targetsOffset = 0;
-    }
     
-    int baseY = MathAbs(yPos);
-    ObjectSetInteger(0, mainObjName, OBJPROP_YDISTANCE, baseY);
-    ObjectSetInteger(0, stepsObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight);
-    if(inpShowATRTargets) {
-        ObjectSetInteger(0, targetsObjName, OBJPROP_YDISTANCE, baseY + singleLineHeight * 2);
-    }
-    if(inpShowATRTargets) {
-        ObjectSetInteger(0, targetsObjName, OBJPROP_XDISTANCE, labelXDistance + targetsOffset);
-    }
     ObjectSetInteger(0, mainObjName, OBJPROP_XDISTANCE, labelXDistance + mainOffset);
     ObjectSetInteger(0, stepsObjName, OBJPROP_XDISTANCE, labelXDistance);
     
+    if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
+        int targetsTextWidth = (int)(StringLen(targetsText) * inpFontSize * 0.6);
+        int targetsOffset = (mainTextWidth - targetsTextWidth) / 2 + mainOffset;
+        if(targetsOffset < 0) targetsOffset = 0;
+        ObjectSetInteger(0, targetsObjName, OBJPROP_XDISTANCE, labelXDistance + targetsOffset);
+    }
+    
     if(IsIndicatorHidden()) {
-        if(inpShowATRTargets) ObjectSetInteger(0, targetsObjName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) ObjectSetInteger(0, targetsObjName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, mainObjName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, stepsObjName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
     } else {
-        if(inpShowATRTargets) ObjectSetInteger(0, targetsObjName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+        if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) ObjectSetInteger(0, targetsObjName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
         ObjectSetInteger(0, mainObjName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
         ObjectSetInteger(0, stepsObjName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
     }
@@ -835,8 +816,10 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     color cachedColor;
     bool exists = CacheGetLabel(mainObjName, cachedText, cachedColor);
     
-    bool textChanged = !exists || (cachedText != mainText);
-    bool colorChanged = !exists || (cachedColor != textColor);
+    // CRITICAL FIX: If any object was just created (mainCreated/stepsCreated/targetsCreated), 
+    // we MUST force text/color updates even if cache says they match.
+    bool textChanged = mainCreated || stepsCreated || targetsCreated || !exists || (cachedText != mainText);
+    bool colorChanged = mainCreated || stepsCreated || targetsCreated || !exists || (cachedColor != textColor);
     
     if(textChanged) {
         ObjectSetString(0, mainObjName, OBJPROP_TEXT, mainText);

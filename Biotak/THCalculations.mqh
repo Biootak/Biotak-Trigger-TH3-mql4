@@ -230,8 +230,8 @@ double CalculateFactorStepSize(const double highPrice, const double lowPrice, co
     //                                                                
     // Enhanced safe division with proper threshold
     //                                                                
-    // FIX: Removed * 2.0 to restore correct step size in Zone-First architecture
-    double divisions = factor;
+    // GOLD REVERT: Re-added * 2.0 as requested to maintain Factor/Step relationship
+    double divisions = factor * 2.0;
     
     // CRITICAL: Use MIN_SAFE_DIVISIONS instead of EPSILON_GENERAL
     // EPSILON_GENERAL (1e-9) is too small and can cause precision loss
