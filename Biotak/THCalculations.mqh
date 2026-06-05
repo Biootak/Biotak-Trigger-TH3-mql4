@@ -101,10 +101,14 @@ double GetTimeframeTH() {
     return CalculateTimeframeTH(GetFractalTimeframeForCurrent());
 }
 
+double GetBaseTimeframeTH() {
+    return CalculateTimeframeTH(GetBaseFractalTimeframeForCurrent());
+}
+
 double CalculateTimeframeTH(const string timeframe) {
     // OPTIMIZATION: Check cache first for fractal percentage
     int currentPeriod = GetCachedPeriod();
-    double cachedPercentage = GetCachedFractalPercentage(currentPeriod);
+    double cachedPercentage = GetCachedFractalPercentage(currentPeriod, timeframe);
     if(cachedPercentage > 0) {
         return cachedPercentage;
     }

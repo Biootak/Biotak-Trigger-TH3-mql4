@@ -1,4 +1,4 @@
-﻿  #ifndef CALCULATION_CACHE_MQH
+  #ifndef CALCULATION_CACHE_MQH
 #define CALCULATION_CACHE_MQH
 
 #property copyright "Biotak"
@@ -157,8 +157,8 @@ string GetCachedFractalTimeframe(int period) {
     return g_timeframeCache.fractalTimeframe;
 }
 
-double GetCachedFractalPercentage(int period) {
-    if(!g_timeframeCache.valid || g_timeframeCache.period != period) {
+double GetCachedFractalPercentage(int period, string fractalTimeframe) {
+    if(!g_timeframeCache.valid || g_timeframeCache.period != period || g_timeframeCache.fractalTimeframe != fractalTimeframe) {
         return 0.0;
     }
     return g_timeframeCache.percentage;

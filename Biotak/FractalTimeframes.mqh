@@ -1,6 +1,6 @@
-﻿  #property strict
+  #property strict
 
-string GetFractalTimeframeForCurrent() {
+string GetBaseFractalTimeframeForCurrent() {
     string currentTimeframe=GetCurrentTimeframe();
     if(currentTimeframe=="M1") return "M1";
     if(currentTimeframe=="M5") return "M4";
@@ -10,7 +10,30 @@ string GetFractalTimeframeForCurrent() {
     if(currentTimeframe=="D1") return "H17+M4";
     if(currentTimeframe=="W1") return "D11+H9+M4";
     if(currentTimeframe=="MN1") return "D45+H12+M16";
-    return "UNKNOWN";
+    return "M1";
+}
+
+string GetFractalTimeframeForCurrent() {
+    string baseTF = GetBaseFractalTimeframeForCurrent();
+    int shift = g_fractalShift;
+    
+    if(shift <= 0) return baseTF;
+    
+    // Find index of baseTF
+    int baseIdx = -1;
+    int arraySize = ArraySize(FRACTAL_TIMEFRAMES);
+    for(int i = 0; i < arraySize; i++) {
+        if(FRACTAL_TIMEFRAMES[i] == baseTF) {
+            baseIdx = i;
+            break;
+        }
+    }
+    
+    if(baseIdx == -1) return baseTF;
+    
+    // Apply shift and clamp to array bounds
+    int targetIdx = MathMin(arraySize - 1, baseIdx + shift);
+    return FRACTAL_TIMEFRAMES[targetIdx];
 }
 
 string GetStructureTimeframeForCurrent() {

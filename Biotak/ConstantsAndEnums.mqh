@@ -1,4 +1,4 @@
-﻿   #ifndef CONSTANTS_AND_ENUMS_MQH
+   #ifndef CONSTANTS_AND_ENUMS_MQH
 #define CONSTANTS_AND_ENUMS_MQH
 
 #define MAX_LINES 10
@@ -502,7 +502,8 @@ enum ENUM_TH3_DRAWING_MODE {
 enum ENUM_ADAPTIVE_MODE {
     ADAPTIVE_FIXED   = 0,    // Fixed (No Adaptation)
     ADAPTIVE_ATR     = 1,    // ATR Adaptive (Full)
-    ADAPTIVE_BLENDED = 2     // Blended (Mix ATR + TH)
+    ADAPTIVE_BLENDED = 2,    // Blended (Mix ATR + TH)
+    ADAPTIVE_FRACTAL = 3     // Fractal Jump (Power of 2 steps based on ATR)
 };
 
 // Adaptive Scaling Constants
@@ -510,6 +511,9 @@ enum ENUM_ADAPTIVE_MODE {
 #define MAX_SCALING_FACTOR      10.0   // Maximum allowed scaling factor
 #define DEFAULT_SMOOTHING_PERIOD 20    // Default EMA smoothing period
 #define DEFAULT_BLEND_RATIO     0.5    // Default blend ratio (50/50)
+
+// Global State Variables for Adaptive Scaling
+static int g_fractalShift = 0;          // Current fractal level shift (power of 2)
 
 //+------------------------------------------------------------------+
 //| TH3 Object Name Suffixes (Magic Numbers Elimination)            |
