@@ -1,4 +1,4 @@
-﻿   //+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
 //| Event Handlers - Version 3.09 GOLD                              |
 //| Security & Performance Audit Complete                           |
 //+------------------------------------------------------------------+
@@ -121,8 +121,6 @@ int OnInitHandler() {
         g_customPriceKeyboardOverride = false;
         GlobalVariableSet(gvarName, g_customTHStartPrice);
         GlobalVariableSet(overrideFlagName, 0.0);
-        GlobalVariableTemp(gvarName);
-        GlobalVariableTemp(overrideFlagName);
         DEBUG_PRINTF("OnInit: Using custom price from settings: ", DoubleToString(g_customTHStartPrice, digits));
         CreateCustomPriceLine(g_customTHStartPrice, digits);
     } else if(savedPrice > 0.0) {
@@ -160,12 +158,10 @@ int OnInitHandler() {
     string lockFlagName = "Biotak_LockTF_" + chartIdStr;
     if(GlobalVariableCheck(lockFlagName)) {
         g_timeframeLocked = (bool)GlobalVariableGet(lockFlagName);
-        GlobalVariableTemp(lockFlagName);
     }
     string lockPeriodName = "Biotak_LockTFPeriod_" + chartIdStr;
     if(GlobalVariableCheck(lockPeriodName)) {
         g_lockedPeriod = (int)GlobalVariableGet(lockPeriodName);
-        GlobalVariableTemp(lockPeriodName);
     }
 
     // Restore step mode with range validation (0..3)
@@ -179,7 +175,6 @@ int OnInitHandler() {
             GlobalVariableDel(stepModeGvarName);
             g_stepModeOverride = -1;
         }
-        GlobalVariableTemp(stepModeGvarName);
     }
 
     // Restore factor with validation (0 < val <= MAX_SAFE_FACTOR)
@@ -193,7 +188,6 @@ int OnInitHandler() {
             GlobalVariableDel(factorGvarName);
             g_factorValueOverride = 0.0;
         }
-        GlobalVariableTemp(factorGvarName);
     } else {
         g_factorValueOverride = 0.0;
     }
@@ -217,7 +211,6 @@ int OnInitHandler() {
             g_th3FreqOverride = 0;
             GlobalVariableDel(freqGvarName);
         }
-        GlobalVariableTemp(freqGvarName);
     }
     string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
     if(GlobalVariableCheck(indexGvarName)) {
@@ -228,7 +221,6 @@ int OnInitHandler() {
             g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
             GlobalVariableDel(indexGvarName);
         }
-        GlobalVariableTemp(indexGvarName);
     }
     // Binary subdivision migration: sync index with saved frequency (old GM -> binary)
     if(g_th3FreqOverride > 0) {
@@ -456,7 +448,6 @@ void OnDeinitHandler(const int reason) {
         GlobalVariableDel(thLabelsGvarNameLocal);
         string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStrLocal;
         GlobalVariableSet(th3UpdateFlag, 1.0);
-        GlobalVariableTemp(th3UpdateFlag);
         DEBUG_PRINT("OnDeinit (REASON_PARAMETERS) - reset overrides");
         DeleteAllIndicatorObjects(false);
     }

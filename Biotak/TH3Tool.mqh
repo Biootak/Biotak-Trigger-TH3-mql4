@@ -1,4 +1,4 @@
-﻿   //+------------------------------------------------------------------+
+   //+------------------------------------------------------------------+
 //|                                                      TH3Tool.mqh |
 //|                     TH3 Structure Tool (Proprietary Logic)       |
 //|                     Supports: Steps Mode & AB=CD Pattern Mode    |
@@ -2261,8 +2261,6 @@ bool AutoSelectBestFrequency(string patternName)
     string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
     GlobalVariableSet(freqGvarName, bestFreq);
     GlobalVariableSet(indexGvarName, bestIndex);
-    GlobalVariableTemp(freqGvarName);
-    GlobalVariableTemp(indexGvarName);
     
     Print("==================== Frequency applied successfully");
     
@@ -2984,8 +2982,6 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
                     string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
                     GlobalVariableSet(freqGvarName, g_th3FreqOverride);
                     GlobalVariableSet(indexGvarName, g_th3FreqIndex);
-                    GlobalVariableTemp(freqGvarName);
-                    GlobalVariableTemp(indexGvarName);
                     
                     Print("========================================");
                     Print("==================== AUTO-SELECTED FREQUENCY");

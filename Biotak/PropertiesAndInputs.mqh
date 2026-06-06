@@ -1,4 +1,4 @@
-﻿  #ifndef PROPERTIES_AND_INPUTS_MQH
+  #ifndef PROPERTIES_AND_INPUTS_MQH
 #define PROPERTIES_AND_INPUTS_MQH
 
 #property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
@@ -187,13 +187,13 @@ input int inpTriggerTransparency = 30;   // Trigger Transparency (0=Solid, 100=I
 
 input group "15.2) TRIGGER - LINE"
 input string S15b = "[15.2] TRIGGER / LINE";
-input color inpTriggerColor = clrSilver;          // Trigger Base Color
+input color inpTriggerColor = clrBlack;          // Trigger Base Color
 input ENUM_LINE_STYLE inpTriggerStyle = STYLE_DOT; // Trigger Line Style
 input int inpTriggerWidth = 1;                    // Trigger Line Width
 
 input group "15.3) TRIGGER - LABEL"
 input string S15c = "[15.3] TRIGGER / LABEL";
-input color inpTriggerLabelColor = clrSilver;     // Trigger Label Color
+input color inpTriggerLabelColor = clrBlack;     // Trigger Label Color
 
 input group "16) STYLE - STRUCTURE"
 input string S16 = "[16] STYLE / STRUCTURE";
