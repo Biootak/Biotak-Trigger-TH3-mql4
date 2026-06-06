@@ -54,6 +54,7 @@ input double inpBasePriceThresholdPercent = 0.066;
 input ENUM_ADAPTIVE_MODE inpAdaptiveMode = ADAPTIVE_FIXED;       // Adaptive Mode
 input double inpAdaptiveBlendRatio = 0.5;                        // Adaptive Blend Ratio
 input int inpAdaptiveSmoothingPeriod = 20;                       // Adaptive Smoothing
+input ENUM_FRACTAL_JUMP_STRATEGY inpFractalJumpStrategy = JUMP_AGGRESSIVE; // Fractal Jump Strategy
 
 input group "04) CALCULATION - CUSTOM START"
 input string S4 = "[04] CALCULATION / CUSTOM START";

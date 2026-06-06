@@ -382,7 +382,7 @@ void CalculateATRBatch(double &results[]) {
 //|        ATR                                                        |
 //|                                                                  |
 //| Formula (matching Java OptimizedCalculations.calculateWeightedATR): |
-//| ATR = (ATR  1 + ATR   1 + ATR   2 + ATR   3 + ATR    5 + ATR    8) / 20 |
+//| ATR = (ATR₅×1 + ATR₁₀×1 + ATR₂₁×2 + ATR₆₆×3 + ATR₁₃₂×5 + ATR₂₆₄×8) / 20 |
 //|                                                                  |
 //| This provides a more stable ATR value by combining multiple      |
 //| periods with different weights.                                  |
@@ -441,7 +441,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate array size before access
     if(ArraySize(atrValues) < 6) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("  CalculateWeightedATR: ATR batch calculation failed, array size=", ArraySize(atrValues));
+        Print("   CalculateWeightedATR: ATR batch calculation failed, array size=", ArraySize(atrValues));
         #endif
         return 0.0;
     }
@@ -456,7 +456,7 @@ double CalculateWeightedATR() {
     // AUDIT FIX: Validate weights array size
     if(ArraySize(weights) != 6) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("  CalculateWeightedATR: Invalid weights array size");
+        Print("   CalculateWeightedATR: Invalid weights array size");
         #endif
         return 0.0;
     }
@@ -490,7 +490,6 @@ double CalculateWeightedATR() {
     
     // Update cache (including timeframe for lock detection)
     g_atrCache.weightedATR = result;
-    // PERFORMANCE: Use cached currentTime instead of calling TimeCurrent() again
     g_atrCache.lastUpdate = currentTime;
     g_atrCache.barCount = effectiveBars;
     g_atrCache.cachedTimeframe = effectiveTF;
@@ -500,12 +499,12 @@ double CalculateWeightedATR() {
     static datetime s_lastATRLog = 0;
     if(currentTime - s_lastATRLog > 300) {  // Log every 5 minutes
         Print("========== WEIGHTED ATR CALCULATION ==========");
-        Print("ATR : ", DoubleToString(atrValues[0], Digits));
-        Print("ATR  : ", DoubleToString(atrValues[1], Digits));
-        Print("ATR  : ", DoubleToString(atrValues[2], Digits));
-        Print("ATR  : ", DoubleToString(atrValues[3], Digits));
-        Print("ATR====================: ", DoubleToString(atrValues[4], Digits));
-        Print("ATR====================: ", DoubleToString(atrValues[5], Digits));
+        Print("ATR₅: ", DoubleToString(atrValues[0], Digits));
+        Print("ATR₁₀: ", DoubleToString(atrValues[1], Digits));
+        Print("ATR₂₁: ", DoubleToString(atrValues[2], Digits));
+        Print("ATR₆₆: ", DoubleToString(atrValues[3], Digits));
+        Print("ATR₁₃₂: ", DoubleToString(atrValues[4], Digits));
+        Print("ATR₂₆₄: ", DoubleToString(atrValues[5], Digits));
         Print("Weighted ATR: ", DoubleToString(result, Digits));
         Print("Effective TF: ", effectiveTF, " Bars: ", effectiveBars);
         Print("==============================================");
@@ -697,10 +696,11 @@ void CalculateATRFractalValues(double &structureValue, double &patternValue, dou
 }
 
 //+------------------------------------------------------------------+
-//| Get ATR for Specific Timeframe (with fractal scaling)            |
+//| Get ATR for Specific Timeframe (with direct calculation)         |
 //|        ATR                     (                      )          |
 //|                                                                  |
-//| Uses hybrid approach: actual ATR for current TF, scaled for others |
+//| CRITICAL FIX: Calculate ATR directly for each target timeframe   |
+//| Each timeframe gets its own ATR calculated from its own data     |
 //| AUDIT FIX: Added validation and multi-TF caching                 |
 //+------------------------------------------------------------------+
 double GetATRForTimeframe(const int targetMinutes) {
@@ -708,16 +708,6 @@ double GetATRForTimeframe(const int targetMinutes) {
     if(targetMinutes <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("   GetATRForTimeframe: Invalid target minutes (", targetMinutes, ")");
-        #endif
-        return 0.0;
-    }
-    
-    int currentMinutes = GetCurrentTimeframeMinutes();
-    
-    // AUDIT FIX: Validate current minutes
-    if(currentMinutes <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("   GetATRForTimeframe: Invalid current minutes (", currentMinutes, ")");
         #endif
         return 0.0;
     }
@@ -752,10 +742,43 @@ double GetATRForTimeframe(const int targetMinutes) {
         }
     }
     
-    // Calculate ATR
-    double result = CalculateHybridATR(currentMinutes, targetMinutes);
+    // Convert minutes to ENUM_TIMEFRAMES
+    ENUM_TIMEFRAMES targetTF = PERIOD_CURRENT;
+    switch(targetMinutes) {
+        case 1:     targetTF = PERIOD_M1; break;
+        case 5:     targetTF = PERIOD_M5; break;
+        case 15:    targetTF = PERIOD_M15; break;
+        case 30:    targetTF = PERIOD_M30; break;
+        case 60:    targetTF = PERIOD_H1; break;
+        case 240:   targetTF = PERIOD_H4; break;
+        case 1440:  targetTF = PERIOD_D1; break;
+        case 10080: targetTF = PERIOD_W1; break;
+        case 43200: targetTF = PERIOD_MN1; break;
+    }
     
-    // AUDIT FIX: Update multi-TF cache
+    double result = 0.0;
+    
+    if(targetTF == PERIOD_CURRENT) {
+        // Unknown/custom timeframe - use scaling method
+        int currentMinutes = GetCurrentTimeframeMinutes();
+        if(currentMinutes > 0) {
+            result = CalculateHybridATR(currentMinutes, targetMinutes);
+        }
+    } else {
+        // Calculate ATR directly for this specific timeframe using iATR
+        result = iATR(Symbol(), targetTF, 14, 0);
+        
+        // Validate result
+        if(result == EMPTY_VALUE || IsZero(result, EPSILON_PRICE)) {
+            // Fallback to scaling method if direct calculation fails
+            int currentMinutes = GetCurrentTimeframeMinutes();
+            if(currentMinutes > 0) {
+                result = CalculateHybridATR(currentMinutes, targetMinutes);
+            }
+        }
+    }
+    
+    // Update cache
     if(g_multiTFCacheInitialized && !IsZero(result, EPSILON_PRICE)) {
         UpdateMultiTFCache(targetMinutes, result);
     }
@@ -1125,31 +1148,6 @@ double CalculateWeightedATRForTimeframe(const ENUM_TIMEFRAMES targetTF) {
     if(!IsValidPrice(result, EPSILON_PRICE)) return 0.0;
     ArrayFree(atrValues);
     return result;
-}
-
-//+------------------------------------------------------------------+
-//| Batch ATR Calculation for Specific Timeframe                     |
-//+------------------------------------------------------------------+
-void CalculateATRBatchForTimeframe(double &results[], const ENUM_TIMEFRAMES targetTF) {
-    ArrayResize(results, 6);
-    ArrayInitialize(results, 0.0);
-    int barsAvailable = iBars(Symbol(), targetTF);
-    if(barsAvailable <= 0 || barsAvailable < ATR_PERIOD_1 + 2) return;
-    
-    int maxPeriod = ATR_PERIOD_6;
-    double highArr[], lowArr[], closeArr[];
-    int copyCount = MathMin(maxPeriod + 2, barsAvailable);
-    int copiedHigh  = CopyHigh(Symbol(), targetTF, 0, copyCount, highArr);
-    int copiedLow   = CopyLow(Symbol(), targetTF, 0, copyCount, lowArr);
-    int copiedClose = CopyClose(Symbol(), targetTF, 0, copyCount, closeArr);
-    if(copiedHigh < copyCount || copiedLow < copyCount || copiedClose < copyCount) return;
-    
-    double trValues[];
-    if(ArrayResize(trValues, maxPeriod) != maxPeriod) return;
-    ComputeTRFromBatchArrays(trValues, highArr, lowArr, closeArr, copyCount, maxPeriod);
-    ArrayFree(highArr); ArrayFree(lowArr); ArrayFree(closeArr);
-    CalculateSimpleATRFromTR(results, trValues, maxPeriod);
-    ArrayFree(trValues);
 }
 
 //+------------------------------------------------------------------+

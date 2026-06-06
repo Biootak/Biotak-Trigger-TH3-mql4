@@ -506,6 +506,12 @@ enum ENUM_ADAPTIVE_MODE {
     ADAPTIVE_FRACTAL = 3     // Fractal Jump (Power of 2 steps based on ATR)
 };
 
+// Fractal Jump Strategy
+enum ENUM_FRACTAL_JUMP_STRATEGY {
+    JUMP_CONSERVATIVE = 0,   // Conservative (Original log2 with bias)
+    JUMP_AGGRESSIVE   = 1    // Aggressive (Jump to higher levels earlier)
+};
+
 // Adaptive Scaling Constants
 #define MIN_SCALING_FACTOR      0.1    // Minimum allowed scaling factor
 #define MAX_SCALING_FACTOR      10.0   // Maximum allowed scaling factor

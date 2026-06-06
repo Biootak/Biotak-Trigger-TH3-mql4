@@ -137,16 +137,56 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
     
     // UPDATE FRACTAL SHIFT (Global State)
     if(inpAdaptiveMode == ADAPTIVE_FRACTAL) {
-        // We use a small bias (0.1) so that 2.8x becomes 4x (Shift 2)
-        // log2(2.8) = 1.48. 1.48 + 0.1 = 1.58. round(1.58) = 2.
-        if(g_smoothedScalingFactor <= 1.2) {
-            g_fractalShift = 0;
+        // TWO STRATEGIES: Conservative vs Aggressive
+        
+        if(inpFractalJumpStrategy == JUMP_AGGRESSIVE) {
+            // AGGRESSIVE STRATEGY: Jump to higher levels earlier
+            // Better for sharp volatile pairs (JPY, GBP, etc.)
+            //
+            // Logic:
+            // - If ratio <= 1.2: Shift = 0 (no jump)
+            // - If ratio <= 2.3: Shift = 1 (jump 1 level) 
+            // - If ratio <= 4.5: Shift = 2 (jump 2 levels)
+            // - If ratio >  4.5: Shift = 3 (jump 3 levels, max)
+            //
+            // Why? When ratio is 2.3x-2.8x, it's closer to 4x than 2x,
+            // so we jump to level 2 to get wider spacing between levels.
+            
+            if(g_smoothedScalingFactor <= 1.2) {
+                g_fractalShift = 0;
+            } else if(g_smoothedScalingFactor <= 2.3) {
+                g_fractalShift = 1;
+            } else if(g_smoothedScalingFactor <= 4.5) {
+                g_fractalShift = 2;
+            } else {
+                g_fractalShift = 3;
+            }
         } else {
-            g_fractalShift = (int)MathRound((MathLog(g_smoothedScalingFactor) / MathLog(2.0)) + 0.1);
-            if(g_fractalShift < 0) g_fractalShift = 0;
-            // Clamp to max 3 levels jump to keep chart readable
-            if(g_fractalShift > 3) g_fractalShift = 3;
+            // CONSERVATIVE STRATEGY: Original log2-based jumping
+            // Better for smoother transitions
+            //
+            // Uses log2 with small bias (0.1) for rounding
+            // Example: 2.8x → log2(2.8) = 1.48 → 1.48 + 0.1 = 1.58 → round = 2
+            
+            if(g_smoothedScalingFactor <= 1.2) {
+                g_fractalShift = 0;
+            } else {
+                g_fractalShift = (int)MathRound((MathLog(g_smoothedScalingFactor) / MathLog(2.0)) + 0.1);
+                if(g_fractalShift < 0) g_fractalShift = 0;
+                if(g_fractalShift > 3) g_fractalShift = 3;
+            }
         }
+        
+        #ifdef ENABLE_DEBUG_LOGS
+        static int s_lastShift = -1;
+        if(s_lastShift != g_fractalShift) {
+            string strategy = (inpFractalJumpStrategy == JUMP_AGGRESSIVE) ? "AGGRESSIVE" : "CONSERVATIVE";
+            Print("==================== [FRACTAL JUMP] Shift changed: ", s_lastShift, " → ", g_fractalShift,
+                  " | Ratio: ", DoubleToString(g_smoothedScalingFactor, 2), "x",
+                  " | Strategy: ", strategy);
+            s_lastShift = g_fractalShift;
+        }
+        #endif
     } else {
         g_fractalShift = 0;
     }
