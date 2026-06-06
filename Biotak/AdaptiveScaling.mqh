@@ -179,6 +179,7 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
                 }
                 g_fractalShift = targetIdx - baseIdx;
                 
+                #ifdef ENABLE_DEBUG_LOGS
                 // CRITICAL LOG: Now showing Pips instead of Points for clarity
                 static datetime s_lastLogTime = 0;
                 if(now - s_lastLogTime > 10) { // Log every 10 seconds
@@ -189,6 +190,7 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
                           " | Ratio: ", DoubleToString(g_smoothedScalingFactor, 2));
                     s_lastLogTime = now;
                 }
+                #endif
             } else {
                 // CONSERVATIVE STRATEGY: Original log2-based jumping
                 if(g_smoothedScalingFactor <= 1.2) {

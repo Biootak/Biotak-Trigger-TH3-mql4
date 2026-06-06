@@ -323,6 +323,7 @@ double CalculateOptimalDefaultFrequency()
     }
     
     //          
+    #ifdef ENABLE_DEBUG_LOGS
     Print("========================================");
     Print("==================== OPTIMAL DEFAULT FREQUENCY ANALYSIS");
     Print("========================================");
@@ -336,6 +337,7 @@ double CalculateOptimalDefaultFrequency()
     Print("  ==================== Closest: ", DoubleToString(GetFrequencyByIndex(bestIndices[2]), 3), 
           "% (Index: ", bestIndices[2], ", Error: ", DoubleToString(minErrors[2], 3), "%)");
     Print("========================================");
+    #endif
     
     //                                
     // Step 5      (     50%)
@@ -348,10 +350,12 @@ double CalculateOptimalDefaultFrequency()
     int bestDefaultIdx = FindNearestFreqIndex(weightedFreq);
     double bestDefault = GetFrequencyByIndex(bestDefaultIdx);
     
+    #ifdef ENABLE_DEBUG_LOGS
     Print("==================== RECOMMENDED DEFAULT FREQUENCY:");
     Print("  Weighted Average: ", DoubleToString(weightedFreq, 3), "%");
     Print("  Best Match: ", DoubleToString(bestDefault, 3), "% (Index: ", bestDefaultIdx, ")");
     Print("========================================");
+    #endif
     
     return bestDefault;
 }
@@ -2212,12 +2216,15 @@ bool AutoSelectBestFrequency(string patternName)
     }
     
     if(resultCount == 0) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== No suitable frequency found (error > 5%)");
+        #endif
         return false;
     }
     
     //              
     double pipSize = GetCachedPipSize();
+    #ifdef ENABLE_DEBUG_LOGS
     Print("========================================");
     Print("==================== FREQUENCY SEARCH RESULTS");
     Print("Pattern: ", patternName);
@@ -2231,10 +2238,12 @@ bool AutoSelectBestFrequency(string patternName)
     Print("   Time Symmetry: ", DoubleToString(results[0].timeSymmetry * 100, 1), "% | Total Score: ", DoubleToString(results[0].totalScore, 2));
     Print("========================================");
     Print("==================== TOP 10 ALTERNATIVES:");
+    #endif
     
     int displayCount = MathMin(10, resultCount);
     for(int i = 0; i < displayCount; i++)
     {
+        #ifdef ENABLE_DEBUG_LOGS
         Print(StringFormat("%d. %.3f%% ==================== Step %d | Err: %.2f%% (%.1f pips) | Speed: %.2fx | Score: %.2f",
               i + 1,
               results[i].frequency,
@@ -2243,8 +2252,11 @@ bool AutoSelectBestFrequency(string patternName)
               results[i].errorPips,
               results[i].gannAngle,
               results[i].totalScore));
+        #endif
     }
+    #ifdef ENABLE_DEBUG_LOGS
     Print("========================================");
+    #endif
     
     //           
     double bestFreq = results[0].frequency;
@@ -2262,7 +2274,9 @@ bool AutoSelectBestFrequency(string patternName)
     GlobalVariableSet(freqGvarName, bestFreq);
     GlobalVariableSet(indexGvarName, bestIndex);
     
+    #ifdef ENABLE_DEBUG_LOGS
     Print("==================== Frequency applied successfully");
+    #endif
     
     // Update frequency label
     UpdateTH3FrequencyLabel(bestFreq);
@@ -2280,19 +2294,25 @@ bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
 {
     // 1. Validate input times
     if(tA <= 0 || tB <= 0 || tC <= 0) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== AB=CD Error: Invalid time inputs");
+        #endif
         return false;
     }
     
     // 2. Validate input prices
     if(pA <= 0 || pB <= 0 || pC <= 0) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== AB=CD Error: Invalid price inputs");
+        #endif
         return false;
     }
     
     // 3. Time ordering: A < B < C
     if(!(tA < tB && tB < tC)) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== AB=CD Error: Time ordering violated (A < B < C required)");
+        #endif
         return false;
     }
     
@@ -2302,7 +2322,9 @@ bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
     double minDistance = Point * ABCD_MIN_DISTANCE_POINTS;
     
     if(AB_Distance < minDistance) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== AB=CD Error: AB distance too small (min: ", minDistance, ")");
+        #endif
         return false;
     }
     
@@ -2346,7 +2368,9 @@ bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
     // 9. Final validation: D price must be reasonable (RELAXED)
     //           D         (   
     if(pD <= 0) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("==================== AB=CD Error: Calculated D price is zero or negative");
+        #endif
         return false;
     }
     
