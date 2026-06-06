@@ -1,4 +1,4 @@
-﻿  //+------------------------------------------------------------------+
+  //+------------------------------------------------------------------+
 //|                                            ATRCalculations.mqh   |
 //|                                                                  |
 //| ATR-Based Calculations for Biotak Trigger TH3                   |
@@ -765,8 +765,8 @@ double GetATRForTimeframe(const int targetMinutes) {
             result = CalculateHybridATR(currentMinutes, targetMinutes);
         }
     } else {
-        // Calculate ATR directly for this specific timeframe using iATR
-        result = iATR(Symbol(), targetTF, 14, 0);
+        // Use Weighted ATR for this specific timeframe (v3.11: consistent with scaling logic)
+        result = CalculateWeightedATRForTimeframe(targetTF);
         
         // Validate result
         if(result == EMPTY_VALUE || IsZero(result, EPSILON_PRICE)) {

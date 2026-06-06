@@ -51,9 +51,9 @@ input ENUM_LINE_STYLE inpTHLineStyle = STYLE_DOT;
 input bool inpUseDynamicTradingDay = true;
 input bool inpBasePriceThresholdEnabled = true;
 input double inpBasePriceThresholdPercent = 0.066;
-input ENUM_ADAPTIVE_MODE inpAdaptiveMode = ADAPTIVE_FIXED;       // Adaptive Mode
+input ENUM_ADAPTIVE_MODE inpAdaptiveMode = ADAPTIVE_FRACTAL;      // Adaptive Mode (v3.11: default changed to FRACTAL)
 input double inpAdaptiveBlendRatio = 0.5;                        // Adaptive Blend Ratio
-input int inpAdaptiveSmoothingPeriod = 20;                       // Adaptive Smoothing
+input int inpAdaptiveSmoothingPeriod = 10;                       // Adaptive Smoothing (v3.11: reduced to 10 for better response)
 input ENUM_FRACTAL_JUMP_STRATEGY inpFractalJumpStrategy = JUMP_AGGRESSIVE; // Fractal Jump Strategy
 
 input group "04) CALCULATION - CUSTOM START"

@@ -73,11 +73,14 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
         return false;
     }
     
-    // Only update on new bar close (bar count change)
-    int currentBars = iBars(GetCachedSymbol(), GetEffectiveTimeframe());
-    if(g_scalingInitialized && currentBars == g_lastScalingBarCount) {
-        return false; // No new bar, skip recalculation
+    // Update frequency gate: allow updates every 5 seconds instead of every bar
+    // This makes the indicator much more responsive to intraday volatility spikes.
+    static datetime s_lastScalingUpdate = 0;
+    datetime now = TimeCurrent();
+    if(g_scalingInitialized && (now - s_lastScalingUpdate) < 5) {
+        return false; 
     }
+    s_lastScalingUpdate = now;
     
     // Validate base price
     if(basePrice < EPSILON_PRICE) {
@@ -98,9 +101,9 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
         return false;
     }
     
-    // Get real ATR from existing weighted ATR system
-    // GOLD FIX: Use Wilder's based weighted ATR for better stability and standard compliance
-    double weightedATR = CalculateWeightedATRForTimeframe((ENUM_TIMEFRAMES)GetEffectiveTimeframe());
+    // Use the core Weighted ATR system for calculation (consistent with labels)
+    double weightedATR = CalculateWeightedATR();
+    
     if(weightedATR <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("[W][ADAPT] UpdateATRScalingFactor: ATR=0, keeping previous scaling factor");
@@ -128,6 +131,10 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
         g_smoothedScalingFactor = rawFactor;
         g_scalingInitialized = true;
     } else {
+        // Fast-track for large changes in Aggressive mode (v3.11)
+        if(inpFractalJumpStrategy == JUMP_AGGRESSIVE && MathAbs(rawFactor - g_smoothedScalingFactor) > 1.0) {
+            alpha = MathMin(1.0, alpha * 2.0); 
+        }
         // EMA: smoothed = prev * (1 - alpha) + raw * alpha
         g_smoothedScalingFactor = g_smoothedScalingFactor * (1.0 - alpha) + rawFactor * alpha;
     }
@@ -135,77 +142,79 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
     // Clamp smoothed result too
     g_smoothedScalingFactor = MathMax(MIN_SCALING_FACTOR, MathMin(MAX_SCALING_FACTOR, g_smoothedScalingFactor));
     
+    int oldShift = g_fractalShift;
+    
     // UPDATE FRACTAL SHIFT (Global State)
     if(inpAdaptiveMode == ADAPTIVE_FRACTAL) {
-        // TWO STRATEGIES: Conservative vs Aggressive
+        // Find base index for current timeframe
+        int baseIdx = -1;
+        string baseTF = GetBaseFractalTimeframeForCurrent();
+        int tfArraySize = ArraySize(FRACTAL_TIMEFRAMES);
         
-        if(inpFractalJumpStrategy == JUMP_AGGRESSIVE) {
-            // AGGRESSIVE STRATEGY: Jump to higher levels earlier
-            // Better for sharp volatile pairs (JPY, GBP, etc.)
-            //
-            // Logic:
-            // - If ratio <= 1.2: Shift = 0 (no jump)
-            // - If ratio <= 2.3: Shift = 1 (jump 1 level) 
-            // - If ratio <= 4.5: Shift = 2 (jump 2 levels)
-            // - If ratio >  4.5: Shift = 3 (jump 3 levels, max)
-            //
-            // Why? When ratio is 2.3x-2.8x, it's closer to 4x than 2x,
-            // so we jump to level 2 to get wider spacing between levels.
-            
-            if(g_smoothedScalingFactor <= 1.2) {
-                g_fractalShift = 0;
-            } else if(g_smoothedScalingFactor <= 2.3) {
-                g_fractalShift = 1;
-            } else if(g_smoothedScalingFactor <= 4.5) {
-                g_fractalShift = 2;
+        for(int i = 0; i < tfArraySize; i++) {
+            if(FRACTAL_TIMEFRAMES[i] == baseTF) {
+                baseIdx = i;
+                break;
+            }
+        }
+        
+        if(baseIdx != -1) {
+            if(inpFractalJumpStrategy == JUMP_AGGRESSIVE) {
+                // DIRECT THRESHOLD STRATEGY (v3.11):
+                // Find the first fractal level whose TH is greater than or equal to current ATR.
+                
+                int targetIdx = baseIdx;
+                double pipSize = GetCachedPipSize();
+                double atrPips = (pipSize > 0) ? weightedATR / pipSize : 0;
+                
+                for(int i = baseIdx; i < tfArraySize; i++) {
+                    double p = MODIFIED_FRACTAL_PERCENTAGES[i];
+                    double th = CalculateTH(basePrice, digits, p);
+                    
+                    if(th >= weightedATR) {
+                        targetIdx = i;
+                        break;
+                    }
+                    targetIdx = i;
+                }
+                g_fractalShift = targetIdx - baseIdx;
+                
+                // CRITICAL LOG: Now showing Pips instead of Points for clarity
+                static datetime s_lastLogTime = 0;
+                if(now - s_lastLogTime > 10) { // Log every 10 seconds
+                    string currentFractal = FRACTAL_TIMEFRAMES[baseIdx + g_fractalShift];
+                    Print("[FRACTAL_LOG] Stable ATR: ", DoubleToString(atrPips, 1), " Pips",
+                          " | Target Fractal: ", currentFractal, 
+                          " | Shift: ", g_fractalShift, 
+                          " | Ratio: ", DoubleToString(g_smoothedScalingFactor, 2));
+                    s_lastLogTime = now;
+                }
             } else {
-                g_fractalShift = 3;
+                // CONSERVATIVE STRATEGY: Original log2-based jumping
+                if(g_smoothedScalingFactor <= 1.2) {
+                    g_fractalShift = 0;
+                } else {
+                    g_fractalShift = (int)MathRound((MathLog(g_smoothedScalingFactor) / MathLog(2.0)) + 0.1);
+                }
             }
         } else {
-            // CONSERVATIVE STRATEGY: Original log2-based jumping
-            // Better for smoother transitions
-            //
-            // Uses log2 with small bias (0.1) for rounding
-            // Example: 2.8x → log2(2.8) = 1.48 → 1.48 + 0.1 = 1.58 → round = 2
-            
-            if(g_smoothedScalingFactor <= 1.2) {
-                g_fractalShift = 0;
-            } else {
-                g_fractalShift = (int)MathRound((MathLog(g_smoothedScalingFactor) / MathLog(2.0)) + 0.1);
-                if(g_fractalShift < 0) g_fractalShift = 0;
-                if(g_fractalShift > 3) g_fractalShift = 3;
-            }
+            g_fractalShift = 0;
         }
         
-        #ifdef ENABLE_DEBUG_LOGS
-        static int s_lastShift = -1;
-        if(s_lastShift != g_fractalShift) {
-            string strategy = (inpFractalJumpStrategy == JUMP_AGGRESSIVE) ? "AGGRESSIVE" : "CONSERVATIVE";
-            Print("==================== [FRACTAL JUMP] Shift changed: ", s_lastShift, " → ", g_fractalShift,
-                  " | Ratio: ", DoubleToString(g_smoothedScalingFactor, 2), "x",
-                  " | Strategy: ", strategy);
-            s_lastShift = g_fractalShift;
+        // Clamp shift to valid range [0, 5]
+        if(g_fractalShift < 0) g_fractalShift = 0;
+        if(g_fractalShift > 5) g_fractalShift = 5;
+        
+        if(g_fractalShift != oldShift) {
+             _LOG_GATE_I Print("[I][ADAPT] Fractal Shift changed: ", oldShift, " -> ", g_fractalShift, " (ATR: ", DoubleToString(weightedATR / GetCachedPoint(), 1), " pips)");
+             return true; // Shift changed, need redraw
         }
-        #endif
     } else {
         g_fractalShift = 0;
+        if(g_fractalShift != oldShift) return true;
     }
     
-    g_lastScalingBarCount = currentBars;
-    
-    #ifdef ENABLE_DEBUG_LOGS
-    static datetime s_lastAdaptLog = 0;
-    datetime now = TimeCurrent();
-    if(now - s_lastAdaptLog > 60) {  // Log every 1 minute
-        string tfStr = GetFractalTimeframeForCurrent();
-        Print("[D][ADAPT] Ratio (ATR/TH_base): ", DoubleToString(g_smoothedScalingFactor, 2), 
-              " | Shift: ", g_fractalShift, 
-              " | Current TF: ", tfStr);
-        s_lastAdaptLog = now;
-    }
-    #endif
-    
-    return true;
+    return false; // No significant change needing redraw
 }
 
 //+------------------------------------------------------------------+

@@ -824,8 +824,10 @@ void RedrawAllObjects(bool force_redraw=false)
         thBasePrice = g_dailyClosePriceForTH;
     }
     
-    // Update ATR Adaptive Scaling factor (only recalculates on new bar close)
-    UpdateATRScalingFactor(thBasePrice, s_cachedDigits);
+    // Update ATR Adaptive Scaling factor (reacts to ATR changes every 5 seconds)
+    if(UpdateATRScalingFactor(thBasePrice, s_cachedDigits)) {
+        g_redrawTHLevelsNeeded = true;
+    }
     
     static double s_lastDrawnBasePrice = 0.0;
     bool basePriceChanged = (MathAbs(thBasePrice - s_lastDrawnBasePrice) > s_cachedPoint);
