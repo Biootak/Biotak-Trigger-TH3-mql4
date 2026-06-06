@@ -102,7 +102,7 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
     }
     
     // Use the core Weighted ATR system for calculation (consistent with labels)
-    double weightedATR = CalculateWeightedATR();
+    double weightedATR = CalculateWeightedATR_Locked();
     
     if(weightedATR <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
