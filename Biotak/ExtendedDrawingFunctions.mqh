@@ -1520,11 +1520,13 @@ double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
     // CRITICAL FIX: Handle PERIOD_CURRENT without recursion
     if(period == PERIOD_CURRENT || period == 0) {
         string currentFractal = GetCurrentFractalTimeframe();
-        double th = CalculateTimeframeTH(currentFractal);
+        // Apply Fractal Jump shift if active
+        string shiftedFractal = ApplyFractalShift(currentFractal);
+        double th = CalculateTimeframeTH(shiftedFractal);
         
         #ifdef ENABLE_DEBUG_LOGS
         Print("GetTimeframeTHForPeriod: CURRENT (", Period(), "min) -> ", 
-              currentFractal, " = ", DoubleToString(th, 4), "%");
+              shiftedFractal, " = ", DoubleToString(th, 4), "%");
         #endif
         
         return th;
@@ -1556,7 +1558,7 @@ double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
                 #ifdef ENABLE_DEBUG_LOGS
                 Print("   GetTimeframeTHForPeriod: Unknown period=", period, ", using D45+H12+M16");
                 #endif
-                return CalculateTimeframeTH("D45+H12+M16");
+                return CalculateTimeframeTH(ApplyFractalShift("D45+H12+M16"));
             }
             break;
         }
@@ -1573,12 +1575,15 @@ double GetTimeframeTHForPeriod(const ENUM_TIMEFRAMES period) {
     else if(minutes <= 10080) timeframeStr = "D11+H9+M4";
     else timeframeStr = "D45+H12+M16";
     
+    // Apply Fractal Jump shift if active
+    string shiftedTF = ApplyFractalShift(timeframeStr);
+    
     // Calculate TH for the timeframe
-    double th = CalculateTimeframeTH(timeframeStr);
+    double th = CalculateTimeframeTH(shiftedTF);
     
     #ifdef ENABLE_DEBUG_LOGS
     Print("GetTimeframeTHForPeriod: ", period, " (", minutes, "min) -> ", 
-          timeframeStr, " = ", DoubleToString(th, 4), "%");
+          shiftedTF, " = ", DoubleToString(th, 4), "%");
     #endif
     
     return th;
