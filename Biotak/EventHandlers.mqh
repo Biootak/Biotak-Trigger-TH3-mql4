@@ -252,7 +252,6 @@ int OnInitHandler() {
         }
     }
 
-    UpdateLockStatusLabel();
     PrintBuildInfo();
 
 #ifndef BUILD_LITE

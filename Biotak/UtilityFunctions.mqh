@@ -1,4 +1,4 @@
-﻿  //+------------------------------------------------------------------+
+  //+------------------------------------------------------------------+
 //|                                            UtilityFunctions.mqh |
 //|                                  Copyright 2025, Biotak Project  |
 //|                                      General Utility Functions   |
@@ -252,6 +252,9 @@ void ClearAllModeLabels() {
         ObjectDelete(0, g_th3FreqLabelName);
     }
 #endif
+    if(ObjectFind(0, g_lockStatusLabelName) >= 0) {
+        ObjectDelete(0, g_lockStatusLabelName);
+    }
 }
 
 //+------------------------------------------------------------------+
@@ -496,6 +499,7 @@ void ShowAllStatusLabels() {
     double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
     UpdateTH3FrequencyLabel(freq, false);
 #endif
+    UpdateLockStatusLabel();
 }
 
 //+------------------------------------------------------------------+
@@ -675,8 +679,16 @@ bool CheckAndClearExpiredLabels() {
             }
         }
 #endif
+        if(g_lockStatusLabelCreateTime > 0) {
+            if((now - g_lockStatusLabelCreateTime) >= durationMs) {
+                ClearSingleModeLabel(g_lockStatusLabelName, g_lockStatusLabelCreateTime);
+                anyCleared = true;
+            } else {
+                anyRemaining = true;
+            }
+        }
     } else {
-        bool labelsExist = (g_stepModeLabelCreateTime > 0 || g_factorLabelCreateTime > 0);
+        bool labelsExist = (g_stepModeLabelCreateTime > 0 || g_factorLabelCreateTime > 0 || g_lockStatusLabelCreateTime > 0);
 #ifndef BUILD_LITE
         labelsExist = labelsExist || (g_th3FreqLabelCreateTime > 0);
 #endif
@@ -720,6 +732,15 @@ int GetModeLabelRowOffset(const string labelName) {
         return row * rowHeight;
     }
 #endif
+    if(labelName == g_lockStatusLabelName) {
+        int row = 0;
+        if(g_stepModeLabelCreateTime > 0) row++;
+        if(g_factorLabelCreateTime > 0) row++;
+#ifndef BUILD_LITE
+        if(g_th3FreqLabelCreateTime > 0) row++;
+#endif
+        return row * rowHeight;
+    }
     return 0;
 }
 
@@ -733,6 +754,7 @@ int GetModeLabelBlockHeight() {
 #ifndef BUILD_LITE
     if(g_th3FreqLabelCreateTime > 0) activeCount++;
 #endif
+    if(g_lockStatusLabelCreateTime > 0) activeCount++;
     int rowHeight = inpModeLabelFontSize + 12;
     return activeCount * rowHeight;
 }
@@ -778,8 +800,10 @@ void RepositionAllOverlayLabels() {
     if(ObjectFind(0, g_th3FreqLabelName) >= 0)
         ApplyModeLabelStyle(g_th3FreqLabelName, (color)ObjectGetInteger(0, g_th3FreqLabelName, OBJPROP_COLOR));
 #endif
+    if(ObjectFind(0, g_lockStatusLabelName) >= 0)
+        ApplyModeLabelStyle(g_lockStatusLabelName, (color)ObjectGetInteger(0, g_lockStatusLabelName, OBJPROP_COLOR));
 
-    UpdateLockStatusLabel();
+    UpdateLockStatusLabel(false);
 #ifndef BUILD_LITE
     RepositionABCDInfoLabels();
 #endif

@@ -1132,18 +1132,20 @@ string StringRepeat(string str, int count) {
 
 //+------------------------------------------------------------------+
 //| Create/Update Timeframe Lock Status Label                        |
-//| Shows lock status and timeframe when locked (small, left corner) |
+//| Shows lock status and timeframe when locked (integrated overlay) |
 //+------------------------------------------------------------------+
-void UpdateLockStatusLabel()
+void UpdateLockStatusLabel(bool updateTimestamp = true)
 {
-    // Position: Top-left corner, very top
-    int xDistance = 5;
-    int yDistance = 5;
+    if(!inpShowModeChangeLabel) return;
+    if(IsIndicatorHidden()) return;
+    
+    // Only show if we are explicitly triggering a show (updateTimestamp=true) 
+    // or if it's already visible (g_lockStatusLabelCreateTime > 0)
+    if(!updateTimestamp && g_lockStatusLabelCreateTime == 0) return;
     
     if(g_timeframeLocked)
     {
-        // Create or update label showing locked timeframe (no emoji - MT4 doesn't support)
-        string lockText = "[LOCK:" + PeriodToString(g_lockedPeriod) + "]";
+        string lockText = "[ LOCK: " + PeriodToString(g_lockedPeriod) + " ]";
         
         if(ObjectFind(0, g_lockStatusLabelName) < 0)
         {
@@ -1155,23 +1157,22 @@ void UpdateLockStatusLabel()
         }
         
         ObjectSetString(0, g_lockStatusLabelName, OBJPROP_TEXT, lockText);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_COLOR, clrGold);
-        ObjectSetString(0, g_lockStatusLabelName, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_FONTSIZE, 8);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_XDISTANCE, xDistance);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_YDISTANCE, yDistance);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_HIDDEN, false);
+        
+        if(updateTimestamp) g_lockStatusLabelCreateTime = GetTickCount();
+        ApplyModeLabelStyle(g_lockStatusLabelName, clrGold);
+        
         ObjectSetString(0, g_lockStatusLabelName, OBJPROP_TOOLTIP, "TF locked to " + PeriodToString(g_lockedPeriod) + " - Press " + inpLockKey + " to unlock");
+        
+        if(inpModeLabelDuration > 0 && updateTimestamp) {
+            EventSetTimer(inpModeLabelDuration);
+        }
     }
     else
     {
-        // Delete label when unlocked
         if(ObjectFind(0, g_lockStatusLabelName) >= 0)
         {
             ObjectDelete(0, g_lockStatusLabelName);
+            g_lockStatusLabelCreateTime = 0;
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿  #ifndef GLOBAL_VARIABLES_MQH
+  #ifndef GLOBAL_VARIABLES_MQH
 #define GLOBAL_VARIABLES_MQH
 
 // Core State
@@ -68,6 +68,7 @@ static uint g_factorLabelCreateTime = 0;
 #ifndef BUILD_LITE
 static uint g_th3FreqLabelCreateTime = 0;
 #endif
+static uint g_lockStatusLabelCreateTime = 0;
 static uint g_resetCommentCreateTime = 0;  // For "[ RESET ]" comment auto-clear
 
 // ChartRedraw Throttling
