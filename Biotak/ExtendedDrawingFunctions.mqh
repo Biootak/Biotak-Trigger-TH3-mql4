@@ -88,21 +88,58 @@ bool CreateOrUpdateHLine(const string name, double price,
 void GetViewportBounds(double &vpTop, double &vpBottom) {
     static double s_vpTop = 0;
     static double s_vpBottom = 0;
-    static datetime s_vpFrameTime = 0;
-    datetime frameTime = CacheGetFrameTime();
-    if(frameTime == s_vpFrameTime && s_vpTop > 0) {
+    static double s_lastChartMax = 0;
+    static double s_lastChartMin = 0;
+
+    double vpChartMax = ChartGetDouble(0, CHART_PRICE_MAX);
+    double vpChartMin = ChartGetDouble(0, CHART_PRICE_MIN);
+    double point = GetCachedPoint();
+
+    if(vpChartMax > 0 && vpChartMin > 0 && vpChartMax > vpChartMin) {
+        if(s_vpTop > 0 &&
+           MathAbs(vpChartMax - s_lastChartMax) <= point &&
+           MathAbs(vpChartMin - s_lastChartMin) <= point) {
+            vpTop = s_vpTop;
+            vpBottom = s_vpBottom;
+            return;
+        }
+
+        double vpRange = (vpChartMax - vpChartMin) * 0.5;
+        vpTop = vpChartMax + vpRange;
+        vpBottom = vpChartMin - vpRange;
+        s_vpTop = vpTop;
+        s_vpBottom = vpBottom;
+        s_lastChartMax = vpChartMax;
+        s_lastChartMin = vpChartMin;
+        return;
+    }
+
+    if(s_vpTop > 0 && s_vpBottom > 0 && s_vpTop > s_vpBottom) {
         vpTop = s_vpTop;
         vpBottom = s_vpBottom;
         return;
     }
-    double vpChartMax = ChartGetDouble(0, CHART_PRICE_MAX);
-    double vpChartMin = ChartGetDouble(0, CHART_PRICE_MIN);
-    double vpRange = (vpChartMax - vpChartMin) * 0.5;
-    vpTop = vpChartMax + vpRange;
-    vpBottom = vpChartMin - vpRange;
+
+    double anchor = g_currentPrice;
+    if(anchor <= 0 && g_dailyClosePriceForTH > 0 && g_dailyClosePriceForTH != EMPTY_VALUE)
+        anchor = g_dailyClosePriceForTH;
+    if(anchor <= 0) anchor = Bid;
+    if(anchor <= 0 && g_highestHigh > 0 && g_lowestLow > 0)
+        anchor = (g_highestHigh + g_lowestLow) * 0.5;
+    if(anchor <= 0) anchor = 1.0;
+
+    double fallbackRange = 0.0;
+    if(g_highestHigh > 0 && g_lowestLow > 0 && g_highestHigh > g_lowestLow)
+        fallbackRange = g_highestHigh - g_lowestLow;
+    if(fallbackRange <= point * 100.0)
+        fallbackRange = MathMax(anchor * 0.05, point * 1000.0);
+
+    vpTop = anchor + fallbackRange;
+    vpBottom = MathMax(anchor - fallbackRange, point);
     s_vpTop = vpTop;
     s_vpBottom = vpBottom;
-    s_vpFrameTime = frameTime;
+    s_lastChartMax = 0;
+    s_lastChartMin = 0;
 }
 
 bool ValidateComboParam(bool isInvalid, const string paramName, const string paramValue, const string context = "PRESET MODE") {

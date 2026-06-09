@@ -664,6 +664,20 @@ void BuildZonesAndLines(
 //| Creates/updates MT5 rectangle objects for each zone.             |
 //| Handles all zone styles: Lines, Filled Box, Empty Box, Hidden.   |
 //+------------------------------------------------------------------+
+void SetPipelineObjectTimeframesIfExists(const string name, const long timeframes)
+{
+    if(ObjectFind(0, name) >= 0)
+        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, timeframes);
+}
+
+void SetPipelineZoneVisibility(const string zoneName, const bool visible)
+{
+    long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    SetPipelineObjectTimeframesIfExists(zoneName, timeframes);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_Top", timeframes);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_Bottom", timeframes);
+}
+
 void RenderZones(
     const SZoneDefinition &zones[],
     const int zoneCount,
@@ -673,7 +687,7 @@ void RenderZones(
     
     for(int i = 0; i < zoneCount; i++) {
         if(!zones[i].inViewport) {
-            DeleteManagedZoneObjects(zones[i].name);
+            SetPipelineZoneVisibility(zones[i].name, false);
             continue;
         }
 
@@ -694,6 +708,7 @@ void RenderZones(
             CreateFactorMidZone_LinesStyle(zones[i].name, 
                                            zones[i].renderTop, zones[i].renderBottom,
                                            zones[i].zoneColor, zones[i].transparency);
+            SetPipelineZoneVisibility(zones[i].name, true);
         } else {
             // Box style (filled or empty)
             SZoneCreationRequest request;
@@ -707,6 +722,7 @@ void RenderZones(
             request.endTime = 0;
             
             CreateZone(request);
+            SetPipelineZoneVisibility(zones[i].name, true);
         }
     }
 }
@@ -728,8 +744,8 @@ void RenderTriggerLines(
     for(int i = 0; i < lineCount; i++) {
         string labelName = lines[i].name + "_Label";
         if(!lines[i].inViewport) {
-            DeleteIndicatorObjectManaged(lines[i].name);
-            DeleteIndicatorObjectManaged(labelName);
+            SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
+            SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
             continue;
         }
 
@@ -751,6 +767,8 @@ void RenderTriggerLines(
         bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
                                           lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,
                                           lines[i].tooltip);
+        long lineTf = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+        SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);
         
         // Set mode-specific properties on new objects
         if(isNew) {
@@ -766,6 +784,8 @@ void RenderTriggerLines(
         if(inpShowPipDistanceLabels) {
             double pips = MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
             CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
+            long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+            SetPipelineObjectTimeframesIfExists(labelName, labelTf);
         }
     }
 }

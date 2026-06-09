@@ -112,7 +112,7 @@ input ENUM_ZONE_STYLE inpMidZoneStyle = ZONE_STYLE_BOX_FILLED;
 input group "10.2) ZONES - VISUAL DENSITY"
 input string S10b = "[10.2] ZONES / VISUAL DENSITY";
 input int inpMidZoneTransparency = 30;
-input double inpMidZoneHeightPercent = 12.5;
+input double inpMidZoneHeightPercent = 33.0;
 
 #ifndef BUILD_LITE
 input group "11) STYLE - HARMONIC"
@@ -137,8 +137,8 @@ input bool inpShowTH3Labels = true;
 input ENUM_TH3_LABEL_POSITION inpTH3LabelPosition = TH3_LABEL_END;
 input ENUM_ZONE_STYLE inpTH3ZoneStyle = ZONE_STYLE_LINES;
 input color inpTH3ZoneColor = clrNONE;
-input int inpTH3ZoneTransparency = 60;
-input double inpTH3ZoneHeightPercent = 12.5;
+input int inpTH3ZoneTransparency = 30;
+input double inpTH3ZoneHeightPercent = 33.0;
 input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
 input int inpTH3ZoneBorderWidth = 1;
 #endif

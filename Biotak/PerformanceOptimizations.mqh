@@ -68,7 +68,9 @@ string GetCachedSymbol() {
 //|           (    Period()                    |
 //+------------------------------------------------------------------+
 int GetCachedPeriod() {
-    if(g_cachedPeriod <= 0) g_cachedPeriod = Period();
+    int currentPeriod = Period();
+    if(g_cachedPeriod <= 0 || g_cachedPeriod != currentPeriod)
+        g_cachedPeriod = currentPeriod;
     return g_cachedPeriod;
 }
 

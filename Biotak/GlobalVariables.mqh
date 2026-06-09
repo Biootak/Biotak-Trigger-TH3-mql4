@@ -168,15 +168,16 @@ string SanitizeSymbolName(const string symbol) {
 //+------------------------------------------------------------------+
 void CleanupAllGlobalVariables() {
     string chartIdStr = GetCachedChartIdStr();
-    string symbolName = SanitizeSymbolName(GetCachedSymbol());
+    string rawSymbolName = GetCachedSymbol();
+    string sanitizedSymbolName = SanitizeSymbolName(rawSymbolName);
     string gvars[];
-    ArrayResize(gvars, 13);
+    ArrayResize(gvars, 19);
     gvars[0]  = "Biotak_isHidden_" + chartIdStr;
-    gvars[1]  = "Biotak_CustomPrice_" + symbolName;
+    gvars[1]  = "Biotak_CustomPrice_" + rawSymbolName;
     gvars[2]  = "Biotak_LockTF_" + chartIdStr;
     gvars[3]  = "Biotak_LockTFPeriod_" + chartIdStr;
     gvars[4]  = "Biotak_TriggerLevels_" + chartIdStr;
-    gvars[5]  = "Biotak_CustomPriceOverride_" + symbolName;
+    gvars[5]  = "Biotak_CustomPriceOverride_" + rawSymbolName;
     gvars[6]  = "Biotak_StepMode_" + chartIdStr;
     gvars[7]  = "Biotak_Factor_" + chartIdStr;
     gvars[8]  = "Biotak_TH3Freq_" + chartIdStr;
@@ -184,6 +185,12 @@ void CleanupAllGlobalVariables() {
     gvars[10] = "Biotak_LinesVisible_" + chartIdStr;
     gvars[11] = "Biotak_ATRLabels_" + chartIdStr;
     gvars[12] = "Biotak_THLabels_" + chartIdStr;
+    gvars[13] = "Biotak_LastTFSwitch_" + chartIdStr;
+    gvars[14] = "Biotak_BaseInit_" + chartIdStr;
+    gvars[15] = "Biotak_ATRWarmup_" + chartIdStr;
+    gvars[16] = "Biotak_TH3_NeedsUpdate_" + chartIdStr;
+    gvars[17] = "Biotak_CustomPrice_" + sanitizedSymbolName;
+    gvars[18] = "Biotak_CustomPriceOverride_" + sanitizedSymbolName;
     for(int i = 0; i < ArraySize(gvars); i++) {
         if(GlobalVariableCheck(gvars[i])) GlobalVariableDel(gvars[i]);
     }

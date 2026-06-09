@@ -1,5 +1,5 @@
    //+------------------------------------------------------------------+
-//| Event Handlers - Version 3.09 GOLD                              |
+//| Event Handlers - Version 3.10 GOLD                              |
 //| Security & Performance Audit Complete                           |
 //+------------------------------------------------------------------+
 #property strict
@@ -445,8 +445,10 @@ void OnDeinitHandler(const int reason) {
         // TH labels hotkey override should not survive parameter changes
         string thLabelsGvarNameLocal = "Biotak_THLabels_" + chartIdStrLocal;
         GlobalVariableDel(thLabelsGvarNameLocal);
+#ifndef BUILD_LITE
         string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStrLocal;
         GlobalVariableSet(th3UpdateFlag, 1.0);
+#endif
         DEBUG_PRINT("OnDeinit (REASON_PARAMETERS) - reset overrides");
         DeleteAllIndicatorObjects(false);
     }
@@ -622,6 +624,8 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
     static int s_lastMaxAbove = 0;
     static int s_lastMaxBelow = 0;
     static double s_lastScalingFactor = 1.0;
+    static double s_lastHighestHigh = EMPTY_VALUE;
+    static double s_lastLowestLow = EMPTY_VALUE;
 
     string currentTF = GetFractalTimeframeForCurrent();
     double currentScalingFactor = GetCurrentScalingFactor();
@@ -633,6 +637,8 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
        inpMaxLevels == s_lastMaxAbove &&
        inpMaxLevels == s_lastMaxBelow &&
        MathAbs(currentScalingFactor - s_lastScalingFactor) < EPSILON_GENERAL &&
+       MathAbs(g_highestHigh - s_lastHighestHigh) < EPSILON_PRICE &&
+       MathAbs(g_lowestLow - s_lastLowestLow) < EPSILON_PRICE &&
        s_lastDailyClose != 0) {
         data = s_cachedData;
         return true;
@@ -700,6 +706,8 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
     s_lastMaxAbove = inpMaxLevels;
     s_lastMaxBelow = inpMaxLevels;
     s_lastScalingFactor = currentScalingFactor;
+    s_lastHighestHigh = g_highestHigh;
+    s_lastLowestLow = g_lowestLow;
 
     return true;
 }
@@ -1031,11 +1039,13 @@ void RedrawAllObjects(bool force_redraw=false)
         TH3_PROF_END(LevelsDrawByMode);
         s_lastLevelSig = levelSig;
         TH3_PROF_END(Levels);
+        g_forceClearOnNextDraw = false;
         g_redrawTHLevelsNeeded = false;
     }
     else if (!inpShowTHLevels && g_redrawTHLevelsNeeded)
     {
         ClearAllLevels(objectPrefix);
+        g_forceClearOnNextDraw = false;
         g_redrawTHLevelsNeeded = false;
     }
 
@@ -1963,7 +1973,12 @@ void ApplyCacheInvalidation(const int invalidationFlags,
                             const double currentCustomPrice)
 {
     if((invalidationFlags & CACHE_INV_TIMEFRAME) != 0) {
+        UpdatePeriodCache();
         InvalidateTimeframeDependentCaches();
+        g_forceClearOnNextDraw = true;
+        g_redrawTHLevelsNeeded = true;
+        g_calculatedOnce = false;
+        g_labelsRelayoutNeeded = true;
         InvalidateATRCache();
         _LOG_GATE_I Print("[I][GEN] Timeframe changed: ", previousPeriod, " -> ", currentPeriod);
     }
