@@ -40,6 +40,10 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
     // Check if object already exists in cache
     SObjectCacheEntry cachedEntry;
     bool objectExistsInCache = CacheGetObject(name, cachedEntry);
+    if(objectExistsInCache && cachedEntry.exists && ObjectFind(0, name) < 0) {
+        CacheRemoveObject(name);
+        objectExistsInCache = false;
+    }
     
     if(!objectExistsInCache) {
         // Create new object
@@ -127,18 +131,7 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
         #endif
         return false;
     }
-    
-    if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, price)) {
-        ObjectDelete(0, name);
-        if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, price)) {
-            #ifdef ENABLE_DEBUG_LOGS
-            int error = GetLastError();
-            Print("  CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
-            #endif
-            return false;
-        }
-    }
-    
+
     // Format: "M1 +3 | 45.2 pips" or just "45.2 pips" if no levelInfo
     string labelText;
     if(StringLen(levelInfo) > 0) {
@@ -146,27 +139,46 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
     } else {
         labelText = StringFormat("%.1f pips", pips);
     }
-    
-    ObjectSetString(0, name, OBJPROP_TEXT, labelText);
-    ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-    ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
-    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpFontSize);
-    // Visual align MT5: Use ANCHOR_LEFT (not ANCHOR_LEFT_UPPER) and don't set explicit
-    // X/YDISTANCE   these match MT5's default behavior and keep label positioning consistent.
-    ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT);
-    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, name, OBJPROP_BACK, false);
-    
-    // CRITICAL FIX: Respect Hide state (F key)
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
-    
-    if(isHidden) {
-        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+
+    string cachedText;
+    color cachedColor;
+    bool hasCachedLabel = CacheGetLabel(name, cachedText, cachedColor);
+    bool objectExists = false;
+    if(hasCachedLabel) {
+        objectExists = (ObjectFind(0, name) >= 0);
+        if(!objectExists) {
+            CacheRemoveObject(name);
+            hasCachedLabel = false;
+        }
     } else {
-        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+        objectExists = (ObjectFind(0, name) >= 0);
     }
+
+    if(!objectExists) {
+        if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, price)) {
+            #ifdef ENABLE_DEBUG_LOGS
+            int error = GetLastError();
+            Print("  CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
+            #endif
+            return false;
+        }
+        ObjectSetString(0, name, OBJPROP_TEXT, labelText);
+        ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+        ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
+        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpFontSize);
+        ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT);
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, name, OBJPROP_BACK, false);
+    } else {
+        if(!hasCachedLabel || cachedText != labelText)
+            ObjectSetString(0, name, OBJPROP_TEXT, labelText);
+        if(!hasCachedLabel || cachedColor != textColor)
+            ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+        ObjectSetDouble(0, name, OBJPROP_PRICE, price);
+    }
+
+    CacheUpdateLabel(name, labelText, textColor);
+    ApplyVisibilityStateIfUnchangedSkip(name, false);
     
     return true;
 }

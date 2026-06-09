@@ -558,6 +558,7 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
         totalDeleted += ObjectsDeleteAll(0, objectPrefix + LEGACY_SUFFIXES[l]);
     }
 
+    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
     g_suppressDeleteEvents = false;
 
     #ifdef ENABLE_DEBUG_LOGS
@@ -1006,6 +1007,11 @@ void RedrawAllObjects(bool force_redraw=false)
                           IntegerToString(inpMaxLevels) + "|" +
                           IntegerToString((int)g_thStartPointType) + "|" +
                           IntegerToString(inpLSFirst ? 1 : 0) + "|" +
+                          IntegerToString(inpShowMidZones ? 1 : 0) + "|" +
+                          IntegerToString((int)inpMidZoneStyle) + "|" +
+                          IntegerToString(inpMidZoneTransparency) + "|" +
+                          DoubleToString(inpMidZoneHeightPercent, 3) + "|" +
+                          IntegerToString(IsTriggerLevelsEnabled() ? 1 : 0) + "|" +
 #ifndef BUILD_LITE
                           IntegerToString(inpEnableHarmonicPattern ? 1 : 0) + "|" +
                           DoubleToString(inpHarmonicRatio, 3) + "|";
@@ -1161,6 +1167,16 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+    bool suppressDeleteEvent = g_suppressDeleteEvents || (g_suppressDeleteEventsUntilMs != 0 && GetTickCount() <= g_suppressDeleteEventsUntilMs);
+    if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
+        string indicatorPrefix = inpObjectPrefix;
+        int prefixLen = StringLen(indicatorPrefix);
+        if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix) {
+            CacheRemoveObject(sparam);
+            g_redrawTHLevelsNeeded = true;
+        }
+    }
+
     if(id == CHARTEVENT_KEYDOWN)
     {
         //  
@@ -1193,6 +1209,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                     g_suppressDeleteEvents = true;
                     ObjectsDeleteAll(0, TH3_TEMP_PREFIX);
                     ObjectsDeleteAll(0, TH3_TEMP_LINE_PREFIX);
+                    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
                     g_suppressDeleteEvents = false;
                     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
                     Comment("");
@@ -1532,6 +1549,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 g_suppressDeleteEvents = true;
                 ObjectsDeleteAll(0, TH3_TEMP_PREFIX);
                 ObjectsDeleteAll(0, TH3_TEMP_LINE_PREFIX);
+                g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
                 g_suppressDeleteEvents = false;
             }
 #endif
@@ -1584,6 +1602,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             double savedCustomPrice = hadCustomPrice ? ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0) : 0;
             g_suppressDeleteEvents = true;
             ObjectsDeleteAll(0, inpObjectPrefix);
+            g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
             g_suppressDeleteEvents = false;
             g_timeframeLocked = !g_timeframeLocked;
             if(g_timeframeLocked)
@@ -1673,7 +1692,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         s_lastLayoutMs = nowMs;
 
         if(sizeChanged) g_labelsRelayoutNeeded = true;
-        if(sizeChanged) RedrawLabelsOnly();
+        if(viewportChanged) {
+            g_redrawTHLevelsNeeded = true;
+            RedrawAllObjects(false);
+        } else if(sizeChanged) {
+            RedrawLabelsOnly();
+        }
         ThrottledChartRedraw();
         return;
     }
@@ -1923,6 +1947,7 @@ void EmergencyCleanupIndicatorObjects(const string indicatorPrefix)
         if(StringSubstr(objName, 0, prefixLen) != indicatorPrefix) continue;
         CacheRemoveObject(objName);
         g_suppressDeleteEvents = true;
+        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
         if(ObjectDelete(0, objName)) deleted++;
         g_suppressDeleteEvents = false;
     }
@@ -2019,6 +2044,7 @@ void RunIncrementalObjectCleanup()
             if(objTime > 0 && objTime < cutoffTime) {
                 CacheRemoveObject(objName);
                 g_suppressDeleteEvents = true;
+                g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
                 ObjectDelete(0, objName);
                 g_suppressDeleteEvents = false;
             }

@@ -20,8 +20,8 @@ struct SObjectCacheEntry {
 };
 
 // Hash-based cache configuration
-#define CACHE_HASH_BUCKETS 2048  // Power of 2 for fast modulo
-#define CACHE_MAX_PROBE 8        // Maximum linear probing attempts
+#define CACHE_HASH_BUCKETS 32768 // Power of 2 for fast modulo
+#define CACHE_MAX_PROBE 32       // Maximum linear probing attempts
 
 // Hash bucket structure
 struct SObjectCacheSlot {
@@ -53,8 +53,8 @@ datetime CacheGetFrameTime() {
     return g_cacheFrameTime;
 }
 
-// Maximum cache size (80% load factor of 2048 buckets)
-#define MAX_CACHE_SIZE 1600
+// Maximum cache size (about 73% load factor of 32768 buckets)
+#define MAX_CACHE_SIZE 24000
 
 int HashObjectName(const string name) {
     uint hash = 5381;
@@ -205,6 +205,45 @@ void CacheRemoveObject(const string name) {
     g_objectCacheHash[idx].lastAccess = 0;
     g_objectCacheSize--;
     _LOG_GATE_D Print("[D][SYNC] [DEL] Removed object from cache (size now: ", g_objectCacheSize, ")");
+}
+
+bool DeleteIndicatorObjectManaged(const string name, const bool verifyChartObject = false)
+{
+    if(StringLen(name) == 0) return false;
+
+    int cacheIdx = CacheFindIndex(name);
+    bool inCache = (cacheIdx >= 0 && g_objectCacheHash[cacheIdx].entry.exists);
+    bool existsOnChart = false;
+
+    if(inCache || verifyChartObject) {
+        existsOnChart = (ObjectFind(0, name) >= 0);
+    }
+
+    if(inCache || existsOnChart) {
+        CacheRemoveObject(name);
+    }
+
+    if(!existsOnChart) return inCache;
+
+    g_suppressDeleteEvents = true;
+    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+    bool deleted = ObjectDelete(0, name);
+    g_suppressDeleteEvents = false;
+    return deleted;
+}
+
+bool DeleteManagedZoneObjects(const string zoneName, const bool verifyChartObjects = false)
+{
+    if(StringLen(zoneName) == 0) return false;
+
+    bool foundAny = false;
+    if(DeleteIndicatorObjectManaged(zoneName, verifyChartObjects))
+        foundAny = true;
+    if(DeleteIndicatorObjectManaged(zoneName + "_Top", verifyChartObjects))
+        foundAny = true;
+    if(DeleteIndicatorObjectManaged(zoneName + "_Bottom", verifyChartObjects))
+        foundAny = true;
+    return foundAny;
 }
 
 void CacheClear() {

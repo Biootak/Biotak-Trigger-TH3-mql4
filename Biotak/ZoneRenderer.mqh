@@ -258,7 +258,16 @@ void RenderLines(const SLineRenderInfo &lines[])
         // PERFORMANCE: Check cache to skip redundant API calls
         SObjectCacheEntry cache;
         bool inCache = CacheGetObject(lines[i].name, cache);
-        bool objectExists = inCache ? cache.exists : (ObjectFind(0, lines[i].name) >= 0);
+        bool objectExists = false;
+        if(inCache && cache.exists) {
+            objectExists = (ObjectFind(0, lines[i].name) >= 0);
+            if(!objectExists) {
+                CacheRemoveObject(lines[i].name);
+                inCache = false;
+            }
+        } else {
+            objectExists = (ObjectFind(0, lines[i].name) >= 0);
+        }
         
         if(!objectExists) {
             if(!ObjectCreate(0, lines[i].name, OBJ_HLINE, 0, 0, lines[i].price)) {

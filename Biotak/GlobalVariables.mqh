@@ -79,6 +79,7 @@ static uint g_lastDragRedrawTime = 0;
 
 // Suppression flag: prevents CHARTEVENT_OBJECT_DELETE cascade during programmatic deletions
 static bool g_suppressDeleteEvents = false;
+static uint g_suppressDeleteEventsUntilMs = 0;
 
 #ifndef BUILD_LITE
 // AB=CD Pattern State

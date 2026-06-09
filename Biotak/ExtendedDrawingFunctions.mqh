@@ -22,11 +22,12 @@
 void CleanupSurplusObjects(const string prefix, int startIdx, int maxConsecutiveMiss = 6, const string suffix = "") {
     if(g_customPriceLineDragging && StringFind(prefix, "_Zone_") >= 0) return;
     int misses = 0;
+    bool zoneFamily = (suffix == "" && StringFind(prefix, "_Zone_") >= 0);
     for(int idx = startIdx; misses < maxConsecutiveMiss; idx++) {
         string name = prefix + IntegerToString(idx) + suffix;
-        if(ObjectFind(0, name) >= 0) {
-            CacheRemoveObject(name);
-            ObjectDelete(0, name);
+        bool deleted = zoneFamily ? DeleteManagedZoneObjects(name, true)
+                                  : DeleteIndicatorObjectManaged(name, true);
+        if(deleted) {
             misses = 0;
         } else {
             misses++;
@@ -36,12 +37,25 @@ void CleanupSurplusObjects(const string prefix, int startIdx, int maxConsecutive
 
 bool CreateOrUpdateHLine(const string name, double price, 
                           color clr, ENUM_LINE_STYLE style, int width,
-                          const string tooltip) {
-    bool objectExists = CacheObjectExists(name);
-    if(!objectExists) objectExists = (ObjectFind(0, name) >= 0);
+                          const string tooltip,
+                          const bool visibilityAsLine = true) {
+    SObjectCacheEntry cachedEntry;
+    bool hasCached = CacheGetObject(name, cachedEntry);
+    bool objectExists = false;
+    if(hasCached && cachedEntry.exists) {
+        objectExists = (ObjectFind(0, name) >= 0);
+        if(!objectExists) {
+            CacheRemoveObject(name);
+            hasCached = false;
+        }
+    } else {
+        objectExists = (ObjectFind(0, name) >= 0);
+    }
     
     if(!objectExists) {
-        ObjectCreate(0, name, OBJ_HLINE, 0, 0, price);
+        if(!ObjectCreate(0, name, OBJ_HLINE, 0, 0, price)) {
+            return false;
+        }
         ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
         ObjectSetInteger(0, name, OBJPROP_STYLE, style);
         ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
@@ -49,11 +63,9 @@ bool CreateOrUpdateHLine(const string name, double price,
         ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
         ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
         CacheAddObject(name, price, clr, style, width);
-        ApplyVisibilityState(name, true);
+        ApplyVisibilityState(name, visibilityAsLine);
         return true;
     } else {
-        SObjectCacheEntry cachedEntry;
-        bool hasCached = CacheGetObject(name, cachedEntry);
         double normPrice = NormalizeDouble(price, Digits);
         if(!hasCached || MathAbs(hasCached ? cachedEntry.lastPrice - normPrice : 1.0) > GetCachedPoint() * 0.1) {
             ObjectSetDouble(0, name, OBJPROP_PRICE, normPrice);
@@ -68,7 +80,7 @@ bool CreateOrUpdateHLine(const string name, double price,
             ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
         }
         CacheUpdateObject(name, normPrice, clr, style, width);
-        ApplyVisibilityStateIfUnchangedSkip(name, true);
+        ApplyVisibilityStateIfUnchangedSkip(name, visibilityAsLine);
         return false;
     }
 }
@@ -129,7 +141,7 @@ bool CreateFactorMidZone(const string zoneName,
     
     // STYLE: HIDDEN - Delete and return
     if(zoneStyle == FACTOR_ZONE_HIDDEN) {
-        if(ObjectFind(0, zoneName) >= 0) ObjectDelete(0, zoneName);
+        DeleteManagedZoneObjects(zoneName, true);
         return true;
     }
     
@@ -204,47 +216,24 @@ bool CreateFactorMidZone_LinesStyle(const string zoneName,
     
     string lineTop = zoneName + "_Top";
     string lineBottom = zoneName + "_Bottom";
-    
-    // Delete old objects
-    if(ObjectFind(0, lineTop) >= 0) ObjectDelete(0, lineTop);
-    if(ObjectFind(0, lineBottom) >= 0) ObjectDelete(0, lineBottom);
-    
-    // CRITICAL FIX: Check if indicator is hidden
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
-    
-    // Create top line (dotted)
-    if(ObjectCreate(0, lineTop, OBJ_HLINE, 0, 0, upperPrice)) {
-        ObjectSetInteger(0, lineTop, OBJPROP_COLOR, zoneColor);
-        ObjectSetInteger(0, lineTop, OBJPROP_STYLE, STYLE_DOT);
-        ObjectSetInteger(0, lineTop, OBJPROP_WIDTH, 1);
+
+    DeleteIndicatorObjectManaged(zoneName);
+
+    bool topNew = CreateOrUpdateHLine(lineTop, upperPrice, zoneColor, STYLE_DOT, 1, zoneName + " top", false);
+    bool bottomNew = CreateOrUpdateHLine(lineBottom, lowerPrice, zoneColor, STYLE_DOT, 1, zoneName + " bottom", false);
+
+    if(topNew) {
         ObjectSetInteger(0, lineTop, OBJPROP_BACK, true);
         ObjectSetInteger(0, lineTop, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, lineTop, OBJPROP_ZORDER, 0);
-        
-        // CRITICAL FIX: Hide if indicator is hidden
-        if(isHidden) {
-            ObjectSetInteger(0, lineTop, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-        }
     }
-    
-    // Create bottom line (dotted)
-    if(ObjectCreate(0, lineBottom, OBJ_HLINE, 0, 0, lowerPrice)) {
-        ObjectSetInteger(0, lineBottom, OBJPROP_COLOR, zoneColor);
-        ObjectSetInteger(0, lineBottom, OBJPROP_STYLE, STYLE_DOT);
-        ObjectSetInteger(0, lineBottom, OBJPROP_WIDTH, 1);
+    if(bottomNew) {
         ObjectSetInteger(0, lineBottom, OBJPROP_BACK, true);
         ObjectSetInteger(0, lineBottom, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, lineBottom, OBJPROP_ZORDER, 0);
-        
-        // CRITICAL FIX: Hide if indicator is hidden
-        if(isHidden) {
-            ObjectSetInteger(0, lineBottom, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-        }
     }
-    
-    return true;
+
+    return (ObjectFind(0, lineTop) >= 0 && ObjectFind(0, lineBottom) >= 0);
 }
 
 

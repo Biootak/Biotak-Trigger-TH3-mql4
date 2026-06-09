@@ -64,8 +64,7 @@ bool CreateUnifiedZone(const string zoneName,
     
     // Check style: HIDDEN
     if(config.style == FACTOR_ZONE_HIDDEN) {
-        // Delete zone if exists
-        if(ObjectFind(0, zoneName) >= 0) ObjectDelete(0, zoneName);
+        DeleteManagedZoneObjects(zoneName, true);
         return true; // Not an error, just hidden
     }
     
@@ -387,7 +386,7 @@ bool CreateZoneWithSmartFallback(const string zoneName,
         
         // Handle HIDDEN style
         if(config.style == FACTOR_ZONE_HIDDEN) {
-            if(ObjectFind(0, zoneName) >= 0) ObjectDelete(0, zoneName);
+            DeleteManagedZoneObjects(zoneName, true);
             return true;
         }
         

@@ -212,11 +212,23 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     //                                                                
     
     color finalColor = GetZoneRenderColor(request.zoneColor, clampedTransparency);
+
+    DeleteIndicatorObjectManaged(request.name + "_Top");
+    DeleteIndicatorObjectManaged(request.name + "_Bottom");
     
     // PERFORMANCE: Check cache to skip redundant API calls
     SObjectCacheEntry cache;
     bool inCache = CacheGetObject(request.name, cache);
-    bool objectExists = inCache ? cache.exists : (ObjectFind(0, request.name) >= 0);
+    bool objectExists = false;
+    if(inCache && cache.exists) {
+        objectExists = (ObjectFind(0, request.name) >= 0);
+        if(!objectExists) {
+            CacheRemoveObject(request.name);
+            inCache = false;
+        }
+    } else {
+        objectExists = (ObjectFind(0, request.name) >= 0);
+    }
     
     if(inCache && objectExists) {
         // Check if anything actually changed
@@ -299,12 +311,8 @@ int CreateZonesBatch(const SZoneCreationRequest &requests[],
 bool DeleteZone(const string &zoneName)
 {
     if(StringLen(zoneName) == 0) return false;
-    
-    if(ObjectFind(0, zoneName) >= 0) {
-        return ObjectDelete(0, zoneName);
-    }
-    
-    return true; // Already deleted
+
+    return DeleteManagedZoneObjects(zoneName, true);
 }
 
 //+------------------------------------------------------------------+
@@ -322,7 +330,7 @@ int DeleteZonesByPrefix(const string &prefix)
         string name = ObjectName(0, i, -1, -1);
         
         if(StringFind(name, prefix) == 0) {
-            if(ObjectDelete(0, name)) {
+            if(DeleteIndicatorObjectManaged(name, true)) {
                 deletedCount++;
             }
         }

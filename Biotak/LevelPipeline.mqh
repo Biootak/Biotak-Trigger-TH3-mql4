@@ -672,21 +672,19 @@ void RenderZones(
     bool triggerEnabled = IsTriggerLevelsEnabled();
     
     for(int i = 0; i < zoneCount; i++) {
+        if(!zones[i].inViewport) {
+            DeleteManagedZoneObjects(zones[i].name);
+            continue;
+        }
+
         if(config.zoneStyle == ZONE_STYLE_HIDDEN) {
-            // Hidden: delete existing zone objects
-            if(ObjectFind(0, zones[i].name) >= 0) {
-                CacheRemoveObject(zones[i].name);
-                ObjectDelete(0, zones[i].name);
-            }
+            DeleteManagedZoneObjects(zones[i].name);
             continue;
         }
         
         // Skip trigger zones when triggers are disabled
         if(zones[i].isTrigger && !triggerEnabled) {
-            if(ObjectFind(0, zones[i].name) >= 0) {
-                CacheRemoveObject(zones[i].name);
-                ObjectDelete(0, zones[i].name);
-            }
+            DeleteManagedZoneObjects(zones[i].name);
             continue;
         }
         
@@ -728,6 +726,13 @@ void RenderTriggerLines(
     double currentPrice = GetCurrentPriceForLabels();
     
     for(int i = 0; i < lineCount; i++) {
+        string labelName = lines[i].name + "_Label";
+        if(!lines[i].inViewport) {
+            DeleteIndicatorObjectManaged(lines[i].name);
+            DeleteIndicatorObjectManaged(labelName);
+            continue;
+        }
+
         // Factor mode: hide lines when trigger-only enabled
         if(config.hideLineWhenTriggerOnly && !lines[i].isMidpoint) {
             bool shouldShow = !triggerEnabled;
@@ -735,7 +740,6 @@ void RenderTriggerLines(
                 if(ObjectFind(0, lines[i].name) >= 0) {
                     ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
                 }
-                string labelName = lines[i].name + "_Label";
                 if(ObjectFind(0, labelName) >= 0) {
                     ObjectSetInteger(0, labelName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
                 }
@@ -760,7 +764,6 @@ void RenderTriggerLines(
 
         // Render Pip Distance Label
         if(inpShowPipDistanceLabels) {
-            string labelName = lines[i].name + "_Label";
             double pips = MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
             CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
         }
