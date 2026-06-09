@@ -62,9 +62,9 @@
 #include "Biotak\ATRCalculations.mqh"
 #include "Biotak\AdaptiveScaling.mqh"
 #include "Biotak\BasePriceManager.mqh"
-#include "Biotak\WaveAnalysis.mqh"
 
 #ifndef BUILD_LITE
+#include "Biotak\WaveAnalysis.mqh"
 #include "Biotak\FrequencyOptimizer.mqh"
 #include "Biotak\TH3Tool.mqh"
 #endif
