@@ -4,9 +4,8 @@
 #property strict
 
 bool UpdateHistoricalValues() {
-    // Only update if necessary
-    datetime currentTime = TimeCurrent();
-    if(currentTime - g_lastHistoricalUpdate < 3600 && g_initialized) return true;
+    // We fetch the full historical data ONLY ONCE during initialization
+    if (g_initialized) return true;
 
     // OPTIMIZATION: Use dynamic arrays and ensure cleanup
     double highArray[], lowArray[];
@@ -29,6 +28,7 @@ bool UpdateHistoricalValues() {
     if(totalBars <= 0) {
         // FIX: Don't just fail, log that we're waiting for data
         static datetime s_lastBarsWarning = 0;
+        datetime currentTime = TimeCurrent();
         if(currentTime - s_lastBarsWarning > 30) {
             Print("UpdateHistoricalValues: Waiting for historical data (", EnumToString(effectiveTimeframe), ")...");
             s_lastBarsWarning = currentTime;
@@ -68,7 +68,7 @@ bool UpdateHistoricalValues() {
         return false;
     }
     
-    g_lastHistoricalUpdate = currentTime;
+    g_lastHistoricalUpdate = TimeCurrent();
     // g_thCache removed - matching MT5
     
     return true;

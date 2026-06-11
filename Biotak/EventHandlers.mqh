@@ -771,7 +771,23 @@ void RedrawAllObjects(bool force_redraw=false)
 
     // PERF: Idle fast-path   when no work is pending, skip expensive UpdateBasePrice/ATR path.
     bool customPriceLineExists = g_customPriceLineCreated;
-    bool historicalRefreshDue = (currentTime - g_lastHistoricalUpdate >= 3600 || !g_initialized);
+    
+    // SMART CACHING FOR HISTORICAL HIGH/LOW:
+    // Only force a full historical refresh if we're not initialized.
+    // Otherwise, we dynamically check if the current price has broken the cached high/low.
+    bool priceBrokeHistoricalRange = false;
+    if(g_initialized && g_highestHigh > 0 && g_lowestLow > 0) {
+        if(g_currentPrice > g_highestHigh) {
+            g_highestHigh = g_currentPrice;
+            priceBrokeHistoricalRange = true;
+        } else if(g_currentPrice < g_lowestLow) {
+            g_lowestLow = g_currentPrice;
+            priceBrokeHistoricalRange = true;
+        }
+    }
+    
+    bool historicalRefreshDue = (!g_initialized || priceBrokeHistoricalRange);
+    
     int currentServerMinute = TimeMinute(CacheGetFrameTime());
     bool basePriceBoundary = (currentServerMinute == 0 || currentServerMinute == 30);
     bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary);
@@ -883,8 +899,11 @@ void RedrawAllObjects(bool force_redraw=false)
 
     g_dailyClosePriceForTH = thBasePrice;
 
-    // PERFORMANCE: Use cached historical values
-    if(currentTime - g_lastHistoricalUpdate >= 3600 || !g_initialized)
+    // PERFORMANCE: Use SMART CACHING for historical values
+    // We only fetch the full history ONCE (when not initialized).
+    // If the price breaks the range, we don't need a full array lookup again;
+    // we already dynamically updated g_highestHigh and g_lowestLow above!
+    if(!g_initialized)
     {
         if(!UpdateHistoricalValues()) {
             // FIX: If historical data is not ready, don't return early if we already have a base price
@@ -903,6 +922,10 @@ void RedrawAllObjects(bool force_redraw=false)
             g_calculatedOnce = false;
             g_redrawTHLevelsNeeded = true;
         }
+    } else if (priceBrokeHistoricalRange) {
+        // Just trigger a redraw, values are already updated!
+        g_redrawTHLevelsNeeded = true;
+        g_calculatedOnce = false;
     }
 
     // Early exit when hidden - skip all drawing
