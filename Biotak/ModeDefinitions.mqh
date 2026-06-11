@@ -1,4 +1,4 @@
-﻿  //+------------------------------------------------------------------+
+  //+------------------------------------------------------------------+
 //|                                              ModeDefinitions.mqh |
 //|                                  Copyright 2026, Biotak Project  |
 //|                     Centralized Drawing Mode Definitions         |
@@ -140,7 +140,30 @@ SModeDefinition GetModeDefinition(
             double factorValue;
             if(g_factorValueOverride > 0) factorValue = g_factorValueOverride;
             else if(inpFactorMode == FACTOR_MODE_MANUAL) factorValue = inpFactorValue;
-            else factorValue = GetDefaultFactorValue(dailyClosePrice);
+            else { // Auto mode
+                if (inpFactorAutoBasis == FACTOR_BASIS_SS) {
+                    // Calculate factor from data.shortStep
+                    double range = g_highestHigh - g_lowestLow;
+                    double targetStep = data.shortStep;
+                    if (range > 0 && targetStep > 0) {
+                        factorValue = range / (targetStep * 2.0);
+                    } else {
+                        factorValue = 50.0; // Fallback
+                    }
+                } else if (inpFactorAutoBasis == FACTOR_BASIS_LS) {
+                    // Calculate factor from data.longStep
+                    double range = g_highestHigh - g_lowestLow;
+                    double targetStep = data.longStep;
+                    if (range > 0 && targetStep > 0) {
+                        factorValue = range / (targetStep * 2.0);
+                    } else {
+                        factorValue = 50.0; // Fallback
+                    }
+                } else {
+                    // For other auto basis types, use the original GetDefaultFactorValue
+                    factorValue = GetDefaultFactorValue(dailyClosePrice);
+                }
+            }
             
             factorValue = NormalizeDouble(MathMax(0.01, MathMin(10000, factorValue)), 2);
             UpdateFactorLabel(factorValue);

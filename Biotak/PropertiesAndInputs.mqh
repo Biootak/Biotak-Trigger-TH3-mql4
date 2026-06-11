@@ -111,7 +111,7 @@ input ENUM_ZONE_STYLE inpMidZoneStyle = ZONE_STYLE_BOX_FILLED;
 
 input group "10.2) ZONES - VISUAL DENSITY"
 input string S10b = "[10.2] ZONES / VISUAL DENSITY";
-input int inpMidZoneTransparency = 30;
+input int inpMidZoneTransparency = 50;
 input double inpMidZoneHeightPercent = 33.0;
 
 #ifndef BUILD_LITE
@@ -137,7 +137,7 @@ input bool inpShowTH3Labels = true;
 input ENUM_TH3_LABEL_POSITION inpTH3LabelPosition = TH3_LABEL_END;
 input ENUM_ZONE_STYLE inpTH3ZoneStyle = ZONE_STYLE_LINES;
 input color inpTH3ZoneColor = clrNONE;
-input int inpTH3ZoneTransparency = 30;
+input int inpTH3ZoneTransparency = 50;
 input double inpTH3ZoneHeightPercent = 33.0;
 input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
 input int inpTH3ZoneBorderWidth = 1;
@@ -183,7 +183,7 @@ input string S15 = "[15] STYLE / TRIGGER";
 input group "15.1) TRIGGER - ENABLE & VISIBILITY"
 input string S15a = "[15.1] TRIGGER / ENABLE & VISIBILITY";
 input bool inpShowTrigger = false;       // Show Trigger Levels
-input int inpTriggerTransparency = 30;   // Trigger Transparency (0=Solid, 100=Invisible)
+input int inpTriggerTransparency = 50;   // Trigger Transparency (0=Solid, 100=Invisible)
 
 input group "15.2) TRIGGER - LINE"
 input string S15b = "[15.2] TRIGGER / LINE";
