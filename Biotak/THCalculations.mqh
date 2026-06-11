@@ -173,7 +173,8 @@ double CalculateSharedPatternStep(const double currentStructure, const double cu
 //+------------------------------------------------------------------+
 //| Calculate Factor Step Size                                        |
 //|                                                                   |
-//| Simple Formula: Step = (High - Low) / Factor                      |
+//| Formula: Step = (High - Low) / (Factor * 2)                       |
+//| (Divisions on BOTH sides of price = Factor * 2 total divisions)  |
 //| CRITICAL FIX: Complete overflow and division-by-zero protection  |
 //+------------------------------------------------------------------+
 
@@ -235,6 +236,8 @@ double CalculateFactorStepSize(const double highPrice, const double lowPrice, co
     // Enhanced safe division with proper threshold
     //                                                                
     // GOLD REVERT: Re-added * 2.0 as requested to maintain Factor/Step relationship
+    // Factor is the number of divisions on EACH SIDE of the current price.
+    // Total divisions across the full range = Factor * 2 (e.g. Factor=3 -> 6 divisions)
     double divisions = factor * 2.0;
     
     // CRITICAL: Use MIN_SAFE_DIVISIONS instead of EPSILON_GENERAL

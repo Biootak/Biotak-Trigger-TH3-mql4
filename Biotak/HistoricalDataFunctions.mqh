@@ -1,4 +1,4 @@
-﻿  #ifndef HISTORICAL_DATA_FUNCTIONS_MQH
+  #ifndef HISTORICAL_DATA_FUNCTIONS_MQH
 #define HISTORICAL_DATA_FUNCTIONS_MQH
 
 #property strict
@@ -11,18 +11,26 @@ bool UpdateHistoricalValues() {
     // OPTIMIZATION: Use dynamic arrays and ensure cleanup
     double highArray[], lowArray[];
     
+    // To ensure Historical High/Low remains consistent across different timeframes,
+    // we use PERIOD_MN1 when PERIOD_CURRENT is selected, because PERIOD_CURRENT
+    // yields different history lengths for different timeframes (e.g. M1 vs D1).
+    ENUM_TIMEFRAMES effectiveTimeframe = inpHistoricalTimeframe;
+    if (effectiveTimeframe == PERIOD_CURRENT && inpHistoricalPeriods == 0) {
+        effectiveTimeframe = PERIOD_MN1;
+    }
+    
     // MT4 approach: User has full control via input parameters
     // inpHistoricalPeriods = 0 means use all available bars
     // Otherwise use the specified number of periods
     int totalBars = inpHistoricalPeriods == 0 ? 
-                   iBars(Symbol(), inpHistoricalTimeframe) : 
+                   iBars(Symbol(), effectiveTimeframe) : 
                    inpHistoricalPeriods;
     
     if(totalBars <= 0) {
         // FIX: Don't just fail, log that we're waiting for data
         static datetime s_lastBarsWarning = 0;
         if(currentTime - s_lastBarsWarning > 30) {
-            Print("UpdateHistoricalValues: Waiting for historical data (", EnumToString(inpHistoricalTimeframe), ")...");
+            Print("UpdateHistoricalValues: Waiting for historical data (", EnumToString(effectiveTimeframe), ")...");
             s_lastBarsWarning = currentTime;
         }
         return false;
@@ -37,8 +45,8 @@ bool UpdateHistoricalValues() {
     }
 
     // Use single error check for data copying
-    int copiedHigh = CopyHigh(Symbol(), inpHistoricalTimeframe, 0, totalBars, highArray);
-    int copiedLow = CopyLow(Symbol(), inpHistoricalTimeframe, 0, totalBars, lowArray);
+    int copiedHigh = CopyHigh(Symbol(), effectiveTimeframe, 0, totalBars, highArray);
+    int copiedLow = CopyLow(Symbol(), effectiveTimeframe, 0, totalBars, lowArray);
     
     if(copiedHigh <= 0 || copiedLow <= 0) {
         Print("UpdateHistoricalValues: Failed to copy data. High=", copiedHigh, ", Low=", copiedLow);

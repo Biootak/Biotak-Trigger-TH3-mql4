@@ -302,7 +302,7 @@ input int inpMaxLabelWidth = 250;
 
 input group "22) ADVANCED - HISTORY & LOG"
 input string S22 = "[22] ADVANCED / HISTORY & LOG";
-input ENUM_TIMEFRAMES inpHistoricalTimeframe = PERIOD_CURRENT;
+input ENUM_TIMEFRAMES inpHistoricalTimeframe = PERIOD_MN1;
 input int inpHistoricalPeriods = 0;
 input ENUM_LOG_LEVEL inpLogLevel = LOG_LEVEL_WARN;   // Minimum log level (TRACE=all, OFF=none)
 

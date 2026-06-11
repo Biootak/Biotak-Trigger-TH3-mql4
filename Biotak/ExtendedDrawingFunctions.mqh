@@ -4401,7 +4401,7 @@ void DrawFactorLevelsFromCenter(const string objectPrefix, const double centerPr
 //| DEPRECATED: Use DrawFactorLevelsAligned instead                 |
 //| Draw Factor levels between Historical High and Low               |
 //|                     High   Low                                   |
-//| Divides the range into (Factor   2) equal parts                  |
+//| Divides the range into (Factor * 2) equal parts                   |
 //| NOTE: This function is kept for backward compatibility only      |
 //+------------------------------------------------------------------+
 
