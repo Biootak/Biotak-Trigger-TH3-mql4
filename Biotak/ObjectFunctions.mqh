@@ -1,5 +1,7 @@
 ﻿  #property strict
 
+#ifndef OBJECT_FUNCTIONS_MQH
+#define OBJECT_FUNCTIONS_MQH
 bool CreateTHLineObject(const string name, const double price, const color lineColor, const ENUM_LINE_STYLE style, const int width, const string tooltip, ENUM_LINE_OBJECT_TYPE lineObjectType, bool isSelectable = false) {
     //                                                                
     // CRITICAL FIX #1: Check object count BEFORE creation
@@ -177,8 +179,9 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
         ObjectSetDouble(0, name, OBJPROP_PRICE, price);
     }
 
-    CacheUpdateLabel(name, labelText, textColor);
-    ApplyVisibilityStateIfUnchangedSkip(name, false);
-    
+    CacheUpdateLabel(name, labelText, textColor);    ApplyVisibilityStateIfUnchangedSkip(name, false);
+
     return true;
 }
+
+#endif // OBJECT_FUNCTIONS_MQH

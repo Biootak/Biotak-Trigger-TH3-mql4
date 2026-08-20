@@ -3,6 +3,8 @@
 //|                                  GOLD FIX: Input Security Layer   |
 //|                                  Comprehensive Validation         |
 //+------------------------------------------------------------------+
+#ifndef INPUT_VALIDATION_ENHANCED_MQH
+#define INPUT_VALIDATION_ENHANCED_MQH
 #property copyright "  Biotak - Security Enhanced"
 #property strict
 
@@ -247,3 +249,5 @@ string SanitizeFilename(const string filename) {
     
     return safe;
 }
+
+#endif // INPUT_VALIDATION_ENHANCED_MQH

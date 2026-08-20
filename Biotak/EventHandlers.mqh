@@ -2,6 +2,8 @@
 //| Event Handlers - Version 3.10 GOLD                              |
 //| Security & Performance Audit Complete                           |
 //+------------------------------------------------------------------+
+#ifndef EVENT_HANDLERS_MQH
+#define EVENT_HANDLERS_MQH
 #property strict
 
 int OnInitHandler() {
@@ -274,6 +276,10 @@ int OnInitHandler() {
         g_redrawTHLevelsNeeded = true;
     }
 
+    #ifdef ENABLE_ASSERTIONS
+    FactorModeSanityCheck();
+    #endif
+
     return INIT_SUCCEEDED;
 }
 
@@ -437,19 +443,15 @@ void OnDeinitHandler(const int reason) {
         string factorGvarName = "Biotak_Factor_" + chartIdStrLocal;
         GlobalVariableDel(factorGvarName);
         g_factorValueOverride = 0.0;
-        string linesGvarName = "Biotak_LinesVisible_" + chartIdStrLocal;
-        GlobalVariableDel(linesGvarName);
-        // ATR labels hotkey override should not survive parameter changes
-        string atrLabelsGvarName = "Biotak_ATRLabels_" + chartIdStrLocal;
-        GlobalVariableDel(atrLabelsGvarName);
-        // TH labels hotkey override should not survive parameter changes
-        string thLabelsGvarNameLocal = "Biotak_THLabels_" + chartIdStrLocal;
-        GlobalVariableDel(thLabelsGvarNameLocal);
+        // FIX: Keep hotkey toggle state across parameter changes so a settings
+        // update does not undo the user's toggles (L=lines, A=ATR labels, S=TH
+        // labels). The gvars are restored in OnInit; use the R key to reset all
+        // overrides back to the input defaults.
 #ifndef BUILD_LITE
         string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStrLocal;
         GlobalVariableSet(th3UpdateFlag, 1.0);
 #endif
-        DEBUG_PRINT("OnDeinit (REASON_PARAMETERS) - reset overrides");
+        DEBUG_PRINT("OnDeinit (REASON_PARAMETERS) - applying settings (hotkey toggles preserved)");
         DeleteAllIndicatorObjects(false);
     }
     else
@@ -1198,6 +1200,19 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 //| Called after RedrawAllObjects to ensure g_linesVisible is       |
 //| respected for all line objects (HLINE and TREND)                 |
 
+//+------------------------------------------------------------------+
+//| Empty-box border segments (_B_Top/_B_Bottom/_B_Left) are part of |
+//| the zone BOX, not lines - the L key and line visibility must not |
+//| toggle them (same behavior as the filled box rectangle).         |
+//+------------------------------------------------------------------+
+bool IsZoneBoxBorderObject(const string name)
+{
+    if(StringFind(name, "_B_Top") >= 0)    return true;
+    if(StringFind(name, "_B_Bottom") >= 0) return true;
+    if(StringFind(name, "_B_Left") >= 0)   return true;
+    return false;
+}
+
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     bool suppressDeleteEvent = g_suppressDeleteEvents || (g_suppressDeleteEventsUntilMs != 0 && GetTickCount() <= g_suppressDeleteEventsUntilMs);
@@ -1290,7 +1305,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                         else if(!g_linesVisible)
                         {
                             int objType = (int)ObjectGetInteger(0, objName, OBJPROP_TYPE);
-                            if(objType == OBJ_HLINE || objType == OBJ_TREND)
+                            // Empty-box borders are part of the box, not lines
+                            if((objType == OBJ_HLINE || objType == OBJ_TREND) && !IsZoneBoxBorderObject(objName))
                             {
                                 ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
                             }
@@ -1328,7 +1344,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 
         //  
-        // L key   Toggle Lines Visibility
+        // L key   Toggle Lines Visibility (all LINE objects - not boxes)
         //  
         if(IsHotkeyPressed(lparam, sparam, inpLinesToggleKey))
         {
@@ -1336,6 +1352,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             UpdateLinesVisibleCache(g_linesVisible);
             string gvar_name = "Biotak_LinesVisible_" + GetCachedChartIdStr();
             GlobalVariableSet(gvar_name, g_linesVisible ? 1.0 : 0.0);
+            long lineTf = g_linesVisible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
             int total = ObjectsTotal(0, -1, -1);
             string cachedPrefixL = inpObjectPrefix;
             int prefixLenL = StringLen(cachedPrefixL);
@@ -1346,14 +1363,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 if(StringGetCharacter(objName, 0) != prefixFirstCharL) continue;
                 if(StringLen(objName) >= prefixLenL && StringSubstr(objName, 0, prefixLenL) == cachedPrefixL)
                 {
+                    // Toggle all LINE objects (level lines, zone boundary lines,
+                    // trigger lines). Boxes (zones), labels stay untouched.
                     int objType = (int)ObjectGetInteger(0, objName, OBJPROP_TYPE);
-                    if(objType == OBJ_HLINE || objType == OBJ_TREND)
-                    {
-                        if(g_linesVisible)
-                            ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-                        else
-                            ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                    }
+                    // Empty-box border segments belong to the box, not lines
+                    if((objType == OBJ_HLINE || objType == OBJ_TREND) && !IsZoneBoxBorderObject(objName))
+                        ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, lineTf);
                 }
             }
             LOG_I(LOG_CAT_LINES, "Lines " + (g_linesVisible ? "VISIBLE" : "HIDDEN"));
@@ -2138,21 +2153,10 @@ void AdjustFactorValue(int direction)
         if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0) {
             currentVal = inpFactorValue;
         } else if(useDirect) {
-            // DIRECT MODE: Get default Step Size from current basis
-            double tfPct = GetTimeframeTH();
+            // DIRECT MODE: default step from basis (single source, all 8 bases)
             double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
-            double thVal = CalculateTH(basePrice, GetCachedDigits(), tfPct);
-            thVal = GetAdaptedStepSize(thVal);
-            if(thVal > 0) {
-                switch(inpFactorAutoBasis) {
-                    case FACTOR_BASIS_SS:      currentVal = thVal * 1.5; break;
-                    case FACTOR_BASIS_LS:      currentVal = thVal * 2.0; break;
-                    case FACTOR_BASIS_TH:      currentVal = thVal; break;
-                    case FACTOR_BASIS_CONTROL: currentVal = thVal * 1.75; break;
-                    default:                   currentVal = thVal * 1.5; break;
-                }
-            }
-            if(currentVal <= 0) currentVal = thVal; // Final fallback
+            currentVal = GetFactorModeAutoStepSize(basePrice, inpFactorAutoBasis);
+            if(currentVal <= 0) currentVal = GetFactorModePrimaryStepPrice(basePrice); // Final fallback
         } else {
             // CLASSIC MODE: Get default Factor
             currentVal = GetDefaultFactorValue(g_dailyClosePriceForTH);
@@ -2189,8 +2193,19 @@ void AdjustFactorValue(int direction)
     g_forceClearOnNextDraw = true;
     g_redrawTHLevelsNeeded = true;
     RedrawAllObjects(true);
-    // For DIRECT mode, pass the step size directly for proper label formatting
-    UpdateFactorLabel(useDirect ? 0 : newVal, useDirect ? newVal : 0);
+    // For DIRECT mode, derive the factor from the step (Step = Range / (Factor*2))
+    // so the label shows a correct F value instead of 0.00.
+    if(useDirect) {
+        double factorForLabel = 0;
+        if(g_highestHigh > 0 && g_lowestLow > 0 && g_highestHigh > g_lowestLow && newVal > 0) {
+            factorForLabel = CalculateFactorFromStep(g_highestHigh - g_lowestLow, newVal);
+        }
+        UpdateFactorLabel(factorForLabel, newVal);
+    } else {
+        UpdateFactorLabel(newVal, 0);
+    }
     ThrottledChartRedraw();
 }
+
+#endif // EVENT_HANDLERS_MQH
 

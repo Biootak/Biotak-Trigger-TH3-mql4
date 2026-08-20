@@ -3,6 +3,8 @@
 //|                     TH3 Structure Tool (Proprietary Logic)       |
 //|                     Supports: Steps Mode & AB=CD Pattern Mode    |
 //+------------------------------------------------------------------+
+#ifndef TH3_TOOL_MQH
+#define TH3_TOOL_MQH
 #property strict
 
 // Constants for magic numbers
@@ -2688,6 +2690,8 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         double upperZone = centerPrice + zoneHalfWidth;
         double lowerZone = centerPrice - zoneHalfWidth;
         color zoneColor = (inpTH3ZoneColor == clrNONE) ? targetColors[i] : inpTH3ZoneColor;
+        // Apply the zone transparency to the box/border color (blend with background)
+        zoneColor = GetZoneRenderColor(zoneColor, inpTH3ZoneTransparency);
         
         if(ObjectFind(0, lineName) < 0) {
             ObjectCreate(0, lineName, OBJ_FIBO, 0, startTime, centerPrice, endTime, centerPrice);
@@ -2718,35 +2722,105 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             }
         }
         
-        // Zone lines
+        // Zone objects: BOX styles -> rectangle; HIDDEN -> nothing
         string zoneUpperName = mainObjName + "_ZoneUpper_" + IntegerToString(i+1);
         string zoneLowerName = mainObjName + "_ZoneLower_" + IntegerToString(i+1);
+        string zoneBoxName = mainObjName + "_Zone_" + IntegerToString(i+1);
         
-        if(inpTH3ZoneStyle == TH3_ZONE_LINES) {
-            if(ObjectFind(0, zoneUpperName) < 0) {
-                ObjectCreate(0, zoneUpperName, OBJ_TREND, 0, startTime, upperZone, endTime, upperZone);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, zoneUpperName, OBJPROP_BACK, true);
+        if(inpTH3ZoneStyle == TH3_ZONE_HIDDEN) {
+            // Clean up any leftover zone objects
+            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
+            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
+            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
+            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
+            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
+            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
+        }
+        else if(inpTH3ZoneStyle == TH3_ZONE_BOX_EMPTY) {
+            // EMPTY BOX: hollow outline drawn as border segments. Works on
+            // every MT4 build - OBJ_RECTANGLE with FILL=false is unreliable.
+            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
+            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
+            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
+            
+            string topBorder = zoneBoxName + "_B_Top";
+            string bottomBorder = zoneBoxName + "_B_Bottom";
+            string leftBorder = zoneBoxName + "_B_Left";
+            
+            // Top border (extends right, matching the filled box)
+            if(ObjectFind(0, topBorder) < 0) {
+                ObjectCreate(0, topBorder, OBJ_TREND, 0, startTime, upperZone, endTime, upperZone);
+                ObjectSetInteger(0, topBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+                ObjectSetInteger(0, topBorder, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
+                ObjectSetInteger(0, topBorder, OBJPROP_SELECTABLE, false);
+                ObjectSetInteger(0, topBorder, OBJPROP_BACK, true);
             } else {
-                ObjectMove(0, zoneUpperName, 0, startTime, upperZone);
-                ObjectMove(0, zoneUpperName, 1, endTime, upperZone);
+                ObjectMove(0, topBorder, 0, startTime, upperZone);
+                ObjectMove(0, topBorder, 1, endTime, upperZone);
+                ObjectSetInteger(0, topBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
             }
             
-            if(ObjectFind(0, zoneLowerName) < 0) {
-                ObjectCreate(0, zoneLowerName, OBJ_TREND, 0, startTime, lowerZone, endTime, lowerZone);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, zoneLowerName, OBJPROP_BACK, true);
+            // Bottom border (extends right, matching the filled box)
+            if(ObjectFind(0, bottomBorder) < 0) {
+                ObjectCreate(0, bottomBorder, OBJ_TREND, 0, startTime, lowerZone, endTime, lowerZone);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_SELECTABLE, false);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_BACK, true);
             } else {
-                ObjectMove(0, zoneLowerName, 0, startTime, lowerZone);
-                ObjectMove(0, zoneLowerName, 1, endTime, lowerZone);
+                ObjectMove(0, bottomBorder, 0, startTime, lowerZone);
+                ObjectMove(0, bottomBorder, 1, endTime, lowerZone);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+            }
+            
+            // Left border (vertical - closes the outline)
+            if(ObjectFind(0, leftBorder) < 0) {
+                ObjectCreate(0, leftBorder, OBJ_TREND, 0, startTime, lowerZone, startTime, upperZone);
+                ObjectSetInteger(0, leftBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, leftBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, leftBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+                ObjectSetInteger(0, leftBorder, OBJPROP_RAY_RIGHT, false);
+                ObjectSetInteger(0, leftBorder, OBJPROP_SELECTABLE, false);
+                ObjectSetInteger(0, leftBorder, OBJPROP_BACK, true);
+            } else {
+                ObjectMove(0, leftBorder, 0, startTime, lowerZone);
+                ObjectMove(0, leftBorder, 1, startTime, upperZone);
+                ObjectSetInteger(0, leftBorder, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, leftBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                ObjectSetInteger(0, leftBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+            }
+        }
+        else {
+            // BOX_FILLED: single filled rectangle zone
+            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
+            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
+            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
+            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
+            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
+            
+            if(ObjectFind(0, zoneBoxName) < 0) {
+                if(ObjectCreate(0, zoneBoxName, OBJ_RECTANGLE, 0, startTime, lowerZone, endTime, upperZone)) {
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_SELECTABLE, false);
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_BACK, true);
+                }
+            } else {
+                ObjectMove(0, zoneBoxName, 0, startTime, lowerZone);
+                ObjectMove(0, zoneBoxName, 1, endTime, upperZone);
+                ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
+                ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
             }
         }
     }
@@ -3348,6 +3422,10 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
                 ObjectDelete(0, baseName + "_Target_" + IntegerToString(i));
                 ObjectDelete(0, baseName + "_ZoneUpper_" + IntegerToString(i));
                 ObjectDelete(0, baseName + "_ZoneLower_" + IntegerToString(i));
+                ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i));
+                ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i) + "_B_Top");
+                ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i) + "_B_Bottom");
+                ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i) + "_B_Left");
             }
             
             // 5. Delete any temporary objects
@@ -3484,4 +3562,6 @@ int FindOptimalFrequencyForABCD_WithLearningData(
     
     return resultCount;
 }
+
+#endif // TH3_TOOL_MQH
 

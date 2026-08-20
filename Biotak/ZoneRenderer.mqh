@@ -3,6 +3,8 @@
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Zone Rendering & MT4 Objects  |
 //+------------------------------------------------------------------+
+#ifndef ZONE_RENDERER_MQH
+#define ZONE_RENDERER_MQH
 #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
@@ -201,6 +203,8 @@ void RenderZones(const SZoneRenderInfo &zones[])
         request.zoneColor = zones[i].clr;
         request.transparency = zones[i].transparency;
         request.filled = zones[i].filled;
+        request.borderStyle = inpMidZoneBorderStyle;
+        request.borderWidth = inpMidZoneBorderWidth;
         request.startTime = 0;  // Auto-calculate by Factory
         request.endTime = 0;    // Auto-calculate by Factory
         
@@ -336,3 +340,5 @@ void CleanupZoneObjects(const string &prefix)
     Print("  CleanupZoneObjects: Deleted all objects with prefix: ", prefix);
     #endif
 }
+
+#endif // ZONE_RENDERER_MQH

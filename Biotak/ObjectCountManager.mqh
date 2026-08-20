@@ -3,6 +3,8 @@
 //|                     Object Count Management & Overflow Prevention|
 //|                                                     Overflow      |
 //+------------------------------------------------------------------+
+#ifndef OBJECT_COUNT_MANAGER_MQH
+#define OBJECT_COUNT_MANAGER_MQH
 #property strict
 
 //+------------------------------------------------------------------+
@@ -305,3 +307,5 @@ void PrintObjectCountStats()
     Print("   Other:      ", other);
     Print("====================");
 }
+
+#endif // OBJECT_COUNT_MANAGER_MQH

@@ -1,4 +1,7 @@
-﻿  #property strict
+﻿  #ifndef TIMEFRAME_FUNCTIONS_MQH
+#define TIMEFRAME_FUNCTIONS_MQH
+
+#property strict
 
 string GetCurrentTimeframe() {
     int timeframe = (g_timeframeLocked && g_lockedPeriod > 0) ? g_lockedPeriod : Period();
@@ -97,3 +100,5 @@ int GetHigherPatternTimeframePeriod() {
     if(higherMinutes < 10080) return PERIOD_D1;
     return PERIOD_W1;
 }
+
+#endif // TIMEFRAME_FUNCTIONS_MQH

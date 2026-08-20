@@ -3,6 +3,8 @@
 //|                                  GOLD FIX: HIGH Priority Issues   |
 //|                                  Performance & Memory Fixes       |
 //+------------------------------------------------------------------+
+#ifndef PERFORMANCE_OPTIMIZATIONS_MQH
+#define PERFORMANCE_OPTIMIZATIONS_MQH
 #property copyright "==================== Biotak - Performance Optimized"
 #property strict
 
@@ -510,3 +512,5 @@ void CleanupPerformanceOptimizations() {
     // Reset global cache
     g_globalCacheInitialized = false;
 }
+
+#endif // PERFORMANCE_OPTIMIZATIONS_MQH

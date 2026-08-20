@@ -672,10 +672,19 @@ void SetPipelineObjectTimeframesIfExists(const string name, const long timeframe
 
 void SetPipelineZoneVisibility(const string zoneName, const bool visible)
 {
-    long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    SetPipelineObjectTimeframesIfExists(zoneName, timeframes);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_Top", timeframes);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_Bottom", timeframes);
+    // FIX: The L key controls only the zone boundary LINES (_Top/_Bottom).
+    // The box object itself (rectangle or empty-box borders) is never
+    // affected by L - only by F.
+    long tfAll = (visible && !IsIndicatorHidden()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    long tfLine = (visible && !IsIndicatorHidden() && GetCachedLinesVisible()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    SetPipelineObjectTimeframesIfExists(zoneName, tfAll);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_Top", tfLine);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_Bottom", tfLine);
+    // Empty-box border segments follow the box itself (F key)
+    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Top", tfAll);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Bottom", tfAll);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Left", tfAll);
+    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Right", tfAll);
 }
 
 void RenderZones(
@@ -704,13 +713,8 @@ void RenderZones(
         
         if(zones[i].renderTop <= zones[i].renderBottom) continue;
         
-        if(config.zoneStyle == ZONE_STYLE_LINES) {
-            CreateFactorMidZone_LinesStyle(zones[i].name, 
-                                           zones[i].renderTop, zones[i].renderBottom,
-                                           zones[i].zoneColor, zones[i].transparency);
-            SetPipelineZoneVisibility(zones[i].name, true);
-        } else {
-            // Box style (filled or empty)
+        {
+            // Box style (filled or empty) with configurable border style/width
             SZoneCreationRequest request;
             request.name = zones[i].name;
             request.topPrice = zones[i].renderTop;
@@ -718,6 +722,8 @@ void RenderZones(
             request.zoneColor = zones[i].zoneColor;
             request.transparency = zones[i].transparency;
             request.filled = zones[i].filled;
+            request.borderStyle = inpMidZoneBorderStyle;
+            request.borderWidth = inpMidZoneBorderWidth;
             request.startTime = 0;
             request.endTime = 0;
             

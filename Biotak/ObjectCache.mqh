@@ -243,6 +243,15 @@ bool DeleteManagedZoneObjects(const string zoneName, const bool verifyChartObjec
         foundAny = true;
     if(DeleteIndicatorObjectManaged(zoneName + "_Bottom", verifyChartObjects))
         foundAny = true;
+    // Empty-box border segments (drawn instead of OBJ_RECTANGLE for BOX_EMPTY)
+    if(DeleteIndicatorObjectManaged(zoneName + "_B_Top", verifyChartObjects))
+        foundAny = true;
+    if(DeleteIndicatorObjectManaged(zoneName + "_B_Bottom", verifyChartObjects))
+        foundAny = true;
+    if(DeleteIndicatorObjectManaged(zoneName + "_B_Left", verifyChartObjects))
+        foundAny = true;
+    if(DeleteIndicatorObjectManaged(zoneName + "_B_Right", verifyChartObjects))
+        foundAny = true;
     return foundAny;
 }
 
@@ -310,7 +319,8 @@ void CacheUpdateObject(const string name, const double price,
 
 void CacheUpdateZone(const string name, const double price1, const double price2,
                       const datetime time1, const datetime time2,
-                      const color clr, const bool filled) {
+                      const color clr, const bool filled,
+                      const int style, const int width) {
     int idx = CacheFindIndex(name);
     if(idx < 0) {
         if(!g_objectCacheHashInitialized) InitializeObjectCacheHash();
@@ -328,6 +338,8 @@ void CacheUpdateZone(const string name, const double price1, const double price2
                 g_objectCacheHash[insertIdx].entry.lastTime2 = time2;
                 g_objectCacheHash[insertIdx].entry.lastColor = clr;
                 g_objectCacheHash[insertIdx].entry.lastFilled = filled;
+                g_objectCacheHash[insertIdx].entry.lastStyle = style;
+                g_objectCacheHash[insertIdx].entry.lastWidth = width;
                 g_objectCacheHash[insertIdx].entry.exists = true;
                 g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
                 g_objectCacheHash[insertIdx].occupied = true;
@@ -346,6 +358,8 @@ void CacheUpdateZone(const string name, const double price1, const double price2
     g_objectCacheHash[idx].entry.lastTime2 = time2;
     g_objectCacheHash[idx].entry.lastColor = clr;
     g_objectCacheHash[idx].entry.lastFilled = filled;
+    g_objectCacheHash[idx].entry.lastStyle = style;
+    g_objectCacheHash[idx].entry.lastWidth = width;
     g_objectCacheHash[idx].entry.exists = true;
     g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();

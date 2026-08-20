@@ -3,6 +3,8 @@
 //|                                  Copyright 2025, Biotak Project  |
 //|                                    Zone Validation & Safety      |
 //+------------------------------------------------------------------+
+#ifndef ZONE_VALIDATOR_MQH
+#define ZONE_VALIDATOR_MQH
 #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
@@ -252,8 +254,10 @@ bool ValidateCompleteConfig(
     
     Print("  ValidateCompleteConfig: All validations passed");
     Print("   Count=", outCount, ", StepSize=", DoubleToString(stepSize, s_cachedDigitsConfig),
-          ", ZoneHeight=", DoubleToString(outZoneHeight, s_cachedDigitsConfig));
+          ", ZoneHeight=",DoubleToString(outZoneHeight, s_cachedDigitsConfig));
     #endif
-    
+
     return true;
 }
+
+#endif // ZONE_VALIDATOR_MQH

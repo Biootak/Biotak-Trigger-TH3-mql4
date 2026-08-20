@@ -1,4 +1,6 @@
-  #property strict
+  #ifndef FRACTAL_TIMEFRAMES_MQH
+#define FRACTAL_TIMEFRAMES_MQH
+#property strict
 
 string GetBaseFractalTimeframeForCurrent() {
     string currentTimeframe=GetCurrentTimeframe();
@@ -238,4 +240,6 @@ string GetOverlapTimeframesInfo(int step, const int &intervals[]) {
     string tf = GetShortTimeframeName(GetTimeframeForStructureLevel(highestLevel));
     return tf;
 }
+
+#endif // FRACTAL_TIMEFRAMES_MQH
 

@@ -3,6 +3,8 @@
 //| Persistent storage for base price history                         |
 //| Matches Java BasePriceHistoryManager.java implementation         |
 //+------------------------------------------------------------------+
+#ifndef BASE_PRICE_HISTORY_MANAGER_MQH
+#define BASE_PRICE_HISTORY_MANAGER_MQH
 #property strict
 
 // Constants for history file management
@@ -905,3 +907,5 @@ void DeleteAllHistoryFiles()
     
     HISTORY_PRINT("[BasePriceHistoryManager] Deleted ", deletedCount, " history files");
 }
+
+#endif // BASE_PRICE_HISTORY_MANAGER_MQH

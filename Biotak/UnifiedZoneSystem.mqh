@@ -31,6 +31,8 @@ struct SUnifiedZoneConfig {
     bool separateStructureTrigger;   //     structure   trigger           
     color defaultColor;              //            
     ENUM_ZONE_STYLE style;    //        zone (Lines/Filled/Empty/Hidden)
+    int borderStyle;                 // Box border line style (STYLE_*)
+    int borderWidth;                 // Box border width (1-5)
 };
 
 //+------------------------------------------------------------------+
@@ -137,18 +139,7 @@ bool CreateUnifiedZone(const string zoneName,
     }
     
     //                                                                
-    // PHASE 3: HANDLE LINES STYLE (Special Case)
-    //                                                                
-    
-    if(config.style == FACTOR_ZONE_LINES) {
-        // Use special lines-only implementation
-        return CreateFactorMidZone_LinesStyle(zoneName, upperPrice, lowerPrice,
-                                              (levelColor == clrNONE) ? config.defaultColor : levelColor,
-                                              config.transparency);
-    }
-    
-    //                                                                
-    // PHASE 4: DELEGATE TO ZONE FACTORY (Box Styles)
+    // PHASE 3: DELEGATE TO ZONE FACTORY (Box Styles)
     //                                                                
     
     SZoneCreationRequest request;
@@ -158,6 +149,8 @@ bool CreateUnifiedZone(const string zoneName,
     request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
     request.transparency = config.transparency;
     request.filled = (config.style == FACTOR_ZONE_BOX_FILLED);
+    request.borderStyle = config.borderStyle;
+    request.borderWidth = config.borderWidth;
     request.startTime = 0;  // Auto-calculate
     request.endTime = 0;    // Auto-calculate
     
@@ -227,6 +220,10 @@ SUnifiedZoneConfig GetUnifiedZoneConfig()
     
     // GOLD VERSION: Add style support
     config.style = inpMidZoneStyle;
+    
+    // Box border style/width from inputs (solid/dashed/dotted hollow or filled boxes)
+    config.borderStyle = inpMidZoneBorderStyle;
+    config.borderWidth = inpMidZoneBorderWidth;
     
     return config;
 }
@@ -377,13 +374,6 @@ bool CreateZoneWithSmartFallback(const string zoneName,
         double upperPrice = NormalizeDouble(midPoint + zoneHeight, Digits);
         double lowerPrice = NormalizeDouble(midPoint - zoneHeight, Digits);
         
-        // Handle LINES style (special case)
-        if(config.style == FACTOR_ZONE_LINES) {
-            return CreateFactorMidZone_LinesStyle(zoneName, upperPrice, lowerPrice,
-                                                  (levelColor == clrNONE) ? config.defaultColor : levelColor,
-                                                  config.transparency);
-        }
-        
         // Handle HIDDEN style
         if(config.style == FACTOR_ZONE_HIDDEN) {
             DeleteManagedZoneObjects(zoneName, true);
@@ -398,6 +388,8 @@ bool CreateZoneWithSmartFallback(const string zoneName,
         request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
         request.transparency = config.transparency;
         request.filled = (config.style == FACTOR_ZONE_BOX_FILLED);
+        request.borderStyle = config.borderStyle;
+        request.borderWidth = config.borderWidth;
         request.startTime = 0;
         request.endTime = 0;
         

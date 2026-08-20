@@ -3,6 +3,8 @@
 //|                                  Copyright 2025, Biotak Project  |
 //|                                Zone Geometry Calculations         |
 //+------------------------------------------------------------------+
+#ifndef ZONE_CALCULATOR_MQH
+#define ZONE_CALCULATOR_MQH
 #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
@@ -335,3 +337,5 @@ void CalculateZoneGeometries(
     Print("   Valid Zones Created: ", validZoneCount);
     Print("====================");
 }
+
+#endif // ZONE_CALCULATOR_MQH

@@ -1,5 +1,7 @@
 ﻿  #property strict
 
+#ifndef STANDARD_TIMEFRAMES_MQH
+#define STANDARD_TIMEFRAMES_MQH
 double CalculateStandardPercentage(const int timeInMinutes) {
     if(timeInMinutes <= 0) return 0.0;
     // PERF: Cache results   input is always one of 3 fixed values (1440, 10080, 43200)
@@ -28,3 +30,5 @@ double CalculateStandardPercentage(const int timeInMinutes) {
     }
     return result;
 }
+
+#endif // STANDARD_TIMEFRAMES_MQH

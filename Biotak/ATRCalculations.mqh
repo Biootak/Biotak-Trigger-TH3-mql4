@@ -22,6 +22,8 @@
 //|   Overflow protection in weighted calculations                  |
 //|   Array bounds checking in batch operations                     |
 //+------------------------------------------------------------------+
+#ifndef ATR_CALCULATIONS_MQH
+#define ATR_CALCULATIONS_MQH
 #property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link "@biotak"
 #property strict
@@ -1236,3 +1238,5 @@ void TestATRCalculations() {
     // Cleanup
     CleanupATRCache();
 }
+
+#endif // ATR_CALCULATIONS_MQH

@@ -4,6 +4,8 @@
 //|  Dynamic Trading Day Detection from actual market data          |
 //|                                                                |
 //+------------------------------------------------------------------+
+#ifndef DYNAMIC_TRADING_DAY_DETECTOR_MQH
+#define DYNAMIC_TRADING_DAY_DETECTOR_MQH
 #property copyright "Biotak"
 #property strict
 
@@ -141,3 +143,5 @@ void GetAllBlocksForCurrentSession(datetime &blocks[], datetime currentTime)
         blockTime += 30 * 60;
     }
 }
+
+#endif // DYNAMIC_TRADING_DAY_DETECTOR_MQH

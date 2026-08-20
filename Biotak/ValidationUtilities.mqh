@@ -4,6 +4,8 @@
 //|                                                                  |
 //|                     DRY Principle Implementation                 |
 //+------------------------------------------------------------------+
+#ifndef VALIDATION_UTILITIES_MQH
+#define VALIDATION_UTILITIES_MQH
 #property strict
 
 #include "FloatingPointHelper.mqh"
@@ -245,10 +247,11 @@ bool ValidateDivisionOperands(double numerator, double denominator, const string
     }
     
     // Check for potential overflow
-    if(MathAbs(numerator) > DBL_MAX / 2.0 && MathAbs(denominator) < 1.0) {
-        Print("   Potential overflow in division", (StringLen(context) > 0) ? " in " + context : "");
+    if(MathAbs(numerator) > DBL_MAX / 2.0 && MathAbs(denominator) < 1.0) {        Print("   Potential overflow in division", (StringLen(context) > 0) ? " in " + context : "");
         return false;
     }
-    
+
     return true;
 }
+
+#endif // VALIDATION_UTILITIES_MQH

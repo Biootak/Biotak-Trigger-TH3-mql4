@@ -10,6 +10,8 @@
 //| - Performance-optimized (minimal overhead)                      |
 //| - Thread-safe (MT4 single-threaded, but future-proof)          |
 //+------------------------------------------------------------------+
+#ifndef ENHANCED_LOGGING_MQH
+#define ENHANCED_LOGGING_MQH
 #property strict
 
 //                                                                
@@ -341,3 +343,5 @@ EnableModuleLogging("");  //
 // Example 6: Statistics
 PrintLogStatistics();
 */
+
+#endif // ENHANCED_LOGGING_MQH

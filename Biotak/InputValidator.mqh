@@ -3,6 +3,8 @@
 //|                                                                  |
 //| Logic for validating user input parameters                       |
 //+------------------------------------------------------------------+
+#ifndef INPUT_VALIDATOR_MQH
+#define INPUT_VALIDATOR_MQH
 #property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
 #property strict
@@ -157,7 +159,14 @@ int ValidateInputs()
         return INIT_PARAMETERS_INCORRECT;
     }
     
-    // 9.4 Zone Styles (validated by ENUM at compile time)
+    // 9.4 Mid-Zone Border Width (1-5)
+    if(inpMidZoneBorderWidth < 1 || inpMidZoneBorderWidth > 5) {
+        Print("  ERROR: Mid-Zone Border Width (", inpMidZoneBorderWidth, ") out of range");
+        Print("   Valid range: 1 - 5");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    
+    // 9.5 Zone Styles (validated by ENUM at compile time)
     // inpMidZoneStyle, inpTH3ZoneStyle are validated by ENUM_ZONE_STYLE
     // No runtime validation needed - compiler enforces valid values
     
@@ -543,4 +552,6 @@ bool ValidateComboModeConfiguration() {
     Print("====================");
     return true;
 }
+
+#endif // INPUT_VALIDATOR_MQH
 

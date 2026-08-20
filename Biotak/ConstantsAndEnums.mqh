@@ -482,21 +482,18 @@ enum ENUM_TH3_LABEL_POSITION {
 // Unified Zone Display Style (Used by ALL modes)
 //          Zone    (      
 enum ENUM_ZONE_STYLE {
-    ZONE_STYLE_LINES = 0,         // Lines Only (Two boundary lines)
-    ZONE_STYLE_BOX_FILLED = 1,    // Filled Box (Rectangle with fill)
-    ZONE_STYLE_BOX_EMPTY = 2,     // Empty Box (Rectangle outline only)
-    ZONE_STYLE_HIDDEN = 3         // Hidden (No zones)
+    ZONE_STYLE_BOX_FILLED = 0,    // Filled Box (Colored zone)
+    ZONE_STYLE_BOX_EMPTY = 1,     // Empty Box (Outline only, no fill)
+    ZONE_STYLE_HIDDEN = 2         // Hidden (No zones)
 };
 
 // Legacy aliases for backward compatibility
 //                      
 #define ENUM_TH3_ZONE_STYLE ENUM_ZONE_STYLE
 #define ENUM_FACTOR_ZONE_STYLE ENUM_ZONE_STYLE
-#define TH3_ZONE_LINES ZONE_STYLE_LINES
 #define TH3_ZONE_BOX_FILLED ZONE_STYLE_BOX_FILLED
 #define TH3_ZONE_BOX_EMPTY ZONE_STYLE_BOX_EMPTY
 #define TH3_ZONE_HIDDEN ZONE_STYLE_HIDDEN
-#define FACTOR_ZONE_LINES ZONE_STYLE_LINES
 #define FACTOR_ZONE_BOX_FILLED ZONE_STYLE_BOX_FILLED
 #define FACTOR_ZONE_BOX_EMPTY ZONE_STYLE_BOX_EMPTY
 #define FACTOR_ZONE_HIDDEN ZONE_STYLE_HIDDEN

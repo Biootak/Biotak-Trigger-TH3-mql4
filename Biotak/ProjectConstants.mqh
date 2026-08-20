@@ -9,6 +9,8 @@
 //| - No magic numbers in code                                      |
 //| - Self-documenting with clear names                             |
 //+------------------------------------------------------------------+
+#ifndef PROJECT_CONSTANTS_MQH
+#define PROJECT_CONSTANTS_MQH
 #property strict
 
 //+------------------------------------------------------------------+
@@ -266,3 +268,5 @@ void PrintConstantsSummary()
     Print("=============================================================");
     #endif
 }
+
+#endif // PROJECT_CONSTANTS_MQH

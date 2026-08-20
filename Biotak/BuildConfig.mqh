@@ -2,6 +2,8 @@
 //|                                                  BuildConfig.mqh |
 //|                        Build Configuration for Debug/Production  |
 //+------------------------------------------------------------------+
+#ifndef BUILD_CONFIG_MQH
+#define BUILD_CONFIG_MQH
 #property copyright "  Biotak"
 #property strict
 
@@ -137,3 +139,5 @@ void PrintBuildInfo()
     #endif
     Print("====================");
 }
+
+#endif // BUILD_CONFIG_MQH

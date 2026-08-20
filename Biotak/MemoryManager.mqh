@@ -3,6 +3,8 @@
 //|                     Memory Management & Leak Detection           |
 //|                                                                  |
 //+------------------------------------------------------------------+
+#ifndef MEMORY_MANAGER_MQH
+#define MEMORY_MANAGER_MQH
 #property strict
 
 //+------------------------------------------------------------------+
@@ -226,3 +228,5 @@ void DeinitializeMemoryManager()
     g_memoryStatsInitialized = false;
     Print("====================");
 }
+
+#endif // MEMORY_MANAGER_MQH

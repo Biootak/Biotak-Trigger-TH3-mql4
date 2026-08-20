@@ -13,6 +13,7 @@
 #include "MathConstants.mqh"
 #include "UnifiedZoneSystem.mqh"
 #include "ZoneTrackingHelpers.mqh"
+#include "DrawingPipeline.mqh" // Drawing & Zone rendering pipeline
 
 // Note: CalculateFactorStepSize has been moved to THCalculations.mqh
 
@@ -182,13 +183,6 @@ bool CreateFactorMidZone(const string zoneName,
         return true;
     }
     
-    // STYLE: LINES ONLY - Use old implementation (special case)
-    //     style         HLINE            Factory                
-    if(zoneStyle == FACTOR_ZONE_LINES) {
-        return CreateFactorMidZone_LinesStyle(zoneName, upperPrice, lowerPrice, 
-                                              zoneColor, transparency);
-    }
-    
     //                                                                
     // PHASE 2: USE UNIFIED SYSTEM FOR BOX STYLES
     //                                                                
@@ -200,6 +194,8 @@ bool CreateFactorMidZone(const string zoneName,
     config.heightPercent = 1.0; // Factor zones use full height (not percentage)
     config.separateStructureTrigger = false;
     config.defaultColor = zoneColor;
+    config.borderStyle = inpMidZoneBorderStyle;
+    config.borderWidth = inpMidZoneBorderWidth;
     
     // Calculate midpoint (for unified system)
     double midPoint = (upperPrice + lowerPrice) / 2.0;
@@ -213,6 +209,8 @@ bool CreateFactorMidZone(const string zoneName,
     request.zoneColor = zoneColor;
     request.transparency = transparency;
     request.filled = (zoneStyle == FACTOR_ZONE_BOX_FILLED);
+    request.borderStyle = config.borderStyle;
+    request.borderWidth = config.borderWidth;
     request.startTime = 0;  // Auto-calculate
     request.endTime = 0;    // Auto-calculate
     
@@ -227,6 +225,10 @@ bool CreateFactorMidZone(const string zoneName,
         
         if(isHidden) {
             ObjectSetInteger(0, zoneName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            // Empty-box border segments (BOX_EMPTY style)
+            ObjectSetInteger(0, zoneName + "_B_Top", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            ObjectSetInteger(0, zoneName + "_B_Bottom", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            ObjectSetInteger(0, zoneName + "_B_Left", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         }
     }
     
@@ -234,11 +236,79 @@ bool CreateFactorMidZone(const string zoneName,
 }
 
 //+------------------------------------------------------------------+
-//| Create Factor Mid Zone - LINES STYLE (Legacy)                    |
-//|      Zone Factor -             (     )                          |
-//|                                                                  |
-//|                   LINES style                                    |
-//| FIXED: Respects Hide state when creating line zones             |
+//| Create/update a zone boundary SEGMENT (bounded like the box, not |
+//| a full-width HLINE) so LINES style matches the box edges exactly.|
+//| Uses the zone cache for change detection.                        |
+//+------------------------------------------------------------------+
+bool CreateOrUpdateZoneBoundary(const string name, const double price,
+                                 const datetime startTime, const datetime endTime,
+                                 const color clr, const int style, const int width,
+                                 const string tooltip)
+{
+    SObjectCacheEntry cachedEntry;
+    bool hasCached = CacheGetObject(name, cachedEntry);
+    bool objectExists = false;
+    if(hasCached && cachedEntry.exists) {
+        objectExists = (ObjectFind(0, name) >= 0);
+        if(!objectExists) {
+            CacheRemoveObject(name);
+            hasCached = false;
+        }
+    } else {
+        objectExists = (ObjectFind(0, name) >= 0);
+    }
+    
+    // Migrate old full-width HLINE leftovers to bounded segments
+    if(objectExists) {
+        int objType = (int)ObjectGetInteger(0, name, OBJPROP_TYPE);
+        if(objType != OBJ_TREND) {
+            ObjectDelete(0, name);
+            CacheRemoveObject(name);
+            objectExists = false;
+            hasCached = false;
+        }
+    }
+    
+    double normPrice = NormalizeDouble(price, Digits);
+    if(!objectExists) {
+        if(!ObjectCreate(0, name, OBJ_TREND, 0, startTime, normPrice, endTime, normPrice)) {
+            return false;
+        }
+        ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, name, OBJPROP_BACK, true);
+        ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
+        CacheUpdateZone(name, normPrice, normPrice, startTime, endTime, clr, true, style, width);
+        // FIX: Zone boundary lines follow the L key (zone visibility)
+        ApplyVisibilityState(name, true);
+        return true;
+    }
+    
+    bool geometryChanged = (!hasCached || cachedEntry.lastPrice != normPrice ||
+                            cachedEntry.lastTime1 != startTime || cachedEntry.lastTime2 != endTime);
+    if(geometryChanged) {
+        ObjectMove(0, name, 0, startTime, normPrice);
+        ObjectMove(0, name, 1, endTime, normPrice);
+    }
+    bool visualChanged = (!hasCached || cachedEntry.lastColor != clr ||
+                          cachedEntry.lastStyle != style || cachedEntry.lastWidth != width);
+    if(visualChanged) {
+        ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+    }
+    CacheUpdateZone(name, normPrice, normPrice, startTime, endTime, clr, true, style, width);
+    // FIX: Zone boundary lines follow the L key (zone visibility)
+    ApplyVisibilityStateIfUnchangedSkip(name, true);
+    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Create Factor Mid Zone - LINES STYLE                             |
+//| Boundary lines match the box exactly: same time span, same       |
+//| blended color, configurable border style/width.                  |
 //+------------------------------------------------------------------+
 bool CreateFactorMidZone_LinesStyle(const string zoneName,
                                     const double upperPrice,
@@ -256,19 +326,23 @@ bool CreateFactorMidZone_LinesStyle(const string zoneName,
 
     DeleteIndicatorObjectManaged(zoneName);
 
-    bool topNew = CreateOrUpdateHLine(lineTop, upperPrice, zoneColor, STYLE_DOT, 1, zoneName + " top", false);
-    bool bottomNew = CreateOrUpdateHLine(lineBottom, lowerPrice, zoneColor, STYLE_DOT, 1, zoneName + " bottom", false);
+    // Same time span as the box (matches CreateZone geometry)
+    int safeBars = Bars;
+    datetime currentTime = (safeBars > 0) ? Time[0] : TimeCurrent();
+    if(currentTime <= 0) currentTime = TimeCurrent();
+    datetime startTime = (safeBars > 0) ? Time[safeBars - 1] : currentTime;
+    if(startTime <= 0) startTime = currentTime;
+    datetime endTime = currentTime + PeriodSeconds(Period()) * ZONE_EXTENSION_PERIODS;
+    
+    // Blend color with background (same visual as the box)
+    color lineColor = GetZoneRenderColor(zoneColor, transparency);
 
-    if(topNew) {
-        ObjectSetInteger(0, lineTop, OBJPROP_BACK, true);
-        ObjectSetInteger(0, lineTop, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, lineTop, OBJPROP_ZORDER, 0);
-    }
-    if(bottomNew) {
-        ObjectSetInteger(0, lineBottom, OBJPROP_BACK, true);
-        ObjectSetInteger(0, lineBottom, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, lineBottom, OBJPROP_ZORDER, 0);
-    }
+    CreateOrUpdateZoneBoundary(lineTop, upperPrice, startTime, endTime,
+                               lineColor, inpMidZoneBorderStyle, inpMidZoneBorderWidth,
+                               zoneName + " top");
+    CreateOrUpdateZoneBoundary(lineBottom, lowerPrice, startTime, endTime,
+                               lineColor, inpMidZoneBorderStyle, inpMidZoneBorderWidth,
+                               zoneName + " bottom");
 
     return (ObjectFind(0, lineTop) >= 0 && ObjectFind(0, lineBottom) >= 0);
 }
@@ -3081,8 +3155,6 @@ bool DrawUnifiedZone(
                                       structureEnabled, triggerEnabled,
                                       lastDrawnPrice, lastTriggerPrice, lastDrawnPrice);
 }
-
-#include "DrawingPipeline.mqh" // Include the new pipeline
 
 //+------------------------------------------------------------------+
 //| Draw Factor boundary lines (Historical High/Low reference)       |

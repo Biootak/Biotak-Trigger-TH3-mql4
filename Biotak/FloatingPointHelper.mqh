@@ -3,6 +3,8 @@
 //|                     Floating-Point Precision & Comparison Helpers|
 //|                                                    |
 //+------------------------------------------------------------------+
+#ifndef FLOATING_POINT_HELPER_MQH
+#define FLOATING_POINT_HELPER_MQH
 #property strict
 
 //+------------------------------------------------------------------+
@@ -306,3 +308,5 @@ void TestFloatingPointHelper()
     
     Print("====================");
 }
+
+#endif // FLOATING_POINT_HELPER_MQH

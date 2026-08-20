@@ -4,6 +4,8 @@
 //| Matches MotiveWave/Java implementation exactly                    |
 //+------------------------------------------------------------------+
 
+#ifndef BASE_PRICE_MANAGER_MQH
+#define BASE_PRICE_MANAGER_MQH
 #property strict
 
 #include "BasePriceHistoryManager.mqh"
@@ -1953,3 +1955,5 @@ void CleanupBasePriceManager()
     
     DEBUG_PRINT("[BasePriceManager] CleanupBasePriceManager() - Cleanup complete (memory leak fixed)");
 }
+
+#endif // BASE_PRICE_MANAGER_MQH

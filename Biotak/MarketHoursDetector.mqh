@@ -4,6 +4,8 @@
 //|  Market hours detection for different market types              |
 //|                                                                 |
 //+------------------------------------------------------------------+
+#ifndef MARKET_HOURS_DETECTOR_MQH
+#define MARKET_HOURS_DETECTOR_MQH
 #property copyright "Biotak"
 #property strict
 
@@ -148,3 +150,5 @@ string GetMarketTypeName(ENUM_MARKET_TYPE marketType)
     }
 }
 // TestMarketDetection removed for production build optimization
+
+#endif // MARKET_HOURS_DETECTOR_MQH

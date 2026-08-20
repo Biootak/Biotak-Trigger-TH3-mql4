@@ -137,124 +137,19 @@ SModeDefinition GetModeDefinition(
         
         case FACTOR_STEP:
         {
+            // Single source of truth: compute step (for drawing) and
+            // factor (for display) under the current settings.
+            // NOTE: No label side-effects here - the drawing factory must
+            // stay pure. Info labels are driven by hotkeys (E/W/1/2/3/4/G)
+            // and refreshed in real time by RefreshVisibleStatusLabels().
             double factorValue = 0;
             double directStepSize = 0;
-            bool useDirect = (inpFactorDisplayMode == FACTOR_DISPLAY_DIRECT);
-            
-            // Get override value first if set
-            double overrideFactor = g_factorValueOverride;
-            
-            if(useDirect) {
-                // ============================================================
-                // DIRECT MODE: The value IS the step size directly
-                // Factor is calculated internally for display only
-                // ============================================================
-                if(overrideFactor > 0) {
-                    // Override is used as step size directly
-                    directStepSize = overrideFactor;
-                } else if(inpFactorMode == FACTOR_MODE_MANUAL) {
-                    // Manual: inpFactorValue IS the step size
-                    directStepSize = inpFactorValue;
-                } else {
-                    // Auto: Get step size from the chosen basis
-                    double range = g_highestHigh - g_lowestLow;
-                    switch(inpFactorAutoBasis) {
-                        case FACTOR_BASIS_SS:
-                            directStepSize = data.shortStep;
-                            break;
-                        case FACTOR_BASIS_LS:
-                            directStepSize = data.longStep;
-                            break;
-                        case FACTOR_BASIS_TH:
-                            directStepSize = data.thValue;
-                            break;
-                        case FACTOR_BASIS_CONTROL:
-                            directStepSize = (data.shortStep + data.longStep) / 2.0;
-                            break;
-                        case FACTOR_BASIS_TRIGGER:
-                        {
-                            double tfPercentage = GetTimeframeTH();
-                            directStepSize = CalculateTH(dailyClosePrice, GetCachedDigits(), tfPercentage);
-                            directStepSize = GetAdaptedStepSize(directStepSize);
-                            break;
-                        }
-                        case FACTOR_BASIS_PATTERN:
-                        {
-                            double patPercentage = GetPatternTH();
-                            if(patPercentage <= 0) patPercentage = GetTimeframeTH() * 4.0;
-                            directStepSize = CalculateTH(dailyClosePrice, GetCachedDigits(), patPercentage);
-                            directStepSize = GetAdaptedStepSize(directStepSize);
-                            break;
-                        }
-                        case FACTOR_BASIS_STRUCTURE:
-                        {
-                            string strTF = GetStructureTimeframeForCurrent();
-                            double strPercentage = CalculateTimeframeTH(strTF);
-                            if(strPercentage <= 0) strPercentage = GetTimeframeTH() * 16.0;
-                            directStepSize = CalculateTH(dailyClosePrice, GetCachedDigits(), strPercentage);
-                            directStepSize = GetAdaptedStepSize(directStepSize);
-                            break;
-                        }
-                        case FACTOR_BASIS_COMBO:
-                            directStepSize = CalculateComboStepSize(dailyClosePrice);
-                            break;
-                        default:
-                            directStepSize = data.shortStep;
-                            break;
-                    }
-                    
-                    // Validate step size
-                    if(directStepSize <= 0) {
-                        directStepSize = data.shortStep; // Fallback
-                    }
-                }
-                
-                // Calculate factor value for display: factor = range / (stepSize * 2)
-                double range = g_highestHigh - g_lowestLow;
-                if(range > 0 && directStepSize > 0) {
-                    factorValue = range / (directStepSize * 2.0);
-                } else {
-                    factorValue = 50.0;
-                }
-                
-            } else {
-                // ============================================================
-                // CLASSIC MODE (existing behavior): Factor is the primary value
-                // ============================================================
-                if(overrideFactor > 0) factorValue = overrideFactor;
-                else if(inpFactorMode == FACTOR_MODE_MANUAL) factorValue = inpFactorValue;
-                else { // Auto mode
-                    if (inpFactorAutoBasis == FACTOR_BASIS_SS) {
-                        double range = g_highestHigh - g_lowestLow;
-                        double targetStep = data.shortStep;
-                        if (range > 0 && targetStep > 0) {
-                            factorValue = range / (targetStep * 2.0);
-                        } else {
-                            factorValue = 50.0;
-                        }
-                    } else if (inpFactorAutoBasis == FACTOR_BASIS_LS) {
-                        double range = g_highestHigh - g_lowestLow;
-                        double targetStep = data.longStep;
-                        if (range > 0 && targetStep > 0) {
-                            factorValue = range / (targetStep * 2.0);
-                        } else {
-                            factorValue = 50.0;
-                        }
-                    } else {
-                        factorValue = GetDefaultFactorValue(dailyClosePrice);
-                    }
-                }
-            }
-            
-            factorValue = NormalizeDouble(MathMax(0.01, MathMin(10000, factorValue)), 2);
-            UpdateFactorLabel(factorValue, directStepSize);
+            ComputeFactorModeValues(dailyClosePrice, factorValue, directStepSize);
             
 #ifndef BUILD_LITE
             if(inpEnableHarmonicPattern) {
                 def.config = BuildFactorHarmonicConfig(objectPrefix);
-                // For DIRECT mode: baseStep = directStepSize (already in price units)
-                // For CLASSIC mode: baseStep = CalculateFactorStepSize
-                double baseStep = (useDirect && directStepSize > 0) ? 
+                double baseStep = (directStepSize > 0) ? 
                                    directStepSize : 
                                    CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
                 if(baseStep > 0) {
@@ -268,9 +163,7 @@ SModeDefinition GetModeDefinition(
             } else {
 #endif
                 def.config = BuildFactorConfig(objectPrefix);
-                // For DIRECT mode: factorStep = directStepSize (already in price units)
-                // For CLASSIC mode: factorStep = CalculateFactorStepSize
-                double factorStep = (useDirect && directStepSize > 0) ? 
+                double factorStep = (directStepSize > 0) ? 
                                      directStepSize : 
                                      CalculateFactorStepSize(g_highestHigh, g_lowestLow, factorValue);
                 if(factorStep > 0) {

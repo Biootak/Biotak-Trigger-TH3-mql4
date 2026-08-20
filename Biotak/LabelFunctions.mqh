@@ -1154,26 +1154,23 @@ void UpdateLockStatusLabel(bool updateTimestamp = true)
                 Print("Failed to create lock status label. Error: ", GetLastError());
                 return;
             }
+            g_lockStatusLabelCreateTime = GetTickCount();
         }
         
-        ObjectSetString(0, g_lockStatusLabelName, OBJPROP_TEXT, lockText);
+        SetLabelTextIfChanged(g_lockStatusLabelName, lockText);
         
         if(updateTimestamp) g_lockStatusLabelCreateTime = GetTickCount();
         ApplyModeLabelStyle(g_lockStatusLabelName, clrGold);
         
         ObjectSetString(0, g_lockStatusLabelName, OBJPROP_TOOLTIP, "TF locked to " + PeriodToString(g_lockedPeriod) + " - Press " + inpLockKey + " to unlock");
-        
-        if(inpModeLabelDuration > 0 && updateTimestamp) {
-            EventSetTimer(inpModeLabelDuration);
-        }
     }
     else
     {
         if(ObjectFind(0, g_lockStatusLabelName) >= 0)
         {
             ObjectDelete(0, g_lockStatusLabelName);
-            g_lockStatusLabelCreateTime = 0;
         }
+        g_lockStatusLabelCreateTime = 0;
     }
 }
 

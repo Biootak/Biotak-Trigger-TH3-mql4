@@ -3,6 +3,8 @@
 //|                                  Copyright 2025, Biotak Project  |
 //|                          Factory Pattern for Zone Creation       |
 //+------------------------------------------------------------------+
+#ifndef ZONE_FACTORY_MQH
+#define ZONE_FACTORY_MQH
 #property copyright "Copyright 2025, Biotak Project"
 #property link      "https://www.mql5.com"
 #property strict
@@ -34,6 +36,8 @@ struct SZoneCreationRequest {
     color zoneColor;          // Zone color
     int transparency;         // Transparency (0-100)
     bool filled;              // Fill zone?
+    int borderStyle;          // Rectangle border line style (STYLE_SOLID/DASH/DOT/...)
+    int borderWidth;          // Rectangle border width (1-5)
     datetime startTime;       // Start time (optional, 0 = auto)
     datetime endTime;         // End time (optional, 0 = auto)
 };
@@ -89,6 +93,76 @@ color GetZoneRenderColor(const color sourceColor, const int transparency)
     int outB = (fb * (100 - tVis) + bb * tVis) / 100;
 
     return (color)(outR | (outG << 8) | (outB << 16));
+}
+
+//+------------------------------------------------------------------+
+//| Create/update a single box border segment (OBJ_TREND)            |
+//|                                                                  |
+//| EMPTY boxes are drawn as border segments instead of an           |
+//| OBJ_RECTANGLE with OBJPROP_FILL=false, because some MT4 builds   |
+//| render the rectangle filled regardless of the FILL flag.         |
+//| Border segments guarantee a hollow box on every build.           |
+//+------------------------------------------------------------------+
+bool CreateOrUpdateZoneBorder(const string name,
+                              const datetime t1, const double p1,
+                              const datetime t2, const double p2,
+                              const color clr, const int style, const int width,
+                              const bool rayRight)
+{
+    // Cache-based change detection (same pattern as other zone objects)
+    SObjectCacheEntry cachedEntry;
+    bool hasCached = CacheGetObject(name, cachedEntry);
+    bool objectExists = false;
+    if(hasCached && cachedEntry.exists) {
+        objectExists = (ObjectFind(0, name) >= 0);
+        if(!objectExists) {
+            CacheRemoveObject(name);
+            hasCached = false;
+        }
+    } else {
+        objectExists = (ObjectFind(0, name) >= 0);
+    }
+    
+    // Migrate non-TREND leftovers (e.g. old rectangles with same name)
+    if(objectExists) {
+        int objType = (int)ObjectGetInteger(0, name, OBJPROP_TYPE);
+        if(objType != OBJ_TREND) {
+            ObjectDelete(0, name);
+            CacheRemoveObject(name);
+            objectExists = false;
+            hasCached = false;
+        }
+    }
+    
+    if(!objectExists) {
+        if(!ObjectCreate(0, name, OBJ_TREND, 0, t1, p1, t2, p2)) return false;
+        ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+        ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, rayRight);
+        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+        ObjectSetInteger(0, name, OBJPROP_BACK, true);
+        ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
+        CacheUpdateZone(name, p1, p2, t1, t2, clr, true, style, width);
+        return true;
+    }
+    
+    bool geometryChanged = (!hasCached || cachedEntry.lastPrice != p1 || cachedEntry.lastPrice2 != p2 ||
+                            cachedEntry.lastTime1 != t1 || cachedEntry.lastTime2 != t2);
+    if(geometryChanged) {
+        ObjectMove(0, name, 0, t1, p1);
+        ObjectMove(0, name, 1, t2, p2);
+    }
+    bool visualChanged = (!hasCached || cachedEntry.lastColor != clr ||
+                          cachedEntry.lastStyle != style || cachedEntry.lastWidth != width);
+    if(visualChanged) {
+        ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+        ObjectSetInteger(0, name, OBJPROP_STYLE, style);
+        ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+        ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, rayRight);
+    }
+    CacheUpdateZone(name, p1, p2, t1, t2, clr, true, style, width);
+    return true;
 }
 
 //+------------------------------------------------------------------+
@@ -158,6 +232,12 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         #endif
     }
     
+    // Validate/clamp border style and width (defensive - callers pass inputs)
+    int borderStyle = request.borderStyle;
+    if(borderStyle < STYLE_SOLID || borderStyle > STYLE_DASHDOTDOT) borderStyle = STYLE_SOLID;
+    int borderWidth = request.borderWidth;
+    if(borderWidth < 1 || borderWidth > 5) borderWidth = 1;
+    
     //                                                                
     // PHASE 2: TIME CALCULATION (Optimized - No slow GlobalVariables)
     //                                                                
@@ -212,9 +292,55 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     //                                                                
     
     color finalColor = GetZoneRenderColor(request.zoneColor, clampedTransparency);
+    // Transparency applies to the fill (FILLED) AND the border (EMPTY), so the
+    // empty-box outline fades exactly like the filled-box color.
+    color borderColor = finalColor;
 
     DeleteIndicatorObjectManaged(request.name + "_Top");
     DeleteIndicatorObjectManaged(request.name + "_Bottom");
+    
+    //                                                                
+    // PHASE 3.5: MODE MIGRATION (FILLED <-> EMPTY)
+    //                                                                
+    // Some MT4 builds render OBJ_RECTANGLE filled even with
+    // OBJPROP_FILL=false, so EMPTY boxes are drawn as border segments
+    // (guaranteed hollow). Keep the chart clean when switching styles.
+    
+    if(!request.filled) {
+        // EMPTY box: remove any leftover filled rectangle for this zone
+        if(ObjectFind(0, request.name) >= 0) {
+            ObjectDelete(0, request.name);
+            CacheRemoveObject(request.name);
+        }
+    }
+    else {
+        // FILLED box: remove any leftover empty-box border segments
+        if(ObjectFind(0, request.name + "_B_Top") >= 0) {
+            DeleteIndicatorObjectManaged(request.name + "_B_Top", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Bottom", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Left", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Right", true);
+        }
+    }
+    
+    // EMPTY BOX: draw as border segments (hollow on every MT4 build).
+    // Top/bottom borders extend to the chart edge (ray-right, like the
+    // filled box); the left border closes the outline.
+    if(!request.filled) {
+        bool ok = true;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Top",
+                                     startTime, request.topPrice, endTime, request.topPrice,
+                                     borderColor, borderStyle, borderWidth, true)) ok = false;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Bottom",
+                                     startTime, request.bottomPrice, endTime, request.bottomPrice,
+                                     borderColor, borderStyle, borderWidth, true)) ok = false;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Left",
+                                     startTime, request.bottomPrice, startTime, request.topPrice,
+                                     borderColor, borderStyle, borderWidth, false)) ok = false;
+        
+        result.success = ok;
+        return result;
+    }
     
     // PERFORMANCE: Check cache to skip redundant API calls
     SObjectCacheEntry cache;
@@ -234,7 +360,8 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         // Check if anything actually changed
         bool geometryChanged = (cache.lastPrice != request.topPrice || cache.lastPrice2 != request.bottomPrice ||
                                cache.lastTime1 != startTime || cache.lastTime2 != endTime);
-        bool visualChanged = (cache.lastColor != finalColor || cache.lastFilled != request.filled);
+        bool visualChanged = (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
+                             cache.lastStyle != borderStyle || cache.lastWidth != borderWidth);
         
         if(!geometryChanged && !visualChanged) {
             result.success = true;
@@ -267,18 +394,22 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     }
     
     // Apply visual properties ONLY if changed
-    bool visualChanged = !inCache || (cache.lastColor != finalColor || cache.lastFilled != request.filled);
+    bool visualChanged = !inCache || (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
+                                     cache.lastStyle != borderStyle || cache.lastWidth != borderWidth);
     if(visualChanged) {
-        ObjectSetInteger(0, request.name, OBJPROP_COLOR, finalColor);
+        ObjectSetInteger(0, request.name, OBJPROP_COLOR, borderColor);
         ObjectSetInteger(0, request.name, OBJPROP_BACK, true);
         ObjectSetInteger(0, request.name, OBJPROP_FILL, request.filled);
+        // Border line style/width (solid, dashed, dotted, ... hollow box support)
+        ObjectSetInteger(0, request.name, OBJPROP_STYLE, borderStyle);
+        ObjectSetInteger(0, request.name, OBJPROP_WIDTH, borderWidth);
         ObjectSetInteger(0, request.name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, request.name, OBJPROP_RAY_RIGHT, true);
         ObjectSetInteger(0, request.name, OBJPROP_ZORDER, 0);
     }
     
     // Update cache
-    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, finalColor, request.filled);
+    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, borderColor, request.filled, borderStyle, borderWidth);
     
     result.success = true;
     return result;
@@ -338,3 +469,5 @@ int DeleteZonesByPrefix(const string &prefix)
     
     return deletedCount;
 }
+
+#endif // ZONE_FACTORY_MQH
