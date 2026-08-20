@@ -1227,6 +1227,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 
     if(id == CHARTEVENT_KEYDOWN)
     {
+#ifndef BUILD_LITE
+        // Backspace = undo last TH3 drawing point (X, A, B, C placement)
+        if((int)lparam == 8 && TH3SessionActive()) {
+            TH3SessionUndo();
+            return;
+        }
+#endif
+
         //  
         // F key   Hide/Show All Objects (fast visibility toggle)
         //  
@@ -1250,17 +1258,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             {
                 LOG_I(LOG_CAT_KEYS, "F key: Hiding all objects");
 #ifndef BUILD_LITE
-                // Cancel ABCD drawing mode if active
-                if(g_abcdDrawing) {
-                    g_abcdDrawing = false;
-                    g_abcdPointCount = 0;
-                    g_suppressDeleteEvents = true;
-                    ObjectsDeleteAll(0, TH3_TEMP_PREFIX);
-                    ObjectsDeleteAll(0, TH3_TEMP_LINE_PREFIX);
-                    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
-                    g_suppressDeleteEvents = false;
-                    ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-                    Comment("");
+                // Cancel ABCD drawing session if active
+                if(TH3SessionActive()) {
+                    TH3SessionCancel();
                 }
 #endif
                 HideAllTHObjects();
@@ -1536,6 +1536,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_redrawTHLevelsNeeded = true;
             g_calculatedOnce = false;
             RedrawAllObjects(true);
+            RefreshComboLabelExtraInfo();
             UpdateStepModeLabel();
             ThrottledChartRedraw();
             return;
@@ -1560,6 +1561,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(IsHotkeyPressed(lparam, sparam, inpShowStatusKey))
         {
+            RefreshComboLabelExtraInfo();
             ShowAllStatusLabels();
             ThrottledChartRedraw();
             return;
@@ -1590,15 +1592,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             }
 #endif
 #ifndef BUILD_LITE
-            // Cancel any active ABCD drawing
-            if(g_abcdDrawing) {
-                g_abcdDrawing = false;
-                g_abcdPointCount = 0;
-                g_suppressDeleteEvents = true;
-                ObjectsDeleteAll(0, TH3_TEMP_PREFIX);
-                ObjectsDeleteAll(0, TH3_TEMP_LINE_PREFIX);
-                g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
-                g_suppressDeleteEvents = false;
+            // Cancel any active ABCD drawing session
+            if(TH3SessionActive()) {
+                TH3SessionCancel();
             }
 #endif
             g_customPriceKeyboardOverride = false;
@@ -1698,12 +1694,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // ABCD Mouse Event Routing
     //  
 #ifndef BUILD_LITE
-    if(g_abcdDrawing || 
+    if(TH3SessionActive() || 
        id == CHARTEVENT_OBJECT_DRAG || 
        id == CHARTEVENT_OBJECT_DELETE ||
        id == CHARTEVENT_MOUSE_MOVE) {
         OnABCDMouseEvent(id, lparam, dparam, sparam);
-        if(g_abcdDrawing && id == CHARTEVENT_CLICK) {
+        if(TH3SessionActive() && id == CHARTEVENT_CLICK) {
             return;
         }
     }

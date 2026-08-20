@@ -28,7 +28,7 @@ static bool g_waitingForCustomPriceClick = false;
 static string g_customPriceHorizontalLineName = "CustomPriceHorizontalLine";
 static bool g_customPriceLineCreated = false;
 static double g_customTHStartPrice = 0.0;
-static ENUM_TH_START_POINT_TYPE g_thStartPointType = TH_START_POINT_MIDPOINT;
+static ENUM_TH_START_POINT_TYPE g_thStartPointType = TH_START_POINT_PREVIOUS_CLOSE;
 static uint g_lastClickTickCount = 0;
 static bool g_customPriceLineDragging = false;
 static double g_lastCustomPriceLinePos = 0.0;
@@ -57,6 +57,12 @@ static bool g_timeframeLocked = false;
 static int g_lockedPeriod = 0;
 static string g_lockStatusLabelName = "Biotak_LockStatus_Label";
 static string g_stepModeLabelName = "Biotak_StepMode_Label";
+
+// Combo calc breakdown text for the step-mode label. Filled by
+// RefreshComboLabelExtraInfo() in ComboEngine.mqh (included AFTER the
+// label builder, so it communicates through this global instead of a
+// forward declaration - MQL4 treats bare prototypes as #imports).
+string g_comboLabelExtraInfo = "";
 static string g_factorLabelName = "Biotak_Factor_Label";
 #ifndef BUILD_LITE
 static string g_th3FreqLabelName = "Biotak_TH3Freq_Label";
@@ -82,18 +88,7 @@ static bool g_suppressDeleteEvents = false;
 static uint g_suppressDeleteEventsUntilMs = 0;
 
 #ifndef BUILD_LITE
-// AB=CD Pattern State
-static bool g_abcdDrawing = false;
-static int g_abcdPointCount = 0;
-static datetime g_abcdTimeX = 0;
-static double g_abcdPriceX = 0.0;
-static datetime g_abcdTimeA = 0;
-static double g_abcdPriceA = 0.0;
-static datetime g_abcdTimeB = 0;
-static double g_abcdPriceB = 0.0;
-static datetime g_abcdTimeC = 0;
-static double g_abcdPriceC = 0.0;
-static uint g_abcdLastClickTime = 0;
+// AB=CD drawing state now lives in TH3DrawingSession (TH3Controller.mqh)
 static string g_activeABCDPattern = "";
 
 // Frequency Optimizer Result (last auto-find result for info label)

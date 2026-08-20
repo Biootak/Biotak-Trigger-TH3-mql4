@@ -420,10 +420,10 @@ bool ValidateComboModeConfiguration() {
         return false;
     }
     // Validate inpComboPreset is in valid range
-    if(inpComboPreset < COMBO_PRESET_LEGACY_ADD || inpComboPreset > COMBO_PRESET_QT_TRIGGER_ONLY) {
+    if(inpComboPreset < COMBO_PRESET_BALANCED_MEDIUM || inpComboPreset > COMBO_PRESET_TREND_FILTER) {
         Print("  ERROR: Invalid inpComboPreset=", (int)inpComboPreset,
-                          " (valid range: ", (int)COMBO_PRESET_LEGACY_ADD, "..",
-                          (int)COMBO_PRESET_QT_TRIGGER_ONLY, ")");
+                          " (valid range: ", (int)COMBO_PRESET_BALANCED_MEDIUM, "..",
+                          (int)COMBO_PRESET_TREND_FILTER, ")");
         return false;
     }
 
@@ -465,89 +465,16 @@ bool ValidateComboModeConfiguration() {
         // ADVANCED MODE
         //                                                            
         Print("   ACTIVE SETTINGS (Advanced Mode):");
-        Print("     Topology: ", EnumToString(inpComboTopology));
-        Print("     Component 1: ", EnumToString(inpComboComp1));
-        Print("     Operator 1: ", EnumToString(inpComboOp1));
-        Print("     Component 2: ", EnumToString(inpComboComp2));
-        Print("     Operator 2: ", EnumToString(inpComboOp2));
-        Print("     Component 3: ", EnumToString(inpComboComp3));
-        Print("     Operator 3: ", EnumToString(inpComboOp3));
-        Print("     Component 4: ", EnumToString(inpComboComp4));
+        Print("     Component 1: ", EnumToString(inpComboComp1TF), " / ", EnumToString(inpComboComp1Step));
+        Print("     Operation: ", EnumToString(inpComboOp1));
+        if(inpComboComp2Enabled) {
+            Print("     Component 2: ", EnumToString(inpComboComp2TF), " / ", EnumToString(inpComboComp2Step));
+        }
         Print("");
         Print("  IGNORED SETTINGS:");
         Print("     Preset Mode settings (inpComboPreset)");
         Print("");
-        
-        //                                                            
-        // ADVANCED MODE VALIDATION
-        //                                                            
-        
-        // Count non-IGNORE components
-        int activeComponents = 0;
-        if(inpComboComp1 != COMP_IGNORE) activeComponents++;
-        if(inpComboComp2 != COMP_IGNORE) activeComponents++;
-        if(inpComboComp3 != COMP_IGNORE) activeComponents++;
-        if(inpComboComp4 != COMP_IGNORE) activeComponents++;
-        
-        // CRITICAL VALIDATION: At least 1 component required
-        if(activeComponents == 0) {
-            Print("    WARNING: All components are set to IGNORE!");
-            Print("   Advanced Mode requires at least 1 active component");
-            Print("   Please select at least one component (not IGNORE)");
-        } else {
-            Print("  Active Components: ", activeComponents);
-        }
-        
-        //                                                            
-        // N-ARY OPERATOR WARNING
-        //                                                            
-        bool hasNaryOperator = false;
-        string naryOpName = "";
-        
-        if(inpComboOp1 >= OP_GEOMETRIC_MEAN_ALL && inpComboOp1 <= OP_MAX_ALL) {
-            hasNaryOperator = true;
-            naryOpName = EnumToString(inpComboOp1);
-        } else if(inpComboOp2 >= OP_GEOMETRIC_MEAN_ALL && inpComboOp2 <= OP_MAX_ALL) {
-            hasNaryOperator = true;
-            naryOpName = EnumToString(inpComboOp2);
-        } else if(inpComboOp3 >= OP_GEOMETRIC_MEAN_ALL && inpComboOp3 <= OP_MAX_ALL) {
-            hasNaryOperator = true;
-            naryOpName = EnumToString(inpComboOp3);
-        }
-        
-        if(hasNaryOperator) {
-            Print("");
-            Print("    N-ARY OPERATOR DETECTED: ", naryOpName);
-            Print("       TOPOLOGY WILL BE IGNORED!");
-            Print("   N-ary operators collect ALL non-IGNORE components");
-            Print("   and apply the operation to all of them at once.");
-            Print("   Other operators (Op2, Op3) will also be ignored.");
-        }
-        
-        //                                                            
-        // TOPOLOGY EXPLANATION
-        //                                                            
-        if(!hasNaryOperator) {
-            Print("");
-            Print("    TOPOLOGY: ", EnumToString(inpComboTopology));
-            if(inpComboTopology == TOPOLOGY_LINEAR) {
-                Print("   Formula: ((C1 op1 C2) op2 C3) op3 C4");
-                Print("   Sequential left-to-right evaluation");
-            } else {
-                Print("   Formula: (C1 op1 C2) op2 (C3 op3 C4)");
-                Print("   Two groups combined with middle operator");
-            }
-        }
     }
-    
-    //                                                                
-    // GLOBAL SETTINGS (All Modes)
-    //                                                                
-    Print("");
-    Print("   GLOBAL SETTINGS (Used by all modes):");
-    Print("     Aggregate Mean Type: ", EnumToString(inpAggregateMeanType));
-    Print("       Used ONLY for COMP_*_MEAN components");
-    Print("       Example: COMP_TRIGGER_MEAN = Mean(Trigger_TH, Trigger_SS, Trigger_LS)");
     
     Print("====================");
     return true;

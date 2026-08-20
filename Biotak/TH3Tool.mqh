@@ -31,13 +31,13 @@
 #define TH3_MIN_BASENAME_LEN    20
 #define TH3_MAX_TARGETS         7
 
-// Global state for TH3 Tool Drawing Mode
-bool g_th3ToolEnabled = false;
-bool g_isDrawingTH3 = false;
-bool g_isDraggingTH3 = false;
-string g_currentDrawingObject = "";
-int g_th3DraggingHandle = -1;
-string g_th3DraggingObject = "";
+
+// TH3 modular architecture: model + pure math + store + controller
+#include "TH3\TH3Types.mqh"
+#include "TH3\TH3Math.mqh"
+#include "TH3\TH3PatternStore.mqh"
+#include "TH3\TH3Controller.mqh"
+#include "TH3\TH3Renderer.mqh"
 
 // Registry state for fast TH3 bulk updates (avoids chart-wide scans)
 static string g_th3PatternRegistry[];
@@ -137,29 +137,6 @@ void BuildPatternNamesFromRegistry(string &patternNames[], int &patternCount)
     }
 }
 
-double SnapToOHLC(datetime barTime, double price, double pipSize)
-{
-    if(pipSize <= 0) pipSize = GetCachedPipSize();
-    if(pipSize <= 0) return price;
-    int barIndex = iBarShift(Symbol(), Period(), barTime);
-    if(barIndex < 0) return price;
-    double ohlc[4];
-    ohlc[0] = iHigh(Symbol(), 0, barIndex);
-    ohlc[1] = iLow(Symbol(), 0, barIndex);
-    ohlc[2] = iClose(Symbol(), 0, barIndex);
-    ohlc[3] = iOpen(Symbol(), 0, barIndex);
-    double minDist = DBL_MAX;
-    double snapped = price;
-    for(int i = 0; i < 4; i++) {
-        double dist = MathAbs(price - ohlc[i]) / pipSize;
-        if(dist < minDist) {
-            minDist = dist;
-            snapped = ohlc[i];
-        }
-    }
-    return (minDist <= TH3_SNAP_THRESHOLD_PIPS) ? snapped : price;
-}
-
 //+------------------------------------------------------------------+
 //| Compute safe Y position for TH3 info label                       |
 //| Accounts for ATR labels + all possible stacked mode labels       |
@@ -218,44 +195,6 @@ void RepositionABCDInfoLabels()
 //|              ATR                   Cache (                                  )                  |
 //| Caches ATR for current bar to avoid repeated calculations       |
 //+------------------------------------------------------------------+
-double GetCachedDailyATR()
-{
-    static double cachedATR = 0;
-    static int cachedBar = -1;
-    
-    int currentBar = iBars(NULL, PERIOD_D1);  // MQL4:   2  
-    
-    //             ATR            
-    if(currentBar != cachedBar || IsZero(cachedATR, EPSILON_PRICE)) {
-        double atrValue = iATR(NULL, PERIOD_D1, 14, 0);
-        cachedBar = currentBar;
-        
-        // CRITICAL FIX: Check for EMPTY_VALUE which iATR returns on error
-        // Also check for invalid values using epsilon comparison
-        double pipSize = GetCachedPipSize();
-        double minATR = pipSize * 10;  // Minimum 10 pips
-        if(atrValue == EMPTY_VALUE || IsZero(atrValue, EPSILON_PRICE) || atrValue < minATR) {
-            // Fallback: Calculate average range manually
-            double avgRange = 0;
-            int validBars = 0;
-            for(int i = 1; i <= 20; i++) {
-                double high = iHigh(NULL, PERIOD_D1, i);
-                double low = iLow(NULL, PERIOD_D1, i);
-                // Validate OHLC data
-                if(high != EMPTY_VALUE && low != EMPTY_VALUE && high > low) {
-                    avgRange += (high - low);
-                    validBars++;
-                }
-            }
-            cachedATR = (validBars > 0) ? (avgRange / validBars) : pipSize * 100;  // Default to 100 pips
-        } else {
-            cachedATR = atrValue;
-        }
-    }
-    
-    return cachedATR;
-}
-
 //+------------------------------------------------------------------+
 //| Set active AB=CD pattern (for info label display)               |
 //|          AB=CD (      info label)                    |
@@ -382,625 +321,9 @@ double GetCurrentTH3Frequency() {
 //|             (XA  AB  BC)                                 |
 //| Returns comprehensive wave analysis for frequency selection     |
 //+------------------------------------------------------------------+
-struct WaveAnalysis {
-    // Wave lengths (price)
-    double XA_Distance;
-    double AB_Distance;
-    double BC_Distance;
-    
-    // Wave durations (time)
-    int XA_Minutes;
-    int AB_Minutes;
-    int BC_Minutes;
-    
-    // Wave speeds (pips per minute)
-    double XA_Speed;
-    double AB_Speed;
-    double BC_Speed;
-    
-    // Wave angles (Gann angles in degrees)
-    double XA_Angle;
-    double AB_Angle;
-    double BC_Angle;
-    
-    // Wave ratios
-    double AB_XA_Ratio;      // AB/XA (Fibonacci: 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618)
-    double BC_AB_Ratio;      // BC/AB
-    
-    // Time ratios
-    double AB_XA_TimeRatio;  //    AB /    XA
-    double BC_AB_TimeRatio;  //    BC /    AB
-    
-    // Speed ratios
-    double AB_XA_SpeedRatio; //   AB /   XA
-    double BC_AB_SpeedRatio; //   BC /   AB
-    
-    // Acceleration (            )
-    double XA_to_AB_Acceleration;  //     XA   AB (pips/min 
-    double AB_to_BC_Acceleration;  //     AB   BC (pips/min 
-    
-    // Strength levels (    leg)
-    double XA_RawStrength;       //     XA (pips/min)
-    double AB_RawStrength;       //     AB
-    double BC_RawStrength;       //     BC
-    double XA_WeightedStrength;  //         XA (     
-    double AB_WeightedStrength;  //         AB
-    double BC_WeightedStrength;  //         BC
-    double XA_RelativeStrength;  //       XA (      ATR)
-    double AB_RelativeStrength;  //       AB
-    double BC_RelativeStrength;  //       BC
-    
-    // Pattern characteristics
-    bool isImpulsive;        //      impulsive   (       
-    bool isCorrectional;     //      correctional   ( 
-    double avgSpeed;         //             
-    double speedConsistency; //     (0-1  1 =    
-    double timeSymmetry;     //        BC   AB (0-1  1 =     
-};
-
-WaveAnalysis AnalyzeThreeWaves(datetime tX, double pX, datetime tA, double pA,
-                                datetime tB, double pB, datetime tC, double pC)
-{
-    WaveAnalysis analysis;
-    double pipSize = GetCachedPipSize();
-    
-    // SECURITY: Validate time ordering (X < A < B < C)
-    if(!(tX < tA && tA < tB && tB < tC)) {
-        Print("==================== AnalyzeThreeWaves: Invalid time ordering (X < A < B < C required)");
-        Print("   tX=", TimeToString(tX), ", tA=", TimeToString(tA), ", tB=", TimeToString(tB), ", tC=", TimeToString(tC));
-        // Return default values
-        analysis.XA_Distance = 0;
-        analysis.AB_Distance = 0;
-        analysis.BC_Distance = 0;
-        analysis.XA_Minutes = 1;
-        analysis.AB_Minutes = 1;
-        analysis.BC_Minutes = 1;
-        analysis.XA_Speed = 0;
-        analysis.AB_Speed = 0;
-        analysis.BC_Speed = 0;
-        analysis.XA_Angle = 0;
-        analysis.AB_Angle = 0;
-        analysis.BC_Angle = 0;
-        analysis.AB_XA_Ratio = 1;
-        analysis.BC_AB_Ratio = 1;
-        analysis.AB_XA_TimeRatio = 1;
-        analysis.BC_AB_TimeRatio = 1;
-        analysis.AB_XA_SpeedRatio = 1;
-        analysis.BC_AB_SpeedRatio = 1;
-        analysis.isImpulsive = false;
-        analysis.isCorrectional = false;
-        analysis.avgSpeed = 0;
-        analysis.speedConsistency = 0;
-        analysis.timeSymmetry = 0;
-        return analysis;
-    }
-    
-    //           ( 
-    analysis.XA_Distance = MathAbs(pA - pX);
-    analysis.AB_Distance = MathAbs(pB - pA);
-    analysis.BC_Distance = MathAbs(pC - pB);
-    
-    //            ( 
-    analysis.XA_Minutes = (int)((tA - tX) / 60);
-    analysis.AB_Minutes = (int)((tB - tA) / 60);
-    analysis.BC_Minutes = (int)((tC - tB) / 60);
-    
-    //            
-    if(analysis.XA_Minutes <= 0) analysis.XA_Minutes = 1;
-    if(analysis.AB_Minutes <= 0) analysis.AB_Minutes = 1;
-    if(analysis.BC_Minutes <= 0) analysis.BC_Minutes = 1;
-    
-    // CRITICAL FIX: Validate division operands with epsilon check
-    if(MathAbs(analysis.AB_Minutes) < 0.001) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== CalculateWaveAnalysis: AB_Minutes too small (", analysis.AB_Minutes, "), cannot calculate speed");
-        #endif
-        analysis.AB_Speed = 0;
-    } else {
-        analysis.AB_Speed = (analysis.AB_Distance / pipSize) / analysis.AB_Minutes;
-    }
-    
-    if(MathAbs(analysis.XA_Minutes) < 0.001) {
-        analysis.XA_Speed = 0;
-    } else {
-        analysis.XA_Speed = (analysis.XA_Distance / pipSize) / analysis.XA_Minutes;
-    }
-    
-    if(MathAbs(analysis.BC_Minutes) < 0.001) {
-        analysis.BC_Speed = 0;
-    } else {
-        analysis.BC_Speed = (analysis.BC_Distance / pipSize) / analysis.BC_Minutes;
-    }
-    
-    //       Gann (     
-    analysis.XA_Angle = CalculateWaveAngle(tX, pX, tA, pA);
-    analysis.AB_Angle = CalculateWaveAngle(tA, pA, tB, pB);
-    analysis.BC_Angle = CalculateWaveAngle(tB, pB, tC, pC);
-    
-    //        
-    analysis.AB_XA_Ratio = (analysis.XA_Distance > 0) ? (analysis.AB_Distance / analysis.XA_Distance) : 1.0;
-    analysis.BC_AB_Ratio = (analysis.AB_Distance > 0) ? (analysis.BC_Distance / analysis.AB_Distance) : 1.0;
-    
-    //         
-    analysis.AB_XA_TimeRatio = (double)analysis.AB_Minutes / analysis.XA_Minutes;
-    analysis.BC_AB_TimeRatio = (double)analysis.BC_Minutes / analysis.AB_Minutes;
-    
-    //        
-    analysis.AB_XA_SpeedRatio = (analysis.XA_Speed > 0) ? (analysis.AB_Speed / analysis.XA_Speed) : 1.0;
-    analysis.BC_AB_SpeedRatio = (analysis.AB_Speed > 0) ? (analysis.BC_Speed / analysis.AB_Speed) : 1.0;
-    
-    // ========================================
-    //   ACCELERATION ANALYSIS (  -    
-    // ========================================
-    //     Acceleration =      
-    //           (a =   /  
-    
-    //     XA   AB
-    double velocityChange_XA_AB = analysis.AB_Speed - analysis.XA_Speed;
-    analysis.XA_to_AB_Acceleration = velocityChange_XA_AB / MathMax(analysis.AB_Minutes, 1);
-    
-    //     AB   BC
-    double velocityChange_AB_BC = analysis.BC_Speed - analysis.AB_Speed;
-    analysis.AB_to_BC_Acceleration = velocityChange_AB_BC / MathMax(analysis.BC_Minutes, 1);
-    
-    // SECURITY:   NaN
-    if(analysis.XA_to_AB_Acceleration != analysis.XA_to_AB_Acceleration) analysis.XA_to_AB_Acceleration = 0;
-    if(analysis.AB_to_BC_Acceleration != analysis.AB_to_BC_Acceleration) analysis.AB_to_BC_Acceleration = 0;
-    
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("========================================");
-    Print("==================== ACCELERATION ANALYSIS:");
-    Print("   XA====================AB: ", DoubleToString(analysis.XA_to_AB_Acceleration, 4), " pips/min====================");
-    if(analysis.XA_to_AB_Acceleration > 0.001) {
-        Print("      ==================== ACCELERATING: Speed increasing (getting stronger)");
-    } else if(analysis.XA_to_AB_Acceleration < -0.001) {
-        Print("      ==================== DECELERATING: Speed decreasing (getting weaker)");
-    } else {
-        Print("      ==================== CONSTANT: Speed stable");
-    }
-    
-    Print("   AB====================BC: ", DoubleToString(analysis.AB_to_BC_Acceleration, 4), " pips/min====================");
-    if(analysis.AB_to_BC_Acceleration > 0.001) {
-        Print("      ==================== ACCELERATING: Correction speeding up");
-    } else if(analysis.AB_to_BC_Acceleration < -0.001) {
-        Print("      ==================== DECELERATING: Correction slowing down");
-    } else {
-        Print("      ==================== CONSTANT: Correction speed stable");
-    }
-    Print("========================================");
-    #endif
-    
-    // ========================================
-    //   LEG STRENGTH ANALYSIS (      leg)
-    // ========================================
-    //     Velocity = Distance   Time (pips/min)
-    //               TradingView Time-Price Velocity
-    
-    //       (Raw Strength) = Velocity
-    analysis.XA_RawStrength = (analysis.XA_Distance / pipSize) / MathMax(analysis.XA_Minutes, 1);
-    analysis.AB_RawStrength = (analysis.AB_Distance / pipSize) / MathMax(analysis.AB_Minutes, 1);
-    analysis.BC_RawStrength = (analysis.BC_Distance / pipSize) / MathMax(analysis.BC_Minutes, 1);
-    
-    // SECURITY:   NaN
-    if(analysis.XA_RawStrength != analysis.XA_RawStrength) analysis.XA_RawStrength = 0;
-    if(analysis.AB_RawStrength != analysis.AB_RawStrength) analysis.AB_RawStrength = 0;
-    if(analysis.BC_RawStrength != analysis.BC_RawStrength) analysis.BC_RawStrength = 0;
-    
-    //           (Weighted Strength)
-    //                    =    
-    //     Weighted = Raw   sin(angle)
-    double angleWeight_XA = MathSin(analysis.XA_Angle * M_PI / 180.0);  // 0-1
-    double angleWeight_AB = MathSin(analysis.AB_Angle * M_PI / 180.0);
-    double angleWeight_BC = MathSin(analysis.BC_Angle * M_PI / 180.0);
-    
-    analysis.XA_WeightedStrength = analysis.XA_RawStrength * angleWeight_XA;
-    analysis.AB_WeightedStrength = analysis.AB_RawStrength * angleWeight_AB;
-    analysis.BC_WeightedStrength = analysis.BC_RawStrength * angleWeight_BC;
-    
-    // SECURITY:   NaN
-    if(analysis.XA_WeightedStrength != analysis.XA_WeightedStrength) analysis.XA_WeightedStrength = 0;
-    if(analysis.AB_WeightedStrength != analysis.AB_WeightedStrength) analysis.AB_WeightedStrength = 0;
-    if(analysis.BC_WeightedStrength != analysis.BC_WeightedStrength) analysis.BC_WeightedStrength = 0;
-    
-    // ========================================
-    // OPTIMIZATION:     ATR      
-    // ========================================
-    double dailyATR = GetCachedDailyATR();
-    double dailyATRInPips = dailyATR / pipSize;
-    double referenceSpeed = dailyATRInPips / 1440.0;  // ATR per minute
-    
-    if(referenceSpeed <= 0) referenceSpeed = 0.1;
-    
-    //         (Relative Strength)
-    //     ATR            
-    //     Relative = Weighted   (ATR per minute)
-    //     TradingView ATR Normalization
-    analysis.XA_RelativeStrength = analysis.XA_WeightedStrength / referenceSpeed;
-    analysis.AB_RelativeStrength = analysis.AB_WeightedStrength / referenceSpeed;
-    analysis.BC_RelativeStrength = analysis.BC_WeightedStrength / referenceSpeed;
-    
-    // SECURITY:   NaN
-    if(analysis.XA_RelativeStrength != analysis.XA_RelativeStrength) analysis.XA_RelativeStrength = 0;
-    if(analysis.AB_RelativeStrength != analysis.AB_RelativeStrength) analysis.AB_RelativeStrength = 0;
-    if(analysis.BC_RelativeStrength != analysis.BC_RelativeStrength) analysis.BC_RelativeStrength = 0;
-    
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("========================================");
-    Print("==================== LEG STRENGTH ANALYSIS:");
-    Print("   XA: Raw=", DoubleToString(analysis.XA_RawStrength, 2), 
-          " | Weighted=", DoubleToString(analysis.XA_WeightedStrength, 2),
-          " | Relative=", DoubleToString(analysis.XA_RelativeStrength, 2), "x ATR");
-    Print("   AB: Raw=", DoubleToString(analysis.AB_RawStrength, 2), 
-          " | Weighted=", DoubleToString(analysis.AB_WeightedStrength, 2),
-          " | Relative=", DoubleToString(analysis.AB_RelativeStrength, 2), "x ATR");
-    Print("   BC: Raw=", DoubleToString(analysis.BC_RawStrength, 2), 
-          " | Weighted=", DoubleToString(analysis.BC_WeightedStrength, 2),
-          " | Relative=", DoubleToString(analysis.BC_RelativeStrength, 2), "x ATR");
-    
-    //        leg
-    string strongestLeg = "XA";
-    double maxStrength = analysis.XA_RelativeStrength;
-    if(analysis.AB_RelativeStrength > maxStrength) {
-        strongestLeg = "AB";
-        maxStrength = analysis.AB_RelativeStrength;
-    }
-    if(analysis.BC_RelativeStrength > maxStrength) {
-        strongestLeg = "BC";
-        maxStrength = analysis.BC_RelativeStrength;
-    }
-    
-    Print("   ==================== Strongest Leg: ", strongestLeg, " (", DoubleToString(maxStrength, 2), "x ATR)");
-    
-    //          
-    if(maxStrength > 3.0) {
-        Print("   ==================== VERY STRONG: Explosive movement detected");
-    } else if(maxStrength > 2.0) {
-        Print("   ==================== STRONG: Powerful movement");
-    } else if(maxStrength > 1.0) {
-        Print("   ==================== MODERATE: Normal strength");
-    } else {
-        Print("   ==================== WEAK: Low momentum");
-    }
-    Print("========================================");
-    #endif
-    
-    // ========================================
-    //            (      referenceSpeed)
-    // ========================================
-    // Impulsive:              (   
-    // Correctional:              (    )
-    analysis.avgSpeed = (analysis.XA_Speed + analysis.AB_Speed + analysis.BC_Speed) / 3.0;
-    
-    //       (           
-    //     StdDev =     - mean)  / n)
-    double speedVariance = MathPow(analysis.XA_Speed - analysis.avgSpeed, 2) +
-                          MathPow(analysis.AB_Speed - analysis.avgSpeed, 2) +
-                          MathPow(analysis.BC_Speed - analysis.avgSpeed, 2);
-    double speedStdDev = MathSqrt(speedVariance / 3.0);
-    analysis.speedConsistency = (analysis.avgSpeed > 0) ? (1.0 - MathMin(speedStdDev / analysis.avgSpeed, 1.0)) : 0.5;
-    
-    // SECURITY:   NaN
-    if(analysis.speedConsistency != analysis.speedConsistency) analysis.speedConsistency = 0.5;
-    
-    //   impulsive vs correctional (      referenceSpeed)
-    double avgSpeedRatio = analysis.avgSpeed / referenceSpeed;
-    analysis.isImpulsive = (avgSpeedRatio > 1.2);      //       120%     
-    analysis.isCorrectional = (avgSpeedRatio < 0.8);   //       80%     
-    
-    //          (     
-    analysis.timeSymmetry = CalculateTimeSymmetry(tA, tB, tC);
-    
-    return analysis;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate Wave Angle (Gann Angle)                               |
 //|           (    Gann)                                    |
 //| Returns: Angle in degrees (0-90)                                |
 //| Logic: angle = atan(price_change / time_change)                 |
-//+------------------------------------------------------------------+
-double CalculateWaveAngle(datetime tStart, double pStart, datetime tEnd, double pEnd)
-{
-    // SECURITY: Validate inputs
-    if(tEnd <= tStart) {
-        Print("==================== CalculateWaveAngle: Invalid time range");
-        return 0;
-    }
-    if(pStart <= 0 || pEnd <= 0) {
-        Print("==================== CalculateWaveAngle: Invalid prices");
-        return 0;
-    }
-    
-    //            
-    double priceChange = MathAbs(pEnd - pStart);
-    int timeChangeMinutes = (int)((tEnd - tStart) / 60);
-    if(timeChangeMinutes <= 0) timeChangeMinutes = 1;
-    
-    //          
-    double pipSize = GetCachedPipSize();
-    double priceInPips = priceChange / pipSize;
-    
-    //       (degrees)
-    //     1 pip per minute = 45 degrees (Gann 1 
-    // OPTIMIZATION: Use cached ATR instead of repeated iATR() calls
-    double dailyATR = GetCachedDailyATR();
-    double minATR = pipSize * 10;  // Minimum 10 pips worth of ATR
-    if(dailyATR <= 0 || dailyATR < minATR) {
-        double avgRange = 0;
-        for(int i = 1; i <= 20; i++) {
-            avgRange += (iHigh(NULL, PERIOD_D1, i) - iLow(NULL, PERIOD_D1, i));
-        }
-        dailyATR = avgRange / 20.0;
-    }
-    
-    double dailyATRInPips = dailyATR / pipSize;
-    double referenceSpeed = dailyATRInPips / 1440.0; // pips per minute
-    if(referenceSpeed <= 0) referenceSpeed = 0.1;
-    
-    //      
-    double actualSpeed = priceInPips / timeChangeMinutes;
-    
-    //       (1.0 = 45 degrees)
-    double speedRatio = actualSpeed / referenceSpeed;
-    
-    //        
-    // speedRatio = 0     0 
-    // speedRatio = 1     45  (Gann 1 
-    // speedRatio = 2     63.43  (Gann 2 
-    // speedRatio = 3     71.57  (Gann 3 
-    // speedRatio             90 
-    double angle = MathArctan(speedRatio) * 180.0 / M_PI;
-    
-    // SECURITY:   NaN
-    if(angle != angle) angle = 0;  // NaN check
-    
-    //            0-90
-    if(angle < 0) angle = 0;
-    if(angle > 90) angle = 90;
-    
-    return angle;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate Required Rest Candles Based on Angle                  |
-//|                                      |
-//| Returns: Number of candles needed for rest/correction           |
-//| CRITICAL FIX: Complete integer overflow protection               |
-//+------------------------------------------------------------------+
-
-// Constants for angle thresholds (no magic numbers)
-#define ANGLE_SPIKE_THRESHOLD 80.0
-#define ANGLE_STRONG_THRESHOLD 55.0
-#define ANGLE_BALANCED_THRESHOLD 40.0
-#define ANGLE_SLOW_THRESHOLD 25.0
-
-#define REST_SPIKE_BASE 3
-#define REST_SPIKE_MAX 4
-#define REST_STRONG_BASE 7
-#define REST_STRONG_MAX 9
-#define REST_BALANCED_BASE 15
-#define REST_BALANCED_MAX 17
-#define REST_SLOW_BASE 26
-#define REST_SLOW_MAX 33
-#define REST_VERY_SLOW_BASE 33
-#define REST_VERY_SLOW_MAX 50
-
-#define MAX_MOVEMENT_CANDLES 10000
-#define MAX_REST_CANDLES 1000
-
-int CalculateRequiredRestCandles(double angle, int movementCandles)
-{
-    //  
-    // CRITICAL FIX #1: Validate movementCandles to prevent overflow
-    //  
-    if(movementCandles < 0) {
-        Print("==================== CalculateRequiredRestCandles: Negative movementCandles (", 
-              movementCandles, "), setting to 0");
-        movementCandles = 0;
-    }
-    if(movementCandles > MAX_MOVEMENT_CANDLES) {
-        Print("==================== CalculateRequiredRestCandles: movementCandles too large (", 
-              movementCandles, "), clamping to ", MAX_MOVEMENT_CANDLES);
-        movementCandles = MAX_MOVEMENT_CANDLES;
-    }
-    
-    //  
-    // CRITICAL FIX #2: Validate angle
-    //  
-    if(angle < 0) angle = 0;
-    if(angle > 90) angle = 90;
-    
-    int restCandles = 0;
-    
-    //  
-    // CRITICAL FIX #3: Safe calculation with overflow checks
-    //  
-    if(angle >= ANGLE_SPIKE_THRESHOLD) {
-        // Spike (80-90       
-        double temp = movementCandles * 0.1;
-        if(temp > INT_MAX - REST_SPIKE_BASE) {
-            restCandles = REST_SPIKE_MAX;
-        } else {
-            restCandles = REST_SPIKE_BASE + (int)temp;
-            if(restCandles > REST_SPIKE_MAX) restCandles = REST_SPIKE_MAX;
-        }
-    }
-    else if(angle >= ANGLE_STRONG_THRESHOLD) {
-        // Strong (55-80     
-        double temp = movementCandles * 0.15;
-        if(temp > INT_MAX - REST_STRONG_BASE) {
-            restCandles = REST_STRONG_MAX;
-        } else {
-            restCandles = REST_STRONG_BASE + (int)temp;
-            if(restCandles > REST_STRONG_MAX) restCandles = REST_STRONG_MAX;
-        }
-    }
-    else if(angle >= ANGLE_BALANCED_THRESHOLD) {
-        // Balanced (40-55    (    Gann 1 
-        double temp = movementCandles * 0.2;
-        if(temp > INT_MAX - REST_BALANCED_BASE) {
-            restCandles = REST_BALANCED_MAX;
-        } else {
-            restCandles = REST_BALANCED_BASE + (int)temp;
-            if(restCandles > REST_BALANCED_MAX) restCandles = REST_BALANCED_MAX;
-        }
-    }
-    else if(angle >= ANGLE_SLOW_THRESHOLD) {
-        // Slow (25-40     
-        double temp = movementCandles * 0.25;
-        if(temp > INT_MAX - REST_SLOW_BASE) {
-            restCandles = REST_SLOW_MAX;
-        } else {
-            restCandles = REST_SLOW_BASE + (int)temp;
-            if(restCandles > REST_SLOW_MAX) restCandles = REST_SLOW_MAX;
-        }
-    }
-    else {
-        // Very Slow (< 25       
-        double temp = movementCandles * 0.3;
-        if(temp > INT_MAX - REST_VERY_SLOW_BASE) {
-            restCandles = REST_VERY_SLOW_MAX;
-        } else {
-            restCandles = REST_VERY_SLOW_BASE + (int)temp;
-            if(restCandles > REST_VERY_SLOW_MAX) restCandles = REST_VERY_SLOW_MAX;
-        }
-    }
-    
-    //  
-    // CRITICAL FIX #4: Final validation
-    //  
-    if(restCandles < 0) restCandles = 0;
-    if(restCandles > MAX_REST_CANDLES) {
-        Print("==================== CalculateRequiredRestCandles: Result too large (", restCandles, 
-              "), clamping to ", MAX_REST_CANDLES);
-        restCandles = MAX_REST_CANDLES;
-    }
-    
-    return restCandles;
-}
-
-//+------------------------------------------------------------------+
-//| Determine Reference Timeframe Based on Wave Size                |
-//|                                             |
-//| Returns: TH percentage for reference timeframe                  |
-//| Logic: Wave size (in TH units) determines structure timeframe   |
-//+------------------------------------------------------------------+
-double DetermineReferenceTimeframe(double waveDistance, double currentTH)
-{
-    //                 TH
-    double waveSizeInTH = (currentTH > 0) ? (waveDistance / currentTH) : 0;
-    
-    //       :         3   TH      
-    //       = waveSizeInTH / 3
-    
-    //                  
-    double targetTHMultiplier = waveSizeInTH / 3.0;
-    
-    //        MODIFIED_FRACTAL_PERCENTAGES
-    int arraySize = ArraySize(MODIFIED_FRACTAL_PERCENTAGES);
-    double closestTH = MODIFIED_FRACTAL_PERCENTAGES[0];
-    double minDiff = 1000000.0;
-    
-    for(int i = 0; i < arraySize; i++) {
-        double testTH = MODIFIED_FRACTAL_PERCENTAGES[i];
-        double diff = MathAbs(testTH - (currentTH * targetTHMultiplier));
-        
-        if(diff < minDiff) {
-            minDiff = diff;
-            closestTH = testTH;
-        }
-    }
-    
-    return closestTH;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate Consolidation Factor - ADVANCED (Gann-based)          |
-//|     Consolidation -   (    Gann)             |
-//| Considers: angle, rest candles, energy buildup                  |
-//| OPTIMIZED: Uses pre-calculated wave analysis                    |
-//+------------------------------------------------------------------+
-double CalculateConsolidationFactor(datetime tA, datetime tB, datetime tC, 
-                                     WaveAnalysis &waves)
-{
-    // ========================================
-    //   1:            
-    // ========================================
-    double angleAB = waves.AB_Angle;  //   struct      
-    
-    // ========================================
-    //   2:         AB    BC
-    // ========================================
-    int barA = iBarShift(NULL, 0, tA);
-    int barB = iBarShift(NULL, 0, tB);
-    int barC = iBarShift(NULL, 0, tC);
-    
-    int AB_Candles = MathAbs(barA - barB);
-    int BC_Candles = MathAbs(barB - barC);
-    
-    if(AB_Candles < 1) AB_Candles = 1;
-    if(BC_Candles < 1) BC_Candles = 1;
-    
-    // ========================================
-    //   3:                
-    // ========================================
-    int requiredRestCandles = CalculateRequiredRestCandles(angleAB, AB_Candles);
-    
-    // ========================================
-    //   4:                      
-    // ========================================
-    double restRatio = (double)BC_Candles / requiredRestCandles;
-    
-    // ========================================
-    //   5:     consolidation
-    // ========================================
-    double consolidationFactor = 0.0;
-    
-    if(restRatio < 0.3) {
-        //       (< 30%        
-        //               breakout    
-        consolidationFactor = 0.9;
-    }
-    else if(restRatio < 0.6) {
-        //     (30-60%        
-        //            
-        consolidationFactor = 0.7;
-    }
-    else if(restRatio < 1.0) {
-        //           (60-100%        
-        //          
-        consolidationFactor = 0.4;
-    }
-    else if(restRatio < 1.5) {
-        //     (100-150%        
-        //    
-        consolidationFactor = 0.1;
-    }
-    else {
-        //     (> 150%        
-        //        
-        consolidationFactor = 0.0;
-    }
-    
-    // ========================================
-    //   6:            
-    // ========================================
-    //                           consolidation  
-    if(angleAB >= 80) {
-        consolidationFactor *= 1.3; // Spike: +30%
-    }
-    else if(angleAB >= 55) {
-        consolidationFactor *= 1.15; // Strong: +15%
-    }
-    // else: Normal
-    
-    //            0-1
-    if(consolidationFactor > 1.0) consolidationFactor = 1.0;
-    if(consolidationFactor < 0.0) consolidationFactor = 0.0;
-    
-    return consolidationFactor;
-}
-
 //+------------------------------------------------------------------+
 //| Calculate Optimal Frequency from Wave Analysis                  |
 //|                                                  |
@@ -1112,87 +435,6 @@ double CalculateFrequencyFromWaves(WaveAnalysis &waves)
 //| Returns: Speed ratio relative to reference (1.0 = balanced)     |
 //| > 1.0 = Fast move, < 1.0 = Slow move                           |
 //+------------------------------------------------------------------+
-double CalculateMovementSpeed(datetime tA, double pA, datetime tB, double pB)
-{
-    //            
-    double priceChange = MathAbs(pB - pA);
-    int timeChangeMinutes = (int)((tB - tA) / 60); //      
-    
-    if(timeChangeMinutes <= 0) return 1.0; // Default to balanced
-    
-    //          
-    double pipSize = GetCachedPipSize();
-    double priceInPips = priceChange / pipSize;
-    
-    //          
-    double speed = priceInPips / timeChangeMinutes;
-    
-    //       (benchmark)     ATR
-    double dailyATR = GetCachedDailyATR();  //     cache
-    
-    double dailyATRInPips = dailyATR / pipSize;
-    
-    //     ATR           1440   (     
-    double referenceSpeed = dailyATRInPips / 1440.0;
-    
-    // FIX:                         
-    if(referenceSpeed <= 0) referenceSpeed = 0.1; //      
-    
-    //             /    
-    double speedRatio = speed / referenceSpeed;
-    
-    //                    (0.1   10)
-    if(speedRatio < 0.1) speedRatio = 0.1;
-    if(speedRatio > 10.0) speedRatio = 10.0;
-    
-    return speedRatio;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate Time Symmetry Factor                                  |
-//|               AB    BC                             |
-//| Perfect symmetry (AB time = BC time) = 1.0                      |
-//+------------------------------------------------------------------+
-double CalculateTimeSymmetry(datetime tA, datetime tB, datetime tC)
-{
-    int timeAB = (int)((tB - tA) / 60); //  
-    int timeBC = (int)((tC - tB) / 60); //  
-    
-    if(timeAB <= 0 || timeBC <= 0) return 1.0;
-    
-    //       :             1      
-    // CRITICAL FIX: Validate division operands
-    double ratio = 0;
-    if(timeAB > 0 && timeBC > 0) {
-        ratio = (timeAB > timeBC) ? ((double)timeBC / timeAB) : ((double)timeAB / timeBC);
-    } else {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== CalculateTimeSymmetry: Invalid time values - AB=", timeAB, ", BC=", timeBC);
-        #endif
-    }
-    
-    return ratio;
-}
-
-//+------------------------------------------------------------------+
-//| Frequency Search Result Structure                               |
-//|                                                    |
-//+------------------------------------------------------------------+
-struct FrequencySearchResult {
-    double frequency;        //    
-    int frequencyIndex;      //        
-    int targetStep;          //     (3  5    7)
-    double errorPercent;     //    
-    double calculatedD;      //       D
-    double targetPrice;      //     (Step N)
-    double errorPips;        //      
-    double gannAngle;        //     Gann     AB
-    double angleWeight;      //            
-    double timeSymmetry;     //        AB/BC
-    double totalScore;       //     (  =  
-};
-
-//+------------------------------------------------------------------+
 //| Analyze Harmonic Properties (Scientific Analysis)               |
 //|             (                              |
 //| Returns: Detailed analysis of harmonic ratios                   |
@@ -1299,88 +541,6 @@ void AnalyzeHarmonicProperties(WaveAnalysis &waves)
 //|              AB=CD                              |
 //| Returns: Error percentage (0 = perfect match)                   |
 //| CRITICAL FIX: Added division by zero protection                 |
-//+------------------------------------------------------------------+
-double CalculateFrequencyError(double pA, double pB, double pC, 
-                               double frequency, int targetStep,
-                               double &calculatedD, double &targetPrice)
-{
-    // SECURITY: Validate AB distance to prevent division by zero
-    double AB_Distance = MathAbs(pB - pA);
-    double pipSize = GetCachedPipSize();
-    double minDistance = pipSize * 10; // Minimum 10 pips
-    
-    if(AB_Distance < minDistance) {
-        Print("==================== CalculateFrequencyError: AB distance too small (", 
-              DoubleToString(AB_Distance, Digits), ") - minimum ", 
-              DoubleToString(minDistance, Digits), " required");
-        calculatedD = 0.0;
-        targetPrice = 0.0;
-        return 999.99; // Invalid error
-    }
-    
-    //      
-    // baseUnit = AB   (frequency / 100)   TH  
-    bool isBullish = (pB > pA);
-    double baseUnit = AB_Distance * (frequency / 100.0);
-    
-    //   D            AB=CD
-    //      AB=CD:   CD       AB  
-    double pD;
-    if(isBullish) {
-        pD = pC + AB_Distance;
-    } else {
-        pD = pC - AB_Distance;
-    }
-    calculatedD = pD;
-    
-    //       (Step N   C)
-    // Step N = C + (N   baseUnit)
-    double stepPrice;
-    if(isBullish) {
-        stepPrice = pC + (targetStep * baseUnit);
-    } else {
-        stepPrice = pC - (targetStep * baseUnit);
-    }
-    targetPrice = stepPrice;
-    
-    //          D    Step N
-    //             AB        
-    double error = MathAbs(pD - stepPrice);
-    
-    // CRITICAL FIX: Validate division operand
-    double errorPercent = 0;
-    if(MathAbs(AB_Distance) > 0.000001) {
-        errorPercent = (error / AB_Distance) * 100.0;
-    } else {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== CalculateFrequencyError: AB_Distance too small (", AB_Distance, ")");
-        #endif
-    }
-    
-    return errorPercent;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate Fibonacci Deviation                                   |
-//|             Fibonacci                             |
-//| Returns: Minimum deviation from standard Fibonacci ratios       |
-//+------------------------------------------------------------------+
-double CalculateFibonacciDeviation(double ratio)
-{
-    //         Fibonacci
-    double fibRatios[9] = {0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.272, 1.618, 2.618};
-    
-    double minDeviation = 1000.0;
-    for(int i = 0; i < 9; i++) {
-        double deviation = MathAbs(ratio - fibRatios[i]);
-        if(deviation < minDeviation) {
-            minDeviation = deviation;
-        }
-    }
-    
-    return minDeviation;
-}
-
 //+------------------------------------------------------------------+
 //| Find Optimal Frequency for XABCD Pattern - COMPLETE ANALYSIS    |
 //|                  XABCD -                |
@@ -2286,596 +1446,6 @@ bool AutoSelectBestFrequency(string patternName)
     return true;
 }
 
-//+------------------------------------------------------------------+
-//| Calculate AB=CD Point D (with 9-level validation)               |
-//|       D       9                                |
-//| Rule: AB distance = CD distance (equal price movement)          |
-//+------------------------------------------------------------------+
-bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
-                         datetime tC, double pC, datetime &tD, double &pD)
-{
-    // 1. Validate input times
-    if(tA <= 0 || tB <= 0 || tC <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== AB=CD Error: Invalid time inputs");
-        #endif
-        return false;
-    }
-    
-    // 2. Validate input prices
-    if(pA <= 0 || pB <= 0 || pC <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== AB=CD Error: Invalid price inputs");
-        #endif
-        return false;
-    }
-    
-    // 3. Time ordering: A < B < C
-    if(!(tA < tB && tB < tC)) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== AB=CD Error: Time ordering violated (A < B < C required)");
-        #endif
-        return false;
-    }
-    
-    // 4. Minimum distance check (prevent micro-patterns)
-    double AB_Distance = MathAbs(pB - pA);
-    double BC_Distance = MathAbs(pC - pB);
-    double minDistance = Point * ABCD_MIN_DISTANCE_POINTS;
-    
-    if(AB_Distance < minDistance) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== AB=CD Error: AB distance too small (min: ", minDistance, ")");
-        #endif
-        return false;
-    }
-    
-    // RELAXED: BC can be any size (user might be adjusting)
-    // BC               (               
-    
-    // 5. Pattern direction validation (RELAXED - allow any C position)
-    //          (  - C            
-    bool isBullish = (pB > pA); // A to B is upward
-    
-    // REMOVED: Retracement check - C can be anywhere
-    //         retracement - C            
-    // This allows user to freely adjust C without pattern deletion
-    //            C                         
-    
-    // 6. Calculate D using AB=CD rule
-    double CD_Distance = AB_Distance; // Equal distance
-    
-    if(isBullish) {
-        pD = pC + CD_Distance; // Bullish: D above C
-    } else {
-        pD = pC - CD_Distance; // Bearish: D below C
-    }
-    
-    // 7. Calculate D time (proportional to BC time)
-    int BC_Bars = iBarShift(NULL, 0, tB) - iBarShift(NULL, 0, tC);
-    if(BC_Bars < 1) BC_Bars = 1;
-    
-    int CD_Bars = BC_Bars; // Same time proportion
-    int barD = iBarShift(NULL, 0, tC) - CD_Bars;
-    if(barD < 0) barD = 0;
-    
-    tD = iTime(NULL, 0, barD);
-    if(tD <= 0) tD = tC + (tC - tB); // Fallback
-    
-    // 8. Collinearity check (REMOVED - too restrictive)
-    //     collinearity     -                
-    // User should be free to place points anywhere
-    //                           
-    
-    // 9. Final validation: D price must be reasonable (RELAXED)
-    //           D         (   
-    if(pD <= 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== AB=CD Error: Calculated D price is zero or negative");
-        #endif
-        return false;
-    }
-    
-    // RELAXED: Allow any D price (even if far from current price)
-    //     D             (               
-    
-    return true;
-}
-
-//+------------------------------------------------------------------+
-//| Draw AB=CD Pattern with TH3-style Steps                         |
-//|      AB=CD     TH3                                    |
-//| User provides A, B, C     System calculates D                      |
-//| Targets (Step1/3/5/7) start from C (not D)                       |
-//+------------------------------------------------------------------+
-void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, double pB,
-                     datetime tC, double pC)
-{
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("==================== DrawABCDPattern called | Name: ", mainObjName);
-    Print("   A: ", TimeToString(tA), " @ ", DoubleToString(pA, Digits));
-    Print("   B: ", TimeToString(tB), " @ ", DoubleToString(pB, Digits));
-    Print("   C: ", TimeToString(tC), " @ ", DoubleToString(pC, Digits));
-    #endif
-    
-    datetime tD;
-    double pD;
-    
-    if(!CalculateABCDPointD(tA, pA, tB, pB, tC, pC, tD, pD)) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== CalculateABCDPointD failed - cleaning up temp objects");
-        #endif
-        
-        // Cleanup partial objects
-        string pointNames[4] = {"A", "B", "C", "D"};
-        for(int i = 0; i < 4; i++) {
-            ObjectDelete(0, mainObjName + "_Point_" + pointNames[i]);
-            ObjectDelete(0, mainObjName + "_Label_" + pointNames[i]);
-        }
-        ObjectDelete(0, mainObjName + "_Line_AB");
-        ObjectDelete(0, mainObjName + "_Line_BC");
-        ObjectDelete(0, mainObjName + "_Info");
-        return;
-    }
-    
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("==================== Point D calculated: ", TimeToString(tD), " @ ", DoubleToString(pD, Digits));
-    #endif
-    
-    double AB_Distance = MathAbs(pB - pA);
-    bool isBullish = (pB > pA);
-    double frequency = GetCurrentTH3Frequency();
-    double baseUnit = AB_Distance * (frequency / 100.0);
-    
-    double pipSize = GetCachedPipSize();
-    
-    // DYNAMIC OFFSET: Calculate based on candle size for better positioning
-    // Offset                          
-    double labelOffset;
-    
-    if(inpABCDLabelOffsetPercent > 0) {
-        // User-defined offset percentage
-        double avgCandleSize = 0;
-        int lookback = 20; //      20      
-        for(int k = 0; k < lookback; k++) {
-            avgCandleSize += (iHigh(NULL, 0, k) - iLow(NULL, 0, k));
-        }
-        avgCandleSize /= lookback;
-        
-        // Use user-defined percentage of average candle size
-        labelOffset = avgCandleSize * (inpABCDLabelOffsetPercent / 100.0);
-        
-        // Minimum offset: 3 pips (prevent labels too close)
-        double minOffset = 3.0 * pipSize;
-        if(labelOffset < minOffset) labelOffset = minOffset;
-        
-        // Maximum offset: 100 pips (prevent labels too far)
-        double maxOffset = 100.0 * pipSize;
-        if(labelOffset > maxOffset) labelOffset = maxOffset;
-    } else {
-        // Auto mode: Use fixed 15 pips (legacy behavior)
-        labelOffset = 15.0 * pipSize;
-    }
-    
-    // Draw points A, B, C, D with smart label positioning
-    string pointNames[4];
-    pointNames[0] = "A";
-    pointNames[1] = "B";
-    pointNames[2] = "C";
-    pointNames[3] = "D";
-    
-    datetime pointTimes[4];
-    pointTimes[0] = tA;
-    pointTimes[1] = tB;
-    pointTimes[2] = tC;
-    pointTimes[3] = tD;
-    
-    double pointPrices[4];
-    pointPrices[0] = pA;
-    pointPrices[1] = pB;
-    pointPrices[2] = pC;
-    pointPrices[3] = pD;
-    
-    // Draw visible drag points for A, B, C (small circles with smart positioning)
-    //            A  B  C (                   
-    for(int i = 0; i < 3; i++) {
-        string pointName = mainObjName + "_Point_" + pointNames[i];
-        
-        // SMART POSITIONING: Place point above/below candle based on price level
-        //                     /              
-        int barIndex = iBarShift(NULL, 0, pointTimes[i]);
-        double pointPrice = pointPrices[i];
-        
-        if(barIndex >= 0) {
-            double high = iHigh(NULL, 0, barIndex);
-            double low = iLow(NULL, 0, barIndex);
-            double mid = (high + low) / 2.0;
-            
-            // Determine if point is at top or bottom of candle
-            //                         
-            bool isAtTop = (pointPrice >= mid);
-            
-            // Offset point slightly outside candle for visibility
-            //                           
-            double offset = (high - low) * 0.15; // 15% of candle range
-            double minOffset = pipSize * 10;  // Minimum 10 pips
-            if(offset < minOffset) offset = minOffset; // Minimum offset
-            
-            if(isAtTop) {
-                // Point at top - place above high
-                pointPrice = high + offset;
-            } else {
-                // Point at bottom - place below low
-                pointPrice = low - offset;
-            }
-        }
-        
-        // OPTIMIZED: Use small circle (ARROWCODE 159) - visible and draggable
-        //             -          
-        if(ObjectFind(0, pointName) < 0) {
-            if(!ObjectCreate(0, pointName, OBJ_ARROW, 0, pointTimes[i], pointPrices[i])) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("==================== Failed to create point ", pointNames[i], " | Error: ", GetLastError());
-                #endif
-            } else {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("==================== Created point ", pointNames[i], " at ", TimeToString(pointTimes[i]), " @ ", DoubleToString(pointPrices[i], Digits));
-                #endif
-            }
-            
-            // CRITICAL: Visible circle with smart positioning
-            ObjectSetInteger(0, pointName, OBJPROP_COLOR, inpABCDPointColor);
-            ObjectSetInteger(0, pointName, OBJPROP_ARROWCODE, 159); // Small filled circle
-            ObjectSetInteger(0, pointName, OBJPROP_WIDTH, 3); // Medium size for easy clicking
-            ObjectSetInteger(0, pointName, OBJPROP_SELECTABLE, true);
-            ObjectSetInteger(0, pointName, OBJPROP_SELECTED, false);
-            ObjectSetInteger(0, pointName, OBJPROP_BACK, false); // Draw on top
-            ObjectSetInteger(0, pointName, OBJPROP_ZORDER, 10); // High priority
-            ObjectSetString(0, pointName, OBJPROP_TOOLTIP, "==================== Point " + pointNames[i] + " | Drag to adjust");
-        } else {
-            // Update existing point position
-            ObjectMove(0, pointName, 0, pointTimes[i], pointPrices[i]);
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Updated existing point ", pointNames[i]);
-            #endif
-        }
-        
-        // Smart label positioning relative to candle High/Low
-        //                   High/Low    
-        if(inpABCDShowLabels) {
-            string labelName = mainObjName + "_Label_" + pointNames[i];
-            double labelPrice = pointPrices[i];
-            ENUM_ANCHOR_POINT anchor = ANCHOR_CENTER;
-            
-            // Get candle High/Low for this point
-            int labelBarIndex = iBarShift(NULL, 0, pointTimes[i]);
-            double candleHigh = (labelBarIndex >= 0) ? iHigh(NULL, 0, labelBarIndex) : pointPrices[i];
-            double candleLow = (labelBarIndex >= 0) ? iLow(NULL, 0, labelBarIndex) : pointPrices[i];
-            
-            // Position label relative to candle High/Low (not point price)
-            //              High/Low     (         
-            if(i == 0 || i == 2) { // A or C (swing lows in bullish, swing highs in bearish)
-                if(isBullish) {
-                    // A/C are lows - place label below candle low
-                    labelPrice = candleLow - labelOffset;
-                    anchor = ANCHOR_UPPER;
-                } else {
-                    // A/C are highs - place label above candle high
-                    labelPrice = candleHigh + labelOffset;
-                    anchor = ANCHOR_LOWER;
-                }
-            } else { // B or D (swing highs in bullish, swing lows in bearish)
-                if(isBullish) {
-                    // B/D are highs - place label above candle high
-                    labelPrice = candleHigh + labelOffset;
-                    anchor = ANCHOR_LOWER;
-                } else {
-                    // B/D are lows - place label below candle low
-                    labelPrice = candleLow - labelOffset;
-                    anchor = ANCHOR_UPPER;
-                }
-            }
-            
-            if(ObjectFind(0, labelName) < 0) {
-                if(!ObjectCreate(0, labelName, OBJ_TEXT, 0, pointTimes[i], labelPrice)) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("==================== Failed to create label ", pointNames[i], " | Error: ", GetLastError());
-                    #endif
-                } else {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("==================== Created label ", pointNames[i]);
-                    #endif
-                }
-                ObjectSetString(0, labelName, OBJPROP_TEXT, pointNames[i]);
-                ObjectSetInteger(0, labelName, OBJPROP_COLOR, inpABCDPointColor);
-                ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
-                ObjectSetString(0, labelName, OBJPROP_FONT, "Arial Bold");
-                ObjectSetInteger(0, labelName, OBJPROP_ANCHOR, anchor);
-                ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
-            } else {
-                ObjectMove(0, labelName, 0, pointTimes[i], labelPrice);
-                ObjectSetInteger(0, labelName, OBJPROP_ANCHOR, anchor);
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("==================== Updated existing label ", pointNames[i]);
-                #endif
-            }
-        }
-    }
-    
-    // Draw line AB (solid)
-    string lineAB = mainObjName + "_Line_AB";
-    if(ObjectFind(0, lineAB) < 0) {
-        if(!ObjectCreate(0, lineAB, OBJ_TREND, 0, tA, pA, tB, pB)) {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Failed to create Line AB | Error: ", GetLastError());
-            #endif
-        } else {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Created Line AB");
-            #endif
-        }
-        ObjectSetInteger(0, lineAB, OBJPROP_COLOR, inpABCDLineColor);
-        ObjectSetInteger(0, lineAB, OBJPROP_WIDTH, inpABCDWidth);
-        ObjectSetInteger(0, lineAB, OBJPROP_STYLE, STYLE_SOLID);
-        ObjectSetInteger(0, lineAB, OBJPROP_RAY_RIGHT, false);
-        ObjectSetInteger(0, lineAB, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, lineAB, OBJPROP_BACK, false);
-    } else {
-        ObjectMove(0, lineAB, 0, tA, pA);
-        ObjectMove(0, lineAB, 1, tB, pB);
-    }
-    
-    // Draw line BC (dotted)
-    string lineBC = mainObjName + "_Line_BC";
-    if(ObjectFind(0, lineBC) < 0) {
-        if(!ObjectCreate(0, lineBC, OBJ_TREND, 0, tB, pB, tC, pC)) {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Failed to create Line BC | Error: ", GetLastError());
-            #endif
-        } else {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Created Line BC");
-            #endif
-        }
-        ObjectSetInteger(0, lineBC, OBJPROP_COLOR, clrGray);
-        ObjectSetInteger(0, lineBC, OBJPROP_WIDTH, 1);
-        ObjectSetInteger(0, lineBC, OBJPROP_STYLE, STYLE_DOT);
-        ObjectSetInteger(0, lineBC, OBJPROP_RAY_RIGHT, false);
-        ObjectSetInteger(0, lineBC, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, lineBC, OBJPROP_BACK, true);
-    } else {
-        ObjectMove(0, lineBC, 0, tB, pB);
-        ObjectMove(0, lineBC, 1, tC, pC);
-    }
-    
-    // Draw TH3-style targets (Step1, Step3, Step5, Step7) from C
-    string targetNames[4] = {"Step1", "Step3", "Step5", "Step7"};
-    color targetColors[4] = {clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold};
-    double targetLevels[4];
-    
-    if(isBullish) {
-        targetLevels[0] = pC + (1.0 * baseUnit);
-        targetLevels[1] = pC + (3.0 * baseUnit);
-        targetLevels[2] = pC + (5.0 * baseUnit);
-        targetLevels[3] = pC + (7.0 * baseUnit);
-    } else {
-        targetLevels[0] = pC - (1.0 * baseUnit);
-        targetLevels[1] = pC - (3.0 * baseUnit);
-        targetLevels[2] = pC - (5.0 * baseUnit);
-        targetLevels[3] = pC - (7.0 * baseUnit);
-    }
-    
-    double targetPips[4];
-    for(int i = 0; i < 4; i++) {
-        targetPips[i] = MathAbs(baseUnit * (i*2 + 1)) / pipSize;
-    }
-    
-    datetime startTime = tC;
-    int barShift = iBarShift(NULL, 0, startTime);
-    datetime endTime = iTime(NULL, 0, MathMax(0, barShift - 100));
-    
-    // GOLD VERSION: Use configurable zone height from input parameter
-    // Convert from percentage (1-100) to decimal (0.01-1.0)
-    double zoneHeightPercent = inpTH3ZoneHeightPercent / 100.0;
-    
-    // Validate and clamp
-    if(zoneHeightPercent < 0.01) zoneHeightPercent = 0.01;
-    if(zoneHeightPercent > 1.0) zoneHeightPercent = 1.0;
-    
-    double zoneHalfWidth = baseUnit * zoneHeightPercent;
-    
-    for(int i = 0; i < 4; i++) {
-        string lineName = mainObjName + "_Target_" + IntegerToString(i+1);
-        double centerPrice = targetLevels[i];
-        double upperZone = centerPrice + zoneHalfWidth;
-        double lowerZone = centerPrice - zoneHalfWidth;
-        color zoneColor = (inpTH3ZoneColor == clrNONE) ? targetColors[i] : inpTH3ZoneColor;
-        // Apply the zone transparency to the box/border color (blend with background)
-        zoneColor = GetZoneRenderColor(zoneColor, inpTH3ZoneTransparency);
-        
-        if(ObjectFind(0, lineName) < 0) {
-            ObjectCreate(0, lineName, OBJ_FIBO, 0, startTime, centerPrice, endTime, centerPrice);
-            ObjectSetInteger(0, lineName, OBJPROP_COLOR, targetColors[i]);
-            ObjectSetInteger(0, lineName, OBJPROP_LEVELCOLOR, targetColors[i]);
-            ObjectSetInteger(0, lineName, OBJPROP_WIDTH, 2);
-            ObjectSetInteger(0, lineName, OBJPROP_LEVELWIDTH, 2);
-            ObjectSetInteger(0, lineName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-            ObjectSetInteger(0, lineName, OBJPROP_SELECTABLE, false);
-            ObjectSetInteger(0, lineName, OBJPROP_LEVELS, 1);
-            ObjectSetDouble(0, lineName, OBJPROP_LEVELVALUE, 0, 0.0);
-            
-            if(inpTH3LabelPosition != TH3_LABEL_HIDDEN) {
-                double zonePips = (zoneHalfWidth * 2.0) / pipSize;
-                string labelText = StringFormat("%s (%.1f) ====================%.1f", targetNames[i], targetPips[i], zonePips/2.0);
-                ObjectSetString(0, lineName, OBJPROP_LEVELTEXT, 0, labelText);
-            }
-        } else {
-            // CRITICAL FIX: Update position AND label text when frequency changes
-            ObjectMove(0, lineName, 0, startTime, centerPrice);
-            ObjectMove(0, lineName, 1, endTime, centerPrice);
-            
-            // Update label text with new pip values
-            if(inpTH3LabelPosition != TH3_LABEL_HIDDEN) {
-                double zonePips = (zoneHalfWidth * 2.0) / pipSize;
-                string labelText = StringFormat("%s (%.1f) ====================%.1f", targetNames[i], targetPips[i], zonePips/2.0);
-                ObjectSetString(0, lineName, OBJPROP_LEVELTEXT, 0, labelText);
-            }
-        }
-        
-        // Zone objects: BOX styles -> rectangle; HIDDEN -> nothing
-        string zoneUpperName = mainObjName + "_ZoneUpper_" + IntegerToString(i+1);
-        string zoneLowerName = mainObjName + "_ZoneLower_" + IntegerToString(i+1);
-        string zoneBoxName = mainObjName + "_Zone_" + IntegerToString(i+1);
-        
-        if(inpTH3ZoneStyle == TH3_ZONE_HIDDEN) {
-            // Clean up any leftover zone objects
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
-            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
-            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
-            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
-        }
-        else if(inpTH3ZoneStyle == TH3_ZONE_BOX_EMPTY) {
-            // EMPTY BOX: hollow outline drawn as border segments. Works on
-            // every MT4 build - OBJ_RECTANGLE with FILL=false is unreliable.
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
-            
-            string topBorder = zoneBoxName + "_B_Top";
-            string bottomBorder = zoneBoxName + "_B_Bottom";
-            string leftBorder = zoneBoxName + "_B_Left";
-            
-            // Top border (extends right, matching the filled box)
-            if(ObjectFind(0, topBorder) < 0) {
-                ObjectCreate(0, topBorder, OBJ_TREND, 0, startTime, upperZone, endTime, upperZone);
-                ObjectSetInteger(0, topBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                ObjectSetInteger(0, topBorder, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-                ObjectSetInteger(0, topBorder, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, topBorder, OBJPROP_BACK, true);
-            } else {
-                ObjectMove(0, topBorder, 0, startTime, upperZone);
-                ObjectMove(0, topBorder, 1, endTime, upperZone);
-                ObjectSetInteger(0, topBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-            }
-            
-            // Bottom border (extends right, matching the filled box)
-            if(ObjectFind(0, bottomBorder) < 0) {
-                ObjectCreate(0, bottomBorder, OBJ_TREND, 0, startTime, lowerZone, endTime, lowerZone);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_BACK, true);
-            } else {
-                ObjectMove(0, bottomBorder, 0, startTime, lowerZone);
-                ObjectMove(0, bottomBorder, 1, endTime, lowerZone);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-            }
-            
-            // Left border (vertical - closes the outline)
-            if(ObjectFind(0, leftBorder) < 0) {
-                ObjectCreate(0, leftBorder, OBJ_TREND, 0, startTime, lowerZone, startTime, upperZone);
-                ObjectSetInteger(0, leftBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, leftBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, leftBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                ObjectSetInteger(0, leftBorder, OBJPROP_RAY_RIGHT, false);
-                ObjectSetInteger(0, leftBorder, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, leftBorder, OBJPROP_BACK, true);
-            } else {
-                ObjectMove(0, leftBorder, 0, startTime, lowerZone);
-                ObjectMove(0, leftBorder, 1, startTime, upperZone);
-                ObjectSetInteger(0, leftBorder, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, leftBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                ObjectSetInteger(0, leftBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-            }
-        }
-        else {
-            // BOX_FILLED: single filled rectangle zone
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
-            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
-            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
-            
-            if(ObjectFind(0, zoneBoxName) < 0) {
-                if(ObjectCreate(0, zoneBoxName, OBJ_RECTANGLE, 0, startTime, lowerZone, endTime, upperZone)) {
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_SELECTABLE, false);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_BACK, true);
-                }
-            } else {
-                ObjectMove(0, zoneBoxName, 0, startTime, lowerZone);
-                ObjectMove(0, zoneBoxName, 1, endTime, upperZone);
-                ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
-                ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
-            }
-        }
-    }
-    
-    // Info label (corner-based positioning - configurable)
-    //     (        -      
-    // VISIBILITY: Only shown for active pattern
-    //         :                 
-    double pips_AB = AB_Distance / pipSize;
-    double pips_BC = MathAbs(pC - pB) / pipSize;
-    
-    string infoText = StringFormat("AB=CD | AB:%.1f | BC:%.1f | Freq:%.1f%%", 
-                                   pips_AB, pips_BC, frequency);
-    
-    string infoLabel = mainObjName + "_Info";
-    
-    // Determine visibility based on active pattern
-    //                     
-    bool isActive = (g_activeABCDPattern == mainObjName);
-    
-    if(ObjectFind(0, infoLabel) < 0) {
-        ObjectCreate(0, infoLabel, OBJ_LABEL, 0, 0, 0);
-        ObjectSetInteger(0, infoLabel, OBJPROP_CORNER, inpABCDInfoCorner);
-        ObjectSetInteger(0, infoLabel, OBJPROP_XDISTANCE, inpABCDInfoXDistance);
-        ObjectSetInteger(0, infoLabel, OBJPROP_YDISTANCE, inpABCDInfoYDistance);
-        ObjectSetString(0, infoLabel, OBJPROP_TEXT, infoText);
-        ObjectSetInteger(0, infoLabel, OBJPROP_COLOR, inpABCDInfoColor);
-        ObjectSetInteger(0, infoLabel, OBJPROP_FONTSIZE, inpABCDInfoFontSize);
-        ObjectSetString(0, infoLabel, OBJPROP_FONT, "Arial Bold");
-        ObjectSetInteger(0, infoLabel, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, infoLabel, OBJPROP_HIDDEN, true);
-        
-        // Set visibility based on active state
-        ObjectSetInteger(0, infoLabel, OBJPROP_TIMEFRAMES, isActive ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
-    } else {
-        // Update text and visibility
-        ObjectSetString(0, infoLabel, OBJPROP_TEXT, infoText);
-        ObjectSetInteger(0, infoLabel, OBJPROP_CORNER, inpABCDInfoCorner);
-        ObjectSetInteger(0, infoLabel, OBJPROP_XDISTANCE, inpABCDInfoXDistance);
-        ObjectSetInteger(0, infoLabel, OBJPROP_YDISTANCE, inpABCDInfoYDistance);
-        ObjectSetInteger(0, infoLabel, OBJPROP_COLOR, inpABCDInfoColor);
-        ObjectSetInteger(0, infoLabel, OBJPROP_FONTSIZE, inpABCDInfoFontSize);
-        
-        // Update visibility based on active state
-        ObjectSetInteger(0, infoLabel, OBJPROP_TIMEFRAMES, isActive ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
-    }
-    
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("==================== DrawABCDPattern completed | Pattern: ", mainObjName);
-    Print("   Objects: Points(3:A,B,C) + Labels(3) + Lines(2) + Targets(4) + Zones(8) + Info(1)");
-    Print("   Note: Point D not shown - target levels indicate D zone");
-    #endif
-    
-    ChartRedraw();
-}
 
 //+------------------------------------------------------------------+
 //| Update All TH3 Objects (when frequency changes)                 |
@@ -2931,444 +1501,209 @@ void UpdateAllTH3Objects() {
 }
 
 //+------------------------------------------------------------------+
-//| Handle AB=CD Mouse Events (3-point click workflow)              |
-//|             AB=CD (  3                       |
+//| Register/refresh a pattern model in the store (called after      |
+//| DrawABCDPattern so the in-memory model stays in sync).           |
+//+------------------------------------------------------------------+
+void TH3RegisterPattern(const string name, datetime tA, double pA,
+                        datetime tB, double pB, datetime tC, double pC)
+{
+    TH3Pattern model;
+    datetime tX = 0;
+    double pX = 0;
+    if(TH3PatternStoreGet(name, model)) {
+        tX = model.X.time;
+        pX = model.X.price;
+    }
+    if(TH3PatternBuild(name, tX, pX, tA, pA, tB, pB, tC, pC, model)) {
+        model.frequency = g_th3FreqOverride;
+        TH3PatternStoreAdd(model);
+    }
+}
+
+//+------------------------------------------------------------------+
+//| Complete a drawing session: auto-select frequency, draw the      |
+//| pattern, register the model, clean up preview objects.           |
+//+------------------------------------------------------------------+
+void TH3CompletePattern()
+{
+    datetime tX, tA, tB, tC;
+    double pX, pA, pB, pC;
+    if(!TH3SessionGetPoint(0, tX, pX)) return;
+    if(!TH3SessionGetPoint(1, tA, pA)) return;
+    if(!TH3SessionGetPoint(2, tB, pB)) return;
+    if(!TH3SessionGetPoint(3, tC, pC)) return;
+
+    // AUTO-SEARCH: optimal frequency for this pattern (3-wave analysis)
+    FrequencySearchResult searchResults[];
+    WaveAnalysis waves;
+    double consolidationFactor;
+    int resultCount = FindOptimalFrequencyForABCD_WithLearningData(
+        tX, pX, tA, pA, tB, pB, tC, pC,
+        searchResults, waves, consolidationFactor, 5.0);
+
+    if(resultCount > 0) {
+        g_th3FreqOverride = searchResults[0].frequency;
+        g_th3FreqIndex = searchResults[0].frequencyIndex;
+
+        string chartIdStr = GetCachedChartIdStr();
+        string freqGvarName = "Biotak_TH3Freq_" + chartIdStr;
+        string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
+        GlobalVariableSet(freqGvarName, g_th3FreqOverride);
+        GlobalVariableSet(indexGvarName, g_th3FreqIndex);
+    }
+
+    string patternName = "ABCD_Pattern_" + IntegerToString((long)GetTickCount());
+    DrawABCDPattern(patternName, tA, pA, tB, pB, tC, pC);
+
+    // Register the full model (including X) in the store
+    TH3Pattern model;
+    if(TH3PatternBuild(patternName, tX, pX, tA, pA, tB, pB, tC, pC, model)) {
+        model.frequency = g_th3FreqOverride;
+        TH3PatternStoreAdd(model);
+    }
+
+    SetActiveABCDPattern(patternName);
+    TH3PreviewClear();
+    UpdateTH3FrequencyLabel(g_th3FreqOverride);
+    ChartRedraw();
+    Print("TH3: AB=CD pattern created: ", patternName);
+}
+
+//+------------------------------------------------------------------+
+//| Unified mouse/key event dispatcher for the TH3 drawing tool.     |
+//| State lives in TH3DrawingSession (TH3Controller.mqh) - no more   |
+//| scattered g_abcd* globals.                                       |
 //+------------------------------------------------------------------+
 void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
-    // Handle right-click cancel
+    // ---- Mouse move: right-click cancel, left-click placement ----
     if(id == CHARTEVENT_MOUSE_MOVE) {
         int mouseState = (int)StringToInteger(sparam);
         bool rightButtonDown = (mouseState & 2) == 2;
         bool leftButtonDown = (mouseState & 1) == 1;
-        
-        if(rightButtonDown && g_abcdDrawing) {
-            g_abcdDrawing = false;
-            g_abcdPointCount = 0;
-            
-            ObjectDelete(0, "ABCD_Temp_X");
-            ObjectDelete(0, "ABCD_Temp_A");
-            ObjectDelete(0, "ABCD_Temp_B");
-            ObjectDelete(0, "ABCD_Temp_C");
-            ObjectDelete(0, "ABCD_Temp_Line_XA");
-            ObjectDelete(0, "ABCD_Temp_Line_AB");
-            ObjectDelete(0, "ABCD_Temp_Line_BC");
-            
-            ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-            ChartRedraw();
-            Print("==================== AB=CD creation cancelled");
+
+        if(rightButtonDown && TH3SessionActive()) {
+            TH3SessionCancel();
             return;
         }
-        
-        // ALTERNATIVE CLICK DETECTION: Use mouse button state change
-        // This is more reliable than CHARTEVENT_CLICK in MT4
+
         static bool s_lastLeftButtonState = false;
-        
-        if(g_abcdDrawing && leftButtonDown && !s_lastLeftButtonState) {
-            // Left button just pressed (rising edge detection)
+        if(TH3SessionActive() && leftButtonDown && !s_lastLeftButtonState) {
             s_lastLeftButtonState = true;
-            
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Left button pressed via MOUSE_MOVE | lparam=", lparam, " dparam=", dparam);
-            #endif
-            
-            // Debounce check
+
             uint currentTime = GetTickCount();
-            if(currentTime - g_abcdLastClickTime < ABCD_DEBOUNCE_MS) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("==================== Click debounced (too fast)");
-                #endif
-                return;
-            }
-            g_abcdLastClickTime = currentTime;
-            
-            // Get click coordinates
-            double mx = (double)lparam;
-            double my = (double)dparam;
-            
+            if(currentTime - g_th3Session.lastClickTime < ABCD_DEBOUNCE_MS) return;
+            g_th3Session.lastClickTime = currentTime;
+
             int subWindow;
             datetime clickTime;
             double clickPrice;
-            if(!ChartXYToTimePrice(0, (int)mx, (int)my, subWindow, clickTime, clickPrice)) {
-                #ifdef ENABLE_DEBUG_LOGS
-                Print("==================== ChartXYToTimePrice failed | mx=", mx, " my=", my);
-                #endif
-                return;
-            }
-            
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Click detected | time=", TimeToString(clickTime), " price=", DoubleToString(clickPrice, Digits), " | pointCount=", g_abcdPointCount);
-            #endif
-            
-            // Place point based on current count (4 points: X, A, B, C)
-            if(g_abcdPointCount == 0) {
-                g_abcdTimeX = clickTime;
-                g_abcdPriceX = clickPrice;
-                g_abcdPointCount = 1;
-                
-                ObjectCreate(0, "ABCD_Temp_X", OBJ_TEXT, 0, clickTime, clickPrice);
-                ObjectSetString(0, "ABCD_Temp_X", OBJPROP_TEXT, "X");
-                ObjectSetInteger(0, "ABCD_Temp_X", OBJPROP_COLOR, clrYellow);
-                ObjectSetInteger(0, "ABCD_Temp_X", OBJPROP_FONTSIZE, 10);
-                ChartRedraw();
-                Print("==================== Point X placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-            }
-            else if(g_abcdPointCount == 1) {
-                g_abcdTimeA = clickTime;
-                g_abcdPriceA = clickPrice;
-                g_abcdPointCount = 2;
-                
-                ObjectCreate(0, "ABCD_Temp_A", OBJ_TEXT, 0, clickTime, clickPrice);
-                ObjectSetString(0, "ABCD_Temp_A", OBJPROP_TEXT, "A");
-                ObjectSetInteger(0, "ABCD_Temp_A", OBJPROP_COLOR, clrYellow);
-                ObjectSetInteger(0, "ABCD_Temp_A", OBJPROP_FONTSIZE, 10);
-                
-                ObjectCreate(0, "ABCD_Temp_Line_XA", OBJ_TREND, 0, g_abcdTimeX, g_abcdPriceX, g_abcdTimeA, g_abcdPriceA);
-                ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_COLOR, clrYellow);
-                ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_STYLE, STYLE_DOT);
-                ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_RAY_RIGHT, false);
-                ChartRedraw();
-                Print("==================== Point A placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-            }
-            else if(g_abcdPointCount == 2) {
-                g_abcdTimeB = clickTime;
-                g_abcdPriceB = clickPrice;
-                g_abcdPointCount = 3;
-                
-                ObjectCreate(0, "ABCD_Temp_B", OBJ_TEXT, 0, clickTime, clickPrice);
-                ObjectSetString(0, "ABCD_Temp_B", OBJPROP_TEXT, "B");
-                ObjectSetInteger(0, "ABCD_Temp_B", OBJPROP_COLOR, clrYellow);
-                ObjectSetInteger(0, "ABCD_Temp_B", OBJPROP_FONTSIZE, 10);
-                
-                ObjectCreate(0, "ABCD_Temp_Line_AB", OBJ_TREND, 0, g_abcdTimeA, g_abcdPriceA, g_abcdTimeB, g_abcdPriceB);
-                ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_COLOR, clrYellow);
-                ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_STYLE, STYLE_DOT);
-                ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_RAY_RIGHT, false);
-                ChartRedraw();
-                Print("==================== Point B placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-            }
-            else if(g_abcdPointCount == 3) {
-                g_abcdTimeC = clickTime;
-                g_abcdPriceC = clickPrice;
-                
-                Print("==================== Point C placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-                
-                //   AUTO-SEARCH: Find optimal frequency for this pattern (with 3-wave analysis)
-                //                             (    3    
-                FrequencySearchResult searchResults[];
-                WaveAnalysis waves;
-                double consolidationFactor;
-                
-                int resultCount = FindOptimalFrequencyForABCD_WithLearningData(
-                    g_abcdTimeX, g_abcdPriceX,
-                    g_abcdTimeA, g_abcdPriceA, 
-                    g_abcdTimeB, g_abcdPriceB,
-                    g_abcdTimeC, g_abcdPriceC,
-                    searchResults,
-                    waves,
-                    consolidationFactor,
-                    5.0);
-                
-                if(resultCount > 0) {
-                    //         
-                    g_th3FreqOverride = searchResults[0].frequency;
-                    g_th3FreqIndex = searchResults[0].frequencyIndex;
-                    
-                    //     GlobalVariable
-                    // PERFORMANCE: Use cached ChartID string
-                    string chartIdStr = GetCachedChartIdStr();
-                    string freqGvarName = "Biotak_TH3Freq_" + chartIdStr;
-                    string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
-                    GlobalVariableSet(freqGvarName, g_th3FreqOverride);
-                    GlobalVariableSet(indexGvarName, g_th3FreqIndex);
-                    
-                    Print("========================================");
-                    Print("==================== AUTO-SELECTED FREQUENCY");
-                    Print("========================================");
-                    Print("Best: ", DoubleToString(searchResults[0].frequency, 3), "% ==================== Step ", searchResults[0].targetStep);
-                    Print("Error: ", DoubleToString(searchResults[0].errorPercent, 3), "% (", DoubleToString(searchResults[0].errorPips, 1), " pips)");
-                    Print("Speed: ", DoubleToString(searchResults[0].gannAngle, 2), "x | Consistency: ", DoubleToString(searchResults[0].angleWeight * 100, 1), "%");
-                    Print("Time Sym: ", DoubleToString(searchResults[0].timeSymmetry * 100, 1), "% | Score: ", DoubleToString(searchResults[0].totalScore, 2));
-                    Print("========================================");
-                    Print("==================== TOP 5 ALTERNATIVES:");
-                    for(int i = 0; i < MathMin(5, resultCount); i++) {
-                        Print(StringFormat("%d. %.3f%% ==================== Step %d | Err: %.2f%% | Speed: %.2fx | Score: %.2f",
-                              i + 1,
-                              searchResults[i].frequency,
-                              searchResults[i].targetStep,
-                              searchResults[i].errorPercent,
-                              searchResults[i].gannAngle,
-                              searchResults[i].totalScore));
-                    }
-                    Print("========================================");
-                }
-                
-                string patternName = "ABCD_Pattern_" + IntegerToString((long)GetTickCount());
-                DrawABCDPattern(patternName, g_abcdTimeA, g_abcdPriceA, g_abcdTimeB, g_abcdPriceB, g_abcdTimeC, g_abcdPriceC);
-                
-                // Set as active pattern
-                SetActiveABCDPattern(patternName);
-                
-                // ========================================
-                
-                ObjectDelete(0, "ABCD_Temp_X");
-                ObjectDelete(0, "ABCD_Temp_A");
-                ObjectDelete(0, "ABCD_Temp_B");
-                ObjectDelete(0, "ABCD_Temp_C");
-                ObjectDelete(0, "ABCD_Temp_Line_XA");
-                ObjectDelete(0, "ABCD_Temp_Line_AB");
-                ObjectDelete(0, "ABCD_Temp_Line_BC");
-                
-                g_abcdDrawing = false;
-                g_abcdPointCount = 0;
-                ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-                
-                // Update frequency label
-                UpdateTH3FrequencyLabel(g_th3FreqOverride);
-                
-                ChartRedraw();
-                Print("==================== AB=CD pattern created: ", patternName);
+            if(!ChartXYToTimePrice(0, (int)lparam, (int)dparam, subWindow, clickTime, clickPrice)) return;
+
+            TH3SessionAddPoint(clickTime, clickPrice);
+            if(g_th3Session.state == TH3_SESSION_COMPLETE) {
+                TH3CompletePattern();
             }
         }
         else if(!leftButtonDown && s_lastLeftButtonState) {
-            // Left button released
             s_lastLeftButtonState = false;
         }
-        
+
+        // LIVE PREVIEW: project the next point under the cursor
+        if(TH3SessionActive()) {
+            int subWindow;
+            datetime hoverTime;
+            double hoverPrice;
+            if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, subWindow, hoverTime, hoverPrice)) {
+                TH3SessionSetHover(hoverTime, hoverPrice);
+                TH3PreviewUpdateHover(hoverTime, hoverPrice);
+            }
+        }
         return;
     }
-    
-    // Handle left-click to place points (fallback for CHARTEVENT_CLICK)
-    if(id == CHARTEVENT_CLICK && g_abcdDrawing) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== CHARTEVENT_CLICK received | lparam=", lparam, " dparam=", dparam, " sparam=", sparam, " | g_abcdPointCount=", g_abcdPointCount);
-        #endif
-        
+
+    // ---- CHARTEVENT_CLICK fallback ----
+    if(id == CHARTEVENT_CLICK && TH3SessionActive()) {
         uint currentTime = GetTickCount();
-        if(currentTime - g_abcdLastClickTime < ABCD_DEBOUNCE_MS) {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Click debounced (too fast)");
-            #endif
-            return;
-        }
-        g_abcdLastClickTime = currentTime;
-        
-        double mx = (double)lparam;
-        double my = (double)dparam;
-        
+        if(currentTime - g_th3Session.lastClickTime < ABCD_DEBOUNCE_MS) return;
+        g_th3Session.lastClickTime = currentTime;
+
         int subWindow;
         datetime clickTime;
         double clickPrice;
-        if(!ChartXYToTimePrice(0, (int)mx, (int)my, subWindow, clickTime, clickPrice)) {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== ChartXYToTimePrice failed | mx=", mx, " my=", my);
-            #endif
-            return;
+        if(!ChartXYToTimePrice(0, (int)lparam, (int)dparam, subWindow, clickTime, clickPrice)) return;
+
+        TH3SessionAddPoint(clickTime, clickPrice);
+        if(g_th3Session.state == TH3_SESSION_COMPLETE) {
+            TH3CompletePattern();
         }
-        
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("==================== ChartXYToTimePrice success | time=", TimeToString(clickTime), " price=", DoubleToString(clickPrice, Digits));
-        #endif
-        
-        if(g_abcdPointCount == 0) {
-            g_abcdTimeX = clickTime;
-            g_abcdPriceX = clickPrice;
-            g_abcdPointCount = 1;
-            
-            ObjectCreate(0, "ABCD_Temp_X", OBJ_TEXT, 0, clickTime, clickPrice);
-            ObjectSetString(0, "ABCD_Temp_X", OBJPROP_TEXT, "X");
-            ObjectSetInteger(0, "ABCD_Temp_X", OBJPROP_COLOR, clrYellow);
-            ObjectSetInteger(0, "ABCD_Temp_X", OBJPROP_FONTSIZE, 10);
-            ChartRedraw();
-            Print("==================== Point X placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-        }
-        else if(g_abcdPointCount == 1) {
-            g_abcdTimeA = clickTime;
-            g_abcdPriceA = clickPrice;
-            g_abcdPointCount = 2;
-            
-            ObjectCreate(0, "ABCD_Temp_A", OBJ_TEXT, 0, clickTime, clickPrice);
-            ObjectSetString(0, "ABCD_Temp_A", OBJPROP_TEXT, "A");
-            ObjectSetInteger(0, "ABCD_Temp_A", OBJPROP_COLOR, clrYellow);
-            ObjectSetInteger(0, "ABCD_Temp_A", OBJPROP_FONTSIZE, 10);
-            
-            ObjectCreate(0, "ABCD_Temp_Line_XA", OBJ_TREND, 0, g_abcdTimeX, g_abcdPriceX, g_abcdTimeA, g_abcdPriceA);
-            ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_COLOR, clrYellow);
-            ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_STYLE, STYLE_DOT);
-            ObjectSetInteger(0, "ABCD_Temp_Line_XA", OBJPROP_RAY_RIGHT, false);
-            ChartRedraw();
-            Print("==================== Point A placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-        }
-        else if(g_abcdPointCount == 2) {
-            g_abcdTimeB = clickTime;
-            g_abcdPriceB = clickPrice;
-            g_abcdPointCount = 3;
-            
-            ObjectCreate(0, "ABCD_Temp_B", OBJ_TEXT, 0, clickTime, clickPrice);
-            ObjectSetString(0, "ABCD_Temp_B", OBJPROP_TEXT, "B");
-            ObjectSetInteger(0, "ABCD_Temp_B", OBJPROP_COLOR, clrYellow);
-            ObjectSetInteger(0, "ABCD_Temp_B", OBJPROP_FONTSIZE, 10);
-            
-            ObjectCreate(0, "ABCD_Temp_Line_AB", OBJ_TREND, 0, g_abcdTimeA, g_abcdPriceA, g_abcdTimeB, g_abcdPriceB);
-            ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_COLOR, clrYellow);
-            ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_STYLE, STYLE_DOT);
-            ObjectSetInteger(0, "ABCD_Temp_Line_AB", OBJPROP_RAY_RIGHT, false);
-            ChartRedraw();
-            Print("==================== Point B placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-        }
-        else if(g_abcdPointCount == 3) {
-            g_abcdTimeC = clickTime;
-            g_abcdPriceC = clickPrice;
-            
-            Print("==================== Point C placed at ", TimeToString(clickTime), " price ", DoubleToString(clickPrice, Digits));
-            
-            string patternName = "ABCD_Pattern_" + IntegerToString((long)GetTickCount());
-            DrawABCDPattern(patternName, g_abcdTimeA, g_abcdPriceA, g_abcdTimeB, g_abcdPriceB, g_abcdTimeC, g_abcdPriceC);
-            
-            // Set as active pattern
-            SetActiveABCDPattern(patternName);
-            
-            ObjectDelete(0, "ABCD_Temp_X");
-            ObjectDelete(0, "ABCD_Temp_A");
-            ObjectDelete(0, "ABCD_Temp_B");
-            ObjectDelete(0, "ABCD_Temp_C");
-            ObjectDelete(0, "ABCD_Temp_Line_XA");
-            ObjectDelete(0, "ABCD_Temp_Line_AB");
-            ObjectDelete(0, "ABCD_Temp_Line_BC");
-            
-            g_abcdDrawing = false;
-            g_abcdPointCount = 0;
-            ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-            ChartRedraw();
-            Print("==================== AB=CD pattern created: ", patternName);
-        }
+        return;
     }
-    
-    // Handle drag events for A, B, C points with smart magnet effect
-    //          A  B  C              
+
+    // ---- Drag points A/B/C with smart OHLC snapping ----
     if(id == CHARTEVENT_OBJECT_DRAG) {
         if(StringFind(sparam, "ABCD_Pattern_") == 0 && StringFind(sparam, "_Point_") > 0) {
-            // Extract pattern name and point
             int pointPos = StringFind(sparam, "_Point_");
             string baseName = StringSubstr(sparam, 0, pointPos);
             string pointName = StringSubstr(sparam, pointPos + 7);
-            
-            // Only A, B, C are draggable
+
             if(pointName != "A" && pointName != "B" && pointName != "C") return;
-            
-            // CRITICAL: Set this pattern as active when user drags it
-            //       drag                  
             SetActiveABCDPattern(baseName);
-            
-            // SMART MAGNET: Snap to nearest candle high/low with threshold
-            //                  high/low          
+
+            // SMART MAGNET: snap to nearest OHLC within 5 pips
             string draggedPoint = baseName + "_Point_" + pointName;
             datetime newTime = (datetime)ObjectGetInteger(0, draggedPoint, OBJPROP_TIME, 0);
             double newPrice = ObjectGetDouble(0, draggedPoint, OBJPROP_PRICE, 0);
-            
+
             int barIndex = iBarShift(NULL, 0, newTime);
             if(barIndex >= 0) {
                 double high = iHigh(NULL, 0, barIndex);
                 double low = iLow(NULL, 0, barIndex);
                 double open = iOpen(NULL, 0, barIndex);
                 double close = iClose(NULL, 0, barIndex);
-                
-                // Calculate distances in pips
+
                 double pipSize = GetCachedPipSize();
                 double distToHigh = MathAbs(newPrice - high) / pipSize;
                 double distToLow = MathAbs(newPrice - low) / pipSize;
                 double distToOpen = MathAbs(newPrice - open) / pipSize;
                 double distToClose = MathAbs(newPrice - close) / pipSize;
-                
-                // THRESHOLD: Only snap if within 5 pips (industry standard)
-                //               5     snap  
+
                 double snapThreshold = 5.0;
-                
-                // Find closest level within threshold
                 double minDist = MathMin(MathMin(distToHigh, distToLow), MathMin(distToOpen, distToClose));
-                
+
                 if(minDist <= snapThreshold) {
-                    // PRIORITY: High/Low > Open/Close (more significant levels)
-                    //       High/Low > Open/Close (     
-                    if(minDist == distToHigh) {
-                        newPrice = high;
-                        #ifdef ENABLE_DEBUG_LOGS
-                        Print("==================== Snapped to HIGH (", DoubleToString(minDist, 1), " pips)");
-                        #endif
-                    } else if(minDist == distToLow) {
-                        newPrice = low;
-                        #ifdef ENABLE_DEBUG_LOGS
-                        Print("==================== Snapped to LOW (", DoubleToString(minDist, 1), " pips)");
-                        #endif
-                    } else if(minDist == distToClose) {
-                        newPrice = close;
-                        #ifdef ENABLE_DEBUG_LOGS
-                        Print("==================== Snapped to CLOSE (", DoubleToString(minDist, 1), " pips)");
-                        #endif
-                    } else if(minDist == distToOpen) {
-                        newPrice = open;
-                        #ifdef ENABLE_DEBUG_LOGS
-                        Print("==================== Snapped to OPEN (", DoubleToString(minDist, 1), " pips)");
-                        #endif
-                    }
-                    
-                    // Update point with snapped price
+                    if(minDist == distToHigh)       newPrice = high;
+                    else if(minDist == distToLow)   newPrice = low;
+                    else if(minDist == distToClose) newPrice = close;
+                    else if(minDist == distToOpen)  newPrice = open;
                     ObjectSetDouble(0, draggedPoint, OBJPROP_PRICE, newPrice);
                 }
-                // else: No snap - user has precise control beyond threshold
             }
-            
-            // Get updated positions
+
             string lineAB = baseName + "_Line_AB";
             string lineBC = baseName + "_Line_BC";
-            
             if(ObjectFind(0, lineAB) < 0 || ObjectFind(0, lineBC) < 0) return;
-            
+
             datetime tA = (datetime)ObjectGetInteger(0, lineAB, OBJPROP_TIME, 0);
             double pA = ObjectGetDouble(0, lineAB, OBJPROP_PRICE, 0);
-            
-            // Validate after each ObjectGet (CRITICAL FIX: prevent crash)
-            if(ObjectFind(0, lineAB) < 0) return;
-            
             datetime tB = (datetime)ObjectGetInteger(0, lineAB, OBJPROP_TIME, 1);
             double pB = ObjectGetDouble(0, lineAB, OBJPROP_PRICE, 1);
-            
-            if(ObjectFind(0, lineBC) < 0) return;
-            
             datetime tC = (datetime)ObjectGetInteger(0, lineBC, OBJPROP_TIME, 1);
             double pC = ObjectGetDouble(0, lineBC, OBJPROP_PRICE, 1);
-            
-            // Update point position from drag
-            if(pointName == "A") {
-                tA = newTime;
-                pA = newPrice;
-            } else if(pointName == "B") {
-                tB = newTime;
-                pB = newPrice;
-            } else if(pointName == "C") {
-                tC = newTime;
-                pC = newPrice;
-            }
-            
-            // Redraw pattern with updated points (includes wave analysis)
+
+            if(pointName == "A")       { tA = newTime; pA = newPrice; }
+            else if(pointName == "B")  { tB = newTime; pB = newPrice; }
+            else if(pointName == "C")  { tC = newTime; pC = newPrice; }
+
             DrawABCDPattern(baseName, tA, pA, tB, pB, tC, pC);
+            TH3RegisterPattern(baseName, tA, pA, tB, pB, tC, pC);
         }
+        return;
     }
-    
-    // Handle pattern deletion (only when main objects are deleted, not drag points)
-    //        (                            )
+
+    // ---- Pattern deletion: full object cleanup + store unregister ----
     if(id == CHARTEVENT_OBJECT_DELETE) {
-        // Check if any ABCD pattern object is deleted
-        //                      ABCD    
         if(StringFind(sparam, "ABCD_Pattern_") == 0) {
-            
-            // Extract base name from deleted object
             string baseName = sparam;
-            
-            // CRITICAL FIX: Safe string parsing - find pattern base name
-            //              
-            int underscorePos = -1;
-            
-            // Try different suffixes to extract base name (using constants)
             string suffixes[7];
             suffixes[0] = TH3_SUFFIX_LINE_AB;
             suffixes[1] = TH3_SUFFIX_LINE_BC;
@@ -3377,7 +1712,7 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
             suffixes[4] = TH3_SUFFIX_LABEL;
             suffixes[5] = TH3_SUFFIX_INFO;
             suffixes[6] = TH3_SUFFIX_ZONE;
-            
+
             for(int s = 0; s < ArraySize(suffixes); s++) {
                 int pos = StringFind(baseName, suffixes[s]);
                 if(pos > 0) {
@@ -3385,39 +1720,21 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
                     break;
                 }
             }
-            
-            // Verify this is a valid pattern base name (should be ABCD_Pattern_XXXXXXXX)
-            if(StringFind(baseName, "ABCD_Pattern_") != 0 || StringLen(baseName) < 20) {
-                // Not a valid pattern base name, ignore
-                return;
-            }
-            
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Deleting AB=CD pattern: ", baseName);
-            Print("   Triggered by object: ", sparam);
-            #endif
-            
-            // ========================================
-            // COMPREHENSIVE CLEANUP: Delete ALL related objects
-            //              
-            // ========================================
-            
-            // 1. Delete drag points (A, B, C) and labels
+
+            if(StringFind(baseName, "ABCD_Pattern_") != 0 || StringLen(baseName) < 20) return;
+
+            // 1. Drag points + labels
             string pointNames[3] = {"A", "B", "C"};
             for(int i = 0; i < 3; i++) {
                 ObjectDelete(0, baseName + "_Point_" + pointNames[i]);
                 ObjectDelete(0, baseName + "_Label_" + pointNames[i]);
             }
-            
-            // 2. Delete lines
+            // 2. Lines
             ObjectDelete(0, baseName + "_Line_AB");
             ObjectDelete(0, baseName + "_Line_BC");
-            
-            // 3. Delete info label
+            // 3. Info label
             ObjectDelete(0, baseName + "_Info");
-            
-            // 4. Delete all target levels (Step1-7) and zones
-            //                   
+            // 4. Targets + zones
             for(int i = 1; i <= 7; i++) {
                 ObjectDelete(0, baseName + "_Target_" + IntegerToString(i));
                 ObjectDelete(0, baseName + "_ZoneUpper_" + IntegerToString(i));
@@ -3427,9 +1744,7 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
                 ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i) + "_B_Bottom");
                 ObjectDelete(0, baseName + "_Zone_" + IntegerToString(i) + "_B_Left");
             }
-            
-            // 5. Delete any temporary objects
-            //        
+            // 5. Temp objects
             ObjectDelete(0, baseName + "_Temp_X");
             ObjectDelete(0, baseName + "_Temp_A");
             ObjectDelete(0, baseName + "_Temp_B");
@@ -3437,55 +1752,34 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
             ObjectDelete(0, baseName + "_Temp_Line_XA");
             ObjectDelete(0, baseName + "_Temp_Line_AB");
             ObjectDelete(0, baseName + "_Temp_Line_BC");
-            
-            // 6. Clear active pattern if this was the active one
-            //                     
+
+            // 6. Active pattern + store
             if(g_activeABCDPattern == baseName) {
                 SetActiveABCDPattern("");
             }
-            
-            // ========================================
-            
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("==================== Pattern cleanup complete: ", baseName);
-            #endif
-            
+            TH3PatternStoreRemove(baseName);
+
             ChartRedraw();
         }
     }
 }
 
-//| Toggle TH3 Tool (V key)                                         |
-//|  /       TH3 (  V)                            |
+//+------------------------------------------------------------------+
+//| Toggle TH3 Tool (V key) - start/cancel drawing session           |
 //+------------------------------------------------------------------+
 void ToggleTH3Tool() {
     if(!inpEnableTH3Tool) return;
-    
+
     if(inpTH3DrawingMode == TH3_MODE_ABCD) {
-        // AB=CD mode: Start 3-point input
-        if(!g_abcdDrawing) {
-            g_abcdDrawing = true;
-            g_abcdPointCount = 0;
-            g_abcdLastClickTime = 0;
-            ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
-            Print("==================== AB=CD Mode: Click 4 points (X, A, B, C). Right-click to cancel.");
+        if(!TH3SessionActive()) {
+            TH3SessionStart();
         } else {
-            // Cancel current drawing
-            g_abcdDrawing = false;
-            g_abcdPointCount = 0;
-            ObjectDelete(0, "ABCD_Temp_X");
-            ObjectDelete(0, "ABCD_Temp_A");
-            ObjectDelete(0, "ABCD_Temp_B");
-            ObjectDelete(0, "ABCD_Temp_C");
-            ObjectDelete(0, "ABCD_Temp_Line_XA");
-            ObjectDelete(0, "ABCD_Temp_Line_AB");
-            ObjectDelete(0, "ABCD_Temp_Line_BC");
-            ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-            ChartRedraw();
-            Print("==================== AB=CD creation cancelled");
+            TH3SessionCancel();
         }
     }
 }
+
+
 
 //+------------------------------------------------------------------+
 //| Cycle TH3 Frequency (Keys 3 and 4)                              |

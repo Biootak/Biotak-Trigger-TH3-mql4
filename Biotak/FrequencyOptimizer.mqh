@@ -925,23 +925,6 @@ double ScoreHistoryCoherence(int candidateIndex, double abDistance) {
 }
 
 //+------------------------------------------------------------------+
-//| Push a result onto the frequency history ring buffer              |
-//+------------------------------------------------------------------+
-void PushFrequencyHistory(const FrequencyResult &result, double abDistance, double ratioBC_AB) {
-    int slot = g_freqHistoryHead;
-    g_freqHistory[slot].result     = result;
-    g_freqHistory[slot].abDistance = abDistance;
-    g_freqHistory[slot].ratioBC_AB = ratioBC_AB;
-    g_freqHistory[slot].freqIndex  = result.bestIndex;
-    g_freqHistory[slot].timestamp  = TimeCurrent();
-    g_freqHistory[slot].isUsed     = true;
-
-    g_freqHistoryHead = (g_freqHistoryHead + 1) % FREQ_HISTORY_SIZE;
-    if(g_freqHistoryCount < FREQ_HISTORY_SIZE)
-        g_freqHistoryCount++;
-}
-
-//+------------------------------------------------------------------+
 //| Insert candidate into sorted top-N array (descending by total)   |
 //+------------------------------------------------------------------+
 void InsertTopN(FreqCandidate &topN[], int &topCount, const FreqCandidate &cand, int maxN) {
@@ -1160,27 +1143,6 @@ bool FindOptimalFrequency(double pX, datetime tX, double pA, datetime tA,
     }
 
     return true;
-}
-
-//+------------------------------------------------------------------+
-//| Apply optimal frequency to the global state + push to history    |
-//+------------------------------------------------------------------+
-void ApplyOptimalFrequency(const FrequencyResult &result) {
-    if(!result.isValid) return;
-
-    g_th3FreqIndex    = result.bestIndex;
-    g_th3FreqOverride = result.bestFrequency;
-
-    // Push to history ring buffer for future coherence scoring
-    double abDist = MathAbs(g_abcdPriceB - g_abcdPriceA);
-    double bcDist = MathAbs(g_abcdPriceC - g_abcdPriceB);
-    double ratioBCab = (abDist > 0) ? bcDist / abDist : 0;
-    PushFrequencyHistory(result, abDist, ratioBCab);
-
-    // Persist
-    string chartIdStr = GetCachedChartIdStr();
-    GlobalVariableSet("Biotak_TH3Freq_" + chartIdStr, g_th3FreqOverride);
-    GlobalVariableSet("Biotak_TH3FreqIdx_" + chartIdStr, (double)g_th3FreqIndex);
 }
 
 #endif // FREQUENCY_OPTIMIZER_MQH

@@ -45,7 +45,7 @@ input string S3 = "[03] CALCULATION / CORE";
 input int inpMaxLevels = 144;                                    // Max Levels
 input ENUM_CALCULATION_BASIS inpCalculationBasis = CALC_BASIS_TH; // MT4-only: kept for compat
 input ENUM_STEP_CALCULATION_MODE inpStepCalculationMode = TH_STEP;
-input ENUM_TH_START_POINT_TYPE inpTHStartPointType = TH_START_POINT_CUSTOM_PRICE;
+input ENUM_TH_START_POINT_TYPE inpTHStartPointType = TH_START_POINT_PREVIOUS_CLOSE;
 input ENUM_APPLIED_PRICE inpTHPriceType = PRICE_CLOSE;
 input ENUM_LINE_STYLE inpTHLineStyle = STYLE_DOT;
 input bool inpUseDynamicTradingDay = true;
@@ -81,16 +81,14 @@ input color inpComboLevelColor = clrMagenta;
 input ENUM_LINE_STYLE inpComboLevelStyle = STYLE_DOT;
 input int inpComboLevelWidth = 1;
 input ENUM_COMBO_MODE inpComboMode = COMBO_MODE_PRESET;
-input ENUM_COMBO_PRESET inpComboPreset = COMBO_PRESET_BALANCED_MEDIUM; // Simplified: includes Quick Test presets
-input ENUM_CALCULATOR_TOPOLOGY inpComboTopology = TOPOLOGY_DUAL_GROUP;
-input ENUM_COMBO_COMPONENT_ITEM inpComboComp1 = COMP_TRIGGER_SS;
-input ENUM_COMBO_OPERATOR inpComboOp1 = OP_PLUS;
-input ENUM_COMBO_COMPONENT_ITEM inpComboComp2 = COMP_PATTERN_TH;
-input ENUM_COMBO_OPERATOR inpComboOp2 = OP_AVERAGE;
-input ENUM_COMBO_COMPONENT_ITEM inpComboComp3 = COMP_STRUCTURE_TH;
-input ENUM_COMBO_OPERATOR inpComboOp3 = OP_NONE;
-input ENUM_COMBO_COMPONENT_ITEM inpComboComp4 = COMP_IGNORE;
-input ENUM_MEAN_TYPE inpAggregateMeanType = MEAN_ARITHMETIC;
+input ENUM_COMBO_PRESET inpComboPreset = COMBO_PRESET_BALANCED_MEDIUM;
+input ENUM_COMBO_TIMEFRAME_TYPE inpComboComp1TF = COMBO_TF_PATTERN; // Advanced: Component 1 timeframe
+input ENUM_COMBO_STEP_TYPE inpComboComp1Step = COMBO_STEP_TH;       // Advanced: Component 1 step
+input ENUM_COMBO_OPERATION inpComboOp1 = COMBO_OP_AVERAGE;          // Advanced: operation
+input bool inpComboComp2Enabled = true;                             // Advanced: enable Component 2
+input ENUM_COMBO_TIMEFRAME_TYPE inpComboComp2TF = COMBO_TF_TRIGGER; // Advanced: Component 2 timeframe
+input ENUM_COMBO_STEP_TYPE inpComboComp2Step = COMBO_STEP_TH;       // Advanced: Component 2 step
+input bool inpComboContinuousFractal = false; // Exact continuous fractal levels for Trigger/Sub (fixes M30 collapse). Default = legacy nearest-standard-TF mapping.
 
 input group "09) STYLE - FACTOR STEP"
 input string S9 = "[09] STYLE / FACTOR STEP";

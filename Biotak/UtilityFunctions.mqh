@@ -108,6 +108,20 @@ double GetMidpointPrice(ENUM_TH_START_POINT_TYPE startPointType) {
             double customPrice = (g_customTHStartPrice > 0.0) ? g_customTHStartPrice : inpCustomTHStartPrice;
             return (customPrice > 0.0) ? customPrice : (g_highestHigh + g_lowestLow) / 2.0;
         }
+        case TH_START_POINT_PREVIOUS_CLOSE:
+        {
+            // Previous day close (D1 bar 1). Static daily cache so the
+            // per-second label refresh stays cheap. (GetPriceForPreviousDay
+            // lives in a later include, so this uses the built-in iClose.)
+            static datetime s_prevCloseUpdate = 0;
+            static double   s_prevClose = 0;
+            datetime now = TimeCurrent();
+            if(s_prevCloseUpdate == 0 || now - s_prevCloseUpdate >= 86400 || s_prevClose <= 0) {
+                s_prevClose = iClose(Symbol(), PERIOD_D1, 1);
+                s_prevCloseUpdate = now;
+            }
+            return (s_prevClose > 0 && s_prevClose != EMPTY_VALUE) ? s_prevClose : Bid;
+        }
         case TH_START_POINT_MIDPOINT:
         default:
             return (g_highestHigh + g_lowestLow) / 2.0;
@@ -141,100 +155,9 @@ string GetStepModeName(ENUM_STEP_CALCULATION_MODE mode) {
     }
 }
 
-//+------------------------------------------------------------------+
-//| Get Preset name for display (user-friendly)                     |
-//|            Preset            (         )                        |
-//+------------------------------------------------------------------+
-string GetComboPresetName(const ENUM_COMBO_PRESET preset) {
-    switch(preset) {
-        case COMBO_PRESET_LEGACY_ADD:           return "Legacy (Trigger SS + Pattern SS)";
-        case COMBO_PRESET_BALANCED_MEDIUM:      return "Balanced Medium";
-        case COMBO_PRESET_BALANCED_LONG:        return "Balanced Long";
-        case COMBO_PRESET_BALANCED_TRIPLE:      return "Triple Balanced";
-        case COMBO_PRESET_BALANCED_MIN:         return "Balanced Min";
-        case COMBO_PRESET_CONSERVATIVE:         return "Conservative";
-        case COMBO_PRESET_ULTRA_CONSERVATIVE:   return "Ultra Conservative";
-        case COMBO_PRESET_TRIPLE_CONSERVATIVE:  return "Triple Conservative";
-        case COMBO_PRESET_AGGRESSIVE:           return "Aggressive";
-        case COMBO_PRESET_ULTRA_AGGRESSIVE:     return "Ultra Aggressive";
-        case COMBO_PRESET_TRIPLE_AGGRESSIVE:    return "Triple Aggressive";
-        case COMBO_PRESET_TREND_FILTER:         return "Trend Filter";
-        case COMBO_PRESET_VOLATILITY_ADAPTIVE:  return "Volatility Adaptive";
-        case COMBO_PRESET_MANUAL_DUAL:          return "Manual Dual";
-        case COMBO_PRESET_MANUAL_TRIPLE:        return "Manual Triple";
-        default:                                return "Unknown";
-    }
-}
-
-//+------------------------------------------------------------------+
-//| DEPRECATED: Old Combo Step component system                     |
-//| Use CalculateComboStepSize() with Preset system instead         |
-//|                                                                  |
-//| This function is kept for backward compatibility only           |
-//+------------------------------------------------------------------+
-double GetSharedComponentValue(ENUM_COMBO_COMPONENT_ITEM component, double structure, double pattern, double trigger) {
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("   DEPRECATED: GetSharedComponentValue called - use CalculateComboStepSize instead");
-    #endif
-    
-    switch(component) {
-        // Sub components (1/4x - using trigger/4 approximation for legacy)
-        case COMP_SUB_TH:          return trigger * 0.25;             // Sub TH
-        case COMP_SUB_SS:          return trigger * 0.375;            // Sub SS (1.5/4)
-        case COMP_SUB_LS:          return trigger * 0.5;              // Sub LS (2.0/4)
-        
-        // Trigger components
-        case COMP_TRIGGER_TH:      return trigger;                    // Trigger TH
-        case COMP_TRIGGER_SS:      return trigger * 1.5;              // Trigger SS
-        case COMP_TRIGGER_LS:      return trigger * 2.0;              // Trigger LS
-        
-        // Pattern components
-        case COMP_PATTERN_TH:      return pattern;                    // Pattern TH
-        case COMP_PATTERN_SS:      return pattern * 1.5;              // Pattern SS
-        case COMP_PATTERN_LS:      return pattern * 2.0;              // Pattern LS
-        
-        // Structure components
-        case COMP_STRUCTURE_TH:    return structure;                  // Structure TH
-        case COMP_STRUCTURE_SS:    return structure * 1.5;            // Structure SS
-        case COMP_STRUCTURE_LS:    return structure * 2.0;            // Structure LS
-        
-        case COMP_IGNORE:          return 0.0;                        // Ignore
-        
-        default:                   return trigger;                    // Default to Trigger TH
-    }
-}
-
-//+------------------------------------------------------------------+
-//| DEPRECATED: Get component name for display                      |
-//| Use Preset names instead                                        |
-//+------------------------------------------------------------------+
-string GetSharedComponentName(ENUM_COMBO_COMPONENT_ITEM component) {
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("   DEPRECATED: GetSharedComponentName called - use Preset system instead");
-    #endif
-    
-    switch(component) {
-        case COMP_SUB_TH:          return "Sub-TH";
-        case COMP_SUB_SS:          return "Sub-SS";
-        case COMP_SUB_LS:          return "Sub-LS";
-        
-        case COMP_TRIGGER_TH:      return "Trigger-TH";
-        case COMP_TRIGGER_SS:      return "Trigger-SS";
-        case COMP_TRIGGER_LS:      return "Trigger-LS";
-        
-        case COMP_PATTERN_TH:      return "Pattern-TH";
-        case COMP_PATTERN_SS:      return "Pattern-SS";
-        case COMP_PATTERN_LS:      return "Pattern-LS";
-        
-        case COMP_STRUCTURE_TH:    return "Structure-TH";
-        case COMP_STRUCTURE_SS:    return "Structure-SS";
-        case COMP_STRUCTURE_LS:    return "Structure-LS";
-        
-        case COMP_IGNORE:          return "Ignore";
-        
-        default:                   return "Unknown";
-    }
-}
+// (Removed: legacy GetComboPresetName / GetSharedComponentValue / GetSharedComponentName -
+//  dead code referencing the old combo component system. Combo names/values now live in
+//  ComboEngine.mqh; preset display is handled by EnumToString.)
 
 //+------------------------------------------------------------------+
 //| Clear all temporary mode labels (call before showing new one)   |
@@ -307,14 +230,52 @@ double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
 //+------------------------------------------------------------------+
 //| Get ATR Info string for status display                           |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| Base price (B) info for the status label.                        |
+//| B is ALWAYS the step-calculation basis: the reference base price  |
+//| (g_dailyClosePriceForTH, synced from GetBasePriceForTH on every   |
+//| redraw) that CalculateTH / CalculateComboStepSize use to compute  |
+//| the step sizes. It is NOT the level-drawing anchor - that is a    |
+//| separate value shown as A: when it differs (see below).           |
+//| Never displays 0: falls back to the live bid.                     |
+//+------------------------------------------------------------------+
 string GetBasePriceStatusInfo() {
     double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
-    if(g_thStartPointType == TH_START_POINT_CUSTOM_PRICE) {
-        basePrice = (g_customTHStartPrice > 0) ? g_customTHStartPrice : inpCustomTHStartPrice;
-    }
+    if(basePrice <= 0) basePrice = Bid;
+    if(basePrice <= 0) basePrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
     return StringFormat(" | B: %.5f", basePrice);
 }
 
+//+------------------------------------------------------------------+
+//| Anchor (drawing basis) info for the status label.                |
+//| Levels are drawn AROUND GetMidpointPrice(g_thStartPointType):    |
+//|   Custom Price -> the custom price; Midpoint -> (H+L)/2;         |
+//|   Hist High/Low -> g_highestHigh / g_lowestLow.                  |
+//| This is a separate value from the step-calculation basis (B).    |
+//| Shown only when it differs from B, so the user can see what the  |
+//| levels anchor to without cluttering the label.                   |
+//+------------------------------------------------------------------+
+string GetAnchorPriceStatusInfo() {
+    double basis = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+    if(basis <= 0) return "";
+
+    double anchor = GetMidpointPrice(g_thStartPointType);
+    if(anchor <= 0 || anchor == EMPTY_VALUE) return "";
+
+    double point = GetCachedPoint();
+    if(point <= 0) return "";
+
+    // Hide when the anchor equals the calculation basis (avoids noise)
+    if(MathAbs(anchor - basis) <= point * 0.1) return "";
+
+    return StringFormat(" | A: %.5f", anchor);
+}
+
+// The combo calc breakdown is filled by RefreshComboLabelExtraInfo() in
+// ComboEngine.mqh (included later) - see g_comboLabelExtraInfo global.
+//
+// Combo mode appends a compact "how it was computed" breakdown, e.g.
+// "avg(PatTH12.1p,TrigTH6.1p)" so the user can verify the math.
 string BuildUnifiedModeLabelText()
 {
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
@@ -324,8 +285,13 @@ string BuildUnifiedModeLabelText()
 
     if(pipSize <= 0 || stepPrice <= 0) return "[ " + modeName + " ]";
 
-    return StringFormat("[ %s | S: %.1f%s ]", 
-        modeName, stepPrice / pipSize, GetBasePriceStatusInfo());
+    string calcInfo = "";
+    if(currentMode == COMBO_STEP && g_comboLabelExtraInfo != "")
+        calcInfo = " | " + g_comboLabelExtraInfo;
+
+    return StringFormat("[ %s | S: %.1f%s%s%s ]", 
+        modeName, stepPrice / pipSize, calcInfo,
+        GetBasePriceStatusInfo(), GetAnchorPriceStatusInfo());
 }
 
 //+------------------------------------------------------------------+
@@ -494,6 +460,8 @@ string BuildTH3FrequencyLabelText(const double frequency) {
 //| Update TH3 Frequency Label (configurable duration)              |
 //+------------------------------------------------------------------+
 void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
+    // Only show TH3 info when the TH3 tool is actually enabled
+    if(!inpEnableTH3Tool) return;
     // Check if mode label display is enabled
     if(!inpShowModeChangeLabel) return;
     
@@ -530,15 +498,22 @@ void ShowAllStatusLabels() {
     // Show every info label, stacked (non-destructive updates)
     UpdateStepModeLabel(false);
     
-    // Single source of truth for factor/step values (DIRECT + CLASSIC)
-    double factorVal = 0;
-    double stepVal = 0;
-    double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
-    ComputeFactorModeValues(basePrice, factorVal, stepVal);
-    UpdateFactorLabel(factorVal, stepVal, false);
+    // Factor info only applies in Factor mode - don't show it in other
+    // modes (the values would be irrelevant to what is actually drawn).
+    if(GetCurrentStepMode() == FACTOR_STEP) {
+        double factorVal = 0;
+        double stepVal = 0;
+        double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+        ComputeFactorModeValues(basePrice, factorVal, stepVal);
+        UpdateFactorLabel(factorVal, stepVal, false);
+    }
 #ifndef BUILD_LITE
-    double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
-    UpdateTH3FrequencyLabel(freq, false);
+    // TH3 frequency info belongs to the TH3 tool - only show it when the
+    // tool is enabled (UpdateTH3FrequencyLabel also gates internally).
+    if(inpEnableTH3Tool) {
+        double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
+        UpdateTH3FrequencyLabel(freq, false);
+    }
 #endif
     UpdateLockStatusLabel();
 }
@@ -558,20 +533,36 @@ void RefreshVisibleStatusLabels() {
         SetLabelTextIfChanged(g_stepModeLabelName, BuildUnifiedModeLabelText());
     }
     
-    // Factor label (F + Step under DIRECT/CLASSIC semantics)
-    if(ObjectFind(0, g_factorLabelName) >= 0) {
-        double factorVal = 0;
-        double stepVal = 0;
-        double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
-        ComputeFactorModeValues(basePrice, factorVal, stepVal);
-        SetLabelTextIfChanged(g_factorLabelName, BuildFactorLabelText(factorVal, stepVal));
+    // Factor label (F + Step) - only relevant while in Factor mode
+    if(GetCurrentStepMode() == FACTOR_STEP) {
+        if(ObjectFind(0, g_factorLabelName) >= 0) {
+            double factorVal = 0;
+            double stepVal = 0;
+            double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+            ComputeFactorModeValues(basePrice, factorVal, stepVal);
+            SetLabelTextIfChanged(g_factorLabelName, BuildFactorLabelText(factorVal, stepVal));
+        }
+    } else {
+        // Not in Factor mode: remove any lingering factor label
+        if(ObjectFind(0, g_factorLabelName) >= 0) {
+            ObjectDelete(0, g_factorLabelName);
+            g_factorLabelCreateTime = 0;
+        }
     }
     
 #ifndef BUILD_LITE
-    // TH3 frequency label (frequency + step info)
-    if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
-        double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
-        SetLabelTextIfChanged(g_th3FreqLabelName, BuildTH3FrequencyLabelText(freq));
+    // TH3 frequency label (frequency + step info) - only when tool enabled
+    if(inpEnableTH3Tool) {
+        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
+            double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
+            SetLabelTextIfChanged(g_th3FreqLabelName, BuildTH3FrequencyLabelText(freq));
+        }
+    } else {
+        // Tool disabled: remove any lingering TH3 label
+        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
+            ObjectDelete(0, g_th3FreqLabelName);
+            g_th3FreqLabelCreateTime = 0;
+        }
     }
 #endif
 }

@@ -77,6 +77,7 @@
 //                                                                    
 #include "Biotak\ObjectFunctions.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
+#include "Biotak\ComboEngine.mqh"
 #include "Biotak\FactorMode.mqh"
 #include "Biotak\LevelPipeline.mqh"
 #include "Biotak\ModeDefinitions.mqh"
@@ -146,5 +147,6 @@ void OnTimer()
     // Keep label expiry logic; no timer kill because cleanup also depends on timer cadence
     CheckAndClearExpiredLabels();
     // Real-time refresh of visible info labels (text updated in place only when changed)
+    RefreshComboLabelExtraInfo();
     RefreshVisibleStatusLabels();
 }

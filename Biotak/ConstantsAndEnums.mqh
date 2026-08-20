@@ -73,10 +73,11 @@ const int STANDARD_MINUTES[] = {1440, 10080, 43200};
 const color STANDARD_COLORS[] = {clrBlue, clrBlue, clrBlue};
 
 enum ENUM_TH_START_POINT_TYPE {
-    TH_START_POINT_MIDPOINT = 0,      // Midpoint
+    TH_START_POINT_MIDPOINT = 0,      // Midpoint (historical H+L / 2)
     TH_START_POINT_HISTORICAL_HIGH = 1, // Historical High
     TH_START_POINT_HISTORICAL_LOW = 2,  // Historical Low
-    TH_START_POINT_CUSTOM_PRICE = 3    // Custom Price
+    TH_START_POINT_CUSTOM_PRICE = 3,    // Custom Price
+    TH_START_POINT_PREVIOUS_CLOSE = 4   // Previous Day Close
 };
 
 enum ENUM_LINE_OBJECT_TYPE {
@@ -178,17 +179,7 @@ enum ENUM_STRUCTURE_BASE_MULTIPLIER {
 #define MAX_HARMONIC_RATIO 2.0    //   2x (maximum variation)
 #define DEFAULT_HARMONIC_RATIO 1.333  // Golden-like ratio (4/3)
 
-//+------------------------------------------------------------------+
-//| Mean Type Selection (for aggregates and quick test)              |
-//|                        (  aggregates                       |
-//+------------------------------------------------------------------+
-enum ENUM_MEAN_TYPE {
-    MEAN_ARITHMETIC = 0,    // Arithmetic Mean: (A + B + ...) / n
-    MEAN_GEOMETRIC = 1,     // Geometric Mean:     B   ...)
-    MEAN_HARMONIC = 2       // Harmonic Mean: n / (1/A + 1/B + ...)
-};
-
-// NOTE: ENUM_QUICK_TEST_MODE removed - not used anywhere
+// NOTE: ENUM_QUICK_TEST_MODE / ENUM_MEAN_TYPE removed - not used
 // Quick Test is controlled by ENUM_COMBO_MODE instead
 
 //+------------------------------------------------------------------+
@@ -224,95 +215,8 @@ enum ENUM_CALCULATION_BASIS {
     CALC_BASIS_ATR = 1          // ATR-Based (Actual) -   
 };
 
-// Smart Combo Component Selection (Unified)
-//              (            
-enum ENUM_COMBO_COMPONENT_ITEM {
-    // Sub Components (Fastest - 1/4x)
-    COMP_SUB_TH = 0,            // Sub TH
-    COMP_SUB_SS = 1,            // Sub SS
-    COMP_SUB_LS = 2,            // Sub LS
-    
-    // Trigger Components (Current - 1x)
-    COMP_TRIGGER_TH = 3,        // Trigger TH
-    COMP_TRIGGER_SS = 4,        // Trigger SS
-    COMP_TRIGGER_LS = 5,        // Trigger LS
-    
-    // Pattern Components (Medium - 4x)
-    COMP_PATTERN_TH = 6,        // Pattern TH
-    COMP_PATTERN_SS = 7,        // Pattern SS
-    COMP_PATTERN_LS = 8,        // Pattern LS
-    
-    // Structure Components (Slow - 16x)
-    COMP_STRUCTURE_TH = 9,      // Structure TH
-    COMP_STRUCTURE_SS = 10,     // Structure SS
-    COMP_STRUCTURE_LS = 11,     // Structure LS
-    
-    //  
-    // AGGREGATE COMPONENTS (                  
-    // These calculate the mean of TH, SS, LS for a timeframe
-    //  
-    COMP_SUB_MEAN = 12,         // Sub Mean: (Sub_TH + Sub_SS + Sub_LS) / 3
-    COMP_TRIGGER_MEAN = 13,     // Trigger Mean: (Trigger_TH + Trigger_SS + Trigger_LS) / 3
-    COMP_PATTERN_MEAN = 14,     // Pattern Mean: (Pattern_TH + Pattern_SS + Pattern_LS) / 3
-    COMP_STRUCTURE_MEAN = 15,   // Structure Mean: (Structure_TH + Structure_SS + Structure_LS) / 3
-    
-    // Special
-    COMP_IGNORE = 16            // Ignore (None)
-};
-
-//+------------------------------------------------------------------+
-//| Combo Operators for Calculator Mode (Manual)                     |
-//|               (                       |
-//|                                                                  |
-//| BINARY OPERATORS (2 operands): OP_PLUS to OP_HARMONIC_MEAN      |
-//| N-ARY OPERATORS (all components): OP_GEOMETRIC_MEAN_ALL to end  |
-//|                                                                  |
-//| USAGE EXAMPLE (N-ARY):                                           |
-//| Component 1: Trigger SS                                          |
-//| Operator 1: Geometric Mean (All)       Collects ALL components     |
-//| Component 2: Pattern LS                                          |
-//| Operator 2: [Ignored]                                            |
-//| Component 3: Structure TH                                        |
-//| Operator 3: [Ignored]                                            |
-//| Component 4: Ignore                                              |
-//| Result:         Pattern_LS   Structure_TH)              |
-//+------------------------------------------------------------------+
-enum ENUM_COMBO_OPERATOR {
-    //  
-    // BINARY OPERATORS (    - Work on 2 values
-    //  
-    OP_PLUS = 0,                // Plus: A + B
-    OP_MINUS = 1,               // Minus: A - B
-    OP_MULTIPLY = 2,            // Multiply: A   B
-    OP_DIVIDE = 3,              // Divide: A   B
-    OP_AVERAGE = 4,             // Arithmetic Mean: (A + B) / 2
-    OP_GEOMETRIC_MEAN = 5,      // Geometric Mean:     B)
-    OP_HARMONIC_MEAN = 6,       // Harmonic Mean: 2AB / (A + B)
-    
-    //  
-    // N-ARY OPERATORS (           - Work on ALL active components
-    // When used as Operator 1, collects ALL non-IGNORE components
-    //  
-    OP_GEOMETRIC_MEAN_ALL = 7,  // Geometric Mean (All):     C2   ...   Cn)
-    OP_ARITHMETIC_MEAN_ALL = 8, // Arithmetic Mean (All): (C1 + C2 + ... + Cn) / n
-    OP_HARMONIC_MEAN_ALL = 9,   // Harmonic Mean (All): n / (1/C1 + 1/C2 + ... + 1/Cn)
-    OP_MIN_ALL = 10,            // Minimum (All): min(C1, C2, ..., Cn)
-    OP_MAX_ALL = 11,            // Maximum (All): max(C1, C2, ..., Cn)
-    
-    //  
-    // SPECIAL
-    //  
-    OP_NONE = 12                // None (End Chain)
-};
-
-//+------------------------------------------------------------------+
-//| Calculator Topology (Architecture of Calculation)                |
-//|             (                             |
-//+------------------------------------------------------------------+
-enum ENUM_CALCULATOR_TOPOLOGY {
-    TOPOLOGY_LINEAR = 0,        // Linear: ((A op B) op C) op D [Sequential]
-    TOPOLOGY_DUAL_GROUP = 1     // Dual Group: (A op B) MainOp (C op D) [Structural]
-};
+// Combo components are now explicit (ENUM_COMBO_TIMEFRAME_TYPE + ENUM_COMBO_STEP_TYPE)
+// and the operation enum is ENUM_COMBO_OPERATION - geometric/mean operators removed.
 
 //+------------------------------------------------------------------+
 //| Helper structure to hold common calculation values              |
@@ -351,17 +255,13 @@ enum ENUM_COMBO_OPERATION {
 //|                                                                  |
 //| TWO INDEPENDENT MODES - Simplified and user-friendly             |
 //|                                                                  |
-//| PRESET: Quick select from ready-to-use combinations              |
-//|   - 18 predefined combinations                                   |
-//|   - Includes Quick Test options                                  |
-//|   - Recommended for daily use                                    |
+//| PRESET: Quick select from the 6 ready-to-use combinations        |
 //|   Uses: inpComboPreset                                           |
 //|                                                                  |
-//| ADVANCED: Full manual control (For power users)                  |
-//|   - Select topology (Linear/Dual Group)                          |
-//|   - Select 4 components and 3 operators                          |
-//|   - Maximum flexibility                                         |
-//|   Uses: inpComboTopology, inpComboComp1-4, inpComboOp1-3        |
+//| ADVANCED: Manual control - two components (TF + Step each) and   |
+//| one operation (ENUM_COMBO_OPERATION).                            |
+//|   Uses: inpComboComp1TF/Step, inpComboOp1, inpComboComp2Enabled, |
+//|         inpComboComp2TF/Step                                     |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_MODE {
     COMBO_MODE_PRESET = 0,      // Preset Mode (Recommended)
@@ -388,86 +288,18 @@ enum ENUM_COMBO_STEP_TYPE {
 };
 
 //+------------------------------------------------------------------+
-//| Combo Calculation Configuration Struct                           |
-//|                                                                                            |
-//+------------------------------------------------------------------+
-struct SComboConfig {
-    ENUM_COMBO_TIMEFRAME_TYPE tf1;
-    ENUM_COMBO_STEP_TYPE      step1;
-    ENUM_COMBO_TIMEFRAME_TYPE tf2;
-    ENUM_COMBO_STEP_TYPE      step2;
-    ENUM_COMBO_TIMEFRAME_TYPE tf3;
-    ENUM_COMBO_STEP_TYPE      step3;
-    ENUM_COMBO_OPERATION      operation;
-    double                    weight1;
-    double                    weight2;
-    double                    weight3;
-    int                       activeComponents;
-    bool                      isTriple;
-};
-
-//+------------------------------------------------------------------+
-//| Preset Combinations (Common Use Cases) - OPTIMIZED FOR UX        |
+//| Preset Combinations - practical daily-use set (6 presets)        |
 //|                                                                  |
-//| DESIGN PRINCIPLE: 80/20 Rule - 18 presets cover 98% of needs    |
-//|                                                                  |
-//| IMPORTANT: COMBO_PRESET_LEGACY_ADD is the default for backward  |
-//| compatibility with old Combo Step Mode (Component1 + Component2)|
-//|                                                                  |
-//| SIMPLIFIED UX: Quick Test presets (15-19) are exposed in the   |
-//| same list as regular presets, eliminating the Quick Test sub-   |
-//| mode dropdown. All Quick Test presets use TH step + Geometric   |
-//| mean (the most popular default from the old Quick Test mode).   |
+//| DESIGN PRINCIPLE: keep only the commonly used combinations;      |
+//| anything else can be built with Advanced Mode.                  |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_PRESET {
-    //                                                                                                                                                                                              
-    // LEGACY (kept for backward compatibility)
-    //                                                                                                                                                                                              
-    COMBO_PRESET_LEGACY_ADD = 0,            // Legacy: Trigger SS + Pattern SS (ADD)
-
-    //                                                                                                                                                                                              
-    // BALANCED FAMILY
-    //                                                                                                                                                                                              
-    COMBO_PRESET_BALANCED_MEDIUM = 1,       // Balanced Medium: (Pattern + Trigger) / 2 [Most Popular]
-    COMBO_PRESET_BALANCED_LONG = 2,         // Balanced Long: (Structure + Pattern) / 2
-    COMBO_PRESET_BALANCED_TRIPLE = 3,       // Triple Balanced: (Trigger + Pattern + Structure) / 3
-    COMBO_PRESET_BALANCED_MIN = 4,          // Balanced Min: min(Pattern, Trigger)
-
-    //                                                                                                                                                                                              
-    // CONSERVATIVE FAMILY
-    //                                                                                                                                                                                              
-    COMBO_PRESET_CONSERVATIVE = 5,          // Conservative: max(Structure, Pattern)
-    COMBO_PRESET_ULTRA_CONSERVATIVE = 6,    // Ultra Conservative: Structure TH
-    COMBO_PRESET_TRIPLE_CONSERVATIVE = 7,   // Triple Conservative: max(Trigger, Pattern, Structure)
-
-    //                                                                                                                                                                                              
-    // AGGRESSIVE FAMILY
-    //                                                                                                                                                                                              
-    COMBO_PRESET_AGGRESSIVE = 8,            // Aggressive: min(Pattern, Trigger)
-    COMBO_PRESET_ULTRA_AGGRESSIVE = 9,      // Ultra Aggressive: min(Trigger, Sub)
-    COMBO_PRESET_TRIPLE_AGGRESSIVE = 10,    // Triple Aggressive: min(Trigger, Pattern, Structure)
-
-    //                                                                                                                                                                                              
-    // SPECIAL
-    //                                                                                                                                                                                              
-    COMBO_PRESET_TREND_FILTER = 11,         // Trend Filter: Structure - Sub
-    COMBO_PRESET_VOLATILITY_ADAPTIVE = 12,  // Volatility: (Structure + Sub) / 2
-
-    //                                                                                                                                                                                              
-    // ADVANCED REDIRECTS (full manual control)
-    //                                                                                                                                                                                              
-    COMBO_PRESET_MANUAL_DUAL = 13,          // Advanced Dual: User-defined (2 components) -> Advanced Mode
-    COMBO_PRESET_MANUAL_TRIPLE = 14,        // Advanced Triple: User-defined (3 components) -> Advanced Mode
-
-    //                                                                                                                                                                                              
-    // QUICK TEST (merged from old COMBO_MODE_QUICK_TEST)
-    // All use COMBO_STEP_TH and Geometric Mean for consistency.
-    //                                                                                                                                                                                              
-    COMBO_PRESET_QT_TRIGGER_PATTERN = 15,           // QT: Trigger + Pattern, Geo Mean
-    COMBO_PRESET_QT_ALL_4TF = 16,                    // QT: Sub + Trigger + Pattern + Structure, Geo Mean
-    COMBO_PRESET_QT_TRIGGER_PATTERN_STRUCTURE = 17,  // QT: Trigger + Pattern + Structure, Geo Mean
-    COMBO_PRESET_QT_PATTERN_STRUCTURE = 18,          // QT: Pattern + Structure, Geo Mean
-    COMBO_PRESET_QT_TRIGGER_ONLY = 19                // QT: Trigger only
+    COMBO_PRESET_BALANCED_MEDIUM = 0,   // (Pattern + Trigger) / 2 [Most Popular]
+    COMBO_PRESET_BALANCED_LONG = 1,     // (Structure + Pattern) / 2
+    COMBO_PRESET_BALANCED_TRIPLE = 2,   // (Trigger + Pattern + Structure) / 3
+    COMBO_PRESET_CONSERVATIVE = 3,      // max(Structure, Pattern)
+    COMBO_PRESET_AGGRESSIVE = 4,        // min(Trigger, Sub)
+    COMBO_PRESET_TREND_FILTER = 5       // Structure - Sub
 };
 
 // TH3 Label Position
