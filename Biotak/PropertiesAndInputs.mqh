@@ -95,6 +95,7 @@ input ENUM_MEAN_TYPE inpAggregateMeanType = MEAN_ARITHMETIC;
 input group "09) STYLE - FACTOR STEP"
 input string S9 = "[09] STYLE / FACTOR STEP";
 input ENUM_FACTOR_MODE inpFactorMode = FACTOR_MODE_AUTO;
+input ENUM_FACTOR_DISPLAY_MODE inpFactorDisplayMode = FACTOR_DISPLAY_DIRECT; // DIRECT = Step Size, CLASSIC = Factor Value
 input ENUM_FACTOR_AUTO_BASIS inpFactorAutoBasis = FACTOR_BASIS_CONTROL;
 input double inpFactorValue = 50.0;
 input double inpFactorAdjustStep = 0.1;

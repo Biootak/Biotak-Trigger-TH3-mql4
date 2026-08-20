@@ -110,6 +110,22 @@ enum ENUM_FACTOR_MODE {
 };
 
 //+------------------------------------------------------------------+
+//| Factor Display Mode - How factor value is shown and operation    |
+//|                                                                  |
+//| CLASSIC: Traditional mode - number is Factor, Step is calculated |
+//|   Input: Factor number  →  Step = Range / (Factor × 2)         |
+//|   Display: "F: 50.00 | Step: 12.5 pips"                         |
+//|                                                                  |
+//| DIRECT: New mode - number IS the Step Size, Factor is internal   |
+//|   Input: Step Size  →  Factor = Range / (Step × 2) (internal)   |
+//|   Display: "Step: 12.5 pips | F: 50.00"                         |
+//+------------------------------------------------------------------+
+enum ENUM_FACTOR_DISPLAY_MODE {
+    FACTOR_DISPLAY_CLASSIC = 0,  // Classic: Factor number (current behavior)
+    FACTOR_DISPLAY_DIRECT = 1    // Direct: Step Size is the primary value
+};
+
+//+------------------------------------------------------------------+
 //| Factor Auto Basis - What to base the auto calculation on         |
 //|           Factor                                       |
 //|                                                                  |

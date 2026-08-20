@@ -2125,26 +2125,63 @@ void RedrawLabelsOnly() {
 
 //+------------------------------------------------------------------+
 //| HELPER: Adjust factor value by step (+1 = increase, -1 = decrease)|
+//|                                                                  |
+//| DIRECT MODE: g_factorValueOverride is a Step Size, adjust by pip|
+//| CLASSIC MODE: g_factorValueOverride is a Factor number           |
 //+------------------------------------------------------------------+
 void AdjustFactorValue(int direction)
 {
-    double currentFactor = g_factorValueOverride;
-    if(currentFactor <= 0) {
+    bool useDirect = (inpFactorDisplayMode == FACTOR_DISPLAY_DIRECT);
+    double currentVal = g_factorValueOverride;
+    
+    if(currentVal <= 0) {
         if(inpFactorMode == FACTOR_MODE_MANUAL && inpFactorValue > 0) {
-            currentFactor = inpFactorValue;
+            currentVal = inpFactorValue;
+        } else if(useDirect) {
+            // DIRECT MODE: Get default Step Size from current basis
+            double tfPct = GetTimeframeTH();
+            double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+            double thVal = CalculateTH(basePrice, GetCachedDigits(), tfPct);
+            thVal = GetAdaptedStepSize(thVal);
+            if(thVal > 0) {
+                switch(inpFactorAutoBasis) {
+                    case FACTOR_BASIS_SS:      currentVal = thVal * 1.5; break;
+                    case FACTOR_BASIS_LS:      currentVal = thVal * 2.0; break;
+                    case FACTOR_BASIS_TH:      currentVal = thVal; break;
+                    case FACTOR_BASIS_CONTROL: currentVal = thVal * 1.75; break;
+                    default:                   currentVal = thVal * 1.5; break;
+                }
+            }
+            if(currentVal <= 0) currentVal = thVal; // Final fallback
         } else {
-            currentFactor = GetDefaultFactorValue(g_dailyClosePriceForTH);
-            if(currentFactor <= 0 || currentFactor > MAX_FACTOR_VALUE) {
+            // CLASSIC MODE: Get default Factor
+            currentVal = GetDefaultFactorValue(g_dailyClosePriceForTH);
+            if(currentVal <= 0 || currentVal > MAX_FACTOR_VALUE) {
                 _LOG_GATE_E Print("[E][GEN] Factor adjust: Invalid factor, using ", DEFAULT_FACTOR_FALLBACK);
-                currentFactor = DEFAULT_FACTOR_FALLBACK;
+                currentVal = DEFAULT_FACTOR_FALLBACK;
             }
         }
     }
-    double step = (inpFactorAdjustStep > 0) ? inpFactorAdjustStep : DEFAULT_FACTOR_ADJUST_STEP;
-    double newFactor = NormalizeDouble(currentFactor + step * direction, 2);
-    if(newFactor < MIN_FACTOR_VALUE) newFactor = MIN_FACTOR_VALUE;
-    if(newFactor > MAX_FACTOR_VALUE) newFactor = MAX_FACTOR_VALUE;
-    g_factorValueOverride = newFactor;
+    
+    double newVal;
+    if(useDirect) {
+        // DIRECT MODE: currentVal is Step Size in price units
+        // Adjust by 10% of current value (or by 1 pip minimum)
+        double pipSize = GetCachedPipSize();
+        if(pipSize <= 0) pipSize = GetCachedPoint() * 10;
+        double adjustBy = MathMax(currentVal * 0.1, pipSize);
+        newVal = NormalizeDouble(currentVal + adjustBy * direction, GetCachedDigits());
+        if(newVal < pipSize * 0.1) newVal = pipSize * 0.1;
+        if(newVal > MAX_FACTOR_VALUE) newVal = MAX_FACTOR_VALUE;
+    } else {
+        // CLASSIC MODE: currentVal is Factor number
+        double step = (inpFactorAdjustStep > 0) ? inpFactorAdjustStep : DEFAULT_FACTOR_ADJUST_STEP;
+        newVal = NormalizeDouble(currentVal + step * direction, 2);
+        if(newVal < MIN_FACTOR_VALUE) newVal = MIN_FACTOR_VALUE;
+        if(newVal > MAX_FACTOR_VALUE) newVal = MAX_FACTOR_VALUE;
+    }
+    
+    g_factorValueOverride = newVal;
     string factorGvarName = "Biotak_Factor_" + GetCachedChartIdStr();
     if(!GlobalVariableSet(factorGvarName, g_factorValueOverride)) {
         _LOG_GATE_E Print("[E][GEN] WARNING: Failed to persist Factor value to GlobalVariable");
@@ -2152,7 +2189,8 @@ void AdjustFactorValue(int direction)
     g_forceClearOnNextDraw = true;
     g_redrawTHLevelsNeeded = true;
     RedrawAllObjects(true);
-    UpdateFactorLabel(newFactor);
+    // For DIRECT mode, pass the step size directly for proper label formatting
+    UpdateFactorLabel(useDirect ? 0 : newVal, useDirect ? newVal : 0);
     ThrottledChartRedraw();
 }
 
