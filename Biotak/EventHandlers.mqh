@@ -179,6 +179,19 @@ int OnInitHandler() {
         }
     }
 
+    // Restore SS/LS sequence origin selected from the Custom Price menu
+    // (0 = SS first, 1 = LS first, any other value = use input).
+    g_sslsFirstOverride = -1;
+    string sslsFirstGvarName = "Biotak_SSLSFirst_" + chartIdStr;
+    if(GlobalVariableCheck(sslsFirstGvarName)) {
+        int restoredSSLSFirst = (int)GlobalVariableGet(sslsFirstGvarName);
+        if(restoredSSLSFirst == 0 || restoredSSLSFirst == 1) {
+            g_sslsFirstOverride = restoredSSLSFirst;
+        } else {
+            GlobalVariableDel(sslsFirstGvarName);
+        }
+    }
+
     // Restore factor with validation (0 < val <= MAX_SAFE_FACTOR)
     string factorGvarName = "Biotak_Factor_" + chartIdStr;
     if(GlobalVariableCheck(factorGvarName)) {
@@ -416,8 +429,7 @@ void OnDeinitHandler(const int reason) {
     else if(reason == REASON_PARAMETERS)
     {
         // Clear all ATR and TH labels to apply new settings
-        string currentTFStr = IntegerToString(GetCachedPeriod());
-        string uniquePrefix = inpObjectPrefix + "TF" + currentTFStr + "_";
+        string uniquePrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
         string tfLabels[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
 
         // Delete ATR labels
@@ -426,6 +438,26 @@ void OnDeinitHandler(const int reason) {
             ObjectDelete(0, uniquePrefix + "ATR_" + tfLabels[i]);
             ObjectDelete(0, uniquePrefix + "ATR_Steps_" + tfLabels[i]);
             ObjectDelete(0, uniquePrefix + "ATR_Targets_" + tfLabels[i]);
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_Targets");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Value");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Value");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Value");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Value");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Value");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Text");
+            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Value");
         }
 
         // Delete TH labels
@@ -957,6 +989,7 @@ void RedrawAllObjects(bool force_redraw=false)
         bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
         if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
+        if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
         TH3_PROF_END(Labels);
 
         if(!g_calculatedOnce && inpShowTHLevels) g_redrawTHLevelsNeeded = true;
@@ -1603,6 +1636,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string chartIdStr = GetCachedChartIdStr();
             string symbolName = GetCachedSymbol();
             GlobalVariableDel("Biotak_StepMode_" + chartIdStr);
+            GlobalVariableDel("Biotak_SSLSFirst_" + chartIdStr);
+            g_sslsFirstOverride = -1;
             GlobalVariableDel("Biotak_Factor_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTF_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTFPeriod_" + chartIdStr);
@@ -1813,6 +1848,15 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         g_lastClickTickCount = currentTickCount;
         if (isDoubleClick)
         {
+            // A double-click on Custom Price is a fast SS/LS start selector.
+            // The price remains unchanged; only the sequence origin changes.
+            int selectedStart = MessageBox("SS/LS sequence start\n\nYes = LS first\nNo = SS first\nCancel = keep current",
+                                           "Select SS/LS start", MB_YESNOCANCEL | MB_ICONQUESTION);
+            if(selectedStart == IDYES || selectedStart == IDNO) {
+                g_sslsFirstOverride = (selectedStart == IDYES) ? 1 : 0;
+                string sslsFirstGvarName = "Biotak_SSLSFirst_" + GetCachedChartIdStr();
+                GlobalVariableSet(sslsFirstGvarName, (double)g_sslsFirstOverride);
+            }
             g_waitingForCustomPriceClick = false;
             g_customPriceKeyboardOverride = true;
             double selectedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
@@ -2129,6 +2173,7 @@ void RedrawLabelsOnly() {
         if(showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
     }
+    if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
     ChartRedraw();

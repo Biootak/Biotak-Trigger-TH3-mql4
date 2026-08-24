@@ -55,10 +55,14 @@ input bool inpShowFractalTHs = false;
 input bool inpShowStandardTHs = false;
 input bool inpShowATRLabels = false;              // Show ATR Labels
 input bool inpShowATRTargets = true;             // Show ATR Targets
+input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels
+input bool inpShowATRTradeSLLabels = true;       // Show SL/HuntSL/EngSL labels
+input bool inpShowATRTradeTPLabels = true;       // Show TP1/TP2/TP3 labels
+input int inpATRTradeLabelRowGap = 10;           // Compact vertical gap between ATR trade rows
 
 input group "04) STYLE - SS/LS STEP"
 input string S6 = "[04] STYLE / SS-LS STEP";
-input bool inpLSFirst = true;
+input bool inpLSFirst = true; // Default SS/LS order; double-click Custom Price for a quick override
 input color inpSSLevelColor = clrGoldenrod;
 input color inpLSLevelColor = clrOrange;
 input ENUM_LINE_STYLE inpSSLevelStyle = STYLE_DOT;

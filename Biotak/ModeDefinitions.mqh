@@ -116,7 +116,7 @@ SModeDefinition GetModeDefinition(
             def.stepSizeCount = 2;
             def.stepMode = LEVEL_STEP_CUMULATIVE;
             def.classifyMode = CLASSIFY_ALTERNATING;
-            def.lsFirst = inpLSFirst;
+            def.lsFirst = GetEffectiveSSLSLongFirst();
             def.success = true;
             break;
         }

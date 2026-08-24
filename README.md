@@ -12,6 +12,7 @@
 - Custom Price Selection
 - Performance Monitoring
 - Alert System
+- ATR trade-plan labels (S1, TP1/TP2/TP3, HuntSL, EngSL) normalized per active timeframe
 
 ---
 
@@ -94,6 +95,18 @@ Build Mode: DEBUG
 
 ---
 
+## ATR trade-plan labels
+
+The H1 reference coefficients are rendered as ratios of the ATR of the active (or locked) timeframe:
+
+```text
+SL=0.62, TP1=1.53, TP2=3.30, TP3=6.81, HuntSL=0.63, EngSL=0.27
+```
+
+For example, H1 uses `ATR(H1)` and M15 uses `ATR(M15)`. This keeps the model volatility-normalized instead of copying fixed H1 pip distances. Only the active/locked timeframe is shown in a compact bottom-right block, away from the TH labels and other bottom-left information. `inpShowATRTradeSLLabels` and `inpShowATRTradeTPLabels` independently toggle the stop and target groups; `inpShowATRTradeLabels` toggles the whole block. The coefficients are empirical inputs from the supplied H1 snippet; the repository does not contain the professor’s original statistical derivation, so validate them with backtesting before live use.
+
+---
+
 ## Hotkeys
 
 | Key | Action |
@@ -101,6 +114,7 @@ Build Mode: DEBUG
 | F | Hide/Show indicator |
 | G | Lock/Unlock timeframe |
 | C | Set custom price |
+| Double-click Custom Price | Select SS-first or LS-first order |
 | T | Toggle trigger levels |
 | E | Cycle step modes |
 | R | Reset to defaults |

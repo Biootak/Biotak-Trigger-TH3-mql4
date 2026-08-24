@@ -187,6 +187,7 @@ int CalculateLevels(
     const double &stepSizes[],
     const int stepSizeCount,
     const ENUM_LEVEL_STEP_MODE stepMode,
+    const bool sslsLongFirst,
     const int maxLevelsAbove,
     const int maxLevelsBelow,
     const bool boundByHistorical,
@@ -210,10 +211,10 @@ int CalculateLevels(
     ArrayResize(levels, maxTotal, 64);
     int count = 0;
     
-    // Midpoint (always first)
-    // GOLD FIX: Apply 0.5 step offset to centerPrice
-    // This shifts all zones so that their BOUNDARIES (lines) fall exactly on the original levels.
-    double offset = (stepSizes[0] * 0.5);
+    // Midpoint (always first). In SS/LS mode the short step is the zone
+    // width, while the first center-to-center interval is user-selectable.
+    double offset = (stepMode == LEVEL_STEP_CUMULATIVE && stepSizeCount > 1 && sslsLongFirst)
+                    ? (stepSizes[1] * 0.5) : (stepSizes[0] * 0.5);
     double shiftedCenter = centerPrice + offset;
     
     levels[count].price = shiftedCenter;
@@ -235,8 +236,12 @@ int CalculateLevels(
         if(stepMode == LEVEL_STEP_UNIFORM) {
             price = shiftedCenter + (stepSizes[0] * logicalStep);
         } else {
-            // CUMULATIVE: alternate through stepSizes array
-            double dist = stepSizes[(logicalStep - 1) % stepSizeCount];
+            // CUMULATIVE: alternate SS/LS. The first interval is controlled
+            // by sslsLongFirst; subsequent intervals alternate strictly.
+            int sequenceIndex = (sslsLongFirst && stepSizeCount > 1) ? 1 : 0;
+            int parity = (logicalStep - 1) % 2;
+            int selectedIndex = (parity == 0) ? sequenceIndex : ((sequenceIndex + 1) % stepSizeCount);
+            double dist = stepSizes[selectedIndex];
             cumAbove += dist;
             price = shiftedCenter + cumAbove;
         }
@@ -267,7 +272,10 @@ int CalculateLevels(
         if(stepMode == LEVEL_STEP_UNIFORM) {
             price = shiftedCenter - (stepSizes[0] * logicalStep);
         } else {
-            double dist = stepSizes[(logicalStep - 1) % stepSizeCount];
+            int sequenceIndex = (sslsLongFirst && stepSizeCount > 1) ? 1 : 0;
+            int parity = (logicalStep - 1) % 2;
+            int selectedIndex = (parity == 0) ? sequenceIndex : ((sequenceIndex + 1) % stepSizeCount);
+            double dist = stepSizes[selectedIndex];
             cumBelow += dist;
             price = shiftedCenter - cumBelow;
         }
@@ -422,7 +430,11 @@ int ClassifyLevelsAlternating(
     // Override colors for non-structure, non-trigger levels with SS/LS alternating pattern
     for(int i = 0; i < result; i++) {
         if(classified[i].isMidpoint) continue;
-        if(classified[i].isStructure || classified[i].isTrigger) continue;
+        // Structure keeps its dedicated styling. Trigger styling also keeps
+        // priority while triggers are enabled; otherwise the SS/LS fallback
+        // colors make the alternating pattern visible.
+        if(classified[i].isStructure) continue;
+        if(classified[i].isTrigger && triggerEnabled) continue;
         
         // SSLS alternating: determine if this step is SS or LS
         bool isSS = ((classified[i].logicalStep % 2 == 0) == lsFirst);
@@ -464,6 +476,7 @@ void BuildZonesAndLines(
     const SModeConfig &config,
     const double vpTop,
     const double vpBottom,
+    const double fixedZoneStepSize,
     SZoneDefinition &zones[],
     int &zoneCount,
     STriggerLine &lines[],
@@ -521,7 +534,8 @@ void BuildZonesAndLines(
         if(neighborDist <= 0) {
             neighborDist = GetCachedPoint() * 100;
         }
-        double zoneHeight = neighborDist * config.zoneHeightPercent * 0.5;
+        double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : neighborDist;
+        double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
         
         zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Center_0";
         zones[zIdx].midPrice = midLevel.price;
@@ -548,6 +562,9 @@ void BuildZonesAndLines(
         if(currentPrice <= prevPrice) { prevPrice = currentPrice; continue; }
         
         double stepSize = currentPrice - prevPrice;
+        // In SS/LS mode every zone uses the configured short-step width,
+        // regardless of whether this interval is SS or LS.
+        double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : stepSize;
         
         // Line at midpoint between prev and current
         double lineMidPrice = (prevPrice + currentPrice) / 2.0;
@@ -571,7 +588,7 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            double zoneHeight = stepSize * config.zoneHeightPercent * 0.5;
+            double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Above_" + 
                                IntegerToString(s_aboveLevels[i].logicalStep);
@@ -603,6 +620,8 @@ void BuildZonesAndLines(
         if(currentPrice >= prevPrice || currentPrice <= 0) { prevPrice = currentPrice; continue; }
         
         double stepSize = prevPrice - currentPrice;
+        // In SS/LS mode every zone uses the configured short-step width.
+        double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : stepSize;
         
         // Line at midpoint between prev and current
         double lineMidPrice = (prevPrice + currentPrice) / 2.0;
@@ -626,7 +645,7 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            double zoneHeight = stepSize * config.zoneHeightPercent * 0.5;
+            double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Below_" + 
                                IntegerToString(s_belowLevels[i].logicalStep);
@@ -930,7 +949,7 @@ SPipelineResult ExecutePipeline(
     SCalculatedLevel rawLevels[];
     int maxStep = 0;
     int rawCount = CalculateLevels(centerPrice, stepSizes, stepSizeCount, stepMode,
-                                    maxLevelsAbove, maxLevelsBelow,
+                                    lsFirst, maxLevelsAbove, maxLevelsBelow,
                                     config.boundByHistorical, config.maxPrice, config.minPrice,
                                     rawLevels, maxStep);
     if(rawCount == 0) {
@@ -956,8 +975,11 @@ SPipelineResult ExecutePipeline(
     // Stages 3+4: Build zones and lines (merged   single pass)
     SZoneDefinition zones[];
     STriggerLine lines[];
+    double fixedZoneStepSize = 0.0;
+    if(config.modeName == "SSLS" && stepSizeCount > 1)
+        fixedZoneStepSize = MathMin(stepSizes[0], stepSizes[1]);
     BuildZonesAndLines(classified, classifiedCount, config, vpTop, vpBottom,
-                       zones, result.zoneCount, lines, result.lineCount);
+                       fixedZoneStepSize, zones, result.zoneCount, lines, result.lineCount);
     
     // Stage 5: Render and cleanup
     RenderZones(zones, result.zoneCount, config);

@@ -606,6 +606,21 @@ void ClearAllLabels(const string objectPrefix) {
     // 1. Delete all labels with the standard LBL_ prefix (New thorough way)
     string labelPrefix = objectPrefix + "LBL_";
     ObjectsDeleteAll(0, labelPrefix);
+
+    // Also remove labels created for a previous chart/locked timeframe. The
+    // active object prefix changes with the timeframe, so deleting only the
+    // current prefix would leave stale rows visible after a switch.
+    int indicatorTotal = ObjectsTotal(0, -1, -1);
+    string indicatorLabelsPrefix = inpObjectPrefix + "_";
+    int indicatorLabelsPrefixLen = StringLen(indicatorLabelsPrefix);
+    for(int j = indicatorTotal - 1; j >= 0; j--) {
+        string indicatorObjectName = ObjectName(0, j, -1, -1);
+        if(StringLen(indicatorObjectName) >= indicatorLabelsPrefixLen &&
+           StringSubstr(indicatorObjectName, 0, indicatorLabelsPrefixLen) == indicatorLabelsPrefix &&
+           StringFind(indicatorObjectName, "_LBL_") >= 0) {
+            ObjectDelete(0, indicatorObjectName);
+        }
+    }
     
     // 2. Delete labels that might have different timeframe prefixes (cleanup old logic)
     int total = ObjectsTotal(0, -1, -1);
@@ -620,11 +635,144 @@ void ClearAllLabels(const string objectPrefix) {
     }
 }
 
+// ATR trade coefficients from the supplied H1 reference. They are ratios of ATR,
+// therefore the same model can be applied to every timeframe without copying H1 values.
+#define ATR_TRADE_SL 0.62
+#define ATR_TRADE_TP1 1.53
+#define ATR_TRADE_TP2 3.30
+#define ATR_TRADE_TP3 6.81
+#define ATR_TRADE_HUNT_SL 0.63
+#define ATR_TRADE_ENG_SL 0.27
+
+bool CreateATRTradePiece(const string name, const string text, const color textColor,
+                         const int xPos, const int yPos) {
+    if(ObjectFind(0, name) < 0) {
+        if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
+    }
+    ObjectSetString(0, name, OBJPROP_TEXT, text);
+    ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+    SetLabelFont(name);
+    InitATRChartLabel(name, CORNER_RIGHT_LOWER, ANCHOR_RIGHT_LOWER);
+    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(8, xPos));
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(8, yPos));
+    ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES,
+                     IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+    return true;
+}
+
+bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
+                         const double atrPips, const int xPos, const int yPos,
+                         const color textColor) {
+    double values[6];
+    values[0] = atrPips * ATR_TRADE_SL;
+    values[1] = atrPips * ATR_TRADE_HUNT_SL;
+    values[2] = atrPips * ATR_TRADE_ENG_SL;
+    values[3] = atrPips * ATR_TRADE_TP1;
+    values[4] = atrPips * ATR_TRADE_TP2;
+    values[5] = atrPips * ATR_TRADE_TP3;
+
+    string labelNames[];
+    string valueNames[];
+    string labelTexts[];
+    string valueTexts[];
+    color labelColors[];
+    int labelX[];
+    int valueX[];
+    ArrayResize(labelNames, 6);
+    ArrayResize(valueNames, 6);
+    ArrayResize(labelTexts, 6);
+    ArrayResize(valueTexts, 6);
+    ArrayResize(labelColors, 6);
+    ArrayResize(labelX, 6);
+    ArrayResize(valueX, 6);
+
+    labelNames[0] = objectPrefix + "ATR_Trade_Current_SL_Text";
+    labelNames[1] = objectPrefix + "ATR_Trade_Current_HuntSL_Text";
+    labelNames[2] = objectPrefix + "ATR_Trade_Current_EngSL_Text";
+    labelNames[3] = objectPrefix + "ATR_Trade_Current_TP1_Text";
+    labelNames[4] = objectPrefix + "ATR_Trade_Current_TP2_Text";
+    labelNames[5] = objectPrefix + "ATR_Trade_Current_TP3_Text";
+    valueNames[0] = objectPrefix + "ATR_Trade_Current_SL_Value";
+    valueNames[1] = objectPrefix + "ATR_Trade_Current_HuntSL_Value";
+    valueNames[2] = objectPrefix + "ATR_Trade_Current_EngSL_Value";
+    valueNames[3] = objectPrefix + "ATR_Trade_Current_TP1_Value";
+    valueNames[4] = objectPrefix + "ATR_Trade_Current_TP2_Value";
+    valueNames[5] = objectPrefix + "ATR_Trade_Current_TP3_Value";
+
+    labelTexts[0] = "SL";
+    labelTexts[1] = "HuntSL";
+    labelTexts[2] = "EngSL";
+    labelTexts[3] = "TP1";
+    labelTexts[4] = "TP2";
+    labelTexts[5] = "TP3";
+    for(int i = 0; i < 6; i++) valueTexts[i] = DoubleToString(values[i], 1);
+
+    // SL label text red; TP label text blue. All numeric values are black.
+    labelColors[0] = clrRed;
+    labelColors[1] = clrRed;
+    labelColors[2] = clrRed;
+    labelColors[3] = clrBlue;
+    labelColors[4] = clrBlue;
+    labelColors[5] = clrBlue;
+
+    // Remove the old single-color layout and legacy names.
+    ObjectDelete(0, objectPrefix + "ATR_Trade_Current");
+    ObjectDelete(0, objectPrefix + "ATR_Trade_Current_Targets");
+    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName);
+    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Targets");
+    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Stops");
+    ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
+
+    bool showSL = (inpShowATRTradeLabels && inpShowATRTradeSLLabels);
+    bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
+    int gap = MathMax(5, inpLabelColumnGap / 3);
+    int innerGap = MathMax(3, inpLabelColumnGap / 8);
+    int rightMargin = MathMax(8, MathAbs(xPos));
+    int bottomMargin = MathMax(8, MathAbs(yPos));
+    int lineHeight = inpFontSize + inpATRTradeLabelRowGap;
+
+    // Put the value immediately to the right of its colored label. Groups are
+    // laid out from right to left so the right corner stays fixed.
+    for(int i = 2; i >= 0; i--) {
+        if(i == 2) {
+            valueX[i] = rightMargin;
+        } else {
+            int next = i + 1;
+            valueX[i] = labelX[next] + (int)CalculateTextWidth(labelTexts[next]) + gap;
+        }
+        labelX[i] = valueX[i] + (int)CalculateTextWidth(valueTexts[i]) + innerGap;
+    }
+    for(int i = 5; i >= 3; i--) {
+        if(i == 5) {
+            valueX[i] = rightMargin;
+        } else {
+            int next = i + 1;
+            valueX[i] = labelX[next] + (int)CalculateTextWidth(labelTexts[next]) + gap;
+        }
+        labelX[i] = valueX[i] + (int)CalculateTextWidth(valueTexts[i]) + innerGap;
+    }
+
+    for(int i = 0; i < 6; i++) {
+        bool shouldShow = (i < 3) ? showSL : showTP;
+        int rowY = bottomMargin + ((i >= 3) ? lineHeight : 0);
+        if(!shouldShow) {
+            ObjectDelete(0, labelNames[i]);
+            ObjectDelete(0, valueNames[i]);
+            continue;
+        }
+        if(!CreateATRTradePiece(labelNames[i], labelTexts[i], labelColors[i], labelX[i], rowY)) return false;
+        if(!CreateATRTradePiece(valueNames[i], valueTexts[i], clrBlack, valueX[i], rowY)) return false;
+    }
+    return true;
+}
+
 void DisplayATRLabels(const string objectPrefix) {
     if(!g_atrLabelsVisible) {
         ClearAllLabels(objectPrefix);
         return;
     }
+    // Trade-plan labels are independent from the optional ATR overview. When
+    // the overview is off, still allow the compact active-TF plan to render.
     
     double point = GetCachedPoint();
     double pipSize = GetCachedPipSize();
@@ -632,14 +780,15 @@ void DisplayATRLabels(const string objectPrefix) {
     if(IsZero(point, EPSILON_PRICE) || IsZero(pipSize, EPSILON_PRICE) || digits == 0) return;
 
     string labelPrefix = objectPrefix + "LBL_";
-    string timeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
-    int tfMinutes[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
+    string timeframes[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
+    int tfMinutes[] = {1, 5, 15, 30, 60, 240, 1440, 10080, 43200};
 
     // Use TH colors for ATR
     color colors[] = {
         clrBlack,        // M1
         clrBlack,        // M5
         clrBlack,        // M15
+        clrBlack,        // M30
         clrBlue,         // H1
         clrRed,          // H4
         clrGreen,        // D1
@@ -715,11 +864,29 @@ void DisplayATRLabels(const string objectPrefix) {
     if(renderedCount > 0) {
         g_currentLabelYOffset += (currentYPos - startYPos) + lineHeight + sectionGap;
     }
+
+}
+
+void DisplayATRTradeLabels(const string objectPrefix) {
+    if(!inpShowATRTradeLabels || !g_atrLabelsVisible) return;
+
+    double pipSize = GetCachedPipSize();
+    if(IsZero(pipSize, EPSILON_PRICE)) return;
+
+    int activeMinutes = GetEffectiveTimeframe();
+    string activeTimeframeName = PeriodToString(activeMinutes);
+    double activeATR = GetATRForTimeframe(activeMinutes);
+    if(activeATR <= 0 || activeATR == EMPTY_VALUE) return;
+
+    double activePips = NormalizeDouble(activeATR / pipSize, 1);
+    string labelPrefix = objectPrefix + "LBL_";
+    // Both margins are distances from the right/bottom chart edges.
+    CreateATRTradeLabel(labelPrefix, activeTimeframeName, activePips,
+                       inpLabelsMarginLeft, inpLabelsMarginBottom, clrDarkBlue);
 }
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
-    string currentTFStr = IntegerToString(GetCachedPeriod());
-    string uniquePrefix = objectPrefix + "TF" + currentTFStr + "_";
+    string uniquePrefix = objectPrefix + "LBL_";
     string allTimeframes[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
 
     bool shouldShow = (visible && !IsIndicatorHidden());
@@ -734,6 +901,18 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
         ObjectSetInteger(0, uniquePrefix + "ATR_Steps_" + tfName, OBJPROP_TIMEFRAMES, tf);
         ObjectSetInteger(0, uniquePrefix + "ATR_Targets_" + tfName, OBJPROP_TIMEFRAMES, targetsTF);
     }
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SL_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SL_Value", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Value", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_EngSL_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_EngSL_Value", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP1_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP1_Value", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP2_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP2_Value", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Text", OBJPROP_TIMEFRAMES, tf);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Value", OBJPROP_TIMEFRAMES, tf);
 }
 
 void SetTHLabelsVisibility(const string objectPrefix, const int mode) {

@@ -41,6 +41,7 @@ static bool g_atrLabelsVisible = true;
 static bool g_thLabelsVisible = true;
 static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
 static int g_stepModeOverride = -1;        // -1 = use input, 0-5 = override
+static int g_sslsFirstOverride = -1;       // -1 = use inpLSFirst, 0 = SS first, 1 = LS first
 static double g_factorValueOverride = 0;   // 0 = use input, >0 = override
 static int g_factorColorOverride = -1;     // -1 = use input
 #ifndef BUILD_LITE
@@ -158,6 +159,15 @@ string SanitizeSymbolName(const string symbol) {
     return safe;
 }
 
+// Effective SS/LS sequence origin. The chart menu override takes priority
+// over the input and survives a redraw/timeframe change.
+bool GetEffectiveSSLSLongFirst()
+{
+    if(g_sslsFirstOverride == 0) return false;
+    if(g_sslsFirstOverride == 1) return true;
+    return inpLSFirst;
+}
+
 //+------------------------------------------------------------------+
 //| Cleanup All GlobalVariables (array-based, matching MT5)          |
 //+------------------------------------------------------------------+
@@ -166,7 +176,7 @@ void CleanupAllGlobalVariables() {
     string rawSymbolName = GetCachedSymbol();
     string sanitizedSymbolName = SanitizeSymbolName(rawSymbolName);
     string gvars[];
-    ArrayResize(gvars, 19);
+    ArrayResize(gvars, 20);
     gvars[0]  = "Biotak_isHidden_" + chartIdStr;
     gvars[1]  = "Biotak_CustomPrice_" + rawSymbolName;
     gvars[2]  = "Biotak_LockTF_" + chartIdStr;
@@ -184,8 +194,9 @@ void CleanupAllGlobalVariables() {
     gvars[14] = "Biotak_BaseInit_" + chartIdStr;
     gvars[15] = "Biotak_ATRWarmup_" + chartIdStr;
     gvars[16] = "Biotak_TH3_NeedsUpdate_" + chartIdStr;
-    gvars[17] = "Biotak_CustomPrice_" + sanitizedSymbolName;
-    gvars[18] = "Biotak_CustomPriceOverride_" + sanitizedSymbolName;
+    gvars[17] = "Biotak_SSLSFirst_" + chartIdStr;
+    gvars[18] = "Biotak_CustomPrice_" + sanitizedSymbolName;
+    gvars[19] = "Biotak_CustomPriceOverride_" + sanitizedSymbolName;
     for(int i = 0; i < ArraySize(gvars); i++) {
         if(GlobalVariableCheck(gvars[i])) GlobalVariableDel(gvars[i]);
     }
