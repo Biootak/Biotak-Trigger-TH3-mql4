@@ -1581,8 +1581,8 @@ void DrawSSLSLevels(const string objectPrefix, const double midpointPrice,
     // CRITICAL FIX: Calculate average step size for consistent zone height
     double avgStepSize = (ssValue + lsValue) / 2.0;
     
-    int effectiveMaxAbove = (maxLevelsAbove > 0) ? maxLevelsAbove : inpMaxTHLevelsAbove;
-    int effectiveMaxBelow = (maxLevelsBelow > 0) ? maxLevelsBelow : inpMaxTHLevelsBelow;
+    int effectiveMaxAbove = (maxLevelsAbove > 0) ? maxLevelsAbove : inpMaxLevels;
+    int effectiveMaxBelow = (maxLevelsBelow > 0) ? maxLevelsBelow : inpMaxLevels;
     
     // OPTIMIZATION: Cache frequently called values BEFORE the loop
     bool triggerEnabled = IsTriggerLevelsEnabled();

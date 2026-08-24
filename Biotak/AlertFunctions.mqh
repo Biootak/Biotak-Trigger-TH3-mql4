@@ -62,12 +62,12 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
         }
         
         //           :                            
-        int maxLevelsToCheck = MathMin(inpMaxTHLevelsAbove, inpMaxTHLevelsBelow);
+        int maxLevelsToCheck = inpMaxLevels;
         maxLevelsToCheck = MathMin(maxLevelsToCheck, 256); //              
         
         for(int stepCount = 1; stepCount <= maxLevelsToCheck; stepCount++) {
             //                
-            if(stepCount <= inpMaxTHLevelsAbove) {
+            if(stepCount <= inpMaxLevels) {
                 string lineNameAbove = prefix + "TriggerTH_Up_" + IntegerToString(stepCount);
                 if(ObjectFind(0, lineNameAbove) >= 0) { //                 
                     double levelAbove = ObjectGetDouble(0, lineNameAbove, OBJPROP_PRICE1);
@@ -84,7 +84,7 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
             }
             
             //                 
-            if(stepCount <= inpMaxTHLevelsBelow) {
+            if(stepCount <= inpMaxLevels) {
                 string lineNameBelow = prefix + "TriggerTH_Down_" + IntegerToString(stepCount);
                 if(ObjectFind(0, lineNameBelow) >= 0) { //                 
                     double levelBelow = ObjectGetDouble(0, lineNameBelow, OBJPROP_PRICE1);

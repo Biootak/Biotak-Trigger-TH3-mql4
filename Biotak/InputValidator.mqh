@@ -110,15 +110,10 @@ int ValidateInputs()
         return INIT_PARAMETERS_INCORRECT;
     }
     
-    // 7. Max Levels (positive)
-    if(inpMaxTHLevelsAbove <= 0 || inpMaxTHLevelsBelow <= 0) {
-        Print("  ERROR: Max TH Levels must be positive");
-        Print("   Above: ", inpMaxTHLevelsAbove, ", Below: ", inpMaxTHLevelsBelow);
-        return INIT_PARAMETERS_INCORRECT;
-    }
-    if(inpCustomPriceMaxLevels <= 0) {
-        Print("  ERROR: Custom Price Max Levels must be positive");
-        Print("   Value: ", inpCustomPriceMaxLevels);
+    // 7. Max Levels (positive; one input controls both sides and all modes)
+    if(inpMaxLevels <= 0) {
+        Print("  ERROR: Max Levels must be positive");
+        Print("   Value: ", inpMaxLevels);
         return INIT_PARAMETERS_INCORRECT;
     }
     
@@ -182,16 +177,10 @@ int ValidateInputs()
     //                                                                
     
     // Safety: Limit max levels to prevent performance issues
-    if(inpMaxTHLevelsAbove > MAX_SAFE_LEVELS) {
+    if(inpMaxLevels > MAX_SAFE_LEVELS) {
         #ifdef ENABLE_DEBUG_LOGS
-        Print("   WARNING: inpMaxTHLevelsAbove (", inpMaxTHLevelsAbove, ") exceeds MAX_SAFE_LEVELS (", MAX_SAFE_LEVELS, ")");
-        Print("   Please reduce inpMaxTHLevelsAbove to ", MAX_SAFE_LEVELS, " or less for optimal performance");
-        #endif
-    }
-    if(inpMaxTHLevelsBelow > MAX_SAFE_LEVELS) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("   WARNING: inpMaxTHLevelsBelow (", inpMaxTHLevelsBelow, ") exceeds MAX_SAFE_LEVELS (", MAX_SAFE_LEVELS, ")");
-        Print("   Please reduce inpMaxTHLevelsBelow to ", MAX_SAFE_LEVELS, " or less for optimal performance");
+        Print("   WARNING: inpMaxLevels (", inpMaxLevels, ") exceeds MAX_SAFE_LEVELS (", MAX_SAFE_LEVELS, ")");
+        Print("   Please reduce inpMaxLevels to ", MAX_SAFE_LEVELS, " or less for optimal performance");
         #endif
     }
     
