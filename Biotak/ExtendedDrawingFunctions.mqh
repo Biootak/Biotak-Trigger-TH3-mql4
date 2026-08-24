@@ -580,7 +580,7 @@ double GetStepSizeForBasisTypeFromTH(const double basePrice, const double multip
         return 0;
     }
     
-    // Apply multiplier (1.0=TH, 1.5=SS, 1.75=Control, 2.0=LS)
+    // Apply multiplier (1.0=TH, 1.333333=4/3, 1.5=SS, 1.75=Control, 2.0=LS)
     double stepSize = thPriceUnits * multiplier;
     
     // GOLD FIX: Comprehensive validation
@@ -866,7 +866,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
 //+------------------------------------------------------------------+
 double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
     // CRITICAL: Validate input
-    if(stepType < COMBO_STEP_TH || stepType > COMBO_STEP_LS) {
+    if(stepType < COMBO_STEP_TH || stepType > COMBO_STEP_RATIO_4_3) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("  GetStepMultiplier: Invalid stepType=", stepType, ", using 1.0 (TH)");
         #endif
@@ -884,6 +884,9 @@ double GetStepMultiplier(const ENUM_COMBO_STEP_TYPE stepType) {
             break;
         case COMBO_STEP_LS:
             multiplier = 2.0;   // LS
+            break;
+        case COMBO_STEP_RATIO_4_3:
+            multiplier = 4.0 / 3.0; // LS / SS ratio
             break;
         default:
             #ifdef ENABLE_DEBUG_LOGS

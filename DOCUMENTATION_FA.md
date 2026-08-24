@@ -88,6 +88,16 @@ LS = Structure * 2.0
 Control = (SS + LS) / 2 = Structure * 1.75
 ```
 
+#### preset کوتاه SS در حالت Combo
+برای اینکه در حالت `Combo` و `Preset` فاصله‌ی مرکز تا مرکز سطوح دقیقاً برابر گام کوتاه باشد، مقدار `Combo Preset` را روی `COMBO_PRESET_SS` بگذارید. این preset از یک مؤلفه‌ی `Pattern / SS` استفاده می‌کند و نیازی به مؤلفه‌ی دوم ندارد.
+
+#### preset نسبت ۴/۳ در حالت Combo
+برای استفاده از نسبت گام بلند به کوتاه به‌صورت گام یکنواخت، مقدار `Combo Preset` را روی `COMBO_PRESET_RATIO_4_3` بگذارید. محاسبه‌ی این preset برابر است با:
+
+```text
+Step = TH * (4 / 3) = TH * 1.333333...
+```
+
 ---
 
 ### ۵. مدیریت قیمت پایه (Base Price)

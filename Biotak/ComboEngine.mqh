@@ -170,7 +170,8 @@ double ComputeComboStep(const SComboSpec &spec, const double basePrice)
 //+------------------------------------------------------------------+
 //| PRESET DATA TABLE: one row per preset. Adding a new preset is    |
 //| adding one case of pure assignments - no logic duplication.      |
-//| Mirrors the legacy GetComboConfiguration() switch exactly.       |
+//| Mirrors the legacy GetComboConfiguration() switch, plus the      |
+//| single-component SS and 4/3 ratio presets.                       |
 //+------------------------------------------------------------------+
 SComboSpec GetComboPresetSpec(const ENUM_COMBO_PRESET preset)
 {
@@ -214,6 +215,18 @@ SComboSpec GetComboPresetSpec(const ENUM_COMBO_PRESET preset)
             SetComboComponent(spec.comps[0], COMBO_TF_STRUCTURE, COMBO_STEP_TH);
             SetComboComponent(spec.comps[1], COMBO_TF_SUB, COMBO_STEP_TH);
             spec.compCount = 2; spec.operation = COMBO_OP_SUBTRACT;
+            break;
+        case COMBO_PRESET_SS:
+            // One component: current timeframe (Pattern) with Short Step.
+            // ComputeComboStep returns this component unchanged, so the
+            // center-to-center spacing matches the standalone SS mode.
+            SetComboComponent(spec.comps[0], COMBO_TF_PATTERN, COMBO_STEP_SS);
+            spec.compCount = 1; spec.operation = COMBO_OP_AVERAGE;
+            break;
+        case COMBO_PRESET_RATIO_4_3:
+            // Uniform blended ratio: TH * (LS / SS) = TH * 4/3.
+            SetComboComponent(spec.comps[0], COMBO_TF_PATTERN, COMBO_STEP_RATIO_4_3);
+            spec.compCount = 1; spec.operation = COMBO_OP_AVERAGE;
             break;
         default:
             SetComboComponent(spec.comps[0], COMBO_TF_PATTERN, COMBO_STEP_TH);
@@ -295,8 +308,9 @@ string GetComboStepShortName(const ENUM_COMBO_STEP_TYPE step)
     {
         case COMBO_STEP_TH: return "TH";
         case COMBO_STEP_SS: return "SS";
-        case COMBO_STEP_LS: return "LS";
-        default:            return "?";
+        case COMBO_STEP_LS:       return "LS";
+        case COMBO_STEP_RATIO_4_3: return "4/3";
+        default:                   return "?";
     }
 }
 

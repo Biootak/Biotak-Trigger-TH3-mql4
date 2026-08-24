@@ -255,7 +255,7 @@ enum ENUM_COMBO_OPERATION {
 //|                                                                  |
 //| TWO INDEPENDENT MODES - Simplified and user-friendly             |
 //|                                                                  |
-//| PRESET: Quick select from the 6 ready-to-use combinations        |
+//| PRESET: Quick select from the 8 ready-to-use combinations        |
 //|   Uses: inpComboPreset                                           |
 //|                                                                  |
 //| ADVANCED: Manual control - two components (TF + Step each) and   |
@@ -279,16 +279,17 @@ enum ENUM_COMBO_TIMEFRAME_TYPE {
 };
 
 //+------------------------------------------------------------------+
-//| Step Size Type (TH, SS, LS)                                      |
+//| Step Size Type (TH, SS, LS, 4/3 ratio)                            |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_STEP_TYPE {
     COMBO_STEP_TH = 0,          // TH: Base step (1.0  )
     COMBO_STEP_SS = 1,          // SS: Short step (1.5  )
-    COMBO_STEP_LS = 2           // LS: Long step (2.0  )
+    COMBO_STEP_LS = 2,          // LS: Long step (2.0  )
+    COMBO_STEP_RATIO_4_3 = 3    // 4/3 ratio: TH * 1.333333...
 };
 
 //+------------------------------------------------------------------+
-//| Preset Combinations - practical daily-use set (6 presets)        |
+//| Preset Combinations - practical daily-use set (8 presets)        |
 //|                                                                  |
 //| DESIGN PRINCIPLE: keep only the commonly used combinations;      |
 //| anything else can be built with Advanced Mode.                  |
@@ -299,7 +300,9 @@ enum ENUM_COMBO_PRESET {
     COMBO_PRESET_BALANCED_TRIPLE = 2,   // (Trigger + Pattern + Structure) / 3
     COMBO_PRESET_CONSERVATIVE = 3,      // max(Structure, Pattern)
     COMBO_PRESET_AGGRESSIVE = 4,        // min(Trigger, Sub)
-    COMBO_PRESET_TREND_FILTER = 5       // Structure - Sub
+    COMBO_PRESET_TREND_FILTER = 5,      // Structure - Sub
+    COMBO_PRESET_SS = 6,                 // Pattern / SS = same spacing as Short Step mode
+    COMBO_PRESET_RATIO_4_3 = 7           // Pattern / (TH * 4/3) = TH * 1.333333...
 };
 
 // TH3 Label Position
