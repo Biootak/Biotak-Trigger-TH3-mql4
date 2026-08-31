@@ -216,20 +216,13 @@ bool CreateFactorMidZone(const string zoneName,
     
     SZoneCreationResult result = CreateZone(request);
     
-    // CRITICAL FIX: If indicator is hidden, hide the zone immediately
-    //                                             
-    // PERFORMANCE: Use cached ChartID string
-    if(result.success) {
-        string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-        bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
-        
-        if(isHidden) {
-            ObjectSetInteger(0, zoneName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-            // Empty-box border segments (BOX_EMPTY style)
-            ObjectSetInteger(0, zoneName + "_B_Top", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-            ObjectSetInteger(0, zoneName + "_B_Bottom", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-            ObjectSetInteger(0, zoneName + "_B_Left", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-        }
+    // PERF FIX: Use cached IsIndicatorHidden() — avoids GlobalVariableCheck/Get syscalls
+    if(result.success && IsIndicatorHidden()) {
+        ObjectSetInteger(0, zoneName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        // Empty-box border segments (BOX_EMPTY style)
+        ObjectSetInteger(0, zoneName + "_B_Top", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, zoneName + "_B_Bottom", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, zoneName + "_B_Left", OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
     }
     
     return result.success;
@@ -332,7 +325,8 @@ bool CreateFactorMidZone_LinesStyle(const string zoneName,
     if(currentTime <= 0) currentTime = TimeCurrent();
     datetime startTime = (safeBars > 0) ? Time[safeBars - 1] : currentTime;
     if(startTime <= 0) startTime = currentTime;
-    datetime endTime = currentTime + PeriodSeconds(Period()) * ZONE_EXTENSION_PERIODS;
+    // PERF FIX: Use cached PeriodSeconds — same value for entire timeframe session
+    datetime endTime = currentTime + GetCachedPeriodSecondsGlobal() * ZONE_EXTENSION_PERIODS;
     
     // Blend color with background (same visual as the box)
     color lineColor = GetZoneRenderColor(zoneColor, transparency);

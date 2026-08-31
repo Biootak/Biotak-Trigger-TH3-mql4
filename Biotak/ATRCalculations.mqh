@@ -498,20 +498,22 @@ double CalculateATRBasedStep() {
     // Get weighted ATR for current timeframe (respects lock)
     double weightedATR = CalculateWeightedATR_Locked();
     
-    // AUDIT FIX: Use IsZero for comparison
+    // PERF FIX: moved Print() inside #ifdef to stop unconditional log spam
     if(IsZero(weightedATR, EPSILON_PRICE)) {
-        Print("   CalculateATRBasedStep: Invalid weighted ATR value");
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[W][ATR] CalculateATRBasedStep: Invalid weighted ATR value");
+        #endif
         return 0.0;
     }
     
-    // AUDIT FIX: Validate result
     if(!IsValidPrice(weightedATR, EPSILON_PRICE)) {
-        Print("   CalculateATRBasedStep: ATR value out of valid range (", weightedATR, ")");
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[W][ATR] CalculateATRBasedStep: ATR value out of valid range (", weightedATR, ")");
+        #endif
         return 0.0;
     }
     
     // ATR is already in price units, return directly
-    // This matches how TH returns price units
     return weightedATR;
 }
 

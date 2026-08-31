@@ -36,7 +36,15 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
     // OPTIMIZATION: Check if object exists first, only update properties instead of recreate
     double normalizedPrice = NormalizePrice(price);
     datetime currentTime = TimeCurrent();
-    datetime futureTime = currentTime + PeriodSeconds(Period()) * 10000;
+    // PERF FIX: Cache PeriodSeconds(Period()) - it's constant per bar
+    static int s_cachedPeriodSecs = 0;
+    static int s_cachedPeriodForSecs = 0;
+    int curPeriod = GetCachedPeriod();
+    if(s_cachedPeriodForSecs != curPeriod || s_cachedPeriodSecs == 0) {
+        s_cachedPeriodSecs = PeriodSeconds(curPeriod);
+        s_cachedPeriodForSecs = curPeriod;
+    }
+    datetime futureTime = currentTime + s_cachedPeriodSecs * 10000;
     int objectType = (lineObjectType == LINE_OBJECT_RAY_LINE) ? OBJ_TREND : OBJ_HLINE;
     
     // Check if object already exists in cache

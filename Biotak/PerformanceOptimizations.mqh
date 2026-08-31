@@ -471,6 +471,23 @@ void ReleaseMemoryPool(int poolIndex) {
 }
 
 //+------------------------------------------------------------------+
+//| Cached PeriodSeconds(Period()) - constant per timeframe          |
+//| PERF FIX: Eliminates repeated PeriodSeconds() syscalls in        |
+//|           hot paths like zone geometry calculations.             |
+//+------------------------------------------------------------------+
+static int g_cachedPeriodSecondsGlobal = 0;
+static int g_cachedPeriodForSecondsGlobal = 0;
+
+int GetCachedPeriodSecondsGlobal() {
+    int curPeriod = GetCachedPeriod();
+    if(g_cachedPeriodForSecondsGlobal != curPeriod || g_cachedPeriodSecondsGlobal <= 0) {
+        g_cachedPeriodSecondsGlobal = PeriodSeconds(curPeriod);
+        g_cachedPeriodForSecondsGlobal = curPeriod;
+    }
+    return g_cachedPeriodSecondsGlobal;
+}
+
+//+------------------------------------------------------------------+
 //| Cached chart width (pixel width for label layout)                |
 //+------------------------------------------------------------------+
 #define HIDDEN_CACHE_TTL_MS 100
@@ -492,6 +509,8 @@ void CleanupPerformanceOptimizations() {
     // PERF FIX: g_functionCache and g_batchQueue are static fixed arrays — just reset counters
     g_cacheSize = 0;
     g_cacheRingHead = 0;
+    g_cachedPeriodSecondsGlobal = 0;
+    g_cachedPeriodForSecondsGlobal = 0;
     
     // Object cache cleanup handled by ObjectCache.mqh CacheClear()
     

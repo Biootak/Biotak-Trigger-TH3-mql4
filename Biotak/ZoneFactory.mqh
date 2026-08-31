@@ -268,7 +268,8 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     }
     
     if(endTime == 0) {
-        int periodSeconds = PeriodSeconds(Period());
+        // PERF FIX: Use cached PeriodSeconds — same value for entire timeframe session
+        int periodSeconds = GetCachedPeriodSecondsGlobal();
         if(periodSeconds <= 0) {
             result.success = false;
             result.errorCode = ERR_ZONE_INVALID_CONFIG;
@@ -454,19 +455,36 @@ int DeleteZonesByPrefix(const string &prefix)
 {
     if(StringLen(prefix) == 0) return 0;
     
+    // PERF FIX: Use ObjectsDeleteAll for the primary bulk delete (single MT4 syscall),
+    // then follow up with the sub-object suffixes. This avoids an O(n) manual loop
+    // that walks every chart object and calls ObjectFind per item.
+    // Also clear the cache for matching entries the same way ClearAllLevels does.
     int deletedCount = 0;
-    int totalObjects = ObjectsTotal(0, -1, -1);
+    deletedCount += ObjectsDeleteAll(0, prefix);
     
-    for(int i = totalObjects - 1; i >= 0; i--) {
-        string name = ObjectName(0, i, -1, -1);
-        
-        if(StringFind(name, prefix) == 0) {
-            if(DeleteIndicatorObjectManaged(name, true)) {
-                deletedCount++;
+    // Sub-objects created by CreateZone / CreateOrUpdateZoneBorder
+    static string s_zoneSubs[] = {"_Top", "_Bottom", "_B_Top", "_B_Bottom", "_B_Left", "_B_Right"};
+    // Note: these share the same prefix, so the ObjectsDeleteAll above already captured them.
+    // The cache needs to be invalidated for these too.
+    if(g_objectCacheSize > 0) {
+        int prefixLen = StringLen(prefix);
+        ushort prefixFirstChar = StringGetCharacter(prefix, 0);
+        int visited = 0, snapshot = g_objectCacheSize;
+        for(int i = 0; i < CACHE_HASH_BUCKETS && visited < snapshot; i++) {
+            if(!g_objectCacheHash[i].occupied) continue;
+            visited++;
+            if(StringGetCharacter(g_objectCacheHash[i].name, 0) != prefixFirstChar) continue;
+            if(StringLen(g_objectCacheHash[i].name) >= prefixLen &&
+               StringSubstr(g_objectCacheHash[i].name, 0, prefixLen) == prefix) {
+                g_objectCacheHash[i].name = "";
+                g_objectCacheHash[i].occupied = false;
+                g_objectCacheHash[i].deleted = true;
+                g_objectCacheHash[i].lastAccess = 0;
+                g_objectCacheSize--;
             }
         }
     }
-    
+    InvalidateObjectCountCache();
     return deletedCount;
 }
 

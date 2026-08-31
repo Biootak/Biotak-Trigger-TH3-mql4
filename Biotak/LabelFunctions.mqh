@@ -59,7 +59,9 @@ bool DrawMainLevels(const string prefix) {
 
 void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
     if(dailyClosePrice <= 0) {
-        Print("DrawTHLevels: Invalid daily close price");
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[W][TH] DrawTHLevels: Invalid daily close price");
+        #endif
         return;
     }
     
@@ -134,7 +136,9 @@ void DrawTHLevels(const string objectPrefix, const double dailyClosePrice) {
     // GOLD FIX #11: Array bounds checking - get size for safe access
     int intervalSize = ArraySize(intervals);
     if(intervalSize == 0) {
-        Print("  DrawTHLevels: Empty intervals array, cannot draw structure levels");
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[W][TH] DrawTHLevels: Empty intervals array, cannot draw structure levels");
+        #endif
         return;
     }
     
@@ -603,36 +607,34 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
 //| Clear all labels to prevent ghosting or overlaps                |
 //+------------------------------------------------------------------+
 void ClearAllLabels(const string objectPrefix) {
-    // 1. Delete all labels with the standard LBL_ prefix (New thorough way)
+    // 1. Delete all labels with the standard LBL_ prefix via native bulk delete
     string labelPrefix = objectPrefix + "LBL_";
     ObjectsDeleteAll(0, labelPrefix);
 
-    // Also remove labels created for a previous chart/locked timeframe. The
-    // active object prefix changes with the timeframe, so deleting only the
-    // current prefix would leave stale rows visible after a switch.
-    int indicatorTotal = ObjectsTotal(0, -1, -1);
-    string indicatorLabelsPrefix = inpObjectPrefix + "_";
-    int indicatorLabelsPrefixLen = StringLen(indicatorLabelsPrefix);
-    for(int j = indicatorTotal - 1; j >= 0; j--) {
-        string indicatorObjectName = ObjectName(0, j, -1, -1);
-        if(StringLen(indicatorObjectName) >= indicatorLabelsPrefixLen &&
-           StringSubstr(indicatorObjectName, 0, indicatorLabelsPrefixLen) == indicatorLabelsPrefix &&
-           StringFind(indicatorObjectName, "_LBL_") >= 0) {
-            ObjectDelete(0, indicatorObjectName);
-        }
+    // PERF FIX: Replace two O(n) manual loops with two native ObjectsDeleteAll prefix calls.
+    // ObjectsDeleteAll is a single kernel call — dramatically faster than ObjectsTotal + loop.
+    //
+    // Old logic wanted to delete any object that:
+    //  (a) starts with inpObjectPrefix + "_" AND contains "_LBL_"
+    //  (b) starts with objectPrefix + "TF"
+    //
+    // The LBL_ sub-prefix already covers (a): every LBL_ object name that was
+    // created by any TF variant of this indicator starts with inpObjectPrefix.
+    // So deleting all inpObjectPrefix + "_*_LBL_*" reduces to deleting every
+    // variant prefix + "LBL_" combination.
+    //
+    // Walk through all known TF suffixes and bulk-delete their LBL_ namespace.
+    // This is O(k) API calls (k = number of known TF strings, ~9) instead of
+    // O(total chart objects) per frame.
+    static string s_tfSuffixes[] = {"M1","M5","M15","M30","H1","H4","D1","W1","MN"};
+    string basePrefix = inpObjectPrefix + "_";
+    for(int j = 0; j < ArraySize(s_tfSuffixes); j++) {
+        string tfLblPrefix = basePrefix + s_tfSuffixes[j];
+        ObjectsDeleteAll(0, tfLblPrefix + "_LBL_");
     }
     
-    // 2. Delete labels that might have different timeframe prefixes (cleanup old logic)
-    int total = ObjectsTotal(0, -1, -1);
-    string tfSearch = objectPrefix + "TF";
-    int tfSearchLen = StringLen(tfSearch);
-    
-    for(int i = total - 1; i >= 0; i--) {
-        string objName = ObjectName(0, i, -1, -1);
-        if(StringSubstr(objName, 0, tfSearchLen) == tfSearch) {
-            ObjectDelete(0, objName);
-        }
-    }
+    // (b) Delete objectPrefix + "TF*" labels (legacy)
+    ObjectsDeleteAll(0, objectPrefix + "TF");
 }
 
 // ATR trade coefficients from the supplied H1 reference. They are ratios of ATR,
@@ -671,20 +673,14 @@ bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
     values[4] = atrPips * ATR_TRADE_TP2;
     values[5] = atrPips * ATR_TRADE_TP3;
 
-    string labelNames[];
-    string valueNames[];
-    string labelTexts[];
-    string valueTexts[];
-    color labelColors[];
-    int labelX[];
-    int valueX[];
-    ArrayResize(labelNames, 6);
-    ArrayResize(valueNames, 6);
-    ArrayResize(labelTexts, 6);
-    ArrayResize(valueTexts, 6);
-    ArrayResize(labelColors, 6);
-    ArrayResize(labelX, 6);
-    ArrayResize(valueX, 6);
+    // PERF FIX: Fixed-size arrays — eliminate 7x ArrayResize() heap allocations per call
+    string labelNames[6];
+    string valueNames[6];
+    string labelTexts[6];
+    string valueTexts[6];
+    color  labelColors[6];
+    int    labelX[6]   = {0,0,0,0,0,0};  // Zero-init silences MQL4 "uninitialized" warnings
+    int    valueX[6]   = {0,0,0,0,0,0};  // Both are fully written before read in the loops below
 
     labelNames[0] = objectPrefix + "ATR_Trade_Current_SL_Text";
     labelNames[1] = objectPrefix + "ATR_Trade_Current_HuntSL_Text";
