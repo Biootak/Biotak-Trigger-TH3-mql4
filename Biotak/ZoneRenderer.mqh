@@ -95,19 +95,7 @@ void ResolveZoneStyles(
     // CRITICAL:                  objectPrefix
     string safePrefix = (StringLen(objectPrefix) > 0) ? objectPrefix : "Zone_";
     
-    // DIAGNOSTIC LOG: Start
-    Print("====================");
-    Print("   ZONE STYLE RESOLUTION DIAGNOSTIC");
-    Print("====================");
-    Print("   Configuration:");
-    Print("   Show Zones: ", config.showZones ? "TRUE" : "FALSE");
-    Print("   Zone Transparency: ", config.zoneTransparency, "%");
-    Print("   Object Prefix: ", safePrefix);
-    Print("====================");
-    
     if(config.showZones) {
-        Print("   Zone Style Assignment:");
-        
         for(int i = 0; i < count; i++) {
             if(geometries[i].isValid && classifications[i].isActive) {
                 string suffix = (levels[i].logicalStep >= 0) ? "Above_" : "Below_";
@@ -120,37 +108,16 @@ void ResolveZoneStyles(
                 outZones[zoneCount].filled = true;
                 outZones[zoneCount].topPrice = geometries[i].topPrice;
                 outZones[zoneCount].bottomPrice = geometries[i].bottomPrice;
-                
-                // DIAGNOSTIC LOG: Zone Style
-                Print("  Zone ", zoneCount + 1, " [Level ", i, ", Step ", levels[i].logicalStep, "]:");
-                Print("   Name: ", outZones[zoneCount].name);
-                Print("   Color: ", ColorToString(outZones[zoneCount].clr));
-                Print("   Top: ", DoubleToString(outZones[zoneCount].topPrice, Digits));
-                Print("   Bottom: ", DoubleToString(outZones[zoneCount].bottomPrice, Digits));
-                Print("   Type: ", classifications[i].isStructure ? "STRUCTURE" : "TRIGGER");
-                
                 zoneCount++;
             }
-            else {
-                if(!geometries[i].isValid) {
-                    Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Invalid Geometry)");
-                }
-                else if(!classifications[i].isActive) {
-                    Print("   Level ", i, " [Step ", levels[i].logicalStep, "]: SKIPPED (Inactive)");
-                }
-            }
         }
-    }
-    else {
-        Print("   Zone Display is DISABLED (config.showZones = false)");
     }
     
     ArrayResize(outZones, zoneCount);
     
-    Print("====================");
-    Print("  ResolveZoneStyles Summary:");
-    Print("   Zones Prepared for Rendering: ", zoneCount);
-    Print("====================");
+    #ifdef ENABLE_DEBUG_LOGS
+    Print("[D][ZONE] ResolveZoneStyles: Prepared ", zoneCount, " zones, showZones=", config.showZones);
+    #endif
 }
 
 //+------------------------------------------------------------------+
@@ -173,11 +140,9 @@ void RenderZones(const SZoneRenderInfo &zones[])
         count = MAX_ZONES_PER_CHART;
     }
     
-    // CRITICAL FIX: Check if indicator is hidden
-    //                                          
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
+    // PERF: Use cached hidden state (already computed once per frame by VisibilityManager)
+    // Avoids GlobalVariableCheck + GlobalVariableGet syscalls inside every zone loop iteration.
+    bool isHidden = IsIndicatorHidden();
     
     // Performance tracking
     int zonesCreated = 0;
@@ -254,9 +219,8 @@ void RenderLines(const SLineRenderInfo &lines[])
     int count = ArraySize(lines);
     int visibleCount = 0;
     
-    // PERFORMANCE: Use cached ChartID string and move outside loop
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
+    // PERF: Use cached hidden state — avoids GlobalVariableCheck/Get per render frame
+    bool isHidden = IsIndicatorHidden();
     
     for(int i = 0; i < count; i++) {
         // PERFORMANCE: Check cache to skip redundant API calls

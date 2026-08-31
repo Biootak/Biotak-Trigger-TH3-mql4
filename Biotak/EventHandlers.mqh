@@ -603,13 +603,17 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
     }
     #endif
 
-    // PERF: Invalidate matching cache entries
+    // PERF: Invalidate matching cache entries (early-exit scan using occupied count)
     if(g_objectCacheSize > 0) {
         int prefixLen = StringLen(objectPrefix);
+        ushort prefixFirstChar = StringGetCharacter(objectPrefix, 0);
         int invalidated = 0;
-        for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+        int visited = 0;
+        int snapshot = g_objectCacheSize; // stable snapshot before mutations
+        for(int i = 0; i < CACHE_HASH_BUCKETS && visited < snapshot; i++) {
             if(!g_objectCacheHash[i].occupied) continue;
-            if(StringGetCharacter(g_objectCacheHash[i].name, 0) != StringGetCharacter(objectPrefix, 0)) continue;
+            visited++;
+            if(StringGetCharacter(g_objectCacheHash[i].name, 0) != prefixFirstChar) continue;
             if(StringLen(g_objectCacheHash[i].name) >= prefixLen &&
                StringSubstr(g_objectCacheHash[i].name, 0, prefixLen) == objectPrefix) {
                 g_objectCacheHash[i].name = "";
@@ -618,7 +622,6 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
                 g_objectCacheHash[i].lastAccess = 0;
                 g_objectCacheSize--;
                 invalidated++;
-                if(g_objectCacheSize == 0) break;
             }
         }
     }

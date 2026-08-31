@@ -48,9 +48,13 @@ void SetAllTHObjectsVisibility(const bool visible)
     s_lastAllTHVisible = visible;
 
     long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+    // PERF FIX: Early-exit loop based on occupied count — avoids scanning
+    // all 32768 buckets when only a small number of objects are cached.
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
         if(g_objectCacheHash[i].occupied) {
             ObjectSetInteger(0, g_objectCacheHash[i].name, OBJPROP_TIMEFRAMES, timeframes);
+            visited++;
         }
     }
 }
@@ -64,8 +68,11 @@ void SetAllLineObjectsVisibility(const bool visible)
     s_lastAllLineVisible = visible;
 
     long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+    // PERF FIX: Early-exit loop based on occupied count
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
         if(g_objectCacheHash[i].occupied) {
+            visited++;
             int objType = (int)ObjectGetInteger(0, g_objectCacheHash[i].name, OBJPROP_TYPE);
             if(objType == OBJ_HLINE || objType == OBJ_TREND) {
                 ObjectSetInteger(0, g_objectCacheHash[i].name, OBJPROP_TIMEFRAMES, timeframes);

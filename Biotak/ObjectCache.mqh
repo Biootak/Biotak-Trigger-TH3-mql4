@@ -67,13 +67,10 @@ int HashObjectName(const string name) {
 
 void InitializeObjectCacheHash() {
     if(g_objectCacheHashInitialized) return;
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
-        g_objectCacheHash[i].name = "";
-        g_objectCacheHash[i].occupied = false;
-        g_objectCacheHash[i].deleted = false;
-        g_objectCacheHash[i].lastAccess = 0;
-    }
-    
+    // PERF FIX: MQL4 static struct arrays are zero-initialized at program load,
+    // so empty string ("") == default for string, false == default for bool,
+    // 0 == default for datetime/int.  A single scalar reset of size + sentinels
+    // is all that's needed — eliminates the 32768-iteration loop on first call.
     g_objectCacheHashInitialized = true;
     g_objectCacheSize = 0;
     g_lruMinIdx = -1;
@@ -121,14 +118,17 @@ void EvictLRUEntry() {
         return;
     }
     
-    // Fallback: Full scan
+    // Fallback: Full scan (but using occupied count to exit early)
     int lruIdx = -1;
     datetime oldestAccess = CacheGetFrameTime() + 86400;
-    
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
-        if(g_objectCacheHash[i].occupied && g_objectCacheHash[i].lastAccess < oldestAccess) {
-            oldestAccess = g_objectCacheHash[i].lastAccess;
-            lruIdx = i;
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
+        if(g_objectCacheHash[i].occupied) {
+            visited++;
+            if(g_objectCacheHash[i].lastAccess < oldestAccess) {
+                oldestAccess = g_objectCacheHash[i].lastAccess;
+                lruIdx = i;
+            }
         }
     }
     if(lruIdx >= 0) {
@@ -258,13 +258,19 @@ bool DeleteManagedZoneObjects(const string zoneName, const bool verifyChartObjec
 void CacheClear() {
     if(!g_objectCacheHashInitialized) return;
     if(g_objectCacheSize == 0) return;
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
-        g_objectCacheHash[i].name = "";
-        g_objectCacheHash[i].occupied = false;
-        g_objectCacheHash[i].deleted = false;
-        g_objectCacheHash[i].lastAccess = 0;
+    // PERF FIX: Walk only occupied slots (tracked by g_objectCacheSize) via a
+    // single forward scan and reset them, then reset counters.  This avoids
+    // touching all 32768 buckets when only a small number are in use.
+    int cleared = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && cleared < g_objectCacheSize; i++) {
+        if(g_objectCacheHash[i].occupied || g_objectCacheHash[i].deleted) {
+            g_objectCacheHash[i].name = "";
+            g_objectCacheHash[i].occupied = false;
+            g_objectCacheHash[i].deleted = false;
+            g_objectCacheHash[i].lastAccess = 0;
+            if(g_objectCacheHash[i].occupied) cleared++;
+        }
     }
-    
     g_objectCacheSize = 0;
     g_lruMinIdx = -1;
     g_lruMinTime = 0;
@@ -428,10 +434,12 @@ void CacheRebuild() {
 int CacheValidate() {
     if(!g_objectCacheHashInitialized) return 0;
     int invalidCount = 0;
-    for(int i = 0; i < CACHE_HASH_BUCKETS; i++) {
+    // PERF FIX: Early-exit based on occupied count — no need to scan beyond g_objectCacheSize hits
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
         if(!g_objectCacheHash[i].occupied) continue;
+        visited++;
         string objName = g_objectCacheHash[i].name;
-        
         if(ObjectFind(0, objName) < 0) {
             g_objectCacheHash[i].entry.exists = false;
             invalidCount++;

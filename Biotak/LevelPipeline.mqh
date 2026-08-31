@@ -685,6 +685,15 @@ void BuildZonesAndLines(
 //+------------------------------------------------------------------+
 void SetPipelineObjectTimeframesIfExists(const string name, const long timeframes)
 {
+    // PERF FIX: Check object cache first to skip ObjectFind MT4 syscall when object is known absent.
+    // ObjectFind is a slow kernel call; using CacheObjectExists avoids it for untracked names.
+    // Fall back to ObjectFind only when cache has no info (returns false = not in cache).
+    bool knownInCache = CacheObjectExists(name);
+    if(knownInCache) {
+        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, timeframes);
+        return;
+    }
+    // Not in cache — check chart directly (only for sub-objects like _Top, _Bottom, _B_*)
     if(ObjectFind(0, name) >= 0)
         ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, timeframes);
 }

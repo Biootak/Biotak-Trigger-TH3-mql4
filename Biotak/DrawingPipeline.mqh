@@ -136,12 +136,10 @@ void CalculateLinearLevels(double startPrice, double stepSize,
     // Resize to actual count
     ArrayResize(outLevels, validCount);
     
-    // DIAGNOSTIC LOG
-    Print("  CalculateLinearLevels: Generated ", validCount, " levels");
-    Print("   Start Price: ", DoubleToString(startPrice, Digits));
-    Print("   Step Size: ", DoubleToString(stepSize, Digits));
-    Print("   Requested Above: ", countAbove, ", Generated: ", validCount - 1 - (validCount - 1 - countAbove));
-    Print("   Requested Below: ", countBelow);
+    #ifdef ENABLE_DEBUG_LOGS
+    Print("[D][PIPE] CalculateLinearLevels: Generated ", validCount, " levels, start=",
+          DoubleToString(startPrice, Digits), " step=", DoubleToString(stepSize, Digits));
+    #endif
 }
 
 //+------------------------------------------------------------------+
