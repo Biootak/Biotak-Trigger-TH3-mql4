@@ -229,14 +229,10 @@ void LogFunctionExit(string module, string functionName, string result = "")
 void LogPerformance(string module, string operation, uint elapsedMs)
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
-    
-    string msg = "   " + operation + " took " + IntegerToString(elapsedMs) + " ms";
-    
-    // Warning if slow
     if(elapsedMs > 100) {
-        LogMessage(LOG_LEVEL_WARNING, module, msg + " (SLOW!)");
+        LogMessage(LOG_LEVEL_WARNING, module, StringFormat("   %s took %d ms (SLOW!)", operation, elapsedMs));
     } else {
-        LogMessage(LOG_LEVEL_DEBUG, module, msg);
+        LogMessage(LOG_LEVEL_DEBUG, module, StringFormat("   %s took %d ms", operation, elapsedMs));
     }
 }
 
@@ -247,14 +243,10 @@ void LogPerformance(string module, string operation, uint elapsedMs)
 void LogMemoryUsage(string module, string arrayName, int size)
 {
     if(g_currentLogLevel < LOG_LEVEL_DEBUG) return;
-    
-    string msg = "   " + arrayName + " size: " + IntegerToString(size) + " elements";
-    
-    // Warning if large
     if(size > 1000) {
-        LogMessage(LOG_LEVEL_WARNING, module, msg + " (LARGE!)");
+        LogMessage(LOG_LEVEL_WARNING, module, StringFormat("   %s size: %d elements (LARGE!)", arrayName, size));
     } else {
-        LogMessage(LOG_LEVEL_DEBUG, module, msg);
+        LogMessage(LOG_LEVEL_DEBUG, module, StringFormat("   %s size: %d elements", arrayName, size));
     }
 }
 

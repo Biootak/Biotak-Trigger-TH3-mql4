@@ -55,7 +55,7 @@ void TH3SessionCancel()
     g_th3Session.pointCount = 0;
     TH3PreviewClear();
     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);
-    ChartRedraw();
+    ThrottledChartRedraw();
     Print("TH3: AB=CD creation cancelled");
 }
 
@@ -79,7 +79,7 @@ void TH3SessionUndo()
 
     g_th3Session.pointCount--;
     if(g_th3Session.pointCount == 0) g_th3Session.lastClickTime = 0;
-    ChartRedraw();
+    ThrottledChartRedraw();
     Print("TH3: Undo - ", g_th3Session.pointCount, " point(s) placed (X,A,B,C)");
 }
 
@@ -205,7 +205,7 @@ void TH3PreviewUpdateHover(const datetime t, const double p)
             }
         }
     }
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -246,7 +246,7 @@ void TH3PreviewDrawPoint(const int count, const datetime t, const double p)
             ObjectMove(0, lineName, 1, t, p);
         }
     }
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+

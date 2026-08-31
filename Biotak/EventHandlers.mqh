@@ -1111,7 +1111,7 @@ void RedrawAllObjects(bool force_redraw=false)
     }
 
     CheckAlerts(objectPrefix, g_currentPrice);
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -2179,7 +2179,7 @@ void RedrawLabelsOnly() {
     if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+

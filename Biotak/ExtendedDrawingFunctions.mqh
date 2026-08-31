@@ -1329,11 +1329,13 @@ void GetCachedIntervals(const int baseMultiplier, int &intervals[]) {
         #endif
     }
     
-    // Copy to output array
-    ArrayResize(intervals, 5);
-    for(int i = 0; i < 5; i++) {
-        intervals[i] = g_cachedIntervals[i];
-    }
+    // Copy to output array — resize only when needed
+    if(ArraySize(intervals) != 5) ArrayResize(intervals, 5);
+    intervals[0] = g_cachedIntervals[0];
+    intervals[1] = g_cachedIntervals[1];
+    intervals[2] = g_cachedIntervals[2];
+    intervals[3] = g_cachedIntervals[3];
+    intervals[4] = g_cachedIntervals[4];
 }
 
 //+------------------------------------------------------------------+

@@ -221,7 +221,7 @@ void SetActiveABCDPattern(string patternName)
         }
     }
     
-    ChartRedraw();
+    ThrottledChartRedraw();
     
     #ifdef ENABLE_DEBUG_LOGS
     Print("==================== Active AB=CD pattern: ", patternName);
@@ -1474,7 +1474,7 @@ void UpdateAllTH3Objects() {
     }
     #endif
     
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -1542,7 +1542,7 @@ void TH3CompletePattern()
     SetActiveABCDPattern(patternName);
     TH3PreviewClear();
     UpdateTH3FrequencyLabel(g_th3FreqOverride);
-    ChartRedraw();
+    ThrottledChartRedraw();
     Print("TH3: AB=CD pattern created: ", patternName);
 }
 
@@ -1736,7 +1736,7 @@ void OnABCDMouseEvent(int id, long lparam, double dparam, string sparam) {
             }
             TH3PatternStoreRemove(baseName);
 
-            ChartRedraw();
+            ThrottledChartRedraw();
         }
     }
 }

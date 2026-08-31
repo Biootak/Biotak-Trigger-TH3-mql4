@@ -202,10 +202,10 @@ int EmergencyCleanupObjects()
         Print("   Phase 2: Deleted ", phase2Deleted, " non-essential objects");
     }
     
-    //                                                                
+    //
     // PHASE 3: Force chart redraw
-    //                                                                
-    ChartRedraw();
+    //
+    ThrottledChartRedraw();
     
     Print("  Emergency cleanup complete: ", deletedCount, " total objects removed");
     

@@ -347,14 +347,11 @@ string BuildFactorLabelText(const double factorValue, const double stepSize) {
     if(stepSize > 0 && pipSize > 0) {
         double stepPips = stepSize / pipSize;
         if(inpFactorDisplayMode == FACTOR_DISPLAY_DIRECT) {
-            // DIRECT MODE: Show Step first, Factor second
-            return "[ Step: " + DoubleToString(stepPips, 1) + " | F: " + DoubleToString(factorValue, 2) + " ]";
+            return StringFormat("[ Step: %.1f | F: %.2f ]", stepPips, factorValue);
         }
-        // CLASSIC MODE: Show Factor first, Step second
-        return "[ F: " + DoubleToString(factorValue, 2) + " | Step: " + DoubleToString(stepPips, 1) + " pips ]";
+        return StringFormat("[ F: %.2f | Step: %.1f pips ]", factorValue, stepPips);
     }
-    // Fallback: show only factor value
-    return "[ F: " + DoubleToString(factorValue, 2) + " ]";
+    return StringFormat("[ F: %.2f ]", factorValue);
 }
 
 //+------------------------------------------------------------------+
@@ -432,7 +429,7 @@ string BuildTH3FrequencyLabelText(const double frequency) {
             }
         }
     }
-    return "[ TH3 Freq: " + DoubleToString(frequency, 3) + "%" + s_cachedStepInfo + " ]";
+    return StringFormat("[ TH3 Freq: %.3f%%%s ]", frequency, s_cachedStepInfo);
 }
 
 //+------------------------------------------------------------------+

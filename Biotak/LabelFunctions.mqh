@@ -493,15 +493,15 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     double target3x = MathFloor(atrPips * 3.0);
     double target5x = MathFloor(atrPips * 5.0);
     double target15x = MathFloor(atrPips * 15.0);
-    string mainObjName = objectPrefix + "ATR_" + timeframeName;
-    string stepsObjName = objectPrefix + "ATR_Steps_" + timeframeName;
-    string targetsObjName = objectPrefix + "ATR_Targets_" + timeframeName;
+    string mainObjName = StringFormat("%sATR_%s", objectPrefix, timeframeName);
+    string stepsObjName = StringFormat("%sATR_Steps_%s", objectPrefix, timeframeName);
+    string targetsObjName = StringFormat("%sATR_Targets_%s", objectPrefix, timeframeName);
     if(!inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
         ObjectDelete(0, targetsObjName);
     }
-    string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
-    string mainText = timeframeName + ": " + DoubleToString(atrPips, 1);
-    string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
+    string targetsText = StringFormat("%.0f - %.0f - %.0f", target3x, target5x, target15x);
+    string mainText = StringFormat("%s: %.1f", timeframeName, atrPips);
+    string stepsText = StringFormat("(%.1f - %.1f - %.1f)", shortStepPips, midStepPips, longStepPips);
 
     // PERF: Only update text/color if changed (using Cache)
     string cachedText;
@@ -837,10 +837,10 @@ void DisplayATRLabels(const string objectPrefix) {
         color labelColor = colors[i];
     
         string mainText = inpShowTimeframeInLabels ?
-            timeframes[i] + ": " + DoubleToString(atrPips, 1) :
+            StringFormat("%s: %.1f", timeframes[i], atrPips) :
             DoubleToString(atrPips, 1);
-        string stepsText = "(" + DoubleToString(atrPips * 1.5, 1) + " - " + DoubleToString(atrPips * 1.75, 1) + " - " + DoubleToString(atrPips * 2.0, 1) + ")";
-        string targetsText = DoubleToString(MathFloor(atrPips * 3.0), 0) + " - " + DoubleToString(MathFloor(atrPips * 5.0), 0) + " - " + DoubleToString(MathFloor(atrPips * 15.0), 0);
+        string stepsText = StringFormat("(%.1f - %.1f - %.1f)", atrPips * 1.5, atrPips * 1.75, atrPips * 2.0);
+        string targetsText = StringFormat("%.0f - %.0f - %.0f", MathFloor(atrPips * 3.0), MathFloor(atrPips * 5.0), MathFloor(atrPips * 15.0));
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowATRTargets);
     
         if(isVerticalLayout) {
@@ -922,19 +922,21 @@ void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
 
     long fractalTF = (shouldShow && showFractal) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long fractalTargetsTF = (shouldShow && showFractal && inpShowTHTargets) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    for(int i = 0; i < ArraySize(FRACTAL_TIMEFRAMES); i++) {
+    int _nFractal = ArraySize(FRACTAL_TIMEFRAMES);
+    for(int i = 0; i < _nFractal; i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
-        ObjectSetInteger(0, objectPrefix + "TH_" + timeframeName, OBJPROP_TIMEFRAMES, fractalTF);
-        ObjectSetInteger(0, objectPrefix + "TH_Steps_" + timeframeName, OBJPROP_TIMEFRAMES, fractalTF);
-        ObjectSetInteger(0, objectPrefix + "TH_Targets_" + timeframeName, OBJPROP_TIMEFRAMES, fractalTargetsTF);
+        ObjectSetInteger(0, StringFormat("%sTH_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTF);
+        ObjectSetInteger(0, StringFormat("%sTH_Steps_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTF);
+        ObjectSetInteger(0, StringFormat("%sTH_Targets_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTargetsTF);
     }
     long standardTF = (shouldShow && showStandard) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long standardTargetsTF = (shouldShow && showStandard && inpShowTHTargets) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    for(int i = 0; i < ArraySize(STANDARD_TIMEFRAMES); i++) {
+    int _nStandard = ArraySize(STANDARD_TIMEFRAMES);
+    for(int i = 0; i < _nStandard; i++) {
         string timeframeName = STANDARD_TIMEFRAMES[i];
-        ObjectSetInteger(0, objectPrefix + "TH_" + timeframeName, OBJPROP_TIMEFRAMES, standardTF);
-        ObjectSetInteger(0, objectPrefix + "TH_Steps_" + timeframeName, OBJPROP_TIMEFRAMES, standardTF);
-        ObjectSetInteger(0, objectPrefix + "TH_Targets_" + timeframeName, OBJPROP_TIMEFRAMES, standardTargetsTF);
+        ObjectSetInteger(0, StringFormat("%sTH_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTF);
+        ObjectSetInteger(0, StringFormat("%sTH_Steps_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTF);
+        ObjectSetInteger(0, StringFormat("%sTH_Targets_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTargetsTF);
     }
 }
 
@@ -982,9 +984,9 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
         ObjectDelete(0, targetsObjName);
     }
 
-    string mainText = GetBaseTimeframeName(timeframeName) + ": " + DoubleToString(thValuePips, 1);
-    string stepsText = "(" + DoubleToString(shortStepPips, 1) + " - " + DoubleToString(midStepPips, 1) + " - " + DoubleToString(longStepPips, 1) + ")";
-    string targetsText = DoubleToString(target3x, 0) + " - " + DoubleToString(target5x, 0) + " - " + DoubleToString(target15x, 0);
+    string mainText = StringFormat("%s: %.1f", GetBaseTimeframeName(timeframeName), thValuePips);
+    string stepsText = StringFormat("(%.1f - %.1f - %.1f)", shortStepPips, midStepPips, longStepPips);
+    string targetsText = StringFormat("%.0f - %.0f - %.0f", target3x, target5x, target15x);
     
     // PERF: Only update text/color if changed (using Cache)
     string cachedText;
@@ -1128,15 +1130,17 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int maxWidth = GetCachedChartWidth() - startXPos * 2;
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
-    for(int i = 0; i < ArraySize(FRACTAL_TIMEFRAMES); i++) {
+    int _nFrac = ArraySize(FRACTAL_TIMEFRAMES);
+    for(int i = 0; i < _nFrac; i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
         double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
+        double thPips10 = thPoints / 10.0;
         
         color labelColor = FRACTAL_COLORS[i];
-        string mainText = inpShowTimeframeInLabels ? GetBaseTimeframeName(timeframeName) + ": " + DoubleToString(thPoints / 10.0, 1) : DoubleToString(thPoints / 10.0, 1);
-        string stepsText = "(" + DoubleToString(thPoints / 10.0 * 1.5, 1) + " - " + DoubleToString(thPoints / 10.0 * 1.75, 1) + " - " + DoubleToString(thPoints / 10.0 * 2.0, 1) + ")";
-        string targetsText = DoubleToString(MathFloor(thPoints / 10.0 * 3.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 5.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 15.0), 0);
+        string mainText = inpShowTimeframeInLabels ? StringFormat("%s: %.1f", GetBaseTimeframeName(timeframeName), thPips10) : DoubleToString(thPips10, 1);
+        string stepsText = StringFormat("(%.1f - %.1f - %.1f)", thPips10 * 1.5, thPips10 * 1.75, thPips10 * 2.0);
+        string targetsText = StringFormat("%.0f - %.0f - %.0f", MathFloor(thPips10 * 3.0), MathFloor(thPips10 * 5.0), MathFloor(thPips10 * 15.0));
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowTHTargets);
 
         if(isVerticalLayout) {
@@ -1189,15 +1193,17 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int maxWidth = GetCachedChartWidth() - startXPos * 2;
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
-    for(int i = 0; i < ArraySize(STANDARD_TIMEFRAMES); i++) {
+    int _nStd = ArraySize(STANDARD_TIMEFRAMES);
+    for(int i = 0; i < _nStd; i++) {
         string timeframeName = STANDARD_TIMEFRAMES[i];
         double percentage = CalculateStandardPercentage(STANDARD_MINUTES[i]);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
+        double thPips10 = thPoints / 10.0;
         
         color labelColor = STANDARD_COLORS[i];
-        string mainText = inpShowTimeframeInLabels ? timeframeName + ": " + DoubleToString(thPoints / 10.0, 1) : DoubleToString(thPoints / 10.0, 1);
-        string stepsText = "(" + DoubleToString(thPoints / 10.0 * 1.5, 1) + " - " + DoubleToString(thPoints / 10.0 * 1.75, 1) + " - " + DoubleToString(thPoints / 10.0 * 2.0, 1) + ")";
-        string targetsText = DoubleToString(MathFloor(thPoints / 10.0 * 3.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 5.0), 0) + " - " + DoubleToString(MathFloor(thPoints / 10.0 * 15.0), 0);
+        string mainText = inpShowTimeframeInLabels ? StringFormat("%s: %.1f", timeframeName, thPips10) : DoubleToString(thPips10, 1);
+        string stepsText = StringFormat("(%.1f - %.1f - %.1f)", thPips10 * 1.5, thPips10 * 1.75, thPips10 * 2.0);
+        string targetsText = StringFormat("%.0f - %.0f - %.0f", MathFloor(thPips10 * 3.0), MathFloor(thPips10 * 5.0), MathFloor(thPips10 * 15.0));
         int labelWidth = GetLabelBlockWidth(mainText, stepsText, targetsText, inpShowTHTargets);
 
         if(isVerticalLayout) {

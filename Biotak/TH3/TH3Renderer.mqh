@@ -504,7 +504,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     Print("   Note: Point D not shown - target levels indicate D zone");
     #endif
     
-    ChartRedraw();
+    ThrottledChartRedraw();
 }
 
 #endif // TH3_RENDERER_MQH

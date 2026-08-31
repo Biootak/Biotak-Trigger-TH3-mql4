@@ -186,8 +186,7 @@ void LogMessage(const ENUM_LOG_LEVEL level,
                 const int lineNum = 0)
 {
     // Build rate-limit key from category + level
-    string rateKey = IntegerToString((int)category) + "_" + IntegerToString((int)level) + "_" + 
-                     StringSubstr(message, 0, 40);
+    string rateKey = StringFormat("%d_%d_%s", (int)category, (int)level, StringSubstr(message, 0, 40));
     
     // Rate-limit TRACE and DEBUG levels (they can be very chatty)
     if(level <= LOG_LEVEL_DEBUG)
@@ -196,11 +195,11 @@ void LogMessage(const ENUM_LOG_LEVEL level,
     }
     
     // Format: [LEVEL][CAT] message  or  [LEVEL][CAT] FuncName:Line | message
-    string prefix = "[" + LogLevelName(level) + "][" + LogCategoryName(category) + "] ";
+    string prefix = StringFormat("[%s][%s] ", LogLevelName(level), LogCategoryName(category));
     
     string location = "";
     if(funcName != "" && lineNum > 0)
-        location = funcName + ":" + IntegerToString(lineNum) + " | ";
+        location = StringFormat("%s:%d | ", funcName, lineNum);
     else if(funcName != "")
         location = funcName + " | ";
     

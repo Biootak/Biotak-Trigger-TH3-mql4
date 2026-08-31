@@ -67,36 +67,32 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
         maxLevelsToCheck = MathMin(maxLevelsToCheck, 256); //              
         
         for(int stepCount = 1; stepCount <= maxLevelsToCheck; stepCount++) {
-            //                
-            if(stepCount <= inpMaxLevels) {
-                string lineNameAbove = prefix + "TriggerTH_Up_" + IntegerToString(stepCount);
-                if(ObjectFind(0, lineNameAbove) >= 0) { //                 
-                    double levelAbove = ObjectGetDouble(0, lineNameAbove, OBJPROP_PRICE1);
-                    if(levelAbove != EMPTY_VALUE && currentPrice >= levelAbove) {
-                        string alertKey = "TriggerTH_Up_" + IntegerToString(stepCount);
-                        if(ShouldTriggerAlert(alertKey)) {
-                            if(inpPlaySound) PlaySound(inpAlertSoundFile);
-                            if(inpSendNotification) SendNotification("Price reached Trigger TH Level Above " + IntegerToString(stepCount) + ": " + DoubleToString(levelAbove, Digits));
-                            if(inpSendEmail) SendMail("TH Indicator Alert", "Price reached Trigger TH Level Above " + IntegerToString(stepCount) + ": " + DoubleToString(levelAbove, Digits));
-                            Alert("Price reached Trigger TH Level Above: ", levelAbove);
-                        }
+            string lineNameAbove = StringFormat("%sTriggerTH_Up_%d", prefix, stepCount);
+            if(ObjectFind(0, lineNameAbove) >= 0) {
+                double levelAbove = ObjectGetDouble(0, lineNameAbove, OBJPROP_PRICE1);
+                if(levelAbove != EMPTY_VALUE && currentPrice >= levelAbove) {
+                    string alertKey = StringFormat("TriggerTH_Up_%d", stepCount);
+                    if(ShouldTriggerAlert(alertKey)) {
+                        if(inpPlaySound) PlaySound(inpAlertSoundFile);
+                        string msg = StringFormat("Price reached Trigger TH Level Above %d: %s", stepCount, DoubleToString(levelAbove, Digits));
+                        if(inpSendNotification) SendNotification(msg);
+                        if(inpSendEmail) SendMail("TH Indicator Alert", msg);
+                        Alert("Price reached Trigger TH Level Above: ", levelAbove);
                     }
                 }
             }
             
-            //                 
-            if(stepCount <= inpMaxLevels) {
-                string lineNameBelow = prefix + "TriggerTH_Down_" + IntegerToString(stepCount);
-                if(ObjectFind(0, lineNameBelow) >= 0) { //                 
-                    double levelBelow = ObjectGetDouble(0, lineNameBelow, OBJPROP_PRICE1);
-                    if(levelBelow != EMPTY_VALUE && currentPrice <= levelBelow) {
-                        string alertKey = "TriggerTH_Down_" + IntegerToString(stepCount);
-                        if(ShouldTriggerAlert(alertKey)) {
-                            if(inpPlaySound) PlaySound(inpAlertSoundFile);
-                            if(inpSendNotification) SendNotification("Price reached Trigger TH Level Below " + IntegerToString(stepCount) + ": " + DoubleToString(levelBelow, Digits));
-                            if(inpSendEmail) SendMail("TH Indicator Alert", "Price reached Trigger TH Level Below " + IntegerToString(stepCount) + ": " + DoubleToString(levelBelow, Digits));
-                            Alert("Price reached Trigger TH Level Below: ", levelBelow);
-                        }
+            string lineNameBelow = StringFormat("%sTriggerTH_Down_%d", prefix, stepCount);
+            if(ObjectFind(0, lineNameBelow) >= 0) {
+                double levelBelow = ObjectGetDouble(0, lineNameBelow, OBJPROP_PRICE1);
+                if(levelBelow != EMPTY_VALUE && currentPrice <= levelBelow) {
+                    string alertKey = StringFormat("TriggerTH_Down_%d", stepCount);
+                    if(ShouldTriggerAlert(alertKey)) {
+                        if(inpPlaySound) PlaySound(inpAlertSoundFile);
+                        string msg = StringFormat("Price reached Trigger TH Level Below %d: %s", stepCount, DoubleToString(levelBelow, Digits));
+                        if(inpSendNotification) SendNotification(msg);
+                        if(inpSendEmail) SendMail("TH Indicator Alert", msg);
+                        Alert("Price reached Trigger TH Level Below: ", levelBelow);
                     }
                 }
             }
