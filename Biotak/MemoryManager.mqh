@@ -40,7 +40,7 @@ void InitializeMemoryManager()
     g_memoryStats.totalObjectsDeleted = 0;
     g_memoryStats.currentObjectCount = 0;
     g_memoryStats.peakObjectCount = 0;
-    g_memoryStats.lastCheckTime = TimeCurrent();
+    g_memoryStats.lastCheckTime = CacheGetFrameTime();
     g_memoryStats.warningIssued = false;
     g_memoryStats.criticalIssued = false;
     g_memoryStatsInitialized = true;

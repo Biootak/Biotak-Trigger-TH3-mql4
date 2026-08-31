@@ -412,44 +412,23 @@ string BuildTH3FrequencyLabelText(const double frequency) {
         s_lastStepInfoFreq = frequency;
         s_cachedStepInfo = "";
         
-        // Try to find an active TH3 structure to calculate step info
-        int total = ObjectsTotal(0, -1, OBJ_FIBO);
-        for(int i = 0; i < total; i++) {
-            string name = ObjectName(0, i, -1, OBJ_FIBO);
+        // PERF: Use pattern store instead of ObjectsTotal(OBJ_FIBO) loop
+        // g_th3Patterns holds A,B,C,D — range = |pB - pA| (AB wave)
+        int patCount = TH3PatternStoreCount();
+        for(int i = 0; i < patCount; i++) {
+            double p1 = g_th3Patterns.items[i].A.price;
+            double p2 = g_th3Patterns.items[i].B.price;
+            if(p1 <= 0 || p2 <= 0) continue;
             
-            if(StringFind(name, "TH3_Structure_") == 0 && 
-               StringFind(name, "_Text") < 0 && 
-               StringFind(name, "_Target") < 0) {
-                
-                // Get structure range
-                datetime t1 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 0);
-                double p1 = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
-                datetime t2 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 1);
-                double p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
-                
-                // CRITICAL FIX: Validate ObjectGet results
-                if(t1 <= 0 || t2 <= 0 || p1 <= 0 || p2 <= 0) {
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("   GetStructureRangeFromTH3: Invalid object data for ", name);
-                    #endif
-                    continue;
-                }
-                
-                if(t1 > 0 && t2 > 0 && p1 > 0 && p2 > 0) {
-                    double rangePips = CalculatePipsDistance(p1, p2);
-                    
-                    // Calculate step size and count
-                    double stepPips = rangePips * (frequency / 100.0);
-                    if(stepPips > 0) {
-                        double stepCount = rangePips / stepPips;
-                        int fullSteps = (int)MathFloor(stepCount);
-                        double remainder = stepCount - fullSteps;
-                        
-                        s_cachedStepInfo = StringFormat(" | Step: %.1f pips | Steps: %d + %.2f", 
-                            stepPips, fullSteps, remainder);
-                        break; // Use first found structure
-                    }
-                }
+            double rangePips = CalculatePipsDistance(p1, p2);
+            double stepPips  = rangePips * (frequency / 100.0);
+            if(stepPips > 0) {
+                double stepCount = rangePips / stepPips;
+                int    fullSteps = (int)MathFloor(stepCount);
+                double remainder = stepCount - fullSteps;
+                s_cachedStepInfo = StringFormat(" | Step: %.1f pips | Steps: %d + %.2f",
+                    stepPips, fullSteps, remainder);
+                break;
             }
         }
     }

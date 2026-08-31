@@ -134,7 +134,7 @@ void StoreFactorStepSize(double highPrice, double lowPrice, double factor,
     g_factorCache.historicalPeriods = historicalPeriods;
     g_factorCache.period = period;
     g_factorCache.stepSize = stepSize;
-    g_factorCache.lastUpdate = TimeCurrent();
+    g_factorCache.lastUpdate = CacheGetFrameTime();
     g_factorCache.valid = true;
 }
 
@@ -170,7 +170,7 @@ void StoreTimeframeConversion(int period, string fractalTimeframe,
     g_timeframeCache.fractalTimeframe = fractalTimeframe;
     g_timeframeCache.percentage = percentage;
     g_timeframeCache.periodSeconds = periodSeconds;
-    g_timeframeCache.lastUpdate = TimeCurrent();
+    g_timeframeCache.lastUpdate = CacheGetFrameTime();
     g_timeframeCache.valid = true;
 }
 
@@ -194,7 +194,7 @@ int GetCachedPeriodSeconds(int period) {
 void StorePeriodSeconds(int period, int periodSeconds) {
     g_calcCachedPeriod = period;
     g_cachedPeriodSeconds = periodSeconds;
-    g_cachedPeriodSecondsUpdate = TimeCurrent();
+    g_cachedPeriodSecondsUpdate = CacheGetFrameTime();
     _LOG_GATE_I Print("[I][SYNC] PeriodSeconds Cached: Period=", period, ", Seconds=", periodSeconds);
 }
 
@@ -240,7 +240,7 @@ void StoreZoneGeometry(double topPrice, double bottomPrice,
     g_geometryCache.historicalPeriods = historicalPeriods;
     g_geometryCache.startTime = startTime;
     g_geometryCache.endTime = endTime;
-    g_geometryCache.lastUpdate = TimeCurrent();
+    g_geometryCache.lastUpdate = CacheGetFrameTime();
     g_geometryCache.valid = true;
 }
 

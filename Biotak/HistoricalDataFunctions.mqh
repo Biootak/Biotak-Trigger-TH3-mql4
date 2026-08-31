@@ -68,7 +68,7 @@ bool UpdateHistoricalValues() {
         return false;
     }
     
-    g_lastHistoricalUpdate = TimeCurrent();
+    g_lastHistoricalUpdate = CacheGetFrameTime();
     // g_thCache removed - matching MT5
     
     return true;

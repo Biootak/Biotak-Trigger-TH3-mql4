@@ -3520,28 +3520,11 @@ void DrawFactorLevels(const string objectPrefix, const double highPrice,
 //+------------------------------------------------------------------+
 void ClearFactorLevels(const string objectPrefix)
 {
-    // Delete High/Low lines and labels first
-    string highLineName = objectPrefix + "Factor_High";
-    string lowLineName = objectPrefix + "Factor_Low";
-    string highLabelName = objectPrefix + "Factor_High_Label";
-    string lowLabelName = objectPrefix + "Factor_Low_Label";
-    
-    if(ObjectFind(0, highLineName) >= 0) ObjectDelete(0, highLineName);
-    if(ObjectFind(0, lowLineName) >= 0) ObjectDelete(0, lowLineName);
-    if(ObjectFind(0, highLabelName) >= 0) ObjectDelete(0, highLabelName);
-    if(ObjectFind(0, lowLabelName) >= 0) ObjectDelete(0, lowLabelName);
-    
-    // Use ObjectsTotal with all 3 parameters to avoid ambiguous call
-    int totalObjects = ObjectsTotal(0, -1, -1);
+    // PERF: single bulk-delete call replaces manual loop + individual deletes
     string factorPrefix = objectPrefix + "Factor_";
-    
-    // Delete from end to start to avoid index issues
-    for(int i = totalObjects - 1; i >= 0; i--) {
-        string objName = ObjectName(0, i);
-        if(StringFind(objName, factorPrefix) == 0) {
-            ObjectDelete(0, objName);
-        }
-    }
+    ObjectsDeleteAll(0, factorPrefix);
+    // Invalidate any object cache entries that matched
+    CacheClear();
 }
 
 //+------------------------------------------------------------------+

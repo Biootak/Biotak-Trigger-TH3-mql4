@@ -26,9 +26,10 @@
 //+------------------------------------------------------------------+
 //| Global State                                                      |
 //+------------------------------------------------------------------+
-static uint g_lastObjectCountCheckMs = 0;   // GetTickCount-based (ms)
-static int g_lastObjectCount = 0;
-static datetime g_lastEmergencyCleanup = 0;
+static uint g_lastObjectCountCheckMs = 0;      // GetTickCount-based (ms)
+static int  g_lastObjectCount = 0;
+static uint g_lastEmergencyCleanupMs = 0;       // GetTickCount-based (ms)
+static datetime g_lastEmergencyCleanup = 0;     // kept for cutoffTime calculation
 
 //+------------------------------------------------------------------+
 //| Check if we can safely create new objects                        |
@@ -103,17 +104,15 @@ bool CanCreateObject()
 //+------------------------------------------------------------------+
 int EmergencyCleanupObjects()
 {
-    datetime currentTime = TimeCurrent();
-    
-    //                                                                
-    // Prevent cleanup spam (minimum 30 seconds between cleanups)
-    //                                                                
-    if(currentTime - g_lastEmergencyCleanup < 30) {
+    // PERF: GetTickCount() for 30s throttle — avoids TimeCurrent() syscall
+    uint nowMs = GetTickCount();
+    if(nowMs - g_lastEmergencyCleanupMs < 30000) {
         Print("   EmergencyCleanup: Too soon since last cleanup, skipping");
         return 0;
     }
-    
-    g_lastEmergencyCleanup = currentTime;
+    g_lastEmergencyCleanupMs = nowMs;
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent();
     
     int deletedCount = 0;
     datetime cutoffTime = currentTime - EMERGENCY_CLEANUP_AGE;
@@ -250,6 +249,7 @@ void CleanupObjectCountManager()
 {
     g_lastObjectCountCheckMs = 0;
     g_lastObjectCount = 0;
+    g_lastEmergencyCleanupMs = 0;
     g_lastEmergencyCleanup = 0;
     
     #ifdef ENABLE_DEBUG_LOGS

@@ -179,14 +179,13 @@ int GetABCDInfoSafeYDistance()
 void RepositionABCDInfoLabels()
 {
     if(!inpEnableTH3Tool) return;
+    // PERF: Use pattern store instead of ObjectsTotal loop over all chart objects
     int safeY = GetABCDInfoSafeYDistance();
-    int totalObjects = ObjectsTotal(0, -1, -1);
-    for(int i = 0; i < totalObjects; i++) {
-        string name = ObjectName(0, i);
-        if(StringFind(name, TH3_PATTERN_PREFIX) == 0 &&
-           StringFind(name, TH3_SUFFIX_INFO) > 0) {
-            ObjectSetInteger(0, name, OBJPROP_YDISTANCE, safeY);
-        }
+    int patCount = TH3PatternStoreCount();
+    for(int i = 0; i < patCount; i++) {
+        string infoName = g_th3Patterns.items[i].name + TH3_SUFFIX_INFO;
+        if(ObjectFind(0, infoName) >= 0)
+            ObjectSetInteger(0, infoName, OBJPROP_YDISTANCE, safeY);
     }
 }
 
@@ -1454,39 +1453,17 @@ bool AutoSelectBestFrequency(string patternName)
 void UpdateAllTH3Objects() {
     int updatedCount = 0;
     
-    // Update AB=CD patterns
-    int totalTrend = ObjectsTotal(0, -1, OBJ_TREND);
-    for(int i = 0; i < totalTrend; i++) {
-        string name = ObjectName(0, i, -1, OBJ_TREND);
+    // PERF: Use pattern store — avoids ObjectsTotal(OBJ_TREND) loop + multiple ObjectGet calls
+    int patCount = TH3PatternStoreCount();
+    for(int i = 0; i < patCount; i++) {
+        string patName = g_th3Patterns.items[i].name;
+        datetime tA = g_th3Patterns.items[i].A.time; double pA = g_th3Patterns.items[i].A.price;
+        datetime tB = g_th3Patterns.items[i].B.time; double pB = g_th3Patterns.items[i].B.price;
+        datetime tC = g_th3Patterns.items[i].C.time; double pC = g_th3Patterns.items[i].C.price;
         
-        // Find AB=CD pattern main line (Line_AB)
-        if(StringFind(name, "ABCD_Pattern_") == 0 && StringFind(name, "_Line_AB") > 0) {
-            string baseName = StringSubstr(name, 0, StringFind(name, "_Line_AB"));
-            
-            // Get points A, B, C from line endpoints
-            string lineAB = baseName + "_Line_AB";
-            string lineBC = baseName + "_Line_BC";
-            
-            if(ObjectFind(0, lineAB) < 0 || ObjectFind(0, lineBC) < 0) continue;
-            
-            datetime tA = (datetime)ObjectGetInteger(0, lineAB, OBJPROP_TIME, 0);
-            double pA = ObjectGetDouble(0, lineAB, OBJPROP_PRICE, 0);
-            datetime tB = (datetime)ObjectGetInteger(0, lineAB, OBJPROP_TIME, 1);
-            double pB = ObjectGetDouble(0, lineAB, OBJPROP_PRICE, 1);
-            datetime tC = (datetime)ObjectGetInteger(0, lineBC, OBJPROP_TIME, 1);
-            double pC = ObjectGetDouble(0, lineBC, OBJPROP_PRICE, 1);
-            
-            int lastError = GetLastError();
-            if(lastError != 0) {
-                ResetLastError(); // CRITICAL FIX: Clear error for next iteration
-                continue;
-            }
-            
-            if(tA > 0 && tB > 0 && tC > 0 && pA > 0 && pB > 0 && pC > 0) {
-                // Redraw entire AB=CD pattern with new frequency
-                DrawABCDPattern(baseName, tA, pA, tB, pB, tC, pC);
-                updatedCount++;
-            }
+        if(tA > 0 && tB > 0 && tC > 0 && pA > 0 && pB > 0 && pC > 0) {
+            DrawABCDPattern(patName, tA, pA, tB, pB, tC, pC);
+            updatedCount++;
         }
     }
     
