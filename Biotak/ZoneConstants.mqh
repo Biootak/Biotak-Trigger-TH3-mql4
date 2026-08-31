@@ -87,7 +87,7 @@ void InitializeZoneMetrics() {
     g_zoneMetrics.totalRenderCalls = 0;
     g_zoneMetrics.avgValidationTime = 0;
     g_zoneMetrics.avgRenderTime = 0;
-    g_zoneMetrics.lastResetTime = TimeCurrent();
+    g_zoneMetrics.lastResetTime = CacheGetFrameTime();
 }
 
 //+------------------------------------------------------------------+
@@ -158,10 +158,10 @@ void CleanupZoneSystem() {
 //|                                                                  |
 //+------------------------------------------------------------------+
 double GetCachedMarketPrice() {
-    datetime currentTime = TimeCurrent();
+    datetime currentTime = CacheGetFrameTime();
     
-    //                
-    if(g_cachedMarketPriceTime > 0 && 
+    //
+    if(g_cachedMarketPriceTime > 0 &&
        (currentTime - g_cachedMarketPriceTime) < g_cachedMarketPriceTTL) {
         return g_cachedMarketPrice;
     }
@@ -170,7 +170,7 @@ double GetCachedMarketPrice() {
     double cachedBid = Bid;
     double cachedAsk = Ask;
     
-    //                     
+    //
     g_cachedMarketPrice = (cachedBid + cachedAsk) / 2.0;
     g_cachedMarketPriceTime = currentTime;
     
@@ -183,7 +183,7 @@ double GetCachedMarketPrice() {
 //+------------------------------------------------------------------+
 void CleanupObjectCache() {
     // Object cache now managed by ObjectCache.mqh (hash-based)
-    g_lastCacheCleanup = TimeCurrent();
+    g_lastCacheCleanup = CacheGetFrameTime();
 }
 
 #endif // ZONE_CONSTANTS_MQH

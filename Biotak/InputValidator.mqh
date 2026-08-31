@@ -416,13 +416,14 @@ bool ValidateComboModeConfiguration() {
         return false;
     }
 
+    #ifdef ENABLE_DEBUG_LOGS
     Print("====================");
     Print("   COMBO MODE CONFIGURATION VALIDATION");
     Print("====================");
     
-    //                                                                
+    //
     // SHOW SELECTED MODE
-    //                                                                
+    //
     string modeName = "";
     switch(inpComboMode) {
         case COMBO_MODE_PRESET: modeName = "Preset"; break;
@@ -433,14 +434,11 @@ bool ValidateComboModeConfiguration() {
     Print("  SELECTED MODE: ", modeName);
     Print("====================");
     
-    //                                                                
+    //
     // MODE-SPECIFIC VALIDATION AND GUIDANCE
-    //                                                                
+    //
     
     if(inpComboMode == COMBO_MODE_PRESET) {
-        //                                                            
-        // PRESET MODE
-        //                                                            
         Print("   ACTIVE SETTINGS (Preset Mode):");
         Print("     Selected Preset: ", EnumToString(inpComboPreset));
         Print("");
@@ -450,9 +448,6 @@ bool ValidateComboModeConfiguration() {
         Print("    FLOW: Select Preset   Automatic calculation   Result");
         
     } else if(inpComboMode == COMBO_MODE_ADVANCED) {
-        //                                                            
-        // ADVANCED MODE
-        //                                                            
         Print("   ACTIVE SETTINGS (Advanced Mode):");
         Print("     Component 1: ", EnumToString(inpComboComp1TF), " / ", EnumToString(inpComboComp1Step));
         Print("     Operation: ", EnumToString(inpComboOp1));
@@ -466,6 +461,7 @@ bool ValidateComboModeConfiguration() {
     }
     
     Print("====================");
+    #endif
     return true;
 }
 

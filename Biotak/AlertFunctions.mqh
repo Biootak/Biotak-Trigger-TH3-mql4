@@ -7,7 +7,6 @@
 bool ShouldTriggerAlert(const string levelName) {
     if(!inpAlertOnce) return true; // Always trigger if AlertOnce is disabled
     
-    datetime currentTime = TimeCurrent();
     datetime currentBarTime = iTime(Symbol(), Period(), 0);
     
     // Check if this is a new bar and different level than last alert
@@ -22,9 +21,11 @@ bool ShouldTriggerAlert(const string levelName) {
 
 //                                       
 void CheckAlerts(const string objectPrefix, double currentPrice) {
-    //                              
+    //
     if(objectPrefix == "" || currentPrice <= 0) {
+        #ifdef ENABLE_DEBUG_LOGS
         Print("CheckAlerts: Invalid parameters - objectPrefix: ", objectPrefix, ", currentPrice: ", currentPrice);
+        #endif
         return;
     }
     

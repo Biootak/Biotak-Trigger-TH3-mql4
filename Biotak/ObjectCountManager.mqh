@@ -26,7 +26,7 @@
 //+------------------------------------------------------------------+
 //| Global State                                                      |
 //+------------------------------------------------------------------+
-static datetime g_lastObjectCountCheck = 0;
+static uint g_lastObjectCountCheckMs = 0;   // GetTickCount-based (ms)
 static int g_lastObjectCount = 0;
 static datetime g_lastEmergencyCleanup = 0;
 
@@ -37,23 +37,23 @@ static datetime g_lastEmergencyCleanup = 0;
 //+------------------------------------------------------------------+
 bool CanCreateObject()
 {
-    //                                                                
-    // OPTIMIZATION: Cache check (update every 5 seconds)
-    //                                                                
-    datetime currentTime = TimeCurrent();
-    if(currentTime - g_lastObjectCountCheck < 5 && g_lastObjectCount > 0) {
+    //
+    // OPTIMIZATION: Cache check (update every 5 seconds via GetTickCount)
+    //
+    uint nowMs = GetTickCount();
+    if((nowMs - g_lastObjectCountCheckMs) < 5000 && g_lastObjectCount > 0) {
         // Use cached count
         if(g_lastObjectCount < MAX_SAFE_OBJECTS) {
             return true; // Fast path
         }
     }
     
-    //                                                                
+    //
     // Get current object count
-    //                                                                
+    //
     int totalObjects = ObjectsTotal(0, -1, -1);
     g_lastObjectCount = totalObjects;
-    g_lastObjectCountCheck = currentTime;
+    g_lastObjectCountCheckMs = nowMs;
     
     //                                                                
     // CRITICAL: Check if limit reached
@@ -68,6 +68,7 @@ bool CanCreateObject()
         // Re-check after cleanup
         totalObjects = ObjectsTotal(0, -1, -1);
         g_lastObjectCount = totalObjects;
+        g_lastObjectCountCheckMs = GetTickCount();
         
         if(totalObjects >= CRITICAL_OBJECT_LIMIT) {
             Print("  FATAL: Cannot free objects (", totalObjects, " remaining)");
@@ -83,12 +84,12 @@ bool CanCreateObject()
     // WARNING: Approaching limit
     //                                                                
     if(totalObjects >= MAX_SAFE_OBJECTS) {
-        // Throttle warning (once per minute)
-        static datetime s_lastWarning = 0;
-        if(currentTime - s_lastWarning > 60) {
+        // Throttle warning (once per minute via GetTickCount)
+        static uint s_lastWarningMs = 0;
+        if((nowMs - s_lastWarningMs) > 60000) {
             Print("   WARNING: Approaching object limit (", totalObjects, "/", MAX_SAFE_OBJECTS, ")");
             Print("   Consider reducing Max Levels in settings");
-            s_lastWarning = currentTime;
+            s_lastWarningMs = nowMs;
         }
     }
     
@@ -218,16 +219,16 @@ int EmergencyCleanupObjects()
 //+------------------------------------------------------------------+
 int GetCurrentObjectCount()
 {
-    datetime currentTime = TimeCurrent();
+    uint nowMs = GetTickCount();
     
     // Use cache if recent (< 5 seconds)
-    if(currentTime - g_lastObjectCountCheck < 5 && g_lastObjectCount > 0) {
+    if((nowMs - g_lastObjectCountCheckMs) < 5000 && g_lastObjectCount > 0) {
         return g_lastObjectCount;
     }
     
     // Update cache
     g_lastObjectCount = ObjectsTotal(0, -1, -1);
-    g_lastObjectCountCheck = currentTime;
+    g_lastObjectCountCheckMs = nowMs;
     
     return g_lastObjectCount;
 }
@@ -237,7 +238,7 @@ int GetCurrentObjectCount()
 //+------------------------------------------------------------------+
 void InvalidateObjectCountCache()
 {
-    g_lastObjectCountCheck = 0;
+    g_lastObjectCountCheckMs = 0;
     g_lastObjectCount = 0;
 }
 
@@ -247,7 +248,7 @@ void InvalidateObjectCountCache()
 //+------------------------------------------------------------------+
 void CleanupObjectCountManager()
 {
-    g_lastObjectCountCheck = 0;
+    g_lastObjectCountCheckMs = 0;
     g_lastObjectCount = 0;
     g_lastEmergencyCleanup = 0;
     

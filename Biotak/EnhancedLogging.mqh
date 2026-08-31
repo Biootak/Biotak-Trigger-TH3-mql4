@@ -124,8 +124,8 @@ void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
     // Skip if module not enabled
     if(!IsModuleEnabled(module)) return;
     
-    // Update statistics
-    g_logStats.lastLogTime = TimeCurrent();
+    // Update statistics — use frame-time cache to avoid per-call TimeCurrent() syscall
+    g_logStats.lastLogTime = CacheGetFrameTime();
     switch(level) {
         case LOG_LEVEL_ERROR:      g_logStats.errorCount++; break;
         case LOG_LEVEL_WARNING:    g_logStats.warningCount++; break;
@@ -158,7 +158,7 @@ void LogMessage(ENUM_LOG_LEVEL level, string module, string message)
     }
     
     if(g_logTimestamp) {
-        context += " [" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "]";
+        context += " [" + TimeToString(CacheGetFrameTime(), TIME_DATE|TIME_SECONDS) + "]";
     }
     
     logMsg += context + " " + message;

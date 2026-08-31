@@ -469,10 +469,7 @@ void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
     if(clearFirst) ClearAllModeLabels();
     
     // CRITICAL FIX: Don't show label if indicator is hidden
-    // PERFORMANCE: Use cached ChartID string
-    string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
-    bool isHidden = GlobalVariableCheck(gvar_name) && (bool)GlobalVariableGet(gvar_name);
-    if(isHidden) return; // Don't show mode labels when hidden
+    if(IsIndicatorHidden()) return; // Don't show mode labels when hidden
     
     string labelText = BuildTH3FrequencyLabelText(frequency);
     
