@@ -276,8 +276,9 @@ bool SmartUpdateLineProperties(const string objectName,
 bool CreateLineObjectWithBatchProperties(const string objectName,
                                          const ENUM_OBJECT objectType,
                                          const SLineObjectProperties &props) {
-    // Create the object first
-    datetime currentTime = TimeCurrent();
+    // Create the object first — use cached frame time to avoid syscall per creation
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent();
     datetime futureTime = currentTime + PeriodSeconds((ENUM_TIMEFRAMES)GetCachedPeriod()) * 100;
     
     bool created = false;

@@ -29,6 +29,7 @@ struct MemoryStats {
 
 static MemoryStats g_memoryStats;
 static bool g_memoryStatsInitialized = false;
+static uint g_memStats_lastCheckMs = 0;    // GetTickCount-based interval gate
 
 //+------------------------------------------------------------------+
 //| Initialize Memory Manager                                        |
@@ -92,12 +93,13 @@ void CheckMemoryHealth()
 {
     if(!g_memoryStatsInitialized) InitializeMemoryManager();
     
-    datetime currentTime = TimeCurrent();
-    if(currentTime - g_memoryStats.lastCheckTime < MEMORY_CHECK_INTERVAL_SECONDS) {
+    // PERF: Use GetTickCount() ms-based check instead of TimeCurrent() syscall
+    uint nowMs = GetTickCount();
+    if(nowMs - g_memStats_lastCheckMs < (uint)MEMORY_CHECK_INTERVAL_SECONDS * 1000) {
         return; // Too soon
     }
-    
-    g_memoryStats.lastCheckTime = currentTime;
+    g_memStats_lastCheckMs = nowMs;
+    g_memoryStats.lastCheckTime = CacheGetFrameTime();
     
     // Get actual object count from MT4
     int actualCount = ObjectsTotal(0, -1, -1);

@@ -91,7 +91,7 @@ void StoreTHCalculation(double basePrice, double percentage, int digits, double 
     g_thCalcCache.percentage = NormalizeDouble(percentage, 6);
     g_thCalcCache.digits = digits;
     g_thCalcCache.result = result;
-    g_thCalcCache.lastUpdate = TimeCurrent();
+    g_thCalcCache.lastUpdate = CacheGetFrameTime();
     g_thCalcCache.valid = true;
 }
 
@@ -276,7 +276,7 @@ void StoreExtensionMultiplier(int period, int periodSeconds, double multiplier) 
     g_extensionMultiplierCache.period = period;
     g_extensionMultiplierCache.periodSeconds = periodSeconds;
     g_extensionMultiplierCache.multiplier = multiplier;
-    g_extensionMultiplierCache.lastUpdate = TimeCurrent();
+    g_extensionMultiplierCache.lastUpdate = CacheGetFrameTime();
     g_extensionMultiplierCache.valid = true;
 }
 

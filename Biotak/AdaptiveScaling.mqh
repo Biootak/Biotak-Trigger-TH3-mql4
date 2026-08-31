@@ -75,12 +75,13 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
     
     // Update frequency gate: allow updates every 5 seconds instead of every bar
     // This makes the indicator much more responsive to intraday volatility spikes.
-    static datetime s_lastScalingUpdate = 0;
-    datetime now = TimeCurrent();
-    if(g_scalingInitialized && (now - s_lastScalingUpdate) < 5) {
-        return false; 
+    // PERF: Use GetTickCount() (ms) instead of TimeCurrent() (syscall) for this gate
+    static uint s_lastScalingUpdateMs = 0;
+    uint nowMs = GetTickCount();
+    if(g_scalingInitialized && (nowMs - s_lastScalingUpdateMs) < 5000) {
+        return false;
     }
-    s_lastScalingUpdate = now;
+    s_lastScalingUpdateMs = nowMs;
     
     // Validate base price
     if(basePrice < EPSILON_PRICE) {

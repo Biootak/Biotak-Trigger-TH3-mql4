@@ -578,8 +578,9 @@ double GetATRForTimeframe(const int targetMinutes) {
         return 0.0;
     }
     
-    // AUDIT FIX: Validate TimeCurrent()
-    datetime currentTime = TimeCurrent();
+    // AUDIT FIX: Validate current time (use cached frame time)
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent(); // fallback on first frame
     if(currentTime == 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("   GetATRForTimeframe: TimeCurrent() returned 0");
@@ -684,7 +685,8 @@ void UpdateMultiTFCache(const ENUM_TIMEFRAMES tf, const double atrValue, const i
     if(!IsValidPrice(atrValue, EPSILON_PRICE)) return;
     if(!g_multiTFCacheInitialized) InitializeATRCache();
     
-    datetime currentTime = TimeCurrent();
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent();
     int targetIndex = -1;
     
     // Look for existing entry
@@ -772,7 +774,7 @@ string GetATRCacheStats() {
     } else {
         stats += StringFormat("ATR Cache: Value=%.6f, Age=%d sec, Bars=%d, TF=%d\n",
                            g_atrCache.weightedATR,
-                           (int)(TimeCurrent() - g_atrCache.lastUpdate),
+                           (int)(CacheGetFrameTime() - g_atrCache.lastUpdate),
                            g_atrCache.barCount,
                            g_atrCache.cachedTimeframe);
     }
@@ -798,7 +800,7 @@ string GetATRCacheStats() {
                 stats += StringFormat("  TF=%d min: ATR=%.6f, Age=%d sec\n",
                                    cachedMins,
                                    g_multiTFCache[i].atrValue,
-                                   (int)(TimeCurrent() - g_multiTFCache[i].lastUpdate));
+                                   (int)(CacheGetFrameTime() - g_multiTFCache[i].lastUpdate));
             }
         }
     }
@@ -916,7 +918,8 @@ double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     int currentBars = iBars(Symbol(), tf);
     if(currentBars <= 0) return 0.0;
     
-    datetime currentTime = TimeCurrent();
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent();
     
     // Initialize cache if needed
     if(!g_multiTFCacheInitialized) InitializeATRCache();

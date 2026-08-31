@@ -88,7 +88,9 @@ void TH3ProfEndTag(const string tag) {
     if(elapsedUs > g_th3ProfTags[idx].maxUs) g_th3ProfTags[idx].maxUs = elapsedUs;
 
     // Print at most once per 5 seconds per tag to avoid log spam
-    datetime now = TimeCurrent();
+    // PERF: Use GetTickCount() (ms) instead of TimeCurrent() syscall
+    datetime now = CacheGetFrameTime();
+    if(now == 0) now = TimeCurrent();
     if(g_th3ProfTags[idx].lastPrint == 0 || (now - g_th3ProfTags[idx].lastPrint) >= 5) {
         double avgMs = (g_th3ProfTags[idx].count > 0)
                        ? (((double)g_th3ProfTags[idx].totalUs / (double)g_th3ProfTags[idx].count) / 1000.0)

@@ -27,11 +27,11 @@ bool UpdateHistoricalValues() {
     
     if(totalBars <= 0) {
         // FIX: Don't just fail, log that we're waiting for data
-        static datetime s_lastBarsWarning = 0;
-        datetime currentTime = TimeCurrent();
-        if(currentTime - s_lastBarsWarning > 30) {
+        static uint s_lastBarsWarningMs = 0;
+        uint _nowMs = GetTickCount();
+        if(_nowMs - s_lastBarsWarningMs > 30000) {
             Print("UpdateHistoricalValues: Waiting for historical data (", EnumToString(effectiveTimeframe), ")...");
-            s_lastBarsWarning = currentTime;
+            s_lastBarsWarningMs = _nowMs;
         }
         return false;
     }

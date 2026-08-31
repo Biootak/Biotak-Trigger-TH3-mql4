@@ -2017,27 +2017,28 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
     
     // ========== Draw HIGH label ==========
     string highLabelName = objectPrefix + "Factor_High_Label";
+    datetime _lblTime1 = CacheGetFrameTime();
     if(ObjectFind(0, highLabelName) < 0) {
-        ObjectCreate(0, highLabelName, OBJ_TEXT, 0, TimeCurrent(), highPrice);
+        ObjectCreate(0, highLabelName, OBJ_TEXT, 0, _lblTime1, highPrice);
     }
     ObjectSetDouble(0, highLabelName, OBJPROP_PRICE, highPrice);
-    ObjectSetInteger(0, highLabelName, OBJPROP_TIME, TimeCurrent());
+    ObjectSetInteger(0, highLabelName, OBJPROP_TIME, _lblTime1);
     ObjectSetInteger(0, highLabelName, OBJPROP_COLOR, inpHighColor);
     ObjectSetInteger(0, highLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, highLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
     ObjectSetString(0, highLabelName, OBJPROP_FONT, "Arial");
-    ObjectSetString(0, highLabelName, OBJPROP_TEXT, 
-        StringFormat("  HIGH %s | Range: %.0f pips | F=%.2f | Step: %.1f pips", 
+    ObjectSetString(0, highLabelName, OBJPROP_TEXT,
+        StringFormat("  HIGH %s | Range: %.0f pips | F=%.2f | Step: %.1f pips",
             DoubleToString(highPrice, Digits), rangePips, factor, stepPips));
     ObjectSetInteger(0, highLabelName, OBJPROP_SELECTABLE, false);
     
     // ========== Draw LOW label ==========
     string lowLabelName = objectPrefix + "Factor_Low_Label";
     if(ObjectFind(0, lowLabelName) < 0) {
-        ObjectCreate(0, lowLabelName, OBJ_TEXT, 0, TimeCurrent(), lowPrice);
+        ObjectCreate(0, lowLabelName, OBJ_TEXT, 0, _lblTime1, lowPrice);
     }
     ObjectSetDouble(0, lowLabelName, OBJPROP_PRICE, lowPrice);
-    ObjectSetInteger(0, lowLabelName, OBJPROP_TIME, TimeCurrent());
+    ObjectSetInteger(0, lowLabelName, OBJPROP_TIME, _lblTime1);
     ObjectSetInteger(0, lowLabelName, OBJPROP_COLOR, inpLowColor);
     ObjectSetInteger(0, lowLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, lowLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
@@ -3394,27 +3395,28 @@ void DrawFactorLevels(const string objectPrefix, const double highPrice,
     
     // ========== Draw HIGH label ==========
     string highLabelName = objectPrefix + "Factor_High_Label";
+    datetime _lblTime2 = CacheGetFrameTime();
     if(ObjectFind(0, highLabelName) < 0) {
-        ObjectCreate(0, highLabelName, OBJ_TEXT, 0, TimeCurrent(), highPrice);
+        ObjectCreate(0, highLabelName, OBJ_TEXT, 0, _lblTime2, highPrice);
     }
     ObjectSetDouble(0, highLabelName, OBJPROP_PRICE, highPrice);
-    ObjectSetInteger(0, highLabelName, OBJPROP_TIME, TimeCurrent());
+    ObjectSetInteger(0, highLabelName, OBJPROP_TIME, _lblTime2);
     ObjectSetInteger(0, highLabelName, OBJPROP_COLOR, inpHighColor);
     ObjectSetInteger(0, highLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, highLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
     ObjectSetString(0, highLabelName, OBJPROP_FONT, "Arial");
-    ObjectSetString(0, highLabelName, OBJPROP_TEXT, 
-        StringFormat("  HIGH %s | Range: %.0f pips | F=%.2f | Step: %.1f pips", 
+    ObjectSetString(0, highLabelName, OBJPROP_TEXT,
+        StringFormat("  HIGH %s | Range: %.0f pips | F=%.2f | Step: %.1f pips",
             DoubleToString(highPrice, Digits), rangePips, factor, stepPips));
     ObjectSetInteger(0, highLabelName, OBJPROP_SELECTABLE, false);
     
     // ========== Draw LOW label ==========
     string lowLabelName = objectPrefix + "Factor_Low_Label";
     if(ObjectFind(0, lowLabelName) < 0) {
-        ObjectCreate(0, lowLabelName, OBJ_TEXT, 0, TimeCurrent(), lowPrice);
+        ObjectCreate(0, lowLabelName, OBJ_TEXT, 0, _lblTime2, lowPrice);
     }
     ObjectSetDouble(0, lowLabelName, OBJPROP_PRICE, lowPrice);
-    ObjectSetInteger(0, lowLabelName, OBJPROP_TIME, TimeCurrent());
+    ObjectSetInteger(0, lowLabelName, OBJPROP_TIME, _lblTime2);
     ObjectSetInteger(0, lowLabelName, OBJPROP_COLOR, inpLowColor);
     ObjectSetInteger(0, lowLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, lowLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);

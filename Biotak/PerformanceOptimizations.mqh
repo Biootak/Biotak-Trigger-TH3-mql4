@@ -239,7 +239,8 @@ static int g_cacheRingHead = 0;   // Points to oldest slot for O(1) eviction
 double GetCachedResult(const string functionName, const string params,
                        double computedValue, int ttl = 60) {
     string cacheKey = functionName + "_" + params;
-    datetime currentTime = TimeCurrent();
+    datetime currentTime = CacheGetFrameTime();
+    if(currentTime == 0) currentTime = TimeCurrent();
 
     // Search existing entries (only up to g_cacheSize actual entries)
     for(int i = 0; i < g_cacheSize; i++) {
