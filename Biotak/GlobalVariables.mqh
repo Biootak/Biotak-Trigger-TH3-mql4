@@ -35,11 +35,33 @@ static double g_lastCustomPriceLinePos = 0.0;
 static bool g_customPriceKeyboardOverride = false;
 
 // Toggle States (hotkey-controlled)
-static bool g_triggerLevelsEnabled = true;
+// NOTE: g_triggerLevelsEnabled moved to RuntimeSettings.mqh — it is the runtime
+// copy of inpShowTrigger (seeded at attach) and doubles as the hotkey toggle.
 static bool g_linesVisible = true;
 static bool g_atrLabelsVisible = true;
 static bool g_thLabelsVisible = true;
 static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
+
+//--- TH labels single source of truth: g_thLabelsMode drives the drawing and
+//    the hotkey cycle; the flag mirrors (g_showTHLabels / g_showFractalTHs /
+//    g_showStandardTHs in RuntimeSettings) are derived FROM it so the settings
+//    card can never disagree with what is actually drawn. Call SyncTHFlagsFromMode()
+//    after ANY change to g_thLabelsMode.
+int THModeFromFlags()
+{
+   if(g_showFractalTHs && g_showStandardTHs) return 3;
+   if(g_showFractalTHs)                      return 1;
+   if(g_showStandardTHs)                     return 2;
+   return 0;
+}
+
+void SyncTHFlagsFromMode()
+{
+   g_thLabelsVisible    = (g_thLabelsMode != 0);
+   g_showTHLabels       = (g_thLabelsMode != 0);
+   g_showFractalTHs     = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
+   g_showStandardTHs    = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
+}
 static int g_stepModeOverride = -1;        // -1 = use input, 0-5 = override
 static int g_sslsFirstOverride = -1;       // -1 = use inpLSFirst, 0 = SS first, 1 = LS first
 static double g_factorValueOverride = 0;   // 0 = use input, >0 = override

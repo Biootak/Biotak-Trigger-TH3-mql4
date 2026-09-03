@@ -101,7 +101,6 @@ struct STriggerLine {
     string labelText;
     bool   inViewport;      // false = skip render
     bool   isMidpoint;
-    bool   isTrigger;       // line belongs to a trigger subdivision level
     bool   setBack;         // OBJPROP_BACK value (mode-specific)
     int    zOrder;          // OBJPROP_ZORDER value (mode-specific)
 };
@@ -138,7 +137,9 @@ struct SModeConfig {
     // Rendering flags
     bool   useObjPropBack;  // Set OBJPROP_BACK on lines (Factor modes)
     int    zOrder;          // OBJPROP_ZORDER value (Factor = 1, others = 0)
-    bool   hideLineWhenTriggerOnly; // Factor: hide lines when trigger enabled
+    bool   hideLineWhenTriggerOnly; // RETIRED (always false): lines are never
+                                    // gated by the trigger switch — RenderZones
+                                    // alone hides the trigger zones
     bool   useStepFilter;   // false for MEq (draws every step)
     
     // Price boundaries
@@ -320,8 +321,8 @@ string GetLabelTextForLevel(const SLevelClassified &level, const int baseMultipl
 //+------------------------------------------------------------------+
 //| STAGE 2: Classify all levels                                     |
 //|                                                                  |
-//| Assigns color/style/width based on structure/trigger priority.   |
-//| Uses GetPathForLevelOptimized for consistency.                   |
+//| Structure/trigger identity drives ONLY the zones. ALL lines take |
+//| the unified [08.4] appearance via GetLineRenderColor().          |
 //+------------------------------------------------------------------+
 int ClassifyLevels(
     const SCalculatedLevel &rawLevels[],
@@ -369,38 +370,33 @@ int ClassifyLevels(
             continue;
         }
         
-        // BASE PLAYER: Structure/Trigger classification
+        // BASE PLAYER: Structure/Trigger classification.
+        // The structure/trigger identity below drives ONLY the zones:
+        // structure zones keep their L1-L5 colors, trigger zones keep the
+        // trigger color. ALL LINES share ONE appearance (the [08.4] unified
+        // line settings) regardless of family, and the trigger overlay
+        // switch (inpShowTrigger / T) must NOT restyle lines here — it gates
+        // only the trigger zones in RenderZones. Line visibility belongs to
+        // the L switch / g_linesVisible alone, never to triggerEnabled.
         classified[i].structureLevel = GetHighestStructureLevel(step, g_cachedIntervals);
         classified[i].isStructure = (classified[i].structureLevel > 0);
-        
-        if(classified[i].isStructure) {
-            // Structural level   get styling from GetPathForLevelOptimized
-            color outColor; ENUM_LINE_STYLE outStyle; int outWidth;
-            if(GetPathForLevelOptimized(step, outColor, outStyle, outWidth, triggerEnabled)) {
-                classified[i].levelColor = outColor;
-                classified[i].levelStyle = outStyle;
-                classified[i].levelWidth = outWidth;
-            }
-        } else {
-            // Trigger subdivision   between structural levels
+
+        // UNIFIED LINES: every non-midpoint level draws its line with the
+        // same [08.4] settings (GetLineRenderColor blends g_lineColor with
+        // g_lineTransparency; style/width are inpLineStyle/inpLineWidth).
+        classified[i].levelColor = GetLineRenderColor();
+        classified[i].levelStyle = inpLineStyle;
+        classified[i].levelWidth = inpLineWidth;
+        if(!classified[i].isStructure) {
             classified[i].isTrigger = true;
-            if(triggerEnabled) {
-                // User has trigger styling enabled   use trigger colors
-                classified[i].levelColor = GetTriggerRenderColor();
-                classified[i].levelStyle = inpTriggerStyle;
-                classified[i].levelWidth = inpTriggerWidth;
-            } else {
-                // Trigger styling disabled   use mode fallback colors
-                classified[i].levelColor = config.fallbackColor;
-                classified[i].levelStyle = config.fallbackStyle;
-                classified[i].levelWidth = config.fallbackWidth;
-            }
         }
-        
-        // Zone color from level
+
+        // Zone color from level (zones keep their family identity)
         classified[i].zoneColor = GetZoneColorForLevel(step, triggerEnabled, baseMultiplier);
         if(classified[i].zoneColor == clrNONE) {
-            classified[i].zoneColor = classified[i].levelColor;
+            // Trigger-subdivision zones fall back to the trigger zone color
+            // (NOT the unified line color — zones and lines are independent).
+            classified[i].zoneColor = GetTriggerRenderColor();
         }
         
         // Populate label text
@@ -413,8 +409,12 @@ int ClassifyLevels(
 //+------------------------------------------------------------------+
 //| STAGE 2 VARIANT: Classify with alternating fallback (SSLS)       |
 //|                                                                  |
-//| Same as ClassifyLevels but uses alternating SS/LS fallback       |
-//| based on odd/even step and lsFirst flag.                         |
+//| Lines are unified (see ClassifyLevels): every line — structure or|
+//| trigger subdivision — shares the [08.4] line appearance, so there|
+//| is no per-family line override here. This variant is kept for    |
+//| signature compatibility and delegates to the standard classifier;|
+//| the SS/LS order flag (lsFirst) still drives the step geometry in |
+//| Stage 1 (CalculateLevels), and lsFirst is panel-editable.        |
 //+------------------------------------------------------------------+
 int ClassifyLevelsAlternating(
     const SCalculatedLevel &rawLevels[],
@@ -425,32 +425,7 @@ int ClassifyLevelsAlternating(
     const bool lsFirst,
     SLevelClassified &classified[])
 {
-    // Start with standard classification
-    int result = ClassifyLevels(rawLevels, rawCount, config, triggerEnabled, baseMultiplier, classified);
-    
-    // Override colors for non-structure, non-trigger levels with SS/LS alternating pattern
-    for(int i = 0; i < result; i++) {
-        if(classified[i].isMidpoint) continue;
-        // Structure keeps its dedicated styling. Trigger styling also keeps
-        // priority while triggers are enabled; otherwise the SS/LS fallback
-        // colors make the alternating pattern visible.
-        if(classified[i].isStructure) continue;
-        if(classified[i].isTrigger && triggerEnabled) continue;
-        
-        // SSLS alternating: determine if this step is SS or LS
-        bool isSS = ((classified[i].logicalStep % 2 == 0) == lsFirst);
-        if(isSS) {
-            classified[i].levelColor = config.fallbackColor;
-            classified[i].levelStyle = config.fallbackStyle;
-            classified[i].levelWidth = config.fallbackWidth;
-        } else {
-            classified[i].levelColor = config.fallbackColor2;
-            classified[i].levelStyle = config.fallbackStyle2;
-            classified[i].levelWidth = config.fallbackWidth2;
-        }
-    }
-    
-    return result;
+    return ClassifyLevels(rawLevels, rawCount, config, triggerEnabled, baseMultiplier, classified);
 }
 
 //+------------------------------------------------------------------+
@@ -582,7 +557,6 @@ void BuildZonesAndLines(
         lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
-        lines[lIdx].isTrigger = s_aboveLevels[i].isTrigger;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
         lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
@@ -640,7 +614,6 @@ void BuildZonesAndLines(
         lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
-        lines[lIdx].isTrigger = s_belowLevels[i].isTrigger;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
         lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
@@ -775,43 +748,24 @@ void RenderTriggerLines(
     const int lineCount,
     const SModeConfig &config)
 {
-    bool triggerEnabled = IsTriggerLevelsEnabled();
     double currentPrice = GetCurrentPriceForLabels();
-    
+
     for(int i = 0; i < lineCount; i++) {
         string labelName = lines[i].name + "_Label";
 
-        // Trigger subdivision lines are part of the same trigger overlay as
-        // their zone bands: when the trigger levels are turned OFF they must
-        // disappear together with those zones (RenderZones deletes them), NOT
-        // stay behind recolored (SS/LS fallback) between the structure levels.
-        // Factor mode is exempt — its lines invert: visible when triggers OFF.
-        if(lines[i].isTrigger && !triggerEnabled && !config.hideLineWhenTriggerOnly) {
-            DeleteIndicatorObjectManaged(lines[i].name, true);
-            DeleteIndicatorObjectManaged(labelName, true);
-            continue;
-        }
-
+        // ALL pipeline lines (trigger-subdivision AND structure-interval)
+        // share the unified [08.4] appearance set in ClassifyLevels. They are
+        // drawn whenever the Lines switch (L / g_linesVisible) shows them and
+        // are NEVER hidden or restyled by the trigger switch. RenderZones is
+        // the ONLY place the trigger overlay hides things — the trigger ZONES.
+        // (The old Factor hideLineWhenTriggerOnly inversion is retired: every
+        //  mode config leaves it false, and line visibility belongs to L alone.)
         if(!lines[i].inViewport) {
             SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
             SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
             continue;
         }
 
-        // Factor mode: hide lines when trigger-only enabled
-        if(config.hideLineWhenTriggerOnly && !lines[i].isMidpoint) {
-            bool shouldShow = !triggerEnabled;
-            if(!shouldShow) {
-                if(ObjectFind(0, lines[i].name) >= 0) {
-                    ObjectSetInteger(0, lines[i].name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                }
-                if(ObjectFind(0, labelName) >= 0) {
-                    ObjectSetInteger(0, labelName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                }
-                continue;
-            }
-        }
-        
         // Use the individual line color instead of config.triggerColor
         bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
                                           lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,

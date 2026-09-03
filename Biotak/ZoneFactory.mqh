@@ -10,7 +10,6 @@
 #property strict
 
 #include "ConstantsAndEnums.mqh"
-#include "ZoneValidator.mqh"
 
 #include "ObjectCache.mqh"
 

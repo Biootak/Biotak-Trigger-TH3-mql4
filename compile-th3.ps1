@@ -242,6 +242,7 @@ function Resolve-Mql4Directory {
     return $null
 }
 
+# ---------------------------------------------------------------- helpers
 function Get-IncludePath {
     param(
         [string]$SourcePath,
@@ -596,6 +597,51 @@ function Watch-RuntimeLogs {
     Write-Host "  Watch mode completed." -ForegroundColor Green
 }
 
+function Get-TerminalMql4DirsForProject {
+    # Every MT4 terminal whose MQL4\Indicators exposes this repo (BiotakProject
+    # is a symlink back to $SCRIPT_ROOT on this machine). Each such terminal has
+    # its OWN MQL4\Files\Icons used by MetaEditor when compiling the project.
+    $out = @()
+    $root = Join-Path $env:APPDATA "MetaQuotes\Terminal"
+    if (-not (Test-Path $root)) { return $out }
+    Get-ChildItem -Path $root -Directory | ForEach-Object {
+        $mql4 = Join-Path $_.FullName "MQL4"
+        if (Test-Path (Join-Path $mql4 "Indicators\BiotakProject")) { $out += $mql4 }
+    }
+    return $out
+}
+
+function Sync-IconsToTerminal {
+    param([string]$ResolvedMql4Dir)
+
+    # MetaEditor resolves "#resource \Files\Icons\..." against the TERMINAL's
+    # MQL4\Files folder, not this workspace. A project may be reachable from
+    # several MT4 terminals (e.g. Indicators\BiotakProject is a symlink back
+    # to this repo), so sync into EVERY terminal that hosts this project -
+    # otherwise a stale copy silently embeds old icons on the next compile.
+    $src = Join-Path $SCRIPT_ROOT "Files\Icons"
+    if (-not (Test-Path $src)) { return }
+
+    $dirs = New-Object System.Collections.Generic.List[string]
+    foreach ($d in @($ResolvedMql4Dir) + (Get-TerminalMql4DirsForProject)) {
+        if ($d -and (Test-Path $d) -and -not $dirs.Contains($d)) { $dirs.Add($d) }
+    }
+
+    foreach ($mql4 in $dirs) {
+        $dst = Join-Path $mql4 "Files\Icons"
+        if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
+        $copied = 0
+        Get-ChildItem -Path $src -Filter "*.bmp" | ForEach-Object {
+            $target = Join-Path $dst $_.Name
+            if (-not (Test-Path $target) -or (Get-FileHash $_.FullName).Hash -ne (Get-FileHash $target).Hash) {
+                Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+                $copied++
+            }
+        }
+        if ($copied -gt 0) { Write-Host "  Icon sync: copied $copied updated BMP(s) to $dst" -ForegroundColor DarkCyan }
+    }
+}
+
 function Compile-MQL4 {
     param(
         [string]$Name,
@@ -631,6 +677,8 @@ function Compile-MQL4 {
     $logFile = Join-Path $PROJECT_LOG_DIR ("{0}-{1}.log" -f $safeName, $timestamp)
 
     $includePath = Get-IncludePath -SourcePath $SourcePath -ScriptRoot $SCRIPT_ROOT -ResolvedMql4Dir $ResolvedMql4Dir
+
+    Sync-IconsToTerminal -ResolvedMql4Dir $ResolvedMql4Dir
     
     Write-Host "  Source:   $SourcePath" -ForegroundColor Gray
     Write-Host "  Include:  $includePath" -ForegroundColor Gray
@@ -772,6 +820,18 @@ function Compile-MQL4 {
     return $true
 }
 
+function Get-InstalledProjectSource {
+    param([string]$ResolvedMql4Dir)
+    # The installed project lives wherever Indicators\BiotakProject exists
+    # (usually a symlink to this repo inside one of the MT4 terminals).
+    $candidates = @($ResolvedMql4Dir) + (Get-TerminalMql4DirsForProject)
+    foreach ($mql4 in $candidates) {
+        $mq4 = Join-Path $mql4 "Indicators\BiotakProject\Biotak Trigger TH3.mq4"
+        if ($mql4 -and (Test-Path $mq4)) { return $mq4 }
+    }
+    return ""
+}
+
 # ============================================================
 # MAIN EXECUTION
 # ============================================================
@@ -808,7 +868,7 @@ $PROJECTS = @{
     }
     "installed" = @{
         Name   = "Biotak Trigger TH3 (Installed)"
-        Source = if ($resolvedMql4Dir) { Join-Path $resolvedMql4Dir "Indicators\Biotak-Trigger-TH3\Biotak Trigger TH3.mq4" } else { "" }
+        Source = Get-InstalledProjectSource -ResolvedMql4Dir $resolvedMql4Dir
     }
 }
 

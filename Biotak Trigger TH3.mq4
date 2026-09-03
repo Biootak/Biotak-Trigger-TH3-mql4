@@ -3,7 +3,7 @@
 //+------------------------------------------------------------------+
 #property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
-#property version   "3.10"
+#property version   "3.11"
 #property strict
 #property indicator_chart_window
 #property description "Version 3.10 - GOLD: Post-Audit - All Critical Issues Fixed"
@@ -35,6 +35,13 @@
 #include "Biotak\PerformanceOptimizations.mqh"
 #include "Biotak\InputValidationEnhanced.mqh"
 
+//                                                                    
+// RUNTIME SETTINGS - single owner of panel-editable setting mirrors.
+// MUST follow PropertiesAndInputs.mqh (input declarations) and precede
+// GlobalVariables.mqh + all consumers (redirection #defines start here).
+//                                                                    
+#include "Biotak\RuntimeSettings.mqh"
+
 #include "Biotak\GlobalVariables.mqh"
 
 #include "Biotak\UtilityFunctions.mqh"
@@ -44,7 +51,7 @@
 //                                                                    
 #include "Biotak\CalculationCache.mqh"
 #include "Biotak\ZoneFactory.mqh"
-#include "Biotak\ZoneValidator.mqh"
+#include "Biotak\ZoneConfig.mqh"       // single owner of zone settings
 #include "Biotak\ZoneConstants.mqh"
 
 #include "Biotak\ObjectCache.mqh"
@@ -84,12 +91,31 @@
 #include "Biotak\HistoricalDataFunctions.mqh"
 #include "Biotak\EventHandlers.mqh"
 
+//                                                                    
+// UI MODULES — Circular Menu, Settings Panels & HTF Candles          
+// (BiotakKit must precede BiotakMenu; HTFCandles precede the kit)  
+//                                                                    
+#include "Biotak\HTFCandles.mqh"
+#include "Biotak\BiotakKit.mqh"
+#include "Biotak\BiotakMenu.mqh"
+#include "Biotak\BiotakPanels.mqh"
+
 //+------------------------------------------------------------------+
 //| Custom indicator initialization function                         |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    return OnInitHandler();
+    int result = OnInitHandler();
+    if(result == INIT_SUCCEEDED)
+    {
+        // --- Circular menu / settings panels / HTF candles ---
+        InitializeUIStates();      // menu + UI globals
+        InitializeBiotakKit();   // panel state, colors, boxes, custom lines
+        InitializeHTFCandles();    // HTF candle engine
+        CreateMenu();              // orb + ring + tools
+        ChartRedraw();
+    }
+    return result;
 }
 
 //+------------------------------------------------------------------+
@@ -97,6 +123,11 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+    // --- UI teardown (before the base handler clears chart objects) ---
+    DeleteMenu();
+    DeleteHTFCandles();
+    SaveBiotakKit();
+    CleanupUIStates(reason);
     OnDeinitHandler(reason);
 }
 
@@ -114,7 +145,10 @@ int OnCalculate(const int rates_total,
                 const long &real_volume[],
                 const int &spread[])
 {
-    return OnCalculateHandler(rates_total, prev_calculated, time, open, high, low, close, tick_volume, real_volume, spread);
+    int result = OnCalculateHandler(rates_total, prev_calculated, time, open, high, low, close, tick_volume, real_volume, spread);
+    // --- UI kit: HTF forming-candle live update + new-bar redraw ---
+    RefreshKitOnBar();
+    return result;
 }
 
 //+------------------------------------------------------------------+
@@ -126,6 +160,8 @@ void OnChartEvent(const int id,
                   const string &sparam)
 {
   OnChartEventHandler(id,lparam,dparam,sparam);
+  // --- Circular menu / settings panels / palette ---
+  HandleUIChartEvent(id,lparam,dparam,sparam);
 }
 
 //+------------------------------------------------------------------+
@@ -146,4 +182,8 @@ void OnTimer()
     // Real-time refresh of visible info labels (text updated in place only when changed)
     RefreshComboLabelExtraInfo();
     RefreshVisibleStatusLabels();
+
+    // --- UI kit: HTF forming candle + new-bar redraw + chart-lock watchdog ---
+    RefreshKitOnBar();
+    ChartScrollReconcile();
 }

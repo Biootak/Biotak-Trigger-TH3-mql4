@@ -19,14 +19,15 @@
 | 05) Combo Step | Preset، حالت Advanced و مؤلفه‌های Combo |
 | 06) Factor Step | حالت Factor، مبنا، مقدار و ظاهر آن |
 | 07) Zones / Mid | فعال‌سازی و تراکم زون‌ها |
-| 08) Structure & Trigger | سطوح Structure، Trigger و استایل خط پایه |
-| 09) High/Low | رنگ، استایل و Tooltip سقف/کف تاریخی |
-| 10) Text & Font | فونت متن‌های اندیکاتور |
-| 11) Mode Label | برچسب وضعیت حالت فعال |
-| 12) Label Layout | فاصله‌ها و چیدمان برچسب‌ها |
-| 13) TH3 Tool / 14) AB=CD | تنظیمات Full نسخه (در Lite حذف می‌شوند) |
-| 15) Alerts / 16) Hotkeys | هشدارها و کلیدهای میانبر |
-| 17) Advanced / Objects & 18) History & Log | تنظیمات فنی و لاگ‌ها |
+| 08) Level Style / Lines | رنگ، استایل و ضخامت همه‌ی خطوط (پایه، Structure L1-L5، Trigger و High/Low) |
+| 09) Visibility - Structure & Trigger | نمایش سطوح Structure و Trigger و رنگ برچسب‌ها |
+| 10) High/Low Tooltips | Tooltip سقف/کف تاریخی |
+| 11) Text & Font | فونت متن‌های اندیکاتور |
+| 12) Mode Label | برچسب وضعیت حالت فعال |
+| 13) Label Layout | فاصله‌ها و چیدمان برچسب‌ها |
+| 14) TH3 Tool / 15) AB=CD | تنظیمات Full نسخه (در Lite حذف می‌شوند) |
+| 16) Alerts / 17) Hotkeys | هشدارها و کلیدهای میانبر |
+| 18) Advanced / Objects & 19) History & Log | تنظیمات فنی و لاگ‌ها |
 
 `Max Levels` تنها ورودی تعداد سطوح است و تعداد سطوح را به‌صورت یکسان برای سمت بالا و پایین، در همه‌ی حالت‌های محاسبه، کنترل می‌کند. ورودی‌های قدیمیِ جداگانه‌ی `Above`، `Below` و `Custom Price Max Levels` دیگر در تنظیمات نمایش داده نمی‌شوند.
 

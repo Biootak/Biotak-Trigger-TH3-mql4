@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Biotak TH3 — Anchor Rendering Preview (fixed ladder)</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #131a24; --panel2: #182130;
+    --text: #c9d1d9; --dim: #8b949e; --accent: #58a6ff;
+    --border: #212d3d;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: "Segoe UI", Tahoma, Arial, sans-serif; padding: 18px 22px 40px; }
+  header h1 { font-size: 20px; font-weight: 600; }
+  header p { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 1100px; line-height: 1.6; }
+  header p b { color: var(--text); }
+  .controls { margin: 14px 0 4px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    padding: 9px 18px; border-radius: 8px; font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  button:hover { border-color: var(--accent); }
+  button .state { color: var(--accent); font-weight: 700; }
+  button.off .state { color: #f0883e; }
+  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 14px; }
+  @media (max-width: 980px) { .columns { grid-template-columns: 1fr; } }
+  .col { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  .col-head { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .col-head h2 { font-size: 15px; font-weight: 600; }
+  .col-head .fa { color: var(--dim); font-size: 12px; direction: rtl; }
+  .chart { position: relative; width: 100%; height: 940px; background: #101623;
+           background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+                             linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+           background-size: 46px 46px; }
+  .axis { position: absolute; left: 8px; transform: translateY(-50%); font-size: 11px; color: var(--dim); z-index: 3; }
+  .zone { position: absolute; left: 52px; right: 8px; z-index: 1; }
+  .zone .fill { position: absolute; left: 0; right: 0; top: 0; bottom: 0; border-radius: 2px; }
+  .zone .edge { position: absolute; left: 0; right: 0; height: 1.5px; }
+  .zone .edge.top { top: 0; } .zone .edge.bot { bottom: 0; }
+  .zone .tag { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); font-size: 10px; z-index: 2; }
+  .pin { position: absolute; left: 48px; right: 4px; height: 2px; z-index: 4; }
+  .pin .knob { position: absolute; right: -6px; top: -4px; width: 12px; height: 10px; border-radius: 2px; border: 1px solid #9ecbff; background: #1e90ff; }
+  .midline { position: absolute; left: 52px; right: 8px; height: 0; z-index: 2; }
+  .legend { margin-top: 14px; display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--dim); }
+  .legend .sw { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  .legend .ln { display: inline-block; width: 22px; height: 0; border-top: 2px dashed; margin-right: 6px; vertical-align: 3px; }
+  .notes { padding: 12px 16px; font-size: 12px; color: var(--dim); border-top: 1px solid var(--border); line-height: 1.7; }
+  .notes b { color: var(--text); }
+  .notes .chg { color: #7ee787; }
+  .notes .del { color: #f0883e; }
+  .anchor-pick { padding: 10px 16px; border-bottom: 1px solid var(--border); font-size: 12.5px; display: flex; gap: 14px; flex-wrap: wrap; }
+  .anchor-pick label { display: flex; gap: 6px; align-items: center; cursor: pointer; color: var(--dim); }
+  .anchor-pick label.sel { color: var(--text); }
+  .anchor-pick input { accent-color: var(--accent); }
+  .diff { margin-top: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 18px; font-size: 13px; line-height: 1.8; }
+  .diff h3 { font-size: 14px; margin-bottom: 6px; }
+  .diff code { background: #0d1117; border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Biotak Trigger TH3 — Anchor Rendering Preview (fixed ladder)</h1>
+  <p>
+    <b>Fixed:</b> structure levels sit at <b>every multiple of the base intervals</b> (base = 2 → every even step 2,4,6,8…; levels L1..L4 by priority).
+    Trigger levels are the <b>odd steps only</b> — exactly <b>one trigger zone between structure levels</b>, never three in a row (my earlier preview was wrong there).
+    Step 0 (the anchor) is special — use the selector on the right to compare how it should be rendered.
+    Toggles: <b>T</b> = trigger zones, <b>L</b> = lines (zones and lines are fully independent).
+  </p>
+  <div class="controls">
+    <button id="btnT"><span class="label">Trigger Zones (T)</span> — <span class="state">ON</span></button>
+    <button id="btnL"><span class="label">Lines (L)</span> — <span class="state">ON</span></button>
+  </div>
+</header>
+
+<div class="columns">
+  <!-- ============ COLUMN A : CURRENT ============ -->
+  <div class="col">
+    <div class="col-head"><h2>Current — anchor = LINE + STRUCTURE zone</h2><span class="fa">فعلی: منبع رسم = خط + زون ساختاری</span></div>
+    <div class="chart" id="chartA"></div>
+    <div class="notes">
+      <b>Anchor (step 0):</b> draggable blue base line + dark-gray <b>structure</b> zone (always visible).<br>
+      <b>Trigger zones:</b> odd steps only, one per structure interval; hide with <b>T</b> — the gray anchor stays.<br>
+      <b>Lines:</b> midpoint markers between zones, controlled by <b>L</b> only — independent of T.
+    </div>
+  </div>
+
+  <!-- ============ COLUMN B : PROPOSED (selector) ============ -->
+  <div class="col">
+    <div class="col-head"><h2>Proposed — anchor variants</h2><span class="fa">پیشنهاد: مقایسه گزینه‌های منبع رسم</span></div>
+    <div class="anchor-pick" id="pick">
+      <label class="sel"><input type="radio" name="anchor" value="trig" checked> Trigger zone (naive) — creates −1, 0, +1 in a row</label>
+      <label><input type="radio" name="anchor" value="bal"> Trigger zone · one per interval (−1/+1 become lines only)</label>
+      <label><input type="radio" name="anchor" value="struct"> Structure zone, no base line (clean S-T-S alternation)</label>
+    </div>
+    <div class="chart" id="chartB"></div>
+    <div class="notes" id="notesB">
+      <b>Trigger zone (naive):</b> anchor joins the ±1 trigger zones → three trigger zones in a row — the problem you flagged.<br>
+      <b>Balanced:</b> the anchor is THE trigger of the central interval; −1/+1 keep only their midpoint <b>lines</b> → clean structure–trigger–structure alternation.<br>
+      <b>Structure:</b> anchor stays a structure zone (as today) but the standalone base line is removed.
+    </div>
+  </div>
+</div>
+
+<div class="legend">
+  <span><span class="sw" style="background:#1e90ff"></span>Base price line (custom price pin, draggable)</span>
+  <span><span class="sw" style="background:rgba(0,0,0,0.62); border:1px solid #666"></span>Trigger zone (clrBlack @ 50%)</span>
+  <span><span class="sw" style="background:rgba(169,169,169,0.45)"></span>Structure-classified anchor zone (dark gray)</span>
+  <span><span class="sw" style="background:rgba(100,149,237,0.4)"></span>Structure L1 (steps ±2, ±6, ±10, ±14)</span>
+  <span><span class="sw" style="background:rgba(60,179,113,0.4)"></span>Structure L2 (±4, ±12)</span>
+  <span><span class="sw" style="background:rgba(138,43,226,0.4)"></span>Structure L3 (±8)</span>
+  <span><span class="sw" style="background:rgba(255,140,0,0.4)"></span>Structure L4 (±16)</span>
+  <span><span class="ln" style="border-color:#666"></span>Midpoint line (trigger family)</span>
+  <span><span class="ln" style="border-color:#6495ED"></span>Midpoint line (structure family)</span>
+</div>
+
+<div class="diff">
+  <h3>Code changes implied by the chosen variant</h3>
+  1. <code>BuildZonesAndLines</code> — center zone: <span class="chg">isTrigger = true</span> (variants 1–2), colored with <code>GetTriggerRenderColor()</code>, transparency from the Trigger card (today the panel's Trigger Transparency is edited but never applied to zones).<br>
+  2. <code>ClassifyLevels</code> (midpoint branch) — step 0 no longer styled like structure L5 (the <code>0 % interval == 0</code> quirk); it follows the chosen variant. Variant 2 additionally removes the trigger classification of steps ±1 (they keep only their midpoint lines).<br>
+  3. <code>RenderZones</code> — the anchor zone hides together with the other trigger zones when <b>T</b> is off (automatic via <code>isTrigger</code>).<br>
+  4. <span class="del">Base line removed</span> from the anchor in all variants (or kept as an optional draggable handle — your call).<br>
+  5. Lines stay independent of T (already fixed).
+</div>
+
+<script>
+  // ---------------- model ----------------
+  const ANCHOR = 100.0, STEP = 1.0;
+  const MAX = 16;
+  const LCOL = { 1:'#6495ED', 2:'#3CB371', 3:'#8A2BE2', 4:'#FF8C00', 5:'#CD5C5C' };
+  const TRIG_C = 'rgba(0,0,0,0.62)';
+  const TRIG_EDGE = 'rgba(200,200,200,0.45)';
+  const PIN_C = '#1e90ff';
+  const GRAY = 'rgba(169,169,169,0.45)';
+
+  // structure level of a step (base=2 → intervals [2,4,8,16,32]); 0 = not structure
+  function structLevel(s) {
+    if (s === 0) return 0;
+    const iv = [32, 16, 8, 4, 2];
+    for (let i = 0; i < 5; i++) if (Math.abs(s) % iv[i] === 0) return 5 - i;
+    return 0;
+  }
+
+  // ---------------- zone list per anchor option ----------------
+  // returns [{step, price, kind:'struct'|'trig'|'anchor', lv}]
+  function buildZones(anchorMode) {
+    const zones = [];
+    const push = (s, kind, lv) => zones.push({ step: s, price: ANCHOR + s * STEP, kind, lv });
+    for (let s = -MAX; s <= MAX; s++) {
+      if (s === 0) { push(0, 'anchor', anchorMode); continue; }
+      const lv = structLevel(s);
+      if (lv > 0) { push(s, 'struct', lv); continue; }
+      // trigger step — variant 2 drops ±1
+      if (anchorMode === 'bal' && Math.abs(s) === 1) continue;
+      push(s, 'trig', 0);
+    }
+    return zones;
+  }
+
+  // ---------------- render ----------------
+  function render(containerId, anchorMode, isCurrent) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    const H = el.clientHeight || 940;
+    const padT = 26, padB = 26;
+    const P_MIN = ANCHOR - MAX - 0.6, P_MAX = ANCHOR + MAX + 0.6;
+    const y = p => padT + (P_MAX - p) * (H - padT - padB) / (P_MAX - P_MIN);
+
+    for (let p = 84; p <= 116; p += 4) {
+      const d = document.createElement('div');
+      d.className = 'axis'; d.style.top = y(p) + 'px';
+      d.textContent = p.toFixed(0);
+      el.appendChild(d);
+    }
+
+    const zones = buildZones(anchorMode);
+    const addZone = (z) => {
+      const half = STEP * 0.165;
+      const top = y(z.price + half), bot = y(z.price - half);
+      const div = document.createElement('div');
+      div.className = 'zone';
+      const cls = z.kind === 'anchor'
+        ? (anchorMode === 'struct' ? 'anchor-zone' : 'anchor-zone trigger-zone')
+        : (z.kind === 'trig' ? 'trigger-zone' : 'struct-zone');
+      div.classList.add(cls);
+      div.style.top = top + 'px'; div.style.height = Math.max(2, bot - top) + 'px';
+      let fill, edge, tag, tagC;
+      if (z.kind === 'struct') {
+        fill = LCOL[z.lv] + '66'; edge = LCOL[z.lv]; tag = (z.step > 0 ? '+' : '') + z.step + ' · L' + z.lv; tagC = LCOL[z.lv];
+      } else if (z.kind === 'anchor') {
+        if (anchorMode === 'struct') {
+          fill = GRAY; edge = 'rgba(169,169,169,0.8)'; tag = '0 · anchor'; tagC = '#aaa';
+        } else {
+          fill = TRIG_C; edge = TRIG_EDGE; tag = '0 · anchor'; tagC = '#888';
+        }
+      } else {
+        fill = TRIG_C; edge = TRIG_EDGE; tag = (z.step > 0 ? '+' : '') + z.step; tagC = '#777';
+      }
+      const f = document.createElement('div'); f.className = 'fill'; f.style.background = fill; div.appendChild(f);
+      const e1 = document.createElement('div'); e1.className = 'edge top'; e1.style.background = edge; div.appendChild(e1);
+      const e2 = document.createElement('div'); e2.className = 'edge bot'; e2.style.background = edge; div.appendChild(e2);
+      const t = document.createElement('div'); t.className = 'tag'; t.style.color = tagC; t.textContent = tag; div.appendChild(t);
+      el.appendChild(div);
+    };
+    zones.forEach(addZone);
+
+    if (isCurrent) {
+      const pin = document.createElement('div');
+      pin.className = 'pin';
+      pin.style.top = (y(ANCHOR) - 1) + 'px';
+      pin.style.background = PIN_C;
+      pin.innerHTML = '<div class="knob"></div>';
+      el.appendChild(pin);
+    }
+
+    // midpoint lines between consecutive zones (by ascending step)
+    const sorted = zones.slice().sort((a, b) => a.step - b.step);
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const a = sorted[i], b = sorted[i + 1];
+      const price = (a.price + b.price) / 2;
+      // color by the family of the upper bordering zone
+      let col = '#666';
+      if (b.kind === 'struct') col = LCOL[b.lv];
+      else if (b.kind === 'anchor' && anchorMode === 'struct') col = '#999';
+      const d = document.createElement('div');
+      d.className = 'midline';
+      d.style.top = y(price) + 'px';
+      d.style.borderTop = '2px dashed ' + col;
+      d.title = 'midline between ' + a.step + ' and ' + b.step;
+      el.appendChild(d);
+    }
+  }
+
+  // ---------------- state ----------------
+  let trigOn = true, linesOn = true, anchorMode = 'trig';
+
+  function apply() {
+    document.querySelectorAll('.trigger-zone').forEach(z => z.classList.toggle('hidden', !trigOn));
+    document.querySelectorAll('#chartB .anchor-zone').forEach(z => {
+      const isTrigAnchor = anchorMode !== 'struct';
+      z.classList.toggle('hidden', !trigOn && isTrigAnchor);
+    });
+    document.querySelectorAll('#chartA .anchor-zone').forEach(z => z.classList.remove('hidden'));
+    document.querySelectorAll('.midline').forEach(m => m.classList.toggle('hidden', !linesOn));
+    document.querySelectorAll('.zone .edge').forEach(e => e.classList.toggle('hidden', !linesOn));
+    const t = document.getElementById('btnT');
+    t.querySelector('.state').textContent = trigOn ? 'ON' : 'OFF';
+    t.classList.toggle('off', !trigOn);
+    const l = document.getElementById('btnL');
+    l.querySelector('.state').textContent = linesOn ? 'ON' : 'OFF';
+    l.classList.toggle('off', !linesOn);
+  }
+
+  render('chartA', 'struct', true);
+  render('chartB', anchorMode, false);
+  apply();
+
+  document.getElementById('btnT').addEventListener('click', () => { trigOn = !trigOn; apply(); });
+  document.getElementById('btnL').addEventListener('click', () => { linesOn = !linesOn; apply(); });
+
+  document.querySelectorAll('#pick input[name=anchor]').forEach(r => {
+    r.addEventListener('change', () => {
+      anchorMode = r.value;
+      document.querySelectorAll('#pick label').forEach(l => l.classList.toggle('sel', l.querySelector('input').checked));
+      render('chartB', anchorMode, false);
+      apply();
+    });
+  });
+</script>
+</body>
+</html>

@@ -38,6 +38,13 @@
 #include "Biotak\PerformanceOptimizations.mqh"
 #include "Biotak\InputValidationEnhanced.mqh"
 
+//                                                                    
+// RUNTIME SETTINGS - single owner of panel-editable setting mirrors.
+// MUST follow PropertiesAndInputs.mqh (input declarations) and precede
+// GlobalVariables.mqh + all consumers (redirection #defines start here).
+//                                                                    
+#include "Biotak\RuntimeSettings.mqh"
+
 #include "Biotak\GlobalVariables.mqh"
 
 #include "Biotak\UtilityFunctions.mqh"
@@ -47,7 +54,7 @@
 //                                                                    
 #include "Biotak\CalculationCache.mqh"
 #include "Biotak\ZoneFactory.mqh"
-#include "Biotak\ZoneValidator.mqh"
+#include "Biotak\ZoneConfig.mqh"       // single owner of zone settings
 #include "Biotak\ZoneConstants.mqh"
 
 #include "Biotak\ObjectCache.mqh"

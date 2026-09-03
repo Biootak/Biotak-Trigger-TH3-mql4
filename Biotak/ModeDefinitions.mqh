@@ -84,9 +84,10 @@ SModeConfig BuildTHConfig(const string objectPrefix)
     cfg.fallbackColor = clrDodgerBlue;
     cfg.fallbackStyle = STYLE_DOT;
     cfg.fallbackWidth = 1;
-    cfg.midpointColor = GetTriggerRenderColor();
-    cfg.midpointStyle = inpTriggerStyle;
-    cfg.midpointWidth = inpTriggerWidth;
+    // Midpoint follows the unified [08.4] line appearance (like every line).
+    cfg.midpointColor = GetLineRenderColor();
+    cfg.midpointStyle = inpLineStyle;
+    cfg.midpointWidth = inpLineWidth;
     return cfg;
 }
 

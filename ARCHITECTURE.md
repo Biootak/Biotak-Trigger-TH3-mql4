@@ -1,5 +1,7 @@
 # Biotak Trigger TH3 — Architecture
 
+> **For AI agents:** AGENTS.md (repo root) is the session-start rules file — read it first; architecture layering rules are here.
+
 > خلاصه فارسی: این سند معماری لایه‌ای پروژه را توصیف می‌کند؛ قواعدی که هر ماژول باید رعایت کند
 > (ورودی نازک، include guard، include فقط در ابتدای فایل، جهت وابستگی به سمت پایین، تک‌منبع حقیقت
 > برای فرمول‌ها) و نقشه راه رفع بدهی‌های معماری (فایل‌های غول‌پیکر، ماژول‌های مرده، جدول‌های ضریب تکراری).
@@ -35,9 +37,9 @@ modules **below** it; never on modules above.
 │ Drawing         ObjectFunctions, ExtendedDrawingFunctions,    │
 │                 FactorMode, LevelPipeline, ModeDefinitions    │
 ├────────────────────────────────────────────────────────────────┤
-│ Zones           ZoneConstants/Factory/Validator/Calculator/   │
-│                 Renderer, ZoneTrackingHelpers,                │
-│                 UnifiedZoneSystem, DrawingPipeline            │
+│ Zones           ZoneConfig (settings owner), ZoneConstants,   │
+│                 ZoneFactory, legacy modules moved to                │
+│                 _legacy (UnifiedZoneSystem/Renderer/etc.)            │
 ├────────────────────────────────────────────────────────────────┤
 │ Domain (Full)   WaveAnalysis, FrequencyOptimizer, TH3Tool     │
 ├────────────────────────────────────────────────────────────────┤
@@ -67,6 +69,16 @@ Key design decisions:
   the formulas inline.
 - **Centralized global state.** All indicator-wide `static` globals live in
   `GlobalVariables.mqh` (single module, include-guarded).
+- **Settings have ONE owner.** `PropertiesAndInputs.mqh` declares the real
+  `input` parameters. `RuntimeSettings.mqh` (included right after it, before
+  GlobalVariables and every consumer) owns the runtime copies of the
+  panel-editable subset, the `#define inpX gX` redirections, the seeding of
+  those copies from the input values (`RuntimeSettingsInit()`, first line of
+  `OnInitHandler`), the persisted overrides (`RuntimeSettings(Load|Save)
+  Overrides`, chart-scoped `OV_*` GVs; prefix set by the menu via
+  `RuntimeSettingsSetPersistPrefix()`), and derived helpers such as
+  `GetTriggerRenderColor()`. The panels edit the runtime copies; the Inputs
+  dialog seeds them at attach — never add a new `#define inp…` anywhere else.
 - **Safety-first math.** `FloatingPointHelper.mqh` (EPSILON constants, safe
   comparisons), `SafeDivide`/`SafeSqrt`, `MAX_SAFE_PRICE` bounds checks, and
   `ASSERT` (enabled via `ENABLE_ASSERTIONS`).

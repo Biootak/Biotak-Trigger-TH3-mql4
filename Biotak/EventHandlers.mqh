@@ -7,6 +7,9 @@
 #property strict
 
 int OnInitHandler() {
+    // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
+    // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
+    RuntimeSettingsInit();
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);
 
@@ -44,7 +47,7 @@ int OnInitHandler() {
         bool isThree = MathAbs(gvarValue - 3.0) < EPSILON_GENERAL;
         if(isZero || isOne || isTwo || isThree) {
             g_thLabelsMode = (int)gvarValue;
-            g_thLabelsVisible = (g_thLabelsMode != 0);
+            SyncTHFlagsFromMode();   // flags follow the restored mode
         } else {
             _LOG_GATE_E Print("[E][GEN] OnInit: Corrupted TH labels state (", DoubleToString(gvarValue, 10), "), resetting");
             g_thLabelsMode = 0; // Default to OFF
@@ -52,8 +55,11 @@ int OnInitHandler() {
             g_thLabelsVisible = false;
         }
     } else {
-        g_thLabelsMode = 0; // Default to OFF
-        g_thLabelsVisible = false;
+        // First attach: honor the Inputs-dialog TH flags (master ON → FRACTAL
+        // when no specific flag is set) instead of forcing OFF.
+        g_thLabelsMode = THModeFromFlags();
+        if(g_showTHLabels && g_thLabelsMode == 0) g_thLabelsMode = 1;
+        SyncTHFlagsFromMode();
     }
 
     int validationResult = ValidateInputs();
@@ -1385,6 +1391,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpLinesToggleKey))
         {
             g_linesVisible = !g_linesVisible;
+            g_showLines = g_linesVisible;   // keep the Zones card mirror in sync
             UpdateLinesVisibleCache(g_linesVisible);
             string gvar_name = "Biotak_LinesVisible_" + GetCachedChartIdStr();
             GlobalVariableSet(gvar_name, g_linesVisible ? 1.0 : 0.0);
@@ -1473,17 +1480,18 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 
         //  
-        // T key   Toggle Trigger Levels
-        //  
+        // T key   Toggle Trigger Zones (overlay only — unified lines are
+        //         unaffected; line visibility belongs to the L key)
+        //
         if(IsHotkeyPressed(lparam, sparam, inpTriggerLevelsKey))
         {
             g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
             string triggerGvarName = "Biotak_TriggerLevels_" + GetCachedChartIdStr();
             GlobalVariableSet(triggerGvarName, g_triggerLevelsEnabled);
             if(g_triggerLevelsEnabled) {
-                LOG_I(LOG_CAT_KEYS, "Trigger Levels: ON");
+                LOG_I(LOG_CAT_KEYS, "Trigger Zones: ON");
             } else {
-                LOG_I(LOG_CAT_KEYS, "Trigger Levels: OFF");
+                LOG_I(LOG_CAT_KEYS, "Trigger Zones: OFF");
             }
             g_forceClearOnNextDraw = true;
             g_redrawTHLevelsNeeded = true;
@@ -1500,6 +1508,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
             g_atrLabelsVisible = !g_atrLabelsVisible;
+            g_showATRLabels = g_atrLabelsVisible;   // keep the ATR card mirror in sync
             GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
             
             string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
@@ -1531,6 +1540,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             }
 
             g_thLabelsVisible = (g_thLabelsMode != 0);
+            SyncTHFlagsFromMode();   // flags follow the mode → card never disagrees
             GlobalVariableSet(thGvar, (double)g_thLabelsMode);
             
             string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
@@ -1562,11 +1572,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
-            ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
-            ENUM_STEP_CALCULATION_MODE newMode = (ENUM_STEP_CALCULATION_MODE)(((int)currentMode + 1) % 4);
-            g_stepModeOverride = (int)newMode;
+            // Same cycle as the ring item: -1(Auto) → 0..3 → back to Auto
+            int newOverride = (g_stepModeOverride >= 3) ? -1 : g_stepModeOverride + 1;
+            g_stepModeOverride = newOverride;
             string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
-            GlobalVariableSet(stepModeGvarName, g_stepModeOverride);
+            if(g_stepModeOverride == -1) GlobalVariableDel(stepModeGvarName);
+            else GlobalVariableSet(stepModeGvarName, g_stepModeOverride);
             LOG_IP1(LOG_CAT_KEYS, "Step Mode changed to: ", IntegerToString(g_stepModeOverride));
             g_forceClearOnNextDraw = true;
             g_redrawTHLevelsNeeded = true;
@@ -1616,11 +1627,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 #endif
             g_timeframeLocked = false;
             g_lockedPeriod = 0;
-            g_triggerLevelsEnabled = inpShowTrigger;
-            g_linesVisible = inpShowLines;
+            // inpX is the runtime copy after the RuntimeSettings #defines —
+            // restoring from the captured factory defaults instead (reading
+            // inpX here is a self-assign no-op that kept the current values).
+            g_triggerLevelsEnabled = (FactoryDefault(FF_TRIGGER_SHOW) > 0.5);
+            g_linesVisible = (FactoryDefault(FF_SHOW_LINES) > 0.5);
             InvalidateAllVisibilityCaches();
-            g_atrLabelsVisible = inpShowATRLabels;
-            g_thLabelsMode = inpShowTHLabels ? 1 : 0; // Default to FRACTAL if enabled
+            g_atrLabelsVisible = (FactoryDefault(FF_SHOW_ATR) > 0.5);
+            g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 1 : 0; // Default to FRACTAL if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
 #ifndef BUILD_LITE
             if(inpEnableTH3Tool) {

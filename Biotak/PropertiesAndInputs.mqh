@@ -120,92 +120,87 @@ input double inpMidZoneHeightPercent = 33.0;
 input ENUM_LINE_STYLE inpMidZoneBorderStyle = STYLE_SOLID; // Box border line style (Solid/Dash/Dot/...)
 input int inpMidZoneBorderWidth = 1;                       // Box border width (1-5)
 
-input group "08) LEVEL STYLE - STRUCTURE & TRIGGER"
-input string S16 = "[08] LEVEL STYLE / STRUCTURE & TRIGGER";
-input group "08.0) LEVEL STYLE - BASE LINE"
-input ENUM_LINE_STYLE inpTHLineStyle = STYLE_DOT;
-input group "08.1) STRUCTURE - MASTER"
-input string S16a = "[08.1] STRUCTURE / MASTER";
-input bool inpShowStructure = true;                               // Show Structure
-input ENUM_STRUCTURE_BASE_MULTIPLIER inpStructureBase = BASE_MULTIPLIER_2; // Structure Base
+input group "08) LEVEL STYLE - LINES (ALL)"
+input string S16 = "[08] LEVEL STYLE / LINES";
+input group "08.1) LINES - BASE & TRIGGER"
+input string S15b = "[08.1] LINES / BASE & TRIGGER";
+input ENUM_LINE_STYLE inpTHLineStyle = STYLE_DOT;  // Base Line Style
+input color inpTriggerColor = clrBlack;            // Trigger Zone Color
+input ENUM_LINE_STYLE inpTriggerStyle = STYLE_DOT; // (legacy) Trigger Line Style — lines moved to [08.4]
+input int inpTriggerWidth = 1;                     // (legacy) Trigger Line Width — lines moved to [08.4]
 
-input group "08.2) STRUCTURE - L1"
-input string S16b = "[08.2] STRUCTURE / L1";
-input bool inpShowStructureL1 = true;                 // L1 Show
+input group "08.2) LINES - STRUCTURE L1-L5"
+input string S16b = "[08.2] LINES / STRUCTURE L1-L5";
 input color inpStructureL1Color = C'100,149,237';     // L1 Line Color
 input ENUM_LINE_STYLE inpStructureL1Style = STYLE_DOT; // L1 Line Style
 input int inpStructureL1Width = 1;                    // L1 Line Width
-input color inpStructureL1LabelColor = C'100,149,237'; // L1 Label Color
-
-input group "08.3) STRUCTURE - L2"
-input string S16c = "[08.3] STRUCTURE / L2";
-input bool inpShowStructureL2 = true;                 // L2 Show
 input color inpStructureL2Color = C'60,179,113';      // L2 Line Color
 input ENUM_LINE_STYLE inpStructureL2Style = STYLE_DOT; // L2 Line Style
 input int inpStructureL2Width = 1;                    // L2 Line Width
-input color inpStructureL2LabelColor = C'60,179,113'; // L2 Label Color
-
-input group "08.4) STRUCTURE - L3"
-input string S16d = "[08.4] STRUCTURE / L3";
-input bool inpShowStructureL3 = true;                 // L3 Show
 input color inpStructureL3Color = C'138,43,226';      // L3 Line Color
 input ENUM_LINE_STYLE inpStructureL3Style = STYLE_DOT; // L3 Line Style
 input int inpStructureL3Width = 1;                    // L3 Line Width
-input color inpStructureL3LabelColor = C'138,43,226'; // L3 Label Color
-
-input group "08.5) STRUCTURE - L4"
-input string S16e = "[08.5] STRUCTURE / L4";
-input bool inpShowStructureL4 = true;                 // L4 Show
 input color inpStructureL4Color = C'255,140,0';       // L4 Line Color
 input ENUM_LINE_STYLE inpStructureL4Style = STYLE_DOT; // L4 Line Style
 input int inpStructureL4Width = 1;                    // L4 Line Width
-input color inpStructureL4LabelColor = C'255,140,0';  // L4 Label Color
-
-input group "08.6) STRUCTURE - L5"
-input string S16f = "[08.6] STRUCTURE / L5";
-input bool inpShowStructureL5 = true;                 // L5 Show
 input color inpStructureL5Color = C'205,92,92';       // L5 Line Color
 input ENUM_LINE_STYLE inpStructureL5Style = STYLE_DOT; // L5 Line Style
 input int inpStructureL5Width = 1;                    // L5 Line Width
+
+input group "08.3) LINES - HIGH/LOW"
+input string S14a = "[08.3] LINES / HIGH-LOW";
+input color inpHighColor = C'220,20,60';  // High Line Color
+input color inpLowColor = C'0,0,128';     // Low Line Color
+input ENUM_LINE_STYLE inpHighStyle = STYLE_DASHDOT; // High Line Style
+input ENUM_LINE_STYLE inpLowStyle = STYLE_DASHDOT;  // Low Line Style
+input int inpHighWidth = 1;                         // High Line Width
+input int inpLowWidth = 1;                          // Low Line Width
+
+input group "08.4) LINES - UNIFIED"
+input string S16d = "[08.4] LINES / UNIFIED";
+input color inpLineColor = clrBlack;               // Lines Color (ALL pipeline lines)
+input ENUM_LINE_STYLE inpLineStyle = STYLE_DOT;    // Lines Style (ALL pipeline lines)
+input int inpLineWidth = 1;                        // Lines Width (ALL pipeline lines)
+input int inpLineTransparency = 50;                // Lines Transparency (0=Solid, 100=Invisible)
+
+input group "09) VISIBILITY - STRUCTURE & TRIGGER"
+input string S15 = "[09] VISIBILITY / STRUCTURE & TRIGGER";
+input group "09.1) STRUCTURE - MASTER"
+input string S16a = "[09.1] STRUCTURE / MASTER";
+input bool inpShowStructure = true;                               // Show Structure
+input ENUM_STRUCTURE_BASE_MULTIPLIER inpStructureBase = BASE_MULTIPLIER_2; // Structure Base
+
+input group "09.2) STRUCTURE - LEVEL TOGGLES & LABEL COLORS"
+input string S16c = "[09.2] STRUCTURE / LEVEL TOGGLES & LABELS";
+input bool inpShowStructureL1 = true;                 // L1 Show
+input color inpStructureL1LabelColor = C'100,149,237'; // L1 Label Color
+input bool inpShowStructureL2 = true;                 // L2 Show
+input color inpStructureL2LabelColor = C'60,179,113'; // L2 Label Color
+input bool inpShowStructureL3 = true;                 // L3 Show
+input color inpStructureL3LabelColor = C'138,43,226'; // L3 Label Color
+input bool inpShowStructureL4 = true;                 // L4 Show
+input color inpStructureL4LabelColor = C'255,140,0';  // L4 Label Color
+input bool inpShowStructureL5 = true;                 // L5 Show
 input color inpStructureL5LabelColor = C'205,92,92';  // L5 Label Color
 
-input group "08.7) TRIGGER - ENABLE & VISIBILITY"
-input string S15 = "[08.7] TRIGGER / ENABLE & VISIBILITY";
+input group "09.3) TRIGGER - ENABLE & LABEL"
+input string S15c = "[09.3] TRIGGER / ENABLE & LABEL";
 input bool inpShowTrigger = false;       // Show Trigger Levels
 input int inpTriggerTransparency = 50;   // Trigger Transparency (0=Solid, 100=Invisible)
-input group "08.8) TRIGGER - LINE"
-input string S15b = "[08.8] TRIGGER / LINE";
-input color inpTriggerColor = clrBlack;          // Trigger Base Color
-input ENUM_LINE_STYLE inpTriggerStyle = STYLE_DOT; // Trigger Line Style
-input int inpTriggerWidth = 1;                    // Trigger Line Width
-input group "08.9) TRIGGER - LABEL"
-input string S15c = "[08.9] TRIGGER / LABEL";
 input color inpTriggerLabelColor = clrBlack;     // Trigger Label Color
 
-input group "09) LEVEL STYLE - HIGH/LOW"
-input string S14 = "[09] LEVEL STYLE / HIGH-LOW";
-input group "09.1) HIGH/LOW - COLORS"
-input string S14a = "[09.1] HIGH-LOW / COLORS";
-input color inpHighColor = C'220,20,60';  // High Color
-input color inpLowColor = C'0,0,128';     // Low Color
-input group "09.2) HIGH/LOW - LINE STYLE"
-input string S14b = "[09.2] HIGH-LOW / LINE STYLE";
-input ENUM_LINE_STYLE inpHighStyle = STYLE_DASHDOT; // High Style
-input ENUM_LINE_STYLE inpLowStyle = STYLE_DASHDOT;  // Low Style
-input int inpHighWidth = 1;                         // High Width
-input int inpLowWidth = 1;                          // Low Width
-input group "09.3) HIGH/LOW - TOOLTIPS"
-input string S14c = "[09.3] HIGH-LOW / TOOLTIPS";
+input group "10) HIGH/LOW - TOOLTIPS"
+input string S14c = "[10] HIGH-LOW / TOOLTIPS";
 input string inpHighLineTooltip = "Historical High"; // High Tooltip
 input string inpLowLineTooltip = "Historical Low";   // Low Tooltip
 
-input group "10) DISPLAY - TEXT & FONT"
-input string S2 = "[10] DISPLAY / TEXT & FONT";
+input group "11) DISPLAY - TEXT & FONT"
+input string S2 = "[11] DISPLAY / TEXT & FONT";
 input string inpFontName = "Arial Bold";         // Font Name (matches MT5)
 input int inpFontSize = 8;                       // Font Size
 
-input group "11) DISPLAY - MODE LABEL"
-input string S18 = "[11] DISPLAY / MODE LABEL";
+input group "12) DISPLAY - MODE LABEL"
+input string S18 = "[12] DISPLAY / MODE LABEL";
 input bool inpShowModeChangeLabel = true;
 input int inpModeLabelDuration = 5;              // Label Duration (sec, 0=Permanent)
 input ENUM_BASE_CORNER inpModeLabelCorner = CORNER_LEFT_UPPER;
@@ -214,8 +209,8 @@ input int inpModeLabelYDistance = 25;
 input int inpModeLabelFontSize = 12;
 input color inpModeLabelColor = clrDarkBlue;
 
-input group "12) ADVANCED - LABEL LAYOUT"
-input string S21 = "[12] ADVANCED / LABEL LAYOUT";
+input group "13) ADVANCED - LABEL LAYOUT"
+input string S21 = "[13] ADVANCED / LABEL LAYOUT";
 input int inpLabelsMarginTop = 30;        // Distance from top of chart
 input int inpLabelsMarginLeft = 25;       // Distance from left edge
 input int inpLabelsMarginBottom = 25;      // Distance from bottom of chart
@@ -226,8 +221,8 @@ input int inpSectionGap = 30;             // Gap between ATR and TH sections
 input int inpMaxLabelWidth = 250;
 
 #ifndef BUILD_LITE
-input group "13) TH3 TOOL"
-input string S12 = "[13] TH3 TOOL";
+input group "14) TH3 TOOL"
+input string S12 = "[14] TH3 TOOL";
 input bool inpEnableTH3Tool = true;
 input ENUM_TH3_DRAWING_MODE inpTH3DrawingMode = TH3_MODE_ABCD;
 input double inpTH3BaseStepPercent = 28.125;
@@ -246,8 +241,8 @@ input int inpTH3ZoneBorderWidth = 1;
 #endif
 
 #ifndef BUILD_LITE
-input group "14) AB=CD"
-input string S13 = "[14] AB=CD";
+input group "15) AB=CD"
+input string S13 = "[15] AB=CD";
 input bool inpABCDShowLabels = false;             // Visual align MT5: was true
 input color inpABCDPointColor = clrDarkBlue;      // Visual align MT5: was clrGold
 input double inpABCDLabelOffsetPercent = 20.0;
@@ -261,8 +256,8 @@ input int inpABCDInfoFontSize = 9;
 input color inpABCDInfoColor = clrDarkBlue;       // Visual align MT5: was clrNavy
 #endif
 
-input group "15) ALERTS"
-input string S17 = "[15] ALERTS";
+input group "16) ALERTS"
+input string S17 = "[16] ALERTS";
 input bool inpEnableHighLowAlerts = false;        // High/Low Alerts
 input bool inpEnableTHAlerts = false;             // TH Alerts
 input bool inpEnableStructureTHAlerts = false;    // Structure Alerts
@@ -272,8 +267,8 @@ input string inpAlertSoundFile = "alert.wav";    // Sound File
 input bool inpSendNotification = false;           // Push Notification
 input bool inpSendEmail = false;                  // Send Email
 
-input group "16) HOTKEYS"
-input string S19 = "[16] HOTKEYS";
+input group "17) HOTKEYS"
+input string S19 = "[17] HOTKEYS";
 input string inpHideKey = "F";
 input string inpLinesToggleKey = "L";
 input string inpLockKey = "G";
@@ -288,8 +283,8 @@ input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status
 input string inpResetKey = "Q";
 
-input group "17) ADVANCED - OBJECTS"
-input string S20 = "[17] ADVANCED / OBJECTS";
+input group "18) ADVANCED - OBJECTS"
+input string S20 = "[18] ADVANCED / OBJECTS";
 input string inpObjectPrefix = "THLevels";
 input ENUM_LINE_OBJECT_TYPE inpTHLineObjectType = LINE_OBJECT_HORIZONTAL_LINE;
 input ENUM_LABEL_CORNER_POSITION inpLabelCornerPosition = LABEL_CORNER_LEFT_TOP; // Visual align MT5: was LEFT_BOTTOM
@@ -298,59 +293,19 @@ input int inpInitialX = 20;                 // MT4-only: kept for compat
 input int inpInitialY = 10;                 // MT4-only: kept for compat
 input int inpLabelSpacing = 18;             // MT4-only: kept for compat
 
-input group "18) ADVANCED - HISTORY & LOG"
-input string S22 = "[18] ADVANCED / HISTORY & LOG";
+input group "19) ADVANCED - HISTORY & LOG"
+input string S22 = "[19] ADVANCED / HISTORY & LOG";
 input ENUM_TIMEFRAMES inpHistoricalTimeframe = PERIOD_MN1;
 input int inpHistoricalPeriods = 0;
 input ENUM_LOG_LEVEL inpLogLevel = LOG_LEVEL_WARN;   // Minimum log level (TRACE=all, OFF=none)
 
 //==============================================================================
-// Effective trigger line color with configurable transparency (0..100)
-color GetTriggerRenderColor()
-{
-    static color s_cachedBase = clrNONE;
-    static int s_cachedTransparency = -1;
-    static color s_cachedBackground = clrNONE;
-    static color s_cachedRenderColor = clrNONE;
-
-    int t = (int)MathMax(0, MathMin(100, inpTriggerTransparency));
-    // Stronger visual fade for line objects:
-    // 60 -> 84, 50 -> 75, 30 -> 51
-    int tVis = 100 - ((100 - t) * (100 - t)) / 100;
-    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-
-    if(s_cachedBase == inpTriggerColor && s_cachedTransparency == tVis && s_cachedBackground == bg) {
-        return s_cachedRenderColor;
-    }
-
-    s_cachedBase = inpTriggerColor;
-    s_cachedTransparency = tVis;
-    s_cachedBackground = bg;
-
-    if(tVis <= 0) {
-        s_cachedRenderColor = inpTriggerColor;
-        return s_cachedRenderColor;
-    }
-
-    if(tVis >= 100) {
-        s_cachedRenderColor = bg;
-        return s_cachedRenderColor;
-    }
-
-    int fr = ((int)inpTriggerColor) & 0xFF;
-    int fg = (((int)inpTriggerColor) >> 8) & 0xFF;
-    int fb = (((int)inpTriggerColor) >> 16) & 0xFF;
-
-    int br = ((int)bg) & 0xFF;
-    int bgc = (((int)bg) >> 8) & 0xFF;
-    int bb = (((int)bg) >> 16) & 0xFF;
-
-    int outR = (fr * (100 - tVis) + br * tVis) / 100;
-    int outG = (fg * (100 - tVis) + bgc * tVis) / 100;
-    int outB = (fb * (100 - tVis) + bb * tVis) / 100;
-
-    s_cachedRenderColor = (color)(outR | (outG << 8) | (outB << 16));
-    return s_cachedRenderColor;
-}
+// This module ONLY declares the user-facing `input` parameters.
+// The panel-editable subset (SS/LS, trigger, factor, TH3, visibility ...) is
+// mirrored into runtime copies in RuntimeSettings.mqh, which seeds them from
+// these inputs at attach (RuntimeSettingsInit) — so both the MT4 Inputs dialog
+// and the on-chart panels drive the same settings. Derived render helpers
+// (e.g. GetTriggerRenderColor) also live in RuntimeSettings.mqh.
+//==============================================================================
 
 #endif // PROPERTIES_AND_INPUTS_MQH
