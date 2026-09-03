@@ -101,6 +101,7 @@ struct STriggerLine {
     string labelText;
     bool   inViewport;      // false = skip render
     bool   isMidpoint;
+    bool   isTrigger;       // line belongs to a trigger subdivision level
     bool   setBack;         // OBJPROP_BACK value (mode-specific)
     int    zOrder;          // OBJPROP_ZORDER value (mode-specific)
 };
@@ -581,6 +582,7 @@ void BuildZonesAndLines(
         lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
+        lines[lIdx].isTrigger = s_aboveLevels[i].isTrigger;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
         lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
@@ -638,6 +640,7 @@ void BuildZonesAndLines(
         lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
+        lines[lIdx].isTrigger = s_belowLevels[i].isTrigger;
         lines[lIdx].setBack = config.useObjPropBack;
         lines[lIdx].zOrder = config.zOrder;
         lines[lIdx].inViewport = (lineMidPrice >= vpBottom && lineMidPrice <= vpTop);
@@ -777,6 +780,18 @@ void RenderTriggerLines(
     
     for(int i = 0; i < lineCount; i++) {
         string labelName = lines[i].name + "_Label";
+
+        // Trigger subdivision lines are part of the same trigger overlay as
+        // their zone bands: when the trigger levels are turned OFF they must
+        // disappear together with those zones (RenderZones deletes them), NOT
+        // stay behind recolored (SS/LS fallback) between the structure levels.
+        // Factor mode is exempt — its lines invert: visible when triggers OFF.
+        if(lines[i].isTrigger && !triggerEnabled && !config.hideLineWhenTriggerOnly) {
+            DeleteIndicatorObjectManaged(lines[i].name, true);
+            DeleteIndicatorObjectManaged(labelName, true);
+            continue;
+        }
+
         if(!lines[i].inViewport) {
             SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
             SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
