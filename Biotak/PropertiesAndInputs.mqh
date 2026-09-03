@@ -44,7 +44,7 @@ input int inpMagnetSensitivityPips = 10;           // Magnet Sensitivity (pips)
 
 input group "03) DISPLAY - VISIBILITY"
 input string S1 = "[03] DISPLAY / VISIBILITY";
-input bool inpShowLines = true;
+input bool inpShowLines = false;              // Show level lines (default OFF — zones/structure only)
 input bool inpShowTHLevels = true;
 input bool inpShowTHLabels = false;
 input bool inpShowTHTargets = true;              // Show TH Targets
