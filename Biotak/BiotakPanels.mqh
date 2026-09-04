@@ -384,11 +384,13 @@ color ParseHexColor(const string txt)
 
 //+------------------------------------------------------------------+
 //| Color palette popup — complete picker with best-practice layout  |
-//|   · PALETTE tab: the official Google Material palette grid       |
-//|     (19 hue families × 10 shades 50..900, rows=hue, cols=shade)  |
+//|   · PALETTE tab: RECENT strip on top (no tab switch needed) + a   |
+//|     curated compact grid (12 hues × 5 shades 100/300/500/700/900, |
+//|     mapped into the Material matrix — one tap, big targets)       |
 //|   · MIXER tab: R/G/B sliders + hex input (MT4 ships NO native    |
 //|     color picker dialog, so this replaces it entirely)           |
-//|   · RECENT tab: last 24 picked colors (persisted across reloads) |
+//|   · RECENT colors persist across reloads (PushPalRecent on every  |
+//|     pick, incl. the panel-row quick swatches)                     |
 //|   · APPLY TO selector: any color target — trigger, SS/LS, TH3,    |
 //|     HTF candles, custom price or factor. Stays open for live     |
 //|     trials; Done/Esc/click-away closes.                          |
@@ -398,6 +400,42 @@ color ParseHexColor(const string txt)
 #define PAL_PAD   10
 #define PAL_COLS  10            // material shades 50..900
 #define PAL_ROWS  19            // material hue families
+//--- curated compact grid (subset of the matrix above — fewer clicks,
+//--- bigger targets). QMAP_R picks 12 hue rows, QMAP_C 5 shade cols.
+#define PAL_QCOLS 12
+#define PAL_QROWS 5
+#define PAL_QSW   20
+#define PAL_QGAP  3
+#define PAL_RSHOW 12            // recents visible inline (no tab switch)
+int PalQHue(const int i)
+{
+   switch(i)
+   {
+      case 0:  return 0;    // Red
+      case 1:  return 1;    // Pink
+      case 2:  return 2;    // Purple
+      case 3:  return 4;    // Indigo
+      case 4:  return 5;    // Blue
+      case 5:  return 7;    // Cyan
+      case 6:  return 8;    // Teal
+      case 7:  return 9;    // Green
+      case 8:  return 12;   // Yellow
+      case 9:  return 13;   // Amber
+      case 10: return 14;   // Orange
+      default: return 17;   // Grey
+   }
+}
+int PalQShade(const int j)
+{
+   switch(j)   // shades 100/300/500/700/900
+   {
+      case 0:  return 1;
+      case 1:  return 3;
+      case 2:  return 5;
+      case 3:  return 7;
+      default: return 9;
+   }
+}
 #define PAL_HEAD  24
 #define PAL_PREV  30
 #define PAL_TABS  24
@@ -413,8 +451,8 @@ int  g_PalAnchorItem = 0;           // panel the popup hangs next to
 int  g_PalMixDrag = 0;              // 0 none · 1 R · 2 G · 3 B (drag channel)
 bool g_PalHexFocus = false;         // hex edit box has keyboard focus
 
-int PalW() { return PAL_PAD*2 + PAL_COLS*PAL_SW + (PAL_COLS-1)*PAL_GAP; }
-int PalH() { return PAL_HEAD+PAL_PREV+PAL_TABS + PAL_ROWS*(PAL_SW+PAL_GAP) + PAL_TGT+PAL_FOOT + 4; }
+int PalW() { return PAL_PAD*2 + PAL_QCOLS*PAL_QSW + (PAL_QCOLS-1)*PAL_QGAP; }
+int PalH() { return PAL_HEAD+PAL_PREV+PAL_TABS + 16+PAL_QSW+8 + 16+PAL_QROWS*(PAL_QSW+PAL_QGAP) + PAL_TGT+PAL_FOOT + 4; }
 
 string PalShadeName(const int c)
 {
@@ -712,12 +750,12 @@ void PalDraw()
    PnlSetLabel(p+"curtx", px+PAL_PAD+36, py0+8, PalColorText(cur)+"  #"+PalHexText(cur), PNL_CLR_MUTED, 8);
    ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,1601);
 
-   // tabs
+   // tabs (2: PALETTE · MIXER — recents live inline on the PALETTE tab)
    int ty=py+PAL_HEAD+PAL_PREV;
-   string tabs[3]={"PALETTE","MIXER","RECENT"};
+   string tabs[2]={"PALETTE","MIXER"};
    int tgap=6;
-   int tw2=(w-2*PAL_PAD-2*tgap)/3;
-   for(int i=0;i<3;i++)
+   int tw2=(w-2*PAL_PAD-tgap)/2;
+   for(int i=0;i<2;i++)
    {
       bool act=(i==g_PalTab);
       string tb=p+"t"+IntegerToString(i);
@@ -732,44 +770,46 @@ void PalDraw()
 
    if(g_PalTab==0)
    {
-      // Material palette: rows=hue families, cols=shades 50..900
-      for(int r=0;r<PAL_ROWS;r++)
-         for(int c=0;c<PAL_COLS;c++)
-         {
-            string n=p+"s"+IntegerToString(r)+"_"+IntegerToString(c);
-            int sx=px+PAL_PAD+c*(PAL_SW+PAL_GAP);
-            int sy=contY+r*(PAL_SW+PAL_GAP);
-            color sw=PalMatColor(r,c);
-            PnlSetButton(n, sx, sy, PAL_SW, PAL_SW, "", sw, C'70,80,100', true);
-            ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
-            ObjectSetString(0,n,OBJPROP_TOOLTIP, PalMatName(r)+" "+PalShadeName(c)+"  ("+PalColorText(sw)+")");
-         }
-   }
-   else if(g_PalTab==1)
-   {
-      PalDrawMixer(contY);
-   }
-   else
-   {
-      // RECENT tab
-      PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "LAST USED COLORS", PNL_CLR_LABEL, 8);
+      // RECENT strip (no tab switch needed) + curated compact grid.
+      // Grid cells reuse the "s{r}_{c}" ids mapped into the Material
+      // matrix, so PalHandleClick needs no changes.
+      PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "RECENT", PNL_CLR_LABEL, 8);
       ObjectSetInteger(0,p+"rttl",OBJPROP_ZORDER,1601);
-      int y0=contY+18;
-      for(int i=0;i<MathMin(g_PalRecentCount,PAL_RECENT_MAX);i++)
+      int nshow=MathMin(g_PalRecentCount,PAL_RSHOW);
+      for(int i=0;i<nshow;i++)
       {
-         int rr=i/8, cc=i%8;
          string n=p+"r"+IntegerToString(i);
-         int sx=px+PAL_PAD+cc*(PAL_SW+PAL_GAP);
-         int sy=y0+rr*(PAL_SW+PAL_GAP);
-         PnlSetButton(n, sx, sy, PAL_SW, PAL_SW, "", g_PalRecent[i], C'70,80,100', true);
+         int sx=px+PAL_PAD+i*(PAL_QSW+PAL_QGAP);
+         int sy=contY+18;
+         PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i], C'70,80,100', true);
          ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
          ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
       }
-      if(g_PalRecentCount==0)
+      if(nshow==0)
       {
-         PnlSetLabel(p+"rempty", px+PAL_PAD, y0+4, "Pick any color — it appears here for reuse.", PNL_CLR_MUTED, 8);
+         PnlSetLabel(p+"rempty", px+PAL_PAD, contY+20, "Pick any color — it appears here for reuse.", PNL_CLR_MUTED, 8);
          ObjectSetInteger(0,p+"rempty",OBJPROP_ZORDER,1601);
       }
+      int gy=contY+18+PAL_QSW+8;
+      PnlSetLabel(p+"gttl", px+PAL_PAD, gy, "ALL COLORS", PNL_CLR_LABEL, 8);
+      ObjectSetInteger(0,p+"gttl",OBJPROP_ZORDER,1601);
+      int gy0=gy+16;
+      for(int qi=0;qi<PAL_QCOLS;qi++)
+         for(int qj=0;qj<PAL_QROWS;qj++)
+         {
+            int mr=PalQHue(qi), mc=PalQShade(qj);
+            string n=p+"s"+IntegerToString(mr)+"_"+IntegerToString(mc);
+            int sx=px+PAL_PAD+qi*(PAL_QSW+PAL_QGAP);
+            int sy=gy0+qj*(PAL_QSW+PAL_QGAP);
+            color sw=PalMatColor(mr,mc);
+            PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw, C'70,80,100', true);
+            ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
+            ObjectSetString(0,n,OBJPROP_TOOLTIP, PalMatName(mr)+" "+PalShadeName(mc)+"  ("+PalColorText(sw)+")");
+         }
+   }
+   else
+   {
+      PalDrawMixer(contY);
    }
 
    // apply-to target row
@@ -914,7 +954,7 @@ int PalHandleClick(const string name)
    }
    if(id=="t0") { g_PalTab=0; PalDraw(); return REFRESH_NONE; }
    if(id=="t1") { g_PalTab=1; PalDraw(); return REFRESH_NONE; }
-   if(id=="t2") { g_PalTab=2; PalDraw(); return REFRESH_NONE; }
+   // (no t2 — RECENT lives inline on the PALETTE tab)
 
    // material swatch "s{r}_{c}"
    if(StringFind(id,"s")==0)

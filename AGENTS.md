@@ -142,6 +142,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   New widget suffixes (`Q0..Q5`, `PK`) MUST be added to `PnlDestroy`
   (P-UI-02 leak lesson).
 
+- **Palette popup is compact-curated** (2026-09-04 — PALETTE tab = inline
+  RECENT strip (12) + 12×5 curated grid (`PalQHue`/`PalQShade` map into the
+  Material matrix, so `PalHandleClick` "s{r}_{c}" parsing is untouched);
+  RECENT tab removed (2 tabs now). Fewer clicks: recents need no tab
+  switch, targets are 20px. `PalW`/`PalH` derive from the new defines —
+  mixer hit-testing follows automatically.
+
 ---
 
 ## 3. Recurring problems (log — append, never solve twice)
