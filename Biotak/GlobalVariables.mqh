@@ -75,9 +75,20 @@ static int    g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX; // Binary subdivision ind
 static datetime g_lastAlertTime = 0;
 static string g_lastAlertLevel = "";
 
-// Timeframe Lock
+// Timeframe Lock (keyboard-only since 2026-09-04: no menu item, no card)
 static bool g_timeframeLocked = false;
 static int g_lockedPeriod = 0;
+// View Lock — keep the same chart view (bar position + price range) when the
+// user switches timeframes. Toggled from the ring menu (VLOCK slot), the
+// View Lock card, or the V hotkey. Anchor = first-visible-bar time + visible
+// price min/max, captured on scroll/zoom (CHARTEVENT_CHART_CHANGE), at
+// enable time, and persisted at the TF-switch handoff (OnDeinit
+// REASON_CHARTCHANGE → OnInit → first OnCalculate restores).
+static bool g_viewLockEnabled = false;
+static datetime g_viewAnchorTime = 0;
+static double g_viewAnchorMin = 0.0;
+static double g_viewAnchorMax = 0.0;
+static bool g_viewRestorePending = false;
 static string g_lockStatusLabelName = "Biotak_LockStatus_Label";
 static string g_stepModeLabelName = "Biotak_StepMode_Label";
 
@@ -193,12 +204,88 @@ bool GetEffectiveSSLSLongFirst()
 //+------------------------------------------------------------------+
 //| Cleanup All GlobalVariables (array-based, matching MT5)          |
 //+------------------------------------------------------------------+
+//| VIEW LOCK core — same-view persistence across timeframe switches |
+//| Anchor (first-visible-bar time + visible price min/max) is       |
+//| captured on scroll/zoom, at enable time, and at the TF-switch    |
+//| handoff in OnDeinit(REASON_CHARTCHANGE); OnInit re-arms it and   |
+//| the first OnCalculate restores it. Pure Chart*/GV calls only —  |
+//| callable from anything included after this file.                 |
+//+------------------------------------------------------------------+
+string ViewLockGV(const string key)
+{
+    return "Biotak_" + key + "_" + GetCachedChartIdStr();
+}
+
+void ViewLockPersistAnchor()
+{
+    GlobalVariableSet(ViewLockGV("ViewAnchorT"), (double)g_viewAnchorTime);
+    GlobalVariableSet(ViewLockGV("ViewAnchorMin"), g_viewAnchorMin);
+    GlobalVariableSet(ViewLockGV("ViewAnchorMax"), g_viewAnchorMax);
+}
+
+void ViewLockCapture()
+{
+    int bars = Bars(_Symbol, (ENUM_TIMEFRAMES)Period());
+    if(bars <= 0) return;
+    int firstVisible = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
+    if(firstVisible < 0 || firstVisible >= bars) return;
+    datetime t = iTime(_Symbol, (ENUM_TIMEFRAMES)Period(), firstVisible);
+    if(t <= 0) return;
+    double mn = ChartGetDouble(0, CHART_PRICE_MIN);
+    double mx = ChartGetDouble(0, CHART_PRICE_MAX);
+    if(mx <= mn) return;
+    g_viewAnchorTime = t;
+    g_viewAnchorMin = mn;
+    g_viewAnchorMax = mx;
+    ViewLockPersistAnchor();
+}
+
+// Returns true when the pending restore is settled (applied or moot).
+bool ViewLockRestore()
+{
+    if(g_viewAnchorTime <= 0 || g_viewAnchorMax <= g_viewAnchorMin) return true;
+    if(Bars(_Symbol, 0) <= 5) return false;   // history not ready — retry next tick
+    int sh = iBarShift(_Symbol, 0, g_viewAnchorTime, false);
+    if(sh < 0) return false;                  // anchor not in history yet — retry
+    ChartSetInteger(0, CHART_AUTOSCROLL, false);
+    ResetLastError();
+    bool ok = ChartSetInteger(0, CHART_FIRST_VISIBLE_BAR, sh);
+    if(!ok || GetLastError() != 0)
+    {
+        // Fallback: relative navigate so the anchor bar lands at the left edge
+        int cur = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
+        ChartNavigate(0, CHART_CURRENT_POS, sh - cur);
+    }
+    ChartSetInteger(0, CHART_SCALEFIX, true);
+    ChartSetDouble(0, CHART_FIXED_MAX, g_viewAnchorMax);
+    ChartSetDouble(0, CHART_FIXED_MIN, g_viewAnchorMin);
+    return true;
+}
+
+void ViewLockSetEnabled(const bool on)
+{
+    g_viewLockEnabled = on;
+    GlobalVariableSet(ViewLockGV("ViewLock"), on ? 1.0 : 0.0);
+    if(on)
+    {
+        ViewLockCapture();   // anchor = wherever the view is right now
+    }
+    else
+    {
+        // Hand the chart back: auto-scroll + auto-scale like a plain chart
+        ChartSetInteger(0, CHART_AUTOSCROLL, true);
+        ChartSetInteger(0, CHART_SCALEFIX, false);
+        g_viewRestorePending = false;
+    }
+}
+
+//+------------------------------------------------------------------+
 void CleanupAllGlobalVariables() {
     string chartIdStr = GetCachedChartIdStr();
     string rawSymbolName = GetCachedSymbol();
     string sanitizedSymbolName = SanitizeSymbolName(rawSymbolName);
     string gvars[];
-    ArrayResize(gvars, 20);
+    ArrayResize(gvars, 24);
     gvars[0]  = "Biotak_isHidden_" + chartIdStr;
     gvars[1]  = "Biotak_CustomPrice_" + rawSymbolName;
     gvars[2]  = "Biotak_LockTF_" + chartIdStr;
@@ -219,6 +306,10 @@ void CleanupAllGlobalVariables() {
     gvars[17] = "Biotak_SSLSFirst_" + chartIdStr;
     gvars[18] = "Biotak_CustomPrice_" + sanitizedSymbolName;
     gvars[19] = "Biotak_CustomPriceOverride_" + sanitizedSymbolName;
+    gvars[20] = "Biotak_ViewLock_" + chartIdStr;
+    gvars[21] = "Biotak_ViewAnchorT_" + chartIdStr;
+    gvars[22] = "Biotak_ViewAnchorMin_" + chartIdStr;
+    gvars[23] = "Biotak_ViewAnchorMax_" + chartIdStr;
     for(int i = 0; i < ArraySize(gvars); i++) {
         if(GlobalVariableCheck(gvars[i])) GlobalVariableDel(gvars[i]);
     }

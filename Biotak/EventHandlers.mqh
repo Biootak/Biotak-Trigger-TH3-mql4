@@ -172,6 +172,22 @@ int OnInitHandler() {
         g_lockedPeriod = (int)GlobalVariableGet(lockPeriodName);
     }
 
+    // Restore view-lock state + anchor (the TF-switch handoff lands here:
+    // OnDeinit REASON_CHARTCHANGE persisted them moments ago)
+    string viewFlagName = "Biotak_ViewLock_" + chartIdStr;
+    if(GlobalVariableCheck(viewFlagName)) {
+        g_viewLockEnabled = (GlobalVariableGet(viewFlagName) > 0.5);
+    }
+    if(GlobalVariableCheck("Biotak_ViewAnchorT_" + chartIdStr)) {
+        g_viewAnchorTime = (datetime)GlobalVariableGet("Biotak_ViewAnchorT_" + chartIdStr);
+        g_viewAnchorMin = GlobalVariableGet("Biotak_ViewAnchorMin_" + chartIdStr);
+        g_viewAnchorMax = GlobalVariableGet("Biotak_ViewAnchorMax_" + chartIdStr);
+    }
+    if(g_viewLockEnabled) {
+        if(recentTimeframeSwitch && g_viewAnchorTime > 0) g_viewRestorePending = true;
+        else ViewLockCapture();   // fresh attach: anchor = current view
+    }
+
     // Restore step mode with range validation (0..3)
     string stepModeGvarName = "Biotak_StepMode_" + chartIdStr;
     if(GlobalVariableCheck(stepModeGvarName)) {
@@ -409,6 +425,11 @@ void OnDeinitHandler(const int reason) {
         string tfSwitchStampGvar = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
         datetime nowSwitch = TimeCurrent();
         if(nowSwitch > 0) GlobalVariableSet(tfSwitchStampGvar, (double)nowSwitch);
+    }
+    // View-lock handoff: the old-TF view is still on screen right now —
+    // persist it so OnInit can re-arm the restore on the new TF.
+    if(reason == REASON_CHARTCHANGE && g_viewLockEnabled) {
+        ViewLockCapture();
     }
 
     ReleaseATRHandle();
@@ -1177,6 +1198,12 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
         ApplyCacheInvalidation(invalidationFlags, s_lastPeriod, currentPeriod, s_lastCustomPrice, currentCustomPrice);
     }
 
+    // View Lock: first tick(s) after a TF switch re-apply the anchored view
+    // (same bars + same price range — no manual scrolling).
+    if(g_viewRestorePending) {
+        if(ViewLockRestore()) g_viewRestorePending = false;
+    }
+
     if(rates_total > 0)
     {
         // FIX: If not fully initialized, don't throttle redraws to ensure levels appear as soon as data is ready
@@ -1670,6 +1697,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_Factor_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTF_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTFPeriod_" + chartIdStr);
+            if(g_viewLockEnabled) ViewLockSetEnabled(false);
+            GlobalVariableDel("Biotak_ViewLock_" + chartIdStr);
+            GlobalVariableDel("Biotak_ViewAnchorT_" + chartIdStr);
+            GlobalVariableDel("Biotak_ViewAnchorMin_" + chartIdStr);
+            GlobalVariableDel("Biotak_ViewAnchorMax_" + chartIdStr);
             GlobalVariableDel("Biotak_TriggerLevels_" + chartIdStr);
             GlobalVariableDel("Biotak_LinesVisible_" + chartIdStr);
             GlobalVariableDel("Biotak_ATRLabels_" + chartIdStr);
@@ -1753,6 +1785,17 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             ThrottledChartRedraw();
             return;
         }
+
+        //
+        // V key   Toggle View Lock (keep this view across timeframes)
+        //
+        if(IsHotkeyPressed(lparam, sparam, inpViewLockKey))
+        {
+            ViewLockSetEnabled(!g_viewLockEnabled);
+            LOG_I(LOG_CAT_KEYS, "View Lock " + (g_viewLockEnabled ? "ON - view follows across timeframes" : "OFF - chart behaves normally"));
+            ThrottledChartRedraw();
+            return;
+        }
     } // end CHARTEVENT_KEYDOWN
 
     //
@@ -1800,6 +1843,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         s_lastVisibleMin = visibleMin;
         s_lastVisibleMax = visibleMax;
         s_lastLayoutMs = nowMs;
+        // View Lock: user moved the view — re-anchor (idempotent with restores)
+        if(g_viewLockEnabled) ViewLockCapture();
 
         if(sizeChanged) g_labelsRelayoutNeeded = true;
         if(viewportChanged) {

@@ -274,6 +274,7 @@ input string S19 = "[17] HOTKEYS";
 input string inpHideKey = "F";
 input string inpLinesToggleKey = "L";
 input string inpLockKey = "G";
+input string inpViewLockKey = "V";        // View Lock: keep this view across timeframes
 input string inpCustomPriceKey = "C";
 input string inpTriggerLevelsKey = "T";
 input string inpStepModeKey = "E";

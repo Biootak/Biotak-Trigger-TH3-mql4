@@ -134,6 +134,21 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   paths stay to purge badges from older versions. Panels still open via
   long-press; hover tooltips untouched.
 
+- **TF-lock is keyboard-only; the lock slot is now VIEW LOCK**
+  (2026-09-04 — old timeframe-lock (calc pinned to a TF) left the menu AND
+  card 4: ring/card UI gone, but `G`-key toggle, `g_timeframeLocked`
+  engine, GV persist and lock label stay untouched. Slot 4 (`CIR_VLOCK`/
+  `RING_VLOCK`, same ids) is now View Lock: same chart view (first-visible-bar
+  time + price min/max anchor) across timeframe switches. Architecture:
+  anchor captured on scroll/zoom/enable, persisted at the
+  OnDeinit(REASON_CHARTCHANGE)→OnInit handoff (`Biotak_ViewLock/Anchor*`
+  GVs), restored on first OnCalculate (`CHART_FIRST_VISIBLE_BAR` +
+  `CHART_SCALEFIX`, autoscroll off while on). No recalc involved
+  (REFRESH_NONE); toggle via ring, card 4 (single ENABLED row), or `V` key
+  (`inpViewLockKey`). Core fns in `GlobalVariables.mqh`
+  (`ViewLockCapture/Restore/SetEnabled`) — MQL4 has no prototypes, so
+  anything the menu needs must live at/above global scope there.
+
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches
   (`PNL_QSW_*`, `QuickPalColor()` in `BiotakPanels.mqh`) + PICK button for
