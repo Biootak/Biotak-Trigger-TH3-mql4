@@ -220,41 +220,43 @@ input int inpLabelColumnGap = 50;         // Horizontal gap between columns
 input int inpSectionGap = 30;             // Gap between ATR and TH sections
 input int inpMaxLabelWidth = 250;
 
-#ifndef BUILD_LITE
-input group "14) TH3 TOOL"
-input string S12 = "[14] TH3 TOOL";
-input bool inpEnableTH3Tool = true;
-input ENUM_TH3_DRAWING_MODE inpTH3DrawingMode = TH3_MODE_ABCD;
-input double inpTH3BaseStepPercent = 28.125;
-input color inpTH3Color = clrDarkBlue;            // Visual align MT5: was clrForestGreen
-input color inpTH3PipTextColor = clrDarkBlue;     // Visual align MT5: was clrNavy
-input ENUM_LINE_STYLE inpTH3Style = STYLE_SOLID;
-input int inpTH3Width = 1;
-input bool inpShowTH3Labels = true;
-input ENUM_TH3_LABEL_POSITION inpTH3LabelPosition = TH3_LABEL_END;
-input ENUM_ZONE_STYLE inpTH3ZoneStyle = ZONE_STYLE_BOX_FILLED;
-input color inpTH3ZoneColor = clrNONE;
-input int inpTH3ZoneTransparency = 50;
-input double inpTH3ZoneHeightPercent = 33.0;
-input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
-input int inpTH3ZoneBorderWidth = 1;
-#endif
+// TH3TOOL-OFF: whole "14) TH3 TOOL" group retired with the tool (was #ifndef BUILD_LITE) —
+//#ifndef BUILD_LITE
+//input group "14) TH3 TOOL"
+//input string S12 = "[14] TH3 TOOL";
+//input bool inpEnableTH3Tool = true;
+//input ENUM_TH3_DRAWING_MODE inpTH3DrawingMode = TH3_MODE_ABCD;
+//input double inpTH3BaseStepPercent = 28.125;
+//input color inpTH3Color = clrDarkBlue;            // Visual align MT5: was clrForestGreen
+//input color inpTH3PipTextColor = clrDarkBlue;     // Visual align MT5: was clrNavy
+//input ENUM_LINE_STYLE inpTH3Style = STYLE_SOLID;
+//input int inpTH3Width = 1;
+//input bool inpShowTH3Labels = true;
+//input ENUM_TH3_LABEL_POSITION inpTH3LabelPosition = TH3_LABEL_END;
+//input ENUM_ZONE_STYLE inpTH3ZoneStyle = ZONE_STYLE_BOX_FILLED;
+//input color inpTH3ZoneColor = clrNONE;
+//input int inpTH3ZoneTransparency = 50;
+//input double inpTH3ZoneHeightPercent = 33.0;
+//input ENUM_LINE_STYLE inpTH3ZoneBorderStyle = STYLE_DOT;
+//input int inpTH3ZoneBorderWidth = 1;
+//#endif
 
-#ifndef BUILD_LITE
-input group "15) AB=CD"
-input string S13 = "[15] AB=CD";
-input bool inpABCDShowLabels = false;             // Visual align MT5: was true
-input color inpABCDPointColor = clrDarkBlue;      // Visual align MT5: was clrGold
-input double inpABCDLabelOffsetPercent = 20.0;
-input color inpABCDLineColor = clrDarkBlue;       // Visual align MT5: was clrDodgerBlue
-input int inpABCDWidth = 2;
-input bool inpABCDExtendCD = true;
-input ENUM_BASE_CORNER inpABCDInfoCorner = CORNER_LEFT_UPPER;
-input int inpABCDInfoXDistance = 10;
-input int inpABCDInfoYDistance = 20;
-input int inpABCDInfoFontSize = 9;
-input color inpABCDInfoColor = clrDarkBlue;       // Visual align MT5: was clrNavy
-#endif
+// TH3TOOL-OFF: whole "15) AB=CD" group retired with the tool (was #ifndef BUILD_LITE) —
+//#ifndef BUILD_LITE
+//input group "15) AB=CD"
+//input string S13 = "[15] AB=CD";
+//input bool inpABCDShowLabels = false;             // Visual align MT5: was true
+//input color inpABCDPointColor = clrDarkBlue;      // Visual align MT5: was clrGold
+//input double inpABCDLabelOffsetPercent = 20.0;
+//input color inpABCDLineColor = clrDarkBlue;       // Visual align MT5: was clrDodgerBlue
+//input int inpABCDWidth = 2;
+//input bool inpABCDExtendCD = true;
+//input ENUM_BASE_CORNER inpABCDInfoCorner = CORNER_LEFT_UPPER;
+//input int inpABCDInfoXDistance = 10;
+//input int inpABCDInfoYDistance = 20;
+//input int inpABCDInfoFontSize = 9;
+//input color inpABCDInfoColor = clrDarkBlue;       // Visual align MT5: was clrNavy
+//#endif
 
 input group "16) ALERTS"
 input string S17 = "[16] ALERTS";
@@ -275,9 +277,10 @@ input string inpLockKey = "G";
 input string inpCustomPriceKey = "C";
 input string inpTriggerLevelsKey = "T";
 input string inpStepModeKey = "E";
-#ifndef BUILD_LITE
-input string inpTH3ToolKey = "V";
-#endif
+// TH3TOOL-OFF:
+//#ifndef BUILD_LITE
+//input string inpTH3ToolKey = "V";
+//#endif
 input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status

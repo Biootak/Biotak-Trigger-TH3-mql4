@@ -127,12 +127,11 @@ void ApplyRefreshFlags(const int flags)
    if((flags & (REFRESH_ALL | REFRESH_BUFFERS | REFRESH_RECALC | REFRESH_LABELS | REFRESH_TH3)) != 0)
    {
       if((flags & (REFRESH_LABELS | REFRESH_ALL)) != 0) g_labelsRelayoutNeeded = true;
-      if((flags & (REFRESH_TH3 | REFRESH_ALL)) != 0)
-      {
-#ifndef BUILD_LITE
-         UpdateAllTH3Objects();
-#endif
-      }
+      // TH3TOOL-OFF:
+      //if((flags & (REFRESH_TH3 | REFRESH_ALL)) != 0)
+      //{
+      //   UpdateAllTH3Objects();
+      //}
       g_redrawTHLevelsNeeded = true;
       RedrawAllObjects(true);
    }

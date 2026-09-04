@@ -25,7 +25,7 @@
 پروژه با پرچم `BUILD_LITE` دو نسخه دارد:
 
 ### نسخه Full (کامل)
-- شامل ماژول‌های: **Profiler**، **Frequency Optimizer** و **TH3 Tool (ABCD)**.
+- شامل ماژول‌های: **Profiler** و **Frequency Optimizer** (~~TH3 Tool (ABCD) — بازنشسته شد~~).
 - تمام امکانات و تحلیل‌ها فعال است.
 
 ### نسخه Lite (سبک)

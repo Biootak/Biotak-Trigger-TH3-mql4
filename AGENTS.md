@@ -28,6 +28,9 @@ project.
 4. **Place things where they belong** (section 2). New code goes in the
    correct module; never invent a new home for something that has one.
 5. **Icons are 32-bit with alpha. Never flatten them** (see R-ICONS).
+6. **Finished work becomes law.** Every completed section is recorded in
+   these instructions as a rule (R-*) the same session — future sessions
+   obey it instead of re-deciding (see R-RETIRED for the pattern).
 
 ---
 
@@ -109,6 +112,20 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   object its toggle draws** — TH = dotted horizontal levels (`dots`), never
   a wave (waves read as "trend"). Verify a redesign at byte level (ASCII
   dump of the 28px BMP), never by eyeballing an upscaled preview.
+
+### R-RETIRED — retired features (commented out, never deleted)
+
+- **TH3Tool is retired** (2026-09-04, user decision — the toggle/drag-draw
+  behavior was broken and the tool is unwanted). Everything is commented in
+  place with the `TH3TOOL-OFF:` marker — `Biotak/TH3Tool.mqh` + `Biotak/TH3/*`
+  are excluded via the entry `.mq4` includes; ring slot (`RING_TH3`, ring is
+  now 7 items), settings card 5, hotkeys (V/3/4/Backspace/ABCD routing), the
+  `14) TH3 TOOL` + `15) AB=CD` input groups, validators, and seeding are all
+  commented. Dormant remnants left compiling on purpose: `RuntimeSettings`
+  mirrors/`FF_TH3_*`, `GlobalVariables` storage, palette/log/freq-index
+  infra, `custom_*.bmp`. To restore: uncomment the `TH3TOOL-OFF:` sites
+  (grep the marker) and re-add the include. Full+Lite compile 0 errors
+  without the tool (ex4 ~903KB).
 
 ---
 

@@ -391,75 +391,77 @@ void UpdateFactorLabel(double factorValue, double directStepSize = 0, bool clear
     SetLabelTextIfChanged(g_factorLabelName, labelText);
 }
 
-#ifndef BUILD_LITE
+// TH3TOOL-OFF: whole block retired with the tool (was #ifndef BUILD_LITE) —
+// BuildTH3FrequencyLabelText + UpdateTH3FrequencyLabel commented out, not deleted.
+//#ifndef BUILD_LITE
 //+------------------------------------------------------------------+
 //| Build TH3 Frequency label text (shared by show + real-time      |
 //| refresh). The FIBO object scan is throttled (max once per 5s or |
 //| when the frequency changed) so the per-second refresh stays     |
 //| lightweight.                                                    |
 //+------------------------------------------------------------------+
-string BuildTH3FrequencyLabelText(const double frequency) {
-    static uint s_lastStepInfoMs = 0;
-    static double s_lastStepInfoFreq = -1;
-    static string s_cachedStepInfo = "";
-    uint nowMs = GetTickCount();
-    bool freqChanged = (frequency != s_lastStepInfoFreq);
-    if(freqChanged || nowMs - s_lastStepInfoMs >= 5000) {
-        s_lastStepInfoMs = nowMs;
-        s_lastStepInfoFreq = frequency;
-        s_cachedStepInfo = "";
-        
-        // PERF: Use pattern store instead of ObjectsTotal(OBJ_FIBO) loop
-        // g_th3Patterns holds A,B,C,D — range = |pB - pA| (AB wave)
-        int patCount = TH3PatternStoreCount();
-        for(int i = 0; i < patCount; i++) {
-            double p1 = g_th3Patterns.items[i].A.price;
-            double p2 = g_th3Patterns.items[i].B.price;
-            if(p1 <= 0 || p2 <= 0) continue;
-            
-            double rangePips = CalculatePipsDistance(p1, p2);
-            double stepPips  = rangePips * (frequency / 100.0);
-            if(stepPips > 0) {
-                double stepCount = rangePips / stepPips;
-                int    fullSteps = (int)MathFloor(stepCount);
-                double remainder = stepCount - fullSteps;
-                s_cachedStepInfo = StringFormat(" | Step: %.1f pips | Steps: %d + %.2f",
-                    stepPips, fullSteps, remainder);
-                break;
-            }
-        }
-    }
-    return StringFormat("[ TH3 Freq: %.3f%%%s ]", frequency, s_cachedStepInfo);
-}
+//string BuildTH3FrequencyLabelText(const double frequency) {
+//    static uint s_lastStepInfoMs = 0;
+//    static double s_lastStepInfoFreq = -1;
+//    static string s_cachedStepInfo = "";
+//    uint nowMs = GetTickCount();
+//    bool freqChanged = (frequency != s_lastStepInfoFreq);
+//    if(freqChanged || nowMs - s_lastStepInfoMs >= 5000) {
+//        s_lastStepInfoMs = nowMs;
+//        s_lastStepInfoFreq = frequency;
+//        s_cachedStepInfo = "";
+//
+//        // PERF: Use pattern store instead of ObjectsTotal(OBJ_FIBO) loop
+//        // g_th3Patterns holds A,B,C,D — range = |pB - pA| (AB wave)
+//        int patCount = TH3PatternStoreCount();
+//        for(int i = 0; i < patCount; i++) {
+//            double p1 = g_th3Patterns.items[i].A.price;
+//            double p2 = g_th3Patterns.items[i].B.price;
+//            if(p1 <= 0 || p2 <= 0) continue;
+//
+//            double rangePips = CalculatePipsDistance(p1, p2);
+//            double stepPips  = rangePips * (frequency / 100.0);
+//            if(stepPips > 0) {
+//                double stepCount = rangePips / stepPips;
+//                int    fullSteps = (int)MathFloor(stepCount);
+//                double remainder = stepCount - fullSteps;
+//                s_cachedStepInfo = StringFormat(" | Step: %.1f pips | Steps: %d + %.2f",
+//                    stepPips, fullSteps, remainder);
+//                break;
+//            }
+//        }
+//    }
+//    return StringFormat("[ TH3 Freq: %.3f%%%s ]", frequency, s_cachedStepInfo);
+//}
 
 //+------------------------------------------------------------------+
 //| Update TH3 Frequency Label (configurable duration)              |
 //+------------------------------------------------------------------+
-void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
-    // Only show TH3 info when the TH3 tool is actually enabled
-    if(!inpEnableTH3Tool) return;
-    // Check if mode label display is enabled
-    if(!inpShowModeChangeLabel) return;
-    
-    // Clear ALL temporary labels first (prevents overlap)
-    if(clearFirst) ClearAllModeLabels();
-    
-    // CRITICAL FIX: Don't show label if indicator is hidden
-    if(IsIndicatorHidden()) return; // Don't show mode labels when hidden
-    
-    string labelText = BuildTH3FrequencyLabelText(frequency);
-    
-    // GOLD FIX: Check if object exists before creating
-    if(ObjectFind(0, g_th3FreqLabelName) < 0) {
-        if(!ObjectCreate(0, g_th3FreqLabelName, OBJ_LABEL, 0, 0, 0)) return;
-        // Timestamp set ONLY on creation so auto-hide still fires on schedule.
-        g_th3FreqLabelCreateTime = GetTickCount();
-        ApplyModeLabelStyle(g_th3FreqLabelName, inpModeLabelColor);
-    }
-    
-    SetLabelTextIfChanged(g_th3FreqLabelName, labelText);
-}
-#endif
+//void UpdateTH3FrequencyLabel(double frequency, bool clearFirst = true) {
+//    // Only show TH3 info when the TH3 tool is actually enabled
+//    if(!inpEnableTH3Tool) return;
+//    // Check if mode label display is enabled
+//    if(!inpShowModeChangeLabel) return;
+//    
+//    // Clear ALL temporary labels first (prevents overlap)
+//    if(clearFirst) ClearAllModeLabels();
+//    
+//    // CRITICAL FIX: Don't show label if indicator is hidden
+//    if(IsIndicatorHidden()) return; // Don't show mode labels when hidden
+//    
+//    string labelText = BuildTH3FrequencyLabelText(frequency);
+//    
+//    // GOLD FIX: Check if object exists before creating
+//    if(ObjectFind(0, g_th3FreqLabelName) < 0) {
+//        if(!ObjectCreate(0, g_th3FreqLabelName, OBJ_LABEL, 0, 0, 0)) return;
+//        // Timestamp set ONLY on creation so auto-hide still fires on schedule.
+//        g_th3FreqLabelCreateTime = GetTickCount();
+//        ApplyModeLabelStyle(g_th3FreqLabelName, inpModeLabelColor);
+//    }
+//    
+//    SetLabelTextIfChanged(g_th3FreqLabelName, labelText);
+//}
+//#endif   // TH3TOOL-OFF: was #ifndef BUILD_LITE guard for the two functions above
 
 
 //+------------------------------------------------------------------+
@@ -480,14 +482,15 @@ void ShowAllStatusLabels() {
         ComputeFactorModeValues(basePrice, factorVal, stepVal);
         UpdateFactorLabel(factorVal, stepVal, false);
     }
-#ifndef BUILD_LITE
-    // TH3 frequency info belongs to the TH3 tool - only show it when the
-    // tool is enabled (UpdateTH3FrequencyLabel also gates internally).
-    if(inpEnableTH3Tool) {
-        double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
-        UpdateTH3FrequencyLabel(freq, false);
-    }
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    // TH3 frequency info belongs to the TH3 tool - only show it when the
+    //    // tool is enabled (UpdateTH3FrequencyLabel also gates internally).
+    //    if(inpEnableTH3Tool) {
+    //        double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
+    //        UpdateTH3FrequencyLabel(freq, false);
+    //    }
+    //#endif
     UpdateLockStatusLabel();
 }
 
@@ -523,21 +526,22 @@ void RefreshVisibleStatusLabels() {
         }
     }
     
-#ifndef BUILD_LITE
-    // TH3 frequency label (frequency + step info) - only when tool enabled
-    if(inpEnableTH3Tool) {
-        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
-            double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
-            SetLabelTextIfChanged(g_th3FreqLabelName, BuildTH3FrequencyLabelText(freq));
-        }
-    } else {
-        // Tool disabled: remove any lingering TH3 label
-        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
-            ObjectDelete(0, g_th3FreqLabelName);
-            g_th3FreqLabelCreateTime = 0;
-        }
-    }
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    // TH3 frequency label (frequency + step info) - only when tool enabled
+    //    if(inpEnableTH3Tool) {
+    //        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
+    //            double freq = (g_th3FreqOverride > 0) ? g_th3FreqOverride : inpTH3BaseStepPercent;
+    //            SetLabelTextIfChanged(g_th3FreqLabelName, BuildTH3FrequencyLabelText(freq));
+    //        }
+    //    } else {
+    //        // Tool disabled: remove any lingering TH3 label
+    //        if(ObjectFind(0, g_th3FreqLabelName) >= 0) {
+    //            ObjectDelete(0, g_th3FreqLabelName);
+    //            g_th3FreqLabelCreateTime = 0;
+    //        }
+    //    }
+    //#endif
 }
 
 //+------------------------------------------------------------------+
@@ -847,9 +851,10 @@ void RepositionAllOverlayLabels() {
         ApplyModeLabelStyle(g_lockStatusLabelName, (color)ObjectGetInteger(0, g_lockStatusLabelName, OBJPROP_COLOR));
 
     UpdateLockStatusLabel(false);
-#ifndef BUILD_LITE
-    RepositionABCDInfoLabels();
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    RepositionABCDInfoLabels();
+    //#endif
 }
 
 #endif // UTILITY_FUNCTIONS_MQH

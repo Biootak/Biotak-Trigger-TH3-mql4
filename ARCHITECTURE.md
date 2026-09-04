@@ -17,7 +17,7 @@ Two build variants are selected in `Biotak/BuildConfig.mqh`:
 
 | Variant | Selection | Extra modules |
 |---------|-----------|---------------|
-| **Full** | default | `Profiler`, `WaveAnalysis`, `FrequencyOptimizer`, `TH3Tool` |
+| **Full** | default | `Profiler`, `WaveAnalysis`, `FrequencyOptimizer` (~~`TH3Tool` — retired, commented out, see AGENTS.md R-RETIRED~~) |
 | **Lite** | `#define BUILD_LITE` | (none — excludes the above) |
 
 ## 2. Layers (dependency order)
@@ -41,7 +41,7 @@ modules **below** it; never on modules above.
 │                 ZoneFactory, legacy modules moved to                │
 │                 _legacy (UnifiedZoneSystem/Renderer/etc.)            │
 ├────────────────────────────────────────────────────────────────┤
-│ Domain (Full)   WaveAnalysis, FrequencyOptimizer, TH3Tool     │
+│ Domain (Full)   WaveAnalysis, FrequencyOptimizer (~~TH3Tool — retired~~) │
 ├────────────────────────────────────────────────────────────────┤
 │ Calculation     TimeframeFunctions, FractalTimeframes,        │
 │                 StandardTimeframes, THCalculations,           │

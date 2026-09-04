@@ -225,12 +225,13 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_TH_TARGETS]          = inpShowTHTargets;
    g_factoryDefaults[FF_TH_MARGIN_BOTTOM]    = inpTHLabelsMarginBottom;
 #ifndef BUILD_LITE
-   g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
-   g_factoryDefaults[FF_TH3_DRAW_MODE]       = inpTH3DrawingMode;
-   g_factoryDefaults[FF_TH3_BASE_STEP]       = inpTH3BaseStepPercent;
-   g_factoryDefaults[FF_TH3_WIDTH]           = inpTH3Width;
-   g_factoryDefaults[FF_TH3_STYLE]           = inpTH3Style;
-   g_factoryDefaults[FF_TH3_SHOW_LABELS]     = inpShowTH3Labels;
+    // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
+    //g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
+    //g_factoryDefaults[FF_TH3_DRAW_MODE]       = inpTH3DrawingMode;
+    //g_factoryDefaults[FF_TH3_BASE_STEP]       = inpTH3BaseStepPercent;
+    //g_factoryDefaults[FF_TH3_WIDTH]           = inpTH3Width;
+    //g_factoryDefaults[FF_TH3_STYLE]           = inpTH3Style;
+    //g_factoryDefaults[FF_TH3_SHOW_LABELS]     = inpShowTH3Labels;
 #else
    // Lite: TH3 inputs don't exist; factory = the same static defaults the
    // runtime copies keep (no input seeding happens in Lite for TH3).
@@ -335,15 +336,16 @@ void RuntimeSettingsInit()
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
 
 #ifndef BUILD_LITE
-   // [14] TH3 TOOL
-   g_enableTH3Tool = inpEnableTH3Tool;
-   g_th3DrawingMode = inpTH3DrawingMode;
-   g_th3BaseStepPercent = inpTH3BaseStepPercent;
-   g_th3Width = inpTH3Width;
-   g_th3Style = inpTH3Style;
-   g_th3Color = inpTH3Color;
-   g_th3PipTextColor = inpTH3PipTextColor;
-   g_showTH3Labels = inpShowTH3Labels;
+    // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
+    // [14] TH3 TOOL
+    //g_enableTH3Tool = inpEnableTH3Tool;
+    //g_th3DrawingMode = inpTH3DrawingMode;
+    //g_th3BaseStepPercent = inpTH3BaseStepPercent;
+    //g_th3Width = inpTH3Width;
+    //g_th3Style = inpTH3Style;
+    //g_th3Color = inpTH3Color;
+    //g_th3PipTextColor = inpTH3PipTextColor;
+    //g_showTH3Labels = inpShowTH3Labels;
 #endif
 }
 

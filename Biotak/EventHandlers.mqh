@@ -220,42 +220,43 @@ int OnInitHandler() {
         }
     }
 
-#ifndef BUILD_LITE
-    // Restore TH3 frequency with dynamic max validation (binary subdivision)
-    string freqGvarName = "Biotak_TH3Freq_" + chartIdStr;
-    if(GlobalVariableCheck(freqGvarName)) {
-        double restoredFreq = GlobalVariableGet(freqGvarName);
-        double maxFreq = GetFrequencyByIndex(MAX_TH3_FREQ_INDEX);
-        if(restoredFreq > 0 && restoredFreq <= maxFreq) {
-            g_th3FreqOverride = restoredFreq;
-        } else {
-            g_th3FreqOverride = 0;
-            GlobalVariableDel(freqGvarName);
-        }
-    }
-    string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
-    if(GlobalVariableCheck(indexGvarName)) {
-        int restoredIndex = (int)GlobalVariableGet(indexGvarName);
-        if(restoredIndex >= MIN_TH3_FREQ_INDEX && restoredIndex <= MAX_TH3_FREQ_INDEX) {
-            g_th3FreqIndex = restoredIndex;
-        } else {
-            g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
-            GlobalVariableDel(indexGvarName);
-        }
-    }
-    // Binary subdivision migration: sync index with saved frequency (old GM -> binary)
-    if(g_th3FreqOverride > 0) {
-        double expectedFreq = GetFrequencyByIndex(g_th3FreqIndex);
-        if(MathAbs(expectedFreq - g_th3FreqOverride) > 0.01) {
-            g_th3FreqIndex = FindNearestFreqIndex(g_th3FreqOverride);
-            g_th3FreqOverride = GetFrequencyByIndex(g_th3FreqIndex);
-            GlobalVariableSet(freqGvarName, g_th3FreqOverride);
-            GlobalVariableSet(indexGvarName, (double)g_th3FreqIndex);
-            _LOG_GATE_I Print("[I][GEN] OnInit: TH3 Freq migrated to binary subdivision: idx=", g_th3FreqIndex,
-                              " freq=", DoubleToString(g_th3FreqOverride, 4));
-        }
-    }
-#endif
+    // TH3TOOL-OFF: frequency restore retired with the tool —
+    //#ifndef BUILD_LITE
+    //    // Restore TH3 frequency with dynamic max validation (binary subdivision)
+    //    string freqGvarName = "Biotak_TH3Freq_" + chartIdStr;
+    //    if(GlobalVariableCheck(freqGvarName)) {
+    //        double restoredFreq = GlobalVariableGet(freqGvarName);
+    //        double maxFreq = GetFrequencyByIndex(MAX_TH3_FREQ_INDEX);
+    //        if(restoredFreq > 0 && restoredFreq <= maxFreq) {
+    //            g_th3FreqOverride = restoredFreq;
+    //        } else {
+    //            g_th3FreqOverride = 0;
+    //            GlobalVariableDel(freqGvarName);
+    //        }
+    //    }
+    //    string indexGvarName = "Biotak_TH3FreqIdx_" + chartIdStr;
+    //    if(GlobalVariableCheck(indexGvarName)) {
+    //        int restoredIndex = (int)GlobalVariableGet(indexGvarName);
+    //        if(restoredIndex >= MIN_TH3_FREQ_INDEX && restoredIndex <= MAX_TH3_FREQ_INDEX) {
+    //            g_th3FreqIndex = restoredIndex;
+    //        } else {
+    //            g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
+    //            GlobalVariableDel(indexGvarName);
+    //        }
+    //    }
+    //    // Binary subdivision migration: sync index with saved frequency (old GM -> binary)
+    //    if(g_th3FreqOverride > 0) {
+    //        double expectedFreq = GetFrequencyByIndex(g_th3FreqIndex);
+    //        if(MathAbs(expectedFreq - g_th3FreqOverride) > 0.01) {
+    //            g_th3FreqIndex = FindNearestFreqIndex(g_th3FreqOverride);
+    //            g_th3FreqOverride = GetFrequencyByIndex(g_th3FreqIndex);
+    //            GlobalVariableSet(freqGvarName, g_th3FreqOverride);
+    //            GlobalVariableSet(indexGvarName, (double)g_th3FreqIndex);
+    //            _LOG_GATE_I Print("[I][GEN] OnInit: TH3 Freq migrated to binary subdivision: idx=", g_th3FreqIndex,
+    //                              " freq=", DoubleToString(g_th3FreqOverride, 4));
+    //        }
+    //    }
+    //#endif
 
     InitializeATRCache();
 
@@ -275,14 +276,15 @@ int OnInitHandler() {
 
     PrintBuildInfo();
 
-#ifndef BUILD_LITE
-    // Check if TH3 objects need update (after settings change)
-    string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStr;
-    if(GlobalVariableCheck(th3UpdateFlag) && GlobalVariableGet(th3UpdateFlag) > 0) {
-        UpdateAllTH3Objects();
-        GlobalVariableDel(th3UpdateFlag);
-    }
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    // Check if TH3 objects need update (after settings change)
+    //    string th3UpdateFlag = "Biotak_TH3_NeedsUpdate_" + chartIdStr;
+    //    if(GlobalVariableCheck(th3UpdateFlag) && GlobalVariableGet(th3UpdateFlag) > 0) {
+    //        UpdateAllTH3Objects();
+    //        GlobalVariableDel(th3UpdateFlag);
+    //    }
+    //#endif
 
     #ifdef ENABLE_DEBUG_LOGS
     Print("[D][GEN] OnInit complete: deferred=", deferHeavyInit, " hidden=", shouldBeHidden);
@@ -356,9 +358,10 @@ void HideAllTHObjects()
     // PERF: Batch special label hide - ObjectSetInteger is no-op if object doesn't exist
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
-#ifndef BUILD_LITE
-    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
+    //#endif
     ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     if(g_customPriceLineCreated)
         ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, noPeriodsVal);
@@ -415,9 +418,10 @@ void OnDeinitHandler(const int reason) {
     // Eliminates ObjectFind syscalls
     ObjectDelete(0, g_stepModeLabelName);
     ObjectDelete(0, g_factorLabelName);
-#ifndef BUILD_LITE
-    ObjectDelete(0, g_th3FreqLabelName);
-#endif
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    ObjectDelete(0, g_th3FreqLabelName);
+    //#endif
     ObjectDelete(0, g_lockStatusLabelName);
     ObjectDelete(0, g_customPriceHorizontalLineName);
 
@@ -1269,13 +1273,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 
     if(id == CHARTEVENT_KEYDOWN)
     {
-#ifndef BUILD_LITE
-        // Backspace = undo last TH3 drawing point (X, A, B, C placement)
-        if((int)lparam == 8 && TH3SessionActive()) {
-            TH3SessionUndo();
-            return;
-        }
-#endif
+        // TH3TOOL-OFF:
+        //#ifndef BUILD_LITE
+        //        // Backspace = undo last TH3 drawing point (X, A, B, C placement)
+        //        if((int)lparam == 8 && TH3SessionActive()) {
+        //            TH3SessionUndo();
+        //            return;
+        //        }
+        //#endif
 
         //  
         // F key   Hide/Show All Objects (fast visibility toggle)
@@ -1299,12 +1304,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             if(isBecomingHidden)
             {
                 LOG_I(LOG_CAT_KEYS, "F key: Hiding all objects");
-#ifndef BUILD_LITE
-                // Cancel ABCD drawing session if active
-                if(TH3SessionActive()) {
-                    TH3SessionCancel();
-                }
-#endif
+                // TH3TOOL-OFF:
+                //#ifndef BUILD_LITE
+                //                // Cancel ABCD drawing session if active
+                //                if(TH3SessionActive()) {
+                //                    TH3SessionCancel();
+                //                }
+                //#endif
                 HideAllTHObjects();
                 CleanupCustomPriceObjects(false, true);
                 g_redrawTHLevelsNeeded = false;
@@ -1366,9 +1372,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // Restore label visibility
                 ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
                 ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-#ifndef BUILD_LITE
-                ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-#endif
+                // TH3TOOL-OFF:
+                //#ifndef BUILD_LITE
+                //                ObjectSetInteger(0, g_th3FreqLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+                //#endif
                 ObjectSetInteger(0, g_lockStatusLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
                 // Restore custom price line if active
                 if(g_customPriceKeyboardOverride && g_customPriceLineCreated)
@@ -1555,17 +1562,18 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        //  
-        // P key   Toggle TH3 Tool
-        //  
-#ifndef BUILD_LITE
-        if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
-        {
-            ToggleTH3Tool();
-            ThrottledChartRedraw();
-            return;
-        }
-#endif
+        //
+        // P key   Toggle TH3 Tool — TH3TOOL-OFF: retired with the tool
+        //
+        // TH3TOOL-OFF:
+        //#ifndef BUILD_LITE
+        //        if(IsHotkeyPressed(lparam, sparam, inpTH3ToolKey))
+        //        {
+        //            ToggleTH3Tool();
+        //            ThrottledChartRedraw();
+        //            return;
+        //        }
+        //#endif
 
         //  
         // E key   Cycle Step Mode
@@ -1595,13 +1603,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(lparam == '1') { AdjustFactorValue(-1); return; }
         else if(lparam == '2') { AdjustFactorValue(+1); return; }
 
-        //  
-        // 3/4 keys   Adjust TH3 Frequency
-        //  
-#ifndef BUILD_LITE
-        else if(lparam == '3') { DecrementTH3Frequency(); return; }
-        else if(lparam == '4') { CycleTH3Frequency(); return; }
-#endif
+        //
+        // 3/4 keys   Adjust TH3 Frequency — TH3TOOL-OFF: retired with the tool
+        //
+        // TH3TOOL-OFF:
+        //#ifndef BUILD_LITE
+        //        else if(lparam == '3') { DecrementTH3Frequency(); return; }
+        //        else if(lparam == '4') { CycleTH3Frequency(); return; }
+        //#endif
 
         //  
         // W key   Show Current Status
@@ -1621,10 +1630,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             g_stepModeOverride = -1;
             g_factorValueOverride = 0;
-#ifndef BUILD_LITE
-            g_th3FreqOverride = 0;
-            g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
-#endif
+            // TH3TOOL-OFF:
+            //#ifndef BUILD_LITE
+            //            g_th3FreqOverride = 0;
+            //            g_th3FreqIndex = DEFAULT_TH3_FREQ_INDEX;
+            //#endif
             g_timeframeLocked = false;
             g_lockedPeriod = 0;
             // inpX is the runtime copy after the RuntimeSettings #defines —
@@ -1636,17 +1646,19 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_atrLabelsVisible = (FactoryDefault(FF_SHOW_ATR) > 0.5);
             g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 1 : 0; // Default to FRACTAL if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
-#ifndef BUILD_LITE
-            if(inpEnableTH3Tool) {
-                UpdateAllTH3Objects();
-            }
-#endif
-#ifndef BUILD_LITE
-            // Cancel any active ABCD drawing session
-            if(TH3SessionActive()) {
-                TH3SessionCancel();
-            }
-#endif
+            // TH3TOOL-OFF:
+            //#ifndef BUILD_LITE
+            //            if(inpEnableTH3Tool) {
+            //                UpdateAllTH3Objects();
+            //            }
+            //#endif
+            // TH3TOOL-OFF:
+            //#ifndef BUILD_LITE
+            //            // Cancel any active ABCD drawing session
+            //            if(TH3SessionActive()) {
+            //                TH3SessionCancel();
+            //            }
+            //#endif
             g_customPriceKeyboardOverride = false;
             g_thStartPointType = inpTHStartPointType;
             g_customTHStartPrice = inpCustomTHStartPrice;
@@ -1663,10 +1675,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_ATRLabels_" + chartIdStr);
             GlobalVariableDel("Biotak_THLabels_" + chartIdStr);
             GlobalVariableDel("Biotak_CustomPriceOverride_" + symbolName);
-#ifndef BUILD_LITE
-            GlobalVariableDel("Biotak_TH3Freq_" + chartIdStr);
-            GlobalVariableDel("Biotak_TH3FreqIdx_" + chartIdStr);
-#endif
+            // TH3TOOL-OFF:
+            //#ifndef BUILD_LITE
+            //            GlobalVariableDel("Biotak_TH3Freq_" + chartIdStr);
+            //            GlobalVariableDel("Biotak_TH3FreqIdx_" + chartIdStr);
+            //#endif
             if(inpCustomTHStartPrice > 0.0) {
                 GlobalVariableSet("Biotak_CustomPrice_" + symbolName, inpCustomTHStartPrice);
                 CreateCustomPriceLine(inpCustomTHStartPrice, Digits);
@@ -1742,20 +1755,21 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     } // end CHARTEVENT_KEYDOWN
 
-    //  
-    // ABCD Mouse Event Routing
-    //  
-#ifndef BUILD_LITE
-    if(TH3SessionActive() || 
-       id == CHARTEVENT_OBJECT_DRAG || 
-       id == CHARTEVENT_OBJECT_DELETE ||
-       id == CHARTEVENT_MOUSE_MOVE) {
-        OnABCDMouseEvent(id, lparam, dparam, sparam);
-        if(TH3SessionActive() && id == CHARTEVENT_CLICK) {
-            return;
-        }
-    }
-#endif
+    //
+    // ABCD Mouse Event Routing — TH3TOOL-OFF: retired with the tool
+    //
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    if(TH3SessionActive() ||
+    //       id == CHARTEVENT_OBJECT_DRAG ||
+    //       id == CHARTEVENT_OBJECT_DELETE ||
+    //       id == CHARTEVENT_MOUSE_MOVE) {
+    //        OnABCDMouseEvent(id, lparam, dparam, sparam);
+    //        if(TH3SessionActive() && id == CHARTEVENT_CLICK) {
+    //            return;
+    //        }
+    //    }
+    //#endif
 
     //  
     // CHARTEVENT_CHART_CHANGE   Layout/Resize/Scroll/Zoom
@@ -1962,36 +1976,37 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         RedrawAllObjects(true);
     }
 
-    //  
-    // CHARTEVENT_OBJECT_CLICK   ABCD Pattern Selection
-    //  
-#ifndef BUILD_LITE
-    if(id == CHARTEVENT_OBJECT_CLICK)
-    {
-        if(StringFind(sparam, "ABCD_Pattern_") == 0)
-        {
-            string patternName = "";
-            int suffixPos = -1;
-            if(StringFind(sparam, "_Point_") > 0) suffixPos = StringFind(sparam, "_Point_");
-            else if(StringFind(sparam, "_Label_") > 0) suffixPos = StringFind(sparam, "_Label_");
-            else if(StringFind(sparam, "_Line_") > 0) suffixPos = StringFind(sparam, "_Line_");
-            else if(StringFind(sparam, "_Target_") > 0) suffixPos = StringFind(sparam, "_Target_");
-            else if(StringFind(sparam, "_Zone") > 0) suffixPos = StringFind(sparam, "_Zone");
-            if(suffixPos > 0) {
-                patternName = StringSubstr(sparam, 0, suffixPos);
-            } else {
-                patternName = sparam;
-            }
-            if(patternName != "") {
-                SetActiveABCDPattern(patternName);
-            }
-        }
-        else
-        {
-            SetActiveABCDPattern("");
-        }
-    }
-#endif
+    //
+    // CHARTEVENT_OBJECT_CLICK   ABCD Pattern Selection — TH3TOOL-OFF: retired with the tool
+    //
+    // TH3TOOL-OFF:
+    //#ifndef BUILD_LITE
+    //    if(id == CHARTEVENT_OBJECT_CLICK)
+    //    {
+    //        if(StringFind(sparam, "ABCD_Pattern_") == 0)
+    //        {
+    //            string patternName = "";
+    //            int suffixPos = -1;
+    //            if(StringFind(sparam, "_Point_") > 0) suffixPos = StringFind(sparam, "_Point_");
+    //            else if(StringFind(sparam, "_Label_") > 0) suffixPos = StringFind(sparam, "_Label_");
+    //            else if(StringFind(sparam, "_Line_") > 0) suffixPos = StringFind(sparam, "_Line_");
+    //            else if(StringFind(sparam, "_Target_") > 0) suffixPos = StringFind(sparam, "_Target_");
+    //            else if(StringFind(sparam, "_Zone") > 0) suffixPos = StringFind(sparam, "_Zone");
+    //            if(suffixPos > 0) {
+    //                patternName = StringSubstr(sparam, 0, suffixPos);
+    //            } else {
+    //                patternName = sparam;
+    //            }
+    //            if(patternName != "") {
+    //                SetActiveABCDPattern(patternName);
+    //            }
+    //        }
+    //        else
+    //        {
+    //            SetActiveABCDPattern("");
+    //        }
+    //    }
+    //#endif
 }
 
 //+------------------------------------------------------------------+

@@ -31,8 +31,9 @@
 #resource "\\Files\\Icons\\box_on.bmp"
 #resource "\\Files\\Icons\\htf_off.bmp"
 #resource "\\Files\\Icons\\htf_on.bmp"
-#resource "\\Files\\Icons\\custom_off.bmp"
-#resource "\\Files\\Icons\\custom_on.bmp"
+// TH3TOOL-OFF: custom_* icons retired with the tool:
+// #resource "\\Files\\Icons\\custom_off.bmp"
+// #resource "\\Files\\Icons\\custom_on.bmp"
 #resource "\\Files\\Icons\\pin_off.bmp"
 #resource "\\Files\\Icons\\pin_on.bmp"
 #resource "\\Files\\Icons\\tools_off.bmp"
@@ -80,7 +81,8 @@
 #define CIR_ATR             2   // ATR Labels (g_atrLabelsVisible)
 #define CIR_TH              3   // TH Labels (g_thLabelsVisible)
 #define CIR_LOCK            4   // Timeframe Lock (g_timeframeLocked)
-#define CIR_TH3             5   // TH3 Tool / Freq
+// TH3TOOL-OFF: CIR_TH3 slot retired (was 5, TH3 Tool / Freq)
+// #define CIR_TH3             5   // TH3 Tool / Freq
 #define CIR_HTF             6   // HTF Candles
 #define CIR_TOOLS           7   // Tools sub-menu
 
@@ -89,17 +91,17 @@
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 #define CIR_FACTOR_OVERRIDE 10  // Factor Override
 
-//--- ring layout (main circle — 8 items; Zones first = the main feature)
-#define RING_COUNT 8
+//--- ring layout (main circle — 7 items; Zones first = the main feature)
+// TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
+#define RING_COUNT 7
 #define CIRC_ITEM_COUNT RING_COUNT  // alias for legacy code
 #define RING_ZONES    0
 #define RING_TRIGGER  1
 #define RING_ATR      2
 #define RING_TH       3
 #define RING_LOCK     4
-#define RING_TH3      5
-#define RING_HTF      6
-#define RING_TOOLS    7
+#define RING_HTF      5
+#define RING_TOOLS    6
 
 //--- Tools half-circle (sub-menu under Tools)
 #define TOOL_COUNT 3
@@ -147,9 +149,9 @@ int RingFeature(const int ringIdx)
       case RING_TRIGGER: return CIR_TRIGGER;
       case RING_ATR:     return CIR_ATR;
       case RING_TH:      return CIR_TH;
-      case RING_LOCK:    return CIR_LOCK;
-      case RING_TH3:     return CIR_TH3;
-      case RING_HTF:     return CIR_HTF;
+       case RING_LOCK:    return CIR_LOCK;
+       // TH3TOOL-OFF: case RING_TH3: return CIR_TH3;
+       case RING_HTF:     return CIR_HTF;
       case RING_TOOLS:   return CIR_TOOLS;
    }
    return -1;
@@ -392,7 +394,7 @@ bool CircFeatureOn(const int i)
    if(i == CIR_ATR)             return g_atrLabelsVisible;
    if(i == CIR_TH)              return g_thLabelsVisible;
    if(i == CIR_LOCK)            return g_timeframeLocked;
-   if(i == CIR_TH3)             return g_enableTH3Tool;
+   // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
    if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
@@ -431,7 +433,7 @@ string CircIconRes(const int i, const bool on)
    else if(i == CIR_ATR)        base = "atr";     // ATR range-bracket icon
    else if(i == CIR_TH)         base = "dots";    // TH dotted-level icon
    else if(i == CIR_LOCK)       base = "box";     // Lock icon
-   else if(i == CIR_TH3)        base = "custom";  // TH3 tool/gauge icon
+   // TH3TOOL-OFF: else if(i == CIR_TH3) base = "custom";  // TH3 tool/gauge icon
    else if(i == CIR_HTF)        base = "htf";     // HTF candle icon
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
    else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
@@ -446,7 +448,7 @@ string CircIconRes(const int i, const bool on)
 //| content of that card (not the ring toggle that opened it).       |
 //|  0 Trigger Zones = zone ladder · 1 Zones & Levels = band ·       |
 //|  2 ATR = range bracket · 3 TH = dotted wave · 4 Lock = padlock · |
-//|  5 TH3 = analysis marks · 6 HTF = candles · 7 Lines = line ·     |
+//|  5 retired (was TH3) · 6 HTF = candles · 7 Lines = line ·        |
 //|  8 CustomPrice = pin · 9 StepMode = stairs · 10 Factor = gauge · |
 //|  11 Structure = stair levels                                     |
 //+------------------------------------------------------------------+
@@ -458,7 +460,7 @@ string CircCardIcon(const int item, const bool on)
    else if(item == 2)     base = "atr";     // ATR labels (range bracket)
    else if(item == 3)     base = "dots";    // TH labels
    else if(item == 4)     base = "box";     // Timeframe lock
-   else if(item == 5)     base = "custom";  // TH3 tool
+   // TH3TOOL-OFF: else if(item == 5) base = "custom";  // TH3 tool
    else if(item == 6)     base = "htf";     // HTF candles
    else if(item == 7)     base = "tl";      // Lines (shares the line glyph with ATR)
    else if(item == 8)     base = "pin";     // Custom price pin
@@ -502,13 +504,12 @@ string CircBadgeText(const int i)
       if(g_timeframeLocked) return CircTimeframeLabel((ENUM_TIMEFRAMES)g_lockedPeriod);
       return "Aut";
    }
-   if(i == CIR_TH3)
-   {
-#ifndef BUILD_LITE
-      if(g_th3FreqOverride > 0) return DoubleToString(g_th3FreqOverride, 1) + "x";
-#endif
-      return "Aut";
-   }
+   // TH3TOOL-OFF:
+   //if(i == CIR_TH3)
+   //{
+   //   if(g_th3FreqOverride > 0) return DoubleToString(g_th3FreqOverride, 1) + "x";
+   //   return "Aut";
+   //}
    if(i == CIR_HTF)     return CircHtfBadgeLabel(g_HTFPeriod);
    if(i == CIR_PIN)
    {
@@ -547,9 +548,9 @@ string CircItemTooltip(const int i)
       case CIR_TRIGGER:         return "Trigger Zones\nClick: toggle trigger zones · Hold: settings";
       case CIR_ATR:             return "ATR Labels\nClick: toggle ATR labels · Hold: settings";
       case CIR_TH:              return "TH Labels Mode\nClick: cycle TH labels mode · Hold: settings";
-      case CIR_LOCK:            return "Timeframe Lock\nClick: toggle TF lock · Hold: settings";
-      case CIR_TH3:             return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
-      case CIR_HTF:             return "Higher Timeframe Candles\nClick: toggle HTF candles · Hold: settings";
+       case CIR_LOCK:            return "Timeframe Lock\nClick: toggle TF lock · Hold: settings";
+       // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
+       case CIR_HTF:             return "Higher Timeframe Candles\nClick: toggle HTF candles · Hold: settings";
       case CIR_PIN:             return "Custom Price Pin\nClick: activate pin placement · Drag line: adjust · ESC: clear";
       case CIR_STEP_OVERRIDE:   return "Step Mode Override\nClick: cycle override · Hold: settings";
       case CIR_FACTOR_OVERRIDE: return "Factor Value Override\nClick: cycle override · Hold: settings";
@@ -1641,14 +1642,13 @@ int HandleButtonClick(const string clickedObject)
       }
       refreshFlags = REFRESH_ALL;
    }
-   else if(feat == CIR_TH3)
-   {
-#ifndef BUILD_LITE
-      g_enableTH3Tool = !g_enableTH3Tool;
-      UpdateAllTH3Objects();
-#endif
-      refreshFlags = REFRESH_ALL;
-   }
+   // TH3TOOL-OFF:
+   //else if(feat == CIR_TH3)
+   //{
+   //   g_enableTH3Tool = !g_enableTH3Tool;
+   //   UpdateAllTH3Objects();
+   //   refreshFlags = REFRESH_ALL;
+   //}
    else if(feat == CIR_HTF)
    {
       g_UI.showHTF = !g_UI.showHTF;

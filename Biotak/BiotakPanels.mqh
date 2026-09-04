@@ -1096,17 +1096,18 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       if(row==0)       { kind=1; label="LOCKED"; }
       else             { kind=2; label="TIMEFRAME"; opts="Cur|M1|M5|M15|M30|H1|H4|D1|W1|MN1"; minV=0; maxV=9; }
    }
-   else if(item==5)   // TH3 TOOL
-   {
-      if(row==0)       { kind=1; label="ENABLED"; }
-      else if(row==1)  { kind=2; label="MODE"; opts="Steps|AB=CD"; }
-      else if(row==2)  { label="BASE STEP"; minV=1; maxV=100; step=0.5; unit="%"; }
-      else if(row==3)  { label="WIDTH"; minV=1; maxV=5; }
-      else if(row==4)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
-      else if(row==5)  { kind=4; label="COLOR"; }
-      else if(row==6)  { kind=4; label="PIP COLOR"; }
-      else             { kind=1; label="SHOW LABELS"; }
-   }
+   // TH3TOOL-OFF: item==5 (TH3 TOOL card) retired —
+   //else if(item==5)   // TH3 TOOL
+   //{
+   //   if(row==0)       { kind=1; label="ENABLED"; }
+   //   else if(row==1)  { kind=2; label="MODE"; opts="Steps|AB=CD"; }
+   //   else if(row==2)  { label="BASE STEP"; minV=1; maxV=100; step=0.5; unit="%"; }
+   //   else if(row==3)  { label="WIDTH"; minV=1; maxV=5; }
+   //   else if(row==4)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+   //   else if(row==5)  { kind=4; label="COLOR"; }
+   //   else if(row==6)  { kind=4; label="PIP COLOR"; }
+   //   else             { kind=1; label="SHOW LABELS"; }
+   //}
    else if(item==6)   // HTF CANDLES
    {
       if(row==0)       { kind=1; label="ENABLED"; }
@@ -1179,7 +1180,7 @@ string PnlTitleText(const int item)
    if(item==2)  return "ATR Labels";
    if(item==3)  return "TH Labels";
    if(item==4)  return "Timeframe Lock";
-   if(item==5)  return "TH3 Tool";
+   // TH3TOOL-OFF: if(item==5) return "TH3 Tool";
    if(item==6)  return "HTF Candles";
    if(item==7)  return "Lines";
    if(item==8)  return "Custom Price";
@@ -1266,14 +1267,15 @@ double PnlDefVal(const int item,const int row)
               return 40;                               // default margin bottom
       case 4: if(row==0) return 0.0;                   // unlocked by default
               return LockOptFromPeriod(g_lockedPeriod); // Cur (=0) when nothing locked
-      case 5: if(row==0) return (FactoryDefault(FF_ENABLE_TH3)>0.5)?1.0:0.0;
-              if(row==1) return (int)FactoryDefault(FF_TH3_DRAW_MODE);
-              if(row==2) return FactoryDefault(FF_TH3_BASE_STEP);
-              if(row==3) return FactoryDefault(FF_TH3_WIDTH);
-              if(row==4) return (int)FactoryDefault(FF_TH3_STYLE);
-              if(row==7) return (FactoryDefault(FF_TH3_SHOW_LABELS)>0.5)?1.0:0.0;
-              return 3;
-      case 6: if(row==0) return 0.0;                   // HTF off by default
+       // TH3TOOL-OFF: case 5 (TH3 TOOL defaults) retired —
+       //case 5: if(row==0) return (FactoryDefault(FF_ENABLE_TH3)>0.5)?1.0:0.0;
+       //        if(row==1) return (int)FactoryDefault(FF_TH3_DRAW_MODE);
+       //        if(row==2) return FactoryDefault(FF_TH3_BASE_STEP);
+       //        if(row==3) return FactoryDefault(FF_TH3_WIDTH);
+       //        if(row==4) return (int)FactoryDefault(FF_TH3_STYLE);
+       //        if(row==7) return (FactoryDefault(FF_TH3_SHOW_LABELS)>0.5)?1.0:0.0;
+       //        return 3;
+       case 6: if(row==0) return 0.0;                   // HTF off by default
               if(row==1)
               {
                  if(InpHTFAutoMode==HTF_AUTO_FRACTAL) return 0.0;
@@ -1355,14 +1357,15 @@ double PnlCurrent(const int item,const int row)
               return g_thLabelsMarginBottom;
       case 4: if(row==0) return g_timeframeLocked?1.0:0.0;
               return LockOptFromPeriod(g_lockedPeriod);
-      case 5: if(row==0) return g_enableTH3Tool?1.0:0.0;
-              if(row==1) return (int)g_th3DrawingMode;
-              if(row==2) return g_th3BaseStepPercent;
-              if(row==3) return g_th3Width;
-              if(row==4) return (int)g_th3Style;
-              if(row==7) return g_showTH3Labels?1.0:0.0;
-              return 0;
-      case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
+       // TH3TOOL-OFF: case 5 (TH3 TOOL values) retired —
+       //case 5: if(row==0) return g_enableTH3Tool?1.0:0.0;
+       //        if(row==1) return (int)g_th3DrawingMode;
+       //        if(row==2) return g_th3BaseStepPercent;
+       //        if(row==3) return g_th3Width;
+       //        if(row==4) return (int)g_th3Style;
+       //        if(row==7) return g_showTH3Labels?1.0:0.0;
+       //        return 0;
+       case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
               if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
               if(row==2) return g_HTFOpacity;
               if(row==7) return g_HTFWickWidth;
@@ -1509,15 +1512,16 @@ int PnlApply(const int item,const int row,const double v)
             flags=REFRESH_ALL;
          }
          break;
-      case 5:   // TH3 TOOL
-         if(row==0)       { g_enableTH3Tool=(v>0.5); flags=REFRESH_ALL; }
-         else if(row==1)  { g_th3DrawingMode=(ENUM_TH3_DRAWING_MODE)(int)MathRound(v); flags=REFRESH_TH3; }
-         else if(row==2)  { g_th3BaseStepPercent=MathMax(0.5,v); flags=REFRESH_TH3; }
-         else if(row==3)  { g_th3Width=ClampInt((int)MathRound(v),1,5); flags=REFRESH_TH3; }
-         else if(row==4)  { g_th3Style=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_TH3; }
-         else             { g_showTH3Labels=(v>0.5); flags=REFRESH_TH3; }
-         break;
-      case 6:   // HTF CANDLES
+       // TH3TOOL-OFF: case 5 (TH3 TOOL apply) retired —
+       //case 5:   // TH3 TOOL
+       //   if(row==0)       { g_enableTH3Tool=(v>0.5); flags=REFRESH_ALL; }
+       //   else if(row==1)  { g_th3DrawingMode=(ENUM_TH3_DRAWING_MODE)(int)MathRound(v); flags=REFRESH_TH3; }
+       //   else if(row==2)  { g_th3BaseStepPercent=MathMax(0.5,v); flags=REFRESH_TH3; }
+       //   else if(row==3)  { g_th3Width=ClampInt((int)MathRound(v),1,5); flags=REFRESH_TH3; }
+       //   else if(row==4)  { g_th3Style=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_TH3; }
+       //   else             { g_showTH3Labels=(v>0.5); flags=REFRESH_TH3; }
+       //   break;
+       case 6:   // HTF CANDLES
          if(row==0)       { g_UI.showHTF=(v>0.5); flags=REFRESH_HTF; }
          else if(row==1)
          {
