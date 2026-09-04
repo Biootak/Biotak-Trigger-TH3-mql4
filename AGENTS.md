@@ -134,6 +134,14 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   paths stay to purge badges from older versions. Panels still open via
   long-press; hover tooltips untouched.
 
+- **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
+  without opening the popup: preview block + 6 curated swatches
+  (`PNL_QSW_*`, `QuickPalColor()` in `BiotakPanels.mqh`) + PICK button for
+  the full palette popup. One tap applies live (`PaletteApplyColor` +
+  `PushPalRecent` + `PnlUpdateRow`), selection ring marks the active color.
+  New widget suffixes (`Q0..Q5`, `PK`) MUST be added to `PnlDestroy`
+  (P-UI-02 leak lesson).
+
 ---
 
 ## 3. Recurring problems (log — append, never solve twice)

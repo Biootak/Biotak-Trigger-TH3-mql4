@@ -37,6 +37,27 @@
 #define PNL_KNOB_W     18
 #define PNL_SW_W       46
 #define PNL_SW_H       24
+//--- inline quick-pick swatches on COLOR rows (one-tap apply, no popup).
+// Row line-2 layout: [preview 46][6][6×22 swatches +5 gaps][6][PICK fills rest].
+// New widget suffixes ("Q0".."Q5","PK") MUST also be deleted in PnlDestroy
+// (see P-UI-02: leaked widgets stay on screen).
+#define PNL_QSW_N      6
+#define PNL_QSW_W      22
+#define PNL_QSW_GAP    5
+#define PNL_QSW_PREV   46
+#define PNL_QSW_OGAP   6
+color QuickPalColor(const int i)
+{
+   switch(i)
+   {
+      case 0:  return C'255,171,0';   // brand amber
+      case 1:  return C'244,67,54';    // red
+      case 2:  return C'76,175,80';    // green
+      case 3:  return C'33,150,243';   // blue
+      case 4:  return C'245,245,245';  // white
+      default: return C'20,20,20';     // black
+   }
+}
 #define PNL_BTN_W      92
 #define PNL_BTN_H      26
 #define PNL_KEY_ESC    27
@@ -1846,13 +1867,27 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       // No overlay button: presses on the switch are handled by coordinates
       // in PnlHandleMouseMove — MT4 paints OBJ_BUTTON faces over the skins.
    }
-   else if(kind==4)   // ── Color button (opens the palette popup) ──
+   else if(kind==4)   // ── Color row: preview + quick swatches + PICK ──
    {
       color cc=PnlRowColor(item,row);
-      PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, ry+22, PNL_WEL-2*PNL_PAD_X, 22,
-                   "                                        ", cc, C'60,70,90', true);
-      PnlSetLabel(PnlName(item,row,"CL"), px+PNL_WEL-PNL_PAD_X-58, ry+28,
-                  "PICK >", PNL_CLR_MUTED, 8);
+      int cy2=ry+22;
+      int cxx=px+PNL_PAD_X;
+      // current-color preview (tap = full popup, same as PICK)
+      PnlSetButton(PnlName(item,row,"CB"), cxx, cy2, PNL_QSW_PREV, 22, "", cc, C'60,70,90', true);
+      int qx=cxx+PNL_QSW_PREV+PNL_QSW_OGAP;
+      for(int qi=0; qi<PNL_QSW_N; qi++)
+      {
+         color qc=QuickPalColor(qi);
+         string qn=PnlName(item,row,"Q"+IntegerToString(qi));
+         PnlSetButton(qn, qx+qi*(PNL_QSW_W+PNL_QSW_GAP), cy2, PNL_QSW_W, 22, "",
+                      qc, (qc==cc) ? PNL_CLR_ACCENT : C'70,80,100', true);
+      }
+      int pkx=qx+PNL_QSW_N*PNL_QSW_W+(PNL_QSW_N-1)*PNL_QSW_GAP+PNL_QSW_OGAP;
+      int pkw=px+PNL_WEL-PNL_PAD_X-pkx;
+      string pk=PnlName(item,row,"PK");
+      PnlSetButton(pk, pkx, cy2, pkw, 22, "PICK >", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+      ObjectSetInteger(0,pk,OBJPROP_COLOR,PNL_CLR_SEG_TX);
+      ObjectSetInteger(0,pk,OBJPROP_FONTSIZE,8);
    }
    else if(kind==2)   // ── Segmented selector ──
    {
@@ -2030,6 +2065,9 @@ void PnlDestroy(const int item)
       ObjectDelete(0,head+rr+"_RS");
       ObjectDelete(0,head+rr+"_CB");
       ObjectDelete(0,head+rr+"_CL");
+      ObjectDelete(0,head+rr+"_PK");
+      for(int q=0;q<PNL_QSW_N;q++)   // quick-pick swatches
+         ObjectDelete(0,head+rr+"_Q"+IntegerToString(q));
       ObjectDelete(0,head+rr+"_NAV");
    }
    ObjectDelete(0,head+"card");
@@ -2510,11 +2548,19 @@ void PnlUpdateRow(const int item,const int row)
    double val=PnlCurrent(item,row);
 
    if(kind==5) return;   // NAV rows are static buttons
-   if(kind==4)   // color button: refresh swatch from the target global
+   if(kind==4)   // color row: refresh preview swatch + quick-pick selection rings
    {
+      color cur=PnlRowColor(item,row);
       string cb=PnlName(item,row,"CB");
       if(ObjectFind(0,cb)>=0)
-         ObjectSetInteger(0,cb,OBJPROP_BGCOLOR,PnlRowColor(item,row));
+         ObjectSetInteger(0,cb,OBJPROP_BGCOLOR,cur);
+      for(int qi=0; qi<PNL_QSW_N; qi++)
+      {
+         string qn=PnlName(item,row,"Q"+IntegerToString(qi));
+         if(ObjectFind(0,qn)>=0)
+            ObjectSetInteger(0,qn,OBJPROP_BORDER_COLOR,
+                             (QuickPalColor(qi)==cur) ? PNL_CLR_ACCENT : C'70,80,100');
+      }
       return;
    }
    if(kind==1)   // toggle
@@ -2601,12 +2647,28 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    int minV=0,maxV=0; double step=1;
    PnlRowDef(item,row,rkind,label,minV,maxV,step,unit,opts);
 
-   // ── Color button → open the palette popup bound to this row ──
-   if(kind=="CB")
+   // ── Color preview / PICK → open the palette popup bound to this row ──
+   if(kind=="CB" || kind=="PK")
    {
       if(rkind!=4) return REFRESH_NONE;
       PalOpen(item,row);
       return REFRESH_NONE;
+   }
+
+   // ── Quick swatch "Q0".."Q5" → apply instantly, chart updates live ──
+   if(StringLen(kind)==2 && StringGetCharacter(kind,0)=='Q')
+   {
+      if(rkind!=4) return REFRESH_NONE;
+      int qi=(int)StringToInteger(StringSubstr(kind,1));
+      if(qi<0 || qi>=PNL_QSW_N) return REFRESH_NONE;
+      int k=PnlColorKind(item,row);
+      if(k<0) return REFRESH_NONE;
+      color qc=QuickPalColor(qi);
+      int flags=PaletteApplyColor(k,qc);
+      PushPalRecent(qc);
+      PnlUpdateRow(item,row);
+      if(g_PalOpen && g_PalKind==k) PalUpdateLive();
+      return flags;
    }
 
    // ── NAV row → open the target card (STRUCTURE sub-card / BACK) ──
