@@ -71,7 +71,8 @@ function dashPoly(points, dash, gap, w) {
 //   mtf    : stacked timeframe frames + ichimoku wave inside
 //   box    : zone rectangle with selection corner handles
 //   htf    : candlesticks with wicks (higher timeframe)
-//   orb    : ichimoku emblem — tenkan wave over kijun flat over kumo cloud
+//   orb    : bow-medallion ingest — tools/orb-bow-master.bgra (built by
+//            tools/make-orb-bow.ps1). No yy overlay anymore (retired).
 const ART = {
   zone: [
     // zone — trigger/zone levels: two level lines joined by step ticks
@@ -159,39 +160,21 @@ const ART = {
     cfill(16, 16, 2.2),
   ],
 };
-// --- yin-yang emblem (STATIC, no rotation): yy.bmp
-// Premium two-tone matching the orb identity: near-black navy + warm gold.
-// Strong drop shadow + warm rim so the disc edge reads on the dark orb.
-const YY_SIZE = 32;     // render size (px)
-const YY_R = 13.5;      // big circle radius (32-space)
-const YY_A = [8, 10, 17];       // dark half (near-black navy)
-const YY_B = [255, 200, 60];    // light half (warm gold)
-
-function yyIcon() {
-  const c = YY_SIZE / 2, R = YY_R, R2 = R / 2, dot = R / 5;
-  return renderFx(YY_SIZE, (x, y) => {
-    let col = [0, 0, 0, 0];
-    // drop shadow crescent under the disc → crisp separation from the orb
-    const sh = halo(x, y, c, c, R, 2.0, 150, [0, 0, 0], 2.2);
-    if (sh) col = over(col, sh);
-    // symbol frame: vertical axis (u = x, v = y), top pole at v = -R/2
-    const u = x - c, v = y - c;
-    if (Math.hypot(u, v) <= R) {
-      const inTop = Math.hypot(u, v + R2) <= R2;
-      const inBottom = Math.hypot(u, v - R2) <= R2;
-      let disc;
-      if (inTop) disc = YY_B;
-      else if (inBottom) disc = YY_A;
-      else disc = (u < 0) ? YY_A : YY_B;
-      if (Math.hypot(u, v + R2) <= dot) disc = YY_A;   // dot inside light lobe
-      if (Math.hypot(u, v - R2) <= dot) disc = YY_B;   // dot inside dark lobe
-      col = over(col, pm(disc, 255));
-      // warm rim → defines the circle edge on the dark half
-      const rim = circleBorder(x, y, c, c, R, [255, 226, 150], 185, 1.3);
-      if (rim) col = over(col, rim);
-    }
-    return col[3] > 0 ? col : null;
-  });
+// --- orb center art: bow-medallion ingest (NOT procedural) ---
+// Single source of truth: tools/orb-bow-master.bgra — 72x72 premultiplied
+// BGRA top-down bytes built by tools/make-orb-bow.ps1 from the artwork
+// (circle-cropped, checkerboard removed, black-lifted for dark charts).
+// P-ICONS-05: the retired yy overlay object is gone from the MQL side, so
+// yy.bmp is no longer generated at all — the orb is ONE 72px image.
+const ORB_MASTER_SIZE = 72;
+function orbSkinFromMaster() {
+  const master = path.join(__dirname, 'orb-bow-master.bgra');
+  if (!fs.existsSync(master))
+    throw new Error('missing ' + master + ' — run powershell -File tools/make-orb-bow.ps1 first');
+  const m = fs.readFileSync(master);
+  if (m.length !== ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4)
+    throw new Error('orb-bow-master.bgra bad size: ' + m.length + ' (want ' + (ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4) + ')');
+  return Buffer.from(m);
 }
 
 const BADGE_ART = [
@@ -350,24 +333,9 @@ function circSkin(on) {
   });
 }
 
-// --- orb_bg.bmp : 56x56, 48px orb centered (4px margin)
-// Warm amber glass orb: dark amber-brown gradient + amber glow + gold border
-function orbSkin() {
-  const S = 56, c = 28, r = 24;
-  return renderFx(S, (x, y) => {
-    let col = [0, 0, 0, 0];
-    const g = halo(x, y, c, c, r, 3.5, 95, [255, 171, 0]);     // amber glow
-    if (g) col = over(col, g);
-    const s = halo(x, y, c, c, r, 3.5, 102, [0, 0, 0], 4);      // drop shadow
-    if (s) col = over(col, s);
-    const f = gradCircle(x, y, c, c, r,
-      [80, 55, 20, 235], [12, 16, 28, 250]);                    // warm brown → dark navy
-    if (f) col = over(col, f);
-    const b = circleBorder(x, y, c, c, r, [255, 200, 60], 235, 2.0);  // gold border
-    if (b) col = over(col, b);
-    return col[3] > 0 ? col : null;
-  });
-}
+// --- orb_bg.bmp : 72x72 bow-medallion, embedded from tools/orb-bow-master.bgra
+// (ingested artwork — see orbSkinFromMaster above, NOT a procedural skin)
+function orbSkin() { return orbSkinFromMaster(); }
 
 // --- badge.bmp : 12x12 GEAR icon (uniform settings affordance on every item)
 // Amber cog with dark navy outline + hub — legible on white AND dark charts.
@@ -549,7 +517,7 @@ for (const [name, art] of Object.entries(ART)) {
   files.push([name + '_off.bmp', () => render(28, art, OFF)]);
   files.push([name + '_on.bmp',  () => render(28, art, ON)]);
 }
-files.push(['yy.bmp', () => yyIcon()]);files.push(['badge.bmp',    () => badgeSkin()]);
+files.push(['badge.bmp',    () => badgeSkin()]);
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
 files.push(['orb_bg.bmp',   () => orbSkin()]);

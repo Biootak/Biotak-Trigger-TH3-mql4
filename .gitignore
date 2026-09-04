@@ -134,6 +134,7 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+*.prev
 .cache/
 
 # Sensitive files (auto-detected)

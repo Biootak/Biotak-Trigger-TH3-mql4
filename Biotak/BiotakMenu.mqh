@@ -39,7 +39,6 @@
 #resource "\\Files\\Icons\\tools_on.bmp"
 #resource "\\Files\\Icons\\badge.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
-#resource "\\Files\\Icons\\yy.bmp"
 #resource "\\Files\\Icons\\circ_off.bmp"
 #resource "\\Files\\Icons\\circ_on.bmp"
 #resource "\\Files\\Icons\\step_off.bmp"
@@ -56,10 +55,9 @@
 #define CIRC_BG_SIZE     52    // circular glass skin: 44px diameter + 4px glow margin
 #define CIRC_BG_MARGIN   4
 #define CIRC_ICON_OFFSET ((CIRC_BTN_SIZE - CIRC_ICON_SIZE) / 2)
-#define CIRC_ORB_SIZE    48
+#define CIRC_ORB_SIZE    64
 #define CIRC_ORB_RADIUS  (CIRC_ORB_SIZE / 2)
-#define CIRC_ORB_ICON    32
-#define CIRC_ORB_BG_SIZE 56    // scaled orb canvas: 48px orb + 4px glow margin
+#define CIRC_ORB_BG_SIZE 72    // scaled orb canvas: 64px orb + 4px glow margin
 #define CIRC_ORB_BG_MARGIN 4
 #define CIRC_BADGE_SIZE  16
 #define CIRC_BADGE_FLOAT 12   // badge float gap outside the item skin edge
@@ -981,22 +979,9 @@ void CircCreateOrb()
    ObjectSetInteger(0, orbBg, OBJPROP_ZORDER, 2000);
    ObjectSetString(0, orbBg, OBJPROP_TOOLTIP, "Biotak Terminal Menu\nClick: open/close · Drag: move");
 
-   string icon = CircOrbIcon();
-   if(ObjectFind(0, icon) < 0)
-      ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0);
-   ObjectSetInteger(0, icon, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, icon, OBJPROP_XDISTANCE, x + (CIRC_ORB_SIZE - CIRC_ORB_ICON) / 2);
-   ObjectSetInteger(0, icon, OBJPROP_YDISTANCE, y + (CIRC_ORB_SIZE - CIRC_ORB_ICON) / 2);
-   ObjectSetInteger(0, icon, OBJPROP_XSIZE, CIRC_ORB_ICON);
-   ObjectSetInteger(0, icon, OBJPROP_YSIZE, CIRC_ORB_ICON);
-   ObjectSetString(0, icon, OBJPROP_BMPFILE, 0, "::Files\\Icons\\yy.bmp");
-   ObjectSetString(0, icon, OBJPROP_BMPFILE, 1, "::Files\\Icons\\yy.bmp");
-   ObjectSetInteger(0, icon, OBJPROP_STATE, false);
-   ObjectSetInteger(0, icon, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, icon, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, icon, OBJPROP_BACK, false);
-   ObjectSetInteger(0, icon, OBJPROP_ZORDER, 2002);
-   ObjectSetString(0, icon, OBJPROP_TOOLTIP, "Biotak Terminal Menu\nClick: open/close · Drag: move");
+   // No center overlay: the medallion lives entirely in orb_bg.bmp (P-ICONS-04).
+   // Delete the retired CircOrbIcon object on charts that still have it.
+   ObjectDelete(0, CircOrbIcon());
 }
 
 void CreateMenu()
@@ -1118,11 +1103,6 @@ void CircApplyMenuPosition()
    {
       ObjectSetInteger(0, CircOrbBg(), OBJPROP_XDISTANCE, orbX - CIRC_ORB_BG_MARGIN);
       ObjectSetInteger(0, CircOrbBg(), OBJPROP_YDISTANCE, orbY - CIRC_ORB_BG_MARGIN);
-   }
-   if(ObjectFind(0, CircOrbIcon()) >= 0)
-   {
-      ObjectSetInteger(0, CircOrbIcon(), OBJPROP_XDISTANCE, orbX + (CIRC_ORB_SIZE - CIRC_ORB_ICON) / 2);
-      ObjectSetInteger(0, CircOrbIcon(), OBJPROP_YDISTANCE, orbY + (CIRC_ORB_SIZE - CIRC_ORB_ICON) / 2);
    }
 
    if(g_UI.menuVisible)
@@ -1498,7 +1478,7 @@ int ToolsIndexFromName(const string name)
 //+------------------------------------------------------------------+
 int HandleButtonClick(const string clickedObject)
 {
-   if(clickedObject == CircOrbBg() || clickedObject == CircOrbIcon())
+   if(clickedObject == CircOrbBg())
    {
       if(g_OrbWasDragged)
       {
