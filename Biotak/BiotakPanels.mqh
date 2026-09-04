@@ -249,6 +249,10 @@ int PaletteKindTransparency(const int kind)
    {
       case PAL_TRIGGER: return g_triggerTransparency;
       case PAL_LINE:    return g_lineTransparency;
+      case PAL_SS:      return g_ssTransparency;
+      case PAL_LS:      return g_lsTransparency;
+      case PAL_CUSTOM_PRICE: return g_customPriceTransparency;
+      case PAL_FACTOR:  return g_factorTransparency;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
@@ -265,6 +269,10 @@ int PaletteApplyTransparency(const int kind, const int tr)
    {
       case PAL_TRIGGER:  g_triggerTransparency = t; return REFRESH_BUFFERS;
       case PAL_LINE:     g_lineTransparency = t; return REFRESH_BUFFERS;
+      case PAL_SS:       g_ssTransparency = t; return REFRESH_BUFFERS;
+      case PAL_LS:       g_lsTransparency = t; return REFRESH_BUFFERS;
+      case PAL_CUSTOM_PRICE: g_customPriceTransparency = t; return REFRESH_BUFFERS;
+      case PAL_FACTOR:   g_factorTransparency = t; return REFRESH_BUFFERS;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:

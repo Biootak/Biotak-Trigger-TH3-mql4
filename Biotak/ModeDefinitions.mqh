@@ -32,13 +32,13 @@ struct SModeDefinition {
 SModeConfig BuildSSLSConfig(const string objectPrefix)
 {
     SModeConfig cfg = BuildModeConfig(objectPrefix, "SSLS");
-    cfg.fallbackColor = inpSSLevelColor;
+    cfg.fallbackColor = GetSSRenderColor();
     cfg.fallbackStyle = inpSSLevelStyle;
     cfg.fallbackWidth = inpSSLevelWidth;
-    cfg.fallbackColor2 = inpLSLevelColor;
+    cfg.fallbackColor2 = GetLSRenderColor();
     cfg.fallbackStyle2 = inpLSLevelStyle;
     cfg.fallbackWidth2 = inpLSLevelWidth;
-    cfg.midpointColor = inpLSLevelColor;
+    cfg.midpointColor = GetLSRenderColor();
     cfg.midpointStyle = inpLSLevelStyle;
     cfg.midpointWidth = inpLSLevelWidth;
     return cfg;
@@ -55,10 +55,10 @@ SModeConfig BuildFactorConfig(const string objectPrefix)
     cfg.useObjPropBack = true;
     cfg.zOrder = 1;
     cfg.hideLineWhenTriggerOnly = false;
-    cfg.fallbackColor = inpFactorLevelColor;
+    cfg.fallbackColor = GetFactorRenderColor();
     cfg.fallbackStyle = inpFactorLevelStyle;
     cfg.fallbackWidth = inpFactorLevelWidth;
-    cfg.midpointColor = inpFactorLevelColor;
+    cfg.midpointColor = GetFactorRenderColor();
     cfg.midpointStyle = inpFactorLevelStyle;
     cfg.midpointWidth = inpFactorLevelWidth;
     return cfg;
@@ -69,10 +69,10 @@ SModeConfig BuildFactorHarmonicConfig(const string objectPrefix)
     SModeConfig cfg = BuildModeConfig(objectPrefix, "Factor_Harmonic");
     cfg.useObjPropBack = true;
     cfg.hideLineWhenTriggerOnly = false;
-    cfg.fallbackColor = inpFactorLevelColor;
+    cfg.fallbackColor = GetFactorRenderColor();
     cfg.fallbackStyle = inpFactorLevelStyle;
     cfg.fallbackWidth = inpFactorLevelWidth;
-    cfg.midpointColor = inpFactorLevelColor;
+    cfg.midpointColor = GetFactorRenderColor();
     cfg.midpointStyle = inpFactorLevelStyle;
     cfg.midpointWidth = inpFactorLevelWidth;
     return cfg;

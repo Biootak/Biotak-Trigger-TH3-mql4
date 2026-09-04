@@ -159,6 +159,20 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `g_HTFOpacity` are converted at the UI edge, never migrated). Targets
   without transparency show greyed `--` like the mixer does).
 
+- **Transparency is per-color-target, one language, cached**
+  (2026-09-04 — every COLOR row's target (SS/LS/custom-price/factor +
+  trigger/lines/HTF) is adjustable from the palette footer TR track and
+  mixer (`PaletteKindTransparency`/`PaletteApplyTransparency`, persisted
+  via new `OV_SST/LST/CPT/FCT` keys, default 0 = solid so old charts are
+  pixel-identical). Render getters (`GetSSRenderColor()` etc. in
+  `RuntimeSettings.mqh`) blend toward the chart background with per-target
+  static caches — recompute only when base/transparency/background change,
+  so per-frame draws cost one syscall + compares (same as the existing
+  trigger/lines helpers). ONE blend per color: zones keep their own
+  transparency args — never blend an already-blended color. Panel keeps
+  only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
+  has no draw site (pre-existing) so it stays `--`.)
+
 ---
 
 ## 3. Recurring problems (log — append, never solve twice)

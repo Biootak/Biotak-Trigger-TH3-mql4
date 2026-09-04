@@ -62,9 +62,11 @@ static int g_triggerTransparency = 50;                           // [09.3] inpTr
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
 static ENUM_LINE_STYLE g_ssLevelStyle = STYLE_DOT;               // [04] inpSSLevelStyle
 static color g_ssLevelColor = clrGoldenrod;                      // [04] inpSSLevelColor
+static int g_ssTransparency = 0;                                 // palette TR (default solid)
 static int g_lsLevelWidth = 1;                                   // [04] inpLSLevelWidth
 static ENUM_LINE_STYLE g_lsLevelStyle = STYLE_DOT;               // [04] inpLSLevelStyle
 static color g_lsLevelColor = clrOrange;                         // [04] inpLSLevelColor
+static int g_lsTransparency = 0;                                 // palette TR (default solid)
 static bool g_lsFirst = true;                                    // [04] inpLSFirst
 static ENUM_STEP_CALCULATION_MODE g_stepCalculationMode = TH_STEP; // [01] inpStepCalculationMode
 static bool g_showLines = true;                                  // [03] inpShowLines
@@ -104,6 +106,7 @@ static color g_th3PipTextColor = clrDarkBlue;                    // [14] inpTH3P
 static bool g_showTH3Labels = true;                              // [14] inpShowTH3Labels
 static int g_customPriceLevelWidth = 1;                          // [02] inpCustomPriceLevelWidth
 static color g_customPriceLevelColor = clrDodgerBlue;            // [02] inpCustomPriceLevelColor
+static int g_customPriceTransparency = 0;                        // palette TR (default solid)
 static bool g_enableMagnet = true;                               // [02] inpEnableMagnet
 static int g_magnetSensitivityPips = 10;                         // [02] inpMagnetSensitivityPips
 static ENUM_FACTOR_MODE g_factorMode = FACTOR_MODE_AUTO;         // [06] inpFactorMode
@@ -111,6 +114,7 @@ static ENUM_FACTOR_DISPLAY_MODE g_factorDisplayMode = FACTOR_DISPLAY_DIRECT; // 
 static ENUM_FACTOR_AUTO_BASIS g_factorAutoBasis = FACTOR_BASIS_CONTROL;      // [06] inpFactorAutoBasis
 static double g_factorValue = 50.0;                              // [06] inpFactorValue
 static color g_factorLevelColor = C'0,100,0';                    // [06] inpFactorLevelColor
+static int g_factorTransparency = 0;                             // palette TR (default solid)
 static ENUM_LINE_STYLE g_factorLevelStyle = STYLE_DOT;           // [06] inpFactorLevelStyle
 static int g_factorLevelWidth = 1;                               // [06] inpFactorLevelWidth
 
@@ -462,9 +466,11 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
+   GlobalVariableSet(p + "SST", g_ssTransparency);
    GlobalVariableSet(p + "LW",  g_lsLevelWidth);
    GlobalVariableSet(p + "LS",  g_lsLevelStyle);
    GlobalVariableSet(p + "LC",  g_lsLevelColor);
+   GlobalVariableSet(p + "LST", g_lsTransparency);
    GlobalVariableSet(p + "LF",  g_lsFirst ? 1 : 0);
    GlobalVariableSet(p + "SM",  g_stepCalculationMode);
    GlobalVariableSet(p + "SL",  g_showLines ? 1 : 0);
@@ -504,6 +510,7 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "L3",  g_showTH3Labels ? 1 : 0);
    GlobalVariableSet(p + "CW",  g_customPriceLevelWidth);
    GlobalVariableSet(p + "CC",  g_customPriceLevelColor);
+   GlobalVariableSet(p + "CPT", g_customPriceTransparency);
    GlobalVariableSet(p + "MG",  g_enableMagnet ? 1 : 0);
    GlobalVariableSet(p + "MP2", g_magnetSensitivityPips);
    GlobalVariableSet(p + "FM",  g_factorMode);
@@ -511,6 +518,7 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "FB",  g_factorAutoBasis);
    GlobalVariableSet(p + "FV",  g_factorValue);
    GlobalVariableSet(p + "FC",  g_factorLevelColor);
+   GlobalVariableSet(p + "FCT", g_factorTransparency);
    GlobalVariableSet(p + "FY",  g_factorLevelStyle);
    GlobalVariableSet(p + "FW",  g_factorLevelWidth);
    GlobalVariablesFlush();
@@ -541,9 +549,11 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");
+   if(GlobalVariableCheck(p + "SST")) g_ssTransparency = ClampSettingInt((int)GlobalVariableGet(p + "SST"), 0, 100);
    if(GlobalVariableCheck(p + "LW"))  g_lsLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LW"), 1, 5);
    if(GlobalVariableCheck(p + "LS"))  g_lsLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "LS"), 0, 4);
    if(GlobalVariableCheck(p + "LC"))  g_lsLevelColor = (color)(int)GlobalVariableGet(p + "LC");
+   if(GlobalVariableCheck(p + "LST")) g_lsTransparency = ClampSettingInt((int)GlobalVariableGet(p + "LST"), 0, 100);
    if(GlobalVariableCheck(p + "LF"))  g_lsFirst = (GlobalVariableGet(p + "LF") > 0.5);
    if(GlobalVariableCheck(p + "SM"))  g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)ClampSettingInt((int)GlobalVariableGet(p + "SM"), 0, 3);
    if(GlobalVariableCheck(p + "SL"))  g_showLines = (GlobalVariableGet(p + "SL") > 0.5);
@@ -583,6 +593,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "L3"))  g_showTH3Labels = (GlobalVariableGet(p + "L3") > 0.5);
    if(GlobalVariableCheck(p + "CW"))  g_customPriceLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "CW"), 1, 5);
    if(GlobalVariableCheck(p + "CC"))  g_customPriceLevelColor = (color)(int)GlobalVariableGet(p + "CC");
+   if(GlobalVariableCheck(p + "CPT")) g_customPriceTransparency = ClampSettingInt((int)GlobalVariableGet(p + "CPT"), 0, 100);
    if(GlobalVariableCheck(p + "MG"))  g_enableMagnet = (GlobalVariableGet(p + "MG") > 0.5);
    if(GlobalVariableCheck(p + "MP2")) g_magnetSensitivityPips = ClampSettingInt((int)GlobalVariableGet(p + "MP2"), 0, 100);
    if(GlobalVariableCheck(p + "FM"))  g_factorMode = (ENUM_FACTOR_MODE)ClampSettingInt((int)GlobalVariableGet(p + "FM"), 0, 1);
@@ -590,6 +601,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "FB"))  g_factorAutoBasis = (ENUM_FACTOR_AUTO_BASIS)ClampSettingInt((int)GlobalVariableGet(p + "FB"), 0, 7);
    if(GlobalVariableCheck(p + "FV"))  g_factorValue = MathMax(0.0, GlobalVariableGet(p + "FV"));
    if(GlobalVariableCheck(p + "FC"))  g_factorLevelColor = (color)(int)GlobalVariableGet(p + "FC");
+   if(GlobalVariableCheck(p + "FCT")) g_factorTransparency = ClampSettingInt((int)GlobalVariableGet(p + "FCT"), 0, 100);
    if(GlobalVariableCheck(p + "FY"))  g_factorLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "FY"), 0, 4);
    if(GlobalVariableCheck(p + "FW"))  g_factorLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "FW"), 1, 5);
 }
@@ -709,6 +721,86 @@ color GetLineRenderColor()
 
     s_cachedRenderColor = (color)(outR | (outG << 8) | (outB << 16));
     return s_cachedRenderColor;
+}
+
+//==============================================================================
+// PER-TARGET TRANSPARENCY — every COLOR row's target is adjustable from the
+// palette footer TR track / mixer (PaletteKindTransparency). Same visual
+// fade curve as trigger/lines, same per-target static cache discipline:
+// recompute ONLY when base, transparency or chart background changes, so
+// per-frame draw calls cost one syscall + three integer compares.
+// Stores default to 0 (solid) — existing charts look identical until the
+// user touches TR. Persisted via OV_SST/LST/CPT/FCT (no migration: new keys).
+//==============================================================================
+int TransparencyVisual(const int t)
+{
+    int tc = (int)MathMax(0, MathMin(100, t));
+    // Stronger visual fade for line objects: 60 -> 84, 50 -> 75, 30 -> 51
+    return 100 - ((100 - tc) * (100 - tc)) / 100;
+}
+
+color BlendColorTowardsBG(const color base, const int tVis, const color bg)
+{
+    if(tVis <= 0) return base;
+    if(tVis >= 100) return bg;
+    int fr = ((int)base) & 0xFF;
+    int fg = (((int)base) >> 8) & 0xFF;
+    int fb = (((int)base) >> 16) & 0xFF;
+    int br = ((int)bg) & 0xFF;
+    int bgc = (((int)bg) >> 8) & 0xFF;
+    int bb = (((int)bg) >> 16) & 0xFF;
+    int outR = (fr * (100 - tVis) + br * tVis) / 100;
+    int outG = (fg * (100 - tVis) + bgc * tVis) / 100;
+    int outB = (fb * (100 - tVis) + bb * tVis) / 100;
+    return (color)(outR | (outG << 8) | (outB << 16));
+}
+
+color GetSSRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_ssTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_ssLevelColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_ssLevelColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_ssLevelColor, tVis, bg);
+    return s_out;
+}
+
+color GetLSRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_lsTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_lsLevelColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_lsLevelColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_lsLevelColor, tVis, bg);
+    return s_out;
+}
+
+color GetCustomPriceRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_customPriceTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_customPriceLevelColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_customPriceLevelColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_customPriceLevelColor, tVis, bg);
+    return s_out;
+}
+
+color GetFactorRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_factorTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_factorLevelColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_factorLevelColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_factorLevelColor, tVis, bg);
+    return s_out;
 }
 
 #endif // RUNTIME_SETTINGS_MQH

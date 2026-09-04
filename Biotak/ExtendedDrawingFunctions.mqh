@@ -2152,8 +2152,8 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
             if(zoneTop <= highPrice && zoneBottom >= lowPrice) {
                 // Draw zone with style support
                 string zoneName = objectPrefix + "Factor_Zone_" + IntegerToString(i);
-                if(CreateFactorMidZone(zoneName, zoneTop, zoneBottom, 
-                                      inpFactorLevelColor,  // Use Factor level color
+                if(CreateFactorMidZone(zoneName, zoneTop, zoneBottom,
+                                      inpFactorLevelColor,  // raw color: boxes follow midzone transparency (no double-blend; factor TR drives factor LINES via config)
                                       inpMidZoneStyle,  // Use unified zone style
                                       inpMidZoneTransparency)) {
                     zoneCount++;
