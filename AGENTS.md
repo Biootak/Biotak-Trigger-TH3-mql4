@@ -149,12 +149,15 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   switch, targets are 20px. `PalW`/`PalH` derive from the new defines —
   mixer hit-testing follows automatically.
 
-- **Palette popup: header names the live target, footer has opacity**
+- **Palette popup: header names the live target, footer has transparency**
   (2026-09-04 — APPLY TO cycles 13 targets, so the header reads
-  `PALETTE · <target>` + the button has a tooltip; footer `OP` track sets
+  `PALETTE · <target>` + the button has a tooltip; footer `TR` track sets
   transparency by click (`PAL_FOP_*` geometry shared by draw/update/click).
-  Opacity exists only for Trigger/Lines/HTF kinds (`PaletteKindOpacity`
-  ≥ 0); other targets show greyed `--` like the mixer does).
+  ONE user-facing language everywhere: TRANSPARENCY (0=solid, 100=gone) —
+  panel sliders, palette footer/mixer, HTF card row all speak it
+  (`PaletteKindTransparency`/`PaletteApplyTransparency`; engine stores like
+  `g_HTFOpacity` are converted at the UI edge, never migrated). Targets
+  without transparency show greyed `--` like the mixer does).
 
 ---
 

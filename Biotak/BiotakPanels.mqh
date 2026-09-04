@@ -238,34 +238,37 @@ int PnlSetColor(const int item,const int row,const color clr)
    return PaletteApplyColor(k, clr);
 }
 
-//--- current opacity (%) of a palette kind; -1 = no opacity setting
-//    (Trigger uses its TRANSPARENCY % — shown inverted as opacity)
-int PaletteKindOpacity(const int kind)
+//--- user-facing transparency (%) of a palette kind; -1 = no transparency
+//    setting. ONE language everywhere (panel TRANSPARENCY sliders speak it
+//    too): 0 = solid, 100 = invisible. Engine internals may store opacity
+//    (e.g. g_HTFOpacity) — converted here, so stored values never migrate.
+//    (Trigger uses its TRANSPARENCY % directly; Lines ditto.)
+int PaletteKindTransparency(const int kind)
 {
    switch(kind)
    {
-      case PAL_TRIGGER: return 100 - g_triggerTransparency;
-      case PAL_LINE:    return 100 - g_lineTransparency;
+      case PAL_TRIGGER: return g_triggerTransparency;
+      case PAL_LINE:    return g_lineTransparency;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
-      case PAL_HTF_BORDER: return g_HTFOpacity;
+      case PAL_HTF_BORDER: return 100 - g_HTFOpacity;
    }
    return -1;
 }
 
-//--- apply an opacity % to a palette kind → REFRESH_* flags.
-int PaletteApplyOpacity(const int kind, const int pct)
+//--- apply a transparency % to a palette kind → REFRESH_* flags.
+int PaletteApplyTransparency(const int kind, const int tr)
 {
-   int p = ClampInt(pct, 0, 100);
+   int t = ClampInt(tr, 0, 100);
    switch(kind)
    {
-      case PAL_TRIGGER:  g_triggerTransparency = 100 - p; return REFRESH_BUFFERS;
-      case PAL_LINE:     g_lineTransparency = 100 - p; return REFRESH_BUFFERS;
+      case PAL_TRIGGER:  g_triggerTransparency = t; return REFRESH_BUFFERS;
+      case PAL_LINE:     g_lineTransparency = t; return REFRESH_BUFFERS;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
-      case PAL_HTF_BORDER: g_HTFOpacity = p; return REFRESH_HTF;
+      case PAL_HTF_BORDER: g_HTFOpacity = 100 - t; return REFRESH_HTF;
    }
    return REFRESH_NONE;
 }
@@ -408,7 +411,7 @@ color ParseHexColor(const string txt)
 #define PAL_QGAP  3
 #define PAL_RSHOW 12            // recents visible inline (no tab switch)
 //--- footer mini opacity control (both tabs): Done(64)+gap(10),
-//--- "OP" label + click-to-set track. Geometry shared by PalDraw,
+//--- "TR" label + click-to-set track. Geometry shared by PalDraw,
 //--- PalUpdateLive and the PnlHandleClick branch — keep in sync.
 #define PAL_FOP_DX   (64+10)
 #define PAL_FOP_LW   22
@@ -683,23 +686,24 @@ void PalDrawMixer(const int contY)
       ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ANCHOR,ANCHOR_RIGHT);
       ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ZORDER,1601);
    }
-   // 4th channel: OPACITY (percent; blends toward the chart background).
-   // Targets without an opacity setting show it greyed.
-   int op = PaletteKindOpacity(g_PalKind);
-   bool opOk = (op >= 0);
+   // 4th channel: TRANSPARENCY (percent; 0=solid, 100=invisible —
+   // same language as the panel TRANSPARENCY sliders).
+   // Targets without a transparency setting show it greyed.
+   int tr = PaletteKindTransparency(g_PalKind);
+   bool trOk = (tr >= 0);
    int oy = contY+2+3*26;
-   PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "OP", PNL_CLR_LABEL, 9);
+   PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, 9);
    ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,1601);
-   ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Opacity — blends the color toward the chart background");
-   color opFill = opOk ? C'255,171,0' : C'70,78,92';
+   ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
+   color trFill = trOk ? C'255,171,0' : C'70,78,92';
    PnlSetRect(p+"mtg3", trackX, oy+2, trackW, 8, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"mtg3",OBJPROP_ZORDER,1601);
-   int okx = trackX + (int)MathRound((opOk ? ClampInt(op,0,100) : 0) / 100.0 * (trackW-10));
-   PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, okx-trackX+10), 8, opFill);
+   int tkx = trackX + (int)MathRound((trOk ? ClampInt(tr,0,100) : 0) / 100.0 * (trackW-10));
+   PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, tkx-trackX+10), 8, trFill);
    ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,1602);
-   PnlSetButton(p+"mknb3", okx, oy, 10, 12, "", opFill, opOk ? C'230,200,120' : C'90,98,112', true);
+   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? C'230,200,120' : C'90,98,112', true);
    ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,1603);
-   PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, opOk ? IntegerToString(op)+"%" : "--", PNL_CLR_VALUE, 9);
+   PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, 9);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,1601);
 
@@ -829,25 +833,25 @@ void PalDraw()
    ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,1602);
    ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
 
-   // footer: Done + mini opacity (both tabs — no MIXER switch needed)
+   // footer: Done + mini transparency (both tabs — no MIXER switch needed)
    int fy=py+h-PAL_FOOT;
    PnlSetButton(p+"done", px+PAL_PAD, fy+3, 64, 20, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
    ObjectSetInteger(0,p+"done",OBJPROP_COLOR,PNL_CLR_DONE_TX);
    ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,1602);
-   int op0=PaletteKindOpacity(g_PalKind);
-   bool opOk=(op0>=0);
+   int tr0=PaletteKindTransparency(g_PalKind);
+   bool trOk=(tr0>=0);
    int olx=px+PAL_PAD+PAL_FOP_DX;
-   PnlSetLabel(p+"opl", olx, fy+6, "OP", opOk?PNL_CLR_LABEL:C'70,78,92', 8);
+   PnlSetLabel(p+"opl", olx, fy+6, "TR", trOk?PNL_CLR_LABEL:C'70,78,92', 8);
    ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,1601);
    ObjectSetString(0,p+"opl",OBJPROP_TOOLTIP,"Transparency of this target (click the track to set)");
    int otx=olx+PAL_FOP_LW;
    PnlSetRect(p+"opg", otx, fy+8, PAL_FOP_TW, 10, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,1601);
-   color opFill=opOk?PNL_CLR_ACCENT:C'70,78,92';
-   int ofw=opOk?(int)MathRound(ClampInt(op0,0,100)/100.0*PAL_FOP_TW):0;
-   PnlSetRect(p+"opf", otx, fy+8, ofw, 10, opFill);
+   color trFill=trOk?PNL_CLR_ACCENT:C'70,78,92';
+   int tfw=trOk?(int)MathRound(ClampInt(tr0,0,100)/100.0*PAL_FOP_TW):0;
+   PnlSetRect(p+"opf", otx, fy+8, tfw, 10, trFill);
    ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,1602);
-   PnlSetLabel(p+"opv", otx+PAL_FOP_TW+6, fy+6, opOk?IntegerToString(ClampInt(op0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
+   PnlSetLabel(p+"opv", otx+PAL_FOP_TW+6, fy+6, trOk?IntegerToString(ClampInt(tr0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
    ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,1601);
    ChartRedraw();
 }
@@ -874,26 +878,26 @@ void PalUpdateLive()
          ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_XSIZE,MathMax(0,kx-trackX+10));
          ObjectSetString(0,p+"mv"+IntegerToString(i),OBJPROP_TEXT,IntegerToString(comps[i]));
       }
-   // opacity channel follows the target's opacity
-   int op=PaletteKindOpacity(g_PalKind);
-   bool opOk=(op>=0);
-   int okx=trackX+(int)MathRound((opOk?ClampInt(op,0,100):0)/100.0*(trackW-10));
-   ObjectSetInteger(0,p+"mknb3",OBJPROP_XDISTANCE,okx);
-   ObjectSetInteger(0,p+"mf3",OBJPROP_XSIZE,MathMax(0,okx-trackX+10));
-   ObjectSetString(0,p+"mv3",OBJPROP_TEXT, opOk ? IntegerToString(op)+"%" : "--");
+   // transparency channel follows the target's transparency
+   int tr2=PaletteKindTransparency(g_PalKind);
+   bool trOk=(tr2>=0);
+   int tkx=trackX+(int)MathRound((trOk?ClampInt(tr2,0,100):0)/100.0*(trackW-10));
+   ObjectSetInteger(0,p+"mknb3",OBJPROP_XDISTANCE,tkx);
+   ObjectSetInteger(0,p+"mf3",OBJPROP_XSIZE,MathMax(0,tkx-trackX+10));
+   ObjectSetString(0,p+"mv3",OBJPROP_TEXT, trOk ? IntegerToString(tr2)+"%" : "--");
    }
-   // footer mini opacity (both tabs)
-   int fop=PaletteKindOpacity(g_PalKind);
-   bool fok=(fop>=0);
+   // footer mini transparency (both tabs)
+   int ftr=PaletteKindTransparency(g_PalKind);
+   bool fok=(ftr>=0);
    int fotx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
    if(ObjectFind(0,p+"opf")>=0)
       ObjectSetInteger(0,p+"opf",OBJPROP_XSIZE,
-                       fok?(int)MathRound(ClampInt(fop,0,100)/100.0*PAL_FOP_TW):0);
+                       fok?(int)MathRound(ClampInt(ftr,0,100)/100.0*PAL_FOP_TW):0);
    if(ObjectFind(0,p+"opv")>=0)
-      ObjectSetString(0,p+"opv",OBJPROP_TEXT, fok?IntegerToString(ClampInt(fop,0,100))+"%":"--");
+      ObjectSetString(0,p+"opv",OBJPROP_TEXT, fok?IntegerToString(ClampInt(ftr,0,100))+"%":"--");
    int it,row;
    if(PalKindRow(g_PalKind,it,row) && g_PnlOpen==it) PnlUpdateRow(it,row);
-   // keep the owning panel's OPACITY row in sync with the palette drag
+    // keep the owning panel's TRANSPARENCY row in sync with the palette drag
    int oit=-1, orow=-1;
    switch(g_PalKind)
    {
@@ -908,7 +912,7 @@ void PalUpdateLive()
    ChartRedraw();
 }
 
-//--- mixer hit-test: 0 none, 1 R, 2 G, 3 B, 4 OPACITY
+//--- mixer hit-test: 0 none, 1 R, 2 G, 3 B, 4 TRANSPARENCY
 int PaletteMixHit(const int mx,const int my)
 {
    if(!g_PalOpen || g_PalTab!=1) return 0;
@@ -919,7 +923,7 @@ int PaletteMixHit(const int mx,const int my)
       int y=g_PalY+PAL_HEAD+PAL_PREV+PAL_TABS+2+i*26;
       if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-6 && my<=y+16) return i+1;
    }
-   if(PaletteKindOpacity(g_PalKind) >= 0)
+   if(PaletteKindTransparency(g_PalKind) >= 0)
    {
       int y=g_PalY+PAL_HEAD+PAL_PREV+PAL_TABS+2+3*26;
       if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-6 && my<=y+16) return 4;
@@ -933,10 +937,10 @@ void PaletteMixFromX(const int comp,const int mx)
    int trackW=PalW()-2*PAL_PAD-34;
    double frac=(mx-trackX)/(double)trackW;
    frac=MathMax(0.0,MathMin(1.0,frac));
-   if(comp==4)   // opacity channel → percent, not RGB
+   if(comp==4)   // transparency channel → percent, not RGB
    {
-      int pct=(int)MathRound(frac*100.0);
-      int flags=PaletteApplyOpacity(g_PalKind,pct);
+      int trp=(int)MathRound(frac*100.0);
+      int flags=PaletteApplyTransparency(g_PalKind,trp);
       PalUpdateLive();
       if(flags!=REFRESH_NONE) RefreshDisplay(flags);
       return;
@@ -1203,9 +1207,9 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
    //}
    else if(item==6)   // HTF CANDLES
    {
-      if(row==0)       { kind=1; label="ENABLED"; }
-      else if(row==1)  { kind=2; label="TIMEFRAME"; opts="Auto|H4|H1|M30|M15|D1"; }
-      else if(row==2)  { label="OPACITY"; unit="%"; }
+       if(row==0)       { kind=1; label="ENABLED"; }
+       else if(row==1)  { kind=2; label="TIMEFRAME"; opts="Auto|H4|H1|M30|M15|D1"; }
+       else if(row==2)  { label="TRANSPARENCY"; unit="%"; }
       else if(row==3)  { kind=4; label="BULL COLOR"; }
       else if(row==4)  { kind=4; label="BEAR COLOR"; }
       else if(row==5)  { kind=4; label="WICK COLOR"; }
@@ -1376,7 +1380,7 @@ double PnlDefVal(const int item,const int row)
                  for(int i=0;i<5;i++) if(vals[i]==(int)InpHTFTimeframe) return i+1;
                  return 0.0;
               }
-              if(row==2) return ClampInt(InpHTFOpacity,MIN_OPACITY_PCT,MAX_OPACITY_PCT);
+               if(row==2) return 100-ClampInt(InpHTFOpacity,MIN_OPACITY_PCT,MAX_OPACITY_PCT);
               if(row==3) return 3; // BULL COLOR
               if(row==4) return 3; // BEAR COLOR
               if(row==5) return 3; // WICK COLOR
@@ -1459,8 +1463,8 @@ double PnlCurrent(const int item,const int row)
        //        if(row==7) return g_showTH3Labels?1.0:0.0;
        //        return 0;
        case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
-              if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
-              if(row==2) return g_HTFOpacity;
+               if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
+               if(row==2) return 100-g_HTFOpacity;   // stored as opacity, shown as transparency
               if(row==7) return g_HTFWickWidth;
               if(row==8) return g_HTFBorderWidth;
               if(row==9) return g_HTFShowWicks?1.0:0.0;
@@ -1622,7 +1626,7 @@ int PnlApply(const int item,const int row,const double v)
             else                     { g_HTFIsAuto=false; g_HTFPeriod=HTFPeriodFromOption((int)MathRound(v)); }
             flags=REFRESH_HTF;
          }
-         else if(row==2)  { g_HTFOpacity=(int)MathRound(v); flags=REFRESH_HTF; }
+          else if(row==2)  { g_HTFOpacity=100-(int)MathRound(v); flags=REFRESH_HTF; }
          else if(row==7)  { g_HTFWickWidth=(int)MathRound(v); flags=REFRESH_HTF; }
          else if(row==8)  { g_HTFBorderWidth=(int)MathRound(v); flags=REFRESH_HTF; }
          else if(row==9)  { g_HTFShowWicks=(v>0.5); flags=REFRESH_HTF; }
@@ -2698,11 +2702,11 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       string pfx=g_UI.btnPrefix+"Pal_";
       if(name==pfx+"opg" || name==pfx+"opf")
       {
-         if(PaletteKindOpacity(g_PalKind)>=0)
+         if(PaletteKindTransparency(g_PalKind)>=0)
          {
             int otx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
             int pct=(int)MathRound((mouseX-otx)/(double)PAL_FOP_TW*100.0);
-            int flags=PaletteApplyOpacity(g_PalKind,ClampInt(pct,0,100));
+            int flags=PaletteApplyTransparency(g_PalKind,ClampInt(pct,0,100));
             PalUpdateLive();
             return flags;
          }
