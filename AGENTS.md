@@ -127,6 +127,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (grep the marker) and re-add the include. Full+Lite compile 0 errors
   without the tool (ex4 ~903KB).
 
+- **Ring-button badges are OFF** (2026-09-04, user decision — no "On" /
+  value badges on ring buttons, only the on/off button state itself).
+  Single gate: `CircHasBadge()` in `Biotak/BiotakMenu.mqh` returns `false`
+  (`NOBADGES` marker); all create/show/move/update paths obey it, delete
+  paths stay to purge badges from older versions. Panels still open via
+  long-press; hover tooltips untouched.
+
 ---
 
 ## 3. Recurring problems (log — append, never solve twice)

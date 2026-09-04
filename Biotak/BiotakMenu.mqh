@@ -405,7 +405,13 @@ bool CircFeatureOn(const int i)
 
 bool CircHasBadge(const int i)
 {
-   return (i != CIR_TOOLS);   // every main-ring feature shows a badge; Tools opens its sub-menu
+   // NOBADGES (user decision 2026-09-04): NO badges on ring buttons at all —
+   // neither the "On" marker nor value texts ("Aut"/"H1"/...). Every badge
+   // create/show/move/update path is gated by this function; the delete
+   // paths stay to purge badges left by older versions. Settings panels
+   // still open via long-press. To restore: return (i != CIR_TOOLS).
+   return false;
+   // return (i != CIR_TOOLS);   // every main-ring feature shows a badge; Tools opens its sub-menu
 }
 
 void CircConfigureIcon(const string name, const int i, const bool on, const int x, const int y)
