@@ -407,6 +407,12 @@ color ParseHexColor(const string txt)
 #define PAL_QSW   20
 #define PAL_QGAP  3
 #define PAL_RSHOW 12            // recents visible inline (no tab switch)
+//--- footer mini opacity control (both tabs): Done(64)+gap(10),
+//--- "OP" label + click-to-set track. Geometry shared by PalDraw,
+//--- PalUpdateLive and the PnlHandleClick branch — keep in sync.
+#define PAL_FOP_DX   (64+10)
+#define PAL_FOP_LW   22
+#define PAL_FOP_TW   100
 int PalQHue(const int i)
 {
    switch(i)
@@ -732,8 +738,9 @@ void PalDraw()
    ObjectSetInteger(0,p+"card",OBJPROP_BORDER_COLOR,C'60,70,90');
    ObjectSetInteger(0,p+"card",OBJPROP_ZORDER,1600);
 
-   // header
-   PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "COLOR PALETTE", PNL_CLR_TITLE, 9);
+   // header (names the LIVE target — the picked color goes there,
+   // which may differ from the row that opened the popup via APPLY TO)
+   PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "PALETTE · "+PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 9);
    ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial Bold");
    ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,1601);
    PnlSetButton(p+"close", px+w-PAL_PAD-20, py+3, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
@@ -820,12 +827,28 @@ void PalDraw()
    ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_TITLE);
    ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,8);
    ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,1602);
+   ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
 
-   // footer
+   // footer: Done + mini opacity (both tabs — no MIXER switch needed)
    int fy=py+h-PAL_FOOT;
    PnlSetButton(p+"done", px+PAL_PAD, fy+3, 64, 20, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
    ObjectSetInteger(0,p+"done",OBJPROP_COLOR,PNL_CLR_DONE_TX);
    ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,1602);
+   int op0=PaletteKindOpacity(g_PalKind);
+   bool opOk=(op0>=0);
+   int olx=px+PAL_PAD+PAL_FOP_DX;
+   PnlSetLabel(p+"opl", olx, fy+6, "OP", opOk?PNL_CLR_LABEL:C'70,78,92', 8);
+   ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,1601);
+   ObjectSetString(0,p+"opl",OBJPROP_TOOLTIP,"Transparency of this target (click the track to set)");
+   int otx=olx+PAL_FOP_LW;
+   PnlSetRect(p+"opg", otx, fy+8, PAL_FOP_TW, 10, PNL_CLR_TRACK_BD);
+   ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,1601);
+   color opFill=opOk?PNL_CLR_ACCENT:C'70,78,92';
+   int ofw=opOk?(int)MathRound(ClampInt(op0,0,100)/100.0*PAL_FOP_TW):0;
+   PnlSetRect(p+"opf", otx, fy+8, ofw, 10, opFill);
+   ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,1602);
+   PnlSetLabel(p+"opv", otx+PAL_FOP_TW+6, fy+6, opOk?IntegerToString(ClampInt(op0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
+   ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,1601);
    ChartRedraw();
 }
 
@@ -851,14 +874,23 @@ void PalUpdateLive()
          ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_XSIZE,MathMax(0,kx-trackX+10));
          ObjectSetString(0,p+"mv"+IntegerToString(i),OBJPROP_TEXT,IntegerToString(comps[i]));
       }
-      // opacity channel follows the target's opacity
-      int op=PaletteKindOpacity(g_PalKind);
-      bool opOk=(op>=0);
-      int okx=trackX+(int)MathRound((opOk?ClampInt(op,0,100):0)/100.0*(trackW-10));
-      ObjectSetInteger(0,p+"mknb3",OBJPROP_XDISTANCE,okx);
-      ObjectSetInteger(0,p+"mf3",OBJPROP_XSIZE,MathMax(0,okx-trackX+10));
-      ObjectSetString(0,p+"mv3",OBJPROP_TEXT, opOk ? IntegerToString(op)+"%" : "--");
+   // opacity channel follows the target's opacity
+   int op=PaletteKindOpacity(g_PalKind);
+   bool opOk=(op>=0);
+   int okx=trackX+(int)MathRound((opOk?ClampInt(op,0,100):0)/100.0*(trackW-10));
+   ObjectSetInteger(0,p+"mknb3",OBJPROP_XDISTANCE,okx);
+   ObjectSetInteger(0,p+"mf3",OBJPROP_XSIZE,MathMax(0,okx-trackX+10));
+   ObjectSetString(0,p+"mv3",OBJPROP_TEXT, opOk ? IntegerToString(op)+"%" : "--");
    }
+   // footer mini opacity (both tabs)
+   int fop=PaletteKindOpacity(g_PalKind);
+   bool fok=(fop>=0);
+   int fotx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
+   if(ObjectFind(0,p+"opf")>=0)
+      ObjectSetInteger(0,p+"opf",OBJPROP_XSIZE,
+                       fok?(int)MathRound(ClampInt(fop,0,100)/100.0*PAL_FOP_TW):0);
+   if(ObjectFind(0,p+"opv")>=0)
+      ObjectSetString(0,p+"opv",OBJPROP_TEXT, fok?IntegerToString(ClampInt(fop,0,100))+"%":"--");
    int it,row;
    if(PalKindRow(g_PalKind,it,row) && g_PnlOpen==it) PnlUpdateRow(it,row);
    // keep the owning panel's OPACITY row in sync with the palette drag
@@ -2660,6 +2692,23 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    // tweak other rows while the palette stays open.
    int palFlags=PalHandleClick(name);
    if(palFlags!=REFRESH_NONE) return palFlags;
+   // footer mini-opacity track (click-to-set; geometry mirrors PalDraw)
+   if(g_PalOpen)
+   {
+      string pfx=g_UI.btnPrefix+"Pal_";
+      if(name==pfx+"opg" || name==pfx+"opf")
+      {
+         if(PaletteKindOpacity(g_PalKind)>=0)
+         {
+            int otx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
+            int pct=(int)MathRound((mouseX-otx)/(double)PAL_FOP_TW*100.0);
+            int flags=PaletteApplyOpacity(g_PalKind,ClampInt(pct,0,100));
+            PalUpdateLive();
+            return flags;
+         }
+         return REFRESH_NONE;
+      }
+   }
    if(g_PalOpen && StringFind(name, g_UI.btnPrefix+"Pal_") == 0) return REFRESH_NONE;
 
    for(int i = 0; i < 12; i++)   // panels 0..11
