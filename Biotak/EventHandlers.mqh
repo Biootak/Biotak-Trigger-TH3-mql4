@@ -185,7 +185,7 @@ int OnInitHandler() {
     }
     if(g_viewLockEnabled) {
         if(recentTimeframeSwitch && g_viewAnchorTime > 0) g_viewRestorePending = true;
-        else ViewLockCapture();   // fresh attach: anchor = current view
+        else { ViewLockCapture(); ViewAnchorLineEnsure(); }   // fresh attach: anchor = current view
     }
 
     // Restore step mode with range validation (0..3)
@@ -445,6 +445,7 @@ void OnDeinitHandler(const int reason) {
     //#endif
     ObjectDelete(0, g_lockStatusLabelName);
     ObjectDelete(0, g_customPriceHorizontalLineName);
+    ObjectDelete(0, g_viewAnchorLineName);
 
     if(reason == REASON_REMOVE)
     {
@@ -1298,6 +1299,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     }
 
+    // View-lock anchor line deleted by the user → turn the lock off
+    // (our own programmatic deletes are guarded by the flag being false already)
+    if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent && sparam == g_viewAnchorLineName && g_viewLockEnabled) {
+        ViewLockSetEnabled(false);
+        ThrottledChartRedraw();
+        return;
+    }
+
     if(id == CHARTEVENT_KEYDOWN)
     {
         // TH3TOOL-OFF:
@@ -2019,6 +2028,23 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         g_forceClearOnNextDraw = true;
         g_redrawTHLevelsNeeded = true;
         RedrawAllObjects(true);
+    }
+
+    //
+    // CHARTEVENT_OBJECT_DRAG   View-lock anchor line: drop = new anchor time
+    //
+    if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_viewAnchorLineName && g_viewLockEnabled)
+    {
+        datetime droppedTime = (datetime)ObjectGetInteger(0, g_viewAnchorLineName, OBJPROP_TIME, 0);
+        if(droppedTime > 0 && droppedTime != g_viewAnchorTime)
+        {
+            g_viewAnchorTime = droppedTime;
+            ViewLockPersistAnchor();
+            if(ViewLockRestore()) g_viewRestorePending = false;
+            else g_viewRestorePending = true;   // history not ready — retry next ticks
+            ThrottledChartRedraw();
+        }
+        return;
     }
 
     //

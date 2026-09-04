@@ -89,6 +89,9 @@ static datetime g_viewAnchorTime = 0;
 static double g_viewAnchorMin = 0.0;
 static double g_viewAnchorMax = 0.0;
 static bool g_viewRestorePending = false;
+// Anchor handle: draggable vertical line showing the locked view's time.
+// Created/moved only by ViewAnchorLineEnsure(); deleting it turns the lock off.
+static string g_viewAnchorLineName = "Biotak_ViewAnchor_Line";
 static string g_lockStatusLabelName = "Biotak_LockStatus_Label";
 static string g_stepModeLabelName = "Biotak_StepMode_Label";
 
@@ -259,6 +262,7 @@ bool ViewLockRestore()
     ChartSetInteger(0, CHART_SCALEFIX, true);
     ChartSetDouble(0, CHART_FIXED_MAX, g_viewAnchorMax);
     ChartSetDouble(0, CHART_FIXED_MIN, g_viewAnchorMin);
+    ViewAnchorLineEnsure();
     return true;
 }
 
@@ -269,14 +273,48 @@ void ViewLockSetEnabled(const bool on)
     if(on)
     {
         ViewLockCapture();   // anchor = wherever the view is right now
+        ViewAnchorLineEnsure();
     }
     else
     {
+        ViewAnchorLineDelete();
         // Hand the chart back: auto-scroll + auto-scale like a plain chart
         ChartSetInteger(0, CHART_AUTOSCROLL, true);
         ChartSetInteger(0, CHART_SCALEFIX, false);
         g_viewRestorePending = false;
     }
+}
+
+// Anchor handle — visible only while locked with a valid anchor. Repositioned
+// by ensure (enable/restore/init); moved by the user via drag (drag-end
+// handler commits the line time as the new anchor); deleting the line turns
+// the lock off (handled in OnChartEvent, not here).
+void ViewAnchorLineEnsure()
+{
+    if(!g_viewLockEnabled || g_viewAnchorTime <= 0)
+    {
+        ObjectDelete(0, g_viewAnchorLineName);
+        return;
+    }
+    if(ObjectFind(0, g_viewAnchorLineName) < 0)
+    {
+        if(!ObjectCreate(0, g_viewAnchorLineName, OBJ_VLINE, 0, g_viewAnchorTime, 0)) return;
+    }
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_TIME, 0, (long)g_viewAnchorTime);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_COLOR, C'255,171,0');
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_STYLE, STYLE_DOT);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_WIDTH, 1);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_SELECTABLE, true);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_SELECTED, false);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_ZORDER, 100);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_BACK, false);
+    ObjectSetString(0, g_viewAnchorLineName, OBJPROP_TOOLTIP,
+                    "View anchor — drag to move the locked view · Del turns View Lock off");
+}
+
+void ViewAnchorLineDelete()
+{
+    ObjectDelete(0, g_viewAnchorLineName);
 }
 
 //+------------------------------------------------------------------+
