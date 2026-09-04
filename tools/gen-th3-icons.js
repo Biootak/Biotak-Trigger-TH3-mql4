@@ -113,9 +113,14 @@ const ART = {
     seg(16, 23.5, 12.6, 19.8, 1.8), seg(16, 23.5, 19.4, 19.8, 1.8),
   ],
   dots: [
-    // dots — TH dotted levels: dashed wave over baseline
-    ...dashPoly([[4, 18], [10, 11], [16, 15], [23, 7], [27, 9]], 2.6, 2.0, 2.5),
-    seg(4, 26, 28, 26, 1.6),
+    // dots — TH DOTTED LEVELS: three harmonic price levels measured from a
+    // left axis, dotted exactly like the TH lines drawn on the chart.
+    // (The old dashed-wave-over-baseline was ichimoku heritage — a wave
+    // reads as "trend", not as horizontal harmonic levels.)
+    seg(4.5, 8, 4.5, 24, 1.8),
+    ...dashSegs(8, 9, 27, 9, 2.4, 2.8, 2.0),
+    ...dashSegs(8, 16, 27, 16, 2.4, 2.8, 2.0),
+    ...dashSegs(8, 23, 27, 23, 2.4, 2.8, 2.0),
   ],
   box: [
     // box — timeframe lock: rounded padlock body + shackle + keyhole
