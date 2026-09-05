@@ -9,20 +9,21 @@
 //| this module. Chart scroll is locked directly here (raw Chart*      |
 //| calls) so Lite — which has no menu — keeps drag/delete working.   |
 //|                                                                   |
-//| STATE MACHINE — the SIZING gesture is the terminal's own engine   |
-//| (2026-09-06): hand-rolled press/release edge detection on          |
-//| MOUSE_MOVE bitmasks mis-detected drags, so the tool no longer      |
-//| detects drags itself. Corner 1 (a plain CHARTEVENT_CLICK) raises a |
-//| real SELECTED OBJ_RECTANGLE; the user sizes it with MT4's own      |
-//| anchor dots (CHARTEVENT_OBJECT_DRAG — the same engine as Insert →  |
-//| Shapes → Rectangle) and/or a 2nd chart click (TradingView-style    |
-//| corner 2, with button-up hover preview). No MOUSE_MOVE button-state|
-//| is ever read — hover only moves an anchor by position.             |
-//|   BK_IDLE →(Tools click)→ BK_ARMED →(click corner 1)→ BK_PLACING   |
-//|   BK_PLACING →(native dot-drag / hover / click corner 2)→ commit   |
-//|                → BK_IDLE (single-shot: auto-exit + menu restores)  |
+//| STATE MACHINE — mirrors the terminal's own rectangle tool          |
+//| (2026-09-06): the sizing box is raised on PRESS (not on release),  |
+//| so a held press-drag-release draws with a live preview in ONE      |
+//| gesture, exactly like Insert → Shapes → Rectangle. A tap (no drag) |
+//| keeps corner 1 and waits for corner 2 (TradingView-style 2nd click |
+//| with hover preview, or native white-dot tuning). Press/rising and  |
+//| release/falling edges come from CHARTEVENT_MOUSE_MOVE button state |
+//| (standard MQL4 practice); plain CHARTEVENT_CLICKs are only the      |
+//| corner buttons (empty-chart clicks) plus an edge-less fallback.     |
+//|   BK_IDLE →(Tools click)→ BK_ARMED →(press)→ BK_SIZING(held)        |
+//|   BK_SIZING(held) →(drag)→ live preview →(release)→ commit → IDLE  |
+//|   BK_SIZING(held) →(tap release)→ waiting →(hover/dots/click c2)→   |
+//|                commit → BK_IDLE (single-shot: auto-exit, no spray)  |
 //| ESC / right-click / orb-click / Delete-key → cancel → BK_IDLE.     |
-//| While BK_ARMED/BK_PLACING, BaseKnotOnChartEvent() returns true for |
+//| While BK_ARMED/BK_SIZING, BaseKnotOnChartEvent() returns true for  |
 //| consumed events so OnChartEventHandler returns early and nothing   |
 //| else (custom-price, TH3, panels) sees the gesture.                 |
 //|                                                                   |
@@ -62,14 +63,15 @@
 
 //--- session states
 #define BK_IDLE    0
-#define BK_ARMED   1   // menu hidden, waiting for the corner-1 click
-#define BK_PLACING 2   // placing box live on chart, sizing via native dots / corner-2 click
+#define BK_ARMED   1   // menu hidden, waiting for the press / corner-1 click
+#define BK_SIZING  2   // sizing box live: held = press-drag in flight, !held = waiting corner 2
 
 //--- geometry / UX tuning
 #define BK_TP_R_MULT      2.0    // TP distance = 2R (R = box height)
 #define BK_ARM_GUARD      500    // ms — ignore the arming click's own echo
 #define BK_DRAG_SETTLE    500    // ms — a CLICK right after a native dot-drag is the drag's release echo, not corner 2
 #define BK_HOVER_SETTLE   400    // ms — hover preview stays out while a native drag is settling
+#define BK_DONE_ECHO      400    // ms — trailing CLICK after our release-commit is the gesture's own echo: swallow it
 #define BK_BADGE_W        46
 #define BK_BADGE_H        18
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
@@ -88,7 +90,10 @@ static BaseKnotBox g_bkBoxes[];
 static int         g_bkState      = BK_IDLE;
 static datetime    g_bkT1         = 0;
 static double      g_bkP1         = 0.0;
+static bool        g_bkHeld       = false;   // our press-drag is in flight (button held since corner 1)
+static bool        g_bkLeftPrev   = false;   // MOUSE_MOVE button tracker — the press/release edge detector
 static uint        g_bkArmedMs    = 0;
+static uint        g_bkDoneMs     = 0;       // last commit/cancel — trailing CLICK echo guard (IDLE)
 static uint        g_bkLastDragMs = 0;      // last native dot-drag — CLICKs inside SETTLE are release echoes
 static bool        g_bkInitDone   = false;
 static bool        g_bkRestoreReq = false;  // UI side: re-show the menu once
@@ -361,13 +366,15 @@ void BaseKnotArm()
    g_bkState   = BK_ARMED;
    g_bkTouched = true;   // OnDeinit must restore the chart props below, whatever happens
    g_bkArmedMs = GetTickCount();
+   g_bkHeld = false;
+   g_bkLeftPrev = false;   // the tool button's press is over — next rising edge is a fresh gesture
    g_bkLastDragMs = 0;
    g_bkScrollWas = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
    g_bkCtxWas    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
    ChartSetInteger(0, CHART_MOUSE_SCROLL, false);   // no chart slide under the hand while drawing
    ChartSetInteger(0, CHART_CONTEXT_MENU, false);
    BaseKnotWipePlacing();
-   BaseKnotHintShow("BASE TOOL — click corner 1 on the chart · right-click / ESC: cancel");
+   BaseKnotHintShow("BASE TOOL — press + drag a box (release = done) · or click 2 corners · right-click / ESC: cancel");
    ChartRedraw();
 }
 // Shared exit: chart props back, hint down, menu restore requested.
@@ -378,6 +385,8 @@ void BaseKnotFinish(const bool showMenu)
    BaseKnotWipePlacing();
    if(!showMenu) BaseKnotHintHide();
    g_bkState = BK_IDLE;
+   g_bkHeld = false;
+   g_bkDoneMs = GetTickCount();   // the gesture's trailing CLICK echo dies here, never downstream
    ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
    ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
@@ -613,10 +622,11 @@ void BaseKnotSyncPlacing()
                    "BK " + side + " Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    BaseKnotMakeInfo(tag, t2, top, hPips, rr, tpPips, side, tfMask);
 }
-// Corner-1 click → raise the sizing box (SELECTED: the terminal shows its
-// own white anchor dots) with a 1-bar seed so it is visible before the
-// first hover/drag move.
-void BaseKnotCorner1Click(const datetime t, const double praw)
+// Corner-1 PRESS → raise the sizing box immediately (unselected dotted
+// seed), so the held drag draws a live preview from the very first pixel —
+// exactly like the terminal's own rectangle tool. Release commits; a tap
+// (no drag) falls into corner-2 waiting instead.
+void BaseKnotCorner1Press(const datetime t, const double praw)
 {
    string tag = BaseKnotPlacingTag();
    if(tag == "") return;
@@ -628,20 +638,47 @@ void BaseKnotCorner1Click(const datetime t, const double praw)
    if(tB <= t) tB = t + 60;
    if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, t, p, tB, p)) return;
    ObjectSetInteger(0, box, OBJPROP_COLOR, C'255,171,0');
-   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_DOT);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
    ObjectSetInteger(0, box, OBJPROP_FILL, false);
    ObjectSetInteger(0, box, OBJPROP_BACK, true);
-   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);
-   ObjectSetInteger(0, box, OBJPROP_SELECTED, true);   // native dots ON — MT4 owns the sizing
+   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, box, OBJPROP_SELECTED, false);   // dots come only in corner-2 waiting
    ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, BaseKnotTFMask(Period()));
-   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base sizing — drag the white dots, move mouse for preview, or click corner 2");
-   g_bkState = BK_PLACING;
+   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base sizing — release to commit");
+   g_bkState = BK_SIZING;
+   g_bkHeld = true;
    g_bkLastDragMs = 0;
+   BaseKnotHintShow("BASE — sizing · release to commit · ESC: cancel");
+   ChartRedraw();
+}
+// Tap release (no drag): keep corner 1, select the box for native dot
+// tuning, hover for corner 2.
+void BaseKnotEnterWaiting()
+{
+   string box = BaseKnotPlacingTag() + "BOX";
+   if(ObjectFind(0, box) >= 0)
+   {
+      ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);
+      ObjectSetInteger(0, box, OBJPROP_SELECTED, true);   // native dots ON — MT4 owns fine sizing
+      ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base sizing — drag the white dots, move mouse for preview, or click corner 2");
+   }
+   g_bkHeld = false;
    BaseKnotHintShow("BASE — corner 1 set · drag the white dots, or click corner 2 · ESC: cancel");
    ChartRedraw();
+}
+// Commit whatever the sizing box currently spans (normalized). Used by the
+// release path and the corner-2 click path alike.
+bool BaseKnotCommitFromPlacing()
+{
+   datetime rt1 = 0, rt2 = 0;
+   double rp1 = 0, rp2 = 0;
+   if(!BaseKnotReadPlacing(rt1, rt2, rp1, rp2)) return false;
+   g_bkT1 = rt1; g_bkP1 = rp1;
+   return BaseKnotCommit(rt2, rp2);   // same-bar auto-widens inside; zero height stays sizing
 }
 
 //+------------------------------------------------------------------+
@@ -755,10 +792,10 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          // dots → cancel; wiped child → heal). Past IDLE these are echoes of
          // our own commit/cancel wipe — ignore them (else the commit's own
          // wipe would cancel the session and eat the done-hint).
-         if(sparam == ptag + "BOX") { if(g_bkState == BK_PLACING) BaseKnotCancel(); return true; }
+         if(sparam == ptag + "BOX") { if(g_bkState == BK_SIZING) BaseKnotCancel(); return true; }
          if(StringFind(sparam, ptag) == 0)
          {
-            if(g_bkState == BK_PLACING) { BaseKnotSyncPlacing(); ChartRedraw(); }
+            if(g_bkState == BK_SIZING) { BaseKnotSyncPlacing(); ChartRedraw(); }
             return true;
          }
       }
@@ -815,12 +852,50 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    }
    if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") >= 0) { BaseKnotCancel(); return true; }
 
-   //--- Hover preview (position only — NO button state is ever read): while
-   //--- sizing, anchor 2 follows the cursor like TradingView, until a native
-   //--- dot-drag takes over (its SETTLE window keeps the two from fighting).
-   //--- throttled: a mouse-move storm must never pin the CPU (30 ms ≈ 33 fps).
-   if(id == CHARTEVENT_MOUSE_MOVE && g_bkState == BK_PLACING)
+   //--- Done-echo guard: the trailing CLICK of our own release-commit is the
+   //--- gesture's echo, not a new order — it dies here, never downstream.
+   if(id == CHARTEVENT_CLICK && g_bkState == BK_IDLE &&
+      g_bkDoneMs != 0 && GetTickCount() - g_bkDoneMs < BK_DONE_ECHO) return true;
+
+   //--- Press / drag / release — the native-mirror gesture. Rising (press)
+   //--- raises the sizing box at once so the held drag previews live;
+   //--- falling (release) commits, or waits for corner 2 after a tap.
+   if(id == CHARTEVENT_MOUSE_MOVE)
    {
+      int st = (int)StringToInteger(sparam);
+      bool left = ((st & 1) != 0);
+      bool rising  = (left && !g_bkLeftPrev);
+      bool falling = (!left && g_bkLeftPrev);
+      g_bkLeftPrev = left;
+      if(rising && g_bkState == BK_ARMED)
+      {
+         int sw = 0; datetime ct = 0; double cp = 0;
+         if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+            BaseKnotCorner1Press(ct, cp);
+         return true;   // the press is ours even off-chart — nothing downstream starts
+      }
+      if(g_bkState != BK_SIZING) return false;   // ARMED hover — panels stay live
+      if(falling)
+      {
+         if(g_bkHeld)
+         {
+            g_bkHeld = false;
+            string fbox = BaseKnotPlacingTag() + "BOX";
+            int sw = 0; datetime ct = 0; double cp = 0;
+            if(ObjectFind(0, fbox) >= 0)
+            {
+               if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+                  ObjectMove(0, fbox, 1, ct, BaseKnotSnapPrice(ct, cp));
+               // else: released off-chart — commit what the drag last spanned
+               if(!BaseKnotCommitFromPlacing()) BaseKnotEnterWaiting();   // tap: keep corner 1
+            }
+         }
+         // Falling while waiting (corner-2 tap edges) carries no info — the CLICK commits.
+         return true;
+      }
+      //--- Live preview, ONE path for held-drag and waiting-hover alike:
+      //--- anchor 2 follows the cursor (snapped, throttled 30 ms). Suppressed
+      //--- right after a native dot-drag so the two never fight.
       uint nowH = GetTickCount();
       bool settled = (g_bkLastDragMs == 0 || nowH - g_bkLastDragMs > BK_HOVER_SETTLE);
       static uint s_bkRubberMs = 0;
@@ -840,10 +915,8 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       return true;   // sizing owns the cursor — nothing downstream sees these moves
    }
 
-   //--- Corner clicks (the ONLY gesture buttons — both rock-solid events):
-   //--- ARMED + chart click = corner 1; PLACING + chart click = corner 2 =
-   //--- commit + auto-exit. Clicks landing ON objects arrive as OBJECT_CLICK
-   //--- (swallowed above), so a click here is always empty chart.
+   //--- Corner clicks on empty chart (clicks ON objects arrive as
+   //--- OBJECT_CLICK and are swallowed above — a CLICK here is empty chart).
    if(id == CHARTEVENT_CLICK)
    {
       uint nowC = GetTickCount();
@@ -852,26 +925,23 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          return true;
       if(g_bkState == BK_ARMED)
       {
+         // Edge-less fallback (a build that sent no press edge): tap = corner 1, then wait.
          if(nowC - g_bkArmedMs < BK_ARM_GUARD) return true;   // the tool button's own click echo
-         BaseKnotCorner1Click(ct, cp);
+         BaseKnotCorner1Press(ct, cp);
+         if(g_bkState == BK_SIZING) BaseKnotEnterWaiting();
          return true;
       }
-      if(g_bkState == BK_PLACING)
+      if(g_bkState == BK_SIZING && !g_bkHeld)
       {
          if(g_bkLastDragMs != 0 && nowC - g_bkLastDragMs < BK_DRAG_SETTLE) return true;   // drag-release echo
          string pbox = BaseKnotPlacingTag() + "BOX";
          if(ObjectFind(0, pbox) < 0) return true;
          ObjectMove(0, pbox, 1, ct, BaseKnotSnapPrice(ct, cp));   // 2nd click sets corner 2…
-         datetime rt1 = 0, rt2 = 0;
-         double rp1 = 0, rp2 = 0;
-         if(!BaseKnotReadPlacing(rt1, rt2, rp1, rp2)) return true;
-         if(rt2 < rt1) { datetime tt = rt1; rt1 = rt2; rt2 = tt; double pp = rp1; rp1 = rp2; rp2 = pp; }
-         g_bkT1 = rt1; g_bkP1 = rp1;
-         if(!BaseKnotCommit(rt2, rp2))   // same-bar auto-widens inside; zero height stays sizing
-            BaseKnotHintShow("BASE — too small · click a corner further out (or drag the dots) · ESC: cancel");
+         if(!BaseKnotCommitFromPlacing())
+            BaseKnotHintShow("BASE — corner 1 kept · click a corner further out (or drag the dots) · ESC: cancel");
          return true;
       }
-      return true;
+      return true;   // CLICK mid-held-drag settles on release — never double-commit here
    }
 
    return false;

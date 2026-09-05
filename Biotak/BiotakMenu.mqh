@@ -649,7 +649,7 @@ string CircItemTooltip(const int i)
        case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
         case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
-      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nClick corner 1, size with dots / click corner 2 — auto-done · ESC: cancel";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nPress+drag a box (release = done) · or click 2 corners · ESC: cancel";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
