@@ -168,6 +168,19 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `VIEWLOCK-OFF:` sites (grep the marker). Full+Lite compile 0 errors
   without it (ex4 ~914KB/521KB).
 
+- **Step Mode is one engine value, three writers, one language**
+  (2026-09-05 — `GetCurrentStepMode()` in `UtilityFunctions.mqh` is the
+  single source: `g_stepModeOverride` (-1=Auto=follow base, 0-3=force) wins,
+  else base `g_stepCalculationMode` (input-seeded, OV_ `SM` persisted). The
+  E key, the Tools-ring step item, and panel card 9 row 0 (OVERRIDE) all
+  write the override with the SAME `-1→0..3→-1` cycle; card 9 row 1
+  (CALC MODE) writes the base AND clears the override (deletes
+  `Biotak_StepMode_`) so the new base is never hidden by a stale override;
+  Q resets all three Step rows to factory like the panel Reset does.
+  Segment/badge names are the enum names everywhere (`TH/SS-LS/Combo/Factor`,
+  badge shorts `TH/SS/Co/Fa/Aut`) — the old `Sub/Pat/Trd/Tr` labels were dead
+  names from a pre-history enum, never reintroduce them.)
+
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches
   (`PNL_QSW_*`, `QuickPalColor()` in `BiotakPanels.mqh`) + PICK button for

@@ -527,10 +527,10 @@ string CircBadgeText(const int i)
    }
    if(i == CIR_STEP_OVERRIDE)
    {
-      if(g_stepModeOverride == 0) return "Tr";
-      if(g_stepModeOverride == 1) return "Sub";
-      if(g_stepModeOverride == 2) return "Pat";
-      if(g_stepModeOverride == 3) return "Trd";
+      if(g_stepModeOverride == 0) return "TH";
+      if(g_stepModeOverride == 1) return "SS";
+      if(g_stepModeOverride == 2) return "Co";
+      if(g_stepModeOverride == 3) return "Fa";
       return "Aut";
    }
    if(i == CIR_FACTOR_OVERRIDE)
@@ -1534,10 +1534,12 @@ int HandleButtonClick(const string clickedObject)
          g_redrawTHLevelsNeeded = true;
          tflags = REFRESH_ALL;
       }
-      else if(tfeat == CIR_STEP_OVERRIDE)
-      {
-         g_stepModeOverride++;
-         if(g_stepModeOverride > 3) g_stepModeOverride = -1;
+       else if(tfeat == CIR_STEP_OVERRIDE)
+       {
+          // Same cycle as the E key and the panel OVERRIDE row:
+          // -1(Auto) → 0..3 → back to Auto.
+          g_stepModeOverride++;
+          if(g_stepModeOverride > 3) g_stepModeOverride = -1;
          string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
          if(g_stepModeOverride == -1) GlobalVariableDel(stepModeGvarName);
          else GlobalVariableSet(stepModeGvarName, (double)g_stepModeOverride);

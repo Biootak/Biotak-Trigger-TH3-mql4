@@ -1131,7 +1131,7 @@ int LockOptFromPeriod(const int p)
 }
 
 //--- Step-override option helpers (panel 9 — OVERRIDE segment row)
-//    Segment 0 = Auto (-1), segments 1..4 = TH / Sub / Pat / Trd (0..3)
+//    Segment 0 = Auto (-1: follow CALC MODE), segments 1..4 = TH / SS-LS / Combo / Factor (0..3)
 int StepOverrideFromOpt(const int idx)
 {
    if(idx <= 0) return -1;
@@ -1253,7 +1253,7 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
    else if(item==9)   // STEP MODE — the calculation engine card: override,
                       // calc mode and level-count limit (MAX LEVELS).
    {
-      if(row==0)       { kind=2; label="OVERRIDE"; opts="Auto|TH|Sub|Pat|Trd"; minV=0; maxV=4; }
+      if(row==0)       { kind=2; label="OVERRIDE"; opts="Auto|TH|SS-LS|Combo|Factor"; minV=0; maxV=4; }
       else if(row==1)  { kind=2; label="CALC MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
       else             { label="MAX LEVELS"; minV=1; maxV=500; }
    }
@@ -1655,6 +1655,10 @@ int PnlApply(const int item,const int row,const double v)
             flags=REFRESH_ALL;
          }
          else if(row==1)  { g_stepCalculationMode=(ENUM_STEP_CALCULATION_MODE)(int)MathRound(v);
+                // New base must take effect at once: drop any override, or it
+                // would keep winning in GetCurrentStepMode and hide this change.
+                g_stepModeOverride=-1;
+                GlobalVariableDel("Biotak_StepMode_"+GetCachedChartIdStr());
                 g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
          else             { g_maxLevels=ClampInt((int)MathRound(v),1,500);   // row 2 — MAX LEVELS
                 g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }

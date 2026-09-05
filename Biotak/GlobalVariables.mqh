@@ -62,7 +62,7 @@ void SyncTHFlagsFromMode()
    g_showFractalTHs     = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
    g_showStandardTHs    = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
 }
-static int g_stepModeOverride = -1;        // -1 = use input, 0-5 = override
+static int g_stepModeOverride = -1;        // -1 = Auto (follow CALC MODE), 0-3 = force TH/SS-LS/Combo/Factor
 static int g_sslsFirstOverride = -1;       // -1 = use inpLSFirst, 0 = SS first, 1 = LS first
 static double g_factorValueOverride = 0;   // 0 = use input, >0 = override
 static int g_factorColorOverride = -1;     // -1 = use input

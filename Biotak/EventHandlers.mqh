@@ -1608,8 +1608,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //#endif
 
         //  
-        // E key   Cycle Step Mode
-        //  
+        // E key   Cycle Step Mode (override: Auto → TH → SS-LS → Combo → Factor → Auto)
+        // Same cycle as the Tools ring item and the panel OVERRIDE row — all
+        // three write g_stepModeOverride, GetCurrentStepMode() decides.
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
             // Same cycle as the ring item: -1(Auto) → 0..3 → back to Auto
@@ -1618,7 +1619,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
             if(g_stepModeOverride == -1) GlobalVariableDel(stepModeGvarName);
             else GlobalVariableSet(stepModeGvarName, g_stepModeOverride);
-            LOG_IP1(LOG_CAT_KEYS, "Step Mode changed to: ", IntegerToString(g_stepModeOverride));
+            string stepLogName = (g_stepModeOverride < 0) ? "Auto" : GetStepModeName(GetCurrentStepMode());
+            LOG_IP1(LOG_CAT_KEYS, "Step Mode changed to: ", stepLogName);
             g_forceClearOnNextDraw = true;
             g_redrawTHLevelsNeeded = true;
             g_calculatedOnce = false;
@@ -1661,6 +1663,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpResetKey))
         {
             g_stepModeOverride = -1;
+            // Q resets the whole Step card (override + base + levels), like the
+            // panel Reset does — otherwise a customized base would survive Q.
+            g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(int)FactoryDefault(FF_STEP_CALC_MODE);
+            g_maxLevels = (int)FactoryDefault(FF_MAX_LEVELS);
             g_factorValueOverride = 0;
             // TH3TOOL-OFF:
             //#ifndef BUILD_LITE
