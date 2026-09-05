@@ -49,6 +49,10 @@
 
 #include "Biotak\UtilityFunctions.mqh"
 
+// Base / Knot Measurement Tool (Lite: no ring menu to arm it, but committed
+// boxes keep their drag/delete/badge behavior via EventHandlers).
+#include "Biotak\BaseKnotTool.mqh"
+
 //                                                                    
 // Cache & Object Management Systems
 //                                                                    

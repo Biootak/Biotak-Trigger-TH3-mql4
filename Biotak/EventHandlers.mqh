@@ -1288,6 +1288,11 @@ bool IsZoneBoxBorderObject(const string name)
 
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+    // Base / Knot tool FIRST: while armed it owns every mouse gesture (no
+    // chart-click leak into custom-price/TH3/panels), and committed boxes own
+    // their badge/drag/delete events in every state.
+    if(BaseKnotOnChartEvent(id, lparam, dparam, sparam)) return;
+
     bool suppressDeleteEvent = g_suppressDeleteEvents || (g_suppressDeleteEventsUntilMs != 0 && GetTickCount() <= g_suppressDeleteEventsUntilMs);
     if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
         string indicatorPrefix = inpObjectPrefix;

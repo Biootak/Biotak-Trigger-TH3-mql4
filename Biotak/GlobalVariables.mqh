@@ -357,6 +357,13 @@ void CleanupAllGlobalVariables() {
     for(int i = 0; i < ArraySize(gvars); i++) {
         if(GlobalVariableCheck(gvars[i])) GlobalVariableDel(gvars[i]);
     }
+    // Base/Knot tool direction keys are dynamic (one per box id) — sweep by
+    // prefix so a removed indicator never leaves stale direction state.
+    for(int k = GlobalVariablesTotal() - 1; k >= 0; k--)
+    {
+        string bkn = GlobalVariableName(k);
+        if(StringFind(bkn, "Biotak_BK_") == 0) GlobalVariableDel(bkn);
+    }
 }
 
 //+------------------------------------------------------------------+

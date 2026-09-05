@@ -2330,7 +2330,9 @@ void PnlCommitMove(const int item)
 //     reset of CHART_MOUSE_SCROLL is re-forced while we own the chart.
 bool ChartLockIntended()
 {
-   return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
+   // Base/Knot owns the chart while its two-click session is armed (it locks
+   // via raw Chart* calls so Lite works too — the watchdog must not fight it).
+   return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0) || BaseKnotSessionActive();
 }
 
 void ChartScrollReconcile()
@@ -3026,6 +3028,19 @@ static int g_LastUIY = 0;
 
 void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+   // Base/Knot session ended via ESC/right-click (handled in EventHandlers
+   // BEFORE this runs): re-show the ring menu hidden at arm time.
+   if(BaseKnotTakeRestoreFlag())
+   {
+      if(!g_UI.menuVisible)
+      {
+         g_UI.menuVisible = true;
+         DeleteMenu();
+         CreateMenu();
+         SaveUIStates();
+      }
+      ChartRedraw();
+   }
    if(id == CHARTEVENT_MOUSE_MOVE)
    {
       int mx = (int)lparam;

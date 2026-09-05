@@ -321,6 +321,25 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
+- **Base / Knot Measurement Tool = Tools slot 3, two-click, state-machine owned**
+  (2026-09-05 — TradingView-style base-box drawer: Tools-ring
+  `CIR_BASEKNOT`/`TOOL_BASEKNOT` with the `box` glyph (glyph depicts the
+  rectangle object, per R-ICONS); click hides the ring and arms
+  `Biotak/BaseKnotTool.mqh` (`BK_IDLE→ARMED→PREVIEW→ARMED`, stays armed =
+  multi-draw, ESC/right-click/orb exits + menu restores via
+  `BaseKnotTakeRestoreFlag()` in `HandleUIChartEvent`). Committed boxes own
+  children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
+  Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
+  cascades (`ObjectsDeleteAll(pfx)`), BUY/SELL + X badges are `OBJ_BUTTON`s
+  re-glued on `CHART_CHANGE` + the 500ms tick (`BaseKnotSyncBadges`). The
+  session is consumed FIRST in `OnChartEventHandler` (500ms arm-guard +
+  click debounce, chart scroll locked with raw `Chart*` calls so Lite
+  compiles menu-free — Lite keeps drag/delete/badges, arming is Full-only).
+  Pips via `GetCachedPipSize()`, never hardcoded point math; TP = 2R.
+  `TOOL_COUNT`-driven menu loops pick new tools up automatically; panel-less
+  tools return `ToolPanel()==-1` and must skip long-press arming
+  (`CircHandleMouseMove` guard) or the release click gets swallowed.)
+
 - **HTF boxes self-heal after timeframe switches — never rely on init-time draws**
   (2026-09-05 — HTF candles vanished on every TF switch until a manual off/on
   toggle: `OnDeinit(REASON_CHARTCHANGE)` deletes all HTF objects, `OnInit` only

@@ -46,6 +46,11 @@
 
 #include "Biotak\UtilityFunctions.mqh"
 
+// Base / Knot Measurement Tool (two-click base box + Entry/SL/TP).
+// Included here (before EventHandlers/menu) so both Full and Lite compile:
+// Lite has no ring menu but keeps drag/delete/badge handling alive.
+#include "Biotak\BaseKnotTool.mqh"
+
 //                                                                    
 // Cache & Object Management Systems
 //                                                                    

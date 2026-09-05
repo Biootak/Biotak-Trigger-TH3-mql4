@@ -91,6 +91,7 @@
 #define CIR_PIN             8   // Custom Price Pin
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 // FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
+#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (two-click base box + Entry/SL/TP)
 
 //--- ring layout (main circle — 6 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
@@ -107,13 +108,14 @@
 
 //--- Tools half-circle (sub-menu under Tools)
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
-// the Step Mode card now, so Tools is Pin + Step only.
-#define TOOL_COUNT 2
+// the Step Mode card now. Base/Knot is the momentary drawing tool (no panel).
+#define TOOL_COUNT 3
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
+#define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 #define TOOL_RADIUS 56   // >44 to avoid overlap with Tools button (44px diameter)
-#define TOOL_SPREAD 110.0  // 2 items → ±55°
+#define TOOL_SPREAD 110.0  // 3 items → -55° / 0° / +55° around the Tools axis
 #define TOOL_GAP    6
 
 //--- palette (glass-like dark buttons; skins carry the visuals, buttons are hit areas)
@@ -141,6 +143,7 @@ int ToolPanel(const int toolIdx)
    if(feat == CIR_PIN) return 8; // PIN panel
    if(feat == CIR_STEP_OVERRIDE) return 9; // Step Mode override panel
    // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override panel
+   // CIR_BASEKNOT is a momentary drawing tool — no settings panel (-1).
    return -1;
 }
 
@@ -165,6 +168,7 @@ int ToolFeature(const int toolIdx)
 {
    if(toolIdx == TOOL_PIN)             return CIR_PIN;
    if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
+   if(toolIdx == TOOL_BASEKNOT)        return CIR_BASEKNOT;
    // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
    return -1;
 }
@@ -408,6 +412,8 @@ bool CircFeatureOn(const int i)
    // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
+   // CIR_BASEKNOT is momentary: lit while the two-click session is armed.
+   if(i == CIR_BASEKNOT)        return BaseKnotSessionActive();
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
    //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
@@ -457,6 +463,7 @@ string CircIconRes(const int i, const bool on)
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
     else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
+    else if(i == CIR_BASEKNOT)   base = "box";     // Base box = a rectangle (glyph shows the object)
     else if(i == CIR_TOOLS)      base = "tools";
    else                         base = "htf";
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
@@ -551,8 +558,13 @@ string CircBadgeText(const int i)
    //if(i == CIR_FACTOR_OVERRIDE)
    //{
    //   if(g_factorValueOverride > 0) return DoubleToString(g_factorValueOverride, 0);
-   //   return "Aut";
+   //   return "Auto";
    //}
+   if(i == CIR_BASEKNOT)
+   {
+      int n = BaseKnotCount();
+      return (n > 0 ? IntegerToString(n) : "");
+   }
    return "";
 }
 
@@ -613,6 +625,12 @@ string CircTooltipStatus(const int i)
    //   if(g_factorValueOverride > 0) return DoubleToString(g_factorValueOverride, 0);
    //   return "Auto";
    //}
+   if(i == CIR_BASEKNOT)
+   {
+      if(BaseKnotSessionActive()) return "Drawing";
+      int n = BaseKnotCount();
+      return (n > 0 ? IntegerToString(n) + " set" : "Ready");
+   }
    if(i == CIR_TOOLS)             return g_ToolsOpen ? "Open" : "Closed";
    return "";
 }
@@ -628,9 +646,10 @@ string CircItemTooltip(const int i)
        // VIEWLOCK-OFF: case CIR_VLOCK: return "View Lock\nClick: keep this view across timeframes · Hold: settings";
        // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
        case CIR_HTF:             return "HTF Candles · " + CircTooltipStatus(i) + "\nClick: toggle HTF candles · Hold: settings";
-      case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
-       case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
+       case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
+        case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nClick: 2-click base box + Entry/SL/TP · ESC: done";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -1486,6 +1505,9 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       const int toolHit = ToolsItemAt(mx, my);
       if(toolHit >= 0)
       {
+         // Panel-less tools (Base/Knot) arm on CLICK, not on hold — never
+         // start a long-press here or the release click gets swallowed.
+         if(ToolPanel(toolHit) < 0) return;
          g_LongPressItem  = ToolPanel(toolHit);
          g_LongPressStart = GetTickCount();
          g_LongPressX     = mx;
@@ -1751,12 +1773,33 @@ int ToolsIndexFromName(const string name)
 }
 
 //+------------------------------------------------------------------+
+//| Base/Knot session → back to the ring menu (orb-cancel path).      |
+//| The ESC / right-click path restores via BaseKnotTakeRestoreFlag() |
+//| in HandleUIChartEvent (BiotakPanels.mqh) instead.                 |
+//+------------------------------------------------------------------+
+void BaseKnotExitToMenu()
+{
+   if(BaseKnotSessionActive()) BaseKnotCancel();
+   BaseKnotTakeRestoreFlag();   // consumed here — the tick hook must not fire again
+   if(!g_UI.menuVisible)
+   {
+      g_UI.menuVisible = true;
+      DeleteMenu();
+      CreateMenu();
+      SaveUIStates();
+      ChartRedraw();
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Handle Button Click Events                                       |
 //+------------------------------------------------------------------+
 int HandleButtonClick(const string clickedObject)
 {
    if(clickedObject == CircOrbBg())
    {
+      // Orb doubles as the session EXIT while drawing (menu is hidden then).
+      if(BaseKnotSessionActive()) { BaseKnotExitToMenu(); return REFRESH_NONE; }
       if(g_OrbWasDragged)
       {
          g_OrbWasDragged = false;
@@ -1811,6 +1854,21 @@ int HandleButtonClick(const string clickedObject)
           g_forceClearOnNextDraw = true;
           g_redrawTHLevelsNeeded = true;
           tflags = REFRESH_ALL;
+       }
+       else if(tfeat == CIR_BASEKNOT)
+       {
+          // Momentary drawing tool: hide the ring (room for analysis),
+          // lock the chart inside BaseKnotArm(), enter the two-click flow.
+          // No indicator recalc — REFRESH_NONE (Arm redraws itself).
+          g_UI.menuVisible = false;
+          DeleteMenu();
+          CreateMenu();   // orb only — the ring is gone while menuVisible=false
+          SaveUIStates();
+          BaseKnotArm();
+          ToolsUpdateItemState(tidx);
+          UpdateCircularBadges();
+          ChartRedraw();
+          return REFRESH_NONE;
        }
       // FACTORBTN-OFF:
       //else if(tfeat == CIR_FACTOR_OVERRIDE)

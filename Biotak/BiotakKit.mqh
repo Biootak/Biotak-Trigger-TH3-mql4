@@ -192,6 +192,7 @@ void RefreshUIPerTick()
    {
       s_LastMenuSync = now;
       UpdateMenuSyncIfChanged();
+      BaseKnotSyncBadges();   // pixel badges re-glued after scroll/zoom (cheap, runs only with boxes)
    }
 }
 
