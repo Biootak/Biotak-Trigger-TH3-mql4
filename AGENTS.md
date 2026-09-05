@@ -321,27 +321,15 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
-- **Base / Knot Measurement Tool = Tools slot 3, native-mirror gesture, single-shot**
-  (2026-09-05 drawer; 2026-09-06 — root-caused why drags never previewed:
-  corner 1 was created on CHARTEVENT_CLICK (= button RELEASE), so mid-drag no
-  box existed. Now the sizing box is raised on PRESS (MOUSE_MOVE rising edge)
-  and previews live through the held drag — ONE press-drag-release gesture
-  exactly like Insert → Shapes → Rectangle; release commits, a tap (no drag)
-  keeps corner 1 and waits for corner 2 (TV-style 2nd click with hover
-  preview, or the terminal's own white-dot tuning via `OBJECT_DRAG`).
-  `BK_IDLE→ARMED→SIZING(held/waiting)→IDLE`, single-shot auto-exit via shared
-  `BaseKnotFinish()` (commit AND cancel → `IDLE` + menu restore, stray clicks
-  draw nothing). Sizing set = `<prefix>_BK_P_` (+ live Entry/SL/TP preview,
-  direction re-resolved while sizing, frozen at commit; same-bar auto-widens
-  +1 bar, zero height stays sizing). Echo guards: `BK_ARM_GUARD` (arming),
-  `BK_DRAG_SETTLE` (dot-drag release), `BK_DONE_ECHO` (post-commit trailing
-  CLICK dies in `IDLE`, never leaks downstream); Delete-key on the dots
-  cancels; placing-BOX delete echoes past `IDLE` are ignored so the commit's
-  own wipe can't cancel the session. Tools-ring
-  `CIR_BASEKNOT`/`TOOL_BASEKNOT` with the `box` glyph (glyph depicts the
-  rectangle object, per R-ICONS); click hides the ring and arms
-  `Biotak/BaseKnotTool.mqh` (ESC/right-click/orb exits + menu restores via
-  `BaseKnotTakeRestoreFlag()` in `HandleUIChartEvent`). Committed boxes own
+- **Base / Knot Measurement Tool = Tools slot 3, two-click, single-shot**
+  (2026-09-05 drawer — TradingView-style base-box drawer, kept SIMPLE on
+  purpose (2026-09-06: three press-drag/hybrid rewrites were reverted; the
+  simple version is the law): click corner 1, rubber-band follows, click
+  corner 2 = commit. `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit
+  (commit AND cancel → `IDLE` + menu restore via `BaseKnotTakeRestoreFlag()`
+  in `HandleUIChartEvent`, stray clicks draw nothing). Sizing preview =
+  dotted `PREVIEW` rect (deleted at commit/cancel); same-bar/zero-height
+  commits rejected, preview kept. Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
   cascades (`ObjectsDeleteAll(pfx)`), the X delete badge is an `OBJ_BUTTON`
