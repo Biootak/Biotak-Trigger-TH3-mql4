@@ -358,9 +358,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   first one is inside the id. Each box carries its commit-TF mask
   (`BaseKnotTFMask`: own + lower TFs, hidden above — no hairline boxes) and
   `BaseKnotPlaceBadges` ANDs it with on-screen state (never let badge code
-  overwrite the mask with plain ALL/NO). Both corners + the rubber-band snap
-  to the nearer High/Low shadow gated by `inpEnableMagnet` /
-  `inpMagnetSensitivityPips`. Info badge is chart-anchored
+  overwrite the mask with plain ALL/NO). NO magnet (`BKMAGNET-OFF`
+  2026-09-06, user decision — snapping pulled corners to candle shadows so
+  the box never landed where clicked: `BaseKnotSnapPrice()` returns the click
+  untouched, exactly like MT4's own rectangle; body kept commented for a
+  one-line restore). Info badge is chart-anchored
   `"[H Pips | R:R 1:N]"`; the X is the only pixel badge. Box delete cascades
   via one `ObjectsDeleteAll(pfx)`; a manually deleted CHILD self-heals via
   `BaseKnotSync`, trailing deletes of a gone box only mop up by prefix. The BK

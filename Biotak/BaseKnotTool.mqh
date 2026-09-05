@@ -32,10 +32,8 @@
 //|  * TF-scoped visibility: each box carries its commit-TF mask and   |
 //|    shows on that TF and lower ones only — a low-TF knot never      |
 //|    collapses into a hairline on a much higher TF.                  |
-//|  * Magnet: both corners (and the rubber-band) snap to the nearer   |
-//|    High/Low shadow of the clicked candle, gated by the project     |
-//|    magnet switch + sensitivity (inpEnableMagnet /                  |
-//|    inpMagnetSensitivityPips — same language as the pin magnet).    |
+//|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
+//|    rectangle (snapping pulled corners to candle shadows).           |
 //|  * Info badge: chart-anchored "[H Pips | R:R 1:N]" text at the box |
 //|    corner; the X button is the only pixel badge (re-glued on the   |
 //|    500 ms tick + CHART_CHANGE). Entry/SL/TP are OBJ_TREND rays     |
@@ -195,23 +193,26 @@ bool BaseKnotTFVisible(const int tfMin)
 }
 
 //+------------------------------------------------------------------+
-//| Magnet — snap a clicked/hovered price to the nearer High/Low      |
-//| shadow of its candle. Same switch + sensitivity language as the   |
-//| pin magnet (inpEnableMagnet / inpMagnetSensitivityPips).          |
+//| BKMAGNET-OFF (2026-09-06, user decision — corners jumped to candle|
+//| shadows and the box never landed where clicked, unlike the native |
+//| rectangle tool): NO snapping — a click IS the corner, exactly like |
+//| MT4's own box. Body kept (commented) for a one-line restore.      |
 //+------------------------------------------------------------------+
 double BaseKnotSnapPrice(const datetime t, const double price)
 {
-   if(!inpEnableMagnet) return price;
-   if(t <= 0 || price <= 0) return price;
-   int shift = iBarShift(_Symbol, 0, t, false);
-   if(shift < 0) return price;
-   double hi = High[shift], lo = Low[shift];
-   if(hi <= 0 || lo <= 0 || hi < lo) return price;
-   double dH = MathAbs(price - hi), dL = MathAbs(price - lo);
-   double gate = (double)inpMagnetSensitivityPips * BaseKnotPipSize();
-   if(gate <= 0) gate = BaseKnotPipSize();   // sensitivity 0 = exact touch only
-   if(MathMin(dH, dL) > gate) return price;  // too far — leave the hand-drawn value
-   return (dH <= dL ? hi : lo);
+   return price;   // BKMAGNET-OFF: click = corner, no High/Low pull
+   //--- retired snap body (restore by deleting the line above) ---
+   //if(!inpEnableMagnet) return price;
+   //if(t <= 0 || price <= 0) return price;
+   //int shift = iBarShift(_Symbol, 0, t, false);
+   //if(shift < 0) return price;
+   //double hi = High[shift], lo = Low[shift];
+   //if(hi <= 0 || lo <= 0 || hi < lo) return price;
+   //double dH = MathAbs(price - hi), dL = MathAbs(price - lo);
+   //double gate = (double)inpMagnetSensitivityPips * BaseKnotPipSize();
+   //if(gate <= 0) gate = BaseKnotPipSize();   // sensitivity 0 = exact touch only
+   //if(MathMin(dH, dL) > gate) return price;  // too far — leave the hand-drawn value
+   //return (dH <= dL ? hi : lo);
 }
 
 //+------------------------------------------------------------------+
