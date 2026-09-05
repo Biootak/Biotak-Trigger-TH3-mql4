@@ -62,6 +62,7 @@ static int g_lineTransparency = 50;                              // [08.4] inpLi
 static color g_boxBorderColor = C'255,171,0';                    // [08.5] inpBoxBorderColor
 static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBoxBorderStyle
 static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
+static int g_boxBorderTransparency = 0;                          // [08.5] palette TR (default solid)
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -204,6 +205,7 @@ enum FactorySetting
    FF_COMBO_C2STEP,      // inpComboComp2Step
    FF_BOX_WIDTH,         // inpBoxBorderWidth
    FF_BOX_STYLE,         // inpBoxBorderStyle
+   FF_BOX_TRANSPARENCY,  // palette TR (default solid, no input)
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -298,6 +300,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_COMBO_C2STEP]         = inpComboComp2Step;
    g_factoryDefaults[FF_BOX_WIDTH]           = inpBoxBorderWidth;
    g_factoryDefaults[FF_BOX_STYLE]           = inpBoxBorderStyle;
+   g_factoryDefaults[FF_BOX_TRANSPARENCY]    = 0;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -384,6 +387,7 @@ void RuntimeSettingsInit()
    g_boxBorderWidth = inpBoxBorderWidth;
    g_boxBorderStyle = inpBoxBorderStyle;
    g_boxBorderColor = inpBoxBorderColor;
+   g_boxBorderTransparency = 0;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -526,6 +530,7 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "BXW", g_boxBorderWidth);
    GlobalVariableSet(p + "BXS", g_boxBorderStyle);
    GlobalVariableSet(p + "BXC", g_boxBorderColor);
+   GlobalVariableSet(p + "BXT", g_boxBorderTransparency);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -621,6 +626,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXW")) g_boxBorderWidth = ClampSettingInt((int)GlobalVariableGet(p + "BXW"), 1, 5);
    if(GlobalVariableCheck(p + "BXS")) g_boxBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "BXS"), 0, 4);
    if(GlobalVariableCheck(p + "BXC")) g_boxBorderColor = (color)(int)GlobalVariableGet(p + "BXC");
+   if(GlobalVariableCheck(p + "BXT")) g_boxBorderTransparency = ClampSettingInt((int)GlobalVariableGet(p + "BXT"), 0, 100);
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");
@@ -883,6 +889,18 @@ color GetFactorRenderColor()
     if(s_b == g_factorLevelColor && s_t == tVis && s_bg == bg) return s_out;
     s_b = g_factorLevelColor; s_t = tVis; s_bg = bg;
     s_out = BlendColorTowardsBG(g_factorLevelColor, tVis, bg);
+    return s_out;
+}
+
+color GetBoxBorderRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_boxBorderTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_boxBorderColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_boxBorderColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_boxBorderColor, tVis, bg);
     return s_out;
 }
 

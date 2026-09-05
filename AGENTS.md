@@ -326,10 +326,12 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   = live rubber-band + Entry/SL/TP, release = commit — exactly like MT4's own
   rectangle tool. Tap-tap still works (click 1 → hover preview → click 2).
   Committed boxes are border-only (never filled): BORDER COLOR / WIDTH /
-  STYLE live in `RuntimeSettings.mqh` (`g_boxBorder*`, `FF_BOX_WIDTH/STYLE`,
-  `OV_BXW/BXS/BXC`, inputs `[08.5]`), applied at commit + `BaseKnotSync` +
-  live via `BaseKnotRestyleAll()`, edited from the Base Box style card 12
-  (3 rows, bg reuses `pnl_card3.bmp` — card skins key on ROW COUNT, not id).
+  STYLE / TRANSPARENCY live in `RuntimeSettings.mqh` (`g_boxBorder*`,
+  `FF_BOX_WIDTH/STYLE/TRANSPARENCY`, `OV_BXW/BXS/BXC/BXT`, inputs `[08.5]`),
+  rendered via `GetBoxBorderRenderColor()` (one-language bg blend, cached),
+  applied at commit + `BaseKnotSync` + live via `BaseKnotRestyleAll()`,
+  edited from the Base Box style card 12
+  (4 rows, bg reuses `pnl_card4.bmp` — card skins key on ROW COUNT, not id).
   Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
   or press-hold-release a committed box (`BkHoldOnMove/BkHoldOnBoxClick` in
   `BiotakPanels.mqh`, passive 250ms/8px observer — never consumes; hit-test

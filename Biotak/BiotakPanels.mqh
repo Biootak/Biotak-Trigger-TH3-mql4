@@ -91,7 +91,7 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,3};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,4};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -266,6 +266,7 @@ int PaletteKindTransparency(const int kind)
       case PAL_LS:      return g_lsTransparency;
       case PAL_CUSTOM_PRICE: return g_customPriceTransparency;
       case PAL_FACTOR:  return g_factorTransparency;
+      case PAL_BOX:     return g_boxBorderTransparency;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
@@ -286,6 +287,9 @@ int PaletteApplyTransparency(const int kind, const int tr)
       case PAL_LS:       g_lsTransparency = t; return REFRESH_BUFFERS;
       case PAL_CUSTOM_PRICE: g_customPriceTransparency = t; return REFRESH_BUFFERS;
       case PAL_FACTOR:   g_factorTransparency = t; return REFRESH_BUFFERS;
+      case PAL_BOX:
+         g_boxBorderTransparency = t; BaseKnotRestyleAll();
+         return REFRESH_BUFFERS;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
@@ -928,6 +932,7 @@ void PalUpdateLive()
    {
       case PAL_TRIGGER: oit=0; orow=0; break;
       case PAL_LINE:    oit=7; orow=4; break;
+      case PAL_BOX:     oit=12; orow=3; break;
       case PAL_HTF_BULL:
       case PAL_HTF_BEAR:
       case PAL_HTF_WICK:
@@ -1412,7 +1417,8 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { kind=4; label="BORDER COLOR"; }
       else if(row==1)  { label="WIDTH"; minV=1; maxV=5; }
-      else             { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+      else if(row==2)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+      else             { label="TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
    }
 }
 
@@ -1565,7 +1571,8 @@ double PnlDefVal(const int item,const int row)
                return 3;
       case 12: if(row==0) return 3;   // BORDER COLOR row → palette sentinel
                if(row==1) return FactoryDefault(FF_BOX_WIDTH);
-               return (int)FactoryDefault(FF_BOX_STYLE);
+               if(row==2) return (int)FactoryDefault(FF_BOX_STYLE);
+               return FactoryDefault(FF_BOX_TRANSPARENCY);
   }
   return 0;
 }
@@ -1647,7 +1654,8 @@ double PnlCurrent(const int item,const int row)
                return 0;
       case 12: if(row==0) return 0;   // BORDER COLOR row (palette only)
                if(row==1) return g_boxBorderWidth;
-               return (int)g_boxBorderStyle;
+               if(row==2) return (int)g_boxBorderStyle;
+               return g_boxBorderTransparency;
   }
   return 0;
 }
@@ -1845,6 +1853,7 @@ int PnlApply(const int item,const int row,const double v)
                 // OV_ persist rides on REFRESH_BUFFERS via ApplyRefreshFlags.
          if(row==1)       { g_boxBorderWidth=ClampInt((int)MathRound(v),1,5); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+         else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          break;
    }
    if(flags!=REFRESH_NONE)

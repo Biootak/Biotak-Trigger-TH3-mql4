@@ -544,7 +544,7 @@ void BaseKnotSync(const string id)
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
    long tfMask = BaseKnotTFMask(tfMin);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
-   ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);   // border look follows the Base Box card
+   ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());   // border look follows the Base Box card
    ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    double entry = 0, sl = 0, tp = 0;
@@ -582,7 +582,7 @@ void BaseKnotRestyleAll()
    {
       string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
       if(ObjectFind(0, box) < 0) continue;
-      ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);
+      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
       ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
       ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    }
@@ -645,7 +645,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
    if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, t2, p2)) return;
-   ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);
+   ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
    ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    ObjectSetInteger(0, box, OBJPROP_FILL, false);   // unfilled: candles stay visible (MQL4 has no alpha)
@@ -692,7 +692,7 @@ void BaseKnotPress(const datetime t, const double praw)
    string pv = BaseKnotPrevName();
    if(pv == "") return;
    if(ObjectFind(0, pv) < 0) ObjectCreate(0, pv, OBJ_RECTANGLE, 0, t, p, t, p);
-   ObjectSetInteger(0, pv, OBJPROP_COLOR, inpBoxBorderColor);   // WYSIWYG border color, dotted ghost style
+   ObjectSetInteger(0, pv, OBJPROP_COLOR, GetBoxBorderRenderColor());   // WYSIWYG border color, dotted ghost style
    ObjectSetInteger(0, pv, OBJPROP_STYLE, STYLE_DOT);
    ObjectSetInteger(0, pv, OBJPROP_WIDTH, 1);
    ObjectSetInteger(0, pv, OBJPROP_FILL, false);
@@ -854,7 +854,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
-            ObjectSetInteger(0, pv, OBJPROP_COLOR, inpBoxBorderColor);   // live border color while sizing
+            ObjectSetInteger(0, pv, OBJPROP_COLOR, GetBoxBorderRenderColor());   // live border color while sizing
             g_bkLiveT = ht; g_bkLiveP = hp;
             BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();
