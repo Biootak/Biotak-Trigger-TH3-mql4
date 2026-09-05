@@ -31,6 +31,7 @@ project.
 6. **Finished work becomes law.** Every completed section is recorded in
    these instructions as a rule (R-*) the same session — future sessions
    obey it instead of re-deciding (see R-RETIRED for the pattern).
+7. **One topic per commit.** Finish → compile → commit → next (see R-COMMIT).
 
 ---
 
@@ -98,6 +99,24 @@ never a symlink — see P-BUILD-02) and compile.
 Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 `Biotak/BiotakMenu.mqh`. Geometry constants (`CIRC_ICON_SIZE 28`,
 `CIRC_BG_SIZE 52`, orb 56, ...) must match the generator output sizes.
+
+### R-COMMIT — when to commit (one topic per commit, so nothing gets mixed)
+
+- **One user request = one commit.** Finish the request completely (code +
+  compile + the AGENTS.md rule/memory entry), commit it, THEN start the next
+  request. Never carry two topics in one commit, and never start new work on
+  a dirty tree — the previous session's View Lock removal vs Step Mode
+  unification mix-up is why this rule exists.
+- **Commit gate — all three must hold:** (1) full + lite compile
+  `0 errors` (`./compile-th3-linux.sh all`); (2) `git status` and
+  `git diff --ignore-cr-at-eol --name-only` show ONLY the intended files —
+  never commit the P-BUILD-03 CRLF churn; (3) the memory for the change
+  (R-* rule / log row in THIS file) rides IN the same commit, never alone.
+- **Message style:** `feat(scope): short summary`, matching the log
+  (`feat(step): ...`, `feat(panels): ...`). Use `feat!:` when a feature is
+  retired/removed or behavior breaks. One line, no fluff.
+- **Never commit:** uncompiled work, mixed topics ("also fixed X while here"),
+  or build outputs (`.ex4`, `build-logs/` are gitignored and stay out).
 
 ### R-ICONS — icon rules (read before touching Files/Icons)
 
