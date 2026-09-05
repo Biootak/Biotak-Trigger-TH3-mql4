@@ -3,20 +3,51 @@
 
 #property strict
 
+// Cached current-bar open time: ShouldTriggerAlert runs per level per redraw
+// (up to ~288 iTime calls); refresh the syscall at most every 250ms.
+datetime CachedAlertBarTime()
+{
+   static datetime s_bar = 0;
+   static uint s_ms = 0;
+   uint now = GetTickCount();
+   if(s_bar == 0 || now - s_ms >= 250)
+   {
+      s_bar = iTime(Symbol(), Period(), 0);
+      s_ms = now;
+   }
+   return s_bar;
+}
+
+// Anti-spam: per-(bar,level) once (when inpAlertOnce) PLUS a global governor
+// so a Monday gap / news spike crossing dozens of levels in one tick cannot
+// lock the terminal with 50 popups: max 10 popups per bar, min 800ms apart.
+#define ALERT_MAX_PER_BAR 10
+#define ALERT_MIN_GAP_MS  800
+
 // Helper function to check if alert should be triggered (prevents spam)
 bool ShouldTriggerAlert(const string levelName) {
-    if(!inpAlertOnce) return true; // Always trigger if AlertOnce is disabled
-    
-    datetime currentBarTime = iTime(Symbol(), Period(), 0);
-    
-    // Check if this is a new bar and different level than last alert
-    if(currentBarTime > g_lastAlertTime || g_lastAlertLevel != levelName) {
-        g_lastAlertTime = currentBarTime;
-        g_lastAlertLevel = levelName;
-        return true;
+    datetime currentBarTime = CachedAlertBarTime();
+
+    static datetime s_capBar = 0;
+    static int s_capCount = 0;
+    static uint s_lastPopupMs = 0;
+    if(currentBarTime != s_capBar) { s_capBar = currentBarTime; s_capCount = 0; }
+
+    if(inpAlertOnce) {
+        // Same bar and same level, don't trigger
+        if(!(currentBarTime > g_lastAlertTime || g_lastAlertLevel != levelName))
+            return false;
     }
-    
-    return false; // Same bar and same level, don't trigger
+
+    uint now = GetTickCount();
+    if(s_capCount >= ALERT_MAX_PER_BAR) return false;
+    if(s_lastPopupMs != 0 && now - s_lastPopupMs < ALERT_MIN_GAP_MS) return false;
+
+    g_lastAlertTime = currentBarTime;
+    g_lastAlertLevel = levelName;
+    s_capCount++;
+    s_lastPopupMs = now;
+    return true;
 }
 
 //                                       

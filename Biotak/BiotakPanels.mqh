@@ -2464,9 +2464,32 @@ bool PnlHeaderHit(const int mx, const int my)
 //| Shift every object of one panel by (dx,dy) px — live drag.       |
 //| The palette popup hangs off this panel, so it rides along too.   |
 //+------------------------------------------------------------------+
+// Clamp one panel's logical spot on-screen; returns the applied delta.
+// Same bounds as PnlComputePosition.
+void PnlClampSpot(const int item, const int dx, const int dy, int &ndx, int &ndy)
+{
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(cw <= 0) cw = 1920;
+   if(ch <= 0) ch = 1080;
+   int ph = PNL_HEAD_H + PnlRowsCount(item) * PNL_ROW_H + PNL_FOOT_H;
+   int maxX = cw - PNL_WEL - 8;
+   int maxY = ch - ph - PNL_BOTTOM_SAFE;
+   int cx = (maxX >= 4) ? MathMax(4, MathMin(maxX, g_PnlX[item] + dx)) : 4;
+   int cy = (maxY >= 4) ? MathMax(4, MathMin(maxY, g_PnlY[item] + dy)) : 4;
+   ndx = cx - g_PnlX[item];
+   ndy = cy - g_PnlY[item];
+}
+
 void PnlMoveBy(const int item, const int dx, const int dy)
 {
    if(dx == 0 && dy == 0) return;
+   // Clamp FIRST so logic and graphics can never diverge: a panel dragged
+   // off-chart — or stranded there after the chart shrank — leaves its
+   // header unreachable otherwise.
+   int ndx, ndy;
+   PnlClampSpot(item, dx, dy, ndx, ndy);
+   if(ndx == 0 && ndy == 0) return;
    const string pfx   = g_UI.btnPrefix + "Pnl" + IntegerToString(item) + "_";
    const string palPx = g_UI.btnPrefix + "Pal_";
    const bool palFollow = (g_PalOpen && g_PalAnchorItem == item);
@@ -2478,12 +2501,24 @@ void PnlMoveBy(const int item, const int dx, const int dy)
       if(!mine && !(palFollow && StringFind(nm, palPx) == 0)) continue;
       long x = ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
       long y = ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
-      ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x + dx);
-      ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + dy);
+      ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x + ndx);
+      ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + ndy);
    }
-   if(palFollow) { g_PalX += dx; g_PalY += dy; }
-   g_PnlX[item] += dx;
-   g_PnlY[item] += dy;
+   if(palFollow) { g_PalX += ndx; g_PalY += ndy; }
+   g_PnlX[item] += ndx;
+   g_PnlY[item] += ndy;
+}
+
+// Clamp the OPEN panel into a shrunken chart (Ctrl+T / navigator toggles).
+// Parked (closed) panels re-clamp on next open via PnlComputePosition.
+bool PnlClampOpenPanel()
+{
+   if(g_PnlOpen < 0) return false;
+   int ndx, ndy;
+   PnlClampSpot(g_PnlOpen, 0, 0, ndx, ndy);
+   if(ndx == 0 && ndy == 0) return false;
+   PnlMoveBy(g_PnlOpen, ndx, ndy);
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -3051,6 +3086,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
    if(id == CHARTEVENT_CHART_CHANGE)
    {
       if(g_UI.menuVisible) UpdateCircularMenuPosition();
+      if(PnlClampOpenPanel()) ChartRedraw();   // shrunken chart: keep header grabbable
       return;
    }
 }

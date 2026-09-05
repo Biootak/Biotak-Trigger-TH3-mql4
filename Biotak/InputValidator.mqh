@@ -15,10 +15,18 @@
 //+------------------------------------------------------------------+
 int ValidateInputs()
 {
-    //                                                                
+    //
     // CRITICAL VALIDATIONS (Must Pass)
-    //                                                                
-    
+    //
+
+    // 0. Object prefix (non-empty): EVERY bulk delete matches by prefix and
+    //    an empty prefix matches ALL chart objects — a blank prefix would
+    //    wipe the user's other indicators/lines on the next cleanup.
+    if(StringLen(inpObjectPrefix) == 0) {
+        Print("  ERROR: Object Prefix must not be empty (chart-wipe guard)");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
     // 1. Base Price Threshold Percent (0.001-10.0) with epsilon check
     if(inpBasePriceThresholdPercent < 0.0001 || inpBasePriceThresholdPercent > 10.0) {
         Print("  ERROR: Base Price Threshold (", DoubleToString(inpBasePriceThresholdPercent, 3), ") out of range");

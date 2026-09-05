@@ -1307,6 +1307,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 
     if(id == CHARTEVENT_KEYDOWN)
     {
+#ifndef BUILD_LITE
+        // Hex edit box owns the keyboard (palette color field): A-F are valid
+        // hex digits, so every letter hotkey below must stay silent while the
+        // user types. ESC/ENTER still reach the palette via HandleUIChartEvent.
+        if(g_PalHexFocus) return;
+#endif
         // TH3TOOL-OFF:
         //#ifndef BUILD_LITE
         //        // Backspace = undo last TH3 drawing point (X, A, B, C placement)
@@ -1316,9 +1322,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //        }
         //#endif
 
-        //  
+        //
         // F key   Hide/Show All Objects (fast visibility toggle)
-        //  
+        //
+
         if(IsHotkeyPressed(lparam, sparam, inpHideKey))
         {
             string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
@@ -2113,6 +2120,7 @@ bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey
 //| Delete all indicator objects (DRY helper for OnDeinit)           |
 //+------------------------------------------------------------------+
 void DeleteAllIndicatorObjects(bool deepCleanup = false) {
+    if(StringLen(inpObjectPrefix) == 0) return;   // empty prefix matches everything
     ObjectsDeleteAll(0, inpObjectPrefix);
     if(!deepCleanup) return;
     SModeSuffixEntry entries[];

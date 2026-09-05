@@ -348,6 +348,13 @@ void InitializeUIStates()
    g_UI.gvPrefix = "BIOMENU_" + _Symbol + "_" + IntegerToString(ChartID()) + "_";
    RuntimeSettingsSetPersistPrefix(g_UI.gvPrefix);   // OV_ overrides saved under this prefix
 
+   // Orphan purge: panel/palette objects survive a TF-switch (chart objects
+   // are NOT deleted on REASON_CHARTCHANGE) while our open-state statics
+   // reset — without this a dead, unresponsive panel haunts the chart.
+   // Runs once per init; steady state untouched.
+   ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl");
+   ObjectsDeleteAll(0, g_UI.btnPrefix + "Pal_");
+
    bool versionOk = false;
    if(GlobalVariableCheck(GetGVName("VER")))
    {
@@ -1944,6 +1951,13 @@ void ToggleMenuVisibility()
 void CleanupUIStates(const int reason)
 {
    if(StringLen(g_UI.gvPrefix) == 0) return;   // UI never initialized
+   // Chart props are USER property: a TF-switch/remove with an open panel or
+   // a mid-air drag must never leave scroll/context-menu/foreground disabled
+   // (fresh-instance statics reset to 0, so the watchdog could never heal it
+   // — restore here while the old-instance saved values are still intact).
+   // No-op when we hold no lock, so a user's own disabled scroll is kept.
+   while(g_ChartLockCount > 0) CircUnlockChart();
+   while(g_PnlForegroundLock > 0) PnlUnlockForeground();
    if(reason == REASON_REMOVE)
    {
       ClearAllGVs();
