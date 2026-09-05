@@ -422,6 +422,7 @@ void CleanupCustomPriceObjects(bool resetGlobalVars = false, bool forceDelete = 
 //+------------------------------------------------------------------+
 void OnDeinitHandler(const int reason) {
     DEBUG_PRINT("Starting cleanup");
+    BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
     // Save TF-switch timestamp for deferred init debounce
     if(reason == REASON_CHARTCHANGE || reason == REASON_PARAMETERS) {
         string tfSwitchStampGvar = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();

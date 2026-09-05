@@ -83,6 +83,7 @@ static uint        g_bkLastClick  = 0;
 static bool        g_bkLeftPrev   = false;
 static bool        g_bkInitDone   = false;
 static bool        g_bkRestoreReq = false;  // UI side: re-show the menu once
+static bool        g_bkTouched    = false;  // Arm ran → OnDeinit must restore chart props
 static bool        g_bkScrollWas  = true;
 static bool        g_bkCtxWas     = true;
 
@@ -270,12 +271,17 @@ void BaseKnotUnregister(const string id)
 }
 // Rebuild the registry from chart objects once (TF-switch safe: the box
 // anchors ARE the spec, direction rides a chart-scoped GV, TF rides the id).
+// Also purges the transient PREVIEW/HINT of a dead session (state resets on
+// reload, so a reloaded indicator must never inherit a ghost rubber-band)
+// and sweeps orphan direction-GVs of this chart whose boxes are gone.
 void BaseKnotLazyInit()
 {
    if(g_bkInitDone) return;
    g_bkInitDone = true;
    if(StringLen(inpObjectPrefix) == 0) return;
    string tag = inpObjectPrefix + BK_TAG;
+   ObjectDelete(0, BaseKnotPrevName());   // dead-session transients — never inherited
+   ObjectDelete(0, BaseKnotHintName());
    int total = ObjectsTotal(0, -1, -1);
    for(int i = total - 1; i >= 0; i--)
    {
@@ -283,10 +289,19 @@ void BaseKnotLazyInit()
       if(StringFind(nm, tag) != 0) continue;
       if(StringFind(nm, "BOX", StringLen(nm) - 3) < 0) continue;
       string id = StringSubstr(nm, StringLen(tag), StringLen(nm) - StringLen(tag) - 4);
-      if(id == "PREVIEW" || id == "HINT") continue;
       int dir = 1;
       if(GlobalVariableCheck(BaseKnotGV(id))) dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
       BaseKnotRegister(id, dir, BaseKnotIdTF(id));
+   }
+   // Orphan-GV sweep (this chart only — the GV carries the chart id suffix).
+   string cid = GetCachedChartIdStr();
+   for(int k = GlobalVariablesTotal() - 1; k >= 0; k--)
+   {
+      string gv = GlobalVariableName(k);
+      if(StringFind(gv, "Biotak_BK_") != 0) continue;
+      if(StringFind(gv, "_" + cid, StringLen(gv) - StringLen(cid) - 1) < 0) continue;
+      string oid = StringSubstr(gv, 10, StringLen(gv) - 10 - StringLen(cid) - 1);
+      if(BaseKnotFind(oid) < 0) GlobalVariableDel(gv);
    }
 }
 
@@ -327,6 +342,7 @@ void BaseKnotArm()
 {
    BaseKnotLazyInit();
    g_bkState   = BK_ARMED;
+   g_bkTouched = true;   // OnDeinit must restore the chart props below, whatever happens
    g_bkArmedMs = GetTickCount();
    g_bkLeftPrev = true;   // the arming press is still down — never take its release as click 1
    g_bkScrollWas = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
@@ -346,6 +362,26 @@ void BaseKnotCancel()
    ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
    ChartRedraw();
+}
+
+// Deinit safety (call from OnDeinitHandler, every reason): a remove /
+// TF-switch / crash-reload mid-session must never leave the chart scroll
+// locked, a ghost rubber-band behind, or a stale restore flag. Committed
+// boxes are the independent layer and stay untouched here (REMOVE wipes
+// them via DeleteAllIndicatorObjects(true) + the Biotak_BK_* GV sweep).
+void BaseKnotOnDeinit(const int reason)
+{
+   if(g_bkTouched)
+   {
+      ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
+      ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
+      g_bkTouched = false;
+   }
+   g_bkState = BK_IDLE;
+   g_bkRestoreReq = false;
+   ObjectDelete(0, BaseKnotPrevName());
+   ObjectDelete(0, BaseKnotHintName());
+   if(reason == REASON_REMOVE) ArrayResize(g_bkBoxes, 0);
 }
 
 //+------------------------------------------------------------------+
@@ -680,9 +716,14 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             BaseKnotClick(ct, cp);
          return true;
       }
-      //--- rubber-band: live preview follows the cursor, zero indicator work
+      //--- rubber-band: live preview follows the cursor, zero indicator work.
+      //--- throttled: a mouse-move storm must never pin the CPU (30 ms ≈ 33 fps).
       if(g_bkState == BK_PREVIEW && !left)
       {
+         static uint s_bkRubberMs = 0;
+         uint nowR = GetTickCount();
+         if(nowR - s_bkRubberMs < 30) return true;   // swallow, skip the redraw
+         s_bkRubberMs = nowR;
          int sw = 0; datetime ht = 0; double hp = 0;
          string pv = BaseKnotPrevName();
          if(pv != "" && ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ht, hp) && sw == 0 && ht > 0 && hp > 0)

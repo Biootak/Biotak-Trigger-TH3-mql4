@@ -3049,7 +3049,12 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       g_LastUIY = my;
       bool leftDown = (((int)sparam & 1) != 0);
       bool pressStart = MousePressStart(leftDown);
-      CircHandleMouseMove(mx, my, leftDown, pressStart);
+      // P-BK-02: while a Base/Knot draw session owns the mouse, the ring menu
+      // is hidden — menu hover/drag/long-press must stay out of the gesture
+      // (no orb drag, no armed long-press, no hover tip mid-draw). OBJECT_CLICK
+      // still flows (orb-click = session exit) and open panels keep working.
+      if(!BaseKnotSessionActive())
+         CircHandleMouseMove(mx, my, leftDown, pressStart);
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
       return;
    }
