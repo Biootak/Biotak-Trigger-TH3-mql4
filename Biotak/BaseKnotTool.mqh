@@ -11,7 +11,7 @@
 //|                                                                   |
 //| STATE MACHINE (the ONLY mouse-event consumer while active):       |
 //|   BK_IDLE →(Tools click)→ BK_ARMED →(click 1)→ BK_PREVIEW          |
-//|   BK_PREVIEW →(move)→ rubber-band →(click 2)→ commit → BK_IDLE     |
+//|   BK_PREVIEW →(move)→ rubber-band + live Entry/SL/TP →(click 2)→ commit → BK_IDLE |
 //|   (single-shot: tool OFF after one box; ESC / right-click / orb → IDLE). |
 //| While BK_ARMED/BK_PREVIEW, BaseKnotOnChartEvent() returns true for |
 //| consumed events so OnChartEventHandler returns early and nothing   |
@@ -281,7 +281,8 @@ void BaseKnotLazyInit()
    g_bkInitDone = true;
    if(StringLen(inpObjectPrefix) == 0) return;
    string tag = inpObjectPrefix + BK_TAG;
-   ObjectDelete(0, BaseKnotPrevName());   // dead-session transients — never inherited
+   ObjectDelete(0, BaseKnotPrevName());
+   BaseKnotWipeLive();   // dead-session transients — never inherited
    ObjectDelete(0, BaseKnotHintName());
    int total = ObjectsTotal(0, -1, -1);
    for(int i = total - 1; i >= 0; i--)
@@ -351,12 +352,14 @@ void BaseKnotArm()
    ChartSetInteger(0, CHART_MOUSE_SCROLL, false);   // no chart slide under the hand while drawing
    ChartSetInteger(0, CHART_CONTEXT_MENU, false);
    ObjectDelete(0, BaseKnotPrevName());
+   BaseKnotWipeLive();
    BaseKnotHintShow("BASE TOOL — click 1: box corner · click 2: commit · right-click / ESC: done");
    ChartRedraw();
 }
 void BaseKnotCancel()
 {
    ObjectDelete(0, BaseKnotPrevName());
+   BaseKnotWipeLive();
    BaseKnotHintHide();
    g_bkState = BK_IDLE;
    ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
@@ -381,6 +384,7 @@ void BaseKnotOnDeinit(const int reason)
    g_bkState = BK_IDLE;
    g_bkRestoreReq = false;
    ObjectDelete(0, BaseKnotPrevName());
+   BaseKnotWipeLive();
    ObjectDelete(0, BaseKnotHintName());
    if(reason == REASON_REMOVE) ArrayResize(g_bkBoxes, 0);
 }
@@ -432,6 +436,67 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 1600);
    ObjectSetInteger(0, name, OBJPROP_STATE, false);
+}
+// Chart-anchored "[H Pips | R:R 1:N]" label at the box top-right corner.
+void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
+                       const double hPips, const double rr, const double tpPips,
+                       const string side, const long tfMask)
+{
+   if(ObjectFind(0, in) < 0) ObjectCreate(0, in, OBJ_TEXT, 0, t2, top);
+   ObjectSetString(0, in, OBJPROP_TEXT,
+                   "[" + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + "]");
+   ObjectSetString(0, in, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, in, OBJPROP_COLOR, C'255,171,0');
+   ObjectSetInteger(0, in, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
+   ObjectSetInteger(0, in, OBJPROP_BACK, false);
+   ObjectSetInteger(0, in, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, in, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, in, OBJPROP_ZORDER, 60);
+   ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, tfMask);
+   ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": risk " + DoubleToString(hPips, 1) +
+                   " pips, target +" + DoubleToString(tpPips, 1) + " pips");
+   ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
+   ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
+}
+// Live sizing set — Entry/SL/TP + info shown WHILE drawing (before click 2).
+// ONE fixed tag (single sizing at a time); wiped at commit/cancel/deinit.
+string BaseKnotLiveTag()
+{
+   if(StringLen(inpObjectPrefix) == 0) return "";
+   return inpObjectPrefix + BK_TAG + "LIVE_";
+}
+void BaseKnotWipeLive()
+{
+   string tag = BaseKnotLiveTag();
+   if(tag != "") ObjectsDeleteAll(0, tag);
+}
+// Live setup preview from corner 1 to the cursor. Direction re-resolves here;
+// the commit freezes it. Zero-height cursor = rays hidden, preview rect stays.
+void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
+{
+   string tag = BaseKnotLiveTag();
+   if(tag == "") return;
+   double top = MathMax(g_bkP1, p2raw), bot = MathMin(g_bkP1, p2raw);
+   if(top <= bot) { BaseKnotWipeLive(); return; }
+   datetime t1 = g_bkT1, te = t2raw;
+   if(te < t1) { datetime tt = t1; t1 = te; te = tt; }
+   int dir = BaseKnotResolveDirection(top, bot);
+   long tfMask = BaseKnotTFMask(Period());
+   double entry = 0, sl = 0, tp = 0;
+   BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
+   double hPips  = BaseKnotToPips(top - bot);
+   double tpPips = BaseKnotToPips(MathAbs(tp - entry));
+   double rr     = (hPips > 0 ? tpPips / hPips : BK_TP_R_MULT);
+   int dg = GetCachedDigits();
+   string side = (dir >= 0 ? "BUY" : "SELL");
+   BaseKnotMakeRay(tag + "ENTRY", te, t1, entry, C'30,144,255', STYLE_SOLID, 1,
+                   "BK " + side + " Entry (sizing): " + DoubleToString(entry, dg), tfMask);
+   BaseKnotMakeRay(tag + "SL", te, t1, sl, C'220,50,50', STYLE_DASH, 1,
+                   "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask);
+   BaseKnotMakeRay(tag + "TP", te, t1, tp, C'46,139,87', STYLE_DASH, 1,
+                   "BK " + side + " Target (sizing): " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
+   BaseKnotWriteInfo(tag + "INFO", te, top, hPips, rr, tpPips, side, tfMask);
 }
 // Pixel X badge is screen-anchored: re-glued after every drag / scroll /
 // zoom / TF-switch; the INFO text is chart-anchored and only TF-gated.
@@ -488,20 +553,7 @@ void BaseKnotSync(const string id)
    BaseKnotMakeBadge(BaseKnotDelName(pfx), "X", C'90,95,105');
    ObjectSetString(0, BaseKnotDelName(pfx), OBJPROP_TOOLTIP, "Delete this base + its lines");
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
-   string in = BaseKnotInfoName(pfx);
-   if(ObjectFind(0, in) < 0) ObjectCreate(0, in, OBJ_TEXT, 0, t2, top);
-   ObjectSetString(0, in, OBJPROP_TEXT,
-                   "[" + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + "]");
-   ObjectSetString(0, in, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, 8);
-   ObjectSetInteger(0, in, OBJPROP_COLOR, C'255,171,0');
-   ObjectSetInteger(0, in, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
-   ObjectSetInteger(0, in, OBJPROP_BACK, false);
-   ObjectSetInteger(0, in, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, in, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, in, OBJPROP_ZORDER, 60);
-   ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": risk " + DoubleToString(hPips, 1) +
-                   " pips, target +" + DoubleToString(tpPips, 1) + " pips");
+   BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, tfMask);
    BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
 }
 void BaseKnotDelete(const string id)
@@ -566,6 +618,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    BaseKnotRegister(id, dir, tfMin);
    BaseKnotSync(id);
    ObjectDelete(0, BaseKnotPrevName());
+   BaseKnotWipeLive();
    g_bkState = BK_IDLE;   // single-shot: tool OFF after one box — stray clicks draw nothing
    ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
    ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
@@ -653,6 +706,8 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    }
    if(id == CHARTEVENT_OBJECT_DELETE && tag != "" && StringFind(sparam, tag) == 0)
    {
+      string ltag = BaseKnotLiveTag();
+      if(ltag != "" && StringFind(sparam, ltag) == 0) return true;   // live sizing set — owned by the draw flow
       // Only the BOX triggers the cascade (children deletes re-enter as no-ops).
       if(StringFind(sparam, "BOX", StringLen(sparam) - 3) >= 0)
       {
@@ -732,9 +787,10 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          string pv = BaseKnotPrevName();
          if(pv != "" && ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ht, hp) && sw == 0 && ht > 0 && hp > 0)
          {
-            hp = BaseKnotSnapPrice(ht, hp);   // preview shows the snapped corner (WYSIWYG)
+            hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
+            BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();
          }
          return true;

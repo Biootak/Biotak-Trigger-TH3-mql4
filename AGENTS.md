@@ -328,8 +328,9 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   corner 2 = commit. `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit
   (commit AND cancel → `IDLE` + menu restore via `BaseKnotTakeRestoreFlag()`
   in `HandleUIChartEvent`, stray clicks draw nothing). Sizing preview =
-  dotted `PREVIEW` rect (deleted at commit/cancel); same-bar/zero-height
-  commits rejected, preview kept. Committed boxes own
+  dotted `PREVIEW` rect + LIVE Entry/SL/TP + info (`<prefix>_BK_LIVE_*`,
+  direction re-resolved while sizing, wiped at commit/cancel/deinit);
+  same-bar/zero-height commits rejected, preview kept. Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
   cascades (`ObjectsDeleteAll(pfx)`), the X delete badge is an `OBJ_BUTTON`
