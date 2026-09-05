@@ -321,12 +321,22 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
-- **Base / Knot Measurement Tool = Tools slot 3, two-click, state-machine owned**
-  (2026-09-05 — TradingView-style base-box drawer: Tools-ring
+- **Base / Knot Measurement Tool = Tools slot 3, hybrid gesture, state-machine owned**
+  (2026-09-05 drawer, gesture unified 2026-09-06 — researched against MT4
+  docs (Insert → Shapes → Rectangle: "click the starting point and drag it
+  to the end point") + TradingView Rectangle ("click at one corner, move,
+  click again at the opposite corner"): ONE gesture speaks both dialects —
+  press-drag-release commits on release (Meta-native), click-move-click
+  commits on the 2nd click (TV-native), live rubber-band in both (held-drag
+  + button-up hover while waiting). A no-drag 1st click keeps corner 1 and
+  waits (`g_bkWaiting`, hover preview, "corner 1 set" hint) instead of
+  melting; drag-vs-click = 5px radius (`BK_DRAG_PX`); degenerate commits
+  (same bar / zero height) are rejected without losing a waiting corner;
+  off-chart release mid-drag melts, while waiting it is ignored. Tools-ring
   `CIR_BASEKNOT`/`TOOL_BASEKNOT` with the `box` glyph (glyph depicts the
   rectangle object, per R-ICONS); click hides the ring and arms
   `Biotak/BaseKnotTool.mqh` (`BK_IDLE→ARMED→PREVIEW→ARMED`, stays armed =
-  multi-draw, ESC/right-click/orb exits + menu restores via
+  multi-draw like both natives, ESC/right-click/orb exits + menu restores via
   `BaseKnotTakeRestoreFlag()` in `HandleUIChartEvent`). Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
