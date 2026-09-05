@@ -311,9 +311,14 @@ void BaseKnotLazyInit()
 }
 
 //+------------------------------------------------------------------+
-//| Hint bar (bottom-left): what to do next. Killed on exit.          |
+//| Hint bar (bottom-left): guidance while sizing, auto-hiding result.|
+//| Amber on dark charts is unreadable on light ones — pick the text   |
+//| color from the chart background luminance. Result hints ("BASE #N  |
+//| set") expire after 4 s so the corner never nags; guidance hints   |
+//| stay until the session ends.                                       |
 //+------------------------------------------------------------------+
-void BaseKnotHintShow(const string text)
+static uint g_bkHintExpireMs = 0;   // 0 = persistent; else GetTickCount deadline
+void BaseKnotHintShow(const string text, const int ttlMs = 0)
 {
    string hn = BaseKnotHintName();
    if(hn == "") return;
@@ -324,18 +329,29 @@ void BaseKnotHintShow(const string text)
    ObjectSetString(0, hn, OBJPROP_TEXT, text);
    ObjectSetString(0, hn, OBJPROP_FONT, "Arial");
    ObjectSetInteger(0, hn, OBJPROP_FONTSIZE, 9);
-   ObjectSetInteger(0, hn, OBJPROP_COLOR, C'255,171,0');
+   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+   int lum = ((((int)bg) & 0xFF) * 299 + ((((int)bg) >> 8) & 0xFF) * 587 +
+              ((((int)bg) >> 16) & 0xFF) * 114) / 1000;
+   ObjectSetInteger(0, hn, OBJPROP_COLOR, (lum > 128 ? C'150,70,0' : C'255,171,0'));
    ObjectSetInteger(0, hn, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
    ObjectSetInteger(0, hn, OBJPROP_BACK, false);
    ObjectSetInteger(0, hn, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, hn, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, hn, OBJPROP_ZORDER, 1500);
+   g_bkHintExpireMs = (ttlMs > 0 ? GetTickCount() + (uint)ttlMs : 0);
    ChartRedraw();
 }
 void BaseKnotHintHide()
 {
    ObjectDelete(0, BaseKnotHintName());
+   g_bkHintExpireMs = 0;
    ChartRedraw();
+}
+// Per-tick expiry pump (called from RefreshUIPerTick's 500 ms block).
+void BaseKnotHintTick()
+{
+   if(g_bkHintExpireMs == 0) return;
+   if((int)(GetTickCount() - g_bkHintExpireMs) >= 0) BaseKnotHintHide();
 }
 
 //+------------------------------------------------------------------+
@@ -672,7 +688,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    double hPips = BaseKnotToPips(MathAbs(p2 - g_bkP1));
    BaseKnotHintShow("BASE #" + IntegerToString(ArraySize(g_bkBoxes)) + " " +
                     (dir >= 0 ? "BUY" : "SELL") + " set (" +
-                    DoubleToString(hPips, 1) + " pips)");
+                    DoubleToString(hPips, 1) + " pips)", 4000);   // result nags 4 s, then clean
    ChartRedraw();
 }
 

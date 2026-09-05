@@ -3064,41 +3064,73 @@ static int g_LastUIX = 0;
 static int g_LastUIY = 0;
 
 //--- hold-on-box → Base Box style card (TradingView-like): press on a
-//--- committed BK box, hold still ≥250ms, release → PnlOpen(12). Passive
-//--- observer (same 250ms/8px language as the menu long-press): never
-//--- consumes, never claims drags; any >8px move disarms (it's a drag/pan).
+//--- committed BK box, hold still ≥250ms → PnlOpen(12), mid-hold like the
+//--- menu long-press (release path backs it up for racy timing). Passive
+//--- observer (same 250ms/8px language): never consumes, never claims drags.
 //--- A quick tap does nothing (native select only).
-static string s_BkHoldId = "";
-static uint   s_BkHoldMs = 0;
-static int    s_BkHoldX = 0, s_BkHoldY = 0;
+//--- LATCH DISCIPLINE (the subtle part): only press-DOWN transitions
+//--- (re)latch; button-UP never clears the latch (a poll tick may run in
+//--- the gap between physical release and its OBJECT_CLICK — clearing there
+//--- would eat the release leg). Staleness dies three ways: >8px move,
+//--- any new press, 30 s expiry. Quick taps never fire (duration gate).
+static string s_BkHoldId = "";   // box under the latched press ("" = none/dragged-off)
+static uint   s_BkHoldMs = 0;    // press-down moment (0 = no press latched)
+static int    s_BkHoldX = 0, s_BkHoldY = 0;   // press-down cursor
+static bool   s_BkDownNow = false;            // button seen down since last up
 #define BK_HOLD_MS   250
 #define BK_HOLD_MOVE 8
-void BkHoldDisarm() { s_BkHoldId = ""; }
-void BkHoldOnMove(const int mx, const int my, const bool pressStart)
+#define BK_LATCH_TTL 30000   // stale-press safety (capture loss etc.)
+void BkHoldLatch(const int mx, const int my)   // (re)start press tracking
 {
-   if(BaseKnotSessionActive() || g_PalOpen) { BkHoldDisarm(); return; }
-   if(pressStart)
+   s_BkDownNow = true;
+   s_BkHoldMs = GetTickCount(); s_BkHoldX = mx; s_BkHoldY = my;
+   s_BkHoldId = "";
+   if(BaseKnotSessionActive() || g_PalOpen) return;
+   int sw = 0; datetime ct = 0; double cp = 0;
+   if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+      s_BkHoldId = BaseKnotBoxAt(ct, cp);
+}
+void BkHoldForgetBox() { s_BkHoldId = ""; }   // keep the press latch (dragging!)
+void BkHoldClear() { s_BkHoldId = ""; s_BkHoldMs = 0; s_BkDownNow = false; }
+void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pressStart)
+{
+   if(pressStart) { BkHoldLatch(mx, my); return; }
+   if(!leftDown) { s_BkDownNow = false; return; }
+   if(s_BkHoldId != "" && (MathAbs(mx - s_BkHoldX) > BK_HOLD_MOVE || MathAbs(my - s_BkHoldY) > BK_HOLD_MOVE))
+      BkHoldForgetBox();
+}
+//--- polled half: a press with ZERO mouse movement emits NO MOUSE_MOVE, so
+//--- the move path above can never latch it (this was the whole "hold does
+//--- nothing" bug). Runs per tick + 1s timer via RefreshKitOnBar.
+void BkHoldPoll()
+{
+   if(BaseKnotSessionActive() || g_PalOpen) { BkHoldForgetBox(); return; }
+   uint now = GetTickCount();
+   if(s_BkHoldMs != 0 && now - s_BkHoldMs > BK_LATCH_TTL) { BkHoldClear(); return; }
+   if(TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) < 0)
    {
-      s_BkHoldId = "";   // re-arm below when a box sits under the press
-      int sw = 0; datetime ct = 0; double cp = 0;
-      if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+      if(!s_BkDownNow) BkHoldLatch(g_LastUIX, g_LastUIY);   // down-transition caught by poll
+      else if(s_BkHoldId != "" && now - s_BkHoldMs >= BK_HOLD_MS &&
+              MathAbs(g_LastUIX - s_BkHoldX) <= BK_HOLD_MOVE &&
+              MathAbs(g_LastUIY - s_BkHoldY) <= BK_HOLD_MOVE)
       {
-         string hit = BaseKnotBoxAt(ct, cp);
-         if(hit != "") { s_BkHoldId = hit; s_BkHoldMs = GetTickCount(); s_BkHoldX = mx; s_BkHoldY = my; }
+         BkHoldForgetBox();
+         PnlOpen(12);
+         ChartRedraw();
       }
       return;
    }
-   if(s_BkHoldId != "" && (MathAbs(mx - s_BkHoldX) > BK_HOLD_MOVE || MathAbs(my - s_BkHoldY) > BK_HOLD_MOVE))
-      BkHoldDisarm();
+   s_BkDownNow = false;   // up — release handlers below own whatever follows
 }
 // OBJECT_CLICK release leg: true when a hold fired (caller returns).
 bool BkHoldOnBoxClick(const string sparam, const int mx, const int my)
 {
    string id = s_BkHoldId;
-   BkHoldDisarm();
+   uint ms = s_BkHoldMs; int hx = s_BkHoldX, hy = s_BkHoldY;
+   BkHoldClear();
    if(id == "" || BaseKnotSessionActive()) return false;
-   if(GetTickCount() - s_BkHoldMs < BK_HOLD_MS) return false;
-   if(MathAbs(mx - s_BkHoldX) > BK_HOLD_MOVE || MathAbs(my - s_BkHoldY) > BK_HOLD_MOVE) return false;
+   if(GetTickCount() - ms < BK_HOLD_MS) return false;
+   if(MathAbs(mx - hx) > BK_HOLD_MOVE || MathAbs(my - hy) > BK_HOLD_MOVE) return false;
    if(sparam != BaseKnotBoxName(BaseKnotPrefix(id))) return false;   // released on another object
    PnlOpen(12);
    ChartRedraw();
@@ -3135,7 +3167,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       if(!BaseKnotSessionActive())
          CircHandleMouseMove(mx, my, leftDown, pressStart);
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
-      BkHoldOnMove(mx, my, pressStart);
+      BkHoldOnMove(mx, my, leftDown, pressStart);
       return;
    }
 
@@ -3228,5 +3260,6 @@ void RefreshKitOnBar()
    // RefreshUIPerTick() already self-throttles (500ms + change guards), so
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();
+   BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
    PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
 }
