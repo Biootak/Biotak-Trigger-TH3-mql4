@@ -368,6 +368,7 @@ void HideAllTHObjects()
         if(StringGetCharacter(objName, 0) != prefixFirstChar) continue;
         if(StringLen(objName) >= prefixLen && StringSubstr(objName, 0, prefixLen) == cachedPrefix)
         {
+            if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot drawings are an independent layer
             ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, noPeriodsVal);
             hiddenCount++;
         }
@@ -1297,7 +1298,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
         string indicatorPrefix = inpObjectPrefix;
         int prefixLen = StringLen(indicatorPrefix);
-        if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix) {
+        // P-BK-01: Base/Knot deletes are owned by BaseKnotTool (cascade/heal) —
+        // they must not flag a level redraw or pollute the object cache.
+        if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix &&
+           StringFind(sparam, "_BK_") < 0) {
             CacheRemoveObject(sparam);
             g_redrawTHLevelsNeeded = true;
         }
@@ -1375,6 +1379,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                     if(StringGetCharacter(objName, 0) != prefixFirstCharF) continue;
                     if(StringLen(objName) >= prefixLenF && StringSubstr(objName, 0, prefixLenF) == cachedPrefixF)
                     {
+                        if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot layer ignores F
                         // Keep ATR objects hidden if ATR labels are disabled
                         bool isATRObject = (StringFind(objName, "ATR_") >= 0);
                         if(isATRObject) {
@@ -1459,6 +1464,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 if(StringGetCharacter(objName, 0) != prefixFirstCharL) continue;
                 if(StringLen(objName) >= prefixLenL && StringSubstr(objName, 0, prefixLenL) == cachedPrefixL)
                 {
+                    if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: trade rays are not level lines
                     // Toggle all LINE objects (level lines, zone boundary lines,
                     // trigger lines). Boxes (zones), labels stay untouched.
                     int objType = (int)ObjectGetInteger(0, objName, OBJPROP_TYPE);
@@ -2126,8 +2132,23 @@ bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey
 //+------------------------------------------------------------------+
 void DeleteAllIndicatorObjects(bool deepCleanup = false) {
     if(StringLen(inpObjectPrefix) == 0) return;   // empty prefix matches everything
-    ObjectsDeleteAll(0, inpObjectPrefix);
-    if(!deepCleanup) return;
+    if(deepCleanup) {
+        ObjectsDeleteAll(0, inpObjectPrefix);   // REASON_REMOVE: wipe everything incl. Base/Knot
+    } else {
+        // P-BK-01: TF-switch / parameter rebuilds must NOT wipe the user's
+        // Base/Knot drawings — they are an independent layer that survives
+        // (registry rebuilds from the box anchors via BaseKnotLazyInit).
+        int total = ObjectsTotal(0, -1, -1);
+        int prefixLen = StringLen(inpObjectPrefix);
+        for(int i = total - 1; i >= 0; i--) {
+            string objName = ObjectName(0, i, -1, -1);
+            if(StringLen(objName) < prefixLen) continue;
+            if(StringSubstr(objName, 0, prefixLen) != inpObjectPrefix) continue;
+            if(StringFind(objName, "_BK_") >= 0) continue;
+            ObjectDelete(0, objName);
+        }
+        return;
+    }
     SModeSuffixEntry entries[];
     int entryCount = 0;
     GetAllModeSuffixes(entries, entryCount);
@@ -2151,6 +2172,7 @@ void EmergencyCleanupIndicatorObjects(const string indicatorPrefix)
         if(objName == "") continue;
         if(StringLen(objName) < prefixLen) continue;
         if(StringSubstr(objName, 0, prefixLen) != indicatorPrefix) continue;
+        if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: user drawings have no expiry
         CacheRemoveObject(objName);
         g_suppressDeleteEvents = true;
         g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
@@ -2247,6 +2269,7 @@ void RunIncrementalObjectCleanup()
             bool isOurs = false;
             if(StringLen(objName) >= indicatorPrefixLen && StringSubstr(objName, 0, indicatorPrefixLen) == indicatorPrefix) isOurs = true;
             if(!isOurs) continue;
+            if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: never emergency-wipe user drawings
 
             if(StringFind(objName, "TH3_Structure_") == 0) continue;
             if(StringLen(objName) >= currentPrefixLen && StringSubstr(objName, 0, currentPrefixLen) == objectPrefix) continue;

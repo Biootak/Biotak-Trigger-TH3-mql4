@@ -330,8 +330,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `BaseKnotTakeRestoreFlag()` in `HandleUIChartEvent`). Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
-  cascades (`ObjectsDeleteAll(pfx)`), BUY/SELL + X badges are `OBJ_BUTTON`s
-  re-glued on `CHART_CHANGE` + the 500ms tick (`BaseKnotSyncBadges`). The
+  cascades (`ObjectsDeleteAll(pfx)`), the X delete badge is an `OBJ_BUTTON`
+  re-glued on `CHART_CHANGE` + the 500ms tick (`BaseKnotSyncBadges`).
+  Direction is AUTOMATIC at commit (no Buy/Sell badge — `NOBUYSELL`
+  2026-09-06): box mid below live price = Buy, above = Sell; leftovers purged
+  in `BaseKnotSync` + the CLICK handler. The
   session is consumed FIRST in `OnChartEventHandler` (500ms arm-guard +
   click debounce, chart scroll locked with raw `Chart*` calls so Lite
   compiles menu-free — Lite keeps drag/delete/badges, arming is Full-only).
@@ -339,6 +342,32 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `TOOL_COUNT`-driven menu loops pick new tools up automatically; panel-less
   tools return `ToolPanel()==-1` and must skip long-press arming
   (`CircHandleMouseMove` guard) or the release click gets swallowed.)
+
+- **Base/Knot is fully automatic — no Buy/Sell button, ever**
+  (2026-09-06 — direction is decided ONCE at commit by
+  `BaseKnotResolveDirection()` in `Biotak/BaseKnotTool.mqh` and FROZEN in the
+  registry + chart-scoped GV: price above the box = Buy (Entry=top, SL=bottom,
+  TP=top+2R), below = Sell (mirrored); a commit landing with the price INSIDE
+  resolves by entry side (most recent of the last 128 closes outside the box:
+  from below → Buy, from above → Sell; mid-vs-price fallback). Live ticks
+  never recompute it (`BaseKnotSync` only reads the registry), so in-box price
+  vibration cannot flicker the lines. Box ids are `"<commitTFmin>_<tick>[rNNN]"`
+  — every tail split MUST use the last underscore (`BaseKnotSplitTail`), the
+  first one is inside the id. Each box carries its commit-TF mask
+  (`BaseKnotTFMask`: own + lower TFs, hidden above — no hairline boxes) and
+  `BaseKnotPlaceBadges` ANDs it with on-screen state (never let badge code
+  overwrite the mask with plain ALL/NO). Both corners + the rubber-band snap
+  to the nearer High/Low shadow gated by `inpEnableMagnet` /
+  `inpMagnetSensitivityPips`. Info badge is chart-anchored
+  `"[H Pips | R:R 1:N]"`; the X is the only pixel badge. Box delete cascades
+  via one `ObjectsDeleteAll(pfx)`; a manually deleted CHILD self-heals via
+  `BaseKnotSync`, trailing deletes of a gone box only mop up by prefix. The BK
+  layer is INDEPENDENT: `HideAllTHObjects`, the L/F toggles,
+  `DeleteAllIndicatorObjects` (non-deep), emergency + incremental cleanups and
+  the generic OBJECT_DELETE redraw trigger all skip `"_BK_"` names — only
+  `REASON_REMOVE` (deep) wipes user drawings. Registry rebuilds from box
+  anchors via `BaseKnotLazyInit` (dir from GV, TF from the id), so boxes
+  survive TF-switches and parameter rebuilds.)
 
 - **HTF boxes self-heal after timeframe switches — never rely on init-time draws**
   (2026-09-05 — HTF candles vanished on every TF switch until a manual off/on
@@ -385,6 +414,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-HTF-02 | Manual HTF timeframe silently reverts to auto on every TF-switch/re-attach; HTF draw paths could use a stale cached period; full draw left the forming-candle cache stale | `g_HTFIsAuto`/`g_HTFPeriod` were never persisted (`Save/Init/CleanupHTFCandlesGVs` missed them) and `UpdateHTFFormingCandle`/`DrawHTFCandles` read the cached `g_HTFPeriod` instead of the fresh `ResolveHTFPeriod()` | Persist `IsAuto`+`Period` GVs (restore in `InitializeHTFCandles`, recompute only when auto); draw paths use `ResolveHTFPeriod()`; full draw syncs the forming cache and `RefreshHTFCandles` resets it. Single engine is `HTFEnsureDrawn()` — do not add a second per-tick HTF sync. | 2026-09-05 |
 | P-HTF-03 | HTF history froze one bar behind after every new HTF bar; `ShowBody=false`/doji caused a full 200-bar redraw EVERY second; opacity/width slider drags froze weak PCs (600 objects delete+recreated per step + flicker); `DeleteHTFCandles` with an empty prefix matches every chart object | Index-based history was never rebuilt on HTF bar roll; the steady probe checked only `prefix+"0"` which never exists without bodies (or a wickless doji); `RefreshHTFCandles` did a blind delete+draw; `StringFind(name,"")==0` is true for all names | Bar-roll detection via the forming-cache open time (`s_drawnBar0`, zero extra syscalls); `HTFAnyBoxesExist()` samples bars 0..2 across all name shapes; in-place upsert + trailing prune only (`Draw/Refresh` return the drawn count, `-1` = not ready, state advances only on success + `ChartRedraw`); empty-prefix guards in every HTF delete path | 2026-09-05 |
 | P-UI-05 | Typing hex (A-F) fired hotkeys; TF-switch/remove with open panel killed chart scroll forever; ghost panel after TF-switch; panel draggable off-screen; blank `inpObjectPrefix` wipes the chart; news/gap fired 50 alert popups | Main KEYDOWN never checked `g_PalHexFocus`; chart-prop statics reset on reload so the watchdog couldn't restore; panel objects survive CHARTCHANGE while state resets; `PnlMoveBy` unclamped; no prefix validation; per-(bar,level) alert key has no global cap | `#ifndef BUILD_LITE` hex-focus early-return (Full-only symbol); `CleanupUIStates` drains both chart locks on every reason; `InitializeUIStates` purges orphan `Pnl`/`Pal_` objects; clamp-before-move in `PnlMoveBy` + `PnlClampOpenPanel` on CHART_CHANGE; reject empty prefix in `ValidateInputs` + guard deletes; alert governor: 10/bar max, 800ms spacing, 250ms-cached bar time | 2026-09-05 |
+| P-BK-01 | BK boxes vanished on TF-switch / param change / 1h after drawing / on L or F; child-line delete left a permanent hole; TF-bearing ids broke first-underscore parsing; badge code would clobber the TF mask with plain ALL/NO; BK deletes flagged a full level redraw | `DeleteAllIndicatorObjects` blanket-wiped the prefix (BK included) on every CHARTCHANGE/PARAMETERS deinit; `RunIncrementalObjectCleanup` expiry (1h) matched BK anchors; L/F/Hide loops had no BK exclusion; child OBJECT_DELETE was swallowed as no-op; tail split at the FIRST `_` cut TF-bearing ids; `PlaceBadges` wrote raw ALL/NO; generic OBJECT_DELETE branch redrew levels for BK names | BK is an independent layer: every wipe/hide/toggle/cleanup path skips `"_BK_"` names (only REASON_REMOVE deep-wipes); child delete self-heals via `BaseKnotSync`, gone-box trails mop up by prefix; split tails at the LAST `_` (`BaseKnotSplitTail`); `PlaceBadges` ANDs the commit-TF mask with on-screen state; generic OBJECT_DELETE ignores BK names | 2026-09-06 |
 
 
 > When you close a new recurring issue, add the next row above (highest

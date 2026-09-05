@@ -16,6 +16,36 @@
 //| While BK_ARMED/BK_PREVIEW, BaseKnotOnChartEvent() returns true for |
 //| consumed events so OnChartEventHandler returns early and nothing   |
 //| else (custom-price, TH3, panels) sees the gesture.                 |
+//|                                                                   |
+//| PRODUCT RULES (2026-09-06 — no Buy/Sell button, fully automatic): |
+//|  * Direction is decided ONCE at commit and FROZEN in the registry |
+//|    (+ chart-scoped GV) — live ticks NEVER recompute it, so a price |
+//|    vibrating inside the box cannot flicker the lines. A box below  |
+//|    the live price = demand = Buy (Entry=top, SL=bottom, TP=top+2R);|
+//|    a box above it = supply = Sell (mirrored). A commit landing     |
+//|    with the price INSIDE the box resolves by entry side: the most  |
+//|    recent close outside the box decides (from below → Buy, from    |
+//|    above → Sell), mid-vs-price only as the last fallback.          |
+//|  * Multi-instance: box ids are "<commitTFmin>_<tick>" (+ rand on   |
+//|    collision), so any number of knots coexist; tails are split at  |
+//|    the LAST underscore because ids themselves contain one.         |
+//|  * TF-scoped visibility: each box carries its commit-TF mask and   |
+//|    shows on that TF and lower ones only — a low-TF knot never      |
+//|    collapses into a hairline on a much higher TF.                  |
+//|  * Magnet: both corners (and the rubber-band) snap to the nearer   |
+//|    High/Low shadow of the clicked candle, gated by the project     |
+//|    magnet switch + sensitivity (inpEnableMagnet /                  |
+//|    inpMagnetSensitivityPips — same language as the pin magnet).    |
+//|  * Info badge: chart-anchored "[H Pips | R:R 1:N]" text at the box |
+//|    corner; the X button is the only pixel badge (re-glued on the   |
+//|    500 ms tick + CHART_CHANGE). Entry/SL/TP are OBJ_TREND rays     |
+//|    (RAY_RIGHT) anchored at the box right edge, BACK + unselectable.|
+//|  * Chain cleanup: deleting the BOX wipes every child in one        |
+//|    ObjectsDeleteAll(prefix) call; deleting a CHILD self-heals it   |
+//|    via BaseKnotSync. The BK layer is independent: HideAllTHObjects,|
+//|    the L/F toggles, DeleteAllIndicatorObjects (non-deep), the      |
+//|    emergency + incremental cleanups and the generic OBJECT_DELETE   |
+//|    redraw trigger all skip "_BK_" names (see P-BK-01).              |
 //+------------------------------------------------------------------+
 #ifndef BASE_KNOT_TOOL_MQH
 #define BASE_KNOT_TOOL_MQH
@@ -32,12 +62,17 @@
 #define BK_ARM_GUARD      500    // ms — ignore the arming click's own release
 #define BK_BADGE_W        46
 #define BK_BADGE_H        18
+#define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
+
+//--- object-name tag: "<prefix>_BK_<id>_<KIND>"
+#define BK_TAG "_BK_"
 
 //--- committed-box registry (parent ↔ children share one id prefix)
 struct BaseKnotBox
 {
-   string id;   // unique per box (tick-count at commit)
-   int    dir;  // +1 Buy / -1 Sell
+   string id;      // "<commitTFmin>_<tick>[rNNN]" (legacy: bare tick)
+   int    dir;     // +1 Buy / -1 Sell — FROZEN at commit, never recomputed
+   int    tfMin;   // chart Period() minutes at commit (0 = legacy = all TFs)
 };
 static BaseKnotBox g_bkBoxes[];
 static int         g_bkState      = BK_IDLE;
@@ -58,7 +93,7 @@ static bool        g_bkCtxWas     = true;
 string BaseKnotPrefix(const string id)
 {
    if(StringLen(inpObjectPrefix) == 0) return "";
-   return inpObjectPrefix + "_BK_" + id + "_";
+   return inpObjectPrefix + BK_TAG + id + "_";
 }
 string BaseKnotBoxName(const string pfx)   { return pfx + "BOX"; }
 string BaseKnotEntryName(const string pfx) { return pfx + "ENTRY"; }
@@ -70,12 +105,12 @@ string BaseKnotInfoName(const string pfx)  { return pfx + "INFO"; }
 string BaseKnotPrevName()
 {
    if(StringLen(inpObjectPrefix) == 0) return "";
-   return inpObjectPrefix + "_BK_PREVIEW";
+   return inpObjectPrefix + BK_TAG + "PREVIEW";
 }
 string BaseKnotHintName()
 {
    if(StringLen(inpObjectPrefix) == 0) return "";
-   return inpObjectPrefix + "_BK_HINT";
+   return inpObjectPrefix + BK_TAG + "HINT";
 }
 string BaseKnotGV(const string id)
 {
@@ -107,6 +142,106 @@ double BaseKnotPipSize()
 double BaseKnotToPips(const double dist) { return dist / BaseKnotPipSize(); }
 
 //+------------------------------------------------------------------+
+//| Id helpers — ids are "<tfMin>_<tick>[rNNN]"; tails split at the   |
+//| LAST underscore (StringFind from the right) because the id itself |
+//| contains an underscore.                                           |
+//+------------------------------------------------------------------+
+void BaseKnotSplitTail(const string tail, string &bid, string &kind)
+{
+   bid = ""; kind = "";
+   int last = -1, pos = 0;
+   while(true)
+   {
+      int f = StringFind(tail, "_", pos);
+      if(f < 0) break;
+      last = f;
+      pos = f + 1;
+   }
+   if(last <= 0) return;   // malformed (PREVIEW/HINT tails land here)
+   bid  = StringSubstr(tail, 0, last);
+   kind = StringSubstr(tail, last + 1);
+}
+// Commit-TF minutes encoded in the id head; 0 = legacy bare-tick id.
+int BaseKnotIdTF(const string bid)
+{
+   int us = StringFind(bid, "_");
+   if(us <= 0) return 0;
+   return (int)StringToInteger(StringSubstr(bid, 0, us));
+}
+// Visibility mask: commit TF + every lower TF. Higher TFs stay hidden so
+// a low-TF knot never renders as a hairline there (P-BK-01).
+long BaseKnotTFMask(const int tfMin)
+{
+   if(tfMin <= 0) return OBJ_ALL_PERIODS;   // legacy box — keep old behavior
+   long m = 0;
+   if(tfMin >= 1)     m |= OBJ_PERIOD_M1;
+   if(tfMin >= 5)     m |= OBJ_PERIOD_M5;
+   if(tfMin >= 15)    m |= OBJ_PERIOD_M15;
+   if(tfMin >= 30)    m |= OBJ_PERIOD_M30;
+   if(tfMin >= 60)    m |= OBJ_PERIOD_H1;
+   if(tfMin >= 240)   m |= OBJ_PERIOD_H4;
+   if(tfMin >= 1440)  m |= OBJ_PERIOD_D1;
+   if(tfMin >= 10080) m |= OBJ_PERIOD_W1;
+   if(tfMin >= 43200) m |= OBJ_PERIOD_MN1;
+   if(m == 0) m = OBJ_ALL_PERIODS;
+   return m;
+}
+// Minutes compare — robust on exotic chart TFs (no flag mapping needed).
+bool BaseKnotTFVisible(const int tfMin)
+{
+   if(tfMin <= 0) return true;
+   return (Period() <= tfMin);
+}
+
+//+------------------------------------------------------------------+
+//| Magnet — snap a clicked/hovered price to the nearer High/Low      |
+//| shadow of its candle. Same switch + sensitivity language as the   |
+//| pin magnet (inpEnableMagnet / inpMagnetSensitivityPips).          |
+//+------------------------------------------------------------------+
+double BaseKnotSnapPrice(const datetime t, const double price)
+{
+   if(!inpEnableMagnet) return price;
+   if(t <= 0 || price <= 0) return price;
+   int shift = iBarShift(_Symbol, 0, t, false);
+   if(shift < 0) return price;
+   double hi = High[shift], lo = Low[shift];
+   if(hi <= 0 || lo <= 0 || hi < lo) return price;
+   double dH = MathAbs(price - hi), dL = MathAbs(price - lo);
+   double gate = (double)inpMagnetSensitivityPips * BaseKnotPipSize();
+   if(gate <= 0) gate = BaseKnotPipSize();   // sensitivity 0 = exact touch only
+   if(MathMin(dH, dL) > gate) return price;  // too far — leave the hand-drawn value
+   return (dH <= dL ? hi : lo);
+}
+
+//+------------------------------------------------------------------+
+//| Direction — resolved ONCE at commit, then frozen. Positional rule:|
+//| price above the box = Buy, below = Sell. Price INSIDE resolves by |
+//| entry side (most recent close outside: from below → Buy, from      |
+//| above → Sell); mid-vs-price is the last fallback. Live ticks never|
+//| call this — BaseKnotSync only reads the registry (no flicker).    |
+//+------------------------------------------------------------------+
+int BaseKnotResolveDirection(const double top, const double bot)
+{
+   double ref = iClose(_Symbol, 0, 0);
+   if(ref <= 0) ref = g_currentPrice;
+   if(ref > top) return 1;
+   if(ref > 0 && ref < bot) return -1;
+   if(ref > 0)   // inside the box (or exactly on an edge): entry side decides
+   {
+      for(int s = 1; s <= BK_DIR_LOOKBACK; s++)
+      {
+         double c = iClose(_Symbol, 0, s);
+         if(c <= 0) continue;
+         if(c < bot) return 1;    // rose into the box from below → demand → Buy
+         if(c > top) return -1;   // fell into the box from above → supply → Sell
+      }
+      double mid = (top + bot) / 2.0;
+      return (mid <= ref ? 1 : -1);
+   }
+   return 1;   // no live price at all — harmless default
+}
+
+//+------------------------------------------------------------------+
 //| Registry helpers                                                  |
 //+------------------------------------------------------------------+
 int BaseKnotFind(const string id)
@@ -115,14 +250,15 @@ int BaseKnotFind(const string id)
       if(g_bkBoxes[i].id == id) return i;
    return -1;
 }
-void BaseKnotRegister(const string id, const int dir)
+void BaseKnotRegister(const string id, const int dir, const int tfMin)
 {
    if(BaseKnotFind(id) >= 0) return;
    int n = ArraySize(g_bkBoxes);
    ArrayResize(g_bkBoxes, n + 1);
-   g_bkBoxes[n].id  = id;
-   g_bkBoxes[n].dir = dir;
-   GlobalVariableSet(BaseKnotGV(id), (double)dir);
+   g_bkBoxes[n].id    = id;
+   g_bkBoxes[n].dir   = (dir < 0 ? -1 : 1);
+   g_bkBoxes[n].tfMin = tfMin;
+   GlobalVariableSet(BaseKnotGV(id), (double)g_bkBoxes[n].dir);
 }
 void BaseKnotUnregister(const string id)
 {
@@ -133,13 +269,13 @@ void BaseKnotUnregister(const string id)
    GlobalVariableDel(BaseKnotGV(id));
 }
 // Rebuild the registry from chart objects once (TF-switch safe: the box
-// anchors ARE the spec, direction rides a chart-scoped GV).
+// anchors ARE the spec, direction rides a chart-scoped GV, TF rides the id).
 void BaseKnotLazyInit()
 {
    if(g_bkInitDone) return;
    g_bkInitDone = true;
    if(StringLen(inpObjectPrefix) == 0) return;
-   string tag = inpObjectPrefix + "_BK_";
+   string tag = inpObjectPrefix + BK_TAG;
    int total = ObjectsTotal(0, -1, -1);
    for(int i = total - 1; i >= 0; i--)
    {
@@ -147,9 +283,10 @@ void BaseKnotLazyInit()
       if(StringFind(nm, tag) != 0) continue;
       if(StringFind(nm, "BOX", StringLen(nm) - 3) < 0) continue;
       string id = StringSubstr(nm, StringLen(tag), StringLen(nm) - StringLen(tag) - 4);
+      if(id == "PREVIEW" || id == "HINT") continue;
       int dir = 1;
       if(GlobalVariableCheck(BaseKnotGV(id))) dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
-      BaseKnotRegister(id, dir);
+      BaseKnotRegister(id, dir, BaseKnotIdTF(id));
    }
 }
 
@@ -212,8 +349,8 @@ void BaseKnotCancel()
 }
 
 //+------------------------------------------------------------------+
-//| Children geometry — single source of truth for commit / toggle /  |
-//| drag-sync. Buy: Entry=top, SL=bottom, TP=top+2R. Sell mirrored.   |
+//| Children geometry — single source of truth for commit / drag-sync.|
+//| Buy: Entry=top, SL=bottom, TP=top+2R. Sell mirrored.              |
 //+------------------------------------------------------------------+
 void BaseKnotCalcLevels(const double top, const double bot, const int dir,
                         double &entry, double &sl, double &tp)
@@ -224,7 +361,7 @@ void BaseKnotCalcLevels(const double top, const double bot, const int dir,
 }
 void BaseKnotMakeRay(const string name, const datetime t2, const datetime t1,
                      const double level, const color clr, const int style, const int width,
-                     const string tooltip)
+                     const string tooltip, const long tfMask)
 {
    if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_TREND, 0, t2, level, t2, level);
    datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
@@ -235,6 +372,7 @@ void BaseKnotMakeRay(const string name, const datetime t2, const datetime t1,
    ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
    ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, true);
    ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);   // TF-scoped with the box
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);  // the BOX is the only handle
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_BACK, true);
@@ -258,27 +396,26 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 1600);
    ObjectSetInteger(0, name, OBJPROP_STATE, false);
 }
-// Pixel badges are screen-anchored: re-glue them to the box after every
-// drag / scroll / zoom / TF-switch. Hidden while the box is off-view.
-void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2, const double top)
+// Pixel X badge is screen-anchored: re-glued after every drag / scroll /
+// zoom / TF-switch; the INFO text is chart-anchored and only TF-gated.
+// TF-hidden boxes stay hidden here even when their corner is on-screen.
+void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
+                         const double top, const int tfMin)
 {
-   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-   bool vis = ChartTimePriceToXY(0, 0, t1, top, x1, y1) &&
-              ChartTimePriceToXY(0, 0, t2, top, x2, y2);
-   string bn = BaseKnotBuyName(pfx), dn = BaseKnotDelName(pfx), in = BaseKnotInfoName(pfx);
-   long show = (vis ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
-   ObjectSetInteger(0, bn, OBJPROP_TIMEFRAMES, show);
-   ObjectSetInteger(0, dn, OBJPROP_TIMEFRAMES, show);
-   ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, show);
+   bool tfVis = BaseKnotTFVisible(tfMin);
+   int x2 = 0, y2 = 0;
+   bool vis = (tfVis && ChartTimePriceToXY(0, 0, t2, top, x2, y2));
+   string dn = BaseKnotDelName(pfx), in = BaseKnotInfoName(pfx);
+   ObjectSetInteger(0, dn, OBJPROP_TIMEFRAMES, (vis ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
+   ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, (tfVis ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
    if(!vis) return;
-   ObjectSetInteger(0, bn, OBJPROP_XDISTANCE, x1 - BK_BADGE_W - 2);
-   ObjectSetInteger(0, bn, OBJPROP_YDISTANCE, y1 - BK_BADGE_H - 4);
    ObjectSetInteger(0, dn, OBJPROP_XDISTANCE, x2 + 2);
    ObjectSetInteger(0, dn, OBJPROP_YDISTANCE, y2 - BK_BADGE_H - 4);
    ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
    ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
 }
-// (Re)build every child of one box from its live anchors.
+// (Re)build every child of one box from its live anchors. Direction is read
+// from the registry — NEVER recomputed here (frozen at commit, no flicker).
 void BaseKnotSync(const string id)
 {
    int k = BaseKnotFind(id);
@@ -294,25 +431,30 @@ void BaseKnotSync(const string id)
    if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
    double top = MathMax(p1, p2), bot = MathMin(p1, p2);
    int dir = g_bkBoxes[k].dir;
+   int tfMin = g_bkBoxes[k].tfMin;
+   if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
+   long tfMask = BaseKnotTFMask(tfMin);
+   ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
    double tpPips = BaseKnotToPips(MathAbs(tp - entry));
+   double rr     = (hPips > 0 ? tpPips / hPips : BK_TP_R_MULT);
    int dg = GetCachedDigits();
+   string side = (dir >= 0 ? "BUY" : "SELL");
    BaseKnotMakeRay(BaseKnotEntryName(pfx), t2, t1, entry, C'30,144,255', STYLE_SOLID, 1,
-                   "BK Entry: " + DoubleToString(entry, dg));
+                   "BK " + side + " Entry: " + DoubleToString(entry, dg), tfMask);
    BaseKnotMakeRay(BaseKnotSLName(pfx), t2, t1, sl, C'220,50,50', STYLE_DASH, 1,
-                   "BK Stop: " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)");
+                   "BK " + side + " Stop: " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask);
    BaseKnotMakeRay(BaseKnotTPName(pfx), t2, t1, tp, C'46,139,87', STYLE_DASH, 1,
-                   "BK Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, 2R)");
-   BaseKnotMakeBadge(BaseKnotBuyName(pfx), (dir >= 0 ? "BUY" : "SELL"), (dir >= 0 ? C'30,144,255' : C'220,50,50'));
-   ObjectSetString(0, BaseKnotBuyName(pfx), OBJPROP_TOOLTIP, "Base direction — click to flip Buy/Sell");
+                   "BK " + side + " Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    BaseKnotMakeBadge(BaseKnotDelName(pfx), "X", C'90,95,105');
    ObjectSetString(0, BaseKnotDelName(pfx), OBJPROP_TOOLTIP, "Delete this base + its lines");
+   ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
    string in = BaseKnotInfoName(pfx);
    if(ObjectFind(0, in) < 0) ObjectCreate(0, in, OBJ_TEXT, 0, t2, top);
    ObjectSetString(0, in, OBJPROP_TEXT,
-                   "H " + DoubleToString(hPips, 1) + " pips | TP +" + DoubleToString(tpPips, 1) + " (2R)");
+                   "[" + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + "]");
    ObjectSetString(0, in, OBJPROP_FONT, "Arial");
    ObjectSetInteger(0, in, OBJPROP_FONTSIZE, 8);
    ObjectSetInteger(0, in, OBJPROP_COLOR, C'255,171,0');
@@ -321,7 +463,9 @@ void BaseKnotSync(const string id)
    ObjectSetInteger(0, in, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, in, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, in, OBJPROP_ZORDER, 60);
-   BaseKnotPlaceBadges(pfx, t1, t2, top);
+   ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": risk " + DoubleToString(hPips, 1) +
+                   " pips, target +" + DoubleToString(tpPips, 1) + " pips");
+   BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
 }
 void BaseKnotDelete(const string id)
 {
@@ -345,20 +489,24 @@ void BaseKnotSyncBadges()
       if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
       double top = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
-      BaseKnotPlaceBadges(pfx, t1, t2, top);
+      int tfMin = g_bkBoxes[i].tfMin;
+      if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
+      BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
    }
 }
 
 //+------------------------------------------------------------------+
 //| Commit click 2 → freeze the box, spawn Entry/SL/TP + badges.      |
 //+------------------------------------------------------------------+
-void BaseKnotCommit(const datetime t2, const double p2)
+void BaseKnotCommit(const datetime t2, const double p2raw)
 {
    double pt = GetCachedPoint();
    if(pt <= 0) pt = _Point;
+   double p2 = BaseKnotSnapPrice(t2, p2raw);
    if(t2 == g_bkT1 || MathAbs(p2 - g_bkP1) < pt) return;  // degenerate — keep preview alive
-   string id = IntegerToString((long)GetTickCount());
-   if(BaseKnotFind(id) >= 0) id += IntegerToString(MathRand());
+   int tfMin = Period();
+   string id = IntegerToString((long)tfMin) + "_" + IntegerToString((long)GetTickCount());
+   while(BaseKnotFind(id) >= 0) id += "r" + IntegerToString(MathRand() % 1000);
    string pfx = BaseKnotPrefix(id);
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
@@ -371,26 +519,33 @@ void BaseKnotCommit(const datetime t2, const double p2)
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);   // THE handle: drag moves children
    ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);
-   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base box — drag to move (lines follow) · Del removes all");
-   BaseKnotRegister(id, 1);   // default Buy; flips via the BUY badge
+   ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, BaseKnotTFMask(tfMin));
+   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base box — drag to move (lines follow) · X removes all");
+   // Direction is AUTOMATIC and FROZEN here (no Buy/Sell badge): box below
+   // the live price = demand = Buy; box above it = supply = Sell; a commit
+   // landing with the price inside resolves by entry side (see resolver).
+   double bkTop = MathMax(g_bkP1, p2), bkBot = MathMin(g_bkP1, p2);
+   int dir = BaseKnotResolveDirection(bkTop, bkBot);
+   BaseKnotRegister(id, dir, tfMin);
    BaseKnotSync(id);
    ObjectDelete(0, BaseKnotPrevName());
    g_bkState = BK_ARMED;   // stay armed — TradingView-style multi-draw until ESC/right-click
-   int dg = GetCachedDigits();
    double hPips = BaseKnotToPips(MathAbs(p2 - g_bkP1));
-   BaseKnotHintShow("BASE #" + IntegerToString(ArraySize(g_bkBoxes)) + " set (" +
+   BaseKnotHintShow("BASE #" + IntegerToString(ArraySize(g_bkBoxes)) + " " +
+                    (dir >= 0 ? "BUY" : "SELL") + " set (" +
                     DoubleToString(hPips, 1) + " pips) — next box: click 1 · done: right-click / ESC");
    ChartRedraw();
 }
 
 // One chart click (from EITHER the CLICK event or the MOUSE_MOVE rising
 // edge — both share the debounce so a single press commits once).
-void BaseKnotClick(const datetime t, const double p)
+void BaseKnotClick(const datetime t, const double praw)
 {
    uint now = GetTickCount();
    if(now - g_bkArmedMs < BK_ARM_GUARD) return;      // the arming click's own release
    if(now - g_bkLastClick < BK_CLICK_DEBOUNCE) return;
    g_bkLastClick = now;
+   double p = BaseKnotSnapPrice(t, praw);
    if(g_bkState == BK_ARMED)
    {
       g_bkT1 = t; g_bkP1 = p;
@@ -408,7 +563,7 @@ void BaseKnotClick(const datetime t, const double p)
       ChartRedraw();
    }
    else if(g_bkState == BK_PREVIEW)
-      BaseKnotCommit(t, p);
+      BaseKnotCommit(t, praw);
 }
 
 //+------------------------------------------------------------------+
@@ -418,49 +573,41 @@ void BaseKnotClick(const datetime t, const double p)
 bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    BaseKnotLazyInit();
-   string tag = (StringLen(inpObjectPrefix) > 0 ? inpObjectPrefix + "_BK_" : "");
+   string tag = (StringLen(inpObjectPrefix) > 0 ? inpObjectPrefix + BK_TAG : "");
 
-   //--- badge buttons: Buy/Sell flip + quick delete (any state, incl. IDLE)
+   //--- quick-delete badge (any state, incl. IDLE). Direction is automatic
+   //--- (box below live price = Buy, above = Sell) — no Buy/Sell badge.
    if(id == CHARTEVENT_OBJECT_CLICK && tag != "")
    {
       if(StringFind(sparam, tag) == 0)
       {
          string tail = StringSubstr(sparam, StringLen(tag));
-         int us = StringFind(tail, "_");
-         if(us > 0)
+         string bid = "", kind = "";
+         BaseKnotSplitTail(tail, bid, kind);   // LAST underscore: ids hold one too
+         if(kind == "DEL")
          {
-            string bid = StringSubstr(tail, 0, us);
-            string kind = StringSubstr(tail, us + 1);
             int k = BaseKnotFind(bid);
-            if(kind == "DEL")
+            BaseKnotDelete(bid);   // unknown id → still wipe by prefix
+            if(k < 0 && tag != "")
             {
-               BaseKnotDelete(bid);   // unknown id → still wipe by prefix
-               if(k < 0 && tag != "")
-               {
-                  ObjectsDeleteAll(0, tag + bid + "_");
-                  ChartRedraw();
-               }
-               return true;
-            }
-            if(kind == "BUY" && k >= 0)
-            {
-               g_bkBoxes[k].dir = -g_bkBoxes[k].dir;
-               GlobalVariableSet(BaseKnotGV(bid), (double)g_bkBoxes[k].dir);
-               BaseKnotSync(bid);
+               ObjectsDeleteAll(0, tag + bid + "_");
                ChartRedraw();
-               return true;
             }
+            return true;
          }
-         return true;   // clicks on lines/info text die here — never reach menus
+         if(kind == "BUY") { ObjectDelete(0, sparam); return true; }   // NOBUYSELL leftover
+         if(kind == "") return true;   // PREVIEW/HINT tails — swallow, no action
+         return true;   // clicks on box/lines/info text die here — never reach menus
       }
    }
 
-   //--- box drag → children follow; box delete → cascade
+   //--- box drag → children follow; box delete → cascade; child delete → heal
    if(id == CHARTEVENT_OBJECT_DRAG && tag != "" && StringFind(sparam, tag) == 0 &&
       StringFind(sparam, "BOX", StringLen(sparam) - 3) >= 0)
    {
       string tail = StringSubstr(sparam, StringLen(tag));
       string bid = StringSubstr(tail, 0, StringLen(tail) - 4);
+      if(bid == "PREVIEW") return true;
       if(BaseKnotFind(bid) >= 0) { BaseKnotSync(bid); ChartRedraw(); }
       return true;
    }
@@ -470,7 +617,31 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       if(StringFind(sparam, "BOX", StringLen(sparam) - 3) >= 0)
       {
          string tail = StringSubstr(sparam, StringLen(tag));
+         string bid = StringSubstr(tail, 0, StringLen(tail) - 4);
+         if(bid == "PREVIEW" || bid == "HINT") return true;
          BaseKnotDelete(StringSubstr(tail, 0, StringLen(tail) - 4));
+      }
+      else
+      {
+         // A manually deleted child (ENTRY/SL/TP/INFO/DEL) self-heals via
+         // re-sync; trailing deletes of an already-gone box just mop up.
+         string tail = StringSubstr(sparam, StringLen(tag));
+         string bid = "", kind = "";
+         BaseKnotSplitTail(tail, bid, kind);
+         if(kind == "") return true;   // PREVIEW/HINT transient — swallow
+         if(BaseKnotFind(bid) >= 0)
+         {
+            string pfx = BaseKnotPrefix(bid);
+            if(ObjectFind(0, BaseKnotBoxName(pfx)) >= 0) BaseKnotSync(bid);
+            else BaseKnotDelete(bid);
+            ChartRedraw();
+         }
+         else if(bid != "")
+         {
+            // Trailing delete of an already-removed box (or a half-built
+            // orphan): mop up by prefix, no redraw — the BOX branch redraws.
+            ObjectsDeleteAll(0, BaseKnotPrefix(bid));
+         }
       }
       return true;
    }
@@ -516,6 +687,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          string pv = BaseKnotPrevName();
          if(pv != "" && ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ht, hp) && sw == 0 && ht > 0 && hp > 0)
          {
+            hp = BaseKnotSnapPrice(ht, hp);   // preview shows the snapped corner (WYSIWYG)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
             ChartRedraw();
