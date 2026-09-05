@@ -1545,6 +1545,7 @@ int HandleButtonClick(const string clickedObject)
           // the E key and the panel row). OV_ persist rides on REFRESH_ALL.
           g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
           GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
+          UpdateStepModeLabel();   // same confirmation as E / panel (redraw below only repositions it)
           g_forceClearOnNextDraw = true;
           g_redrawTHLevelsNeeded = true;
           tflags = REFRESH_ALL;

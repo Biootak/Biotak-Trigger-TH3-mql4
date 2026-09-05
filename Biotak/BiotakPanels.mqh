@@ -1647,6 +1647,9 @@ int PnlApply(const int item,const int row,const double v)
          if(row==0)
          {
             g_stepCalculationMode=(ENUM_STEP_CALCULATION_MODE)(int)MathRound(v);
+            // Same confirmation the E key shows: the redraw below only
+            // repositions it (RepositionAllOverlayLabels), never deletes it.
+            UpdateStepModeLabel();
             g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true;
             flags=REFRESH_ALL;
          }
@@ -2898,6 +2901,20 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
    }
 }
 
+//--- live sync: an open Step card follows mode changes made OUTSIDE the panel
+// (E key / Tools ring). Change-guarded — PnlUpdateRow runs only on a flip,
+// so the per-tick cost is one int compare. (Other hotkey/panel pairs have the
+// same staleness by design; step is synced because its three writers are
+// advertised as one setting.)
+void PnlSyncOpenStepRow()
+{
+   static int s_LastMode = -1;
+   int cur = (int)g_stepCalculationMode;
+   if(cur == s_LastMode) return;
+   s_LastMode = cur;
+   if(g_PnlOpen == 9) PnlUpdateRow(9, 0);
+}
+
 //+------------------------------------------------------------------+
 //| Kit lifecycle entry points (called from Biotak Trigger TH3.mq4)  |
 //+------------------------------------------------------------------+
@@ -2918,4 +2935,5 @@ void RefreshKitOnBar()
    // RefreshUIPerTick() already self-throttles (500ms + change guards), so
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();
+   PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
 }

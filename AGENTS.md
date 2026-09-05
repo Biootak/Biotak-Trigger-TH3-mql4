@@ -210,6 +210,20 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   for old charts. To restore: uncomment the `STEPOVERRIDE-OFF:` sites (grep
   the marker). Full+Lite compile 0 errors without it.
 
+- **Open panels follow external changes; every writer confirms on-chart**
+  (2026-09-05 — an open Step card stayed stale when E/Tools changed the mode:
+  hotkeys never refresh panels, and MQL4 layering forbids it directly
+  — `EventHandlers` is included BEFORE `BiotakPanels`, so it cannot call
+  `PnlUpdateRow`. Fix is panel-side: `PnlSyncOpenStepRow()` in
+  `BiotakPanels.mqh`, called from `RefreshKitOnBar()` (runs per-tick + 1s
+  timer), change-guarded to one int compare. And every Step writer now pops
+  the chart mode label (E already did; `PnlApply` card 9 row 0 and the
+  Tools-ring step branch call `UpdateStepModeLabel()` too — safe because the
+  redraw after only repositions via `RepositionAllOverlayLabels`). Rule for
+  new work: any writer outside a panel that changes a panel-visible value
+  must (1) add a change-guarded sync in the panel tick path, (2) pop the
+  on-chart confirmation label.)
+
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches
   (`PNL_QSW_*`, `QuickPalColor()` in `BiotakPanels.mqh`) + PICK button for
