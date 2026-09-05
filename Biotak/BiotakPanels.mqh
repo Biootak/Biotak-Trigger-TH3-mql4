@@ -2330,7 +2330,7 @@ void PnlCommitMove(const int item)
 //     reset of CHART_MOUSE_SCROLL is re-forced while we own the chart.
 bool ChartLockIntended()
 {
-   // Base/Knot owns the chart while its two-click session is armed (it locks
+   // Base/Knot owns the chart while its draw session is armed (it locks
    // via raw Chart* calls so Lite works too — the watchdog must not fight it).
    return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0) || BaseKnotSessionActive();
 }

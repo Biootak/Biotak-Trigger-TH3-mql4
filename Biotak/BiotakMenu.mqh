@@ -91,7 +91,7 @@
 #define CIR_PIN             8   // Custom Price Pin
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 // FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
-#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (two-click base box + Entry/SL/TP)
+#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (drag-draw or 2-click box + Entry/SL/TP)
 
 //--- ring layout (main circle — 6 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
@@ -412,7 +412,7 @@ bool CircFeatureOn(const int i)
    // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
-   // CIR_BASEKNOT is momentary: lit while the two-click session is armed.
+   // CIR_BASEKNOT is momentary: lit while the draw session is armed.
    if(i == CIR_BASEKNOT)        return BaseKnotSessionActive();
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
@@ -649,7 +649,7 @@ string CircItemTooltip(const int i)
        case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
         case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
-      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nClick: 2-click base box + Entry/SL/TP · ESC: done";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: press-hold-draw box + Entry/SL/TP · or 2-click · ESC: done";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -1858,7 +1858,7 @@ int HandleButtonClick(const string clickedObject)
        else if(tfeat == CIR_BASEKNOT)
        {
           // Momentary drawing tool: hide the ring (room for analysis),
-          // lock the chart inside BaseKnotArm(), enter the two-click flow.
+           // lock the chart inside BaseKnotArm(), enter the drag-draw flow.
           // No indicator recalc — REFRESH_NONE (Arm redraws itself).
           g_UI.menuVisible = false;
           DeleteMenu();

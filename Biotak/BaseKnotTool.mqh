@@ -10,9 +10,11 @@
 //| calls) so Lite — which has no menu — keeps drag/delete working.   |
 //|                                                                   |
 //| STATE MACHINE (the ONLY mouse-event consumer while active):       |
-//|   BK_IDLE →(Tools click)→ BK_ARMED →(click 1)→ BK_PREVIEW          |
-//|   BK_PREVIEW →(move)→ rubber-band + live Entry/SL/TP →(click 2)→ commit → BK_IDLE |
-//|   (single-shot: tool OFF after one box; ESC / right-click / orb → IDLE). |
+//|   NATIVE DRAG (like MT4's own rectangle): press → corner 1,        |
+//|   hold + move → live rubber-band + Entry/SL/TP, release → commit.  |
+//|   TAP-TAP (TradingView-style): click 1 → corner 1, move (hover      |
+//|   preview), click 2 → commit. Single-shot: commit → BK_IDLE.       |
+//|   (ESC / right-click / orb → IDLE).                                 |
 //| While BK_ARMED/BK_PREVIEW, BaseKnotOnChartEvent() returns true for |
 //| consumed events so OnChartEventHandler returns early and nothing   |
 //| else (custom-price, TH3, panels) sees the gesture.                 |
@@ -56,8 +58,7 @@
 
 //--- geometry / UX tuning
 #define BK_TP_R_MULT      2.0    // TP distance = 2R (R = box height)
-#define BK_CLICK_DEBOUNCE 350    // ms — shared by CLICK + MOUSE_MOVE paths
-#define BK_ARM_GUARD      500    // ms — ignore the arming click's own release
+#define BK_ARM_GUARD      500    // ms — ignore the arming click's own release (CLICK fallback path)
 #define BK_BADGE_W        46
 #define BK_BADGE_H        18
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
@@ -77,8 +78,10 @@ static int         g_bkState      = BK_IDLE;
 static datetime    g_bkT1         = 0;
 static double      g_bkP1         = 0.0;
 static uint        g_bkArmedMs    = 0;
-static uint        g_bkLastClick  = 0;
 static bool        g_bkLeftPrev   = false;
+static bool        g_bkHeld       = false;   // left button held down inside our gesture (press without release yet)
+static datetime    g_bkLiveT      = 0;       // last rubber-band cursor point (off-chart release fallback)
+static double      g_bkLiveP      = 0.0;
 static bool        g_bkInitDone   = false;
 static bool        g_bkRestoreReq = false;  // UI side: re-show the menu once
 static bool        g_bkTouched    = false;  // Arm ran → OnDeinit must restore chart props
@@ -347,13 +350,15 @@ void BaseKnotArm()
    g_bkTouched = true;   // OnDeinit must restore the chart props below, whatever happens
    g_bkArmedMs = GetTickCount();
    g_bkLeftPrev = true;   // the arming press is still down — never take its release as click 1
+   g_bkHeld = false;
+   g_bkLiveT = 0; g_bkLiveP = 0.0;
    g_bkScrollWas = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
    g_bkCtxWas    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
    ChartSetInteger(0, CHART_MOUSE_SCROLL, false);   // no chart slide under the hand while drawing
    ChartSetInteger(0, CHART_CONTEXT_MENU, false);
    ObjectDelete(0, BaseKnotPrevName());
    BaseKnotWipeLive();
-   BaseKnotHintShow("BASE TOOL — click 1: box corner · click 2: commit · right-click / ESC: done");
+   BaseKnotHintShow("BASE TOOL — press + drag (release = done) · or click 2 corners · right-click / ESC: cancel");
    ChartRedraw();
 }
 void BaseKnotCancel()
@@ -362,6 +367,7 @@ void BaseKnotCancel()
    BaseKnotWipeLive();
    BaseKnotHintHide();
    g_bkState = BK_IDLE;
+   g_bkHeld = false;
    ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
    ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
@@ -383,6 +389,7 @@ void BaseKnotOnDeinit(const int reason)
    }
    g_bkState = BK_IDLE;
    g_bkRestoreReq = false;
+   g_bkHeld = false;
    ObjectDelete(0, BaseKnotPrevName());
    BaseKnotWipeLive();
    ObjectDelete(0, BaseKnotHintName());
@@ -592,7 +599,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    double pt = GetCachedPoint();
    if(pt <= 0) pt = _Point;
    double p2 = BaseKnotSnapPrice(t2, p2raw);
-   if(t2 == g_bkT1 || MathAbs(p2 - g_bkP1) < pt) return;  // degenerate — keep preview alive
+   if(t2 <= 0 || t2 == g_bkT1 || MathAbs(p2 - g_bkP1) < pt) return;  // degenerate — keep preview alive
    int tfMin = Period();
    string id = IntegerToString((long)tfMin) + "_" + IntegerToString((long)GetTickCount());
    while(BaseKnotFind(id) >= 0) id += "r" + IntegerToString(MathRand() % 1000);
@@ -620,6 +627,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    ObjectDelete(0, BaseKnotPrevName());
    BaseKnotWipeLive();
    g_bkState = BK_IDLE;   // single-shot: tool OFF after one box — stray clicks draw nothing
+   g_bkHeld = false;
    ChartSetInteger(0, CHART_MOUSE_SCROLL, g_bkScrollWas);
    ChartSetInteger(0, CHART_CONTEXT_MENU, g_bkCtxWas);
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
@@ -630,33 +638,30 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    ChartRedraw();
 }
 
-// One chart click (from EITHER the CLICK event or the MOUSE_MOVE rising
-// edge — both share the debounce so a single press commits once).
-void BaseKnotClick(const datetime t, const double praw)
+// Press (MOUSE_MOVE rising edge, or a CLICK when no press edge was seen —
+// some builds/mice emit no clean rising edge): ARMED → corner 1. Never
+// commits — the release (or the next click) is corner 2.
+void BaseKnotPress(const datetime t, const double praw)
 {
+   if(g_bkState != BK_ARMED) return;
    uint now = GetTickCount();
-   if(now - g_bkArmedMs < BK_ARM_GUARD) return;      // the arming click's own release
-   if(now - g_bkLastClick < BK_CLICK_DEBOUNCE) return;
-   g_bkLastClick = now;
+   if(now - g_bkArmedMs < BK_ARM_GUARD) return;      // the arming click's own echo (CLICK path only)
    double p = BaseKnotSnapPrice(t, praw);
-   if(g_bkState == BK_ARMED)
-   {
-      g_bkT1 = t; g_bkP1 = p;
-      g_bkState = BK_PREVIEW;
-      string pv = BaseKnotPrevName();
-      if(pv == "") return;
-      if(ObjectFind(0, pv) < 0) ObjectCreate(0, pv, OBJ_RECTANGLE, 0, t, p, t, p);
-      ObjectSetInteger(0, pv, OBJPROP_COLOR, C'255,171,0');
-      ObjectSetInteger(0, pv, OBJPROP_STYLE, STYLE_DOT);
-      ObjectSetInteger(0, pv, OBJPROP_WIDTH, 1);
-      ObjectSetInteger(0, pv, OBJPROP_FILL, false);
-      ObjectSetInteger(0, pv, OBJPROP_BACK, true);
-      ObjectSetInteger(0, pv, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, pv, OBJPROP_HIDDEN, true);
-      ChartRedraw();
-   }
-   else if(g_bkState == BK_PREVIEW)
-      BaseKnotCommit(t, praw);
+   g_bkT1 = t; g_bkP1 = p;
+   g_bkLiveT = t; g_bkLiveP = p;
+   g_bkHeld = true;
+   g_bkState = BK_PREVIEW;
+   string pv = BaseKnotPrevName();
+   if(pv == "") return;
+   if(ObjectFind(0, pv) < 0) ObjectCreate(0, pv, OBJ_RECTANGLE, 0, t, p, t, p);
+   ObjectSetInteger(0, pv, OBJPROP_COLOR, C'255,171,0');
+   ObjectSetInteger(0, pv, OBJPROP_STYLE, STYLE_DOT);
+   ObjectSetInteger(0, pv, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, pv, OBJPROP_FILL, false);
+   ObjectSetInteger(0, pv, OBJPROP_BACK, true);
+   ObjectSetInteger(0, pv, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, pv, OBJPROP_HIDDEN, true);
+   ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
@@ -761,23 +766,44 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    }
    if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") >= 0) { BaseKnotCancel(); return true; }
 
-   //--- left rising edge inside MOUSE_MOVE = click 1 / 2 (no CLICK latency)
+   //--- press / drag / release (native-like). Rising = corner 1 on PRESS;
+   //--- held moves = live preview; falling (release) = commit at release.
    if(id == CHARTEVENT_MOUSE_MOVE)
    {
       int st = (int)StringToInteger(sparam);
       bool left = ((st & 1) != 0);
-      bool edge = (left && !g_bkLeftPrev);
+      bool rising  = (left && !g_bkLeftPrev);
+      bool falling = (!left && g_bkLeftPrev);
       g_bkLeftPrev = left;
-      if(edge)
+      if(rising)
       {
-         int sw = 0; datetime ct = 0; double cp = 0;
-         if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
-            BaseKnotClick(ct, cp);
+         if(g_bkState == BK_ARMED)
+         {
+            int sw = 0; datetime ct = 0; double cp = 0;
+            if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+               BaseKnotPress(ct, cp);
+         }
+         else if(g_bkState == BK_PREVIEW)
+            g_bkHeld = true;   // corner-2 drag begins (corner 1 stays)
          return true;
       }
-      //--- rubber-band: live preview follows the cursor, zero indicator work.
+      if(falling)
+      {
+         if(g_bkState == BK_PREVIEW)
+         {
+            g_bkHeld = false;
+            int sw = 0; datetime ft = 0; double fp = 0;
+            if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ft, fp) && sw == 0 && ft > 0 && fp > 0)
+               BaseKnotCommit(ft, fp);
+            else if(g_bkLiveT > 0)
+               BaseKnotCommit(g_bkLiveT, g_bkLiveP);   // released off-chart → last seen point
+         }
+         return true;
+      }
+      //--- rubber-band: live preview follows the cursor while HELD (drag)
+      //--- and while hovering (tap-tap sizing) — zero indicator work.
       //--- throttled: a mouse-move storm must never pin the CPU (30 ms ≈ 33 fps).
-      if(g_bkState == BK_PREVIEW && !left)
+      if(g_bkState == BK_PREVIEW)
       {
          static uint s_bkRubberMs = 0;
          uint nowR = GetTickCount();
@@ -790,6 +816,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
+            g_bkLiveT = ht; g_bkLiveP = hp;
             BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();
          }
@@ -798,12 +825,22 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       return (g_bkState == BK_PREVIEW);   // swallow moves mid-gesture, ignore idle hovers
    }
 
-   //--- CLICK fallback (some builds/mice emit no clean rising edge)
+   //--- CLICK fallback (tap path + builds with no clean press/release edge:
+   //--- ARMED+CLICK = corner 1, PREVIEW+CLICK = corner 2 commit; after a
+   //--- drag-release commit the state is IDLE so the trailing CLICK dies).
    if(id == CHARTEVENT_CLICK)
    {
       int sw = 0; datetime ct = 0; double cp = 0;
       if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
-         BaseKnotClick(ct, cp);
+      {
+         if(g_bkState == BK_ARMED)
+            BaseKnotPress(ct, cp);
+         else if(g_bkState == BK_PREVIEW)
+         {
+            g_bkHeld = false;
+            BaseKnotCommit(ct, cp);
+         }
+      }
       return true;
    }
 

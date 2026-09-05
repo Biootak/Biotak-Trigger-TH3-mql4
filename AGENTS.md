@@ -321,13 +321,16 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
-- **Base / Knot Measurement Tool = Tools slot 3, two-click, single-shot**
-  (2026-09-05 drawer — TradingView-style base-box drawer, kept SIMPLE on
-  purpose (2026-09-06: three press-drag/hybrid rewrites were reverted; the
-  simple version is the law): click corner 1, rubber-band follows, click
-  corner 2 = commit. `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit
+- **Base / Knot Measurement Tool = Tools slot 3, native-like drag, single-shot**
+  (2026-09-05 drawer; 2026-09-06 drag gesture: press = corner 1, hold + move
+  = live rubber-band + Entry/SL/TP, release = commit — exactly like MT4's own
+  rectangle tool. Tap-tap still works (click 1 → hover preview → click 2).
+  `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit
   (commit AND cancel → `IDLE` + menu restore via `BaseKnotTakeRestoreFlag()`
-  in `HandleUIChartEvent`, stray clicks draw nothing). Sizing preview =
+  in `HandleUIChartEvent`, stray clicks draw nothing). Press never commits
+  (only the release / next click does), so no double-commit; `g_bkHeld`
+  tracks the held button, `g_bkLiveT/P` is the off-chart-release fallback.
+  Sizing preview =
   dotted `PREVIEW` rect + LIVE Entry/SL/TP + info (`<prefix>_BK_LIVE_*`,
   direction re-resolved while sizing, wiped at commit/cancel/deinit);
   same-bar/zero-height commits rejected, preview kept. Committed boxes own
@@ -338,8 +341,8 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   Direction is AUTOMATIC at commit (no Buy/Sell badge — `NOBUYSELL`
   2026-09-06): box mid below live price = Buy, above = Sell; leftovers purged
   in `BaseKnotSync` + the CLICK handler. The
-  session is consumed FIRST in `OnChartEventHandler` (500ms arm-guard +
-  click debounce, chart scroll locked with raw `Chart*` calls so Lite
+  session is consumed FIRST in `OnChartEventHandler` (500ms arm-guard on the
+  CLICK fallback path, chart scroll locked with raw `Chart*` calls so Lite
   compiles menu-free — Lite keeps drag/delete/badges, arming is Full-only).
   Pips via `GetCachedPipSize()`, never hardcoded point math; TP = 2R.
   `TOOL_COUNT`-driven menu loops pick new tools up automatically; panel-less
