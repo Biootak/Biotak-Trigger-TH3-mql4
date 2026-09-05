@@ -117,6 +117,17 @@ static color g_factorLevelColor = C'0,100,0';                    // [06] inpFact
 static int g_factorTransparency = 0;                             // palette TR (default solid)
 static ENUM_LINE_STYLE g_factorLevelStyle = STYLE_DOT;           // [06] inpFactorLevelStyle
 static int g_factorLevelWidth = 1;                               // [06] inpFactorLevelWidth
+// [05] STYLE / COMBO STEP — runtime mirrors so the Step card's inline Combo
+// section can edit them live (same rails as every other mirror: FF_ defaults,
+// OV_ persistence, Q-reset). Consumers read inpComboX == these copies.
+static ENUM_COMBO_MODE g_comboMode = COMBO_MODE_PRESET;           // [05] inpComboMode
+static ENUM_COMBO_PRESET g_comboPreset = COMBO_PRESET_BALANCED_MEDIUM; // [05] inpComboPreset
+static ENUM_COMBO_TIMEFRAME_TYPE g_comboComp1TF = COMBO_TF_PATTERN;    // [05] inpComboComp1TF
+static ENUM_COMBO_STEP_TYPE g_comboComp1Step = COMBO_STEP_TH;     // [05] inpComboComp1Step
+static ENUM_COMBO_OPERATION g_comboOp1 = COMBO_OP_AVERAGE;        // [05] inpComboOp1
+static bool g_comboComp2Enabled = true;                           // [05] inpComboComp2Enabled
+static ENUM_COMBO_TIMEFRAME_TYPE g_comboComp2TF = COMBO_TF_TRIGGER;    // [05] inpComboComp2TF
+static ENUM_COMBO_STEP_TYPE g_comboComp2Step = COMBO_STEP_TH;     // [05] inpComboComp2Step
 
 //==============================================================================
 // FACTORY DEFAULTS — the raw Inputs-dialog values as attached, captured in
@@ -178,6 +189,14 @@ enum FactorySetting
    FF_SHOW_STRUCTURE_L3,   // inpShowStructureL3
    FF_SHOW_STRUCTURE_L4,   // inpShowStructureL4
    FF_SHOW_STRUCTURE_L5,   // inpShowStructureL5
+   FF_COMBO_MODE,        // inpComboMode
+   FF_COMBO_PRESET,      // inpComboPreset
+   FF_COMBO_C1TF,        // inpComboComp1TF
+   FF_COMBO_C1STEP,      // inpComboComp1Step
+   FF_COMBO_OP1,         // inpComboOp1
+   FF_COMBO_C2ON,        // inpComboComp2Enabled
+   FF_COMBO_C2TF,        // inpComboComp2TF
+   FF_COMBO_C2STEP,      // inpComboComp2Step
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -262,6 +281,14 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_SHOW_STRUCTURE_L3]   = inpShowStructureL3;
    g_factoryDefaults[FF_SHOW_STRUCTURE_L4]   = inpShowStructureL4;
    g_factoryDefaults[FF_SHOW_STRUCTURE_L5]   = inpShowStructureL5;
+   g_factoryDefaults[FF_COMBO_MODE]           = inpComboMode;
+   g_factoryDefaults[FF_COMBO_PRESET]         = inpComboPreset;
+   g_factoryDefaults[FF_COMBO_C1TF]           = inpComboComp1TF;
+   g_factoryDefaults[FF_COMBO_C1STEP]         = inpComboComp1Step;
+   g_factoryDefaults[FF_COMBO_OP1]            = inpComboOp1;
+   g_factoryDefaults[FF_COMBO_C2ON]           = inpComboComp2Enabled;
+   g_factoryDefaults[FF_COMBO_C2TF]           = inpComboComp2TF;
+   g_factoryDefaults[FF_COMBO_C2STEP]         = inpComboComp2Step;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -309,6 +336,16 @@ void RuntimeSettingsInit()
    g_factorLevelColor = inpFactorLevelColor;
    g_factorLevelStyle = inpFactorLevelStyle;
    g_factorLevelWidth = inpFactorLevelWidth;
+
+   // [05] STYLE / COMBO STEP
+   g_comboMode = inpComboMode;
+   g_comboPreset = inpComboPreset;
+   g_comboComp1TF = inpComboComp1TF;
+   g_comboComp1Step = inpComboComp1Step;
+   g_comboOp1 = inpComboOp1;
+   g_comboComp2Enabled = inpComboComp2Enabled;
+   g_comboComp2TF = inpComboComp2TF;
+   g_comboComp2Step = inpComboComp2Step;
 
    // [07] ZONES / MID
    g_showMidZones = inpShowMidZones;
@@ -428,6 +465,14 @@ void RuntimeSettingsInit()
 #define inpFactorLevelColor g_factorLevelColor
 #define inpFactorLevelStyle g_factorLevelStyle
 #define inpFactorLevelWidth g_factorLevelWidth
+#define inpComboMode g_comboMode
+#define inpComboPreset g_comboPreset
+#define inpComboComp1TF g_comboComp1TF
+#define inpComboComp1Step g_comboComp1Step
+#define inpComboOp1 g_comboOp1
+#define inpComboComp2Enabled g_comboComp2Enabled
+#define inpComboComp2TF g_comboComp2TF
+#define inpComboComp2Step g_comboComp2Step
 
 //==============================================================================
 // PERSISTED OVERRIDES — panel edits survive re-attach through chart-scoped
@@ -521,6 +566,14 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "FCT", g_factorTransparency);
    GlobalVariableSet(p + "FY",  g_factorLevelStyle);
    GlobalVariableSet(p + "FW",  g_factorLevelWidth);
+   GlobalVariableSet(p + "CM",  g_comboMode);
+   GlobalVariableSet(p + "CP",  g_comboPreset);
+   GlobalVariableSet(p + "C1T", g_comboComp1TF);
+   GlobalVariableSet(p + "C1S", g_comboComp1Step);
+   GlobalVariableSet(p + "CO1", g_comboOp1);
+   GlobalVariableSet(p + "C2E", g_comboComp2Enabled ? 1 : 0);
+   GlobalVariableSet(p + "C2T", g_comboComp2TF);
+   GlobalVariableSet(p + "C2S", g_comboComp2Step);
    GlobalVariablesFlush();
 }
 
@@ -604,6 +657,14 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "FCT")) g_factorTransparency = ClampSettingInt((int)GlobalVariableGet(p + "FCT"), 0, 100);
    if(GlobalVariableCheck(p + "FY"))  g_factorLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "FY"), 0, 4);
    if(GlobalVariableCheck(p + "FW"))  g_factorLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "FW"), 1, 5);
+   if(GlobalVariableCheck(p + "CM"))  g_comboMode = (ENUM_COMBO_MODE)ClampSettingInt((int)GlobalVariableGet(p + "CM"), 0, 1);
+   if(GlobalVariableCheck(p + "CP"))  g_comboPreset = (ENUM_COMBO_PRESET)ClampSettingInt((int)GlobalVariableGet(p + "CP"), 0, 7);
+   if(GlobalVariableCheck(p + "C1T")) g_comboComp1TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1T"), 0, 3);
+   if(GlobalVariableCheck(p + "C1S")) g_comboComp1Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1S"), 0, 3);
+   if(GlobalVariableCheck(p + "CO1")) g_comboOp1 = (ENUM_COMBO_OPERATION)ClampSettingInt((int)GlobalVariableGet(p + "CO1"), 0, 6);
+   if(GlobalVariableCheck(p + "C2E")) g_comboComp2Enabled = (GlobalVariableGet(p + "C2E") > 0.5);
+   if(GlobalVariableCheck(p + "C2T")) g_comboComp2TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2T"), 0, 3);
+   if(GlobalVariableCheck(p + "C2S")) g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2S"), 0, 3);
 }
 
 //--- throttled saver (panel/palette drags fire per mouse-move)

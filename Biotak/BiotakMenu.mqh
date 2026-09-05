@@ -90,7 +90,7 @@
 // Tools half-circle
 #define CIR_PIN             8   // Custom Price Pin
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
-#define CIR_FACTOR_OVERRIDE 10  // Factor Override
+// FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
 
 //--- ring layout (main circle — 6 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
@@ -106,12 +106,14 @@
 #define RING_TOOLS    5
 
 //--- Tools half-circle (sub-menu under Tools)
-#define TOOL_COUNT 3
+// FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
+// the Step Mode card now, so Tools is Pin + Step only.
+#define TOOL_COUNT 2
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
-#define TOOL_FACTOR_OVERRIDE  2
+// FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 #define TOOL_RADIUS 56   // >44 to avoid overlap with Tools button (44px diameter)
-#define TOOL_SPREAD 110.0  // 3 items → 55° step
+#define TOOL_SPREAD 110.0  // 2 items → ±55°
 #define TOOL_GAP    6
 
 //--- palette (glass-like dark buttons; skins carry the visuals, buttons are hit areas)
@@ -138,7 +140,7 @@ int ToolPanel(const int toolIdx)
    int feat = ToolFeature(toolIdx);
    if(feat == CIR_PIN) return 8; // PIN panel
    if(feat == CIR_STEP_OVERRIDE) return 9; // Step Mode override panel
-   if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override panel
+   // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override panel
    return -1;
 }
 
@@ -163,7 +165,7 @@ int ToolFeature(const int toolIdx)
 {
    if(toolIdx == TOOL_PIN)             return CIR_PIN;
    if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
-   if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
+   // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
    return -1;
 }
 
@@ -402,7 +404,7 @@ bool CircFeatureOn(const int i)
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
    //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
-   if(i == CIR_FACTOR_OVERRIDE) return (g_factorValueOverride > 0.0);
+   // FACTORBTN-OFF: if(i == CIR_FACTOR_OVERRIDE) return (g_factorValueOverride > 0.0);
    if(i == CIR_TOOLS)           return g_ToolsOpen;
    return false;
 }
@@ -446,9 +448,9 @@ string CircIconRes(const int i, const bool on)
    // TH3TOOL-OFF: else if(i == CIR_TH3) base = "custom";  // TH3 tool/gauge icon
    else if(i == CIR_HTF)        base = "htf";     // HTF candle icon
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
-   else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
-   else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
-   else if(i == CIR_TOOLS)      base = "tools";
+    else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
+    // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
+    else if(i == CIR_TOOLS)      base = "tools";
    else                         base = "htf";
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
 }
@@ -538,11 +540,12 @@ string CircBadgeText(const int i)
       if(sm == FACTOR_STEP) return "Fa";
       return "";
    }
-   if(i == CIR_FACTOR_OVERRIDE)
-   {
-      if(g_factorValueOverride > 0) return DoubleToString(g_factorValueOverride, 0);
-      return "Aut";
-   }
+   // FACTORBTN-OFF:
+   //if(i == CIR_FACTOR_OVERRIDE)
+   //{
+   //   if(g_factorValueOverride > 0) return DoubleToString(g_factorValueOverride, 0);
+   //   return "Aut";
+   //}
    return "";
 }
 
@@ -554,23 +557,264 @@ string CircHtfBadgeLabel(const int periodMinutes)
    return IntegerToString(periodMinutes) + "M";
 }
 
+// Live status fragment for a ring/tools feature ("ON", "H4", "Combo", ...).
+// CircItemTooltip embeds it so the hover text always shows the CURRENT state:
+// every state change re-runs CircConfigureIcon (icon tooltip) +
+// CircUpdateItemState/ToolsUpdateItemState (bg tooltip), and the per-tick
+// UpdateMenuSyncIfChanged fingerprint already covers all these values
+// (on/off flags + CircBadgeText), so hotkey/panel changes refresh tooltips too.
+string CircTooltipStatus(const int i)
+{
+   if(i == CIR_ZONES)             return g_showMidZones ? "ON" : "OFF";
+   if(i == CIR_TRIGGER)           return g_triggerLevelsEnabled ? "ON" : "OFF";
+   if(i == CIR_ATR)               return g_atrLabelsVisible ? "ON" : "OFF";
+   if(i == CIR_TH)
+   {
+      if(g_thLabelsMode == 1) return "Fractal";
+      if(g_thLabelsMode == 2) return "Standard";
+      if(g_thLabelsMode == 3) return "Fractal + Standard";
+      return "Off";
+   }
+   // VIEWLOCK-OFF:
+   //if(i == CIR_VLOCK)             return g_viewLockEnabled ? "ON" : "OFF";
+   // TH3TOOL-OFF:
+   //if(i == CIR_TH3)               return "Off";
+   if(i == CIR_HTF)
+   {
+      string st = g_UI.showHTF ? "ON" : "OFF";
+      string lbl = CircHtfBadgeLabel(g_HTFPeriod);
+      if(lbl != "") st += " · " + lbl;
+      return st;
+   }
+   if(i == CIR_PIN)
+   {
+      if(g_customPriceLineCreated && g_customTHStartPrice > 0)
+         return DoubleToString(g_customTHStartPrice, Digits);
+      return "Not placed";
+   }
+   if(i == CIR_STEP_OVERRIDE)
+   {
+      ENUM_STEP_CALCULATION_MODE sm = GetCurrentStepMode();
+      if(sm == SS_LS_STEP) return "SS-LS";
+      if(sm == COMBO_STEP) return "Combo";
+      if(sm == FACTOR_STEP) return "Factor";
+      return "TH";
+   }
+   // FACTORBTN-OFF:
+   //if(i == CIR_FACTOR_OVERRIDE)
+   //{
+   //   if(g_factorValueOverride > 0) return DoubleToString(g_factorValueOverride, 0);
+   //   return "Auto";
+   //}
+   if(i == CIR_TOOLS)             return g_ToolsOpen ? "Open" : "Closed";
+   return "";
+}
+
 string CircItemTooltip(const int i)
 {
    switch(i)
    {
-      case CIR_ZONES:           return "Zones & Levels\nClick: toggle mid zones · Hold: full settings";
-      case CIR_TRIGGER:         return "Trigger Zones\nClick: toggle trigger zones · Hold: settings";
-      case CIR_ATR:             return "ATR Labels\nClick: toggle ATR labels · Hold: settings";
-      case CIR_TH:              return "TH Labels Mode\nClick: cycle TH labels mode · Hold: settings";
+      case CIR_ZONES:           return "Zones & Levels · " + CircTooltipStatus(i) + "\nClick: toggle mid zones · Hold: full settings";
+      case CIR_TRIGGER:         return "Trigger Zones · " + CircTooltipStatus(i) + "\nClick: toggle trigger zones · Hold: settings";
+      case CIR_ATR:             return "ATR Labels · " + CircTooltipStatus(i) + "\nClick: toggle ATR labels · Hold: settings";
+      case CIR_TH:              return "TH Labels · " + CircTooltipStatus(i) + "\nClick: cycle TH labels mode · Hold: settings";
        // VIEWLOCK-OFF: case CIR_VLOCK: return "View Lock\nClick: keep this view across timeframes · Hold: settings";
        // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
-       case CIR_HTF:             return "Higher Timeframe Candles\nClick: toggle HTF candles · Hold: settings";
-      case CIR_PIN:             return "Custom Price Pin\nClick: activate pin placement · Drag line: adjust · ESC: clear";
-       case CIR_STEP_OVERRIDE:   return "Step Mode\nClick: cycle step mode (TH/SS-LS/Combo/Factor) · Hold: settings";
-      case CIR_FACTOR_OVERRIDE: return "Factor Value Override\nClick: cycle override · Hold: settings";
-      case CIR_TOOLS:           return "Biotak Tools\nClick: open tools menu";
+       case CIR_HTF:             return "HTF Candles · " + CircTooltipStatus(i) + "\nClick: toggle HTF candles · Hold: settings";
+      case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
+       case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
+      // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
+      case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
+}
+
+//+------------------------------------------------------------------+
+//| CUSTOM HOVER TOOLTIP — the same live text as OBJPROP_TOOLTIP, but |
+//| drawn by the menu itself (dark chip + amber title), because native |
+//| hover tooltips do not display in this environment. Anchored above  |
+//| the hovered item (orb / ring / tools), ZORDER 1700+ keeps it above |
+//| panels (1540) and the palette popup (1603). Non-intrusive by design:|
+//| CircTipOnMove only ARMS the tip; CircTipTick (per-tick) shows it   |
+//| after CIRC_TIP_DELAY_MS of stationary hover, and any move/press    |
+//| hides it instantly. CircTipRefresh keeps visible text fresh.       |
+//+------------------------------------------------------------------+
+#define CIRC_TIP_W   290
+#define CIRC_TIP_H   56
+#define CIRC_TIP_BG  C'13,20,32'
+#define CIRC_TIP_BD  C'255,171,0'
+#define CIRC_TIP_TX  C'235,240,248'
+// Dwell before the tip appears: stationary hover only, so normal navigation
+// never flashes it (native-OS-tooltip behavior, tuned long per UX request).
+#define CIRC_TIP_DELAY_MS 1500
+
+string CircTipBg() { return g_UI.btnPrefix + "CircTipBg"; }
+string CircTipTxT() { return g_UI.btnPrefix + "CircTipTxT"; }
+string CircTipTxH() { return g_UI.btnPrefix + "CircTipTxH"; }
+// -2 = hidden, -1 = orb, else a CIR_* feature code (unique across ring+tools)
+static int s_CircTipFeat = -2;
+// Armed (pending) tip: shown by CircTipTick after the dwell elapses.
+static int s_TipPendFeat = -2;
+static uint s_TipPendSince = 0;
+static int s_TipMX = -1, s_TipMY = -1;
+
+string CircTipText(const int feat)
+{
+   if(feat == -1) return "Biotak Terminal Menu\nClick: open/close · Drag: move";
+   return CircItemTooltip(feat);
+}
+
+void CircTipHide()
+{
+   if(s_CircTipFeat == -2) return;
+   s_CircTipFeat = -2;
+   ObjectDelete(0, CircTipBg());
+   ObjectDelete(0, CircTipTxT());
+   ObjectDelete(0, CircTipTxH());
+   ChartRedraw();
+}
+
+void CircTipShow(const int feat, const int ax, const int ay)
+{
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(cw <= 0) cw = 1920;
+   if(ch <= 0) ch = 1080;
+   int x = ax - CIRC_TIP_W / 2;
+   if(x < 4) x = 4;
+   if(x > cw - CIRC_TIP_W - 4) x = cw - CIRC_TIP_W - 4;
+   int y = ay - CIRC_TIP_H - 12;
+   if(y < 4) y = ay + CIRC_BTN_SIZE / 2 + 12;   // no room above → below the item
+
+   string bg = CircTipBg();
+   if(ObjectFind(0, bg) < 0) ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, bg, OBJPROP_XSIZE, CIRC_TIP_W);
+   ObjectSetInteger(0, bg, OBJPROP_YSIZE, CIRC_TIP_H);
+   ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, CIRC_TIP_BG);
+   ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, bg, OBJPROP_COLOR, CIRC_TIP_BD);
+   ObjectSetInteger(0, bg, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, bg, OBJPROP_BACK, false);
+   ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1700);
+
+   // title = first line (amber bold), hints = rest (light)
+   string full = CircTipText(feat);
+   string title = full, hints = "";
+   int nl = StringFind(full, "\n");
+   if(nl >= 0)
+   {
+      title = StringSubstr(full, 0, nl);
+      hints = StringSubstr(full, nl + 1);
+   }
+   string tt = CircTipTxT();
+   if(ObjectFind(0, tt) < 0) ObjectCreate(0, tt, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, tt, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, tt, OBJPROP_XDISTANCE, x + 10);
+   ObjectSetInteger(0, tt, OBJPROP_YDISTANCE, y + 5);
+   ObjectSetString(0, tt, OBJPROP_TEXT, title);
+   ObjectSetString(0, tt, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, tt, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, tt, OBJPROP_COLOR, CIRC_TIP_BD);
+   ObjectSetInteger(0, tt, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, tt, OBJPROP_BACK, false);
+   ObjectSetInteger(0, tt, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, tt, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, tt, OBJPROP_ZORDER, 1701);
+
+   string th = CircTipTxH();
+   if(ObjectFind(0, th) < 0) ObjectCreate(0, th, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, th, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, th, OBJPROP_XDISTANCE, x + 10);
+   ObjectSetInteger(0, th, OBJPROP_YDISTANCE, y + 26);
+   ObjectSetString(0, th, OBJPROP_TEXT, hints);
+   ObjectSetString(0, th, OBJPROP_FONT, "Arial");
+   ObjectSetInteger(0, th, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, th, OBJPROP_COLOR, CIRC_TIP_TX);
+   ObjectSetInteger(0, th, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
+   ObjectSetInteger(0, th, OBJPROP_BACK, false);
+   ObjectSetInteger(0, th, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, th, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, th, OBJPROP_ZORDER, 1701);
+
+   s_CircTipFeat = feat;
+   ChartRedraw();
+}
+
+// Feature under the cursor (-2 = none, -1 = orb, else CIR_* code).
+int CircTipFeatAt(const int mx, const int my)
+{
+   int ox = g_UI.menuX - CIRC_ORB_SIZE / 2;
+   int oy = g_UI.menuY - CIRC_ORB_SIZE / 2;
+   bool onOrb = (mx >= ox && mx <= ox + CIRC_ORB_SIZE && my >= oy && my <= oy + CIRC_ORB_SIZE);
+   if(!g_UI.menuVisible)
+      return onOrb ? -1 : -2;   // collapsed: orb only
+   int hit = CircItemAt(mx, my);
+   if(hit >= 0) return RingFeature(hit);
+   int th2 = ToolsItemAt(mx, my);
+   if(th2 >= 0) return ToolFeature(th2);
+   return onOrb ? -1 : -2;
+}
+
+// Anchor (item center) for a feature; false when the item is gone.
+bool CircTipAnchor(const int feat, int &ax, int &ay)
+{
+   if(feat == -1) { ax = g_UI.menuX; ay = g_UI.menuY; return true; }
+   if(g_UI.menuVisible)
+   {
+      for(int i = 0; i < RING_COUNT; i++)
+         if(RingFeature(i) == feat) { CircLayout(i, ax, ay); return true; }
+      for(int t = 0; t < TOOL_COUNT; t++)
+         if(ToolFeature(t) == feat) { ToolsLayout(t, ax, ay); return true; }
+   }
+   return false;
+}
+
+// Hover dispatcher — call on every mouse move (before any press/visibility
+// guards so leaving the menu also hides a stale tip). Only ARMS the tip;
+// CircTipTick() (per-tick) shows it after CIRC_TIP_DELAY_MS of stationary
+// hover, so it never intrudes on normal navigation.
+void CircTipOnMove(const int mx, const int my, const bool leftDown)
+{
+   // same-spot repeats (MT4 re-fires move events) need no re-hit-test
+   static bool s_TipDown = false;
+   if(mx == s_TipMX && my == s_TipMY && leftDown == s_TipDown) return;
+   s_TipMX = mx; s_TipMY = my; s_TipDown = leftDown;
+   if(leftDown || g_LongPressItem >= 0) { s_TipPendFeat = -2; CircTipHide(); return; }
+   int feat = CircTipFeatAt(mx, my);
+   if(feat == -2) { s_TipPendFeat = -2; CircTipHide(); return; }
+   if(feat == s_CircTipFeat && ObjectFind(0, CircTipBg()) >= 0) { s_TipPendFeat = -2; return; }
+   if(feat != s_TipPendFeat) { s_TipPendFeat = feat; s_TipPendSince = GetTickCount(); }
+   if(s_CircTipFeat != -2) CircTipHide();   // moved to another item: hide now, arm new
+}
+
+// Per-tick: show an armed tip once its dwell elapsed (mouse stationary — any
+// move re-arms/cancels via CircTipOnMove first).
+void CircTipTick()
+{
+   if(s_TipPendFeat == -2) return;
+   if(GetTickCount() - s_TipPendSince < CIRC_TIP_DELAY_MS) return;
+   int feat = s_TipPendFeat;
+   s_TipPendFeat = -2;
+   int ax = 0, ay = 0;
+   if(CircTipFeatAt(s_TipMX, s_TipMY) != feat) return;   // moved on without events
+   if(!CircTipAnchor(feat, ax, ay)) return;
+   CircTipShow(feat, ax, ay);
+}
+
+// Re-apply the text while visible (state changed under a stationary cursor).
+void CircTipRefresh()
+{
+   if(s_CircTipFeat == -2 || ObjectFind(0, CircTipTxT()) < 0) return;
+   string full = CircTipText(s_CircTipFeat);
+   int nl = StringFind(full, "\n");
+   ObjectSetString(0, CircTipTxT(), OBJPROP_TEXT, nl >= 0 ? StringSubstr(full, 0, nl) : full);
+   ObjectSetString(0, CircTipTxH(), OBJPROP_TEXT, nl >= 0 ? StringSubstr(full, nl + 1) : "");
+   ChartRedraw();
 }
 
 double CircFitRadius(const int cw, const int ch, const int ox, const int oy)
@@ -1044,6 +1288,11 @@ void DeleteMenu()
    DeleteToolsMenu();
    ObjectDelete(0, CircOrbBg());
    ObjectDelete(0, CircOrbIcon());
+   s_CircTipFeat = -2;   // tooltip objects share the prefix pattern below
+   s_TipPendFeat = -2;
+   ObjectDelete(0, CircTipBg());
+   ObjectDelete(0, CircTipTxT());
+   ObjectDelete(0, CircTipTxH());
 }
 
 void CircMoveItem(const int i)
@@ -1167,6 +1416,9 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
                          const bool pressStart)
 {
    g_OrbMovedThisEvent = false;
+
+   CircTipOnMove(mx, my, leftDown);   // custom hover tooltip (runs before
+   // the hidden-menu guard below so a stale tip also hides when hidden)
 
    // Hidden menu: only the orb is interactive — and it must STAY draggable
    // while the ring is collapsed. A fresh press may therefore fall through to
@@ -1332,6 +1584,7 @@ void CircUpdateItemState(const int i)
       string res = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, res);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, res);
+      ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircItemTooltip(feat));   // bg ring keeps a live tooltip too
    }
 
    if(CircHasBadge(feat)) CircShowBadge(i, on);
@@ -1354,6 +1607,7 @@ void ToolsUpdateItemState(const int t)
       string res = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, res);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, res);
+      ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircItemTooltip(feat));   // bg ring keeps a live tooltip too
    }
    // Refresh badge text + visibility (e.g. Step/Factor override → Auto)
    if(CircHasBadge(feat) && ObjectFind(0, ToolsBadgeBg(t)) >= 0)
@@ -1454,6 +1708,7 @@ void UpdateMenuSyncIfChanged()
    if(g_UI.menuVisible)
       UpdateCircularItemStates();
    UpdateCircularBadges();
+   CircTipRefresh();   // hovered tooltip follows the new state
 }
 
 int CircIndexFromName(const string name)
@@ -1550,20 +1805,21 @@ int HandleButtonClick(const string clickedObject)
           g_redrawTHLevelsNeeded = true;
           tflags = REFRESH_ALL;
        }
-      else if(tfeat == CIR_FACTOR_OVERRIDE)
-      {
-         if(g_factorValueOverride == 0) g_factorValueOverride = 25;
-         else if(g_factorValueOverride == 25) g_factorValueOverride = 50;
-         else if(g_factorValueOverride == 50) g_factorValueOverride = 100;
-         else if(g_factorValueOverride == 100) g_factorValueOverride = 144;
-         else g_factorValueOverride = 0;
-         string factorGvarName = "Biotak_Factor_" + GetCachedChartIdStr();
-         if(g_factorValueOverride == 0) GlobalVariableDel(factorGvarName);
-         else GlobalVariableSet(factorGvarName, g_factorValueOverride);
-         g_forceClearOnNextDraw = true;
-         g_redrawTHLevelsNeeded = true;
-         tflags = REFRESH_ALL;
-      }
+      // FACTORBTN-OFF:
+      //else if(tfeat == CIR_FACTOR_OVERRIDE)
+      //{
+      //   if(g_factorValueOverride == 0) g_factorValueOverride = 25;
+      //   else if(g_factorValueOverride == 25) g_factorValueOverride = 50;
+      //   else if(g_factorValueOverride == 50) g_factorValueOverride = 100;
+      //   else if(g_factorValueOverride == 100) g_factorValueOverride = 144;
+      //   else g_factorValueOverride = 0;
+      //   string factorGvarName = "Biotak_Factor_" + GetCachedChartIdStr();
+      //   if(g_factorValueOverride == 0) GlobalVariableDel(factorGvarName);
+      //   else GlobalVariableSet(factorGvarName, g_factorValueOverride);
+      //   g_forceClearOnNextDraw = true;
+      //   g_redrawTHLevelsNeeded = true;
+      //   tflags = REFRESH_ALL;
+      //}
       ToolsUpdateItemState(tidx);
       UpdateCircularBadges();
       SaveUIStates();

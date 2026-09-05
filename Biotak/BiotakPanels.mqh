@@ -82,10 +82,14 @@ color QuickPalColor(const int i)
 // Row counts per settings panel. State lives in BiotakKit.mqh.
 // 0 Trigger Zones (zones-only, 4 rows) · 1 ZONES & LEVELS (main card, 11 rows)
 // 2 ATR · 3 TH · 4 retired (was View Lock) · 5 TH3 · 6 HTF · 7 LINES (unified [08.4] line appearance)
-// 8 CustomPrice · 9 StepMode (single mode + levels) · 10 Factor · 11 STRUCTURE (sub-card)
+// 8 CustomPrice · 9 StepMode (mode + selected mode's rows + levels, dynamic —
+// see PnlStepSectionRows) · 10 Factor · 11 STRUCTURE (sub-card)
 // VIEWLOCK-OFF: g_PnlRows[4] kept =1 dormant (stable panel keys — never reorder).
 // STEPOVERRIDE-OFF: g_PnlRows[9] 3→2 (OVERRIDE row retired; rows inside a card
-// are positional — CALC MODE is now row 0, MAX LEVELS row 1).
+// are positional — CALC MODE was row 0, MAX LEVELS row 1 back then).
+// STEPSECTIONS: g_PnlRows[9] is only the BASE (2); PnlRowsCount(9) returns
+// 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
+// so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 #define PNL_COUNT 12
 int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7};
 int g_PnlOpen      = -1;
@@ -112,6 +116,7 @@ bool PnlIsStyleRow(const int item,const int row)
    if(item==7 && row==3) return true;        // Lines STYLE
    if(item==5 && row==4) return true;        // TH3 STYLE
    if(item==10 && row==5) return true;       // Factor STYLE
+   if(item==9 && row==6 && (int)g_stepCalculationMode==3) return true;   // Step card Factor STYLE
    return false;
 }
 
@@ -137,6 +142,7 @@ int PnlColorKind(const int item,const int row)
    if(item==7 && row==5)  return PAL_LINE;
    if(item==8 && row==1)  return PAL_CUSTOM_PRICE;
    if(item==10 && row==6) return PAL_FACTOR;
+   if(item==9 && row==7 && (int)g_stepCalculationMode==3) return PAL_FACTOR;   // Step card Factor COLOR
    return -1;
 }
 
@@ -298,6 +304,7 @@ color PnlDefColor(const int item,const int row)
    if(item==7 && row==5)  return DefLineColor();
    if(item==8 && row==1)  return DefCustomPriceColor();
    if(item==10 && row==6) return DefFactorColor();
+   if(item==9 && row==7 && (int)g_stepCalculationMode==3) return DefFactorColor();
    return clrNONE;
 }
 
@@ -1070,7 +1077,33 @@ string PnlHead(const int item,const string kind)
 int PnlRowsCount(const int item)
 {
    if(item < 0 || item > 11) return 0;
+   if(item == 9) return 2 + PnlStepSectionRows();   // STEP MODE + mode section + MAX LEVELS
    return g_PnlRows[item];
+}
+
+//+------------------------------------------------------------------+
+//| STEP card (9) inline mode section — the SELECTED step mode's own  |
+//| settings live right below the STEP MODE segments ("same below").  |
+//| Row 0 = STEP MODE segments; rows 1..K = section; last = MAX LEVELS|
+//|   TH (0):    no rows — TH has no level settings of its own (its    |
+//|              FRACTAL/STANDARD flags are LABEL settings, not levels)|
+//|   SS-LS (1): 1 row  — LS FIRST (card 1 global)                    |
+//|   Combo (2): 8 rows — MODE/PRESET/COMP1 TF+STEP/OP/COMP2 ON+TF+STEP|
+//|   Factor(3): 7 rows — mirrors of Factor card 10 rows 0..6         |
+//+------------------------------------------------------------------+
+int PnlStepSectionRows()
+{
+   switch((int)g_stepCalculationMode)
+   {
+      case 0:  return 0;   // TH_STEP has no level settings of its own
+      case 1:  return 1;   // SS_LS_STEP
+      case 2:  return 8;   // COMBO_STEP
+      default: return 7;   // FACTOR_STEP
+   }
+}
+int PnlStepMaxLevelsRow()
+{
+   return 1 + PnlStepSectionRows();
 }
 
 //+------------------------------------------------------------------+
@@ -1151,6 +1184,94 @@ int LockOptFromPeriod(const int p)
 //| LEVELS, 2=ATR, 3=TH, 4=retired (was View Lock), 5=TH3, 6=HTF, 7=LINES (unified), |
 //| 8=Custom price, 9=Step mode, 10=Factor, 11=STRUCTURE sub-card)    |
 //+------------------------------------------------------------------+
+void PnlStepSectionRowDef(const int s,int &kind,string &label,
+                int &minV,int &maxV,double &step,string &unit,string &opts)
+{
+   kind=0; label=""; minV=0; maxV=100; step=1; unit=""; opts="";
+   int mode=(int)g_stepCalculationMode;
+   // NOTE: TH mode has no section (count 0) — it owns no level settings.
+   if(mode==1)   // SS-LS — same flag as ZONES card row 7
+   {
+      kind=1; label="LS FIRST";
+   }
+   else if(mode==2)   // COMBO — preset or advanced components
+   {
+      if(s==0)      { kind=2; label="MODE"; opts="Preset|Advanced"; minV=0; maxV=1; }
+      else if(s==1) { kind=2; label="PRESET"; opts="B-Med|B-Long|B-Trip|Cons|Aggr|Trend|SS|4/3"; minV=0; maxV=7; }
+      else if(s==2) { kind=2; label="COMP1 TF"; opts="Sub|Trigger|Pattern|Struct"; minV=0; maxV=3; }
+      else if(s==3) { kind=2; label="COMP1 STEP"; opts="TH|SS|LS|4/3"; minV=0; maxV=3; }
+      else if(s==4) { kind=2; label="OP"; opts="Avg|Add|Sub|Mul|Min|Max|Wtd"; minV=0; maxV=6; }
+      else if(s==5) { kind=1; label="COMP2"; }
+      else if(s==6) { kind=2; label="COMP2 TF"; opts="Sub|Trigger|Pattern|Struct"; minV=0; maxV=3; }
+      else          { kind=2; label="COMP2 STEP"; opts="TH|SS|LS|4/3"; minV=0; maxV=3; }
+   }
+   else   // FACTOR — same rows as FACTOR card 10 rows 0..6
+   {
+      if(s==0)      { kind=2; label="MODE"; opts="Auto|Manual"; minV=0; maxV=1; }
+      else if(s==1) { kind=2; label="DISPLAY"; opts="Classic|Direct"; minV=0; maxV=1; }
+      else if(s==2) { kind=2; label="BASIS"; opts="Control|SS|LS|TH|Trigger|Pattern|Structure|Combo"; minV=0; maxV=7; }
+      else if(s==3) { label="VALUE"; minV=1; maxV=500; }
+      else if(s==4) { label="WIDTH"; minV=1; maxV=5; }
+      else if(s==5) { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+      else          { kind=4; label="COLOR"; }
+   }
+}
+
+// Factory default of a STEP-card section row (s = row-1). Direct FF_ reads
+// only (no PnlDefVal cross-call — this sits above it in the file).
+double PnlStepSectionDefVal(const int s)
+{
+   int mode=(int)g_stepCalculationMode;
+   // NOTE: TH mode has no section (count 0).
+   if(mode==1) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;   // LS FIRST
+   if(mode==2)   // COMBO
+   {
+      if(s==0) return (int)FactoryDefault(FF_COMBO_MODE);
+      if(s==1) return (int)FactoryDefault(FF_COMBO_PRESET);
+      if(s==2) return (int)FactoryDefault(FF_COMBO_C1TF);
+      if(s==3) return (int)FactoryDefault(FF_COMBO_C1STEP);
+      if(s==4) return (int)FactoryDefault(FF_COMBO_OP1);
+      if(s==5) return (FactoryDefault(FF_COMBO_C2ON)>0.5)?1.0:0.0;
+      if(s==6) return (int)FactoryDefault(FF_COMBO_C2TF);
+      return (int)FactoryDefault(FF_COMBO_C2STEP);
+   }
+   // FACTOR — same defaults as FACTOR card 10 rows 0..6
+   if(s==0) return (int)FactoryDefault(FF_FACTOR_MODE);
+   if(s==1) return (int)FactoryDefault(FF_FACTOR_DISPLAY);
+   if(s==2) return (int)FactoryDefault(FF_FACTOR_BASIS);
+   if(s==3) return FactoryDefault(FF_FACTOR_VALUE);
+   if(s==4) return FactoryDefault(FF_FACTOR_WIDTH);
+   if(s==5) return (int)FactoryDefault(FF_FACTOR_STYLE);
+   return 3;   // COLOR row → palette sentinel
+}
+
+// Live value of a STEP-card section row. Direct g_ reads only.
+double PnlStepSectionCurrent(const int s)
+{
+   int mode=(int)g_stepCalculationMode;
+   // NOTE: TH mode has no section (count 0).
+   if(mode==1) return g_lsFirst?1.0:0.0;   // LS FIRST
+   if(mode==2)   // COMBO
+   {
+      if(s==0) return (int)g_comboMode;
+      if(s==1) return (int)g_comboPreset;
+      if(s==2) return (int)g_comboComp1TF;
+      if(s==3) return (int)g_comboComp1Step;
+      if(s==4) return (int)g_comboOp1;
+      if(s==5) return g_comboComp2Enabled?1.0:0.0;
+      if(s==6) return (int)g_comboComp2TF;
+      return (int)g_comboComp2Step;
+   }
+   // FACTOR
+   if(s==0) return (int)g_factorMode;
+   if(s==1) return (int)g_factorDisplayMode;
+   if(s==2) return (int)g_factorAutoBasis;
+   if(s==3) return g_factorValue;
+   if(s==4) return g_factorLevelWidth;
+   if(s==5) return (int)g_factorLevelStyle;
+   return 0;   // COLOR row (palette only)
+}
+
 void PnlRowDef(const int item,const int row,int &kind,string &label,
                int &minV,int &maxV,double &step,string &unit,string &opts)
 {
@@ -1252,12 +1373,13 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==2)  { kind=1; label="MAGNET"; }
       else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
    }
-   else if(item==9)   // STEP MODE — single setting: the mode + level count.
-                      // (STEPOVERRIDE-OFF: OVERRIDE row retired.)
-   {
-      if(row==0)       { kind=2; label="STEP MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
-      else             { label="MAX LEVELS"; minV=1; maxV=500; }
-   }
+    else if(item==9)   // STEP MODE — mode segments + the SELECTED mode's
+                       // own settings inline below + MAX LEVELS last.
+    {
+       if(row==0) { kind=2; label="STEP MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
+       else if(row==PnlStepMaxLevelsRow()) { label="MAX LEVELS"; minV=1; maxV=500; }
+       else PnlStepSectionRowDef(row-1, kind, label, minV, maxV, step, unit, opts);
+    }
    else if(item==11)  // STRUCTURE — sub-card opened from the Zones & Levels card
    {
       if(row==0)       { kind=5; label="BACK"; opts="1"; }   // NAV → Zones & Levels card
@@ -1409,7 +1531,8 @@ double PnlDefVal(const int item,const int row)
               if(row==3) return FactoryDefault(FF_MAGNET_SENS);
               return 3;   // COLOR row → palette sentinel
       case 9: if(row==0) return (int)FactoryDefault(FF_STEP_CALC_MODE);
-              return FactoryDefault(FF_MAX_LEVELS);     // row 1 — MAX LEVELS
+              if(row==PnlStepMaxLevelsRow()) return FactoryDefault(FF_MAX_LEVELS);
+              return PnlStepSectionDefVal(row-1);
       case 11: if(row==0) return 0.0;                   // BACK nav row
               if(row==1) return (FactoryDefault(FF_SHOW_STRUCTURE)>0.5)?1.0:0.0;
               if(row==2) return (FactoryDefault(FF_SHOW_STRUCTURE_L1)>0.5)?1.0:0.0;
@@ -1487,7 +1610,8 @@ double PnlCurrent(const int item,const int row)
               if(row==2) return g_enableMagnet?1.0:0.0;
               return g_magnetSensitivityPips;
       case 9: if(row==0) return (int)g_stepCalculationMode;
-              return g_maxLevels;   // row 1 — MAX LEVELS
+              if(row==PnlStepMaxLevelsRow()) return g_maxLevels;
+              return PnlStepSectionCurrent(row-1);
       case 11: if(row==0) return 0;            // BACK nav row
               if(row==1) return g_showStructure?1.0:0.0;
               if(row==2) return g_showStructureL1?1.0:0.0;
@@ -1643,7 +1767,9 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==2)  { g_enableMagnet=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }
          else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
          break;
-      case 9:   // STEP MODE — single mode + level count (no override layer).
+      case 9:   // STEP MODE — mode segments + the SELECTED mode's own
+                // settings inline below + MAX LEVELS last. Section rows
+                // delegate to their home cards so behavior never diverges.
          if(row==0)
          {
             g_stepCalculationMode=(ENUM_STEP_CALCULATION_MODE)(int)MathRound(v);
@@ -1653,8 +1779,29 @@ int PnlApply(const int item,const int row,const double v)
             g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true;
             flags=REFRESH_ALL;
          }
-         else             { g_maxLevels=ClampInt((int)MathRound(v),1,500);   // row 1 — MAX LEVELS
-                g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
+         else if(row==PnlStepMaxLevelsRow())
+         {
+            g_maxLevels=ClampInt((int)MathRound(v),1,500);
+            g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC;
+         }
+         else
+         {
+            int sec=row-1, md=(int)g_stepCalculationMode;
+            // NOTE: TH mode has no section rows (count 0).
+            if(md==1) return PnlApply(1, 7, v);       // LS FIRST
+            if(md==3) return PnlApply(10, sec, v);    // Factor rows 0..6
+            // COMBO section — same rails as the Factor rows above
+            // (OV_CM/CP/... persist via ApplyRefreshFlags).
+            if(sec==0)      { g_comboMode=(ENUM_COMBO_MODE)(int)MathRound(v); }
+            else if(sec==1) { g_comboPreset=(ENUM_COMBO_PRESET)(int)MathRound(v); }
+            else if(sec==2) { g_comboComp1TF=(ENUM_COMBO_TIMEFRAME_TYPE)(int)MathRound(v); }
+            else if(sec==3) { g_comboComp1Step=(ENUM_COMBO_STEP_TYPE)(int)MathRound(v); }
+            else if(sec==4) { g_comboOp1=(ENUM_COMBO_OPERATION)(int)MathRound(v); }
+            else if(sec==5) { g_comboComp2Enabled=(v>0.5); }
+            else if(sec==6) { g_comboComp2TF=(ENUM_COMBO_TIMEFRAME_TYPE)(int)MathRound(v); }
+            else            { g_comboComp2Step=(ENUM_COMBO_STEP_TYPE)(int)MathRound(v); }
+            g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC;
+         }
          break;
       case 11:  // STRUCTURE sub-card (opened from Zones & Levels)
          if(row==1)       { g_showStructure=(v>0.5); flags=REFRESH_BUFFERS; }
@@ -1697,6 +1844,9 @@ int PnlResetItem(const int item)
       if(rk==4) f = PnlSetColor(item,r,PnlDefColor(item,r));   // restore default color
       else      f = PnlApply(item,r,PnlDefVal(item,r));
       flags|=f;
+      // STEP card: restoring row 0 can switch the mode, which reshapes the
+      // rows below — recount before continuing so every new row is restored.
+      if(item==9 && r==0) rowsCount=PnlRowsCount(item);
    }
    UpdateCircularItemStates();
    UpdateCircularBadges();
@@ -2073,6 +2223,7 @@ void PnlCreate(const int item)
     else if(item==6) probeRow=3;   // HTF Bull COLOR
     else if(item==7) probeRow=5;   // Lines COLOR
     else if(item==8) probeRow=1;   // Custom Price COLOR
+    else if(item==9 && (int)g_stepCalculationMode==3) probeRow=7;   // Step card Factor COLOR
     else if(item==10) probeRow=6;  // Factor COLOR
     // item==1 (Zones) has no COLOR row — lines live on the Lines card.
    int ckind=(probeRow>=0) ? PnlColorKind(item, probeRow) : -1;
@@ -2785,6 +2936,9 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       int seg=(int)StringToInteger(StringSubstr(kind,1));
       double v=(double)seg;
       int flags=PnlApply(item,row,v);
+      // STEP MODE segments reshape the card (the selected mode's own rows
+      // appear below) — rebuild instead of updating the single row.
+      if(item==9 && row==0) { PnlOpen(9); return flags; }
       PnlUpdateRow(item,row);
       return flags;
    }
@@ -2912,7 +3066,9 @@ void PnlSyncOpenStepRow()
    int cur = (int)g_stepCalculationMode;
    if(cur == s_LastMode) return;
    s_LastMode = cur;
-   if(g_PnlOpen == 9) PnlUpdateRow(9, 0);
+   // The mode reshapes the open Step card (each mode's own rows live below
+   // the segments) — rebuild it, don't just refresh row 0.
+   if(g_PnlOpen == 9) PnlOpen(9);
 }
 
 //+------------------------------------------------------------------+

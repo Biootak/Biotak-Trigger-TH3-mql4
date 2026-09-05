@@ -229,6 +229,59 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   must (1) add a change-guarded sync in the panel tick path, (2) pop the
   on-chart confirmation label.)
 
+- **Step card shows the selected mode's own rows inline**
+  (2026-09-05, user decision — tapping a STEP MODE segment selects the mode
+  AND reveals that mode's settings right below it: TH has none (its flags
+  are label settings, not levels — card stays STEP MODE + MAX LEVELS);
+  SS-LS → LS FIRST; Combo → MODE/PRESET/COMP1 TF+STEP/OP/COMP2 ON+TF+STEP (new
+  runtime mirrors); Factor → full Factor rows incl. COLOR. Card 9 has dynamic
+  row count (`PnlRowsCount(9)` = 2 + section); MAX LEVELS floats last via
+  `PnlStepMaxLevelsRow()` — never hardcode card-9 rows. Section rows delegate
+  to their home cards (`PnlApply/Current/DefVal` → TH:3, SS-LS:1r7, Factor:10)
+  so behavior can't diverge. Segment tap, E/Tools changes (`PnlSyncOpenStepRow`
+  rebuilds) and Reset (recounts after row 0) all rebuild via `PnlOpen(9)`.
+  Combo mirrors live in `RuntimeSettings.mqh` like all others (`FF_COMBO_*`,
+  `OV_CM/CP/C1T/C1S/CO1/C2E/C2T/C2S`, Q-reset restores from factory).
+  Full+Lite compile 0 errors.
+
+- **Tools-ring Factor button is retired** (2026-09-05, user decision — its
+  settings live inline in the Step card's Factor section now, so the button
+  is redundant). Commented in place with the `FACTORBTN-OFF:` marker:
+  `TOOL_FACTOR_OVERRIDE`/`TOOL_COUNT 3→2` (Tools = Pin + Step, layout spreads
+  ±55° automatically), `ToolFeature`/`ToolPanel` cases, tap-cycle block,
+  `CircFeatureOn`/`BadgeText`/`TooltipStatus`/`ItemTooltip`/`IconRes` cases.
+  Dormant remnants left compiling on purpose: the `g_factorValueOverride`
+  engine (`FactorMode.mqh` reads, `AdjustFactorValue`, GV persist/restore,
+  Q-reset purge), Factor card 10 (the Step section delegates to its
+  `PnlApply/Current/DefVal`), `factor_*.bmp`. To restore: uncomment the
+  `FACTORBTN-OFF:` sites (grep the marker). Full+Lite compile 0 errors.
+
+- **Ring tooltips are live status readouts** (2026-09-05 — hovering any ring /
+  tools button shows `Name · <live status>` + the Click/Hold hints:
+  ON/OFF states, TH mode (Off/Fractal/Standard/Both), HTF TF, Step mode,
+  Factor value/Auto, Pin price, Tools open/closed. `CircTooltipStatus()` in
+  `Biotak/BiotakMenu.mqh` builds the status; `CircItemTooltip()` embeds it.
+  Freshness rides existing rails: every state change re-runs
+  `CircConfigureIcon` (icon tooltip) + `CircUpdateItemState` /
+  `ToolsUpdateItemState` (bg tooltip), and the per-tick
+  `UpdateMenuSyncIfChanged` fingerprint already covers all status values, so
+  hotkey/panel changes refresh tooltips too. MT4 renders `\n` in
+  `OBJPROP_TOOLTIP` as multi-line.)
+
+- **Menu hover shows a custom-drawn tooltip** (2026-09-05 — native
+  `OBJPROP_TOOLTIP` hover text does not display in this environment, so the
+  menu draws its own: dark chip + amber title fed by the same
+  `CircItemTooltip()` live text, anchored above the hovered orb/ring/tools
+  item, ZORDER 1700+ (above panels + palette popup).   `CircTipOnMove()` in
+  `Biotak/BiotakMenu.mqh` runs on every mouse move (same-spot repeats
+  skipped) but only ARMS the tip; `CircTipTick()` (per-tick, via
+  `RefreshUIPerTick`) shows it after `CIRC_TIP_DELAY_MS` (1500) of
+  stationary hover, so normal navigation never flashes it — any move,
+  press, drag or armed long-press hides it instantly. `DeleteMenu()` deletes
+  the tip objects. `CircTipRefresh()`
+  (from the per-tick menu sync) keeps visible text fresh. Native
+  `OBJPROP_TOOLTIP`s stay as fallback.)
+
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches
   (`PNL_QSW_*`, `QuickPalColor()` in `BiotakPanels.mqh`) + PICK button for

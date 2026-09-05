@@ -183,6 +183,7 @@ void SaveUISupport()
 void RefreshUIPerTick()
 {
    UpdateHTFFormingCandle();
+   CircTipTick();   // armed hover tooltip (dwell-gated, ungated cheap checks)
 
    static uint s_LastMenuSync = 0;
    uint now = GetTickCount();

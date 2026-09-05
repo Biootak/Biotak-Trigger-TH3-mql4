@@ -1664,6 +1664,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // to factory, like the panel Reset does.
             g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(int)FactoryDefault(FF_STEP_CALC_MODE);
             g_maxLevels = (int)FactoryDefault(FF_MAX_LEVELS);
+            g_comboMode = (ENUM_COMBO_MODE)(int)FactoryDefault(FF_COMBO_MODE);
+            g_comboPreset = (ENUM_COMBO_PRESET)(int)FactoryDefault(FF_COMBO_PRESET);
+            g_comboComp1TF = (ENUM_COMBO_TIMEFRAME_TYPE)(int)FactoryDefault(FF_COMBO_C1TF);
+            g_comboComp1Step = (ENUM_COMBO_STEP_TYPE)(int)FactoryDefault(FF_COMBO_C1STEP);
+            g_comboOp1 = (ENUM_COMBO_OPERATION)(int)FactoryDefault(FF_COMBO_OP1);
+            g_comboComp2Enabled = (FactoryDefault(FF_COMBO_C2ON) > 0.5);
+            g_comboComp2TF = (ENUM_COMBO_TIMEFRAME_TYPE)(int)FactoryDefault(FF_COMBO_C2TF);
+            g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)(int)FactoryDefault(FF_COMBO_C2STEP);
             g_factorValueOverride = 0;
             // TH3TOOL-OFF:
             //#ifndef BUILD_LITE
