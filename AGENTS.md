@@ -128,7 +128,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   behavior was broken and the tool is unwanted). Everything is commented in
   place with the `TH3TOOL-OFF:` marker — `Biotak/TH3Tool.mqh` + `Biotak/TH3/*`
   are excluded via the entry `.mq4` includes; ring slot (`RING_TH3`, ring is
-  now 7 items), settings card 5, hotkeys (V/3/4/Backspace/ABCD routing), the
+  now 6 items), settings card 5, hotkeys (V/3/4/Backspace/ABCD routing), the
   `14) TH3 TOOL` + `15) AB=CD` input groups, validators, and seeding are all
   commented. Dormant remnants left compiling on purpose: `RuntimeSettings`
   mirrors/`FF_TH3_*`, `GlobalVariables` storage, palette/log/freq-index
@@ -143,20 +143,30 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   paths stay to purge badges from older versions. Panels still open via
   long-press; hover tooltips untouched.
 
-- **TF-lock is keyboard-only; the lock slot is now VIEW LOCK**
-  (2026-09-04 — old timeframe-lock (calc pinned to a TF) left the menu AND
-  card 4: ring/card UI gone, but `G`-key toggle, `g_timeframeLocked`
-  engine, GV persist and lock label stay untouched. Slot 4 (`CIR_VLOCK`/
-  `RING_VLOCK`, same ids) is now View Lock: same chart view (first-visible-bar
-  time + price min/max anchor) across timeframe switches. Architecture:
-  anchor captured on scroll/zoom/enable, persisted at the
-  OnDeinit(REASON_CHARTCHANGE)→OnInit handoff (`Biotak_ViewLock/Anchor*`
-  GVs), restored on first OnCalculate (`CHART_FIRST_VISIBLE_BAR` +
-  `CHART_SCALEFIX`, autoscroll off while on). No recalc involved
-  (REFRESH_NONE); toggle via ring, card 4 (single ENABLED row), or `V` key
-  (`inpViewLockKey`). Core fns in `GlobalVariables.mqh`
-  (`ViewLockCapture/Restore/SetEnabled`) — MQL4 has no prototypes, so
-  anything the menu needs must live at/above global scope there.
+- **TF-lock is keyboard-only** (2026-09-04 — old timeframe-lock (calc pinned
+  to a TF) left the menu AND card 4: ring/card UI gone, but `G`-key toggle,
+  `g_timeframeLocked` engine, GV persist and lock label stay untouched.
+  Slot 4 was View Lock 2026-09-04 → 2026-09-05, now retired — see next rule.)
+
+- **View Lock is retired** (2026-09-05, user decision — the ring button +
+  card shown in the screenshot are unwanted). Everything is commented in
+  place with the `VIEWLOCK-OFF:` marker: `CIR_VLOCK`/`RING_VLOCK` defines,
+  `RingFeature` case, `CircFeatureOn/IconRes/CardIcon/BadgeText/Tooltip`,
+  ring-click handler (ring is now 6 items: `RING_HTF`=4, `RING_TOOLS`=5),
+  settings card 4 (`PnlRowDef/Title/Subtitle/DefVal/Current/Apply`;
+  `g_PnlRows[4]` kept =1 dormant, panel keys never reorder), `V` hotkey
+  (`inpViewLockKey`), and all `EventHandlers` behavior (OnInit restore,
+  OnDeinit `REASON_CHARTCHANGE` capture, OnCalculate pending restore,
+  anchor-line delete/drag handlers, `CHART_CHANGE` re-anchor, Q-reset
+  disable). Dormant remnants left compiling on purpose (TH3TOOL-OFF
+  pattern): `GlobalVariables` state (`g_viewLockEnabled/Anchor*/RestorePending`)
+  + core fns (`ViewLockCapture/Restore/SetEnabled`, `ViewAnchorLineEnsure/Delete`)
+  — nothing sets the flag anymore, it stays false. Purge paths stay ACTIVE
+  to clean old charts: `CleanupAllGlobalVariables` entries 20-23, the Q-reset
+  `GlobalVariableDel("Biotak_ViewLock/Anchor*")` lines, and the OnDeinit
+  `ObjectDelete(g_viewAnchorLineName)`. To restore: uncomment the
+  `VIEWLOCK-OFF:` sites (grep the marker). Full+Lite compile 0 errors
+  without it (ex4 ~914KB/521KB).
 
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches

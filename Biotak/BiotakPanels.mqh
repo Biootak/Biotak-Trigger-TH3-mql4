@@ -81,8 +81,9 @@ color QuickPalColor(const int i)
 
 // Row counts per settings panel. State lives in BiotakKit.mqh.
 // 0 Trigger Zones (zones-only, 4 rows) · 1 ZONES & LEVELS (main card, 11 rows)
-// 2 ATR · 3 TH · 4 View Lock · 5 TH3 · 6 HTF · 7 LINES (unified [08.4] line appearance)
+// 2 ATR · 3 TH · 4 retired (was View Lock) · 5 TH3 · 6 HTF · 7 LINES (unified [08.4] line appearance)
 // 8 CustomPrice · 9 StepMode (engine only) · 10 Factor · 11 STRUCTURE (sub-card)
+// VIEWLOCK-OFF: g_PnlRows[4] kept =1 dormant (stable panel keys — never reorder).
 #define PNL_COUNT 12
 int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,3,7,7};
 int g_PnlOpen      = -1;
@@ -1145,7 +1146,7 @@ int StepOverrideOpt(const int v)
 
 //+------------------------------------------------------------------+
 //| Row descriptor — settings panels (0=Trigger Zones, 1=ZONES &     |
-//| LEVELS, 2=ATR, 3=TH, 4=View Lock, 5=TH3, 6=HTF, 7=LINES (unified), |
+//| LEVELS, 2=ATR, 3=TH, 4=retired (was View Lock), 5=TH3, 6=HTF, 7=LINES (unified), |
 //| 8=Custom price, 9=Step mode, 10=Factor, 11=STRUCTURE sub-card)    |
 //+------------------------------------------------------------------+
 void PnlRowDef(const int item,const int row,int &kind,string &label,
@@ -1196,10 +1197,11 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==3)  { kind=1; label="TH TARGETS"; }
       else             { label="MARGIN BOTTOM"; minV=10; maxV=200; }
    }
-   else if(item==4)   // VIEW LOCK — one row: keep this view across timeframes
-   {
-      if(row==0)       { kind=1; label="ENABLED"; }
-   }
+   // VIEWLOCK-OFF: item==4 (VIEW LOCK card) retired —
+   //else if(item==4)   // VIEW LOCK — one row: keep this view across timeframes
+   //{
+   //   if(row==0)       { kind=1; label="ENABLED"; }
+   //}
    // TH3TOOL-OFF: item==5 (TH3 TOOL card) retired —
    //else if(item==5)   // TH3 TOOL
    //{
@@ -1283,7 +1285,7 @@ string PnlTitleText(const int item)
    if(item==0)  return "Trigger Zones";
    if(item==2)  return "ATR Labels";
    if(item==3)  return "TH Labels";
-   if(item==4)  return "View Lock";
+   // VIEWLOCK-OFF: if(item==4) return "View Lock";
    // TH3TOOL-OFF: if(item==5) return "TH3 Tool";
    if(item==6)  return "HTF Candles";
    if(item==7)  return "Lines";
@@ -1299,7 +1301,7 @@ string PnlSubtitleText(const int item)
    if(item==0)  return "Trigger zone overlay (lines live on Lines)";
    if(item==2)  return "ATR-based trade-plan labels";
    if(item==3)  return "Fractal & standard TH labels";
-   if(item==4)  return "Same view on every timeframe";
+   // VIEWLOCK-OFF: if(item==4) return "Same view on every timeframe";
    if(item==5)  return "TH3 pattern drawing tool";
    if(item==6)  return "Higher timeframe candle overlay";
    if(item==7)  return "One style for ALL lines";
@@ -1369,7 +1371,7 @@ double PnlDefVal(const int item,const int row)
               if(row==2) return (FactoryDefault(FF_TH_STANDARD)>0.5)?1.0:0.0;
               if(row==3) return (FactoryDefault(FF_TH_TARGETS)>0.5)?1.0:0.0;
               return 40;                               // default margin bottom
-       case 4: return 0.0;   // view lock off by default
+       // VIEWLOCK-OFF: case 4: return 0.0;   // view lock off by default
        // TH3TOOL-OFF: case 5 (TH3 TOOL defaults) retired —
        //case 5: if(row==0) return (FactoryDefault(FF_ENABLE_TH3)>0.5)?1.0:0.0;
        //        if(row==1) return (int)FactoryDefault(FF_TH3_DRAW_MODE);
@@ -1458,8 +1460,8 @@ double PnlCurrent(const int item,const int row)
               if(row==2) return g_showStandardTHs?1.0:0.0;
               if(row==3) return g_showTHTargets?1.0:0.0;
               return g_thLabelsMarginBottom;
-       case 4: if(row==0) return g_viewLockEnabled?1.0:0.0;
-               return 0.0;
+       // VIEWLOCK-OFF: case 4: if(row==0) return g_viewLockEnabled?1.0:0.0;
+       //               return 0.0;
        // TH3TOOL-OFF: case 5 (TH3 TOOL values) retired —
        //case 5: if(row==0) return g_enableTH3Tool?1.0:0.0;
        //        if(row==1) return (int)g_th3DrawingMode;
@@ -1595,10 +1597,11 @@ int PnlApply(const int item,const int row,const double v)
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else             { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          break;
-       case 4:   // VIEW LOCK — view needs no indicator recalc
-          ViewLockSetEnabled((v>0.5));
-          flags=REFRESH_NONE;
-          break;
+       // VIEWLOCK-OFF: case 4 (VIEW LOCK apply) retired —
+       //case 4:   // VIEW LOCK — view needs no indicator recalc
+       //   ViewLockSetEnabled((v>0.5));
+       //   flags=REFRESH_NONE;
+       //   break;
        // TH3TOOL-OFF: case 5 (TH3 TOOL apply) retired —
        //case 5:   // TH3 TOOL
        //   if(row==0)       { g_enableTH3Tool=(v>0.5); flags=REFRESH_ALL; }

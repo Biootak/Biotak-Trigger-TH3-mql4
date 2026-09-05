@@ -78,6 +78,10 @@ static string g_lastAlertLevel = "";
 // Timeframe Lock (keyboard-only since 2026-09-04: no menu item, no card)
 static bool g_timeframeLocked = false;
 static int g_lockedPeriod = 0;
+// VIEWLOCK-OFF (2026-09-05, user decision): View Lock retired — the state +
+// core fns below are kept compiling DORMANT (same pattern as TH3TOOL-OFF
+// remnants) so the feature restores by uncommenting the VIEWLOCK-OFF call
+// sites. Nothing sets g_viewLockEnabled anymore — it stays false forever.
 // View Lock — keep the same chart view (bar position + price range) when the
 // user switches timeframes. Toggled from the ring menu (VLOCK slot), the
 // View Lock card, or the V hotkey. Anchor = first-visible-bar time + visible
@@ -207,7 +211,7 @@ bool GetEffectiveSSLSLongFirst()
 //+------------------------------------------------------------------+
 //| Cleanup All GlobalVariables (array-based, matching MT5)          |
 //+------------------------------------------------------------------+
-//| VIEW LOCK core — same-view persistence across timeframe switches |
+//| VIEW LOCK core — VIEWLOCK-OFF: retired, kept dormant (see note above).|
 //| Anchor (first-visible-bar time + visible price min/max) is       |
 //| captured on scroll/zoom, at enable time, and at the TF-switch    |
 //| handoff in OnDeinit(REASON_CHARTCHANGE); OnInit re-arms it and   |

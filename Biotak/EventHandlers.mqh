@@ -172,21 +172,20 @@ int OnInitHandler() {
         g_lockedPeriod = (int)GlobalVariableGet(lockPeriodName);
     }
 
-    // Restore view-lock state + anchor (the TF-switch handoff lands here:
-    // OnDeinit REASON_CHARTCHANGE persisted them moments ago)
-    string viewFlagName = "Biotak_ViewLock_" + chartIdStr;
-    if(GlobalVariableCheck(viewFlagName)) {
-        g_viewLockEnabled = (GlobalVariableGet(viewFlagName) > 0.5);
-    }
-    if(GlobalVariableCheck("Biotak_ViewAnchorT_" + chartIdStr)) {
-        g_viewAnchorTime = (datetime)GlobalVariableGet("Biotak_ViewAnchorT_" + chartIdStr);
-        g_viewAnchorMin = GlobalVariableGet("Biotak_ViewAnchorMin_" + chartIdStr);
-        g_viewAnchorMax = GlobalVariableGet("Biotak_ViewAnchorMax_" + chartIdStr);
-    }
-    if(g_viewLockEnabled) {
-        if(recentTimeframeSwitch && g_viewAnchorTime > 0) g_viewRestorePending = true;
-        else { ViewLockCapture(); ViewAnchorLineEnsure(); }   // fresh attach: anchor = current view
-    }
+    // VIEWLOCK-OFF: view-lock restore retired —
+    //string viewFlagName = "Biotak_ViewLock_" + chartIdStr;
+    //if(GlobalVariableCheck(viewFlagName)) {
+    //    g_viewLockEnabled = (GlobalVariableGet(viewFlagName) > 0.5);
+    //}
+    //if(GlobalVariableCheck("Biotak_ViewAnchorT_" + chartIdStr)) {
+    //    g_viewAnchorTime = (datetime)GlobalVariableGet("Biotak_ViewAnchorT_" + chartIdStr);
+    //    g_viewAnchorMin = GlobalVariableGet("Biotak_ViewAnchorMin_" + chartIdStr);
+    //    g_viewAnchorMax = GlobalVariableGet("Biotak_ViewAnchorMax_" + chartIdStr);
+    //}
+    //if(g_viewLockEnabled) {
+    //    if(recentTimeframeSwitch && g_viewAnchorTime > 0) g_viewRestorePending = true;
+    //    else { ViewLockCapture(); ViewAnchorLineEnsure(); }   // fresh attach: anchor = current view
+    //}
 
     // Restore step mode with range validation (0..3)
     string stepModeGvarName = "Biotak_StepMode_" + chartIdStr;
@@ -426,11 +425,10 @@ void OnDeinitHandler(const int reason) {
         datetime nowSwitch = TimeCurrent();
         if(nowSwitch > 0) GlobalVariableSet(tfSwitchStampGvar, (double)nowSwitch);
     }
-    // View-lock handoff: the old-TF view is still on screen right now —
-    // persist it so OnInit can re-arm the restore on the new TF.
-    if(reason == REASON_CHARTCHANGE && g_viewLockEnabled) {
-        ViewLockCapture();
-    }
+    // VIEWLOCK-OFF:
+    //if(reason == REASON_CHARTCHANGE && g_viewLockEnabled) {
+    //    ViewLockCapture();
+    //}
 
     ReleaseATRHandle();
     EventKillTimer();
@@ -445,7 +443,7 @@ void OnDeinitHandler(const int reason) {
     //#endif
     ObjectDelete(0, g_lockStatusLabelName);
     ObjectDelete(0, g_customPriceHorizontalLineName);
-    ObjectDelete(0, g_viewAnchorLineName);
+    ObjectDelete(0, g_viewAnchorLineName);   // VIEWLOCK-OFF: purge only — the lock itself is retired
 
     if(reason == REASON_REMOVE)
     {
@@ -1199,11 +1197,10 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
         ApplyCacheInvalidation(invalidationFlags, s_lastPeriod, currentPeriod, s_lastCustomPrice, currentCustomPrice);
     }
 
-    // View Lock: first tick(s) after a TF switch re-apply the anchored view
-    // (same bars + same price range — no manual scrolling).
-    if(g_viewRestorePending) {
-        if(ViewLockRestore()) g_viewRestorePending = false;
-    }
+    // VIEWLOCK-OFF:
+    //if(g_viewRestorePending) {
+    //    if(ViewLockRestore()) g_viewRestorePending = false;
+    //}
 
     if(rates_total > 0)
     {
@@ -1299,13 +1296,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
     }
 
-    // View-lock anchor line deleted by the user → turn the lock off
-    // (our own programmatic deletes are guarded by the flag being false already)
-    if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent && sparam == g_viewAnchorLineName && g_viewLockEnabled) {
-        ViewLockSetEnabled(false);
-        ThrottledChartRedraw();
-        return;
-    }
+    // VIEWLOCK-OFF:
+    //if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent && sparam == g_viewAnchorLineName && g_viewLockEnabled) {
+    //    ViewLockSetEnabled(false);
+    //    ThrottledChartRedraw();
+    //    return;
+    //}
 
     if(id == CHARTEVENT_KEYDOWN)
     {
@@ -1706,8 +1702,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_Factor_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTF_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTFPeriod_" + chartIdStr);
-            if(g_viewLockEnabled) ViewLockSetEnabled(false);
-            GlobalVariableDel("Biotak_ViewLock_" + chartIdStr);
+            // VIEWLOCK-OFF: if(g_viewLockEnabled) ViewLockSetEnabled(false);
+            GlobalVariableDel("Biotak_ViewLock_" + chartIdStr);   // VIEWLOCK-OFF: purge only
             GlobalVariableDel("Biotak_ViewAnchorT_" + chartIdStr);
             GlobalVariableDel("Biotak_ViewAnchorMin_" + chartIdStr);
             GlobalVariableDel("Biotak_ViewAnchorMax_" + chartIdStr);
@@ -1795,16 +1791,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        //
-        // V key   Toggle View Lock (keep this view across timeframes)
-        //
-        if(IsHotkeyPressed(lparam, sparam, inpViewLockKey))
-        {
-            ViewLockSetEnabled(!g_viewLockEnabled);
-            LOG_I(LOG_CAT_KEYS, "View Lock " + (g_viewLockEnabled ? "ON - view follows across timeframes" : "OFF - chart behaves normally"));
-            ThrottledChartRedraw();
-            return;
-        }
+        // VIEWLOCK-OFF: V key (View Lock) retired —
+        //if(IsHotkeyPressed(lparam, sparam, inpViewLockKey))
+        //{
+        //    ViewLockSetEnabled(!g_viewLockEnabled);
+        //    LOG_I(LOG_CAT_KEYS, "View Lock " + (g_viewLockEnabled ? "ON - view follows across timeframes" : "OFF - chart behaves normally"));
+        //    ThrottledChartRedraw();
+        //    return;
+        //}
     } // end CHARTEVENT_KEYDOWN
 
     //
@@ -1852,8 +1846,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         s_lastVisibleMin = visibleMin;
         s_lastVisibleMax = visibleMax;
         s_lastLayoutMs = nowMs;
-        // View Lock: user moved the view — re-anchor (idempotent with restores)
-        if(g_viewLockEnabled) ViewLockCapture();
+        // VIEWLOCK-OFF: if(g_viewLockEnabled) ViewLockCapture();
 
         if(sizeChanged) g_labelsRelayoutNeeded = true;
         if(viewportChanged) {
@@ -2030,22 +2023,20 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         RedrawAllObjects(true);
     }
 
-    //
-    // CHARTEVENT_OBJECT_DRAG   View-lock anchor line: drop = new anchor time
-    //
-    if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_viewAnchorLineName && g_viewLockEnabled)
-    {
-        datetime droppedTime = (datetime)ObjectGetInteger(0, g_viewAnchorLineName, OBJPROP_TIME, 0);
-        if(droppedTime > 0 && droppedTime != g_viewAnchorTime)
-        {
-            g_viewAnchorTime = droppedTime;
-            ViewLockPersistAnchor();
-            if(ViewLockRestore()) g_viewRestorePending = false;
-            else g_viewRestorePending = true;   // history not ready — retry next ticks
-            ThrottledChartRedraw();
-        }
-        return;
-    }
+    // VIEWLOCK-OFF: anchor-line drag retired —
+    //if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_viewAnchorLineName && g_viewLockEnabled)
+    //{
+    //    datetime droppedTime = (datetime)ObjectGetInteger(0, g_viewAnchorLineName, OBJPROP_TIME, 0);
+    //    if(droppedTime > 0 && droppedTime != g_viewAnchorTime)
+    //    {
+    //        g_viewAnchorTime = droppedTime;
+    //        ViewLockPersistAnchor();
+    //        if(ViewLockRestore()) g_viewRestorePending = false;
+    //        else g_viewRestorePending = true;   // history not ready — retry next ticks
+    //        ThrottledChartRedraw();
+    //    }
+    //    return;
+    //}
 
     //
     // CHARTEVENT_OBJECT_CLICK   ABCD Pattern Selection — TH3TOOL-OFF: retired with the tool

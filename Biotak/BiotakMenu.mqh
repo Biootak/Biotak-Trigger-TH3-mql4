@@ -80,7 +80,8 @@
 #define CIR_TRIGGER         0   // Trigger Zones (overlay; unified lines live on card 7)
 #define CIR_ATR             2   // ATR Labels (g_atrLabelsVisible)
 #define CIR_TH              3   // TH Labels (g_thLabelsVisible)
-#define CIR_VLOCK           4   // View Lock (g_viewLockEnabled; old TF-lock is keyboard-only now)
+// VIEWLOCK-OFF: CIR_VLOCK slot retired (was 4, View Lock) — ring is now 6 items.
+// #define CIR_VLOCK           4   // View Lock (g_viewLockEnabled; old TF-lock is keyboard-only now)
 // TH3TOOL-OFF: CIR_TH3 slot retired (was 5, TH3 Tool / Freq)
 // #define CIR_TH3             5   // TH3 Tool / Freq
 #define CIR_HTF             6   // HTF Candles
@@ -91,17 +92,18 @@
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 #define CIR_FACTOR_OVERRIDE 10  // Factor Override
 
-//--- ring layout (main circle — 7 items; Zones first = the main feature)
+//--- ring layout (main circle — 6 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
-#define RING_COUNT 7
+// VIEWLOCK-OFF: RING_VLOCK slot retired (was 4) — HTF/TOOLS shifted down again.
+#define RING_COUNT 6
 #define CIRC_ITEM_COUNT RING_COUNT  // alias for legacy code
 #define RING_ZONES    0
 #define RING_TRIGGER  1
 #define RING_ATR      2
 #define RING_TH       3
-#define RING_VLOCK    4
-#define RING_HTF      5
-#define RING_TOOLS    6
+// VIEWLOCK-OFF: #define RING_VLOCK    4
+#define RING_HTF      4
+#define RING_TOOLS    5
 
 //--- Tools half-circle (sub-menu under Tools)
 #define TOOL_COUNT 3
@@ -149,7 +151,7 @@ int RingFeature(const int ringIdx)
       case RING_TRIGGER: return CIR_TRIGGER;
       case RING_ATR:     return CIR_ATR;
       case RING_TH:      return CIR_TH;
-       case RING_VLOCK:   return CIR_VLOCK;
+       // VIEWLOCK-OFF: case RING_VLOCK: return CIR_VLOCK;
        // TH3TOOL-OFF: case RING_TH3: return CIR_TH3;
        case RING_HTF:     return CIR_HTF;
       case RING_TOOLS:   return CIR_TOOLS;
@@ -393,7 +395,7 @@ bool CircFeatureOn(const int i)
    if(i == CIR_TRIGGER)         return g_triggerLevelsEnabled;
    if(i == CIR_ATR)             return g_atrLabelsVisible;
    if(i == CIR_TH)              return g_thLabelsVisible;
-   if(i == CIR_VLOCK)           return g_viewLockEnabled;
+   // VIEWLOCK-OFF: if(i == CIR_VLOCK) return g_viewLockEnabled;
    // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
@@ -438,7 +440,7 @@ string CircIconRes(const int i, const bool on)
    else if(i == CIR_TRIGGER)    base = "zone";    // Trigger level-ladder icon
    else if(i == CIR_ATR)        base = "atr";     // ATR range-bracket icon
    else if(i == CIR_TH)         base = "dots";    // TH dotted-level icon
-   else if(i == CIR_VLOCK)      base = "box";     // View lock (same padlock skin)
+   // VIEWLOCK-OFF: else if(i == CIR_VLOCK) base = "box";   // View lock (same padlock skin)
    // TH3TOOL-OFF: else if(i == CIR_TH3) base = "custom";  // TH3 tool/gauge icon
    else if(i == CIR_HTF)        base = "htf";     // HTF candle icon
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
@@ -453,7 +455,7 @@ string CircIconRes(const int i, const bool on)
 //| CARD HEADER ICON — one glyph PER SETTINGS CARD, chosen for the   |
 //| content of that card (not the ring toggle that opened it).       |
 //|  0 Trigger Zones = zone ladder · 1 Zones & Levels = band ·       |
-//|  2 ATR = range bracket · 3 TH = dotted wave · 4 View lock = padlock · |
+//|  2 ATR = range bracket · 3 TH = dotted wave · 4 retired (was View lock) · |
 //|  5 retired (was TH3) · 6 HTF = candles · 7 Lines = line ·        |
 //|  8 CustomPrice = pin · 9 StepMode = stairs · 10 Factor = gauge · |
 //|  11 Structure = stair levels                                     |
@@ -465,7 +467,7 @@ string CircCardIcon(const int item, const bool on)
    else if(item == 0)     base = "zone";    // Trigger zones overlay
    else if(item == 2)     base = "atr";     // ATR labels (range bracket)
    else if(item == 3)     base = "dots";    // TH labels
-   else if(item == 4)     base = "box";     // View lock
+   // VIEWLOCK-OFF: else if(item == 4) base = "box";   // View lock
    // TH3TOOL-OFF: else if(item == 5) base = "custom";  // TH3 tool
    else if(item == 6)     base = "htf";     // HTF candles
    else if(item == 7)     base = "tl";      // Lines (shares the line glyph with ATR)
@@ -505,11 +507,12 @@ string CircBadgeText(const int i)
       if(g_thLabelsMode == 3) return "Bt";
       return "";
    }
-   if(i == CIR_VLOCK)
-   {
-      if(g_viewLockEnabled) return "On";
-      return "";
-   }
+   // VIEWLOCK-OFF:
+   //if(i == CIR_VLOCK)
+   //{
+   //   if(g_viewLockEnabled) return "On";
+   //   return "";
+   //}
    // TH3TOOL-OFF:
    //if(i == CIR_TH3)
    //{
@@ -554,7 +557,7 @@ string CircItemTooltip(const int i)
       case CIR_TRIGGER:         return "Trigger Zones\nClick: toggle trigger zones · Hold: settings";
       case CIR_ATR:             return "ATR Labels\nClick: toggle ATR labels · Hold: settings";
       case CIR_TH:              return "TH Labels Mode\nClick: cycle TH labels mode · Hold: settings";
-       case CIR_VLOCK:           return "View Lock\nClick: keep this view across timeframes · Hold: settings";
+       // VIEWLOCK-OFF: case CIR_VLOCK: return "View Lock\nClick: keep this view across timeframes · Hold: settings";
        // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
        case CIR_HTF:             return "Higher Timeframe Candles\nClick: toggle HTF candles · Hold: settings";
       case CIR_PIN:             return "Custom Price Pin\nClick: activate pin placement · Drag line: adjust · ESC: clear";
@@ -1635,15 +1638,16 @@ int HandleButtonClick(const string clickedObject)
       g_labelsRelayoutNeeded = true;
       refreshFlags = REFRESH_ALL;
    }
-   else if(feat == CIR_VLOCK)
-   {
-      // View Lock needs no indicator recalc — it only pins the chart view.
-      ViewLockSetEnabled(!g_viewLockEnabled);
-      CircUpdateItemState(idx);
-      ThrottledChartRedraw();
-      SaveUIStates();
-      return REFRESH_NONE;
-   }
+   // VIEWLOCK-OFF:
+   //else if(feat == CIR_VLOCK)
+   //{
+   //   // View Lock needs no indicator recalc — it only pins the chart view.
+   //   ViewLockSetEnabled(!g_viewLockEnabled);
+   //   CircUpdateItemState(idx);
+   //   ThrottledChartRedraw();
+   //   SaveUIStates();
+   //   return REFRESH_NONE;
+   //}
    // TH3TOOL-OFF:
    //else if(feat == CIR_TH3)
    //{
