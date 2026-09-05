@@ -67,24 +67,6 @@ static bool   InpHTFShowBody = true;
 static datetime g_HTFLastFormOpen = 0;
 static double   g_HTFLastFormO = 0, g_HTFLastFormH = 0, g_HTFLastFormL = 0, g_HTFLastFormC = 0;
 
-//--- Auto-rebuild engine: TF-switch follow + deferred full draw for weak PCs
-//    (history often not ready on the first tick after attach/TF-switch).
-//    Per-tick cost when idle: 1x Period() + 1-2 int compares.
-static int  s_HTFSeenChartPeriod = -1;
-static bool s_HTFNeedFull = true;
-static uint s_HTFNextFullMs = 0;
-static int  s_HTFRetry = 0;
-static bool s_HTFHiddenCleaned = false;
-static uint s_HTFLastFormRedrawMs = 0;
-
-void HTFRequestFullRedraw()
-{
-   s_HTFNeedFull = true;
-   s_HTFRetry = 0;
-   s_HTFNextFullMs = 0;
-   s_HTFHiddenCleaned = false;
-}
-
 //+------------------------------------------------------------------+
 //| Extract RGB components from color                                |
 //+------------------------------------------------------------------+
@@ -327,8 +309,8 @@ void DrawHTFCandleCore(const int i, const datetime ot, const datetime nt,
 bool UpdateHTFFormingCandle()
 {
    if(!g_UI.showHTF || Bars < 2) return false;
-   int tf = g_HTFPeriod;
-   if(tf <= Period()) return false;
+   int tf = ResolveHTFPeriod();
+   if(tf <= 0 || tf <= Period()) return false;
 
    datetime ot = iTime(_Symbol, tf, 0);
    if(ot <= 0) return false;
@@ -350,14 +332,19 @@ bool UpdateHTFFormingCandle()
 
 //+------------------------------------------------------------------+
 //| Redraw all historical HTF candles                                |
+//| Returns true when done (drawn or correctly hidden), false when   |
+//| HTF history is not ready yet (weak PC / fresh TF-switch) so the  |
+//| caller retries later instead of leaving an empty chart.          |
 //+------------------------------------------------------------------+
-void DrawHTFCandles()
+bool DrawHTFCandles()
 {
-   if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); return; }
-   int tf = g_HTFPeriod;
-   if(tf <= Period()) { DeleteHTFCandles(); return; }
+   if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); return true; }
+   int tf = ResolveHTFPeriod();
+   if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); return true; }
    int total = iBars(_Symbol, tf);
-   if(total <= 0) return;
+   if(total <= 0) return false;
+   datetime ot0 = iTime(_Symbol, tf, 0);
+   if(ot0 <= 0) return false;
    int count = MathMin(InpHTFMaxBars, total);
 
    static int s_lastBoxMode = -1;
@@ -372,13 +359,28 @@ void DrawHTFCandles()
    {
       datetime ot = iTime(_Symbol, tf, i);
       datetime nt = (i == 0) ? HTFBarCloseTime(ot, tf) : iTime(_Symbol, tf, i - 1);
-      if(ot <= 0 || nt <= ot) continue;
+      if(ot <= 0 || nt <= ot)
+      {
+         if(i == 0) return false;
+         continue;
+      }
       double hi = iHigh(_Symbol, tf, i), lo = iLow(_Symbol, tf, i);
       double op = iOpen(_Symbol, tf, i), cl = iClose(_Symbol, tf, i);
-      if(hi <= 0 || lo <= 0) continue;
+      if(hi <= 0 || lo <= 0)
+      {
+         if(i == 0) return false;
+         continue;
+      }
 
       DrawHTFCandleCore(i, ot, nt, hi, lo, op, cl);
+      if(i == 0)
+      {
+         g_HTFLastFormOpen = ot;
+         g_HTFLastFormO = op; g_HTFLastFormH = hi;
+         g_HTFLastFormL = lo; g_HTFLastFormC = cl;
+      }
    }
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -387,6 +389,7 @@ void DrawHTFCandles()
 void RefreshHTFCandles()
 {
    DeleteHTFCandles();
+   g_HTFLastFormOpen = 0;
    DrawHTFCandles();
 }
 
@@ -475,7 +478,16 @@ void InitializeHTFCandles()
    
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
-   
+
+   g_HTFIsAuto = true;
+   g_HTFPeriod = PERIOD_H4;
+   if(GlobalVariableCheck(prefix + "IsAuto")) g_HTFIsAuto = (GlobalVariableGet(prefix + "IsAuto") > 0.5);
+   if(GlobalVariableCheck(prefix + "Period"))
+   {
+      int savedTf = (int)GlobalVariableGet(prefix + "Period");
+      if(savedTf > 0) g_HTFPeriod = savedTf;
+   }
+
    if(GlobalVariableCheck(prefix + "BullColor"))   g_HTFBullColor   = (color)(int)GlobalVariableGet(prefix + "BullColor");
    if(GlobalVariableCheck(prefix + "BearColor"))   g_HTFBearColor   = (color)(int)GlobalVariableGet(prefix + "BearColor");
    if(GlobalVariableCheck(prefix + "WickColor"))   g_HTFWickColor   = (color)(int)GlobalVariableGet(prefix + "WickColor");
@@ -486,8 +498,13 @@ void InitializeHTFCandles()
    if(GlobalVariableCheck(prefix + "BorderWidth")) g_HTFBorderWidth = (int)GlobalVariableGet(prefix + "BorderWidth");
    if(GlobalVariableCheck(prefix + "BoxMode"))     g_HTFBoxMode     = (int)GlobalVariableGet(prefix + "BoxMode");
    if(GlobalVariableCheck(prefix + "ShowBody"))    g_HTFShowBody    = (GlobalVariableGet(prefix + "ShowBody") > 0.5);
-   
-   g_HTFPeriod = ResolveHTFPeriod();
+
+   if(g_HTFIsAuto) g_HTFPeriod = ResolveAutoHTFPeriod();
+   else if(g_HTFPeriod <= 0) { g_HTFIsAuto = true; g_HTFPeriod = ResolveAutoHTFPeriod(); }
+
+   g_HTFLastFormOpen = 0;
+   g_HTFLastFormO = 0; g_HTFLastFormH = 0;
+   g_HTFLastFormL = 0; g_HTFLastFormC = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -497,6 +514,8 @@ void SaveHTFCandlesSettings()
 {
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
+   GlobalVariableSet(prefix + "IsAuto",      g_HTFIsAuto ? 1.0 : 0.0);
+   GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod);
    GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor);
    GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor);
    GlobalVariableSet(prefix + "WickColor",   (double)g_HTFWickColor);
@@ -516,6 +535,8 @@ void CleanupHTFCandlesGVs()
 {
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
+   GlobalVariableDel(prefix + "IsAuto");
+   GlobalVariableDel(prefix + "Period");
    GlobalVariableDel(prefix + "BullColor");
    GlobalVariableDel(prefix + "BearColor");
    GlobalVariableDel(prefix + "WickColor");
