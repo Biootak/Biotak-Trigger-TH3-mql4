@@ -318,8 +318,23 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   so per-frame draws cost one syscall + compares (same as the existing
   trigger/lines helpers). ONE blend per color: zones keep their own
   transparency args — never blend an already-blended color. Panel keeps
-  only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
-  has no draw site (pre-existing) so it stays `--`.)
+   only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
+   has no draw site (pre-existing) so it stays `--`.)
+
+- **HTF boxes self-heal after timeframe switches — never rely on init-time draws**
+  (2026-09-05 — HTF candles vanished on every TF switch until a manual off/on
+  toggle: `OnDeinit(REASON_CHARTCHANGE)` deletes all HTF objects, `OnInit` only
+  re-resolves `g_HTFPeriod` and draws nothing, and the per-tick updater maintains
+  only the forming candle (index 0), so history boxes never came back; worse, HTF
+  history is often not loaded yet right after a switch (`iBars==0`, seconds longer
+  on weak PCs). Fix is `HTFEnsureDrawn()` in `Biotak/HTFCandles.mqh`, called from
+  `RefreshUIPerTick()` (per-tick + 1s timer, so it retries with zero ticks too):
+  re-resolves the effective TF every tick (O(1) steady state), full-redraws at most
+  once/sec only when the TF changed / box 0 is missing / first run, draws only when
+  `iBars`+`iTime` prove data-ready (else retries), deletes once when hidden-by-design
+  (TF>=chart). Rule for new work: any chart-object layer that `OnDeinit` wipes must
+  re-ensure itself from the tick/timer path with change-guarded, data-ready-gated
+  redraws — never a draw-once at init.)
 
 ---
 
@@ -347,6 +362,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-BUILD-02 | Linux/Bottles: `bottles-cli run -e metaeditor ... /compile:...` exits 0 but writes NO `.ex4`/log; Wine `if exist` on host paths (Z:\ or a symlink into the repo) succeeds yet open/read FAILS silently (proven: `type` through `Indicators\BiotakProject` symlink → "Failed to open"; Z:\ compile of a trivial file → nothing) | (a) Wine under Bottles/Flatpak cannot read host files (Z:\ or symlink targets) — silent no-op, exit 0; (b) `bottles-cli run -e` with a unix-path exe routes via winebridge whose `run_exe` takes NO CLI args (verified in Bottles source), so /compile flags never arrive; (c) `#resource \Files\Icons\...` resolves relative to the SOURCE dir — a build dir without `Files/Icons` fails with 45× error 310 | Use `compile-th3-linux.sh` ONLY on Linux: rsync-mirrors repo (incl. `Files/Icons`) into in-bottle `C:\th3build` AND the REAL `Indicators\BiotakProject` dir (never a symlink — Wine can't traverse it), drives metaeditor via a generated CRLF `.bat` (quoting lives in the `.bat`, never on the CLI), copies `.ex4`+log back to repo and deploys `.ex4` to the terminal. Manual MetaEditor F7 on `Indicators\BiotakProject\*.mq4` (C: real files) verified 0 errors. Never pass Z:\ paths to metaeditor. | 2026-09-05 |
 | P-BUILD-03 | `git status` shows the whole tree modified (~90 files, ±40k lines) with zero real change | Line-ending churn: worktree files got CRLF-ified (repo convention is LF everywhere; BOM only where HEAD has it — e.g. `.ps1` yes, `.mqh`/`.md` no). Diagnose with `git diff --ignore-cr-at-eol --name-only` (2026-09-05: only `AGENTS.md` was real) | NEVER commit that noise: save the real hunks (`git diff <file> > fix.patch`), `git checkout -- .`, re-apply, normalize worktree (`\r\n`→`\n`, strip stray BOMs to match HEAD), and confirm `git diff --stat` shows only the real lines before staging. | 2026-09-05 |
 | P-BUILD-04 | Every `./compile-th3-linux.sh` run CLOSED the running MT4 terminal (user had to reopen it) | The old script compiled INSIDE the live `Tradeing` bottle via `bottles-cli run -e <bat>`. Every `flatpak run` sandbox gets a PRIVATE `/tmp` (proven: host `/tmp` probe invisible inside) while the wineserver socket lives in `/tmp` — so the compile's sandbox started a SECOND wineserver on the SAME live prefix, which kills the terminal. Separately: passing a spaced `/compile:` path as a direct wine argv silently compiles NOTHING (BOM-only log, exit 0, no `.ex4` — verified twice); metaeditor needs the QUOTED path from a CRLF `.bat` run through `cmd /c` | `compile-th3-linux.sh` now compiles in an ISOLATED Wine prefix (`<Bottles-data>/th3build-wine`, override via `TH3_WINEPREFIX`, `wineboot --init` once, own `C:\mt4\metaeditor.exe` copy + `C:\th3build` mirror) driven by `flatpak run --command=wine ... cmd /c C:\th3build\compile.bat` (quoting lives in the `.bat`, never on the CLI). The live bottle is only touched by plain file copies (source/icon sync in, `.ex4` deploy out) — terminal stays open (same PID before/after, full+lite 0 errors). Legacy `C:\th3build` + `.bat` in the live bottle are auto-removed. Never compile inside the live bottle again. | 2026-09-05 |
+| P-HTF-01 | HTF candles gone after switching to a higher chart TF until manual off/on toggle | `OnDeinit(REASON_CHARTCHANGE)` deletes all HTF objects; `OnInit` re-resolves `g_HTFPeriod` but draws nothing; per-tick updater only maintains forming candle idx0; HTF history not yet loaded right after a switch (`iBars==0`, longer on weak PCs) so even a one-shot init draw would silently miss | `HTFEnsureDrawn()` in `Biotak/HTFCandles.mqh`, called from `RefreshUIPerTick()`: per-tick TF re-resolve (O(1)), full redraw at most once/sec only when TF changed / box 0 missing / first run, data-ready gate (`iBars`+`iTime`) with automatic retry, once-only delete when hidden-by-design | 2026-09-05 |
 
 
 > When you close a new recurring issue, add the next row above (highest

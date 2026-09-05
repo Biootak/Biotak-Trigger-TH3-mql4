@@ -183,6 +183,7 @@ void SaveUISupport()
 void RefreshUIPerTick()
 {
    UpdateHTFFormingCandle();
+   HTFEnsureDrawn();   // self-healing full HTF draw after TF switch / missing data (O(1) steady state)
    CircTipTick();   // armed hover tooltip (dwell-gated, ungated cheap checks)
 
    static uint s_LastMenuSync = 0;

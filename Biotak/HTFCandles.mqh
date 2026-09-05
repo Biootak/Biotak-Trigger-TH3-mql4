@@ -67,6 +67,24 @@ static bool   InpHTFShowBody = true;
 static datetime g_HTFLastFormOpen = 0;
 static double   g_HTFLastFormO = 0, g_HTFLastFormH = 0, g_HTFLastFormL = 0, g_HTFLastFormC = 0;
 
+//--- Auto-rebuild engine: TF-switch follow + deferred full draw for weak PCs
+//    (history often not ready on the first tick after attach/TF-switch).
+//    Per-tick cost when idle: 1x Period() + 1-2 int compares.
+static int  s_HTFSeenChartPeriod = -1;
+static bool s_HTFNeedFull = true;
+static uint s_HTFNextFullMs = 0;
+static int  s_HTFRetry = 0;
+static bool s_HTFHiddenCleaned = false;
+static uint s_HTFLastFormRedrawMs = 0;
+
+void HTFRequestFullRedraw()
+{
+   s_HTFNeedFull = true;
+   s_HTFRetry = 0;
+   s_HTFNextFullMs = 0;
+   s_HTFHiddenCleaned = false;
+}
+
 //+------------------------------------------------------------------+
 //| Extract RGB components from color                                |
 //+------------------------------------------------------------------+
@@ -370,6 +388,72 @@ void RefreshHTFCandles()
 {
    DeleteHTFCandles();
    DrawHTFCandles();
+}
+
+//+------------------------------------------------------------------+
+//| SELF-HEALING FULL DRAW — HTF boxes must survive timeframe switches|
+//| without a manual off/on toggle, even on slow PCs. Why: MT4 fires  |
+//| OnDeinit(REASON_CHARTCHANGE) on every TF switch and our OnDeinit  |
+//| deletes ALL HTF objects, while OnInit only re-resolves g_HTFPeriod|
+//| and draws nothing; the per-tick updater only maintains the forming|
+//| candle (index 0), so history boxes 1..N never come back. Worse,   |
+//| right after a switch the HTF history often isn't loaded yet       |
+//| (iBars==0 — takes seconds longer on weak PCs), so even a one-shot |
+//| draw at init would silently draw nothing and never retry.         |
+//| Runs from RefreshUIPerTick (every tick + 1s timer, so it retries  |
+//| with zero ticks too). Steady-state cost is O(1): int compares per |
+//| tick; the ObjectFind/data-readiness probes run at most once/sec,  |
+//| and the 200-bar full draw fires only on a real state change.      |
+//+------------------------------------------------------------------+
+#define HTF_ENSURE_RETRY_MS 1000
+void HTFEnsureDrawn()
+{
+   if(!g_UI.showHTF || StringLen(g_HTFPrefix) == 0) return;
+
+   int tf = ResolveHTFPeriod();   // auto mode follows the CURRENT chart TF
+   static int s_lastDrawnTf = -1; // TF of the boxes on chart (-1=none yet, 0=hidden-by-design)
+
+   // By design there is nothing above the chart TF (MN1 auto, or a manual
+   // TF<=chart): make sure no stale boxes linger, once.
+   if(tf <= (int)Period())   // covers tf==0 (auto on MN1) too
+   {
+      if(s_lastDrawnTf != 0)
+      {
+         DeleteHTFCandles();
+         s_lastDrawnTf = 0;
+      }
+      return;
+   }
+
+   // Keep the engine period in sync (normally already fresh from OnInit).
+   g_HTFPeriod = tf;
+
+   uint now = GetTickCount();
+   static uint s_lastProbe = 0;
+   if(tf == s_lastDrawnTf)
+   {
+      // Steady state: probe existence at most once per second (template
+      // change or manual deletion while the toggle is still ON).
+      if(now - s_lastProbe < HTF_ENSURE_RETRY_MS) return;
+      s_lastProbe = now;
+      if(ObjectFind(0, g_HTFPrefix + "0") >= 0) return;   // all good
+      // else fall through to the redraw below
+   }
+   else if(s_lastProbe != 0 && now - s_lastProbe < HTF_ENSURE_RETRY_MS)
+      return;   // TF just changed: redraw at most once/sec (first run is immediate)
+
+   // Weak-PC guard: HTF history may still be loading after a TF switch.
+   // Draw only when data is really ready; otherwise keep s_lastDrawnTf so
+   // a later tick/timer retries automatically — no toggle needed.
+   if(Bars < 2 || iBars(_Symbol, tf) <= 0 || iTime(_Symbol, tf, 0) <= 0)
+   {
+      s_lastProbe = now;
+      return;
+   }
+
+   RefreshHTFCandles();
+   s_lastDrawnTf = tf;
+   s_lastProbe = now;
 }
 
 //+------------------------------------------------------------------+
