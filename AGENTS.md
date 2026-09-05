@@ -321,23 +321,26 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
-- **Base / Knot Measurement Tool = Tools slot 3, hybrid gesture, state-machine owned**
-  (2026-09-05 drawer, gesture unified 2026-09-06 — researched against MT4
-  docs (Insert → Shapes → Rectangle: "click the starting point and drag it
-  to the end point") + TradingView Rectangle ("click at one corner, move,
-  click again at the opposite corner"): ONE gesture speaks both dialects —
-  press-drag-release commits on release (Meta-native), click-move-click
-  commits on the 2nd click (TV-native), live rubber-band in both (held-drag
-  + button-up hover while waiting). A no-drag 1st click keeps corner 1 and
-  waits (`g_bkWaiting`, hover preview, "corner 1 set" hint) instead of
-  melting; drag-vs-click = 5px radius (`BK_DRAG_PX`); degenerate commits
-  (same bar / zero height) are rejected without losing a waiting corner;
-  off-chart release mid-drag melts, while waiting it is ignored. Tools-ring
+- **Base / Knot Measurement Tool = Tools slot 3, native-engine sizing, single-shot**
+  (2026-09-05 drawer; 2026-09-06 — hand-rolled press/release drag detection
+  on MOUSE_MOVE bitmasks mis-detected drags, so the tool NO LONGER detects
+  drags itself: corner 1 (plain `CHARTEVENT_CLICK`) raises a real SELECTED
+  `OBJ_RECTANGLE` (`<prefix>_BK_P_` sizing set); the user sizes it with the
+  terminal's own white anchor dots (`CHARTEVENT_OBJECT_DRAG`, same engine as
+  Insert → Shapes → Rectangle) and/or a corner-2 click (TradingView-style,
+  button-up hover preview, magnet-snapped). NO mouse-button state is ever
+  read. Entry/SL/TP preview + info follow live (`BaseKnotSyncPlacing`,
+  direction re-resolved while sizing, frozen at commit); corner-2 click moves
+  anchor 2 then commits (same-bar auto-widens +1 bar, zero height stays
+  sizing). Commit and cancel share `BaseKnotFinish()` → `BK_IDLE` + menu
+  restore: SINGLE-SHOT, one box per arming, stray clicks draw nothing.
+  Delete-key on the dots cancels; `BK_ARM_GUARD`/`BK_DRAG_SETTLE` swallow the
+  arming echo and the drag-release CLICK echo. Tools-ring
   `CIR_BASEKNOT`/`TOOL_BASEKNOT` with the `box` glyph (glyph depicts the
   rectangle object, per R-ICONS); click hides the ring and arms
-  `Biotak/BaseKnotTool.mqh` (`BK_IDLE→ARMED→PREVIEW→ARMED`, stays armed =
-  multi-draw like both natives, ESC/right-click/orb exits + menu restores via
-  `BaseKnotTakeRestoreFlag()` in `HandleUIChartEvent`). Committed boxes own
+  `Biotak/BaseKnotTool.mqh` (`BK_IDLE→ARMED→PLACING→IDLE`, ESC/right-click/
+  orb exits + menu restores via `BaseKnotTakeRestoreFlag()` in
+  `HandleUIChartEvent`). Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
   cascades (`ObjectsDeleteAll(pfx)`), the X delete badge is an `OBJ_BUTTON`

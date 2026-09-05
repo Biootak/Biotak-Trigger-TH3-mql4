@@ -91,7 +91,7 @@
 #define CIR_PIN             8   // Custom Price Pin
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 // FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
-#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (drag or 2-click base box + Entry/SL/TP)
+#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (native-sized box + Entry/SL/TP, single-shot)
 
 //--- ring layout (main circle — 6 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
@@ -649,7 +649,7 @@ string CircItemTooltip(const int i)
        case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
         case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
-      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag a box (release = commit) or click 2 corners · ESC: done";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nClick corner 1, size with dots / click corner 2 — auto-done · ESC: cancel";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -1858,7 +1858,7 @@ int HandleButtonClick(const string clickedObject)
        else if(tfeat == CIR_BASEKNOT)
        {
           // Momentary drawing tool: hide the ring (room for analysis),
-          // lock the chart inside BaseKnotArm(), enter the drag-or-2-click flow.
+          // lock the chart inside BaseKnotArm(), enter the click-size flow.
           // No indicator recalc — REFRESH_NONE (Arm redraws itself).
           g_UI.menuVisible = false;
           DeleteMenu();
