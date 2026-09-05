@@ -187,17 +187,19 @@ int OnInitHandler() {
     //    else { ViewLockCapture(); ViewAnchorLineEnsure(); }   // fresh attach: anchor = current view
     //}
 
-    // Restore step mode with range validation (0..3)
+    // STEPOVERRIDE-OFF: one-time migration — the retired override key becomes
+    // the single base mode. (If the chart ALSO has an OV_ SM panel value, that
+    // loads later in RuntimeSettingsLoadOverrides and wins — it is the newer
+    // explicit choice.) The key is deleted and never read again.
     string stepModeGvarName = "Biotak_StepMode_" + chartIdStr;
     if(GlobalVariableCheck(stepModeGvarName)) {
-        int tempMode = (int)GlobalVariableGet(stepModeGvarName);
-        if(tempMode >= 0 && tempMode <= 3) {
-            g_stepModeOverride = tempMode;
+        int migratedMode = (int)GlobalVariableGet(stepModeGvarName);
+        if(migratedMode >= 0 && migratedMode <= 3) {
+            g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)migratedMode;
         } else {
-            _LOG_GATE_W Print("[W][GEN] OnInit: Corrupted StepMode (", tempMode, "), resetting.");
-            GlobalVariableDel(stepModeGvarName);
-            g_stepModeOverride = -1;
+            _LOG_GATE_W Print("[W][GEN] OnInit: Corrupted StepMode (", migratedMode, "), resetting.");
         }
+        GlobalVariableDel(stepModeGvarName);
     }
 
     // Restore SS/LS sequence origin selected from the Custom Price menu
@@ -1607,20 +1609,16 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //        }
         //#endif
 
-        //  
-        // E key   Cycle Step Mode (override: Auto → TH → SS-LS → Combo → Factor → Auto)
-        // Same cycle as the Tools ring item and the panel OVERRIDE row — all
-        // three write g_stepModeOverride, GetCurrentStepMode() decides.
+        // E key   Cycle Step Mode (TH → SS-LS → Combo → Factor → TH).
+        // Single mode: E writes the base directly — same value the Tools
+        // ring item and the panel STEP MODE row write. GetCurrentStepMode()
+        // just returns it.
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
-            // Same cycle as the ring item: -1(Auto) → 0..3 → back to Auto
-            int newOverride = (g_stepModeOverride >= 3) ? -1 : g_stepModeOverride + 1;
-            g_stepModeOverride = newOverride;
-            string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
-            if(g_stepModeOverride == -1) GlobalVariableDel(stepModeGvarName);
-            else GlobalVariableSet(stepModeGvarName, g_stepModeOverride);
-            string stepLogName = (g_stepModeOverride < 0) ? "Auto" : GetStepModeName(GetCurrentStepMode());
-            LOG_IP1(LOG_CAT_KEYS, "Step Mode changed to: ", stepLogName);
+            g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
+            GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
+            RuntimeSettingsSaveOverridesThrottled();   // persist OV_ SM now (E bypasses ApplyRefreshFlags)
+            LOG_IP1(LOG_CAT_KEYS, "Step Mode changed to: ", GetStepModeName(GetCurrentStepMode()));
             g_forceClearOnNextDraw = true;
             g_redrawTHLevelsNeeded = true;
             g_calculatedOnce = false;
@@ -1662,9 +1660,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(IsHotkeyPressed(lparam, sparam, inpResetKey))
         {
-            g_stepModeOverride = -1;
-            // Q resets the whole Step card (override + base + levels), like the
-            // panel Reset does — otherwise a customized base would survive Q.
+            // STEPOVERRIDE-OFF: single Step Mode — Q resets the base + levels
+            // to factory, like the panel Reset does.
             g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(int)FactoryDefault(FF_STEP_CALC_MODE);
             g_maxLevels = (int)FactoryDefault(FF_MAX_LEVELS);
             g_factorValueOverride = 0;

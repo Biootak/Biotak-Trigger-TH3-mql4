@@ -399,7 +399,9 @@ bool CircFeatureOn(const int i)
    // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
-   if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
+   // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
+   // cycle button (no on/off state); the mode itself is shown by the chart label.
+   //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
    if(i == CIR_FACTOR_OVERRIDE) return (g_factorValueOverride > 0.0);
    if(i == CIR_TOOLS)           return g_ToolsOpen;
    return false;
@@ -527,11 +529,14 @@ string CircBadgeText(const int i)
    }
    if(i == CIR_STEP_OVERRIDE)
    {
-      if(g_stepModeOverride == 0) return "TH";
-      if(g_stepModeOverride == 1) return "SS";
-      if(g_stepModeOverride == 2) return "Co";
-      if(g_stepModeOverride == 3) return "Fa";
-      return "Aut";
+      // STEPOVERRIDE-OFF: badge follows the single live mode (badges are OFF
+      // globally via NOBADGES — this only feeds the tooltip text).
+      ENUM_STEP_CALCULATION_MODE sm = GetCurrentStepMode();
+      if(sm == TH_STEP) return "TH";
+      if(sm == SS_LS_STEP) return "SS";
+      if(sm == COMBO_STEP) return "Co";
+      if(sm == FACTOR_STEP) return "Fa";
+      return "";
    }
    if(i == CIR_FACTOR_OVERRIDE)
    {
@@ -561,7 +566,7 @@ string CircItemTooltip(const int i)
        // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
        case CIR_HTF:             return "Higher Timeframe Candles\nClick: toggle HTF candles · Hold: settings";
       case CIR_PIN:             return "Custom Price Pin\nClick: activate pin placement · Drag line: adjust · ESC: clear";
-      case CIR_STEP_OVERRIDE:   return "Step Mode Override\nClick: cycle override · Hold: settings";
+       case CIR_STEP_OVERRIDE:   return "Step Mode\nClick: cycle step mode (TH/SS-LS/Combo/Factor) · Hold: settings";
       case CIR_FACTOR_OVERRIDE: return "Factor Value Override\nClick: cycle override · Hold: settings";
       case CIR_TOOLS:           return "Biotak Tools\nClick: open tools menu";
    }
@@ -1536,17 +1541,14 @@ int HandleButtonClick(const string clickedObject)
       }
        else if(tfeat == CIR_STEP_OVERRIDE)
        {
-          // Same cycle as the E key and the panel OVERRIDE row:
-          // -1(Auto) → 0..3 → back to Auto.
-          g_stepModeOverride++;
-          if(g_stepModeOverride > 3) g_stepModeOverride = -1;
-         string stepModeGvarName = "Biotak_StepMode_" + GetCachedChartIdStr();
-         if(g_stepModeOverride == -1) GlobalVariableDel(stepModeGvarName);
-         else GlobalVariableSet(stepModeGvarName, (double)g_stepModeOverride);
-         g_forceClearOnNextDraw = true;
-         g_redrawTHLevelsNeeded = true;
-         tflags = REFRESH_ALL;
-      }
+          // STEPOVERRIDE-OFF: single Step Mode — cycle the base 0..3 (same as
+          // the E key and the panel row). OV_ persist rides on REFRESH_ALL.
+          g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
+          GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
+          g_forceClearOnNextDraw = true;
+          g_redrawTHLevelsNeeded = true;
+          tflags = REFRESH_ALL;
+       }
       else if(tfeat == CIR_FACTOR_OVERRIDE)
       {
          if(g_factorValueOverride == 0) g_factorValueOverride = 25;

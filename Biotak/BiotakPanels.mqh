@@ -82,10 +82,12 @@ color QuickPalColor(const int i)
 // Row counts per settings panel. State lives in BiotakKit.mqh.
 // 0 Trigger Zones (zones-only, 4 rows) · 1 ZONES & LEVELS (main card, 11 rows)
 // 2 ATR · 3 TH · 4 retired (was View Lock) · 5 TH3 · 6 HTF · 7 LINES (unified [08.4] line appearance)
-// 8 CustomPrice · 9 StepMode (engine only) · 10 Factor · 11 STRUCTURE (sub-card)
+// 8 CustomPrice · 9 StepMode (single mode + levels) · 10 Factor · 11 STRUCTURE (sub-card)
 // VIEWLOCK-OFF: g_PnlRows[4] kept =1 dormant (stable panel keys — never reorder).
+// STEPOVERRIDE-OFF: g_PnlRows[9] 3→2 (OVERRIDE row retired; rows inside a card
+// are positional — CALC MODE is now row 0, MAX LEVELS row 1).
 #define PNL_COUNT 12
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,3,7,7};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -1130,19 +1132,19 @@ int LockOptFromPeriod(const int p)
    return 0;
 }
 
-//--- Step-override option helpers (panel 9 — OVERRIDE segment row)
-//    Segment 0 = Auto (-1: follow CALC MODE), segments 1..4 = TH / SS-LS / Combo / Factor (0..3)
-int StepOverrideFromOpt(const int idx)
-{
-   if(idx <= 0) return -1;
-   return idx - 1;
-}
-
-int StepOverrideOpt(const int v)
-{
-   if(v < 0) return 0;
-   return v + 1;
-}
+// STEPOVERRIDE-OFF: override helpers retired with the OVERRIDE row —
+// card 9 segments now map 1:1 onto the enum, no translation needed.
+//int StepOverrideFromOpt(const int idx)
+//{
+//   if(idx <= 0) return -1;
+//   return idx - 1;
+//}
+//
+//int StepOverrideOpt(const int v)
+//{
+//   if(v < 0) return 0;
+//   return v + 1;
+//}
 
 //+------------------------------------------------------------------+
 //| Row descriptor — settings panels (0=Trigger Zones, 1=ZONES &     |
@@ -1250,11 +1252,10 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==2)  { kind=1; label="MAGNET"; }
       else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
    }
-   else if(item==9)   // STEP MODE — the calculation engine card: override,
-                      // calc mode and level-count limit (MAX LEVELS).
+   else if(item==9)   // STEP MODE — single setting: the mode + level count.
+                      // (STEPOVERRIDE-OFF: OVERRIDE row retired.)
    {
-      if(row==0)       { kind=2; label="OVERRIDE"; opts="Auto|TH|SS-LS|Combo|Factor"; minV=0; maxV=4; }
-      else if(row==1)  { kind=2; label="CALC MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
+      if(row==0)       { kind=2; label="STEP MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
       else             { label="MAX LEVELS"; minV=1; maxV=500; }
    }
    else if(item==11)  // STRUCTURE — sub-card opened from the Zones & Levels card
@@ -1407,9 +1408,8 @@ double PnlDefVal(const int item,const int row)
               if(row==2) return (FactoryDefault(FF_ENABLE_MAGNET)>0.5)?1.0:0.0;
               if(row==3) return FactoryDefault(FF_MAGNET_SENS);
               return 3;   // COLOR row → palette sentinel
-      case 9: if(row==0) return 0.0;                   // Auto
-              if(row==1) return (int)FactoryDefault(FF_STEP_CALC_MODE);
-              return FactoryDefault(FF_MAX_LEVELS);     // row 2 — MAX LEVELS
+      case 9: if(row==0) return (int)FactoryDefault(FF_STEP_CALC_MODE);
+              return FactoryDefault(FF_MAX_LEVELS);     // row 1 — MAX LEVELS
       case 11: if(row==0) return 0.0;                   // BACK nav row
               if(row==1) return (FactoryDefault(FF_SHOW_STRUCTURE)>0.5)?1.0:0.0;
               if(row==2) return (FactoryDefault(FF_SHOW_STRUCTURE_L1)>0.5)?1.0:0.0;
@@ -1486,9 +1486,8 @@ double PnlCurrent(const int item,const int row)
       case 8: if(row==0) return g_customPriceLevelWidth;
               if(row==2) return g_enableMagnet?1.0:0.0;
               return g_magnetSensitivityPips;
-      case 9: if(row==0) return StepOverrideOpt(g_stepModeOverride);
-              if(row==1) return (int)g_stepCalculationMode;
-              return g_maxLevels;   // row 2 — MAX LEVELS
+      case 9: if(row==0) return (int)g_stepCalculationMode;
+              return g_maxLevels;   // row 1 — MAX LEVELS
       case 11: if(row==0) return 0;            // BACK nav row
               if(row==1) return g_showStructure?1.0:0.0;
               if(row==2) return g_showStructureL1?1.0:0.0;
@@ -1644,23 +1643,14 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==2)  { g_enableMagnet=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }
          else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
          break;
-      case 9:   // STEP MODE — the calculation engine card
+      case 9:   // STEP MODE — single mode + level count (no override layer).
          if(row==0)
          {
-            g_stepModeOverride=StepOverrideFromOpt((int)MathRound(v));
-            string stepModeGvarName="Biotak_StepMode_"+GetCachedChartIdStr();
-            if(g_stepModeOverride==-1) GlobalVariableDel(stepModeGvarName);
-            else GlobalVariableSet(stepModeGvarName,(double)g_stepModeOverride);
+            g_stepCalculationMode=(ENUM_STEP_CALCULATION_MODE)(int)MathRound(v);
             g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true;
             flags=REFRESH_ALL;
          }
-         else if(row==1)  { g_stepCalculationMode=(ENUM_STEP_CALCULATION_MODE)(int)MathRound(v);
-                // New base must take effect at once: drop any override, or it
-                // would keep winning in GetCurrentStepMode and hide this change.
-                g_stepModeOverride=-1;
-                GlobalVariableDel("Biotak_StepMode_"+GetCachedChartIdStr());
-                g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
-         else             { g_maxLevels=ClampInt((int)MathRound(v),1,500);   // row 2 — MAX LEVELS
+         else             { g_maxLevels=ClampInt((int)MathRound(v),1,500);   // row 1 — MAX LEVELS
                 g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
          break;
       case 11:  // STRUCTURE sub-card (opened from Zones & Levels)

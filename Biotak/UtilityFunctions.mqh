@@ -129,15 +129,15 @@ double GetMidpointPrice(ENUM_TH_START_POINT_TYPE startPointType) {
 }
 
 //+------------------------------------------------------------------+
-//| Get current step calculation mode (respects keyboard override)  |
-//| Supports modes 0-3: TH, SS/LS, Combo, Factor                    |
+//| Get current step calculation mode — the single Step Mode.        |
+//| STEPOVERRIDE-OFF: the override layer is retired; the base IS the |
+//| mode (E / Tools-ring / panel all write it directly).             |
 //+------------------------------------------------------------------+
 ENUM_STEP_CALCULATION_MODE GetCurrentStepMode() {
-    // If user has overridden via keyboard, use that
-    // Range 0-3 includes FACTOR_STEP (mode 3)
-    if(g_stepModeOverride >= 0 && g_stepModeOverride <= 3) {
-        return (ENUM_STEP_CALCULATION_MODE)g_stepModeOverride;
-    }
+    // STEPOVERRIDE-OFF:
+    //if(g_stepModeOverride >= 0 && g_stepModeOverride <= 3) {
+    //    return (ENUM_STEP_CALCULATION_MODE)g_stepModeOverride;
+    //}
     // Otherwise use input parameter
     return inpStepCalculationMode;
 }

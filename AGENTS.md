@@ -187,18 +187,28 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `VIEWLOCK-OFF:` sites (grep the marker). Full+Lite compile 0 errors
   without it (ex4 ~914KB/521KB).
 
-- **Step Mode is one engine value, three writers, one language**
-  (2026-09-05 — `GetCurrentStepMode()` in `UtilityFunctions.mqh` is the
-  single source: `g_stepModeOverride` (-1=Auto=follow base, 0-3=force) wins,
-  else base `g_stepCalculationMode` (input-seeded, OV_ `SM` persisted). The
-  E key, the Tools-ring step item, and panel card 9 row 0 (OVERRIDE) all
-  write the override with the SAME `-1→0..3→-1` cycle; card 9 row 1
-  (CALC MODE) writes the base AND clears the override (deletes
-  `Biotak_StepMode_`) so the new base is never hidden by a stale override;
-  Q resets all three Step rows to factory like the panel Reset does.
-  Segment/badge names are the enum names everywhere (`TH/SS-LS/Combo/Factor`,
-  badge shorts `TH/SS/Co/Fa/Aut`) — the old `Sub/Pat/Trd/Tr` labels were dead
-  names from a pre-history enum, never reintroduce them.)
+- **Step Mode is ONE setting, three writers, one language**
+  (2026-09-05 — the override layer is retired, see below; `GetCurrentStepMode()`
+  in `UtilityFunctions.mqh` just returns the base `g_stepCalculationMode`
+  (input-seeded, OV_ `SM` persisted). The E key, the Tools-ring step item, and
+  panel card 9 row 0 (STEP MODE) all write the base with the SAME
+  `TH→SS-LS→Combo→Factor→TH` cycle; card 9 row 1 is MAX LEVELS; Q resets both
+  rows to factory like the panel Reset does. Names are the enum names
+  everywhere (`TH/SS-LS/Combo/Factor`, badge shorts `TH/SS/Co/Fa`) — the old
+  `Sub/Pat/Trd/Tr` labels were dead names from a pre-history enum, never
+  reintroduce them.)
+- **Step override is retired** (2026-09-05, user decision — the OVERRIDE row
+  was a second setting for the same thing and confused everyone). Everything
+  is commented in place with the `STEPOVERRIDE-OFF:` marker: `g_stepModeOverride`
+  decl, `GetCurrentStepMode` branch, `StepOverride(FromOpt|Opt)` helpers,
+  panel card 9 row 0 (card is now 2 rows: STEP MODE + MAX LEVELS). Rewritten
+  (not commented) to the base: E-key cycle, Tools-ring cycle, `PnlRowDef/DefVal/
+  Current/Apply` card 9, and the mode-label test harness. One-time migration
+  in `OnInitHandler`: a leftover `Biotak_StepMode_` GV (0-3) is adopted as the
+  base, then deleted and never read again. Purge paths stay ACTIVE:
+  `CleanupAllGlobalVariables` entry, Q-reset + E/Tools `GlobalVariableDel`,
+  for old charts. To restore: uncomment the `STEPOVERRIDE-OFF:` sites (grep
+  the marker). Full+Lite compile 0 errors without it.
 
 - **COLOR rows have inline quick-pick swatches** (2026-09-04 — color picking
   without opening the popup: preview block + 6 curated swatches

@@ -86,7 +86,7 @@ void OnStart()
     // Save original globals (restored at the end). NOTE: input
     // variables are const in strict mode, so only globals are touched.
     // ---------------------------------------------------------------
-    int  savedOverride    = g_stepModeOverride;
+    int  savedOverride    = (int)g_stepCalculationMode;
     int  savedStartType   = (int)g_thStartPointType;
     double savedCustomPrice = g_customTHStartPrice;
 
@@ -99,7 +99,7 @@ void OnStart()
     // 1. THE reported bug: Custom-Price start point with no price set.
     //    The B: part of the label must NOT show 0.
     // ---------------------------------------------------------------
-    g_stepModeOverride = TH_STEP;
+    g_stepCalculationMode = TH_STEP;
     g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
     g_customTHStartPrice = 0.0;
     RefreshComboLabelExtraInfo();
@@ -155,7 +155,7 @@ void OnStart()
     g_customTHStartPrice = 0.0;
     for(int mode = 0; mode <= 3; mode++)
     {
-        g_stepModeOverride = mode;
+        g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)mode;
         RefreshComboLabelExtraInfo();
         string label = BuildUnifiedModeLabelText();
         string modeName = GetStepModeName((ENUM_STEP_CALCULATION_MODE)mode);
@@ -168,7 +168,7 @@ void OnStart()
     // 3. Live label in combo mode: breakdown must be present on the
     //    same label (uses the CURRENT combo inputs, whatever they are)
     // ---------------------------------------------------------------
-    g_stepModeOverride = COMBO_STEP;
+    g_stepCalculationMode = COMBO_STEP;
     RefreshComboLabelExtraInfo();
     {
         string label = BuildUnifiedModeLabelText();
@@ -269,7 +269,7 @@ void OnStart()
     // ---------------------------------------------------------------
     // 6. Summary + restore
     // ---------------------------------------------------------------
-    g_stepModeOverride   = savedOverride;
+    g_stepCalculationMode   = (ENUM_STEP_CALCULATION_MODE)savedOverride;
     g_thStartPointType   = (ENUM_TH_START_POINT_TYPE)savedStartType;
     g_customTHStartPrice = savedCustomPrice;
     RefreshComboLabelExtraInfo();
