@@ -202,9 +202,13 @@ void HTFRectUpsert(const string name, const datetime t1, const double p1,
 
 //+------------------------------------------------------------------+
 //| Delete all HTF candle objects                                    |
+//| Empty-prefix guard: StringFind(name,"")==0 matches EVERY object — |
+//| without this, a call before InitializeHTFCandles would wipe other|
+//| indicators' rectangles/trends off the chart.                     |
 //+------------------------------------------------------------------+
 void DeleteHTFCandles()
 {
+   if(StringLen(g_HTFPrefix) == 0) return;
    int total = ObjectsTotal(0, 0, OBJ_RECTANGLE);
    for(int i = total - 1; i >= 0; i--)
    {
@@ -217,6 +221,46 @@ void DeleteHTFCandles()
       string name = ObjectName(0, i, 0, OBJ_TREND);
       if(StringFind(name, g_HTFPrefix + "W") == 0) ObjectDelete(0, name);
    }
+}
+
+//+------------------------------------------------------------------+
+//| Delete HTF objects for history indices [from,to) — used to prune |
+//| only the trailing tail after an in-place redraw shrinks, instead |
+//| of a full delete+recreate (no flicker, no drag-freeze).          |
+//+------------------------------------------------------------------+
+void HTFDeleteIndices(const int from, const int to)
+{
+   if(StringLen(g_HTFPrefix) == 0 || to <= from) return;
+   for(int i = from; i < to; i++)
+   {
+      string id = IntegerToString(i);
+      ObjectDelete(0, g_HTFPrefix + id);
+      ObjectDelete(0, g_HTFPrefix + id + "_F");
+      ObjectDelete(0, g_HTFPrefix + id + "_B");
+      ObjectDelete(0, g_HTFPrefix + "WU" + id);
+      ObjectDelete(0, g_HTFPrefix + "WL" + id);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Do any HTF boxes exist? Probes bars 0..2 across every name shape |
+//| the core can create (body / BOTH variants / wicks). Sampling three|
+//| bars keeps it correct when bodies are off or a forming doji has   |
+//| no wicks — a single ObjectFind(prefix+"0") would miss those and   |
+//| force a full 200-bar redraw every second.                        |
+//+------------------------------------------------------------------+
+bool HTFAnyBoxesExist()
+{
+   if(StringLen(g_HTFPrefix) == 0) return false;
+   for(int i = 0; i < 3; i++)
+   {
+      string id = IntegerToString(i);
+      if(ObjectFind(0, g_HTFPrefix + id) >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + id + "_F") >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + "WU" + id) >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + "WL" + id) >= 0) return true;
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -331,20 +375,23 @@ bool UpdateHTFFormingCandle()
 }
 
 //+------------------------------------------------------------------+
-//| Redraw all historical HTF candles                                |
-//| Returns true when done (drawn or correctly hidden), false when   |
-//| HTF history is not ready yet (weak PC / fresh TF-switch) so the  |
-//| caller retries later instead of leaving an empty chart.          |
+//| Redraw all historical HTF candles (IN-PLACE, no flicker)         |
+//| Returns bars drawn (>=0), or -1 when HTF history is not ready yet|
+//| (weak PC / fresh TF-switch) so the caller retries later instead  |
+//| of leaving an empty chart. Same-index objects are upserted in     |
+//| place — only a shrunken tail is pruned and only a box/shape flip  |
+//| wipes all (slider drags recolor without delete+recreate churn).  |
 //+------------------------------------------------------------------+
-bool DrawHTFCandles()
+int DrawHTFCandles()
 {
-   if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); return true; }
+   static int s_prevCount = 0;
+   if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    int tf = ResolveHTFPeriod();
-   if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); return true; }
+   if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    int total = iBars(_Symbol, tf);
-   if(total <= 0) return false;
+   if(total <= 0) return -1;
    datetime ot0 = iTime(_Symbol, tf, 0);
-   if(ot0 <= 0) return false;
+   if(ot0 <= 0) return -1;
    int count = MathMin(InpHTFMaxBars, total);
 
    static int s_lastBoxMode = -1;
@@ -352,6 +399,7 @@ bool DrawHTFCandles()
    if(s_lastBoxMode != g_HTFBoxMode || s_lastShowBodyBox != g_HTFShowBody)
    {
       DeleteHTFCandles();
+      s_prevCount = 0;
       s_lastBoxMode = g_HTFBoxMode;
       s_lastShowBodyBox = g_HTFShowBody;
    }
@@ -361,14 +409,14 @@ bool DrawHTFCandles()
       datetime nt = (i == 0) ? HTFBarCloseTime(ot, tf) : iTime(_Symbol, tf, i - 1);
       if(ot <= 0 || nt <= ot)
       {
-         if(i == 0) return false;
+         if(i == 0) return -1;
          continue;
       }
       double hi = iHigh(_Symbol, tf, i), lo = iLow(_Symbol, tf, i);
       double op = iOpen(_Symbol, tf, i), cl = iClose(_Symbol, tf, i);
       if(hi <= 0 || lo <= 0)
       {
-         if(i == 0) return false;
+         if(i == 0) return -1;
          continue;
       }
 
@@ -380,17 +428,18 @@ bool DrawHTFCandles()
          g_HTFLastFormL = lo; g_HTFLastFormC = cl;
       }
    }
-   return true;
+   HTFDeleteIndices(count, s_prevCount);
+   s_prevCount = count;
+   return count;
 }
 
 //+------------------------------------------------------------------+
-//| Full refresh of HTF candles                                      |
+//| Full refresh of HTF candles (returns bars drawn, -1 = not ready) |
 //+------------------------------------------------------------------+
-void RefreshHTFCandles()
+int RefreshHTFCandles()
 {
-   DeleteHTFCandles();
    g_HTFLastFormOpen = 0;
-   DrawHTFCandles();
+   return DrawHTFCandles();
 }
 
 //+------------------------------------------------------------------+
@@ -405,8 +454,8 @@ void RefreshHTFCandles()
 //| draw at init would silently draw nothing and never retry.         |
 //| Runs from RefreshUIPerTick (every tick + 1s timer, so it retries  |
 //| with zero ticks too). Steady-state cost is O(1): int compares per |
-//| tick; the ObjectFind/data-readiness probes run at most once/sec,  |
-//| and the 200-bar full draw fires only on a real state change.      |
+//| tick; the existence probe runs at most once/sec, and the full     |
+//| draw fires only on TF change / new HTF bar / missing boxes.       |
 //+------------------------------------------------------------------+
 #define HTF_ENSURE_RETRY_MS 1000
 void HTFEnsureDrawn()
@@ -415,6 +464,7 @@ void HTFEnsureDrawn()
 
    int tf = ResolveHTFPeriod();   // auto mode follows the CURRENT chart TF
    static int s_lastDrawnTf = -1; // TF of the boxes on chart (-1=none yet, 0=hidden-by-design)
+   static datetime s_drawnBar0 = 0; // forming-bar open time as last fully drawn
 
    // By design there is nothing above the chart TF (MN1 auto, or a manual
    // TF<=chart): make sure no stale boxes linger, once.
@@ -424,6 +474,7 @@ void HTFEnsureDrawn()
       {
          DeleteHTFCandles();
          s_lastDrawnTf = 0;
+         s_drawnBar0 = 0;
       }
       return;
    }
@@ -431,22 +482,27 @@ void HTFEnsureDrawn()
    // Keep the engine period in sync (normally already fresh from OnInit).
    g_HTFPeriod = tf;
 
+   // Runs AFTER UpdateHTFFormingCandle in RefreshUIPerTick, so the live-edge
+   // cache is fresh: a changed open time means a new HTF bar rolled and the
+   // index-based history shifted — full redraw, no extra iTime call.
    uint now = GetTickCount();
    static uint s_lastProbe = 0;
-   if(tf == s_lastDrawnTf)
+   bool need = false;
+   if(tf != s_lastDrawnTf) need = true;
+   else if(g_HTFLastFormOpen != s_drawnBar0) need = true;
+   else if(now - s_lastProbe >= HTF_ENSURE_RETRY_MS)
    {
       // Steady state: probe existence at most once per second (template
       // change or manual deletion while the toggle is still ON).
-      if(now - s_lastProbe < HTF_ENSURE_RETRY_MS) return;
       s_lastProbe = now;
-      if(ObjectFind(0, g_HTFPrefix + "0") >= 0) return;   // all good
-      // else fall through to the redraw below
+      if(!HTFAnyBoxesExist()) need = true;
    }
-   else if(s_lastProbe != 0 && now - s_lastProbe < HTF_ENSURE_RETRY_MS)
+   if(!need) return;
+   if(s_lastProbe != 0 && now - s_lastProbe < HTF_ENSURE_RETRY_MS && tf != s_lastDrawnTf)
       return;   // TF just changed: redraw at most once/sec (first run is immediate)
 
    // Weak-PC guard: HTF history may still be loading after a TF switch.
-   // Draw only when data is really ready; otherwise keep s_lastDrawnTf so
+   // Draw only when data is really ready; otherwise keep the old state so
    // a later tick/timer retries automatically — no toggle needed.
    if(Bars < 2 || iBars(_Symbol, tf) <= 0 || iTime(_Symbol, tf, 0) <= 0)
    {
@@ -454,9 +510,11 @@ void HTFEnsureDrawn()
       return;
    }
 
-   RefreshHTFCandles();
+   if(RefreshHTFCandles() < 0) { s_lastProbe = now; return; }
    s_lastDrawnTf = tf;
+   s_drawnBar0 = g_HTFLastFormOpen;
    s_lastProbe = now;
+   ChartRedraw();
 }
 
 //+------------------------------------------------------------------+
