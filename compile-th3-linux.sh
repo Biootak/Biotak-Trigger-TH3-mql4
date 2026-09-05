@@ -2,9 +2,9 @@
 # ============================================================================
 # compile-th3-linux.sh — Linux compile path for Biotak Trigger TH3 (MQL4)
 #
-# Compiles the project with the AMarkets MT4 metaeditor.exe running inside
-# the Bottles "Tradeing" bottle. This is the Linux counterpart of
-# compile-th3.ps1 (Windows) — that script is NEVER touched by this one.
+# Compiles the project with the Bottles Flatpak's Wine (wine-11.0) inside a
+# DEDICATED build prefix. This is the Linux counterpart of compile-th3.ps1
+# (Windows) — that script is NEVER touched by this one.
 #
 # Usage:
 #   ./compile-th3-linux.sh [full|lite|all]     (default: all)
@@ -12,23 +12,32 @@
 # Optional environment overrides:
 #   BOTTLE_NAME    Bottles bottle name            (default: Tradeing)
 #   BOTTLE_PATH    Full path to the bottle dir    (auto-detected)
-#   MT4_METAEDITOR Full unix path to metaeditor.exe (auto-detected)
+#   MT4_METAEDITOR Full unix path to metaeditor.exe (auto-detected in bottle)
 #   MT4_MQL4_DIR   Full unix path to terminal MQL4 (auto-detected)
+#   TH3_WINEPREFIX Full unix path to the isolated build prefix
+#                  (default: <Bottles-data>/th3build-wine)
 #
-# How it works (see AGENTS.md P-BUILD-02 for the traps behind this design):
-#   1. Mirrors the repo sources into an in-bottle build dir (C:\th3build).
-#      MetaEditor CANNOT compile from Z:\ (host) paths under Bottles — it
-#      exits 0 silently and writes neither .ex4 nor log. Everything the
-#      compiler touches must live on C:\ (inside the bottle).
-#   2. Syncs Files/Icons/*.bmp into the terminal's MQL4\Files\Icons, because
-#      MetaEditor resolves #resource against the TERMINAL data folder
-#      (same rule as compile-th3.ps1).
-#   3. Generates a CRLF .bat on C:\ with the /compile /log /include calls
-#      (quoting lives inside the .bat — bottles-cli arg forwarding is
-#      unreliable, see P-BUILD-02) and runs it via:
-#        flatpak run --command=bottles-cli ... run -b <bottle> -e <bat>
-#   4. Copies the .ex4 + build log back into the repo and prints the
-#      "Result: N errors" summary. Success = "Result: 0 errors".
+# How it works (see AGENTS.md P-BUILD-02 / P-BUILD-04 for the traps):
+#   1. Syncs the repo sources into the terminal's REAL
+#      Indicators/BiotakProject dir (for manual MetaEditor F7) and syncs
+#      Files/Icons/*.bmp into the terminal's MQL4\Files\Icons, because
+#      MetaEditor resolves #resource against the TERMINAL data folder.
+#      Plain file copies — safe while the terminal runs.
+#   2. Mirrors the sources into an ISOLATED Wine prefix
+#      (<Bottles-data>/th3build-wine, C:\th3build inside) that hosts its own
+#      copy of metaeditor.exe (C:\mt4). The compile runs there via:
+#        flatpak run --command=wine com.usebottles.bottles cmd /c <bat>
+#      The running terminal is NEVER touched by Wine: every `flatpak run`
+#      sandbox gets a PRIVATE /tmp (proven — a host /tmp probe file is
+#      invisible inside), so a second wineserver on the SAME prefix would
+#      corrupt/close the live terminal. The isolated prefix has its own
+#      wineserver, so the terminal stays open (P-BUILD-04).
+#   3. metaeditor.exe MUST be driven through cmd.exe with a CRLF .bat holding
+#      QUOTED paths: passing a spaced /compile path as a direct wine argv
+#      silently compiles NOTHING (BOM-only log, exit 0, no .ex4 — verified).
+#   4. Copies the .ex4 + build log back into the repo, deploys the .ex4 to
+#      the terminal project dir, and prints the "Result: N errors" summary.
+#      Success = "Result: 0 errors".
 # ============================================================================
 set -u
 
@@ -41,7 +50,7 @@ case "$TARGET" in
   *) echo "Usage: $0 [full|lite|all]" >&2; exit 2 ;;
 esac
 
-# --- locate the bottle -------------------------------------------------------
+# --- locate the bottle (metaeditor seed + terminal deploy dir) -----------------
 if [ -z "${BOTTLE_PATH:-}" ]; then
   for base in \
     "$HOME/.var/app/com.usebottles.bottles/data/bottles/bottles" \
@@ -54,7 +63,7 @@ if [ -z "${BOTTLE_PATH:-}" ] || [ ! -d "$BOTTLE_PATH/drive_c" ]; then
   exit 1
 fi
 
-# --- locate metaeditor.exe ---------------------------------------------------
+# --- locate metaeditor.exe (seed source for the build prefix) ------------------
 if [ -z "${MT4_METAEDITOR:-}" ]; then
   while IFS= read -r candidate; do
     if [ -f "$candidate" ]; then MT4_METAEDITOR="$candidate"; break; fi
@@ -65,12 +74,6 @@ if [ -z "${MT4_METAEDITOR:-}" ] || [ ! -f "$MT4_METAEDITOR" ]; then
   echo "ERROR: metaeditor.exe not found in bottle. Set MT4_METAEDITOR." >&2
   exit 1
 fi
-# Windows path of metaeditor (for inside the .bat)
-MED_WIN="$(python3 -c "
-import sys
-p = sys.argv[1]
-rest = p.split('/drive_c/', 1)[1]
-print('C:\\\\' + rest.replace('/', '\\\\'))" "$MT4_METAEDITOR")"
 
 # --- locate terminal MQL4 dir (for icon sync + BiotakProject link) ------------
 if [ -z "${MT4_MQL4_DIR:-}" ]; then
@@ -91,9 +94,21 @@ if [ -z "${MT4_MQL4_DIR:-}" ] || [ ! -d "$MT4_MQL4_DIR/Indicators" ]; then
   exit 1
 fi
 
+# --- isolated build prefix (visible inside the flatpak sandbox at same path) ---
+if [ -z "${TH3_WINEPREFIX:-}" ]; then
+  TH3_WINEPREFIX="$(python3 - "$BOTTLE_PATH" <<'EOF'
+import os, sys
+# <data>/bottles/bottles/<name> -> <data>/th3build-wine
+data = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[1]))))
+print(os.path.join(data, "th3build-wine"))
+EOF
+)"
+fi
+
 echo "Bottle:      $BOTTLE_PATH"
 echo "MetaEditor:  $MT4_METAEDITOR"
 echo "MQL4 dir:    $MT4_MQL4_DIR"
+echo "Build prefix:$TH3_WINEPREFIX"
 echo ""
 
 # --- 1. mirror project into the terminal (REAL dir, not a symlink) ----------------
@@ -110,11 +125,13 @@ sync_tree() {
       --include 'Biotak/***' --include 'Files/' --include 'Files/Icons/' \
       --include 'Files/Icons/*.bmp' --exclude '*' "$SCRIPT_ROOT/" "$1/"
   else
-    cp -ru "$SCRIPT_ROOT/Biotak Trigger TH3.mq4" \
-           "$SCRIPT_ROOT/Biotak Trigger TH3 Lite.mq4" \
-           "$SCRIPT_ROOT/Biotak" "$1/"
-    mkdir -p "$1/Files"
-    cp -ru "$SCRIPT_ROOT/Files/Icons" "$1/Files/"
+    rm -rf "$1/Biotak" "$1/Files"
+    cp -f "$SCRIPT_ROOT/Biotak Trigger TH3.mq4" \
+          "$SCRIPT_ROOT/Biotak Trigger TH3 Lite.mq4" \
+          "$1/"
+    cp -r "$SCRIPT_ROOT/Biotak" "$1/Biotak"
+    mkdir -p "$1/Files/Icons"
+    cp -f "$SCRIPT_ROOT"/Files/Icons/*.bmp "$1/Files/Icons/"
   fi
 }
 sync_tree "$TERM_PROJ"
@@ -130,14 +147,39 @@ for bmp in "$SCRIPT_ROOT"/Files/Icons/*.bmp; do
 done
 [ "$copied" -gt 0 ] && echo "Icon sync: copied $copied updated BMP(s)"
 
-# --- 3. mirror sources into the in-bottle build dir -----------------------------
-BUILD_UNIX="$BOTTLE_PATH/drive_c/th3build"
-BUILD_WIN='C:\th3build'
-mkdir -p "$BUILD_UNIX/logs"
+# --- 3. init the isolated prefix once + seed metaeditor.exe --------------------
+BUILD_UNIX="$TH3_WINEPREFIX/drive_c/th3build"
+MT4_UNIX="$TH3_WINEPREFIX/drive_c/mt4"
+if [ ! -d "$TH3_WINEPREFIX/drive_c" ]; then
+  echo "First run: initializing isolated Wine prefix (one-time, ~1 min) ..."
+  mkdir -p "$TH3_WINEPREFIX"
+  if ! flatpak run \
+      --env=WINEPREFIX="$TH3_WINEPREFIX" \
+      --env=WINEARCH=win64 \
+      --env=WINEDEBUG=-all \
+      --command=wine com.usebottles.bottles wineboot --init; then
+    echo "ERROR: wineboot --init failed." >&2
+    exit 1
+  fi
+fi
+mkdir -p "$MT4_UNIX" "$BUILD_UNIX/logs"
+if [ ! -f "$MT4_UNIX/metaeditor.exe" ] || [ "$MT4_METAEDITOR" -nt "$MT4_UNIX/metaeditor.exe" ]; then
+  cp -f "$MT4_METAEDITOR" "$MT4_UNIX/metaeditor.exe"
+  echo "metaeditor.exe seeded into build prefix"
+fi
 sync_tree "$BUILD_UNIX"
-echo "Sources mirrored to $BUILD_WIN"
+echo "Sources mirrored to C:\\th3build (isolated prefix)"
 
-# --- 4. pick targets -------------------------------------------------------------
+# --- 4. drop legacy build artefacts from the LIVE bottle (P-BUILD-04) -----------
+# The old script compiled inside the live bottle (C:\th3build + .bat there);
+# that second wineserver on the live prefix is what closed the terminal.
+for legacy in "$BOTTLE_PATH/drive_c/th3build" "$BOTTLE_PATH/drive_c/compile-th3-linux.bat"; do
+  case "$legacy" in
+    */drive_c/*) [ -e "$legacy" ] && rm -rf "$legacy" && echo "Removed legacy: $legacy" ;;
+  esac
+done
+
+# --- 5. pick targets -------------------------------------------------------------
 NAMES=()
 SRCS=()
 if [ "$TARGET" = "full" ] || [ "$TARGET" = "all" ]; then
@@ -147,34 +189,38 @@ if [ "$TARGET" = "lite" ] || [ "$TARGET" = "all" ]; then
   NAMES+=("lite"); SRCS+=("Biotak Trigger TH3 Lite.mq4")
 fi
 
-# --- 5. generate the CRLF .bat (quoting lives here, not on the CLI) --------------
-BAT_UNIX="$BOTTLE_PATH/drive_c/compile-th3-linux.bat"
-python3 - "$BAT_UNIX" "$MED_WIN" "$BUILD_WIN" "${NAMES[@]}" "${SRCS[@]}" <<'EOF'
+# --- 6. generate the CRLF .bat (quoting lives here — direct argv with spaces
+#        silently compiles nothing, see header) -----------------------------------
+BAT_UNIX="$BUILD_UNIX/compile.bat"
+python3 - "$BAT_UNIX" "${NAMES[@]}" "${SRCS[@]}" <<'EOF'
 import sys
-bat, med, build = sys.argv[1:4]
-rest = sys.argv[4:]
+bat = sys.argv[1]
+rest = sys.argv[2:]
 names, srcs = rest[:len(rest)//2], rest[len(rest)//2:]
 lines = ["@echo off"]
 for name, src in zip(names, srcs):
     lines.append(
-        '"%s" /compile:"%s\\%s" /log:"%s\\logs\\%s.log" /include:"%s"'
-        % (med, build, src, build, name, build))
-    lines.append("echo EXIT-%s %%ERRORLEVEL%% > %s\\logs\\%s.done" % (name, build, name))
+        '"C:\\mt4\\metaeditor.exe" /compile:"C:\\th3build\\%s" /log:"C:\\th3build\\logs\\%s.log" /include:"C:\\th3build"'
+        % (src, name))
 open(bat, "wb").write(("\r\n".join(lines) + "\r\n").encode("ascii"))
 print("BAT:")
 print("\n".join(lines))
 EOF
 
-# --- 6. run it --------------------------------------------------------------------
+# --- 7. run it (isolated prefix — the live terminal stays open) -------------------
 echo ""
-echo "Compiling via Bottles (this takes ~1-2 min) ..."
-if ! flatpak run --command=bottles-cli com.usebottles.bottles \
-      run -b "$BOTTLE_NAME" -e "$BAT_UNIX"; then
-  echo "ERROR: bottles-cli run failed." >&2
-  exit 1
+echo "Compiling in isolated prefix (this takes ~1-2 min, terminal stays open) ..."
+if ! flatpak run \
+    --env=WINEPREFIX="$TH3_WINEPREFIX" \
+    --env=WINEARCH=win64 \
+    --env=WINEDEBUG=-all \
+    --command=wine com.usebottles.bottles \
+    cmd /c "C:\\th3build\\compile.bat"; then
+  echo "WARNING: wine/cmd exited non-zero (metaeditor exit codes are unreliable;" >&2
+  echo "proceeding to log parse, which is the real success gate)." >&2
 fi
 
-# --- 7. collect artifacts + report --------------------------------------------------
+# --- 8. collect artifacts + report --------------------------------------------------
 mkdir -p "$SCRIPT_ROOT/build-logs"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 overall=0
@@ -214,7 +260,7 @@ done
 
 echo ""
 if [ "$overall" -eq 0 ]; then
-  echo "All compilations PASSED."
+  echo "All compilations PASSED (terminal untouched)."
   echo "In MT4: remove & re-add the indicator (or restart the terminal)."
 else
   echo "Some compilations FAILED." >&2
