@@ -52,6 +52,15 @@ project.
 powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1   # workspace ex4
 ```
 
+Linux (Bottles/Wine, AMarkets terminal in bottle `Tradeing`) — separate path,
+`compile-th3.ps1` stays untouched:
+```bash
+./compile-th3-linux.sh all   # full + lite; syncs terminal BiotakProject, deploys .ex4
+```
+Manual MetaEditor F7 also works on Linux: open
+`MQL4\Indicators\BiotakProject\Biotak Trigger TH3.mq4` (a REAL auto-synced dir,
+never a symlink — see P-BUILD-02) and compile.
+
 - Success = `Result: 0 errors` in the log. Do not compile `.mqh` files
   directly — only the entry `.mq4`.
 - Icon change deploy — ONE command does everything:
@@ -211,6 +220,8 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-ICONS-06 | Feeding an already-cut-out orb source (remove.bg BMP/PNG with REAL alpha, e.g. root `trigger-removebg-preview.bmp` 500x500) through `tools/make-orb-bow.ps1` silently reused the checkerboard path: `Test-Checker` ignores the alpha channel so transparent-black corners read as "dark checker", and `Build-OrbPixels` then imposed its own feathered circular mask over the artist's feathered edge | Checker-oriented ingest assumed every source has a baked background; no alpha detection existed | `make-orb-bow.ps1` now auto-detects via `Test-HasRealAlpha` (corners A<10 + center A>200) → `Find-AlphaExtent` (alpha bounding-box fit) + `Build-OrbPixelsAlpha` (GDI+ bicubic keeps source alpha, Sat/Lift touch RGB only, NO mask override). Run as `powershell -File tools\make-orb-bow.ps1 -Source "trigger-removebg-preview.bmp"`, then `tools\deploy.ps1`. | 2026-09-04 |
 | P-ICONS-07 | Orb "shrink" via larger `CropPad` did NOTHING three times in a row: ingests with 1.09/1.20/1.45 produced byte-identical `orb_bg.bmp` (proven by MD5, not by eye — eyeballing previews against the viewer background fooled the check) | The source-region crop CLAMPS to the image bounds (`side=min(2*r*pad, W)`); for the tight 500px cut-out (r=236) even 1.09 already clamps to the full frame, so CropPad was a silent no-op | Visual size is controlled ONLY by `-OrbFill` (default 0.72 ≈ 52px medallion), applied AFTER resampling via `Resize-OrbToFill` (bicubic composite centered on transparent canvas). After every ingest, prove change numerically: MD5 of `orb_bg.bmp` must differ AND opaque-box measure (`verify-size` pattern: old 69px → new 50px). `CropPad` is source-region selection only. | 2026-09-04 |
 | P-TOOL-03 | `New-Object Bitmap($w * $scale, $h * $scale, ...)` throws `op_Multiply` on `Object[]` — yet P-TOOL-02 claimed "`New-Object Type(a,b)` safe" | That claim only holds for PLAIN variables. Constructor-arg parens with COMMAS form an array-literal context like `@()` (P-TOOL-02), so arithmetic inside (`$w * $scale`) misparses the same way | Precompute EVERY arithmetic arg into temp scalars on their own lines (`$bw = [int]$w * [int]$scale`), then `New-Object Bitmap($bw, $bh, ...)`. Same for `DrawImage($bmp, 0, 0, $bw, $bh)`. | 2026-09-04 |
+| P-BUILD-02 | Linux/Bottles: `bottles-cli run -e metaeditor ... /compile:...` exits 0 but writes NO `.ex4`/log; Wine `if exist` on host paths (Z:\ or a symlink into the repo) succeeds yet open/read FAILS silently (proven: `type` through `Indicators\BiotakProject` symlink → "Failed to open"; Z:\ compile of a trivial file → nothing) | (a) Wine under Bottles/Flatpak cannot read host files (Z:\ or symlink targets) — silent no-op, exit 0; (b) `bottles-cli run -e` with a unix-path exe routes via winebridge whose `run_exe` takes NO CLI args (verified in Bottles source), so /compile flags never arrive; (c) `#resource \Files\Icons\...` resolves relative to the SOURCE dir — a build dir without `Files/Icons` fails with 45× error 310 | Use `compile-th3-linux.sh` ONLY on Linux: rsync-mirrors repo (incl. `Files/Icons`) into in-bottle `C:\th3build` AND the REAL `Indicators\BiotakProject` dir (never a symlink — Wine can't traverse it), drives metaeditor via a generated CRLF `.bat` (quoting lives in the `.bat`, never on the CLI), copies `.ex4`+log back to repo and deploys `.ex4` to the terminal. Manual MetaEditor F7 on `Indicators\BiotakProject\*.mq4` (C: real files) verified 0 errors. Never pass Z:\ paths to metaeditor. | 2026-09-05 |
+| P-BUILD-03 | `git status` shows the whole tree modified (~90 files, ±40k lines) with zero real change | Line-ending churn: worktree files got CRLF-ified (repo convention is LF everywhere; BOM only where HEAD has it — e.g. `.ps1` yes, `.mqh`/`.md` no). Diagnose with `git diff --ignore-cr-at-eol --name-only` (2026-09-05: only `AGENTS.md` was real) | NEVER commit that noise: save the real hunks (`git diff <file> > fix.patch`), `git checkout -- .`, re-apply, normalize worktree (`\r\n`→`\n`, strip stray BOMs to match HEAD), and confirm `git diff --stat` shows only the real lines before staging. | 2026-09-05 |
 
 
 > When you close a new recurring issue, add the next row above (highest
