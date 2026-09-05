@@ -57,6 +57,11 @@ static int g_lineWidth = 1;                                      // [08.4] inpLi
 static ENUM_LINE_STYLE g_lineStyle = STYLE_DOT;                  // [08.4] inpLineStyle
 static color g_lineColor = clrBlack;                             // [08.4] inpLineColor
 static int g_lineTransparency = 50;                              // [08.4] inpLineTransparency
+// [08.5] BASE BOX BORDER — the committed box look (border only, never
+// filled — like MT4's own rectangle). Edited from the Base Box card (12).
+static color g_boxBorderColor = C'255,171,0';                    // [08.5] inpBoxBorderColor
+static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBoxBorderStyle
+static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -197,6 +202,8 @@ enum FactorySetting
    FF_COMBO_C2ON,        // inpComboComp2Enabled
    FF_COMBO_C2TF,        // inpComboComp2TF
    FF_COMBO_C2STEP,      // inpComboComp2Step
+   FF_BOX_WIDTH,         // inpBoxBorderWidth
+   FF_BOX_STYLE,         // inpBoxBorderStyle
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -289,6 +296,8 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_COMBO_C2ON]           = inpComboComp2Enabled;
    g_factoryDefaults[FF_COMBO_C2TF]           = inpComboComp2TF;
    g_factoryDefaults[FF_COMBO_C2STEP]         = inpComboComp2Step;
+   g_factoryDefaults[FF_BOX_WIDTH]           = inpBoxBorderWidth;
+   g_factoryDefaults[FF_BOX_STYLE]           = inpBoxBorderStyle;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -372,6 +381,9 @@ void RuntimeSettingsInit()
    g_lineStyle = inpLineStyle;
    g_lineColor = inpLineColor;
    g_lineTransparency = inpLineTransparency;
+   g_boxBorderWidth = inpBoxBorderWidth;
+   g_boxBorderStyle = inpBoxBorderStyle;
+   g_boxBorderColor = inpBoxBorderColor;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -427,6 +439,9 @@ void RuntimeSettingsInit()
 #define inpLineStyle g_lineStyle
 #define inpLineColor g_lineColor
 #define inpLineTransparency g_lineTransparency
+#define inpBoxBorderColor g_boxBorderColor
+#define inpBoxBorderStyle g_boxBorderStyle
+#define inpBoxBorderWidth g_boxBorderWidth
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -508,6 +523,9 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "LNS", g_lineStyle);
    GlobalVariableSet(p + "LNC", g_lineColor);
    GlobalVariableSet(p + "LNT", g_lineTransparency);
+   GlobalVariableSet(p + "BXW", g_boxBorderWidth);
+   GlobalVariableSet(p + "BXS", g_boxBorderStyle);
+   GlobalVariableSet(p + "BXC", g_boxBorderColor);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -599,6 +617,10 @@ void RuntimeSettingsLoadOverrides()
    else if(GlobalVariableCheck(p + "TC")) g_lineColor = (color)(int)GlobalVariableGet(p + "TC");
    if(GlobalVariableCheck(p + "LNT")) g_lineTransparency = ClampSettingInt((int)GlobalVariableGet(p + "LNT"), 0, 100);
    else if(GlobalVariableCheck(p + "TT")) g_lineTransparency = ClampSettingInt((int)GlobalVariableGet(p + "TT"), 0, 100);
+   // [08.5] base box border (new keys — no legacy layout to upgrade from)
+   if(GlobalVariableCheck(p + "BXW")) g_boxBorderWidth = ClampSettingInt((int)GlobalVariableGet(p + "BXW"), 1, 5);
+   if(GlobalVariableCheck(p + "BXS")) g_boxBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "BXS"), 0, 4);
+   if(GlobalVariableCheck(p + "BXC")) g_boxBorderColor = (color)(int)GlobalVariableGet(p + "BXC");
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");

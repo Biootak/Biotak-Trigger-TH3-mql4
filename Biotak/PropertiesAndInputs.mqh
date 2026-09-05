@@ -163,6 +163,12 @@ input ENUM_LINE_STYLE inpLineStyle = STYLE_DOT;    // Lines Style (ALL pipeline 
 input int inpLineWidth = 1;                        // Lines Width (ALL pipeline lines)
 input int inpLineTransparency = 50;                // Lines Transparency (0=Solid, 100=Invisible)
 
+input group "08.5) BASE BOX - BORDER"
+input string S16e = "[08.5] BASE BOX / BORDER";
+input color inpBoxBorderColor = C'255,171,0';            // Base Box Border Color (amber, no fill — like MT4)
+input ENUM_LINE_STYLE inpBoxBorderStyle = STYLE_SOLID;   // Base Box Border Style
+input int inpBoxBorderWidth = 2;                         // Base Box Border Width (1-5)
+
 input group "09) VISIBILITY - STRUCTURE & TRIGGER"
 input string S15 = "[09] VISIBILITY / STRUCTURE & TRIGGER";
 input group "09.1) STRUCTURE - MASTER"

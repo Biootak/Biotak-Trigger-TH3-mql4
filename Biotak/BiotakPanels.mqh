@@ -90,8 +90,8 @@ color QuickPalColor(const int i)
 // STEPSECTIONS: g_PnlRows[9] is only the BASE (2); PnlRowsCount(9) returns
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
-#define PNL_COUNT 12
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7};
+// (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,3};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -114,6 +114,7 @@ bool PnlIsStyleRow(const int item,const int row)
    // (The Zones card's BORDER row is a segmented control — it renders its own
    //  option names and must NOT match here.)
    if(item==7 && row==3) return true;        // Lines STYLE
+   if(item==12 && row==2) return true;       // Base Box STYLE
    if(item==5 && row==4) return true;        // TH3 STYLE
    if(item==10 && row==5) return true;       // Factor STYLE
    if(item==9 && row==6 && (int)g_stepCalculationMode==3) return true;   // Step card Factor STYLE
@@ -142,6 +143,7 @@ int PnlColorKind(const int item,const int row)
    if(item==7 && row==5)  return PAL_LINE;
    if(item==8 && row==1)  return PAL_CUSTOM_PRICE;
    if(item==10 && row==6) return PAL_FACTOR;
+   if(item==12 && row==0) return PAL_BOX;   // Base Box BORDER COLOR
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return PAL_FACTOR;   // Step card Factor COLOR
    return -1;
 }
@@ -164,6 +166,7 @@ color PaletteKindColor(const int k)
       case PAL_CUSTOM_PRICE:  return g_customPriceLevelColor;
       case PAL_FACTOR:         return g_factorLevelColor;
       case PAL_LINE:           return g_lineColor;
+      case PAL_BOX:            return g_boxBorderColor;
    }
    return clrNONE;
 }
@@ -201,7 +204,7 @@ string PalTgtLabel(const int t)
          "Trigger", "Trigger Label", "SS Level", "LS Level",
          "TH3 Line", "TH3 Pip", "HTF Bull", "HTF Bear",
          "HTF Wick", "HTF Border", "Custom Price", "Factor",
-         "Lines"
+         "Lines", "Base Box"
       };
    int k = ClampInt(t, 0, PAL_BASE_TARGETS - 1);
    return names[k];
@@ -228,6 +231,7 @@ int PaletteApplyColor(const int kind,const color clr)
       case PAL_CUSTOM_PRICE:  g_customPriceLevelColor = clr; break;
       case PAL_FACTOR:        g_factorLevelColor = clr; break;
       case PAL_LINE:          g_lineColor = clr; break;
+      case PAL_BOX:           g_boxBorderColor = clr; BaseKnotRestyleAll(); break;
       default:                return REFRESH_NONE;
    }
    PushPalRecent(clr);
@@ -302,6 +306,7 @@ color PnlDefColor(const int item,const int row)
    if(item==6 && row==5)  return InpHTFWickColor;
    if(item==6 && row==6)  return InpHTFBorderColor;
    if(item==7 && row==5)  return DefLineColor();
+   if(item==12 && row==0) return DefBoxBorderColor();
    if(item==8 && row==1)  return DefCustomPriceColor();
    if(item==10 && row==6) return DefFactorColor();
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return DefFactorColor();
@@ -601,6 +606,7 @@ bool PalKindRow(const int kind,int &item,int &row)
       case PAL_HTF_WICK:       item=6;  row=5; return true;
       case PAL_HTF_BORDER:     item=6;  row=6; return true;
       case PAL_LINE:           item=7;  row=5; return true;
+      case PAL_BOX:            item=12; row=0; return true;
       case PAL_CUSTOM_PRICE:   item=8;  row=1; return true;
       case PAL_FACTOR:         item=10; row=6; return true;
    }
@@ -656,7 +662,8 @@ void PalOpenForItem(const int item)
    else if(item==6)  row=3;   // HTF Bull COLOR
    else if(item==7)  row=5;   // Lines COLOR
    else if(item==8)  row=1;   // Custom Price COLOR
-   else if(item==10) row=6;   // Factor COLOR
+   else if(item==10) row=6;  // Factor COLOR
+   else if(item==12) row=0;  // Base Box BORDER COLOR
    if(row<0) return;
    PalOpen(item,row);
 }
@@ -1076,7 +1083,7 @@ string PnlHead(const int item,const string kind)
 
 int PnlRowsCount(const int item)
 {
-   if(item < 0 || item > 11) return 0;
+   if(item < 0 || item >= PNL_COUNT) return 0;
    if(item == 9) return 2 + PnlStepSectionRows();   // STEP MODE + mode section + MAX LEVELS
    return g_PnlRows[item];
 }
@@ -1400,6 +1407,13 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==5)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
       else             { kind=4; label="COLOR"; }
    }
+   else if(item==12)  // BASE BOX — committed-box border look (never filled,
+                      // like MT4's own rectangle). Opened by holding a box.
+   {
+      if(row==0)       { kind=4; label="BORDER COLOR"; }
+      else if(row==1)  { label="WIDTH"; minV=1; maxV=5; }
+      else             { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+   }
 }
 
 string PnlTitleText(const int item)
@@ -1415,6 +1429,7 @@ string PnlTitleText(const int item)
    if(item==8)  return "Custom Price";
    if(item==9)  return "Step Mode";
    if(item==11) return "Structure Levels";
+   if(item==12) return "Base Box";
    return "Factor";
 }
 
@@ -1431,6 +1446,7 @@ string PnlSubtitleText(const int item)
    if(item==8)  return "Custom price pin & magnet";
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
+   if(item==12) return "Border look · never filled";
    return "Factor step calculation";
 }
 
@@ -1547,6 +1563,9 @@ double PnlDefVal(const int item,const int row)
                if(row==4) return FactoryDefault(FF_FACTOR_WIDTH);
                if(row==5) return (int)FactoryDefault(FF_FACTOR_STYLE);
                return 3;
+      case 12: if(row==0) return 3;   // BORDER COLOR row → palette sentinel
+               if(row==1) return FactoryDefault(FF_BOX_WIDTH);
+               return (int)FactoryDefault(FF_BOX_STYLE);
   }
   return 0;
 }
@@ -1626,6 +1645,9 @@ double PnlCurrent(const int item,const int row)
                if(row==4) return g_factorLevelWidth;
                if(row==5) return (int)g_factorLevelStyle;
                return 0;
+      case 12: if(row==0) return 0;   // BORDER COLOR row (palette only)
+               if(row==1) return g_boxBorderWidth;
+               return (int)g_boxBorderStyle;
   }
   return 0;
 }
@@ -1818,6 +1840,11 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==3)  { g_factorValue=MathMax(1.0,(double)MathRound(v)); g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
          else if(row==4)  { g_factorLevelWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
          else             { g_factorLevelStyle=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_BUFFERS; }
+         break;
+      case 12:  // BASE BOX — border look. Restyle live boxes at once;
+                // OV_ persist rides on REFRESH_BUFFERS via ApplyRefreshFlags.
+         if(row==1)       { g_boxBorderWidth=ClampInt((int)MathRound(v),1,5); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+         else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          break;
    }
    if(flags!=REFRESH_NONE)
@@ -2224,7 +2251,8 @@ void PnlCreate(const int item)
     else if(item==7) probeRow=5;   // Lines COLOR
     else if(item==8) probeRow=1;   // Custom Price COLOR
     else if(item==9 && (int)g_stepCalculationMode==3) probeRow=7;   // Step card Factor COLOR
-    else if(item==10) probeRow=6;  // Factor COLOR
+     else if(item==10) probeRow=6;  // Factor COLOR
+     else if(item==12) probeRow=0;  // Base Box BORDER COLOR
     // item==1 (Zones) has no COLOR row — lines live on the Lines card.
    int ckind=(probeRow>=0) ? PnlColorKind(item, probeRow) : -1;
    if(ckind>=0)
@@ -2410,7 +2438,7 @@ void PnlCloseAll()
 
 void PnlOpen(const int item)
 {
-   if(item < 0 || item > 11) return;
+   if(item < 0 || item >= PNL_COUNT) return;
    PnlCloseAll();
    g_PnlOpen=item;
    PnlCreate(item);
@@ -2893,7 +2921,7 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    }
    if(g_PalOpen && StringFind(name, g_UI.btnPrefix+"Pal_") == 0) return REFRESH_NONE;
 
-   for(int i = 0; i < 12; i++)   // panels 0..11
+   for(int i = 0; i < PNL_COUNT; i++)   // every settings card
    {
       if(name == PnlHead(i, "close") || name == PnlHead(i, "done"))
       {
@@ -3026,6 +3054,48 @@ int PnlHandleDrag(const string name,const int mouseX)
 static int g_LastUIX = 0;
 static int g_LastUIY = 0;
 
+//--- hold-on-box → Base Box style card (TradingView-like): press on a
+//--- committed BK box, hold still ≥250ms, release → PnlOpen(12). Passive
+//--- observer (same 250ms/8px language as the menu long-press): never
+//--- consumes, never claims drags; any >8px move disarms (it's a drag/pan).
+//--- A quick tap does nothing (native select only).
+static string s_BkHoldId = "";
+static uint   s_BkHoldMs = 0;
+static int    s_BkHoldX = 0, s_BkHoldY = 0;
+#define BK_HOLD_MS   250
+#define BK_HOLD_MOVE 8
+void BkHoldDisarm() { s_BkHoldId = ""; }
+void BkHoldOnMove(const int mx, const int my, const bool pressStart)
+{
+   if(BaseKnotSessionActive() || g_PalOpen) { BkHoldDisarm(); return; }
+   if(pressStart)
+   {
+      s_BkHoldId = "";   // re-arm below when a box sits under the press
+      int sw = 0; datetime ct = 0; double cp = 0;
+      if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+      {
+         string hit = BaseKnotBoxAt(ct, cp);
+         if(hit != "") { s_BkHoldId = hit; s_BkHoldMs = GetTickCount(); s_BkHoldX = mx; s_BkHoldY = my; }
+      }
+      return;
+   }
+   if(s_BkHoldId != "" && (MathAbs(mx - s_BkHoldX) > BK_HOLD_MOVE || MathAbs(my - s_BkHoldY) > BK_HOLD_MOVE))
+      BkHoldDisarm();
+}
+// OBJECT_CLICK release leg: true when a hold fired (caller returns).
+bool BkHoldOnBoxClick(const string sparam, const int mx, const int my)
+{
+   string id = s_BkHoldId;
+   BkHoldDisarm();
+   if(id == "" || BaseKnotSessionActive()) return false;
+   if(GetTickCount() - s_BkHoldMs < BK_HOLD_MS) return false;
+   if(MathAbs(mx - s_BkHoldX) > BK_HOLD_MOVE || MathAbs(my - s_BkHoldY) > BK_HOLD_MOVE) return false;
+   if(sparam != BaseKnotBoxName(BaseKnotPrefix(id))) return false;   // released on another object
+   PnlOpen(12);
+   ChartRedraw();
+   return true;
+}
+
 void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    // Base/Knot session ended via ESC/right-click (handled in EventHandlers
@@ -3056,6 +3126,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       if(!BaseKnotSessionActive())
          CircHandleMouseMove(mx, my, leftDown, pressStart);
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
+      BkHoldOnMove(mx, my, pressStart);
       return;
    }
 
@@ -3075,6 +3146,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       MousePressStart(false);
       ChartPointerFinalizeOnUps();
       if(UIShouldSuppressClick()) return;   // release after a drag/long-press
+      if(BkHoldOnBoxClick(sparam, (int)lparam, (int)dparam)) return;   // hold on a BK box → style card
       int flags = HandleButtonClick(sparam);
       flags |= PnlHandleClick(sparam, (int)lparam, (int)dparam);
       if(flags != REFRESH_NONE) ApplyRefreshFlags(flags);

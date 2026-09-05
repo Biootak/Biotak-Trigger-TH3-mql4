@@ -108,7 +108,8 @@
 
 //--- Tools half-circle (sub-menu under Tools)
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
-// the Step Mode card now. Base/Knot is the momentary drawing tool (no panel).
+// the Step Mode card now. Base/Knot is the momentary drawing tool (click =
+// draw, hold = Base Box style card).
 #define TOOL_COUNT 3
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
@@ -143,7 +144,8 @@ int ToolPanel(const int toolIdx)
    if(feat == CIR_PIN) return 8; // PIN panel
    if(feat == CIR_STEP_OVERRIDE) return 9; // Step Mode override panel
    // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override panel
-   // CIR_BASEKNOT is a momentary drawing tool — no settings panel (-1).
+   // Base/Knot opens the Base Box style card (12) on hold — click still arms drawing.
+   if(feat == CIR_BASEKNOT) return 12; // Base Box border card
    return -1;
 }
 
@@ -493,6 +495,7 @@ string CircCardIcon(const int item, const bool on)
    else if(item == 9)     base = "step";    // Step mode
    else if(item == 10)    base = "factor";  // Factor step
    else if(item == 11)    base = "step";    // Structure levels (stair levels)
+   else if(item == 12)    base = "box";     // Base Box border (reuses the box glyph)
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
 }
 
@@ -649,7 +652,7 @@ string CircItemTooltip(const int i)
        case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
         case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
-      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: press-hold-draw box + Entry/SL/TP · or 2-click · ESC: done";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: press-hold-draw box + Entry/SL/TP · Hold: border style · or 2-click · ESC: done";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -1505,8 +1508,8 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       const int toolHit = ToolsItemAt(mx, my);
       if(toolHit >= 0)
       {
-         // Panel-less tools (Base/Knot) arm on CLICK, not on hold — never
-         // start a long-press here or the release click gets swallowed.
+          // Base/Knot arms drawing on CLICK; a hold opens its style card
+          // instead (g_LongPressFired guard below skips the arm then).
          if(ToolPanel(toolHit) < 0) return;
          g_LongPressItem  = ToolPanel(toolHit);
          g_LongPressStart = GetTickCount();

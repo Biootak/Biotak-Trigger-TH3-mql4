@@ -325,6 +325,15 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (2026-09-05 drawer; 2026-09-06 drag gesture: press = corner 1, hold + move
   = live rubber-band + Entry/SL/TP, release = commit — exactly like MT4's own
   rectangle tool. Tap-tap still works (click 1 → hover preview → click 2).
+  Committed boxes are border-only (never filled): BORDER COLOR / WIDTH /
+  STYLE live in `RuntimeSettings.mqh` (`g_boxBorder*`, `FF_BOX_WIDTH/STYLE`,
+  `OV_BXW/BXS/BXC`, inputs `[08.5]`), applied at commit + `BaseKnotSync` +
+  live via `BaseKnotRestyleAll()`, edited from the Base Box style card 12
+  (3 rows, bg reuses `pnl_card3.bmp` — card skins key on ROW COUNT, not id).
+  Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
+  or press-hold-release a committed box (`BkHoldOnMove/BkHoldOnBoxClick` in
+  `BiotakPanels.mqh`, passive 250ms/8px observer — never consumes; hit-test
+  via `BaseKnotBoxAt()` in the domain layer so Lite stays UI-free).
   `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit
   (commit AND cancel → `IDLE` + menu restore via `BaseKnotTakeRestoreFlag()`
   in `HandleUIChartEvent`, stray clicks draw nothing). Press never commits
@@ -345,9 +354,9 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   CLICK fallback path, chart scroll locked with raw `Chart*` calls so Lite
   compiles menu-free — Lite keeps drag/delete/badges, arming is Full-only).
   Pips via `GetCachedPipSize()`, never hardcoded point math; TP = 2R.
-  `TOOL_COUNT`-driven menu loops pick new tools up automatically; panel-less
-  tools return `ToolPanel()==-1` and must skip long-press arming
-  (`CircHandleMouseMove` guard) or the release click gets swallowed.)
+  `TOOL_COUNT`-driven menu loops pick new tools up automatically; BK owns panel
+  12 (Base Box style card — ToolPanel()==12, so ring-hold opens it like every
+  other tool; click still arms drawing, guarded by `g_LongPressFired`).
 
 - **Base/Knot is fully automatic — no Buy/Sell button, ever**
   (2026-09-06 — direction is decided ONCE at commit by

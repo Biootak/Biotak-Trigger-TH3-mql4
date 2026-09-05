@@ -71,11 +71,14 @@ static UIState g_UI;
 
 string GetGVName(string key) { return g_UI.gvPrefix + key; }
 
-//--- settings-panel geometry (drag-to-move persistence; panel slots 0..11,
-//     1 = the main Zones & Levels card; 11 reserved/unused)
-static int  g_PnlX[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-static int  g_PnlY[12] = {0,0,0,0,0,0,0,0,0,0,0,0};
-static bool g_PnlManualPos[12] = {false,false,false,false,false,false,false,false,false,false,false,false};
+//--- settings-panel geometry (drag-to-move persistence; panel slots 0..12,
+//     1 = the main Zones & Levels card; 12 = Base Box card).
+//     PNL_COUNT lives here (Kit is included before Panels) so every loop
+//     and slot array in both files stays in sync from one define.
+#define PNL_COUNT 13
+static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
+static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
+static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false};
 
 //==============================================================================
 // PALETTE COLOR KINDS — one kind per colorable setting of THIS indicator.
@@ -94,7 +97,8 @@ static bool g_PnlManualPos[12] = {false,false,false,false,false,false,false,fals
 #define PAL_CUSTOM_PRICE 10   // Custom price line
 #define PAL_FACTOR       11   // Factor level color
 #define PAL_LINE         12   // Unified [08.4] line color (ALL pipeline lines)
-#define PAL_BASE_TARGETS 13
+#define PAL_BOX          13   // Base box border color (card 12)
+#define PAL_BASE_TARGETS 14
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }
@@ -106,6 +110,7 @@ color DefTH3PipColor()       { return clrDarkBlue; }
 color DefCustomPriceColor()  { return clrDodgerBlue; }
 color DefFactorColor()       { return C'0,100,0'; }
 color DefLineColor()         { return clrBlack; }
+color DefBoxBorderColor()    { return C'255,171,0'; }   // amber — the shipped Base Box look
 
 //==============================================================================
 // REFRESH DISPATCHER — applies REFRESH_* flags returned by the menu/panels
@@ -155,7 +160,7 @@ void InitializeUISupport()
    LoadPalRecent();
 
    // panel drag positions (persisted per chart)
-   for(int i = 0; i < 12; i++)
+   for(int i = 0; i < PNL_COUNT; i++)
    {
       string vn = GetGVName("PNLP" + IntegerToString(i));
       if(GlobalVariableCheck(vn))

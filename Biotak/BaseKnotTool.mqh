@@ -544,6 +544,9 @@ void BaseKnotSync(const string id)
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
    long tfMask = BaseKnotTFMask(tfMin);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
+   ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);   // border look follows the Base Box card
+   ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
+   ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
@@ -569,6 +572,41 @@ void BaseKnotDelete(const string id)
    if(pfx != "") ObjectsDeleteAll(0, pfx);   // one call wipes box + all children
    BaseKnotUnregister(id);
    ChartRedraw();
+}
+// Re-assert the border look on every committed box (Base Box card edits
+// apply live; Lite-safe: mirrors + Object* calls only).
+void BaseKnotRestyleAll()
+{
+   if(StringLen(inpObjectPrefix) == 0) return;
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
+      if(ObjectFind(0, box) < 0) continue;
+      ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);
+      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
+      ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
+   }
+   ChartRedraw();
+}
+// Hit-test: id of the committed box containing (t,price), or "".
+// UI side uses it for hold-on-box → settings (no UI deps here).
+string BaseKnotBoxAt(const datetime t, const double price)
+{
+   if(t <= 0 || price <= 0 || StringLen(inpObjectPrefix) == 0) return "";
+   BaseKnotLazyInit();
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
+      if(ObjectFind(0, box) < 0) continue;
+      datetime t1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
+      datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+      double p1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
+      double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
+      if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
+      double top = MathMax(p1, p2), bot = MathMin(p1, p2);
+      if(t >= t1 && t <= t2 && price >= bot && price <= top) return g_bkBoxes[i].id;
+   }
+   return "";
 }
 // Per-tick (500 ms) re-glue: scroll/zoom moves pixel badges, box anchors don't.
 void BaseKnotSyncBadges()
@@ -607,9 +645,9 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
    if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, t2, p2)) return;
-   ObjectSetInteger(0, box, OBJPROP_COLOR, C'255,171,0');
-   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
-   ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, box, OBJPROP_COLOR, inpBoxBorderColor);
+   ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
+   ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    ObjectSetInteger(0, box, OBJPROP_FILL, false);   // unfilled: candles stay visible (MQL4 has no alpha)
    ObjectSetInteger(0, box, OBJPROP_BACK, true);
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);   // THE handle: drag moves children
@@ -654,7 +692,7 @@ void BaseKnotPress(const datetime t, const double praw)
    string pv = BaseKnotPrevName();
    if(pv == "") return;
    if(ObjectFind(0, pv) < 0) ObjectCreate(0, pv, OBJ_RECTANGLE, 0, t, p, t, p);
-   ObjectSetInteger(0, pv, OBJPROP_COLOR, C'255,171,0');
+   ObjectSetInteger(0, pv, OBJPROP_COLOR, inpBoxBorderColor);   // WYSIWYG border color, dotted ghost style
    ObjectSetInteger(0, pv, OBJPROP_STYLE, STYLE_DOT);
    ObjectSetInteger(0, pv, OBJPROP_WIDTH, 1);
    ObjectSetInteger(0, pv, OBJPROP_FILL, false);
@@ -816,6 +854,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
+            ObjectSetInteger(0, pv, OBJPROP_COLOR, inpBoxBorderColor);   // live border color while sizing
             g_bkLiveT = ht; g_bkLiveP = hp;
             BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();
