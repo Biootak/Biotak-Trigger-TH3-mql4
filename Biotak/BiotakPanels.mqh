@@ -3101,7 +3101,7 @@ void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pr
 }
 //--- polled half: a press with ZERO mouse movement emits NO MOUSE_MOVE, so
 //--- the move path above can never latch it (this was the whole "hold does
-//--- nothing" bug). Runs per tick + 1s timer via RefreshKitOnBar.
+//--- nothing" bug). Runs per tick + 250 ms timer via RefreshKitOnBar.
 void BkHoldPoll()
 {
    if(BaseKnotSessionActive() || g_PalOpen) { BkHoldForgetBox(); return; }
@@ -3123,8 +3123,27 @@ void BkHoldPoll()
    s_BkDownNow = false;   // up — release handlers below own whatever follows
 }
 // OBJECT_CLICK release leg: true when a hold fired (caller returns).
+// Fast path: Shift+click on a box opens the card instantly (no hold).
 bool BkHoldOnBoxClick(const string sparam, const int mx, const int my)
 {
+   if(!BaseKnotSessionActive() && TerminalInfoInteger(TERMINAL_KEYSTATE_SHIFT) < 0 &&
+      StringLen(inpObjectPrefix) > 0)
+   {
+      string tag = inpObjectPrefix + BK_TAG;
+      if(StringFind(sparam, tag) == 0)
+      {
+         string tail = StringSubstr(sparam, StringLen(tag));
+         string bid = "", kind = "";
+         BaseKnotSplitTail(tail, bid, kind);
+         if(kind == "BOX" && BaseKnotFind(bid) >= 0)
+         {
+            BkHoldClear();
+            PnlOpen(12);
+            ChartRedraw();
+            return true;
+         }
+      }
+   }
    string id = s_BkHoldId;
    uint ms = s_BkHoldMs; int hx = s_BkHoldX, hy = s_BkHoldY;
    BkHoldClear();

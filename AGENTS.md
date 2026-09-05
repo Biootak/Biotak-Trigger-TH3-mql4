@@ -333,9 +333,12 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   edited from the Base Box style card 12
   (4 rows, bg reuses `pnl_card4.bmp` — card skins key on ROW COUNT, not id).
   Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
-  or press-hold a committed box (250ms/8px, `BkHoldLatch/Poll/OnBoxClick` in
-  `BiotakPanels.mqh` — passive observer, never consumes; hit-test via
-  `BaseKnotBoxAt()` in the domain layer so Lite stays UI-free; P-BK-03).
+  press-hold a committed box, or Shift+click it for instant open
+  (250ms/8px, `BkHoldLatch/Poll/OnBoxClick` in `BiotakPanels.mqh` — passive
+  observer, never consumes; hit-test via `BaseKnotBoxAt()` in the domain
+  layer so Lite stays UI-free; P-BK-03). The 250 ms poll cadence
+  (`EventSetMillisecondTimer`, safe: every OnTimer callee is time-gated /
+  idempotent) keeps hold-to-open snappy on tick-less (weekend) charts.
   The bottom-left hint is bg-luminance-aware (amber/brown) and the commit
   result auto-hides after 4 s (`BaseKnotHintTick` in the 500 ms block).
   `BK_IDLE→ARMED→PREVIEW→IDLE`, single-shot auto-exit

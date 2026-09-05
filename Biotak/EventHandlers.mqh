@@ -68,7 +68,10 @@ int OnInitHandler() {
     ChartSetInteger(0, CHART_EVENT_OBJECT_DELETE, true);
     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
     ChartSetInteger(0, CHART_SHOW_GRID, false);
-    EventSetTimer(1);
+    // 250 ms cadence (not 1 s): hold-to-open polling + hint pumps stay
+    // responsive on tick-less charts (weekends). Every OnTimer callee is
+    // time-gated / change-guarded / idempotent, so 4 Hz is free.
+    EventSetMillisecondTimer(250);
     CheckArraySizes();
 
     // Deferred init: skip heavy historical load on recent TF switch
@@ -1760,7 +1763,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_resetCommentCreateTime = GetTickCount();
             LOG_I(LOG_CAT_KEYS, "Reset: All overrides cleared");
             ClearAllModeLabels();
-            EventSetTimer(1);
+            EventSetMillisecondTimer(250);   // keep 250 ms cadence (see OnInit)
             g_forceClearOnNextDraw = true;
             g_calculatedOnce = false;
             g_redrawTHLevelsNeeded = true;
