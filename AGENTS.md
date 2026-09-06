@@ -329,13 +329,18 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   STYLE / TRANSPARENCY + TARGET R (TP = Entry + R×N, 1-4) + ENTRY/STOP/
   TARGET line COLORS live in `RuntimeSettings.mqh` (`g_boxBorder*`,
   `g_bkTargetR/Entry/Stop/TargetColor`, `FF_BOX_*/FF_BK_*`,
-  `OV_BXW/BXS/BXC/BXT/BXR/BXE/BXL/BXG`, inputs `[08.5]`),
+  `OV_BXW/BXS/BXC/BXT/BXR/BXE/BXL/BXG/BXI`, inputs `[08.5]`),
   rendered via `GetBoxBorderRenderColor()` (one-language bg blend, cached;
   line colors are solid, no transparency), applied at commit + `BaseKnotSync`
   (incl. live sizing preview) + live via `BaseKnotRestyleAll()`,
   edited from the Base Box style card 12
-  (8 rows: 4 border + TARGET R + 3 line colors with quick swatches;
-  bg auto-picks `pnl_card8.bmp` — card skins key on ROW COUNT, not id).
+  (9 rows: 4 border + TARGET R + 3 line colors with quick swatches + INFO
+  Auto|Show; bg auto-picks `pnl_card9.bmp` — card skins key on ROW COUNT,
+  not id). Info label is non-intrusive by default (Auto): visible live
+  while sizing + 4 s grace after commit (`commitMs` in the registry,
+  `BaseKnotInfoVisible()`, hidden by the 500 ms `SyncBadges` pump —
+  inherited boxes get `commitMs=0` so old charts clean up without a flash);
+  full numbers always ride the box/edge hover tooltips.
   Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
   or press-hold a committed box — the ONE box gesture (250ms/8px,
   `BkHoldLatch/Poll/Fire` in `BiotakPanels.mqh` — passive

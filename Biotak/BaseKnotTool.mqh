@@ -36,10 +36,12 @@
 //|    collapses into a hairline on a much higher TF.                  |
 //|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
 //|    rectangle (snapping pulled corners to candle shadows).           |
-//|  * Info badge: chart-anchored "[H Pips | R:R 1:N]" text at the box |
-//|    corner (the only badge — NOBKDEL 2026-09-06: no X button, boxes  |
-//|    delete via select + Delete key). Entry/SL/TP are OBJ_TREND rays |
-//|    (RAY_RIGHT) anchored at the box right edge, BACK + unselectable.|
+//|  * Info label: chart-anchored "[H Pips | R:R 1:N]" — Auto (default)  |
+//|    shows it live while sizing + 4 s after commit, then hides it so  |
+//|    the chart stays clean (Base Box card INFO row pins it on); full  |
+//|    numbers always ride the box/edge hover tooltips. Entry/SL/TP    |
+//|    are OBJ_TREND rays (RAY_RIGHT) anchored at the box right edge,   |
+//|    BACK + unselectable.                                             |
 //|  * Chain cleanup: deleting the BOX wipes every child in one        |
 //|    ObjectsDeleteAll(prefix) call; deleting a CHILD self-heals it   |
 //|    via BaseKnotSync. The BK layer is independent: HideAllTHObjects,|
@@ -62,6 +64,7 @@
 #define BK_BADGE_W        46   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_BADGE_H        18   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
+#define BK_INFO_GRACE_MS  4000  // Auto INFO: label stays this long after commit, then hides (chart stays clean)
 
 //--- object-name tag: "<prefix>_BK_<id>_<KIND>"
 #define BK_TAG "_BK_"
@@ -72,6 +75,7 @@ struct BaseKnotBox
    string id;      // "<commitTFmin>_<tick>[rNNN]" (legacy: bare tick)
    int    dir;     // +1 Buy / -1 Sell — FROZEN at commit, never recomputed
    int    tfMin;   // chart Period() minutes at commit (0 = legacy = all TFs)
+   uint   commitMs; // GetTickCount at commit — drives the Auto INFO grace (0 = long ago)
 };
 static BaseKnotBox g_bkBoxes[];
 static int         g_bkState      = BK_IDLE;
@@ -291,6 +295,7 @@ void BaseKnotRegister(const string id, const int dir, const int tfMin)
    g_bkBoxes[n].id    = id;
    g_bkBoxes[n].dir   = (dir < 0 ? -1 : 1);
    g_bkBoxes[n].tfMin = tfMin;
+   g_bkBoxes[n].commitMs = GetTickCount();   // fresh commit → Auto INFO grace starts now
    GlobalVariableSet(BaseKnotGV(id), (double)g_bkBoxes[n].dir);
 }
 void BaseKnotUnregister(const string id)
@@ -325,6 +330,8 @@ void BaseKnotLazyInit()
       int dir = 1;
       if(GlobalVariableCheck(BaseKnotGV(id))) dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
       BaseKnotRegister(id, dir, BaseKnotIdTF(id));
+      int q = BaseKnotFind(id);
+      if(q >= 0) g_bkBoxes[q].commitMs = 0;   // inherited box — long ago, no Auto grace flash
    }
    // P-BK-06 migration: hollow-by-construction (bg handle + edge segments) —
    // every inherited box is re-synced once so pre-edge boxes gain their
@@ -535,6 +542,17 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 1600);
    ObjectSetInteger(0, name, OBJPROP_STATE, false);
 }
+// INFO visibility — Show mode pins the label on; Auto shows it live while
+// sizing (LIVE_ tag always writes) and for BK_INFO_GRACE_MS after commit,
+// then hides it so the chart stays clean. Full numbers always ride the
+// box/edge hover tooltips, so nothing is ever unreachable.
+bool BaseKnotInfoVisible(const string id)
+{
+   if(g_bkShowInfo == 1) return true;
+   int k = BaseKnotFind(id);
+   if(k < 0) return true;
+   return ((int)(GetTickCount() - g_bkBoxes[k].commitMs) < (int)BK_INFO_GRACE_MS);
+}
 // Chart-anchored "[H Pips | R:R 1:N]" label at the box top-right corner.
 void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
                        const double hPips, const double rr, const double tpPips,
@@ -650,8 +668,13 @@ void BaseKnotSync(const string id)
                    "BK " + side + " Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
-   BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, tfMask);
-   BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
+   if(BaseKnotInfoVisible(id))
+   {
+      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, tfMask);
+      BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
+   }
+   else
+      ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto mode, grace over — chart stays clean
 }
 void BaseKnotDelete(const string id)
 {
@@ -733,7 +756,13 @@ void BaseKnotSyncBadges()
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
       int tfMin = g_bkBoxes[i].tfMin;
       if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
-      BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
+      if(BaseKnotInfoVisible(g_bkBoxes[i].id))
+         BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
+      else if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)
+      {
+         ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto grace over — hide within 500 ms
+         ChartRedraw();
+      }
    }
 }
 

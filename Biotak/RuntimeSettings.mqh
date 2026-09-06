@@ -67,6 +67,7 @@ static int g_bkTargetR = 2;                                      // [08.5] inpBK
 static color g_bkEntryColor = C'30,144,255';                     // [08.5] inpBKEntryColor
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
 static color g_bkTargetColor = C'46,139,87';                     // [08.5] inpBKTargetColor
+static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide, 1=Always show)
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -214,6 +215,7 @@ enum FactorySetting
    FF_BK_ENTRY,          // inpBKEntryColor
    FF_BK_SL,             // inpBKStopColor
    FF_BK_TP,             // inpBKTargetColor
+   FF_BK_SHOW_INFO,      // inpBKShowInfo
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -313,6 +315,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_BK_ENTRY]            = inpBKEntryColor;
    g_factoryDefaults[FF_BK_SL]               = inpBKStopColor;
    g_factoryDefaults[FF_BK_TP]               = inpBKTargetColor;
+   g_factoryDefaults[FF_BK_SHOW_INFO]        = inpBKShowInfo;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -404,6 +407,7 @@ void RuntimeSettingsInit()
    g_bkEntryColor = inpBKEntryColor;
    g_bkStopColor = inpBKStopColor;
    g_bkTargetColor = inpBKTargetColor;
+   g_bkShowInfo = inpBKShowInfo;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -466,6 +470,7 @@ void RuntimeSettingsInit()
 #define inpBKEntryColor g_bkEntryColor
 #define inpBKStopColor g_bkStopColor
 #define inpBKTargetColor g_bkTargetColor
+#define inpBKShowInfo g_bkShowInfo
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -555,6 +560,7 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "BXE", g_bkEntryColor);
    GlobalVariableSet(p + "BXL", g_bkStopColor);
    GlobalVariableSet(p + "BXG", g_bkTargetColor);
+   GlobalVariableSet(p + "BXI", g_bkShowInfo);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -655,6 +661,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXE")) g_bkEntryColor = (color)(int)GlobalVariableGet(p + "BXE");
    if(GlobalVariableCheck(p + "BXL")) g_bkStopColor = (color)(int)GlobalVariableGet(p + "BXL");
    if(GlobalVariableCheck(p + "BXG")) g_bkTargetColor = (color)(int)GlobalVariableGet(p + "BXG");
+   if(GlobalVariableCheck(p + "BXI")) g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 1);
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");

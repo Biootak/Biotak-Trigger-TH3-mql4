@@ -91,7 +91,7 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,8};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,9};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -1438,7 +1438,8 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==4)  { label="TARGET R"; unit="R"; minV=1; maxV=4; }
       else if(row==5)  { kind=4; label="ENTRY COLOR"; }
       else if(row==6)  { kind=4; label="STOP COLOR"; }
-      else             { kind=4; label="TARGET COLOR"; }
+      else if(row==7)  { kind=4; label="TARGET COLOR"; }
+      else             { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
    }
 }
 
@@ -1594,7 +1595,8 @@ double PnlDefVal(const int item,const int row)
                if(row==2) return (int)FactoryDefault(FF_BOX_STYLE);
                if(row==3) return FactoryDefault(FF_BOX_TRANSPARENCY);
                if(row==4) return FactoryDefault(FF_BK_TARGET_R);
-               return 3;                        // ENTRY/STOP/TARGET COLOR rows → palette sentinel
+               if(row==5 || row==6 || row==7) return 3;   // COLOR rows → palette sentinel
+               return FactoryDefault(FF_BK_SHOW_INFO);   // INFO Auto|Show
   }
   return 0;
 }
@@ -1679,7 +1681,8 @@ double PnlCurrent(const int item,const int row)
                if(row==2) return (int)g_boxBorderStyle;
                if(row==3) return g_boxBorderTransparency;
                if(row==4) return g_bkTargetR;
-               return 0;                        // ENTRY/STOP/TARGET COLOR rows (palette only)
+               if(row==5 || row==6 || row==7) return 0;   // COLOR rows (palette only)
+               return g_bkShowInfo;             // INFO Auto|Show
   }
   return 0;
 }
@@ -1879,6 +1882,7 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          else if(row==4)  { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+         else if(row==8)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          break;
    }
    if(flags!=REFRESH_NONE)
