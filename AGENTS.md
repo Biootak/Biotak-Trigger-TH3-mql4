@@ -361,9 +361,10 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   direction re-resolved while sizing, wiped at commit/cancel/deinit);
   same-bar/zero-height commits rejected, preview kept. Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
-  Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
-  cascades (`ObjectsDeleteAll(pfx)`), the X delete badge is an `OBJ_BUTTON`
-  re-glued on `CHART_CHANGE` + the 500ms tick (`BaseKnotSyncBadges`).
+   Entry/SL/TP ray-right lines (`BaseKnotSync` on `OBJECT_DRAG`), box delete
+  cascades (`ObjectsDeleteAll(pfx)` via select + Delete key — `NOBKDEL`
+  2026-09-06: no X badge; `Sync` purges pre-retire DEL objects, DEL clicks
+  still delete during transition).
   Direction is AUTOMATIC at commit (no Buy/Sell badge — `NOBUYSELL`
   2026-09-06): box mid below live price = Buy, above = Sell; leftovers purged
   in `BaseKnotSync` + the CLICK handler. The

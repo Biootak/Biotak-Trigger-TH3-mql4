@@ -37,8 +37,8 @@
 //|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
 //|    rectangle (snapping pulled corners to candle shadows).           |
 //|  * Info badge: chart-anchored "[H Pips | R:R 1:N]" text at the box |
-//|    corner; the X button is the only pixel badge (re-glued on the   |
-//|    500 ms tick + CHART_CHANGE). Entry/SL/TP are OBJ_TREND rays     |
+//|    corner (the only badge — NOBKDEL 2026-09-06: no X button, boxes  |
+//|    delete via select + Delete key). Entry/SL/TP are OBJ_TREND rays |
 //|    (RAY_RIGHT) anchored at the box right edge, BACK + unselectable.|
 //|  * Chain cleanup: deleting the BOX wipes every child in one        |
 //|    ObjectsDeleteAll(prefix) call; deleting a CHILD self-heals it   |
@@ -59,8 +59,8 @@
 //--- geometry / UX tuning
 #define BK_TP_R_MULT      2.0    // TP distance = 2R (R = box height)
 #define BK_ARM_GUARD      500    // ms — ignore the arming click's own release (CLICK fallback path)
-#define BK_BADGE_W        46
-#define BK_BADGE_H        18
+#define BK_BADGE_W        46   // NOBKDEL: retired with the X badge (kept for one-line restore)
+#define BK_BADGE_H        18   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
 
 //--- object-name tag: "<prefix>_BK_<id>_<KIND>"
@@ -516,7 +516,7 @@ void BaseKnotMakeRay(const string name, const datetime t2, const datetime t1,
    ObjectSetInteger(0, name, OBJPROP_ZORDER, 50);
    ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
 }
-void BaseKnotMakeBadge(const string name, const string text, const color bg)
+void BaseKnotMakeBadge(const string name, const string text, const color bg)   // NOBKDEL: retired — no badge is created anymore (kept for one-line restore)
 {
    if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
    ObjectSetInteger(0, name, OBJPROP_XSIZE, BK_BADGE_W);
@@ -594,21 +594,17 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                    "BK " + side + " Target (sizing): " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    BaseKnotWriteInfo(tag + "INFO", te, top, hPips, rr, tpPips, side, tfMask);
 }
-// Pixel X badge is screen-anchored: re-glued after every drag / scroll /
-// zoom / TF-switch; the INFO text is chart-anchored and only TF-gated.
-// TF-hidden boxes stay hidden here even when their corner is on-screen.
+// INFO text is chart-anchored and only TF-gated (no pixel button —
+// NOBKDEL 2026-09-06: the X delete badge is retired, boxes delete via
+// select + Delete key). TF-hidden boxes stay hidden here even when
+// their corner is on-screen.
 void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
                          const double top, const int tfMin)
 {
    bool tfVis = BaseKnotTFVisible(tfMin);
-   int x2 = 0, y2 = 0;
-   bool vis = (tfVis && ChartTimePriceToXY(0, 0, t2, top, x2, y2));
-   string dn = BaseKnotDelName(pfx), in = BaseKnotInfoName(pfx);
-   ObjectSetInteger(0, dn, OBJPROP_TIMEFRAMES, (vis ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
+   string in = BaseKnotInfoName(pfx);
    ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, (tfVis ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS));
-   if(!vis) return;
-   ObjectSetInteger(0, dn, OBJPROP_XDISTANCE, x2 + 2);
-   ObjectSetInteger(0, dn, OBJPROP_YDISTANCE, y2 - BK_BADGE_H - 4);
+   if(!tfVis) return;
    ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
    ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
 }
@@ -636,7 +632,7 @@ void BaseKnotSync(const string id)
    BaseKnotStyleBox(box);   // invisible drag handle (bg fill) — the VISIBLE border is the 4 edges below
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
                      GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
-                     "Base box — drag to move (lines follow) · X removes all", tfMask);
+                     "Base box — drag to move (lines follow) · select + Delete key removes all", tfMask);
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
@@ -650,8 +646,7 @@ void BaseKnotSync(const string id)
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask);
    BaseKnotMakeRay(BaseKnotTPName(pfx), t2, t1, tp, C'46,139,87', STYLE_DASH, 1,
                    "BK " + side + " Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
-   BaseKnotMakeBadge(BaseKnotDelName(pfx), "X", C'90,95,105');
-   ObjectSetString(0, BaseKnotDelName(pfx), OBJPROP_TOOLTIP, "Delete this base + its lines");
+   ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
    BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, tfMask);
    BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
@@ -761,7 +756,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, BaseKnotTFMask(tfMin));
-   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base box — drag to move (lines follow) · X removes all");
+   ObjectSetString(0, box, OBJPROP_TOOLTIP, "Base box — drag to move (lines follow) · select + Delete key removes all");
    // Direction is AUTOMATIC and FROZEN here (no Buy/Sell badge): box below
    // the live price = demand = Buy; box above it = supply = Sell; a commit
    // landing with the price inside resolves by entry side (see resolver).
@@ -814,8 +809,10 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    BaseKnotLazyInit();
    string tag = (StringLen(inpObjectPrefix) > 0 ? inpObjectPrefix + BK_TAG : "");
 
-   //--- quick-delete badge (any state, incl. IDLE). Direction is automatic
-   //--- (box below live price = Buy, above = Sell) — no Buy/Sell badge.
+   //--- BK clicks die here (any state, incl. IDLE) so they never reach menus.
+   //--- Direction is automatic (box below live price = Buy, above = Sell).
+   //--- NOBKDEL: no X badge is created anymore; a DEL click below only fires
+   //--- for pre-retire badges and still deletes the box (then purges).
    if(id == CHARTEVENT_OBJECT_CLICK && tag != "")
    {
       if(StringFind(sparam, tag) == 0)
@@ -864,8 +861,8 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       }
        else
        {
-          // A manually deleted child (ENTRY/SL/TP/INFO/DEL/edge) self-heals via
-          // re-sync; trailing deletes of an already-gone box just mop up.
+          // A manually deleted child (ENTRY/SL/TP/INFO/edge, or a pre-retire
+          // DEL) self-heals via re-sync; trailing deletes of an already-gone box just mop up.
           // Edge segments (P-BK-06 visible border) end with _T/_B/_L/_R — strip
           // to the parent id first (SplitTail would cut at the wrong underscore).
           int slen = StringLen(sparam);
