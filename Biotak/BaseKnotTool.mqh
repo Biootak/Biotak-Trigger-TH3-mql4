@@ -487,14 +487,16 @@ void BaseKnotDrawEdges(const string tag, datetime t1, const double p1,
 
 //+------------------------------------------------------------------+
 //| Children geometry — single source of truth for commit / drag-sync.|
-//| Buy: Entry=top, SL=bottom, TP=top+2R. Sell mirrored.              |
+//| Buy: Entry=top, SL=bottom, TP=top+NxR (N = Base Box TARGET R).    |
+//| Sell mirrored.                                                    |
 //+------------------------------------------------------------------+
 void BaseKnotCalcLevels(const double top, const double bot, const int dir,
                         double &entry, double &sl, double &tp)
 {
    double h = top - bot;
-   if(dir >= 0) { entry = top; sl = bot; tp = top + h * BK_TP_R_MULT; }
-   else         { entry = bot; sl = top; tp = bot - h * BK_TP_R_MULT; }
+   double mult = (g_bkTargetR >= 1 ? (double)g_bkTargetR : BK_TP_R_MULT);
+   if(dir >= 0) { entry = top; sl = bot; tp = top + h * mult; }
+   else         { entry = bot; sl = top; tp = bot - h * mult; }
 }
 void BaseKnotMakeRay(const string name, const datetime t2, const datetime t1,
                      const double level, const color clr, const int style, const int width,
@@ -583,14 +585,14 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
    double tpPips = BaseKnotToPips(MathAbs(tp - entry));
-   double rr     = (hPips > 0 ? tpPips / hPips : BK_TP_R_MULT);
+   double rr     = (hPips > 0 ? tpPips / hPips : (g_bkTargetR >= 1 ? (double)g_bkTargetR : BK_TP_R_MULT));
    int dg = GetCachedDigits();
    string side = (dir >= 0 ? "BUY" : "SELL");
-   BaseKnotMakeRay(tag + "ENTRY", te, t1, entry, C'30,144,255', STYLE_SOLID, 1,
+   BaseKnotMakeRay(tag + "ENTRY", te, t1, entry, g_bkEntryColor, STYLE_SOLID, 1,
                    "BK " + side + " Entry (sizing): " + DoubleToString(entry, dg), tfMask);
-   BaseKnotMakeRay(tag + "SL", te, t1, sl, C'220,50,50', STYLE_DASH, 1,
+   BaseKnotMakeRay(tag + "SL", te, t1, sl, g_bkStopColor, STYLE_DASH, 1,
                    "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask);
-   BaseKnotMakeRay(tag + "TP", te, t1, tp, C'46,139,87', STYLE_DASH, 1,
+   BaseKnotMakeRay(tag + "TP", te, t1, tp, g_bkTargetColor, STYLE_DASH, 1,
                    "BK " + side + " Target (sizing): " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    BaseKnotWriteInfo(tag + "INFO", te, top, hPips, rr, tpPips, side, tfMask);
 }
@@ -637,14 +639,14 @@ void BaseKnotSync(const string id)
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
    double tpPips = BaseKnotToPips(MathAbs(tp - entry));
-   double rr     = (hPips > 0 ? tpPips / hPips : BK_TP_R_MULT);
+   double rr     = (hPips > 0 ? tpPips / hPips : (g_bkTargetR >= 1 ? (double)g_bkTargetR : BK_TP_R_MULT));
    int dg = GetCachedDigits();
    string side = (dir >= 0 ? "BUY" : "SELL");
-   BaseKnotMakeRay(BaseKnotEntryName(pfx), t2, t1, entry, C'30,144,255', STYLE_SOLID, 1,
+   BaseKnotMakeRay(BaseKnotEntryName(pfx), t2, t1, entry, g_bkEntryColor, STYLE_SOLID, 1,
                    "BK " + side + " Entry: " + DoubleToString(entry, dg), tfMask);
-   BaseKnotMakeRay(BaseKnotSLName(pfx), t2, t1, sl, C'220,50,50', STYLE_DASH, 1,
+   BaseKnotMakeRay(BaseKnotSLName(pfx), t2, t1, sl, g_bkStopColor, STYLE_DASH, 1,
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask);
-   BaseKnotMakeRay(BaseKnotTPName(pfx), t2, t1, tp, C'46,139,87', STYLE_DASH, 1,
+   BaseKnotMakeRay(BaseKnotTPName(pfx), t2, t1, tp, g_bkTargetColor, STYLE_DASH, 1,
                    "BK " + side + " Target: " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask);
    ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges

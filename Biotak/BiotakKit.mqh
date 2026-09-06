@@ -98,7 +98,10 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 #define PAL_FACTOR       11   // Factor level color
 #define PAL_LINE         12   // Unified [08.4] line color (ALL pipeline lines)
 #define PAL_BOX          13   // Base box border color (card 12)
-#define PAL_BASE_TARGETS 14
+#define PAL_BK_ENTRY       14   // Base box Entry line color (card 12)
+#define PAL_BK_SL          15   // Base box Stop line color (card 12)
+#define PAL_BK_TP          16   // Base box Target line color (card 12)
+#define PAL_BASE_TARGETS 17
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }
@@ -111,6 +114,9 @@ color DefCustomPriceColor()  { return clrDodgerBlue; }
 color DefFactorColor()       { return C'0,100,0'; }
 color DefLineColor()         { return clrBlack; }
 color DefBoxBorderColor()    { return C'255,171,0'; }   // amber — the shipped Base Box look
+color DefBKEntryColor()      { return C'30,144,255'; }    // dodger blue Entry ray
+color DefBKStopColor()       { return C'220,50,50'; }     // red Stop ray
+color DefBKTargetColor()     { return C'46,139,87'; }     // sea green Target ray
 
 //==============================================================================
 // REFRESH DISPATCHER — applies REFRESH_* flags returned by the menu/panels

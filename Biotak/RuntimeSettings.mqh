@@ -63,6 +63,10 @@ static color g_boxBorderColor = C'255,171,0';                    // [08.5] inpBo
 static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBoxBorderStyle
 static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
 static int g_boxBorderTransparency = 0;                          // [08.5] palette TR (default solid)
+static int g_bkTargetR = 2;                                      // [08.5] inpBKTargetR (TP = Entry + R x N)
+static color g_bkEntryColor = C'30,144,255';                     // [08.5] inpBKEntryColor
+static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
+static color g_bkTargetColor = C'46,139,87';                     // [08.5] inpBKTargetColor
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -206,6 +210,10 @@ enum FactorySetting
    FF_BOX_WIDTH,         // inpBoxBorderWidth
    FF_BOX_STYLE,         // inpBoxBorderStyle
    FF_BOX_TRANSPARENCY,  // palette TR (default solid, no input)
+   FF_BK_TARGET_R,       // inpBKTargetR
+   FF_BK_ENTRY,          // inpBKEntryColor
+   FF_BK_SL,             // inpBKStopColor
+   FF_BK_TP,             // inpBKTargetColor
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -301,6 +309,10 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_BOX_WIDTH]           = inpBoxBorderWidth;
    g_factoryDefaults[FF_BOX_STYLE]           = inpBoxBorderStyle;
    g_factoryDefaults[FF_BOX_TRANSPARENCY]    = 0;
+   g_factoryDefaults[FF_BK_TARGET_R]         = inpBKTargetR;
+   g_factoryDefaults[FF_BK_ENTRY]            = inpBKEntryColor;
+   g_factoryDefaults[FF_BK_SL]               = inpBKStopColor;
+   g_factoryDefaults[FF_BK_TP]               = inpBKTargetColor;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -388,6 +400,10 @@ void RuntimeSettingsInit()
    g_boxBorderStyle = inpBoxBorderStyle;
    g_boxBorderColor = inpBoxBorderColor;
    g_boxBorderTransparency = 0;
+   g_bkTargetR = inpBKTargetR;
+   g_bkEntryColor = inpBKEntryColor;
+   g_bkStopColor = inpBKStopColor;
+   g_bkTargetColor = inpBKTargetColor;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -446,6 +462,10 @@ void RuntimeSettingsInit()
 #define inpBoxBorderColor g_boxBorderColor
 #define inpBoxBorderStyle g_boxBorderStyle
 #define inpBoxBorderWidth g_boxBorderWidth
+#define inpBKTargetR g_bkTargetR
+#define inpBKEntryColor g_bkEntryColor
+#define inpBKStopColor g_bkStopColor
+#define inpBKTargetColor g_bkTargetColor
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -531,6 +551,10 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "BXS", g_boxBorderStyle);
    GlobalVariableSet(p + "BXC", g_boxBorderColor);
    GlobalVariableSet(p + "BXT", g_boxBorderTransparency);
+   GlobalVariableSet(p + "BXR", g_bkTargetR);
+   GlobalVariableSet(p + "BXE", g_bkEntryColor);
+   GlobalVariableSet(p + "BXL", g_bkStopColor);
+   GlobalVariableSet(p + "BXG", g_bkTargetColor);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -627,6 +651,10 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXS")) g_boxBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "BXS"), 0, 4);
    if(GlobalVariableCheck(p + "BXC")) g_boxBorderColor = (color)(int)GlobalVariableGet(p + "BXC");
    if(GlobalVariableCheck(p + "BXT")) g_boxBorderTransparency = ClampSettingInt((int)GlobalVariableGet(p + "BXT"), 0, 100);
+   if(GlobalVariableCheck(p + "BXR")) g_bkTargetR = ClampSettingInt((int)GlobalVariableGet(p + "BXR"), 1, 4);
+   if(GlobalVariableCheck(p + "BXE")) g_bkEntryColor = (color)(int)GlobalVariableGet(p + "BXE");
+   if(GlobalVariableCheck(p + "BXL")) g_bkStopColor = (color)(int)GlobalVariableGet(p + "BXL");
+   if(GlobalVariableCheck(p + "BXG")) g_bkTargetColor = (color)(int)GlobalVariableGet(p + "BXG");
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");

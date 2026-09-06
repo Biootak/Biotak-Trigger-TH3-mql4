@@ -325,13 +325,17 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (2026-09-05 drawer; 2026-09-06 drag gesture: press = corner 1, hold + move
   = live rubber-band + Entry/SL/TP, release = commit — exactly like MT4's own
   rectangle tool. Tap-tap still works (click 1 → hover preview → click 2).
-  Committed boxes are border-only (never filled): BORDER COLOR / WIDTH /
-  STYLE / TRANSPARENCY live in `RuntimeSettings.mqh` (`g_boxBorder*`,
-  `FF_BOX_WIDTH/STYLE/TRANSPARENCY`, `OV_BXW/BXS/BXC/BXT`, inputs `[08.5]`),
-  rendered via `GetBoxBorderRenderColor()` (one-language bg blend, cached),
-  applied at commit + `BaseKnotSync` + live via `BaseKnotRestyleAll()`,
+   Committed boxes are border-only (never filled): BORDER COLOR / WIDTH /
+  STYLE / TRANSPARENCY + TARGET R (TP = Entry + R×N, 1-4) + ENTRY/STOP/
+  TARGET line COLORS live in `RuntimeSettings.mqh` (`g_boxBorder*`,
+  `g_bkTargetR/Entry/Stop/TargetColor`, `FF_BOX_*/FF_BK_*`,
+  `OV_BXW/BXS/BXC/BXT/BXR/BXE/BXL/BXG`, inputs `[08.5]`),
+  rendered via `GetBoxBorderRenderColor()` (one-language bg blend, cached;
+  line colors are solid, no transparency), applied at commit + `BaseKnotSync`
+  (incl. live sizing preview) + live via `BaseKnotRestyleAll()`,
   edited from the Base Box style card 12
-  (4 rows, bg reuses `pnl_card4.bmp` — card skins key on ROW COUNT, not id).
+  (8 rows: 4 border + TARGET R + 3 line colors with quick swatches;
+  bg auto-picks `pnl_card8.bmp` — card skins key on ROW COUNT, not id).
   Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
   or press-hold a committed box — the ONE box gesture (250ms/8px,
   `BkHoldLatch/Poll/Fire` in `BiotakPanels.mqh` — passive

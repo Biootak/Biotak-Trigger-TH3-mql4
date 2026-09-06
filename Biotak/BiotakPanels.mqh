@@ -91,7 +91,7 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,4};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,8};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -144,6 +144,9 @@ int PnlColorKind(const int item,const int row)
    if(item==8 && row==1)  return PAL_CUSTOM_PRICE;
    if(item==10 && row==6) return PAL_FACTOR;
    if(item==12 && row==0) return PAL_BOX;   // Base Box BORDER COLOR
+   if(item==12 && row==5) return PAL_BK_ENTRY; // Base Box ENTRY COLOR
+   if(item==12 && row==6) return PAL_BK_SL;    // Base Box STOP COLOR
+   if(item==12 && row==7) return PAL_BK_TP;    // Base Box TARGET COLOR
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return PAL_FACTOR;   // Step card Factor COLOR
    return -1;
 }
@@ -167,6 +170,9 @@ color PaletteKindColor(const int k)
       case PAL_FACTOR:         return g_factorLevelColor;
       case PAL_LINE:           return g_lineColor;
       case PAL_BOX:            return g_boxBorderColor;
+      case PAL_BK_ENTRY:       return g_bkEntryColor;
+      case PAL_BK_SL:          return g_bkStopColor;
+      case PAL_BK_TP:          return g_bkTargetColor;
    }
    return clrNONE;
 }
@@ -204,7 +210,7 @@ string PalTgtLabel(const int t)
          "Trigger", "Trigger Label", "SS Level", "LS Level",
          "TH3 Line", "TH3 Pip", "HTF Bull", "HTF Bear",
          "HTF Wick", "HTF Border", "Custom Price", "Factor",
-         "Lines", "Base Box"
+         "Lines", "Base Box", "BK Entry", "BK Stop", "BK Target"
       };
    int k = ClampInt(t, 0, PAL_BASE_TARGETS - 1);
    return names[k];
@@ -232,6 +238,9 @@ int PaletteApplyColor(const int kind,const color clr)
       case PAL_FACTOR:        g_factorLevelColor = clr; break;
       case PAL_LINE:          g_lineColor = clr; break;
       case PAL_BOX:           g_boxBorderColor = clr; BaseKnotRestyleAll(); break;
+      case PAL_BK_ENTRY:      g_bkEntryColor = clr; BaseKnotRestyleAll(); break;
+      case PAL_BK_SL:         g_bkStopColor = clr; BaseKnotRestyleAll(); break;
+      case PAL_BK_TP:         g_bkTargetColor = clr; BaseKnotRestyleAll(); break;
       default:                return REFRESH_NONE;
    }
    PushPalRecent(clr);
@@ -311,6 +320,9 @@ color PnlDefColor(const int item,const int row)
    if(item==6 && row==6)  return InpHTFBorderColor;
    if(item==7 && row==5)  return DefLineColor();
    if(item==12 && row==0) return DefBoxBorderColor();
+   if(item==12 && row==5) return DefBKEntryColor();
+   if(item==12 && row==6) return DefBKStopColor();
+   if(item==12 && row==7) return DefBKTargetColor();
    if(item==8 && row==1)  return DefCustomPriceColor();
    if(item==10 && row==6) return DefFactorColor();
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return DefFactorColor();
@@ -611,6 +623,9 @@ bool PalKindRow(const int kind,int &item,int &row)
       case PAL_HTF_BORDER:     item=6;  row=6; return true;
       case PAL_LINE:           item=7;  row=5; return true;
       case PAL_BOX:            item=12; row=0; return true;
+      case PAL_BK_ENTRY:       item=12; row=5; return true;
+      case PAL_BK_SL:          item=12; row=6; return true;
+      case PAL_BK_TP:          item=12; row=7; return true;
       case PAL_CUSTOM_PRICE:   item=8;  row=1; return true;
       case PAL_FACTOR:         item=10; row=6; return true;
    }
@@ -1413,12 +1428,17 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else             { kind=4; label="COLOR"; }
    }
    else if(item==12)  // BASE BOX — committed-box border look (never filled,
-                      // like MT4's own rectangle). Opened by holding a box.
+                      // like MT4's own rectangle) + Entry/SL/TP lines.
+                      // Opened by holding a box.
    {
       if(row==0)       { kind=4; label="BORDER COLOR"; }
       else if(row==1)  { label="WIDTH"; minV=1; maxV=5; }
       else if(row==2)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
-      else             { label="TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
+      else if(row==3)  { label="TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
+      else if(row==4)  { label="TARGET R"; unit="R"; minV=1; maxV=4; }
+      else if(row==5)  { kind=4; label="ENTRY COLOR"; }
+      else if(row==6)  { kind=4; label="STOP COLOR"; }
+      else             { kind=4; label="TARGET COLOR"; }
    }
 }
 
@@ -1452,7 +1472,7 @@ string PnlSubtitleText(const int item)
    if(item==8)  return "Custom price pin & magnet";
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
-   if(item==12) return "Border look · never filled";
+   if(item==12) return "Border + Entry/SL/TP lines";
    return "Factor step calculation";
 }
 
@@ -1572,7 +1592,9 @@ double PnlDefVal(const int item,const int row)
       case 12: if(row==0) return 3;   // BORDER COLOR row → palette sentinel
                if(row==1) return FactoryDefault(FF_BOX_WIDTH);
                if(row==2) return (int)FactoryDefault(FF_BOX_STYLE);
-               return FactoryDefault(FF_BOX_TRANSPARENCY);
+               if(row==3) return FactoryDefault(FF_BOX_TRANSPARENCY);
+               if(row==4) return FactoryDefault(FF_BK_TARGET_R);
+               return 3;                        // ENTRY/STOP/TARGET COLOR rows → palette sentinel
   }
   return 0;
 }
@@ -1655,7 +1677,9 @@ double PnlCurrent(const int item,const int row)
       case 12: if(row==0) return 0;   // BORDER COLOR row (palette only)
                if(row==1) return g_boxBorderWidth;
                if(row==2) return (int)g_boxBorderStyle;
-               return g_boxBorderTransparency;
+               if(row==3) return g_boxBorderTransparency;
+               if(row==4) return g_bkTargetR;
+               return 0;                        // ENTRY/STOP/TARGET COLOR rows (palette only)
   }
   return 0;
 }
@@ -1849,11 +1873,12 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==4)  { g_factorLevelWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
          else             { g_factorLevelStyle=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_BUFFERS; }
          break;
-      case 12:  // BASE BOX — border look. Restyle live boxes at once;
+      case 12:  // BASE BOX — border look + Entry/SL/TP. Restyle live boxes at once;
                 // OV_ persist rides on REFRESH_BUFFERS via ApplyRefreshFlags.
          if(row==1)       { g_boxBorderWidth=ClampInt((int)MathRound(v),1,5); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+         else if(row==4)  { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
          break;
    }
    if(flags!=REFRESH_NONE)
