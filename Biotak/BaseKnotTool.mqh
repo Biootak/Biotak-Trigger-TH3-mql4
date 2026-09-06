@@ -119,6 +119,22 @@ string BaseKnotGV(const string id)
    return "Biotak_BK_" + id + "_" + GetCachedChartIdStr();
 }
 
+//+------------------------------------------------------------------+
+//| Hollow box look — SINGLE source of truth (P-BK-04). Every BOX +   |
+//| the sizing PREVIEW is border-only (FILL false, BACK true) so      |
+//| candles stay visible through the hollow box. All create / sync /  |
+//| restyle paths go through here — never set COLOR/STYLE/WIDTH on a  |
+//| box without it, or pre-border-only filled boxes come back.        |
+//+------------------------------------------------------------------+
+void BaseKnotStyleBox(const string box, const color clr, const ENUM_LINE_STYLE st, const int wd)
+{
+   ObjectSetInteger(0, box, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, box, OBJPROP_STYLE, st);
+   ObjectSetInteger(0, box, OBJPROP_WIDTH, wd);
+   ObjectSetInteger(0, box, OBJPROP_FILL, false);   // hollow by default — never filled
+   ObjectSetInteger(0, box, OBJPROP_BACK, true);    // candles stay visible through the hollow box
+}
+
 bool BaseKnotSessionActive() { return (g_bkState != BK_IDLE); }
 int  BaseKnotCount()         { return ArraySize(g_bkBoxes); }
 
@@ -294,6 +310,11 @@ void BaseKnotLazyInit()
       if(StringFind(nm, tag) != 0) continue;
       if(StringFind(nm, "BOX", StringLen(nm) - 3) < 0) continue;
       string id = StringSubstr(nm, StringLen(tag), StringLen(nm) - StringLen(tag) - 4);
+      // P-BK-04 migration: pre-border-only boxes were committed filled —
+      // unfill here so the hollow default applies retroactively (full border
+      // look follows via BaseKnotSync on drag / BaseKnotRestyleAll on edit).
+      ObjectSetInteger(0, nm, OBJPROP_FILL, false);
+      ObjectSetInteger(0, nm, OBJPROP_BACK, true);
       int dir = 1;
       if(GlobalVariableCheck(BaseKnotGV(id))) dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
       BaseKnotRegister(id, dir, BaseKnotIdTF(id));
@@ -560,9 +581,7 @@ void BaseKnotSync(const string id)
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
    long tfMask = BaseKnotTFMask(tfMin);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
-   ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());   // border look follows the Base Box card
-   ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
-   ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
+   BaseKnotStyleBox(box, GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth);   // border look follows the Base Box card
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
@@ -598,9 +617,7 @@ void BaseKnotRestyleAll()
    {
       string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
       if(ObjectFind(0, box) < 0) continue;
-      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
-      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
-      ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
+      BaseKnotStyleBox(box, GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth);
    }
    ChartRedraw();
 }
@@ -661,11 +678,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
    if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, t2, p2)) return;
-   ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
-   ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
-   ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
-   ObjectSetInteger(0, box, OBJPROP_FILL, false);   // unfilled: candles stay visible (MQL4 has no alpha)
-   ObjectSetInteger(0, box, OBJPROP_BACK, true);
+   BaseKnotStyleBox(box, GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth);   // hollow: candles stay visible (MQL4 has no alpha)
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);   // THE handle: drag moves children
    ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);
@@ -708,11 +721,7 @@ void BaseKnotPress(const datetime t, const double praw)
    string pv = BaseKnotPrevName();
    if(pv == "") return;
    if(ObjectFind(0, pv) < 0) ObjectCreate(0, pv, OBJ_RECTANGLE, 0, t, p, t, p);
-   ObjectSetInteger(0, pv, OBJPROP_COLOR, GetBoxBorderRenderColor());   // WYSIWYG border color, dotted ghost style
-   ObjectSetInteger(0, pv, OBJPROP_STYLE, STYLE_DOT);
-   ObjectSetInteger(0, pv, OBJPROP_WIDTH, 1);
-   ObjectSetInteger(0, pv, OBJPROP_FILL, false);
-   ObjectSetInteger(0, pv, OBJPROP_BACK, true);
+   BaseKnotStyleBox(pv, GetBoxBorderRenderColor(), STYLE_DOT, 1);   // WYSIWYG border color, dotted ghost style
    ObjectSetInteger(0, pv, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, pv, OBJPROP_HIDDEN, true);
    ChartRedraw();
@@ -870,7 +879,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
             ObjectMove(0, pv, 0, g_bkT1, g_bkP1);
             ObjectMove(0, pv, 1, ht, hp);
-            ObjectSetInteger(0, pv, OBJPROP_COLOR, GetBoxBorderRenderColor());   // live border color while sizing
+            BaseKnotStyleBox(pv, GetBoxBorderRenderColor(), STYLE_DOT, 1);   // live border color while sizing
             g_bkLiveT = ht; g_bkLiveP = hp;
             BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();
