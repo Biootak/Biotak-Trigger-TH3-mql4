@@ -644,6 +644,7 @@ string BaseKnotBoxAt(const datetime t, const double price)
 // Per-tick (500 ms) re-glue: scroll/zoom moves pixel badges, box anchors don't.
 void BaseKnotSyncBadges()
 {
+   BaseKnotLazyInit();   // the registry IS the box list — rebuild once (guarded, O(1) after)
    if(ArraySize(g_bkBoxes) == 0) return;
    for(int i = 0; i < ArraySize(g_bkBoxes); i++)
    {
@@ -651,6 +652,14 @@ void BaseKnotSyncBadges()
       if(pfx == "") continue;
       string box = BaseKnotBoxName(pfx);
       if(ObjectFind(0, box) < 0) continue;
+      // P-BK-05 self-heal: any FILLED box (pre-border-only object, hand-flipped
+      // fill) is re-hollowed here within 500 ms — read-guarded, so steady state
+      // costs one syscall per box and never dirties the chart.
+      if(ObjectGetInteger(0, box, OBJPROP_FILL) != 0)
+      {
+         BaseKnotStyleBox(box, GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth);
+         ChartRedraw();
+      }
       datetime t1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
       datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
       if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }

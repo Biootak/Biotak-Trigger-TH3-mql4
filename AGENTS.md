@@ -333,10 +333,16 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   edited from the Base Box style card 12
   (4 rows, bg reuses `pnl_card4.bmp` — card skins key on ROW COUNT, not id).
   Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
-  press-hold a committed box, or Shift+click it for instant open
-  (250ms/8px, `BkHoldLatch/Poll/OnBoxClick` in `BiotakPanels.mqh` — passive
+  or press-hold a committed box — the ONE box gesture (250ms/8px,
+  `BkHoldLatch/Poll/Fire` in `BiotakPanels.mqh` — passive
   observer, never consumes; hit-test via `BaseKnotBoxAt()` in the domain
-  layer so Lite stays UI-free; P-BK-03). The 250 ms poll cadence
+  layer so Lite stays UI-free; P-BK-03/P-BK-05). The card fires WHILE HELD
+  (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses);
+  release opens nothing; Shift+click instant and the release-leg are removed
+  (they raced the hold and confused taps with holds). Hollow is self-healing:
+  `BaseKnotSyncBadges()` (500 ms pump) re-hollows any FILLED box within half
+  a second (read-guarded, one syscall steady-state), so pre-border-only boxes
+  heal live without re-attach. The 250 ms poll cadence
   (`EventSetMillisecondTimer`, safe: every OnTimer callee is time-gated /
   idempotent) keeps hold-to-open snappy on tick-less (weekend) charts.
   The bottom-left hint is bg-luminance-aware (amber/brown) and the commit
@@ -442,6 +448,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-BK-02 | Bulletproof audit: ghost preview rect after TF-switch mid-draw; chart scroll stuck OFF after removing the indicator mid-session; mouse-move storm (rubber-band ChartRedraw per event) pins weak CPUs; menu hover/drag/long-press interfered with the draw gesture; orphan `Biotak_BK_*` GVs accumulated | Transient PREVIEW/HINT survived non-deep deinit (new instance starts IDLE, nothing owned them); scroll/context restore lived only in Cancel; rubber-band had no throttle; `HandleUIChartEvent` fed every move to the menu even with the ring hidden | `BaseKnotOnDeinit(reason)` (hooked first in `OnDeinitHandler`): restores chart props when armed-ever (`g_bkTouched`), kills transients, drops stale restore flag; `LazyInit` purges transients + sweeps chart-orphan BK GVs; rubber-band throttled 30 ms (swallow, no redraw); `HandleUIChartEvent` skips `CircHandleMouseMove` while the session is active (orb-click exit + panels untouched) | 2026-09-06 |
 | P-BK-03 | Hold-on-box never opened the style card (only moves armed it); result hint stayed forever + amber unreadable on light charts | A press with ZERO mouse movement emits NO `CHARTEVENT_MOUSE_MOVE` (button flips aren't events) — pure event arming can never see a stationary press; hint text was fixed amber | Latch press DOWN-transitions (move rising edge AND `TERMINAL_KEYSTATE_LEFT` poll in `RefreshKitOnBar` — per tick + 1s timer); mid-hold fire at 250 ms like menu long-press, release leg as backup; button-UP never clears the latch (a poll tick can land between release and its `OBJECT_CLICK`), staleness dies via >8px move / new press / 30 s TTL. Hint: bg-luminance-aware color + result auto-hide 4 s via `BaseKnotHintTick()` in the 500 ms block | 2026-09-06 |
 | P-BK-04 | Border-only change left old committed boxes FILLED (screenshot purple solid): commit/preview set FILL false but Sync/Restyle/LazyInit only touched COLOR/STYLE/WIDTH, so pre-change boxes stayed filled forever | Draw-style changes never retro-apply to existing chart objects — a style set only at creation is fossilized on old objects | Single source of truth `BaseKnotStyleBox()` in `Biotak/BaseKnotTool.mqh` (COLOR/STYLE/WIDTH + FILL false + BACK true) used by commit / preview / rubber-band / Sync / RestyleAll; `BaseKnotLazyInit` un-fills every scanned BOX (migration) | 2026-09-06 |
+| P-BK-05 | Hold-on-box never opened WHILE held (card appeared only on release); three open paths (mid-hold poll / release-leg / Shift+click) raced and confused taps with holds | Mid-hold fire required `TERMINAL_KEYSTATE_LEFT` to report down in the poll window, and the poll re-latched (timer reset) whenever the down-flag flickered — so the 250ms never elapsed mid-hold while the pure-event release-leg always worked | ONE method: `BkHoldFire()` while HELD (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses, re-hit-tested); release only clears and opens nothing; Shift+click + release-leg deleted. KEYSTATE only detects a fresh down-transition when nothing is latched — never clears/re-times. Hollow self-heals in `BaseKnotSyncBadges()` 500ms pump (read-guarded) | 2026-09-06 |
 
 
 > When you close a new recurring issue, add the next row above (highest
