@@ -339,10 +339,14 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   layer so Lite stays UI-free; P-BK-03/P-BK-05). The card fires WHILE HELD
   (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses);
   release opens nothing; Shift+click instant and the release-leg are removed
-  (they raced the hold and confused taps with holds). Hollow is self-healing:
-  `BaseKnotSyncBadges()` (500 ms pump) re-hollows any FILLED box within half
-  a second (read-guarded, one syscall steady-state), so pre-border-only boxes
-  heal live without re-attach. The 250 ms poll cadence
+   (they raced the hold and confused taps with holds). Hollow-by-construction
+  (P-BK-06): the BOX rect is only an invisible drag handle (chart-bg fill) —
+  the VISIBLE border is 4 `OBJ_TREND` edges (`BaseKnotDrawEdges`, same fix as
+  `ZoneFactory` — some MT4 builds render `OBJ_RECTANGLE` filled even with
+  `FILL=false`), so boxes are border-only on every build; preview is dotted
+  edges too (no rect). `BaseKnotSyncBadges()` (500 ms pump) re-hides any
+  filled handle + rebuilds missing edges, so pre-edge boxes heal live without
+  re-attach. The 250 ms poll cadence
   (`EventSetMillisecondTimer`, safe: every OnTimer callee is time-gated /
   idempotent) keeps hold-to-open snappy on tick-less (weekend) charts.
   The bottom-left hint is bg-luminance-aware (amber/brown) and the commit
@@ -352,8 +356,8 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   in `HandleUIChartEvent`, stray clicks draw nothing). Press never commits
   (only the release / next click does), so no double-commit; `g_bkHeld`
   tracks the held button, `g_bkLiveT/P` is the off-chart-release fallback.
-  Sizing preview =
-  dotted `PREVIEW` rect + LIVE Entry/SL/TP + info (`<prefix>_BK_LIVE_*`,
+   Sizing preview =
+  dotted `PREVIEW` edges + LIVE Entry/SL/TP + info (`<prefix>_BK_LIVE_*`,
   direction re-resolved while sizing, wiped at commit/cancel/deinit);
   same-bar/zero-height commits rejected, preview kept. Committed boxes own
   children by shared id prefix (`<prefix>_BK_<id>_`): box drag re-syncs the
@@ -449,6 +453,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-BK-03 | Hold-on-box never opened the style card (only moves armed it); result hint stayed forever + amber unreadable on light charts | A press with ZERO mouse movement emits NO `CHARTEVENT_MOUSE_MOVE` (button flips aren't events) — pure event arming can never see a stationary press; hint text was fixed amber | Latch press DOWN-transitions (move rising edge AND `TERMINAL_KEYSTATE_LEFT` poll in `RefreshKitOnBar` — per tick + 1s timer); mid-hold fire at 250 ms like menu long-press, release leg as backup; button-UP never clears the latch (a poll tick can land between release and its `OBJECT_CLICK`), staleness dies via >8px move / new press / 30 s TTL. Hint: bg-luminance-aware color + result auto-hide 4 s via `BaseKnotHintTick()` in the 500 ms block | 2026-09-06 |
 | P-BK-04 | Border-only change left old committed boxes FILLED (screenshot purple solid): commit/preview set FILL false but Sync/Restyle/LazyInit only touched COLOR/STYLE/WIDTH, so pre-change boxes stayed filled forever | Draw-style changes never retro-apply to existing chart objects — a style set only at creation is fossilized on old objects | Single source of truth `BaseKnotStyleBox()` in `Biotak/BaseKnotTool.mqh` (COLOR/STYLE/WIDTH + FILL false + BACK true) used by commit / preview / rubber-band / Sync / RestyleAll; `BaseKnotLazyInit` un-fills every scanned BOX (migration) | 2026-09-06 |
 | P-BK-05 | Hold-on-box never opened WHILE held (card appeared only on release); three open paths (mid-hold poll / release-leg / Shift+click) raced and confused taps with holds | Mid-hold fire required `TERMINAL_KEYSTATE_LEFT` to report down in the poll window, and the poll re-latched (timer reset) whenever the down-flag flickered — so the 250ms never elapsed mid-hold while the pure-event release-leg always worked | ONE method: `BkHoldFire()` while HELD (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses, re-hit-tested); release only clears and opens nothing; Shift+click + release-leg deleted. KEYSTATE only detects a fresh down-transition when nothing is latched — never clears/re-times. Hollow self-heals in `BaseKnotSyncBadges()` 500ms pump (read-guarded) | 2026-09-06 |
+| P-BK-06 | Base box still rendered FILLED on some MT4 builds despite `OBJPROP_FILL=false` — border-only default never held | Some builds ignore `FILL=false` on `OBJ_RECTANGLE` (same trap as `ZoneFactory`); plus a half-landed edge refactor left `BaseKnotStyleBox` 1-arg vs 4-arg callers + `PrevName` vs `PrevTag` mismatches so nothing compiled | Hollow-by-construction: BOX rect is ONLY the invisible drag handle (`BaseKnotStyleBox` 1-arg, chart-bg color); the VISIBLE border is 4 `OBJ_TREND` edges via `BaseKnotDrawEdges` (commit/Sync/Press/rubber-band), `RestyleAll` delegates to `Sync`, `SyncBadges` 500ms pump re-hides handles + rebuilds missing edges, edge-delete self-heals via suffix guard in `OBJECT_DELETE` | 2026-09-06 |
 
 
 > When you close a new recurring issue, add the next row above (highest
