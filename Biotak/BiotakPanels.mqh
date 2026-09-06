@@ -91,7 +91,7 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,9,4};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,10,7};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -1443,16 +1443,21 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==5)  { kind=4; label="ENTRY COLOR"; }
       else if(row==6)  { kind=4; label="STOP COLOR"; }
       else if(row==7)  { kind=4; label="TARGET COLOR"; }
-      else             { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      else if(row==8)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      else             { kind=2; label="PRESET"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
    }
    else if(item==13)  // BASE BOX MINI — hold-on-box quick style (TV-like popover).
                       // Same mirrors as card 12 (delegated, never duplicated);
+                      // LOCK/DELETE act on the held box (g_BkMiniBox);
                       // ••• opens the full card.
    {
       if(row==0)       { kind=4; label="BORDER COLOR"; }
       else if(row==1)  { label="TARGET R"; unit="R"; minV=1; maxV=4; }
       else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
-      else             { kind=5; label="MORE"; opts="12"; }   // NAV → full Base Box card
+      else if(row==3)  { kind=2; label="PRESET"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
+      else if(row==4)  { kind=2; label="LOCK"; opts="Off|On"; minV=0; maxV=1; }
+      else if(row==5)  { kind=5; label="DELETE"; opts="DEL"; }   // ACTION → delete held box
+      else             { kind=5; label="MORE"; opts="12"; }      // NAV → full Base Box card
    }
 }
 
@@ -1515,6 +1520,69 @@ int HTFPeriodFromOption(const int idx)
    int i=idx-1;
    if(i<0) i=0; if(i>4) i=4;
    return vals[i];
+}
+
+//--- mini quick-style card (item 13) target: the held committed box its
+//--- LOCK/DELETE rows act on. Set by BkHoldFire, validated on every use.
+string g_BkMiniBox = "";
+
+//+------------------------------------------------------------------+
+//| Base Box STYLE presets — one tap applies a curated full look      |
+//| (border + R + 3 line colors). Custom = manual edits (selector     |
+//| only, tapping it is a no-op). Same mirrors as card 12 — the mini |
+//| and full PRESET rows delegate here, never duplicated.             |
+//+------------------------------------------------------------------+
+struct BkPreset
+{
+   color border;
+   int   style;   // native ENUM_LINE_STYLE value
+   int   width;
+   int   tr;
+   int   rr;
+   color entry;
+   color sl;
+   color tp;
+};
+void BkPresetGet(const int i, BkPreset &p)
+{
+   if(i == 1)         // Ocean
+   {
+      p.border=C'41,182,246'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
+      p.entry=C'41,182,246'; p.sl=C'240,98,146'; p.tp=C'102,187,106';
+   }
+   else if(i == 2)    // Mono
+   {
+      p.border=C'176,190,197'; p.style=STYLE_DASH; p.width=1; p.tr=0; p.rr=2;
+      p.entry=C'144,164,174'; p.sl=C'120,144,156'; p.tp=C'207,216,220';
+   }
+   else               // 0 Amber (shipped look)
+   {
+      p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
+      p.entry=C'30,144,255'; p.sl=C'220,50,50'; p.tp=C'46,139,87';
+   }
+}
+int BkPresetMatch()   // 0/1/2 = preset, 3 = Custom (manual edits)
+{
+   for(int i = 0; i < 3; i++)
+   {
+      BkPreset p; BkPresetGet(i, p);
+      if(g_boxBorderColor==p.border && (int)g_boxBorderStyle==p.style &&
+         g_boxBorderWidth==p.width && g_boxBorderTransparency==p.tr &&
+         g_bkTargetR==p.rr && g_bkEntryColor==p.entry &&
+         g_bkStopColor==p.sl && g_bkTargetColor==p.tp) return i;
+   }
+   return 3;
+}
+int BkApplyPreset(const int i)   // apply + restyle live boxes + persist via flags
+{
+   if(i < 0 || i > 2) return REFRESH_NONE;   // Custom — nothing to apply
+   BkPreset p; BkPresetGet(i, p);
+   g_boxBorderColor=p.border; g_boxBorderStyle=(ENUM_LINE_STYLE)ClampInt(p.style,0,4);
+   g_boxBorderWidth=ClampInt(p.width,1,5); g_boxBorderTransparency=ClampInt(p.tr,0,100);
+   g_bkTargetR=ClampInt(p.rr,1,4);
+   g_bkEntryColor=p.entry; g_bkStopColor=p.sl; g_bkTargetColor=p.tp;
+   BaseKnotRestyleAll();
+   return REFRESH_BUFFERS;   // OV_ persist rides via ApplyRefreshFlags
 }
 
 //+------------------------------------------------------------------+
@@ -1611,11 +1679,14 @@ double PnlDefVal(const int item,const int row)
                if(row==3) return FactoryDefault(FF_BOX_TRANSPARENCY);
                if(row==4) return FactoryDefault(FF_BK_TARGET_R);
                if(row==5 || row==6 || row==7) return 3;   // COLOR rows → palette sentinel
-               return FactoryDefault(FF_BK_SHOW_INFO);   // INFO Auto|Show
+               if(row==8) return FactoryDefault(FF_BK_SHOW_INFO);   // INFO Auto|Show
+               return 0;                        // PRESET row (Amber shipped)
       case 13: if(row==0) return 3;   // Mini BORDER COLOR → palette sentinel
                if(row==1) return FactoryDefault(FF_BK_TARGET_R);
                if(row==2) return FactoryDefault(FF_BK_SHOW_INFO);
-               return 0;                        // MORE nav row
+               if(row==3) return 0;   // Mini PRESET (Amber shipped)
+               if(row==4) return 0;   // Mini LOCK off
+               return 0;                        // action/nav rows
   }
   return 0;
 }
@@ -1701,11 +1772,14 @@ double PnlCurrent(const int item,const int row)
                if(row==3) return g_boxBorderTransparency;
                if(row==4) return g_bkTargetR;
                if(row==5 || row==6 || row==7) return 0;   // COLOR rows (palette only)
-               return g_bkShowInfo;             // INFO Auto|Show
+               if(row==8) return g_bkShowInfo;  // INFO Auto|Show
+               return BkPresetMatch();          // PRESET row
       case 13: if(row==0) return 0;   // Mini BORDER COLOR (palette only)
                if(row==1) return g_bkTargetR;
                if(row==2) return g_bkShowInfo;
-               return 0;                        // MORE nav row
+               if(row==3) return BkPresetMatch();
+               if(row==4) return (BaseKnotLocked(g_BkMiniBox) ? 1 : 0);
+               return 0;                        // action/nav rows
   }
   return 0;
 }
@@ -1906,10 +1980,13 @@ int PnlApply(const int item,const int row,const double v)
           else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
           else if(row==4)  { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
           else if(row==8)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==9)  { flags=BkApplyPreset((int)MathRound(v)); }
           break;
        case 13:  // BASE BOX MINI — same mirrors as card 12, never duplicated.
           if(row==1)       { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
           else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==3)  { flags=BkApplyPreset((int)MathRound(v)); }
+          else if(row==4)  { if(g_BkMiniBox!="" && BaseKnotFind(g_BkMiniBox)>=0) BaseKnotSetLocked(g_BkMiniBox, v>0.5); }
           break;
    }
    if(flags!=REFRESH_NONE)
@@ -2220,6 +2297,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
     {
        string navTxt = (opts=="1") ? "◄  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  ►";
        if(opts=="12") navTxt = "•••  ALL SETTINGS  ►";   // mini → full Base Box card
+       if(opts=="DEL") navTxt = "✕  DELETE THIS BOX";    // mini ACTION → delete held box
        PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+22,
                    PNL_WEL-2*PNL_PAD_X, 22,
                    navTxt, PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
@@ -3038,9 +3116,17 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    }
 
    // ── NAV row → open the target card (STRUCTURE sub-card / BACK) ──
+   // ── DEL action → delete the mini card's held box, then close ──
    if(kind=="NAV")
    {
       if(rkind!=5) return REFRESH_NONE;
+      if(opts=="DEL")   // mini ACTION: delete the held box, then close (inlined:
+      {                 // BkMiniDeleteBox would sit after PnlCloseAll's callers)
+         if(g_BkMiniBox != "" && BaseKnotFind(g_BkMiniBox) >= 0) BaseKnotDelete(g_BkMiniBox);
+         g_BkMiniBox = "";
+         PnlCloseAll();
+         return REFRESH_NONE;
+      }
       int tgt=(int)StringToInteger(opts);
       if(tgt>=0 && tgt<PNL_COUNT && tgt!=item) PnlOpen(tgt);
       return REFRESH_NONE;
@@ -3162,6 +3248,35 @@ void BkHoldFire()
    s_BkHoldId = ""; s_BkHoldMs = 0;   // disarmed — release opens nothing
    if(id == "" || BaseKnotSessionActive() || g_PalOpen) return;
    if(BaseKnotFind(id) < 0) return;   // box deleted mid-hold
+   g_BkMiniBox = id;   // LOCK/DELETE rows act on this box (validated on every use)
+   // TV-like: anchor the mini next to the held box (above its top-right
+   // corner, flipping below when there is no room) — not the persisted
+   // spot. A manual drag still wins next time via PnlCommitMove.
+   string pfx = BaseKnotPrefix(id);
+   if(pfx != "")
+   {
+      string box = BaseKnotBoxName(pfx);
+      if(ObjectFind(0, box) >= 0)
+      {
+         datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+         double tp = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
+                             ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+         int x2 = 0, y2 = 0;
+         if(ChartTimePriceToXY(0, 0, t2, tp, x2, y2))
+         {
+            int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
+            int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+            int mh = PNL_HEAD_H + PnlRowsCount(13) * PNL_ROW_H + PNL_FOOT_H;
+            int nx = x2 + 14;
+            int ny = y2 - mh - 14;
+            if(ny < 4) ny = y2 + 14;   // no room above — flip below the corner
+            if(nx < 4) nx = 4; if(nx > cw - PNL_WEL - 4) nx = cw - PNL_WEL - 4;
+            if(ny < 4) ny = 4; if(ny > ch - mh - 16) ny = ch - mh - 16;
+            if(nx < 4) nx = 4; if(ny < 4) ny = 4;   // tiny-chart fallback
+            g_PnlX[13] = nx; g_PnlY[13] = ny;
+         }
+      }
+   }
    PnlOpen(13);   // mini quick-style (••• inside opens the full card 12)
    ChartRedraw();
 }

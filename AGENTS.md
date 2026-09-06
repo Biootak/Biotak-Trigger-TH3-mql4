@@ -335,16 +335,25 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (incl. live sizing preview) + live via `BaseKnotRestyleAll()`,
   edited from the Base Box style card 12
   (9 rows: 4 border + TARGET R + 3 line colors with quick swatches + INFO
-  Auto|Show; bg auto-picks `pnl_card9.bmp` — card skins key on ROW COUNT,
-  not id). Info label is non-intrusive by default (Auto): visible live
-  while sizing + 4 s grace after commit (`commitMs` in the registry,
-  `BaseKnotInfoVisible()`, hidden by the 500 ms `SyncBadges` pump —
-  inherited boxes get `commitMs=0` so old charts clean up without a flash);
-  full numbers always ride the box/edge hover tooltips.
+  Auto|Show + PRESET Amber|Ocean|Mono|Custom; bg auto-picks `pnl_card10.bmp`
+  — card skins key on ROW COUNT, not id). Info label is non-intrusive by
+  default (Auto): visible live while sizing + 4 s grace after commit
+  (`commitMs` in the registry, `BaseKnotInfoVisible()`, hidden by the 500 ms
+  `SyncBadges` pump — inherited boxes get `commitMs=0` so old charts clean
+  up without a flash); full numbers always ride the box/edge hover tooltips.
   Card 12 opens from the Tools-ring box button; press-hold on a committed
-  box opens the MINI quick-style card 13 instead (TV-like popover: BORDER
-  COLOR + TARGET R + INFO + ••• → full card 12; same mirrors, never
-  duplicated — `BkHoldFire` → `PnlOpen(13)`; NAV kind=5 `opts="12"`).
+  box opens the MINI quick-style card 13 INSTEAD, anchored next to the held
+  box (TV-like floating toolbar: above its top-right corner, flips below
+  without room; `BkHoldFire` computes pixels via `ChartTimePriceToXY`,
+  clamped on screen — manual drag still persists via `PnlCommitMove`).
+  Mini rows (7): BORDER COLOR + TARGET R + INFO + PRESET + LOCK Off|On +
+  DELETE (this box) + ••• → full card 12; same mirrors, never duplicated
+  (`BkHoldFire` → `PnlOpen(13)`; NAV kind=5 `opts="12"`, ACTION `opts="DEL"`).
+  LOCK is per-box (`locked` in the registry, rides the handle's own
+  SELECTABLE bit — no GV, survives TF-switch/restart; `Sync` heals it,
+  drag swallows locked boxes; hold still opens the mini so a locked box can
+  always be unlocked). Mini LOCK/DELETE act on `g_BkMiniBox` (set at hold,
+  validated on every use).
   The hold is the ONE box gesture (250ms/8px, `BkHoldLatch/Poll/Fire` in
   `BiotakPanels.mqh` — passive observer, never consumes; hit-test via
   `BaseKnotBoxAt()` in the domain layer so Lite stays UI-free; P-BK-03/P-BK-05).

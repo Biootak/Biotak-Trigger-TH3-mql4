@@ -76,6 +76,7 @@ struct BaseKnotBox
    int    dir;     // +1 Buy / -1 Sell — FROZEN at commit, never recomputed
    int    tfMin;   // chart Period() minutes at commit (0 = legacy = all TFs)
    uint   commitMs; // GetTickCount at commit — drives the Auto INFO grace (0 = long ago)
+   bool   locked;  // mini LOCK row — locked boxes are unselectable (no drag)
 };
 static BaseKnotBox g_bkBoxes[];
 static int         g_bkState      = BK_IDLE;
@@ -296,6 +297,7 @@ void BaseKnotRegister(const string id, const int dir, const int tfMin)
    g_bkBoxes[n].dir   = (dir < 0 ? -1 : 1);
    g_bkBoxes[n].tfMin = tfMin;
    g_bkBoxes[n].commitMs = GetTickCount();   // fresh commit → Auto INFO grace starts now
+   g_bkBoxes[n].locked = false;              // fresh boxes are always unlocked
    GlobalVariableSet(BaseKnotGV(id), (double)g_bkBoxes[n].dir);
 }
 void BaseKnotUnregister(const string id)
@@ -305,6 +307,29 @@ void BaseKnotUnregister(const string id)
    for(int i = k; i < ArraySize(g_bkBoxes) - 1; i++) g_bkBoxes[i] = g_bkBoxes[i + 1];
    ArrayResize(g_bkBoxes, ArraySize(g_bkBoxes) - 1);
    GlobalVariableDel(BaseKnotGV(id));
+}
+// Lock — a locked box is unselectable so it can never be dragged (hold still
+// opens the mini card, so it can always be unlocked). The flag rides the BOX
+// handle's own SELECTABLE bit: no GV, survives TF-switches and restarts.
+bool BaseKnotLocked(const string id)
+{
+   int k = BaseKnotFind(id);
+   if(k < 0) return false;
+   return g_bkBoxes[k].locked;
+}
+void BaseKnotSetLocked(const string id, const bool on)
+{
+   int k = BaseKnotFind(id);
+   if(k < 0) return;
+   g_bkBoxes[k].locked = on;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, !on);
+   ObjectSetString(0, box, OBJPROP_TOOLTIP, (on ? "Base box — LOCKED (hold to unlock)"
+                                                 : "Base box — drag to move (lines follow) · select + Delete key removes all"));
+   ChartRedraw();
 }
 // Rebuild the registry from chart objects once (TF-switch safe: the box
 // anchors ARE the spec, direction rides a chart-scoped GV, TF rides the id).
@@ -331,7 +356,11 @@ void BaseKnotLazyInit()
       if(GlobalVariableCheck(BaseKnotGV(id))) dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
       BaseKnotRegister(id, dir, BaseKnotIdTF(id));
       int q = BaseKnotFind(id);
-      if(q >= 0) g_bkBoxes[q].commitMs = 0;   // inherited box — long ago, no Auto grace flash
+      if(q >= 0)
+      {
+         g_bkBoxes[q].commitMs = 0;   // inherited box — long ago, no Auto grace flash
+         g_bkBoxes[q].locked = (ObjectGetInteger(0, nm, OBJPROP_SELECTABLE) == 0);   // lock rides the handle itself — no GV, survives TF-switch/restart
+      }
    }
    // P-BK-06 migration: hollow-by-construction (bg handle + edge segments) —
    // every inherited box is re-synced once so pre-edge boxes gain their
@@ -650,6 +679,7 @@ void BaseKnotSync(const string id)
    long tfMask = BaseKnotTFMask(tfMin);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
    BaseKnotStyleBox(box);   // invisible drag handle (bg fill) — the VISIBLE border is the 4 edges below
+   ObjectSetInteger(0, box, OBJPROP_SELECTABLE, !g_bkBoxes[k].locked);   // lock heal: handle follows the registry
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
                      GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
                      "Base box — drag to move (lines follow) · select + Delete key removes all", tfMask);
@@ -872,11 +902,15 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    if(id == CHARTEVENT_OBJECT_DRAG && tag != "" && StringFind(sparam, tag) == 0 &&
       StringFind(sparam, "BOX", StringLen(sparam) - 3) >= 0)
    {
-      string tail = StringSubstr(sparam, StringLen(tag));
-      string bid = StringSubstr(tail, 0, StringLen(tail) - 4);
-      if(bid == "PREVIEW") return true;
-      if(BaseKnotFind(bid) >= 0) { BaseKnotSync(bid); ChartRedraw(); }
-      return true;
+       string tail = StringSubstr(sparam, StringLen(tag));
+       string bid = StringSubstr(tail, 0, StringLen(tail) - 4);
+       if(bid == "PREVIEW") return true;
+       if(BaseKnotFind(bid) >= 0)
+       {
+          if(BaseKnotLocked(bid)) return true;   // locked — swallow, children stay put
+          BaseKnotSync(bid); ChartRedraw();
+       }
+       return true;
    }
    if(id == CHARTEVENT_OBJECT_DELETE && tag != "" && StringFind(sparam, tag) == 0)
    {
