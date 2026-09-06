@@ -91,7 +91,7 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,9};
+int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,9,4};
 int g_PnlOpen      = -1;
 
 //--- display name for a line-style index (panel value text)
@@ -144,6 +144,7 @@ int PnlColorKind(const int item,const int row)
    if(item==8 && row==1)  return PAL_CUSTOM_PRICE;
    if(item==10 && row==6) return PAL_FACTOR;
    if(item==12 && row==0) return PAL_BOX;   // Base Box BORDER COLOR
+   if(item==13 && row==0) return PAL_BOX;   // Mini BORDER COLOR (same mirror)
    if(item==12 && row==5) return PAL_BK_ENTRY; // Base Box ENTRY COLOR
    if(item==12 && row==6) return PAL_BK_SL;    // Base Box STOP COLOR
    if(item==12 && row==7) return PAL_BK_TP;    // Base Box TARGET COLOR
@@ -320,6 +321,7 @@ color PnlDefColor(const int item,const int row)
    if(item==6 && row==6)  return InpHTFBorderColor;
    if(item==7 && row==5)  return DefLineColor();
    if(item==12 && row==0) return DefBoxBorderColor();
+   if(item==13 && row==0) return DefBoxBorderColor();
    if(item==12 && row==5) return DefBKEntryColor();
    if(item==12 && row==6) return DefBKStopColor();
    if(item==12 && row==7) return DefBKTargetColor();
@@ -622,7 +624,8 @@ bool PalKindRow(const int kind,int &item,int &row)
       case PAL_HTF_WICK:       item=6;  row=5; return true;
       case PAL_HTF_BORDER:     item=6;  row=6; return true;
       case PAL_LINE:           item=7;  row=5; return true;
-      case PAL_BOX:            item=12; row=0; return true;
+      case PAL_BOX:            if(g_PnlOpen==13) { item=13; row=0; return true; }
+                                   item=12; row=0; return true;
       case PAL_BK_ENTRY:       item=12; row=5; return true;
       case PAL_BK_SL:          item=12; row=6; return true;
       case PAL_BK_TP:          item=12; row=7; return true;
@@ -683,6 +686,7 @@ void PalOpenForItem(const int item)
    else if(item==8)  row=1;   // Custom Price COLOR
    else if(item==10) row=6;  // Factor COLOR
    else if(item==12) row=0;  // Base Box BORDER COLOR
+   else if(item==13) row=0;  // Mini BORDER COLOR
    if(row<0) return;
    PalOpen(item,row);
 }
@@ -1441,6 +1445,15 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       else if(row==7)  { kind=4; label="TARGET COLOR"; }
       else             { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
    }
+   else if(item==13)  // BASE BOX MINI — hold-on-box quick style (TV-like popover).
+                      // Same mirrors as card 12 (delegated, never duplicated);
+                      // ••• opens the full card.
+   {
+      if(row==0)       { kind=4; label="BORDER COLOR"; }
+      else if(row==1)  { label="TARGET R"; unit="R"; minV=1; maxV=4; }
+      else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      else             { kind=5; label="MORE"; opts="12"; }   // NAV → full Base Box card
+   }
 }
 
 string PnlTitleText(const int item)
@@ -1457,6 +1470,7 @@ string PnlTitleText(const int item)
    if(item==9)  return "Step Mode";
    if(item==11) return "Structure Levels";
    if(item==12) return "Base Box";
+   if(item==13) return "Base Box";
    return "Factor";
 }
 
@@ -1474,6 +1488,7 @@ string PnlSubtitleText(const int item)
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
    if(item==12) return "Border + Entry/SL/TP lines";
+   if(item==13) return "Quick style · ••• for all";
    return "Factor step calculation";
 }
 
@@ -1597,6 +1612,10 @@ double PnlDefVal(const int item,const int row)
                if(row==4) return FactoryDefault(FF_BK_TARGET_R);
                if(row==5 || row==6 || row==7) return 3;   // COLOR rows → palette sentinel
                return FactoryDefault(FF_BK_SHOW_INFO);   // INFO Auto|Show
+      case 13: if(row==0) return 3;   // Mini BORDER COLOR → palette sentinel
+               if(row==1) return FactoryDefault(FF_BK_TARGET_R);
+               if(row==2) return FactoryDefault(FF_BK_SHOW_INFO);
+               return 0;                        // MORE nav row
   }
   return 0;
 }
@@ -1683,6 +1702,10 @@ double PnlCurrent(const int item,const int row)
                if(row==4) return g_bkTargetR;
                if(row==5 || row==6 || row==7) return 0;   // COLOR rows (palette only)
                return g_bkShowInfo;             // INFO Auto|Show
+      case 13: if(row==0) return 0;   // Mini BORDER COLOR (palette only)
+               if(row==1) return g_bkTargetR;
+               if(row==2) return g_bkShowInfo;
+               return 0;                        // MORE nav row
   }
   return 0;
 }
@@ -1876,14 +1899,18 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==4)  { g_factorLevelWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
          else             { g_factorLevelStyle=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_BUFFERS; }
          break;
-      case 12:  // BASE BOX — border look + Entry/SL/TP. Restyle live boxes at once;
-                // OV_ persist rides on REFRESH_BUFFERS via ApplyRefreshFlags.
-         if(row==1)       { g_boxBorderWidth=ClampInt((int)MathRound(v),1,5); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
-         else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
-         else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
-         else if(row==4)  { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
-         else if(row==8)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
-         break;
+       case 12:  // BASE BOX — border look + Entry/SL/TP. Restyle live boxes at once;
+                 // OV_ persist rides on REFRESH_BUFFERS via ApplyRefreshFlags.
+          if(row==1)       { g_boxBorderWidth=ClampInt((int)MathRound(v),1,5); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==2)  { g_boxBorderStyle=NativeStyleFromIdx((int)MathRound(v)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==3)  { g_boxBorderTransparency=ClampInt((int)MathRound(v),0,100); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==4)  { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==8)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          break;
+       case 13:  // BASE BOX MINI — same mirrors as card 12, never duplicated.
+          if(row==1)       { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          break;
    }
    if(flags!=REFRESH_NONE)
    {
@@ -2189,10 +2216,11 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          ObjectSetInteger(0,seg,OBJPROP_FONTSIZE,8);
       }
    }
-   else if(kind==5)   // ── NAV row → opens another settings card ──
-   {
-      string navTxt = (opts=="1") ? "◄  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  ►";
-      PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+22,
+    else if(kind==5)   // ── NAV row → opens another settings card ──
+    {
+       string navTxt = (opts=="1") ? "◄  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  ►";
+       if(opts=="12") navTxt = "•••  ALL SETTINGS  ►";   // mini → full Base Box card
+       PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+22,
                    PNL_WEL-2*PNL_PAD_X, 22,
                    navTxt, PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
       ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_COLOR,PNL_CLR_ACCENT_TX);
@@ -2291,6 +2319,7 @@ void PnlCreate(const int item)
     else if(item==9 && (int)g_stepCalculationMode==3) probeRow=7;   // Step card Factor COLOR
      else if(item==10) probeRow=6;  // Factor COLOR
      else if(item==12) probeRow=0;  // Base Box BORDER COLOR
+     else if(item==13) probeRow=0;  // Mini BORDER COLOR
     // item==1 (Zones) has no COLOR row — lines live on the Lines card.
    int ckind=(probeRow>=0) ? PnlColorKind(item, probeRow) : -1;
    if(ckind>=0)
@@ -3092,9 +3121,10 @@ int PnlHandleDrag(const string name,const int mouseX)
 static int g_LastUIX = 0;
 static int g_LastUIY = 0;
 
-//--- hold-on-box → Base Box style card (TradingView-like): press on a
-//--- committed BK box, hold still ≥250ms → PnlOpen(12) fires WHILE HELD,
-//--- like the menu long-press. SINGLE METHOD (2026-09-06): the card opens
+//--- hold-on-box → Base Box MINI quick-style card (TradingView-like popover):
+//--- press on a committed BK box, hold still ≥250ms → PnlOpen(13) fires WHILE
+//--- HELD, like the menu long-press. The mini has 3 rows (BORDER COLOR,
+//--- TARGET R, INFO) + ••• to the full card 12. SINGLE METHOD (2026-09-06): the card opens
 //--- only mid-hold — never on release, never via Shift+click. Passive
 //--- observer (same 250ms/8px language): never consumes, never claims drags.
 //--- A quick tap does nothing (native select only).
@@ -3132,7 +3162,7 @@ void BkHoldFire()
    s_BkHoldId = ""; s_BkHoldMs = 0;   // disarmed — release opens nothing
    if(id == "" || BaseKnotSessionActive() || g_PalOpen) return;
    if(BaseKnotFind(id) < 0) return;   // box deleted mid-hold
-   PnlOpen(12);
+   PnlOpen(13);   // mini quick-style (••• inside opens the full card 12)
    ChartRedraw();
 }
 void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pressStart)

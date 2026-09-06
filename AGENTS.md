@@ -341,11 +341,14 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `BaseKnotInfoVisible()`, hidden by the 500 ms `SyncBadges` pump —
   inherited boxes get `commitMs=0` so old charts clean up without a flash);
   full numbers always ride the box/edge hover tooltips.
-  Card 12 opens two ways (TradingView-like): hold the Tools-ring box button,
-  or press-hold a committed box — the ONE box gesture (250ms/8px,
-  `BkHoldLatch/Poll/Fire` in `BiotakPanels.mqh` — passive
-  observer, never consumes; hit-test via `BaseKnotBoxAt()` in the domain
-  layer so Lite stays UI-free; P-BK-03/P-BK-05). The card fires WHILE HELD
+  Card 12 opens from the Tools-ring box button; press-hold on a committed
+  box opens the MINI quick-style card 13 instead (TV-like popover: BORDER
+  COLOR + TARGET R + INFO + ••• → full card 12; same mirrors, never
+  duplicated — `BkHoldFire` → `PnlOpen(13)`; NAV kind=5 `opts="12"`).
+  The hold is the ONE box gesture (250ms/8px, `BkHoldLatch/Poll/Fire` in
+  `BiotakPanels.mqh` — passive observer, never consumes; hit-test via
+  `BaseKnotBoxAt()` in the domain layer so Lite stays UI-free; P-BK-03/P-BK-05).
+  The card fires WHILE HELD
   (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses);
   release opens nothing; Shift+click instant and the release-leg are removed
    (they raced the hold and confused taps with holds). Hollow-by-construction

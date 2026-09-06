@@ -75,10 +75,10 @@ string GetGVName(string key) { return g_UI.gvPrefix + key; }
 //     1 = the main Zones & Levels card; 12 = Base Box card).
 //     PNL_COUNT lives here (Kit is included before Panels) so every loop
 //     and slot array in both files stays in sync from one define.
-#define PNL_COUNT 13
-static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
-static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0};
-static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false};
+#define PNL_COUNT 14
+static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false};
 
 //==============================================================================
 // PALETTE COLOR KINDS — one kind per colorable setting of THIS indicator.
