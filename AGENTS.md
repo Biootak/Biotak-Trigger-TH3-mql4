@@ -365,9 +365,21 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   color underline bar (TV underlines, `TBbar0/1/2` recolored in
   `BkMiniRefresh`); STYLE/WIDTH open TV popovers (`BkDdOpen/Hit`,
   `bk_dd.bmp`, labels `Line/Dashed line/Dotted line…`, `1px…5px`, dark-pill
-  selection) instead of cycling; outside chart click / Esc dismisses
-  (presses `UISuppressNextClick`, box clicks never reach the dismiss — BK
-  owns them; Esc closes ▾ first). Every slot uses the SAME mirrors as card
+  selection) instead of cycling; outside chart click / Esc dismisses — with
+  a 4-guard discipline (2026-09-07 — the release ending the opening hold
+  lands on the box = outside the strip and ate its own toolbar):
+  `s_BkFireReleasePending` (one-shot, set in `BkHoldFire`, consumed by EVERY
+  click incl. OBJECT_CLICK, cleared on every new press) skips the opening
+  release; press-down→release distance >`BK_CLICK_SLOP` (10px, read from the
+  latch BEFORE `BkHoldOnBoxUp` clears it) is a drag end, never a click;
+  right-clicks never dismiss; taps on the HELD box itself never dismiss
+  (re-hit-test via `BaseKnotBoxAt`, visible-only). The strip FOLLOWS a
+  dragged box (`BkStripFollow` from the per-tick heal — BK consumes box
+  drags so no event fires; 4px dead band; closes ▾ + orphaned palette on
+  move), closes for TF-hidden boxes (`BaseKnotVisibleNow` — also guards
+  `BkHoldFire` against flash-opens), and dies when arming the draw tool
+  (`PnlCloseAll` in the `CIR_BASEKNOT` menu branch). Every slot uses the
+  SAME mirrors as card
   12 (never duplicated) and restyles every box live via
   `BaseKnotRestyleAll`, returning `REFRESH_BUFFERS` so `OV_*` persistence
   rides `ApplyRefreshFlags`.

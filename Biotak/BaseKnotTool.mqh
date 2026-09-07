@@ -858,6 +858,19 @@ void BaseKnotRestyleAll()
    }
    ChartRedraw();
 }
+// Visible right now? Box exists AND its commit-TF mask covers the current
+// chart TF (hidden-above boxes report false — UI side closes their strip).
+bool BaseKnotVisibleNow(const string id)
+{
+   int k = BaseKnotFind(id);
+   if(k < 0) return false;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return false;
+   if(ObjectFind(0, BaseKnotBoxName(pfx)) < 0) return false;
+   int tfMin = g_bkBoxes[k].tfMin;
+   if(tfMin <= 0) tfMin = BaseKnotIdTF(id);
+   return BaseKnotTFVisible(tfMin);
+}
 // Hit-test: id of the committed box containing (t,price), or "".
 // UI side uses it for hold-on-box → settings (no UI deps here).
 string BaseKnotBoxAt(const datetime t, const double price)

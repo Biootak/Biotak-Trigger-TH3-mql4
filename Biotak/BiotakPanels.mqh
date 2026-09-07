@@ -3239,12 +3239,14 @@ int BkMiniStripPress(const int mx, const int my)
       if(mx < x || mx > x + w || my < y || my > y + h) continue;
       if(i == 0)   // pencil → BORDER palette (color + transparency)
       {
+         BkDdClose();   // a slot press replaces any open ▾ popover
          PalOpen(13, 0);
          UISuppressNextClick();
          return REFRESH_NONE;
       }
       if(i == 1)   // bucket → FILL palette (Style tab row 5 owns PAL_BOX_FILL)
       {
+         BkDdClose();
          g_BkTab = 0;
          PalOpen(12, 5);
          UISuppressNextClick();
@@ -3278,6 +3280,7 @@ int BkMiniStripPress(const int mx, const int my)
       }
       if(i == 5)   // LOCK toggle (held box)
       {
+         BkDdClose();
          BaseKnotSetLocked(g_BkMiniBox, !BaseKnotLocked(g_BkMiniBox));
          BkMiniRefresh();
          UISuppressNextClick();
@@ -3297,6 +3300,38 @@ int BkMiniStripPress(const int mx, const int my)
    return REFRESH_NONE;
 }
 
+// TV-like: the floating toolbar rides its box — when the held box is dragged
+// the strip re-anchors next to the new corner (same formula as BkHoldFire).
+// Change-guarded to a 4px dead band, so steady state costs one XY compare;
+// runs from the per-tick heal below (no event path: BK consumes box drags,
+// so no UI event ever fires for them — the poll is the only channel).
+void BkStripFollow()
+{
+   string pfx = BaseKnotPrefix(g_BkMiniBox);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+   double tp = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
+                       ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+   int x2 = 0, y2 = 0;
+   if(!ChartTimePriceToXY(0, 0, t2, tp, x2, y2)) return;   // corner off-screen
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+   int nx = x2 + 14;
+   int ny = y2 - PNL_TB_H - 14;
+   if(ny < 4) ny = y2 + 14;
+   if(nx < 4) nx = 4; if(nx > cw - PNL_TB_W - 4) nx = cw - PNL_TB_W - 4;
+   if(ny < 4) ny = 4; if(ny > ch - PNL_TB_H - 16) ny = ch - PNL_TB_H - 16;
+   if(nx < 4) nx = 4; if(ny < 4) ny = 4;
+   int dx = nx - g_PnlX[13], dy = ny - g_PnlY[13];
+   if(MathAbs(dx) < 4 && MathAbs(dy) < 4) return;
+   BkDdClose();   // a riding strip never keeps a stale popover (hit rects would lie)
+   if(g_PalOpen) PalClose();   // nor an orphaned palette (it hangs off stale pixels)
+   PnlMoveBy(13, dx, dy);   // shifts every TB* object + keeps g_PnlX/Y in sync
+   ChartRedraw();
+}
+
 // Per-tick heal (RefreshKitOnBar): if the held box vanished while its strip
 // is open — keyboard Delete on a native selection, another box stealing the
 // hold, template load — close the strip, nothing left to edit. Change-
@@ -3304,7 +3339,11 @@ int BkMiniStripPress(const int mx, const int my)
 void BkMiniStripHeal()
 {
    if(g_PnlOpen != 13) return;
-   if(g_BkMiniBox == "" || BaseKnotFind(g_BkMiniBox) < 0) PnlCloseAll();
+   if(g_BkMiniBox == "" || BaseKnotFind(g_BkMiniBox) < 0) { PnlCloseAll(); return; }
+   // A box hidden by its TF mask (switched above its commit TF) owns no
+   // toolbar — TV hides the toolbar with the object. Re-hold to reopen.
+   if(!BaseKnotVisibleNow(g_BkMiniBox)) { PnlCloseAll(); return; }
+   BkStripFollow();
 }
 
 //+------------------------------------------------------------------+
@@ -3946,14 +3985,23 @@ static string s_BkHoldId = "";   // box under the latched press ("" = none/dragg
 static uint   s_BkHoldMs = 0;    // press-down moment (0 = no press latched)
 static int    s_BkHoldX = 0, s_BkHoldY = 0;   // press-down cursor
 static bool   s_BkDownNow = false;            // button seen down since last up-event
+// The button-up ending the OPENING hold belongs to the open gesture — never
+// a dismissal click, not a drag-release, never consumed twice (cleared on
+// every CLICK + on every new press).
+static bool   s_BkFireReleasePending = false;
 #define BK_HOLD_MS   250
 #define BK_HOLD_MOVE 8
+#define BK_CLICK_SLOP 10   // button-up farther than this from its press-down is a
+                           // drag end, never a dismissal click (hold slop is 8)
 #define BK_LATCH_TTL 30000   // stale-press safety (capture loss etc.)
 void BkHoldLatch(const int mx, const int my)   // (re)start press tracking
 {
    s_BkDownNow = true;
    s_BkHoldMs = GetTickCount(); s_BkHoldX = mx; s_BkHoldY = my;
    s_BkHoldId = "";
+   // A new press means any previous gesture ended (its release was missed) —
+   // the stale fire-release flag must not swallow a future dismissal click.
+   s_BkFireReleasePending = false;
    if(BaseKnotSessionActive() || g_PalOpen) return;
    // Presses on the open strip / its dropdown / any panel must never arm a
    // box hold (the strip often floats ABOVE its own box — without this the
@@ -3975,6 +4023,7 @@ void BkHoldFire()
    s_BkHoldId = ""; s_BkHoldMs = 0;   // disarmed — release opens nothing
    if(id == "" || BaseKnotSessionActive() || g_PalOpen) return;
    if(BaseKnotFind(id) < 0) return;   // box deleted mid-hold
+   if(!BaseKnotVisibleNow(id)) return;   // TF-hidden box owns no toolbar (no flash-open)
    g_BkMiniBox = id;   // LOCK/DELETE rows act on this box (validated on every use)
    // TV-like: anchor the strip next to the held box (above its top-right
    // corner, flipping below when there is no room). It re-anchors on EVERY
@@ -4005,6 +4054,10 @@ void BkHoldFire()
       }
    }
    PnlOpen(13);   // mini quick-style (••• inside opens the full card 12)
+   // The button-up that ends THIS hold is part of the open gesture (it lands
+   // on the box = outside the strip) — arm the one-shot release guard so the
+   // TV-style outside-click dismissal below never eats its own opening click.
+   s_BkFireReleasePending = true;
    ChartRedraw();
 }
 void BkHoldOnMove(const int mx, const int my, const bool leftDown, const bool pressStart)
@@ -4087,15 +4140,35 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
 
    if(id == CHARTEVENT_CLICK)
    {
-      g_LastUIX = (int)lparam;
-      g_LastUIY = (int)dparam;
+      int cx = (int)lparam, cy = (int)dparam;
+      g_LastUIX = cx;
+      g_LastUIY = cy;
+      // Classify the release BEFORE BkHoldOnBoxUp clears the latch: a button-up
+      // far from its press-down is a drag end (read s_BkHoldX/Y while live —
+      // disarmed-after-fire reads as "no press", covered by fireRel instead).
+      bool dragRel = (s_BkHoldMs != 0 &&
+                      (MathAbs(cx - s_BkHoldX) > BK_CLICK_SLOP ||
+                       MathAbs(cy - s_BkHoldY) > BK_CLICK_SLOP));
+      bool fireRel = s_BkFireReleasePending;   // the opening hold's own release
+      s_BkFireReleasePending = false;          // one-shot — every CLICK consumes
       MousePressStart(false);      // button-up — resync the rising-edge detector
       ChartPointerFinalizeOnUps(); // finalize every gesture reliably
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
       if(UIShouldSuppressClick()) return;   // release after a strip/drag/press action
-      // TV-like: an outside chart click dismisses the floating strip (its own
-      // presses are suppressed above; box clicks never reach here — BK owns them).
-      if(g_PnlOpen == 13 && !BkMiniStripPointInside((int)lparam, (int)dparam))
+      // TV-like: an outside chart click dismisses the floating strip — but
+      // never the gesture that opened it, never a drag-release, never a
+      // right-click, and never a tap on its OWN box (the toolbar stays while
+      // its object is selected — box clicks never reach here, BK owns them,
+      // so re-hit-test the held box from pixels).
+      bool onHeldBox = false;
+      if(g_PnlOpen == 13 && g_BkMiniBox != "" && BaseKnotVisibleNow(g_BkMiniBox))
+      {
+         int hsw = 0; datetime hct = 0; double hcp = 0;
+         if(ChartXYToTimePrice(0, cx, cy, hsw, hct, hcp) && hsw == 0 && hct > 0 && hcp > 0)
+            onHeldBox = (BaseKnotBoxAt(hct, hcp) == g_BkMiniBox);
+      }
+      if(g_PnlOpen == 13 && !fireRel && !dragRel && !onHeldBox &&
+         StringFind(sparam, "r") < 0 && !BkMiniStripPointInside(cx, cy))
          PnlCloseAll();
       return;
    }
@@ -4107,6 +4180,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       MousePressStart(false);
       ChartPointerFinalizeOnUps();
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
+      s_BkFireReleasePending = false;   // release over an object ends the opening gesture too
       if(UIShouldSuppressClick()) return;   // release after a drag/long-press
       int flags = HandleButtonClick(sparam);
       flags |= PnlHandleClick(sparam, (int)lparam, (int)dparam);

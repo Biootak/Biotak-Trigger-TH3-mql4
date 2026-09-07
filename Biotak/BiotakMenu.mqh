@@ -1867,6 +1867,7 @@ int HandleButtonClick(const string clickedObject)
           DeleteMenu();
           CreateMenu();   // orb only — the ring is gone while menuVisible=false
           SaveUIStates();
+          PnlCloseAll();   // a stale strip/card must not survive under the draw session
           BaseKnotArm();
           ToolsUpdateItemState(tidx);
           UpdateCircularBadges();
