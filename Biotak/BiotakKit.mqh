@@ -101,7 +101,9 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 #define PAL_BK_ENTRY       14   // Base box Entry line color (card 12)
 #define PAL_BK_SL          15   // Base box Stop line color (card 12)
 #define PAL_BK_TP          16   // Base box Target line color (card 12)
-#define PAL_BASE_TARGETS 17
+#define PAL_BOX_FILL       17   // Base box FILL color (TV-parity 2026-09-07 — bucket button)
+#define PAL_BK_TEXT        18   // Base box user-TEXT color (TV-parity 2026-09-07 — T button)
+#define PAL_BASE_TARGETS 19
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }
@@ -114,6 +116,8 @@ color DefCustomPriceColor()  { return clrDodgerBlue; }
 color DefFactorColor()       { return C'0,100,0'; }
 color DefLineColor()         { return clrBlack; }
 color DefBoxBorderColor()    { return C'255,171,0'; }   // amber — the shipped Base Box look
+color DefBoxFillColor()      { return C'255,171,0'; }   // amber fill (invisible until FILL TR < 100)
+color DefBKTextColor()       { return C'255,255,255'; } // white user text inside the box
 color DefBKEntryColor()      { return C'30,144,255'; }    // dodger blue Entry ray
 color DefBKStopColor()       { return C'220,50,50'; }     // red Stop ray
 color DefBKTargetColor()     { return C'46,139,87'; }     // sea green Target ray

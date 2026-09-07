@@ -68,6 +68,16 @@ static color g_bkEntryColor = C'30,144,255';                     // [08.5] inpBK
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
 static color g_bkTargetColor = C'46,139,87';                     // [08.5] inpBKTargetColor
 static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide, 1=Always show)
+// [08.5] BASE BOX FILL + USER TEXT — TV-parity 2026-09-07 (Style/Text tabs).
+// Fill default transparency = 100 (invisible) so pre-fill charts stay
+// pixel-identical hollow boxes until the user touches FILL.
+static color g_boxFillColor = C'255,171,0';                    // [08.5] inpBoxFillColor
+static int g_boxFillTransparency = 100;                        // [08.5] palette TR (default invisible)
+static color g_bkTextColor = C'255,255,255';                   // [08.5] inpBKTextColor
+static int g_bkTextSize = 10;                                  // [08.5] inpBKTextSize (TV default 10)
+static bool g_bkBold = false;                                  // [08.5] inpBKBold
+static bool g_bkItalic = false;                                // [08.5] inpBKItalic
+static int g_bkAlign = 2;                                      // [08.5] inpBKAlign (0=Left,1=Center,2=Right)
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -216,6 +226,13 @@ enum FactorySetting
    FF_BK_SL,             // inpBKStopColor
    FF_BK_TP,             // inpBKTargetColor
    FF_BK_SHOW_INFO,      // inpBKShowInfo
+   FF_BOX_FILL,          // inpBoxFillColor
+   FF_BOX_FILL_TR,       // fill transparency (default invisible, no input)
+   FF_BK_TEXT,           // inpBKTextColor
+   FF_BK_TEXT_SIZE,      // inpBKTextSize
+   FF_BK_BOLD,           // inpBKBold
+   FF_BK_ITALIC,         // inpBKItalic
+   FF_BK_ALIGN,          // inpBKAlign
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -316,6 +333,13 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_BK_SL]               = inpBKStopColor;
    g_factoryDefaults[FF_BK_TP]               = inpBKTargetColor;
    g_factoryDefaults[FF_BK_SHOW_INFO]        = inpBKShowInfo;
+   g_factoryDefaults[FF_BOX_FILL]            = inpBoxFillColor;
+   g_factoryDefaults[FF_BOX_FILL_TR]         = 100;
+   g_factoryDefaults[FF_BK_TEXT]             = inpBKTextColor;
+   g_factoryDefaults[FF_BK_TEXT_SIZE]        = inpBKTextSize;
+   g_factoryDefaults[FF_BK_BOLD]             = inpBKBold;
+   g_factoryDefaults[FF_BK_ITALIC]           = inpBKItalic;
+   g_factoryDefaults[FF_BK_ALIGN]            = inpBKAlign;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -408,6 +432,13 @@ void RuntimeSettingsInit()
    g_bkStopColor = inpBKStopColor;
    g_bkTargetColor = inpBKTargetColor;
    g_bkShowInfo = inpBKShowInfo;
+   g_boxFillColor = inpBoxFillColor;
+   g_boxFillTransparency = 100;
+   g_bkTextColor = inpBKTextColor;
+   g_bkTextSize = inpBKTextSize;
+   g_bkBold = inpBKBold;
+   g_bkItalic = inpBKItalic;
+   g_bkAlign = inpBKAlign;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -471,6 +502,12 @@ void RuntimeSettingsInit()
 #define inpBKStopColor g_bkStopColor
 #define inpBKTargetColor g_bkTargetColor
 #define inpBKShowInfo g_bkShowInfo
+#define inpBoxFillColor g_boxFillColor
+#define inpBKTextColor g_bkTextColor
+#define inpBKTextSize g_bkTextSize
+#define inpBKBold g_bkBold
+#define inpBKItalic g_bkItalic
+#define inpBKAlign g_bkAlign
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -561,6 +598,13 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "BXL", g_bkStopColor);
    GlobalVariableSet(p + "BXG", g_bkTargetColor);
    GlobalVariableSet(p + "BXI", g_bkShowInfo);
+   GlobalVariableSet(p + "BXF", g_boxFillColor);
+   GlobalVariableSet(p + "BXFT", g_boxFillTransparency);
+   GlobalVariableSet(p + "BXTX", g_bkTextColor);
+   GlobalVariableSet(p + "BXTS", g_bkTextSize);
+   GlobalVariableSet(p + "BXBO", g_bkBold ? 1 : 0);
+   GlobalVariableSet(p + "BXIT", g_bkItalic ? 1 : 0);
+   GlobalVariableSet(p + "BXAL", g_bkAlign);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -662,6 +706,13 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXL")) g_bkStopColor = (color)(int)GlobalVariableGet(p + "BXL");
    if(GlobalVariableCheck(p + "BXG")) g_bkTargetColor = (color)(int)GlobalVariableGet(p + "BXG");
    if(GlobalVariableCheck(p + "BXI")) g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 1);
+   if(GlobalVariableCheck(p + "BXF")) g_boxFillColor = (color)(int)GlobalVariableGet(p + "BXF");
+   if(GlobalVariableCheck(p + "BXFT")) g_boxFillTransparency = ClampSettingInt((int)GlobalVariableGet(p + "BXFT"), 0, 100);
+   if(GlobalVariableCheck(p + "BXTX")) g_bkTextColor = (color)(int)GlobalVariableGet(p + "BXTX");
+   if(GlobalVariableCheck(p + "BXTS")) g_bkTextSize = ClampSettingInt((int)GlobalVariableGet(p + "BXTS"), 8, 24);
+   if(GlobalVariableCheck(p + "BXBO")) g_bkBold = (GlobalVariableGet(p + "BXBO") > 0.5);
+   if(GlobalVariableCheck(p + "BXIT")) g_bkItalic = (GlobalVariableGet(p + "BXIT") > 0.5);
+   if(GlobalVariableCheck(p + "BXAL")) g_bkAlign = ClampSettingInt((int)GlobalVariableGet(p + "BXAL"), 0, 2);
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");
@@ -937,6 +988,34 @@ color GetBoxBorderRenderColor()
     s_b = g_boxBorderColor; s_t = tVis; s_bg = bg;
     s_out = BlendColorTowardsBG(g_boxBorderColor, tVis, bg);
     return s_out;
+}
+
+// EFFECTIVE BOX FILL — TV-parity 2026-09-07 (Style tab bucket). Same cache
+// discipline as the border helper. 100% = chart background (invisible).
+color GetBoxFillRenderColor()
+{
+    static color s_b = clrNONE; static int s_t = -1;
+    static color s_bg = clrNONE; static color s_out = clrNONE;
+    int tVis = TransparencyVisual(g_boxFillTransparency);
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_b == g_boxFillColor && s_t == tVis && s_bg == bg) return s_out;
+    s_b = g_boxFillColor; s_t = tVis; s_bg = bg;
+    s_out = BlendColorTowardsBG(g_boxFillColor, tVis, bg);
+    return s_out;
+}
+// Fill visible on chart? (transparency < 100). The BOX rect is the fill layer:
+// FILL true + fill color when visible, bg + FILL false when invisible (the old
+// hollow look — pre-fill charts stay pixel-identical).
+bool BoxFillVisible() { return (ClampSettingInt(g_boxFillTransparency, 0, 100) < 100); }
+
+// User-text font string from the Bold/Italic mirrors ("Arial" + suffixes).
+string BKTextFont()
+{
+   string f = "Arial";
+   if(g_bkBold && g_bkItalic) return f + " Bold Italic";
+   if(g_bkBold) return f + " Bold";
+   if(g_bkItalic) return f + " Italic";
+   return f;
 }
 
 #endif // RUNTIME_SETTINGS_MQH

@@ -109,6 +109,92 @@ string BaseKnotTPName(const string pfx)    { return pfx + "TP"; }
 string BaseKnotBuyName(const string pfx)   { return pfx + "BUY"; }
 string BaseKnotDelName(const string pfx)   { return pfx + "DEL"; }
 string BaseKnotInfoName(const string pfx)  { return pfx + "INFO"; }
+// User TEXT (TV-parity 2026-09-07, Text tab): one OBJ_TEXT child per box,
+// content edited via the full card's edit field. Lives in the chart object
+// itself (no GV — strings don't fit doubles); delete = clear (Sync never
+// resurrects a deleted TEXT, it only moves/restyles an existing one).
+string BaseKnotTextName(const string pfx)  { return pfx + "TEXT"; }
+string BaseKnotGetText(const string pfx)
+{
+   string tn = BaseKnotTextName(pfx);
+   if(ObjectFind(0, tn) < 0) return "";
+   return ObjectGetString(0, tn, OBJPROP_TEXT);
+}
+void BaseKnotSetText(const string id, const string txt)
+{
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string tn = BaseKnotTextName(pfx);
+   string t = txt;
+   StringTrimLeft(t); StringTrimRight(t);
+   if(StringLen(t) == 0) { ObjectDelete(0, tn); ChartRedraw(); return; }   // empty = clear
+   if(ObjectFind(0, tn) < 0)
+   {
+      string box = BaseKnotBoxName(pfx);
+      if(ObjectFind(0, box) < 0) return;
+      datetime t1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
+      datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+      double top = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
+                           ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+      if(!ObjectCreate(0, tn, OBJ_TEXT, 0, t2, top)) return;
+   }
+   ObjectSetString(0, tn, OBJPROP_TEXT, t);
+   BaseKnotSync(id);   // placement + font follow the box + mirrors
+   ChartRedraw();
+}
+// (Re)place + restyle an EXISTING text object under the box top edge.
+// Anchor follows the align mirror: Left → top-left corner, Center → top
+// middle, Right (TV default) → top-right corner, all INSIDE the box.
+void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
+                       const double top, const long tfMask)
+{
+   string tn = BaseKnotTextName(pfx);
+   if(ObjectFind(0, tn) < 0) return;   // no text — never resurrect (delete = clear)
+   int al = ClampSettingInt(g_bkAlign, 0, 2);
+   datetime tx = (al == 0 ? t1 : (al == 1 ? t1 + (t2 - t1) / 2 : t2));
+   int anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
+   ObjectSetInteger(0, tn, OBJPROP_TIME, 0, tx);
+   ObjectSetDouble(0, tn, OBJPROP_PRICE, 0, top);
+   ObjectSetString(0, tn, OBJPROP_FONT, BKTextFont());
+   ObjectSetInteger(0, tn, OBJPROP_FONTSIZE, ClampSettingInt(g_bkTextSize, 8, 24));
+   ObjectSetInteger(0, tn, OBJPROP_COLOR, g_bkTextColor);
+   ObjectSetInteger(0, tn, OBJPROP_ANCHOR, anchor);
+   ObjectSetInteger(0, tn, OBJPROP_BACK, false);
+   ObjectSetInteger(0, tn, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, tn, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, tn, OBJPROP_ZORDER, 61);
+   ObjectSetInteger(0, tn, OBJPROP_TIMEFRAMES, tfMask);
+}
+// Short TF name for tooltips / visibility info ("M5 and lower").
+string BaseKnotTFName(const int tfMin)
+{
+   if(tfMin <= 0) return "all TFs";
+   if(tfMin == 1) return "M1"; if(tfMin == 5) return "M5";
+   if(tfMin == 15) return "M15"; if(tfMin == 30) return "M30";
+   if(tfMin == 60) return "H1"; if(tfMin == 240) return "H4";
+   if(tfMin == 1440) return "D1"; if(tfMin == 10080) return "W1";
+   if(tfMin == 43200) return "MN1";
+   return IntegerToString(tfMin) + "m";
+}
+// ONE live tooltip language for box + edges (TV Coordinates/Visibility tabs
+// live here in MT4: drag edits coords natively, visibility is automatic).
+// Coords · TF-scope · user text · risk numbers — nothing unreachable.
+string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
+                          const double top, const double bot, const string side,
+                          const double hPips, const double rr)
+{
+   int k = BaseKnotFind(id);
+   int tfMin = (k >= 0 ? g_bkBoxes[k].tfMin : 0);
+   if(tfMin <= 0) tfMin = BaseKnotIdTF(id);
+   string tt = "Base box " + side + " · " + DoubleToString(hPips, 1) + " pips · R:R 1:" + DoubleToString(rr, 0);
+   tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " → " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
+   tt += "\nVisible: " + BaseKnotTFName(tfMin) + (tfMin > 0 ? " and lower" : "") + " (drag to move)";
+   string ut = (k >= 0 ? BaseKnotGetText(BaseKnotPrefix(id)) : "");
+   if(StringLen(ut) > 0) tt += "\n\"" + ut + "\"";
+   if(k >= 0 && g_bkBoxes[k].locked) tt += "\nLOCKED (hold to unlock)";
+   else tt += "\nselect + Delete key removes all";
+   return tt;
+}
 string BaseKnotPrevTag()   // sizing-preview edges live under this tag (4 segments)
 {
    if(StringLen(inpObjectPrefix) == 0) return "";
@@ -130,26 +216,49 @@ string BaseKnotGV(const string id)
 }
 
 //+------------------------------------------------------------------+
-//| Hollow-by-construction box look — SINGLE source of truth          |
-//| (P-BK-04/06). Some MT4 builds render OBJ_RECTANGLE filled even    |
-//| with FILL=false (see ZoneFactory), so the rectangle is ONLY the   |
-//| drag/select handle — painted chart-background so its forced fill   |
-//| is invisible. The VISIBLE border is 4 OBJ_TREND edges drawn by     |
-//| BaseKnotDrawEdges (edges can't fill, identical on every build).    |
+//| Box look — SINGLE source of truth (P-BK-04/06 + TV-fill 2026-09-07)|
+//| Some MT4 builds render OBJ_RECTANGLE filled even with FILL=false   |
+//| (see ZoneFactory), so the rectangle doubles as the FILL layer AND  |
+//| the drag/select handle, while the VISIBLE border stays 4 OBJ_TREND |
+//| edges from BaseKnotDrawEdges (edges can't fill, identical on every |
+//| build). Fill invisible (TR=100, the pre-fill default) → bg color + |
+//| FILL false = the old hollow look, pixel-identical. Fill set → FILL |
+//| true + GetBoxFillRenderColor() (TV Style-tab bucket, e.g. 36%).    |
 //+------------------------------------------------------------------+
 //--- edge suffixes (committed pfx AND preview tag share them)
 #define BK_EDGE_T "_T"
 #define BK_EDGE_B "_B"
 #define BK_EDGE_L "_L"
 #define BK_EDGE_R "_R"
-void BaseKnotStyleBox(const string box)   // invisible handle: bg fill, keeps FILL/BACK set too
+void BaseKnotStyleBox(const string box)   // fill layer + drag handle
 {
    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-   ObjectSetInteger(0, box, OBJPROP_COLOR, bg);
+   if(BoxFillVisible())
+   {
+      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxFillRenderColor());
+      ObjectSetInteger(0, box, OBJPROP_FILL, true);
+   }
+   else
+   {
+      ObjectSetInteger(0, box, OBJPROP_COLOR, bg);
+      ObjectSetInteger(0, box, OBJPROP_FILL, false);
+   }
    ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
-   ObjectSetInteger(0, box, OBJPROP_FILL, false);
    ObjectSetInteger(0, box, OBJPROP_BACK, true);
+}
+// True when the BOX rect currently shows the live fill look (heal check).
+bool BaseKnotFillHealed(const string box)
+{
+   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+   if(BoxFillVisible())
+   {
+      if(ObjectGetInteger(0, box, OBJPROP_FILL) == 0) return false;
+      if((color)ObjectGetInteger(0, box, OBJPROP_COLOR) != GetBoxFillRenderColor()) return false;
+      return true;
+   }
+   if(ObjectGetInteger(0, box, OBJPROP_FILL) != 0) return false;
+   return ((color)ObjectGetInteger(0, box, OBJPROP_COLOR) == bg);
 }
 
 bool BaseKnotSessionActive() { return (g_bkState != BK_IDLE); }
@@ -309,7 +418,7 @@ void BaseKnotUnregister(const string id)
    GlobalVariableDel(BaseKnotGV(id));
 }
 // Lock — a locked box is unselectable so it can never be dragged (hold still
-// opens the mini card, so it can always be unlocked). The flag rides the BOX
+// opens the mini strip, so it can always be unlocked). The flag rides the BOX
 // handle's own SELECTABLE bit: no GV, survives TF-switches and restarts.
 bool BaseKnotLocked(const string id)
 {
@@ -327,8 +436,7 @@ void BaseKnotSetLocked(const string id, const bool on)
    string box = BaseKnotBoxName(pfx);
    if(ObjectFind(0, box) < 0) return;
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, !on);
-   ObjectSetString(0, box, OBJPROP_TOOLTIP, (on ? "Base box — LOCKED (hold to unlock)"
-                                                 : "Base box — drag to move (lines follow) · select + Delete key removes all"));
+   BaseKnotSync(id);   // rebuild the live tooltip (coords · TF-scope · text · lock)
    ChartRedraw();
 }
 // Rebuild the registry from chart objects once (TF-switch safe: the box
@@ -678,11 +786,19 @@ void BaseKnotSync(const string id)
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);   // legacy registry rows
    long tfMask = BaseKnotTFMask(tfMin);
    ObjectSetInteger(0, box, OBJPROP_TIMEFRAMES, tfMask);
-   BaseKnotStyleBox(box);   // invisible drag handle (bg fill) — the VISIBLE border is the 4 edges below
+   BaseKnotStyleBox(box);   // fill layer + drag handle — the VISIBLE border is the 4 edges below
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, !g_bkBoxes[k].locked);   // lock heal: handle follows the registry
+   double entry0 = 0, sl0 = 0, tp0 = 0;
+   BaseKnotCalcLevels(top, bot, dir, entry0, sl0, tp0);
+   double hPips0  = BaseKnotToPips(top - bot);
+   double tpPips0 = BaseKnotToPips(MathAbs(tp0 - entry0));
+   double rr0     = (hPips0 > 0 ? tpPips0 / hPips0 : (g_bkTargetR >= 1 ? (double)g_bkTargetR : BK_TP_R_MULT));
+   string side0 = (dir >= 0 ? "BUY" : "SELL");
+   string tip0 = BaseKnotBoxTooltip(id, t1, t2, top, bot, side0, hPips0, rr0);
+   ObjectSetString(0, box, OBJPROP_TOOLTIP, tip0);
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
-                     GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
-                     "Base box — drag to move (lines follow) · select + Delete key removes all", tfMask);
+                     GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip0, tfMask);
+   BaseKnotPlaceText(pfx, t1, t2, top, tfMask);   // existing user text follows the box (never resurrected)
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
@@ -758,17 +874,12 @@ void BaseKnotSyncBadges()
       if(pfx == "") continue;
       string box = BaseKnotBoxName(pfx);
       if(ObjectFind(0, box) < 0) continue;
-      // P-BK-05/06 self-heal: the BOX rect is only an invisible drag handle
-      // (bg fill). If it ever shows a fill, re-hide it here within 500 ms —
-      // read-guarded, so steady state costs syscalls only. Missing edge
-      // segments (the visible border) are rebuilt via a full Sync.
-      color bgNow = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-      bool needHeal = (ObjectGetInteger(0, box, OBJPROP_FILL) != 0);
-      if(!needHeal)
-      {
-         if((color)ObjectGetInteger(0, box, OBJPROP_COLOR) != bgNow) needHeal = true;
-      }
-      if(needHeal)
+      // P-BK-05/06 self-heal + TV-fill 2026-09-07: the BOX rect is the fill
+      // layer. Re-assert it within 500 ms when it drifts from the live fill
+      // look (bg + FILL false when fill invisible) — read-guarded, so steady
+      // state costs syscalls only. Missing edge segments (the visible
+      // border) are rebuilt via a full Sync.
+      if(!BaseKnotFillHealed(box))
       {
          BaseKnotStyleBox(box);
          ChartRedraw();
@@ -786,6 +897,8 @@ void BaseKnotSyncBadges()
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
       int tfMin = g_bkBoxes[i].tfMin;
       if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
+      if(ObjectFind(0, BaseKnotTextName(pfx)) >= 0)   // user text re-glues with the box
+         BaseKnotPlaceText(pfx, t1, t2, top, BaseKnotTFMask(tfMin));
       if(BaseKnotInfoVisible(g_bkBoxes[i].id))
          BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
       else if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)
@@ -812,7 +925,7 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
    if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, t2, p2)) return;
-   BaseKnotStyleBox(box);   // invisible drag handle — the VISIBLE border is 4 edges drawn in Sync below
+   BaseKnotStyleBox(box);   // fill layer + drag handle — the VISIBLE border is 4 edges drawn in Sync below
    ObjectSetInteger(0, box, OBJPROP_SELECTABLE, true);   // THE handle: drag moves children
    ObjectSetInteger(0, box, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);

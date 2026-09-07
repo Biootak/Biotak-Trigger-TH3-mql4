@@ -33,6 +33,10 @@ static uint g_lastClickTickCount = 0;
 static bool g_customPriceLineDragging = false;
 static double g_lastCustomPriceLinePos = 0.0;
 static bool g_customPriceKeyboardOverride = false;
+// TV-parity 2026-09-07: the Base Box TEXT edit field (card 12, OBJ_EDIT) owns
+// the keyboard while focused — letter hotkeys must stay silent or typing box
+// text would toggle indicator state (same pattern as the palette hex field).
+static bool g_BkTextFocus = false;
 
 // Toggle States (hotkey-controlled)
 // NOTE: g_triggerLevelsEnabled moved to RuntimeSettings.mqh — it is the runtime

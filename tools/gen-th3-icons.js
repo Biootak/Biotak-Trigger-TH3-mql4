@@ -165,6 +165,81 @@ const ART = {
     cfill(16, 16, 2.2),
   ],
 };
+
+// ---------------------------------------------------------------- Base Box MINI strip icons
+// R-BKSTRIP 2026-09-07 — TradingView-style icon set for the floating strip
+// (item 13), modeled on TV's floating drawing toolbar: WHITE rounded strip
+// (bk_strip.bmp) with dark outlined glyphs (bk_*). Files:
+//   bk_bucket       : paint-bucket fill-color button (opens the color popover)
+//   bk_style0..4    : border line-style glyphs (button + dropdown rows)
+//   bk_w1..5        : border width glyphs (line + end ticks, thickness 1..5)
+//   bk_lock_off     : OPEN padlock (unlocked)
+//   bk_lock_on      : closed padlock, amber-filled body (locked)
+//   bk_del          : outlined trash can
+//   bk_more         : three horizontal dots (full-settings menu)
+//   bk_dd           : white rounded dropdown popover (width / style menus)
+const BK_DARK = [38, 44, 56];        // near-black icon color for the white strip
+const BK_AMBER = [255, 171, 0];      // locked padlock body / selected accents
+const BK_STYLES = [
+  // Solid — strong full line
+  [ seg(4, 16, 28, 16, 3.4) ],
+  // Dash — evenly spaced dashes
+  [ ...dashSegs(4, 16, 28, 16, 4.0, 3.0, 2.8) ],
+  // Dot — round dots
+  [ cfill(8, 16, 1.9), cfill(14, 16, 1.9), cfill(20, 16, 1.9), cfill(26, 16, 1.9) ],
+  // Dash-Dot — dash then a dot
+  [ ...dashSegs(4, 16, 18, 16, 3.6, 2.6, 2.6), cfill(24.5, 16, 2.0) ],
+  // Dash-Dot-Dot — dash then two dots
+  [ ...dashSegs(4, 16, 14, 16, 3.6, 2.6, 2.6), cfill(20.5, 16, 1.9), cfill(26.5, 16, 1.9) ],
+];
+function bkWidthArt(n) {
+  return [
+    seg(6.5, 16, 25.5, 16, 1.4 + (n - 1) * 0.9),   // the line itself, thickness 1..5
+    seg(6.5, 11.5, 6.5, 20.5, 1.5), seg(25.5, 11.5, 25.5, 20.5, 1.5),   // ruler end ticks
+  ];
+}
+const BK_BUCKET = [
+  seg(7.5, 9.5, 24.5, 9.5, 1.9),                  // rim
+  seg(9.5, 9.5, 12.5, 18.5, 1.9),                 // left wall
+  seg(12.5, 18.5, 19.5, 18.5, 1.9),               // bottom
+  seg(19.5, 18.5, 22.5, 9.5, 1.9),                // right wall
+  cfill(20.8, 21.2, 1.7),                         // falling droplet
+];
+// TV-parity 2026-09-07 — pencil = BORDER color button (TV's border-color tool
+// is the pencil with a color underline; the dynamic underline bar itself is a
+// PnlSetRect drawn under this glyph, recolored live in BkMiniRefresh).
+const BK_PENCIL = [
+  seg(7.5, 24.5, 10.5, 21.5, 2.4),                // tip point
+  seg(10.5, 21.5, 21.0, 11.0, 3.4),               // wooden shaft
+  seg(21.0, 11.0, 24.5, 7.5, 3.0),                // eraser cap
+  seg(19.2, 12.8, 22.8, 9.2, 1.2),                // ferrule band
+];
+// TV-parity 2026-09-07 — "T" = TEXT button (TV's text-color tool). Bold serif
+// T; the dynamic text-color underline is a live PnlSetRect like the pencil.
+const BK_TEXT = [
+  seg(8.5, 8.0, 23.5, 8.0, 3.2),                  // top bar
+  seg(16.0, 8.0, 16.0, 24.0, 3.2),                // stem
+];
+const BK_LOCK_OFF = [   // OPEN padlock — shackle floats above the body (gap)
+  ...rect(9.5, 15.5, 22.5, 24.5, 2.2),
+  seg(11.5, 14.5, 11.5, 9.5, 2.2), seg(11.5, 9.5, 20.5, 9.5, 2.2), seg(20.5, 9.5, 20.5, 14.5, 2.2),
+  cfill(16, 19.5, 1.9),
+];
+const BK_LOCK_ON = [   // CLOSED padlock, shackle meets the body; amber body
+  { ...rfill(10.5, 16.5, 21.5, 23.5), color: BK_AMBER },
+  ...rect(9.5, 15.5, 22.5, 24.5, 2.2),
+  seg(12.5, 15.5, 12.5, 10.5, 2.2), seg(12.5, 10.5, 19.5, 10.5, 2.2), seg(19.5, 10.5, 19.5, 15.5, 2.2),
+];
+const BK_DEL = [   // outlined trash can (TV style)
+  seg(8, 10.5, 24, 10.5, 2.4),
+  ...rect(13.5, 7.5, 18.5, 10.5, 2.0),
+  ...rect(10.5, 13.5, 21.5, 24.5, 2.2),
+  seg(13, 16.5, 13, 21.5, 1.7), seg(16, 16.5, 16, 21.5, 1.7), seg(19, 16.5, 19, 21.5, 1.7),
+];
+const BK_MORE = [   // three horizontal dots (TV "more")
+  cfill(8.5, 16, 2.1), cfill(16, 16, 2.1), cfill(23.5, 16, 2.1),
+];
+
 // --- orb center art: bow-medallion ingest (NOT procedural) ---
 // Single source of truth: tools/orb-bow-master.bgra — 72x72 premultiplied
 // BGRA top-down bytes built by tools/make-orb-bow.ps1 from the artwork
@@ -436,6 +511,51 @@ function pnlCardSkin(rows) {
   return { w: CW, h: CH, buf };
 }
 
+// --- bk_strip.bmp : 380x58 WHITE rounded strip card (baked shadow margin) —
+//     the backdrop of the Base Box MINI floating toolbar, matching
+//     TradingView's floating drawing toolbar (white body, thin gray border,
+//     soft drop shadow, dark outlined icons). TV-parity 2026-09-07: 8 slots
+//     [pencil|bucket|T|width|style|lock|trash|more] need 380px.
+//     R-BKSTRIP 2026-09-07.
+function bkStripSkin() {
+  const W = 380, H = 58, M = 14, CW = W + 2 * M, CH = H + 2 * M;
+  const buf = renderFxWH(CW, CH, (x, y) => {
+    const cx = x - M, cy = y - M;
+    let col = [0, 0, 0, 0];
+    const sd = rrSdf(x, y, M + W / 2 + 2, M + H / 2 + 4, W / 2 - 1, H / 2 - 1, 12);
+    if (sd > 0 && sd < 10) col = over(col, pm([15, 20, 30], Math.round(70 * (1 - sd / 10))));
+    const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, 10);
+    if (d < 0.7) {
+      if (d > -1.2) col = over(col, pm([212, 218, 228], 255));           // thin gray border
+      else {
+        col = over(col, pm([250, 251, 253], 255));                       // white body
+        if (d > -2.4 && d < -1.2) col = over(col, pm([255, 255, 255], 90));
+      }
+    }
+    return col[3] > 0 ? col : null;
+  });
+  return { w: CW, h: CH, buf };
+}
+
+// --- bk_dd.bmp : 176x192 WHITE rounded dropdown popover (baked shadow) —
+//     the width / style selector menus of the strip. R-BKSTRIP.
+function bkDdSkin() {
+  const W = 176, H = 192, M = 8, CW = W + 2 * M, CH = H + 2 * M;
+  const buf = renderFxWH(CW, CH, (x, y) => {
+    const cx = x - M, cy = y - M;
+    let col = [0, 0, 0, 0];
+    const sd = rrSdf(x, y, M + W / 2 + 2, M + H / 2 + 3, W / 2 - 1, H / 2 - 1, 10);
+    if (sd > 0 && sd < 9) col = over(col, pm([15, 20, 30], Math.round(65 * (1 - sd / 9))));
+    const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, 10);
+    if (d < 0.7) {
+      if (d > -1.2) col = over(col, pm([214, 220, 230], 255));
+      else col = over(col, pm([252, 253, 255], 255));
+    }
+    return col[3] > 0 ? col : null;
+  });
+  return { w: CW, h: CH, buf };
+}
+
 // --- pnl_knob.bmp : 18x18 slider thumb — glowing amber ring + bright core
 function pnlKnobSkin() {
   const S = 18, c = 9;
@@ -522,6 +642,18 @@ for (const [name, art] of Object.entries(ART)) {
   files.push([name + '_off.bmp', () => render(28, art, OFF)]);
   files.push([name + '_on.bmp',  () => render(28, art, ON)]);
 }
+// Base Box MINI floating strip (item 13) — TradingView-style icons on a
+// WHITE strip: dark outlined glyphs, amber only for the locked padlock.
+// R-BKSTRIP 2026-09-07.
+files.push(['bk_bucket.bmp',   () => render(24, BK_BUCKET,   BK_DARK)]);
+files.push(['bk_pencil.bmp',   () => render(24, BK_PENCIL,   BK_DARK)]);
+files.push(['bk_text.bmp',     () => render(24, BK_TEXT,     BK_DARK)]);
+for (let i = 0; i < 5; i++) files.push(['bk_style' + i + '.bmp', () => render(24, BK_STYLES[i], BK_DARK)]);
+for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(24, bkWidthArt(i), BK_DARK)]);
+files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
+files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
+files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
+files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
 files.push(['badge.bmp',    () => badgeSkin()]);
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
@@ -540,6 +672,8 @@ const panelFiles = [
   { name: 'pnl_card10.bmp',  ...pnlCardSkin(10) },
   { name: 'pnl_card11.bmp',  ...pnlCardSkin(11) },
   { name: 'pnl_card12.bmp',  ...pnlCardSkin(12) },
+  { name: 'bk_strip.bmp',    ...bkStripSkin() },
+  { name: 'bk_dd.bmp',       ...bkDdSkin() },
   { name: 'pnl_knob.bmp',    ...pnlKnobSkin() },
   { name: 'pnl_sw_on.bmp',   ...switchSkin(true) },
   { name: 'pnl_sw_off.bmp',  ...switchSkin(false) },

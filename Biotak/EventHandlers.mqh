@@ -1324,7 +1324,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // Hex edit box owns the keyboard (palette color field): A-F are valid
         // hex digits, so every letter hotkey below must stay silent while the
         // user types. ESC/ENTER still reach the palette via HandleUIChartEvent.
-        if(g_PalHexFocus) return;
+        // Same for the Base Box TEXT field (TV-parity 2026-09-07 — any letter
+        // is valid box text).
+        if(g_PalHexFocus || g_BkTextFocus) return;
 #endif
         // TH3TOOL-OFF:
         //#ifndef BUILD_LITE
