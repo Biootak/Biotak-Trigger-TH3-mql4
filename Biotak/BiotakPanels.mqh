@@ -130,17 +130,17 @@ color QuickPalColor(const int i)
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
 int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,1,7};
 // g_PnlRows[12] is the BASE (TAB row only) — PnlRowsCount(12) returns
-// 1 + the open tab's section rows (Style 6 / Text 5 / Setup 6), the same
-// dynamic pattern as the Step card 9. Never hardcode card-12 rows.
+// 1 + the open tab's section rows (6 each tab), the same dynamic pattern
+// as the Step card 9. Never hardcode card-12 rows.
 int g_PnlOpen      = -1;
 //--- Base Box card (12) TAB state — 0 Style · 1 Text · 2 Setup (TV-parity
 //--- 2026-09-07: mirrors TV's Style/Text dialog tabs; the card keeps the last
 //--- open tab across opens, like the Step card keeps its mode section).
 static int g_BkTab = 0;
-// Section row counts (WITHOUT the TAB row 0): Style 6 · Text 5 · Setup 6.
+// Section row counts (WITHOUT the TAB row 0): 6 each tab (Style 6 ·
+// Text 6 · Setup 6) — tallest is 7 rows total, existing card skins suffice.
 int BkSecRows()
 {
-   if(g_BkTab == 1) return 5;
    return 6;
 }
 
@@ -682,7 +682,7 @@ bool PalKindRow(const int kind,int &item,int &row)
                                    return false;   // other tab open — nothing to refresh there
       case PAL_BOX_FILL:       if(g_PnlOpen==12 && g_BkTab==0) { item=12; row=5; return true; }
                                    return false;
-      case PAL_BK_TEXT:        if(g_PnlOpen==12 && g_BkTab==1) { item=12; row=5; return true; }
+      case PAL_BK_TEXT:        if(g_PnlOpen==12 && g_BkTab==1) { item=12; row=6; return true; }
                                    return false;
       case PAL_BK_ENTRY:       if(g_PnlOpen==12 && g_BkTab==2) { item=12; row=2; return true; }
                                    return false;
@@ -749,7 +749,7 @@ void PalOpenForItem(const int item)
    else if(item==7)  row=5;   // Lines COLOR
    else if(item==8)  row=1;   // Custom Price COLOR
    else if(item==10) row=6;  // Factor COLOR
-   else if(item==12) row=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 5 : 2));   // open tab's first COLOR
+   else if(item==12) row=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 6 : 2));   // open tab's first COLOR
    else if(item==13) row=0;  // Mini BORDER COLOR
    if(row<0) return;
    PalOpen(item,row);
@@ -1389,7 +1389,8 @@ double PnlStepSectionCurrent(const int s)
 //+------------------------------------------------------------------+
 //| BASE BOX card (12) section rows — sec = row-1 (row 0 is the TAB). |
 //| Style (TV Style tab): BORDER/WIDTH/STYLE/BORDER-TR/FILL/FILL-TR.   |
-//| Text (TV Text tab): TEXT edit + SIZE + B|I + ALIGN + COLOR.        |
+//| Text (TV Text tab): TEXT edit + SIZE + B|I + ALIGN + VALIGN + COLOR|
+//| (VALIGN = TV's Inside-dropdown: Top|Inside|Bottom).                |
 //| Setup: TARGET R + ENTRY/STOP/TARGET + INFO + TEMPLATE (= TV        |
 //| Template dropdown). Coords = drag natively, tooltip shows live    |
 //| (TV Coordinates); visibility automatic commit-TF + lower (TV       |
@@ -1406,6 +1407,7 @@ void BkSecRowDef(const int sec,int &kind,string &label,
       else if(sec==1)  { label="SIZE"; minV=8; maxV=24; }
       else if(sec==2)  { kind=2; label="B | I"; opts="Regular|Bold|Italic|B+I"; minV=0; maxV=3; }
       else if(sec==3)  { kind=2; label="ALIGN"; opts="Left|Center|Right"; minV=0; maxV=2; }
+      else if(sec==4)  { kind=2; label="VALIGN"; opts="Top|Inside|Bottom"; minV=0; maxV=2; }
       else             { kind=4; label="COLOR"; }
    }
    else if(g_BkTab == 2)   // SETUP
@@ -1441,6 +1443,7 @@ double BkSecCurrent(const int sec)
       if(sec==1) return g_bkTextSize;
       if(sec==2) return BkBIFromMirrors();
       if(sec==3) return ClampInt(g_bkAlign, 0, 2);
+      if(sec==4) return ClampInt(g_bkVAlign, 0, 2);
       return 0;   // TEXT edit + COLOR rows (palette/edit only)
    }
    if(g_BkTab == 2)
@@ -1464,6 +1467,7 @@ int BkSecApply(const int sec,const double v)
       if(sec==1)      { g_bkTextSize=ClampInt((int)MathRound(v),8,24); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
       else if(sec==2) { BkBIToMirrors(ClampInt((int)MathRound(v),0,3)); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
       else if(sec==3) { g_bkAlign=ClampInt((int)MathRound(v),0,2); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+      else if(sec==4) { g_bkVAlign=ClampInt((int)MathRound(v),0,2); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
    }
    else if(g_BkTab == 2)
    {
@@ -1487,6 +1491,7 @@ double BkSecDefVal(const int sec)
       if(sec==1) return FactoryDefault(FF_BK_TEXT_SIZE);
       if(sec==2) return ((FactoryDefault(FF_BK_BOLD)>0.5)?1:0) + ((FactoryDefault(FF_BK_ITALIC)>0.5)?2:0);
       if(sec==3) return FactoryDefault(FF_BK_ALIGN);
+      if(sec==4) return FactoryDefault(FF_BK_VALIGN);
       return 0;
    }
    if(g_BkTab == 2)
@@ -1506,7 +1511,7 @@ int BkSecColorKind(const int row)
 {
    if(row <= 0) return -1;
    int sec = row - 1;
-   if(g_BkTab == 1) return (sec == 4 ? PAL_BK_TEXT : -1);
+   if(g_BkTab == 1) return (sec == 5 ? PAL_BK_TEXT : -1);
    if(g_BkTab == 2)
    {
       if(sec==1) return PAL_BK_ENTRY;
@@ -1522,7 +1527,7 @@ color BkSecDefColor(const int row)
 {
    if(row <= 0) return clrNONE;
    int sec = row - 1;
-   if(g_BkTab == 1) return (sec == 4 ? DefBKTextColor() : clrNONE);
+   if(g_BkTab == 1) return (sec == 5 ? DefBKTextColor() : clrNONE);
    if(g_BkTab == 2)
    {
       if(sec==1) return DefBKEntryColor();
@@ -1779,6 +1784,7 @@ struct BkPreset
    int   textSize;
    int   bi;      // 0 Regular · 1 Bold · 2 Italic · 3 B+I
    int   align;   // 0 Left · 1 Center · 2 Right
+   int   valign;  // 0 Top · 1 Inside · 2 Bottom (TV Inside-dropdown)
 };
 void BkPresetGet(const int i, BkPreset &p)
 {
@@ -1787,21 +1793,21 @@ void BkPresetGet(const int i, BkPreset &p)
       p.border=C'41,182,246'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
       p.entry=C'41,182,246'; p.sl=C'240,98,146'; p.tp=C'102,187,106';
       p.fill=C'41,182,246'; p.fillTr=80;
-      p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2;
+      p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
    else if(i == 2)    // Mono
    {
       p.border=C'176,190,197'; p.style=STYLE_DASH; p.width=1; p.tr=0; p.rr=2;
       p.entry=C'144,164,174'; p.sl=C'120,144,156'; p.tp=C'207,216,220';
       p.fill=C'176,190,197'; p.fillTr=88;
-      p.text=C'207,216,220'; p.textSize=10; p.bi=0; p.align=2;
+      p.text=C'207,216,220'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
    else               // 0 Amber (shipped look)
    {
       p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
       p.entry=C'30,144,255'; p.sl=C'220,50,50'; p.tp=C'46,139,87';
       p.fill=C'255,171,0'; p.fillTr=100;
-      p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2;
+      p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
 }
 int BkPresetMatch()   // 0/1/2 = preset, 3 = Custom (manual edits)
@@ -1815,7 +1821,7 @@ int BkPresetMatch()   // 0/1/2 = preset, 3 = Custom (manual edits)
          g_bkStopColor==p.sl && g_bkTargetColor==p.tp &&
          g_boxFillColor==p.fill && g_boxFillTransparency==p.fillTr &&
          g_bkTextColor==p.text && g_bkTextSize==p.textSize &&
-         BkBIFromMirrors()==p.bi && ClampInt(g_bkAlign,0,2)==p.align) return i;
+         BkBIFromMirrors()==p.bi && ClampInt(g_bkAlign,0,2)==p.align && ClampInt(g_bkVAlign,0,2)==p.valign) return i;
    }
    return 3;
 }
@@ -1829,7 +1835,7 @@ int BkApplyPreset(const int i)   // apply + restyle live boxes + persist via fla
    g_bkEntryColor=p.entry; g_bkStopColor=p.sl; g_bkTargetColor=p.tp;
    g_boxFillColor=p.fill; g_boxFillTransparency=ClampInt(p.fillTr,0,100);
    g_bkTextColor=p.text; g_bkTextSize=ClampInt(p.textSize,8,24);
-   BkBIToMirrors(ClampInt(p.bi,0,3)); g_bkAlign=ClampInt(p.align,0,2);
+   BkBIToMirrors(ClampInt(p.bi,0,3)); g_bkAlign=ClampInt(p.align,0,2); g_bkVAlign=ClampInt(p.valign,0,2);
    BaseKnotRestyleAll();
    return REFRESH_BUFFERS;   // OV_ persist rides via ApplyRefreshFlags
 }
@@ -2950,7 +2956,7 @@ void PnlCreate(const int item)
     else if(item==8) probeRow=1;   // Custom Price COLOR
     else if(item==9 && (int)g_stepCalculationMode==3) probeRow=7;   // Step card Factor COLOR
      else if(item==10) probeRow=6;  // Factor COLOR
-     else if(item==12) probeRow=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 5 : 2));   // open tab's first COLOR
+     else if(item==12) probeRow=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 6 : 2));   // open tab's first COLOR
      else if(item==13) probeRow=0;  // Mini BORDER COLOR
     // item==1 (Zones) has no COLOR row — lines live on the Lines card.
    int ckind=(probeRow>=0) ? PnlColorKind(item, probeRow) : -1;

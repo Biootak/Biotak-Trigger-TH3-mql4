@@ -327,12 +327,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    rectangle tool. Tap-tap still works (click 1 → hover preview → click 2).
    Committed-box look (TV Style tab): BORDER COLOR / WIDTH / STYLE /
   BORDER TR + FILL COLOR / FILL TR (bucket — default invisible, see below) +
-  TARGET R (TP = Entry + R×N, 1-4) + ENTRY/STOP/TARGET line COLORS + user
+  TARGET R (TP = Entry + R×N, 1-4) + ENTRY/STOP/  TARGET line COLORS + user
   TEXT (content per-box in its `TEXT` object; SIZE 10 / B|I / ALIGN Right /
-  COLOR white) live in `RuntimeSettings.mqh` (`g_boxBorder*`, `g_boxFill*`,
-  `g_bkTargetR/Entry/Stop/TargetColor`, `g_bkText*/Bold/Italic/Align`,
-  `FF_BOX_*/FF_BK_*`, `OV_BXW/BXS/BXC/BXT/BXF/BXFT/BXR/BXE/BXL/BXG/BXI/
-  BXTX/BXTS/BXBO/BXIT/BXAL`, inputs `[08.5]`),
+  VALIGN Inside / COLOR white) live in `RuntimeSettings.mqh`
+  (`g_boxBorder*`, `g_boxFill*`, `g_bkTargetR/Entry/Stop/TargetColor`,
+  `g_bkText*/Bold/Italic/Align`, `g_bkVAlign`, `FF_BOX_*/FF_BK_*`,
+  `OV_BXW/BXS/BXC/BXT/BXF/BXFT/BXR/BXE/BXL/BXG/BXI/
+  BXTX/BXTS/BXBO/BXIT/BXAL/BXVA`, inputs `[08.5]`),
   rendered via `GetBoxBorderRenderColor()` / `GetBoxFillRenderColor()`
   (one-language bg blend, cached; line/text colors are solid), applied at
   commit + `BaseKnotSync` (incl. live sizing preview) + live via
@@ -446,17 +447,20 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   Step mode; `PnlRowsCount(12)=1+BkSecRows()`, sections delegate via
   `BkSec*` — never hardcode card-12 rows; `PnlOpen(12)` clears a stale
   `g_BkMiniBox` ONLY when coming from neither strip nor itself, so TAB
-  switches keep the held box). Text content lives in the per-box `TEXT`
-  `OBJ_TEXT` (no GV — strings don't fit doubles; `BaseKnotSetText/GetText/
-  PlaceText` in the domain layer so Lite stays UI-free; delete = clear,
-  `Sync` only moves/restyles an existing TEXT, never resurrects); edited via
-  the Text-tab `OBJ_EDIT` (kind 6 — `PnlDestroy` `_ED`, `PnlUpdateRow`
-  skips it), committed on `CHARTEVENT_OBJECT_ENDEDIT` / flushed before any
-  other panel action + on close (TV Ok semantics, `BkFlushTextEdit` — same
-  pattern as `FlushPalHex`); focus flag `g_BkTextFocus` lives in
-  `GlobalVariables.mqh` so `EventHandlers` KEYDOWN silences letter hotkeys
-  while typing (palette-hex pattern). Fill default invisible (FILL TR=100)
-  so old charts are pixel-identical; presets (TEMPLATE) cover fill+text.
+  switches keep the held box). Text tab rows = TEXT edit + SIZE + B|I +
+  ALIGN + VALIGN (`Top|Inside|Bottom` = TV's Inside-dropdown, `g_bkVAlign`
+  default Inside, `inpBKVAlign`, `FF_BK_VALIGN`, `OV_BXVA`) + COLOR. Text
+  content lives in the per-box `TEXT` `OBJ_TEXT` (no GV — strings don't fit
+  doubles; `BaseKnotSetText/GetText/PlaceText` in the domain layer so Lite
+  stays UI-free; delete = clear, `Sync` only moves/restyles an existing
+  TEXT, never resurrects); edited via the Text-tab `OBJ_EDIT` (kind 6 —
+  `PnlDestroy` `_ED`, `PnlUpdateRow` skips it), committed on
+  `CHARTEVENT_OBJECT_ENDEDIT` / flushed before any other panel action + on
+  close (TV Ok semantics, `BkFlushTextEdit` — same pattern as `FlushPalHex`);
+  focus flag `g_BkTextFocus` lives in `GlobalVariables.mqh` so `EventHandlers`
+  KEYDOWN silences letter hotkeys while typing (palette-hex pattern). Fill
+  default invisible (FILL TR=100) so old charts are pixel-identical; presets
+  (TEMPLATE) cover fill+text+valign.
   Coords = drag natively (TV Coordinates), visibility = automatic commit-TF
   + lower (TV Visibility) — both ride the ONE live box/edge tooltip
   (`BaseKnotBoxTooltip`: side · pips · R:R · T1→T2 · TF-scope · "text" ·

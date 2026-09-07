@@ -78,6 +78,7 @@ static int g_bkTextSize = 10;                                  // [08.5] inpBKTe
 static bool g_bkBold = false;                                  // [08.5] inpBKBold
 static bool g_bkItalic = false;                                // [08.5] inpBKItalic
 static int g_bkAlign = 2;                                      // [08.5] inpBKAlign (0=Left,1=Center,2=Right)
+static int g_bkVAlign = 1;                                     // [08.5] inpBKVAlign (0=Top,1=Inside,2=Bottom)
 static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
@@ -233,6 +234,7 @@ enum FactorySetting
    FF_BK_BOLD,           // inpBKBold
    FF_BK_ITALIC,         // inpBKItalic
    FF_BK_ALIGN,          // inpBKAlign
+   FF_BK_VALIGN,         // inpBKVAlign
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -340,6 +342,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_BK_BOLD]             = inpBKBold;
    g_factoryDefaults[FF_BK_ITALIC]           = inpBKItalic;
    g_factoryDefaults[FF_BK_ALIGN]            = inpBKAlign;
+   g_factoryDefaults[FF_BK_VALIGN]           = inpBKVAlign;
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -439,6 +442,7 @@ void RuntimeSettingsInit()
    g_bkBold = inpBKBold;
    g_bkItalic = inpBKItalic;
    g_bkAlign = inpBKAlign;
+   g_bkVAlign = inpBKVAlign;
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -508,6 +512,7 @@ void RuntimeSettingsInit()
 #define inpBKBold g_bkBold
 #define inpBKItalic g_bkItalic
 #define inpBKAlign g_bkAlign
+#define inpBKVAlign g_bkVAlign
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -605,6 +610,7 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "BXBO", g_bkBold ? 1 : 0);
    GlobalVariableSet(p + "BXIT", g_bkItalic ? 1 : 0);
    GlobalVariableSet(p + "BXAL", g_bkAlign);
+   GlobalVariableSet(p + "BXVA", g_bkVAlign);
    GlobalVariableSet(p + "SW",  g_ssLevelWidth);
    GlobalVariableSet(p + "SS",  g_ssLevelStyle);
    GlobalVariableSet(p + "SC",  g_ssLevelColor);
@@ -713,6 +719,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXBO")) g_bkBold = (GlobalVariableGet(p + "BXBO") > 0.5);
    if(GlobalVariableCheck(p + "BXIT")) g_bkItalic = (GlobalVariableGet(p + "BXIT") > 0.5);
    if(GlobalVariableCheck(p + "BXAL")) g_bkAlign = ClampSettingInt((int)GlobalVariableGet(p + "BXAL"), 0, 2);
+   if(GlobalVariableCheck(p + "BXVA")) g_bkVAlign = ClampSettingInt((int)GlobalVariableGet(p + "BXVA"), 0, 2);
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");

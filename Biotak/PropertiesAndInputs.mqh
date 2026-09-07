@@ -179,6 +179,7 @@ input int inpBKTextSize = 10;                            // Base Box Text Size (
 input bool inpBKBold = false;                            // Base Box Text Bold
 input bool inpBKItalic = false;                          // Base Box Text Italic
 input int inpBKAlign = 2;                                // Base Box Text Align: 0=Left, 1=Center, 2=Right (TV default Right)
+input int inpBKVAlign = 1;                               // Base Box Text Vertical: 0=Top, 1=Inside, 2=Bottom (TV Text tab)
 
 input group "09) VISIBILITY - STRUCTURE & TRIGGER"
 input string S15 = "[09] VISIBILITY / STRUCTURE & TRIGGER";

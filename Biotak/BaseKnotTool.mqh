@@ -142,19 +142,34 @@ void BaseKnotSetText(const string id, const string txt)
    BaseKnotSync(id);   // placement + font follow the box + mirrors
    ChartRedraw();
 }
-// (Re)place + restyle an EXISTING text object under the box top edge.
-// Anchor follows the align mirror: Left → top-left corner, Center → top
-// middle, Right (TV default) → top-right corner, all INSIDE the box.
+// (Re)place + restyle an EXISTING text object. TV Text-tab alignment:
+// horizontal (Left|Center|Right) picks the corner, vertical (Top|Inside|
+// Bottom) picks above / inside-top / below the box (TV default Inside).
 void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
-                       const double top, const long tfMask)
+                       const double top, const double bot, const long tfMask)
 {
    string tn = BaseKnotTextName(pfx);
    if(ObjectFind(0, tn) < 0) return;   // no text — never resurrect (delete = clear)
    int al = ClampSettingInt(g_bkAlign, 0, 2);
+   int va = ClampSettingInt(g_bkVAlign, 0, 2);
    datetime tx = (al == 0 ? t1 : (al == 1 ? t1 + (t2 - t1) / 2 : t2));
-   int anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
+   double px = top;
+   int anchor = ANCHOR_UPPER;
+   if(va == 0)         // Top — text sits ABOVE the box top edge
+   {
+      anchor = (al == 0 ? ANCHOR_LEFT_LOWER : (al == 1 ? ANCHOR_LOWER : ANCHOR_RIGHT_LOWER));
+   }
+   else if(va == 2)    // Bottom — text sits BELOW the box bottom edge
+   {
+      px = bot;
+      anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
+   }
+   else                // Inside — text hangs from the box top edge
+   {
+      anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
+   }
    ObjectSetInteger(0, tn, OBJPROP_TIME, 0, tx);
-   ObjectSetDouble(0, tn, OBJPROP_PRICE, 0, top);
+   ObjectSetDouble(0, tn, OBJPROP_PRICE, 0, px);
    ObjectSetString(0, tn, OBJPROP_FONT, BKTextFont());
    ObjectSetInteger(0, tn, OBJPROP_FONTSIZE, ClampSettingInt(g_bkTextSize, 8, 24));
    ObjectSetInteger(0, tn, OBJPROP_COLOR, g_bkTextColor);
@@ -798,7 +813,7 @@ void BaseKnotSync(const string id)
    ObjectSetString(0, box, OBJPROP_TOOLTIP, tip0);
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
                      GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip0, tfMask);
-   BaseKnotPlaceText(pfx, t1, t2, top, tfMask);   // existing user text follows the box (never resurrected)
+   BaseKnotPlaceText(pfx, t1, t2, top, bot, tfMask);   // existing user text follows the box (never resurrected)
    double entry = 0, sl = 0, tp = 0;
    BaseKnotCalcLevels(top, bot, dir, entry, sl, tp);
    double hPips  = BaseKnotToPips(top - bot);
@@ -895,10 +910,12 @@ void BaseKnotSyncBadges()
       if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
       double top = MathMax(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+      double bot = MathMin(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
+                           ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
       int tfMin = g_bkBoxes[i].tfMin;
       if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
       if(ObjectFind(0, BaseKnotTextName(pfx)) >= 0)   // user text re-glues with the box
-         BaseKnotPlaceText(pfx, t1, t2, top, BaseKnotTFMask(tfMin));
+         BaseKnotPlaceText(pfx, t1, t2, top, bot, BaseKnotTFMask(tfMin));
       if(BaseKnotInfoVisible(g_bkBoxes[i].id))
          BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin);
       else if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)
