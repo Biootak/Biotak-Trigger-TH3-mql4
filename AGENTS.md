@@ -374,9 +374,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   latch BEFORE `BkHoldOnBoxUp` clears it) is a drag end, never a click;
   right-clicks never dismiss; taps on the HELD box itself never dismiss
   (re-hit-test via `BaseKnotBoxAt`, visible-only). The strip FOLLOWS a
-  dragged box (`BkStripFollow` from the per-tick heal — BK consumes box
-  drags so no event fires; 4px dead band; closes ▾ + orphaned palette on
-  move), closes for TF-hidden boxes (`BaseKnotVisibleNow` — also guards
+  dragged box (`BkStripFollow` — primarily on the drag EVENT itself
+  (`OBJECT_DRAG` in `HandleUIChartEvent`: consumed ≠ hidden, the entry
+  forwards every event to both handlers; 30ms throttle + explicit `TB*`
+  move list via `BkStripMoveBy`, never a full-chart scan; per-tick heal
+  stays as fallback; 4px dead band; closes ▾ + orphaned palette on
+  move; full pattern: `LEARNING.md` §1), closes for TF-hidden boxes
+  (`BaseKnotVisibleNow` — also guards
   `BkHoldFire` against flash-opens), and dies when arming the draw tool
   (`PnlCloseAll` in the `CIR_BASEKNOT` menu branch). Every slot uses the
   SAME mirrors as card

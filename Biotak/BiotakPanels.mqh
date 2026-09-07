@@ -3300,11 +3300,44 @@ int BkMiniStripPress(const int mx, const int my)
    return REFRESH_NONE;
 }
 
+// Move the strip by (dx,dy) WITHOUT a full-chart scan: every strip object is
+// moved by its explicit head-name (slots via BkMiniSlotName = single source —
+// a new slot is picked up automatically; the fixed tail covers bars/labels).
+// PnlMoveBy's ObjectsTotal loop is for generic row-cards; at drag-event rate
+// the strip must cost ~15 syscalls, not thousands (LEARNING.md §1).
+void BkStripMoveBy(const int dx, const int dy)
+{
+   if(dx == 0 && dy == 0) return;
+   int ndx, ndy;
+   PnlClampSpot(13, dx, dy, ndx, ndy);   // clamp FIRST — logic/graphics never diverge
+   if(ndx == 0 && ndy == 0) return;
+   for(int i = 0; i < BK_TB_N; i++) BkStripMoveOne(BkMiniBtn(BkMiniSlotName(i)), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("card"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBbar0"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBbar1"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBbar2"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBwlabel"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBchev1"), ndx, ndy);
+   BkStripMoveOne(BkMiniBtn("TBchev2"), ndx, ndy);
+   // NOTE: no DD* popover objects — the follow always BkDdClose()es first,
+   // so moving them would only resurrect stale hit rects.
+   g_PnlX[13] += ndx;
+   g_PnlY[13] += ndy;
+}
+void BkStripMoveOne(const string nm, const int dx, const int dy)
+{
+   if(ObjectFind(0, nm) < 0) return;
+   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, ObjectGetInteger(0, nm, OBJPROP_XDISTANCE) + dx);
+   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, ObjectGetInteger(0, nm, OBJPROP_YDISTANCE) + dy);
+}
+
 // TV-like: the floating toolbar rides its box — when the held box is dragged
 // the strip re-anchors next to the new corner (same formula as BkHoldFire).
-// Change-guarded to a 4px dead band, so steady state costs one XY compare;
-// runs from the per-tick heal below (no event path: BK consumes box drags,
-// so no UI event ever fires for them — the poll is the only channel).
+// Change-guarded to a 4px dead band. TWO channels: (1) the drag EVENT itself
+// (HandleUIChartEvent OBJECT_DRAG — BK consumes box drags for the domain, but
+// the entry still forwards every event here, so the strip moves in the SAME
+// frame as the children, throttled 30ms); (2) the per-tick heal below as
+// fallback (wheel-zoom/TF-switch move corners with no drag event).
 void BkStripFollow()
 {
    string pfx = BaseKnotPrefix(g_BkMiniBox);
@@ -3328,7 +3361,7 @@ void BkStripFollow()
    if(MathAbs(dx) < 4 && MathAbs(dy) < 4) return;
    BkDdClose();   // a riding strip never keeps a stale popover (hit rects would lie)
    if(g_PalOpen) PalClose();   // nor an orphaned palette (it hangs off stale pixels)
-   PnlMoveBy(13, dx, dy);   // shifts every TB* object + keeps g_PnlX/Y in sync
+   BkStripMoveBy(dx, dy);   // explicit TB* list — no full-chart scan at drag rate
    ChartRedraw();
 }
 
@@ -4209,6 +4242,18 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
 
    if(id == CHARTEVENT_OBJECT_DRAG)
    {
+      // Real-time strip follow: the held box's drag reaches here in the SAME
+      // event the domain used to re-sync the children (consumed ≠ hidden —
+      // the entry forwards every event to both handlers). String pre-check
+      // first (free), syscalls only on a hit; 30ms throttle + 4px dead band
+      // inside BkStripFollow keep drag storms cheap (LEARNING.md §1).
+      if(g_PnlOpen == 13 && g_BkMiniBox != "" &&
+         sparam == BaseKnotBoxName(BaseKnotPrefix(g_BkMiniBox)))
+      {
+         static uint s_BkFollowMs = 0;
+         uint nowF = GetTickCount();
+         if(nowF - s_BkFollowMs >= 30) { s_BkFollowMs = nowF; BkStripFollow(); }
+      }
       int flags = PnlHandleDrag(sparam, g_LastUIX);
       if(flags != REFRESH_NONE) ApplyRefreshFlags(flags);
       return;
