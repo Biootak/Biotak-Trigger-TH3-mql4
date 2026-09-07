@@ -489,6 +489,50 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   lock). Glyph semantics (R-ICONS law) verified at byte level (ASCII dump),
   never by eyeballing previews.
 
+- **Strip dropdowns: embedded skins, bitmap chevrons, content-fitted widths**
+  (2026-09-07 — the STYLE/WIDTH ▾ popovers floated with NO white card
+  (transparent), chevrons showed `?`, `Dash-Dot-Dot` truncated. Three root
+  causes, all in `BiotakPanels.mqh` + `tools/gen-th3-icons.js`: (1) `bk_dd.bmp`
+  had NO `#resource` line — a `::Files\Icons\*.bmp` runtime ref without it
+  resolves to nothing (compile stays green, MT4 draws the bitmap blank);
+  (2) text `▼` (U+25BC) is missing in MT4/Wine Arial → `?`; (3) one fixed
+  176px width too narrow for the longest label. Fix: content-fitted pair
+  `bk_dds.bmp` (STYLE 216) / `bk_ddw.bmp` (WIDTH 120) picked by
+  `BkDdCurW()/BkDdRes()`, Z-stack BG 1560 < SEL 1566 < LBL 1568 < ICO 1574
+  (backdrop above its own rows buries them), chevron = `bk_chev.bmp` bitmap.
+  Law: every runtime `::Files\Icons\*.bmp` ref needs a `#resource` line;
+  UI chrome glyphs outside Windows-1252 must be bitmaps, never font text.)
+
+- **R-PANELS — settings cards are TV-white, geometry frozen**
+  (2026-09-07, user decision — all settings cards speak the white-dialog
+  language of the strip/dropdowns + TV dialogs, one uniform look).
+  White `pnl_cardN.bmp` skins (same 312/56/50/48 geometry — never resize),
+  navy `C'38,44,56'` single primary (slider fill, active segment, Done,
+  swatch rings — same as the dropdown pill), kind=1 rows are left TV
+  checkboxes (`pnl_cb_on/off.bmp`, label shifted right, hit-test in
+  `PnlSwitchHit` follows the box), header = title + `×` only (icon chip,
+  subtitle and palette `P` retired — PICK opens the palette; handlers and
+  `PnlDestroy` purges stay), footer Reset(light)/Done(navy) unchanged in
+  behavior (panels apply live — a TV Cancel that discards is dishonest here).
+  Pill-switch skins + code are gone (`SWK` delete stays as purge). To restyle
+  panels again: touch ONLY `PNL_CLR_*` + skin paint — never coordinates.
+
+- **R-PANELMOD — panels use TV-modern elements, not repainted old ones**
+  (2026-09-07, user decision — white paint over steppers/pills still read
+  dated next to the TV Rectangle dialog). Single-line rows
+  (`PNL_ROW_H` 42: label left · control right); kind=2 with 4+ options is a
+  generic dropdown-select (`PnlDdOpen/Hit`, content-fitted popover,
+  dark-pill selection, `PnlApplyOption` = same path as segment taps, full
+  rebuild like TAB switches); (9,0)/(12,0) are underline tabs (`TU`
+  object); sliders are stepper-less full-width tracks (drag + jump stay);
+  color rows are preview + 6 swatches (PICK retired, preview tap opens the
+  palette which has RECENTs); palette popup whitened too (card/borders only,
+  mixer science untouched). New widget suffixes (`TU/DD/DDT/DDC`) MUST join
+  `PnlDestroy` (P-UI-02). MQL4 needs define-before-use: dropdown helpers
+  before `PnlCreateRow`, engine after `PnlOpen`. Press pipeline owns the
+  popover first (`UISuppressNextClick`), outside press closes AND falls
+  through; Esc closes popover before panel.
+
 - **Base/Knot is fully automatic — no Buy/Sell button, ever**
   (2026-09-06 — direction is decided ONCE at commit by
   `BaseKnotResolveDirection()` in `Biotak/BaseKnotTool.mqh` and FROZEN in the
@@ -568,6 +612,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-BK-04 | Border-only change left old committed boxes FILLED (screenshot purple solid): commit/preview set FILL false but Sync/Restyle/LazyInit only touched COLOR/STYLE/WIDTH, so pre-change boxes stayed filled forever | Draw-style changes never retro-apply to existing chart objects — a style set only at creation is fossilized on old objects | Single source of truth `BaseKnotStyleBox()` in `Biotak/BaseKnotTool.mqh` (COLOR/STYLE/WIDTH + FILL false + BACK true) used by commit / preview / rubber-band / Sync / RestyleAll; `BaseKnotLazyInit` un-fills every scanned BOX (migration) | 2026-09-06 |
 | P-BK-05 | Hold-on-box never opened WHILE held (card appeared only on release); three open paths (mid-hold poll / release-leg / Shift+click) raced and confused taps with holds | Mid-hold fire required `TERMINAL_KEYSTATE_LEFT` to report down in the poll window, and the poll re-latched (timer reset) whenever the down-flag flickered — so the 250ms never elapsed mid-hold while the pure-event release-leg always worked | ONE method: `BkHoldFire()` while HELD (event-driven on tremor moves + KEYSTATE-free poll for zero-move presses, re-hit-tested); release only clears and opens nothing; Shift+click + release-leg deleted. KEYSTATE only detects a fresh down-transition when nothing is latched — never clears/re-times. Hollow self-heals in `BaseKnotSyncBadges()` 500ms pump (read-guarded) | 2026-09-06 |
 | P-BK-06 | Base box still rendered FILLED on some MT4 builds despite `OBJPROP_FILL=false` — border-only default never held | Some builds ignore `FILL=false` on `OBJ_RECTANGLE` (same trap as `ZoneFactory`); plus a half-landed edge refactor left `BaseKnotStyleBox` 1-arg vs 4-arg callers + `PrevName` vs `PrevTag` mismatches so nothing compiled | Hollow-by-construction: BOX rect is ONLY the invisible drag handle (`BaseKnotStyleBox` 1-arg, chart-bg color); the VISIBLE border is 4 `OBJ_TREND` edges via `BaseKnotDrawEdges` (commit/Sync/Press/rubber-band), `RestyleAll` delegates to `Sync`, `SyncBadges` 500ms pump re-hides handles + rebuilds missing edges, edge-delete self-heals via suffix guard in `OBJECT_DELETE` | 2026-09-06 |
+| P-UI-06 | Base-Box strip dropdowns floated with NO white card behind rows (transparent); STYLE/WIDTH ▾ chevrons showed `?` in the toolbar; `Dash-Dot-Dot` label truncated | (a) `bk_dd.bmp` had NO `#resource` line — a `::Files\Icons\*.bmp` runtime ref without it resolves to nothing (compile stays green, MT4 draws the bitmap blank); (b) backdrop Z 1570 sat ABOVE row labels (1520)/pill (1500); (c) text `▼` (U+25BC) missing in MT4/Wine Arial → `?`; (d) one fixed 176px width too narrow for the longest label | (a) every runtime `::Files\Icons\*.bmp` ref needs a `#resource` line (`bk_dds`/`bk_ddw`/`bk_chev` added, dead `bk_dd.bmp` deleted); (b) dropdown Z-stack BG 1560 < SEL 1566 < LBL 1568 < ICO 1574 in `BkDdOpen`; (c) chevrons are the `bk_chev.bmp` bitmap, never font text; (d) content-fitted popover pair — STYLE 216 (`bk_dds.bmp`) / WIDTH 120 (`bk_ddw.bmp`) via `BkDdCurW()`/`BkDdRes()` + `g_BkDdW` in hit-test/clamp | 2026-09-07 |
+| P-UI-07 | STYLE ▾ chevron floated 21px off its glyph — read as a separate item, not one dropdown control | Chevron was right-aligned to the 68px slot (`sx+sw-1-16`) while the glyph sits left (`sx+6`, 24px) — the dead gap between them broke perceptual grouping | Glue the chevron to its content: STYLE at `ix+PNL_TB_ICON+4` (4px off the glyph) — see P-UI-08 for the WIDTH twin; the slot rects stay as the generous hit areas — do NOT "tighten" them to the visuals | 2026-09-07 |
+| P-UI-08 | WIDTH ▾ control read as three separate items — sample glyph looked like a stray "H" next to the "Npx" text + chevron | Closed control drew all three (24px `bk_wN` sample + text + chevron); at 1px the sample is two end-ticks joined by a hairline, i.e. an "H" with no visible meaning | Closed WIDTH control is text-only: centered "Npx" (`BK_WTXT_X` 16 + `BK_WTXT_W` 22 estimate, chevron glued after) + tooltip on label/chevron; thickness samples live ONLY in the dropdown rows; `TBwidth` bitmap retired but its `PnlDestroy` delete stays as purge | 2026-09-07 |
+| P-UI-09 | TV-white panel restyle left white-on-light invisible texts (NAV buttons) + dark-era leftovers | `NAV` text used `ACCENT_TX` (white-on-amber) which vanishes on the light button; color-row/edit/separator literals were hardcoded dark; `pal`/`ticon`/`sub` header objects retired | Every panel-chrome color must come from `PNL_CLR_*` (one redefinition repaints all cards); retired header objects keep handlers + `PnlDestroy` purges; geometry defines never change in a visual restyle | 2026-09-07 |
+| P-UI-10 | White panels still read dated vs TV dialog (two-line rows, pills for 8 options, [-]/[+] steppers, PICK button) | Repaint kept the old widget language: two-line rows, cramped 8-pill segments, stepper sliders, redundant PICK | TV-modern element language (R-PANELMOD): single-line rows ROW_H 42, generic dropdown-select for 4+ options, underline tabs, stepper-less sliders, PICK retired; MQL4 define-before-use split (helpers early, engine after PnlOpen) | 2026-09-07 |
 
 
 > When you close a new recurring issue, add the next row above (highest

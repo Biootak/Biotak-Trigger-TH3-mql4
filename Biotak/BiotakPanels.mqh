@@ -1,9 +1,9 @@
 //+------------------------------------------------------------------+
 //|                                             BiotakPanels.mqh   |
-//|        Settings panels v2 — "Fintech Glass" redesign             |
-//|   Rounded glass cards (pre-rendered BMP skins from gen-icons.js) |
-//|   Stepper sliders, pill toggles, sliding segments, Reset/Done    |
-//|   Design refs: Kraken dark tokens, glassmorphism legibility      |
+//|        Settings panels — TV-white modern dialogs (R-PANELMOD)       |
+//|   White cards (pre-rendered BMP skins from gen-th3-icons.js) ·       |
+//|   single-line rows: checkbox / dropdown-select / pills / underline  |
+//|   tabs · full-width sliders · Reset/Done (live-apply, TV look)      |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -19,9 +19,8 @@
 #resource "\\Files\\Icons\\pnl_card11.bmp"
 #resource "\\Files\\Icons\\pnl_card12.bmp"
 #resource "\\Files\\Icons\\pnl_knob.bmp"
-#resource "\\Files\\Icons\\pnl_sw_on.bmp"
-#resource "\\Files\\Icons\\pnl_sw_off.bmp"
-#resource "\\Files\\Icons\\pnl_swknob.bmp"
+#resource "\\Files\\Icons\\pnl_cb_on.bmp"
+#resource "\\Files\\Icons\\pnl_cb_off.bmp"
 //--- Base Box MINI strip icons (TradingView-style) — R-BKSTRIP 2026-09-07,
 //--- TV-parity 2026-09-07: pencil (border) + T (text) join the bucket (fill).
 //--- bk_done retired with the done slot (TV dismisses via outside-click/Esc).
@@ -43,25 +42,40 @@
 #resource "\\Files\\Icons\\bk_lock_on.bmp"
 #resource "\\Files\\Icons\\bk_del.bmp"
 #resource "\\Files\\Icons\\bk_more.bmp"
+#resource "\\Files\\Icons\\bk_chev.bmp"
+#resource "\\Files\\Icons\\bk_dds.bmp"
+#resource "\\Files\\Icons\\bk_ddw.bmp"
 
 //--- geometry (content coordinates; card BMP carries its own shadow margin)
 #define PNL_WEL        312
 #define PNL_MARGIN     14     // transparent fringe baked into the card BMP
 #define PNL_PAD_X      16
 #define PNL_HEAD_H     56
-#define PNL_ROW_H      50
+#define PNL_ROW_H      42     // TV-dense single-line rows (label left · control right)
 #define PNL_FOOT_H     48
-#define PNL_STEP_W     22     // -/+ stepper square
-#define PNL_STEP_GAP   8
-#define PNL_TRACK_X    (PNL_PAD_X + PNL_STEP_W + PNL_STEP_GAP)
-#define PNL_TRACK_W    (PNL_WEL - 2*PNL_PAD_X - 2*(PNL_STEP_W + PNL_STEP_GAP))
+#define PNL_CB_SZ      20      // TV checkbox size (kind=1 rows, pnl_cb_on/off.bmp)
+#define PNL_CB_Y       11      // checkbox top inside its 42px row (label sits at +14)
+//--- TV-modern single-line row anatomy (42px rows — R-PANELMOD 2026-09-07):
+//--- label top +14 · single-line controls band +9..+33 · slider track +27 (h7)
+#define PNL_LBL_Y      14      // row label top (all kinds; kind=6 moves it up)
+#define PNL_CTL_Y      9       // single-line control top (dropdown/select/nav/segments)
+#define PNL_CTL_H      24      // single-line control height
+#define PNL_TRK_Y      27      // slider track top (label+value share the line above)
+#define PNL_TRK_H      7       // slider track height
+#define PNL_TRACK_X    (PNL_PAD_X)            // modern full-width track (no steppers)
+#define PNL_TRACK_W    (PNL_WEL-2*PNL_PAD_X)
 #define PNL_KNOB_W     18
-#define PNL_SW_W       46
-#define PNL_SW_H       24
+//--- generic dropdown-select (kind=2, 4+ options) — TV popover language
+#define PNL_DD_ROW_H   28
+#define PNL_DD_PAD     8
+#define PNL_DD_Z_SH    1558
+#define PNL_DD_Z_BG    1560
+#define PNL_DD_Z_SEL   1566
+#define PNL_DD_Z_LBL   1568
 //--- inline quick-pick swatches on COLOR rows (one-tap apply, no popup).
-// Row line-2 layout: [preview 46][6][6×22 swatches +5 gaps][6][PICK fills rest].
-// New widget suffixes ("Q0".."Q5","PK") MUST also be deleted in PnlDestroy
-// (see P-UI-02: leaked widgets stay on screen).
+// Single-line layout: [preview 46][6][6×22 swatches +5 gaps], label above-left.
+// New widget suffixes ("Q0".."Q5","PK","TU","DD","DDT","DDC") MUST also be
+// deleted in PnlDestroy (see P-UI-02: leaked widgets stay on screen).
 #define PNL_QSW_N      6
 #define PNL_QSW_W      22
 #define PNL_QSW_GAP    5
@@ -100,20 +114,24 @@ color QuickPalColor(const int i)
 #define PNL_TB_BTN_H  36     // strip button height
 #define PNL_TB_TOP    ((PNL_TB_H - PNL_TB_BTN_H) / 2)   // button content offset
 
-//--- fintech-glass palette (Kraken-style tokens + menu amber identity)
-#define PNL_CLR_TITLE    C'235,240,248'
-#define PNL_CLR_MUTED    C'128,140,160'
-#define PNL_CLR_LABEL    C'158,170,192'
-#define PNL_CLR_ACCENT   C'255,171,0'
-#define PNL_CLR_ACCENT_TX C'26,16,2'
-#define PNL_CLR_VALUE    C'255,200,60'
-#define PNL_CLR_TRACK_BD C'45,56,74'
-#define PNL_CLR_TRACK    C'17,23,33'
-#define PNL_CLR_SEG_ON   C'255,171,0'
-#define PNL_CLR_SEG_OFF  C'26,34,48'
-#define PNL_CLR_SEG_BD   C'42,53,71'
-#define PNL_CLR_SEG_TX   C'150,162,182'
-#define PNL_CLR_DONE_TX  C'26,16,2'
+//--- TV-white panel palette (2026-09-07 R-PANELS: all settings cards speak the
+//--- white-dialog language of the strip/dropdowns + TV dialogs). ONE primary:
+//--- navy C'38,44,56' (same as the dropdown selection pill); amber lives only
+//--- in the ring/strip icon art, never in panel chrome. Geometry untouched.
+#define PNL_CLR_TITLE    C'28,32,44'
+#define PNL_CLR_MUTED    C'120,130,148'
+#define PNL_CLR_LABEL    C'70,80,100'
+#define PNL_CLR_ACCENT   C'38,44,56'
+#define PNL_CLR_ACCENT_TX C'255,255,255'
+#define PNL_CLR_VALUE    C'28,32,44'
+#define PNL_CLR_TRACK_BD C'205,212,224'
+#define PNL_CLR_TRACK    C'228,233,242'
+#define PNL_CLR_SEG_ON   C'38,44,56'
+#define PNL_CLR_SEG_OFF  C'238,242,248'
+#define PNL_CLR_SEG_BD   C'205,212,224'
+#define PNL_CLR_SEG_TX   C'90,100,118'
+#define PNL_CLR_DONE_TX  C'255,255,255'
+#define PNL_CLR_LINE     C'228,233,242'   // row separators + light control borders
 #define PNL_KNOB_BMP     18
 
 // Row counts per settings panel. State lives in BiotakKit.mqh.
@@ -807,13 +825,13 @@ void PalDrawMixer(const int contY)
    PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, 9);
    ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,1601);
    ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
-   color trFill = trOk ? C'255,171,0' : C'70,78,92';
+   color trFill = trOk ? PNL_CLR_ACCENT : C'70,78,92';
    PnlSetRect(p+"mtg3", trackX, oy+2, trackW, 8, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"mtg3",OBJPROP_ZORDER,1601);
    int tkx = trackX + (int)MathRound((trOk ? ClampInt(tr,0,100) : 0) / 100.0 * (trackW-10));
    PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, tkx-trackX+10), 8, trFill);
    ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,1602);
-   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? C'230,200,120' : C'90,98,112', true);
+   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : C'90,98,112', true);
    ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,1603);
    PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, 9);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT);
@@ -833,9 +851,9 @@ void PalDrawMixer(const int contY)
    ObjectSetString(0,en,OBJPROP_TEXT,PalHexText(cur));
    ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
    ObjectSetInteger(0,en,OBJPROP_FONTSIZE,9);
-   ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
-   ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'10,14,22');
-   ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,C'60,70,90');
+        ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
+        ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
+        ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
    ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
    ObjectSetInteger(0,en,OBJPROP_ZORDER,1603);
    ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
@@ -849,9 +867,9 @@ void PalDraw()
    int px=g_PalX, py=g_PalY, w=PalW(), h=PalH();
    string p=g_UI.btnPrefix+"Pal_";
 
-   // card
-   PnlSetRect(p+"card", px, py, w, h, C'17,23,34');
-   ObjectSetInteger(0,p+"card",OBJPROP_BORDER_COLOR,C'60,70,90');
+   // card (TV-white like the settings cards — R-PANELMOD one uniform look)
+   PnlSetRect(p+"card", px, py, w, h, C'250,251,253');
+   ObjectSetInteger(0,p+"card",OBJPROP_BORDER_COLOR,C'212,218,228');
    ObjectSetInteger(0,p+"card",OBJPROP_ZORDER,1600);
 
    // header (names the LIVE target — the picked color goes there,
@@ -868,7 +886,7 @@ void PalDraw()
    color cur=PaletteKindColor(g_PalKind);
    int py0=py+PAL_HEAD;
    PnlSetRect(p+"cur", px+PAL_PAD, py0+5, 30, 18, cur);
-   ObjectSetInteger(0,p+"cur",OBJPROP_BORDER_COLOR,C'120,130,150');
+   ObjectSetInteger(0,p+"cur",OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
    ObjectSetInteger(0,p+"cur",OBJPROP_ZORDER,1601);
    PnlSetLabel(p+"curtx", px+PAL_PAD+36, py0+8, PalColorText(cur)+"  #"+PalHexText(cur), PNL_CLR_MUTED, 8);
    ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,1601);
@@ -904,7 +922,7 @@ void PalDraw()
          string n=p+"r"+IntegerToString(i);
          int sx=px+PAL_PAD+i*(PAL_QSW+PAL_QGAP);
          int sy=contY+18;
-         PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i], C'70,80,100', true);
+         PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i], PNL_CLR_LINE, true);
          ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
          ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
       }
@@ -925,7 +943,7 @@ void PalDraw()
             int sx=px+PAL_PAD+qi*(PAL_QSW+PAL_QGAP);
             int sy=gy0+qj*(PAL_QSW+PAL_QGAP);
             color sw=PalMatColor(mr,mc);
-            PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw, C'70,80,100', true);
+            PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw, PNL_CLR_LINE, true);
             ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
             ObjectSetString(0,n,OBJPROP_TOOLTIP, PalMatName(mr)+" "+PalShadeName(mc)+"  ("+PalColorText(sw)+")");
          }
@@ -2346,27 +2364,42 @@ void PnlSetBitmap(const string n,const int x,const int y,const int w,const int h
 //| [style ▾][width Npx ▾][padlock][trash][••• → full card 12].      |
 //| Pencil/bucket/T carry a LIVE color underline bar (TV's            |
 //| current-color underlines, a PnlSetRect recolored in BkMiniRefresh)|
-//| STYLE/WIDTH are dropdown selectors (white popover bk_dd.bmp with  |
-//| glyph + label rows, selected row = dark pill, TV-style); LOCK/    |
-//| trash act on the HELD box (g_BkMiniBox); the strip dismisses      |
+//| STYLE/WIDTH are dropdown selectors (white popovers bk_dds.bmp /   |
+//| bk_ddw.bmp, content-fitted widths, dark-pill selection, TV-style;|
+//| the ▾ chevron is the bk_chev.bmp bitmap — a text "▼" label renders|
+//| as "?" in MT4/Wine fonts); LOCK/trash act on the HELD box        |
+//| (g_BkMiniBox); the strip dismisses                               |
 //| TV-like via outside chart click / Esc. Same mirrors as card 12 —  |
 //| never duplicated. R-BKSTRIP 2026-09-07; TV-parity 2026-09-07.     |
 //+------------------------------------------------------------------+
 #define PNL_TB_ICON   24      // glyph size (OBJ_BITMAP_LABEL renders native)
 #define BK_TB_N       8       // strip slots (0..7)
-//--- dropdown popover geometry (bk_dd.bmp = 176x192 incl. baked shadow)
-#define BK_DD_W       176
+//--- dropdown popover geometry (content box + 8px baked shadow margin;
+//--- bk_dds.bmp = STYLE menu, bk_ddw.bmp = WIDTH menu — content-fitted
+//--- widths so the longest label ("Dash-Dot-Dot") never truncates)
 #define BK_DD_H       192
 #define BK_DD_ROWS    5
 #define BK_DD_PAD     10      // content inset inside the popover
 #define BK_DD_ROW_H   32
 #define BK_DD_WID     1       // g_BkDd: width dropdown
 #define BK_DD_STY     2       // g_BkDd: style dropdown
+#define BK_DD_WWID    120     // WIDTH menu content width (short "Npx" rows)
+#define BK_DD_WSTY    216     // STYLE menu content width (fits "Dash-Dot-Dot")
 #define BK_CLR_DD_TX   C'38,44,56'      // dark toolbar text/glyph color
 #define BK_CLR_DD_TXHI C'255,255,255'   // selected-row text
 #define BK_CLR_DD_SEL  C'38,44,56'      // selected-row pill (TV dark highlight)
+//--- dropdown Z-stack: every layer sits ABOVE the strip buttons (1541) but
+//--- the white backdrop must stay BEHIND its own rows (P-UI-06: a backdrop
+//--- Z above the labels buries the text/pill under the white card)
+#define BK_DD_Z_BG    1560    // white popover card
+#define BK_DD_Z_SEL   1566    // selected-row dark pill
+#define BK_DD_Z_LBL   1568    // row labels
+#define BK_DD_Z_ICO   1574    // row glyphs (top)
+#define BK_CHEV_SZ    16      // bk_chev.bmp glyph size (OBJ_BITMAP_LABEL native)
+#define BK_WTXT_X     16      // WIDTH "Npx" text offset inside its 74px slot (centered pair)
+#define BK_WTXT_W     22      // generous "Npx" width estimate (Arial Bold 8); chevron glues after
 static int  g_BkDd  = 0;      // 0 none · 1 WIDTH dropdown · 2 STYLE dropdown
-static int  g_BkDdX = 0, g_BkDdY = 0;
+static int  g_BkDdX = 0, g_BkDdY = 0, g_BkDdW = 0;   // popover rect (W set at open)
 
 int BkMiniStyleIdx()   // 0..4 = ILS index; native STYLE_* values are 1:1
 {
@@ -2400,8 +2433,11 @@ void BkMiniSlot(const int idx, int &x, int &y, int &w, int &h)
       case 0:  x = px + 8;   w = 36; break;   // pencil (border)
       case 1:  x = px + 48;  w = 36; break;   // bucket (fill)
       case 2:  x = px + 88;  w = 36; break;   // T (text)
-      case 3:  x = px + 128; w = 68; break;   // STYLE dropdown
-      case 4:  x = px + 200; w = 74; break;   // WIDTH dropdown
+       case 3:  x = px + 128; w = 68; break;   // STYLE dropdown (hit rect; chevron
+                                             // drawn glued to glyph, P-UI-07)
+       case 4:  x = px + 200; w = 74; break;   // WIDTH dropdown (hit rect; visual is
+                                             // centered "Npx" + glued chevron, P-UI-08 —
+                                             // TBwidth bitmap retired, delete kept as purge)
       case 5:  x = px + 278; w = 32; break;   // LOCK
       case 6:  x = px + 314; w = 32; break;   // DELETE
       default: x = px + 350; w = 24; break;   // MORE (full card)
@@ -2452,6 +2488,14 @@ string BkMiniDdStyleName(const int row)
    return "Line";
 }
 
+// Content width + skin of the open popover (STYLE is wide, WIDTH narrow).
+int BkDdCurW() { return (g_BkDd == BK_DD_WID ? BK_DD_WWID : BK_DD_WSTY); }
+string BkDdRes()
+{
+   if(g_BkDd == BK_DD_WID) return "::Files\\Icons\\bk_ddw.bmp";
+   return "::Files\\Icons\\bk_dds.bmp";
+}
+
 // --- dropdown popover (width / style selector) ---
 void BkDdClose()
 {
@@ -2470,17 +2514,18 @@ void BkDdOpen(const int type)
 {
    BkDdClose();
    g_BkDd = type;
+   g_BkDdW = BkDdCurW();
    int x, y, w, h;
    BkMiniSlot((type == BK_DD_WID) ? 4 : 3, x, y, w, h);
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
-   g_BkDdX = MathMax(4, MathMin(cw - BK_DD_W - 4, x + w / 2 - BK_DD_W / 2));
+   g_BkDdX = MathMax(4, MathMin(cw - g_BkDdW - 4, x + w / 2 - g_BkDdW / 2));
    g_BkDdY = y + h + 8;
    if(g_BkDdY + BK_DD_H > ch - 8) g_BkDdY = y - BK_DD_H - 8;   // flip above
    if(g_BkDdY < 4) g_BkDdY = 4;
    string hh = g_UI.btnPrefix + "Pnl13_";
-   PnlSetBitmap(hh + "TBdd", g_BkDdX - 8, g_BkDdY - 8, BK_DD_W + 16, BK_DD_H + 16,
-                "::Files\\Icons\\bk_dd.bmp", 1570);
+   PnlSetBitmap(hh + "TBdd", g_BkDdX - 8, g_BkDdY - 8, g_BkDdW + 16, BK_DD_H + 16,
+                BkDdRes(), BK_DD_Z_BG);
    for(int r = 0; r < BK_DD_ROWS; r++)
    {
       int ry = g_BkDdY + BK_DD_PAD + r * BK_DD_ROW_H;
@@ -2498,13 +2543,18 @@ void BkDdOpen(const int type)
          label = BkMiniDdStyleName(r);
          icon = "::Files\\Icons\\bk_style" + IntegerToString(r) + ".bmp";
       }
-      if(sel)   // selected row — dark pill, TV-style
-         PnlSetRect(hh + "DD" + IntegerToString(r) + "s", g_BkDdX + 6, ry + 2,
-                    BK_DD_W - 12, BK_DD_ROW_H - 6, BK_CLR_DD_SEL);
-      PnlSetBitmap(hh + "DD" + IntegerToString(r) + "i", g_BkDdX + 18, ry + 7, 16, 16,
-                   icon, 1574);
-      PnlSetLabel(hh + "DD" + IntegerToString(r) + "l", g_BkDdX + 46, ry + 10, label,
+      string sN = hh + "DD" + IntegerToString(r) + "s";
+      string iN = hh + "DD" + IntegerToString(r) + "i";
+      string lN = hh + "DD" + IntegerToString(r) + "l";
+      if(sel)   // selected row — dark pill, TV-style (above the backdrop)
+      {
+         PnlSetRect(sN, g_BkDdX + 6, ry + 2, g_BkDdW - 12, BK_DD_ROW_H - 6, BK_CLR_DD_SEL);
+         ObjectSetInteger(0, sN, OBJPROP_ZORDER, BK_DD_Z_SEL);
+      }
+      PnlSetBitmap(iN, g_BkDdX + 18, ry + 7, 16, 16, icon, BK_DD_Z_ICO);
+      PnlSetLabel(lN, g_BkDdX + 46, ry + 10, label,
                   sel ? BK_CLR_DD_TXHI : BK_CLR_DD_TX, 8);
+      ObjectSetInteger(0, lN, OBJPROP_ZORDER, BK_DD_Z_LBL);
    }
    ChartRedraw();
 }
@@ -2514,7 +2564,7 @@ void BkDdOpen(const int type)
 int BkDdHit(const int mx, const int my)
 {
    if(g_BkDd == 0) return -1;
-   if(mx < g_BkDdX || mx > g_BkDdX + BK_DD_W || my < g_BkDdY || my > g_BkDdY + BK_DD_H)
+   if(mx < g_BkDdX || mx > g_BkDdX + g_BkDdW || my < g_BkDdY || my > g_BkDdY + BK_DD_H)
       return -1;
    int row = (my - (g_BkDdY + BK_DD_PAD)) / BK_DD_ROW_H;
    if(row >= 0 && row < BK_DD_ROWS)
@@ -2545,6 +2595,7 @@ void BkMiniRefresh()
          string res = BkMiniIconRes(i);
          ObjectSetString(0, nm, OBJPROP_BMPFILE, 0, res);
          ObjectSetString(0, nm, OBJPROP_BMPFILE, 1, res);
+      if(i != 4)   // WIDTH tooltips live on TBwlabel + TBchev2 (set below)
          ObjectSetString(0, nm, OBJPROP_TOOLTIP, BkMiniSlotTip(i));
       }
    }
@@ -2569,7 +2620,7 @@ bool BkMiniStripPointInside(const int mx, const int my)
    if(g_PnlOpen != 13) return false;
    if(mx >= g_PnlX[13] - 4 && mx <= g_PnlX[13] + PNL_TB_W + 4 &&
       my >= g_PnlY[13] - 4 && my <= g_PnlY[13] + PNL_TB_H + 4) return true;
-   if(g_BkDd != 0 && mx >= g_BkDdX && mx <= g_BkDdX + BK_DD_W &&
+   if(g_BkDd != 0 && mx >= g_BkDdX && mx <= g_BkDdX + g_BkDdW &&
       my >= g_BkDdY && my <= g_BkDdY + BK_DD_H) return true;
    if(g_PalOpen && mx >= g_PalX && mx <= g_PalX + PalW() &&
       my >= g_PalY && my <= g_PalY + PalH()) return true;
@@ -2596,14 +2647,28 @@ void BkMiniStripCreate()
       int sx, sy, sw, sh;
       BkMiniSlot(i, sx, sy, sw, sh);
       string nm = BkMiniBtn(BkMiniSlotName(i));
-      if(i == 3 || i == 4)   // selector buttons: glyph left, chevron right
-      {
-         int ix = sx + 6;
-         int iy = sy + (sh - PNL_TB_ICON) / 2 - 2;
-         PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), 1541);
-         PnlSetLabel(BkMiniBtn((i == 3) ? "TBchev1" : "TBchev2"),
-                     sx + sw - 13, sy + 11, "▼", BK_CLR_DD_TX, 7);
-      }
+       if(i == 3)   // STYLE selector: sample glyph + chevron glued to it
+       {              // (bitmap chevron — a text "▼" renders as "?" in MT4;
+                      //  P-UI-07: a right-aligned chevron floats 21px off its glyph
+                      //  and reads as a separate item — it must sit 4px right of
+                      //  the glyph so the pair reads as ONE control)
+          int ix = sx + 6;
+          int iy = sy + (sh - PNL_TB_ICON) / 2 - 2;
+          PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), 1541);
+          PnlSetBitmap(BkMiniBtn("TBchev1"), ix + PNL_TB_ICON + 4,
+                       sy + (sh - BK_CHEV_SZ) / 2,
+                       BK_CHEV_SZ, BK_CHEV_SZ,
+                       "::Files\\Icons\\bk_chev.bmp", 1542);
+       }
+       else if(i == 4)   // WIDTH selector: "Npx" text + chevron glued to it (P-UI-08:
+       {                 // the sample glyph read like a stray "H" next to the text,
+                         // so three bits looked like three items — the closed control
+                         // is text-only now; samples live in the dropdown rows)
+          PnlSetBitmap(BkMiniBtn("TBchev2"), sx + BK_WTXT_X + BK_WTXT_W + 4,
+                       sy + (sh - BK_CHEV_SZ) / 2,
+                       BK_CHEV_SZ, BK_CHEV_SZ,
+                       "::Files\\Icons\\bk_chev.bmp", 1542);
+       }
       else
       {
          int ix = sx + (sw - PNL_TB_ICON) / 2;
@@ -2619,11 +2684,13 @@ void BkMiniStripCreate()
          PnlSetRect(BkMiniBtn("TBbar" + IntegerToString(i)), bx, by, PNL_TB_ICON, 3, bc);
       }
    }
-   // width button text label "Npx" next to its glyph (TV style)
+   // WIDTH "Npx" text — centered pair with its chevron (P-UI-08, text-only control)
    int wx, wy, ww, wh;
    BkMiniSlot(4, wx, wy, ww, wh);
-   PnlSetLabel(BkMiniBtn("TBwlabel"), wx + 36, wy + 13, "1px", BK_CLR_DD_TX, 8);
+   PnlSetLabel(BkMiniBtn("TBwlabel"), wx + BK_WTXT_X, wy + 13, "1px", BK_CLR_DD_TX, 8);
    ObjectSetString(0, BkMiniBtn("TBwlabel"), OBJPROP_FONT, "Arial Bold");
+   ObjectSetString(0, BkMiniBtn("TBwlabel"), OBJPROP_TOOLTIP, BkMiniSlotTip(4));
+   ObjectSetString(0, BkMiniBtn("TBchev2"), OBJPROP_TOOLTIP, BkMiniSlotTip(4));
    BkMiniRefresh();
 }
 
@@ -2757,9 +2824,67 @@ int PnlSliderKnobX(const int item,const int row,const double val,
 }
 
 //+------------------------------------------------------------------+
-//| Create row widgets — v2 layout                                    |
-//|   line 1: small-caps LABEL left · live VALUE right (amber bold)   |
-//|   line 2: [-] track [+]  ·  pill toggle  ·  segmented control     |
+//| Generic dropdown-select helpers (kind=2 rows, 4+ options)         |
+//| Rendering rule: TAB rows (9,0)/(12,0) → underline tabs; 4+ option |
+//| rows → dropdown select; 2-3 options → segmented pills. Engine     |
+//| (open/hit) lives after PnlOpen — MQL4 needs define-before-use.    |
+//+------------------------------------------------------------------+
+static int g_PnlDdItem = -1, g_PnlDdRow = -1;
+static int g_PnlDdX = 0, g_PnlDdY = 0, g_PnlDdW = 0, g_PnlDdH = 0, g_PnlDdN = 0;
+
+bool IsTabRow(const int item,const int row)
+{
+   return ((item==12 || item==9) && row==0);
+}
+bool IsDdRow(const int item,const int row)
+{
+   int kind; string label,unit,opts; int minV,maxV; double step;
+   PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
+   if(kind!=2 || IsTabRow(item,row)) return false;
+   string arr[]; int cnt=PnlSplit(opts,arr,12);
+   return (cnt>=4);
+}
+// Closed select-button rect (shared by draw + press hit-test + update).
+void PnlDdRect(const int item,const int row,int &x,int &y,int &w,int &h)
+{
+   int kind; string label,unit,opts; int minV,maxV; double step;
+   PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
+   string arr[]; int cnt=PnlSplit(opts,arr,12);
+   int maxLen=0;
+   for(int i=0;i<cnt;i++) maxLen=MathMax(maxLen,StringLen(arr[i]));
+   w=MathMax(104,MathMin(190,maxLen*7+54));
+   int px=g_PnlX[item], py=g_PnlY[item];
+   x=px+PNL_WEL-PNL_PAD_X-w;
+   y=py+PNL_HEAD_H+row*PNL_ROW_H+PNL_CTL_Y;
+   h=PNL_CTL_H;
+}
+string PnlDdOptText(const int item,const int row)
+{
+   int kind; string label,unit,opts; int minV,maxV; double step;
+   PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
+   string arr[]; int cnt=PnlSplit(opts,arr,12);
+   if(cnt<=0) return "";
+   int idx=ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
+   return arr[idx];
+}
+void PnlDdClose()
+{
+   if(g_PnlDdItem<0) return;
+   for(int r=0;r<12;r++)
+   {
+      ObjectDelete(0,PnlHead(g_PnlDdItem,"PDDR"+IntegerToString(r)+"s"));
+      ObjectDelete(0,PnlHead(g_PnlDdItem,"PDDR"+IntegerToString(r)+"l"));
+   }
+   ObjectDelete(0,PnlHead(g_PnlDdItem,"PDDBG"));
+   ObjectDelete(0,PnlHead(g_PnlDdItem,"PDDSH"));
+   g_PnlDdItem=-1; g_PnlDdRow=-1;
+}
+
+//+------------------------------------------------------------------+
+//| Create row widgets — TV-modern single-line layout (R-PANELMOD)    |
+//|   label left · control right on ONE line (checkbox / select /     |
+//|   pills / tabs / swatches); sliders keep a compact second line    |
+//|   (label+value above, full-width track below, no steppers).       |
 //+------------------------------------------------------------------+
 void PnlCreateRow(const int item,const int row,const int px,const int py)
 {
@@ -2768,60 +2893,95 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
    double val=PnlCurrent(item,row);
    int ry=py+PNL_HEAD_H+row*PNL_ROW_H;
 
-   PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X, ry+7, label, PNL_CLR_LABEL, 8);
+   PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X, ry+PNL_LBL_Y, label, PNL_CLR_LABEL, 8);
 
-   if(kind==1)   // ── Pill toggle ──
+   if(kind==1)   // ── TV checkbox (left) + label ──
    {
       bool on=(val>0.5);
-      int swX = px + PNL_WEL - PNL_PAD_X - PNL_SW_W;
-      int swY = ry + 13;
-      PnlSetBitmap(PnlName(item,row,"SWB"), swX, swY, PNL_SW_W, PNL_SW_H,
-                   on ? "::Files\\Icons\\pnl_sw_on.bmp" : "::Files\\Icons\\pnl_sw_off.bmp", 1506);
-      int kx = on ? (swX + PNL_SW_W - PNL_KNOB_W - 3) : (swX + 3);
-      PnlSetBitmap(PnlName(item,row,"SWK"), kx, swY + 3, PNL_KNOB_W, PNL_KNOB_W,
-                   "::Files\\Icons\\pnl_swknob.bmp", 1508);
-      // No overlay button: presses on the switch are handled by coordinates
-      // in PnlHandleMouseMove — MT4 paints OBJ_BUTTON faces over the skins.
+      int cbX = px + PNL_PAD_X;
+      int cbY = ry + PNL_CB_Y;
+      PnlSetBitmap(PnlName(item,row,"SWB"), cbX, cbY, PNL_CB_SZ, PNL_CB_SZ,
+                   on ? "::Files\\Icons\\pnl_cb_on.bmp" : "::Files\\Icons\\pnl_cb_off.bmp", 1506);
+      // ("SWK" knob retired — its PnlDestroy delete stays as purge.)
+      // Label slides right of the box (drawn at px+PAD_X above for all kinds).
+      ObjectSetInteger(0,PnlName(item,row,"L"),OBJPROP_XDISTANCE,cbX+PNL_CB_SZ+8);
+      // No overlay button: presses on the box are handled by coordinates
+      // in PnlSwitchHit — MT4 paints OBJ_BUTTON faces over the skins.
    }
-   else if(kind==4)   // ── Color row: preview + quick swatches + PICK ──
-   {
+   else if(kind==4)   // ── Color row, single line: preview + quick swatches ──
+   {                   // (PICK retired — the preview tap opens the full popup,
+                       //  same as before; its destroy/click code stays as purge)
       color cc=PnlRowColor(item,row);
-      int cy2=ry+22;
+      int cy2=ry+PNL_CTL_Y-1;
       int cxx=px+PNL_PAD_X;
-      // current-color preview (tap = full popup, same as PICK)
-      PnlSetButton(PnlName(item,row,"CB"), cxx, cy2, PNL_QSW_PREV, 22, "", cc, C'60,70,90', true);
+      // current-color preview (tap = full popup)
+      PnlSetButton(PnlName(item,row,"CB"), cxx, cy2, PNL_QSW_PREV, 22, "", cc, PNL_CLR_LINE, true);
       int qx=cxx+PNL_QSW_PREV+PNL_QSW_OGAP;
       for(int qi=0; qi<PNL_QSW_N; qi++)
       {
          color qc=QuickPalColor(qi);
          string qn=PnlName(item,row,"Q"+IntegerToString(qi));
          PnlSetButton(qn, qx+qi*(PNL_QSW_W+PNL_QSW_GAP), cy2, PNL_QSW_W, 22, "",
-                      qc, (qc==cc) ? PNL_CLR_ACCENT : C'70,80,100', true);
+                      qc, (qc==cc) ? PNL_CLR_ACCENT : PNL_CLR_LINE, true);
       }
-      int pkx=qx+PNL_QSW_N*PNL_QSW_W+(PNL_QSW_N-1)*PNL_QSW_GAP+PNL_QSW_OGAP;
-      int pkw=px+PNL_WEL-PNL_PAD_X-pkx;
-      string pk=PnlName(item,row,"PK");
-      PnlSetButton(pk, pkx, cy2, pkw, 22, "PICK >", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-      ObjectSetInteger(0,pk,OBJPROP_COLOR,PNL_CLR_SEG_TX);
-      ObjectSetInteger(0,pk,OBJPROP_FONTSIZE,8);
    }
-   else if(kind==2)   // ── Segmented selector ──
+   else if(kind==2)   // ── TAB underline / dropdown select / pills ──
    {
       string arr[];
       int cnt=PnlSplit(opts, arr, 12);
-      int segY=ry+25;
-      int gap=4;
-      int segW=(PNL_WEL-2*PNL_PAD_X - (cnt-1)*gap)/cnt;
-
-      for(int i=0;i<cnt;i++)
+      if(IsTabRow(item,row))   // TV underline tabs (card 9 STEP MODE, card 12 TAB)
       {
-         string seg=PnlName(item,row,"C"+IntegerToString(i));
-         bool isAct=PnlSegOn(item,row,i,val);
-         PnlSetButton(seg, px+PNL_PAD_X + i*(segW+gap), segY, segW, 20, arr[i],
-                      isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_OFF,
-                      isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_BD, true);
-         ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT_TX : PNL_CLR_SEG_TX);
-         ObjectSetInteger(0,seg,OBJPROP_FONTSIZE,8);
+         int gap=4;
+         int segW=(PNL_WEL-2*PNL_PAD_X - (cnt-1)*gap)/cnt;
+         for(int i=0;i<cnt;i++)
+         {
+            string seg=PnlName(item,row,"C"+IntegerToString(i));
+            bool isAct=PnlSegOn(item,row,i,val);
+            int sex=px+PNL_PAD_X + i*(segW+gap);
+            // invisible button (white face) — text only, like TV tabs
+            PnlSetButton(seg, sex, ry+PNL_CTL_Y, segW, PNL_CTL_H, arr[i],
+                         C'250,251,253', C'250,251,253', true);
+            ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT : PNL_CLR_SEG_TX);
+            ObjectSetInteger(0,seg,OBJPROP_FONTSIZE,8);
+            ObjectSetString(0,seg,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+            if(isAct)   // navy underline under the active tab
+            {
+               PnlSetRect(PnlName(item,row,"TU"), sex+8, ry+PNL_CTL_Y+PNL_CTL_H-4,
+                          segW-16, 3, PNL_CLR_ACCENT);
+               ObjectSetInteger(0,PnlName(item,row,"TU"),OBJPROP_ZORDER,1542);
+            }
+         }
+      }
+      else if(cnt>=4)   // TV dropdown select (button + value + chevron)
+      {
+         int dx,dy,dw,dh;
+         PnlDdRect(item,row,dx,dy,dw,dh);
+         PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, dh, "",
+                      C'255,255,255', PNL_CLR_SEG_BD, true);
+         PnlSetLabel(PnlName(item,row,"DDT"), dx+10, dy+6, PnlDdOptText(item,row),
+                     PNL_CLR_TITLE, 8);
+         ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,"Arial Bold");
+         ObjectSetInteger(0,PnlName(item,row,"DDT"),OBJPROP_ZORDER,1568);
+         PnlSetBitmap(PnlName(item,row,"DDC"), dx+dw-22, dy+(dh-BK_CHEV_SZ)/2,
+                      BK_CHEV_SZ, BK_CHEV_SZ, "::Files\\Icons\\bk_chev.bmp", 1574);
+         ObjectSetString(0,PnlName(item,row,"DD"),OBJPROP_TOOLTIP,label);
+      }
+      else   // ── Segmented pills (2-3 options) ──
+      {
+         int segY=ry+PNL_CTL_Y+1;
+         int gap=4;
+         int segW=(PNL_WEL-2*PNL_PAD_X - (cnt-1)*gap)/cnt;
+
+         for(int i=0;i<cnt;i++)
+         {
+            string seg=PnlName(item,row,"C"+IntegerToString(i));
+            bool isAct=PnlSegOn(item,row,i,val);
+            PnlSetButton(seg, px+PNL_PAD_X + i*(segW+gap), segY, segW, 22, arr[i],
+                         isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_OFF,
+                         isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_BD, true);
+            ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT_TX : PNL_CLR_SEG_TX);
+            ObjectSetInteger(0,seg,OBJPROP_FONTSIZE,8);
+         }
       }
    }
      else if(kind==5)   // ── NAV row → opens another settings card ──
@@ -2829,10 +2989,10 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
         string navTxt = (opts=="1") ? "◄  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  ►";
         if(opts=="12") navTxt = "•••  ALL SETTINGS  ►";   // mini → full Base Box card
         if(opts=="DEL") navTxt = "✕  DELETE THIS BOX";    // mini ACTION → delete held box
-        PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+22,
-                    PNL_WEL-2*PNL_PAD_X, 22,
-                    navTxt, PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-       ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_COLOR,PNL_CLR_ACCENT_TX);
+         PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+PNL_CTL_Y+1,
+                     PNL_WEL-2*PNL_PAD_X, 22,
+                     navTxt, PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+        ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_COLOR,PNL_CLR_SEG_TX);
        ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_FONTSIZE,8);
     }
     else if(kind==6)   // ── TEXT edit field (TV "Add text"): OBJ_EDIT, MT4's one
@@ -2844,52 +3004,46 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        if(ObjectFind(0,en)<0) ObjectCreate(0,en,OBJ_EDIT,0,0,0);
        ObjectSetInteger(0,en,OBJPROP_CORNER,CORNER_LEFT_UPPER);
        ObjectSetInteger(0,en,OBJPROP_XDISTANCE,px+PNL_PAD_X);
-       ObjectSetInteger(0,en,OBJPROP_YDISTANCE,ry+22);
+       ObjectSetInteger(0,en,OBJPROP_YDISTANCE,ry+16);
        ObjectSetInteger(0,en,OBJPROP_XSIZE,PNL_WEL-2*PNL_PAD_X);
        ObjectSetInteger(0,en,OBJPROP_YSIZE,22);
        ObjectSetString(0,en,OBJPROP_TEXT,cur);
        ObjectSetString(0,en,OBJPROP_FONT,"Arial");
        ObjectSetInteger(0,en,OBJPROP_FONTSIZE,9);
        ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
-       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'10,14,22');
-       ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,C'60,70,90');
+       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
+       ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
        ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_LEFT);
        ObjectSetInteger(0,en,OBJPROP_ZORDER,1508);
        ObjectSetInteger(0,en,OBJPROP_SELECTABLE,false);
        ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
        ObjectSetString(0,en,OBJPROP_TOOLTIP,"Type the box text — ENTER applies (empty clears)");
+       // label rides above the field in the tight 42px row
+       ObjectSetInteger(0,PnlName(item,row,"L"),OBJPROP_YDISTANCE,ry+2);
     }
-   else   // ── Stepper slider: [-] ═══●═══ [+] ──
-   {
-      // live value, right-aligned under nothing — same line as the label
+   else   // ── Modern slider: label+value share one line, full-width track ──
+   {           // (steppers retired — knob drag + track jump stay coordinate-based)
+      // live value, right-aligned on the label line
       string vl=PnlName(item,row,"V");
-      PnlSetLabel(vl, px+PNL_WEL-PNL_PAD_X, ry+5, PnlFormat(item,row,val), PNL_CLR_VALUE, 10);
+      PnlSetLabel(vl, px+PNL_WEL-PNL_PAD_X, ry+4, PnlFormat(item,row,val), PNL_CLR_VALUE, 10);
       ObjectSetString(0,vl,OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,vl,OBJPROP_ANCHOR,ANCHOR_RIGHT);
 
       int trackX=px+PNL_TRACK_X;
       int trackW=PNL_TRACK_W;
-      int trackY=ry+29;
+      int trackY=ry+PNL_TRK_Y;
 
-      PnlSetRect(PnlName(item,row,"T"),  trackX-1, trackY-1, trackW+2, 10, PNL_CLR_TRACK_BD);
-      PnlSetRect(PnlName(item,row,"TG"), trackX, trackY, trackW, 8, PNL_CLR_TRACK);
-      PnlSetRect(PnlName(item,row,"TF"), trackX, trackY, trackW, 8, PNL_CLR_ACCENT);
+      PnlSetRect(PnlName(item,row,"T"),  trackX, trackY-1, trackW, PNL_TRK_H+2, PNL_CLR_TRACK_BD);
+      PnlSetRect(PnlName(item,row,"TG"), trackX+1, trackY, trackW-2, PNL_TRK_H, PNL_CLR_TRACK);
+      PnlSetRect(PnlName(item,row,"TF"), trackX+1, trackY, trackW-2, PNL_TRK_H, PNL_CLR_ACCENT);
 
       int knobX=PnlSliderKnobX(item,row,val,minV,maxV);
       ObjectSetInteger(0,PnlName(item,row,"TF"),OBJPROP_XSIZE,
-                       MathMax(0,knobX+PNL_KNOB_W/2-trackX));
+                       MathMax(0,knobX+PNL_KNOB_W/2-(trackX+1)));
 
-      PnlSetBitmap(PnlName(item,row,"KB"), knobX, trackY-5, PNL_KNOB_W, PNL_KNOB_W,
-                   "::Files\\Icons\\pnl_knob.bmp", 1512);
-
-      // steppers flank the track
-      PnlSetButton(PnlName(item,row,"MNS"), px+PNL_PAD_X, ry+22, PNL_STEP_W, PNL_STEP_W, "-",
-                   PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-      PnlSetButton(PnlName(item,row,"PLS"), px+PNL_WEL-PNL_PAD_X-PNL_STEP_W, ry+22,
-                   PNL_STEP_W, PNL_STEP_W, "+", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-
-      // Knob drag + track jump are coordinate-based (PnlHandleMouseMove):
-      // invisible OBJ_BUTTON hit-areas painted opaque faces over the fill.
+      PnlSetBitmap(PnlName(item,row,"KB"), knobX, trackY+PNL_TRK_H/2-PNL_KNOB_W/2,
+                   PNL_KNOB_W, PNL_KNOB_W, "::Files\\Icons\\pnl_knob.bmp", 1512);
+      // ("MNS"/"PLS" steppers retired — handlers + destroy deletes stay as purge.)
    }
 }
 
@@ -2933,41 +3087,17 @@ void PnlCreate(const int item)
    PnlSetBitmap(PnlHead(item,"card"), px-PNL_MARGIN, py-PNL_MARGIN,
                 PNL_WEL+2*PNL_MARGIN, ph+2*PNL_MARGIN, cardRes, 1480);
 
-   // ── Header: icon chip · title · subtitle · close ──
-   string tres=::CircCardIcon(item,true);   // per-card glyph (matches this card's content)
-   PnlSetBitmap(PnlHead(item,"ticon"), px+PNL_PAD_X, py+18, 20, 20, tres, 1505);
+    // ── Header (TV-minimal: title + X only). The icon chip, subtitle and the
+    //    palette "P" shortcut are retired (PICK on COLOR rows opens the palette;
+    //    their PnlDestroy deletes stay as purge). R-PANELS 2026-09-07.
+    string head=PnlHead(item,"head");
+    PnlSetLabel(head, px+PNL_PAD_X, py+14, PnlTitleText(item), PNL_CLR_TITLE, 12);
+    ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
 
-   string head=PnlHead(item,"head");
-   PnlSetLabel(head, px+PNL_PAD_X+28, py+11, PnlTitleText(item), PNL_CLR_TITLE, 11);
-   ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
-   PnlSetLabel(PnlHead(item,"sub"), px+PNL_PAD_X+28, py+32, PnlSubtitleText(item), PNL_CLR_MUTED, 8);
-
-   PnlSetButton(PnlHead(item,"close"), px+PNL_WEL-40, py+15,
-                24, 24, "·", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-   ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_COLOR,PNL_CLR_MUTED);
-   ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_FONTSIZE,14);
-
-    // palette picker button (panels with a COLOR row) → full palette popup
-    int probeRow=-1;
-    if(item==0)      probeRow=1;   // Trigger COLOR
-    else if(item==5) probeRow=5;   // TH3 COLOR
-    else if(item==6) probeRow=3;   // HTF Bull COLOR
-    else if(item==7) probeRow=5;   // Lines COLOR
-    else if(item==8) probeRow=1;   // Custom Price COLOR
-    else if(item==9 && (int)g_stepCalculationMode==3) probeRow=7;   // Step card Factor COLOR
-     else if(item==10) probeRow=6;  // Factor COLOR
-     else if(item==12) probeRow=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 6 : 2));   // open tab's first COLOR
-     else if(item==13) probeRow=0;  // Mini BORDER COLOR
-    // item==1 (Zones) has no COLOR row — lines live on the Lines card.
-   int ckind=(probeRow>=0) ? PnlColorKind(item, probeRow) : -1;
-   if(ckind>=0)
-   {
-      PnlSetButton(PnlHead(item,"pal"), px+PNL_WEL-68, py+15, 24, 24, "P",
-                   PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-      ObjectSetInteger(0,PnlHead(item,"pal"),OBJPROP_COLOR,PNL_CLR_ACCENT);
-      ObjectSetInteger(0,PnlHead(item,"pal"),OBJPROP_FONTSIZE,11);
-      ObjectSetString(0,PnlHead(item,"pal"),OBJPROP_TOOLTIP,"Open color palette");
-   }
+    PnlSetButton(PnlHead(item,"close"), px+PNL_WEL-40, py+15,
+                 24, 24, "×", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+    ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_COLOR,PNL_CLR_LABEL);
+    ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_FONTSIZE,12);
 
    // ── Rows ──
    for(int r=0;r<rowsCount;r++)
@@ -2975,7 +3105,7 @@ void PnlCreate(const int item)
       if(r>0)
       {
          string sep=PnlName(item,r,"RS");
-         PnlSetRect(sep, px+PNL_PAD_X, py+PNL_HEAD_H+r*PNL_ROW_H, PNL_WEL-2*PNL_PAD_X, 1, C'30,39,54');
+          PnlSetRect(sep, px+PNL_PAD_X, py+PNL_HEAD_H+r*PNL_ROW_H, PNL_WEL-2*PNL_PAD_X, 1, PNL_CLR_LINE);
          ObjectSetInteger(0,sep,OBJPROP_ZORDER,1490);
       }
       PnlCreateRow(item,r,px,py);
@@ -3020,7 +3150,12 @@ void PnlDestroy(const int item)
       for(int q=0;q<PNL_QSW_N;q++)   // quick-pick swatches
          ObjectDelete(0,head+rr+"_Q"+IntegerToString(q));
       ObjectDelete(0,head+rr+"_NAV");
+      ObjectDelete(0,head+rr+"_TU");    // tab underline (IsTabRow rows)
+      ObjectDelete(0,head+rr+"_DD");    // dropdown select button
+      ObjectDelete(0,head+rr+"_DDT");   // dropdown value label
+      ObjectDelete(0,head+rr+"_DDC");   // dropdown chevron
    }
+   PnlDdClose();   // open select popover (PDDBG/PDDSH/PDDR*) belongs to no row
    ObjectDelete(0,head+"card");
    ObjectDelete(0,head+"ticon");
    ObjectDelete(0,head+"head");
@@ -3207,6 +3342,86 @@ bool PnlPointInside(const int mx,const int my)
       my >= g_PalY && my <= g_PalY+PalH())
       return true;
    return false;
+}
+
+//+------------------------------------------------------------------+
+//| Generic dropdown-select engine (TV popover language)              |
+//| One open at a time; content-fitted width; dark-pill selection.    |
+//| Selecting applies through PnlApplyOption — the same path as a     |
+//| segment tap (full card rebuild, reshape-safe like TAB switches).  |
+//+------------------------------------------------------------------+
+void PnlDdOpen(const int item,const int row)
+{
+   PnlDdClose();
+   int kind; string label,unit,opts; int minV,maxV; double step;
+   PnlRowDef(item,row,kind,label,minV,maxV,step,unit,opts);
+   string arr[]; int cnt=PnlSplit(opts,arr,12);
+   if(cnt<=0) return;
+   int maxLen=0;
+   for(int i=0;i<cnt;i++) maxLen=MathMax(maxLen,StringLen(arr[i]));
+   int bw=MathMax(120,MathMin(264,maxLen*7+40));
+   int ax,ay,aw,ah; PnlDdRect(item,row,ax,ay,aw,ah);
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0); if(cw<=0) cw=1920;
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0); if(ch<=0) ch=1080;
+   int ph=cnt*PNL_DD_ROW_H+2*PNL_DD_PAD;
+   int bx=ax+aw-bw;                        // right-align under the button
+   bx=MathMax(4,MathMin(cw-bw-4,bx));
+   int by=ay+ah+6;
+   if(by+ph>ch-8) by=ay-6-ph;              // flip above without room
+   if(by<4) by=4;
+   g_PnlDdItem=item; g_PnlDdRow=row;
+   g_PnlDdX=bx; g_PnlDdY=by; g_PnlDdW=bw; g_PnlDdH=ph; g_PnlDdN=cnt;
+   string hh=PnlHead(item,"");
+   PnlSetRect(hh+"PDDSH",bx+3,by+4,bw,ph,C'225,230,240');
+   ObjectSetInteger(0,hh+"PDDSH",OBJPROP_ZORDER,PNL_DD_Z_SH);
+   PnlSetRect(hh+"PDDBG",bx,by,bw,ph,C'255,255,255');
+   ObjectSetInteger(0,hh+"PDDBG",OBJPROP_BORDER_COLOR,PNL_CLR_SEG_BD);
+   ObjectSetInteger(0,hh+"PDDBG",OBJPROP_ZORDER,PNL_DD_Z_BG);
+   int cur=ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
+   for(int r=0;r<cnt;r++)
+   {
+      int ryy=by+PNL_DD_PAD+r*PNL_DD_ROW_H;
+      if(r==cur)
+      {
+         PnlSetRect(hh+"PDDR"+IntegerToString(r)+"s",bx+6,ryy+1,bw-12,PNL_DD_ROW_H-2,PNL_CLR_ACCENT);
+         ObjectSetInteger(0,hh+"PDDR"+IntegerToString(r)+"s",OBJPROP_ZORDER,PNL_DD_Z_SEL);
+      }
+      PnlSetLabel(hh+"PDDR"+IntegerToString(r)+"l",bx+16,ryy+7,arr[r],
+                  (r==cur)?C'255,255,255':PNL_CLR_LABEL,8);
+      ObjectSetInteger(0,hh+"PDDR"+IntegerToString(r)+"l",OBJPROP_ZORDER,PNL_DD_Z_LBL);
+   }
+   ChartRedraw();
+}
+// -1 = outside (closed, press falls through); else refresh flags (consumed).
+int PnlDdHit(const int mx,const int my)
+{
+   if(g_PnlDdItem<0) return -1;
+   if(mx<g_PnlDdX || mx>g_PnlDdX+g_PnlDdW || my<g_PnlDdY || my>g_PnlDdY+g_PnlDdH)
+   { PnlDdClose(); return -1; }
+   int idx=ClampInt((my-(g_PnlDdY+PNL_DD_PAD))/PNL_DD_ROW_H,0,MathMax(0,g_PnlDdN-1));
+   int item=g_PnlDdItem, row=g_PnlDdRow;
+   return PnlApplyOption(item,row,idx);
+}
+bool PnlDdAnchorHit(const int mx,const int my,int &item,int &row)
+{
+   item=-1; row=-1;
+   if(g_PnlOpen<0 || g_PnlOpen==13) return false;
+   int rowsCount=PnlRowsCount(g_PnlOpen);
+   for(int r=0;r<rowsCount;r++)
+   {
+      if(!IsDdRow(g_PnlOpen,r)) continue;
+      int x,y,w,h; PnlDdRect(g_PnlOpen,r,x,y,w,h);
+      if(mx>=x && mx<=x+w && my>=y && my<=y+h) { item=g_PnlOpen; row=r; return true; }
+   }
+   return false;
+}
+// Shared option-apply: segment taps and dropdown picks behave identically.
+int PnlApplyOption(const int item,const int row,const int idx)
+{
+   int flags=PnlApply(item,row,(double)idx);
+   PnlDdClose();      // popover gone before the rebuild (destroy also covers)
+   PnlOpen(item);     // full rebuild — reshape-safe like TAB switches
+   return flags;
 }
 
 //+------------------------------------------------------------------+
@@ -3491,10 +3706,10 @@ bool PnlKnobHit(const int mx,const int my,int &item,int &row)
       if(kind!=0) continue;
       double val=PnlCurrent(g_PnlOpen,r);
       int knobX=PnlSliderKnobX(g_PnlOpen,r,val,minV,maxV);      // absolute X
-      int knobY=py+PNL_HEAD_H+r*PNL_ROW_H+29-PNL_KNOB_W/2;      // track center
-      // generous grab zone: knob ±half width sideways, ±10px vertically
+      int knobY=py+PNL_HEAD_H+r*PNL_ROW_H+21;                   // knob top (42px row)
+      // generous grab zone: knob ±half width sideways, tight vertically
       if(mx >= knobX-PNL_KNOB_W/2 && mx <= knobX+PNL_KNOB_W+PNL_KNOB_W/2 &&
-         my >= knobY-10 && my <= knobY+PNL_KNOB_W+10)
+         my >= knobY-4 && my <= knobY+PNL_KNOB_W+2)
       {
          item=g_PnlOpen; row=r;
          return true;
@@ -3516,9 +3731,9 @@ bool PnlTrackHit(const int mx,const int my,int &item,int &row)
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
       if(kind!=0) continue;
       int trackX=px+PNL_TRACK_X;
-      int trackY=py+PNL_HEAD_H+r*PNL_ROW_H+29;
+      int trackY=py+PNL_HEAD_H+r*PNL_ROW_H+PNL_TRK_Y;
       if(mx >= trackX && mx <= trackX+PNL_TRACK_W &&
-         my >= trackY-8 && my <= trackY+16)
+         my >= trackY-8 && my <= trackY+PNL_TRK_H+5)
       {
          item=g_PnlOpen; row=r;
          return true;
@@ -3527,7 +3742,7 @@ bool PnlTrackHit(const int mx,const int my,int &item,int &row)
    return false;
 }
 
-//--- toggle switch rect (absolute px): press = flip instantly
+//--- TV checkbox rect (absolute px): press = flip instantly
 bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
 {
    item=-1; row=-1;
@@ -3539,10 +3754,10 @@ bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
       int kind; string label,unit,opts; int minV,maxV; double step;
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
       if(kind!=1) continue;
-      int swX=px+PNL_WEL-PNL_PAD_X-PNL_SW_W;
-      int swY=py+PNL_HEAD_H+r*PNL_ROW_H+13;
-      if(mx >= swX-5 && mx <= swX+PNL_SW_W+5 &&
-         my >= swY-5 && my <= swY+PNL_SW_H+5)
+      int cbX=px+PNL_PAD_X;
+      int cbY=py+PNL_HEAD_H+r*PNL_ROW_H+PNL_CB_Y;
+      if(mx >= cbX-5 && mx <= cbX+PNL_CB_SZ+5 &&
+         my >= cbY-5 && my <= cbY+PNL_CB_SZ+5)
       {
          item=g_PnlOpen; row=r;
          return true;
@@ -3657,6 +3872,25 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       }
 
       int it,r;
+      // open select-dropdown owns the next press (option = apply, outside = close)
+      if(g_PnlDdItem>=0)
+      {
+         int df=PnlDdHit(mx,my);
+         if(df!=-1)
+         {
+            UISuppressNextClick();
+            if(df!=REFRESH_NONE) RefreshDisplay(df); else ChartRedraw();
+            return;
+         }
+         // closed by an outside press — fall through so the press still acts
+      }
+      // closed select button → open its popover (the release click is swallowed)
+      if(PnlDdAnchorHit(mx,my,it,r))
+      {
+         PnlDdOpen(it,r);
+         UISuppressNextClick();
+         return;
+      }
       if(PnlKnobHit(mx,my,it,r))
       {
          g_PnlDragItem=it; g_PnlDragRow=r;
@@ -3769,41 +4003,65 @@ void PnlUpdateRow(const int item,const int row)
       {
          string qn=PnlName(item,row,"Q"+IntegerToString(qi));
          if(ObjectFind(0,qn)>=0)
-            ObjectSetInteger(0,qn,OBJPROP_BORDER_COLOR,
-                             (QuickPalColor(qi)==cur) ? PNL_CLR_ACCENT : C'70,80,100');
+             ObjectSetInteger(0,qn,OBJPROP_BORDER_COLOR,
+                              (QuickPalColor(qi)==cur) ? PNL_CLR_ACCENT : PNL_CLR_LINE);
       }
       return;
    }
-   if(kind==1)   // toggle
-   {
-      bool on=(val>0.5);
-      int swX = px + PNL_WEL - PNL_PAD_X - PNL_SW_W;
-      string swb=PnlName(item,row,"SWB");
-      if(ObjectFind(0,swb)>=0)
-      {
-         string res=on?"::Files\\Icons\\pnl_sw_on.bmp":"::Files\\Icons\\pnl_sw_off.bmp";
-         ObjectSetString(0,swb,OBJPROP_BMPFILE,0,res);
-         ObjectSetString(0,swb,OBJPROP_BMPFILE,1,res);
-      }
-      string swk=PnlName(item,row,"SWK");
-      if(ObjectFind(0,swk)>=0)
-         ObjectSetInteger(0,swk,OBJPROP_XDISTANCE,
-                          on ? (swX+PNL_SW_W-PNL_KNOB_W-3) : (swX+3));
-   }
-   else if(kind==2)   // segmented: restyle every segment
+    if(kind==1)   // TV checkbox — swap the box skin (no knob anymore)
+    {
+       bool on=(val>0.5);
+       string swb=PnlName(item,row,"SWB");
+       if(ObjectFind(0,swb)>=0)
+       {
+          string res=on?"::Files\\Icons\\pnl_cb_on.bmp":"::Files\\Icons\\pnl_cb_off.bmp";
+          ObjectSetString(0,swb,OBJPROP_BMPFILE,0,res);
+          ObjectSetString(0,swb,OBJPROP_BMPFILE,1,res);
+       }
+    }
+   else if(kind==2)   // tabs / dropdown select / segmented pills
    {
       string arr[];
       int n=PnlSplit(opts, arr, 12);
-      int gap=4;
-      int segW=(PNL_WEL-2*PNL_PAD_X-(n-1)*gap)/n;
-      for(int i=0;i<n;i++)
+      if(IsTabRow(item,row))   // underline follows the active tab
       {
-         string seg=PnlName(item,row,"C"+IntegerToString(i));
-         if(ObjectFind(0,seg)<0) continue;
-         bool isAct=PnlSegOn(item,row,i,val);
-         ObjectSetInteger(0,seg,OBJPROP_BGCOLOR, isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_OFF);
-         ObjectSetInteger(0,seg,OBJPROP_BORDER_COLOR, isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_BD);
-         ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT_TX : PNL_CLR_SEG_TX);
+         int gap=4;
+         int segW=(PNL_WEL-2*PNL_PAD_X-(n-1)*gap)/n;
+         for(int i=0;i<n;i++)
+         {
+            string seg=PnlName(item,row,"C"+IntegerToString(i));
+            if(ObjectFind(0,seg)<0) continue;
+            bool isAct=PnlSegOn(item,row,i,val);
+            ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT : PNL_CLR_SEG_TX);
+            ObjectSetString(0,seg,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+            if(isAct)
+            {
+               string tu=PnlName(item,row,"TU");
+               if(ObjectFind(0,tu)>=0)
+                  ObjectSetInteger(0,tu,OBJPROP_XDISTANCE,
+                                   px+PNL_PAD_X + i*(segW+gap) + 8);
+            }
+         }
+      }
+      else if(IsDdRow(item,row))   // select button shows the live option
+      {
+         string dt=PnlName(item,row,"DDT");
+         if(ObjectFind(0,dt)>=0)
+            ObjectSetString(0,dt,OBJPROP_TEXT,PnlDdOptText(item,row));
+      }
+      else   // segmented pills: restyle every segment
+      {
+         int gap=4;
+         int segW=(PNL_WEL-2*PNL_PAD_X-(n-1)*gap)/n;
+         for(int i=0;i<n;i++)
+         {
+            string seg=PnlName(item,row,"C"+IntegerToString(i));
+            if(ObjectFind(0,seg)<0) continue;
+            bool isAct=PnlSegOn(item,row,i,val);
+            ObjectSetInteger(0,seg,OBJPROP_BGCOLOR, isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_OFF);
+            ObjectSetInteger(0,seg,OBJPROP_BORDER_COLOR, isAct ? PNL_CLR_SEG_ON : PNL_CLR_SEG_BD);
+            ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT_TX : PNL_CLR_SEG_TX);
+         }
       }
    }
    else   // slider
@@ -3815,7 +4073,7 @@ void PnlUpdateRow(const int item,const int row)
       string tf=PnlName(item,row,"TF");
       if(ObjectFind(0,tf)>=0)
          ObjectSetInteger(0,tf,OBJPROP_XSIZE,
-                          MathMax(0,knobX+PNL_KNOB_W/2-trackX));
+                          MathMax(0,knobX+PNL_KNOB_W/2-(trackX+1)));
       string v=PnlName(item,row,"V");
       if(ObjectFind(0,v)>=0) ObjectSetString(0,v,OBJPROP_TEXT,PnlFormat(item,row,val));
    }
@@ -3937,21 +4195,13 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
    }
 
    // ── Segmented selector: "C0","C1",... → select directly ──
-   // (slider track/knob and toggle presses are coordinate-based in
+   // (slider track/knob, toggle and dropdown presses are coordinate-based in
    //  PnlHandleMouseMove — invisible OBJ_BUTTON hit-areas are gone)
    if(StringLen(kind)>1 && StringGetCharacter(kind,0)=='C')
    {
       if(rkind!=2) return REFRESH_NONE;
       int seg=(int)StringToInteger(StringSubstr(kind,1));
-      double v=(double)seg;
-      int flags=PnlApply(item,row,v);
-      // STEP MODE segments reshape the card (the selected mode's own rows
-      // appear below) — rebuild instead of updating the single row.
-      // Same for the Base Box TAB row (Style|Text|Setup sections).
-      if(item==9 && row==0) { PnlOpen(9); return flags; }
-      if(item==12 && row==0) { PnlOpen(12); return flags; }
-      PnlUpdateRow(item,row);
-      return flags;
+      return PnlApplyOption(item,row,seg);
    }
 
    return REFRESH_NONE;
@@ -4265,8 +4515,9 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       if(key == PNL_KEY_ESC)
       {
          if(g_PalOpen) { PalHandleKey(PNL_KEY_ESC); return; }
-         // TV-like: Esc closes the open ▾ dropdown first, the strip second.
+         // TV-like: Esc closes the open ▾ dropdown first, the panel second.
          if(g_PnlOpen == 13 && g_BkDd != 0) { BkDdClose(); ChartRedraw(); return; }
+         if(g_PnlDdItem >= 0) { PnlDdClose(); ChartRedraw(); return; }
          if(g_PnlOpen >= 0) { PnlCloseAll(); return; }
       }
       else

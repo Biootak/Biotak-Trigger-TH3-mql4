@@ -177,7 +177,13 @@ const ART = {
 //   bk_lock_on      : closed padlock, amber-filled body (locked)
 //   bk_del          : outlined trash can
 //   bk_more         : three horizontal dots (full-settings menu)
-//   bk_dd           : white rounded dropdown popover (width / style menus)
+//   bk_chev         : small down-chevron (STYLE/WIDTH ▾ selectors — a text
+//                     "▼" label renders as "?" in MT4/Wine fonts, so the
+//                     chevron is a bitmap like every other strip glyph)
+//   bk_dds          : WIDE white rounded dropdown popover (STYLE menu — fits
+//                     "Dash-Dot-Dot" with headroom, content 216x192)
+//   bk_ddw          : NARROW white rounded dropdown popover (WIDTH menu —
+//                     short "Npx" rows only, content 120x192)
 const BK_DARK = [38, 44, 56];        // near-black icon color for the white strip
 const BK_AMBER = [255, 171, 0];      // locked padlock body / selected accents
 const BK_STYLES = [
@@ -238,6 +244,10 @@ const BK_DEL = [   // outlined trash can (TV style)
 ];
 const BK_MORE = [   // three horizontal dots (TV "more")
   cfill(8.5, 16, 2.1), cfill(16, 16, 2.1), cfill(23.5, 16, 2.1),
+];
+const BK_CHEV = [   // down-chevron for the STYLE/WIDTH ▾ selector buttons
+  seg(8.0, 12.5, 16.0, 20.0, 4.2),
+  seg(16.0, 20.0, 24.0, 12.5, 4.2),
 ];
 
 // --- orb center art: bow-medallion ingest (NOT procedural) ---
@@ -472,18 +482,18 @@ function checkSkin(on) {
 }
 
 // ---------------------------------------------------------------- settings-panel skins (v2)
-// Fintech glass-card design language:
-//   - Opaque matte body matching the on-chart palette card (C'17,23,34' /
-//     #171722 family) so chart candles never bleed through the panel
-//   - flat border like the palette card, thin hairline dividers, top amber accent
+// TV-white settings-card language (2026-09-07 — panels match the white
+// strip/dropdowns + TV dialogs): white body, thin gray border, soft shadow,
+// NO amber hairline. Same geometry as before (PNL_W/HEAD/ROW/FOOT/MARGIN) so
+// no .mqh coordinate changes — only paint.
 const PNL_W = 312;          // card width (content area)
 const PNL_HEAD_H = 56;
-const PNL_ROW_H = 50;
+const PNL_ROW_H = 42;       // TV-dense single-line rows (matches BiotakPanels.mqh)
 const PNL_FOOT_H = 48;
 const PNL_MARGIN = 14;      // baked-in shadow margin around the card
 
-// --- pnl_card3.bmp / pnl_card4.bmp : rounded glass card incl. shadow,
-//     12px corners, top amber hairline, header + footer hairline dividers
+// --- pnl_card3.bmp / pnl_card4.bmp : rounded TV-white card incl. shadow,
+//     12px corners, faint header/footer hairline dividers
 function pnlCardSkin(rows) {
   const H = PNL_HEAD_H + rows * PNL_ROW_H + PNL_FOOT_H;
   const CW = PNL_W + 2 * PNL_MARGIN, CH = H + 2 * PNL_MARGIN;
@@ -493,17 +503,16 @@ function pnlCardSkin(rows) {
     // drop shadow: soft band under/right of the card silhouette
     const sd = rrSdf(x, y, PNL_MARGIN + PNL_W / 2 + 2, PNL_MARGIN + H / 2 + 4,
                      PNL_W / 2 - 1, H / 2 - 1, 12);
-    if (sd > 0 && sd < 10) col = over(col, pm([0, 0, 0], Math.round(95 * (1 - sd / 10))));
+    if (sd > 0 && sd < 10) col = over(col, pm([15, 20, 30], Math.round(70 * (1 - sd / 10))));
     const d = rrSdf(cx, cy, PNL_W / 2, H / 2, PNL_W / 2, H / 2, 12);
     if (d < 0.7) {
       if (d > -1.2) {
-        col = over(col, pm([60, 70, 90], 255));              // flat border — matches palette card
+        col = over(col, pm([212, 218, 228], 255));              // thin gray border — TV dialog
       } else {
-        col = over(col, pm([17, 23, 34], 255));              // opaque body — matches palette card
-        if (cy >= 0 && cy <= 2.4 && cx > 14 && cx < PNL_W - 14)
-          col = over(col, pm(CYAN, 205));                                    // amber accent hairline
-        if (Math.abs(cy - PNL_HEAD_H) < 0.6) col = over(col, pm([235, 240, 248], 22));
-        if (Math.abs(cy - (H - PNL_FOOT_H)) < 0.6) col = over(col, pm([235, 240, 248], 22));
+        col = over(col, pm([250, 251, 253], 255));              // white body
+        if (d > -2.4 && d < -1.2) col = over(col, pm([255, 255, 255], 90));
+        if (Math.abs(cy - PNL_HEAD_H) < 0.6) col = over(col, pm([224, 229, 238], 255));
+        if (Math.abs(cy - (H - PNL_FOOT_H)) < 0.6) col = over(col, pm([224, 229, 238], 255));
       }
     }
     return col[3] > 0 ? col : null;
@@ -537,10 +546,12 @@ function bkStripSkin() {
   return { w: CW, h: CH, buf };
 }
 
-// --- bk_dd.bmp : 176x192 WHITE rounded dropdown popover (baked shadow) —
-//     the width / style selector menus of the strip. R-BKSTRIP.
-function bkDdSkin() {
-  const W = 176, H = 192, M = 8, CW = W + 2 * M, CH = H + 2 * M;
+// --- bk_dds.bmp / bk_ddw.bmp : WHITE rounded dropdown popovers (baked
+//     shadow) — the STYLE (wide, fits "Dash-Dot-Dot") and WIDTH (narrow,
+//     short "Npx" rows) selector menus of the strip. Content-fitted pair so
+//     no label ever truncates; R-BKSTRIP.
+function bkDdSkin(W, H) {
+  const M = 8, CW = W + 2 * M, CH = H + 2 * M;
   const buf = renderFxWH(CW, CH, (x, y) => {
     const cx = x - M, cy = y - M;
     let col = [0, 0, 0, 0];
@@ -556,60 +567,51 @@ function bkDdSkin() {
   return { w: CW, h: CH, buf };
 }
 
-// --- pnl_knob.bmp : 18x18 slider thumb — glowing amber ring + bright core
+// --- pnl_knob.bmp : 18x18 neutral slider thumb (TV-white panels) — white
+//     body, gray ring, soft drop shadow (the old amber glow died with dark glass)
 function pnlKnobSkin() {
   const S = 18, c = 9;
   const buf = renderFxWH(S, S, (x, y) => {
     let col = [0, 0, 0, 0];
-    const g = halo(x, y, c, c, 6, 2.2, 115, CYAN);
-    if (g) col = over(col, g);
-    const d = Math.hypot(x - c, y - c);
-    if (d <= 6.4) {
-      col = over(col, pm(CYAN, 255));
-      if (d <= 4.4) col = over(col, pm([255, 248, 228], 255));
-    }
-    return col[3] > 0 ? col : null;
-  });
-  return { w: S, h: S, buf };
-}
-
-// --- pnl_sw_on.bmp / pnl_sw_off.bmp : 46x24 pill toggle body
-function switchSkin(on) {
-  const W = 46, H = 24;
-  const buf = renderFxWH(W, H, (x, y) => {
-    let col = [0, 0, 0, 0];
-    if (on) {
-      const g = halo(x, y, W / 2, H / 2, 11, 2.6, 65, CYAN);
-      if (g) col = over(col, g);
-    }
-    const d = rrSdf(x, y, W / 2, H / 2, W / 2, H / 2, 12);
-    if (d < 0.7) {
-      if (d > -1.2) col = over(col, on ? pm([255, 216, 120], 190) : pm([235, 240, 248], 38));
-      else col = over(col, on
-        ? pm(lerpColor([255, 200, 60], [255, 138, 0], clamp01(x / W)), 255)
-        : pm([34, 42, 56], 242));
-    }
-    return col[3] > 0 ? col : null;
-  });
-  return { w: W, h: H, buf };
-}
-
-// --- pnl_swknob.bmp : 18x18 white thumb with a soft drop shadow
-function switchKnobSkin() {
-  const S = 18, c = 9;
-  const buf = renderFxWH(S, S, (x, y) => {
-    let col = [0, 0, 0, 0];
-    const sh = halo(x, y, c, c, 6.4, 2.0, 60, [0, 0, 0], 1.6);
+    const sh = halo(x, y, c, c + 1.2, 6.4, 2.0, 55, [15, 20, 30]);
     if (sh) col = over(col, sh);
     const d = Math.hypot(x - c, y - c);
     if (d <= 6.4) {
-      col = over(col, pm([210, 218, 230], 255));       // bottom shade ring
-      if (d <= 5.6) col = over(col, pm([246, 249, 253], 255));
+      col = over(col, pm([190, 198, 212], 255));       // gray ring
+      if (d <= 5.4) col = over(col, pm([252, 253, 255], 255));
     }
     return col[3] > 0 ? col : null;
   });
   return { w: S, h: S, buf };
 }
+
+// --- pnl_cb_on.bmp / pnl_cb_off.bmp : 20px TV-style checkboxes (panel
+//     kind=1 rows) — white/gray off, navy + white check on. Two-color art via
+//     per-shape color (render() honors sh.color).
+function rrFill(x1, y1, x2, y2, r) {
+  return [
+    rfill(x1 + r, y1, x2 - r, y2),
+    rfill(x1, y1 + r, x2, y2 - r),
+    cfill(x1 + r, y1 + r, r), cfill(x2 - r, y1 + r, r),
+    cfill(x1 + r, y2 - r, r), cfill(x2 - r, y2 - r, r),
+  ];
+}
+const tint = (arr, c) => arr.map(s => Object.assign({ color: c }, s));
+const CB_NAVY = [38, 44, 56];
+function cbArt(on) {
+  if (on) return [
+    ...tint(rrFill(6, 6, 26, 26, 5), CB_NAVY),
+    { ...seg(11, 16.5, 14.2, 19.7, 2.6), color: [255, 255, 255] },
+    { ...seg(14.2, 19.7, 21, 12, 2.6), color: [255, 255, 255] },
+  ];
+  return [
+    ...tint(rrFill(6, 6, 26, 26, 5), [178, 186, 200]),
+    ...tint(rrFill(8.4, 8.4, 23.6, 23.6, 3), [255, 255, 255]),
+  ];
+}
+
+// (pill-switch skins retired with the dark-glass panels — kind=1 rows are TV
+// checkboxes now: pnl_cb_on/off.bmp above. R-PANELS 2026-09-07.)
 
 // ---------------------------------------------------------------- BMP writer (32bpp, bottom-up)
 function writeBmp(file, w, h, topDownBgra) {
@@ -654,6 +656,7 @@ files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
 files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
 files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
 files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
+files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
 files.push(['badge.bmp',    () => badgeSkin()]);
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
@@ -673,11 +676,11 @@ const panelFiles = [
   { name: 'pnl_card11.bmp',  ...pnlCardSkin(11) },
   { name: 'pnl_card12.bmp',  ...pnlCardSkin(12) },
   { name: 'bk_strip.bmp',    ...bkStripSkin() },
-  { name: 'bk_dd.bmp',       ...bkDdSkin() },
+  { name: 'bk_dds.bmp',      ...bkDdSkin(216, 192) },   // STYLE menu (wide)
+  { name: 'bk_ddw.bmp',      ...bkDdSkin(120, 192) },   // WIDTH menu (narrow)
   { name: 'pnl_knob.bmp',    ...pnlKnobSkin() },
-  { name: 'pnl_sw_on.bmp',   ...switchSkin(true) },
-  { name: 'pnl_sw_off.bmp',  ...switchSkin(false) },
-  { name: 'pnl_swknob.bmp',  ...switchKnobSkin() },
+  { name: 'pnl_cb_on.bmp',   w: 20, h: 20, buf: render(20, cbArt(true), CB_NAVY) },
+  { name: 'pnl_cb_off.bmp',  w: 20, h: 20, buf: render(20, cbArt(false), [255, 255, 255]) },
 ];
 
 let count = 0;

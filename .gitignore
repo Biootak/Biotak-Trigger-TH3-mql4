@@ -142,3 +142,17 @@ Biotak Trigger TH3.log
 Biotak.log
 build-logs
 
+# AI context hygiene — heavy generated previews, not product code
+# (OpenCode grep/glob use ripgrep and respect .gitignore automatically;
+#  .git is skipped by default. Do NOT create .ignore to exclude — .ignore
+#  with ! patterns is for force-INCLUDING back ignored paths.)
+icons_check.html
+icons_final_check.html
+anchor-render-preview.html
+trigger-removebg-preview.bmp
+tools/*.prev
+.claude/
+.freebuff/
+.playwright-mcp/
+.sync-test.tmp
+
