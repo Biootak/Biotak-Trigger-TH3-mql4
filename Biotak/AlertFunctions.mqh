@@ -84,7 +84,7 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
         double midpointLevel = ObjectGetDouble(0, lineNameMid, OBJPROP_PRICE1);
         
         //                
-        if(midpointLevel != EMPTY_VALUE && MathAbs(currentPrice - midpointLevel) < Point) {
+        if(midpointLevel != EMPTY_VALUE && MathAbs(currentPrice - midpointLevel) < GetCachedPoint()) {
             if(ShouldTriggerAlert("MidpointLevel")) {
                 if(inpPlaySound) PlaySound(inpAlertSoundFile);
                 if(inpSendNotification) SendNotification("Price reached Trigger TH Midpoint Level: " + DoubleToString(midpointLevel, Digits));

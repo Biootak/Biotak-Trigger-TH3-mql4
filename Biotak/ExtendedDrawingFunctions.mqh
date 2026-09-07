@@ -13,7 +13,7 @@
 #include "MathConstants.mqh"
 // Zone settings come from ZoneConfig.mqh (single owner); the legacy zone
 // engines (UnifiedZoneSystem/ZoneTrackingHelpers/DrawingPipeline) were
-// quarantined to Biotak/_legacy/ — see ARCHITECTURE.md.
+// removed 2026-09-07 (dead, never included in any build) - see ARCHITECTURE.md.
 
 // Note: CalculateFactorStepSize has been moved to THCalculations.mqh
 
@@ -457,39 +457,42 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
     
     double stepSize = 0;
     
+    // NOTE: multipliers come from the single table in ConstantsAndEnums.mqh
+    // (GetFactorBasisMultiplier) - same numbers the adapted FactorMode path
+    // uses. This raw path keeps its own pipeline (no adaptation) on purpose.
     switch(basis) {
         case FACTOR_BASIS_CONTROL:
-            // Control = (SS + LS) / 2 = TH   1.75
-            stepSize = GetStepSizeForBasisType(basePrice, 1.75, PERIOD_CURRENT);
+            // Control = (SS + LS) / 2 = TH x 1.75
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_CONTROL), PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_SS:
-            // Short Step = TH   1.5
-            stepSize = GetStepSizeForBasisType(basePrice, 1.5, PERIOD_CURRENT);
+            // Short Step = TH x 1.5
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_SS), PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_LS:
-            // Long Step = TH   2.0
-            stepSize = GetStepSizeForBasisType(basePrice, 2.0, PERIOD_CURRENT);
+            // Long Step = TH x 2.0
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_LS), PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_TH:
-            // Pure TH = TH   1.0
-            stepSize = GetStepSizeForBasisType(basePrice, 1.0, PERIOD_CURRENT);
+            // Pure TH = TH x 1.0
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_TH), PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_TRIGGER:
             // Trigger TH (current timeframe) - same as TH
-            stepSize = GetStepSizeForBasisType(basePrice, 1.0, PERIOD_CURRENT);
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_TRIGGER), PERIOD_CURRENT);
             break;
             
         case FACTOR_BASIS_PATTERN:
-            // Pattern TH (4x timeframe)
+            // Pattern TH (4x timeframe) - own TF, no table entry (x1.0)
             stepSize = GetStepSizeForBasisType(basePrice, 1.0, GetPatternTimeframe());
             break;
             
         case FACTOR_BASIS_STRUCTURE:
-            // Structure TH (16x timeframe)
+            // Structure TH (16x timeframe) - own TF, no table entry (x1.0)
             stepSize = GetStepSizeForBasisType(basePrice, 1.0, GetStructureTimeframe());
             break;
             
@@ -502,8 +505,8 @@ double GetStepSizeForFactorBasis(const double basePrice, const ENUM_FACTOR_AUTO_
             #ifdef ENABLE_DEBUG_LOGS
             Print("   GetStepSizeForFactorBasis: Unknown basis=", basis, ", using Control");
             #endif
-            // Fallback to Control
-            stepSize = GetStepSizeForBasisType(basePrice, 1.75, PERIOD_CURRENT);
+            // Fallback to Control (x1.75) - legacy behavior preserved
+            stepSize = GetStepSizeForBasisType(basePrice, GetFactorBasisMultiplier(FACTOR_BASIS_CONTROL), PERIOD_CURRENT);
             break;
     }
     
@@ -1821,9 +1824,9 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
     }
     
     // Additional safety: minimum step size check
-    if(baseStepSize < Point * 2) {
+    if(baseStepSize < GetCachedPoint() * 2) {
         Print("  DrawFactorLevelsHarmonic: Base step too small (", baseStepSize, 
-              ") - must be >= ", Point * 2);
+              ") - must be >= ", GetCachedPoint() * 2);
         return;
     }
     
@@ -1910,7 +1913,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         ObjectSetString(0, levelName, OBJPROP_TOOLTIP, 
             StringFormat("%s Step %d | %s | F=%.2f |  =%.1f", 
                 (isBase ? "   Base" : "   Large"), i + 1, 
-                DoubleToString(priceLevel, Digits), factor, step / Point));
+                DoubleToString(priceLevel, Digits), factor, step / GetCachedPoint()));
         
         levelsAbove++;
     }
@@ -1977,7 +1980,7 @@ void DrawFactorLevelsHarmonic(const string objectPrefix, const double highPrice,
         ObjectSetString(0, levelName, OBJPROP_TOOLTIP, 
             StringFormat("%s Step %d | %s | F=%.2f |  =%.1f", 
                 (isBase ? "   Base" : "   Large"), i + 1, 
-                DoubleToString(priceLevel, Digits), factor, step / Point));
+                DoubleToString(priceLevel, Digits), factor, step / GetCachedPoint()));
         
         levelsBelow++;
     }

@@ -7,49 +7,18 @@
 //|   - Auto basis step calculation (all 8 bases)                   |
 //|   - DIRECT / CLASSIC input semantics                            |
 //|                                                                  |
+//| The basis multiplier table itself lives in ConstantsAndEnums.mqh |
+//| (next to ENUM_FACTOR_AUTO_BASIS) so the raw path in              |
+//| ExtendedDrawingFunctions consumes the same numbers.              |
+//|                                                                  |
 //| All drawing, label, status and hotkey paths must consume these  |
 //| functions instead of re-implementing the formulas inline.       |
 //+------------------------------------------------------------------+
 #ifndef FACTOR_MODE_MQH
 #define FACTOR_MODE_MQH
 
-//+------------------------------------------------------------------+
-//| Basis multiplier table - derived from adapted current-TF TH     |
-//|                                                                  |
-//|   CONTROL = (SS + LS) / 2 = 1.75 * TH  [Balanced, default]      |
-//|   SS      = Short Step            = 1.5  * TH                   |
-//|   LS      = Long Step             = 2.0  * TH                   |
-//|   TH      = Pure TH               = 1.0  * TH                   |
-//|   TRIGGER = Current TF TH         = 1.0  * TH                   |
-//|                                                                  |
-//| PATTERN / STRUCTURE / COMBO are computed separately (they use   |
-//| their own timeframes / combo configuration).                    |
-//+------------------------------------------------------------------+
-struct SBasisMultiplierDef {
-    ENUM_FACTOR_AUTO_BASIS basis;
-    double                 multiplier;
-};
-
-const SBasisMultiplierDef FACTOR_BASIS_MULTIPLIERS[] = {
-    {FACTOR_BASIS_CONTROL, 1.75},
-    {FACTOR_BASIS_SS,      1.5},
-    {FACTOR_BASIS_LS,      2.0},
-    {FACTOR_BASIS_TH,      1.0},
-    {FACTOR_BASIS_TRIGGER, 1.0}
-};
-
-//+------------------------------------------------------------------+
-//| Get multiplier for a current-TF based basis                      |
-//+------------------------------------------------------------------+
-double GetFactorBasisMultiplier(const ENUM_FACTOR_AUTO_BASIS basis)
-{
-    int n = ArraySize(FACTOR_BASIS_MULTIPLIERS);
-    for(int i = 0; i < n; i++) {
-        if(FACTOR_BASIS_MULTIPLIERS[i].basis == basis)
-            return FACTOR_BASIS_MULTIPLIERS[i].multiplier;
-    }
-    return 1.5; // Fallback = SS (matches legacy default branch)
-}
+// Basis multipliers: single table in ConstantsAndEnums.mqh
+// (GetFactorBasisMultiplier) - consumed here and by the raw path.
 
 //+------------------------------------------------------------------+
 //| Historical range used by Factor mode                             |

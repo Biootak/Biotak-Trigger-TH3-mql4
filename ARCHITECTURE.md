@@ -38,8 +38,8 @@ modules **below** it; never on modules above.
 │                 FactorMode, LevelPipeline, ModeDefinitions    │
 ├────────────────────────────────────────────────────────────────┤
 │ Zones           ZoneConfig (settings owner), ZoneConstants,   │
-│                 ZoneFactory, legacy modules moved to                │
-│                 _legacy (UnifiedZoneSystem/Renderer/etc.)            │
+│                 ZoneFactory (legacy zone engines deleted      │
+│                 2026-09-07 — were dead, never in any build)   │
 ├────────────────────────────────────────────────────────────────┤
 │ Domain (Full)   WaveAnalysis, FrequencyOptimizer (~~TH3Tool — retired~~) │
 ├────────────────────────────────────────────────────────────────┤
@@ -66,7 +66,10 @@ Key design decisions:
   Factor↔Step relationship (`Step = Range / (Factor × 2)`), the auto-basis step
   table (all 8 bases) and the DIRECT/CLASSIC input semantics. Drawing, labels,
   status and hotkey paths must consume these functions instead of re-implementing
-  the formulas inline.
+  the formulas inline. The basis *multiplier numbers* live in one table
+  (`GetFactorBasisMultiplier` in `ConstantsAndEnums.mqh`, next to the enum) shared
+  by the adapted path (`GetFactorModeAutoStepSize`) and the raw legacy path
+  (`GetStepSizeForFactorBasis`, kept un-adapted on purpose).
 - **Centralized global state.** All indicator-wide `static` globals live in
   `GlobalVariables.mqh` (single module, include-guarded).
 - **Settings have ONE owner.** `PropertiesAndInputs.mqh` declares the real
@@ -106,7 +109,7 @@ Key design decisions:
 |------|-------|------------------|
 | God files | `ExtendedDrawingFunctions.mqh` (4,685), `TH3Tool.mqh` (3,487), `EventHandlers.mqh` (2,189), `BasePriceManager.mqh` (1,955), `ATRCalculations.mqh` (1,238) | Split by concern (e.g. factor drawing, TH3 tool panels, handler subgroups) |
 | Dead modules (never included) | `EnhancedLogging.mqh`, `MemoryManager.mqh`, `LogLevels.mqh`, `ValidationUtilities.mqh` | Verify and delete, or wire them in |
-| Duplicated basis-multiplier tables | `GetStepSizeForFactorBasis` (`ExtendedDrawingFunctions.mqh`) vs `GetFactorModeAutoStepSize` (`FactorMode.mqh`) | Unify behind one table, preserving adapted-vs-raw semantics |
+| ~~Duplicated basis-multiplier tables~~ | ~~`GetStepSizeForFactorBasis` vs `GetFactorModeAutoStepSize`~~ | ~~Unified 2026-09-07 behind `GetFactorBasisMultiplier` (`ConstantsAndEnums.mqh`), adapted-vs-raw semantics preserved~~ |
 | Corrupted docs | `DEVELOPMENT_GUIDE_FA.md` (was unreadable; rewritten) | Keep docs in sync with `ARCHITECTURE.md` |
 | Scattered `static` state | several modules | Migrate to `GlobalVariables.mqh` |
 

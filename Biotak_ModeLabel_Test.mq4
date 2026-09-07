@@ -49,7 +49,8 @@
 #ifndef BUILD_LITE
 #include "Biotak\WaveAnalysis.mqh"
 #include "Biotak\FrequencyOptimizer.mqh"
-#include "Biotak\TH3Tool.mqh"
+// TH3TOOL-OFF (tool retired — commented out, not deleted):
+// #include "Biotak\TH3Tool.mqh"
 #endif
 #include "Biotak\ObjectFunctions.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"

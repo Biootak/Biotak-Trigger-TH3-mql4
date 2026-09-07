@@ -67,7 +67,7 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
         }
     } else {
         // Object exists - just update price if changed
-        if(MathAbs(cachedEntry.lastPrice - normalizedPrice) > Point * 0.1) {
+        if(MathAbs(cachedEntry.lastPrice - normalizedPrice) > GetCachedPoint() * 0.1) {
             if(!ObjectSetDouble(0, name, OBJPROP_PRICE, normalizedPrice)) {
                 #ifdef ENABLE_DEBUG_LOGS
                 Print("   CreateTHLineObject: Failed to update price for '", name, "'");

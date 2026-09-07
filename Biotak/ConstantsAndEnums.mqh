@@ -151,6 +151,47 @@ enum ENUM_FACTOR_AUTO_BASIS {
 };
 
 //+------------------------------------------------------------------+
+//| Basis multiplier table - SINGLE SOURCE OF TRUTH (one table).     |
+//| Derived from adapted current-TF TH:                              |
+//|   CONTROL = (SS + LS) / 2 = 1.75 * TH  [Balanced, default]      |
+//|   SS      = Short Step            = 1.5  * TH                   |
+//|   LS      = Long Step             = 2.0  * TH                   |
+//|   TH      = Pure TH               = 1.0  * TH                   |
+//|   TRIGGER = Current TF TH         = 1.0  * TH                   |
+//|                                                                  |
+//| Lives here (next to the enum) so BOTH the raw path               |
+//| (ExtendedDrawingFunctions.GetStepSizeForFactorBasis) and the      |
+//| adapted path (FactorMode.GetFactorModeAutoStepSize) consume the   |
+//| same numbers - adapted-vs-raw semantics of each path untouched.   |
+//| PATTERN / STRUCTURE / COMBO use their own TF/config (no entry).  |
+//+------------------------------------------------------------------+
+struct SBasisMultiplierDef {
+    ENUM_FACTOR_AUTO_BASIS basis;
+    double                 multiplier;
+};
+
+const SBasisMultiplierDef FACTOR_BASIS_MULTIPLIERS[] = {
+    {FACTOR_BASIS_CONTROL, 1.75},
+    {FACTOR_BASIS_SS,      1.5},
+    {FACTOR_BASIS_LS,      2.0},
+    {FACTOR_BASIS_TH,      1.0},
+    {FACTOR_BASIS_TRIGGER, 1.0}
+};
+
+//+------------------------------------------------------------------+
+//| Get multiplier for a current-TF based basis                      |
+//+------------------------------------------------------------------+
+double GetFactorBasisMultiplier(const ENUM_FACTOR_AUTO_BASIS basis)
+{
+    int n = ArraySize(FACTOR_BASIS_MULTIPLIERS);
+    for(int i = 0; i < n; i++) {
+        if(FACTOR_BASIS_MULTIPLIERS[i].basis == basis)
+            return FACTOR_BASIS_MULTIPLIERS[i].multiplier;
+    }
+    return 1.5; // Fallback = SS (unreachable for the 8 known bases)
+}
+
+//+------------------------------------------------------------------+
 //| Structure Base Multiplier - Valid range 2-9                      |
 //|        -                                            |
 //|                                                                  |
