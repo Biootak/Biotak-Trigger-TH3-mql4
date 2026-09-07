@@ -88,6 +88,24 @@ static bool        g_bkHeld       = false;   // left button held down inside our
 static datetime    g_bkLiveT      = 0;       // last rubber-band cursor point (off-chart release fallback)
 static double      g_bkLiveP      = 0.0;
 static bool        g_bkInitDone   = false;
+//--- IDLE box-drag follow (cursor-delta, LEARNING.md §1 domain side): the press
+//--- latches the drag candidate + its anchors; held moves shift children by the
+//--- CURSOR delta (never trusts mid-drag anchor reads); release re-syncs.
+static string      s_bkDragId = "";
+static datetime    s_bkDragT0 = 0;
+static double      s_bkDragP0 = 0.0;
+static int         s_bkDragX0 = 0;
+static int         s_bkDragY0 = 0;
+static datetime    s_bkDragBT1 = 0;
+static datetime    s_bkDragBT2 = 0;
+static double      s_bkDragBP1 = 0.0;
+static double      s_bkDragBP2 = 0.0;
+static bool        s_bkDragMoved = false;
+static uint        s_bkDragMs = 0;        // move-follow throttle (30ms)
+static uint        s_bkDragPaintMs = 0;   // shared drag-paint budget (all painters)
+// Press slop for drag-vs-hold/tap (mirrors the UI BK_HOLD_MOVE/BK_CLICK_SLOP
+// language; defined HERE because Lite compiles this module without Panels).
+#define BK_DRAG_SLOP 8
 static bool        g_bkRestoreReq = false;  // UI side: re-show the menu once
 static bool        g_bkTouched    = false;  // Arm ran → OnDeinit must restore chart props
 static bool        g_bkScrollWas  = true;
@@ -142,32 +160,37 @@ void BaseKnotSetText(const string id, const string txt)
    BaseKnotSync(id);   // placement + font follow the box + mirrors
    ChartRedraw();
 }
-// (Re)place + restyle an EXISTING text object. TV Text-tab alignment:
-// horizontal (Left|Center|Right) picks the corner, vertical (Top|Inside|
-// Bottom) picks above / inside-top / below the box (TV default Inside).
-void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
-                       const double top, const double bot, const long tfMask)
+// Text anchor geometry — single source of truth for PlaceText (full restyle)
+// and the drag mover below (position only). TV Text-tab alignment: horizontal
+// (Left|Center|Right) picks the corner, vertical (Top|Inside/Bottom) picks
+// above / inside-top / below the box (TV default Inside).
+void BaseKnotTextPlace(const datetime t1, const datetime t2,
+                       const double top, const double bot,
+                       datetime &tx, double &px, int &anchor)
 {
-   string tn = BaseKnotTextName(pfx);
-   if(ObjectFind(0, tn) < 0) return;   // no text — never resurrect (delete = clear)
    int al = ClampSettingInt(g_bkAlign, 0, 2);
    int va = ClampSettingInt(g_bkVAlign, 0, 2);
-   datetime tx = (al == 0 ? t1 : (al == 1 ? t1 + (t2 - t1) / 2 : t2));
-   double px = top;
-   int anchor = ANCHOR_UPPER;
+   tx = (al == 0 ? t1 : (al == 1 ? t1 + (t2 - t1) / 2 : t2));
+   px = top;
+   anchor = ANCHOR_UPPER;
    if(va == 0)         // Top — text sits ABOVE the box top edge
-   {
       anchor = (al == 0 ? ANCHOR_LEFT_LOWER : (al == 1 ? ANCHOR_LOWER : ANCHOR_RIGHT_LOWER));
-   }
    else if(va == 2)    // Bottom — text sits BELOW the box bottom edge
    {
       px = bot;
       anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
    }
    else                // Inside — text hangs from the box top edge
-   {
       anchor = (al == 0 ? ANCHOR_LEFT_UPPER : (al == 1 ? ANCHOR_UPPER : ANCHOR_RIGHT_UPPER));
-   }
+}
+// (Re)place + restyle an EXISTING text object (geometry via BaseKnotTextPlace).
+void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
+                       const double top, const double bot, const long tfMask)
+{
+   string tn = BaseKnotTextName(pfx);
+   if(ObjectFind(0, tn) < 0) return;   // no text — never resurrect (delete = clear)
+   datetime tx; double px; int anchor;
+   BaseKnotTextPlace(t1, t2, top, bot, tx, px, anchor);
    ObjectSetInteger(0, tn, OBJPROP_TIME, 0, tx);
    ObjectSetDouble(0, tn, OBJPROP_PRICE, 0, px);
    ObjectSetString(0, tn, OBJPROP_FONT, BKTextFont());
@@ -837,6 +860,60 @@ void BaseKnotSync(const string id)
    else
       ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto mode, grace over — chart stays clean
 }
+// Shared drag-paint budget: position writes are cheap, FULL repaints are not
+// (a heavy chart costs 100ms+ per repaint — an unthrottled ChartRedraw per
+// drag event turns dragging into a slideshow that only settles on release).
+// Every drag painter (event sync, cursor follow, strip follow) draws through
+// here (30ms); the release path repaints unconditionally (final frame).
+void BaseKnotDragPaint()
+{
+   uint now = GetTickCount();
+   if(now - s_bkDragPaintMs < 30) return;
+   s_bkDragPaintMs = now;
+   ChartRedraw();
+}
+// Lean child mover — ObjectMove ONLY (no style/color/create/delete syscalls)
+// for per-step drag following. Same geometry as Sync (levels via
+// BaseKnotCalcLevels, text via BaseKnotTextPlace), so the authoritative
+// release Sync lands on identical pixels. Missing children are skipped (the
+// release Sync rebuilds them) — never resurrect mid-drag.
+void BaseKnotMoveOne(const string nm, const datetime tA, const double pA,
+                     const datetime tB, const double pB)
+{
+   if(ObjectFind(0, nm) < 0) return;
+   ObjectMove(0, nm, 0, tA, pA);
+   ObjectMove(0, nm, 1, tB, pB);
+}
+void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
+                          datetime t2, const double p2)
+{
+   int k = BaseKnotFind(id);
+   if(k < 0) return;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   if(ObjectFind(0, BaseKnotBoxName(pfx)) < 0) return;
+   if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
+   double top = MathMax(p1, p2), bot = MathMin(p1, p2);
+   double entry = 0, sl = 0, tp = 0;
+   BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, entry, sl, tp);
+   datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
+   BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);
+   BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
+   BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
+   BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
+   BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
+   BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
+   BaseKnotMoveOne(BaseKnotTPName(pfx), t2, tp, tFar, tp);
+   string in = BaseKnotInfoName(pfx);
+   if(ObjectFind(0, in) >= 0) ObjectMove(0, in, 0, t2, top);
+   string tn = BaseKnotTextName(pfx);
+   if(ObjectFind(0, tn) >= 0)
+   {
+      datetime tx; double px; int anchor;
+      BaseKnotTextPlace(t1, t2, top, bot, tx, px, anchor);
+      ObjectMove(0, tn, 0, tx, px);
+   }
+}
 void BaseKnotDelete(const string id)
 {
    string pfx = BaseKnotPrefix(id);
@@ -1051,10 +1128,12 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
        if(BaseKnotFind(bid) >= 0)
        {
           if(BaseKnotLocked(bid)) return true;   // locked — swallow, children stay put
-          BaseKnotSync(bid); ChartRedraw();
+          BaseKnotSync(bid);   // positions sync EVERY event (cheap); repaints do not
+          BaseKnotDragPaint();   // throttled — a full ChartRedraw per drag event
+                                 // slideshows weak PCs (frozen until release)
        }
        return true;
-   }
+    }
    if(id == CHARTEVENT_OBJECT_DELETE && tag != "" && StringFind(sparam, tag) == 0)
    {
       string ltag = BaseKnotLiveTag();
@@ -1120,6 +1199,107 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    {
       BaseKnotCancel();
       return true;
+   }
+
+   //--- IDLE box-drag follow (cursor-delta): the terminal moves the BOX natively,
+   //--- but per-step OBJECT_DRAG delivery AND live anchor reads mid-drag are
+   //--- build-dependent — on some builds children stay frozen until release.
+   //--- Track the press ourselves (MOUSE_MOVE always flows): shift children by
+   //--- the CURSOR delta from the press point (throttled 30ms, moves only via
+   //--- BaseKnotMoveChildren + shared paint budget), then one authoritative
+   //--- BaseKnotSync from the committed anchors on release. Never consumes —
+   //--- menus/panels/hold still see every move (Lite-safe: Object* only).
+   if(id == CHARTEVENT_MOUSE_MOVE && g_bkState == BK_IDLE)
+   {
+      int sst = (int)StringToInteger(sparam);
+      bool sleft = ((sst & 1) != 0);
+      bool srising = (sleft && !g_bkLeftPrev);
+      bool sfalling = (!sleft && g_bkLeftPrev);
+      g_bkLeftPrev = sleft;
+      if(srising)
+      {
+         s_bkDragId = ""; s_bkDragMoved = false;
+         int ssw = 0; datetime sct = 0; double scp = 0;
+         if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp) && ssw == 0 && sct > 0 && scp > 0)
+         {
+            string shit = BaseKnotBoxAt(sct, scp);
+            if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
+            {
+               string shbox = BaseKnotBoxName(BaseKnotPrefix(shit));
+               if(ObjectFind(0, shbox) >= 0)
+               {
+                  s_bkDragId = shit;
+                  s_bkDragT0 = sct; s_bkDragP0 = scp;
+                  s_bkDragX0 = (int)lparam; s_bkDragY0 = (int)dparam;
+                  s_bkDragBT1 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 0);
+                  s_bkDragBT2 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 1);
+                  s_bkDragBP1 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 0);
+                  s_bkDragBP2 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 1);
+               }
+            }
+         }
+      }
+      else if(sfalling)
+      {
+         // Release after a REAL drag: authoritative final from committed anchors
+         // (guarantees "correct on release" even where no mid-drag event fired).
+         // A tap (no move) syncs nothing — tap-select stays untouched.
+         // Overlap hole: the press candidate may differ from the truly dragged
+         // box — the drop point is under the cursor, so sync that box too.
+         if(s_bkDragId != "" && s_bkDragMoved)
+         {
+            bool painted = false;
+            int ssw3 = 0; datetime sct3 = 0; double scp3 = 0;
+            if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw3, sct3, scp3) && ssw3 == 0 && sct3 > 0 && scp3 > 0)
+            {
+               string sdrop = BaseKnotBoxAt(sct3, scp3);
+               if(sdrop != "" && sdrop != s_bkDragId && BaseKnotFind(sdrop) >= 0 && !BaseKnotLocked(sdrop))
+               {
+                  BaseKnotSync(sdrop);
+                  painted = true;
+               }
+            }
+            if(BaseKnotFind(s_bkDragId) >= 0)
+            {
+               BaseKnotSync(s_bkDragId);
+               painted = true;
+            }
+            if(painted) ChartRedraw();
+         }
+         s_bkDragId = ""; s_bkDragMoved = false;
+      }
+      else if(sleft && s_bkDragId != "")
+      {
+         if(BaseKnotFind(s_bkDragId) < 0) { s_bkDragId = ""; s_bkDragMoved = false; }
+         else
+         {
+            int smx = (int)lparam, smy = (int)dparam;
+            if(!s_bkDragMoved &&
+               MathAbs(smx - s_bkDragX0) <= BK_DRAG_SLOP && MathAbs(smy - s_bkDragY0) <= BK_DRAG_SLOP)
+            {
+               // still inside press slop — a hold, not a drag (strip may open)
+            }
+            else
+            {
+               s_bkDragMoved = true;
+               uint snow = GetTickCount();
+               if(snow - s_bkDragMs >= 30)
+               {
+                  s_bkDragMs = snow;
+                  int ssw2 = 0; datetime sct2 = 0; double scp2 = 0;
+                  if(ChartXYToTimePrice(0, smx, smy, ssw2, sct2, scp2) && ssw2 == 0 && sct2 > 0 && scp2 > 0)
+                  {
+                     int sdt = (int)(sct2 - s_bkDragT0);
+                     double sdp = scp2 - s_bkDragP0;
+                     BaseKnotMoveChildren(s_bkDragId,
+                        s_bkDragBT1 + sdt, s_bkDragBP1 + sdp,
+                        s_bkDragBT2 + sdt, s_bkDragBP2 + sdp);
+                     BaseKnotDragPaint();
+                  }
+               }
+            }
+         }
+      }
    }
 
    if(!BaseKnotSessionActive()) return false;

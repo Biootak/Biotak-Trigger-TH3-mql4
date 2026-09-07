@@ -3362,7 +3362,7 @@ void BkStripFollow()
    BkDdClose();   // a riding strip never keeps a stale popover (hit rects would lie)
    if(g_PalOpen) PalClose();   // nor an orphaned palette (it hangs off stale pixels)
    BkStripMoveBy(dx, dy);   // explicit TB* list — no full-chart scan at drag rate
-   ChartRedraw();
+   BaseKnotDragPaint();   // shared drag-paint budget (one repaint per drag frame max)
 }
 
 // Per-tick heal (RefreshKitOnBar): if the held box vanished while its strip

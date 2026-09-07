@@ -448,6 +448,12 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `TOOL_COUNT`-driven menu loops pick new tools up automatically; BK owns panel
   12 (Base Box style card — ToolPanel()==12, so ring-hold opens it like every
   other tool; click still arms drawing, guarded by `g_LongPressFired`).
+  Drag-follow is cursor-delta (2026-09-07 — per-step `OBJECT_DRAG`/live
+  anchors are build-dependent, children froze until release on some builds):
+  the press latches candidate+anchors, held moves shift children by cursor
+  delta (`BaseKnotMoveChildren`, moves-only, 30ms), release does one
+  authoritative `BaseKnotSync`; repaints share one 30ms budget
+  (`BaseKnotDragPaint`) — full pattern: `LEARNING.md` §1.
 
 - **Base Box is TradingView-parity — toolbar, fill, text, tabs**
   (2026-09-07, user decision — the strip + card mirror TV's rectangle tool:
