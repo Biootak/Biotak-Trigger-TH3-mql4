@@ -683,6 +683,23 @@ void BaseKnotUnlockChart()
    if(g_bkAutoWas) ChartSetInteger(0, CHART_AUTOSCROLL, true);
    s_bkChartLocked = false;
 }
+// Re-assert an OWNED lock (P-BK-14): a one-time lock is not enough — third
+// writers (menu modal unlock when a strip/card closes mid-gesture, the panel
+// watchdog restore, template/terminal resets) can flip the props back while
+// the button is still down, and the chart then pans under the hand for the
+// rest of the gesture. While we own it, every throttled step re-forces the
+// props. Read-guarded: steady state costs only the reads, writes happen
+// solely on drift. ctxToo mirrors the original locker (session=true, drag=false).
+void BaseKnotReassertLock(const bool ctxToo)
+{
+   if(!s_bkChartLocked) return;
+   if(ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0)
+   { ChartSetInteger(0, CHART_MOUSE_SCROLL, false); g_bkTouched = true; }
+   if(g_bkAutoWas && ChartGetInteger(0, CHART_AUTOSCROLL) != 0)
+   { ChartSetInteger(0, CHART_AUTOSCROLL, false); g_bkTouched = true; }
+   if(ctxToo && ChartGetInteger(0, CHART_CONTEXT_MENU) != 0)
+   { ChartSetInteger(0, CHART_CONTEXT_MENU, false); g_bkTouched = true; }
+}
 // IDLE box-drag holder: lock once a REAL drag starts (past slop — taps never
 // flicker the props), release on button-up. The state check keeps a drag
 // release from unlocking a draw session's lock in the pathological overlap.
@@ -1112,6 +1129,7 @@ void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
    uint now = s_bkDragActMs;
    if(now - s_bkDragMs < 30) return;   // one budget for moves + paint
    s_bkDragMs = now;
+   BaseKnotReassertLock(false);   // P-BK-14: the drag owns the view until release (drag took ctxToo=false)
    string pfx = BaseKnotPrefix(id);
    if(pfx == "") return;
    string box = BaseKnotBoxName(pfx);
@@ -1196,6 +1214,7 @@ string BaseKnotBoxAt(const datetime t, const double price)
 void BaseKnotSyncBadges()
 {
    BaseKnotLazyInit();   // the registry IS the box list — rebuild once (guarded, O(1) after)
+   if(BaseKnotSessionActive()) BaseKnotReassertLock(true);   // P-BK-14: pump drift-heal (timer path, tick-less charts)
    if(s_bkDragLock && g_bkState == BK_IDLE &&
       (TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) == 0 &&
       GetTickCount() - s_bkDragActMs > 1500)
@@ -1644,6 +1663,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          uint nowR = GetTickCount();
          if(nowR - s_bkRubberMs < 30) return true;   // swallow, skip the redraw
          s_bkRubberMs = nowR;
+         BaseKnotReassertLock(true);   // P-BK-14: the session owns the view until commit/cancel
          int sw = 0; datetime ht = 0; double hp = 0;
          string pv = BaseKnotPrevTag();
          if(pv != "" && ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ht, hp) && sw == 0 && ht > 0 && hp > 0)
