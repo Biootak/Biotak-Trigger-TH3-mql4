@@ -608,6 +608,20 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   re-ensure itself from the tick/timer path with change-guarded, data-ready-gated
   redraws — never a draw-once at init.)
 
+- **ATR trade block = screenshot format, TRex stamp on top**
+  (2026-09-08 — bottom-right block is 3 centered rows: ATR pips (dark blue) /
+  `Hunter SL: H Eng.SL: E` (red) / `#TP1+T1 #TP2+T2 #TP3+T3` (blue), integer
+  pips stacked TP-bottom → ATR-top; the plain-SL piece is gone
+  (`ATR_TRADE_SL` define kept for the coefficient family only). Top-center
+  TRex stamp (active-TF standard TH pips, 1 decimal / green Persian caption /
+  `TR` blue + `ex` red brand at +6pt) rides the SAME ATR-trade visibility
+  (`inpShowATRTradeLabels` + `g_atrLabelsVisible`, SL/TP row toggles honored
+  in `SetATRLabelsVisibility`); all 7 objects are `LBL_`-prefixed so
+  `ClearAllLabels` + the param-change purge cover them. `TRexCaptionText()`
+  builds the Persian caption from ushort codes — never a non-ASCII literal
+  in source (see P-LBL-01). Top value assumption: active-TF standard TH —
+  say the word if `0.5` meant something else.)
+
 ---
 
 ## 3. Recurring problems (log — append, never solve twice)
@@ -664,6 +678,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-UI-12 | Menu hover tooltip fires over an open settings card (phantom tip, Z1700 over panel) | `CircTipTick` (per-tick) had no panel-occlusion awareness; hotkey-opened panels never cleared a visible/armed tip; Menu is included BEFORE Panels so it cannot call `PnlPointInside` | Cross-layer flag `g_UIPanelOpen` in `GlobalVariables.mqh` (set in `PnlOpen`, cleared in `PnlCloseAll`) + `CircTipDisarm()` called from `PnlOpen`; `OnMove`/`Tick` abort while flagged; `CircTipShow` clamps bottom + tiny-chart floor | 2026-09-08 |
 | P-UI-13 | Tools-ring fan stacks on one line near chart edges (46px spacing vs 52px footprint — overlap) | `ToolsLayout` clamped every item independently, destroying the ±55° spread (the ring itself uses `CircFitRadius`) | `ToolsFitRadius` (same ray-vs-bounds math over the TOOL_COUNT fan angles): shrink the radius, keep the clamp only as last-resort safety | 2026-09-08 |
 | P-UI-14 | Hold-to-open fires too eagerly (250ms): strip/cards pop on plain holds and on press-pause-drags — bad UX | 250ms is below a deliberate hold; press-pause-drag always outlasted it, and move-cancel only helped pure quick drags | One deliberate hold language: box hold (`BK_HOLD_MS`) and ring long-press (`LONG_PRESS_TIME`) both 500ms; any >8px move before the delay cancels the pending hold, so drags never open it (move-cancel already existed — the delay was the whole bug) | 2026-09-08 |
+| P-LBL-01 | Persian caption pasted as a literal into a .mqh renders as mojibake on chart after save/compile on another machine | Non-ASCII literal bytes depend on the file encoding; MetaEditor/MQL4 reads source per the system codepage, so the same bytes decode differently elsewhere | Never put a non-ASCII literal in .mqh source — construct the string from ushort code points via StringSetCharacter over a pre-sized ASCII string (see TRexCaptionText in Biotak/LabelFunctions.mqh); source stays pure ASCII and renders identically everywhere | 2026-09-08 |
 
 
 > When you close a new recurring issue, add the next row above (highest

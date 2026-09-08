@@ -263,55 +263,28 @@ bool CreateATRTradePiece(const string name, const string text, const color textC
 bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
                          const double atrPips, const int xPos, const int yPos,
                          const color textColor) {
-    double values[6];
-    values[0] = atrPips * ATR_TRADE_SL;
-    values[1] = atrPips * ATR_TRADE_HUNT_SL;
-    values[2] = atrPips * ATR_TRADE_ENG_SL;
-    values[3] = atrPips * ATR_TRADE_TP1;
-    values[4] = atrPips * ATR_TRADE_TP2;
-    values[5] = atrPips * ATR_TRADE_TP3;
+    double huntSL = atrPips * ATR_TRADE_HUNT_SL;
+    double engSL  = atrPips * ATR_TRADE_ENG_SL;
+    double tp1    = atrPips * ATR_TRADE_TP1;
+    double tp2    = atrPips * ATR_TRADE_TP2;
+    double tp3    = atrPips * ATR_TRADE_TP3;
 
-    // PERF FIX: Fixed-size arrays — eliminate 7x ArrayResize() heap allocations per call
-    string labelNames[6];
-    string valueNames[6];
-    string labelTexts[6];
-    string valueTexts[6];
-    color  labelColors[6];
-    int    labelX[6]   = {0,0,0,0,0,0};  // Zero-init silences MQL4 "uninitialized" warnings
-    int    valueX[6]   = {0,0,0,0,0,0};  // Both are fully written before read in the loops below
+    // Screenshot block format (bottom-right, rows centered in the block):
+    //   <ATR pips>                           (dark blue)
+    //   Hunter SL: <hunt> Eng.SL: <eng>      (red)
+    //   #TP1+<t1> #TP2+<t2> #TP3+<t3>        (blue)
+    // No plain-SL piece: the screenshot carries Hunter/Eng only.
+    string atrName = objectPrefix + "ATR_Trade_Current_ATR";
+    string slName  = objectPrefix + "ATR_Trade_Current_SLRow";
+    string tpName  = objectPrefix + "ATR_Trade_Current_TPRow";
 
-    labelNames[0] = objectPrefix + "ATR_Trade_Current_SL_Text";
-    labelNames[1] = objectPrefix + "ATR_Trade_Current_HuntSL_Text";
-    labelNames[2] = objectPrefix + "ATR_Trade_Current_EngSL_Text";
-    labelNames[3] = objectPrefix + "ATR_Trade_Current_TP1_Text";
-    labelNames[4] = objectPrefix + "ATR_Trade_Current_TP2_Text";
-    labelNames[5] = objectPrefix + "ATR_Trade_Current_TP3_Text";
-    valueNames[0] = objectPrefix + "ATR_Trade_Current_SL_Value";
-    valueNames[1] = objectPrefix + "ATR_Trade_Current_HuntSL_Value";
-    valueNames[2] = objectPrefix + "ATR_Trade_Current_EngSL_Value";
-    valueNames[3] = objectPrefix + "ATR_Trade_Current_TP1_Value";
-    valueNames[4] = objectPrefix + "ATR_Trade_Current_TP2_Value";
-    valueNames[5] = objectPrefix + "ATR_Trade_Current_TP3_Value";
+    string atrText = StringFormat("%.0f", atrPips);
+    string slText  = StringFormat("Hunter SL: %.0f Eng.SL: %.0f", huntSL, engSL);
+    string tpText  = StringFormat("#TP1+%.0f #TP2+%.0f #TP3+%.0f", tp1, tp2, tp3);
 
-    labelTexts[0] = "SL";
-    labelTexts[1] = "HuntSL";
-    labelTexts[2] = "EngSL";
-    labelTexts[3] = "TP1";
-    labelTexts[4] = "TP2";
-    labelTexts[5] = "TP3";
-    for(int i = 0; i < 6; i++) valueTexts[i] = DoubleToString(values[i], 1);
-
-    // SL label text red; TP label text blue. All numeric values are black.
-    labelColors[0] = clrRed;
-    labelColors[1] = clrRed;
-    labelColors[2] = clrRed;
-    labelColors[3] = clrBlue;
-    labelColors[4] = clrBlue;
-    labelColors[5] = clrBlue;
-
-    // Remove the old single-color layout and legacy names.
-    ObjectDelete(0, objectPrefix + "ATR_Trade_Current");
-    ObjectDelete(0, objectPrefix + "ATR_Trade_Current_Targets");
+    // Purge the retired layouts: every "Current" piece shares this prefix, so
+    // one kernel call wipes all 12 legacy pieces (plus our 3, recreated below).
+    ObjectsDeleteAll(0, objectPrefix + "ATR_Trade_Current_");
     ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName);
     ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Targets");
     ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Stops");
@@ -319,44 +292,122 @@ bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
 
     bool showSL = (inpShowATRTradeLabels && inpShowATRTradeSLLabels);
     bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
-    int gap = MathMax(5, inpLabelColumnGap / 3);
-    int innerGap = MathMax(3, inpLabelColumnGap / 8);
-    int rightMargin = MathMax(8, MathAbs(xPos));
+    int rightMargin  = MathMax(8, MathAbs(xPos));
     int bottomMargin = MathMax(8, MathAbs(yPos));
-    int lineHeight = inpFontSize + inpATRTradeLabelRowGap;
+    int lineHeight   = inpFontSize + inpATRTradeLabelRowGap;
 
-    // Put the value immediately to the right of its colored label. Groups are
-    // laid out from right to left so the right corner stays fixed.
-    for(int i = 2; i >= 0; i--) {
-        if(i == 2) {
-            valueX[i] = rightMargin;
-        } else {
-            int next = i + 1;
-            valueX[i] = labelX[next] + (int)CalculateTextWidth(labelTexts[next]) + gap;
-        }
-        labelX[i] = valueX[i] + (int)CalculateTextWidth(valueTexts[i]) + innerGap;
+    // Center every visible row inside the block (block right edge stays fixed).
+    double wATR = CalculateTextWidth(atrText);
+    double wSL  = CalculateTextWidth(slText);
+    double wTP  = CalculateTextWidth(tpText);
+    double maxW = wATR;
+    if(showSL && wSL > maxW) maxW = wSL;
+    if(showTP && wTP > maxW) maxW = wTP;
+
+    // Bottom-up stack: TP at the bottom, SL in the middle, ATR on top.
+    int row = 0;
+    if(showTP) {
+        int xTP = rightMargin + (int)((maxW - wTP) / 2.0);
+        if(!CreateATRTradePiece(tpName, tpText, clrBlue, xTP, bottomMargin + row * lineHeight)) return false;
+        row++;
     }
-    for(int i = 5; i >= 3; i--) {
-        if(i == 5) {
-            valueX[i] = rightMargin;
-        } else {
-            int next = i + 1;
-            valueX[i] = labelX[next] + (int)CalculateTextWidth(labelTexts[next]) + gap;
-        }
-        labelX[i] = valueX[i] + (int)CalculateTextWidth(valueTexts[i]) + innerGap;
+    if(showSL) {
+        int xSL = rightMargin + (int)((maxW - wSL) / 2.0);
+        if(!CreateATRTradePiece(slName, slText, clrRed, xSL, bottomMargin + row * lineHeight)) return false;
+        row++;
+    }
+    int xATR = rightMargin + (int)((maxW - wATR) / 2.0);
+    if(!CreateATRTradePiece(atrName, atrText, textColor, xATR, bottomMargin + row * lineHeight)) return false;
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| TRex title stamp (top-center): TH value + Persian caption + brand|
+//| Screenshot order: value / caption / TR|ex (caption = price-behavior |
+//| tagline, built from codes below - never a literal, see P-LBL-01).  |
+//+------------------------------------------------------------------+
+string TRexCaptionText() {
+    ushort cap[20];
+    cap[0]=0x0631; cap[1]=0x0641; cap[2]=0x062A; cap[3]=0x0627; cap[4]=0x0631;
+    cap[5]=0x0634; cap[6]=0x0646; cap[7]=0x0627; cap[8]=0x0633; cap[9]=0x06CC;
+    cap[10]=0x0020;
+    cap[11]=0x062D; cap[12]=0x0631; cap[13]=0x06A9; cap[14]=0x062A;
+    cap[15]=0x0020;
+    cap[16]=0x0642; cap[17]=0x06CC; cap[18]=0x0645; cap[19]=0x062A;
+    string s = "";
+    for(int k = 0; k < 20; k++) s = s + " ";
+    for(int i = 0; i < 20; i++) StringSetCharacter(s, i, cap[i]);
+    return s;
+}
+
+bool CreateTRexPiece(const string name, const string text, const color textColor,
+                     const int fontSize, const int xPos, const int yPos) {
+    if(ObjectFind(0, name) < 0) {
+        if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
+    }
+    ObjectSetString(0, name, OBJPROP_TEXT, text);
+    ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+    ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
+    InitATRChartLabel(name, CORNER_LEFT_UPPER, ANCHOR_LEFT_UPPER);
+    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(0, xPos));
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(0, yPos));
+    ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES,
+                     IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+    return true;
+}
+
+bool DisplayTRexTitleBlock(const string labelPrefix) {
+    string valName = labelPrefix + "TREX_Value";
+    string capName = labelPrefix + "TREX_Caption";
+    string trName  = labelPrefix + "TREX_TR";
+    string exName  = labelPrefix + "TREX_EX";
+
+    if(IsIndicatorHidden()) {
+        ObjectSetInteger(0, valName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, capName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, trName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, exName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        return true;
     }
 
-    for(int i = 0; i < 6; i++) {
-        bool shouldShow = (i < 3) ? showSL : showTP;
-        int rowY = bottomMargin + ((i >= 3) ? lineHeight : 0);
-        if(!shouldShow) {
-            ObjectDelete(0, labelNames[i]);
-            ObjectDelete(0, valueNames[i]);
-            continue;
+    int chartW = GetCachedChartWidth();
+    if(chartW < 50) return false;
+
+    // Top value = active-TF standard TH in pips, 1 decimal (screenshot "0.5").
+    int digits = GetCachedDigits();
+    int actMin = GetEffectiveTimeframe();
+    double basePx = g_currentPrice;
+    if(g_dailyClosePriceForTH != EMPTY_VALUE && g_dailyClosePriceForTH > 0)
+        basePx = g_dailyClosePriceForTH;
+    string valText = "";
+    if(actMin > 0 && basePx > 0 && digits > 0) {
+        double pct = CalculateStandardPercentage(actMin);
+        if(pct > 0) {
+            double thPts = CalculateTHPoints(basePx, digits, pct);
+            valText = DoubleToString(thPts / 10.0, 1);
         }
-        if(!CreateATRTradePiece(labelNames[i], labelTexts[i], labelColors[i], labelX[i], rowY)) return false;
-        if(!CreateATRTradePiece(valueNames[i], valueTexts[i], clrBlack, valueX[i], rowY)) return false;
     }
+    string capText = TRexCaptionText();
+
+    int fontSize  = inpFontSize;
+    int brandSize = inpFontSize + 6;
+    int yVal   = MathMax(8, inpLabelsMarginTop);
+    int yCap   = yVal + fontSize + inpLabelRowGap;
+    int yBrand = yCap + fontSize + inpLabelRowGap;
+
+    double wVal = CalculateTextWidth(valText);
+    double wCap = CalculateTextWidth(capText);
+    double wBrand = 4.0 * brandSize * 0.7;
+    int xVal = (int)((chartW - wVal) / 2.0);
+    int xCap = (int)((chartW - wCap) / 2.0);
+    int xTR  = (int)((chartW - wBrand) / 2.0);
+    int xEx  = xTR + (int)(2.0 * brandSize * 0.7);
+
+    if(!CreateTRexPiece(valName, valText, clrDarkBlue, fontSize, xVal, yVal)) return false;
+    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, xCap, yCap)) return false;
+    if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
+    if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
     return true;
 }
 
@@ -462,7 +513,19 @@ void DisplayATRLabels(const string objectPrefix) {
 }
 
 void DisplayATRTradeLabels(const string objectPrefix) {
-    if(!inpShowATRTradeLabels || !g_atrLabelsVisible) return;
+    string labelPrefix = objectPrefix + "LBL_";
+    if(!inpShowATRTradeLabels || !g_atrLabelsVisible) {
+        // Defensive wipe: the relayout callers clear LBL_ first, but a bare
+        // toggle path may reach here without a prior clear.
+        ObjectDelete(0, labelPrefix + "ATR_Trade_Current_ATR");
+        ObjectDelete(0, labelPrefix + "ATR_Trade_Current_SLRow");
+        ObjectDelete(0, labelPrefix + "ATR_Trade_Current_TPRow");
+        ObjectDelete(0, labelPrefix + "TREX_Value");
+        ObjectDelete(0, labelPrefix + "TREX_Caption");
+        ObjectDelete(0, labelPrefix + "TREX_TR");
+        ObjectDelete(0, labelPrefix + "TREX_EX");
+        return;
+    }
 
     double pipSize = GetCachedPipSize();
     if(IsZero(pipSize, EPSILON_PRICE)) return;
@@ -473,10 +536,10 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     if(activeATR <= 0 || activeATR == EMPTY_VALUE) return;
 
     double activePips = NormalizeDouble(activeATR / pipSize, 1);
-    string labelPrefix = objectPrefix + "LBL_";
     // Both margins are distances from the right/bottom chart edges.
     CreateATRTradeLabel(labelPrefix, activeTimeframeName, activePips,
                        inpLabelsMarginLeft, inpLabelsMarginBottom, clrDarkBlue);
+    DisplayTRexTitleBlock(labelPrefix);
 }
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
@@ -507,6 +570,18 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP2_Value", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Text", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Value", OBJPROP_TIMEFRAMES, tf);
+    // Screenshot 3-row block + top-center TRex stamp (purge lines for the
+    // retired 12-piece names above stay so old charts clean up).
+    long tradeTF = (shouldShow && inpShowATRTradeLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    long slTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeSLLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    long tpTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeTPLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_ATR", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SLRow", OBJPROP_TIMEFRAMES, slTF);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TPRow", OBJPROP_TIMEFRAMES, tpTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_Value", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_Caption", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);
 }
 
 void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
