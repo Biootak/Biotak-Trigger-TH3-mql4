@@ -1231,6 +1231,12 @@ void BaseKnotSyncBadges()
    double bkRef = BaseKnotLiveRef();         // P-BK-13: one live price for every follow check below
    for(int i = 0; i < ArraySize(g_bkBoxes); i++)
    {
+      // P-BK-15: hands off the actively-dragged box — MT4 cancels an
+      // in-progress native drag when the object is rewritten mid-gesture, so
+      // any pump Sync/heal/glue here snaps the box back to the drag start.
+      // The release path Syncs authoritatively (dir flip included), so
+      // nothing is lost by skipping these 500 ms rounds.
+      if(s_bkDragId != "" && g_bkBoxes[i].id == s_bkDragId) continue;
       string pfx = BaseKnotPrefix(g_bkBoxes[i].id);
       if(pfx == "") continue;
       string box = BaseKnotBoxName(pfx);
