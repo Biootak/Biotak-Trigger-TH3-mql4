@@ -64,9 +64,9 @@ static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBo
 static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
 static int g_boxBorderTransparency = 0;                          // [08.5] palette TR (default solid)
 static int g_bkTargetR = 2;                                      // [08.5] inpBKTargetR (TP = Entry + R x N)
-static color g_bkEntryColor = C'30,144,255';                     // [08.5] inpBKEntryColor
+static color g_bkEntryColor = C'46,139,87';                      // [08.5] inpBKEntryColor
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
-static color g_bkTargetColor = C'46,139,87';                     // [08.5] inpBKTargetColor
+static color g_bkTargetColor = C'30,144,255';                    // [08.5] inpBKTargetColor
 static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide, 1=Always show)
 // [08.5] BASE BOX FILL + USER TEXT — TV-parity 2026-09-07 (Style/Text tabs).
 // Fill default transparency = 100 (invisible) so pre-fill charts stay

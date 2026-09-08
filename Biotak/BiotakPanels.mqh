@@ -1830,7 +1830,7 @@ void BkPresetGet(const int i, BkPreset &p)
    else               // 0 Amber (shipped look)
    {
       p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
-      p.entry=C'30,144,255'; p.sl=C'220,50,50'; p.tp=C'46,139,87';
+      p.entry=C'46,139,87'; p.sl=C'220,50,50'; p.tp=C'30,144,255';
       p.fill=C'255,171,0'; p.fillTr=100;
       p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }

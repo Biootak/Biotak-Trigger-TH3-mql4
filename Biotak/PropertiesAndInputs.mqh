@@ -169,9 +169,9 @@ input color inpBoxBorderColor = C'255,171,0';            // Base Box Border Colo
 input ENUM_LINE_STYLE inpBoxBorderStyle = STYLE_SOLID;   // Base Box Border Style
 input int inpBoxBorderWidth = 2;                         // Base Box Border Width (1-5)
 input int inpBKTargetR = 2;                              // Base Box Target R:R multiple (TP = Entry + R x N)
-input color inpBKEntryColor = C'30,144,255';             // Base Box Entry Line Color (dodger blue)
+input color inpBKEntryColor = C'46,139,87';              // Base Box Entry Line Color (green)
 input color inpBKStopColor = C'220,50,50';               // Base Box Stop Line Color (red)
-input color inpBKTargetColor = C'46,139,87';             // Base Box Target Line Color (sea green)
+input color inpBKTargetColor = C'30,144,255';            // Base Box Target Line Color (bold blue, width 2 tick)
 input int inpBKShowInfo = 0;                             // Base Box Info Label: 0=Auto (hide after set), 1=Show
 input color inpBoxFillColor = C'255,171,0';              // Base Box Fill Color (bucket — TV Style tab)
 input color inpBKTextColor = C'255,255,255';             // Base Box Text Color (T button — TV Text tab)
