@@ -1145,13 +1145,23 @@ void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
    }
    else if(curT > 0 && curP > 0 && id == s_bkDragId && s_bkDragT0 > 0)
    {
-      // Anchors frozen on this build — cursor-delta fallback (the press latch
-      // belongs to s_bkDragId, so only that box may use it).
+      // Anchors frozen — the terminal is NOT moving the BOX natively on this
+      // gesture (frozen build, or the grab never engaged): cursor-delta
+      // fallback (the press latch belongs to s_bkDragId, so only that box
+      // may use it). P-BK-16: move the BOX itself too, not just the children
+      // — children-only left the box behind, so release-Sync snapped
+      // everything back and the box could never be relocated. Absolute from
+      // the press base (never incremental), so rounds converge exactly and
+      // can never drift or double-count; the moment the terminal moves the
+      // anchors itself, the exact branch above wins again.
       int dt = (int)(curT - s_bkDragT0);
       double dp = curP - s_bkDragP0;
-      BaseKnotMoveChildren(id,
-         s_bkDragBT1 + dt, s_bkDragBP1 + dp,
-         s_bkDragBT2 + dt, s_bkDragBP2 + dp);
+      datetime ft1 = s_bkDragBT1 + dt, ft2 = s_bkDragBT2 + dt;
+      double fp1 = s_bkDragBP1 + dp, fp2 = s_bkDragBP2 + dp;
+      ObjectMove(0, box, 0, ft1, fp1);
+      ObjectMove(0, box, 1, ft2, fp2);
+      s_bkFolT1 = ft1; s_bkFolT2 = ft2; s_bkFolP1 = fp1; s_bkFolP2 = fp2;
+      BaseKnotMoveChildren(id, ft1, fp1, ft2, fp2);
    }
    else return;   // nothing moved and no cursor — skip the repaint too
    BaseKnotDragPaint();
