@@ -637,7 +637,9 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   bit-identical; NO W1/MN exception, works on fractal TFs too). Symbol-free by
   construction (only ATR + symbol-aware `GetCachedPipSize()`, no pair
   constant) + `TradePlanSelfCheck()` rounding-integrity guard for any
-  symbol. Display (`LabelFunctions.mqh`) renders, never recomputes.)
+  symbol. Display (`LabelFunctions.mqh`) renders, never recomputes.
+  Cross-symbol validated on EURUSD/D1 (SL103/TP240/514/1062 + Hunter31/
+  Eng12 + StrBond228-1085 all reproduce; full walkthrough: TRADEPLAN_FA.md).)
 
 ---
 
