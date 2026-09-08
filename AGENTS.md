@@ -631,8 +631,10 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (M1:1, M5:3, else 5; trigger = 2 ladder steps down, M1 floor — same ladder
   as `GetTriggerDurationSeconds`); `Hunter = round(8*EngTrue/3)` from the
   UNROUNDED Eng (rounding the rounded Eng breaks H1 by 2); `StrBond2 =
-  round(190*base/3)`; `StrBond1` = recomputed Hunter 2 ladder steps above
-  (W1 fallback `32*base`, MN fallback `sb2+hunter`). Symbol-free by
+  round(190*base/3)`; `StrBond1 = round(40*ownATR/3)` from the UNcapped
+  own-TF ATR (the "Hunter 2-above" read was emergent, not causal — both
+  equal 40/3 of the shared TF wherever both exist, so M1..D1 are
+  bit-identical; NO W1/MN exception, works on fractal TFs too). Symbol-free by
   construction (only ATR + symbol-aware `GetCachedPipSize()`, no pair
   constant) + `TradePlanSelfCheck()` rounding-integrity guard for any
   symbol. Display (`LabelFunctions.mqh`) renders, never recomputes.)

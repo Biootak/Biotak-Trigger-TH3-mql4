@@ -32,8 +32,13 @@
 // StrBond leg 2 = 190/3 * base = TP3 + 4/3 * base.
 #define TRADEPLAN_SB2_NUM  190.0
 #define TRADEPLAN_SB2_DEN    3.0
-// W1 fallback (no 2-above TF): StrBond leg 1 = 32 * base.
-#define TRADEPLAN_W1_SB1_MULT 32.0
+// StrBond leg 1 = 40/3 * OWN-TF ATR - the uniform law, no exceptions.
+// (The old "Hunter 2-above" read was emergent, not causal: Hunter(up) and
+// sb1(chart) both equal 40/3 * ATR of the shared TF wherever both exist,
+// so M1..D1 numbers are bit-identical either way. Ladder lookups and the
+// W1/MN fallbacks are gone - this works on fractal TFs too.)
+#define TRADEPLAN_SB1_NUM   40.0
+#define TRADEPLAN_SB1_DEN    3.0
 // Plan engine never looks above D1 (professor trades <= D1;
 // MN/W1/D1 charts all show the daily plan).
 #define TRADEPLAN_MAX_PLAN_MINUTES 1440
@@ -91,14 +96,6 @@ int TradePlanTriggerMinutes(const int chartMinutes)
    return TradePlanLadderMinutes(i - TradePlanTriggerBack(chartMinutes));
 }
 
-// Two ladder steps above, or -1 when missing (W1 / MN top out).
-int TradePlanUpperMinutes(const int chartMinutes)
-{
-   int up = TradePlanLadderIndex(chartMinutes) + 2;
-   if(up > 7) return -1;
-   return TradePlanLadderMinutes(up);
-}
-
 int TradePlanRound(const double x) { return (int)MathRound(x); }
 
 // ATR of a ladder TF, in symbol pips. 0 when not ready.
@@ -121,6 +118,7 @@ struct STradePlan
    int    planMin;     // engine TF for SL/TP + StrBond leg 2
    int    trigMin;     // engine TF for Eng
    double basePips;    // plan ATR, pips, unrounded
+   double ownPips;     // OWN-TF ATR, pips, unrounded (StrBond leg 1 engine)
    double engTrue;     // Eng, pips, unrounded (Hunter derives from THIS)
    int    sl, tp1, tp2, tp3;
    int    hunter, eng;
@@ -147,7 +145,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    p.chartMin = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
    p.planMin  = TradePlanBaseMinutes(p.chartMin);
    p.trigMin  = TradePlanTriggerMinutes(p.chartMin);
-   p.basePips = 0.0; p.engTrue = 0.0;
+   p.basePips = 0.0; p.ownPips = 0.0; p.engTrue = 0.0;
    p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
    p.hunter = 0; p.eng = 0; p.sb1 = 0; p.sb2 = 0;
 
@@ -167,18 +165,10 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
 
    p.sb2 = TradePlanRound(TRADEPLAN_SB2_NUM * p.basePips / TRADEPLAN_SB2_DEN);
 
-   int up = TradePlanUpperMinutes(p.chartMin);
-   if(up > 0)
-   {
-      double eU = 0.0; int tU = 0;
-      TradePlanEngTrue(up, eU, tU);
-      if(eU <= 0.0) return false;
-      p.sb1 = TradePlanHunterFromEng(eU);
-   }
-   else if(p.chartMin >= 43200)
-      p.sb1 = p.sb2 + p.hunter;                        // MN fallback (observed)
-   else
-      p.sb1 = TradePlanRound(TRADEPLAN_W1_SB1_MULT * p.basePips); // W1 fallback (observed)
+   // Uniform leg 1: own-TF ATR. No ladder lookup, no W1/MN special case.
+   p.ownPips = TradePlanATRPips(p.chartMin);
+   if(p.ownPips <= 0.0) return false;
+   p.sb1 = TradePlanRound(TRADEPLAN_SB1_NUM * p.ownPips / TRADEPLAN_SB1_DEN);
 
    p.valid = true;
    return true;
@@ -197,14 +187,7 @@ bool TradePlanSelfCheck(const STradePlan &p)
    if(MathAbs(p.eng - p.engTrue) > 0.5001) return false;
    if(MathAbs(p.hunter - TRADEPLAN_HUNTER_NUM * p.engTrue / TRADEPLAN_HUNTER_DEN) > 0.5001) return false;
    if(MathAbs(p.sb2 - TRADEPLAN_SB2_NUM * p.basePips / TRADEPLAN_SB2_DEN) > 0.5001) return false;
-   if(TradePlanUpperMinutes(p.chartMin) < 0)
-   {
-      if(p.chartMin >= 43200)
-      {
-         if(p.sb1 != p.sb2 + p.hunter) return false;
-      }
-      else if(MathAbs(p.sb1 - TRADEPLAN_W1_SB1_MULT * p.basePips) > 0.5001) return false;
-   }
+   if(MathAbs(p.sb1 - TRADEPLAN_SB1_NUM * p.ownPips / TRADEPLAN_SB1_DEN) > 0.5001) return false;
    return true;
 }
 
