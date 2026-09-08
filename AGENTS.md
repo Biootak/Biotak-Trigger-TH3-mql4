@@ -614,15 +614,17 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   top-right under the stamp: `Hunter SL: H Eng.SL: E` (red) /
   `Str Bond: A - B` (blue). The ATR-pips row is retired (ATR stays the
   hidden engine only). Top-right
-  TRex stamp (active-TF standard TH pips, 1 decimal / green Persian caption /
-  `TR` blue + `ex` red brand at +6pt) rides the SAME ATR-trade visibility
+  TRex stamp (brand `TR` blue + `ex` red at +6pt with the pair's LIVE spread
+  superscript in pips, 1 decimal + green Persian caption) rides the SAME
+  ATR-trade visibility
   (`inpShowATRTradeLabels` + `g_atrLabelsVisible`; Hunter/StrBond ride the
   SL toggle, TP row rides the TP toggle in `SetATRLabelsVisibility`); all
   9 objects are `LBL_`-prefixed so
-  `ClearAllLabels` + the param-change purge cover them. `TRexCaptionText()`
+  `ClearAllLabels` + the param-change purge cover them. The small number is
+  spread, never a version or TH value (the v0.5 daily-TH value row is retired
+  in 3.x; `TREX_Value` purge lines stay for old charts). `TRexCaptionText()`
   builds the Persian caption from ushort codes — never a non-ASCII literal
-  in source (see P-LBL-01). Top value assumption: active-TF standard TH —
-  say the word if `0.5` meant something else.)
+  in source (see P-LBL-01).)
 
 - **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
   (2026-09-08 — reverse-engineered from the professor's TRex screenshots,

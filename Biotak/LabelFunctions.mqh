@@ -327,10 +327,9 @@ bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
    int fontSize  = inpFontSize;
    int brandSize = inpFontSize + 6;
    int rightMargin = MathMax(8, inpLabelsMarginLeft);
-   int yVal   = MathMax(8, inpLabelsMarginTop);
-   int yCap   = yVal + fontSize + inpLabelRowGap;
-   int yBrand = yCap + fontSize + inpLabelRowGap;
-   int yHunter = yBrand + brandSize + inpLabelRowGap;
+   int yBrand  = MathMax(8, inpLabelsMarginTop);
+   int yCap    = yBrand + brandSize + inpLabelRowGap;
+   int yHunter = yCap + fontSize + inpLabelRowGap;
    int yBond   = yHunter + fontSize + inpLabelRowGap;
    string hText = StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
    string bText = StringFormat("Str Bond: %d - %d", plan.sb1, plan.sb2);
@@ -340,9 +339,12 @@ bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
 }
 
 //+------------------------------------------------------------------+
-//| TRex title stamp (top-right): TH value + Persian caption + brand |
-//| Screenshot order: value / caption / TR|ex (caption = price-behavior |
-//| tagline, built from codes below - never a literal, see P-LBL-01).  |
+//| TRex title stamp (top-right): brand + live spread + caption      |
+//| Screenshot order: TR|ex with spread superscript / caption (the    |
+//| small number is the pair's live spread in pips - NOT a version   |
+//| and not a TH value; v0.5's daily-TH value row is retired in 3.x). |
+//| Caption = price-behavior tagline, built from codes below - never |
+//| a literal, see P-LBL-01).                                         |
 //+------------------------------------------------------------------+
 string TRexCaptionText() {
     ushort cap[20];
@@ -376,32 +378,27 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
 }
 
 bool DisplayTRexTitleBlock(const string labelPrefix) {
-    string valName = labelPrefix + "TREX_Value";
+    string spName  = labelPrefix + "TREX_Spread";
     string capName = labelPrefix + "TREX_Caption";
     string trName  = labelPrefix + "TREX_TR";
     string exName  = labelPrefix + "TREX_EX";
 
     if(IsIndicatorHidden()) {
-        ObjectSetInteger(0, valName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, spName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, capName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, trName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, exName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         return true;
     }
 
-    // Top value = active-TF standard TH in pips, 1 decimal (screenshot "0.5").
-    int digits = GetCachedDigits();
-    int actMin = GetEffectiveTimeframe();
-    double basePx = g_currentPrice;
-    if(g_dailyClosePriceForTH != EMPTY_VALUE && g_dailyClosePriceForTH > 0)
-        basePx = g_dailyClosePriceForTH;
-    string valText = "";
-    if(actMin > 0 && basePx > 0 && digits > 0) {
-        double pct = CalculateStandardPercentage(actMin);
-        if(pct > 0) {
-            double thPts = CalculateTHPoints(basePx, digits, pct);
-            valText = DoubleToString(thPts / 10.0, 1);
-        }
+    // Superscript = live spread of the pair in pips, 1 decimal ("3.2" style).
+    string spText = "--";
+    double pip = GetCachedPipSize();
+    if(!IsZero(pip, EPSILON_PRICE)) {
+        double ask = MarketInfo(Symbol(), MODE_ASK);
+        double bid = MarketInfo(Symbol(), MODE_BID);
+        if(ask > 0 && bid > 0 && ask >= bid)
+            spText = DoubleToString((ask - bid) / pip, 1);
     }
     string capText = TRexCaptionText();
 
@@ -410,14 +407,17 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
     int fontSize  = inpFontSize;
     int brandSize = inpFontSize + 6;
     int rightMargin = MathMax(8, inpLabelsMarginLeft);
-    int yVal   = MathMax(8, inpLabelsMarginTop);
-    int yCap   = yVal + fontSize + inpLabelRowGap;
-    int yBrand = yCap + fontSize + inpLabelRowGap;
+    int yBrand = MathMax(8, inpLabelsMarginTop);
+    int yCap   = yBrand + brandSize + inpLabelRowGap;
 
     int xEx = rightMargin;
     int xTR = rightMargin + (int)(2.0 * brandSize * 0.7);
+    // Spread superscript rides over the "ex" top-right (screenshot look).
+    int xSp = rightMargin + 6;
+    int ySp = yBrand - 6;
+    if(ySp < 0) ySp = 0;
 
-    if(!CreateTRexPiece(valName, valText, clrDarkBlue, fontSize, rightMargin, yVal)) return false;
+    if(!CreateTRexPiece(spName, spText, clrBlack, fontSize, xSp, ySp)) return false;
     if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap)) return false;
     if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
@@ -534,7 +534,7 @@ void DisplayATRTradeLabels(const string objectPrefix) {
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_SLRow");
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_TPRow");
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_CloseIn");
-        ObjectDelete(0, labelPrefix + "TREX_Value");
+        ObjectDelete(0, labelPrefix + "TREX_Spread");
         ObjectDelete(0, labelPrefix + "TREX_Caption");
         ObjectDelete(0, labelPrefix + "TREX_TR");
         ObjectDelete(0, labelPrefix + "TREX_EX");
@@ -596,7 +596,7 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SLRow", OBJPROP_TIMEFRAMES, slTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TPRow", OBJPROP_TIMEFRAMES, tpTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_CloseIn", OBJPROP_TIMEFRAMES, tradeTF);
-    ObjectSetInteger(0, uniquePrefix + "TREX_Value", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_Spread", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Caption", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);

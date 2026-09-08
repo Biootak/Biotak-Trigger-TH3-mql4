@@ -501,7 +501,7 @@ void OnDeinitHandler(const int reason) {
         ObjectDelete(0, lblPfx + "ATR_Trade_Current_ATR");
         ObjectDelete(0, lblPfx + "ATR_Trade_Current_SLRow");
         ObjectDelete(0, lblPfx + "ATR_Trade_Current_TPRow");
-        ObjectDelete(0, lblPfx + "TREX_Value");
+        ObjectDelete(0, lblPfx + "TREX_Spread");
         ObjectDelete(0, lblPfx + "TREX_Caption");
         ObjectDelete(0, lblPfx + "TREX_TR");
         ObjectDelete(0, lblPfx + "TREX_EX");
