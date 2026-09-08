@@ -56,8 +56,8 @@ input bool inpShowStandardTHs = false;
 input bool inpShowATRLabels = false;              // Show ATR Labels
 input bool inpShowATRTargets = true;             // Show ATR Targets
 input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels
-input bool inpShowATRTradeSLLabels = true;       // Show "Hunter SL / Eng.SL" row
-input bool inpShowATRTradeTPLabels = true;       // Show TP1/TP2/TP3 labels
+input bool inpShowATRTradeSLLabels = true;       // Show Hunter + StrBond rows
+input bool inpShowATRTradeTPLabels = true;       // Show #SL/#TP1-3 row
 input int inpATRTradeLabelRowGap = 10;           // Compact vertical gap between ATR trade rows
 
 input group "04) STYLE - SS/LS STEP"

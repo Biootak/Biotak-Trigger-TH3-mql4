@@ -419,6 +419,12 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
 
     if(!CreateTRexPiece(spName, spText, clrBlack, fontSize, xSp, ySp)) return false;
     if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap)) return false;
+    // P-LBL-01 follow-up: "Arial Bold" (inpFontName) is not a real family, so
+    // MT4 falls back to a font without Arabic glyphs and the caption shows
+    // as "????". Tahoma ships with every Windows and covers Arabic - the
+    // caption renders with no Persian font to download. Runs every refresh,
+    // so the override sticks.
+    ObjectSetString(0, capName, OBJPROP_FONT, "Tahoma");
     if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
     return true;

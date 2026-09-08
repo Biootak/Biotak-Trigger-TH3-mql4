@@ -1600,8 +1600,8 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
       if(row==0)       { kind=1; label="ATR LABELS"; }
       else if(row==1)  { kind=1; label="ATR TARGETS"; }
       else if(row==2)  { kind=1; label="TRADE LABELS"; }
-      else if(row==3)  { kind=1; label="SL LABELS"; }
-      else if(row==4)  { kind=1; label="TP LABELS"; }
+      else if(row==3)  { kind=1; label="HUNTER ROW"; }
+      else if(row==4)  { kind=1; label="TP ROW"; }
       else if(row==5)  { kind=1; label="PIP LABELS"; }
       else             { label="ROW GAP"; minV=1; maxV=60; }
    }
@@ -2106,9 +2106,18 @@ int PnlApply(const int item,const int row,const double v)
                             string opB=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opB,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==2)  { g_showATRTradeLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==3)  { g_showATRTradeSLLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==4)  { g_showATRTradeTPLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==2)  { g_showATRTradeLabels=(v>0.5);
+                            string opC=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            SetATRLabelsVisibility(opC,g_atrLabelsVisible);
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==3)  { g_showATRTradeSLLabels=(v>0.5);
+                            string opD=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            SetATRLabelsVisibility(opD,g_atrLabelsVisible);
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==4)  { g_showATRTradeTPLabels=(v>0.5);
+                            string opE=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            SetATRLabelsVisibility(opE,g_atrLabelsVisible);
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==5)  { g_showPipDistanceLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else             { g_atrLabelRowGap=ClampInt((int)MathRound(v),1,60); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          break;
