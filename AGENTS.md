@@ -448,12 +448,16 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `TOOL_COUNT`-driven menu loops pick new tools up automatically; BK owns panel
   12 (Base Box style card — ToolPanel()==12, so ring-hold opens it like every
   other tool; click still arms drawing, guarded by `g_LongPressFired`).
-  Drag-follow is cursor-delta (2026-09-07 — per-step `OBJECT_DRAG`/live
-  anchors are build-dependent, children froze until release on some builds):
-  the press latches candidate+anchors, held moves shift children by cursor
-  delta (`BaseKnotMoveChildren`, moves-only, 30ms), release does one
-  authoritative `BaseKnotSync`; repaints share one 30ms budget
-  (`BaseKnotDragPaint`) — full pattern: `LEARNING.md` §1.
+  Drag-follow is ONE unified lean writer (2026-09-08, P-BK-07 — two writers
+  fought: per-step `OBJECT_DRAG`→full `Sync` lagged on heavy charts while the
+  `MOUSE_MOVE` cursor-delta fallback ignored MT4 magnet snap, so fill and
+  border diverged mid-drag): `BaseKnotFollowDrag` moves children from the BOX
+  live anchors while the terminal moves them (exact, moves-only, ~14 syscalls)
+  and falls back to cursor delta only while anchors sit frozen (some builds).
+  `OBJECT_DRAG` carries no trusted cursor (anchor-exact only — in-repo pattern,
+  TH3Tool reads anchors there too), `MOUSE_MOVE` carries the cursor fallback;
+  the shared 30ms gate dedups the channels so neither fights nor starves.
+  Release does one authoritative `BaseKnotSync` — full pattern: `LEARNING.md` §1.
 
 - **Base Box is TradingView-parity — toolbar, fill, text, tabs**
   (2026-09-07, user decision — the strip + card mirror TV's rectangle tool:
@@ -520,7 +524,9 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 - **R-PANELMOD — panels use TV-modern elements, not repainted old ones**
   (2026-09-07, user decision — white paint over steppers/pills still read
   dated next to the TV Rectangle dialog). Single-line rows
-  (`PNL_ROW_H` 42: label left · control right); kind=2 with 4+ options is a
+  (`PNL_ROW_H` 42: label left · control right — except COLOR (kind=4) and
+  TEXT (kind=6) rows, whose label rides above the control in the same 42px:
+  a full swatch strip / edit field never fits beside its label, P-UI-11); kind=2 with 4+ options is a
   generic dropdown-select (`PnlDdOpen/Hit`, content-fitted popover,
   dark-pill selection, `PnlApplyOption` = same path as segment taps, full
   rebuild like TAB switches); (9,0)/(12,0) are underline tabs (`TU`
@@ -534,14 +540,22 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   through; Esc closes popover before panel.
 
 - **Base/Knot is fully automatic — no Buy/Sell button, ever**
-  (2026-09-06 — direction is decided ONCE at commit by
-  `BaseKnotResolveDirection()` in `Biotak/BaseKnotTool.mqh` and FROZEN in the
-  registry + chart-scoped GV: price above the box = Buy (Entry=top, SL=bottom,
+  (2026-09-06 — direction is decided at commit by
+  `BaseKnotResolveDirection()` in `Biotak/BaseKnotTool.mqh`, then FOLLOWS the
+  live price (P-BK-13 2026-09-08 — a frozen dir went stale the moment price
+  crossed the box, so a box below the price stayed SELL forever: the 500 ms
+  pump `BaseKnotSyncBadges` + drag-release now flip it via
+  `BaseKnotRefreshDirection()`, persisted to the chart-scoped GV, with a
+  3 s hint on flip. The BOX ITSELF is the hysteresis band — fully outside
+  takes that side, inside keeps the current one — so in-box vibration still
+  cannot flicker the lines. Lite has no `RefreshKitOnBar` pump, so
+  `OnCalculateHandler` runs `BaseKnotSyncBadges()` throttled 500 ms under
+  `#ifdef BUILD_LITE`): price above the box = Buy (Entry=top, SL=bottom,
   TP=top+2R), below = Sell (mirrored); a commit landing with the price INSIDE
   resolves by entry side (most recent of the last 128 closes outside the box:
-  from below → Buy, from above → Sell; mid-vs-price fallback). Live ticks
-  never recompute it (`BaseKnotSync` only reads the registry), so in-box price
-  vibration cannot flicker the lines. Box ids are `"<commitTFmin>_<tick>[rNNN]"`
+  from below → Buy, from above → Sell; mid-vs-price fallback). `BaseKnotSync`
+  only reads the registry (never recomputes — the refresh happens BEFORE the
+  Sync call), so the flicker rule still holds. Box ids are `"<commitTFmin>_<tick>[rNNN]"`
   — every tail split MUST use the last underscore (`BaseKnotSplitTail`), the
   first one is inside the id. Each box carries its commit-TF mask
   (`BaseKnotTFMask`: own + lower TFs, hidden above — no hairline boxes) and
@@ -618,6 +632,16 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-UI-08 | WIDTH ▾ control read as three separate items — sample glyph looked like a stray "H" next to the "Npx" text + chevron | Closed control drew all three (24px `bk_wN` sample + text + chevron); at 1px the sample is two end-ticks joined by a hairline, i.e. an "H" with no visible meaning | Closed WIDTH control is text-only: centered "Npx" (`BK_WTXT_X` 16 + `BK_WTXT_W` 22 estimate, chevron glued after) + tooltip on label/chevron; thickness samples live ONLY in the dropdown rows; `TBwidth` bitmap retired but its `PnlDestroy` delete stays as purge | 2026-09-07 |
 | P-UI-09 | TV-white panel restyle left white-on-light invisible texts (NAV buttons) + dark-era leftovers | `NAV` text used `ACCENT_TX` (white-on-amber) which vanishes on the light button; color-row/edit/separator literals were hardcoded dark; `pal`/`ticon`/`sub` header objects retired | Every panel-chrome color must come from `PNL_CLR_*` (one redefinition repaints all cards); retired header objects keep handlers + `PnlDestroy` purges; geometry defines never change in a visual restyle | 2026-09-07 |
 | P-UI-10 | White panels still read dated vs TV dialog (two-line rows, pills for 8 options, [-]/[+] steppers, PICK button) | Repaint kept the old widget language: two-line rows, cramped 8-pill segments, stepper sliders, redundant PICK | TV-modern element language (R-PANELMOD): single-line rows ROW_H 42, generic dropdown-select for 4+ options, underline tabs, stepper-less sliders, PICK retired; MQL4 define-before-use split (helpers early, engine after PnlOpen) | 2026-09-07 |
+| P-BK-07 | Mid-drag the BOX fill and the border/rays diverge (fill leads, children lag or sit offset until release) | TWO writers fought over children: per-step `OBJECT_DRAG`→full `BaseKnotSync` (~45 style/tooltip syscalls per step — lags on heavy charts) vs `MOUSE_MOVE` cursor-delta (lean but approximate — ignores MT4 magnet snap on the native BOX) | ONE writer `BaseKnotFollowDrag`: anchor-exact moves-only (~14 syscalls) while the terminal moves anchors, cursor-delta fallback only while frozen; `OBJECT_DRAG` carries no trusted cursor (anchor-exact only — in-repo pattern, TH3Tool reads anchors there too), `MOUSE_MOVE` carries the cursor fallback; the shared 30ms gate dedups the channels so neither fights nor starves; full `Sync` only on release | 2026-09-08 |
+| P-BK-08 | Chart slides under the hand mid-gesture (live ticks shift the view while sizing/dragging a box) — MT4's own tools freeze the view | Draw session locked only `MOUSE_SCROLL`+`CTX_MENU`; committed-box drags locked nothing; `AUTOSCROLL` never suspended anywhere | One lock pair `BaseKnotLockChart(ctxToo)`/`UnlockChart` (first locker saves `Was`, nested only re-asserts): session locks all three, IDLE drag (from slop-exceed, taps never flicker) locks scroll+autoscroll; release/Cancel/Commit/OnDeinit unlock; stuck-lock watchdog in the 500ms pump (button up + 1.5 s event silence — KEYSTATE flicker alone must not false-trigger, P-BK-05) | 2026-09-08 |
+| P-BK-09 | Rebuilt boxes (restart/TF-switch) silently become BUY when their direction GV is gone; same-bar drags die with zero feedback | `LazyInit` defaulted GV-miss to `dir=1`; `Commit` rejected `t2==T1` (corner times snap to bar opens) and point-clicks without a word | GV-miss recomputes via `BaseKnotResolveDirection` (same as a fresh commit) and re-persists via `Register`; same-bar auto-extends one `PeriodSeconds()`; true point-clicks pop a 2 s hint instead of dying silent | 2026-09-08 |
+| P-BK-10 | TP draws as a ray to infinity (reads as "price will go there"); `MakeRay` callers fail to compile when a callee param turns `const` | TP shared the Entry/SL ray maker; `Commit(const datetime t2)` then assigned `t2` for the same-bar extend (MQL4 error 189) | `MakeRay(..., rayRight)`: Entry/SL pass `true`, TP passes `false` (finite one-box-width tick); old ray-TPs self-heal via the 500ms pump migration check; never assign a `const` param — copy to a local (`tc`) first | 2026-09-08 |
+| P-BK-11 | TP tick must hug the chart's right edge (a tiny visible mark by the price axis), not sit next to the box — and be SHORT | Box-anchored cuts (`t2 → t2+width`, then current-bar + box-width) still floated mid-chart; scroll/zoom/new bars would strand any fixed-time marker; a 2-bar DASHED tick renders as almost nothing | `BaseKnotTPEdgeTime` (window right-edge time via `CHART_WIDTH_IN_PIXELS` + `ChartXYToTimePrice`, one conversion per pump) + `BaseKnotTPTickSpan` (tick = edge − 2 bars → edge; bar/box fallbacks only when unconvertible); tick look is `BK_TP_TICK_STYLE/WIDTH` (SOLID/2 — same size, instantly readable); `BaseKnotTPGlue` re-anchors with two `ObjectMove`s in the 500ms pump (level untouched — scroll/zoom/new bars only remap time, never a full `Sync`); `BaseKnotTPStale` migrates structural drift (ray flag, old dash/thin) → `Sync` | 2026-09-08 |
+| P-BK-12 | INFO label orphans on TFs where its box is hidden (H1 box invisible on H4, label visible) | `BaseKnotPlaceBadges` overwrote the box's TF mask with plain `OBJ_ALL_PERIODS` (same trap as P-BK-01) | `PlaceBadges` takes the live `tfMask` and writes `tfVis ? tfMask : OBJ_NO_PERIODS` — never a raw ALL/NO; same sweep also: edges/rays `BACK=false` (foreground like TH lines — borders must read over candles), preview wears the user's border style/width, TEXT gets the box tooltip + fg-aware render color (`GetBKTextRenderColor`: factory-white means Auto), TP glue skips TF-hidden boxes, `Commit` stores canonical corner order, BOX `ZORDER` lives in `StyleBox` | 2026-09-08 |
+| P-BK-13 | Box below the live price stays SELL forever (screenshot: demand box under price with SL on top) — all scenarios stale after any cross | Direction was decided ONCE at commit and FROZEN; later price crosses and user drags-across never re-evaluated it (`BaseKnotSync` only read the registry) | Direction FOLLOWS the price: `BaseKnotFollowDirection` (box = hysteresis band: outside takes that side, inside keeps — no flicker, no buffer to tune) via `BaseKnotRefreshDirection` (anchors → want → persist GV, returns flipped) called from the 500 ms `BaseKnotSyncBadges` pump (one shared `iClose`-first `BaseKnotLiveRef`, 3 s cross-hint when IDLE) + instantly on drag-release before the authoritative `Sync`; Lite has no kit pump so `OnCalculateHandler` runs `SyncBadges` throttled 500 ms under `#ifdef BUILD_LITE`; `Sync` itself still never recomputes | 2026-09-08 |
+| P-UI-11 | COLOR-row label buried under its own preview swatch (label invisible, row looks headless) | Label `L` drawn at `px+PAD_X` for all kinds, but kind==4 preview `CB` starts at the same X with higher ZORDER (1520 < 1540) | kind==4 moves `L` to `ry+2` like kind==6 (label-above in the 42px row — R-PANELMOD exception alongside TEXT rows); update path never touches `L` so create-time position sticks | 2026-09-08 |
+| P-UI-12 | Menu hover tooltip fires over an open settings card (phantom tip, Z1700 over panel) | `CircTipTick` (per-tick) had no panel-occlusion awareness; hotkey-opened panels never cleared a visible/armed tip; Menu is included BEFORE Panels so it cannot call `PnlPointInside` | Cross-layer flag `g_UIPanelOpen` in `GlobalVariables.mqh` (set in `PnlOpen`, cleared in `PnlCloseAll`) + `CircTipDisarm()` called from `PnlOpen`; `OnMove`/`Tick` abort while flagged; `CircTipShow` clamps bottom + tiny-chart floor | 2026-09-08 |
+| P-UI-13 | Tools-ring fan stacks on one line near chart edges (46px spacing vs 52px footprint — overlap) | `ToolsLayout` clamped every item independently, destroying the ±55° spread (the ring itself uses `CircFitRadius`) | `ToolsFitRadius` (same ray-vs-bounds math over the TOOL_COUNT fan angles): shrink the radius, keep the clamp only as last-resort safety | 2026-09-08 |
 
 
 > When you close a new recurring issue, add the next row above (highest

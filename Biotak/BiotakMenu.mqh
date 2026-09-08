@@ -642,17 +642,17 @@ string CircItemTooltip(const int i)
 {
    switch(i)
    {
-      case CIR_ZONES:           return "Zones & Levels · " + CircTooltipStatus(i) + "\nClick: toggle mid zones · Hold: full settings";
-      case CIR_TRIGGER:         return "Trigger Zones · " + CircTooltipStatus(i) + "\nClick: toggle trigger zones · Hold: settings";
+      case CIR_ZONES:           return "Zones & Levels · " + CircTooltipStatus(i) + "\nClick: toggle zones · Hold: settings";
+      case CIR_TRIGGER:         return "Trigger Zones · " + CircTooltipStatus(i) + "\nClick: toggle · Hold: settings";
       case CIR_ATR:             return "ATR Labels · " + CircTooltipStatus(i) + "\nClick: toggle ATR labels · Hold: settings";
-      case CIR_TH:              return "TH Labels · " + CircTooltipStatus(i) + "\nClick: cycle TH labels mode · Hold: settings";
+      case CIR_TH:              return "TH Labels · " + CircTooltipStatus(i) + "\nClick: cycle mode · Hold: settings";
        // VIEWLOCK-OFF: case CIR_VLOCK: return "View Lock\nClick: keep this view across timeframes · Hold: settings";
        // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
-       case CIR_HTF:             return "HTF Candles · " + CircTooltipStatus(i) + "\nClick: toggle HTF candles · Hold: settings";
-       case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
-        case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
+      case CIR_HTF:             return "HTF Candles · " + CircTooltipStatus(i) + "\nClick: toggle · Hold: settings";
+      case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
+       case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
-      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: press-hold-draw box + Entry/SL/TP · Hold a box: border style · or 2-click · ESC: done";
+      case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: draw box · Hold box: style · ESC: done";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -702,6 +702,13 @@ void CircTipHide()
    ObjectDelete(0, CircTipTxH());
    ChartRedraw();
 }
+// Full disarm (hide + drop a pending arm): called when a settings card opens
+// so no tip survives above it or fires while it is open (phantom tip).
+void CircTipDisarm()
+{
+   s_TipPendFeat = -2;
+   CircTipHide();
+}
 
 void CircTipShow(const int feat, const int ax, const int ay)
 {
@@ -711,9 +718,10 @@ void CircTipShow(const int feat, const int ax, const int ay)
    if(ch <= 0) ch = 1080;
    int x = ax - CIRC_TIP_W / 2;
    if(x < 4) x = 4;
-   if(x > cw - CIRC_TIP_W - 4) x = cw - CIRC_TIP_W - 4;
+   if(x > cw - CIRC_TIP_W - 4) x = MathMax(4, cw - CIRC_TIP_W - 4);   // tiny-chart floor
    int y = ay - CIRC_TIP_H - 12;
    if(y < 4) y = ay + CIRC_BTN_SIZE / 2 + 12;   // no room above → below the item
+   if(y > ch - CIRC_TIP_H - 4) y = MathMax(4, ch - CIRC_TIP_H - 4);   // no room below either
 
    string bg = CircTipBg();
    if(ObjectFind(0, bg) < 0) ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0);
@@ -814,6 +822,7 @@ void CircTipOnMove(const int mx, const int my, const bool leftDown)
    if(mx == s_TipMX && my == s_TipMY && leftDown == s_TipDown) return;
    s_TipMX = mx; s_TipMY = my; s_TipDown = leftDown;
    if(leftDown || g_LongPressItem >= 0) { s_TipPendFeat = -2; CircTipHide(); return; }
+   if(g_UIPanelOpen) { s_TipPendFeat = -2; CircTipHide(); return; }   // a card covers the menu — never arm under it
    int feat = CircTipFeatAt(mx, my);
    if(feat == -2) { s_TipPendFeat = -2; CircTipHide(); return; }
    if(feat == s_CircTipFeat && ObjectFind(0, CircTipBg()) >= 0) { s_TipPendFeat = -2; return; }
@@ -826,6 +835,7 @@ void CircTipOnMove(const int mx, const int my, const bool leftDown)
 void CircTipTick()
 {
    if(s_TipPendFeat == -2) return;
+   if(g_UIPanelOpen) { s_TipPendFeat = -2; return; }   // opened after arming — never fire over it
    if(GetTickCount() - s_TipPendSince < CIRC_TIP_DELAY_MS) return;
    int feat = s_TipPendFeat;
    s_TipPendFeat = -2;
@@ -914,11 +924,38 @@ void CircLayout(const int i, int &x, int &y)
    }
 }
 
+// Tools spread radius that keeps the whole fan on-chart (same idea as
+// CircFitRadius for the ring): shrink the radius near edges instead of
+// clamping every item onto one line (which stacked the 3 tools on a single
+// maxX with ~46px spacing vs the 52px footprint).
+double ToolsFitRadius(const int ax, const int ay, const double baseDeg, const double spread,
+                      const int cw, const int ch)
+{
+   double r = TOOL_RADIUS;
+   double reach = CIRC_PAD + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
+   double step = (TOOL_COUNT > 1) ? spread / (TOOL_COUNT - 1) : 0;
+   double start = baseDeg - spread / 2.0;
+   for(int k = 0; k < TOOL_COUNT; k++)
+   {
+      double deg = (start + k * step) * M_PI / 180.0;
+      double c = MathCos(deg);
+      double s = MathSin(deg);
+      double lim = 1e18;
+      if(c > 1e-6)       lim = MathMin(lim, (cw - reach - ax) / c);
+      else if(c < -1e-6) lim = MathMin(lim, (ax - reach) / (-c));
+      if(s > 1e-6)       lim = MathMin(lim, (ch - reach - ay) / s);
+      else if(s < -1e-6) lim = MathMin(lim, (ay - reach) / (-s));
+      if(lim < 1e17) r = MathMin(r, lim);
+   }
+   if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
+   if(r > TOOL_RADIUS) r = TOOL_RADIUS;
+   return r;
+}
+
 void ToolsLayout(const int toolIdx, int &x, int &y)
 {
    int ax, ay;
-   CircLayout(RING_TOOLS, ax, ay);
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   CircLayout(RING_TOOLS, ax, ay);   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
    if(cw <= 0) cw = 1920;
    if(ch <= 0) ch = 1080;
@@ -943,8 +980,9 @@ void ToolsLayout(const int toolIdx, int &x, int &y)
    double step = (TOOL_COUNT > 1) ? spread / (TOOL_COUNT - 1) : 0;
    double start = baseDeg - spread / 2.0;
    double deg = (start + toolIdx * step) * M_PI / 180.0;
-   x = ax + (int)MathRound(TOOL_RADIUS * MathCos(deg));
-   y = ay + (int)MathRound(TOOL_RADIUS * MathSin(deg));
+   double tr = ToolsFitRadius(ax, ay, baseDeg, spread, cw, ch);   // shrink the fan, don't stack it
+   x = ax + (int)MathRound(tr * MathCos(deg));
+   y = ay + (int)MathRound(tr * MathSin(deg));
    int minX = CIRC_PAD + CIRC_BTN_SIZE/2 + CIRC_BG_MARGIN;
    int maxX = cw - CIRC_PAD - CIRC_BTN_SIZE/2 - CIRC_BG_MARGIN;
    int minY = CIRC_PAD + CIRC_BTN_SIZE/2 + CIRC_BG_MARGIN;

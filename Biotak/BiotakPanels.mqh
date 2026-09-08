@@ -132,6 +132,11 @@ color QuickPalColor(const int i)
 #define PNL_CLR_SEG_TX   C'90,100,118'
 #define PNL_CLR_DONE_TX  C'255,255,255'
 #define PNL_CLR_LINE     C'228,233,242'   // row separators + light control borders
+#define PNL_CLR_FIELD    C'255,255,255'   // edit fields + dropdown/popover faces
+#define PNL_CLR_CARD     C'250,251,253'   // palette card + inactive tab faces
+#define PNL_CLR_DISABLED C'70,78,92'      // greyed-out (no-transparency targets)
+#define PNL_CLR_DIS_BD   C'90,98,112'     // greyed-out control borders
+#define PNL_CLR_SHADOW   C'225,230,240'   // popover drop shadows
 #define PNL_KNOB_BMP     18
 
 // Row counts per settings panel. State lives in BiotakKit.mqh.
@@ -698,7 +703,8 @@ bool PalKindRow(const int kind,int &item,int &row)
       case PAL_BOX:            if(g_PnlOpen==13) { item=13; row=0; return true; }
                                    if(g_PnlOpen==12 && g_BkTab==0) { item=12; row=1; return true; }
                                    return false;   // other tab open — nothing to refresh there
-      case PAL_BOX_FILL:       if(g_PnlOpen==12 && g_BkTab==0) { item=12; row=5; return true; }
+      case PAL_BOX_FILL:       if(g_PnlOpen==13) { item=13; row=0; return true; }   // strip bucket: refresh TBbar1 underline too
+                                   if(g_PnlOpen==12 && g_BkTab==0) { item=12; row=5; return true; }
                                    return false;
       case PAL_BK_TEXT:        if(g_PnlOpen==12 && g_BkTab==1) { item=12; row=6; return true; }
                                    return false;
@@ -745,6 +751,7 @@ void PalClose()
 void PalOpen(const int item, const int row)
 {
    PalClose();
+   BkDdClose();   // mutually exclusive floaters — a hanging dropdown never survives under the palette
    g_PalOpen=true;
    g_PalAnchorItem=item;
    int k=PnlColorKind(item,row);
@@ -810,7 +817,7 @@ void PalDrawMixer(const int contY)
       int kx=trackX+(int)MathRound(comps[i]/255.0*(trackW-10));
       PnlSetRect(p+"mf"+IntegerToString(i), trackX, y+2, kx-trackX+10, 8, fill[i]);
       ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_ZORDER,1602);
-      PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], C'210,220,240', true);
+       PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], PNL_CLR_TRACK_BD, true);
       ObjectSetInteger(0,p+"mknb"+IntegerToString(i),OBJPROP_ZORDER,1603);
       PnlSetLabel(p+"mv"+IntegerToString(i), px+PalW()-PAL_PAD, y, IntegerToString(comps[i]), PNL_CLR_VALUE, 9);
       ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ANCHOR,ANCHOR_RIGHT);
@@ -825,13 +832,13 @@ void PalDrawMixer(const int contY)
    PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, 9);
    ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,1601);
    ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
-   color trFill = trOk ? PNL_CLR_ACCENT : C'70,78,92';
+   color trFill = trOk ? PNL_CLR_ACCENT : PNL_CLR_DISABLED;
    PnlSetRect(p+"mtg3", trackX, oy+2, trackW, 8, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"mtg3",OBJPROP_ZORDER,1601);
    int tkx = trackX + (int)MathRound((trOk ? ClampInt(tr,0,100) : 0) / 100.0 * (trackW-10));
    PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, tkx-trackX+10), 8, trFill);
    ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,1602);
-   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : C'90,98,112', true);
+   PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : PNL_CLR_DIS_BD, true);
    ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,1603);
    PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, 9);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT);
@@ -868,8 +875,8 @@ void PalDraw()
    string p=g_UI.btnPrefix+"Pal_";
 
    // card (TV-white like the settings cards — R-PANELMOD one uniform look)
-   PnlSetRect(p+"card", px, py, w, h, C'250,251,253');
-   ObjectSetInteger(0,p+"card",OBJPROP_BORDER_COLOR,C'212,218,228');
+   PnlSetRect(p+"card", px, py, w, h, PNL_CLR_CARD);
+   ObjectSetInteger(0,p+"card",OBJPROP_BORDER_COLOR,PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"card",OBJPROP_ZORDER,1600);
 
    // header (names the LIVE target — the picked color goes there,
@@ -971,13 +978,13 @@ void PalDraw()
    int tr0=PaletteKindTransparency(g_PalKind);
    bool trOk=(tr0>=0);
    int olx=px+PAL_PAD+PAL_FOP_DX;
-   PnlSetLabel(p+"opl", olx, fy+6, "TR", trOk?PNL_CLR_LABEL:C'70,78,92', 8);
+   PnlSetLabel(p+"opl", olx, fy+6, "TR", trOk?PNL_CLR_LABEL:PNL_CLR_DISABLED, 8);
    ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,1601);
    ObjectSetString(0,p+"opl",OBJPROP_TOOLTIP,"Transparency of this target (click the track to set)");
    int otx=olx+PAL_FOP_LW;
    PnlSetRect(p+"opg", otx, fy+8, PAL_FOP_TW, 10, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,1601);
-   color trFill=trOk?PNL_CLR_ACCENT:C'70,78,92';
+   color trFill=trOk?PNL_CLR_ACCENT:PNL_CLR_DISABLED;
    int tfw=trOk?(int)MathRound(ClampInt(tr0,0,100)/100.0*PAL_FOP_TW):0;
    PnlSetRect(p+"opf", otx, fy+8, tfw, 10, trFill);
    ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,1602);
@@ -2500,8 +2507,7 @@ string BkDdRes()
 void BkDdClose()
 {
    if(g_BkDd == 0) return;
-   g_BkDd = 0;
-   string h = g_UI.btnPrefix + "Pnl13_";
+   g_BkDd = 0;   string h = g_UI.btnPrefix + "Pnl13_";
    ObjectDelete(0, h + "TBdd");
    for(int r = 0; r < BK_DD_ROWS; r++)
    {
@@ -2509,10 +2515,12 @@ void BkDdClose()
       ObjectDelete(0, h + "DD" + IntegerToString(r) + "i");
       ObjectDelete(0, h + "DD" + IntegerToString(r) + "l");
    }
+   ChartRedraw();   // closes via padding/Esc return REFRESH_NONE — no ghost till next tick
 }
 void BkDdOpen(const int type)
 {
    BkDdClose();
+   PalClose();   // mutually exclusive floaters — never bury the dropdown under the palette
    g_BkDd = type;
    g_BkDdW = BkDdCurW();
    int x, y, w, h;
@@ -2564,8 +2572,10 @@ void BkDdOpen(const int type)
 int BkDdHit(const int mx, const int my)
 {
    if(g_BkDd == 0) return -1;
-   if(mx < g_BkDdX || mx > g_BkDdX + g_BkDdW || my < g_BkDdY || my > g_BkDdY + BK_DD_H)
-      return -1;
+   if(mx < g_BkDdX - 8 || mx > g_BkDdX + g_BkDdW + 8 || my < g_BkDdY - 8 || my > g_BkDdY + BK_DD_H + 8)
+      return -1;   // outside the full skin rect (incl. the 8px fringe) — not ours at all
+   // Inside the skin but off the rows = padding: close AND consume (falls into
+   // the row-miss path below — never through to the strip slots underneath).
    int row = (my - (g_BkDdY + BK_DD_PAD)) / BK_DD_ROW_H;
    if(row >= 0 && row < BK_DD_ROWS)
    {
@@ -2604,6 +2614,11 @@ void BkMiniRefresh()
    if(ObjectFind(0, wl) >= 0)
       ObjectSetString(0, wl, OBJPROP_TEXT,
                       IntegerToString(ClampInt(g_boxBorderWidth,1,5)) + "px");
+   // WIDTH tooltips live here (not on the slot bitmap) — refresh with the value
+   string wt = BkMiniSlotTip(4);
+   if(ObjectFind(0, wl) >= 0) ObjectSetString(0, wl, OBJPROP_TOOLTIP, wt);
+   string wc = BkMiniBtn("TBchev2");
+   if(ObjectFind(0, wc) >= 0) ObjectSetString(0, wc, OBJPROP_TOOLTIP, wt);
    // TV current-color underlines: border / fill / text live colors
    string b0 = BkMiniBtn("TBbar0");
    if(ObjectFind(0, b0) >= 0) ObjectSetInteger(0, b0, OBJPROP_BGCOLOR, g_boxBorderColor);
@@ -2635,7 +2650,7 @@ void BkMiniStripCreate()
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
    g_PnlX[13] = MathMax(4, MathMin(cw - PNL_TB_W - 4, g_PnlX[13]));
-   g_PnlY[13] = MathMax(4, MathMin(ch - PNL_TB_H - 4, g_PnlY[13]));
+   g_PnlY[13] = MathMax(4, MathMin(ch - PNL_TB_H - PNL_BOTTOM_SAFE, g_PnlY[13]));
    g_BkDd = 0;   // fresh strip — no stale dropdown state
    int px = g_PnlX[13], py = g_PnlY[13];
    // TV-style strip backdrop — WHITE rounded card (baked shadow margin)
@@ -2916,15 +2931,18 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       int cxx=px+PNL_PAD_X;
       // current-color preview (tap = full popup)
       PnlSetButton(PnlName(item,row,"CB"), cxx, cy2, PNL_QSW_PREV, 22, "", cc, PNL_CLR_LINE, true);
-      int qx=cxx+PNL_QSW_PREV+PNL_QSW_OGAP;
-      for(int qi=0; qi<PNL_QSW_N; qi++)
-      {
-         color qc=QuickPalColor(qi);
-         string qn=PnlName(item,row,"Q"+IntegerToString(qi));
-         PnlSetButton(qn, qx+qi*(PNL_QSW_W+PNL_QSW_GAP), cy2, PNL_QSW_W, 22, "",
-                      qc, (qc==cc) ? PNL_CLR_ACCENT : PNL_CLR_LINE, true);
-      }
-   }
+       int qx=cxx+PNL_QSW_PREV+PNL_QSW_OGAP;
+       for(int qi=0; qi<PNL_QSW_N; qi++)
+       {
+          color qc=QuickPalColor(qi);
+          string qn=PnlName(item,row,"Q"+IntegerToString(qi));
+          PnlSetButton(qn, qx+qi*(PNL_QSW_W+PNL_QSW_GAP), cy2, PNL_QSW_W, 22, "",
+                       qc, (qc==cc) ? PNL_CLR_ACCENT : PNL_CLR_LINE, true);
+       }
+       // label rides above the swatches in the tight 42px row (same as kind=6) —
+       // it shares (px+PAD_X, ry+LBL_Y) with the preview button start otherwise
+       ObjectSetInteger(0,PnlName(item,row,"L"),OBJPROP_YDISTANCE,ry+2);
+    }
    else if(kind==2)   // ── TAB underline / dropdown select / pills ──
    {
       string arr[];
@@ -2940,7 +2958,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
             int sex=px+PNL_PAD_X + i*(segW+gap);
             // invisible button (white face) — text only, like TV tabs
             PnlSetButton(seg, sex, ry+PNL_CTL_Y, segW, PNL_CTL_H, arr[i],
-                         C'250,251,253', C'250,251,253', true);
+                         PNL_CLR_CARD, PNL_CLR_CARD, true);
             ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT : PNL_CLR_SEG_TX);
             ObjectSetInteger(0,seg,OBJPROP_FONTSIZE,8);
             ObjectSetString(0,seg,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
@@ -2957,7 +2975,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          int dx,dy,dw,dh;
          PnlDdRect(item,row,dx,dy,dw,dh);
          PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, dh, "",
-                      C'255,255,255', PNL_CLR_SEG_BD, true);
+                      PNL_CLR_FIELD, PNL_CLR_SEG_BD, true);
          PnlSetLabel(PnlName(item,row,"DDT"), dx+10, dy+6, PnlDdOptText(item,row),
                      PNL_CLR_TITLE, 8);
          ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,"Arial Bold");
@@ -2986,9 +3004,9 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
    }
      else if(kind==5)   // ── NAV row → opens another settings card ──
      {
-        string navTxt = (opts=="1") ? "◄  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  ►";
-        if(opts=="12") navTxt = "•••  ALL SETTINGS  ►";   // mini → full Base Box card
-        if(opts=="DEL") navTxt = "✕  DELETE THIS BOX";    // mini ACTION → delete held box
+        string navTxt = (opts=="1") ? "<  BACK TO ZONES & LEVELS" : "OPEN SUB-CARD  >";
+        if(opts=="12") navTxt = "•••  ALL SETTINGS  >";   // mini → full Base Box card (••• is 1252-safe)
+        if(opts=="DEL") navTxt = "x  DELETE THIS BOX";    // mini ACTION → delete held box (1252-safe glyphs — ◄►✕ render as ? on Wine, P-UI-06)
          PnlSetButton(PnlName(item,row,"NAV"), px+PNL_PAD_X, ry+PNL_CTL_Y+1,
                      PNL_WEL-2*PNL_PAD_X, 22,
                      navTxt, PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
@@ -3011,13 +3029,17 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        ObjectSetString(0,en,OBJPROP_FONT,"Arial");
        ObjectSetInteger(0,en,OBJPROP_FONTSIZE,9);
        ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
-       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
+       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,PNL_CLR_FIELD);
        ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
        ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_LEFT);
        ObjectSetInteger(0,en,OBJPROP_ZORDER,1508);
        ObjectSetInteger(0,en,OBJPROP_SELECTABLE,false);
        ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
-       ObjectSetString(0,en,OBJPROP_TOOLTIP,"Type the box text — ENTER applies (empty clears)");
+       bool noBox = (item==12 && row==1 && (g_BkMiniBox=="" || BaseKnotFind(g_BkMiniBox)<0));
+       ObjectSetInteger(0,en,OBJPROP_READONLY,noBox);   // no held box: readable hint, nothing to drop silently
+       ObjectSetString(0,en,OBJPROP_TOOLTIP,
+                       noBox ? "Hold a box on the chart first — text needs a target"
+                             : "Type the box text — ENTER applies (empty clears)");
        // label rides above the field in the tight 42px row
        ObjectSetInteger(0,PnlName(item,row,"L"),OBJPROP_YDISTANCE,ry+2);
     }
@@ -3303,6 +3325,7 @@ void PnlCloseAll()
    for(int i=0;i<PNL_COUNT;i++) PnlDestroy(i);
    PalClose();
    g_PnlOpen=-1;
+   g_UIPanelOpen = false;   // the menu hover tip may arm again
    if(wasOpen)
    {
       CircUnlockChart();   // release the modal chart lock
@@ -3320,6 +3343,8 @@ void PnlOpen(const int item)
    if(item==12 && g_PnlOpen!=13 && g_PnlOpen!=12) g_BkMiniBox="";
    PnlCloseAll();
    g_PnlOpen=item;
+   g_UIPanelOpen = true;   // menu hover tip stays disarmed while the card covers the menu
+   CircTipDisarm();        // a visible/armed tip never survives above the opening card
    PnlCreate(item);
    CircLockChart();   // modal: freeze chart pan/context menu while settings are open
    PnlLockForeground(); // ensure panel is ABOVE candles (not under)
@@ -3372,9 +3397,9 @@ void PnlDdOpen(const int item,const int row)
    g_PnlDdItem=item; g_PnlDdRow=row;
    g_PnlDdX=bx; g_PnlDdY=by; g_PnlDdW=bw; g_PnlDdH=ph; g_PnlDdN=cnt;
    string hh=PnlHead(item,"");
-   PnlSetRect(hh+"PDDSH",bx+3,by+4,bw,ph,C'225,230,240');
+   PnlSetRect(hh+"PDDSH",bx+3,by+4,bw,ph,PNL_CLR_SHADOW);
    ObjectSetInteger(0,hh+"PDDSH",OBJPROP_ZORDER,PNL_DD_Z_SH);
-   PnlSetRect(hh+"PDDBG",bx,by,bw,ph,C'255,255,255');
+   PnlSetRect(hh+"PDDBG",bx,by,bw,ph,PNL_CLR_FIELD);
    ObjectSetInteger(0,hh+"PDDBG",OBJPROP_BORDER_COLOR,PNL_CLR_SEG_BD);
    ObjectSetInteger(0,hh+"PDDBG",OBJPROP_ZORDER,PNL_DD_Z_BG);
    int cur=ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
@@ -3570,7 +3595,7 @@ void BkStripFollow()
    int ny = y2 - PNL_TB_H - 14;
    if(ny < 4) ny = y2 + 14;
    if(nx < 4) nx = 4; if(nx > cw - PNL_TB_W - 4) nx = cw - PNL_TB_W - 4;
-   if(ny < 4) ny = 4; if(ny > ch - PNL_TB_H - 16) ny = ch - PNL_TB_H - 16;
+   if(ny < 4) ny = 4; if(ny > ch - PNL_TB_H - PNL_BOTTOM_SAFE) ny = ch - PNL_TB_H - PNL_BOTTOM_SAFE;
    if(nx < 4) nx = 4; if(ny < 4) ny = 4;
    int dx = nx - g_PnlX[13], dy = ny - g_PnlY[13];
    if(MathAbs(dx) < 4 && MathAbs(dy) < 4) return;
@@ -3668,6 +3693,7 @@ void PnlMoveBy(const int item, const int dx, const int dy)
       ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + ndy);
    }
    if(palFollow) { g_PalX += ndx; g_PalY += ndy; }
+   if(g_PnlDdItem == item) { g_PnlDdX += ndx; g_PnlDdY += ndy; }   // generic-dropdown hit-rect rides the header drag (PDDR objects move via the prefix scan above)
    g_PnlX[item] += ndx;
    g_PnlY[item] += ndy;
 }
@@ -3969,7 +3995,6 @@ void PnlSetVisualValue(const int item,const int row,const double val)
    if(kind!=0) return;
    int trackX=g_PnlX[item]+PNL_TRACK_X;
    int knobX=PnlSliderKnobX(item,row,val,minV,maxV);
-   ObjectSetInteger(0,PnlName(item,row,"K"),OBJPROP_XDISTANCE,knobX);
    ObjectSetInteger(0,PnlName(item,row,"KB"),OBJPROP_XDISTANCE,knobX);
    ObjectSetInteger(0,PnlName(item,row,"TF"),OBJPROP_XSIZE,
                     MathMax(0,knobX+PNL_KNOB_W/2-trackX));
@@ -4330,7 +4355,7 @@ void BkHoldFire()
             int ny = y2 - mh - 14;
             if(ny < 4) ny = y2 + 14;   // no room above — flip below the corner
             if(nx < 4) nx = 4; if(nx > cw - PNL_TB_W - 4) nx = cw - PNL_TB_W - 4;
-            if(ny < 4) ny = 4; if(ny > ch - mh - 16) ny = ch - mh - 16;
+            if(ny < 4) ny = 4; if(ny > ch - mh - PNL_BOTTOM_SAFE) ny = ch - mh - PNL_BOTTOM_SAFE;
             if(nx < 4) nx = 4; if(ny < 4) ny = 4;   // tiny-chart fallback
             g_PnlX[13] = nx; g_PnlY[13] = ny;
          }

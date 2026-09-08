@@ -1015,6 +1015,26 @@ color GetBoxFillRenderColor()
 // hollow look — pre-fill charts stay pixel-identical).
 bool BoxFillVisible() { return (ClampSettingInt(g_boxFillTransparency, 0, 100) < 100); }
 
+// EFFECTIVE USER-TEXT COLOR — factory white means Auto: pure-white text on a
+// light chart is invisible, so it renders dark brown there (same luminance
+// gate as the INFO label); any explicit pick (incl. white on dark) is honored
+// untouched. Cached like the other render getters.
+color GetBKTextRenderColor()
+{
+    static color s_c = clrNONE; static color s_bg = clrNONE; static color s_out = clrNONE;
+    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+    if(s_c == g_bkTextColor && s_bg == bg) return s_out;
+    s_c = g_bkTextColor; s_bg = bg;
+    s_out = g_bkTextColor;
+    if(g_bkTextColor == C'255,255,255')
+    {
+       int lum = ((((int)bg) & 0xFF) * 299 + ((((int)bg) >> 8) & 0xFF) * 587 +
+                  ((((int)bg) >> 16) & 0xFF) * 114) / 1000;
+       if(lum > 128) s_out = C'150,70,0';
+    }
+    return s_out;
+}
+
 // User-text font string from the Bold/Italic mirrors ("Arial" + suffixes).
 string BKTextFont()
 {

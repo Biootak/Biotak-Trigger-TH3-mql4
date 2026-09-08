@@ -1167,6 +1167,17 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
     // PERF: Cache Bid/Ask once per tick (moved after hidden check)
     CacheTickPrices();
 
+#ifdef BUILD_LITE
+    // P-BK-13: Lite has no RefreshKitOnBar pump — heal BK boxes (direction
+    // auto-follow + fill/edge/TP) from the tick path, same 500 ms cadence
+    // Full gets from RefreshUIPerTick. Domain-only, Lite-safe.
+    static uint s_bkLitePumpMs = 0;
+    {
+       uint bkNow = GetTickCount();
+       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotSyncBadges(); }
+    }
+#endif
+
     static uint s_lastTickMs = 0;
     static double s_lastPrice = 0;
     static datetime s_lastBarTime = 0;

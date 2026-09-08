@@ -37,6 +37,11 @@ static bool g_customPriceKeyboardOverride = false;
 // the keyboard while focused — letter hotkeys must stay silent or typing box
 // text would toggle indicator state (same pattern as the palette hex field).
 static bool g_BkTextFocus = false;
+// A settings card is open (set in PnlOpen, cleared in PnlCloseAll): the menu's
+// custom hover tooltip must not arm/fire over the open panel (phantom tip).
+// Lives here (not Panels) so BiotakMenu — included BEFORE BiotakPanels — can
+// read it without breaking the bottom-up include order.
+static bool g_UIPanelOpen = false;
 
 // Toggle States (hotkey-controlled)
 // NOTE: g_triggerLevelsEnabled moved to RuntimeSettings.mqh — it is the runtime
