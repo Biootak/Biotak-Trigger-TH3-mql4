@@ -322,7 +322,7 @@ bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
 }
 
 //+------------------------------------------------------------------+
-//| TRex title stamp (top-center): TH value + Persian caption + brand|
+//| TRex title stamp (top-right): TH value + Persian caption + brand |
 //| Screenshot order: value / caption / TR|ex (caption = price-behavior |
 //| tagline, built from codes below - never a literal, see P-LBL-01).  |
 //+------------------------------------------------------------------+
@@ -349,8 +349,8 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
     ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
     ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
-    InitATRChartLabel(name, CORNER_LEFT_UPPER, ANCHOR_LEFT_UPPER);
-    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(0, xPos));
+    InitATRChartLabel(name, CORNER_RIGHT_UPPER, ANCHOR_RIGHT_UPPER);
+    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(8, xPos));
     ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(0, yPos));
     ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES,
                      IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
@@ -371,9 +371,6 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
         return true;
     }
 
-    int chartW = GetCachedChartWidth();
-    if(chartW < 50) return false;
-
     // Top value = active-TF standard TH in pips, 1 decimal (screenshot "0.5").
     int digits = GetCachedDigits();
     int actMin = GetEffectiveTimeframe();
@@ -390,22 +387,20 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
     }
     string capText = TRexCaptionText();
 
+    // Top-RIGHT stamp: every row flush-right to the same margin (xPos here is
+    // the right-edge distance, like the bottom-right trade block).
     int fontSize  = inpFontSize;
     int brandSize = inpFontSize + 6;
+    int rightMargin = MathMax(8, inpLabelsMarginLeft);
     int yVal   = MathMax(8, inpLabelsMarginTop);
     int yCap   = yVal + fontSize + inpLabelRowGap;
     int yBrand = yCap + fontSize + inpLabelRowGap;
 
-    double wVal = CalculateTextWidth(valText);
-    double wCap = CalculateTextWidth(capText);
-    double wBrand = 4.0 * brandSize * 0.7;
-    int xVal = (int)((chartW - wVal) / 2.0);
-    int xCap = (int)((chartW - wCap) / 2.0);
-    int xTR  = (int)((chartW - wBrand) / 2.0);
-    int xEx  = xTR + (int)(2.0 * brandSize * 0.7);
+    int xEx = rightMargin;
+    int xTR = rightMargin + (int)(2.0 * brandSize * 0.7);
 
-    if(!CreateTRexPiece(valName, valText, clrDarkBlue, fontSize, xVal, yVal)) return false;
-    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, xCap, yCap)) return false;
+    if(!CreateTRexPiece(valName, valText, clrDarkBlue, fontSize, rightMargin, yVal)) return false;
+    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap)) return false;
     if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
     return true;

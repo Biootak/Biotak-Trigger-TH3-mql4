@@ -612,7 +612,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (2026-09-08 — bottom-right block is 3 centered rows: ATR pips (dark blue) /
   `Hunter SL: H Eng.SL: E` (red) / `#TP1+T1 #TP2+T2 #TP3+T3` (blue), integer
   pips stacked TP-bottom → ATR-top; the plain-SL piece is gone
-  (`ATR_TRADE_SL` define kept for the coefficient family only). Top-center
+  (`ATR_TRADE_SL` define kept for the coefficient family only). Top-right
   TRex stamp (active-TF standard TH pips, 1 decimal / green Persian caption /
   `TR` blue + `ex` red brand at +6pt) rides the SAME ATR-trade visibility
   (`inpShowATRTradeLabels` + `g_atrLabelsVisible`, SL/TP row toggles honored
