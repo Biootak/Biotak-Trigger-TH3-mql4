@@ -235,14 +235,8 @@ void ClearAllLabels(const string objectPrefix) {
     ObjectsDeleteAll(0, objectPrefix + "TF");
 }
 
-// ATR trade coefficients from the supplied H1 reference. They are ratios of ATR,
-// therefore the same model can be applied to every timeframe without copying H1 values.
-#define ATR_TRADE_SL 0.62
-#define ATR_TRADE_TP1 1.53
-#define ATR_TRADE_TP2 3.30
-#define ATR_TRADE_TP3 6.81
-#define ATR_TRADE_HUNT_SL 0.63
-#define ATR_TRADE_ENG_SL 0.27
+// R-TRADEPLAN: trade-plan math lives ONLY in TradePlanFormulas.mqh.
+// This file renders its values - never recompute coefficients here.
 
 bool CreateATRTradePiece(const string name, const string text, const color textColor,
                          const int xPos, const int yPos) {
@@ -260,65 +254,89 @@ bool CreateATRTradePiece(const string name, const string text, const color textC
     return true;
 }
 
-bool CreateATRTradeLabel(const string objectPrefix, const string timeframeName,
-                         const double atrPips, const int xPos, const int yPos,
-                         const color textColor) {
-    double huntSL = atrPips * ATR_TRADE_HUNT_SL;
-    double engSL  = atrPips * ATR_TRADE_ENG_SL;
-    double tp1    = atrPips * ATR_TRADE_TP1;
-    double tp2    = atrPips * ATR_TRADE_TP2;
-    double tp3    = atrPips * ATR_TRADE_TP3;
+// Countdown to the current chart bar close ("Close in : 22d 12h 32m 13s").
+// Units below the leading non-zero one are skipped (H1 shows "17m 51s").
+string TradePlanCloseInText()
+{
+   datetime bt = iTime(Symbol(), Period(), 0);
+   if(bt <= 0) return "Close in : --";
+   long left = (long)(bt + PeriodSeconds() - TimeCurrent());
+   if(left < 0) left = 0;
+   long d = left / 86400; left -= d * 86400;
+   long h = left / 3600;  left -= h * 3600;
+   long m = left / 60;
+   long s = left - m * 60;
+   string t = "";
+   if(d > 0) t = t + IntegerToString(d) + "d ";
+   if(d > 0 || h > 0) t = t + IntegerToString(h) + "h ";
+   if(d > 0 || h > 0 || m > 0) t = t + IntegerToString(m) + "m ";
+   t = t + IntegerToString(s) + "s";
+   return "Close in : " + t;
+}
 
-    // Screenshot block format (bottom-right, rows centered in the block):
-    //   <ATR pips>                           (dark blue)
-    //   Hunter SL: <hunt> Eng.SL: <eng>      (red)
-    //   #TP1+<t1> #TP2+<t2> #TP3+<t3>        (blue)
-    // No plain-SL piece: the screenshot carries Hunter/Eng only.
-    string atrName = objectPrefix + "ATR_Trade_Current_ATR";
-    string slName  = objectPrefix + "ATR_Trade_Current_SLRow";
-    string tpName  = objectPrefix + "ATR_Trade_Current_TPRow";
+bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
+                         const int xPos, const int yPos)
+{
+   // Screenshot bottom-right block (R-TRADEPLAN):
+   //   Close in : <countdown>                      (red)
+   //   #SL:-<sl> #TP1+<t1> #TP2+<t2> #TP3+<t3>     (blue, single row)
+   string tpName = objectPrefix + "ATR_Trade_Current_TPRow";
+   string ciName = objectPrefix + "ATR_Trade_Current_CloseIn";
 
-    string atrText = StringFormat("%.0f", atrPips);
-    string slText  = StringFormat("Hunter SL: %.0f Eng.SL: %.0f", huntSL, engSL);
-    string tpText  = StringFormat("#TP1+%.0f #TP2+%.0f #TP3+%.0f", tp1, tp2, tp3);
+   string tpText = StringFormat("#SL:-%d #TP1+%d #TP2+%d #TP3+%d",
+                                plan.sl, plan.tp1, plan.tp2, plan.tp3);
+   string ciText = TradePlanCloseInText();
 
-    // Purge the retired layouts: every "Current" piece shares this prefix, so
-    // one kernel call wipes all 12 legacy pieces (plus our 3, recreated below).
-    ObjectsDeleteAll(0, objectPrefix + "ATR_Trade_Current_");
-    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName);
-    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Targets");
-    ObjectDelete(0, objectPrefix + "ATR_Trade_" + timeframeName + "_Stops");
-    ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
+   // Purge the retired layouts: every "Current" piece shares this prefix, so
+   // one kernel call wipes legacy pieces (plus ours, recreated below).
+   ObjectsDeleteAll(0, objectPrefix + "ATR_Trade_Current_");
+   ObjectDelete(0, objectPrefix + "ATR_Trade_Current_ATR");
+   ObjectDelete(0, objectPrefix + "ATR_Trade_Current_SLRow");
+   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin));
+   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Targets");
+   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Stops");
+   ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
 
-    bool showSL = (inpShowATRTradeLabels && inpShowATRTradeSLLabels);
-    bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
-    int rightMargin  = MathMax(8, MathAbs(xPos));
-    int bottomMargin = MathMax(8, MathAbs(yPos));
-    int lineHeight   = inpFontSize + inpATRTradeLabelRowGap;
+   bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
+   int rightMargin  = MathMax(8, MathAbs(xPos));
+   int bottomMargin = MathMax(8, MathAbs(yPos));
+   int lineHeight   = inpFontSize + inpATRTradeLabelRowGap;
 
-    // Center every visible row inside the block (block right edge stays fixed).
-    double wATR = CalculateTextWidth(atrText);
-    double wSL  = CalculateTextWidth(slText);
-    double wTP  = CalculateTextWidth(tpText);
-    double maxW = wATR;
-    if(showSL && wSL > maxW) maxW = wSL;
-    if(showTP && wTP > maxW) maxW = wTP;
+   // Center every visible row inside the block (block right edge stays fixed).
+   double wTP = CalculateTextWidth(tpText);
+   double wCI = CalculateTextWidth(ciText);
+   double maxW = wTP;
+   if(wCI > maxW) maxW = wCI;
 
-    // Bottom-up stack: TP at the bottom, SL in the middle, ATR on top.
-    int row = 0;
-    if(showTP) {
-        int xTP = rightMargin + (int)((maxW - wTP) / 2.0);
-        if(!CreateATRTradePiece(tpName, tpText, clrBlue, xTP, bottomMargin + row * lineHeight)) return false;
-        row++;
-    }
-    if(showSL) {
-        int xSL = rightMargin + (int)((maxW - wSL) / 2.0);
-        if(!CreateATRTradePiece(slName, slText, clrRed, xSL, bottomMargin + row * lineHeight)) return false;
-        row++;
-    }
-    int xATR = rightMargin + (int)((maxW - wATR) / 2.0);
-    if(!CreateATRTradePiece(atrName, atrText, textColor, xATR, bottomMargin + row * lineHeight)) return false;
-    return true;
+   // Bottom-up stack: TP at the bottom, Close-in on top.
+   int row = 0;
+   if(showTP) {
+       int xTP = rightMargin + (int)((maxW - wTP) / 2.0);
+       if(!CreateATRTradePiece(tpName, tpText, clrBlue, xTP, bottomMargin + row * lineHeight)) return false;
+       row++;
+   }
+   int xCI = rightMargin + (int)((maxW - wCI) / 2.0);
+   if(!CreateATRTradePiece(ciName, ciText, clrRed, xCI, bottomMargin + row * lineHeight)) return false;
+   return true;
+}
+
+// Top-right Hunter / StrBond rows, below the TRex stamp (R-TRADEPLAN).
+// Same right-edge metrics as DisplayTRexTitleBlock so the stamp stays one block.
+bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
+{
+   int fontSize  = inpFontSize;
+   int brandSize = inpFontSize + 6;
+   int rightMargin = MathMax(8, inpLabelsMarginLeft);
+   int yVal   = MathMax(8, inpLabelsMarginTop);
+   int yCap   = yVal + fontSize + inpLabelRowGap;
+   int yBrand = yCap + fontSize + inpLabelRowGap;
+   int yHunter = yBrand + brandSize + inpLabelRowGap;
+   int yBond   = yHunter + fontSize + inpLabelRowGap;
+   string hText = StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
+   string bText = StringFormat("Str Bond: %d - %d", plan.sb1, plan.sb2);
+   if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", hText, clrRed, fontSize, rightMargin, yHunter)) return false;
+   if(!CreateTRexPiece(labelPrefix + "TREX_StrBond", bText, clrBlue, fontSize, rightMargin, yBond)) return false;
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -515,26 +533,30 @@ void DisplayATRTradeLabels(const string objectPrefix) {
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_ATR");
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_SLRow");
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_TPRow");
+        ObjectDelete(0, labelPrefix + "ATR_Trade_Current_CloseIn");
         ObjectDelete(0, labelPrefix + "TREX_Value");
         ObjectDelete(0, labelPrefix + "TREX_Caption");
         ObjectDelete(0, labelPrefix + "TREX_TR");
         ObjectDelete(0, labelPrefix + "TREX_EX");
+        ObjectDelete(0, labelPrefix + "TREX_Hunter");
+        ObjectDelete(0, labelPrefix + "TREX_StrBond");
         return;
     }
 
-    double pipSize = GetCachedPipSize();
-    if(IsZero(pipSize, EPSILON_PRICE)) return;
+    // R-TRADEPLAN: one engine call feeds every right-side row.
+    STradePlan plan;
+    if(!TradePlanCompute(GetEffectiveTimeframe(), plan)) return;
 
-    int activeMinutes = GetEffectiveTimeframe();
-    string activeTimeframeName = PeriodToString(activeMinutes);
-    double activeATR = GetATRForTimeframe(activeMinutes);
-    if(activeATR <= 0 || activeATR == EMPTY_VALUE) return;
-
-    double activePips = NormalizeDouble(activeATR / pipSize, 1);
     // Both margins are distances from the right/bottom chart edges.
-    CreateATRTradeLabel(labelPrefix, activeTimeframeName, activePips,
-                       inpLabelsMarginLeft, inpLabelsMarginBottom, clrDarkBlue);
+    CreateATRTradeLabel(labelPrefix, plan,
+                       inpLabelsMarginLeft, inpLabelsMarginBottom);
     DisplayTRexTitleBlock(labelPrefix);
+    if(inpShowATRTradeSLLabels)
+        DisplayTradePlanTopRows(labelPrefix, plan);
+    else {
+        ObjectDelete(0, labelPrefix + "TREX_Hunter");
+        ObjectDelete(0, labelPrefix + "TREX_StrBond");
+    }
 }
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
@@ -565,18 +587,21 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP2_Value", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Text", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Value", OBJPROP_TIMEFRAMES, tf);
-    // Screenshot 3-row block + top-center TRex stamp (purge lines for the
-    // retired 12-piece names above stay so old charts clean up).
+    // R-TRADEPLAN block + TRex stamp (purge lines for the retired
+    // 12-piece + ATR-row names above stay so old charts clean up).
     long tradeTF = (shouldShow && inpShowATRTradeLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long slTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeSLLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long tpTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeTPLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_ATR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SLRow", OBJPROP_TIMEFRAMES, slTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TPRow", OBJPROP_TIMEFRAMES, tpTF);
+    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_CloseIn", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Value", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Caption", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_Hunter", OBJPROP_TIMEFRAMES, slTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_StrBond", OBJPROP_TIMEFRAMES, slTF);
 }
 
 void SetTHLabelsVisibility(const string objectPrefix, const int mode) {

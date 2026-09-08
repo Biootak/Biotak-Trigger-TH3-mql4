@@ -74,6 +74,7 @@
 
 #include "Biotak\THCalculations.mqh"
 #include "Biotak\ATRCalculations.mqh"
+#include "Biotak\TradePlanFormulas.mqh"   // single source of trade-plan math (R-TRADEPLAN)
 #include "Biotak\AdaptiveScaling.mqh"
 #include "Biotak\BasePriceManager.mqh"
 

@@ -609,18 +609,33 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   redraws — never a draw-once at init.)
 
 - **ATR trade block = screenshot format, TRex stamp on top**
-  (2026-09-08 — bottom-right block is 3 centered rows: ATR pips (dark blue) /
-  `Hunter SL: H Eng.SL: E` (red) / `#TP1+T1 #TP2+T2 #TP3+T3` (blue), integer
-  pips stacked TP-bottom → ATR-top; the plain-SL piece is gone
-  (`ATR_TRADE_SL` define kept for the coefficient family only). Top-right
+  (2026-09-08 — bottom-right block is 2 centered rows: `Close in : ...`
+  countdown (red) / `#SL:-S #TP1+T1 #TP2+T2 #TP3+T3` single row (blue);
+  top-right under the stamp: `Hunter SL: H Eng.SL: E` (red) /
+  `Str Bond: A - B` (blue). The ATR-pips row is retired (ATR stays the
+  hidden engine only). Top-right
   TRex stamp (active-TF standard TH pips, 1 decimal / green Persian caption /
   `TR` blue + `ex` red brand at +6pt) rides the SAME ATR-trade visibility
-  (`inpShowATRTradeLabels` + `g_atrLabelsVisible`, SL/TP row toggles honored
-  in `SetATRLabelsVisibility`); all 7 objects are `LBL_`-prefixed so
+  (`inpShowATRTradeLabels` + `g_atrLabelsVisible`; Hunter/StrBond ride the
+  SL toggle, TP row rides the TP toggle in `SetATRLabelsVisibility`); all
+  9 objects are `LBL_`-prefixed so
   `ClearAllLabels` + the param-change purge cover them. `TRexCaptionText()`
   builds the Persian caption from ushort codes — never a non-ASCII literal
   in source (see P-LBL-01). Top value assumption: active-TF standard TH —
   say the word if `0.5` meant something else.)
+
+- **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
+  (2026-09-08 — reverse-engineered from the professor's TRex screenshots,
+  all 8 TFs: plan base = ATR pips of `min(chartTF,D1)` (MN/W1/D1 show the
+  daily plan); `SL/TP = base*(6,14,30,62)`; `Eng = (1|3|5)*ATR(triggerTF)`
+  (M1:1, M5:3, else 5; trigger = 2 ladder steps down, M1 floor — same ladder
+  as `GetTriggerDurationSeconds`); `Hunter = round(8*EngTrue/3)` from the
+  UNROUNDED Eng (rounding the rounded Eng breaks H1 by 2); `StrBond2 =
+  round(190*base/3)`; `StrBond1` = recomputed Hunter 2 ladder steps above
+  (W1 fallback `32*base`, MN fallback `sb2+hunter`). Symbol-free by
+  construction (only ATR + symbol-aware `GetCachedPipSize()`, no pair
+  constant) + `TradePlanSelfCheck()` rounding-integrity guard for any
+  symbol. Display (`LabelFunctions.mqh`) renders, never recomputes.)
 
 ---
 
