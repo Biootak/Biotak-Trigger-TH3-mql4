@@ -221,6 +221,20 @@ void CircUnlockChart()
       ChartSetInteger(0, CHART_CONTEXT_MENU, g_ContextMenuWasEnabled);
    }
 }
+// Re-assert an owned menu/panel lock (LEARNING §5 rule 2, UI side of
+// BaseKnotReassertLock): a one-time CircLockChart is not enough — a third
+// writer (BK raw unlock at its gesture end, template/terminal resets) can
+// flip the props back mid-drag and the chart pans under the hand. Writes
+// only on drift, so steady state costs two reads. Call on every throttled
+// move of every gesture (orb / panel-move / slider / mixer).
+void CircReassertLock()
+{
+   if(g_ChartLockCount <= 0) return;
+   if((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL))
+      ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+   if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
+      ChartSetInteger(0, CHART_CONTEXT_MENU, false);
+}
 
 //--- drag arbitration (DRAG_* names shared with the settings panels)
 enum DragEngineOwner
@@ -1590,6 +1604,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       MathAbs(my - g_OrbPressY) > ORB_DRAG_THRESHOLD)
       g_OrbWasDragged = true;
    if(!g_OrbWasDragged) return;
+   CircReassertLock();   // LEARNING §5: the orb owns the view until release
 
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);

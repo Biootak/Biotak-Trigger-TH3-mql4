@@ -32,6 +32,18 @@ project.
    these instructions as a rule (R-*) the same session — future sessions
    obey it instead of re-deciding (see R-RETIRED for the pattern).
 7. **One topic per commit.** Finish → compile → commit → next (see R-COMMIT).
+8. **Learn automatically — apply LEARNING.md without being told.** Before
+   implementing, check whether the task matches a LEARNING.md pattern (§1-§5)
+   and build it that way from the start; after implementing, run the §4/§5
+   checklists against the change and fix deviations in the SAME commit.
+   The user must never have to demand a pattern that is already written down.
+9. **Session start = `git status` first.** Never edit on a dirty tree without
+   the user's explicit approval — report what is dirty and ask how to proceed.
+10. **Memory-file edits must be verified immediately.** After editing
+    AGENTS.md/LEARNING.md, `git diff` that file at once and confirm only the
+    intended hunks changed; anchor edits on short unique substrings — never
+    reconstruct long single-line table rows (a corrupted row is worse than
+    a missing one).
 
 ---
 
@@ -112,11 +124,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   request. Never carry two topics in one commit, and never start new work on
   a dirty tree — the previous session's View Lock removal vs Step Mode
   unification mix-up is why this rule exists.
-- **Commit gate — all three must hold:** (1) full + lite compile
+- **Commit gate — all four must hold:** (1) full + lite compile
   `0 errors` (`./compile-th3-linux.sh all`); (2) `git status` and
   `git diff --ignore-cr-at-eol --name-only` show ONLY the intended files —
   never commit the P-BUILD-03 CRLF churn; (3) the memory for the change
-  (R-* rule / log row in THIS file) rides IN the same commit, never alone.
+  (R-* rule / log row in THIS file) rides IN the same commit, never alone;
+  (4) the LEARNING.md §4/§5 self-check passes for the change (or the
+  deviation is recorded as a new P-row the same commit).
 - **Message style:** `feat(scope): short summary`, matching the log
   (`feat(step): ...`, `feat(panels): ...`). Use `feat!:` when a feature is
   retired/removed or behavior breaks. One line, no fluff.

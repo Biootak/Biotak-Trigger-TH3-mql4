@@ -3821,7 +3821,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          }
          static uint s_PalMove = 0;
          uint now = GetTickCount();
-         if(now - s_PalMove >= 30) { s_PalMove = now; PaletteMixFromX(g_PalMixDrag, mx); }
+         if(now - s_PalMove >= 30) { s_PalMove = now; CircReassertLock(); PaletteMixFromX(g_PalMixDrag, mx); }
          return;
       }
       if(pressStart && DragCanGrab(DRAG_PANEL_KNOB))
@@ -3873,6 +3873,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(now - s_PnlMoveTick >= 16)   // ~60Hz — keeps up with the cursor cheaply
       {
          s_PnlMoveTick = now;
+         CircReassertLock();   // LEARNING §5: the panel owns the view until release
          PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);
          g_PnlMoveLastX = mx;
          g_PnlMoveLastY = my;
@@ -3974,6 +3975,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
    uint now=GetTickCount();
    if(now - s_LastMoveTick < 30) return;
    s_LastMoveTick=now;
+   CircReassertLock();   // LEARNING §5: the slider owns the view until release
 
    double v;
    PnlValueFromX(g_PnlDragItem,g_PnlDragRow,mx,v);
