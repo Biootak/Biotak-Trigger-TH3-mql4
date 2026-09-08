@@ -186,13 +186,13 @@ static int  g_OrbGrabDX = 0, g_OrbGrabDY = 0;
 static int  g_OrbPressX = 0, g_OrbPressY = 0;
 static uint g_OrbLastRedrawTick = 0;
 
-//--- ring item long-press state (hold 250ms → open settings panel)
+//--- ring item long-press state (hold 500ms → open settings panel)
 static int  g_LongPressItem   = -1;     // which item is being held (-1 = none)
 static uint g_LongPressStart  = 0;      // GetTickCount when press started
 static int  g_LongPressX      = 0;      // mouse X at press start
 static int  g_LongPressY      = 0;      // mouse Y at press start
 static bool g_LongPressFired  = false;  // true after panel opened (prevents toggle on release)
-#define LONG_PRESS_TIME 250
+#define LONG_PRESS_TIME 500   // one hold language everywhere (P-UI-14): 250ms fired on press-pause-drags
 #define LONG_PRESS_MOVE 8
 #define CIRC_DRAG_REDRAW_INTERVAL 30
 
@@ -1530,7 +1530,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          g_LongPressItem = -1;
          DragReleaseIf(DRAG_MENU);
          // Only an opened panel must swallow the release click; a plain item
-         // click (released before the 250ms hold) must still reach the toggle.
+          // click (released before the 500ms hold) must still reach the toggle.
          if(panelOpened) UISuppressNextClick();
          CircUnlockChart();
       }

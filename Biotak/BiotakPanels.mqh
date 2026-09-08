@@ -4278,12 +4278,12 @@ static int g_LastUIX = 0;
 static int g_LastUIY = 0;
 
 //--- hold-on-box → Base Box MINI (TradingView-like floating icon strip):
-//--- press on a committed BK box, hold still ≥250ms → PnlOpen(13) fires WHILE
+//--- press on a committed BK box, hold still ≥500ms → PnlOpen(13) fires WHILE
 //--- HELD, like the menu long-press. The strip = [color chip][STYLE][WIDTH]
 //--- [LOCK][✕ delete][••• full card 12][✓ close] — drawn by
 //--- BkMiniStripCreate (R-BKSTRIP 2026-09-07). SINGLE METHOD (2026-09-06): it
 //--- opens only mid-hold — never on release, never via Shift+click. Passive
-//--- observer (same 250ms/8px language): never consumes, never claims drags.
+//--- observer (same 500ms/8px language): never consumes, never claims drags.
 //--- A quick tap does nothing (native select only).
 //--- STATE DISCIPLINE: press DOWN-transitions latch (event rising edge, or
 //--- the KEYSTATE poll backup for zero-move presses); ANY button-up clears
@@ -4299,7 +4299,7 @@ static bool   s_BkDownNow = false;            // button seen down since last up-
 // a dismissal click, not a drag-release, never consumed twice (cleared on
 // every CLICK + on every new press).
 static bool   s_BkFireReleasePending = false;
-#define BK_HOLD_MS   250
+#define BK_HOLD_MS   500   // one hold language with the menu (P-UI-14): 250ms fired on press-pause-drags
 #define BK_HOLD_MOVE 8
 #define BK_CLICK_SLOP 10   // button-up farther than this from its press-down is a
                            // drag end, never a dismissal click (hold slop is 8)

@@ -416,7 +416,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   drag swallows locked boxes; hold still opens the mini strip so a locked
   box can always be unlocked). Strip LOCK/✕ act on `g_BkMiniBox` (set at
   hold, validated on every use; a gone box closes the strip).
-  The hold is the ONE box gesture (250ms/8px, `BkHoldLatch/Poll/Fire` in
+  The hold is the ONE box gesture (500ms/8px — P-UI-14: 250ms fired on
+  press-pause-drags, so box hold (`BK_HOLD_MS`) and ring long-press
+  (`LONG_PRESS_TIME`) share one deliberate 500ms language; any >8px move
+  before the delay cancels the pending hold, so drags never open it;
+  `BkHoldLatch/Poll/Fire` in
   `BiotakPanels.mqh` — passive observer, never consumes; hit-test via
   `BaseKnotBoxAt()` in the domain layer so Lite stays UI-free; P-BK-03/P-BK-05).
   The card fires WHILE HELD
@@ -659,6 +663,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-UI-11 | COLOR-row label buried under its own preview swatch (label invisible, row looks headless) | Label `L` drawn at `px+PAD_X` for all kinds, but kind==4 preview `CB` starts at the same X with higher ZORDER (1520 < 1540) | kind==4 moves `L` to `ry+2` like kind==6 (label-above in the 42px row — R-PANELMOD exception alongside TEXT rows); update path never touches `L` so create-time position sticks | 2026-09-08 |
 | P-UI-12 | Menu hover tooltip fires over an open settings card (phantom tip, Z1700 over panel) | `CircTipTick` (per-tick) had no panel-occlusion awareness; hotkey-opened panels never cleared a visible/armed tip; Menu is included BEFORE Panels so it cannot call `PnlPointInside` | Cross-layer flag `g_UIPanelOpen` in `GlobalVariables.mqh` (set in `PnlOpen`, cleared in `PnlCloseAll`) + `CircTipDisarm()` called from `PnlOpen`; `OnMove`/`Tick` abort while flagged; `CircTipShow` clamps bottom + tiny-chart floor | 2026-09-08 |
 | P-UI-13 | Tools-ring fan stacks on one line near chart edges (46px spacing vs 52px footprint — overlap) | `ToolsLayout` clamped every item independently, destroying the ±55° spread (the ring itself uses `CircFitRadius`) | `ToolsFitRadius` (same ray-vs-bounds math over the TOOL_COUNT fan angles): shrink the radius, keep the clamp only as last-resort safety | 2026-09-08 |
+| P-UI-14 | Hold-to-open fires too eagerly (250ms): strip/cards pop on plain holds and on press-pause-drags — bad UX | 250ms is below a deliberate hold; press-pause-drag always outlasted it, and move-cancel only helped pure quick drags | One deliberate hold language: box hold (`BK_HOLD_MS`) and ring long-press (`LONG_PRESS_TIME`) both 500ms; any >8px move before the delay cancels the pending hold, so drags never open it (move-cancel already existed — the delay was the whole bug) | 2026-09-08 |
 
 
 > When you close a new recurring issue, add the next row above (highest
