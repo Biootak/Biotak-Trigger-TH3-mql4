@@ -606,7 +606,7 @@ void TradePlanLogAllTFs()
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     double pip = GetCachedPipSize();
     Print("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5) + "  " + ts + " =====");
-    Print("[SNAP] TF    | TR(own) | Eng  | Hunter | SL   | TP1  | TP2   | TP3   | SB1   | SB2   | strMin | trigMin");
+    Print("[SNAP] TF  | TR(own) | engT   | Eng | Hunter | slTrue  | SL  | TP1 | TP2  | TP3  | SB1  | SB2  | base(strTrig)");
 
     for(int i = 0; i < 8; i++)
     {
@@ -614,24 +614,26 @@ void TradePlanLogAllTFs()
         bool ok = TradePlanCompute(s_tfMins[i], p);
         if(!ok)
         {
-            Print("[SNAP] " + s_tfNames[i] + "    | NOT READY (basePips=0 or data missing)");
+            Print("[SNAP] " + s_tfNames[i] + " | NOT READY (basePips=0 or data missing)");
             continue;
         }
         // TR(own) = composite ATR of THIS TF (not used in SL, for reference)
         double trOwn = TradePlanStripPips(s_tfMins[i]);
         Print("[SNAP] " + s_tfNames[i]
-              + " | " + DoubleToString(trOwn, 1)
+              + " | " + DoubleToString(trOwn, 2)
+              + " | " + DoubleToString(p.engTrue, 2)
               + " | " + IntegerToString(p.eng)
               + " | " + IntegerToString(p.hunter)
+              + " | " + DoubleToString(p.slTrue, 2)
               + " | " + IntegerToString(p.sl)
               + " | " + IntegerToString(p.tp1)
               + " | " + IntegerToString(p.tp2)
               + " | " + IntegerToString(p.tp3)
               + " | " + IntegerToString(p.sb1)
               + " | " + IntegerToString(p.sb2)
-              + " | str=" + IntegerToString(p.strMin)
-              + " trig=" + IntegerToString(p.trigMin)
-              + " base=" + DoubleToString(p.basePips, 1));
+              + " | base=" + DoubleToString(p.basePips, 3)
+              + " str=" + IntegerToString(p.strMin)
+              + " trig=" + IntegerToString(p.trigMin));
     }
     Print("[SNAP] ===== END =====");
 }
@@ -672,9 +674,9 @@ void TradePlanLiveTick()
           + "  strMin=" + IntegerToString(plan.strMin)
           + "  trigMin=" + IntegerToString(plan.trigMin));
 
-    // Full 8-TF snapshot — throttled to once per 10 s (independent of chart TF).
+    // Full 8-TF snapshot — throttled to once per 3 s (independent of chart TF).
     static uint s_snapMs = 0;
-    if(nowMs - s_snapMs >= 10000)
+    if(nowMs - s_snapMs >= 3000)
     {
         s_snapMs = nowMs;
         TradePlanLogAllTFs();
