@@ -110,8 +110,8 @@ int TradePlanStructureMinutes(const int chartMinutes)
 int TradePlanRound(const double x) { return (int)MathRound(x); }
 
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
-// Calls CalculateWeightedATR (ATRCalculations.mqh) which uses iATR shift=1.
-// Used for niche callers; SL engine uses TradePlanEngOf(StructureTF).
+// Calls CalculateWeightedATR (ATRCalculations.mqh) — 6-period Wilder weighted
+// average, shift=1 on every period leg, stable and not tick-volatile.
 double TradePlanStripPips(const int tfMinutes)
 {
    double pip = GetCachedPipSize();
@@ -123,66 +123,34 @@ double TradePlanStripPips(const int tfMinutes)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SESSION ENG — the professor's stable Eng formula (reverse-engineered Sep-9-2026
-// from 8 XAUUSD screenshots, confirmed all 8 TFs with ≤1 pip rounding error):
+// ENG = CompositeATR(triggerTF)
 //
-//   Eng(TF) = iATR(triggerTF, TF_min / triggerTF_min, 1) / pip
+// Eng(TF) = TradePlanStripPips(TriggerOf(TF))
+//         = weighted-avg iATR(shift=1) of 6 periods on the TRIGGER timeframe.
 //
-// This is a single-bar Wilder ATR whose PERIOD = the number of trigger-TF candles
-// that compose one bar of the chart TF.  Examples:
-//   M1  trig=M1  period= 1/1= 1  → iATR(M1,  1,1)  ← M1 range
-//   M5  trig=M1  period= 5/1= 5  → iATR(M1,  5,1)  ← 5-bar M1 ATR
-//   M15 trig=M1  period=15/1=15  → iATR(M1, 15,1)
-//   H1  trig=M5  period=60/5=12  → iATR(M5, 12,1)
-//   H4  trig=M15 period=240/15=16 → iATR(M15,16,1)
-//   D1  trig=H1  period=1440/60=24 → iATR(H1,24,1)
-//   W1  trig=H4  period=10080/240=42 → iATR(H4,42,1)
-//   MN  trig=D1  period=43200/1440=30 → iATR(D1,30,1)
+// This is the same value shown in the ATR top bar for the trigger TF —
+// stable (weighted average, not a single-bar range), and the same number
+// that the professor's indicator shows as Eng.SL for each chart TF.
 //
-// Why this is stable: iATR(triggerTF, N, shift=1) is frozen on the last CLOSED
-// bar of triggerTF — it does NOT change until a new triggerTF bar closes.
-// On H1 charts that is every 5 minutes; on D1 charts every hour. Much smoother
-// than a live composite weighted ATR (which updates every tick).
-//
-// Diagonal identity (theorem, observed, not a recipe):
-//   SL(TF) = 1.2 × Eng(StructureTF) = 1.2 × 1.2 × Eng(TF) = 1.44 × Eng(TF)
-//   → SB1(TF) = Hunter(StructureTF), SB1 = SL×20/9 (unchanged).
+// Trigger TF mapping (2 rungs down, clamped to M1):
+//   M1  → M1   M5  → M1   M15 → M1
+//   H1  → M5   H4  → M15  D1  → H1   W1  → H4   MN  → D1
 // ─────────────────────────────────────────────────────────────────────────────
-double TradePlanSessionEng(const int tfMinutes, int &trigMinOut)
-{
-   int cm      = TradePlanLadderMinutes(TradePlanLadderIndex(tfMinutes));
-   trigMinOut  = TradePlanTriggerMinutes(cm);
-   int trigMin = trigMinOut;
-   if(trigMin <= 0) trigMin = 1;
-
-   double pip = GetCachedPipSize();
-   if(IsZero(pip, EPSILON_PRICE)) return 0.0;
-
-   int period = cm / trigMin;          // e.g. H1/M5 = 60/5 = 12
-   if(period < 1) period = 1;
-
-   ENUM_TIMEFRAMES trigTF = (ENUM_TIMEFRAMES)trigMin;
-   double v = iATR(Symbol(), trigTF, period, 1);
-   return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
-}
-
-// TradePlanEngTrue: display Eng — now identical to SessionEng for all TFs.
-// (Previous version had a composite-ATR path for M15+ which diverged from the
-// professor's values. Now one formula covers all 8 rungs.)
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
 {
-   return TradePlanSessionEng(chartMinutes, trigMinOut);
+   int cm     = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
+   trigMinOut = TradePlanTriggerMinutes(cm);
+   return TradePlanStripPips(trigMinOut);
 }
 
-// EngOf(TF): session Eng of any TF (used by SL engine for the structure TF).
-// Replaces TradePlanCompositeEngOf which used composite-weighted ATR.
+// EngOf(TF): Eng of any TF (used by SL engine for the structure TF).
 double TradePlanEngOf(const int tfMinutes)
 {
    int dummy = 0;
-   return TradePlanSessionEng(tfMinutes, dummy);
+   return TradePlanEngTrue(tfMinutes, dummy);
 }
 
-// Legacy alias kept for callers that may still reference the old name.
+// Legacy alias.
 double TradePlanCompositeEngOf(const int tfMinutes)
 {
    return TradePlanEngOf(tfMinutes);

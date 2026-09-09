@@ -629,8 +629,9 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (2026-09-09 spec, confirmed live Sep-9-2026 all 8 TFs XAUUSD: UNIFIED SL formula
   `SL(TF) = 1.20 × Eng(StructureTF)` — one constant, no per-TF table.
   Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Structure = 2 rungs UP; Trigger = 2 rungs DOWN.
-  Eng formula (`TradePlanSessionEng`): `iATR(triggerTF, TF_min/trig_min, 1)/pip` — stable
-  single-call (M1:period=1, M5:5, M15:15, H1/M5:12, H4/M15:16, D1/H1:24, W1/H4:42, MN/D1:30).
+  Eng formula (`TradePlanEngTrue`): `CompositeATR(triggerTF)` = same weighted-avg
+  6-period ATR shown in the top bar for that TF — stable, not tick-volatile.
+  Trigger mapping (2 rungs down, clamped to M1): M1/M5/M15→M1, H1→M5, H4→M15, D1→H1, W1→H4, MN→D1.
   `TP = SL*(7/3, 5, 31/3)` from UNROUNDED slTrue; `Hunter = round(8*EngTrue/3)` from
   unrounded Eng; StrBond `Base=95/9*SL` + `Width=20/9*SL` (M1-D1: Width--Base,
   W1: 16/3*SL--Base, MN: rounded-sum--Base); slow legs freeze per chart bar
