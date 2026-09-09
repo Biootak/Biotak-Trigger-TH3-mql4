@@ -873,11 +873,19 @@ void CalculateSimpleATRFromTR(double &results[], const double &trValues[], int m
 void CalculateATRBatchWilders(double &results[], const ENUM_TIMEFRAMES tf) {
     ArrayResize(results, 6);
     ArrayInitialize(results, 0.0);
-    
+
     int periods[] = {ATR_PERIOD_1, ATR_PERIOD_2, ATR_PERIOD_3,
                      ATR_PERIOD_4, ATR_PERIOD_5, ATR_PERIOD_6};
-    
+
+    // History gating (spec): a leg whose period exceeds available history is
+    // SKIPPED (stays 0.0, excluded from the weighted mean by the caller's
+    // dynamic denominator) instead of feeding a truncated-history iATR.
+    // This matters on W1/MN1 where 132/264-period legs often lack history.
+    int nb = iBars(Symbol(), tf);
+    if(nb <= 10) return;
+
     for(int i = 0; i < 6; i++) {
+        if(nb <= periods[i] + 1) continue;
         // Use iATR with shift 1 for stable, non-flickering values
         double val = iATR(Symbol(), tf, periods[i], 1);
         results[i] = (val != EMPTY_VALUE && val > 0) ? val : 0.0;

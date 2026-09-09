@@ -1183,7 +1183,7 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
     static uint s_bkLitePumpMs = 0;
     {
        uint bkNow = GetTickCount();
-       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotSyncBadges(); }
+       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotSyncBadges(); TradePlanLiveTick(); }
     }
 #endif
 

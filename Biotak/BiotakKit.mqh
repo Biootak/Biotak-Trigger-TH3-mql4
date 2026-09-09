@@ -210,6 +210,7 @@ void RefreshUIPerTick()
       BaseKnotSyncBadges();   // pixel badges re-glued after scroll/zoom (cheap, runs only with boxes)
       BaseKnotHintTick();     // result-hint auto-hide pump
    }
+   TradePlanLiveTick();   // right-side trade block: 2s-throttled, change-guarded (P-LBL-03)
 }
 
 #endif // BIOTAK_KIT_MQH

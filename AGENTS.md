@@ -625,23 +625,26 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   in 3.x; `TREX_Value` purge lines stay for old charts). `TRexCaptionText()`
   builds the Persian caption from ushort codes — never a non-ASCII literal
   in source (see P-LBL-01).)
-
 - **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
-  (2026-09-08 — reverse-engineered from the professor's TRex screenshots,
-  all 8 TFs: plan base = ATR pips of `min(chartTF,D1)` (MN/W1/D1 show the
-  daily plan); `SL/TP = base*(6,14,30,62)`; `Eng = (1|3|5)*ATR(triggerTF)`
-  (M1:1, M5:3, else 5; trigger = 2 ladder steps down, M1 floor — same ladder
-  as `GetTriggerDurationSeconds`); `Hunter = round(8*EngTrue/3)` from the
-  UNROUNDED Eng (rounding the rounded Eng breaks H1 by 2); `StrBond2 =
-  round(190*base/3)`; `StrBond1 = round(40*ownATR/3)` from the UNcapped
-  own-TF ATR (the "Hunter 2-above" read was emergent, not causal — both
-  equal 40/3 of the shared TF wherever both exist, so M1..D1 are
-  bit-identical; NO W1/MN exception, works on fractal TFs too). Symbol-free by
-  construction (only ATR + symbol-aware `GetCachedPipSize()`, no pair
-  constant) + `TradePlanSelfCheck()` rounding-integrity guard for any
-  symbol. Display (`LabelFunctions.mqh`) renders, never recomputes.
-  Cross-symbol validated on EURUSD/D1 (SL103/TP240/514/1062 + Hunter31/
-  Eng12 + StrBond228-1085 all reproduce; full walkthrough: TRADEPLAN_FA.md).)
+  (2026-09-09 spec, reverse-engineered from the professor's TRex: base SL per
+  TF (`1.5/1.2/1.35/1.75/2.0 x own ATR`, D1+ share the `1.107 x D1` macro leg
+  - `1066 -> 1180` observed); `TP = SL*(7/3, 5, 31/3)` from UNROUNDED SL;
+  `Eng = triggerTF_SL/1.2` (== trigger strip ATR: H1 Eng 43 == M5 strip 43);
+  `Hunter = round(8*EngTrue/3)` from UNROUNDED Eng; StrBond `Base = 95/9*SL`
+  + `Width = 20/9*SL` with group layouts (M1-D1: Width--Base, W1: 16/3*SL--Base,
+  MN: rounded-sum--Base); slow legs freeze per chart bar (`TradePlanComputeLive`)
+  while Eng/Hunter stay live. Symbol-free (only ATR + `GetCachedPipSize()`) +
+  `TradePlanSelfCheck()` guard. Display renders from `Period()`, never follows
+  the TF-lock.   PENDING forward-validation: H1 `1.75` (`1.75x176 = 308` vs seen
+  303 - bar-freeze is the working theory, next H1 roll decides) and the W1/MN
+  legs (unobserved); full walkthrough: TRADEPLAN_FA.md.)
+- **R-TRADEPLAN-DIAG — the diagonal is a theorem, not input** (2026-09-09:
+  `SB1(chart) == Hunter(structure(chart))` and `SL == 1.2*Eng(struct)` hold
+  EXACTLY in code (same double pre-round: `20/9 == 8/3/1.2`, `trig o struct`
+  is identity on M1-D1, macro shared above; observed H1 SB1 673 == D1 Hunter
+  673). Never implement the master equation as a recipe - it is circular
+  (`SL(M1) = ... = SL(M1)`); exogenous input stays the strip ATRs. Proof
+  comment lives above `TradePlanHunterFromEng`.)
 
 ---
 
@@ -701,6 +704,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-UI-14 | Hold-to-open fires too eagerly (250ms): strip/cards pop on plain holds and on press-pause-drags — bad UX | 250ms is below a deliberate hold; press-pause-drag always outlasted it, and move-cancel only helped pure quick drags | One deliberate hold language: box hold (`BK_HOLD_MS`) and ring long-press (`LONG_PRESS_TIME`) both 500ms; any >8px move before the delay cancels the pending hold, so drags never open it (move-cancel already existed — the delay was the whole bug) | 2026-09-08 |
 | P-LBL-01 | Persian caption pasted as a literal into a .mqh renders as mojibake on chart after save/compile on another machine | Non-ASCII literal bytes depend on the file encoding; MetaEditor/MQL4 reads source per the system codepage, so the same bytes decode differently elsewhere | Never put a non-ASCII literal in .mqh source — construct the string from ushort code points via StringSetCharacter over a pre-sized ASCII string (see TRexCaptionText in Biotak/LabelFunctions.mqh); source stays pure ASCII and renders identically everywhere | 2026-09-08 |
 | P-LBL-02 | Persian caption shows as `????` even though the string bytes are right | `inpFontName` is `"Arial Bold"` — not a real family name — so MT4 falls back to a font with no Arabic glyphs | Force `"Tahoma"` (ships with Windows, full Arabic cover, nothing to download) on the caption object after creation, every refresh (see `DisplayTRexTitleBlock`); leave ASCII labels on the default font | 2026-09-08 |
+| P-LBL-03 | Trade-block numbers frozen until TF switch | Trade labels repaint only on relayout (`needLabels` gate); no per-tick path ever touched them (the bar-freeze assumed per-tick calls) | Throttled 2s in-place live pump `TradePlanLiveTick()` in `LabelFunctions.mqh` (Full: `RefreshUIPerTick`, Lite: 500ms block); change-guarded signature incl. countdown, no clear | 2026-09-09 |
 
 
 > When you close a new recurring issue, add the next row above (highest

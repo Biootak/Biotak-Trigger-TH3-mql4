@@ -361,13 +361,18 @@ string TRexCaptionText() {
 }
 
 bool CreateTRexPiece(const string name, const string text, const color textColor,
-                     const int fontSize, const int xPos, const int yPos) {
+                     const int fontSize, const int xPos, const int yPos,
+                     const string fontName = "") {
     if(ObjectFind(0, name) < 0) {
         if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
     }
     ObjectSetString(0, name, OBJPROP_TEXT, text);
     ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-    ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
+    // Empty fontName = default indicator font. The caption passes "Tahoma"
+    // explicitly: "Arial Bold" (inpFontName) is not a real family and MT4
+    // falls back to a font without Arabic glyphs ("????").
+    ObjectSetString(0, name, OBJPROP_FONT,
+                    StringLen(fontName) > 0 ? fontName : inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
     InitATRChartLabel(name, CORNER_RIGHT_UPPER, ANCHOR_RIGHT_UPPER);
     ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(8, xPos));
@@ -418,13 +423,19 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
     if(ySp < 0) ySp = 0;
 
     if(!CreateTRexPiece(spName, spText, clrBlack, fontSize, xSp, ySp)) return false;
-    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap)) return false;
-    // P-LBL-01 follow-up: "Arial Bold" (inpFontName) is not a real family, so
-    // MT4 falls back to a font without Arabic glyphs and the caption shows
-    // as "????". Tahoma ships with every Windows and covers Arabic - the
-    // caption renders with no Persian font to download. Runs every refresh,
-    // so the override sticks.
-    ObjectSetString(0, capName, OBJPROP_FONT, "Tahoma");
+    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap, "Tahoma")) return false;
+    // P-LBL-02 follow-up: Tahoma ships with every Windows and covers Arabic -
+    // the caption renders with no Persian font to download. One-shot Experts
+    // log below proves string-vs-font root cause if ???? ever returns.
+    static bool s_trexCapLogged = false;
+    if(!s_trexCapLogged) {
+        s_trexCapLogged = true;
+        string backFont = "";
+        ObjectGetString(0, capName, OBJPROP_FONT, 0, backFont);
+        Print("TREX caption len=", StringLen(capText),
+              " c0=", IntegerToString(StringGetCharacter(capText, 0)),
+              " font=", backFont);
+    }
     if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
     return true;
@@ -550,8 +561,12 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     }
 
     // R-TRADEPLAN: one engine call feeds every right-side row.
+    // Active chart TF only - the TF-lock (G key) pins levels/zones,
+    // never the trade-plan block: each TF shows its own plan.
+    // Live variant: slow legs (SL/TP/SB) freeze per chart bar like the
+    // professor's block; Eng/Hunter stay live.
     STradePlan plan;
-    if(!TradePlanCompute(GetEffectiveTimeframe(), plan)) return;
+    if(!TradePlanComputeLive(Period(), plan)) return;
 
     // Both margins are distances from the right/bottom chart edges.
     CreateATRTradeLabel(labelPrefix, plan,
@@ -563,6 +578,41 @@ void DisplayATRTradeLabels(const string objectPrefix) {
         ObjectDelete(0, labelPrefix + "TREX_Hunter");
         ObjectDelete(0, labelPrefix + "TREX_StrBond");
     }
+}
+
+// Live trade-block pump (P-LBL-03 fix): the relayout path above repaints
+// this block only on init/TF-switch/settings (needLabels gate), so without
+// this the numbers sat frozen until the user switched TF. In-place text
+// updates via the same create-or-update pieces (no clear), change-guarded
+// paint, 2s throttle: no flicker, negligible CPU. Called per-tick+timer in
+// Full (RefreshUIPerTick) and from the 500ms block in Lite.
+void TradePlanLiveTick()
+{
+    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
+    uint nowMs = GetTickCount();
+    static uint s_lastMs = 0;
+    if(nowMs - s_lastMs < 2000) return;
+    s_lastMs = nowMs;
+    STradePlan plan;
+    if(!TradePlanComputeLive(Period(), plan)) return;
+    string sig = StringFormat("%d|%d|%d|%d|%d|%d|%d|%d|%s",
+                              plan.sl, plan.tp1, plan.tp2, plan.tp3,
+                              plan.hunter, plan.eng, plan.sb1, plan.sb2,
+                              TradePlanCloseInText());
+    static string s_sig = "";
+    if(sig == s_sig) return;
+    s_sig = sig;
+    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
+    CreateATRTradeLabel(labelPrefix, plan,
+                        inpLabelsMarginLeft, inpLabelsMarginBottom);
+    DisplayTRexTitleBlock(labelPrefix);
+    if(inpShowATRTradeSLLabels)
+        DisplayTradePlanTopRows(labelPrefix, plan);
+    else {
+        ObjectDelete(0, labelPrefix + "TREX_Hunter");
+        ObjectDelete(0, labelPrefix + "TREX_StrBond");
+    }
+    ThrottledChartRedraw();
 }
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
