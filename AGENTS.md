@@ -626,25 +626,22 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   builds the Persian caption from ushort codes — never a non-ASCII literal
   in source (see P-LBL-01).)
 - **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
-  (2026-09-09 spec, reverse-engineered from the professor's TRex: base SL per
-  TF (`1.5/1.2/1.35/1.75/2.0 x own ATR`, D1+ share the `1.107 x D1` macro leg
-  - `1066 -> 1180` observed); `TP = SL*(7/3, 5, 31/3)` from UNROUNDED SL;
-  `Eng = triggerTF_SL/1.2` (== trigger strip ATR: H1 Eng 43 == M5 strip 43);
-  `Hunter = round(8*EngTrue/3)` from UNROUNDED Eng; StrBond `Base = 95/9*SL`
-  + `Width = 20/9*SL` with group layouts (M1-D1: Width--Base, W1: 16/3*SL--Base,
+  (2026-09-09 spec, confirmed all 8 TFs 2026-09-09: UNIFIED formula
+  `SL(TF) = 1.20 × Eng(StructureTF)` — no per-TF multiplier table.
+  Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Structure = 2 rungs UP (`TradePlanStructureMinutes`);
+  Trigger = 2 rungs DOWN (`TradePlanTriggerMinutes`); `Eng(TF) = CompositeATR(TriggerOf(TF))`
+  (strip ATR ×1 — H1 Eng 43 == M5 strip 43 confirmed). W1/MN structure clamps to MN
+  which naturally produces the D1 macro SL (~1180). `TP = SL*(7/3, 5, 31/3)` from
+  UNROUNDED SL; `Hunter = round(8*EngTrue/3)` from unrounded Eng; StrBond
+  `Base = 95/9*SL` + `Width = 20/9*SL` (M1-D1: Width--Base, W1: 16/3*SL--Base,
   MN: rounded-sum--Base); slow legs freeze per chart bar (`TradePlanComputeLive`)
-  while Eng/Hunter stay live. Symbol-free (only ATR + `GetCachedPipSize()`) +
-  `TradePlanSelfCheck()` guard. Display renders from `Period()`, never follows
-  the TF-lock.   PENDING forward-validation: H1 `1.75` (`1.75x176 = 308` vs seen
-  303 - bar-freeze is the working theory, next H1 roll decides) and the W1/MN
-  legs (unobserved); full walkthrough: TRADEPLAN_FA.md.)
+  while Eng/Hunter stay live. Symbol-free + `TradePlanSelfCheck()` guard.
+  Display renders from `Period()`, never follows TF-lock. Full walkthrough: TRADEPLAN_FA.md.)
 - **R-TRADEPLAN-DIAG — the diagonal is a theorem, not input** (2026-09-09:
   `SB1(chart) == Hunter(structure(chart))` and `SL == 1.2*Eng(struct)` hold
-  EXACTLY in code (same double pre-round: `20/9 == 8/3/1.2`, `trig o struct`
-  is identity on M1-D1, macro shared above; observed H1 SB1 673 == D1 Hunter
-  673). Never implement the master equation as a recipe - it is circular
-  (`SL(M1) = ... = SL(M1)`); exogenous input stays the strip ATRs. Proof
-  comment lives above `TradePlanHunterFromEng`.)
+  EXACTLY in code (same double pre-round: `1.2*20/9 = 8/3`; observed H1 SB1 673 ==
+  D1 Hunter 673). Never implement the master equation as a recipe — it is circular;
+  exogenous input stays the strip ATRs. Proof comment lives above `TradePlanHunterFromEng`.)
 
 ---
 
