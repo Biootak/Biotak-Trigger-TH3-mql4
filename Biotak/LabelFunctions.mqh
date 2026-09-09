@@ -603,39 +603,27 @@ void TradePlanLiveTick()
     if(sig == s_sig) return;
     s_sig = sig;
 
-    // [TRADEPLAN-LOG] Write once per change to tradeplan_log.txt in MQL4\Files\.
-    // Run tools/read_tradeplan_log.ps1 to copy it into the repo so the AI can read it.
-    {
-       int fh = FileOpen("tradeplan_log.txt",
-                         FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI,
-                         ',');
-       if(fh != INVALID_HANDLE)
-       {
-          // Seek to end so we APPEND (FileOpen with FILE_WRITE truncates by default;
-          // seek past end is the standard MQL4 append pattern).
-          FileSeek(fh, 0, SEEK_END);
-
-          string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
-          FileWrite(fh, "=== TRADEPLAN [" + Symbol() + " " + GetCurrentTimeframe() + "] " + ts + " ===");
-          FileWrite(fh, "  TR(own)=" + DoubleToString(plan.ownPips, 1)
-                        + "  Eng.SL=" + IntegerToString(plan.eng)
-                        + "  Hunter=" + IntegerToString(plan.hunter));
-          FileWrite(fh, "  SL=" + IntegerToString(plan.sl)
-                        + "  TP1=" + IntegerToString(plan.tp1)
-                        + "  TP2=" + IntegerToString(plan.tp2)
-                        + "  TP3=" + IntegerToString(plan.tp3));
-          FileWrite(fh, "  StrBond=" + IntegerToString(plan.sb1)
-                        + " - " + IntegerToString(plan.sb2));
-          FileWrite(fh, "  slTrue=" + DoubleToString(plan.slTrue, 4)
-                        + "  engTrue=" + DoubleToString(plan.engTrue, 4)
-                        + "  basePips=" + DoubleToString(plan.basePips, 4));
-          FileWrite(fh, "  chartMin=" + IntegerToString(plan.chartMin)
-                        + "  strMin=" + IntegerToString(plan.strMin)
-                        + "  trigMin=" + IntegerToString(plan.trigMin));
-          FileWrite(fh, "---");
-          FileClose(fh);
-       }
-    }
+    // [TRADEPLAN-LOG] Printed once per value-change (change-guarded above).
+    // compile-th3.ps1 reads MQL4\Logs\*.log automatically and appends a
+    // RUNTIME LOG SNAPSHOT section to build-logs\*.log after every compile.
+    // The AI reads the latest build-logs\*.log with read_file.
+    string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+    Print("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
+    Print("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
+          + "  Eng.SL=" + IntegerToString(plan.eng)
+          + "  Hunter=" + IntegerToString(plan.hunter));
+    Print("[TRADEPLAN]   SL=" + IntegerToString(plan.sl)
+          + "  TP1=" + IntegerToString(plan.tp1)
+          + "  TP2=" + IntegerToString(plan.tp2)
+          + "  TP3=" + IntegerToString(plan.tp3));
+    Print("[TRADEPLAN]   StrBond=" + IntegerToString(plan.sb1)
+          + " - " + IntegerToString(plan.sb2));
+    Print("[TRADEPLAN]   slTrue=" + DoubleToString(plan.slTrue, 4)
+          + "  engTrue=" + DoubleToString(plan.engTrue, 4)
+          + "  basePips=" + DoubleToString(plan.basePips, 4));
+    Print("[TRADEPLAN]   chartMin=" + IntegerToString(plan.chartMin)
+          + "  strMin=" + IntegerToString(plan.strMin)
+          + "  trigMin=" + IntegerToString(plan.trigMin));
 
     string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     CreateATRTradeLabel(labelPrefix, plan,
