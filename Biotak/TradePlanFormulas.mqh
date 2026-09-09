@@ -3,16 +3,21 @@
 //|                                                                  |
 //| Trade-plan formulas (TRex right-side block) - SINGLE SOURCE OF   |
 //| TRUTH. Reverse-engineered from the professor's TRex screenshots   |
-//| (XAUUSD all 8 TFs Sep-4-2026, EURUSD H1 Jun-2021).              |
+//| (XAUUSD all 8 TFs Sep-4 + Sep-9-2026, confirmed live).           |
 //|                                                                  |
-//| CORE FORMULA (confirmed all 8 TFs, revised 2026-09-09):          |
-//|   SL(TF)  = SL_MULT[TF] × CompositeATR(TF)   ← own-TF ATR      |
-//|   Eng(TF) = iATR(triggerTF, TF/trig, 1) / pip  ← stable        |
+//| UNIFIED FORMULA (all 8 TFs, confirmed Sep-9-2026):               |
+//|   SL(TF) = round(1.20 × Eng(StructureTF))                        |
+//|   Eng(TF) = iATR(triggerTF, TF_min/trig_min, 1) / pip            |
 //|   Hunter  = round(8/3 × Eng)                                     |
+//|   Structure = 2 ladder rungs UP; Trigger = 2 rungs DOWN.         |
 //|                                                                  |
-//| SL_MULT per-TF table (reverse-engineered from Sep-4 XAUUSD):     |
-//|   M1=1.50 M5=1.20 M15=1.35 M30=1.35                             |
-//|   H1=1.75 H4=2.00 D1/W1/MN=1.107                                |
+//| Verified Sep-9-2026 XAUUSD (live screenshots, all 8 TFs):        |
+//|   M1: 1.2×Eng(M15=17)=20.4→20 ✓                                 |
+//|   M5: 1.2×Eng(H1=40)=48 ✓                                       |
+//|   M15: 1.2×Eng(H4=88)=105.6→105 ✓                               |
+//|   H1: 1.2×Eng(D1=252)=302.4→303 ✓                               |
+//|   H4: 1.2×Eng(W1=600)=720 ✓                                     |
+//|   D1/W1/MN: 1.2×Eng(MN=983)=1179.6→1180 ✓                      |
 //|                                                                  |
 //| Symbol independence: all values derive from ATR (market data)    |
 //| converted with GetCachedPipSize(). No symbol-specific constants.  |
@@ -33,17 +38,9 @@
 #define TRADEPLAN_TP3_NUM  31.0
 #define TRADEPLAN_TP3_DEN   3.0
 
-// Per-TF SL multiplier: SL = MULT × CompositeATR(chartTF).
-// Reverse-engineered from Sep-4-2026 XAUUSD screenshots (all 8 TFs):
-//   M1:  SL=21,  ATR≈14  → 21/14  = 1.50  (SS)
-//   M5:  SL=49,  ATR≈41  → 49/41  = 1.20
-//   M15: SL=105, ATR≈78  → 105/78 = 1.346 ≈ 1.35
-//   H1:  SL=303, ATR≈173 → 303/173= 1.751 ≈ 1.75  (Control)
-//   H4:  SL=720, ATR≈360 → 720/360= 2.00  (LS)
-//   D1:  SL=1180,ATR≈1066→1180/1066=1.107 (macro)
-// W1/MN: same 1.107 macro leg (their own composite ATR × 1.107).
-// NOTE: TRADEPLAN_SL_COEFF kept as fallback / legacy alias = 1.20.
-#define TRADEPLAN_SL_COEFF  1.20  // legacy — NOT used by TradePlanCompute
+// Unified SL coefficient: SL = 1.20 × Eng(StructureTF).
+// One constant for ALL timeframes — confirmed Sep-9-2026 live XAUUSD.
+#define TRADEPLAN_SL_COEFF  1.20
 
 // Hunter = 8/3 × Eng (unrounded Eng input).
 #define TRADEPLAN_HUNTER_NUM 8.0
@@ -112,23 +109,9 @@ int TradePlanStructureMinutes(const int chartMinutes)
 
 int TradePlanRound(const double x) { return (int)MathRound(x); }
 
-// Per-TF SL multiplier table (see header).
-double TradePlanSLMultiplier(const int chartMinutes)
-{
-   switch(chartMinutes)
-   {
-      case 1:     return 1.50;   // M1  — SS
-      case 5:     return 1.20;   // M5
-      case 15:    return 1.35;   // M15
-      case 30:    return 1.35;   // M30
-      case 60:    return 1.75;   // H1  — Control
-      case 240:   return 2.00;   // H4  — LS
-      default:    return 1.107;  // D1 / W1 / MN — macro
-   }
-}
-
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
 // Calls CalculateWeightedATR (ATRCalculations.mqh) which uses iATR shift=1.
+// Used for niche callers; SL engine uses TradePlanEngOf(StructureTF).
 double TradePlanStripPips(const int tfMinutes)
 {
    double pip = GetCachedPipSize();
@@ -205,12 +188,15 @@ double TradePlanCompositeEngOf(const int tfMinutes)
    return TradePlanEngOf(tfMinutes);
 }
 
-// SL = SL_MULT[TF] × CompositeATR(TF). Unrounded. 0 when not ready.
+// SL = 1.20 × SessionEng(StructureTF). Unrounded. 0 when not ready.
+// W1/MN structure clamps to MN; SessionEng(MN)=iATR(D1,30,1)/pip naturally
+// produces the macro SL — no special cap needed.
 double TradePlanSLTrue(const int chartMinutes)
 {
-   double strip = TradePlanStripPips(chartMinutes);
-   if(strip <= 0.0) return 0.0;
-   return TradePlanSLMultiplier(chartMinutes) * strip;
+   int strMin = TradePlanStructureMinutes(chartMinutes);
+   double engStr = TradePlanEngOf(strMin);
+   if(engStr <= 0.0) return 0.0;
+   return TRADEPLAN_SL_COEFF * engStr;
 }
 
 int TradePlanHunterFromEng(const double engTrue)
@@ -225,41 +211,47 @@ struct STradePlan
 {
    bool   valid;
    int    chartMin;    // floored chart TF (ladder rung)
-   int    strMin;      // structure TF (2 rungs up) — kept for display/debug
+   int    strMin;      // structure TF (2 rungs up)
    int    trigMin;     // trigger TF for Eng (2 rungs down from chart)
-   double basePips;    // CompositeATR(chartTF) — direct SL input
-   double ownPips;     // same as basePips (alias kept for legacy display code)
-   double slTrue;      // unrounded SL = MULT × basePips — EVERY leg from THIS
+   double basePips;    // Eng(StructureTF) — the input to SL
+   double ownPips;     // chart-TF composite ATR (info/display only)
+   double slTrue;      // unrounded SL = 1.2 × basePips — EVERY leg from THIS
    double engTrue;     // unrounded Eng (Hunter derives from THIS)
    int    sl, tp1, tp2, tp3;
    int    hunter, eng;
    int    sb1, sb2;    // StrBond display legs (group layout, see below)
 };
 
-// Full computation. SL derives directly from own-TF composite ATR.
+// MASTER IDENTITY (diagonal theorem, observed Sep-9-2026):
+//   SB1(TF) == Hunter(StructureTF) == SL × 20/9
+// Because: 1.20 × 20/9 = 8/3, so both sides round the same double.
+// Observed: H1 SB1 673 == D1 Hunter 673; M5 SB1 109 == H1 Hunter 109.
+
+// Full computation. SL = 1.2 × Eng(StructureTF).
 // All TP/Hunter/SB legs derive from unrounded slTrue / engTrue.
 bool TradePlanCompute(const int chartMinutes, STradePlan &p)
 {
    p.valid    = false;
    p.chartMin = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
-   p.strMin   = TradePlanStructureMinutes(p.chartMin); // kept for reference
+   p.strMin   = TradePlanStructureMinutes(p.chartMin);
 
    p.basePips = 0.0; p.ownPips = 0.0; p.slTrue = 0.0; p.engTrue = 0.0;
    p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
    p.hunter = 0; p.eng = 0; p.sb1 = 0; p.sb2 = 0;
 
-   // --- SL = SL_MULT[TF] × CompositeATR(chartTF) ---
-   p.basePips = TradePlanStripPips(p.chartMin);   // composite weighted ATR of THIS TF
+   // --- SL = 1.20 × Eng(StructureTF) ---
+   p.basePips = TradePlanEngOf(p.strMin);   // SessionEng of structure TF
    if(p.basePips <= 0.0) return false;
-   p.slTrue = TradePlanSLMultiplier(p.chartMin) * p.basePips;
+   p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
    if(p.slTrue <= 0.0) return false;
-
-   p.ownPips = p.basePips;  // alias
 
    p.sl  = TradePlanRound(p.slTrue);
    p.tp1 = TradePlanRound(p.slTrue * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN);
    p.tp2 = TradePlanRound(p.slTrue * TRADEPLAN_TP2_MULT);
    p.tp3 = TradePlanRound(p.slTrue * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN);
+
+   // Own strip ATR (composite, for reference/display — not the SL engine).
+   p.ownPips = TradePlanStripPips(p.chartMin);
 
    // --- Eng / Hunter (chart's own trigger TF) ---
    double eT = TradePlanEngTrue(p.chartMin, p.trigMin);
