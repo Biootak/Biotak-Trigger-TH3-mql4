@@ -586,6 +586,56 @@ void DisplayATRTradeLabels(const string objectPrefix) {
 // updates via the same create-or-update pieces (no clear), change-guarded
 // paint, 2s throttle: no flicker, negligible CPU. Called per-tick+timer in
 // Full (RefreshUIPerTick) and from the 500ms block in Lite.
+// Full 8-TF snapshot for all ladder timeframes on the current symbol.
+// Called from TradePlanLiveTick every 10 s when values change.
+// Uses TradePlanCompute (not ComputeLive) so each TF gets its OWN fresh
+// calculation (no bar-freeze cross-contamination between TFs).
+void TradePlanLogAllTFs()
+{
+    static int s_tfMins[8];
+    static string s_tfNames[8];
+    s_tfMins[0]=1;    s_tfNames[0]="M1";
+    s_tfMins[1]=5;    s_tfNames[1]="M5";
+    s_tfMins[2]=15;   s_tfNames[2]="M15";
+    s_tfMins[3]=60;   s_tfNames[3]="H1";
+    s_tfMins[4]=240;  s_tfNames[4]="H4";
+    s_tfMins[5]=1440; s_tfNames[5]="D1";
+    s_tfMins[6]=10080;s_tfNames[6]="W1";
+    s_tfMins[7]=43200;s_tfNames[7]="MN";
+
+    string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+    double pip = GetCachedPipSize();
+    Print("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5) + "  " + ts + " =====");
+    Print("[SNAP] TF    | TR(own) | Eng  | Hunter | SL   | TP1  | TP2   | TP3   | SB1   | SB2   | strMin | trigMin");
+
+    for(int i = 0; i < 8; i++)
+    {
+        STradePlan p;
+        bool ok = TradePlanCompute(s_tfMins[i], p);
+        if(!ok)
+        {
+            Print("[SNAP] " + s_tfNames[i] + "    | NOT READY (basePips=0 or data missing)");
+            continue;
+        }
+        // TR(own) = composite ATR of THIS TF (not used in SL, for reference)
+        double trOwn = TradePlanStripPips(s_tfMins[i]);
+        Print("[SNAP] " + s_tfNames[i]
+              + " | " + DoubleToString(trOwn, 1)
+              + " | " + IntegerToString(p.eng)
+              + " | " + IntegerToString(p.hunter)
+              + " | " + IntegerToString(p.sl)
+              + " | " + IntegerToString(p.tp1)
+              + " | " + IntegerToString(p.tp2)
+              + " | " + IntegerToString(p.tp3)
+              + " | " + IntegerToString(p.sb1)
+              + " | " + IntegerToString(p.sb2)
+              + " | str=" + IntegerToString(p.strMin)
+              + " trig=" + IntegerToString(p.trigMin)
+              + " base=" + DoubleToString(p.basePips, 1));
+    }
+    Print("[SNAP] ===== END =====");
+}
+
 void TradePlanLiveTick()
 {
     if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
@@ -603,10 +653,7 @@ void TradePlanLiveTick()
     if(sig == s_sig) return;
     s_sig = sig;
 
-    // [TRADEPLAN-LOG] Printed once per value-change (change-guarded above).
-    // compile-th3.ps1 reads MQL4\Logs\*.log automatically and appends a
-    // RUNTIME LOG SNAPSHOT section to build-logs\*.log after every compile.
-    // The AI reads the latest build-logs\*.log with read_file.
+    // [TRADEPLAN-LOG] per-chart row (single TF, change-guarded).
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     Print("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
     Print("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
@@ -624,6 +671,14 @@ void TradePlanLiveTick()
     Print("[TRADEPLAN]   chartMin=" + IntegerToString(plan.chartMin)
           + "  strMin=" + IntegerToString(plan.strMin)
           + "  trigMin=" + IntegerToString(plan.trigMin));
+
+    // Full 8-TF snapshot — throttled to once per 10 s (independent of chart TF).
+    static uint s_snapMs = 0;
+    if(nowMs - s_snapMs >= 10000)
+    {
+        s_snapMs = nowMs;
+        TradePlanLogAllTFs();
+    }
 
     string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     CreateATRTradeLabel(labelPrefix, plan,

@@ -53,14 +53,15 @@ if (-not $text) { Write-Host "Log file is empty."; exit 1 }
 $lines = $text -split "`r?`n"
 Write-Host "Total log lines: $($lines.Count)"
 
-# Filter only [TRADEPLAN] lines
-$tp = $lines | Where-Object { $_ -match '\[TRADEPLAN\]' }
+# Filter [TRADEPLAN] and [SNAP] lines
+$tp   = $lines | Where-Object { $_ -match '\[TRADEPLAN\]' }
+$snap = $lines | Where-Object { $_ -match '\[SNAP\]' }
 
-if (-not $tp) {
+if (-not $tp -and -not $snap) {
     Write-Host ""
-    Write-Host "No [TRADEPLAN] entries found yet."
+    Write-Host "No [TRADEPLAN] or [SNAP] entries found yet."
     Write-Host "  -> Make sure the indicator is attached and running on a chart."
-    Write-Host "  -> The log fires once per 2s when values change."
+    Write-Host "  -> [SNAP] fires every 10 s when values change."
     Write-Host ""
     Write-Host "--- Last 30 non-empty lines (for diagnosis) ---"
     $lines | Where-Object { $_ -match '\S' } | Select-Object -Last 30 | ForEach-Object { Write-Host $_ }
@@ -68,15 +69,34 @@ if (-not $tp) {
     exit 0
 }
 
-# Write clean readable output
+# Write clean readable output — SNAP snapshots first, then per-chart rows
 $header  = "# Captured from: $($latest.FullName)`n"
 $header += "# At: $(Get-Date)`n"
-$header += "# Lines: $($tp.Count)`n"
 $header += "# Log file modified: $($latest.LastWriteTime)`n"
+$header += "# [SNAP] lines: $($snap.Count)  [TRADEPLAN] lines: $($tp.Count)`n"
 $header | Set-Content $outFile -Encoding UTF8
-$tp | Add-Content $outFile -Encoding UTF8
+
+if ($snap.Count -gt 0) {
+    ""                             | Add-Content $outFile -Encoding UTF8
+    "# === 8-TF SNAPSHOTS ===" | Add-Content $outFile -Encoding UTF8
+    # Keep last 3 complete snapshots (each is ~11 lines)
+    $snap | Select-Object -Last 33 | Add-Content $outFile -Encoding UTF8
+}
+if ($tp.Count -gt 0) {
+    ""                             | Add-Content $outFile -Encoding UTF8
+    "# === PER-CHART ROWS ===" | Add-Content $outFile -Encoding UTF8
+    $tp | Select-Object -Last 48 | Add-Content $outFile -Encoding UTF8
+}
 
 Write-Host ""
-Write-Host "Written $($tp.Count) [TRADEPLAN] lines -> build-logs/tradeplan-latest.log"
+Write-Host "[SNAP] lines: $($snap.Count)   [TRADEPLAN] lines: $($tp.Count)"
+Write-Host "Written -> build-logs/tradeplan-latest.log"
 Write-Host ""
-$tp | Select-Object -Last 40 | ForEach-Object { Write-Host $_ }
+# Show latest snapshot to stdout
+if ($snap.Count -gt 0) {
+    Write-Host "--- Latest 8-TF snapshot ---"
+    $snap | Select-Object -Last 11 | ForEach-Object { Write-Host $_ }
+} else {
+    Write-Host "--- Last 20 TRADEPLAN rows (no snapshot yet) ---"
+    $tp | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+}
