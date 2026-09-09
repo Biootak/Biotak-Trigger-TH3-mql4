@@ -123,24 +123,34 @@ double TradePlanStripPips(const int tfMinutes)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENG = CompositeATR(triggerTF)
+// ENG = iATR(triggerTF, TF_min/trig_min, 1) / pip   — SESSION ATR
 //
-// Eng(TF) = TradePlanStripPips(TriggerOf(TF))
-//         = weighted-avg iATR(shift=1) of 6 periods on the TRIGGER timeframe.
+// Period = number of trigger-TF bars inside one chart bar.
+// shift=1 → frozen until the NEXT trigger-TF bar closes → stable.
 //
-// This is the same value shown in the ATR top bar for the trigger TF —
-// stable (weighted average, not a single-bar range), and the same number
-// that the professor's indicator shows as Eng.SL for each chart TF.
+//   M1  trig=M1  per=1   M5  trig=M1  per=5   M15 trig=M1  per=15
+//   H1  trig=M5  per=12  H4  trig=M15 per=16  D1  trig=H1  per=24
+//   W1  trig=H4  per=42  MN  trig=D1  per=30
 //
-// Trigger TF mapping (2 rungs down, clamped to M1):
-//   M1  → M1   M5  → M1   M15 → M1
-//   H1  → M5   H4  → M15  D1  → H1   W1  → H4   MN  → D1
+// Confirmed Sep-4-2026 XAUUSD all 8 TFs: M1=3 M5=9 M15=17 H1=40 H4=88
+// D1=252 W1=600 MN=983 (≤1 pip rounding vs professor's screenshots).
 // ─────────────────────────────────────────────────────────────────────────────
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
 {
-   int cm     = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
-   trigMinOut = TradePlanTriggerMinutes(cm);
-   return TradePlanStripPips(trigMinOut);
+   int cm      = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
+   trigMinOut  = TradePlanTriggerMinutes(cm);
+   int trigMin = trigMinOut;
+   if(trigMin <= 0) trigMin = 1;
+
+   double pip = GetCachedPipSize();
+   if(IsZero(pip, EPSILON_PRICE)) return 0.0;
+
+   int period = cm / trigMin;
+   if(period < 1) period = 1;
+
+   ENUM_TIMEFRAMES trigTF = (ENUM_TIMEFRAMES)trigMin;
+   double v = iATR(Symbol(), trigTF, period, 1);
+   return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
 }
 
 // EngOf(TF): Eng of any TF (used by SL engine for the structure TF).
