@@ -42,15 +42,27 @@ M1 ←→ M5 ←→ M15 ←→ H1 ←→ H4 ←→ D1 ←→ W1 ←→ MN
 
 ---
 
-## ۳. قدم اول — Eng: ATR تایم تریگر (ضریب ۱، بدون تقسیم)
+## ۳. قدم اول — Eng: فرمول پایدار Session ATR (کشف Sep-9-2026)
 
 ```
-Eng(TF) = CompositeATR(TriggerOf(TF))
+Eng(TF) = iATR(triggerTF,  TF_min / triggerTF_min,  1)  /  pip
 ```
 
-Eng همان مقدار composite ATR نوار تایم تریگر است — **هیچ ضریبی ندارد**.
+یک `iATR` تک‌call با پریود برابر **تعداد کندل‌های triggerTF که یک bar از TF جاری می‌سازند**.
+`shift=1` یعنی تا کندل بعدی triggerTF بسته نشود تغییر نمی‌کند → پایدار و ضد-نویز.
 
-راستی‌آزمایی: `H1 Eng = ATR(M5) = 43` (مشاهده XAUUSD/H1)، `M15 Eng = ATR(M1) = 18` ✓
+| TF | triggerTF | period | فرمول |
+|----|-----------|--------|-------|
+| M1 | M1 | 1/1=1 | `iATR(M1,1,1)/pip` |
+| M5 | M1 | 5/1=5 | `iATR(M1,5,1)/pip` |
+| M15 | M1 | 15/1=15 | `iATR(M1,15,1)/pip` |
+| H1 | M5 | 60/5=12 | `iATR(M5,12,1)/pip` |
+| H4 | M15 | 240/15=16 | `iATR(M15,16,1)/pip` |
+| D1 | H1 | 1440/60=24 | `iATR(H1,24,1)/pip` |
+| W1 | H4 | 10080/240=42 | `iATR(H4,42,1)/pip` |
+| MN | D1 | 43200/1440=30 | `iATR(D1,30,1)/pip` |
+
+تأیید Sep-4 XAUUSD: M1=3✓ M5=9✓ M15=17✓ H1=40✓ H4=88✓ D1=252✓ W1=600✓ MN=983✓
 
 ---
 
