@@ -603,24 +603,39 @@ void TradePlanLiveTick()
     if(sig == s_sig) return;
     s_sig = sig;
 
-    // [TRADEPLAN-LOG] Print once per change — paste this Experts tab output
-    // in chat so the AI can compare each number against the professor's screenshot.
-    // Format mirrors the professor's right-side block exactly.
-    Print("=== TRADEPLAN [", Symbol(), " ", GetCurrentTimeframe(), "] ===");
-    Print("  ATR strip (TR) own TF : ", DoubleToString(plan.ownPips, 1), " pips");
-    Print("  Eng.SL : ", plan.eng,
-          "   Hunter SL : ", plan.hunter);
-    Print("  #SL:-", plan.sl,
-          "  #TP1+", plan.tp1,
-          "  #TP2+", plan.tp2,
-          "  #TP3+", plan.tp3);
-    Print("  Str Bond: ", plan.sb1, " - ", plan.sb2);
-    Print("  [internal] slTrue=", DoubleToString(plan.slTrue, 2),
-          "  engTrue=", DoubleToString(plan.engTrue, 2),
-          "  basePips(strEng)=", DoubleToString(plan.basePips, 2));
-    Print("  [internal] chartMin=", plan.chartMin,
-          "  strMin=", plan.strMin,
-          "  trigMin=", plan.trigMin);
+    // [TRADEPLAN-LOG] Write once per change to tradeplan_log.txt in MQL4\Files\.
+    // Run tools/read_tradeplan_log.ps1 to copy it into the repo so the AI can read it.
+    {
+       int fh = FileOpen("tradeplan_log.txt",
+                         FILE_WRITE | FILE_READ | FILE_TXT | FILE_ANSI,
+                         ',');
+       if(fh != INVALID_HANDLE)
+       {
+          // Seek to end so we APPEND (FileOpen with FILE_WRITE truncates by default;
+          // seek past end is the standard MQL4 append pattern).
+          FileSeek(fh, 0, SEEK_END);
+
+          string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+          FileWrite(fh, "=== TRADEPLAN [" + Symbol() + " " + GetCurrentTimeframe() + "] " + ts + " ===");
+          FileWrite(fh, "  TR(own)=" + DoubleToString(plan.ownPips, 1)
+                        + "  Eng.SL=" + IntegerToString(plan.eng)
+                        + "  Hunter=" + IntegerToString(plan.hunter));
+          FileWrite(fh, "  SL=" + IntegerToString(plan.sl)
+                        + "  TP1=" + IntegerToString(plan.tp1)
+                        + "  TP2=" + IntegerToString(plan.tp2)
+                        + "  TP3=" + IntegerToString(plan.tp3));
+          FileWrite(fh, "  StrBond=" + IntegerToString(plan.sb1)
+                        + " - " + IntegerToString(plan.sb2));
+          FileWrite(fh, "  slTrue=" + DoubleToString(plan.slTrue, 4)
+                        + "  engTrue=" + DoubleToString(plan.engTrue, 4)
+                        + "  basePips=" + DoubleToString(plan.basePips, 4));
+          FileWrite(fh, "  chartMin=" + IntegerToString(plan.chartMin)
+                        + "  strMin=" + IntegerToString(plan.strMin)
+                        + "  trigMin=" + IntegerToString(plan.trigMin));
+          FileWrite(fh, "---");
+          FileClose(fh);
+       }
+    }
 
     string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     CreateATRTradeLabel(labelPrefix, plan,
