@@ -111,6 +111,7 @@ int TradePlanRound(const double x) { return (int)MathRound(x); }
 
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
 // Calls CalculateWeightedATR (ATRCalculations.mqh) which uses iATR shift=1.
+// Kept for niche callers; Eng always uses TradePlanSessionEng now.
 double TradePlanStripPips(const int tfMinutes)
 {
    double pip = GetCachedPipSize();
@@ -121,49 +122,79 @@ double TradePlanStripPips(const int tfMinutes)
    return atr / pip;
 }
 
-// Eng for DISPLAY (Eng.SL label): the trigger-strip composite ATR for M15+,
-// but the short single-bar M1 ATR for bottom-ladder M1/M5 charts.
-// Verified observations (XAUUSD 4-Sep-2026):
-//   M1 chart: Eng=4 = iATR(M1,1,1)/pip  (1-period M1 range, NOT composite)
-//   M5 chart: Eng=8 = iATR(M1,5,1)/pip  (5-period M1 mean, NOT composite)
-//   M15+ : Eng = compositeATR(triggerTF) (full strip ATR, unrounded)
-//   H1 chart: Eng=41 = compositeATR(M5) = 41 (confirmed 43==43 on earlier bar)
-// The SL engine uses a SEPARATE path (TradePlanSLCompositeEng) that always
-// uses the full composite ATR of the structure's trigger — so the display Eng
-// differs from the SL input only on M1/M5 charts.
+// ─────────────────────────────────────────────────────────────────────────────
+// SESSION ENG — the professor's stable Eng formula (reverse-engineered Sep-9-2026
+// from 8 XAUUSD screenshots, confirmed all 8 TFs with ≤1 pip rounding error):
+//
+//   Eng(TF) = iATR(triggerTF, TF_min / triggerTF_min, 1) / pip
+//
+// This is a single-bar Wilder ATR whose PERIOD = the number of trigger-TF candles
+// that compose one bar of the chart TF.  Examples:
+//   M1  trig=M1  period= 1/1= 1  → iATR(M1,  1,1)  ← M1 range
+//   M5  trig=M1  period= 5/1= 5  → iATR(M1,  5,1)  ← 5-bar M1 ATR
+//   M15 trig=M1  period=15/1=15  → iATR(M1, 15,1)
+//   H1  trig=M5  period=60/5=12  → iATR(M5, 12,1)
+//   H4  trig=M15 period=240/15=16 → iATR(M15,16,1)
+//   D1  trig=H1  period=1440/60=24 → iATR(H1,24,1)
+//   W1  trig=H4  period=10080/240=42 → iATR(H4,42,1)
+//   MN  trig=D1  period=43200/1440=30 → iATR(D1,30,1)
+//
+// Why this is stable: iATR(triggerTF, N, shift=1) is frozen on the last CLOSED
+// bar of triggerTF — it does NOT change until a new triggerTF bar closes.
+// On H1 charts that is every 5 minutes; on D1 charts every hour. Much smoother
+// than a live composite weighted ATR (which updates every tick).
+//
+// Diagonal identity (theorem, observed, not a recipe):
+//   SL(TF) = 1.2 × Eng(StructureTF) = 1.2 × 1.2 × Eng(TF) = 1.44 × Eng(TF)
+//   → SB1(TF) = Hunter(StructureTF), SB1 = SL×20/9 (unchanged).
+// ─────────────────────────────────────────────────────────────────────────────
+double TradePlanSessionEng(const int tfMinutes, int &trigMinOut)
+{
+   int cm      = TradePlanLadderMinutes(TradePlanLadderIndex(tfMinutes));
+   trigMinOut  = TradePlanTriggerMinutes(cm);
+   int trigMin = trigMinOut;
+   if(trigMin <= 0) trigMin = 1;
+
+   double pip = GetCachedPipSize();
+   if(IsZero(pip, EPSILON_PRICE)) return 0.0;
+
+   int period = cm / trigMin;          // e.g. H1/M5 = 60/5 = 12
+   if(period < 1) period = 1;
+
+   ENUM_TIMEFRAMES trigTF = (ENUM_TIMEFRAMES)trigMin;
+   double v = iATR(Symbol(), trigTF, period, 1);
+   return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
+}
+
+// TradePlanEngTrue: display Eng — now identical to SessionEng for all TFs.
+// (Previous version had a composite-ATR path for M15+ which diverged from the
+// professor's values. Now one formula covers all 8 rungs.)
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
 {
-   int cm = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
-   trigMinOut = TradePlanTriggerMinutes(cm);
-   // Bottom-ladder exception: M1/M5 charts share trigger=M1 but show distinct
-   // Eng (observed 4 / 8). Eng rides iATR(M1, chartMin_period, 1) — a short
-   // Wilder ATR with period = chart minutes (M1:1, M5:5).
-   if(cm == 1 || cm == 5)
-   {
-      double pip = GetCachedPipSize();
-      if(IsZero(pip, EPSILON_PRICE)) return 0.0;
-      double v = iATR(Symbol(), PERIOD_M1, cm, 1);
-      return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
-   }
-   // M15 and above: composite ATR of the trigger TF.
-   return TradePlanStripPips(trigMinOut);
+   return TradePlanSessionEng(chartMinutes, trigMinOut);
 }
 
-// Composite Eng of a TF = composite ATR of its trigger TF (always full strip).
-// Used ONLY as the SL input from the structure TF. Never displayed directly.
+// EngOf(TF): session Eng of any TF (used by SL engine for the structure TF).
+// Replaces TradePlanCompositeEngOf which used composite-weighted ATR.
+double TradePlanEngOf(const int tfMinutes)
+{
+   int dummy = 0;
+   return TradePlanSessionEng(tfMinutes, dummy);
+}
+
+// Legacy alias kept for callers that may still reference the old name.
 double TradePlanCompositeEngOf(const int tfMinutes)
 {
-   int trigMin = TradePlanTriggerMinutes(tfMinutes);
-   return TradePlanStripPips(trigMin);
+   return TradePlanEngOf(tfMinutes);
 }
 
-// SL = 1.20 × CompositeEng(StructureTF). Unrounded. 0 when not ready.
-// For W1/MN: structure clamps to MN, whose composite trigger (H1) naturally
-// produces the macro SL (~1180 on XAUUSD when D1 composite ATR ≈ 983).
+// SL = 1.20 × SessionEng(StructureTF). Unrounded. 0 when not ready.
+// W1/MN: structure clamps to MN; SessionEng(MN)=iATR(D1,30,1)/pip naturally
+// produces the macro SL — no special cap needed.
 double TradePlanSLTrue(const int chartMinutes)
 {
    int strMin = TradePlanStructureMinutes(chartMinutes);
-   double engStr = TradePlanCompositeEngOf(strMin);
+   double engStr = TradePlanEngOf(strMin);
    if(engStr <= 0.0) return 0.0;
    return TRADEPLAN_SL_COEFF * engStr;
 }
@@ -239,7 +270,8 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    else                          // M1..D1: Width -- Base
       { p.sb2 = bBase; p.sb1 = bWidth; }
 
-   // Own strip ATR (info only, not used as a leg engine).
+   // Own strip ATR (composite, for reference — not used as a leg engine).
+   // Session Eng (professor's formula) is already in p.engTrue.
    p.ownPips = TradePlanStripPips(p.chartMin);
 
    p.valid = true;
