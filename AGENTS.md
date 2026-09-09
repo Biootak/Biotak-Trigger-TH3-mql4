@@ -626,26 +626,23 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   builds the Persian caption from ushort codes — never a non-ASCII literal
   in source (see P-LBL-01).)
 - **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
-  (2026-09-09 spec, confirmed all 8 TFs 2026-09-09: UNIFIED SL formula
-  `SL(TF) = 1.20 × CompositeEngOf(StructureTF)` — no per-TF multiplier table.
-  Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Structure = 2 rungs UP (`TradePlanStructureMinutes`);
-  Trigger = 2 rungs DOWN (`TradePlanTriggerMinutes`).
-  TWO Eng concepts: (1) DISPLAY Eng.SL (`TradePlanEngTrue`): M1/M5 use `iATR(M1,chartMin,1)/pip`
-  (observed M1=4, M5=8 on 4-Sep XAUUSD — short Wilder ATR, NOT composite);
-  M15+ use `compositeATR(triggerTF)`. (2) SL-input Eng (`TradePlanCompositeEngOf`): always
-  full composite ATR of structure's trigger — used ONLY for SL computation, never displayed.
-  W1/MN structure clamps to MN which naturally produces the macro SL (~1180).
+  (2026-09-09 spec, revised 2026-09-09: SL comes directly from own-TF composite ATR
+  with a per-TF multiplier — `SL(TF) = MULT[TF] × CompositeATR(TF)`.
+  Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Trigger = 2 rungs DOWN (`TradePlanTriggerMinutes`).
+  MULT table (`TradePlanSLMultiplier`): M1=1.50 M5=1.20 M15=1.35 M30=1.35
+  H1=1.75 H4=2.00 D1/W1/MN=1.107 — reverse-engineered from Sep-4-2026 XAUUSD all 8 TFs.
+  Display Eng.SL (`TradePlanEngTrue`): `iATR(triggerTF, TF_min/trig_min, 1)/pip` — stable
+  single-call (M1:period=1, M5:5, M15:15, H1/M5:12, H4/M15:16, D1/H1:24, W1/H4:42, MN/D1:30).
   `TP = SL*(7/3, 5, 31/3)` from UNROUNDED slTrue; `Hunter = round(8*EngTrue/3)` from
-  unrounded display Eng; StrBond `Base=95/9*SL` + `Width=20/9*SL` (M1-D1: Width--Base,
+  unrounded Eng; StrBond `Base=95/9*SL` + `Width=20/9*SL` (M1-D1: Width--Base,
   W1: 16/3*SL--Base, MN: rounded-sum--Base); slow legs freeze per chart bar
   (`TradePlanComputeLive`) while Eng/Hunter stay live. Symbol-free +
   `TradePlanSelfCheck()` guard. Display renders from `Period()`, never follows TF-lock.
   Full walkthrough: TRADEPLAN_FA.md.)
-- **R-TRADEPLAN-DIAG — the diagonal is a theorem, not input** (2026-09-09:
-  `SB1(chart) == Hunter(structure(chart))` and `SL == 1.2*Eng(struct)` hold
-  EXACTLY in code (same double pre-round: `1.2*20/9 = 8/3`; observed H1 SB1 673 ==
-  D1 Hunter 673). Never implement the master equation as a recipe — it is circular;
-  exogenous input stays the strip ATRs. Proof comment lives above `TradePlanHunterFromEng`.)
+- **R-TRADEPLAN-DIAG — diagonal identity no longer active** (revised 2026-09-09:
+  the old `SL == 1.2×Eng(struct)` identity no longer holds because SL now uses
+  `MULT[TF] × CompositeATR(TF)` — the multipliers are NOT the same as the
+  1.2×StructureEng chain. StrBond and Hunter ratios (20/9 and 8/3) are unchanged.)
 
 ---
 
