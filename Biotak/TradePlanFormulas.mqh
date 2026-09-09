@@ -121,25 +121,49 @@ double TradePlanStripPips(const int tfMinutes)
    return atr / pip;
 }
 
-// Eng of a given TF = composite ATR of its Trigger TF (strip ATR, ×1).
-// Verified: H1 Eng=43 == M5 strip ATR 43; M15 Eng=18 == M1 strip ATR 18.
-// No bottom-ladder special case needed — M1 trigger=M1, so Eng(M1)=ATR(M1)
-// which is correct (M1 Eng≈3 for short-period ATR at M1).
+// Eng for DISPLAY (Eng.SL label): the trigger-strip composite ATR for M15+,
+// but the short single-bar M1 ATR for bottom-ladder M1/M5 charts.
+// Verified observations (XAUUSD 4-Sep-2026):
+//   M1 chart: Eng=4 = iATR(M1,1,1)/pip  (1-period M1 range, NOT composite)
+//   M5 chart: Eng=8 = iATR(M1,5,1)/pip  (5-period M1 mean, NOT composite)
+//   M15+ : Eng = compositeATR(triggerTF) (full strip ATR, unrounded)
+//   H1 chart: Eng=41 = compositeATR(M5) = 41 (confirmed 43==43 on earlier bar)
+// The SL engine uses a SEPARATE path (TradePlanSLCompositeEng) that always
+// uses the full composite ATR of the structure's trigger — so the display Eng
+// differs from the SL input only on M1/M5 charts.
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
 {
-   trigMinOut = TradePlanTriggerMinutes(chartMinutes);
-   double v   = TradePlanStripPips(trigMinOut);
-   return v;   // 0.0 when not ready
+   int cm = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
+   trigMinOut = TradePlanTriggerMinutes(cm);
+   // Bottom-ladder exception: M1/M5 charts share trigger=M1 but show distinct
+   // Eng (observed 4 / 8). Eng rides iATR(M1, chartMin_period, 1) — a short
+   // Wilder ATR with period = chart minutes (M1:1, M5:5).
+   if(cm == 1 || cm == 5)
+   {
+      double pip = GetCachedPipSize();
+      if(IsZero(pip, EPSILON_PRICE)) return 0.0;
+      double v = iATR(Symbol(), PERIOD_M1, cm, 1);
+      return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
+   }
+   // M15 and above: composite ATR of the trigger TF.
+   return TradePlanStripPips(trigMinOut);
 }
 
-// SL = 1.20 × Eng(StructureTF). Unrounded. 0 when not ready.
-// For W1/MN: structure=MN, Eng(MN)=ATR(D1 trigger) — this gives the
-// correct macro SL (1.2 × ATR(D1 trigger) == 1.2 × Eng(MN)).
+// Composite Eng of a TF = composite ATR of its trigger TF (always full strip).
+// Used ONLY as the SL input from the structure TF. Never displayed directly.
+double TradePlanCompositeEngOf(const int tfMinutes)
+{
+   int trigMin = TradePlanTriggerMinutes(tfMinutes);
+   return TradePlanStripPips(trigMin);
+}
+
+// SL = 1.20 × CompositeEng(StructureTF). Unrounded. 0 when not ready.
+// For W1/MN: structure clamps to MN, whose composite trigger (H1) naturally
+// produces the macro SL (~1180 on XAUUSD when D1 composite ATR ≈ 983).
 double TradePlanSLTrue(const int chartMinutes)
 {
    int strMin = TradePlanStructureMinutes(chartMinutes);
-   int trigOfStr = TradePlanTriggerMinutes(strMin);
-   double engStr = TradePlanStripPips(trigOfStr);
+   double engStr = TradePlanCompositeEngOf(strMin);
    if(engStr <= 0.0) return 0.0;
    return TRADEPLAN_SL_COEFF * engStr;
 }
@@ -181,14 +205,13 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    p.valid    = false;
    p.chartMin = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
    p.strMin   = TradePlanStructureMinutes(p.chartMin);
-   int trigOfStr = TradePlanTriggerMinutes(p.strMin);
 
    p.basePips = 0.0; p.ownPips = 0.0; p.slTrue = 0.0; p.engTrue = 0.0;
    p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
    p.hunter = 0; p.eng = 0; p.sb1 = 0; p.sb2 = 0;
 
-   // --- SL from Structure ---
-   p.basePips = TradePlanStripPips(trigOfStr);  // Eng(StructureTF)
+   // --- SL from Structure (always composite ATR, never the short M1/M5 Eng) ---
+   p.basePips = TradePlanCompositeEngOf(p.strMin); // composite ATR of structure's trigger
    if(p.basePips <= 0.0) return false;
    p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
    if(p.slTrue <= 0.0) return false;

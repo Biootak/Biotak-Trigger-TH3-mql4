@@ -626,17 +626,21 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   builds the Persian caption from ushort codes — never a non-ASCII literal
   in source (see P-LBL-01).)
 - **R-TRADEPLAN — trade-plan math has ONE owner: `Biotak/TradePlanFormulas.mqh`**
-  (2026-09-09 spec, confirmed all 8 TFs 2026-09-09: UNIFIED formula
-  `SL(TF) = 1.20 × Eng(StructureTF)` — no per-TF multiplier table.
+  (2026-09-09 spec, confirmed all 8 TFs 2026-09-09: UNIFIED SL formula
+  `SL(TF) = 1.20 × CompositeEngOf(StructureTF)` — no per-TF multiplier table.
   Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Structure = 2 rungs UP (`TradePlanStructureMinutes`);
-  Trigger = 2 rungs DOWN (`TradePlanTriggerMinutes`); `Eng(TF) = CompositeATR(TriggerOf(TF))`
-  (strip ATR ×1 — H1 Eng 43 == M5 strip 43 confirmed). W1/MN structure clamps to MN
-  which naturally produces the D1 macro SL (~1180). `TP = SL*(7/3, 5, 31/3)` from
-  UNROUNDED SL; `Hunter = round(8*EngTrue/3)` from unrounded Eng; StrBond
-  `Base = 95/9*SL` + `Width = 20/9*SL` (M1-D1: Width--Base, W1: 16/3*SL--Base,
-  MN: rounded-sum--Base); slow legs freeze per chart bar (`TradePlanComputeLive`)
-  while Eng/Hunter stay live. Symbol-free + `TradePlanSelfCheck()` guard.
-  Display renders from `Period()`, never follows TF-lock. Full walkthrough: TRADEPLAN_FA.md.)
+  Trigger = 2 rungs DOWN (`TradePlanTriggerMinutes`).
+  TWO Eng concepts: (1) DISPLAY Eng.SL (`TradePlanEngTrue`): M1/M5 use `iATR(M1,chartMin,1)/pip`
+  (observed M1=4, M5=8 on 4-Sep XAUUSD — short Wilder ATR, NOT composite);
+  M15+ use `compositeATR(triggerTF)`. (2) SL-input Eng (`TradePlanCompositeEngOf`): always
+  full composite ATR of structure's trigger — used ONLY for SL computation, never displayed.
+  W1/MN structure clamps to MN which naturally produces the macro SL (~1180).
+  `TP = SL*(7/3, 5, 31/3)` from UNROUNDED slTrue; `Hunter = round(8*EngTrue/3)` from
+  unrounded display Eng; StrBond `Base=95/9*SL` + `Width=20/9*SL` (M1-D1: Width--Base,
+  W1: 16/3*SL--Base, MN: rounded-sum--Base); slow legs freeze per chart bar
+  (`TradePlanComputeLive`) while Eng/Hunter stay live. Symbol-free +
+  `TradePlanSelfCheck()` guard. Display renders from `Period()`, never follows TF-lock.
+  Full walkthrough: TRADEPLAN_FA.md.)
 - **R-TRADEPLAN-DIAG — the diagonal is a theorem, not input** (2026-09-09:
   `SB1(chart) == Hunter(structure(chart))` and `SL == 1.2*Eng(struct)` hold
   EXACTLY in code (same double pre-round: `1.2*20/9 = 8/3`; observed H1 SB1 673 ==
