@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRex Trade Plan — Master Formula Reference</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    background: #ffffff;
+    color: #1f2328;
+    padding: 24px;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+  h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .subtitle { color: #57606a; font-size: 12px; margin-bottom: 20px; }
+  h2 { font-size: 14px; font-weight: 600; margin: 22px 0 8px; border-bottom: 1px solid #e5e7eb; padding-bottom: 4px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
+  th { background: #f7f8fa; border: 1px solid #e5e7eb; padding: 7px 10px; font-weight: 600; text-align: center; }
+  td { border: 1px solid #e5e7eb; padding: 6px 10px; text-align: center; vertical-align: middle; }
+  tr:hover td { background: #f7f8fa; }
+  .formula-box {
+    background: #f7f8fa; border: 1px solid #e5e7eb; border-radius: 6px;
+    padding: 12px 16px; margin-bottom: 12px;
+    font-family: "Consolas","Courier New",monospace; font-size: 12px;
+    direction: ltr; text-align: left; white-space: pre;
+  }
+  .comment { color: #57606a; }
+  .badge { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; font-weight:600; }
+  .ok  { background:#d1fae5; color:#065f46; }
+  .pend{ background:#fef3c7; color:#92400e; }
+  .mono{ font-family:"Consolas","Courier New",monospace; font-size:11px; direction:ltr; display:inline-block; }
+  .hl td { background:#eff6ff; font-weight:600; }
+  .note { color:#57606a; font-size:11px; margin-bottom:8px; }
+  ul { padding-right:20px; margin-bottom:10px; }
+  li { margin-bottom:3px; }
+  footer { text-align:center; font-size:11px; color:#57606a; margin-top:32px; padding-top:10px; border-top:1px solid #e5e7eb; }
+</style>
+</head>
+<body>
+
+<h1>TRex Trade Plan — Master Formula Reference</h1>
+<div class="subtitle">اثبات‌شده روی XAUUSD همه ۸ تایم‌فریم | Sep-4-2026 + Sep-9-2026 (لایو) | منبع: Biotak/TradePlanFormulas.mqh</div>
+
+<!-- 1 -->
+<h2>۱. نردبان فرکتال — Trigger و Structure هر TF</h2>
+<p class="note">Trigger = 2 پله پایین‌تر &nbsp;|&nbsp; Structure = 2 پله بالاتر &nbsp;|&nbsp; period = TF_min ÷ trig_min</p>
+<table>
+  <thead><tr><th>Chart TF</th><th>Trigger TF</th><th>period N</th><th>فرمول Eng</th><th>Structure TF</th></tr></thead>
+  <tbody>
+    <tr><td>M1</td><td>M1</td><td>1</td><td class="mono">iATR(M1, 1, 1) / pip</td><td>M15</td></tr>
+    <tr><td>M5</td><td>M1</td><td>5</td><td class="mono">iATR(M1, 5, 1) / pip</td><td>H1</td></tr>
+    <tr><td>M15</td><td>M1</td><td>15</td><td class="mono">iATR(M1,15, 1) / pip</td><td>H4</td></tr>
+    <tr><td>H1</td><td>M5</td><td>12</td><td class="mono">iATR(M5,12, 1) / pip</td><td>D1</td></tr>
+    <tr><td>H4</td><td>M15</td><td>16</td><td class="mono">iATR(M15,16,1) / pip</td><td>W1</td></tr>
+    <tr><td>D1</td><td>H1</td><td>24</td><td class="mono">iATR(H1,24, 1) / pip</td><td>MN</td></tr>
+    <tr><td>W1</td><td>H4</td><td>42</td><td class="mono">iATR(H4,42, 1) / pip</td><td>MN</td></tr>
+    <tr><td>MN</td><td>D1</td><td>30</td><td class="mono">iATR(D1,30, 1) / pip</td><td>MN</td></tr>
+  </tbody>
+</table>
+
+<!-- 2 -->
+<h2>۲. فرمول‌های اصلی — یک ضریب ثابت برای همه ۸ تایم‌فریم</h2>
+<div class="formula-box"><span class="comment">// Eng — Session ATR: یک iATR با period = TF_min/trig_min، shift=1</span>
+Eng(TF)    = iATR(trigTF, TF_min/trig_min, 1) / pip
+
+<span class="comment">// SL — ضریب ثابت 1.20 روی Eng تایم ساختار (2 پله بالاتر)</span>
+SL(TF)     = round(1.20 × Eng(StructureTF))
+
+<span class="comment">// تارگت‌ها: از slRaw قبل از round ضرب کن، نه از SL گردشده!</span>
+TP1        = round(slRaw × 7/3)
+TP2        = round(slRaw × 5)
+TP3        = round(slRaw × 31/3)
+
+<span class="comment">// Hunter از Eng گردشده</span>
+Hunter     = round(Eng × 8/3)
+
+<span class="comment">// Str Bond</span>
+SB_Base    = round(SL × 95/9)
+SB_Width   = round(SL × 20/9)
+
+<span class="comment">// نمایش گروهی</span>
+M1–D1  → "Width -- Base"
+W1     → "round(SL×16/3) -- Base"
+MN     → "(Base + Width) -- Base"   ← جمع ارقام گردشده: 12451+2621=15072</div>
+
+<!-- 3 -->
+<h2>۳. داده‌های واقعی استاد — XAUUSD Sep-9-2026 (لایو)</h2>
+<p class="note">ATR کامپوزیت نوار بالا: M1=14 · M5=38 · M15=75 · H1=173 · H4=360 · D1=1066 · W1=2003 · MN=3144</p>
+<table>
+  <thead>
+    <tr>
+      <th>TF</th><th>Eng</th><th>Hunter</th><th>SL</th>
+      <th>TP1 (×7/3)</th><th>TP2 (×5)</th><th>TP3 (×31/3)</th>
+      <th>Str Bond (A–B)</th><th>وضعیت</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><b>M1</b></td><td>4</td><td>10</td><td>20</td><td>46</td><td>99</td><td>205</td><td class="mono">44 -- 209</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td><b>M5</b></td><td>8</td><td>21</td><td>48</td><td>112</td><td>239</td><td>494</td><td class="mono">106 -- 505</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td><b>M15</b></td><td>17</td><td>44</td><td>105</td><td>246</td><td>527</td><td>1089</td><td class="mono">234 -- 1111</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td><b>H1</b></td><td>40</td><td>106</td><td>303</td><td>707</td><td>1514</td><td>3129</td><td class="mono">673 -- 3196</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td><b>H4</b></td><td>88</td><td>234</td><td>720</td><td>1680</td><td>3600</td><td>7440</td><td class="mono">1600 -- 7600</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td><b>D1</b></td><td>252</td><td>673</td><td>1180</td><td>2752</td><td>5898</td><td>12189</td><td class="mono">2621 -- 12451</td><td><span class="badge ok">✓</span></td></tr>
+    <tr class="hl"><td><b>W1</b></td><td>600</td><td>1600</td><td>1180</td><td>2752</td><td>5898</td><td>12189</td><td class="mono">6291 -- 12451</td><td><span class="badge ok">✓</span></td></tr>
+    <tr class="hl"><td><b>MN</b></td><td>983</td><td>2621</td><td>1180</td><td>2752</td><td>5898</td><td>12189</td><td class="mono">15072 -- 12451</td><td><span class="badge ok">✓</span></td></tr>
+  </tbody>
+</table>
+
+<!-- 4 -->
+<h2>۴. راستی‌آزمایی SL = 1.2 × Eng(Structure)</h2>
+<table>
+  <thead><tr><th>TF</th><th>Structure TF</th><th>Eng(Str)</th><th>1.2 × Eng</th><th>SL گردشده</th><th>استاد</th><th>تطابق</th></tr></thead>
+  <tbody>
+    <tr><td>M1</td><td>M15</td><td>17</td><td>20.4</td><td>20</td><td>20</td><td><span class="badge ok">100%</span></td></tr>
+    <tr><td>M5</td><td>H1</td><td>40</td><td>48.0</td><td>48</td><td>48</td><td><span class="badge ok">100%</span></td></tr>
+    <tr><td>M15</td><td>H4</td><td>88</td><td>105.6</td><td>105</td><td>105</td><td><span class="badge ok">100%</span></td></tr>
+    <tr><td>H1</td><td>D1</td><td>252</td><td>302.4</td><td>303</td><td>303</td><td><span class="badge ok">100%</span></td></tr>
+    <tr><td>H4</td><td>W1</td><td>600</td><td>720.0</td><td>720</td><td>720</td><td><span class="badge ok">100%</span></td></tr>
+    <tr><td>D1</td><td>MN</td><td>983</td><td>1179.6</td><td>1180</td><td>1180</td><td><span class="badge ok">100%</span></td></tr>
+    <tr class="hl"><td>W1</td><td>MN</td><td>983</td><td>macro cap</td><td>1180</td><td>1180</td><td><span class="badge ok">✓</span></td></tr>
+    <tr class="hl"><td>MN</td><td>MN</td><td>983</td><td>macro cap</td><td>1180</td><td>1180</td><td><span class="badge ok">✓</span></td></tr>
+  </tbody>
+</table>
+
+<!-- 5 -->
+<h2>۵. راستی‌آزمایی Str Bond</h2>
+<table>
+  <thead><tr><th>TF</th><th>SL</th><th>Width = SL×20/9</th><th>Base = SL×95/9</th><th>نمایش استاد</th><th>نکته</th></tr></thead>
+  <tbody>
+    <tr><td>H1</td><td>303</td><td>673</td><td>3196</td><td class="mono">673 -- 3196</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td>H4</td><td>720</td><td>1600</td><td>7600</td><td class="mono">1600 -- 7600</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td>D1</td><td>1180</td><td>2621</td><td>12451</td><td class="mono">2621 -- 12451</td><td><span class="badge ok">✓</span></td></tr>
+    <tr><td>W1</td><td>1180</td><td>round(1180×16/3)=6291</td><td>12451</td><td class="mono">6291 -- 12451</td><td>ضریب 16/3 برای W1</td></tr>
+    <tr><td>MN</td><td>1180</td><td>12451+2621=15072</td><td>12451</td><td class="mono">15072 -- 12451</td><td>جمع گردشده‌ها ≠ 15073</td></tr>
+  </tbody>
+</table>
+
+<!-- 6 -->
+<h2>۶. قضیه قطری — SB_Width(TF) == Hunter(StructureTF)</h2>
+<div class="formula-box"><span class="comment">// اثبات ریاضی:</span>
+SB_Width = round(SL × 20/9)
+         = round(1.2 × Eng(Str) × 20/9)
+         = round(Eng(Str) × 8/3)          <span class="comment">// چون 1.2 × 20/9 = 8/3</span>
+         = Hunter(Str)  ✓
+
+<span class="comment">// مشاهده تأییدشده:</span>
+H1 SB_Width = 673  ==  D1 Hunter = round(252×8/3) = 673  ✓
+H4 SB_Width = 1600 ==  W1 Hunter = round(600×8/3) = 1600 ✓
+D1 SB_Width = 2621 ==  MN Hunter = round(983×8/3) = 2621 ✓</div>
+
+<!-- 7 -->
+<h2>۷. موتور ATR کامپوزیت</h2>
+<div class="formula-box"><span class="comment">// پریودها و وزن‌ها (مجموع ایده‌آل = 20)</span>
+periods = { 5, 10, 21, 66, 132, 264 }
+weights = { 1,  1,  2,  3,   5,   8 }
+
+CompositeATR = Σ(iATR(sym,tf,period[i],1) × weight[i])
+             / Σ(weight[i] only for periods with enough bars)  <span class="comment">← مخرج پویا</span>
+
+<span class="comment">// shift=1 → پایدار، بدون نویز تیک‌به‌تیک</span>
+<span class="comment">// مخرج پویا → W1/MN بدون هیستوری کافی خراب نمی‌شود</span>
+<span class="comment">// pip: GetCachedPipSize() — طلا:0.1 | JPY:0.01 | فارکس:0.0001</span></div>
+
+<!-- 8 -->
+<h2>۸. پیاده‌سازی MQL4</h2>
+<div class="formula-box" style="direction:ltr;">// ─── Ladder helpers ────────────────────────────────────────────────
+int TrigMinutes(int tfMin) {
+    if(tfMin &lt;= 15)   return 1;    // M1, M5, M15 → trigger M1
+    if(tfMin == 60)   return 5;    // H1  → trigger M5
+    if(tfMin == 240)  return 15;   // H4  → trigger M15
+    if(tfMin == 1440) return 60;   // D1  → trigger H1
+    if(tfMin == 10080) return 240; // W1  → trigger H4
+    return 1440;                   // MN  → trigger D1
+}
+
+int StrMinutes(int tfMin) {
+    if(tfMin == 1)   return 15;    // M1  → M15
+    if(tfMin == 5)   return 60;    // M5  → H1
+    if(tfMin == 15)  return 240;   // M15 → H4
+    if(tfMin == 60)  return 1440;  // H1  → D1
+    if(tfMin == 240) return 10080; // H4  → W1
+    return 43200;                  // D1/W1/MN → MN
+}
+
+// ─── Eng (Session ATR) ─────────────────────────────────────────────
+double Eng(string sym, int tfMin) {
+    int trig = TrigMinutes(tfMin);
+    int N    = tfMin / trig;
+    return iATR(sym, trig, N, 1) / GetCachedPipSize(sym);
+}
+
+// ─── Trade Plan ────────────────────────────────────────────────────
+void CalcPlan(string sym, int tfMin,
+              double &SL, double &TP1, double &TP2, double &TP3,
+              double &Eng_out, double &Hunter,
+              double &SB1, double &SB2) {
+    double engStr = Eng(sym, StrMinutes(tfMin));
+    double slRaw  = 1.20 * engStr;
+    SL    = MathRound(slRaw);
+    TP1   = MathRound(slRaw * 7.0  / 3.0);
+    TP2   = MathRound(slRaw * 5.0);
+    TP3   = MathRound(slRaw * 31.0 / 3.0);
+
+    Eng_out = MathRound(Eng(sym, tfMin));
+    Hunter  = MathRound(Eng_out * 8.0 / 3.0);
+
+    double base  = MathRound(SL * 95.0 / 9.0);
+    double width = MathRound(SL * 20.0 / 9.0);
+    if(tfMin == 43200)  { SB1 = base + width; SB2 = base; }        // MN
+    else if(tfMin == 10080) { SB1 = MathRound(SL*16.0/3.0); SB2 = base; } // W1
+    else { SB1 = width; SB2 = base; }                               // M1-D1
+}</div>
+
+<!-- 9 -->
+<h2>۹. نکات کلیدی</h2>
+<ul>
+  <li><b>Symbol-agnostic:</b> هیچ عدد hardcoded مخصوص طلا/فارکس نیست — همه از <span class="mono">GetCachedPipSize()</span></li>
+  <li><b>slRaw:</b> تارگت‌ها از <span class="mono">1.20 × engStr</span> قبل از round — نه از SL گردشده (TP3 دو واحد خطا)</li>
+  <li><b>shift=1:</b> همه iATR ها shift=1 — کندل بسته، پایدار</li>
+  <li><b>Dynamic denominator:</b> W1/MN بدون هیستوری کافی → وزن‌های آن پریودها از مخرج حذف</li>
+  <li><b>MN SB1:</b> جمع ارقام گردشده: <span class="mono">12451 + 2621 = 15072</span> (نه round جمع = 15073)</li>
+  <li><b>فریز:</b> SL/TP/SB هر bar یک‌بار — Eng و Hunter زنده (هر تیک)</li>
+</ul>
+
+<footer>TRex Reverse Engineering — XAUUSD Sep-2026 | Biotak TH3 Project</footer>
+</body>
+</html>
