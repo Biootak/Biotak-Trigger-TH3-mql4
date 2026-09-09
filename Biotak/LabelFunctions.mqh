@@ -602,6 +602,26 @@ void TradePlanLiveTick()
     static string s_sig = "";
     if(sig == s_sig) return;
     s_sig = sig;
+
+    // [TRADEPLAN-LOG] Print once per change — paste this Experts tab output
+    // in chat so the AI can compare each number against the professor's screenshot.
+    // Format mirrors the professor's right-side block exactly.
+    Print("=== TRADEPLAN [", Symbol(), " ", GetCurrentTimeframe(), "] ===");
+    Print("  ATR strip (TR) own TF : ", DoubleToString(plan.ownPips, 1), " pips");
+    Print("  Eng.SL : ", plan.eng,
+          "   Hunter SL : ", plan.hunter);
+    Print("  #SL:-", plan.sl,
+          "  #TP1+", plan.tp1,
+          "  #TP2+", plan.tp2,
+          "  #TP3+", plan.tp3);
+    Print("  Str Bond: ", plan.sb1, " - ", plan.sb2);
+    Print("  [internal] slTrue=", DoubleToString(plan.slTrue, 2),
+          "  engTrue=", DoubleToString(plan.engTrue, 2),
+          "  basePips(strEng)=", DoubleToString(plan.basePips, 2));
+    Print("  [internal] chartMin=", plan.chartMin,
+          "  strMin=", plan.strMin,
+          "  trigMin=", plan.trigMin);
+
     string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     CreateATRTradeLabel(labelPrefix, plan,
                         inpLabelsMarginLeft, inpLabelsMarginBottom);
