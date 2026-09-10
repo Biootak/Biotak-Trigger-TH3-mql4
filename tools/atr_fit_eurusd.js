@@ -339,3 +339,35 @@ console.log('\n=== JOINT SCORECARD: TF-independent formulas, worst-TF err + in-b
   console.log(`current(Trex+ovr)LIVE: worst=${(Math.max(...errs) * 100).toFixed(1)}% inband=${inband}/8 ` +
     errs.map(e => (e * 100).toFixed(1)).join(','));
 }
+console.log('\n=== ENG-LONG: long-period Wilder on TRIGGER TFs vs prof chart-Eng ===');
+// Discovery 2026-09-10: prof Eng ignores evening spikes (ours chases them) =>
+// LONG window incl. old crises. Trigger per ladder; targets = band midpoints
+// from 8 live corners (MN/W1/D1/H4/H1/M15/M5/M1 charts, same evening).
+const TRIG = { M1: 'M1', M5: 'M1', M15: 'M1', H1: 'M5', H4: 'M15', D1: 'H1', W1: 'H4', MN: 'D1' };
+const ETGT = { M1: 0.75, M5: 1.1, M15: 1.9, H1: 2.65, H4: 4.4, D1: 11.2, W1: 32.0, MN: 85.6 };
+const CURP = { M1: 1, M5: 5, M15: 15, H1: 12, H4: 16, D1: 24, W1: 42, MN: 30 };
+const NLIST = [12, 16, 24, 30, 42, 60, 100, 132, 200, 264, 300, 500, 1000, 2000, 5000, 10000, 15000];
+function wTrig(tg, p) { return wilderAtShift1(data[tg].tr, p); }
+for (const tf of TFS) {
+  const tg = TRIG[tf];
+  const cur = wTrig(tg, CURP[tf]);
+  let line = `${tf}(trig${tg},tgt${ETGT[tf]},cur${cur === null ? 'n/a' : (cur * PIPS).toFixed(1)}):`;
+  for (const n of NLIST) {
+    const v = wTrig(tg, n);
+    line += v === null ? ' n/a' : ' ' + (v * PIPS).toFixed(1);
+  }
+  console.log(line);
+}
+console.log('periods: ' + NLIST.join(','));
+console.log('\n=== ENG-ONE-N: single universal N on trigger TFs, worst band-excess ===');
+for (const n of [100, 132, 200, 264, 300, 500, 1000]) {
+  let worst = 0, worstAt = '';
+  const per = [];
+  for (const tf of TFS) {
+    const v = wTrig(TRIG[tf], n);
+    const e = v === null ? Infinity : Math.max(0, Math.abs(v * PIPS - ETGT[tf]) - 0.6);
+    per.push(e === Infinity ? 999 : e);
+    if (e > worst) { worst = e; worstAt = tf; }
+  }
+  console.log(`N=${n}: worst=${worst === Infinity ? 'n/a' : worst.toFixed(2)}@${worstAt} | ` + per.map(e => e.toFixed(1)).join(','));
+}
