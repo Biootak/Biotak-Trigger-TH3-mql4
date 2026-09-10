@@ -1237,8 +1237,11 @@ void BaseKnotSyncBadges()
       BaseKnotDragLockOff();
    }
    if(ArraySize(g_bkBoxes) == 0) return;
-   datetime tpEdge = BaseKnotTPEdgeTime();   // chart-global: one conversion for the whole pump
-   double bkRef = BaseKnotLiveRef();         // P-BK-13: one live price for every follow check below
+    datetime tpEdge = BaseKnotTPEdgeTime();   // chart-global: one conversion for the whole pump
+    double bkRef = BaseKnotLiveRef();         // P-BK-13: one live price for every follow check below
+    // PERF: coalesce repaints — N boxes healing in one pump used to issue N
+    // full ChartRedraws; final pixels are identical with one after the loop.
+    bool bkNeedPaint = false;
    for(int i = 0; i < ArraySize(g_bkBoxes); i++)
    {
       // P-BK-15: hands off the actively-dragged box — MT4 cancels an
@@ -1259,7 +1262,7 @@ void BaseKnotSyncBadges()
          BaseKnotSync(g_bkBoxes[i].id);
          if(g_bkState == BK_IDLE && BaseKnotVisibleNow(g_bkBoxes[i].id))
             BaseKnotHintShow("Base box -> " + (g_bkBoxes[i].dir >= 0 ? "BUY" : "SELL") + " (price crossed the box)", 3000);
-         ChartRedraw();
+         bkNeedPaint = true;
       }
       // P-BK-05/06 self-heal + TV-fill 2026-09-07: the BOX rect is the fill
       // layer. Re-assert it within 500 ms when it drifts from the live fill
@@ -1269,14 +1272,14 @@ void BaseKnotSyncBadges()
       if(!BaseKnotFillHealed(box))
       {
          BaseKnotStyleBox(box);
-         ChartRedraw();
+         bkNeedPaint = true;
       }
       if(ObjectFind(0, pfx + BK_EDGE_T) < 0 || ObjectFind(0, pfx + BK_EDGE_B) < 0 ||
          ObjectFind(0, pfx + BK_EDGE_L) < 0 || ObjectFind(0, pfx + BK_EDGE_R) < 0 ||
          BaseKnotTPStale(pfx))   // pre-tick ray → rebuild
-      {
+       {
          BaseKnotSync(g_bkBoxes[i].id);
-         ChartRedraw();
+         bkNeedPaint = true;
       }
       datetime t1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
       datetime t2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
@@ -1295,9 +1298,10 @@ void BaseKnotSyncBadges()
       else if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)
       {
          ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto grace over — hide within 500 ms
-         ChartRedraw();
+         bkNeedPaint = true;
       }
    }
+   if(bkNeedPaint) ChartRedraw();
 }
 
 //+------------------------------------------------------------------+

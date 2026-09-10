@@ -514,7 +514,10 @@ void HTFEnsureDrawn()
    s_lastDrawnTf = tf;
    s_drawnBar0 = g_HTFLastFormOpen;
    s_lastProbe = now;
-   ChartRedraw();
+   // PERF: shared 100 ms throttle (UtilityFunctions.mqh) instead of a raw
+   // redraw — a full HTF draw usually lands on the same tick as the level
+   // pipeline paint, so they coalesce into one. Same pixels, ≤100 ms later.
+   ThrottledChartRedraw();
 }
 
 //+------------------------------------------------------------------+
