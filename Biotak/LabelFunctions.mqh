@@ -594,8 +594,8 @@ void DisplayATRTradeLabels(const string objectPrefix) {
 // paint, 2s throttle: no flicker, negligible CPU. Called per-tick+timer in
 // Full (RefreshUIPerTick) and from the 500ms block in Lite.
 // Full 8-TF snapshot for all ladder timeframes on the current symbol.
-// Called ONLY from TradePlanDumpNow (X hotkey) — never from the background
-// tick path (user decision 2026-09-10: logs only on demand).
+// Called from TradePlanDumpNow (X hotkey) and from the change-gated
+// LiveTick branch (3 s throttle).
 // Uses TradePlanCompute (not ComputeLive) so each TF gets its OWN fresh
 // calculation (no bar-freeze cross-contamination between TFs).
 // [ATRLEGS] diagnostic: raw Wilder legs behind the composite TR(own), for
@@ -610,6 +610,53 @@ void DisplayATRTradeLabels(const string objectPrefix) {
 // can place them (stale .hst is exact for MN windows, ±1 bar for W1).
 // EXTRA s-legs: SAME periods via TrexSMALeg (professor's SMA family), so one
 // fetch carries BOTH families live — no more stale-.hst forensics.
+
+//+------------------------------------------------------------------+
+//| Auto-export sink (2026-09-10, P-LOG-02)                           |
+//| The terminal's own log-flusher can wedge for an hour+ (Experts tab|
+//| live, MQL4\Logs file frozen) — so OUR numbers also go to a        |
+//| per-symbol file this indicator owns: FileClose flushes to disk    |
+//| immediately, no terminal writer involved. Overwrite mode: the file|
+//| always holds the LATEST dump only. OUR lines only (pure ASCII) —  |
+//| PROFATR text can carry non-ASCII captions (P-LBL-01), so the      |
+//| professor's side stays Print-only. The caller change-gates, same  |
+//| as the Print path — zero steady-state cost. Lite-safe (File* are  |
+//| core MQL4, no UI symbols).                                        |
+//+------------------------------------------------------------------+
+int s_tpxHandle = INVALID_HANDLE;
+
+string TradePlanExportFileName()
+{
+    return("tradeplan-auto-" + Symbol() + ".log");
+}
+
+// One line to BOTH sinks: Experts log (Print) + our auto file (when open).
+void TpxLine(const string s)
+{
+    Print(s);
+    if(s_tpxHandle != INVALID_HANDLE)
+        FileWriteString(s_tpxHandle, s + "\n");
+}
+
+void TradePlanExportBegin()
+{
+    if(s_tpxHandle != INVALID_HANDLE)
+    {
+        FileClose(s_tpxHandle);
+        s_tpxHandle = INVALID_HANDLE;
+    }
+    s_tpxHandle = FileOpen(TradePlanExportFileName(), FILE_WRITE | FILE_TXT | FILE_ANSI);
+}
+
+void TradePlanExportEnd()
+{
+    if(s_tpxHandle != INVALID_HANDLE)
+    {
+        FileClose(s_tpxHandle);
+        s_tpxHandle = INVALID_HANDLE;
+    }
+}
+
 void TradePlanLogLegs()
 {
     int legMins[9]; string legNames[9];
@@ -658,7 +705,7 @@ void TradePlanLogLegs()
             if(nb > qpers[g] + 1) u = TrexSMALeg(tf, qpers[g], 1);
             s = s + " s" + IntegerToString(qpers[g]) + "=" + DoubleToString(u, Digits);
         }
-        Print(s);
+        TpxLine(s);
     }
 }
 
@@ -750,8 +797,8 @@ void TradePlanLogAllTFs()
 
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     double pip = GetCachedPipSize();
-    Print("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5) + "  " + ts + " =====");
-    Print("[SNAP] TF  | TR(own) | engT   | Eng | Hunter | slTrue  | SL  | TP1 | TP2  | TP3  | SB1  | SB2  | base(strTrig)");
+    TpxLine("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5) + "  " + ts + " =====");
+    TpxLine("[SNAP] TF  | TR(own) | engT   | Eng | Hunter | slTrue  | SL  | TP1 | TP2  | TP3  | SB1  | SB2  | base(strTrig)");
 
     for(int i = 0; i < 8; i++)
     {
@@ -759,12 +806,12 @@ void TradePlanLogAllTFs()
         bool ok = TradePlanCompute(s_tfMins[i], p);
         if(!ok)
         {
-            Print("[SNAP] " + s_tfNames[i] + " | NOT READY (basePips=0 or data missing)");
+            TpxLine("[SNAP] " + s_tfNames[i] + " | NOT READY (basePips=0 or data missing)");
             continue;
         }
         // TR(own) = composite ATR of THIS TF (not used in SL, for reference)
         double trOwn = TradePlanStripPips(s_tfMins[i]);
-        Print("[SNAP] " + s_tfNames[i]
+        TpxLine("[SNAP] " + s_tfNames[i]
               + " | " + DoubleToString(trOwn, 2)
               + " | " + DoubleToString(p.engTrue, 2)
               + " | " + IntegerToString(p.eng)
@@ -780,7 +827,7 @@ void TradePlanLogAllTFs()
               + " str=" + IntegerToString(p.strMin)
               + " trig=" + IntegerToString(p.trigMin));
     }
-    Print("[SNAP] ===== END =====");
+    TpxLine("[SNAP] ===== END =====");
     // Legs ride the snapshot path, throttled independently (60 s). No PROFATR
     // here — the professor's side is compared from screenshots (X still dumps
     // everything on demand when our Lite sits on his chart).
@@ -793,26 +840,26 @@ void TradePlanLogAllTFs()
     }
 }
 
-// [TRADEPLAN-LOG] per-chart row (single TF). Shared by the on-demand dump
-// (X hotkey) — the background tick path never prints (user decision
-// 2026-09-10: logs only on demand).
+// [TRADEPLAN-LOG] per-chart row (single TF). Called from the on-demand dump
+// (X hotkey) and from the change-gated LiveTick branch — every line goes
+// through TpxLine (Experts log + auto-export file).
 void TradePlanPrintRow(STradePlan &plan)
 {
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
-    Print("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
-    Print("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
+    TpxLine("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
+    TpxLine("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
           + "  Eng.SL=" + IntegerToString(plan.eng)
           + "  Hunter=" + IntegerToString(plan.hunter));
-    Print("[TRADEPLAN]   SL=" + IntegerToString(plan.sl)
+    TpxLine("[TRADEPLAN]   SL=" + IntegerToString(plan.sl)
           + "  TP1=" + IntegerToString(plan.tp1)
           + "  TP2=" + IntegerToString(plan.tp2)
           + "  TP3=" + IntegerToString(plan.tp3));
-    Print("[TRADEPLAN]   StrBond=" + IntegerToString(plan.sb1)
+    TpxLine("[TRADEPLAN]   StrBond=" + IntegerToString(plan.sb1)
           + " - " + IntegerToString(plan.sb2));
-    Print("[TRADEPLAN]   slTrue=" + DoubleToString(plan.slTrue, 4)
+    TpxLine("[TRADEPLAN]   slTrue=" + DoubleToString(plan.slTrue, 4)
           + "  engTrue=" + DoubleToString(plan.engTrue, 4)
           + "  basePips=" + DoubleToString(plan.basePips, 4));
-    Print("[TRADEPLAN]   chartMin=" + IntegerToString(plan.chartMin)
+    TpxLine("[TRADEPLAN]   chartMin=" + IntegerToString(plan.chartMin)
           + "  strMin=" + IntegerToString(plan.strMin)
           + "  trigMin=" + IntegerToString(plan.trigMin));
 }
@@ -824,12 +871,14 @@ void TradePlanDumpNow()
 {
     STradePlan plan;
     if(!TradePlanComputeLive(Period(), plan)) return;
-    Print("[DUMP] ===== " + Symbol() + " " + GetCurrentTimeframe() + " =====");
+    TradePlanExportBegin();
+    TpxLine("[DUMP] ===== " + Symbol() + " " + GetCurrentTimeframe() + " =====");
     TradePlanPrintRow(plan);
     TradePlanLogAllTFs();
     TradePlanLogLegs();
     TradePlanLogProfAtr(true);
-    Print("[DUMP] ===== END =====");
+    TpxLine("[DUMP] ===== END =====");
+    TradePlanExportEnd();
 }
 
 void TradePlanLiveTick()
@@ -856,6 +905,7 @@ void TradePlanLiveTick()
     // Auto-log OUR numbers (user decision 2026-09-10: our log flows on its
     // own, change-guarded + throttled — the professor's side arrives via
     // screenshots and is paired offline by timestamp).
+    TradePlanExportBegin();
     TradePlanPrintRow(plan);
 
     // Full 8-TF snapshot — throttled to once per 3 s (independent of chart TF).
@@ -865,6 +915,7 @@ void TradePlanLiveTick()
         s_snapMs = nowMs;
         TradePlanLogAllTFs();
     }
+    TradePlanExportEnd();
 
     CreateATRTradeLabel(labelPrefix, plan,
                         inpLabelsMarginLeft, inpLabelsMarginBottom);

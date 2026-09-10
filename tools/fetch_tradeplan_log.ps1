@@ -78,6 +78,30 @@ $header += "# Log file modified: $($latest.LastWriteTime)`n"
 $header += "# [SNAP] lines: $($snap.Count)  [TRADEPLAN] lines: $($tp.Count)  [ATRLEGS] lines: $($legs.Count)  [PROF*] lines: $($prof.Count)`n"
 $header | Set-Content $outFile -Encoding UTF8
 
+# --- Auto-export files (P-LOG-02): written directly by the indicator into
+# MQL4\Files (FileClose flushes immediately), independent of the terminal's
+# own log-flusher. One file per symbol, always the latest dump only.
+$autoDir = Join-Path $mql4Dir "Files"
+$autos = @()
+try {
+    $autos = Get-ChildItem $autoDir -Filter "tradeplan-auto-*.log" -ErrorAction Stop |
+             Sort-Object LastWriteTime -Descending
+} catch {
+    $autos = @()
+}
+if ($autos.Count -gt 0) {
+    "" | Add-Content $outFile -Encoding UTF8
+    "# === AUTO-EXPORT (indicator-owned, freshest first) ===" | Add-Content $outFile -Encoding UTF8
+    foreach ($a in ($autos | Select-Object -First 4)) {
+        "# --- $($a.Name)  modified: $($a.LastWriteTime) ---" | Add-Content $outFile -Encoding UTF8
+        try {
+            Get-Content $a.FullName -Encoding UTF8 -ErrorAction Stop | Select-Object -Last 40 | Add-Content $outFile -Encoding UTF8
+        } catch {
+            "# (auto file unreadable)" | Add-Content $outFile -Encoding UTF8
+        }
+    }
+}
+
 if ($snap.Count -gt 0) {
     ""                             | Add-Content $outFile -Encoding UTF8
     "# === 8-TF SNAPSHOTS ===" | Add-Content $outFile -Encoding UTF8
@@ -115,4 +139,11 @@ if ($legs.Count -gt 0) {
 } else {
     Write-Host "--- Last 20 TRADEPLAN rows (no snapshot yet) ---"
     $tp | Select-Object -Last 20 | ForEach-Object { Write-Host $_ }
+}
+
+# Newest auto-export file to stdout (freshest source when the terminal log lags)
+if ($autos.Count -gt 0) {
+    Write-Host ""
+    Write-Host ("--- Newest auto-export: " + $autos[0].Name + " (" + $autos[0].LastWriteTime + ") ---")
+    Get-Content $autos[0].FullName -Encoding UTF8 -ErrorAction SilentlyContinue | Select-Object -Last 12 | ForEach-Object { Write-Host $_ }
 }
