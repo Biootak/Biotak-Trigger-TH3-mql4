@@ -95,3 +95,44 @@ console.log('--- joint LSQ weights (16 equations, 6 unknowns) ---');
   const r = score(wavg(w));
   console.log(`LSQ fit: worstExcess=${r.worst.toFixed(2)}@${r.worstAt} | ` + r.per.map(e => e.toFixed(1)).join(','));
 }
+console.log('\n=== ENG: structure base — universal-divisor interval proof ===');
+// IF SL = round(TR_MN/D) for one universal D, D must lie in EVERY symbol's
+// implied interval (TR/(SL+0.5), TR/(SL-0.5)]. Same for Eng-ratio form
+// SL = round(1.2*TR/k). Empty intersection = no such rule exists.
+const SB = [
+  { sym: 'EUR', tr: 353, sl: 103 },
+  { sym: 'NZD', tr: 280, sl: 80 },
+  { sym: 'AUD', tr: 294, sl: 84 },
+  { sym: 'XAU', tr: 3144, sl: 1180 },
+];
+for (const p of SB) {
+  const dLo = p.tr / (p.sl + 0.5), dHi = p.tr / (p.sl - 0.5);
+  const kLo = 1.2 * p.tr / (p.sl + 0.5), kHi = 1.2 * p.tr / (p.sl - 0.5);
+  console.log(`${p.sym}: SL-divisor D in (${dLo.toFixed(4)},${dHi.toFixed(4)}] Eng-ratio k in (${kLo.toFixed(4)},${kHi.toFixed(4)}]`);
+}
+console.log('sqrt12=3.4641 sits in the EUR|(NZD,AUD) gap: no universal divisor, no universal ratio. XAU (2.66) is a third regime.');
+console.log('\n=== ENG: chart-level (AUD live corner; EUR undetermined; NZD stale) ===');
+const CB = [
+  { sym: 'AUD', tr: 48, eng: 10, hunter: 27, note: 'live' },
+  { sym: 'EUR', tr: 54, eng: 11, hunter: 30, note: 'undetermined' },
+  { sym: 'NZD', tr: 47, eng: 11, hunter: 30, note: 'STALE-corner' },
+];
+for (const c of [
+  ['TR/4.8(user-exact)', (tr) => tr / 4.8],
+  ['TR/4.3333(usercalc)', (tr) => tr / 4.3333],
+  ['TR*15/64        ', (tr) => tr * 15 / 64],
+]) {
+  const line = CB.map(p => {
+    const e = c[1](p.tr), de = Math.round(e), dh = Math.round(8 / 3 * e);
+    const ok = (de === p.eng && dh === p.hunter) ? 'OK ' : 'miss';
+    return `${p.sym}[${p.note}]:eng=${e.toFixed(2)}->${de}(vs${p.eng}) hunter->${dh}(vs${p.hunter}) ${ok}`;
+  }).join(' ');
+  console.log(`${c[0]}: ${line}`);
+}
+{
+  const line = CB.map(p => {
+    const h = p.tr / 1.66666, dh = Math.round(h);
+    return `${p.sym}:TR/1.667=${h.toFixed(2)}->${dh}(vs${p.hunter})`;
+  }).join(' ');
+  console.log(`TR/1.6667(user-calc): ${line}`);
+}
