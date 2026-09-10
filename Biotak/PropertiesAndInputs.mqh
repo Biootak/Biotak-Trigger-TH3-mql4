@@ -304,6 +304,7 @@ input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status
 input string inpResetKey = "Q";
+input string inpLogDumpKey = "X";           // On-demand log dump ([TRADEPLAN]+[SNAP]+[ATRLEGS]+[PROF*]) — no background auto-logging
 
 input group "18) ADVANCED - OBJECTS"
 input string S20 = "[18] ADVANCED / OBJECTS";

@@ -13,6 +13,13 @@
 #define PROJECT_CONSTANTS_MQH
 #property strict
 
+// Build generation tag: printed once per OnInit as [BUILD], so any log set
+// is attributable to the exact formula generation running — no more
+// ghost-build forensics. Bump BY HAND on every behavior-affecting release
+// (not per compile).
+//   T2 = SMA composite M1–D1 + iATR(W1,55) + iATR(MN,30)  (2026-09-10)
+#define TH3_BUILD_TAG "T2"
+
 //+------------------------------------------------------------------+
 //| TH3 Binary Subdivision Frequency System                          |
 //| Theory: Every real number in [0,100] has exact representation    |

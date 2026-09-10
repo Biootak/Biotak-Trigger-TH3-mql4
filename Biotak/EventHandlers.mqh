@@ -10,6 +10,11 @@ int OnInitHandler() {
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
+#ifdef BUILD_LITE
+    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " LITE");
+#else
+    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " FULL");
+#endif
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);
 
@@ -1794,7 +1799,17 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
-        //  
+        //
+        // X key   On-demand diagnostic dump ([TRADEPLAN]+[SNAP]+[ATRLEGS]+[PROF*])
+        //         No background auto-logging — this key is the only writer.
+        //
+        if(IsHotkeyPressed(lparam, sparam, inpLogDumpKey))
+        {
+            TradePlanDumpNow();
+            return;
+        }
+
+        //
         // K key   Toggle Timeframe Lock
         //  
         if(IsHotkeyPressed(lparam, sparam, inpLockKey))

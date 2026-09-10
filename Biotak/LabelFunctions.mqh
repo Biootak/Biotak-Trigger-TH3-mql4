@@ -285,17 +285,24 @@ bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
 
    string tpText = StringFormat("#SL:-%d #TP1+%d #TP2+%d #TP3+%d",
                                 plan.sl, plan.tp1, plan.tp2, plan.tp3);
-   string ciText = TradePlanCloseInText();
+    string ciText = TradePlanCloseInText();
 
-   // Purge the retired layouts: every "Current" piece shares this prefix, so
-   // one kernel call wipes legacy pieces (plus ours, recreated below).
-   ObjectsDeleteAll(0, objectPrefix + "ATR_Trade_Current_");
-   ObjectDelete(0, objectPrefix + "ATR_Trade_Current_ATR");
-   ObjectDelete(0, objectPrefix + "ATR_Trade_Current_SLRow");
-   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin));
-   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Targets");
-   ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Stops");
-   ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
+    // PERF: the two "Current" pieces below are upserted in place by
+    // CreateATRTradePiece (create-if-missing + set), so wiping the Current_
+    // namespace here only deletes what we recreate two lines later
+    // (flicker + a kernel call every 2 s from the live pump). Retired
+    // layouts are purged once per prefix instead — same end state.
+    static string s_purgedPfx = "";
+    if(s_purgedPfx != objectPrefix)
+    {
+       s_purgedPfx = objectPrefix;
+       ObjectDelete(0, objectPrefix + "ATR_Trade_Current_ATR");
+       ObjectDelete(0, objectPrefix + "ATR_Trade_Current_SLRow");
+       ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin));
+       ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Targets");
+       ObjectDelete(0, objectPrefix + "ATR_Trade_" + PeriodToString(plan.chartMin) + "_Stops");
+       ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
+    }
 
    bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
    int rightMargin  = MathMax(8, MathAbs(xPos));
@@ -587,9 +594,147 @@ void DisplayATRTradeLabels(const string objectPrefix) {
 // paint, 2s throttle: no flicker, negligible CPU. Called per-tick+timer in
 // Full (RefreshUIPerTick) and from the 500ms block in Lite.
 // Full 8-TF snapshot for all ladder timeframes on the current symbol.
-// Called from TradePlanLiveTick every 10 s when values change.
+// Called ONLY from TradePlanDumpNow (X hotkey) — never from the background
+// tick path (user decision 2026-09-10: logs only on demand).
 // Uses TradePlanCompute (not ComputeLive) so each TF gets its OWN fresh
 // calculation (no bar-freeze cross-contamination between TFs).
+// [ATRLEGS] diagnostic: raw Wilder legs behind the composite TR(own), for
+// offline weight fitting without manual script runs (2026-09-10: future
+// sessions fetch them from the log like [SNAP] — no user round-trip).
+// Same 6 periods + shift=1 as CalculateATRBatchWilders (ATRCalculations.mqh),
+// price units. Throttled 60 s (legs only move on bar rolls); rides the
+// snapshot's numeric-change gate, so a frozen chart keeps its last — still
+// valid — legs. Lite-safe: iBars/iATR only, no UI calls.
+// EXTRA q-legs (2026-09-10): Wilder neighbors 26..60 for high-TF formula
+// identification — W1/MN sit between standard periods, and only LIVE bars
+// can place them (stale .hst is exact for MN windows, ±1 bar for W1).
+// EXTRA s-legs: SAME periods via TrexSMALeg (professor's SMA family), so one
+// fetch carries BOTH families live — no more stale-.hst forensics.
+void TradePlanLogLegs()
+{
+    int legMins[9]; string legNames[9];
+    legMins[0]=1;     legNames[0]="M1";
+    legMins[1]=5;     legNames[1]="M5";
+    legMins[2]=15;    legNames[2]="M15";
+    legMins[3]=30;    legNames[3]="M30";
+    legMins[4]=60;    legNames[4]="H1";
+    legMins[5]=240;   legNames[5]="H4";
+    legMins[6]=1440;  legNames[6]="D1";
+    legMins[7]=10080; legNames[7]="W1";
+    legMins[8]=43200; legNames[8]="MN";
+    int pers[6];
+    pers[0]=5; pers[1]=10; pers[2]=21; pers[3]=66; pers[4]=132; pers[5]=264;
+    int qpers[10];
+    qpers[0]=26; qpers[1]=28; qpers[2]=30; qpers[3]=32; qpers[4]=34;
+    qpers[5]=50; qpers[6]=52; qpers[7]=55; qpers[8]=58; qpers[9]=60;
+    for(int i = 0; i < 9; i++)
+    {
+        ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)legMins[i];
+        int nb = iBars(Symbol(), tf);
+        string s = "[ATRLEGS] TF=" + legNames[i] + " bars=" + IntegerToString(nb);
+        for(int k = 0; k < 6; k++)
+        {
+            double v = 0.0;
+            if(nb > pers[k] + 1)
+            {
+                v = iATR(Symbol(), tf, pers[k], 1);
+                if(v == EMPTY_VALUE || v <= 0.0) v = 0.0;
+            }
+            s = s + " p" + IntegerToString(pers[k]) + "=" + DoubleToString(v, Digits);
+        }
+        for(int q = 0; q < 10; q++)
+        {
+            double w = 0.0;
+            if(nb > qpers[q] + 1)
+            {
+                w = iATR(Symbol(), tf, qpers[q], 1);
+                if(w == EMPTY_VALUE || w <= 0.0) w = 0.0;
+            }
+            s = s + " q" + IntegerToString(qpers[q]) + "=" + DoubleToString(w, Digits);
+        }
+        for(int g = 0; g < 10; g++)
+        {
+            double u = 0.0;
+            if(nb > qpers[g] + 1) u = TrexSMALeg(tf, qpers[g], 1);
+            s = s + " s" + IntegerToString(qpers[g]) + "=" + DoubleToString(u, Digits);
+        }
+        Print(s);
+    }
+}
+
+// [PROFOBJ]/[PROFATR] — the professor's indicator values, read off ITS chart
+// labels (no source available: .ex4 string literals are encrypted, a
+// strings-scan finds nothing — don't retry it). MQL4 cannot see other
+// charts' objects, so attach OUR indicator (Lite is enough, no menu
+// clutter) to every chart his runs on; this reader dumps ITS labels next
+// to ours with timestamps for offline pairing.
+// Self-discovery, no hardcoded names: a full-chart scan collects foreign
+// OBJ_LABEL/OBJ_TEXT (anything not ours, capped); the cached names are then
+// re-read in place. Background auto-scanning is OFF (user decision
+// 2026-09-10: logs only on demand) — pass force=true from TradePlanDumpNow
+// (X hotkey) to scan+read immediately. Silent when he is absent.
+// Lite-safe: Object*/String* + literal prefixes only — Full-only symbols
+// (HTF/menu/panel) must NOT be referenced here.
+#define PROFATR_DISCOVER_MS 3600000
+#define PROFATR_READ_MS     60000
+#define PROFATR_MAX_NAMES   40
+#define PROFATR_MAX_SCAN    80
+
+void TradePlanLogProfAtr(const bool force = false)
+{
+    static uint s_discMs = 0;
+    static uint s_readMs = 0;
+    static string s_names[PROFATR_MAX_NAMES];
+    static int s_count = 0;
+    uint nowMs = GetTickCount();
+    // --- discovery: full-chart scan for foreign labels (hourly in
+    // background, immediate when forced) ---
+    if(force || s_discMs == 0 || nowMs - s_discMs >= PROFATR_DISCOVER_MS)
+    {
+        s_discMs = nowMs;
+        s_count = 0;
+        int total = ObjectsTotal(0, -1, -1);
+        int kept = 0;
+        for(int i = total - 1; i >= 0 && kept < PROFATR_MAX_SCAN; i--)
+        {
+            string nm = ObjectName(0, i);
+            if(StringLen(nm) == 0) continue;
+            // Ours? skip (literals only — see header comment).
+            if(StringLen(inpObjectPrefix) > 0 && StringFind(nm, inpObjectPrefix) == 0) continue;
+            if(StringFind(nm, "_BK_") >= 0) continue;
+            if(StringFind(nm, "BiotakMenuV2_") == 0) continue;
+            if(StringFind(nm, "Pnl") == 0) continue;
+            if(StringFind(nm, "Pal_") == 0) continue;
+            if(StringFind(nm, "BiotakHTF_") == 0) continue;
+            int ty = (int)ObjectGetInteger(0, nm, OBJPROP_TYPE);
+            if(ty != OBJ_LABEL && ty != OBJ_TEXT) continue;
+            string tx = "";
+            ObjectGetString(0, nm, OBJPROP_TEXT, 0, tx);
+            if(StringLen(tx) > 120) tx = StringSubstr(tx, 0, 120);
+            Print("[PROFOBJ] chart=" + GetCurrentTimeframe()
+                  + " type=" + IntegerToString(ty)
+                  + " name=" + nm + " text=" + tx);
+            if(s_count < PROFATR_MAX_NAMES) { s_names[s_count] = nm; s_count++; }
+            kept++;
+        }
+        s_readMs = 0;   // fresh names: read immediately below
+    }
+    // --- 60 s re-read of cached names (timestamped for offline pairing) ---
+    if(s_count > 0 && (s_readMs == 0 || nowMs - s_readMs >= PROFATR_READ_MS))
+    {
+        s_readMs = nowMs;
+        string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+        for(int j = 0; j < s_count; j++)
+        {
+            if(ObjectFind(0, s_names[j]) < 0) continue;  // rebuilt names heal at next hourly scan
+            string tx2 = "";
+            ObjectGetString(0, s_names[j], OBJPROP_TEXT, 0, tx2);
+            Print("[PROFATR] " + ts + " chart=" + GetCurrentTimeframe()
+                  + " name=" + s_names[j] + " text=" + tx2);
+        }
+    }
+}
+
 void TradePlanLogAllTFs()
 {
     static int s_tfMins[8];
@@ -636,26 +781,23 @@ void TradePlanLogAllTFs()
               + " trig=" + IntegerToString(p.trigMin));
     }
     Print("[SNAP] ===== END =====");
+    // Legs ride the snapshot path, throttled independently (60 s). No PROFATR
+    // here — the professor's side is compared from screenshots (X still dumps
+    // everything on demand when our Lite sits on his chart).
+    static uint s_legsMs = 0;
+    uint nowMsL = GetTickCount();
+    if(nowMsL - s_legsMs >= 60000)
+    {
+        s_legsMs = nowMsL;
+        TradePlanLogLegs();
+    }
 }
 
-void TradePlanLiveTick()
+// [TRADEPLAN-LOG] per-chart row (single TF). Shared by the on-demand dump
+// (X hotkey) — the background tick path never prints (user decision
+// 2026-09-10: logs only on demand).
+void TradePlanPrintRow(STradePlan &plan)
 {
-    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
-    uint nowMs = GetTickCount();
-    static uint s_lastMs = 0;
-    if(nowMs - s_lastMs < 2000) return;
-    s_lastMs = nowMs;
-    STradePlan plan;
-    if(!TradePlanComputeLive(Period(), plan)) return;
-    string sig = StringFormat("%d|%d|%d|%d|%d|%d|%d|%d|%s",
-                              plan.sl, plan.tp1, plan.tp2, plan.tp3,
-                              plan.hunter, plan.eng, plan.sb1, plan.sb2,
-                              TradePlanCloseInText());
-    static string s_sig = "";
-    if(sig == s_sig) return;
-    s_sig = sig;
-
-    // [TRADEPLAN-LOG] per-chart row (single TF, change-guarded).
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     Print("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
     Print("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
@@ -673,6 +815,48 @@ void TradePlanLiveTick()
     Print("[TRADEPLAN]   chartMin=" + IntegerToString(plan.chartMin)
           + "  strMin=" + IntegerToString(plan.strMin)
           + "  trigMin=" + IntegerToString(plan.trigMin));
+}
+
+// On-demand full dump (X hotkey, TradePlanDumpNow's worker): per-chart row
+// + 8-TF snapshot + raw legs + professor's labels — one timestamped set,
+// then silence again. Lite-safe.
+void TradePlanDumpNow()
+{
+    STradePlan plan;
+    if(!TradePlanComputeLive(Period(), plan)) return;
+    Print("[DUMP] ===== " + Symbol() + " " + GetCurrentTimeframe() + " =====");
+    TradePlanPrintRow(plan);
+    TradePlanLogAllTFs();
+    TradePlanLogLegs();
+    TradePlanLogProfAtr(true);
+    Print("[DUMP] ===== END =====");
+}
+
+void TradePlanLiveTick()
+{
+    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
+    uint nowMs = GetTickCount();
+    static uint s_lastMs = 0;
+    if(nowMs - s_lastMs < 2000) return;
+    s_lastMs = nowMs;
+    STradePlan plan;
+    if(!TradePlanComputeLive(Period(), plan)) return;
+    // Display only — this path NEVER prints (user decision 2026-09-10: logs
+    // only on demand via the X hotkey). The numeric sig still picks the full
+    // vs cheap in-place label path; pixels identical either way.
+    string sig = StringFormat("%d|%d|%d|%d|%d|%d|%d|%d",
+                              plan.sl, plan.tp1, plan.tp2, plan.tp3,
+                              plan.hunter, plan.eng, plan.sb1, plan.sb2);
+    static string s_sig = "";
+    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
+    if(sig != s_sig)
+    {
+       s_sig = sig;
+
+    // Auto-log OUR numbers (user decision 2026-09-10: our log flows on its
+    // own, change-guarded + throttled — the professor's side arrives via
+    // screenshots and is paired offline by timestamp).
+    TradePlanPrintRow(plan);
 
     // Full 8-TF snapshot — throttled to once per 3 s (independent of chart TF).
     static uint s_snapMs = 0;
@@ -682,7 +866,6 @@ void TradePlanLiveTick()
         TradePlanLogAllTFs();
     }
 
-    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     CreateATRTradeLabel(labelPrefix, plan,
                         inpLabelsMarginLeft, inpLabelsMarginBottom);
     DisplayTRexTitleBlock(labelPrefix);
@@ -691,6 +874,16 @@ void TradePlanLiveTick()
     else {
         ObjectDelete(0, labelPrefix + "TREX_Hunter");
         ObjectDelete(0, labelPrefix + "TREX_StrBond");
+    }
+    } // numeric change: full block above
+    else
+    {
+       // Steady state: numerics frozen — only the 1-second countdown and the
+       // live-spread superscript move. Both pieces upsert in place (no
+       // delete); TopRows text is identical, skipped.
+       CreateATRTradeLabel(labelPrefix, plan,
+                           inpLabelsMarginLeft, inpLabelsMarginBottom);
+       DisplayTRexTitleBlock(labelPrefix);
     }
     ThrottledChartRedraw();
 }

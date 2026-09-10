@@ -53,11 +53,13 @@ if (-not $text) { Write-Host "Log file is empty."; exit 1 }
 $lines = $text -split "`r?`n"
 Write-Host "Total log lines: $($lines.Count)"
 
-# Filter [TRADEPLAN] and [SNAP] lines
+# Filter [TRADEPLAN], [SNAP] and [ATRLEGS] lines
 $tp   = $lines | Where-Object { $_ -match '\[TRADEPLAN\]' }
 $snap = $lines | Where-Object { $_ -match '\[SNAP\]' }
+$legs = $lines | Where-Object { $_ -match '\[ATRLEGS\]' }
+$prof = $lines | Where-Object { ($_ -match '\[PROFATR\]') -or ($_ -match '\[PROFOBJ\]') }
 
-if (-not $tp -and -not $snap) {
+if (-not $tp -and -not $snap -and -not $legs -and -not $prof) {
     Write-Host ""
     Write-Host "No [TRADEPLAN] or [SNAP] entries found yet."
     Write-Host "  -> Make sure the indicator is attached and running on a chart."
@@ -73,7 +75,7 @@ if (-not $tp -and -not $snap) {
 $header  = "# Captured from: $($latest.FullName)`n"
 $header += "# At: $(Get-Date)`n"
 $header += "# Log file modified: $($latest.LastWriteTime)`n"
-$header += "# [SNAP] lines: $($snap.Count)  [TRADEPLAN] lines: $($tp.Count)`n"
+$header += "# [SNAP] lines: $($snap.Count)  [TRADEPLAN] lines: $($tp.Count)  [ATRLEGS] lines: $($legs.Count)  [PROF*] lines: $($prof.Count)`n"
 $header | Set-Content $outFile -Encoding UTF8
 
 if ($snap.Count -gt 0) {
@@ -82,6 +84,17 @@ if ($snap.Count -gt 0) {
     # Keep last 3 complete snapshots (each is ~11 lines)
     $snap | Select-Object -Last 33 | Add-Content $outFile -Encoding UTF8
 }
+if ($legs.Count -gt 0) {
+    ""                             | Add-Content $outFile -Encoding UTF8
+    "# === ATR LEGS (raw Wilder legs, 9 TFs per dump) ===" | Add-Content $outFile -Encoding UTF8
+    # Keep last 3 complete dumps (each is ~9-10 lines)
+    $legs | Select-Object -Last 30 | Add-Content $outFile -Encoding UTF8
+}
+if ($prof.Count -gt 0) {
+    ""                             | Add-Content $outFile -Encoding UTF8
+    "# === PROFESSOR LABELS ([PROFOBJ] inventory + [PROFATR] reads) ===" | Add-Content $outFile -Encoding UTF8
+    $prof | Select-Object -Last 60 | Add-Content $outFile -Encoding UTF8
+}
 if ($tp.Count -gt 0) {
     ""                             | Add-Content $outFile -Encoding UTF8
     "# === PER-CHART ROWS ===" | Add-Content $outFile -Encoding UTF8
@@ -89,11 +102,14 @@ if ($tp.Count -gt 0) {
 }
 
 Write-Host ""
-Write-Host "[SNAP] lines: $($snap.Count)   [TRADEPLAN] lines: $($tp.Count)"
+Write-Host ("[SNAP] lines: $($snap.Count)   [TRADEPLAN] lines: $($tp.Count)   [ATRLEGS] lines: $($legs.Count)   [PROF*] lines: $($prof.Count)")
 Write-Host "Written -> build-logs/tradeplan-latest.log"
 Write-Host ""
-# Show latest snapshot to stdout
-if ($snap.Count -gt 0) {
+# Show latest legs dump to stdout (preferred over snapshot for ATR work)
+if ($legs.Count -gt 0) {
+    Write-Host "--- Latest ATR legs ---"
+    $legs | Select-Object -Last 10 | ForEach-Object { Write-Host $_ }
+} elseif ($snap.Count -gt 0) {
     Write-Host "--- Latest 8-TF snapshot ---"
     $snap | Select-Object -Last 11 | ForEach-Object { Write-Host $_ }
 } else {
