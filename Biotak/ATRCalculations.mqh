@@ -42,7 +42,10 @@
 #define ATR_PERIOD_5    132
 #define ATR_PERIOD_6    264
 
-// Weights for each period (matching Java)
+// Weights for each period — the professor's own 1/1/2/3/5/8 (TrexATR verbatim).
+// (A 2026-09-10 Wilder reweight 1/1/6/2/2/4 was tried and retired the same
+// day: the gap was Wilder-vs-SMA family, not weights — fitting weights
+// masked it. Never refit without fresh same-minute pairs.)
 //                    
 #define ATR_WEIGHT_1    1
 #define ATR_WEIGHT_2    1
@@ -51,7 +54,8 @@
 #define ATR_WEIGHT_5    5
 #define ATR_WEIGHT_6    8
 
-// Total weight = 1+1+2+3+5+8 = 20
+// Total weight = 1+1+2+3+5+8 = 20 (reference only — the engine divides by the
+// dynamic sum of non-skipped legs)
 #define ATR_TOTAL_WEIGHT 20
 
 // AUDIT FIX: Cache configuration constants
@@ -893,6 +897,72 @@ void CalculateATRBatchWilders(double &results[], const ENUM_TIMEFRAMES tf) {
 }
 
 //+------------------------------------------------------------------+
+//| Professor's SMA batch (TrexATR verbatim, 2026-09-10)              |
+//| Simple mean of TR over `period` bars ending at shift 1 — NOT      |
+//| Wilder smoothing — with the original's quirk: the newest window   |
+//| bar uses its OWN close as prev-close (no gap term on bar 0).      |
+//| Used for M1–D1 (matches his strip within ~5% live).               |
+//| W1/MN OVERRIDES (single-sample calibration 2026-09-10, pending    |
+//| multi-day proof — do NOT remove or "simplify" without fresh       |
+//| same-minute pairs): W1 = iATR(W1,55,1) (-3%), MN1 = iATR(MN1,30,1)|
+//| (+0.7% on exact same windows). Rationale: short-period Wilders    |
+//| are history-robust (seed ~e^-10..e^-21 ≈ 0), so these reproduce   |
+//| on ANY terminal sharing recent bars — unlike long-leg composites  |
+//| whose seed lottery swings ±30% with history depth (the rejected   |
+//| MN→SMA-55 branch died exactly there: -16% on identical windows).  |
+//| Results slot [0]; the caller's dynamic denominator reduces to it. |
+//| TradePlanEngTrue stays single-iATR (verified live, separate).     |
+//+------------------------------------------------------------------+
+#define TREX_W1_PERIOD 55
+#define TREX_MN_PERIOD 30
+double TrexSMALeg(const ENUM_TIMEFRAMES tf, const int period, const int shift)
+{
+    double trSum = 0.0;
+    for(int i = 0; i < period; i++)
+    {
+        double high = iHigh(Symbol(), tf, shift + i);
+        double low = iLow(Symbol(), tf, shift + i);
+        double closePrev = (i == 0) ? iClose(Symbol(), tf, shift + i)
+                                    : iClose(Symbol(), tf, shift + i + 1);
+        double tr = MathMax(high - low,
+                     MathMax(MathAbs(high - closePrev), MathAbs(low - closePrev)));
+        trSum += tr;
+    }
+    return NormalizeDouble(trSum / (double)period, Digits);
+}
+
+void CalculateATRBatchTrex(double &results[], const ENUM_TIMEFRAMES tf) {
+    ArrayResize(results, 6);
+    ArrayInitialize(results, 0.0);
+
+    int nb = iBars(Symbol(), tf);
+    if(nb <= 10) return;
+
+    if(tf == PERIOD_MN1)
+    {
+        if(nb <= TREX_MN_PERIOD + 1) return;
+        double v = iATR(Symbol(), tf, TREX_MN_PERIOD, 1);
+        results[0] = (v != EMPTY_VALUE && v > 0.0) ? v : 0.0;
+        return;
+    }
+    if(tf == PERIOD_W1)
+    {
+        if(nb <= TREX_W1_PERIOD + 1) return;
+        double w = iATR(Symbol(), tf, TREX_W1_PERIOD, 1);
+        results[0] = (w != EMPTY_VALUE && w > 0.0) ? w : 0.0;
+        return;
+    }
+
+    int periods[] = {ATR_PERIOD_1, ATR_PERIOD_2, ATR_PERIOD_3,
+                     ATR_PERIOD_4, ATR_PERIOD_5, ATR_PERIOD_6};
+    for(int i = 0; i < 6; i++) {
+        if(nb <= periods[i] + 1) continue;
+        double val = TrexSMALeg(tf, periods[i], 1);
+        results[i] = (val > 0.0) ? val : 0.0;
+    }
+}
+
+//+------------------------------------------------------------------+
 //| Get Trigger Duration in Seconds for a given Timeframe            |
 //| v3.15: Based on fractal logic (Trigger = 2 timeframes down)      |
 //+------------------------------------------------------------------+
@@ -955,7 +1025,7 @@ double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     
     // Calculate using Wilder's via iATR
     double atrValues[];
-    CalculateATRBatchWilders(atrValues, tf);
+    CalculateATRBatchTrex(atrValues, tf);
     
     if(ArraySize(atrValues) < 6) return 0.0;
     
