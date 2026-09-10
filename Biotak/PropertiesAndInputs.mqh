@@ -305,6 +305,7 @@ input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status
 input string inpResetKey = "Q";
 input string inpLogDumpKey = "X";           // On-demand log dump ([TRADEPLAN]+[SNAP]+[ATRLEGS]+[PROF*]) — no background auto-logging
+input bool inpUseAltTradeFormulas = false;  // EXPERIMENTAL (user 2026-09-10): chart-TF formulas SL=TR*1.66666, Eng=TR/4.266666, Hunt=TR/1.66666 — default OFF keeps the verified ladder
 
 input group "18) ADVANCED - OBJECTS"
 input string S20 = "[18] ADVANCED / OBJECTS";

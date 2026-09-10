@@ -642,6 +642,14 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `SB1(chart) == Hunter(StructureTF) == SL × 20/9` because `1.20 × 20/9 = 8/3`.
   Observed Sep-9-2026 live: H1 SB1 673 == D1 Hunter 673; M5 SB1 103 ≈ H1 Hunter 88.
   Never implement as a recipe — exogenous input stays the strip ATRs.)
+- **R-ALT — experimental alt trade formulas, opt-in only** (2026-09-10, user
+  order: `inpUseAltTradeFormulas` (default false, plain input like X — NOT a
+  panel mirror): SL=TR×1.66666, Eng=TR/4.266666, Hunt=TR/1.66666, chart-TF
+  based, TP/SB unchanged from slTrue. Default path byte-identical (verified
+  XAUUSD untouched). Do NOT "fix", merge, or delete this toggle without the
+  user: it is their live A/B test against the professor. Exact-gate verdict
+  at ship time: misses AUDUSD live on all three legs + XAUUSD catastrophically
+  (SL 6296 vs 1180) — stays OFF until a regime sample confirms it.)
 
 ---
 

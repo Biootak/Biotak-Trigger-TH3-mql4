@@ -11,6 +11,10 @@
 //|   Hunter  = round(8/3 × Eng)                                     |
 //|   Structure = 2 ladder rungs UP; Trigger = 2 rungs DOWN.         |
 //|                                                                  |
+//|   ALT experimental path (opt-in inpUseAltTradeFormulas, default   |
+//|   OFF): SL = TR(chart)*1.66666, Eng = TR/4.266666, Hunt =        |
+//|   TR/1.66666 — TP/SB still derive from slTrue.                   |
+//|                                                                  |
 //| Verified Sep-9-2026 XAUUSD (live screenshots, all 8 TFs):        |
 //|   M1: 1.2×Eng(M15=17)=20.4→20 ✓                                 |
 //|   M5: 1.2×Eng(H1=40)=48 ✓                                       |
@@ -41,6 +45,14 @@
 // Unified SL coefficient: SL = 1.20 × Eng(StructureTF).
 // One constant for ALL timeframes — confirmed Sep-9-2026 live XAUUSD.
 #define TRADEPLAN_SL_COEFF  1.20
+
+// EXPERIMENTAL alt formulas (opt-in via inpUseAltTradeFormulas, user
+// 2026-09-10): chart-TF based, uniform everywhere — SL = TR*1.66666,
+// Eng = TR/4.266666, Hunt = TR/1.66666. Default OFF. TP/SB keep deriving
+// from slTrue ("rest uniform").
+#define TRADEPLAN_ALT_SL_MULT  1.66666
+#define TRADEPLAN_ALT_ENG_DEN  4.266666
+#define TRADEPLAN_ALT_HUNT_DEN 1.66666
 
 // Hunter = 8/3 × Eng (unrounded Eng input).
 #define TRADEPLAN_HUNTER_NUM 8.0
@@ -217,10 +229,25 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
    p.hunter = 0; p.eng = 0; p.sb1 = 0; p.sb2 = 0;
 
-   // --- SL = 1.20 × Eng(StructureTF) ---
-   p.basePips = TradePlanEngOf(p.strMin);   // SessionEng of structure TF
-   if(p.basePips <= 0.0) return false;
-   p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
+   // Own strip ATR first: the alt path below derives EVERYTHING from it.
+   p.ownPips = TradePlanStripPips(p.chartMin);
+
+   bool altForm = (inpUseAltTradeFormulas && p.ownPips > 0.0);
+   if(altForm)
+   {
+      // --- Alt experimental (opt-in): SL = TR*1.66666, Eng = TR/4.266666 ---
+      // TP/SB below keep deriving from slTrue unchanged ("rest uniform").
+      p.basePips = p.ownPips;   // base column shows the source, not structure Eng
+      p.engTrue  = p.ownPips / TRADEPLAN_ALT_ENG_DEN;
+      p.slTrue   = p.ownPips * TRADEPLAN_ALT_SL_MULT;
+   }
+   else
+   {
+      // --- SL = 1.20 × Eng(StructureTF) ---
+      p.basePips = TradePlanEngOf(p.strMin);   // SessionEng of structure TF
+      if(p.basePips <= 0.0) return false;
+      p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
+   }
    if(p.slTrue <= 0.0) return false;
 
    p.sl  = TradePlanRound(p.slTrue);
@@ -228,15 +255,23 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    p.tp2 = TradePlanRound(p.slTrue * TRADEPLAN_TP2_MULT);
    p.tp3 = TradePlanRound(p.slTrue * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN);
 
-   // Own strip ATR (composite, for reference/display — not the SL engine).
-   p.ownPips = TradePlanStripPips(p.chartMin);
-
    // --- Eng / Hunter (chart's own trigger TF) ---
-   double eT = TradePlanEngTrue(p.chartMin, p.trigMin);
-   if(eT <= 0.0) return false;
-   p.engTrue = eT;
-   p.eng     = TradePlanRound(eT);
-   p.hunter  = TradePlanHunterFromEng(eT);
+   if(altForm)
+   {
+      // HuntSL = TR/1.66666 — independent leg, NOT 8/3×Eng (the alt triple
+      // does not share the ladder's Hunter identity: 0.6/0.234375 = 2.56).
+      p.trigMin  = TradePlanTriggerMinutes(p.chartMin);  // label only, no iATR call
+      p.eng      = TradePlanRound(p.engTrue);
+      p.hunter   = TradePlanRound(p.ownPips / TRADEPLAN_ALT_HUNT_DEN);
+   }
+   else
+   {
+      double eT = TradePlanEngTrue(p.chartMin, p.trigMin);
+      if(eT <= 0.0) return false;
+      p.engTrue = eT;
+      p.eng     = TradePlanRound(eT);
+      p.hunter  = TradePlanHunterFromEng(eT);
+   }
 
    // --- StrBond display legs ---
    // Base and Width ride UNROUNDED slTrue; MN first leg is sum of rounded.
