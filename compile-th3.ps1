@@ -839,6 +839,9 @@ function Get-InstalledProjectSource {
 $startTime = Get-Date
 $results = @{}
 
+# P-BUILD-06 RETIRED 2026-09-10 (see AGENTS.md): programmatic self-reload is
+# impossible in MQL4 — manual remove & re-add remains the only code-deploy.
+
 $resolvedCompiler = Resolve-MetaEditorPath -CustomPath $MetaEditorPath
 if (-not $resolvedCompiler) {
     Write-Banner "ERROR"
