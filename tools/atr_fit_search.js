@@ -16,8 +16,8 @@ function parseHST(file) {
     bars.push({
       time: buf.readUInt32LE(o),
       open: buf.readDoubleLE(o + 8),
-      low: buf.readDoubleLE(o + 16),
-      high: buf.readDoubleLE(o + 24),
+      high: buf.readDoubleLE(o + 16),
+      low: buf.readDoubleLE(o + 24),
       close: buf.readDoubleLE(o + 32),
     });
   }
