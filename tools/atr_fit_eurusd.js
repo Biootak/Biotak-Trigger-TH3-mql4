@@ -158,3 +158,184 @@ for (const tf of TFS) {
   const a = composite(tf, SF) * PIPS, b = composite(tf, QF) * PIPS;
   console.log(`${tf}: noQuirk=${a.toFixed(2)} quirk=${b.toFixed(2)} delta=${(b-a).toFixed(2)} (${(100*(b-a)/a).toFixed(1)}%)`);
 }
+
+// ---------- leg caches (avoid O(bars) recompute) ----------
+const wCache = {}, sCache = {}, hCache = {};
+function WC(tf, p) {
+  const k = tf + ':' + p;
+  if (!(k in wCache)) wCache[k] = wilderAtShift1(data[tf].tr, p);
+  return wCache[k];
+}
+function SC(tf, p) {
+  const k = tf + ':' + p;
+  if (!(k in sCache)) sCache[k] = smaAtShift1(data[tf].bars, data[tf].tr, p, false);
+  return sCache[k];
+}
+function HC(tf, p) { // high-low-only mean over bars 1..p (shift=1)
+  const k = tf + ':' + p;
+  if (k in hCache) return hCache[k];
+  const bars = data[tf].bars, n = bars.length, last = n - 2;
+  if (last < p) return null;
+  let s = 0;
+  for (let kk = 1; kk <= p; kk++) s += bars[last - p + kk].high - bars[last - p + kk].low;
+  hCache[k] = s / p;
+  return hCache[k];
+}
+// generalized shift (0 = include forming bar)
+function smaShift(tf, p, shift, quirk) {
+  const bars = data[tf].bars, tr = data[tf].tr, n = bars.length;
+  const last = n - 1 - shift;
+  if (last < p || last < 1) return null;
+  let s = 0;
+  for (let kk = 1; kk <= p; kk++) {
+    const i = last - p + kk;
+    if (i < 1) return null;
+    if (i === last && quirk) {
+      const b = bars[i];
+      s += Math.max(b.high - b.low, Math.abs(b.high - b.close), Math.abs(b.low - b.close));
+    } else s += tr[i];
+  }
+  return s / p;
+}
+function wilderShift(tf, p, shift) {
+  const tr = data[tf].tr, n = tr.length;
+  const last = n - 1 - shift;
+  if (last < p || last < 1) return null;
+  let atr = 0;
+  for (let i = 1; i <= p; i++) atr += tr[i];
+  atr /= p;
+  for (let i = p + 1; i <= last; i++) atr = (atr * (p - 1) + tr[i]) / p;
+  return atr;
+}
+const rel = (v, tf) => (v === null ? Infinity : Math.abs(v * PIPS - prof[tf]) / prof[tf]);
+
+console.log('\n=== S7: best single Wilder-N per TF (N=2..300) ===');
+for (const tf of TFS) {
+  let best = null;
+  for (let nN = 2; nN <= 300; nN++) {
+    const v = WC(tf, nN);
+    if (v === null) break;
+    const e = Math.abs(v * PIPS - prof[tf]);
+    if (!best || e < best.e) best = { nN, e, v: v * PIPS };
+  }
+  console.log(`${tf}: WLD(${best.nN})=${best.v.toFixed(2)} d=${(best.v - prof[tf] >= 0 ? '+' : '') + (best.v - prof[tf]).toFixed(2)} (prof ${prof[tf]})`);
+}
+console.log('\n=== S8: best single HL-mean-N per TF (N=2..300) ===');
+for (const tf of TFS) {
+  let best = null;
+  for (let nN = 2; nN <= 300; nN++) {
+    const v = HC(tf, nN);
+    if (v === null) break;
+    const e = Math.abs(v * PIPS - prof[tf]);
+    if (!best || e < best.e) best = { nN, e, v: v * PIPS };
+  }
+  console.log(`${tf}: HL(${best.nN})=${best.v.toFixed(2)} d=${(best.v - prof[tf] >= 0 ? '+' : '') + (best.v - prof[tf]).toFixed(2)} (prof ${prof[tf]})`);
+}
+console.log('\n=== S9: ALL 63 leg subsets x {Wilder,SMA} — JOINT minimax (worst TF err) ===');
+{
+  const rows = [];
+  for (let mask = 1; mask < 64; mask++) {
+    for (const fam of ['W', 'S']) {
+      const errs = TFS.map(tf => {
+        let ws = 0, tw = 0;
+        for (let i = 0; i < 6; i++) if (mask & (1 << i)) {
+          const v = fam === 'W' ? WC(tf, LEGS[i]) : SC(tf, LEGS[i]);
+          if (v !== null && v > 0) { ws += v; tw++; }
+        }
+        const v = tw > 0 ? ws / tw : null;
+        return rel(v, tf);
+      });
+      const worst = Math.max(...errs);
+      const bits = LEGS.filter((_, i) => mask & (1 << i)).join(',');
+      rows.push({ fam, bits, worst, errs });
+    }
+  }
+  rows.sort((a, b) => a.worst - b.worst);
+  console.log('top 8 subsets by worst-TF relative err:');
+  for (const r of rows.slice(0, 8)) {
+    console.log(` ${r.fam}[${r.bits}] worst=${(r.worst * 100).toFixed(1)}% err/M1..MN=` +
+      r.errs.map(e => (e * 100).toFixed(1)).join(','));
+  }
+}
+console.log('\n=== S10: joint least-squares weights over 6 legs (Wilder, then SMA) ===');
+function lsq(famFn) {
+  const A = TFS.map(tf => LEGS.map(p => (famFn(tf, p) || 0) * PIPS));
+  const b = TFS.map(tf => prof[tf]);
+  const AtA = Array.from({ length: 6 }, (_, i) => Array.from({ length: 6 }, (_, j) =>
+    A.reduce((s, row) => s + row[i] * row[j], 0)));
+  const Atb = Array.from({ length: 6 }, (_, i) => A.reduce((s, row, k) => s + row[i] * b[k], 0));
+  const M = AtA.map((r, i) => [...r, Atb[i]]);
+  for (let c = 0; c < 6; c++) {
+    let piv = c;
+    for (let r = c + 1; r < 6; r++) if (Math.abs(M[r][c]) > Math.abs(M[piv][c])) piv = r;
+    [M[c], M[piv]] = [M[piv], M[c]];
+    for (let r = 0; r < 6; r++) {
+      if (r === c) continue;
+      const f = M[r][c] / M[c][c];
+      for (let k = c; k <= 6; k++) M[r][k] -= f * M[c][k];
+    }
+  }
+  return Array.from({ length: 6 }, (_, i) => M[i][6] / M[i][i]);
+}
+for (const fam of [['Wilder', WC], ['SMA', SC]]) {
+  const w = lsq(fam[1]);
+  console.log(`${fam[0]} optimal weights:`, w.map(x => x.toFixed(2)).join(','));
+  for (const tf of TFS) {
+    const fit = LEGS.reduce((s, p, i) => s + (fam[1](tf, p) || 0) * PIPS * w[i], 0);
+    console.log(`  ${tf}: fit=${fit.toFixed(2)} prof=${prof[tf]} err=${(((fit - prof[tf]) / prof[tf]) * 100).toFixed(1)}%`);
+  }
+}
+console.log('\n=== S11: shift sweep 0/1/2 on SMA composite (1/1/2/3/5/8) ===');
+for (const sh of [0, 1, 2]) {
+  const line = TFS.map(tf => {
+    let ws = 0, tw = 0;
+    for (let i = 0; i < 6; i++) {
+      const v = smaShift(tf, LEGS[i], sh, false);
+      if (v !== null && v > 0) { ws += v * W[i]; tw += W[i]; }
+    }
+    const v = tw > 0 ? ws / tw * PIPS : null;
+    return `${tf}=${v === null ? 'n/a' : v.toFixed(1)}`;
+  }).join(' ');
+  console.log(`shift=${sh}: ${line}`);
+}
+console.log('\n=== S12: global divisor sweep (composite/K, same K all TFs) — joint minimax ===');
+for (const fam of [['Wcomp', t => composite(t, WF)], ['Scomp', t => composite(t, SF)],
+                   ['meanW', t => LEGS.reduce((s, p) => s + WC(t, p), 0) / 6],
+                   ['meanS', t => LEGS.reduce((s, p) => s + SC(t, p), 0) / 6]]) {
+  let best = null;
+  for (let K = 50; K <= 200; K++) {
+    const k = K / 100;
+    const worst = Math.max(...TFS.map(tf => rel(fam[1](tf) / k, tf)));
+    if (!best || worst < best.worst) best = { k, worst };
+  }
+  console.log(`${fam[0]}: bestK=${best.k.toFixed(2)} worstTFerr=${(best.worst * 100).toFixed(1)}%`);
+}
+console.log('\n=== JOINT SCORECARD: TF-independent formulas, worst-TF err + in-band count ===');
+{
+  const cands = {
+    'current(Trex+ovr)': null, // filled from live dump below (not .hst)
+    'Wcomp': t => composite(t, WF),
+    'Scomp': t => composite(t, SF),
+    'meanW': t => LEGS.reduce((s, p) => s + WC(t, p), 0) / 6,
+    'meanS': t => LEGS.reduce((s, p) => s + SC(t, p), 0) / 6,
+    'SMA24-rule': t => SC(t, 24),
+    'WLD24-rule': t => WC(t, 24),
+    'SMA12-rule': t => SC(t, 12),
+  };
+  for (const name of Object.keys(cands)) {
+    if (!cands[name]) continue;
+    const errs = TFS.map(tf => rel(cands[name](tf), tf));
+    const inband = TFS.map(tf => {
+      const v = cands[name](tf);
+      return v !== null && Math.abs(v * PIPS - prof[tf]) <= 0.5 ? 1 : 0;
+    }).reduce((a, b) => a + b, 0);
+    console.log(`${name}: worst=${(Math.max(...errs) * 100).toFixed(1)}% inband=${inband}/8 ` +
+      errs.map(e => (e * 100).toFixed(1)).join(','));
+  }
+  // current engine values are LIVE (terminal), not .hst — pinned here from 13:43 dump
+  const live = { M1: 1.04, M5: 2.19, M15: 3.71, H1: 7.58, H4: 16.73, D1: 56.98, W1: 140.70, MN: 338.26 };
+  const errs = TFS.map(tf => Math.abs(live[tf] - prof[tf]) / prof[tf]);
+  const inband = TFS.map(tf => Math.abs(live[tf] - prof[tf]) <= 0.5 ? 1 : 0).reduce((a, b) => a + b, 0);
+  console.log(`current(Trex+ovr)LIVE: worst=${(Math.max(...errs) * 100).toFixed(1)}% inband=${inband}/8 ` +
+    errs.map(e => (e * 100).toFixed(1)).join(','));
+}
