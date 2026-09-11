@@ -287,6 +287,22 @@ function contains(sh, x, y) {
   if (sh.t === 'CF') return Math.hypot(x - sh.cx, y - sh.cy) <= sh.r;
   if (sh.t === 'RF') return x >= sh.x1 && x <= sh.x2 && y >= sh.y1 && y <= sh.y2;
   if (sh.t === 'RING') return Math.abs(Math.hypot(x - sh.cx, y - sh.cy) - sh.r) <= sh.w / 2;
+  // R-PANELCHIP: flattened SVG glyph geometry (tools/svgpath.js)
+  if (sh.t === 'PL') {
+    const p = sh.pts;
+    for (let i = 1; i < p.length; i++)
+      if (distSeg(x, y, p[i - 1][0], p[i - 1][1], p[i][0], p[i][1]) <= sh.w / 2) return true;
+    return false;
+  }
+  if (sh.t === 'POLY') {
+    let inside = false;
+    const p = sh.pts;
+    for (let a = 0, b = p.length - 1; a < p.length; b = a++) {
+      const xi = p[a][0], yi = p[a][1], xj = p[b][0], yj = p[b][1];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
   return false;
 }
 
@@ -481,38 +497,78 @@ function checkSkin(on) {
   });
 }
 
-// ---------------------------------------------------------------- settings-panel skins (v2)
-// TV-white settings-card language (2026-09-07 — panels match the white
-// strip/dropdowns + TV dialogs): white body, thin gray border, soft shadow,
-// NO amber hairline. Same geometry as before (PNL_W/HEAD/ROW/FOOT/MARGIN) so
-// no .mqh coordinate changes — only paint.
+// ---------------------------------------------------------------- settings-panel skins (v3)
+// Obsidian Gold — the panel_all_redesign_preview.html card language (2026-09-11).
+// The settings cards left the TV-white family: dark body, 14px corners, hairline
+// row dividers, deep drop shadow. Geometry is UNCHANGED
+// (PNL_W/HEAD/ROW/FOOT/MARGIN) so no .mqh coordinate moves — only paint.
+//   .card { width:312px; border-radius:14px;
+//           background:linear-gradient(180deg,#1E242F,#171C25 52%,#12161D);
+//           border:1px solid #2C3444;
+//           box-shadow:0 28px 62px rgba(0,0,0,.70), inset 0 1px 0 rgba(255,255,255,.075) }
+//   .row { border-top:1px solid rgba(255,255,255,.055) }
 const PNL_W = 312;          // card width (content area)
 const PNL_HEAD_H = 56;
 const PNL_ROW_H = 42;       // TV-dense single-line rows (matches BiotakPanels.mqh)
 const PNL_FOOT_H = 48;
 const PNL_MARGIN = 14;      // baked-in shadow margin around the card
+const PNL_RAD = 14;         // .card border-radius
 
-// --- pnl_card3.bmp / pnl_card4.bmp : rounded TV-white card incl. shadow,
-//     12px corners, faint header/footer hairline dividers
+const CARD_TOP = [0x1E, 0x24, 0x2F];   // #1E242F
+const CARD_MID = [0x17, 0x1C, 0x25];   // #171C25  (at 52%)
+const CARD_BOT = [0x12, 0x16, 0x1D];   // #12161D
+const CARD_BD  = [0x2C, 0x34, 0x44];   // #2C3444
+const HAIR_A   = 14;                   // rgba(255,255,255,.055) * 255
+const CARD_SHADOW = [6, 9, 14];        // near-black shadow tint
+
+// 3-stop vertical gradient, exactly the preview's stops.
+function cardGrad(t) {
+  if (t <= 0.52) {
+    const u = t / 0.52;
+    return [lerp(CARD_TOP[0], CARD_MID[0], u), lerp(CARD_TOP[1], CARD_MID[1], u), lerp(CARD_TOP[2], CARD_MID[2], u)];
+  }
+  const u = (t - 0.52) / 0.48;
+  return [lerp(CARD_MID[0], CARD_BOT[0], u), lerp(CARD_MID[1], CARD_BOT[1], u), lerp(CARD_MID[2], CARD_BOT[2], u)];
+}
+
+// --- pnl_cardN.bmp : Obsidian-Gold card incl. shadow, 14px corners and the
+//     hairline row/footer dividers the preview draws with border-top.
 function pnlCardSkin(rows) {
   const H = PNL_HEAD_H + rows * PNL_ROW_H + PNL_FOOT_H;
   const CW = PNL_W + 2 * PNL_MARGIN, CH = H + 2 * PNL_MARGIN;
+
+  // hairline y positions (card-local): header/rows + each row seam + rows/footer
+  const seams = [PNL_HEAD_H];
+  for (let k = 1; k < rows; k++) seams.push(PNL_HEAD_H + k * PNL_ROW_H);
+  seams.push(H - PNL_FOOT_H);
+
   const buf = renderFxWH(CW, CH, (x, y) => {
     const cx = x - PNL_MARGIN, cy = y - PNL_MARGIN;
     let col = [0, 0, 0, 0];
-    // drop shadow: soft band under/right of the card silhouette
-    const sd = rrSdf(x, y, PNL_MARGIN + PNL_W / 2 + 2, PNL_MARGIN + H / 2 + 4,
-                     PNL_W / 2 - 1, H / 2 - 1, 12);
-    if (sd > 0 && sd < 10) col = over(col, pm([15, 20, 30], Math.round(70 * (1 - sd / 10))));
-    const d = rrSdf(cx, cy, PNL_W / 2, H / 2, PNL_W / 2, H / 2, 12);
+
+    // drop shadow: silhouette nudged down, blurred. The baked margin is only
+    // PNL_MARGIN wide, so the blur is tightened from the CSS 62px to fit —
+    // a wider margin would move every .mqh coordinate.
+    const sd = rrSdf(x, y, PNL_MARGIN + PNL_W / 2 + 1, PNL_MARGIN + H / 2 + 5,
+                     PNL_W / 2 - 1, H / 2 - 1, PNL_RAD);
+    if (sd > 0 && sd < 13) {
+      const k = 1 - sd / 13;
+      col = over(col, pm(CARD_SHADOW, Math.round(175 * k * k)));
+    }
+
+    const d = rrSdf(cx, cy, PNL_W / 2, H / 2, PNL_W / 2, H / 2, PNL_RAD);
     if (d < 0.7) {
       if (d > -1.2) {
-        col = over(col, pm([212, 218, 228], 255));              // thin gray border — TV dialog
+        col = over(col, pm(CARD_BD, 255));                     // 1px #2C3444 border
       } else {
-        col = over(col, pm([250, 251, 253], 255));              // white body
-        if (d > -2.4 && d < -1.2) col = over(col, pm([255, 255, 255], 90));
-        if (Math.abs(cy - PNL_HEAD_H) < 0.6) col = over(col, pm([224, 229, 238], 255));
-        if (Math.abs(cy - (H - PNL_FOOT_H)) < 0.6) col = over(col, pm([224, 229, 238], 255));
+        const g = cardGrad(cy / H);
+        col = over(col, pm(g, 255));                           // obsidian body
+        // inset 0 1px 0 rgba(255,255,255,.075) — light catching the top edge
+        if (cy > -1.2 && cy < 0.2) col = over(col, pm([255, 255, 255], 19));
+        // hairline dividers
+        for (const s of seams) {
+          if (Math.abs(cy - s) < 0.6) { col = over(col, pm([255, 255, 255], HAIR_A)); break; }
+        }
       }
     }
     return col[3] > 0 ? col : null;
@@ -704,6 +760,91 @@ function cbArt(on) {
 // (pill-switch skins retired with the dark-glass panels — kind=1 rows are TV
 // checkboxes now: pnl_cb_on/off.bmp above. R-PANELS 2026-09-07.)
 
+// ---------------------------------------------------------------- panel row chips (R-PANELCHIP)
+// The 13 redesign cards put a 22px icon chip on every row (preview CSS .gl):
+//   off -> background rgba(255,255,255,.045), border rgba(255,255,255,.08),
+//          glyph var(--muted)  #8C96A6
+//   on  -> background var(--aSoft) rgba(accent,.12), border var(--aBd)
+//          rgba(accent,.38..42), glyph var(--a1) (the accent's light stop)
+// Chip and glyph are SEPARATE objects so one chip skin serves every glyph.
+const GLYPHS = require('./glyphs');
+const { parseGlyph } = require('./svgpath');
+
+const ACCENTS = {
+  gold:   { a1: [0xFF, 0xC2, 0x47], soft: [255, 171, 0],  softA: 31, bdA: 97  },
+  jade:   { a1: [0x63, 0xEC, 0xBD], soft: [18, 184, 134], softA: 31, bdA: 102 },
+  cyan:   { a1: [0x79, 0xDC, 0xFF], soft: [31, 168, 224], softA: 31, bdA: 102 },
+  violet: { a1: [0xBC, 0xA6, 0xFF], soft: [124, 92, 255], softA: 36, bdA: 107 },
+  ember:  { a1: [0xFF, 0xC0, 0x8C], soft: [255, 106, 43], softA: 33, bdA: 107 },
+  rose:   { a1: [0xFF, 0xA7, 0xB6], soft: [240, 69, 95],  softA: 33, bdA: 107 },
+};
+const ACCENT_NAMES = Object.keys(ACCENTS);
+const GLYPH_MUTED = [0x8C, 0x96, 0xA6];
+
+const CHIP_VIS = 22;                       // .gl width/height
+const CHIP_PAD = 2;                        // antialias room baked into the BMP
+const CHIP_CANVAS = CHIP_VIS + 2 * CHIP_PAD;
+const GLYPH_VIS = 13;                      // .gl svg { width:13px }
+const GLYPH_PAD = 1;
+const GLYPH_CANVAS = GLYPH_VIS + 2 * GLYPH_PAD;
+
+const _glyphCache = {};
+function glyphPrims(name) {
+  if (!_glyphCache[name]) _glyphCache[name] = parseGlyph(GLYPHS[name] || '');
+  return _glyphCache[name];
+}
+
+// Flattened glyph geometry (24-grid) -> render() shapes on a `target` grid.
+function glyphShapes(name, target, strokeW, color) {
+  const k = target / 24;
+  const out = [];
+  for (const p of glyphPrims(name)) {
+    const pts = p.pts.map(([x, y]) => [x * k, y * k]);
+    out.push(p.kind === 'fill' ? { t: 'POLY', pts, color } : { t: 'PL', pts, w: strokeW * k, color });
+  }
+  return out;
+}
+
+// 22px chip. acc = null -> the neutral (row off) chip.
+function chipSkin(acc) {
+  const S = CHIP_CANVAS;
+  const c = (S - 1) / 2;
+  const hw = (CHIP_VIS - 1) / 2;           // half-extent of the visible square
+  const rad = 7;                           // .gl border-radius
+  const rgb = acc ? acc.soft : [255, 255, 255];
+  const bgA = acc ? acc.softA : 12;        // rgba(255,255,255,.045) * 255
+  const bdA = acc ? acc.bdA : 20;          // rgba(255,255,255,.08) * 255
+
+  const sdf = (x, y) => {
+    const qx = Math.abs(x - c) - (hw - rad);
+    const qy = Math.abs(y - c) - (hw - rad);
+    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad;
+  };
+
+  const buf = renderFxWH(S, S, (x, y) => {
+    const d = sdf(x, y);
+    if (d > 0.5) return null;
+    const cov = clamp01(0.5 - d);
+    let col = pm(rgb, bgA);
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));   // 1px border hugging the edge
+    if (bw > 0) col = over(col, pm(rgb, bdA * bw));
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w: S, h: S, buf };
+}
+
+// 13px glyph, transparent background, single flat colour.
+function glyphSkin(name, color) {
+  const buf = render(GLYPH_VIS, glyphShapes(name, 32, 1.7, color), color);
+  if (GLYPH_PAD === 0) return { w: GLYPH_VIS, h: GLYPH_VIS, buf };
+  // pad with a transparent frame so the glyph never touches the bitmap edge
+  const S = GLYPH_CANVAS;
+  const out = Buffer.alloc(S * S * 4);
+  for (let y = 0; y < GLYPH_VIS; y++)
+    buf.copy(out, ((y + GLYPH_PAD) * S + GLYPH_PAD) * 4, y * GLYPH_VIS * 4, (y + 1) * GLYPH_VIS * 4);
+  return { w: S, h: S, buf: out };
+}
+
 // ---------------------------------------------------------------- BMP writer (32bpp, bottom-up)
 function writeBmp(file, w, h, topDownBgra) {
   const rowSize = w * 4;
@@ -756,16 +897,6 @@ files.push(['knob.bmp',     () => knobSkin()]);
 
 // settings-panel v2 skins (non-square capable) — تا 12 ردیف برای پنل باکس‌ها
 const panelFiles = [
-  { name: 'pnl_card3.bmp',   ...pnlCardSkin(3) },
-  { name: 'pnl_card4.bmp',   ...pnlCardSkin(4) },
-  { name: 'pnl_card5.bmp',   ...pnlCardSkin(5) },
-  { name: 'pnl_card6.bmp',   ...pnlCardSkin(6) },
-  { name: 'pnl_card7.bmp',   ...pnlCardSkin(7) },
-  { name: 'pnl_card8.bmp',   ...pnlCardSkin(8) },
-  { name: 'pnl_card9.bmp',   ...pnlCardSkin(9) },
-  { name: 'pnl_card10.bmp',  ...pnlCardSkin(10) },
-  { name: 'pnl_card11.bmp',  ...pnlCardSkin(11) },
-  { name: 'pnl_card12.bmp',  ...pnlCardSkin(12) },
   { name: 'bk_strip.bmp',    ...bkStripSkin() },
   { name: 'bk_dds.bmp',      ...bkDdSkin(216, 192) },   // STYLE menu (wide)
   { name: 'bk_ddw.bmp',      ...bkDdSkin(120, 192) },   // WIDTH menu (narrow)
@@ -777,10 +908,37 @@ const panelFiles = [
   { name: 'cell_off.bmp',    ...cellSkin(false) },
   { name: 'cell_on.bmp',     ...cellSkin(true)  },
 ];
+
+// One card skin per ROW COUNT: BiotakPanels.mqh resolves
+// "::Files\Icons\pnl_card" + cardRows + ".bmp", so the file name IS the row
+// count. Never stretch one skin across counts — the 14px corners and the 1px
+// border distort. 1..16 covers every card plus the dynamic Step / Base Box
+// section swaps; 1 and 2 were missing before, so those cards drew no skin.
+const PNL_CARD_ROWS_MAX = 16;
+for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
+  panelFiles.push({ name: 'pnl_card' + r + '.bmp', ...pnlCardSkin(r) });
+}
 for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
   panelFiles.push({ name: 'sub_panel_r' + r + '.bmp',  ...subPanelSkin(r, false) });
   panelFiles.push({ name: 'sub_panel_r' + r + 'p.bmp', ...subPanelSkin(r, true)  });
 }
+
+// R-PANELCHIP (2026-09-11): per-row icon chips for the 13 redesign cards.
+//   1 neutral chip + 6 accent chips, then 57 glyphs in muted + 6 accent inks.
+//   Chip and glyph are separate objects so one chip serves every glyph; the
+//   accent travels in the glyph ink (preview .gl.on { color: var(--a1) }).
+const chipFiles = [
+  { name: 'pnl_chip.bmp', ...chipSkin(null) },
+];
+for (const a of ACCENT_NAMES) chipFiles.push({ name: 'pnl_chip_' + a + '.bmp', ...chipSkin(ACCENTS[a]) });
+
+const glyphFiles = [];
+const glyphNames = Object.keys(GLYPHS);
+for (const g of glyphNames) {
+  glyphFiles.push({ name: 'gl_' + g + '_m.bmp', ...glyphSkin(g, GLYPH_MUTED) });
+  for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
+}
+panelFiles.push(...chipFiles, ...glyphFiles);
 
 let count = 0;
 for (const [fname, make] of files) {
