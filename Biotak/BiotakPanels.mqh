@@ -686,6 +686,27 @@
 //--- TV-modern single-line row anatomy (42px rows — R-PANELMOD 2026-09-07):
 //--- label top +14 · single-line controls band +9..+33 · slider track +27 (h7)
 #define PNL_LBL_Y      14      // row label top (all kinds; kind=6 moves it up)
+//--- TYPOGRAPHY - the preview's CSS px converted to MT4 points (px * 3/4, the
+//--- 96-DPI ratio MT4 renders OBJ_LABEL/OBJ_EDIT at). ONE table, read by both
+//--- this renderer and tools/panel-mt4-sim.py, so a caption size can never
+//--- drift again: the title sat at 12pt = 16px against the preview's 12.5px
+//--- (28% oversized) since long before the redesign, which is exactly the
+//--- "coarse next to the mock" look the preview was meant to end.
+#define PNL_PT_TITLE   9       // .ttl             12.5px
+#define PNL_PT_SUB     6       // .subttl           8.5px (7pt overruns .ver)
+#define PNL_PT_LBL     9       // .lbl             11.5px (row labels)
+#define PNL_PT_LBL_SM  8       // .lbl.sm          10.5px (colour/text row captions)
+#define PNL_PT_SEC     7       // .row.sec .sl 9.5px + .cnt 9px
+#define PNL_PT_CAP     7       // .dual .cell span  9.5px
+#define PNL_PT_VAL     8       // .val / .val.chip   11px
+#define PNL_PT_CTL     8       // .seg/.dd/.tab/.fld 10.5-11px
+#define PNL_PT_NAV     8       // .nav             10.5px
+#define PNL_PT_KEY     6       // .key              8.5px
+#define PNL_PT_VER     6       // .ver                8px
+#define PNL_PT_CSET    5       // .ccell b             7px
+#define PNL_PT_FOOT    8       // .ft .btn            11px
+#define PNL_PT_PAL     8       // .pal .ph .t         11px
+#define PNL_PT_PALSEC  7       // .pal .plabel         9px
 #define PNL_CTL_Y      9       // single-line control top (dropdown/select/nav/segments)
 #define PNL_CTL_H      24      // single-line control height
 #define PNL_TRK_Y      27      // slider track top (label+value share the line above)
@@ -2098,7 +2119,7 @@ void PalDrawMixer(const int contY)
    for(int i=0;i<3;i++)
    {
       int y=contY+2+i*26;
-      PnlSetLabel(p+"ml"+IntegerToString(i), px+PAL_PAD, y, cl[i], PNL_CLR_LABEL, 9);
+      PnlSetLabel(p+"ml"+IntegerToString(i), px+PAL_PAD, y, cl[i], PNL_CLR_LABEL, PNL_PT_PAL);
       ObjectSetInteger(0,p+"ml"+IntegerToString(i),OBJPROP_ZORDER,1601);
       PnlSetRect(p+"mtg"+IntegerToString(i), trackX, y+2, trackW, 8, PNL_CLR_TRACK_BD);
       ObjectSetInteger(0,p+"mtg"+IntegerToString(i),OBJPROP_ZORDER,1601);
@@ -2107,7 +2128,7 @@ void PalDrawMixer(const int contY)
       ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_ZORDER,1602);
        PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], PNL_CLR_TRACK_BD, true);
       ObjectSetInteger(0,p+"mknb"+IntegerToString(i),OBJPROP_ZORDER,1603);
-      PnlSetLabel(p+"mv"+IntegerToString(i), px+PalW()-PAL_PAD, y, IntegerToString(comps[i]), PNL_CLR_VALUE, 9);
+      PnlSetLabel(p+"mv"+IntegerToString(i), px+PalW()-PAL_PAD, y, IntegerToString(comps[i]), PNL_CLR_VALUE, PNL_PT_PAL);
       ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ANCHOR,ANCHOR_RIGHT);
       ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ZORDER,1601);
    }
@@ -2117,7 +2138,7 @@ void PalDrawMixer(const int contY)
    int tr = PaletteKindTransparency(g_PalKind);
    bool trOk = (tr >= 0);
    int oy = contY+2+3*26;
-   PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, 9);
+   PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, PNL_PT_PAL);
    ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,1601);
    ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
    color trFill = trOk ? PNL_CLR_ACCENT : PNL_CLR_DISABLED;
@@ -2128,7 +2149,7 @@ void PalDrawMixer(const int contY)
    ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,1602);
    PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : PNL_CLR_DIS_BD, true);
    ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,1603);
-   PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, 9);
+   PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, PNL_PT_PAL);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,1601);
 
@@ -2145,7 +2166,7 @@ void PalDrawMixer(const int contY)
    ObjectSetInteger(0,en,OBJPROP_YSIZE,18);
    ObjectSetString(0,en,OBJPROP_TEXT,PalHexText(cur));
    ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
-   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PNL_PT_CTL);
         ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
         ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
         ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
@@ -2169,12 +2190,12 @@ void PalDraw()
 
    // header (names the LIVE target — the picked color goes there,
    // which may differ from the row that opened the popup via APPLY TO)
-   PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "PALETTE · "+PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 9);
+   PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "PALETTE · "+PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, PNL_PT_PAL);
    ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial Bold");
    ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,1601);
    PnlSetButton(p+"close", px+w-PAL_PAD-20, py+3, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
    ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
-   ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,11);
+   ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PNL_PT_PAL);
    ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,1602);
 
    // preview strip
@@ -2209,7 +2230,7 @@ void PalDraw()
       // RECENT strip (no tab switch needed) + curated compact grid.
       // Grid cells reuse the "s{r}_{c}" ids mapped into the Material
       // matrix, so PalHandleClick needs no changes.
-      PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "RECENT", PNL_CLR_LABEL, 8);
+      PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "RECENT", PNL_CLR_LABEL, PNL_PT_PALSEC);
       ObjectSetInteger(0,p+"rttl",OBJPROP_ZORDER,1601);
       int nshow=MathMin(g_PalRecentCount,PAL_RSHOW);
       for(int i=0;i<nshow;i++)
@@ -2227,7 +2248,7 @@ void PalDraw()
          ObjectSetInteger(0,p+"rempty",OBJPROP_ZORDER,1601);
       }
       int gy=contY+18+PAL_QSW+8;
-      PnlSetLabel(p+"gttl", px+PAL_PAD, gy, "ALL COLORS", PNL_CLR_LABEL, 8);
+      PnlSetLabel(p+"gttl", px+PAL_PAD, gy, "ALL COLORS", PNL_CLR_LABEL, PNL_PT_PALSEC);
       ObjectSetInteger(0,p+"gttl",OBJPROP_ZORDER,1601);
       int gy0=gy+16;
       for(int qi=0;qi<PAL_QCOLS;qi++)
@@ -3824,7 +3845,7 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_YSIZE,h);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);
    ObjectSetString(0,n,OBJPROP_FONT,"Arial Bold");
-   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,9);
+   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,PNL_PT_CTL);
    ObjectSetInteger(0,n,OBJPROP_COLOR,PNL_CLR_TITLE);
    ObjectSetInteger(0,n,OBJPROP_BGCOLOR,bg);
    ObjectSetInteger(0,n,OBJPROP_BORDER_TYPE,BORDER_FLAT);
@@ -4432,7 +4453,7 @@ void PnlPaintChip(const int item,const int row,const int x,const int y,const boo
 
 //--- the row label. x = already resolved (after the chip and optional keycap).
 void PnlPaintLabel(const int item,const int row,const int x,const int y,
-                   const string txt,const int sz=8)
+                   const string txt,const int sz=PNL_PT_LBL)
 {
    PnlSetLabel(PnlName(item,row,"L"), x, y, txt, PNL_CLR_LABEL, sz);
    ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
@@ -4445,7 +4466,7 @@ void PnlPaintKey(const int item,const int row,const int x,const int y)
    if(k == "") return;
    PnlSetBitmap(PnlName(item,row,"KEY"), x-PNL_KEYCAP_PAD, y-PNL_KEYCAP_PAD,
                 22, 22, "::Files\\Icons\\pnl_keycap.bmp", 1503);
-   PnlSetLabel(PnlName(item,row,"KEYL"), x+PNL_KEYCAP_VIS, y+4, k, PNL_CLR_LABEL, 7);
+   PnlSetLabel(PnlName(item,row,"KEYL"), x+PNL_KEYCAP_VIS, y+4, k, PNL_CLR_LABEL, PNL_PT_KEY);
    ObjectSetString(0,PnlName(item,row,"KEYL"),OBJPROP_FONT,"Arial Bold");
    ObjectSetInteger(0,PnlName(item,row,"KEYL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
 }
@@ -4673,7 +4694,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetBitmap(PnlName(item,row,"BDOT"), px+PNL_PAD_X-PNL_SECDOT_PAD, ry+18-PNL_SECDOT_PAD,
                    PNL_SECDOT_VIS+2*PNL_SECDOT_PAD, PNL_SECDOT_VIS+2*PNL_SECDOT_PAD,
                    PnlAccentRes(item,"pnl_secdot"), 1502);
-      PnlSetLabel(PnlName(item,row,"SL"), px+PNL_PAD_X+14, ry+14, label, PNL_CLR_MUTED, 7);
+      PnlSetLabel(PnlName(item,row,"SL"), px+PNL_PAD_X+14, ry+14, label, PNL_CLR_MUTED, PNL_PT_SEC);
       ObjectSetString(0,PnlName(item,row,"SL"),OBJPROP_FONT,"Arial Bold");
       // colour strip (preview .cstrip) — the NEXT row is the group's colour set
       int hx0 = px+PNL_PAD_X+14+StringLen(label)*6+10;
@@ -4695,7 +4716,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetBitmap(PnlName(item,row,"BCNT"), px+PNL_WEL-PNL_PAD_X-cw-PNL_CHIP_PAD-16, ry+11,
                    cw+2*PNL_CHIP_PAD, 20, "::Files\\Icons\\pnl_cntchip.bmp", 1502);
       string cnt = IntegerToString(PnlSecCount(item,row));
-      PnlSetLabel(PnlName(item,row,"BCNL"), px+PNL_WEL-PNL_PAD_X-8-16, ry+16, cnt, PNL_CLR_MUTED, 7);
+      PnlSetLabel(PnlName(item,row,"BCNL"), px+PNL_WEL-PNL_PAD_X-8-16, ry+16, cnt, PNL_CLR_MUTED, PNL_PT_SEC);
       ObjectSetString(0,PnlName(item,row,"BCNL"),OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,PnlName(item,row,"BCNL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
       // collapse chevron (preview .acc .cv): down = open, right = collapsed
@@ -4729,7 +4750,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          PnlSetRect(PnlName(item,row,"CS"+IntegerToString(i)),
                     cx, ry+17, PNL_CSET_W, PNL_CSET_H, cc);
          PnlSetLabel(PnlName(item,row,"CSL"+IntegerToString(i)),
-                     cx+PNL_CSET_W/2, ry+6, PnlCsetKey(cl), PNL_CLR_MUTED, 7);
+                     cx+PNL_CSET_W/2, ry+6, PnlCsetKey(cl), PNL_CLR_MUTED, PNL_PT_CSET);
          ObjectSetString(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_FONT,"Arial Bold");
          ObjectSetInteger(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_ANCHOR,ANCHOR_UPPER);
       }
@@ -4764,7 +4785,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          cx = px + PNL_WEL - PNL_PAD_X - PnlDualTotalW(item,row) + PnlDualCellX(item,row,j);
          PnlPaintSwitch(item,row,PnlName(item,row,"SW"+IntegerToString(j)), cx, ry+11, on, true);
          PnlSetLabel(PnlName(item,row,"DL"+IntegerToString(j)),
-                     cx+PNL_DUAL_SW_W+8, ry+16, txt, PNL_CLR_MUTED, 7);
+                     cx+PNL_DUAL_SW_W+8, ry+16, txt, PNL_CLR_MUTED, PNL_PT_CAP);
          ObjectSetString(0,PnlName(item,row,"DL"+IntegerToString(j)),OBJPROP_FONT,"Arial Bold");
       }
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
@@ -4810,7 +4831,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       int kk = PnlColorKind(item,row);
       PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+2,
                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), 1504);
-      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, 7);
+      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, PNL_PT_LBL_SM);
       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
       int sy = ry + 18;
       PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22, "", cc,
@@ -4845,7 +4866,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetButton(PnlName(item,row,"NAV"), nx, ry+PNL_CTL_Y-1, nw, 26, "",
                    PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
       PnlSetLabel(PnlName(item,row,"NAVL"), nx+10, ry+PNL_CTL_Y+4, sub,
-                  PNL_CLR_VALUE, 7);
+                  PNL_CLR_VALUE, PNL_PT_NAV);
       ObjectSetString(0,PnlName(item,row,"NAVL"),OBJPROP_FONT,"Arial Bold");
       bool isBack = (PnlRowIcon(item,row) == "back");
       PnlSetBitmap(PnlName(item,row,"NAVC"), nx+nw-20, ry+PNL_CTL_Y+4,
@@ -4870,7 +4891,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       ObjectSetInteger(0,en,OBJPROP_YSIZE,24);
       ObjectSetString(0,en,OBJPROP_TEXT,cur);
       ObjectSetString(0,en,OBJPROP_FONT,"Arial");
-      ObjectSetInteger(0,en,OBJPROP_FONTSIZE,9);
+      ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PNL_PT_CTL);
       ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,PNL_CLR_FIELD);
       ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_SEG_BD);
@@ -4885,7 +4906,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                             : "Type the box text — ENTER applies (empty clears)");
       PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+2,
                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), 1504);
-      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, 7);
+      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, PNL_PT_LBL_SM);
       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
       return;
    }
@@ -4916,7 +4937,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                             PnlGlyphRes(item,iarr[i], i==idx), 1504);
             PnlSetLabel(PnlName(item,row,"CT"+IntegerToString(i)),
                         tx+12+((i<nic) ? 20 : 0), ry+PNL_CTL_Y+7, arr[i],
-                        (i==idx) ? PNL_CLR_TITLE : PNL_CLR_SEG_TX, 8);
+                        (i==idx) ? PNL_CLR_TITLE : PNL_CLR_SEG_TX, PNL_PT_CTL);
             ObjectSetString(0,PnlName(item,row,"CT"+IntegerToString(i)),OBJPROP_FONT,
                             (i==idx) ? "Arial Bold" : "Arial");
             if(i==idx)
@@ -4945,7 +4966,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          PnlSetBitmap(PnlName(item,row,"DDI"), dx+7, dy+7, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
                       PnlGlyphRes(item,PnlRowIcon(item,row),true), 1503);
          PnlSetLabel(PnlName(item,row,"DDT"), dx+24, dy+8, PnlDdOptText(item,row),
-                     PNL_CLR_TITLE, 8);
+                     PNL_CLR_TITLE, PNL_PT_CTL);
          ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,"Arial Bold");
          PnlSetBitmap(PnlName(item,row,"DDC"), dx+dw-13, dy+11, 10, 10,
                       PnlAccentRes(item,"pnl_chev"), 1504);
@@ -4970,7 +4991,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                          (j==idx) ? PnlAccentA2(acc) : PNL_CLR_SEG_BD, true);
             ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_COLOR,
                              (j==idx) ? PnlAccentInk(acc) : PNL_CLR_SEG_TX);
-            ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_FONTSIZE,8);
+            ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_FONTSIZE,PNL_PT_CTL);
             sx2 += w + 4;
          }
          PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
@@ -4995,7 +5016,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                    PNL_VCHIP_W+2*PNL_VCHIP_PAD, PNL_VCHIP_H+2*PNL_VCHIP_PAD,
                    PnlAccentRes(item,"pnl_vchip"), 1502);
       PnlSetLabel(PnlName(item,row,"V"), vx+PNL_VCHIP_W-8, ry+7,
-                  PnlFormat(item,row,val), PnlAccentA1(acc), 8);
+                  PnlFormat(item,row,val), PnlAccentA1(acc), PNL_PT_VAL);
       ObjectSetString(0,PnlName(item,row,"V"),OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,PnlName(item,row,"V"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
 
@@ -5051,7 +5072,7 @@ void PnlFooterBtn(const int item,const string tag,const int bx,const int fy,
                 primary ? PnlGlyphInkRes(item,ico)
                         : PnlGlyphRes(item,ico,false), 1503);
    PnlSetLabel(nm+"lb", bx+32, fy+17, label,
-               primary ? PnlAccentInk(acc) : PNL_CLR_MUTED, 9);
+               primary ? PnlAccentInk(acc) : PNL_CLR_MUTED, PNL_PT_FOOT);
    ObjectSetString(0,nm+"lb",OBJPROP_FONT,"Arial Bold");
 }
 
@@ -5119,7 +5140,10 @@ void PnlCreate(const int item)
     // .htxt — title over subtitle, 10px right of the mark (preview .hd gap)
     int htx = px+PNL_PAD_X+PNL_MARK_VIS+10;
     string head=PnlHead(item,"head");
-    PnlSetLabel(head, htx, py+13, PnlTitleText(item), PNL_CLR_TITLE, 12);
+    // 9pt = 12px: the preview's .ttl is 12.5px, and 12pt (16px) made the title
+    // read as a headline over its own card. py+15 re-centres the 12px run in
+    // the 56px .hd (the preview centres .htxt: title 14.2..29.8, subttl below).
+    PnlSetLabel(head, htx, py+15, PnlTitleText(item), PNL_CLR_TITLE, PNL_PT_TITLE);
     ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
     // 6pt, not 7: the preview sets .subttl at 8.5px, and at 7pt (9.33px) the
     // two longest subtitles ("MID ZONES · UNIFIED LINES · STRUCTURE",
@@ -5178,14 +5202,14 @@ void PnlCreate(const int item)
                     8, 8, (sd%2==0) ? "::Files\\Icons\\pnl_subdot_amber.bmp"
                                     : "::Files\\Icons\\pnl_subdot_jade.bmp", 1502);
        PnlSetLabel(PnlHead(item,"sub"+IntegerToString(sd)), sdx+9, py+30,
-                   segs[sd], PNL_CLR_MUTED, 6);
+                   segs[sd], PNL_CLR_MUTED, PNL_PT_SUB);
        ObjectSetString(0,PnlHead(item,"sub"+IntegerToString(sd)),OBJPROP_FONT,"Arial Bold");
        sdx = segEnd;
        nDrawn++;
     }
     if(nDrawn == 0)   // not even one segment fits — the plain caption, no dot
     {
-       PnlSetLabel(PnlHead(item,"sub"), htx, py+30, PnlHeaderSub(item), PNL_CLR_MUTED, 6);
+       PnlSetLabel(PnlHead(item,"sub"), htx, py+30, PnlHeaderSub(item), PNL_CLR_MUTED, PNL_PT_SUB);
        ObjectSetString(0,PnlHead(item,"sub"),OBJPROP_FONT,"Arial Bold");
     }
 
@@ -5196,14 +5220,14 @@ void PnlCreate(const int item)
     PnlSetButton(PnlHead(item,"ver"), hx-vw, py+20, vw, 16, vtxt,
                  PnlAccentSoft(hacc), PnlAccentBd(hacc), true);
     ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_COLOR,ha1);
-    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,7);
+    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,PNL_PT_VER);
     hx -= vw+10;
     if(ck != "")
     {
        PnlSetBitmap(PnlHead(item,"keyc"), hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
                     py+19-PNL_KEYCAP_PAD, PNL_KEYCAP_VIS+2*PNL_KEYCAP_PAD,
                     PNL_KEYCAP_VIS+2*PNL_KEYCAP_PAD, "::Files\\Icons\\pnl_keycap.bmp", 1501);
-       PnlSetLabel(PnlHead(item,"keyl"), hx-PNL_CHIP_PAD-9, py+22, ck, PNL_CLR_LABEL, 7);
+       PnlSetLabel(PnlHead(item,"keyl"), hx-PNL_CHIP_PAD-9, py+22, ck, PNL_CLR_LABEL, PNL_PT_KEY);
        ObjectSetString(0,PnlHead(item,"keyl"),OBJPROP_FONT,"Arial Bold");
        ObjectSetInteger(0,PnlHead(item,"keyl"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
     }
