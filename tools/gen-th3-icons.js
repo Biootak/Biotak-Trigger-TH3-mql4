@@ -725,8 +725,9 @@ function bkDdSkin(W, H) {
   return { w: CW, h: CH, buf };
 }
 
-// --- pnl_knob.bmp : 18x18 neutral slider thumb (TV-white panels) — white
-//     body, gray ring, soft drop shadow (the old amber glow died with dark glass)
+// --- pnl_knob.bmp : 18x18 slider thumb — the preview's .knob: white face
+//     lit from 35%/28%, dark hairline rim, soft drop shadow + the faint 3px
+//     outer halo (rgba(255,255,255,.04)) that lifts it off the track
 function pnlKnobSkin() {
   const S = 18, c = 9;
   const buf = renderFxWH(S, S, (x, y) => {
@@ -734,9 +735,14 @@ function pnlKnobSkin() {
     const sh = halo(x, y, c, c + 1.2, 6.4, 2.0, 55, [15, 20, 30]);
     if (sh) col = over(col, sh);
     const d = Math.hypot(x - c, y - c);
+    if (d > 6.4 && d < 9.0) col = over(col, pm([255, 255, 255], 10));  // faint halo
     if (d <= 6.4) {
       col = over(col, pm([190, 198, 212], 255));       // gray ring
-      if (d <= 5.4) col = over(col, pm([252, 253, 255], 255));
+      if (d <= 5.6) {
+        const t = clamp01(Math.hypot(x - c * 0.7, y - c * 0.56) / 9.5);  // lit 35%/28%
+        col = over(col, pm(lerpColor([255, 255, 255], [221, 227, 236], t), 255));
+      }
+      if (d > 4.6 && d <= 5.6 && y < c - 1) col = over(col, pm([255, 255, 255], 70));  // top catchlight
     }
     return col[3] > 0 ? col : null;
   });
@@ -919,9 +925,14 @@ const INK_GLYPHS = [
 ];
 
 // Rounded box with optional vertical fill gradient, 1px border and a glow.
-// visW/visH = the CSS element size; the canvas adds PAD2 on every side.
+// visW/visH = the CSS element size; the canvas adds o.pad (default PAD2) on
+// every side. Skins WITH a glow need a pad that holds ~2 sigma of it or the
+// halo clips at the canvas edge and the control reads flat next to the
+// preview (mark sigma 3.4 -> pad 7, switch 2.6 -> pad 6, secdot 1.8 -> pad 4;
+// the MQL PNL_*_PAD twin must equal it — MT4 blits at native size).
 function uiBox(o) {
-  const W = o.w + 2 * PAD2, H = o.h + 2 * PAD2;
+  const P = (o.pad === undefined) ? PAD2 : o.pad;
+  const W = o.w + 2 * P, H = o.h + 2 * P;
   const cx = W / 2, cy = H / 2;
   const hw = (o.w - 1) / 2, hh = (o.h - 1) / 2;
   const buf = renderFxWH(W, H, (x, y) => {
@@ -951,7 +962,7 @@ function uiBox(o) {
 // --- .mark — 30px header chip: accent gradient, glow, inset top highlight
 function markSkin(name) {
   const a1 = ACCENTS[name].a1, a2 = A2[name];
-  const s = uiBox({ w: 30, h: 30, rad: 10, top: a1, bot: a2,
+  const s = uiBox({ w: 30, h: 30, rad: 10, top: a1, bot: a2, pad: 7,
                     glow: [a2, 3.4, 90] });
   // inset 0 1px 0 rgba(255,255,255,.35) — a 1px light line hugging the top edge
   const buf = s.buf;
@@ -977,16 +988,18 @@ function markSkin(name) {
 // --- .sw — 40x22 pill switch. on = accent gradient + aInk knob at x=28,
 //     off = #232A37 face + #3A4353 border + #8D97A8 knob at x=10.
 function swSkin(name, on) {
+  const P = 6;   // holds the ON glow (~2 sigma); OFF shares the canvas so the
+                 // MQL can place both states with one PNL_SW_PAD
   const s = uiBox(on
-    ? { w: 40, h: 22, rad: 11, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255,
+    ? { w: 40, h: 22, rad: 11, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255, pad: P,
         glow: [A2[name], 2.6, 70] }
-    : { w: 40, h: 22, rad: 11, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255 });
+    : { w: 40, h: 22, rad: 11, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255, pad: P });
   const buf = s.buf, W = s.w, H = s.h;
   const kc = on ? 28 : 10;
   const kcol = on ? A_INK[name] : [0x8D, 0x97, 0xA8];
   for (let x = 0; x < W; x++) {
     for (let y = 0; y < H; y++) {
-      const d = Math.hypot(x - (kc + PAD2), y - (H / 2));
+      const d = Math.hypot(x - (kc + P), y - (H / 2));
       if (d > 8.6) continue;
       const i = (y * W + x) * 4;
       const a = clamp01(8.0 - d + 0.5) * 255;
@@ -1019,9 +1032,10 @@ function railSkin(name) {
   return { w: W, h: H, buf };
 }
 
-// --- .row.sec .sl i — 6px accent square dot (radius 2) with its glow
+// --- .row.sec .sl i — 6px accent square dot (radius 2) with its glow.
+// pad 4 holds the glow; the MQL PNL_SECDOT_PAD twin must equal it.
 function secDotSkin(name) {
-  const s = uiBox({ w: 6, h: 6, rad: 2, top: ACCENTS[name].a1, bot: A2[name],
+  const s = uiBox({ w: 6, h: 6, rad: 2, top: ACCENTS[name].a1, bot: A2[name], pad: 4,
                     glow: [A2[name], 1.8, 120] });
   return s;
 }

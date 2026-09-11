@@ -785,11 +785,13 @@ color QuickPalColor(const int i)
 // R-PANELUI2 (2026-09-11) — the 13-card redesign of
 // panel_all_redesign_preview.html. The preview is the SPEC; every number
 // below is taken from its CSS, never re-derived:
-//   .gl 22px chip (+2px antialias pad baked into the BMP)   .mark 30px
-//   .sw 40x22 pill        .val.chip 46x22      .key 18x18
-//   .x 26x26              .card::before 3px    .row.sec band / .rail 2px
+//   .gl 22px chip (+2px antialias pad baked into the BMP)   .mark 30px (+7 glow pad)
+//   .sw 40x22 pill (+6 glow pad, both states)  .val.chip 46x22  .key 18x18
+//   .x 26x26              .card::before 3px    .row.sec band / .rail 2px / .secdot 6px (+4)
 // OBJ_BITMAP_LABEL always renders at NATIVE canvas size, so every bitmap
-// object is placed at (realX - PAD, realY - PAD).
+// object is placed at (realX - PAD, realY - PAD) with its own PNL_*_PAD twin
+// of the generator pad (uiBox o.pad) — a twin one px short clips the glow
+// and the control reads flat next to the preview.
 // ══════════════════════════════════════════════════════════════════════════
 
 //--- accent families — the SAME six the generator bakes (tools/gen-th3-icons.js
@@ -907,11 +909,13 @@ bool PnlCardFade(const int item)
 #define PNL_GLYPH_PAD    1
 #define PNL_GLYPH_CANVAS 15
 #define PNL_MARK_VIS     30      // .mark
-#define PNL_MARK_PAD     2
+#define PNL_MARK_PAD     7       // holds the .mark glow (~2 sigma); twin of markSkin pad
 #define PNL_MARK_Y       13      // centred in the 56px header
 #define PNL_SW_W         40      // .sw
 #define PNL_SW_H         22
-#define PNL_SW_PAD       2
+#define PNL_SW_PAD       6       // holds the ON glow; OFF shares the canvas — twin of swSkin P
+#define PNL_SECDOT_VIS   6       // .row.sec .sl i
+#define PNL_SECDOT_PAD   4       // holds the dot glow — twin of secDotSkin pad
 #define PNL_SW_X         (PNL_WEL-PNL_PAD_X-PNL_SW_W)      // right-aligned
 #define PNL_SW_Y         ((PNL_ROW_H-PNL_SW_H)/2)          // 10
 #define PNL_VCHIP_W      46      // .val.chip
@@ -4531,7 +4535,8 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
    {
       PnlSetBitmap(PnlName(item,row,"BAND"), px+PNL_PAD_X, ry, 280, 42,
                    "::Files\\Icons\\pnl_secband.bmp", 1486);
-      PnlSetBitmap(PnlName(item,row,"BDOT"), px+PNL_PAD_X-2, ry+16, 10, 10,
+      PnlSetBitmap(PnlName(item,row,"BDOT"), px+PNL_PAD_X-PNL_SECDOT_PAD, ry+18-PNL_SECDOT_PAD,
+                   PNL_SECDOT_VIS+2*PNL_SECDOT_PAD, PNL_SECDOT_VIS+2*PNL_SECDOT_PAD,
                    PnlAccentRes(item,"pnl_secdot"), 1502);
       PnlSetLabel(PnlName(item,row,"SL"), px+PNL_PAD_X+14, ry+14, label, PNL_CLR_MUTED, 7);
       ObjectSetString(0,PnlName(item,row,"SL"),OBJPROP_FONT,"Arial Bold");
