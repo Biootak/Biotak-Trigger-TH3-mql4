@@ -42,6 +42,21 @@
 #resource "\\Files\\Icons\\orb_bg.bmp"
 #resource "\\Files\\Icons\\circ_off.bmp"
 #resource "\\Files\\Icons\\circ_on.bmp"
+// R-SUBLADDER (2026-09-11): Tools grid panel + its cells. cell_*.bmp is the
+// rounded-square tile (46px canvas == the 46px pitch); sub_panel_r<N>[p].bmp is
+// the panel backdrop, one per visible row count 1..4 ('p' = with pager strip).
+// One BMP per height because stretching a single rounded panel would turn its
+// 13px corners into ellipses and blur its 1px border (P-ICONS-* — never scale).
+#resource "\\Files\\Icons\\cell_off.bmp"
+#resource "\\Files\\Icons\\cell_on.bmp"
+#resource "\\Files\\Icons\\sub_panel_r1.bmp"
+#resource "\\Files\\Icons\\sub_panel_r1p.bmp"
+#resource "\\Files\\Icons\\sub_panel_r2.bmp"
+#resource "\\Files\\Icons\\sub_panel_r2p.bmp"
+#resource "\\Files\\Icons\\sub_panel_r3.bmp"
+#resource "\\Files\\Icons\\sub_panel_r3p.bmp"
+#resource "\\Files\\Icons\\sub_panel_r4.bmp"
+#resource "\\Files\\Icons\\sub_panel_r4p.bmp"
 #resource "\\Files\\Icons\\step_off.bmp"
 #resource "\\Files\\Icons\\step_on.bmp"
 #resource "\\Files\\Icons\\factor_off.bmp"
@@ -106,18 +121,73 @@
 #define RING_HTF      4
 #define RING_TOOLS    5
 
-//--- Tools half-circle (sub-menu under Tools)
+//--- Tools sub-menu (sub-menu under Tools) — SCALABLE LADDER
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
 // the Step Mode card now. Base/Knot is the momentary drawing tool (click =
 // draw, hold = Base Box style card).
+// Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); TOOL_COUNT
+// is the only number the layout reads — it picks its own geometry from it.
 #define TOOL_COUNT 3
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
 #define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
-#define TOOL_RADIUS 56   // >44 to avoid overlap with Tools button (44px diameter)
-#define TOOL_SPREAD 110.0  // 3 items → -55° / 0° / +55° around the Tools axis
-#define TOOL_GAP    6
+
+// R-SUBLADDER (2026-09-11): the sub-menu picks its geometry from TOOL_COUNT so
+// that adding a tool can never make two buttons collide. The 6 main-ring items
+// are HIDDEN while the sub-menu is open (CreateToolsMenu), so the orb is the
+// only other thing on screen — the arc maths is measured from the MENU CENTRE,
+// never from the Tools button, so the button can never push an item into a ring
+// item. Proven by tools/submenu_geometry_check.js (720 cases: 4 chart sizes x
+// 9 menu positions x counts 1..20 — no collision, no orb overlap, nothing
+// off-chart).
+//   count 1..6  -> FAN   180 deg arc, r = min(112, fit), floor = chord radius
+//   count 7..8  -> RING  full 360 deg, r = 100
+//   count 9+    -> GRID  4-column panel beside the orb; PAGES when the live
+//                        chart cannot show every cell at once
+// Near a chart edge the arc collapses to a straight TRAIN mirrored to the side
+// with the most room (the ring's own rail rule) — and if even the train cannot
+// fit, the layout ESCALATES to the grid panel. The radius is NEVER shrunk below
+// the chord radius: that was P-UI-13's failure mode (items stacked on one line).
+#define SUB_FAN_MAX      6      // <= this many tools -> 180 deg arc
+#define SUB_RING_MAX     8      // <= this many tools -> full ring
+// Grid metrics — MUST equal the SUB_* constants in tools/gen-th3-icons.js, or
+// the cell art stops lining up with the panel art. Cell canvas == pitch on
+// purpose: adjacent canvases abut with ZERO overlap, so an ON cell's glow can
+// never wash onto its neighbour (a larger canvas made the winner depend on
+// object Z-order, i.e. it flickered).
+#define SUB_CELL_VIS     40     // visible rounded square (the .tcell)
+#define SUB_CELL_GAP     6      // gap between two cells (.cells gap)
+#define SUB_CELL_MARG    3      // baked glow/shadow margin inside cell_*.bmp
+#define SUB_CELL_CANVAS  (SUB_CELL_VIS + 2 * SUB_CELL_MARG)   // 46 — the BMP side
+#define SUB_GRID_COLS    4      // fixed: 4 columns, exactly like the preview
+#define SUB_GRID_PAD     10     // panel padding around the cell block
+#define SUB_GRID_HDR     28     // header strip (accent dot + TOOLS + count)
+#define SUB_GRID_PGR     24     // pager strip (paged panels only)
+#define SUB_GRID_PITCH   (SUB_CELL_VIS + SUB_CELL_GAP)        // 46 — == canvas
+#define SUB_PANEL_MARG   12     // baked shadow margin inside sub_panel_*.bmp
+#define SUB_PAGE_ROWS    4      // MAX visible rows; a short chart drops lower
+// The page size is NOT a compile-time constant: SubPageSize() derives it from
+// the LIVE chart so paging turns on at whatever this chart can really show,
+// instead of a fixed 16 that would push rows past the bottom edge.
+#define SUB_MIN_GAP      CIRC_GAP   // one gap language (the rail pitch uses CIRC_GAP too)
+#define SUB_RING_RADIUS  100
+#define SUB_ORB_GAP      10     // px between the orb edge and the grid panel
+// TOOL_RADIUS / TOOL_SPREAD keep their names: they are the FAN's target geometry.
+#define TOOL_RADIUS 112
+#define TOOL_SPREAD 180.0
+#define TOOL_GAP    SUB_MIN_GAP
+
+// Sub-menu geometry modes. UI-local enum (no external consumer) — declared here
+// so every layout function below can use it (MQL4 is one translation unit).
+enum ENUM_SUB_MODE
+{
+   SUB_MODE_FAN = 0,    // 180 deg arc around the menu centre
+   SUB_MODE_RAIL,       // straight train near a chart edge
+   SUB_MODE_RING,       // full 360 deg ring
+   SUB_MODE_GRID,       // 4-column panel beside the orb
+   SUB_MODE_GRID_PAGED  // same panel, paged
+};
 
 //--- palette (glass-like dark buttons; skins carry the visuals, buttons are hit areas)
 #define CLR_CIRC_BG_OFF     clrNONE
@@ -279,6 +349,7 @@ bool UIShouldSuppressClick() { return (GetTickCount() < g_UIClickSuppressUntil);
 //+------------------------------------------------------------------+
 int CircItemAt(const int mx, const int my)
 {
+   if(g_ToolsOpen) return -1;   // the ring is hidden while the Tools fan is open
    for(int i = 0; i < RING_COUNT; i++)
    {
       int ix, iy;
@@ -374,6 +445,11 @@ void InitializeUIStates()
    // Runs once per init; steady state untouched.
    ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl");
    ObjectsDeleteAll(0, g_UI.btnPrefix + "Pal_");
+   // The sub-menu panel (backdrop, header, pager, dots) shares the same fate: it
+   // survives a TF switch (chart objects are NOT deleted on REASON_CHARTCHANGE)
+   // while g_ToolsOpen resets to false, leaving an orphan panel that no longer
+   // answers anything. One sweep, once per init.
+   ObjectsDeleteAll(0, g_UI.btnPrefix + "Sub");
 
    bool versionOk = false;
    if(GlobalVariableCheck(GetGVName("VER")))
@@ -938,69 +1014,339 @@ void CircLayout(const int i, int &x, int &y)
    }
 }
 
-// Tools spread radius that keeps the whole fan on-chart (same idea as
-// CircFitRadius for the ring): shrink the radius near edges instead of
-// clamping every item onto one line (which stacked the 3 tools on a single
-// maxX with ~46px spacing vs the 52px footprint).
-double ToolsFitRadius(const int ax, const int ay, const double baseDeg, const double spread,
-                      const int cw, const int ch)
+//+------------------------------------------------------------------+
+//| R-SUBLADDER — the scalable sub-menu geometry engine.             |
+//|                                                                  |
+//| Pure maths + chart metrics; all object plumbing stays in the     |
+//| create/move/delete sections below. Nothing here draws.           |
+//|                                                                  |
+//| The ONE invariant: two sub-menu buttons are never closer than    |
+//| CIRC_BTN_SIZE + SUB_MIN_GAP, and nothing ever lands on the orb.  |
+//| That is why the radius is never shrunk below SubChordRadius() —  |
+//| shrinking past it is exactly how P-UI-13 stacked a fan onto one  |
+//| line. When a geometry cannot hold the invariant at the current   |
+//| menu position, the mode ESCALATES (fan -> rail -> grid panel)    |
+//| instead of squeezing. Proven by tools/submenu_geometry_check.js. |
+//+------------------------------------------------------------------+
+
+//--- chart metrics + menu origin, shared by every mode below
+void SubChartRect(int &cw, int &ch, int &ox, int &oy)
+{
+   cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(cw <= 0) cw = 1920;
+   if(ch <= 0) ch = 1080;
+   ox = g_UI.menuX;
+   oy = g_UI.menuY;
+}
+
+// How many rows this CHART can actually show. Deliberately computed WITHOUT
+// SubIsPaged() so SubMode() can call SubPageSize() without recursing; it always
+// reserves the pager strip, so the answer is never larger than reality.
+int SubPageRowsCap()
+{
+   int cw, ch, ox, oy;
+   SubChartRect(cw, ch, ox, oy);
+   int room = ch - 2 * CIRC_PAD - SUB_GRID_HDR - SUB_GRID_PAD - SUB_GRID_PGR
+              + SUB_CELL_GAP;
+   int r = room / SUB_GRID_PITCH;
+   if(r < 1) r = 1;
+   if(r > SUB_PAGE_ROWS) r = SUB_PAGE_ROWS;
+   return r;
+}
+// Cells shown per page = columns x rows-that-fit. Both are chart-derived, so a
+// short chart pages EARLIER instead of pushing rows off the bottom edge.
+int SubPageSize() { return SUB_GRID_COLS * SubPageRowsCap(); }
+
+// Minimum radius at which `n` buttons on a sweep of `sweepDeg` still keep
+// SUB_MIN_GAP clear between neighbours. Never go below this.
+double SubChordRadius(const int n, const double sweepDeg)
+{
+   if(n < 2) return 0.0;
+   double halfStep = (sweepDeg / (n - 1)) / 2.0;
+   double s = MathSin(halfStep * M_PI / 180.0);
+   if(s < 1e-6) return 1e9;
+   return (CIRC_BTN_SIZE + SUB_MIN_GAP) / (2.0 * s);
+}
+
+// Radius that keeps every FAN button inside the padded chart rect (the same
+// ray-vs-bounds walk CircFitRadius() does for the ring). Capped at TOOL_RADIUS;
+// the caller compares the result against SubChordRadius() to decide whether the
+// fan is usable at all at this position.
+double SubFanFitRadius(const int ox, const int oy, const int cw, const int ch)
 {
    double r = TOOL_RADIUS;
    double reach = CIRC_PAD + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
-   double step = (TOOL_COUNT > 1) ? spread / (TOOL_COUNT - 1) : 0;
-   double start = baseDeg - spread / 2.0;
+   double step = (TOOL_COUNT > 1) ? TOOL_SPREAD / (TOOL_COUNT - 1) : 0.0;
+   double start = 210.0 - TOOL_SPREAD / 2.0;      // 210 deg = the Tools axis
    for(int k = 0; k < TOOL_COUNT; k++)
    {
       double deg = (start + k * step) * M_PI / 180.0;
       double c = MathCos(deg);
       double s = MathSin(deg);
       double lim = 1e18;
-      if(c > 1e-6)       lim = MathMin(lim, (cw - reach - ax) / c);
-      else if(c < -1e-6) lim = MathMin(lim, (ax - reach) / (-c));
-      if(s > 1e-6)       lim = MathMin(lim, (ch - reach - ay) / s);
-      else if(s < -1e-6) lim = MathMin(lim, (ay - reach) / (-s));
+      if(c > 1e-6)       lim = MathMin(lim, (cw - reach - ox) / c);
+      else if(c < -1e-6) lim = MathMin(lim, (ox - reach) / (-c));
+      if(s > 1e-6)       lim = MathMin(lim, (ch - reach - oy) / s);
+      else if(s < -1e-6) lim = MathMin(lim, (oy - reach) / (-s));
       if(lim < 1e17) r = MathMin(r, lim);
    }
-   if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
    if(r > TOOL_RADIUS) r = TOOL_RADIUS;
    return r;
 }
 
-void ToolsLayout(const int toolIdx, int &x, int &y)
+// The ring's OWN rail rule (CircLayout): the train runs along the axis of the
+// near edge and points at the side with more room. Returns false when no edge is
+// near — the caller then uses the arc/ring. `fits` tells whether the train
+// actually has room; when it does not the caller escalates to the grid panel.
+// NOTE: the old Tools rail MIRRORED ring item 1's direction, which pointed the
+// train off-chart at a corner (top-left/bottom-right) — this picks the free axis
+// instead, so the train is correct on all four edges and all four corners.
+bool SubRailAxis(const int n, const int ox, const int oy, const int cw, const int ch,
+                 int &ux, int &uy, bool &fits)
 {
-   int ax, ay;
-   CircLayout(RING_TOOLS, ax, ay);   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(cw <= 0) cw = 1920;
-   if(ch <= 0) ch = 1080;
-   bool nearLeft   = (g_UI.menuX <= CIRC_EDGE_TRIGGER);
-   bool nearRight  = (g_UI.menuX >= cw - CIRC_EDGE_TRIGGER);
-   bool nearTop    = (g_UI.menuY <= CIRC_EDGE_TRIGGER);
-   bool nearBottom = (g_UI.menuY >= ch - CIRC_EDGE_TRIGGER);
-   bool isRail = (nearLeft || nearRight || nearTop || nearBottom);
-   double baseDeg;
-   if(isRail)
+   ux = 0; uy = 0; fits = false;
+   bool nearLeft   = (ox <= CIRC_EDGE_TRIGGER);
+   bool nearRight  = (ox >= cw - CIRC_EDGE_TRIGGER);
+   bool nearTop    = (oy <= CIRC_EDGE_TRIGGER);
+   bool nearBottom = (oy >= ch - CIRC_EDGE_TRIGGER);
+   if(!(nearLeft || nearRight || nearTop || nearBottom)) return false;
+
+   int pitch    = CIRC_BTN_SIZE + CIRC_GAP;
+   int trainLen = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP
+                  + (n - 1) * pitch + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
+   if(nearLeft || nearRight)
    {
-      if(nearLeft)       baseDeg = 0.0;    // east
-      else if(nearRight) baseDeg = 180.0;  // west
-      else if(nearTop)   baseDeg = 90.0;   // south
-      else               baseDeg = 270.0;  // north
+      int upRoom   = oy - CIRC_PAD - CIRC_BTN_SIZE / 2;
+      int downRoom = ch - CIRC_PAD - oy - CIRC_BTN_SIZE / 2;
+      int dir = (upRoom >= downRoom) ? -1 : 1;
+      if(dir == -1 && upRoom < trainLen && downRoom >= trainLen) dir = 1;
+      else if(dir == 1 && downRoom < trainLen && upRoom >= trainLen) dir = -1;
+      uy = dir;
+      fits = ((dir == -1) ? upRoom : downRoom) >= trainLen;
+      return true;
+   }
+   int leftRoom  = ox - CIRC_PAD - CIRC_BTN_SIZE / 2;
+   int rightRoom = cw - CIRC_PAD - ox - CIRC_BTN_SIZE / 2;
+   int dir = (leftRoom >= rightRoom) ? -1 : 1;
+   if(dir == -1 && leftRoom < trainLen && rightRoom >= trainLen) dir = 1;
+   else if(dir == 1 && rightRoom < trainLen && leftRoom >= trainLen) dir = -1;
+   ux = dir;
+   fits = ((dir == -1) ? leftRoom : rightRoom) >= trainLen;
+   return true;
+}
+
+// A full ring needs SUB_RING_RADIUS + half a button + the glow margin clear on
+// all four sides, otherwise items leave the chart and the clamp destroys the
+// spread (P-UI-13). Not fitting is fine — the caller escalates to the grid.
+bool SubRingFits(const int ox, const int oy, const int cw, const int ch)
+{
+   int need = SUB_RING_RADIUS + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
+   return (ox - need >= CIRC_PAD) && (ox + need <= cw - CIRC_PAD) &&
+          (oy - need >= CIRC_PAD) && (oy + need <= ch - CIRC_PAD);
+}
+
+//--- active mode + paging state. The mode is cached against a cheap fingerprint
+//    (count, chart, menu origin) because ToolsLayout() runs per item on several
+//    paths. While the orb is being dragged the mode is FROZEN: switching geometry
+//    mid-drag would rebuild objects under the hand (and flicker) — the release
+//    path re-evaluates instead.
+static int s_SubMode    = -1;   // ENUM_SUB_MODE, -1 = not computed yet
+static int s_SubModeKey = 0;
+static int g_ToolsPage  = 0;    // paged grid only (0-based)
+
+void SubInvalidateLayout()
+{
+   s_SubMode    = -1;
+   s_SubModeKey = 0;
+}
+
+int SubMode()
+{
+   if(g_OrbDragging && s_SubMode >= 0) return s_SubMode;   // frozen mid-drag
+
+   int cw, ch, ox, oy;
+   SubChartRect(cw, ch, ox, oy);
+   int key = TOOL_COUNT * 1000003 + cw * 1009 + ch * 101 + ox * 7 + oy;
+   if(s_SubMode >= 0 && key == s_SubModeKey) return s_SubMode;
+
+   int mode = SUB_MODE_GRID;                    // the grid is the universal fallback
+   int ux = 0, uy = 0;
+   bool railFits = false;
+   if(TOOL_COUNT <= SUB_FAN_MAX)
+   {
+      if(SubRailAxis(TOOL_COUNT, ox, oy, cw, ch, ux, uy, railFits))
+         mode = railFits ? SUB_MODE_RAIL : SUB_MODE_GRID;
+      else if(SubFanFitRadius(ox, oy, cw, ch) >= SubChordRadius(TOOL_COUNT, TOOL_SPREAD))
+         mode = SUB_MODE_FAN;
+      else
+         mode = SUB_MODE_GRID;                 // the arc cannot hold the invariant
+   }
+   else if(TOOL_COUNT <= SUB_RING_MAX)
+      mode = SubRingFits(ox, oy, cw, ch) ? SUB_MODE_RING : SUB_MODE_GRID;
+   else
+      mode = (TOOL_COUNT > SubPageSize()) ? SUB_MODE_GRID_PAGED : SUB_MODE_GRID;
+
+   s_SubMode    = mode;
+   s_SubModeKey = key;
+   return mode;
+}
+
+bool SubIsPanelMode()
+{
+   int m = SubMode();
+   return (m == SUB_MODE_GRID || m == SUB_MODE_GRID_PAGED);
+}
+bool SubIsPaged() { return (SubMode() == SUB_MODE_GRID_PAGED); }
+
+int SubPageCount()
+{
+   if(!SubIsPaged()) return 1;
+   int ps = SubPageSize();
+   return (TOOL_COUNT + ps - 1) / ps;
+}
+// Only the items on the current page are real; the rest park off-screen.
+bool SubItemOnPage(const int i)
+{
+   if(!SubIsPaged()) return true;
+   return ((i / SubPageSize()) == g_ToolsPage);
+}
+int SubVisibleRows()
+{
+   int n;
+   if(!SubIsPaged())
+      n = TOOL_COUNT;
+   else
+      n = TOOL_COUNT - g_ToolsPage * SubPageSize();
+   int rows = (n + SUB_GRID_COLS - 1) / SUB_GRID_COLS;
+   int cap  = SubPageRowsCap();
+   if(rows < 1)   return 1;
+   if(rows > cap) return cap;
+   return rows;
+}
+// Panel WIDTH is fixed (4 columns) so exactly one BMP covers it; the HEIGHT
+// varies with the row count, which is why sub_panel_r<N>[p].bmp exists per row.
+int SubPanelWidth()  { return SUB_GRID_COLS * SUB_CELL_VIS + (SUB_GRID_COLS - 1) * SUB_CELL_GAP + 2 * SUB_GRID_PAD; }
+int SubPanelHeight()
+{
+   int rows = SubVisibleRows();
+   return SUB_GRID_HDR + rows * SUB_CELL_VIS + (rows - 1) * SUB_CELL_GAP
+          + SUB_GRID_PAD + (SubIsPaged() ? SUB_GRID_PGR : 0);
+}
+
+// Panel rect: beside the orb on whichever side has room, then clamped on-chart.
+// The orb gap guarantees the panel can never cover the orb, so no z-order fight.
+// The clamp is a FLOOR (never a spread): the panel's left/top edge always stays
+// on-chart even when the chart is narrower than the panel, so a shrunken chart
+// clips the far edge instead of pushing the panel off-screen (same degradation
+// the settings cards accept — PnlClampOpenPanel).
+void SubPanelRect(int &px, int &py, int &pw, int &ph)
+{
+   int cw, ch, ox, oy;
+   SubChartRect(cw, ch, ox, oy);
+   pw = SubPanelWidth();
+   ph = SubPanelHeight();
+
+   int gap = CIRC_ORB_SIZE / 2 + SUB_ORB_GAP;
+   int minX = CIRC_PAD, maxX = cw - CIRC_PAD - pw;
+   int minY = CIRC_PAD, maxY = ch - CIRC_PAD - ph;
+   if(maxX < minX) maxX = minX;
+   if(maxY < minY) maxY = minY;
+
+   int leftX  = ox - gap - pw;
+   int rightX = ox + gap;
+   int belowY = oy + gap;
+   int aboveY = oy - gap - ph;
+
+   bool okLeft  = (leftX  >= minX && leftX  <= maxX);
+   bool okRight = (rightX >= minX && rightX <= maxX);
+   bool okBelow = (belowY >= minY && belowY <= maxY);
+   bool okAbove = (aboveY >= minY && aboveY <= maxY);
+
+   // Prefer the LEFT side (the Tools axis points up-left, so the panel lands in
+   // the sub-menu's own direction); fall back to the side with room, then to a
+   // band above/below the orb, and only then to a clamped placement.
+   px = rightX;
+   py = oy - ph / 2;
+   if(okLeft)             px = leftX;
+   else if(okRight)       px = rightX;
+   else if(okBelow)     { px = ox - pw / 2; py = belowY; }
+   else if(okAbove)     { px = ox - pw / 2; py = aboveY; }
+   else if(leftX > rightX) px = leftX;
+
+   if(px < minX) px = minX;
+   if(px > maxX) px = maxX;
+   if(py < minY) py = minY;
+   if(py > maxY) py = maxY;
+}
+
+// Centre of sub-item `i` in the active mode. Items on a page that is not shown
+// park at CIRC_HIDE_POS so the hit-test and the tooltip can never answer for them.
+void SubPlaceItem(const int i, int &x, int &y)
+{
+   int cw, ch, ox, oy;
+   SubChartRect(cw, ch, ox, oy);
+   int mode = SubMode();
+
+   if(mode == SUB_MODE_GRID || mode == SUB_MODE_GRID_PAGED)
+   {
+      if(!SubItemOnPage(i)) { x = CIRC_HIDE_POS; y = CIRC_HIDE_POS; return; }
+      int px, py, pw, ph;
+      SubPanelRect(px, py, pw, ph);
+      int k = SubIsPaged() ? (i % SubPageSize()) : i;
+      x = px + SUB_GRID_PAD + (k % SUB_GRID_COLS) * SUB_GRID_PITCH + SUB_CELL_VIS / 2;
+      y = py + SUB_GRID_HDR + (k / SUB_GRID_COLS) * SUB_GRID_PITCH + SUB_CELL_VIS / 2;
+      return;
+   }
+
+   if(mode == SUB_MODE_RAIL)
+   {
+      int ux = 0, uy = 0;
+      bool fits = false;
+      SubRailAxis(TOOL_COUNT, ox, oy, cw, ch, ux, uy, fits);
+      int dist = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP
+                 + i * (CIRC_BTN_SIZE + CIRC_GAP);
+      x = ox + ux * dist;
+      y = oy + uy * dist;
+      return;
+   }
+
+   double r, startDeg, stepDeg;
+   if(mode == SUB_MODE_RING)
+   {
+      r = SUB_RING_RADIUS;
+      startDeg = -90.0;
+      stepDeg  = 360.0 / TOOL_COUNT;
    }
    else
    {
-      baseDeg = -90.0 + 360.0 * RING_TOOLS / RING_COUNT;
+      r = MathMin(TOOL_RADIUS, SubFanFitRadius(ox, oy, cw, ch));
+      double floorR = SubChordRadius(TOOL_COUNT, TOOL_SPREAD);
+      if(r < floorR) r = floorR;               // never below the collision floor
+      startDeg = 210.0 - TOOL_SPREAD / 2.0;
+      stepDeg  = (TOOL_COUNT > 1) ? TOOL_SPREAD / (TOOL_COUNT - 1) : 0.0;
    }
-   double spread = TOOL_SPREAD;
-   double step = (TOOL_COUNT > 1) ? spread / (TOOL_COUNT - 1) : 0;
-   double start = baseDeg - spread / 2.0;
-   double deg = (start + toolIdx * step) * M_PI / 180.0;
-   double tr = ToolsFitRadius(ax, ay, baseDeg, spread, cw, ch);   // shrink the fan, don't stack it
-   x = ax + (int)MathRound(tr * MathCos(deg));
-   y = ay + (int)MathRound(tr * MathSin(deg));
-   int minX = CIRC_PAD + CIRC_BTN_SIZE/2 + CIRC_BG_MARGIN;
-   int maxX = cw - CIRC_PAD - CIRC_BTN_SIZE/2 - CIRC_BG_MARGIN;
-   int minY = CIRC_PAD + CIRC_BTN_SIZE/2 + CIRC_BG_MARGIN;
-   int maxY = ch - CIRC_PAD - CIRC_BTN_SIZE/2 - CIRC_BG_MARGIN;
+   double deg = (startDeg + i * stepDeg) * M_PI / 180.0;
+   x = ox + (int)MathRound(r * MathCos(deg));
+   y = oy + (int)MathRound(r * MathSin(deg));
+}
+
+void ToolsLayout(const int toolIdx, int &x, int &y)
+{
+   SubPlaceItem(toolIdx, x, y);
+   if(x <= CIRC_HIDE_POS / 2) return;    // parked off-page — leave it parked
+
+   // Last-resort safety clamp only. The fit maths above already keeps every button
+   // inside the padded rect; never rely on this clamp to spread items (P-UI-13).
+   // The margin follows the ACTIVE SKIN (the grid tile is 6px narrower than the
+   // disc), so the clamp is exactly as tight as the art really is.
+   int cw, ch, ox, oy;
+   SubChartRect(cw, ch, ox, oy);
+   int half = SubBgSize() / 2;
+   int minX = CIRC_PAD + half;
+   int maxX = cw - CIRC_PAD - half;
+   int minY = CIRC_PAD + half;
+   int maxY = ch - CIRC_PAD - half;
    if(x < minX) x = minX;
    if(x > maxX) x = maxX;
    if(y < minY) y = minY;
@@ -1010,14 +1356,18 @@ void ToolsLayout(const int toolIdx, int &x, int &y)
 int ToolsItemAt(const int mx, const int my)
 {
    if(!g_ToolsOpen || !g_UI.menuVisible) return -1;
+   // Hit tile == the item's own canvas: 52px in the fan/ring (the disc skin),
+   // 46px in the grid (== SUB_GRID_PITCH, so adjacent tiles ABUT exactly — no
+   // dead strip between cells and no overlap that would make a click ambiguous).
+   int hitHalf = SubIsPanelMode() ? SUB_GRID_PITCH / 2
+                                  : CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
    for(int i = 0; i < TOOL_COUNT; i++)
    {
+      if(!SubItemOnPage(i)) continue;    // parked items must never answer a click
       int ix, iy;
-      ToolsLayout(i, ix, iy);
-      int bx = ix - CIRC_BTN_SIZE/2;
-      int by = iy - CIRC_BTN_SIZE/2;
-      if(mx >= bx - CIRC_BG_MARGIN && mx <= bx + CIRC_BTN_SIZE + CIRC_BG_MARGIN &&
-         my >= by - CIRC_BG_MARGIN && my <= by + CIRC_BTN_SIZE + CIRC_BG_MARGIN)
+      SubPlaceItem(i, ix, iy);
+      if(mx >= ix - hitHalf && mx <= ix + hitHalf &&
+         my >= iy - hitHalf && my <= iy + hitHalf)
          return i;
    }
    return -1;
@@ -1027,6 +1377,339 @@ string ToolsBg(const int i)   { return g_UI.btnPrefix + "ToolsBg" + IntegerToStr
 string ToolsIcon(const int i) { return g_UI.btnPrefix + "ToolsIcon" + IntegerToString(i); }
 string ToolsBadgeBg(const int i) { return g_UI.btnPrefix + "ToolsBadge" + IntegerToString(i); }
 string ToolsBadgeTxt(const int i) { return g_UI.btnPrefix + "ToolsBadgeTxt" + IntegerToString(i); }
+
+//--- sub-item SKIN. The sub-menu speaks two visual languages: the fan/rail/ring
+//    reuse the ring's circular glass disc (circ_*.bmp, 52px canvas = 44px disc +
+//    4px glow), while the grid panel uses the rounded-square tile (cell_*.bmp,
+//    46px canvas = 40px tile + 3px glow). A grid of discs reads as scattered
+//    debris; a grid of tiles reads as one control block. Size AND margin must
+//    follow the skin, or the icon drifts off-centre and the hit tile mis-sizes.
+int SubBgSize()
+{
+   return SubIsPanelMode() ? SUB_CELL_CANVAS : CIRC_BG_SIZE;
+}
+string SubBgRes(const bool on)
+{
+   if(SubIsPanelMode()) return on ? "::Files\\Icons\\cell_on.bmp" : "::Files\\Icons\\cell_off.bmp";
+   return on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
+}
+// The panel backdrop BMP for the CURRENT row count + paging state. One BMP per
+// height because scaling a rounded panel would distort its corners/border.
+string SubPanelRes()
+{
+   int rows = SubVisibleRows();
+   return "::Files\\Icons\\sub_panel_r" + IntegerToString(rows)
+          + (SubIsPaged() ? "p" : "") + ".bmp";
+}
+
+// Park an item's objects off-screen. Needed because ToolsLayout() refuses to
+// clamp a parked item (the clamp would drag it back onto the chart), so a cell
+// that WAS on the previous page must be moved here explicitly — otherwise it
+// keeps sitting at its old coordinates after a page flip.
+void SubParkItem(const int i)
+{
+   if(ObjectFind(0, ToolsBg(i)) >= 0)
+   {
+      ObjectSetInteger(0, ToolsBg(i), OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+      ObjectSetInteger(0, ToolsBg(i), OBJPROP_YDISTANCE, CIRC_HIDE_POS);
+   }
+   if(ObjectFind(0, ToolsIcon(i)) >= 0)
+   {
+      ObjectSetInteger(0, ToolsIcon(i), OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+      ObjectSetInteger(0, ToolsIcon(i), OBJPROP_YDISTANCE, CIRC_HIDE_POS);
+   }
+   ToolsShowBadge(i, false);
+}
+
+//+------------------------------------------------------------------+
+//| Sub-menu panel chrome (grid modes only).                          |
+//|                                                                  |
+//| WHY A PANEL AT ALL: a bare grid of tiles floating over candles  |
+//| reads as debris — the eye cannot tell the button block from the  |
+//| chart. The backdrop is what makes it read as one control.        |
+//|                                                                  |
+//| The backdrop is a BMP (sub_panel_r<N>[p].bmp) so it keeps the     |
+//| rounded corners, the 1px border, the inset top highlight and the  |
+//| drop shadow of panel_all_redesign_preview.html's .tgrid — none of |
+//| which an OBJ_RECTANGLE_LABEL can express. One BMP per visible row |
+//| count because STRETCHING a rounded panel turns its 13px corners   |
+//| into ellipses and blurs its border (never scale a skin).          |
+//|                                                                  |
+//| Every colour lives in a SUB_CLR_* define so one edit restyles the |
+//| whole panel (P-UI-09); the BMP is generated from the same palette |
+//| in tools/gen-th3-icons.js.                                        |
+//| Z-ORDER: backdrop 1004 < accent dot 1005 < cells (ToolsBg 1010 /  |
+//| ToolsIcon 1011) < header 1012 < pager 1014 < orb 2000 < panels    |
+//| 1500+ < hover tip 1700+. The orb is never covered because         |
+//| SubPanelRect() keeps SUB_ORB_GAP clear of it.                     |
+//+------------------------------------------------------------------+
+#define SUB_CLR_HDR       C'140,150,166'   // #8C96A6 header text
+#define SUB_CLR_ACCENT    C'255,194,71'    // #FFC247 gold
+#define SUB_CLR_DOT_OFF   C'58,66,82'      // inactive page dot
+// The pager chevrons are OBJ_BUTTONs (the only reliably clickable object) but
+// must read as PLAIN TEXT on the panel: bg == the panel body at that height and
+// border == bg, so no button chrome is visible (the preview has bare chevrons).
+#define SUB_CLR_BTN_BG    C'21,26,35'
+#define SUB_CLR_BTN_BD    C'21,26,35'
+#define SUB_PAGER_DOTS_MAX 6               // beyond this the pager shows n/N text
+#define SUB_DOT_SIZE      5
+#define SUB_DOT_GAP       7
+
+string SubPanelBg()   { return g_UI.btnPrefix + "SubPanelBg"; }
+string SubPanelDot()  { return g_UI.btnPrefix + "SubPanelDot"; }
+string SubPanelHdr()  { return g_UI.btnPrefix + "SubPanelHdr"; }
+string SubPanelCnt()  { return g_UI.btnPrefix + "SubPanelCnt"; }
+string SubPagerPrev() { return g_UI.btnPrefix + "SubPagerPrev"; }
+string SubPagerNext() { return g_UI.btnPrefix + "SubPagerNext"; }
+string SubPagerTxt()  { return g_UI.btnPrefix + "SubPagerTxt"; }
+string SubPagerDot(const int k) { return g_UI.btnPrefix + "SubPagerDot" + IntegerToString(k); }
+
+void SubChromeDelete()
+{
+   ObjectDelete(0, SubPanelBg());
+   ObjectDelete(0, SubPanelDot());
+   ObjectDelete(0, SubPanelHdr());
+   ObjectDelete(0, SubPanelCnt());
+   ObjectDelete(0, SubPagerPrev());
+   ObjectDelete(0, SubPagerNext());
+   ObjectDelete(0, SubPagerTxt());
+   for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++)
+      ObjectDelete(0, SubPagerDot(k));
+}
+
+// The panel backdrop: one bitmap label, offset by the BMP's baked shadow margin
+// so the BODY (not the shadow canvas) lands on the panel rect.
+void SubSetPanel(const int px, const int py, const int pw, const int ph)
+{
+   string name = SubPanelBg();
+   if(ObjectFind(0, name) < 0)
+      if(!ObjectCreate(0, name, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
+   string res = SubPanelRes();
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, px - SUB_PANEL_MARG);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, py - SUB_PANEL_MARG);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, pw + 2 * SUB_PANEL_MARG);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, ph + 2 * SUB_PANEL_MARG);
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 0, res);
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 1, res);
+   ObjectSetInteger(0, name, OBJPROP_STATE, false);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1004);
+}
+
+
+// One flat rectangle label. Change-guarded: re-setting a property forces a
+// repaint, so only write what actually differs (P-PERF-01).
+void SubSetRect(const string name, const int x, const int y, const int w, const int h,
+                const color bg, const bool bordered, const color border, const int z)
+{
+   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, bordered ? BORDER_FLAT : BORDER_FLAT);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, bordered ? border : bg);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, z);
+}
+
+void SubSetLabel(const string name, const int x, const int y, const string txt,
+                 const color clr, const int size, const int z)
+{
+   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, z);
+}
+
+// Single source of truth for the pager strip geometry: SubChromeCreate DRAWs it,
+// SubChromeMove translates it and SubPagerAt hit-tests it, so the three can
+// never drift apart (a drifting hit-box is a click that does nothing).
+void SubPagerGeom(const int px, const int py, const int pw, const int ph,
+                  int &by, int &bh, int &bw, int &prevX, int &nextX)
+{
+   bh = 16;
+   bw = 22;
+   by    = py + ph - SUB_GRID_PGR + (SUB_GRID_PGR - bh) / 2;
+   prevX = px + SUB_GRID_PAD;
+   nextX = px + pw - SUB_GRID_PAD - bw;
+}
+
+// ASCII text only: "<" / ">" are inside Windows-1252 so they are safe as font
+// text; a chevron glyph (U+2039/U+25BC) renders as "?" in MT4/Wine Arial (P-UI-06).
+void SubSetPagerBtn(const string name, const int x, const int y, const int w, const int h,
+                    const string txt, const bool enabled)
+{
+   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_BUTTON, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
+   ObjectSetString(0, name, OBJPROP_TEXT, txt);
+   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, enabled ? SUB_CLR_ACCENT : SUB_CLR_DOT_OFF);
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, SUB_CLR_BTN_BG);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, SUB_CLR_BTN_BD);
+   ObjectSetInteger(0, name, OBJPROP_STATE, false);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1014);
+}
+
+void SubChromeCreate()
+{
+   if(!SubIsPanelMode()) { SubChromeDelete(); SubNoteBuilt(); return; }
+
+   int px, py, pw, ph;
+   SubPanelRect(px, py, pw, ph);
+
+   SubSetPanel(px, py, pw, ph);
+   SubSetRect(SubPanelDot(), px + SUB_GRID_PAD, py + 11, 5, 5,
+              SUB_CLR_ACCENT, false, SUB_CLR_ACCENT, 1005);
+   SubSetLabel(SubPanelHdr(), px + SUB_GRID_PAD + 11, py + 8, "TOOLS", SUB_CLR_HDR, 8, 1012);
+
+   // right-hand readout: total when the whole grid is visible, "page/total" when paged
+   int pages = SubPageCount();
+   string cnt = SubIsPaged()
+                ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
+                : IntegerToString(TOOL_COUNT);
+   SubSetLabel(SubPanelCnt(), px + pw - SUB_GRID_PAD - 5 * StringLen(cnt), py + 8,
+               cnt, SUB_CLR_ACCENT, 8, 1012);
+
+   if(!SubIsPaged())
+   {
+      ObjectDelete(0, SubPagerPrev());
+      ObjectDelete(0, SubPagerNext());
+      ObjectDelete(0, SubPagerTxt());
+      for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++) ObjectDelete(0, SubPagerDot(k));
+      return;
+   }
+
+   int by, bh, bw, prevX, nextX;
+   SubPagerGeom(px, py, pw, ph, by, bh, bw, prevX, nextX);
+   SubSetPagerBtn(SubPagerPrev(), prevX, by, bw, bh, "<", g_ToolsPage > 0);
+   SubSetPagerBtn(SubPagerNext(), nextX, by, bw, bh, ">", g_ToolsPage < pages - 1);
+
+   // Page indicator: one dot per page (gold = current) while they fit, otherwise
+   // the "n/N" text — so the strip can never overflow however many tools arrive.
+   if(pages <= SUB_PAGER_DOTS_MAX)
+   {
+      ObjectDelete(0, SubPagerTxt());
+      int total = pages * SUB_DOT_SIZE + (pages - 1) * SUB_DOT_GAP;
+      int x0 = px + (pw - total) / 2;
+      int dy = py + ph - SUB_GRID_PGR + (SUB_GRID_PGR - SUB_DOT_SIZE) / 2;
+      for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++)
+      {
+         if(k >= pages) { ObjectDelete(0, SubPagerDot(k)); continue; }
+         bool on = (k == g_ToolsPage);
+         color dc = on ? SUB_CLR_ACCENT : SUB_CLR_DOT_OFF;
+         SubSetRect(SubPagerDot(k), x0 + k * (SUB_DOT_SIZE + SUB_DOT_GAP), dy,
+                    SUB_DOT_SIZE, SUB_DOT_SIZE, dc, false, dc, 1014);
+      }
+   }
+   else
+   {
+      for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++) ObjectDelete(0, SubPagerDot(k));
+      string pt = IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages);
+      SubSetLabel(SubPagerTxt(), px + (pw - 5 * StringLen(pt)) / 2,
+                  py + ph - SUB_GRID_PGR + 8, pt, SUB_CLR_HDR, 8, 1012);
+   }
+   SubNoteBuilt();   // remember the shape this chrome was built for (SubRelayoutIfNeeded)
+}
+
+// Drag path: TRANSLATE the chrome without re-setting every property. A full
+// SubChromeCreate per drag frame would re-decode the panel bitmap every 30ms
+// (P-PERF-01). Safe because the mode is frozen while the orb is dragged, so the
+// visible row count — and therefore the panel BMP — cannot change mid-drag.
+void SubChromeMove()
+{
+   if(!SubIsPanelMode()) return;
+   if(ObjectFind(0, SubPanelBg()) < 0) { SubChromeCreate(); return; }   // not built yet
+
+   int px, py, pw, ph;
+   SubPanelRect(px, py, pw, ph);
+
+   ObjectSetInteger(0, SubPanelBg(), OBJPROP_XDISTANCE, px - SUB_PANEL_MARG);
+   ObjectSetInteger(0, SubPanelBg(), OBJPROP_YDISTANCE, py - SUB_PANEL_MARG);
+   ObjectSetInteger(0, SubPanelDot(), OBJPROP_XDISTANCE, px + SUB_GRID_PAD);
+   ObjectSetInteger(0, SubPanelDot(), OBJPROP_YDISTANCE, py + 11);
+   ObjectSetInteger(0, SubPanelHdr(), OBJPROP_XDISTANCE, px + SUB_GRID_PAD + 11);
+   ObjectSetInteger(0, SubPanelHdr(), OBJPROP_YDISTANCE, py + 8);
+
+   int pages = SubPageCount();
+   if(ObjectFind(0, SubPanelCnt()) >= 0)
+   {
+      string cnt = SubIsPaged()
+                   ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
+                   : IntegerToString(TOOL_COUNT);
+      ObjectSetInteger(0, SubPanelCnt(), OBJPROP_XDISTANCE,
+                       px + pw - SUB_GRID_PAD - 5 * StringLen(cnt));
+      ObjectSetInteger(0, SubPanelCnt(), OBJPROP_YDISTANCE, py + 8);
+   }
+   if(!SubIsPaged()) return;
+
+   int by, bh, bw, prevX, nextX;
+   SubPagerGeom(px, py, pw, ph, by, bh, bw, prevX, nextX);
+   if(ObjectFind(0, SubPagerPrev()) >= 0)
+   {
+      ObjectSetInteger(0, SubPagerPrev(), OBJPROP_XDISTANCE, prevX);
+      ObjectSetInteger(0, SubPagerPrev(), OBJPROP_YDISTANCE, by);
+   }
+   if(ObjectFind(0, SubPagerNext()) >= 0)
+   {
+      ObjectSetInteger(0, SubPagerNext(), OBJPROP_XDISTANCE, nextX);
+      ObjectSetInteger(0, SubPagerNext(), OBJPROP_YDISTANCE, by);
+   }
+   if(pages <= SUB_PAGER_DOTS_MAX)
+   {
+      int total = pages * SUB_DOT_SIZE + (pages - 1) * SUB_DOT_GAP;
+      int x0 = px + (pw - total) / 2;
+      int dy = py + ph - SUB_GRID_PGR + (SUB_GRID_PGR - SUB_DOT_SIZE) / 2;
+      for(int k = 0; k < pages; k++)
+      {
+         if(ObjectFind(0, SubPagerDot(k)) < 0) continue;
+         ObjectSetInteger(0, SubPagerDot(k), OBJPROP_XDISTANCE, x0 + k * (SUB_DOT_SIZE + SUB_DOT_GAP));
+         ObjectSetInteger(0, SubPagerDot(k), OBJPROP_YDISTANCE, dy);
+      }
+   }
+   else if(ObjectFind(0, SubPagerTxt()) >= 0)
+   {
+      string pt = IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages);
+      ObjectSetInteger(0, SubPagerTxt(), OBJPROP_XDISTANCE, px + (pw - 5 * StringLen(pt)) / 2);
+      ObjectSetInteger(0, SubPagerTxt(), OBJPROP_YDISTANCE, py + ph - SUB_GRID_PGR + 8);
+   }
+}
+
+// The pager chevrons are real OBJ_BUTTONs, so the click router reaches them
+// through CHARTEVENT_OBJECT_CLICK by name — no pixel hit-test is needed here.
+// SubPagerGeom() is still the single source of their geometry (SubChromeCreate
+// draws them, SubChromeMove translates them), so the two can never drift apart.
+
+
 
 // Badge anchor for a Tools item: pushed outward from the menu center
 void ToolsBadgePos(const int i, int &x, int &y)
@@ -1230,19 +1913,23 @@ void ToolsCreateItem(const int toolIdx)
 {
    int x, y;
    ToolsLayout(toolIdx, x, y);
-   int bx = x - CIRC_BTN_SIZE/2;
-   int by = y - CIRC_BTN_SIZE/2;
    int feat = ToolFeature(toolIdx);
    bool on = CircFeatureOn(feat);
-   
+
+   // Skin follows the MODE: circular glass disc in the fan/rail/ring, rounded
+   // tile in the grid panel. Size and margin move together with it (see SubBgSize).
+   int bgSize = SubBgSize();
+   int bx = x - bgSize / 2;
+   int by = y - bgSize / 2;
+
    string bg = ToolsBg(toolIdx);
    if(ObjectFind(0, bg) < 0) if(!ObjectCreate(0, bg, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
-   string bgRes = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
+   string bgRes = SubBgRes(on);
    ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, bx - CIRC_BG_MARGIN);
-   ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, by - CIRC_BG_MARGIN);
-   ObjectSetInteger(0, bg, OBJPROP_XSIZE, CIRC_BG_SIZE);
-   ObjectSetInteger(0, bg, OBJPROP_YSIZE, CIRC_BG_SIZE);
+   ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, bx);
+   ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, by);
+   ObjectSetInteger(0, bg, OBJPROP_XSIZE, bgSize);
+   ObjectSetInteger(0, bg, OBJPROP_YSIZE, bgSize);
    ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, bgRes);
    ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, bgRes);
    ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircItemTooltip(feat));
@@ -1251,14 +1938,12 @@ void ToolsCreateItem(const int toolIdx)
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
    ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1010);
-   
+
    string icon = ToolsIcon(toolIdx);
    if(ObjectFind(0, icon) >= 0)
       ObjectDelete(0, icon);
    if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
-   CircConfigureIcon(icon, feat, on,
-      bx + CIRC_BTN_SIZE / 2,
-      by + CIRC_BTN_SIZE / 2);
+   CircConfigureIcon(icon, feat, on, x, y);
 
    // Settings badge (click → open the item's panel). Created only when the
    // feature has a panel; hidden (off-screen) when the feature is off.
@@ -1337,13 +2022,27 @@ void CreateMenu()
 void CreateToolsMenu()
 {
    if(!g_UI.menuVisible) return;
+   if(TOOL_COUNT <= 0) return;                  // nothing to show — stay closed
    g_ToolsOpen = true;
+   g_ToolsPage = 0;                             // always open on the first page
+   SubInvalidateLayout();                       // fresh geometry for this open
+   // SUB-MENU: hide EVERY main-ring item first (the orb stays). With nothing else
+   // on screen the chosen geometry provably cannot overlap anything — any
+   // position, any edge. The fan (r=112) and the full ring (r=100) genuinely
+   // cannot coexist with the main ring at r=64: 44px buttons + their glow overlap.
+   for(int i = 0; i < RING_COUNT; i++)
+   {
+      ObjectDelete(0, CircIcon(i));
+      ObjectDelete(0, CircBg(i));
+   }
+   SubChromeCreate();                           // panel backdrop + header + pager
    for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
-   CircUpdateItemState(RING_TOOLS);
    ChartRedraw();
 }
 
-void DeleteToolsMenu()
+// restoreRing=false when the whole menu is being torn down: DeleteMenu() has already
+// wiped the ring, and recreating it here would leak objects onto the chart.
+void DeleteToolsMenu(const bool restoreRing = true)
 {
    for(int t = 0; t < TOOL_COUNT; t++)
    {
@@ -1352,9 +2051,71 @@ void DeleteToolsMenu()
       ObjectDelete(0, ToolsBadgeBg(t));
       ObjectDelete(0, ToolsBadgeTxt(t));
    }
+   SubChromeDelete();                           // panel + header + pager + dots
    g_ToolsOpen = false;
-   CircUpdateItemState(RING_TOOLS);
+   g_ToolsPage = 0;                             // next open starts on page 1 again
+   SubInvalidateLayout();
+   if(restoreRing && g_UI.menuVisible)             // bring the ring back
+      for(int i = 0; i < RING_COUNT; i++) CircCreateItem(i);
    ChartRedraw();
+}
+
+// Re-place every cell + refresh the pager for the CURRENT page (a page flip).
+// Cheap: TOOL_COUNT object moves and no bitmap re-decode — the panel BMP depends
+// on the row count, and a flip never changes that.
+void SubApplyPage()
+{
+   if(!g_ToolsOpen) return;
+   for(int t = 0; t < TOOL_COUNT; t++) ToolsMoveItem(t);
+   SubChromeCreate();
+}
+
+// Rebuild the sub-menu objects IN PLACE after the geometry shape changed (chart
+// resized / TF switched / the orb was dragged out of a chart corner). Keeps the
+// user where they were: no page reset, no ring restore, no close.
+void SubRebuild()
+{
+   if(!g_ToolsOpen) return;
+   SubChromeDelete();
+   for(int t = 0; t < TOOL_COUNT; t++)
+   {
+      ObjectDelete(0, ToolsBg(t));
+      ObjectDelete(0, ToolsIcon(t));
+      ObjectDelete(0, ToolsBadgeBg(t));
+      ObjectDelete(0, ToolsBadgeTxt(t));
+   }
+   // A shorter chart pages MORE, so the current page may no longer exist.
+   int pages = SubPageCount();
+   if(g_ToolsPage > pages - 1) g_ToolsPage = pages - 1;
+   if(g_ToolsPage < 0)          g_ToolsPage = 0;
+   SubChromeCreate();
+   for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
+   ChartRedraw();
+}
+
+// Shape fingerprint of what is currently BUILT on the chart. Comparing against
+// this (rather than against a before/after snapshot) is what makes the drag
+// release correct: while dragging, SubMode() returns the FROZEN value, so a
+// snapshot taken at release time would already show the new mode and skip the
+// rebuild the release actually needs.
+static int  s_SubBuiltMode  = -1;
+static int  s_SubBuiltRows  = 0;
+static bool s_SubBuiltPaged = false;
+
+void SubNoteBuilt()
+{
+   s_SubBuiltMode  = SubMode();
+   s_SubBuiltRows  = SubVisibleRows();
+   s_SubBuiltPaged = SubIsPaged();
+}
+
+void SubRelayoutIfNeeded()
+{
+   if(!g_ToolsOpen || !g_UI.menuVisible) return;
+   if(s_SubBuiltMode == SubMode() && s_SubBuiltRows == SubVisibleRows()
+      && s_SubBuiltPaged == SubIsPaged())
+      return;                                   // same shape — the move already ran
+   SubRebuild();
 }
 
 void DeleteMenu()
@@ -1366,7 +2127,7 @@ void DeleteMenu()
       ObjectDelete(0, CircBadgeBg(i));
       ObjectDelete(0, CircBadgeTxt(i));
    }
-   DeleteToolsMenu();
+   DeleteToolsMenu(false);   // ring already wiped above — do not recreate it
    ObjectDelete(0, CircOrbBg());
    ObjectDelete(0, CircOrbIcon());
    s_CircTipFeat = -2;   // tooltip objects share the prefix pattern below
@@ -1420,14 +2181,18 @@ void CircMoveBadge(const int i)
 
 void ToolsMoveItem(const int t)
 {
+   // Off-page items are parked EXPLICITLY: ToolsLayout() refuses to clamp a
+   // parked item (the clamp would drag it back on-chart), so without this a cell
+   // from the previous page keeps sitting at its old coordinates after a flip.
+   if(!SubItemOnPage(t)) { SubParkItem(t); return; }
+
    int x, y;
    ToolsLayout(t, x, y);
-   int bx = x - CIRC_BTN_SIZE/2;
-   int by = y - CIRC_BTN_SIZE/2;
+   int bgSize = SubBgSize();
    if(ObjectFind(0, ToolsBg(t)) >= 0)
    {
-      ObjectSetInteger(0, ToolsBg(t), OBJPROP_XDISTANCE, bx - CIRC_BG_MARGIN);
-      ObjectSetInteger(0, ToolsBg(t), OBJPROP_YDISTANCE, by - CIRC_BG_MARGIN);
+      ObjectSetInteger(0, ToolsBg(t), OBJPROP_XDISTANCE, x - bgSize / 2);
+      ObjectSetInteger(0, ToolsBg(t), OBJPROP_YDISTANCE, y - bgSize / 2);
    }
    if(ObjectFind(0, ToolsIcon(t)) >= 0)
    {
@@ -1455,7 +2220,10 @@ void CircApplyMenuPosition()
       for(int i = 0; i < RING_COUNT; i++)
          CircMoveItem(i);
       if(g_ToolsOpen)
+      {
+         SubChromeMove();   // panel + header + pager translate with the orb
          for(int t = 0; t < TOOL_COUNT; t++) ToolsMoveItem(t);
+      }
    }
 }
 
@@ -1473,6 +2241,10 @@ void UpdateCircularMenuPosition()
    if(g_UI.menuY > ch - CIRC_PAD - CIRC_ORB_SIZE / 2) g_UI.menuY = ch - CIRC_PAD - CIRC_ORB_SIZE / 2;
 
    CircApplyMenuPosition();
+   // A resize / TF switch can change the sub-menu's SHAPE (the arc may no longer
+   // fit, or fewer rows may fit and the panel must page). Rebuild only when the
+   // shape actually changed — a plain move already ran above.
+   SubRelayoutIfNeeded();
    SaveUIStates();
 }
 
@@ -1597,6 +2369,11 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       if(g_OrbWasDragged) UISuppressNextClick();
       CircUnlockChart();
       if(g_OrbWasDragged) SaveUIStates();
+      // The mode was FROZEN for the whole drag (rebuilding geometry under the
+      // hand would flicker). The release is where it is allowed to change, so
+      // re-derive it now: dragging out of a corner may turn the arc into a
+      // train, or a train into the grid panel.
+      SubRelayoutIfNeeded();
       return;
    }
 
@@ -1677,6 +2454,8 @@ void CircUpdateItemState(const int i)
 
 void ToolsUpdateItemState(const int t)
 {
+   if(!SubItemOnPage(t)) { SubParkItem(t); return; }   // page not shown -> park
+
    int feat = ToolFeature(t);
    bool on = CircFeatureOn(feat);
    string icon = ToolsIcon(t);
@@ -1689,7 +2468,7 @@ void ToolsUpdateItemState(const int t)
    string bg = ToolsBg(t);
    if(ObjectFind(0, bg) >= 0)
    {
-      string res = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
+      string res = SubBgRes(on);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, res);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, res);
       ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircItemTooltip(feat));   // bg ring keeps a live tooltip too
@@ -1861,8 +2640,41 @@ int HandleButtonClick(const string clickedObject)
          g_OrbWasDragged = false;
          return REFRESH_NONE;
       }
+      // Hierarchy: orb -> ring -> sub-menu. While the sub-menu is open the ring is
+      // hidden (the fan/ring geometry cannot coexist with it), so the orb is the
+      // only way BACK — it closes the sub-menu instead of hiding the whole menu.
+      // Without this the sub-menu could only be dismissed by hiding the terminal
+      // menu entirely, and the TOOLS button it was opened from no longer exists.
+      if(g_ToolsOpen) { DeleteToolsMenu(); return REFRESH_NONE; }
       ToggleMenuVisibility();
       return REFRESH_NONE;
+   }
+
+   // --- Tools sub-menu panel: pager first, then dead space ---
+   if(g_ToolsOpen)
+   {
+      if(clickedObject == SubPagerPrev() || clickedObject == SubPagerNext())
+      {
+         // MT4 LATCHES an OBJ_BUTTON after a click (STATE stays true → the
+         // chevron looks stuck down). Clear it on every pager click.
+         ObjectSetInteger(0, clickedObject, OBJPROP_STATE, false);
+         int pages = SubPageCount();
+         int np = g_ToolsPage + ((clickedObject == SubPagerNext()) ? 1 : -1);
+         if(np >= 0 && np < pages)
+         {
+            g_ToolsPage = np;
+            SubApplyPage();   // park the old page's cells, show the new ones
+         }
+         ChartRedraw();
+         return REFRESH_NONE;
+      }
+      // Header, accent dot, count and page dots are decoration, not controls —
+      // swallow the click so it never falls through to the chart.
+      if(clickedObject == SubPanelBg() || clickedObject == SubPanelDot() ||
+         clickedObject == SubPanelHdr() || clickedObject == SubPanelCnt() ||
+         clickedObject == SubPagerTxt() ||
+         StringFind(clickedObject, g_UI.btnPrefix + "SubPagerDot") == 0)
+         return REFRESH_NONE;
    }
 
    // --- Tools half-circle items ---

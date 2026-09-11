@@ -520,7 +520,98 @@ function pnlCardSkin(rows) {
   return { w: CW, h: CH, buf };
 }
 
-// --- bk_strip.bmp : 380x58 WHITE rounded strip card (baked shadow margin) —
+// ---------------------------------------------------------------- sub-menu skins (R-SUBLADDER)
+// The Tools grid panel + its cells — Obsidian Gold, mirroring
+// panel_all_redesign_preview.html (.tgrid / .tcell / .pgbar) 1:1.
+// These live in the RING-MENU family (dark glass), NOT the TV-white settings
+// cards: the sub-menu hangs off the ring, so it must read as ring chrome.
+// Geometry mirrors BiotakMenu.mqh SUB_* defines exactly — if one side moves,
+// the other must move with it or the objects stop lining up with the art.
+const SUB_CELL_VIS  = 40;    // visible rounded square (the .tcell)
+const SUB_CELL_GAP  = 6;     // .cells gap
+// The canvas is EXACTLY the pitch (40+6): adjacent canvases abut with zero
+// overlap, so an ON cell's glow can never wash onto its neighbour — with a
+// larger canvas the winner depended on object Z-order, i.e. it flickered.
+const SUB_CELL_MARG  = 3;    // baked margin around a cell (glow + shadow room)
+const SUB_GRID_COLS = 4;
+const SUB_GRID_ROWS_MAX = 4; // panel BMPs are generated for 1..4 visible rows
+const SUB_GRID_PAD  = 10;    // panel padding around the cell block
+const SUB_GRID_HDR  = 28;    // header strip (dot + TOOLS + count)
+const SUB_GRID_PGR  = 24;    // pager strip (paged panels only)
+const SUB_PANEL_MARG = 12;   // baked shadow margin around the panel
+const SUB_PANEL_W = SUB_GRID_COLS * SUB_CELL_VIS + (SUB_GRID_COLS - 1) * SUB_CELL_GAP
+                    + 2 * SUB_GRID_PAD;
+
+// --- cell_off.bmp / cell_on.bmp : 48x48 (40px tile + 4px glow margin)
+// Rounded-square glass tile: radial sheen at 34%/28%, off = slate, on = amber
+// tint + amber border + outer glow (the .tcell.on). The ring's circular
+// circ_*.bmp is deliberately NOT reused: a grid of discs reads as scattered
+// debris, a grid of tiles reads as one control block.
+function cellSkin(on) {
+  const S = SUB_CELL_VIS + 2 * SUB_CELL_MARG, V = SUB_CELL_VIS, r = 10;
+  const buf = renderFxWH(S, S, (x, y) => {
+    const cx = x - SUB_CELL_MARG, cy = y - SUB_CELL_MARG;
+    let col = [0, 0, 0, 0];
+    const sd = rrSdf(x, y, SUB_CELL_MARG + V / 2 + 1, SUB_CELL_MARG + V / 2 + 1.6,
+                     V / 2 - 1, V / 2 - 1, r);
+    if (sd > 0 && sd < 3.2) col = over(col, pm([0, 0, 0], Math.round(120 * (1 - sd / 3.2))));
+    if (on) {   // outer amber glow (box-shadow 0 0 14px), clipped to the canvas
+      const g = rrSdf(x, y, SUB_CELL_MARG + V / 2, SUB_CELL_MARG + V / 2, V / 2 + 0.8, V / 2 + 0.8, r + 0.8);
+      if (g < 0 && g > -2.6) col = over(col, pm(CYAN, Math.round(120 * (1 + g / 2.6))));
+    }
+    const d = rrSdf(cx, cy, V / 2, V / 2, V / 2, V / 2, r);
+    if (d < 0.6) {
+      if (d > -1.0) {                                        // 1px border
+        col = over(col, pm(on ? CYAN : [255, 255, 255], on ? 140 : 26));
+      } else {
+        // radial-gradient(circle at 34% 28%, top, bottom) over a 40px tile.
+        // The base tile is IDENTICAL for on/off — .on only adds the amber
+        // overlay + border + glow, exactly like the preview's .tcell.on.
+        const t = clamp01(Math.hypot(cx - V * 0.34, cy - V * 0.28) / (V * 0.98));
+        col = over(col, pm(lerpColor([42, 50, 66], [22, 27, 36], t), 250));
+        if (on) col = over(col, pm(CYAN, Math.round(255 * lerp(0.30, 0.12, t))));
+        if (d > -2.2 && d < -1.0 && cy < 3) col = over(col, pm([255, 255, 255], 26));  // top sheen
+      }
+    }
+    return col[3] > 0 ? col : null;
+  });
+  return { w: S, h: S, buf };
+}
+
+// --- sub_panel_r<N>[p].bmp : the grid panel backdrop.
+// ONE BMP PER VISIBLE ROW COUNT (1..4, +24px when paged) because the height
+// varies: stretching a single rounded panel would turn its 13px corners into
+// ellipses and blur its 1px border — the "blur by scaling" trap. Width is
+// fixed (4 columns), so only the height multiplies.
+function subPanelSkin(rows, paged) {
+  const H = SUB_GRID_HDR + rows * SUB_CELL_VIS + (rows - 1) * SUB_CELL_GAP
+            + SUB_GRID_PAD + (paged ? SUB_GRID_PGR : 0);
+  const M = SUB_PANEL_MARG, W = SUB_PANEL_W, CW = W + 2 * M, CH = H + 2 * M;
+  const buf = renderFxWH(CW, CH, (x, y) => {
+    const cx = x - M, cy = y - M;
+    let col = [0, 0, 0, 0];
+    // baked drop shadow (box-shadow 0 22px 48px rgba(0,0,0,.72))
+    const sd = rrSdf(x, y, M + W / 2 + 1, M + H / 2 + 5, W / 2 - 2, H / 2 - 2, 13);
+    if (sd > 0 && sd < 15) col = over(col, pm([5, 8, 14], Math.round(165 * (1 - sd / 15))));
+    const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, 13);
+    if (d < 0.6) {
+      if (d > -1.1) {
+        col = over(col, pm([44, 52, 68], 255));              // #2C3444 border
+      } else {
+        // linear-gradient(180deg,#1E242F,#141922)
+        col = over(col, pm(lerpColor([30, 36, 47], [20, 25, 34], clamp01(cy / H)), 249));
+        if (cy < 1.6) col = over(col, pm([255, 255, 255], 20));   // inset 0 1px 0 highlight
+        // faint divider above the pager strip so the strip reads as its own band
+        if (paged && Math.abs(cy - (H - SUB_GRID_PGR)) < 0.6)
+          col = over(col, pm([255, 255, 255], 22));
+      }
+    }
+    return col[3] > 0 ? col : null;
+  });
+  return { w: CW, h: CH, buf };
+}
+
+
 //     the backdrop of the Base Box MINI floating toolbar, matching
 //     TradingView's floating drawing toolbar (white body, thin gray border,
 //     soft drop shadow, dark outlined icons). TV-parity 2026-09-07: 8 slots
@@ -681,7 +772,15 @@ const panelFiles = [
   { name: 'pnl_knob.bmp',    ...pnlKnobSkin() },
   { name: 'pnl_cb_on.bmp',   w: 20, h: 20, buf: render(20, cbArt(true), CB_NAVY) },
   { name: 'pnl_cb_off.bmp',  w: 20, h: 20, buf: render(20, cbArt(false), [255, 255, 255]) },
+  // R-SUBLADDER (2026-09-11): Tools sub-menu grid — cells + one panel per
+  // visible row count (1..4), plus a paged variant (+SUB_GRID_PGR) per row count.
+  { name: 'cell_off.bmp',    ...cellSkin(false) },
+  { name: 'cell_on.bmp',     ...cellSkin(true)  },
 ];
+for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
+  panelFiles.push({ name: 'sub_panel_r' + r + '.bmp',  ...subPanelSkin(r, false) });
+  panelFiles.push({ name: 'sub_panel_r' + r + 'p.bmp', ...subPanelSkin(r, true)  });
+}
 
 let count = 0;
 for (const [fname, make] of files) {

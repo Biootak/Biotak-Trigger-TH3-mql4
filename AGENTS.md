@@ -557,6 +557,48 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   popover first (`UISuppressNextClick`), outside press closes AND falls
   through; Esc closes popover before panel.
 
+- **R-SUBLADDER — the Tools sub-menu picks its geometry from the tool COUNT,
+  and NEVER shrinks a radius** (2026-09-11, user order: "more items will be
+  added to this sub-menu; redesign it so adding them can't break it — it does
+  not have to be a circle, use the best layout"). `TOOL_COUNT` is the only
+  number the layout reads; it derives its own mode, so adding a tool can never
+  make two buttons collide:
+  `1..6 → FAN` (180° arc, r=min(112, fit), floor = chord radius) ·
+  `7..8 → RING` (full 360°, r=100) · `9+ → GRID` (4-column panel beside the orb)
+  · `count > SubPageSize() → GRID/paged`.
+  Near a chart edge the arc collapses to a straight **RAIL** on the free axis
+  with the most room (`SubRailAxis` — the old code mirrored ring item 1's
+  direction and pointed the train off-chart at corners), and if the rail cannot
+  fit either the layout **ESCALATES to the grid panel**. The radius is NEVER
+  shrunk below `SubChordRadius()`: shrinking it is exactly P-UI-13's failure
+  mode (items stacked on one line). `ToolsFitRadius` is deleted.
+  The 6 main-ring items are HIDDEN while the sub-menu is open (the fan at
+  r=112 and the full ring at r=100 genuinely cannot coexist with the ring at
+  r=64 once 44px buttons + glow are counted) — which makes the ORB the only way
+  back, so the orb now CLOSES the sub-menu instead of hiding the whole menu
+  (orb → ring → sub-menu). Sub-menu geometry is measured from the MENU CENTRE,
+  never from the Tools button, so the button can never push an item into a ring
+  item. Page size is CHART-DERIVED (`SubPageRowsCap`), so a short chart pages
+  EARLIER instead of pushing a row past the bottom edge.
+  Two skins, one owner each: fan/rail/ring reuse the ring's circular glass disc
+  (`circ_*.bmp`, 52px canvas), the grid uses the rounded-square tile
+  (`cell_*.bmp`, 46px canvas). The cell canvas is DELIBERATELY equal to
+  `SUB_GRID_PITCH` (46) so adjacent canvases abut with zero overlap — a larger
+  canvas let an ON cell's glow wash onto its neighbour and the winner depended
+  on object Z-order, i.e. it flickered. The panel backdrop is one BMP per
+  visible row count (`sub_panel_r<N>[p].bmp`) because STRETCHING a rounded panel
+  turns its 13px corners into ellipses and blurs its 1px border.
+  `SUB_*` in `BiotakMenu.mqh`, the `SUB_*` consts in `tools/gen-th3-icons.js`
+  and `tools/submenu_geometry_check.js` are ONE contract — change all three
+  together or the cells stop lining up with the panel art. The proof is
+  `node tools/submenu_geometry_check.js` (1440 cases: 8 chart sizes × 9 menu
+  positions × counts 1..20 — no collision, no orb overlap, nothing off-chart).
+  Envelope: a side placement needs `pw+ORB+gap+2*PAD` = 292px of width (a
+  below/above band needs the same idea of height); below that the panel tucks
+  UNDER the orb (orb Z 2000 > panel 1004 > cells 1010), which stays on top and
+  clickable. Below ~300px in BOTH axes the chart is under the indicator's own
+  envelope anyway (the ring needs ~192px, the cards 312px and clamp too).
+
 - **Base/Knot is fully automatic — no Buy/Sell button, ever**
   (2026-09-06 — direction is decided at commit by
   `BaseKnotResolveDirection()` in `Biotak/BaseKnotTool.mqh`, then FOLLOWS the
