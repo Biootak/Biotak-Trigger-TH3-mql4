@@ -180,11 +180,13 @@ const ART = {
 //   bk_chev         : small down-chevron (STYLE/WIDTH ▾ selectors — a text
 //                     "▼" label renders as "?" in MT4/Wine fonts, so the
 //                     chevron is a bitmap like every other strip glyph)
-//   bk_dds          : WIDE white rounded dropdown popover (STYLE menu — fits
+//   bk_dds          : WIDE obsidian dropdown popover (STYLE menu — fits
 //                     "Dash-Dot-Dot" with headroom, content 216x192)
-//   bk_ddw          : NARROW white rounded dropdown popover (WIDTH menu —
+//   bk_ddw          : NARROW obsidian dropdown popover (WIDTH menu —
 //                     short "Npx" rows only, content 120x192)
-const BK_DARK = [38, 44, 56];        // near-black icon color for the white strip
+// Obsidian 2026-09-11 — the strip left the white TV family with the cards:
+// light icon ink on the dark glass (was near-black on white).
+const BK_DARK = [203, 212, 226];        // light icon ink for the obsidian strip
 const BK_AMBER = [255, 171, 0];      // locked padlock body / selected accents
 const BK_STYLES = [
   // Solid — strong full line
@@ -678,24 +680,23 @@ function subPanelSkin(rows, paged) {
 }
 
 
-//     the backdrop of the Base Box MINI floating toolbar, matching
-//     TradingView's floating drawing toolbar (white body, thin gray border,
-//     soft drop shadow, dark outlined icons). TV-parity 2026-09-07: 8 slots
-//     [pencil|bucket|T|width|style|lock|trash|more] need 380px.
-//     R-BKSTRIP 2026-09-07.
+//     the backdrop of the Base Box MINI floating toolbar — obsidian glass
+//     (dark body #1E242F->#141922, #2C3444 border, deep drop shadow, light
+//     outlined icons). Geometry untouched (380px, 8 slots); only paint left
+//     the white TV family with the cards. R-BKSTRIP 2026-09-07.
 function bkStripSkin() {
   const W = 380, H = 58, M = 14, CW = W + 2 * M, CH = H + 2 * M;
   const buf = renderFxWH(CW, CH, (x, y) => {
     const cx = x - M, cy = y - M;
     let col = [0, 0, 0, 0];
     const sd = rrSdf(x, y, M + W / 2 + 2, M + H / 2 + 4, W / 2 - 1, H / 2 - 1, 12);
-    if (sd > 0 && sd < 10) col = over(col, pm([15, 20, 30], Math.round(70 * (1 - sd / 10))));
+    if (sd > 0 && sd < 15) col = over(col, pm([5, 8, 14], Math.round(165 * (1 - sd / 15))));
     const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, 10);
     if (d < 0.7) {
-      if (d > -1.2) col = over(col, pm([212, 218, 228], 255));           // thin gray border
+      if (d > -1.2) col = over(col, pm([44, 52, 68], 255));                // #2C3444 border
       else {
-        col = over(col, pm([250, 251, 253], 255));                       // white body
-        if (d > -2.4 && d < -1.2) col = over(col, pm([255, 255, 255], 90));
+        col = over(col, pm(lerpColor([30, 36, 47], [20, 25, 34], clamp01(cy / H)), 249));
+        if (d > -2.4 && d < -1.2) col = over(col, pm([255, 255, 255], 20));
       }
     }
     return col[3] > 0 ? col : null;
@@ -703,21 +704,21 @@ function bkStripSkin() {
   return { w: CW, h: CH, buf };
 }
 
-// --- bk_dds.bmp / bk_ddw.bmp : WHITE rounded dropdown popovers (baked
-//     shadow) — the STYLE (wide, fits "Dash-Dot-Dot") and WIDTH (narrow,
-//     short "Npx" rows) selector menus of the strip. Content-fitted pair so
-//     no label ever truncates; R-BKSTRIP.
+// --- bk_dds.bmp / bk_ddw.bmp : OBSIDIAN dropdown popovers (baked shadow) —
+//     the STYLE (wide, fits "Dash-Dot-Dot") and WIDTH (narrow, short "Npx"
+//     rows) selector menus of the strip. Content-fitted pair so no label
+//     ever truncates; R-BKSTRIP.
 function bkDdSkin(W, H) {
   const M = 8, CW = W + 2 * M, CH = H + 2 * M;
   const buf = renderFxWH(CW, CH, (x, y) => {
     const cx = x - M, cy = y - M;
     let col = [0, 0, 0, 0];
     const sd = rrSdf(x, y, M + W / 2 + 2, M + H / 2 + 3, W / 2 - 1, H / 2 - 1, 10);
-    if (sd > 0 && sd < 9) col = over(col, pm([15, 20, 30], Math.round(65 * (1 - sd / 9))));
+    if (sd > 0 && sd < 15) col = over(col, pm([5, 8, 14], Math.round(165 * (1 - sd / 15))));
     const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, 10);
     if (d < 0.7) {
-      if (d > -1.2) col = over(col, pm([214, 220, 230], 255));
-      else col = over(col, pm([252, 253, 255], 255));
+      if (d > -1.2) col = over(col, pm([44, 52, 68], 255));
+      else col = over(col, pm(lerpColor([30, 36, 47], [20, 25, 34], clamp01(cy / H)), 249));
     }
     return col[3] > 0 ? col : null;
   });
@@ -1231,8 +1232,8 @@ for (const [name, art] of Object.entries(ART)) {
   files.push([name + '_off.bmp', () => render(28, art, OFF)]);
   files.push([name + '_on.bmp',  () => render(28, art, ON)]);
 }
-// Base Box MINI floating strip (item 13) — TradingView-style icons on a
-// WHITE strip: dark outlined glyphs, amber only for the locked padlock.
+// Base Box MINI floating strip (item 13) — obsidian glass: light outlined
+// glyphs on the dark strip, amber only for the locked padlock.
 // R-BKSTRIP 2026-09-07.
 files.push(['bk_bucket.bmp',   () => render(24, BK_BUCKET,   BK_DARK)]);
 files.push(['bk_pencil.bmp',   () => render(24, BK_PENCIL,   BK_DARK)]);
