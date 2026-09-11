@@ -645,6 +645,8 @@
 #resource "\\Files\\Icons\\pnl_secdot_jade.bmp"
 #resource "\\Files\\Icons\\pnl_secdot_rose.bmp"
 #resource "\\Files\\Icons\\pnl_secdot_violet.bmp"
+#resource "\\Files\\Icons\\pnl_subdot_amber.bmp"
+#resource "\\Files\\Icons\\pnl_subdot_jade.bmp"
 #resource "\\Files\\Icons\\pnl_sw_off.bmp"
 #resource "\\Files\\Icons\\pnl_sw_on_cyan.bmp"
 #resource "\\Files\\Icons\\pnl_sw_on_ember.bmp"
@@ -4762,8 +4764,14 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       }
       else if(cnt >= 4)   // dropdown select (icon + value + chevron)
       {
-         int dw = 26 + StringLen(PnlDdOptText(item,row))*6;
-         if(dw < 64) dw = 64;
+         // Width = icon (7+15) + text (6px/char, Arial Bold 8) + 8px gap +
+         // the baked 10px chevron + 8px right pad. It used to be 26+6*len,
+         // which put the chevron 11px INSIDE the caption: every dropdown with
+         // a value longer than one character drew its arrow on top of its own
+         // text (BASIS "Control" read "Contro⌄"). The preview's .dd is
+         // content-fitted (padding 10/9, gap 8, 7px chevron ≈ 50 + textW).
+         int dw = 50 + StringLen(PnlDdOptText(item,row))*6;
+         if(dw < 72) dw = 72;
          int dx = px + PNL_WEL - PNL_PAD_X - dw;
          int dy = ry + PNL_CTL_Y - 1;
          PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, 26, "",
@@ -4947,13 +4955,83 @@ void PnlCreate(const int item)
     string head=PnlHead(item,"head");
     PnlSetLabel(head, htx, py+13, PnlTitleText(item), PNL_CLR_TITLE, 12);
     ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
-    PnlSetLabel(PnlHead(item,"sub"), htx, py+30, PnlHeaderSub(item), PNL_CLR_MUTED, 7);
-    ObjectSetString(0,PnlHead(item,"sub"),OBJPROP_FONT,"Arial Bold");
-
-    // .key + .ver — card hotkey and the accent-soft number badge, right-aligned
-    // just before the close button (preview order: key, ver, x)
-    int hx = px+PNL_WEL-PNL_PAD_X-PNL_XBTN_VIS-6;
+    // 6pt, not 7: the preview sets .subttl at 8.5px, and at 7pt (9.33px) the
+    // two longest subtitles ("MID ZONES · UNIFIED LINES · STRUCTURE",
+    // "COUNTDOWN · ATR BLOCK · TRADE PLAN") run past the .ver badge — the
+    // badge's left edge is at x=249 and those two ended at 256/257. MT4's
+    // OBJ_LABEL has no letter-spacing to claw the width back, so the size is
+    // the only lever. 6pt = 8px puts the worst case at 225.
+    //
+    // .subttl is not always ONE label. The preview renders a 4px accent dot
+    // before EVERY ' · ' segment (amber, jade, amber …), so the run is laid out
+    // segment by segment here — each caption its own OBJ_LABEL, each dot its
+    // own 8px bitmap.
+    //
+    // That costs a little width (a dot plus its two 5px gaps vs the plain
+    // ' · ' separator) and MT4 cannot measure text, so the run is FITTED
+    // against the right edge of the preview's own .htxt box before it is
+    // drawn. R-SUBFIT (2026-09-11): that edge is NOT the .ver badge. The
+    // preview's .subttl is overflow:hidden inside a flex:1 .htxt, which ends
+    // one 10px .hd gap LEFT of .key (when the card has a hotkey) or of .ver.
+    // MT4 knows both exactly, so the run stops there — the two hotkey cards
+    // (0 "T", 7 "L") clip a whole segment earlier than a keyless card, which
+    // is what the preview does too.
     string ck = PnlCardKey(item);
+    string vtxt = IntegerToString(item);
+    int vw = 10 + StringLen(vtxt)*5;
+    int hx = px+PNL_WEL-PNL_PAD_X-PNL_XBTN_VIS-6;
+    int chipL = hx-vw;                                   // left edge of .ver
+    if(ck != "")
+       chipL -= 10 + PNL_KEYCAP_VIS + 2*PNL_KEYCAP_PAD + PNL_CHIP_PAD;   // .key column
+    int subLimit = chipL - 10;                           // the .hd flex gap
+    ObjectDelete(0, PnlHead(item,"sub"));   // pre-dot single-label charts
+    string subarr[];
+    int nsub = StringSplit(PnlHeaderSub(item), 183, subarr);   // 183 = '·'
+    string segs[];
+    ArrayResize(segs, nsub);
+    int nseg = 0;
+    for(int si=0; si<nsub; si++)
+    {
+       string sg = StringTrimLeft(StringTrimRight(subarr[si]));
+       if(sg != "")
+          segs[nseg++] = sg;
+    }
+    // Greedy clip — the honest MT4 twin of the preview's overflow:hidden: walk
+    // the segments in order and stop before the first one that would cross the
+    // box. MT4 cannot clip mid-word, so each segment is drawn whole or not at
+    // all; the 5px/char estimate is the same conservative 6pt-Arial-Bold figure
+    // the tab and section rows already use, so the stop is early by a hair,
+    // never late.
+    int nDrawn = 0, sdx = htx;
+    for(int sd=0; sd<nseg; sd++)
+    {
+       int segEnd = sdx + 9 + StringLen(segs[sd])*5 + 5;   // dot+gap, caption, next gap
+       if(segEnd > subLimit)
+          break;
+       PnlSetBitmap(PnlHead(item,"subd"+IntegerToString(sd)), sdx-2, py+31,
+                    8, 8, (sd%2==0) ? "::Files\\Icons\\pnl_subdot_amber.bmp"
+                                    : "::Files\\Icons\\pnl_subdot_jade.bmp", 1502);
+       PnlSetLabel(PnlHead(item,"sub"+IntegerToString(sd)), sdx+9, py+30,
+                   segs[sd], PNL_CLR_MUTED, 6);
+       ObjectSetString(0,PnlHead(item,"sub"+IntegerToString(sd)),OBJPROP_FONT,"Arial Bold");
+       sdx = segEnd;
+       nDrawn++;
+    }
+    if(nDrawn == 0)   // not even one segment fits — the plain caption, no dot
+    {
+       PnlSetLabel(PnlHead(item,"sub"), htx, py+30, PnlHeaderSub(item), PNL_CLR_MUTED, 6);
+       ObjectSetString(0,PnlHead(item,"sub"),OBJPROP_FONT,"Arial Bold");
+    }
+
+    // .key + .ver — the card hotkey and the accent-soft number badge, sitting
+    // left of the close button in the preview's own order: .key THEN .ver
+    // (preview .hd is a flex row — mark, .htxt, .key, .ver, .x). This used to
+    // place .ver first, which read "0 T ×" instead of the preview's "T 0 ×".
+    PnlSetButton(PnlHead(item,"ver"), hx-vw, py+20, vw, 16, vtxt,
+                 PnlAccentSoft(hacc), PnlAccentBd(hacc), true);
+    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_COLOR,ha1);
+    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,7);
+    hx -= vw+10;
     if(ck != "")
     {
        PnlSetBitmap(PnlHead(item,"keyc"), hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
@@ -4962,14 +5040,7 @@ void PnlCreate(const int item)
        PnlSetLabel(PnlHead(item,"keyl"), hx-PNL_CHIP_PAD-9, py+22, ck, PNL_CLR_LABEL, 7);
        ObjectSetString(0,PnlHead(item,"keyl"),OBJPROP_FONT,"Arial Bold");
        ObjectSetInteger(0,PnlHead(item,"keyl"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
-       hx -= PNL_KEYCAP_VIS+2*PNL_KEYCAP_PAD+10;
     }
-    string vtxt = IntegerToString(item);
-    int vw = 10 + StringLen(vtxt)*5;
-    PnlSetButton(PnlHead(item,"ver"), hx-vw, py+20, vw, 16, vtxt,
-                 PnlAccentSoft(hacc), PnlAccentBd(hacc), true);
-    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_COLOR,ha1);
-    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,7);
 
     // .x — 26px ghost close. The BUTTON stays the click target (name-based
     // dispatch needs it) but is pushed UNDER the rounded skin, which is what
@@ -5072,6 +5143,11 @@ void PnlDestroy(const int item)
    ObjectDelete(0,head+"ticon");
    ObjectDelete(0,head+"head");
    ObjectDelete(0,head+"sub");
+   for(int sb=0;sb<4;sb++)   // .subttl per-segment caption + its 4px dot
+   {                         // (longest subtitle has 3 segments — SUBDOTS)
+      ObjectDelete(0,head+"sub"+IntegerToString(sb));
+      ObjectDelete(0,head+"subd"+IntegerToString(sb));
+   }
    ObjectDelete(0,head+"close");
    // R-PANELUI2 header chrome
    ObjectDelete(0,head+"topbar");   // .card::before accent top bar

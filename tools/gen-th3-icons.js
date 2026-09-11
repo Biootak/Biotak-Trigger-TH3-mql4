@@ -1025,6 +1025,15 @@ function secDotSkin(name) {
   return s;
 }
 
+// --- .subttl i — the 4px round dot the preview puts before EVERY subtitle
+//     segment, alternating amber/jade (odd children get .j). Two fixed
+//     colours, no accent ramp: the preview hard-codes #FFAB00 / #12B886 here,
+//     unlike every other row which rides the card accent. The 4px dot sits
+//     centred in an 8px canvas (PAD2=2), so the MQL places it at dot-2.
+function subDotSkin(col) {
+  return uiBox({ w: 4, h: 4, rad: 2, flat: col, flatA: 255 });
+}
+
 // --- .row.sec .cnt — neutral count pill (white .05 face, white .09 border)
 function cntChipSkin() {
   return uiBox({ w: 24, h: 16, rad: 5, flat: [255, 255, 255], flatA: 13,
@@ -1169,7 +1178,13 @@ function chevSkin(name) {
 //     The MQL side puts an OBJ_BUTTON *under* this skin purely as a click
 //     target, so the corners outside the radius must be transparent and the
 //     button's own bg must be the card's footer colour (PNL_CLR_FOOTBG).
-const FT_BTN_W = 92, FT_BTN_H = 28, FT_BTN_PAD = 8;
+//     FT_BTN_W MUST equal the MQL's PNL_BTN_W (Biotak/BiotakPanels.mqh).
+//     MT4 renders an OBJ_BITMAP_LABEL at its NATIVE size (XSIZE/YSIZE are
+//     read-only), so a skin baked wider than the button's declared width
+//     overhangs the card and leaves the overhang outside the click target.
+//     It was 92 while PNL_BTN_W had already moved to 72 — the Done face ran
+//     4px past the card's content edge and 20px of each face was dead.
+const FT_BTN_W = 72, FT_BTN_H = 28, FT_BTN_PAD = 8;
 function ftBtnSkin(accent, primary) {
   const W = FT_BTN_W + 2 * FT_BTN_PAD, H = FT_BTN_H + 2 * FT_BTN_PAD;
   const a1 = primary ? ACCENTS[accent].a1 : null;
@@ -1296,6 +1311,8 @@ const uiFiles = [
   { name: 'pnl_keycap.bmp',  ...keycapSkin()  },
   { name: 'pnl_xbtn.bmp',    ...xBtnSkin()    },
   { name: 'pnl_secband.bmp', ...secBandSkin() },
+  { name: 'pnl_subdot_amber.bmp', ...subDotSkin([0xFF, 0xAB, 0x00]) },
+  { name: 'pnl_subdot_jade.bmp',  ...subDotSkin([0x12, 0xB8, 0x86]) },
 ];
 for (const a of A_NAME) {
   uiFiles.push({ name: 'pnl_mark_' + a + '.bmp',    ...markSkin(a)     });
