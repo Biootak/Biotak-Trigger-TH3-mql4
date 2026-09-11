@@ -533,9 +533,14 @@ function cardGrad(t) {
 
 // --- pnl_cardN.bmp : Obsidian-Gold card incl. shadow, 14px corners and the
 //     hairline row/footer dividers the preview draws with border-top.
-function pnlCardSkin(rows) {
+function pnlCardSkin(rows, fade) {
   const H = PNL_HEAD_H + rows * PNL_ROW_H + PNL_FOOT_H;
   const CW = PNL_W + 2 * PNL_MARGIN, CH = H + 2 * PNL_MARGIN;
+
+  // .fade — 26px band hugging the footer, transparent -> rgba(18,22,29,.92).
+  // Only the preview's scrollable cards carry it (CARDS[].fade), so it is a
+  // per-skin OPTION: PnlCardFade() picks pnl_card<N>f.bmp for those cards.
+  const fadeTop = H - PNL_FOOT_H - 26, fadeBot = H - PNL_FOOT_H;
 
   // hairline y positions (card-local): header/rows + each row seam + rows/footer
   const seams = [PNL_HEAD_H];
@@ -568,6 +573,11 @@ function pnlCardSkin(rows) {
         // hairline dividers
         for (const s of seams) {
           if (Math.abs(cy - s) < 0.6) { col = over(col, pm([255, 255, 255], HAIR_A)); break; }
+        }
+        // .fade wash over the last row, just above the footer
+        if (fade && cy >= fadeTop && cy <= fadeBot) {
+          const u = (cy - fadeTop) / (fadeBot - fadeTop);
+          col = over(col, pm([18, 22, 29], Math.round(235 * u)));
         }
       }
     }
@@ -890,6 +900,23 @@ const A_INK = {
 };
 const A_NAME = ['gold', 'jade', 'cyan', 'violet', 'ember', 'rose'];
 
+// --aGlow — the coloured halo behind .mark / .sw.on / .btn.primary. Taken from
+// the preview's .ac-* rules (rgba). Only the RGB is baked; the alpha is applied
+// per-use by halo()'s `peak`.
+const A_GLOW = {
+  gold:   [255, 159, 10], jade:   [18, 184, 134], cyan:   [31, 168, 224],
+  violet: [124, 92, 255], ember:  [255, 106, 43], rose:   [240, 69, 95],
+};
+
+// Glyphs that can sit ON an accent-filled surface (.mark, .btn.primary) — the
+// preview gives them `color: var(--aInk)`, i.e. a DARK ink on the bright ramp.
+// Emitted as gl_<name>_i_<accent>.bmp. Only these are needed; emitting an ink
+// variant for all 57 glyphs would add 342 files for nothing.
+const INK_GLYPHS = [
+  'crosshair', 'layers', 'gauge', 'wave', 'candle', 'line', 'pin', 'steps',
+  'sigma', 'box', 'type', 'target', 'bolt', 'check',
+];
+
 // Rounded box with optional vertical fill gradient, 1px border and a glow.
 // visW/visH = the CSS element size; the canvas adds PAD2 on every side.
 function uiBox(o) {
@@ -1134,6 +1161,53 @@ function chevSkin(name) {
   return { w: W, h: H, buf };
 }
 
+// --- .ft .btn — the footer button face. 92x28, radius 8, and a pad wide enough
+//     for the primary's box-shadow glow (the preview's card has overflow:hidden,
+//     so the glow is clipped to the card anyway — 8px is plenty).
+//     ghost   = flat #1C222C + #313A4A border  (--ghostBg / --ghostBd)
+//     primary = vertical a1->a2 ramp + a2 border + inset top highlight + aGlow
+//     The MQL side puts an OBJ_BUTTON *under* this skin purely as a click
+//     target, so the corners outside the radius must be transparent and the
+//     button's own bg must be the card's footer colour (PNL_CLR_FOOTBG).
+const FT_BTN_W = 92, FT_BTN_H = 28, FT_BTN_PAD = 8;
+function ftBtnSkin(accent, primary) {
+  const W = FT_BTN_W + 2 * FT_BTN_PAD, H = FT_BTN_H + 2 * FT_BTN_PAD;
+  const a1 = primary ? ACCENTS[accent].a1 : null;
+  const a2 = primary ? A2[accent] : null;
+  const glow = primary ? A_GLOW[accent] : null;
+  const cx = FT_BTN_W / 2, cy = FT_BTN_H / 2;
+  const hw = (FT_BTN_W - 1) / 2, hh = (FT_BTN_H - 1) / 2;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const px = x - FT_BTN_PAD, py = y - FT_BTN_PAD;
+    let col = [0, 0, 0, 0];
+    if (primary) {
+      // box-shadow: 0 7px 20px var(--aGlow) — nudged down, tightened to fit
+      const gd = rrSdf(px, py - 5, cx, cy, hw, hh, 8);
+      if (gd > 0 && gd < 13) {
+        const k = 1 - gd / 13;
+        col = over(col, pm(glow, Math.round(112 * k * k)));
+      }
+    }
+    const d = rrSdf(px, py, cx, cy, hw, hh, 8);
+    if (d > 0.5) return col[3] > 0 ? col : null;
+    const cov = clamp01(0.5 - d);
+    if (primary) {
+      const t = clamp01((py - (cy - hh)) / (2 * hh));
+      col = over(col, pm(lerpColor(a1, a2, t), 255));
+      // inset 0 1px 0 rgba(255,255,255,.32) — only along the TOP edge
+      if (py < 1.6 && d > -1.7 && d < -0.3) col = over(col, pm([255, 255, 255], 82));
+      const bw = clamp01(0.5 - Math.abs(d + 0.5));
+      if (bw > 0) col = over(col, pm(a2, 255 * bw));           // border 1px a2
+    } else {
+      col = over(col, pm([0x1C, 0x22, 0x2C], 255));            // --ghostBg
+      const bw = clamp01(0.5 - Math.abs(d + 0.5));
+      if (bw > 0) col = over(col, pm([0x31, 0x3A, 0x4A], 255 * bw));   // --ghostBd
+    }
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w: W, h: H, buf };
+}
+
 // ---------------------------------------------------------------- main
 const outDirs = [path.join(__dirname, '..', 'Files', 'Icons')];
 
@@ -1184,7 +1258,9 @@ const panelFiles = [
 // 42px row, so a 11-setting card becomes 15 display rows).
 const PNL_CARD_ROWS_MAX = 20;
 for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
-  panelFiles.push({ name: 'pnl_card' + r + '.bmp', ...pnlCardSkin(r) });
+  panelFiles.push({ name: 'pnl_card' + r + '.bmp',  ...pnlCardSkin(r, false) });
+  // the .fade variant — PnlCardFade() picks it for the scrollable cards
+  panelFiles.push({ name: 'pnl_card' + r + 'f.bmp', ...pnlCardSkin(r, true)  });
 }
 for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
   panelFiles.push({ name: 'sub_panel_r' + r + '.bmp',  ...subPanelSkin(r, false) });
@@ -1205,6 +1281,11 @@ const glyphNames = Object.keys(GLYPHS);
 for (const g of glyphNames) {
   glyphFiles.push({ name: 'gl_' + g + '_m.bmp', ...glyphSkin(g, GLYPH_MUTED) });
   for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
+}
+// --aInk inks for the glyphs that sit ON an accent ramp (.mark, .btn.primary)
+for (const g of INK_GLYPHS) {
+  if (glyphNames.indexOf(g) < 0) continue;
+  for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_i_' + a + '.bmp', ...glyphSkin(g, A_INK[a]) });
 }
 panelFiles.push(...chipFiles, ...glyphFiles);
 
@@ -1231,6 +1312,10 @@ for (const a of A_NAME) {
 }
 uiFiles.push({ name: 'pnl_sw_off.bmp',  ...swSkin('gold', false) });
 uiFiles.push({ name: 'pnl_dsw_off.bmp', ...dualSwSkin('gold', false) });
+// footer buttons — .btn.ghost (Reset) + .btn.primary (Done, per accent)
+uiFiles.push({ name: 'pnl_btn_ghost.bmp', ...ftBtnSkin(null, false) });
+for (const a of A_NAME)
+  uiFiles.push({ name: 'pnl_btn_prim_' + a + '.bmp', ...ftBtnSkin(a, true) });
 panelFiles.push(...uiFiles);
 
 let count = 0;
