@@ -604,6 +604,12 @@
 #resource "\\Files\\Icons\\pnl_chev_jade.bmp"
 #resource "\\Files\\Icons\\pnl_chev_rose.bmp"
 #resource "\\Files\\Icons\\pnl_chev_violet.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_cyan.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_ember.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_gold.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_jade.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_rose.bmp"
+#resource "\\Files\\Icons\\pnl_chevr_violet.bmp"
 #resource "\\Files\\Icons\\pnl_chip.bmp"
 #resource "\\Files\\Icons\\pnl_chip_cyan.bmp"
 #resource "\\Files\\Icons\\pnl_chip_ember.bmp"
@@ -1578,6 +1584,381 @@ string PalHexText(const color clr)
    return hx;
 }
 
+//--- DISPLAY-row spec machinery lives HERE (not beside the renderer) because
+//--- MQL4 is define-before-use: the palette section below (PalKindRow /
+//--- PalOpenForItem / PalUpdateLive) converts setting rows to display rows.
+//--- Moved as one block 2026-09-11; no logic changed.
+
+//+------------------------------------------------------------------+
+//| STEP card (9) inline mode section — the SELECTED step mode's own  |
+//| settings live right below the STEP MODE segments ("same below").  |
+//| Row 0 = STEP MODE segments; rows 1..K = section; last = MAX LEVELS|
+//|   TH (0):    no rows — TH has no level settings of its own (its    |
+//|              FRACTAL/STANDARD flags are LABEL settings, not levels)|
+//|   SS-LS (1): 1 row  — LS FIRST (card 1 global)                    |
+//|   Combo (2): 8 rows — MODE/PRESET/COMP1 TF+STEP/OP/COMP2 ON+TF+STEP|
+//|   Factor(3): 7 rows — mirrors of Factor card 10 rows 0..6         |
+//+------------------------------------------------------------------+
+int PnlStepSectionRows()
+{
+   switch((int)g_stepCalculationMode)
+   {
+      case 0:  return 0;   // TH_STEP has no level settings of its own
+      case 1:  return 1;   // SS_LS_STEP
+      case 2:  return 8;   // COMBO_STEP
+      default: return 7;   // FACTOR_STEP
+   }
+}
+int PnlStepMaxLevelsRow()
+{
+   return 1 + PnlStepSectionRows();
+}
+
+//--- one DISPLAY row of a card
+struct PnlRowSpec
+{
+   int    kind;    // PNL_K_* (PNL_K_LEGACY = take the setting's own kind)
+   int    s0;      // first SETTING index this row renders (-1 on a band)
+   int    n;       // consecutive settings folded into this row (1 normally)
+   string sec;     // band title           (PNL_K_SEC only)
+   int    cnt;     // band counter         (PNL_K_SEC only)
+   string ico;     // glyph NAME (gl_<ico>_<accent>.bmp / gl_<ico>_m.bmp)
+   string key;     // hotkey badge letter ("" = none)
+   string ext;     // kind-specific payload (nav text, tab icons, dual "ALL", ...)
+};
+#define PNL_SPEC_MAX 24                    // display rows per card (15 is the worst static)
+PnlRowSpec g_PnlSpec[PNL_COUNT*PNL_SPEC_MAX];
+int  g_PnlSpecStart[PNL_COUNT];
+int  g_PnlSpecCount[PNL_COUNT];
+int  g_PnlSpecStamp[PNL_COUNT];
+//--- collapsible section bands (preview .acc/.collapsed intent): bit b of
+//--- g_PnlCollapsed[item] hides band b's members (the band row itself stays).
+//--- Session-only, all open by default = the preview. Max 4 bands per card.
+int  g_PnlCollapsed[PNL_COUNT];
+
+// ══════════════════════════════════════════════════════════════════════════
+// THE DISPLAY-ROW SPEC — one entry per row the user SEES, transcribed 1:1
+// from panel_all_redesign_preview.html `const CARDS`. A section band is a
+// real 42px row, exactly like the preview's `.row.sec`:
+//     header 56  +  rows*42  +  footer 48        (geometry LOCKED)
+// so the preview's "N ROWS / M TOTAL" pairs come out as M*42.
+//   PNL_K_LEGACY  = "use the setting's own kind" (PnlSetDef decides).
+// A row with n>1 folds several SETTINGS into one visible row (the preview's
+// `.cset` colour set and `.dual` switch pair). No setting is ever dropped:
+// every setting index 0..g_PnlRows[item]-1 appears in exactly one row.
+// ══════════════════════════════════════════════════════════════════════════
+void PnlSpecAdd(const int item,const int kind,const int s0,const int n,
+                const string ico="",const string key="",const string sec="",
+                const int cnt=0,const string ext="")
+{
+   if(g_PnlSpecCount[item] >= PNL_SPEC_MAX) return;   // full — never overflow the slice
+   int i = g_PnlSpecStart[item] + g_PnlSpecCount[item];
+   g_PnlSpec[i].kind = kind;
+   g_PnlSpec[i].s0   = s0;
+   g_PnlSpec[i].n    = n;
+   g_PnlSpec[i].sec  = sec;
+   g_PnlSpec[i].cnt  = cnt;
+   g_PnlSpec[i].ico  = ico;
+   g_PnlSpec[i].key  = key;
+   g_PnlSpec[i].ext  = ext;
+   g_PnlSpecCount[item]++;
+}
+
+void PnlSpecBuild(const int item)
+{
+   g_PnlSpecStart[item] = item * PNL_SPEC_MAX;
+   g_PnlSpecCount[item] = 0;
+   if(item == 0)   // TRIGGER ZONES (cyan) — 4 settings / 6 display rows
+   {
+      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "ZONE APPEARANCE", 3);
+      PnlSpecAdd(0, PNL_K_LEGACY, 0, 1, "contrast");
+      PnlSpecAdd(0, PNL_K_LEGACY, 1, 1, "droplet");
+      PnlSpecAdd(0, PNL_K_LEGACY, 2, 1, "tag");
+      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
+      PnlSpecAdd(0, PNL_K_LEGACY, 3, 1, "eye");   // hotkey T lives in the header badge only
+   }
+   else if(item == 1)   // ZONES & LEVELS (gold) — 11 settings / 15 display rows
+   {
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ZONES", 4);
+      PnlSpecAdd(1, PNL_K_LEGACY, 0, 1, "layers");
+      PnlSpecAdd(1, PNL_K_LEGACY, 1, 1, "line", "L");
+      PnlSpecAdd(1, PNL_K_LEGACY, 2, 1, "square");
+      PnlSpecAdd(1, PNL_K_LEGACY, 3, 1, "contrast");
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "GEOMETRY", 3);
+      PnlSpecAdd(1, PNL_K_LEGACY, 4, 1, "valign");
+      PnlSpecAdd(1, PNL_K_LEGACY, 5, 1, "linestyle");
+      PnlSpecAdd(1, PNL_K_LEGACY, 6, 1, "weight");
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 2);
+      PnlSpecAdd(1, PNL_K_DUAL, 7, 2, "swap");   // LS FIRST · MIDPOINT in one row (15→14 rows)
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 2);
+      PnlSpecAdd(1, PNL_K_LEGACY, 9, 1, "steps", "", "", 0, "5 LEVELS");
+      PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "line", "", "", 0, "ONE STYLE");
+   }
+   else if(item == 2)   // ATR LABELS (gold) — 11 settings / 15 display rows
+   {
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "COUNTDOWN", 4);
+      PnlSpecAdd(2, PNL_K_LEGACY, 0, 1, "timer", "C");
+      PnlSpecAdd(2, PNL_K_LEGACY, 1, 1, "droplet");
+      PnlSpecAdd(2, PNL_K_LEGACY, 2, 1, "textsize");
+      PnlSpecAdd(2, PNL_K_LEGACY, 3, 1, "gap");
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "ATR BLOCK", 2);
+      PnlSpecAdd(2, PNL_K_DUAL, 4, 2, "gauge");   // ATR LABELS · ATR TARGETS in one row (15→14 rows)
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "TRADE PLAN ROWS", 4);
+      PnlSpecAdd(2, PNL_K_LEGACY, 6, 1, "tag", "T");
+      PnlSpecAdd(2, PNL_K_LEGACY, 7, 1, "crosshair", "H");
+      PnlSpecAdd(2, PNL_K_LEGACY, 8, 1, "flag", "P");
+      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, "ruler");
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
+      PnlSpecAdd(2, PNL_K_LEGACY, 10, 1, "gap");
+   }
+   else if(item == 3)   // TH LABELS (ember) — 5 settings / 8 display rows
+   {
+      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TH SOURCES", 3);
+      PnlSpecAdd(3, PNL_K_LEGACY, 0, 1, "wave");
+      PnlSpecAdd(3, PNL_K_LEGACY, 1, 1, "steps");
+      PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
+      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
+      PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
+      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
+      PnlSpecAdd(3, PNL_K_LEGACY, 4, 1, "valign");
+   }
+   else if(item == 6)   // HTF CANDLES (jade) — 11 settings / 12 display rows
+   {                    // the 4 colours fold into ONE .cset row
+      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "SOURCE", 2);
+      PnlSpecAdd(6, PNL_K_LEGACY, 0, 1, "power");
+      PnlSpecAdd(6, PNL_K_LEGACY, 1, 1, "clock");
+      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "COLORS", 4, "strip");
+      PnlSpecAdd(6, PNL_K_CSET, 3, 4);
+      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "APPEARANCE", 3);
+      PnlSpecAdd(6, PNL_K_LEGACY, 2, 1, "contrast");
+      PnlSpecAdd(6, PNL_K_LEGACY, 7, 1, "weight");
+      PnlSpecAdd(6, PNL_K_LEGACY, 8, 1, "weight");
+      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "BODY", 2);
+      PnlSpecAdd(6, PNL_K_LEGACY, 9, 1, "wick");
+      PnlSpecAdd(6, PNL_K_LEGACY, 10, 1, "squarefill");
+   }
+   else if(item == 7)   // LINES (jade) — 6 settings / 11 display rows
+   {
+      PnlSpecAdd(7, PNL_K_LEGACY, 0, 1, "back", "", "", 0, "ZONES & LEVELS");
+      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
+      PnlSpecAdd(7, PNL_K_LEGACY, 1, 1, "eye");
+      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "APPEARANCE", 3);
+      PnlSpecAdd(7, PNL_K_LEGACY, 2, 1, "weight");
+      PnlSpecAdd(7, PNL_K_LEGACY, 3, 1, "linestyle");
+      PnlSpecAdd(7, PNL_K_LEGACY, 4, 1, "contrast");
+      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
+      PnlSpecAdd(7, PNL_K_LEGACY, 5, 1, "droplet");
+   }
+   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 6 display rows
+   {
+      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
+      PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
+      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
+      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "MAGNET", 2);
+      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");
+      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "target");
+   }
+   else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
+   {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
+      int mode = (int)g_stepCalculationMode;
+      PnlSpecAdd(9, PNL_K_LEGACY, 0, 1, "steps", "", "", 0, "wave|swap|fn|sigma");
+      int base    = 1;
+      int maxRow  = PnlStepMaxLevelsRow();
+      if(mode == 2)   // COMBO — the 8 component rows
+      {
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COMPONENT 1", 5);
+         PnlSpecAdd(9, PNL_K_LEGACY, base+0, 1, "fn");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+1, 1, "sparkles");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+2, 1, "clock");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+3, 1, "sigma");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+4, 1, "fn");
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COMPONENT 2", 3);
+         PnlSpecAdd(9, PNL_K_LEGACY, base+5, 1, "layers");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+6, 1, "clock");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+7, 1, "sigma");
+      }
+      else if(mode == 1)   // SS-LS — one row (LS FIRST)
+      {
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "ENGINE", 1);
+         PnlSpecAdd(9, PNL_K_LEGACY, base, 1, "swap");
+      }
+      else if(mode == 3)   // FACTOR — mirrors card 10 rows 0..6
+      {
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "ENGINE", 3);
+         PnlSpecAdd(9, PNL_K_LEGACY, base+0, 1, "fn");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+1, 1, "eye");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+2, 1, "layers");
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "LEVEL LOOK", 3);
+         PnlSpecAdd(9, PNL_K_LEGACY, base+3, 1, "sigma");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+4, 1, "weight");
+         PnlSpecAdd(9, PNL_K_LEGACY, base+5, 1, "linestyle");
+         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
+         PnlSpecAdd(9, PNL_K_LEGACY, base+6, 1, "droplet");
+      }
+      // TH mode owns no level settings — the tab row goes straight to LIMIT
+      PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "LIMIT", 1);
+      PnlSpecAdd(9, PNL_K_LEGACY, maxRow, 1, "steps");
+   }
+   else if(item == 10)  // FACTOR (ember) — 7 settings / 10 display rows
+   {
+      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "ENGINE", 3);
+      PnlSpecAdd(10, PNL_K_LEGACY, 0, 1, "fn");
+      PnlSpecAdd(10, PNL_K_LEGACY, 1, 1, "eye");
+      PnlSpecAdd(10, PNL_K_LEGACY, 2, 1, "layers");
+      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "LEVEL LOOK", 3);
+      PnlSpecAdd(10, PNL_K_LEGACY, 3, 1, "sigma");
+      PnlSpecAdd(10, PNL_K_LEGACY, 4, 1, "weight");
+      PnlSpecAdd(10, PNL_K_LEGACY, 5, 1, "linestyle");
+      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
+      PnlSpecAdd(10, PNL_K_LEGACY, 6, 1, "droplet");
+   }
+   else if(item == 11)  // STRUCTURE LEVELS (ember) — 5 toggles in 3 dual rows
+   {
+      PnlSpecAdd(11, PNL_K_LEGACY, 0, 1, "back", "", "", 0, "ZONES & LEVELS");
+      PnlSpecAdd(11, PNL_K_SEC, -1, 0, "", "", "STRUCTURE", 1);
+      PnlSpecAdd(11, PNL_K_LEGACY, 1, 1, "steps");
+      PnlSpecAdd(11, PNL_K_SEC, -1, 0, "", "", "LEVEL TOGGLES", 5);
+      PnlSpecAdd(11, PNL_K_DUAL, 2, 2, "layers");            // L1 · L2
+      PnlSpecAdd(11, PNL_K_DUAL, 4, 2, "layers");            // L3 · L4
+      PnlSpecAdd(11, PNL_K_DUAL, 6, 1, "layers", "", "", 0, "ALL");  // L5 · ALL
+   }
+   else if(item == 12)  // BASE BOX (gold) — TAB row + the open tab's section
+   {                    // (+ the redesign's .cset for the Setup leg colours)
+      PnlSpecAdd(12, PNL_K_LEGACY, 0, 1, "box", "", "", 0, "square|type|target");
+      if(g_BkTab == 1)        // TEXT — 6 rows
+      {
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "CONTENT", 1);
+         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "type");
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "TYPOGRAPHY", 5);
+         PnlSpecAdd(12, PNL_K_LEGACY, 2, 1, "textsize");
+         PnlSpecAdd(12, PNL_K_LEGACY, 3, 1, "bold");
+         PnlSpecAdd(12, PNL_K_LEGACY, 4, 1, "alignC");
+         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "valign");
+         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "droplet");
+      }
+      else if(g_BkTab == 2)   // SETUP — 6 rows, the 3 leg colours in ONE row
+      {
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "RISK / REWARD", 1);
+         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "target");
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "LEG COLORS", 3, "strip");
+         PnlSpecAdd(12, PNL_K_CSET, 2, 3);
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 2);
+         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "info");
+         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "template");
+      }
+      else                    // STYLE — 6 rows
+      {
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "BORDER", 3);
+         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "droplet");
+         PnlSpecAdd(12, PNL_K_LEGACY, 2, 1, "weight");
+         PnlSpecAdd(12, PNL_K_LEGACY, 3, 1, "linestyle");
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "FILL", 3);
+         PnlSpecAdd(12, PNL_K_LEGACY, 4, 1, "contrast");
+         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "droplet");
+         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "contrast");
+      }
+   }
+}
+
+//--- which cards have a display spec at all (item 13 is the mini STRIP — it
+//--- renders no rows, so its row space stays IDENTITY-mapped. Never give 13
+//--- a spec: PnlColorKind(13,0) = PAL_BOX depends on the identity fallback.)
+bool PnlSpecCard(const int item)
+{
+   if(item==0 || item==1 || item==2 || item==3) return true;
+   if(item==6 || item==7 || item==8) return true;
+   if(item==9 || item==10 || item==11 || item==12) return true;
+   return false;
+}
+
+//--- the dynamic cards (9 Step, 12 Base Box) rebuild when their input changes
+void PnlEnsureSpec(const int item)
+{
+   if(item < 0 || item >= PNL_COUNT) return;
+   if(!PnlSpecCard(item)) { g_PnlSpecCount[item] = 0; return; }
+   int stamp = 1;
+   if(item == 9)  stamp = 1 + (int)g_stepCalculationMode;   // section swaps with mode
+   if(item == 12) stamp = 10 + g_BkTab;                     // tab swaps the section
+   if(g_PnlSpecStamp[item] != stamp)
+   {
+      PnlSpecBuild(item);
+      g_PnlSpecStamp[item] = stamp;
+   }
+   // collapse: drop members of collapsed bands (bands always stay visible).
+   // Runs on the same rebuild so every row engine (counts, hits, palette map)
+   // sees the short card with zero extra branches.
+   if(g_PnlCollapsed[item] != 0 && g_PnlSpecCount[item] > 0)
+   {
+      PnlRowSpec kept[PNL_SPEC_MAX];
+      int nk = 0, b = -1;
+      for(int r=0;r<g_PnlSpecCount[item];r++)
+      {
+         int si = g_PnlSpecStart[item] + r;
+         if(g_PnlSpec[si].kind == PNL_K_SEC) b++;
+         if(g_PnlSpec[si].kind == PNL_K_SEC || !PnlBandCollapsed(item,b))
+            kept[nk++] = g_PnlSpec[si];
+      }
+      for(int w=0;w<nk;w++) g_PnlSpec[g_PnlSpecStart[item]+w] = kept[w];
+      g_PnlSpecCount[item] = nk;
+   }
+}
+
+int PnlSpecRows(const int item)
+{
+   if(item < 0 || item >= PNL_COUNT) return 0;
+   PnlEnsureSpec(item);
+   return g_PnlSpecCount[item];
+}
+
+//--- display row -> its spec slot (-1 when out of range)
+int PnlSpecIdx(const int item,const int dispRow)
+{
+   if(item < 0 || item >= PNL_COUNT) return -1;
+   PnlEnsureSpec(item);
+   if(dispRow < 0 || dispRow >= g_PnlSpecCount[item]) return -1;
+   return g_PnlSpecStart[item] + dispRow;
+}
+
+//--- display row -> FIRST SETTING it renders (-1 = section band, no setting)
+//--- A card without a spec (item 13 mini strip) is IDENTITY-mapped.
+int PnlSetRow(const int item,const int dispRow)
+{
+   if(item < 0 || item >= PNL_COUNT) return -1;
+   PnlEnsureSpec(item);
+   if(g_PnlSpecCount[item] == 0) return dispRow;
+   int si = PnlSpecIdx(item,dispRow);
+   if(si < 0) return -1;
+   return g_PnlSpec[si].s0;
+}
+
+//--- ordinal of the section band at/before a display row (-1 = none yet).
+//--- Counts SEC slots directly (no PnlSetDef) so it works from anywhere.
+int PnlBandIndex(const int item,const int dispRow)
+{
+   if(item < 0 || item >= PNL_COUNT) return -1;
+   PnlEnsureSpec(item);
+   int b = -1;
+   for(int r=0;r<=dispRow && r<g_PnlSpecCount[item];r++)
+   {
+      int si = g_PnlSpecStart[item] + r;
+      if(g_PnlSpec[si].kind == PNL_K_SEC) b++;
+   }
+   return b;
+}
+bool PnlBandCollapsed(const int item,const int band)
+{
+   if(item < 0 || item >= PNL_COUNT || band < 0 || band > 30) return false;
+   return ((g_PnlCollapsed[item] >> band) & 1) != 0;
+}
+//--- flip a band + force the spec to rebuild (stamp 0 always rebuilds)
+void PnlToggleBand(const int item,const int band)
+{
+   if(item < 0 || item >= PNL_COUNT || band < 0 || band > 30) return;
+   if(PnlBandCollapsed(item,band)) g_PnlCollapsed[item] &= ~(1 << band);
+   else                             g_PnlCollapsed[item] |=  (1 << band);
+   g_PnlSpecStamp[item] = 0;
+}
+
 //--- palette kind → the panel COLOR row that shows it (for live refresh)
 bool PalKindRow(const int kind,int &item,int &row)
 {
@@ -1609,7 +1990,9 @@ bool PalKindRow(const int kind,int &item,int &row)
       case PAL_BK_TP:          if(g_PnlOpen==12 && g_BkTab==2) { item=12; row=4; return true; }
                                    return false;
       case PAL_CUSTOM_PRICE:   item=8;  row=1; return true;
-      case PAL_FACTOR:         item=10; row=6; return true;
+      case PAL_FACTOR:         if(g_PnlOpen==9 && (int)g_stepCalculationMode==3) { item=9; row=7; return true; }
+                               item=10; row=6; return true;
+      case PAL_COUNTDOWN:      item=2;  row=1; return true;
    }
    return false;
 }
@@ -1642,14 +2025,15 @@ void PalClose()
    ChartRedraw();
 }
 
-void PalOpen(const int item, const int row)
+//--- open the palette on an explicit kind (cset cells address their own
+//--- target; the anchor item only positions the popup)
+void PalOpenKind(const int anchorItem,const int kind)
 {
    PalClose();
    BkDdClose();   // mutually exclusive floaters — a hanging dropdown never survives under the palette
    g_PalOpen=true;
-   g_PalAnchorItem=item;
-   int k=PnlColorKind(item,row);
-   g_PalKind=(k>=0)?k:PAL_TRIGGER;
+   g_PalAnchorItem=anchorItem;
+   g_PalKind=kind;
    g_PalTgt=PalTgtIndexOfKind(g_PalKind);
    g_PalTab=0;
    g_PalMixDrag=0; g_PalHexFocus=false;
@@ -1658,20 +2042,30 @@ void PalOpen(const int item, const int row)
    ChartRedraw();
 }
 
+void PalOpen(const int item, const int row)
+{
+   int k=PnlColorKind(item,row);
+   PalOpenKind(item,(k>=0)?k:PAL_TRIGGER);
+}
+
 //--- header picker button → open with the panel's primary COLOR target
+//--- (setting rows → display rows; PnlColorKind is display-keyed)
 void PalOpenForItem(const int item)
 {
-   int row=-1;
-   if(item==0)       row=1;   // Trigger COLOR
-   else if(item==5)  row=5;   // TH3 COLOR
-   else if(item==6)  row=3;   // HTF Bull COLOR
-   else if(item==7)  row=5;   // Lines COLOR
-   else if(item==8)  row=1;   // Custom Price COLOR
-   else if(item==10) row=6;  // Factor COLOR
-   else if(item==12) row=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 6 : 2));   // open tab's first COLOR
-   else if(item==13) row=0;  // Mini BORDER COLOR
-   if(row<0) return;
-   PalOpen(item,row);
+   int srow=-1;
+   if(item==0)       srow=1;   // Trigger COLOR
+   else if(item==2)  srow=1;   // Countdown COLOR
+   else if(item==5)  srow=5;   // TH3 COLOR
+   else if(item==6)  srow=3;   // HTF Bull COLOR
+   else if(item==7)  srow=5;   // Lines COLOR
+   else if(item==8)  srow=1;   // Custom Price COLOR
+   else if(item==10) srow=6;  // Factor COLOR
+   else if(item==12) srow=(g_BkTab==0 ? 1 : (g_BkTab==1 ? 6 : 2));   // open tab's first COLOR
+   else if(item==13) srow=0;  // Mini BORDER COLOR
+   if(srow<0) return;
+   int drow=PnlDispRowOfSet(item,srow);
+   if(drow<0) return;
+   PalOpen(item,drow);
 }
 
 //--- flush a pending hex edit (called before focus is lost)
@@ -1927,7 +2321,11 @@ void PalUpdateLive()
    if(ObjectFind(0,p+"opv")>=0)
       ObjectSetString(0,p+"opv",OBJPROP_TEXT, fok?IntegerToString(ClampInt(ftr,0,100))+"%":"--");
    int it,row;
-   if(PalKindRow(g_PalKind,it,row) && g_PnlOpen==it) PnlUpdateRow(it,row);
+   if(PalKindRow(g_PalKind,it,row) && g_PnlOpen==it)
+   {
+      int dr=PnlDispRowOfSet(it,row);   // PalKindRow speaks SETTING rows; the row engine needs display rows
+      if(dr>=0) PnlUpdateRow(it,dr);
+   }
     // keep the owning panel's TRANSPARENCY row in sync with the palette drag
    int oit=-1, orow=-1;
    switch(g_PalKind)
@@ -1941,7 +2339,11 @@ void PalUpdateLive()
       case PAL_HTF_WICK:
       case PAL_HTF_BORDER: oit=6; orow=2; break;
    }
-   if(oit>=0 && g_PnlOpen==oit) PnlUpdateRow(oit,orow);
+   if(oit>=0 && g_PnlOpen==oit)
+   {
+      int odr=PnlDispRowOfSet(oit,orow);
+      if(odr>=0) PnlUpdateRow(oit,odr);
+   }
    ChartRedraw();
 }
 
@@ -2118,30 +2520,6 @@ int PnlPanelW(const int item)
    return PNL_WEL;
 }
 
-//+------------------------------------------------------------------+
-//| STEP card (9) inline mode section — the SELECTED step mode's own  |
-//| settings live right below the STEP MODE segments ("same below").  |
-//| Row 0 = STEP MODE segments; rows 1..K = section; last = MAX LEVELS|
-//|   TH (0):    no rows — TH has no level settings of its own (its    |
-//|              FRACTAL/STANDARD flags are LABEL settings, not levels)|
-//|   SS-LS (1): 1 row  — LS FIRST (card 1 global)                    |
-//|   Combo (2): 8 rows — MODE/PRESET/COMP1 TF+STEP/OP/COMP2 ON+TF+STEP|
-//|   Factor(3): 7 rows — mirrors of Factor card 10 rows 0..6         |
-//+------------------------------------------------------------------+
-int PnlStepSectionRows()
-{
-   switch((int)g_stepCalculationMode)
-   {
-      case 0:  return 0;   // TH_STEP has no level settings of its own
-      case 1:  return 1;   // SS_LS_STEP
-      case 2:  return 8;   // COMBO_STEP
-      default: return 7;   // FACTOR_STEP
-   }
-}
-int PnlStepMaxLevelsRow()
-{
-   return 1 + PnlStepSectionRows();
-}
 
 //+------------------------------------------------------------------+
 //| Parse "<prefix>Pnl<item>_<row>_<kind>"  or  "<prefix>Pnl<item>_<headkind>" |
@@ -2328,7 +2706,7 @@ void BkSecRowDef(const int sec,int &kind,string &label,
    {
       if(sec==0)       { kind=6; label="TEXT"; }
       else if(sec==1)  { label="SIZE"; minV=8; maxV=24; }
-      else if(sec==2)  { kind=2; label="B | I"; opts="Regular|Bold|Italic|B+I"; minV=0; maxV=3; }
+      else if(sec==2)  { kind=2; label="B | I"; opts="Reg|Bold|Italic|B+I"; minV=0; maxV=3; }
       else if(sec==3)  { kind=2; label="ALIGN"; opts="Left|Center|Right"; minV=0; maxV=2; }
       else if(sec==4)  { kind=2; label="VALIGN"; opts="Top|Inside|Bottom"; minV=0; maxV=2; }
       else             { kind=4; label="COLOR"; }
@@ -2352,7 +2730,7 @@ void BkSecRowDef(const int sec,int &kind,string &label,
       else             { label="FILL TR"; unit="%"; minV=0; maxV=100; }
    }
 }
-// B|I segments (0 Regular · 1 Bold · 2 Italic · 3 B+I) ↔ mirrors.
+// B|I segments (0 Reg · 1 Bold · 2 Italic · 3 B+I) ↔ mirrors.
 int BkBIFromMirrors() { return (g_bkBold ? 1 : 0) + (g_bkItalic ? 2 : 0); }
 void BkBIToMirrors(const int i)
 {
@@ -2633,303 +3011,6 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    }
 }
 
-//--- one DISPLAY row of a card
-struct PnlRowSpec
-{
-   int    kind;    // PNL_K_* (PNL_K_LEGACY = take the setting's own kind)
-   int    s0;      // first SETTING index this row renders (-1 on a band)
-   int    n;       // consecutive settings folded into this row (1 normally)
-   string sec;     // band title           (PNL_K_SEC only)
-   int    cnt;     // band counter         (PNL_K_SEC only)
-   string ico;     // glyph NAME (gl_<ico>_<accent>.bmp / gl_<ico>_m.bmp)
-   string key;     // hotkey badge letter ("" = none)
-   string ext;     // kind-specific payload (nav text, tab icons, dual "ALL", ...)
-};
-#define PNL_SPEC_MAX 24                    // display rows per card (15 is the worst static)
-PnlRowSpec g_PnlSpec[PNL_COUNT*PNL_SPEC_MAX];
-int  g_PnlSpecStart[PNL_COUNT];
-int  g_PnlSpecCount[PNL_COUNT];
-int  g_PnlSpecStamp[PNL_COUNT];
-
-// ══════════════════════════════════════════════════════════════════════════
-// THE DISPLAY-ROW SPEC — one entry per row the user SEES, transcribed 1:1
-// from panel_all_redesign_preview.html `const CARDS`. A section band is a
-// real 42px row, exactly like the preview's `.row.sec`:
-//     header 56  +  rows*42  +  footer 48        (geometry LOCKED)
-// so the preview's "N ROWS / M TOTAL" pairs come out as M*42.
-//   PNL_K_LEGACY  = "use the setting's own kind" (PnlSetDef decides).
-// A row with n>1 folds several SETTINGS into one visible row (the preview's
-// `.cset` colour set and `.dual` switch pair). No setting is ever dropped:
-// every setting index 0..g_PnlRows[item]-1 appears in exactly one row.
-// ══════════════════════════════════════════════════════════════════════════
-void PnlSpecAdd(const int item,const int kind,const int s0,const int n,
-                const string ico="",const string key="",const string sec="",
-                const int cnt=0,const string ext="")
-{
-   if(g_PnlSpecCount[item] >= PNL_SPEC_MAX) return;   // full — never overflow the slice
-   int i = g_PnlSpecStart[item] + g_PnlSpecCount[item];
-   g_PnlSpec[i].kind = kind;
-   g_PnlSpec[i].s0   = s0;
-   g_PnlSpec[i].n    = n;
-   g_PnlSpec[i].sec  = sec;
-   g_PnlSpec[i].cnt  = cnt;
-   g_PnlSpec[i].ico  = ico;
-   g_PnlSpec[i].key  = key;
-   g_PnlSpec[i].ext  = ext;
-   g_PnlSpecCount[item]++;
-}
-
-void PnlSpecBuild(const int item)
-{
-   g_PnlSpecStart[item] = item * PNL_SPEC_MAX;
-   g_PnlSpecCount[item] = 0;
-   if(item == 0)   // TRIGGER ZONES (cyan) — 4 settings / 6 display rows
-   {
-      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "ZONE APPEARANCE", 3);
-      PnlSpecAdd(0, PNL_K_LEGACY, 0, 1, "contrast");
-      PnlSpecAdd(0, PNL_K_LEGACY, 1, 1, "droplet");
-      PnlSpecAdd(0, PNL_K_LEGACY, 2, 1, "tag");
-      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
-      PnlSpecAdd(0, PNL_K_LEGACY, 3, 1, "eye", "T");
-   }
-   else if(item == 1)   // ZONES & LEVELS (gold) — 11 settings / 15 display rows
-   {
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ZONES", 4);
-      PnlSpecAdd(1, PNL_K_LEGACY, 0, 1, "layers");
-      PnlSpecAdd(1, PNL_K_LEGACY, 1, 1, "line", "L");
-      PnlSpecAdd(1, PNL_K_LEGACY, 2, 1, "square");
-      PnlSpecAdd(1, PNL_K_LEGACY, 3, 1, "contrast");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "GEOMETRY", 3);
-      PnlSpecAdd(1, PNL_K_LEGACY, 4, 1, "valign");
-      PnlSpecAdd(1, PNL_K_LEGACY, 5, 1, "linestyle");
-      PnlSpecAdd(1, PNL_K_LEGACY, 6, 1, "weight");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 2);
-      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, "swap");
-      PnlSpecAdd(1, PNL_K_LEGACY, 8, 1, "target");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 2);
-      PnlSpecAdd(1, PNL_K_LEGACY, 9, 1, "steps", "", "", 0, "5 LEVELS");
-      PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "line", "", "", 0, "ONE STYLE");
-   }
-   else if(item == 2)   // ATR LABELS (gold) — 11 settings / 15 display rows
-   {
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "COUNTDOWN", 4);
-      PnlSpecAdd(2, PNL_K_LEGACY, 0, 1, "timer", "C");
-      PnlSpecAdd(2, PNL_K_LEGACY, 1, 1, "droplet");
-      PnlSpecAdd(2, PNL_K_LEGACY, 2, 1, "textsize");
-      PnlSpecAdd(2, PNL_K_LEGACY, 3, 1, "gap");
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "ATR BLOCK", 2);
-      PnlSpecAdd(2, PNL_K_LEGACY, 4, 1, "gauge");
-      PnlSpecAdd(2, PNL_K_LEGACY, 5, 1, "target");
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "TRADE PLAN ROWS", 4);
-      PnlSpecAdd(2, PNL_K_LEGACY, 6, 1, "tag", "T");
-      PnlSpecAdd(2, PNL_K_LEGACY, 7, 1, "crosshair", "H");
-      PnlSpecAdd(2, PNL_K_LEGACY, 8, 1, "flag", "P");
-      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, "ruler");
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
-      PnlSpecAdd(2, PNL_K_LEGACY, 10, 1, "gap");
-   }
-   else if(item == 3)   // TH LABELS (ember) — 5 settings / 8 display rows
-   {
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TH SOURCES", 3);
-      PnlSpecAdd(3, PNL_K_LEGACY, 0, 1, "wave");
-      PnlSpecAdd(3, PNL_K_LEGACY, 1, 1, "steps");
-      PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
-      PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
-      PnlSpecAdd(3, PNL_K_LEGACY, 4, 1, "valign");
-   }
-   else if(item == 6)   // HTF CANDLES (jade) — 11 settings / 12 display rows
-   {                    // the 4 colours fold into ONE .cset row
-      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "SOURCE", 2);
-      PnlSpecAdd(6, PNL_K_LEGACY, 0, 1, "power");
-      PnlSpecAdd(6, PNL_K_LEGACY, 1, 1, "clock");
-      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "COLORS", 4, "strip");
-      PnlSpecAdd(6, PNL_K_CSET, 3, 4);
-      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "APPEARANCE", 3);
-      PnlSpecAdd(6, PNL_K_LEGACY, 2, 1, "contrast");
-      PnlSpecAdd(6, PNL_K_LEGACY, 7, 1, "weight");
-      PnlSpecAdd(6, PNL_K_LEGACY, 8, 1, "weight");
-      PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "BODY", 2);
-      PnlSpecAdd(6, PNL_K_LEGACY, 9, 1, "wick");
-      PnlSpecAdd(6, PNL_K_LEGACY, 10, 1, "squarefill");
-   }
-   else if(item == 7)   // LINES (jade) — 6 settings / 11 display rows
-   {
-      PnlSpecAdd(7, PNL_K_LEGACY, 0, 1, "back", "", "", 0, "ZONES & LEVELS");
-      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
-      PnlSpecAdd(7, PNL_K_LEGACY, 1, 1, "eye");
-      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "APPEARANCE", 3);
-      PnlSpecAdd(7, PNL_K_LEGACY, 2, 1, "weight");
-      PnlSpecAdd(7, PNL_K_LEGACY, 3, 1, "linestyle");
-      PnlSpecAdd(7, PNL_K_LEGACY, 4, 1, "contrast");
-      PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
-      PnlSpecAdd(7, PNL_K_LEGACY, 5, 1, "droplet");
-   }
-   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 6 display rows
-   {
-      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
-      PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
-      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
-      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "MAGNET", 2);
-      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");
-      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "target");
-   }
-   else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
-   {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
-      int mode = (int)g_stepCalculationMode;
-      PnlSpecAdd(9, PNL_K_LEGACY, 0, 1, "steps", "", "", 0, "wave|swap|fn|sigma");
-      int base    = 1;
-      int maxRow  = PnlStepMaxLevelsRow();
-      if(mode == 2)   // COMBO — the 8 component rows
-      {
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COMPONENT 1", 5);
-         PnlSpecAdd(9, PNL_K_LEGACY, base+0, 1, "fn");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+1, 1, "sparkles");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+2, 1, "clock");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+3, 1, "sigma");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+4, 1, "fn");
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COMPONENT 2", 3);
-         PnlSpecAdd(9, PNL_K_LEGACY, base+5, 1, "layers");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+6, 1, "clock");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+7, 1, "sigma");
-      }
-      else if(mode == 1)   // SS-LS — one row (LS FIRST)
-      {
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "ENGINE", 1);
-         PnlSpecAdd(9, PNL_K_LEGACY, base, 1, "swap");
-      }
-      else if(mode == 3)   // FACTOR — mirrors card 10 rows 0..6
-      {
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "ENGINE", 3);
-         PnlSpecAdd(9, PNL_K_LEGACY, base+0, 1, "fn");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+1, 1, "eye");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+2, 1, "layers");
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "LEVEL LOOK", 3);
-         PnlSpecAdd(9, PNL_K_LEGACY, base+3, 1, "sigma");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+4, 1, "weight");
-         PnlSpecAdd(9, PNL_K_LEGACY, base+5, 1, "linestyle");
-         PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
-         PnlSpecAdd(9, PNL_K_LEGACY, base+6, 1, "droplet");
-      }
-      // TH mode owns no level settings — the tab row goes straight to LIMIT
-      PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "LIMIT", 1);
-      PnlSpecAdd(9, PNL_K_LEGACY, maxRow, 1, "steps");
-   }
-   else if(item == 10)  // FACTOR (ember) — 7 settings / 10 display rows
-   {
-      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "ENGINE", 3);
-      PnlSpecAdd(10, PNL_K_LEGACY, 0, 1, "fn");
-      PnlSpecAdd(10, PNL_K_LEGACY, 1, 1, "eye");
-      PnlSpecAdd(10, PNL_K_LEGACY, 2, 1, "layers");
-      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "LEVEL LOOK", 3);
-      PnlSpecAdd(10, PNL_K_LEGACY, 3, 1, "sigma");
-      PnlSpecAdd(10, PNL_K_LEGACY, 4, 1, "weight");
-      PnlSpecAdd(10, PNL_K_LEGACY, 5, 1, "linestyle");
-      PnlSpecAdd(10, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
-      PnlSpecAdd(10, PNL_K_LEGACY, 6, 1, "droplet");
-   }
-   else if(item == 11)  // STRUCTURE LEVELS (ember) — 5 toggles in 3 dual rows
-   {
-      PnlSpecAdd(11, PNL_K_LEGACY, 0, 1, "back", "", "", 0, "ZONES & LEVELS");
-      PnlSpecAdd(11, PNL_K_SEC, -1, 0, "", "", "STRUCTURE", 1);
-      PnlSpecAdd(11, PNL_K_LEGACY, 1, 1, "steps");
-      PnlSpecAdd(11, PNL_K_SEC, -1, 0, "", "", "LEVEL TOGGLES", 5);
-      PnlSpecAdd(11, PNL_K_DUAL, 2, 2, "layers");            // L1 · L2
-      PnlSpecAdd(11, PNL_K_DUAL, 4, 2, "layers");            // L3 · L4
-      PnlSpecAdd(11, PNL_K_DUAL, 6, 1, "layers", "", "", 0, "ALL");  // L5 · ALL
-   }
-   else if(item == 12)  // BASE BOX (gold) — TAB row + the open tab's section
-   {                    // (+ the redesign's .cset for the Setup leg colours)
-      PnlSpecAdd(12, PNL_K_LEGACY, 0, 1, "box", "", "", 0, "square|type|target");
-      if(g_BkTab == 1)        // TEXT — 6 rows
-      {
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "CONTENT", 1);
-         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "type");
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "TYPOGRAPHY", 5);
-         PnlSpecAdd(12, PNL_K_LEGACY, 2, 1, "textsize");
-         PnlSpecAdd(12, PNL_K_LEGACY, 3, 1, "bold");
-         PnlSpecAdd(12, PNL_K_LEGACY, 4, 1, "alignC");
-         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "valign");
-         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "droplet");
-      }
-      else if(g_BkTab == 2)   // SETUP — 6 rows, the 3 leg colours in ONE row
-      {
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "RISK / REWARD", 1);
-         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "target");
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "LEG COLORS", 3, "strip");
-         PnlSpecAdd(12, PNL_K_CSET, 2, 3);
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 2);
-         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "info");
-         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "template");
-      }
-      else                    // STYLE — 6 rows
-      {
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "BORDER", 3);
-         PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "droplet");
-         PnlSpecAdd(12, PNL_K_LEGACY, 2, 1, "weight");
-         PnlSpecAdd(12, PNL_K_LEGACY, 3, 1, "linestyle");
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "FILL", 3);
-         PnlSpecAdd(12, PNL_K_LEGACY, 4, 1, "contrast");
-         PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "droplet");
-         PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "contrast");
-      }
-   }
-}
-
-//--- which cards have a display spec at all (item 13 is the mini STRIP — it
-//--- renders no rows, so its row space stays IDENTITY-mapped. Never give 13
-//--- a spec: PnlColorKind(13,0) = PAL_BOX depends on the identity fallback.)
-bool PnlSpecCard(const int item)
-{
-   if(item==0 || item==1 || item==2 || item==3) return true;
-   if(item==6 || item==7 || item==8) return true;
-   if(item==9 || item==10 || item==11 || item==12) return true;
-   return false;
-}
-
-//--- the dynamic cards (9 Step, 12 Base Box) rebuild when their input changes
-void PnlEnsureSpec(const int item)
-{
-   if(item < 0 || item >= PNL_COUNT) return;
-   if(!PnlSpecCard(item)) { g_PnlSpecCount[item] = 0; return; }
-   int stamp = 1;
-   if(item == 9)  stamp = 1 + (int)g_stepCalculationMode;   // section swaps with mode
-   if(item == 12) stamp = 10 + g_BkTab;                     // tab swaps the section
-   if(g_PnlSpecStamp[item] != stamp)
-   {
-      PnlSpecBuild(item);
-      g_PnlSpecStamp[item] = stamp;
-   }
-}
-
-int PnlSpecRows(const int item)
-{
-   if(item < 0 || item >= PNL_COUNT) return 0;
-   PnlEnsureSpec(item);
-   return g_PnlSpecCount[item];
-}
-
-//--- display row -> its spec slot (-1 when out of range)
-int PnlSpecIdx(const int item,const int dispRow)
-{
-   if(item < 0 || item >= PNL_COUNT) return -1;
-   PnlEnsureSpec(item);
-   if(dispRow < 0 || dispRow >= g_PnlSpecCount[item]) return -1;
-   return g_PnlSpecStart[item] + dispRow;
-}
-
-//--- display row -> FIRST SETTING it renders (-1 = section band, no setting)
-//--- A card without a spec (item 13 mini strip) is IDENTITY-mapped.
-int PnlSetRow(const int item,const int dispRow)
-{
-   if(item < 0 || item >= PNL_COUNT) return -1;
-   PnlEnsureSpec(item);
-   if(g_PnlSpecCount[item] == 0) return dispRow;
-   int si = PnlSpecIdx(item,dispRow);
-   if(si < 0) return -1;
-   return g_PnlSpec[si].s0;
-}
 
 //--- how many SETTINGS this display row folds in (1 normally)
 int PnlRowMembers(const int item,const int dispRow)
@@ -3132,7 +3213,7 @@ struct BkPreset
    int   fillTr;  // (Amber = 100 invisible = the shipped hollow look)
    color text;    // TV-parity: Text-tab color
    int   textSize;
-   int   bi;      // 0 Regular · 1 Bold · 2 Italic · 3 B+I
+   int   bi;      // 0 Reg · 1 Bold · 2 Italic · 3 B+I
    int   align;   // 0 Left · 1 Center · 2 Right
    int   valign;  // 0 Top · 1 Inside · 2 Bottom (TV Inside-dropdown)
 };
@@ -3655,6 +3736,9 @@ int PnlApplySet(const int item,const int row,const double v)
 int PnlResetItem(const int item)
 {
    int flags=REFRESH_NONE;
+   int savedMask=g_PnlCollapsed[item];   // reset touches HIDDEN members too
+   g_PnlCollapsed[item]=0;
+   g_PnlSpecStamp[item]=0;
    int rowsCount=PnlRowsCount(item);
    for(int r=0;r<rowsCount;r++)
    {
@@ -3662,7 +3746,24 @@ int PnlResetItem(const int item)
       PnlRowDef(item,r,rk,rl,rMin,rMax,rst,ru,ro);
       if(rk==PNL_K_SEC) continue;   // a section band restores nothing
       int f;
-      if(rk==4) f = PnlSetColor(item,r,PnlDefColor(item,r));   // restore default color
+      if(rk==8 || rk==9)   // folded row: restore EVERY member, not just s0
+      {
+         f=REFRESH_NONE;
+         int nm=PnlRowMembers(item,r);
+         for(int mi2=0;mi2<nm;mi2++)
+         {
+            int sr=PnlMemberRow(item,r,mi2);
+            if(sr<0) continue;
+            int mk=PnlMemberKind(item,r,mi2);
+            if(mk==4)
+            {
+               int ckind=PnlColorKindSet(item,sr);
+               if(ckind>=0) f|=PaletteApplyColor(ckind,PnlDefColorSet(item,sr));
+            }
+            else f|=PnlApplySet(item,sr,PnlDefValSet(item,sr));
+         }
+      }
+      else if(rk==4) f = PnlSetColor(item,r,PnlDefColor(item,r));   // restore default color
       else      f = PnlApply(item,r,PnlDefVal(item,r));
       flags|=f;
       // STEP card: restoring row 0 can switch the mode, which reshapes the
@@ -3674,7 +3775,9 @@ int PnlResetItem(const int item)
    UpdateCircularItemStates();
    UpdateCircularBadges();
    SaveUIStates();
-   if(g_PnlOpen==item) PnlOpen(item);   // rebuild so widgets show restored values
+   g_PnlCollapsed[item]=savedMask;   // restore the user's collapse state…
+   g_PnlSpecStamp[item]=0;            // …but rebuild through it
+   if(g_PnlOpen==item) PnlRebuildKeepSpot(item);   // rebuild so widgets show restored values
    return flags;
 }
 
@@ -4377,6 +4480,16 @@ void PnlPaintSwitch(const int item,const int row,const string nm,
                 (dual ? PNL_DUAL_SW_H : PNL_SW_H) + 2*PNL_SW_PAD, res, 1506);
 }
 
+//--- short cell caption for .dual rows: the family prefix goes ("STRUCTURE
+//--- L1" -> "L1", like the preview's L1 · L2 + L1/L2). Anything else keeps its
+//--- full label — a clipped family word ("FIRST", "LABELS") reads worse than
+//--- the long form, and the left label drops instead (see below).
+string PnlShortCap(const string l)
+{
+   if(StringFind(l, "STRUCTURE ") == 0) return StringSubstr(l, 10);
+   return l;
+}
+
 //--- .dual cell geometry — ONE implementation so the renderer and the press
 //--- hit-test can never drift apart (the classic P-UI ghost-target bug).
 //--- Returns the cell's SWITCH left edge; `cell` counts the row's own members
@@ -4399,7 +4512,7 @@ int PnlDualCellX(const int item,const int row,const int cell)
       {
          string cl,cu,co; int ck,cmn,cmx; double cst;
          PnlSetDef(item,PnlMemberRow(item,row,i),ck,cl,cmn,cmx,cst,cu,co);
-         txt = cl;
+         txt = PnlShortCap(cl);
       }
       else txt = extra;
       if(i == cell) return x;
@@ -4461,6 +4574,28 @@ bool PnlCsetHit(const int mx,const int my,int &item,int &row,int &setRow)
             item=it; row=r; setRow=PnlMemberRow(it,r,i);
             return true;
          }
+      }
+   }
+   return false;
+}
+
+//--- section band under the cursor -> (item, display row)
+bool PnlBandHit(const int mx,const int my,int &item,int &row)
+{
+   item=-1; row=-1;
+   if(g_PnlOpen < 0) return false;
+   int it = g_PnlOpen;
+   if(!PnlSpecCard(it)) return false;
+   int px = g_PnlX[it], py = g_PnlY[it];
+   int n  = PnlRowsCount(it);
+   for(int r=0;r<n;r++)
+   {
+      if(PnlRowKind(it,r) != PNL_K_SEC) continue;
+      int ry = py + PNL_HEAD_H + r*PNL_ROW_H;
+      if(mx >= px+PNL_PAD_X-6 && mx <= px+PNL_WEL-PNL_PAD_X+6 && my >= ry+5 && my <= ry+37)
+      {
+         item=it; row=r;
+         return true;
       }
    }
    return false;
@@ -4555,14 +4690,21 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          hx0 = px+PNL_PAD_X+14+StringLen(label)*6+12 + n*(15+3) + 8;
       }
       int cw = PNL_SEC_CNT_W;
-      int hx1 = px + PNL_WEL - PNL_PAD_X - cw - 12;
+      int hx1 = px + PNL_WEL - PNL_PAD_X - cw - 12 - 16;
       PnlSetRect(PnlName(item,row,"SHR"), hx0, ry+21, MathMax(0,hx1-hx0), 1, PNL_CLR_LINE);
-      PnlSetBitmap(PnlName(item,row,"BCNT"), px+PNL_WEL-PNL_PAD_X-cw-PNL_CHIP_PAD, ry+11,
+      PnlSetBitmap(PnlName(item,row,"BCNT"), px+PNL_WEL-PNL_PAD_X-cw-PNL_CHIP_PAD-16, ry+11,
                    cw+2*PNL_CHIP_PAD, 20, "::Files\\Icons\\pnl_cntchip.bmp", 1502);
       string cnt = IntegerToString(PnlSecCount(item,row));
-      PnlSetLabel(PnlName(item,row,"BCNL"), px+PNL_WEL-PNL_PAD_X-8, ry+16, cnt, PNL_CLR_MUTED, 7);
+      PnlSetLabel(PnlName(item,row,"BCNL"), px+PNL_WEL-PNL_PAD_X-8-16, ry+16, cnt, PNL_CLR_MUTED, 7);
       ObjectSetString(0,PnlName(item,row,"BCNL"),OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,PnlName(item,row,"BCNL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+      // collapse chevron (preview .acc .cv): down = open, right = collapsed
+      int bb = PnlBandIndex(item,row);
+      bool bcol = PnlBandCollapsed(item,bb);
+      PnlSetBitmap(PnlName(item,row,"CV"), px+PNL_WEL-PNL_PAD_X-12, ry+16, 10, 10,
+                   bcol ? PnlAccentRes(item,"pnl_chevr") : PnlAccentRes(item,"pnl_chev"), 1503);
+      ObjectSetString(0,PnlName(item,row,"CV"),OBJPROP_TOOLTIP,
+                      bcol ? "Expand section" : "Collapse section");
       return;
    }
 
@@ -4609,7 +4751,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          if(j < n)
          {
             PnlSetDef(item,PnlMemberRow(item,row,j),ck,cl,cmn,cmx,cst,cu,co);
-            txt = cl;
+            txt = PnlShortCap(cl);
             on  = (PnlCurrentSet(item,PnlMemberRow(item,row,j)) > 0.5);
          }
          else
@@ -4620,17 +4762,36 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                on = on && (PnlCurrentSet(item,PnlMemberRow(item,row,q)) > 0.5);
          }
          cx = px + PNL_WEL - PNL_PAD_X - PnlDualTotalW(item,row) + PnlDualCellX(item,row,j);
-         PnlPaintSwitch(item,row,"SW"+IntegerToString(j), cx, ry+11, on, true);
+         PnlPaintSwitch(item,row,PnlName(item,row,"SW"+IntegerToString(j)), cx, ry+11, on, true);
          PnlSetLabel(PnlName(item,row,"DL"+IntegerToString(j)),
                      cx+PNL_DUAL_SW_W+8, ry+16, txt, PNL_CLR_MUTED, 7);
          ObjectSetString(0,PnlName(item,row,"DL"+IntegerToString(j)),OBJPROP_FONT,"Arial Bold");
       }
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
-      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
+      // left label joins the member shorts ("L1 · L2"), like the preview.
+      // P-LBL-01: the middle dot is code 183 set at runtime, never a literal.
+      // When the join cannot fit before the right-aligned cells, it drops —
+      // the cells themselves keep full captions, so nothing is lost (the band
+      // above already names the group).
+      string dsep = " . ";
+      StringSetCharacter(dsep, 1, 183);
+      string dj = "";
+      for(int dq=0;dq<n;dq++)
+      {
+         string dcl,dcu,dco; int dck,dcmn,dcmx; double dcst;
+         PnlSetDef(item,PnlMemberRow(item,row,dq),dck,dcl,dcmn,dcmx,dcst,dcu,dco);
+         if(dq > 0) dj += dsep;
+         dj += PnlShortCap(dcl);
+      }
+      if(extra != "") dj += dsep + extra;
+      int djX = PnlLabelX(item,row,px);
+      int djAvail = px+PNL_WEL-PNL_PAD_X-PnlDualTotalW(item,row)-6-djX;
+      if(StringLen(dj)*5 > djAvail) dj = "";
+      PnlPaintLabel(item,row,djX,ry+14,dj);
       return;
-   }
+    }
 
-   // ── SWITCH — icon chip + label (+ keycap) + 40x22 pill, rail when ON
+    // ── SWITCH — icon chip + label (+ keycap) + 40x22 pill, rail when ON
    if(kind == PNL_K_SW)
    {
       bool on = (PnlCurrent(item,row) > 0.5);
@@ -4638,7 +4799,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,on);
       PnlPaintKey(item,row,px+PNL_PAD_X+PNL_CHIP_VIS+8,ry+12);
       PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
-      PnlPaintSwitch(item,row,"SW",px+PNL_SW_X,ry+PNL_SW_Y,on,false);
+      PnlPaintSwitch(item,row,PnlName(item,row,"SW"),px+PNL_SW_X,ry+PNL_SW_Y,on,false);
       return;
    }
 
@@ -5099,10 +5260,20 @@ void PnlDestroy(const int item)
       ObjectDelete(0,head+rr+"_MNS");
       ObjectDelete(0,head+rr+"_PLS");
       ObjectDelete(0,head+rr+"_V");
-      ObjectDelete(0,head+rr+"_SWB");
-      ObjectDelete(0,head+rr+"_SWK");
+      ObjectDelete(0,head+rr+"_SW");    // pill switch face (40x22 bitmap)
+      ObjectDelete(0,head+rr+"_ACT");   // active-row wash (only exists when ON)
+      ObjectDelete(0,head+rr+"_RAIL");  // active-row rail (only exists when ON)
+      ObjectDelete(0,head+rr+"_KEY");   // hotkey keycap bitmap
+      ObjectDelete(0,head+rr+"_KEYL");  // hotkey keycap letter
+      ObjectDelete(0,head+rr+"_SWB");   // purge: retired checkbox skin
+      ObjectDelete(0,head+rr+"_SWK");   // purge: retired checkbox knob
       for(int s=0;s<12;s++)   // 12 > max segment count (TF Lock row = 10 options);
          ObjectDelete(0,head+rr+"_C"+IntegerToString(s));   // C8/C9 used to LEAK on screen
+      for(int s=0;s<8;s++)   // tab icon + caption ride on the tab face
+      {
+         ObjectDelete(0,head+rr+"_CI"+IntegerToString(s));
+         ObjectDelete(0,head+rr+"_CT"+IntegerToString(s));
+      }
       ObjectDelete(0,head+rr+"_RS");
       ObjectDelete(0,head+rr+"_CB");
       ObjectDelete(0,head+rr+"_CL");
@@ -5123,6 +5294,7 @@ void PnlDestroy(const int item)
       ObjectDelete(0,head+rr+"_SHR");    // section rule
       ObjectDelete(0,head+rr+"_BCNT");   // section count pill
       ObjectDelete(0,head+rr+"_BCNL");   // section count text
+      ObjectDelete(0,head+rr+"_CV");     // section collapse chevron
       for(int s=0;s<4;s++)
       {
          ObjectDelete(0,head+rr+"_SECS"+IntegerToString(s));   // section colour strip
@@ -5172,6 +5344,10 @@ void PnlDestroy(const int item)
    // footer button chrome — skin + glyph + caption per button (PnlFooterBtn)
    ObjectDelete(0,head+"rstbg");   ObjectDelete(0,head+"rstic");   ObjectDelete(0,head+"rstlb");
    ObjectDelete(0,head+"donebg");  ObjectDelete(0,head+"doneic");  ObjectDelete(0,head+"donelb");
+   // purge: pre-fix builds created the switch faces as PREFIXLESS globals
+   // ("SW","SW0".."SW3") — one object all rows fought over. Delete once here.
+   ObjectDelete(0,"SW");
+   for(int swp=0;swp<4;swp++) ObjectDelete(0,"SW"+IntegerToString(swp));
    if(item == 13)   // TV-strip objects carry head-kind names (TB*) — purge
    {                // them here or they leak on close. R-BKSTRIP.
       ObjectDelete(0,PnlHead(13,"TBborder"));
@@ -5295,7 +5471,9 @@ void BkFlushTextEdit()
    if(!g_BkTextFocus) return;
    g_BkTextFocus = false;
    if(g_PnlOpen != 12 || g_BkTab != 1) return;
-   string en = PnlName(12, 1, "ED");
+   int er = PnlDispRowOfSet(12, 1);   // TEXT edit lives on the CONTENT section's row, not row 1
+   if(er < 0) return;
+   string en = PnlName(12, er, "ED");
    if(ObjectFind(0, en) < 0) return;
    string t = ObjectGetString(0, en, OBJPROP_TEXT);
    if(g_BkMiniBox != "" && BaseKnotFind(g_BkMiniBox) >= 0) BaseKnotSetText(g_BkMiniBox, t);
@@ -5333,6 +5511,19 @@ void PnlOpen(const int item)
    CircLockChart();   // modal: freeze chart pan/context menu while settings are open
    PnlLockForeground(); // ensure panel is ABOVE candles (not under)
    ChartRedraw();
+}
+
+//--- rebuild the open card WITHOUT moving it: a height change (collapse,
+//--- tab/mode reshape) must not re-anchor the panel around the menu.
+//--- The manual flag is only borrowed for the create call.
+void PnlRebuildKeepSpot(const int item)
+{
+   if(item < 0 || item >= PNL_COUNT) return;
+   int sx=g_PnlX[item], sy=g_PnlY[item];
+   bool wm=g_PnlManualPos[item];
+   g_PnlManualPos[item]=true; g_PnlX[item]=sx; g_PnlY[item]=sy;
+   PnlOpen(item);
+   g_PnlManualPos[item]=wm;
 }
 
 //+------------------------------------------------------------------+
@@ -5752,7 +5943,8 @@ bool PnlTrackHit(const int mx,const int my,int &item,int &row)
    return false;
 }
 
-//--- TV checkbox rect (absolute px): press = flip instantly
+//--- switch pill rect (absolute px): press = flip instantly. The pill is
+//--- right-aligned (PNL_SW_X); the old left-side checkbox box is gone.
 bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
 {
    item=-1; row=-1;
@@ -5764,10 +5956,10 @@ bool PnlSwitchHit(const int mx,const int my,int &item,int &row)
       int kind; string label,unit,opts; int minV,maxV; double step;
       PnlRowDef(g_PnlOpen,r,kind,label,minV,maxV,step,unit,opts);
       if(kind!=1) continue;
-      int cbX=px+PNL_PAD_X;
-      int cbY=py+PNL_HEAD_H+r*PNL_ROW_H+PNL_CB_Y;
-      if(mx >= cbX-5 && mx <= cbX+PNL_CB_SZ+5 &&
-         my >= cbY-5 && my <= cbY+PNL_CB_SZ+5)
+      int swX=px+PNL_SW_X-PNL_SW_PAD;
+      int swY=py+PNL_HEAD_H+r*PNL_ROW_H+PNL_SW_Y-PNL_SW_PAD;
+      if(mx >= swX-5 && mx <= swX+PNL_SW_W+2*PNL_SW_PAD+5 &&
+         my >= swY-5 && my <= swY+PNL_SW_H+2*PNL_SW_PAD+5)
       {
          item=g_PnlOpen; row=r;
          return true;
@@ -5932,6 +6124,63 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
+      // colour-set cell → open the palette bound to THAT cell's target
+      int csi,csr,css;
+      if(PnlCsetHit(mx,my,csi,csr,css))
+      {
+         int ck=PnlColorKindSet(csi,css);
+         if(ck>=0) PalOpenKind(csi,ck);
+         UISuppressNextClick();
+         return;
+      }
+      // dual cell → flip that member (ALL cell flips the whole group)
+      int dui,dur,duc;
+      if(PnlDualHit(mx,my,dui,dur,duc))
+      {
+         int dn=PnlRowMembers(dui,dur);
+         int flags=REFRESH_NONE;
+         if(duc<dn)
+         {
+            int sr=PnlMemberRow(dui,dur,duc);
+            double v=(PnlCurrentSet(dui,sr)>0.5)?0.0:1.0;
+            flags=PnlApplySet(dui,sr,v);
+         }
+         else
+         {
+            bool all=true;
+            for(int dq=0;dq<dn;dq++)
+               all=all && (PnlCurrentSet(dui,PnlMemberRow(dui,dur,dq))>0.5);
+            double v=all?0.0:1.0;
+            for(int dq2=0;dq2<dn;dq2++)
+               flags|=PnlApplySet(dui,PnlMemberRow(dui,dur,dq2),v);
+         }
+         PnlUpdateRow(dui,dur);
+         UISuppressNextClick();
+         if(flags!=REFRESH_NONE) RefreshDisplay(flags);
+         return;
+      }
+      // "+" quick-add cell → open the full picker for the row's target
+      int qai,qar;
+      if(PnlColorAddHit(mx,my,qai,qar))
+      {
+         PalOpen(qai,qar);
+         UISuppressNextClick();
+         return;
+      }
+      // section band → collapse/expand (preview .acc intent); the card
+      // rebuilds shorter/taller in place
+      int bi,br;
+      if(PnlBandHit(mx,my,bi,br))
+      {
+         int bb=PnlBandIndex(bi,br);
+         if(bb>=0)
+         {
+            PnlToggleBand(bi,bb);
+            PnlRebuildKeepSpot(bi);
+            UISuppressNextClick();
+         }
+         return;
+      }
       // grab the header → drag the whole panel anywhere on the chart
       if(PnlHeaderHit(mx,my))
       {
@@ -6004,6 +6253,57 @@ void PnlUpdateRow(const int item,const int row)
 
    if(kind==5) return;   // NAV rows are static buttons
    if(kind==6) return;   // TEXT edit field — content owned by the box, rebuilt on open
+   if(kind==8)   // colour set: repaint every cell + move the selection ring
+   {
+      int m=PnlRowMembers(item,row);
+      int total=m*PNL_CSET_W+(m-1)*PNL_CSET_GAP;
+      int x0=px+(PNL_WEL-total)/2;
+      for(int i=0;i<m;i++)
+      {
+         int sr=PnlMemberRow(item,row,i);
+         int kk=PnlColorKindSet(item,sr);
+         color cc=(kk>=0)?PaletteKindColor(kk):clrNONE;
+         string csn=PnlName(item,row,"CS"+IntegerToString(i));
+         if(ObjectFind(0,csn)>=0 && cc!=clrNONE)
+            ObjectSetInteger(0,csn,OBJPROP_BGCOLOR,cc);
+         string csk=PnlName(item,row,"CSK"+IntegerToString(i));
+         bool sel=(g_PalOpen && kk>=0 && g_PalKind==kk);
+         if(sel)
+         {
+            if(ObjectFind(0,csk)<0 && cc!=clrNONE)
+            {
+               int cx2=x0+i*(PNL_CSET_W+PNL_CSET_GAP);
+               PnlSetRect(csk,cx2-2,ry+15,PNL_CSET_W+4,PNL_CSET_H+4,PNL_CLR_ACCENT);
+            }
+         }
+         else ObjectDelete(0,csk);
+      }
+      return;
+   }
+   if(kind==9)   // dual: reswap every cell face (captions are static)
+   {
+      int dn=PnlRowMembers(item,row);
+      int cells=PnlDualCells(item,row);
+      for(int j=0;j<cells;j++)
+      {
+         bool on=false;
+         if(j<dn) on=(PnlCurrentSet(item,PnlMemberRow(item,row,j))>0.5);
+         else
+         {
+            on=true;
+            for(int q=0;q<dn;q++)
+               on=on && (PnlCurrentSet(item,PnlMemberRow(item,row,q))>0.5);
+         }
+         string swn=PnlName(item,row,"SW"+IntegerToString(j));
+         if(ObjectFind(0,swn)>=0)
+         {
+            string res=on ? PnlAccentRes(item,"pnl_dsw_on") : "::Files\\Icons\\pnl_dsw_off.bmp";
+            ObjectSetString(0,swn,OBJPROP_BMPFILE,0,res);
+            ObjectSetString(0,swn,OBJPROP_BMPFILE,1,res);
+         }
+      }
+      return;
+   }
    if(kind==4)   // color row: refresh preview swatch + quick-pick selection rings
    {
       color cur=PnlRowColor(item,row);
@@ -6019,16 +6319,43 @@ void PnlUpdateRow(const int item,const int row)
       }
       return;
    }
-    if(kind==1)   // TV checkbox — swap the box skin (no knob anymore)
+    if(kind==1)   // pill switch — reswap the face + chip, grow/prune rail+wash
     {
        bool on=(val>0.5);
-       string swb=PnlName(item,row,"SWB");
-       if(ObjectFind(0,swb)>=0)
+       int acc=PnlCardAccent(item);
+       string sw=PnlName(item,row,"SW");
+       if(ObjectFind(0,sw)>=0)
        {
-          string res=on?"::Files\\Icons\\pnl_cb_on.bmp":"::Files\\Icons\\pnl_cb_off.bmp";
-          ObjectSetString(0,swb,OBJPROP_BMPFILE,0,res);
-          ObjectSetString(0,swb,OBJPROP_BMPFILE,1,res);
+          string res=on ? PnlAccentRes(item,"pnl_sw_on") : "::Files\\Icons\\pnl_sw_off.bmp";
+          ObjectSetString(0,sw,OBJPROP_BMPFILE,0,res);
+          ObjectSetString(0,sw,OBJPROP_BMPFILE,1,res);
        }
+       string act=PnlName(item,row,"ACT"), rail=PnlName(item,row,"RAIL");
+       if(on)
+       {
+          if(ObjectFind(0,act)<0 || ObjectFind(0,rail)<0)
+             PnlPaintActive(item,row,px,ry,true);
+       }
+       else
+       {
+          ObjectDelete(0,act);
+          ObjectDelete(0,rail);
+       }
+       string chp=PnlName(item,row,"CHP"), gl=PnlName(item,row,"GL");
+       string ico=PnlRowIcon(item,row);
+       if(ObjectFind(0,chp)>=0)
+       {
+          string cres=on ? PnlAccentRes(item,"pnl_chip") : "::Files\\Icons\\pnl_chip.bmp";
+          ObjectSetString(0,chp,OBJPROP_BMPFILE,0,cres);
+          ObjectSetString(0,chp,OBJPROP_BMPFILE,1,cres);
+       }
+       if(ico!="" && ObjectFind(0,gl)>=0)
+       {
+          string gres=PnlGlyphRes(item,ico,on);
+          ObjectSetString(0,gl,OBJPROP_BMPFILE,0,gres);
+          ObjectSetString(0,gl,OBJPROP_BMPFILE,1,gres);
+       }
+       return;
     }
    else if(kind==2)   // tabs / dropdown select / segmented pills
    {
@@ -6036,22 +6363,43 @@ void PnlUpdateRow(const int item,const int row)
       int n=PnlSplit(opts, arr, 12);
       if(IsTabRow(item,row))   // underline follows the active tab
       {
-         int gap=4;
-         int segW=(PNL_WEL-2*PNL_PAD_X-(n-1)*gap)/n;
+         // SAME content-sized walk as the create path above (tx starts px+12,
+         // tw=12+6/char+20 with icon, 2px gaps) — equal slices drift the line.
+         string ic2=PnlRowExt(item,row);
+         string iarr2[];
+         int nic2=(ic2=="")?0:PnlSplit(ic2,iarr2,8);
+         int tx2=px+12;
          for(int i=0;i<n;i++)
          {
+            int tw2=12+StringLen(arr[i])*6+((i<nic2)?20:0);
             string seg=PnlName(item,row,"C"+IntegerToString(i));
-            if(ObjectFind(0,seg)<0) continue;
+            if(ObjectFind(0,seg)<0) { tx2+=tw2+2; continue; }
             bool isAct=PnlSegOn(item,row,i,val);
             ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT : PNL_CLR_SEG_TX);
             ObjectSetString(0,seg,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+            string cii=PnlName(item,row,"CI"+IntegerToString(i));
+            if(i<nic2 && ObjectFind(0,cii)>=0)
+            {
+               string ires=PnlGlyphRes(item,iarr2[i],isAct);
+               ObjectSetString(0,cii,OBJPROP_BMPFILE,0,ires);
+               ObjectSetString(0,cii,OBJPROP_BMPFILE,1,ires);
+            }
+            string cti=PnlName(item,row,"CT"+IntegerToString(i));
+            if(ObjectFind(0,cti)>=0)
+            {
+               ObjectSetInteger(0,cti,OBJPROP_COLOR, isAct ? PNL_CLR_TITLE : PNL_CLR_SEG_TX);
+               ObjectSetString(0,cti,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+            }
             if(isAct)
             {
                string tu=PnlName(item,row,"TU");
                if(ObjectFind(0,tu)>=0)
-                  ObjectSetInteger(0,tu,OBJPROP_XDISTANCE,
-                                   px+PNL_PAD_X + i*(segW+gap) + 8);
+               {
+                  ObjectSetInteger(0,tu,OBJPROP_XDISTANCE,tx2+7);
+                  ObjectSetInteger(0,tu,OBJPROP_XSIZE,tw2-14);
+               }
             }
+            tx2+=tw2+2;
          }
       }
       else if(IsDdRow(item,row))   // select button shows the live option

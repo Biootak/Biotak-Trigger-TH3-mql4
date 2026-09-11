@@ -1184,6 +1184,19 @@ function chevSkin(name) {
   });
   return { w: W, h: H, buf };
 }
+// --- collapsed-band chevron (preview .acc.collapsed .cv): the same 6px
+// --- accent chevron rotated to point right. Same canvas, same twin rule.
+function chevRSkin(name) {
+  const W = 6 + 2 * PAD2, H = 6 + 2 * PAD2;
+  const c = ACCENTS[name].a1;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const px = x - PAD2, py = y - PAD2;
+    const d = Math.min(distSeg(px, py, 1.4, 0.5, 3.9, 3), distSeg(px, py, 3.9, 3, 1.4, 5.5));
+    if (d > 1.6) return null;
+    return pm(c, clamp01(1.6 - d + 0.5) * 255);
+  });
+  return { w: W, h: H, buf };
+}
 
 // --- .ft .btn — the footer button face. 92x28, radius 8, and a pad wide enough
 //     for the primary's box-shadow glow (the preview's card has overflow:hidden,
@@ -1341,6 +1354,7 @@ for (const a of A_NAME) {
   uiFiles.push({ name: 'pnl_dsw_on_' + a + '.bmp',  ...dualSwSkin(a, true) });
   uiFiles.push({ name: 'pnl_add_' + a + '.bmp',     ...addCellSkin(a)      });
   uiFiles.push({ name: 'pnl_chev_' + a + '.bmp',    ...chevSkin(a)         });
+  uiFiles.push({ name: 'pnl_chevr_' + a + '.bmp',   ...chevRSkin(a)        });
 }
 uiFiles.push({ name: 'pnl_sw_off.bmp',  ...swSkin('gold', false) });
 uiFiles.push({ name: 'pnl_dsw_off.bmp', ...dualSwSkin('gold', false) });
