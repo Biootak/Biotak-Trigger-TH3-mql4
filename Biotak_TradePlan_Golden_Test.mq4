@@ -12,14 +12,16 @@
 //|           (Sep-9-2026, live, all 8 TFs) must fall out of the      |
 //|           chain when his Eng ladder is fed in.                    |
 //|                                                                  |
-//|  PART B - live wiring check on the attached symbol:               |
-//|           Eng(TF) = iATR(trigTF, TF_min/trig_min, 1) / pip        |
-//|           and Eng(M1) != Eng(M5) != Eng(M15). Those three share   |
-//|           trigger M1 with periods 1/5/15, so ANY per-trigger      |
-//|           strip/composite ATR collapses them to one number - the  |
-//|           exact signature of the 2026-09-09 08:24 regression      |
-//|           (EURUSD SNAP printed M1 engT = M5 engT = 1.04, while    |
-//|           the professor shows 4 / 8 / 17).                        |
+//|  PART B - live wiring check on the attached symbol, mirroring the  |
+//|           ONE Eng formula (R-ENGPARITY, 2026-09-10, R-ENGONE):     |
+//|           Eng(TF) = TR_own(TF) / 4.266666, plus two symbol-free    |
+//|           invariants the professor's ladder satisfies:             |
+//|           (1) Eng(M1) != Eng(M5) != Eng(M15) — the 2026-09-09       |
+//|               08:24 regression collapsed them onto one per-trigger  |
+//|               composite (EURUSD printed 1.04/1.04);               |
+//|           (2) the parity ladder climbs monotonically M15..MN        |
+//|               (his XAUUSD ladder 16.5 < 39.9 < 87.8 < 252 < 600    |
+//|               < 983).                                              |
 //|                                                                  |
 //|  Usage: attach to any chart (XAUUSD M1 preferred), read the       |
 //|         Experts tab. Every line is prefixed [TPGOLD].             |
@@ -145,6 +147,68 @@ void Chk(const string tf, const string leg, const int got, const int want, const
 }
 
 //+------------------------------------------------------------------+
+//| PARITY ENG MIRROR (R-ENGPARITY): Eng(TF) = TR_composite(own)/divisor|
+//| Re-implemented from scratch (same weights/periods as the engine, so |
+//| a drift in EITHER side shows up as a mismatch in the printed row).  |
+//+------------------------------------------------------------------+
+#define ENG_DIVISOR 4.266666
+#define ATR_LEGS    6
+
+int g_legPeriod[ATR_LEGS] = {  5, 10,  21,  66, 132, 264};
+int g_legWeight[ATR_LEGS] = {  1,  1,   2,   3,   5,   8};
+
+// Mirrors TrexSMALeg: plain TR mean over `period` bars at shift 1, with the
+// newest-bar quirk (bar 1's own close is its "previous" close).
+double SmaLeg(const int tfMin, const int period)
+{
+   ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)tfMin;
+   double trSum = 0.0;
+   for(int i = 0; i < period; i++)
+   {
+      double h     = iHigh (Symbol(), tf, 1 + i);
+      double l     = iLow  (Symbol(), tf, 1 + i);
+      double cPrev = (i == 0) ? iClose(Symbol(), tf, 1 + i)
+                              : iClose(Symbol(), tf, 1 + i + 1);
+      double tr    = MathMax(h - l, MathMax(MathAbs(h - cPrev), MathAbs(l - cPrev)));
+      trSum += tr;
+   }
+   return trSum / (double)period;
+}
+
+// Mirrors CalculateWeightedATR + CalculateATRBatchTrex (W1/MN overrides).
+double CompositeTR(const int tfMin)
+{
+   ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)tfMin;
+   int nb = iBars(Symbol(), tf);
+   if(nb <= 10) return 0.0;
+
+   if(tfMin == 43200)   // MN override: iATR(MN,30,1)
+   {
+      if(nb <= 31) return 0.0;
+      double m = iATR(Symbol(), tf, 30, 1);
+      return (m == EMPTY_VALUE || m <= 0.0) ? 0.0 : m;
+   }
+   if(tfMin == 10080)   // W1 override: iATR(W1,55,1)
+   {
+      if(nb <= 56) return 0.0;
+      double w = iATR(Symbol(), tf, 55, 1);
+      return (w == EMPTY_VALUE || w <= 0.0) ? 0.0 : w;
+   }
+
+   double sum = 0.0;
+   int    tw  = 0;
+   for(int i = 0; i < ATR_LEGS; i++)
+   {
+      if(nb <= g_legPeriod[i] + 1) continue;
+      double v = SmaLeg(tfMin, g_legPeriod[i]);
+      if(v <= 0.0) continue;
+      sum += v * g_legWeight[i];
+      tw  += g_legWeight[i];
+   }
+   return (tw > 0) ? sum / (double)tw : 0.0;
+}
+
+//+------------------------------------------------------------------+
 void OnStart()
 {
    Print("[TPGOLD] ================ TRex trade-plan golden test ================");
@@ -197,41 +261,53 @@ void OnStart()
    // PART B - live wiring on the attached symbol
    //================================================================
    double pip = PipLocal();
-   Print(StringFormat("[TPGOLD] PART B | %s pip=%.5f digits=%d",
-                      Symbol(), pip, (int)MarketInfo(Symbol(), MODE_DIGITS)));
+   Print(StringFormat("[TPGOLD] PART B | %s pip=%.5f digits=%d divisor=%.6f",
+                      Symbol(), pip, (int)MarketInfo(Symbol(), MODE_DIGITS), ENG_DIVISOR));
 
-   double engLive[LADDER];
+   double trOwn [LADDER] = {0, 0, 0, 0, 0, 0, 0, 0};
+   double engPar[LADDER] = {0, 0, 0, 0, 0, 0, 0, 0};  // Eng = TR_own / divisor (the engine's ONLY Eng, R-ENGONE)
+
    for(int i = 0; i < LADDER; i++)
    {
-      int trig   = LadMinutes(TrigIndex(i));
-      int period = LadMinutes(i) / trig;
-      if(period < 1) period = 1;
-      double v   = iATR(Symbol(), (ENUM_TIMEFRAMES)trig, period, 1);
-      engLive[i] = (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
-      Print(StringFormat("[TPGOLD] %-3s | trig %-3s per %-2d | Eng %.3f",
-                         LadName(i), LadName(TrigIndex(i)), period, engLive[i]));
+      trOwn[i]  = CompositeTR(LadMinutes(i)) / pip;
+      engPar[i] = (trOwn[i] > 0.0) ? trOwn[i] / ENG_DIVISOR : 0.0;
+
+      Print(StringFormat("[TPGOLD] %-3s | TRown %9.2f | Eng %8.3f -> %d",
+                         LadName(i), trOwn[i], engPar[i], RInt(engPar[i])));
    }
 
-   //--- the regression detector
-   bool ready = (engLive[0] > 0.0 && engLive[1] > 0.0 && engLive[2] > 0.0);
+   //--- regression detector 1: M1/M5/M15 must stay DISTINCT
+   bool ready = (engPar[0] > 0.0 && engPar[1] > 0.0 && engPar[2] > 0.0);
    if(!ready)
-      Print("[TPGOLD] WARN M1 history not ready - distinctness check skipped");
-   else if(engLive[0] == engLive[1] || engLive[1] == engLive[2] || engLive[0] == engLive[2])
+      Print("[TPGOLD] WARN M1/M5/M15 history not ready - distinctness check skipped");
+   else if(engPar[0] == engPar[1] || engPar[1] == engPar[2] || engPar[0] == engPar[2])
    {
       g_fail++;
-      Print("[TPGOLD] FAIL Eng(M1)/Eng(M5)/Eng(M15) are NOT distinct -> Eng is reading a "
-            "per-trigger strip/composite ATR again, not iATR(M1,1/5/15,1). "
-            "Professor: 4 / 8 / 17.");
+      Print("[TPGOLD] FAIL Eng(M1)/Eng(M5)/Eng(M15) are NOT distinct -> Eng collapsed onto one "
+            "per-trigger number again (2026-09-09 08:24 regression). Professor shows 4 / 8 / 17.");
    }
    else
-      Print("[TPGOLD] OK   Eng(M1)/Eng(M5)/Eng(M15) distinct (nested M1 windows 1/5/15)");
+      Print("[TPGOLD] OK   Eng(M1)/Eng(M5)/Eng(M15) distinct (per-own-TF composite)");
+
+   //--- regression detector 2: parity ladder must climb M15..MN
+   for(int i = 2; i < LADDER - 1; i++)
+   {
+      if(engPar[i] <= 0.0 || engPar[i + 1] <= 0.0) continue;
+      if(engPar[i + 1] < engPar[i])
+      {
+         g_fail++;
+         Print(StringFormat("[TPGOLD] FAIL parity ladder not monotone: %s %.3f >= %s %.3f "
+                            "(professor: 16.5 < 39.9 < 87.8 < 252 < 600 < 983 on XAUUSD)",
+                            LadName(i), engPar[i], LadName(i + 1), engPar[i + 1]));
+      }
+   }
 
    //--- full live plan table for eyeballing against the screenshots
    Print("[TPGOLD] live plan | TF  | Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
    for(int i = 0; i < LADDER; i++)
    {
-      if(engLive[i] <= 0.0 || engLive[StrIndex(i)] <= 0.0) continue;
-      Chain(engLive[i], engLive[StrIndex(i)], i, eng, hunter, sl, tp1, tp2, tp3, sb1, sb2);
+      if(engPar[i] <= 0.0 || engPar[StrIndex(i)] <= 0.0) continue;
+      Chain(engPar[i], engPar[StrIndex(i)], i, eng, hunter, sl, tp1, tp2, tp3, sb1, sb2);
       Print(StringFormat("[TPGOLD] live      | %-3s | %3d %6d | %4d %5d %5d %6d | %5d %6d",
                          LadName(i), eng, hunter, sl, tp1, tp2, tp3, sb1, sb2));
    }

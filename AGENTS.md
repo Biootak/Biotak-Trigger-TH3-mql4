@@ -651,11 +651,24 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   redraws — never a draw-once at init.)
 
 - **ATR trade block = screenshot format, TRex stamp on top**
-  (2026-09-08 — bottom-right block is 2 centered rows: `Close in : ...`
-  countdown (red) / `#SL:-S #TP1+T1 #TP2+T2 #TP3+T3` single row (blue);
-  top-right under the stamp: `Hunter SL: H Eng.SL: E` (red) /
-  `Str Bond: A - B` (blue). The ATR-pips row is retired (ATR stays the
-  hidden engine only). Top-right
+  (2026-09-08; bottom-right block is now 1 right-aligned row,
+  `#SL:-S #TP1+T1 #TP2+T2 #TP3+T3` (blue). The `Close in : ...` countdown became
+  a 2026-09-11 compact tag `19m32s` BESIDE THE LIVE CANDLE at the live price
+  (`CreateLivePriceCountdown`: X = bar-0 right edge + gap, Y =
+  `ChartTimePriceToXY(bid/ask mid)`, flips to the candle's left when the right
+  side runs out of room; 1 Hz + `CHARTEVENT_CHART_CHANGE`). The tag is its OWN
+  LAYER (P-LBL-05): own switch (`D` key / card 2 row 0, `OV_CD`), own
+  color/size/gap (card 2 rows 1-3, `OV_CDC/CDS/CDG`), object name `CloseIn_Tag`
+  (no `ATR_` — the ATR janitor must not eat it), and a plain left click on the
+  tag opens card 2. Every one of those contracts is asserted by
+  `Biotak_Countdown_Test.mq4` (`[CDTEST]` lines: name carries no `ATR_`,
+  survives the ATR-off sweep, own switch deletes+invalidates, click region ==
+  the painted rect, tag parks with the live bar out of view).
+  top-right under the stamp: `Hunter SL: H Eng.SL: E` (red). The `Str Bond: A - B`
+  row is RETIRED (R-STBOND 2026-09-10, user decision — SB1≈TP1 (20/9 vs 7/3 of
+  slRaw) and SB2≈TP3 (95/9 vs 31/3), a duplicate read; engine sb1/sb2 stay for
+  log + golden-test pairing, on-chart text gone, delete/visibility paths stay as
+  purge). The ATR-pips row is retired (ATR stays the hidden engine only). Top-right
   TRex stamp (brand `TR` blue + `ex` red at +6pt with the pair's LIVE spread
   superscript in pips, 1 decimal + green Persian caption) rides the SAME
   ATR-trade visibility
@@ -671,8 +684,10 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (2026-09-09 spec, confirmed live Sep-9-2026 all 8 TFs XAUUSD: UNIFIED SL formula
   `SL(TF) = 1.20 × Eng(StructureTF)` — one constant, no per-TF table.
   Ladder: M1-M5-M15-H1-H4-D1-W1-MN; Structure = 2 rungs UP; Trigger = 2 rungs DOWN.
-  Eng formula (`TradePlanEngTrue`): `iATR(triggerTF, TF_min/trig_min, 1)/pip` — single
-  Wilder call on the trigger TF with period = TF_min/trig_min (shift=1, frozen per trigger bar).
+  Eng formula (`TradePlanEngTrue`) — SEE R-ENGPARITY below: `Eng(TF) = TR_composite(own TF) / 4.266666`
+  (constant `TRADEPLAN_ENG_DIVISOR`, hard-coded — R-ENGONE 2026-09-10: not an Input,
+  one formula only; the legacy single Wilder call on the trigger TF with
+  period = TF_min/trig_min (shift=1) is retired/deleted).
   Trigger mapping: M1/M5/M15→M1(per=1/5/15), H1→M5(12), H4→M15(16), D1→H1(24), W1→H4(42), MN→D1(30).
   `TP = SL*(7/3, 5, 31/3)` from UNROUNDED slTrue; `Hunter = round(8*EngTrue/3)` from
   unrounded Eng; StrBond `Base=95/9*SL` + `Width=20/9*SL` (M1-D1: Width--Base,
@@ -680,6 +695,109 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   (`TradePlanComputeLive`) while Eng/Hunter stay live. Symbol-free +
   `TradePlanSelfCheck()` guard. Display renders from `Period()`, never follows TF-lock.
   Full walkthrough: TRADEPLAN_FA.md.)
+- **R-ENGPARITY — Eng is a LONG-horizon per-chart-TF measure, not a one-bar trigger ATR**
+  (2026-09-10 evening, user order "ours must become like the professor's"; rig
+  `tools/eng_own_window.js`, committed). The legacy Eng `iATR(triggerTF, TF/trig, 1)/pip`
+  is a ONE-chart-bar window: it reproduced gold only because XAUUSD vol is
+  persistent (P-ATR-05), and it is off by -39% on W1, -33% on D1, +128% on M15,
+  -50% on EURUSD W1, -46% on EURUSD MN. The rig ruled out (a) a fixed-N own-TF
+  window (gold ATR(M1,N) never drops below ~16 pips, ATR(H4,N) 350+ vs his 88)
+  and (b) a fixed calendar window on the trigger TF (XAUUSD MN fits 174 days at
+  0.1%, but XAUUSD W1 needs 600 and the H4 series tops out at 402 — no single
+  window clears the ladder; P-ATR-05's flat optimum stands). Shipped instead:
+  **`Eng(TF) = TR_composite(own TF) / 4.266666`** (constant `TRADEPLAN_ENG_DIVISOR` =
+  64/15, the user's divisor) — reproduces all six SL-derived XAUUSD legs
+  {M15 16.515, H1 39.854, H4 87.766, D1 252.338, W1 600, MN 982.978} within
+  {+14,+4,-4,+2,-3,-10}% on the 15:31 XAUUSD `[SNAP]` (legacy: {+128,+54,-0.7,-28,-39,+5}%),
+  keeps Eng(M1)!=Eng(M5)!=Eng(M15) (P-TRADEPLAN-02's structural constraint), and
+  improves every EURUSD leg except the low TFs. NOT verified: his M1/M5 Eng (not
+  SL-observable; gold M1 3.8 / M5 7.9 are not reproducible by ANY ATR of M1 —
+  treat those two as display-only) and EURUSD M1..M15, which our parity path
+  undershoots by ~45% (prof band midpoints, time-mismatched screenshots).
+  **R-ENGONE (2026-09-10, user decision): the divisor is HARD-CODED — it is NOT
+  an Input (no row in the MT5 Inputs dialog) and the legacy Eng path is
+  deleted; this is the only Eng formula.** `[SNAP]` prints `engDiv=` in its
+  header, and `Biotak_TradePlan_Golden_Test.mq4` PART B mirrors the recipe and
+  guards distinctness + monotonicity. To ever change the divisor: edit
+  `TRADEPLAN_ENG_DIVISOR` in `TradePlanFormulas.mqh`, from a same-minute pair
+  of screenshots — the low-TF legs are the ones to watch.
+  **R-ENGEURUSD (2026-09-10, user decision: KEEP 4.266666).** EURUSD low-TF
+  professor screenshots (Aug-14/17, M1+M5+M15 corners, rigs `tools/eurusd_corners.js`,
+  `tools/eurusd_eng_sweep.js`, `tools/eurusd_tr_window.js`) prove: (1) the whole
+  SL/TP/SB chain is CORRECT on EURUSD low TFs — each block reconstructs from a
+  single slTrue (M1 1.76, M5 3.13, M15 5.47) with the same 7/3·5·31/3·20/9·95/9
+  multipliers; (2) our `composite/4.266666` Eng reads ~30-40% LOW on M1..H1
+  (his raw Eng: M1 [0.19,0.5), M5 [0.56,0.94), M15 [1.31,1.5), H1 2.61, H4 4.56
+  vs ours 0.21/0.46/0.84/1.91/4.60) while H4 matches (+1%); (3) the implied
+  divisor with OUR composite is ~2.6 (M1-M15), ~3.1 (H1), ~4.3 (H4) — NO constant
+  divisor fits, and no ATR(TF,N) for any N reproduces his Eng (sweep N≤2000 empty);
+  (4) his strip TR is SESSION-REACTIVE (shorter window than our long-weighted
+  composite): his panel M15 TR rose 4→5 between 13:44 and 21:19 the same day
+  while ours stayed ~3.7 (composite is 40% weighted on the 264-bar leg).
+  Open question: his real Eng window. DO NOT re-tune the divisor from
+  time-mismatched screenshots — the definitive test is ONE same-second pair
+  (our `[SNAP]` + his chart). Until then EURUSD M1..H1 Eng stays ~30-40% low
+  by decision; gold is unaffected.
+  **R-ENGSOURCE (2026-09-10, live gold screenshots D1+M5, user's M5 prediction
+  test): Eng(TF) = ATR(TF, N)/4.266666 on a SHORT per-TF window — NOT the
+  composite.** Evidence: on D1 the divisor 4.266666 is exact (Eng 249 =
+  ATR(D1,46)=1062.3/4.266666, 0.2%); on M5/H1 his Eng source runs ~10% ABOVE
+  the panel TR (M5: source 59.7p vs panel 54p; H1: 210 vs 192) — the panel TR
+  is the LONG composite, his Eng feeds off a short session-reactive ATR
+  (ATR(M5,3)=61.0p at 13:15 ≈ source 59.7; M5 chain bulletproof: SL 59/TP
+  138/296/611/SB 131--624 all from slTrue=59.1, Hunter 37=8/3×14). The
+  composite coincidentally ≈ short ATR on calm days (gold Sep-9), which is
+  why R-ENGPARITY fit then; on volatile days (gold Sep-10, EURUSD low TFs)
+  they diverge and composite/4.266666 reads ~10-40% low. Pinned N so far:
+  M5≈3, D1≈46, MN≈16-30 (override family); M15/H1/H4/W1 UNKNOWN — do NOT
+  implement a new Eng source until those are pinned (corner screenshots or a
+  same-second pair), and keep the chain + divisor intact.
+
+- **R-D1SEARCH — every fixed "percentage-of-daily" family is PROVEN dead
+  (2026-09-10, user clue: "the master computed for DAILY and the rest of the
+  percentages were from it"; rig `tools/d1_derive_search.js`, committed). The
+  rig enumerated, in one pass: rational % tables on {D1 Eng 252.338, D1 ATR
+  1066, D1 SL 1180} (dead — simplest surviving fractions are absurd like
+  7/107, 107/45, 261/67, and H4/MN have NO fraction at all for the ATR/SL
+  bases), power law (TF/D1)^p on 8 legs AND on M1..H4 alone (dead — per-leg p
+  scatters 0.577..0.612 beyond the ±0.05% windows), log combo r^p·(−ln r)^q
+  (dead), N-rules from N(D1)=46 (dead — N(MN) comes out 237/252/72 vs the
+  16..30 pin), and the cross-symbol gate (dead — EURUSD M15 would be 0.72 vs
+  his 2). Conclusion: his Eng is LIVE per-TF data — Eng = ATR(TF,N_TF)/
+  4.266666 with N(M5)≈3, N(D1)=46; the top of the ladder is ONE macro number
+  (D1/W1/MN share SL=1180 = 1.2×Eng(MN)) while the low TFs are short-window
+  and volatile (M5 Eng 7.9→14 between Sep-9/10 while MN stayed 983). The ONLY
+  remaining open question is the N_TF rule for M15/H1/H4/W1 — do NOT touch the
+  chain or divisor. Full ledger with every clue and the same-second-pair
+  protocol: `TRADEPLAN_D1_HYPOTHESIS.md`. Rig `tools/math_proof_search.js`
+  (2026-09-10 night, TRex 3.2/3.4 screenshots) closed the "one formula from the
+  ON-PANEL numbers" family too: the panel Th-TR-Live columns ARE TP-chain
+  blocks (TR=round(Th×7/3), Live=round(Th×5)); the Sep-10 D1 block
+  (1180/2752/5898/12189/663/249/2621/12451) back-solves to the SAME Eng(MN)
+  window as Sep-9; and NO sqrt/pow/log/2-number/3-number combination of
+  on-panel numbers reaches ≥3 ladder cells (F30 = 0 candidates) — the ladder
+  is live ATR data, never on-panel arithmetic. Ledger §8.
+  **R-TWOPANEL (2026-09-10 23:49, user same-moment pair): TRex 3.2 shows BOTH
+  Eng sources in two panels on XAUUSD D1 — Panel A (ATR table) = CompositeATR(TF)/
+  4.266666 EXACT (D1 Eng 258 = 1098.9/4.2667, Hunter 687, SL 1063 = 1.2×3778/4.2667,
+  TP 2479/5313/10980; his ATR table D1/W1/MN 1098.9/2474.7/3778.0 == our composite
+  to 3 decimals) and Panel B (Th-TR-Live) = long-window ATR(TF,N)/4.266666
+  (Eng 249, SL 1180, TP 2752/5898/12189 — the Sep-9 golden). Divisor universal;
+  the R-ENGPARITY vs R-ENGSOURCE debate is settled — they are two different
+  panels, not competing formulas. Open: WHICH panel is the professor's real
+  plan (SL 1063 vs 1180) — ASK the user before changing the Eng source.
+  Live column = forming-bar H−L (verified twice: 1102 vs range 1101.5, 1204 vs 1204.1).
+  Rig F13/F14/F15; ledger §8.6.**
+  User confirmed 2026-09-10: PANEL B is the real plan → Eng source must become
+  long-window ATR(TF,N)/4.266666 (NOT composite). BUT rig `tools/n_window_search.js`
+  proved the Sep-9 golden moment CANNOT pin N (gold's flat optimum: every N fits
+  within 0.2% — scatter 337/47/39/78/396/281/5/25; only W1≈5 and MN≈25 SMA
+  candidates), and the stale .hst (ends 13:15 UTC Sep-10) does NOT reproduce the
+  R-ENGSOURCE pins (M5 SMA(3) 76.2 vs 60.4, D1 SMA(46) 974.6 vs 1062.3) →
+  N(D1)=46/N(M5)=3 are REOPENED until fresh data + the professor's M1/M5/M15/H4
+  panels at a volatile moment (protocol: ledger §8.6.6). Do NOT change the Eng
+  source until N is pinned (R-ENGSOURCE guard).**
+
 - **R-TRADEPLAN-DIAG — the diagonal is a theorem, not input** (2026-09-09:
   `SB1(chart) == Hunter(StructureTF) == SL × 20/9` because `1.20 × 20/9 = 8/3`.
   Observed Sep-9-2026 live: H1 SB1 673 == D1 Hunter 673; M5 SB1 103 ≈ H1 Hunter 88.
@@ -689,9 +807,17 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   panel mirror): SL=TR×1.66666, Eng=TR/4.266666, Hunt=TR/1.66666, chart-TF
   based, TP/SB unchanged from slTrue. Default path byte-identical (verified
   XAUUSD untouched). Do NOT "fix", merge, or delete this toggle without the
-  user: it is their live A/B test against the professor. Exact-gate verdict
+  user: it is their live A/B test against the professor. (2026-09-10 note: its Eng leg
+  `TR/4.266666` is now ALSO the default Eng — R-ENGPARITY — so with the alt ON
+  the difference from the default is SL/Hunter only.) Exact-gate verdict
   at ship time: misses AUDUSD live on all three legs + XAUUSD catastrophically
-  (SL 6296 vs 1180) — stays OFF until a regime sample confirms it.)
+  (SL 6296 vs 1180) — stays OFF until a regime sample confirms it.
+  EURUSD 3-TF professor screenshots (Sep-10-2026, TRex M15/H4/D1): alt misses
+  7 of 9 legs — H4 SL 53 vs 38, Eng 8 vs 4, Hunt 19 vs 12; D1 SL 128 vs 103,
+  Eng 18 vs 11, Hunt 46 vs 30; M15 SL 13 vs 5 (only M15 Eng 2/Hunt 5 match,
+  small-number rounding coincidence). The UNIFIED ladder fits every leg of all
+  three charts (slTrue ≈ 5.3 / 38.1 / 102.75 pips; D1 TP3=1062 pins slTrue,
+  not rounded SL) — unified formula now confirmed on a 2nd symbol (EURUSD).)
 
 ---
 
@@ -756,21 +882,24 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-LOG-01 | `tools/fetch_tradeplan_log.ps1` showed garbled `?????` output or failed to read the live MT4 log file | MT4 writes `MQL4\Logs\*.log` as UTF-16 LE with BOM and keeps the file locked while running; `Get-Content -Encoding Unicode` fails on a locked file | Use `[System.IO.File]::Open(path, Open, Read, ReadWrite)` + `New-Object StreamReader($stream, $true)` (BOM auto-detect); fall back to `Get-Content` on error. Updated in `tools/fetch_tradeplan_log.ps1`. | 2026-09-09 |
 | P-LOG-02 | Experts tab shows fresh lines but `MQL4\Logs\*.log` (and Journal) frozen for 1 h+ — looks like stale data, isn't | The terminal's own disk-flusher wedges while the process runs fine (both files stop at the same second, in-memory Experts view stays live) — local-only, nothing to do with the broker feed | Full restart first (File → Exit, reopen) so the file flows again; durable bypass: our numbers ALSO auto-export to `MQL4\Files\tradeplan-auto-<SYM>.log` (FileClose flushes immediately) — `fetch_tradeplan_log.ps1` reads it first | 2026-09-10 |
 | P-TRADEPLAN-01 | EURUSD [SNAP] shows M1 SL=1 / TP1=2 — looks broken compared to XAUUSD, caused panic re-investigate | These numbers ARE correct: EURUSD M1 composite ATR ≈ 0.8 pips = 0.00008 in price, so SL=round(1.2×0.8)=1 pip is right. The formula is symbol-agnostic (uses `GetCachedPipSize()`); small pip values are expected for tight FX pairs on low TFs. Do NOT change formulas because EURUSD numbers look small — verify by checking the symbol's actual pip size first | 2026-09-09 |
-| P-TRADEPLAN-02 | Eng values diverged from professor's for M15/H4/D1/W1/MN (our composite weighted ATR ≠ professor's Eng) — old code used composite ATR(triggerTF) for Eng(M15+) which depends on 6 Wilder periods and was live/volatile | The professor's Eng uses ONE stable formula for ALL 8 TFs: `Eng(TF) = iATR(triggerTF, TF_min/triggerTF_min, 1) / pip` — a single-call Wilder ATR whose period = number of trigger-TF bars per chart bar (M1:period=1, M5:5, M15:15, H1/M5:12, H4/M15:16, D1/H1:24, W1/H4:42, MN/D1:30). shift=1 means it's frozen until the NEXT trigger bar closes → very stable. Verified all 8 TFs on XAUUSD Sep-4 data. Fix: `TradePlanSessionEng()` in `TradePlanFormulas.mqh`, `TradePlanEngTrue` and `TradePlanCompositeEngOf` are thin wrappers. | 2026-09-09 |
+| P-TRADEPLAN-02 | Eng values diverged from professor's for M15/H4/D1/W1/MN (our composite weighted ATR ≠ professor's Eng) — old code used composite ATR(triggerTF) for Eng(M15+) which depends on 6 Wilder periods and was live/volatile | The professor's Eng uses ONE stable formula for ALL 8 TFs: `Eng(TF) = iATR(triggerTF, TF_min/triggerTF_min, 1) / pip` — a single-call Wilder ATR whose period = number of trigger-TF bars per chart bar (M1:period=1, M5:5, M15:15, H1/M5:12, H4/M15:16, D1/H1:24, W1/H4:42, MN/D1:30). shift=1 means it's frozen until the NEXT trigger bar closes → very stable. Verified all 8 TFs on XAUUSD Sep-4 data (SUPERSEDED 2026-09-10 by R-ENGPARITY: that match was XAUUSD's persistent vol; the formula is a one-chart-bar window and misses W1/D1 by -39%/-33% — do NOT restore it — the legacy Eng path is deleted, R-ENGONE 2026-09-10, user decision). Fix: `TradePlanSessionEng()` in `TradePlanFormulas.mqh`, `TradePlanEngTrue` and `TradePlanCompositeEngOf` are thin wrappers. | 2026-09-09 |
 | P-SNAP-01 | `[SNAP]`/`[TRADEPLAN]`/`[ATRLEGS]`/`[PROF*]` flow on their own again, change-guarded (numeric sig + 3 s snapshot / 60 s legs throttle) — professor's side arrives via screenshots, paired offline by timestamp (auto-logging restored 2026-09-10; `X` still dumps everything incl `[PROF*]` on demand) | The snapshot gate `s_snapMs` is inside `TradePlanLiveTick()` which itself requires `!IsIndicatorHidden()` and a 2s throttle + sig change; on a static D1 chart the sig never changes so neither does the snapshot | `X` (`inpLogDumpKey`) still dumps everything on demand; otherwise just `fetch_tradeplan_log.ps1` — fresh lines prove ticking. If 0 lines, the indicator isn't ticking | 2026-09-09 |
 | P-BUILD-05 | `[SNAP]` trade-plan numbers still matched the OLD composite-Eng formulas although main had the correct fix (`47125bc`) — the 12:18 dump reproduced values of a build that was already reverted (see GitHub issue #1) | A STALE `.ex4`: the terminal kept running the EX4 compiled from the reverted `8ec0298` (08:24 build). `git pull` + source fix change nothing for a compiled file, and MT4 never hot-swaps a replaced EX4 into a running indicator (P-ICONS-03b) | After EVERY `git pull` touching the trade-plan chain: recompile (`compile-th3.ps1` workspace + Lite), then **remove & re-add the indicator** (or restart MT4). Prove the wiring with `Biotak_TradePlan_Golden_Test.mq4` on XAUUSD M1 → `[TPGOLD] RESULT: PASS` (deployed to terminal `MQL4\Scripts` for one-click run). Regression history: TRADEPLAN_MASTER_REFERENCE.md §5 | 2026-09-09 |
 | P-PERF-01 | Idle chart churns forever (2 s full trade-block delete+recreate + 7 Prints + 8-TF snapshot every 2-3 s); N full repaints per BK pump; TF-switch lag | `TradePlanLiveTick` sig included the 1 s countdown so it never matched; `SyncBadges` raw `ChartRedraw` per box; HTF raw redraw bypassing the 100 ms throttle; `CreateATRTradeLabel` wiped `Current_*` it recreated below | Numeric-only sig + cheap in-place countdown/spread path (logs/snapshot/TopRows only on numeric change); BK `bkNeedPaint` flag, one redraw after loop; HTF via `ThrottledChartRedraw`; one-time legacy purge, no self-wipe | 2026-09-10 |
-| P-ATR-01 | "Unify every ATR onto the composite" breaks the trade-plan block (SL/TP/Hunter drift off the professor) | `TradePlanEngTrue` is the professor's SINGLE-`iATR` session formula (R-TRADEPLAN), not the display composite — prof Eng(MN)=983 vs composite D1=1100.8 on the same bars. Audit 2026-09-10: every live DISPLAY/volatility/step path already uses the composite (`GetATRForTimeframe`/`CalculateWeightedATR` ← `BatchWilders` legs); SMA-batch/manual-TR/hybrid/compat-shim/`TH3Math-iATR` are dead in prod (tests/retired/fallback only) | Keep `Eng` on single-`iATR` forever; route every new ATR display through `GetATRForTimeframe` (never raw `iATR`/SMA); cross-check strip vs `[SNAP]` TR column (slow TFs must match exactly) | 2026-09-10 |
-| P-ATR-02 | Professor's REAL composite is SMA, not Wilder (`TrexATR` source surfaced 2026-09-10: simple TR mean + newest-bar same-close quirk + MN1→SMA-55 branch, weights 1/1/2/3/5/8) | Our engine used Wilder `iATR` legs; on 333-bar MN history the Wilder seed (calm 2000s) drags long legs down vs SMA — that was the W1/MN gap, not weights (a same-day Wilder reweight was tried and retired for masking it). Fix: `CalculateATRBatchTrex`/`TrexSMALeg` in `ATRCalculations.mqh` replicate the source verbatim (quirk included); engine call site switched; `TradePlanEngTrue` untouched (separate verified formula). Verify via same-minute `[PROFATR]` pairing, never by fit alone. | 2026-09-10 |
+| P-ATR-01 | "Unify every ATR onto the composite" breaks the trade-plan block (SL/TP/Hunter drift off the professor) [SUPERSEDED for Eng by R-ENGPARITY 2026-09-10: Eng IS the own-TF composite ÷ divisor now; the rule below still holds for every ATR DISPLAY] | `TradePlanEngTrue` is the professor's SINGLE-`iATR` session formula (R-TRADEPLAN), not the display composite — prof Eng(MN)=983 vs composite D1=1100.8 on the same bars. Audit 2026-09-10: every live DISPLAY/volatility/step path already uses the composite (`GetATRForTimeframe`/`CalculateWeightedATR` ← `BatchWilders` legs); SMA-batch/manual-TR/hybrid/compat-shim/`TH3Math-iATR` are dead in prod (tests/retired/fallback only) | Every ATR DISPLAY goes through `GetATRForTimeframe` (never raw `iATR`/SMA); cross-check strip vs `[SNAP]` TR column (slow TFs must match exactly). Eng is no longer an exception: R-ENGPARITY (2026-09-10) put it on the own-TF composite ÷ hard-coded `TRADEPLAN_ENG_DIVISOR`; the old single-`iATR` Eng path is deleted (R-ENGONE 2026-09-10, user decision) | 2026-09-10 |
+| P-ATR-02 | Professor's REAL composite is SMA, not Wilder (`TrexATR` source surfaced 2026-09-10: simple TR mean + newest-bar same-close quirk + MN1→SMA-55 branch, weights 1/1/2/3/5/8) | Our engine used Wilder `iATR` legs; on 333-bar MN history the Wilder seed (calm 2000s) drags long legs down vs SMA — that was the W1/MN gap, not weights (a same-day Wilder reweight was tried and retired for masking it). Fix: `CalculateATRBatchTrex`/`TrexSMALeg` in `ATRCalculations.mqh` replicate the source verbatim (quirk included); engine call site switched; `TradePlanEngTrue` later moved ONTO this composite by R-ENGPARITY (2026-09-10, ÷ `TRADEPLAN_ENG_DIVISOR`) — the strip and Eng now share one source, deliberately. Verify via same-minute `[PROFATR]` pairing, never by fit alone. | 2026-09-10 |
 | P-ATR-03 | Exhaustive ATR search still leaves D1 +5% / MN -4% with no shippable formula (63 subsets, LSQ, shifts, divisors, best-N × SMA/Wilder/HL — `tools/atr_fit_eurusd.js`) | No TF-independent candidate clears all 8: best subset 8.8% worst-TF, LSQ only fits with meaningless negative weights, divisor bestK≈1.0, per-TF best-N scatters per family — and four different MN periods (24/30/97/204) hit simultaneously, so any single pick is lottery | Keep the current engine (joint-best in the scorecard); re-run the rig per new same-minute screenshot and ship only a 3-sample survivor — never a one-sample winner | 2026-09-10 |
 | P-ATR-04 | `.hst` legs disagree with live terminal legs on the SAME closed bars (D1 subset mean 54 from boot `.hst` vs 50.2 live) — backfill revisions after boot move closed-bar history | The terminal rewrites history after boot (HistoryCenter backfill) while `.hst` files on disk are the boot snapshot; any `.hst` fit is therefore stale by construction, worst on fast TFs (30-45 min), still visible on D1 | Fit only against LIVE legs (`[ATRLEGS]` p/q/s dump, exact-minute); use `.hst` solely for period sweeps unavailable live, and never for absolute verdicts | 2026-09-10 |
-| P-ATR-05 | Professor Eng = LONG-window Wilder on trigger TFs (spike-immune), NOT our short periods — proven 2026-09-10: our H4/M1 engTrue tripled in the evening spike (10.21) while prof sat at 4.4; W1 iATR(H4,N) crosses his 32 between N=5000-10000 on our own history | Exact N unidentifiable (flat optimum: any N in [6k,12k] lands 30-34); MN needs pre-2019 D1 bars (our D1 starts 2019, caps at 74.4 vs 85.6 — unreproducible on young histories); XAUUSD match explained (persistent vol: short≈long there). Do NOT ship a guessed N — tonight's free test: after the 20:00 server H4 close, long predicts his H4-Eng stays ~4.4, short predicts a jump | 2026-09-10 |
+| P-ATR-05 | Professor Eng = LONG-window Wilder on trigger TFs (spike-immune), NOT our short periods (RESOLVED 2026-09-10 evening by R-ENGPARITY: shipped Eng = own-TF composite TR / 4.266666; the trigger-TF window mechanism was right in spirit but our history cannot pin its length) — proven 2026-09-10: our H4/M1 engTrue tripled in the evening spike (10.21) while prof sat at 4.4; W1 iATR(H4,N) crosses his 32 between N=5000-10000 on our own history | Exact N unidentifiable (flat optimum: any N in [6k,12k] lands 30-34); MN needs pre-2019 D1 bars (our D1 starts 2019, caps at 74.4 vs 85.6 — unreproducible on young histories); XAUUSD match explained (persistent vol: short≈long there). Do NOT ship a guessed N — tonight's free test: after the 20:00 server H4 close, long predicts his H4-Eng stays ~4.4, short predicts a jump | 2026-09-10 |
 | P-PROF-01 | Need the professor's numbers/formulas but only his `.ex4` exists (no source) | `.ex4` string literals are ENCRYPTED — a strings-scan finds nothing, don't retry. And MQL4 cannot read other charts' objects — our logger must run ON his chart. Fix: `TradePlanLogProfAtr()` in `Biotak/LabelFunctions.mqh` (self-discovering X-hotkey dump (`TradePlanDumpNow` → discovery scan + immediate re-read → `[PROFOBJ]`/`[PROFATR]` with timestamps; NO background scanning — user decision 2026-09-10, logs only on demand; Lite-safe literals only) + attach our Lite to every chart his indicator runs on. Fetch script captures `[PROF*]`. | 2026-09-10 |
 | P-BUILD-06 | Manual remove & re-add after every compile (P-ICONS-03b/P-BUILD-05 tax) | MT4 only reads the `.ex4` at attach; a replaced file never hot-swaps. Fix: RETIRED 2026-09-10, same day — `ChartSetSymbolPeriod` re-inits from the IN-MEMORY image and never re-reads the `.ex4` from disk (proven by a 744-line `[RELOAD]` loop: the token never advanced past the running build, with full-rebuild CPU churn every 2 s). There is NO programmatic code-redeploy in MQL4 — manual remove & re-add stays mandatory (P-ICONS-03b stands). All P-BUILD-06 code reverted the same session (module, flag broadcast, BuildTag, timer/tick hooks). | 2026-09-10 |
 | P-NET-01 | Terminal silent (no ticks) although process runs and a TCP socket shows ESTABLISHED — looks like a code freeze but isn't | Same demo account logged in from a second IP (Journal: `previous successful authorization from 89.198.141.27`): the sessions kick each other, the loser keeps a lingering dead socket with zero quotes. Diagnose by triple-zero-growth over 60 s (Experts log bytes + M1.hst bytes + Journal tail all frozen) — NOT by socket state. No code/API fix exists (no login API, no credentials); fix is operational: one session per account, or a second free demo (File → Open an Account) so both terminals stay green. | 2026-09-10 |
 | P-BUILD-07 | Two build paths overwrite the same ex4 with different binaries (unknown provenance) | Manual MetaEditor F5-debug compiles a DEBUG ex4 over the script-built RELEASE ex4 (proven: same source, sizes 1,221,526 vs 1,220,064 + user debug habit). Rule: ONE build path only — `compile-th3-doubleclick.bat` (release); if F5-debug is used, rebuild via .bat right after. Running generation is proven ONLY by the `[BUILD] TH3 <tag>` log line after attach, never by file date. | 2026-09-10 |
 | P-DEV-01 | MetaEditor Debug (green ▶) terminal closes instantly | The debugger launches its OWN terminal instance on the same data folder — two terminal.exe cannot hold one data folder (file locks), so the debug instance dies at once while the normal one (running since morning) holds it. Not a code bug. Fix: close the running MT4 completely first (File → Exit), THEN press Debug (it launches its own instance and stays). Note: MetaEditor-Debug ≠ our `DEBUG_BUILD` flag (step-through vs verbose-log production build). | 2026-09-10 |
 | P-DEV-02 | One-click redeploy script is impossible in MQL4 (do not attempt again) | MQL4 has `ChartIndicatorDelete` but NO `ChartIndicatorAdd` (MQL5-only — compiler error 168 proves it), so a script can strip indicators but never re-add them. The old `ReloadBiotak.mq4` never compiled and would have left charts naked — DELETED 2026-09-10. Deploy stays: `compile-th3-doubleclick.bat` (build) + manual per-chart remove/re-add + `[BUILD]` tag as arrival proof. | 2026-09-10 |
+| P-GUARD-01 | A safety guard existed but NEVER ran: `TradePlanSelfCheck` was defined (and AGENTS.md claimed "Guarded by TradePlanSelfCheck()") yet nothing ever called it — a rounding/wiring regression in the trade-plan chain would pass silently | MQL4 has no dead-code diagnostics; an unused function compiles clean, and the audit check only eyeballed the formula | Rule: every guard must be invoked from a REAL path. `TradePlanDumpNow` (X hotkey) now runs SelfCheck and logs `[SELFCHECK] OK/FAIL` (skipped under alt formulas — their Hunter leg breaks the 8/3×Eng identity by design). Before claiming a guard exists, grep for its call site. | 2026-09-10 |
+| P-LBL-05 | Turning the ATR labels off (A / card-2 master) also removed the bar-close countdown, and its look was hard-coded | The countdown was a row of the ATR trade block: `SetATRLabelsVisibility` set its `TIMEFRAMES` with the block's flag, the periodic object janitor hides every object whose name contains `ATR_` while the ATR labels are off, and color/size/gap were literals | The countdown is its OWN layer (2026-09-11, user request): object `..._LBL_CloseIn_Tag` (never `ATR_`-named — that janitor stays a trap), own switch `g_showLiveCountdown`/`OV_CD` + `inpCountdownKey` = `D`, own `g_countdownColor/FontSize/GapPx` (`OV_CDC/CDS/CDG`), panel rows 0-3 of card 2 (`g_PnlRows[2]` 7→11; rows 4+ are the old ATR block rows — keep the row maps in `PnlRowDef`/`PnlDefVal`/`PnlDefColor`/`PnlCurrent`/`PnlApply` in the same order), palette kind `PAL_COUNTDOWN`, `RefreshLiveCountdown()` called from the 1 Hz pump (BEFORE the ATR gate), both label-relayout paths, the `CHART_CHANGE` hook, and the new toggle/apply rows. Clicking the tag opens card 2 via `LiveCountdownPointInside()` (rect cached at paint; the object stays unselectable). `SetATRLabelsVisibility`/`DisplayATRTradeLabels` now only PURGE the legacy `ATR_Trade_Current_CloseIn`. Lite cannot call `ClampInt` from `LabelFunctions` (P-ARCH-02) — clamp by hand there. **LOCKED BY `Biotak_Countdown_Test.mq4`** (script, `[CDTEST]`): PART 1 name has no `ATR_` (the janitor predicate), PART 2 survives the ATR-off sweep, PART 3 own switch off = object gone + rect invalidated (the old spot must not answer clicks), PART 4 click region == the painted rect (dense grid scan, no phantom area / no dead spot), PART 5 park — an invalidated rect answers nothing and with the live bar scrolled off-view there is NO click target anywhere on the chart. | 2026-09-11 |
+| P-LBL-04 | `Close in : ...` countdown sat in the bottom-right corner block, far from the bar it counts, and nothing about it moved with the market | It was one of the two centered rows of the R-TRADEPLAN corner block — a screen-anchored `OBJ_LABEL` at `CORNER_RIGHT_LOWER`, refreshed on the 2 s trade-block pump | Countdown is now a COMPACT TAG BESIDE THE LIVE CANDLE at the live price (2026-09-11, user request): `CreateLivePriceCountdown()` draws `..._LBL_ATR_Trade_Current_CloseIn` as a `CORNER_LEFT_UPPER` `OBJ_LABEL` whose X = bar-0 right edge + 6 px (bar width taken from bar 1's pixel X, so the gap scales with the zoom) and whose Y = `ChartTimePriceToXY(quote)` (quote = bid/ask mid) minus half a line — so it hugs the candle, rides the price, and stays clear of the body. Flips to the candle's LEFT when `x + width` would cross the right-margin boundary (`cw - inpLabelsMarginLeft`, where the price scale starts). Refreshed at 1 Hz from `TradePlanLiveTick` ABOVE the 2 s gate AND from the `CHARTEVENT_CHART_CHANGE` hook — the label pipeline is 2 s gated itself, so scroll/zoom needs its own try (the tag would otherwise lag a drag-scroll by up to 2 s). Chart scrolled off bar 0 / quote out of range ⇒ tag parked with `OBJ_NO_PERIODS`, never drawn at a made-up level. Same object name ⇒ `SetATRLabelsVisibility` / `ClearAllLabels` wiring untouched. Type-change trap: a same-name `ObjectCreate` of another type does NOT replace the old object (corner label / candle text) — delete first. | 2026-09-11 |
 
 
 > When you close a new recurring issue, add the next row above (highest

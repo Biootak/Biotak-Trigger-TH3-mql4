@@ -48,6 +48,11 @@ static bool g_UIPanelOpen = false;
 // copy of inpShowTrigger (seeded at attach) and doubles as the hotkey toggle.
 static bool g_linesVisible = true;
 static bool g_atrLabelsVisible = true;
+// Live countdown tag (CreateLivePriceCountdown): the pixel rect it was last
+// painted at, so a chart click can be hit-tested against it WITHOUT making the
+// object selectable (selectable = the user could drag it).
+static int  g_cdTagX = 0, g_cdTagY = 0, g_cdTagW = 0, g_cdTagH = 0;
+static bool g_cdTagValid = false;
 static bool g_thLabelsVisible = true;
 static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
 

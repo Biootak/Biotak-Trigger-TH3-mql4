@@ -56,9 +56,16 @@ input bool inpShowStandardTHs = false;
 input bool inpShowATRLabels = false;              // Show ATR Labels
 input bool inpShowATRTargets = true;             // Show ATR Targets
 input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels
-input bool inpShowATRTradeSLLabels = true;       // Show Hunter + StrBond rows
+input bool inpShowATRTradeSLLabels = true;       // Show Hunter row (Str Bond row retired 2026-09-10 — R-STBOND)
 input bool inpShowATRTradeTPLabels = true;       // Show #SL/#TP1-3 row
 input int inpATRTradeLabelRowGap = 10;           // Compact vertical gap between ATR trade rows
+// --- Live countdown tag: its OWN switch (the ATR labels toggle no longer
+//     takes it away) + its own look. All four are panel-editable in the ATR
+//     LABELS card's top rows (persisted per chart as OV_CD/CDC/CDS/CDG).
+input bool  inpShowLiveCountdown = true;         // Show the compact bar-close countdown tag beside the live candle
+input color inpCountdownColor    = clrRed;       // Countdown tag color
+input int   inpCountdownFontSize = 0;            // Countdown font size (0 = the other labels' size)
+input int   inpCountdownGapPx    = 6;            // Countdown gap from the candle edge (px)
 
 input group "04) STYLE - SS/LS STEP"
 input string S6 = "[04] STYLE / SS-LS STEP";
@@ -305,7 +312,10 @@ input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status
 input string inpResetKey = "Q";
 input string inpLogDumpKey = "X";           // On-demand log dump ([TRADEPLAN]+[SNAP]+[ATRLEGS]+[PROF*]) — no background auto-logging
+input string inpCountdownKey = "D";         // Toggle the bar-close countdown tag (independent of the ATR labels key)
 input bool inpUseAltTradeFormulas = false;  // EXPERIMENTAL (user 2026-09-10): chart-TF formulas SL=TR*1.66666, Eng=TR/4.266666, Hunt=TR/1.66666 — default OFF keeps the verified ladder
+// Eng divisor is HARD-CODED (TRADEPLAN_ENG_DIVISOR 4.266666 in TradePlanFormulas.mqh) —
+// user decision 2026-09-10 (R-ENGONE): not an Input, one formula only.
 
 input group "18) ADVANCED - OBJECTS"
 input string S20 = "[18] ADVANCED / OBJECTS";

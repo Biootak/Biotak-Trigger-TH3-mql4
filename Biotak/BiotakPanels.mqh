@@ -151,7 +151,9 @@ color QuickPalColor(const int i)
 // 2 + the selected mode's section rows (TH 0 / SS-LS 1 / Combo 8 / Factor 7),
 // so MAX LEVELS floats to PnlStepMaxLevelsRow(). Never hardcode card-9 rows.
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
-int g_PnlRows[PNL_COUNT] = {4,11,7,5,1,8,11,6,4,2,7,7,1,7};
+// [2] ATR LABELS: 7 → 11 on 2026-09-11 — the countdown tag's OWN rows sit on
+// top (switch/color/size/gap), then the ATR block's rows unchanged.
+int g_PnlRows[PNL_COUNT] = {4,11,11,5,1,8,11,6,4,2,7,7,1,7};
 // g_PnlRows[12] is the BASE (TAB row only) — PnlRowsCount(12) returns
 // 1 + the open tab's section rows (6 each tab), the same dynamic pattern
 // as the Step card 9. Never hardcode card-12 rows.
@@ -216,6 +218,7 @@ int PnlColorKind(const int item,const int row)
    if(item==7 && row==5)  return PAL_LINE;
    if(item==8 && row==1)  return PAL_CUSTOM_PRICE;
    if(item==10 && row==6) return PAL_FACTOR;
+   if(item==2 && row==1)  return PAL_COUNTDOWN;   // countdown tag color (own layer)
    if(item==12) return BkSecColorKind(row);   // tabbed card — section mapping below
    if(item==13 && row==0) return PAL_BOX;   // Mini BORDER COLOR (same mirror)
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return PAL_FACTOR;   // Step card Factor COLOR
@@ -237,6 +240,7 @@ color PaletteKindColor(const int k)
       case PAL_HTF_BEAR:       return g_HTFBearColor;
       case PAL_HTF_WICK:       return g_HTFWickColor;
       case PAL_HTF_BORDER:     return g_HTFBorderColor;
+      case PAL_COUNTDOWN:      return g_countdownColor;
       case PAL_CUSTOM_PRICE:  return g_customPriceLevelColor;
       case PAL_FACTOR:         return g_factorLevelColor;
       case PAL_LINE:           return g_lineColor;
@@ -284,7 +288,7 @@ string PalTgtLabel(const int t)
          "TH3 Line", "TH3 Pip", "HTF Bull", "HTF Bear",
          "HTF Wick", "HTF Border", "Custom Price", "Factor",
          "Lines", "Base Box", "BK Entry", "BK Stop", "BK Target",
-         "Base Fill", "BK Text"
+         "Base Fill", "BK Text", "Countdown"
       };
    int k = ClampInt(t, 0, PAL_BASE_TARGETS - 1);
    return names[k];
@@ -308,6 +312,7 @@ int PaletteApplyColor(const int kind,const color clr)
       case PAL_HTF_BEAR:      g_HTFBearColor = clr; break;
       case PAL_HTF_WICK:      g_HTFWickColor = clr; break;
       case PAL_HTF_BORDER:    g_HTFBorderColor = clr; break;
+      case PAL_COUNTDOWN:     g_countdownColor = clr; break;
       case PAL_CUSTOM_PRICE:  g_customPriceLevelColor = clr; break;
       case PAL_FACTOR:        g_factorLevelColor = clr; break;
       case PAL_LINE:          g_lineColor = clr; break;
@@ -322,7 +327,14 @@ int PaletteApplyColor(const int kind,const color clr)
    PushPalRecent(clr);
 
    int flags = REFRESH_BUFFERS;
-   if(kind==PAL_TH3 || kind==PAL_TH3_PIP) flags = REFRESH_TH3;
+   if(kind==PAL_COUNTDOWN)
+   {
+      // Own layer: repaint the tag right away; REFRESH_ALL also carries the
+      // OV_CDC persist through ApplyRefreshFlags.
+      RefreshLiveCountdown();
+      flags = REFRESH_ALL;
+   }
+   else if(kind==PAL_TH3 || kind==PAL_TH3_PIP) flags = REFRESH_TH3;
    else if(kind==PAL_HTF_BULL || kind==PAL_HTF_BEAR ||
            kind==PAL_HTF_WICK || kind==PAL_HTF_BORDER) flags = REFRESH_HTF;
    return flags;
@@ -401,6 +413,7 @@ color PnlDefColor(const int item,const int row)
    if(item==7 && row==5)  return DefLineColor();
    if(item==12) return BkSecDefColor(row);   // tabbed card — section mapping below
    if(item==13 && row==0) return DefBoxBorderColor();
+   if(item==2 && row==1)  return (color)(int)FactoryDefault(FF_COUNTDOWN_COLOR);
    if(item==8 && row==1)  return DefCustomPriceColor();
    if(item==10 && row==6) return DefFactorColor();
    if(item==9 && row==7 && (int)g_stepCalculationMode==3) return DefFactorColor();
@@ -1597,12 +1610,18 @@ void PnlRowDef(const int item,const int row,int &kind,string &label,
    else if(item==2)   // ATR LABELS — the chart-labels card (incl. High/Low
                       // pip-distance labels; they are display labels, not pin)
    {
-      if(row==0)       { kind=1; label="ATR LABELS"; }
-      else if(row==1)  { kind=1; label="ATR TARGETS"; }
-      else if(row==2)  { kind=1; label="TRADE LABELS"; }
-      else if(row==3)  { kind=1; label="HUNTER ROW"; }
-      else if(row==4)  { kind=1; label="TP ROW"; }
-      else if(row==5)  { kind=1; label="PIP LABELS"; }
+      // Rows 0-3 = the countdown tag's OWN settings (independent of the ATR
+      // block — turning the ATR labels off keeps the countdown).
+      if(row==0)       { kind=1; label="COUNTDOWN"; }
+      else if(row==1)  { kind=4; label="COUNT COLOR"; }
+      else if(row==2)  { label="COUNT SIZE"; minV=0; maxV=24; unit="pt"; }
+      else if(row==3)  { label="COUNT GAP"; minV=0; maxV=40; unit="px"; }
+      else if(row==4)  { kind=1; label="ATR LABELS"; }
+      else if(row==5)  { kind=1; label="ATR TARGETS"; }
+      else if(row==6)  { kind=1; label="TRADE LABELS"; }
+      else if(row==7)  { kind=1; label="HUNTER ROW"; }
+      else if(row==8)  { kind=1; label="TP ROW"; }
+      else if(row==9)  { kind=1; label="PIP LABELS"; }
       else             { label="ROW GAP"; minV=1; maxV=60; }
    }
    else if(item==3)   // TH LABELS
@@ -1888,12 +1907,16 @@ double PnlDefVal(const int item,const int row)
               if(row==7) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;
               if(row==8) return (FactoryDefault(FF_SHOW_MIDPOINT)>0.5)?1.0:0.0;
               return 0;                        // rows 9-10 = NAV rows
-      case 2: if(row==0) return (FactoryDefault(FF_SHOW_ATR)>0.5)?1.0:0.0;
-              if(row==1) return (FactoryDefault(FF_ATR_TARGETS)>0.5)?1.0:0.0;
-              if(row==2) return (FactoryDefault(FF_ATR_TRADE)>0.5)?1.0:0.0;
-              if(row==3) return (FactoryDefault(FF_ATR_TRADE_SL)>0.5)?1.0:0.0;
-              if(row==4) return (FactoryDefault(FF_ATR_TRADE_TP)>0.5)?1.0:0.0;
-              if(row==5) return (FactoryDefault(FF_PIP_LABELS)>0.5)?1.0:0.0;
+      case 2: if(row==0) return (FactoryDefault(FF_SHOW_COUNTDOWN)>0.5)?1.0:0.0;
+              if(row==1) return 3;   // COLOR row → palette sentinel
+              if(row==2) return FactoryDefault(FF_COUNTDOWN_SIZE);
+              if(row==3) return FactoryDefault(FF_COUNTDOWN_GAP);
+              if(row==4) return (FactoryDefault(FF_SHOW_ATR)>0.5)?1.0:0.0;
+              if(row==5) return (FactoryDefault(FF_ATR_TARGETS)>0.5)?1.0:0.0;
+              if(row==6) return (FactoryDefault(FF_ATR_TRADE)>0.5)?1.0:0.0;
+              if(row==7) return (FactoryDefault(FF_ATR_TRADE_SL)>0.5)?1.0:0.0;
+              if(row==8) return (FactoryDefault(FF_ATR_TRADE_TP)>0.5)?1.0:0.0;
+              if(row==9) return (FactoryDefault(FF_PIP_LABELS)>0.5)?1.0:0.0;
               return FactoryDefault(FF_ATR_ROW_GAP);
       case 3: if(row==0) return (FactoryDefault(FF_SHOW_TH_LABELS)>0.5)?1.0:0.0;
               if(row==1) return (FactoryDefault(FF_TH_FRACTAL)>0.5)?1.0:0.0;
@@ -1985,12 +2008,16 @@ double PnlCurrent(const int item,const int row)
               if(row==7) return g_lsFirst?1.0:0.0;
               if(row==8) return g_showMidpointLine?1.0:0.0;
               return 0;                        // rows 9-10 = NAV rows
-      case 2: if(row==0) return g_showATRLabels?1.0:0.0;
-              if(row==1) return g_showATRTargets?1.0:0.0;
-              if(row==2) return g_showATRTradeLabels?1.0:0.0;
-              if(row==3) return g_showATRTradeSLLabels?1.0:0.0;
-              if(row==4) return g_showATRTradeTPLabels?1.0:0.0;
-              if(row==5) return g_showPipDistanceLabels?1.0:0.0;
+      case 2: if(row==0) return g_showLiveCountdown?1.0:0.0;   // countdown's own layer
+              if(row==1) return 0;   // COUNT COLOR (palette only)
+              if(row==2) return g_countdownFontSize;
+              if(row==3) return g_countdownGapPx;
+              if(row==4) return g_showATRLabels?1.0:0.0;
+              if(row==5) return g_showATRTargets?1.0:0.0;
+              if(row==6) return g_showATRTradeLabels?1.0:0.0;
+              if(row==7) return g_showATRTradeSLLabels?1.0:0.0;
+              if(row==8) return g_showATRTradeTPLabels?1.0:0.0;
+              if(row==9) return g_showPipDistanceLabels?1.0:0.0;
               return g_atrLabelRowGap;
       case 3: if(row==0) return g_showTHLabels?1.0:0.0;
               if(row==1) return g_showFractalTHs?1.0:0.0;
@@ -2094,31 +2121,46 @@ int PnlApply(const int item,const int row,const double v)
          else if(row==7)  { g_lsFirst=(v>0.5); g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
          else if(row==8) { g_showMidpointLine=(v>0.5); flags=REFRESH_BUFFERS; }
          break;
-      case 2:   // ATR LABELS — runtime flag is g_atrLabelsVisible (same as hotkey A)
-         if(row==0)       { g_showATRLabels=(v>0.5);
+      case 2:   // ATR LABELS — rows 0-3 are the countdown tag's OWN layer (own
+                // switch/color/size/gap, independent of the ATR block); rows
+                // 4-10 are the ATR block itself (g_atrLabelsVisible, hotkey A).
+         if(row==0)       { g_showLiveCountdown=(v>0.5);
+                            RuntimeSettingsSaveOverridesThrottled();   // OV_CD
+                            RefreshLiveCountdown();
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==1)  { /* COUNT COLOR — the palette owns this row */ }
+         else if(row==2)  { g_countdownFontSize=ClampInt((int)MathRound(v),0,24);
+                            RuntimeSettingsSaveOverridesThrottled();   // OV_CDS
+                            RefreshLiveCountdown();
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==3)  { g_countdownGapPx=ClampInt((int)MathRound(v),0,40);
+                            RuntimeSettingsSaveOverridesThrottled();   // OV_CDG
+                            RefreshLiveCountdown();
+                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==4)  { g_showATRLabels=(v>0.5);
                             g_atrLabelsVisible=g_showATRLabels;
                             GlobalVariableSet("Biotak_ATRLabels_"+GetCachedChartIdStr(),
                                               g_atrLabelsVisible?1.0:0.0);
                             string opA=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opA,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==1)  { g_showATRTargets=(v>0.5);
+         else if(row==5)  { g_showATRTargets=(v>0.5);
                             string opB=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opB,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==2)  { g_showATRTradeLabels=(v>0.5);
+         else if(row==6)  { g_showATRTradeLabels=(v>0.5);
                             string opC=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opC,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==3)  { g_showATRTradeSLLabels=(v>0.5);
+         else if(row==7)  { g_showATRTradeSLLabels=(v>0.5);
                             string opD=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opD,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==4)  { g_showATRTradeTPLabels=(v>0.5);
+         else if(row==8)  { g_showATRTradeTPLabels=(v>0.5);
                             string opE=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
                             SetATRLabelsVisibility(opE,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         else if(row==5)  { g_showPipDistanceLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         else if(row==9)  { g_showPipDistanceLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else             { g_atrLabelRowGap=ClampInt((int)MathRound(v),1,60); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          break;
       case 3:   // TH LABELS — single source of truth is g_thLabelsMode;
@@ -4474,6 +4516,16 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       ChartPointerFinalizeOnUps(); // finalize every gesture reliably
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
       if(UIShouldSuppressClick()) return;   // release after a strip/drag/press action
+      // Countdown tag = a chart object of its OWN layer: a plain left click on
+      // it opens the ATR LABELS card, whose top rows are the countdown's own
+      // settings (switch/color/size/gap). Right-click is left to the terminal.
+      if(StringFind(sparam, "r") < 0 && LiveCountdownPointInside(cx, cy))
+      {
+         PnlOpen(2);
+         UISuppressNextClick();   // the release that opened it must not double-act
+         ChartRedraw();
+         return;
+      }
       // TV-like: an outside chart click dismisses the floating strip — but
       // never the gesture that opened it, never a drag-release, never a
       // right-click, and never a tap on its OWN box (the toolbar stays while

@@ -911,7 +911,9 @@ void CalculateATRBatchWilders(double &results[], const ENUM_TIMEFRAMES tf) {
 //| whose seed lottery swings ±30% with history depth (the rejected   |
 //| MN→SMA-55 branch died exactly there: -16% on identical windows).  |
 //| Results slot [0]; the caller's dynamic denominator reduces to it. |
-//| TradePlanEngTrue stays single-iATR (verified live, separate).     |
+//| TradePlanEngTrue FEEDS OFF this composite (R-ENGPARITY,           |
+//| 2026-09-10: Eng(TF) = composite(TF)/TRADEPLAN_ENG_DIVISOR). The   |
+//| old single-iATR Eng path is deleted (R-ENGONE, user decision).    |
 //+------------------------------------------------------------------+
 #define TREX_W1_PERIOD 55
 #define TREX_MN_PERIOD 30

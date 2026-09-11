@@ -10,7 +10,11 @@
 ## 1. The chain (confirmed, do not touch)
 
 ```
-Eng(TF)   = iATR(trigTF, TF_min / trig_min, 1) / pip      <- SESSION ATR
+Eng(TF)   = TR_composite(OWN TF) / 4.266666              <- R-ENGPARITY (2026-09-10)
+            constant TRADEPLAN_ENG_DIVISOR, hard-coded (R-ENGONE
+            2026-09-10, user decision: NOT an Input, one formula only;
+            the old session ATR iATR(trigTF, TF_min/trig_min, 1)/pip
+            is DELETED — restore from git if ever needed)
 slRaw(TF) = 1.20 * Eng(StructureTF)                       <- UNROUNDED
 SL        = round(slRaw)
 TP1/TP2/TP3 = round(slRaw * 7/3), round(slRaw * 5), round(slRaw * 31/3)
@@ -130,3 +134,34 @@ sides round the same double:
 
 So the deltas in §2 are a **stale EX4**, not a live formula error: rebuild from
 `main` and re-dump before comparing again.
+
+---
+
+## 6. Eng is a long-horizon measure — the 2026-09-10 evening rig
+
+`tools/eng_own_window.js` (committed with the change) settles what Eng can and
+cannot be. Two hypotheses died, one shipped:
+
+| Hypothesis | Result |
+|---|---|
+| Fixed N on each OWN tf | **dead** — gold `ATR(M1,N)` never drops below ~16 pips (his M15 Eng is 16.5), `ATR(H4,N)` is 350+ (his W1 Eng is 600) |
+| Fixed calendar window on the TRIGGER tf | **inconsistent** — XAUUSD MN fits `ATR(D1,174)` = 980.9 vs 982.978 (0.1%!) and EURUSD W1 fits `ATR(H4,1275d)`, but XAUUSD W1 needs 600 while `ATR(H4,N)` tops out at 402 → no single window clears the ladder |
+| **`Eng(TF) = TR_composite(own TF) / 4.266666`** | **shipped (R-ENGPARITY)** |
+
+Same-minute check (XAUUSD 15:31 `[SNAP]`, his Sep-9 ladder):
+
+| TF | TR(own) | Eng parity | his Eng | err | Eng legacy | err |
+|---|---|---|---|---|---|---|
+| M15 | 80.26 | 18.81 | 16.515 | +14% | 37.62 | +128% |
+| H1 | 177.56 | 41.62 | 39.854 | +4% | 61.53 | +54% |
+| H4 | 359.27 | 84.20 | 87.766 | −4% | 87.11 | −0.7% |
+| D1 | 1098.85 | 257.54 | 252.338 | +2% | 182.05 | −28% |
+| W1 | 2474.67 | 580.03 | 600.000 | −3% | 364.59 | −39% |
+| MN | 3778.03 | 885.48 | 982.978 | −10% | 1034.26 | +5% |
+
+EURUSD (15:31 live composite vs his screenshot band midpoints): parity is
+better on H4 −11%, W1 +3%, MN −7%, D1 +19% but undershoots the low TFs
+(M1 −47%, M5 −43%, M15 −46%) — his M1/M5 Eng values are not SL-observable and
+his screenshots are not same-minute, so treat those legs as open. The two gold
+rows his display shows but nothing derives (M1 3.8 / M5 7.9) are unreachable by
+ANY ATR of gold M1 — display-only, do not fit to them.

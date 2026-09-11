@@ -103,7 +103,8 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 #define PAL_BK_TP          16   // Base box Target line color (card 12)
 #define PAL_BOX_FILL       17   // Base box FILL color (TV-parity 2026-09-07 — bucket button)
 #define PAL_BK_TEXT        18   // Base box user-TEXT color (TV-parity 2026-09-07 — T button)
-#define PAL_BASE_TARGETS 19
+#define PAL_COUNTDOWN      19   // Live bar-close countdown tag color (own layer)
+#define PAL_BASE_TARGETS 20
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }

@@ -224,6 +224,9 @@ void ClearAllLabels(const string objectPrefix) {
     // Walk through all known TF suffixes and bulk-delete their LBL_ namespace.
     // This is O(k) API calls (k = number of known TF strings, ~9) instead of
     // O(total chart objects) per frame.
+    // M30 here is a CHART-TIMEFRAME namespace (a chart can sit on M30), NOT the
+    // retired M30 ATR column — never drop it, or the `_M30_LBL_` ghosts of an
+    // old chart survive every clear.
     static string s_tfSuffixes[] = {"M1","M5","M15","M30","H1","H4","D1","W1","MN"};
     string basePrefix = inpObjectPrefix + "_";
     for(int j = 0; j < ArraySize(s_tfSuffixes); j++) {
@@ -254,38 +257,193 @@ bool CreateATRTradePiece(const string name, const string text, const color textC
     return true;
 }
 
-// Countdown to the current chart bar close ("Close in : 22d 12h 32m 13s").
-// Units below the leading non-zero one are skipped (H1 shows "17m 51s").
-string TradePlanCloseInText()
+// Countdown to the current chart bar close. Default = the long corner form
+// ("Close in : 22d 12h 32m 13s"); compact = the live-candle tag form with no
+// prefix and no spaces ("22d12h32m13s"). Units below the leading non-zero one
+// are skipped either way (H1 shows "17m 51s" / "17m51s").
+string TradePlanCloseInText(const bool compact = false)
 {
    datetime bt = iTime(Symbol(), Period(), 0);
-   if(bt <= 0) return "Close in : --";
+   if(bt <= 0) return compact ? "--" : "Close in : --";
    long left = (long)(bt + PeriodSeconds() - TimeCurrent());
    if(left < 0) left = 0;
    long d = left / 86400; left -= d * 86400;
    long h = left / 3600;  left -= h * 3600;
    long m = left / 60;
    long s = left - m * 60;
+   string sep = compact ? "" : " ";
    string t = "";
-   if(d > 0) t = t + IntegerToString(d) + "d ";
-   if(d > 0 || h > 0) t = t + IntegerToString(h) + "h ";
-   if(d > 0 || h > 0 || m > 0) t = t + IntegerToString(m) + "m ";
+   if(d > 0) t = t + IntegerToString(d) + "d" + sep;
+   if(d > 0 || h > 0) t = t + IntegerToString(h) + "h" + sep;
+   if(d > 0 || h > 0 || m > 0) t = t + IntegerToString(m) + "m" + sep;
    t = t + IntegerToString(s) + "s";
-   return "Close in : " + t;
+   return compact ? t : ("Close in : " + t);
+}
+
+//+------------------------------------------------------------------+
+//| Live countdown tag — its OWN layer (2026-09-11, user request):     |
+//| own switch (inpShowLiveCountdown), own color/size/gap, and a name  |
+//| deliberately free of "ATR_" so the periodic object janitor (which  |
+//| hides every "ATR_" object while the ATR block is off) never eats   |
+//| it. Turn the ATR labels off and the countdown stays.               |
+//+------------------------------------------------------------------+
+string LiveCountdownObjName()
+{
+   return inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_" + LIVE_COUNTDOWN_NAME;
+}
+
+bool LiveCountdownEnabled()
+{
+   return (inpShowLiveCountdown && !IsIndicatorHidden());
+}
+
+// Paints the tag when its own switch is on, removes it (plus the retired
+// "...ATR_Trade_Current_CloseIn" of older builds) when it is off.
+void RefreshLiveCountdown()
+{
+   string nm = LiveCountdownObjName();
+   if(!LiveCountdownEnabled())
+   {
+      ObjectDelete(0, nm);
+      ObjectDelete(0, inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME);
+      g_cdTagValid = false;
+      return;
+   }
+   CreateLivePriceCountdown(nm);
+}
+
+// Chart click router: is this point on the tag's last painted rect?
+bool LiveCountdownPointInside(const int mx, const int my)
+{
+   if(!g_cdTagValid || !LiveCountdownEnabled()) return false;
+   int h = (g_cdTagH > 0) ? g_cdTagH : (inpFontSize + 4);
+   return (mx >= g_cdTagX - 2 && mx <= g_cdTagX + g_cdTagW + 2 &&
+           my >= g_cdTagY - 2 && my <= g_cdTagY + h + 2);
+}
+
+//+------------------------------------------------------------------+
+//| Bar-close countdown tag beside the LIVE CANDLE, at the LIVE PRICE.|
+//| Both axes are derived in pixels every refresh: Y from               |
+//| ChartTimePriceToXY(quote) (quote = bid/ask mid) so the text sits on |
+//| the level the terminal's price lines are drawn at, X from the live |
+//| bar's right edge + a few px, so the tag hugs the candle and moves   |
+//| with it as the price runs. When the right side runs out of room it  |
+//| flips to the candle's left instead of sliding under the price       |
+//| scale. Cost per call = 2-3 ChartTimePriceToXY + a handful of         |
+//| property sets, cheap enough for the 1 Hz path in TradePlanLiveTick  |
+//| (P-PERF-01) and for the scroll/zoom hook.                           |
+//+------------------------------------------------------------------+
+bool CreateLivePriceCountdown(const string name)
+{
+   // Own switch only — never the ATR block's flags (that is the whole point).
+   if(!LiveCountdownEnabled())
+   {
+      ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      g_cdTagValid = false;
+      return false;
+   }
+
+   double point = GetCachedPoint();
+   if(IsZero(point, EPSILON_PRICE)) return false;
+   datetime bt = iTime(Symbol(), Period(), 0);
+   if(bt <= 0) return false;
+
+   // The quote the tag rides: the bid/ask mid, so it sits exactly on the level
+   // the terminal's own price lines are drawn at. Bar close covers the very
+   // first ticks of a chart, before a quote exists.
+   double bid = MarketInfo(GetCachedSymbol(), MODE_BID);
+   double ask = MarketInfo(GetCachedSymbol(), MODE_ASK);
+   double price = 0.0;
+   if(bid > 0.0 && ask > 0.0) price = (bid + ask) / 2.0;
+   else if(bid > 0.0)         price = bid;
+   else                       price = iClose(Symbol(), Period(), 0);
+   if(price <= 0.0) return false;
+
+   // Bar-0 pixel X (its LEFT edge) + the quote's pixel Y. A chart scrolled
+   // away from the live bar has no candle to sit next to, so park the tag
+   // rather than draw it at a made-up level — the next refresh brings it back.
+   int barX = 0, priceY = 0;
+   if(!ChartTimePriceToXY(0, 0, bt, price, barX, priceY)) barX = -1;
+   if(barX < 0 || priceY < 0)
+   {
+      if(ObjectFind(0, name) >= 0)
+         ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      g_cdTagValid = false;   // no stale rect for the click hit-test
+      return false;
+   }
+
+   // Bar width in pixels comes from the previous bar's X, so the gap scales
+   // with the zoom instead of being a fixed guess.
+   int prevX = 0, prevY = 0;
+   int barPx = 8;   // safe default for a chart that cannot resolve bar 1
+   if(ChartTimePriceToXY(0, 0, bt - PeriodSeconds(), price, prevX, prevY) && barX > prevX)
+      barPx = barX - prevX;
+
+   string text = TradePlanCloseInText(true);
+   int tagW = (int)CalculateTextWidth(text);
+   // Hand-clamped on purpose: ClampInt() lives in BiotakKit.mqh, which this
+   // file (included earlier) cannot see in the Lite build (P-ARCH-02).
+   int gap = inpCountdownGapPx;                     // "یک کم فاصله"
+   if(gap < 0) gap = 0;
+   if(gap > 40) gap = 40;
+   int x    = barX + barPx + gap;                   // just off the candle's right
+   int cw   = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   // The right margin the corner labels already live in is the boundary the tag
+   // may not cross (beyond it sits the price scale).
+   int rightLimit = (cw > 0) ? (cw - MathMax(8, inpLabelsMarginLeft)) : 0;
+   if(cw > 0 && x + tagW > rightLimit)
+   {
+      x = barX - tagW - gap;                      // no room right → hug its left
+      if(x < 4) x = 4;
+   }
+
+   // Earlier builds drew this same name in the corner and on the candle as an
+   // OBJ_TEXT; a same-name ObjectCreate of another type does not replace the
+   // old object, so retire it first.
+   if(ObjectFind(0, name) >= 0 && ObjectType(name) != OBJ_LABEL)
+      ObjectDelete(0, name);
+   if(ObjectFind(0, name) < 0)
+   {
+      if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
+      ObjectSetString(0, name, OBJPROP_TEXT, "");   // no default "Label" text
+   }
+
+   // Own size (0 = follow the shared label size) and own color.
+   int fsz = (inpCountdownFontSize > 0) ? inpCountdownFontSize : inpFontSize;
+   int xLeft = MathMax(4, x);
+   // Center the row on the quote level (Y is measured from the top edge here).
+   int yTop = MathMax(2, priceY - fsz / 2);
+
+   SetLabelFont(name);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsz);   // own size over the shared one
+   InitATRChartLabel(name, CORNER_LEFT_UPPER, ANCHOR_LEFT_UPPER);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, inpCountdownColor);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, xLeft);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, yTop);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+
+   // Remember the painted rect: the chart click router hit-tests it to open the
+   // settings card. The object itself stays UNSELECTABLE so it can never be
+   // grabbed/dragged by accident.
+   g_cdTagX = xLeft; g_cdTagY = yTop; g_cdTagW = tagW; g_cdTagH = fsz + 2;
+   g_cdTagValid = true;
+   return true;
 }
 
 bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
                          const int xPos, const int yPos)
 {
-   // Screenshot bottom-right block (R-TRADEPLAN):
-   //   Close in : <countdown>                      (red)
-   //   #SL:-<sl> #TP1+<t1> #TP2+<t2> #TP3+<t3>     (blue, single row)
+   // Bottom-right block (R-TRADEPLAN): one right-aligned row —
+   //   #SL:-<sl> #TP1+<t1> #TP2+<t2> #TP3+<t3>     (blue)
+   // The old top row of this block (`Close in : <countdown>`, red) now rides
+   // the LIVE PRICE in the same right column instead (CreateLivePriceCountdown,
+   // 2026-09-11 user request). Same object name, so visibility + cleanup
+   // wiring is unchanged.
    string tpName = objectPrefix + "ATR_Trade_Current_TPRow";
-   string ciName = objectPrefix + "ATR_Trade_Current_CloseIn";
 
    string tpText = StringFormat("#SL:-%d #TP1+%d #TP2+%d #TP3+%d",
                                 plan.sl, plan.tp1, plan.tp2, plan.tp3);
-    string ciText = TradePlanCloseInText();
 
     // PERF: the two "Current" pieces below are upserted in place by
     // CreateATRTradePiece (create-if-missing + set), so wiping the Current_
@@ -307,28 +465,23 @@ bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
    bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
    int rightMargin  = MathMax(8, MathAbs(xPos));
    int bottomMargin = MathMax(8, MathAbs(yPos));
-   int lineHeight   = inpFontSize + inpATRTradeLabelRowGap;
 
-   // Center every visible row inside the block (block right edge stays fixed).
-   double wTP = CalculateTextWidth(tpText);
-   double wCI = CalculateTextWidth(ciText);
-   double maxW = wTP;
-   if(wCI > maxW) maxW = wCI;
-
-   // Bottom-up stack: TP at the bottom, Close-in on top.
-   int row = 0;
    if(showTP) {
-       int xTP = rightMargin + (int)((maxW - wTP) / 2.0);
-       if(!CreateATRTradePiece(tpName, tpText, clrBlue, xTP, bottomMargin + row * lineHeight)) return false;
-       row++;
+       // Single row now, so it right-aligns straight on the block edge.
+       if(!CreateATRTradePiece(tpName, tpText, clrBlue, rightMargin, bottomMargin)) return false;
    }
-   int xCI = rightMargin + (int)((maxW - wCI) / 2.0);
-   if(!CreateATRTradePiece(ciName, ciText, clrRed, xCI, bottomMargin + row * lineHeight)) return false;
+   // The countdown is its own layer (own switch/color/size/gap) — repaint it
+   // from here too, but NEVER through this block's show flags.
+   RefreshLiveCountdown();
    return true;
 }
 
-// Top-right Hunter / StrBond rows, below the TRex stamp (R-TRADEPLAN).
-// Same right-edge metrics as DisplayTRexTitleBlock so the stamp stays one block.
+// Top-right Hunter row, below the TRex stamp (R-TRADEPLAN).
+// R-STBOND (2026-09-10, user decision): the Str Bond row is RETIRED from the
+// chart — SB1 ≈ TP1 (20/9 vs 7/3 of slRaw) and SB2 ≈ TP3 (95/9 vs 31/3), so it
+// read as a duplicate. The engine sb1/sb2 values stay (log + golden test still
+// pair them against the professor's screenshots); only the on-chart text is
+// gone. Delete/visibility paths for TREX_StrBond stay as purge for old charts.
 bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
 {
    int fontSize  = inpFontSize;
@@ -337,11 +490,8 @@ bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
    int yBrand  = MathMax(8, inpLabelsMarginTop);
    int yCap    = yBrand + brandSize + inpLabelRowGap;
    int yHunter = yCap + fontSize + inpLabelRowGap;
-   int yBond   = yHunter + fontSize + inpLabelRowGap;
    string hText = StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
-   string bText = StringFormat("Str Bond: %d - %d", plan.sb1, plan.sb2);
    if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", hText, clrRed, fontSize, rightMargin, yHunter)) return false;
-   if(!CreateTRexPiece(labelPrefix + "TREX_StrBond", bText, clrBlue, fontSize, rightMargin, yBond)) return false;
    return true;
 }
 
@@ -462,15 +612,19 @@ void DisplayATRLabels(const string objectPrefix) {
     if(IsZero(point, EPSILON_PRICE) || IsZero(pipSize, EPSILON_PRICE) || digits == 0) return;
 
     string labelPrefix = objectPrefix + "LBL_";
-    string timeframes[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
-    int tfMinutes[] = {1, 5, 15, 30, 60, 240, 1440, 10080, 43200};
+    // M30 retired from the overview (user decision 2026-09-11): the ladder we
+    // trade and log is the 8 standard TFs (TradePlanLogAllTFs, ATR warm-up in
+    // ATRCalculations.mqh, Biotak ATR Audit.mq4 all use the same 8). M30 was a
+    // separate rendering of the same composite and only cluttered the row.
+    // Stale M30 pieces are purged by ClearAllLabels() before every redraw.
+    string timeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
+    int tfMinutes[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
 
     // Use TH colors for ATR
     color colors[] = {
         clrBlack,        // M1
         clrBlack,        // M5
         clrBlack,        // M15
-        clrBlack,        // M30
         clrBlue,         // H1
         clrRed,          // H4
         clrGreen,        // D1
@@ -797,7 +951,9 @@ void TradePlanLogAllTFs()
 
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     double pip = GetCachedPipSize();
-    TpxLine("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5) + "  " + ts + " =====");
+    // engT = Eng the engine uses (TR_composite/TRADEPLAN_ENG_DIVISOR, R-ENGPARITY).
+    TpxLine("[SNAP] ===== " + Symbol() + "  pipSize=" + DoubleToString(pip,5)
+          + "  engDiv=" + DoubleToString(TRADEPLAN_ENG_DIVISOR, 6) + "  " + ts + " =====");
     TpxLine("[SNAP] TF  | TR(own) | engT   | Eng | Hunter | slTrue  | SL  | TP1 | TP2  | TP3  | SB1  | SB2  | base(strTrig)");
 
     for(int i = 0; i < 8; i++)
@@ -873,6 +1029,18 @@ void TradePlanDumpNow()
     if(!TradePlanComputeLive(Period(), plan)) return;
     TradePlanExportBegin();
     TpxLine("[DUMP] ===== " + Symbol() + " " + GetCurrentTimeframe() + " =====");
+    // Rounding-integrity guard (TradePlanSelfCheck) — the engine computes and
+    // displays on the SAME doubles, so this only fires on a real formula/wiring
+    // regression. Skipped under the alt formulas: their Hunter leg is TR/1.66666
+    // by design and does not satisfy the 8/3×Eng identity.
+    if(!inpUseAltTradeFormulas)
+    {
+        if(TradePlanSelfCheck(plan))
+            TpxLine("[SELFCHECK] OK  - every displayed leg within 0.5 pip of its engine value");
+        else
+            TpxLine("[SELFCHECK] FAIL - a displayed leg is off its unrounded engine value; "
+                    "check TradePlanCompute/SelfCheck on " + Symbol());
+    }
     TradePlanPrintRow(plan);
     TradePlanLogAllTFs();
     TradePlanLogLegs();
@@ -883,9 +1051,25 @@ void TradePlanDumpNow()
 
 void TradePlanLiveTick()
 {
-    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
     uint nowMs = GetTickCount();
+    static uint s_lastCdMs = 0;
+
+    // 1 Hz countdown tag — its OWN switch, so it runs BEFORE (and regardless
+    // of) the ATR block gate below: turning the ATR labels off must not take
+    // the countdown away. One pixel-Y read + a text-set is the cheapest
+    // refresh there is, so this does not wake the 2 s trade-block pump
+    // (P-PERF-01).
+    if(nowMs - s_lastCdMs >= 1000)
+    {
+        s_lastCdMs = nowMs;
+        RefreshLiveCountdown();
+        ThrottledChartRedraw();
+    }
+
+    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
     static uint s_lastMs = 0;
+    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
+
     if(nowMs - s_lastMs < 2000) return;
     s_lastMs = nowMs;
     STradePlan plan;
@@ -897,7 +1081,6 @@ void TradePlanLiveTick()
                               plan.sl, plan.tp1, plan.tp2, plan.tp3,
                               plan.hunter, plan.eng, plan.sb1, plan.sb2);
     static string s_sig = "";
-    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
     if(sig != s_sig)
     {
        s_sig = sig;
@@ -941,7 +1124,7 @@ void TradePlanLiveTick()
 
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     string uniquePrefix = objectPrefix + "LBL_";
-    string allTimeframes[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
+    string allTimeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
 
     bool shouldShow = (visible && !IsIndicatorHidden());
     long tf = shouldShow ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
@@ -955,6 +1138,14 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
         ObjectSetInteger(0, uniquePrefix + "ATR_Steps_" + tfName, OBJPROP_TIMEFRAMES, tf);
         ObjectSetInteger(0, uniquePrefix + "ATR_Targets_" + tfName, OBJPROP_TIMEFRAMES, targetsTF);
     }
+    // Retired M30 ATR column (2026-09-11, see DisplayATRLabels): DELETED, not
+    // hidden, so a chart painted by an older build is cleaned no matter which
+    // toggle the user reaches for first. Names are in this chart-TF namespace
+    // (same prefix DisplayATRLabels wrote them with); other TF namespaces are
+    // swept by ClearAllLabels on their own redraw.
+    ObjectDelete(0, uniquePrefix + "ATR_M30");
+    ObjectDelete(0, uniquePrefix + "ATR_Steps_M30");
+    ObjectDelete(0, uniquePrefix + "ATR_Targets_M30");
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SL_Text", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SL_Value", OBJPROP_TIMEFRAMES, tf);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Text", OBJPROP_TIMEFRAMES, tf);
@@ -975,7 +1166,9 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_ATR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_SLRow", OBJPROP_TIMEFRAMES, slTF);
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TPRow", OBJPROP_TIMEFRAMES, tpTF);
-    ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_CloseIn", OBJPROP_TIMEFRAMES, tradeTF);
+    // The countdown left this block (own switch since 2026-09-11) — only its
+    // retired name is purged here so charts from older builds lose it for good.
+    ObjectDelete(0, uniquePrefix + LIVE_COUNTDOWN_LEGACY_NAME);
     ObjectSetInteger(0, uniquePrefix + "TREX_Spread", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Caption", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);

@@ -24,6 +24,17 @@
 #define CHART_CHANGE_THROTTLE_MS 100  // Throttle CHARTEVENT_CHART_CHANGE bursts (ms)
 #define DOUBLE_CLICK_THRESHOLD_MS 300 // Double-click detection window (ms)
 
+// Live bar-close countdown tag (beside the live candle, at the live price).
+// It is its OWN layer since 2026-09-11 (own switch/color/size/gap) and the
+// name is deliberately free of "ATR_": the periodic object janitor in
+// EventHandlers hides every object whose name contains "ATR_" while the ATR
+// labels are off, and this tag must survive that.
+#define LIVE_COUNTDOWN_NAME "CloseIn_Tag"
+// Older builds drew the same tag as "...ATR_Trade_Current_CloseIn" (first a
+// corner row, then candle text) — every path that used to own that name now
+// just purges it so old charts lose it for good.
+#define LIVE_COUNTDOWN_LEGACY_NAME "ATR_Trade_Current_CloseIn"
+
 // Division Safety Constants (GOLD FIX v3)
 #define MIN_SAFE_DIVISIONS 0.001      // Minimum divisions to prevent precision loss
 #define MAX_SAFE_FACTOR 10000.0       // Maximum factor value to prevent overflow

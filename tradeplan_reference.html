@@ -48,9 +48,10 @@
 
 <!-- 1 -->
 <h2>۱. نردبان فرکتال — Trigger و Structure هر TF</h2>
-<p class="note">Trigger = 2 پله پایین‌تر &nbsp;|&nbsp; Structure = 2 پله بالاتر &nbsp;|&nbsp; period = TF_min ÷ trig_min</p>
+<p class="note">Trigger = 2 پله پایین‌تر &nbsp;|&nbsp; Structure = 2 پله بالاتر &nbsp;|&nbsp; Eng پیش‌فرض = TR کامپوزیت همان TF ÷ 4.266666 (R-ENGPARITY، Sep-10-2026)</p>
+<p class="note"><b>Eng روی هر ۸ تایم‌فریم یک فرمول است:</b> <span class="mono">CompositeATR(TF) / 4.266666</span> (R-ENGPARITY). ستون «فرمول Eng قدیمی» فقط <b>تاریخچهٔ بازنشسته</b> است — مسیر A/B و ورودی <span class="mono">inpEngDivisor</span> حذف شدند (R-ENGONE، تصمیم کاربر 2026-09-10).</p>
 <table>
-  <thead><tr><th>Chart TF</th><th>Trigger TF</th><th>period N</th><th>فرمول Eng</th><th>Structure TF</th></tr></thead>
+  <thead><tr><th>Chart TF</th><th>Trigger TF</th><th>period N</th><th>فرمول Eng قدیمی (بازنشسته — R-ENGONE)</th><th>Structure TF</th></tr></thead>
   <tbody>
     <tr><td>M1</td><td>M1</td><td>1</td><td class="mono">iATR(M1, 1, 1) / pip</td><td>M15</td></tr>
     <tr><td>M5</td><td>M1</td><td>5</td><td class="mono">iATR(M1, 5, 1) / pip</td><td>H1</td></tr>
@@ -65,8 +66,11 @@
 
 <!-- 2 -->
 <h2>۲. فرمول‌های اصلی — یک ضریب ثابت برای همه ۸ تایم‌فریم</h2>
-<div class="formula-box"><span class="comment">// Eng — Session ATR: یک iATR با period = TF_min/trig_min، shift=1</span>
-Eng(TF)    = iATR(trigTF, TF_min/trig_min, 1) / pip
+<div class="formula-box"><span class="comment">// Eng — پیش‌فرض (Sep-10-2026): کامپوزیت همان تایم‌فریم ÷ ضریب</span>
+Eng(TF)    = CompositeATR(TF) / 4.266666
+
+<span class="comment">// Eng قدیمی — بازنشسته و حذف‌شده (R-ENGONE 2026-09-10): iATR با period = TF_min/trig_min، shift=1</span>
+Eng_legacy(TF) = iATR(trigTF, TF_min/trig_min, 1) / pip   // فقط تاریخچه — دیگر در کد نیست
 
 <span class="comment">// SL — ضریب ثابت 1.20 روی Eng تایم ساختار (2 پله بالاتر)</span>
 SL(TF)     = round(1.20 × Eng(StructureTF))
@@ -187,11 +191,9 @@ int StrMinutes(int tfMin) {
     return 43200;                  // D1/W1/MN → MN
 }
 
-// ─── Eng (Session ATR) ─────────────────────────────────────────────
+// ─── Eng (پیش‌فرض = کامپوزیت TF خودش ÷ 4.266666؛ R-ENGPARITY) ──────
 double Eng(string sym, int tfMin) {
-    int trig = TrigMinutes(tfMin);
-    int N    = tfMin / trig;
-    return iATR(sym, trig, N, 1) / GetCachedPipSize(sym);
+    return CompositeATR(sym, tfMin) / 4.266666 / GetCachedPipSize(sym);
 }
 
 // ─── Trade Plan ────────────────────────────────────────────────────

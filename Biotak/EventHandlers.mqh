@@ -472,7 +472,11 @@ void OnDeinitHandler(const int reason) {
     {
         // Clear all ATR and TH labels to apply new settings
         string uniquePrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
-        string tfLabels[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN1"};
+        // No M30 here: the M30 ATR column is retired (2026-09-11) and every
+        // object this loop targets carries inpObjectPrefix, so the
+        // DeleteAllIndicatorObjects(false) at the end of this branch sweeps any
+        // M30 leftovers from old charts anyway.
+        string tfLabels[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
 
         // Delete ATR labels
         ObjectDelete(0, uniquePrefix + "ATR_Title");
@@ -1044,6 +1048,9 @@ void RedrawAllObjects(bool force_redraw=false)
         if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
+        // Own layer: repaint AFTER the clear so switching the ATR labels off
+        // never removes the countdown (2026-09-11).
+        RefreshLiveCountdown();
         TH3_PROF_END(Labels);
 
         if(!g_calculatedOnce && inpShowTHLevels) g_redrawTHLevelsNeeded = true;
@@ -1613,6 +1620,21 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         // S key   Cycle TH Labels Mode
         //  
+        //
+        // D key   Toggle the bar-close countdown tag. Its OWN switch: the ATR
+        //         labels key (A) must never take the countdown away, and this
+        //         one never touches the ATR block (2026-09-11, user request).
+        //  
+        if(IsHotkeyPressed(lparam, sparam, inpCountdownKey))
+        {
+            g_showLiveCountdown = !g_showLiveCountdown;
+            RuntimeSettingsSaveOverridesThrottled();   // OV_ CD/CDC/CDS/CDG
+            RefreshLiveCountdown();
+            LOG_I(LOG_CAT_LABELS, "Countdown tag " + (g_showLiveCountdown ? "VISIBLE" : "HIDDEN"));
+            ThrottledChartRedraw();
+            return;
+        }
+
         if(IsHotkeyPressed(lparam, sparam, inpTHLabelsKey))
         {
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
@@ -1736,6 +1758,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_linesVisible = (FactoryDefault(FF_SHOW_LINES) > 0.5);
             InvalidateAllVisibilityCaches();
             g_atrLabelsVisible = (FactoryDefault(FF_SHOW_ATR) > 0.5);
+            g_showLiveCountdown = (FactoryDefault(FF_SHOW_COUNTDOWN) > 0.5);
+            g_countdownColor = (color)(int)FactoryDefault(FF_COUNTDOWN_COLOR);
+            g_countdownFontSize = (int)FactoryDefault(FF_COUNTDOWN_SIZE);
+            g_countdownGapPx = (int)FactoryDefault(FF_COUNTDOWN_GAP);
+            RefreshLiveCountdown();
             g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 1 : 0; // Default to FRACTAL if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
             // TH3TOOL-OFF:
@@ -1925,6 +1952,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         } else if(sizeChanged) {
             RedrawLabelsOnly();
         }
+        // The live-price countdown tag is positioned off the price scale, so a
+        // scroll/zoom/resize invalidates its Y even with zero ticks (weekend
+        // charts). Re-derive it here, AFTER the redraws above (a label clear
+        // would otherwise eat it) — the label pipeline itself is 2 s gated, so
+        // this hook is what keeps the tag glued during a drag-scroll. Own
+        // switch: never gated by the ATR block (2026-09-11).
+        RefreshLiveCountdown();
         ThrottledChartRedraw();
         return;
     }
@@ -2356,6 +2390,7 @@ void RedrawLabelsOnly() {
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
     }
     if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
+    RefreshLiveCountdown();   // own switch — survives the ATR labels being off
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
     ThrottledChartRedraw();

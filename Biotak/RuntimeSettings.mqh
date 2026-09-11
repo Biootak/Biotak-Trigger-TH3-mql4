@@ -113,6 +113,12 @@ static bool g_showATRTradeLabels = true;                         // [03] inpShow
 static bool g_showATRTradeSLLabels = true;                       // [03] inpShowATRTradeSLLabels
 static bool g_showATRTradeTPLabels = true;                       // [03] inpShowATRTradeTPLabels
 static int g_atrLabelRowGap = 10;                                // [03] inpATRTradeLabelRowGap
+// [03] LIVE COUNTDOWN TAG — its own switch/look (2026-09-11, user request):
+// it must survive the ATR labels toggle (A / g_atrLabelsVisible).
+static bool g_showLiveCountdown = true;                          // [03] inpShowLiveCountdown
+static color g_countdownColor = clrRed;                          // [03] inpCountdownColor
+static int g_countdownFontSize = 0;                              // [03] inpCountdownFontSize (0 = follow inpFontSize)
+static int g_countdownGapPx = 6;                                 // [03] inpCountdownGapPx
 static bool g_showTHLabels = false;                              // [03] inpShowTHLabels
 static bool g_showFractalTHs = false;                            // [03] inpShowFractalTHs
 static bool g_showStandardTHs = false;                           // [03] inpShowStandardTHs
@@ -184,6 +190,10 @@ enum FactorySetting
    FF_ATR_TRADE_TP,        // inpShowATRTradeTPLabels
    FF_PIP_LABELS,          // inpShowPipDistanceLabels
    FF_ATR_ROW_GAP,         // inpATRTradeLabelRowGap
+   FF_SHOW_COUNTDOWN,      // inpShowLiveCountdown
+   FF_COUNTDOWN_COLOR,     // inpCountdownColor
+   FF_COUNTDOWN_SIZE,      // inpCountdownFontSize
+   FF_COUNTDOWN_GAP,       // inpCountdownGapPx
    FF_SHOW_TH_LABELS,      // inpShowTHLabels
    FF_TH_FRACTAL,          // inpShowFractalTHs
    FF_TH_STANDARD,         // inpShowStandardTHs
@@ -280,6 +290,10 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_ATR_TRADE_TP]        = inpShowATRTradeTPLabels;
    g_factoryDefaults[FF_PIP_LABELS]          = inpShowPipDistanceLabels;
    g_factoryDefaults[FF_ATR_ROW_GAP]         = inpATRTradeLabelRowGap;
+   g_factoryDefaults[FF_SHOW_COUNTDOWN]      = inpShowLiveCountdown;
+   g_factoryDefaults[FF_COUNTDOWN_COLOR]     = inpCountdownColor;
+   g_factoryDefaults[FF_COUNTDOWN_SIZE]      = inpCountdownFontSize;
+   g_factoryDefaults[FF_COUNTDOWN_GAP]       = inpCountdownGapPx;
    g_factoryDefaults[FF_SHOW_TH_LABELS]      = inpShowTHLabels;
    g_factoryDefaults[FF_TH_FRACTAL]          = inpShowFractalTHs;
    g_factoryDefaults[FF_TH_STANDARD]         = inpShowStandardTHs;
@@ -372,6 +386,10 @@ void RuntimeSettingsInit()
    g_showATRTradeSLLabels = inpShowATRTradeSLLabels;
    g_showATRTradeTPLabels = inpShowATRTradeTPLabels;
    g_atrLabelRowGap = inpATRTradeLabelRowGap;
+   g_showLiveCountdown = inpShowLiveCountdown;
+   g_countdownColor = inpCountdownColor;
+   g_countdownFontSize = inpCountdownFontSize;
+   g_countdownGapPx = inpCountdownGapPx;
 
    // [04] STYLE / SS-LS STEP
    g_lsFirst = inpLSFirst;
@@ -527,6 +545,10 @@ void RuntimeSettingsInit()
 #define inpShowATRTradeSLLabels g_showATRTradeSLLabels
 #define inpShowATRTradeTPLabels g_showATRTradeTPLabels
 #define inpATRTradeLabelRowGap g_atrLabelRowGap
+#define inpShowLiveCountdown g_showLiveCountdown
+#define inpCountdownColor g_countdownColor
+#define inpCountdownFontSize g_countdownFontSize
+#define inpCountdownGapPx g_countdownGapPx
 #define inpShowTHLabels g_showTHLabels
 #define inpShowFractalTHs g_showFractalTHs
 #define inpShowStandardTHs g_showStandardTHs
@@ -643,6 +665,10 @@ void RuntimeSettingsSaveOverrides()
    GlobalVariableSet(p + "A3",  g_showATRTradeSLLabels ? 1 : 0);
    GlobalVariableSet(p + "A4",  g_showATRTradeTPLabels ? 1 : 0);
    GlobalVariableSet(p + "AG",  g_atrLabelRowGap);
+   GlobalVariableSet(p + "CD",  g_showLiveCountdown ? 1 : 0);
+   GlobalVariableSet(p + "CDC", g_countdownColor);
+   GlobalVariableSet(p + "CDS", g_countdownFontSize);
+   GlobalVariableSet(p + "CDG", g_countdownGapPx);
    GlobalVariableSet(p + "TH",  g_showTHLabels ? 1 : 0);
    GlobalVariableSet(p + "TF",  g_showFractalTHs ? 1 : 0);
    GlobalVariableSet(p + "TS2", g_showStandardTHs ? 1 : 0);
@@ -752,6 +778,11 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "A3"))  g_showATRTradeSLLabels = (GlobalVariableGet(p + "A3") > 0.5);
    if(GlobalVariableCheck(p + "A4"))  g_showATRTradeTPLabels = (GlobalVariableGet(p + "A4") > 0.5);
    if(GlobalVariableCheck(p + "AG"))  g_atrLabelRowGap = ClampSettingInt((int)GlobalVariableGet(p + "AG"), 1, 60);
+   // [03] live countdown tag — new keys, no legacy layout to upgrade from
+   if(GlobalVariableCheck(p + "CD"))  g_showLiveCountdown = (GlobalVariableGet(p + "CD") > 0.5);
+   if(GlobalVariableCheck(p + "CDC")) g_countdownColor = (color)(int)GlobalVariableGet(p + "CDC");
+   if(GlobalVariableCheck(p + "CDS")) g_countdownFontSize = ClampSettingInt((int)GlobalVariableGet(p + "CDS"), 0, 24);
+   if(GlobalVariableCheck(p + "CDG")) g_countdownGapPx = ClampSettingInt((int)GlobalVariableGet(p + "CDG"), 0, 40);
    if(GlobalVariableCheck(p + "TH"))  g_showTHLabels = (GlobalVariableGet(p + "TH") > 0.5);
    if(GlobalVariableCheck(p + "TF"))  g_showFractalTHs = (GlobalVariableGet(p + "TF") > 0.5);
    if(GlobalVariableCheck(p + "TS2")) g_showStandardTHs = (GlobalVariableGet(p + "TS2") > 0.5);

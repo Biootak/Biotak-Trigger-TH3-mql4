@@ -7,9 +7,20 @@
 //|                                                                  |
 //| UNIFIED FORMULA (all 8 TFs, confirmed Sep-9-2026):               |
 //|   SL(TF) = round(1.20 × Eng(StructureTF))                        |
-//|   Eng(TF) = iATR(triggerTF, TF_min/trig_min, 1) / pip            |
+//|   Eng(TF) = TR_composite(OWN TF) / 4.266666  (R-ENGPARITY,       |
+//|             constant TRADEPLAN_ENG_DIVISOR — ONE formula, no input)|
 //|   Hunter  = round(8/3 × Eng)                                     |
 //|   Structure = 2 ladder rungs UP; Trigger = 2 rungs DOWN.         |
+//|                                                                  |
+//|   Evidence (2026-09-10 evening rig, tools/eng_own_window.js):     |
+//|   Eng is a LONG-HORIZON measure per chart TF, not a short trigger |
+//|   window. The divisor reproduces all six of his SL-derived        |
+//|   XAUUSD legs {M15 16.515, H1 39.854, H4 87.766, D1 252.338,      |
+//|   W1 600, MN 982.978} within {+13,+4,-4,+2,-3,-10}% and keeps     |
+//|   Eng(M1)!=Eng(M5)!=Eng(M15) (P-TRADEPLAN-02). The legacy         |
+//|   iATR(triggerTF, TF_min/trig_min, 1)/pip (a ONE-chart-bar window,| 
+//|   -39% on W1, -33% on D1, -50% on EURUSD W1) is RETIRED by user   |
+//|   decision 2026-09-10 (R-ENGONE): one formula only.              |
 //|                                                                  |
 //|   ALT experimental path (opt-in inpUseAltTradeFormulas, default   |
 //|   OFF): SL = TR(chart)*1.66666, Eng = TR/4.266666, Hunt =        |
@@ -45,6 +56,10 @@
 // Unified SL coefficient: SL = 1.20 × Eng(StructureTF).
 // One constant for ALL timeframes — confirmed Sep-9-2026 live XAUUSD.
 #define TRADEPLAN_SL_COEFF  1.20
+
+// Eng divisor (R-ENGPARITY 2026-09-10): Eng(TF) = TR_composite(own TF) / this.
+// 64/15 — hard-coded by user decision (2026-09-10): NO input knob, one formula.
+#define TRADEPLAN_ENG_DIVISOR  4.266666
 
 // EXPERIMENTAL alt formulas (opt-in via inpUseAltTradeFormulas, user
 // 2026-09-10): chart-TF based, uniform everywhere — SL = TR*1.66666,
@@ -122,8 +137,9 @@ int TradePlanStructureMinutes(const int chartMinutes)
 int TradePlanRound(const double x) { return (int)MathRound(x); }
 
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
-// Calls CalculateWeightedATR (ATRCalculations.mqh) — 6-period Wilder weighted
-// average, shift=1 on every period leg, stable and not tick-volatile.
+// Calls CalculateWeightedATR (ATRCalculations.mqh) — the Trex SMA composite
+// (weights 1/1/2/3/5/8 over periods 5/10/21/66/132/264, W1/MN overrides;
+// P-ATR-02), shift=1 on every leg. Same source the strip display uses.
 double TradePlanStripPips(const int tfMinutes)
 {
    double pip = GetCachedPipSize();
@@ -135,34 +151,26 @@ double TradePlanStripPips(const int tfMinutes)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ENG = iATR(triggerTF, TF_min/trig_min, 1) / pip   — SESSION ATR
+// ENG — ONE formula (R-ENGPARITY, user decision 2026-09-10, R-ENGONE):
+//   Eng(TF) = TR_composite(OWN TF) / TRADEPLAN_ENG_DIVISOR
+//   Long-horizon by construction (the composite is a 5..264-bar blend) and
+//   per-chart-TF, so Eng(M1) != Eng(M5) != Eng(M15) — the constraint the
+//   2026-09-09 fix (P-TRADEPLAN-02) was built on. No selector, no legacy
+//   path: the old iATR(triggerTF, TF_min/trig_min, 1)/pip (a one-chart-bar
+//   window that matched gold only through XAUUSD's persistent vol, and missed
+//   W1/D1 by -39%/-33%, EURUSD W1 by -50%) is retired — see git history and
+//   P-ATR-05 if it ever needs to come back.
 //
-// Period = number of trigger-TF bars inside one chart bar.
-// shift=1 → frozen until the NEXT trigger-TF bar closes → stable.
-//
-//   M1  trig=M1  per=1   M5  trig=M1  per=5   M15 trig=M1  per=15
-//   H1  trig=M5  per=12  H4  trig=M15 per=16  D1  trig=H1  per=24
-//   W1  trig=H4  per=42  MN  trig=D1  per=30
-//
-// Confirmed Sep-4-2026 XAUUSD all 8 TFs: M1=3 M5=9 M15=17 H1=40 H4=88
-// D1=252 W1=600 MN=983 (≤1 pip rounding vs professor's screenshots).
+//   Trigger ladder (kept for labels only): M1←M1 M5←M1 M15←M1 H1←M5
+//   H4←M15 D1←H1 W1←H4 MN←D1
 // ─────────────────────────────────────────────────────────────────────────────
 double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
 {
-   int cm      = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
-   trigMinOut  = TradePlanTriggerMinutes(cm);
-   int trigMin = trigMinOut;
-   if(trigMin <= 0) trigMin = 1;
+   int cm = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
+   trigMinOut = TradePlanTriggerMinutes(cm);
 
-   double pip = GetCachedPipSize();
-   if(IsZero(pip, EPSILON_PRICE)) return 0.0;
-
-   int period = cm / trigMin;
-   if(period < 1) period = 1;
-
-   ENUM_TIMEFRAMES trigTF = (ENUM_TIMEFRAMES)trigMin;
-   double v = iATR(Symbol(), trigTF, period, 1);
-   return (v == EMPTY_VALUE || v <= 0.0) ? 0.0 : v / pip;
+   double tr = TradePlanStripPips(cm);      // own-TF composite TR
+   return (tr > 0.0) ? tr / TRADEPLAN_ENG_DIVISOR : 0.0;
 }
 
 // EngOf(TF): Eng of any TF (used by SL engine for the structure TF).
@@ -178,9 +186,9 @@ double TradePlanCompositeEngOf(const int tfMinutes)
    return TradePlanEngOf(tfMinutes);
 }
 
-// SL = 1.20 × SessionEng(StructureTF). Unrounded. 0 when not ready.
-// W1/MN structure clamps to MN; SessionEng(MN)=iATR(D1,30,1)/pip naturally
-// produces the macro SL — no special cap needed.
+// SL = 1.20 × Eng(StructureTF). Unrounded. 0 when not ready.
+// W1/MN structure clamps to MN; Eng(MN) = TR_composite(MN)/divisor (parity,
+// R-ENGPARITY) naturally produces the macro SL — no special cap needed.
 double TradePlanSLTrue(const int chartMinutes)
 {
    int strMin = TradePlanStructureMinutes(chartMinutes);
