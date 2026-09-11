@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRex — اُبسیدین گلد پریمیوم v2 · نسخهٔ نهایی</title>
+<style>
+/* ══════════════════════════════════════════════════════════════════
+   1 · PAGE TOKENS (chrome of this preview — not the panel)
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --pg:#080A0E; --pg2:#0C1016; --pg3:#111721;
+  --ink:#E9EEF6; --ink2:#9DA9BA; --ink3:#6B7688;
+  --hair:#1B212C; --hair2:#232B38;
+  --z:1.6;
+  --gold1:#FFC247; --gold2:#FF8A00;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(255,138,0,.07), transparent 60%),
+    radial-gradient(900px 500px at 5% 10%, rgba(124,92,255,.05), transparent 60%),
+    linear-gradient(180deg,var(--pg),var(--pg2) 40%,var(--pg));
+  color:var(--ink); font-family:Vazirmatn,"Segoe UI",Tahoma,sans-serif;
+  font-size:13.5px; line-height:1.8; padding:30px 34px 90px; -webkit-font-smoothing:antialiased;
+}
+h1{font-size:23px;font-weight:800;letter-spacing:.2px}
+h1 b{background:linear-gradient(90deg,var(--gold1),var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:15px;font-weight:800}
+code.k{background:var(--pg3);border:1px solid var(--hair2);border-radius:5px;padding:1px 6px;font-size:11.5px;
+  color:var(--gold1);direction:ltr;display:inline-block;font-family:Consolas,monospace}
+.wrap{max-width:1460px;margin:0 auto}
+
+/* ══════════════════════════════════════════════════════════════════
+   2 · PAGE CHROME
+   ══════════════════════════════════════════════════════════════════ */
+.hero{padding-bottom:22px;border-bottom:1px solid var(--hair)}
+.lede{color:var(--ink2);font-size:13px;max-width:1160px;margin-top:9px}
+.lede b{color:var(--ink)}
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:14px}
+.pill{border:1px solid var(--hair2);background:var(--pg3);color:var(--ink2);border-radius:999px;padding:4px 12px;font-size:11.5px}
+.pill.g{border-color:rgba(255,171,0,.35);color:var(--gold1);background:rgba(255,171,0,.08)}
+.pill.v{border-color:rgba(124,92,255,.35);color:#BCA6FF;background:rgba(124,92,255,.09)}
+.pill.j{border-color:rgba(18,184,134,.35);color:#63ECBD;background:rgba(18,184,134,.09)}
+.pill.c{border-color:rgba(31,168,224,.35);color:#79DCFF;background:rgba(31,168,224,.09)}
+.pill.e{border-color:rgba(255,106,43,.35);color:#FFC08C;background:rgba(255,106,43,.09)}
+.pill.r{border-color:rgba(240,69,95,.35);color:#FFA7B6;background:rgba(240,69,95,.09)}
+
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:20px;position:sticky;top:0;z-index:60;
+  padding:12px 0;background:linear-gradient(180deg,rgba(8,10,14,.96),rgba(8,10,14,.80));backdrop-filter:blur(8px)}
+.bar .lbl{color:var(--ink3);font-size:12px;font-weight:600}
+.bar .sep{width:1px;height:22px;background:var(--hair2)}
+.tg{background:var(--pg3);color:#C8D0DC;border:1px solid var(--hair2);border-radius:9px;padding:7px 14px;
+  font:600 12.5px Vazirmatn,Tahoma,sans-serif;cursor:pointer}
+.tg:hover{border-color:var(--gold2);color:var(--gold1)}
+.tg.on{background:linear-gradient(180deg,var(--gold1),var(--gold2));border-color:var(--gold2);color:#181206;
+  box-shadow:0 5px 16px rgba(255,138,0,.30)}
+
+section{margin-top:48px}
+.shead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.shead .num{font:800 12px Arial,sans-serif;color:var(--gold1);border:1px solid rgba(255,171,0,.35);
+  background:rgba(255,171,0,.08);border-radius:7px;padding:1px 8px}
+.shead .en{color:var(--ink3);font:600 11.5px Arial,sans-serif;letter-spacing:.7px}
+.shead p{color:var(--ink2);font-size:12.5px;flex-basis:100%;max-width:1160px}
+
+/* ══════════════════════════════════════════════════════════════════
+   3 · THE PANEL — OBSIDIAN GOLD v2
+   geometry FROZEN: 312 wide · head 56 · row 42 · foot 48 · margin 14
+   height is ALWAYS 56 + 42n + 48 (every band is a full row)
+   ══════════════════════════════════════════════════════════════════ */
+.ac-gold  {--a1:#FFC247;--a2:#FF8A00;--aSoft:rgba(255,171,0,.12);--aBd:rgba(255,171,0,.38);--aGlow:rgba(255,159,10,.45);--aInk:#1A1206}
+.ac-jade  {--a1:#63ECBD;--a2:#12B886;--aSoft:rgba(18,184,134,.12);--aBd:rgba(18,184,134,.40);--aGlow:rgba(18,184,134,.40);--aInk:#04140F}
+.ac-cyan  {--a1:#79DCFF;--a2:#1FA8E0;--aSoft:rgba(31,168,224,.12);--aBd:rgba(31,168,224,.40);--aGlow:rgba(31,168,224,.40);--aInk:#04121A}
+.ac-violet{--a1:#BCA6FF;--a2:#7C5CFF;--aSoft:rgba(124,92,255,.14);--aBd:rgba(124,92,255,.42);--aGlow:rgba(124,92,255,.42);--aInk:#0C0722}
+.ac-ember {--a1:#FFC08C;--a2:#FF6A2B;--aSoft:rgba(255,106,43,.13);--aBd:rgba(255,106,43,.42);--aGlow:rgba(255,106,43,.40);--aInk:#1A0A03}
+.ac-rose  {--a1:#FFA7B6;--a2:#F0455F;--aSoft:rgba(240,69,95,.13);--aBd:rgba(240,69,95,.42);--aGlow:rgba(240,69,95,.40);--aInk:#1C0409}
+
+.t-og{
+  --r:14px; --barH:3px;
+  --bar:linear-gradient(90deg,var(--a2),var(--a1) 42%,rgba(255,255,255,0));
+  --card:linear-gradient(180deg,#1E242F,#171C25 52%,#12161D);
+  --bd:#2C3444;
+  --sh:0 28px 62px rgba(0,0,0,.70), inset 0 1px 0 rgba(255,255,255,.075);
+  --title:#F3F6FB; --muted:#8C96A6; --lbl:#CBD4E2; --val:#F3F6FB;
+  --hair:rgba(255,255,255,.075); --line:rgba(255,255,255,.055);
+  --field:#181D27; --fieldBd:#333C4C; --ghostBg:#1C222C; --ghostBd:#313A4A;
+  --track:#222937; --trackBd:#343D4D;
+  --knob:radial-gradient(circle at 35% 28%,#FFFFFF,#DDE3EC); --knobBd:rgba(0,0,0,.38);
+  --knobSh:0 2px 7px rgba(0,0,0,.55);
+}
+.t-og *{box-sizing:border-box}
+.mt4{width:312px;font-family:Arial,Helvetica,sans-serif;direction:ltr;text-align:left}
+.card{width:312px;border-radius:var(--r);background:var(--card);border:1px solid var(--bd);
+  box-shadow:var(--sh);overflow:hidden;position:relative}
+.card::before{content:'';position:absolute;inset:0 0 auto 0;height:var(--barH);background:var(--bar);z-index:5}
+.card::after{content:'';position:absolute;inset:0;border-radius:var(--r);pointer-events:none;z-index:4;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)}
+
+/* 3.1 header — 56 */
+.hd{height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;position:relative}
+.hd::after{content:'';position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,var(--aBd),rgba(255,255,255,.02) 70%,transparent)}
+.mark{width:28px;height:28px;border-radius:9px;flex:none;display:grid;place-items:center;font:800 13px Arial,sans-serif;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:var(--aInk);
+  box-shadow:0 5px 14px var(--aGlow), inset 0 1px 0 rgba(255,255,255,.35)}
+.htxt{min-width:0;flex:1}
+.ttl{font:700 12.5px Arial,sans-serif;letter-spacing:.75px;color:var(--title);line-height:1.25;white-space:nowrap}
+.subttl{display:flex;align-items:center;gap:5px;font:600 8.5px Arial,sans-serif;letter-spacing:.55px;
+  color:var(--muted);line-height:1.3;margin-top:1px;white-space:nowrap}
+.subttl i{width:4px;height:4px;border-radius:50%;display:inline-block;flex:none}
+.ver{font:700 8px Arial,sans-serif;letter-spacing:.4px;color:var(--a1);background:var(--aSoft);
+  border:1px solid var(--aBd);border-radius:5px;padding:2px 5px;flex:none}
+.x{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;font:700 13px Arial,sans-serif;
+  color:var(--muted);background:var(--ghostBg);border:1px solid var(--ghostBd)}
+
+/* 3.2 rows — the 42px grid */
+.rows{position:relative}
+.row{height:42px;padding:0 16px;border-top:1px solid var(--line);position:relative;display:flex;
+  align-items:center;justify-content:space-between;gap:10px}
+.row:first-child{border-top:0}
+.rail{position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,var(--a1),var(--a2))}
+.lbl{font:700 11.5px Arial,sans-serif;letter-spacing:.45px;color:var(--lbl);white-space:nowrap;
+  display:flex;align-items:center;gap:7px}
+.lbl.sm{font-size:10.5px;letter-spacing:.35px}
+.glyph{width:16px;height:16px;border-radius:5px;flex:none;display:grid;place-items:center;font:700 8.5px Arial,sans-serif}
+.glyph.a{background:var(--aSoft);border:1px solid var(--aBd);color:var(--a1)}
+.glyph.n{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.10);color:var(--muted)}
+.val{font:700 11px Arial,sans-serif;color:var(--val);font-variant-numeric:tabular-nums}
+.val u{text-decoration:none;color:var(--muted);font-size:9px;margin-left:2px}
+.val.chip{background:var(--aSoft);border:1px solid var(--aBd);color:var(--a1);border-radius:6px;
+  padding:2px 8px;min-width:46px;text-align:center;flex:none}
+
+/* section band — a FULL 42px row, so the height math survives */
+.row.sec{border-top:1px solid var(--hair);background:linear-gradient(90deg,rgba(255,255,255,.028),transparent 62%)}
+.row.sec .sl{font:700 9.5px Arial,sans-serif;letter-spacing:1.3px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.row.sec .sl i{width:6px;height:6px;border-radius:2px;display:inline-block;
+  background:linear-gradient(135deg,var(--a1),var(--a2));box-shadow:0 0 8px var(--aGlow)}
+.row.sec .sr{flex:1;height:1px;background:linear-gradient(90deg,var(--hair),transparent);margin-left:10px}
+.row.sec .cnt{font:700 9px Arial,sans-serif;color:var(--muted);background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.09);border-radius:5px;padding:1px 6px;flex:none}
+
+/* 3.3 switch 40×22 */
+.sw{width:40px;height:22px;border-radius:11px;background:#232A37;border:1px solid #3A4353;position:relative;flex:none;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.48)}
+.sw i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#8D97A8;
+  box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.sw.on{background:linear-gradient(180deg,var(--a1),var(--a2));border-color:var(--a2);box-shadow:0 0 15px var(--aGlow)}
+.sw.on i{left:20px;background:var(--aInk)}
+.sw.on::after{content:'';position:absolute;inset:0;border-radius:11px;box-shadow:inset 0 1px 0 rgba(255,255,255,.30)}
+
+/* 3.4 slider — full width, 8px track, glow fill, 9 ticks */
+.row.sl{display:block;padding-top:8px}
+.sltop{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.track{position:relative;height:8px;border-radius:5px;margin-top:5px;background:var(--track);
+  border:1px solid var(--trackBd);box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;
+  background:linear-gradient(90deg,var(--a2),var(--a1));box-shadow:0 0 11px var(--aGlow)}
+.knob{position:absolute;top:-6px;width:19px;height:19px;border-radius:50%;background:var(--knob);
+  border:1px solid var(--knobBd);box-shadow:var(--knobSh),0 0 0 3px rgba(255,255,255,.04)}
+.ticks{display:flex;justify-content:space-between;margin-top:3px;padding:0 1px}
+.ticks i{width:1px;height:3px;background:rgba(255,255,255,.13);display:block}
+
+/* 3.5 segments / tabs */
+.segs{display:flex;gap:3px}
+.seg{padding:4px 9px;font:700 10.5px Arial,sans-serif;border-radius:6px;background:#1D222C;color:var(--muted);
+  border:1px solid #2D3441}
+.seg.on{background:linear-gradient(180deg,var(--a1),var(--a2));color:var(--aInk);border-color:var(--a2);
+  box-shadow:0 0 13px var(--aGlow)}
+.tabs{display:flex;gap:2px;align-items:center;height:42px;padding:0 12px;position:relative}
+.tab{padding:5px 9px;font:700 10.5px Arial,sans-serif;letter-spacing:.4px;color:var(--muted);border-radius:7px;position:relative}
+.tab.act{color:var(--title)}
+.tab.act::after{content:'';position:absolute;left:7px;right:7px;bottom:0;height:2px;border-radius:2px;
+  background:linear-gradient(90deg,var(--a2),var(--a1));box-shadow:0 0 10px var(--aGlow)}
+
+/* 3.6 dropdown / field / nav */
+.dd{display:inline-flex;align-items:center;gap:8px;height:26px;padding:0 9px 0 10px;border-radius:7px;
+  background:var(--field);border:1px solid var(--fieldBd);font:700 11px Arial,sans-serif;color:var(--val);flex:none}
+.dd .chev{width:7px;height:7px;border-right:1.7px solid var(--a1);border-bottom:1.7px solid var(--a1);
+  transform:rotate(45deg) translate(-1px,-1px);flex:none}
+.dd .tagdot{width:8px;height:8px;border-radius:3px;flex:none;background:linear-gradient(135deg,var(--a1),var(--a2))}
+.fld{height:26px;border-radius:7px;background:var(--field);border:1px solid var(--fieldBd);display:flex;
+  align-items:center;gap:7px;padding:0 9px;font:600 11px Arial,sans-serif;color:var(--val)}
+.fld .caret{width:1px;height:13px;background:var(--a1);margin-left:2px}
+.row.txt{display:block;padding-top:5px}
+.row.txt .lbl{display:block;margin-bottom:4px}
+.nav{font:700 11px Arial,sans-serif;color:var(--val);display:inline-flex;align-items:center;gap:5px}
+.nav .arw{color:var(--a1);font-size:12px;letter-spacing:-1px}
+
+/* 3.7 colour row — preview 46 + 8 swatches 22 + add 22 + 9 gaps 4 = 280 EXACT */
+.row.col{display:block;padding-top:4px}
+.row.col .lbl{display:block;margin-bottom:3px}
+.swset{display:flex;align-items:center;gap:4px}
+.prev{width:46px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.16);flex:none;position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.prev::after{content:'';position:absolute;inset:0;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.25)}
+.q{width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.14);flex:none}
+.q.act{outline:2px solid var(--a1);outline-offset:1px}
+.q.add{display:grid;place-items:center;color:var(--a1);background:var(--aSoft);border:1px dashed var(--aBd);
+  font:700 13px Arial,sans-serif}
+
+/* 3.8 info band — also a FULL 42px row */
+.row.ib{padding:0 12px}
+.info{flex:1;border-radius:8px;background:var(--aSoft);border:1px solid var(--aBd);padding:5px 9px;
+  display:flex;gap:7px;align-items:center;min-width:0}
+.info .ic{width:14px;height:14px;border-radius:50%;background:linear-gradient(135deg,var(--a1),var(--a2));
+  color:var(--aInk);display:grid;place-items:center;font:800 9px Arial,sans-serif;flex:none}
+.info .tx{font:700 9.5px Arial,sans-serif;color:var(--a1);letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.badge{font:700 9px Arial,sans-serif;letter-spacing:.4px;border-radius:5px;padding:2px 7px;
+  background:var(--aSoft);border:1px solid var(--aBd);color:var(--a1)}
+
+/* 3.9 footer 48 */
+.ft{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+  border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.012),transparent)}
+.btn{width:94px;height:28px;border-radius:8px;display:grid;place-items:center;font:700 11.5px Arial,sans-serif;letter-spacing:.3px}
+.btn.ghost{background:var(--ghostBg);border:1px solid var(--ghostBd);color:var(--muted)}
+.btn.primary{background:linear-gradient(180deg,var(--a1),var(--a2));color:var(--aInk);border:1px solid var(--a2);
+  box-shadow:0 7px 20px var(--aGlow), inset 0 1px 0 rgba(255,255,255,.32)}
+
+/* 3.10 fade only on genuinely tall cards */
+.fade{position:absolute;left:0;right:0;bottom:48px;height:26px;z-index:3;pointer-events:none;
+  background:linear-gradient(180deg,transparent,rgba(18,22,29,.92))}
+
+/* ══════════════════════════════════════════════════════════════════
+   4 · STAGES
+   ══════════════════════════════════════════════════════════════════ */
+.stages{display:flex;gap:30px;flex-wrap:wrap;align-items:flex-start;margin-top:22px}
+.stage{zoom:var(--z);border-radius:14px;overflow:hidden;padding:30px 34px;position:relative;flex:none;
+  border:1px solid var(--hair2)}
+.stage .cap{position:absolute;left:12px;top:8px;zoom:calc(1 / var(--z));font:600 11px Vazirmatn,Tahoma,sans-serif;color:#8B95A6}
+.bg-dark{background:linear-gradient(180deg,#0F1520,#0B1017)}
+.bg-light{background:linear-gradient(180deg,#FBFCFE,#F1F4F9)}
+.bg-photo{background:
+  radial-gradient(600px 300px at 20% 0%,rgba(255,138,0,.10),transparent 60%),
+  radial-gradient(500px 300px at 90% 100%,rgba(124,92,255,.10),transparent 60%),
+  linear-gradient(180deg,#12181F,#0A0E13)}
+.candles{position:absolute;inset:0;opacity:.40}
+.bg-light .candles{opacity:.28}
+.slot{position:relative;z-index:2}
+
+/* ══════════════════════════════════════════════════════════════════
+   5 · BOARDS
+   ══════════════════════════════════════════════════════════════════ */
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;margin-top:22px}
+.bx{background:linear-gradient(180deg,#121823,#0E131B);border:1px solid var(--hair2);border-radius:13px;padding:15px 16px}
+.bx h3{font-size:12.5px;font-weight:800;color:var(--ink);margin-bottom:10px}
+.kv{display:flex;justify-content:space-between;gap:10px;font-size:11.5px;padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+.kv:last-child{border-bottom:0}
+.kv b{color:var(--ink);font-weight:700;font-family:Consolas,monospace;direction:ltr}
+.kv span{color:var(--ink3)}
+.srow{display:flex;align-items:center;gap:9px;padding:3px 0}
+.srow i{width:20px;height:20px;border-radius:6px;flex:none;border:1px solid rgba(255,255,255,.13)}
+.srow b{font-size:11.5px;color:var(--ink)}
+.srow u{text-decoration:none;font:600 10.5px Consolas,monospace;color:var(--ink3);margin-left:auto;direction:ltr}
+
+.gal{display:flex;gap:26px;flex-wrap:wrap;margin-top:22px;align-items:flex-start}
+.gcol{flex:none}
+.gcap{font:600 11px Vazirmatn,Tahoma,sans-serif;color:var(--ink3);margin-bottom:7px}
+.gbox{zoom:var(--z);border-radius:12px;padding:8px 12px;border:1px solid var(--hair2);background:#0D1219}
+.gbox .card{width:var(--gw,236px)}
+.stage .card,.gbox .card{box-shadow:0 14px 34px rgba(0,0,0,.5)}
+
+/* palette popup */
+.pop{width:268px;border-radius:13px;background:linear-gradient(180deg,#1E242F,#141922);border:1px solid #2C3444;
+  box-shadow:0 28px 60px rgba(0,0,0,.7);overflow:hidden;font-family:Arial,Helvetica,sans-serif;direction:ltr}
+.pop .ph{height:38px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid rgba(255,255,255,.06)}
+.pop .ph .t{font:700 11px Arial,sans-serif;letter-spacing:.7px;color:#F3F6FB;flex:1}
+.pop .pb{padding:11px 12px}
+.hue{height:11px;border-radius:6px;margin-bottom:9px;position:relative;
+  background:linear-gradient(90deg,#FF0000,#FFFF00,#00FF00,#00FFFF,#0000FF,#FF00FF,#FF0000)}
+.hue i{position:absolute;top:-3px;left:8%;width:3px;height:17px;border-radius:2px;background:#fff;box-shadow:0 0 4px rgba(0,0,0,.7)}
+.sv{height:74px;border-radius:8px;position:relative;overflow:hidden;
+  background:linear-gradient(180deg,transparent,#000),linear-gradient(90deg,#fff,var(--h,#FFAB00))}
+.sv i{position:absolute;left:78%;top:26%;width:12px;height:12px;border-radius:50%;border:2px solid #fff;
+  box-shadow:0 1px 4px rgba(0,0,0,.6)}
+.prow{display:flex;align-items:center;gap:8px;margin-top:10px}
+.oldnew{display:flex;gap:6px;flex:none}
+.oldnew b{width:26px;height:26px;border-radius:6px;display:block;border:1px solid rgba(255,255,255,.16)}
+.hex{flex:1;height:26px;border-radius:7px;background:#181D27;border:1px solid #333C4C;display:flex;align-items:center;
+  padding:0 9px;font:700 11px Consolas,monospace;color:#F3F6FB;letter-spacing:.6px}
+.plabel{font:700 9px Arial,sans-serif;letter-spacing:1px;color:#8C96A6;margin:12px 0 6px}
+.pgrid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}
+.pgrid b{aspect-ratio:1;border-radius:5px;display:block;border:1px solid rgba(255,255,255,.10)}
+.pop .pf{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-top:1px solid rgba(255,255,255,.06)}
+
+/* anatomy — component sheet: number + the REAL element + spec text (nothing covered) */
+.anat{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start;margin-top:22px}
+.spec{zoom:var(--z)}
+.sheet{flex:1;min-width:420px;direction:rtl;font-family:Arial,Helvetica,sans-serif;
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:0 24px;align-content:start}
+.aitem{display:flex;gap:11px;align-items:center;padding:6px 0;border-bottom:1px dashed rgba(255,255,255,.05)}
+.aitem>b{width:19px;height:19px;flex:none;border-radius:50%;background:rgba(255,171,0,.14);
+  border:1px solid rgba(255,171,0,.4);color:var(--gold1);font:800 10px Arial,sans-serif;display:grid;place-items:center}
+.asw{flex:none;min-width:104px;height:32px;border-radius:8px;background:#0C1017;border:1px solid #1E2530;
+  display:flex;align-items:center;gap:5px;padding:0 9px;justify-content:center;direction:ltr}
+.aitem>span{font-size:12px;color:var(--ink2);text-align:right}
+.aitem u{text-decoration:none;color:var(--ink);font-weight:700}
+
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:22px}
+.nx{border-radius:13px;padding:16px 18px;border:1px solid var(--hair2);background:#0F141C}
+.nx.ok{border-color:rgba(18,184,134,.3);background:linear-gradient(180deg,rgba(18,184,134,.05),transparent)}
+.nx.no{border-color:rgba(240,69,95,.3);background:linear-gradient(180deg,rgba(240,69,95,.05),transparent)}
+.nx h3{font-size:13px;margin-bottom:10px}
+.nx.ok h3{color:#63ECBD}
+.nx.no h3{color:#FFA7B6}
+.nx ul{padding-inline-start:18px}
+.nx li{font-size:12.3px;color:var(--ink2);margin-bottom:6px}
+.nx li b{color:var(--ink)}
+.foot{margin-top:46px;padding-top:20px;border-top:1px solid var(--hair);color:var(--ink3);font-size:12px;max-width:1160px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>اُبسیدین گلد <b>پریمیوم v2</b> — نسخهٔ نهایی</h1>
+  <div class="lede">
+    بازنویسی کامل از صفر: یک <b>سیستم طراحی مکتوب</b> برای همهٔ پنل‌های TRex، با المان‌های تازه، چیدمان شبکه‌ای و پالت رنگی کامل.
+    هندسه <b>قفل</b> است — کارت <code class="k">312</code> · هدر <code class="k">56</code> · ردیف <code class="k">42</code> · فوتر <code class="k">48</code> · مارجین <code class="k">14</code> —
+    پس ارتفاع هر کارت همیشه <code class="k">56 + 42n + 48</code> است و هیچ هیت‌تستی جابه‌جا نمی‌شود.
+    هر افکت این صفحه (گرادیان، گردی گوشه، هیرلاین، بافت، هاله، پرس/هاور، سایه) داخل <b>BMP</b> پخته می‌شود؛
+    هیچ افکت CSS-مانندی که MT4 ندارد وعده داده نشده.
+  </div>
+  <div class="chips">
+    <span class="pill g">۶ خانوادهٔ رنگی</span>
+    <span class="pill">۱۶ المان کنترل</span>
+    <span class="pill v">۶ حالت تعاملی</span>
+    <span class="pill j">شبکهٔ ۴۲px</span>
+    <span class="pill c">۳ پس‌زمینهٔ چارت</span>
+    <span class="pill e">BMP-baked</span>
+    <span class="pill r">بدون ریفکتور بعدی</span>
+  </div>
+</header>
+
+<div class="bar">
+  <span class="lbl">بزرگ‌نمایی:</span>
+  <button class="tg" data-zoom="1">۱×</button>
+  <button class="tg on" data-zoom="1.6">۱.۶×</button>
+  <button class="tg" data-zoom="2.2">۲.۲×</button>
+  <span class="sep"></span>
+  <span class="lbl">پس‌زمینهٔ چارت:</span>
+  <button class="tg on" data-bg="dark">تیره</button>
+  <button class="tg" data-bg="light">روشن</button>
+  <button class="tg" data-bg="photo">تصویری</button>
+  <span class="sep"></span>
+  <span class="lbl">پالت فعال:</span>
+  <button class="tg on" data-accent="gold">طلایی</button>
+  <button class="tg" data-accent="jade">یشمی</button>
+  <button class="tg" data-accent="cyan">فیروزه</button>
+  <button class="tg" data-accent="violet">بنفش</button>
+  <button class="tg" data-accent="ember">کهربایی</button>
+  <button class="tg" data-accent="rose">سرخابی</button>
+</div>
+
+<section id="flagship">
+  <div class="shead">
+    <span class="num">۱</span><h2>کارت پرچم — ATR LABELS</h2><span class="en">REAL ROWS · LOCKED GRID</span>
+    <p>همان ردیف‌های واقعی کارت (COUNTDOWN / COUNT COLOR / COUNT SIZE / COUNT GAP / ATR BLOCK / ROW GAP) بدون اضافه و کم کردن —
+      ولی این‌بار با سه نوار بخش، گلیف هر ردیف، چیپ مقدار، ریل کنار ردیف فعال، تیک‌های اسلایدر و نوار اطلاعات.
+      هر نوار بخش خودش یک ردیف کامل ۴۲px است، پس <code class="k">56 + 42n + 48</code> دست‌نخورده می‌ماند.</p>
+  </div>
+  <div class="stages" id="stages"></div>
+</section>
+
+<section id="family">
+  <div class="shead">
+    <span class="num">۲</span><h2>خانوادهٔ پنل‌ها — یک زبان، پنج رنگ</h2><span class="en">ONE LANGUAGE · FIVE HUES</span>
+    <p>بدنه همیشه اُبسیدین است؛ هر خانواده فقط <b>رنگ لهجه</b> (accent) خودش را عوض می‌کند: نوار امضا، هیرلاین هدر، چیپ برند،
+      سوییچ روشن، فیل اسلایدر، سگمنت فعال و دکمهٔ Done. برای رنگی‌شدن کل مجموعه فقط یک متغیر عوض می‌شود، نه بازطراحی.</p>
+  </div>
+  <div class="stages" id="family-stages"></div>
+</section>
+
+<section id="gallery">
+  <div class="shead">
+    <span class="num">۳</span><h2>گالری المان‌ها — همهٔ حالت‌ها</h2><span class="en">EVERY WIDGET · EVERY STATE</span>
+    <p>هر کنترل در حالت‌های خاموش / روشن / هاور / پرس / غیرفعال. حالت‌های هاور و پرس یک <b>BMP دوم</b> هستند
+      (همان الگوی اسکین‌های حلقهٔ شعاعی)، نه انیمیشن CSS. داخل همین صفحه می‌توانید سوییچ و سگمنت و تب را کلیک کنید.</p>
+  </div>
+  <div class="gal" id="gal"></div>
+</section>
+
+<section id="palette">
+  <div class="shead">
+    <span class="num">۴</span><h2>سیستم رنگ — پالت پریمیوم TRex</h2><span class="en">PALETTE · PICKER</span>
+    <p>یک پالت نام‌دار و هم‌خانواده برای همهٔ لایه‌ها (ساختار، تریگر، ATR، تارگت، بیس‌باکس، هشدار) به‌علاوهٔ پاپ‌اور انتخاب رنگ
+      با نوار هیو، مربع اشباع، فیلد HEX و ردیف RECENT. ردیف رنگ کارت از ۶ سواچ به <b>۸ سواچ + دکمهٔ +</b> رسید
+      (۴۶ + ۸×۲۲ + ۲۲ + ۹×۴ = دقیقاً ۲۸۰، بدون سرریز).</p>
+  </div>
+  <div class="anat" id="palette-board"></div>
+</section>
+
+<section id="anatomy">
+  <div class="shead">
+    <span class="num">۵</span><h2>آناتومی کارت — هر چیزی سر جای خودش</h2><span class="en">ANATOMY · LOCKED GRID</span>
+    <p>سمت راست کارت نمونهٔ کامل، سمت چپ برگهٔ مشخصات: هر ردیف یک المان <b>واقعی</b> در اندازهٔ واقعی را نشان می‌دهد،
+      پس هیچ نشانی روی خود المان نمی‌افتد. مختصات همه از شبکهٔ ۴۲px می‌آید و هیچ عدد جادویی تازه‌ای اضافه نشده.</p>
+  </div>
+  <div class="anat" id="anatomy-board"></div>
+</section>
+
+<section id="tokens">
+  <div class="shead">
+    <span class="num">۶</span><h2>توکن‌های طراحی — قرارداد</h2><span class="en">DESIGN TOKENS</span>
+    <p>همین اعداد باید ۱:۱ به <code class="k">tools/gen-th3-icons.js</code> و <code class="k">PNL_*</code> در
+      <code class="k">BiotakPanels.mqh</code> بروند.</p>
+  </div>
+  <div class="board" id="tokens-board"></div>
+</section>
+
+<section id="mt4">
+  <div class="shead">
+    <span class="num">۷</span><h2>واقعیت MT4 — چه چیزی رندر می‌شود، چه چیزی نه</h2><span class="en">HONESTY CHECK</span>
+    <p>این بخش از ریفکتور بعدی جلوگیری می‌کند: هر چه در ستون «نه» است، هرگز نباید در پریمیوم وعده داده شود.</p>
+  </div>
+  <div class="notes">
+    <div class="nx ok">
+      <h3>در BMP پخته می‌شود (قابل اجرا)</h3>
+      <ul>
+        <li><b>گرادیان</b> بدنه، هدر، دکمه، سوییچ، فیل اسلایدر</li>
+        <li><b>گردی گوشه + آلفای واقعی</b> — ۳۲ بیت BGRA، هرگز flatten نشود (P-ICONS-01)</li>
+        <li><b>هیرلاین رنگی</b> زیر هدر و روی ردیف بخش</li>
+        <li><b>هاله و گلو</b> حول سوییچ روشن، فیل، سگمنت فعال، دکمهٔ Done</li>
+        <li><b>بافت</b> (ویو کربن/نویز) داخل هدر</li>
+        <li><b>سایه</b> در مارجین شفافِ اسکین</li>
+        <li><b>پرس / هاور</b> به‌صورت BMP دوم و سوئیچ اسکین در زمان اجرا</li>
+        <li><b>چیپ، بج، تیک اسلایدر، ریل</b> — مستطیل گرد + لیبل MT4</li>
+      </ul>
+    </div>
+    <div class="nx no">
+      <h3>هرگز وعده نمی‌دهیم (MT4 ندارد)</h3>
+      <ul>
+        <li><b>انیمیشن و ترنزیشن</b> — سوئیچ آنی است، مثل اسکین‌های حلقه</li>
+        <li><b>بلور واقعی</b> — شیشه فقط با گرادیان لایه‌ای شبیه‌سازی می‌شود</li>
+        <li><b>فیلتر CSS</b> — drop-shadow، saturate، backdrop-filter</li>
+        <li><b>فونت دلخواه</b> — MT4 فقط Arial دارد؛ tabular با Arial Bold + چیپ</li>
+        <li><b>گلیف خارج از Windows-1252</b> — <code class="k">&#9660;</code> و <code class="k">&#10003;</code> و <code class="k">&#8722;</code>
+          در Arial می‌شوند <code class="k">?</code>؛ چورون و تیک باید BMP باشند (P-UI-06).
+          <code class="k">&times;</code> و <code class="k">&#8250;</code> سالم‌اند</li>
+        <li><b>اسکرول نرم و هر چیدمانی</b> که هندسهٔ ۳۱۲ را بشکند</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot">
+    مسیر پیاده‌سازی وقتی تأیید شد: به‌روزرسانی <code class="k">tools/gen-th3-icons.js</code> (اسکین‌های <code class="k">pnl_cardN.bmp</code>،
+    <code class="k">pnl_cb_*.bmp</code>، <code class="k">pnl_knob.bmp</code>، گلیف‌های ردیف) →
+    رنگ لهجهٔ هر خانواده و <code class="k">PNL_CLR_*</code> در <code class="k">BiotakPanels.mqh</code> →
+    <code class="k">tools/deploy.ps1</code> → حذف و افزودن مجدد اندیکاتور.
+    هیچ مختصاتی عوض نمی‌شود، پس هیت‌تست‌ها و درگ‌ها دست‌نخورده می‌مانند.
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ══════════════ PALETTE — TRex premium colours ══════════════ */
+const P = {
+  gold:'#FFAB00', amber:'#FFC247', ember:'#FF6A2B', emberL:'#FFC08C',
+  jade:'#12B886', jadeL:'#63ECBD', cyan:'#1FA8E0', cyanL:'#79DCFF',
+  violet:'#7C5CFF', violetL:'#BCA6FF', rose:'#F0455F', roseL:'#FFA7B6',
+  ice:'#CFE3FF', mint:'#B8F5D8'
+};
+const SWATCH8 = [P.gold,P.rose,P.jade,P.cyan,P.violet,P.ice,'#FFFFFF','#141414'];
+
+/* ══════════════ CARD MODEL ══════════════
+   kind: sec | sw | sl | col | seg | tab | dd | txt | nav | ib
+   every kind renders into exactly one 42px row (ib included).            */
+const CARDS = {
+  atr:{accent:'gold',title:'ATR LABELS',sub:['COUNTDOWN','ATR BLOCK'],ver:'3.10',fade:true,rows:[
+    {k:'sec',label:'GENERAL',cnt:4},
+    {k:'sw',label:'COUNTDOWN',on:true,g:'C'},
+    {k:'col',label:'COUNT COLOR',cur:'#141414',act:7},
+    {k:'sl',label:'COUNT SIZE',v:'12',unit:'pt',pct:.50},
+    {k:'sl',label:'COUNT GAP',v:'6',unit:'px',pct:.15},
+    {k:'sec',label:'ATR ENGINE',cnt:3},
+    {k:'sw',label:'ATR LABELS',on:false,g:'A'},
+    {k:'sw',label:'ATR TARGETS',on:true,g:'A'},
+    {k:'sl',label:'ATR PERIOD',v:'14',unit:'bar',pct:.35},
+    {k:'sec',label:'LAYOUT',cnt:4},
+    {k:'sw',label:'TRADE LABELS',on:true,g:'T'},
+    {k:'sw',label:'HUNTER ROW',on:true,g:'H'},
+    {k:'sw',label:'PIP LABELS',on:true,g:'L'},
+    {k:'sl',label:'ROW GAP',v:'10',unit:'px',pct:.18},
+    {k:'ib',text:'ALT FORMULAS · OFF — تست زنده'}
+  ]},
+  trigger:{accent:'cyan',title:'TRIGGER',sub:['ZONES ONLY'],ver:'z2',rows:[
+    {k:'sec',label:'TRIGGER ZONES',cnt:3},
+    {k:'sw',label:'SHOW ZONES',on:true,g:'Z'},
+    {k:'col',label:'ZONE COLOR',cur:P.cyan,act:3},
+    {k:'sl',label:'TRANSPARENCY',v:'72',unit:'%',pct:.72},
+    {k:'sec',label:'STYLE',cnt:2},
+    {k:'seg',label:'BORDER',segs:['Solid','Dash','Dot'],act:1},
+    {k:'sl',label:'WIDTH',v:'2',unit:'px',pct:.25},
+    {k:'ib',text:'T فقط زون‌ها را کنترل می‌کند'}
+  ]},
+  lines:{accent:'jade',title:'LINES',sub:['UNIFIED 08.4'],ver:'u1',rows:[
+    {k:'sec',label:'APPEARANCE',cnt:3},
+    {k:'col',label:'LINE COLOR',cur:P.jade,act:2},
+    {k:'sl',label:'WIDTH',v:'2',unit:'px',pct:.30},
+    {k:'sl',label:'TRANSPARENCY',v:'40',unit:'%',pct:.40},
+    {k:'sec',label:'BEHAVIOUR',cnt:2},
+    {k:'seg',label:'STYLE',segs:['Solid','Dash','Dot'],act:0},
+    {k:'sw',label:'SNAP MAGNET',on:true,g:'M'}
+  ]},
+  tf:{accent:'violet',title:'TIMEFRAME LOCK',sub:['STRUCTURE TF'],ver:'tf',rows:[
+    {k:'sec',label:'SOURCE',cnt:2},
+    {k:'dd',label:'STRUCTURE',value:'H4',tag:true},
+    {k:'dd',label:'FALLBACK',value:'Chart TF'},
+    {k:'sec',label:'LOCK',cnt:2},
+    {k:'sw',label:'LOCK ENABLED',on:true,g:'L'},
+    {k:'sl',label:'REFRESH',v:'30',unit:'s',pct:.30},
+    {k:'ib',text:'انتخاب دستی هرگز auto نمی‌شود'}
+  ]},
+  struct:{accent:'ember',title:'STRUCTURE',sub:['L1 - L5'],ver:'l5',rows:[
+    {k:'tab',tabs:['STEP MODE','STRUCTURE','LINES'],act:1},
+    {k:'sec',label:'LEVELS',cnt:3},
+    {k:'nav',label:'STRUCTURE L1-L5'},
+    {k:'col',label:'LEVEL COLOR',cur:P.ember,act:1},
+    {k:'sl',label:'ROW GAP',v:'8',unit:'px',pct:.16},
+    {k:'sec',label:'LABELS',cnt:1},
+    {k:'txt',label:'LABEL TEXT',value:'Weekly High'}
+  ]},
+  signals:{accent:'rose',title:'SIGNALS',sub:['ALERTS · GOVERNOR'],ver:'al',rows:[
+    {k:'sec',label:'ALERTS',cnt:3},
+    {k:'sw',label:'POPUP ALERT',on:true,g:'P'},
+    {k:'sw',label:'SOUND',on:false,g:'S'},
+    {k:'sw',label:'PUSH NOTIFY',on:true,g:'N'},
+    {k:'sec',label:'GOVERNOR',cnt:2},
+    {k:'sl',label:'MAX / BAR',v:'10',unit:'',pct:.20},
+    {k:'sl',label:'SPACING',v:'800',unit:'ms',pct:.60}
+  ]}
+};
+
+/* ══════════════ RENDERER — one row = 42px, always ══════════════ */
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const CONTENT = 280;              /* 312 - 2*16 — the row content width */
+
+function rowHtml(r){
+  const g = r.g ? '<span class="glyph ' + (r.k === 'sw' && r.on ? 'a' : 'n') + '">' + r.g + '</span>' : '';
+  switch(r.k){
+    case 'sec':
+      return '<div class="row sec"><span class="sl"><i></i>' + r.label + '</span>' +
+             '<span class="sr"></span><span class="cnt">' + r.cnt + '</span></div>';
+    case 'ib':
+      return '<div class="row ib"><div class="info"><span class="ic">i</span>' +
+             '<span class="tx">' + esc(r.text) + '</span></div></div>';
+    case 'sw':
+      return '<div class="row">' + (r.on ? '<span class="rail"></span>' : '') +
+             '<span class="lbl">' + g + r.label + '</span>' +
+             '<span class="sw' + (r.on ? ' on' : '') + '" data-sw><i></i></span></div>';
+    case 'sl':{
+      const left = Math.round(Math.max(0, Math.min(1, r.pct)) * (CONTENT - 19));
+      let ticks = ''; for(let i = 0; i < 9; i++) ticks += '<i></i>';
+      return '<div class="row sl"><div class="sltop"><span class="lbl">' + g + r.label + '</span>' +
+             '<span class="val chip">' + r.v + (r.unit ? '<u>' + r.unit + '</u>' : '') + '</span></div>' +
+             '<div class="track"><span class="fill" style="width:' + (left + 10) + 'px"></span>' +
+             '<span class="knob" style="left:' + left + 'px"></span></div>' +
+             '<div class="ticks">' + ticks + '</div></div>';
+    }
+    case 'col':
+      return '<div class="row col"><span class="lbl sm">' + r.label + '</span><div class="swset">' +
+             '<span class="prev" style="background:' + r.cur + '"></span>' +
+             SWATCH8.map((c, i) => '<span class="q' + (i === r.act ? ' act' : '') + '" style="background:' + c + '"></span>').join('') +
+             '<span class="q add">+</span></div></div>';
+    case 'seg':
+      return '<div class="row"><span class="lbl">' + g + r.label + '</span><span class="segs">' +
+             r.segs.map((x, i) => '<span class="seg' + (i === r.act ? ' on' : '') + '" data-seg>' + x + '</span>').join('') +
+             '</span></div>';
+    case 'tab':
+      return '<div class="tabs">' + r.tabs.map((x, i) =>
+             '<span class="tab' + (i === r.act ? ' act' : '') + '" data-tab>' + x + '</span>').join('') + '</div>';
+    case 'dd':
+      return '<div class="row"><span class="lbl">' + g + r.label + '</span><span class="dd">' +
+             (r.tag ? '<span class="tagdot"></span>' : '') + r.value + '<span class="chev"></span></span></div>';
+    case 'txt':
+      return '<div class="row txt"><span class="lbl sm">' + r.label + '</span>' +
+             '<div class="fld">' + r.value + '<span class="caret"></span></div></div>';
+    case 'nav':
+      return '<div class="row"><span class="lbl">' + g + r.label + '</span>' +
+             '<span class="nav">L1-L5<span class="arw">&#8250;&#8250;</span></span></div>';
+    default: return '';
+  }
+}
+
+const DOTC = [P.gold, P.cyan, P.jade];
+function cardHtml(id){
+  const c = CARDS[id];
+  const dots = c.sub.map((s, i) => '<i style="background:' + DOTC[i % 3] + '"></i>' + s).join('');
+  return '<div class="mt4 t-og ac-' + c.accent + '"><div class="card">' +
+    '<div class="hd"><div class="mark">T</div>' +
+      '<div class="htxt"><div class="ttl">' + c.title + '</div><div class="subttl">' + dots + '</div></div>' +
+      '<span class="ver">v' + c.ver + '</span><span class="x">&times;</span></div>' +
+    '<div class="rows">' + c.rows.map(rowHtml).join('') + '</div>' +
+    (c.fade ? '<div class="fade"></div>' : '') +
+    '<div class="ft"><span class="btn ghost">Reset</span><span class="btn primary">Done</span></div>' +
+  '</div></div>';
+}
+
+/* ══════════════ 1 · FLAGSHIP ══════════════ */
+const CAPS = {dark:'روی چارت تیره', light:'روی چارت روشن', photo:'روی پس‌زمینهٔ تصویری'};
+document.getElementById('stages').innerHTML = ['dark','light','photo'].map(bg =>
+  '<div class="stage bg-' + bg + '" data-bgstage><span class="cap">' + CAPS[bg] + '</span>' +
+  '<div class="candles" data-candles="' + (bg === 'light' ? 'light' : 'dark') + '"></div>' +
+  '<div class="slot">' + cardHtml('atr') + '</div></div>').join('');
+
+/* ══════════════ 2 · FAMILY ══════════════ */
+document.getElementById('family-stages').innerHTML = ['trigger','lines','tf','struct','signals'].map(id =>
+  '<div class="stage bg-dark" data-bgstage><span class="cap">' + CARDS[id].title + '</span>' +
+  '<div class="candles" data-candles="dark"></div>' +
+  '<div class="slot">' + cardHtml(id) + '</div></div>').join('');
+
+/* ══════════════ 3 · ELEMENT GALLERY ══════════════
+   body = inner HTML of the card (rows / rows+ft). card widths chosen so
+   nothing overflows: switch 210 · slider 280 · colour 312 · seg/tab 312 · dd 260 */
+function slRow(label, v, unit, fill, knob, dis){
+  return '<div class="row sl' + (dis ? ' is-dis' : '') + '"><div class="sltop"><span class="lbl">' + label + '</span>' +
+    '<span class="val chip">' + v + (unit ? '<u>' + unit + '</u>' : '') + '</span></div>' +
+    '<div class="track"><span class="fill" style="width:' + fill + 'px"></span>' +
+    '<span class="knob" style="left:' + knob + 'px"></span></div></div>';
+}
+function colRow(label, cur, act){
+  return '<div class="row col"><span class="lbl sm">' + label + '</span><div class="swset">' +
+    '<span class="prev" style="background:' + cur + '"></span>' +
+    SWATCH8.map((c, i) => '<span class="q' + (i === act ? ' act' : '') + '" style="background:' + c + '"></span>').join('') +
+    '<span class="q add">+</span></div></div>';
+}
+const G = [
+  {cap:'سوییچ — خاموش / روشن / هاور / پرس / غیرفعال', w:210, body:'<div class="rows">' +
+    '<div class="row"><span class="lbl">OFF</span><span class="sw"><i></i></span></div>' +
+    '<div class="row"><span class="rail"></span><span class="lbl">ON</span><span class="sw on"><i></i></span></div>' +
+    '<div class="row"><span class="lbl">HOVER</span><span class="sw is-hover"><i></i></span></div>' +
+    '<div class="row"><span class="lbl">PRESS</span><span class="sw on is-press"><i></i></span></div>' +
+    '<div class="row"><span class="lbl is-dis">DISABLED</span><span class="sw is-dis"><i></i></span></div>' +
+    '</div>'},
+  {cap:'اسلایدر — کم / متوسط / زیاد / غیرفعال', w:280, body:'<div class="rows">' +
+    slRow('LOW','4','px',34,25) + slRow('MID','12','pt',140,131) +
+    slRow('HIGH','28','px',238,229) + slRow('DISABLED','--','',90,81,true) + '</div>'},
+  {cap:'رنگ — پیش‌نمایش ۴۶px + ۸ سواچ + افزودن', w:312, body:'<div class="rows">' +
+    colRow('COUNT COLOR','#141414',7) + colRow('LINE COLOR',P.jade,2) + '</div>'},
+  {cap:'سگمنت ۳ و ۴ گزینه · تب‌های آندلاین', w:312, body:'<div class="rows">' +
+    '<div class="row"><span class="lbl">BORDER</span><span class="segs">' +
+      ['Solid','Dash','Dot'].map((x,i)=>'<span class="seg'+(i===1?' on':'')+'" data-seg>'+x+'</span>').join('') + '</span></div>' +
+    '<div class="row"><span class="lbl">STYLE</span><span class="segs">' +
+      ['Line','Ray','Box','Zone'].map((x,i)=>'<span class="seg'+(i===3?' on':'')+'" data-seg>'+x+'</span>').join('') + '</span></div>' +
+    '<div class="tabs"><span class="tab act" data-tab>STEP MODE</span><span class="tab" data-tab>STRUCTURE</span>' +
+      '<span class="tab" data-tab>LINES</span></div></div>'},
+  {cap:'دراپ‌داون · ناوبری · فیلد متن', w:260, body:'<div class="rows">' +
+    '<div class="row"><span class="lbl">ZONE STYLE</span><span class="dd"><span class="tagdot"></span>Filled<span class="chev"></span></span></div>' +
+    '<div class="row"><span class="lbl">STRUCTURE</span><span class="nav">L1-L5<span class="arw">&#8250;&#8250;</span></span></div>' +
+    '<div class="row txt"><span class="lbl sm">LABEL TEXT</span><div class="fld">Weekly High<span class="caret"></span></div></div>' +
+    '</div>'},
+  {cap:'بج · نوار اطلاعات · فوتر', w:260, body:'<div class="rows">' +
+    '<div class="row"><span class="lbl">BUILD</span><span class="badge">v3.10 GOLD</span></div>' +
+    '<div class="row ib"><div class="info"><span class="ic">i</span><span class="tx">ALT FORMULAS · OFF</span></div></div>' +
+    '<div class="row"><span class="lbl">ALERT GOVERNOR</span><span class="val chip">10<u>/bar</u></span></div>' +
+    '</div><div class="ft"><span class="btn ghost">Reset</span><span class="btn primary">Done</span></div>'}
+];
+document.getElementById('gal').innerHTML = G.map(g =>
+  '<div class="gcol"><div class="gcap">' + g.cap + '</div><div class="gbox"><div class="mt4 t-og ac-gold" ' +
+  'style="--gw:' + g.w + 'px"><div class="card">' + g.body + '</div></div></div></div>').join('');
+
+/* ══════════════ 4 · PALETTE BOARD + PICKER ══════════════ */
+const PAL = Object.entries(P);
+document.getElementById('palette-board').innerHTML =
+  '<div class="bx"><h3>پالت نام‌دار TRex — ۱۴ رنگ</h3>' +
+    PAL.map(([k, v]) => '<div class="srow"><i style="background:' + v + '"></i><b>' + k.toUpperCase() +
+      '</b><u>' + v + '</u></div>').join('') +
+    '<div class="srow"><i style="background:#141414"></i><b>INK</b><u>#141414</u></div>' +
+    '<div class="srow"><i style="background:#FFFFFF"></i><b>WHITE</b><u>#FFFFFF</u></div>' +
+  '</div>' +
+  '<div class="gbox" style="zoom:var(--z)"><div class="gcap" style="zoom:calc(1 / var(--z))">پاپ‌اور انتخاب رنگ</div>' +
+    '<div class="pop">' +
+      '<div class="ph"><span class="t">COLOR PICKER</span><span class="x" style="width:22px;height:22px">&times;</span></div>' +
+      '<div class="pb">' +
+        '<div class="hue"><i></i></div>' +
+        '<div class="sv" style="--h:' + P.gold + '"><i></i></div>' +
+        '<div class="prow"><span class="oldnew"><b style="background:#141414"></b>' +
+          '<b style="background:' + P.gold + '"></b></span><span class="hex">FFAB00</span></div>' +
+        '<div class="plabel">RECENT</div>' +
+        '<div class="pgrid">' + ['#141414','#FFFFFF',P.rose,P.gold,P.jade,P.cyan,P.violet,P.ember,P.ice,P.mint]
+          .map(c => '<b style="background:' + c + '"></b>').join('') + '</div>' +
+        '<div class="plabel">TRex PREMIUM</div>' +
+        '<div class="pgrid">' + [P.gold,P.amber,P.ember,P.emberL,P.jade,P.jadeL,P.cyan,P.cyanL,P.violet,P.violetL]
+          .map(c => '<b style="background:' + c + '"></b>').join('') + '</div>' +
+      '</div>' +
+      '<div class="pf"><span class="btn ghost" style="width:80px;height:26px">Reset</span>' +
+        '<span class="btn primary" style="width:80px;height:26px">Done</span></div>' +
+    '</div></div>';
+
+/* ══════════════ 5 · ANATOMY — specimen card + spec sheet ══════════════
+   Each sheet row shows the REAL element at real size next to its spec, so
+   nothing is ever covered by a marker.                                    */
+const RAILBOX = '<span class="rail" style="position:static;height:22px"></span>';
+const SLIDERBOX = '<span style="position:relative;display:block;width:84px;height:8px;border-radius:5px;' +
+  'background:var(--track);border:1px solid var(--trackBd)"><span class="fill" style="width:54px"></span>' +
+  '<span class="knob" style="left:45px"></span></span>';
+const SPECS = [
+  [1,'<div style="width:78px;height:3px;border-radius:2px;background:linear-gradient(90deg,var(--a2),var(--a1),transparent)"></div>',
+     'نوار امضای ۳px','گرادیان رنگ خانواده، بالای کارت'],
+  [2,'<div class="mark">T</div>','چیپ برند ۲۸px','گرادیان لهجه + هاله · گوشهٔ ۹px'],
+  [3,'<div class="ttl">ATR LABELS</div>','تیتر + ساب‌تایتل','۱۲.۵px Bold · نقطه‌های رنگی جداکننده'],
+  [4,'<span class="ver">v3.10</span><span class="x">&times;</span>','بج نسخه + دکمهٔ بستن','فقط متن داخل Windows-1252'],
+  [5,'<div style="width:78px;height:1px;background:linear-gradient(90deg,var(--aBd),transparent)"></div>',
+     'هیرلاین هدر','از رنگ لهجه تا شفاف'],
+  [6,RAILBOX,'ریل ردیف فعال','۲px گرادیانی — فقط روی ردیف روشن'],
+  [7,'<span class="glyph a">C</span><span class="glyph n">S</span>','گلیف ردیف ۱۶px','رنگ لهجه برای ردیف روشن'],
+  [8,'<span class="sw on"><i></i></span>','سوییچ ۴۰×۲۲','گلو + هایلایت داخلی روی حالت روشن'],
+  [9,'<span class="val chip">12<u>pt</u></span>','چیپ مقدار','tabular — واحد ریزتر از عدد'],
+  [10,SLIDERBOX,'اسلایدر','فیل گرادیانی + گلو · ناب ۱۹px · ۹ تیک'],
+  [11,'<span class="prev" style="background:#141414"></span><span class="q" style="background:#FFAB00"></span>' +
+      '<span class="q" style="background:#F0455F"></span>','ردیف رنگ','پیش‌نمایش ۴۶ + ۸ سواچ + دکمهٔ +'],
+  [12,'<span class="seg on">Dash</span><span class="seg">Dot</span>','سگمنت','فعال با گرادیان و گلو'],
+  [13,'<span class="dd" style="height:24px">H4<span class="chev"></span></span>','دراپ‌داون','چورون BMP است، نه گلیف فونت'],
+  [14,'<span class="cnt">4</span><span class="badge">v3.10</span>','نوار بخش + بج','شمارندهٔ ردیف‌های همان بخش'],
+  [15,'<div class="info" style="flex:none;padding:3px 8px"><span class="ic">i</span><span class="tx">ALT · OFF</span></div>',
+      'نوار اطلاعات','یک ردیف کامل ۴۲px'],
+  [16,'<span class="btn ghost" style="width:56px;height:24px">Reset</span>' +
+      '<span class="btn primary" style="width:56px;height:24px">Done</span>','فوتر ۴۸px','Reset شبح / Done گرادیانی']
+];
+document.getElementById('anatomy-board').innerHTML =
+  '<div class="spec">' + cardHtml('atr') + '</div>' +
+  '<div class="sheet t-og ac-gold">' + SPECS.map(s =>
+    '<div class="aitem"><b>' + s[0] + '</b><span class="asw">' + s[1] + '</span>' +
+    '<span><u>' + s[2] + '</u> — ' + s[3] + '</span></div>').join('') + '</div>';
+
+/* ══════════════ 6 · TOKEN BOARD ══════════════ */
+const TOK = [
+  ['هندسهٔ قفل‌شده',[['کارت','312 px'],['هدر','56 px'],['ردیف','42 px'],['فوتر','48 px'],['مارجین','14 px'],['ارتفاع','56 + 42n + 48']]],
+  ['گردی گوشه',[['کارت','14 px'],['کنترل / فیلد','7 px'],['چیپ','6 px'],['چیپ برند','9 px'],['سوییچ','11 px (کپسول)']]],
+  ['تایپوگرافی (Arial)',[['تیتر','Bold 12.5 / ls .75'],['لیبل','Bold 11.5 / ls .45'],['مقدار','Bold 11 / tabular'],['ساب‌تایتل','Bold 8.5 / ls .55'],['نوار بخش','Bold 9.5 / ls 1.3']]],
+  ['اندازهٔ کنترل‌ها',[['سوییچ','40 × 22'],['اسلایدر','ردیف کامل / ناب ۱۹'],['سگمنت','h 26'],['دراپ‌داون','h 26'],['دکمه','94 × 28'],['گلیف','16 px']]],
+  ['لهجهٔ خانواده‌ها',[['ATR','#FFAB00'],['TRIGGER','#1FA8E0'],['LINES','#12B886'],['TF LOCK','#7C5CFF'],['STRUCTURE','#FF6A2B'],['SIGNALS','#F0455F']]],
+  ['سایه و هاله',[['کارت','0 28px 62px rgba(0,0,0,.70)'],['حلقهٔ داخلی','inset 0 1px 0 rgba(255,255,255,.075)'],['گلو سوییچ','0 0 15px لهجه'],['گلو فیل','0 0 11px لهجه'],['دکمهٔ Done','0 7px 20px لهجه']]]
+];
+document.getElementById('tokens-board').innerHTML = TOK.map(t =>
+  '<div class="bx"><h3>' + t[0] + '</h3>' + t[1].map(kv =>
+    '<div class="kv"><span>' + kv[0] + '</span><b>' + kv[1] + '</b></div>').join('') + '</div>').join('');
+
+/* ══════════════ CANDLES ══════════════ */
+function mulberry(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+  return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+document.querySelectorAll('[data-candles]').forEach(el => {
+  const dark = el.dataset.candles === 'dark';
+  const w = 620, h = 1400, rnd = mulberry(dark ? 7 : 21);
+  let y = h * 0.5, out = '';
+  const up = dark ? '#26A69A' : '#089981', dn = dark ? '#EF5350' : '#F23645';
+  for(let i = 0; i < 40; i++){
+    const x = 14 + i * 15, o = y, c = y + (rnd() - 0.5) * 62;
+    const hi = Math.min(o, c) - rnd() * 26, lo = Math.max(o, c) + rnd() * 26, col = c < o ? up : dn;
+    out += '<line x1="' + (x + 3) + '" y1="' + hi.toFixed(1) + '" x2="' + (x + 3) + '" y2="' + lo.toFixed(1) +
+           '" stroke="' + col + '" stroke-width="1"/>' +
+           '<rect x="' + x + '" y="' + Math.min(o, c).toFixed(1) + '" width="6" height="' +
+           Math.max(1.5, Math.abs(c - o)).toFixed(1) + '" fill="' + col + '"/>';
+    y = c;
+  }
+  el.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" width="100%" height="100%">' + out + '</svg>';
+});
+
+/* ══════════════ INTERACTIONS ══════════════ */
+const zoomBtns = document.querySelectorAll('.tg[data-zoom]');
+zoomBtns.forEach(b => b.addEventListener('click', () => {
+  zoomBtns.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.documentElement.style.setProperty('--z', b.dataset.zoom);
+}));
+
+const bgBtns = document.querySelectorAll('.tg[data-bg]');
+bgBtns.forEach(b => b.addEventListener('click', () => {
+  bgBtns.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('[data-bgstage]').forEach(s => { s.className = 'stage bg-' + b.dataset.bg; });
+}));
+
+const acBtns = document.querySelectorAll('.tg[data-accent]');
+acBtns.forEach(b => b.addEventListener('click', () => {
+  acBtns.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('.t-og').forEach(p => {
+    p.className = p.className.replace(/ac-[a-z]+/, 'ac-' + b.dataset.accent);
+  });
+}));
+
+/* live widgets — cosmetic only, MT4 has no animation */
+document.addEventListener('click', e => {
+  const sw = e.target.closest('[data-sw]');
+  if(sw){
+    sw.classList.toggle('on');
+    const row = sw.closest('.row'), rail = row && row.querySelector('.rail');
+    if(row && !rail && sw.classList.contains('on')) row.prepend(Object.assign(document.createElement('span'), {className:'rail'}));
+    else if(rail && !sw.classList.contains('on')) rail.remove();
+    return;
+  }
+  const seg = e.target.closest('[data-seg]');
+  if(seg){ const p = seg.parentElement; p.querySelectorAll('.seg').forEach(x => x.classList.remove('on')); seg.classList.add('on'); return; }
+  const tab = e.target.closest('[data-tab]');
+  if(tab){ const p = tab.parentElement; p.querySelectorAll('.tab').forEach(x => x.classList.remove('act')); tab.classList.add('act'); }
+});
+</script>
+</body>
+</html>

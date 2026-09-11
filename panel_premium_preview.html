@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRex — پیش‌نمایش پنل پریمیوم</title>
+<style>
+  :root { color-scheme: dark; --z: 1.6; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0c11; color: #dfe5ee;
+    font-family: Vazirmatn, "Segoe UI", Tahoma, sans-serif;
+    padding: 26px 30px 70px; font-size: 13.5px; line-height: 1.75;
+  }
+  h1 { font-size: 21px; font-weight: 800; letter-spacing: .3px; }
+  h1 span { color: #ffab00; }
+  .sub { color: #8b95a6; font-size: 12.5px; margin-top: 7px; max-width: 1080px; }
+  .sub b { color: #dfe5ee; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 18px 0 6px; }
+  .toolbar .tg {
+    background: #151a23; color: #c8d0dc; border: 1px solid #242b38;
+    border-radius: 8px; padding: 6px 13px; font: 600 12px Vazirmatn, Tahoma, sans-serif; cursor: pointer;
+  }
+  .toolbar .tg:hover { border-color: #ffab00; color: #ffd479; }
+  .toolbar .tg.on { background: #ffab00; border-color: #ffab00; color: #14171e; }
+  .toolbar .hint { color: #6f7987; font-size: 12px; }
+  .toolbar.theme { margin-top: 20px; margin-bottom: 0; padding-bottom: 16px; border-bottom: 1px solid #1b212c; }
+  .toolbar .tg.th { padding: 7px 15px; font-size: 12.5px; }
+  .toolbar .tg.th .dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; margin-inline-end: 7px; vertical-align: -1px; }
+  .toolbar .tg.th[data-theme="A"] .dot { background: linear-gradient(135deg,#ffb020,#ff8a00); }
+  .toolbar .tg.th[data-theme="B"] .dot { background: linear-gradient(135deg,#ffffff,#e7eaf1); border: 1px solid #3a4150; }
+  .toolbar .tg.th[data-theme="C"] .dot { background: linear-gradient(135deg,#2a2f3a,#101319); border: 1px solid #5a4a1f; }
+  .toolbar .tg.th[data-theme="before"] .dot { background: #2b3240; border: 1px solid #4a5464; }
+
+  .variant { margin-top: 34px; border-top: 1px solid #1b212c; padding-top: 20px; }
+  .variant[hidden] { display: none; }
+  .variant:first-of-type { margin-top: 26px; }
+  .vhead { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .vtag {
+    width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center;
+    font: 800 14px Arial, sans-serif; flex: none;
+  }
+  .tga { background: linear-gradient(135deg,#ffb020,#ff8a00); color: #14171e; }
+  .tgb { background: linear-gradient(135deg,#ffffff,#e7eaf1); color: #14181f; border: 1px solid #3a4150; }
+  .tgc { background: linear-gradient(135deg,#2a2f3a,#101319); color: #ffc247; border: 1px solid #5a4a1f; }
+  .vhead h2 { font-size: 16.5px; font-weight: 800; }
+  .vhead .en { color: #7d8794; font: 600 12px Arial, sans-serif; letter-spacing: .6px; }
+  .vdesc { color: #98a2b1; font-size: 12.5px; margin: 8px 0 4px; max-width: 1080px; }
+  .vdesc b { color: #e6ebf3; }
+  .feats { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 4px; }
+  .feat { background: #131822; border: 1px solid #232b38; color: #9aa5b4; border-radius: 999px; padding: 3px 11px; font-size: 11.5px; }
+  .feat.hot { border-color: #4a3a12; color: #ffc247; background: #1a1509; }
+
+  .stages { display: flex; gap: 26px; flex-wrap: wrap; align-items: flex-start; margin: 16px 0 6px; }
+  .stage { zoom: var(--z); border-radius: 10px; overflow: hidden; padding: 26px 30px; position: relative; flex: none; }
+  .stage .cap {
+    position: absolute; inset-inline-end: 8px; top: 6px; zoom: calc(1 / var(--z));
+    font: 600 11px Vazirmatn, Tahoma, sans-serif; color: #8b95a6; direction: rtl;
+  }
+  .chart-dark { background: #101623; border: 1px solid #1d2534; }
+  .chart-light { background: #fbfcfd; border: 1px solid #e3e7ee; }
+  .chart-dark .cap { color: #7b8698; }
+  .chart-light .cap { color: #7b8698; }
+  .candles { position: absolute; inset: 0; opacity: .5; }
+  .chart-dark .candles { opacity: .42; }
+  .panel-slot { position: relative; z-index: 2; }
+
+  /* ── element zoo ─────────────────────────────────────────────── */
+  .zoo { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 20px; }
+  .zocol { zoom: var(--z); flex: none; }
+  .zolabel { font: 600 11px Vazirmatn, Tahoma, sans-serif; color: #808b9b; margin-bottom: 6px; direction: rtl; }
+  .zobox { border-radius: 10px; padding: 6px 10px; }
+
+  /* ── the panel (true MT4 geometry: 312 wide, head 56, row 42, foot 48) ── */
+  .mt4 { width: 312px; font-family: Arial, Helvetica, sans-serif; direction: ltr; text-align: left; }
+  .card {
+    width: 312px; border-radius: var(--r, 12px); background: var(--card);
+    border: 1px solid var(--bd); box-shadow: var(--sh); overflow: hidden; position: relative;
+  }
+  .card::before {
+    content: ''; position: absolute; inset-inline: 0; top: 0; height: var(--barH, 2px);
+    background: var(--bar); z-index: 3;
+  }
+  .hd { height: 56px; display: flex; align-items: center; gap: 9px; padding: 0 16px; position: relative; }
+  .mark {
+    width: 26px; height: 26px; border-radius: var(--mr, 8px); flex: none;
+    display: grid; place-items: center; font: 800 13px Arial, sans-serif;
+    background: var(--markBg); color: var(--markTx); box-shadow: var(--markSh, none);
+    border: var(--markBd, 0);
+  }
+  .htxt { min-width: 0; }
+  .ttl { font: 700 12.5px Arial, sans-serif; letter-spacing: .7px; color: var(--title); line-height: 1.25; }
+  .subttl { font: 600 8.5px Arial, sans-serif; letter-spacing: .5px; color: var(--muted); line-height: 1.3; }
+  .x {
+    margin-inline-start: auto; width: 24px; height: 24px; border-radius: 6px; flex: none;
+    display: grid; place-items: center; font: 700 13px Arial, sans-serif;
+    color: var(--muted); background: var(--ghostBg); border: 1px solid var(--ghostBd);
+  }
+  .rows { position: relative; }
+  .row { height: 42px; padding: 0 16px; border-top: 1px solid var(--line); position: relative; }
+  .row:first-child { border-top: 0; }
+  .row.flex { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .lbl { font: 700 11.5px Arial, sans-serif; letter-spacing: .45px; color: var(--lbl); white-space: nowrap; }
+  .lbl.sm { font-size: 10.5px; letter-spacing: .35px; }
+  .rail { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 2px; background: var(--rail); }
+  .val { font: 700 11px Arial, sans-serif; color: var(--val); font-variant-numeric: tabular-nums; }
+  .val.chip {
+    background: var(--chipBg); border: 1px solid var(--chipBd); color: var(--chipTx);
+    border-radius: 5px; padding: 1px 7px; min-width: 34px; text-align: center;
+  }
+
+  /* switch */
+  .sw { width: 38px; height: 21px; border-radius: 11px; background: var(--swOff); border: 1px solid var(--swOffBd); position: relative; flex: none; box-shadow: var(--swIn); }
+  .sw i { position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: var(--swKnob); box-shadow: 0 1px 2px rgba(0,0,0,.35); transition: none; }
+  .sw.on { background: var(--swOn); border-color: var(--swOnBd); box-shadow: var(--swOnSh); }
+  .sw.on i { left: 19px; background: var(--swOnKnob); }
+  .sw.rev { border-radius: 5px; height: 20px; }
+  .sw.rev i { border-radius: 3px; }
+
+  /* old-style checkbox (for the "before" panel) */
+  .cb { width: 20px; height: 20px; border-radius: 5px; border: 1px solid #b2bac8; background: #fff; flex: none; display: grid; place-items: center; }
+  .cb.on { background: #262c38; border-color: #262c38; }
+  .cb.on::after { content: ''; width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) translate(1px,-1px); }
+
+  /* color row */
+  .row.color { padding-top: 4px; }
+  .row.color .lbl { display: block; margin-bottom: 3px; }
+  .swset { display: flex; align-items: center; gap: 5px; }
+  .prev { width: 46px; height: 22px; border-radius: 5px; border: 1px solid var(--swBd); }
+  .q { width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--swBd); }
+  .q.act { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* slider */
+  .row.sl { padding-top: 7px; }
+  .sltop { display: flex; align-items: baseline; justify-content: space-between; }
+  .track { position: relative; height: 7px; border-radius: 4px; margin-top: 4px; background: var(--track); border: 1px solid var(--trackBd); }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--fill); box-shadow: var(--fillGlow, none); }
+  .knob { position: absolute; top: -6px; width: 18px; height: 18px; border-radius: 50%; background: var(--knob); box-shadow: var(--knobSh); border: 1px solid var(--knobBd); }
+
+  /* tabs / segments / dropdown / nav / text */
+  .tabs { display: flex; gap: 2px; padding: 0 12px; height: 42px; align-items: center; }
+  .tab { padding: 5px 10px; font: 700 11px Arial, sans-serif; letter-spacing: .4px; color: var(--muted); position: relative; border-radius: 6px; }
+  .tab.act { color: var(--title); }
+  .tab.act::after { content: ''; position: absolute; left: 8px; right: 8px; bottom: 1px; height: 2px; border-radius: 2px; background: var(--accent); box-shadow: var(--tabGlow, none); }
+  .segs { display: flex; gap: 3px; }
+  .seg { padding: 4px 9px; font: 700 10.5px Arial, sans-serif; border-radius: 5px; background: var(--segOff); color: var(--segTxOff); border: 1px solid var(--segBd); }
+  .seg.on { background: var(--segOn); color: var(--segTxOn); border-color: var(--segOn); box-shadow: var(--segGlow, none); }
+  .dd { display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 8px 0 10px; border-radius: 6px; background: var(--field); border: 1px solid var(--fieldBd); font: 700 11px Arial, sans-serif; color: var(--val); }
+  .dd .chev { width: 8px; height: 8px; border-right: 1.6px solid var(--accent); border-bottom: 1.6px solid var(--accent); transform: rotate(45deg) translate(-1px,-1px); }
+  .nav { font: 700 11px Arial, sans-serif; color: var(--val); display: inline-flex; align-items: center; gap: 6px; }
+  .nav .arw { color: var(--accent); font-size: 12px; }
+  .row.txt { padding-top: 5px; }
+  .row.txt .lbl { display: block; margin-bottom: 4px; }
+  .fld { height: 24px; border-radius: 6px; background: var(--field); border: 1px solid var(--fieldBd); display: flex; align-items: center; padding: 0 8px; font: 600 11px Arial, sans-serif; color: var(--val); }
+  .caret { width: 1px; height: 13px; background: var(--accent); margin-inline-start: 2px; }
+
+  /* footer */
+  .ft { height: 48px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-top: 1px solid var(--line); }
+  .btn { width: 92px; height: 26px; border-radius: 6px; display: grid; place-items: center; font: 700 11.5px Arial, sans-serif; letter-spacing: .3px; }
+  .btn.ghost { background: var(--ghostBg); border: 1px solid var(--ghostBd); color: var(--muted); }
+  .btn.primary { background: var(--done); color: var(--doneTx); border: 1px solid var(--doneBd); box-shadow: var(--doneSh, none); }
+
+  /* ── "before" = today's TV-white panel ─────────────────────────── */
+  .t-before {
+    --r: 12px; --barH: 0px; --bar: none;
+    --card: linear-gradient(180deg,#fafbfd,#f4f6fa); --bd: #d4dae4;
+    --sh: 0 14px 34px rgba(15,20,30,.20);
+    --title: #1c2029; --muted: #78828f; --lbl: #464f64; --val: #1c2029;
+    --line: #e4e9f2; --accent: #262c38;
+    --track: #e4e9f2; --trackBd: #cdd5e0; --fill: #262c38; --knob: #ffffff; --knobBd: #bcc4d2;
+    --swBd: #cdd5e0; --segOn: #262c38; --segOff: #eef2f8; --segBd: #cdd5e0; --segTxOff: #5a6478;
+    --segTxOn: #ffffff; --field: #ffffff; --fieldBd: #cdd5e0;
+    --ghostBg: #eef2f8; --ghostBd: #cdd5e0; --done: #262c38; --doneTx: #ffffff; --doneBd: #262c38;
+    --swOff: #fff; --swOffBd: #b2bac8; --swOn: #262c38; --swOnBd: #262c38; --swKnob: #fff; --swOnKnob: #fff;
+    --knobSh: 0 1px 2px rgba(15,20,30,.25);
+    --chipBg: #eef2f8; --chipBd: #d4dae4; --chipTx: #1c2029; --rail: transparent;
+    --markBg: #262c38; --markTx: #fff;
+  }
+  .t-before .ttl { letter-spacing: .3px; font-size: 12.5px; }
+  .t-before .hd { height: 56px; }
+  .t-before .x { color: #78828f; }
+
+  /* ── A · OBSIDIAN GOLD ─────────────────────────────────────────── */
+  .t-obsidian {
+    --r: 12px; --barH: 2px;
+    --bar: linear-gradient(90deg,#ffab00,#ff8a00 38%,rgba(255,138,0,0) 100%);
+    --card: linear-gradient(180deg,#1b2029 0%,#14171f 100%);
+    --bd: #2b3240;
+    --sh: 0 22px 48px rgba(0,0,0,.62), inset 0 1px 0 rgba(255,255,255,.06);
+    --title: #f2f5fa; --muted: #8c96a6; --lbl: #cbd3e0; --val: #f2f5fa;
+    --line: rgba(255,255,255,.065); --accent: #ffab00;
+    --track: #222834; --trackBd: #333b4a;
+    --fill: linear-gradient(90deg,#ff9f0a,#ffd98a); --fillGlow: 0 0 10px rgba(255,159,10,.45);
+    --knob: radial-gradient(circle at 35% 30%,#ffffff,#dfe4ec); --knobBd: rgba(0,0,0,.35);
+    --knobSh: 0 2px 6px rgba(0,0,0,.55);
+    --swBd: rgba(255,255,255,.14);
+    --segOn: linear-gradient(180deg,#ffc247,#ff9f0a); --segTxOn: #1a1408; --segOff: #1d222c;
+    --segBd: #2d3441; --segTxOff: #9aa5b4; --segGlow: 0 0 12px rgba(255,159,10,.28);
+    --field: #1a1e27; --fieldBd: #333b4a;
+    --ghostBg: #1c212b; --ghostBd: #2f3745;
+    --done: linear-gradient(180deg,#ffc247,#ff9f0a); --doneTx: #1a1408; --doneBd: #ffb020;
+    --doneSh: 0 6px 18px rgba(255,159,10,.30);
+    --swOff: #262d3a; --swOffBd: #3a4252; --swOn: linear-gradient(180deg,#ffc247,#ff9f0a);
+    --swOnBd: #ffb020; --swKnob: #ffffff; --swOnKnob: #1a1408;
+    --swOnSh: 0 0 14px rgba(255,159,10,.45); --swIn: inset 0 1px 2px rgba(0,0,0,.45);
+    --chipBg: rgba(255,171,0,.10); --chipBd: rgba(255,171,0,.35); --chipTx: #ffc247;
+    --rail: linear-gradient(180deg,#ffb020,#ff8a00);
+    --tabGlow: 0 0 10px rgba(255,159,10,.6);
+    --markBg: linear-gradient(135deg,#ffc247,#ff8a00); --markTx: #17120a;
+    --markSh: 0 4px 12px rgba(255,138,0,.35);
+  }
+
+  /* ── B · TITANIUM (premium light) ──────────────────────────────── */
+  .t-titanium {
+    --r: 14px; --barH: 2px;
+    --bar: linear-gradient(90deg,#c9a227,#e8c26a 45%,rgba(232,194,106,0) 100%);
+    --card: linear-gradient(180deg,#ffffff 0%,#f6f7fb 100%);
+    --bd: #e2e6ef;
+    --sh: 0 18px 40px rgba(19,24,34,.22), inset 0 1px 0 #fff;
+    --title: #14181f; --muted: #8a93a3; --lbl: #39414f; --val: #14181f;
+    --line: #eceff5; --accent: #b8860b;
+    --track: #eef1f7; --trackBd: #dde2ec;
+    --fill: linear-gradient(90deg,#a9781a,#e5bf5e); --fillGlow: none;
+    --knob: #ffffff; --knobBd: #cfd6e2; --knobSh: 0 2px 6px rgba(19,24,34,.28), inset 0 0 0 2px #fff;
+    --swBd: #d8dee9;
+    --segOn: #14181f; --segTxOn: #ffffff; --segOff: #f2f4f9; --segBd: #dfe4ee; --segTxOff: #5d6675;
+    --field: #ffffff; --fieldBd: #dde2ec;
+    --ghostBg: #f2f4f9; --ghostBd: #dfe4ee;
+    --done: #14181f; --doneTx: #ffffff; --doneBd: #14181f;
+    --doneSh: 0 6px 16px rgba(19,24,34,.24);
+    --swOff: #e9edf4; --swOffBd: #d8dee9; --swOn: linear-gradient(180deg,#1a1f28,#0f1319);
+    --swOnBd: #0f1319; --swKnob: #ffffff; --swOnKnob: #ffffff;
+    --swOnSh: 0 3px 10px rgba(19,24,34,.35); --swIn: inset 0 1px 2px rgba(19,24,34,.10);
+    --chipBg: #fbf7ec; --chipBd: #e8dcbd; --chipTx: #7a5c12;
+    --rail: linear-gradient(180deg,#c9a227,#e8c26a);
+    --tabGlow: none;
+    --markBg: linear-gradient(135deg,#1b1f27,#0f1319); --markTx: #ffc247;
+    --markSh: 0 3px 10px rgba(19,24,34,.28);
+  }
+
+  /* ── C · TRex SIGNATURE (carbon HUD) ───────────────────────────── */
+  .t-signature {
+    --r: 10px; --barH: 3px;
+    --bar: linear-gradient(90deg,#ff8a00,rgba(255,138,0,.15));
+    --card: linear-gradient(180deg,#12161d 0%,#0d1015 100%);
+    --bd: rgba(255,171,0,.34);
+    --sh: 0 24px 52px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.05);
+    --title: #f6f8fb; --muted: #8f99a8; --lbl: #d3dae4; --val: #ffc247;
+    --line: rgba(255,255,255,.05); --accent: #ffab00;
+    --track: #1c212a; --trackBd: rgba(255,171,0,.22);
+    --fill: linear-gradient(90deg,#ff8a00,#ffd066); --fillGlow: 0 0 12px rgba(255,138,0,.55);
+    --knob: linear-gradient(180deg,#ffffff,#e3e8f0); --knobBd: rgba(255,171,0,.6);
+    --knobSh: 0 0 10px rgba(255,171,0,.35), 0 2px 6px rgba(0,0,0,.6);
+    --swBd: rgba(255,255,255,.12);
+    --segOn: #20170a; --segTxOn: #ffc247; --segOff: #171c24; --segBd: rgba(255,171,0,.18); --segTxOff: #8f99a8;
+    --segGlow: inset 0 0 0 1px rgba(255,171,0,.45);
+    --field: #141920; --fieldBd: rgba(255,171,0,.22);
+    --ghostBg: #171c24; --ghostBd: rgba(255,255,255,.10);
+    --done: linear-gradient(180deg,#ffb020,#f08a00); --doneTx: #14100a; --doneBd: #ffb020;
+    --doneSh: 0 0 20px rgba(255,138,0,.40);
+    --swOff: #1a1f27; --swOffBd: rgba(255,255,255,.12); --swOn: linear-gradient(180deg,#ffb020,#f08a00);
+    --swOnBd: #ffb020; --swKnob: #6a7280; --swOnKnob: #14100a;
+    --swOnSh: 0 0 16px rgba(255,138,0,.5); --swIn: inset 0 1px 2px rgba(0,0,0,.5);
+    --chipBg: rgba(255,171,0,.08); --chipBd: rgba(255,171,0,.30); --chipTx: #ffc247;
+    --rail: #ff8a00;
+    --tabGlow: 0 0 12px rgba(255,138,0,.8);
+    --markBg: linear-gradient(135deg,#20170a,#14100a); --markTx: #ffc247;
+    --markBd: 1px solid rgba(255,171,0,.5);
+  }
+  /* carbon weave + scale band in the signature header */
+  .t-signature .hd {
+    background-image:
+      repeating-linear-gradient(45deg, rgba(255,255,255,.028) 0 2px, transparent 2px 4px),
+      repeating-linear-gradient(-45deg, rgba(255,255,255,.028) 0 2px, transparent 2px 4px);
+  }
+  .t-signature .hd::after {
+    content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(255,171,0,.55), rgba(255,171,0,.05));
+  }
+  .t-obsidian .hd::after {
+    content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,.14), rgba(255,255,255,.02));
+  }
+  .t-titanium .hd::after {
+    content: ''; position: absolute; inset-inline: 0; bottom: 0; height: 1px;
+    background: linear-gradient(90deg, rgba(201,162,39,.45), rgba(201,162,39,.04));
+  }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 14px; color: #7f8a99; font-size: 12px; }
+  .swatch { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch i { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+  .note { margin-top: 40px; border-top: 1px solid #1b212c; padding-top: 18px; color: #98a2b1; font-size: 12.5px; max-width: 1080px; }
+  .note h3 { color: #dfe5ee; font-size: 14px; margin-bottom: 8px; }
+  .note code { background: #151a23; border: 1px solid #242b38; border-radius: 5px; padding: 1px 6px; font-size: 11.5px; color: #ffc247; direction: ltr; display: inline-block; }
+  .note ul { padding-inline-start: 20px; }
+  .note li { margin-bottom: 5px; }
+</style>
+</head>
+<body>
+
+<h1>پیش‌نمایش پنل <span>TRex</span> پریمیوم — سه مسیر</h1>
+<div class="sub">
+  هر سه نسخه در <b>اندازهٔ واقعی MT4</b> کشیده شده‌اند (کارت ۳۱۲px · هدر ۵۶ · هر ردیف ۴۲ · فوتر ۴۸) و روی
+  <b>چارت تیره و روشن</b> نمایش داده می‌شوند تا انتخاب روی هر دو پس‌زمینه سنجیده شود.
+  ردیف‌ها همان ردیف‌های واقعی کارت «ATR LABELS» هستند (COUNTDOWN / COUNT COLOR / COUNT SIZE / COUNT GAP / ATR BLOCK / ROW GAP) — هیچ ردیفی اضافه یا حذف نشده.
+  اجرا با اسکین BMP + مستطیل + لیبل MT4 انجام می‌شود؛ گرادیان، گردی گوشه، هیرلاین طلایی، واکنش پرس و سوییچ‌ها همه داخل BMP پخته می‌شوند (همان مسیر <code>tools/gen-th3-icons.js</code>).
+  <br>با دکمه‌های بالای صفحه تم‌ها را عوض کنید — به‌صورت پیش‌فرض <b>اُبسیدین گلد (A)</b> فعال است؛ «همه · مقایسه» هر چهار نسخه را کنار هم نشان می‌دهد.
+</div>
+
+<div class="toolbar theme">
+  <span class="hint">تم فعال:</span>
+  <button class="tg th" data-theme="before"><span class="dot"></span>وضعیت فعلی</button>
+  <button class="tg th on" data-theme="A"><span class="dot"></span>A · اُبسیدین گلد</button>
+  <button class="tg th" data-theme="B"><span class="dot"></span>B · تیتانیوم برنجی</button>
+  <button class="tg th" data-theme="C"><span class="dot"></span>C · TRex سینچر</button>
+  <button class="tg th" data-theme="all">همه · مقایسه</button>
+</div>
+
+<div class="toolbar">
+  <span class="hint">بزرگ‌نمایی:</span>
+  <button class="tg" data-zoom="1">۱×</button>
+  <button class="tg on" data-zoom="1.6">۱.۶×</button>
+  <button class="tg" data-zoom="2.2">۲.۲×</button>
+</div>
+
+<!-- ═════════════════ BEFORE ═════════════════ -->
+<section class="variant" data-theme="before">
+  <div class="vhead">
+    <div class="vtag" style="background:#2b3240;color:#9aa5b4">۰</div>
+    <h2>وضعیت فعلی</h2>
+    <span class="en">NOW · TV-WHITE</span>
+  </div>
+  <div class="vdesc">همان چیزی که الان روی چارت می‌بینی: چک‌باکس‌های کوچک سمت چپ، لیبل‌های ۸pt، اسلایدر باریک و تخت، بدون هیچ نشان برند. تمیز است ولی «عمومی» و ارزان به نظر می‌رسد — نه پریمیوم، نه TRex.</div>
+  <div class="stages">
+    <div class="stage chart-light"><span class="cap">روی چارت روشن</span><div class="candles" data-candles="light"></div><div class="panel-slot" data-panel="before"></div></div>
+    <div class="stage chart-dark"><span class="cap">روی چارت تیره</span><div class="candles" data-candles="dark"></div><div class="panel-slot" data-panel="before"></div></div>
+  </div>
+</section>
+
+<!-- ═════════════════ A ═════════════════ -->
+<section class="variant" data-theme="A">
+  <div class="vhead">
+    <div class="vtag tga">A</div>
+    <h2>اُبسیدین گلد</h2>
+    <span class="en">OBSIDIAN GOLD · DARK PREMIUM</span>
+  </div>
+  <div class="vdesc">کارت تیرهٔ مات با گرادیان عمودی ملایم، <b>نوار امضای طلایی</b> بالای کارت، هیرلاین طلایی زیر هدر، چیپ مارک TRex، سوییچ‌های طلایی با هالهٔ نرم، اسلایدر طلایی درخشان و مقدار عددی داخل <b>چیپ</b> طلایی. تیره = خواندنی‌ترین روی چارت‌هایی که خودت استفاده می‌کنی.</div>
+  <div class="feats">
+    <span class="feat hot">نوار طلایی امضا</span><span class="feat">کارت ۲ لایه با هایلایت داخلی</span>
+    <span class="feat hot">سوییچ طلایی + هاله</span><span class="feat">چیپ مقدار</span>
+    <span class="feat">اسلایدر با گلو</span><span class="feat">Done طلایی</span><span class="feat">آیکون چیپ هر ردیف (اختیاری)</span>
+  </div>
+  <div class="stages">
+    <div class="stage chart-light"><span class="cap">روی چارت روشن</span><div class="candles" data-candles="light"></div><div class="panel-slot" data-panel="A"></div></div>
+    <div class="stage chart-dark"><span class="cap">روی چارت تیره</span><div class="candles" data-candles="dark"></div><div class="panel-slot" data-panel="A"></div></div>
+  </div>
+  <div class="zoo" data-zoo="A"></div>
+</section>
+
+<!-- ═════════════════ B ═════════════════ -->
+<section class="variant" data-theme="B">
+  <div class="vhead">
+    <div class="vtag tgb">B</div>
+    <h2>تیتانیوم برنجی</h2>
+    <span class="en">TITANIUM BRASS · LIGHT PREMIUM</span>
+  </div>
+  <div class="vdesc">نسخهٔ روشن ولی این‌بار <b>واقعاً پریمیوم</b>: بدنهٔ پلاتینی با گرادیان سفید-نقره‌ای، هیرلاین برنجی، سایهٔ نرم دو لایه، فیلد‌های فرورفته، سگمنت‌های جوهر تیره و Done جوهر با هاله. مناسب کسانی که چارت روشن دارند و پنل تیره روی چارتشان سنگین است.</div>
+  <div class="feats">
+    <span class="feat hot">هیرلاین برنجی</span><span class="feat">بدنهٔ پلاتینی</span>
+    <span class="feat">سایهٔ دو لایهٔ نرم</span><span class="feat hot">سوییچ جوهر</span>
+    <span class="feat">فیلد فرورفته</span><span class="feat">Done جوهر</span><span class="feat">مارک TRex با طلایی</span>
+  </div>
+  <div class="stages">
+    <div class="stage chart-light"><span class="cap">روی چارت روشن</span><div class="candles" data-candles="light"></div><div class="panel-slot" data-panel="B"></div></div>
+    <div class="stage chart-dark"><span class="cap">روی چارت تیره</span><div class="candles" data-candles="dark"></div><div class="panel-slot" data-panel="B"></div></div>
+  </div>
+  <div class="zoo" data-zoo="B"></div>
+</section>
+
+<!-- ═════════════════ C ═════════════════ -->
+<section class="variant" data-theme="C">
+  <div class="vhead">
+    <div class="vtag tgc">C</div>
+    <h2>TRex سینچر</h2>
+    <span class="en">TRex SIGNATURE · CARBON HUD</span>
+  </div>
+  <div class="vdesc">امضای شخصی برند: بافت <b>کربن/فِلسی</b> در هدر، بوردر کهربایی، <b>ریل کهربایی کنار ردیف‌های فعال</b>، گوشه‌های تیزتر (حس HUD)، مقدارها با اعداد tabular طلایی و سگمنت‌های توخالی کهربایی. از همه «خاص‌تر» است و بیشترین تداعی TRex را دارد؛ فقط کمی پرزحمت‌تر از A است.</div>
+  <div class="feats">
+    <span class="feat hot">بافت کربن در هدر</span><span class="feat hot">ریل کهربایی ردیف فعال</span>
+    <span class="feat">بوردر کهربایی</span><span class="feat">گوشهٔ تیز HUD</span>
+    <span class="feat">اعداد tabular طلایی</span><span class="feat">سگمنت توخالی</span>
+  </div>
+  <div class="stages">
+    <div class="stage chart-light"><span class="cap">روی چارت روشن</span><div class="candles" data-candles="light"></div><div class="panel-slot" data-panel="C"></div></div>
+    <div class="stage chart-dark"><span class="cap">روی چارت تیره</span><div class="candles" data-candles="dark"></div><div class="panel-slot" data-panel="C"></div></div>
+  </div>
+  <div class="zoo" data-zoo="C"></div>
+</section>
+
+<div class="note">
+  <h3>چه چیزی سر جای خودش می‌ماند (مهم)</h3>
+  <ul>
+    <li>هندسه قفل است: کارت <code>312</code> · هدر <code>56</code> · ردیف <code>42</code> · فوتر <code>48</code> · مارجین <code>14</code> — هیچ مختصاتی جابه‌جا نمی‌شود، پس هیت‌تست‌ها و درگ‌ها سالم می‌مانند.</li>
+    <li>هر ۱۴ کارت + پاپاور دراپ‌داون + پالت رنگ + استریپ Base Box + منوی شعاعی <b>با یک زبان واحد</b> بازرنگ می‌شوند (همان کاری که R-PANELS و R-PANELMOD یک‌بار انجام دادند).</li>
+    <li>مسیر اجرا: اسکین‌های <code>pnl_cardN.bmp</code> / <code>pnl_cb_*.bmp</code> / <code>pnl_knob.bmp</code> بازتولید می‌شوند، <code>PNL_CLR_*</code> و گلیف‌های کنترل عوض می‌شوند، منطق دست‌نخورده.</li>
+    <li>نکات پریمیوم که هنگام پیاده‌سازی <b>واقعاً</b> رندر می‌شوند: گرادیان و گردی گوشه و هیرلاین و بافت (داخل BMP) · هالهٔ حول عنصر فعال (داخل BMP) · پرس/هاور (BMP دوم) · اعداد tabular (فونت Arial Bold + چیپ مستطیلی). هیچ افکت CSS‌مانندی که MT4 ندارد وعده داده نشده.</li>
+  </ul>
+</div>
+
+<script>
+const ROWS_ATR = [
+  { k:'sw',  label:'COUNTDOWN',   on:true  },
+  { k:'col', label:'COUNT COLOR', sw:['#FFAB00','#F44336','#4CAF50','#2196F3','#FFFFFF','#141414'], cur:'#141414', act:5 },
+  { k:'sl',  label:'COUNT SIZE',  v:'12', pct:.50, unit:'pt' },
+  { k:'sl',  label:'COUNT GAP',   v:'6',  pct:.15, unit:'px' },
+  { k:'sw',  label:'ATR LABELS',  on:false },
+  { k:'sw',  label:'ATR TARGETS', on:true  },
+  { k:'sw',  label:'TRADE LABELS',on:true  },
+  { k:'sw',  label:'HUNTER ROW',  on:true  },
+  { k:'sw',  label:'TP ROW',      on:true  },
+  { k:'sw',  label:'PIP LABELS',  on:true  },
+  { k:'sl',  label:'ROW GAP',     v:'10', pct:.18, unit:'px' }
+];
+
+const APPENDIX = [
+  { k:'tab',  tabs:['STEP MODE','STRUCTURE','LINES'], act:0, label:'تب‌های آندلاین' },
+  { k:'dd',   label:'ZONE STYLE', value:'Filled', note:'دراپ‌داون — ۴ گزینه یا بیشتر' },
+  { k:'seg',  label:'BORDER', segs:['Solid','Dash','Dot'], act:1, note:'سگمنت — ۲ یا ۳ گزینه' },
+  { k:'txt',  label:'LABEL TEXT', value:'Weekly High' },
+  { k:'nav',  label:'STRUCTURE L1-L5', note:'ردیف ناوبری به زیرکارت' }
+];
+
+function themeClass(t){ return { A:'t-obsidian', B:'t-titanium', C:'t-signature', before:'t-before' }[t]; }
+
+function header(t, title, sub){
+  const mark = t === 'before' ? 'T' : (t === 'C' ? 'TRX' : 'T');
+  const fs = mark.length > 1 ? '9px' : '13px';
+  const subline = t === 'before' ? '' : '<div class="subttl">' + sub + '</div>';
+  return '<div class="hd"><div class="mark" style="font-size:' + fs + '">' + mark + '</div>' +
+         '<div class="htxt"><div class="ttl">' + title + '</div>' + subline + '</div>' +
+         '<div class="x">×</div></div>';
+}
+
+function rowHtml(t, r){
+  const rail = (t === 'C' && ((r.k === 'sw' && r.on) || r.k === 'sl' || r.k === 'tab')) ? '<span class="rail"></span>' : '';
+  if (r.k === 'sw'){
+    if (t === 'before'){
+      return '<div class="row flex">' + rail + '<span style="display:flex;align-items:center;gap:8px">' +
+             '<span class="cb ' + (r.on ? 'on' : '') + '"></span><span class="lbl">' + r.label + '</span></span></div>';
+    }
+    const rev = (t === 'C') ? ' rev' : '';
+    return '<div class="row flex">' + rail + '<span class="lbl">' + r.label + '</span>' +
+           '<span class="sw' + rev + (r.on ? ' on' : '') + '"><i></i></span></div>';
+  }
+  if (r.k === 'col'){
+    const q = r.sw.map((c, i) =>
+      '<span class="q' + (i === r.act ? ' act' : '') + '" style="background:' + c + '"></span>').join('');
+    return '<div class="row color">' + rail + '<span class="lbl sm">' + r.label + '</span>' +
+           '<div class="swset"><span class="prev" style="background:' + r.cur + '"></span>' + q + '</div></div>';
+  }
+  if (r.k === 'sl'){
+    const chip = (t === 'before') ? '<span class="val">' + r.v + '</span>'
+                                  : (t === 'B' ? '<span class="val">' + r.v + '</span>' : '<span class="val chip">' + r.v + '</span>');
+    const left = Math.max(0, Math.min(1, r.pct)) * (280 - 18);
+    return '<div class="row sl">' + rail + '<div class="sltop"><span class="lbl">' + r.label + '</span>' + chip + '</div>' +
+           '<div class="track"><span class="fill" style="width:' + (left + 9) + 'px"></span>' +
+           '<span class="knob" style="left:' + left + 'px"></span></div></div>';
+  }
+  if (r.k === 'tab'){
+    return '<div class="tabs">' + rail + r.tabs.map((x, i) =>
+      '<span class="tab' + (i === r.act ? ' act' : '') + '">' + x + '</span>').join('') + '</div>';
+  }
+  if (r.k === 'dd'){
+    return '<div class="row flex">' + rail + '<span class="lbl">' + r.label + '</span>' +
+           '<span class="dd">' + r.value + '<span class="chev"></span></span></div>';
+  }
+  if (r.k === 'seg'){
+    return '<div class="row flex">' + rail + '<span class="lbl">' + r.label + '</span><span class="segs">' +
+      r.segs.map((x, i) => '<span class="seg' + (i === r.act ? ' on' : '') + '">' + x + '</span>').join('') +
+      '</span></div>';
+  }
+  if (r.k === 'txt'){
+    return '<div class="row txt">' + rail + '<span class="lbl sm">' + r.label + '</span>' +
+           '<div class="fld">' + r.value + '<span class="caret"></span></div></div>';
+  }
+  if (r.k === 'nav'){
+    return '<div class="row flex">' + rail + '<span class="lbl">' + r.label + '</span>' +
+           '<span class="nav">›<span class="arw">›</span></span></div>';
+  }
+  return '';
+}
+
+function panelHtml(t, title, sub, rows){
+  const body = rows.map(r => rowHtml(t, r)).join('');
+  return '<div class="mt4 ' + themeClass(t) + '"><div class="card">' +
+         header(t, title, sub) + '<div class="rows">' + body + '</div>' +
+         '<div class="ft"><span class="btn ghost">Reset</span><span class="btn primary">Done</span></div>' +
+         '</div></div>';
+}
+
+/* panels onto the chart stages */
+document.querySelectorAll('[data-panel]').forEach(el => {
+  const t = el.dataset.panel;
+  el.innerHTML = panelHtml(t, 'ATR LABELS', 'COUNTDOWN · ATR BLOCK', ROWS_ATR);
+});
+
+/* element zoo */
+document.querySelectorAll('[data-zoo]').forEach(el => {
+  const t = el.dataset.zoo;
+  const parts = [];
+  parts.push('<div class="zocol"><div class="zolabel">سوییچ · خاموش/روشن</div><div class="zobox ' + themeClass(t) + ' mt4">' +
+    '<div class="card" style="width:180px"><div class="rows">' +
+    rowHtml(t, { k:'sw', label:'OFF', on:false }) + rowHtml(t, { k:'sw', label:'ON', on:true }) +
+    '</div></div></div></div>');
+  parts.push('<div class="zocol"><div class="zolabel">اسلایدر</div><div class="zobox ' + themeClass(t) + ' mt4">' +
+    '<div class="card" style="width:220px"><div class="rows">' +
+    rowHtml(t, { k:'sl', label:'COUNT SIZE', v:'12', pct:.5 }) + '</div></div></div></div>');
+  parts.push('<div class="zocol"><div class="zolabel">رنگ · پیش‌نمایش + سواچ</div><div class="zobox ' + themeClass(t) + ' mt4">' +
+    '<div class="card" style="width:236px"><div class="rows">' +
+    rowHtml(t, ROWS_ATR[1]) + '</div></div></div></div>');
+  parts.push('<div class="zocol"><div class="zolabel">دراپ‌داون / سگمنت / تب</div><div class="zobox ' + themeClass(t) + ' mt4">' +
+    '<div class="card" style="width:250px"><div class="rows">' +
+    rowHtml(t, { k:'dd', label:'ZONE STYLE', value:'Filled' }) +
+    rowHtml(t, { k:'seg', label:'BORDER', segs:['Solid','Dash','Dot'], act:1 }) +
+    rowHtml(t, { k:'tab', tabs:['STEP','STRUCT','LINES'], act:0 }) +
+    '</div></div></div></div>');
+  parts.push('<div class="zocol"><div class="zolabel">فیلد متن / ناوبری / دکمه‌ها</div><div class="zobox ' + themeClass(t) + ' mt4">' +
+    '<div class="card" style="width:250px"><div class="rows">' +
+    rowHtml(t, { k:'txt', label:'LABEL TEXT', value:'Weekly High' }) +
+    rowHtml(t, { k:'nav', label:'STRUCTURE L1-L5' }) +
+    '</div><div class="ft"><span class="btn ghost">Reset</span><span class="btn primary">Done</span></div></div></div></div>');
+  el.innerHTML = parts.join('');
+});
+
+/* candle background */
+function mulberry(seed){ return function(){ seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+document.querySelectorAll('[data-candles]').forEach(el => {
+  const dark = el.dataset.candles === 'dark';
+  const w = 520, h = 520, rnd = mulberry(dark ? 7 : 21);
+  let y = h * 0.5, out = '';
+  const up = dark ? '#26a69a' : '#089981', dn = dark ? '#ef5350' : '#f23645';
+  for (let i = 0; i < 34; i++){
+    const x = 14 + i * 15;
+    const o = y, c = y + (rnd() - 0.5) * 62, hi = Math.min(o, c) - rnd() * 26, lo = Math.max(o, c) + rnd() * 26;
+    const col = c < o ? up : dn;
+    out += '<line x1="' + (x + 3) + '" y1="' + hi.toFixed(1) + '" x2="' + (x + 3) + '" y2="' + lo.toFixed(1) + '" stroke="' + col + '" stroke-width="1"/>' +
+           '<rect x="' + x + '" y="' + Math.min(o, c).toFixed(1) + '" width="6" height="' + Math.max(1.5, Math.abs(c - o)).toFixed(1) + '" fill="' + col + '"/>';
+    y = c;
+  }
+  el.innerHTML = '<svg viewBox="0 0 ' + w + ' ' + h + '" preserveAspectRatio="none" width="100%" height="100%">' + out + '</svg>';
+});
+
+/* theme switch — Obsidian Gold (A) is enabled by default */
+const themeBtns = document.querySelectorAll('.toolbar .tg.th');
+const themeSections = document.querySelectorAll('.variant');
+function applyTheme(t){
+  themeSections.forEach(s => { s.hidden = (t !== 'all' && s.dataset.theme !== t); });
+  themeBtns.forEach(b => b.classList.toggle('on', b.dataset.theme === t));
+}
+themeBtns.forEach(b => b.addEventListener('click', () => applyTheme(b.dataset.theme)));
+applyTheme('A');
+
+/* zoom (scoped to zoom buttons only — must not clear the theme highlight) */
+const zoomBtns = document.querySelectorAll('.toolbar .tg[data-zoom]');
+zoomBtns.forEach(b => {
+  b.addEventListener('click', () => {
+    zoomBtns.forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    document.documentElement.style.setProperty('--z', b.dataset.zoom);
+  });
+});
+</script>
+</body>
+</html>

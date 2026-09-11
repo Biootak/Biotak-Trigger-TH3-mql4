@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRex — زیرمنوی Tools وقتی آیتم‌ها زیاد می‌شوند</title>
+<style>
+:root{--pg:#080A0E;--pg2:#0C1016;--pg3:#111721;--ink:#E9EEF6;--ink2:#9DA9BA;--ink3:#6B7688;
+  --hair:#1B212C;--hair2:#232B38;--gold1:#FFC247;--gold2:#FF8A00}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 85% -10%,rgba(255,138,0,.07),transparent 60%),
+    radial-gradient(900px 500px at 5% 10%,rgba(124,92,255,.05),transparent 60%),
+    linear-gradient(180deg,var(--pg),var(--pg2) 40%,var(--pg));
+  color:var(--ink);font-family:Vazirmatn,"Segoe UI",Tahoma,sans-serif;font-size:13.5px;line-height:1.8;
+  padding:30px 34px 90px;-webkit-font-smoothing:antialiased}
+h1{font-size:23px;font-weight:800}
+h1 b{background:linear-gradient(90deg,var(--gold1),var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:15px;font-weight:800}
+code.k{background:var(--pg3);border:1px solid var(--hair2);border-radius:5px;padding:1px 6px;font-size:11.5px;
+  color:var(--gold1);direction:ltr;display:inline-block;font-family:Consolas,monospace}
+.wrap{max-width:1500px;margin:0 auto}
+.hero{padding-bottom:22px;border-bottom:1px solid var(--hair)}
+.lede{color:var(--ink2);font-size:13px;max-width:1180px;margin-top:9px}
+.lede b{color:var(--ink)}
+.ans{margin-top:16px;border:1px solid rgba(255,171,0,.4);background:linear-gradient(180deg,rgba(255,171,0,.09),transparent);
+  border-radius:13px;padding:15px 18px;max-width:1180px}
+.ans h3{font-size:13.5px;color:var(--gold1);margin-bottom:8px}
+.ans p{font-size:12.8px;color:var(--ink2)}
+.ans b{color:var(--ink)}
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:20px;position:sticky;top:0;z-index:60;
+  padding:12px 0;background:linear-gradient(180deg,rgba(8,10,14,.96),rgba(8,10,14,.80));backdrop-filter:blur(8px)}
+.bar .lbl{color:var(--ink3);font-size:12px;font-weight:600}
+.tg{background:var(--pg3);color:#C8D0DC;border:1px solid var(--hair2);border-radius:9px;padding:7px 14px;
+  font:600 12.5px Vazirmatn,Tahoma,sans-serif;cursor:pointer}
+.tg:hover{border-color:var(--gold2);color:var(--gold1)}
+.tg.on{background:linear-gradient(180deg,var(--gold1),var(--gold2));border-color:var(--gold2);color:#181206}
+section{margin-top:46px}
+.shead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.shead .num{font:800 12px Arial,sans-serif;color:var(--gold1);border:1px solid rgba(255,171,0,.35);
+  background:rgba(255,171,0,.08);border-radius:7px;padding:1px 8px}
+.shead p{color:var(--ink2);font-size:12.5px;flex-basis:100%;max-width:1180px}
+
+/* ═════ menu canvas ═════ */
+.grid{display:flex;gap:30px;flex-wrap:wrap;margin-top:24px;align-items:flex-start}
+.col{flex:none;max-width:100%}
+.cap{font:600 11.5px Vazirmatn,Tahoma,sans-serif;color:var(--ink);margin-bottom:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cap em{font-style:normal;font:600 10.5px Arial,sans-serif;color:var(--ink3)}
+.cbox{border-radius:16px;border:1px solid var(--hair2);background:linear-gradient(180deg,#0F1520,#0B1017);
+  display:flex;justify-content:center;padding:10px}
+.cbox.light{background:linear-gradient(180deg,#FBFCFE,#F1F4F9)}
+.note{font-size:11.5px;color:var(--ink3);margin-top:8px;max-width:460px;line-height:1.75}
+.note b{color:var(--ink2)}
+.tag{font:700 9.5px Vazirmatn,Tahoma,sans-serif;border-radius:999px;padding:2px 9px;flex:none;border:1px solid}
+.tag.now{border-color:rgba(240,69,95,.42);background:rgba(240,69,95,.10);color:#FFA7B6}
+.tag.new{border-color:rgba(18,184,134,.42);background:rgba(18,184,134,.10);color:#63ECBD}
+.tag.best{border-color:rgba(255,171,0,.5);background:rgba(255,171,0,.12);color:#FFC247}
+.mstage{position:relative}
+.mi{position:absolute;width:44px;height:44px;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 34% 28%,#2A3242,#161B24);border:1px solid rgba(255,255,255,.10);
+  box-shadow:0 6px 16px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.10);color:#9AA5B4;
+  transform:translate(-50%,-50%)}
+.mi svg{width:20px;height:20px}
+.mi.on{background:radial-gradient(circle at 34% 28%,rgba(255,171,0,.30),rgba(255,138,0,.12));
+  border-color:rgba(255,171,0,.55);color:#FFC247;box-shadow:0 0 20px rgba(255,159,10,.45), inset 0 1px 0 rgba(255,255,255,.20)}
+.mi.ghost{opacity:.13}
+.mi.tip{background:radial-gradient(circle at 34% 28%,#3A3020,#1C1810);border-color:rgba(255,171,0,.45)}
+.mi .sm{position:absolute;left:38px;top:-3px;width:15px;height:15px;border-radius:5px;
+  background:linear-gradient(180deg,var(--gold1),var(--gold2));color:#1A1206;display:grid;place-items:center;
+  font:800 9px Arial,sans-serif;box-shadow:0 2px 6px rgba(0,0,0,.5)}
+.orb{position:absolute;width:64px;height:64px;border-radius:50%;transform:translate(-50%,-50%);
+  background:radial-gradient(circle at 35% 30%,#2C3444,#12161E);border:1px solid rgba(255,171,0,.45);
+  box-shadow:0 0 0 4px rgba(255,171,0,.10), 0 10px 26px rgba(0,0,0,.65);display:grid;place-items:center}
+.orbtext{font:800 15px Arial,sans-serif;letter-spacing:.9px;color:#FFC247;text-shadow:0 0 12px rgba(255,159,10,.6)}
+/* grid panel */
+.tgrid{position:absolute;border-radius:13px;overflow:hidden;
+  background:linear-gradient(180deg,#1E242F,#141922);border:1px solid #2C3444;
+  box-shadow:0 22px 48px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.06);padding:10px 10px 8px}
+.tgrid .th{display:flex;align-items:center;gap:7px;padding:0 2px 9px;font:700 8.5px Arial,sans-serif;
+  letter-spacing:1.3px;color:#8C96A6}
+.tgrid .th i{width:5px;height:5px;border-radius:2px;background:linear-gradient(135deg,var(--gold1),var(--gold2))}
+.tgrid .th u{text-decoration:none;margin-left:auto;color:#FFC247;font-size:8px}
+.tgrid .cells{display:grid;gap:6px}
+.tcell{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;
+  background:radial-gradient(circle at 34% 28%,#2A3242,#161B24);border:1px solid rgba(255,255,255,.10);color:#9AA5B4}
+.tcell svg{width:18px;height:18px}
+.tcell.on{background:radial-gradient(circle at 34% 28%,rgba(255,171,0,.30),rgba(255,138,0,.12));
+  border-color:rgba(255,171,0,.55);color:#FFC247;box-shadow:0 0 14px rgba(255,159,10,.4)}
+.tcell.more{border-style:dashed;border-color:rgba(255,171,0,.45);color:#FFC247}
+.pgbar{display:flex;align-items:center;justify-content:center;gap:7px;padding-top:9px}
+.pgbar i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.18)}
+.pgbar i.on{background:#FFC247;box-shadow:0 0 6px rgba(255,159,10,.7)}
+.pgbar b{font:800 11px Arial,sans-serif;color:#8C96A6;padding:0 2px}
+.pgbar b.hot{color:#FFC247}
+/* searchable command palette (T8) — MT4 has OBJ_EDIT, so typing is possible */
+.srch{display:flex;align-items:center;gap:7px;height:28px;border-radius:8px;background:#181D27;
+  border:1px solid #333C4C;padding:0 9px;font:600 11px Arial,sans-serif;color:#F3F6FB}
+.srch .mag{width:11px;height:11px;border:1.6px solid #FFC247;border-radius:50%;position:relative;flex:none}
+.srch .mag::after{content:'';position:absolute;right:-4px;bottom:-3px;width:5px;height:1.6px;
+  background:#FFC247;transform:rotate(45deg)}
+.srch .caret{width:1px;height:13px;background:#FFC247;margin-left:auto}
+.srow{display:flex;align-items:center;gap:9px;height:36px;border-top:1px solid rgba(255,255,255,.045)}
+.srow .ic{width:24px;height:24px;border-radius:7px;flex:none;display:grid;place-items:center;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#9AA5B4}
+.srow .ic svg{width:14px;height:14px}
+.srow b{font:700 10px Arial,sans-serif;letter-spacing:.5px;color:#CBD4E2;flex:1}
+.srow u{text-decoration:none;font:700 8px Arial,sans-serif;color:#6B7688}
+.srow.on .ic{background:rgba(255,171,0,.14);border-color:rgba(255,171,0,.42);color:#FFC247}
+.srow.on b{color:#F3F6FB}
+.tfoot{display:flex;align-items:center;justify-content:space-between;padding-top:8px;
+  font:600 8.5px Vazirmatn,Tahoma,sans-serif;color:#6B7688}
+/* persistent side dock (T9) — pinned favourites, always reachable */
+.dock{position:absolute;border-radius:13px;padding:8px 7px;display:flex;flex-direction:column;gap:6px;align-items:center;
+  background:linear-gradient(180deg,#1E242F,#141922);border:1px solid #2C3444;
+  box-shadow:0 22px 48px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.06)}
+.dock .dc{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;
+  background:radial-gradient(circle at 34% 28%,#2A3242,#161B24);border:1px solid rgba(255,255,255,.10);color:#9AA5B4}
+.dock .dc svg{width:17px;height:17px}
+.dock .dc.on{background:radial-gradient(circle at 34% 28%,rgba(255,171,0,.30),rgba(255,138,0,.12));
+  border-color:rgba(255,171,0,.55);color:#FFC247;box-shadow:0 0 14px rgba(255,159,10,.4)}
+.dock .dv{width:22px;height:1px;background:rgba(255,255,255,.09);margin:1px 0}
+.dock .dm{width:38px;height:24px;border-radius:8px;display:grid;place-items:center;font:800 11px Arial,sans-serif;
+  color:#FFC247;background:rgba(255,171,0,.10);border:1px dashed rgba(255,171,0,.45)}
+/* legend */
+.lgd{display:flex;flex-wrap:wrap;gap:7px;margin-top:11px;align-items:center}
+.lgcap{width:100%;font:600 10.5px Vazirmatn,Tahoma,sans-serif;color:var(--ink3)}
+.lg{display:flex;align-items:center;gap:6px;border:1px solid var(--hair2);background:#0F141C;border-radius:8px;
+  padding:4px 9px;font:700 9.5px Arial,sans-serif;letter-spacing:.5px;color:var(--ink2)}
+.lg .gl{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.09);color:#9AA5B4}
+.lg .gl svg{width:11px;height:11px}
+/* tables */
+table.fx{width:100%;border-collapse:collapse;margin-top:20px;font-size:12.3px}
+table.fx th,table.fx td{text-align:right;padding:9px 12px;border-bottom:1px solid var(--hair2);vertical-align:top}
+table.fx th{color:var(--ink);font-weight:800;font-size:11.5px;background:#0F141C}
+table.fx td{color:var(--ink2)}
+table.fx td b{color:var(--ink)}
+table.fx td.num{font-family:Consolas,monospace;direction:ltr;text-align:left;white-space:nowrap}
+.good{color:#63ECBD;font-weight:700}.bad{color:#FFA7B6;font-weight:700}.warnc{color:#FFC247;font-weight:700}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:22px}
+.nx{border-radius:13px;padding:16px 18px;border:1px solid var(--hair2);background:#0F141C}
+.nx h3{font-size:13px;margin-bottom:10px}
+.nx ul{padding-inline-start:18px}
+.nx li{font-size:12.3px;color:var(--ink2);margin-bottom:6px}
+.nx li b{color:var(--ink)}
+.nx.ok{border-color:rgba(18,184,134,.3)}
+.nx.warn{border-color:rgba(255,171,0,.3)}
+.rank{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-top:22px}
+.rk{display:flex;gap:11px;border:1px solid var(--hair2);background:#0F141C;border-radius:12px;padding:13px 15px}
+.rk b.n{width:24px;height:24px;flex:none;border-radius:8px;display:grid;place-items:center;
+  font:800 11px Arial,sans-serif;background:rgba(255,171,0,.14);border:1px solid rgba(255,171,0,.4);color:var(--gold1)}
+.rk div{font-size:12.3px;color:var(--ink2)}
+.rk u{text-decoration:none;color:var(--ink);font-weight:700}
+.foot{margin-top:46px;padding-top:20px;border-top:1px solid var(--hair);color:var(--ink3);font-size:12px;max-width:1180px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>زیرمنوی <b>Tools</b> وقتی آیتم‌ها زیاد می‌شوند</h1>
+  <div class="lede">
+    الان <code class="k">TOOL_COUNT 3</code> است و روی شعاع <code class="k">TOOL_RADIUS 56</code> حول <b>دکمهٔ Tools</b> باز می‌شود.
+    با ۳ آیتم فاصلهٔ مرکز-به-مرکز <code class="k">51.7px</code> است و دکمه ۴۴px — یعنی ۷.۷px حاشیه. با هر آیتم تازه این حاشیه کم می‌شود
+    و در ۵ آیتم به صفر می‌رسد. پس سؤال درست این نیست «چند تا جا می‌شود»، این است: <b>کدام هندسه با N آیتم مقیاس می‌گیرد.</b>
+  </div>
+  <div class="ans">
+    <h3>جواب کوتاه</h3>
+    <p>
+      تا <b>۵ آیتم</b> → همان نیم‌دایره، شعاع ۱۱۲ از مرکز منو. تا <b>۸ آیتم</b> → حلقهٔ کامل با شعاع محاسبه‌شده.
+      از <b>۹ آیتم به بعد</b> → <b>پنل گرید ۴ ستونه</b> (تصادم غیرممکن، هیت‌تست یک فرمول ساده).
+      از <b>۱۶ آیتم به بعد</b> → همان گرید + <b>صفحه‌بندی</b>، یا <b>دو سطحی</b> (Tools ← دسته‌ها ← ابزارها).
+      همهٔ این‌ها در ادامه با اندازهٔ واقعی و عدد نشان داده شده.
+    </p>
+  </div>
+</header>
+
+<div class="bar">
+  <span class="lbl">پس‌زمینه:</span>
+  <button class="tg on" data-bg="dark">تیره</button>
+  <button class="tg" data-bg="light">روشن</button>
+</div>
+
+<section id="radial">
+  <div class="shead">
+    <span class="num">۱</span><h2>مسیر شعاعی — چهار ایستگاه رشد</h2>
+    <p>شعاع لازم از این فرمول می‌آید: <code class="k">r ≥ 44 / (2·sin(π/N))</code> — یعنی کمانی که دو دکمهٔ ۴۴px را
+      دقیقاً کنار هم می‌گذارد. برای هر N، حداقل شعاع و فاصلهٔ واقعی محاسبه و در جدول پایین آمده.</p>
+  </div>
+  <div class="grid" id="radial-grid"></div>
+</section>
+
+<section id="panel">
+  <div class="shead">
+    <span class="num">۲</span><h2>مسیر پنل — وقتی دایره دیگر جواب نمی‌دهد</h2>
+    <p>سه چیدمان پنلی که در هر تعداد آیتمی امن می‌مانند، چون فاصله‌شان از هندسهٔ دایره مستقل است.</p>
+  </div>
+  <div class="grid" id="panel-grid"></div>
+</section>
+
+<section id="table">
+  <div class="shead">
+    <span class="num">۳</span><h2>قاعدهٔ تصمیم — با عدد</h2>
+    <p>شعاع لازم و فاصلهٔ واقعی برای هر تعداد آیتم. ستون آخر می‌گوید کدام هندسه را بردار.</p>
+  </div>
+  <table class="fx">
+    <tr><th style="width:12%">تعداد</th><th style="width:22%">شعاع لازم (کمان کامل)</th><th style="width:20%">فاصلهٔ واقعی در آن شعاع</th><th>هندسهٔ پیشنهادی</th></tr>
+    <tr><td class="num">3</td><td class="num">r ≥ 44 / (2·sin60°) = 25.4</td><td class="num">112 → 193.9 px</td>
+      <td><span class="good">نیم‌دایره</span> — r=۱۱۲ از مرکز منو، بازهٔ ۱۸۰°</td></tr>
+    <tr><td class="num">5</td><td class="num">r ≥ 44 / (2·sin36°) = 37.4</td><td class="num">112 → 131.6 px</td>
+      <td><span class="good">نیم‌دایره</span> — هنوز راحت؛ همین r=۱۱۲</td></tr>
+    <tr><td class="num">6</td><td class="num">r ≥ 44 / (2·sin30°) = 44.0</td><td class="num">112 → 112.0 px</td>
+      <td><span class="good">نیم‌دایره</span> — آخرین ایستگاه راحت</td></tr>
+    <tr><td class="num">7</td><td class="num">r ≥ 44 / (2·sin25.7°) = 50.6</td><td class="num">112 → 97.0 px</td>
+      <td><span class="warnc">مرز</span> — از اینجا حلقهٔ کامل بهتر است</td></tr>
+    <tr><td class="num">8</td><td class="num">r ≥ 44 / (2·sin22.5°) = 57.5</td><td class="num">72 → 55.1 px</td>
+      <td><span class="good">حلقهٔ کامل</span> — r=۷۲، بدون محو کردن آیتم‌های اصلی هم جا می‌شود</td></tr>
+    <tr><td class="num">10</td><td class="num">r ≥ 44 / (2·sin18°) = 71.1</td><td class="num">88 → 54.4 px</td>
+      <td><span class="warnc">مرز</span> — حلقه بزرگ می‌شود؛ روی چارت باریک جا نمی‌شود</td></tr>
+    <tr><td class="num">12</td><td class="num">r ≥ 44 / (2·sin15°) = 85.0</td><td class="num">92 → 47.6 px</td>
+      <td><span class="bad">به پنل گرید برو</span> — حلقهٔ ۹۲px دیگر روی چارت جا نمی‌شود</td></tr>
+    <tr><td class="num">16</td><td class="num">r ≥ 44 / (2·sin11.25°) = 112.8</td><td class="num">—</td>
+      <td><span class="bad">گرید + صفحه‌بندی</span> یا دو سطحی</td></tr>
+  </table>
+  <div class="notes">
+    <div class="nx ok">
+      <h3>چرا پنل گرید از همه امن‌تر است</h3>
+      <ul>
+        <li>فاصلهٔ خانه‌ها <b>ثابت</b> است و به موقعیت دکمهٔ Tools و لبهٔ چارت ربطی ندارد.</li>
+        <li>هیت‌تست یک فرمول است: <code class="k">col = (x-x0)/46</code> و <code class="k">row = (y-y0)/46</code> — هیچ محاسبهٔ مثلثاتی.</li>
+        <li>با اضافه شدن ابزار، فقط <b>یک ردیف ۴۶px</b> به ارتفاع اضافه می‌شود.</li>
+        <li>آیکون‌ها درشت‌ترند (۴۰px خانه در برابر ۴۴px دایره) ولی <b>چیدمان قابل پیش‌بینی</b> است.</li>
+      </ul>
+    </div>
+    <div class="nx warn">
+      <h3>سه چیزی که نباید کرد</h3>
+      <ul>
+        <li><b>جمع‌کردن شعاع</b> وقتی جا نیست (همان کاری که الان <code class="k">ToolsFitRadius</code> می‌کند) — آیتم‌ها روی هم می‌افتند.</li>
+        <li><b>ریختن همه در یک حلقه</b> با ۱۲+ آیتم — شعاع به ۹۲px می‌رسد و از چارت بیرون می‌زند.</li>
+        <li><b>افزودن صفحه‌بندی به حلقه</b> — صفحه‌بندی فقط در پنل گرید معنا دارد، نه در کمان.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="rank" id="rank-list"></div>
+  <div class="foot">
+    مسیر پیاده‌سازی: <code class="k">TOOL_COUNT</code> را داینامیک کن، هندسهٔ <code class="k">ToolsLayout()</code> را به دو تابع بشکن
+    (<code class="k">ToolsLayoutArc(n)</code> برای n≤۸ و <code class="k">ToolsLayoutGrid(n)</code> برای n≥۹)،
+    <code class="k">ToolsFitRadius()</code> را حذف کن و جایش <b>جابه‌جایی کل کمان</b> یا <b>فلپ پنل به سمت مخالف</b> بگذار،
+    و در حالت گرید هیت‌تست را به فرمول شبکه عوض کن. اسکین خانهٔ گرید (<code class="k">pnl_tool_cell.bmp</code> ۴۰×۴۰)
+    و اسکین حلقه از قبل موجود است.
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   ICONS
+   ══════════════════════════════════════════════════════════════════ */
+const I = {
+ layers:'<path d="M12 3 3 7.5l9 4.5 9-4.5z"/><path d="M3 12.5 12 17l9-4.5"/><path d="M3 17 12 21.5 21 17"/>',
+ crosshair:'<circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/>',
+ gauge:'<path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-7"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/>',
+ wave:'<path d="M2 14c2.5 0 2.5-6 5-6s2.5 6 5 6 2.5-6 5-6 2.5 6 5 6"/>',
+ candle:'<path d="M7 3.5v4M7 16.5v4M5 7.5h4v9H5z"/><path d="M17 5.5v3M17 17.5v3M15 8.5h4v9h-4z"/>',
+ box:'<rect x="3.5" y="6" width="17" height="12" rx="2" stroke-dasharray="3.2 2.6"/>',
+ pin:'<path d="M12 21.5s7-6.4 7-11.5a7 7 0 1 0-14 0c0 5.1 7 11.5 7 11.5z"/><circle cx="12" cy="10" r="2.4"/>',
+ steps:'<path d="M3 20.5h4.5v-4.5H12V11.5h4.5V7H21"/>',
+ ruler:'<path d="M3 15.5 8.5 10l5.5 5.5L8.5 21z"/><path d="M6 12.5 8 14.5M9 9.5l2 2"/>',
+ warn:'<path d="M12 3.5 2.8 20h18.4z"/><path d="M12 9.8v4.6M12 17.2v.5"/>',
+ sparkles:'<path d="M11 4l1.5 4.2L16.7 9.7 12.5 11.2 11 15.4 9.5 11.2 5.3 9.7 9.5 8.2z"/><path d="M18 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
+ palette:'<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.5 0 2.1-.9 2.1-1.9 0-1.4-1.3-1.6-1.3-2.7 0-.9.7-1.5 1.8-1.5h1.5a4.4 4.4 0 0 0 4.4-4.4C20.5 6.3 16.7 3.5 12 3.5z"/>',
+ gap:'<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>',
+ magnet:'<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/>',
+ template:'<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.5h17M10 9.5v11"/>',
+ tag:'<path d="M3.5 11.6V5.1A1.6 1.6 0 0 1 5.1 3.5h6.5L20.5 12 12 20.5z"/><circle cx="8.2" cy="8.2" r="1.3"/>',
+ reset:'<path d="M3.8 12a8.2 8.2 0 1 0 2.6-6"/><path d="M3.8 3.6v4.2h4.2"/>',
+ lock:'<rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.2"/><path d="M8.4 10.4V7.9a3.6 3.6 0 0 1 7.2 0v2.5"/>',
+ plus:'<path d="M12 5.5v13M5.5 12h13"/>',
+ more:'<circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/>'
+};
+const svg = (n, cls) => '<svg class="' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+  'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">' + (I[n] || '') + '</svg>';
+
+/* ══════════════════════════════════════════════════════════════════
+   DATA — the 3 real tools + the 9 plausible additions (EXAMPLE list)
+   ══════════════════════════════════════════════════════════════════ */
+const TOOLS = [
+  {n:'PIN',      ic:'pin',      on:false},
+  {n:'STEP',     ic:'steps',    on:true},
+  {n:'KNOT',     ic:'ruler',    on:false},
+  {n:'ALERT',    ic:'warn',     on:false},
+  {n:'PRESET',   ic:'sparkles', on:false},
+  {n:'THEME',    ic:'palette',  on:false},
+  {n:'MEASURE',  ic:'gap',      on:false},
+  {n:'MAGNET',   ic:'magnet',   on:true},
+  {n:'TEMPLATE', ic:'template', on:false},
+  {n:'EXPORT',   ic:'tag',      on:false},
+  {n:'RESET',    ic:'reset',    on:false},
+  {n:'LOCK',     ic:'lock',     on:false}
+];
+/* the 6 main ring items — ghosted while Tools is open */
+const RING6 = ['layers','crosshair','gauge','wave','candle','box'];
+
+const BTN = 44, MRING = 64;
+const W = 600, H = 440, CX = 300, CY = 220;
+const pol = (d, r) => [CX + Math.cos(d * Math.PI / 180) * r, CY + Math.sin(d * Math.PI / 180) * r];
+const TOOLS_DEG = -90 + 360 * 5 / 6;                    // 210° — the Tools axis
+
+const mi = (it, deg, r, ex) => {
+  const p = pol(deg, r);
+  return '<span class="mi' + (it.on ? ' on' : '') + (ex || '') + '" style="left:' + p[0].toFixed(1) +
+    'px;top:' + p[1].toFixed(1) + 'px">' + svg(it.ic) + '</span>';
+};
+const ghostRing = () => RING6.map((ic, i) => mi({ic:ic}, -90 + 360 * i / 6, MRING, ' ghost')).join('');
+const orbEl = () => '<span class="orb" style="left:' + CX + 'px;top:' + CY + 'px"><span class="orbtext">TRex</span></span>';
+const stage = inner => '<div class="mstage" style="width:' + W + 'px;height:' + H + 'px">' + inner + '</div>';
+
+/* ══════════════════════════════════════════════════════════════════
+   1 · RADIAL — four growth stops
+   ══════════════════════════════════════════════════════════════════ */
+/* T1 — today: r=56 fan around the Tools BUTTON, spread 110° */
+const t1 = stage(
+  RING6.map((ic, i) => mi({ic:ic}, -90 + 360 * i / 6, MRING)).join('') +
+  TOOLS.slice(0, 3).map((it, i) => {
+    const d = TOOLS_DEG - 55 + i * 55;
+    const tx = pol(TOOLS_DEG, MRING)[0], ty = pol(TOOLS_DEG, MRING)[1];
+    return '<span class="mi tip" style="left:' + (tx + Math.cos(d * Math.PI / 180) * 56).toFixed(1) +
+      'px;top:' + (ty + Math.sin(d * Math.PI / 180) * 56).toFixed(1) + 'px">' + svg(it.ic) + '</span>';
+  }).join('') + orbEl());
+
+/* T2 — half-circle, r=112, 5 items (spread 180°) */
+const halfCircle = (n, r) => TOOLS.slice(0, n).map((it, i) =>
+  mi(it, TOOLS_DEG - 90 + i * (180 / (n - 1)), r, ' tip')).join('');
+const t2 = stage(ghostRing() + halfCircle(5, 112) + orbEl());
+
+/* T3 — full ring, 8 items, r=72 (auto radius). The main ring is HIDDEN, not ghosted:
+   r=64 (main) vs r=72 (tools) is only an 8px radial gap, so the two rings cannot coexist. */
+const fullRing = (n, r) => TOOLS.slice(0, n).map((it, i) =>
+  mi(it, -90 + 360 * i / n, r, ' tip')).join('');
+const t3 = stage(fullRing(8, 72) + orbEl());
+
+/* T4 — full ring, 12 items, r=92 → the outer limit */
+const t4 = stage(fullRing(12, 92) + orbEl());
+
+/* ══════════════════════════════════════════════════════════════════
+   2 · PANEL — grid, paged grid, two-level
+   ══════════════════════════════════════════════════════════════════ */
+function gridPanel(list, cols, title, page){
+  const cells = list.map(it => '<span class="tcell' + (it.on ? ' on' : '') + '">' + svg(it.ic) + '</span>').join('');
+  const rows = Math.ceil(list.length / cols);
+  const pw = cols * 40 + (cols - 1) * 6 + 20;
+  const ph = 26 + rows * 40 + (rows - 1) * 6 + (page ? 24 : 0) + 10;
+  const [tx, ty] = pol(TOOLS_DEG, MRING);
+  const x = tx - BTN / 2 - 8 - pw;                        // right edge 8px off the Tools button
+  const y = Math.max(8, Math.min(H - ph - 8, ty - ph / 2));
+  const pg = page
+    ? '<div class="pgbar"><b>&#8249;</b><i class="on"></i><i></i><i></i><b class="hot">&#8250;</b></div>'
+    : '';
+  return '<div class="tgrid" style="left:' + x.toFixed(0) + 'px;top:' + y.toFixed(0) + 'px;width:' + pw + 'px">' +
+    '<div class="th"><i></i>' + title + '<u>' + list.length + '</u></div>' +
+    '<div class="cells" style="grid-template-columns:repeat(' + cols + ',40px)">' + cells + '</div>' + pg + '</div>';
+}
+/* T5 — grid 4×3 = 12, everything visible */
+const t5 = stage(gridPanel(TOOLS, 4, 'TOOLS', false) + orbEl());
+/* T6 — paged grid 4×2 = 8 per page (constant footprint for any N) */
+const t6 = stage(gridPanel(TOOLS.slice(0, 8), 4, 'TOOLS · 1/2', true) + orbEl());
+/* T7 — two-level: level 1 is the 4 categories (each one opens its own grid panel) */
+const CATS = [{n:'DRAW',ic:'pin',on:false},{n:'VIEW',ic:'palette',on:false},
+              {n:'DATA',ic:'template',on:false},{n:'SYS',ic:'lock',on:false}];
+const t7 = stage(
+  CATS.map((it, i) => mi(it, -90 + 360 * i / 4, 88, ' tip')).join('') + orbEl());
+
+/* ══════════════════════════════════════════════════════════════════
+   3 · REDESIGNED FROM SCRATCH — not a circle, not a grid
+   ══════════════════════════════════════════════════════════════════ */
+/* T8 — searchable command palette: type to filter. Scales to ANY number of tools
+   because the panel height is fixed (always ~4 results) — MT4 has OBJ_EDIT for typing. */
+function searchPanel(){
+  const rows = TOOLS.slice(0, 4).map((it, i) =>
+    '<div class="srow' + (i === 0 ? ' on' : '') + '"><span class="ic">' + svg(it.ic) + '</span>' +
+    '<b>' + it.n + '</b><u>' + (it.on ? 'ON' : '') + '</u></div>').join('');
+  const pw = 236, ph = 26 + 28 + 12 + 4 * 36 + 30;
+  const [tx, ty] = pol(TOOLS_DEG, MRING);
+  const x = Math.max(8, tx - BTN / 2 - 8 - pw);
+  const y = Math.max(8, Math.min(H - ph - 8, ty - ph / 2));
+  return '<div class="tgrid" style="left:' + x.toFixed(0) + 'px;top:' + y.toFixed(0) + 'px;width:' + pw + 'px">' +
+    '<div class="th"><i></i>TOOLS<u>12</u></div>' +
+    '<div class="srch"><span class="mag"></span>step<span class="caret"></span></div>' +
+    '<div style="margin-top:12px">' + rows + '</div>' +
+    '<div class="tfoot"><span>type to filter</span><span>ENTER = run</span></div></div>';
+}
+const t8 = stage(searchPanel() + orbEl());
+
+/* T9 — persistent side dock: the 6 tools you use every day live outside the menu */
+const t9 = stage(ghostRing() +
+  '<div class="dock" style="left:10px;top:52px">' +
+    TOOLS.slice(0, 6).map((it, i) => '<span class="dc' + (i === 1 ? ' on' : '') + '">' + svg(it.ic) + '</span>').join('') +
+    '<span class="dv"></span><span class="dm">+6</span></div>' + orbEl());
+
+/* ══════════════════════════════════════════════════════════════════
+   MOUNT
+   ══════════════════════════════════════════════════════════════════ */
+const legend = items => '<div class="lgd"><span class="lgcap">راهنمای آیکون‌ها — فقط برای خواندن این پیش‌نمایش؛ روی چارت هیچ متنی نیست</span>' +
+  items.map(it => '<span class="lg"><span class="gl">' + svg(it.ic) + '</span>' + it.n + '</span>').join('') + '</div>';
+
+const mount = (list, id) => {
+  document.getElementById(id).innerHTML = list.map(v =>
+    '<div class="col"><div class="cap"><b>' + v.t + '</b><span class="tag ' + v.tag + '">' +
+      (v.tag === 'now' ? 'وضعیت فعلی' : v.tag === 'best' ? 'پیشنهاد' : v.tag === 'new' ? 'بهبود' : 'حد نهایی') +
+      '</span><em>' + v.n + '</em></div>' +
+    '<div class="cbox" data-bgbox>' + v.html + '</div>' + (v.legend || '') +
+    '<div class="note">' + v.note + '</div></div>').join('');
+};
+
+mount([
+  {t:'T1 · زیرمنوی فعلی — شعاع ۵۶ حول دکمهٔ Tools', tag:'now', n:'۳ آیتم',
+   note:'فاصلهٔ مرکز-به-مرکز <b>51.7px</b> و قطر دکمه ۴۴px → ۷.۷px حاشیه. با ۴ آیتم بازهٔ ۱۶۵° لازم می‌شود که ' +
+        'کمان را دور خودش می‌پیچد؛ با ۵ آیتم حاشیه <b>صفر</b> می‌شود. این هندسه فقط برای ۳ آیتم کار می‌کند.',
+   html: t1, legend: legend(TOOLS.slice(0, 3))},
+  {t:'T2 · نیم‌دایرهٔ ۱۸۰° — تا ۵ آیتم', tag:'best', n:'r=112 از مرکز منو',
+   note:'همان تصمیمی که گرفتیم، تا ۵ آیتم کشیده می‌شود: فاصله در ۵ آیتم <b>131.6px</b> و در ۶ آیتم <b>112px</b>. ' +
+        'آیتم‌های اصلی محو می‌شوند، پس تصادمی نیست. تا ۶ آیتم این شکل بهترین است.',
+   html: t2, legend: legend(TOOLS.slice(0, 5))},
+  {t:'T3 · حلقهٔ کامل با شعاع محاسبه‌شده — تا ۸ آیتم', tag:'best', n:'r=72 · ۸ آیتم',
+   note:'از ۷ آیتم به بالا نیم‌دایره شلوغ می‌شود؛ حلقهٔ کامل جواب بهتری می‌دهد. شعاع از فرمول ' +
+        '<code class="k">r ≥ 44/(2·sin(π/N))</code> می‌آید: برای ۸ آیتم ۵۷.۵ → با حاشیه <b>۷۲</b>. ' +
+        'فاصلهٔ واقعی ۵۵.۱px. در این حالت <b>حلقهٔ اصلی کنار می‌رود</b> (نه محو): r=۶۴ و r=۷۲ فقط ۸px فاصله دارند ' +
+        'و دو حلقه نمی‌توانند با هم دیده شوند.',
+   html: t3, legend: legend(TOOLS.slice(0, 8))},
+  {t:'T4 · حلقهٔ ۱۲ آیتمی — حد نهایی', tag:'new', n:'r=92 · ۱۲ آیتم',
+   note:'شعاع لازم <b>۸۹px</b> است. حلقه ۹۲px شعاع + ۲۲px نیم‌قطر دکمه = <b>۱۱۴px از مرکز</b>؛ ' +
+        'روی چارت باریک یا وقتی اورب نزدیک لبه است جا نمی‌شود و مجبور می‌شوی شعاع را جمع کنی — همان چیزی که ' +
+        '<b>نباید</b> بشود. پس ۱۲ آیتم عملاً سقف حلقه است.',
+   html: t4, legend: legend(TOOLS.slice(0, 12))},
+], 'radial-grid');
+
+mount([
+  {t:'T5 · پنل گرید ۴×۳ — ۱۲ آیتم، همه دیده می‌شوند', tag:'best', n:'۲۰۴ × ۱۷۶ px',
+   note:'فاصلهٔ خانه‌ها <b>ثابت ۶px</b> و مستقل از موقعیت و لبهٔ چارت. هیت‌تست یک فرمول شبکه است، نه مثلثات. ' +
+        'با هر ابزار تازه فقط <b>یک ردیف ۴۶px</b> اضافه می‌شود. از ۹ آیتم به بالا این بهترین شکل است.',
+   html: t5, legend: legend(TOOLS)},
+  {t:'T6 · گرید صفحه‌بندی‌شده ۴×۲ — اندازهٔ ثابت', tag:'best', n:'۸ در هر صفحه',
+   note:'وقتی تعداد از ۱۲ گذشت، پنل به‌جای بلندتر شدن <b>صفحه‌بندی</b> می‌شود: همیشه ۴×۲ و دو فلش. ' +
+        'ارتفاع ثابت می‌ماند پس هرگز از چارت بیرون نمی‌زند. برای هر تعداد ابزاری جواب می‌دهد.',
+   html: t6, legend: legend(TOOLS.slice(0, 8))},
+  {t:'T7 · دو سطحی — دسته‌ها، بعد ابزارها', tag:'new', n:'۴ دسته × N ابزار',
+   note:'برای ۱۶+ ابزار: Tools چهار دستهٔ درشت نشان می‌دهد (DRAW · VIEW · DATA · SYS) و هر دسته پنل گرید خودش را باز می‌کند. ' +
+        'هر سطح حداکثر ۶ آیتم دارد، پس هیچ‌وقت شلوغ نمی‌شود. تنها هزینه‌اش یک تپ اضافه است.',
+   html: t7, legend: CATS.concat(TOOLS.slice(0, 6))}
+], 'panel-grid');
+
+document.getElementById('rank-list').innerHTML = [
+  ['۳ تا ۶ ابزار → نیم‌دایرهٔ ۱۸۰° (r=۱۱۲)','همان شکل انتخابی فعلی، فقط تعداد بیشتر. تا ۶ آیتم فاصله بالای ۱۱۲px می‌ماند و هیچ‌وقت شلوغ نمی‌شود.'],
+  ['۷ تا ۸ ابزار → حلقهٔ کامل با r=۷۲','نیم‌دایره از ۷ آیتم شلوغ می‌شود؛ حلقهٔ کامل فاصلهٔ ۵۵px می‌دهد و آیتم‌های اصلی هم لازم نیست محو شوند.'],
+  ['۹ تا ۱۲ ابزار → پنل گرید ۴ ستونه','تصادم غیرممکن، هیت‌تست یک فرمول، و با هر ابزار فقط یک ردیف ۴۶px رشد می‌کند.'],
+  ['۱۳ ابزار و بیشتر → گرید + صفحه‌بندی','اندازهٔ پنل ثابت می‌ماند (۴×۲ + دو فلش) پس در هر موقعیت چارتی جا می‌شود.'],
+  ['۲۰ ابزار و بیشتر → دو سطحی (دسته‌بندی)','Tools چهار دسته می‌دهد و هر دسته پنل خودش را. هر سطح حداکثر ۶ آیتم.'],
+  ['هرگز شعاع را جمع نکن','جای جمع‌کردن کمان، کل کمان را جابه‌جا کن یا پنل را به سمت مخالف فلپ کن — وگرنه آیتم‌ها روی هم می‌افتند.']
+].map((r, i) => '<div class="rk"><b class="n">' + (i + 1) + '</b><div><u>' + r[0] + '</u> — ' + r[1] + '</div></div>').join('');
+
+const bb = document.querySelectorAll('.tg[data-bg]');
+bb.forEach(b => b.addEventListener('click', () => {
+  bb.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('[data-bgbox]').forEach(x => { x.classList.toggle('light', b.dataset.bg === 'light'); });
+}));
+</script>
+</body>
+</html>

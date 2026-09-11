@@ -868,6 +868,272 @@ function writeBmp(file, w, h, topDownBgra) {
   fs.writeFileSync(file, buf);
 }
 
+// ---------------------------------------------------------------- R-PANELUI2
+// Chrome the redesign needs BEYOND the 22px chip (preview CSS author is the
+// source of every colour here — do not re-derive):
+//   .mark 30px accent chip (header)      .sw   40x22 pill switch
+//   .val.chip 46x22 accent pill           .row.sec 6px accent dot
+//   .row.sec .cnt neutral count pill      .key  18x18 keycap
+//   .x 26x26 ghost close button           .card::before 3px accent top bar
+//   .hd::after accent hairline            .row.sec band wash
+//   .row.act accent wash                  .rail 2px active-row rail
+// Every skin keeps a 2px antialias pad (PAD), so the MQL side must offset the
+// object by -PAD: OBJ_BITMAP_LABEL always renders at native canvas size.
+const PAD2 = 2;
+const A2 = {
+  gold:   [0xFF, 0x8A, 0x00], jade:   [0x12, 0xB8, 0x86], cyan:   [0x1F, 0xA8, 0xE0],
+  violet: [0x7C, 0x5C, 0xFF], ember:  [0xFF, 0x6A, 0x2B], rose:   [0xF0, 0x45, 0x5F],
+};
+const A_INK = {
+  gold:   [0x1A, 0x12, 0x06], jade:   [0x04, 0x14, 0x0F], cyan:   [0x04, 0x12, 0x1A],
+  violet: [0x0C, 0x07, 0x22], ember:  [0x1A, 0x0A, 0x03], rose:   [0x1C, 0x04, 0x09],
+};
+const A_NAME = ['gold', 'jade', 'cyan', 'violet', 'ember', 'rose'];
+
+// Rounded box with optional vertical fill gradient, 1px border and a glow.
+// visW/visH = the CSS element size; the canvas adds PAD2 on every side.
+function uiBox(o) {
+  const W = o.w + 2 * PAD2, H = o.h + 2 * PAD2;
+  const cx = W / 2, cy = H / 2;
+  const hw = (o.w - 1) / 2, hh = (o.h - 1) / 2;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, o.rad);
+    if (d > 0.5 && !o.glow) return null;
+    let col = [0, 0, 0, 0];
+    if (o.glow) {
+      const g = halo(x, y, cx, cy, Math.max(hw, hh), o.glow[1], o.glow[2], o.glow[0]);
+      if (g) col = over(col, g);
+    }
+    if (d > 0.5) return col[3] > 0 ? col : null;
+    const cov = clamp01(0.5 - d);
+    if (o.top) {
+      const t = clamp01((y - (cy - hh)) / (2 * hh));
+      col = over(col, pm(lerpColor(o.top, o.bot, t), 255));
+    }
+    if (o.flat) col = over(col, pm(o.flat, o.flatA === undefined ? 255 : o.flatA));
+    if (o.bd) {
+      const bw = clamp01(0.5 - Math.abs(d + 0.5));
+      if (bw > 0) col = over(col, pm(o.bd, o.bdA * bw));
+    }
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .mark — 30px header chip: accent gradient, glow, inset top highlight
+function markSkin(name) {
+  const a1 = ACCENTS[name].a1, a2 = A2[name];
+  const s = uiBox({ w: 30, h: 30, rad: 10, top: a1, bot: a2,
+                    glow: [a2, 3.4, 90] });
+  // inset 0 1px 0 rgba(255,255,255,.35) — a 1px light line hugging the top edge
+  const buf = s.buf;
+  const W = s.w, cx = W / 2, hw = (30 - 1) / 2, hh = (30 - 1) / 2, cy = W / 2;
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < W; y++) {
+      const d = rrSdf(x, y, cx, cy, hw, hh, 10);
+      if (d > -1.4 && d < -0.2) {   // just inside the top border
+        const i = (y * W + x) * 4;
+        const bev = pm([255, 255, 255], 90);
+        // premultiplied "over" on the already-rendered pixel
+        const sa = bev[3] / 255;
+        buf[i]     = bev[0] + buf[i]     * (1 - sa);
+        buf[i + 1] = bev[1] + buf[i + 1] * (1 - sa);
+        buf[i + 2] = bev[2] + buf[i + 2] * (1 - sa);
+        buf[i + 3] = bev[3] + buf[i + 3] * (1 - sa);
+      }
+    }
+  }
+  return s;
+}
+
+// --- .sw — 40x22 pill switch. on = accent gradient + aInk knob at x=28,
+//     off = #232A37 face + #3A4353 border + #8D97A8 knob at x=10.
+function swSkin(name, on) {
+  const s = uiBox(on
+    ? { w: 40, h: 22, rad: 11, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255,
+        glow: [A2[name], 2.6, 70] }
+    : { w: 40, h: 22, rad: 11, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255 });
+  const buf = s.buf, W = s.w, H = s.h;
+  const kc = on ? 28 : 10;
+  const kcol = on ? A_INK[name] : [0x8D, 0x97, 0xA8];
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) {
+      const d = Math.hypot(x - (kc + PAD2), y - (H / 2));
+      if (d > 8.6) continue;
+      const i = (y * W + x) * 4;
+      const a = clamp01(8.0 - d + 0.5) * 255;
+      const src = pm(kcol, a);
+      const sa = src[3] / 255;
+      buf[i]     = src[0] + buf[i]     * (1 - sa);
+      buf[i + 1] = src[1] + buf[i + 1] * (1 - sa);
+      buf[i + 2] = src[2] + buf[i + 2] * (1 - sa);
+      buf[i + 3] = src[3] + buf[i + 3] * (1 - sa);
+    }
+  }
+  return s;
+}
+
+// --- .val.chip — 46x22 accent-soft pill behind the slider value
+function vchipSkin(name) {
+  const ac = ACCENTS[name];
+  return uiBox({ w: 46, h: 22, rad: 6, flat: ac.soft, flatA: ac.softA, bd: ac.soft, bdA: ac.bdA });
+}
+
+// --- .rail — 2px active-row accent rail (gradient a1 -> a2 over the row height)
+function railSkin(name) {
+  const W = 2 + PAD2, H = 42;
+  const buf = renderFxWH(W, H, (x, y) => {
+    if (x < 0.5 || x > 2.5) return null;
+    const cov = Math.min(clamp01(x - 0.5 + 0.5), clamp01(2.5 - x + 0.5));
+    const t = clamp01(y / (H - 1));
+    return pm(lerpColor(ACCENTS[name].a1, A2[name], t), 255 * cov);
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .row.sec .sl i — 6px accent square dot (radius 2) with its glow
+function secDotSkin(name) {
+  const s = uiBox({ w: 6, h: 6, rad: 2, top: ACCENTS[name].a1, bot: A2[name],
+                    glow: [A2[name], 1.8, 120] });
+  return s;
+}
+
+// --- .row.sec .cnt — neutral count pill (white .05 face, white .09 border)
+function cntChipSkin() {
+  return uiBox({ w: 24, h: 16, rad: 5, flat: [255, 255, 255], flatA: 13,
+                 bd: [255, 255, 255], bdA: 23 });
+}
+
+// --- .key — 18x18 keycap (#242B38 face, #39424F border, 2px bottom edge)
+function keycapSkin() {
+  const s = uiBox({ w: 18, h: 18, rad: 5, flat: [0x24, 0x2B, 0x38],
+                    bd: [0x39, 0x42, 0x4F], bdA: 255 });
+  const W = s.w, H = s.h, buf = s.buf;
+  const cx = W / 2, cy = H / 2, hw = (18 - 1) / 2, hh = (18 - 1) / 2;
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) {
+      // border-bottom-width:2px — the lower edge reads as a physical key
+      if (y - PAD2 < 18 - 2.5) continue;
+      const d = rrSdf(x, y, cx, cy, hw, hh, 5);
+      if (d > 0) continue;
+      const i = (y * W + x) * 4;
+      const src = pm([0x39, 0x42, 0x4F], 255);
+      const sa = src[3] / 255;
+      buf[i]     = src[0] + buf[i]     * (1 - sa);
+      buf[i + 1] = src[1] + buf[i + 1] * (1 - sa);
+      buf[i + 2] = src[2] + buf[i + 2] * (1 - sa);
+      buf[i + 3] = src[3] + buf[i + 3] * (1 - sa);
+    }
+  }
+  return s;
+}
+
+// --- .x — 26x26 ghost close button (#1C222C face, #313A4A border)
+function xBtnSkin() {
+  return uiBox({ w: 26, h: 26, rad: 8, flat: [0x1C, 0x22, 0x2C], bd: [0x31, 0x3A, 0x4A], bdA: 255 });
+}
+
+// --- .card::before — 3px accent top bar (a2 -> a1 42% -> transparent)
+function topBarSkin(name) {
+  // .card::before is inset 0 0 auto 0 — it spans the FULL 312px card, not the
+  // 280px content box. OBJ_BITMAP_LABEL renders at native size, so a 300px
+  // canvas would leave the right 12px of the card without its accent bar.
+  const W = PNL_W, H = 3 + 2 * PAD2;
+  const a2 = A2[name], a1 = ACCENTS[name].a1;
+  // NB: renderFxWH samples at sub-pixel centres, so a 1px/3px band must be
+  // written in continuous coordinates — never as integer y equality.
+  const buf = renderFxWH(W, H, (x, y) => {
+    const yy = y - PAD2;                       // 0..3 across the visible bar
+    if (yy < 0 || yy >= 3) return null;
+    const t = clamp01((x - PAD2) / (W - 2 * PAD2));
+    const col = t < 0.42 ? lerpColor(a2, a1, t / 0.42) : a1;
+    const a = t < 0.42 ? 255 : 255 * clamp01(1 - (t - 0.42) / 0.58);
+    return pm(col, a);
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .hd::after — header hairline (accent border -> white .02 at 70% -> gone)
+function hairSkin(name) {
+  const W = 280, H = 1 + 2 * PAD2;
+  const bd = ACCENTS[name].soft, bdA = ACCENTS[name].bdA;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const yy = y - PAD2;                       // 0..1 across the visible hairline
+    if (yy < 0 || yy >= 1) return null;
+    const t = clamp01((x - PAD2) / (W - 2 * PAD2));
+    if (t < 0.70) return pm([bd[0], bd[1], bd[2]], bdA);
+    const a = bdA * clamp01(1 - (t - 0.70) / 0.30);
+    return a < 0.5 ? null : pm([255, 255, 255], a * 0.08);
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .row.sec band wash — white .028 -> transparent at 62% (over the card)
+function secBandSkin() {
+  const W = 280, H = 42;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const t = clamp01(x / (W - 1));
+    const a = 7 * clamp01(1 - t / 0.62);
+    return a < 0.5 ? null : pm([255, 255, 255], a);
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .row.act wash — accent .12 -> transparent at 70%
+function actWashSkin(name) {
+  const W = 280, H = 42;
+  const ac = ACCENTS[name];
+  const buf = renderFxWH(W, H, (x, y) => {
+    const t = clamp01(x / (W - 1));
+    const a = ac.softA * clamp01(1 - t / 0.70);
+    return a < 0.5 ? null : pm(ac.soft, a);
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- .cset / .q.add / .dd .chev — the small pieces the row engine needs
+//     34x19 dual switch (.dual .sw), 22x22 dashed "+" cell (.q.add),
+//     6x6 accent chevron (.dd .chev).
+function dualSwSkin(name, on) {
+  const s = uiBox(on
+    ? { w: 34, h: 19, rad: 9, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255 }
+    : { w: 34, h: 19, rad: 9, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255 });
+  const W = s.w, H = s.h, buf = s.buf;
+  const kc = on ? 23.5 : 8.5;
+  const kcol = on ? A_INK[name] : [0x8D, 0x97, 0xA8];
+  for (let x = 0; x < W; x++) {
+    for (let y = 0; y < H; y++) {
+      const d = Math.hypot(x - (kc + PAD2), y - H / 2);
+      if (d > 7.1) continue;
+      const i = (y * W + x) * 4;
+      const src = pm(kcol, clamp01(6.5 - d + 0.5) * 255);
+      const sa = src[3] / 255;
+      buf[i]     = src[0] + buf[i]     * (1 - sa);
+      buf[i + 1] = src[1] + buf[i + 1] * (1 - sa);
+      buf[i + 2] = src[2] + buf[i + 2] * (1 - sa);
+      buf[i + 3] = src[3] + buf[i + 3] * (1 - sa);
+    }
+  }
+  return s;
+}
+function addCellSkin(name) {
+  const ac = ACCENTS[name];
+  // .q.add: accent-soft face. The CSS dash border cannot be baked into a
+  // raster without looking like noise, so the border is the SOLID aBd.
+  return uiBox({ w: 22, h: 22, rad: 6, flat: ac.soft, flatA: ac.softA, bd: ac.soft, bdA: ac.bdA });
+}
+function chevSkin(name) {
+  const W = 6 + 2 * PAD2, H = 6 + 2 * PAD2;
+  const c = ACCENTS[name].a1;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const px = x - PAD2, py = y - PAD2;
+    const d = Math.min(distSeg(px, py, 0.5, 1.4, 3, 3.9), distSeg(px, py, 3, 3.9, 5.5, 1.4));
+    if (d > 1.6) return null;
+    return pm(c, clamp01(1.6 - d + 0.5) * 255);
+  });
+  return { w: W, h: H, buf };
+}
+
 // ---------------------------------------------------------------- main
 const outDirs = [path.join(__dirname, '..', 'Files', 'Icons')];
 
@@ -914,7 +1180,9 @@ const panelFiles = [
 // count. Never stretch one skin across counts — the 14px corners and the 1px
 // border distort. 1..16 covers every card plus the dynamic Step / Base Box
 // section swaps; 1 and 2 were missing before, so those cards drew no skin.
-const PNL_CARD_ROWS_MAX = 16;
+// 20 also covers the section BANDS the redesign inserts (a band is itself a
+// 42px row, so a 11-setting card becomes 15 display rows).
+const PNL_CARD_ROWS_MAX = 20;
 for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
   panelFiles.push({ name: 'pnl_card' + r + '.bmp', ...pnlCardSkin(r) });
 }
@@ -939,6 +1207,31 @@ for (const g of glyphNames) {
   for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
 }
 panelFiles.push(...chipFiles, ...glyphFiles);
+
+// R-PANELUI2: per-accent chrome (mark · switch · value chip · rail · dot ·
+// washes) plus the neutral pieces (count pill, keycap, close button).
+const uiFiles = [
+  { name: 'pnl_cntchip.bmp', ...cntChipSkin() },
+  { name: 'pnl_keycap.bmp',  ...keycapSkin()  },
+  { name: 'pnl_xbtn.bmp',    ...xBtnSkin()    },
+  { name: 'pnl_secband.bmp', ...secBandSkin() },
+];
+for (const a of A_NAME) {
+  uiFiles.push({ name: 'pnl_mark_' + a + '.bmp',    ...markSkin(a)     });
+  uiFiles.push({ name: 'pnl_sw_on_' + a + '.bmp',   ...swSkin(a, true)  });
+  uiFiles.push({ name: 'pnl_vchip_' + a + '.bmp',   ...vchipSkin(a)     });
+  uiFiles.push({ name: 'pnl_rail_' + a + '.bmp',    ...railSkin(a)      });
+  uiFiles.push({ name: 'pnl_secdot_' + a + '.bmp',  ...secDotSkin(a)    });
+  uiFiles.push({ name: 'pnl_topbar_' + a + '.bmp',  ...topBarSkin(a)    });
+  uiFiles.push({ name: 'pnl_hair_' + a + '.bmp',    ...hairSkin(a)      });
+  uiFiles.push({ name: 'pnl_actbg_' + a + '.bmp',   ...actWashSkin(a)   });
+  uiFiles.push({ name: 'pnl_dsw_on_' + a + '.bmp',  ...dualSwSkin(a, true) });
+  uiFiles.push({ name: 'pnl_add_' + a + '.bmp',     ...addCellSkin(a)      });
+  uiFiles.push({ name: 'pnl_chev_' + a + '.bmp',    ...chevSkin(a)         });
+}
+uiFiles.push({ name: 'pnl_sw_off.bmp',  ...swSkin('gold', false) });
+uiFiles.push({ name: 'pnl_dsw_off.bmp', ...dualSwSkin('gold', false) });
+panelFiles.push(...uiFiles);
 
 let count = 0;
 for (const [fname, make] of files) {

@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRex — بخش COLORS · هفت راه بهتر</title>
+<style>
+:root{--pg:#080A0E;--pg2:#0C1016;--pg3:#111721;--ink:#E9EEF6;--ink2:#9DA9BA;--ink3:#6B7688;
+  --hair:#1B212C;--hair2:#232B38;--z:1.35;--gold1:#FFC247;--gold2:#FF8A00}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:radial-gradient(1200px 600px at 85% -10%,rgba(255,138,0,.07),transparent 60%),
+    radial-gradient(900px 500px at 5% 10%,rgba(124,92,255,.05),transparent 60%),
+    linear-gradient(180deg,var(--pg),var(--pg2) 40%,var(--pg));
+  color:var(--ink);font-family:Vazirmatn,"Segoe UI",Tahoma,sans-serif;font-size:13.5px;line-height:1.8;
+  padding:30px 34px 90px;-webkit-font-smoothing:antialiased}
+h1{font-size:23px;font-weight:800}
+h1 b{background:linear-gradient(90deg,var(--gold1),var(--gold2));-webkit-background-clip:text;background-clip:text;color:transparent}
+h2{font-size:15px;font-weight:800}
+code.k{background:var(--pg3);border:1px solid var(--hair2);border-radius:5px;padding:1px 6px;font-size:11.5px;
+  color:var(--gold1);direction:ltr;display:inline-block;font-family:Consolas,monospace}
+.wrap{max-width:1500px;margin:0 auto}
+.hero{padding-bottom:22px;border-bottom:1px solid var(--hair)}
+.lede{color:var(--ink2);font-size:13px;max-width:1180px;margin-top:9px}
+.lede b{color:var(--ink)}
+.src{background:var(--pg3);border:1px solid rgba(255,171,0,.35);border-radius:9px;padding:9px 13px;margin-top:14px;
+  font-size:12.5px;color:var(--gold1);direction:ltr;display:block;font-family:Consolas,monospace;overflow-x:auto}
+.bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-top:20px;position:sticky;top:0;z-index:60;
+  padding:12px 0;background:linear-gradient(180deg,rgba(8,10,14,.96),rgba(8,10,14,.80));backdrop-filter:blur(8px)}
+.bar .lbl{color:var(--ink3);font-size:12px;font-weight:600}
+.tg{background:var(--pg3);color:#C8D0DC;border:1px solid var(--hair2);border-radius:9px;padding:7px 14px;
+  font:600 12.5px Vazirmatn,Tahoma,sans-serif;cursor:pointer}
+.tg:hover{border-color:var(--gold2);color:var(--gold1)}
+.tg.on{background:linear-gradient(180deg,var(--gold1),var(--gold2));border-color:var(--gold2);color:#181206}
+section{margin-top:46px}
+.shead{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.shead .num{font:800 12px Arial,sans-serif;color:var(--gold1);border:1px solid rgba(255,171,0,.35);
+  background:rgba(255,171,0,.08);border-radius:7px;padding:1px 8px}
+.shead p{color:var(--ink2);font-size:12.5px;flex-basis:100%;max-width:1180px}
+
+/* ═════ panel base (Obsidian Gold v2) ═════ */
+.ac-gold{--a1:#FFC247;--a2:#FF8A00;--aSoft:rgba(255,171,0,.12);--aBd:rgba(255,171,0,.38);--aGlow:rgba(255,159,10,.45);--aInk:#1A1206}
+.ac-jade{--a1:#63ECBD;--a2:#12B886;--aSoft:rgba(18,184,134,.12);--aBd:rgba(18,184,134,.40);--aGlow:rgba(18,184,134,.40);--aInk:#04140F}
+.t-og{--r:14px;--barH:3px;--bar:linear-gradient(90deg,var(--a2),var(--a1) 42%,rgba(255,255,255,0));
+  --card:linear-gradient(180deg,#1E242F,#171C25 52%,#12161D);--bd:#2C3444;
+  --sh:0 28px 62px rgba(0,0,0,.70), inset 0 1px 0 rgba(255,255,255,.075);
+  --title:#F3F6FB;--muted:#8C96A6;--lbl:#CBD4E2;--val:#F3F6FB;
+  --hair:rgba(255,255,255,.075);--line:rgba(255,255,255,.055);
+  --field:#181D27;--fieldBd:#333C4C;--ghostBg:#1C222C;--ghostBd:#313A4A;
+  --track:#222937;--trackBd:#343D4D;
+  --knob:radial-gradient(circle at 35% 28%,#FFFFFF,#DDE3EC);--knobBd:rgba(0,0,0,.38);--knobSh:0 2px 7px rgba(0,0,0,.55)}
+.t-og *{box-sizing:border-box}
+.mt4{width:312px;font-family:Arial,Helvetica,sans-serif;direction:ltr;text-align:left}
+.card{width:312px;border-radius:var(--r);background:var(--card);border:1px solid var(--bd);
+  box-shadow:var(--sh);overflow:hidden;position:relative}
+.card::before{content:'';position:absolute;inset:0 0 auto 0;height:var(--barH);background:var(--bar);z-index:5}
+.card::after{content:'';position:absolute;inset:0;border-radius:var(--r);pointer-events:none;z-index:4;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.035)}
+.hd{height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;position:relative}
+.hd::after{content:'';position:absolute;inset:auto 0 0 0;height:1px;
+  background:linear-gradient(90deg,var(--aBd),rgba(255,255,255,.02) 70%,transparent)}
+.mark{width:30px;height:30px;border-radius:10px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--a1),var(--a2));color:var(--aInk);
+  box-shadow:0 5px 14px var(--aGlow), inset 0 1px 0 rgba(255,255,255,.35)}
+.htxt{min-width:0;flex:1}
+.ttl{font:700 12.5px Arial,sans-serif;letter-spacing:.75px;color:var(--title);line-height:1.25;white-space:nowrap}
+.subttl{display:flex;align-items:center;gap:5px;font:600 8.5px Arial,sans-serif;letter-spacing:.5px;color:var(--muted);margin-top:1px}
+.subttl i{width:4px;height:4px;border-radius:50%;display:inline-block;flex:none}
+.x{width:26px;height:26px;border-radius:8px;flex:none;display:grid;place-items:center;
+  font:700 13px Arial,sans-serif;color:var(--muted);background:var(--ghostBg);border:1px solid var(--ghostBd)}
+.rows{position:relative}
+.row{height:42px;padding:0 16px;border-top:1px solid var(--line);position:relative;display:flex;
+  align-items:center;justify-content:space-between;gap:10px}
+.row:first-child{border-top:0}
+.lbl{font:700 11.5px Arial,sans-serif;letter-spacing:.45px;color:var(--lbl);white-space:nowrap;
+  display:flex;align-items:center;gap:8px;min-width:0}
+.lbl.sm{font-size:10.5px;letter-spacing:.35px}
+.gl{width:22px;height:22px;border-radius:7px;flex:none;display:grid;place-items:center;
+  background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.08);color:var(--muted);font:700 9px Arial,sans-serif}
+.gl.on{background:var(--aSoft);border-color:var(--aBd);color:var(--a1)}
+.val{font:700 11px Arial,sans-serif;color:var(--val);font-variant-numeric:tabular-nums}
+.val.chip{background:var(--aSoft);border:1px solid var(--aBd);color:var(--a1);border-radius:6px;
+  padding:2px 8px;min-width:46px;text-align:center;flex:none}
+.val.hex{font:700 9.5px Consolas,monospace;letter-spacing:.4px;color:var(--muted);background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.09);border-radius:6px;padding:2px 7px;flex:none}
+.row.sec{border-top:1px solid var(--hair);background:linear-gradient(90deg,rgba(255,255,255,.028),transparent 62%)}
+.row.sec .sl{font:700 9.5px Arial,sans-serif;letter-spacing:1.3px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.row.sec .sl i{width:6px;height:6px;border-radius:2px;display:inline-block;
+  background:linear-gradient(135deg,var(--a1),var(--a2));box-shadow:0 0 8px var(--aGlow)}
+.row.sec .sr{flex:1;height:1px;background:linear-gradient(90deg,var(--hair),transparent);margin-left:10px}
+.row.sec .cnt{font:700 9px Arial,sans-serif;color:var(--muted);background:rgba(255,255,255,.05);
+  border:1px solid rgba(255,255,255,.09);border-radius:5px;padding:1px 6px;flex:none}
+.row.col{display:block;padding-top:4px}
+.row.col .lbl{display:block;margin-bottom:3px}
+.swset{display:flex;align-items:center;gap:4px}
+.prev{width:46px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.16);flex:none;position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.14)}
+.q{width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.14);flex:none}
+.q.act{outline:2px solid var(--a1);outline-offset:1px}
+.q.add{display:grid;place-items:center;color:var(--a1);background:var(--aSoft);border:1px dashed var(--aBd);font:700 13px Arial,sans-serif}
+.ft{height:48px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;
+  border-top:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.012),transparent)}
+.btn{height:28px;border-radius:8px;display:flex;align-items:center;justify-content:center;font:700 11px Arial,sans-serif;padding:0 14px}
+.btn.ghost{background:var(--ghostBg);border:1px solid var(--ghostBd);color:var(--muted)}
+.btn.primary{background:linear-gradient(180deg,var(--a1),var(--a2));color:var(--aInk);border:1px solid var(--a2);
+  box-shadow:0 7px 20px var(--aGlow), inset 0 1px 0 rgba(255,255,255,.32)}
+
+/* ═════ NEW colour-section pieces ═════ */
+/* 1 · colour strip inside the section band */
+.cstrip{display:flex;gap:3px;flex:none;margin-right:9px}
+.cstrip i{width:15px;height:15px;border-radius:4px;border:1px solid rgba(255,255,255,.20);display:block;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+/* 2 · colour-set row: 4 labelled swatches in ONE row */
+.cset{display:flex;gap:6px;flex:none}
+.ccell{display:flex;flex-direction:column;align-items:center;gap:2px}
+.ccell b{font:700 7px Arial,sans-serif;letter-spacing:.4px;color:var(--muted);line-height:1}
+.ccell i{width:38px;height:20px;border-radius:5px;display:block;border:1px solid rgba(255,255,255,.20);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.20)}
+.ccell.act i{outline:2px solid var(--a1);outline-offset:1px}
+/* 3 · 2x2 colour grid cell */
+.cgrid{display:flex;gap:16px;padding:0 16px;height:42px;align-items:center;border-top:1px solid var(--line)}
+.cgrid:first-child{border-top:0}
+.gcell{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+.gcell i{width:46px;height:22px;border-radius:6px;flex:none;border:1px solid rgba(255,255,255,.18);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.16)}
+.gcell div{min-width:0}
+.gcell b{display:block;font:700 9.5px Arial,sans-serif;letter-spacing:.35px;color:var(--lbl);line-height:1.25}
+.gcell u{text-decoration:none;display:block;font:700 8.5px Consolas,monospace;color:var(--muted);letter-spacing:.3px}
+/* 4 · colour + alpha in one row */
+.mini{width:86px;height:8px;border-radius:5px;background:var(--track);border:1px solid var(--trackBd);
+  position:relative;flex:none;box-shadow:inset 0 1px 2px rgba(0,0,0,.4)}
+.mini .fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;
+  background:linear-gradient(90deg,var(--a2),var(--a1));box-shadow:0 0 9px var(--aGlow)}
+.mini .knob{position:absolute;top:-5px;width:17px;height:17px;border-radius:50%;background:var(--knob);
+  border:1px solid var(--knobBd);box-shadow:var(--knobSh)}
+/* 5 · checkerboard alpha preview */
+.checker{border-radius:6px;flex:none;
+  background-image:linear-gradient(45deg,#2A3140 25%,transparent 25%,transparent 75%,#2A3140 75%),
+    linear-gradient(45deg,#2A3140 25%,transparent 25%,transparent 75%,#2A3140 75%);
+  background-size:8px 8px;background-position:0 0,4px 4px}
+/* 6 · big swatch + hex + chevron (minimal row) */
+.hexbox{display:flex;align-items:center;gap:8px;flex:none}
+.chev{width:7px;height:7px;border-right:1.7px solid var(--a1);border-bottom:1.7px solid var(--a1);
+  transform:rotate(45deg);flex:none}
+/* 7 · palette popover preview for the "minimal" variant */
+.pop{width:246px;border-radius:12px;background:linear-gradient(180deg,#1E242F,#141922);border:1px solid #2C3444;
+  box-shadow:0 24px 52px rgba(0,0,0,.72);overflow:hidden;font-family:Arial,Helvetica,sans-serif;direction:ltr}
+.pop .ph{height:34px;display:flex;align-items:center;gap:8px;padding:0 11px;border-bottom:1px solid rgba(255,255,255,.06);
+  font:700 10.5px Arial,sans-serif;color:#F3F6FB;letter-spacing:.6px}
+.pop .pb{padding:10px 11px}
+.plabel{font:700 8.5px Arial,sans-serif;letter-spacing:1px;color:#8C96A6;margin:9px 0 5px}
+.pgrid{display:grid;grid-template-columns:repeat(10,1fr);gap:4px}
+.pgrid b{aspect-ratio:1;border-radius:4px;display:block;border:1px solid rgba(255,255,255,.10)}
+.hue{height:10px;border-radius:5px;margin-bottom:8px;position:relative;
+  background:linear-gradient(90deg,#FF0000,#FFFF00,#00FF00,#00FFFF,#0000FF,#FF00FF,#FF0000)}
+
+/* ═════ shell ═════ */
+.grid{display:flex;gap:30px;flex-wrap:wrap;margin-top:24px;align-items:flex-start}
+.col{flex:none;max-width:100%}
+.cap{font:600 11.5px Vazirmatn,Tahoma,sans-serif;color:var(--ink);margin-bottom:7px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cap em{font-style:normal;font:600 10.5px Arial,sans-serif;color:var(--ink3);letter-spacing:.4px}
+.cbox{zoom:var(--z);border-radius:14px;padding:24px 26px;border:1px solid var(--hair2);
+  background:linear-gradient(180deg,#0F1520,#0B1017);display:flex;justify-content:center}
+.cbox.light{background:linear-gradient(180deg,#FBFCFE,#F1F4F9)}
+.note{font-size:11.5px;color:var(--ink3);margin-top:8px;max-width:430px;line-height:1.75}
+.note b{color:var(--ink2)}
+.tag{font:700 9.5px Vazirmatn,Tahoma,sans-serif;border-radius:999px;padding:2px 9px;flex:none;border:1px solid}
+.tag.now{border-color:rgba(240,69,95,.42);background:rgba(240,69,95,.10);color:#FFA7B6}
+.tag.new{border-color:rgba(18,184,134,.42);background:rgba(18,184,134,.10);color:#63ECBD}
+.tag.best{border-color:rgba(255,171,0,.5);background:rgba(255,171,0,.12);color:#FFC247}
+.rank{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-top:22px}
+.rk{display:flex;gap:11px;border:1px solid var(--hair2);background:#0F141C;border-radius:12px;padding:13px 15px}
+.rk b.n{width:24px;height:24px;flex:none;border-radius:8px;display:grid;place-items:center;
+  font:800 11px Arial,sans-serif;background:rgba(255,171,0,.14);border:1px solid rgba(255,171,0,.4);color:var(--gold1)}
+.rk div{font-size:12.3px;color:var(--ink2)}
+.rk u{text-decoration:none;color:var(--ink);font-weight:700}
+.notes{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;margin-top:22px}
+.nx{border-radius:13px;padding:16px 18px;border:1px solid var(--hair2);background:#0F141C}
+.nx h3{font-size:13px;margin-bottom:10px}
+.nx ul{padding-inline-start:18px}
+.nx li{font-size:12.3px;color:var(--ink2);margin-bottom:6px}
+.nx li b{color:var(--ink)}
+.nx.ok{border-color:rgba(18,184,134,.3)}
+.nx.warn{border-color:rgba(255,171,0,.3)}
+.foot{margin-top:46px;padding-top:20px;border-top:1px solid var(--hair);color:var(--ink3);font-size:12px;max-width:1180px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <h1>بخش <b>COLORS</b> — هفت راه برای بهتر و حرفه‌ای‌تر شدن</h1>
+  <div class="lede">
+    نوار بخش «COLORS» و چهار ردیف رنگ زیرش، در کارت <b>HTF Candles</b> — همان چیزی که انتخاب کردید.
+    مشکل فعلی: <b>چهار ردیف پشت‌سرهم، هرکدام ۸ سواچ + دکمهٔ +</b> → ۳۲ سواچ تکراری روی هم، چشم نمی‌داند کدام مهم است و
+    رنگ هر چهار تنظیم در یک نگاه دیده نمی‌شود. همهٔ راه‌حل‌ها روی همان شبکهٔ <code class="k">42px</code> و عرض <code class="k">312</code> هستند.
+  </div>
+  <div class="src">&lt;div class="row sec"&gt;&lt;span class="sl"&gt;COLORS&lt;/span&gt; … &lt;span class="cnt"&gt;4&lt;/span&gt;&lt;/div&gt;</div>
+</header>
+
+<div class="bar">
+  <span class="lbl">بزرگ‌نمایی:</span>
+  <button class="tg" data-zoom="1">۱×</button>
+  <button class="tg on" data-zoom="1.35">۱.۳۵×</button>
+  <button class="tg" data-zoom="1.9">۱.۹×</button>
+  <span class="lbl" style="margin-inline-start:12px">پس‌زمینه:</span>
+  <button class="tg on" data-bg="dark">تیره</button>
+  <button class="tg" data-bg="light">روشن</button>
+</div>
+
+<section id="band">
+  <div class="shead">
+    <span class="num">۱</span><h2>اول خودِ نوار بخش</h2>
+    <p>نوار «COLORS 4» الان فقط یک برچسب و یک شمارنده است. سه ارتقا برای خودش:</p>
+  </div>
+  <div class="grid" id="band-grid"></div>
+</section>
+
+<section id="rows">
+  <div class="shead">
+    <span class="num">۲</span><h2>راه‌های بهتر شدن ردیف‌های رنگ</h2>
+    <p>هر راه در بستر واقعی کارت HTF Candles — فقط بخش COLORS و فوتر، تا تفاوت با هم سنجیده شود.</p>
+  </div>
+  <div class="grid" id="row-grid"></div>
+</section>
+
+<section id="rank">
+  <div class="shead">
+    <span class="num">۳</span><h2>پیشنهاد من</h2>
+    <p>ترکیب برنده: <b>B2 + V3</b> — نوار بخش رنگ‌ها را نشان بدهد، و چهار رنگ در یک ردیف با برچسب ریز.</p>
+  </div>
+  <div class="rank" id="rank-list"></div>
+  <div class="notes">
+    <div class="nx ok">
+      <h3>چرا «چهار رنگ در یک ردیف» برنده است</h3>
+      <ul>
+        <li>ارتفاع بخش از <b>۱۶۸px به ۴۲px</b> می‌رسد — سه ردیف ۴۲px آزاد می‌شود (معادل نصف یک کارت).</li>
+        <li>هر چهار رنگ <b>کنار هم</b> دیده می‌شوند؛ کاربر «ست رنگ» را می‌بیند نه چهار تنظیم جدا.</li>
+        <li>تنظیم دقیق هر رنگ با یک تپ روی همان سواچ → پاپ‌اور پالت باز می‌شود (همان مسیر فعلی).</li>
+        <li>شبکهٔ ۴۲px و عرض ۳۱۲ دست‌نخورده: <code class="k">۴×۳۸ + ۳×۶ = ۱۷۰</code> و با برچسب می‌شود ۳۰۲ ≤ ۳۱۲.</li>
+      </ul>
+    </div>
+    <div class="nx warn">
+      <h3>نکتهٔ فنی ریز — که نباید از دست برود</h3>
+      <ul>
+        <li>برچسب زیر سواچ باید <b>Arial Bold ۷px</b> باشد. اگر MT4 آن را ناخوانا نشان داد، برچسب‌ها را حذف کنید و
+          <b>tooltip</b> بگذارید (همان کاری که برای دکمه‌های استریپ انجام شده).</li>
+        <li>حلقهٔ انتخاب باید روی سواچ روشن (سفید) <b>تیره</b> و روی سواچ تیره <b>روشن</b> باشد — وگرنه روی رنگ سفید ناپدید می‌شود.</li>
+        <li>سواچ شفاف روی زمینهٔ <b>شطرنجی</b> باید رندر شود، وگرنه ۰٪ و ۱۰۰٪ آلفا یکسان دیده می‌شوند.</li>
+        <li>هیچ‌کدام از این‌ها تنظیمی را حذف نمی‌کند؛ پاپ‌اور پالت با HEX و RECENT دست‌نخورده می‌ماند.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="foot">
+    همهٔ نمونه‌ها با همان اسکین‌های <code class="k">pnl_*</code> قابل تولیدند؛ فقط چند BMP تازه لازم است:
+    سواچ کوچک ۳۸×۲۰ با حلقهٔ سازگار با کنتراست، نوار رنگ داخل نوار بخش، و زمینهٔ شطرنجی.
+    هندسه و منطق دست‌نخورده می‌ماند.
+  </div>
+</section>
+
+</div>
+
+<script>
+/* the four colours of the HTF Candles COLORS section (real values from the card) */
+const C = [
+  {k:'BULL',   g:'B', v:'#12B886', hex:'12B886'},
+  {k:'BEAR',   g:'E', v:'#F0455F', hex:'F0455F'},
+  {k:'WICK',   g:'W', v:'#8C96A6', hex:'8C96A6'},
+  {k:'BORDER', g:'R', v:'#FFFFFF', hex:'FFFFFF'}
+];
+const SW = ['#FFAB00','#F0455F','#12B886','#1FA8E0','#7C5CFF','#CFE3FF','#FFFFFF','#141414'];
+const hd = '<div class="hd"><div class="mark">T</div><div class="htxt"><div class="ttl">HTF Candles</div>' +
+  '<div class="subttl"><i style="background:#12B886"></i>COLORS</div></div>' +
+  '<span class="x">&times;</span></div>';
+const ft = '<div class="ft"><span class="btn ghost">Reset</span><span class="btn primary">Done</span></div>';
+const shell = rows => '<div class="mt4 t-og ac-gold"><div class="card">' + hd +
+  '<div class="rows">' + rows + '</div>' + ft + '</div></div>';
+
+/* section band variants */
+const bandNow = '<div class="row sec"><span class="sl"><i></i>COLORS</span><span class="sr"></span><span class="cnt">4</span></div>';
+const bandStrip = '<div class="row sec"><span class="sl"><i></i>COLORS</span><span class="sr"></span>' +
+  '<span class="cstrip">' + C.map(c => '<i style="background:' + c.v + '"></i>').join('') + '</span>' +
+  '<span class="cnt">4</span></div>';
+const bandIcon = '<div class="row sec"><span class="sl"><i></i>COLORS</span>' +
+  '<span class="cstrip">' + C.map(c => '<i style="background:' + c.v + '"></i>').join('') + '</span>' +
+  '<span class="sr"></span><span class="cnt">4</span></div>';
+
+/* row helpers */
+const colRow = (c, act) => '<div class="row col"><span class="lbl sm">' + c.k + ' COLOR</span><div class="swset">' +
+  '<span class="prev" style="background:' + c.v + '"></span>' +
+  SW.map((s, i) => '<span class="q' + (i === act ? ' act' : '') + '" style="background:' + s + '"></span>').join('') +
+  '<span class="q add">+</span></div></div>';
+const minRow = c => '<div class="row"><span class="lbl"><span class="gl on">' + c.g + '</span>' + c.k + ' COLOR</span>' +
+  '<span class="hexbox"><span class="prev" style="background:' + c.v + '"></span>' +
+  '<span class="val hex">' + c.hex + '</span><span class="chev"></span></span></div>';
+const alphaRow = c => '<div class="row"><span class="lbl"><span class="gl on">' + c.g + '</span>' + c.k + '</span>' +
+  '<span class="hexbox"><span class="prev" style="background:' + c.v + '"></span>' +
+  '<span class="mini"><span class="fill" style="width:62px"></span><span class="knob" style="left:54px"></span></span>' +
+  '<span class="val chip">30%</span></span></div>';
+
+/* ═════ 1 · BAND VARIANTS ═════ */
+const BANDS = [
+  {t:'B0 · وضعیت فعلی', tag:'now', note:'نقطهٔ لهجه + برچسب + هیرلاین + شمارنده. تمیز است ولی هیچ چیزی از خودِ رنگ‌ها نمی‌گوید.',
+   html: shell(bandNow + colRow(C[0],2))},
+  {t:'B1 · نوار، رنگ‌ها را نشان می‌دهد', tag:'new',
+   note:'همان نوار، ولی چهار رنگ فعلی گروه داخلش دیده می‌شوند — <b>پیش‌نمایش ست رنگ بدون باز کردن هیچ ردیفی</b>. هزینه: صفر ردیف اضافه.',
+   html: shell(bandStrip + colRow(C[0],2))},
+  {t:'B2 · نوار + رنگ‌ها (هیرلاین کوتاه‌تر)', tag:'best',
+   note:'نسخهٔ تنظیم‌شدهٔ B1: هیرلاین کوتاه می‌شود تا رنگ‌ها فضای بیشتری بگیرند. این نوار برای <b>هر</b> بخش رنگی قابل استفاده است.',
+   html: shell(bandIcon + colRow(C[0],2))}
+];
+
+/* ═════ 2 · ROW VARIANTS ═════ */
+const ROWS = [
+  {t:'V0 · وضعیت فعلی', tag:'now',
+   note:'چهار ردیف ۴۲px، هرکدام ۸ سواچ + «+». مجموعاً <b>۳۲ سواچ</b> تکرارشده در ۱۶۸px. شلوغ‌ترین حالت و کم‌ترین دید کلی.',
+   html: shell(bandNow + C.map((c,i) => colRow(c, [2,1,5,6][i])).join(''))},
+  {t:'V1 · نوار رنگ + ردیف‌های سبک‌تر', tag:'new',
+   note:'ست رنگ در نوار می‌آید و ردیف‌ها به <b>پیش‌نمایش + ۵ سواچ اخیر + «+»</b> کاهش می‌یابند. تعادل خوبی بین «دید کلی» و «دسترسی سریع».',
+   html: shell(bandStrip + C.map((c,i) => colRow(c, [2,1,5,6][i])).join(''))},
+  {t:'V2 · مینیمال — سواچ + HEX', tag:'new',
+   note:'هر ردیف فقط <b>یک سواچ بزرگ + کد HEX + چورون</b>. تپ = پاپ‌اور پالت. تمیزترین حالت ممکن؛ کاربر عدد رنگ را می‌بیند نه ۳۲ مربع تکراری.',
+   html: shell(bandStrip + C.map(minRow).join(''))},
+  {t:'V3 · چهار رنگ در یک ردیف', tag:'best',
+   note:'کل بخش از <b>۴ ردیف به ۱ ردیف</b> می‌رسد: هر چهار رنگ کنار هم با برچسب ریز، سواچ فعال با حلقه. تپ روی هر سواچ = پالت آن رنگ.',
+   html: shell(bandNow + '<div class="row" style="justify-content:center"><span class="cset">' +
+     C.map((c,i) => '<span class="ccell' + (i === 0 ? ' act' : '') + '"><b>' + c.k +
+       '</b><i style="background:' + c.v + '"></i></span>').join('') + '</span></div>')},
+  {t:'V4 · شبکهٔ ۲×۲ (دوتا در هر ردیف)', tag:'new',
+   note:'چهار رنگ در دو ردیف ۴۲px — نصف ارتفاع، و هر رنگ با برچسب + HEX. برای کارت‌هایی که ۸ رنگ دارند (مثل HTF با ۴ رنگ یا Base Box) عالی است.',
+   html: shell(bandStrip +
+     '<div class="cgrid">' + C.slice(0,2).map(c => '<span class="gcell">' +
+       '<i style="background:' + c.v + '"></i><div><b>' + c.k + '</b><u>#' + c.hex + '</u></div></span>').join('') + '</div>' +
+     '<div class="cgrid">' + C.slice(2).map(c => '<span class="gcell">' +
+       '<i style="background:' + c.v + '"></i><div><b>' + c.k + '</b><u>#' + c.hex + '</u></div></span>').join('') + '</div>')},
+  {t:'V5 · رنگ + شفافیت در یک ردیف', tag:'new',
+   note:'ردیف <b>TRANSPARENCY</b> جدا حذف و به ردیف رنگ منتقل می‌شود: سواچ + اسلایدر آلفا + درصد. یک ردیف کمتر و رابطهٔ «رنگ ↔ شفافیت» واضح.',
+   html: shell(bandStrip + C.map(alphaRow).join('') + '<div class="row" style="justify-content:center">' +
+     '<span style="font:700 9px Arial;letter-spacing:.5px;color:#8C96A6">ROW GAP · 3 ROWS SAVED</span></div>')},
+  {t:'V6 · سواچ شفاف روی زمینهٔ شطرنجی', tag:'new',
+   note:'همان ردیف مینیمال، ولی پیش‌نمایش <b>روی شطرنجی</b> است تا ۳۰٪ و ۱۰۰٪ آلفا از هم تفکیک شوند، و حلقهٔ انتخاب با کنتراست رنگ هماهنگ می‌شود.',
+   html: shell(bandStrip + C.map(c => '<div class="row"><span class="lbl"><span class="gl on">' + c.g + '</span>' +
+     c.k + ' COLOR</span><span class="hexbox">' +
+     '<span class="prev checker" style="background-color:' + c.v + ';opacity:.72"></span>' +
+     '<span class="val hex">' + c.hex + '</span><span class="chev"></span></span></div>').join(''))}
+];
+
+/* ═════ 3 · RANK ═════ */
+const RANK = [
+  ['نوار بخش رنگ‌ها را نشان بدهد (B1/B2)','هیچ ردیفی اضافه نمی‌شود، ولی کاربر بدون باز کردن چیزی می‌فهمد ست رنگ فعلی چیست. برای هر بخش رنگی قابل استفاده است.'],
+  ['چهار رنگ در یک ردیف (V3)','بخش COLORS از ۱۶۸px به ۴۲px می‌رسد. سه ردیف آزاد، و هر چهار رنگ کنار هم دیده می‌شوند.'],
+  ['سواچ + HEX مینیمال (V2)','حذف ۳۲ سواچ تکراری. کاربر عدد دقیق رنگ را می‌بیند و برای انتخاب، پاپ‌اور را باز می‌کند.'],
+  ['شبکهٔ ۲×۲ (V4)','برای کارت‌هایی با ۴+ رنگ (HTF، Base Box، Level Colors) بهترین نسبت تراکم به خوانایی.'],
+  ['رنگ + آلفا در یک ردیف (V5)','یک ردیف کمتر و رابطهٔ رنگ/شفافیت در یک نگاه — مخصوصاً برای ZONE COLOR و FILL COLOR.'],
+  ['شطرنجی برای آلفا (V6)','جزئیات کوچک ولی حیاتی: بدون آن، شفافیت ۰٪ و ۱۰۰٪ شبیه هم دیده می‌شوند.']
+];
+
+/* ═════ MOUNT ═════ */
+const mount = (list, id) => {
+  document.getElementById(id).innerHTML = list.map(v =>
+    '<div class="col"><div class="cap"><b>' + v.t + '</b><span class="tag ' + v.tag + '">' +
+      (v.tag === 'now' ? 'وضعیت فعلی' : v.tag === 'best' ? 'پیشنهاد' : 'بهبود') + '</span></div>' +
+    '<div class="cbox" data-bgbox>' + v.html + '</div><div class="note">' + v.note + '</div></div>').join('');
+};
+mount(BANDS, 'band-grid');
+mount(ROWS, 'row-grid');
+document.getElementById('rank-list').innerHTML = RANK.map((r, i) =>
+  '<div class="rk"><b class="n">' + (i + 1) + '</b><div><u>' + r[0] + '</u> — ' + r[1] + '</div></div>').join('');
+
+const zb = document.querySelectorAll('.tg[data-zoom]');
+zb.forEach(b => b.addEventListener('click', () => {
+  zb.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.documentElement.style.setProperty('--z', b.dataset.zoom);
+}));
+const bb = document.querySelectorAll('.tg[data-bg]');
+bb.forEach(b => b.addEventListener('click', () => {
+  bb.forEach(x => x.classList.remove('on')); b.classList.add('on');
+  document.querySelectorAll('[data-bgbox]').forEach(x => { x.classList.toggle('light', b.dataset.bg === 'light'); });
+}));
+</script>
+</body>
+</html>
