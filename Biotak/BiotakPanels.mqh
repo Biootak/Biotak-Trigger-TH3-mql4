@@ -4173,11 +4173,13 @@ int PnlLabelX(const int item,const int row,const int px)
    return x;
 }
 
-//--- active-row chrome: the 2px accent rail on the content edge + the wash
+//--- active-row chrome: the 2px accent rail on the card edge + the wash.
+//--- The wash is always ONE column wide (312, full-bleed like the band):
+//--- narrow cards paint it at the card origin, wide cards at the column px.
 void PnlPaintActive(const int item,const int row,const int px,const int ry,const bool on)
 {
    if(!on) return;
-   PnlSetBitmap(PnlName(item,row,"ACT"), px+PNL_PAD_X, ry, 280, 42,
+   PnlSetBitmap(PnlName(item,row,"ACT"), px, ry, PNL_WEL, 42,
                 PnlAccentRes(item,"pnl_actbg"), 1484);
    PnlSetBitmap(PnlName(item,row,"RAIL"), px-1, ry, 4, 42,
                 PnlAccentRes(item,"pnl_rail"), 1501);
@@ -4395,7 +4397,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // (PnlRowDef defaults kind=SEC, label="") — never paint a blank
        // band with a "0" pill during dynamic rebuilds.
        if(label == "" && PnlSecCount(item,row) <= 0) return;
-       PnlSetBitmap(PnlName(item,row,"BAND"), px+PNL_PAD_X, ry, cardW-2*PNL_PAD_X, 42,
+       PnlSetBitmap(PnlName(item,row,"BAND"), px, ry, cardW, 42,
                     wide ? "::Files\\Icons\\pnl_secbandW.bmp" : "::Files\\Icons\\pnl_secband.bmp", 1486);
        ObjectSetString(0,PnlName(item,row,"BAND"),OBJPROP_TOOLTIP,"Collapse / expand this section");
       PnlSetBitmap(PnlName(item,row,"BDOT"), px+PNL_PAD_X-PNL_SECDOT_PAD, ry+18-PNL_SECDOT_PAD,
@@ -4884,8 +4886,8 @@ void PnlCreate(const int item)
 
      PnlSetBitmap(PnlHead(item,"topbar"), px, py,
                   cardW, 3+2*PNL_CHIP_PAD, PnlWideAccentRes(item,"pnl_topbar",wide), 1481);
-     PnlSetBitmap(PnlHead(item,"hair"), px+PNL_PAD_X, py+PNL_HEAD_H-1-PNL_CHIP_PAD,
-                  cardW-2*PNL_PAD_X, 1+2*PNL_CHIP_PAD,
+     PnlSetBitmap(PnlHead(item,"hair"), px, py+PNL_HEAD_H-1-PNL_CHIP_PAD,
+                  cardW, 1+2*PNL_CHIP_PAD,
                   PnlWideAccentRes(item,"pnl_hair",wide), 1495);
 
     // .mark — 30px accent chip; its glyph is the 13px ink set centred inside
@@ -5040,7 +5042,7 @@ void PnlCreate(const int item)
       if(line>0 && (r==0 || PnlRowLine(item,r-1)!=line))
       {
          string sep=PnlName(item,r,"RS");
-          PnlSetRect(sep, px+PNL_PAD_X, py+PNL_HEAD_H+line*PNL_ROW_H, cardW-2*PNL_PAD_X, 1, PNL_CLR_LINE);
+          PnlSetRect(sep, px, py+PNL_HEAD_H+line*PNL_ROW_H, cardW, 1, PNL_CLR_LINE);
          ObjectSetInteger(0,sep,OBJPROP_ZORDER,1490);
       }
       PnlCreateRow(item,r,bx,py);

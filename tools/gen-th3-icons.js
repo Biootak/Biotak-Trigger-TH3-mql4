@@ -1134,8 +1134,11 @@ function topBarSkin(name, wide) {
 }
 
 // --- .hd::after — header hairline (accent border -> white .02 at 70% -> gone)
+// P-UI-29: FULL card width (spec inset 0), never the 280 content box — the
+// fade percentages are of the full row box, so a content-width skin ends its
+// visible run 84px early (card x212 of 312).
 function hairSkin(name, wide) {
-  const W = wide ? PNL_WIDE_WEL - 32 : 280, H = 1 + 2 * PAD2;
+  const W = wide ? PNL_WIDE_WEL : PNL_W, H = 1 + 2 * PAD2;
   const bd = ACCENTS[name].soft, bdA = ACCENTS[name].bdA;
   const buf = renderFxWH(W, H, (x, y) => {
     const yy = y - PAD2;                       // 0..1 across the visible hairline
@@ -1149,9 +1152,10 @@ function hairSkin(name, wide) {
 }
 
 // --- .row.sec band wash — white .028 -> transparent at 62% (over the card).
-//     The W twin spans both columns of a wide card (608-32).
+//     P-UI-29: FULL row width like every other row background (spec .row.sec
+//     is the row's own background, spanning the padding too) — was 280/592.
 function secBandSkin(wide) {
-  const W = wide ? PNL_WIDE_WEL - 32 : 280, H = 42;
+  const W = wide ? PNL_WIDE_WEL : PNL_W, H = 42;
   const buf = renderFxWH(W, H, (x, y) => {
     const t = clamp01(x / (W - 1));
     // RICH-MT4 (2026-09-11): spec white .028 (a=7) vanishes on the blit —
@@ -1163,8 +1167,9 @@ function secBandSkin(wide) {
 }
 
 // --- .row.act wash — accent .12 -> transparent at 70%
+// P-UI-29: one column wide (312), full-bleed like the band — was 280.
 function actWashSkin(name) {
-  const W = 280, H = 42;
+  const W = PNL_W, H = 42;
   const ac = ACCENTS[name];
   const buf = renderFxWH(W, H, (x, y) => {
     const t = clamp01(x / (W - 1));

@@ -740,8 +740,8 @@ def render_card(item):
 
     # ── header
     c.img("pnl_topbar_%s.bmp" % aname, 0, 0, WEL, 3 + 2 * D["PNL_CHIP_PAD"], 1)
-    c.img("pnl_hair_%s.bmp" % aname, PAD, HH - 1 - D["PNL_CHIP_PAD"],
-          WEL - 2 * PAD, 1 + 2 * D["PNL_CHIP_PAD"], 2)
+    c.img("pnl_hair_%s.bmp" % aname, 0, HH - 1 - D["PNL_CHIP_PAD"],
+          WEL, 1 + 2 * D["PNL_CHIP_PAD"], 2)
     MP = D["PNL_MARK_PAD"]
     c.img("pnl_mark_%s.bmp" % aname, PAD - MP, D["PNL_MARK_Y"] - MP,
           D["PNL_MARK_VIS"] + 2 * MP, D["PNL_MARK_VIS"] + 2 * MP, 3)
@@ -811,7 +811,8 @@ def render_card(item):
     for i, r in enumerate(rows):
         ry = HH + i * RH
         if i > 0:
-            c.rect(PAD, ry, WEL - 2 * PAD, 1, rgb(CLR["LINE"]), 1)
+            # P-UI-29: full card width like the spec's .row border-top.
+            c.rect(0, ry, WEL, 1, rgb(CLR["LINE"]), 1)
         kind = r["kind"]
         ico, key, lab = r["ico"], r["key"], r["label"]
         lx = PAD + (D["PNL_CHIP_VIS"] + 8 if ico else 0) + (D["PNL_KEYCAP_VIS"] + 6 if key else 0)
@@ -837,7 +838,8 @@ def render_card(item):
             c.text(x + D["PNL_KEYCAP_VIS"], y + 4, key, rgb(CLR["LABEL"]), PT["key"], True, "ru")
 
         if kind == 7:                                        # SECTION BAND
-            c.img("pnl_secband.bmp", PAD, ry, 280, 42, 2)
+            # P-UI-29: full row width — spec .row.sec is the row's own bg.
+            c.img("pnl_secband.bmp", 0, ry, WEL, 42, 2)
             c.img("pnl_secdot_%s.bmp" % aname, PAD - D["PNL_SECDOT_PAD"], ry + 18 - D["PNL_SECDOT_PAD"],
                   D["PNL_SECDOT_VIS"] + 2 * D["PNL_SECDOT_PAD"],
                   D["PNL_SECDOT_VIS"] + 2 * D["PNL_SECDOT_PAD"], 4)
@@ -893,7 +895,8 @@ def render_card(item):
         if kind == 1:                                        # SWITCH
             on = lab in ON
             if on:
-                c.img("pnl_actbg_%s.bmp" % aname, PAD, ry, 280, 42, 1)
+                # P-UI-29: one column, full-bleed like the band.
+                c.img("pnl_actbg_%s.bmp" % aname, 0, ry, WEL, 42, 1)
                 c.img("pnl_rail_%s.bmp" % aname, -1, ry, 4, 42, 4)
             chip(on)
             keycap(PAD + D["PNL_CHIP_VIS"] + 8, ry + 12)
