@@ -33,11 +33,11 @@
 #resource "\\Files\\Icons\\tools_off.bmp"
 #resource "\\Files\\Icons\\tools_on.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
-//--- ORBSTATE (2026-09-12): the OPEN-state orb skin — the same 64px disc with
-//--- the "TRex" wordmark in place of the bow (preview .orb / .orbtext). Both
-//--- masters share one chrome and differ only in the middle, so the ring's halo
-//--- and border are identical in both states. Built by tools/make-orb-word.ps1
-//--- and embedded by tools/gen-th3-icons.js.
+//--- ORBWORD-OFF (2026-09-12, user decision — no wordmark on the orb, ever:
+//--- the "TRex" text over the bow read as mud on the chart). The open-state
+//--- skin + its builder stay in place for a one-line restore (uncomment the
+//--- word branch in CircOrbRes below): tools/make-orb-word.ps1 (master),
+//--- tools/gen-th3-icons.js (embed), Files/Icons/orb_word.bmp (skin).
 #resource "\\Files\\Icons\\orb_word.bmp"
 #resource "\\Files\\Icons\\circ_off.bmp"
 #resource "\\Files\\Icons\\circ_on.bmp"
@@ -378,12 +378,14 @@ bool CircPointOnMenu(const int mx, const int my)
 //+------------------------------------------------------------------+
 string CircOrbBg()        { return g_UI.btnPrefix + "CircOrbBg"; }
 // ORBSTATE: the orb is the menu's own button, so it reports the menu's state —
-// closed shows the bow medallion, open swaps in the "TRex" wordmark (the
-// preview's .orb vs .orbtext). Two skins, one object, one 64px disc.
+// ORBWORD-OFF (2026-09-12, user decision): open keeps the bow medallion too,
+// the "TRex" wordmark swap is retired (text over the bow read as mud). To
+// restore: uncomment the word branch below (preview .orb / .orbtext).
 string CircOrbRes()
 {
-   return g_UI.menuVisible ? "::Files\\Icons\\orb_word.bmp"
-                           : "::Files\\Icons\\orb_bg.bmp";
+   //return g_UI.menuVisible ? "::Files\\Icons\\orb_word.bmp"
+   //                        : "::Files\\Icons\\orb_bg.bmp";
+   return "::Files\\Icons\\orb_bg.bmp";
 }
 // Re-point the orb's bitmap. Called from CreateMenu() so EVERY open/close path
 // (orb click, long-press card, Base Knot arm/disarm, init) lands on the right

@@ -335,6 +335,15 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
    only its existing sliders; no new rows/inputs. Trigger LABEL COLOR row
    has no draw site (pre-existing) so it stays `--`.)
 
+- **Orb wordmark is retired — the orb is always the bow** (2026-09-12, user
+  decision — the "TRex" text over the bow medallion read as mud on the chart).
+  Commented in place with the `ORBWORD-OFF:` marker: the word branch in
+  `CircOrbRes()` (`Biotak/BiotakMenu.mqh`) — open keeps `orb_bg.bmp` like
+  closed. Dormant remnants left compiling on purpose: `orb_word.bmp`
+  (still generated + embedded, ~20KB), `tools/orb-word-master.bgra`,
+  `tools/make-orb-word.ps1`. Previews render bow in both states. To restore:
+  uncomment the `ORBWORD-OFF:` branch. Full+Lite compile 0 errors.
+
 - **Base / Knot Measurement Tool = Tools slot 3, native-like drag, single-shot**
   (2026-09-05 drawer; 2026-09-06 drag gesture: press = corner 1, hold + move
   = live rubber-band + Entry/SL/TP, release = commit — exactly like MT4's own

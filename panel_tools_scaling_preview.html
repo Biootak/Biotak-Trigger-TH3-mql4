@@ -315,7 +315,8 @@ const mi = (it, deg, r, ex) => {
     'px;top:' + p[1].toFixed(1) + 'px">' + svg(it.ic) + '</span>';
 };
 const ghostRing = () => RING6.map((ic, i) => mi({ic:ic}, -90 + 360 * i / 6, MRING, ' ghost')).join('');
-const orbEl = () => '<span class="orb" style="left:' + CX + 'px;top:' + CY + 'px"><span class="orbtext"><span class="wtr">TR</span><span class="wex">ex</span></span></span>';
+/* open orb = plain disc (ORBWORD-OFF 2026-09-12: no wordmark on the orb; this demo has no BOW asset) */
+const orbEl = () => '<span class="orb" style="left:' + CX + 'px;top:' + CY + 'px"></span>';
 const stage = inner => '<div class="mstage" style="width:' + W + 'px;height:' + H + 'px">' + inner + '</div>';
 
 /* ══════════════════════════════════════════════════════════════════
