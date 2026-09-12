@@ -29,10 +29,12 @@
                is still a bright blob. This blends the blurred plate toward
                -BaseHex, which is what actually lets the wordmark dominate.
 
-    Text = Arial Bold, #FFC247, per-glyph tracking (+0.9px, the preview's
-    letter-spacing), an amber glow behind it (blurred text mask) and the crisp
-    mask on top - all composited in straight alpha, then premultiplied into the
-    master exactly like make-orb-bow.ps1 does.
+    Text = Arial Bold, per-glyph tracking (+0.9px, the preview's
+    letter-spacing), split positional at -SplitAt: "TR" in the stamp blue
+    (clrBlue) and "ex" in the stamp red (clrRed), each half with its own
+    glow behind it (blurred text mask) and the crisp mask on top - all
+    composited in straight alpha, then premultiplied into the master
+    exactly like make-orb-bow.ps1 does.
 
     Output: tools/orb-word-master.bgra (MxM top-down premultiplied BGRA), the
     single source of truth tools/gen-th3-icons.js embeds into
@@ -57,10 +59,12 @@ param(
     [double]$Feather = 0.10,     # soft edge of the plate (fraction of the disc radius)
     [double]$BlurPx = 5.0,       # blur sigma in MASTER pixels for the plate art
     [double]$BlurPasses = 3,     # box passes; 3 approximates a gaussian
-    [double]$Fade = 0.50,        # push the blurred plate this far toward -BaseHex
+    [double]$Fade = 0.70,        # push the blurred plate this far toward -BaseHex
     [string]$BaseHex = '#141A23',# the dark disc base the plate fades into
     [double]$TextPx = 14.5,      # preview .orbtext is 15px on a 64px orb
     [double]$Tracking = 0.9,     # preview letter-spacing: .9px
+    [int]$SplitAt = 2,           # first SplitAt glyphs wear stamp blue ("TR"),
+                                 # the rest wear stamp red ("ex")
     [double]$GlowSpread = 0.55,  # glow strength behind the word
     [double]$GlowPx = 1.7        # glow sigma in master px (the old 6 binomial
                                  # passes were ~1.7px, kept at that size so the
@@ -249,10 +253,42 @@ for ($y = 0; $y -lt $M; $y++) {
     }
 }
 
-# ---------------------------------------------------------------- wordmark mask
-# Arial Bold, drawn glyph by glyph so the preview's .9px tracking survives.
+# ---------------------------------------------------------------- wordmark masks
+# TWO masks, one per wordmark half, so "TR" wears the stamp blue (clrBlue)
+# and "ex" the stamp red (clrRed). Layout is measured ONCE over the whole
+# label, so the split moves zero advances: both halves land exactly where
+# the old uniform word did.
+if ($SplitAt -lt 0) { $SplitAt = 0 }
+if ($SplitAt -gt $Label.Length) { $SplitAt = $Label.Length }
+function Read-AlphaMask($bmp) {
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $M, $M)
+    $lk = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+                        [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    try {
+        $stride = $lk.Stride
+        $tmp = New-Object byte[] ($stride * $M)
+        [System.Runtime.InteropServices.Marshal]::Copy($lk.Scan0, $tmp, 0, $tmp.Length)
+        $mk = New-Object double[] $n
+        for ($yy = 0; $yy -lt $M; $yy++) {
+            $rowOff = $yy * $stride
+            $mkOff = $yy * $M
+            for ($xx = 0; $xx -lt $M; $xx++) {
+                $mk[$mkOff + $xx] = [double]($tmp[$rowOff + $xx * 4 + 3]) / 255.0
+            }
+        }
+        return ,$mk
+    } finally { $bmp.UnlockBits($lk) }
+}
+function Draw-WordPart($g, $font, $fmt, $brush, $text, $penStart, $baseY, $adv, $advFrom) {
+    $pen = $penStart
+    for ($c = 0; $c -lt $text.Length; $c++) {
+        $g.DrawString($text.Substring($c, 1), $font, $brush, [single]$pen, [single]$baseY, $fmt)
+        $pen += $adv[$advFrom + $c] + $Tracking
+    }
+}
 $tmpBmp = New-Object System.Drawing.Bitmap($M, $M, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-$mask = New-Object double[] $n
+$maskTR = $null
+$maskEX = $null
 try {
     $g = [System.Drawing.Graphics]::FromImage($tmpBmp)
     try {
@@ -276,59 +312,73 @@ try {
                 $total += $meas.Width
             }
             $total += $Tracking * ($Label.Length - 1)
-            $pen = $cx - $total / 2.0
+            $pen0 = $cx - $total / 2.0
             $baseY = $cy - $font.GetHeight($g) / 2.0
-            for ($c = 0; $c -lt $Label.Length; $c++) {
-                $ch = $Label.Substring($c, 1)
-                $g.DrawString($ch, $font, $brush, [single]$pen, [single]$baseY, $fmt)
-                $pen += $adv[$c] + $Tracking
-            }
+            Draw-WordPart $g $font $fmt $brush $Label.Substring(0, $SplitAt) $pen0 $baseY $adv 0
+            $maskTR = Read-AlphaMask $tmpBmp
+            $g.Clear([System.Drawing.Color]::FromArgb(0, 0, 0, 0))
+            $pen1 = $pen0
+            for ($c = 0; $c -lt $SplitAt; $c++) { $pen1 += $adv[$c] + $Tracking }
+            Draw-WordPart $g $font $fmt $brush $Label.Substring($SplitAt) $pen1 $baseY $adv $SplitAt
+            $maskEX = Read-AlphaMask $tmpBmp
         } finally { $brush.Dispose(); $font.Dispose() }
     } finally { $g.Dispose() }
-
-    $rect = New-Object System.Drawing.Rectangle(0, 0, $M, $M)
-    $data = $tmpBmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
-                             [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-    try {
-        $stride = $data.Stride
-        $tmp = New-Object byte[] ($stride * $M)
-        [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $tmp, 0, $tmp.Length)
-        for ($y = 0; $y -lt $M; $y++) {
-            for ($x = 0; $x -lt $M; $x++) {
-                $mask[$y * $M + $x] = [double]($tmp[$y * $stride + $x * 4 + 3]) / 255.0
-            }
-        }
-    } finally { $tmpBmp.UnlockBits($data) }
 } finally { $tmpBmp.Dispose() }
 
 # ---------------------------------------------------------------- glow + word
-# The word colour is uniform, so the glow blur runs with weight = 1 everywhere.
+# Each half glows in its OWN ink (blue halo behind TR, red behind ex), so the
+# two halos never muddy each other. The glow blur runs with weight = 1
+# everywhere.
 $ones = New-Object double[] $n
 for ($i = 0; $i -lt $n; $i++) { $ones[$i] = 1.0 }
 $glowRad = [int][Math]::Round($GlowPx)
 if ($glowRad -lt 1) { $glowRad = 1 }
-$gl = Invoke-BoxBlur $mask $mask $mask $ones $M $M $glowRad 3
-$glow = $gl[0]
-$goldR = 255.0; $goldG = 194.0; $goldB = 71.0          # #FFC247 - the preview's .orbtext colour
+$glTR = Invoke-BoxBlur $maskTR $maskTR $maskTR $ones $M $M $glowRad 3
+$glEX = Invoke-BoxBlur $maskEX $maskEX $maskEX $ones $M $M $glowRad 3
+$glowTR = $glTR[0]
+$glowEX = $glEX[0]
+$trR = 0.0; $trG = 0.0; $trB = 255.0          # clrBlue - the stamp's TR
+$exR = 255.0; $exG = 0.0; $exB = 0.0          # clrRed - the stamp's ex
 
 for ($y = 0; $y -lt $M; $y++) {
     for ($x = 0; $x -lt $M; $x++) {
         $i = $y * $M + $x
         if ($sa[$i] -le 0.0) { continue }
-        $gv = $glow[$i] * $GlowSpread
+        $gv = $glowTR[$i] * $GlowSpread
         if ($gv -gt 1.0) { $gv = 1.0 }
-        if ($gv -gt 0.0) {                                # glow behind the glyph
-            $sr[$i] = $sr[$i] * (1.0 - $gv) + $goldR * $gv
-            $sg[$i] = $sg[$i] * (1.0 - $gv) + $goldG * $gv
-            $sb[$i] = $sb[$i] * (1.0 - $gv) + $goldB * $gv
+        if ($gv -gt 0.0) {                                # blue glow behind TR
+            $sr[$i] = $sr[$i] * (1.0 - $gv) + $trR * $gv
+            $sg[$i] = $sg[$i] * (1.0 - $gv) + $trG * $gv
+            $sb[$i] = $sb[$i] * (1.0 - $gv) + $trB * $gv
         }
-        $cov = $mask[$i]
-        if ($cov -gt 0.0) {                               # crisp glyph on top
-            $sr[$i] = $sr[$i] * (1.0 - $cov) + $goldR * $cov
-            $sg[$i] = $sg[$i] * (1.0 - $cov) + $goldG * $cov
-            $sb[$i] = $sb[$i] * (1.0 - $cov) + $goldB * $cov
+        $gv = $glowEX[$i] * $GlowSpread
+        if ($gv -gt 1.0) { $gv = 1.0 }
+        if ($gv -gt 0.0) {                                # red glow behind ex
+            $sr[$i] = $sr[$i] * (1.0 - $gv) + $exR * $gv
+            $sg[$i] = $sg[$i] * (1.0 - $gv) + $exG * $gv
+            $sb[$i] = $sb[$i] * (1.0 - $gv) + $exB * $gv
+        }
+        $cov = $maskTR[$i]
+        if ($cov -gt 0.0) {                               # crisp TR on top
+            $sr[$i] = $sr[$i] * (1.0 - $cov) + $trR * $cov
+            $sg[$i] = $sg[$i] * (1.0 - $cov) + $trG * $cov
+            $sb[$i] = $sb[$i] * (1.0 - $cov) + $trB * $cov
+        }
+        $cov = $maskEX[$i]
+        if ($cov -gt 0.0) {                               # crisp ex on top
+            $sr[$i] = $sr[$i] * (1.0 - $cov) + $exR * $cov
+            $sg[$i] = $sg[$i] * (1.0 - $cov) + $exG * $cov
+            $sb[$i] = $sb[$i] * (1.0 - $cov) + $exB * $cov
         }
     }
+}
+# one combined mask/glow for the chrome check below (the wordmark may run
+# over the plate rim, but never past 0.80R)
+$mask = New-Object double[] $n
+$glow = New-Object double[] $n
+for ($i = 0; $i -lt $n; $i++) {
+    if ($maskTR[$i] -gt $maskEX[$i]) { $mask[$i] = $maskTR[$i] } else { $mask[$i] = $maskEX[$i] }
+    if ($glowTR[$i] -gt $glowEX[$i]) { $glow[$i] = $glowTR[$i] } else { $glow[$i] = $glowEX[$i] }
 }
 
 # ---------------------------------------------------------------- premultiply + write

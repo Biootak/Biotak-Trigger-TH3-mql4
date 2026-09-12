@@ -87,8 +87,10 @@ section{margin-top:46px}
 .orb img{width:64px;height:64px;display:block;object-fit:contain}
 .orb.small{width:56px;height:56px}
 .orb.small img{width:56px;height:56px}
-.orbtext{font:800 15px Arial,sans-serif;letter-spacing:.9px;color:#FFC247;
-  text-shadow:0 0 12px rgba(255,159,10,.6);display:grid;place-items:center}
+.orbtext{font:800 15px Arial,sans-serif;letter-spacing:.9px;
+  display:grid;place-items:center}
+.orbtext .wtr{color:#0000FF;text-shadow:0 0 12px rgba(0,90,255,.7)}
+.orbtext .wex{color:#FF0000;text-shadow:0 0 12px rgba(255,70,70,.7)}
 /* tools list submenu */
 .tlist{position:absolute;width:156px;border-radius:12px;overflow:hidden;
   background:linear-gradient(180deg,#1E242F,#141922);border:1px solid #2C3444;
@@ -296,7 +298,7 @@ const BOW = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmA
 /* closed -> the bow artwork · open -> the wordmark REPLACES the icon */
 function orb(x, y, word, small){
   const inner = word
-    ? '<span class="orbtext">TRex</span>'
+    ? '<span class="orbtext"><span class="wtr">TR</span><span class="wex">ex</span></span>'
     : '<img src="' + BOW + '" alt="TRex bow">';
   return '<span class="orb' + (small ? ' small' : '') + '" style="left:' + x + 'px;top:' + y + 'px">' +
     inner + '</span>';
