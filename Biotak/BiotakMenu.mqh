@@ -17,14 +17,8 @@
 #resource "\\Files\\Icons\\zone_on.bmp"
 #resource "\\Files\\Icons\\zones_off.bmp"
 #resource "\\Files\\Icons\\zones_on.bmp"
-#resource "\\Files\\Icons\\ssls_off.bmp"
-#resource "\\Files\\Icons\\ssls_on.bmp"
-#resource "\\Files\\Icons\\chk_off.bmp"
-#resource "\\Files\\Icons\\chk_on.bmp"
 #resource "\\Files\\Icons\\dots_off.bmp"
 #resource "\\Files\\Icons\\dots_on.bmp"
-#resource "\\Files\\Icons\\tl_off.bmp"
-#resource "\\Files\\Icons\\tl_on.bmp"
 #resource "\\Files\\Icons\\atr_off.bmp"
 #resource "\\Files\\Icons\\atr_on.bmp"
 #resource "\\Files\\Icons\\box_off.bmp"
@@ -38,8 +32,13 @@
 #resource "\\Files\\Icons\\pin_on.bmp"
 #resource "\\Files\\Icons\\tools_off.bmp"
 #resource "\\Files\\Icons\\tools_on.bmp"
-#resource "\\Files\\Icons\\badge.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
+//--- ORBSTATE (2026-09-12): the OPEN-state orb skin — the same 64px disc with
+//--- the "TRex" wordmark in place of the bow (preview .orb / .orbtext). Both
+//--- masters share one chrome and differ only in the middle, so the ring's halo
+//--- and border are identical in both states. Built by tools/make-orb-word.ps1
+//--- and embedded by tools/gen-th3-icons.js.
+#resource "\\Files\\Icons\\orb_word.bmp"
 #resource "\\Files\\Icons\\circ_off.bmp"
 #resource "\\Files\\Icons\\circ_on.bmp"
 // R-SUBLADDER (2026-09-11): Tools grid panel + its cells. cell_*.bmp is the
@@ -59,9 +58,6 @@
 #resource "\\Files\\Icons\\sub_panel_r4p.bmp"
 #resource "\\Files\\Icons\\step_off.bmp"
 #resource "\\Files\\Icons\\step_on.bmp"
-#resource "\\Files\\Icons\\factor_off.bmp"
-#resource "\\Files\\Icons\\factor_on.bmp"
-#resource "\\Files\\Icons\\knob.bmp"
 
 //+------------------------------------------------------------------+
 //| Circular menu geometry                                           |
@@ -381,6 +377,27 @@ bool CircPointOnMenu(const int mx, const int my)
 //| Circular menu object names                                       |
 //+------------------------------------------------------------------+
 string CircOrbBg()        { return g_UI.btnPrefix + "CircOrbBg"; }
+// ORBSTATE: the orb is the menu's own button, so it reports the menu's state —
+// closed shows the bow medallion, open swaps in the "TRex" wordmark (the
+// preview's .orb vs .orbtext). Two skins, one object, one 64px disc.
+string CircOrbRes()
+{
+   return g_UI.menuVisible ? "::Files\\Icons\\orb_word.bmp"
+                           : "::Files\\Icons\\orb_bg.bmp";
+}
+// Re-point the orb's bitmap. Called from CreateMenu() so EVERY open/close path
+// (orb click, long-press card, Base Knot arm/disarm, init) lands on the right
+// skin without each caller having to remember. Setting OBJPROP_BMPFILE forces a
+// decode (P-PERF-01), which is why this sits on the state change and not in
+// OnCalculate.
+void CircRefreshOrbSkin()
+{
+   string orbBg = CircOrbBg();
+   if(ObjectFind(0, orbBg) < 0) return;
+   string res = CircOrbRes();
+   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 0, res);
+   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 1, res);
+}
 string CircOrbIcon()      { return g_UI.btnPrefix + "CircOrbIcon"; }
 string CircBtn(const int i)      { return g_UI.btnPrefix + "CircBtn" + IntegerToString(i); }
 string CircIcon(const int i)     { return g_UI.btnPrefix + "CircIcon" + IntegerToString(i); }
@@ -984,9 +1001,14 @@ void CircLayout(const int i, int &x, int &y)
    {
       int step = CIRC_BTN_SIZE + CIRC_GAP;
       int trainLen = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP + (RING_COUNT - 1) * step;
+      // P-UI-26: clamp the rail's CROSS axis so buttons never draw half
+      // off-chart. One uniform shift for the whole train — never a per-item
+      // clamp (that stacks the train, P-UI-13) and never a radius shrink
+      // (R-SUBLADDER). The orb itself stays where the user put it.
+      int half = CIRC_BTN_SIZE / 2 + CIRC_PAD;
       if(nearLeft || nearRight)
       {
-         x = ox;
+         x = MathMax(half, MathMin(cw - half, ox));
          int upRoom   = oy - CIRC_PAD - CIRC_BTN_SIZE / 2;
          int downRoom = ch - CIRC_PAD - oy - CIRC_BTN_SIZE / 2;
          int dir = (upRoom >= downRoom) ? -1 : 1;
@@ -996,7 +1018,7 @@ void CircLayout(const int i, int &x, int &y)
       }
       else
       {
-         y = oy;
+         y = MathMax(half, MathMin(ch - half, oy));
          int leftRoom  = ox - CIRC_PAD - CIRC_BTN_SIZE / 2;
          int rightRoom = cw - CIRC_PAD - ox - CIRC_BTN_SIZE / 2;
          int dir = (leftRoom >= rightRoom) ? -1 : 1;
@@ -1993,8 +2015,8 @@ void CircCreateOrb()
    ObjectSetInteger(0, orbBg, OBJPROP_YDISTANCE, y - CIRC_ORB_BG_MARGIN);
    ObjectSetInteger(0, orbBg, OBJPROP_XSIZE, CIRC_ORB_BG_SIZE);
    ObjectSetInteger(0, orbBg, OBJPROP_YSIZE, CIRC_ORB_BG_SIZE);
-   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 0, "::Files\\Icons\\orb_bg.bmp");
-   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 1, "::Files\\Icons\\orb_bg.bmp");
+   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 0, CircOrbRes());
+   ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 1, CircOrbRes());
    ObjectSetInteger(0, orbBg, OBJPROP_BGCOLOR, C'30,22,10');
    ObjectSetInteger(0, orbBg, OBJPROP_STATE, false);
    ObjectSetInteger(0, orbBg, OBJPROP_SELECTABLE, false);
@@ -2012,6 +2034,7 @@ void CircCreateOrb()
 void CreateMenu()
 {
    CircCreateOrb();
+   CircRefreshOrbSkin();   // ORBSTATE: bow when closed, TRex when open
    if(!g_UI.menuVisible) return;
    for(int i = 0; i < RING_COUNT; i++)
       CircCreateItem(i);
@@ -2660,11 +2683,14 @@ int HandleButtonClick(const string clickedObject)
          ObjectSetInteger(0, clickedObject, OBJPROP_STATE, false);
          int pages = SubPageCount();
          int np = g_ToolsPage + ((clickedObject == SubPagerNext()) ? 1 : -1);
-         if(np >= 0 && np < pages)
-         {
-            g_ToolsPage = np;
-            SubApplyPage();   // park the old page's cells, show the new ones
-         }
+          if(np >= 0 && np < pages)
+          {
+             g_ToolsPage = np;
+             // P-UI-26/F12: a visible/armed hover tip describes the OLD page's
+             // cell — disarm it, or it sticks to the wrong tool (or thin air).
+             CircTipDisarm();
+             SubApplyPage();   // park the old page's cells, show the new ones
+          }
          ChartRedraw();
          return REFRESH_NONE;
       }

@@ -478,33 +478,40 @@ void OnDeinitHandler(const int reason) {
         // M30 leftovers from old charts anyway.
         string tfLabels[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
 
-        // Delete ATR labels
+        // Delete ATR labels (P-UI-21: suppress window — every delete below
+        // touches inpObjectPrefix* names; unsuppressed each fires
+        // CHARTEVENT_OBJECT_DELETE -> CacheRemoveObject + a forced redraw
+        // flag. DeleteAllIndicatorObjects(false) at the end of this branch
+        // closes the window with UntilMs+false.)
+        g_suppressDeleteEvents = true;
         ObjectDelete(0, uniquePrefix + "ATR_Title");
         for(int i = 0; i < ArraySize(tfLabels); i++) {
             ObjectDelete(0, uniquePrefix + "ATR_" + tfLabels[i]);
             ObjectDelete(0, uniquePrefix + "ATR_Steps_" + tfLabels[i]);
             ObjectDelete(0, uniquePrefix + "ATR_Targets_" + tfLabels[i]);
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_Targets");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Value");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Value");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Value");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Value");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Value");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Text");
-            ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Value");
         }
+        // P-UI-21: these carry no TF suffix — inside the loop above the same
+        // objects were deleted 8x. Hoisted: delete once.
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_Targets");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_SL_Value");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_HuntSL_Value");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_EngSL_Value");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP1_Value");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP2_Value");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Text");
+        ObjectDelete(0, uniquePrefix + "ATR_Trade_Current_TP3_Value");
         // Screenshot 3-row block + top-center TRex stamp (LBL_-prefixed names).
         string lblPfx = uniquePrefix + "LBL_";
         ObjectDelete(0, lblPfx + "ATR_Trade_Current_ATR");
@@ -1843,8 +1850,23 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             bool hadCustomPrice = (ObjectFind(0, g_customPriceHorizontalLineName) >= 0);
             double savedCustomPrice = hadCustomPrice ? ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0) : 0;
+            // P-BK-17: the old raw ObjectsDeleteAll(0, inpObjectPrefix) wiped
+            // the user's Base/Knot boxes too — and the registry rebuilds from
+            // box anchors, so deleted boxes never came back. Guarded loop like
+            // DeleteAllIndicatorObjects(false) (inlined: that fn is defined
+            // below this caller — P-ARCH-02).
             g_suppressDeleteEvents = true;
-            ObjectsDeleteAll(0, inpObjectPrefix);
+            if(StringLen(inpObjectPrefix) > 0) {
+               int lkTotal = ObjectsTotal(0, -1, -1);
+               int lkPlen = StringLen(inpObjectPrefix);
+               for(int lki = lkTotal - 1; lki >= 0; lki--) {
+                  string lkName = ObjectName(0, lki, -1, -1);
+                  if(StringLen(lkName) < lkPlen) continue;
+                  if(StringSubstr(lkName, 0, lkPlen) != inpObjectPrefix) continue;
+                  if(StringFind(lkName, "_BK_") >= 0) continue;
+                  ObjectDelete(0, lkName);
+               }
+            }
             g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
             g_suppressDeleteEvents = false;
             g_timeframeLocked = !g_timeframeLocked;
@@ -2208,11 +2230,19 @@ bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey
 void DeleteAllIndicatorObjects(bool deepCleanup = false) {
     if(StringLen(inpObjectPrefix) == 0) return;   // empty prefix matches everything
     if(deepCleanup) {
+        // P-UI-21: same suppress window as the shallow branch below.
+        g_suppressDeleteEvents = true;
         ObjectsDeleteAll(0, inpObjectPrefix);   // REASON_REMOVE: wipe everything incl. Base/Knot
+        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+        g_suppressDeleteEvents = false;
     } else {
         // P-BK-01: TF-switch / parameter rebuilds must NOT wipe the user's
         // Base/Knot drawings — they are an independent layer that survives
         // (registry rebuilds from the box anchors via BaseKnotLazyInit).
+        // P-UI-21: suppress window around the per-object wipe (same pattern as
+        // ClearAllLevels) — otherwise every delete fires
+        // CHARTEVENT_OBJECT_DELETE -> CacheRemoveObject + a forced redraw flag.
+        g_suppressDeleteEvents = true;
         int total = ObjectsTotal(0, -1, -1);
         int prefixLen = StringLen(inpObjectPrefix);
         for(int i = total - 1; i >= 0; i--) {
@@ -2222,17 +2252,9 @@ void DeleteAllIndicatorObjects(bool deepCleanup = false) {
             if(StringFind(objName, "_BK_") >= 0) continue;
             ObjectDelete(0, objName);
         }
+        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+        g_suppressDeleteEvents = false;
         return;
-    }
-    SModeSuffixEntry entries[];
-    int entryCount = 0;
-    GetAllModeSuffixes(entries, entryCount);
-    for(int i = 0; i < entryCount; i++) {
-        ObjectsDeleteAll(0, inpObjectPrefix + entries[i].zoneSuffix);
-        ObjectsDeleteAll(0, inpObjectPrefix + entries[i].zoneCenter);
-        ObjectsDeleteAll(0, inpObjectPrefix + entries[i].levelAbove);
-        ObjectsDeleteAll(0, inpObjectPrefix + entries[i].levelBelow);
-        ObjectsDeleteAll(0, inpObjectPrefix + entries[i].midpoint);
     }
 }
 

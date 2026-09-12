@@ -259,14 +259,26 @@ const BK_CHEV = [   // down-chevron for the STYLE/WIDTH ▾ selector buttons
 // P-ICONS-05: the retired yy overlay object is gone from the MQL side, so
 // yy.bmp is no longer generated at all — the orb is ONE 72px image.
 const ORB_MASTER_SIZE = 72;
-function orbSkinFromMaster() {
-  const master = path.join(__dirname, 'orb-bow-master.bgra');
+// Shared ingest for the TWO orb states (the preview's .orb / .orbtext split):
+//   closed -> orb_bg.bmp   (the bow medallion)      make-orb-bow.ps1
+//   open   -> orb_word.bmp (the same disc + "TRex") make-orb-word.ps1
+// Both masters are the same 72x72 premultiplied top-down BGRA, built by
+// ingesting the bow artwork, so the two states share one chrome and the orb
+// only changes in the middle (P-ICONS-04/05).
+function orbMasterFrom(file, script) {
+  const master = path.join(__dirname, file);
   if (!fs.existsSync(master))
-    throw new Error('missing ' + master + ' — run powershell -File tools/make-orb-bow.ps1 first');
+    throw new Error('missing ' + master + ' — run powershell -File tools/' + script + ' first');
   const m = fs.readFileSync(master);
   if (m.length !== ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4)
-    throw new Error('orb-bow-master.bgra bad size: ' + m.length + ' (want ' + (ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4) + ')');
+    throw new Error(file + ' bad size: ' + m.length + ' (want ' + (ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4) + ')');
   return Buffer.from(m);
+}
+function orbSkinFromMaster() {
+  return orbMasterFrom('orb-bow-master.bgra', 'make-orb-bow.ps1');
+}
+function orbWordFromMaster() {
+  return orbMasterFrom('orb-word-master.bgra', 'make-orb-word.ps1');
 }
 
 const BADGE_ART = [
@@ -510,6 +522,12 @@ function checkSkin(on) {
 //           box-shadow:0 28px 62px rgba(0,0,0,.70), inset 0 1px 0 rgba(255,255,255,.075) }
 //   .row { border-top:1px solid rgba(255,255,255,.055) }
 const PNL_W = 312;          // card width (content area)
+// WIDE-CARDS contract (2026-09-11): PNL_WIDE_WEL = PNL_WIDE_WEL in
+// Biotak/BiotakPanels.mqh (624 = two full 312 slots: 16+280+16|16+280+16).
+// Change together — the MQL blits cardW+2*MARGIN and a wrong canvas leaves
+// bare background. P-UI-25: 608 let right-column glow pads bleed past the
+// card edge, so the card is two whole slots, not 608.
+const PNL_WIDE_WEL = 624;
 const PNL_HEAD_H = 56;
 const PNL_ROW_H = 42;       // TV-dense single-line rows (matches BiotakPanels.mqh)
 const PNL_FOOT_H = 48;
@@ -533,11 +551,13 @@ function cardGrad(t) {
   return [lerp(CARD_MID[0], CARD_BOT[0], u), lerp(CARD_MID[1], CARD_BOT[1], u), lerp(CARD_MID[2], CARD_BOT[2], u)];
 }
 
-// --- pnl_cardN.bmp : Obsidian-Gold card incl. shadow, 14px corners and the
-//     hairline row/footer dividers the preview draws with border-top.
-function pnlCardSkin(rows, fade) {
+// --- pnl_cardN.bmp / pnl_cardW{N}.bmp : Obsidian-Gold card incl. shadow,
+//     14px corners and the hairline row/footer dividers the preview draws
+//     with border-top. wide=true bakes the 608px two-column card.
+function pnlCardSkin(rows, fade, wide) {
+  const W = wide ? PNL_WIDE_WEL : PNL_W;
   const H = PNL_HEAD_H + rows * PNL_ROW_H + PNL_FOOT_H;
-  const CW = PNL_W + 2 * PNL_MARGIN, CH = H + 2 * PNL_MARGIN;
+  const CW = W + 2 * PNL_MARGIN, CH = H + 2 * PNL_MARGIN;
 
   // .fade — 26px band hugging the footer, transparent -> rgba(18,22,29,.92).
   // Only the preview's scrollable cards carry it (CARDS[].fade), so it is a
@@ -556,14 +576,14 @@ function pnlCardSkin(rows, fade) {
     // drop shadow: silhouette nudged down, blurred. The baked margin is only
     // PNL_MARGIN wide, so the blur is tightened from the CSS 62px to fit —
     // a wider margin would move every .mqh coordinate.
-    const sd = rrSdf(x, y, PNL_MARGIN + PNL_W / 2 + 1, PNL_MARGIN + H / 2 + 5,
-                     PNL_W / 2 - 1, H / 2 - 1, PNL_RAD);
+    const sd = rrSdf(x, y, PNL_MARGIN + W / 2 + 1, PNL_MARGIN + H / 2 + 5,
+                     W / 2 - 1, H / 2 - 1, PNL_RAD);
     if (sd > 0 && sd < 13) {
       const k = 1 - sd / 13;
       col = over(col, pm(CARD_SHADOW, Math.round(175 * k * k)));
     }
 
-    const d = rrSdf(cx, cy, PNL_W / 2, H / 2, PNL_W / 2, H / 2, PNL_RAD);
+    const d = rrSdf(cx, cy, W / 2, H / 2, W / 2, H / 2, PNL_RAD);
     if (d < 0.7) {
       if (d > -1.2) {
         col = over(col, pm(CARD_BD, 255));                     // 1px #2C3444 border
@@ -737,7 +757,10 @@ function pnlKnobSkin() {
     const d = Math.hypot(x - c, y - c);
     if (d > 6.4 && d < 9.0) col = over(col, pm([255, 255, 255], 10));  // faint halo
     if (d <= 6.4) {
-      col = over(col, pm([190, 198, 212], 255));       // gray ring
+      // RICH-MT4 (2026-09-11): the old gray ring #BEC6D4 exists nowhere in the
+      // preview (its rim is rgba(0,0,0,.38)) and read as a blurry outline —
+      // bake the spec's dark rim instead so the knob sits crisp on the track.
+      col = over(col, pm([0, 0, 0], 97));                 // spec rim .38*255
       if (d <= 5.6) {
         const t = clamp01(Math.hypot(x - c * 0.7, y - c * 0.56) / 9.5);  // lit 35%/28%
         col = over(col, pm(lerpColor([255, 255, 255], [221, 227, 236], t), 255));
@@ -829,8 +852,11 @@ function chipSkin(acc) {
   const hw = (CHIP_VIS - 1) / 2;           // half-extent of the visible square
   const rad = 7;                           // .gl border-radius
   const rgb = acc ? acc.soft : [255, 255, 255];
-  const bgA = acc ? acc.softA : 12;        // rgba(255,255,255,.045) * 255
-  const bdA = acc ? acc.bdA : 20;          // rgba(255,255,255,.08) * 255
+  // RICH-MT4 (2026-09-11): the spec's .045/.08 whites sink below visibility
+  // after the MT4 blit — the neutral bake runs one step brighter. Accent
+  // chips keep their exact softA/bdA (their colour carries them).
+  const bgA = acc ? acc.softA : 14;        // spec rgba(255,255,255,.045) * 255
+  const bdA = acc ? acc.bdA : 26;          // spec rgba(255,255,255,.08) * 255
 
   const sdf = (x, y) => {
     const qx = Math.abs(x - c) - (hw - rad);
@@ -851,8 +877,11 @@ function chipSkin(acc) {
 }
 
 // 13px glyph, transparent background, single flat colour.
+// RICH-MT4 (2026-09-11): stroke 2.3 on the 32-grid (≈0.93px at 13px). The
+// preview's SVG keeps 1.7 — but its browser AA holds a 0.69px stem while the
+// MT4 blit + chart backdrop eats it, so the MT4 bake runs one weight heavier.
 function glyphSkin(name, color) {
-  const buf = render(GLYPH_VIS, glyphShapes(name, 32, 1.7, color), color);
+  const buf = render(GLYPH_VIS, glyphShapes(name, 32, 2.3, color), color);
   if (GLYPH_PAD === 0) return { w: GLYPH_VIS, h: GLYPH_VIS, buf };
   // pad with a transparent frame so the glyph never touches the bitmap edge
   const S = GLYPH_CANVAS;
@@ -1085,11 +1114,11 @@ function xBtnSkin() {
 }
 
 // --- .card::before — 3px accent top bar (a2 -> a1 42% -> transparent)
-function topBarSkin(name) {
+function topBarSkin(name, wide) {
   // .card::before is inset 0 0 auto 0 — it spans the FULL 312px card, not the
   // 280px content box. OBJ_BITMAP_LABEL renders at native size, so a 300px
   // canvas would leave the right 12px of the card without its accent bar.
-  const W = PNL_W, H = 3 + 2 * PAD2;
+  const W = wide ? PNL_WIDE_WEL : PNL_W, H = 3 + 2 * PAD2;
   const a2 = A2[name], a1 = ACCENTS[name].a1;
   // NB: renderFxWH samples at sub-pixel centres, so a 1px/3px band must be
   // written in continuous coordinates — never as integer y equality.
@@ -1105,8 +1134,8 @@ function topBarSkin(name) {
 }
 
 // --- .hd::after — header hairline (accent border -> white .02 at 70% -> gone)
-function hairSkin(name) {
-  const W = 280, H = 1 + 2 * PAD2;
+function hairSkin(name, wide) {
+  const W = wide ? PNL_WIDE_WEL - 32 : 280, H = 1 + 2 * PAD2;
   const bd = ACCENTS[name].soft, bdA = ACCENTS[name].bdA;
   const buf = renderFxWH(W, H, (x, y) => {
     const yy = y - PAD2;                       // 0..1 across the visible hairline
@@ -1119,12 +1148,15 @@ function hairSkin(name) {
   return { w: W, h: H, buf };
 }
 
-// --- .row.sec band wash — white .028 -> transparent at 62% (over the card)
-function secBandSkin() {
-  const W = 280, H = 42;
+// --- .row.sec band wash — white .028 -> transparent at 62% (over the card).
+//     The W twin spans both columns of a wide card (608-32).
+function secBandSkin(wide) {
+  const W = wide ? PNL_WIDE_WEL - 32 : 280, H = 42;
   const buf = renderFxWH(W, H, (x, y) => {
     const t = clamp01(x / (W - 1));
-    const a = 7 * clamp01(1 - t / 0.62);
+    // RICH-MT4 (2026-09-11): spec white .028 (a=7) vanishes on the blit —
+    // the MT4 bake runs at 11, still a whisper next to the preview.
+    const a = 11 * clamp01(1 - t / 0.62);
     return a < 0.5 ? null : pm([255, 255, 255], a);
   });
   return { w: W, h: H, buf };
@@ -1145,16 +1177,20 @@ function actWashSkin(name) {
 // --- .cset / .q.add / .dd .chev — the small pieces the row engine needs
 //     34x19 dual switch (.dual .sw), 22x22 dashed "+" cell (.q.add),
 //     6x6 accent chevron (.dd .chev).
+// RICH-MT4 (2026-09-11): pad 6, NOT PAD2 — BiotakPanels.mqh lays the dual
+// switch out at 34+12 x 19+12 (same PAD 6 twin as the full switch), so a
+// PAD2 canvas (38x23) blitted into a 46x31 slot. Canvas MUST stay 46x31.
+const DUAL_PAD = 6;
 function dualSwSkin(name, on) {
   const s = uiBox(on
-    ? { w: 34, h: 19, rad: 9, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255 }
-    : { w: 34, h: 19, rad: 9, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255 });
+    ? { w: 34, h: 19, rad: 9, pad: DUAL_PAD, top: ACCENTS[name].a1, bot: A2[name], bd: A2[name], bdA: 255 }
+    : { w: 34, h: 19, rad: 9, pad: DUAL_PAD, flat: [0x23, 0x2A, 0x37], bd: [0x3A, 0x43, 0x53], bdA: 255 });
   const W = s.w, H = s.h, buf = s.buf;
   const kc = on ? 23.5 : 8.5;
   const kcol = on ? A_INK[name] : [0x8D, 0x97, 0xA8];
   for (let x = 0; x < W; x++) {
     for (let y = 0; y < H; y++) {
-      const d = Math.hypot(x - (kc + PAD2), y - H / 2);
+      const d = Math.hypot(x - (kc + DUAL_PAD), y - H / 2);
       if (d > 7.1) continue;
       const i = (y * W + x) * 4;
       const src = pm(kcol, clamp01(6.5 - d + 0.5) * 255);
@@ -1251,11 +1287,117 @@ function ftBtnSkin(accent, primary) {
   return { w: W, h: H, buf };
 }
 
+// ---------------------------------------------------------------- RICH-MT4 skins (2026-09-11)
+// MT4 buttons/rects are flat squares — no gradient, no radius, no glow. The
+// trick for FIXED-geometry controls is a baked overlay with a TRANSPARENT
+// middle: the live colour (fill level, swatch colour) shows through while
+// the baked light/shadow gives the preview's gloss. Accent-independent
+// (white/black alpha only), so one file serves all six accents.
+// Contract (R-SUBLADDER pattern — change all three together):
+//   PAL_W/H        = PalW()/PalH() in Biotak/BiotakPanels.mqh
+//   TRACK_GLOSS    = PNL_TRACK_W-2 x PNL_TRK_H
+//   NAV_W/H        = the NAV pill geometry in PnlCreateRow (118x26)
+//   GLASS sizes    = PNL_QSW_W / PNL_QSW_PREV / PNL_CSET_W x row heights
+const PAL_W = 293, PAL_H = 309;
+const TRACK_GLOSS_W = 278, TRACK_GLOSS_H = 7;
+const NAV_W = 118, NAV_H = 26;
+
+// --- pnl_trackgloss.bmp : gloss laid OVER the flat track+fill rects (Z between
+//     the rects and the knob). Top-light + bottom-shade faux-gradient —
+//     square, because the rects underneath are square.
+function trackGlossSkin() {
+  const W = TRACK_GLOSS_W, H = TRACK_GLOSS_H;
+  const buf = renderFxWH(W, H, (x, y) => {
+    let col = [0, 0, 0, 0];
+    const top = clamp01(1 - y / 3.4);          // white 40 -> 0 over rows 0..3
+    if (top > 0) col = over(col, pm([255, 255, 255], 40 * top));
+    const bot = clamp01((y - 4.2) / 1.8);      // black 0 -> 38 over rows 4..6
+    if (bot > 0) col = over(col, pm([0, 0, 0], 38 * bot));
+    return col[3] < 0.5 ? null : col;
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- pnl_glass{22,46,38}.bmp : rounded glass frame over a flat colour button.
+//     Transparent middle (the colour shows through), light top edge, dark
+//     bottom edge — the preview's inset highlight on a control MT4 draws flat.
+function glassSkin(w, h) {
+  const rad = 5, cx = w / 2, cy = h / 2;
+  const hw = (w - 1) / 2, hh = (h - 1) / 2;
+  const buf = renderFxWH(w, h, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    if (d > 0.6 || d < -2.0) return null;
+    const cov = clamp01(0.6 - d);
+    const edge = clamp01(1 - Math.abs(d + 0.7) / 1.3);   // 1px band just inside
+    let col = [0, 0, 0, 0];
+    if (edge > 0) col = over(col, y < cy ? pm([255, 255, 255], 46 * edge)
+                                         : pm([0, 0, 0], 58 * edge));
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w, h, buf };
+}
+
+// --- pnl_nav.bmp : the 118x26 NAV pill (preview .nav). Dark gradient + rim +
+//     top inset — the MQL button stays underneath purely as the click target
+//     (footer-button pattern), caption + chevron ride on top.
+function navSkin() {
+  const W = NAV_W, H = NAV_H, rad = 7;
+  const cx = W / 2, cy = H / 2;
+  const hw = (W - 1) / 2, hh = (H - 1) / 2;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    if (d > 0.5) return null;
+    const cov = clamp01(0.5 - d);
+    const t = clamp01((y - (cy - hh)) / (2 * hh));
+    let col = over([0, 0, 0, 0], pm(lerpColor([0x24, 0x2C, 0x39], [0x17, 0x1C, 0x26], t), 255));
+    if (y < 1.6 && d > -1.7 && d < -0.3) col = over(col, pm([255, 255, 255], 24));
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));
+    if (bw > 0) col = over(col, pm([0x33, 0x3C, 0x4C], 255 * bw));   // --fieldBd
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w: W, h: H, buf };
+}
+
+// --- pal_card.bmp : the palette popup face (preview .pal gradient + radius).
+//     Replaces the flat CARD rect — same object name, same Z, prefix-wiped.
+function palCardSkin() {
+  const W = PAL_W, H = PAL_H, rad = 13;
+  const cx = W / 2, cy = H / 2;
+  const hw = (W - 1) / 2, hh = (H - 1) / 2;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    if (d > 0.5) return null;
+    const cov = clamp01(0.5 - d);
+    const t = clamp01((y - (cy - hh)) / (2 * hh));
+    let col = over([0, 0, 0, 0], pm(lerpColor([0x1E, 0x24, 0x2F], [0x14, 0x19, 0x22], t), 255));
+    if (y < 1.6 && d > -1.7 && d < -0.3) col = over(col, pm([255, 255, 255], 19));
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));
+    if (bw > 0) col = over(col, pm([0x2C, 0x34, 0x44], 255 * bw));
+    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w: W, h: H, buf };
+}
+
 // ---------------------------------------------------------------- main
 const outDirs = [path.join(__dirname, '..', 'Files', 'Icons')];
 
+// ---------------------------------------------------------------- ICON-DIET (2026-09-12)
+// Only emit what a runtime path can load — every other file is dead bytes
+// in the repo AND link time in the compiler (each #resource is embedded).
+// Audit 2026-09-12 (P-UI-28): ~485 of 727 files unreachable — retired accent
+// families (R-GOLDALL forces gold everywhere), retired menu tools
+// (TH3TOOL/FACTORBTN/NOBADGES), 14 unused glyph stems, card rows 17-20.
+// Flip EMIT_RETIRED_ACCENTS + regen to restore all families. gl_nav_* stays:
+// NAVC falls back to "nav" for forward nav rows (BiotakPanels.mqh:5078).
+const EMIT_RETIRED_ACCENTS = false;
+const ACCENT_EMIT = EMIT_RETIRED_ACCENTS ? ACCENT_NAMES : ['gold'];
+const DEAD_GLYPHS = new Set(['alignL','alignR','bolt','down','grid','hand',
+  'italic','lock','more','palette','search','trash','up','warn']);
+const DEAD_ART = new Set(['custom','ssls','chk','tl','factor']);
+
 const files = [];
 for (const [name, art] of Object.entries(ART)) {
+  if (DEAD_ART.has(name)) continue;   // retired tools/glyphs, zero builders
   files.push([name + '_off.bmp', () => render(28, art, OFF)]);
   files.push([name + '_on.bmp',  () => render(28, art, ON)]);
 }
@@ -1265,18 +1407,20 @@ for (const [name, art] of Object.entries(ART)) {
 files.push(['bk_bucket.bmp',   () => render(24, BK_BUCKET,   BK_DARK)]);
 files.push(['bk_pencil.bmp',   () => render(24, BK_PENCIL,   BK_DARK)]);
 files.push(['bk_text.bmp',     () => render(24, BK_TEXT,     BK_DARK)]);
-for (let i = 0; i < 5; i++) files.push(['bk_style' + i + '.bmp', () => render(24, BK_STYLES[i], BK_DARK)]);
-for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(24, bkWidthArt(i), BK_DARK)]);
+for (let i = 0; i < 5; i++) files.push(['bk_style' + i + '.bmp', () => render(16, BK_STYLES[i], BK_DARK)]);
+for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(16, bkWidthArt(i), BK_DARK)]);
 files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
 files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
 files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
 files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
 files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
-files.push(['badge.bmp',    () => badgeSkin()]);
+// ICON-DIET: badge.bmp (NOBADGES gates every create/show — purges use
+// ObjectDelete and need no file) and knob.bmp (superseded by pnl_knob.bmp)
+// have zero runtime paths, so they are not emitted.
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
 files.push(['orb_bg.bmp',   () => orbSkin()]);
-files.push(['knob.bmp',     () => knobSkin()]);
+files.push(['orb_word.bmp', () => orbWordFromMaster()]);
 
 // settings-panel v2 skins (non-square capable) — تا 12 ردیف برای پنل باکس‌ها
 const panelFiles = [
@@ -1284,6 +1428,15 @@ const panelFiles = [
   { name: 'bk_dds.bmp',      ...bkDdSkin(216, 192) },   // STYLE menu (wide)
   { name: 'bk_ddw.bmp',      ...bkDdSkin(120, 192) },   // WIDTH menu (narrow)
   { name: 'pnl_knob.bmp',    ...pnlKnobSkin() },
+  // RICH-MT4 (2026-09-11): baked gloss/glass/nav/palette skins — see the
+  // RICH-MT4 block above for the contract. One accent-independent file each
+  // (transparent middles), except the palette card which is one gradient.
+  { name: 'pnl_trackgloss.bmp', ...trackGlossSkin() },
+  { name: 'pnl_glass22.bmp',    ...glassSkin(22, 22) },
+  { name: 'pnl_glass46.bmp',    ...glassSkin(46, 22) },
+  { name: 'pnl_glass38.bmp',    ...glassSkin(38, 20) },
+  { name: 'pnl_nav.bmp',        ...navSkin() },
+  { name: 'pal_card.bmp',       ...palCardSkin() },
   { name: 'pnl_cb_on.bmp',   w: 20, h: 20, buf: render(20, cbArt(true), CB_NAVY) },
   { name: 'pnl_cb_off.bmp',  w: 20, h: 20, buf: render(20, cbArt(false), [255, 255, 255]) },
   // R-SUBLADDER (2026-09-11): Tools sub-menu grid — cells + one panel per
@@ -1295,15 +1448,25 @@ const panelFiles = [
 // One card skin per ROW COUNT: BiotakPanels.mqh resolves
 // "::Files\Icons\pnl_card" + cardRows + ".bmp", so the file name IS the row
 // count. Never stretch one skin across counts — the 14px corners and the 1px
-// border distort. 1..16 covers every card plus the dynamic Step / Base Box
-// section swaps; 1 and 2 were missing before, so those cards drew no skin.
-// 20 also covers the section BANDS the redesign inserts (a band is itself a
-// 42px row, so a 11-setting card becomes 15 display rows).
-const PNL_CARD_ROWS_MAX = 20;
-for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
+// border distort. Clamp is 3..16 BOTH sides (PNL_CARD_ROWS_MAX): tallest live
+// card is 14-15 display rows, so 16 keeps headroom — 1, 2 (clamp min is 3)
+// and 17..20 (the 8 largest files, zero runtime path) are not emitted
+// (ICON-DIET 2026-09-12). 20 also covers the section BANDS the redesign
+// inserts (a band is itself a 42px row, so a 11-setting card becomes
+// 15 display rows).
+const PNL_CARD_ROWS_MAX = 16;
+for (let r = 3; r <= PNL_CARD_ROWS_MAX; r++) {
   panelFiles.push({ name: 'pnl_card' + r + '.bmp',  ...pnlCardSkin(r, false) });
   // the .fade variant — PnlCardFade() picks it for the scrollable cards
   panelFiles.push({ name: 'pnl_card' + r + 'f.bmp', ...pnlCardSkin(r, true)  });
+}
+// WIDE-CARDS (2026-09-11): two-column skins. PNL_WIDE_ROWS_MAX must equal the
+// MQL's PNL_WIDE_ROWS_MAX (Biotak/BiotakPanels.mqh) — the MQL clamps pairN to
+// it, so a missing file would draw bare rows.
+const PNL_WIDE_ROWS_MAX = 12;
+for (let r = 1; r <= PNL_WIDE_ROWS_MAX; r++) {
+  panelFiles.push({ name: 'pnl_cardW' + r + '.bmp',  ...pnlCardSkin(r, false, true) });
+  panelFiles.push({ name: 'pnl_cardW' + r + 'f.bmp', ...pnlCardSkin(r, true, true)  });
 }
 for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
   panelFiles.push({ name: 'sub_panel_r' + r + '.bmp',  ...subPanelSkin(r, false) });
@@ -1317,18 +1480,19 @@ for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
 const chipFiles = [
   { name: 'pnl_chip.bmp', ...chipSkin(null) },
 ];
-for (const a of ACCENT_NAMES) chipFiles.push({ name: 'pnl_chip_' + a + '.bmp', ...chipSkin(ACCENTS[a]) });
+for (const a of ACCENT_EMIT) chipFiles.push({ name: 'pnl_chip_' + a + '.bmp', ...chipSkin(ACCENTS[a]) });
 
 const glyphFiles = [];
 const glyphNames = Object.keys(GLYPHS);
 for (const g of glyphNames) {
+  if (DEAD_GLYPHS.has(g)) continue;
   glyphFiles.push({ name: 'gl_' + g + '_m.bmp', ...glyphSkin(g, GLYPH_MUTED) });
-  for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
+  for (const a of ACCENT_EMIT) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
 }
 // --aInk inks for the glyphs that sit ON an accent ramp (.mark, .btn.primary)
 for (const g of INK_GLYPHS) {
-  if (glyphNames.indexOf(g) < 0) continue;
-  for (const a of ACCENT_NAMES) glyphFiles.push({ name: 'gl_' + g + '_i_' + a + '.bmp', ...glyphSkin(g, A_INK[a]) });
+  if (glyphNames.indexOf(g) < 0 || DEAD_GLYPHS.has(g)) continue;
+  for (const a of ACCENT_EMIT) glyphFiles.push({ name: 'gl_' + g + '_i_' + a + '.bmp', ...glyphSkin(g, A_INK[a]) });
 }
 panelFiles.push(...chipFiles, ...glyphFiles);
 
@@ -1338,18 +1502,21 @@ const uiFiles = [
   { name: 'pnl_cntchip.bmp', ...cntChipSkin() },
   { name: 'pnl_keycap.bmp',  ...keycapSkin()  },
   { name: 'pnl_xbtn.bmp',    ...xBtnSkin()    },
-  { name: 'pnl_secband.bmp', ...secBandSkin() },
+  { name: 'pnl_secband.bmp', ...secBandSkin(false) },
+  { name: 'pnl_secbandW.bmp', ...secBandSkin(true) },
   { name: 'pnl_subdot_amber.bmp', ...subDotSkin([0xFF, 0xAB, 0x00]) },
   { name: 'pnl_subdot_jade.bmp',  ...subDotSkin([0x12, 0xB8, 0x86]) },
 ];
-for (const a of A_NAME) {
+for (const a of ACCENT_EMIT) {
   uiFiles.push({ name: 'pnl_mark_' + a + '.bmp',    ...markSkin(a)     });
   uiFiles.push({ name: 'pnl_sw_on_' + a + '.bmp',   ...swSkin(a, true)  });
   uiFiles.push({ name: 'pnl_vchip_' + a + '.bmp',   ...vchipSkin(a)     });
   uiFiles.push({ name: 'pnl_rail_' + a + '.bmp',    ...railSkin(a)      });
   uiFiles.push({ name: 'pnl_secdot_' + a + '.bmp',  ...secDotSkin(a)    });
-  uiFiles.push({ name: 'pnl_topbar_' + a + '.bmp',  ...topBarSkin(a)    });
-  uiFiles.push({ name: 'pnl_hair_' + a + '.bmp',    ...hairSkin(a)      });
+  uiFiles.push({ name: 'pnl_topbar_' + a + '.bmp',  ...topBarSkin(a, false)    });
+  uiFiles.push({ name: 'pnl_hair_' + a + '.bmp',    ...hairSkin(a, false)      });
+  uiFiles.push({ name: 'pnl_topbarW_' + a + '.bmp', ...topBarSkin(a, true)     });
+  uiFiles.push({ name: 'pnl_hairW_' + a + '.bmp',   ...hairSkin(a, true)       });
   uiFiles.push({ name: 'pnl_actbg_' + a + '.bmp',   ...actWashSkin(a)   });
   uiFiles.push({ name: 'pnl_dsw_on_' + a + '.bmp',  ...dualSwSkin(a, true) });
   uiFiles.push({ name: 'pnl_add_' + a + '.bmp',     ...addCellSkin(a)      });
@@ -1360,7 +1527,7 @@ uiFiles.push({ name: 'pnl_sw_off.bmp',  ...swSkin('gold', false) });
 uiFiles.push({ name: 'pnl_dsw_off.bmp', ...dualSwSkin('gold', false) });
 // footer buttons — .btn.ghost (Reset) + .btn.primary (Done, per accent)
 uiFiles.push({ name: 'pnl_btn_ghost.bmp', ...ftBtnSkin(null, false) });
-for (const a of A_NAME)
+for (const a of ACCENT_EMIT)
   uiFiles.push({ name: 'pnl_btn_prim_' + a + '.bmp', ...ftBtnSkin(a, true) });
 panelFiles.push(...uiFiles);
 
@@ -1379,5 +1546,12 @@ for (const pf of panelFiles) {
     count++;
   }
 }
+// Emit manifest: the EXACT runtime-reachable set. Purge scripts and the
+// #resource preflight derive from it — a disk BMP outside this list is dead
+// weight, a #resource outside it embeds a ghost.
+const manifest = [...files.map(f => f[0]), ...panelFiles.map(f => f.name)].sort();
+fs.writeFileSync(path.join(__dirname, 'icon-manifest.txt'),
+                 manifest.join('\n') + '\n');
+console.log('Manifest: ' + manifest.length + ' files -> tools/icon-manifest.txt');
 console.log('Generated ' + (files.length + panelFiles.length) + ' icons into:');
 for (const dir of outDirs) console.log('  ' + dir);

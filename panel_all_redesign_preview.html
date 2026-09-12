@@ -97,6 +97,30 @@ section{margin-top:48px}
 .row{height:42px;padding:0 16px;border-top:1px solid var(--line);position:relative;display:flex;
   align-items:center;justify-content:space-between;gap:10px}
 .row:first-child{border-top:0}
+/* R-WIDE: cards with >10 rows go two-column (624px). Half rows keep the
+   exact 312 geometry; sec/tab rows span full width; tabs centre. */
+.mt4.wide{width:624px}.card.wide{width:624px}
+.line{display:flex}
+.line:first-child>.row{border-top:0}
+.row.half{width:312px;flex:none}
+.card.wide .tabs{justify-content:center}
+/* LIVE DEMO — every control answers. Hover pointer, toast + popover chrome. */
+.sw,.seg,.tab,.dd,.q,.prev,.nav,.btn,.x,.ccell,.presets b,.row.sec{cursor:pointer}
+.track{cursor:ew-resize}
+.fld{outline:none}
+.fld:focus{border-color:var(--gold2)}
+#demotoast{position:fixed;bottom:26px;left:50%;transform:translateX(-50%);z-index:99;
+  background:linear-gradient(180deg,#1E242F,#141922);border:1px solid rgba(255,171,0,.45);
+  color:#FFC247;font:700 12px Arial,sans-serif;padding:8px 18px;border-radius:9px;
+  box-shadow:0 12px 28px rgba(0,0,0,.6);opacity:0;transition:opacity .25s;pointer-events:none}
+#demotoast.show{opacity:1}
+#demopop{position:fixed;z-index:100}
+#demopop .prow2{display:flex;gap:6px;padding:10px 12px;flex-wrap:wrap;max-width:190px}
+#demopop .prow2 b{width:26px;height:26px;border-radius:6px;display:block;cursor:pointer;
+  border:1px solid rgba(255,255,255,.16)}
+#demopop .prow2 b.act{outline:2px solid var(--gold1);outline-offset:1px}
+.reopen{flex:1;display:flex;align-items:center;justify-content:center;padding:6px}
+.reopen .btn{width:120px}
 .rail{position:absolute;left:0;top:0;bottom:0;width:2px;background:linear-gradient(180deg,var(--a1),var(--a2))}
 .lbl{font:700 11.5px Arial,sans-serif;letter-spacing:.45px;color:var(--lbl);white-space:nowrap;
   display:flex;align-items:center;gap:8px;min-width:0}
@@ -374,12 +398,14 @@ table.fx tr:hover td{background:rgba(255,255,255,.014)}
     <code class="k">PnlStepSectionRowDef</code> (بخش‌های داینامیک Step) · استریپ مینی Base Box · منوی شعاعی · پاپ‌اور پالت · دراپ‌داون.
     <b>همهٔ ردیف‌ها و برچسب‌ها همان‌های واقعی‌اند</b> — هیچ تنظیمی حذف یا اضافه نشده؛ فقط زبان ظاهری، آیکون‌ها و فیچرهای تعاملی عوض شده.
     هندسه قفل است: <code class="k">312 · 56 · 42 · 48</code> → ارتفاع همیشه <code class="k">56 + 42n + 48</code>.
+    کارت‌های بالای ۱۰ ردیف <b>دوستونهٔ ۶۲۴</b> می‌شوند (R-WIDE: بندها و تب‌ها تمام‌عرض، بقیه ردیف‌ها جفت چپ/راست — عین منطق اندیکاتور).
     <b>آیکون‌ها در پیش‌نمایش SVG هستند؛ در پیاده‌سازی باید BMP شوند</b> (Arial گلیف تازه ندارد — P-UI-06).
   </div>
   <div class="chips">
     <span class="pill g">۱۳ کارت بازطراحی‌شده</span>
     <span class="pill v">۵۷ آیکون حرفه‌ای</span>
     <span class="pill j">۱۰ فیچر تعاملی تازه</span>
+    <span class="pill j">دموی زنده — روی کنترل‌ها کلیک و درگ کن</span>
     <span class="pill c">۳ سطح غیر‌کارتی</span>
     <span class="pill e">۵۰ ردیف واقعی</span>
     <span class="pill r">صفر تغییر در منطق</span>
@@ -599,7 +625,7 @@ function row(r){
         '<span class="chev"></span></span></div>';
     case 'txt':
       return '<div class="row txt"><span class="lbl sm">' + (r.ic ? svg(r.ic, 'gl-s') : '') + r.l + '</span>' +
-        '<div class="fld">' + r.v + '<span class="caret"></span></div></div>';
+        '<div class="fld" contenteditable="true" spellcheck="false" data-txt="1">' + r.v + '<span class="caret"></span></div></div>';
     case 'nav':
       return '<div class="row">' + L + '<span class="nav" style="flex:none;width:118px">' +
         (r.sub || 'OPEN') + svg(r.ic2 || 'nav') + '</span></div>';
@@ -621,27 +647,51 @@ function row(r){
 }
 
 function card(c){
+  const wide = c.rows.length > 10;   // R-WIDE: same threshold as PnlIsWide
   const dots = c.s.split(' · ').map((t, i) =>
     '<i class="' + (i % 2 ? 'j' : '') + '" style="background:' + (i % 2 ? '#12B886' : '#FFAB00') + '"></i>' + t).join('');
-  return '<div class="mt4 t-og ac-' + c.ac + '"><div class="card">' +
+  return '<div class="mt4 t-og ac-' + c.ac + (wide ? ' wide' : '') + '"><div class="card' + (wide ? ' wide' : '') + '">' +
     '<div class="hd"><div class="mark">' + svg(c.mi || 'bolt') + '</div>' +
       '<div class="htxt"><div class="ttl">' + c.t + '</div><div class="subttl">' + dots + '</div></div>' +
       (c.key ? '<span class="key">' + c.key + '</span>' : '') +
       '<span class="ver">' + c.n + '</span><span class="x">' + svg('x') + '</span></div>' +
-    '<div class="rows">' + c.rows.map(row).join('') + '</div>' +
+    '<div class="rows">' + bodyRows(c, wide) + '</div>' +
     (c.fade ? '<div class="fade"></div>' : '') +
     '<div class="ft"><span class="btn ghost">' + svg('reset') + 'Reset</span>' +
     '<span class="btn primary">' + svg('check') + 'Done</span></div>' +
   '</div></div>';
 }
 
+/* R-WIDE pairing twin of PnlRowCol/PnlRowLine (BiotakPanels.mqh): sec/tab
+   rows span full width and restart the pairing, everything else pairs
+   left/right. HTML has no Y coordinates so the P-UI-25 line-skip nuance
+   (a band after a half-filled pair) needs no twin — blocks stack. */
+const WIDE_MIN_ROWS = 10;
+const isFullRow = r => r.k === 'sec' || r.k === 'tab';
+const halfRow = s => s.replace('class="row', 'class="row half');
+function bodyRows(c, wide){
+  if(!wide) return c.rows.map(row).join('');
+  let h = '', pair = [];
+  const flush = () => {
+    if(pair.length === 2) h += '<div class="line">' + halfRow(pair[0]) + halfRow(pair[1]) + '</div>';
+    else if(pair.length === 1) h += halfRow(pair[0]);
+    pair = [];
+  };
+  for(const r of c.rows){
+    if(isFullRow(r)){ flush(); h += row(r); }
+    else { pair.push(row(r)); if(pair.length === 2) flush(); }
+  }
+  flush();
+  return h;
+}
+
 /* ══════════════════════════════════════════════════════════════════
    THE 13 CARDS — every row is the REAL row from PnlRowDef
    ══════════════════════════════════════════════════════════════════ */
 const CARDS = [
-{n:0, ac:'cyan', t:'Trigger Zones', s:'ZONE OVERLAY · LINES LIVE ON LINES', key:'T', mi:'crosshair', fade:true, rows:[
+{n:0, ac:'gold', t:'Trigger Zones', s:'ZONE OVERLAY · LINES LIVE ON LINES', key:'T', mi:'crosshair', fade:true, rows:[
   {k:'sec',l:'ZONE APPEARANCE',cnt:3,acc:true},
-  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'72',u:'%',pct:.72},
+  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'72',u:'%',pct:.72,mn:0,mx:100},
   {k:'col',l:'COLOR',ic:'droplet',cur:'#1FA8E0',act:3},
   {k:'col',l:'LABEL COLOR',ic:'tag',cur:'#FFFFFF',act:6},
   {k:'sec',l:'VISIBILITY',cnt:1},
@@ -653,11 +703,11 @@ const CARDS = [
   {k:'sw',l:'MID ZONES',ic:'layers',on:true},
   {k:'sw',l:'SHOW LINES',ic:'line',on:true,key:'L'},
   {k:'seg',l:'ZONE STYLE',ic:'square',o:['Filled','Empty','Hidden'],act:0},
-  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'72',u:'%',pct:.72},
+  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'72',u:'%',pct:.72,mn:0,mx:100},
   {k:'sec',l:'GEOMETRY',cnt:3},
-  {k:'sl',l:'HEIGHT',ic:'valign',v:'40',u:'%',pct:.40},
-  {k:'dd',l:'BORDER',ic:'linestyle',v:'Solid'},
-  {k:'sl',l:'BORDER WIDTH',ic:'weight',v:'2',u:'px',pct:.25},
+  {k:'sl',l:'HEIGHT',ic:'valign',v:'40',u:'%',pct:.40,mn:1,mx:100},
+  {k:'dd',l:'BORDER',ic:'linestyle',v:'Solid',o:['Solid','Dash','Dot','DashDot','DashDotDot']},
+  {k:'sl',l:'BORDER WIDTH',ic:'weight',v:'2',u:'px',pct:.25,mn:1,mx:5},
   {k:'sec',l:'ORDER',cnt:2},
   {k:'sw',l:'LS FIRST',ic:'swap',on:true},
   {k:'sw',l:'MIDPOINT',ic:'target',on:false},
@@ -670,8 +720,8 @@ const CARDS = [
   {k:'sec',l:'COUNTDOWN',cnt:4,acc:true},
   {k:'sw',l:'COUNTDOWN',ic:'timer',on:true,key:'C'},
   {k:'col',l:'COUNT COLOR',ic:'droplet',cur:'#141414',act:7},
-  {k:'sl',l:'COUNT SIZE',ic:'textsize',v:'12',u:'pt',pct:.50},
-  {k:'sl',l:'COUNT GAP',ic:'gap',v:'6',u:'px',pct:.15},
+  {k:'sl',l:'COUNT SIZE',ic:'textsize',v:'12',u:'pt',pct:.50,mn:0,mx:24},
+  {k:'sl',l:'COUNT GAP',ic:'gap',v:'6',u:'px',pct:.15,mn:0,mx:40},
   {k:'sec',l:'ATR BLOCK',cnt:2},
   {k:'sw',l:'ATR LABELS',ic:'gauge',on:false},
   {k:'sw',l:'ATR TARGETS',ic:'target',on:true},
@@ -681,10 +731,10 @@ const CARDS = [
   {k:'sw',l:'TP ROW',ic:'flag',on:true,key:'P'},
   {k:'sw',l:'PIP LABELS',ic:'ruler',on:true},
   {k:'sec',l:'LAYOUT',cnt:1},
-  {k:'sl',l:'ROW GAP',ic:'gap',v:'10',u:'px',pct:.18}
+  {k:'sl',l:'ROW GAP',ic:'gap',v:'10',u:'px',pct:.18,mn:1,mx:60}
 ]},
 
-{n:3, ac:'ember', t:'TH Labels', s:'FRACTAL · STANDARD · TARGETS', mi:'wave', rows:[
+{n:3, ac:'gold', t:'TH Labels', s:'FRACTAL · STANDARD · TARGETS', mi:'wave', rows:[
   {k:'sec',l:'TH SOURCES',cnt:3,acc:true},
   {k:'sw',l:'TH LABELS',ic:'wave',on:true},
   {k:'sw',l:'FRACTAL THs',ic:'steps',on:true},
@@ -692,75 +742,75 @@ const CARDS = [
   {k:'sec',l:'TARGETS',cnt:1},
   {k:'sw',l:'TH TARGETS',ic:'target',on:true},
   {k:'sec',l:'LAYOUT',cnt:1},
-  {k:'sl',l:'MARGIN BOTTOM',ic:'valign',v:'40',u:'pt',pct:.16}
+  {k:'sl',l:'MARGIN BOTTOM',ic:'valign',v:'40',u:'pt',pct:.16,mn:10,mx:200}
 ]},
 
-{n:6, ac:'jade', t:'HTF Candles', s:'HIGHER TIMEFRAME OVERLAY', mi:'candle', fade:true, rows:[
+{n:6, ac:'gold', t:'HTF Candles', s:'HIGHER TIMEFRAME OVERLAY', mi:'candle', fade:true, rows:[
   {k:'sec',l:'SOURCE',cnt:2,acc:true},
   {k:'sw',l:'ENABLED',ic:'power',on:true},
-  {k:'dd',l:'TIMEFRAME',ic:'clock',v:'Auto',dic:'clock'},
+  {k:'dd',l:'TIMEFRAME',ic:'clock',v:'Auto',dic:'clock',o:['Auto','H4','H1','M30','M15','D1']},
   {k:'sec',l:'COLORS',cnt:4,strip:['#12B886','#F0455F','#8C96A6','#FFFFFF']},
   {k:'cset',act:0,o:[{k:'BULL',v:'#12B886'},{k:'BEAR',v:'#F0455F'},{k:'WICK',v:'#8C96A6'},{k:'BORDER',v:'#FFFFFF'}]},
   {k:'sec',l:'APPEARANCE',cnt:3},
-  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'30',u:'%',pct:.30},
-  {k:'sl',l:'WICK WIDTH',ic:'weight',v:'1',u:'px',pct:.0},
-  {k:'sl',l:'BORDER WIDTH',ic:'weight',v:'1',u:'px',pct:.0},
+  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'30',u:'%',pct:.30,mn:0,mx:100},
+  {k:'sl',l:'WICK WIDTH',ic:'weight',v:'1',u:'px',pct:.0,mn:1,mx:5},
+  {k:'sl',l:'BORDER WIDTH',ic:'weight',v:'1',u:'px',pct:.0,mn:1,mx:5},
   {k:'sec',l:'BODY',cnt:2},
   {k:'sw',l:'SHOW WICKS',ic:'wick',on:true},
   {k:'seg',l:'BOX MODE',ic:'squarefill',o:['Hollow','Filled','Both'],act:2}
 ]},
 
-{n:7, ac:'jade', t:'Lines', s:'ONE STYLE FOR ALL LINES', key:'L', mi:'line', rows:[
+{n:7, ac:'gold', t:'Lines', s:'ONE STYLE FOR ALL LINES', key:'L', mi:'line', rows:[
   {k:'nav',l:'BACK',ic:'back',sub:'ZONES & LEVELS',ic2:'back'},
   {k:'sec',l:'VISIBILITY',cnt:1,acc:true},
   {k:'sw',l:'SHOW',ic:'eye',on:true},
   {k:'sec',l:'APPEARANCE',cnt:3},
-  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25},
-  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid'},
-  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'40',u:'%',pct:.40},
+  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25,mn:1,mx:5},
+  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid',o:['Solid','Dash','Dot','DashDot','DashDotDot']},
+  {k:'sl',l:'TRANSPARENCY',ic:'contrast',v:'40',u:'%',pct:.40,mn:0,mx:100},
   {k:'sec',l:'COLOR',cnt:1},
   {k:'col',l:'COLOR',ic:'droplet',cur:'#12B886',act:2}
 ]},
 
-{n:8, ac:'violet', t:'Custom Price', s:'PIN · MAGNET', mi:'pin', rows:[
+{n:8, ac:'gold', t:'Custom Price', s:'PIN · MAGNET', mi:'pin', rows:[
   {k:'sec',l:'PIN',cnt:2,acc:true},
-  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25},
+  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25,mn:1,mx:5},
   {k:'col',l:'COLOR',ic:'droplet',cur:'#7C5CFF',act:4},
   {k:'sec',l:'MAGNET',cnt:2},
   {k:'sw',l:'MAGNET',ic:'magnet',on:true},
-  {k:'sl',l:'MAGNET SENS',ic:'target',v:'20',u:'pt',pct:.20}
+  {k:'sl',l:'MAGNET SENS',ic:'target',v:'20',u:'pt',pct:.20,mn:0,mx:100}
 ]},
 
-{n:9, ac:'violet', t:'Step Mode', s:'ENGINE · SECTION SWAPS WITH MODE', mi:'steps', fade:true, rows:[
+{n:9, ac:'gold', t:'Step Mode', s:'ENGINE · SECTION SWAPS WITH MODE', mi:'steps', fade:true, rows:[
   {k:'tab',o:['TH','SS-LS','Combo','Factor'],oi:['wave','swap','fn','sigma'],act:2},
   {k:'sec',l:'COMPONENT 1',cnt:5,acc:true},
   {k:'seg',l:'MODE',ic:'fn',o:['Preset','Advanced'],act:1},
   {k:'presets',l:'PRESET',ic:'sparkles',o:['B-Med','B-Long','B-Trip','Cons'],act:2},
-  {k:'dd',l:'COMP1 TF',ic:'clock',v:'Sub'},
-  {k:'dd',l:'COMP1 STEP',ic:'sigma',v:'SS'},
-  {k:'dd',l:'OP',ic:'fn',v:'Wtd'},
+  {k:'dd',l:'COMP1 TF',ic:'clock',v:'Sub',o:['Sub','Trigger','Pattern','Struct']},
+  {k:'dd',l:'COMP1 STEP',ic:'sigma',v:'SS',o:['TH','SS','LS','4/3']},
+  {k:'dd',l:'OP',ic:'fn',v:'Wtd',o:['Avg','Add','Sub','Mul','Min','Max','Wtd']},
   {k:'sec',l:'COMPONENT 2',cnt:3},
   {k:'sw',l:'COMP2',ic:'layers',on:true},
-  {k:'dd',l:'COMP2 TF',ic:'clock',v:'Trigger'},
-  {k:'dd',l:'COMP2 STEP',ic:'sigma',v:'4/3'},
+  {k:'dd',l:'COMP2 TF',ic:'clock',v:'Trigger',o:['Sub','Trigger','Pattern','Struct']},
+  {k:'dd',l:'COMP2 STEP',ic:'sigma',v:'4/3',o:['TH','SS','LS','4/3']},
   {k:'sec',l:'LIMIT',cnt:1},
-  {k:'sl',l:'MAX LEVELS',ic:'steps',v:'12',u:'',pct:.05}
+  {k:'sl',l:'MAX LEVELS',ic:'steps',v:'12',u:'',pct:.05,mn:1,mx:500}
 ]},
 
-{n:10, ac:'ember', t:'Factor', s:'AUTO / MANUAL STEP ENGINE', mi:'sigma', rows:[
+{n:10, ac:'gold', t:'Factor', s:'AUTO / MANUAL STEP ENGINE', mi:'sigma', rows:[
   {k:'sec',l:'ENGINE',cnt:3,acc:true},
   {k:'seg',l:'MODE',ic:'fn',o:['Auto','Manual'],act:0},
   {k:'seg',l:'DISPLAY',ic:'eye',o:['Classic','Direct'],act:1},
-  {k:'dd',l:'BASIS',ic:'layers',v:'Control'},
+  {k:'dd',l:'BASIS',ic:'layers',v:'Control',o:['Control','SS','LS','TH','Trigger','Pattern','Structure','Combo']},
   {k:'sec',l:'LEVEL LOOK',cnt:3},
-  {k:'sl',l:'VALUE',ic:'sigma',v:'1.333',u:'',pct:.33},
-  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25},
-  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid'},
+  {k:'sl',l:'VALUE',ic:'sigma',v:'1.333',u:'',pct:.33,mn:1,mx:500,dec:3},
+  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25,mn:1,mx:5},
+  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid',o:['Solid','Dash','Dot','DashDot','DashDotDot']},
   {k:'sec',l:'COLOR',cnt:1},
   {k:'col',l:'COLOR',ic:'droplet',cur:'#FF6A2B',act:1}
 ]},
 
-{n:11, ac:'ember', t:'Structure Levels', s:'L1 - L5 ZONE TOGGLES', mi:'steps', rows:[
+{n:11, ac:'gold', t:'Structure Levels', s:'L1 - L5 ZONE TOGGLES', mi:'steps', rows:[
   {k:'nav',l:'BACK',ic:'back',sub:'ZONES & LEVELS',ic2:'back'},
   {k:'sec',l:'STRUCTURE',cnt:1,acc:true},
   {k:'sw',l:'SHOW STRUCTURE',ic:'steps',on:true},
@@ -774,12 +824,12 @@ const CARDS = [
   {k:'tab',o:['Style','Text','Setup'],oi:['square','type','target'],act:0},
   {k:'sec',l:'BORDER',cnt:3,acc:true},
   {k:'col',l:'BORDER COLOR',ic:'droplet',cur:'#FFAB00',act:0},
-  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25},
-  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid'},
+  {k:'sl',l:'WIDTH',ic:'weight',v:'2',u:'px',pct:.25,mn:1,mx:5},
+  {k:'dd',l:'STYLE',ic:'linestyle',v:'Solid',o:['Solid','Dash','Dot','DashDot','DashDotDot']},
   {k:'sec',l:'FILL',cnt:3},
-  {k:'sl',l:'BORDER TR',ic:'contrast',v:'0',u:'%',pct:.0},
+  {k:'sl',l:'BORDER TR',ic:'contrast',v:'0',u:'%',pct:.0,mn:0,mx:100},
   {k:'col',l:'FILL COLOR',ic:'droplet',cur:'#FFAB00',act:0},
-  {k:'sl',l:'FILL TR',ic:'contrast',v:'80',u:'%',pct:.80}
+  {k:'sl',l:'FILL TR',ic:'contrast',v:'80',u:'%',pct:.80,mn:0,mx:100}
 ]},
 
 {n:'12b', ac:'gold', t:'Base Box', s:'TEXT TAB · OBJ_EDIT FIELD', mi:'type', rows:[
@@ -787,7 +837,7 @@ const CARDS = [
   {k:'sec',l:'CONTENT',cnt:1,acc:true},
   {k:'txt',l:'TEXT',ic:'type',v:'Weekly High'},
   {k:'sec',l:'TYPOGRAPHY',cnt:5},
-  {k:'sl',l:'SIZE',ic:'textsize',v:'11',u:'pt',pct:.19},
+  {k:'sl',l:'SIZE',ic:'textsize',v:'11',u:'pt',pct:.19,mn:8,mx:24},
   {k:'seg',l:'B | I',ic:'bold',o:['Reg','Bold','Italic','B+I'],act:1},
   {k:'seg',l:'ALIGN',ic:'alignC',o:['Left','Center','Right'],act:1},
   {k:'seg',l:'VALIGN',ic:'valign',o:['Top','Inside','Bottom'],act:1},
@@ -797,12 +847,12 @@ const CARDS = [
 {n:'12c', ac:'gold', t:'Base Box', s:'SETUP TAB · R:R + LEGS + TEMPLATE', mi:'target', rows:[
   {k:'tab',o:['Style','Text','Setup'],oi:['square','type','target'],act:2},
   {k:'sec',l:'RISK / REWARD',cnt:1,acc:true},
-  {k:'sl',l:'TARGET R',ic:'target',v:'2',u:'R',pct:.33},
+  {k:'sl',l:'TARGET R',ic:'target',v:'2',u:'R',pct:.33,mn:1,mx:4},
   {k:'sec',l:'LEG COLORS',cnt:3,strip:['#CFE3FF','#F0455F','#12B886']},
   {k:'cset',act:0,o:[{k:'ENTRY',v:'#CFE3FF'},{k:'STOP',v:'#F0455F'},{k:'TARGET',v:'#12B886'}]},
   {k:'sec',l:'EXTRAS',cnt:2},
   {k:'seg',l:'INFO',ic:'info',o:['Auto','Show'],act:0},
-  {k:'dd',l:'TEMPLATE',ic:'template',v:'Amber'}
+  {k:'dd',l:'TEMPLATE',ic:'template',v:'Amber',o:['Amber','Ocean','Mono','Custom']}
 ]}
 ];
 
@@ -933,16 +983,353 @@ function toolsSub(n){
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   LIVE DEMO — the preview answers like the terminal (state + events).
+   One state entry per rendered card, rebuilt when rows reshape (tab/mode
+   switch, like PnlOpen). Click/press routing infers the control from CSS
+   classes (no extra markup), positions from siblings — the same contract
+   the MQL hit-testers obey. Sliders drag with real min/max from the data.
+   ══════════════════════════════════════════════════════════════════ */
+const STEP_CI = CARDS.findIndex(c => c.n === 9);
+const BOX_CIS = { '12a': 0, '12b': 1, '12c': 2 };
+const BOX_ENTRIES = ['12a', '12b', '12c'].map(n => CARDS.find(c => c.n === n));
+const STEP_TAB = ['TH', 'SS-LS', 'Combo', 'Factor'];
+const STEP_SECTIONS = {
+  0: [],
+  1: [{ k: 'sw', l: 'LS FIRST', ic: 'swap', on: true }],
+  2: null,   // Combo = the card's own rows below the tab
+  3: [
+    { k: 'seg', l: 'MODE', ic: 'fn', o: ['Auto', 'Manual'], act: 0 },
+    { k: 'seg', l: 'DISPLAY', ic: 'eye', o: ['Classic', 'Direct'], act: 1 },
+    { k: 'dd', l: 'BASIS', ic: 'layers', v: 'Control', o: ['Control', 'SS', 'LS', 'TH', 'Trigger', 'Pattern', 'Structure', 'Combo'] },
+    { k: 'sl', l: 'VALUE', ic: 'sigma', v: '167', u: '', pct: .33, mn: 1, mx: 500, dec: 3 },
+    { k: 'sl', l: 'WIDTH', ic: 'weight', v: '2', u: 'px', pct: .25, mn: 1, mx: 5 },
+    { k: 'dd', l: 'STYLE', ic: 'linestyle', v: 'Solid', o: ['Solid', 'Dash', 'Dot', 'DashDot', 'DashDotDot'] },
+    { k: 'col', l: 'COLOR', ic: 'droplet', cur: '#FF6A2B', act: 1 }
+  ]
+};
+const STEP_TAIL = [
+  { k: 'sec', l: 'LIMIT', cnt: 1 },
+  { k: 'sl', l: 'MAX LEVELS', ic: 'steps', v: '12', u: '', pct: .05, mn: 1, mx: 500 }
+];
+
+const ST = [];
+const closedCards = {};
+function initRowState(r) {
+  switch (r.k) {
+    case 'sw': return { on: !!r.on };
+    case 'dual': return { ons: r.o.map(c => !!c.on) };
+    case 'seg': case 'presets': case 'tab': return { act: r.act || 0 };
+    case 'dd': return { act: Math.max(0, (r.o || []).indexOf(r.v)) };
+    case 'sl': return { pct: (r.pct == null ? 0 : r.pct), v: r.v };
+    case 'col': return { act: (r.act == null ? 0 : r.act), cur: r.cur };
+    case 'cset': return { act: r.act || 0 };
+    case 'sec': return { collapsed: !!r.col };
+    default: return {};
+  }
+}
+function fullRows(ci) {
+  const c = CARDS[ci];
+  if (ci === STEP_CI) {
+    const m = ST[ci] ? ST[ci].mode : c.rows[0].act;
+    if (m === 2) return c.rows;
+    const tab = Object.assign({}, c.rows[0], { act: m });
+    return [tab].concat(STEP_SECTIONS[m], STEP_TAIL);
+  }
+  if (BOX_CIS[c.n] !== undefined) {
+    const t = ST[ci] ? ST[ci].tabIdx : BOX_CIS[c.n];
+    return BOX_ENTRIES[t].rows.map((r, i) => (i === 0 ? Object.assign({}, r, { act: t }) : r));
+  }
+  return c.rows;
+}
+function initCard(ci) {
+  const c = CARDS[ci];
+  const st = {};
+  if (ci === STEP_CI) st.mode = c.rows[0].act;
+  if (BOX_CIS[c.n] !== undefined) st.tabIdx = BOX_CIS[c.n];
+  ST[ci] = st;
+  st.rows = fullRows(ci).map(initRowState);
+  return st;
+}
+CARDS.forEach((c, ci) => initCard(ci));
+
+function effRow(ci, fi) {
+  const def = fullRows(ci)[fi];
+  const st = (ST[ci].rows[fi] || {});
+  const r = Object.assign({}, def);
+  if (def.k === 'sw') r.on = !!st.on;
+  else if (def.k === 'dual') r.o = def.o.map((m, i) => Object.assign({}, m, { on: !!(st.ons && st.ons[i]) }));
+  else if (def.k === 'seg' || def.k === 'presets' || def.k === 'tab') r.act = st.act || 0;
+  else if (def.k === 'dd') { r.act = st.act || 0; r.v = (def.o || [])[r.act] || def.v; }
+  else if (def.k === 'sl') { r.pct = (st.pct == null ? def.pct : st.pct); r.v = (st.v == null ? def.v : st.v); }
+  else if (def.k === 'col') { r.act = (st.act == null ? 0 : st.act); r.cur = st.cur || def.cur; }
+  else if (def.k === 'cset') r.act = st.act || 0;
+  else if (def.k === 'sec') r.col = !!st.collapsed;
+  return r;
+}
+function visibleRows(ci) {
+  const defs = fullRows(ci);
+  const out = [];
+  let hide = false;
+  for (let fi = 0; fi < defs.length; fi++) {
+    const k = defs[fi].k;
+    if (k === 'sec' || k === 'tab') {
+      hide = false;
+      out.push({ fi, r: effRow(ci, fi) });
+      if (k === 'sec' && ST[ci].rows[fi] && ST[ci].rows[fi].collapsed) hide = true;
+    }
+    else if (!hide) out.push({ fi, r: effRow(ci, fi) });
+  }
+  return out;
+}
+function fmtVal(def, pct) {
+  const mn = (def.mn == null ? 0 : def.mn), mx = (def.mx == null ? 100 : def.mx);
+  const v = mn + Math.max(0, Math.min(1, pct)) * (mx - mn);
+  if (def.u === '%') return [String(Math.round(v)), '%'];
+  if (def.dec) return [v.toFixed(def.dec), def.u || ''];
+  return [String(Math.round(v)), def.u || ''];
+}
+function renderCard(ci) {
+  const c = CARDS[ci];
+  if (closedCards[ci]) {
+    return '<div class="mt4 t-og ac-gold"><div class="card"><div class="hd">' +
+      '<div class="mark">' + svg('bolt') + '</div>' +
+      '<div class="htxt"><div class="ttl">' + c.t + '</div></div>' +
+      '<span class="btn primary reopen" data-c="' + ci + '" data-a="open">Open</span>' +
+      '</div></div></div>';
+  }
+  const headEntry = (BOX_CIS[c.n] !== undefined) ? BOX_ENTRIES[ST[ci].tabIdx] : c;
+  const dots = headEntry.s.split(' · ').map((t, i) =>
+    '<i class="' + (i % 2 ? 'j' : '') + '" style="background:' + (i % 2 ? '#12B886' : '#FFAB00') + '"></i>' + t).join('');
+  const vis = visibleRows(ci);
+  const wide = vis.length > 10;
+  let h = '', pair = [];
+  const tagRow = (e, half) => {
+    let s = row(e.r);
+    if (half) s = s.replace('class="row', 'class="row half');
+    return s.replace('<div ', '<div data-c="' + ci + '" data-r="' + e.fi + '" ');
+  };
+  const flush = () => {
+    if (pair.length === 2) h += '<div class="line">' + tagRow(pair[0], true) + tagRow(pair[1], true) + '</div>';
+    else if (pair.length === 1) h += tagRow(pair[0], true);
+    pair = [];
+  };
+  if (!wide) {
+    for (const e of vis) h += tagRow(e, false);
+  } else {
+    for (const e of vis) {
+      if (e.r.k === 'sec' || e.r.k === 'tab') { flush(); h += tagRow(e, false); }
+      else { pair.push(e); if (pair.length === 2) flush(); }
+    }
+    flush();
+  }
+  return '<div class="mt4 t-og ac-' + c.ac + (wide ? ' wide' : '') + '"><div class="card' + (wide ? ' wide' : '') + '">' +
+    '<div class="hd"><div class="mark">' + svg(headEntry.mi || 'bolt') + '</div>' +
+      '<div class="htxt"><div class="ttl">' + headEntry.t + '</div><div class="subttl">' + dots + '</div></div>' +
+      (c.key ? '<span class="key">' + c.key + '</span>' : '') +
+      '<span class="ver">' + headEntry.n + '</span>' +
+      '<span class="x" data-c="' + ci + '" data-a="close">' + svg('x') + '</span></div>' +
+    '<div class="rows">' + h + '</div>' +
+    (c.fade ? '<div class="fade"></div>' : '') +
+    '<div class="ft"><span class="btn ghost" data-c="' + ci + '" data-a="reset">' + svg('reset') + 'Reset</span>' +
+    '<span class="btn primary" data-c="' + ci + '" data-a="done">' + svg('check') + 'Done</span></div>' +
+  '</div></div>';
+}
+function refresh(ci) {
+  if (typeof document.querySelector !== 'function') return;
+  const box = document.querySelector('[data-card="' + ci + '"]');
+  if (box) box.innerHTML = renderCard(ci);
+}
+
+let toastTimer = null;
+function toast(msg) {
+  if (typeof document.getElementById !== 'function') return;
+  let t = document.getElementById('demotoast');
+  if (!t) { t = document.createElement('div'); t.id = 'demotoast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+}
+let POP = null;
+function closePop() {
+  if (typeof document.getElementById !== 'function') return;
+  const d = document.getElementById('demopop');
+  if (d) d.remove();
+  POP = null;
+}
+function openPop(anchorEl, inner) {
+  closePop();
+  const r = anchorEl.getBoundingClientRect();
+  const d = document.createElement('div');
+  d.id = 'demopop';
+  d.innerHTML = '<div class="mt4 t-og ac-gold"><div class="pop">' + inner + '</div></div>';
+  document.body.appendChild(d);
+  let x = Math.min(window.innerWidth - 230, r.left);
+  let y = r.bottom + 6;
+  if (y + 220 > window.innerHeight) y = Math.max(8, r.top - 220);
+  d.style.left = Math.max(8, x) + 'px';
+  d.style.top = y + 'px';
+}
+function openDdPop(anchorEl, dc, fi) {
+  const def = fullRows(dc)[fi];
+  const act = (ST[dc].rows[fi] || {}).act || 0;
+  // NOTE: POP is assigned AFTER openPop — openPop closes any hanging
+  // popover via closePop(), which clears POP (that ordering bug ate every
+  // selection: the menu opened but no option could ever apply).
+  openPop(anchorEl, (def.o || []).map((label, i) =>
+    '<div class="pi' + (i === act ? ' on' : '') + '" data-a="ddopt" data-i="' + i + '">' +
+    label + (i === act ? '<span class="ck">' + svg('check') + '</span>' : '') + '</div>').join(''));
+  POP = { dc, fi, kind: 'dd' };
+}
+function openPalPop(anchorEl, dc, fi) {
+  const st = ST[dc].rows[fi] || {};
+  openPalPopInner(anchorEl, st.act || 0);
+  POP = { dc, fi, kind: 'pal' };
+}
+function openPalPopInner(anchorEl, act) {
+  openPop(anchorEl, '<div class="prow2">' + SW.map((c, i) =>
+    '<b style="background:' + c + '"' + (i === act ? ' class="act"' : '') +
+    ' data-a="palopt" data-i="' + i + '"></b>').join('') + '</div>');
+}
+function kidsIdx(el) {
+  return Array.prototype.indexOf.call(el.parentNode.children, el);
+}
+function ctxOf(t) {
+  const holder = t.closest ? t.closest('[data-c]') : null;
+  if (!holder) return null;
+  const rowEl = t.closest ? t.closest('[data-r]') : null;
+  return { dc: +holder.getAttribute('data-c'),
+           fi: rowEl ? +rowEl.getAttribute('data-r') : -1 };
+}
+function onClick(e) {
+  const t = e.target;
+  if (!t.closest) return;
+  const inPop = t.closest('#demopop');
+  if (inPop) {
+    const opt = t.closest('[data-a="ddopt"]');
+    if (opt && POP) {
+      ST[POP.dc].rows[POP.fi].act = +opt.getAttribute('data-i');
+      const dc = POP.dc;
+      closePop(); refresh(dc);
+      return;
+    }
+    const copt = t.closest('[data-a="palopt"]');
+    if (copt && POP) {
+      const st = ST[POP.dc].rows[POP.fi];
+      st.act = +copt.getAttribute('data-i');
+      st.cur = SW[st.act];
+      const dc = POP.dc;
+      closePop(); refresh(dc);
+      return;
+    }
+    return;
+  }
+  if (POP) closePop();   // outside press closes AND falls through (MT4 parity)
+  const q = sel => t.closest(sel);
+  let m;
+  if ((m = q('[data-a="open"]'))) { delete closedCards[+m.getAttribute('data-c')]; refresh(+m.getAttribute('data-c')); return; }
+  const cx = ctxOf(t);
+  if (!cx) return;
+  const dc = cx.dc, fi = cx.fi;
+  const cls = sel => !!q(sel);
+  if (cls('.x')) { closedCards[dc] = 1; refresh(dc); toast('Panel closed — Open brings it back'); return; }
+  if (cls('.btn.primary')) { toast('Applied'); return; }
+  if (cls('.btn.ghost')) {
+    const keepMode = ST[dc].mode, keepTab = ST[dc].tabIdx;
+    initCard(dc);
+    if (keepMode !== undefined) ST[dc].mode = keepMode;
+    if (keepTab !== undefined) ST[dc].tabIdx = keepTab;
+    refresh(dc); toast('Reset to defaults'); return;
+  }
+  if (fi < 0) return;
+  const def = fullRows(dc)[fi];
+  if (!def) return;
+  const st = ST[dc].rows[fi];
+  if ((m = q('.ccell'))) {
+    st.act = kidsIdx(m); refresh(dc); return;
+  }
+  if ((m = q('.cell'))) {
+    const i = kidsIdx(m);
+    st.ons[i] = !st.ons[i]; refresh(dc); return;
+  }
+  if (cls('.sw')) { st.on = !st.on; refresh(dc); return; }
+  if ((m = q('.presets b'))) { st.act = kidsIdx(m); refresh(dc); toast('Preset: ' + def.o[st.act]); return; }
+  if ((m = q('.seg'))) { st.act = kidsIdx(m); refresh(dc); return; }
+  if ((m = q('.tab'))) {
+    const i = kidsIdx(m);
+    if (dc === STEP_CI) { ST[dc].mode = i; ST[dc].rows = fullRows(dc).map(initRowState); refresh(dc); toast('Step mode: ' + STEP_TAB[i]); }
+    else if (BOX_CIS[CARDS[dc].n] !== undefined) { ST[dc].tabIdx = i; ST[dc].rows = fullRows(dc).map(initRowState); refresh(dc); }
+    else { st.act = i; refresh(dc); }
+    return;
+  }
+  if (cls('.dd')) { openDdPop(q('.dd'), dc, fi); return; }
+  if (cls('.q.add')) { openPalPop(q('.q.add'), dc, fi); return; }
+  if ((m = q('.q'))) {
+    const i = kidsIdx(m) - 1;   // .swset children: prev, q×8, add
+    if (i >= 0 && i < 8) { st.act = i; st.cur = SW[i]; refresh(dc); }
+    return;
+  }
+  if (cls('.prev')) { openPalPop(q('.prev'), dc, fi); return; }
+  if (cls('.nav')) { toast('Opens the sub-card in MT4'); return; }
+  if (def.k === 'sec') {
+    st.collapsed = !st.collapsed; refresh(dc); return;
+  }
+}
+
+/* slider drag — real min/max, targeted live update (no re-render mid-drag) */
+let DRAG = null;
+function slideTo(clientX) {
+  const def = fullRows(DRAG.dc)[DRAG.fi];
+  const rect = DRAG.el.getBoundingClientRect();
+  const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  ST[DRAG.dc].rows[DRAG.fi].pct = pct;
+  const parts = fmtVal(def, pct);
+  ST[DRAG.dc].rows[DRAG.fi].v = parts[0];
+  const rowEl = DRAG.el.closest('[data-r]');
+  if (!rowEl) return;
+  const fill = rowEl.querySelector('.fill'), knob = rowEl.querySelector('.knob'),
+        chip = rowEl.querySelector('.val.chip');
+  const left = Math.round(pct * (CONTENT - 19));
+  if (fill) fill.style.width = (left + 10) + 'px';
+  if (knob) knob.style.left = left + 'px';
+  if (chip) chip.innerHTML = parts[0] + (parts[1] ? '<u>' + parts[1] + '</u>' : '');
+}
+function onPointerDown(e) {
+  const t = e.target;
+  if (!t.closest || (t.closest('#demopop'))) return;
+  const tr = t.closest('.track');
+  if (!tr) return;
+  const holder = tr.closest('[data-c]'), rowEl = tr.closest('[data-r]');
+  if (!holder || !rowEl) return;
+  DRAG = { dc: +holder.getAttribute('data-c'), fi: +rowEl.getAttribute('data-r'), el: tr };
+  if (e.preventDefault) e.preventDefault();
+  slideTo(e.clientX);
+}
+function onPointerMove(e) { if (DRAG) slideTo(e.clientX); }
+function onPointerUp() { DRAG = null; }
+
+if (typeof document.addEventListener === 'function') {
+  document.addEventListener('click', onClick);
+  document.addEventListener('pointerdown', onPointerDown);
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('keydown', e => { if (e && e.key === 'Escape') closePop(); });
+  document.addEventListener('focusout', e => {
+    if (e.target && e.target.classList && e.target.classList.contains('fld')) toast('Text saved (per-box in MT4)');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════
    MOUNT
    ══════════════════════════════════════════════════════════════════ */
 document.getElementById('icon-grid').innerHTML = Object.keys(I).map(k =>
   '<div class="ic-cell">' + svg(k) + '<b>' + k.toUpperCase() + '</b><u>24px stroke</u></div>').join('');
 
-document.getElementById('card-grid').innerHTML = CARDS.map(c =>
+document.getElementById('card-grid').innerHTML = CARDS.map((c, ci) =>
   '<div class="col"><div class="cap"><span class="ver" style="position:static">' + c.n + '</span>' +
   '<b>' + c.t + '</b><em>' + c.rows.filter(r => r.k !== 'sec').length + ' ROWS · ' + c.rows.length + ' TOTAL</em>' +
   '<span class="tag same">همان ردیف‌ها</span></div>' +
-  '<div class="cbox" data-bgbox>' + card(c) + '</div></div>').join('');
+  '<div class="cbox" data-bgbox data-card="' + ci + '">' + renderCard(ci) + '</div></div>').join('');
 
 document.getElementById('surface-grid').innerHTML =
   [['کارت ۱۳ · استریپ مینی Base Box', STRIP, 'چیدمان افقی ۲۳۶×۳۸ — از کد R-BKSTRIP؛ آیکون‌ها همان زبان را ادامه می‌دهند.'],

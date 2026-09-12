@@ -205,6 +205,11 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
 //| Clear all labels to prevent ghosting or overlaps                |
 //+------------------------------------------------------------------+
 void ClearAllLabels(const string objectPrefix) {
+    // P-UI-21: suppress window — every bulk below deletes inpObjectPrefix*
+    // names, and unsuppressed each fires CHARTEVENT_OBJECT_DELETE ->
+    // CacheRemoveObject + g_redrawTHLevelsNeeded (a label clear must never
+    // flag a full level redraw).
+    g_suppressDeleteEvents = true;
     // 1. Delete all labels with the standard LBL_ prefix via native bulk delete
     string labelPrefix = objectPrefix + "LBL_";
     ObjectsDeleteAll(0, labelPrefix);
@@ -236,6 +241,8 @@ void ClearAllLabels(const string objectPrefix) {
     
     // (b) Delete objectPrefix + "TF*" labels (legacy)
     ObjectsDeleteAll(0, objectPrefix + "TF");
+    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+    g_suppressDeleteEvents = false;
 }
 
 // R-TRADEPLAN: trade-plan math lives ONLY in TradePlanFormulas.mqh.
@@ -380,7 +387,12 @@ bool CreateLivePriceCountdown(const string name)
       barPx = barX - prevX;
 
    string text = TradePlanCloseInText(true);
-   int tagW = (int)CalculateTextWidth(text);
+   // Own size (0 = follow the shared label size) — resolved BEFORE measuring:
+   // the width estimate is cached for inpFontSize, so scale it to the
+   // RENDERED size (P-UI-26/F17), or the edge-flip and click rect drift.
+   int fsz = (inpCountdownFontSize > 0) ? inpCountdownFontSize : inpFontSize;
+   if(fsz <= 0) fsz = 8;
+   int tagW = (int)(CalculateTextWidth(text) * fsz / MathMax(1, inpFontSize));
    // Hand-clamped on purpose: ClampInt() lives in BiotakKit.mqh, which this
    // file (included earlier) cannot see in the Lite build (P-ARCH-02).
    int gap = inpCountdownGapPx;                     // "یک کم فاصله"
@@ -408,11 +420,13 @@ bool CreateLivePriceCountdown(const string name)
       ObjectSetString(0, name, OBJPROP_TEXT, "");   // no default "Label" text
    }
 
-   // Own size (0 = follow the shared label size) and own color.
-   int fsz = (inpCountdownFontSize > 0) ? inpCountdownFontSize : inpFontSize;
+   // Own color. Center the row on the quote level (Y is measured from the
+   // top edge here); clamp the bottom too so the tag never sinks under the
+   // date scale when price hugs the chart's lower edge (P-UI-26/L4).
+   int chTag = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(chTag <= 0) chTag = 1080;
    int xLeft = MathMax(4, x);
-   // Center the row on the quote level (Y is measured from the top edge here).
-   int yTop = MathMax(2, priceY - fsz / 2);
+   int yTop = MathMax(2, MathMin(priceY - fsz / 2, chTag - (fsz + 2) - 20));
 
    SetLabelFont(name);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsz);   // own size over the shared one

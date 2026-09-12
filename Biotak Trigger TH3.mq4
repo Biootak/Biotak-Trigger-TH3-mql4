@@ -131,6 +131,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
     // --- UI teardown (before the base handler clears chart objects) ---
+    // P-UI-21: close panels/palette/strip/dropdowns FIRST (flushes the
+    // card-12 text edit + releases the modal chart lock) — otherwise
+    // REASON_REMOVE leaves Pnl*/Pal_* ghosts behind, swept only at next attach.
+    PnlCloseAll();
     DeleteMenu();
     DeleteHTFCandles();
     SaveBiotakKit();
