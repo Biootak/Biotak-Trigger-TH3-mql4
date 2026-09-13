@@ -1462,7 +1462,15 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
         string timeframeName = FRACTAL_TIMEFRAMES[i];
         double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
-        double thPips10 = thPoints / 10.0;
+        // P-UI-52: pips through the ONE owner (`GetCachedPipSize()`), never the
+        // hard-coded `point * 10`: on a 2-digit index/crypto symbol a pip is one
+        // point, so the old constant printed every figure in this column 10x
+        // smaller than the ATR/combo/BaseKnot pip figures of the SAME symbol.
+        // `thPoints` is a point count (price / point), so the pip value is
+        // thPoints * point / pipSize - one cached getter, same cost as the
+        // constant it replaces, with the old result as the zero-pip fallback.
+        double pipNow = GetCachedPipSize();
+        double thPips10 = (pipNow > 0) ? thPoints * GetCachedPoint() / pipNow : thPoints / 10.0;
         
         color labelColor = FRACTAL_COLORS[i];
         string mainText = inpShowTimeframeInLabels ? StringFormat("%s: %.1f", GetBaseTimeframeName(timeframeName), thPips10) : DoubleToString(thPips10, 1);
@@ -1550,7 +1558,9 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
         string timeframeName = STANDARD_TIMEFRAMES[i];
         double percentage = CalculateStandardPercentage(STANDARD_MINUTES[i]);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
-        double thPips10 = thPoints / 10.0;
+        // P-UI-52: same owner as the fractal column above - see the note there.
+        double pipNow = GetCachedPipSize();
+        double thPips10 = (pipNow > 0) ? thPoints * GetCachedPoint() / pipNow : thPoints / 10.0;
         
         color labelColor = STANDARD_COLORS[i];
         string mainText = inpShowTimeframeInLabels ? StringFormat("%s: %.1f", timeframeName, thPips10) : DoubleToString(thPips10, 1);

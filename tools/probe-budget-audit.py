@@ -2347,6 +2347,12 @@ def check_custom_price_mode(o):
         ring owns cannot leave MT4 holding the line;
       * the clear never runs MID-drag (that event is continuous while the user is
         holding the line, and the drag is what selects it).
+      * P-UI-51: nothing writes to the line while a gesture is live. The not-ours
+        press DEFERS its clear (its hit test runs on the first move and only
+        matches the terminal's own grab by accident), the carry holds off on the
+        press edge's own move (where the frozen test is meaningless by
+        construction), and the line's continuous drag event never resets the
+        gesture flag that the press edge and the button-up own.
     """
     events = strip_comments(read(EVENTS, o))
     menu = strip_comments(read(MENU, o))
@@ -2404,6 +2410,21 @@ def check_custom_price_mode(o):
         return
     ok("custom-price-mode", "the creator makes the line always grabbable, never pre-SELECTED")
 
+    # P-UI-50: the creator's own clear must be a COMPARE-AND-WRITE that stands down
+    # for the whole duration of a gesture. It is reached from the click that confirms
+    # the price, and that click can arrive while the button is still DOWN: an
+    # unconditional write there rewrites the object MT4 is dragging and cancels the
+    # drag (P-BK-15) - which is the "the drag is cut off very quickly" report.
+    if not re.search(r"if\(!g_customPriceLineDragging && !g_customPriceNativeDrag &&[^;]*?"
+                     r"ObjectSetInteger\(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false\);",
+                     helper, re.S):
+        fail("custom-price-mode",
+             "the creator clears a live selection again: it must skip the write while a gesture "
+             "owns the line (g_customPriceLineDragging / g_customPriceNativeDrag), or the "
+             "confirming click rewrites the object MT4 is dragging and cancels that drag "
+             "(P-BK-15)")
+        return
+
     # ONE creator and ONE clear owner. The property set used to exist FIVE times
     # (the C key, the chart click, the TF-lock restore, the ring PIN and the
     # helper) and every copy was a chance to leave the stale selection behind -
@@ -2414,13 +2435,156 @@ def check_custom_price_mode(o):
              "the line's SELECTABLE flag is written in more than one place: one creator, or "
              "the copies drift apart")
         return
-    if re.search(r"OBJPROP_SELECTED, true", code_ev):
-        fail("custom-price-mode", "a site pre-selects the custom price line")
+    # P-UI-49d: SELECTED *true* may exist in exactly ONE place - the user's own
+    # grab. git is explicit about this one: the drag was never a per-object
+    # native drag, the line was created SELECTED and MT4 moves the SELECTED
+    # object on each mouse move (3a288fb removed that write and nothing replaced
+    # the movement - the line stopped moving and still does). A CREATION or
+    # RESTORE site that selects the line is the P-UI-45 interference: MT4 then
+    # moves it with every later drag anywhere on the chart.
+    grabs = re.findall(r"ObjectSetInteger\(0,\s*g_customPriceHorizontalLineName,\s*OBJPROP_SELECTED,\s*true\);",
+                       code_ev)
+    if len(grabs) != 1:
+        fail("custom-price-mode",
+             "expected exactly ONE `OBJPROP_SELECTED, true` - the grab on the press edge that "
+             "lands on the line - and found %d. Selecting it at creation/restore is the "
+             "interference (MT4 moves a SELECTED object with every later drag), and selecting "
+             "it nowhere is the regression: nothing moves the line at all" % len(grabs))
+        return
+    mm = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)") or ""
+    if "OBJPROP_SELECTED, true" not in mm:
+        fail("custom-price-mode",
+             "the SELECTED, true write left the mouse-move press edge: the line is only "
+             "selected from somewhere that is not the user's own grab")
+        return
+    # P-UI-51: a press the hit test did NOT recognize must DEFER the clear, never
+    # write it inline. That test runs on the first MOVE after the press - already a
+    # few pixels away from it and further the faster the drag starts - so it can
+    # miss a press the TERMINAL did pick up; and the clear only ever writes while
+    # OBJPROP_SELECTED is true, i.e. exactly when the terminal is holding the line.
+    # Writing it there dropped MT4's own selection out of the drag that same press
+    # had just started: "the drag state is cut off very quickly".
+    not_ours = re.search(r"else if\(pressEdge\)\s*\{(.*?)\n\s*\}", mm, re.S)
+    if not not_ours:
+        fail("custom-price-mode",
+             "the mouse-move press edge lost its not-ours branch: a press that starts somebody "
+             "else's gesture leaves the line SELECTED through it, and MT4 moves every selected "
+             "object with that drag (the reported interference)")
+        return
+    if "ClearCustomPriceSelection();" in not_ours.group(1):
+        fail("custom-price-mode",
+             "a press the hit test did not recognize clears the line's selection INLINE again: "
+             "that write only ever fires while the terminal IS holding the line (the clear "
+             "owner's guarded read), so it drops MT4's own selection out of the drag that same "
+             "press started - arm g_customPriceNativeDrag and let the button-up drain it")
+        return
+    if "g_customPriceNativeDrag = true;" not in not_ours.group(1):
+        fail("custom-price-mode",
+             "the not-ours press no longer defers the clear either: the line then stays SELECTED "
+             "through the foreign gesture (pan/box/ring/card) and MT4 moves it with that drag")
+        return
+    if "CustomPriceGrabAt(" not in code_ev or "g_customPriceDragOwn = true;" not in code_ev:
+        fail("custom-price-mode",
+             "the gesture lost its own grab and carry: a press the terminal never grabs must "
+             "still move the line (own hit test + absolute cursor carry, P-BK-16's shape)")
+        return
+    # P-UI-51: and that carry must hold off on the press edge's OWN move - the one
+    # event where the line's price equals the grab price by definition, so the
+    # frozen test cannot tell an engaged terminal drag from a frozen one.
+    # P-UI-51/P-UI-55: the carry's fence, in one place - it must skip the press
+    # edge's own move (where the frozen test is meaningless), require real TRAVEL,
+    # and have a valid press latch to move FROM.
+    if "if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&" not in mm \
+       or "s_ownGrabY = (int)dparam;" not in mm:
+        fail("custom-price-mode",
+             "the carry lost its fence: it must skip the press edge (a write on the object MT4 "
+             "just grabbed cancels that drag, P-BK-15), require travel past CP_DRAG_SLOP (the "
+             "one-pixel jitter of a CLICK otherwise writes the line's price, so a click moves "
+             "every level) and own a press latch")
+        return
+    if "double wishPrice = s_ownGrabPrice + (cursorPrice - s_ownGrabCursorPrice);" not in mm:
+        fail("custom-price-mode",
+             "the carry is absolute-to-cursor again: it copies the press TOLERANCE offset onto "
+             "the PRICE, so a gesture that was not aimed at the line snaps it onto the cursor "
+             "and the levels jump under the user ('I clicked and the levels landed elsewhere'); "
+             "move the grab price by the cursor's TRAVEL instead - the BaseKnot box's rule")
+        return
+    # P-UI-53: the gesture OWNS THE VIEW. A live chart scroll / context menu / autoscroll
+    # under a native object drag slides the price scale, and MT4 answers that by moving
+    # the dragged line against a rebased price - the jump/die the drag report describes.
+    # One taker (the grab), one re-assert per throttled step on BOTH event channels, one
+    # release on the button-up move, out-of-band heal for the release that never arrives.
+    if "CustomPriceDragLockOn();" not in mm or "CustomPriceDragLockOff();" not in mm:
+        fail("custom-price-mode",
+             "the drag no longer takes / hands back the view lock: the chart pans under the "
+             "dragged line and the line is moved against the rebased price scale")
+        return
+    # (`od` is bound further down this check; the drag handler's own body is needed
+    # here to prove the SECOND event channel re-asserts too.)
+    dragb = fn_body(code_ev, "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)") or ""
+    if mm.count("CustomPriceDragReassertLock();") != 1 or "CustomPriceDragReassertLock();" not in dragb:
+        fail("custom-price-mode",
+             "the view lock is not re-asserted exactly once per throttled step on both event "
+             "channels: a third writer (a closing panel, a watchdog restore, a template reset) "
+             "can flip the props back and the chart pans for the rest of the gesture - P-BK-14's "
+             "rule, on the line")
+        return
+    # P-UI-54: the RELEASE may not wipe. MT4 selects the line on the press that
+    # clicks it, so this gesture also runs for a plain CLICK - and a wipe is
+    # ClearAllLevels + the four-frame staged rebuild of the whole family. The
+    # release must ask whether the gesture MOVED anything and settle in place.
+    if "g_forceClearOnNextDraw = true;" in mm:
+        fail("custom-price-mode",
+             "the drag release force-clears again: MT4 selects the line on the press that "
+             "CLICKS it, so every click the user makes runs ClearAllLevels + the staged "
+             "rebuild of the whole family - the reported flicker. A wipe answers a TOPOLOGY "
+             "change (start-point type / mode / timeframe), never a price")
+        return
+    if "bool movedByGesture" not in mm or "if(movedByGesture)" not in mm:
+        fail("custom-price-mode",
+             "the release no longer asks whether the gesture moved the line: it settles "
+             "unconditionally, which is either the click-flicker (a wipe) or a frame spent "
+             "on a picture that never changed")
+        return
+    heal = fn_body(code_ev, "void CustomPriceDragHealStale()")
+    calcb = fn_body(code_ev, "int OnCalculateHandler(")
+    deinitb = fn_body(code_ev, "void OnDeinitHandler(")
+    if not heal or "TERMINAL_KEYSTATE_LEFT" not in heal:
+        fail("custom-price-mode",
+             "the stale-gesture heal is gone or lost its button probe: a release that emits no "
+             "mouse move (off-window, lost focus - the P-BK-03 trap) then leaves the chart "
+             "locked until the next attach")
+        return
+    if "CustomPriceDragHealStale();" not in (calcb or "") \
+       or "CustomPriceDragLockOff();" not in (deinitb or ""):
+        fail("custom-price-mode",
+             "the lock lost its watchdog or its OnDeinit release: a chart left with scroll "
+             "disabled is the reported 'the chart is locked'")
         return
     if len(re.findall(r"OBJPROP_SELECTED, false", code_ev)) != 2:
         fail("custom-price-mode",
              "the SELECTED flag is not the creator/clear-owner pair (expected exactly two "
              "writes, both false)")
+        return
+
+    # P-UI-50: the grab's hit test must use a conversion MT4 actually performs.
+    # `ChartTimePriceToXY(0, 0, 0, ...)` is refused with time = 0, so the first
+    # version of this test could never fire - zero "grab hit-test" grabs in a whole
+    # session of drags - and the drag lived or died by the terminal's own pick-up.
+    grab_at = fn_body(code_ev, "bool CustomPriceGrabAt(")
+    if not grab_at:
+        fail("custom-price-mode", "CustomPriceGrabAt is gone: this check lost its anchor")
+        return
+    if "ChartXYToTimePrice(" not in grab_at or "inpCustomPriceLevelWidth" not in grab_at:
+        fail("custom-price-mode",
+             "the grab hit test no longer converts the cursor (ChartXYToTimePrice) or lost its "
+             "pixel tolerance: the terminal does not always pick the line up on the press "
+             "(P-BK-16), so a hit test that cannot fire leaves the whole drag to that pick-up")
+        return
+    if "ChartTimePriceToXY(0, 0, 0" in code_ev:
+        fail("custom-price-mode",
+             "a conversion with time = 0 is back: MT4 refuses ChartTimePriceToXY with an empty "
+             "time, so the test that depends on it silently never fires")
         return
 
     clear = fn_body(code_ev, "void ClearCustomPriceSelection()")
@@ -2432,20 +2596,53 @@ def check_custom_price_mode(o):
         return
     ok("custom-price-mode", "one creator writes the pair, one owner clears the selection")
 
-    armed = events.count("g_customPriceNativeDrag = true;")
+    # The arming must sit in the line's OWN two handlers (the click that may have
+    # selected it, and its native drag); a bare count would also be satisfied by
+    # new arming sites elsewhere, and a dropped trigger has to keep failing.
+    oc = fn_body(events, "if(id == CHARTEVENT_OBJECT_CLICK && sparam == g_customPriceHorizontalLineName)")
+    od = fn_body(events, "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)")
+    armed = bool(oc) and bool(od) and "g_customPriceNativeDrag = true;" in oc \
+            and "g_customPriceNativeDrag = true;" in od
     cleared = re.search(r"if\(g_customPriceNativeDrag\)\s*\{[^}]*\}", events, re.S)
-    if armed < 2 or not cleared or "g_customPriceNativeDrag = false;" not in cleared.group(0) \
+    if not armed or not cleared or "g_customPriceNativeDrag = false;" not in cleared.group(0) \
        or "ClearCustomPriceSelection();" not in cleared.group(0):
         fail("custom-price-mode",
              "the gesture's selection is not dropped on button-up (armed in the native drag AND "
              "in the click handler, cleared once through the owner): a SELECTED line is moved "
              "by MT4 on every later drag")
         return
-    panels = strip_comments(read(PANELS, o))
-    if "ClearCustomPriceSelection();" not in (fn_body(panels, "void ChartPointerFinalizeOnUps()") or ""):
+    # P-UI-51: the gesture flag is owned by the press edge and the button-up, never
+    # by this CONTINUOUS event. Clearing it here re-armed the carry's reference on
+    # every step of the drag (see the carry check above), which is how our own
+    # writes ended up in the middle of MT4's own drag. Two writers of one gesture
+    # flag is the shape that produced this whole cycle.
+    if "g_customPriceLineDragging = false;" in od:
         fail("custom-price-mode",
-             "the button-up finalizer no longer clears the line's selection: a motionless "
-             "release emits no mouse move, so the latch alone cannot see it")
+             "the line's own drag handler resets the gesture flag again: this event is "
+             "CONTINUOUS while MT4 drags the line, so the mouse-move grab block re-runs and "
+             "re-arms the carry's reference on every step - its frozen test then compares the "
+             "price with itself, always passes, and rewrites the object MT4 is dragging, "
+             "which P-BK-15 answers by cancelling that drag")
+        return
+    panels = strip_comments(read(PANELS, o))
+    # P-UI-49b: the finalizer must DEFER (arm the latch), never clear inline. It
+    # is reached from CHARTEVENT_CLICK / CHARTEVENT_OBJECT_CLICK, and one of the
+    # two arrives on the PRESS that grabs a selectable object - a write here
+    # drops the terminal's selection out of the drag that same press started
+    # ("the drag state is cut off very quickly"), and the domain's own click
+    # handler had just deferred the same clear in that very event.
+    fin = fn_body(panels, "void ChartPointerFinalizeOnUps()") or ""
+    if "ClearCustomPriceSelection();" in fin:
+        fail("custom-price-mode",
+             "the button-up finalizer clears the line's selection INLINE again: it is reached "
+             "from the same click event the domain handler defers for, so on the press that "
+             "grabs the line the write drops MT4's own selection out of the drag it just "
+             "started - arm g_customPriceNativeDrag instead")
+        return
+    if "g_customPriceNativeDrag = true;" not in fin:
+        fail("custom-price-mode",
+             "the finalizer no longer defers the clear either: a motionless release emits no "
+             "mouse move, so the button-up that ends a grab must still arm the latch")
         return
     if "if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();" not in panels:
         fail("custom-price-mode",
@@ -2463,8 +2660,43 @@ def check_custom_price_mode(o):
              "dragging a BaseKnot box then moves the line with it (MT4 drags every selected "
              "object), which is the interference the user reported")
         return
+    # P-UI-49: the line's OWN drag handler must not WRITE to the line. That
+    # handler runs on EVERY step of a native drag, and MT4 cancels an
+    # in-progress native drag when the dragged object is rewritten mid-gesture
+    # (P-BK-15, learned on the BaseKnot box) - the tooltip write that used to
+    # sit there cancelled the very gesture it was decorating, which is why the
+    # line stopped following the cursor once the movement moved from the
+    # SELECTION onto this drag. The tooltip has ONE owner and it is called from
+    # the release, where the button is already up.
+    own = fn_body(code_ev,
+                  "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)")
+    if not own:
+        fail("custom-price-mode",
+             "the line's own drag handler is gone: this check lost its anchor")
+        return
+    if re.search(r"ObjectSet(?:Integer|Double|String)\(0,\s*g_customPriceHorizontalLineName", own):
+        fail("custom-price-mode",
+             "the line is written from inside its own drag handler: MT4 cancels an "
+             "in-progress native drag when the dragged object is rewritten mid-gesture "
+             "(P-BK-15), so the line stops following the cursor - the reported "
+             "'cannot be dragged'")
+        return
+    tip = fn_body(code_ev, "void UpdateCustomPriceTooltip()")
+    if not tip or "OBJPROP_TOOLTIP" not in tip or "g_customPriceHorizontalLineName" not in tip:
+        fail("custom-price-mode",
+             "the drag tooltip text lost its one owner (UpdateCustomPriceTooltip must be "
+             "the only writer of the line's tooltip)")
+        return
+    mov = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)")
+    if code_ev.count("UpdateCustomPriceTooltip();") != 1 or not mov \
+       or "UpdateCustomPriceTooltip();" not in mov:
+        fail("custom-price-mode",
+             "the tooltip is no longer written from the RELEASE path: it must have exactly "
+             "one caller, inside the button-up branch of the drag's own mouse-move handler")
+        return
     ok("custom-price-mode",
-       "the selection dies on button-up, on a UI press, and under any foreign native drag")
+       "the selection dies on button-up, on a UI press, and under any foreign native drag; "
+       "the dragged line is never written to (P-BK-15)")
 
 
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
@@ -2999,9 +3231,6 @@ def selftest():
     seed("the line stops being grabbable (the movement regression)", EVENTS,
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);   // P-UI-48: this IS the drag\n",
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, false);\n")
-    seed("creator pre-selects the line again", EVENTS,
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);    // never pre-selected\n",
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);\n")
     seed("a fifth hand-written copy of the property set returns", EVENTS,
          "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n",
          "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n"
@@ -3009,9 +3238,61 @@ def selftest():
     seed("the clear owner loses its guarded read", EVENTS,
          "    if(!(bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED)) return;\n",
          "")
-    seed("the button-up finalizer stops clearing the selection", PANELS,
-         "   ClearCustomPriceSelection();\n\n   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob",
-         "   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob")
+    seed("the button-up finalizer stops deferring the clear", PANELS,
+         "   g_customPriceNativeDrag = true;\n",
+         "")
+    seed("the finalizer clears the selection inline again", PANELS,
+         "   g_customPriceNativeDrag = true;\n",
+         "   ClearCustomPriceSelection();\n   g_customPriceNativeDrag = true;\n")
+    seed("the grab stops selecting the line", EVENTS,
+         "                    if(!terminalGrab)\n"
+         "                        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);\n",
+         "")
+    seed("a creation path pre-selects the line again", EVENTS,
+         "        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);\n"
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31\n",
+         "        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);\n"
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31\n")
+    seed("the creator clears the selection mid-gesture again", EVENTS,
+         "    if(!g_customPriceLineDragging && !g_customPriceNativeDrag &&\n"
+         "       (bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED))\n",
+         "")
+    seed("the grab hit test goes back to the conversion MT4 refuses", EVENTS,
+         "    if(!ChartXYToTimePrice(0, x, y, subW, cursorT, priceAtCursor)) return false;\n",
+         "    if(!ChartTimePriceToXY(0, 0, 0, linePrice, x, y)) return false;\n")
+    seed("a foreign press stops deferring the clear", EVENTS,
+         "                    g_customPriceNativeDrag = true;\n                }\n",
+         "                }\n")
+    seed("a foreign press clears the selection inline again", EVENTS,
+         "                    g_customPriceNativeDrag = true;\n                }\n",
+         "                    ClearCustomPriceSelection();\n                }\n")
+    seed("the carry writes on the press edge again", EVENTS,
+         "                bool pastSlop = (MathAbs(cursorY - s_ownGrabY) >= CP_DRAG_SLOP);\n"
+         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&\n",
+         "                bool pastSlop = (MathAbs(cursorY - s_ownGrabY) >= CP_DRAG_SLOP);\n"
+         "                if(g_customPriceDragOwn && pastSlop && currentLinePrice > 0 &&\n")
+    seed("the carry loses its slop fence", EVENTS,
+         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&\n",
+         "                if(g_customPriceDragOwn && !pressEdge && currentLinePrice > 0 &&\n")
+    seed("the carry snaps the line onto the cursor again", EVENTS,
+         "                            double wishPrice = s_ownGrabPrice + (cursorPrice - s_ownGrabCursorPrice);\n",
+         "                            double wishPrice = cursorPrice;\n")
+    seed("the drag release wipes the levels again", EVENTS,
+         "                bool movedByGesture = (s_ownLastWrite > 0.0) ||\n",
+         "                g_forceClearOnNextDraw = true;\n"
+         "                bool movedByGesture = (s_ownLastWrite > 0.0) ||\n")
+    seed("the drag release settles whether or not anything moved", EVENTS,
+         "                if(movedByGesture)\n",
+         "                if(true)\n")
+    seed("the drag stops taking the view lock", EVENTS,
+         "                    CustomPriceDragLockOn();\n",
+         "")
+    seed("the drag stops re-asserting the view lock", EVENTS,
+         "                        CustomPriceDragReassertLock();\n",
+         "")
+    seed("the stale-drag heal stops checking the button", EVENTS,
+         "    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;     // still holding the button\n",
+         "")
     seed("the UI press guard is dropped", PANELS,
          "      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();\n",
          "")
@@ -3024,6 +3305,16 @@ def selftest():
     seed("exit owner forgets the Input default", EVENTS,
          "    g_thStartPointType = inpTHStartPointType;\n    g_customPriceKeyboardOverride = false;\n",
          "    g_customPriceKeyboardOverride = false;\n")
+    seed("the drag handler writes the line mid-drag again", EVENTS,
+         "        uint dragNowMs = GetTickCount();\n",
+         "        ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, \"x\");\n"
+         "        uint dragNowMs = GetTickCount();\n")
+    seed("the drag handler resets the gesture flag on every step", EVENTS,
+         "        uint dragNowMs = GetTickCount();\n",
+         "        g_customPriceLineDragging = false;\n        uint dragNowMs = GetTickCount();\n")
+    seed("the drag tooltip stops being written at the release", EVENTS,
+         "                UpdateCustomPriceTooltip();\n",
+         "")
 
     # 18. a rendered control that moves nothing anybody reads (P-UI-46/47)
     seed("a retired switch is rendered again", PANELS,

@@ -5386,6 +5386,13 @@ bool ChartLockIntended()
 {
    // Base/Knot owns the chart while its draw session is armed (it locks
    // via raw Chart* calls so Lite works too — the watchdog must not fight it).
+   // P-UI-53: the custom-price LINE drag owns the view the same way, from its own
+   // raw lock in the domain layer (`CustomPriceDragLocked()`, EventHandlers —
+   // included before this file, so Full and Lite both resolve it). Without this
+   // term the reconcile would see "nobody intends the lock" while a line drag is
+   // live and restore the user's scroll props UNDER the gesture — the exact pan
+   // the lock exists to prevent.
+   if(CustomPriceDragLocked()) return true;
    return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0) || BaseKnotSessionActive();
 }
 
@@ -5425,13 +5432,24 @@ void ChartPointerFinalizeOnUps()
    // every drag engine (and the ←/→ anchor guard) believe a press was live.
    g_MouseWasDown = false;
 
-   // P-UI-48: every button-up is also the end of a custom-price grab. This is the
-   // second of the two gesture-end triggers (the first is the button-up mouse
-   // move, which never arrives when the user releases without moving), and BOTH
-   // go through the one owner - a selection that outlives its gesture lets MT4
-   // drag the line along with the NEXT one. Guarded: a chart with no custom price
-   // line costs one bool read.
-   ClearCustomPriceSelection();
+   // P-UI-48/P-UI-49b: every button-up is also the end of a custom-price grab, so
+   // this is the second of the two gesture-end triggers (the first is the
+   // button-up mouse move, which never arrives when the user releases without
+   // moving) — but it must DEFER the clear, never write it inline.
+   //
+   // This finalizer is reached from CHARTEVENT_CLICK and CHARTEVENT_OBJECT_CLICK,
+   // and one of those two is delivered on the PRESS that grabs a selectable
+   // object (MT4 picks the object up first and lets the indicator see the event
+   // of the same press). Clearing the line's selection HERE therefore dropped the
+   // terminal's own selection in the very event that started the drag: the drag
+   // engaged and died immediately ("the drag state is cut off very quickly"),
+   // and the SAME event had just deferred it in the domain's click handler — the
+   // two halves of one gesture disagreed. Arming the latch keeps the finalizer's
+   // promise (a motionless release emits no mouse move, so its clear is owed to
+   // the next button-up move, through the one owner) without ever touching the
+   // line while the button is down. Cost: one bool store; a chart with no custom
+   // price line still pays only the guarded read of the clear.
+   g_customPriceNativeDrag = true;
 
    // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob
    // gesture can only live while the button is down, so this ONE net makes a

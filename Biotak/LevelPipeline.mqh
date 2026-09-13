@@ -952,7 +952,18 @@ void RenderTriggerLines(
 
         // Render Pip Distance Label
         if(makeLabels && inpShowPipDistanceLabels) {
-            double pips = MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
+            // P-UI-52: the pip has ONE owner - `GetCachedPipSize()`, which reads the
+            // symbol's own digits (metals 2-digit -> 10 points, JPY 3-digit -> 10,
+            // FX 4/5-digit -> 10, and everything else -> 1 POINT). `point * 10` was a
+            // hard-coded assumption that quietly disagrees with that owner on a
+            // 2-digit index or crypto symbol, where one pip is one point: the label
+            // then read 10x smaller than every other pip figure the indicator shows
+            // for the same symbol (ATR scaling, combo, the Base/Knot box). One cached
+            // getter replaces the constant, so the cost is unchanged - the guard keeps
+            // the old value as the fallback, never a division by a zero pip.
+            double pipNow = GetCachedPipSize();
+            double pips = (pipNow > 0) ? MathAbs(lines[i].price - currentPrice) / pipNow
+                                       : MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
             CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
             long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
             SetPipelineObjectTimeframesIfExists(labelName, labelTf);

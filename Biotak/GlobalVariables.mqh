@@ -37,6 +37,23 @@ static bool g_customPriceLineDragging = false;
 // the clear is deferred to the first button-up mouse move - writing it while the
 // drag is live would drop the line out of the user's hand.
 static bool g_customPriceNativeDrag = false;
+// P-UI-49c: THIS gesture is OURS - we carry the line ourselves. MT4's per-object
+// native drag needs the terminal to grab the object first (SELECTABLE + its own
+// hit test) and several builds never engage it at all - the same reality the
+// BaseKnot boxes already live with in P-BK-16 ("frozen build / grab never
+// engaged"). So the grab is decided by us: MT4 selected it, OR the press edge
+// landed on the line (CustomPriceGrabAt). While this flag is set, the mouse-move
+// path feeds the line the price under the cursor - but ONLY while the terminal's
+// price still equals what we last put there (if MT4 moved it, its own drag wins
+// and we touch nothing: P-BK-15's rule).
+//
+// P-UI-51: that reference is FIXED AT THE GRAB for the whole gesture (and the
+// carry holds off on the press edge's own move, where the price still equals the
+// grab price by definition). Re-arming it mid-gesture - which is what the line's
+// own CHARTEVENT_OBJECT_DRAG handler used to do on every step - made the frozen
+// test compare the price with itself, so the carry wrote the dragged object in
+// the middle of MT4's live drag and MT4 cancelled it (P-BK-15).
+static bool g_customPriceDragOwn = false;
 static double g_lastCustomPriceLinePos = 0.0;
 static bool g_customPriceKeyboardOverride = false;
 // TV-parity 2026-09-07: the Base Box TEXT edit field (card 12, OBJ_EDIT) owns

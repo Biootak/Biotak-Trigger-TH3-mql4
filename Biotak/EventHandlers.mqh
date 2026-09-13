@@ -523,7 +523,18 @@ bool CreateCustomPriceLine(double price, int digits,
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);   // P-UI-48: this IS the drag
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);    // never pre-selected
+    // P-UI-45/P-UI-50: never LEAVE a selection in place - a line saved into the chart
+    // profile arrives SELECTED, and MT4 then moves it along with every LATER gesture
+    // anywhere on the chart (the interference P-UI-45 removed) - but never write it
+    // while a gesture is live. This creator is reached from the click that confirms
+    // the price, and that click can arrive while the button is still DOWN: a write on
+    // the object MT4 is dragging cancels that drag (P-BK-15), which is the "the drag
+    // is cut off very quickly" report. So it is a compare-and-write, skipped for the
+    // whole duration of a gesture: one guarded read per call, and this creator only
+    // runs on init / restore / mode change, never per frame.
+    if(!g_customPriceLineDragging && !g_customPriceNativeDrag &&
+       (bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED))
+        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
     ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
                   "[PIN] Custom Price: " + DoubleToString(price, digits) + " | " + tooltipSuffix);
@@ -544,6 +555,175 @@ void ClearCustomPriceSelection()
     if(!g_customPriceLineCreated) return;
     if(!(bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED)) return;
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+}
+
+//==============================================================================
+// P-UI-53 — THE DRAG OWNS THE VIEW UNTIL THE RELEASE.
+//
+// Reported: "while dragging, the chart behind scrolls/pans and the drag breaks -
+// lock or prepare the chart during the drag". The line's movement is MT4's own
+// native object drag; the chart underneath stays live, so a gesture that wanders
+// past the line - and CHART_MOUSE_SCROLL is ENABLED BY DEFAULT - pans the view.
+// The price scale then slides under the cursor and MT4 answers the pan by moving
+// the dragged object against a rebased price: the line jumps, the drag dies, or
+// it never engages at all. BaseKnot already lives with this and solved it
+// (`BaseKnotLockChart` + P-BK-14 "the drag owns the view until release"), with RAW
+// Chart* calls so the Lite build compiles without the UI module. This is the same
+// lock, same shape, for the line, in the same domain layer.
+//
+// Four owners keep it honest:
+//   * the GRAB takes it (once per gesture, and it remembers what the user had);
+//   * every throttled drag step RE-ASSERTS it - read-guarded, a write only on
+//     drift, because third writers (a panel closing, a watchdog restore, a
+//     template reset) can flip the props back while the button is still down;
+//   * the BUTTON-UP releases it (restoring what the user had, never a blind true);
+//   * a watchdog heals a release that never arrived (off-window release, lost
+//     focus): the P-BK-03 trap - no mouse move, so no release event either.
+// CHART_AUTOSCROLL is held down too while we own the view: a tick sliding the
+// scale mid-drag moves the line with it (BaseKnot makes the same call).
+// OnDeinit releases it for EVERY reason, so a stale lock can never outlive the
+// instance, and `g_cpTouched` records that this instance ever changed the props.
+//==============================================================================
+static bool s_cpChartLocked = false;
+static bool g_cpTouched     = false;   // OnDeinit must restore, whatever happens
+static bool s_cpScrollWas   = true;
+static bool s_cpCtxWas      = true;
+static bool s_cpAutoWas     = true;
+static uint s_cpLockActMs   = 0;       // last activity of the owning gesture
+
+bool CustomPriceDragLocked() { return s_cpChartLocked; }
+
+void CustomPriceDragLockOn()
+{
+    if(!s_cpChartLocked)
+    {
+        s_cpScrollWas = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
+        s_cpCtxWas    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
+        s_cpAutoWas   = (ChartGetInteger(0, CHART_AUTOSCROLL) != 0);
+        s_cpChartLocked = true;
+    }
+    ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+    if(s_cpAutoWas) ChartSetInteger(0, CHART_AUTOSCROLL, false);
+    ChartSetInteger(0, CHART_CONTEXT_MENU, false);   // the menu must not steal the gesture
+    g_cpTouched = true;
+    s_cpLockActMs = GetTickCount();
+}
+
+void CustomPriceDragReassertLock()
+{
+    if(!s_cpChartLocked) return;
+    s_cpLockActMs = GetTickCount();
+    if(ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0)
+    { ChartSetInteger(0, CHART_MOUSE_SCROLL, false); g_cpTouched = true; }
+    if(s_cpAutoWas && ChartGetInteger(0, CHART_AUTOSCROLL) != 0)
+    { ChartSetInteger(0, CHART_AUTOSCROLL, false); g_cpTouched = true; }
+    if(ChartGetInteger(0, CHART_CONTEXT_MENU) != 0)
+    { ChartSetInteger(0, CHART_CONTEXT_MENU, false); g_cpTouched = true; }
+}
+
+void CustomPriceDragLockOff()
+{
+    if(!s_cpChartLocked) return;
+    ChartSetInteger(0, CHART_MOUSE_SCROLL, s_cpScrollWas);
+    ChartSetInteger(0, CHART_CONTEXT_MENU, s_cpCtxWas);
+    if(s_cpAutoWas) ChartSetInteger(0, CHART_AUTOSCROLL, true);
+    s_cpChartLocked = false;
+}
+
+// The P-BK-03 net (shape: BaseKnotSyncBadges' own stale-drag heal): a press whose
+// release emits NO mouse move cannot be ended by the gesture path, so the lock (and
+// the gesture flags) are healed here once the button is provably up and nothing has
+// moved for 1.5 s. Cost in steady state: the caller reads one bool; the KEYSTATE
+// probe runs only while a lock is actually held.
+void CustomPriceDragHealStale()
+{
+    if(!s_cpChartLocked) return;
+    if(GetTickCount() - s_cpLockActMs <= 1500) return;                     // a live drag keeps producing events
+    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;     // still holding the button
+    CustomPriceDragLockOff();
+    g_customPriceLineDragging = false;
+    g_customPriceDragOwn = false;
+}
+
+// P-UI-49: the ONE owner of the line's drag TOOLTIP TEXT. It used to be written
+// in the drag handler itself, i.e. on EVERY step of a native drag - and MT4
+// CANCELS an in-progress native drag when the dragged object is rewritten
+// mid-gesture (P-BK-15's rule, learned on the BaseKnot box: the pump "snapped
+// the box back to the drag start"; the level-family follow obeys it too -
+// "never a full Sync per step, its style/tooltip rewrites lagged children behind
+// the native BOX"). While the line was created pre-SELECTED the movement came
+// from the SELECTION (MT4 moves every selected object on each mouse-move), so
+// that write was invisible; the moment P-UI-45/48 moved the movement onto the
+// PER-OBJECT native drag it cancelled the very gesture it was decorating and the
+// line stopped following the cursor - the reported "the custom price line cannot
+// be dragged". So the line is written ONCE per gesture, from the release, and
+// NOTHING touches it while the button is down. Cost: fewer writes than before
+// (one per gesture instead of one per drag step), no per-frame work.
+void UpdateCustomPriceTooltip()
+{
+    if(!g_customPriceLineCreated) return;
+    string text = g_waitingForCustomPriceClick
+                  ? "Current price: " + DoubleToString(g_customTHStartPrice, Digits) + " - Double-click to confirm"
+                  : "Custom TH start price: " + DoubleToString(g_customTHStartPrice, Digits) + " - Drag to adjust";
+    ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, text);
+}
+
+// P-UI-49c: the gesture's own bookkeeping. `s_ownGrabPrice` is the line's price
+// when the grab started and `s_ownLastWrite` the last price WE wrote; they are
+// what tells a working native drag (the terminal's price moves on its own - we
+// then touch nothing, P-BK-15) from a frozen one (it does not - we carry it).
+static double s_ownGrabPrice = 0.0;
+static double s_ownLastWrite = 0.0;
+
+// P-UI-55: THE PRESS LATCH FOR OUR OWN CARRY, IN PIXELS.
+//
+// Reported with two screenshots: "I CLICK the line - I did not move it - and every
+// level lands somewhere else: 1.15697 becomes 1.15705." Eight points on a 5-digit
+// chart is ~1.6 px, which is the hit tolerance itself. The carry used to be
+// ABSOLUTE TO THE CURSOR and it engaged on ANY button-down mouse move after the
+// press edge, so the one-pixel jitter of a CLICK was enough to hand the line the
+// cursor's price: the press had landed ~2 px off the line (exactly what
+// CustomPriceGrabAt tolerates as "on the line") and that offset was copied onto the
+// PRICE. The user did not move anything on purpose, yet the line's price changed -
+// and every level, which is derived from that price, moved with it. A price that
+// changes without the user moving something is the "the levels are not reliable"
+// bug, so the carry is fenced by the two rules the BaseKnot box already uses:
+//   * SLOP: only a gesture that has actually TRAVELLED may drive the line, and an
+//     HLINE can only be moved along Y - so a click's jitter can never pass, and a
+//     click is honest: the price does not change at all.
+//   * DELTA from the press latch, never absolute-to-cursor: the press offset is
+//     preserved (the line follows the mouse exactly like MT4's own drag does) and
+//     the movement can never snap the line onto the cursor.
+static int    s_ownGrabX = 0;             // cursor pixel at the grab
+static int    s_ownGrabY = 0;
+static double s_ownGrabCursorPrice = 0.0; // price under that pixel at the grab
+#define CP_DRAG_SLOP 6                    // px of vertical travel before it is a DRAG
+
+// P-UI-49c/P-UI-50: did the press at (x,y) land on the line? ONE conversion, the
+// one already proven to work in this codebase (ChartXYToTimePrice - the panels and
+// the carry below use it), never one per move: the answer only decides WHO owns the
+// gesture. The first version converted the LINE to a pixel with
+// ChartTimePriceToXY(0, 0, 0, ...) and MT4 REFUSES that call with time = 0, so the hit
+// test could never fire at all (zero "grab hit-test" lines in a whole session of
+// drags) and the drag lived or died by the terminal's own pick-up. Now the cursor's
+// price is compared against the line's, with the tolerance expressed in PIXELS
+// through the very price-per-pixel the chart is drawn at: the line as drawn plus a
+// few pixels, i.e. what the terminal itself uses - a normal press grabs the line, a
+// press clearly away still pans the chart.
+bool CustomPriceGrabAt(const int x, const int y)
+{
+    if(!g_customPriceLineCreated) return false;
+    double linePrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
+    if(linePrice <= 0) return false;
+    int subW = 0; datetime cursorT = 0; double priceAtCursor = 0.0;
+    if(!ChartXYToTimePrice(0, x, y, subW, cursorT, priceAtCursor)) return false;
+    int heightPx = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+    double span = WindowPriceMax() - WindowPriceMin();
+    if(heightPx <= 0 || span <= 0) return false;
+    int tolPx = (int)inpCustomPriceLevelWidth + 4;
+    if(tolPx < 5) tolPx = 5;
+    double tolPrice = span * ((double)tolPx / (double)heightPx);
+    return (MathAbs(linePrice - priceAtCursor) <= tolPrice);
 }
 
 //| Helper function to hide all TH objects (DRY)                     |
@@ -663,6 +843,8 @@ void OnDeinitHandler(const int reason) {
     ResetHideAllState();
     BumpTfEpoch();
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
+    CustomPriceDragLockOff();   // P-UI-53: same rule for the custom-price drag lock
+    g_cpTouched = false;
     // Save TF-switch timestamp for deferred init debounce
     if(reason == REASON_CHARTCHANGE || reason == REASON_PARAMETERS) {
         string tfSwitchStampGvar = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
@@ -1753,6 +1935,28 @@ void RedrawAllObjects(bool force_redraw=false)
         frameCore = levelSig + levelLookSig + "|" +
                           IntegerToString(g_drawGeneration) + "|" +
                           DoubleToString(g_dailyClosePriceForTH, s_cachedDigits) + "|" +
+                          // P-UI-52: THE ACTIVE START POINT IS GEOMETRY, NOT JUST ITS TYPE.
+                          //
+                          // The start point entered this signature only through its TYPE
+                          // (`levelSig`, above) and through `g_dailyClosePriceForTH`. But in
+                          // custom-price mode the pipeline's CENTER PRICE is
+                          // `g_customTHStartPrice` itself (`GetMidpointPrice` -> `data.midpointPrice`
+                          // -> `ExecutePipeline` -> `PipelineGeometryKey`'s `centerPrice`), so a
+                          // dragged line moved every level while this signature stayed EQUAL:
+                          // `geometryChanged` was false, `DrawLevelsBasedOnMode` was never
+                          // called, and the family only caught up when the DRAG FLAG flipped -
+                          // once when the gesture started and once when it ended. That is the
+                          // reported "the other levels do not follow the line while I drag it"
+                          // (the movement itself is the terminal's).
+                          //
+                          // Added ONLY when it is the active start point, so every other mode
+                          // pays one compare and folds in the constant it always did (0.0), and
+                          // the value is quantised with the chart's own digits - a sub-point
+                          // wobble cannot masquerade as a new picture. Cost: one DoubleToString
+                          // on a key that already builds four, on frames that were going to be
+                          // built anyway (the drag path is throttled to 50 ms on BOTH channels).
+                          DoubleToString(g_thStartPointType == TH_START_POINT_CUSTOM_PRICE
+                                         ? g_customTHStartPrice : 0.0, s_cachedDigits) + "|" +
                           DoubleToString(g_highestHigh, s_cachedDigits) + "|" +
                           DoubleToString(g_lowestLow, s_cachedDigits) + "|" +
                           DoubleToString(GetCurrentScalingFactor(), 8) + "|" +
@@ -2001,6 +2205,10 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
        if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotSyncBadges(); TradePlanLiveTick(); }
     }
 #endif
+
+    // P-UI-53: the drag lock's watchdog. Steady state: one bool read per tick; the
+    // KEYSTATE probe and the restore run only while a gesture still holds the lock.
+    CustomPriceDragHealStale();
 
     static uint s_lastTickMs = 0;
     static double s_lastPrice = 0;
@@ -2915,18 +3123,132 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     {
         int mouseFlags = (int)StringToInteger(sparam);
         bool leftButtonDown = (mouseFlags & 1) != 0;
+        // P-UI-49c: the press EDGE is the only moment a grab can start here. A
+        // press that emits no mouse move is invisible (P-BK-03), so the edge is
+        // seen on the first move after it - a few pixels from the press point,
+        // which is what CustomPriceGrabAt's tolerance covers.
+        static bool s_dragDownSeen = false;
+        bool pressEdge = (leftButtonDown && !s_dragDownSeen);
+        s_dragDownSeen = leftButtonDown;
         if(leftButtonDown)
         {
-            bool lineSelected = (bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED);
-            if(lineSelected)
+            if(!g_customPriceLineDragging)
             {
-                g_customPriceLineDragging = true;
+                // WHO owns this gesture: MT4 grabbed the line (SELECTABLE + the
+                // terminal's own hit test), OR our press-edge hit test says the
+                // press landed on it. The second term is what makes the drag
+                // independent of the terminal's selection behaviour - the drag
+                // must not disappear because a build/setting never selects the
+                // object (the P-BK-16 reality, on the boxes).
+                bool terminalGrab = (bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED);
+                if(terminalGrab || (pressEdge && CustomPriceGrabAt((int)lparam, (int)dparam)))
+                {
+                    g_customPriceLineDragging = true;
+                    g_customPriceDragOwn = true;
+                    s_ownLastWrite = 0.0;
+                    s_ownGrabPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
+                    // P-UI-55: the press latch - ONE conversion per gesture, and only
+                    // to define the base our own carry moves FROM.
+                    s_ownGrabX = (int)lparam;
+                    s_ownGrabY = (int)dparam;
+                    s_ownGrabCursorPrice = 0.0;
+                    {
+                        int gW = 0; datetime gT = 0;
+                        if(!ChartXYToTimePrice(0, s_ownGrabX, s_ownGrabY, gW, gT, s_ownGrabCursorPrice))
+                            s_ownGrabCursorPrice = 0.0;
+                    }
+                    // P-UI-49d: THE OLD MECHANISM, restored under a guard. git
+                    // says the drag was never ours: the old C-key/chart-click
+                    // paths created the line `OBJPROP_SELECTED = true` and MT4
+                    // moves the SELECTED object on each mouse move - that IS the
+                    // movement the user remembers (commit 3a288fb removed that
+                    // one write, and no per-object grab ever replaced it).
+                    // Selecting here is safe where selecting at CREATION was not:
+                    // the gesture is provably OURS (the press landed on the line),
+                    // so MT4 has no foreign drag in flight to hijack, and the
+                    // selection is dropped at this gesture's end through the same
+                    // deferred latch. Written ONLY when the terminal did not
+                    // already select it - a property write on an object MT4 is
+                    // dragging cancels that drag (P-BK-15).
+                    if(!terminalGrab)
+                        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);
+                    g_customPriceNativeDrag = true;   // owed clear at this gesture's button-up
+                    // P-UI-53: and the GESTURE owns the view from here to the
+                    // release - the chart behind the line must not pan under it.
+                    CustomPriceDragLockOn();
+                }
+                else if(pressEdge)
+                {
+                    // A press that is NOT ours starts somebody else's gesture
+                    // (a pan, a box, the ring, a card): the line must not STAY
+                    // SELECTED through it, or MT4 moves it with that drag -
+                    // which is the interference this cycle started from.
+                    // P-UI-51: the clear is ARMED here, never WRITTEN. This hit
+                    // test runs on the first MOVE after the press, already a few
+                    // pixels away from it and further the faster the drag starts,
+                    // so it can MISS a press the TERMINAL did pick up - and
+                    // ClearCustomPriceSelection only ever writes while
+                    // OBJPROP_SELECTED is true, i.e. exactly when the terminal is
+                    // holding the line. Writing it then dropped MT4's own
+                    // selection out of the drag that same press had just started:
+                    // the gesture engaged and died on its first event - "the drag
+                    // state is cut off very quickly", "it cannot be dragged".
+                    // Deferring costs one bool store and keeps the promise: the
+                    // latch is drained at the button-up by the one clear owner.
+                    g_customPriceNativeDrag = true;
+                }
+            }
+            if(g_customPriceLineDragging)
+            {
                 double currentLinePrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
+                // P-UI-49c (P-BK-16's shape): while OUR gesture owns the line,
+                // carry it - but ONLY while the terminal is NOT moving it: its
+                // price still equals the grab price / our last write. A working
+                // native drag keeps its price moving, this branch stands down and
+                // the object is never rewritten mid-gesture (P-BK-15). Absolute
+                // from the cursor (never incremental), so it converges exactly.
+                // P-UI-51: the press edge's OWN move is the one event where the
+                // frozen test below is meaningless - the line's price equals the
+                // grab price by definition there, whether the terminal is about to
+                // move it or never will. Writing on that event was the last way
+                // our own carry could rewrite the object MT4 had just grabbed, so
+                // the fallback starts one event later (a few ms; absolute from the
+                // cursor, so it converges on the same price anyway).
+                // P-UI-55: the slop fence and the delta. `cursorY` is compared with the
+                // GRAB's pixel (Y only - an HLINE cannot be moved horizontally), so the
+                // jitter of a click never opens this door; `wishPrice` is the grab price
+                // plus the cursor's TRAVEL since the grab, never the cursor's price, so
+                // the press offset survives and the line can never snap onto the cursor.
+                int cursorY = (int)dparam;
+                bool pastSlop = (MathAbs(cursorY - s_ownGrabY) >= CP_DRAG_SLOP);
+                if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&
+                   s_ownGrabCursorPrice > 0)
+                {
+                    double refPrice = (s_ownLastWrite > 0.0) ? s_ownLastWrite : s_ownGrabPrice;
+                    if(MathAbs(currentLinePrice - refPrice) < _Point * 0.5)
+                    {
+                        int subW = 0; datetime curT = 0; double cursorPrice = 0.0;
+                        if(ChartXYToTimePrice(0, (int)lparam, cursorY, subW, curT, cursorPrice) &&
+                           cursorPrice > 0)
+                        {
+                            double wishPrice = s_ownGrabPrice + (cursorPrice - s_ownGrabCursorPrice);
+                            if(wishPrice > 0 && MathAbs(wishPrice - currentLinePrice) > _Point * 0.5)
+                            {
+                                ObjectSetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, wishPrice);
+                                s_ownLastWrite = wishPrice;
+                                currentLinePrice = wishPrice;
+                            }
+                        }
+                    }
+                }
                 if(currentLinePrice > 0 && MathAbs(currentLinePrice - g_customTHStartPrice) > _Point * 0.5)
                 {
                     uint nowMs = GetTickCount();
                     if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
                     {
+                        // P-UI-53: re-assert the view lock on the same 50 ms budget
+                        // (read-guarded: three reads, a write only on drift).
+                        CustomPriceDragReassertLock();
                         g_customTHStartPrice = currentLinePrice;
                         g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
                         g_redrawTHLevelsNeeded = true;
@@ -2951,10 +3273,45 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             }
             if(g_customPriceLineDragging) {
                 g_customPriceLineDragging = false;
-                g_forceClearOnNextDraw = true;
-                g_redrawTHLevelsNeeded = true;
-                RedrawAllObjects(true);
-                ThrottledChartRedraw();
+                g_customPriceDragOwn = false;
+                // P-UI-53: the gesture is over - hand the view back EXACTLY as the
+                // user had it (the props the lock saved at the grab).
+                CustomPriceDragLockOff();
+                // P-UI-54: A CLICK IS NOT A MOVE, AND A WIPE IS NOT A MOTION SIGNAL.
+                //
+                // Reported: "click the custom price line and every level is rebuilt
+                // on the chart - it flickers". It was this branch: the settle raised
+                // `g_forceClearOnNextDraw` UNCONDITIONALLY, and MT4 selects the line
+                // on the press that clicks it, so our drag path engaged for a plain
+                // CLICK as well - every single click therefore ran ClearAllLevels
+                // (the whole family deleted) followed by the four-frame staged
+                // rebuild of ~900 objects: the flicker, for a gesture that moved
+                // NOTHING.
+                //
+                // The question the release must ask is "did this gesture move the
+                // line?" - nothing else. If it did not, the picture on the chart is
+                // already the one the user is looking at (the live follow re-asserted
+                // it, and the geometry signature carries the start price since
+                // P-UI-52), so the release owes no frame at all. If it did, the settle
+                // is the in-place re-assert below - NOT a wipe: a wipe answers a
+                // TOPOLOGY change (the start point's type, the mode, the timeframe),
+                // never a price. That is also why the confirm paths keep theirs: they
+                // really do change `g_thStartPointType`, which is in `levelSig`.
+                // `s_ownGrabPrice` is the line's price when the gesture was grabbed
+                // and `s_ownLastWrite` is set when WE carried it, so the test is exact
+                // in both movement directions (the terminal's own drag and our carry).
+                bool movedByGesture = (s_ownLastWrite > 0.0) ||
+                                      MathAbs(g_customTHStartPrice - s_ownGrabPrice) > _Point * 0.5;
+                if(movedByGesture)
+                {
+                    g_redrawTHLevelsNeeded = true;
+                    RedrawAllObjects(true);
+                    ThrottledChartRedraw();
+                }
+                // P-UI-49: the gesture is over - the button is UP, so NOW the
+                // line may be written again. This is the release the tooltip is
+                // owed to; nothing touches the line while it is being dragged.
+                UpdateCustomPriceTooltip();
             }
         }
     }
@@ -2964,7 +3321,24 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     //  
     if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)
     {
-        g_customPriceLineDragging = false;
+        // P-UI-51: THE GESTURE FLAG BELONGS TO THE PRESS EDGE AND THE RELEASE,
+        // NEVER TO THIS EVENT.
+        //
+        // This event is CONTINUOUS while MT4 drags the line, and the handler used
+        // to clear g_customPriceLineDragging on every step of it. The mouse-move
+        // path reads that flag as "the grab is decided, this gesture is mine":
+        // cleared per step, its grab block re-ran per step and RE-ARMED the
+        // carry's reference (s_ownGrabPrice) to the line's CURRENT price - so the
+        // frozen test that keeps our writes off a live terminal drag
+        // (|linePrice - reference| < half a point, P-BK-16's shape) compared the
+        // price with ITSELF, always passed, and handed the line a fresh
+        // OBJPROP_PRICE in the middle of the very drag MT4 was performing. MT4
+        // cancels an in-progress native drag when the dragged object is rewritten
+        // mid-gesture (P-BK-15): the line snapped back to the drag start, which is
+        // the reported "the drag state is cut off very quickly / it cannot be
+        // dragged". Leaving the flag alone for the whole gesture is also what
+        // makes the carry stand down the moment the terminal moves the line
+        // itself - one write per fallback gesture instead of one per step.
         // P-UI-45: MT4 keeps the object SELECTED after a native drag. Clearing it
         // HERE would let go of the line under the user's hand (this event is
         // CONTINUOUS while dragging), so the clear is deferred to the first
@@ -2979,17 +3353,50 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
         GlobalVariableSet(gvarName, draggedPrice);
         GlobalVariableSet(overrideFlagName, 1.0);
-        if (g_waitingForCustomPriceClick) {
-            string tooltip = "Current price: " + DoubleToString(draggedPrice, Digits) + " - Double-click to confirm";
-            ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, tooltip);
-        } else {
-            string tooltip = "Custom TH start price: " + DoubleToString(draggedPrice, Digits) + " - Drag to adjust";
-            ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, tooltip);
+        // P-UI-49: NO property write on the line HERE - the tooltip text is
+        // written once at the release instead (UpdateCustomPriceTooltip). This
+        // handler runs on EVERY step of a native drag, and MT4 cancels an
+        // in-progress native drag when the dragged object is rewritten
+        // mid-gesture (P-BK-15), so the tooltip write that used to sit here
+        // cancelled the drag it was decorating: the line never followed the
+        // cursor. Read-only + state, nothing on the object while the button is
+        // down.
+        if(!g_waitingForCustomPriceClick)
             _LOG_GATE_D Print("[D][GEN] Custom TH start price updated to: ", DoubleToString(draggedPrice, Digits));
-        }
-        g_forceClearOnNextDraw = true;
+        // P-UI-52: NO WIPE PER STEP - the live follow is an IN-PLACE re-assert.
+        //
+        // This handler used to raise `g_forceClearOnNextDraw` on every step of a
+        // native drag, and that flag is the WIPE: `shouldClearLevels` calls
+        // ClearAllLevels (every level, zone and label family deleted) and restarts
+        // the four-frame staged rebuild. Per drag step that is hundreds of deletes
+        // and re-creates for a picture that moved by one pixel - the family blinked
+        // and lagged behind the line instead of following it, which is the cost the
+        // report pays for "the levels do not move with the line". Nothing about a
+        // move changes the TOPOLOGY, so the wipe is not needed to re-draw it: with
+        // the start price now in the geometry signature the render re-derives the
+        // levels and re-asserts the same object NAMES in place (no orphans - the
+        // pipeline's own surplus pass owns the extras, already drag-throttled), and
+        // the AUTHORITATIVE rebuild is the release: the button-up branch of the
+        // drag's mouse-move handler raises the clear together with the frame, so
+        // the settled picture is a full, staged, exact rebuild - the "settle at
+        // the end" the report asks for, unchanged. Cost: strictly less work per
+        // step (no wipe, no staged rebuild) and the same single frame per 50 ms.
         g_redrawTHLevelsNeeded = true;
-        RedrawAllObjects(true);
+        // P-UI-51: with the gesture flag alive for the whole drag (above), a forced
+        // frame from here runs INLINE (the P-PERF-34 drag exemption) on EVERY step
+        // MT4 reports. The live follow already spends that exemption from the
+        // mouse-move path, so this channel shares its budget: one frame per window
+        // across both channels - the cadence the drag already had, and strictly
+        // less work than one frame per reported step.
+        uint dragNowMs = GetTickCount();
+        if(dragNowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
+        {
+            // P-UI-53: this channel owns no mouse move, so it re-asserts the view
+            // lock too - one gesture, two event channels, one lock (read-guarded).
+            CustomPriceDragReassertLock();
+            RedrawAllObjects(true);
+            g_lastDragRedrawTime = dragNowMs;
+        }
     }
 
     // VIEWLOCK-OFF: anchor-line drag retired —
