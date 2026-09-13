@@ -67,6 +67,26 @@ static bool   InpHTFShowBody = true;
 static datetime g_HTFLastFormOpen = 0;
 static double   g_HTFLastFormO = 0, g_HTFLastFormH = 0, g_HTFLastFormL = 0, g_HTFLastFormC = 0;
 
+//==============================================================================
+// DRAW / WRITE BUDGET + VIEWPORT CAP (P-PERF-02)
+//
+// (a) BUDGET: the forming HTF candle used to rewrite its 3 objects on EVERY
+//     price change — i.e. on every tick — and every write marks the chart
+//     dirty, so the terminal repainted the whole chart at tick rate just to
+//     move one wick a few pixels. ~6 updates/second are visually identical to
+//     60 and cost ~10x less; a NEW BAR always draws immediately.
+// (b) CAP: nothing left of the viewport is visible, but a full 200-bar HTF
+//     history is up to 600 rectangle/trend objects that every pan, zoom and
+//     repaint still pays for. Draw the visible range + headroom, keep the
+//     tail pruned through the existing HTFDeleteIndices path.
+//==============================================================================
+#define HTF_FORM_MS    150   // min gap between forming-candle writes (ms)
+#define HTF_CULL_HYST  40    // extra bars kept beyond the visible range
+#define HTF_CULL_MIN   20    // never draw fewer than this many HTF bars
+
+static uint g_HTFFormWriteMs = 0;   // last forming-candle WRITE (0 = none yet)
+static int  g_HTFDrawnCount  = 0;   // HTF bars currently on the chart
+
 //+------------------------------------------------------------------+
 //| Extract RGB components from color                                |
 //+------------------------------------------------------------------+
@@ -75,6 +95,38 @@ void ExtractRGB(const color clr, int &r, int &g, int &b)
    r = (clr & 0x0000FF);
    g = (clr & 0x00FF00) >> 8;
    b = (clr & 0xFF0000) >> 16;
+}
+
+//+------------------------------------------------------------------+
+//| P-PERF-08: ONE chart-background read per HTF draw pass.           |
+//|                                                                  |
+//| WHY: BlendWithBackground() is the opacity emulator every HTF body, |
+//| wick and border goes through, and it read CHART_COLOR_BACKGROUND   |
+//| from the terminal on EVERY call — BEFORE consulting its own cache,  |
+//| so the cache could never save a single syscall. DrawHTFCandleCore   |
+//| blends 3 colours per bar (candle, wick, border) and the BOX_BOTH    |
+//| mode one more, so a full HTF history draw (up to ~240 bars) issued   |
+//| 700-1000 terminal reads for a colour that cannot change unless the   |
+//| user edits chart properties. They landed in the same frame as the    |
+//| domain's level repaint, which is exactly the window that overflowed. |
+//|                                                                      |
+//| The background is now read once at the head of each draw pass (and    |
+//| lazily if anything else asks for it), so a draw is both cheaper and   |
+//| internally consistent: one value, not one value per bar.              |
+//+------------------------------------------------------------------+
+static color g_HTFBlendBg = clrNONE;
+
+void HTFRefreshBlendBackground()
+{
+   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND, 0);
+   if(bg == 0) bg = clrBlack;
+   g_HTFBlendBg = bg;
+}
+
+color HTFBlendBackgroundColor()
+{
+   if(g_HTFBlendBg == clrNONE) HTFRefreshBlendBackground();
+   return g_HTFBlendBg;
 }
 
 //+------------------------------------------------------------------+
@@ -95,8 +147,7 @@ color BlendWithBackground(const color fg, const double opacity)
       s_initialized = true;
    }
 
-   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND, 0);
-   if(bg == 0) bg = clrBlack;
+   color bg = HTFBlendBackgroundColor();   // P-PERF-08: cached, one read per draw pass
 
    for(int i = 0; i < BLEND_CACHE_SIZE; i++)
    {
@@ -180,24 +231,81 @@ datetime HTFBarCloseTime(const datetime ot, const int tf)
 
 //+------------------------------------------------------------------+
 //| Upsert rectangle object on chart                                 |
+//|                                                                  |
+//| P-PERF-02: the 10 unconditional property writes became "write     |
+//| only what changed" — the cache stores the geometry/visuals we last |
+//| wrote, so an unchanged candle costs ONE ObjectFind and nothing     |
+//| else while a live forming candle writes only its 1-3 moved values. |
 //+------------------------------------------------------------------+
 void HTFRectUpsert(const string name, const datetime t1, const double p1,
                    const datetime t2, const double p2,
                    const color clr, const int width,
                    const bool fill, const bool back)
 {
-   if(ObjectFind(0, name) < 0)
-      ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
-   ObjectSetInteger(0, name, OBJPROP_TIME1, t1);
-   ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
-   ObjectSetInteger(0, name, OBJPROP_TIME2, t2);
-   ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
-   ObjectSetInteger(0, name, OBJPROP_FILL, fill);
-   ObjectSetInteger(0, name, OBJPROP_BACK, back);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   bool onChart = (ObjectFind(0, name) >= 0);
+   if(!onChart)
+   {
+      if(!ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2)) return;
+      CacheUpdateZone(name, p1, p2, t1, t2, clr, fill, 0, width);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+      ObjectSetInteger(0, name, OBJPROP_FILL, fill);
+      ObjectSetInteger(0, name, OBJPROP_BACK, back);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      return;
+   }
+
+   SObjectCacheEntry e;
+   bool known = CacheGetObject(name, e) && e.exists;
+   if(known) {
+      if(e.lastTime1 != t1)   ObjectSetInteger(0, name, OBJPROP_TIME1, t1);
+      if(e.lastPrice != p1)   ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
+      if(e.lastTime2 != t2)   ObjectSetInteger(0, name, OBJPROP_TIME2, t2);
+      if(e.lastPrice2 != p2)  ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
+      if(e.lastColor != clr)  ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      if(e.lastWidth != width) ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+      if(e.lastFilled != fill) ObjectSetInteger(0, name, OBJPROP_FILL, fill);
+   } else {
+      // First sight of an object we did not create (template reload, another
+      // chart of the same id): re-assert the whole look once.
+      ObjectSetInteger(0, name, OBJPROP_TIME1, t1);
+      ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
+      ObjectSetInteger(0, name, OBJPROP_TIME2, t2);
+      ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, width);
+      ObjectSetInteger(0, name, OBJPROP_FILL, fill);
+      ObjectSetInteger(0, name, OBJPROP_BACK, back);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   }
+   CacheUpdateZone(name, p1, p2, t1, t2, clr, fill, 0, width);
+}
+
+//+------------------------------------------------------------------+
+//| Do any HTF boxes exist? Probes bars 0..2 across every name shape |
+//| the core can create (body / BOTH variants / wicks). Sampling three|
+//| bars keeps it correct when bodies are off or a forming doji has   |
+//| no wicks — a single ObjectFind(prefix+"0") would miss those and   |
+//| force a full 200-bar redraw every second.                        |
+//|                                                                  |
+//| P-PERF-14: defined HERE, above DeleteHTFCandles(), because that   |
+//| function's steady-state guard needs it and MQL4 has no clean      |
+//| forward declaration (a bare prototype compiles as warning 46).    |
+//+------------------------------------------------------------------+
+bool HTFAnyBoxesExist()
+{
+   if(StringLen(g_HTFPrefix) == 0) return false;
+   for(int i = 0; i < 3; i++)
+   {
+      string id = IntegerToString(i);
+      if(ObjectFind(0, g_HTFPrefix + id) >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + id + "_F") >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + "WU" + id) >= 0) return true;
+      if(ObjectFind(0, g_HTFPrefix + "WL" + id) >= 0) return true;
+   }
+   return false;
 }
 
 //+------------------------------------------------------------------+
@@ -209,18 +317,32 @@ void HTFRectUpsert(const string name, const datetime t1, const double p1,
 void DeleteHTFCandles()
 {
    if(StringLen(g_HTFPrefix) == 0) return;
-   int total = ObjectsTotal(0, 0, OBJ_RECTANGLE);
-   for(int i = total - 1; i >= 0; i--)
-   {
-      string name = ObjectName(0, i, 0, OBJ_RECTANGLE);
-      if(StringFind(name, g_HTFPrefix) == 0) ObjectDelete(0, name);
-   }
-   int totalTr = ObjectsTotal(0, 0, OBJ_TREND);
-   for(int i = totalTr - 1; i >= 0; i--)
-   {
-      string name = ObjectName(0, i, 0, OBJ_TREND);
-      if(StringFind(name, g_HTFPrefix + "W") == 0) ObjectDelete(0, name);
-   }
+
+   // P-PERF-14: ONE bulk prefix delete replaces two full-chart walks.
+   //
+   // The old shape asked the terminal for the TOTAL of every OBJ_RECTANGLE and
+   // then of every OBJ_TREND on the chart, and called ObjectName() once per
+   // object to reject the ones that are not ours. That chart legitimately
+   // carries thousands of OUR OWN zone rectangles, so the walk was O(chart
+   // objects) - and it ran on the OnDeinit path (every timeframe switch, which
+   // the log measures at ~300 ms) and on EVERY steady-state HTF early-out
+   // ("HTF off" / "HTF <= chart TF").
+   //
+   // ObjectsDeleteAll(chart_id, prefix) is the documented bulk form
+   // (docs.mql4.com/objects/objectsdeleteall) and matches exactly the same set:
+   // both loops tested "name starts with g_HTFPrefix" - the trend loop only
+   // appended "W" to the prefix, and every wick name carries it - so one call
+   // is equivalent, with the scan left inside the terminal instead of paying an
+   // inter-module call per object.
+   //
+   // The steady state costs nothing: the owner's own bookkeeping must say
+   // something was drawn, or an O(1) name probe must disagree (bars 0..2 cover
+   // every shape and every variant the core creates, and a draw always starts
+   // at index 0 - so "nothing at 0..2" cannot hide a tail).
+   if(g_HTFDrawnCount <= 0 && !HTFAnyBoxesExist()) return;
+
+   ObjectsDeleteAll(0, g_HTFPrefix);
+   g_HTFDrawnCount = 0;   // nothing of ours is on the chart any more
 }
 
 //+------------------------------------------------------------------+
@@ -243,45 +365,52 @@ void HTFDeleteIndices(const int from, const int to)
 }
 
 //+------------------------------------------------------------------+
-//| Do any HTF boxes exist? Probes bars 0..2 across every name shape |
-//| the core can create (body / BOTH variants / wicks). Sampling three|
-//| bars keeps it correct when bodies are off or a forming doji has   |
-//| no wicks — a single ObjectFind(prefix+"0") would miss those and   |
-//| force a full 200-bar redraw every second.                        |
-//+------------------------------------------------------------------+
-bool HTFAnyBoxesExist()
-{
-   if(StringLen(g_HTFPrefix) == 0) return false;
-   for(int i = 0; i < 3; i++)
-   {
-      string id = IntegerToString(i);
-      if(ObjectFind(0, g_HTFPrefix + id) >= 0) return true;
-      if(ObjectFind(0, g_HTFPrefix + id + "_F") >= 0) return true;
-      if(ObjectFind(0, g_HTFPrefix + "WU" + id) >= 0) return true;
-      if(ObjectFind(0, g_HTFPrefix + "WL" + id) >= 0) return true;
-   }
-   return false;
-}
-
-//+------------------------------------------------------------------+
 //| Draw a single wick segment                                       |
 //+------------------------------------------------------------------+
 void DrawHTFWickSegment(const string name, const datetime t,
                         const double p1, const double p2, const color clr)
 {
-   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_TREND, 0, t, p1, t, p2);
-   ObjectSetInteger(0, name, OBJPROP_TIME1, t);
-   ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
-   ObjectSetInteger(0, name, OBJPROP_TIME2, t);
-   ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
-   ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
-   ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
-   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   ObjectSetInteger(0, name, OBJPROP_WIDTH, g_HTFWickWidth);
-   ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   // P-PERF-02: same write-only-what-changed rule as HTFRectUpsert (a wick is
+   // a trend line whose two prices move with the live candle).
+   bool onChart = (ObjectFind(0, name) >= 0);
+   if(!onChart)
+   {
+      if(!ObjectCreate(0, name, OBJ_TREND, 0, t, p1, t, p2)) return;
+      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, g_HTFWickWidth);
+      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, name, OBJPROP_BACK, true);
+      CacheUpdateZone(name, p1, p2, t, t, clr, false, (int)STYLE_SOLID, g_HTFWickWidth);
+      return;
+   }
+
+   SObjectCacheEntry e;
+   bool known = CacheGetObject(name, e) && e.exists;
+   if(known) {
+      if(e.lastTime1 != t)  ObjectSetInteger(0, name, OBJPROP_TIME1, t);
+      if(e.lastTime2 != t)  ObjectSetInteger(0, name, OBJPROP_TIME2, t);
+      if(e.lastPrice != p1) ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
+      if(e.lastPrice2 != p2) ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
+      if(e.lastColor != clr) ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+   } else {
+      ObjectSetInteger(0, name, OBJPROP_TIME1, t);
+      ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
+      ObjectSetInteger(0, name, OBJPROP_TIME2, t);
+      ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
+      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
+      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
+      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, g_HTFWickWidth);
+      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, name, OBJPROP_BACK, true);
+   }
+   CacheUpdateZone(name, p1, p2, t, t, clr, false, (int)STYLE_SOLID, g_HTFWickWidth);
 }
 
 //+------------------------------------------------------------------+
@@ -358,18 +487,33 @@ bool UpdateHTFFormingCandle()
 
    datetime ot = iTime(_Symbol, tf, 0);
    if(ot <= 0) return false;
+
+   // P-PERF-02 write budget: a live candle is redrawn at most every
+   // HTF_FORM_MS — checked BEFORE the remaining four series reads, so a
+   // throttled tick costs one iTime and nothing else. A NEW BAR (open time
+   // moved) is a structural change and always draws now. Returning early
+   // leaves the live-edge cache untouched, so the deferred update lands on
+   // the very next call.
+   uint formNow = GetTickCount();
+   bool formNewBar = (ot != g_HTFLastFormOpen);
+   if(!formNewBar && g_HTFFormWriteMs != 0 && (formNow - g_HTFFormWriteMs) < HTF_FORM_MS)
+      return false;
+
    double op = iOpen(_Symbol, tf, 0), cl = iClose(_Symbol, tf, 0);
    double hi = iHigh(_Symbol, tf, 0),  lo = iLow(_Symbol, tf, 0);
    if(hi <= 0 || lo <= 0) return false;
 
-   if(ot == g_HTFLastFormOpen &&
+   if(!formNewBar &&
       op == g_HTFLastFormO && hi == g_HTFLastFormH &&
       lo == g_HTFLastFormL && cl == g_HTFLastFormC) return false;
+
+   g_HTFFormWriteMs = formNow;
 
    g_HTFLastFormOpen = ot;
    g_HTFLastFormO = op; g_HTFLastFormH = hi;
    g_HTFLastFormL = lo; g_HTFLastFormC = cl;
 
+   HTFRefreshBlendBackground();   // P-PERF-08: once per draw pass, not once per colour
    DrawHTFCandleCore(0, ot, HTFBarCloseTime(ot, tf), hi, lo, op, cl);
    return true;
 }
@@ -382,17 +526,60 @@ bool UpdateHTFFormingCandle()
 //| place — only a shrunken tail is pruned and only a box/shape flip  |
 //| wipes all (slider drags recolor without delete+recreate churn).  |
 //+------------------------------------------------------------------+
+// How many HTF bars does the CURRENT viewport actually need? Everything
+// further left than the visible range + headroom cannot be seen.
+int HTFViewportBarTarget()
+{
+   int want = InpHTFMaxBars;
+   int htf = ResolveHTFPeriod();
+   int chartTf = (int)Period();
+   if(htf > chartTf && chartTf > 0)
+   {
+      int firstVis = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR, 0);
+      int visBars  = (int)ChartGetInteger(0, CHART_VISIBLE_BARS, 0);
+      if(firstVis < 0) firstVis = 0;
+      if(visBars < 1)  visBars = 1;
+      double ratio = (double)htf / (double)chartTf;
+      int need = (int)MathCeil((double)(firstVis + visBars) / ratio) + 2;
+      if(need < HTF_CULL_MIN) need = HTF_CULL_MIN;
+      if(need < want) want = need;
+   }
+   if(want < 1) want = 1;
+   return want;
+}
+
+// Is the drawn set out of step with the viewport? Throttled: two
+// ChartGetInteger calls, but a tick storm must not call HTFViewportBarTarget
+// 30 times a second (the 1 s probe and the chart-change hook are enough).
+#define HTF_RANGE_MS 100
+bool HTFRangeStale()
+{
+   if(g_HTFDrawnCount <= 0) return false;
+   static uint s_rangeMs = 0;
+   uint nowMs = GetTickCount();
+   if(s_rangeMs != 0 && nowMs - s_rangeMs < HTF_RANGE_MS) return false;
+   s_rangeMs = nowMs;
+   int viewTarget = HTFViewportBarTarget();
+   return (viewTarget > g_HTFDrawnCount || viewTarget + HTF_CULL_HYST < g_HTFDrawnCount);
+}
+
 int DrawHTFCandles()
 {
    static int s_prevCount = 0;
    if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    int tf = ResolveHTFPeriod();
    if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
+   HTFRefreshBlendBackground();   // P-PERF-08: one background read for the whole pass
    int total = iBars(_Symbol, tf);
    if(total <= 0) return -1;
    datetime ot0 = iTime(_Symbol, tf, 0);
    if(ot0 <= 0) return -1;
    int count = MathMin(InpHTFMaxBars, total);
+   // P-PERF-02 viewport cap (hysteresis keeps a zoom-out/zoom-in see-saw from
+   // re-creating bars it just pruned).
+   int viewTarget = HTFViewportBarTarget();
+   if(count > viewTarget) count = MathMin(count, viewTarget + HTF_CULL_HYST);
+   g_HTFDrawnCount = count;
 
    static int s_lastBoxMode = -1;
    static bool s_lastShowBodyBox = false;
@@ -479,8 +666,16 @@ void HTFEnsureDrawn()
       return;
    }
 
-   // Keep the engine period in sync (normally already fresh from OnInit).
-   g_HTFPeriod = tf;
+    // P-PERF-06: while the level pipeline is staging its post-wipe rebuild
+    // (attach / TF switch / topology toggle), the forming candle already ticks
+    // via UpdateHTFFormingCandle — the HISTORY bulk (up to ~240 bars x 5
+    // series reads + creates) waits for stage 0 so the switch stays
+    // interactive. The probe clock below keeps running, so the deferred draw
+    // lands on the first pass after the rebuild seals.
+    if(g_buildStage != 0) return;
+
+    // Keep the engine period in sync (normally already fresh from OnInit).
+    g_HTFPeriod = tf;
 
    // Runs AFTER UpdateHTFFormingCandle in RefreshUIPerTick, so the live-edge
    // cache is fresh: a changed open time means a new HTF bar rolled and the
@@ -497,6 +692,10 @@ void HTFEnsureDrawn()
       s_lastProbe = now;
       if(!HTFAnyBoxesExist()) need = true;
    }
+   // P-PERF-02 viewport cap: the user scrolled/zoomed into a range the drawn
+   // set does not cover (or left a whole block of history behind). Own
+   // throttle — see HTFRangeStale.
+   if(!need && HTFRangeStale()) need = true;
    if(!need) return;
    if(s_lastProbe != 0 && now - s_lastProbe < HTF_ENSURE_RETRY_MS && tf != s_lastDrawnTf)
       return;   // TF just changed: redraw at most once/sec (first run is immediate)
@@ -514,6 +713,7 @@ void HTFEnsureDrawn()
    s_lastDrawnTf = tf;
    s_drawnBar0 = g_HTFLastFormOpen;
    s_lastProbe = now;
+   // (P-PERF-02) Range changes are already handled above; nothing else to do.
    // PERF: shared 100 ms throttle (UtilityFunctions.mqh) instead of a raw
    // redraw — a full HTF draw usually lands on the same tick as the level
    // pipeline paint, so they coalesce into one. Same pixels, ≤100 ms later.
@@ -566,6 +766,7 @@ void InitializeHTFCandles()
    g_HTFLastFormOpen = 0;
    g_HTFLastFormO = 0; g_HTFLastFormH = 0;
    g_HTFLastFormL = 0; g_HTFLastFormC = 0;
+   HTFRefreshBlendBackground();   // P-PERF-08: seed the blend cache
 }
 
 //+------------------------------------------------------------------+

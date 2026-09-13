@@ -86,6 +86,12 @@ bool CreateOrUpdateHLine(const string name, double price,
     }
 }
 
+// P-PERF-04: viewport cull geometry. MARGIN must be > HYSTERESIS (see below).
+#define P_P4_VP_MARGIN_PCT     0.25
+#define P_P4_VP_HYSTERESIS_PCT 0.20
+#define P_P4_FALLBACK_RANGE_PCT 0.02   // +-2% around price when no range is known
+#define P_P4_MIN_ZONE_PX        2      // thinner than this, a zone fill is noise
+
 void GetViewportBounds(double &vpTop, double &vpBottom) {
     static double s_vpTop = 0;
     static double s_vpBottom = 0;
@@ -97,17 +103,32 @@ void GetViewportBounds(double &vpTop, double &vpBottom) {
     double point = GetCachedPoint();
 
     if(vpChartMax > 0 && vpChartMin > 0 && vpChartMax > vpChartMin) {
+        double visibleRange = vpChartMax - vpChartMin;
+
+        // P-PERF-04 HYSTERESIS: the cull window is what the level render's
+        // geometry signature is built from, so recomputing it for a 1-point
+        // price nudge made EVERY pan pixel a full ~300-level re-render (the
+        // "lag while working with the chart" complaint). Only re-derive once
+        // the visible window has really moved or resized.
+        double hysteresis = visibleRange * P_P4_VP_HYSTERESIS_PCT;
+        if(hysteresis < point * 10.0) hysteresis = point * 10.0;
         if(s_vpTop > 0 &&
-           MathAbs(vpChartMax - s_lastChartMax) <= point &&
-           MathAbs(vpChartMin - s_lastChartMin) <= point) {
+           MathAbs(vpChartMax - s_lastChartMax) <= hysteresis &&
+           MathAbs(vpChartMin - s_lastChartMin) <= hysteresis) {
             vpTop = s_vpTop;
             vpBottom = s_vpBottom;
             return;
         }
 
-        double vpRange = (vpChartMax - vpChartMin) * 0.5;
-        vpTop = vpChartMax + vpRange;
-        vpBottom = vpChartMin - vpRange;
+        // P-PERF-04 MARGIN: the margin MUST cover the hysteresis band or a pan
+        // that never triggered a recompute could push a level off the cache and
+        // leave a visible level undrawn. 25% margin vs 20% hysteresis keeps a
+        // 5% (tens of pixels) safety band, and still culls far more than the
+        // old +-50% margin did — and every culled level is a level line, a
+        // label and a full-width zone box that no longer has to be repainted.
+        double vpMargin = visibleRange * P_P4_VP_MARGIN_PCT;
+        vpTop = vpChartMax + vpMargin;
+        vpBottom = vpChartMin - vpMargin;
         s_vpTop = vpTop;
         s_vpBottom = vpBottom;
         s_lastChartMax = vpChartMax;
@@ -129,11 +150,18 @@ void GetViewportBounds(double &vpTop, double &vpBottom) {
         anchor = (g_highestHigh + g_lowestLow) * 0.5;
     if(anchor <= 0) anchor = 1.0;
 
-    double fallbackRange = 0.0;
-    if(g_highestHigh > 0 && g_lowestLow > 0 && g_highestHigh > g_lowestLow)
-        fallbackRange = g_highestHigh - g_lowestLow;
-    if(fallbackRange <= point * 100.0)
-        fallbackRange = MathMax(anchor * 0.05, point * 1000.0);
+    // P-PERF-04 OBJECT-EXPLOSION GUARD. This branch means the chart could not
+    // report a visible price range at all — startup, a minimized window, or the
+    // first frame right after a timeframe switch, exactly when the namespace was
+    // just wiped and the next render repopulates it. Falling back to the FULL
+    // historical range here marks EVERY level "inViewport", so the pipeline
+    // created the entire level set (lines + pip labels + full-width zone boxes,
+    // hundreds of objects) in one frame — and nothing ever removed the ones that
+    // then sat off-screen forever, because culling only HIDES. Every later
+    // repaint then walked that population. Bound the window instead: only levels
+    // near the current price can be drawn, and the real range takes over on the
+    // next frame.
+    double fallbackRange = MathMax(anchor * P_P4_FALLBACK_RANGE_PCT, point * 1000.0);
 
     vpTop = anchor + fallbackRange;
     vpBottom = MathMax(anchor - fallbackRange, point);
@@ -2093,9 +2121,15 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
     // CLEANUP OLD ZONES
     //                         
     //                                                                
-    if(inpShowMidZones) {
-        ObjectsDeleteAll(0, objectPrefix + "Factor_Zone_", -1, -1);
-    }
+    // P-PERF-36: this was `if(inpShowMidZones)` - the same inverse guard the
+    // live pipeline carried (see CleanupSurplusPipeline). A cleanup that only
+    // runs while the feature is ON can never remove what the feature drew, so
+    // switching the zones off left every zone on the chart. The three sibling
+    // families below are already unconditional; this one now matches them.
+    // NOTE: DrawFactorLevelsAligned has no callers today (the unified pipeline
+    // owns Factor mode) - fixed anyway, because a wrong guard in dead code is a
+    // landmine for whoever revives it.
+    ObjectsDeleteAll(0, objectPrefix + "Factor_Zone_", -1, -1);
     
     int levelsDrawn = 0;
     int zoneCount = 0;  // Track zones drawn
@@ -2208,7 +2242,7 @@ void DrawFactorLevelsAligned(const string objectPrefix, const double highPrice,
             ObjectSetInteger(0, levelName, OBJPROP_SELECTABLE, false);
             ObjectSetInteger(0, levelName, OBJPROP_SELECTED, false);
             ObjectSetInteger(0, levelName, OBJPROP_BACK, false);
-            ObjectSetInteger(0, levelName, OBJPROP_ZORDER, 1);  // Draw above zones
+            ObjectSetInteger(0, levelName, OBJPROP_ZORDER, Z_CHART_LINE);  // P-UI-31: above zones
             ObjectSetInteger(0, levelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);  // Show on all timeframes
             
             // Set tooltip

@@ -664,14 +664,31 @@ void SetPipelineObjectTimeframesIfExists(const string name, const long timeframe
     // PERF FIX: Check object cache first to skip ObjectFind MT4 syscall when object is known absent.
     // ObjectFind is a slow kernel call; using CacheObjectExists avoids it for untracked names.
     // Fall back to ObjectFind only when cache has no info (returns false = not in cache).
+    //
+    // P-PERF-02: and the WRITE itself is guarded — this function is called for
+    // every line, label and zone on EVERY heavy frame, so an unconditional
+    // ObjectSetInteger here was the single largest write source on the chart
+    // (hundreds of writes per frame for masks that had not changed).
     bool knownInCache = CacheObjectExists(name);
     if(knownInCache) {
-        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, timeframes);
+        ApplyTfMaskGuarded(name, timeframes);
         return;
     }
+    // P-PERF-07: the ObjectFind fallback is a terminal call, and this function
+    // is reached 7x per ZONE plus once per LINE and once per LABEL of every
+    // level — including the CULLED ones, which were never created and so can
+    // never enter the main cache. Without a negative cache that fallback ran
+    // for every culled level on every heavy frame (~2.6k probes/frame at
+    // inpMaxLevels=144), each scanning a chart holding thousands of objects.
+    // A name already proven absent on this chart costs one hash instead.
+    if(CacheIsAbsentKnown(name)) return;
     // Not in cache — check chart directly (only for sub-objects like _Top, _Bottom, _B_*)
-    if(ObjectFind(0, name) >= 0)
-        ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, timeframes);
+    if(ObjectFind(0, name) >= 0) {
+        CacheForgetAbsent(name);
+        ApplyTfMaskGuarded(name, timeframes);
+    } else {
+        CacheMarkAbsent(name);
+    }
 }
 
 void SetPipelineZoneVisibility(const string zoneName, const bool visible)
@@ -679,6 +696,8 @@ void SetPipelineZoneVisibility(const string zoneName, const bool visible)
     // FIX: The L key controls only the zone boundary LINES (_Top/_Bottom).
     // The box object itself (rectangle or empty-box borders) is never
     // affected by L - only by F.
+    // P-PERF-02: 7 guarded writes per zone per heavy frame — free when the
+    // zone's visibility did not change (the common case by far).
     long tfAll = (visible && !IsIndicatorHidden()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long tfLine = (visible && !IsIndicatorHidden() && GetCachedLinesVisible()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     SetPipelineObjectTimeframesIfExists(zoneName, tfAll);
@@ -696,10 +715,49 @@ void RenderZones(
     const int zoneCount,
     const SModeConfig &config)
 {
+    // P-PERF-41: THE FAMILY SWITCH IS A MASK, NOT A DESTRUCTION.
+    //
+    // The mid-zone family used to be turned off by DELETING it (the cleanup walk
+    // started at 0 when `zonesEnabled` was false) and turned back on by
+    // RE-CREATING it: ~7 terminal calls per zone per direction for a switch that
+    // moves no price and no geometry. That is why turning zones on/off was slow
+    // and fragile next to F, which has always been a mask.
+    //
+    // A hidden object costs nothing to draw (MT4 culls it before rasterising)
+    // and the guarded writer behind VisibilityZoneMask makes a repeat call free,
+    // so OFF is now the SAME change L makes - one mask per object - over EVERY
+    // zone object the cache knows, with zero index assumptions and zero
+    // ObjectFind probes. The owner lives in VisibilityManager because the F show
+    // path writes the same masks and the two must agree (P-PERF-41 there).
+    if(!config.zonesEnabled) { HideAllZoneFamilyObjects(); return; }
+
     bool triggerEnabled = IsTriggerLevelsEnabled();
-    
+
+    // P-PERF-04 PIXEL AWARENESS: a zone is a full-chart-width FILL, the most
+    // expensive thing this indicator paints and the reason a zoomed-out chart
+    // crawls — MT4 must rasterise every one of them on every repaint even when
+    // a zone is a hairline tall and shows nothing the level line does not
+    // already show. Measure the price->pixel scale ONCE per render and hide
+    // any zone thinner than P_P4_MIN_ZONE_PX (hiding is what this loop already
+    // does for off-screen zones, so it is stateless: zooming back in redraws).
+    double p4PxPerPrice = 0.0;
+    {
+        int    p4H    = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+        double p4Pmax = ChartGetDouble(0, CHART_PRICE_MAX);
+        double p4Pmin = ChartGetDouble(0, CHART_PRICE_MIN);
+        if(p4H > 0 && p4Pmax > 0 && p4Pmin > 0 && p4Pmax > p4Pmin)
+            p4PxPerPrice = (double)p4H / (p4Pmax - p4Pmin);
+    }
+
     for(int i = 0; i < zoneCount; i++) {
         if(!zones[i].inViewport) {
+            SetPipelineZoneVisibility(zones[i].name, false);
+            continue;
+        }
+
+        if(p4PxPerPrice > 0.0 &&
+           (zones[i].renderTop - zones[i].renderBottom) * p4PxPerPrice < P_P4_MIN_ZONE_PX)
+        {
             SetPipelineZoneVisibility(zones[i].name, false);
             continue;
         }
@@ -709,7 +767,21 @@ void RenderZones(
             continue;
         }
         
-        // Skip trigger zones when triggers are disabled
+        // Trigger bands when the trigger overlay is off: DELETE, as it always
+        // did - and the reason is worth recording, because "hide it instead" is
+        // the obvious-looking edit.
+        //
+        // A trigger band and a structure band are the SAME `_Zone_` names with
+        // the same object shape, so nothing outside this list can tell them
+        // apart: hiding one would also commit the F show path
+        // (VisibilityShowAllCached) to repaint it ALL_PERIODS, because the only
+        // input that path has is the FAMILY switch. The band would then blink
+        // back for the frame between the F press and the render that re-hides
+        // it - a new flicker, traded for nothing: after the first delete this
+        // branch costs 7 proved-absent hash lookups per band (P-PERF-07/13),
+        // and the render itself only runs when IsTriggerLevelsEnabled() moved
+        // (it is in frameCore). Hiding would add a repaint risk to the one
+        // switch whose whole job is to make a family visible.
         if(zones[i].isTrigger && !triggerEnabled) {
             DeleteManagedZoneObjects(zones[i].name);
             continue;
@@ -738,6 +810,84 @@ void RenderZones(
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-32: STRUCTURE RECOLOUR WALK -- the toggle paints, nothing  |
+//| recomputes.                                                      |
+//|                                                                  |
+//| A structure switch (master / L1-L5, card 11) changes NO geometry: |
+//| the level SET is switch-invariant (ClassifyLevels always builds   |
+//| every step; the switches only choose zone colours via              |
+//| GetZoneColorForLevel + the GetTriggerRenderColor fallback, exactly |
+//| as ClassifyLevels lines 395-400 do). Re-deriving the whole level  |
+//| family to repaint a few hundred zone colours is what made the     |
+//| switch feel dead on a weak PC. So the switch never reaches the    |
+//| render: this walk rewrites the blended colour of every cached     |
+//| zone object whose live colour moved, and nothing else. Lines are  |
+//| unified (switch-free), Center zones wear the mode colour, HTF/BK/ |
+//| labels carry no "_Zone_" -- none of them is visited. Filled/empty  |
+//| shape is toggle-invariant, so entries that do not exist (culled   |
+//| zones, migrated-away rects/borders) are skipped, never created: a |
+//| zone scrolled back into view is created later with live switches. |
+//| The geometry key keeps the switch terms, so any LATER real render |
+//| recomputes with live switches -- the walk can never desync it.     |
+//+------------------------------------------------------------------+
+// Tail step of a pipeline zone object name: "<pfx><mode>_Zone_Above_12"
+// (or _Below_), with one optional border/legacy sub-suffix. Returns the
+// step, or <= 0 when the name carries none (Center, foreign, malformed).
+int StructureZoneStepFromName(const string nm)
+{
+    string base = nm;
+    int blen = StringLen(base);
+    // Longer sub-suffixes first: "_B_Bottom" ends with "_Bottom".
+    if(blen > 9 && StringSubstr(base, blen - 9, 9) == "_B_Bottom") base = StringSubstr(base, 0, blen - 9);
+    else if(blen > 8 && StringSubstr(base, blen - 8, 8) == "_B_Right") base = StringSubstr(base, 0, blen - 8);
+    else if(blen > 7 && StringSubstr(base, blen - 7, 7) == "_B_Left") base = StringSubstr(base, 0, blen - 7);
+    else if(blen > 7 && StringSubstr(base, blen - 7, 7) == "_Bottom") base = StringSubstr(base, 0, blen - 7);
+    else if(blen > 6 && StringSubstr(base, blen - 6, 6) == "_B_Top") base = StringSubstr(base, 0, blen - 6);
+    else if(blen > 4 && StringSubstr(base, blen - 4, 4) == "_Top") base = StringSubstr(base, 0, blen - 4);
+    int ulen = StringLen(base);
+    int sep = ulen - 1;
+    while(sep >= 0 && StringGetCharacter(base, (ushort)sep) != '_') sep--;
+    if(sep < 0 || sep + 1 >= ulen) return 0;
+    return (int)StringToInteger(StringSubstr(base, sep + 1));
+}
+
+// Returns the number of colour writes issued.
+int StructureRecolourWalk()
+{
+    // Same inputs ClassifyLevels (lines 395-400) reads: the walk repaints
+    // exactly what a recompute would have stored.
+    bool trigOn = IsTriggerLevelsEnabled();
+    int baseMult = GetValidatedBaseMultiplier();
+    int tr = inpMidZoneTransparency;
+    if(tr < 0) tr = 0;
+    if(tr > 100) tr = 100;
+
+    int touched = 0;
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++)
+    {
+        if(!g_objectCacheHash[i].occupied) continue;
+        visited++;
+        const string nm = g_objectCacheHash[i].name;
+        if(StringFind(nm, "_Zone_") < 0) continue;         // lines/labels/HTF
+        if(StringFind(nm, "_Zone_Center_") >= 0) continue; // mode colour, not structure
+        if(StringFind(nm, "_BK_") >= 0) continue;          // independent layer
+        int step = StructureZoneStepFromName(nm);
+        if(step <= 0) continue;
+        color zc = GetZoneColorForLevel(step, trigOn, baseMult);
+        if(zc == clrNONE) zc = GetTriggerRenderColor();
+        color want = GetZoneRenderColor(zc, tr);
+        color have = clrNONE;
+        if(!CacheGetColor(nm, have)) continue;   // nothing painted under this name
+        if(have == want) continue;
+        if(!ObjectSetInteger(0, nm, OBJPROP_COLOR, want)) continue;
+        CacheSetColor(nm, want);
+        touched++;
+    }
+    return touched;
+}
+
+//+------------------------------------------------------------------+
 //| STAGE 5b: Render trigger lines (SECOND   derived from zones)     |
 //|                                                                  |
 //| Creates/updates MT5 horizontal line objects.                     |
@@ -746,12 +896,25 @@ void RenderZones(
 void RenderTriggerLines(
     const STriggerLine &lines[],
     const int lineCount,
-    const SModeConfig &config)
-{
-    double currentPrice = GetCurrentPriceForLabels();
+    const SModeConfig &config,
+    const bool makeLines,
+    const bool makeLabels)
+{    double currentPrice = GetCurrentPriceForLabels();
 
-    for(int i = 0; i < lineCount; i++) {
+    // P-PERF-03: record the level prices in the pass that already has them in
+    // hand. CheckAlerts() then scans this array instead of walking the chart
+    // with 2 x inpMaxLevels ObjectFind/ObjectGetDouble calls per heavy frame.
+    // NOTE: recorded BEFORE the viewport cull, so an off-screen level can
+    // still alert (the chart holds it; we simply do not paint it).
+    AlertCacheReset(g_drawGeneration);
+
+    for(int i = 0; i < lineCount; i++)
+    {
         string labelName = lines[i].name + "_Label";
+
+        AlertCacheAdd(lines[i].name, lines[i].price, lines[i].logicalStep,
+                      lines[i].direction > 0);
+
 
         // ALL pipeline lines (trigger-subdivision AND structure-interval)
         // share the unified [08.4] appearance set in ClassifyLevels. They are
@@ -761,30 +924,34 @@ void RenderTriggerLines(
         // (The old Factor hideLineWhenTriggerOnly inversion is retired: every
         //  mode config leaves it false, and line visibility belongs to L alone.)
         if(!lines[i].inViewport) {
-            SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
-            SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
+            // P-PERF-06: a staged family asserts only its own visibility — the
+            // other family was (or will be) culled by its own stage frame.
+            if(makeLines)  SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
+            if(makeLabels) SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
             continue;
         }
 
         // Use the individual line color instead of config.triggerColor
-        bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
-                                          lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,
-                                          lines[i].tooltip);
-        long lineTf = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
-        SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);
-        
-        // Set mode-specific properties on new objects
-        if(isNew) {
-            if(config.useObjPropBack) {
-                ObjectSetInteger(0, lines[i].name, OBJPROP_BACK, false);
-            }
-            if(config.zOrder > 0) {
-                ObjectSetInteger(0, lines[i].name, OBJPROP_ZORDER, config.zOrder);
+        if(makeLines) {
+            bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
+                                              lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,
+                                              lines[i].tooltip);
+            long lineTf = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+            SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);
+
+            // Set mode-specific properties on new objects
+            if(isNew) {
+                if(config.useObjPropBack) {
+                    ObjectSetInteger(0, lines[i].name, OBJPROP_BACK, false);
+                }
+                if(config.zOrder > 0) {
+                    ObjectSetInteger(0, lines[i].name, OBJPROP_ZORDER, config.zOrder);
+                }
             }
         }
 
         // Render Pip Distance Label
-        if(inpShowPipDistanceLabels) {
+        if(makeLabels && inpShowPipDistanceLabels) {
             double pips = MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
             CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
             long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
@@ -816,12 +983,44 @@ void CleanupSurplusPipeline(
         s_lastDragCleanupMs = nowMs;
     }
     
-    // Cleanup surplus zones
-    if(config.zonesEnabled) {
-        CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Above_", maxLogicalStep + 1);
-        CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Below_", maxLogicalStep + 1);
-        CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Center_", 1);
-    }
+    //======================================================================
+    // P-PERF-36 - A FAMILY'S CLEANUP MUST NOT BE GUARDED BY THE FLAG THAT
+    //             TURNS THE FAMILY OFF
+    //
+    // Cleanup has exactly one job: remove what THIS render no longer produces.
+    // "Mid zones off" is precisely the state in which every zone must go, so
+    // guarding the zone cleanup on `zonesEnabled` skipped the delete in the ONE
+    // state that needed it. The chain is complete and provable:
+    //
+    //   ring CIR_ZONES -> g_showMidZones (== inpShowMidZones macro)
+    //     -> GetUnifiedZoneConfig().enabled -> cfg.zonesEnabled
+    //     -> zone BUILDING is gated on it (lines above: ArrayResize/hasMid/zIdx)
+    //     -> so `zones[]` arrives EMPTY at RenderZones, which only walks the list
+    //        it is handed and has NO delete-stale path of its own
+    //     -> and this cleanup - the only remover of zone objects - was skipped
+    //
+    // Result: the switch stopped the zones being RE-CREATED while every zone
+    // object already on the chart stayed put, which is the reported symptom:
+    // "levels don't turn on/off with this button". Turning it back ON also did
+    // nothing visible, because the objects had never left.
+    //
+    // P-PERF-41 supersedes the P-PERF-36 window: "zones off" is no longer an
+    // ABSENCE at all. RenderZones hides the whole family with one mask walk the
+    // moment the switch goes off, so cleanup is once more exactly what its name
+    // says - "remove what THIS render no longer produces" - and it walks past the
+    // newest logical step in BOTH states. Deleting the family on the way out was
+    // the expensive half of the old toggle (7 deletes per zone, then 7 writes
+    // per zone to come back) and the reason a hidden object could never be
+    // brought back for free.
+    //
+    // The invariant P-PERF-36 was protecting is kept and strengthened: cleanup
+    // may never be guarded by the flag that turns the family off, and the OFF
+    // state is handled explicitly, one branch above.
+    //======================================================================
+    const int zoneCleanupFrom = maxLogicalStep + 1;
+    CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Above_", zoneCleanupFrom);
+    CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Below_", zoneCleanupFrom);
+    CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Zone_Center_", 1);
     
     // Cleanup surplus lines and their labels
     CleanupSurplusObjects(config.objectPrefix + config.modeName + "_Above_", maxLogicalStep + 1);
@@ -863,7 +1062,7 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
     
     // Default rendering flags
     cfg.useObjPropBack = false;
-    cfg.zOrder = 0;
+    cfg.zOrder = Z_CHART_ZONE;   // P-UI-31: mode configs override (Factor -> Z_CHART_LINE)
     cfg.hideLineWhenTriggerOnly = false;
     cfg.useStepFilter = true;
     
@@ -888,6 +1087,109 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-18: the identity of a built geometry.                     |
+//|                                                                  |
+//| Every input the three pure stages read is folded in, so a change  |
+//| in ANY of them misses the cache and rebuilds for real:           |
+//|   - center price + step sizes   (a tick that moved the base price)|
+//|   - the cull window             (a scroll or a zoom)             |
+//|   - mode / classify / lsFirst / max levels / trigger switch      |
+//|   - every zone and fallback colour/style field of SModeConfig    |
+//|   - the custom-price drag flag  (the drag path re-culls)         |
+//| Doubles are quantised with DoubleToString(...,8) so a sub-point  |
+//| wobble cannot masquerade as a new geometry, and the string is     |
+//| built once per frame - microseconds against the thousands of      |
+//| level computations it can save.                                  |
+//+------------------------------------------------------------------+
+string PipelineGeometryKey(const SModeConfig &config,
+                           const double centerPrice,
+                           const double &stepSizes[],
+                           const int stepSizeCount,
+                           const ENUM_LEVEL_STEP_MODE stepMode,
+                           const ENUM_CLASSIFY_MODE classifyMode,
+                           const bool lsFirst,
+                           const int maxLevelsAbove,
+                           const int maxLevelsBelow,
+                           const double vpTop,
+                           const double vpBottom,
+                           const int baseMultiplier)
+{
+    string key = config.modeName + "|" + config.objectPrefix;
+    key += "|" + DoubleToString(centerPrice, 8);
+    key += "|" + IntegerToString(stepSizeCount) + "," + IntegerToString((int)stepMode);
+    for(int s = 0; s < stepSizeCount; s++) key += "," + DoubleToString(stepSizes[s], 8);
+    key += "|" + IntegerToString((int)classifyMode) + IntegerToString(lsFirst ? 1 : 0);
+    key += "|" + IntegerToString(maxLevelsAbove) + "," + IntegerToString(maxLevelsBelow);
+    key += "|" + DoubleToString(vpTop, 8) + "," + DoubleToString(vpBottom, 8);
+    // P-PERF-21: `triggerEnabled` used to sit here, and it was a FALSE
+    // dependency. The trigger overlay owns exactly ONE family - the trigger
+    // zones - and that decision lives in RenderZones (`zones[i].isTrigger &&
+    // !triggerEnabled`), which reads the LIVE flag at paint time. Nothing that
+    // BUILDS this geometry reads it: CalculateLevels does not touch it,
+    // BuildZonesAndLines does not touch it, and the two classify-time helpers
+    // that take it as a parameter (`GetPathForLevelOptimized`,
+    // `GetZoneColorForLevel`) never look at it. So a T press threw away the
+    // whole geometry and recomputed byte-identical lists - the recompute half
+    // of "the trigger toggle redraws all my levels".
+    key += "|" + IntegerToString(baseMultiplier);
+    key += "|" + IntegerToString(config.zonesEnabled ? 1 : 0) + "," + IntegerToString((int)config.zoneStyle);
+    key += "," + IntegerToString(config.zoneTransparency) + "," + DoubleToString(config.zoneHeightPercent, 6);
+    key += "," + IntegerToString((int)config.zoneDefaultColor);
+    key += "|" + IntegerToString(config.useObjPropBack ? 1 : 0) + "," + IntegerToString(config.zOrder);
+    key += "," + IntegerToString(config.useStepFilter ? 1 : 0);
+    key += "," + IntegerToString(config.boundByHistorical ? 1 : 0);
+    key += "," + DoubleToString(config.maxPrice, 8) + "," + DoubleToString(config.minPrice, 8);
+    key += "|" + IntegerToString((int)config.fallbackColor) + "," + IntegerToString((int)config.fallbackStyle);
+    key += "," + IntegerToString(config.fallbackWidth);
+    key += "," + IntegerToString((int)config.fallbackColor2) + "," + IntegerToString((int)config.fallbackStyle2);
+    key += "," + IntegerToString(config.fallbackWidth2);
+    key += "," + IntegerToString((int)config.midpointColor) + "," + IntegerToString((int)config.midpointStyle);
+    key += "," + IntegerToString(config.midpointWidth);
+    // P-PERF-21b: the ZONE COLOURS are part of what this geometry carries
+    // (ClassifyLevels stores zoneColor per level, read from GetZoneColorForLevel
+    // and GetTriggerRenderColor), yet none of THOSE inputs were in the key: a
+    // structure-tier colour, a tier's show flag, the zones switch or the trigger
+    // colour could change while the key stayed equal and the cached zones would
+    // keep painting the old colour. The staleness was invisible because every
+    // one of those edits also changes levelSig and therefore wipes - but the
+    // cache must not RELY on a different guard to be correct.
+    key += "|zc" + IntegerToString(inpShowMidZones ? 1 : 0)
+              + IntegerToString(inpShowStructure ? 1 : 0)
+              + IntegerToString(inpShowStructureL1 ? 1 : 0) + IntegerToString(inpShowStructureL2 ? 1 : 0)
+              + IntegerToString(inpShowStructureL3 ? 1 : 0) + IntegerToString(inpShowStructureL4 ? 1 : 0)
+              + IntegerToString(inpShowStructureL5 ? 1 : 0)
+              + "," + IntegerToString((int)inpStructureL1Color) + IntegerToString((int)inpStructureL2Color)
+              + IntegerToString((int)inpStructureL3Color) + IntegerToString((int)inpStructureL4Color)
+              + IntegerToString((int)inpStructureL5Color)
+              + "," + IntegerToString((int)GetTriggerRenderColor());
+    key += "|" + IntegerToString(g_customPriceLineDragging ? 1 : 0);
+    // ClassifyLevels() reads the LIVE line appearance, so a style/colour edit
+    // mid-rebuild must miss the cache too (otherwise the other families of that
+    // rebuild would paint the pre-edit look).
+    key += "|" + IntegerToString((int)g_lineColor) + "," + IntegerToString(g_lineTransparency);
+    // P-PERF-23b: `g_linesVisible` used to sit here, described as "ClassifyLevels()
+    // reads the LIVE line appearance and the L toggle". That was FALSE: no stage
+    // of this pipeline reads it. grep says it has exactly two consumers in the
+    // whole file - the RenderTriggerLines paint line (`long lineTf = ...
+    // !g_linesVisible ...`, plus ObjectFunctions) and this key. The L switch and
+    // the panels' SHOW LINES row are a MASK decision taken at paint time, so the
+    // term turned every visibility flip into a full recompute of
+    // CalculateLevels/Classify/Build that produced byte-identical lists, and
+    // then the paint re-read the live flag anyway. Removed: the picture still
+    // follows the switch (the mask writer owns it), the math no longer restarts.
+    // ClassifyLevels() -> GetHighestStructureLevel() reads the structure-interval
+    // table (g_cachedIntervals). That table is a pure function of the VALIDATED
+    // base multiplier (already in the key), but the key names its five values
+    // directly, so a future change to how the table is derived cannot silently
+    // serve structure levels computed against the old table. (The term here used
+    // to be ArraySize(g_cachedIntervals), the constant 5 - it asserted a
+    // property instead of proving it.)
+    key += "|iv";
+    for(int iv = 0; iv < 5; iv++) key += "," + IntegerToString(g_cachedIntervals[iv]);
+    return key;
+}
+
+//+------------------------------------------------------------------+
 //| UNIFIED PIPELINE EXECUTOR                                        |
 //+------------------------------------------------------------------+
 SPipelineResult ExecutePipeline(
@@ -899,7 +1201,10 @@ SPipelineResult ExecutePipeline(
     const ENUM_CLASSIFY_MODE classifyMode,
     const bool lsFirst,
     const int maxLevelsAbove,
-    const int maxLevelsBelow)
+    const int maxLevelsBelow,
+    const double vpTop,
+    const double vpBottom,
+    const int buildStage)
 {
     SPipelineResult result;
     result.zoneCount = 0;
@@ -920,51 +1225,123 @@ SPipelineResult ExecutePipeline(
     
     bool triggerEnabled = IsTriggerLevelsEnabled();
     int baseMultiplier = GetValidatedBaseMultiplier();
-    double vpTop, vpBottom;
-    GetViewportBounds(vpTop, vpBottom);
-    
-    // Stage 1: Calculate (unified)
-    SCalculatedLevel rawLevels[];
-    int maxStep = 0;
-    int rawCount = CalculateLevels(centerPrice, stepSizes, stepSizeCount, stepMode,
-                                    lsFirst, maxLevelsAbove, maxLevelsBelow,
-                                    config.boundByHistorical, config.maxPrice, config.minPrice,
-                                    rawLevels, maxStep);
-    if(rawCount == 0) {
-        result.errorMessage = "No levels calculated";
-        return result;
-    }
-    
-    // Stage 2: Classify (mode-specific variant)
-    SLevelClassified classified[];
-    int classifiedCount = 0;
-    switch(classifyMode) {
-        case CLASSIFY_ALTERNATING:
-            classifiedCount = ClassifyLevelsAlternating(rawLevels, rawCount, config,
-                                                        triggerEnabled, baseMultiplier, lsFirst,
-                                                        classified);
-            break;
-        default: // CLASSIFY_STANDARD
-            classifiedCount = ClassifyLevels(rawLevels, rawCount, config,
-                                              triggerEnabled, baseMultiplier, classified);
-            break;
-    }
-    
-    // Stages 3+4: Build zones and lines (merged   single pass)
-    SZoneDefinition zones[];
-    STriggerLine lines[];
+    // P-PERF-06: the cull window arrives from the caller (RedrawAllObjects owns
+    // the hysteretic window AND the staging snapshot — deriving it here a
+    // second time could split staged families across two viewports).
+
     double fixedZoneStepSize = 0.0;
     if(config.modeName == "SSLS" && stepSizeCount > 1)
         fixedZoneStepSize = MathMin(stepSizes[0], stepSizes[1]);
-    BuildZonesAndLines(classified, classifiedCount, config, vpTop, vpBottom,
-                       fixedZoneStepSize, zones, result.zoneCount, lines, result.lineCount);
+
+    SZoneDefinition zones[];
+    STriggerLine lines[];
+    int maxStep = 0;
+
+    //                                                                
+    // P-PERF-18: THE STAGED REBUILD WAS RE-COMPUTING THE SAME MATH    
+    //                                                                
+    // P-PERF-06 splits a post-wipe rebuild (attach / TF switch /       
+    // topology toggle) into four frames - lines, zones, labels, block  
+    // - and every one of those frames called this function again, so   
+    // CalculateLevels -> ClassifyLevels/Alternating -> BuildZonesAnd-  
+    // Lines ran FOUR times with IDENTICAL inputs: on the weakest        
+    // machine that is four times the level arithmetic and four times   
+    // four times the label strings, for one switch. This is the         
+    // "compute it once, at the right moment" rule (LEARNING §16): the   
+    // staged frames are by construction "same geometry, another          
+    // family", so the built lists are remembered under a key made of    
+    // every input the three stages read. A tick that moves the base     
+    // price, a scroll that moves the cull window, an input edit, or a   
+    // mode switch changes the key and the math runs again - the cache   
+    // can only ever answer for an unchanged geometry.                   
+    //                                                                
+    string geoKey = PipelineGeometryKey(config, centerPrice, stepSizes, stepSizeCount,
+                                       stepMode, classifyMode, lsFirst, maxLevelsAbove,
+                                       maxLevelsBelow, vpTop, vpBottom,
+                                       baseMultiplier);
+    static string s_geoKey = "";
+    static bool   s_geoValid = false;
+    static SZoneDefinition s_geoZones[];
+    static STriggerLine    s_geoLines[];
+    static int    s_geoZoneCount = 0;
+    static int    s_geoLineCount = 0;
+    static int    s_geoMaxStep = 0;
+
+    if(s_geoValid && geoKey == s_geoKey) {
+        // Same geometry, another family: copy the built lists, skip the math.
+        ArrayResize(zones, s_geoZoneCount);
+        for(int z = 0; z < s_geoZoneCount; z++) zones[z] = s_geoZones[z];
+        ArrayResize(lines, s_geoLineCount);
+        for(int l = 0; l < s_geoLineCount; l++) lines[l] = s_geoLines[l];
+        result.zoneCount = s_geoZoneCount;
+        result.lineCount = s_geoLineCount;
+        maxStep = s_geoMaxStep;
+    }
+    else {
+        // Stage 1: Calculate (unified)
+        SCalculatedLevel rawLevels[];
+        int rawCount = CalculateLevels(centerPrice, stepSizes, stepSizeCount, stepMode,
+                                        lsFirst, maxLevelsAbove, maxLevelsBelow,
+                                        config.boundByHistorical, config.maxPrice, config.minPrice,
+                                        rawLevels, maxStep);
+        if(rawCount == 0) {
+            result.errorMessage = "No levels calculated";
+            s_geoValid = false;   // never serve a geometry for a config that produced none
+            return result;
+        }
+
+        // Stage 2: Classify (mode-specific variant)
+        SLevelClassified classified[];
+        int classifiedCount = 0;
+        switch(classifyMode) {
+            case CLASSIFY_ALTERNATING:
+                classifiedCount = ClassifyLevelsAlternating(rawLevels, rawCount, config,
+                                                            triggerEnabled, baseMultiplier, lsFirst,
+                                                            classified);
+                break;
+            default: // CLASSIFY_STANDARD
+                classifiedCount = ClassifyLevels(rawLevels, rawCount, config,
+                                                  triggerEnabled, baseMultiplier, classified);
+                break;
+        }
+
+        // Stages 3+4: Build zones and lines (merged   single pass)
+        BuildZonesAndLines(classified, classifiedCount, config, vpTop, vpBottom,
+                           fixedZoneStepSize, zones, result.zoneCount, lines, result.lineCount);
+
+        // Remember the result for the other families of this same rebuild.
+        ArrayResize(s_geoZones, result.zoneCount);
+        for(int zc = 0; zc < result.zoneCount; zc++) s_geoZones[zc] = zones[zc];
+        ArrayResize(s_geoLines, result.lineCount);
+        for(int lc = 0; lc < result.lineCount; lc++) s_geoLines[lc] = lines[lc];
+        s_geoZoneCount = result.zoneCount;
+        s_geoLineCount = result.lineCount;
+        s_geoMaxStep = maxStep;
+        s_geoKey = geoKey;
+        s_geoValid = true;
+    }
     
-    // Stage 5: Render and cleanup
-    RenderZones(zones, result.zoneCount, config);
-    RenderTriggerLines(lines, result.lineCount, config);
-    
-    // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
-    CleanupSurplusPipeline(config, maxStep);
+    // Stage 5: Render and cleanup.
+    // P-PERF-06 STAGED RENDER: the math above (Calculate/Classify/Build) is
+    // pure CPU (~ms) and re-runs every stage; only ONE object family is
+    // materialised per frame, so a post-wipe build lands as four ~2k-call
+    // frames instead of one ~8k-call freeze. buildStage 0 (or anything
+    // unexpected) is the full legacy render — steady frames always take it.
+    if(buildStage == BUILD_STAGE_LINES) {
+        RenderTriggerLines(lines, result.lineCount, config, true, false);
+    } else if(buildStage == BUILD_STAGE_ZONES) {
+        RenderZones(zones, result.zoneCount, config);
+    } else if(buildStage == BUILD_STAGE_LABELS) {
+        RenderTriggerLines(lines, result.lineCount, config, false, true);
+        // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
+        CleanupSurplusPipeline(config, maxStep);
+    } else {
+        RenderZones(zones, result.zoneCount, config);
+        RenderTriggerLines(lines, result.lineCount, config, true, true);
+
+        // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
+        CleanupSurplusPipeline(config, maxStep);
+    }
     
     result.success = true;
     return result;

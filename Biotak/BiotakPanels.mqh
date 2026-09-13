@@ -300,10 +300,12 @@
 //--- generic dropdown-select (kind=2, 4+ options) — TV popover language
 #define PNL_DD_ROW_H   28
 #define PNL_DD_PAD     8
-#define PNL_DD_Z_SH    1558
-#define PNL_DD_Z_BG    1560
-#define PNL_DD_Z_SEL   1566
-#define PNL_DD_Z_LBL   1568
+// the popover ladder lives in ConstantsAndEnums.mqh (Z LADDER, P-UI-31) —
+// these four names are kept as the call-site spelling inside this file.
+#define PNL_DD_Z_SH    Z_PANEL_DD_SH
+#define PNL_DD_Z_BG    Z_PANEL_DD_BG
+#define PNL_DD_Z_SEL   Z_PANEL_DD_SEL
+#define PNL_DD_Z_LBL   Z_PANEL_DD_LBL
 //--- inline quick-pick swatches on COLOR rows (one-tap apply, no popup).
 // Single-line layout: [preview 46][6][6×22 swatches +5 gaps], label above-left.
 // New widget suffixes ("Q0".."Q5","PK","TU","DD","DDT","DDC") MUST also be
@@ -414,6 +416,11 @@ color QuickPalColor(const int i)
 #define PNL_A_VIOLET 3
 #define PNL_A_EMBER  4
 #define PNL_A_ROSE   5
+
+#define PNL_ROW_GAP   10      // preview .row flex gap: label group | control
+// ── UI TEXT METRICS moved to Biotak/UtilityFunctions.mqh (P-UI-34): the ring menu
+// ── and its hover tooltip are INCLUDED BEFORE this file, so the owner has to sit below them.
+
 string PnlAccentName(const int a)
 {
    if(a==PNL_A_JADE)   return "jade";
@@ -524,6 +531,10 @@ bool PnlCardFade(const int item)
 #define PNL_CHIP_PAD     2       // antialias pad baked into pnl_chip*.bmp
 #define PNL_CHIP_CANVAS  26
 #define PNL_CHIP_Y       ((PNL_ROW_H-PNL_CHIP_VIS)/2)            // 10
+//--- SLIDER rows (preview .row.sl/.sltop): label + chip sit on the TOP line so
+//--- the full-width track below stays clear — a centred chip would cover the
+//--- track's first 24px and collide with the knob at 0% (P-UI-30).
+#define PNL_CHIP_Y_SL    2       // 26px canvas at 0..26, visible chip 2..24
 #define PNL_GLYPH_VIS    13      // .gl svg
 #define PNL_GLYPH_PAD    1
 #define PNL_GLYPH_CANVAS 15
@@ -541,8 +552,9 @@ bool PnlCardFade(const int item)
 #define PNL_VCHIP_H      22
 #define PNL_VCHIP_PAD    2
 #define PNL_VCHIP_Y      2
-#define PNL_KEYCAP_VIS   18      // .key
-#define PNL_KEYCAP_PAD   2
+#define PNL_KEYCAP_VIS   18      // .key  (the visible cap body)
+#define PNL_KEYCAP_PAD   2       // antialias pad baked into pnl_keycap.bmp
+#define PNL_KEYCAP_CANVAS 22     // VIS + 2*PAD — the bitmap's own size
 #define PNL_KEY_H        16      // keycap glyph area (9px Arial Bold letter)
 #define PNL_XBTN_VIS     26      // .x
 #define PNL_XBTN_PAD     2
@@ -932,6 +944,21 @@ int   g_PalRecentCount = 0;
 
 void SavePalRecent()
 {
+   // P-PERF-27c: the palette only changes when the user picks a colour, yet the
+   // teardown wrote all 13 keys and flushed the terminal's ENTIRE
+   // global-variable table for them on every timeframe switch. Change-guarded
+   // like the override and UI-state blocks so an untouched session costs zero.
+   static double s_palShadow[PAL_RECENT_MAX/2 + 1];
+   static bool   s_palKnown[PAL_RECENT_MAX/2 + 1];
+   static int    s_palEpoch = -1;
+   int palChanged = 0;
+   if(GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, 0, g_PalRecentCount)) palChanged++;
+   for(int j = 0; j < PAL_RECENT_MAX/2; j++)
+   {
+      double packed = g_PalRecent[2*j] + g_PalRecent[2*j+1]*16777216.0;
+      if(GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, j + 1, packed)) palChanged++;
+   }
+   if(palChanged == 0) return;   // nothing changed - no writes, no disk flush
    GlobalVariableSet(GetGVName("PALN"), g_PalRecentCount);
    for(int i = 0; i < PAL_RECENT_MAX/2; i++)
       GlobalVariableSet(GetGVName("PALR"+IntegerToString(i)),
@@ -1633,6 +1660,7 @@ void PalComputePos()
 
 void PalClose()
 {
+   UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
    if(!g_PalOpen) return;
    SavePalRecent();   // flush the throttled mixer drag tail
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
@@ -1714,20 +1742,20 @@ void PalDrawMixer(const int contY)
    {
       int y=contY+2+i*26;
       PnlSetLabel(p+"ml"+IntegerToString(i), px+PAL_PAD, y, cl[i], PNL_CLR_LABEL, PNL_PT_PAL);
-      ObjectSetInteger(0,p+"ml"+IntegerToString(i),OBJPROP_ZORDER,1601);
+      ObjectSetInteger(0,p+"ml"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_BG);
       PnlSetRect(p+"mtg"+IntegerToString(i), trackX, y+2, trackW, 8, PNL_CLR_TRACK_BD);
-      ObjectSetInteger(0,p+"mtg"+IntegerToString(i),OBJPROP_ZORDER,1601);
+      ObjectSetInteger(0,p+"mtg"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_BG);
       int kx=trackX+(int)MathRound(comps[i]/255.0*(trackW-10));
       PnlSetRect(p+"mf"+IntegerToString(i), trackX, y+2, kx-trackX+10, 8, fill[i]);
-      ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_ZORDER,1602);
+      ObjectSetInteger(0,p+"mf"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_CTL);
        PnlSetButton(p+"mknb"+IntegerToString(i), kx, y, 10, 12, "", fill[i], PNL_CLR_TRACK_BD, true);
-      ObjectSetInteger(0,p+"mknb"+IntegerToString(i),OBJPROP_ZORDER,1603);
+      ObjectSetInteger(0,p+"mknb"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_FG);
        PnlSetLabel(p+"mv"+IntegerToString(i), px+PalW()-PAL_PAD, y, IntegerToString(comps[i]), PNL_CLR_VALUE, PNL_PT_PAL);
        // P-UI-26: ANCHOR_RIGHT_UPPER, not ANCHOR_RIGHT (middle-right sat a
        // half line below its label — every other right-aligned panel text
        // uses RIGHT_UPPER).
        ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
-      ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ZORDER,1601);
+      ObjectSetInteger(0,p+"mv"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_BG);
    }
    // 4th channel: TRANSPARENCY (percent; 0=solid, 100=invisible —
    // same language as the panel TRANSPARENCY sliders).
@@ -1736,24 +1764,24 @@ void PalDrawMixer(const int contY)
    bool trOk = (tr >= 0);
    int oy = contY+2+3*26;
    PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, PNL_PT_PAL);
-   ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
    color trFill = trOk ? PNL_CLR_ACCENT : PNL_CLR_DISABLED;
    PnlSetRect(p+"mtg3", trackX, oy+2, trackW, 8, PNL_CLR_TRACK_BD);
-   ObjectSetInteger(0,p+"mtg3",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"mtg3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    int tkx = trackX + (int)MathRound((trOk ? ClampInt(tr,0,100) : 0) / 100.0 * (trackW-10));
    PnlSetRect(p+"mf3", trackX, oy+2, MathMax(0, tkx-trackX+10), 8, trFill);
-   ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,1602);
+   ObjectSetInteger(0,p+"mf3",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    PnlSetButton(p+"mknb3", tkx, oy, 10, 12, "", trFill, trOk ? PNL_CLR_ACCENT : PNL_CLR_DIS_BD, true);
-   ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,1603);
+   ObjectSetInteger(0,p+"mknb3",OBJPROP_ZORDER,Z_PANEL_POP_FG);
     PnlSetLabel(p+"mv3", px+PalW()-PAL_PAD, oy, trOk ? IntegerToString(tr)+"%" : "--", PNL_CLR_VALUE, PNL_PT_PAL);
     ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
-   ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 
    // hex input (OBJ_EDIT — the one text field MT4 supports)
    int hy=contY+2+4*26+4;
    PnlSetLabel(p+"hl", px+PAL_PAD, hy+2, "HEX", PNL_CLR_LABEL, 8);
-   ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    string en=p+"hex";
    ObjectCreate(0,en,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,en,OBJPROP_CORNER,CORNER_LEFT_UPPER);
@@ -1763,15 +1791,15 @@ void PalDrawMixer(const int contY)
    ObjectSetInteger(0,en,OBJPROP_YSIZE,18);
    ObjectSetString(0,en,OBJPROP_TEXT,PalHexText(cur));
    ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
-   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PNL_PT_CTL);
+   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
         ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
         ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
         ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
    ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
-   ObjectSetInteger(0,en,OBJPROP_ZORDER,1603);
+   ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_POP_FG);
    ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
    PnlSetLabel(p+"hl2", trackX+84, hy+2, "ENTER = apply", PNL_CLR_MUTED, 7);
-   ObjectSetInteger(0,p+"hl2",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"hl2",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 }
 
 void PalDraw()
@@ -1782,26 +1810,26 @@ void PalDraw()
 
     // card — RICH-MT4: baked gradient+radius face (preview .pal). Same object
     // name and Z as the old flat rect, so PalClose's prefix wipe is untouched.
-    PnlSetBitmap(p+"card", px, py, w, h, "::Files\\Icons\\pal_card.bmp", 1600);
+    PnlSetBitmap(p+"card", px, py, w, h, "::Files\\Icons\\pal_card.bmp", Z_PANEL_POP);
 
    // header (names the LIVE target — the picked color goes there,
    // which may differ from the row that opened the popup via APPLY TO)
    PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "PALETTE · "+PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, PNL_PT_PAL);
    ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial Bold");
-   ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    PnlSetButton(p+"close", px+w-PAL_PAD-20, py+3, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
    ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
-   ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PNL_PT_PAL);
-   ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,1602);
+   ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PnlPt(PNL_PT_PAL));   // P-UI-30
+   ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
 
    // preview strip
    color cur=PaletteKindColor(g_PalKind);
    int py0=py+PAL_HEAD;
    PnlSetRect(p+"cur", px+PAL_PAD, py0+5, 30, 18, cur);
    ObjectSetInteger(0,p+"cur",OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
-   ObjectSetInteger(0,p+"cur",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"cur",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    PnlSetLabel(p+"curtx", px+PAL_PAD+36, py0+8, PalColorText(cur)+"  #"+PalHexText(cur), PNL_CLR_MUTED, 8);
-   ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 
    // tabs (2: PALETTE · MIXER — recents live inline on the PALETTE tab)
    int ty=py+PAL_HEAD+PAL_PREV;
@@ -1816,8 +1844,8 @@ void PalDraw()
                    act?PNL_CLR_SEG_ON:PNL_CLR_SEG_OFF,
                    act?PNL_CLR_SEG_ON:PNL_CLR_SEG_BD, true);
       ObjectSetInteger(0,tb,OBJPROP_COLOR, act?PNL_CLR_ACCENT_TX:PNL_CLR_SEG_TX);
-      ObjectSetInteger(0,tb,OBJPROP_FONTSIZE,8);
-      ObjectSetInteger(0,tb,OBJPROP_ZORDER,1602);
+      ObjectSetInteger(0,tb,OBJPROP_FONTSIZE,PnlPt(8));   // P-UI-30
+      ObjectSetInteger(0,tb,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    }
    int contY=ty+PAL_TABS;
 
@@ -1827,7 +1855,7 @@ void PalDraw()
       // Grid cells reuse the "s{r}_{c}" ids mapped into the Material
       // matrix, so PalHandleClick needs no changes.
       PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "RECENT", PNL_CLR_LABEL, PNL_PT_PALSEC);
-      ObjectSetInteger(0,p+"rttl",OBJPROP_ZORDER,1601);
+      ObjectSetInteger(0,p+"rttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       int nshow=MathMin(g_PalRecentCount,PAL_RSHOW);
       for(int i=0;i<nshow;i++)
       {
@@ -1835,17 +1863,17 @@ void PalDraw()
          int sx=px+PAL_PAD+i*(PAL_QSW+PAL_QGAP);
          int sy=contY+18;
          PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i], PNL_CLR_LINE, true);
-         ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
+         ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
          ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
       }
       if(nshow==0)
       {
          PnlSetLabel(p+"rempty", px+PAL_PAD, contY+20, "Pick any color — it appears here for reuse.", PNL_CLR_MUTED, 8);
-         ObjectSetInteger(0,p+"rempty",OBJPROP_ZORDER,1601);
+         ObjectSetInteger(0,p+"rempty",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       }
       int gy=contY+18+PAL_QSW+8;
       PnlSetLabel(p+"gttl", px+PAL_PAD, gy, "ALL COLORS", PNL_CLR_LABEL, PNL_PT_PALSEC);
-      ObjectSetInteger(0,p+"gttl",OBJPROP_ZORDER,1601);
+      ObjectSetInteger(0,p+"gttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       int gy0=gy+16;
       for(int qi=0;qi<PAL_QCOLS;qi++)
          for(int qj=0;qj<PAL_QROWS;qj++)
@@ -1856,7 +1884,7 @@ void PalDraw()
             int sy=gy0+qj*(PAL_QSW+PAL_QGAP);
             color sw=PalMatColor(mr,mc);
             PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw, PNL_CLR_LINE, true);
-            ObjectSetInteger(0,n,OBJPROP_ZORDER,1602);
+            ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
             ObjectSetString(0,n,OBJPROP_TOOLTIP, PalMatName(mr)+" "+PalShadeName(mc)+"  ("+PalColorText(sw)+")");
          }
    }
@@ -1868,33 +1896,33 @@ void PalDraw()
    // apply-to target row
    int tgy=py+h-PAL_TGT-PAL_FOOT;
    PnlSetLabel(p+"tgtl", px+PAL_PAD, tgy+7, "APPLY TO:", PNL_CLR_LABEL, 8);
-   ObjectSetInteger(0,p+"tgtl",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"tgtl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    PnlSetButton(p+"tgt", px+w-PAL_PAD-112, tgy+1, 112, 20, PalTgtLabel(g_PalTgt)+"  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
    ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_TITLE);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,8);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,1602);
+   ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(8));   // P-UI-30
+   ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
 
    // footer: Done + mini transparency (both tabs — no MIXER switch needed)
    int fy=py+h-PAL_FOOT;
    PnlSetButton(p+"done", px+PAL_PAD, fy+3, 64, 20, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
    ObjectSetInteger(0,p+"done",OBJPROP_COLOR,PNL_CLR_DONE_TX);
-   ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,1602);
+   ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    int tr0=PaletteKindTransparency(g_PalKind);
    bool trOk=(tr0>=0);
    int olx=px+PAL_PAD+PAL_FOP_DX;
    PnlSetLabel(p+"opl", olx, fy+6, "TR", trOk?PNL_CLR_LABEL:PNL_CLR_DISABLED, 8);
-   ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ObjectSetString(0,p+"opl",OBJPROP_TOOLTIP,"Transparency of this target (click the track to set)");
    int otx=olx+PAL_FOP_LW;
    PnlSetRect(p+"opg", otx, fy+8, PAL_FOP_TW, 10, PNL_CLR_TRACK_BD);
-   ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    color trFill=trOk?PNL_CLR_ACCENT:PNL_CLR_DISABLED;
    int tfw=trOk?(int)MathRound(ClampInt(tr0,0,100)/100.0*PAL_FOP_TW):0;
    PnlSetRect(p+"opf", otx, fy+8, tfw, 10, trFill);
-   ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,1602);
+   ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    PnlSetLabel(p+"opv", otx+PAL_FOP_TW+6, fy+6, trOk?IntegerToString(ClampInt(tr0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
-   ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,1601);
+   ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ChartRedraw();
 }
 
@@ -1961,7 +1989,11 @@ void PalUpdateLive()
       int odr=PnlDispRowOfSet(oit,orow);
       if(odr>=0) PnlUpdateRow(oit,odr);
    }
-   ChartRedraw();
+   // P-PERF-06: this runs per mixer tick (30 Hz while dragging) AND on
+   // discrete picks. The knob/preview already moved above; a raw repaint per
+   // tick was ~33 full-chart repaints/s of a 1000+-object chart. Discrete
+   // picks still land within 100 ms — imperceptible.
+   ThrottledChartRedraw();
 }
 
 //--- mixer hit-test: 0 none, 1 R, 2 G, 3 B, 4 TRANSPARENCY
@@ -3133,18 +3165,29 @@ int PnlApplySet(const int item,const int row,const double v)
          else             { g_triggerLevelsEnabled=(v>0.5);   // row 3 — SHOW
                             GlobalVariableSet("Biotak_TriggerLevels_"+GetCachedChartIdStr(),
                                               g_triggerLevelsEnabled?1.0:0.0);
-                            g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true;
-                            flags=REFRESH_ALL; }
+                            // P-PERF-21: NO force-clear here either. Flipping the
+                            // trigger overlay changes no geometry, so deleting and
+                            // rebuilding every level/zone/label for it was pure
+                            // churn (and the third copy of this mistake - the ring
+                            // toggle and the T hotkey had it too). A buffers
+                            // re-render is the whole repair.
+                            g_redrawTHLevelsNeeded=true;
+                            flags=REFRESH_BUFFERS; }
          break;
       case 1:   // ZONES & LEVELS — main card. Row 0 = MID ZONES (ring master).
-         if(row==0)       { g_showMidZones=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==1)  // SHOW LINES — master visibility; keeps g_linesVisible
-                          // in sync so hotkey L and the drawing code stay coherent.
+         if(row==0)       { g_showMidZones=(v>0.5);
+                            // P-PERF-41: the ring's Zones & Levels light is this row
+                            // AND row 1, so the ring must be repainted too.
+                            RequestUISync();
+                            flags=REFRESH_BUFFERS; }
+         else if(row==1)  // SHOW LINES — master visibility. P-PERF-29: one owner
+                          // writes the state, the mirror, the persisted key AND the
+                          // object mask. This row used to skip the mask, and the
+                          // P-PERF-25 render skip then trusted that: the switch did
+                          // nothing until a timeframe switch rebuilt the chart.
                          { g_showLines=(v>0.5);
-                           g_linesVisible=g_showLines;
-                           UpdateLinesVisibleCache(g_linesVisible);
-                           GlobalVariableSet("Biotak_LinesVisible_"+GetCachedChartIdStr(),
-                                             g_linesVisible?1.0:0.0);
+                           SetLinesVisible(g_showLines, true);
+                           RequestUISync();   // P-PERF-41: the ring light reads this row too
                            flags=REFRESH_BUFFERS; }
          else if(row==2)  { g_midZoneStyle=(ENUM_ZONE_STYLE)(int)MathRound(v); flags=REFRESH_BUFFERS; }
          else if(row==3)  { g_midZoneTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }
@@ -3174,23 +3217,23 @@ int PnlApplySet(const int item,const int row,const double v)
                             g_atrLabelsVisible=g_showATRLabels;
                             GlobalVariableSet("Biotak_ATRLabels_"+GetCachedChartIdStr(),
                                               g_atrLabelsVisible?1.0:0.0);
-                            string opA=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opA=GetLevelObjectPrefix();
                             SetATRLabelsVisibility(opA,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==5)  { g_showATRTargets=(v>0.5);
-                            string opB=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opB=GetLevelObjectPrefix();
                             SetATRLabelsVisibility(opB,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==6)  { g_showATRTradeLabels=(v>0.5);
-                            string opC=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opC=GetLevelObjectPrefix();
                             SetATRLabelsVisibility(opC,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==7)  { g_showATRTradeSLLabels=(v>0.5);
-                            string opD=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opD=GetLevelObjectPrefix();
                             SetATRLabelsVisibility(opD,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==8)  { g_showATRTradeTPLabels=(v>0.5);
-                            string opE=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opE=GetLevelObjectPrefix();
                             SetATRLabelsVisibility(opE,g_atrLabelsVisible);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else if(row==9)  { g_showPipDistanceLabels=(v>0.5); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
@@ -3198,15 +3241,35 @@ int PnlApplySet(const int item,const int row,const double v)
          break;
       case 3:   // TH LABELS — single source of truth is g_thLabelsMode;
                 // flags are derived back from it via SyncTHFlagsFromMode()
-         if(row==0)       { g_showTHLabels=(v>0.5);
-                            int m0=THModeFromFlags();
-                            if(g_showTHLabels && m0==0) m0=1;   // master ON → default FRACTAL
-                            g_thLabelsMode=m0;
-                            SyncTHFlagsFromMode();
-                            GlobalVariableSet("Biotak_THLabels_"+GetCachedChartIdStr(),(double)m0);
-                            string opT=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
-                            SetTHLabelsVisibility(opT,m0);
-                            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         if(row==0)
+         {
+            // P-UI-44 (2026-09-13) — THE MASTER ROW WAS DEAD IN ITS OFF DIRECTION.
+            // `g_showTHLabels` is NOT an independent mute: SyncTHFlagsFromMode()
+            // re-derives it (and rows 1/2's mirrors) FROM `g_thLabelsMode`, so the only
+            // thing this row can actually write is the MODE. Reading the mode back out
+            // of the source mirrors while switching OFF is what killed the press: with
+            // FRACTAL on, THModeFromFlags() returned 1, the mode was re-derived to 1,
+            // SyncTHFlagsFromMode() set g_showTHLabels = (mode != 0) = true again and
+            // the switch snapped back ON with nothing changed. OFF is now mode 0 — the
+            // same value the ring's TH cycle and the S key produce for "off" — and ON
+            // restores the remembered selection, defaulting to FRACTAL when none is set.
+            bool masterOn=(v>0.5);
+            int m0 = masterOn ? THModeFromFlags() : 0;
+            if(masterOn && m0==0) m0=1;   // master ON → default FRACTAL
+            g_showTHLabels=masterOn;
+            g_thLabelsMode=m0;
+            SyncTHFlagsFromMode();
+            GlobalVariableSet("Biotak_THLabels_"+GetCachedChartIdStr(),(double)m0);
+            // Rows 1/2 DISPLAY the mirrors this press just re-derived, and a press
+            // normally repaints only its OWN row (PnlUpdateRow(item,row)) — the same
+            // asymmetry P-UI-40 fixed for the hotkeys. The drain repaints the open card
+            // and the ring's light in this same event, so the card cannot be left
+            // showing a source that is no longer drawn.
+            RequestUISync();
+            string opT=GetLevelObjectPrefix();
+            SetTHLabelsVisibility(opT,m0);
+            g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
+         }
          else if(row==1 || row==2)
          {
             if(row==1) g_showFractalTHs=(v>0.5);
@@ -3216,12 +3279,12 @@ int PnlApplySet(const int item,const int row,const double v)
             g_thLabelsMode=m1;
             SyncTHFlagsFromMode();
             GlobalVariableSet("Biotak_THLabels_"+GetCachedChartIdStr(),(double)m1);
-            string opT2=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+            string opT2=GetLevelObjectPrefix();
             SetTHLabelsVisibility(opT2,m1);
             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
          }
          else if(row==3)  { g_showTHTargets=(v>0.5);
-                            string opT3=inpObjectPrefix+"_"+GetCurrentTimeframe()+"_";
+                            string opT3=GetLevelObjectPrefix();
                             SetTHLabelsVisibility(opT3,g_thLabelsMode);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          else             { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
@@ -3256,12 +3319,9 @@ int PnlApplySet(const int item,const int row,const double v)
          break;
       case 7:   // LINES — unified [08.4] appearance. Row 1 SHOW mirrors the
                 // Zones card row 1 (same g_showLines / g_linesVisible pair).
-         if(row==1)       { g_showLines=(v>0.5);
-                            g_linesVisible=g_showLines;
-                            UpdateLinesVisibleCache(g_linesVisible);
-                            GlobalVariableSet("Biotak_LinesVisible_"+GetCachedChartIdStr(),
-                                              g_linesVisible?1.0:0.0);
-                            flags=REFRESH_BUFFERS; }
+          if(row==1)       { g_showLines=(v>0.5);
+                             SetLinesVisible(g_showLines, true);   // P-PERF-29: mask included
+                             flags=REFRESH_BUFFERS; }
          else if(row==2)  { g_lineWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
          else if(row==3)  { g_lineStyle=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_BUFFERS; }
          else if(row==4)  { g_lineTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }
@@ -3309,13 +3369,16 @@ int PnlApplySet(const int item,const int row,const double v)
             g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC;
          }
          break;
-      case 11:  // STRUCTURE sub-card (opened from Zones & Levels)
-         if(row==1)       { g_showStructure=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==2)  { g_showStructureL1=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==3)  { g_showStructureL2=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==4)  { g_showStructureL3=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==5)  { g_showStructureL4=(v>0.5); flags=REFRESH_BUFFERS; }
-         else if(row==6)  { g_showStructureL5=(v>0.5); flags=REFRESH_BUFFERS; }
+       case 11:  // STRUCTURE sub-card (opened from Zones & Levels)
+         // P-PERF-32: recolour-only owner (no recompute, no render — the
+         // level SET is switch-invariant). REFRESH_NONE: the owner persists
+         // the OV_ key and forces the discrete repaint itself (P-UI-02).
+         if(row==1)       { SetStructureVisible(0, (v>0.5)); flags=REFRESH_NONE; }
+         else if(row==2)  { SetStructureVisible(1, (v>0.5)); flags=REFRESH_NONE; }
+         else if(row==3)  { SetStructureVisible(2, (v>0.5)); flags=REFRESH_NONE; }
+         else if(row==4)  { SetStructureVisible(3, (v>0.5)); flags=REFRESH_NONE; }
+         else if(row==5)  { SetStructureVisible(4, (v>0.5)); flags=REFRESH_NONE; }
+         else if(row==6)  { SetStructureVisible(5, (v>0.5)); flags=REFRESH_NONE; }
          break;
       case 10:  // FACTOR
          if(row==0)       { g_factorMode=(ENUM_FACTOR_MODE)(int)MathRound(v); g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
@@ -3409,11 +3472,14 @@ void PnlSetLabel(const string n,const int x,const int y,const string txt,const c
    ObjectSetInteger(0,n,OBJPROP_YDISTANCE,y);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);
    ObjectSetString(0,n,OBJPROP_FONT,"Arial");
-   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,sz);
+   // P-UI-30: `sz` is a NOMINAL design size (px * 3/4); the terminal renders
+   // fonts at ITS dpi, so the point size is re-expressed here once for every
+   // caption in the panel.
+   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,PnlPt(sz));
    ObjectSetInteger(0,n,OBJPROP_COLOR,clr);
    ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,n,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,n,OBJPROP_ZORDER,1520);
+   ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_TEXT);
 }
 
 void PnlSetRect(const string n,const int x,const int y,const int w,const int h,const color clr)
@@ -3425,7 +3491,7 @@ void PnlSetRect(const string n,const int x,const int y,const int w,const int h,c
    ObjectSetInteger(0,n,OBJPROP_XSIZE,w);
    ObjectSetInteger(0,n,OBJPROP_YSIZE,h);
    ObjectSetInteger(0,n,OBJPROP_BGCOLOR,clr);
-   ObjectSetInteger(0,n,OBJPROP_ZORDER,1500);
+   ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_BASE);
    ObjectSetInteger(0,n,OBJPROP_SELECTABLE,false);
    ObjectSetInteger(0,n,OBJPROP_HIDDEN,true);
 }
@@ -3441,7 +3507,7 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_YSIZE,h);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);
    ObjectSetString(0,n,OBJPROP_FONT,"Arial Bold");
-   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,PNL_PT_CTL);
+   ObjectSetInteger(0,n,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
    ObjectSetInteger(0,n,OBJPROP_COLOR,PNL_CLR_TITLE);
    ObjectSetInteger(0,n,OBJPROP_BGCOLOR,bg);
    ObjectSetInteger(0,n,OBJPROP_BORDER_TYPE,BORDER_FLAT);
@@ -3449,7 +3515,7 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_STATE,false);
    ObjectSetInteger(0,n,OBJPROP_SELECTABLE,selectable);
    ObjectSetInteger(0,n,OBJPROP_HIDDEN,true);
-   ObjectSetInteger(0,n,OBJPROP_ZORDER,1540);
+   ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_CTL);
 }
 
 void PnlSetBitmap(const string n,const int x,const int y,const int w,const int h,
@@ -3505,10 +3571,10 @@ void PnlSetBitmap(const string n,const int x,const int y,const int w,const int h
 //--- dropdown Z-stack: every layer sits ABOVE the strip buttons (1541) but
 //--- the obsidian backdrop must stay BEHIND its own rows (P-UI-06: a backdrop
 //--- Z above the labels buries the text/pill under the card)
-#define BK_DD_Z_BG    1560    // obsidian popover card
-#define BK_DD_Z_SEL   1566    // selected-row dark pill
-#define BK_DD_Z_LBL   1568    // row labels
-#define BK_DD_Z_ICO   1574    // row glyphs (top)
+#define BK_DD_Z_BG    Z_PANEL_DD_BG    // obsidian popover card
+#define BK_DD_Z_SEL   Z_PANEL_DD_SEL   // selected-row dark pill
+#define BK_DD_Z_LBL   Z_PANEL_DD_LBL   // row labels
+#define BK_DD_Z_ICO   Z_PANEL_DD_ICO   // row glyphs (top)
 #define BK_CHEV_SZ    16      // bk_chev.bmp glyph size (OBJ_BITMAP_LABEL native)
 #define BK_WTXT_X     16      // WIDTH "Npx" text offset inside its 74px slot (centered pair)
 #define BK_WTXT_W     22      // generous "Npx" width estimate (Arial Bold 8); chevron glues after
@@ -3766,7 +3832,7 @@ void BkMiniStripCreate()
    // Obsidian strip backdrop — dark-glass card (baked shadow margin)
    PnlSetBitmap(PnlHead(13, "card"), px - PNL_MARGIN, py - PNL_MARGIN,
                 PNL_TB_W + 2 * PNL_MARGIN, PNL_TB_H + 2 * PNL_MARGIN,
-                "::Files\\Icons\\bk_strip.bmp", 1480);
+                "::Files\\Icons\\bk_strip.bmp", Z_STRIP);
    for(int i = 0; i < BK_TB_N; i++)
    {
       int sx, sy, sw, sh;
@@ -3779,11 +3845,11 @@ void BkMiniStripCreate()
                       //  the glyph so the pair reads as ONE control)
           int ix = sx + 6;
           int iy = sy + (sh - PNL_TB_ICON) / 2 - 2;
-          PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), 1541);
+          PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), Z_STRIP_ICON);
           PnlSetBitmap(BkMiniBtn("TBchev1"), ix + PNL_TB_ICON + 4,
                        sy + (sh - BK_CHEV_SZ) / 2,
                        BK_CHEV_SZ, BK_CHEV_SZ,
-                       "::Files\\Icons\\bk_chev.bmp", 1542);
+                       "::Files\\Icons\\bk_chev.bmp", Z_STRIP_OVER);
        }
        else if(i == 4)   // WIDTH selector: "Npx" text + chevron glued to it (P-UI-08:
        {                 // the sample glyph read like a stray "H" next to the text,
@@ -3792,13 +3858,13 @@ void BkMiniStripCreate()
           PnlSetBitmap(BkMiniBtn("TBchev2"), sx + BK_WTXT_X + BK_WTXT_W + 4,
                        sy + (sh - BK_CHEV_SZ) / 2,
                        BK_CHEV_SZ, BK_CHEV_SZ,
-                       "::Files\\Icons\\bk_chev.bmp", 1542);
+                       "::Files\\Icons\\bk_chev.bmp", Z_STRIP_OVER);
        }
       else
       {
          int ix = sx + (sw - PNL_TB_ICON) / 2;
          int iy = sy + (sh - PNL_TB_ICON) / 2 - 2;
-         PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), 1541);
+         PnlSetBitmap(nm, ix, iy, PNL_TB_ICON, PNL_TB_ICON, BkMiniIconRes(i), Z_STRIP_ICON);
       }
       ObjectSetString(0, nm, OBJPROP_TOOLTIP, BkMiniSlotTip(i));
       if(i <= 2)   // TV current-color underline under pencil/bucket/T
@@ -4139,29 +4205,57 @@ void PnlPaintChip(const int item,const int row,const int x,const int y,const boo
    if(ico == "") return;
    PnlSetBitmap(PnlName(item,row,"CHP"), x-PNL_CHIP_PAD, y-PNL_CHIP_PAD,
                 PNL_CHIP_CANVAS, PNL_CHIP_CANVAS,
-                on ? PnlAccentRes(item,"pnl_chip") : "::Files\\Icons\\pnl_chip.bmp", 1502);
+                on ? PnlAccentRes(item,"pnl_chip") : "::Files\\Icons\\pnl_chip.bmp", Z_PANEL_CHIP);
    PnlSetBitmap(PnlName(item,row,"GL"), x+4, y+4,
-                PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,ico,on), 1504);
+                PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,ico,on), Z_PANEL_GLYPH);
 }
 
 //--- the row label. x = already resolved (after the chip and optional keycap).
+//--- `maxW` (P-UI-30) is the room the row's own control leaves; a caption
+//--- wider than that is clipped with ".." exactly like the preview's
+//--- `.lbl>span.t{overflow:hidden;text-overflow:ellipsis}`. 0 = unclipped.
 void PnlPaintLabel(const int item,const int row,const int x,const int y,
-                   const string txt,const int sz=PNL_PT_LBL)
+                   const string txt,const int sz=PNL_PT_LBL,const int maxW=0)
 {
-   PnlSetLabel(PnlName(item,row,"L"), x, y, txt, PNL_CLR_LABEL, sz);
+   string t = (maxW > 0) ? PnlFit(txt,sz,maxW) : txt;
+   PnlSetLabel(PnlName(item,row,"L"), x, y, t, PNL_CLR_LABEL, sz);
    ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
 }
 
 //--- the hotkey keycap (preview .key) — a real bitmap, never a font glyph.
+//--- P-UI-32: the preview's `.key` is `display:inline-grid;place-items:center`,
+//--- so the letter belongs in the MIDDLE of the 18px cap. The label used to be
+//--- right-anchored at x+PNL_KEYCAP_VIS (and the header's at a hard-coded 9px
+//--- guess), which put every hotkey letter ~6px right of the cap centre —
+//--- measured off the proof, not eyeballed. ONE owner for the cap bitmap AND
+//--- its letter, so the header can never drift from the rows again.
+//--- `x`,`y` = the CAP BITMAP's top-left.
+void PnlKeycapAt(const string bmp,const string lbl,const int x,const int y,
+                 const string k,const color clr,const int zBmp)
+{
+   if(k == ""){ ObjectDelete(0,bmp); ObjectDelete(0,lbl); return; }
+   PnlSetBitmap(bmp, x, y, PNL_KEYCAP_CANVAS, PNL_KEYCAP_CANVAS,
+                "::Files\\Icons\\pnl_keycap.bmp", zBmp);
+   // the letter is centred on the CANVAS: the 18px body is itself centred in
+   // the 22px canvas (its ink spans 2..19), and the preview centres the line
+   // box. Both halves are measured — `tw` via PnlTextW (P-UI-30), `em` via the
+   // same point->pixel mapping PnlTextW uses internally.
+   int tw = PnlTextW(k,PNL_PT_KEY);
+   int em = PnlLineH(PNL_PT_KEY);
+   PnlSetLabel(lbl, x+PNL_KEYCAP_CANVAS/2+tw/2, y+(PNL_KEYCAP_CANVAS-em)/2,
+               k, clr, PNL_PT_KEY);
+   ObjectSetString(0,lbl,OBJPROP_FONT,"Arial Bold");
+   ObjectSetInteger(0,lbl,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+}
+
+//--- row keycap — `x`,`y` = the VISIBLE cap's top-left (row arithmetic keeps
+//--- using the visible box, the canvas pad is subtracted here once).
 void PnlPaintKey(const int item,const int row,const int x,const int y)
 {
    string k = PnlRowKey(item,row);
    if(k == "") return;
-   PnlSetBitmap(PnlName(item,row,"KEY"), x-PNL_KEYCAP_PAD, y-PNL_KEYCAP_PAD,
-                22, 22, "::Files\\Icons\\pnl_keycap.bmp", 1503);
-   PnlSetLabel(PnlName(item,row,"KEYL"), x+PNL_KEYCAP_VIS, y+4, k, PNL_CLR_LABEL, PNL_PT_KEY);
-   ObjectSetString(0,PnlName(item,row,"KEYL"),OBJPROP_FONT,"Arial Bold");
-   ObjectSetInteger(0,PnlName(item,row,"KEYL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+   PnlKeycapAt(PnlName(item,row,"KEY"), PnlName(item,row,"KEYL"),
+               x-PNL_KEYCAP_PAD, y-PNL_KEYCAP_PAD, k, PNL_CLR_LABEL, Z_PANEL_INK);
 }
 
 //--- x of the row LABEL text: after the chip and, when present, the keycap
@@ -4180,9 +4274,9 @@ void PnlPaintActive(const int item,const int row,const int px,const int ry,const
 {
    if(!on) return;
    PnlSetBitmap(PnlName(item,row,"ACT"), px, ry, PNL_WEL, 42,
-                PnlAccentRes(item,"pnl_actbg"), 1484);
+                PnlAccentRes(item,"pnl_actbg"), Z_PANEL_ACT);
    PnlSetBitmap(PnlName(item,row,"RAIL"), px-1, ry, 4, 42,
-                PnlAccentRes(item,"pnl_rail"), 1501);
+                PnlAccentRes(item,"pnl_rail"), Z_PANEL_SKIN);
 }
 
 //--- one 40x22 switch pill (preview .sw) — bitmap face, hit-tested by coords
@@ -4193,7 +4287,7 @@ void PnlPaintSwitch(const int item,const int row,const string nm,
                     : (dual ? "::Files\\Icons\\pnl_dsw_off.bmp" : "::Files\\Icons\\pnl_sw_off.bmp");
    PnlSetBitmap(nm, x-PNL_SW_PAD, y-PNL_SW_PAD,
                 (dual ? PNL_DUAL_SW_W : PNL_SW_W) + 2*PNL_SW_PAD,
-                (dual ? PNL_DUAL_SW_H : PNL_SW_H) + 2*PNL_SW_PAD, res, 1506);
+                (dual ? PNL_DUAL_SW_H : PNL_SW_H) + 2*PNL_SW_PAD, res, Z_PANEL_SW);
 }
 
 //--- short cell caption for .dual rows: the family prefix goes ("STRUCTURE
@@ -4232,7 +4326,7 @@ int PnlDualCellX(const int item,const int row,const int cell)
       }
       else txt = extra;
       if(i == cell) return x;
-      x += PNL_DUAL_SW_W + 6 + StringLen(txt)*6 + 14;
+      x += PNL_DUAL_SW_W + 6 + PnlTextW(txt,PNL_PT_CAP) + 14;   // P-UI-30: real advance
    }
    return x;
 }
@@ -4398,41 +4492,50 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // band with a "0" pill during dynamic rebuilds.
        if(label == "" && PnlSecCount(item,row) <= 0) return;
        PnlSetBitmap(PnlName(item,row,"BAND"), px, ry, cardW, 42,
-                    wide ? "::Files\\Icons\\pnl_secbandW.bmp" : "::Files\\Icons\\pnl_secband.bmp", 1486);
+                    wide ? "::Files\\Icons\\pnl_secbandW.bmp" : "::Files\\Icons\\pnl_secband.bmp", Z_PANEL_BAND);
        ObjectSetString(0,PnlName(item,row,"BAND"),OBJPROP_TOOLTIP,"Collapse / expand this section");
       PnlSetBitmap(PnlName(item,row,"BDOT"), px+PNL_PAD_X-PNL_SECDOT_PAD, ry+18-PNL_SECDOT_PAD,
                    PNL_SECDOT_VIS+2*PNL_SECDOT_PAD, PNL_SECDOT_VIS+2*PNL_SECDOT_PAD,
-                   PnlAccentRes(item,"pnl_secdot"), 1502);
+                   PnlAccentRes(item,"pnl_secdot"), Z_PANEL_CHIP);
       PnlSetLabel(PnlName(item,row,"SL"), px+PNL_PAD_X+14, ry+14, label, PNL_CLR_MUTED, PNL_PT_SEC);
       ObjectSetString(0,PnlName(item,row,"SL"),OBJPROP_FONT,"Arial Bold");
       // colour strip (preview .cstrip) — the NEXT row is the group's colour set
-      int hx0 = px+PNL_PAD_X+14+StringLen(label)*6+10;
+      // P-UI-30: the hairline starts 10px after the caption's REAL advance
+      // (preview `.row.sec .sr{margin-left:10px}`) — the old 6px/char guess
+      // started it INSIDE the label ("GEOMETR", "SUB-CARDS' line).
+      int hx0 = px+PNL_PAD_X+14+PnlTextW(label,PNL_PT_SEC)+PNL_ROW_GAP;
       if(PnlRowExt(item,row) == "strip" && PnlRowKind(item,row+1) == PNL_K_CSET)
       {
          int n = PnlRowMembers(item,row+1);
          for(int s=0;s<n;s++)
          {
             int sr = PnlMemberRow(item,row+1,s);
-            int sx = px+PNL_PAD_X+14+StringLen(label)*6+12 + s*(15+3);
+            int sx = px+PNL_PAD_X+14+PnlTextW(label,PNL_PT_SEC)+12 + s*(15+3);
             PnlSetRect(PnlName(item,row,"SECS"+IntegerToString(s)),
                        sx, ry+13, 15, 15, PaletteKindColor(PnlColorKindSet(item,sr)));
          }
-         hx0 = px+PNL_PAD_X+14+StringLen(label)*6+12 + n*(15+3) + 8;
+         hx0 = px+PNL_PAD_X+14+PnlTextW(label,PNL_PT_SEC)+12 + n*(15+3) + 8;
       }
        int cw = PNL_SEC_CNT_W;
        int hx1 = px + cardW - PNL_PAD_X - cw - 12 - 16;
        PnlSetRect(PnlName(item,row,"SHR"), hx0, ry+21, MathMax(0,hx1-hx0), 1, PNL_CLR_LINE);
        PnlSetBitmap(PnlName(item,row,"BCNT"), px+cardW-PNL_PAD_X-cw-PNL_CHIP_PAD-16, ry+11,
-                    cw+2*PNL_CHIP_PAD, 20, "::Files\\Icons\\pnl_cntchip.bmp", 1502);
+                    cw+2*PNL_CHIP_PAD, 20, "::Files\\Icons\\pnl_cntchip.bmp", Z_PANEL_CHIP);
        string cnt = IntegerToString(PnlSecCount(item,row));
-       PnlSetLabel(PnlName(item,row,"BCNL"), px+cardW-PNL_PAD_X-8-16, ry+16, cnt, PNL_CLR_MUTED, PNL_PT_SEC);
+       // preview `.row.sec .cnt` is a padded box with the number centred in it;
+       // the chip bitmap's own centre is (canvas left + cw/2 + PNL_CHIP_PAD),
+       // which is what the letter is centred on now (P-UI-32, was a 5px/char
+       // guess right-anchored 8px in from the chevron).
+       PnlSetLabel(PnlName(item,row,"BCNL"),
+                   px+cardW-PNL_PAD_X-cw/2-16+PnlTextW(cnt,PNL_PT_SEC)/2,
+                   ry+16, cnt, PNL_CLR_MUTED, PNL_PT_SEC);
       ObjectSetString(0,PnlName(item,row,"BCNL"),OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,PnlName(item,row,"BCNL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
       // collapse chevron (preview .acc .cv): down = open, right = collapsed
       int bb = PnlBandIndex(item,row);
       bool bcol = PnlBandCollapsed(item,bb);
        PnlSetBitmap(PnlName(item,row,"CV"), px+cardW-PNL_PAD_X-12, ry+16, 10, 10,
-                    bcol ? PnlAccentRes(item,"pnl_chevr") : PnlAccentRes(item,"pnl_chev"), 1503);
+                    bcol ? PnlAccentRes(item,"pnl_chevr") : PnlAccentRes(item,"pnl_chev"), Z_PANEL_INK);
       ObjectSetString(0,PnlName(item,row,"CV"),OBJPROP_TOOLTIP,
                       bcol ? "Expand section" : "Collapse section");
       return;
@@ -4463,7 +4566,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
           // RICH-MT4: glass frame over the flat cell (transparent middle).
           PnlSetBitmap(PnlName(item,row,"CSG"+IntegerToString(i)),
                        cx, ry+17, PNL_CSET_W, PNL_CSET_H,
-                       "::Files\\Icons\\pnl_glass38.bmp", 1542);
+                       "::Files\\Icons\\pnl_glass38.bmp", Z_PANEL_MARK);   // glass sheen
          PnlSetLabel(PnlName(item,row,"CSL"+IntegerToString(i)),
                      cx+PNL_CSET_W/2, ry+6, PnlCsetKey(cl), PNL_CLR_MUTED, PNL_PT_CSET);
          ObjectSetString(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_FONT,"Arial Bold");
@@ -4522,8 +4625,8 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       }
       if(extra != "") dj += dsep + extra;
       int djX = PnlLabelX(item,row,px);
-      int djAvail = px+PNL_WEL-PNL_PAD_X-PnlDualTotalW(item,row)-6-djX;
-      if(StringLen(dj)*5 > djAvail) dj = "";
+      int djAvail = px+PNL_WEL-PNL_PAD_X-PnlDualTotalW(item,row)-PNL_ROW_GAP-djX;
+      if(PnlTextW(dj,PNL_PT_LBL) > djAvail) dj = "";   // P-UI-30: real advance
       PnlPaintLabel(item,row,djX,ry+14,dj);
       return;
     }
@@ -4535,7 +4638,9 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlPaintActive(item,row,px,ry,on);
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,on);
       PnlPaintKey(item,row,px+PNL_PAD_X+PNL_CHIP_VIS+8,ry+12);
-      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
+      // P-UI-30: the caption owns everything left of the pill, minus .row gap
+      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label,PNL_PT_LBL,
+                    px+PNL_SW_X-PnlLabelX(item,row,px)-PNL_ROW_GAP);
        PnlPaintSwitch(item,row,PnlName(item,row,"SW"),px+PNL_SW_X,ry+PNL_SW_Y,on,false);
        ObjectSetString(0,PnlName(item,row,"SW"),OBJPROP_TOOLTIP,label+": tap to flip");
        return;
@@ -4547,8 +4652,11 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       color cc = PnlRowColor(item,row);
       int kk = PnlColorKind(item,row);
       PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+2,
-                   PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), 1504);
-      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, PNL_PT_LBL_SM);
+                   PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), Z_PANEL_GLYPH);
+      // P-UI-30: caption above the swatch strip — clipped to the content edge
+      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3,
+                  PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
+                  PNL_CLR_LABEL, PNL_PT_LBL_SM);
       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
       int sy = ry + 18;
        PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22, "", cc,
@@ -4557,7 +4665,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // middle (the colour shows through), baked top-light + bottom-shade.
        // Non-selectable, above the button: clicks still reach CB (footer pattern).
        PnlSetBitmap(PnlName(item,row,"GLS"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22,
-                    "::Files\\Icons\\pnl_glass46.bmp", 1542);
+                    "::Files\\Icons\\pnl_glass46.bmp", Z_PANEL_MARK);   // glass sheen
        ObjectSetString(0,PnlName(item,row,"CB"),OBJPROP_TOOLTIP,label + " — open the colour picker");
        int qx = px+PNL_PAD_X+PNL_QSW_PREV+PNL_QSW_GAP;
        for(int qi=0; qi<PNL_QSW_N; qi++)
@@ -4568,16 +4676,16 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                        (qc==cc) ? a1 : PNL_CLR_LINE, true);
           PnlSetBitmap(PnlName(item,row,"GLS"+IntegerToString(qi)),
                        qx+qi*(PNL_QSW_W+PNL_QSW_GAP), sy, PNL_QSW_W, 22,
-                       "::Files\\Icons\\pnl_glass22.bmp", 1542);
+                       "::Files\\Icons\\pnl_glass22.bmp", Z_PANEL_MARK);   // glass sheen
          ObjectSetString(0,PnlName(item,row,"Q"+IntegerToString(qi)),
                          OBJPROP_TOOLTIP, "Apply this colour");
       }
       int axx = qx + PNL_QSW_N*(PNL_QSW_W+PNL_QSW_GAP);
        PnlSetBitmap(PnlName(item,row,"QA"), axx-PNL_CHIP_PAD, sy-PNL_CHIP_PAD, 26, 26,
-                    PnlAccentRes(item,"pnl_add"), 1502);
+                    PnlAccentRes(item,"pnl_add"), Z_PANEL_CHIP);
        ObjectSetString(0,PnlName(item,row,"QA"),OBJPROP_TOOLTIP,"Open the full colour picker");
       PnlSetBitmap(PnlName(item,row,"QAG"), axx+4, sy+4, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
-                   PnlAccentRes(item,"gl_plus"), 1504);
+                   PnlAccentRes(item,"gl_plus"), Z_PANEL_GLYPH);
       return;
    }
 
@@ -4585,25 +4693,29 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
    if(kind == PNL_K_NAV)
    {
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
-      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
       string sub = PnlRowExt(item,row);
        int nw = 118;
        int nx = px + PNL_WEL - PNL_PAD_X - nw;
+      // P-UI-30: caption clipped to the 118px pill's left edge
+      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label,PNL_PT_LBL,
+                    nx-PnlLabelX(item,row,px)-PNL_ROW_GAP);
        // RICH-MT4: the pill FACE is a baked gradient skin (preview .nav);
        // the button stays underneath purely as the click target (footer
        // pattern) and is pushed under the skin.
        PnlSetButton(PnlName(item,row,"NAV"), nx, ry+PNL_CTL_Y-1, nw, 26, "",
                     PNL_CLR_CARD, PNL_CLR_CARD, true);
-       ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_ZORDER,1500);
+       ObjectSetInteger(0,PnlName(item,row,"NAV"),OBJPROP_ZORDER,Z_PANEL_BASE);
        PnlSetBitmap(PnlName(item,row,"NAVB"), nx, ry+PNL_CTL_Y-1, nw, 26,
-                    "::Files\\Icons\\pnl_nav.bmp", 1501);
-      PnlSetLabel(PnlName(item,row,"NAVL"), nx+10, ry+PNL_CTL_Y+4, sub,
+                    "::Files\\Icons\\pnl_nav.bmp", Z_PANEL_SKIN);
+      // P-UI-30: the pill caption keeps clear of the pill's own chevron
+      PnlSetLabel(PnlName(item,row,"NAVL"), nx+10, ry+PNL_CTL_Y+4,
+                  PnlFit(sub,PNL_PT_NAV,nw-10-22-PNL_ROW_GAP),
                   PNL_CLR_VALUE, PNL_PT_NAV);
       ObjectSetString(0,PnlName(item,row,"NAVL"),OBJPROP_FONT,"Arial Bold");
       bool isBack = (PnlRowIcon(item,row) == "back");
       PnlSetBitmap(PnlName(item,row,"NAVC"), nx+nw-20, ry+PNL_CTL_Y+4,
                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
-                   PnlGlyphRes(item, isBack ? "back" : "nav", true), 1503);
+                   PnlGlyphRes(item, isBack ? "back" : "nav", true), Z_PANEL_INK);
       ObjectSetString(0,PnlName(item,row,"NAV"),OBJPROP_TOOLTIP,"Open " + sub);
       return;
    }
@@ -4623,12 +4735,12 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       ObjectSetInteger(0,en,OBJPROP_YSIZE,24);
       ObjectSetString(0,en,OBJPROP_TEXT,cur);
       ObjectSetString(0,en,OBJPROP_FONT,"Arial");
-      ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PNL_PT_CTL);
+      ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
       ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,PNL_CLR_FIELD);
        ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_FIELD_BD);
       ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_LEFT);
-      ObjectSetInteger(0,en,OBJPROP_ZORDER,1508);
+      ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_EDIT);
       ObjectSetInteger(0,en,OBJPROP_SELECTABLE,false);
       ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
       bool noBox = (g_BkMiniBox=="" || BaseKnotFind(g_BkMiniBox)<0);
@@ -4637,8 +4749,10 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                       noBox ? "Hold a box on the chart first — text needs a target"
                             : "Type the box text — ENTER applies (empty clears)");
       PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+2,
-                   PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), 1504);
-      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3, label, PNL_CLR_LABEL, PNL_PT_LBL_SM);
+                   PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), Z_PANEL_GLYPH);
+      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+3,
+                  PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
+                  PNL_CLR_LABEL, PNL_PT_LBL_SM);
       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
       return;
    }
@@ -4663,21 +4777,21 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
           if(wide)   // WIDE: centre the strip across both columns
           {
              int tot = 0;
-             for(int ti=0;ti<cnt;ti++) tot += 12 + StringLen(arr[ti])*6 + ((ti<nic) ? 20 : 0) + 2;
+             for(int ti=0;ti<cnt;ti++) tot += 12 + PnlTextW(arr[ti],PNL_PT_CTL) + ((ti<nic) ? 20 : 0) + 2;
              tot -= 2;
              tx = px + (cardW - tot)/2;
           }
          int idx = ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
          for(int i=0;i<cnt;i++)
          {
-            int tw = 12 + StringLen(arr[i])*6 + ((i<nic) ? 20 : 0);
+            int tw = 12 + PnlTextW(arr[i],PNL_PT_CTL) + ((i<nic) ? 20 : 0);   // P-UI-30
              PnlSetButton(PnlName(item,row,"C"+IntegerToString(i)), tx, ry+PNL_CTL_Y,
                           tw, PNL_CTL_H, "", PNL_CLR_CARD, PNL_CLR_CARD, true);
              ObjectSetString(0,PnlName(item,row,"C"+IntegerToString(i)),OBJPROP_TOOLTIP,arr[i]);
             if(i<nic)
                PnlSetBitmap(PnlName(item,row,"CI"+IntegerToString(i)), tx+5, ry+PNL_CTL_Y+4,
                             PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
-                            PnlGlyphRes(item,iarr[i], i==idx), 1504);
+                            PnlGlyphRes(item,iarr[i], i==idx), Z_PANEL_GLYPH);
             PnlSetLabel(PnlName(item,row,"CT"+IntegerToString(i)),
                         tx+12+((i<nic) ? 20 : 0), ry+PNL_CTL_Y+7, arr[i],
                         (i==idx) ? PNL_CLR_TITLE : PNL_CLR_SEG_TX, PNL_PT_CTL);
@@ -4687,7 +4801,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
             {
                PnlSetRect(PnlName(item,row,"TU"), tx+7, ry+PNL_CTL_Y+PNL_CTL_H-1,
                           tw-14, 2, a1);
-               ObjectSetInteger(0,PnlName(item,row,"TU"),OBJPROP_ZORDER,1542);
+               ObjectSetInteger(0,PnlName(item,row,"TU"),OBJPROP_ZORDER,Z_PANEL_MARK);   // tab underline
             }
             tx += tw + 2;
          }
@@ -4700,34 +4814,35 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          // a value longer than one character drew its arrow on top of its own
          // text (BASIS "Control" read "Contro⌄"). The preview's .dd is
          // content-fitted (padding 10/9, gap 8, 7px chevron ≈ 50 + textW).
-         int dw = 50 + StringLen(PnlDdOptText(item,row))*6;
+         int dw = 50 + PnlTextW(PnlDdOptText(item,row),PNL_PT_CTL);   // P-UI-30
          if(dw < 72) dw = 72;
          int dx = px + PNL_WEL - PNL_PAD_X - dw;
          int dy = ry + PNL_CTL_Y - 1;
           PnlSetButton(PnlName(item,row,"DD"), dx, dy, dw, 26, "",
                        PNL_CLR_FIELD, PNL_CLR_FIELD_BD, true);
          PnlSetBitmap(PnlName(item,row,"DDI"), dx+7, dy+7, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
-                      PnlGlyphRes(item,PnlRowIcon(item,row),true), 1503);
+                      PnlGlyphRes(item,PnlRowIcon(item,row),true), Z_PANEL_INK);
          PnlSetLabel(PnlName(item,row,"DDT"), dx+24, dy+8, PnlDdOptText(item,row),
                      PNL_CLR_TITLE, PNL_PT_CTL);
          ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,"Arial Bold");
          PnlSetBitmap(PnlName(item,row,"DDC"), dx+dw-13, dy+11, 10, 10,
-                      PnlAccentRes(item,"pnl_chev"), 1504);
+                      PnlAccentRes(item,"pnl_chev"), Z_PANEL_GLYPH);
          ObjectSetString(0,PnlName(item,row,"DD"),OBJPROP_TOOLTIP,label);
          PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
-         PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
+         PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label,PNL_PT_LBL,
+                       dx-PnlLabelX(item,row,px)-PNL_ROW_GAP);
       }
       else                // segmented pills (2-3 options)
       {
          int idx = ClampInt((int)MathRound(PnlCurrent(item,row)),0,cnt-1);
          // content-sized, right-aligned, 4px gaps (preview .segs gap 3)
          int tot = 0;
-         for(int i=0;i<cnt;i++) tot += 16 + StringLen(arr[i])*6;
+         for(int i=0;i<cnt;i++) tot += 16 + PnlTextW(arr[i],PNL_PT_CTL);   // P-UI-30
          tot += (cnt-1)*4;
          int sx2 = px + PNL_WEL - PNL_PAD_X - tot;
          for(int j=0;j<cnt;j++)
          {
-            int w = 16 + StringLen(arr[j])*6;
+            int w = 16 + PnlTextW(arr[j],PNL_PT_CTL);   // P-UI-30
              PnlSetButton(PnlName(item,row,"C"+IntegerToString(j)), sx2, ry+PNL_CTL_Y+1, w, 24,
                           arr[j],
                           (j==idx) ? a1 : PNL_CLR_SEG_OFF,
@@ -4735,11 +4850,12 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
              ObjectSetString(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_TOOLTIP,arr[j]);
             ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_COLOR,
                              (j==idx) ? PnlAccentInk(acc) : PNL_CLR_SEG_TX);
-            ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_FONTSIZE,PNL_PT_CTL);
+            ObjectSetInteger(0,PnlName(item,row,"C"+IntegerToString(j)),OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
             sx2 += w + 4;
          }
          PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
-         PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label);
+         PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label,PNL_PT_LBL,
+                       sx2-PnlLabelX(item,row,px)-PNL_ROW_GAP);
       }
       return;
    }
@@ -4751,16 +4867,25 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       int trackY = ry + PNL_TRK_Y;
       double val = PnlCurrent(item,row);
 
-      PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
+      // P-UI-30: slider rows put label + chip on the TOP line (preview .sltop),
+      // the track below — the chip used to sit centred in the 42px row, so its
+      // 26px canvas (and the knob at 0%) ate the track's first 24px.
+      PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y_SL,false);
       PnlPaintKey(item,row,px+PNL_PAD_X+PNL_CHIP_VIS+8,ry+4);
-      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+7,label);
       // accent value chip, right-aligned on the content edge (preview .val.chip)
       int vx = px + PNL_WEL - PNL_PAD_X - PNL_VCHIP_W;
+      PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+7,label,PNL_PT_LBL,
+                    vx-PnlLabelX(item,row,px)-PNL_ROW_GAP);
       PnlSetBitmap(PnlName(item,row,"VC"), vx-PNL_VCHIP_PAD, ry+PNL_VCHIP_Y-PNL_VCHIP_PAD,
                    PNL_VCHIP_W+2*PNL_VCHIP_PAD, PNL_VCHIP_H+2*PNL_VCHIP_PAD,
-                   PnlAccentRes(item,"pnl_vchip"), 1502);
-      PnlSetLabel(PnlName(item,row,"V"), vx+PNL_VCHIP_W-8, ry+7,
-                  PnlFormat(item,row,val), PnlAccentA1(acc), PNL_PT_VAL);
+                   PnlAccentRes(item,"pnl_vchip"), Z_PANEL_CHIP);
+      // preview `.val.chip` is `min-width:46px;text-align:center`: the run is
+      // CENTRED on the 46px body (P-UI-32). It was right-anchored 8px in from
+      // the edge, i.e. ~12px right of centre on a real chart.
+      string vt = PnlFormat(item,row,val);
+      PnlSetLabel(PnlName(item,row,"V"),
+                  vx+PNL_VCHIP_W/2+PnlTextW(vt,PNL_PT_VAL)/2, ry+7,
+                  vt, PnlAccentA1(acc), PNL_PT_VAL);
       ObjectSetString(0,PnlName(item,row,"V"),OBJPROP_FONT,"Arial Bold");
       ObjectSetInteger(0,PnlName(item,row,"V"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
 
@@ -4777,9 +4902,9 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // fill colour shows through. Static geometry (one file, all sliders),
        // below the knob, above the rects. Footer-skin pattern (P-UI-02: purge!).
        PnlSetBitmap(PnlName(item,row,"TGLOSS"), trackX+1, trackY, trackW-2, PNL_TRK_H,
-                    "::Files\\Icons\\pnl_trackgloss.bmp", 1505);
+                    "::Files\\Icons\\pnl_trackgloss.bmp", Z_PANEL_GLOSS);
       PnlSetBitmap(PnlName(item,row,"KB"), knobX, trackY+PNL_TRK_H/2-PNL_KNOB_W/2,
-                   PNL_KNOB_W, PNL_KNOB_W, "::Files\\Icons\\pnl_knob.bmp", 1512);
+                   PNL_KNOB_W, PNL_KNOB_W, "::Files\\Icons\\pnl_knob.bmp", Z_PANEL_KNOB);
       // 9 rail ticks (preview .ticks i) — a "where am I in the range" cue
       for(int t=0;t<PNL_TICK_N;t++)
       {
@@ -4813,16 +4938,17 @@ void PnlFooterBtn(const int item,const string tag,const int bx,const int fy,
    string nm = PnlHead(item,tag);
    PnlSetButton(nm, bx, fy+10, PNL_BTN_W, PNL_BTN_H, "",
                 PNL_CLR_FOOTBG, PNL_CLR_FOOTBG, true);
-   ObjectSetInteger(0,nm,OBJPROP_ZORDER,1500);
+   ObjectSetInteger(0,nm,OBJPROP_ZORDER,Z_PANEL_BASE);
    ObjectSetString(0,nm,OBJPROP_TOOLTIP,label);
    PnlSetBitmap(nm+"bg", bx-PNL_BTN_PAD, fy+10-PNL_BTN_PAD,
                 PNL_BTN_W+2*PNL_BTN_PAD, PNL_BTN_H+2*PNL_BTN_PAD,
                 primary ? PnlAccentRes(item,"pnl_btn_prim")
-                        : "::Files\\Icons\\pnl_btn_ghost.bmp", 1501);
+                        : "::Files\\Icons\\pnl_btn_ghost.bmp", Z_PANEL_SKIN);
    PnlSetBitmap(nm+"ic", bx+12, fy+16, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
                 primary ? PnlGlyphInkRes(item,ico)
-                        : PnlGlyphRes(item,ico,false), 1503);
-   PnlSetLabel(nm+"lb", bx+32, fy+17, label,
+                        : PnlGlyphRes(item,ico,false), Z_PANEL_INK);
+   PnlSetLabel(nm+"lb", bx+32, fy+17,
+               PnlFit(label,PNL_PT_FOOT,PNL_BTN_W-32-8),   // P-UI-30
                primary ? PnlAccentInk(acc) : PNL_CLR_MUTED, PNL_PT_FOOT);
    ObjectSetString(0,nm+"lb",OBJPROP_FONT,"Arial Bold");
 }
@@ -4874,7 +5000,7 @@ void PnlCreate(const int item)
                   + (PnlCardFade(item) ? "f" : "") + ".bmp";
      }
     PnlSetBitmap(PnlHead(item,"card"), px-PNL_MARGIN, py-PNL_MARGIN,
-                 cardW+2*PNL_MARGIN, ph+2*PNL_MARGIN, cardRes, 1480);
+                 cardW+2*PNL_MARGIN, ph+2*PNL_MARGIN, cardRes, Z_PANEL_CARD);
 
     // ── Header — preview .hd: a 30px accent .mark chip, the title, the
     //    uppercase subtitle, an optional .key cap, the .ver number badge and a
@@ -4885,29 +5011,41 @@ void PnlCreate(const int item)
     color ha1 = PnlAccentA1(hacc);
 
      PnlSetBitmap(PnlHead(item,"topbar"), px, py,
-                  cardW, 3+2*PNL_CHIP_PAD, PnlWideAccentRes(item,"pnl_topbar",wide), 1481);
+                  cardW, 3+2*PNL_CHIP_PAD, PnlWideAccentRes(item,"pnl_topbar",wide), Z_PANEL_TOPBAR);
      PnlSetBitmap(PnlHead(item,"hair"), px, py+PNL_HEAD_H-1-PNL_CHIP_PAD,
                   cardW, 1+2*PNL_CHIP_PAD,
-                  PnlWideAccentRes(item,"pnl_hair",wide), 1495);
+                  PnlWideAccentRes(item,"pnl_hair",wide), Z_PANEL_HAIR);
 
     // .mark — 30px accent chip; its glyph is the 13px ink set centred inside
     PnlSetBitmap(PnlHead(item,"mark"), px+PNL_PAD_X-PNL_MARK_PAD, py+PNL_MARK_Y-PNL_MARK_PAD,
                  PNL_MARK_VIS+2*PNL_MARK_PAD, PNL_MARK_VIS+2*PNL_MARK_PAD,
-                 PnlAccentRes(item,"pnl_mark"), 1501);
+                 PnlAccentRes(item,"pnl_mark"), Z_PANEL_SKIN);
     string mi = PnlMarkIcon(item);
     if(mi != "")
        PnlSetBitmap(PnlHead(item,"markg"),
                     px+PNL_PAD_X+(PNL_MARK_VIS-PNL_GLYPH_CANVAS)/2,
                     py+PNL_MARK_Y+(PNL_MARK_VIS-PNL_GLYPH_CANVAS)/2,
-                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphInkRes(item,mi), 1503);
+                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphInkRes(item,mi), Z_PANEL_INK);
 
     // .htxt — title over subtitle, 10px right of the mark (preview .hd gap)
     int htx = px+PNL_PAD_X+PNL_MARK_VIS+10;
     string head=PnlHead(item,"head");
+    // .key + .ver + .x column — needed HERE (not only below) because the
+    // title's own room ends one 10px .hd gap left of it (P-UI-30).
+    string ck2 = PnlCardKey(item);
+    string vtxt2 = IntegerToString(item);
+    int vw2 = 10 + PnlTextW(vtxt2,PNL_PT_VER);
+    int hx2 = px+cardW-PNL_PAD_X-PNL_XBTN_VIS-6;
+    int chipL2 = hx2-vw2;
+    if(ck2 != "")
+       chipL2 -= 10 + PNL_KEYCAP_VIS + 2*PNL_KEYCAP_PAD + PNL_CHIP_PAD;
     // 9pt = 12px: the preview's .ttl is 12.5px, and 12pt (16px) made the title
     // read as a headline over its own card. py+15 re-centres the 12px run in
     // the 56px .hd (the preview centres .htxt: title 14.2..29.8, subttl below).
-    PnlSetLabel(head, htx, py+15, PnlTitleText(item), PNL_CLR_TITLE, PNL_PT_TITLE);
+    // P-UI-30: clipped to the .htxt box (the title used to run under .ver).
+    PnlSetLabel(head, htx, py+15,
+                PnlFit(PnlTitleText(item),PNL_PT_TITLE,chipL2-htx-PNL_ROW_GAP),
+                PNL_CLR_TITLE, PNL_PT_TITLE);
     ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
     // 6pt, not 7: the preview sets .subttl at 8.5px, and at 7pt (9.33px) the
     // two longest subtitles ("MID ZONES · UNIFIED LINES · STRUCTURE",
@@ -4930,13 +5068,11 @@ void PnlCreate(const int item)
     // MT4 knows both exactly, so the run stops there — the two hotkey cards
     // (0 "T", 7 "L") clip a whole segment earlier than a keyless card, which
     // is what the preview does too.
-    string ck = PnlCardKey(item);
-    string vtxt = IntegerToString(item);
-    int vw = 10 + StringLen(vtxt)*5;
-     int hx = px+cardW-PNL_PAD_X-PNL_XBTN_VIS-6;
-    int chipL = hx-vw;                                   // left edge of .ver
-    if(ck != "")
-       chipL -= 10 + PNL_KEYCAP_VIS + 2*PNL_KEYCAP_PAD + PNL_CHIP_PAD;   // .key column
+    string ck = ck2;    // one owner for the .key/.ver column (built with the title)
+    string vtxt = vtxt2;
+    int vw = vw2;
+     int hx = hx2;
+    int chipL = chipL2;                                  // left edge of .ver
     int subLimit = chipL - 10;                           // the .hd flex gap
     ObjectDelete(0, PnlHead(item,"sub"));   // pre-dot single-label charts
     string subarr[];
@@ -4969,21 +5105,17 @@ void PnlCreate(const int item)
     for(int sd=0; sd<nseg; sd++)
     {
        int textX = sdx + 9;                                // 8px dot + its 1px gap
-       int txtW  = StringLen(segs[sd])*5;
+       int txtW  = PnlTextW(segs[sd],PNL_PT_SUB);          // P-UI-30: real advance
        string cap = segs[sd];
        if(textX + txtW > subLimit)                         // crosses the .htxt edge
        {
-          int fits = (subLimit - textX) / 5;               // whole characters only
-          if(fits < 1)
-             break;                                        // not even one fits
-          cap = StringSubstr(cap, 0, fits);
-          StringTrimRight(cap);                            // no dangling gap glyph
+          cap = PnlFit(cap,PNL_PT_SUB,subLimit-textX);     // whole characters only
           if(cap == "")
-             break;
+             break;                                        // not even one fits
        }
        PnlSetBitmap(PnlHead(item,"subd"+IntegerToString(sd)), sdx-2, py+31,
                     8, 8, (sd%2==0) ? "::Files\\Icons\\pnl_subdot_amber.bmp"
-                                    : "::Files\\Icons\\pnl_subdot_jade.bmp", 1502);
+                                    : "::Files\\Icons\\pnl_subdot_jade.bmp", Z_PANEL_CHIP);
        PnlSetLabel(PnlHead(item,"sub"+IntegerToString(sd)), textX, py+30,
                    cap, PNL_CLR_MUTED, PNL_PT_SUB);
        ObjectSetString(0,PnlHead(item,"sub"+IntegerToString(sd)),OBJPROP_FONT,"Arial Bold");
@@ -5005,16 +5137,15 @@ void PnlCreate(const int item)
     PnlSetButton(PnlHead(item,"ver"), hx-vw, py+20, vw, 16, vtxt,
                  PnlAccentSoft(hacc), PnlAccentBd(hacc), true);
     ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_COLOR,ha1);
-    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,PNL_PT_VER);
+    ObjectSetInteger(0,PnlHead(item,"ver"),OBJPROP_FONTSIZE,PnlPt(PNL_PT_VER));   // P-UI-30
     hx -= vw+10;
     if(ck != "")
     {
-       PnlSetBitmap(PnlHead(item,"keyc"), hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
-                    py+19-PNL_KEYCAP_PAD, PNL_KEYCAP_VIS+2*PNL_KEYCAP_PAD,
-                    PNL_KEYCAP_VIS+2*PNL_KEYCAP_PAD, "::Files\\Icons\\pnl_keycap.bmp", 1501);
-       PnlSetLabel(PnlHead(item,"keyl"), hx-PNL_CHIP_PAD-9, py+22, ck, C'183,193,208', PNL_PT_KEY);
-       ObjectSetString(0,PnlHead(item,"keyl"),OBJPROP_FONT,"Arial Bold");
-       ObjectSetInteger(0,PnlHead(item,"keyl"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+       // same owner as the row keycaps (P-UI-32): the cap AND its centred
+       // letter — the header used to place the letter at a hard-coded -9.
+       PnlKeycapAt(PnlHead(item,"keyc"), PnlHead(item,"keyl"),
+                   hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
+                   py+19-PNL_KEYCAP_PAD, ck, C'183,193,208', Z_PANEL_SKIN);
     }
 
     // .x — 26px ghost close. The BUTTON stays the click target (name-based
@@ -5023,14 +5154,14 @@ void PnlCreate(const int item)
      int xbx = px+cardW-PNL_PAD_X-PNL_XBTN_VIS;
      PnlSetButton(PnlHead(item,"close"), xbx, py+15, PNL_XBTN_VIS, PNL_XBTN_VIS, "",
                   C'28,34,44', C'28,34,44', true);   // #1C222C --ghostBg (1 LSB off before)
-    ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_ZORDER,1500);
+    ObjectSetInteger(0,PnlHead(item,"close"),OBJPROP_ZORDER,Z_PANEL_BASE);
     ObjectSetString(0,PnlHead(item,"close"),OBJPROP_TOOLTIP,"Close");
     PnlSetBitmap(PnlHead(item,"xbg"), xbx-PNL_XBTN_PAD, py+15-PNL_XBTN_PAD,
                  PNL_XBTN_VIS+2*PNL_XBTN_PAD, PNL_XBTN_VIS+2*PNL_XBTN_PAD,
-                 "::Files\\Icons\\pnl_xbtn.bmp", 1501);
+                 "::Files\\Icons\\pnl_xbtn.bmp", Z_PANEL_SKIN);
     PnlSetBitmap(PnlHead(item,"xgl"), xbx+(PNL_XBTN_VIS-PNL_GLYPH_CANVAS)/2,
                  py+15+(PNL_XBTN_VIS-PNL_GLYPH_CANVAS)/2,
-                 PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,"x",false), 1503);
+                 PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,"x",false), Z_PANEL_INK);
 
    // ── Rows — WIDE cards paint pairs side by side (right column shifted
    // +312); full-width rows (bands/tabs) span. Separators run once per
@@ -5043,7 +5174,7 @@ void PnlCreate(const int item)
       {
          string sep=PnlName(item,r,"RS");
           PnlSetRect(sep, px, py+PNL_HEAD_H+line*PNL_ROW_H, cardW, 1, PNL_CLR_LINE);
-         ObjectSetInteger(0,sep,OBJPROP_ZORDER,1490);
+         ObjectSetInteger(0,sep,OBJPROP_ZORDER,Z_PANEL_SEP);
       }
       PnlCreateRow(item,r,bx,py);
    }
@@ -5261,6 +5392,11 @@ void ChartPointerFinalizeOnUps()
    // so without this the flag stayed true after a motionless click and made
    // every drag engine (and the ←/→ anchor guard) believe a press was live.
    g_MouseWasDown = false;
+
+   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob
+   // gesture can only live while the button is down, so this ONE net makes a
+   // forgotten release path impossible — the last value always lands.
+   UIDragBudgetEnd();
 
    const bool owned = (g_DragOwner != DRAG_NONE) || g_OrbDragging;
    if(!owned && g_ChartLockCount <= 1 && g_PnlDragItem < 0 && g_PalMixDrag == 0)
@@ -5588,8 +5724,9 @@ void BkStripFollow()
                        ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
    int x2 = 0, y2 = 0;
    if(!ChartTimePriceToXY(0, 0, t2, tp, x2, y2)) return;   // corner off-screen
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+   // P-PERF-16: strip-follow runs at drag rate (30 ms throttle + 4 px dead band).
+   int cw = 0, ch = 0;
+   CircUIMetrics(cw, ch);
    int nx = x2 + 14;
    int ny = y2 - PNL_TB_H - 14;
    if(ny < 4) ny = y2 + 14;
@@ -5662,10 +5799,11 @@ bool PnlHeaderHit(const int mx, const int my)
 // Same bounds as PnlComputePosition.
 void PnlClampSpot(const int item, const int dx, const int dy, int &ndx, int &ndy)
 {
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(cw <= 0) cw = 1920;
-   if(ch <= 0) ch = 1080;
+   // P-PERF-16: the drag path asks for the chart rect on every move event; the
+   // shared cached reader (BiotakMenu) owns it, and both invalidation points
+   // (CHART_CHANGE + the 250 ms timer) already exist.
+   int cw = 0, ch = 0;
+   CircUIMetrics(cw, ch);
    int ph = PnlPanelH(item);   // R-BKSTRIP: item 13 is the short TV strip
    int pw = PnlPanelW(item);
    int maxX = cw - pw - 8;
@@ -5674,6 +5812,23 @@ void PnlClampSpot(const int item, const int dx, const int dy, int &ndx, int &ndy
    int cy = (maxY >= 4) ? MathMax(4, MathMin(maxY, g_PnlY[item] + dy)) : 4;
    ndx = cx - g_PnlX[item];
    ndy = cy - g_PnlY[item];
+}
+
+// P-PERF-06: one candidate of the type-filtered panel-move scan. Panels and
+// the palette create ONLY label-family objects (the four PnlSet* helpers make
+// LABEL / RECTANGLE_LABEL / BUTTON / BITMAP_LABEL, plus two OBJ_EDIT fields);
+// the ~900 level/zone objects are HLINE / TREND / RECTANGLE / TEXT and can
+// never match a Pnl_/Pal_ prefix, so enumerating them per move tick was pure
+// waste. Same match, same move — fewer candidates.
+void PnlMoveOne(const string nm, const int ndx, const int ndy,
+                const string pfx, const string palPx, const bool palFollow)
+{
+   bool mine = (StringFind(nm, pfx) == 0);
+   if(!mine && !(palFollow && StringFind(nm, palPx) == 0)) return;
+   long x = ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
+   long y = ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
+   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x + ndx);
+   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + ndy);
 }
 
 void PnlMoveBy(const int item, const int dx, const int dy)
@@ -5691,16 +5846,22 @@ void PnlMoveBy(const int item, const int dx, const int dy)
    // hanging palette whatever its anchor item says (bucket opens Pal(12,5)
    // while the strip stays open, so anchor!=13 and the old test stranded it).
    const bool palFollow = (g_PalOpen && (g_PalAnchorItem == item || item == 13));
-   const int total = ObjectsTotal(0, -1, -1);
-   for(int i = 0; i < total; i++)
+   // P-PERF-06: enumerate the five UI types natively instead of the whole
+   // chart. (No brace-initialised type array — MQL4 vintage dialects reject
+   // it — so the five arms are spelled out.)
+   for(int t = 0; t < 5; t++)
    {
-      string nm = ObjectName(0, i, -1, -1);
-      bool mine = (StringFind(nm, pfx) == 0);
-      if(!mine && !(palFollow && StringFind(nm, palPx) == 0)) continue;
-      long x = ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
-      long y = ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
-      ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x + ndx);
-      ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + ndy);
+      int otype = OBJ_LABEL;
+      if(t == 1) otype = OBJ_BUTTON;
+      else if(t == 2) otype = OBJ_BITMAP_LABEL;
+      else if(t == 3) otype = OBJ_EDIT;
+      else if(t == 4) otype = OBJ_RECTANGLE_LABEL;
+      int ttotal = ObjectsTotal(0, otype, -1);
+      for(int i = 0; i < ttotal; i++)
+      {
+         string nm = ObjectName(0, i, otype, -1);
+         PnlMoveOne(nm, ndx, ndy, pfx, palPx, palFollow);
+      }
    }
    if(palFollow) { g_PalX += ndx; g_PalY += ndy; }
    if(g_PnlDdItem == item) { g_PnlDdX += ndx; g_PnlDdY += ndy; }   // generic-dropdown hit-rect rides the header drag (PDDR objects move via the prefix scan above)
@@ -5847,6 +6008,13 @@ bool PnlClosePressHit(const int mx,const int my)
    return false;
 }
 
+// P-PERF-04: how often a panel MOVE drag may apply its coordinate batch.
+// The gate is what coalesces mouse events; the delta keeps accumulating in
+// g_PnlMoveLast*, so the card still tracks the cursor exactly — it just does
+// it 30x/s instead of 60x/s. Each batch is one read+write pair per panel
+// object plus a forced full-chart repaint, so this is the panel's whole cost.
+#define PNL_MOVE_COALESCE_MS 33
+
 void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool pressStart)
 {
    // ── Palette popup mixer drag (independent channel; palette sits above) ──
@@ -5858,6 +6026,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          {
             g_PalMixDrag = 0;
             DragReleaseIf(DRAG_PANEL_KNOB);
+            UIDragBudgetEnd();   // P-UI-33: settle the mixer's tail while still owned
             CircUnlockChart();
             UISuppressNextClick();
             return;
@@ -5874,8 +6043,9 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          {
             g_PalMixDrag = d;
             DragClaim(DRAG_PANEL_KNOB);
+            UIDragBudgetBegin();   // P-UI-33: charged to the shared heavy-pass budget
             CircLockChart();
-            PaletteMixFromX(d,mx);
+            PaletteMixFromX(d,mx);   // first touch passes straight through
             return;
          }
       }
@@ -5887,6 +6057,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
    {
       g_PnlDragItem=-1; g_PnlDragRow=-1;
       DragReleaseIf(DRAG_PANEL_KNOB);
+      UIDragBudgetEnd();   // P-UI-33: the surface vanished mid-gesture — settle once
       CircUnlockChart();
       return;
    }
@@ -5913,14 +6084,18 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       }
       static uint s_PnlMoveTick = 0;
       uint now = GetTickCount();
-      if(now - s_PnlMoveTick >= 16)   // ~60Hz — keeps up with the cursor cheaply
+      if(now - s_PnlMoveTick >= PNL_MOVE_COALESCE_MS)   // P-PERF-04: 30 Hz, cursor-exact
       {
          s_PnlMoveTick = now;
          CircReassertLock();   // LEARNING §5: the panel owns the view until release
          PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);
          g_PnlMoveLastX = mx;
          g_PnlMoveLastY = my;
-         ChartRedraw();
+         // P-PERF-04: PnlMoveBy already wrote the objects (which dirties the
+         // chart by itself), so forcing a SYNCHRONOUS full repaint per mouse
+         // tick was pure extra cost on a chart the level pipeline has
+         // populated. The throttled variant coalesces to 10/s.
+         ThrottledChartRedraw();
       }
       return;
    }
@@ -5975,6 +6150,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       {
          g_PnlDragItem=it; g_PnlDragRow=r;
          DragClaim(DRAG_PANEL_KNOB);
+         UIDragBudgetBegin();   // P-UI-33
          CircLockChart();
          return;   // press position == knob position; movement starts next event
       }
@@ -5984,6 +6160,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          // AND the drag continues from this point
          g_PnlDragItem=it; g_PnlDragRow=r;
          DragClaim(DRAG_PANEL_KNOB);
+         UIDragBudgetBegin();   // P-UI-33: the jump is the gesture's first pass
          CircLockChart();
          double v;
          PnlValueFromX(it,r,mx,v);
@@ -6075,6 +6252,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
    {
       g_PnlDragItem=-1; g_PnlDragRow=-1;
       DragReleaseIf(DRAG_PANEL_KNOB);
+      UIDragBudgetEnd();   // P-UI-33: release settles the tail exactly once
       UISuppressNextClick();   // release click must not be treated as a dismiss click
       CircUnlockChart();
       return;
@@ -6249,13 +6427,13 @@ void PnlUpdateRow(const int item,const int row)
           if(PnlIsWide(item))   // WIDE: same centred walk as the create path
           {
              int tot2=0;
-             for(int ti=0;ti<n;ti++) tot2 += 12+StringLen(arr[ti])*6+((ti<nic2)?20:0)+2;
+             for(int ti=0;ti<n;ti++) tot2 += 12+PnlTextW(arr[ti],PNL_PT_CTL)+((ti<nic2)?20:0)+2;   // P-UI-30
              tot2 -= 2;
              tx2 = px + (PnlCardW(item)-tot2)/2;
           }
          for(int i=0;i<n;i++)
          {
-            int tw2=12+StringLen(arr[i])*6+((i<nic2)?20:0);
+            int tw2=12+PnlTextW(arr[i],PNL_PT_CTL)+((i<nic2)?20:0);   // P-UI-30
             string seg=PnlName(item,row,"C"+IntegerToString(i));
             if(ObjectFind(0,seg)<0) { tx2+=tw2+2; continue; }
             bool isAct=PnlSegOn(item,row,i,val);
@@ -6291,7 +6469,7 @@ void PnlUpdateRow(const int item,const int row)
          // P-UI-26: the box is content-fitted at create (dw=50+6/char); a
          // longer/shorter option must resize it live, or text runs under
          // the chevron while the hit-rect (PnlDdRect, always fresh) moves on.
-         int dw = 50 + StringLen(PnlDdOptText(item,row))*6;
+         int dw = 50 + PnlTextW(PnlDdOptText(item,row),PNL_PT_CTL);   // P-UI-30
          if(dw < 72) dw = 72;
          int dx = px + PNL_WEL - PNL_PAD_X - dw;
          string dd=PnlName(item,row,"DD");
@@ -6477,6 +6655,12 @@ int PnlHandleDrag(const string name,const int mouseX)
    int item,row; string kind;
    ParsePnlName(name,item,row,kind);
    if(item<0 || row<0 || kind!="K") return REFRESH_NONE;
+
+   // P-UI-33: a NATIVE knob drag is a gesture like the pointer drags — its heavy
+   // passes obey the same budget (armed here; ChartPointerFinalizeOnUps ends it
+   // on the button-up that closes the drag). Without this a non-RECALC drag
+   // (its own 250ms gate only covers RECALC) ran the full pass per event.
+   UIDragBudgetBegin();
 
    int rkind=0; string label="",unit="",opts="";
    int minV=0,maxV=0; double step=1;
@@ -6672,14 +6856,26 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       g_LastUIY = my;
       bool leftDown = (((int)sparam & 1) != 0);
       bool pressStart = MousePressStart(leftDown);
+      // P-PERF-15: the cursor-move path is the one the user FEELS ("the lag is
+      // there when I work with the chart"), and the pair budget line can only
+      // say the UI half owns it. The three owners are timed separately here and
+      // reported only when the move blows its budget, so the next fix is aimed
+      // by measurement like the base-price phase was.
+      uint p15t = GetTickCount();
       // P-BK-02: while a Base/Knot draw session owns the mouse, the ring menu
       // is hidden — menu hover/drag/long-press must stay out of the gesture
       // (no orb drag, no armed long-press, no hover tip mid-draw). OBJECT_CLICK
       // still flows (orb-click = session exit) and open panels keep working.
       if(!BaseKnotSessionActive())
          CircHandleMouseMove(mx, my, leftDown, pressStart);
+      uint p15ring = GetTickCount() - p15t; p15t = GetTickCount();
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
+      uint p15panel = GetTickCount() - p15t; p15t = GetTickCount();
       BkHoldOnMove(mx, my, leftDown, pressStart);
+      uint p15hold = GetTickCount() - p15t;
+      if(p15ring + p15panel + p15hold >= P_P4_MOVE_WARN_MS)
+         _LOG_GATE_W Print("[W][PERF] mouse move breakdown: ring=", (int)p15ring, "ms panel=",
+               (int)p15panel, "ms hold=", (int)p15hold, "ms");
       return;
    }
 
@@ -6699,7 +6895,11 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       MousePressStart(false);      // button-up — resync the rising-edge detector
       ChartPointerFinalizeOnUps(); // finalize every gesture reliably
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
-      if(UIShouldSuppressClick()) return;   // release after a strip/drag/press action
+      // P-UI-40c: this release is one we already acted on, and it never reaches
+      // HandleButtonClick's `if(g_LongPressFired)` guard - so the long-press
+      // latch dies here (its own gesture is over) instead of eating the NEXT
+      // click. See the note on UILongPressLatchClear.
+      if(UIShouldSuppressClick()) { UILongPressLatchClear(); return; }   // release after a strip/drag/press action
       // Countdown tag = a chart object of its OWN layer: a plain left click on
       // it opens the ATR LABELS card, whose top rows are the countdown's own
       // settings (switch/color/size/gap). Right-click is left to the terminal.
@@ -6736,10 +6936,27 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       ChartPointerFinalizeOnUps();
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
       s_BkFireReleasePending = false;   // release over an object ends the opening gesture too
-      if(UIShouldSuppressClick()) return;   // release after a drag/long-press
+      // P-UI-40c: the long-press release lands HERE (suppressed), not in
+      // HandleButtonClick - clear the latch with its gesture (see the note on
+      // UILongPressLatchClear).
+      if(UIShouldSuppressClick()) { UILongPressLatchClear(); return; }   // release after a drag/long-press
+      // P-PERF-26: ONE PRESS, THREE OWNERS - and the event ledger could only say
+      // "the UI half owns it". A ring/panel press is the interaction the user
+      // repeats most (every show/hide switch is one), so each owner is timed and
+      // the line appears only when the press blows the budget.
+      uint p26t = GetTickCount();
       int flags = HandleButtonClick(sparam);
+      uint p26btn = GetTickCount() - p26t; p26t = GetTickCount();
       flags |= PnlHandleClick(sparam, (int)lparam, (int)dparam);
+      uint p26pnl = GetTickCount() - p26t; p26t = GetTickCount();
       if(flags != REFRESH_NONE) ApplyRefreshFlags(flags);
+      uint p26apply = GetTickCount() - p26t;
+      if(p26btn + p26pnl + p26apply >= P_P4_CLICK_WARN_MS)
+         // P-PERF-26b: the three phases said WHERE the time went but not WHICH
+         // control asked for it, so a 531 ms press could not be reproduced. The
+         // control name turns the next log line into a target.
+         _LOG_GATE_W Print("[W][PERF] click breakdown: button=", (int)p26btn, "ms panel=",
+               (int)p26pnl, "ms apply=", (int)p26apply, "ms control=", sparam);
       return;
    }
 
@@ -6801,8 +7018,16 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
 
    if(id == CHARTEVENT_CHART_CHANGE)
    {
+      // P-PERF-16: the chart rect can have changed (resize, DPI, window). Drop the
+      // cached UI metrics here so the first reader after this event re-reads the
+      // size once, instead of every hit test re-reading it.
+      CircUIMetricsInvalidate();
       if(g_UI.menuVisible) UpdateCircularMenuPosition();
       if(PnlClampOpenPanel()) ChartRedraw();   // shrunken chart: keep header grabbable
+      // P-PERF-02: pan/zoom changes what the HTF overlay must cover — re-check
+      // its viewport cap on the event that moved the view, not on the next 1 s
+      // timer probe (internally throttled, so a zoom storm stays cheap).
+      if(g_UI.showHTF) HTFEnsureDrawn();
       return;
    }
 }
@@ -6821,6 +7046,44 @@ void PnlSyncOpenStepRow()
    // The mode reshapes the open Step card (each mode's own rows live below
    // the segments) — rebuild it, don't just refresh row 0.
    if(g_PnlOpen == 9) PnlOpen(9);
+}
+
+//==============================================================================
+// P-UI-40 — THE PANEL FOLLOWS STATE IT DOES NOT OWN
+//
+// PnlSyncOpenStepRow above is the only sync of this kind that existed: a
+// change-guard that notices g_stepCalculationMode moving under the open card.
+// It answered the E/Tools half of the problem and left every other shared state
+// unsynchronised — which is exactly the "some switches work, some don't" shape
+// of the report. It is also the wrong shape to copy N times: one guarded
+// comparison per shared state, per tick, forever.
+//
+// The generalisation: a writer that cannot repaint RAISES A REQUEST
+// (RequestUISync, GlobalVariables — the hotkeys live in a file included before
+// this one, and Lite has no panel at all), and the UI layer drains it here. The
+// drain repaints what the ring and the open card DISPLAY, reading the same live
+// values the rows already read, so nothing can disagree about a value and no
+// state needs its own guard.
+void PnlSyncOpenCard()
+{
+   if(g_PnlOpen < 0) return;
+   if(g_PnlOpen == 13) { BkMiniRefresh(); return; }   // item 13 is one toolbar, not rows
+   int rows = PnlRowsCount(g_PnlOpen);
+   for(int r = 0; r < rows; r++) PnlUpdateRow(g_PnlOpen, r);
+}
+
+// The drain. Called from the event tail (so a hotkey is reflected in the SAME
+// event) and from RefreshKitOnBar (so a path that misses the tail still settles
+// within a tick). Consuming the request first is what keeps it idempotent: two
+// drains cost one repaint.
+void UISyncDrain()
+{
+   if(!UISyncRequested()) return;
+   UISyncConsume();
+   // The ring's own layer: item activity state + the badges derived from it.
+   UpdateCircularItemStates();
+   UpdateCircularBadges();
+   PnlSyncOpenCard();
 }
 
 //+------------------------------------------------------------------+
@@ -6845,5 +7108,6 @@ void RefreshKitOnBar()
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
    PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
+   UISyncDrain();          // P-UI-40: hotkey-raised requests settle here too
    BkMiniStripHeal();      // strip closes itself when its box vanished (R-BKSTRIP)
 }

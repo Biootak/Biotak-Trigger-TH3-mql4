@@ -20,14 +20,9 @@
 
 
 
-// HISTORY FORMAT VERSION: Increment this when timezone logic changes
-// This will trigger automatic cleanup of old history files with incorrect timestamps
-// Version History:
-// - v1: Original format with Server Time
-// - v2: GMT format (times stored in GMT/UTC)
-// - v3: GMT format + Block boundary update timing fix (no more 13:59, 14:29 entries)
-// - v4: GMT format + Start from 00:00 GMT (not 00:00 Server Time)
-#define HISTORY_FORMAT_VERSION 4                         // v4: GMT + Correct start of day
+// HISTORY FORMAT VERSION now lives in BasePriceHistoryManager.mqh (v5): it
+// describes the FILE layout, so the file's owner defines it. Incrementing it
+// still triggers the one-time cleanup of files written in an older format.
 
 //+------------------------------------------------------------------+
 //| Debug: Print recent M30 bars                                     |
@@ -96,6 +91,23 @@ static int g_symbolStateCount = 0;
 // Cached symbol state index (performance: 50+ calls/tick   1 call/tick)
 static int _g_cachedStateIdx = -1;
 static string _g_cachedStateSymbol = "";
+
+// P-PERF-19 evidence. How often the LOCKED resolver actually ran, and what it
+// cost in total. The fast path pays nothing to maintain these (they are only
+// touched on a miss), and the baseInit breakdown line reports them, so the next
+// log can prove the mutex is off the hot path instead of taking our word.
+static int  g_stateResolveLockedCalls = 0;
+static uint g_stateResolveLockedMs    = 0;
+
+// P-PERF-19b: the "load" window of InitializeBasePriceSystem (the outer
+// `migrate=` stamp) is a black box that measured 312ms on a STAMPED file with
+// rebuild=0. These four stamps split it: dedup / fmt (format migrate) / save
+// (file rewrite) / restore (entry parse + validate). One of them owns the
+// seconds, and the breakdown line will say which.
+static uint g_pInitBaseDedupMs   = 0;
+static uint g_pInitBaseFmtMs     = 0;
+static uint g_pInitBaseSaveMs    = 0;
+static uint g_pInitBaseRestoreMs = 0;
 
 //+------------------------------------------------------------------+
 //| Get index of state for current symbol (or create new)            |
@@ -239,10 +251,52 @@ int GetSymbolStateIndex()
     return g_symbolStateCount - 1;
 }
 
+//+------------------------------------------------------------------+
+//| P-PERF-19: GET CACHED SYMBOL STATE INDEX                          |
+//|                                                                   |
+//| WHY THIS FUNCTION IS THE FIX AND NOT JUST A CONVENIENCE:          |
+//| `GetSymbolStateIndex()` is a mutex implemented with terminal      |
+//| global variables (~9 GV syscalls per call). The seven legacy       |
+//| access macros (g_basePriceCached, g_historyCount, ...) expand to   |
+//| it in ~115 places, including the tick path and loop conditions -   |
+//| so every base-price READ used to take a lock.                     |
+//|                                                                   |
+//| This cached wrapper already existed but had NO CALLERS: the cache  |
+//| was maintained (EvictLRU resets it) and then bypassed, which is    |
+//| the same defect class as a cache consulted after the syscall. The  |
+//| macros now bind here, so a repeat read costs one Symbol() call and |
+//| a string compare, and the locked path runs once per symbol per     |
+//| instance.                                                          |
+//|                                                                   |
+//| Correctness: the index is only reused while the symbol name is     |
+//| unchanged AND the remembered slot is still inside the live range   |
+//| (append-only, so a live slot never moves), and EvictLRU() - the    |
+//| one operation that DOES shift the array - clears it.               |
+//+------------------------------------------------------------------+
+int GetCachedSymbolStateIndex()
+{
+    string sym = Symbol();
+    
+    if(_g_cachedStateIdx >= 0 && _g_cachedStateSymbol == sym &&
+       _g_cachedStateIdx < g_symbolStateCount)
+    {
+        return _g_cachedStateIdx;
+    }
+    
+    uint t0 = GetTickCount();
+    _g_cachedStateIdx = GetSymbolStateIndex();
+    g_stateResolveLockedCalls++;
+    g_stateResolveLockedMs += GetTickCount() - t0;
+    _g_cachedStateSymbol = sym;
+    return _g_cachedStateIdx;
+}
+
 // Helper functions for array access (to avoid macro expansion issues)
 string GetHistoryEntry(int index)
 {
-    int stateIdx = GetSymbolStateIndex();
+    // P-PERF-19: the five accessors below are called INSIDE loops (entry walks,
+    // series builders), so they must not take the global-variable lock either.
+    int stateIdx = GetCachedSymbolStateIndex();
     if(index >= 0 && index < g_symbolStates[stateIdx].historyCount)
     {
         return g_symbolStates[stateIdx].basePriceHistory[index];
@@ -252,7 +306,7 @@ string GetHistoryEntry(int index)
 
 void SetHistoryEntry(int index, string value)
 {
-    int stateIdx = GetSymbolStateIndex();
+    int stateIdx = GetCachedSymbolStateIndex();
     if(index >= 0 && index < ArraySize(g_symbolStates[stateIdx].basePriceHistory))
     {
         g_symbolStates[stateIdx].basePriceHistory[index] = value;
@@ -261,13 +315,13 @@ void SetHistoryEntry(int index, string value)
 
 void ResizeHistory(int newSize)
 {
-    int stateIdx = GetSymbolStateIndex();
+    int stateIdx = GetCachedSymbolStateIndex();
     ArrayResize(g_symbolStates[stateIdx].basePriceHistory, newSize);
 }
 
 void GetHistoryArray(string &output[])
 {
-    int stateIdx = GetSymbolStateIndex();
+    int stateIdx = GetCachedSymbolStateIndex();
     int count = g_symbolStates[stateIdx].historyCount;
     ArrayResize(output, count);
     for(int i = 0; i < count; i++)
@@ -278,7 +332,7 @@ void GetHistoryArray(string &output[])
 
 void SetHistoryArray(string &inputArray[], int count)
 {
-    int stateIdx = GetSymbolStateIndex();
+    int stateIdx = GetCachedSymbolStateIndex();
     ArrayResize(g_symbolStates[stateIdx].basePriceHistory, count);
     for(int i = 0; i < count; i++)
     {
@@ -287,15 +341,34 @@ void SetHistoryArray(string &inputArray[], int count)
     g_symbolStates[stateIdx].historyCount = count;
 }
 
-// Legacy global variables for backward compatibility (now use GetSymbolStateIndex())
-// These are kept as macros that redirect to symbol-specific state
-#define g_basePriceCached (g_symbolStates[GetSymbolStateIndex()].basePriceCached)
-#define g_lastProcessedBlockTimestamp (g_symbolStates[GetSymbolStateIndex()].lastProcessedBlockTimestamp)
-#define g_referenceM1Power (g_symbolStates[GetSymbolStateIndex()].referenceM1Power)
-#define g_historyCount (g_symbolStates[GetSymbolStateIndex()].historyCount)
-#define g_lastHistoryDay (g_symbolStates[GetSymbolStateIndex()].lastHistoryDay)
-#define g_lastHistoryYear (g_symbolStates[GetSymbolStateIndex()].lastHistoryYear)
-#define g_systemInitialized (g_symbolStates[GetSymbolStateIndex()].systemInitialized)
+// Legacy global variables for backward compatibility (now use the CACHED resolver)
+// These are kept as macros that redirect to symbol-specific state.
+//
+// P-PERF-19: THESE SEVEN MACROS ARE A HOT PATH, AND THEY USED TO TAKE A LOCK.
+// `GetSymbolStateIndex()` is not a lookup - it is a MUTEX built out of terminal
+// global variables: Symbol(), 2x GlobalVariableCheck, TimeCurrent(),
+// 2x GlobalVariableSet, 2x GlobalVariableTemp, 2x GlobalVariableDel and a
+// bounded retry loop - roughly NINE terminal global-variable syscalls PER READ.
+// Because these are TEXT macros, every read of the base price, the history
+// count or the initialised flag paid that price: on the tick path
+// (`g_basePriceCached` in RedrawAllObjects), in init, and inside loop
+// CONDITIONS (`for(i = 0; i < g_historyCount; i++)` = one lock cycle per
+// iteration).
+//
+// `GetCachedSymbolStateIndex()` already existed (and its LRU invalidation is
+// already wired) but NOTHING CALLED IT - a cache that is maintained and then
+// bypassed is the same defect class as P-PERF-08's `BlendWithBackground`
+// (a cache consulted after the syscall it was meant to remove). The macros now
+// bind to the cached resolver, so a repeat read costs ONE Symbol() call and a
+// string compare, and the locked path runs only on the first read per symbol
+// per instance (and again if the LRU ever evicts, which resets the cache).
+#define g_basePriceCached (g_symbolStates[GetCachedSymbolStateIndex()].basePriceCached)
+#define g_lastProcessedBlockTimestamp (g_symbolStates[GetCachedSymbolStateIndex()].lastProcessedBlockTimestamp)
+#define g_referenceM1Power (g_symbolStates[GetCachedSymbolStateIndex()].referenceM1Power)
+#define g_historyCount (g_symbolStates[GetCachedSymbolStateIndex()].historyCount)
+#define g_lastHistoryDay (g_symbolStates[GetCachedSymbolStateIndex()].lastHistoryDay)
+#define g_lastHistoryYear (g_symbolStates[GetCachedSymbolStateIndex()].lastHistoryYear)
+#define g_systemInitialized (g_symbolStates[GetCachedSymbolStateIndex()].systemInitialized)
 
 //+------------------------------------------------------------------+
 //| Validate restored base price against current market conditions   |
@@ -340,11 +413,48 @@ bool ValidateRestoredBasePrice(const double restoredPrice, const double currentB
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-20: would saving actually change the file on disk?         |
+//|                                                                   |
+//| WHY: the old "needsSave" test inferred a change from the COUNTS   |
+//| the dedup/migrate passes returned. A pass can report a change and  |
+//| still produce byte-identical output (a re-write of the same entry,
+//| a no-op normalisation), and then the per-day file was rewritten on |
+//| every attach - a pointless write the user can feel (and the exact   |
+//| "why is it touching this again?" complaint this cycle is about).    |
+//| The guard is a plain content compare: 48 short strings, microseconds|
+//| against a file flush.                                              |
+//+------------------------------------------------------------------+
+bool HistoryContentDiffers(const string &after[], const string &before[],
+                           const int afterCount, const int beforeCount)
+{
+    if(afterCount != beforeCount) return true;
+    for(int i = 0; i < afterCount; i++)
+        if(after[i] != before[i]) return true;
+    return false;
+}
+
+//+------------------------------------------------------------------+
 //| Initialize base price system                                     |
 //| Loads history from file if available                             |
 //+------------------------------------------------------------------+
 void InitializeBasePriceSystem()
 {
+    // P-PERF-11b: sub-ledger. The init ledger in EventHandlers proves that the
+    // base-price phase owns 2.2-4.1 s of EVERY OnInit; these stamps say which
+    // part of it does, so the next fix is aimed by measurement rather than by
+    // reading order. Reported once, only when the phase is over budget.
+    uint phTick = GetTickCount();
+    g_pInitBaseFileMs    = 0;   // the migrated/cleanup paths run at most once per
+    g_pInitBaseMigrateMs = 0;   // instance, so a stale value from a previous init
+    g_pInitBaseRebuildMs = 0;   // would look like work done again
+    g_pInitBaseCleanupMs = 0;
+    g_pInitBaseDedupMs   = 0;   // P-PERF-19b sub-stamps for the "load" window
+    g_pInitBaseFmtMs     = 0;
+    g_pInitBaseSaveMs    = 0;
+    g_pInitBaseRestoreMs = 0;
+    g_stateResolveLockedCalls = 0;   // P-PERF-19 evidence, per init
+    g_stateResolveLockedMs    = 0;
+
     // CHECK HISTORY FORMAT VERSION: Auto-cleanup if timezone logic changed
     if(!CheckHistoryFormatVersion(HISTORY_FORMAT_VERSION))
     {
@@ -420,57 +530,34 @@ void InitializeBasePriceSystem()
     DEBUG_PRINTF2("[BasePriceManager] InitializeBasePriceSystem() - Loading history for year=", IntegerToString(year), ", dayOfYear=" + IntegerToString(dayOfYear));
     string tempHistory[];
     int loadedCount = LoadBasePriceHistory(year, dayOfYear, tempHistory);
+    g_pInitBaseFileMs = GetTickCount() - phTick;   // P-PERF-11b (file I/O)
+    phTick = GetTickCount();
     
-    // Check if loaded history needs migration (old format with Server Time instead of GMT)
-    // Look for ANY entry with time >= 22:00 which indicates yesterday's data
-    bool needsMigration = false;
+    // P-PERF-11: the file states its own format, so this is a version compare
+    // and not a guess. THE HEURISTIC THAT WAS HERE ("any entry with hour >= 22
+    // is yesterday's data") could not tell a legacy file from a correct one - a
+    // full session always contains a 22:xx block - so it deleted the freshly
+    // loaded, valid file on EVERY init and rebuilt the day from M30 data: the
+    // measured base=3797ms of OnInit, on repeat. A file with no stamp is
+    // genuinely legacy and is still migrated, exactly once.
+    bool needsMigration = (loadedCount > 0 && g_loadedHistoryFormat != HISTORY_FORMAT_VERSION);
+    #ifdef ENABLE_DEBUG_LOGS
     if(loadedCount > 0)
     {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("[BasePriceManager] Checking ", loadedCount, " entries for migration...");
-        #endif
-        
-        // Check all entries for times >= 22:00 (yesterday's data)
-        for(int i = 0; i < loadedCount; i++)
-        {
-            string entry = tempHistory[i];
-            string parts[];
-            int partCount = StringSplit(entry, '|', parts);
-            
-            if(partCount >= 1)
-            {
-                string timeStr = parts[0];
-                
-                // Extract hour from time string (format: "HH:mm")
-                string hourStr = StringSubstr(timeStr, 0, 2);
-                int hour = (int)StringToInteger(hourStr);
-                
-                // If any entry is >= 22:00, it's from yesterday
-                if(hour >= 22)
-                {
-                    needsMigration = true;
-                    #ifdef ENABLE_DEBUG_LOGS
-                    Print("[BasePriceManager]   Migration needed: Found entry at ", timeStr, " (yesterday's data)");
-                    #endif
-                    break;  // No need to check more
-                }
-            }
-        }
-        
-        #ifdef ENABLE_DEBUG_LOGS
-        if(!needsMigration)
-        {
-            Print("[BasePriceManager]   No migration needed: All entries are from today");
-        }
-        #endif
+        if(needsMigration)
+            Print("[BasePriceManager] Migration needed: history file stamp=", g_loadedHistoryFormat,
+                  " current=", HISTORY_FORMAT_VERSION);
+        else
+            Print("[BasePriceManager] No migration needed: history file stamp=", g_loadedHistoryFormat);
     }
+    #endif
     
     if(needsMigration && loadedCount > 0)
     {
         #ifdef ENABLE_DEBUG_LOGS
         Print("====================");
-        Print("      MIGRATION DETECTED - OLD FORMAT WITH SERVER TIME          ");
-        Print("   Deleting old file and rebuilding with GMT format...          ");
+        Print("   MIGRATION DETECTED - HISTORY FILE PREDATES THE CURRENT FORMAT ");
+        Print("   Deleting it and rebuilding the day in the current format.     ");
         Print("====================");
         #endif
         
@@ -505,32 +592,59 @@ void InitializeBasePriceSystem()
         // Get history array for processing
         string workingHistory[];
         GetHistoryArray(workingHistory);
-        
+
+        // P-PERF-19c: hoist the count. `g_historyCount` is a MACRO that resolves
+        // the symbol state, so using it directly in a loop condition - or in
+        // three consecutive statements - re-resolves it every time. One local
+        // read, then plain integers.
+        int histCount = g_historyCount;
+
         // Deduplicate loaded history
-        int newCount = DeduplicateHistory(workingHistory, g_historyCount);
-        bool needsSave = (newCount != g_historyCount);
-        g_historyCount = newCount;
-        
+        uint phSubTick = GetTickCount();
+        int newCount = DeduplicateHistory(workingHistory, histCount);
+        g_pInitBaseDedupMs = GetTickCount() - phSubTick;
+        bool needsSave = (newCount != histCount);
+        histCount = newCount;
+        g_historyCount = histCount;
+
         // Migrate old format entries
-        int migratedCount = MigrateToNewFormat(workingHistory, g_historyCount);
+        phSubTick = GetTickCount();
+        int migratedCount = MigrateToNewFormat(workingHistory, histCount);
+        g_pInitBaseFmtMs = GetTickCount() - phSubTick;
         if(migratedCount > 0)
         {
             needsSave = true;
         }
-        
+
         // Update history array
-        SetHistoryArray(workingHistory, g_historyCount);
-        
-        // Save cleaned history back to file if changes were made
-        if(needsSave)
+        SetHistoryArray(workingHistory, histCount);
+
+        // Save cleaned history back to file if changes were made.
+        // P-PERF-20: "if changes were made" is now a CONTENT comparison, not an
+        // inference. The old test (`newCount != histCount` or `migratedCount > 0`)
+        // could be true for a pass that produced byte-identical output, and then
+        // the file was rewritten on every single init for no reason. A file whose
+        // content would not change is left alone.
+        if(needsSave && HistoryContentDiffers(workingHistory, tempHistory, histCount, loadedCount))
         {
-            SaveBasePriceHistory(year, dayOfYear, workingHistory, g_historyCount);
+            phSubTick = GetTickCount();
+            SaveBasePriceHistory(year, dayOfYear, workingHistory, histCount);
+            g_pInitBaseSaveMs = GetTickCount() - phSubTick;
+            needsSave = false;   // content on disk now matches the working set
         }
-        
-        // Extract base price from last entry
-        if(g_historyCount > 0)
+        else
         {
-            string lastEntry = GetHistoryEntry(g_historyCount - 1);
+            needsSave = false;
+        }
+
+        // Extract base price from last entry
+        phSubTick = GetTickCount();
+        if(histCount > 0)
+        {
+            // P-PERF-19c: `histCount`, not the macro - `GetHistoryEntry(g_historyCount - 1)`
+            // resolved the symbol state a second time for an argument that was
+            // already in a local.
+            string lastEntry = GetHistoryEntry(histCount - 1);
             string parts[];
             int partCount = StringSplit(lastEntry, '|', parts);
             
@@ -592,6 +706,7 @@ void InitializeBasePriceSystem()
                 #endif
             }
         }
+        g_pInitBaseRestoreMs = GetTickCount() - phSubTick;   // P-PERF-19b (entry parse + validate)
     }
     else
     {
@@ -613,6 +728,9 @@ void InitializeBasePriceSystem()
         }
     }
     
+    g_pInitBaseMigrateMs = GetTickCount() - phTick;   // P-PERF-11b (migrate/dedup/save)
+    phTick = GetTickCount();
+
     // Cleanup old history files and temp files (only on first init)
     if(!g_systemInitialized)
     {
@@ -644,7 +762,9 @@ void InitializeBasePriceSystem()
         // Rebuild history from start of day (like Java) - always run regardless of debug mode
         if(g_historyCount == 0)
         {
+            uint phRebuildTick = GetTickCount();   // P-PERF-11b
             RebuildHistoryFromStartOfDay();
+            g_pInitBaseRebuildMs = GetTickCount() - phRebuildTick;
             
             // Print rebuilt history
             #ifdef ENABLE_DEBUG_LOGS
@@ -662,6 +782,27 @@ void InitializeBasePriceSystem()
         }
     }
     
+    g_pInitBaseCleanupMs = GetTickCount() - phTick;   // P-PERF-11b (dir cleanup)
+
+    // P-PERF-11b: one line, only when the phase blew its budget. "rebuild"
+    // staying at 0 on a stamped file is the proof that the per-init
+    // delete+rebuild loop is gone; a non-zero "rebuild" on a stamped file
+    // means something else is dropping g_historyCount and must be chased.
+    if(g_pInitBaseFileMs + g_pInitBaseMigrateMs + g_pInitBaseRebuildMs + g_pInitBaseCleanupMs > 300)
+    {
+        _LOG_GATE_W Print("[W][PERF] baseInit breakdown: file=", (int)g_pInitBaseFileMs,
+              "ms load=", (int)g_pInitBaseMigrateMs,
+              "ms [dedup=", (int)g_pInitBaseDedupMs,
+              " fmt=", (int)g_pInitBaseFmtMs,
+              " save=", (int)g_pInitBaseSaveMs,
+              " restore=", (int)g_pInitBaseRestoreMs,
+              "] rebuild=", (int)g_pInitBaseRebuildMs,
+              "ms cleanup=", (int)g_pInitBaseCleanupMs,
+              "ms (fileStamp=", g_loadedHistoryFormat, " entries=", loadedCount,
+              ") [P-PERF-19 symbolStateLocked=", g_stateResolveLockedCalls,
+              " calls/", (int)g_stateResolveLockedMs, "ms]");
+    }
+
     g_systemInitialized = true;
 }
 
@@ -750,18 +891,42 @@ int FindLastM1CandleInBlock(const datetime blockStart, const datetime blockEnd)
 #endif
         return -1;
     }
-    
-    // Limit search to last 1000 bars for performance (covers ~16 hours)
+
+    // P-PERF-03: ask the terminal for the block's window in ONE call instead
+    // of probing up to 1000 bars with iTime() (a one-second freeze every block
+    // when the block sits deep in the M1 history). The returned series is
+    // newest-first for a time-window request in MT4.
+    datetime blockTimes[];
+    int copied = CopyTime(Symbol(), PERIOD_M1, blockStart, blockEnd - 1, blockTimes);
+    if(copied > 0)
+    {
+        int newestIdx = 0;
+        for(int i = 1; i < copied; i++)
+            if(blockTimes[i] > blockTimes[newestIdx]) newestIdx = i;
+        // Map the block's newest M1 bar time back to its series index
+        // (one iBarShift call, history already in the terminal cache).
+        int idx = iBarShift(Symbol(), PERIOD_M1, blockTimes[newestIdx], false);
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[BasePriceManager] FindLastM1CandleInBlock() - Found M1 bar #", idx,
+              " at ", TimeToString(blockTimes[newestIdx], TIME_DATE|TIME_MINUTES),
+              " in block [", TimeToString(blockStart, TIME_MINUTES), "-",
+              TimeToString(blockEnd, TIME_MINUTES), "]");
+        #endif
+        return idx;
+    }
+
+    // Fallback: bounded probe (the window request returned nothing, e.g. the
+    // terminal has not built the M1 window yet).
     int searchLimit = MathMin(totalM1Bars, 1000);
-    
+
     int lastBarIdx = -1;
     datetime lastBarTime = 0;
-    
+
     // Search from bar 0 (most recent) backwards
     for(int i = 0; i < searchLimit; i++)
     {
         datetime barTime = iTime(Symbol(), PERIOD_M1, i);
-        
+
         // Check if this bar is within the block range
         // blockStart is inclusive, blockEnd is exclusive
         if(barTime >= blockStart && barTime < blockEnd)
@@ -773,7 +938,7 @@ int FindLastM1CandleInBlock(const datetime blockStart, const datetime blockEnd)
                 lastBarTime = barTime;
             }
         }
-        
+
         // Early exit: if we've passed the block start, no need to continue
         if(barTime < blockStart)
         {
@@ -972,8 +1137,11 @@ void MergeHistoryLists(const string &existingHistory[], const int existingCount,
 bool HistoryEntryExists(const string blockTimeStr)
 {
     if(StringLen(blockTimeStr) == 0) return false;
-    
-    for(int i = 0; i < g_historyCount; i++)
+
+    // P-PERF-19c: `g_historyCount` in a loop CONDITION re-resolved the symbol
+    // state (a global-variable lock) on EVERY iteration. One local read.
+    int count = g_historyCount;
+    for(int i = 0; i < count; i++)
     {
         string entry = GetHistoryEntry(i);
         if(StringLen(entry) == 0) continue;
@@ -1664,8 +1832,11 @@ void PrintBasePriceHistory()
     Print("|  Time  | 30-Min Price    | Ref Price (Used)      | Status/D%           | Ref M1     | M1 Old     | M1 New     |");
     Print("|        |                 |                       |                     |            |            |            |");
     Print("|  ----- | --------------- | --------------------- | ------------------- | ---------- | ---------- | ---------- |");
-    
-    for(int i = 0; i < g_historyCount; i++)
+
+    // P-PERF-19c: hoisted (see the other loop sites) so a debug build cannot
+    // re-resolve the symbol state once per row.
+    int printCount = g_historyCount;
+    for(int i = 0; i < printCount; i++)
     {
         string entry = GetHistoryEntry(i);
         string parts[];
@@ -1751,7 +1922,10 @@ void SaveBasePriceHistoryToFile()
     FileWriteString(fileHandle, "|  ----- | --------------- | --------------------- | ------------------- | ---------- | ---------- | ---------- |\n");
     
     // Data rows
-    for(int i = 0; i < g_historyCount; i++)
+    // P-PERF-19c: hoisted (see HistoryEntryExists) - the condition resolved the
+    // symbol state per row.
+    int rowCount = g_historyCount;
+    for(int i = 0; i < rowCount; i++)
     {
         string entry = GetHistoryEntry(i);
         string parts[];
@@ -1894,25 +2068,6 @@ void EvictLeastRecentlyUsedSymbolState()
     
     _g_cachedStateIdx = -1;
     _g_cachedStateSymbol = "";
-}
-
-//+------------------------------------------------------------------+
-//| PERFORMANCE: Get Cached Symbol State Index                       |
-//| Called 50+ times/tick -> now ONE call per tick via caching.       |
-//+------------------------------------------------------------------+
-int GetCachedSymbolStateIndex()
-{
-    string sym = Symbol();
-    
-    if(_g_cachedStateIdx >= 0 && _g_cachedStateSymbol == sym &&
-       _g_cachedStateIdx < g_symbolStateCount)
-    {
-        return _g_cachedStateIdx;
-    }
-    
-    _g_cachedStateIdx = GetSymbolStateIndex();
-    _g_cachedStateSymbol = sym;
-    return _g_cachedStateIdx;
 }
 
 //+------------------------------------------------------------------+

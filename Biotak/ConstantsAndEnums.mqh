@@ -9,6 +9,97 @@
 #define TH3_TEMP_LINE_PREFIX    "ABCD_Temp_Line_"
 #define CACHE_TIMEOUT 60
 
+// ══════════════════════════════════════════════════════════════════════════
+// Z LADDER — the ONE owner of every OBJPROP_ZORDER in the project (P-UI-31)
+//
+// MT4 keeps the SCREEN-SPACE objects (OBJ_LABEL / OBJ_BUTTON / OBJ_BITMAP_LABEL
+// / OBJ_EDIT / OBJ_RECTANGLE_LABEL) in one list and paints them in ZORDER
+// order; an equal ZORDER falls back to creation order. The same property IS the
+// click priority: "when objects are placed one atop another, only one of them
+// with the highest priority will receive the CHARTEVENT_CLICK event"
+// (docs.mql4.com — Object Properties). Both readings want the same thing here,
+// so there is one ladder:
+//
+//     THE SETTINGS CARD OWNS THE TOP. Nothing the indicator draws may sit over a
+//     card, and a click anywhere on a card must reach the card — never the orb,
+//     never a hover tip, never a floating box badge. (P-UI-11 is the same rule
+//     one level down: a row's caption must not be buried by its own control.)
+//
+// Three consequences that are NOT obvious:
+//   1. The ring menu AND its hover tip sit BELOW the card: the menu is what
+//      opens a card, so the card is always the newest surface (the tip is also
+//      disarmed while g_UIPanelOpen — see BiotakMenu CircTipOnMove).
+//   2. CHART_FOREGROUND is what lifts the panel over the CANDLES
+//      (PnlLockForeground); ZORDER alone never raises an object over the bars.
+//   3. Never invent a literal at a call site — add a name here, or the audit
+//      in tools/zorder-audit.py fails and the ordering stops being provable.
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── chart content: zones, level lines, tool dots, boxes — the floor
+#define Z_CHART_ZONE     0      // zone bodies/borders, Trigger level lines
+#define Z_CHART_LINE     1      // Factor level lines (drawn above their zone)
+#define Z_CHART_TOOL    10      // TH3 tool dots
+#define Z_BOX_RAY       50      // Base/Knot rays
+#define Z_BOX_FILL      55      // box fill layer + drag handle
+#define Z_BOX_EDGE      56      // box border edges
+#define Z_BOX_INFO      60      // box info text
+#define Z_BOX_TEXT      61      // box user text
+#define Z_CHART_LABEL  100      // price/level labels, view anchor, countdown tag
+
+// ── Base/Knot floating pills — over the chart, UNDER the settings card
+#define Z_BOX_HINT    1400      // the wide floating hint
+#define Z_BOX_BADGE   1410      // the small box badge
+
+// ── the mini Base Box strip (item 13) — its own drawing family, still under
+//    the full card 12 that it opens
+#define Z_STRIP       1440      // bk_strip.bmp, the toolbar body
+#define Z_STRIP_ICON  1441      // strip slot glyphs
+#define Z_STRIP_OVER  1442      // strip popover chevrons
+
+// ── the ring menu — the card covers it (consequence 1 above)
+#define Z_MENU_PANEL    1004    // sub-menu panel chrome
+#define Z_MENU_DOT      1005    // sub-menu title dot
+#define Z_MENU_ITEM     1010    // ring/Tools item faces
+#define Z_MENU_ICON     1011    // item glyphs
+#define Z_MENU_BADGE    1012    // item badge bodies + captions
+#define Z_MENU_BADGE_TX 1013    // badge ink
+#define Z_MENU_PAGER    1014    // grid pager
+#define Z_MENU_ORB      1200    // the TRex orb (was 2000 — ABOVE the card)
+#define Z_MENU_TIP_BG   1300    // hover tip body
+#define Z_MENU_TIP      1302    // hover tip caption/header
+
+// ── the settings cards: 1480..1542 is ONE ladder in paint order
+#define Z_PANEL_CARD   1480     // card skin (shadow fringe + body)
+#define Z_PANEL_TOPBAR 1481     // .card::before accent bar
+#define Z_PANEL_ACT    1484     // active-row wash
+#define Z_PANEL_BAND   1486     // section band
+#define Z_PANEL_SEP    1490     // row separators
+#define Z_PANEL_HAIR   1495     // header hairline
+#define Z_PANEL_BASE   1500     // covers + click targets (a button stays under its skin)
+#define Z_PANEL_SKIN   1501     // skins over their own click target
+#define Z_PANEL_CHIP   1502     // chip faces, dots, counters, value chip
+#define Z_PANEL_INK    1503     // glyph ink, chevrons, keycap ink
+#define Z_PANEL_GLYPH  1504     // row glyph ink
+#define Z_PANEL_GLOSS  1505     // track gloss
+#define Z_PANEL_SW     1506     // switch face
+#define Z_PANEL_EDIT   1508     // OBJ_EDIT text field
+#define Z_PANEL_KNOB   1512     // slider knob
+#define Z_PANEL_TEXT   1520     // every caption
+#define Z_PANEL_CTL    1540     // buttons/labels ON a control
+#define Z_PANEL_MARK   1542     // active marks (tab underline, glass sheens)
+
+// ── popovers, then the palette: the only things allowed over a card
+#define Z_PANEL_DD_SH   1558    // dropdown shadow
+#define Z_PANEL_DD_BG   1560    // dropdown body
+#define Z_PANEL_DD_SEL  1566    // dropdown selected row
+#define Z_PANEL_DD_LBL  1568    // dropdown captions
+#define Z_PANEL_DD_ICO  1574    // dropdown glyphs
+#define Z_PANEL_POP     1600    // palette card
+#define Z_PANEL_POP_BG  1601    // palette body + mixer
+#define Z_PANEL_POP_CTL 1602    // palette tabs/fields
+#define Z_PANEL_POP_FG  1603    // palette knobs/ink
+#define Z_PANEL_TOP     1650    // reserved: a full-card overlay, if one is ever added
+
 // Performance & Safety Constants
 #define MAX_SAFE_LEVELS 2000          // Maximum safe number of levels per side
 #define MAX_SAFE_OBJECTS 5000         // Warning threshold for total objects

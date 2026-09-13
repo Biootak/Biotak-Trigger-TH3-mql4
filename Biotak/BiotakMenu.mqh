@@ -160,6 +160,10 @@
 #define SUB_GRID_PAD     10     // panel padding around the cell block
 #define SUB_GRID_HDR     28     // header strip (accent dot + TOOLS + count)
 #define SUB_GRID_PGR     24     // pager strip (paged panels only)
+// P-UI-34: the sub-menu captions' NOMINAL (design) point sizes. The readout x below is
+// MEASURED with PnlTextW instead of the old `5 * StringLen` guess.
+#define SUB_PT_READOUT   8      // header count + "page/total"
+#define SUB_PT_PAGER     10     // the < > chevrons
 #define SUB_GRID_PITCH   (SUB_CELL_VIS + SUB_CELL_GAP)        // 46 — == canvas
 #define SUB_PANEL_MARG   12     // baked shadow margin inside sub_panel_*.bmp
 #define SUB_PAGE_ROWS    4      // MAX visible rows; a short chart drops lower
@@ -341,6 +345,37 @@ void UISuppressNextClick() { g_UIClickSuppressUntil = GetTickCount() + 350; }
 bool UIShouldSuppressClick() { return (GetTickCount() < g_UIClickSuppressUntil); }
 
 //+------------------------------------------------------------------+
+// P-UI-40c (2026-09-13) - THE LONG-PRESS LATCH BELONGS TO ONE GESTURE.
+//
+// `g_LongPressFired` has exactly one job: the release-click of a hold that
+// ALREADY opened a card must not also toggle the item under the cursor. It was
+// only ever cleared in two places - the arming pass (a fresh press on an item)
+// and the two `if(g_LongPressFired)` guards in HandleButtonClick.
+//
+// The suppressed release paths skip those guards entirely: on the button-up the
+// menu calls UISuppressNextClick() again, and both `if(UIShouldSuppressClick())
+// return;` sites in BiotakPanels leave BEFORE HandleButtonClick. So a hold whose
+// release landed inside the suppression window left the latch SET, and the next
+// click that reached HandleButtonClick without an arming pass first was eaten -
+// that is precisely a click with NO mouse movement, and MT4 emits no
+// CHARTEVENT_MOUSE_MOVE for a motionless press (same trap as P-BK-03). The
+// symptom is the P-UI-01 one: "sometimes the first press on a control does
+// nothing".
+//
+// The suppression window has already classified that release as "this gesture's,
+// and already acted on" - so clearing the latch there is the SAME decision,
+// taken once, instead of a latch that outlives its gesture. The late-release
+// case is untouched: a click arriving after the window still meets the guards,
+// which is the only place the latch is genuinely needed. One owner, two plain
+// writes, and it runs only on the suppressed return - zero steady-state cost.
+//+------------------------------------------------------------------+
+void UILongPressLatchClear()
+{
+   g_LongPressFired = false;
+   g_LongPressItem  = -1;
+}
+
+//+------------------------------------------------------------------+
 //| Ring item under the cursor (-1 = none).                          |
 //+------------------------------------------------------------------+
 int CircItemAt(const int mx, const int my)
@@ -500,10 +535,34 @@ void ClearAllGVs()
       if(StringLen(name) >= len && StringSubstr(name, 0, len) == pfx)
          GlobalVariableDel(name);
    }
+   // P-PERF-27c: every write-shadow that claims these keys exist is now wrong.
+   // Without this, the version-reset path (ClearAllGVs -> ResetUIToDefaults ->
+   // SaveUIStates) and any later save would compare against deleted keys and
+   // skip the writes that put them back.
+   GVShadowsInvalidate();
 }
 
 void SaveUIStates(const bool flushNow = false)
 {
+   // P-PERF-27c: these six keys only change when the menu is shown, moved or
+   // the HTF toggle flips — yet a timeframe switch flushed the terminal's WHOLE
+   // global-variable table for them every time. Guard them the same way the
+   // override pass is guarded: unchanged values cost zero writes and zero flush.
+   static double s_uiShadow[8];
+   static bool   s_uiKnown[8];
+   static int    s_uiEpoch = -1;
+   int uiChanged = 0;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 0, UI_STATE_VERSION))          uiChanged++;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 1, 1.0))                       uiChanged++;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 2, g_UI.menuVisible ? 1.0 : 0.0)) uiChanged++;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 3, g_UI.menuX))                uiChanged++;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 4, g_UI.menuY))                uiChanged++;
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 5, g_UI.showHTF ? 1.0 : 0.0))  uiChanged++;
+   // Nothing changed: no writes. No flush either - there is nothing new to make
+   // durable, and the keys themselves stay in the terminal's table regardless
+   // (GlobalVariablesFlush only forces the DISK copy, which the terminal also
+   // writes on shutdown).
+   if(uiChanged == 0) return;
    GlobalVariableSet(GetGVName("VER"), UI_STATE_VERSION);
    GlobalVariableSet(GetGVName("INIT"), 1.0);
    GlobalVariableSet(GetGVName("MEN"), g_UI.menuVisible ? 1.0 : 0.0);
@@ -512,6 +571,22 @@ void SaveUIStates(const bool flushNow = false)
    GlobalVariableSet(GetGVName("HTF_EN"), g_UI.showHTF ? 1.0 : 0.0);
    if(flushNow) GlobalVariablesFlush();
 }
+
+//+------------------------------------------------------------------+
+// P-PERF-41 - ONE SWITCH PER ITEM, AND NO CROSS-EFFECTS
+//
+// The ring item sits on the "Zones & Levels" card, and the card has TWO rows
+// (0 = MID ZONES, 1 = SHOW LINES) with their own controls. So this item owns
+// exactly ONE of them: `g_showMidZones`. It MUST NOT touch the line switch.
+//
+// That is not a stylistic choice - it was tried and reverted: making the item a
+// "master" over both layers meant a press could switch ON a layer the user had
+// deliberately switched OFF (zones on + lines off, press, lines are back). A
+// control that silently changes a different control's state is a behaviour bug,
+// and the fix for "feels unreliable" is never to move more state - it is to move
+// the right state reliably. The light, the badge, the tooltip and the click all
+// read/write this one flag, so they can never disagree about it.
+//+------------------------------------------------------------------+
 
 bool CircFeatureOn(const int i)
 {
@@ -558,7 +633,7 @@ void CircConfigureIcon(const string name, const int i, const bool on, const int 
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1011);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_MENU_ICON);
 }
 
 string CircIconRes(const int i, const bool on)
@@ -771,8 +846,10 @@ string CircItemTooltip(const int i)
 //| CUSTOM HOVER TOOLTIP — the same live text as OBJPROP_TOOLTIP, but |
 //| drawn by the menu itself (dark chip + amber title), because native |
 //| hover tooltips do not display in this environment. Anchored above  |
-//| the hovered item (orb / ring / tools), ZORDER 1700+ keeps it above |
-//| panels (1540) and the palette popup (1603). Non-intrusive by design:|
+//| the hovered item (orb / ring / tools). P-UI-31: the tip sits on the  |
+//| MENU rung of the Z ladder (Z_MENU_TIP), i.e. UNDER the settings card |
+//| — and CircTipOnMove(Disarm) hides it the moment a card opens anyway.|
+//| Non-intrusive by design:
 //| CircTipOnMove only ARMS the tip; CircTipTick (per-tick) shows it   |
 //| after CIRC_TIP_DELAY_MS of stationary hover, and any move/press    |
 //| hides it instantly. CircTipRefresh keeps visible text fresh.       |
@@ -785,6 +862,20 @@ string CircItemTooltip(const int i)
 // Dwell before the tip appears: stationary hover only, so normal navigation
 // never flashes it (native-OS-tooltip behavior, tuned long per UX request).
 #define CIRC_TIP_DELAY_MS 1500
+// P-UI-34: the tip is a FIXED box, so its captions are NOMINAL pt routed through
+// PnlPt and CLIPPED through PnlFit. Measured: at 125% DPI the raw 9/8pt hints line
+// ("Drag: draw box · Hold box: style · ESC: done") drew 284px inside a 270px
+// inner width - 5% past the border there, 26% on a 150% display. The second line's y
+// comes from the title's own line box (PnlLineH), not a magic 26 (which collided at
+// 200%).
+#define CIRC_TIP_PAD_X  10    // text inset from the box' left edge
+#define CIRC_TIP_PAD_Y  5     // title's top inset
+#define CIRC_TIP_GAP    3     // title -> hints
+#define CIRC_TIP_PT_T   9     // title nominal pt (Arial Bold)
+#define CIRC_TIP_PT_H   8     // hints nominal pt (Arial; measured with the Bold table,
+                              // i.e. a deliberately safe over-estimate)
+#define CIRC_TIP_INNER  (CIRC_TIP_W - 2 * CIRC_TIP_PAD_X)
+#define CIRC_PT_BADGE   7     // retired ring badges (one-line restorable)
 
 string CircTipBg() { return g_UI.btnPrefix + "CircTipBg"; }
 string CircTipTxT() { return g_UI.btnPrefix + "CircTipTxT"; }
@@ -801,15 +892,45 @@ string CircTipText(const int feat)
    if(feat == -1) return "Biotak Terminal Menu\nClick: open/close · Drag: move";
    return CircItemTooltip(feat);
 }
+// P-UI-34: ONE owner for the tip's two captions - split AND clip. CircTipShow draws
+// them and CircTipRefresh rewrites them whenever a status changes, so a clip living in
+// only one of the two would drift (the refresh path re-set the RAW text before).
+void CircTipSplit(const string full, string &title, string &hints)
+{
+   int nl = StringFind(full, "\n");
+   title = PnlFit(nl >= 0 ? StringSubstr(full, 0, nl) : full, CIRC_TIP_PT_T, CIRC_TIP_INNER);
+   hints = PnlFit(nl >= 0 ? StringSubstr(full, nl + 1) : "", CIRC_TIP_PT_H, CIRC_TIP_INNER);
+}
+
+//+------------------------------------------------------------------+
+//| P-PERF-17: THE TIP IS PARKED, NOT DELETED                        |
+//|                                                                  |
+//| The hover tip is three objects (bg + title + hints) and hiding it |
+//| used to DELETE all three and call a FULL ChartRedraw - then the    |
+//| next hover created them again. Moving the cursor across the ring   |
+//| changes the hover target repeatedly, so that churn (delete 3,      |
+//| create 3, repaint EVERY object on the chart) ran again and again   |
+//| during exactly the gesture the user reports as lag, on a chart     |
+//| that holds thousands of objects. The tip is an overlay, so it is   |
+//| PARKED off-canvas with the CIRC_HIDE_POS idiom the Tools fan       |
+//| already uses, and no repaint is forced: writing an object property |
+//| dirties the chart by itself (the same finding as P-PERF-04 on the  |
+//| panel move path), so an explicit ChartRedraw here was pure cost.   |
+//+------------------------------------------------------------------+
+void CircTipPark()
+{
+   string bg = CircTipBg();
+   if(ObjectFind(0, bg) < 0) return;   // never shown yet - nothing to park
+   ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+   ObjectSetInteger(0, CircTipTxT(), OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+   ObjectSetInteger(0, CircTipTxH(), OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+}
 
 void CircTipHide()
 {
    if(s_CircTipFeat == -2) return;
    s_CircTipFeat = -2;
-   ObjectDelete(0, CircTipBg());
-   ObjectDelete(0, CircTipTxT());
-   ObjectDelete(0, CircTipTxH());
-   ChartRedraw();
+   CircTipPark();
 }
 // Full disarm (hide + drop a pending arm): called when a settings card opens
 // so no tip survives above it or fires while it is open (phantom tip).
@@ -821,10 +942,8 @@ void CircTipDisarm()
 
 void CircTipShow(const int feat, const int ax, const int ay)
 {
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(cw <= 0) cw = 1920;
-   if(ch <= 0) ch = 1080;
+   int cw, ch;
+   CircUIMetrics(cw, ch);   // P-PERF-16: cached metrics
    int x = ax - CIRC_TIP_W / 2;
    if(x < 4) x = 4;
    if(x > cw - CIRC_TIP_W - 4) x = MathMax(4, cw - CIRC_TIP_W - 4);   // tiny-chart floor
@@ -846,49 +965,45 @@ void CircTipShow(const int feat, const int ax, const int ay)
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
    ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1700);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_TIP_BG);
 
    // title = first line (amber bold), hints = rest (light)
-   string full = CircTipText(feat);
-   string title = full, hints = "";
-   int nl = StringFind(full, "\n");
-   if(nl >= 0)
-   {
-      title = StringSubstr(full, 0, nl);
-      hints = StringSubstr(full, nl + 1);
-   }
+   string title, hints;
+   CircTipSplit(CircTipText(feat), title, hints);
    string tt = CircTipTxT();
    if(ObjectFind(0, tt) < 0) ObjectCreate(0, tt, OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, tt, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, tt, OBJPROP_XDISTANCE, x + 10);
-   ObjectSetInteger(0, tt, OBJPROP_YDISTANCE, y + 5);
+   ObjectSetInteger(0, tt, OBJPROP_XDISTANCE, x + CIRC_TIP_PAD_X);
+   ObjectSetInteger(0, tt, OBJPROP_YDISTANCE, y + CIRC_TIP_PAD_Y);
    ObjectSetString(0, tt, OBJPROP_TEXT, title);
    ObjectSetString(0, tt, OBJPROP_FONT, "Arial Bold");
-   ObjectSetInteger(0, tt, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, tt, OBJPROP_FONTSIZE, PnlPt(CIRC_TIP_PT_T));
    ObjectSetInteger(0, tt, OBJPROP_COLOR, CIRC_TIP_BD);
    ObjectSetInteger(0, tt, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
    ObjectSetInteger(0, tt, OBJPROP_BACK, false);
    ObjectSetInteger(0, tt, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, tt, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, tt, OBJPROP_ZORDER, 1701);
+   ObjectSetInteger(0, tt, OBJPROP_ZORDER, Z_MENU_TIP);
 
    string th = CircTipTxH();
    if(ObjectFind(0, th) < 0) ObjectCreate(0, th, OBJ_LABEL, 0, 0, 0);
    ObjectSetInteger(0, th, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, th, OBJPROP_XDISTANCE, x + 10);
-   ObjectSetInteger(0, th, OBJPROP_YDISTANCE, y + 26);
+   ObjectSetInteger(0, th, OBJPROP_XDISTANCE, x + CIRC_TIP_PAD_X);
+   ObjectSetInteger(0, th, OBJPROP_YDISTANCE,
+                    y + CIRC_TIP_PAD_Y + PnlLineH(CIRC_TIP_PT_T) + CIRC_TIP_GAP);
    ObjectSetString(0, th, OBJPROP_TEXT, hints);
    ObjectSetString(0, th, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, th, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, th, OBJPROP_FONTSIZE, PnlPt(CIRC_TIP_PT_H));
    ObjectSetInteger(0, th, OBJPROP_COLOR, CIRC_TIP_TX);
    ObjectSetInteger(0, th, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
    ObjectSetInteger(0, th, OBJPROP_BACK, false);
    ObjectSetInteger(0, th, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, th, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, th, OBJPROP_ZORDER, 1701);
+   ObjectSetInteger(0, th, OBJPROP_ZORDER, Z_MENU_TIP);
 
    s_CircTipFeat = feat;
-   ChartRedraw();
+   // P-PERF-17: no forced repaint - the property writes above already dirtied the
+   // chart, and this runs on the hover path where a full repaint is the cost.
 }
 
 // Feature under the cursor (-2 = none, -1 = orb, else CIR_* code).
@@ -934,7 +1049,10 @@ void CircTipOnMove(const int mx, const int my, const bool leftDown)
    if(g_UIPanelOpen) { s_TipPendFeat = -2; CircTipHide(); return; }   // a card covers the menu — never arm under it
    int feat = CircTipFeatAt(mx, my);
    if(feat == -2) { s_TipPendFeat = -2; CircTipHide(); return; }
-   if(feat == s_CircTipFeat && ObjectFind(0, CircTipBg()) >= 0) { s_TipPendFeat = -2; return; }
+   // P-PERF-17: the tip's visibility is the STATE variable, not an ObjectFind -
+   // the objects live on permanently now (parked), so probing the chart per move
+   // would both cost a terminal call and answer the wrong question.
+   if(feat != -2 && feat == s_CircTipFeat) { s_TipPendFeat = -2; return; }
    if(feat != s_TipPendFeat) { s_TipPendFeat = feat; s_TipPendSince = GetTickCount(); }
    if(s_CircTipFeat != -2) CircTipHide();   // moved to another item: hide now, arm new
 }
@@ -943,6 +1061,12 @@ void CircTipOnMove(const int mx, const int my, const bool leftDown)
 // move re-arms/cancels via CircTipOnMove first).
 void CircTipTick()
 {
+   // P-PERF-17: the tip's objects are permanent now, so a bulk wipe elsewhere in
+   // the session (a parameter rebuild clears the chart) could leave the STATE
+   // saying "shown" while nothing is painted. One existence probe per TICK (4/s)
+   // instead of per move keeps that self-healing at a negligible cost.
+   if(s_CircTipFeat != -2 && ObjectFind(0, CircTipBg()) < 0) s_CircTipFeat = -2;
+
    if(s_TipPendFeat == -2) return;
    if(g_UIPanelOpen) { s_TipPendFeat = -2; return; }   // opened after arming — never fire over it
    if(GetTickCount() - s_TipPendSince < CIRC_TIP_DELAY_MS) return;
@@ -957,16 +1081,61 @@ void CircTipTick()
 // Re-apply the text while visible (state changed under a stationary cursor).
 void CircTipRefresh()
 {
-   if(s_CircTipFeat == -2 || ObjectFind(0, CircTipTxT()) < 0) return;
-   string full = CircTipText(s_CircTipFeat);
-   int nl = StringFind(full, "\n");
-   ObjectSetString(0, CircTipTxT(), OBJPROP_TEXT, nl >= 0 ? StringSubstr(full, 0, nl) : full);
-   ObjectSetString(0, CircTipTxH(), OBJPROP_TEXT, nl >= 0 ? StringSubstr(full, nl + 1) : "");
-   ChartRedraw();
+   if(s_CircTipFeat == -2) return;   // P-PERF-17: state, not ObjectFind
+   string title, hints;
+   CircTipSplit(CircTipText(s_CircTipFeat), title, hints);
+   ObjectSetString(0, CircTipTxT(), OBJPROP_TEXT, title);
+   ObjectSetString(0, CircTipTxH(), OBJPROP_TEXT, hints);
+   ThrottledChartRedraw();   // P-PERF-17: coalesced, never a bare full repaint
+}
+
+//+------------------------------------------------------------------+
+//| P-PERF-16: CHART METRICS ARE CACHED, NOT RE-READ PER ITEM         |
+//|                                                                  |
+//| WHY (measured shape, not a guess): CircItemAt() asks CircLayout() |
+//| once per ring item, ToolsItemAt() asks SubPlaceItem() once per    |
+//| tile, and CircPointOnMenu() asks both. Each of those read          |
+//| CHART_WIDTH_IN_PIXELS + CHART_HEIGHT_IN_PIXELS straight from the   |
+//| terminal, and CircLayout() also called CircFitRadius(), which      |
+//| walks every ring item doing sin/cos - so ONE hit test cost 16-40   |
+//| terminal reads and O(RING_COUNT^2) trigonometry just to answer     |
+//| "which button is under the cursor?". Every cursor move repeats it. |
+//|                                                                  |
+//| The size cannot change inside a hit test, so the metrics are read  |
+//| once and invalidated on the events that can change them (chart-    |
+//| change notification + a 250 ms safety refresh in OnTimer), which   |
+//| is how UI toolkits keep a layout cache honest. The reader keeps the|
+//| old "<=0 -> 1920x1080" fallback so no caller can see a bad size.   |
+//+------------------------------------------------------------------+
+static int  s_uiCw = 0, s_uiCh = 0;
+static bool s_uiMetricsStale = true;
+
+void CircUIMetricsInvalidate() { s_uiMetricsStale = true; }
+
+void CircUIMetrics(int &cw, int &ch)
+{
+   if(s_uiMetricsStale || s_uiCw <= 0 || s_uiCh <= 0)
+   {
+      s_uiCw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+      s_uiCh = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+      s_uiMetricsStale = false;
+   }
+   cw = s_uiCw;
+   ch = s_uiCh;
+   if(cw <= 0) cw = 1920;
+   if(ch <= 0) ch = 1080;
 }
 
 double CircFitRadius(const int cw, const int ch, const int ox, const int oy)
 {
+   // P-PERF-16: pure function of its four arguments and compile-time constants,
+   // asked once per ring item per hit test. The fit does not depend on the item,
+   // so it is computed once per (cw,ch,ox,oy) and remembered.
+   static int    s_fitCw = 0, s_fitCh = 0, s_fitOx = 0, s_fitOy = 0;
+   static double s_fitR = 0.0;
+   if(s_fitR > 0.0 && cw == s_fitCw && ch == s_fitCh && ox == s_fitOx && oy == s_fitOy)
+      return s_fitR;
+
    double r = CIRC_RADIUS;
    for(int i = 0; i < RING_COUNT; i++)
    {
@@ -982,15 +1151,15 @@ double CircFitRadius(const int cw, const int ch, const int ox, const int oy)
    }
    if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
    if(r > CIRC_RADIUS) r = CIRC_RADIUS;
+
+   s_fitCw = cw; s_fitCh = ch; s_fitOx = ox; s_fitOy = oy; s_fitR = r;
    return r;
 }
 
 void CircLayout(const int i, int &x, int &y)
 {
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(cw <= 0) cw = 1920;
-   if(ch <= 0) ch = 1080;
+   int cw, ch;
+   CircUIMetrics(cw, ch);   // P-PERF-16: cached - no terminal read per item
    int ox = g_UI.menuX;
    int oy = g_UI.menuY;
 
@@ -1056,10 +1225,7 @@ void CircLayout(const int i, int &x, int &y)
 //--- chart metrics + menu origin, shared by every mode below
 void SubChartRect(int &cw, int &ch, int &ox, int &oy)
 {
-   cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
-   ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-   if(cw <= 0) cw = 1920;
-   if(ch <= 0) ch = 1080;
+   CircUIMetrics(cw, ch);   // P-PERF-16: cached - SubPlaceItem/SubMode call this per tile
    ox = g_UI.menuX;
    oy = g_UI.menuY;
 }
@@ -1521,7 +1687,7 @@ void SubSetPanel(const int px, const int py, const int pw, const int ph)
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1004);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_MENU_PANEL);
 }
 
 
@@ -1556,7 +1722,8 @@ void SubSetLabel(const string name, const int x, const int y, const string txt,
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, size);
+   // `size` is the NOMINAL (design) pt - PnlPt re-expresses it for this display.
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(size));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
@@ -1578,6 +1745,20 @@ void SubPagerGeom(const int px, const int py, const int pw, const int ph,
    nextX = px + pw - SUB_GRID_PAD - bw;
 }
 
+// P-UI-34: the readout captions' own x - MEASURED, never guessed. `5 * StringLen(s)` was
+// the estimate at FOUR sites (create + move, counter + pager text); 8pt Arial Bold runs
+// ~5.8px/char at 96dpi, so the counter drifted toward the panel edge and the "n/N" pager
+// caption sat off-centre - and because create AND move used the same guess, the drift
+// survived a drag. One owner for both paths (P-UI-26: update mirrors create).
+int SubReadoutX(const int px, const int pw, const string s)
+{
+   return px + pw - SUB_GRID_PAD - PnlTextW(s, SUB_PT_READOUT);
+}
+int SubPagerTxtX(const int px, const int pw, const string s)
+{
+   return px + (pw - PnlTextW(s, SUB_PT_READOUT)) / 2;
+}
+
 // ASCII text only: "<" / ">" are inside Windows-1252 so they are safe as font
 // text; a chevron glyph (U+2039/U+25BC) renders as "?" in MT4/Wine Arial (P-UI-06).
 void SubSetPagerBtn(const string name, const int x, const int y, const int w, const int h,
@@ -1591,7 +1772,7 @@ void SubSetPagerBtn(const string name, const int x, const int y, const int w, co
    ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 10);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(SUB_PT_PAGER));
    ObjectSetInteger(0, name, OBJPROP_COLOR, enabled ? SUB_CLR_ACCENT : SUB_CLR_DOT_OFF);
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, SUB_CLR_BTN_BG);
    ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
@@ -1601,7 +1782,7 @@ void SubSetPagerBtn(const string name, const int x, const int y, const int w, co
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1014);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_MENU_PAGER);
 }
 
 void SubChromeCreate()
@@ -1613,16 +1794,16 @@ void SubChromeCreate()
 
    SubSetPanel(px, py, pw, ph);
    SubSetRect(SubPanelDot(), px + SUB_GRID_PAD, py + 11, 5, 5,
-              SUB_CLR_ACCENT, false, SUB_CLR_ACCENT, 1005);
-   SubSetLabel(SubPanelHdr(), px + SUB_GRID_PAD + 11, py + 8, "TOOLS", SUB_CLR_HDR, 8, 1012);
+              SUB_CLR_ACCENT, false, SUB_CLR_ACCENT, Z_MENU_DOT);
+   SubSetLabel(SubPanelHdr(), px + SUB_GRID_PAD + 11, py + 8, "TOOLS", SUB_CLR_HDR, 8, Z_MENU_BADGE);
 
    // right-hand readout: total when the whole grid is visible, "page/total" when paged
    int pages = SubPageCount();
    string cnt = SubIsPaged()
                 ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
                 : IntegerToString(TOOL_COUNT);
-   SubSetLabel(SubPanelCnt(), px + pw - SUB_GRID_PAD - 5 * StringLen(cnt), py + 8,
-               cnt, SUB_CLR_ACCENT, 8, 1012);
+   SubSetLabel(SubPanelCnt(), SubReadoutX(px, pw, cnt), py + 8,
+               cnt, SUB_CLR_ACCENT, SUB_PT_READOUT, Z_MENU_BADGE);
 
    if(!SubIsPaged())
    {
@@ -1652,15 +1833,15 @@ void SubChromeCreate()
          bool on = (k == g_ToolsPage);
          color dc = on ? SUB_CLR_ACCENT : SUB_CLR_DOT_OFF;
          SubSetRect(SubPagerDot(k), x0 + k * (SUB_DOT_SIZE + SUB_DOT_GAP), dy,
-                    SUB_DOT_SIZE, SUB_DOT_SIZE, dc, false, dc, 1014);
+                    SUB_DOT_SIZE, SUB_DOT_SIZE, dc, false, dc, Z_MENU_PAGER);
       }
    }
    else
    {
       for(int k = 0; k < SUB_PAGER_DOTS_MAX; k++) ObjectDelete(0, SubPagerDot(k));
       string pt = IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages);
-      SubSetLabel(SubPagerTxt(), px + (pw - 5 * StringLen(pt)) / 2,
-                  py + ph - SUB_GRID_PGR + 8, pt, SUB_CLR_HDR, 8, 1012);
+      SubSetLabel(SubPagerTxt(), SubPagerTxtX(px, pw, pt),
+                  py + ph - SUB_GRID_PGR + 8, pt, SUB_CLR_HDR, SUB_PT_READOUT, Z_MENU_BADGE);
    }
    SubNoteBuilt();   // remember the shape this chrome was built for (SubRelayoutIfNeeded)
 }
@@ -1690,8 +1871,7 @@ void SubChromeMove()
       string cnt = SubIsPaged()
                    ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
                    : IntegerToString(TOOL_COUNT);
-      ObjectSetInteger(0, SubPanelCnt(), OBJPROP_XDISTANCE,
-                       px + pw - SUB_GRID_PAD - 5 * StringLen(cnt));
+      ObjectSetInteger(0, SubPanelCnt(), OBJPROP_XDISTANCE, SubReadoutX(px, pw, cnt));
       ObjectSetInteger(0, SubPanelCnt(), OBJPROP_YDISTANCE, py + 8);
    }
    if(!SubIsPaged()) return;
@@ -1723,7 +1903,7 @@ void SubChromeMove()
    else if(ObjectFind(0, SubPagerTxt()) >= 0)
    {
       string pt = IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages);
-      ObjectSetInteger(0, SubPagerTxt(), OBJPROP_XDISTANCE, px + (pw - 5 * StringLen(pt)) / 2);
+      ObjectSetInteger(0, SubPagerTxt(), OBJPROP_XDISTANCE, SubPagerTxtX(px, pw, pt));
       ObjectSetInteger(0, SubPagerTxt(), OBJPROP_YDISTANCE, py + ph - SUB_GRID_PGR + 8);
    }
 }
@@ -1783,7 +1963,7 @@ void ToolsCreateBadge(const int i)
    ObjectSetInteger(0, bg, OBJPROP_STATE, false);
    ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1012);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_BADGE);
 
    string txt = ToolsBadgeTxt(i);
    if(ObjectFind(0, txt) < 0)
@@ -1796,12 +1976,12 @@ void ToolsCreateBadge(const int i)
    ObjectSetInteger(0, txt, OBJPROP_YDISTANCE, badgeY + CIRC_BADGE_SIZE / 2);
    ObjectSetString(0, txt, OBJPROP_TEXT, CircBadgeText(feat));
    ObjectSetInteger(0, txt, OBJPROP_COLOR, CLR_CIRC_BADGE_TXT);
-   ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, 7);
+   ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, PnlPt(CIRC_PT_BADGE));
    ObjectSetString(0, txt, OBJPROP_FONT, "Arial Bold");
    ObjectSetString(0, txt, OBJPROP_TOOLTIP, CircBadgeTooltip(feat));
    ObjectSetInteger(0, txt, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, txt, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, txt, OBJPROP_ZORDER, 1013);
+   ObjectSetInteger(0, txt, OBJPROP_ZORDER, Z_MENU_BADGE_TX);
 }
 
 void CircBadgeDir(const int i, double &dx, double &dy)
@@ -1867,7 +2047,7 @@ void CircCreateBadge(const int i)
    ObjectSetInteger(0, bg, OBJPROP_STATE, false);
    ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1012);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_BADGE);
 
    // Badge text label (value shown inside the amber badge)
    string txt = CircBadgeTxt(i);
@@ -1881,12 +2061,12 @@ void CircCreateBadge(const int i)
    ObjectSetInteger(0, txt, OBJPROP_YDISTANCE, badgeY + size / 2);
    ObjectSetString(0, txt, OBJPROP_TEXT, CircBadgeText(feat));
    ObjectSetInteger(0, txt, OBJPROP_COLOR, CLR_CIRC_BADGE_TXT);
-   ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, 7);
+   ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, PnlPt(CIRC_PT_BADGE));
    ObjectSetString(0, txt, OBJPROP_FONT, "Arial Bold");
    ObjectSetString(0, txt, OBJPROP_TOOLTIP, CircBadgeTooltip(feat));
    ObjectSetInteger(0, txt, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, txt, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, txt, OBJPROP_ZORDER, 1013);
+   ObjectSetInteger(0, txt, OBJPROP_ZORDER, Z_MENU_BADGE_TX);
 }
 
 void CircCreateItem(const int i)
@@ -1916,7 +2096,7 @@ void CircCreateItem(const int i)
    ObjectSetInteger(0, bg, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
-   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1010);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_ITEM);
 
    string icon = CircIcon(i);
    if(ObjectFind(0, icon) >= 0)
@@ -1961,7 +2141,7 @@ void ToolsCreateItem(const int toolIdx)
    ObjectSetInteger(0, bg, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
-   ObjectSetInteger(0, bg, OBJPROP_ZORDER, 1010);
+   ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_ITEM);
 
    string icon = ToolsIcon(toolIdx);
    if(ObjectFind(0, icon) >= 0)
@@ -2025,7 +2205,7 @@ void CircCreateOrb()
    ObjectSetInteger(0, orbBg, OBJPROP_SELECTED, false);
    ObjectSetInteger(0, orbBg, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, orbBg, OBJPROP_BACK, false);
-   ObjectSetInteger(0, orbBg, OBJPROP_ZORDER, 2000);
+   ObjectSetInteger(0, orbBg, OBJPROP_ZORDER, Z_MENU_ORB);
    ObjectSetString(0, orbBg, OBJPROP_TOOLTIP, "Biotak Terminal Menu\nClick: open/close · Drag: move");
 
    // No center overlay: the medallion lives entirely in orb_bg.bmp (P-ICONS-04).
@@ -2725,26 +2905,47 @@ int HandleButtonClick(const string clickedObject)
       int tflags = REFRESH_NONE;
       if(tfeat == CIR_PIN)
       {
-         g_waitingForCustomPriceClick = true;
-         g_customPriceKeyboardOverride = true;
-         string overrideFlagName = "Biotak_CustomPriceOverride_" + GetCachedSymbol();
-         GlobalVariableSet(overrideFlagName, 1.0);
-         ObjectDelete(0, g_customPriceHorizontalLineName);
-         g_customPriceLineCreated = false;
-         double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
-         g_customTHStartPrice = currentPrice;
-         g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-         string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
-         GlobalVariableSet(gvarName, currentPrice);
-         CreateCustomPriceLine(currentPrice, Digits, true);
-         g_redrawTHLevelsNeeded = true;
-         tflags = REFRESH_ALL;
+         // P-UI-45: THE BUTTON IS A TOGGLE. It used to ALWAYS re-arm: every press
+         // deleted the line and re-created it at the market price (and left it
+         // SELECTED), so the light could be switched ON and never OFF and the only
+         // way back to the default start point was the ESC key - a control that
+         // moves its own state in one direction only. OFF runs the SAME owner the
+         // ESC key does, so the two can never drift.
+         if(g_customPriceLineCreated || g_waitingForCustomPriceClick ||
+            g_customPriceKeyboardOverride)
+         {
+            DeactivateCustomPriceMode("ring PIN");
+            tflags = REFRESH_ALL;
+         }
+         else
+         {
+            g_waitingForCustomPriceClick = true;
+            g_customPriceKeyboardOverride = true;
+            string overrideFlagName = "Biotak_CustomPriceOverride_" + GetCachedSymbol();
+            GlobalVariableSet(overrideFlagName, 1.0);
+            ObjectDelete(0, g_customPriceHorizontalLineName);
+            g_customPriceLineCreated = false;
+            double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
+            g_customTHStartPrice = currentPrice;
+            g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+            string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
+            GlobalVariableSet(gvarName, currentPrice);
+            // `true` = placement mode (grabbable), never pre-selected - see
+            // CreateCustomPriceLine for why a SELECTED line hijacks every drag.
+            CreateCustomPriceLine(currentPrice, Digits, true, "Drag to adjust, Double-click to confirm");
+            g_redrawTHLevelsNeeded = true;
+            tflags = REFRESH_ALL;
+         }
       }
        else if(tfeat == CIR_STEP_OVERRIDE)
        {
           // STEPOVERRIDE-OFF: single Step Mode — cycle the base 0..3 (same as
           // the E key and the panel row). OV_ persist rides on REFRESH_ALL.
           g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
+          // P-UI-40b: this item is the SAME control as the E key (which asks, see
+          // EventHandlers) one surface over. The STEP card's mode row displays this
+          // value and the ring cannot repaint an open card from here.
+          RequestUISync();   // P-UI-40b: the STEP card's mode row displays this value
           GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
           UpdateStepModeLabel();   // same confirmation as E / panel (redraw below only repositions it)
           g_forceClearOnNextDraw = true;
@@ -2817,25 +3018,44 @@ int HandleButtonClick(const string clickedObject)
    if(feat == CIR_TRIGGER)
    {
       g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
+      // P-UI-40: the ring repaints ITSELF below (CircUpdateItemState +
+      // UpdateCircularBadges), but it cannot repaint an OPEN card — this file is
+      // included before the panel's. The same state is the TRIGGER card's SHOW
+      // row, so the UI layer is asked as well; the drain is idempotent.
+      RequestUISync();
       string triggerGvarName = "Biotak_TriggerLevels_" + GetCachedChartIdStr();
       GlobalVariableSet(triggerGvarName, g_triggerLevelsEnabled ? 1.0 : 0.0);
-      g_forceClearOnNextDraw = true;
+      // P-PERF-21: this used to raise g_forceClearOnNextDraw, i.e. delete every
+      // level, zone and label on the chart and rebuild the pipeline in four
+      // staged frames - for a switch that provably changes no geometry. Only the
+      // trigger ZONES change, so the repair is a buffers re-render (the frame
+      // signature carries the flag, RenderZones applies it, and the unchanged
+      // line/label writes are already skipped by P-PERF-02).
       g_redrawTHLevelsNeeded = true;
-      refreshFlags = REFRESH_ALL;
+      refreshFlags = REFRESH_BUFFERS;
    }
    else if(feat == CIR_ZONES)
    {
+      // P-PERF-41: ONE switch, and only its own. The zone family is masked by
+      // the render (LevelPipeline P-PERF-41), so this is a state flip plus masks -
+      // no delete, no rebuild, and nothing else on the chart moves.
+      //
+      // It must NOT call SetLinesVisible: the SHOW LINES row (and the L key) own
+      // that switch, and a press that turned the lines on would overwrite a
+      // choice the user made elsewhere. See the note on CircFeatureOn.
       g_showMidZones = !g_showMidZones;
+      RequestUISync();   // P-UI-40: the Zones card's MID ZONES row shows this
       g_redrawTHLevelsNeeded = true;
       refreshFlags = REFRESH_BUFFERS;
    }
    else if(feat == CIR_ATR)
    {
       g_atrLabelsVisible = !g_atrLabelsVisible;
+      RequestUISync();   // P-UI-40: the ATR card's own rows show this switch
       g_showATRLabels = g_atrLabelsVisible;   // keep the ATR card mirror in sync
       string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
       GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
-      string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+      string objectPrefix = GetLevelObjectPrefix();
       SetATRLabelsVisibility(objectPrefix, g_atrLabelsVisible);
       g_labelsRelayoutNeeded = true;
       refreshFlags = REFRESH_ALL;
@@ -2853,10 +3073,11 @@ int HandleButtonClick(const string clickedObject)
          g_thLabelsMode = 1;
       }
       g_thLabelsVisible = (g_thLabelsMode != 0);
+      RequestUISync();   // P-UI-40: the TH LABELS card cycles on this mode
       SyncTHFlagsFromMode();   // flags follow the mode → TH card stays in sync
       string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
       GlobalVariableSet(thGvar, (double)g_thLabelsMode);
-      string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+      string objectPrefix = GetLevelObjectPrefix();
       SetTHLabelsVisibility(objectPrefix, g_thLabelsMode);
       g_labelsRelayoutNeeded = true;
       refreshFlags = REFRESH_ALL;
@@ -2881,6 +3102,15 @@ int HandleButtonClick(const string clickedObject)
    else if(feat == CIR_HTF)
    {
       g_UI.showHTF = !g_UI.showHTF;
+      // P-UI-40b (2026-09-13): the HTF card's row 0 displays THIS flag, and this
+      // file is included BEFORE the panel's - so the ring cannot repaint that card
+      // itself. The ring repairs its own light/status on the next tick
+      // (UpdateMenuSyncIfChanged fingerprints CircFeatureOn), but an open card has
+      // no such net: without this request it kept the previous switch position
+      // until it was reopened. Same asymmetry P-UI-40 fixed for the other
+      // switches; this one was missed because `g_UI.showHTF` was not on the
+      // gate's displayed-state list (it is now).
+      RequestUISync();   // P-UI-40b: the HTF card's SHOW row displays this flag
       refreshFlags = REFRESH_HTF;
    }
 

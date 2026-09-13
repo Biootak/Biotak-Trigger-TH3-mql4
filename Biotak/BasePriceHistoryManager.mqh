@@ -16,6 +16,86 @@
 #define MAX_FILE_SIZE_KB 1024  // 1MB max file size for safety
 
 //+------------------------------------------------------------------+
+//| HISTORY FORMAT VERSION                                           |
+//| OWNER: this file - the version describes the FILE layout, so the  |
+//| loader/saver must agree on it before either can use it.           |
+//| Version History:                                                 |
+//| - v1: Original format with Server Time                           |
+//| - v2: GMT format (times stored in GMT/UTC)                       |
+//| - v3: GMT format + Block boundary update timing fix              |
+//| - v4: GMT format + Start from 00:00 GMT (not 00:00 Server Time)  |
+//| - v5: same instants as v4; the file now DESCRIBES ITSELF with a  |
+//|       format stamp on line 1 ("#FMT=5|GMT"). Read the long note  |
+//|       below before changing the stamp or the version.            |
+//+------------------------------------------------------------------+
+#define HISTORY_FORMAT_VERSION 5
+
+//+------------------------------------------------------------------+
+//| P-PERF-11: SELF-DESCRIBING HISTORY FILES                         |
+//|                                                                  |
+//| WHY (measured, not guessed):                                     |
+//| InitializeBasePriceSystem() used to GUESS whether a loaded file   |
+//| was written in the retired Server-Time format with the heuristic  |
+//| "any entry with hour >= 22:00 means yesterday's data". That guess |
+//| cannot distinguish a legacy file from a correct one, because one  |
+//| full trading session (00:xx .. 23:xx) ALWAYS contains a 22:xx     |
+//| block. Every attach and every timeframe switch therefore loaded a |
+//| valid file, saw its own 22:58 / 23:28 / 23:58 entries, deleted    |
+//| the file, and rebuilt the whole day from M30 data - the measured  |
+//| base=3797ms phase of OnInit, repeated on every init, with the     |
+//| restored base price changing each time because the day was        |
+//| recomputed instead of restored.                                   |
+//|                                                                  |
+//| FIX: the file describes itself. Line 1 is a stamp:                |
+//|       #FMT=<version>|GMT                                          |
+//| The loader strips it and reports the version it read; the caller  |
+//| compares versions instead of guessing. A file with NO stamp is    |
+//| genuinely legacy (or written by a build predating the stamp) and  |
+//| is migrated exactly once - the rebuild saves it stamped, so it    |
+//| can never be migrated a second time.                              |
+//+------------------------------------------------------------------+
+#define HISTORY_STAMP_PREFIX "#FMT="
+
+// The line SaveBasePriceHistory() writes as line 1 of every new file.
+string HistoryFileStampLine()
+{
+    return HISTORY_STAMP_PREFIX + IntegerToString(HISTORY_FORMAT_VERSION) + "|GMT";
+}
+
+// Format version stamped in the file's first line, or 0 when the file is
+// missing, unreadable, or carries no stamp (= genuinely legacy).
+int HistoryFileStampedVersion(const string filePath)
+{
+    if(!FileIsExist(filePath)) return 0;
+
+    int handle = FileOpen(filePath, FILE_READ | FILE_TXT | FILE_ANSI);
+    if(handle == INVALID_HANDLE) return 0;
+
+    int version = 0;
+    if(!FileIsEnding(handle))
+    {
+        string first = FileReadString(handle);
+        first = StringTrimLeft(first);
+        first = StringTrimRight(first);
+        if(StringFind(first, HISTORY_STAMP_PREFIX) == 0)
+        {
+            string tail = StringSubstr(first, StringLen(HISTORY_STAMP_PREFIX));
+            int bar = StringFind(tail, "|");
+            if(bar > 0) tail = StringSubstr(tail, 0, bar);
+            version = (int)StringToInteger(tail);
+        }
+    }
+    FileClose(handle);
+
+    return version;
+}
+
+// Written by LoadBasePriceHistory(): the stamp version of the file it just
+// read (0 = legacy / unstamped). InitializeBasePriceSystem() reads it right
+// after the load to decide whether a one-time migration is needed.
+int g_loadedHistoryFormat = 0;
+
+//+------------------------------------------------------------------+
 //| Debug logging helper - only prints in DEBUG build                |
 //| NOTE: Use #ifdef ENABLE_DEBUG_LOGS directly for multi-arg logs   |
 //+------------------------------------------------------------------+
@@ -99,7 +179,10 @@ string GetHistoryFilePath(int year, int dayOfYear)
 int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
 {
     string filePath = GetHistoryFilePath(year, dayOfYear);
-    
+
+    // P-PERF-11: assume legacy until the file's own stamp proves otherwise.
+    g_loadedHistoryFormat = 0;
+
     // Retry logic for file locking (max 3 attempts with 100ms delay)
     int maxRetries = 3;
     int retryDelay = 100;
@@ -161,6 +244,21 @@ int LoadBasePriceHistory(int year, int dayOfYear, string &history[])
             if(StringLen(line) == 0)
             {
                 emptyLines++;
+                continue;
+            }
+
+            // P-PERF-11: a '#' line is the file's own format stamp, never a
+            // data entry - it is reported to the caller and stripped here so
+            // no in-memory history array ever contains it.
+            if(StringGetCharacter(line, 0) == '#')
+            {
+                if(StringFind(line, HISTORY_STAMP_PREFIX) == 0)
+                {
+                    string stampTail = StringSubstr(line, StringLen(HISTORY_STAMP_PREFIX));
+                    int stampBar = StringFind(stampTail, "|");
+                    if(stampBar > 0) stampTail = StringSubstr(stampTail, 0, stampBar);
+                    g_loadedHistoryFormat = (int)StringToInteger(stampTail);
+                }
                 continue;
             }
             
@@ -241,6 +339,10 @@ bool SaveBasePriceHistory(int year, int dayOfYear, const string &history[], int 
             }
         }
         
+        // P-PERF-11: line 1 states the format this file was written in, so the
+        // loader never has to guess (see the note at the top of this file).
+        FileWriteString(fileHandle, HistoryFileStampLine() + "\n");
+
         // Write each entry as a line with error checking
         bool writeSuccess = true;
         for(int i = 0; i < count; i++)
@@ -333,6 +435,36 @@ bool SaveBasePriceHistory(int year, int dayOfYear, const string &history[], int 
 bool AppendBasePriceHistoryEntry(int year, int dayOfYear, const string entry)
 {
     string filePath = GetHistoryFilePath(year, dayOfYear);
+
+    // P-PERF-11: never append into an UNSTAMPED file - the loader would read it
+    // as a legacy file and rebuild the whole day from M30 data. A missing or
+    // unstamped file is rewritten in one pass (a day file is ~50 short lines),
+    // which stamps it and keeps every existing entry.
+    if(HistoryFileStampedVersion(filePath) != HISTORY_FORMAT_VERSION)
+    {
+        string existing[];
+        int existingCount = 0;
+        int readHandle = FileOpen(filePath, FILE_READ | FILE_TXT | FILE_ANSI);
+        if(readHandle != INVALID_HANDLE)
+        {
+            while(!FileIsEnding(readHandle))
+            {
+                string line = FileReadString(readHandle);
+                line = StringTrimLeft(line);
+                line = StringTrimRight(line);
+                if(StringLen(line) == 0) continue;
+                if(StringGetCharacter(line, 0) == '#') continue;   // stale stamp
+                ArrayResize(existing, existingCount + 1);
+                existing[existingCount] = line;
+                existingCount++;
+            }
+            FileClose(readHandle);
+        }
+        ArrayResize(existing, existingCount + 1);
+        existing[existingCount] = entry;
+        existingCount++;
+        return SaveBasePriceHistory(year, dayOfYear, existing, existingCount);
+    }
     
     // Retry logic for file locking (max 3 attempts with 100ms delay)
     int maxRetries = 3;

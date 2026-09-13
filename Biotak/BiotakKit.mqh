@@ -124,13 +124,56 @@ color DefBKStopColor()       { return C'220,50,50'; }     // red Stop ray
 color DefBKTargetColor()     { return C'46,139,87'; }     // sea green Target ray
 
 //==============================================================================
+// LIVE-GESTURE REDRAW BUDGET (P-UI-33)
+// A slider / mixer drag changes the value ~33×/s. Applying EVERY tick ran the
+// full heavy pass (RedrawAllObjects on the whole chart) 33×/s — the drag became
+// a slideshow that only settled on release. The cheap half of a drag (knob +
+// value chip) still moves every tick in PnlHandleMouseMove; the HEAVY pass is
+// coalesced here to one per UI_DRAG_HEAVY_MS and flushed exactly once when the
+// gesture ends, so the last value can never be left unrendered.
+// Armed by the four knob/mixer gesture sites (PnlHandleMouseMove x3 — palette
+// mixer, slider knob, slider track — and PnlHandleDrag for a native knob drag)
+// and ended by EACH release path plus ChartPointerFinalizeOnUps, the ONE net
+// every button-up passes through: a forgotten release cannot strand a gesture.
+// Same shape as the domain's BaseKnotDragPaint budget (LEARNING.md §3).
+//==============================================================================
+#define UI_DRAG_HEAVY_MS 120
+static bool s_UIDragLive   = false;
+static int  s_UIDragPend   = REFRESH_NONE;   // flags owed to the chart
+static uint s_UIDragHeavy  = 0;              // last heavy pass (0 = none yet)
+
+//==============================================================================
 // REFRESH DISPATCHER — applies REFRESH_* flags returned by the menu/panels
 //==============================================================================
 void ApplyRefreshFlags(const int flags)
 {
    if(flags == REFRESH_NONE) return;
 
-   if((flags & REFRESH_HTF) != 0)
+   // `flags` is CONST (the signature is the contract), so the mask the domain
+   // actually applies lives in `apply`: while a gesture is live the budget may
+   // widen the tick's own flags to everything owed since the previous pass.
+   int apply = flags;
+
+   if(s_UIDragLive)
+   {
+      s_UIDragPend |= apply;
+      uint tNow = GetTickCount();
+      // First call after Begin passes through; then one coalesced pass per
+      // budget window. Everything between is a bare repaint (the drag's own
+      // knob/chip already moved) — never a full domain redraw.
+      if(s_UIDragHeavy != 0 && tNow - s_UIDragHeavy < UI_DRAG_HEAVY_MS)
+      {
+         // P-PERF-06: throttled follow (raw here = ~33 full repaints/s).
+         ThrottledChartRedraw();
+         return;
+      }
+      s_UIDragHeavy = tNow;
+      apply = s_UIDragPend;      // the owed mask, delivered once
+      s_UIDragPend = REFRESH_NONE;
+      if(apply == REFRESH_NONE) return;
+   }
+
+   if((apply & REFRESH_HTF) != 0)
    {
       static uint s_LastHtfRefresh = 0;
       uint now = GetTickCount();
@@ -140,19 +183,39 @@ void ApplyRefreshFlags(const int flags)
          RefreshHTFCandles();
       }
    }
-   if((flags & (REFRESH_ALL | REFRESH_BUFFERS | REFRESH_RECALC | REFRESH_LABELS | REFRESH_TH3)) != 0)
+   if((apply & (REFRESH_ALL | REFRESH_BUFFERS | REFRESH_RECALC | REFRESH_LABELS | REFRESH_TH3)) != 0)
    {
-      if((flags & (REFRESH_LABELS | REFRESH_ALL)) != 0) g_labelsRelayoutNeeded = true;
+      if((apply & (REFRESH_LABELS | REFRESH_ALL)) != 0) g_labelsRelayoutNeeded = true;
       // TH3TOOL-OFF:
-      //if((flags & (REFRESH_TH3 | REFRESH_ALL)) != 0)
+      //if((apply & (REFRESH_TH3 | REFRESH_ALL)) != 0)
       //{
       //   UpdateAllTH3Objects();
       //}
+      // P-PERF-30: this dispatcher is only ever reached from a USER action
+      // (click, key, gesture end) - never from the tick or a drag loop - so the
+      // edit must paint even when the geometry signature cannot see the input
+      // that changed (structure switches, line look, mid-zone border, trigger
+      // transparency, the midpoint line ... none of which frameSig enumerates).
+      g_renderAllNeeded = true;
       g_redrawTHLevelsNeeded = true;
       RedrawAllObjects(true);
    }
    RuntimeSettingsSaveOverridesThrottled();
-   ChartRedraw();
+   // P-PERF-06: RedrawAllObjects above already ends in ThrottledChartRedraw —
+   // a second RAW repaint here doubled every heavy pass (and every discrete
+   // panel press). One repaint is the whole feedback.
+   // P-PERF-24: ... but that one repaint was the THROTTLED one, so a press that
+   // landed inside the 100 ms window was never painted, and the tick frame that
+   // follows cannot repaint it either (nothing is pending by then). This
+   // dispatcher is only ever reached from a USER action (click, key, gesture
+   // end), never from the tick or a drag loop, so the paint is forced here.
+   //
+   // P-PERF-40: the frame this dispatcher owes is NOT drained here — the event
+   // entry points (OnChartEvent in both .mq4 files) pump right after they clear
+   // `g_inChartEvent`, so ONE owner covers every event path, including ones added
+   // later. Same reasoning as P-PERF-34's flag itself. See the P-PERF-40 note
+   // there for the measured `waited=46..266ms` this removes.
+   RepaintForDiscreteAction();
 }
 
 //--- alias used by the panels' internal calls
@@ -160,6 +223,31 @@ void RefreshDisplay(const int flags)
 {
    ApplyRefreshFlags(flags);
 }
+
+//--- budget gesture boundaries (below the dispatcher: End() settles through it)
+// Gesture armed (slider knob/track, palette mixer, native knob drag). The next
+// refresh still passes straight through, so the FIRST touch feels instant.
+void UIDragBudgetBegin()
+{
+   if(s_UIDragLive) return;                  // nested claims: one budget
+   s_UIDragLive  = true;
+   s_UIDragPend  = REFRESH_NONE;
+   s_UIDragHeavy = 0;
+}
+
+// Gesture over (release / Esc / Done / lost button-up) → settle the tail ONCE.
+// Idempotent: every release path may call it.
+void UIDragBudgetEnd()
+{
+   if(!s_UIDragLive) return;
+   s_UIDragLive  = false;
+   s_UIDragHeavy = 0;
+   int owed = s_UIDragPend;
+   s_UIDragPend = REFRESH_NONE;
+   if(owed != REFRESH_NONE) ApplyRefreshFlags(owed);   // the final value lands
+}
+
+bool UIDragBudgetLive() { return s_UIDragLive; }
 
 //==============================================================================
 // INIT / SAVE / PER-TICK
@@ -198,6 +286,9 @@ void SaveUISupport()
 // each bitmap, so it must only run when a feature actually flipped.
 void RefreshUIPerTick()
 {
+   // P-PERF-03: drain one ATR-warmup timeframe per pass (attach / TF-switch
+   // used to compute all eight inside OnInit and stall the terminal).
+   WarmupATRStep();
    UpdateHTFFormingCandle();
    HTFEnsureDrawn();   // self-healing full HTF draw after TF switch / missing data (O(1) steady state)
    CircTipTick();   // armed hover tooltip (dwell-gated, ungated cheap checks)

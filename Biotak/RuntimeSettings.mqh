@@ -602,108 +602,270 @@ int ClampSettingInt(const int v, const int lo, const int hi)
    return v;
 }
 
+//==============================================================================
+// P-PERF-27 — PERSISTED-OVERRIDE WRITE SHADOW
+//
+// RuntimeSettingsSaveOverrides() writes all of the override keys and then calls
+// GlobalVariablesFlush(), which per docs.mql4.com/globals/globalvariablesflush
+// "forcibly saves contents of all global variables to a disk" — the terminal's
+// ENTIRE global-variable table, not just ours. It is reached from
+// SaveUISupport() during OnDeinit, so every timeframe switch and every chart
+// close paid ~100 terminal writes plus a full disk flush even when the session
+// had edited nothing. The live log measured exactly that:
+//   [W][PERF] OnDeinit breakdown: pnl=15 menu=0 htf=0 save=78 cleanup=63 ...
+// i.e. 141 ms of a 172 ms teardown, on a chart that had not been edited.
+//
+// Fix: a positional write shadow. The write order in the save pass is fixed, so
+// a running slot index is a stable key — no second key list that can drift out
+// of sync with the writer. A value equal to the one this instance last wrote
+// costs ZERO terminal calls, and the disk flush is skipped entirely unless at
+// least one key really changed. Primed from the load pass (see
+// RuntimeSettingsPrimeOverrideShadow), so an untouched session saves nothing.
+//==============================================================================
+#define RS_SAVE_SLOTS 160
+static int    s_rsSlot = 0;                 // next shadow slot; reset per pass
+static bool   s_rsDirty = false;            // did this pass write anything?
+static bool   s_rsDryRun = false;           // record the shadow, touch nothing
+static double s_rsShadow[RS_SAVE_SLOTS];
+static bool   s_rsShadowKnown[RS_SAVE_SLOTS];
+
+//==============================================================================
+// P-PERF-37 - THE SAVE PASS MUST BE ABLE TO SAY WHAT IT ACTUALLY WROTE
+//
+// The teardown ledger reports save=78ms on an ordinary timeframe switch, and a
+// number without a cause is exactly what this project refuses to act on. The
+// whole point of the P-PERF-27 write shadow is that an untouched session costs
+// ZERO terminal calls and NO disk flush - so either the shadow is being defeated
+// by a handful of volatile keys (which then drag a terminal-wide
+// GlobalVariablesFlush along with them), or the pass is not what it claims.
+//
+// These counters answer it from the log instead of from an argument, and the
+// first few NAMES are kept so the culprit is named, not merely counted.
+//==============================================================================
+static int    s_rsWrites  = 0;   // keys that really reached the terminal
+static int    s_rsSkipped = 0;   // keys the shadow proved already on disk
+static bool   s_rsFlushed = false;
+static int    s_rsNamedCount = 0;
+static string s_rsNamed[4];      // the first few writers of this pass
+#define RS_NAMED_MAX 4
+
+void RSShadowReset()
+{
+   s_rsSlot = 0;
+   s_rsDirty = false;
+   s_rsWrites = 0;
+   s_rsSkipped = 0;
+   s_rsFlushed = false;
+   s_rsNamedCount = 0;
+}
+
+int  RSSaveWrites()  { return s_rsWrites; }
+int  RSSaveSkipped() { return s_rsSkipped; }
+bool RSSaveFlushed() { return s_rsFlushed; }
+string RSSaveNamed(const int i)
+{
+   if(i < 0 || i >= s_rsNamedCount) return "";
+   return s_rsNamed[i];
+}
+int RSSaveNamedCount() { return s_rsNamedCount; }
+
+// P-PERF-37: remember the first few keys that really wrote, so the teardown line
+// can NAME what defeated the shadow instead of only reporting how long it took.
+void RSNameWriter(const string name)
+{
+   if(s_rsNamedCount >= RS_NAMED_MAX) return;
+   s_rsNamed[s_rsNamedCount++] = name;
+}
+
+// The single sink for every persisted override. Call order defines the slot.
+void RSSetNext(const string name, const double value)
+{
+   if(s_rsSlot >= RS_SAVE_SLOTS)   // never silently drop a key
+   {
+      if(!s_rsDryRun)
+      {
+         GlobalVariableSet(name, value);
+         s_rsDirty = true;
+         s_rsWrites++;
+         RSNameWriter(name);
+      }
+      return;
+   }
+   int i = s_rsSlot++;
+   if(s_rsShadowKnown[i] && s_rsShadow[i] == value)   // already on disk
+   {
+      if(!s_rsDryRun) s_rsSkipped++;
+      return;
+   }
+   s_rsShadow[i] = value;
+   s_rsShadowKnown[i] = true;
+   if(!s_rsDryRun)
+   {
+      GlobalVariableSet(name, value);
+      s_rsDirty = true;
+      s_rsWrites++;
+      RSNameWriter(name);
+   }
+}
+
+// Only a pass that really wrote something pays the terminal-wide disk flush.
+void RSShadowCommit()
+{
+   s_rsFlushed = s_rsDirty;   // P-PERF-37: report the flush that actually ran
+   if(!s_rsDirty) return;
+   GlobalVariablesFlush();
+   s_rsDirty = false;
+}
+
+// A shadow is only valid while the terminal still holds the values it recorded.
+// Anything that DELETES those keys (ClearAllGVs on a UI-version reset or a
+// REASON_REMOVE teardown) must invalidate every block's shadow, otherwise the
+// guard would compare against values that no longer exist and skip the write
+// that puts them back. One shared epoch keeps that correct across files without
+// a forward declaration (MQL4 has no clean one, and this source must stay at
+// zero warnings).
+static int g_gvShadowEpoch = 0;
+
+void GVShadowsInvalidate()
+{
+   g_gvShadowEpoch++;
+   for(int i = 0; i < RS_SAVE_SLOTS; i++) s_rsShadowKnown[i] = false;
+}
+
+// P-PERF-27c: shared change-guard for the OTHER two blocks that persisted their
+// state during the same teardown (SaveUIStates, SavePalRecent). Each keeps its
+// own shadow array and passes an index; returns true only when the value really
+// differs, so the caller can skip BOTH the writes and the disk flush. Three
+// flushes used to run back to back on every timeframe switch (one per block) -
+// GlobalVariablesFlush serialises the whole terminal table each time.
+bool GVSlotChanged(int &blockEpoch, bool &known[], double &shadow[], const int slot, const double value)
+{
+   if(blockEpoch != g_gvShadowEpoch)   // shadows were invalidated - re-learn
+   {
+      blockEpoch = g_gvShadowEpoch;
+      for(int i = 0; i < ArraySize(known); i++) known[i] = false;
+   }
+   if(slot < 0 || slot >= ArraySize(shadow)) return true;   // never drop a key
+   if(known[slot] && shadow[slot] == value) return false;
+   shadow[slot] = value;
+   known[slot] = true;
+   return true;
+}
+
 void RuntimeSettingsSaveOverrides()
 {
    if(StringLen(g_settingsGVPrefix) == 0) return;
+   RSShadowReset();
    string p = g_settingsGVPrefix + "OV_";
-   GlobalVariableSet(p + "ML",  g_maxLevels);
-   GlobalVariableSet(p + "TW",  g_triggerWidth);
-   GlobalVariableSet(p + "TS",  g_triggerStyle);
-   GlobalVariableSet(p + "TC",  g_triggerColor);
-   GlobalVariableSet(p + "TL",  g_triggerLabelColor);
-   GlobalVariableSet(p + "TT",  g_triggerTransparency);
-   GlobalVariableSet(p + "LNW", g_lineWidth);
-   GlobalVariableSet(p + "LNS", g_lineStyle);
-   GlobalVariableSet(p + "LNC", g_lineColor);
-   GlobalVariableSet(p + "LNT", g_lineTransparency);
-   GlobalVariableSet(p + "BXW", g_boxBorderWidth);
-   GlobalVariableSet(p + "BXS", g_boxBorderStyle);
-   GlobalVariableSet(p + "BXC", g_boxBorderColor);
-   GlobalVariableSet(p + "BXT", g_boxBorderTransparency);
-   GlobalVariableSet(p + "BXR", g_bkTargetR);
-   GlobalVariableSet(p + "BXE", g_bkEntryColor);
-   GlobalVariableSet(p + "BXL", g_bkStopColor);
-   GlobalVariableSet(p + "BXG", g_bkTargetColor);
-   GlobalVariableSet(p + "BXI", g_bkShowInfo);
-   GlobalVariableSet(p + "BXF", g_boxFillColor);
-   GlobalVariableSet(p + "BXFT", g_boxFillTransparency);
-   GlobalVariableSet(p + "BXTX", g_bkTextColor);
-   GlobalVariableSet(p + "BXTS", g_bkTextSize);
-   GlobalVariableSet(p + "BXBO", g_bkBold ? 1 : 0);
-   GlobalVariableSet(p + "BXIT", g_bkItalic ? 1 : 0);
-   GlobalVariableSet(p + "BXAL", g_bkAlign);
-   GlobalVariableSet(p + "BXVA", g_bkVAlign);
-   GlobalVariableSet(p + "SW",  g_ssLevelWidth);
-   GlobalVariableSet(p + "SS",  g_ssLevelStyle);
-   GlobalVariableSet(p + "SC",  g_ssLevelColor);
-   GlobalVariableSet(p + "SST", g_ssTransparency);
-   GlobalVariableSet(p + "LW",  g_lsLevelWidth);
-   GlobalVariableSet(p + "LS",  g_lsLevelStyle);
-   GlobalVariableSet(p + "LC",  g_lsLevelColor);
-   GlobalVariableSet(p + "LST", g_lsTransparency);
-   GlobalVariableSet(p + "LF",  g_lsFirst ? 1 : 0);
-   GlobalVariableSet(p + "SM",  g_stepCalculationMode);
-   GlobalVariableSet(p + "SL",  g_showLines ? 1 : 0);
-   GlobalVariableSet(p + "ST",  g_showTHLevels ? 1 : 0);
-   GlobalVariableSet(p + "SR",  g_showStructure ? 1 : 0);
-   GlobalVariableSet(p + "S1",  g_showStructureL1 ? 1 : 0);
-   GlobalVariableSet(p + "S2",  g_showStructureL2 ? 1 : 0);
-   GlobalVariableSet(p + "S3",  g_showStructureL3 ? 1 : 0);
-   GlobalVariableSet(p + "S4",  g_showStructureL4 ? 1 : 0);
-   GlobalVariableSet(p + "S5",  g_showStructureL5 ? 1 : 0);
-   GlobalVariableSet(p + "MP",  g_showMidpointLine ? 1 : 0);
-   GlobalVariableSet(p + "ZO",  g_showMidZones ? 1 : 0);
-   GlobalVariableSet(p + "MZ",  g_midZoneStyle);
-   GlobalVariableSet(p + "ZT",  g_midZoneTransparency);
-   GlobalVariableSet(p + "ZH",  g_midZoneHeightPercent);
-   GlobalVariableSet(p + "ZB",  g_midZoneBorderStyle);
-   GlobalVariableSet(p + "ZW",  g_midZoneBorderWidth);
-   GlobalVariableSet(p + "PD",  g_showPipDistanceLabels ? 1 : 0);
-   GlobalVariableSet(p + "AL",  g_showATRLabels ? 1 : 0);
-   GlobalVariableSet(p + "A1",  g_showATRTargets ? 1 : 0);
-   GlobalVariableSet(p + "A2",  g_showATRTradeLabels ? 1 : 0);
-   GlobalVariableSet(p + "A3",  g_showATRTradeSLLabels ? 1 : 0);
-   GlobalVariableSet(p + "A4",  g_showATRTradeTPLabels ? 1 : 0);
-   GlobalVariableSet(p + "AG",  g_atrLabelRowGap);
-   GlobalVariableSet(p + "CD",  g_showLiveCountdown ? 1 : 0);
-   GlobalVariableSet(p + "CDC", g_countdownColor);
-   GlobalVariableSet(p + "CDS", g_countdownFontSize);
-   GlobalVariableSet(p + "CDG", g_countdownGapPx);
-   GlobalVariableSet(p + "TH",  g_showTHLabels ? 1 : 0);
-   GlobalVariableSet(p + "TF",  g_showFractalTHs ? 1 : 0);
-   GlobalVariableSet(p + "TS2", g_showStandardTHs ? 1 : 0);
-   GlobalVariableSet(p + "TG",  g_showTHTargets ? 1 : 0);
-   GlobalVariableSet(p + "TB",  g_thLabelsMarginBottom);
-   GlobalVariableSet(p + "E3",  g_enableTH3Tool ? 1 : 0);
-   GlobalVariableSet(p + "D3",  g_th3DrawingMode);
-   GlobalVariableSet(p + "B3",  g_th3BaseStepPercent);
-   GlobalVariableSet(p + "W3",  g_th3Width);
-   GlobalVariableSet(p + "Y3",  g_th3Style);
-   GlobalVariableSet(p + "C3",  g_th3Color);
-   GlobalVariableSet(p + "P3",  g_th3PipTextColor);
-   GlobalVariableSet(p + "L3",  g_showTH3Labels ? 1 : 0);
-   GlobalVariableSet(p + "CW",  g_customPriceLevelWidth);
-   GlobalVariableSet(p + "CC",  g_customPriceLevelColor);
-   GlobalVariableSet(p + "CPT", g_customPriceTransparency);
-   GlobalVariableSet(p + "MG",  g_enableMagnet ? 1 : 0);
-   GlobalVariableSet(p + "MP2", g_magnetSensitivityPips);
-   GlobalVariableSet(p + "FM",  g_factorMode);
-   GlobalVariableSet(p + "FD",  g_factorDisplayMode);
-   GlobalVariableSet(p + "FB",  g_factorAutoBasis);
-   GlobalVariableSet(p + "FV",  g_factorValue);
-   GlobalVariableSet(p + "FC",  g_factorLevelColor);
-   GlobalVariableSet(p + "FCT", g_factorTransparency);
-   GlobalVariableSet(p + "FY",  g_factorLevelStyle);
-   GlobalVariableSet(p + "FW",  g_factorLevelWidth);
-   GlobalVariableSet(p + "CM",  g_comboMode);
-   GlobalVariableSet(p + "CP",  g_comboPreset);
-   GlobalVariableSet(p + "C1T", g_comboComp1TF);
-   GlobalVariableSet(p + "C1S", g_comboComp1Step);
-   GlobalVariableSet(p + "CO1", g_comboOp1);
-   GlobalVariableSet(p + "C2E", g_comboComp2Enabled ? 1 : 0);
-   GlobalVariableSet(p + "C2T", g_comboComp2TF);
-   GlobalVariableSet(p + "C2S", g_comboComp2Step);
-   GlobalVariablesFlush();
+   RSSetNext(p + "ML",  g_maxLevels);
+   RSSetNext(p + "TW",  g_triggerWidth);
+   RSSetNext(p + "TS",  g_triggerStyle);
+   RSSetNext(p + "TC",  g_triggerColor);
+   RSSetNext(p + "TL",  g_triggerLabelColor);
+   RSSetNext(p + "TT",  g_triggerTransparency);
+   RSSetNext(p + "LNW", g_lineWidth);
+   RSSetNext(p + "LNS", g_lineStyle);
+   RSSetNext(p + "LNC", g_lineColor);
+   RSSetNext(p + "LNT", g_lineTransparency);
+   RSSetNext(p + "BXW", g_boxBorderWidth);
+   RSSetNext(p + "BXS", g_boxBorderStyle);
+   RSSetNext(p + "BXC", g_boxBorderColor);
+   RSSetNext(p + "BXT", g_boxBorderTransparency);
+   RSSetNext(p + "BXR", g_bkTargetR);
+   RSSetNext(p + "BXE", g_bkEntryColor);
+   RSSetNext(p + "BXL", g_bkStopColor);
+   RSSetNext(p + "BXG", g_bkTargetColor);
+   RSSetNext(p + "BXI", g_bkShowInfo);
+   RSSetNext(p + "BXF", g_boxFillColor);
+   RSSetNext(p + "BXFT", g_boxFillTransparency);
+   RSSetNext(p + "BXTX", g_bkTextColor);
+   RSSetNext(p + "BXTS", g_bkTextSize);
+   RSSetNext(p + "BXBO", g_bkBold ? 1 : 0);
+   RSSetNext(p + "BXIT", g_bkItalic ? 1 : 0);
+   RSSetNext(p + "BXAL", g_bkAlign);
+   RSSetNext(p + "BXVA", g_bkVAlign);
+   RSSetNext(p + "SW",  g_ssLevelWidth);
+   RSSetNext(p + "SS",  g_ssLevelStyle);
+   RSSetNext(p + "SC",  g_ssLevelColor);
+   RSSetNext(p + "SST", g_ssTransparency);
+   RSSetNext(p + "LW",  g_lsLevelWidth);
+   RSSetNext(p + "LS",  g_lsLevelStyle);
+   RSSetNext(p + "LC",  g_lsLevelColor);
+   RSSetNext(p + "LST", g_lsTransparency);
+   RSSetNext(p + "LF",  g_lsFirst ? 1 : 0);
+   RSSetNext(p + "SM",  g_stepCalculationMode);
+   RSSetNext(p + "SL",  g_showLines ? 1 : 0);
+   RSSetNext(p + "ST",  g_showTHLevels ? 1 : 0);
+   RSSetNext(p + "SR",  g_showStructure ? 1 : 0);
+   RSSetNext(p + "S1",  g_showStructureL1 ? 1 : 0);
+   RSSetNext(p + "S2",  g_showStructureL2 ? 1 : 0);
+   RSSetNext(p + "S3",  g_showStructureL3 ? 1 : 0);
+   RSSetNext(p + "S4",  g_showStructureL4 ? 1 : 0);
+   RSSetNext(p + "S5",  g_showStructureL5 ? 1 : 0);
+   RSSetNext(p + "MP",  g_showMidpointLine ? 1 : 0);
+   RSSetNext(p + "ZO",  g_showMidZones ? 1 : 0);
+   RSSetNext(p + "MZ",  g_midZoneStyle);
+   RSSetNext(p + "ZT",  g_midZoneTransparency);
+   RSSetNext(p + "ZH",  g_midZoneHeightPercent);
+   RSSetNext(p + "ZB",  g_midZoneBorderStyle);
+   RSSetNext(p + "ZW",  g_midZoneBorderWidth);
+   RSSetNext(p + "PD",  g_showPipDistanceLabels ? 1 : 0);
+   RSSetNext(p + "AL",  g_showATRLabels ? 1 : 0);
+   RSSetNext(p + "A1",  g_showATRTargets ? 1 : 0);
+   RSSetNext(p + "A2",  g_showATRTradeLabels ? 1 : 0);
+   RSSetNext(p + "A3",  g_showATRTradeSLLabels ? 1 : 0);
+   RSSetNext(p + "A4",  g_showATRTradeTPLabels ? 1 : 0);
+   RSSetNext(p + "AG",  g_atrLabelRowGap);
+   RSSetNext(p + "CD",  g_showLiveCountdown ? 1 : 0);
+   RSSetNext(p + "CDC", g_countdownColor);
+   RSSetNext(p + "CDS", g_countdownFontSize);
+   RSSetNext(p + "CDG", g_countdownGapPx);
+   RSSetNext(p + "TH",  g_showTHLabels ? 1 : 0);
+   RSSetNext(p + "TF",  g_showFractalTHs ? 1 : 0);
+   RSSetNext(p + "TS2", g_showStandardTHs ? 1 : 0);
+   RSSetNext(p + "TG",  g_showTHTargets ? 1 : 0);
+   RSSetNext(p + "TB",  g_thLabelsMarginBottom);
+   RSSetNext(p + "E3",  g_enableTH3Tool ? 1 : 0);
+   RSSetNext(p + "D3",  g_th3DrawingMode);
+   RSSetNext(p + "B3",  g_th3BaseStepPercent);
+   RSSetNext(p + "W3",  g_th3Width);
+   RSSetNext(p + "Y3",  g_th3Style);
+   RSSetNext(p + "C3",  g_th3Color);
+   RSSetNext(p + "P3",  g_th3PipTextColor);
+   RSSetNext(p + "L3",  g_showTH3Labels ? 1 : 0);
+   RSSetNext(p + "CW",  g_customPriceLevelWidth);
+   RSSetNext(p + "CC",  g_customPriceLevelColor);
+   RSSetNext(p + "CPT", g_customPriceTransparency);
+   RSSetNext(p + "MG",  g_enableMagnet ? 1 : 0);
+   RSSetNext(p + "MP2", g_magnetSensitivityPips);
+   RSSetNext(p + "FM",  g_factorMode);
+   RSSetNext(p + "FD",  g_factorDisplayMode);
+   RSSetNext(p + "FB",  g_factorAutoBasis);
+   RSSetNext(p + "FV",  g_factorValue);
+   RSSetNext(p + "FC",  g_factorLevelColor);
+   RSSetNext(p + "FCT", g_factorTransparency);
+   RSSetNext(p + "FY",  g_factorLevelStyle);
+   RSSetNext(p + "FW",  g_factorLevelWidth);
+   RSSetNext(p + "CM",  g_comboMode);
+   RSSetNext(p + "CP",  g_comboPreset);
+   RSSetNext(p + "C1T", g_comboComp1TF);
+   RSSetNext(p + "C1S", g_comboComp1Step);
+   RSSetNext(p + "CO1", g_comboOp1);
+   RSSetNext(p + "C2E", g_comboComp2Enabled ? 1 : 0);
+   RSSetNext(p + "C2T", g_comboComp2TF);
+   RSSetNext(p + "C2S", g_comboComp2Step);
+   RSShadowCommit();
+}
+
+// P-PERF-27b: prime the shadow with what the load pass just read, so the
+// teardown save of an unedited session is a no-op instead of ~100 writes and a
+// disk flush. Recorded in dry-run: same sink, same order, no terminal calls.
+void RuntimeSettingsPrimeOverrideShadow()
+{
+   if(StringLen(g_settingsGVPrefix) == 0) return;
+   s_rsDryRun = true;
+   RuntimeSettingsSaveOverrides();
+   s_rsDryRun = false;
 }
 
 void RuntimeSettingsLoadOverrides()
@@ -817,6 +979,9 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "C2E")) g_comboComp2Enabled = (GlobalVariableGet(p + "C2E") > 0.5);
    if(GlobalVariableCheck(p + "C2T")) g_comboComp2TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2T"), 0, 3);
    if(GlobalVariableCheck(p + "C2S")) g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2S"), 0, 3);
+   // P-PERF-27b: what was just read is what we would write back, so record it as
+   // "already on disk" and stop the teardown from re-writing it.
+   RuntimeSettingsPrimeOverrideShadow();
 }
 
 //--- throttled saver (panel/palette drags fire per mouse-move)

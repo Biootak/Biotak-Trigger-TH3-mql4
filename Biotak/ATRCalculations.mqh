@@ -917,6 +917,28 @@ void CalculateATRBatchWilders(double &results[], const ENUM_TIMEFRAMES tf) {
 //+------------------------------------------------------------------+
 #define TREX_W1_PERIOD 55
 #define TREX_MN_PERIOD 30
+// P-PERF-05 (2026-09-12): THE COMPOSITE NO LONGER READS THE SERIES BAR BY BAR.
+//
+// The live MT4 log names this path twice: every `[W][PERF] chart event id=9`
+// right after an attach / timeframe switch (3.7-4.1 s) and the ONE frame that
+// carried the per-frame phase ledger (`[E][GEN] [CRIT] CRITICAL CPU: OnCalculate
+// took 2296ms! [base=2281 hist=0 levels=0 labels=0 overlay=0]`). Both point at
+// the `base` slot, and inside it the only work that scales with the series is
+// this batch: the original leg did `iHigh` + `iLow` + 1-2 `iClose` PER BAR, so a
+// current-TF composite (5+10+21+66+132+264 = 498 bars) cost ~2000 individual
+// series round-trips inside a single frame. On the terminal these are not free
+// array reads - each one re-validates/synchronises the requested series - which
+// is where the 2.3 s went, and why every timeframe switch started with an empty
+// ATR cache and a frozen chart (the warmup queue then repeated it per TF).
+//
+// The arithmetic below is the ORIGINAL scalar body with arrays swapped in, and
+// `TrexSMALeg` keeps that body verbatim as the parity FALLBACK for a window the
+// bulk copy cannot serve yet (cold chart / unsynchronised TF), so a copy
+// failure can change the COST of a leg but never its value. Trex leg parity is
+// locked by P-ATR-02 - never "simplify" the window or the quirk (bar 0 of a leg
+// still uses its own close as the previous close). The scalar leg stays public
+// because the [ATRLEGS] diagnostic (LabelFunctions) dumps both families and
+// must keep reading the very same definition.
 double TrexSMALeg(const ENUM_TIMEFRAMES tf, const int period, const int shift)
 {
     double trSum = 0.0;
@@ -931,6 +953,122 @@ double TrexSMALeg(const ENUM_TIMEFRAMES tf, const int period, const int shift)
         trSum += tr;
     }
     return NormalizeDouble(trSum / (double)period, Digits);
+}
+
+// The same leg, read from the arrays of ONE bulk copy. `highArr[shift + i]` is
+// `iHigh(tf, shift + i)` only because the caller PROVED the array's orientation
+// (see TrexBatchOrient) before any leg touched it.
+double TrexLegFromBatch(const double &highArr[], const double &lowArr[],
+                        const double &closeArr[], const int period, const int shift)
+{
+    double trSum = 0.0;
+    for(int i = 0; i < period; i++)
+    {
+        double high = highArr[shift + i];
+        double low = lowArr[shift + i];
+        double closePrev = (i == 0) ? closeArr[shift + i]
+                                    : closeArr[shift + i + 1];
+        double tr = MathMax(high - low,
+                     MathMax(MathAbs(high - closePrev), MathAbs(low - closePrev)));
+        trSum += tr;
+    }
+    return NormalizeDouble(trSum / (double)period, Digits);
+}
+
+// Orientation guard. A bulk copy is only trusted once its endpoints are proven
+// to belong to the CURRENT bar of the requested series, so the fast path can
+// never read the window backwards on a terminal whose copy convention differs.
+// PRECONDITION (the caller's job): every array was pushed back to "not as
+// series" after the copy, so index 0 is the PHYSICAL first element and the
+// timestamp test below is exact instead of a guess about Copy* semantics.
+// Timestamps are compared as integers (exact - no epsilon on a price), and a
+// window the series cannot serve (a bar still missing, high < low) is refused
+// too, so the caller falls back to the scalar reference leg instead of
+// averaging a hole.
+bool TrexBatchOrient(double &highArr[], double &lowArr[], double &closeArr[],
+                     const datetime &timeArr[], const int need, const datetime newest)
+{
+    if(need <= 0 || newest <= 0) return false;
+    bool newestLast = (timeArr[need - 1] == newest);
+    bool newestFirst = (timeArr[0] == newest);
+    if(!newestLast && !newestFirst) return false;
+    if(newestLast)
+    {
+        // The copy wrote oldest first: flip every series into as-series
+        // indexing, which makes index 0 the current bar (physical last).
+        ArraySetAsSeries(highArr, true);
+        ArraySetAsSeries(lowArr, true);
+        ArraySetAsSeries(closeArr, true);
+    }
+    // ArraySetAsSeries only changes the indexing direction, never the data, so
+    // index 0 is the newest bar in both branches. Verify the window is whole.
+    for(int i = 1; i < need; i++)
+    {
+        if(highArr[i] <= 0.0 || lowArr[i] <= 0.0 || closeArr[i] <= 0.0) return false;
+        if(highArr[i] < lowArr[i]) return false;
+    }
+    return true;
+}
+
+// ONE bulk-copy engine for the professor's SMA family. Computes
+// `out[i] = TrexSMALeg(tf, periods[i], 1)` for every requested period with
+// three copy calls per series instead of ~4 series calls per bar. Callers: the
+// composite below (the six composite periods) and the [ATRLEGS] diagnostic's
+// s-legs (ten neighbour periods x nine timeframes, which is the single biggest
+// series-read consumer in the program).
+void TrexSMALegsBatch(const ENUM_TIMEFRAMES tf, const int &periods[], double &out[])
+{
+    int n = ArraySize(periods);
+    ArrayResize(out, n);
+    ArrayInitialize(out, 0.0);
+    if(n <= 0) return;
+
+    int nb = iBars(Symbol(), tf);
+    if(nb <= 10) return;
+
+    // Window the legs actually need: the oldest leg reads shift `period` plus its
+    // own previous close at `period + 1`, so period + 2 bars cover every leg.
+    int maxPeriodNeeded = 0;
+    for(int i = 0; i < n; i++)
+    {
+        if(nb > periods[i] + 1 && periods[i] > maxPeriodNeeded) maxPeriodNeeded = periods[i];
+    }
+    if(maxPeriodNeeded == 0) return;
+    int need = maxPeriodNeeded + 2;
+
+    // ONE bulk copy per series (was ~4 scalar calls per bar). CopyTime needs a
+    // datetime[] (MQL4 does not convert array types), the prices need double[].
+    double highArr[], lowArr[], closeArr[];
+    datetime timeArr[];
+    bool batchOk = false;
+    if(ArrayResize(highArr, need) == need && ArrayResize(lowArr, need) == need &&
+       ArrayResize(closeArr, need) == need && ArrayResize(timeArr, need) == need)
+    {
+        int gotH = CopyHigh(Symbol(), tf, 0, need, highArr);
+        int gotL = CopyLow(Symbol(), tf, 0, need, lowArr);
+        int gotC = CopyClose(Symbol(), tf, 0, need, closeArr);
+        int gotT = CopyTime(Symbol(), tf, 0, need, timeArr);
+        if(gotH >= need && gotL >= need && gotC >= need && gotT >= need)
+        {
+            // Proven-or-fallback orientation: normalise the indexing flag to
+            // "not as series" so index 0 is the physical first element, then let
+            // the timestamps say which end of the copy is the current bar.
+            ArraySetAsSeries(highArr, false);
+            ArraySetAsSeries(lowArr, false);
+            ArraySetAsSeries(closeArr, false);
+            ArraySetAsSeries(timeArr, false);
+            batchOk = TrexBatchOrient(highArr, lowArr, closeArr, timeArr, need,
+                                      iTime(Symbol(), tf, 0));
+        }
+    }
+
+    for(int i = 0; i < n; i++)
+    {
+        if(nb <= periods[i] + 1) continue;   // history gate, as before
+        double val = batchOk ? TrexLegFromBatch(highArr, lowArr, closeArr, periods[i], 1)
+                             : TrexSMALeg(tf, periods[i], 1);
+        out[i] = (val > 0.0) ? val : 0.0;
+    }
 }
 
 void CalculateATRBatchTrex(double &results[], const ENUM_TIMEFRAMES tf) {
@@ -957,11 +1095,7 @@ void CalculateATRBatchTrex(double &results[], const ENUM_TIMEFRAMES tf) {
 
     int periods[] = {ATR_PERIOD_1, ATR_PERIOD_2, ATR_PERIOD_3,
                      ATR_PERIOD_4, ATR_PERIOD_5, ATR_PERIOD_6};
-    for(int i = 0; i < 6; i++) {
-        if(nb <= periods[i] + 1) continue;
-        double val = TrexSMALeg(tf, periods[i], 1);
-        results[i] = (val > 0.0) ? val : 0.0;
-    }
+    TrexSMALegsBatch(tf, periods, results);
 }
 
 //+------------------------------------------------------------------+
@@ -1064,12 +1198,28 @@ double CalculateWeightedATRForTimeframe(const ENUM_TIMEFRAMES targetTF) {
 //+------------------------------------------------------------------+
 //| Warmup ATR cache for common label timeframes                     |
 //+------------------------------------------------------------------+
+// P-PERF-03: the warmup used to compute EIGHT timeframes back to back inside
+// OnInit — 8 x 6 Wilder legs over ~500 bars each, i.e. thousands of series
+// accesses before the chart could breathe. That is paid on every attach and on
+// every timeframe switch. It is now a QUEUE: the first timeframe (the one the
+// labels on screen need) is computed immediately, the remaining seven are
+// drained one per tick/timer pass, so the terminal never stalls for the group.
+static int g_atrWarmupQueue[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
+static int g_atrWarmupIdx = -1;   // -1 = nothing queued
+
+void WarmupATRStep() {
+    if(g_atrWarmupIdx < 0) return;
+    int total = ArraySize(g_atrWarmupQueue);
+    if(g_atrWarmupIdx >= total) { g_atrWarmupIdx = -1; return; }
+    GetATRForTimeframe(g_atrWarmupQueue[g_atrWarmupIdx]);
+    g_atrWarmupIdx++;
+    if(g_atrWarmupIdx >= total) g_atrWarmupIdx = -1;
+}
+
 void WarmupATRMultiTFCache() {
     if(!inpShowATRLabels) return;
-    int tfMinutes[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
-    for(int i = 0; i < ArraySize(tfMinutes); i++) {
-        double atrWarmup = GetATRForTimeframe(tfMinutes[i]);
-    }
+    g_atrWarmupIdx = 0;
+    WarmupATRStep();   // first one now — the visible labels must not wait
 }
 
 

@@ -17,6 +17,14 @@ struct SObjectCacheEntry {
     bool lastFilled;       // Last known fill state (for zones)
     bool exists;           // True if object exists on chart
     datetime lastUpdate;   // Last update timestamp
+    // P-PERF-02 visibility/write guards (see VisibilityManager.mqh):
+    // lastTfMask = the OBJPROP_TIMEFRAMES mask we were the last to WRITE,
+    // tfEpoch    = the visibility epoch it was written under (0 = never).
+    // Together they make "re-assert this object's mask" free when nothing
+    // changed — the single biggest syscall source in the level pipeline.
+    long lastTfMask;
+    int  tfEpoch;
+    string lastTooltip;    // Last known tooltip (string writes are the next most frequent)
 };
 
 // Hash-based cache configuration
@@ -164,7 +172,10 @@ void CacheAddObject(const string name, const double price,
     }
     
     int slot = HashObjectName(name);
-    for(int probe = 0; probe < CACHE_HASH_BUCKETS; probe++) {
+    // P-PERF-02: bound the insert probe exactly like the lookup does. A
+    // full-table scan (32768 iterations) never finds a slot the lookup could
+    // not reach anyway; on a saturated table we evict once and retry below.
+    for(int probe = 0; probe < CACHE_MAX_PROBE; probe++) {
         int insertIdx = (slot + probe) % CACHE_HASH_BUCKETS;
         if(!g_objectCacheHash[insertIdx].occupied || g_objectCacheHash[insertIdx].deleted) {
             g_objectCacheHash[insertIdx].name = name;
@@ -175,6 +186,11 @@ void CacheAddObject(const string name, const double price,
             g_objectCacheHash[insertIdx].entry.lastWidth = width;
             g_objectCacheHash[insertIdx].entry.exists = true;
             g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
+            // P-PERF-02: a recycled slot must not inherit the previous tenant's
+            // visibility/tooltip guards — a fresh name always re-asserts once.
+            g_objectCacheHash[insertIdx].entry.lastTfMask = 0;
+            g_objectCacheHash[insertIdx].entry.tfEpoch = 0;
+            g_objectCacheHash[insertIdx].entry.lastTooltip = "";
             g_objectCacheHash[insertIdx].occupied = true;
             g_objectCacheHash[insertIdx].deleted = false;
             g_objectCacheHash[insertIdx].lastAccess = CacheGetFrameTime();
@@ -211,12 +227,28 @@ bool DeleteIndicatorObjectManaged(const string name, const bool verifyChartObjec
 {
     if(StringLen(name) == 0) return false;
 
+    // P-PERF-13: a name PROVEN absent on this chart for the current generation
+    // cannot need deleting, so the terminal is not asked. The delete paths are
+    // the heaviest callers of this probe: CleanupSurplusObjects() walks SEVEN
+    // name families on every full frame (two zone families, the center family,
+    // two line families, two label families) and each walk keeps going for
+    // maxConsecutiveMiss (6) misses, and a zone family asks about 7 names per
+    // index (base/_Top/_Bottom/_B_*). Same invariant as P-PERF-07: the mark is
+    // only believed inside the generation that proved it, and a name that gets
+    // created later enters the MAIN cache, which is consulted first - so a mark
+    // is shadowed automatically and never needs an explicit invalidation.
+    if(CacheIsAbsentKnown(name)) return false;
+
     int cacheIdx = CacheFindIndex(name);
     bool inCache = (cacheIdx >= 0 && g_objectCacheHash[cacheIdx].entry.exists);
     bool existsOnChart = false;
 
     if(inCache || verifyChartObject) {
         existsOnChart = (ObjectFind(0, name) >= 0);
+        // The probe just PROVED the name is not on the chart: record it, so the
+        // identical miss on the next frame costs one hash lookup instead of a
+        // terminal call. This is what turns the surplus walk into O(1).
+        if(!existsOnChart) CacheMarkAbsent(name);
     }
 
     if(inCache || existsOnChart) {
@@ -262,19 +294,28 @@ void CacheClear() {
     // single forward scan and reset them, then reset counters.  This avoids
     // touching all 32768 buckets when only a small number are in use.
     int cleared = 0;
-    for(int i = 0; i < CACHE_HASH_BUCKETS && cleared < g_objectCacheSize; i++) {
-        if(g_objectCacheHash[i].occupied || g_objectCacheHash[i].deleted) {
+    int target = g_objectCacheSize;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && cleared < target; i++)
+    {
+        if(g_objectCacheHash[i].occupied || g_objectCacheHash[i].deleted)
+        {
+            // P-PERF-02: count BEFORE clearing (the old order tested the flag
+            // after setting it false, so the early-exit never fired and every
+            // CacheClear walked all 32768 buckets).
+            if(g_objectCacheHash[i].occupied) cleared++;
             g_objectCacheHash[i].name = "";
             g_objectCacheHash[i].occupied = false;
             g_objectCacheHash[i].deleted = false;
             g_objectCacheHash[i].lastAccess = 0;
-            if(g_objectCacheHash[i].occupied) cleared++;
         }
     }
     g_objectCacheSize = 0;
     g_lruMinIdx = -1;
     g_lruMinTime = 0;
     _LOG_GATE_I Print("[I][SYNC] Object cache cleared");
+    // P-PERF-02: the cache is what the draw guards compare against — whoever
+    // wiped it must also invalidate the level render's geometry signature.
+    MarkDrawGeneration();
 }
 
 bool CacheObjectExists(const string name) {
@@ -283,6 +324,109 @@ bool CacheObjectExists(const string name) {
         return false;
     }
     return g_objectCacheHash[idx].entry.exists;
+}
+
+//+------------------------------------------------------------------+
+//| P-PERF-07: NEGATIVE EXISTENCE CACHE                              |
+//|                                                                  |
+//| WHY THIS EXISTS (measured, not guessed):                         |
+//| SetPipelineObjectTimeframesIfExists() guards a mask WRITE, but     |
+//| its fallback for a name the main cache does not know is a bare     |
+//| ObjectFind(). Every CULLED level pays that probe on EVERY heavy    |
+//| frame — 1 for its line, 1 for its pip label, and 7 for its zone    |
+//| (SetPipelineZoneVisibility probes base/_Top/_Bottom/_B_Top/        |
+//| _B_Bottom/_B_Left/_B_Right). A culled level was never created, so   |
+//| it can never enter the main cache, so the probe can never be        |
+//| skipped: with inpMaxLevels=144 (288 levels) the render issued up to  |
+//| ~2,600 terminal object probes per frame, every frame, forever —      |
+//| and each probe scans a chart that carries thousands of objects, so   |
+//| the cost grew as O(culled levels x chart objects). That quadratic    |
+//| term is what the live log shows as 1797/1921/3438/4250 ms frames.    |
+//|                                                                  |
+//| The table holds names PROVEN absent on this chart for the current    |
+//| build generation. A name that later gets created is registered in    |
+//| the MAIN cache, which is consulted FIRST, so an absent mark is       |
+//| shadowed automatically and never needs an explicit invalidation.      |
+//| SCOPING IS THE DRAW GENERATION ITSELF — and that is the whole invalidation |
+//| story, with no reset call and no sweep to get wrong. Every mark records the |
+//| `g_drawGeneration` it was proved under (the project's ONE generation owner  |
+//| in GlobalVariables.mqh, which every wipe already bumps via                 |
+//| MarkDrawGeneration), and a slot whose stamp is not the CURRENT generation is |
+//| read as free. So a mark can only be believed inside the very render that     |
+//| proved it:                                                    |
+//|   - a wipe / TF switch / topology toggle bumps the generation  → all marks   |
+//|     are stale at once (O(1), no table walk),                                |
+//|   - a fresh instance starts with zeroed statics                               |
+//|     → an attach can never inherit the previous instance's facts,             |
+//|   - a name that gets created enters the MAIN cache, which is consulted FIRST  |
+//|     → its own real entry shadows any mark.                                   |
+//| The residual case the table cannot see is a template loaded mid-session that  |
+//| carries objects with our exact names: bounded to CULLED names (outside the    |
+//| viewport + cull margin, i.e. off-screen) and self-healing, because reaching  |
+//| one with the viewport puts the level back on the normal render path - and a   |
+//| generation bump on any of our deletes drops the whole table anyway.           |
+//+------------------------------------------------------------------+
+#define CACHE_ABSENT_BUCKETS 8192   // the live name population is ~2-4k (7 zone
+                                    // sub-names x ~289 zones + the culled level set),
+                                    // so a smaller table ran near a 100% load factor
+                                    // and the 8-probe window started missing - and a
+                                    // missed mark silently falls back to the old
+                                    // per-frame probe.
+#define CACHE_ABSENT_PROBE   8
+static string g_absentName[CACHE_ABSENT_BUCKETS];
+static int    g_absentStamp[CACHE_ABSENT_BUCKETS];   // g_drawGeneration the mark was proved under
+
+int CacheAbsentBucket(const string name) {
+    uint hash = 5381;
+    int len = StringLen(name);
+    for(int i = 0; i < len; i++)
+        hash = ((hash << 5) + hash) + (uint)StringGetCharacter(name, i);
+    return (int)(hash % (uint)CACHE_ABSENT_BUCKETS);
+}
+
+bool CacheIsAbsentKnown(const string name) {
+    int slot = CacheAbsentBucket(name);
+    for(int probe = 0; probe < CACHE_ABSENT_PROBE; probe++) {
+        int idx = (slot + probe) % CACHE_ABSENT_BUCKETS;
+        if(g_absentStamp[idx] != g_drawGeneration) return false;  // stale/empty slot ends the chain
+        if(g_absentName[idx] == name) return true;
+    }
+    return false;
+}
+
+void CacheMarkAbsent(const string name) {
+    int slot = CacheAbsentBucket(name);
+    int free = -1;
+    for(int probe = 0; probe < CACHE_ABSENT_PROBE; probe++) {
+        int idx = (slot + probe) % CACHE_ABSENT_BUCKETS;
+        if(g_absentStamp[idx] != g_drawGeneration) { free = idx; break; }
+        if(g_absentName[idx] == name) return;   // already marked
+    }
+    // No free slot in the probe window: reuse the window's first slot. A dropped
+    // mark can only cost one extra probe later, never a wrong answer.
+    if(free < 0) free = slot;
+    g_absentName[free] = name;
+    g_absentStamp[free] = g_drawGeneration;
+}
+
+void CacheForgetAbsent(const string name) {
+    int slot = CacheAbsentBucket(name);
+    for(int probe = 0; probe < CACHE_ABSENT_PROBE; probe++) {
+        int idx = (slot + probe) % CACHE_ABSENT_BUCKETS;
+        if(g_absentStamp[idx] != g_drawGeneration) return;
+        if(g_absentName[idx] == name) { g_absentStamp[idx] = 0; return; }
+    }
+}
+
+// P-PERF-07: called once per OnInit, because a re-attach / TF switch reuses the
+// chart the previous instance drew on. The table is already generation-scoped,
+// so no stale mark can be believed even without this - the reset exists so the
+// claim does not depend on the two statics (g_absentStamp and g_drawGeneration)
+// staying in step, and it costs one 8 kB int wipe on an init-only path.
+// 0 is never a live generation (g_drawGeneration starts at 1), so a zeroed
+// stamp reads as a free slot - no name strings have to be touched.
+void CacheAbsentResetAll() {
+    for(int i = 0; i < CACHE_ABSENT_BUCKETS; i++) g_absentStamp[i] = 0;
 }
 
 bool CacheGetObject(const string name, SObjectCacheEntry &entry) {
@@ -348,6 +492,10 @@ void CacheUpdateZone(const string name, const double price1, const double price2
                 g_objectCacheHash[insertIdx].entry.lastWidth = width;
                 g_objectCacheHash[insertIdx].entry.exists = true;
                 g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
+                // P-PERF-02: fresh tenant → no inherited visibility guard.
+                g_objectCacheHash[insertIdx].entry.lastTfMask = 0;
+                g_objectCacheHash[insertIdx].entry.tfEpoch = 0;
+                g_objectCacheHash[insertIdx].entry.lastTooltip = "";
                 g_objectCacheHash[insertIdx].occupied = true;
                 g_objectCacheHash[insertIdx].deleted = false;
                 g_objectCacheHash[insertIdx].lastAccess = CacheGetFrameTime();
@@ -378,7 +526,8 @@ void CacheUpdateLabel(const string name, const string text, const color clr) {
         if(g_objectCacheSize >= MAX_CACHE_SIZE) EvictLRUEntry();
         
         int slot = HashObjectName(name);
-        for(int probe = 0; probe < CACHE_HASH_BUCKETS; probe++) {
+        // P-PERF-02: bounded probe (see CacheAddObject).
+        for(int probe = 0; probe < CACHE_MAX_PROBE; probe++) {
             int insertIdx = (slot + probe) % CACHE_HASH_BUCKETS;
             if(!g_objectCacheHash[insertIdx].occupied || g_objectCacheHash[insertIdx].deleted) {
                 g_objectCacheHash[insertIdx].name = name;
@@ -387,6 +536,10 @@ void CacheUpdateLabel(const string name, const string text, const color clr) {
                 g_objectCacheHash[insertIdx].entry.lastColor = clr;
                 g_objectCacheHash[insertIdx].entry.exists = true;
                 g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
+                // P-PERF-02: fresh tenant → no inherited visibility guard.
+                g_objectCacheHash[insertIdx].entry.lastTfMask = 0;
+                g_objectCacheHash[insertIdx].entry.tfEpoch = 0;
+                g_objectCacheHash[insertIdx].entry.lastTooltip = "";
                 g_objectCacheHash[insertIdx].occupied = true;
                 g_objectCacheHash[insertIdx].deleted = false;
                 g_objectCacheHash[insertIdx].lastAccess = CacheGetFrameTime();
@@ -402,9 +555,114 @@ void CacheUpdateLabel(const string name, const string text, const color clr) {
     g_objectCacheHash[idx].entry.exists = true;
     g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();
+}//+------------------------------------------------------------------+
+//| NARROW ACCESSORS (P-PERF-02)                                     |
+//| The guarded hot paths need exactly ONE field, but copying a        |
+//| SObjectCacheEntry drags three strings through memory on every call.|
+//| These read/write the slot in place — no struct copy, one hash probe.|
+//+------------------------------------------------------------------+
+bool CacheGetTfMask(const string name, long &mask, int &epoch)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return false;
+    mask  = g_objectCacheHash[idx].entry.lastTfMask;
+    epoch = g_objectCacheHash[idx].entry.tfEpoch;
+    return true;
 }
 
-int CacheGetSize() {
+void CacheSetTfMask(const string name, const long mask, const int epoch)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0)
+    {
+        // Unknown object: remember it cheaply so the NEXT frame is guarded.
+        CacheAddObject(name, 0.0, clrNONE, 0, 0);
+        idx = CacheFindIndex(name);
+        if(idx < 0) return;
+    }
+    g_objectCacheHash[idx].entry.lastTfMask = mask;
+    g_objectCacheHash[idx].entry.tfEpoch = epoch;
+}
+
+// P-PERF-32: narrow colour accessors for the structure recolour walk
+// (LevelPipeline). The walk compares the live structure colour against the
+// blended colour the render stored, per object, with zero terminal calls —
+// a struct copy per object would drag three strings through memory for a
+// pure colour compare.
+bool CacheGetColor(const string name, color &clr)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return false;
+    clr = g_objectCacheHash[idx].entry.lastColor;
+    return true;
+}
+
+void CacheSetColor(const string name, const color clr)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return;   // the walk never creates entries, it only repaints
+    g_objectCacheHash[idx].entry.lastColor = clr;
+}
+
+bool CacheGetTooltip(const string name, string &tip)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return false;
+    tip = g_objectCacheHash[idx].entry.lastTooltip;
+    return true;
+}
+
+void CacheSetTooltip(const string name, const string tip)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return;
+    g_objectCacheHash[idx].entry.lastTooltip = tip;
+}
+
+// P-PERF-02: drop the stored visibility masks of a whole name family. Used by
+// the BULK visibility owners (ATR/TH label families, the F/L key passes) which
+// write masks straight to the chart: without this the guard could believe a
+// mask it wrote earlier is still on the chart and skip a needed write.
+void CacheForgetTfMasks(const string prefix)
+{
+    if(StringLen(prefix) == 0 || g_objectCacheSize == 0) return;
+    int prefixLen = StringLen(prefix);
+    ushort firstChar = StringGetCharacter(prefix, 0);
+    int visited = 0;
+    int snapshot = g_objectCacheSize;   // stable snapshot: we do not add/remove here
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < snapshot; i++)
+    {
+        if(!g_objectCacheHash[i].occupied) continue;
+        visited++;
+        if(StringGetCharacter(g_objectCacheHash[i].name, 0) != firstChar) continue;
+        if(StringLen(g_objectCacheHash[i].name) < prefixLen) continue;
+        if(StringSubstr(g_objectCacheHash[i].name, 0, prefixLen) != prefix) continue;
+        g_objectCacheHash[i].entry.tfEpoch = 0;   // "never written" → next write lands
+    }
+}
+
+bool CacheGetPrice(const string name, double &price)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0) return false;
+    price = g_objectCacheHash[idx].entry.lastPrice;
+    return true;
+}
+
+void CacheSetPrice(const string name, const double price)
+{
+    int idx = CacheFindIndex(name);
+    if(idx < 0)
+    {
+        CacheAddObject(name, price, clrNONE, 0, 0);
+        return;
+    }
+    g_objectCacheHash[idx].entry.lastPrice = price;
+    g_objectCacheHash[idx].entry.exists = true;
+}
+
+int CacheGetSize()
+{
     return g_objectCacheSize;
 }
 

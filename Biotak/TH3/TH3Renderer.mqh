@@ -160,7 +160,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             ObjectSetInteger(0, pointName, OBJPROP_SELECTABLE, true);
             ObjectSetInteger(0, pointName, OBJPROP_SELECTED, false);
             ObjectSetInteger(0, pointName, OBJPROP_BACK, false); // Draw on top
-            ObjectSetInteger(0, pointName, OBJPROP_ZORDER, 10); // High priority
+            ObjectSetInteger(0, pointName, OBJPROP_ZORDER, Z_CHART_TOOL); // P-UI-31: over the level lines, under every label
             ObjectSetString(0, pointName, OBJPROP_TOOLTIP, "==================== Point " + pointNames[i] + " | Drag to adjust");
         } else {
             // Update existing point position

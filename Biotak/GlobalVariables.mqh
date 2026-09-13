@@ -31,6 +31,12 @@ static double g_customTHStartPrice = 0.0;
 static ENUM_TH_START_POINT_TYPE g_thStartPointType = TH_START_POINT_PREVIOUS_CLOSE;
 static uint g_lastClickTickCount = 0;
 static bool g_customPriceLineDragging = false;
+// P-UI-45: "this gesture touched the custom price line" (a native drag, or a plain
+// click that MT4 answered by SELECTING it). MT4 keeps the object SELECTED after
+// such a gesture and then moves it on EVERY later drag anywhere on the chart, so
+// the clear is deferred to the first button-up mouse move - writing it while the
+// drag is live would drop the line out of the user's hand.
+static bool g_customPriceNativeDrag = false;
 static double g_lastCustomPriceLinePos = 0.0;
 static bool g_customPriceKeyboardOverride = false;
 // TV-parity 2026-09-07: the Base Box TEXT edit field (card 12, OBJ_EDIT) owns
@@ -137,6 +143,113 @@ static uint g_resetCommentCreateTime = 0;  // For "[ RESET ]" comment auto-clear
 // ChartRedraw Throttling
 static uint g_lastChartRedrawTime = 0;
 #define CHART_REDRAW_THROTTLE_MS 100
+// P-PERF-02 DRAW GENERATION: bumped by every path that WIPES our chart objects
+// (bulk clears, emergency cleanup, cache reset, an external object delete). The
+// level render is skipped when its geometry signature is unchanged — which is
+// only sound while the objects that signature produced are still on the chart,
+// so the generation is part of the signature.
+static int g_drawGeneration = 1;
+void MarkDrawGeneration()
+{
+    g_drawGeneration++;
+    if(g_drawGeneration <= 0) g_drawGeneration = 1;   // overflow guard
+}
+
+// P-PERF-06 STAGED REBUILD: a post-wipe level build materialises ~900 chart
+// objects (289 zones + 288 lines + 288 pip labels at inpMaxLevels=144). Doing
+// it in ONE frame freezes a weak PC for seconds on every attach, TF switch
+// and topology toggle. While g_buildStage != 0 the wipe is rebuilt one family
+// per frame (1=lines, 2=zones, 3=pip labels, 4=labels block): every gate
+// treats a staging frame as pending work, the geometry signature is stored
+// only when the last stage lands, and heavy neighbours (HTF history bulk)
+// wait for stage 0. The 250 ms timer pumps RedrawAllObjects while staging so
+// a tick-less chart still settles in ~1 s. State lives HERE (not in
+// EventHandlers statics) so HTFCandles — included LATER — can see it
+// (P-ARCH-02: an earlier-included module can never see a later one).
+#define BUILD_STAGE_LINES  1
+#define BUILD_STAGE_ZONES  2
+#define BUILD_STAGE_LABELS 3
+#define BUILD_STAGE_BLOCK  4
+static int g_buildStage = 0;
+// Viewport snapshot taken on the stage-1 frame: stages 2-4 cull against the
+// SAME window so a pan mid-staging cannot split families across viewports.
+// Stale at most ~1 s by construction; the next viewport-driven render heals it.
+static double g_stageVpTop = 0.0;
+static double g_stageVpBottom = 0.0;
+
+// P-PERF-03 ALERT LEVEL CACHE: the level prices the render just put on the
+// chart, recorded ONCE while the pipeline is already iterating them.
+//
+// WHY: CheckAlerts() walked the chart with a ~288-iteration
+// StringFormat + ObjectFind + ObjectGetDouble loop on EVERY heavy frame, and
+// the redraw that drew those levels had already had every price in hand. The
+// check is now a plain scan of this array: zero kernel calls, and it can only
+// fire for levels the chart is actually showing.
+#define ALERT_LEVEL_CACHE_MAX 768
+struct SAlertLevel {
+    string name;    // object name == anti-spam key
+    double price;
+    int    step;    // logicalStep (alert text)
+    bool   above;   // true = a level above the midpoint
+};
+SAlertLevel g_alertLevels[ALERT_LEVEL_CACHE_MAX];
+int g_alertLevelCount = 0;
+int g_alertLevelGen = -1;   // g_drawGeneration this cache describes
+
+void AlertCacheReset(const int gen)
+{
+    g_alertLevelCount = 0;
+    g_alertLevelGen = gen;
+}
+
+void AlertCacheAdd(const string name, const double price, const int step, const bool above)
+{
+    if(g_alertLevelCount >= ALERT_LEVEL_CACHE_MAX) return;
+    g_alertLevels[g_alertLevelCount].name  = name;
+    g_alertLevels[g_alertLevelCount].price = price;
+    g_alertLevels[g_alertLevelCount].step  = step;
+    g_alertLevels[g_alertLevelCount].above = above;
+    g_alertLevelCount++;
+}
+
+// P-PERF-02: did the last RedrawAllObjects frame actually paint something?
+// The tick path used to issue ThrottledChartRedraw() unconditionally after
+// every non-throttled tick — up to 10 full chart repaints per second on a
+// chart carrying a thousand objects, for a frame that had drawn nothing.
+static bool g_lastRedrawDidWork = false;
+
+// P-PERF-03 PHASE LEDGER: milliseconds the last redraw frame spent in each of
+// its phases. Printed ONLY when the frame overruns CPU_WARNING_MS, so the next
+// freeze reports which phase ate the time instead of being re-investigated
+// from zero. Plain integer adds — no syscalls, no effect on the fast path.
+static uint g_p3MsBase = 0;      // UpdateBasePrice / base-price gate
+static uint g_p3MsAtr = 0;       // P-PERF-05: ATR composite + adaptive scaling
+static uint g_p3MsHistory = 0;   // UpdateHistoricalValues
+static uint g_p3MsLevels = 0;    // level pipeline block
+static uint g_p3MsLabels = 0;    // ATR/TH label block
+static uint g_p3MsOverlay = 0;   // DrawMainLevels + overlay reposition
+static uint g_p3MsLastTick = 0;  // frame-local scratch
+
+// P-PERF-10: the same treatment for the INIT path. The live log shows OnInit at
+// 3.2-4.1 s on EVERY attach and timeframe switch and a first CHART_CHANGE frame
+// at 3.2-4.25 s, while the tick ledger reports all phases at zero — i.e. the
+// seconds are spent in code no ledger brackets. These are the boundaries of
+// that path, so the next log names the phase instead of the next session
+// guessing at it (the P-PERF-05 lesson). Written by OnInitHandler and the
+// entry's OnInit wrapper; read only when the budget was blown.
+static uint g_pInitMsSettings = 0;   // seeding, state restores, input validation
+static uint g_pInitMsHistory  = 0;   // historical high/low + previous-day price
+static uint g_pInitMsBase     = 0;   // base-price subsystem (history FILE load)
+static uint g_pInitMsAtr      = 0;   // ATR cache init + warmup step
+static uint g_pInitMsInd      = 0;   // whole OnInitHandler half
+static uint g_pInitMsUI       = 0;   // UI kit / menu / HTF half
+// P-PERF-11b: the base-price phase is the one that owns seconds, so it is
+// split four ways and reported only when it overruns. "rebuild" must stay 0
+// on a stamped history file - that is the proof the per-init rebuild is gone.
+static uint g_pInitBaseFileMs    = 0;   // version check + integrity + file read
+static uint g_pInitBaseMigrateMs = 0;   // legacy check + dedup + save
+static uint g_pInitBaseRebuildMs = 0;   // M30/M1 rebuild from start of day
+static uint g_pInitBaseCleanupMs = 0;   // history-directory cleanup
 static uint g_lastDragRedrawTime = 0;
 #define DRAG_REDRAW_THROTTLE_MS 50
 
@@ -326,7 +439,7 @@ void ViewAnchorLineEnsure()
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_WIDTH, 1);
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_SELECTABLE, true);
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_SELECTED, false);
-    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_ZORDER, 100);
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_BACK, false);
     ObjectSetString(0, g_viewAnchorLineName, OBJPROP_TOOLTIP,
                     "View anchor — drag to move the locked view · Del turns View Lock off");
@@ -338,6 +451,44 @@ void ViewAnchorLineDelete()
 }
 
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-PERF-38c/38f: THE ONE-TIME LEGACY-NAMING MIGRATION STAMP        |
+//|                                                                  |
+//| Two places care whether this chart still carries objects named by  |
+//| the OLD timeframe-in-the-name scheme: the migration that removes  |
+//| them (EventHandlers.OnInit) and the label sweep that used to      |
+//| remove the label half of them on EVERY timeframe switch          |
+//| (LabelFunctions.ClearAllLabels). They must not each own a copy of  |
+//| the stamp name, and LabelFunctions is included BEFORE            |
+//| EventHandlers, so the owner lives here with the rest of the state. |
+//+------------------------------------------------------------------+
+string NameSchemeStampName() { return "Biotak_NameScheme_" + GetCachedChartIdStr(); }
+bool LegacyNameSchemeMigrated() { return GlobalVariableCheck(NameSchemeStampName()); }
+
+//+------------------------------------------------------------------+
+//| P-UI-40 - A STATE CHANGE FROM A PATH THAT CANNOT REPAINT MUST ASK  |
+//|                                                                  |
+//| The panel's rows read LIVE globals (PnlCurrentSet), so the VALUE    |
+//| can never disagree between the keyboard and the panel. The IMAGE    |
+//| can: a switch is an OBJ_BITMAP_LABEL whose bitmap is only replaced  |
+//| by a paint pass. Every writer INSIDE the panel file repaints its    |
+//| own row after a press, and the panel file is included AFTER         |
+//| EventHandlers — where every HOTKEY lives. So a hotkey changed the    |
+//| state, the chart obeyed, and an open card kept showing the previous  |
+//| switch position until it was reopened. That asymmetry IS the         |
+//| "keyboard and panel are out of sync" report.                        |
+//|                                                                  |
+//| The hotkeys cannot call the panel (include order, and Lite has no     |
+//| panel at all), so they raise a request here and the UI layer drains  |
+//| it. That is the same owe/drain pair the coop pump uses: one owner,   |
+//| one flag, and a no-op in steady state — even a hotkey whose row is   |
+//| not on screen costs one boolean.                                    |
+//+------------------------------------------------------------------+
+static bool g_uiSyncRequested = false;
+void RequestUISync() { g_uiSyncRequested = true; }
+bool UISyncRequested() { return g_uiSyncRequested; }
+void UISyncConsume() { g_uiSyncRequested = false; }
+
 void CleanupAllGlobalVariables() {
     string chartIdStr = GetCachedChartIdStr();
     string rawSymbolName = GetCachedSymbol();

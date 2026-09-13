@@ -105,7 +105,16 @@
 //+------------------------------------------------------------------+
 int OnInit()
 {
-    return OnInitHandler();
+    // P-PERF-04: attach / timeframe-switch budget (silent unless it overruns).
+    // P-PERF-10: Lite has no UI half, but it carries the same domain phases
+    // (settings / history / base-price file load / ATR) in the report.
+    uint p4i = GetTickCount();
+    int result = OnInitHandler();
+    uint p4ind = GetTickCount() - p4i;
+    P4ReportSlow("OnInit (" + (result == INIT_SUCCEEDED ? "ok" : "fail") + ")" +
+                 P4InitLedgerTag(p4ind, 0),
+                 p4ind, P_P4_INIT_WARN_MS);
+    return result;
 }
 
 //+------------------------------------------------------------------+
@@ -113,7 +122,10 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+    uint p4d = GetTickCount();
     OnDeinitHandler(reason);
+    P4ReportSlow("OnDeinit reason=" + IntegerToString(reason),
+                 GetTickCount() - p4d, P_P4_INIT_WARN_MS);
 }
 
 //+------------------------------------------------------------------+
@@ -141,7 +153,27 @@ void OnChartEvent(const int id,
                   const double &dparam,
                   const string &sparam)
 {
+  // P-PERF-34: scope the frame deferral to this window (see EventHandlers).
+  g_inChartEvent = true;
+  // P-PERF-04: interaction budget (Lite has no menu/panel half to time).
+  uint p4t = GetTickCount();
+  uint p4a = GetTickCount() - p4t;
   OnChartEventHandler(id,lparam,dparam,sparam);
+  g_inChartEvent = false;
+  // P-PERF-40: a user action settles the frame it owes, in the SAME event — see
+  // the full note in "Biotak Trigger TH3.mq4". An event that only SCHEDULED its
+  // frame was answered up to a timer cadence later (measured `waited=46..266ms`)
+  // by a repaint of the OLD picture (`body=0ms`), which is the lag the user
+  // reports. The pump owns owed work and is budget-bounded, so this cannot become
+  // an unbounded in-event stall.
+  p4t = GetTickCount();
+  CoopPump();
+  uint p4c = GetTickCount() - p4t;
+  // P-PERF-26: name + id (see EventHandlers: id=1 is OBJECT_CLICK, not the cursor).
+  // `settle=` is in the budget check on purpose — a drain must not hide its cost.
+  P4ReportSlow("chart event " + P4EventName(id) + "(id=" + IntegerToString(id) + ")" +
+               " [settle=" + P4MsTag(p4c) + "]",
+               p4a + p4c, P_P4_EVENT_WARN_MS);
 }
 
 //+------------------------------------------------------------------+
@@ -149,17 +181,15 @@ void OnChartEvent(const int id,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
-    // FIX: If indicator is not yet fully initialized (e.g. waiting for history), 
+    // FIX: If indicator is not yet fully initialized (e.g. waiting for history),
     // retry drawing periodically even without new ticks.
-    if(!g_initialized) {
-        RedrawAllObjects(false);
-    }
-
-    // Periodic housekeeping runs here (kept lightweight by internal throttles)
-    RunIncrementalObjectCleanup();
-    // Keep label expiry logic; no timer kill because cleanup also depends on timer cadence
-    CheckAndClearExpiredLabels();
-    // Real-time refresh of visible info labels (text updated in place only when changed)
-    RefreshComboLabelExtraInfo();
-    RefreshVisibleStatusLabels();
+    // P-PERF-06: a staged post-wipe rebuild (attach / TF switch / topology
+    // toggle) also advances here, so a tick-less chart still settles in ~1 s.
+    // P-PERF-35: the coop pump owns the timer's heavy work (see EventHandlers):
+    // the sweep jobs are owed once per timer - the cadence they had - and the
+    // owed frame is drained last under one millisecond slice.
+    CoopOwe(COOP_JOB_OBJ_CLEANUP);
+    CoopOwe(COOP_JOB_LABEL_EXPIRY);
+    CoopOwe(COOP_JOB_STATUS_TEXT);
+    CoopPump();
 }

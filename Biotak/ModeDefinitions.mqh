@@ -53,7 +53,7 @@ SModeConfig BuildFactorConfig(const string objectPrefix)
 {
     SModeConfig cfg = BuildModeConfig(objectPrefix, "Factor");
     cfg.useObjPropBack = true;
-    cfg.zOrder = 1;
+    cfg.zOrder = Z_CHART_LINE;   // P-UI-31: Factor lines draw above their zone
     cfg.hideLineWhenTriggerOnly = false;
     cfg.fallbackColor = GetFactorRenderColor();
     cfg.fallbackStyle = inpFactorLevelStyle;

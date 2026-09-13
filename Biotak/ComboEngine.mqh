@@ -422,17 +422,73 @@ string BuildComboCalcSummaryText()
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-09: change guard for the combo summary rebuild.           |
+//|                                                                  |
+//| WHY: this string is a chain of component-step computations plus    |
+//| one DoubleToString per component and a handful of concatenations,  |
+//| and NOTHING about it is time-dependent — its only inputs are the   |
+//| step mode, the active combo spec and the base price. It was        |
+//| rebuilt unconditionally from OnTimer (4x/s) AND from               |
+//| RefreshUIPerTick (tick rate, i.e. up to ~20x/s more), so a chart    |
+//| in COMBO mode rebuilt an identical string ~100x/s for a label      |
+//| whose text is only written when it really changed. The guard costs  |
+//| one struct build + one int hash and drops the rebuild to "when an   |
+//| input moved" (in practice twice per 30-minute base-price block).    |
+//+------------------------------------------------------------------+
+int ComboSpecSignature(const SComboSpec &spec)
+{
+    int sig = (int)spec.operation * 1000003 + spec.compCount * 7919;
+    for(int i = 0; i < spec.compCount && i < MAX_COMBO_COMPONENTS; i++)
+    {
+        sig = sig * 31 + (int)spec.comps[i].tf;
+        sig = sig * 31 + (int)spec.comps[i].step;
+        sig = sig * 31 + (int)MathRound(spec.comps[i].weight * 1000.0);
+    }
+    return sig;
+}
+
+//+------------------------------------------------------------------+
 //| Refresh the combo breakdown global consumed by the step-mode     |
 //| label builder (UtilityFunctions.mqh, included earlier).          |
 //| Call this whenever the step mode / combo inputs may have changed |
 //| and before the label is (re)built.                               |
+//| P-PERF-09: rebuilt only when one of its inputs actually moved.   |
 //+------------------------------------------------------------------+
 void RefreshComboLabelExtraInfo()
 {
-    if(GetCurrentStepMode() == COMBO_STEP)
-        g_comboLabelExtraInfo = BuildComboCalcSummaryText();
-    else
+    static int    s_lastMode = -1;
+    static double s_lastBase = -1.0;
+    static int    s_lastSig  = 0;
+
+    int mode = (int)GetCurrentStepMode();
+    if(mode != (int)COMBO_STEP)
+    {
+        // Leaving COMBO clears the breakdown once — the label builder reads
+        // "" as "no breakdown", so a stale string would be the only bug here.
+        if(g_comboLabelExtraInfo != "")
+        {
+            g_comboLabelExtraInfo = "";
+            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = 0;
+        }
+        else if(s_lastMode != mode)
+        {
+            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = 0;
+        }
+        return;
+    }
+
+    double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
+    SComboSpec spec = GetActiveComboSpec();
+    int sig = ComboSpecSignature(spec);
+    if(mode == s_lastMode && basePrice == s_lastBase && sig == s_lastSig)
+        return;   // identical inputs -> identical string, nothing to rebuild
+
+    if(basePrice <= 0)
         g_comboLabelExtraInfo = "";
+    else
+        g_comboLabelExtraInfo = BuildComboCalcSummaryTextForSpec(spec, basePrice);
+
+    s_lastMode = mode; s_lastBase = basePrice; s_lastSig = sig;
 }
 
 //+------------------------------------------------------------------+

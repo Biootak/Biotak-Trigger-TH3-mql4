@@ -58,6 +58,12 @@
 #property strict
 
 //--- session states
+// P-UI-34: nominal (design) point sizes for this module's own chrome, routed through
+// PnlPt so a scaled display draws the design's px instead of +25% (the same exposure
+// P-UI-30 fixed inside the settings cards). g_bkTextSize stays a user setting.
+#define BK_PT_HINT   9    // the bottom-corner hint line
+#define BK_PT_INFO   8    // the box' [H Pips | R:R] readout
+#define BK_PT_BADGE  8    // the retired badge (one-line restorable)
 #define BK_IDLE    0
 #define BK_ARMED   1   // menu hidden, waiting for the first corner click
 #define BK_PREVIEW 2   // first corner set, rubber-band follows the cursor
@@ -217,7 +223,7 @@ void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
    ObjectSetInteger(0, tn, OBJPROP_BACK, false);
    ObjectSetInteger(0, tn, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, tn, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, tn, OBJPROP_ZORDER, 61);
+   ObjectSetInteger(0, tn, OBJPROP_ZORDER, Z_BOX_TEXT);
    ObjectSetInteger(0, tn, OBJPROP_TIMEFRAMES, tfMask);
 }
 // Short TF name for tooltips / visibility info ("M5 and lower").
@@ -301,7 +307,7 @@ void BaseKnotStyleBox(const string box)   // fill layer + drag handle
    ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
    ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
    ObjectSetInteger(0, box, OBJPROP_BACK, true);   // fill stays behind candles (zone-like); the 4 edges are the foreground border
-   ObjectSetInteger(0, box, OBJPROP_ZORDER, 55);   // single source — Commit no longer sets it separately
+   ObjectSetInteger(0, box, OBJPROP_ZORDER, Z_BOX_FILL);   // single source — Commit no longer sets it separately
 }
 // True when the BOX rect currently shows the live fill look (heal check).
 bool BaseKnotFillHealed(const string box)
@@ -627,13 +633,13 @@ void BaseKnotHintShow(const string text, const int ttlMs = 0)
    ObjectSetInteger(0, hn, OBJPROP_YDISTANCE, 44);
    ObjectSetString(0, hn, OBJPROP_TEXT, text);
    ObjectSetString(0, hn, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, hn, OBJPROP_FONTSIZE, 9);
+   ObjectSetInteger(0, hn, OBJPROP_FONTSIZE, PnlPt(BK_PT_HINT));
    ObjectSetInteger(0, hn, OBJPROP_COLOR, BaseKnotFgForBg());
    ObjectSetInteger(0, hn, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
    ObjectSetInteger(0, hn, OBJPROP_BACK, false);
    ObjectSetInteger(0, hn, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, hn, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, hn, OBJPROP_ZORDER, 1500);
+   ObjectSetInteger(0, hn, OBJPROP_ZORDER, Z_BOX_HINT);   // P-UI-31: under the settings card
    g_bkHintExpireMs = (ttlMs > 0 ? GetTickCount() + (uint)ttlMs : 0);
    ChartRedraw();
 }
@@ -789,7 +795,7 @@ void BaseKnotMakeEdge(const string name, const datetime t1, const double p1,
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);  // the BOX rect is the only handle
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);   // the visible border always reads (like TH lines + MT4 tools)
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 56);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_EDGE);
    ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
 }
 // Draw/refresh the 4 outline edges under one tag (committed pfx or preview
@@ -838,7 +844,7 @@ void BaseKnotMakeRay(const string name, const datetime tA, const datetime tB,
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);  // the BOX is the only handle
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_BACK, false);   // levels read over candles (like TH lines)
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 50);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_RAY);
    ObjectSetString(0, name, OBJPROP_TOOLTIP, tooltip);
 }
 // TP tick span — the target marker hugs the chart's RIGHT edge, next to the
@@ -903,14 +909,14 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
    ObjectSetInteger(0, name, OBJPROP_YSIZE, BK_BADGE_H);
    ObjectSetString(0, name, OBJPROP_TEXT, text);
    ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
-   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(BK_PT_BADGE));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
    ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, C'18,22,33');
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, name, OBJPROP_ZORDER, 1600);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_BADGE);  // P-UI-31: under the settings card
    ObjectSetInteger(0, name, OBJPROP_STATE, false);
 }
 // INFO visibility — Show mode pins the label on; Auto shows it live while
@@ -933,13 +939,13 @@ void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
    ObjectSetString(0, in, OBJPROP_TEXT,
                    "[" + side + " " + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + "]");
    ObjectSetString(0, in, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, 8);
+   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, PnlPt(BK_PT_INFO));
    ObjectSetInteger(0, in, OBJPROP_COLOR, BaseKnotFgForBg());
    ObjectSetInteger(0, in, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
    ObjectSetInteger(0, in, OBJPROP_BACK, false);
    ObjectSetInteger(0, in, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, in, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, in, OBJPROP_ZORDER, 60);
+   ObjectSetInteger(0, in, OBJPROP_ZORDER, Z_BOX_INFO);
    ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, tfMask);
    ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": risk " + DoubleToString(hPips, 1) +
                    " pips, target +" + DoubleToString(tpPips, 1) + " pips");

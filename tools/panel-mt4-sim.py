@@ -433,6 +433,79 @@ PT = {"title": 9, "sub": 6, "lbl": 9, "lblsm": 8, "sec": 7, "cap": 7,
       "val": 8, "ctl": 8, "nav": 8, "key": 6, "ver": 6, "cset": 5,
       "foot": 8, "pal": 8, "palsec": 7}
 
+# ── TEXT METRICS — the mirror of PnlDpi / PnlPt / PnlAdvUnits / PnlTextW / PnlFit
+# in Biotak/BiotakPanels.mqh (P-UI-30, 2026-09-12). MT4 sizes a label font at
+# the TERMINAL's DPI while these cards are designed in 96-DPI pixels, so the MQL
+# now (a) shrinks each point size by 96/dpi — MT4 then draws the DESIGN's px on
+# any display — and (b) reserves room with the real Arial Bold advance instead
+# of a `StringLen * 6` guess. Both halves must stay in step here or the proof
+# stops predicting the terminal. See `--dpi`.
+DPI = 96          # 120 = a Windows desktop at 125% scaling, 144 = 150%
+
+
+def dpi_pt(nominal):
+    """The point size the MQL passes to MT4 (PnlPt)."""
+    return max(4, int(round(nominal * 96.0 / DPI)))
+
+
+def font_px(nominal):
+    """px per em MT4 uses: the passed points at the display's DPI."""
+    return int(round(dpi_pt(nominal) * DPI / 72.0))
+
+
+_ADV_LO = [556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889,
+           611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500]
+_ADV_UP = [722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833,
+           722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 722, 611]
+_ADV = {32: 278, 46: 278, 44: 278, 58: 333, 59: 333, 45: 333, 47: 278, 37: 889,
+        183: 333, 38: 722, 40: 333, 41: 333, 43: 584, 61: 584, 60: 584, 62: 584,
+        33: 333, 63: 611, 95: 556, 35: 556, 42: 389, 64: 975}
+
+
+def adv(ch):
+    """Arial Bold advance, units per 1000 em."""
+    o = ord(ch)
+    if 48 <= o <= 57:
+        return 556
+    if 97 <= o <= 122:
+        return _ADV_LO[o - 97]
+    if 65 <= o <= 90:
+        return _ADV_UP[o - 65]
+    return _ADV.get(o, 611)
+
+
+def text_w(s, nominal):
+    """The px MT4 will draw `s` at, for a NOMINAL (design) point size."""
+    if not s:
+        return 0
+    return int(round(sum(adv(ch) for ch in s) * dpi_pt(nominal) * DPI / 72.0 / 1000.0))
+
+
+def fit(s, nominal, max_w):
+    """PnlFit: the longest prefix that fits, ".." when clipped."""
+    if max_w <= 0 or text_w(s, nominal) <= max_w:
+        return s
+    for k in range(len(s), 0, -1):
+        cut = s[:k].rstrip()
+        if text_w(cut + "..", nominal) <= max_w:
+            return cut + ".."
+    return ""
+
+
+# ── --audit: every caption that sits beside a control records its room, so a
+# row that has grown too tight is REPORTED instead of discovered on a chart.
+# The number that matters is slack = room - text_w(caption): negative means the
+# caption had to be clipped (".."). This is the P-UI-30 regression gate.
+AUDIT = []
+
+
+def audit(item, r, kind, lab, lx, room, nominal=None, mode="clip"):
+    """Record a caption's room. `mode` is what the MQL does when it runs out:
+    "clip" = PnlFit ellipsis, "drop" = the DUAL rule (the caption is dropped and
+    the band above keeps naming the group), "none" = no limit to apply."""
+    nominal = PT["lbl"] if nominal is None else nominal
+    AUDIT.append((item, r, kind, lab, lx, room, text_w(lab, nominal), nominal, mode))
+
 
 def rgb(t):
     return "rgb(%d,%d,%d)" % t
@@ -442,9 +515,10 @@ def rgba(t, a):
     return "rgba(%d,%d,%d,%.3f)" % (t[0], t[1], t[2], a)
 
 
-# MT4's OBJ_LABEL font is Arial/Arial Bold at a point size; 1pt = 4/3px at the
-# 96 DPI MT4 assumes. This is the closest the raster can get to the terminal's
-# own type — the HTML emitter leaves it to the browser instead.
+# MT4's OBJ_LABEL font is Arial/Arial Bold at a point size; the panels pass a
+# DPI-compensated size (PnlPt) so the em box lands on the DESIGN's px — see
+# font_px(). This is the closest the raster can get to the terminal's own type;
+# the HTML emitter leaves the glyph shapes to the browser instead.
 _FONTS = {}
 
 
@@ -550,6 +624,32 @@ def demo_value(item, r):
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# ── PAINT BANDS (P-UI-31) — the sim's local ranks and the LADDER rung each one
+# stands for. MT4 paints by OBJPROP_ZORDER (tie -> creation order); the real
+# rungs live in the Z ladder of `Biotak/ConstantsAndEnums.mqh`. The proof only
+# needs the ORDER, so it uses small integer ranks — but a rank that says nothing
+# is a rank that drifts, so every rank declares its rung here and
+# `tools/zorder-audit.py` proves the two agree:
+#   * the ranks must be monotone with their rungs (a band may not mix a low and
+#     a high rung with a band in between)
+#   * every rank used at a call site must appear here
+#   * no rung ABOVE Z_PANEL_TEXT may sit in a band ABOVE the type's band — the
+#     type paints LAST, which is the premise of the whole overlap gate
+# A band that legally mixes rungs (a chip body and the glyph ON it) is fine:
+# equal ranks tie, and the sim creates tied objects in the MQL's own order.
+BAND = {
+    0: ["Z_PANEL_CARD"],
+    1: ["Z_PANEL_TOPBAR", "Z_PANEL_ACT", "Z_PANEL_SEP"],
+    2: ["Z_PANEL_BAND", "Z_PANEL_HAIR", "Z_PANEL_SKIN", "Z_PANEL_CHIP"],
+    3: ["Z_PANEL_BASE", "Z_PANEL_SKIN", "Z_PANEL_CHIP", "Z_PANEL_INK"],
+    4: ["Z_PANEL_SKIN", "Z_PANEL_CHIP", "Z_PANEL_INK", "Z_PANEL_GLYPH",
+        "Z_PANEL_SW", "Z_PANEL_EDIT", "Z_PANEL_KNOB"],
+    5: ["Z_PANEL_TEXT"],          # the type paints LAST
+    6: ["Z_PANEL_MARK"],          # ...except the active tab underline, over it
+}
+TEXT_BAND = 5                     # Canvas.text's default rank
+
+
 class Canvas:
     """Records draw ops in MT4's own terms — an image blit, a filled rect or a
     text run, each at an absolute pixel rect. Two emitters consume the list:
@@ -579,7 +679,7 @@ class Canvas:
             return
         self.ops.append(("rect", col, x + self.dx, y + self.dy, w, h, radius, border, z))
 
-    def text(self, x, y, s, col, pt, bold=False, anchor="lu", z=5):
+    def text(self, x, y, s, col, pt, bold=False, anchor="lu", z=TEXT_BAND):
         if s == "":
             return
         self.ops.append(("text", s, x + self.dx, y + self.dy, col, pt, bold, anchor, z))
@@ -624,7 +724,7 @@ class Canvas:
                 parts.append('<span style="left:%dpx;top:%dpx;transform:%s;color:%s;'
                              'font-size:%dpx;font-weight:%s;line-height:1;white-space:nowrap;'
                              'z-index:%d">%s</span>'
-                             % (x, y, tf, col, round(pt * 4 / 3), "700" if bold else "400", z,
+                             % (x, y, tf, col, font_px(pt), "700" if bold else "400", z,
                                 s.replace("&", "&amp;").replace("<", "&lt;")))
         return "".join(parts)
 
@@ -659,7 +759,7 @@ class Canvas:
                     ImageDraw.Draw(img).rectangle([x, y, x + w - 1, y + h - 1], fill=fill)
             else:
                 _, s, x, y, col, pt, bold, anchor, _z = op
-                f = _font(round(pt * 4 / 3), bold)
+                f = _font(font_px(pt), bold)
                 if f is None:
                     continue
                 m = re.match(r"rgba?\((\d+),(\d+),(\d+)", col)
@@ -714,6 +814,18 @@ class Canvas:
         return self.to_html()
 
 
+def keycap_at(c, x, y, k, col, band):
+    """P-UI-32 — the mirror of PnlKeycapAt() in Biotak/BiotakPanels.mqh: the cap
+    bitmap plus its CENTRED letter. The preview's `.key` is `place-items:center`;
+    the port used to right-anchor the letter at the cap's right edge, which put
+    every hotkey ~6px right of centre. Both halves are measured (P-UI-30): the
+    advance via text_w, the em box via font_px."""
+    canvas = D["PNL_KEYCAP_CANVAS"]
+    c.img("pnl_keycap.bmp", x, y, canvas, canvas, band)
+    c.text(x + canvas // 2 + text_w(k, PT["key"]) // 2,
+           y + (canvas - font_px(PT["key"])) // 2, k, col, PT["key"], True, "ru")
+
+
 def render_card(item):
     rows = card_rows(item)
     n = len(rows)
@@ -725,8 +837,44 @@ def render_card(item):
     PAD = D["PNL_PAD_X"]
     WEL = D["PNL_WEL"]
     HH, RH, FH = D["PNL_HEAD_H"], D["PNL_ROW_H"], D["PNL_FOOT_H"]
-    ph = HH + n * RH + FH
-    skin_w = WEL + 2 * D["PNL_MARGIN"]
+    # WIDE mirror of PnlRowCol/PnlRowLine/PnlPairRows/PnlIsWide (P-UI-25):
+    # full rows (SEC bands, underline tabs) own their line; halves alternate.
+    wide = n > D["PNL_WIDE_MIN_ROWS"]
+    cardW = D["PNL_WIDE_WEL"] if wide else WEL
+    DX = D["PNL_COL_DX"]
+    def _full(j):
+        return wide and (rows[j]["kind"] == 7 or (item in (9, 12) and j == 0))
+    if not wide:
+        cols, lines = [0] * n, list(range(n))
+    else:
+        cols, lines = [], []
+        _cc = 0
+        for j in range(n):
+            if _full(j):
+                _cc = 0
+            cols.append(_cc)
+            if not _full(j):
+                _cc = 1 - _cc
+        _ln, _lc = 0, 0
+        for j in range(n):
+            full = _full(j)
+            slot = _ln + (1 if (full and _lc == 1) else 0)
+            lines.append(slot)
+            if full:
+                _ln, _lc = slot + 1, 0
+            else:
+                if _lc == 1:
+                    _ln += 1
+                _lc = 1 - _lc
+    pairN = lines[-1] + 1
+    ph = HH + pairN * RH + FH
+    if wide:
+        wm = max(1, min(D["PNL_WIDE_ROWS_MAX"], pairN))
+        skin_name = "pnl_cardW%d%s.bmp" % (wm, "f" if item in FADE_CARDS else "")
+    else:
+        skin_name = "pnl_card%d%s.bmp" % (min(D["PNL_CARD_ROWS_MAX"], max(3, n)),
+                                          "f" if item in FADE_CARDS else "")
+    skin_w = cardW + 2 * D["PNL_MARGIN"]
     skin_h = ph + 2 * D["PNL_MARGIN"]
 
     # ── card body (the baked soft shadow + gradient + hairlines live in here).
@@ -734,14 +882,14 @@ def render_card(item):
     #    MT4 blits it M px up-left of the card origin — exactly what the MQL does
     #    with (px-PNL_MARGIN, py-PNL_MARGIN). So the fringe is drawn at 0,0 and
     #    the chrome origin is pushed in by MARGIN to match.
-    c.img("pnl_card%d%s.bmp" % (min(D["PNL_CARD_ROWS_MAX"], max(3, n)),
-                                "f" if item in FADE_CARDS else ""), 0, 0, skin_w, skin_h, 0)
+    c.img(skin_name, 0, 0, skin_w, skin_h, 0)
     c.origin(D["PNL_MARGIN"], D["PNL_MARGIN"])
 
     # ── header
-    c.img("pnl_topbar_%s.bmp" % aname, 0, 0, WEL, 3 + 2 * D["PNL_CHIP_PAD"], 1)
-    c.img("pnl_hair_%s.bmp" % aname, 0, HH - 1 - D["PNL_CHIP_PAD"],
-          WEL, 1 + 2 * D["PNL_CHIP_PAD"], 2)
+    c.img("pnl_topbar%s_%s.bmp" % ("W" if wide else "", aname), 0, 0, cardW,
+          3 + 2 * D["PNL_CHIP_PAD"], 1)
+    c.img("pnl_hair%s_%s.bmp" % ("W" if wide else "", aname), 0, HH - 1 - D["PNL_CHIP_PAD"],
+          cardW, 1 + 2 * D["PNL_CHIP_PAD"], 2)
     MP = D["PNL_MARK_PAD"]
     c.img("pnl_mark_%s.bmp" % aname, PAD - MP, D["PNL_MARK_Y"] - MP,
           D["PNL_MARK_VIS"] + 2 * MP, D["PNL_MARK_VIS"] + 2 * MP, 3)
@@ -751,7 +899,17 @@ def render_card(item):
         c.img("gl_%s_i_%s.bmp" % (mi, aname), PAD + g, D["PNL_MARK_Y"] + g,
               D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
     htx = PAD + D["PNL_MARK_VIS"] + 10
-    c.text(htx, 15, ACCENT_TITLE.get(item, ""), rgb(CLR["TITLE"]), PT["title"], True)
+    # .key + .ver + .x column — the title's own room ends one .hd gap left of
+    # it (P-UI-30; the title used to run under the .ver badge on scaled DPIs).
+    ck0 = ACCENT_KEY.get(item, "")
+    vtxt0 = str(item)
+    vw0 = 10 + text_w(vtxt0, PT["ver"])
+    hx0 = cardW - PAD - D["PNL_XBTN_VIS"] - 6
+    chip_l0 = hx0 - vw0
+    if ck0:
+        chip_l0 -= 10 + D["PNL_KEYCAP_VIS"] + 2 * D["PNL_KEYCAP_PAD"] + D["PNL_CHIP_PAD"]
+    c.text(htx, 15, fit(ACCENT_TITLE.get(item, ""), PT["title"], chip_l0 - htx - D["PNL_ROW_GAP"]),
+           rgb(CLR["TITLE"]), PT["title"], True)
     # .subttl — mirrors BiotakPanels.mqh PnlCreate: one 4px dot (amber, jade,
     # amber …) + caption per ' · ' segment, cut at the right edge of the
     # preview's .htxt box — one 10px .hd gap left of .key when the card has a
@@ -762,25 +920,16 @@ def render_card(item):
     # width decides the fit, not its width plus the 5px gap to the next dot.
     # This must stay in step with the MQL or the proof stops predicting the
     # terminal.
-    ck = ACCENT_KEY.get(item, "")
-    vtxt = str(item)
-    vw = 10 + len(vtxt) * 5
-    hx = WEL - PAD - D["PNL_XBTN_VIS"] - 6
-    chip_l = hx - vw
-    if ck:
-        chip_l -= 10 + D["PNL_KEYCAP_VIS"] + 2 * D["PNL_KEYCAP_PAD"] + D["PNL_CHIP_PAD"]
-    sub_limit = chip_l - 10
+    ck, vtxt, vw, hx = ck0, vtxt0, vw0, hx0     # one owner (built with the title)
+    sub_limit = chip_l0 - 10
     segs = [s.strip() for s in ACCENT_HSUB.get(item, "").split("·") if s.strip()]
     sdx, drawn = htx, 0
     for si, seg in enumerate(segs):
         text_x = sdx + 9
-        txt_w = len(seg) * 5
+        txt_w = text_w(seg, PT["sub"])          # P-UI-30: real advance
         cap = seg
         if text_x + txt_w > sub_limit:          # crosses the .htxt edge
-            fits = (sub_limit - text_x) // 5    # whole characters only
-            if fits < 1:
-                break
-            cap = seg[:fits].rstrip()
+            cap = fit(seg, PT["sub"], sub_limit - text_x)
             if cap == "":
                 break
         c.img("pnl_subdot_amber.bmp" if si % 2 == 0 else "pnl_subdot_jade.bmp",
@@ -797,30 +946,30 @@ def render_card(item):
     c.text(hx - vw / 2, 24, vtxt, rgb(A1[acc]), PT["ver"], True, "cu")
     hx -= vw + 10
     if ck:
-        c.img("pnl_keycap.bmp", hx - D["PNL_KEYCAP_VIS"] - D["PNL_KEYCAP_PAD"] - D["PNL_CHIP_PAD"],
-              19 - D["PNL_KEYCAP_PAD"], 22, 22, 3)
-        c.text(hx - D["PNL_CHIP_PAD"] - 9, 22, ck, rgb(CLR["LABEL"]), PT["key"], True, "ru")
-    xbx = WEL - PAD - D["PNL_XBTN_VIS"]
+        keycap_at(c, hx - D["PNL_KEYCAP_VIS"] - D["PNL_KEYCAP_PAD"] - D["PNL_CHIP_PAD"],
+                  19 - D["PNL_KEYCAP_PAD"], ck, rgb(CLR["LABEL"]), 3)
+    xbx = cardW - PAD - D["PNL_XBTN_VIS"]
     c.img("pnl_xbtn.bmp", xbx - D["PNL_XBTN_PAD"], 15 - D["PNL_XBTN_PAD"],
           D["PNL_XBTN_VIS"] + 2 * D["PNL_XBTN_PAD"], D["PNL_XBTN_VIS"] + 2 * D["PNL_XBTN_PAD"], 3)
     c.img("gl_x_m.bmp", xbx + (D["PNL_XBTN_VIS"] - D["PNL_GLYPH_CANVAS"]) // 2,
           15 + (D["PNL_XBTN_VIS"] - D["PNL_GLYPH_CANVAS"]) // 2,
           D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
 
-    # ── rows
+    # ── rows (BX = column origin: 0, or +312 in a wide right half)
     for i, r in enumerate(rows):
-        ry = HH + i * RH
-        if i > 0:
+        ry = HH + lines[i] * RH
+        BX = cols[i] * DX
+        if lines[i] > 0 and (i == 0 or lines[i - 1] != lines[i]):
             # P-UI-29: full card width like the spec's .row border-top.
-            c.rect(0, ry, WEL, 1, rgb(CLR["LINE"]), 1)
+            c.rect(0, ry, cardW, 1, rgb(CLR["LINE"]), 1)
         kind = r["kind"]
         ico, key, lab = r["ico"], r["key"], r["label"]
-        lx = PAD + (D["PNL_CHIP_VIS"] + 8 if ico else 0) + (D["PNL_KEYCAP_VIS"] + 6 if key else 0)
+        lx = BX + PAD + (D["PNL_CHIP_VIS"] + 8 if ico else 0) + (D["PNL_KEYCAP_VIS"] + 6 if key else 0)
 
         def chip(on=False, x=None, y=None):
             if not ico:
                 return
-            x = PAD if x is None else x
+            x = BX + PAD if x is None else x
             y = ry + D["PNL_CHIP_Y"] if y is None else y
             c.img("pnl_chip_%s.bmp" % aname if on else "pnl_chip.bmp",
                   x - D["PNL_CHIP_PAD"], y - D["PNL_CHIP_PAD"],
@@ -834,36 +983,40 @@ def render_card(item):
         def keycap(x, y):
             if not key:
                 return
-            c.img("pnl_keycap.bmp", x - D["PNL_KEYCAP_PAD"], y - D["PNL_KEYCAP_PAD"], 22, 22, 3)
-            c.text(x + D["PNL_KEYCAP_VIS"], y + 4, key, rgb(CLR["LABEL"]), PT["key"], True, "ru")
+            keycap_at(c, x - D["PNL_KEYCAP_PAD"], y - D["PNL_KEYCAP_PAD"],
+                      key, rgb(CLR["LABEL"]), 3)
 
         if kind == 7:                                        # SECTION BAND
             # P-UI-29: full row width — spec .row.sec is the row's own bg.
-            c.img("pnl_secband.bmp", 0, ry, WEL, 42, 2)
-            c.img("pnl_secdot_%s.bmp" % aname, PAD - D["PNL_SECDOT_PAD"], ry + 18 - D["PNL_SECDOT_PAD"],
+            c.img("pnl_secband%s.bmp" % ("W" if wide else ""), 0, ry, cardW, 42, 2)
+            c.img("pnl_secdot_%s.bmp" % aname, BX + PAD - D["PNL_SECDOT_PAD"], ry + 18 - D["PNL_SECDOT_PAD"],
                   D["PNL_SECDOT_VIS"] + 2 * D["PNL_SECDOT_PAD"],
                   D["PNL_SECDOT_VIS"] + 2 * D["PNL_SECDOT_PAD"], 4)
-            c.text(PAD + 14, ry + 14, lab, rgb(CLR["MUTED"]), PT["sec"], True)
-            hx0 = PAD + 14 + len(lab) * 6 + 10
+            lab_w = text_w(lab, PT["sec"])       # P-UI-30: real advance
+            c.text(BX + PAD + 14, ry + 14, lab, rgb(CLR["MUTED"]), PT["sec"], True)
+            hx0 = BX + PAD + 14 + lab_w + D["PNL_ROW_GAP"]
             if r["ext"] == "strip" and i + 1 < n and rows[i + 1]["kind"] == 8:
                 mem = CSET_DEMO.get(item, [])
                 for s in range(min(len(mem), rows[i + 1]["n"])):
-                    c.rect(PAD + 14 + len(lab) * 6 + 12 + s * 18, ry + 13, 15, 15, rgb(mem[s]), 4, 3)
-                hx0 = PAD + 14 + len(lab) * 6 + 12 + len(mem) * 18 + 8
+                    c.rect(BX + PAD + 14 + lab_w + 12 + s * 18, ry + 13, 15, 15, rgb(mem[s]), 4, 3)
+                hx0 = BX + PAD + 14 + lab_w + 12 + len(mem) * 18 + 8
             cw = D["PNL_SEC_CNT_W"]
-            hx1 = WEL - PAD - cw - 12 - 16
+            hx1 = cardW - PAD - cw - 12 - 16
             c.rect(hx0, ry + 21, max(0, hx1 - hx0), 1, rgb(CLR["LINE"]), 4)
-            c.img("pnl_cntchip.bmp", WEL - PAD - cw - D["PNL_CHIP_PAD"] - 16, ry + 11,
+            c.img("pnl_cntchip.bmp", cardW - PAD - cw - D["PNL_CHIP_PAD"] - 16, ry + 11,
                   cw + 2 * D["PNL_CHIP_PAD"], 20, 4)
-            c.text(WEL - PAD - 8 - 16, ry + 16, str(r["cnt"]), rgb(CLR["MUTED"]), PT["sec"], True, "ru")
-            c.img("pnl_chev_%s.bmp" % aname, WEL - PAD - 12, ry + 16, 10, 10, 4)
+            cnts = str(r["cnt"])
+            # centred in the chip (P-UI-32): preview `.cnt` is a padded box.
+            c.text(cardW - PAD - cw // 2 - 16 + text_w(cnts, PT["sec"]) // 2,
+                   ry + 16, cnts, rgb(CLR["MUTED"]), PT["sec"], True, "ru")
+            c.img("pnl_chev_%s.bmp" % aname, cardW - PAD - 12, ry + 16, 10, 10, 4)
             continue
 
         if kind == 8:                                        # COLOUR SET
             mem = CSET_DEMO.get(item, [(255, 171, 0), (18, 184, 134), (31, 168, 224)])
             m = r["n"]
             total = m * D["PNL_CSET_W"] + (m - 1) * D["PNL_CSET_GAP"]
-            x0 = (WEL - total) // 2
+            x0 = BX + (WEL - total) // 2
             for j in range(m):
                 cx = x0 + j * (D["PNL_CSET_W"] + D["PNL_CSET_GAP"])
                 c.rect(cx, ry + 17, D["PNL_CSET_W"], D["PNL_CSET_H"], rgb(mem[j % len(mem)]), 3, 3)
@@ -876,18 +1029,24 @@ def render_card(item):
             # PnlShortCap mirror: only the STRUCTURE family prefix goes
             shorts = [t[10:] if t.startswith("STRUCTURE ") else t for t in memb]
             cells = shorts + ([r["ext"]] if r["ext"] else [])
-            widths = [D["PNL_DUAL_SW_W"] + 6 + len(t) * 6 + 14 for t in cells]
+            widths = [D["PNL_DUAL_SW_W"] + 6 + text_w(t, PT["cap"]) + 14 for t in cells]
             total = sum(widths) - (14 - 12)
-            cx = WEL - PAD - total
+            cx = BX + WEL - PAD - total
             for j, t in enumerate(cells):
+                # band 4 = Z_PANEL_SW (1506): the ladder keeps the switch face
+                # UNDER the caption, so the proof does too (P-UI-31).
                 c.img("pnl_dsw_on_%s.bmp" % aname,
                       cx - D["PNL_SW_PAD"], ry + 11 - D["PNL_SW_PAD"],
-                      D["PNL_DUAL_SW_W"] + 2 * D["PNL_SW_PAD"], D["PNL_DUAL_SW_H"] + 2 * D["PNL_SW_PAD"], 5)
+                      D["PNL_DUAL_SW_W"] + 2 * D["PNL_SW_PAD"], D["PNL_DUAL_SW_H"] + 2 * D["PNL_SW_PAD"], 4)
                 c.text(cx + D["PNL_DUAL_SW_W"] + 8, ry + 16, t, rgb(CLR["MUTED"]), PT["cap"], True)
                 cx += widths[j]
             chip()
             dj = " · ".join(shorts + ([r["ext"]] if r["ext"] else []))
-            if len(dj) * 5 > (WEL - PAD - total - 6 - lx):
+            # DUAL: the caption is DROPPED, never clipped — the cells keep their
+            # own full captions and the band above names the group (P-UI-30).
+            audit(item, i, "DUAL", dj, lx, BX + WEL - PAD - total - D["PNL_ROW_GAP"] - lx,
+                  mode="drop")
+            if text_w(dj, PT["lbl"]) > (BX + WEL - PAD - total - D["PNL_ROW_GAP"] - lx):
                 dj = ""
             c.text(lx, ry + 14, dj, rgb(CLR["LABEL"]), PT["lbl"], True)
             continue
@@ -896,24 +1055,29 @@ def render_card(item):
             on = lab in ON
             if on:
                 # P-UI-29: one column, full-bleed like the band.
-                c.img("pnl_actbg_%s.bmp" % aname, 0, ry, WEL, 42, 1)
-                c.img("pnl_rail_%s.bmp" % aname, -1, ry, 4, 42, 4)
+                c.img("pnl_actbg_%s.bmp" % aname, BX, ry, WEL, 42, 1)
+                c.img("pnl_rail_%s.bmp" % aname, BX - 1, ry, 4, 42, 4)
             chip(on)
-            keycap(PAD + D["PNL_CHIP_VIS"] + 8, ry + 12)
-            c.text(lx, ry + 14, lab, rgb(CLR["LABEL"]), PT["lbl"], True)
+            keycap(BX + PAD + D["PNL_CHIP_VIS"] + 8, ry + 12)
+            room = BX + D["PNL_SW_X"] - lx - D["PNL_ROW_GAP"]
+            audit(item, i, "SW", lab, lx, room)
+            c.text(lx, ry + 14, fit(lab, PT["lbl"], room),
+                   rgb(CLR["LABEL"]), PT["lbl"], True)
             c.img("pnl_sw_on_%s.bmp" % aname if on else "pnl_sw_off.bmp",
-                  D["PNL_SW_X"] - D["PNL_SW_PAD"], ry + D["PNL_SW_Y"] - D["PNL_SW_PAD"],
-                  D["PNL_SW_W"] + 2 * D["PNL_SW_PAD"], D["PNL_SW_H"] + 2 * D["PNL_SW_PAD"], 5)
+                  BX + D["PNL_SW_X"] - D["PNL_SW_PAD"], ry + D["PNL_SW_Y"] - D["PNL_SW_PAD"],
+                  D["PNL_SW_W"] + 2 * D["PNL_SW_PAD"], D["PNL_SW_H"] + 2 * D["PNL_SW_PAD"], 4)
             continue
 
         if kind == 4:                                        # COLOUR ROW
-            c.img("gl_%s_m.bmp" % (ico or "droplet"), PAD - 1, ry + 2,
+            c.img("gl_%s_m.bmp" % (ico or "droplet"), BX + PAD - 1, ry + 2,
                   D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
-            c.text(PAD + D["PNL_GLYPH_VIS"] + 7, ry + 3, lab, rgb(CLR["LABEL"]), PT["lblsm"], True)
+            c.text(BX + PAD + D["PNL_GLYPH_VIS"] + 7, ry + 3,
+                   fit(lab, PT["lblsm"], WEL - 2 * PAD - D["PNL_GLYPH_VIS"] - 7),
+                   rgb(CLR["LABEL"]), PT["lblsm"], True)
             sy = ry + 18
             cur = SWATCH[2]
-            c.rect(PAD, sy, D["PNL_QSW_PREV"], 22, rgb(cur), 2, 4, rgb(A1[acc]))
-            qx = PAD + D["PNL_QSW_PREV"] + D["PNL_QSW_GAP"]
+            c.rect(BX + PAD, sy, D["PNL_QSW_PREV"], 22, rgb(cur), 2, 4, rgb(A1[acc]))
+            qx = BX + PAD + D["PNL_QSW_PREV"] + D["PNL_QSW_GAP"]
             for qi in range(D["PNL_QSW_N"]):
                 c.rect(qx + qi * (D["PNL_QSW_W"] + D["PNL_QSW_GAP"]), sy, D["PNL_QSW_W"], 22,
                        rgb(SWATCH[qi]), 2, 4, rgb(A1[acc]) if SWATCH[qi] == cur else rgb(CLR["LINE"]))
@@ -925,21 +1089,27 @@ def render_card(item):
 
         if kind == 5:                                        # NAV
             chip()
-            c.text(lx, ry + 14, lab, rgb(CLR["LABEL"]), PT["lbl"], True)
             nw = 118
-            nx = WEL - PAD - nw
+            nx = BX + WEL - PAD - nw
+            audit(item, i, "NAV", lab, lx, nx - lx - D["PNL_ROW_GAP"])
+            c.text(lx, ry + 14, fit(lab, PT["lbl"], nx - lx - D["PNL_ROW_GAP"]),
+                   rgb(CLR["LABEL"]), PT["lbl"], True)
             c.rect(nx, ry + D["PNL_CTL_Y"] - 1, nw, 26, rgb(CLR["SEG_OFF"]), 2, 6, rgb(CLR["SEG_BD"]))
-            c.text(nx + 10, ry + D["PNL_CTL_Y"] + 4, r["ext"], rgb(CLR["VALUE"]), PT["nav"], True)
+            c.text(nx + 10, ry + D["PNL_CTL_Y"] + 4,
+                   fit(r["ext"], PT["nav"], nw - 32 - D["PNL_ROW_GAP"]),
+                   rgb(CLR["VALUE"]), PT["nav"], True)
             c.img("gl_%s_%s.bmp" % ("back" if ico == "back" else "nav", aname),
                   nx + nw - 20, ry + D["PNL_CTL_Y"] + 4,
                   D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
             continue
 
         if kind == 6:                                        # TEXT FIELD
-            c.img("gl_%s_m.bmp" % (ico or "type"), PAD - 1, ry + 2,
+            c.img("gl_%s_m.bmp" % (ico or "type"), BX + PAD - 1, ry + 2,
                   D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
-            c.text(PAD + D["PNL_GLYPH_VIS"] + 7, ry + 3, lab, rgb(CLR["LABEL"]), PT["lblsm"], True)
-            c.rect(PAD, ry + 15, WEL - 2 * PAD, 24, rgb(CLR["FIELD"]), 2, 4, rgb(CLR["SEG_BD"]))
+            c.text(BX + PAD + D["PNL_GLYPH_VIS"] + 7, ry + 3,
+                   fit(lab, PT["lblsm"], WEL - 2 * PAD - D["PNL_GLYPH_VIS"] - 7),
+                   rgb(CLR["LABEL"]), PT["lblsm"], True)
+            c.rect(BX + PAD, ry + 15, WEL - 2 * PAD, 24, rgb(CLR["FIELD"]), 2, 4, rgb(CLR["SEG_BD"]))
             continue
 
         if kind == 2:                                        # SEGMENTS
@@ -947,10 +1117,14 @@ def render_card(item):
             if item in (9, 12) and i == 0:                   # underline TABS
                 icons = ["wave", "swap", "fn", "sigma"] if item == 9 else ["box", "type", "target"]
                 tx = 12
+                if wide:                                      # MQL centres across both columns
+                    tot = sum(12 + text_w(t, PT["ctl"]) + (20 if j < len(icons) else 0) + 2
+                              for j, t in enumerate(arr)) - 2
+                    tx = (cardW - tot) // 2
                 idx = int(demo_value(item, r))
                 for j, t in enumerate(arr):
                     has = j < len(icons)
-                    tw = 12 + len(t) * 6 + (20 if has else 0)
+                    tw = 12 + text_w(t, PT["ctl"]) + (20 if has else 0)
                     if j == idx:
                         c.rect(tx, ry + D["PNL_CTL_Y"], tw, D["PNL_CTL_H"], rgba(A1[acc], .14), 1, 6)
                     if has:
@@ -959,7 +1133,9 @@ def render_card(item):
                     c.text(tx + 12 + (20 if has else 0), ry + D["PNL_CTL_Y"] + 7, t,
                            rgb(CLR["TITLE"]) if j == idx else rgb(CLR["SEG_TX"]), PT["ctl"], j == idx)
                     if j == idx:
-                        c.rect(tx + 7, ry + D["PNL_CTL_Y"] + D["PNL_CTL_H"] - 1, tw - 14, 2, rgb(A1[acc]), 5, 1)
+                        # band 6 = Z_PANEL_MARK: the ladder paints the underline
+                        # OVER its caption, so the proof must too (P-UI-31).
+                        c.rect(tx + 7, ry + D["PNL_CTL_Y"] + D["PNL_CTL_H"] - 1, tw - 14, 2, rgb(A1[acc]), 6, 1)
                     tx += tw + 2
                 continue
             if len(arr) >= 4:                                # dropdown select
@@ -967,8 +1143,8 @@ def render_card(item):
                 # MUST mirror the MQL's PnlCreateRow dropdown: icon (7+15) +
                 # caption (6px/char) + 8px gap + 10px chevron + 8px right pad.
                 # At 26+6*len the chevron landed 11px inside the caption.
-                dw = max(72, 50 + len(txt) * 6)
-                dx = WEL - PAD - dw
+                dw = max(72, 50 + text_w(txt, PT["ctl"]))
+                dx = BX + WEL - PAD - dw
                 dy = ry + D["PNL_CTL_Y"] - 1
                 c.rect(dx, dy, dw, 26, rgb(CLR["FIELD"]), 2, 6, rgb(CLR["SEG_BD"]))
                 c.img("gl_%s_%s.bmp" % (ico or "fn", aname), dx + 7, dy + 7,
@@ -976,36 +1152,46 @@ def render_card(item):
                 c.text(dx + 24, dy + 8, txt, rgb(CLR["TITLE"]), PT["ctl"], True)
                 c.img("pnl_chev_%s.bmp" % aname, dx + dw - 13, dy + 11, 10, 10, 4)
                 chip()
-                c.text(lx, ry + 14, lab, rgb(CLR["LABEL"]), PT["lbl"], True)
+                audit(item, i, "DD", lab, lx, dx - lx - D["PNL_ROW_GAP"])
+                c.text(lx, ry + 14, fit(lab, PT["lbl"], dx - lx - D["PNL_ROW_GAP"]),
+                       rgb(CLR["LABEL"]), PT["lbl"], True)
                 continue
             idx = int(demo_value(item, r))                   # 2-3 pills
-            tot = sum(16 + len(t) * 6 for t in arr) + (len(arr) - 1) * 4
-            sx = WEL - PAD - tot
+            tot = sum(16 + text_w(t, PT["ctl"]) for t in arr) + (len(arr) - 1) * 4
+            sx = sx0 = BX + WEL - PAD - tot
             for j, t in enumerate(arr):
-                w = 16 + len(t) * 6
+                w = 16 + text_w(t, PT["ctl"])
                 c.rect(sx, ry + D["PNL_CTL_Y"] + 1, w, 24,
                        rgb(A1[acc]) if j == idx else rgb(CLR["SEG_OFF"]), 2, 6,
                        rgb(A2[acc]) if j == idx else rgb(CLR["SEG_BD"]))
                 c.text(sx + w / 2, ry + D["PNL_CTL_Y"] + 7, t,
-                       rgb(AINK[acc]) if j == idx else rgb(CLR["SEG_TX"]), 8, j == idx, "cu")
+                       rgb(AINK[acc]) if j == idx else rgb(CLR["SEG_TX"]), PT["ctl"], j == idx, "cu")
                 sx += w + 4
             chip()
-            c.text(lx, ry + 14, lab, rgb(CLR["LABEL"]), PT["lbl"], True)
+            audit(item, i, "SEG", lab, lx, sx0 - lx - D["PNL_ROW_GAP"])
+            c.text(lx, ry + 14, fit(lab, PT["lbl"], sx0 - lx - D["PNL_ROW_GAP"]),
+                   rgb(CLR["LABEL"]), PT["lbl"], True)
             continue
 
-        # SLIDER
-        chip()
-        keycap(PAD + D["PNL_CHIP_VIS"] + 8, ry + 4)
-        c.text(lx, ry + 7, lab, rgb(CLR["LABEL"]), PT["lbl"], True)
-        vx = WEL - PAD - D["PNL_VCHIP_W"]
+        # SLIDER — P-UI-30: label + chip ride the TOP line (preview .sltop) so
+        # the chip's 26px canvas cannot cover the track's first 24px.
+        chip(y=ry + D["PNL_CHIP_Y_SL"])
+        keycap(BX + PAD + D["PNL_CHIP_VIS"] + 8, ry + 4)
+        vx = BX + WEL - PAD - D["PNL_VCHIP_W"]
+        audit(item, i, "SLIDER", lab, lx, vx - lx - D["PNL_ROW_GAP"])
+        c.text(lx, ry + 7, fit(lab, PT["lbl"], vx - lx - D["PNL_ROW_GAP"]),
+               rgb(CLR["LABEL"]), PT["lbl"], True)
         c.img("pnl_vchip_%s.bmp" % aname, vx - D["PNL_VCHIP_PAD"],
               ry + D["PNL_VCHIP_Y"] - D["PNL_VCHIP_PAD"],
               D["PNL_VCHIP_W"] + 2 * D["PNL_VCHIP_PAD"], D["PNL_VCHIP_H"] + 2 * D["PNL_VCHIP_PAD"], 3)
         val = demo_value(item, r)
         unit = r["unit"]
         vt = ("%d%%" % round(val)) if unit == "%" else str(round(val))
-        c.text(vx + D["PNL_VCHIP_W"] - 8, ry + 7, vt, rgb(A1[acc]), PT["ctl"], True, "ru")
-        tx0, tw0 = D["PNL_TRACK_X"], D["PNL_TRACK_W"]
+        # centred on the 46px chip body (P-UI-32): preview `.val.chip` is
+        # `text-align:center`, the port right-anchored it 8px in from the edge.
+        c.text(vx + D["PNL_VCHIP_W"] // 2 + text_w(vt, PT["val"]) // 2, ry + 7,
+               vt, rgb(A1[acc]), PT["val"], True, "ru")
+        tx0, tw0 = BX + D["PNL_TRACK_X"], D["PNL_TRACK_W"]
         ty0 = ry + D["PNL_TRK_Y"]
         c.rect(tx0, ty0 - 1, tw0, D["PNL_TRK_H"] + 2, rgb(CLR["TRACK_BD"]), 2, 4)
         c.rect(tx0 + 1, ty0, tw0 - 2, D["PNL_TRK_H"], rgb(CLR["TRACK"]), 3, 3)
@@ -1013,13 +1199,15 @@ def render_card(item):
         kw = D["PNL_KNOB_W"]
         knob = tx0 + round(frac * (tw0 - kw))
         c.rect(tx0 + 1, ty0, max(0, knob + kw // 2 - (tx0 + 1)), D["PNL_TRK_H"], rgb(A1[acc]), 3, 3)
-        c.img("pnl_knob.bmp", knob, ty0 + D["PNL_TRK_H"] // 2 - kw // 2, kw, kw, 6)
+        # band 4, not 6: Z_PANEL_KNOB (1512) sits BELOW Z_PANEL_TEXT (1520), so
+        # the value caption paints over the knob in MT4 — and here.
+        c.img("pnl_knob.bmp", knob, ty0 + D["PNL_TRK_H"] // 2 - kw // 2, kw, kw, 4)
         for t in range(D["PNL_TICK_N"]):
             c.rect(tx0 + round(t * (tw0 - 1) / (D["PNL_TICK_N"] - 1)), ry + D["PNL_TICK_Y"], 1, 3,
                    rgb(CLR["TICK"]), 2)
 
     # ── footer
-    fy = HH + n * RH
+    fy = HH + pairN * RH
     BP, BW, BH = D["PNL_BTN_PAD"], D["PNL_BTN_W"], D["PNL_BTN_H"]
 
     def foot(ftag, bx, label, primary, ico_name):
@@ -1028,10 +1216,11 @@ def render_card(item):
               bx - BP, fy + 10 - BP, BW + 2 * BP, BH + 2 * BP, 3)
         c.img("gl_%s_%s.bmp" % (ico_name, "i_" + aname) if primary else "gl_%s_m.bmp" % ico_name,
               bx + 12, fy + 16, D["PNL_GLYPH_CANVAS"], D["PNL_GLYPH_CANVAS"], 4)
-        c.text(bx + 32, fy + 17, label, rgb(AINK[acc]) if primary else rgb(CLR["MUTED"]), PT["foot"], True)
+        c.text(bx + 32, fy + 17, fit(label, PT["foot"], D["PNL_BTN_W"] - 32 - 8),
+               rgb(AINK[acc]) if primary else rgb(CLR["MUTED"]), PT["foot"], True)
 
     foot("rst", PAD, "Reset", False, "reset")
-    foot("done", WEL - PAD - BW, "Done", True, "check")
+    foot("done", cardW - PAD - BW, "Done", True, "check")
 
     return {"item": item, "w": skin_w, "h": skin_h, "rows": n,
             "title": ACCENT_TITLE.get(item, "Factor"), "accent": aname,
@@ -1078,11 +1267,111 @@ def contact_sheet(cards, out):
     return W, H
 
 
+# ── --audit (2/2): THE OVERLAP GATE. Every op the renderer records is turned
+# back into its pixel box, then every pair is checked in PAINT order (ZORDER,
+# creation order breaking ties). The bug class P-UI-30 fixed was always "a
+# caption's tail ended up UNDER the control painted after it" — a label that
+# grew at a scaled DPI while the control beside it stayed put. Full-width chrome
+# (the card skin, the accent top bar, a section band, the active-row rail, a
+# hairline divider) is painted UNDER the rows on purpose, so it is exempt.
+OVERLAP_TOL = 2        # px of shared edge that is antialiasing, not a collision
+UNDER = ("pnl_card", "pnl_secband", "pnl_actbg", "pnl_topbar", "pnl_hair",
+         "pnl_mark", "pnl_subdot", "pnl_vchip", "pnl_chip", "pnl_check")
+
+
+def op_box(op):
+    """One painted op as (label, x0, y0, x1, y1, zorder)."""
+    if op[0] == "img":
+        _, name, x, y, w, h, z = op
+        return (name or "(missing)", x, y, x + w, y + h, z)
+    if op[0] == "rect":
+        _, _col, x, y, w, h, _rad, _bd, z = op
+        return ("rect", x, y, x + w, y + h, z)
+    _, s, x, y, _col, pt, _bold, anchor, z = op
+    w, h = text_w(s, pt), font_px(pt)
+    if anchor[0] == "c":
+        x -= w / 2.0
+    elif anchor[0] == "r":
+        x -= w
+    if anchor[1] == "c":
+        y -= h / 2.0
+    elif anchor[1] == "b":
+        y -= h
+    return ('text "%s"' % s, x, y, x + w, y + h, z)
+
+
+def overlap_hits(card):
+    """Pairs where a later-painted op covers > OVERLAP_TOL px of a TEXT run.
+    Only captions are reported: chrome over chrome (a chip under its glyph, a
+    band under its label) is the design, a caption with a control on top of it
+    is the bug."""
+    boxes = [op_box(o) for o in card["canvas"].ops]
+    out = []
+    for i, a in enumerate(boxes):
+        if not a[0].startswith("text "):
+            continue
+        for j, b in enumerate(boxes):
+            if i == j or not b[0] or b[0].startswith(UNDER):
+                continue
+            if b[0].startswith("text ") and j < i:
+                continue                     # the earlier caption is the victim
+            if not b[0].startswith("text ") and (b[5], j) <= (a[5], i):
+                continue                     # painted first -> underneath, fine
+            ox = min(a[3], b[3]) - max(a[1], b[1])
+            oy = min(a[4], b[4]) - max(a[2], b[2])
+            if ox > OVERLAP_TOL and oy > OVERLAP_TOL:
+                out.append((a, b, ox, oy))
+    return out
+
+
+def report_audit(cards):
+    """--audit: (1) the captions with the least room left beside their control
+    — slack < 0 means the caption was CLIPPED with "..", i.e. a row that has
+    grown too tight for its own label; and (2) every caption a later-painted op
+    covers. Run this after any caption / geometry change."""
+    worst = sorted(AUDIT, key=lambda a: a[5] - a[6])
+    tight = [a for a in AUDIT if a[5] - a[6] < 0 and a[8] != "drop"]
+    drops = [a for a in AUDIT if a[5] - a[6] < 0 and a[8] == "drop"]
+    print("audit: %d captioned controls, %d tight (%d clipped, %d dropped by design)"
+          % (len(AUDIT), len(tight) + len(drops), len(tight), len(drops)))
+    for item, r, kind, lab, lx, room, need, nom, mode in worst[:10]:
+        print("  card %-2d row %-2d %-7s %-24s room %3d  needs %3d  slack %+4d%s"
+              % (item, r, kind, '"' + lab + '"', room, need, room - need,
+                 "  (drop: band names it)" if mode == "drop" else ""))
+    hits = 0
+    for c in cards:
+        for a, b, ox, oy in overlap_hits(c):
+            hits += 1
+            if hits <= 12:
+                print("  OVERLAP card %-2d  %s  under  %s  (%dx%d px)"
+                      % (c["item"], a[0], b[0], ox, oy))
+    if hits:
+        print("overlap gate: %d caption(s) covered by a later-painted op" % hits)
+    else:
+        print("overlap gate: clean — no caption is covered by its own control")
+    return len(tight) + hits
+
+
 def main():
-    argv = [a for a in sys.argv[1:] if not a.startswith("--")]
-    raster = "--raster" in sys.argv
+    global DPI
+    # --dpi N models the terminal's display scaling: MT4 sizes label fonts at the
+    # SCREEN dpi, and the MQL compensates by shrinking the point size (PnlPt),
+    # so the LAYOUT is dpi-independent and only the em box can shift by a px.
+    # 120 = Windows 125%, 144 = 150%; 96 (the design's own dpi) is the default.
+    # Its VALUE must be consumed before the positional scan, or `--dpi 120`
+    # writes the whole page to a file literally called "120" in the CWD.
+    args = list(sys.argv[1:])
+    if "--dpi" in args:
+        k = args.index("--dpi")
+        DPI = int(args[k + 1])
+        del args[k:k + 2]
+    argv = [a for a in args if not a.startswith("--")]
+    raster = "--raster" in args
     out = argv[0] if argv else os.path.join(ROOT, "panel_mt4_sim.html")
     cards = [c for c in (render_card(i) for i in range(14)) if c]
+
+    if "--audit" in args:
+        report_audit(cards)
 
     missing = missing_assets(cards)
     if missing:
@@ -1111,8 +1400,8 @@ def main():
             % (c["item"], c["title"], c["rows"], c["accent"],
                " &middot; .fade" if c["fade"] else "", c["w"], c["h"], c["html"]))
 
-    html = """<!doctype html><meta charset="utf-8">
-<title>Panel simulator &mdash; the cards as MetaTrader draws them</title>
+    html = ("""<!doctype html><meta charset="utf-8">
+<title>Panel simulator &mdash; the cards as MetaTrader draws them</title>""" + """
 <style>
  body{margin:0;padding:26px 30px;background:#F2F5F9;color:#16202E;
       font:13px/1.55 Arial,Helvetica,sans-serif}
@@ -1146,15 +1435,18 @@ coordinate is parsed out of <code>Biotak/BiotakPanels.mqh</code>. No terminal in
 this is the pixel layout MT4 will blit, so the baked soft shadows, gradients and radii
 show up exactly as shipped.</p>
 <p class="note"><b>Text is the one approximation.</b> Captions are rendered by the browser at
-the same point size (pt &times; 4/3 px) and the same anchor the MQL sets, but MT4 has its own
-font stack. Treat the chrome as exact and the type as very close.</p>
+the same em box (the MQL's DPI-compensated point size &rarr; @@PX px) and the same anchor it
+sets, but MT4 has its own font stack. Treat the chrome as exact and the type as very close.
+<b>Every caption that touches a control is measured, never guessed</b> (P-UI-30): label
+widths come from Arial Bold's real advances at @@DPI dpi, and a caption with no room left is
+clipped with <code>..</code> the way the preview's ellipsis clips it.</p>
 <div class="wrap">
 @@CARDS@@
 </div>
-""".replace("@@CARDS@@", "".join(body))
+""").replace("@@CARDS@@", "".join(body)).replace("@@PX", str(font_px(PT["lbl"]))).replace("@@DPI", str(DPI))
 
     open(out, "w", encoding="utf-8").write(html)
-    print("wrote %s (%d cards, %d bitmaps)" % (out, len(cards), len(_CACHE)))
+    print("wrote %s (%d cards, %d bitmaps, %d dpi)" % (out, len(cards), len(_CACHE), DPI))
     return 0
 
 

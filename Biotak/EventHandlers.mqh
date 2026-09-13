@@ -6,7 +6,140 @@
 #define EVENT_HANDLERS_MQH
 #property strict
 
+//==============================================================================
+// P-PERF-38c — ONE-TIME MIGRATION OFF THE TIMEFRAME-NAMED SCHEME
+//
+// P-PERF-38 made the level-object prefix timeframe-free, so a chart that had
+// been drawn by an older build still holds one whole namespace per timeframe it
+// ever visited (`THLevels_H1_*`, `THLevels_M15_*`, ...). The old teardown swept
+// all eleven of those on EVERY timeframe switch - eleven full-chart prefix scans
+// for objects that, after this migration, do not exist at all.
+//
+// So the sweep is not deleted; it is MOVED OUT OF THE SWITCH and gated on a
+// per-chart stamp. It runs exactly once per chart, ever. Steady state: one
+// GlobalVariableCheck. That is the difference between "cleanup that scales with
+// how often you press H1" and "cleanup that happens once".
+void MigrateTimeframeNamedObjects()
+{
+   // P-PERF-38f: the stamp has ONE owner (GlobalVariables), shared with the label
+   // sweep that must stop doing this work on every timeframe switch.
+   string stamp = NameSchemeStampName();
+   if(LegacyNameSchemeMigrated()) return;   // this chart is already migrated
+
+   // Every string GetCurrentTimeframe() can return, plus the two legacy
+   // spellings ("MN" from ClearAllLabels, "UNKNOWN" for a CUSTOM period).
+   static string s_tfNs[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN", "MN1", "UNKNOWN"};
+   g_suppressDeleteEvents = true;
+   int removed = 0;
+   for(int n = 0; n < ArraySize(s_tfNs); n++)
+      removed += ObjectsDeleteAll(0, inpObjectPrefix + "_" + s_tfNs[n] + "_");
+   // The ATR/TH label families also exist WITHOUT a TF namespace
+   // (`inpObjectPrefix + "ATR_*" / "TH_*"`), and the legacy shared-pattern ones
+   // carry `inpObjectPrefix + "SharedPattern_"`.
+   removed += ObjectsDeleteAll(0, inpObjectPrefix + "ATR_");
+   removed += ObjectsDeleteAll(0, inpObjectPrefix + "TH_");
+   removed += ObjectsDeleteAll(0, inpObjectPrefix + "SharedPattern_");
+   g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+   g_suppressDeleteEvents = false;
+   InvalidateObjectCountCache();
+   GlobalVariableSet(stamp, 1.0);
+   // Named, once, only when it actually did something - so the log shows the
+   // upgrade happened and never repeats.
+   if(removed > 0)
+      _LOG_GATE_I Print("[I][GEN] P-PERF-38 migration: removed ", removed,
+                        " legacy timeframe-named object(s) - this runs once per chart");
+}
+
+//==============================================================================
+// P-PERF-38d — TOPOLOGY ADOPTION ACROSS MT4'S FORCED RELOAD
+//
+// P-PERF-38 named the level family without the timeframe and P-PERF-38b stopped
+// the teardown from deleting it. On their own those two are NOT enough, and the
+// reason is subtle: a chart period change makes MT4 unload and RELOAD the
+// indicator, so the new instance starts with an EMPTY stored signature
+// (`s_lastLevelSig == ""`). The first comparison is therefore trivially true ->
+// `levelTopologyChanged` -> `shouldClearLevels` -> a full `ClearAllLevels` of the
+// whole family, immediately followed by the staged rebuild that creates it all
+// again. That delete+create pair IS the "changing the timeframe recomputes and
+// redraws my levels" the user reports, and it survived the naming fix because
+// nothing carried the fact that the chart is already drawn.
+//
+// So the new instance is TOLD. At teardown an ordinary timeframe change writes
+// ONE per-chart fingerprint of the inputs that decide WHICH objects may exist
+// (the naming scheme, the mode, and the other structure-defining inputs) — never
+// the prices, which genuinely do change per timeframe. At init that fingerprint
+// is compared, and on a match the first pass adopts the previous instance's
+// topology: no wipe, no staging restart, and the timeframe change reduces to a
+// single in-place property pass. The prices are still re-derived (`thValue`
+// comes from `GetTimeframeTH()`), but they now arrive through the RENDER
+// signature, which re-asserts in place, instead of through the NAME, which
+// forced a destroy-and-build.
+//
+// Conservative by construction: no stamp (a first attach, an older build, a
+// chart the indicator was just REMOVEd from) means no adoption, i.e. exactly the
+// old behaviour. A wrong "same" can only ever skip a wipe, and a skipped wipe is
+// safe here because every object the render does not produce is still swept by
+// CleanupSurplusPipeline and the label generation sweep — both run on every
+// render.
+#define NAME_SCHEME_ID 38
+
+string AdoptionStampName() { return "Biotak_AdoptTopology_" + GetCachedChartIdStr(); }
+
+// The fingerprint packs the inputs that decide which NAMES may exist, built from
+// small integers so it is EXACT — no string hashing and therefore no collisions
+// to reason about.
+int AdoptionFingerprint()
+{
+   int fp = NAME_SCHEME_ID;
+   fp = fp * 31 + (int)GetCurrentStepMode();
+   fp = fp * 31 + inpMaxLevels;
+   fp = fp * 31 + (int)g_thStartPointType;
+   fp = fp * 31 + (inpLSFirst ? 1 : 0);
+#ifndef BUILD_LITE
+   fp = fp * 31 + (inpEnableHarmonicPattern ? 1 : 0);
+   fp = fp * 31 + (int)MathRound(inpHarmonicRatio * 1000.0);
+#endif
+   return fp;
+}
+
+// Written by the teardown of a timeframe switch: the objects are staying on the
+// chart, so the next instance is allowed to adopt them.
+void SaveTopologyAdoptionStamp()
+{
+   GlobalVariableSet(AdoptionStampName(), (double)AdoptionFingerprint());
+}
+
+// Called by every teardown path that really deletes the family. Without the
+// stamp the next instance wipes and rebuilds, which is the correct answer when
+// the objects are genuinely gone.
+void ClearTopologyAdoptionStamp()
+{
+   string n = AdoptionStampName();
+   if(GlobalVariableCheck(n)) GlobalVariableDel(n);
+}
+
+// Resolved ONCE per instance, at the end of OnInitHandler — after the custom-
+// price restore has had its say about `g_thStartPointType`, which is one of the
+// fingerprint's inputs.
+bool g_adoptPreviousTopology = false;
+
+void ResolveTopologyAdoption()
+{
+   g_adoptPreviousTopology = false;
+   string n = AdoptionStampName();
+   if(!GlobalVariableCheck(n)) return;                  // first attach / old build
+   g_adoptPreviousTopology = ((int)GlobalVariableGet(n) == AdoptionFingerprint());
+   if(g_adoptPreviousTopology)
+      _LOG_GATE_I Print("[I][GEN] P-PERF-38d: level topology adopted from the previous "
+                        "instance - timeframe switch updates in place (no wipe, no rebuild)");
+}
+
 int OnInitHandler() {
+    // P-PERF-38c: the one-time legacy sweep must land before the first render, so
+    // a chart drawn by an older build cannot blend two naming schemes.
+    MigrateTimeframeNamedObjects();
+    // P-PERF-10: phase ledger for the init path (see g_pInitMs* in GlobalVariables).
+    uint pInitTick = GetTickCount();
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
@@ -17,6 +150,16 @@ int OnInitHandler() {
 #endif
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);
+    // P-PERF-02: a fresh instance knows nothing about the visibility masks the
+    // previous one left on the chart (and re-attach / TF switch reuses the same
+    // chart objects), so every guarded mask write must land once. The
+    // hide-once state starts clean for the same reason.
+    BumpTfEpoch();
+    ResetHideAllState();
+    // P-PERF-07: a fresh instance can see objects the previous one left on the
+    // chart (re-attach / TF switch reuses the same chart), so the previous
+    // instance's "this name is absent" facts are not trustworthy yet.
+    CacheAbsentResetAll();
 
     // Restore hidden state
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
@@ -69,6 +212,8 @@ int OnInitHandler() {
 
     int validationResult = ValidateInputs();
     if(validationResult != INIT_SUCCEEDED) return validationResult;
+    g_pInitMsSettings = GetTickCount() - pInitTick;   // P-PERF-10
+    pInitTick = GetTickCount();
 
     ChartSetInteger(0, CHART_EVENT_OBJECT_DELETE, true);
     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
@@ -98,6 +243,8 @@ int OnInitHandler() {
         _LOG_GATE_E Print("[E][GEN] OnInit: GetPriceForPreviousDay failed, returning INIT_FAILED.");
         return INIT_FAILED;
     }
+    g_pInitMsHistory = GetTickCount() - pInitTick;   // P-PERF-10
+    pInitTick = GetTickCount();
 
     string symbolName = GetCachedSymbol();
     string gvarName = "Biotak_CustomPrice_" + symbolName;
@@ -169,6 +316,8 @@ int OnInitHandler() {
     } else {
         g_systemInitialized = false;
     }
+    g_pInitMsBase = GetTickCount() - pInitTick;   // P-PERF-10
+    pInitTick = GetTickCount();
 
     // Restore timeframe lock state
     string lockFlagName = "Biotak_LockTF_" + chartIdStr;
@@ -299,6 +448,8 @@ int OnInitHandler() {
         }
     }
 
+    g_pInitMsAtr = GetTickCount() - pInitTick;   // P-PERF-10 (ATR cache init + warmup)
+
     PrintBuildInfo();
 
     // TH3TOOL-OFF:
@@ -326,12 +477,27 @@ int OnInitHandler() {
     FactorModeSanityCheck();
     #endif
 
+    // P-PERF-38d: LAST thing before the first frame — every fingerprint input
+    // (mode, max levels, start point, LS-first, harmonic) is final by now.
+    ResolveTopologyAdoption();
+
     return INIT_SUCCEEDED;
 }
 
 // Helper function to create custom price horizontal line (DRY)
-bool CreateCustomPriceLine(double price, int digits, bool selected = false, 
-                           string tooltipSuffix = "Drag to adjust")
+//
+// P-UI-45: `editable` is the line's INTERACTION MODE, not just its selection bit:
+//   true  = placement / adjust mode - the user may grab the line with the mouse
+//   false = SETTLED - the line is inert (neither SELECTABLE nor SELECTED)
+// An OBJ_HLINE left SELECTABLE+SELECTED is grabbed by MT4 on every later drag
+// ANYWHERE on the chart (MT4 moves the SELECTED object), which is why a settled
+// line used to fight the panels, the cards and the BaseKnot boxes and kept
+// re-anchoring the TH start price behind the user's back. It is never
+// pre-SELECTED either: MT4 selects a selectable line ITSELF on the press that
+// means to grab it, and that is exactly the moment the live-drag path wants the
+// flag set - so pre-selecting only ever enabled the hijack.
+bool CreateCustomPriceLine(double price, int digits, bool editable = false,
+                           string tooltipSuffix = "PIN button to move")
 {
     if(ObjectFind(0, g_customPriceHorizontalLineName) < 0) {
         if(!ObjectCreate(0, g_customPriceHorizontalLineName, OBJ_HLINE, 0, 0, price)) {
@@ -345,9 +511,9 @@ bool CreateCustomPriceLine(double price, int digits, bool selected = false,
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, selected);
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, 100);
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, editable);
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
     ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
                   "[PIN] Custom Price: " + DoubleToString(price, digits) + " | " + tooltipSuffix);
     g_customPriceLineCreated = true;
@@ -360,28 +526,27 @@ bool CreateCustomPriceLine(double price, int digits, bool selected = false,
 //| Used by: OnInit, RedrawAllObjects, F key handler                 |
 //| COVERS: TH levels, labels, zones, mode labels, custom price      |
 //+------------------------------------------------------------------+
-void HideAllTHObjects()
+// P-PERF-02: hide is a STATE, not a per-frame action. RedrawAllObjects calls
+// HideAllTHObjects() from its hidden early-exit on every heavy frame, so the
+// old code walked every chart object and wrote a mask on every hit for as long
+// as the indicator stayed hidden (the whole point of the F key). Nothing can
+// re-show those objects while we are hidden, so the pass runs once per hide
+// transition; ResetHideAllState() re-arms it from every path that can show
+// objects again (F key show branch, OnInit, OnDeinit).
+static bool g_hideAllApplied = false;
+
+void ResetHideAllState() { g_hideAllApplied = false; }
+
+void HideAllTHObjectsPass()
 {
-    int total = ObjectsTotal(0, -1, -1);
-    int hiddenCount = 0;
-    string cachedPrefix = inpObjectPrefix;
-    int prefixLen = StringLen(cachedPrefix);
-    // PERF: Pre-compute constants outside loop
-    long noPeriodsVal = OBJ_NO_PERIODS;
-    ushort prefixFirstChar = StringGetCharacter(cachedPrefix, 0);
-    for(int i = total - 1; i >= 0; i--)
-    {
-        string objName = ObjectName(0, i, -1, -1);
-        // PERF: Quick first-char rejection before expensive string comparison
-        if(StringGetCharacter(objName, 0) != prefixFirstChar) continue;
-        if(StringLen(objName) >= prefixLen && StringSubstr(objName, 0, prefixLen) == cachedPrefix)
-        {
-            if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot drawings are an independent layer
-            ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, noPeriodsVal);
-            hiddenCount++;
-        }
-    }
+    // P-PERF-31: the walk lives in the visibility owner and follows the
+    // object cache (only our objects, zero ObjectName calls over foreign
+    // chart objects, zero type probes — hiding needs no classification).
+    // A fresh instance with a cold cache falls back to one legacy chart
+    // scan for the previous instance's leftovers; steady state never scans.
+    VisibilityHideAllCached();
     // PERF: Batch special label hide - ObjectSetInteger is no-op if object doesn't exist
+    long noPeriodsVal = OBJ_NO_PERIODS;
     ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     // TH3TOOL-OFF:
@@ -392,6 +557,17 @@ void HideAllTHObjects()
     if(g_customPriceLineCreated)
         ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, noPeriodsVal);
     // NOTE: ABCD pattern objects are NOT hidden by F key
+}
+
+// Returns true when this call performed the (once per transition) pass.
+bool HideAllTHObjects()
+{
+    if(g_hideAllApplied) return false;
+    g_hideAllApplied = true;
+    HideAllTHObjectsPass();
+    // Written outside the visibility guard → invalidate every stored mask.
+    BumpTfEpoch();
+    return true;
 }
 
 // Helper function to clean up custom price selection objects
@@ -426,10 +602,40 @@ void CleanupCustomPriceObjects(bool resetGlobalVars = false, bool forceDelete = 
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-45 - ONE OWNER for "leave custom-price mode".               |
+//|                                                                  |
+//| The ESC key carried this sequence inline, and the ring's PIN item had NO way |
+//| to reach it at all: its press only ever RE-ARMED (the line was deleted and   |
+//| re-created at the market price), so the pin could be switched ON and never   |
+//| OFF and the only exit was the keyboard. Two surfaces asking the same question |
+//| get one answer: the line goes, the override GVar is dropped, and the TH start |
+//| point returns to the Input default.                                          |
+//+------------------------------------------------------------------+
+void DeactivateCustomPriceMode(const string src)
+{
+    string symbolName = GetCachedSymbol();
+    string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
+    CleanupCustomPriceObjects(true, true);   // line + GVars + start point + override flag
+    g_thStartPointType = inpTHStartPointType;
+    g_customPriceKeyboardOverride = false;
+    GlobalVariableSet(overrideFlagName, 0.0);
+    g_forceClearOnNextDraw = true;
+    g_redrawTHLevelsNeeded = true;
+    RedrawAllObjects(true);   // P-PERF-34: in a chart event this is owed to a frame
+    _LOG_GATE_D Print("[D][GEN] Custom price mode OFF (", src,
+                      ") - TH start point returned to the Input default");
+}
+
+//+------------------------------------------------------------------+
 //| OnDeinit Handler - cleanup and state persistence (matching MT5)  |
 //+------------------------------------------------------------------+
 void OnDeinitHandler(const int reason) {
     DEBUG_PRINT("Starting cleanup");
+    // P-PERF-02: after this teardown the chart holds none of our masks, so the
+    // next instance must re-assert every one of them, and the once-per-
+    // transition hide pass is re-armed.
+    ResetHideAllState();
+    BumpTfEpoch();
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
     // Save TF-switch timestamp for deferred init debounce
     if(reason == REASON_CHARTCHANGE || reason == REASON_PARAMETERS) {
@@ -460,6 +666,9 @@ void OnDeinitHandler(const int reason) {
     if(reason == REASON_REMOVE)
     {
         DEBUG_PRINT("Indicator removed - cleaning all GlobalVariables");
+        // P-PERF-38d: the objects go with the removal, so the next attach must
+        // NOT adopt a chart this instance emptied.
+        ClearTopologyAdoptionStamp();
         CleanupAllGlobalVariables();
         DeleteAllIndicatorObjects(true);
         ObjectsDeleteAll(0, "TH3_Structure_");
@@ -471,7 +680,7 @@ void OnDeinitHandler(const int reason) {
     else if(reason == REASON_PARAMETERS)
     {
         // Clear all ATR and TH labels to apply new settings
-        string uniquePrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+        string uniquePrefix = GetLevelObjectPrefix();
         // No M30 here: the M30 ATR column is retired (2026-09-11) and every
         // object this loop targets carries inpObjectPrefix, so the
         // DeleteAllIndicatorObjects(false) at the end of this branch sweeps any
@@ -547,11 +756,41 @@ void OnDeinitHandler(const int reason) {
 #endif
         DEBUG_PRINT("OnDeinit (REASON_PARAMETERS) - applying settings (hotkey toggles preserved)");
         DeleteAllIndicatorObjects(false);
+        // P-PERF-38d: same reason as REASON_REMOVE — this branch deletes the
+        // whole family, so adoption would be a lie.
+        ClearTopologyAdoptionStamp();
+    }
+    else if(reason == REASON_CHARTCHANGE)
+    {
+        // P-PERF-38b - A TIMEFRAME SWITCH MUST NOT THROW THE LEVEL FAMILY AWAY.
+        //
+        // MT4 forces a deinit+init on a chart period change (the live log shows
+        // `uninit reason 3` = REASON_CHARTCHANGE dozens of times), so this branch
+        // ran on EVERY switch and deleted the whole family - ~900 objects - which
+        // the new instance then had to CREATE again from scratch, recomputing the
+        // geometry on the way. That delete+create pair is the "levels are
+        // recomputed and redrawn" the user sees, and it is not even necessary:
+        // with the timeframe-free prefix the new instance finds the objects where
+        // they are, adopts them through the cache (a cache miss costs one
+        // ObjectFind and then takes the UPDATE path), and a timeframe switch
+        // becomes one in-place property pass.
+        //
+        // Everything that genuinely must not survive is still handled: the entry
+        // point's own OnDeinit deletes the panels, menu and HTF candles before
+        // this function runs, and REASON_REMOVE still wipes everything deeply.
+        //
+        // P-PERF-38d: and the NEXT instance is told, with one fingerprint, that
+        // the chart is already drawn by a compatible scheme — without that the
+        // fresh instance's first pass sees an empty stored signature, takes the
+        // topology-changed branch, and wipes the family it just kept.
+        SaveTopologyAdoptionStamp();
+        DEBUG_PRINTF2("OnDeinit (reason=", reason, " - level family KEPT for in-place update)");
     }
     else
     {
         DEBUG_PRINTF("OnDeinit (reason=", reason);
         DeleteAllIndicatorObjects(false);
+        ClearTopologyAdoptionStamp();
     }
 
     CleanupCustomPriceObjects(false, true);
@@ -658,6 +897,7 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
 
     g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
     g_suppressDeleteEvents = false;
+    MarkDrawGeneration();   // P-PERF-02: what we rendered is gone from the chart
 
     #ifdef ENABLE_DEBUG_LOGS
     if(totalDeleted > 0) {
@@ -815,16 +1055,17 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 //| Wrapper function to handle different step calculation modes     |
 //| REFACTORED: Uses centralized ModeDefinitions factory             |
 //+------------------------------------------------------------------+
-void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePrice)
+void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePrice,
+                           const double vpTop, const double vpBottom, const int buildStage)
 {
     // Draw based on selected mode (respects keyboard override)
     ENUM_STEP_CALCULATION_MODE currentMode = GetCurrentStepMode();
     SCommonStepData data;
     if(!CalculateCommonStepData(dailyClosePrice, data)) return;
-    
+
     // Use the modular Mode Factory
     SModeDefinition def = GetModeDefinition(currentMode, objectPrefix, data, dailyClosePrice);
-    
+
     if(def.success) {
         // Convert static array to dynamic for ExecutePipeline compatibility
         double sizes[];
@@ -832,10 +1073,11 @@ void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePri
         for(int i = 0; i < def.stepSizeCount; i++) {
             sizes[i] = def.stepSizes[i];
         }
-        
+
         ExecutePipeline(def.config, data.midpointPrice, sizes, def.stepSizeCount,
                        def.stepMode, def.classifyMode, def.lsFirst,
-                       data.maxLevelsAbove, data.maxLevelsBelow);
+                       data.maxLevelsAbove, data.maxLevelsBelow,
+                       vpTop, vpBottom, buildStage);
         
         ArrayFree(sizes);
     } else {
@@ -849,8 +1091,176 @@ void DrawLevelsBasedOnMode(const string objectPrefix, const double dailyClosePri
 // Base price history is now managed by BasePriceManager.mqh
 // Use PrintBasePriceHistory() from BasePriceManager instead
 
+//==============================================================================
+// P-PERF-29 — ONE OWNER FOR THE LINE-VISIBILITY SWITCH
+//
+// `g_linesVisible` was mutated in four places and only ONE of them wrote the
+// object mask: the L hotkey called SetAllLineObjectsVisibility, and the two
+// panel rows (Zones & Levels card row 1, LINES card row 1) plus the factory
+// reset set the flag, the mirror and the persisted key and stopped there.
+//
+// That was invisible while every frame re-asserted the whole level family, but
+// P-PERF-25 made the render's SKIP provable: it runs only when
+// `frameCore == s_lastFrameCore && frameSig != s_lastFrameSig`, i.e. when the
+// mask term is provably the only difference — and then it does not render,
+// because the mask owner is supposed to have already written it. With the mask
+// never written, nothing changed, and the lines stayed put until a timeframe
+// switch deleted and rebuilt the whole chart. That is the reported symptom:
+// "the levels only turn on/off if I change the timeframe".
+//
+// So the mask write lives with the state, in one function every entry point
+// calls, instead of in one caller. SetAllLineObjectsVisibility is memoised, so
+// the extra call from the sites that already wrote the mask is free.
+void SetLinesVisible(const bool visible, const bool persist)
+{
+   g_linesVisible = visible;
+   g_showLines    = visible;   // the Zones card mirror stays in sync
+   UpdateLinesVisibleCache(visible);
+   if(persist)
+      GlobalVariableSet("Biotak_LinesVisible_" + GetCachedChartIdStr(), visible ? 1.0 : 0.0);
+   SetAllLineObjectsVisibility(visible);
+}
+
+//==============================================================================
+// P-PERF-30 — A USER EDIT IS NOT VETOED BY THE GEOMETRY SIGNATURE
+//
+// frameSig answers "did anything I DERIVE geometry from change?" — that is the
+// right question for skipping the re-derivation, and it is why a steady frame
+// costs nothing. But it was also being used to veto the PAINT, and the paint
+// reads live globals that frameSig does not enumerate (structure switches,
+// line style/width/transparency, mid-zone border, trigger transparency, the
+// midpoint line, custom-price look ...). Any one of them omitted from the
+// signature became a control that does nothing until a timeframe switch —
+// the same defect class as the line mask above, and the same user report.
+//
+// So the two questions are separated: applyRefreshFlags answers "the user asked
+// for a repaint" and raises this flag; the signature keeps answering "is the
+// geometry stale". A user edit therefore always paints. It still costs ONE
+// re-assert per edit, never per frame, because the flag is cleared by the
+// completed render it caused.
+static bool g_renderAllNeeded = false;
+
+//==============================================================================
+// P-PERF-34 / P-PERF-35 - A SCHEDULED FRAME, AND THE CO-OPERATIVE PUMP
+//
+// P-PERF-34 - THE EVENT PATH SCHEDULES THE FRAME; IT DOES NOT RUN IT.
+//
+// applyRefreshFlags is the EVENT-path dispatcher: a click, a hotkey or a
+// gesture end reaches it, never the tick. For every heavy flag group it called
+// RedrawAllObjects(true), and `force_redraw` bypasses BOTH gates (the 20 ms
+// coalescer below is the only guard) - so the WHOLE frame body ran INLINE
+// inside OnChartEvent: base price, the ATR composite, UpdateHistoricalValues,
+// DrawMainLevels, the label family (ClearAllLabels + four Display* passes),
+// RepositionAllOverlayLabels and the custom-price block. The live log names the
+// price exactly:
+//
+//   [PERF] click breakdown: button=0ms panel=0ms apply=531ms
+//
+// button and panel are ZERO - hit-testing is free and all 531 ms is the refresh
+// body. A block that long inside the event handler IS the freeze the user feels,
+// and it is the same defect class as the 3375 ms CHART_CHANGE frame: work
+// charged to the event instead of to a frame.
+//
+// So the frame body is never executed inline in a chart event any more. The
+// flags the callers already raised stay raised, a heavy frame is marked owed,
+// and the frame loop runs it - the next tick, or the 250 ms timer that exists
+// anyway to advance staged rebuilds. WHAT is rendered is unchanged; only WHERE
+// the cost is charged.
+//
+// The LIVE DRAG is deliberately exempt: the custom-price drag re-anchors every
+// throttled step and its synchronous pass is what makes the levels follow the
+// line. Deferring that would trade a freeze for a lag, which is not a fix.
+//
+// P-PERF-35 - CO-OPERATIVE MULTITASKING: THE THREAD SUBSTITUTE MQL4 ALLOWS.
+//
+// MQL4 does not have threads. A program gets exactly ONE OS thread and one core:
+// there is no `thread`, no `async`, no `Task`, and no in-language way to run two
+// functions at the same time. MetaQuotes' own material is explicit that the
+// terminal is multi-threaded while each individual program is not, and the only
+// two escapes are a DLL (which CAN create an OS thread) and the OpenCL pool
+// (MQL5-only). Claiming otherwise would be a lie dressed as an optimisation.
+//
+// What IS available, and what actually removes the lag, is CONCURRENCY: several
+// independent jobs advanced under a millisecond budget, so no job can hold the
+// terminal for its whole duration and a job that does not finish is simply still
+// owed - nothing to unwind, nothing to re-request. This is the guarantee the
+// staged level rebuild already gives (four frames, one family each); the pump
+// generalises it so the rebuild, the object cleanup, the label-expiry sweep and
+// the live text refresh stop competing for one timer slot that used to be spent
+// entirely on whatever ran first.
+//
+// Single-flight is the other half: three fast presses used to schedule three
+// full frames. A job that is already owed is not owed twice.
+//==============================================================================
+#define COOP_WARN_MS        40   // a scheduled frame or coop job slower than this is logged
+#define BUILD_STAGE_GATE_MS 60   // P-PERF-34b: spacing between staged rebuild frames
+
+#define COOP_JOB_NONE         0
+#define COOP_JOB_HEAVY_FRAME  1
+#define COOP_JOB_OBJ_CLEANUP  2
+#define COOP_JOB_LABEL_EXPIRY 3
+#define COOP_JOB_STATUS_TEXT  4
+#define COOP_JOB_COUNT        5
+
+// Set by OnChartEvent (both entry points) for the duration of one event, so the
+// frame body can tell "the user is waiting on this event" from "a frame is due".
+bool g_inChartEvent = false;
+
+static bool   g_heavyFramePending = false;
+static uint   s_heavyFrameAskMs   = 0;
+static string g_heavyFrameWhy     = "";
+static bool   s_coopOwed[COOP_JOB_COUNT];
+static uint   s_coopOwedMs[COOP_JOB_COUNT];
+static uint   s_coopRuns = 0;
+
+// Mark a heavy frame owed. Single-flight: the FIRST ask owns the clock, so the
+// logged wait is the latency of the press that started it, not of the last one.
+void ScheduleHeavyFrame(const string why)
+{
+   if(!g_heavyFramePending) s_heavyFrameAskMs = GetTickCount();
+   g_heavyFramePending = true;
+   g_heavyFrameWhy     = why;
+   if(!s_coopOwed[COOP_JOB_HEAVY_FRAME]) s_coopOwedMs[COOP_JOB_HEAVY_FRAME] = GetTickCount();
+   s_coopOwed[COOP_JOB_HEAVY_FRAME] = true;
+}
+
+bool HeavyFramePending() { return g_heavyFramePending; }
+
+string CoopJobName(const int job)
+{
+   switch(job)
+   {
+      case COOP_JOB_HEAVY_FRAME:  return "heavy-frame";
+      case COOP_JOB_OBJ_CLEANUP:  return "obj-cleanup";
+      case COOP_JOB_LABEL_EXPIRY: return "label-expiry";
+      case COOP_JOB_STATUS_TEXT:  return "status-text";
+   }
+   return "?";
+}
+
+void CoopOwe(const int job)
+{
+   if(job <= COOP_JOB_NONE || job >= COOP_JOB_COUNT) return;
+   if(!s_coopOwed[job]) s_coopOwedMs[job] = GetTickCount();
+   s_coopOwed[job] = true;
+}
+
+bool CoopOwes(const int job)
+{
+   if(job <= COOP_JOB_NONE || job >= COOP_JOB_COUNT) return false;
+   return s_coopOwed[job];
+}
+
 void RedrawAllObjects(bool force_redraw=false)
 {
+    // P-PERF-02: "this frame painted nothing" is the default; every real draw
+    // below sets it, and OnCalculateHandler only spends a chart repaint when it
+    // is set (see g_lastRedrawDidWork).
+    g_lastRedrawDidWork = false;
+    // P-PERF-03: reset the phase ledger for this frame (see the CPU report at
+    // the end of OnCalculateHandler).
+    g_p3MsBase = 0; g_p3MsAtr = 0; g_p3MsHistory = 0; g_p3MsLevels = 0; g_p3MsLabels = 0; g_p3MsOverlay = 0;
+    g_p3MsLastTick = GetTickCount();
     // PERF: Soft millisecond guard for burst calls (independent from second-based gate)
     static uint s_lastRedrawAttemptMs = 0;
     static uint s_lastForcedRedrawMs = 0;
@@ -860,6 +1270,24 @@ void RedrawAllObjects(bool force_redraw=false)
     if(force_redraw) {
         if(s_lastForcedRedrawMs != 0 && nowMs - s_lastForcedRedrawMs < 20) return;
         s_lastForcedRedrawMs = nowMs;
+    }
+
+    // P-PERF-34: A FORCED FRAME INSIDE A CHART EVENT IS DEFERRED, NOT RUN.
+    //
+    // One guard covers every event-path caller - the dispatcher AND the eleven
+    // discrete one-shot sites (ESC, mode key, factor key, reset, TF lock, custom
+    // price confirm, drag release/end) - including any added later, which is the
+    // point: the defect was never one call site, it was the whole event path
+    // being allowed to run a frame body. The callers have already raised the
+    // flags (g_forceClearOnNextDraw / g_redrawTHLevelsNeeded / g_renderAllNeeded),
+    // so returning here loses nothing: the owed frame picks the same flags up.
+    //
+    // The drag is exempt on purpose (see the P-PERF-34 note above): a drag needs
+    // the levels to follow the line, and trading a freeze for a lag is not a fix.
+    if(force_redraw && g_inChartEvent && !g_customPriceLineDragging)
+    {
+        ScheduleHeavyFrame("chart-event");
+        return;
     }
 
     // PERF: Refresh cached frame time once   eliminates ~2000+ TimeCurrent() syscalls in cache ops
@@ -887,21 +1315,53 @@ void RedrawAllObjects(bool force_redraw=false)
     
     bool historicalRefreshDue = (!g_initialized || priceBrokeHistoricalRange);
     
-    int currentServerMinute = TimeMinute(CacheGetFrameTime());
-    bool basePriceBoundary = (currentServerMinute == 0 || currentServerMinute == 30);
-    bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary);
+    // P-PERF-03: the 30-minute base-price boundary is an EDGE, not a whole
+    // minute. "server minute == 0 or 30" was TRUE for 120 of every 1800
+    // seconds, so for two minutes out of every half hour this function ran
+    // its whole redraw pass at the 500 ms gate (2 Hz) — and the live MT4 log
+    // shows exactly that: every CPU-warning burst sits on a :00/:30 minute
+    // (62 ms per pass on this machine, ~15 s of CPU per boundary per chart).
+    // Only the FIRST frame of a block can need the boundary work, so remember
+    // which block we already handled and let the rest of the minute go idle.
+    const long P_P3_BLOCK_SECONDS = 30 * 60;
+    datetime boundaryTs = CacheGetFrameTime();
+    static long s_lastBoundaryBlock = -1;
+    long boundaryBlock = (long)boundaryTs / P_P3_BLOCK_SECONDS;
+    int boundaryMinute = TimeMinute(boundaryTs);
+    bool onBoundaryMinute = (boundaryMinute == 0 || boundaryMinute == 30);
+    // CANDIDATE only: the block is marked handled further down, PAST every
+    // gate. Consuming it here would let the millisecond gate swallow the one
+    // frame that carries the block's base-price work.
+    bool boundaryCandidate = (onBoundaryMinute && boundaryBlock != s_lastBoundaryBlock);
+    bool basePriceBoundary = boundaryCandidate;
+    // P-PERF-06: a staging frame is pending work by definition — the next
+    // family must land even when no flag says so.
+    bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary || g_buildStage != 0 || g_heavyFramePending);
     
     // PERFORMANCE FIX: Hard millisecond gate for ALL redraws (except forced UI events)
     // This prevents price vibrations from hammering the CPU
     if(!force_redraw) {
-        uint minWait = g_redrawTHLevelsNeeded ? 200 : 500; // 5 FPS for levels, 2 FPS for housekeeping
+        // P-PERF-34b: an OWED frame and a rebuild IN FLIGHT are not housekeeping.
+        // The 200 ms "levels" gate and the 500 ms housekeeping gate exist so that
+        // price vibration cannot re-derive an unchanged picture. Applying them to
+        // work the user already asked for is what made one switch cost >= 800 ms
+        // (four staged families spaced 200 ms apart) and made a scheduled frame
+        // wait out a whole gate before it could even start.
+        uint minWait = 500;                              // 2 FPS housekeeping
+        if(g_heavyFramePending)      minWait = 0;        // the press is owed NOW
+        else if(g_buildStage != 0)   minWait = BUILD_STAGE_GATE_MS;
+        else if(g_redrawTHLevelsNeeded) minWait = 200;   // 5 FPS for levels
         if(nowMs - s_lastRedrawAttemptMs < minWait) return;
     }
 
     if(!hasPendingWork) {
         s_lastRedrawAttemptMs = nowMs;
-        return;
+        return;   // boundaryCandidate stays armed for the next frame
     }
+
+    // Past every gate: this frame WILL do the block's work, so mark the block
+    // handled — one pass per 30-minute block instead of ~240.
+    if(boundaryCandidate) s_lastBoundaryBlock = boundaryBlock;
 
     string s_cachedSymbol = GetCachedSymbol();
     int s_cachedDigits = GetCachedDigits();
@@ -924,6 +1384,7 @@ void RedrawAllObjects(bool force_redraw=false)
     static datetime s_nextBasePriceCheckServer = 0;
     datetime nowServerTs = CacheGetFrameTime();
     bool shouldCheckBasePrice = (s_nextBasePriceCheckServer <= 0 || nowServerTs >= s_nextBasePriceCheckServer);
+    g_p3MsLastTick = GetTickCount();
     if(shouldCheckBasePrice) {
         TH3_PROF_START(BasePrice);
         UpdateBasePrice();
@@ -947,10 +1408,18 @@ void RedrawAllObjects(bool force_redraw=false)
         thBasePrice = g_dailyClosePriceForTH;
     }
     
+    // P-PERF-05: the base-price block and the ATR composite are different
+    // beasts (a history/file write vs ~2000 series reads) and shared ONE ledger
+    // slot, which is why a 2.3 s frame only ever said "base". Named separately.
+    g_p3MsBase = GetTickCount() - g_p3MsLastTick;   // base-price gate only
+    g_p3MsLastTick = GetTickCount();
+
     // Update ATR Adaptive Scaling factor (reacts to ATR changes every 5 seconds)
     if(UpdateATRScalingFactor(thBasePrice, s_cachedDigits)) {
         g_redrawTHLevelsNeeded = true;
     }
+    g_p3MsAtr = GetTickCount() - g_p3MsLastTick;    // ATR composite + scaling
+    g_p3MsLastTick = GetTickCount();
     
     static double s_lastDrawnBasePrice = 0.0;
     bool basePriceChanged = (MathAbs(thBasePrice - s_lastDrawnBasePrice) > s_cachedPoint);
@@ -958,9 +1427,9 @@ void RedrawAllObjects(bool force_redraw=false)
         s_lastDrawnBasePrice = thBasePrice;
         g_redrawTHLevelsNeeded = true;
     }
-
     // PERF: Use tracked bool instead of ObjectFind MT5 syscall (~0.5ms saved per frame)
-    bool canSkipByState = (!force_redraw && !g_labelsRelayoutNeeded && !basePriceChanged && !g_redrawTHLevelsNeeded && g_initialized);
+    // P-PERF-06: staging frames never skip — each one owns a family.
+    bool canSkipByState = (!force_redraw && !g_labelsRelayoutNeeded && !basePriceChanged && !g_redrawTHLevelsNeeded && g_initialized && g_buildStage == 0 && !g_heavyFramePending);
     if(canSkipByState) {
         // Existing second-level gate (may be zero by config)
         if(currentTime - g_lastCalculation < REDRAW_THROTTLE_SECONDS) return;
@@ -970,23 +1439,15 @@ void RedrawAllObjects(bool force_redraw=false)
     s_lastRedrawAttemptMs = nowMs;
     g_lastCalculation = currentTime;
 
-    // PERF: Cache objectPrefix - only rebuild when timeframe actually changes
-    static string s_cachedObjectPrefix = "";
-    static string s_cachedTimeframeStr = "";
-    string currentTFStr = GetCurrentTimeframe();
-    if(currentTFStr != s_cachedTimeframeStr) {
-        s_cachedTimeframeStr = currentTFStr;
-        s_cachedObjectPrefix = inpObjectPrefix + "_" + currentTFStr + "_";
-    }
-    string objectPrefix = s_cachedObjectPrefix;
-
-    static string s_lastPrefix = "";
-    if(s_lastPrefix != "" && s_lastPrefix != objectPrefix) {
-        ClearAllLevels(s_lastPrefix);
-        InvalidateTimeframeDependentCaches();
-        InvalidateATRCache();
-    }
-    s_lastPrefix = objectPrefix;
+    // P-PERF-38: the prefix is a CONSTANT now (one owner, timeframe-free), so the
+    // whole cache-with-invalidate-on-timeframe-change machinery is gone with the
+    // rename it existed to serve. The `s_lastPrefix != objectPrefix` branch that
+    // used to wipe the old namespace is gone too, and that is not a lost guard:
+    // `inpObjectPrefix` is an INPUT, so any change to it forces a reinit (MT4
+    // re-creates the indicator), which means the prefix can never change inside a
+    // running instance - the branch was unreachable, and it was the very wipe the
+    // timeframe switch was paying for.
+    string objectPrefix = GetLevelObjectPrefix();
 
     #ifdef ENABLE_DEBUG_LOGS
     static datetime s_lastDebugLog = 0;
@@ -1026,16 +1487,35 @@ void RedrawAllObjects(bool force_redraw=false)
         g_redrawTHLevelsNeeded = true;
         g_calculatedOnce = false;
     }
+    g_p3MsHistory = GetTickCount() - g_p3MsLastTick;
+    g_p3MsLastTick = GetTickCount();
 
     // Early exit when hidden - skip all drawing
     if(IsIndicatorHidden()) {
-        HideAllTHObjects();
+        bool wasApplied = HideAllTHObjects();
+        g_lastRedrawDidWork = wasApplied;   // the hide transition DID touch the chart
+        // P-PERF-34: the owed frame is SETTLED here too. Hiding IS the work the
+        // press asked for, and a flag left armed on this path would keep
+        // hasPendingWork true and minWait at 0 for every later frame - turning a
+        // deferred edit into a permanent zero-gate. The debt is paid, so it is
+        // cleared, and the pump stops owing it.
+        g_heavyFramePending = false;
+        g_heavyFrameWhy     = "";
+        s_coopOwed[COOP_JOB_HEAVY_FRAME] = false;
         return;
     }
 
-    DrawMainLevels(objectPrefix);
+    // From here on this frame is doing real work (labels and/or levels).
+    g_lastRedrawDidWork = true;
 
-    bool needLabels = (!g_calculatedOnce) || g_labelsRelayoutNeeded;
+    DrawMainLevels(objectPrefix);
+    // P-PERF-03: the pipeline render above is the frame's heaviest phase.
+    g_p3MsLevels = GetTickCount() - g_p3MsLastTick;
+    g_p3MsLastTick = GetTickCount();
+
+    // P-PERF-06: the ATR/TH/trade labels are stage 4 (BUILD_STAGE_BLOCK) —
+    // earlier staging frames defer them; the flag stays armed meanwhile.
+    bool needLabels = ((!g_calculatedOnce) || g_labelsRelayoutNeeded) && (g_buildStage == 0 || g_buildStage == BUILD_STAGE_BLOCK);
     if(needLabels)
     {
         if (g_dailyClosePriceForTH == EMPTY_VALUE)
@@ -1065,10 +1545,14 @@ void RedrawAllObjects(bool force_redraw=false)
         g_labelsRelayoutNeeded = false;
     }
 
+    g_p3MsLabels = GetTickCount() - g_p3MsLastTick;
+    g_p3MsLastTick = GetTickCount();
+
     // FIX: Snapshot final Y offset so mode/lock/factor labels always appear below all data labels
     // Move outside needLabels block to ensure overlay labels are always correctly positioned
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
+    g_p3MsOverlay = GetTickCount() - g_p3MsLastTick;   // DrawMainLevels + overlay reposition
 
     g_dailyClosePriceForTH = thBasePrice;
 
@@ -1087,7 +1571,8 @@ void RedrawAllObjects(bool force_redraw=false)
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             }
             if(!lineExists) {
-                CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits, false, "Drag to adjust (live update)");
+                // P-UI-45: a restored line is SETTLED (inert) - see CreateCustomPriceLine.
+                CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits);
             }
         } else if(inpCustomTHStartPrice > 0.0) {
             if(MathAbs(g_customTHStartPrice - inpCustomTHStartPrice) > s_cachedPoint * 0.1) {
@@ -1095,11 +1580,12 @@ void RedrawAllObjects(bool force_redraw=false)
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
                 GlobalVariableSet(gvarName, g_customTHStartPrice);
                 if(!lineExists) {
-                    CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits, false, "Drag to adjust (live update)");
+                    // P-UI-45: a restored line is SETTLED (inert) - see CreateCustomPriceLine.
+                    CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits);
                 } else {
                     ObjectSetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, g_customTHStartPrice);
                     ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
-                                  "[PIN] Custom Price: " + DoubleToString(g_customTHStartPrice, s_cachedDigits) + " | Drag to adjust (live update)");
+                                  "[PIN] Custom Price: " + DoubleToString(g_customTHStartPrice, s_cachedDigits) + " | PIN button to move");
                 }
                 g_redrawTHLevelsNeeded = true;
             }
@@ -1109,7 +1595,7 @@ void RedrawAllObjects(bool force_redraw=false)
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             }
             if(!lineExists) {
-                if(CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits, false, "Drag to adjust (live update)")) {
+                if(CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits)) {
                     _LOG_GATE_I Print("[I][GEN] Custom price line restored at: ", DoubleToString(g_customTHStartPrice, s_cachedDigits));
                 }
             }
@@ -1119,7 +1605,22 @@ void RedrawAllObjects(bool force_redraw=false)
         }
     }
     
-    if (inpShowTHLevels && g_redrawTHLevelsNeeded)
+    // P-PERF-02: geometry signature of the last rendered level frame. It lives
+    // at function scope because BOTH branches below can invalidate it.
+    static string s_lastFrameSig = "";
+    // P-PERF-25: the same signature WITHOUT the line-visibility mask. Storing
+    // the core separately is what lets a pure visibility flip be recognised as
+    // "nothing the renderer produces has changed" (see below) instead of being
+    // guessed at.
+    static string s_lastFrameCore = "";
+    // P-PERF-06: the CURRENT frame's signature, hoisted so the BLOCK-stage
+    // seal after the labels block can store exactly what this frame computed.
+    string frameSig = "";
+    string frameCore = "";
+
+    // P-PERF-06: staging frames always enter — the stage flag (not just
+    // g_redrawTHLevelsNeeded) carries liveness between family frames.
+    if (inpShowTHLevels && (g_redrawTHLevelsNeeded || g_buildStage != 0))
     {
         #ifdef ENABLE_DEBUG_LOGS
         static datetime s_lastLevelRedrawLog = 0;
@@ -1136,22 +1637,53 @@ void RedrawAllObjects(bool force_redraw=false)
         // PERF: Topology signature guard - clear only when structure-defining inputs changed.
         static string s_lastLevelSig = "";
         ENUM_STEP_CALCULATION_MODE modeNow = GetCurrentStepMode();
+        // P-PERF-23: TOPOLOGY ONLY — every term here changes WHICH levels
+        // exist (or which mode computes them). Anything that only changes how
+        // they are painted belongs in levelLookSig / frameSig.
         string levelSig = objectPrefix + "|" +
                           IntegerToString((int)modeNow) + "|" +
                           IntegerToString(inpMaxLevels) + "|" +
                           IntegerToString((int)g_thStartPointType) + "|" +
                           IntegerToString(inpLSFirst ? 1 : 0) + "|" +
-                          IntegerToString(inpShowMidZones ? 1 : 0) + "|" +
-                          IntegerToString((int)inpMidZoneStyle) + "|" +
-                          IntegerToString(inpMidZoneTransparency) + "|" +
-                          DoubleToString(inpMidZoneHeightPercent, 3) + "|" +
-                          IntegerToString(IsTriggerLevelsEnabled() ? 1 : 0) + "|" +
+                          // P-PERF-21: IsTriggerLevelsEnabled() used to sit HERE,
+                          // in the TOPOLOGY signature - so a T press looked like a
+                          // structure-defining edit and took shouldClearLevels,
+                          // wiping every level, zone and label and restarting the
+                          // four-frame staged rebuild. The trigger overlay changes
+                          // no geometry (see PipelineGeometryKey); it changes the
+                          // PICTURE, so it belongs in frameSig below, where a
+                          // change costs one render and zero deletes.
 #ifndef BUILD_LITE
                           IntegerToString(inpEnableHarmonicPattern ? 1 : 0) + "|" +
                           DoubleToString(inpHarmonicRatio, 3) + "|";
 #else
                           "|";
 #endif
+        // P-PERF-23: APPEARANCE — same LEVEL SET, different PICTURE.
+        //
+        // The four terms below used to live in `levelSig`, i.e. in the TOPOLOGY
+        // signature, and that is the whole of "toggling my levels deletes and
+        // redraws everything": any change to them made levelTopologyChanged
+        // true, which took shouldClearLevels, which ran ClearAllLevels over the
+        // WHOLE chart (every line, zone and label deleted) and restarted the
+        // four-frame staged rebuild - for a switch that only decides whether the
+        // mid zones are PAINTED. Nothing about which levels exist changed.
+        //
+        // They are still inputs to the build (GetUnifiedZoneConfig feeds them to
+        // SModeConfig, and PipelineGeometryKey names them), so the geometry is
+        // recomputed when they change - correctly - but the render signature
+        // below carries them now, so the cost is one render and zero deletes.
+        string levelLookSig = IntegerToString(inpShowMidZones ? 1 : 0) + "," +
+                              IntegerToString((int)inpMidZoneStyle) + "," +
+                              IntegerToString(inpMidZoneTransparency) + "," +
+                              DoubleToString(inpMidZoneHeightPercent, 3);
+        // P-PERF-38d: on the very first pass of an instance that ADOPTED the
+        // previous instance's topology, the stored signature is not "unknown" —
+        // it is the one the chart was last drawn with (`levelSig` itself, since
+        // the fingerprint just proved every name-deciding input is unchanged).
+        // Without this the comparison below is trivially true (fresh instance,
+        // empty static) and the family is wiped on every timeframe switch.
+        if(s_lastLevelSig == "" && g_adoptPreviousTopology) s_lastLevelSig = levelSig;
         bool levelTopologyChanged = (levelSig != s_lastLevelSig);
         bool shouldClearLevels = g_forceClearOnNextDraw || levelTopologyChanged;
 
@@ -1160,21 +1692,156 @@ void RedrawAllObjects(bool force_redraw=false)
             ClearAllLevels(objectPrefix, !skipZones);
             TH3_PROF_END(LevelsClear);
         }
-        TH3_PROF_START(LevelsDrawByMode);
-        DrawLevelsBasedOnMode(objectPrefix, g_dailyClosePriceForTH);
-        TH3_PROF_END(LevelsDrawByMode);
+
+        // P-PERF-06: ANY wipe rebuilds in stages (attach, TF switch, topology
+        // toggle, custom-price re-anchor — all of them materialise ~900
+        // objects). Unconditional restart: a toggle that wipes mid-staging
+        // must rebuild from stage 1, or the wiped families never come back.
+        if(shouldClearLevels) {
+            g_buildStage = BUILD_STAGE_LINES;
+        }
+
+        // P-PERF-02 GEOMETRY SIGNATURE — the algorithmic half of the fix.
+        // The render below is a pure function of the values in this signature.
+        // Every heavy frame that arrives with the flag set but NO input moved
+        // (the 5 s ATR tick, a label relayout, any event that raised the flag
+        // defensively) used to re-derive and re-assert all ~300 levels: two
+        // ObjectFind per line plus ~10 hash probes per line/label, and the
+        // resulting pixels were identical. With the signature the work happens
+        // only when the picture really changes; a steady frame is ~15 string
+        // compares and zero syscalls.
+        double vpTop = 0, vpBottom = 0;
+        GetViewportBounds(vpTop, vpBottom);
+        // P-PERF-06: freeze the cull window for the whole staging sequence —
+        // stages 2-4 render against the stage-1 snapshot so a pan mid-staging
+        // cannot split families across two viewports.
+        if(g_buildStage == BUILD_STAGE_LINES) {
+            g_stageVpTop = vpTop;
+            g_stageVpBottom = vpBottom;
+        } else if(g_buildStage > BUILD_STAGE_LINES) {
+            vpTop = g_stageVpTop;
+            vpBottom = g_stageVpBottom;
+        }
+        // P-PERF-25: the mask term is kept OUT of the core so a line-visibility
+        // flip is provably a visibility-only change.
+        frameCore = levelSig + levelLookSig + "|" +
+                          IntegerToString(g_drawGeneration) + "|" +
+                          DoubleToString(g_dailyClosePriceForTH, s_cachedDigits) + "|" +
+                          DoubleToString(g_highestHigh, s_cachedDigits) + "|" +
+                          DoubleToString(g_lowestLow, s_cachedDigits) + "|" +
+                          DoubleToString(GetCurrentScalingFactor(), 8) + "|" +
+                          DoubleToString(vpTop, s_cachedDigits) + "|" +
+                          DoubleToString(vpBottom, s_cachedDigits) + "|" +
+                          IntegerToString(IsIndicatorHidden() ? 1 : 0) +
+                          IntegerToString(IsTriggerLevelsEnabled() ? 1 : 0) +
+                          IntegerToString(g_customPriceLineDragging ? 1 : 0) +
+                          IntegerToString(inpShowPipDistanceLabels ? 1 : 0);
+        frameSig = frameCore + "|" + IntegerToString(g_linesVisible ? 1 : 0);
+        bool geometryChanged = (frameSig != s_lastFrameSig);
+        // P-PERF-06: staging frames always build — each one owns its family.
+        if(g_buildStage != 0) geometryChanged = true;
+
+        // P-PERF-25: A LINE-VISIBILITY-ONLY CHANGE NEEDS NO RENDER.
+        //
+        // The L key and the SHOW LINES row flip a MASK. The mask owner
+        // (SetAllLineObjectsVisibility, P-PERF-22) has already written it for
+        // every line the cache knows, and any line created later reads the live
+        // switch at creation - so re-deriving and re-asserting the whole level
+        // family (~900 objects, one ObjectFind probe each) to change a mask is
+        // pure repeated computation: the same inputs, the same objects, the
+        // same pixels except for the mask the walk just wrote.
+        //
+        // It is provable, not assumed: with the mask kept out of frameCore, the
+        // ONLY way `frameCore == s_lastFrameCore && frameSig != s_lastFrameSig`
+        // can hold is that the mask term is the single difference. A wipe, a
+        // staging frame and every real edit (price, viewport, scaling, mode,
+        // generation) change the core and take the normal render path.
+        bool visOnly = (!shouldClearLevels && g_buildStage == 0 &&
+                        s_lastFrameCore != "" && frameCore == s_lastFrameCore &&
+                        frameSig != s_lastFrameSig);
+
+        // P-PERF-06: the BLOCK stage draws nothing itself — the labels block
+        // below is its family. (A wipe in a BLOCK frame already restarted the
+        // stage to LINES above, so skipping here can never orphan a wipe.)
+        // P-PERF-30: `geometryChanged` alone is not the whole question - it only
+        // knows about the inputs frameSig enumerates, and the paint reads more
+        // than that. A user edit (applyRefreshFlags) never rides on it.
+        bool mustRender = (shouldClearLevels || geometryChanged ||
+                           (g_renderAllNeeded && !visOnly));
+        if(mustRender && g_buildStage != BUILD_STAGE_BLOCK && !visOnly)
+        {
+            TH3_PROF_START(LevelsDrawByMode);
+            DrawLevelsBasedOnMode(objectPrefix, g_dailyClosePriceForTH, vpTop, vpBottom, g_buildStage);
+            TH3_PROF_END(LevelsDrawByMode);
+            // P-PERF-06: the signature seals ONLY a complete render. A staged
+            // frame stores nothing; the BLOCK stage seals it after the labels.
+            if(g_buildStage == 0) { s_lastFrameSig = frameSig; s_lastFrameCore = frameCore; g_renderAllNeeded = false; }
+            // Advance the rebuild; the LABELS stage only arms the labels block
+            // below (it is stage 4 of the same sequence).
+            if(g_buildStage == BUILD_STAGE_LINES)            g_buildStage = BUILD_STAGE_ZONES;
+            else if(g_buildStage == BUILD_STAGE_ZONES)       g_buildStage = BUILD_STAGE_LABELS;
+            else if(g_buildStage == BUILD_STAGE_LABELS) { g_buildStage = BUILD_STAGE_BLOCK; g_labelsRelayoutNeeded = true; }
+        }
+        else if(visOnly)
+        {
+            // P-PERF-25: the skip is a COMPLETED render of the same picture, so
+            // it seals exactly like one - otherwise the next steady frame would
+            // see a changed signature and render after all.
+            s_lastFrameSig  = frameSig;
+            s_lastFrameCore = frameCore;
+            // P-PERF-30: the mask owner already painted the only difference, so
+            // the user edit this frame carried IS applied - consume it.
+            g_renderAllNeeded = false;
+        }
         s_lastLevelSig = levelSig;
         TH3_PROF_END(Levels);
         g_forceClearOnNextDraw = false;
         g_redrawTHLevelsNeeded = false;
     }
-    else if (!inpShowTHLevels && g_redrawTHLevelsNeeded)
+    else if (!inpShowTHLevels && (g_redrawTHLevelsNeeded || g_buildStage != 0))
     {
         ClearAllLevels(objectPrefix);
+        // P-PERF-38d: the family is gone, so the adoption stamp must go with it
+        // — otherwise a later timeframe switch would adopt a chart that holds
+        // nothing and skip the one wipe that is genuinely required.
+        ClearTopologyAdoptionStamp();
+        // The levels are GONE from the chart, so the stored signature no
+        // longer describes it — re-enabling the switch must redraw them.
+        s_lastFrameSig = "";
+        s_lastFrameCore = "";   // P-PERF-25: both halves are stale together
+        g_buildStage = 0;   // P-PERF-06: a rebuild in flight has nothing to build into
         g_forceClearOnNextDraw = false;
         g_redrawTHLevelsNeeded = false;
     }
 
+    // P-PERF-06: the labels block above just ran as the last rebuild stage
+    // (needLabels is forced at BLOCK) — seal the signature so steady frames
+    // skip again. When needLabels was deferred, the stage stays armed.
+    // NOTE: this sits AFTER the levels block because frameSig/s_lastFrameSig
+    // live there (define-before-use) and the levels block runs after needLabels.
+    if(g_buildStage == BUILD_STAGE_BLOCK && (needLabels)) {
+        g_buildStage = 0;
+        s_lastFrameSig = frameSig;
+        s_lastFrameCore = frameCore;   // P-PERF-25: seal both halves together
+        g_renderAllNeeded = false;     // P-PERF-30: consumed by this staged render
+    }
+
+    // P-PERF-34: this pass carried the owed frame, so the debt is settled here -
+    // the only place that actually ran the body. The ledger reports BOTH numbers
+    // because they are different problems: `waited` is the latency the press paid
+    // (the scheduling), `body` is the frame cost itself (the rendering).
+    if(g_heavyFramePending)
+    {
+        int deferMs = (int)(GetTickCount() - s_heavyFrameAskMs);
+        int bodyMs  = (int)(GetTickCount() - nowMs);
+        if(deferMs >= COOP_WARN_MS || bodyMs >= COOP_WARN_MS)
+           _LOG_GATE_W Print("[W][PERF] owed frame (", g_heavyFrameWhy, ") waited=", deferMs,
+                             "ms body=", bodyMs, "ms stage=", g_buildStage,
+                             " clear=", (g_forceClearOnNextDraw ? 1 : 0));
+        g_heavyFramePending = false;
+        g_heavyFrameWhy     = "";
+        s_coopRuns++;
+    }
     CheckAlerts(objectPrefix, g_currentPrice);
     ThrottledChartRedraw();
 }
@@ -1182,6 +1849,109 @@ void RedrawAllObjects(bool force_redraw=false)
 //+------------------------------------------------------------------+
 //| OnCalculate Handler (matching MT5: tick throttle + cache inv.)   |
 //+------------------------------------------------------------------+
+//==============================================================================
+// P-PERF-04 EVENT BUDGET — measure the paths the user FEELS
+//
+// P-PERF-02/03 instrumented the TICK path, which is why its fixes were real but
+// incomplete: the complaints that survived were about INTERACTION — working
+// with the chart, with the panel, and switching timeframe. None of those paths
+// had a single line of measurement, so they could only be guessed at. These two
+// helpers turn the next report into a named phase too. They log AT MOST one
+// line per 2 s and only when the budget was blown, so the fast path pays one
+// GetTickCount subtraction.
+//==============================================================================
+#define P_P4_EVENT_WARN_MS  40    // one chart event (chart handler + UI handler)
+#define P_P4_INIT_WARN_MS   150   // attach / timeframe switch (OnInit+OnDeinit)
+#define P_P4_MOVE_WARN_MS   20    // P-PERF-15: one cursor-move pass (ring + panel + hold)
+#define P_P4_CLICK_WARN_MS  20    // P-PERF-26: one object-click pass (button + panel + apply)
+static uint s_p4LogGateMs = 0;
+
+// P-PERF-26: THE LEDGER WAS UNREADABLE, AND THAT COST A WHOLE CYCLE.
+//
+// Every perf line printed the raw chart-event id, so the reader had to REMEMBER
+// what "id=1" meant. The project's own record shows the price of guessing: the
+// 485-578 ms spikes were filed as "the cursor-move path" (P-PERF-15/16 notes),
+// and the fix was aimed at hover work - while the constant is actually
+// CHARTEVENT_OBJECT_CLICK. Measured, not recalled: the MQL4 compiler itself was
+// asked (case-value collision probe) and reports
+//   KEYDOWN=0 OBJECT_CLICK=1 OBJECT_DRAG=2 OBJECT_ENDEDIT=3 CLICK=4
+//   OBJECT_DELETE=6 CHART_CHANGE=9 MOUSE_MOVE=10
+// so id=1 is a BUTTON PRESS on the ring/panel - i.e. exactly the
+// "toggling a switch takes half a second" the user reports - and no id=10 line
+// exists because hover work is cheap. The ledger now prints the name next to
+// the number, so the next report cannot be mis-read.
+string P4EventName(const int id)
+{
+    if(id == CHARTEVENT_KEYDOWN)        return "KEYDOWN";
+    if(id == CHARTEVENT_OBJECT_CLICK)   return "OBJ_CLICK";
+    if(id == CHARTEVENT_OBJECT_DRAG)    return "OBJ_DRAG";
+    if(id == CHARTEVENT_OBJECT_ENDEDIT) return "OBJ_ENDEDIT";
+    if(id == CHARTEVENT_CLICK)          return "CLICK";
+    if(id == CHARTEVENT_OBJECT_DELETE)  return "OBJ_DELETE";
+    if(id == CHARTEVENT_CHART_CHANGE)   return "CHART_CHANGE";
+    if(id == CHARTEVENT_MOUSE_MOVE)     return "MOUSE_MOVE";
+    return "UNKNOWN";
+}
+
+void P4ReportSlow(const string what, const uint ms, const uint budget)
+{
+    if(ms < budget) return;
+    uint now = GetTickCount();
+    if(s_p4LogGateMs != 0 && now - s_p4LogGateMs < 2000) return;
+    s_p4LogGateMs = now;
+    _LOG_GATE_W Print("[W][PERF] ", what, " took ", (int)ms, "ms (budget ", (int)budget, "ms)");
+}
+
+string P4MsTag(const uint ms) { return IntegerToString((int)ms); }
+
+//==============================================================================
+// P-PERF-32 — ONE OWNER FOR THE STRUCTURE SWITCHES (card 11 rows 1-6)
+//
+// The master / L1-L5 switches change NO geometry (the level SET is
+// switch-invariant; they only choose zone colours), yet they rode
+// REFRESH_BUFFERS into a full RedrawAllObjects: geometry-key miss,
+// whole-family recompute and re-assert, overrides flush — inside the click.
+// On a weak PC the press felt dead. So the switch never reaches the render:
+// the owner sets the state, persists the OV_ key (P-UI-02: REFRESH_NONE rows
+// must save explicitly), repaints the recoloured zones via
+// StructureRecolourWalk, and forces the discrete-action repaint. Steady
+// frames skip on the unchanged signature; the geometry key keeps the switch
+// terms, so any LATER real render recomputes with live switches and the
+// walk can never desync it. idx: 0 = master, 1-5 = L1-L5.
+//==============================================================================
+void SetStructureVisible(const int idx, const bool visible)
+{
+   uint p32t = GetTickCount();
+   if(idx <= 0)      g_showStructure = visible;
+   else if(idx == 1) g_showStructureL1 = visible;
+   else if(idx == 2) g_showStructureL2 = visible;
+   else if(idx == 3) g_showStructureL3 = visible;
+   else if(idx == 4) g_showStructureL4 = visible;
+   else              g_showStructureL5 = visible;
+   RuntimeSettingsSaveOverridesThrottled();
+   int touched = StructureRecolourWalk();
+   P4ReportSlow("structure toggle [idx=" + IntegerToString(idx) +
+                " on=" + IntegerToString(visible ? 1 : 0) +
+                " touched=" + IntegerToString(touched) +
+                " cache=" + IntegerToString(CacheGetSize()) + "]",
+                GetTickCount() - p32t, P_P4_MOVE_WARN_MS);
+   RepaintForDiscreteAction();
+}
+
+// P-PERF-10: named-phase report for the INIT path (attach / TF switch). The
+// tick ledger cannot attribute OnInit's 3.2-4.1 s — it measures a frame, not
+// the init sequence — so the entry passes its two halves and OnInitHandler
+// leaves the four domain phases in globals.
+string P4InitLedgerTag(const uint indMs, const uint uiMs)
+{
+    return " [ind=" + IntegerToString((int)indMs) +
+           " ui=" + IntegerToString((int)uiMs) +
+           " settings=" + IntegerToString((int)g_pInitMsSettings) +
+           " hist=" + IntegerToString((int)g_pInitMsHistory) +
+           " base=" + IntegerToString((int)g_pInitMsBase) +
+           " atr=" + IntegerToString((int)g_pInitMsAtr) + "]";
+}
+
 int OnCalculateHandler(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[]) {
     static uint s_lastCPUTime = 0;
     static int s_cpuWarningCount = 0;
@@ -1271,8 +2041,13 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
         RedrawAllObjects(g_redrawTHLevelsNeeded || g_forceClearOnNextDraw);
         TH3_PROF_END(RedrawCall);
 
-        // FIX: ChartRedraw after RedrawAllObjects
-        ThrottledChartRedraw();
+        // P-PERF-02: ChartRedraw after RedrawAllObjects — but ONLY when that
+        // frame actually painted. The idle frames (nothing pending) used to ask
+        // the terminal for a full chart repaint at tick rate anyway.
+        if(g_lastRedrawDidWork) {
+            g_lastRedrawDidWork = false;
+            ThrottledChartRedraw();
+        }
 
         if(barsChanged || s_lastBarTime == 0) {
             // PERF: Use cached object count
@@ -1298,11 +2073,19 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 
     uint elapsed = GetTickCount() - startTime;
     if(elapsed > CPU_WARNING_MS) {
+        // P-PERF-03: name the phase. The ledger costs a few int adds per frame
+        // and turns "it is slow somewhere" into "levels took 1780 of 1797 ms".
+        string phase = " [base=" + IntegerToString((int)g_p3MsBase) +
+                       " atr=" + IntegerToString((int)g_p3MsAtr) +
+                       " hist=" + IntegerToString((int)g_p3MsHistory) +
+                       " levels=" + IntegerToString((int)g_p3MsLevels) +
+                       " labels=" + IntegerToString((int)g_p3MsLabels) +
+                       " overlay=" + IntegerToString((int)g_p3MsOverlay) + "]";
         if(elapsed > CPU_CRITICAL_MS) {
-            _LOG_GATE_E Print("[E][GEN] [CRIT] CRITICAL CPU: OnCalculate took ", elapsed, "ms! Reduce inpMaxTHLevels!");
+            _LOG_GATE_E Print("[E][GEN] [CRIT] CRITICAL CPU: OnCalculate took ", elapsed, "ms!", phase, " Reduce inpMaxTHLevels!");
         }
         else if(s_lastCPUTime == 0 || GetTickCount() - s_lastCPUTime > 60000) {
-            _LOG_GATE_W Print("[W][GEN] CPU Warning: OnCalculate took ", elapsed, "ms (threshold: ", CPU_WARNING_MS, "ms)");
+            _LOG_GATE_W Print("[W][GEN] CPU Warning: OnCalculate took ", elapsed, "ms (threshold: ", CPU_WARNING_MS, "ms)", phase);
             s_lastCPUTime = GetTickCount();
         }
     }
@@ -1322,11 +2105,19 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
 //| the zone BOX, not lines - the L key and line visibility must not |
 //| toggle them (same behavior as the filled box rectangle).         |
 //+------------------------------------------------------------------+
+// P-PERF-23c: _B_Right was MISSING here while the L switch's cache walk
+// (SetAllLineObjectsVisibility, VisibilityManager) excluded ALL FOUR. Two owners
+// of the same question disagreed, so the F switch's show branch treated the
+// right border segment as a level LINE: with lines hidden it hid that edge of
+// the empty box and left the other three - a box with a side missing, straight
+// out of "the indicator hides parts of my chart for no reason". The four
+// segments are one family (the box), and no visibility switch owns them.
 bool IsZoneBoxBorderObject(const string name)
 {
     if(StringFind(name, "_B_Top") >= 0)    return true;
     if(StringFind(name, "_B_Bottom") >= 0) return true;
     if(StringFind(name, "_B_Left") >= 0)   return true;
+    if(StringFind(name, "_B_Right") >= 0)  return true;
     return false;
 }
 
@@ -1347,6 +2138,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
            StringFind(sparam, "_BK_") < 0) {
             CacheRemoveObject(sparam);
             g_redrawTHLevelsNeeded = true;
+            // P-PERF-02: a level vanished behind our back — the stored geometry
+            // signature no longer describes the chart, so the next frame must
+            // rebuild for real (this is the self-heal the per-object ObjectFind
+            // used to provide on every frame).
+            MarkDrawGeneration();
         }
     }
 
@@ -1382,6 +2178,15 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 
         if(IsHotkeyPressed(lparam, sparam, inpHideKey))
         {
+            // P-PERF-26: the whole/level visibility switch is the action the user
+            // repeats most, so its cost gets its own named line.
+            // P-PERF-31: both directions now walk the object cache (plus the
+            // cache size, which proves which path ran: cold-cache legacy scan
+            // only right after attach).
+            uint p26F = GetTickCount();
+            // P-PERF-31: -2 = hide branch, -1 = cold-cache legacy scan,
+            // >=0 = cache-walk writes issued by the show branch.
+            int p31Touched = -2;
             string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
             double currentState = 0.0;
             if(GlobalVariableCheck(gvar_name)) {
@@ -1413,58 +2218,22 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             else
             {
                 LOG_I(LOG_CAT_KEYS, "F key: Showing all objects");
-                // Fast show: toggle visibility instead of delete+recreate
-                int total = ObjectsTotal(0, -1, -1);
-                string cachedPrefixF = inpObjectPrefix;
-                int prefixLenF = StringLen(cachedPrefixF);
-                ushort prefixFirstCharF = StringGetCharacter(cachedPrefixF, 0);
-                for(int i = total - 1; i >= 0; i--)
-                {
-                    string objName = ObjectName(0, i, -1, -1);
-                    if(StringGetCharacter(objName, 0) != prefixFirstCharF) continue;
-                    if(StringLen(objName) >= prefixLenF && StringSubstr(objName, 0, prefixLenF) == cachedPrefixF)
-                    {
-                        if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot layer ignores F
-                        // Keep ATR objects hidden if ATR labels are disabled
-                        bool isATRObject = (StringFind(objName, "ATR_") >= 0);
-                        if(isATRObject) {
-                            bool atrShouldShow = (g_atrLabelsVisible && inpShowATRLabels);
-                            if(!atrShouldShow) {
-                                ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                            } else {
-                                if(StringFind(objName, "ATR_Targets_") >= 0 && !inpShowATRTargets)
-                                    ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                                else
-                                    ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-                            }
-                            continue;
-                        }
-                        // Keep trigger objects hidden if triggers are disabled
-                        bool isTriggerObject = (StringFind(objName, "TriggerTH_Up_") >= 0 || 
-                                                StringFind(objName, "TriggerTH_Down_") >= 0);
-                        if(isTriggerObject && !g_triggerLevelsEnabled)
-                        {
-                            ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                        }
-                        else if(!g_linesVisible)
-                        {
-                            int objType = (int)ObjectGetInteger(0, objName, OBJPROP_TYPE);
-                            // Empty-box borders are part of the box, not lines
-                            if((objType == OBJ_HLINE || objType == OBJ_TREND) && !IsZoneBoxBorderObject(objName))
-                            {
-                                ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-                            }
-                            else
-                            {
-                                ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-                            }
-                        }
-                        else
-                        {
-                            ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
-                        }
-                    }
-                }
+                // P-PERF-02: objects are visible again, so the once-per-
+                // transition hide pass must be armed for the next F press.
+                ResetHideAllState();
+                // P-PERF-31: same decision tree the chart scan always had (ATR
+                // state, trigger state, lines state), now over the object
+                // cache — zero ObjectName calls, probes only for families the
+                // names cannot decide. Legacy scan only on a cold cache.
+                // P-PERF-41: the zone family switch is the FIFTH input. Without it
+                // this branch repainted every zone rectangle OBJ_ALL_PERIODS - i.e.
+                // an F press resurrected the exact family the Zones & Levels
+                // switch had just turned off, and the two controls disagreed.
+                bool atrShouldShowF = (g_atrLabelsVisible && inpShowATRLabels);
+                int shownTouched = VisibilityShowAllCached(atrShouldShowF, inpShowATRTargets,
+                                                           g_triggerLevelsEnabled, g_linesVisible,
+                                                           inpShowMidZones);
+                p31Touched = shownTouched;
                 // Restore label visibility
                 ObjectSetInteger(0, g_stepModeLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
                 ObjectSetInteger(0, g_factorLabelName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
@@ -1479,12 +2248,22 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 
                 g_redrawTHLevelsNeeded = true;
                 // Re-apply label visibility consistently
-                string objectPrefixLocal = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+                string objectPrefixLocal = GetLevelObjectPrefix();
                 SetATRLabelsVisibility(objectPrefixLocal, (g_atrLabelsVisible && inpShowATRLabels));
                 SetTHLabelsVisibility(objectPrefixLocal, (inpShowTHLabels ? g_thLabelsMode : 0));
             }
-            // Direct ChartRedraw for F key (ThrottledChartRedraw skips when hidden)
-            ChartRedraw();
+            // P-PERF-02: masks written directly above → every stored mask is now
+            // stale; the guarded writers must re-assert once on the next frame.
+            BumpTfEpoch();
+            g_redrawTHLevelsNeeded = true;
+            P4ReportSlow("hide-all toggle (F) [hidden=" + (isBecomingHidden ? "1" : "0") +
+                         " touched=" + IntegerToString(p31Touched) +
+                         " cache=" + IntegerToString(CacheGetSize()) + "]",
+                         GetTickCount() - p26F, P_P4_INIT_WARN_MS);
+            // P-PERF-24: one owner for "a discrete action paints now" - it forces
+            // the repaint even while hidden, which is what the old bare
+            // ChartRedraw() here was working around.
+            RepaintForDiscreteAction();
             return;
         }
 
@@ -1493,33 +2272,36 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(IsHotkeyPressed(lparam, sparam, inpLinesToggleKey))
         {
-            g_linesVisible = !g_linesVisible;
-            g_showLines = g_linesVisible;   // keep the Zones card mirror in sync
-            UpdateLinesVisibleCache(g_linesVisible);
-            string gvar_name = "Biotak_LinesVisible_" + GetCachedChartIdStr();
-            GlobalVariableSet(gvar_name, g_linesVisible ? 1.0 : 0.0);
-            long lineTf = g_linesVisible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-            int total = ObjectsTotal(0, -1, -1);
-            string cachedPrefixL = inpObjectPrefix;
-            int prefixLenL = StringLen(cachedPrefixL);
-            ushort prefixFirstCharL = StringGetCharacter(cachedPrefixL, 0);
-            for(int i = 0; i < total; i++)
-            {
-                string objName = ObjectName(0, i, -1, -1);
-                if(StringGetCharacter(objName, 0) != prefixFirstCharL) continue;
-                if(StringLen(objName) >= prefixLenL && StringSubstr(objName, 0, prefixLenL) == cachedPrefixL)
-                {
-                    if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: trade rays are not level lines
-                    // Toggle all LINE objects (level lines, zone boundary lines,
-                    // trigger lines). Boxes (zones), labels stay untouched.
-                    int objType = (int)ObjectGetInteger(0, objName, OBJPROP_TYPE);
-                    // Empty-box border segments belong to the box, not lines
-                    if((objType == OBJ_HLINE || objType == OBJ_TREND) && !IsZoneBoxBorderObject(objName))
-                        ObjectSetInteger(0, objName, OBJPROP_TIMEFRAMES, lineTf);
-                }
-            }
+            // P-PERF-29: the switch's state, mirror, cache, persisted key and
+            // object MASK all live in one owner now - the panel rows and the
+            // factory reset used to raise the flag WITHOUT writing the mask,
+            // which the P-PERF-25 skip then trusted and painted nothing.
+            bool p26want = !g_linesVisible;
+            // P-PERF-22: this was a full-chart walk - ObjectsTotal(0,-1,-1) then
+            // ObjectName + ObjectGetInteger for EVERY object on the chart, ours
+            // or not, plus one TIMEFRAMES write per line whether or not the mask
+            // changed. The same repair already existed, correct, in
+            // VisibilityManager (SetAllLineObjectsVisibility): it walks the
+            // OBJECT CACHE - only our own objects, no ObjectName calls - and it
+            // keeps this hotkey's exclusions (F-key border segments, _BK_
+            // trade rays). It had no callers; it does now. It also bumps the
+            // P-PERF-02 epoch itself, so the guards re-assert once.
+            // P-PERF-26: the switch's own cost is measured, not guessed - on the
+            // old shape a bare press had no line of its own (the event ledger
+            // reports the whole event and the mask walk is the only work here).
+            uint p26t = GetTickCount();
+            SetLinesVisible(p26want, true);
+            // P-UI-40: the ZONES card's SHOW LINES row and the LINES card display
+            // this switch, and this path cannot repaint them (panel file comes
+            // later). Ask the UI layer — the row reads the live flag, only its
+            // IMAGE is stale.
+            RequestUISync();
+            P4ReportSlow("lines toggle (L) [lines=" + (g_linesVisible ? "1" : "0") + "]",
+                         GetTickCount() - p26t, P_P4_MOVE_WARN_MS);
             LOG_I(LOG_CAT_LINES, "Lines " + (g_linesVisible ? "VISIBLE" : "HIDDEN"));
-            ThrottledChartRedraw();
+            // P-PERF-24: a key press is one event - paint it now instead of
+            // waiting for the next tick to pass the 100 ms throttle.
+            RepaintForDiscreteAction();
             return;
         }
 
@@ -1547,9 +2329,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
+            // P-UI-45: placement mode = SELECTABLE (a press ON the line may grab it),
+            // never pre-SELECTED - a SELECTED line is moved by MT4 on ANY later drag.
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, 100);
+            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
             ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
                           "[PIN] Custom Price: " + DoubleToString(currentPrice, Digits) + " | Drag to adjust, Double-click to confirm");
             g_customPriceLineCreated = true;
@@ -1566,18 +2350,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             string symbolName = GetCachedSymbol();
             string gvarName = "Biotak_CustomPrice_" + symbolName;
-            string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
             bool customPriceActive = GlobalVariableCheck(gvarName);
             if(g_waitingForCustomPriceClick || customPriceActive || g_customPriceKeyboardOverride)
             {
-                CleanupCustomPriceObjects(true, true);
-                g_thStartPointType = inpTHStartPointType;
-                g_customPriceKeyboardOverride = false;
-                GlobalVariableSet(overrideFlagName, 0.0);
-                g_forceClearOnNextDraw = true;
-                g_redrawTHLevelsNeeded = true;
-                RedrawAllObjects(true);
-                _LOG_GATE_D Print("[D][GEN] Custom price mode cancelled - returned to Input Parameter setting");
+                // P-UI-45: the sequence itself lives in ONE owner - the ring's PIN
+                // item's OFF press runs the very same one.
+                DeactivateCustomPriceMode("ESC");
                 ThrottledChartRedraw();
                 return;
             }
@@ -1590,6 +2368,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpTriggerLevelsKey))
         {
             g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
+            RequestUISync();   // P-UI-40: the TRIGGER card's SHOW row + the ring badge
             string triggerGvarName = "Biotak_TriggerLevels_" + GetCachedChartIdStr();
             GlobalVariableSet(triggerGvarName, g_triggerLevelsEnabled);
             if(g_triggerLevelsEnabled) {
@@ -1597,7 +2376,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             } else {
                 LOG_I(LOG_CAT_KEYS, "Trigger Zones: OFF");
             }
-            g_forceClearOnNextDraw = true;
+            // P-PERF-21: NO force-clear. The overlay owns ONE family - the
+            // trigger zones - and RenderZones applies the live flag itself, so
+            // this is a re-render, never a wipe: structure lines, zones and
+            // labels are not deleted and re-materialised, and the geometry cache
+            // (which no longer keys on the flag) answers with the identical
+            // lists instead of recomputing them.
             g_redrawTHLevelsNeeded = true;
             if(!g_customPriceLineDragging)
                 RedrawAllObjects(true);
@@ -1612,10 +2396,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
             g_atrLabelsVisible = !g_atrLabelsVisible;
+            RequestUISync();   // P-UI-40: the ATR card's own rows show this switch
             g_showATRLabels = g_atrLabelsVisible;   // keep the ATR card mirror in sync
             GlobalVariableSet(atrGvarNameKey, g_atrLabelsVisible ? 1.0 : 0.0);
             
-            string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+            string objectPrefix = GetLevelObjectPrefix();
             SetATRLabelsVisibility(objectPrefix, g_atrLabelsVisible); 
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
@@ -1635,6 +2420,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpCountdownKey))
         {
             g_showLiveCountdown = !g_showLiveCountdown;
+            RequestUISync();   // P-UI-40: COUNTDOWN card row 0 shows this switch
             RuntimeSettingsSaveOverridesThrottled();   // OV_ CD/CDC/CDS/CDG
             RefreshLiveCountdown();
             LOG_I(LOG_CAT_LABELS, "Countdown tag " + (g_showLiveCountdown ? "VISIBLE" : "HIDDEN"));
@@ -1659,10 +2445,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             }
 
             g_thLabelsVisible = (g_thLabelsMode != 0);
+            RequestUISync();   // P-UI-40: the TH LABELS card cycles on this mode
             SyncTHFlagsFromMode();   // flags follow the mode → card never disagrees
             GlobalVariableSet(thGvar, (double)g_thLabelsMode);
             
-            string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+            string objectPrefix = GetLevelObjectPrefix();
             SetTHLabelsVisibility(objectPrefix, g_thLabelsMode);
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
@@ -1693,6 +2480,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // just returns it.
         if(IsHotkeyPressed(lparam, sparam, inpStepModeKey))
         {
+            RequestUISync();   // P-UI-40: the STEP card's mode row + the ring badge
             g_stepCalculationMode = (ENUM_STEP_CALCULATION_MODE)(((int)GetCurrentStepMode() + 1) % 4);
             GlobalVariableDel("Biotak_StepMode_" + GetCachedChartIdStr());   // purge retired override key
             RuntimeSettingsSaveOverridesThrottled();   // persist OV_ SM now (E bypasses ApplyRefreshFlags)
@@ -1762,7 +2550,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // restoring from the captured factory defaults instead (reading
             // inpX here is a self-assign no-op that kept the current values).
             g_triggerLevelsEnabled = (FactoryDefault(FF_TRIGGER_SHOW) > 0.5);
-            g_linesVisible = (FactoryDefault(FF_SHOW_LINES) > 0.5);
+            // P-PERF-29: same owner as the hotkey and the panel rows, so the
+            // restore writes the mask too (it used to leave the objects as they
+            // were, which only a timeframe switch repaired).
+            SetLinesVisible(FactoryDefault(FF_SHOW_LINES) > 0.5, false);
             InvalidateAllVisibilityCaches();
             g_atrLabelsVisible = (FactoryDefault(FF_SHOW_ATR) > 0.5);
             g_showLiveCountdown = (FactoryDefault(FF_SHOW_COUNTDOWN) > 0.5);
@@ -1793,6 +2584,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_StepMode_" + chartIdStr);
             GlobalVariableDel("Biotak_SSLSFirst_" + chartIdStr);
             g_sslsFirstOverride = -1;
+            // P-UI-40: the reset key rewrites nearly every displayed state, so
+            // the whole UI layer (ring states, badges, the open card) must be
+            // told once. This is also how the reset path already behaved when it
+            // was reached from the panel (PnlResetItem does exactly this pair).
+            RequestUISync();
             GlobalVariableDel("Biotak_Factor_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTF_" + chartIdStr);
             GlobalVariableDel("Biotak_LockTFPeriod_" + chartIdStr);
@@ -1870,6 +2666,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
             g_suppressDeleteEvents = false;
             g_timeframeLocked = !g_timeframeLocked;
+            RequestUISync();   // P-UI-40: the lock badge is derived from this state
             if(g_timeframeLocked)
             {
                 g_lockedPeriod = GetCachedPeriod();
@@ -1900,7 +2697,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
                     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
                     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, 100);
+                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
                     ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
                                   "[PIN] Custom Price: " + DoubleToString(savedCustomPrice, Digits) + " | Drag to adjust (live update)");
                     g_customPriceLineCreated = true;
@@ -1946,6 +2743,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         static int s_lastH = -1;
         static double s_lastVisibleMin = 0;
         static double s_lastVisibleMax = 0;
+        static bool s_ccPrimed = false;   // P-PERF-28
         uint nowMs = GetTickCount();
         if(nowMs - s_lastLayoutMs < CHART_CHANGE_THROTTLE_MS) return;
 
@@ -1957,6 +2755,21 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         double visibleMax = ChartGetDouble(0, CHART_PRICE_MAX);
         bool viewportChanged = (MathAbs(visibleMin - s_lastVisibleMin) > GetCachedPoint() ||
                                 MathAbs(visibleMax - s_lastVisibleMax) > GetCachedPoint());
+        // P-PERF-28: on the FIRST chart-change of an instance the snapshot is
+        // still at its zero value, so `visibleMin - 0` is always > one point and
+        // `viewportChanged` was unconditionally TRUE. That ran a full
+        // RedrawAllObjects(false) inside the event on every attach and every
+        // timeframe switch — the live log charges it to the event as
+        //   [W][PERF] chart event id=9 [indicator=3375 ui=0] took 3375ms
+        // (and 3750/3938/3766/3734/4063 ms in the same session, 53 such events
+        // in one day). Nothing had actually changed: this instance's own initial
+        // draw already covers the viewport it is looking at. Prime the snapshot
+        // from the live chart instead of from 0 and the first event is a no-op.
+        if(!s_ccPrimed)
+        {
+            s_ccPrimed = true;
+            viewportChanged = false;
+        }
         
         if(!sizeChanged && !viewportChanged) return;
         
@@ -1967,13 +2780,22 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         s_lastLayoutMs = nowMs;
         // VIEWLOCK-OFF: if(g_viewLockEnabled) ViewLockCapture();
 
+        // P-PERF-28b: this branch was the biggest single stall in the log yet
+        // had no sub-ledger of its own, so the named owner can only be guessed.
+        // Split it the way every other ledger here is split, and only print
+        // when the branch blows the event budget.
+        uint p28t = GetTickCount();
+        uint p28redraw = 0, p28labels = 0;
         if(sizeChanged) g_labelsRelayoutNeeded = true;
         if(viewportChanged) {
             g_redrawTHLevelsNeeded = true;
             RedrawAllObjects(false);
+            p28redraw = GetTickCount() - p28t;
         } else if(sizeChanged) {
             RedrawLabelsOnly();
+            p28labels = GetTickCount() - p28t;
         }
+        p28t = GetTickCount();
         // The live-price countdown tag is positioned off the price scale, so a
         // scroll/zoom/resize invalidates its Y even with zero ticks (weekend
         // charts). Re-derive it here, AFTER the redraws above (a label clear
@@ -1982,6 +2804,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // switch: never gated by the ATR block (2026-09-11).
         RefreshLiveCountdown();
         ThrottledChartRedraw();
+        if(p28redraw + p28labels + (GetTickCount() - p28t) >= P_P4_EVENT_WARN_MS)
+            _LOG_GATE_W Print("[W][PERF] chart change breakdown: redraw=", (int)p28redraw,
+                  "ms labels=", (int)p28labels, "ms tail=", (int)(GetTickCount() - p28t), "ms");
         return;
     }
 
@@ -2007,9 +2832,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
+            // P-UI-45: same placement mode as the C key - see CreateCustomPriceLine.
             ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, 100);
+            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
             ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, "[PIN] Custom Price Line - Drag to adjust, Double-click to confirm");
             g_customPriceLineCreated = true;
             _LOG_GATE_D Print("[D][GEN] [PIN] Drag the orange dotted line to adjust price. Double-click to confirm.");
@@ -2031,9 +2857,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
                 GlobalVariableSet(gvarName, selectedPrice);
                 GlobalVariableSet(overrideFlagName, 1.0);
-                ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, "[PIN] Custom Price: " + DoubleToString(selectedPrice, Digits) + " | Drag to adjust (live update)");
-                ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-                g_customPriceLineCreated = true;
+                // P-UI-45: settle - the line KEEPS its price and becomes inert again
+                // (see CreateCustomPriceLine). Confirming must not leave it grabbed:
+                // a selection outlives the gesture, and MT4 then drags the line on
+                // every later drag anywhere on the chart.
+                CreateCustomPriceLine(selectedPrice, Digits, false);
                 g_redrawTHLevelsNeeded = true;
                 RedrawAllObjects(true);
                 _LOG_GATE_I Print("[I][GEN] Custom Price Mode activated! Using ", inpMaxLevels, " levels above/below price: ", DoubleToString(selectedPrice, Digits));
@@ -2050,6 +2878,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         uint currentTickCount = GetTickCount();
         bool isDoubleClick = (currentTickCount - g_lastClickTickCount < DOUBLE_CLICK_THRESHOLD_MS);
         g_lastClickTickCount = currentTickCount;
+        // P-UI-45: MT4 selects a selectable line on the press that grabs it, and a
+        // SELECTED line is dragged by MT4 on every later drag anywhere on the chart.
+        // Arm the deferred clear instead of writing the property HERE: this event
+        // may arrive on the press, and clearing it then would drop the line out of
+        // the very drag the user is starting.
+        if(!isDoubleClick) g_customPriceNativeDrag = true;
         if (isDoubleClick)
         {
             // A double-click on Custom Price is a fast SS/LS start selector.
@@ -2071,9 +2905,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
             GlobalVariableSet(gvarName, selectedPrice);
             GlobalVariableSet(overrideFlagName, 1.0);
-            ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, "[PIN] Custom Price: " + DoubleToString(selectedPrice, Digits) + " | Drag to adjust (live update)");
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-            g_customPriceLineCreated = true;
+            // P-UI-45: settle - the line KEEPS its price and becomes inert again
+            // (same owner as the chart-click confirm above).
+            CreateCustomPriceLine(selectedPrice, Digits, false);
             g_redrawTHLevelsNeeded = true;
             RedrawAllObjects(true);
             _LOG_GATE_I Print("[I][GEN] Custom Price Mode activated! Using ", inpMaxLevels, " levels above/below price: ", DoubleToString(selectedPrice, Digits));
@@ -2111,6 +2945,16 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
         else
         {
+            // P-UI-45: the gesture is over - drop the selection a grab (or a plain
+            // click on the line) left behind. A SELECTED line is moved by MT4 on
+            // every LATER drag anywhere on the chart, which is what made it fight
+            // the panels, the cards and the BaseKnot boxes. One bool read per
+            // mouse-move; the ObjectSet runs once per gesture.
+            if(g_customPriceNativeDrag)
+            {
+                g_customPriceNativeDrag = false;
+                ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+            }
             if(g_customPriceLineDragging) {
                 g_customPriceLineDragging = false;
                 g_forceClearOnNextDraw = true;
@@ -2127,6 +2971,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)
     {
         g_customPriceLineDragging = false;
+        // P-UI-45: MT4 keeps the object SELECTED after a native drag. Clearing it
+        // HERE would let go of the line under the user's hand (this event is
+        // CONTINUOUS while dragging), so the clear is deferred to the first
+        // button-up mouse move - see g_customPriceNativeDrag below.
+        g_customPriceNativeDrag = true;
         double draggedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
         g_customTHStartPrice = draggedPrice;
         g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
@@ -2229,33 +3078,58 @@ bool IsHotkeyPressed(const long lparam, const string sparam, const string hotkey
 //+------------------------------------------------------------------+
 void DeleteAllIndicatorObjects(bool deepCleanup = false) {
     if(StringLen(inpObjectPrefix) == 0) return;   // empty prefix matches everything
+
+    // P-UI-21: ONE suppress window around every bulk below — an unsuppressed
+    // delete fires CHARTEVENT_OBJECT_DELETE per object -> CacheRemoveObject +
+    // a forced level redraw for each one (the old per-object loop paid that
+    // MQL cost ~1000 times on a TF switch; a bulk call pays one bool check).
+    g_suppressDeleteEvents = true;
+
     if(deepCleanup) {
-        // P-UI-21: same suppress window as the shallow branch below.
-        g_suppressDeleteEvents = true;
         ObjectsDeleteAll(0, inpObjectPrefix);   // REASON_REMOVE: wipe everything incl. Base/Knot
-        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
-        g_suppressDeleteEvents = false;
     } else {
         // P-BK-01: TF-switch / parameter rebuilds must NOT wipe the user's
         // Base/Knot drawings — they are an independent layer that survives
         // (registry rebuilds from the box anchors via BaseKnotLazyInit).
-        // P-UI-21: suppress window around the per-object wipe (same pattern as
-        // ClearAllLevels) — otherwise every delete fires
-        // CHARTEVENT_OBJECT_DELETE -> CacheRemoveObject + a forced redraw flag.
-        g_suppressDeleteEvents = true;
-        int total = ObjectsTotal(0, -1, -1);
-        int prefixLen = StringLen(inpObjectPrefix);
-        for(int i = total - 1; i >= 0; i--) {
-            string objName = ObjectName(0, i, -1, -1);
-            if(StringLen(objName) < prefixLen) continue;
-            if(StringSubstr(objName, 0, prefixLen) != inpObjectPrefix) continue;
-            if(StringFind(objName, "_BK_") >= 0) continue;
-            ObjectDelete(0, objName);
-        }
-        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
-        g_suppressDeleteEvents = false;
-        return;
+        //
+        // P-PERF-02: this used to be an MQL loop over EVERY chart object doing
+        // ObjectName + StringSubstr + ObjectDelete per hit — ~1000 kernel
+        // ObjectDelete calls plus 1000 object-list index rebuilds, i.e. the
+        // timeframe-switch freeze. Every object this indicator owns carries the
+        // chart-timeframe namespace `inpObjectPrefix + "_" + <TF> + "_"` (levels,
+        // zones, labels, trade block, ATR/TH columns), and the Base/Knot layer
+        // is named `inpObjectPrefix + "_BK_" + id` — so it can NEVER start with
+        // a TF namespace. One native prefix call per namespace therefore
+        // removes exactly the same set, in ~10 kernel calls instead of ~1000.
+        // P-PERF-38: THE LEVEL FAMILY LIVES IN ONE TIMEFRAME-FREE NAMESPACE NOW,
+        // so the whole family goes in ONE kernel call. This function is reached
+        // ONLY from paths that really mean "throw the level family away"
+        // (REASON_REMOVE, REASON_PARAMETERS, a lost/shared chart) - a
+        // REASON_CHARTCHANGE timeout deliberately no longer calls it at all,
+        // which is the whole point of P-PERF-38b: a switch changes the PRICES,
+        // and prices are updated in place, not rebuilt.
+        ObjectsDeleteAll(0, GetLevelObjectPrefix());
+        // Legacy sweep, for a chart that has not yet run the one-time migration
+        // (normally a no-op here, and never repeated once the stamp is set):
+        // no old timeframe namespace may survive a parameter rebuild.
+        static string s_tfNs[] = {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN", "MN1", "UNKNOWN"};
+        for(int n = 0; n < ArraySize(s_tfNs); n++)
+            ObjectsDeleteAll(0, inpObjectPrefix + "_" + s_tfNs[n] + "_");
+        // The ATR/TH label families also exist WITHOUT a TF namespace
+        // (`inpObjectPrefix + "ATR_*" / "TH_*"`), and the legacy shared-pattern
+        // ones carry `inpObjectPrefix + "SharedPattern_"`.
+        ObjectsDeleteAll(0, inpObjectPrefix + "ATR_");
+        ObjectsDeleteAll(0, inpObjectPrefix + "TH_");
+        ObjectsDeleteAll(0, inpObjectPrefix + "SharedPattern_");
     }
+
+    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+    g_suppressDeleteEvents = false;
+    // Every cached entry now names a deleted object: drop them so the next
+    // frame re-creates through ObjectCreate instead of set-ing into the void.
+    CacheClear();
+    InvalidateObjectCountCache();
+    MarkDrawGeneration();   // P-PERF-02: the chart no longer holds this render
 }
 
 void EmergencyCleanupIndicatorObjects(const string indicatorPrefix)
@@ -2279,6 +3153,7 @@ void EmergencyCleanupIndicatorObjects(const string indicatorPrefix)
     _LOG_GATE_I Print("[I][GEN] Emergency cleanup deleted=", deleted,
                       " | before=", total, " | after=", ObjectsTotal(0, -1, -1));
     InvalidateObjectCountCache();
+    MarkDrawGeneration();   // P-PERF-02
 }
 
 void ApplyCacheInvalidation(const int invalidationFlags,
@@ -2290,7 +3165,13 @@ void ApplyCacheInvalidation(const int invalidationFlags,
     if((invalidationFlags & CACHE_INV_TIMEFRAME) != 0) {
         UpdatePeriodCache();
         InvalidateTimeframeDependentCaches();
-        g_forceClearOnNextDraw = true;
+        // P-PERF-38d: a timeframe change on an instance that ADOPTED the family
+        // does not need a wipe — the level set is the same family, only the
+        // prices differ, and the render signature re-asserts those in place.
+        // Everything else here still runs, so the geometry IS recomputed; what
+        // is skipped is the delete-and-rebuild, which the user experiences as
+        // "my levels were redrawn from scratch".
+        if(!g_adoptPreviousTopology) g_forceClearOnNextDraw = true;
         g_redrawTHLevelsNeeded = true;
         g_calculatedOnce = false;
         g_labelsRelayoutNeeded = true;
@@ -2346,7 +3227,7 @@ void RunIncrementalObjectCleanup()
 
     if(currentObjectCount > g_objectCountLast + OBJECT_COUNT_INCREASE_THRESHOLD) {
         datetime cutoffTime = currentTime - 3600;
-        string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+        string objectPrefix = GetLevelObjectPrefix();
         int currentPrefixLen = StringLen(objectPrefix);
         string indicatorPrefix = inpObjectPrefix;
         int indicatorPrefixLen = StringLen(indicatorPrefix);
@@ -2394,7 +3275,7 @@ void RunIncrementalObjectCleanup()
 void RedrawLabelsOnly() {
     if(IsIndicatorHidden()) return;
     datetime currentTime = TimeGMT();
-    string objectPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_";
+    string objectPrefix = GetLevelObjectPrefix();
 
     // CRITICAL: Reset stacking offsets and clear old labels
     g_currentLabelYOffset = 0;
@@ -2485,6 +3366,86 @@ void AdjustFactorValue(int direction)
         UpdateFactorLabel(newVal, 0);
     }
     ThrottledChartRedraw();
+}
+
+//==============================================================================
+// P-PERF-35 - THE PUMP
+//
+// Cheap jobs first, the rebuild last. The sweep jobs cost a few milliseconds and
+// must never be starved by a frame that ate the whole slice, while the rebuild
+// only has to beat the next tick. The budget bounds how long ONE pump call may
+// hold the terminal - and it is stated here plainly because the limit matters:
+// this layer CANNOT split a single frame body. Splitting a rebuild is the staged
+// pipeline's job (four families, four frames, BUILD_STAGE_GATE_MS apart). The
+// budget orders and spaces work; it does not parallelise it, and nothing in MQL4
+// can.
+#define COOP_BUDGET_MS 12
+
+void CoopPump()
+{
+   uint sliceStart = GetTickCount();
+   // P-PERF-35b: THE ORDER IS CHEAP-FIRST, AND THE JOB IDS ARE NOT THE ORDER.
+   //
+   // HEAVY_FRAME is id 1, so iterating the ids ran the REBUILD first: it could
+   // claim the whole slice and leave the sweep jobs owed into the next timer
+   // tick. The live log named it precisely - "coop job=obj-cleanup waited=265ms
+   // ran=0ms" - the sweeps starved while the frame's own line stayed silent,
+   // because it stayed under the 40 ms warn threshold even while it had eaten the
+   // 12 ms budget. Cheap jobs first means the frame gets the LEFTOVER, never the
+   // other way round, so the priority is spelled out and no longer implied by an
+   // enum value.
+   int coopOrder[COOP_JOB_COUNT - 1] = { COOP_JOB_OBJ_CLEANUP, COOP_JOB_LABEL_EXPIRY,
+                                         COOP_JOB_STATUS_TEXT,  COOP_JOB_HEAVY_FRAME };
+   for(int oi = 0; oi < COOP_JOB_COUNT - 1; oi++)
+   {
+      int job = coopOrder[oi];
+      bool owed = s_coopOwed[job];
+      // The rebuild is owed BY DEFINITION while it is in flight or while the
+      // system has not initialised yet: that work already exists, it is not a new
+      // ask. Deciding it here keeps the timer from carrying its own copy of the
+      // same condition - which is exactly how "advance the staging" and "run the
+      // owed frame" would drift apart.
+      if(job == COOP_JOB_HEAVY_FRAME && !owed &&
+         (g_heavyFramePending || !g_initialized || g_buildStage != 0))
+      {
+         owed = true;
+         s_coopOwedMs[job] = GetTickCount();
+      }
+      if(!owed) continue;
+
+      uint t0 = GetTickCount();
+      switch(job)
+      {
+         case COOP_JOB_OBJ_CLEANUP:
+            RunIncrementalObjectCleanup();
+            s_coopOwed[job] = false;
+            break;
+         case COOP_JOB_LABEL_EXPIRY:
+            CheckAndClearExpiredLabels();
+            s_coopOwed[job] = false;
+            break;
+         case COOP_JOB_STATUS_TEXT:
+            RefreshVisibleStatusLabels();
+            RefreshComboLabelExtraInfo();
+            s_coopOwed[job] = false;
+            break;
+         case COOP_JOB_HEAVY_FRAME:
+            // The frame clears the pending flag itself, but ONLY once it really
+            // ran - so a gate that refuses the pass leaves the job owed instead
+            // of silently dropping the user's edit.
+            RedrawAllObjects(false);
+            if(!g_heavyFramePending) s_coopOwed[job] = false;
+            break;
+      }
+
+      uint spent  = GetTickCount() - t0;
+      uint waited = t0 - s_coopOwedMs[job];
+      if(waited >= COOP_WARN_MS || spent >= COOP_WARN_MS)
+         _LOG_GATE_W Print("[W][PERF] coop job=", CoopJobName(job), " waited=", (int)waited,
+                           "ms ran=", (int)spent, "ms stillOwed=", (CoopOwes(job) ? 1 : 0));
+
+      if(GetTickCount() - sliceStart >= COOP_BUDGET_MS) break;   // this pump's slice is spent
+   }
 }
 
 #endif // EVENT_HANDLERS_MQH

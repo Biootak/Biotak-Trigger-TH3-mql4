@@ -78,56 +78,36 @@ void CheckAlerts(const string objectPrefix, double currentPrice) {
     }
     
     //               TH
-    if(inpEnableTHAlerts && IsTriggerLevelsEnabled()) {
-        string prefix = objectPrefix + "TH_Level_";
-        string lineNameMid = prefix + "Mid";
-        double midpointLevel = ObjectGetDouble(0, lineNameMid, OBJPROP_PRICE1);
-        
-        //                
-        if(midpointLevel != EMPTY_VALUE && MathAbs(currentPrice - midpointLevel) < GetCachedPoint()) {
-            if(ShouldTriggerAlert("MidpointLevel")) {
-                if(inpPlaySound) PlaySound(inpAlertSoundFile);
-                if(inpSendNotification) SendNotification("Price reached Trigger TH Midpoint Level: " + DoubleToString(midpointLevel, Digits));
-                if(inpSendEmail) SendMail("TH Indicator Alert", "Price reached Trigger TH Midpoint Level: " + DoubleToString(midpointLevel, Digits));
-                Alert("Price reached Trigger TH Midpoint Level: ", midpointLevel);
-            }
-        }
-        
-        //           :                            
-        int maxLevelsToCheck = inpMaxLevels;
-        maxLevelsToCheck = MathMin(maxLevelsToCheck, 256); //              
-        
-        for(int stepCount = 1; stepCount <= maxLevelsToCheck; stepCount++) {
-            string lineNameAbove = StringFormat("%sTriggerTH_Up_%d", prefix, stepCount);
-            if(ObjectFind(0, lineNameAbove) >= 0) {
-                double levelAbove = ObjectGetDouble(0, lineNameAbove, OBJPROP_PRICE1);
-                if(levelAbove != EMPTY_VALUE && currentPrice >= levelAbove) {
-                    string alertKey = StringFormat("TriggerTH_Up_%d", stepCount);
-                    if(ShouldTriggerAlert(alertKey)) {
-                        if(inpPlaySound) PlaySound(inpAlertSoundFile);
-                        string msg = StringFormat("Price reached Trigger TH Level Above %d: %s", stepCount, DoubleToString(levelAbove, Digits));
-                        if(inpSendNotification) SendNotification(msg);
-                        if(inpSendEmail) SendMail("TH Indicator Alert", msg);
-                        Alert("Price reached Trigger TH Level Above: ", levelAbove);
-                    }
-                }
-            }
-            
-            string lineNameBelow = StringFormat("%sTriggerTH_Down_%d", prefix, stepCount);
-            if(ObjectFind(0, lineNameBelow) >= 0) {
-                double levelBelow = ObjectGetDouble(0, lineNameBelow, OBJPROP_PRICE1);
-                if(levelBelow != EMPTY_VALUE && currentPrice <= levelBelow) {
-                    string alertKey = StringFormat("TriggerTH_Down_%d", stepCount);
-                    if(ShouldTriggerAlert(alertKey)) {
-                        if(inpPlaySound) PlaySound(inpAlertSoundFile);
-                        string msg = StringFormat("Price reached Trigger TH Level Below %d: %s", stepCount, DoubleToString(levelBelow, Digits));
-                        if(inpSendNotification) SendNotification(msg);
-                        if(inpSendEmail) SendMail("TH Indicator Alert", msg);
-                        Alert("Price reached Trigger TH Level Below: ", levelBelow);
-                    }
-                }
-            }
-        }
+    // P-PERF-03: the old check ran a ~288-iteration loop of StringFormat +
+    // ObjectFind + ObjectGetDouble on EVERY heavy frame — a few hundred kernel
+    // syscalls per redraw to discover levels the redraw itself had just priced.
+    // The pipeline now records every level it renders (AlertCacheAdd), so this
+    // is a pure in-memory scan: zero syscalls, and it can only fire for a level
+    // the chart is actually showing.
+    if(!inpEnableTHAlerts || !IsTriggerLevelsEnabled()) return;
+
+    // Stale cache = the levels are gone from the chart (cleared / hidden /
+    // rebuilt): there is nothing to be near, so skip instead of walking.
+    if(g_alertLevelGen != g_drawGeneration) return;
+
+    for(int i = 0; i < g_alertLevelCount; i++)
+    {
+        double level = g_alertLevels[i].price;
+        if(level == EMPTY_VALUE || level <= 0) continue;
+
+        bool reached = g_alertLevels[i].above ? (currentPrice >= level)
+                                             : (currentPrice <= level);
+        if(!reached) continue;
+        if(!ShouldTriggerAlert(g_alertLevels[i].name)) continue;
+
+        string msg = StringFormat("Price reached Trigger TH Level %s %d: %s",
+                                  g_alertLevels[i].above ? "Above" : "Below",
+                                  g_alertLevels[i].step,
+                                  DoubleToString(level, Digits));
+        if(inpPlaySound) PlaySound(inpAlertSoundFile);
+        if(inpSendNotification) SendNotification(msg);
+        if(inpSendEmail) SendMail("TH Indicator Alert", msg);
+        Alert(msg);
     }
 }
 #endif // ALERT_FUNCTIONS_MQH

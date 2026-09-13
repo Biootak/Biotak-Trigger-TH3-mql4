@@ -31,7 +31,12 @@ while((Get-Date) -lt $deadline){
   if(Test-Path $Log){
     $li = Get-Item $Log
     if($li.LastWriteTime -gt $logBefore -and $li.Length -gt 0){
-      $t = [System.IO.File]::ReadAllText($Log, [System.Text.Encoding]::Unicode)
+      # metaeditor.exe keeps the log OPEN while it writes, and ReadAllText then
+      # throws "being used by another process" - which used to abort the whole
+      # script mid-compile. An unreadable log is just "not ready yet".
+      $t = ''
+      try { $t = [System.IO.File]::ReadAllText($Log, [System.Text.Encoding]::Unicode) }
+      catch { continue }
       if($t -match 'Result:'){ $fresh = $true; $text = $t; break }
     }
   }

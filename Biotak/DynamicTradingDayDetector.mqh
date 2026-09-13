@@ -10,58 +10,147 @@
 #property strict
 
 //+------------------------------------------------------------------+
+//| P-PERF-03: bulk bar-time fetch + overlap-safe chronology probe    |
+//|                                                                  |
+//| The old scan called iTime() TWICE per bar over up to 10,080 bars |
+//| and, when no gap was found, walked the whole history again from  |
+//| the oldest bar (~29k bars on XAUUSD M1) — 20,000-48,000 series   |
+//| reads inside ONE OnCalculate, which is the 1.8-3.0 s "CRITICAL   |
+//| CPU" freeze in the live log. One CopyTime() replaces the whole   |
+//| walk; the array is then scanned in memory for free.               |
+//+------------------------------------------------------------------+
+bool DetectFetchBarTimes(const int timeframe, const int count, datetime &times[], int &got)
+{
+    got = 0;
+    if(count <= 0) return false;
+    if(ArrayResize(times, count) != count) return false;
+    got = CopyTime(Symbol(), timeframe, 0, count, times);
+    if(got <= 0) return false;
+    // MT4 may hand the array back either way round; normalise to OLDEST FIRST
+    // so the callers below never depend on terminal array convention.
+    if(got > 1 && times[0] > times[got - 1])
+    {
+        datetime tmp;
+        for(int a = 0, b = got - 1; a < b; a++, b--)
+        {
+            tmp = times[a]; times[a] = times[b]; times[b] = tmp;
+        }
+    }
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Server -> GMT, local to this module.                             |
+//| Declared here because ConvertServerToGMT() lives in              |
+//| BasePriceManager.mqh, which is included AFTER this file.         |
+//+------------------------------------------------------------------+
+datetime DtddServerToGMT(const datetime serverTime)
+{
+    int offsetSeconds = (int)(TimeCurrent() - TimeGMT());
+    MqlDateTime dt;
+    TimeToStruct(serverTime - offsetSeconds, dt);
+    dt.sec = 0;
+    return StructToTime(dt);
+}
+
+//+------------------------------------------------------------------+
 //| Find current session start by detecting gaps in data             |
+//|                                                                  |
+//| P-PERF-03: ONE bulk CopyTime + in-memory scan (was 2x iTime per  |
+//| bar), and the result is memoised per (symbol, timeframe, day) so |
+//| repeated calls in the same session are free.                     |
+//|                                                                  |
+//| P-PERF-11c: THE FRAME MUST BE CONSISTENT. Bar times from         |
+//| iTime()/CopyTime() live in the SERVER frame; TimeGMT() does not. |
+//| The version above compared the two directly ("first bar at/after  |
+//| now-24h", with now taken from TimeGMT()), so every cutoff was     |
+//| shifted by the whole server<->GMT offset and the session start   |
+//| found was a SERVER instant handed back as if it were GMT - which |
+//| the caller then converted a second time. The file on disk shows  |
+//| the result: block labels running hours past the current GMT       |
+//| block (22:xx / 23:xx blocks written at 17:xx GMT), which is also |
+//| what made the retired ">=22:00 means legacy" guess fire on every  |
+//| init. Scan in the server frame; hand back GMT.                   |
 //+------------------------------------------------------------------+
 datetime FindCurrentSessionStart(int timeframe = PERIOD_M1)
 {
-    datetime currentTime = TimeGMT();
-    
+    datetime gmtNow    = TimeGMT();
+    datetime serverNow = TimeCurrent();   // the frame bar times actually use
+
+    // PERF: the answer only changes when the trading day changes. Cache it.
+    static string   s_cachedSym = "";
+    static int      s_cachedTf = -1;
+    static datetime s_cachedDay = 0;
+    static datetime s_cachedStart = 0;
+    datetime today = (datetime)((long)gmtNow - ((long)gmtNow % 86400));
+    string sym = Symbol();
+    if(s_cachedDay == today && s_cachedTf == timeframe && s_cachedSym == sym && s_cachedStart > 0)
+        return s_cachedStart;
+
     // Search backwards to find last gap (market close)
-    int barsToCheck = 7 * 24 * 60; // 7 days of M1 bars
     int gapThresholdMinutes = 120; // 2 hours
-    
-    for(int i = 1; i < barsToCheck && i < iBars(Symbol(), timeframe); i++)
+    int haveBars = iBars(Symbol(), timeframe);
+    if(haveBars < 2)
+        return GetStartOfTradingDay(Symbol(), gmtNow);
+
+    // 7 days of M1 bars is the most the gap search ever looked at; never ask
+    // for more than the terminal actually holds.
+    int want = MathMin(7 * 24 * 60, haveBars);
+    datetime times[];
+    int got = 0;
+    datetime resultServer = 0;
+
+    if(DetectFetchBarTimes(timeframe, want, times, got))
     {
-        datetime currentBarTime = iTime(Symbol(), timeframe, i);
-        datetime previousBarTime = iTime(Symbol(), timeframe, i - 1);
-        
-        // Check if we've gone too far back
-        if(currentTime - currentBarTime > 7 * 24 * 60 * 60)
-            break;
-        
-        // Calculate gap in minutes
-        // i is older bar, i-1 is newer bar
-        int gapMinutes = (int)((previousBarTime - currentBarTime) / 60);
-        
-        // If gap is larger than threshold, this is likely market close/open
-        if(gapMinutes > gapThresholdMinutes)
+        datetime oldestAllowed = serverNow - (datetime)(7 * 24 * 60 * 60);
+        // OLDEST FIRST: walk backwards from the newest bar to the past.
+        for(int i = got - 1; i >= 1; i--)
         {
-            #ifdef ENABLE_DEBUG_LOGS
-            Print("[DynamicDetector] Found gap of ", gapMinutes, " minutes at ", 
-                  TimeToString(currentBarTime, TIME_DATE|TIME_MINUTES));
-            #endif
-            return currentBarTime;
+            datetime newerBar = times[i];
+            datetime olderBar = times[i - 1];
+            if(newerBar < oldestAllowed) break;
+
+            int gapMinutes = (int)((newerBar - olderBar) / 60);
+            if(gapMinutes > gapThresholdMinutes)
+            {
+                resultServer = olderBar;
+                #ifdef ENABLE_DEBUG_LOGS
+                Print("[DynamicDetector] Found gap of ", gapMinutes, " minutes at ",
+                      TimeToString(olderBar, TIME_DATE|TIME_MINUTES));
+                #endif
+                break;
+            }
         }
-    }
-    
-    // No gap found, use 24-hour window
-    datetime twentyFourHoursAgo = currentTime - (24 * 60 * 60);
-    
-    for(int i = iBars(Symbol(), timeframe) - 1; i >= 0; i--)
-    {
-        datetime barTime = iTime(Symbol(), timeframe, i);
-        if(barTime >= twentyFourHoursAgo)
+
+        // No gap found: use the 24-hour window (first bar at/after the cutoff,
+        // both sides of the comparison in the server frame).
+        if(resultServer == 0)
         {
+            datetime twentyFourHoursAgo = serverNow - (datetime)(24 * 60 * 60);
+            for(int i = 0; i < got; i++)
+            {
+                if(times[i] >= twentyFourHoursAgo) { resultServer = times[i]; break; }
+            }
             #ifdef ENABLE_DEBUG_LOGS
-            Print("[DynamicDetector] Using 24-hour window start: ", 
-                  TimeToString(barTime, TIME_DATE|TIME_MINUTES));
+            if(resultServer > 0)
+                Print("[DynamicDetector] Using 24-hour window start: ",
+                      TimeToString(resultServer, TIME_DATE|TIME_MINUTES));
             #endif
-            return barTime;
         }
+        ArrayFree(times);
     }
-    
-    // Fallback to default
-    return GetStartOfTradingDay(Symbol(), currentTime);
+
+    // Convert to GMT for the caller, or fall back to the market-type default
+    // (computed directly in GMT, so no conversion is involved).
+    datetime result = 0;
+    if(resultServer > 0) result = DtddServerToGMT(resultServer);
+    else                 result = GetStartOfTradingDay(Symbol(), gmtNow);
+
+    s_cachedSym   = sym;
+    s_cachedTf    = timeframe;
+    s_cachedDay   = today;
+    s_cachedStart = result;
+    return result;
 }
 
 //+------------------------------------------------------------------+

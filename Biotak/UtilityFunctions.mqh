@@ -14,6 +14,150 @@
 // Include ZoneFactory for centralized zone creation
 #include "ZoneFactory.mqh"
 
+// ══════════════════════════════════════════════════════════════════════════
+// UI TEXT METRICS — the ONE owner of "how wide will MT4 draw this caption?"
+//
+// P-UI-34 (2026-09-12): MOVED here from BiotakPanels.mqh. The ring menu, its
+// hover tooltip, the Tools sub-menu and the BaseKnot hint are all included
+// BEFORE the panels in every entry (.mq4), so a metrics owner living in the
+// panels cannot serve the surfaces that need it most - and a second copy
+// would drift. The `Pnl` prefix is historical: these are the WHOLE UI metrics.
+//
+// P-UI-30 (2026-09-12). MT4 sizes an OBJ_LABEL/OBJ_BUTTON font at the
+// TERMINAL's DPI (px = pt * dpi / 72) while these cards were designed in 96-DPI
+// pixels (px = pt * 4/3). On a scaled display every caption therefore came out
+// dpi/96 wider than the design AND wider than the `StringLen * 6` guess the
+// layout used to reserve space, so captions ran into their own controls on a
+// real chart: "ZONE STYLE" overlapped its Filled/Empty/Hidden segments, the
+// GEOMETRY band's hairline crossed the label, "LS FIRST" touched the next
+// switch, and every segment/dual caption overflowed its content-fitted pill.
+// Measured off a real 120-DPI terminal screenshot: the 9pt row label
+// "MID ZONES" drew 81px of ink where the design says 67px (rows 1.21x).
+//
+// Two rules, both owned here — never re-derive a caption width by hand:
+//   1. PnlPt(nominal) re-expresses the design's px as points for THIS display,
+//      so MT4 renders the design's 12px label instead of 12px * dpi/96.
+//   2. PnlTextW() measures a caption with Arial Bold's real advances (the face
+//      every panel caption sets) at the terminal's DPI, and PnlFit() clips a
+//      caption to the room its control leaves — the twin of the preview's
+//      `.row{gap:10px}` + `.lbl>span.t{text-overflow:ellipsis}`.
+// ══════════════════════════════════════════════════════════════════════════
+#define PNL_PT_MIN    4       // never go below 4pt (unreadable + MT4 clamps)
+
+//--- the terminal's screen DPI, cached. 96 = the DPI the design assumes.
+int PnlDpi()
+{
+   static int dpi = 0;
+   if(dpi <= 0)
+   {
+      dpi = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
+      if(dpi < 96 || dpi > 288) dpi = 96;
+   }
+   return dpi;
+}
+//--- a NOMINAL (design px * 3/4) point size, re-expressed for this display.
+int PnlPt(const int nominal)
+{
+   int pt = (int)MathRound(nominal * 96.0 / (double)PnlDpi());
+   if(pt < PNL_PT_MIN) pt = PNL_PT_MIN;
+   return pt;
+}
+//--- the line box MT4 gives a NOMINAL point size, in px (em = pt * dpi / 72).
+//--- the ONE owner of that arithmetic: PnlTextW measures with it, and every
+//--- caller that has to stack two lines (keycap letter, hover tooltip) uses it
+//--- instead of a magic pixel offset.
+int PnlLineH(const int nominalPt)
+{
+   return (int)MathRound(PnlPt(nominalPt) * (double)PnlDpi() / 72.0);
+}
+//--- Arial Bold advances, units per 1000 em (the face the panels set).
+int PnlAdvUnits(const ushort ch)
+{
+   if(ch >= '0' && ch <= '9') return 556;
+   if(ch >= 'a' && ch <= 'z')
+   {
+      //            a    b    c    d    e    f    g    h    i    j    k    l    m
+      int lo[26] = {556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889,
+      //            n    o    p    q    r    s    t    u    v    w    x    y    z
+                    611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500};
+      return lo[ch - 'a'];
+   }
+   if(ch >= 'A' && ch <= 'Z')
+   {
+      //            A    B    C    D    E    F    G    H    I    J    K    L    M
+      int up[26] = {722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833,
+      //            N    O    P    Q    R    S    T    U    V    W    X    Y    Z
+                    722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 722, 611};
+      return up[ch - 'A'];
+   }
+   if(ch == 32)  return 278;   // space
+   if(ch == 46)  return 278;   // .
+   if(ch == 44)  return 278;   // ,
+   if(ch == 58)  return 333;   // :
+   if(ch == 59)  return 333;   // ;
+   if(ch == 45)  return 333;   // -
+   if(ch == 47)  return 278;   // /
+   if(ch == 37)  return 889;   // %
+   if(ch == 183) return 333;   // · (the P-LBL-01 middle dot)
+   if(ch == 38)  return 722;   // &
+   if(ch == 40 || ch == 41) return 333;   // ( )
+   if(ch == 47 || ch == 39) return 278;   // / '
+   if(ch == 43)  return 584;   // +
+   if(ch == 61)  return 584;   // =
+   if(ch == 60 || ch == 62) return 584;   // < >
+   if(ch == 33)  return 333;   // !
+   if(ch == 63)  return 611;   // ?
+   if(ch == 95)  return 556;   // _
+   if(ch == 35)  return 556;   // #
+   if(ch == 42)  return 389;   // *
+   if(ch == 64)  return 975;   // @
+   return 611;                // unknown -> a mid-weight capital
+}
+//--- the advance sum of `s`, in Arial Bold units per 1000 em. The ONE walk of
+//--- the table: both entry points below go through it, so two surfaces asking
+//--- about the same caption can never get two different numbers.
+int PnlTextUnits(const string s)
+{
+   int n = StringLen(s);
+   int units = 0;
+   for(int i=0;i<n;i++) units += PnlAdvUnits(StringGetCharacter(s,i));
+   return units;
+}
+//--- the width MT4 will draw `s` at, in pixels, for a NOMINAL point size.
+//--- em px = the POINT SIZE ACTUALLY PASSED (PnlPt) * dpi / 72 — the height
+//--- MT4 gives the font, so the measured advance is the drawn advance.
+int PnlTextW(const string s,const int nominalPt)
+{
+   if(StringLen(s) <= 0) return 0;
+   int em = PnlLineH(nominalPt);
+   return (int)MathRound(PnlTextUnits(s) * em / 1000.0);
+}
+//--- the width MT4 draws `s` at when its owner hands MT4 a RAW point size:
+//--- an object that did NOT go through PnlPt. The CHART label family is the
+//--- one such surface (P-UI-42) — it sets OBJPROP_FONTSIZE to inpFontSize
+//--- unchanged, so MT4 renders px = rawPt * dpi / 72 (the P-UI-30 trap, same
+//--- arithmetic, without the design correction PnlLineH applies). Same table,
+//--- same cached DPI, same owner: only the em box differs.
+int PnlRawTextW(const string s,const int rawPt)
+{
+   if(StringLen(s) <= 0) return 0;
+   int em = (int)MathRound(rawPt * (double)PnlDpi() / 72.0);
+   return (int)MathRound(PnlTextUnits(s) * em / 1000.0);
+}
+//--- the longest whole prefix of `txt` that fits `maxW` px, with ".." when it
+//--- had to be clipped (the preview's ellipsis twin — MT4/Wine Arial ships no
+//--- U+2026, see P-ICONS-05, so the ASCII pair is the honest stand-in).
+string PnlFit(const string txt,const int nominalPt,const int maxW)
+{
+   if(PnlTextW(txt,nominalPt) <= maxW) return txt;
+   for(int k=StringLen(txt);k>0;k--)
+   {
+      string cut = StringSubstr(txt,0,k);
+      StringTrimRight(cut);
+      if(PnlTextW(cut + "..",nominalPt) <= maxW) return cut + "..";
+   }
+   return "";
+}
 //+------------------------------------------------------------------+
 //| Get Symbol Point (Cached)                                        |
 //+------------------------------------------------------------------+
@@ -675,6 +819,31 @@ void ThrottledChartRedraw(bool forceRedraw = false) {
         ChartRedraw();
         g_lastChartRedrawTime = nowMs;
     }
+}
+
+//+------------------------------------------------------------------+
+//| P-PERF-24: DISCRETE ACTION PAINT (toggle / key / one row press)  |
+//|                                                                  |
+//| ThrottledChartRedraw() is the right owner for the TICK path - it  |
+//| exists so price vibration cannot hammer the terminal. But every   |
+//| VISIBILITY toggle (L key, SHOW LINES, the trigger/mid-zone show   |
+//| rows) ended its work with the THROTTLED call, and that call has   |
+//| two ways to swallow the feedback:                                  |
+//|   - inside CHART_REDRAW_THROTTLE_MS (100 ms) of any earlier repaint|
+//|     it returns without painting - and the frame that follows a     |
+//|     toggle is usually a tick whose `hasPendingWork` is already     |
+//|     false, so nothing repaints until the NEXT tick's redraw;       |
+//|   - while the indicator is hidden it returns unconditionally.      |
+//| The user presses a switch and the chart changes when the market    |
+//| decides to tick - that IS "toggling the levels takes ages".        |
+//|                                                                    |
+//| A discrete action is ONE event, never a stream: forcing the paint  |
+//| here cannot hammer anything (the F key already did exactly this    |
+//| with a bare ChartRedraw() and documented why). Keep callers to     |
+//| real USER actions - never the tick, never a drag loop.            |
+//+------------------------------------------------------------------+
+void RepaintForDiscreteAction() {
+    ThrottledChartRedraw(true);
 }
 
 //+------------------------------------------------------------------+

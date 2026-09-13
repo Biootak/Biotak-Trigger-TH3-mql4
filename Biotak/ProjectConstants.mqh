@@ -185,6 +185,12 @@ const int ERROR_CODE_STATE_CONFLICT = -4;
 const int ERROR_CODE_OVERFLOW = -5;
 
 // Visual Alignment Constants
+// RETIRED (P-UI-42): this was a SECOND per-character width factor, used only by
+// the chart labels' in-column centring while the column reservation used 0.7 -
+// two numbers for one caption, neither of them the drawn width. Label layout
+// now measures through the ONE metrics owner (`PnlRawTextW`,
+// UtilityFunctions.mqh). Kept as a name so an old reference fails loudly rather
+// than silently reintroducing the guess.
 const double FONT_CHAR_WIDTH_FACTOR = 0.6;
 
 // ==============================================================================

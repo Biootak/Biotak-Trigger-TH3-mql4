@@ -141,7 +141,7 @@ bool CreateOrUpdateZoneBorder(const string name,
         ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, rayRight);
         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, name, OBJPROP_BACK, true);
-        ObjectSetInteger(0, name, OBJPROP_ZORDER, 0);
+        ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_ZONE);   // P-UI-31
         CacheUpdateZone(name, p1, p2, t1, t2, clr, true, style, width);
         return true;
     }
@@ -296,33 +296,15 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     // empty-box outline fades exactly like the filled-box color.
     color borderColor = finalColor;
 
-    DeleteIndicatorObjectManaged(request.name + "_Top");
-    DeleteIndicatorObjectManaged(request.name + "_Bottom");
-    
-    //                                                                
-    // PHASE 3.5: MODE MIGRATION (FILLED <-> EMPTY)
-    //                                                                
-    // Some MT4 builds render OBJ_RECTANGLE filled even with
-    // OBJPROP_FILL=false, so EMPTY boxes are drawn as border segments
-    // (guaranteed hollow). Keep the chart clean when switching styles.
-    
-    if(!request.filled) {
-        // EMPTY box: remove any leftover filled rectangle for this zone
-        if(ObjectFind(0, request.name) >= 0) {
-            ObjectDelete(0, request.name);
-            CacheRemoveObject(request.name);
-        }
-    }
-    else {
-        // FILLED box: remove any leftover empty-box border segments
-        if(ObjectFind(0, request.name + "_B_Top") >= 0) {
-            DeleteIndicatorObjectManaged(request.name + "_B_Top", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Bottom", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Left", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Right", true);
-        }
-    }
-    
+    // P-PERF-13b: THE MIGRATION PROBES USED TO RUN HERE - before the "nothing
+    // changed" early return below - so a steady-state chart paid 1 ObjectFind
+    // per zone per frame just to re-check for leftovers that were already gone
+    // (plus 4 more on a filled zone when the first probe happened to hit). The
+    // work is identical, it is simply moved past the early return: an unchanged
+    // zone now performs ZERO terminal calls, and anything that actually needs
+    // the migration (a create, or a real geometry/visual change) still gets it
+    // first - see PHASE 3.5 below, which now sits immediately before PHASE 4.
+
     // EMPTY BOX: draw as border segments (hollow on every MT4 build).
     // Top/bottom borders extend to the chart edge (ray-right, like the
     // filled box); the left border closes the outline.
@@ -370,6 +352,38 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     }
     
     //                                                                
+    // PHASE 3.5: MODE MIGRATION (FILLED <-> EMPTY)                     
+    //                                                                
+    // Some MT4 builds render OBJ_RECTANGLE filled even with
+    // OBJPROP_FILL=false, so EMPTY boxes are drawn as border segments
+    // (guaranteed hollow). Keep the chart clean when switching styles.
+    // P-PERF-13b: this is the migration that used to run on EVERY render of the
+    // zone; it now runs only when the zone is really being (re)built.
+
+    // A legacy sub-object pair from the pre-BOX-06 shape - two terminal probes
+    // that are worth nothing on a settled chart. Cache-only (no verify): the
+    // cache plus the proven-absent table already answer for our own names.
+    DeleteIndicatorObjectManaged(request.name + "_Top");
+    DeleteIndicatorObjectManaged(request.name + "_Bottom");
+
+    if(!request.filled) {
+        // EMPTY box: remove any leftover filled rectangle for this zone
+        if(ObjectFind(0, request.name) >= 0) {
+            ObjectDelete(0, request.name);
+            CacheRemoveObject(request.name);
+        }
+    }
+    else {
+        // FILLED box: remove any leftover empty-box border segments
+        if(ObjectFind(0, request.name + "_B_Top") >= 0) {
+            DeleteIndicatorObjectManaged(request.name + "_B_Top", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Bottom", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Left", true);
+            DeleteIndicatorObjectManaged(request.name + "_B_Right", true);
+        }
+    }
+
+    //                                                                
     // PHASE 4: ZONE CREATION/UPDATE
     //                                                                
     
@@ -405,7 +419,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         ObjectSetInteger(0, request.name, OBJPROP_WIDTH, borderWidth);
         ObjectSetInteger(0, request.name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, request.name, OBJPROP_RAY_RIGHT, true);
-        ObjectSetInteger(0, request.name, OBJPROP_ZORDER, 0);
+        ObjectSetInteger(0, request.name, OBJPROP_ZORDER, Z_CHART_ZONE);   // P-UI-31
     }
     
     // Update cache

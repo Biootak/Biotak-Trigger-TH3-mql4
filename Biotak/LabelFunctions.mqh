@@ -174,8 +174,13 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     }
 
     int labelXDistance = MathAbs(xPos);
-    int mainTextWidth = (int)(StringLen(mainText) * inpFontSize * 0.6);
-    int stepsTextWidth = (int)(StringLen(stepsText) * inpFontSize * 0.6);
+    // P-UI-42: the three lines are centred on the column's WIDEST line, and the
+    // widths are the MEASURED ones (CalculateTextWidth) - the same numbers the
+    // caller used to reserve the column, instead of a second per-character
+    // factor (0.6 here vs the 0.7 the reservation used) that disagreed with both
+    // the measurement and the drawn text.
+    int mainTextWidth = (int)CalculateTextWidth(mainText);
+    int stepsTextWidth = (int)CalculateTextWidth(stepsText);
     int mainOffset = (stepsTextWidth - mainTextWidth) / 2;
     if(mainOffset < 0) mainOffset = 0;
     
@@ -183,7 +188,7 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     ObjectSetInteger(0, stepsObjName, OBJPROP_XDISTANCE, labelXDistance);
     
     if(inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
-        int targetsTextWidth = (int)(StringLen(targetsText) * inpFontSize * 0.6);
+        int targetsTextWidth = (int)CalculateTextWidth(targetsText);
         int targetsOffset = (mainTextWidth - targetsTextWidth) / 2 + mainOffset;
         if(targetsOffset < 0) targetsOffset = 0;
         ObjectSetInteger(0, targetsObjName, OBJPROP_XDISTANCE, labelXDistance + targetsOffset);
@@ -214,33 +219,41 @@ void ClearAllLabels(const string objectPrefix) {
     string labelPrefix = objectPrefix + "LBL_";
     ObjectsDeleteAll(0, labelPrefix);
 
-    // PERF FIX: Replace two O(n) manual loops with two native ObjectsDeleteAll prefix calls.
-    // ObjectsDeleteAll is a single kernel call — dramatically faster than ObjectsTotal + loop.
+    // P-PERF-38f: THE LEGACY NAMESPACES ARE THE MIGRATION'S JOB, AND ITS ALONE.
     //
-    // Old logic wanted to delete any object that:
-    //  (a) starts with inpObjectPrefix + "_" AND contains "_LBL_"
-    //  (b) starts with objectPrefix + "TF"
+    // What follows deletes the `_LBL_` ghosts of the OLD
+    // timeframe-in-the-name scheme. It used to run once per draw generation,
+    // i.e. on EVERY timeframe switch — 11 ObjectsDeleteAll() calls, each a
+    // kernel walk of the WHOLE chart object list, to clear names that
+    // P-PERF-38 made uncreatable and that P-PERF-38c's one-time per-chart
+    // migration already removes. The migration's prefix set is a SUPERSET of
+    // this loop's ({M1,M5,M15,M30,H1,H4,D1,W1,MN,MN1,UNKNOWN} vs
+    // {M1,M5,M15,M30,H1,H4,D1,W1,MN}, same base) and it runs at init, before the
+    // first render — so on every chart this loop is either redundant or already
+    // done.
     //
-    // The LBL_ sub-prefix already covers (a): every LBL_ object name that was
-    // created by any TF variant of this indicator starts with inpObjectPrefix.
-    // So deleting all inpObjectPrefix + "_*_LBL_*" reduces to deleting every
-    // variant prefix + "LBL_" combination.
+    // It is kept, not deleted, because it is the only thing that covers the
+    // `inpObjectPrefix + "TF*"` spelling, which the migration does not; and it is
+    // keyed on the SAME one-time stamp as the migration rather than on the
+    // draw generation, so it costs one GlobalVariableCheck in steady state
+    // instead of 11 full-chart walks per switch. Two owners of one migration is
+    // how the two drift apart, so the stamp lives in GlobalVariables.
     //
-    // Walk through all known TF suffixes and bulk-delete their LBL_ namespace.
-    // This is O(k) API calls (k = number of known TF strings, ~9) instead of
-    // O(total chart objects) per frame.
-    // M30 here is a CHART-TIMEFRAME namespace (a chart can sit on M30), NOT the
+    // M30 below is a CHART-TIMEFRAME namespace (a chart can sit on M30), NOT the
     // retired M30 ATR column — never drop it, or the `_M30_LBL_` ghosts of an
     // old chart survive every clear.
-    static string s_tfSuffixes[] = {"M1","M5","M15","M30","H1","H4","D1","W1","MN"};
-    string basePrefix = inpObjectPrefix + "_";
-    for(int j = 0; j < ArraySize(s_tfSuffixes); j++) {
-        string tfLblPrefix = basePrefix + s_tfSuffixes[j];
-        ObjectsDeleteAll(0, tfLblPrefix + "_LBL_");
+    if(!LegacyNameSchemeMigrated())
+    {
+        static string s_tfSuffixes[] = {"M1","M5","M15","M30","H1","H4","D1","W1","MN"};
+        string basePrefix = inpObjectPrefix + "_";
+        for(int j = 0; j < ArraySize(s_tfSuffixes); j++) {
+            string tfLblPrefix = basePrefix + s_tfSuffixes[j];
+            ObjectsDeleteAll(0, tfLblPrefix + "_LBL_");
+        }
+
+        // (b) Delete objectPrefix + "TF*" labels (legacy)
+        ObjectsDeleteAll(0, objectPrefix + "TF");
     }
-    
-    // (b) Delete objectPrefix + "TF*" labels (legacy)
-    ObjectsDeleteAll(0, objectPrefix + "TF");
     g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
     g_suppressDeleteEvents = false;
 }
@@ -296,7 +309,7 @@ string TradePlanCloseInText(const bool compact = false)
 //+------------------------------------------------------------------+
 string LiveCountdownObjName()
 {
-   return inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_" + LIVE_COUNTDOWN_NAME;
+   return GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_NAME;
 }
 
 bool LiveCountdownEnabled()
@@ -312,7 +325,7 @@ void RefreshLiveCountdown()
    if(!LiveCountdownEnabled())
    {
       ObjectDelete(0, nm);
-      ObjectDelete(0, inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME);
+      ObjectDelete(0, GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME);
       g_cdTagValid = false;
       return;
    }
@@ -652,6 +665,16 @@ void DisplayATRLabels(const string objectPrefix) {
     int startXPos = inpLabelsMarginLeft;
     int lineGap = rowSpacing;
     int singleLineHeight = inpFontSize + lineGap;
+    // P-UI-43 (2026-09-13, "the ATR labels drifted away from the ceiling"): the ATR block is the
+    // ONLY top-side section of a pass, so it OPENS the top side and therefore owns
+    // `inpLabelsMarginTop`. The position used to be `margin + g_currentLabelYOffset`,
+    // i.e. it trusted the stacking state a previous pass left behind - and with a
+    // stale offset the whole block landed one section-slot lower (3 rows x
+    // (fontSize + rowGap) + inpSectionGap = 108px at the defaults), which reads as
+    // "the ATR labels drifted away from the ceiling". Nothing below loses its place:
+    // the increment at the end of this function still feeds every later top-side
+    // consumer (`g_modeLabelYOffset` -> the overlay labels). Cost: one int write.
+    g_currentLabelYOffset = 0;
     int titleYPos = inpLabelsMarginTop + g_currentLabelYOffset;
     int startYPos = isVerticalLayout ? (titleYPos + singleLineHeight) : titleYPos;
     int sectionGap = inpSectionGap;
@@ -867,10 +890,15 @@ void TradePlanLogLegs()
             }
             s = s + " q" + IntegerToString(qpers[q]) + "=" + DoubleToString(w, Digits);
         }
+        // P-PERF-05: the s-legs ride the bulk-copy engine (ONE CopyHigh/Low/Close
+        // per timeframe instead of ~4 series calls per bar x 425 bars x 9
+        // timeframes). Identical numbers - the diagnostic just stops costing
+        // more than the thing it measures.
+        double sLegs[];
+        TrexSMALegsBatch(tf, qpers, sLegs);
         for(int g = 0; g < 10; g++)
         {
-            double u = 0.0;
-            if(nb > qpers[g] + 1) u = TrexSMALeg(tf, qpers[g], 1);
+            double u = (g < ArraySize(sLegs)) ? sLegs[g] : 0.0;
             s = s + " s" + IntegerToString(qpers[g]) + "=" + DoubleToString(u, Digits);
         }
         TpxLine(s);
@@ -1082,7 +1110,7 @@ void TradePlanLiveTick()
 
     if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
     static uint s_lastMs = 0;
-    string labelPrefix = inpObjectPrefix + "_" + GetCurrentTimeframe() + "_" + "LBL_";
+    string labelPrefix = GetLevelObjectPrefix() + "LBL_";
 
     if(nowMs - s_lastMs < 2000) return;
     s_lastMs = nowMs;
@@ -1189,6 +1217,11 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Hunter", OBJPROP_TIMEFRAMES, slTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_StrBond", OBJPROP_TIMEFRAMES, slTF);
+
+    // P-PERF-02: the masks above were written OUTSIDE the visibility guard, so
+    // the guard's memory for these names is now stale — drop it, or a later
+    // guarded write could skip a mask this function just changed.
+    CacheForgetTfMasks(uniquePrefix);
 }
 
 void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
@@ -1218,6 +1251,10 @@ void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
         ObjectSetInteger(0, StringFormat("%sTH_Steps_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTF);
         ObjectSetInteger(0, StringFormat("%sTH_Targets_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTargetsTF);
     }
+
+    // P-PERF-02: masks written outside the guard → drop the stored memory
+    // (see SetATRLabelsVisibility).
+    CacheForgetTfMasks(objectPrefix + "TH_");
 }
 
 //+------------------------------------------------------------------+
@@ -1327,14 +1364,17 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     int lineGap = inpLabelRowGap;
     int singleLineHeight = inpFontSize + lineGap;
     
-    int mainTextWidth = (int)(StringLen(mainText) * inpFontSize * FONT_CHAR_WIDTH_FACTOR);
-    int stepsTextWidth = (int)(StringLen(stepsText) * inpFontSize * FONT_CHAR_WIDTH_FACTOR);
+    // P-UI-42: measured widths, not a per-character factor (see
+    // CalculateTextWidth) - the centring uses the same numbers the column
+    // reservation does, so every line is centred on the widest ONE.
+    int mainTextWidth = (int)CalculateTextWidth(mainText);
+    int stepsTextWidth = (int)CalculateTextWidth(stepsText);
     int mainOffset = (stepsTextWidth - mainTextWidth) / 2;
     if(mainOffset < 0) mainOffset = 0;
     
     int targetsOffset = 0;
     if(inpShowTHTargets) {
-        int targetsTextWidth = (int)(StringLen(targetsText) * inpFontSize * FONT_CHAR_WIDTH_FACTOR);
+        int targetsTextWidth = (int)CalculateTextWidth(targetsText);
         targetsOffset = (mainTextWidth - targetsTextWidth) / 2 + mainOffset;
         if(targetsOffset < 0) targetsOffset = 0;
     }
@@ -1369,6 +1409,12 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
 
 void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
     if(!g_thLabelsVisible || (g_thLabelsMode != 1 && g_thLabelsMode != 3)) return;
+    // P-UI-43: same rule on the bottom side - the fractal block is the FIRST
+    // bottom-side section whenever it is shown (modes 1 and 3), so it opens the
+    // side and owns `inpTHLabelsMarginBottom` instead of inheriting a stack offset
+    // from an earlier pass (which left the whole block one 108px slot off the
+    // floor). The standard block, when shown too, still stacks one slot above it.
+    g_currentLabelYOffsetBottom = 0;
     
     double point = GetCachedPoint();
     int digits = GetCachedDigits();
@@ -1411,6 +1457,7 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
     int _nFrac = ArraySize(FRACTAL_TIMEFRAMES);
+    int painted = 0;   // P-UI-43: columns this section really painted (slot booking)
     for(int i = 0; i < _nFrac; i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
         double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
@@ -1425,6 +1472,7 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
 
         if(isVerticalLayout) {
             if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
+            painted++;
             currentYPos += lineHeight;
         } else {
             if(currentXPos + labelWidth + xStep > maxWidth) {
@@ -1432,15 +1480,38 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
                 currentYPos += lineHeight;
             }
             if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
+            painted++;
             currentXPos += labelWidth + xStep;
         }
     }
 
-    g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
+    // P-UI-43: a section owns a slot in the bottom stack ONLY when it painted a
+    // column. This increment used to run unconditionally, so a section whose every
+    // CreateTHLabel failed (chart object limit / transient create failure) still
+    // booked a full slot - 3 rows x (fontSize + rowGap) + inpSectionGap = 108px at
+    // the defaults - and pushed the NEXT section that far off its margin: a gap
+    // with nothing above it. DisplayATRLabels has always been guarded this way
+    // (renderedCount > 0); this is the same rule on the TH side. The else branch
+    // names the event once (change-gated) so the next report is a log line.
+    if(painted > 0)
+        g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
+    else
+    {
+        static uint s_lastEmptySectionLog = 0;
+        uint emptyMs = GetTickCount();
+        if(emptyMs - s_lastEmptySectionLog > 60000)
+        {
+            s_lastEmptySectionLog = emptyMs;
+            Print("[I][LBL] P-UI-43 TH section painted 0 columns - its stack slot is skipped");
+        }
+    }
 }
 
 void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
     if(!g_thLabelsVisible || (g_thLabelsMode != 2 && g_thLabelsMode != 3)) return;
+    // P-UI-43: this block opens the bottom side only in standard-only mode; in
+    // "both" mode the fractal block below it owns the margin (see DisplayFractalTHs).
+    if(g_thLabelsMode == 2) g_currentLabelYOffsetBottom = 0;
 
     double point = GetCachedPoint();
     int digits = GetCachedDigits();
@@ -1474,6 +1545,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
     int _nStd = ArraySize(STANDARD_TIMEFRAMES);
+    int painted = 0;   // P-UI-43: columns this section really painted (slot booking)
     for(int i = 0; i < _nStd; i++) {
         string timeframeName = STANDARD_TIMEFRAMES[i];
         double percentage = CalculateStandardPercentage(STANDARD_MINUTES[i]);
@@ -1488,6 +1560,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
 
         if(isVerticalLayout) {
             if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
+            painted++;
             currentYPos += lineHeight;
         } else {
             if(currentXPos + labelWidth + xStep > maxWidth) {
@@ -1495,11 +1568,31 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
                 currentYPos += lineHeight;
             }
             if(!CreateTHLabel(labelPrefix, timeframeName, thPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
+            painted++;
             currentXPos += labelWidth + xStep;
         }
     }
 
-    g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
+    // P-UI-43: a section owns a slot in the bottom stack ONLY when it painted a
+    // column. This increment used to run unconditionally, so a section whose every
+    // CreateTHLabel failed (chart object limit / transient create failure) still
+    // booked a full slot - 3 rows x (fontSize + rowGap) + inpSectionGap = 108px at
+    // the defaults - and pushed the NEXT section that far off its margin: a gap
+    // with nothing above it. DisplayATRLabels has always been guarded this way
+    // (renderedCount > 0); this is the same rule on the TH side. The else branch
+    // names the event once (change-gated) so the next report is a log line.
+    if(painted > 0)
+        g_currentLabelYOffsetBottom += (currentYPos - startYPos) + lineHeight + sectionGap;
+    else
+    {
+        static uint s_lastEmptySectionLog = 0;
+        uint emptyMs = GetTickCount();
+        if(emptyMs - s_lastEmptySectionLog > 60000)
+        {
+            s_lastEmptySectionLog = emptyMs;
+            Print("[I][LBL] P-UI-43 TH section painted 0 columns - its stack slot is skipped");
+        }
+    }
 }
 
 void StoreLabelPosition(const string name, const int xPos, const int yPos) {
@@ -1525,32 +1618,39 @@ int GetStoredXPosition(const string name) {
     return inpInitialX;
 }
 
+//+------------------------------------------------------------------+
+//| P-UI-42: how wide will MT4 draw this caption?                     |
+//|                                                                  |
+//| This used to be a per-character GUESS - `len * 0.7 * inpFontSize` |
+//| plus a fudge for digits - and it is what made the ATR/TH columns  |
+//| come out with uneven gaps while `inpLabelColumnGap` says one      |
+//| number. Two errors sat in it:                                     |
+//|   1. it ignored the GLYPH MIX: in Arial Bold a dot or space is    |
+//|      .278em and a `W` is .944em, so two captions of equal length  |
+//|      are NOT equally wide, yet the guess spent .7em on every       |
+//|      character - "(211.1 - 246.3 - 281.4)" was over-reserved by   |
+//|      ~15% while a digit-only caption was under-reserved;          |
+//|   2. it ignored the TERMINAL's DPI, and MT4 sizes a label font at  |
+//|      px = pt * dpi / 72 (the P-UI-30 trap, fixed for the cards):   |
+//|      the guess is a coin toss that lands differently on every      |
+//|      display and every caption.                                   |
+//|                                                                  |
+//| The measurement now comes from the ONE metrics owner              |
+//| (`PnlRawTextW` in UtilityFunctions.mqh): the same Arial Bold       |
+//| advance table and the same cached terminal DPI the settings cards  |
+//| already measure with. The RAW entry point is the honest one here   |
+//| because these labels pass `inpFontSize` to MT4 unchanged (no       |
+//| PnlPt), unlike the panels.                                         |
+//|                                                                  |
+//| ONLY the measurement changed. The layout algorithm, the            |
+//| arrangement, `inpLabelColumnGap`/`inpLabelRowGap`/the margins, the |
+//| centering formulae and every object write are exactly as they      |
+//| were - and so is the cost: the call count is unchanged (~25-30      |
+//| measurements per relayout, a few hundred table lookups, noise next |
+//| to the ObjectSet* calls that follow them).                         |
+//+------------------------------------------------------------------+
 double CalculateTextWidth(string text) {
-    static int lastFontSize = -1;
-    static double charWidth = 0;
-    static double plusAdd = 0;
-    static double numAdd = 0;
-    
-    if(inpFontSize != lastFontSize) {
-        lastFontSize = inpFontSize;
-        charWidth = lastFontSize * 0.7;
-        plusAdd = lastFontSize * 0.3;
-        numAdd = lastFontSize * 0.2;
-    }
-    
-    int len = StringLen(text);
-    if(len == 0) return 0;
-    
-    bool hasPlus = false;
-    bool hasNum = false;
-    for(int i=0; i<len; i++) {
-        ushort c = StringGetCharacter(text, i);
-        if(c >= '0' && c <= '9') hasNum = true;
-        else if(c == '+') hasPlus = true;
-        if(hasPlus && hasNum) break;
-    }
-    
-    return len * charWidth + (hasPlus ? plusAdd : 0) + (hasNum ? numAdd : 0);
+    return (double)PnlRawTextW(text, inpFontSize);
 }
 
 //+------------------------------------------------------------------+
