@@ -2514,6 +2514,88 @@ bool IsZoneBoxBorderObject(const string name)
     return false;
 }
 
+//==============================================================================
+// P-UI-61 — THE DRAG HAS ONE ANCHOR WRITER AND ONE FRAME OWNER
+//
+// Reported: «درگ خط کاستوم پرایس روان نیست و لگ داره، و وقتی خط را رها میکنم سطوح
+// از یک جای دیگه رسم میشن، همون سطوح نیستن».
+//
+// Both halves were the same defect: the drag had THREE writers for ONE value,
+// and the value the whole ladder is derived from (`g_customTHStartPrice` ->
+// `GetMidpointPrice` -> `CalculateCommonStepData.midpointPrice`) was written
+// INSIDE the redraw throttle:
+//
+//   if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
+//   {
+//       g_customTHStartPrice = currentLinePrice;   // <- the anchor, throttled
+//       RedrawAllObjects(true);
+//       g_lastDragRedrawTime = nowMs;
+//   }
+//
+// So every event inside the 50 ms window was DROPPED, not deferred: the LINE
+// object kept up with the cursor (MT4 moves it natively, our carry writes it) at
+// ~30 Hz while the ANCHOR advanced at 20 Hz, i.e. the ladder trailed the line by
+// an amount that depended on where the window happened to fall - and nothing was
+// owed, so the trailing error was silently lost on the last event before the
+// button came up. That is the lag.
+//
+// The release then made it visible. `RedrawAllObjects` re-resolves the price from
+// `CustomPriceResolveSource()` (P-UI-56), which reads the PERSISTED placement - and
+// the CARRY channel never persisted (only the native-drag channel did), so the key
+// held a price from before the gesture. The resolver's answer disagreed with the
+// anchor, the frame's `priceMoved` branch OVERWROTE the anchor with the key's older
+// value, and the ladder was rebuilt there: it matched neither the cursor nor the
+// picture that was on screen a moment earlier. That is «از یک جای دیگه رسم میشن».
+//
+// The rules are the project's usual ones: ONE owner for the value, ONE owner for
+// the frame, state always current, and a frame that was refused is OWED, never
+// dropped.
+//
+//   * `CustomPriceDragAnchorSet(price)` is the only writer of the anchor during a
+//     gesture, and it persists through the P-UI-56 writer so the key can never be
+//     older than the anchor (that disagreement WAS the release jump). A price that
+//     did not move costs one compare and returns - the steady state is free.
+//   * `CustomPriceDragFrame(force)` is the only caller of the heavy pass from the
+//     drag, so both event channels share ONE budget instead of each having its own
+//     gate on the same stamp; a refused frame sets the owed flag.
+//   * The release always settles from the OBJECT (the one value MT4 itself keeps
+//     exact) and forces the frame, so the last pixel of the gesture is painted
+//     from the current anchor. A click that moved nothing still owes nothing.
+//==============================================================================
+static bool s_cpDragFrameOwed = false;
+
+bool CustomPriceDragAnchorSet(const double price)
+{
+    if(!MathIsValidNumber(price) || price <= 0.0) return false;
+    if(MathAbs(price - g_customTHStartPrice) <= _Point * 0.5) return false;
+    g_customTHStartPrice = price;
+    g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+    g_customPriceKeyboardOverride = true;
+    // P-UI-56: the same ONE writer as every other placement path. Persisting here
+    // is what makes the resolver agree with the anchor instead of re-anchoring the
+    // release to an older key.
+    CustomPricePersistPlacement(price);
+    g_redrawTHLevelsNeeded = true;
+    return true;
+}
+
+void CustomPriceDragFrame(const bool force)
+{
+    s_cpDragFrameOwed = true;                    // owed until this call really paints
+    uint nowMs = GetTickCount();
+    if(!force && nowMs - g_lastDragRedrawTime <= DRAG_REDRAW_THROTTLE_MS) return;
+    // P-UI-53: re-assert the view lock on the same budget (read-guarded: three
+    // reads, a write only on drift).
+    CustomPriceDragReassertLock();
+    RedrawAllObjects(true);
+    ThrottledChartRedraw();
+    g_lastDragRedrawTime = nowMs;
+    s_cpDragFrameOwed = false;
+}
+
+bool CustomPriceDragFrameOwed() { return s_cpDragFrameOwed; }
+
+
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     // Base / Knot tool FIRST: while armed it owns every mouse gesture (no
@@ -3394,22 +3476,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                         }
                     }
                 }
-                if(currentLinePrice > 0 && MathAbs(currentLinePrice - g_customTHStartPrice) > _Point * 0.5)
-                {
-                    uint nowMs = GetTickCount();
-                    if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
-                    {
-                        // P-UI-53: re-assert the view lock on the same 50 ms budget
-                        // (read-guarded: three reads, a write only on drift).
-                        CustomPriceDragReassertLock();
-                        g_customTHStartPrice = currentLinePrice;
-                        g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-                        g_redrawTHLevelsNeeded = true;
-                        RedrawAllObjects(true);
-                        ThrottledChartRedraw();
-                        g_lastDragRedrawTime = nowMs;
-                    }
-                }
+                // P-UI-61: the STATE is no longer inside the frame's gate. The anchor
+                // advances on EVERY event that moved the line - a lagging anchor is a
+                // ladder drawn where the line is not - and only the FRAME is budgeted
+                // (one owner, shared with the native-drag channel). A refused frame is
+                // owed; the release and the next tick both pick the flag up.
+                if(currentLinePrice > 0 && CustomPriceDragAnchorSet(currentLinePrice))
+                    CustomPriceDragFrame(false);
             }
         }
         else
@@ -3453,13 +3526,31 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // `s_ownGrabPrice` is the line's price when the gesture was grabbed
                 // and `s_ownLastWrite` is set when WE carried it, so the test is exact
                 // in both movement directions (the terminal's own drag and our carry).
+                // P-UI-61: THE RELEASE SETTLES FROM THE OBJECT - the one value MT4
+                // itself keeps exact - and it settles with a FRAME, never with a
+                // re-anchor. `CustomPriceDragAnchorSet` is the only writer here and it
+                // persists, so the frame's own resolver (P-UI-56) now answers with the
+                // SAME price the anchor holds: its `priceMoved` branch can no longer
+                // overwrite the gesture's result with an older key. That overwrite WAS
+                // «وقتی خط را رها میکنم سطوح از یک جای دیگه رسم میشن» - the carry
+                // channel never persisted, so the key held a pre-gesture price and the
+                // settle rebuilt the whole ladder there.
+                double settledPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
                 bool movedByGesture = (s_ownLastWrite > 0.0) ||
-                                      MathAbs(g_customTHStartPrice - s_ownGrabPrice) > _Point * 0.5;
+                                      MathAbs(g_customTHStartPrice - s_ownGrabPrice) > _Point * 0.5 ||
+                                      (settledPrice > 0.0 &&
+                                       MathAbs(settledPrice - s_ownGrabPrice) > _Point * 0.5);
                 if(movedByGesture)
                 {
-                    g_redrawTHLevelsNeeded = true;
-                    RedrawAllObjects(true);
-                    ThrottledChartRedraw();
+                    CustomPriceDragAnchorSet(settledPrice);
+                    CustomPriceDragFrame(true);   // force: the gesture's last pixel is always painted
+                }
+                else if(CustomPriceDragFrameOwed())
+                {
+                    // A click that moved nothing still owes nothing (P-UI-54), but a
+                    // frame the throttle refused while the gesture was live is owed -
+                    // and this is its last chance to be painted.
+                    CustomPriceDragFrame(true);
                 }
                 // P-UI-49: the gesture is over - the button is UP, so NOW the
                 // line may be written again. This is the release the tooltip is
@@ -3498,12 +3589,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // button-up mouse move - see g_customPriceNativeDrag below.
         g_customPriceNativeDrag = true;
         double draggedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
-        g_customTHStartPrice = draggedPrice;
-        g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-        g_customPriceKeyboardOverride = true;
-        // P-UI-56: the drag's per-step persist is the same ONE writer (chart-scoped
-        // keys) - two GVar sets per step, exactly as before, nothing new per move.
-        CustomPricePersistPlacement(draggedPrice);
+        // P-UI-61: the anchor AND its persist are the one owner's now. The persist
+        // used to live HERE only, which is exactly why the CARRY channel's key went
+        // stale and the release re-anchored the ladder to it (the P-UI-56 writer is
+        // still the only thing that writes the pair - one call, one place).
+        bool anchorMoved = CustomPriceDragAnchorSet(draggedPrice);
         // P-UI-49: NO property write on the line HERE - the tooltip text is
         // written once at the release instead (UpdateCustomPriceTooltip). This
         // handler runs on EVERY step of a native drag, and MT4 cancels an
@@ -3532,22 +3622,15 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // the settled picture is a full, staged, exact rebuild - the "settle at
         // the end" the report asks for, unchanged. Cost: strictly less work per
         // step (no wipe, no staged rebuild) and the same single frame per 50 ms.
-        g_redrawTHLevelsNeeded = true;
         // P-UI-51: with the gesture flag alive for the whole drag (above), a forced
         // frame from here runs INLINE (the P-PERF-34 drag exemption) on EVERY step
         // MT4 reports. The live follow already spends that exemption from the
         // mouse-move path, so this channel shares its budget: one frame per window
         // across both channels - the cadence the drag already had, and strictly
         // less work than one frame per reported step.
-        uint dragNowMs = GetTickCount();
-        if(dragNowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
-        {
-            // P-UI-53: this channel owns no mouse move, so it re-asserts the view
-            // lock too - one gesture, two event channels, one lock (read-guarded).
-            CustomPriceDragReassertLock();
-            RedrawAllObjects(true);
-            g_lastDragRedrawTime = dragNowMs;
-        }
+        // P-UI-61: and that budget now has ONE owner, so a step whose anchor did not
+        // move costs nothing at all instead of one more full pass.
+        if(anchorMoved) CustomPriceDragFrame(false);
     }
 
     // VIEWLOCK-OFF: anchor-line drag retired —

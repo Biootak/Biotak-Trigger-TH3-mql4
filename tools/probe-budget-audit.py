@@ -2523,12 +2523,30 @@ def check_custom_price_mode(o):
     # (`od` is bound further down this check; the drag handler's own body is needed
     # here to prove the SECOND event channel re-asserts too.)
     dragb = fn_body(code_ev, "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)") or ""
-    if mm.count("CustomPriceDragReassertLock();") != 1 or "CustomPriceDragReassertLock();" not in dragb:
+    # P-UI-61: the re-assert and the frame are ONE owner's job now, and both event
+    # channels reach them through it - so the two channels cannot drift apart, and a
+    # third writer (a closing panel, a watchdog restore, a template reset) still
+    # cannot flip the props back while the button is down (P-BK-14's rule, on the line).
+    frame_owner = fn_body(code_ev, "void CustomPriceDragFrame(")
+    if not frame_owner or "CustomPriceDragReassertLock();" not in frame_owner:
         fail("custom-price-mode",
-             "the view lock is not re-asserted exactly once per throttled step on both event "
-             "channels: a third writer (a closing panel, a watchdog restore, a template reset) "
-             "can flip the props back and the chart pans for the rest of the gesture - P-BK-14's "
-             "rule, on the line")
+             "the drag's frame owner is gone or no longer re-asserts the view lock: the chart "
+             "pans under the dragged line and the line is moved against the rebased scale")
+        return
+    if code_ev.count("CustomPriceDragReassertLock();") != 1:
+        fail("custom-price-mode",
+             "the view lock has more than one re-assert site again: one gesture, two event "
+             "channels, one lock - a second site is a second budget")
+        return
+    # `mm` legitimately holds the live-follow frame plus the two release-settle paths;
+    # the invariant is that NEITHER channel reaches the heavy pass directly, and that the
+    # native-drag channel (which has no other frame caller) goes through the owner once.
+    if mm.count("CustomPriceDragFrame(") < 1 or dragb.count("CustomPriceDragFrame(") != 1 or \
+       "RedrawAllObjects(" in (mm + dragb):
+        fail("custom-price-mode",
+             "an event channel calls the heavy pass directly again instead of going through "
+             "the drag's ONE frame owner: two budgets on one stamp, and the channel that "
+             "skips the owner is the one whose frame gets dropped")
         return
     # P-UI-54: the RELEASE may not wipe. MT4 selects the line on the press that
     # clicks it, so this gesture also runs for a plain CLICK - and a wipe is
@@ -2698,6 +2716,111 @@ def check_custom_price_mode(o):
     ok("custom-price-mode",
        "the selection dies on button-up, on a UI press, and under any foreign native drag; "
        "the dragged line is never written to (P-BK-15)")
+
+
+def check_drag_anchor(o):
+    """P-UI-61 - THE DRAG'S ANCHOR IS STATE, NOT WORK: IT MAY NOT SIT INSIDE THE THROTTLE.
+
+    Reported: «درگ خط کاستوم پرایس روان نیست و لگ داره، و وقتی خط را رها میکنم سطوح از
+    یک جای دیگه رسم میشن، همون سطوح نیستن».
+
+    One defect, two symptoms. The whole ladder is derived from one value
+    (`g_customTHStartPrice` -> `GetMidpointPrice` -> `midpointPrice`), and the drag
+    wrote it INSIDE its redraw gate:
+
+        if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
+        { g_customTHStartPrice = currentLinePrice; RedrawAllObjects(true); ... }
+
+    so the LINE kept up with the cursor (MT4 moves it, our carry writes it) while the
+    ANCHOR advanced at the window's rate: the ladder trailed the line by an amount
+    that depended on when the release happened, and every event inside a window was
+    DROPPED rather than owed. At the release the disagreement became a rebuild from
+    the wrong price: the frame re-resolves the source from the PERSISTED key, and the
+    carry channel never persisted, so that key held a PRE-GESTURE price and the
+    frame's `priceMoved` branch overwrote the gesture's result with it - the ladder
+    was drawn neither under the line nor where the picture had been.
+
+    The invariants, all of them decisions rather than details:
+      * the anchor has ONE writer during a gesture, it persists through the P-UI-56
+        writer (so the resolver can never disagree with it), and a price that did not
+        move costs one compare and nothing else;
+      * the heavy pass has ONE caller from the drag, and the throttle lives INSIDE it
+        (a refused frame is owed, never silently dropped);
+      * no assignment to the anchor may sit inside a throttle gate again;
+      * the release settles from the OBJECT - the one value MT4 keeps exact - through
+        the same owner, and forces the frame, while a click that moved nothing still
+        owes nothing (P-UI-54).
+    """
+    code_ev = _code_only(read(EVENTS, o))
+    owner = fn_body(code_ev, "bool CustomPriceDragAnchorSet(")
+    if not owner:
+        fail("drag-anchor", "CustomPriceDragAnchorSet is gone: the drag's anchor has no owner again")
+        return
+    if "g_customTHStartPrice = price;" not in owner:
+        fail("drag-anchor", "the drag-anchor owner no longer writes the anchor it is named for")
+        return
+    if "CustomPricePersistPlacement(" not in owner:
+        fail("drag-anchor",
+             "the drag-anchor owner does not persist: the frame's resolver then reads a key "
+             "older than the anchor and RE-ANCHORS the settle to it - the whole ladder is "
+             "rebuilt at a price the cursor was never at (the reported jump on release)")
+        return
+    mm = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)") or ""
+    dragb = fn_body(code_ev, "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)") or ""
+    handlers = mm + "\n" + dragb
+    if handlers.count("g_customTHStartPrice =") != 0:
+        fail("drag-anchor",
+             "a drag handler writes the anchor itself again: that is how the value sat inside "
+             "the redraw gate, and the ladder then trails the line by a whole window")
+        return
+    if mm.count("CustomPriceDragAnchorSet(") != 2 or dragb.count("CustomPriceDragAnchorSet(") != 1:
+        fail("drag-anchor",
+             "one of the two event channels stopped routing its anchor through the owner (the "
+             "mouse-move channel has the live follow AND the release settle), so its price can "
+             "lag - or persist - on a different schedule than the other")
+        return
+    ok("drag-anchor", "the anchor has one writer, it persists with the value, and both channels use it")
+
+    # The throttle is a FRAME budget, never a state gate, and it belongs to one owner.
+    owner_frame = fn_body(code_ev, "void CustomPriceDragFrame(")
+    if not owner_frame or "DRAG_REDRAW_THROTTLE_MS" not in owner_frame:
+        fail("drag-anchor",
+             "the drag's frame budget is gone from the frame owner: the two channels run "
+             "their own heavy passes again")
+        return
+    if code_ev.count("g_lastDragRedrawTime") != 2:
+        fail("drag-anchor",
+             "the drag's frame stamp is touched outside its one owner (expected exactly the "
+             "compare and the store inside CustomPriceDragFrame)")
+        return
+    if re.findall(r"DRAG_REDRAW_THROTTLE_MS[^\n]*\n[^\n]*RedrawAllObjects\(", code_ev):
+        fail("drag-anchor",
+             "a heavy pass is gated on DRAG_REDRAW_THROTTLE_MS outside the frame owner again: "
+             "a refused frame is then DROPPED instead of owed, and the release settles from a "
+             "price the gesture has already left behind")
+        return
+    ok("drag-anchor", "the frame budget lives in one owner, and no frame is dropped on a throttled step")
+
+    if "double settledPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);" not in mm:
+        fail("drag-anchor",
+             "the release no longer reads the line's own price: it settles from our throttled "
+             "copy instead, which is the price the gesture had already left behind")
+        return
+    # The MOVED branch must force (the picture that is on screen must be the last one the
+    # gesture produced, whatever the window did) - matched structurally, because
+    # `_code_only` has already stripped the trailing comment that reads it out loud.
+    if not re.search(r"if\(movedByGesture\)[^}]*CustomPriceDragFrame\(true\)", mm, re.S):
+        fail("drag-anchor",
+             "the release does not FORCE the frame from the moved branch: the gesture's last "
+             "pixel is then only painted if the 50 ms window happened to be open, which is the "
+             "reported 'the levels land somewhere else when I let go'")
+        return
+    if "CustomPriceDragFrameOwed()" not in mm:
+        fail("drag-anchor",
+             "the release no longer settles a frame the throttle refused: a refused frame is "
+             "owed work, and nothing else would paint it before the next tick")
+        return
+    ok("drag-anchor", "the release settles from the object, forces the frame, and still owes a click nothing")
 
 
 def check_custom_price_source(o):
@@ -2964,7 +3087,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_persist_write_shape, check_chart_change_prime, check_name_scheme,
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
-          check_live_control, check_teardown_census]
+          check_live_control, check_teardown_census, check_drag_anchor]
 
 
 def run(overrides=None):
@@ -3547,8 +3670,9 @@ def selftest():
     seed("the drag stops taking the view lock", EVENTS,
          "                    CustomPriceDragLockOn();\n",
          "")
+    # P-UI-61: the re-assert moved into the drag's frame owner, so the seed follows it.
     seed("the drag stops re-asserting the view lock", EVENTS,
-         "                        CustomPriceDragReassertLock();\n",
+         "    CustomPriceDragReassertLock();\n",
          "")
     seed("the stale-drag heal stops checking the button", EVENTS,
          "    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;     // still holding the button\n",
@@ -3565,13 +3689,16 @@ def selftest():
     seed("exit owner forgets the Input default", EVENTS,
          "    g_thStartPointType = inpTHStartPointType;\n    g_customPriceKeyboardOverride = false;\n",
          "    g_customPriceKeyboardOverride = false;\n")
+    # P-UI-61: anchors on the native-drag channel's frame call - the `uint dragNowMs`
+    # line it used to anchor on is gone, because the budget now lives in one owner.
     seed("the drag handler writes the line mid-drag again", EVENTS,
-         "        uint dragNowMs = GetTickCount();\n",
+         "        if(anchorMoved) CustomPriceDragFrame(false);\n",
          "        ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, \"x\");\n"
-         "        uint dragNowMs = GetTickCount();\n")
+         "        if(anchorMoved) CustomPriceDragFrame(false);\n")
     seed("the drag handler resets the gesture flag on every step", EVENTS,
-         "        uint dragNowMs = GetTickCount();\n",
-         "        g_customPriceLineDragging = false;\n        uint dragNowMs = GetTickCount();\n")
+         "        if(anchorMoved) CustomPriceDragFrame(false);\n",
+         "        g_customPriceLineDragging = false;\n"
+         "        if(anchorMoved) CustomPriceDragFrame(false);\n")
     seed("the drag tooltip stops being written at the release", EVENTS,
          "                UpdateCustomPriceTooltip();\n",
          "")
@@ -3629,6 +3756,37 @@ def selftest():
     seed("the removal stops sweeping the global-variable families", EVENTS,
          "        CleanupAllGlobalVariables();\n",
          "")
+
+    # 21. the drag's anchor back inside the redraw gate, and the frame dropped
+    #     instead of owed (P-UI-61)
+    seed("the drag's anchor goes back inside the redraw gate", EVENTS,
+         "                if(currentLinePrice > 0 && CustomPriceDragAnchorSet(currentLinePrice))\n"
+         "                    CustomPriceDragFrame(false);\n",
+         "                if(currentLinePrice > 0 &&\n"
+         "                   MathAbs(currentLinePrice - g_customTHStartPrice) > _Point * 0.5)\n"
+         "                {\n"
+         "                    uint nowMs = GetTickCount();\n"
+         "                    if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)\n"
+         "                    {\n"
+         "                        g_customTHStartPrice = currentLinePrice;\n"
+         "                        RedrawAllObjects(true);\n"
+         "                        g_lastDragRedrawTime = nowMs;\n"
+         "                    }\n"
+         "                }\n")
+    seed("the drag-anchor owner stops persisting the value", EVENTS,
+         "    CustomPricePersistPlacement(price);\n",
+         "")
+    seed("the release stops forcing the frame", EVENTS,
+         "                    CustomPriceDragFrame(true);   // force: the gesture's last pixel is always painted\n",
+         "                    CustomPriceDragFrame(false);\n")
+    seed("a drag handler regains a throttle of its own", EVENTS,
+         "                int cursorY = (int)dparam;\n",
+         "                if(GetTickCount() - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)\n"
+         "                    RedrawAllObjects(true);\n"
+         "                int cursorY = (int)dparam;\n")
+    seed("the native-drag channel bypasses the frame owner", EVENTS,
+         "        if(anchorMoved) CustomPriceDragFrame(false);\n",
+         "        if(anchorMoved) RedrawAllObjects(true);\n")
 
     caught = 0
     for label, rel, old, new in seeds:

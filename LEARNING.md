@@ -1469,3 +1469,73 @@ double ClampZoneHalfHeightBoth(const double wantedHalfHeight,
 را نگه می‌دارد، پس وعدهٔ P-PERF-38c دست‌نخورده است).
 
 ۱۶۶ → **۱۷۰** تستِ خودآزمون؛ گیتِ جدید `teardown-census` روی ۲۵ خانواده، **نتیجه: clean**.
+
+## §35 — «وضعیت را با کار قفل نکن»: مقداری که کل نردبان از آن مشتق می‌شود، داخلِ ترمز رندر جا ندارد (2026-09-13، P-UI-61)
+
+گزارش: «درگ خط کاستوم پرایس روان نیست و لگ داره، و وقتی خط را رها میکنم سطوح از یک جای
+دیگه رسم میشن، همون سطوح نیستن». یک باگ، دو نشانه.
+
+**۱. لگ = وضعیت و تصویر با هم ترمز شده بودند.** کل نردبان از یک مقدار مشتق می‌شود
+(`g_customTHStartPrice` → `GetMidpointPrice` → `midpointPrice`) و درگ آن را **داخلِ دریچهٔ**
+رندر می‌نوشت:
+
+```mql4
+if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
+{
+    g_customTHStartPrice = currentLinePrice;   // ← لنگر، ترمز شده
+    RedrawAllObjects(true);
+    g_lastDragRedrawTime = nowMs;
+}
+```
+
+نتیجه: **آبجکتِ خط** با کرسر هم‌قدم بود (MT4 خودش می‌بردش، carry ما می‌نوشتش) ولی **لنگر** با
+نرخِ دریچه جلو می‌رفت؛ بقیهٔ رویدادهای داخلِ دریچه **دور ریخته** می‌شدند (نه «بدهی»). پس
+نردبان به اندازه‌ای عقب می‌ماند که به این بستگی داشت که رهاکردن کجای دریچه بیفتد.
+
+**۲. جهش در لحظهٔ رهاکردن = سه نویسنده برای یک مقدار.** `RedrawAllObjects` قیمت را از
+**کلید ذخیره‌شده** حل می‌کند (P-UI-56)، اما کانالِ carry هیچ‌وقت ذخیره نمی‌کرد (فقط کانالِ
+درگِ نیتیو ذخیره می‌کرد). پس کلید قیمتی از **قبل از گِسچر** را داشت، شاخهٔ `priceMoved` لنگر را
+با آن **بازنویسی** می‌کرد، و کل نردبان جایی ساخته می‌شد که کرسر هرگز آنجا نبود. حقیقتِ گِسچر
+(قیمتِ خودِ آبجکت) هیچ‌کدامِ این سه نبود.
+
+**درسِ گیت‌شدنی:** «وضعیت» را با «کار» در یک گارد نگذارید. اگر مقداری کل تصویر را تعیین
+می‌کند، روی **هر** رویداد به‌روز می‌شود؛ فقط **کار** (پاسِ سنگین) بودجه دارد، و کاری که رد شد
+**بدهی** است نه دورریز.
+
+```mql4
+bool CustomPriceDragAnchorSet(const double price)   // تنها نویسنده در طول گِسچر
+{
+    if(!MathIsValidNumber(price) || price <= 0.0) return false;
+    if(MathAbs(price - g_customTHStartPrice) <= _Point * 0.5) return false;  // بی‌حرکت: یک مقایسه
+    g_customTHStartPrice = price;
+    g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+    g_customPriceKeyboardOverride = true;
+    CustomPricePersistPlacement(price);   // کلید هرگز عقب‌تر از لنگر نمی‌ماند
+    g_redrawTHLevelsNeeded = true;
+    return true;
+}
+
+void CustomPriceDragFrame(const bool force)          // تنها بده‌کارگیرِ پاسِ سنگین
+{
+    s_cpDragFrameOwed = true;
+    if(!force && GetTickCount() - g_lastDragRedrawTime <= DRAG_REDRAW_THROTTLE_MS) return;
+    CustomPriceDragReassertLock();
+    RedrawAllObjects(true);
+    ThrottledChartRedraw();
+    g_lastDragRedrawTime = GetTickCount();
+    s_cpDragFrameOwed = false;
+}
+```
+
+و رهاکردن، از **آبجکت** تسویه می‌کند و فریم را **مجبور** می‌کند:
+`double settledPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);`
+⇒ `if(movedByGesture) { CustomPriceDragAnchorSet(settledPrice); CustomPriceDragFrame(true); }`
+⇒ یک کلیکِ بی‌حرکت هنوز **صفر** فریم هزینه دارد (P-UI-54 دست‌نخورده).
+
+**هزینه (خواستهٔ صریحِ کاربر: کم و فقط جای لازم):** حرکتِ بی‌تغییر = یک `MathAbs`؛ حرکتِ
+واقعی = حداکثر یک پاسِ سنگین در هر ۵۰ms که **دو کانال در آن شریک‌اند** (قبلاً هر کانال دریچهٔ
+خودش را روی همان استمپ داشت)؛ رهاکردن = دقیقاً یک فریم؛ بدونِ wipe و بدونِ بازسازیِ مرحله‌ای.
+`g_lastDragRedrawTime` و `CustomPriceDragReassertLock` حالا **هر کدام یک مصرف‌کننده** دارند.
+
+۱۷۰ → **۱۷۵** تستِ خودآزمون؛ گروهِ جدیدِ `drag-anchor` (۳ invariant + ۴ seed) و invariant
+بازتنظیم‌شدهٔ `custom-price-mode`. کامپایل Full + Lite: ۰ خطا / ۰ وارنینگ.
