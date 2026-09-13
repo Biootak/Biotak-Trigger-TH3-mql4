@@ -34,7 +34,12 @@ struct SZoneCreationRequest {
     double bottomPrice;       // Bottom boundary
     color zoneColor;          // Zone color
     int transparency;         // Transparency (0-100)
-    bool filled;              // Fill zone?
+    bool filled;              // Draw the BAND (the filled rectangle)
+    // P-UI-62: the EDGE is its own half of the picture, not a consequence of `filled`.
+    // It used to be exactly `!filled`, which made two states out of three possible
+    // pictures and left the third one (band AND edge) unrepresentable - so the card's
+    // BORDER / BORDER WIDTH rows could only ever affect the empty state.
+    bool outline;             // Draw the EDGE (three border segments)
     int borderStyle;          // Rectangle border line style (STYLE_SOLID/DASH/DOT/...)
     int borderWidth;          // Rectangle border width (1-5)
     datetime startTime;       // Start time (optional, 0 = auto)
@@ -296,49 +301,41 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     // empty-box outline fades exactly like the filled-box color.
     color borderColor = finalColor;
 
-    // P-PERF-13b: THE MIGRATION PROBES USED TO RUN HERE - before the "nothing
-    // changed" early return below - so a steady-state chart paid 1 ObjectFind
-    // per zone per frame just to re-check for leftovers that were already gone
-    // (plus 4 more on a filled zone when the first probe happened to hit). The
-    // work is identical, it is simply moved past the early return: an unchanged
-    // zone now performs ZERO terminal calls, and anything that actually needs
-    // the migration (a create, or a real geometry/visual change) still gets it
-    // first - see PHASE 3.5 below, which now sits immediately before PHASE 4.
-
-    // EMPTY BOX: draw as border segments (hollow on every MT4 build).
-    // Top/bottom borders extend to the chart edge (ray-right, like the
-    // filled box); the left border closes the outline.
-    if(!request.filled) {
-        bool ok = true;
-        if(!CreateOrUpdateZoneBorder(request.name + "_B_Top",
-                                     startTime, request.topPrice, endTime, request.topPrice,
-                                     borderColor, borderStyle, borderWidth, true)) ok = false;
-        if(!CreateOrUpdateZoneBorder(request.name + "_B_Bottom",
-                                     startTime, request.bottomPrice, endTime, request.bottomPrice,
-                                     borderColor, borderStyle, borderWidth, true)) ok = false;
-        if(!CreateOrUpdateZoneBorder(request.name + "_B_Left",
-                                     startTime, request.bottomPrice, startTime, request.topPrice,
-                                     borderColor, borderStyle, borderWidth, false)) ok = false;
-        
-        result.success = ok;
-        return result;
-    }
-    
-    // PERFORMANCE: Check cache to skip redundant API calls
+    // P-UI-62: THE PICTURE IS RESOLVED BEFORE ANY DRAWING PATH.
+    //
+    // The EMPTY picture used to return from ABOVE this read, and that early return IS
+    // the reported «Empty درست کار نمیکند»: switching FILLED -> EMPTY drew the three
+    // edge segments and left the FILLED RECTANGLE exactly where it was, because the
+    // migration meant to remove it (PHASE 3.5) sat BELOW the return and was therefore
+    // unreachable in the one picture that needs it. The picture is read once here, and
+    // every path below is a consequence of it.
+    //
+    // A cached entry whose `exists` is false is a PROOF that this zone owns NO
+    // rectangle (the edge-only picture: its three segments are the whole zone), so the
+    // band path must not probe the chart for it - the P-PERF-07 rule, applied to the
+    // cache instead of the absent table. Without it, the band-less pictures paid three
+    // ObjectFind probes per zone per render, forever.
     SObjectCacheEntry cache;
     bool inCache = CacheGetObject(request.name, cache);
+    bool entrySaysBand = (inCache && cache.exists);
     bool objectExists = false;
     if(inCache && cache.exists) {
         objectExists = (ObjectFind(0, request.name) >= 0);
         if(!objectExists) {
             CacheRemoveObject(request.name);
             inCache = false;
+            entrySaysBand = false;
         }
-    } else {
+    } else if(!inCache) {
         objectExists = (ObjectFind(0, request.name) >= 0);
+        entrySaysBand = objectExists;
     }
-    
-    if(inCache && objectExists) {
+    // A picture of the SAME KIND with nothing changed costs zero terminal calls - and
+    // that now covers the band-less pictures too. A KIND change is exactly when
+    // leftovers can exist, so it is also what the migration below hangs on.
+    bool kindChanged = (!inCache) || (entrySaysBand != request.filled) ||
+                       (cache.lastOutline != request.outline);
+    if(inCache && !kindChanged) {
         // Check if anything actually changed
         bool geometryChanged = (cache.lastPrice != request.topPrice || cache.lastPrice2 != request.bottomPrice ||
                                cache.lastTime1 != startTime || cache.lastTime2 != endTime);
@@ -366,36 +363,57 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     DeleteIndicatorObjectManaged(request.name + "_Top");
     DeleteIndicatorObjectManaged(request.name + "_Bottom");
 
-    if(!request.filled) {
-        // EMPTY box: remove any leftover filled rectangle for this zone
-        if(ObjectFind(0, request.name) >= 0) {
-            ObjectDelete(0, request.name);
+    // P-UI-62: BOTH HALVES, and only when the KIND changed - which is the only moment
+    // a leftover can exist. The old shape was `if(!filled) remove the band; else remove
+    // the edge`, i.e. it could not express OUTLINED at all (both halves wanted) and it
+    // asked the chart with a raw ObjectFind for the edge half. Both are cache-first now
+    // (P-PERF-13's rule), so a settled chart pays nothing here.
+    if(kindChanged)
+    {
+        // The BAND half: FILLED/OUTLINED own it, so an edge-only picture must not
+        // leave one behind.
+        if(!request.filled) {
+            DeleteIndicatorObjectManaged(request.name, true);
             CacheRemoveObject(request.name);
+            objectExists = false;
         }
-    }
-    else {
-        // FILLED box: remove any leftover empty-box border segments
-        if(ObjectFind(0, request.name + "_B_Top") >= 0) {
-            DeleteIndicatorObjectManaged(request.name + "_B_Top", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Bottom", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Left", true);
-            DeleteIndicatorObjectManaged(request.name + "_B_Right", true);
+        // The EDGE half: EMPTY/OUTLINED own it, so a band-only picture must not leave
+        // it behind.
+        if(!request.outline) {
+            DeleteIndicatorObjectManaged(request.name + "_B_Top");
+            DeleteIndicatorObjectManaged(request.name + "_B_Bottom");
+            DeleteIndicatorObjectManaged(request.name + "_B_Left");
+            DeleteIndicatorObjectManaged(request.name + "_B_Right");
         }
-    }
-
-    //                                                                
-    // PHASE 4: ZONE CREATION/UPDATE
-    //                                                                
+    }    //                                                               
+    // PHASE 4: THE BAND (the fill half of the picture)
+    //                                                               
     
-    if(!objectExists) {
+    // P-UI-62: THE BAND IS (RE)CREATED BEFORE ITS EDGE - THE ORDER IS THE PICTURE.
+    //
+    // MT4 paints objects of equal ZORDER in CREATION order (the model the Z ladder and
+    // zorder-audit are built on), and a band and its own edge deliberately SHARE
+    // Z_CHART_ZONE because both are the same thing to every other layer. So whichever
+    // half is CREATED last paints on top - and the edge has to win: it is the visible
+    // line the card's BORDER / BORDER WIDTH rows style, and a band created after it
+    // covers it, which makes OUTLINED indistinguishable from FILLED. Hence the band's
+    // rectangle HERE, and the edge further down. The audit asserts this order, because
+    // swapping the two blocks is a silent regression, not a visible compile error.
+    if(request.filled && !objectExists) {
         if(!ObjectCreate(0, request.name, OBJ_RECTANGLE, 0, startTime, request.topPrice, endTime, request.bottomPrice)) {
             int error = GetLastError();
             result.errorMessage = StringFormat("Failed to create zone '%s': MT4 Error %d", request.name, error);
             result.errorCode = error;
             return result;
         }
+        // P-PERF-07's rule running the other way: a name that IS created must clear the
+        // negative mark an earlier probe left on it. The edge-only picture really does
+        // probe this name and really does find nothing (the band path reads that as
+        // proof of absence), so without this line a later delete of a LIVE band would
+        // be refused by `CacheIsAbsentKnown` and the rectangle would be left behind.
+        CacheForgetAbsent(request.name);
     }
-    else {
+    else if(request.filled) {
         // Update geometry ONLY if changed
         bool geometryChanged = !inCache || (cache.lastPrice != request.topPrice || cache.lastPrice2 != request.bottomPrice ||
                                            cache.lastTime1 != startTime || cache.lastTime2 != endTime);
@@ -407,9 +425,11 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         }
     }
     
-    // Apply visual properties ONLY if changed
-    bool visualChanged = !inCache || (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
-                                     cache.lastStyle != borderStyle || cache.lastWidth != borderWidth);
+    // Apply the BAND's visual properties ONLY if changed - and only for a band
+    // (PHASE 4's second half: the half that exists is the half that gets styled).
+    bool visualChanged = request.filled &&
+                         (!inCache || (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
+                                       cache.lastStyle != borderStyle || cache.lastWidth != borderWidth));
     if(visualChanged) {
         ObjectSetInteger(0, request.name, OBJPROP_COLOR, borderColor);
         ObjectSetInteger(0, request.name, OBJPROP_BACK, true);
@@ -422,8 +442,37 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         ObjectSetInteger(0, request.name, OBJPROP_ZORDER, Z_CHART_ZONE);   // P-UI-31
     }
     
-    // Update cache
-    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, borderColor, request.filled, borderStyle, borderWidth);
+    // P-UI-62: PHASE 5 - THE EDGE (the outline half of the picture) - AFTER the band,
+    // so that it paints on top of it (see the creation-order note above).
+    //
+    // Three segments rather than one hollow rectangle, because OBJ_RECTANGLE ignores
+    // OBJPROP_STYLE/WIDTH: a band has no stylable line of its own, which is exactly why
+    // the card's BORDER and BORDER WIDTH rows could do nothing until now. Drawn whenever
+    // the picture asks for an edge - EMPTY (edge only) and OUTLINED (band AND edge) -
+    // and never otherwise; the migration above has already removed the other half
+    // whenever this picture does not own it.
+    if(request.outline) {
+        bool okEdge = true;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Top",
+                                     startTime, request.topPrice, endTime, request.topPrice,
+                                     borderColor, borderStyle, borderWidth, true)) okEdge = false;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Bottom",
+                                     startTime, request.bottomPrice, endTime, request.bottomPrice,
+                                     borderColor, borderStyle, borderWidth, true)) okEdge = false;
+        if(!CreateOrUpdateZoneBorder(request.name + "_B_Left",
+                                     startTime, request.bottomPrice, startTime, request.topPrice,
+                                     borderColor, borderStyle, borderWidth, false)) okEdge = false;
+        if(!okEdge) {
+            result.errorMessage = "Failed to draw the zone edge: " + request.name;
+            result.errorCode = ERR_ZONE_RENDER_FAILED;
+        }
+    }
+    
+    // Update cache - the picture this zone now carries, INCLUDING whether it owns a
+    // rectangle at all (P-UI-62). An edge-only zone caches `exists = false`, which the
+    // band path above reads as a PROOF of absence instead of probing for it.
+    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, borderColor,
+                    request.filled, borderStyle, borderWidth, request.outline, request.filled);
     
     result.success = true;
     return result;

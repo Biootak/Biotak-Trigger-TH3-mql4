@@ -356,17 +356,12 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         string zoneUpperName = mainObjName + "_ZoneUpper_" + IntegerToString(i+1);
         string zoneLowerName = mainObjName + "_ZoneLower_" + IntegerToString(i+1);
         string zoneBoxName = mainObjName + "_Zone_" + IntegerToString(i+1);
-        
-        if(inpTH3ZoneStyle == TH3_ZONE_HIDDEN) {
-            // Clean up any leftover zone objects
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
-            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
-            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
-            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
-        }
-        else if(inpTH3ZoneStyle == TH3_ZONE_BOX_EMPTY) {
+
+        // P-UI-62: the "hidden" style is retired - visibility is the zone master
+        // switch's question, and slot 2 of ENUM_ZONE_STYLE is now OUTLINED. (This
+        // module is not included by any build - see ARCHITECTURE.md's retired-modules
+        // note - so the edit is here only to keep the names honest for a revival.)
+        if(inpTH3ZoneStyle == TH3_ZONE_BOX_EMPTY) {
             // EMPTY BOX: hollow outline drawn as border segments. Works on
             // every MT4 build - OBJ_RECTANGLE with FILL=false is unreliable.
             if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);

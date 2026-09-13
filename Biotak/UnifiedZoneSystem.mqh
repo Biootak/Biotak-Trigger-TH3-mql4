@@ -62,11 +62,8 @@ bool CreateUnifiedZone(const string zoneName,
         return true; // Not an error, just disabled
     }
     
-    // Check style: HIDDEN
-    if(config.style == FACTOR_ZONE_HIDDEN) {
-        DeleteManagedZoneObjects(zoneName, true);
-        return true; // Not an error, just hidden
-    }
+    // P-UI-62: no HIDDEN style - visibility belongs to the zone master switch, and slot
+    // 2 of ENUM_ZONE_STYLE is OUTLINED now. (Retired module: not included by any build.)
     
     // Validate zone name
     if(StringLen(zoneName) == 0) {
@@ -157,7 +154,12 @@ bool CreateUnifiedZone(const string zoneName,
     request.bottomPrice = lowerPrice;
     request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
     request.transparency = config.transparency;
-    request.filled = (config.style == FACTOR_ZONE_BOX_FILLED);
+    // P-UI-62: the band and its edge are independent halves of the picture - slot 2 is
+    // OUTLINED (both), so `filled = (style == FILLED)` alone would silently draw a
+    // band-only picture for it. (Retired module: not included by any build, kept
+    // honest for whoever revives it - see ARCHITECTURE.md.)
+    request.filled  = (config.style != FACTOR_ZONE_BOX_EMPTY);
+    request.outline = (config.style != FACTOR_ZONE_BOX_FILLED);
     request.startTime = 0;  // Auto-calculate
     request.endTime = 0;    // Auto-calculate
     
@@ -384,20 +386,16 @@ bool CreateZoneWithSmartFallback(const string zoneName,
                                                   config.transparency);
         }
         
-        // Handle HIDDEN style
-        if(config.style == FACTOR_ZONE_HIDDEN) {
-            DeleteManagedZoneObjects(zoneName, true);
-            return true;
-        }
-        
-        // Handle BOX styles (Filled/Empty)
+        // Handle BOX styles (Filled/Empty/Outlined) - P-UI-62: no HIDDEN branch
         SZoneCreationRequest request;
         request.name = zoneName;
         request.topPrice = upperPrice;
         request.bottomPrice = lowerPrice;
         request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
         request.transparency = config.transparency;
-        request.filled = (config.style == FACTOR_ZONE_BOX_FILLED);
+        // P-UI-62: band and edge are independent halves of the picture.
+        request.filled  = (config.style != FACTOR_ZONE_BOX_EMPTY);
+        request.outline = (config.style != FACTOR_ZONE_BOX_FILLED);
         request.startTime = 0;
         request.endTime = 0;
         

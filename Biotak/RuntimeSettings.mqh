@@ -929,6 +929,33 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "MP"))  g_showMidpointLine = (GlobalVariableGet(p + "MP") > 0.5);
    if(GlobalVariableCheck(p + "ZO"))  g_showMidZones = (GlobalVariableGet(p + "ZO") > 0.5);
    if(GlobalVariableCheck(p + "MZ"))  g_midZoneStyle = (ENUM_ZONE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "MZ"), 0, 2);
+   // P-UI-62: THE ONE-TIME ADOPTION OF THE RETIRED "Hidden" ZONE STYLE.
+   //
+   // A layout saved before this cycle can carry `MZ = 2`, which used to mean HIDDEN -
+   // i.e. "draw no zones", the SAME question the MID ZONES switch (`ZO`) already
+   // answers; that duplication is why the slot was retired (see ENUM_ZONE_STYLE). Slot
+   // 2 is a real picture again now (OUTLINED), so the old value has to be translated
+   // ONCE, into the picture the user actually saw - zones off, style back to FILLED -
+   // and then stamped. The stamp is not optional: 2 is a LEGAL choice again, so a user
+   // who deliberately picks OUTLINED must never be migrated a second time. It lives
+   // under the same key prefix as every other override, so it has the same fate as the
+   // value it protects (neither is deleted on Remove - these keys ARE the settings).
+   if(GlobalVariableCheck(p + "MZ") && !GlobalVariableCheck(p + "MZ2"))
+   {
+      if(ClampSettingInt((int)GlobalVariableGet(p + "MZ"), 0, 2) == 2)
+      {
+         g_midZoneStyle = ZONE_STYLE_BOX_FILLED;
+         g_showMidZones  = false;
+         // Written out NOW, not left for the next save: otherwise a session that ends
+         // without one reloads `MZ = 2` under the stamp and the migrated chart silently
+         // flips to OUTLINED. The two keys ARE the migrated state, so they are stored
+         // as that state. (The save pass primes its shadow from these very globals a
+         // few lines below, so this is not a second writer - it is the same value.)
+         GlobalVariableSet(p + "MZ", ZONE_STYLE_BOX_FILLED);
+         GlobalVariableSet(p + "ZO", 0.0);
+      }
+      GlobalVariableSet(p + "MZ2", 1.0);
+   }
    if(GlobalVariableCheck(p + "ZT"))  g_midZoneTransparency = ClampSettingInt((int)GlobalVariableGet(p + "ZT"), 0, 100);
    if(GlobalVariableCheck(p + "ZH"))  g_midZoneHeightPercent = ClampSettingInt((int)GlobalVariableGet(p + "ZH"), 1, 100);
    if(GlobalVariableCheck(p + "ZB"))  g_midZoneBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "ZB"), 0, 4);

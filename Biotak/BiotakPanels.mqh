@@ -2525,7 +2525,12 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { kind=1; label="MID ZONES"; }
       else if(row==1)  { kind=1; label="SHOW LINES"; }
-      else if(row==2)  { kind=2; label="ZONE STYLE"; opts="Filled|Empty|Hidden"; minV=0; maxV=2; }
+      // P-UI-62: three PICTURES, not two pictures and a second visibility switch.
+      // "Hidden" was the MID ZONES master above under another name (it deleted the
+      // family), so the third slot is the state that shows BOTH halves at once - the
+      // band AND its edge - which is what makes the GEOMETRY card's BORDER and
+      // BORDER WIDTH rows act on something the user can see.
+      else if(row==2)  { kind=2; label="ZONE STYLE"; opts="Filled|Empty|Outlined"; minV=0; maxV=2; }
       else if(row==3)  { label="TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
       else if(row==4)  { label="HEIGHT"; unit="%"; minV=1; maxV=100; }
       else if(row==5)  { kind=2; label="BORDER"; opts="Solid|Dash|Dot|DashDot|DashDotDot"; minV=0; maxV=ILS_COUNT-1; }

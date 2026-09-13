@@ -2952,6 +2952,181 @@ def check_custom_price_source(o):
     ok("custom-price-source", "every zone band keeps a minimum gap from the line family")
 
 
+def check_zone_picture(o):
+    """P-UI-62 - the zone picture is TWO bits, and a dead cache slot is not an object.
+
+    Reported: «empy درست کار نمیکنه» and «به جای هیدن یک دکمه دیگه بزار … یک حالت دیگه
+    بزا رکه هردو بشه تنظیم کرد هم خط و هر رنگ». Those are ONE defect. The style axis's
+    third slot was HIDDEN - a second owner of the question the MID ZONES master switch
+    already answers - and the picture itself was a single `filled` bit, so `filled ==
+    false` had to mean both "edge only" and "no zones", the edge could not be drawn
+    beside a band, and CreateZone's EMPTY path returned from ABOVE the read that would
+    have removed the band:
+      * FILLED -> EMPTY drew the three edge segments and left the rectangle in place;
+      * the edge was never drawn (or never removed) when only that half moved;
+      * BORDER / BORDER WIDTH had nothing to act on while the picture was FILLED,
+        because OBJ_RECTANGLE ignores OBJPROP_STYLE/WIDTH.
+
+    The invariants, all of them decisions already made:
+      * slot 2 is a PICTURE (OUTLINED = band AND edge), never a visibility switch;
+      * every producer sets BOTH bits, and the cache stores both plus whether the
+        picture owns a rectangle under the zone's own name at all;
+      * the band is created BEFORE its edge - an equal ZORDER paints in creation order,
+        so the other order makes OUTLINED look exactly like FILLED;
+      * a slot the cache cannot vouch for is never written to;
+      * a layout that stored the retired HIDDEN value is translated ONCE.
+    """
+    constants = _code_only(read("Biotak/ConstantsAndEnums.mqh", o))
+    cache = _code_only(read(OBJCACHE, o))
+    factory = _code_only(read(ZONEFACTORY, o))
+    pipeline = _code_only(read(PIPELINE, o))
+    extdraw = _code_only(read(EXTDRAW, o))
+    unified = _code_only(read("Biotak/UnifiedZoneSystem.mqh", o))
+    visibility = _code_only(read(VISIBILITY, o))
+    panels = _code_only(read(PANELS, o))
+    runtime = _code_only(read(RUNTIME, o))
+
+    if "ZONE_STYLE_BOX_OUTLINED = 2" not in constants:
+        fail("zone-picture",
+             "ENUM_ZONE_STYLE's third slot is not a picture any more: it must describe what "
+             "the user SEES (band, edge, or both), because visibility belongs to the MID "
+             "ZONES switch and a second owner for it is the reported defect")
+        return
+    owners = (("ConstantsAndEnums", constants), ("LevelPipeline", pipeline),
+              ("ZoneFactory", factory), ("ExtendedDrawingFunctions", extdraw),
+              ("UnifiedZoneSystem", unified), ("BiotakPanels", panels))
+    for dead in ("ZONE_STYLE_HIDDEN", "TH3_ZONE_HIDDEN", "FACTOR_ZONE_HIDDEN"):
+        for where, src in owners:
+            if dead in src:
+                fail("zone-picture",
+                     "%s is back in %s: a style value that DELETES the zone family is a "
+                     "second owner of \"are zones drawn?\", and it disagrees with the "
+                     "switch directly above it in the card" % (dead, where))
+                return
+    ok("zone-picture", "slot 2 of the style axis is a picture, and the visibility alias is gone")
+
+    if pipeline.count("zones[zIdx].filled  = (config.zoneStyle != ZONE_STYLE_BOX_EMPTY);") != 3 or \
+       pipeline.count("zones[zIdx].outline = (config.zoneStyle != ZONE_STYLE_BOX_FILLED);") != 3:
+        fail("zone-picture",
+             "a zone definition is built from ONE bit again: each of the three build loops "
+             "(midpoint + above + below) must set the band AND the edge, or a picture the "
+             "card offers cannot be produced by the pipeline")
+        return
+    if "bool   outline;" not in pipeline or "request.outline = zones[i].outline;" not in pipeline:
+        fail("zone-picture",
+             "the second bit does not survive the trip from the definition to the drawing: "
+             "the render then draws whatever the missing half defaults to")
+        return
+    if "bool outline;" not in factory or \
+       "request.filled  = (zoneStyle != FACTOR_ZONE_BOX_EMPTY);" not in extdraw or \
+       "request.outline = (zoneStyle != FACTOR_ZONE_BOX_FILLED);" not in extdraw:
+        fail("zone-picture",
+             "the request struct or the Factor producer still carries one bit: the Factor "
+             "bands are the ones the user sees beside the mid zones")
+        return
+    if "request.filled  = (config.style != FACTOR_ZONE_BOX_EMPTY);" not in unified or \
+       "request.outline = (config.style != FACTOR_ZONE_BOX_FILLED);" not in unified:
+        fail("zone-picture",
+             "the retired UnifiedZoneSystem producer still derives both halves from "
+             "`style == FILLED`, so slot 2 would silently draw a band-only picture there")
+        return
+    ok("zone-picture", "every producer sets both halves of the picture")
+
+    get = factory.find("bool inCache = CacheGetObject(request.name, cache);")
+    skip = factory.find("if(!geometryChanged && !visualChanged) {")
+    band = factory.find("ObjectCreate(0, request.name, OBJ_RECTANGLE")
+    edge = factory.find('CreateOrUpdateZoneBorder(request.name + "_B_Top"')
+    if min(get, skip, band, edge) < 0:
+        fail("zone-picture",
+             "CreateZone no longer reads the cache, returns early, creates the band and draws "
+             "the edge in that order: the picture has to be resolved BEFORE any drawing path")
+        return
+    if not (get < skip < band < edge):
+        fail("zone-picture",
+             "CreateZone's order is wrong. The read must precede the early return (the EMPTY "
+             "path used to return above it and left the band on the chart - the reported "
+             "\"Empty does not work\"), and the band must be CREATED before its edge, "
+             "because an equal ZORDER paints in creation order and the edge is the visible "
+             "line: created first, it is covered by the band and OUTLINED looks like FILLED")
+        return
+    if "if(kindChanged)" not in factory or "cache.lastOutline != request.outline" not in factory:
+        fail("zone-picture",
+             "the migration is no longer gated on a KIND change of BOTH bits: on one bit "
+             "FILLED and OUTLINED are the same state, so the edge half is never rebuilt")
+        return
+    if "DeleteIndicatorObjectManaged(request.name, true);" not in factory:
+        fail("zone-picture",
+             "an edge-only picture stopped removing the band it does not own (or vice versa): "
+             "that leftover rectangle IS the reported Empty bug")
+        return
+    if "request.outline, request.filled);" not in factory:
+        fail("zone-picture",
+             "the cache no longer stores whether this picture owns a rectangle: the band path "
+             "then probes the chart for a name that has none, on every frame, forever")
+        return
+    if factory.count("CacheForgetAbsent(request.name);") != 1:
+        fail("zone-picture",
+             "creating the band does not clear the negative mark the edge-only picture left on "
+             "that name: `CacheIsAbsentKnown` then refuses a real delete and the rectangle is "
+             "left behind - the same ghost, from the other direction")
+        return
+    ok("zone-picture",
+       "the picture is resolved once, the band precedes its edge, and both halves migrate")
+
+    if "bool CacheSlotIsLive(const int idx)" not in cache:
+        fail("zone-picture",
+             "the cache has no single answer for \"is this slot an object the chart carries?\": "
+             "an occupied slot can describe a PICTURE (see SObjectCacheEntry.exists)")
+        return
+    if visibility.count("CacheSlotIsLive(i)") != 5:
+        fail("zone-picture",
+             "one of the FIVE visibility walks (all-TH hide/show, hide-all, show-all, the "
+             "line family, the zone family) writes through a dead slot again: a mask write "
+             "for a name the chart does not have is a terminal call that does nothing, on "
+             "every full frame")
+        return
+    if "CacheSlotIsLive(i)" not in pipeline:
+        fail("zone-picture",
+             "the structure recolour walk repaints a dead slot again: the colour it finds "
+             "there belongs to a PICTURE, not to an object")
+        return
+    if "if(!inCache && CacheIsAbsentKnown(name)) return false;" not in cache:
+        fail("zone-picture",
+             "the negative mark outranks a LIVE main-cache entry again: a name the chart "
+             "really carries can then be refused by a mark proved while the picture had no "
+             "band, and a live rectangle is never deleted")
+        return
+    ok("zone-picture", "a dead slot is never written to, and a live entry outranks a mark")
+
+    if 'opts="Filled|Empty|Outlined"' not in panels:
+        fail("zone-picture",
+             "the ZONE STYLE row is not the three pictures any more (or still offers the "
+             "retired visibility value): the row must set what is DRAWN, never whether the "
+             "zone layer is drawn at all")
+        return
+    if 'if(ClampSettingInt((int)GlobalVariableGet(p + "MZ"), 0, 2) == 2)' not in runtime or \
+       'g_showMidZones  = false;' not in runtime:
+        fail("zone-picture",
+             "a layout saved with the retired value is no longer adopted into the picture the "
+             "user last saw: they would find their zones switched back on by the upgrade")
+        return
+    if 'GlobalVariableSet(p + "MZ", ZONE_STYLE_BOX_FILLED);' not in runtime or \
+       'GlobalVariableSet(p + "ZO", 0.0);' not in runtime:
+        fail("zone-picture",
+             "the adopted value only exists in memory: a session that ends without a save "
+             "reloads `MZ = 2` under the stamp and the migrated chart silently flips to "
+             "OUTLINED")
+        return
+    if 'GlobalVariableSet(p + "MZ2", 1.0);' not in runtime or \
+       '!GlobalVariableCheck(p + "MZ2")' not in runtime:
+        fail("zone-picture",
+             "the adoption is not stamped: 2 is a LEGAL value again (OUTLINED), so a user "
+             "who deliberately picks it would be migrated a second time on the next start")
+        return
+    ok("zone-picture",
+       "the card offers three pictures, and the retired value is adopted exactly once")
+
+
 # The functions that run on the REMOVE teardown and are allowed to be counted as a
 # delete owner. Every one of them is reached from `OnDeinit` through
 # `CleanupUIStates` / `OnDeinitHandler` (see `check_delete_paths` for the order).
@@ -3087,7 +3262,8 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_persist_write_shape, check_chart_change_prime, check_name_scheme,
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
-          check_live_control, check_teardown_census, check_drag_anchor]
+          check_live_control, check_teardown_census, check_drag_anchor,
+          check_zone_picture]
 
 
 def run(overrides=None):
@@ -3160,9 +3336,12 @@ def selftest():
          "    if(resultServer > 0) result = resultServer;")
 
     # 6. the delete paths are wasteful again
+    # P-UI-62: the absent check and the cache read swapped places (a live entry must be
+    # believed first), so the seed anchors on the new order and the mutant is the ONE
+    # shortcut removal that makes the delete probe a proved-absent name.
     seed("delete probes a proved-absent name", OBJCACHE,
-         "    if(CacheIsAbsentKnown(name)) return false;\n\n    int cacheIdx = CacheFindIndex(name);",
-         "    int cacheIdx = CacheFindIndex(name);")
+         "    if(!inCache && CacheIsAbsentKnown(name)) return false;",
+         "    if(false) return false;")
     seed("proved miss not recorded", OBJCACHE,
          "        if(!existsOnChart) CacheMarkAbsent(name);",
          "")
@@ -3787,6 +3966,55 @@ def selftest():
     seed("the native-drag channel bypasses the frame owner", EVENTS,
          "        if(anchorMoved) CustomPriceDragFrame(false);\n",
          "        if(anchorMoved) RedrawAllObjects(true);\n")
+
+    # 22. the zone picture is one bit again, and a dead cache slot is an object again
+    #     (P-UI-62)
+    seed("the style axis owns visibility again", "Biotak/ConstantsAndEnums.mqh",
+         "    ZONE_STYLE_BOX_OUTLINED = 2   // Outlined (band AND its edge)",
+         "    ZONE_STYLE_HIDDEN = 2")
+    seed("a build loop sets one half only", PIPELINE,
+         "        zones[zIdx].outline = (config.zoneStyle != ZONE_STYLE_BOX_FILLED);    // P-UI-62\n",
+         "")
+    seed("the band is created after its edge", ZONEFACTORY,
+         "    if(request.filled && !objectExists) {\n"
+         "        if(!ObjectCreate(0, request.name, OBJ_RECTANGLE, 0, startTime, request.topPrice, endTime, request.bottomPrice)) {",
+         "    if(request.filled && !objectExists) {\n"
+         "        CreateOrUpdateZoneBorder(request.name + \"_B_Top\", startTime, request.topPrice, endTime, request.topPrice, borderColor, borderStyle, borderWidth, true);\n"
+         "        if(!ObjectCreate(0, request.name, OBJ_RECTANGLE, 0, startTime, request.topPrice, endTime, request.bottomPrice)) {")
+    seed("the kind change reads one bit", ZONEFACTORY,
+         "    bool kindChanged = (!inCache) || (entrySaysBand != request.filled) ||\n"
+         "                       (cache.lastOutline != request.outline);",
+         "    bool kindChanged = (!inCache) || (entrySaysBand != request.filled);")
+    seed("the edge-only picture keeps the band", ZONEFACTORY,
+         "            DeleteIndicatorObjectManaged(request.name, true);\n",
+         "")
+    seed("the cache stops recording that a picture owns no rectangle", ZONEFACTORY,
+         "                    request.filled, borderStyle, borderWidth, request.outline, request.filled);",
+         "                    request.filled, borderStyle, borderWidth, request.outline, true);")
+    seed("creating the band stops clearing the negative mark", ZONEFACTORY,
+         "        CacheForgetAbsent(request.name);\n",
+         "")
+    seed("a visibility walk writes through a dead slot", VISIBILITY,
+         "        if(!CacheSlotIsLive(i)) continue;\n",
+         "")
+    seed("the recolour walk repaints a dead slot", PIPELINE,
+         "        if(!CacheSlotIsLive(i)) continue;\n",
+         "")
+    seed("the negative mark outranks a live entry again", OBJCACHE,
+         "    if(!inCache && CacheIsAbsentKnown(name)) return false;",
+         "    if(CacheIsAbsentKnown(name)) return false;")
+    seed("the card offers the retired switch again", PANELS,
+         'opts="Filled|Empty|Outlined"',
+         'opts="Filled|Empty|Hidden"')
+    seed("the retired value stops being adopted", RUNTIME,
+         'if(ClampSettingInt((int)GlobalVariableGet(p + "MZ"), 0, 2) == 2)',
+         "if(false)")
+    seed("the adoption loses its stamp", RUNTIME,
+         'GlobalVariableSet(p + "MZ2", 1.0);\n',
+         "")
+    seed("the adopted layout only lives in memory", RUNTIME,
+         'GlobalVariableSet(p + "MZ", ZONE_STYLE_BOX_FILLED);\n',
+         "")
 
     caught = 0
     for label, rel, old, new in seeds:

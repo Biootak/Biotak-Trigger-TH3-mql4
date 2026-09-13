@@ -458,11 +458,30 @@ enum ENUM_TH3_LABEL_POSITION {
 };
 
 // Unified Zone Display Style (Used by ALL modes)
-//          Zone    (      
+//
+// P-UI-62: THIS IS AN APPEARANCE AXIS, NOT A VISIBILITY AXIS.
+//
+// Slot 2 used to be `ZONE_STYLE_HIDDEN`, which DELETED the zone objects - a second
+// mechanism for the question the MID ZONES master switch already owns ("are zones
+// shown at all?"). Two owners for one question is how a user ends up with a card
+// whose third pill fights the switch directly above it, and it is what the report
+// names: «هیدن از همون دکمه بالا استفاده میشه دیگه».
+//
+// The three states are now three genuinely different PICTURES of the same band, and
+// the two halves of a zone - the BAND and its EDGE - can be set independently:
+//
+//   FILLED   : band only            (filled = true,  outline = false)
+//   EMPTY    : edge only            (filled = false, outline = true)
+//   OUTLINED : band AND edge at once (filled = true,  outline = true)
+//
+// The edge half is not decoration: OBJ_RECTANGLE ignores OBJPROP_STYLE/WIDTH, so a
+// FILLED band has no visible line to style - which is exactly why the BORDER and
+// BORDER WIDTH rows of the card did nothing until now. The edge is drawn as its own
+// object family and takes those settings.
 enum ENUM_ZONE_STYLE {
-    ZONE_STYLE_BOX_FILLED = 0,    // Filled Box (Colored zone)
-    ZONE_STYLE_BOX_EMPTY = 1,     // Empty Box (Outline only, no fill)
-    ZONE_STYLE_HIDDEN = 2         // Hidden (No zones)
+    ZONE_STYLE_BOX_FILLED = 0,    // Filled (band only)
+    ZONE_STYLE_BOX_EMPTY = 1,     // Empty (edge only, no band)
+    ZONE_STYLE_BOX_OUTLINED = 2   // Outlined (band AND its edge)
 };
 
 // Legacy aliases for backward compatibility
@@ -471,10 +490,10 @@ enum ENUM_ZONE_STYLE {
 #define ENUM_FACTOR_ZONE_STYLE ENUM_ZONE_STYLE
 #define TH3_ZONE_BOX_FILLED ZONE_STYLE_BOX_FILLED
 #define TH3_ZONE_BOX_EMPTY ZONE_STYLE_BOX_EMPTY
-#define TH3_ZONE_HIDDEN ZONE_STYLE_HIDDEN
+#define TH3_ZONE_BOX_OUTLINED ZONE_STYLE_BOX_OUTLINED
 #define FACTOR_ZONE_BOX_FILLED ZONE_STYLE_BOX_FILLED
 #define FACTOR_ZONE_BOX_EMPTY ZONE_STYLE_BOX_EMPTY
-#define FACTOR_ZONE_HIDDEN ZONE_STYLE_HIDDEN
+#define FACTOR_ZONE_BOX_OUTLINED ZONE_STYLE_BOX_OUTLINED
 
 // TH3 Drawing Mode
 //     TH3 (Steps       AB=CD)

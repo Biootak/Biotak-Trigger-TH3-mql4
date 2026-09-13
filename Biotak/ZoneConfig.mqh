@@ -6,7 +6,7 @@
 //|    inpShowMidZones           -> enabled                           |
 //|    inpMidZoneTransparency    -> transparency (0-100, clamped)     |
 //|    inpMidZoneHeightPercent   -> heightPercent (1-100% -> 0.01-1.0)|
-//|    inpMidZoneStyle           -> style (Lines/Filled/Empty/Hidden) |
+//|    inpMidZoneStyle           -> style (Filled/Empty/Outlined)     |
 //|    inpMidZoneBorderStyle/Width -> border appearance               |
 //|                                                                   |
 //|  Consumer: LevelPipeline.mqh -> BuildModeConfig()                 |

@@ -190,7 +190,9 @@ bool ValidateComboParam(bool isInvalid, const string paramName, const string par
 //| @param upperPrice Top boundary of the zone                      |
 //| @param lowerPrice Bottom boundary of the zone                   |
 //| @param zoneColor Color of the zone                              |
-//| @param zoneStyle Style (Lines/Filled/Empty/Hidden)              |
+//| @param zoneStyle Style (Filled/Empty/Outlined - P-UI-62: the    |
+//|                  "Hidden" slot is retired, visibility is the    |
+//|                  MID ZONES master switch's question)             |
 //| @param transparency Transparency (0-100, 0=opaque, 100=invisible)|
 //| @return true if zone created successfully, false otherwise      |
 //+------------------------------------------------------------------+
@@ -205,11 +207,9 @@ bool CreateFactorMidZone(const string zoneName,
     // PHASE 1: HANDLE SPECIAL STYLES
     //                                                                
     
-    // STYLE: HIDDEN - Delete and return
-    if(zoneStyle == FACTOR_ZONE_HIDDEN) {
-        DeleteManagedZoneObjects(zoneName, true);
-        return true;
-    }
+    // P-UI-62: there is no HIDDEN style any more. "Are zones drawn at all?" is the MID
+    // ZONES master switch's question (the zone family mask), and a second owner for it
+    // is the defect this cycle removes - see ENUM_ZONE_STYLE. Slot 2 is OUTLINED.
     
     //                                                                
     // PHASE 2: USE UNIFIED SYSTEM FOR BOX STYLES
@@ -236,7 +236,9 @@ bool CreateFactorMidZone(const string zoneName,
     request.bottomPrice = lowerPrice;
     request.zoneColor = zoneColor;
     request.transparency = transparency;
-    request.filled = (zoneStyle == FACTOR_ZONE_BOX_FILLED);
+    // P-UI-62: the band and its edge are independent halves of the picture.
+    request.filled  = (zoneStyle != FACTOR_ZONE_BOX_EMPTY);
+    request.outline = (zoneStyle != FACTOR_ZONE_BOX_FILLED);
     request.borderStyle = config.borderStyle;
     request.borderWidth = config.borderWidth;
     request.startTime = 0;  // Auto-calculate

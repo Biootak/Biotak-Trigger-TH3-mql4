@@ -52,8 +52,9 @@ void SetAllTHObjectsVisibility(const bool visible)
     int visited = 0;
     for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
         if(g_objectCacheHash[i].occupied) {
-            ObjectSetInteger(0, g_objectCacheHash[i].name, OBJPROP_TIMEFRAMES, timeframes);
             visited++;
+            if(!CacheSlotIsLive(i)) continue;   // P-UI-62: nothing under this name
+            ObjectSetInteger(0, g_objectCacheHash[i].name, OBJPROP_TIMEFRAMES, timeframes);
         }
     }
     // P-PERF-02: written OUTSIDE the guard → every stored mask is now stale.
@@ -258,6 +259,11 @@ int VisibilityHideAllCached()
     {
         if(!g_objectCacheHash[i].occupied) continue;
         visited++;
+        // P-UI-62: occupancy bounds the scan, LIVENESS is the permission to touch the
+        // chart. A dead slot (a name this chart does not carry - see
+        // SObjectCacheEntry.exists) would otherwise cost one terminal write that does
+        // nothing, and the walks below write on every full frame.
+        if(!CacheSlotIsLive(i)) continue;
         const string nm = g_objectCacheHash[i].name;
         if(StringFind(nm, "_BK_") >= 0) continue;   // P-BK-01
         ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
@@ -284,6 +290,11 @@ int VisibilityShowAllCached(const bool atrShouldShow, const bool showAtrTargets,
     {
         if(!g_objectCacheHash[i].occupied) continue;
         visited++;
+        // P-UI-62: occupancy bounds the scan, LIVENESS is the permission to touch the
+        // chart. A dead slot (a name this chart does not carry - see
+        // SObjectCacheEntry.exists) would otherwise cost one terminal write that does
+        // nothing, and the walks below write on every full frame.
+        if(!CacheSlotIsLive(i)) continue;
         const string nm = g_objectCacheHash[i].name;
         if(StringFind(nm, "_BK_") >= 0) continue;   // P-BK-01: Base/Knot layer ignores F
         // P-PERF-41: the zone family answers to its OWN switch (and to L for its
@@ -374,6 +385,7 @@ void SetAllLineObjectsVisibility(const bool visible)
     for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
         if(g_objectCacheHash[i].occupied) {
             visited++;
+            if(!CacheSlotIsLive(i)) continue;                          // P-UI-62
             const string nm = g_objectCacheHash[i].name;
             if(StringFind(nm, "_BK_") >= 0) continue;                 // P-BK-01
             if(StringFind(nm, "_B_Top") >= 0) continue;               // F key's family
@@ -537,6 +549,11 @@ int HideAllZoneFamilyObjects()
     {
         if(!g_objectCacheHash[i].occupied) continue;
         visited++;
+        // P-UI-62: occupancy bounds the scan, LIVENESS is the permission to touch the
+        // chart. A dead slot (a name this chart does not carry - see
+        // SObjectCacheEntry.exists) would otherwise cost one terminal write that does
+        // nothing, and the walks below write on every full frame.
+        if(!CacheSlotIsLive(i)) continue;
         const string nm = g_objectCacheHash[i].name;
         if(StringLen(nm) == 0) continue;
         if(StringFind(nm, "_Zone_") < 0) continue;   // lines / labels / HTF

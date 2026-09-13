@@ -15,6 +15,21 @@ struct SObjectCacheEntry {
     int lastWidth;         // Last known line width
     string lastText;       // Last known text (for labels)
     bool lastFilled;       // Last known fill state (for zones)
+    // P-UI-62: the zone picture is TWO bits, not one. "Filled" is the BAND and
+    // "outline" is the edge drawn beside it (three border segments), and the two
+    // are independent: FILLED = band only, EMPTY = edge only, OUTLINED = both. A
+    // single `lastFilled` bit cannot tell FILLED from OUTLINED, so the picture had
+    // no way to say "the band is unchanged but the edge is not" and the edge was
+    // never drawn (or never removed) when only that half moved.
+    bool lastOutline;      // Last known outline (edge segments) state (for zones)
+    // P-UI-62: `exists` is what makes a slot LIVE, and every walk that ACTS on the
+    // chart must read it. It is false for two honest reasons: the entry was validated
+    // away (CacheValidate proved the name gone), or it describes a picture that owns
+    // NO object under this very name - the zone edge-only picture, whose zone name
+    // holds nothing and whose three segments are the whole zone. An occupied-but-dead
+    // slot is not "an object": a walk that writes to it pays a terminal call for a
+    // name the chart does not have, and the write silently does nothing. Use
+    // `CacheSlotIsLive(i)` in every enumeration.
     bool exists;           // True if object exists on chart
     datetime lastUpdate;   // Last update timestamp
     // P-PERF-02 visibility/write guards (see VisibilityManager.mqh):
@@ -42,6 +57,15 @@ struct SObjectCacheSlot {
 
 // Global hash-based cache
 static SObjectCacheSlot g_objectCacheHash[CACHE_HASH_BUCKETS];
+
+// P-UI-62: the ONE question every cache walk asks before it touches the chart -
+// "does this slot describe an object the chart actually carries?". See the note on
+// SObjectCacheEntry.exists for why a live slot and an occupied slot are not the same
+// thing, and why writing through the difference is not an error the terminal reports.
+bool CacheSlotIsLive(const int idx) {
+    return (idx >= 0 && idx < CACHE_HASH_BUCKETS &&
+            g_objectCacheHash[idx].occupied && g_objectCacheHash[idx].entry.exists);
+}
 static bool g_objectCacheHashInitialized = false;
 static int g_objectCacheSize = 0;
 
@@ -237,10 +261,19 @@ bool DeleteIndicatorObjectManaged(const string name, const bool verifyChartObjec
     // only believed inside the generation that proved it, and a name that gets
     // created later enters the MAIN cache, which is consulted first - so a mark
     // is shadowed automatically and never needs an explicit invalidation.
-    if(CacheIsAbsentKnown(name)) return false;
-
+    //
+    // P-UI-62: that last sentence was a CLAIM, not the code - the mark was read
+    // FIRST, so it decided even when the main cache held a real entry for the name
+    // and the delete of a LIVE object was silently refused. It is true now: the
+    // main cache is read first, and only a name the cache cannot vouch for is
+    // allowed to be short-circuited by the mark. Reachable through the zone
+    // pictures - the band's own name is probed and marked while the picture has no
+    // band - and through anything else that ever clears the cache without bumping
+    // the generation. One lookup, done once, in the order the comment states.
     int cacheIdx = CacheFindIndex(name);
     bool inCache = (cacheIdx >= 0 && g_objectCacheHash[cacheIdx].entry.exists);
+    if(!inCache && CacheIsAbsentKnown(name)) return false;
+
     bool existsOnChart = false;
 
     if(inCache || verifyChartObject) {
@@ -467,10 +500,16 @@ void CacheUpdateObject(const string name, const double price,
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();
 }
 
+// P-UI-62: `outline` is the second picture bit (see SObjectCacheEntry.lastOutline).
+// `existsOnChart` lets a zone cache a picture it draws with NO rectangle of its own
+// (EMPTY: the zone name holds nothing and its three border segments are the zone) -
+// such an entry is then a PROOF OF ABSENCE for that name, exactly like the P-PERF-07
+// absent table, so the rectangle path must not probe the chart for it.
 void CacheUpdateZone(const string name, const double price1, const double price2,
                       const datetime time1, const datetime time2,
                       const color clr, const bool filled,
-                      const int style, const int width) {
+                      const int style, const int width,
+                      const bool outline = false, const bool existsOnChart = true) {
     int idx = CacheFindIndex(name);
     if(idx < 0) {
         if(!g_objectCacheHashInitialized) InitializeObjectCacheHash();
@@ -488,9 +527,10 @@ void CacheUpdateZone(const string name, const double price1, const double price2
                 g_objectCacheHash[insertIdx].entry.lastTime2 = time2;
                 g_objectCacheHash[insertIdx].entry.lastColor = clr;
                 g_objectCacheHash[insertIdx].entry.lastFilled = filled;
+                g_objectCacheHash[insertIdx].entry.lastOutline = outline;
                 g_objectCacheHash[insertIdx].entry.lastStyle = style;
                 g_objectCacheHash[insertIdx].entry.lastWidth = width;
-                g_objectCacheHash[insertIdx].entry.exists = true;
+                g_objectCacheHash[insertIdx].entry.exists = existsOnChart;
                 g_objectCacheHash[insertIdx].entry.lastUpdate = CacheGetFrameTime();
                 // P-PERF-02: fresh tenant → no inherited visibility guard.
                 g_objectCacheHash[insertIdx].entry.lastTfMask = 0;
@@ -512,9 +552,10 @@ void CacheUpdateZone(const string name, const double price1, const double price2
     g_objectCacheHash[idx].entry.lastTime2 = time2;
     g_objectCacheHash[idx].entry.lastColor = clr;
     g_objectCacheHash[idx].entry.lastFilled = filled;
+    g_objectCacheHash[idx].entry.lastOutline = outline;
     g_objectCacheHash[idx].entry.lastStyle = style;
     g_objectCacheHash[idx].entry.lastWidth = width;
-    g_objectCacheHash[idx].entry.exists = true;
+    g_objectCacheHash[idx].entry.exists = existsOnChart;
     g_objectCacheHash[idx].entry.lastUpdate = CacheGetFrameTime();
     g_objectCacheHash[idx].lastAccess = CacheGetFrameTime();
 }

@@ -78,7 +78,10 @@ struct SZoneDefinition {
     color  zoneColor;       // Zone color
     int    transparency;
     ENUM_ZONE_STYLE style;
-    bool   filled;
+    // P-UI-62: the BAND and its EDGE are two halves of one picture, not one flag.
+    //   FILLED   -> band, no edge      EMPTY -> edge, no band      OUTLINED -> both
+    bool   filled;          // draw the band (filled rectangle)
+    bool   outline;         // draw the edge (three border segments)
     bool   inViewport;      // false = skip render, geometry is valid
 };
 
@@ -611,7 +614,8 @@ void BuildZonesAndLines(
         zones[zIdx].zoneColor = config.zoneDefaultColor;
         zones[zIdx].transparency = config.zoneTransparency;
         zones[zIdx].style = config.zoneStyle;
-        zones[zIdx].filled = (config.zoneStyle == ZONE_STYLE_BOX_FILLED);
+        zones[zIdx].filled  = (config.zoneStyle != ZONE_STYLE_BOX_EMPTY);     // P-UI-62
+        zones[zIdx].outline = (config.zoneStyle != ZONE_STYLE_BOX_FILLED);    // P-UI-62
         zones[zIdx].inViewport = (zones[zIdx].renderTop >= vpBottom && 
                        zones[zIdx].renderBottom <= vpTop);
         zIdx++;
@@ -671,7 +675,8 @@ void BuildZonesAndLines(
                                      s_aboveLevels[i].zoneColor : config.zoneDefaultColor;
             zones[zIdx].transparency = config.zoneTransparency;
             zones[zIdx].style = config.zoneStyle;
-            zones[zIdx].filled = (config.zoneStyle == ZONE_STYLE_BOX_FILLED);
+            zones[zIdx].filled  = (config.zoneStyle != ZONE_STYLE_BOX_EMPTY);     // P-UI-62
+            zones[zIdx].outline = (config.zoneStyle != ZONE_STYLE_BOX_FILLED);    // P-UI-62
             zones[zIdx].inViewport = (zones[zIdx].renderTop >= vpBottom && 
                                       zones[zIdx].renderBottom <= vpTop);
             zIdx++;
@@ -732,7 +737,8 @@ void BuildZonesAndLines(
                                      s_belowLevels[i].zoneColor : config.zoneDefaultColor;
             zones[zIdx].transparency = config.zoneTransparency;
             zones[zIdx].style = config.zoneStyle;
-            zones[zIdx].filled = (config.zoneStyle == ZONE_STYLE_BOX_FILLED);
+            zones[zIdx].filled  = (config.zoneStyle != ZONE_STYLE_BOX_EMPTY);     // P-UI-62
+            zones[zIdx].outline = (config.zoneStyle != ZONE_STYLE_BOX_FILLED);    // P-UI-62
             zones[zIdx].inViewport = (zones[zIdx].renderTop >= vpBottom && 
                                       zones[zIdx].renderBottom <= vpTop);
             zIdx++;
@@ -857,10 +863,11 @@ void RenderZones(
             continue;
         }
 
-        if(config.zoneStyle == ZONE_STYLE_HIDDEN) {
-            DeleteManagedZoneObjects(zones[i].name);
-            continue;
-        }
+        // P-UI-62: there is deliberately NO `ZONE_STYLE_HIDDEN` branch here any more.
+        // "Are zones drawn at all?" belongs to the MID ZONES master switch (the zone
+        // family mask), and a second owner for it - a style value that DELETES the
+        // family - is exactly what the card's third pill used to be: the user could
+        // see two controls claiming to do the same thing, and they disagreed.
         
         // Trigger bands when the trigger overlay is off: DELETE, as it always
         // did - and the reason is worth recording, because "hide it instead" is
@@ -885,7 +892,10 @@ void RenderZones(
         if(zones[i].renderTop <= zones[i].renderBottom) continue;
         
         {
-            // Box style (filled or empty) with configurable border style/width
+            // P-UI-62: the two halves of the picture, transmitted as TWO flags.
+            // `filled` = the band, `outline` = its edge (three segments), and each is
+            // independent - so FILLED, EMPTY and OUTLINED are three real pictures and
+            // the BORDER / BORDER WIDTH settings apply wherever an edge is drawn.
             SZoneCreationRequest request;
             request.name = zones[i].name;
             request.topPrice = zones[i].renderTop;
@@ -893,6 +903,7 @@ void RenderZones(
             request.zoneColor = zones[i].zoneColor;
             request.transparency = zones[i].transparency;
             request.filled = zones[i].filled;
+            request.outline = zones[i].outline;
             request.borderStyle = inpMidZoneBorderStyle;
             request.borderWidth = inpMidZoneBorderWidth;
             request.startTime = 0;
@@ -963,6 +974,11 @@ int StructureRecolourWalk()
     {
         if(!g_objectCacheHash[i].occupied) continue;
         visited++;
+        // P-UI-62: a dead slot is not "nothing painted under this name" - it is a name
+        // this chart does not carry at all, and the colour it holds belongs to a
+        // PICTURE (the edge-only zone), not to an object. Repainting it would be a
+        // terminal write the terminal drops on the floor.
+        if(!CacheSlotIsLive(i)) continue;
         const string nm = g_objectCacheHash[i].name;
         if(StringFind(nm, "_Zone_") < 0) continue;         // lines/labels/HTF
         if(StringFind(nm, "_Zone_Center_") >= 0) continue; // mode colour, not structure
