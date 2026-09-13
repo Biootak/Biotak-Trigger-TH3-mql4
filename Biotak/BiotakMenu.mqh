@@ -333,16 +333,114 @@ void DragReleaseIf(const DragEngineOwner who)
 
 static bool g_MouseWasDown = false;
 
+// P-UI-65: one press = one sequence number. It is the identity a click claim is
+// bound to, so a claim can never be spent on a later, unrelated gesture.
+static uint g_UIPressSeq = 0;
+
 bool MousePressStart(const bool leftDown)
 {
    const bool pressStart = (leftDown && !g_MouseWasDown);
    g_MouseWasDown = leftDown;
+   if(pressStart) g_UIPressSeq++;
    return pressStart;
 }
 
-static uint g_UIClickSuppressUntil = 0;
-void UISuppressNextClick() { g_UIClickSuppressUntil = GetTickCount() + 350; }
-bool UIShouldSuppressClick() { return (GetTickCount() < g_UIClickSuppressUntil); }
+//+------------------------------------------------------------------+
+// P-UI-65 (2026-09-13) - THE CLICK CLAIM BELONGS TO ONE GESTURE.
+//
+// `UISuppressNextClick()` means exactly one thing: "the button-up that ends
+// THIS gesture is already spent - the release must not act a second time". Its
+// identity used to be a wall-clock deadline (`GetTickCount() + 350`), and both
+// halves of that were wrong in ways the user feels as flakiness:
+//
+//  * LEAK - the deadline is armed at PRESS time (nearly every arm site) and the
+//    release is the event it must eat. Hold the button longer than the window
+//    (press, read, release) and the claim is dead before its own release: the
+//    release then runs HandleButtonClick / PnlHandleClick as if nothing had
+//    happened, on a control whose press already acted. How long a press takes is
+//    the USER's choice, so the failure is random by construction.
+//  * OVER-EATING - `UIShouldSuppressClick()` never cleared the deadline, so one
+//    release consumed the time test and the REMAINDER of the window ate the
+//    NEXT genuine click. "Press close, nothing happens, press again and it
+//    works" - and whether it happens depends on how deep into the window the
+//    previous release fell. That is the P-UI-01 symptom, and the P-UI-40c note
+//    already fixed exactly this shape for the long-press latch; the window
+//    around it was left behind.
+//
+// The fix is the rule the rest of the kit already follows - a latch carries the
+// identity of its own gesture and is consumed by it exactly once:
+//   * armed while the button is DOWN -> bound to the live press, so its release
+//     eats it however long the user holds (no clock at all);
+//   * armed while the button is UP   -> the release it belongs to is the event
+//     already in flight (an orb/panel drag end, a card opened by a release), so
+//     that form keeps a short TTL instead of a press to bind to;
+//   * TAKEN once - and then UI_RELEASE_ECHO_MS of echo, because one physical
+//     release can be delivered as both CHARTEVENT_CLICK and
+//     CHARTEVENT_OBJECT_CLICK and both belong to the same gesture;
+//   * a NEW press retires an unconsumed claim, so it can never outlive its
+//     gesture and eat a later click.
+// Steady state (no claim armed): two flag reads. Zero timers, zero drift.
+//+------------------------------------------------------------------+
+#define UI_RELEASE_ECHO_MS   80    // window for the same release's second event
+#define UI_UP_CLAIM_TTL_MS  350    // a claim armed ON the release (no press to bind)
+
+static bool s_uiClickClaim     = false;
+static bool s_uiClickClaimDown = false;  // armed under a live press (bound by seq)
+static uint s_uiClickClaimSeq  = 0;      // the press it was armed under
+static uint s_uiClickClaimMs   = 0;      // TTL for the up-armed form
+static uint s_uiReleaseEchoMs  = 0;      // we already ate this release
+
+void UISuppressNextClick()
+{
+   s_uiClickClaim     = true;
+   s_uiClickClaimDown = g_MouseWasDown;
+   s_uiClickClaimSeq  = g_UIPressSeq;
+   s_uiClickClaimMs   = GetTickCount() + UI_UP_CLAIM_TTL_MS;
+}
+
+bool UIShouldSuppressClick()
+{
+   uint nowMs = GetTickCount();
+   // The second event of the release this hand just took - still this gesture's.
+   if(s_uiReleaseEchoMs != 0 && (int)(nowMs - s_uiReleaseEchoMs) < 0) return true;
+   if(!s_uiClickClaim) return false;
+   // A press-time claim dies with ITS press: a new press owns the click.
+   if(s_uiClickClaimDown && s_uiClickClaimSeq != g_UIPressSeq)
+   {
+      s_uiClickClaim = false;
+      return false;
+   }
+   // An up-armed claim has no press to bind to, so it keeps its short TTL.
+   if(!s_uiClickClaimDown && (int)(nowMs - s_uiClickClaimMs) >= 0)
+   {
+      s_uiClickClaim = false;
+      return false;
+   }
+   s_uiClickClaim    = false;                    // consumed by its own release, once
+   s_uiReleaseEchoMs = nowMs + UI_RELEASE_ECHO_MS;
+   return true;
+}
+
+// Attach / timeframe switch: none of the claim state may cross an instance - a
+// claim, an echo or a press counter left armed would eat the first click of the
+// next instance (the ResetHideAllState rule). Called from the one UI entry point
+// every attach runs (CreateMenu). Two fences, both of them one bool read, so a
+// menu re-created during a click can never change that click's outcome:
+//   * never under a live press - a down-armed claim is still owed its release;
+//   * never mid-release - the twin event of the release this hand just took is
+//     still in flight (the echo window), and CreateMenu is reachable from
+//     HandleButtonClick, i.e. inside that very dispatch.
+void UIReleaseClaimReset()
+{
+   if(g_MouseWasDown) return;
+   if(s_uiReleaseEchoMs != 0 && (int)(GetTickCount() - s_uiReleaseEchoMs) < 0) return;
+   s_uiClickClaim     = false;
+   s_uiClickClaimDown = false;
+   s_uiClickClaimSeq  = 0;
+   s_uiClickClaimMs   = 0;
+   s_uiReleaseEchoMs  = 0;
+   g_UIPressSeq       = 0;
+}
 
 //+------------------------------------------------------------------+
 // P-UI-40c (2026-09-13) - THE LONG-PRESS LATCH BELONGS TO ONE GESTURE.
@@ -2215,6 +2313,10 @@ void CircCreateOrb()
 
 void CreateMenu()
 {
+   // P-UI-65: this is the one UI entry point every attach (and every TF switch)
+   // runs, and the click claim is gesture state - it must not cross instances.
+   // Idempotent, and a no-op while the button is down.
+   UIReleaseClaimReset();
    CircCreateOrb();
    CircRefreshOrbSkin();   // ORBSTATE: bow when closed, TRex when open
    if(!g_UI.menuVisible) return;

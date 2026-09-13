@@ -2022,6 +2022,115 @@ def check_longpress_latch(o):
     ok("longpress-latch", "the latch survives button-up, so only its own release consumes it")
 
 
+def check_click_claim(o):
+    """P-UI-65 - the click claim belongs to ONE gesture and is taken once.
+
+    `UISuppressNextClick()` means "the button-up that ends THIS gesture is already
+    spent". Its identity used to be a wall-clock deadline (`GetTickCount() + 350`),
+    which failed in both directions and is why the same button works one time and
+    not the next:
+
+      * LEAK - the deadline is armed at PRESS time (nearly every arm site) and the
+        release is the event it must eat. Hold the button longer than the window
+        and the claim is dead before its own release, so the release runs
+        HandleButtonClick / PnlHandleClick on a control whose press already acted.
+        How long a press takes is the user's choice - the failure is random by
+        construction.
+      * OVER-EATING - the consumer never cleared the deadline, so one release
+        consumed the time test and the REMAINDER of the window ate the NEXT genuine
+        click: "press close, nothing happens, press again and it works". P-UI-40c
+        fixed exactly this shape for the long-press latch; the window around it was
+        left behind.
+
+    The invariants here are the ones the fix decided, so a later edit cannot
+    quietly re-add a clock: the arm binds the claim to the LIVE PRESS (its sequence
+    number) instead of a deadline, the consumer TAKES it once and then echoes for
+    the one release that MT4 can deliver as two events, a new press owns its own
+    click, and a fresh attach starts with no claim at all.
+    """
+    menu = strip_comments(read(MENU, o))
+    arm = fn_body(menu, "void UISuppressNextClick()")
+    if not arm:
+        fail("click-claim", "UISuppressNextClick is gone: the release has no claim owner")
+        return
+    armed = re.search(r"s_uiClickClaim\s*=\s*true", arm)
+    missing = [t for t in ("g_MouseWasDown", "g_UIPressSeq")
+               if t not in arm]
+    if not armed:
+        missing.append("s_uiClickClaim = true")
+    if missing:
+        fail("click-claim",
+             "the arm stops binding the claim to its gesture (%s): a press longer than "
+             "any window leaks its own release" % ", ".join(missing))
+        return
+    ok("click-claim", "the claim is armed against the live press, not against a clock")
+
+    take = fn_body(menu, "bool UIShouldSuppressClick()")
+    if not take:
+        fail("click-claim", "UIShouldSuppressClick is gone: nothing consumes the claim")
+        return
+    if "s_uiClickClaim = false" not in take:
+        fail("click-claim",
+             "the consumer stops clearing the claim: the rest of the window eats the "
+             "NEXT click (the P-UI-01 symptom)")
+        return
+    if "g_UIClickSuppressUntil" in take:
+        fail("click-claim", "the wall-clock deadline is back: a claim then outlives its release")
+        return
+    if "if(s_uiClickClaimDown && s_uiClickClaimSeq != g_UIPressSeq)" not in take:
+        fail("click-claim",
+             "a press-time claim is no longer bounded by its own press: it can be spent "
+             "on a later, unrelated click")
+        return
+    if "if(s_uiReleaseEchoMs != 0 && (int)(nowMs - s_uiReleaseEchoMs) < 0) return true;" not in take:
+        fail("click-claim",
+             "the twin-event echo is gone: one release can arrive as both CHARTEVENT_CLICK "
+             "and CHARTEVENT_OBJECT_CLICK, and the second one would act")
+        return
+    if "if(!s_uiClickClaimDown && (int)(nowMs - s_uiClickClaimMs) >= 0)" not in take:
+        fail("click-claim",
+             "the release-armed form lost its TTL: a claim with no press to bind to then "
+             "waits forever")
+        return
+    if "UI_UP_CLAIM_TTL_MS" not in arm:
+        fail("click-claim", "the release-armed form is armed without its TTL")
+        return
+    ok("click-claim", "the claim is taken once, echoed for its twin event, and bounded")
+
+    press = fn_body(menu, "bool MousePressStart(const bool leftDown)")
+    if not press or "if(pressStart) g_UIPressSeq++;" not in press:
+        fail("click-claim",
+             "the press sequence no longer advances on the rising edge: nothing can tell "
+             "an old claim from this gesture's")
+        return
+    ok("click-claim", "one press = one identity, so a stale claim dies with its own gesture")
+
+    reset = fn_body(menu, "void UIReleaseClaimReset()")
+    if not reset:
+        fail("click-claim", "UIReleaseClaimReset is gone: claim state would cross an attach")
+        return
+    if "if(g_MouseWasDown) return;" not in reset:
+        fail("click-claim",
+             "the reset can drop a live gesture's claim: a menu re-created mid-press would "
+             "un-suppress its own release")
+        return
+    if "if(s_uiReleaseEchoMs != 0 && (int)(GetTickCount() - s_uiReleaseEchoMs) < 0) return;" not in reset:
+        fail("click-claim",
+             "the reset fires mid-release: CreateMenu is reachable from HandleButtonClick, "
+             "so it would drop the echo of the release that is still arriving")
+        return
+    if "g_UIPressSeq" not in reset:
+        fail("click-claim", "the reset leaves the press counter behind")
+        return
+    entry = fn_body(menu, "void CreateMenu()")
+    if not entry or "UIReleaseClaimReset();" not in entry:
+        fail("click-claim",
+             "the claim is not reset on the one UI entry point every attach runs "
+             "(CreateMenu): the first click of a fresh instance can be eaten")
+        return
+    ok("click-claim", "a fresh attach starts with no claim, and a live press keeps its own")
+
+
 INPUTS = "Biotak/PropertiesAndInputs.mqh"
 # The panel and the settings layer are where a control is DEFINED, not where its
 # effect lands: a global only they mention is a global nobody consumes.
@@ -3376,7 +3485,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
-          check_zone_picture, check_edge_look]
+          check_zone_picture, check_edge_look, check_click_claim]
 
 
 def run(overrides=None):
@@ -4155,6 +4264,39 @@ def selftest():
     seed("the edge transparency stops being persisted", RUNTIME,
          '   RSSetNext(p + "ZBT", g_midZoneBorderTransparency);   // P-UI-63\n',
          "")
+
+    # 24. the click claim goes back to a wall-clock window (P-UI-65)
+    seed("the claim goes back to a wall-clock deadline", MENU,
+         "   uint nowMs = GetTickCount();\n"
+         "   // The second event of the release this hand just took - still this gesture's.\n"
+         "   if(s_uiReleaseEchoMs != 0 && (int)(nowMs - s_uiReleaseEchoMs) < 0) return true;\n",
+         "   return (GetTickCount() < s_uiClickClaimMs);\n")
+    seed("the arm stops binding the claim to its press", MENU,
+         "   s_uiClickClaimDown = g_MouseWasDown;\n"
+         "   s_uiClickClaimSeq  = g_UIPressSeq;\n",
+         "")
+    seed("a press stops owning its own click", MENU,
+         "   if(pressStart) g_UIPressSeq++;\n",
+         "")
+    seed("a press-time claim outlives its press", MENU,
+         "   if(s_uiClickClaimDown && s_uiClickClaimSeq != g_UIPressSeq)\n",
+         "")
+    seed("the twin-event echo is dropped", MENU,
+         "   if(s_uiReleaseEchoMs != 0 && (int)(nowMs - s_uiReleaseEchoMs) < 0) return true;\n",
+         "")
+    seed("the release-armed claim loses its TTL", MENU,
+         "   if(!s_uiClickClaimDown && (int)(nowMs - s_uiClickClaimMs) >= 0)\n",
+         "")
+    seed("the claim state crosses an attach", MENU,
+         "   UIReleaseClaimReset();\n   CircCreateOrb();",
+         "   CircCreateOrb();")
+    seed("the reset can drop a live gesture's claim", MENU,
+         "void UIReleaseClaimReset()\n{\n   if(g_MouseWasDown) return;\n",
+         "void UIReleaseClaimReset()\n{\n")
+    seed("the reset fires mid-release", MENU,
+         "   if(s_uiReleaseEchoMs != 0 && (int)(GetTickCount() - s_uiReleaseEchoMs) < 0) return;\n"
+         "   s_uiClickClaim     = false;\n",
+         "   s_uiClickClaim     = false;\n")
 
     caught = 0
     for label, rel, old, new in seeds:
