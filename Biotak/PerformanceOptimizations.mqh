@@ -187,6 +187,22 @@ double GetCachedPipSize() {
         g_cachedPipSize = p;
     }
     
+    // P-UI-57: THE ZERO-DIVIDE FENCE, AT THE OWNER INSTEAD OF AT ~30 CALL SITES.
+    //
+    // This value is a DENOMINATOR in every pip figure the indicator draws (the ATR
+    // labels, the TH columns, the combo breakdown, the Base/Knot box, the pip
+    // distance labels …) and it is derived from `Point`, which is 0 on a symbol
+    // whose contract data is not loaded yet (right after a symbol/TF switch, an
+    // offline chart, a weekend attach). `x / 0.0` is not an error in MQL4 — it is
+    // `inf`, and `inf` then rides into `DoubleToString` and every downstream
+    // comparison as a silent NaN. One clamp here removes the whole family at once,
+    // and it costs nothing: it is the branch this function already had (the cache
+    // test above refuses to cache a non-positive value, so a broken point is
+    // re-derived, never remembered).
+    if(!MathIsValidNumber(g_cachedPipSize) || g_cachedPipSize <= 0.0) {
+        g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;
+    }
+
     #ifdef ENABLE_DEBUG_LOGS
     Print("==================== PipSize initialized: Symbol=", symbol, 
           ", Digits=", d, 

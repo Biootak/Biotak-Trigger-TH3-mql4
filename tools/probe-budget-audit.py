@@ -133,6 +133,7 @@ UTIL = "Biotak/UtilityFunctions.mqh"
 DYNDET = "Biotak/DynamicTradingDayDetector.mqh"
 EXTDRAW = "Biotak/ExtendedDrawingFunctions.mqh"
 OBJFUN = "Biotak/ObjectFunctions.mqh"
+PERFOPT = "Biotak/PerformanceOptimizations.mqh"
 LABEL = "Biotak/LabelFunctions.mqh"
 FULL = "Biotak Trigger TH3.mq4"
 LITE = "Biotak Trigger TH3 Lite.mq4"
@@ -2699,12 +2700,127 @@ def check_custom_price_mode(o):
        "the dragged line is never written to (P-BK-15)")
 
 
+def check_custom_price_source(o):
+    """P-UI-56/57/58 - the custom-price SOURCE, the NaN fence and the zone gap.
+
+    Reported: «چرا سطوح سرجای خودشون نیستن، هر دفعه یک جایی دیگه میره … حتماً نگاه
+    کن منبع رسم قیمت چطوریه». Every level of every mode is anchored on
+    `GetMidpointPrice(g_thStartPointType)` → `g_customTHStartPrice`, so that value
+    IS the drawing source, and it had two defects that only show on a chart in use:
+      * the placement was persisted under the SYMBOL instead of the CHART, so every
+        chart of one symbol shared ONE price - a gesture on one moved the ladder of
+        the others (the user runs five charts over two symbols);
+      * the frame path's Input branch WROTE the placement keys, so a price the user
+        had dragged to was replaced by the Input's value.
+    The chain also existed twice (init + frame), i.e. two copies to keep in step.
+
+    The invariants, all of them decisions already made:
+      * ONE owner names the keys, and the live pair is CHART-scoped;
+      * ONE resolver answers "what is the custom price of this chart?" for BOTH
+        call sites, and no site outside the owner names a key;
+      * every placement path persists through the ONE writer;
+      * a non-finite value cannot enter the level arithmetic (`<= 0` is NaN-blind),
+        can not become a pip DENOMINATOR, and cannot let a zone band reach the line
+        family it sits beside (P-UI-58's minimum gap).
+    """
+    events = _code_only(read(EVENTS, o))
+    menu = _code_only(read(MENU, o))
+
+    start = events.find("string CustomPriceGVName()")
+    end = events.find("    return CPSRC_NONE;\n}")
+    if start < 0 or end < 0:
+        fail("custom-price-source",
+             "the P-UI-56 owner block is gone: the drawing price has no owner again")
+        return
+    owner = events[start:end]
+    outside = events[:start] + events[end:]
+
+    if '"Biotak_CustomPrice_" + GetCachedChartIdStr()' not in owner:
+        fail("custom-price-source",
+             "the live price key is no longer CHART-scoped: every chart of a symbol then "
+             "shares one custom price, and touching one moves the levels of the others")
+        return
+    if '"Biotak_CustomPriceOverride_" + GetCachedSymbol()' not in owner:
+        fail("custom-price-source",
+             "the legacy symbol-scoped keys are no longer named: a chart drawn by an older "
+             "build would silently lose the price it had placed (no migration)")
+        return
+    for key in ('"Biotak_CustomPrice_', '"Biotak_CustomPriceOverride_'):
+        if key in outside:
+            fail("custom-price-source",
+                 "a custom-price key is named outside the owner (%s): that is a second "
+                 "writer of the drawing price, and the copies drift" % key)
+            return
+    if '"Biotak_CustomPrice_' in menu or '"Biotak_CustomPriceOverride_' in menu:
+        fail("custom-price-source",
+             "the ring's PIN item builds a custom-price key by hand again: the placement "
+             "must go through the one writer (chart-scoped keys)")
+        return
+    ok("custom-price-source", "one owner names the keys, and the live pair is chart-scoped")
+
+    if events.count("CustomPriceResolveSource(") != 3:
+        fail("custom-price-source",
+             "the source is not resolved by exactly ONE function called from the TWO known "
+             "sites (definition + init + frame): a third copy of the precedence chain is "
+             "how init and the frame path disagreed about the same chart")
+        return
+    if "if(g_customPriceKeyboardOverride && savedPrice > 0.0)" in events:
+        fail("custom-price-source",
+             "the old inline three-branch chain is back next to the resolver: two "
+             "precedences for one value")
+        return
+    ok("custom-price-source", "one resolver answers for both call sites (init + frame)")
+
+    if events.count("CustomPricePersistPlacement(") != 5:
+        fail("custom-price-source",
+             "a placement path stopped persisting through the ONE writer (expected the "
+             "definition + 4 call sites: C key, chart-click confirm, line double-click, drag)")
+        return
+    if menu.count("CustomPricePersistPlacement(") != 1:
+        fail("custom-price-source",
+             "the ring's PIN press no longer persists through the ONE writer")
+        return
+    ok("custom-price-source", "every placement path persists through the one writer")
+
+    levels = fn_body(read(PIPELINE, o), "int CalculateLevels(")
+    if not levels or "MathIsValidNumber(centerPrice)" not in levels or \
+       "MathIsValidNumber(stepSizes[s])" not in levels:
+        fail("custom-price-source",
+             "CalculateLevels lost its NaN fence: `<= 0` cannot see NaN (every comparison "
+             "against it is false), so one poisoned price becomes a chart full of NaN levels")
+        return
+    common = fn_body(read(EVENTS, o), "bool CalculateCommonStepData(")
+    if not common or "MathIsValidNumber(dailyClosePrice)" not in common or \
+       common.count("MathIsValidNumber(data.") < 4:
+        fail("custom-price-source",
+             "CalculateCommonStepData stopped validating the base price / step values: the "
+             "frame then derives every level from a non-finite number")
+        return
+    pip = fn_body(read(PERFOPT, o), "double GetCachedPipSize()")
+    if not pip or "g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;" not in pip:
+        fail("custom-price-source",
+             "GetCachedPipSize lost its zero-divide fence: pip size is a DENOMINATOR in every "
+             "pip figure, and Point is 0 on a symbol whose data is not loaded yet")
+        return
+    ok("custom-price-source", "NaN / zero-divide fenced at the three numeric owners")
+
+    builder = fn_body(read(PIPELINE, o), "void BuildZonesAndLines(")
+    if not builder or builder.count("ClampZoneHalfHeight(") != 3 or \
+       "double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;" in builder:
+        fail("custom-price-source",
+             "a zone band is built without the minimum-gap clamp: a band whose half-height "
+             "reaches half the interval touches (and then swallows) the line it sits beside")
+        return
+    ok("custom-price-source", "every zone band keeps a minimum gap from the line family")
+
+
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
           check_persist_write_shape, check_chart_change_prime, check_name_scheme,
           check_topology_adoption, check_event_settle, check_ui_sync,
-          check_longpress_latch, check_custom_price_mode, check_live_control]
+          check_longpress_latch, check_custom_price_mode, check_custom_price_source,
+          check_live_control]
 
 
 def run(overrides=None):
@@ -3332,6 +3448,27 @@ def selftest():
     seed("a TH source press stops repainting the master row", PANELS,
          "            RequestUISync();\n            string opT2=",
          "            string opT2=")
+
+    # 19. the custom-price SOURCE, the NaN fence and the zone gap (P-UI-56/57/58)
+    seed("the frame path overwrites the placement with the Input again", EVENTS,
+         "            bool priceMoved = (MathAbs(g_customTHStartPrice - srcPrice) > s_cachedPoint * 0.1);\n",
+         "            GlobalVariableSet(\"Biotak_CustomPrice_\" + GetCachedChartIdStr(), srcPrice);\n"
+         "            bool priceMoved = (MathAbs(g_customTHStartPrice - srcPrice) > s_cachedPoint * 0.1);\n")
+    seed("the live price key goes back to the symbol scope", EVENTS,
+         'string CustomPriceGVName()         { return "Biotak_CustomPrice_" + GetCachedChartIdStr(); }',
+         'string CustomPriceGVName()         { return "Biotak_CustomPrice_" + GetCachedSymbol(); }')
+    seed("a placement path bypasses the one writer", EVENTS,
+         "                CustomPricePersistPlacement(selectedPrice);   // P-UI-56: one writer\n",
+         "                GlobalVariableSet(\"Biotak_CustomPrice_\" + GetCachedChartIdStr(), selectedPrice);\n")
+    seed("the centre price loses its NaN fence", PIPELINE,
+         "if(!MathIsValidNumber(centerPrice) || centerPrice <= 0 || stepSizeCount < 1) return 0;",
+         "if(centerPrice <= 0 || stepSizeCount < 1) return 0;")
+    seed("a zone band stops being clamped to the line gap", PIPELINE,
+         "        double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,",
+         "        double zoneHeight = (zoneStepSize * config.zoneHeightPercent * 0.5,")
+    seed("the pip owner stops fencing zero", PERFOPT,
+         "        g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;\n",
+         "")
 
     caught = 0
     for label, rel, old, new in seeds:

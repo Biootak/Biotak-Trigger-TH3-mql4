@@ -511,7 +511,9 @@ void CleanupAllGlobalVariables() {
     string rawSymbolName = GetCachedSymbol();
     string sanitizedSymbolName = SanitizeSymbolName(rawSymbolName);
     string gvars[];
-    ArrayResize(gvars, 24);
+    ArrayResize(gvars, 26);
+    gvars[24] = "Biotak_CustomPrice_" + chartIdStr;             // P-UI-56: the live (chart-scoped) pair
+    gvars[25] = "Biotak_CustomPriceOverride_" + chartIdStr;     //   must not outlive the indicator
     gvars[0]  = "Biotak_isHidden_" + chartIdStr;
     gvars[1]  = "Biotak_CustomPrice_" + rawSymbolName;
     gvars[2]  = "Biotak_LockTF_" + chartIdStr;

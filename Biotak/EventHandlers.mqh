@@ -134,6 +134,137 @@ void ResolveTopologyAdoption()
                         "instance - timeframe switch updates in place (no wipe, no rebuild)");
 }
 
+//==============================================================================
+// P-UI-56 — THE CUSTOM-PRICE *SOURCE* HAS ONE OWNER AND ONE PRECEDENCE
+//
+// Reported: «چرا سطوح سرجای خودشون نیستن، هر دفعه یک جایی دیگه میره … حتماً
+// نگاه کن منبع رسم قیمت چطوریه». The whole level family is anchored on
+// `GetMidpointPrice(g_thStartPointType)` → `g_customTHStartPrice`
+// (`CalculateCommonStepData` → `data.midpointPrice` → `ExecutePipeline`), so this
+// ONE value decides where every level sits. It was resolved by TWO copies of the
+// same three-branch chain — here in OnInitHandler and again in
+// `RedrawAllObjects` (the frame path) — and the chain had two defects that only
+// show on a chart that is actually used:
+//
+//  (1) THE PERSISTED PLACEMENT WAS PER *SYMBOL*, NOT PER CHART. The keys were
+//      "Biotak_CustomPrice_<SYMBOL>" / "…Override_<SYMBOL>" while every other
+//      per-chart state in this project is keyed by the CHART id (visibility,
+//      drag locks, the hide flag, the topology stamp). Two charts of the same
+//      symbol therefore shared ONE price: placing or dragging the line on one
+//      chart moved the ladder of the other on its very next frame, and turning
+//      it off on one turned it off on the other. The user runs five charts of
+//      two symbols — this is the reported "each time it goes somewhere else".
+//
+//  (2) THE INPUT SILENTLY OUTRANKED — AND OVERWROTE — THE PLACEMENT KEYS. With
+//      `inpCustomTHStartPrice > 0` and the override flag false, the frame path
+//      took the INPUT branch and wrote `GlobalVariableSet(priceKey, <input>)`:
+//      the price the user had dragged to was destroyed, so a later placement
+//      gesture (a new press sets the flag) inherited the INPUT's price, not the
+//      user's. The flag is false on every fresh instance whose override GVar is
+//      0/absent (another chart turned it off, the GVars were cleared, a
+//      REASON_REMOVE purge ran, …).
+//
+// ONE owner now answers "what is the custom price of THIS chart?" for both call
+// sites, and the rule is: the user's own placement (chart-scoped price + its
+// flag, written by every placement path through `CustomPricePersistPlacement`)
+// BEATS the static input, and the input is only the seed used when this chart has
+// no placement of its own — it never writes the placement keys (which is also why
+// the input's price still IS the "default state" the OFF paths return to, exactly
+// as before: OFF deletes the placement keys and the input speaks again).
+//
+// Cost: unchanged steady state — the same two GVar probes the frame path already
+// did, one compare more; the legacy (symbol-scoped) probe runs ONCE per instance;
+// the parsing is no longer duplicated, so the two copies can never drift again.
+//==============================================================================
+string CustomPriceGVName()         { return "Biotak_CustomPrice_" + GetCachedChartIdStr(); }
+string CustomPriceOverrideGVName() { return "Biotak_CustomPriceOverride_" + GetCachedChartIdStr(); }
+// The PREVIOUS scheme's keys (symbol-scoped). Read once, ONLY to adopt a price an
+// older build left behind; never written again (only purged on REASON_REMOVE).
+string CustomPriceLegacyGVName()         { return "Biotak_CustomPrice_" + GetCachedSymbol(); }
+string CustomPriceLegacyOverrideGVName() { return "Biotak_CustomPriceOverride_" + GetCachedSymbol(); }
+
+void CustomPriceMigrateLegacyKeys()
+{
+    static bool s_migrationDone = false;
+    if(s_migrationDone) return;
+    s_migrationDone = true;                                  // one probe per instance, never per frame
+    if(GlobalVariableCheck(CustomPriceGVName())) return;     // this chart owns a price already
+    string legacy = CustomPriceLegacyGVName();
+    if(!GlobalVariableCheck(legacy)) return;
+    double legacyPrice = GlobalVariableGet(legacy);
+    if(!(legacyPrice > 0.0) || !MathIsValidNumber(legacyPrice)) return;
+    // Is the legacy price a USER PLACEMENT or an input-seeded copy? It matters:
+    // a placement must outrank the input, an input seed must not. Provable from the
+    // old writers - only ONE of them wrote the price key from a non-user source,
+    // and that one (the init/frame INPUT branch) wrote `inpCustomTHStartPrice`
+    // itself. So: with the input unset the legacy price can only be a placement;
+    // with the input set, the legacy override flag is the only trustworthy witness.
+    string legacyFlag = CustomPriceLegacyOverrideGVName();
+    bool legacyOverride = GlobalVariableCheck(legacyFlag) ? (GlobalVariableGet(legacyFlag) != 0.0) : false;
+    bool legacyIsPlacement = legacyOverride || !(inpCustomTHStartPrice > 0.0);
+    GlobalVariableSet(CustomPriceGVName(), legacyPrice);
+    GlobalVariableSet(CustomPriceOverrideGVName(), legacyIsPlacement ? 1.0 : 0.0);
+    _LOG_GATE_I Print("[I][GEN] P-UI-56: adopted the symbol-scoped custom price ",
+                      DoubleToString(legacyPrice, Digits), " as this chart's own (",
+                      legacyIsPlacement ? "placement" : "input seed", ")");
+}
+
+// ONE writer for "the user placed / moved the line on THIS chart".
+void CustomPricePersistPlacement(const double price)
+{
+    if(!(price > 0.0) || !MathIsValidNumber(price)) return;
+    GlobalVariableSet(CustomPriceGVName(), price);
+    GlobalVariableSet(CustomPriceOverrideGVName(), 1.0);
+}
+
+// ONE writer for "this chart has no placement of its own" (the OFF paths).
+void CustomPriceForgetPlacement()
+{
+    GlobalVariableDel(CustomPriceGVName());
+    GlobalVariableSet(CustomPriceOverrideGVName(), 0.0);
+}
+
+// The resolver's result. Ints, not an enum: both call sites are ABOVE this block
+// in the translation unit, and MQL4 type resolution is positional.
+#define CPSRC_NONE   0   // no placement and no input price → not the custom-price start point
+#define CPSRC_PLACED 1   // the user's own price on this chart (wins over the input)
+#define CPSRC_INPUT  2   // the Input's seed price (the "default state")
+
+int CustomPriceResolveSource(double &priceOut, bool &overrideFlagOut)
+{
+    priceOut = 0.0;
+    overrideFlagOut = false;
+    CustomPriceMigrateLegacyKeys();
+
+    string priceKey = CustomPriceGVName();
+    string flagKey  = CustomPriceOverrideGVName();
+    double placed = GlobalVariableCheck(priceKey) ? GlobalVariableGet(priceKey) : 0.0;
+    bool   placedFlag = GlobalVariableCheck(flagKey) ? (GlobalVariableGet(flagKey) != 0.0) : false;
+    if(placed > 0.0 && MathIsValidNumber(placed)) {
+        // The flag only decides WHO WINS (this chart's placement or the Input) - the
+        // stored price is honoured either way, exactly like the old chain, whose
+        // branch 1 and branch 3 restored the SAME price and differed only by that
+        // flag. Keeping that asymmetry is what lets a parameter change put the start
+        // point back on the Input default while the price survives for later.
+        if(placedFlag) {
+            priceOut = placed;
+            overrideFlagOut = true;
+            return CPSRC_PLACED;
+        }
+        if(inpCustomTHStartPrice > 0.0 && MathIsValidNumber(inpCustomTHStartPrice)) {
+            priceOut = inpCustomTHStartPrice;
+            return CPSRC_INPUT;
+        }
+        priceOut = placed;
+        return CPSRC_PLACED;
+    }
+    if(inpCustomTHStartPrice > 0.0 && MathIsValidNumber(inpCustomTHStartPrice)) {
+        priceOut = inpCustomTHStartPrice;
+        return CPSRC_INPUT;
+    }
+    return CPSRC_NONE;
+}
+
 int OnInitHandler() {
     // P-PERF-38c: the one-time legacy sweep must land before the first render, so
     // a chart drawn by an older build cannot blend two naming schemes.
@@ -246,13 +377,20 @@ int OnInitHandler() {
     g_pInitMsHistory = GetTickCount() - pInitTick;   // P-PERF-10
     pInitTick = GetTickCount();
 
-    string symbolName = GetCachedSymbol();
-    string gvarName = "Biotak_CustomPrice_" + symbolName;
-    string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
+    // P-UI-56: no local GVar names here any more - the custom-price source (and its
+    // keys) have ONE owner in this file (see the P-UI-56 block above), and the
+    // resolution below asks it instead of re-implementing the chain.
     int digits = Digits;
 
     // Validate custom price input
     double validatedCustomPrice = inpCustomTHStartPrice;
+    // P-UI-57: a non-finite input price is not "negative" and not "too large" —
+    // every comparison against NaN is false, so it would sail through both checks
+    // below and become the anchor of the whole level family.
+    if(!MathIsValidNumber(validatedCustomPrice)) {
+        _LOG_GATE_E Print("[E][GEN] OnInit: Invalid custom price (not a number)");
+        validatedCustomPrice = 0.0;
+    }
     if(validatedCustomPrice < 0.0) {
         _LOG_GATE_E Print("[E][GEN] OnInit: Invalid custom price (negative): ", validatedCustomPrice);
         validatedCustomPrice = 0.0;
@@ -262,41 +400,36 @@ int OnInitHandler() {
         validatedCustomPrice = 0.0;
     }
 
-    // Restore keyboard override flag
-    g_customPriceKeyboardOverride = GlobalVariableCheck(overrideFlagName) ? (bool)GlobalVariableGet(overrideFlagName) : false;
-    double savedPrice = GlobalVariableCheck(gvarName) ? GlobalVariableGet(gvarName) : 0.0;
-
+    // P-UI-56: the source of the drawing price is resolved by ONE owner, shared
+    // with the per-frame path (`RedrawAllObjects`): THIS chart's placement first,
+    // the Input's seed second, nothing third - and the Input NEVER writes the
+    // placement keys, so a price the user dragged can no longer be replaced by the
+    // value in the Inputs dialog on the next attach.
+    //
+    // The old init chain also wrote `GlobalVariableSet(gvarName, input)` in its
+    // input branch while the per-symbol keys were shared by every chart of the
+    // symbol - the mechanism behind "each time the levels go somewhere else".
+    double srcPrice = 0.0;
+    bool   srcOverride = false;
+    int    srcKind = CustomPriceResolveSource(srcPrice, srcOverride);
+    g_customPriceKeyboardOverride = srcOverride;
     #ifdef ENABLE_DEBUG_LOGS
     Print("[D][GEN] === Custom Price Debug (OnInit) ===");
-    Print("[D][GEN] inpCustomTHStartPrice: ", inpCustomTHStartPrice);
-    Print("[D][GEN] savedPrice: ", savedPrice);
-    Print("[D][GEN] override: ", g_customPriceKeyboardOverride);
+    Print("[D][GEN] inpCustomTHStartPrice: ", inpCustomTHStartPrice, " validated: ", validatedCustomPrice);
+    Print("[D][GEN] resolved price: ", srcPrice, " kind: ", srcKind);
     #endif
-
-    if(g_customPriceKeyboardOverride && savedPrice > 0.0) {
-        g_customTHStartPrice = savedPrice;
+    if(srcKind != CPSRC_NONE) {
+        g_customTHStartPrice = srcPrice;
         g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-        DEBUG_PRINTF("OnInit: Using keyboard/drag price (override): ", DoubleToString(g_customTHStartPrice, digits));
-        CreateCustomPriceLine(g_customTHStartPrice, digits);
-    } else if(validatedCustomPrice > 0.0) {
-        g_customTHStartPrice = validatedCustomPrice;
-        g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-        g_customPriceKeyboardOverride = false;
-        GlobalVariableSet(gvarName, g_customTHStartPrice);
-        GlobalVariableSet(overrideFlagName, 0.0);
-        DEBUG_PRINTF("OnInit: Using custom price from settings: ", DoubleToString(g_customTHStartPrice, digits));
-        CreateCustomPriceLine(g_customTHStartPrice, digits);
-    } else if(savedPrice > 0.0) {
-        g_customTHStartPrice = savedPrice;
-        g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-        _LOG_GATE_I Print("[I][GEN] OnInit: Restored custom price from GlobalVariable: ", DoubleToString(g_customTHStartPrice, digits));
+        _LOG_GATE_I Print("[I][GEN] OnInit: custom price source=",
+                          (srcKind == CPSRC_PLACED ? "this chart's placement" : "Input seed"),
+                          " at ", DoubleToString(g_customTHStartPrice, digits));
         CreateCustomPriceLine(g_customTHStartPrice, digits);
     } else {
         g_customTHStartPrice = 0.0;
         g_thStartPointType = inpTHStartPointType;
         g_customPriceKeyboardOverride = false;
-        GlobalVariableDel(gvarName);
-        GlobalVariableDel(overrideFlagName);
+        CustomPriceForgetPlacement();
         DEBUG_PRINT("OnInit: Using default mode (no custom price)");
     }
 
@@ -791,16 +924,12 @@ void CleanupCustomPriceObjects(bool resetGlobalVars = false, bool forceDelete = 
     
     // If resetGlobalVars is true, also delete the global variable and reset keyboard override
     if (resetGlobalVars) {
-        // OPTIMIZATION: Use Symbol() directly here since this is cleanup code (not in a loop)
-        string symbolName = GetCachedSymbol();
-        string gvarName = "Biotak_CustomPrice_" + symbolName;
-        string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-        // Direct delete (safe if not found)
-        GlobalVariableDel(gvarName);
-
-        if(GlobalVariableCheck(overrideFlagName)) {
-            GlobalVariableDel(overrideFlagName);
-        }
+        // P-UI-56: each key has ONE owner now - the chart-scoped pair through
+        // `CustomPriceForgetPlacement` - and the older SYMBOL-scoped pair is purged
+        // here too, which is now the only place left in the repo that names it.
+        CustomPriceForgetPlacement();
+        GlobalVariableDel(CustomPriceLegacyGVName());
+        GlobalVariableDel(CustomPriceLegacyOverrideGVName());
         g_customTHStartPrice = 0.0;
         g_thStartPointType = inpTHStartPointType;
         g_customPriceKeyboardOverride = false; // Reset keyboard override flag
@@ -819,12 +948,12 @@ void CleanupCustomPriceObjects(bool resetGlobalVars = false, bool forceDelete = 
 //+------------------------------------------------------------------+
 void DeactivateCustomPriceMode(const string src)
 {
-    string symbolName = GetCachedSymbol();
-    string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-    CleanupCustomPriceObjects(true, true);   // line + GVars + start point + override flag
+    // P-UI-56: the keys all belong to the owners above - `CleanupCustomPriceObjects`
+    // forgets this chart's placement (price + flag) and purges the legacy pair; the
+    // redundant flag write that used to sit here named the symbol-scoped key.
+    CleanupCustomPriceObjects(true, true);   // line + placement keys + start point + flag
     g_thStartPointType = inpTHStartPointType;
     g_customPriceKeyboardOverride = false;
-    GlobalVariableSet(overrideFlagName, 0.0);
     g_forceClearOnNextDraw = true;
     g_redrawTHLevelsNeeded = true;
     RedrawAllObjects(true);   // P-PERF-34: in a chart event this is owed to a frame
@@ -949,8 +1078,11 @@ void OnDeinitHandler(const int reason) {
 
         string symbolName = GetCachedSymbol();
         string chartIdStrLocal = GetCachedChartIdStr();
-        string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-        GlobalVariableSet(overrideFlagName, 0.0);
+        // P-UI-56: a parameter change returns the start point to the Input default by
+        // clearing the FLAG (the resolver then prefers the Input seed). The PRICE key
+        // is deliberately kept, exactly as before - this path never deleted it, and
+        // with no Input seed the resolver still honours it.
+        GlobalVariableSet(CustomPriceOverrideGVName(), 0.0);
         string factorGvarName = "Biotak_Factor_" + chartIdStrLocal;
         GlobalVariableDel(factorGvarName);
         g_factorValueOverride = 0.0;
@@ -1155,6 +1287,17 @@ void GetAdaptiveLevelCounts(int &maxAbove, int &maxBelow)
 //+------------------------------------------------------------------+
 bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data)
 {
+    // P-UI-57: NaN/Inf are rejected, zero and negative keep their old meaning (some
+    // modes derive their step from somewhere else, so "not positive" must not become
+    // "refuse to draw"). `MathIsValidNumber` is the ONLY test that can see NaN —
+    // every `<= 0` guard in this file is blind to it, which is how a poisoned base
+    // price used to become a chart full of NaN levels.
+    if(!MathIsValidNumber(dailyClosePrice)) {
+        #ifdef ENABLE_DEBUG_LOGS
+        Print("[E][GEN] CalculateCommonStepData: Invalid (not a number) daily close price");
+        #endif
+        return false;
+    }
     if(dailyClosePrice <= 0) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("[E][GEN] CalculateCommonStepData: Invalid daily close price");
@@ -1204,6 +1347,21 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 
     CalculateFractalValues(data.thValue, data.structureValue, data.patternValue, data.triggerValue);
 
+    // P-UI-57: the four step numbers are what every level price this frame derives
+    // from, so they are validated ONCE here, at their owner, instead of at each
+    // consumer (there are dozens and every one of them assumed a finite input).
+    // Rejection is limited to what arithmetic cannot reason about — zero and
+    // negative keep the behaviour they always had (some modes derive their step from
+    // elsewhere, and Factor must not stop drawing because TH came out small).
+    if(!MathIsValidNumber(data.thValue) || !MathIsValidNumber(data.structureValue) ||
+       !MathIsValidNumber(data.patternValue) || !MathIsValidNumber(data.triggerValue)) {
+        _LOG_GATE_W Print("[W][GEN] CalculateCommonStepData: non-finite step values rejected (th=",
+                          DoubleToString(data.thValue, 8), " struct=", DoubleToString(data.structureValue, 8),
+                          " pattern=", DoubleToString(data.patternValue, 8),
+                          " trigger=", DoubleToString(data.triggerValue, 8), ")");
+        return false;
+    }
+
     #ifdef ENABLE_DEBUG_LOGS
     static datetime s_lastTHDebugLogTime = 0;
     datetime currentDebugTime = TimeCurrent();
@@ -1234,7 +1392,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
     data.midpointPrice = GetMidpointPrice(g_thStartPointType);
 
     // Validate midpoint price
-    if(data.midpointPrice <= 0 || data.midpointPrice == EMPTY_VALUE) {
+    if(!MathIsValidNumber(data.midpointPrice) || data.midpointPrice <= 0 || data.midpointPrice == EMPTY_VALUE) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("[E][GEN] ERROR: Invalid midpoint price! g_highestHigh=", g_highestHigh, ", g_lowestLow=", g_lowestLow);
         #endif
@@ -1764,52 +1922,41 @@ void RedrawAllObjects(bool force_redraw=false)
 
     g_dailyClosePriceForTH = thBasePrice;
 
-    string gvarName = "Biotak_CustomPrice_" + s_cachedSymbol;
-    string overrideFlagName = "Biotak_CustomPriceOverride_" + s_cachedSymbol;
+    // P-UI-56: ONE resolver for the drawing price (this chart's placement → Input
+    // seed → nothing), shared with OnInitHandler. The three-branch chain that used
+    // to live here read the SYMBOL-scoped keys (two charts of one symbol shared one
+    // price, so the ladder of the chart the user was NOT working on moved too) and
+    // its Input branch wrote the price key - the value the user had dragged to was
+    // replaced by the Input's own, which is the reported "each time it goes
+    // somewhere else". The Input branch now only seeds THIS frame's price.
     bool lineExists = customPriceLineExists;
-    double currentLinePrice = lineExists ? ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0) : 0.0;
 
     if(!g_customPriceLineDragging) {
-        bool hasGlobalVar = GlobalVariableCheck(gvarName);
-        double savedPrice = hasGlobalVar ? GlobalVariableGet(gvarName) : 0.0;
-        
-        if(g_customPriceKeyboardOverride && savedPrice > 0.0) {
-            if(MathAbs(g_customTHStartPrice - savedPrice) > s_cachedPoint * 0.1) {
-                g_customTHStartPrice = savedPrice;
+        double srcPrice = 0.0;
+        bool   srcOverride = false;
+        int    srcKind = CustomPriceResolveSource(srcPrice, srcOverride);
+        if(srcKind == CPSRC_NONE) {
+            g_thStartPointType = inpTHStartPointType;
+            g_customTHStartPrice = 0.0;
+        } else {
+            bool priceMoved = (MathAbs(g_customTHStartPrice - srcPrice) > s_cachedPoint * 0.1);
+            if(priceMoved) {
+                g_customTHStartPrice = srcPrice;
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+                g_redrawTHLevelsNeeded = true;
             }
             if(!lineExists) {
                 // P-UI-45: a restored line is SETTLED (inert) - see CreateCustomPriceLine.
                 CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits);
+            } else if(priceMoved && srcKind == CPSRC_INPUT) {
+                // Only the Input seed may push the existing line to its price; a
+                // placement line is already where the user left it (and a guarded
+                // write only on a real move keeps the steady frame at zero writes,
+                // R-PERF).
+                ObjectSetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, g_customTHStartPrice);
+                ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP,
+                                "[PIN] Custom Price: " + DoubleToString(g_customTHStartPrice, s_cachedDigits) + " | PIN button to move");
             }
-        } else if(inpCustomTHStartPrice > 0.0) {
-            if(MathAbs(g_customTHStartPrice - inpCustomTHStartPrice) > s_cachedPoint * 0.1) {
-                g_customTHStartPrice = inpCustomTHStartPrice;
-                g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-                GlobalVariableSet(gvarName, g_customTHStartPrice);
-                if(!lineExists) {
-                    // P-UI-45: a restored line is SETTLED (inert) - see CreateCustomPriceLine.
-                    CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits);
-                } else {
-                    ObjectSetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, g_customTHStartPrice);
-                    ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
-                                  "[PIN] Custom Price: " + DoubleToString(g_customTHStartPrice, s_cachedDigits) + " | PIN button to move");
-                }
-                g_redrawTHLevelsNeeded = true;
-            }
-        } else if(hasGlobalVar && savedPrice > 0.0) {
-            if(MathAbs(g_customTHStartPrice - savedPrice) > s_cachedPoint * 0.1) {
-                g_customTHStartPrice = savedPrice;
-                g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-            }
-            if(!lineExists) {
-                if(CreateCustomPriceLine(g_customTHStartPrice, s_cachedDigits)) {
-                    _LOG_GATE_I Print("[I][GEN] Custom price line restored at: ", DoubleToString(g_customTHStartPrice, s_cachedDigits));
-                }
-            }
-        } else {
-            g_thStartPointType = inpTHStartPointType;
-            g_customTHStartPrice = 0.0;
         }
     }
     
@@ -2546,16 +2693,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             g_waitingForCustomPriceClick = true;
             g_customPriceKeyboardOverride = true;
-            string overrideFlagName = "Biotak_CustomPriceOverride_" + GetCachedSymbol();
-            GlobalVariableSet(overrideFlagName, 1.0);
             _LOG_GATE_D Print("[D][GEN] Press anywhere on the chart to set custom TH start price");
             ObjectDelete(0, g_customPriceHorizontalLineName);
             g_customPriceLineCreated = false;
             double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
             g_customTHStartPrice = currentPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-            string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
-            GlobalVariableSet(gvarName, currentPrice);
+            // P-UI-56: ONE writer for the placement pair (this chart's price + flag).
+            CustomPricePersistPlacement(currentPrice);
             // P-UI-48: ONE creator. This block used to write the line's whole
             // property set by hand - the fifth copy of it in the file, and the
             // place a stale OBJPROP_SELECTED had survived longest.
@@ -2571,9 +2716,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //  
         if(lparam == 27)
         {
-            string symbolName = GetCachedSymbol();
-            string gvarName = "Biotak_CustomPrice_" + symbolName;
-            bool customPriceActive = GlobalVariableCheck(gvarName);
+            // P-UI-56: the active test reads THIS CHART's key (the resolver's own
+            // owner). Reading the old symbol-scoped key would have made ESC a no-op
+            // on a chart whose placement lives under the chart-scoped name.
+            bool customPriceActive = GlobalVariableCheck(CustomPriceGVName());
             if(g_waitingForCustomPriceClick || customPriceActive || g_customPriceKeyboardOverride)
             {
                 // P-UI-45: the sequence itself lives in ONE owner - the ring's PIN
@@ -2824,17 +2970,20 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableDel("Biotak_LinesVisible_" + chartIdStr);
             GlobalVariableDel("Biotak_ATRLabels_" + chartIdStr);
             GlobalVariableDel("Biotak_THLabels_" + chartIdStr);
-            GlobalVariableDel("Biotak_CustomPriceOverride_" + symbolName);
+            // P-UI-56: the Q reset drops THIS CHART's placement (both keys) through
+            // their owner; the Input seed needs no key at all (the resolver reads it
+            // directly), so the old "seed the price key from the Input" write is gone
+            // - it was the same key that made an Input-seeded chart look like a
+            // placement on the chart that shares its symbol.
+            CustomPriceForgetPlacement();
             // TH3TOOL-OFF:
             //#ifndef BUILD_LITE
             //            GlobalVariableDel("Biotak_TH3Freq_" + chartIdStr);
             //            GlobalVariableDel("Biotak_TH3FreqIdx_" + chartIdStr);
             //#endif
             if(inpCustomTHStartPrice > 0.0) {
-                GlobalVariableSet("Biotak_CustomPrice_" + symbolName, inpCustomTHStartPrice);
                 CreateCustomPriceLine(inpCustomTHStartPrice, Digits);
             } else {
-                if(GlobalVariableCheck("Biotak_CustomPrice_" + symbolName)) GlobalVariableDel("Biotak_CustomPrice_" + symbolName);
                 ObjectDelete(0, g_customPriceHorizontalLineName);
                 g_customPriceLineCreated = false;
             }
@@ -3054,11 +3203,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 double selectedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
                 g_customTHStartPrice = selectedPrice;
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-                string symbolName = GetCachedSymbol();
-                string gvarName = "Biotak_CustomPrice_" + symbolName;
-                string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-                GlobalVariableSet(gvarName, selectedPrice);
-                GlobalVariableSet(overrideFlagName, 1.0);
+                CustomPricePersistPlacement(selectedPrice);   // P-UI-56: one writer
                 // P-UI-45: settle - the line KEEPS its price and becomes inert again
                 // (see CreateCustomPriceLine). Confirming must not leave it grabbed:
                 // a selection outlives the gesture, and MT4 then drags the line on
@@ -3102,11 +3247,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             double selectedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
             g_customTHStartPrice = selectedPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-            string symbolName = GetCachedSymbol();
-            string gvarName = "Biotak_CustomPrice_" + symbolName;
-            string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-            GlobalVariableSet(gvarName, selectedPrice);
-            GlobalVariableSet(overrideFlagName, 1.0);
+            CustomPricePersistPlacement(selectedPrice);   // P-UI-56: one writer
             // P-UI-45/P-UI-48: settle - the line KEEPS its price and stays
             // grabbable (same owner as the chart-click confirm above).
             CreateCustomPriceLine(selectedPrice, Digits);
@@ -3348,11 +3489,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         g_customTHStartPrice = draggedPrice;
         g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
         g_customPriceKeyboardOverride = true;
-        string symbolName = GetCachedSymbol();
-        string gvarName = "Biotak_CustomPrice_" + symbolName;
-        string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
-        GlobalVariableSet(gvarName, draggedPrice);
-        GlobalVariableSet(overrideFlagName, 1.0);
+        // P-UI-56: the drag's per-step persist is the same ONE writer (chart-scoped
+        // keys) - two GVar sets per step, exactly as before, nothing new per move.
+        CustomPricePersistPlacement(draggedPrice);
         // P-UI-49: NO property write on the line HERE - the tooltip text is
         // written once at the release instead (UpdateCustomPriceTooltip). This
         // handler runs on EVERY step of a native drag, and MT4 cancels an

@@ -28,7 +28,14 @@ int ValidateInputs()
     }
 
     // 1. Base Price Threshold Percent (0.001-10.0) with epsilon check
-    if(inpBasePriceThresholdPercent < 0.0001 || inpBasePriceThresholdPercent > 10.0) {
+    // P-UI-57: NaN passes EVERY `x < min || x > max` test (all comparisons against
+    // NaN are false), so a range check is not a validity check. `MathIsValidNumber`
+    // is added to each numeric gate below — it is the same one call, and it is what
+    // keeps an Inf/NaN value (a Tester optimisation set, a corrupted set-file, a
+    // programmatic write) from reaching the level arithmetic, where it would poison
+    // every price drawn and every comparison that reasons about them.
+    if(!MathIsValidNumber(inpBasePriceThresholdPercent) ||
+       inpBasePriceThresholdPercent < 0.0001 || inpBasePriceThresholdPercent > 10.0) {
         Print("  ERROR: Base Price Threshold (", DoubleToString(inpBasePriceThresholdPercent, 3), ") out of range");
         Print("   Valid range: 0.0001 - 10.0 (epsilon-safe)");
         Print("   Recommended: 0.066 (default)");
@@ -44,7 +51,7 @@ int ValidateInputs()
     // 2. Harmonic Ratio (1.01-2.0)
 #ifndef BUILD_LITE
     if(inpEnableHarmonicPattern) {
-        if(inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
+        if(!MathIsValidNumber(inpHarmonicRatio) || inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
             Print("  ERROR: Harmonic Ratio (", DoubleToString(inpHarmonicRatio, 3), ") out of range");
             Print("   Valid range: 1.01 - 2.0");
             Print("   Recommended: 1.333 (Golden), 1.5 (Medium), 2.0 (Max)");
@@ -150,7 +157,8 @@ int ValidateInputs()
     //#endif
     
     // 9.2 Mid-Zone Height Percent (1-100)
-    if(inpMidZoneHeightPercent < 1.0 || inpMidZoneHeightPercent > 100.0) {
+    if(!MathIsValidNumber(inpMidZoneHeightPercent) ||
+       inpMidZoneHeightPercent < 1.0 || inpMidZoneHeightPercent > 100.0) {
         Print("  ERROR: Mid-Zone Height Percent (", inpMidZoneHeightPercent, ") out of range");
         Print("   Valid range: 1.0 - 100.0");
         return INIT_PARAMETERS_INCORRECT;
@@ -258,7 +266,7 @@ int ValidateInputs()
     // SECURITY FIX: Validate harmonic ratio
 #ifndef BUILD_LITE
     if(inpEnableHarmonicPattern) {
-        if(inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
+        if(!MathIsValidNumber(inpHarmonicRatio) || inpHarmonicRatio < 1.01 || inpHarmonicRatio > 2.0) {
             Print("  ERROR: Harmonic Ratio (", DoubleToString(inpHarmonicRatio, 3), ") out of range");
             Print("   Valid range: 1.01 - 2.0");
             Print("   Recommended: 1.333 (Golden), 1.5 (Medium), 2.0 (Max)");

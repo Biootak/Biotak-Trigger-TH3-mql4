@@ -2921,15 +2921,16 @@ int HandleButtonClick(const string clickedObject)
          {
             g_waitingForCustomPriceClick = true;
             g_customPriceKeyboardOverride = true;
-            string overrideFlagName = "Biotak_CustomPriceOverride_" + GetCachedSymbol();
-            GlobalVariableSet(overrideFlagName, 1.0);
             ObjectDelete(0, g_customPriceHorizontalLineName);
             g_customPriceLineCreated = false;
             double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
             g_customTHStartPrice = currentPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-            string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
-            GlobalVariableSet(gvarName, currentPrice);
+            // P-UI-56: the placement pair has ONE writer, in the domain layer
+            // (`EventHandlers`, included before this file). The keys are chart-scoped
+            // now, so pressing PIN on this chart can no longer move the ladder of
+            // another chart of the same symbol.
+            CustomPricePersistPlacement(currentPrice);
             // P-UI-48: always grabbable, never pre-SELECTED - the line's drag IS
             // its SELECTABLE flag, and the interference was a selection that
             // outlived its gesture (see CreateCustomPriceLine).

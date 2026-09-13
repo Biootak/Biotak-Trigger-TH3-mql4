@@ -199,9 +199,17 @@ int CalculateLevels(
     int &maxStepOut)
 {
     maxStepOut = 0;
-    if(centerPrice <= 0 || stepSizeCount < 1) return 0;
+    // P-UI-57: `<= 0` IS NaN-BLIND — every comparison against NaN is false, so a
+    // poisoned price/step passed straight through the guards that were supposed to
+    // stop it and turned every derived level into NaN (NaN prices then reach
+    // `ObjectSetDouble`, where MT4 stores a value no comparison can reason about:
+    // invisible objects, labels reading `nan`, a level family that never matches
+    // its own signature). `MathIsValidNumber` is the only test that catches it, and
+    // it is here - at the ONE entry every calculating mode goes through - rather
+    // than at the dozens of consumers.
+    if(!MathIsValidNumber(centerPrice) || centerPrice <= 0 || stepSizeCount < 1) return 0;
     for(int s = 0; s < stepSizeCount; s++) {
-        if(stepSizes[s] <= 0) return 0;
+        if(!MathIsValidNumber(stepSizes[s]) || stepSizes[s] <= 0) return 0;
     }
     
     int safeMaxAbove = MathMin(maxLevelsAbove, MAX_SAFE_LEVELS);
@@ -428,6 +436,37 @@ int ClassifyLevelsAlternating(
     return ClassifyLevels(rawLevels, rawCount, config, triggerEnabled, baseMultiplier, classified);
 }
 
+//==============================================================================
+// P-UI-58 — A ZONE BAND MAY NEVER REACH THE LINE FAMILY (minimum gap)
+//
+// The drawing architecture is: ZONES are centered ON the levels, and the visible
+// LINES are drawn at the MIDPOINT between two neighbouring levels
+// (`lineMidPrice = (prevPrice + currentPrice) / 2` below). That is what puts a
+// line in the clear space between two bands — the "gap" — and the gap exists only
+// while the band is SHORTER than half the interval: a band whose half-height
+// reaches `interval / 2` touches exactly the line that belongs to it, and any
+// rounding then puts the line INSIDE the band. `inpMidZoneHeightPercent` is allowed
+// up to 100 (heightPercent 1.0 = the FULL step), which is that boundary case — so a
+// control the user may legitimately push to its maximum silently swallows the lines
+// it is supposed to sit beside.
+//
+// The invariant is enforced where the band is BUILT, from the interval the band
+// actually sits in (never from the "fixed" step, which in SS/LS mode is not the
+// interval), and it keeps ZONE_MIN_GAP_RATIO of the half-interval clear. Every
+// setting at or below `2 × (1 − ratio) = 80%` is pixel-identical (the factory
+// default is 33%), so a chart changes only where it would otherwise violate the
+// invariant. Cost: three compares, no work in the normal case.
+//==============================================================================
+#define ZONE_MIN_GAP_RATIO 0.20
+
+double ClampZoneHalfHeight(const double wantedHalfHeight, const double neighbourInterval)
+{
+    if(!MathIsValidNumber(neighbourInterval) || neighbourInterval <= 0.0) return wantedHalfHeight;
+    double ceiling = neighbourInterval * 0.5 * (1.0 - ZONE_MIN_GAP_RATIO);
+    if(ceiling <= 0.0) return wantedHalfHeight;
+    return (wantedHalfHeight > ceiling) ? ceiling : wantedHalfHeight;
+}
+
 //+------------------------------------------------------------------+
 //| STAGE 3+4 (MERGED): Build zones AND derive midpoint lines        |
 //|                                                                  |
@@ -511,7 +550,10 @@ void BuildZonesAndLines(
             neighborDist = GetCachedPoint() * 100;
         }
         double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : neighborDist;
-        double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
+        // P-UI-58: clamped against the NEAREST neighbour interval — the midpoint
+        // line above/below the centre zone is what must stay clear of the band.
+        double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
+                                                neighborDist);
         
         zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Center_0";
         zones[zIdx].midPrice = midLevel.price;
@@ -564,7 +606,11 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
+            // P-UI-58: the band is clamped by THIS interval (the midpoint line between
+            // prevLevel and this level is `stepSize / 2` away), so the line always has
+            // its minimum gap.
+            double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
+                                                   stepSize);
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Above_" + 
                                IntegerToString(s_aboveLevels[i].logicalStep);
@@ -621,7 +667,9 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;
+            // P-UI-58: same invariant as the Above branch (this interval).
+            double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
+                                                   stepSize);
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Below_" + 
                                IntegerToString(s_belowLevels[i].logicalStep);
