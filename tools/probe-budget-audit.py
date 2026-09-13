@@ -2952,6 +2952,119 @@ def check_custom_price_source(o):
     ok("custom-price-source", "every zone band keeps a minimum gap from the line family")
 
 
+def check_edge_look(o):
+    """P-UI-63/64 - two transparencies with two owners, and the edge IS the boundary.
+
+    Reported: «شفافیت خط و زون بشه جدا از هم تعیین کرد بهترین راهکار چیه که شلوغ هم نشه»
+    and «در حالت ترکیب خطوط از هم جدا نباشه و همون لبه زون باشه، در حالت ترکیب خطوط
+    سایز 5 باشن پیش فرض که دیده بشه».
+
+    The BAND and its EDGE were blended with ONE number (`borderColor = finalColor`), so
+    a crisp outline over a faded band was unrepresentable. The fix adds no card and no
+    sub-card - the edge already had two rows (BORDER / BORDER WIDTH) in GEOMETRY, so its
+    transparency is the third row of the same trio, next to them.
+
+    Invariants:
+      * each half of the picture has exactly ONE transparency owner (the card's
+        TRANSPARENCY row for the band, BORDER TRANSPARENCY for the edge), saved and
+        loaded under its own key;
+      * the BAND is painted with `finalColor` and the EDGE with `borderColor` - the two
+        values used to be the same, which is why the mix-up was invisible;
+      * the edge is drawn ON the band's own boundary (same times and prices, ray-right
+        like the rectangle) - there is no second, separately placed "line" for a zone;
+      * a picture that DRAWS an edge never inherits the edge-less 1px default.
+    """
+    constants = _code_only(read("Biotak/ConstantsAndEnums.mqh", o))
+    factory = _code_only(read(ZONEFACTORY, o))
+    pipeline = _code_only(read(PIPELINE, o))
+    extdraw = _code_only(read(EXTDRAW, o))
+    util = _code_only(read(UTIL, o))
+    unified = _code_only(read("Biotak/UnifiedZoneSystem.mqh", o))
+    zoneread = _code_only(read("Biotak/ZoneRenderer.mqh", o))
+    panels = _code_only(read(PANELS, o))
+    runtime = _code_only(read(RUNTIME, o))
+
+    if "g_midZoneBorderTransparency" not in runtime or \
+       "#define inpMidZoneBorderTransparency g_midZoneBorderTransparency" not in runtime:
+        fail("edge-look",
+             "the edge has no transparency of its own again: one number for both halves "
+             "is exactly what made the line and the zone impossible to set apart")
+        return
+    if 'RSSetNext(p + "ZBT", g_midZoneBorderTransparency);' not in runtime or \
+       'GlobalVariableCheck(p + "ZBT")' not in runtime:
+        fail("edge-look",
+             "the edge's transparency is not persisted under its own key: the row would "
+             "look live and be forgotten by the next attach")
+        return
+    ok("edge-look", "each half of the picture owns its transparency (own key, own row)")
+
+    if "if(request.borderTransparency >= 0 && request.borderTransparency <= 100)" not in factory or \
+       "edgeTransparency = request.borderTransparency;" not in factory:
+        fail("edge-look",
+             "the edge stopped blending with its own value: the band's number is being "
+             "used for both halves again")
+        return
+    if "ObjectSetInteger(0, request.name, OBJPROP_COLOR, finalColor);" not in factory or \
+       "ObjectSetInteger(0, request.name, OBJPROP_COLOR, borderColor);" in factory:
+        fail("edge-look",
+             "the BAND is painted with the EDGE's colour (they used to be the same value, "
+             "so the mix-up was invisible - now it would paint the wrong one)")
+        return
+    if "cache.lastColor != finalColor" not in factory:
+        fail("edge-look",
+             "the band's change detection compares against the edge's colour: the band "
+             "then never repaints when its ownrow moves")
+        return
+    ok("edge-look", "the band is painted and cached with its own blend, the edge with its")
+
+    for where, src in (("the pipeline", pipeline), ("the Factor path", extdraw),
+                       ("CreateGenericMidZone", util)):
+        if "request.borderTransparency = inpMidZoneBorderTransparency;" not in src:
+            fail("edge-look",
+                 "%s no longer sets the edge's transparency: the field is read from a stack "
+                 "struct, so the value would be whatever the stack held" % where)
+            return
+    if unified.count("request.borderTransparency = -1;") != 2 or \
+       zoneread.count("request.borderTransparency = -1;") != 1:
+        fail("edge-look",
+             "a retired module left the edge's transparency unset instead of stating the "
+             "fallback: a struct on the stack must never be trusted to be zeroed")
+        return
+    top = "startTime, request.topPrice, endTime, request.topPrice,"
+    bottom = "startTime, request.bottomPrice, endTime, request.bottomPrice,"
+    left = "startTime, request.bottomPrice, startTime, request.topPrice,"
+    if factory.count(top) != 1 or factory.count(bottom) != 1 or factory.count(left) != 1 or \
+       "ObjectSetInteger(0, request.name, OBJPROP_RAY_RIGHT, true);" not in factory:
+        fail("edge-look",
+             "the edge is not drawn on the band's own boundary any more (same times and "
+             "prices, ray-right like the rectangle): any offset makes it a second, "
+             "separately placed line - «خطوط از هم جدا نباشه و همون لبه زون باشه»")
+        return
+    ok("edge-look", "the edge is the zone's own boundary, and every producer sets its value")
+
+    if "#define MIDZONE_EDGE_VISIBLE_WIDTH 5" not in constants:
+        fail("edge-look",
+             "the visible width for an edge picture is gone or is not 5: a 1px line under "
+             "a translucent band is half-covered by it, so the combined picture reads as "
+             "the filled one")
+        return
+    if "if(newPicture != ZONE_STYLE_BOX_FILLED && g_midZoneBorderWidth <= 1)" not in panels or \
+       "g_midZoneBorderWidth = MIDZONE_EDGE_VISIBLE_WIDTH;" not in panels:
+        fail("edge-look",
+             "picking a picture that DRAWS an edge no longer brings a visible width: the "
+             "user picks the combined picture and sees no line, which is the report this "
+             "rule answers")
+        return
+    if 'label="BORDER TRANSPARENCY"' not in panels or \
+       "g_midZoneBorderTransparency=ClampInt((int)MathRound(v),0,100)" not in panels:
+        fail("edge-look",
+             "the edge's transparency row or its writer is missing: «شلوغ نشه» was a "
+             "constraint on the PLACEMENT (beside BORDER / BORDER WIDTH), not a reason "
+             "to leave the control out")
+        return
+    ok("edge-look", "a picture with an edge arrives visible, and the row that owns it exists")
+
+
 def check_zone_picture(o):
     """P-UI-62 - the zone picture is TWO bits, and a dead cache slot is not an object.
 
@@ -3263,7 +3376,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
-          check_zone_picture]
+          check_zone_picture, check_edge_look]
 
 
 def run(overrides=None):
@@ -4014,6 +4127,33 @@ def selftest():
          "")
     seed("the adopted layout only lives in memory", RUNTIME,
          'GlobalVariableSet(p + "MZ", ZONE_STYLE_BOX_FILLED);\n',
+         "")
+
+    # 23. the two transparencies fall back into one, and the edge picture goes back to
+    #     an invisible line (P-UI-63/64)
+    seed("the edge fades with the band again", ZONEFACTORY,
+         "    if(request.borderTransparency >= 0 && request.borderTransparency <= 100)",
+         "    if(false)")
+    seed("the band is painted with the edge's colour", ZONEFACTORY,
+         "        ObjectSetInteger(0, request.name, OBJPROP_COLOR, finalColor);",
+         "        ObjectSetInteger(0, request.name, OBJPROP_COLOR, borderColor);")
+    seed("a producer drops the edge's transparency", PIPELINE,
+         "            request.borderTransparency = inpMidZoneBorderTransparency;\n",
+         "")
+    seed("the edge is inset off the band's boundary", ZONEFACTORY,
+         "                                     startTime, request.topPrice, endTime, request.topPrice,\n",
+         "                                     startTime, request.topPrice, endTime, request.topPrice - _Point,\n")
+    seed("the edge picture keeps the invisible default", PANELS,
+         "                           if(newPicture != ZONE_STYLE_BOX_FILLED && g_midZoneBorderWidth <= 1)",
+         "                           if(false)")
+    seed("the visible width drifts", "Biotak/ConstantsAndEnums.mqh",
+         "#define MIDZONE_EDGE_VISIBLE_WIDTH 5",
+         "#define MIDZONE_EDGE_VISIBLE_WIDTH 1")
+    seed("the edge transparency row loses its writer", PANELS,
+         "         else if(row==7)  { g_midZoneBorderTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }\n",
+         "")
+    seed("the edge transparency stops being persisted", RUNTIME,
+         '   RSSetNext(p + "ZBT", g_midZoneBorderTransparency);   // P-UI-63\n',
          "")
 
     caught = 0

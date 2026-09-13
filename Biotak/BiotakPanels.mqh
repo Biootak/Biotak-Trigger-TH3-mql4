@@ -1326,20 +1326,24 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(1, PNL_K_LEGACY, 1, 1, "line", "L");
       PnlSpecAdd(1, PNL_K_LEGACY, 2, 1, "square");
       PnlSpecAdd(1, PNL_K_LEGACY, 3, 1, "contrast");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "GEOMETRY", 3);
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "GEOMETRY", 4);
       PnlSpecAdd(1, PNL_K_LEGACY, 4, 1, "valign");
       PnlSpecAdd(1, PNL_K_LEGACY, 5, 1, "linestyle");
       PnlSpecAdd(1, PNL_K_LEGACY, 6, 1, "weight");
+      // P-UI-63: the EDGE's transparency, beside the two rows that style the same edge
+      // (BORDER / BORDER WIDTH). No new section and no sub-card: «شلوغ نشه» was half the
+      // ask - the two transparencies are now two rows, each in the family it belongs to.
+      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, "contrast");
       PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 1);
       // MIDPOINT-OFF (2026-09-13): the midpoint LINE is retired — the pipeline
       // deletes every `_Midpoint_` object on each render (CleanupSurplusPipeline
       // "legacy cleanup", LevelPipeline), so this switch wrote a flag that NO
       // module reads and changed nothing on the chart (P-UI-47). The row is gone;
-      // setting 8 stays persisted and inert so nothing renumbers.
-      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, "swap");   // LS FIRST (was LS FIRST · MIDPOINT)
+      // setting 9 stays persisted and inert so the addresses below it do not move.
+      PnlSpecAdd(1, PNL_K_LEGACY, 8, 1, "swap");   // LS FIRST (was LS FIRST · MIDPOINT)
       PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 2);
-      PnlSpecAdd(1, PNL_K_LEGACY, 9, 1, "steps", "", "", 0, "5 LEVELS");
-      PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "line", "", "", 0, "ONE STYLE");
+      PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "steps", "", "", 0, "5 LEVELS");
+      PnlSpecAdd(1, PNL_K_LEGACY, 11, 1, "line", "", "", 0, "ONE STYLE");
    }
    else if(item == 2)   // ATR LABELS (gold) — 11 settings / 15 display rows
    {
@@ -2263,7 +2267,7 @@ void PnlStepSectionRowDef(const int s,int &kind,string &label,
    kind=0; label=""; minV=0; maxV=100; step=1; unit=""; opts="";
    int mode=(int)g_stepCalculationMode;
    // NOTE: TH mode has no section (count 0) — it owns no level settings.
-   if(mode==1)   // SS-LS — same flag as ZONES card row 7
+   if(mode==1)   // SS-LS — same flag as ZONES card row 8
    {
       kind=1; label="LS FIRST";
    }
@@ -2535,12 +2539,15 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==4)  { label="HEIGHT"; unit="%"; minV=1; maxV=100; }
       else if(row==5)  { kind=2; label="BORDER"; opts="Solid|Dash|Dot|DashDot|DashDotDot"; minV=0; maxV=ILS_COUNT-1; }
       else if(row==6)  { label="BORDER WIDTH"; minV=1; maxV=5; }
-      else if(row==7)  { kind=1; label="LS FIRST"; }
+      // P-UI-63: the EDGE's transparency. `TRANSPARENCY` above is the BAND's - one row
+      // per half of the picture, so «شفافیت خط و زون جدا از هم» needs no other control.
+      else if(row==7)  { label="BORDER TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
+      else if(row==8)  { kind=1; label="LS FIRST"; }
       // MIDPOINT-OFF (2026-09-13, P-UI-47): the midpoint line is deleted every
       // render by the pipeline's legacy cleanup — row kept for the address space
       // only, no display row renders it.
-      else if(row==8)  { kind=1; label="MIDPOINT"; }
-      else if(row==9)  { kind=5; label="STRUCTURE L1-L5"; opts="11"; }   // NAV → structure sub-card
+      else if(row==9)  { kind=1; label="MIDPOINT"; }
+      else if(row==10) { kind=5; label="STRUCTURE L1-L5"; opts="11"; }   // NAV → structure sub-card
       else             { kind=5; label="LINES"; opts="7"; }              // NAV → unified lines card
    }
    else if(item==2)   // ATR LABELS — the chart-labels card (incl. High/Low
@@ -2991,9 +2998,10 @@ double PnlDefValSet(const int item,const int row)
               if(row==4) return FactoryDefault(FF_MIDZONE_HEIGHT);
               if(row==5) return (int)FactoryDefault(FF_MIDZONE_BORDER_STYLE);
               if(row==6) return FactoryDefault(FF_MIDZONE_BORDER_WIDTH);
-              if(row==7) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;
-              if(row==8) return (FactoryDefault(FF_SHOW_MIDPOINT)>0.5)?1.0:0.0;
-              return 0;                        // rows 9-10 = NAV rows
+              if(row==7) return FactoryDefault(FF_MIDZONE_BORDER_TRANSPARENCY);   // P-UI-63
+              if(row==8) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;
+              if(row==9) return (FactoryDefault(FF_SHOW_MIDPOINT)>0.5)?1.0:0.0;
+              return 0;                        // rows 10-11 = NAV rows
       case 2: if(row==0) return (FactoryDefault(FF_SHOW_COUNTDOWN)>0.5)?1.0:0.0;
               if(row==1) return 3;   // COLOR row → palette sentinel
               if(row==2) return FactoryDefault(FF_COUNTDOWN_SIZE);
@@ -3092,9 +3100,10 @@ double PnlCurrentSet(const int item,const int row)
               if(row==4) return g_midZoneHeightPercent;
               if(row==5) return (int)g_midZoneBorderStyle;
               if(row==6) return g_midZoneBorderWidth;
-              if(row==7) return g_lsFirst?1.0:0.0;
-              if(row==8) return g_showMidpointLine?1.0:0.0;
-              return 0;                        // rows 9-10 = NAV rows
+              if(row==7) return g_midZoneBorderTransparency;   // P-UI-63
+              if(row==8) return g_lsFirst?1.0:0.0;
+              if(row==9) return g_showMidpointLine?1.0:0.0;
+              return 0;                        // rows 10-11 = NAV rows
       case 2: if(row==0) return g_showLiveCountdown?1.0:0.0;   // countdown's own layer
               if(row==1) return 0;   // COUNT COLOR (palette only)
               if(row==2) return g_countdownFontSize;
@@ -3211,13 +3220,30 @@ int PnlApplySet(const int item,const int row,const double v)
                            SetLinesVisible(g_showLines, true);
                            RequestUISync();   // P-PERF-41: the ring light reads this row too
                            flags=REFRESH_BUFFERS; }
-         else if(row==2)  { g_midZoneStyle=(ENUM_ZONE_STYLE)(int)MathRound(v); flags=REFRESH_BUFFERS; }
+         else if(row==2)  // ZONE STYLE — the picture itself (P-UI-62: Filled / Empty /
+                          // Outlined, i.e. WHICH halves of the zone are drawn)
+                         { ENUM_ZONE_STYLE newPicture=(ENUM_ZONE_STYLE)(int)MathRound(v);
+                           // P-UI-64: A PICTURE THAT DRAWS AN EDGE BRINGS A VISIBLE WIDTH.
+                           // The edge is created UNDER the band and painted OVER it (they
+                           // share Z_CHART_ZONE), so at the older default of 1px half the
+                           // line is covered by the band and the combined picture reads as
+                           // the filled one - exactly «در حالت ترکیب خطوط سایز 5 باشن پیش
+                           // فرض که دیده بشه». It fires ONLY while the width is still that
+                           // older default, so a width the user chose is never overwritten,
+                           // and the BORDER WIDTH row shows the value it lands on.
+                           if(newPicture != ZONE_STYLE_BOX_FILLED && g_midZoneBorderWidth <= 1)
+                              g_midZoneBorderWidth = MIDZONE_EDGE_VISIBLE_WIDTH;
+                           g_midZoneStyle=newPicture; flags=REFRESH_BUFFERS; }
          else if(row==3)  { g_midZoneTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }
          else if(row==4)  { g_midZoneHeightPercent=ClampInt((int)MathRound(v),1,100); flags=REFRESH_BUFFERS; }
          else if(row==5)  { g_midZoneBorderStyle=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_BUFFERS; }
          else if(row==6)  { g_midZoneBorderWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
-         else if(row==7)  { g_lsFirst=(v>0.5); g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
-         else if(row==8) { g_showMidpointLine=(v>0.5); flags=REFRESH_BUFFERS; }
+         // P-UI-63: the EDGE's transparency - the same shape as the band's row above,
+         // one owner per value (the band row writes g_midZoneTransparency, this one
+         // writes the edge's). P-UI-64 rides along in the ZONE STYLE row below.
+         else if(row==7)  { g_midZoneBorderTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }
+         else if(row==8)  { g_lsFirst=(v>0.5); g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
+         else if(row==9) { g_showMidpointLine=(v>0.5); flags=REFRESH_BUFFERS; }
          break;
       case 2:   // ATR LABELS — rows 0-3 are the countdown tag's OWN layer (own
                 // switch/color/size/gap, independent of the ATR block); rows
@@ -3391,7 +3417,7 @@ int PnlApplySet(const int item,const int row,const double v)
          {
             int sec=row-1, md=(int)g_stepCalculationMode;
             // NOTE: TH mode has no section rows (count 0).
-            if(md==1) return PnlApplySet(1, 7, v);       // LS FIRST
+            if(md==1) return PnlApplySet(1, 8, v);       // LS FIRST
             if(md==3) return PnlApplySet(10, sec, v);    // Factor rows 0..6
             // COMBO section — same rails as the Factor rows above
             // (OV_CM/CP/... persist via ApplyRefreshFlags).

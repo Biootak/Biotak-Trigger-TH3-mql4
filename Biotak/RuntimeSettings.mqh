@@ -106,6 +106,10 @@ static int g_midZoneTransparency = 50;                           // [07.2] inpMi
 static double g_midZoneHeightPercent = 33.0;                     // [07.2] inpMidZoneHeightPercent
 static ENUM_LINE_STYLE g_midZoneBorderStyle = STYLE_SOLID;       // [07.2] inpMidZoneBorderStyle
 static int g_midZoneBorderWidth = 1;                             // [07.2] inpMidZoneBorderWidth
+// P-UI-63: the EDGE's transparency, the band's sibling. `g_midZoneTransparency` owns the
+// BAND (the filled rectangle); this one owns the edge the BORDER / BORDER WIDTH rows
+// style, so the two can be set apart - the reported «شفافیت خط و زون جدا از هم باشد».
+static int g_midZoneBorderTransparency = 50;                     // [07.2] inpMidZoneBorderTransparency
 static bool g_showPipDistanceLabels = true;                      // [03] inpShowPipDistanceLabels
 static bool g_showATRLabels = false;                             // [03] inpShowATRLabels
 static bool g_showATRTargets = true;                             // [03] inpShowATRTargets
@@ -181,6 +185,7 @@ enum FactorySetting
    FF_MIDZONE_HEIGHT,      // inpMidZoneHeightPercent
    FF_MIDZONE_BORDER_STYLE,// inpMidZoneBorderStyle
    FF_MIDZONE_BORDER_WIDTH,// inpMidZoneBorderWidth
+   FF_MIDZONE_BORDER_TRANSPARENCY, // inpMidZoneBorderTransparency (P-UI-63)
    FF_LS_FIRST,            // inpLSFirst
    FF_SHOW_MIDPOINT,       // inpShowMidpointLine
    FF_SHOW_ATR,            // inpShowATRLabels
@@ -281,6 +286,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_MIDZONE_HEIGHT]      = inpMidZoneHeightPercent;
    g_factoryDefaults[FF_MIDZONE_BORDER_STYLE]= inpMidZoneBorderStyle;
    g_factoryDefaults[FF_MIDZONE_BORDER_WIDTH]= inpMidZoneBorderWidth;
+   g_factoryDefaults[FF_MIDZONE_BORDER_TRANSPARENCY] = inpMidZoneBorderTransparency;   // P-UI-63
    g_factoryDefaults[FF_LS_FIRST]            = inpLSFirst;
    g_factoryDefaults[FF_SHOW_MIDPOINT]       = inpShowMidpointLine;
    g_factoryDefaults[FF_SHOW_ATR]            = inpShowATRLabels;
@@ -426,6 +432,7 @@ void RuntimeSettingsInit()
    g_midZoneHeightPercent = inpMidZoneHeightPercent;
    g_midZoneBorderStyle = inpMidZoneBorderStyle;
    g_midZoneBorderWidth = inpMidZoneBorderWidth;
+   g_midZoneBorderTransparency = inpMidZoneBorderTransparency;   // P-UI-63
 
    // [08] LEVEL STYLE / LINES + [09] VISIBILITY / STRUCTURE & TRIGGER
    g_showStructure = inpShowStructure;
@@ -506,6 +513,7 @@ void RuntimeSettingsInit()
 #define inpMidZoneHeightPercent g_midZoneHeightPercent
 #define inpMidZoneBorderStyle g_midZoneBorderStyle
 #define inpMidZoneBorderWidth g_midZoneBorderWidth
+#define inpMidZoneBorderTransparency g_midZoneBorderTransparency
 #define inpShowPipDistanceLabels g_showPipDistanceLabels
 #define inpTriggerWidth g_triggerWidth
 #define inpTriggerStyle g_triggerStyle
@@ -809,6 +817,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "ZH",  g_midZoneHeightPercent);
    RSSetNext(p + "ZB",  g_midZoneBorderStyle);
    RSSetNext(p + "ZW",  g_midZoneBorderWidth);
+   RSSetNext(p + "ZBT", g_midZoneBorderTransparency);   // P-UI-63
    RSSetNext(p + "PD",  g_showPipDistanceLabels ? 1 : 0);
    RSSetNext(p + "AL",  g_showATRLabels ? 1 : 0);
    RSSetNext(p + "A1",  g_showATRTargets ? 1 : 0);
@@ -960,6 +969,9 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "ZH"))  g_midZoneHeightPercent = ClampSettingInt((int)GlobalVariableGet(p + "ZH"), 1, 100);
    if(GlobalVariableCheck(p + "ZB"))  g_midZoneBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "ZB"), 0, 4);
    if(GlobalVariableCheck(p + "ZW"))  g_midZoneBorderWidth = ClampSettingInt((int)GlobalVariableGet(p + "ZW"), 1, 5);
+   // P-UI-63: absent key = the edge follows the band's value (the pre-split look), because
+   // BOTH defaults are 50. There is no migration to write: the fallback IS the old look.
+   if(GlobalVariableCheck(p + "ZBT")) g_midZoneBorderTransparency = ClampSettingInt((int)GlobalVariableGet(p + "ZBT"), 0, 100);
    if(GlobalVariableCheck(p + "PD"))  g_showPipDistanceLabels = (GlobalVariableGet(p + "PD") > 0.5);
    if(GlobalVariableCheck(p + "AL"))  g_showATRLabels = (GlobalVariableGet(p + "AL") > 0.5);
    if(GlobalVariableCheck(p + "A1"))  g_showATRTargets = (GlobalVariableGet(p + "A1") > 0.5);

@@ -126,6 +126,9 @@ input int inpMidZoneTransparency = 50;
 input double inpMidZoneHeightPercent = 33.0;
 input ENUM_LINE_STYLE inpMidZoneBorderStyle = STYLE_SOLID; // Box border line style (Solid/Dash/Dot/...)
 input int inpMidZoneBorderWidth = 1;                       // Box border width (1-5)
+// P-UI-63: the EDGE's own transparency, independent of inpMidZoneTransparency (which
+// owns the BAND's). Two rows on the card, two owners - see ENUM_ZONE_STYLE's note.
+input int inpMidZoneBorderTransparency = 50;               // Box border (edge) transparency (0-100)
 
 input group "08) LEVEL STYLE - LINES (ALL)"
 input string S16 = "[08] LEVEL STYLE / LINES";

@@ -35,8 +35,15 @@
 //      in tools/zorder-audit.py fails and the ordering stops being provable.
 // ══════════════════════════════════════════════════════════════════════════
 
-// ── chart content: zones, level lines, tool dots, boxes — the floor
-#define Z_CHART_ZONE     0      // zone bodies/borders, Trigger level lines
+// ── chart content: zones, level lines, tool dots, boxes — the floor// P-UI-64: the width a picture that DRAWS an edge falls back to when the card's BORDER
+// WIDTH still holds the edge-less default (1). A 1px line drawn UNDER a translucent band
+// - equal ZORDER, band first, so the band covers half of it - is invisible, which is
+// exactly why the combined picture first looked like the filled one. 5 is the row's own
+// maximum, i.e. "as visible as the control can make it", and the user can still dial it
+// back: the promotion only fires while the width IS the older default.
+#define MIDZONE_EDGE_VISIBLE_WIDTH 5
+
+#define Z_CHART_ZONE 0      // zone bodies/borders, Trigger level lines
 #define Z_CHART_LINE     1      // Factor level lines (drawn above their zone)
 #define Z_CHART_TOOL    10      // TH3 tool dots
 #define Z_BOX_RAY       50      // Base/Knot rays

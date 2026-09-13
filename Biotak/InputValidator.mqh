@@ -177,6 +177,15 @@ int ValidateInputs()
         Print("   Valid range: 1 - 5");
         return INIT_PARAMETERS_INCORRECT;
     }
+
+    // 9.5 Mid-Zone BORDER (edge) Transparency (0-100) - P-UI-63: the edge's own value,
+    // validated exactly like the band's, so the two halves can never disagree about
+    // what "out of range" means.
+    if(inpMidZoneBorderTransparency < 0 || inpMidZoneBorderTransparency > 100) {
+        Print("  ERROR: Mid-Zone Border Transparency (", inpMidZoneBorderTransparency, ") out of range");
+        Print("   Valid range: 0 - 100");
+        return INIT_PARAMETERS_INCORRECT;
+    }
     
     // 9.5 Zone Styles (validated by ENUM at compile time)
     // inpMidZoneStyle, inpTH3ZoneStyle are validated by ENUM_ZONE_STYLE

@@ -906,6 +906,10 @@ void RenderZones(
             request.outline = zones[i].outline;
             request.borderStyle = inpMidZoneBorderStyle;
             request.borderWidth = inpMidZoneBorderWidth;
+            // P-UI-63: the edge's OWN transparency - the two halves of the picture fade
+            // independently, and both values are read here (next to the border style and
+            // width they belong with) rather than threaded through the zone definition.
+            request.borderTransparency = inpMidZoneBorderTransparency;
             request.startTime = 0;
             request.endTime = 0;
             

@@ -779,6 +779,9 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     request.bottomPrice = lowerPrice;
     request.zoneColor = zoneColor;
     request.transparency = transparency;
+    // P-UI-63: this path draws a BAND only (filled = true, so no edge is produced), but
+    // the field is written anyway: a stack struct must never leave a value to chance.
+    request.borderTransparency = inpMidZoneBorderTransparency;
     request.filled = true;
     request.borderStyle = inpMidZoneBorderStyle;
     request.borderWidth = inpMidZoneBorderWidth;

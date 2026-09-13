@@ -33,7 +33,18 @@ struct SZoneCreationRequest {
     double topPrice;          // Top boundary
     double bottomPrice;       // Bottom boundary
     color zoneColor;          // Zone color
-    int transparency;         // Transparency (0-100)
+    int transparency;         // The BAND's transparency (0-100)
+    // P-UI-63: THE TWO HALVES FADE INDEPENDENTLY.
+    //
+    // The band and its edge were blended with ONE number, so a crisp outline over a
+    // faded band (or the reverse) was unrepresentable - the reported «شفافیت خط و زون
+    // بشه جدا از هم». The edge is a LINE (it is what BORDER / BORDER WIDTH style), so
+    // it carries its own value here, and the band keeps `transparency`.
+    //
+    // ANY value outside 0..100 (including a producer that never sets the field on a
+    // stack struct) means "follow the band", i.e. the pre-P-UI-63 look - so the
+    // default is a real fallback and not a silently opaque edge.
+    int borderTransparency;   // The EDGE's transparency (0-100); outside = follow `transparency`
     bool filled;              // Draw the BAND (the filled rectangle)
     // P-UI-62: the EDGE is its own half of the picture, not a consequence of `filled`.
     // It used to be exactly `!filled`, which made two states out of three possible
@@ -297,9 +308,14 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     //                                                                
     
     color finalColor = GetZoneRenderColor(request.zoneColor, clampedTransparency);
-    // Transparency applies to the fill (FILLED) AND the border (EMPTY), so the
-    // empty-box outline fades exactly like the filled-box color.
-    color borderColor = finalColor;
+    // P-UI-63: the EDGE's own blend. `borderColor` was `finalColor` - one number for
+    // both halves - which is exactly why the two could not be set apart. The band is
+    // painted with `finalColor`, the edge with `borderColor`, and each has one owner:
+    // the card's TRANSPARENCY row for the band, BORDER TRANSPARENCY for the edge.
+    int edgeTransparency = clampedTransparency;
+    if(request.borderTransparency >= 0 && request.borderTransparency <= 100)
+        edgeTransparency = request.borderTransparency;
+    color borderColor = GetZoneRenderColor(request.zoneColor, edgeTransparency);
 
     // P-UI-62: THE PICTURE IS RESOLVED BEFORE ANY DRAWING PATH.
     //
@@ -427,11 +443,14 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     
     // Apply the BAND's visual properties ONLY if changed - and only for a band
     // (PHASE 4's second half: the half that exists is the half that gets styled).
+    // P-UI-63: the BAND's colour is `finalColor` again, not `borderColor`: the two used
+    // to be the same value (which is why the mix-up was invisible), and they now differ
+    // whenever the edge has its own transparency.
     bool visualChanged = request.filled &&
-                         (!inCache || (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
+                         (!inCache || (cache.lastColor != finalColor || cache.lastFilled != request.filled ||
                                        cache.lastStyle != borderStyle || cache.lastWidth != borderWidth));
     if(visualChanged) {
-        ObjectSetInteger(0, request.name, OBJPROP_COLOR, borderColor);
+        ObjectSetInteger(0, request.name, OBJPROP_COLOR, finalColor);
         ObjectSetInteger(0, request.name, OBJPROP_BACK, true);
         ObjectSetInteger(0, request.name, OBJPROP_FILL, request.filled);
         // Border line style/width (solid, dashed, dotted, ... hollow box support)
@@ -444,6 +463,14 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     
     // P-UI-62: PHASE 5 - THE EDGE (the outline half of the picture) - AFTER the band,
     // so that it paints on top of it (see the creation-order note above).
+    //
+    // P-UI-64: THE EDGE **IS** THE ZONE'S OWN EDGE. Each segment is placed on the
+    // band's exact boundary - `startTime`/`endTime` and `topPrice`/`bottomPrice`, no
+    // offsets, no insets - and the two horizontal ones carry `rayRight = true` exactly
+    // like the rectangle's OBJPROP_RAY_RIGHT, so the outline and the band cannot drift
+    // apart at the right edge of the chart or anywhere else. There is deliberately no
+    // second, separately-placed "line" for the zone: one geometry, drawn twice (the
+    // fill and the line), which is what «خطوط از هم جدا نباشه و همون لبه زون باشه» asks.
     //
     // Three segments rather than one hollow rectangle, because OBJ_RECTANGLE ignores
     // OBJPROP_STYLE/WIDTH: a band has no stylable line of its own, which is exactly why
@@ -470,8 +497,10 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     
     // Update cache - the picture this zone now carries, INCLUDING whether it owns a
     // rectangle at all (P-UI-62). An edge-only zone caches `exists = false`, which the
-    // band path above reads as a PROOF of absence instead of probing for it.
-    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, borderColor,
+    // band path above reads as a PROOF of absence instead of probing for it. The colour
+    // stored here is the BAND's (P-UI-63): this entry describes the rectangle, and the
+    // three edge segments own their own entries through `CreateOrUpdateZoneBorder`.
+    CacheUpdateZone(request.name, request.topPrice, request.bottomPrice, startTime, endTime, finalColor,
                     request.filled, borderStyle, borderWidth, request.outline, request.filled);
     
     result.success = true;

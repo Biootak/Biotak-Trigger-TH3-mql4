@@ -154,6 +154,9 @@ bool CreateUnifiedZone(const string zoneName,
     request.bottomPrice = lowerPrice;
     request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
     request.transparency = config.transparency;
+    // P-UI-63: the edge carries its own transparency; this config has none, so the
+    // field states the fallback explicitly instead of leaving it to the stack.
+    request.borderTransparency = -1;   // follow the band
     // P-UI-62: the band and its edge are independent halves of the picture - slot 2 is
     // OUTLINED (both), so `filled = (style == FILLED)` alone would silently draw a
     // band-only picture for it. (Retired module: not included by any build, kept
@@ -393,6 +396,7 @@ bool CreateZoneWithSmartFallback(const string zoneName,
         request.bottomPrice = lowerPrice;
         request.zoneColor = (levelColor == clrNONE) ? config.defaultColor : levelColor;
         request.transparency = config.transparency;
+        request.borderTransparency = -1;   // follow the band (P-UI-63)
         // P-UI-62: band and edge are independent halves of the picture.
         request.filled  = (config.style != FACTOR_ZONE_BOX_EMPTY);
         request.outline = (config.style != FACTOR_ZONE_BOX_FILLED);

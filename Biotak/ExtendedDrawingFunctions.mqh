@@ -236,6 +236,9 @@ bool CreateFactorMidZone(const string zoneName,
     request.bottomPrice = lowerPrice;
     request.zoneColor = zoneColor;
     request.transparency = transparency;
+    // P-UI-63: the edge fades on its own - the Factor bands answer to the same two rows
+    // the mid zones do (the card is titled "MID ZONES", the bands are the same family).
+    request.borderTransparency = inpMidZoneBorderTransparency;
     // P-UI-62: the band and its edge are independent halves of the picture.
     request.filled  = (zoneStyle != FACTOR_ZONE_BOX_EMPTY);
     request.outline = (zoneStyle != FACTOR_ZONE_BOX_FILLED);

@@ -200,6 +200,7 @@ void RenderZones(const SZoneRenderInfo &zones[])
         request.bottomPrice = zones[i].bottomPrice;
         request.zoneColor = zones[i].clr;
         request.transparency = zones[i].transparency;
+        request.borderTransparency = -1;   // follow the band (P-UI-63; this module predates the split)
         request.filled = zones[i].filled;
         request.startTime = 0;  // Auto-calculate by Factory
         request.endTime = 0;    // Auto-calculate by Factory
