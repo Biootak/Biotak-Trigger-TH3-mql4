@@ -2930,9 +2930,10 @@ int HandleButtonClick(const string clickedObject)
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
             GlobalVariableSet(gvarName, currentPrice);
-            // `true` = placement mode (grabbable), never pre-selected - see
-            // CreateCustomPriceLine for why a SELECTED line hijacks every drag.
-            CreateCustomPriceLine(currentPrice, Digits, true, "Drag to adjust, Double-click to confirm");
+            // P-UI-48: always grabbable, never pre-SELECTED - the line's drag IS
+            // its SELECTABLE flag, and the interference was a selection that
+            // outlived its gesture (see CreateCustomPriceLine).
+            CreateCustomPriceLine(currentPrice, Digits);
             g_redrawTHLevelsNeeded = true;
             tflags = REFRESH_ALL;
          }

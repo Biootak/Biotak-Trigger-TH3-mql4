@@ -2317,11 +2317,10 @@ def check_live_control(o):
 
 
 def check_custom_price_mode(o):
-    """P-UI-45 - the custom price line's ON/OFF and its INTERACTION state each have
-    ONE owner, and a SETTLED line is inert.
+    """P-UI-45/48 - the custom price line has ONE creator, ONE exit owner and ONE
+    selection owner, and it is ALWAYS grabbable.
 
-    Two reported defects, one shape: a control that only moves in ONE direction, and
-    a state that outlives the gesture that set it.
+    Three reported defects, one shape: a state that outlives the gesture that set it.
       * The ring's PIN item could switch the custom price ON and never OFF - every
         press re-armed (delete the line, re-create it at the market price), so the
         only exit was the ESC key; the ESC branch carried that exit INLINE, so the
@@ -2330,14 +2329,24 @@ def check_custom_price_mode(o):
         object on EVERY later drag anywhere on the chart, so a settled line fought
         the panels, the cards and the BaseKnot boxes and kept re-anchoring the TH
         start price behind the user's back.
+      * P-UI-45 answered that by making a SETTLED line non-SELECTABLE - and
+        SELECTABLE is the drag itself, so the user's next report was "it used to
+        move". The interference was never selectability; it was the selection that
+        outlived its gesture (the old code wrote `SELECTED = true` at creation, so
+        the line was in that state BEFORE any gesture of its own).
 
     The invariants, all of them decisions already made:
       * ONE owner leaves the mode (line + GVars + the Input default start point) and
         BOTH the ESC key and the button's OFF press route through it;
       * the button moves the mode in BOTH directions;
-      * a settled line is not SELECTABLE and is NEVER pre-SELECTED;
-      * the selection a grab/click leaves behind is dropped on button-up, and never
-        mid-drag (that event is continuous while the user is holding the line).
+      * ONE creator writes the pair - SELECTABLE **true** (the drag) and SELECTED
+        **false** - and no other site writes either flag;
+      * ONE owner drops the selection, called from both gesture-end triggers (the
+        button-up mouse move, which never arrives on a motionless release, and the
+        click finalizer) and from the UI press guard, so a press a panel or the
+        ring owns cannot leave MT4 holding the line;
+      * the clear never runs MID-drag (that event is continuous while the user is
+        holding the line, and the drag is what selects it).
     """
     events = strip_comments(read(EVENTS, o))
     menu = strip_comments(read(MENU, o))
@@ -2377,37 +2386,74 @@ def check_custom_price_mode(o):
         return
     ok("custom-price-mode", "the PIN button moves the mode in BOTH directions")
 
-    helper = fn_body(events, "bool CreateCustomPriceLine(")
+    helper = fn_body(_code_only(events), "bool CreateCustomPriceLine(")
     if not helper:
         fail("custom-price-mode", "CreateCustomPriceLine is gone")
         return
-    if "OBJPROP_SELECTABLE, editable" not in helper:
+    if "OBJPROP_SELECTABLE, true" not in helper:
         fail("custom-price-mode",
-             "the creator no longer follows its interaction mode: a settled line that stays "
-             "SELECTABLE is grabbed by MT4 on every later drag anywhere on the chart")
+             "the creator no longer makes the line GRABBABLE: SELECTABLE is the drag itself, "
+             "and a line nothing can grab is the regression this group now locks - the "
+             "reported interference was a SELECTION that outlived its gesture, not "
+             "selectability")
         return
     if "OBJPROP_SELECTED, false" not in helper:
         fail("custom-price-mode",
              "the creator pre-selects the line: MT4 then moves it on EVERY later drag, "
              "which is the interference this cycle removes")
         return
-    presel = re.findall(r"g_customPriceHorizontalLineName, OBJPROP_SELECTED, true", events)
-    if presel:
+    ok("custom-price-mode", "the creator makes the line always grabbable, never pre-SELECTED")
+
+    # ONE creator and ONE clear owner. The property set used to exist FIVE times
+    # (the C key, the chart click, the TF-lock restore, the ring PIN and the
+    # helper) and every copy was a chance to leave the stale selection behind -
+    # which is how it survived a fix that had already been reasoned about.
+    code_ev = _code_only(events)
+    if len(re.findall(r"OBJPROP_SELECTABLE", code_ev)) != 1:
         fail("custom-price-mode",
-             "%d site(s) still pre-select the custom price line" % len(presel))
+             "the line's SELECTABLE flag is written in more than one place: one creator, or "
+             "the copies drift apart")
         return
-    ok("custom-price-mode", "a settled line is inert (not SELECTABLE, never pre-SELECTED)")
+    if re.search(r"OBJPROP_SELECTED, true", code_ev):
+        fail("custom-price-mode", "a site pre-selects the custom price line")
+        return
+    if len(re.findall(r"OBJPROP_SELECTED, false", code_ev)) != 2:
+        fail("custom-price-mode",
+             "the SELECTED flag is not the creator/clear-owner pair (expected exactly two "
+             "writes, both false)")
+        return
+
+    clear = fn_body(code_ev, "void ClearCustomPriceSelection()")
+    if not clear or "g_customPriceLineCreated) return" not in clear \
+       or "OBJPROP_SELECTED)" not in clear or "OBJPROP_SELECTED, false" not in clear:
+        fail("custom-price-mode",
+             "ClearCustomPriceSelection is gone or lost its guarded read / its write: the "
+             "selection has no single owner to die in")
+        return
+    ok("custom-price-mode", "one creator writes the pair, one owner clears the selection")
 
     armed = events.count("g_customPriceNativeDrag = true;")
     cleared = re.search(r"if\(g_customPriceNativeDrag\)\s*\{[^}]*\}", events, re.S)
     if armed < 2 or not cleared or "g_customPriceNativeDrag = false;" not in cleared.group(0) \
-       or "OBJPROP_SELECTED, false" not in cleared.group(0):
+       or "ClearCustomPriceSelection();" not in cleared.group(0):
         fail("custom-price-mode",
-             "the gesture's selection is not dropped on button-up (armed in the drag AND in "
-             "the click handler, cleared once, with the property write): a SELECTED line is "
-             "moved by MT4 on every later drag")
+             "the gesture's selection is not dropped on button-up (armed in the native drag AND "
+             "in the click handler, cleared once through the owner): a SELECTED line is moved "
+             "by MT4 on every later drag")
         return
-    ok("custom-price-mode", "the selection a grab/click leaves behind dies on button-up")
+    panels = strip_comments(read(PANELS, o))
+    if "ClearCustomPriceSelection();" not in (fn_body(panels, "void ChartPointerFinalizeOnUps()") or ""):
+        fail("custom-price-mode",
+             "the button-up finalizer no longer clears the line's selection: a motionless "
+             "release emits no mouse move, so the latch alone cannot see it")
+        return
+    if "if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();" not in panels:
+        fail("custom-price-mode",
+             "the UI press guard is gone: a press a panel or the ring owns can leave MT4 "
+             "holding the line, which is the interference the user reported")
+        return
+    ok("custom-price-mode",
+       "the selection dies on button-up and whenever a UI owner claims the press")
 
 
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
@@ -2939,12 +2985,25 @@ def selftest():
     seed("ESC stops routing through the exit owner", EVENTS,
          "                DeactivateCustomPriceMode(\"ESC\");\n",
          "")
-    seed("creator stops following its interaction mode", EVENTS,
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, editable);\n",
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);\n")
+    seed("the line stops being grabbable (the movement regression)", EVENTS,
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);   // P-UI-48: this IS the drag\n",
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, false);\n")
     seed("creator pre-selects the line again", EVENTS,
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);\n",
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);    // never pre-selected\n",
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);\n")
+    seed("a fifth hand-written copy of the property set returns", EVENTS,
+         "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n",
+         "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n"
+         "            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);\n")
+    seed("the clear owner loses its guarded read", EVENTS,
+         "    if(!(bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED)) return;\n",
+         "")
+    seed("the button-up finalizer stops clearing the selection", PANELS,
+         "   ClearCustomPriceSelection();\n\n   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob",
+         "   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob")
+    seed("the UI press guard is dropped", PANELS,
+         "      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();\n",
+         "")
     seed("click handler stops arming the deferred clear", EVENTS,
          "        if(!isDoubleClick) g_customPriceNativeDrag = true;\n",
          "")

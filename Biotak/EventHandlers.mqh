@@ -486,18 +486,29 @@ int OnInitHandler() {
 
 // Helper function to create custom price horizontal line (DRY)
 //
-// P-UI-45: `editable` is the line's INTERACTION MODE, not just its selection bit:
-//   true  = placement / adjust mode - the user may grab the line with the mouse
-//   false = SETTLED - the line is inert (neither SELECTABLE nor SELECTED)
-// An OBJ_HLINE left SELECTABLE+SELECTED is grabbed by MT4 on every later drag
-// ANYWHERE on the chart (MT4 moves the SELECTED object), which is why a settled
-// line used to fight the panels, the cards and the BaseKnot boxes and kept
-// re-anchoring the TH start price behind the user's back. It is never
-// pre-SELECTED either: MT4 selects a selectable line ITSELF on the press that
-// means to grab it, and that is exactly the moment the live-drag path wants the
-// flag set - so pre-selecting only ever enabled the hijack.
-bool CreateCustomPriceLine(double price, int digits, bool editable = false,
-                           string tooltipSuffix = "PIN button to move")
+// P-UI-48: THE LINE IS ALWAYS GRABBABLE. "Why doesn't it move like it used
+// to?" - because P-UI-45 answered the interference report by making a SETTLED
+// line non-SELECTABLE, and the drag IS that flag. The interference was never
+// selectability; it was a SELECTION THAT OUTLIVED ITS GESTURE:
+//
+//   * MT4 moves the SELECTED object on every later drag ANYWHERE on the chart,
+//     so a line that stayed SELECTED was dragged along with the panel cards and
+//     the BaseKnot boxes and kept re-anchoring the TH start price behind the
+//     user's back;
+//   * the old code wrote OBJPROP_SELECTED = true at creation, so this was the
+//     line's state BEFORE any gesture of its own.
+//
+// So the flag pair is now: SELECTABLE true, ALWAYS (this is the movement), and
+// SELECTED false, ALWAYS - MT4 selects the line ITSELF on the press that means
+// to grab it (that is the moment the live-drag path polls for), and the
+// selection it makes is dropped again on button-up (see
+// ClearCustomPriceSelection + g_customPriceNativeDrag). Pre-selecting only ever
+// enabled the hijack, and never selecting leaves the line as inert as it was
+// before - both wrong. One wording for the tooltip too: every state of the line
+// can be dragged and confirmed now, so a "PIN button to move" text would be a
+// lie in the one place the user reads it.
+bool CreateCustomPriceLine(double price, int digits,
+                           string tooltipSuffix = "Drag to adjust, Double-click to confirm")
 {
     if(ObjectFind(0, g_customPriceHorizontalLineName) < 0) {
         if(!ObjectCreate(0, g_customPriceHorizontalLineName, OBJ_HLINE, 0, 0, price)) {
@@ -511,13 +522,28 @@ bool CreateCustomPriceLine(double price, int digits, bool editable = false,
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, editable);
-    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);   // P-UI-48: this IS the drag
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);    // never pre-selected
     ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
     ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
                   "[PIN] Custom Price: " + DoubleToString(price, digits) + " | " + tooltipSuffix);
     g_customPriceLineCreated = true;
     return true;
+}
+
+// P-UI-48: the ONE owner of "drop the line's selection". MT4 selects a
+// SELECTABLE object on the press that grabs it, and a selection that SURVIVES
+// its gesture lets MT4 drag the line along with every later drag anywhere on the
+// chart - the interference P-UI-45 removed by removing the movement. It is
+// called from the button-up latch (the grab/click is over) AND from the UI press
+// path (the press belonged to a panel or the ring, so the terminal's selection
+// of the line must not outlive it). Guarded by the read: a no-op costs one
+// ObjectGetInteger, and the write happens once per gesture.
+void ClearCustomPriceSelection()
+{
+    if(!g_customPriceLineCreated) return;
+    if(!(bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED)) return;
+    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
 }
 
 //| Helper function to hide all TH objects (DRY)                     |
@@ -2322,21 +2348,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             string gvarName = "Biotak_CustomPrice_" + GetCachedSymbol();
             GlobalVariableSet(gvarName, currentPrice);
-            if(!ObjectCreate(0, g_customPriceHorizontalLineName, OBJ_HLINE, 0, 0, currentPrice)) {
-                _LOG_GATE_E Print("[E][GEN] Failed to create custom price horizontal line. Error: ", GetLastError());
-                return;
-            }
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
-            // P-UI-45: placement mode = SELECTABLE (a press ON the line may grab it),
-            // never pre-SELECTED - a SELECTED line is moved by MT4 on ANY later drag.
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
-            ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
-                          "[PIN] Custom Price: " + DoubleToString(currentPrice, Digits) + " | Drag to adjust, Double-click to confirm");
-            g_customPriceLineCreated = true;
+            // P-UI-48: ONE creator. This block used to write the line's whole
+            // property set by hand - the fifth copy of it in the file, and the
+            // place a stale OBJPROP_SELECTED had survived longest.
+            if(!CreateCustomPriceLine(currentPrice, Digits)) return;
             g_redrawTHLevelsNeeded = true;
             _LOG_GATE_D Print("[D][GEN] [PIN] Custom price set to: ", DoubleToString(currentPrice, Digits), " - Drag to adjust.");
             ThrottledChartRedraw();
@@ -2691,17 +2706,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             if(hadCustomPrice && savedCustomPrice > 0) {
                 g_customTHStartPrice = savedCustomPrice;
                 g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
-                if(ObjectCreate(0, g_customPriceHorizontalLineName, OBJ_HLINE, 0, 0, savedCustomPrice)) {
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
-                    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
-                    ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, 
-                                  "[PIN] Custom Price: " + DoubleToString(savedCustomPrice, Digits) + " | Drag to adjust (live update)");
-                    g_customPriceLineCreated = true;
-                }
+                // P-UI-48: the owner, not another hand-written property set.
+                CreateCustomPriceLine(savedCustomPrice, Digits);
             }
             ThrottledChartRedraw();
             return;
@@ -2825,19 +2831,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         double clickedPrice = dparam;
         if(!g_customPriceLineCreated)
         {
-            if(!ObjectCreate(0, g_customPriceHorizontalLineName, OBJ_HLINE, 0, 0, clickedPrice)) {
-                _LOG_GATE_E Print("[E][GEN] Failed to create custom price horizontal line. Error: ", GetLastError());
-                return;
-            }
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_COLOR, GetCustomPriceRenderColor());
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_STYLE, STYLE_SOLID);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_WIDTH, inpCustomPriceLevelWidth);
-            // P-UI-45: same placement mode as the C key - see CreateCustomPriceLine.
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
-            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31
-            ObjectSetString(0, g_customPriceHorizontalLineName, OBJPROP_TOOLTIP, "[PIN] Custom Price Line - Drag to adjust, Double-click to confirm");
-            g_customPriceLineCreated = true;
+            if(!CreateCustomPriceLine(clickedPrice, Digits)) return;
             _LOG_GATE_D Print("[D][GEN] [PIN] Drag the orange dotted line to adjust price. Double-click to confirm.");
         }
         else
@@ -2861,7 +2855,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // (see CreateCustomPriceLine). Confirming must not leave it grabbed:
                 // a selection outlives the gesture, and MT4 then drags the line on
                 // every later drag anywhere on the chart.
-                CreateCustomPriceLine(selectedPrice, Digits, false);
+                CreateCustomPriceLine(selectedPrice, Digits);
                 g_redrawTHLevelsNeeded = true;
                 RedrawAllObjects(true);
                 _LOG_GATE_I Print("[I][GEN] Custom Price Mode activated! Using ", inpMaxLevels, " levels above/below price: ", DoubleToString(selectedPrice, Digits));
@@ -2905,9 +2899,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string overrideFlagName = "Biotak_CustomPriceOverride_" + symbolName;
             GlobalVariableSet(gvarName, selectedPrice);
             GlobalVariableSet(overrideFlagName, 1.0);
-            // P-UI-45: settle - the line KEEPS its price and becomes inert again
-            // (same owner as the chart-click confirm above).
-            CreateCustomPriceLine(selectedPrice, Digits, false);
+            // P-UI-45/P-UI-48: settle - the line KEEPS its price and stays
+            // grabbable (same owner as the chart-click confirm above).
+            CreateCustomPriceLine(selectedPrice, Digits);
             g_redrawTHLevelsNeeded = true;
             RedrawAllObjects(true);
             _LOG_GATE_I Print("[I][GEN] Custom Price Mode activated! Using ", inpMaxLevels, " levels above/below price: ", DoubleToString(selectedPrice, Digits));
@@ -2945,15 +2939,15 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
         else
         {
-            // P-UI-45: the gesture is over - drop the selection a grab (or a plain
-            // click on the line) left behind. A SELECTED line is moved by MT4 on
-            // every LATER drag anywhere on the chart, which is what made it fight
-            // the panels, the cards and the BaseKnot boxes. One bool read per
-            // mouse-move; the ObjectSet runs once per gesture.
+            // P-UI-45/P-UI-48: the gesture is over - drop the selection a grab (or
+            // a plain click on the line) left behind. A SELECTED line is moved by
+            // MT4 on every LATER drag anywhere on the chart, which is what made it
+            // fight the panels, the cards and the BaseKnot boxes. One bool read per
+            // mouse-move; the clear runs once per gesture, through its one owner.
             if(g_customPriceNativeDrag)
             {
                 g_customPriceNativeDrag = false;
-                ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false);
+                ClearCustomPriceSelection();
             }
             if(g_customPriceLineDragging) {
                 g_customPriceLineDragging = false;

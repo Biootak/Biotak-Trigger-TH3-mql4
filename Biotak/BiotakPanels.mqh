@@ -5425,6 +5425,14 @@ void ChartPointerFinalizeOnUps()
    // every drag engine (and the ←/→ anchor guard) believe a press was live.
    g_MouseWasDown = false;
 
+   // P-UI-48: every button-up is also the end of a custom-price grab. This is the
+   // second of the two gesture-end triggers (the first is the button-up mouse
+   // move, which never arrives when the user releases without moving), and BOTH
+   // go through the one owner - a selection that outlives its gesture lets MT4
+   // drag the line along with the NEXT one. Guarded: a chart with no custom price
+   // line costs one bool read.
+   ClearCustomPriceSelection();
+
    // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob
    // gesture can only live while the button is down, so this ONE net makes a
    // forgotten release path impossible — the last value always lands.
@@ -6905,6 +6913,14 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       uint p15panel = GetTickCount() - p15t; p15t = GetTickCount();
       BkHoldOnMove(mx, my, leftDown, pressStart);
       uint p15hold = GetTickCount() - p15t;
+      // P-UI-48: the custom price line is SELECTABLE again - that IS its drag -
+      // so a press a UI owner just claimed must not leave MT4 holding the line:
+      // a selection that outlives the press lets MT4 drag the line along with
+      // the NEXT gesture too (the interference P-UI-45 removed by removing the
+      // drag). The test is one bool read on a press edge; the clear is one
+      // property write per UI press, and the line's own grab claims no owner, so
+      // this can never drop the selection out of a legitimate line drag.
+      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();
       if(p15ring + p15panel + p15hold >= P_P4_MOVE_WARN_MS)
          _LOG_GATE_W Print("[W][PERF] mouse move breakdown: ring=", (int)p15ring, "ms panel=",
                (int)p15panel, "ms hold=", (int)p15hold, "ms");
