@@ -1006,6 +1006,18 @@ void OnDeinitHandler(const int reason) {
         // P-PERF-38d: the objects go with the removal, so the next attach must
         // NOT adopt a chart this instance emptied.
         ClearTopologyAdoptionStamp();
+        // P-UI-60: the naming-migration stamp answers "does THIS chart still carry
+        // objects named by the retired timeframe-in-the-name scheme?". The removal
+        // deletes every object of that family, so the answer must be forgotten with
+        // them - exactly the rule the adoption stamp above already follows (the
+        // `topology-adoption` gate enforces it for that one). Left behind, it was a
+        // `Biotak_NameScheme_<chartId>` global variable held for the LIFETIME OF THE
+        // TERMINAL for every chart id the terminal had ever shown, and nothing ever
+        // removed those (the chart id of a closed chart never returns). The price is
+        // the one-time 11-prefix sweep running again on a RE-ATTACH of the same
+        // chart - once per attach, never on a timeframe switch (a switch is
+        // REASON_CHARTCHANGE and keeps the stamp).
+        GlobalVariableDel(NameSchemeStampName());
         CleanupAllGlobalVariables();
         DeleteAllIndicatorObjects(true);
         ObjectsDeleteAll(0, "TH3_Structure_");

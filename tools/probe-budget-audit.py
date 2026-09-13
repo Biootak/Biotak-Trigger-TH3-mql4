@@ -2805,13 +2805,157 @@ def check_custom_price_source(o):
     ok("custom-price-source", "NaN / zero-divide fenced at the three numeric owners")
 
     builder = fn_body(read(PIPELINE, o), "void BuildZonesAndLines(")
-    if not builder or builder.count("ClampZoneHalfHeight(") != 3 or \
+    if not builder or builder.count("ClampZoneHalfHeight(") != 1 or \
        "double zoneHeight = zoneStepSize * config.zoneHeightPercent * 0.5;" in builder:
         fail("custom-price-source",
              "a zone band is built without the minimum-gap clamp: a band whose half-height "
              "reaches half the interval touches (and then swallows) the line it sits beside")
         return
+    # P-UI-59: ONE of the two intervals is not enough. A zone has a midpoint line on
+    # BOTH of its sides and in SS/LS mode those intervals differ (the steps alternate
+    # short/long), so a band clamped by the long side still reaches the short side's
+    # line: at 100% height the band half is `ss/2` and the ss line is exactly `ss/2`
+    # away - on the band edge, i.e. rendered inside it. Both build branches therefore
+    # pass the interval they sit in AND the one beyond the level.
+    # The two build branches must BOTH pass the interval they sit in AND the one
+    # beyond the level - an argument of 0 ("no neighbour") is the one-sided clamp
+    # wearing the new name, so the arguments are matched, not the call.
+    if builder.count("ClampZoneHalfHeightBoth(") != 2 or \
+       "stepSize, stepAbove);" not in builder or "stepBelow, stepSize);" not in builder:
+        fail("custom-price-source",
+             "a zone band is clamped by only ONE of its two intervals again: in SS/LS the "
+             "band then reaches the midpoint line of its shorter side and swallows it")
+        return
     ok("custom-price-source", "every zone band keeps a minimum gap from the line family")
+
+
+# The functions that run on the REMOVE teardown and are allowed to be counted as a
+# delete owner. Every one of them is reached from `OnDeinit` through
+# `CleanupUIStates` / `OnDeinitHandler` (see `check_delete_paths` for the order).
+PURGE_OWNERS = (
+    (GLOBALS, "void CleanupAllGlobalVariables()"),
+    (MENU, "void ClearAllGVs()"),
+    (MENU, "void CleanupUIStates("),
+    (HTF, "void CleanupHTFCandlesGVs()"),
+    (EVENTS, "void ClearTopologyAdoptionStamp()"),
+    ("Biotak/BaseKnotTool.mqh", "void BaseKnotOnDeinit("),
+)
+
+
+def check_teardown_census(o):
+    """P-UI-60 — NOTHING AN INSTANCE CREATED MAY OUTLIVE ITS REMOVAL.
+
+    Reported: «پاکسازی درست انجام نمیشه … موقع حذف اندیکاتور تمام المانها باید پاک
+    بشن و هیچی جا نمونه». A chart object is not the interesting half - MT4 drops an
+    indicator's objects with it, and `check_delete_paths` already owns the    chart side. The half nothing watches is everything the indicator persists OUTSIDE the
+    chart: the terminal's global-variable table, which survives the indicator, the chart
+    AND the session. An orphan there is not cosmetic - the table is finite and a full
+    one rejects new writes, which silently stops state persisting at all.
+
+    The first real audit of this found exactly one family with no delete owner:
+    the P-PERF-38c naming-migration stamp, written once per chart and never removed,
+    i.e. one `Biotak_NameScheme_<chartId>` left in the terminal for the lifetime of
+    the terminal for EVERY chart id the terminal had ever shown - including the ids
+    of charts that no longer exist, which can never be looked up again. The gate is
+    mechanical so the next one cannot hide: EVERY `Biotak_*` family literal in the
+    sources must appear in the text of a teardown that runs on REASON_REMOVE, or be
+    reachable through a delete owner defined in the same file (the accessor form,
+    so the literal keeps its single owner instead of being spelled a second time).
+
+    There is deliberately NO survivor list. A per-chart stamp must survive a
+    timeframe switch - which is REASON_CHARTCHANGE, and the stamp is not touched
+    there - but a REMOVAL empties the chart it describes, so nothing has a reason
+    to outlive it. A family that needs an exemption is a design decision, and a
+    design decision belongs in the check with its reason attached.
+    """
+    events = strip_comments(read(EVENTS, o))
+    d = fn_body(events, "void OnDeinitHandler(const int reason)")
+    if not d or "reason == REASON_REMOVE" not in d:
+        fail("teardown-census", "OnDeinitHandler lost its REASON_REMOVE branch")
+        return
+    remove = d.split("reason == REASON_REMOVE", 1)[1].split("else if(reason == REASON_PARAMETERS", 1)[0]
+    entry_od = fn_body(strip_comments(read(FULL, o)), "void OnDeinit(const int reason)")
+    if not entry_od:
+        fail("teardown-census", "the entry's OnDeinit is gone")
+        return
+
+    # A sweep that is merely DEFINED satisfies a census that only reads bodies, so
+    # its call has to be reachable from the removal branch. The closure starts at
+    # the removal branch (what runs on remove) plus the teardown that runs for EVERY
+    # reason, and keeps pulling in the body of any owner whose call it can now see.
+    reach = remove + "\n" + d + "\n" + entry_od
+    purge = []
+    pending = list(PURGE_OWNERS)
+    while pending:
+        progressed = False
+        for item in list(pending):
+            rel, sig = item
+            name = sig.split("(")[0].split()[-1]
+            if (name + "(") not in reach:
+                continue
+            body = fn_body(strip_comments(read(rel, o)), sig)
+            if not body:
+                fail("teardown-census",
+                     "the delete owner %s is gone from %s: the families it swept are now "
+                     "unreachable by any teardown" % (sig, rel))
+                return
+            pending.remove(item)
+            purge.append(body)
+            reach += "\n" + body
+            progressed = True
+        if not progressed:
+            break
+    if pending:
+        fail("teardown-census",
+             "these delete owners are never reached from the removal branch, so every family "
+             "they sweep is left in the terminal's table: %s"
+             % ", ".join(sorted(sig for _, sig in pending)))
+        return
+    purge_text = "\n".join(purge + [remove])
+
+    families = {}
+    for rel in sorted(glob.glob(os.path.join(ROOT, "Biotak", "**", "*.mqh"), recursive=True) +
+                      glob.glob(os.path.join(ROOT, "*.mq4"))):
+        rel = os.path.relpath(rel, ROOT).replace("\\", "/")
+        for lit in re.findall(r'"(Biotak_[A-Za-z0-9]*_)"', read(rel, o)):
+            families.setdefault('"%s"' % lit, set()).add(rel)
+    if not families:
+        fail("teardown-census", "no Biotak_* global-variable family found: the census is blind")
+        return
+
+    def _functions_naming(src, literal):
+        """Functions whose body builds this literal (the accessor form)."""
+        names = []
+        for sig in re.findall(r'^(?:void|bool|int|double|string|long|datetime|color)\s+'
+                              r'([A-Za-z0-9_]+)\s*\(', src, re.M):
+            body = fn_body(src, sig + "(")
+            if body and literal in body:
+                names.append(sig)
+        return names
+
+    orphans = []
+    for literal, files in sorted(families.items()):
+        if literal in purge_text:
+            continue
+        reached = False
+        for rel in files:
+            for name in _functions_naming(strip_comments(read(rel, o)), literal):
+                if (name + "()") in purge_text:
+                    reached = True
+                    break
+            if reached:
+                break
+        if not reached:
+            orphans.append("%s (%s)" % (literal, ",".join(sorted(files))))
+    if orphans:
+        fail("teardown-census",
+             "%d global-variable family(ies) have no delete owner on the removal path, so "
+             "they are held in the terminal's table for its whole lifetime: %s"
+             % (len(orphans), "; ".join(orphans)))
+        return
+    ok("teardown-census",
+       "every one of the %d Biotak_* global-variable families is deleted by a teardown "
+       "that runs on removal" % len(families))
 
 
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
@@ -2820,7 +2964,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_persist_write_shape, check_chart_change_prime, check_name_scheme,
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
-          check_live_control]
+          check_live_control, check_teardown_census]
 
 
 def run(overrides=None):
@@ -3468,6 +3612,22 @@ def selftest():
          "        double zoneHeight = (zoneStepSize * config.zoneHeightPercent * 0.5,")
     seed("the pip owner stops fencing zero", PERFOPT,
          "        g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;\n",
+         "")
+    seed("a band is clamped by the interval on one side only again", PIPELINE,
+         "            double zoneHeight = ClampZoneHalfHeightBoth(zoneStepSize * config.zoneHeightPercent * 0.5,\n"
+         "                                                        stepSize, stepAbove);",
+         "            double zoneHeight = ClampZoneHalfHeightBoth(zoneStepSize * config.zoneHeightPercent * 0.5,\n"
+         "                                                        stepSize, 0.0);")
+
+    # 20. nothing an instance created may outlive its removal (P-UI-60)
+    seed("the naming-migration stamp stops being cleared on removal", EVENTS,
+         "        GlobalVariableDel(NameSchemeStampName());\n",
+         "")
+    seed("a chart-scoped key drops out of the removal cleanup", GLOBALS,
+         '    gvars[20] = "Biotak_ViewLock_" + chartIdStr;\n',
+         "")
+    seed("the removal stops sweeping the global-variable families", EVENTS,
+         "        CleanupAllGlobalVariables();\n",
          "")
 
     caught = 0

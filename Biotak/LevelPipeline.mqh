@@ -450,6 +450,19 @@ int ClassifyLevelsAlternating(
 // control the user may legitimately push to its maximum silently swallows the lines
 // it is supposed to sit beside.
 //
+// P-UI-59 — ONE INTERVAL IS NOT ENOUGH: A BAND HAS TWO NEIGHBOURS.
+//
+// P-UI-58 clamped a band with the interval it was BUILT from, which is only ever
+// ONE of the two midpoint lines that bracket it. In SS/LS mode the two are not
+// equal (the steps alternate short/long, so a level routinely has a SHORT interval
+// on one side and a LONG one on the other), and a band clamped by the long side
+// still reached the midpoint line of the short side. 100% height in SS/LS: the
+// band half-height is `min(ss, ls) * 0.5 = ss/2` and the line in the ss interval
+// sits at exactly `ss/2` — the line lands ON the band edge and renders inside it.
+// That is the reported «خط میآید داخل زون». The invariant belongs to the LINE, not
+// to the band: the line at `interval/2` needs the zones on BOTH of its ends to stay
+// clear, so a band is clamped by the NEARER of its two intervals.
+//
 // The invariant is enforced where the band is BUILT, from the interval the band
 // actually sits in (never from the "fixed" step, which in SS/LS mode is not the
 // interval), and it keeps ZONE_MIN_GAP_RATIO of the half-interval clear. Every
@@ -465,6 +478,21 @@ double ClampZoneHalfHeight(const double wantedHalfHeight, const double neighbour
     double ceiling = neighbourInterval * 0.5 * (1.0 - ZONE_MIN_GAP_RATIO);
     if(ceiling <= 0.0) return wantedHalfHeight;
     return (wantedHalfHeight > ceiling) ? ceiling : wantedHalfHeight;
+}
+
+// The two-sided form. `stepBelow` / `stepAbove` are the intervals on the two sides
+// of the band; 0 means "no such neighbour" (the outermost level), which is not a
+// constraint. Both are validated before the comparison because a NaN would make
+// `stepAbove < bound` false and quietly drop the real constraint (P-UI-57).
+double ClampZoneHalfHeightBoth(const double wantedHalfHeight,
+                               const double stepBelow,
+                               const double stepAbove)
+{
+    double bound = 0.0;
+    if(MathIsValidNumber(stepBelow) && stepBelow > 0.0) bound = stepBelow;
+    if(MathIsValidNumber(stepAbove) && stepAbove > 0.0 &&
+       (bound <= 0.0 || stepAbove < bound)) bound = stepAbove;
+    return ClampZoneHalfHeight(wantedHalfHeight, bound);
 }
 
 //+------------------------------------------------------------------+
@@ -521,12 +549,27 @@ void BuildZonesAndLines(
         s_belowCapacity = classifiedCount;
     }
     
-    // Single pass: count AND collect simultaneously
+    // Single pass: count AND collect simultaneously — and COMPACT.
+    // P-UI-59: a level that does not ADVANCE the sequence (a duplicate price, or a
+    // non-ordered one) used to be skipped by a `continue` INSIDE each build loop,
+    // which left that loop's `prevPrice` pointing at the skipped level and made "the
+    // level after this one" unknowable without a forward scan. Dropping it here
+    // instead leaves s_aboveLevels strictly ascending and s_belowLevels strictly
+    // descending, so i-1 / i+1 ARE the two neighbours of level i — which is exactly
+    // what the two-sided gap clamp needs. Same arrays, still one pass, and the build
+    // loops lose a branch each.
     int aboveCount = 0, belowCount = 0;
     for(int i = 0; i < classifiedCount; i++) {
         if(classified[i].isMidpoint) { hasMid = true; midLevel = classified[i]; continue; }
-        if(classified[i].direction > 0) { s_aboveLevels[aboveCount] = classified[i]; aboveCount++; }
-        else if(classified[i].direction < 0) { s_belowLevels[belowCount] = classified[i]; belowCount++; }
+        double price = classified[i].price;
+        if(!MathIsValidNumber(price) || price <= 0.0) continue;   // P-UI-57: never carry a non-finite price
+        if(classified[i].direction > 0) {
+            if(aboveCount > 0 && price <= s_aboveLevels[aboveCount - 1].price) continue;
+            s_aboveLevels[aboveCount] = classified[i]; aboveCount++;
+        } else if(classified[i].direction < 0) {
+            if(belowCount > 0 && price >= s_belowLevels[belowCount - 1].price) continue;
+            s_belowLevels[belowCount] = classified[i]; belowCount++;
+        }
     }
     
     // Pre-allocate output arrays (max possible sizes)
@@ -550,8 +593,9 @@ void BuildZonesAndLines(
             neighborDist = GetCachedPoint() * 100;
         }
         double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : neighborDist;
-        // P-UI-58: clamped against the NEAREST neighbour interval — the midpoint
-        // line above/below the centre zone is what must stay clear of the band.
+        // P-UI-58/59: `neighborDist` IS the nearer of the two neighbour intervals,
+        // so this call already is the two-sided clamp the siblings below need — the
+        // midpoint line above/below the centre zone is what must stay clear.
         double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
                                                 neighborDist);
         
@@ -577,9 +621,11 @@ void BuildZonesAndLines(
     double prevPrice = hasMid ? midLevel.price : 0;
     for(int i = 0; i < aboveCount && prevPrice > 0; i++) {
         double currentPrice = s_aboveLevels[i].price;
-        if(currentPrice <= prevPrice) { prevPrice = currentPrice; continue; }
-        
         double stepSize = currentPrice - prevPrice;
+        if(stepSize <= 0) { prevPrice = currentPrice; continue; }   // P-UI-59: cannot fire on a compacted array
+        // P-UI-59: the interval ABOVE this level — the second line this band has to
+        // stay clear of. 0 = this is the outermost level, so there is no line there.
+        double stepAbove = (i + 1 < aboveCount) ? (s_aboveLevels[i + 1].price - currentPrice) : 0.0;
         // In SS/LS mode every zone uses the configured short-step width,
         // regardless of whether this interval is SS or LS.
         double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : stepSize;
@@ -606,11 +652,10 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            // P-UI-58: the band is clamped by THIS interval (the midpoint line between
-            // prevLevel and this level is `stepSize / 2` away), so the line always has
-            // its minimum gap.
-            double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
-                                                   stepSize);
+            // P-UI-58/59: the midpoint line below this level is `stepSize / 2` away and
+            // the one ABOVE it is `stepAbove / 2` — the band must fit under the NEARER.
+            double zoneHeight = ClampZoneHalfHeightBoth(zoneStepSize * config.zoneHeightPercent * 0.5,
+                                                        stepSize, stepAbove);
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Above_" + 
                                IntegerToString(s_aboveLevels[i].logicalStep);
@@ -639,9 +684,10 @@ void BuildZonesAndLines(
     prevPrice = hasMid ? midLevel.price : 0;
     for(int i = 0; i < belowCount && prevPrice > 0; i++) {
         double currentPrice = s_belowLevels[i].price;
-        if(currentPrice >= prevPrice || currentPrice <= 0) { prevPrice = currentPrice; continue; }
-        
         double stepSize = prevPrice - currentPrice;
+        if(stepSize <= 0) { prevPrice = currentPrice; continue; }   // P-UI-59: cannot fire on a compacted array
+        // P-UI-59: the interval BELOW this level (0 = outermost level, no line there).
+        double stepBelow = (i + 1 < belowCount) ? (currentPrice - s_belowLevels[i + 1].price) : 0.0;
         // In SS/LS mode every zone uses the configured short-step width.
         double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : stepSize;
         
@@ -667,9 +713,10 @@ void BuildZonesAndLines(
         
         // Zone centered on this level
         if(config.zonesEnabled) {
-            // P-UI-58: same invariant as the Above branch (this interval).
-            double zoneHeight = ClampZoneHalfHeight(zoneStepSize * config.zoneHeightPercent * 0.5,
-                                                   stepSize);
+            // P-UI-58/59: same invariant as the Above branch, both neighbours
+            // (`stepSize` is the interval above this level here, `stepBelow` the one below).
+            double zoneHeight = ClampZoneHalfHeightBoth(zoneStepSize * config.zoneHeightPercent * 0.5,
+                                                        stepBelow, stepSize);
             
             zones[zIdx].name = config.objectPrefix + config.modeName + "_Zone_Below_" + 
                                IntegerToString(s_belowLevels[i].logicalStep);
