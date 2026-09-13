@@ -650,7 +650,7 @@ string PnlHeaderSub(const int item)
    if(item==3)  return "FRACTAL · STANDARD · TARGETS";
    if(item==6)  return "HIGHER TIMEFRAME OVERLAY";
    if(item==7)  return "ONE STYLE FOR ALL LINES";
-   if(item==8)  return "PIN · MAGNET";
+   if(item==8)  return "PIN · WIDTH + COLOR";   // P-UI-47: MAGNET retired (BKMAGNET-OFF)
    if(item==9)  return "ENGINE · SECTION SWAPS WITH MODE";
    if(item==10) return "AUTO / MANUAL STEP ENGINE";
    if(item==11) return "L1 - L5 ZONE TOGGLES";
@@ -1330,8 +1330,13 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(1, PNL_K_LEGACY, 4, 1, "valign");
       PnlSpecAdd(1, PNL_K_LEGACY, 5, 1, "linestyle");
       PnlSpecAdd(1, PNL_K_LEGACY, 6, 1, "weight");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 2);
-      PnlSpecAdd(1, PNL_K_DUAL, 7, 2, "swap");   // LS FIRST · MIDPOINT in one row (15→14 rows)
+      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 1);
+      // MIDPOINT-OFF (2026-09-13): the midpoint LINE is retired — the pipeline
+      // deletes every `_Midpoint_` object on each render (CleanupSurplusPipeline
+      // "legacy cleanup", LevelPipeline), so this switch wrote a flag that NO
+      // module reads and changed nothing on the chart (P-UI-47). The row is gone;
+      // setting 8 stays persisted and inert so nothing renumbers.
+      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, "swap");   // LS FIRST (was LS FIRST · MIDPOINT)
       PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 2);
       PnlSpecAdd(1, PNL_K_LEGACY, 9, 1, "steps", "", "", 0, "5 LEVELS");
       PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "line", "", "", 0, "ONE STYLE");
@@ -1350,8 +1355,10 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(2, PNL_K_LEGACY, 7, 1, "crosshair", "H");
       PnlSpecAdd(2, PNL_K_LEGACY, 8, 1, "flag", "P");
       PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, "ruler");
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
-      PnlSpecAdd(2, PNL_K_LEGACY, 10, 1, "gap");
+      // ROW-GAP-OFF (2026-09-13): the label layout reads `inpLabelRowGap` (the
+      // indicator's own input), NOT `g_atrLabelRowGap` — the slider wrote a
+      // runtime copy no module consumes, so dragging it moved the chip and no
+      // label (P-UI-47). LAYOUT band removed with it.
    }
    else if(item == 3)   // TH LABELS (ember) — 5 settings / 8 display rows
    {
@@ -1391,14 +1398,16 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
       PnlSpecAdd(7, PNL_K_LEGACY, 5, 1, "droplet");
    }
-   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 6 display rows
+   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 4 display rows
    {
       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
       PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
       PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
-      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "MAGNET", 2);
-      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");
-      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "target");
+      // MAGNET-OFF (2026-09-13): magnet snapping was retired BY USER DECISION
+      // (BKMAGNET-OFF 2026-09-06 — snapping pulled corners onto candle shadows),
+      // yet this card kept offering MAGNET + MAGNET SENS. Neither flag is read by
+      // any module, so both controls only ever moved themselves (P-UI-47).
+      // Settings 2/3 stay persisted and inert.
    }
    else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
    {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
@@ -2522,6 +2531,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==5)  { kind=2; label="BORDER"; opts="Solid|Dash|Dot|DashDot|DashDotDot"; minV=0; maxV=ILS_COUNT-1; }
       else if(row==6)  { label="BORDER WIDTH"; minV=1; maxV=5; }
       else if(row==7)  { kind=1; label="LS FIRST"; }
+      // MIDPOINT-OFF (2026-09-13, P-UI-47): the midpoint line is deleted every
+      // render by the pipeline's legacy cleanup — row kept for the address space
+      // only, no display row renders it.
       else if(row==8)  { kind=1; label="MIDPOINT"; }
       else if(row==9)  { kind=5; label="STRUCTURE L1-L5"; opts="11"; }   // NAV → structure sub-card
       else             { kind=5; label="LINES"; opts="7"; }              // NAV → unified lines card
@@ -2541,6 +2553,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==7)  { kind=1; label="HUNTER ROW"; }
       else if(row==8)  { kind=1; label="TP ROW"; }
       else if(row==9)  { kind=1; label="PIP LABELS"; }
+      // ROW-GAP-OFF (2026-09-13, P-UI-47): the label layout reads inpLabelRowGap,
+      // not this runtime copy — row kept for the address space only, no display row
+      // renders it.
       else             { label="ROW GAP"; minV=1; maxV=60; }
    }
    else if(item==3)   // TH LABELS
@@ -2601,6 +2616,8 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
       else if(row==1)  { kind=4; label="COLOR"; }
+      // MAGNET-OFF (2026-09-13, P-UI-47): rows 2/3 kept for the address space
+      // only — no display row renders them and nothing reads their globals.
       else if(row==2)  { kind=1; label="MAGNET"; }
       else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
    }
@@ -2805,7 +2822,7 @@ string PnlSubtitleText(const int item)
    if(item==5)  return "TH3 pattern drawing tool";
    if(item==6)  return "Higher timeframe candle overlay";
    if(item==7)  return "One style for ALL lines";
-   if(item==8)  return "Custom price pin & magnet";
+   if(item==8)  return "Custom price pin (width & color)";   // P-UI-47: magnet retired
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
    if(item==12) return "Style · Text · Setup (TV-like)";
@@ -3272,13 +3289,28 @@ int PnlApplySet(const int item,const int row,const double v)
          }
          else if(row==1 || row==2)
          {
+            // P-UI-46 (2026-09-13) — rows 1/2 were the SAME one-way control row 0
+            // was (P-UI-44), one line down. `if(g_showTHLabels && m1==0) m1=1;`
+            // re-derived the mode the press was about to write: switching the LAST
+            // lit source off left m1==0, the guard forced it back to 1, and
+            // SyncTHFlagsFromMode() re-lit the switch the user had just pressed —
+            // so "the last source cannot be switched off" (the residual P-UI-44
+            // recorded; the user asked for it here).
+            // Mode 0 IS the honest state for "no source": the ring's TH cycle, the
+            // S key and the master row already write exactly that, and
+            // SyncTHFlagsFromMode() then reports the master row OFF too, so the card
+            // can no longer show a source that is not drawn. Switching a source ON
+            // from the both-off state re-lights the master the same way.
             if(row==1) g_showFractalTHs=(v>0.5);
             else       g_showStandardTHs=(v>0.5);
             int m1=THModeFromFlags();
-            if(g_showTHLabels && m1==0) m1=1;
             g_thLabelsMode=m1;
             SyncTHFlagsFromMode();
             GlobalVariableSet("Biotak_THLabels_"+GetCachedChartIdStr(),(double)m1);
+            // Row 0 (and the ring's light) display the master this press just
+            // re-derived; a press repaints only its OWN row, so the other surface
+            // must be asked explicitly (same asymmetry P-UI-40/44 fixed).
+            RequestUISync();
             string opT2=GetLevelObjectPrefix();
             SetTHLabelsVisibility(opT2,m1);
             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;

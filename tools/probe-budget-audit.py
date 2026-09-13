@@ -105,6 +105,7 @@ Usage:  python tools/probe-budget-audit.py [--quiet] [--selftest] [--sites]
 Exit 0 = the probe budget holds, 1 = an unguarded per-level probe is back.
 """
 
+import glob
 import os
 import re
 import sys
@@ -2020,6 +2021,301 @@ def check_longpress_latch(o):
     ok("longpress-latch", "the latch survives button-up, so only its own release consumes it")
 
 
+INPUTS = "Biotak/PropertiesAndInputs.mqh"
+# The panel and the settings layer are where a control is DEFINED, not where its
+# effect lands: a global only they mention is a global nobody consumes.
+SKIP_CONSUMERS = (PANELS, RUNTIME, INPUTS, "Biotak/InputValidator.mqh")
+# A branch may also owe its effect to a REQUEST flag - those are read by the
+# render loop, so counting them would excuse a row that changes nothing else.
+REQUEST_ONLY = ("g_redrawTHLevelsNeeded", "g_labelsRelayoutNeeded",
+                "g_forceClearOnNextDraw", "g_renderAllNeeded")
+# State that only the PANEL renders: its consumer is the card rebuilding itself
+# (`PnlApplyOption` -> `PnlOpen`), which no other module can witness. Listed by
+# hand ON PURPOSE - one name, named here, so a dead CHART control cannot hide.
+UI_LOCAL = ("g_BkTab",)
+
+
+def _apply_rows(src):
+    """PnlApplySet -> {(item, settingRow): branch source}.
+
+    MQL4 semantics, not a guess: a row is answered by the FIRST condition that
+    names it (a chain condition may name several, e.g. `row==1 || row==2`), and
+    an `else` tail owns every row its case did not name. A condition that is not
+    a literal set of rows (the Step card's `PnlStepMaxLevelsRow()`) is dropped:
+    this check measures the rows it can REACH, never the ones it has to guess.
+    """
+    body = fn_body(src, "int PnlApplySet(")
+    if not body:
+        return None
+    out = {}
+    for cm in re.finditer(r"\n\s+case (\d+):", body):
+        item = int(cm.group(1))
+        nxt = re.search(r"\n\s+case \d+:", body[cm.end():])
+        block = body[cm.end(): cm.end() + (nxt.start() if nxt else len(body))]
+        nl = block.find("\n")
+        if nl >= 0:
+            block = block[nl + 1:]            # the rest of the `case N:` line is a comment
+        # walk the if/else-if/else chain CLAUSE BY CLAUSE: `else if(row==..)` is a
+        # boundary, `else { ... }` closes the chain, and an `else` that starts no
+        # clause (an inner `if(row==1) x; else y;` INSIDE one row's body) is not a
+        # boundary - splitting there would cut a row in half and blame the wrong
+        # half for its writes.
+        tail = None
+        for cl in re.split(r"\n\s*else\s+(?=if\s*\(\s*row\s*==|\{)", block):
+            m = re.match(r"\s*if\s*\(\s*row\s*==\s*([^)]+)\)", cl)
+            if not m:
+                if cl.strip().startswith("{"):
+                    tail = cl                 # a bare `else { ... }` closes the chain
+                continue
+            cond = m.group(1)
+            if "(" in cond:
+                continue                      # a computed row (Step card) - not measurable
+            rows = [int(n) for n in re.findall(r"\d+", cond)]
+            for r in rows:
+                out[(item, r)] = cl
+        if tail is not None:
+            for r in range(0, 32):
+                if (item, r) not in out:
+                    out[(item, r)] = tail
+    return out
+
+
+def _code_only(src):
+    """Code with EVERY comment gone - full lines AND trailing ones.
+
+    The shared `strip_comments` deliberately keeps trailing comments (other checks
+    match on them), but a name mentioned in prose is not a consumer: the enum line
+    `FF_ENABLE_MAGNET,   // inpEnableMagnet` alone would make the magnet look alive.
+    """
+    out = []
+    for line in src.splitlines():
+        s = line.strip()
+        if s.startswith("//") or s.startswith("*") or s.startswith("/*"):
+            continue
+        i = line.find("//")
+        if i >= 0:
+            line = line[:i]
+        out.append(line)
+    return "\n".join(out)
+
+
+def _row_clauses(block):
+    """{rowNumber: clause}` for one `if(row==N) / else` chain (MQL4 semantics)."""
+    out = {}
+    tail = None
+    for cl in re.split(r"\n\s*else\s+(?=if\s*\(\s*row\s*==|\{)", block):
+        m = re.match(r"\s*if\s*\(\s*row\s*==\s*([^)]+)\)", cl)
+        if not m:
+            if cl.strip().startswith("{"):
+                tail = cl
+            continue
+        cond = m.group(1)
+        if "(" in cond:
+            continue
+        for r in [int(n) for n in re.findall(r"\d+", cond)]:
+            out[r] = cl
+    if tail is not None:
+        for r in range(0, 32):
+            out.setdefault(r, tail)
+    return out
+
+
+def _setting_kinds(src):
+    """{(item, setting row): kind} from PnlSetDef - a COLOR/NAV/TEXT row is not a
+    control: PnlApplySet returns before the switch for those, so its branch can
+    never run and must not be measured as if the user could press it."""
+    body = fn_body(src, "void PnlSetDef(")
+    if not body:
+        return {}
+    kinds = {}
+    for cl in re.split(r"\n\s*else\s+(?=if\s*\(\s*item\s*==|\{)", body):
+        m = re.search(r"if\s*\(\s*item\s*==\s*(\d+)\s*\)", cl)
+        if not m:
+            continue
+        item = int(m.group(1))
+        for row, rcl in _row_clauses(cl[m.end():]).items():
+            k = re.search(r"kind\s*=\s*(\d+)", rcl)
+            kinds[(item, row)] = int(k.group(1)) if k else 0
+    return kinds
+
+
+def _reachable_settings(src):
+    """(item, setting row) pairs some display row actually RENDERS."""
+    reach = set()
+    for m in re.finditer(r"PnlSpecAdd\(\s*(\d+)\s*,\s*PNL_K_\w+\s*,\s*(-?\d+)\s*,\s*(\d+)", src):
+        item, s0, n = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        if s0 < 0:
+            continue
+        for k in range(max(1, n)):
+            reach.add((item, s0 + k))
+    return reach
+
+
+def check_live_control(o):
+    """P-UI-46/47 - a control the card RENDERS must move state somebody reads.
+
+    Two reports, one day apart, and the same question underneath: *is the thing
+    this row writes read by anybody?* The user's words were "the button does not
+    work". Four rows answered NO - their feature had been retired (or the setting
+    moved) while the card kept drawing the row:
+      * Zones & Levels / MIDPOINT - the midpoint LINE is deleted every render by
+        the pipeline's own legacy cleanup, so the switch wrote `g_showMidpointLine`
+        and changed nothing;
+      * Custom Price / MAGNET + MAGNET SENS - snapping was retired by user
+        decision (BKMAGNET-OFF), the flags have no reader at all;
+      * ATR Labels / ROW GAP - the label layout reads the INPUT `inpLabelRowGap`,
+        not the runtime copy this slider wrote.
+    And card 3's source rows (1/2) re-derived the mode from the very mirrors they
+    were about to write, so the LAST lit source could never be switched off
+    (P-UI-44 fixed row 0, this closes rows 1/2).
+
+    Invariants:
+      (a) for every REACHABLE setting row, at least one global its branch writes
+          is READ outside the panel/settings layer - or the branch calls an owner
+          that lives outside it (a request-to-repaint flag is not an effect, and
+          neither is a save);
+      (b) a TH source row writes the MODE from its own new value - it may never
+          read the mode back out of the mirrors it just changed;
+      (c) a row whose press changes what ANOTHER surface displays asks the UI
+          layer to repaint in the same event.
+    """
+    panels = _code_only(read(PANELS, o))
+    runtime = _code_only(read(RUNTIME, o))
+    reach = _reachable_settings(panels)
+    rows = _apply_rows(panels)
+
+    # every source the indicator is built from, discovered (not listed): a new
+    # module must be able to answer this check without editing it. Indexed ONCE
+    # per run (name -> the files that INTERROGATE it) so a 140-seed selftest does
+    # not re-scan 70 files per seed.
+    token = re.compile(r"\b(?:g_|inp)[A-Za-z0-9_]+\b")
+    lhs = re.compile(r"^\s*([A-Za-z_]\w*)\s*=(?!=)")
+    owners = set()                                # functions DEFINED outside the UI layer
+    reads_in = {}
+    _sources = {}
+    for sub in ("Biotak", ""):
+        for ext in ("mqh", "mq4"):
+            for p in sorted(glob.glob(os.path.join(ROOT, sub, "*." + ext))):
+                rel = os.path.relpath(p, ROOT).replace("\\", "/")
+                _sources[rel] = _code_only(read(rel, o))
+    for rel, src in _sources.items():
+        if rel not in SKIP_CONSUMERS:
+            # a column-0 `Type Name(` is a DEFINITION. A call to a function the
+            # UI layer itself owns (a save, a repaint request) is not an effect.
+            owners.update(re.findall(r"(?m)^[A-Za-z_]\w*\s+([A-Za-z_]\w*)\s*\(", src))
+            for line in src.splitlines():
+                names = token.findall(line)
+                if not names:
+                    continue
+                m = lhs.match(line)
+                for nm in names:
+                    if m and m.group(1) == nm:
+                        continue                     # written here, not read
+                    reads_in.setdefault(nm, set()).add(rel)
+    # the settings layer's own plumbing (definition / load / save) is not a read.
+    # NOTE the LOAD line `g_x = inp_x;` names BOTH sides, so it must be dropped
+    # whole: treating its alias as a read is exactly what would hide a control
+    # whose flag is only ever loaded and saved.
+    for line in runtime.splitlines():
+        names = token.findall(line)
+        if not names:
+            continue
+        s = line.strip()
+        if s.startswith("static") or s.startswith("#define"):
+            continue
+        if "RSSetNext(" in line or "GlobalVariableCheck(p +" in line \
+           or "GlobalVariableGet(p +" in line:
+            continue
+        if re.match(r"^g_\w+\s*=\s*(inp\w+|Clamp\w*\(.*GlobalVariableGet)", s):
+            continue
+        if re.match(r"^g_factoryDefaults\[", s):
+            continue                          # captures the INPUT, not the runtime copy
+        m = lhs.match(line)
+        for nm in names:
+            if m and m.group(1) == nm:
+                continue
+            reads_in.setdefault(nm, set()).add(RUNTIME)
+    if len(_sources) < 30:
+        fail("live-control", "only %d sources found: this check is not looking at the project"
+             % len(_sources))
+        return
+    if not reach or not rows:
+        fail("live-control", "the display spec or PnlApplySet is unreadable: this check "
+                             "can no longer see what a card renders")
+        return
+    ok("live-control", "%d rendered settings against %d writer branches"
+       % (len(reach), len(rows)))
+
+    alias = {m.group(2): m.group(1) for m in re.finditer(r"#define\s+(inp\w+)\s+(g_\w+)", runtime)}
+
+    def is_read_elsewhere(name):
+        """A READ of this global (or of its inp alias) outside the panel/settings
+        layer. "Read" = appears on a line that does not assign it."""
+        for nm in ({name} | ({alias[name]} if name in alias else set())):
+            if reads_in.get(nm):
+                return True
+        return False
+
+    kinds = _setting_kinds(panels)
+    dead = []
+    for key in sorted(reach):
+        if kinds.get(key, 0) in (4, 5, 6, 7):
+            continue                              # colour / nav / text / band: not a control
+        seg = rows.get(key)
+        if seg is None:
+            continue
+        written = {g for g in re.findall(r"\b(g_\w+)\s*=", seg)
+                   if g not in REQUEST_ONLY and g != "flags"}
+        if not written:
+            continue                              # delegates to an owner / no state of its own
+        live = [g for g in written if is_read_elsewhere(g)]
+        if not live:
+            # ...or the branch HANDS the state to an owner that lives outside the
+            # UI layer (`SetLinesVisible(g_showLines, true)`). A call that merely
+            # takes the new VALUE (`ClampInt((int)MathRound(v),1,60)`) or nothing at
+            # all (a save) is not an effect - that is exactly how a dead slider
+            # looked alive.
+            for g in written:
+                for m in re.finditer(r"\b(\w+)\s*\(([^()]*(?:\([^()]*\)[^()]*)*)\)", seg):
+                    if m.group(1) in owners and re.search(r"\b%s\b" % re.escape(g), m.group(2)):
+                        live.append(g)
+                        break
+                if live:
+                    break
+        if not live and not any(g in UI_LOCAL for g in written):
+            dead.append("item %d row %d -> %s" % (key[0], key[1], ", ".join(sorted(written))))
+    if dead:
+        fail("live-control",
+             "%d rendered control(s) write state NOBODY reads - pressing them can only "
+             "move their own switch: %s" % (len(dead), "; ".join(dead)))
+        return
+    ok("live-control", "every rendered control moves state that is read elsewhere")
+
+    # (b) the TH source rows: the mode comes from the press, never from the mirrors
+    src = rows.get((3, 1), "")
+    if not src or "g_thLabelsMode" not in src:
+        fail("live-control", "card 3's source-row branch is gone: this check lost its anchor")
+        return
+    if "THModeFromFlags()" not in src:
+        fail("live-control", "the TH source rows no longer derive the mode from their own write")
+        return
+    if re.search(r"if\s*\(\s*g_showTHLabels\s*&&", src):
+        fail("live-control",
+             "a TH source row re-derives the mode from the mirrors it is about to write: "
+             "switching the LAST lit source OFF re-lights it (the reported one-way switch)")
+        return
+    if "SyncTHFlagsFromMode()" not in src or "SetTHLabelsVisibility(" not in src:
+        fail("live-control", "the TH source row stopped applying the mode it wrote")
+        return
+    # (c) that same press re-derives the MASTER (row 0) the card displays
+    if src.count("RequestUISync()") < 1:
+        fail("live-control",
+             "the TH source rows change the master row another surface displays but never "
+             "ask the UI layer to repaint it (P-UI-40's asymmetry)")
+        return
+    ok("live-control", "a TH source row writes the mode both ways and repaints the master")
+
+
 def check_custom_price_mode(o):
     """P-UI-45 - the custom price line's ON/OFF and its INTERACTION state each have
     ONE owner, and a SETTLED line is inert.
@@ -2119,7 +2415,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_base_price_state, check_family_isolation, check_toggle_path,
           check_persist_write_shape, check_chart_change_prime, check_name_scheme,
           check_topology_adoption, check_event_settle, check_ui_sync,
-          check_longpress_latch, check_custom_price_mode]
+          check_longpress_latch, check_custom_price_mode, check_live_control]
 
 
 def run(overrides=None):
@@ -2655,6 +2951,23 @@ def selftest():
     seed("exit owner forgets the Input default", EVENTS,
          "    g_thStartPointType = inpTHStartPointType;\n    g_customPriceKeyboardOverride = false;\n",
          "    g_customPriceKeyboardOverride = false;\n")
+
+    # 18. a rendered control that moves nothing anybody reads (P-UI-46/47)
+    seed("a retired switch is rendered again", PANELS,
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, \"magnet\");\n")
+    seed("a dead slider is rendered again", PANELS,
+         "      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, \"ruler\");\n",
+         "      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, \"ruler\");\n"
+         "      PnlSpecAdd(2, PNL_K_LEGACY, 10, 1, \"gap\");\n")
+    seed("a TH source row reads its mode back from its own mirrors", PANELS,
+         "            g_thLabelsMode=m1;\n",
+         "            if(g_showTHLabels && m1==0) m1=1;\n"
+         "            g_thLabelsMode=m1;\n")
+    seed("a TH source press stops repainting the master row", PANELS,
+         "            RequestUISync();\n            string opT2=",
+         "            string opT2=")
 
     caught = 0
     for label, rel, old, new in seeds:
