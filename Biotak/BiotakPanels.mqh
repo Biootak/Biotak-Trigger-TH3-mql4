@@ -7029,6 +7029,15 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
 
    if(id == CHARTEVENT_OBJECT_DRAG)
    {
+      // P-UI-48: a native drag that is NOT the line's own belongs to another
+      // selectable object of ours - a BaseKnot box, whose handle IS its
+      // OBJPROP_SELECTABLE and whose drag is MT4's. MT4 moves EVERY selected
+      // object, so the line must not be selected while a box is being dragged,
+      // or the box drag re-anchors the TH start price behind the user's back.
+      // The line's own drag is excluded by NAME (its selection is what drives
+      // the live update). One string compare; the write is guarded inside the
+      // owner.
+      if(sparam != g_customPriceHorizontalLineName) ClearCustomPriceSelection();
       // Real-time strip follow: the held box's drag reaches here in the SAME
       // event the domain used to re-sync the children (consumed ≠ hidden —
       // the entry forwards every event to both handlers). String pre-check

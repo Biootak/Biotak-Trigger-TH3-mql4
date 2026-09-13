@@ -2452,8 +2452,19 @@ def check_custom_price_mode(o):
              "the UI press guard is gone: a press a panel or the ring owns can leave MT4 "
              "holding the line, which is the interference the user reported")
         return
+    # The fourth trigger: MT4 gives the BaseKnot boxes their drag the SAME way
+    # (SELECTABLE is the box handle) and moves EVERY selected object, so a box
+    # drag must drop the line's selection - and the line's own drag must be
+    # excluded by name, because that selection is what drives the live update.
+    drag = fn_body(panels, "if(id == CHARTEVENT_OBJECT_DRAG)")
+    if not drag or "if(sparam != g_customPriceHorizontalLineName) ClearCustomPriceSelection();" not in drag:
+        fail("custom-price-mode",
+             "a native drag of somebody else's object no longer clears the line's selection: "
+             "dragging a BaseKnot box then moves the line with it (MT4 drags every selected "
+             "object), which is the interference the user reported")
+        return
     ok("custom-price-mode",
-       "the selection dies on button-up and whenever a UI owner claims the press")
+       "the selection dies on button-up, on a UI press, and under any foreign native drag")
 
 
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
@@ -3003,6 +3014,9 @@ def selftest():
          "   // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob")
     seed("the UI press guard is dropped", PANELS,
          "      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();\n",
+         "")
+    seed("a BaseKnot box drag stops clearing the line's selection", PANELS,
+         "      if(sparam != g_customPriceHorizontalLineName) ClearCustomPriceSelection();\n",
          "")
     seed("click handler stops arming the deferred clear", EVENTS,
          "        if(!isDoubleClick) g_customPriceNativeDrag = true;\n",
