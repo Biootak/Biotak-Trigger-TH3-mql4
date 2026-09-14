@@ -293,7 +293,7 @@ def check_press(text):
                             "(it must not borrow the knob's identity)")
         if "g_PnlMoveItem" not in grab or "CircLockChart()" not in grab:
             problems.append("the grab no longer records the gesture / locks the view")
-    if "PnlTryGrabMove(mx,my)" not in blk and "PnlTryGrabMove(mx, my)" not in blk:
+    if "PnlTryGrabMove(mx,my,false)" not in blk:
         problems.append("the press chain no longer reaches the grab - a press on "
                         "the card falls on the floor")
     # EVERY affordance, not a sample: the grab turns an unclaimed press into a
@@ -485,7 +485,7 @@ def check_drag():
         if "PnlDragPoll();" not in polled:
             problems.append("the poll is not wired into the tick/timer pump, so it "
                             "never runs")
-        if "PnlTryGrabMove(g_LastUIX, g_LastUIY)" not in poll:
+        if "PnlTryGrabMove(g_LastUIX, g_LastUIY,true)" not in poll:
             problems.append("the poll arms the grab with its own code instead of "
                             "the shared owner")
         if "PnlDragStep(g_LastUIX, g_LastUIY)" not in poll:
@@ -532,9 +532,33 @@ def check_drag():
     if "PnlDragStep(mx, my)" not in chain or "PnlDragFinish(true, true)" not in chain:
         problems.append("the press chain does not use the shared batch owner / "
                         "finish - the two entries cannot share one window")
-    if "if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;" not in chain:
+    if "if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;" not in chain:
         problems.append("the grab is not refused on the click channel - a released "
                         "button would start a move gesture")
+    # (c) P-UI-77: the channel that ARMED the drag owns its release. The event
+    #     sparam bit is one witness of two (P-UI-73a): a drag the poll armed
+    #     never showed its press on that bit, so ending it on a bare bit-clear
+    #     murders a working drag in its first step and eats its release - the
+    #     card reads as fixed. The grab records its channel, the move block
+    #     demands the physical probe's agreement only for a poll-armed drag,
+    #     and every finish drops the flag with the gesture.
+    grab = body(panels, "bool PnlTryGrabMove(")
+    if grab is None or "s_PnlMoveByPoll  = byPoll;" not in grab:
+        problems.append("the grab does not record which channel armed it - the "
+                        "release cannot belong to the arming channel (P-UI-77)")
+    else:
+        if "PnlTryGrabMove(mx,my,false)" not in chain:
+            problems.append("the press chain does not arm as the event channel - "
+                            "its release ownership is undeclared (P-UI-77)")
+    if "!s_PnlMoveByPoll || UILeftButtonUp()" not in chain:
+        problems.append("a poll-armed drag ends on the bare event bit - the "
+                        "first disagreeing event murders it and the card reads "
+                        "as fixed (P-UI-77)")
+    fin2 = body(panels, "void PnlDragFinish(")
+    if fin2 is None or "s_PnlMoveByPoll = false;" not in fin2:
+        problems.append("the finish does not drop the arming-channel flag - a "
+                        "later drag would inherit another gesture's release "
+                        "rule (P-UI-77)")
     bridge = body(panels, "void HandleUIChartEvent(")
     if bridge is None or bridge.count("s_PnlClickActed = false;") < 2:
         problems.append("a release no longer resyncs the press-echo latch - a "
@@ -1797,8 +1821,8 @@ def selftest():
     reset()
 
     # 25. a released button starts the card-move gesture again
-    with_source(PANELS, "      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;",
-                "      if(PnlTryGrabMove(mx,my)) return;")
+    with_source(PANELS, "      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;",
+                "      if(PnlTryGrabMove(mx,my,false)) return;")
     cases.append(("a plain click that drags the card is caught",
                   bool(check_dual() or check_drag())))
     reset()
@@ -1877,6 +1901,23 @@ def selftest():
                 "")
     cases.append(("a slider press that applies nothing is caught",
                   bool(check_press(read(PANELS)))))
+    reset()
+
+    # 36. P-UI-77: the move block ends a poll-armed drag on the bare event bit
+    #     again - the first disagreeing event murders a working drag (fixed card)
+    with_source(PANELS, "      if(!leftDown && (!s_PnlMoveByPoll || UILeftButtonUp()))",
+                "      if(!leftDown)")
+    cases.append(("a poll-armed drag murdered by its own event channel is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 37. P-UI-77: the poll arms as the event channel - no drag is ever
+    #     poll-owned, so the agreement rule never engages and the card is
+    #     fixed again on a terminal whose event bit lies
+    with_source(PANELS, "   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,true)) return;",
+                "   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,false)) return;")
+    cases.append(("a poll that never owns its drag's release is caught",
+                  bool(check_drag())))
     reset()
 
     for name, ok in cases:

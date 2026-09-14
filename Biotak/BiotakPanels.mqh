@@ -5816,6 +5816,11 @@ void PnlCommitMove(const int item)
 static uint s_PnlMoveTick    = 0;      // last applied batch (0 = none yet)
 static int  s_PnlMoveFrameMs = PNL_MOVE_COALESCE_MS;
 static bool s_PnlMoveMoved   = false;  // the card really moved (the poll may pin)
+// P-UI-77: WHO armed this drag. The event sparam bit is one witness of two
+// (P-UI-73a) — a drag the poll armed never showed its press on that bit, so
+// that bit must not own its release (below). Set on every arm, cleared on
+// every finish; meaningful only while g_PnlMoveItem >= 0.
+static bool s_PnlMoveByPoll  = false;
 
 //--- chart-lock integrity layer ---------------------------------------
 // BUG: MT4 emits CHARTEVENT_MOUSE_MOVE only on cursor MOVEMENT. A button-up
@@ -5939,6 +5944,7 @@ void ChartPointerFinalizeOnUps()
    // away by ChartScrollReconcile, underflowing the panel's modal lock.
    if(g_PnlMoveItem >= 0) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
    s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
+   s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
    g_LongPressItem  = -1;
@@ -6770,7 +6776,9 @@ bool PnlPointOnControl(const int mx,const int my)
 
 //--- THE GRAB — one owner, two entries (the press chain and the poll).
 //--- Returns true when this call took the pointer for a card move.
-bool PnlTryGrabMove(const int mx,const int my)
+//--- `byPoll` records WHO armed it (P-UI-77): the release belongs to the
+//--- arming channel, so the move block below knows which witness may end it.
+bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
 {
    if(g_PnlMoveItem >= 0) return false;   // a move already owns the pointer
    if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;   // the strip re-anchors
@@ -6781,6 +6789,7 @@ bool PnlTryGrabMove(const int mx,const int my)
    g_PnlMoveLastX   = mx;
    g_PnlMoveLastY   = my;
    s_PnlMoveMoved   = false;
+   s_PnlMoveByPoll  = byPoll;
    s_PnlMoveFrameMs = PNL_MOVE_FRAME_MIN_MS;   // a fresh gesture starts smooth
    s_PnlMoveTick    = 0;                       // its first batch applies at once
    DragClaim(DRAG_PANEL_MOVE);
@@ -6824,6 +6833,7 @@ void PnlDragFinish(const bool commit,const bool suppressClick)
    if(commit) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
    g_PnlMoveItem = -1;
    s_PnlMoveMoved = false;
+   s_PnlMoveByPoll = false;   // P-UI-77: the channel flag dies with the gesture
    DragReleaseIf(DRAG_PANEL_MOVE);
    if(suppressClick) UISuppressNextClick();
    CircUnlockChart();
@@ -6957,7 +6967,16 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          CircUnlockChart();
          return;
       }
-      if(!leftDown)
+      // P-UI-77: the channel that ARMED the drag owns its release. The event
+      // sparam bit is one witness of two (P-UI-73a) — an event-armed drag ends
+      // on it exactly as before, but a poll-armed drag (whose press that bit
+      // never showed) ends only when the physical probe AGREES
+      // (`UILeftButtonUp`). Otherwise the first disagreeing event murders a
+      // working drag in its first step and eats its release — the card reads
+      // as fixed. Healthy terminals never notice: the event edge wins the arm
+      // race there, so `byPoll` is false and this line is the old line (the
+      // `||` short-circuits before any terminal read — zero added cost).
+      if(!leftDown && (!s_PnlMoveByPoll || UILeftButtonUp()))
       {
          // lock the spot for future opens + eat the release of this gesture
          PnlDragFinish(true, true);
@@ -7135,7 +7154,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       // P-UI-74: NEVER on the click channel — that is a released button, not a
       // grab, and claiming a move gesture for it made the card follow the next
       // cursor move (and armed a claim nobody was owed).
-      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;
+      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;
       return;
    }
 
@@ -8117,7 +8136,7 @@ void PnlDragPoll()
    if(g_MouseWasDown) return;      // the event channel saw this press: its gesture
    if(s_PnlClickActed) return;     // a control already consumed this gesture
    if(!UILeftButtonDown()) return;
-   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY)) return;
+   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,true)) return;
    _LOG_GATE_W Print("[W][PERF] panel drag armed by the poll (no mouse-move press edge)");
 }
 
