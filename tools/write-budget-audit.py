@@ -799,14 +799,31 @@ def check_interaction(o):
     else:
         ok("interaction", "sub-pixel zone fills are not painted")
 
+    # P-UI-75b: the coalescer moved OUT of the mouse handler and into the batch
+    # owner both entries call (`PnlDragStep`) - and it is no longer a hard 30 Hz
+    # rate but the drag's own MEASURED window, so a weak machine converges to the
+    # frame rate it can hold while a fast one keeps the card glued to the cursor.
+    # The batch pays for exactly ONE frame (`DragFrameRedraw`, which also counts
+    # for the tick throttle so the tick cannot repaint the same picture again).
     pnl = read("Biotak/BiotakPanels.mqh", o)
     mv = fn_body(pnl, "void PnlHandleMouseMove(") or ""
-    if not re.search(r"now\s*-\s*s_PnlMoveTick\s*>=\s*PNL_MOVE_COALESCE_MS", mv):
-        fail("interaction", "the panel move drag must coalesce its coordinate batch")
-    elif not re.search(r"PnlMoveBy\([^;]*\);[\s\S]{0,900}?ThrottledChartRedraw\(\);", mv):
-        fail("interaction", "the panel move must repaint through the throttle, not per mouse tick")
+    step = fn_body(pnl, "void PnlDragStep(") or ""
+    poll = fn_body(pnl, "void PnlDragPoll(") or ""
+    if not re.search(r"PnlDragStep\(\s*mx\s*,\s*my\s*\)", mv):
+        fail("interaction", "the panel move drag must enter through its ONE batch owner")
+    elif not re.search(r"now\s*-\s*s_PnlMoveTick\s*<\s*\(uint\)s_PnlMoveFrameMs", step):
+        fail("interaction", "the panel move drag must coalesce its coordinate batch "
+                            "through the ADAPTIVE window, not a hard rate")
+    elif not re.search(r"PnlMoveBy\([^;]*\);[\s\S]{0,900}?DragFrameRedraw\(\);", step):
+        fail("interaction", "the panel move must pay for ONE frame per applied batch, "
+                            "not repaint per mouse tick or behind the cursor")
+    elif not re.search(r"s_PnlMoveFrameMs\s*\*\s*3\s*\+\s*cost\)\s*/\s*4", step):
+        fail("interaction", "the drag's frame window must converge on the MEASURED batch cost")
+    elif "PnlDragStep(g_LastUIX, g_LastUIY)" not in poll:
+        fail("interaction", "the polled shadow must step through the same batch owner")
     else:
-        ok("interaction", "a panel move coalesces and repaints through the throttle")
+        ok("interaction", "a panel move coalesces through one adaptive batch owner, "
+                          "and each batch pays for one frame")
 
     missing = []
     for entry in ("Biotak Trigger TH3.mq4", "Biotak Trigger TH3 Lite.mq4"):
@@ -1104,8 +1121,11 @@ def selftest():
          "    double fallbackRange = g_highestHigh - g_lowestLow;"),
         ("interaction", PIPELINE, "        if(p4PxPerPrice > 0.0 &&", "        if(false &&"),
         ("interaction", "Biotak/BiotakPanels.mqh",
-         "      if(now - s_PnlMoveTick >= PNL_MOVE_COALESCE_MS)   // P-PERF-04: 30 Hz, cursor-exact",
-         "      if(now - s_PnlMoveTick >= 0)"),
+         "   if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < (uint)s_PnlMoveFrameMs) return;",
+         "   if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < 0) return;"),
+        ("interaction", "Biotak/BiotakPanels.mqh",
+         "   DragFrameRedraw();    // the drag's own frame, once per applied batch",
+         "   ;   // seed: the batch no longer pays for its frame"),
         ("interaction", "Biotak Trigger TH3.mq4", "    P4ReportSlow(\"OnDeinit reason=\"", "    //P4ReportSlow(\"OnDeinit reason=\""),
         ("atr", "Biotak/ATRCalculations.mqh",
          "    TrexSMALegsBatch(tf, periods, results);",

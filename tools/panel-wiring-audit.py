@@ -272,27 +272,123 @@ def check_press(text):
     if "PnlPressAllowed()" not in blk:
         problems.append("the press chain is not self-healing: a stale drag claim "
                         "dead-locks every coordinate control (P-UI-70b)")
-    if "PnlCardBodyHit(" not in blk:
-        problems.append("the card body is not a drag handle - only the 56 px "
-                        "header can move the panel (P-UI-70a)")
-    # the fallback must come AFTER the control hit tests, or it would eat them
-    hdr = blk.find("PnlHeaderHit(")
-    body_hit = blk.find("PnlCardBodyHit(")
-    # EVERY affordance, not a sample: the body fallback turns an unclaimed press
-    # into a panel MOVE, so a control consulted after it does not just "not
-    # work" - it drags the whole card away under the user's finger.
-    for control in ("PnlClosePressHit(", "PnlDdHit(", "PnlDdAnchorHit(",
-                    "PnlKnobHit(", "PnlTrackHit(", "PnlSwitchHit(",
-                    "PnlCsetHit(", "PnlDualHit(", "PnlColorAddHit(",
-                    "PnlBandHit("):
+    # P-UI-75a: the GRAB has ONE owner and TWO entries (the press chain and the
+    # polled shadow), so every promise P-UI-70a made about it is asserted at that
+    # owner - a chain that still spelled `PnlCardBodyHit(` itself would mean the
+    # grab had been copied back into the chain, which is the drift this project
+    # keeps paying for.
+    grab = body(text, "bool PnlTryGrabMove(")
+    if grab is None:
+        problems.append("PnlTryGrabMove() is gone - the grab has no owner, so the "
+                        "press chain and the polled shadow cannot share one "
+                        "contract (P-UI-75a)")
+    else:
+        if "PnlCardBodyHit(" not in grab:
+            problems.append("the card body is not a drag handle - only the 56 px "
+                            "header can move the panel (P-UI-70a)")
+        if "PnlHeaderHit(" not in grab:
+            problems.append("the header is no longer a drag handle")
+        if "DragClaim(DRAG_PANEL_MOVE)" not in grab:
+            problems.append("the header/body drag no longer claims DRAG_PANEL_MOVE "
+                            "(it must not borrow the knob's identity)")
+        if "g_PnlMoveItem" not in grab or "CircLockChart()" not in grab:
+            problems.append("the grab no longer records the gesture / locks the view")
+    if "PnlTryGrabMove(mx,my)" not in blk and "PnlTryGrabMove(mx, my)" not in blk:
+        problems.append("the press chain no longer reaches the grab - a press on "
+                        "the card falls on the floor")
+    # EVERY affordance, not a sample: the grab turns an unclaimed press into a
+    # panel MOVE, so a control consulted after it does not just "not work" - it
+    # drags the whole card away under the user's finger. The order rule is now
+    # anchored on the SHARED predicate the grab asks (`PnlPointOnControl`), which
+    # must name the same controls, in the same order, as the press chain.
+    CONTROLS = ("PnlClosePressHit(", "PnlDdAnchorHit(", "PnlKnobHit(",
+                "PnlTrackHit(", "PnlSwitchHit(", "PnlCsetHit(",
+                "PnlDualHit(", "PnlColorAddHit(", "PnlBandHit(")
+    pc = body(text, "bool PnlPointOnControl(")
+    if pc is None:
+        problems.append("PnlPointOnControl() is gone - a POLLED grab would steal a "
+                        "press aimed at a control (P-UI-75a)")
+    else:
+        seen = []
+        for control in CONTROLS:
+            c = pc.find(control)
+            if c < 0:
+                problems.append("the grab's control predicate lost %s"
+                                % control.rstrip("("))
+            else:
+                seen.append((c, control))
+        if seen != sorted(seen):
+            problems.append("the grab's control predicate names the controls in a "
+                            "DIFFERENT order than the press chain")
+        if "PnlDdHit(" in pc:
+            problems.append("the grab's predicate calls PnlDdHit(), which APPLIES "
+                            "the option under the cursor")
+        elif "g_PnlDdItem" not in pc:
+            problems.append("the grab's predicate ignores an OPEN dropdown, which "
+                            "owns the next press anywhere")
+        # P-UI-76: the RELEASE-channel controls (colour preview, quick swatches,
+        # NAV pill, segmented cells, the text field, the header/footer buttons)
+        # are claimed on the release, so a grab that eats their press eats their
+        # click too - the control reads as DEAD for every click that moved, which
+        # is every human click. The grab must refuse their pixels as well, through
+        # ONE owner whose geometry is READ BACK from the control's own object.
+        if "PnlNameControlAt(" not in pc:
+            problems.append("the grab does not refuse the RELEASE-channel controls, "
+                            "so a tap on them starts a card drag and their own click "
+                            "is spent (P-UI-76)")
+        nc = body(text, "bool PnlNameControlAt(")
+        if nc is None:
+            problems.append("PnlNameControlAt() is gone - the grab can no longer ask "
+                            "whether a pixel belongs to a release-channel control")
+        else:
+            if "PnlCtrlRectHit(" not in nc:
+                problems.append("the release-channel controls are hit-tested from "
+                                "re-derived constants instead of the object's own "
+                                "rect (that is how a hit drifts from a paint)")
+            for fam, names in (("colour preview", ('"CB"',)),
+                               ("quick swatches", ('"Q"', "PNL_QSW_N")),
+                               ("NAV pill", ('"NAV"',)),
+                               ("segmented cells", ('"C"',)),
+                               ("text field", ('"ED"',)),
+                               ("header/footer buttons", ('"close"', '"done"',
+                                                        '"rst"', '"pal"'))):
+                for nm in names:
+                    if nm not in nc:
+                        problems.append("the grab's control predicate lost the %s "
+                                        "(%s) — it becomes grabbable again and its "
+                                        "click is spent" % (fam, nm))
+        rect = body(text, "bool PnlCtrlRectHit(")
+        if rect is None:
+            problems.append("PnlCtrlRectHit() is gone - the control rects are magic "
+                            "numbers again")
+        else:
+            for prop in ("OBJPROP_XDISTANCE", "OBJPROP_YDISTANCE",
+                         "OBJPROP_XSIZE", "OBJPROP_YSIZE"):
+                if prop not in rect:
+                    problems.append("PnlCtrlRectHit() does not read %s, so its rect "
+                                    "is not the drawn control" % prop)
+
+    # P-UI-76: the SLIDER press. The knob and the track are two shapes of ONE
+    # press, and the press must APPLY the value it landed on: the knob branch used
+    # to arm a drag and apply nothing, while its grab zone is 12 px wider than the
+    # drawn knob - so a click that missed the white circle by a few px armed a
+    # gesture a motionless press never fulfilled and read as «کار نمیکنه».
+    if "PnlKnobHit(mx,my,it,r) || PnlTrackHit(mx,my,it,r)" not in blk:
+        problems.append("the slider's knob and track are claimed by MORE than one "
+                        "branch - the knob's wider grab zone then arms a drag that "
+                        "applies nothing (P-UI-76)")
+    elif ("PnlValueFromX(it,r,mx,v)" not in blk or
+          "PnlSetVisualValue(it,r,v)" not in blk):
+        problems.append("a slider press no longer applies the value it landed on - "
+                        "a click on the slider changes nothing (P-UI-76)")
+    g = blk.find("PnlTryGrabMove(")
+    for control in CONTROLS:
         c = blk.find(control)
         if c < 0:
             problems.append("the press chain lost %s" % control.rstrip("("))
-        elif body_hit >= 0 and c > body_hit:
-            problems.append("%s is consulted AFTER the card-body fallback, so the "
-                            "fallback steals the control's own press" % control.rstrip("("))
-    if hdr >= 0 and body_hit >= 0 and body_hit < hdr:
-        problems.append("the card-body fallback precedes the header test")
+        elif g >= 0 and c > g:
+            problems.append("%s is consulted AFTER the grab, so the grab steals "
+                            "the control's own press" % control.rstrip("("))
     own = body(text, "bool PnlPressAllowed(")
     if own is None:
         problems.append("PnlPressAllowed() is gone")
@@ -302,9 +398,151 @@ def check_press(text):
                             "button - it would steal a LIVE gesture")
         if "g_DragOwner = DRAG_NONE" not in own:
             problems.append("the stale-claim recovery never releases the claim")
-    # the header drag must claim the MOVE owner (not borrow the knob's identity)
-    if "DragClaim(DRAG_PANEL_MOVE)" not in blk:
-        problems.append("the header/body drag no longer claims DRAG_PANEL_MOVE")
+    return problems
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SR-PANELWIRE-5: the drag's two entries, one contract and its own frames
+# (P-UI-75). Every rule here is a defect that shipped and was FELT: a drag that
+# existed on one delivery channel only, and a card painted 10x/s while its
+# coordinates landed 30x/s.
+# ─────────────────────────────────────────────────────────────────────────────
+def check_drag():
+    problems = []
+    panels = read(PANELS)
+    util = read(UTILS)
+    chain = body(panels, "void PnlHandleMouseMove(") or ""
+    step = body(panels, "void PnlDragStep(")
+    poll = body(panels, "void PnlDragPoll(")
+    polled = body(panels, "void RefreshKitOnBar(") or ""
+
+    def define(src, name):
+        m = re.search(r"(?m)^#define\s+%s\s+(\d+)\s*" % name, src)
+        return int(m.group(1)) if m else None
+
+    lo, hi = define(panels, "PNL_MOVE_FRAME_MIN_MS"), define(panels, "PNL_MOVE_FRAME_MAX_MS")
+    nom = define(panels, "PNL_MOVE_COALESCE_MS")
+    if lo is None or hi is None or nom is None:
+        problems.append("the drag's frame window lost a bound (PNL_MOVE_FRAME_MIN_MS "
+                        "/ PNL_MOVE_FRAME_MAX_MS / PNL_MOVE_COALESCE_MS)")
+    elif not (lo <= nom <= hi):
+        problems.append("the frame window's bounds are inverted (start %d must sit "
+                        "inside %d..%d)" % (nom, lo, hi))
+    if "static int  s_PnlMoveFrameMs = PNL_MOVE_COALESCE_MS;" not in panels:
+        problems.append("the frame window is not initialised from the declared "
+                        "start, so a graft of its bounds cannot move it")
+
+    # (a) ONE batch owner: the drag writes coordinates in exactly one place (and
+    #     it is the function both entries call). The ONLY other sanctioned mover
+    #     is the discrete resize clamp - a single corrective shot triggered by
+    #     CHART_CHANGE, not a gesture - because a third writer cannot share the
+    #     drag's frame window (P-UI-75b). A drift shows up here as a new caller.
+    callers = [l.strip() for l in panels.splitlines()
+               if re.match(r"^\s*PnlMoveBy\s*\(", l)]
+    sanctioned = ["PnlMoveBy(g_PnlOpen, ndx, ndy);",
+                  "PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);"]
+    if sorted(callers) != sorted(sanctioned):
+        problems.append("PnlMoveBy has exactly TWO sanctioned callers - the drag "
+                        "batch (PnlDragStep) and the discrete resize clamp "
+                        "(PnlClampOpenPanel). found: %s" % (callers,))
+    if step is None:
+        problems.append("PnlDragStep() is gone - the drag has no batch owner")
+    else:
+        if "now - s_PnlMoveTick < (uint)s_PnlMoveFrameMs" not in step:
+            problems.append("the drag batch is not gated by its own adaptive "
+                            "window (a hard rate cannot adapt to the machine)")
+        if "PnlMoveBy(" not in step:
+            problems.append("the batch owner does not move the card")
+        if "DragFrameRedraw()" not in step:
+            problems.append("the batch owner does not pay for its own frame - the "
+                            "card would jump behind the cursor (P-UI-75b)")
+        if "s_PnlMoveFrameMs * 3 + cost) / 4" not in step:
+            problems.append("the frame window never adapts to the MEASURED batch "
+                            "cost (it is a fixed rate again)")
+        for bound in ("PNL_MOVE_FRAME_MIN_MS", "PNL_MOVE_FRAME_MAX_MS"):
+            if bound not in step:
+                problems.append("the adaptive window is not clamped by %s" % bound)
+        if "ChartRedraw()" in step:
+            problems.append("the drag repaints raw instead of through the drag's "
+                            "frame owner")
+    if panels.count("DragFrameRedraw(") != 1:
+        problems.append("DragFrameRedraw must have exactly ONE caller (the batch "
+                        "owner) - found %d calls" % panels.count("DragFrameRedraw("))
+    owner = body(util, "void DragFrameRedraw(") or ""
+    if "ChartRedraw()" not in owner:
+        problems.append("DragFrameRedraw() no longer paints")
+    if "g_lastChartRedrawTime" not in owner:
+        problems.append("the drag's frame does not count for the tick throttle - "
+                        "the tick would immediately repaint the same picture")
+
+    # (b) the polled shadow: conservative witnesses, and it must go through the
+    #     SAME grab / step / finish.
+    if poll is None:
+        problems.append("PnlDragPoll() is gone - the drag is back on one delivery "
+                        "channel, where a press without a mouse-move edge is dead "
+                        "(the P-BK-03 trap)")
+    else:
+        if "PnlDragPoll();" not in polled:
+            problems.append("the poll is not wired into the tick/timer pump, so it "
+                            "never runs")
+        if "PnlTryGrabMove(g_LastUIX, g_LastUIY)" not in poll:
+            problems.append("the poll arms the grab with its own code instead of "
+                            "the shared owner")
+        if "PnlDragStep(g_LastUIX, g_LastUIY)" not in poll:
+            problems.append("the poll moves the card with its own code instead of "
+                            "the shared batch owner")
+        if "PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved)" not in poll:
+            problems.append("the poll must end through the shared finish and pin "
+                            "the spot only when it can prove the card moved")
+        if "UILeftButtonDown()" not in poll:
+            problems.append("the poll never asks the physical button, so it would "
+                            "arm a drag out of a hover")
+        if "g_MouseWasDown" not in poll:
+            problems.append("the poll does not stand down when the EVENT channel "
+                            "saw the press - two owners of one gesture")
+        if "g_DragOwner" not in poll:
+            problems.append("the poll ignores a claim held by another engine")
+        if "s_PnlClickActed" not in poll:
+            problems.append("the poll can re-open a gesture a control already spent")
+        # The poll runs on every tick AND every 250 ms timer, so its IDLE path is
+        # the price of this whole feature: the live-drag test first, then the
+        # cheap state guards, and only THEN any hit test or TerminalInfoInteger
+        # read (one int compare with the card closed - the user's "cost near
+        # zero" is a property of the ORDER, not of a comment).
+        tail_at = poll.find("PnlDragStep(g_LastUIX, g_LastUIY)")
+        tail = poll[tail_at:] if tail_at >= 0 else ""
+        if not poll.lstrip().startswith("if(g_PnlMoveItem >= 0)"):
+            problems.append("the poll no longer tests the live drag FIRST - an idle "
+                            "tick would pay for the guards before it can bail out")
+        cheap = tail.find("g_PnlOpen < 0 || g_PnlOpen == 13")
+        heavy = [h for h in (tail.find("g_PnlDragItem >= 0"),
+                             tail.find("g_DragOwner != DRAG_NONE"),
+                             tail.find("g_MouseWasDown"),
+                             tail.find("s_PnlClickActed"),
+                             tail.find("UILeftButtonDown()"),
+                             tail.find("PnlTryGrabMove("),
+                             tail.find("PnlPointOnControl("),
+                             tail.find("PnlHeaderHit("),
+                             tail.find("PnlCardBodyHit("),
+                             tail.find("PnlPalettePointInside(")) if h >= 0]
+        if cheap < 0 or len(heavy) != 6 or min(heavy) < cheap:
+            problems.append("the poll's idle path is not cheap: the open-card guard "
+                            "(`g_PnlOpen`) must come BEFORE every hit test and "
+                            "every TerminalInfoInteger read")
+    if "PnlDragStep(mx, my)" not in chain or "PnlDragFinish(true, true)" not in chain:
+        problems.append("the press chain does not use the shared batch owner / "
+                        "finish - the two entries cannot share one window")
+    if "if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;" not in chain:
+        problems.append("the grab is not refused on the click channel - a released "
+                        "button would start a move gesture")
+    bridge = body(panels, "void HandleUIChartEvent(")
+    if bridge is None or bridge.count("s_PnlClickActed = false;") < 2:
+        problems.append("a release no longer resyncs the press-echo latch - a "
+                        "spent echo would eat a LATER genuine press (P-UI-65)")
+    fin = body(panels, "void ChartPointerFinalizeOnUps(")
+    if fin is None or "s_PnlMoveMoved" not in fin:
+        problems.append("the button-up finalizer leaves the moved witness set, so "
+                        "a later poll could pin a spot the card never reached")
     return problems
 
 
@@ -1196,6 +1434,114 @@ def check_card_body():
     return problems
 
 
+def check_dual():
+    """P-UI-74: a card control answers on BOTH delivery channels, and the
+    affordance list still exists exactly ONCE.
+
+    The report this group exists for: tapping the ATR card's colour strip did
+    nothing while the palette popover applied fine. The strip's pixels were
+    measured against the shipped build and they land exactly where
+    `PnlCsetHit` looks - so the control was not wrong, it was UNREACHABLE: a
+    coordinate control lives on the press chain only, and that one channel can
+    be eaten by a foreign claim, a missed MOUSE_MOVE, or (for a cell whose
+    topmost object is the bitmap "glass" skin) never produce an OBJECT_CLICK
+    at all. The fix gives every card control a second channel that re-enters the
+    SAME dispatch, and these checks pin the shape of it.
+    """
+    problems = []
+    panels = read(PANELS)
+    click = body(panels, "int PnlHandleClick(")
+    fall = body(panels, "bool PnlClickFallback(")
+    act = body(panels, "void UIPressAct(")
+    move = body(panels, "void PnlHandleMouseMove(")
+    bridge = body(panels, "void HandleUIChartEvent(")
+    if fall is None:
+        problems.append("PnlClickFallback() is gone - every coordinate control "
+                        "(switch pill, cset cell, section band, '+' chip) is "
+                        "reachable from the press channel only")
+        return problems
+    if act is None:
+        problems.append("UIPressAct() is gone - the one-gesture latch has no owner")
+    # ONE affordance list: the click channel must RE-ENTER the press dispatch,
+    # never re-implement it (a second list is P-UI-31's two-deciders shape, one
+    # layer up).
+    if "PnlHandleMouseMove(" not in fall:
+        problems.append("the click channel no longer re-enters PnlHandleMouseMove - "
+                        "the affordance list would exist twice and drift")
+    for control in ("PnlClosePressHit(", "PnlKnobHit(", "PnlTrackHit(",
+                    "PnlSwitchHit(", "PnlCsetHit(", "PnlDualHit(",
+                    "PnlColorAddHit(", "PnlBandHit("):
+        if control in fall:
+            problems.append("the click channel re-implements %s instead of "
+                            "dispatching through the one owner" % control.rstrip("("))
+    # BOTH click events carry the second channel: a bitmap-skinned cell fires no
+    # OBJECT_CLICK at all, so the plain CHARTEVENT_CLICK is the only event those
+    # pixels ever produce.
+    if click is None or "PnlClickFallback(" not in click:
+        problems.append("PnlHandleClick never consults the click channel")
+    if bridge is None or "PnlClickFallback(" not in bridge:
+        problems.append("the plain CHARTEVENT_CLICK branch never dispatches the "
+                        "card's controls - a click on a bitmap-skinned cell "
+                        "(the colour strip) stays dead")
+    # the latch, both halves
+    if act is not None:
+        if "s_PnlActedSeq" not in act or "g_UIPressSeq" not in act:
+            problems.append("UIPressAct() does not latch the gesture to its press "
+                            "identity - the twin event acts twice")
+        if "s_PnlClickChannel" not in act or "UISuppressNextClick()" not in act:
+            problems.append("UIPressAct() arms the release claim on the click "
+                            "channel too: there is no release left to spend, so "
+                            "it eats the NEXT genuine click (P-UI-65 over-eating)")
+    if "PnlGestureConsumed()" not in fall:
+        problems.append("the click channel ignores the latch - one gesture acts twice")
+    if move is None or "s_PnlClickActed" not in move:
+        problems.append("the press chain no longer consumes the click echo (the "
+                        "click of the very press that grabbed the object, P-UI-49b)")
+    # a released button must never start a drag (P-UI-75 moved the grab behind
+    # PnlTryGrabMove, so the refusal is asserted at the call site)
+    if move is None or "PnlTryGrabMove(" not in move:
+        problems.append("PnlHandleMouseMove() is gone - the panel has no pointer engine")
+    else:
+        g = move.find("PnlTryGrabMove(")
+        cond = move.rfind("if(", 0, g + 1)
+        if cond < 0 or "s_PnlClickChannel" not in move[cond:g + 24]:
+            problems.append("the card-body grab is not refused on the click channel - "
+                            "a released button would start a move gesture and the "
+                            "card would follow the next cursor move")
+    # the popover's pixels belong to the popover, and the test has ONE owner
+    # (P-UI-75) so the click channel and the grab cannot disagree about them
+    pal = body(panels, "bool PnlPalettePointInside(")
+    if pal is None:
+        problems.append("PnlPalettePointInside() is gone - the popover's rect is "
+                        "tested in more than one place again")
+    else:
+        if "g_PalX" not in pal or "PalH()" not in pal:
+            problems.append("the popover rect owner does not bound the popover")
+        grab = body(panels, "bool PnlTryGrabMove(")
+        if grab is not None and "PnlPalettePointInside(" not in grab:
+            problems.append("the grab can start a move on the floating palette's "
+                            "own pixels")
+    if "PnlPalettePointInside(cx,cy)" not in fall or "g_PalMixDrag" not in fall:
+        problems.append("the click channel can steal a press that landed on the "
+                        "floating palette / its mixer")
+    if "PnlCardPointInside(" not in fall:
+        problems.append("the click channel does not bound itself to the open card's "
+                        "rect - it would act on chart clicks")
+    # P-UI-69's law applied to the palette's OWN two id families: ids are parsed
+    # EXACTLY (a prefix test made the '+' chip apply swatch 0).
+    if 'StringFind(id,"s")==0' in panels or "StringFind(id,'s')==0" in panels:
+        problems.append("a palette swatch id is prefix-tested again (the P-UI-69 'Q' bug)")
+    if "PalMatIdParse(" not in panels or "PalRecentIdParse(" not in panels:
+        problems.append("the palette swatch ids lost their exact parsers")
+    ph = body(panels, "int PalHandleClick(")
+    if ph is None:
+        problems.append("PalHandleClick() is gone")
+    elif "PalMatIdParse(" not in ph or "PalRecentIdParse(" not in ph:
+        problems.append("PalHandleClick no longer uses the exact id parsers "
+                        "(\"rempty\" would apply recent[0])")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -1206,6 +1552,8 @@ def main():
               ("modal", check_modal()),
               ("press", check_press(read(PANELS))),
               ("chrome", check_chrome()),
+              ("dual", check_dual()),
+              ("drag", check_drag()),
               ("mouse", check_mouse()))
     for name, plist in groups:
         if not QUIET:
@@ -1265,7 +1613,7 @@ def selftest():
                        or check_relayout() or check_purge()
                        or check_card_body() or check_modal()
                        or check_press(read(PANELS)) or check_chrome()
-                       or check_mouse())))
+                       or check_dual() or check_drag() or check_mouse())))
     reset()
 
     # 1. P-UI-70c: the row is retired again while its address stays live
@@ -1304,9 +1652,9 @@ def selftest():
     reset()
 
     # 7. the card-body fallback steals the controls' presses (order inversion)
-    with_source(PANELS, "      // grab the header — OR any unclaimed spot of the card",
-                "      if(PnlCardBodyHit(mx,my)) { g_PnlMoveItem=g_PnlOpen; return; }\n"
-                "      // grab the header — OR any unclaimed spot of the card")
+    with_source(PANELS, "      // P-UI-24: X / Done close on PRESS — before strip/dropdown/knob/track/",
+                "      if(PnlTryGrabMove(mx,my)) return;   // seed: the grab eats the controls\n"
+                "      // P-UI-24: X / Done close on PRESS — before strip/dropdown/knob/track/")
     cases.append(("a body fallback that eats controls is caught",
                   bool(check_press(read(PANELS)))))
     reset()
@@ -1417,6 +1765,118 @@ def selftest():
                 "")
     cases.append(("a ring latch that can outlive the card open is caught",
                   bool(check_mouse())))
+    reset()
+
+    # 21. P-UI-74: the name router stops carrying the second channel
+    with_source(PANELS, "   if(PnlClickFallback(mouseX, mouseY)) return REFRESH_NONE;",
+                "   // seed: the click channel is gone")
+    cases.append(("a control reachable from one delivery channel only is caught",
+                  bool(check_dual())))
+    reset()
+
+    # 22. the plain CHARTEVENT_CLICK no longer dispatches (the bitmap-skinned
+    #     cell's ONLY event kind)
+    with_source(PANELS, "      if(StringFind(sparam, \"r\") < 0 && PnlClickFallback(cx, cy)) return;",
+                "      // seed: no click dispatch")
+    cases.append(("a click that never reaches the card's dispatch is caught",
+                  bool(check_dual())))
+    reset()
+
+    # 23. the latch arms the release claim on the click channel too
+    with_source(PANELS, "   if(!s_PnlClickChannel) UISuppressNextClick();",
+                "   UISuppressNextClick();")
+    cases.append(("a click-channel action that eats the NEXT click is caught",
+                  bool(check_dual())))
+    reset()
+
+    # 24. the press echo of a click that already acted is acted on again
+    with_source(PANELS, "      if(s_PnlClickActed) { s_PnlClickActed = false; return; }",
+                "")
+    cases.append(("a gesture that acts once per channel (twice) is caught",
+                  bool(check_dual())))
+    reset()
+
+    # 25. a released button starts the card-move gesture again
+    with_source(PANELS, "      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;",
+                "      if(PnlTryGrabMove(mx,my)) return;")
+    cases.append(("a plain click that drags the card is caught",
+                  bool(check_dual() or check_drag())))
+    reset()
+
+    # 26. the palette's colour ids go back to a prefix test
+    with_source(PANELS, "   if(PalMatIdParse(id,mr,mc))",
+                "   if(StringFind(id,\"s\")==0)")
+    cases.append(("a prefix-parsed swatch id is caught", bool(check_dual())))
+    reset()
+
+    # 27. P-UI-75b: the drag stops paying for its own frame (the card jumps
+    #     behind the cursor again - the coordinates land faster than the paint)
+    with_source(PANELS, "   DragFrameRedraw();    // the drag's own frame, once per applied batch",
+                "   // seed: the batch no longer pays for its frame")
+    cases.append(("a drag whose frame lags its coordinates is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 28. a THIRD writer of the card's coordinates appears - two writers cannot
+    #     share one frame window
+    with_source(PANELS, "   PnlMoveBy(g_PnlOpen, ndx, ndy);\n   return true;",
+                "   PnlMoveBy(g_PnlOpen, ndx, ndy);\n   PnlMoveBy(g_PnlOpen, 0, 0);\n   return true;")
+    cases.append(("a second mover of the card is caught", bool(check_drag())))
+    reset()
+
+    # 29. the frame window goes back to a HARD rate (it can no longer adapt to
+    #     the machine - the P-PERF-04 defect the coalescer replaced)
+    with_source(PANELS, "   if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < (uint)s_PnlMoveFrameMs) return;",
+                "   if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < 30) return;")
+    cases.append(("a drag frame rate that cannot adapt is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 30. the drag's frame stops counting for the tick throttle (the tick would
+    #     immediately repaint the same picture - double cost per batch)
+    with_source(UTILS, "    g_lastChartRedrawTime = GetTickCount();\n}",
+                "    // seed: the tick throttle is not told\n}")
+    cases.append(("a drag frame outside the tick throttle is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 31. the polled shadow leaves the pump - the drag is back on one delivery
+    #     channel, where a press without a mouse-move edge is dead (P-BK-03)
+    with_source(PANELS, "   PnlDragPoll();  // P-UI-75a", "   // seed: the poll is gone")
+    cases.append(("a drag reachable from one delivery channel only is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 32. the poll pays for a hit test before it can bail out - an idle tick
+    #     (every tick, plus the 250 ms timer) stops being one int compare
+    with_source(PANELS, "   if(g_PnlDragItem >= 0 || g_PalMixDrag > 0) return;   // another panel gesture owns it",
+                "   PnlPointOnControl(g_LastUIX, g_LastUIY);   // seed: a hit test on the idle path\n"
+                "   if(g_PnlDragItem >= 0 || g_PalMixDrag > 0) return;   // another panel gesture owns it")
+    cases.append(("a poll that is not free when idle is caught", bool(check_drag())))
+    reset()
+
+    # 33. P-UI-76: the grab stops refusing the RELEASE-channel controls - a tap on
+    #     a quick swatch / NAV pill / Reset starts a card drag and its own click is
+    #     spent by the drag's release claim (the control reads as dead)
+    with_source(PANELS, "   if(PnlNameControlAt(mx,my)) return true;   // P-UI-76: the release channel's own",
+                "   // seed: the release channel is grabbable")
+    cases.append(("a grab that eats a release-channel control is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 34. the control predicate loses one family (the quick swatches)
+    with_source(PANELS, "         for(int q=0;q<PNL_QSW_N;q++)",
+                "         for(int q=0;q<0;q++)")
+    cases.append(("a lost release-channel control family is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 35. the slider press applies nothing again (the knob's wider grab zone arms
+    #     a drag a motionless click never fulfils)
+    with_source(PANELS, "         PnlValueFromX(it,r,mx,v);\n",
+                "")
+    cases.append(("a slider press that applies nothing is caught",
+                  bool(check_press(read(PANELS)))))
     reset()
 
     for name, ok in cases:

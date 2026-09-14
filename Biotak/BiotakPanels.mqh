@@ -2302,6 +2302,46 @@ void PaletteMixFromX(const int comp,const int mx)
 }
 
 // returns refresh flags when a palette interaction changed a color
+//--- P-UI-74: id parses are EXACT, never a prefix test (P-UI-69's law for
+//--- `Q0..Q7`, which lived on only one of the two colour families). Two ids
+//--- start with `s`/`r` and mean something else entirely — the recents strip's
+//--- own "Pick any color…" hint (`rempty`) and every future `s*` control — and
+//--- `StringToInteger()` reads their tail as 0, i.e. the control would silently
+//--- apply material (0,0) / recent[0].
+bool PalMatIdParse(const string id,int &r,int &c)
+{
+   r=-1; c=-1;
+   if(StringLen(id) < 4) return false;                 // "s0_0" is the shortest
+   if(StringGetCharacter(id,0) != 's') return false;
+   int us = StringFind(id,"_");
+   if(us <= 1 || us >= StringLen(id)-1) return false;
+   for(int i=1;i<us;i++)
+   {
+      ushort ch=StringGetCharacter(id,i);
+      if(ch < '0' || ch > '9') return false;
+   }
+   for(int j=us+1;j<StringLen(id);j++)
+   {
+      ushort ch2=StringGetCharacter(id,j);
+      if(ch2 < '0' || ch2 > '9') return false;
+   }
+   r=(int)StringToInteger(StringSubstr(id,1,us-1));
+   c=(int)StringToInteger(StringSubstr(id,us+1));
+   return (r >= 0 && r < PAL_ROWS && c >= 0 && c < PAL_COLS);
+}
+bool PalRecentIdParse(const string id,int &i)
+{
+   i=-1;
+   if(StringLen(id) < 2 || StringGetCharacter(id,0) != 'r') return false;
+   for(int k=1;k<StringLen(id);k++)
+   {
+      ushort ch=StringGetCharacter(id,k);
+      if(ch < '0' || ch > '9') return false;
+   }
+   i=(int)StringToInteger(StringSubstr(id,1));
+   return (i >= 0 && i < g_PalRecentCount);
+}
+
 int PalHandleClick(const string name)
 {
    if(!g_PalOpen) return REFRESH_NONE;
@@ -2335,35 +2375,23 @@ int PalHandleClick(const string name)
    if(id=="t1") { g_PalTab=1; PalDraw(); return REFRESH_NONE; }
    // (no t2 — RECENT lives inline on the PALETTE tab)
 
-   // material swatch "s{r}_{c}"
-   if(StringFind(id,"s")==0)
+   // material swatch "s{r}_{c}" — EXACT id (P-UI-74, the P-UI-69 law)
+   int mr,mc;
+   if(PalMatIdParse(id,mr,mc))
    {
-      int us=StringFind(id,"_");
-      if(us>0)
-      {
-         int r=(int)StringToInteger(StringSubstr(id,1,us-1));
-         int c=(int)StringToInteger(StringSubstr(id,us+1));
-         if(r>=0 && r<PAL_ROWS && c>=0 && c<PAL_COLS)
-         {
-            int flags=PaletteApplyColor(g_PalKind, PalMatColor(r,c));
-            if(g_PalOpen) PalUpdateLive();
-            ChartRedraw();
-            return flags;
-         }
-      }
-      return REFRESH_NONE;
+      int flags=PaletteApplyColor(g_PalKind, PalMatColor(mr,mc));
+      if(g_PalOpen) PalUpdateLive();
+      ChartRedraw();
+      return flags;
    }
-   // recent swatch "r{i}"
-   if(StringFind(id,"r")==0)
+   // recent swatch "r{i}" — EXACT id ("rempty" is the empty-state hint)
+   int ri;
+   if(PalRecentIdParse(id,ri))
    {
-      int i=(int)StringToInteger(StringSubstr(id,1));
-      if(i>=0 && i<g_PalRecentCount)
-      {
-         int flags=PaletteApplyColor(g_PalKind, g_PalRecent[i]);
-         if(g_PalOpen) PalUpdateLive();
-         ChartRedraw();
-         return flags;
-      }
+      int flags=PaletteApplyColor(g_PalKind, g_PalRecent[ri]);
+      if(g_PalOpen) PalUpdateLive();
+      ChartRedraw();
+      return flags;
    }
    return REFRESH_NONE;
 }
@@ -5775,6 +5803,20 @@ void PnlCommitMove(const int item)
                      g_PnlX[item] * 10000.0 + g_PnlY[item]);
 }
 
+//--- P-UI-75b: the drag's own frame window. File scope (and declared HERE,
+//--- above the button-up finalizer that clears `s_PnlMoveMoved`), so the press
+//--- chain and the polled shadow gate themselves through ONE window instead of
+//--- each carrying its own. See the P-UI-75 block below for why the rate is
+//--- adaptive and why the drag owns its frames.
+#define PNL_MOVE_COALESCE_MS  16   // the window at a grab (P-UI-75b)
+#define PNL_MOVE_FRAME_MIN_MS 16   // floor: never slower than this
+#define PNL_MOVE_FRAME_MAX_MS 50   // ceiling: a weak machine may back off here
+#define PNL_MOVE_SLACK_MS      8   // headroom a batch needs beyond its own cost
+
+static uint s_PnlMoveTick    = 0;      // last applied batch (0 = none yet)
+static int  s_PnlMoveFrameMs = PNL_MOVE_COALESCE_MS;
+static bool s_PnlMoveMoved   = false;  // the card really moved (the poll may pin)
+
 //--- chart-lock integrity layer ---------------------------------------
 // BUG: MT4 emits CHARTEVENT_MOUSE_MOVE only on cursor MOVEMENT. A button-up
 // with the cursor held perfectly still produces NO move event, so any drag
@@ -5896,6 +5938,7 @@ void ChartPointerFinalizeOnUps()
    // CircUnlockChart() for the drag's press-lock that was already clamped
    // away by ChartScrollReconcile, underflowing the panel's modal lock.
    if(g_PnlMoveItem >= 0) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
+   s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
    g_LongPressItem  = -1;
@@ -6551,12 +6594,310 @@ bool PnlCardBodyHit(const int mx,const int my)
            my >= g_PnlY[g_PnlOpen] && my <= g_PnlY[g_PnlOpen] + ph);
 }
 
-// P-PERF-04: how often a panel MOVE drag may apply its coordinate batch.
-// The gate is what coalesces mouse events; the delta keeps accumulating in
-// g_PnlMoveLast*, so the card still tracks the cursor exactly — it just does
-// it 30x/s instead of 60x/s. Each batch is one read+write pair per panel
-// object plus a forced full-chart repaint, so this is the panel's whole cost.
-#define PNL_MOVE_COALESCE_MS 33
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-75 (2026-09-14) — THE DRAG HAS TWO ENTRIES AND ONE CONTRACT, AND IT
+// PAYS FOR ITS OWN FRAMES.
+//
+// THE REPORT (fourth time in the same shape): «پنل تنظیمات درگ نمیشه ثابت هستش
+// به صورت روان درگ بشه بدون هزینه اضافی» — the settings card cannot be dragged
+// at all, and where it moves it does not follow the cursor. Two separate
+// defects, one architecture lesson each:
+//
+// (a) A DRAG LIVED ON ONE DELIVERY CHANNEL. The grab was reachable ONLY from a
+//     fresh CHARTEVENT_MOUSE_MOVE press edge (`leftDown && !g_MouseWasDown`) —
+//     and this project's own history says that event is not reliable for a
+//     press: MT4 emits NO mouse-move for a press that does not move (P-BK-03,
+//     recorded in `UILeftButtonDown`'s comment), and the button bit of `sparam`
+//     is a second witness that can disagree with the physical button (P-UI-73a
+//     has the two KEYSTATE conventions disagreeing already). EVERY other
+//     gesture in this file has a polled shadow for exactly that reason —
+//     `BkHoldPoll` for the box hold, `CustomPriceDragHealStale` for the line,
+//     `ChartScrollReconcile` for the lock — and the drag, the gesture the user
+//     reports most, had none. So the SAME contract now has a second entry:
+//     `PnlDragPoll()` from the tick/timer pump (`RefreshKitOnBar`, beside
+//     `BkHoldPoll`) arms through the SAME `PnlTryGrabMove` the press chain
+//     uses, steps through the SAME `PnlDragStep`, and ends through the SAME
+//     `PnlDragFinish`. No second affordance list and no second owner: the poll
+//     can only reach the points the press chain would have refused anyway
+//     (`PnlPointOnControl` — a control under the cursor is never a grab), and
+//     it arms only while the PHYSICAL button reads down (`UILeftButtonDown`)
+//     *and* the event latch never saw that press (`!g_MouseWasDown`), so a
+//     working event channel always keeps its own gesture. Recovery paths stay
+//     conservative (the `UILeftButtonUp` rule): the poll PINS the card
+//     (`PnlCommitMove`) only when it can prove the card actually moved.
+//
+// (b) THE DRAG DID NOT PAY FOR ITS OWN FRAMES. P-PERF-04/06 made the move
+//     coalesce to 30 Hz and repaint through `ThrottledChartRedraw()` — a
+//     100 ms tick throttle. The two gates could not compose, so one repaint
+//     landed per ~10 applied batches. Neither fixed rate is right, because the
+//     right rate is a MEASUREMENT: a drag owes one repaint per applied batch,
+//     and how many batches per second a machine can afford is exactly what the
+//     batch costs. The window is adaptive — the grab starts it at
+//     `PNL_MOVE_FRAME_MIN_MS` (cursor-glued), each batch moves it a quarter of
+//     the way toward the measured batch cost + `PNL_MOVE_SLACK_MS`, capped at
+//     `PNL_MOVE_FRAME_MAX_MS` — so a weak machine converges to the frame rate
+//     it can actually hold instead of dropping frames, and a fast one gets a
+//     card glued to the cursor. Cost when no drag is live: the poll reads one
+//     int. That is the whole steady-state cost of this change.
+// ══════════════════════════════════════════════════════════════════════════
+//--- the drag's frame window lives with the other gesture state below
+//--- (`PnlCommitMove`, P-UI-75b): the defines and the three counters are
+//--- declared there, because the button-up finalizer resets one of them.
+
+//--- is the point inside the palette popover? It floats ABOVE the card, so its
+//--- pixels are the popover's and a press there never belongs to the card.
+//--- ONE owner: the click channel's refusal and the drag's grab both ask it.
+bool PnlPalettePointInside(const int cx,const int cy)
+{
+   if(!g_PalOpen) return false;
+   return (cx >= g_PalX && cx <= g_PalX + PalW() &&
+           cy >= g_PalY && cy <= g_PalY + PalH());
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-76 (2026-09-14) — A RELEASE-CHANNEL CONTROL IS A CONTROL TOO.
+//
+// THE REPORT: «اینا کار نمیکنه چرا» — a screenshot with two arrows, one on the
+// TRANSPARENCY track, one on a COLOR quick-swatch whose own tooltip («Apply this
+// colour», set only by the `Q0..Q7` buttons) names the object under the cursor.
+//
+// WHY THOSE TWO ARE THE SAME DEFECT, and why every gate was green: this card has
+// TWO KINDS of control and they are claimed at DIFFERENT MOMENTS. The coordinate
+// controls (switch / cset / `+` / band / dropdown / sliders) act on the PRESS.
+// The NAME router's controls (colour preview `CB`, quick swatches `Q0..Q7`, NAV
+// pill, segmented cells `C0..Cn`, the text field, the header/footer buttons) act
+// on the RELEASE — MT4 hands the indicator OBJECT_CLICK when the button comes up.
+// And the card body is a DRAG HANDLE (P-UI-70a), so a press on such a control was
+// claimed by the grab: `PnlDragFinish(true, true)` then arms the release claim
+// (P-UI-65, so a drag's release cannot double as a click) and the OBJECT_CLICK of
+// that very gesture is spent ⇒ the control is DEAD. Only a click that moved ZERO
+// pixels survived, because MT4 emits no MOUSE_MOVE for a motionless press (the
+// `UILeftButtonDown` trap) and the grab therefore never armed — which is exactly
+// the "sometimes it works, sometimes it doesn't" the user kept reporting, in a
+// hand that moves 1-3 px on every real click.
+//
+// THE FIX: the grab refuses EVERY control's pixels, whichever channel claims it,
+// so a control keeps both of its events and an empty pixel of the card keeps the
+// drag. The geometry is READ BACK from the control's OWN object (OBJPROP_*
+// distance + size) instead of re-derived from the paint constants: the object IS
+// what the painter drew, so a hit can never drift from a paint — the failure mode
+// that has cost this project four rounds. Cost: only ever paid on a press (the
+// poll calls it after the physical-button gate), never on a tick.
+// ══════════════════════════════════════════════════════════════════════════
+bool PnlCtrlRectHit(const string nm,const int mx,const int my,const int pad)
+{
+   if(ObjectFind(0,nm) < 0) return false;
+   int x=(int)ObjectGetInteger(0,nm,OBJPROP_XDISTANCE);
+   int y=(int)ObjectGetInteger(0,nm,OBJPROP_YDISTANCE);
+   int w=(int)ObjectGetInteger(0,nm,OBJPROP_XSIZE);
+   int h=(int)ObjectGetInteger(0,nm,OBJPROP_YSIZE);
+   if(w<=0 || h<=0) return false;   // a label has no box: never a control hit
+   return (mx >= x-pad && mx <= x+w+pad && my >= y-pad && my <= y+h+pad);
+}
+
+//--- Is this pixel the face of a RELEASE-channel control of the open card?
+//--- ONE owner for that question: the grab (press + poll) asks it, so a new
+//--- such control can never be half-wired (it is named here once, and the gate
+//--- fails if this list loses a family).
+bool PnlNameControlAt(const int mx,const int my)
+{
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;   // the strip re-anchors
+   const int item = g_PnlOpen;
+   // header/footer buttons — the skins extend past the button by PNL_BTN_PAD
+   if(PnlCtrlRectHit(PnlHead(item,"close"),mx,my,PNL_BTN_PAD)) return true;
+   if(PnlCtrlRectHit(PnlHead(item,"done"), mx,my,PNL_BTN_PAD)) return true;
+   if(PnlCtrlRectHit(PnlHead(item,"rst"),  mx,my,PNL_BTN_PAD)) return true;
+   if(PnlCtrlRectHit(PnlHead(item,"pal"),  mx,my,PNL_BTN_PAD)) return true;
+   // the rows' own controls, by the EFFECTIVE kind (PnlRowDef resolves LEGACY)
+   const int rows = PnlRowsCount(item);
+   for(int r=0;r<rows;r++)
+   {
+      int kind=0,minV=0,maxV=0; double step=1; string label="",unit="",opts="";
+      PnlRowDef(item,r,kind,label,minV,maxV,step,unit,opts);
+      if(kind==PNL_K_COL)
+      {
+         if(PnlCtrlRectHit(PnlName(item,r,"CB"),mx,my,0)) return true;
+         for(int q=0;q<PNL_QSW_N;q++)
+            if(PnlCtrlRectHit(PnlName(item,r,"Q"+IntegerToString(q)),mx,my,0)) return true;
+      }
+      else if(kind==PNL_K_NAV)
+      {
+         if(PnlCtrlRectHit(PnlName(item,r,"NAV"),mx,my,0)) return true;
+      }
+      else if(kind==PNL_K_TXT)
+      {
+         if(PnlCtrlRectHit(PnlName(item,r,"ED"),mx,my,0)) return true;
+      }
+      else if(kind==PNL_K_SEG)
+      {
+         for(int c=0;c<12;c++)   // pills are C0..Cn; a missing one ends the walk
+         {
+            string nm=PnlName(item,r,"C"+IntegerToString(c));
+            if(ObjectFind(0,nm) < 0) break;
+            if(PnlCtrlRectHit(nm,mx,my,0)) return true;
+         }
+      }
+   }
+   return false;
+}
+
+//--- would a CONTROL of the open card have claimed this press? The grab is the
+//--- LAST affordance of the press chain, so this predicate names the coordinate
+//--- controls in exactly the same set and order (the [drag] gate checks that
+//--- positionally): a POLLED grab must never steal a press aimed at a control.
+//--- P-UI-76 appends the RELEASE-channel controls as one owner (PnlNameControlAt):
+//--- they are not claimed by the press chain, but a grab that takes their press
+//--- still eats their click, so they must be refused here as well.
+//--- Every call here is a pure hit test — `PnlDdHit` is deliberately NOT used
+//--- (it closes the popover and APPLIES the option it lands on) because an open
+//--- dropdown owns the next press anywhere, which is what `g_PnlDdItem` says.
+bool PnlPointOnControl(const int mx,const int my)
+{
+   int it=0,r=0,c=0;
+   if(PnlClosePressHit(mx,my)) return true;
+   if(g_PnlDdItem >= 0) return true;   // an open popover owns the next press
+   if(PnlDdAnchorHit(mx,my,it,r)) return true;
+   if(PnlKnobHit(mx,my,it,r)) return true;
+   if(PnlTrackHit(mx,my,it,r)) return true;
+   if(PnlSwitchHit(mx,my,it,r)) return true;
+   if(PnlCsetHit(mx,my,it,r,c)) return true;
+   if(PnlDualHit(mx,my,it,r,c)) return true;
+   if(PnlColorAddHit(mx,my,it,r)) return true;
+   if(PnlBandHit(mx,my,it,r)) return true;
+   if(PnlNameControlAt(mx,my)) return true;   // P-UI-76: the release channel's own
+   return false;
+}
+
+//--- THE GRAB — one owner, two entries (the press chain and the poll).
+//--- Returns true when this call took the pointer for a card move.
+bool PnlTryGrabMove(const int mx,const int my)
+{
+   if(g_PnlMoveItem >= 0) return false;   // a move already owns the pointer
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;   // the strip re-anchors
+   if(PnlPalettePointInside(mx,my)) return false;
+   if(PnlPointOnControl(mx,my)) return false;
+   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) return false;
+   g_PnlMoveItem    = g_PnlOpen;
+   g_PnlMoveLastX   = mx;
+   g_PnlMoveLastY   = my;
+   s_PnlMoveMoved   = false;
+   s_PnlMoveFrameMs = PNL_MOVE_FRAME_MIN_MS;   // a fresh gesture starts smooth
+   s_PnlMoveTick    = 0;                       // its first batch applies at once
+   DragClaim(DRAG_PANEL_MOVE);
+   CircLockChart();
+   return true;
+}
+
+//--- ONE batch of the move: apply what the cursor travelled since the last one,
+//--- then pay for exactly one frame. Both entries (event + poll) call THIS.
+void PnlDragStep(const int mx,const int my)
+{
+   if(g_PnlMoveItem < 0) return;
+   // P-UI-75b: the adaptive window IS the coalescer now (P-PERF-04's promise —
+   // the delta accumulates, so the card still tracks the cursor exactly — kept,
+   // at a rate the machine can hold instead of a hard 30 Hz).
+   uint now = GetTickCount();
+   if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < (uint)s_PnlMoveFrameMs) return;
+   if(mx == g_PnlMoveLastX && my == g_PnlMoveLastY) return;   // nothing to apply
+   s_PnlMoveTick = now;
+   uint t0 = GetTickCount();
+   CircReassertLock();   // LEARNING §5: the panel owns the view until release
+   PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);
+   g_PnlMoveLastX = mx;
+   g_PnlMoveLastY = my;
+   s_PnlMoveMoved = true;
+   DragFrameRedraw();    // the drag's own frame, once per applied batch
+   // Converge the window on the MEASURED batch (writes + frame). GetTickCount()
+   // resolves ~16 ms and that is enough: the question is the order of magnitude,
+   // and the floor keeps a zero measurement from asking for an unbounded rate.
+   int cost = (int)(GetTickCount() - t0) + PNL_MOVE_SLACK_MS;
+   if(cost < PNL_MOVE_FRAME_MIN_MS) cost = PNL_MOVE_FRAME_MIN_MS;
+   if(cost > PNL_MOVE_FRAME_MAX_MS) cost = PNL_MOVE_FRAME_MAX_MS;
+   s_PnlMoveFrameMs = (s_PnlMoveFrameMs * 3 + cost) / 4;   // EWMA 3:1, no oscillation
+}
+
+//--- END the drag. `commit` pins the spot for future opens; `suppressClick`
+//--- eats the release that belongs to this gesture (P-UI-65's one-gesture rule).
+void PnlDragFinish(const bool commit,const bool suppressClick)
+{
+   if(g_PnlMoveItem < 0) return;
+   if(commit) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
+   g_PnlMoveItem = -1;
+   s_PnlMoveMoved = false;
+   DragReleaseIf(DRAG_PANEL_MOVE);
+   if(suppressClick) UISuppressNextClick();
+   CircUnlockChart();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-74 (2026-09-14) — EVERY CARD CONTROL ANSWERS ON BOTH DELIVERY CHANNELS,
+// AND ONE GESTURE STILL HAS EXACTLY ONE OWNER.
+//
+// THE REPORT (third time in the same shape): «این رنگ ها که هستش کلیک میکنم هیچ
+// تغییر رنگی نداریم، از پلن پالت درستش هستش ولی از اینجا نه» — tapping the colour
+// strip of the ATR card does nothing, while the palette popover opened from
+// elsewhere applies fine.
+//
+// MEASURED FIRST, and the measurement is why the old fixes could not have
+// helped: the shipped build paints that strip EXACTLY where `PnlCsetHit` looks
+// for it (columns 617/661/705/749/793, band y 790..818 against a paint at
+// 794..813 — the wide body, the row grid, the two-column origins and the footer
+// all land pixel-exact), and every gate was green. So the geometry and the
+// apply logic were never the hole: the hole is DELIVERY. A control that exists
+// on ONE channel only is reachable only while that channel works, and this card
+// has two very different channels living side by side:
+//   * the NAME-based router (`PnlHandleClick`, driven by CHARTEVENT_OBJECT_CLICK)
+//     owns the nav/segment buttons, the colour preview block, X/Done and the
+//     quick-pick swatches — the user's palette opened and closed through it
+//     all session (the last one even logged itself: `control=..._Pal_close`);
+//   * the COORDINATE press chain (a fresh MOUSE_MOVE with the button down)
+//     owns the switch pill, the cset cells, the "+" chip, the section bands and
+//     the sliders — and ONLY that channel. Its events can be eaten by a foreign
+//     drag claim (P-UI-70b/72), by a released-but-unreported button, or simply
+//     not delivered for a control whose topmost object is a bitmap (the "glass"
+//     skin sits exactly on every colour cell and MT4 fires no OBJECT_CLICK for
+//     it), and then the control reads as DEAD while its neighbours keep working.
+//
+// THE FIX IS NOT A SECOND COPY OF THE DISPATCH. A duplicated handler is the
+// P-UI-31/P-UI-69 "two deciders" shape one layer up: the affordance list would
+// exist twice and drift. Instead the CLICK channel re-enters the SAME dispatch
+// (`PnlHandleMouseMove` with a synthetic fresh press) so the list, the order and
+// every arm stay single-owned, and two latches make the twin delivery safe:
+//   * `s_PnlActedSeq` — the press identity (P-UI-65's `g_UIPressSeq`) a control
+//     already acted for. The second event of the same release (CLICK and
+//     OBJECT_CLICK are both delivered) is skipped, so nothing double-acts.
+//   * `s_PnlClickActed` — set ONLY when the click channel acted while the button
+//     was still physically DOWN (the P-UI-49b delivery order: MT4 may hand the
+//     indicator the click of the press that grabbed the object). That press
+//     event is still in flight, so the next press chain pass consumes it — the
+//     same "one gesture, one owner" rule, from the other side.
+//   * `s_PnlClickChannel` — TRUE while the click channel dispatches. Two things
+//     depend on it: the release is ALREADY the event being handled, so no click
+//     claim may be armed (arming one there is P-UI-65's over-eating, one click
+//     later), and the card-body DRAG grab is refused (a plain click must never
+//     start a move gesture — only a press may).
+// ══════════════════════════════════════════════════════════════════════════
+static uint s_PnlActedSeq     = 0;      // press identity that a CONTROL acted for
+static bool s_PnlClickChannel = false;  // TRUE while the CLICK channel dispatches
+static bool s_PnlClickActed   = false;  // the click channel acted; its press echo
+                                        // is still due and must not act again
+
+//--- did a control already act for the gesture currently being delivered?
+bool PnlGestureConsumed()
+{
+   return (g_UIPressSeq != 0 && s_PnlActedSeq == g_UIPressSeq);
+}
+
+//--- a CONTROL of the open card just acted. The latch is the whole point: the
+//--- twin event of this release must not act a second time. The release claim
+//--- (P-UI-65) is armed on the PRESS channel only — on the click channel the
+//--- release IS the event being handled, and a claim armed there would eat the
+//--- NEXT genuine click (the P-UI-01 symptom).
+void UIPressAct()
+{
+   s_PnlActedSeq = g_UIPressSeq;
+   if(!s_PnlClickChannel) UISuppressNextClick();
+}
 
 void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool pressStart)
 {
@@ -6618,28 +6959,13 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       }
       if(!leftDown)
       {
-         PnlCommitMove(g_PnlMoveItem);   // lock the spot for future opens
-         g_PnlMoveItem = -1;
-         DragReleaseIf(DRAG_PANEL_MOVE);
-         UISuppressNextClick();
-         CircUnlockChart();
+         // lock the spot for future opens + eat the release of this gesture
+         PnlDragFinish(true, true);
          return;
       }
-      static uint s_PnlMoveTick = 0;
-      uint now = GetTickCount();
-      if(now - s_PnlMoveTick >= PNL_MOVE_COALESCE_MS)   // P-PERF-04: 30 Hz, cursor-exact
-      {
-         s_PnlMoveTick = now;
-         CircReassertLock();   // LEARNING §5: the panel owns the view until release
-         PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);
-         g_PnlMoveLastX = mx;
-         g_PnlMoveLastY = my;
-         // P-PERF-04: PnlMoveBy already wrote the objects (which dirties the
-         // chart by itself), so forcing a SYNCHRONOUS full repaint per mouse
-         // tick was pure extra cost on a chart the level pipeline has
-         // populated. The throttled variant coalesces to 10/s.
-         ThrottledChartRedraw();
-      }
+      // ONE batch owner (P-UI-75b): the adaptive window coalesces, the batch
+      // pays for exactly one frame. The poll calls the same function.
+      PnlDragStep(mx, my);
       return;
    }
 
@@ -6649,6 +6975,10 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       // or flip a toggle — all coordinate-based (no invisible buttons).
       if(!pressStart) return;
       if(g_PnlOpen < 0) return;
+      // P-UI-74: the click MIRROR of a gesture whose control already acted (the
+      // click channel ran first — MT4 may deliver the click of the very press
+      // that grabbed the object). One gesture, one owner: consume the echo.
+      if(s_PnlClickActed) { s_PnlClickActed = false; return; }
       if(!PnlPressAllowed()) return;   // P-UI-70b: self-healing (a stale claim
                                        // used to kill every control here)
 
@@ -6657,7 +6987,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlClosePressHit(mx,my))
       {
          PnlCloseAll();
-         UISuppressNextClick();   // the release must not act as anything else
+         UIPressAct();    // P-UI-74: latch the gesture + claim its release
          ChartRedraw();
          return;
       }
@@ -6677,7 +7007,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          int df=PnlDdHit(mx,my);
          if(df!=-1)
          {
-            UISuppressNextClick();
+            UIPressAct();    // P-UI-74
             if(df!=REFRESH_NONE) RefreshDisplay(df); else ChartRedraw();
             return;
          }
@@ -6687,21 +7017,19 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlDdAnchorHit(mx,my,it,r))
       {
          PnlDdOpen(it,r);
-         UISuppressNextClick();
+         UIPressAct();    // P-UI-74
          return;
       }
-      if(PnlKnobHit(mx,my,it,r))
+      // P-UI-76: ONE slider gesture — the knob and the track are different shapes
+      // of the SAME press, so they are claimed by ONE branch. The knob branch used
+      // to arm the drag and apply NOTHING ("press position == knob position"), and
+      // its grab zone is 12 px WIDER than the drawn knob on each side — so a click
+      // 1-12 px off the white circle armed a drag that a motionless press never
+      // fulfilled, and it read as «اینا کار نمیکنه». A press anywhere on a slider
+      // now JUMPS the value to the cursor (standard slider behaviour, and the very
+      // first pass the drag would have applied) and the drag continues from there.
+      if(PnlKnobHit(mx,my,it,r) || PnlTrackHit(mx,my,it,r))
       {
-         g_PnlDragItem=it; g_PnlDragRow=r;
-         DragClaim(DRAG_PANEL_KNOB);
-         UIDragBudgetBegin();   // P-UI-33
-         CircLockChart();
-         return;   // press position == knob position; movement starts next event
-      }
-      if(PnlTrackHit(mx,my,it,r))
-      {
-         // standard slider behaviour: track click jumps the value there
-         // AND the drag continues from this point
          g_PnlDragItem=it; g_PnlDragRow=r;
          DragClaim(DRAG_PANEL_KNOB);
          UIDragBudgetBegin();   // P-UI-33: the jump is the gesture's first pass
@@ -6710,6 +7038,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          PnlValueFromX(it,r,mx,v);
          int flags0=PnlApply(it,r,v);
          PnlSetVisualValue(it,r,v);
+         UIPressAct();   // P-UI-74: the jump IS the gesture's action
          if(flags0!=REFRESH_NONE) RefreshDisplay(flags0);
          return;
       }
@@ -6718,7 +7047,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          double v=(PnlCurrent(it,r)>0.5)?0.0:1.0;
          int flags=PnlApply(it,r,v);
          PnlUpdateRow(it,r);
-         UISuppressNextClick();   // release must not be treated as a dismiss click
+         UIPressAct();    // P-UI-74: one flip, and the release stays spent
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
@@ -6728,7 +7057,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       {
          int ck=PnlColorKindSet(csi,css);
          if(ck>=0) PalOpenKind(csi,ck);
-         UISuppressNextClick();
+         UIPressAct();    // P-UI-74
          return;
       }
       // dual cell → flip that member (ALL cell flips the whole group)
@@ -6774,7 +7103,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
                if(PnlRowKind(dui,gr) == PNL_K_DUAL) PnlUpdateRow(dui,gr);
          }
          else PnlUpdateRow(dui,dur);
-         UISuppressNextClick();
+         UIPressAct();    // P-UI-74
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
@@ -6783,7 +7112,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlColorAddHit(mx,my,qai,qar))
       {
          PalOpen(qai,qar);
-         UISuppressNextClick();
+         UIPressAct();    // P-UI-74
          return;
       }
       // section band → collapse/expand (preview .acc intent); the card
@@ -6796,22 +7125,17 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          {
             PnlToggleBand(bi,bb);
             PnlRebuildKeepSpot(bi);
-            UISuppressNextClick();
+            UIPressAct();    // P-UI-74
          }
          return;
       }
       // grab the header — OR any unclaimed spot of the card (P-UI-70a: a press
       // in the body used to fall through and read as "can't drag the panel") —
       // and the whole panel follows the cursor anywhere on the chart.
-      if(PnlHeaderHit(mx,my) || PnlCardBodyHit(mx,my))
-      {
-         g_PnlMoveItem  = g_PnlOpen;
-         g_PnlMoveLastX = mx;
-         g_PnlMoveLastY = my;
-         DragClaim(DRAG_PANEL_MOVE);
-         CircLockChart();
-         return;
-      }
+      // P-UI-74: NEVER on the click channel — that is a released button, not a
+      // grab, and claiming a move gesture for it made the card follow the next
+      // cursor move (and armed a claim nobody was owed).
+      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my)) return;
       return;
    }
 
@@ -6838,6 +7162,47 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
    PnlSetVisualValue(g_PnlDragItem,g_PnlDragRow,v);
    if(flags != REFRESH_NONE)
       RefreshDisplay(flags);
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-74 — the CLICK channel for the card's own controls.          |
+//|                                                                   |
+//| A card control that lives on the coordinate press chain only is    |
+//| reachable only while that channel works. This is the second         |
+//| channel: the click's OWN pixels are dispatched through the SAME     |
+//| owner (`PnlHandleMouseMove`, synthetic fresh press), so the          |
+//| affordance list, its order and every arm stay single-owned and      |
+//| cannot drift — and the latches make a double delivery harmless.     |
+//+------------------------------------------------------------------+
+bool PnlCardPointInside(const int mx,const int my)
+{
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;
+   return (mx >= g_PnlX[g_PnlOpen] && mx <= g_PnlX[g_PnlOpen] + PnlPanelW(g_PnlOpen) &&
+           my >= g_PnlY[g_PnlOpen] && my <= g_PnlY[g_PnlOpen] + PnlPanelH(g_PnlOpen));
+}
+
+//--- returns TRUE only when a CONTROL of the open card acted (the caller then
+//--- owns the event and must not also route it by name).
+bool PnlClickFallback(const int cx,const int cy)
+{
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;
+   if(PnlGestureConsumed()) return false;        // its press already owned it
+   if(g_PalMixDrag > 0) return false;            // the mixer drag owns the pointer
+   // A click that lands ON the popover belongs to the popover — it floats above
+   // the card, so the pixels are its, never the card row underneath.
+   if(PnlPalettePointInside(cx,cy)) return false;
+   if(g_PnlDragItem >= 0 || g_PnlMoveItem >= 0) return false;   // live gesture
+   if(!PnlCardPointInside(cx, cy)) return false;
+   s_PnlClickChannel = true;
+   PnlHandleMouseMove(cx, cy, false, true);      // the SAME dispatch, same owner
+   s_PnlClickChannel = false;
+   if(!PnlGestureConsumed()) return false;       // nothing in the card acted
+   // The press event of THIS gesture may still be in flight (MT4 hands the
+   // indicator the click of the press that grabbed the object) — the press
+   // chain consumes that echo instead of acting on it.
+   s_PnlClickActed = !UILeftButtonUp();
+   ChartRedraw();
+   return true;
 }
 
 //+------------------------------------------------------------------+
@@ -7131,6 +7496,12 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       }
    }
    if(g_PalOpen && StringFind(name, g_UI.btnPrefix+"Pal_") == 0) return REFRESH_NONE;
+   // P-UI-74: the click's coordinates get first refusal on the card's OWN
+   // controls (switch pill / cset cell / "+" chip / band / dropdown / X+Done).
+   // When one of them acts, the event is spent and the name router is skipped;
+   // when none of them answers (nav, segments, the colour preview, the quick
+   // swatches) this returns FALSE and the name router runs exactly as before.
+   if(PnlClickFallback(mouseX, mouseY)) return REFRESH_NONE;
 
    for(int i = 0; i < PNL_COUNT; i++)   // every settings card
    {
@@ -7484,6 +7855,8 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       bool fireRel = s_BkFireReleasePending;   // the opening hold's own release
       s_BkFireReleasePending = false;          // one-shot — every CLICK consumes
       MousePressStart(false);      // button-up — resync the rising-edge detector
+      s_PnlClickActed = false;     // P-UI-75a: a press echo cannot outlive its own
+                                   // press — a release resyncs EVERY edge witness
       ChartPointerFinalizeOnUps(); // finalize every gesture reliably
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
       // P-UI-40c: this release is one we already acted on, and it never reaches
@@ -7501,6 +7874,10 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
          ChartRedraw();
          return;
       }
+      // P-UI-74: the plain click is the card's second delivery channel too
+      // (the cset cells / switch / band are coordinate controls whose objects
+      // are bitmap skins — MT4 fires no OBJECT_CLICK for those at all).
+      if(StringFind(sparam, "r") < 0 && PnlClickFallback(cx, cy)) return;
       // TV-like: an outside chart click dismisses the floating strip — but
       // never the gesture that opened it, never a drag-release, never a
       // right-click, and never a tap on its OWN box (the toolbar stays while
@@ -7524,6 +7901,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       g_LastUIX = (int)lparam;
       g_LastUIY = (int)dparam;
       MousePressStart(false);
+      s_PnlClickActed = false;     // P-UI-75a: same resync on the object-click leg
       ChartPointerFinalizeOnUps();
       BkHoldOnBoxUp();             // box-hold release opens NOTHING (mid-hold already fired)
       s_BkFireReleasePending = false;   // release over an object ends the opening gesture too
@@ -7700,6 +8078,49 @@ void SaveBiotakKit()
 }
 
 //--- per-tick / per-bar UI refresh (HTF forming candle + menu badge sync)
+//--- P-UI-75a: THE DRAG'S POLLED SHADOW — the tick/timer half of the grab.
+//|     A press that never moved emits NO CHARTEVENT_MOUSE_MOVE (the P-BK-03
+//|     trap `UILeftButtonDown` documents), and the button bit of `sparam` is a
+//|     second witness that can be wrong on its own — so a drag reachable only
+//|     from a fresh mouse-move press edge is dead for that whole gesture, which
+//|     is the fourth report of the same shape. This runs beside `BkHoldPoll`
+//|     (per tick + 250 ms timer) and can only ADD entries, never re-route one:
+//|       * it arms ONLY while the physical button is down and the event latch
+//|         never saw that press (`!g_MouseWasDown`) — a working event channel
+//|         keeps its own gesture, always;
+//|       * the grab itself is the SAME `PnlTryGrabMove` the press chain uses,
+//|         so the control list, the palette exclusion and the claim cannot
+//|         drift from it;
+//|       * it steps through the SAME `PnlDragStep`, so the adaptive window and
+//|         the single frame owner are shared, not duplicated;
+//|       * it ends through the SAME `PnlDragFinish`, and it PINS the spot only
+//|         when it can prove the card moved (a recovery path stays conservative
+//|         — the `UILeftButtonUp` rule one gesture up).
+//|     Cost when no drag is live: four reads.
+void PnlDragPoll()
+{
+   if(g_PnlMoveItem >= 0)
+   {
+      // The release MT4 never reported (cursor held still, focus lost, another
+      // chart). Both KEYSTATE conventions must agree it is free (P-UI-73a).
+      if(UILeftButtonUp())
+      {
+         PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved);
+         return;
+      }
+      PnlDragStep(g_LastUIX, g_LastUIY);   // apply what the event channel missed
+      return;
+   }
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) return;
+   if(g_PnlDragItem >= 0 || g_PalMixDrag > 0) return;   // another panel gesture owns it
+   if(g_DragOwner != DRAG_NONE) return;                 // the ring / orb owns it
+   if(g_MouseWasDown) return;      // the event channel saw this press: its gesture
+   if(s_PnlClickActed) return;     // a control already consumed this gesture
+   if(!UILeftButtonDown()) return;
+   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY)) return;
+   _LOG_GATE_W Print("[W][PERF] panel drag armed by the poll (no mouse-move press edge)");
+}
+
 void RefreshKitOnBar()
 {
    // Called from OnCalculate AND OnTimer — i.e. on every tick twice.
@@ -7707,6 +8128,7 @@ void RefreshKitOnBar()
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
+   PnlDragPoll();  // P-UI-75a: the same net for the card drag (one press contract)
    PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
    UISyncDrain();          // P-UI-40: hotkey-raised requests settle here too
    BkMiniStripHeal();      // strip closes itself when its box vanished (R-BKSTRIP)

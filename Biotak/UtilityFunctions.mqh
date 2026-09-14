@@ -880,6 +880,26 @@ void ThrottledChartRedraw(bool forceRedraw = false) {
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-75b: THE DRAG'S OWN FRAME.                                  |
+//|                                                                  |
+//| A live drag writes a batch of coordinates and owes exactly ONE   |
+//| repaint per applied batch. ThrottledChartRedraw() is a 100 ms    |
+//| TICK throttle, so the two gates never composed: the card's        |
+//| coordinates landed 30x/s while the chart was painted 10x/s and    |
+//| the card visibly jumped behind the cursor. The DRAG's own window  |
+//| is the coalescer now (PNL_MOVE_FRAME_* in BiotakPanels), so this  |
+//| owner is reachable once per batch and ONLY while a live grab owns |
+//| the pointer - never from the tick path, never per mouse event.    |
+//| Cost when idle: zero (no caller runs).                           |
+//+------------------------------------------------------------------+
+void DragFrameRedraw() {
+    ChartRedraw();
+    // The frame WE just paid for counts for the tick throttle too, so the
+    // tick cannot immediately re-paint the same picture (P-PERF-06's rule).
+    g_lastChartRedrawTime = GetTickCount();
+}
+
+//+------------------------------------------------------------------+
 //| P-PERF-24: DISCRETE ACTION PAINT (toggle / key / one row press)  |
 //|                                                                  |
 //| ThrottledChartRedraw() is the right owner for the TICK path - it  |
