@@ -585,6 +585,21 @@ def check_drag():
     if step is not None and "Print(" in step:
         problems.append("the per-move batch path prints - the ledger fires at "
                         "drag rate instead of gesture rate (P-UI-78)")
+    # (f) P-UI-79: the refusal names the remembered rect (an "outside" without
+    #     a stated rect answers nothing), and a rect-miss falls back to the
+    #     paint itself (the body skins) before it may refuse.
+    if ref is None or "rect=" not in ref:
+        problems.append("a refusal no longer states the remembered rect - the "
+                        "next (H) cannot be judged (P-UI-79)")
+    if body(panels, "bool PnlSkinHit(") is None:
+        problems.append("PnlSkinHit() is gone - a rect/paint divergence has no "
+                        "paint-anchored fallback (P-UI-79)")
+    elif "PnlSkinHit(g_PnlOpen,mx,my)" not in (grab or ""):
+        problems.append("the grab never asks the paint - a stale rect refuses "
+                        "presses sitting on the drawn card (P-UI-79)")
+    if grab is not None and 'viaSkin ? "skin" : "rect"' not in grab:
+        problems.append("the arm line lost its via= origin - a skin-fallback "
+                        "grab is indistinguishable from a rect one (P-UI-79)")
     # (e) P-UI-78: the poll ends a live drag only on TWO consecutive release
     #     readings - one up-reading is a KEYSTATE-flicker rumour (P-BK-05) and
     #     murdered live drags mid-press.
@@ -1976,9 +1991,24 @@ def selftest():
 
     # 40. P-UI-78: one refusal goes silent - that press shape reads as dead
     #     with no line saying why
-    with_source(PANELS, '   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) { PnlGrabRefused("H",byPoll,mx,my); return false; }',
-                '   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) return false;')
+    with_source(PANELS, '   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }',
+                '   if(PnlPointOnControl(mx,my)) return false;')
     cases.append(("a silent grab refusal is caught", bool(check_drag())))
+    reset()
+
+    # 41. P-UI-79: the paint-anchored fallback is gone - a stale rect refuses
+    #     presses sitting on the drawn card again
+    with_source(PANELS, "      if(!PnlSkinHit(g_PnlOpen,mx,my)) { PnlGrabRefused(\"H\",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }",
+                "      { PnlGrabRefused(\"H\",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }")
+    cases.append(("a grab without its paint fallback is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 42. P-UI-79: the refusal loses the remembered rect - an (H) line cannot
+    #     be judged anymore
+    with_source(PANELS, "\" at \", mx, \",\", my, \" rect=\", px, \",\", py, \",\", pw, \",\", ph);",
+                "\" at \", mx, \",\", my);")
+    cases.append(("a refusal without its rect is caught", bool(check_drag())))
     reset()
 
     for name, ok in cases:

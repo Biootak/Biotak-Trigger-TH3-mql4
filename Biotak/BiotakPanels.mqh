@@ -6784,10 +6784,30 @@ bool PnlPointOnControl(const int mx,const int my)
 //--- log floods. Codes: M = a move already owns it, X = closed/strip,
 //--- P = the palette owns the pixel, C = a card control owns it,
 //--- H = neither the header nor the body is under the cursor.
-void PnlGrabRefused(const string why,const bool byPoll,const int mx,const int my)
+void PnlGrabRefused(const string why,const bool byPoll,const int mx,const int my,
+                    const int px,const int py,const int pw,const int ph)
 {
    if(!byPoll)
-      _LOG_GATE_W Print("[UI] panel drag grab refused (" + why + ") item=", g_PnlOpen, " at ", mx, ",", my);
+      _LOG_GATE_W Print("[UI] panel drag grab refused (" + why + ") item=", g_PnlOpen,
+                        " at ", mx, ",", my, " rect=", px, ",", py, ",", pw, ",", ph);
+}
+
+//--- P-UI-79: is the press on the card's own DRAWN body skin? The skins are
+//--- created from the same px,py the remembered rect is built from — but they
+//--- ARE the paint, so when the two ever disagree the skins win. Narrow body
+//--- is "card"; a wide one adds "cardm0..n" bands plus "cardb" (and the
+//--- "cardf" wash never decides: it overlays the footer). Only ObjectFind +
+//--- rect reads, and only called after the rect already missed — zero
+//--- steady-state cost, and a miss here is a press on no card pixel at all.
+bool PnlSkinHit(const int item,const int mx,const int my)
+{
+   if(item < 0 || item >= PNL_COUNT || item == 13) return false;
+   if(PnlCtrlRectHit(PnlHead(item,"card"),mx,my,0)) return true;
+   if(PnlCtrlRectHit(PnlHead(item,"cardb"),mx,my,0)) return true;
+   int n = PnlPairRows(item);
+   for(int li=0; li<n; li++)
+      if(PnlCtrlRectHit(PnlHead(item,"cardm"+IntegerToString(li)),mx,my,0)) return true;
+   return false;
 }
 
 //--- THE GRAB — one owner, two entries (the press chain and the poll).
@@ -6796,11 +6816,26 @@ void PnlGrabRefused(const string why,const bool byPoll,const int mx,const int my
 //--- arming channel, so the move block below knows which witness may end it.
 bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
 {
-   if(g_PnlMoveItem >= 0) { PnlGrabRefused("M",byPoll,mx,my); return false; }
-   if(g_PnlOpen < 0 || g_PnlOpen == 13) { PnlGrabRefused("X",byPoll,mx,my); return false; }
-   if(PnlPalettePointInside(mx,my)) { PnlGrabRefused("P",byPoll,mx,my); return false; }
-   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my); return false; }
-   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) { PnlGrabRefused("H",byPoll,mx,my); return false; }
+   // The remembered rect, for the ledger (P-UI-79): when a press misses it,
+   // the line must show WHERE the rect was — "outside" is only an answer
+   // against a stated rect.
+   int rpx = (g_PnlOpen >= 0 ? g_PnlX[g_PnlOpen] : 0);
+   int rpy = (g_PnlOpen >= 0 ? g_PnlY[g_PnlOpen] : 0);
+   int rpw = (g_PnlOpen >= 0 ? PnlPanelW(g_PnlOpen) : 0);
+   int rph = (g_PnlOpen >= 0 ? PnlPanelH(g_PnlOpen) : 0);
+   if(g_PnlMoveItem >= 0) { PnlGrabRefused("M",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) { PnlGrabRefused("X",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   if(PnlPalettePointInside(mx,my)) { PnlGrabRefused("P",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   // The rect missed — ask the PAINT itself before giving up. When rect and
+   // paint ever disagree, the skins are ground truth and the grab still
+   // stands (ledgered as via=skin, so the divergence stays visible too).
+   bool viaSkin = false;
+   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my))
+   {
+      if(!PnlSkinHit(g_PnlOpen,mx,my)) { PnlGrabRefused("H",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+      viaSkin = true;
+   }
    g_PnlMoveItem    = g_PnlOpen;
    g_PnlMoveLastX   = mx;
    g_PnlMoveLastY   = my;
@@ -6812,7 +6847,8 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    CircLockChart();
    // P-UI-78: one line per gesture (never per move) — the next "can't drag"
    // names its own arming channel instead of being re-investigated.
-   _LOG_GATE_W Print("[UI] panel drag armed by " + (byPoll ? "poll" : "event") + " item=", g_PnlOpen, " at ", mx, ",", my);
+   // P-UI-79: via=skin names a grab the remembered rect missed.
+   _LOG_GATE_W Print("[UI] panel drag armed by " + (byPoll ? "poll" : "event") + " item=", g_PnlOpen, " via=", (viaSkin ? "skin" : "rect"), " at ", mx, ",", my);
    return true;
 }
 
