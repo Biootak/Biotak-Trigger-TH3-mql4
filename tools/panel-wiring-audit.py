@@ -559,6 +559,43 @@ def check_drag():
         problems.append("the finish does not drop the arming-channel flag - a "
                         "later drag would inherit another gesture's release "
                         "rule (P-UI-77)")
+    # (d) P-UI-78: the gesture names its own decisions - arm (whose channel),
+    #     refusal (which reason) and finish (moved? whose rule?). Three Prints
+    #     per gesture at most, and the per-move batch path stays silent, or the
+    #     ledger itself becomes the perf problem it was built to find.
+    if grab is None or "panel drag armed by " not in grab or \
+            'byPoll ? "poll" : "event"' not in grab:
+        problems.append("the grab does not ledger its arming channel - the next "
+                        "\"can't drag\" cannot name its own entry (P-UI-78)")
+    ref = body(panels, "void PnlGrabRefused(")
+    if ref is None:
+        problems.append("PnlGrabRefused() is gone - refusals have no single "
+                        "owner again (P-UI-78)")
+    else:
+        for code in ("\"M\"", "\"X\"", "\"P\"", "\"C\"", "\"H\""):
+            if "PnlGrabRefused(%s,byPoll" % code not in grab:
+                problems.append("a grab refusal lost its ledger call (%s) - that "
+                                "refusal is silent again (P-UI-78)" % code)
+        if "if(!byPoll)" not in ref:
+            problems.append("refusals print from the poll too - one line per "
+                            "tick while held, i.e. a log flood (P-UI-78)")
+    if fin2 is None or "panel drag finished moved=" not in fin2:
+        problems.append("the finish does not ledger moved/channel - a jump or a "
+                        "dead drag leaves no trace (P-UI-78)")
+    if step is not None and "Print(" in step:
+        problems.append("the per-move batch path prints - the ledger fires at "
+                        "drag rate instead of gesture rate (P-UI-78)")
+    # (e) P-UI-78: the poll ends a live drag only on TWO consecutive release
+    #     readings - one up-reading is a KEYSTATE-flicker rumour (P-BK-05) and
+    #     murdered live drags mid-press.
+    if poll is not None:
+        if "if(!s_PnlPollUpArmed)" not in poll:
+            problems.append("the poll finishes a live drag on a single "
+                            "up-reading - a flicker murders it mid-press (P-UI-78)")
+        if "s_PnlPollUpArmed = true;" not in poll or \
+                "s_PnlPollUpArmed = false;" not in poll:
+            problems.append("the rumour filter never arms/clears - the debounce "
+                            "cannot work (P-UI-78)")
     bridge = body(panels, "void HandleUIChartEvent(")
     if bridge is None or bridge.count("s_PnlClickActed = false;") < 2:
         problems.append("a release no longer resyncs the press-echo latch - a "
@@ -1918,6 +1955,30 @@ def selftest():
                 "   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,false)) return;")
     cases.append(("a poll that never owns its drag's release is caught",
                   bool(check_drag())))
+    reset()
+
+    # 38. P-UI-78: the ledger moves into the per-move batch path - one line per
+    #     drag tick instead of per gesture (the diagnosis becomes the lag)
+    with_source(PANELS, "   DragFrameRedraw();    // the drag's own frame, once per applied batch",
+                "   DragFrameRedraw();    // the drag's own frame, once per applied batch\n"
+                "   Print(\"[UI] seed: batch\");")
+    cases.append(("a ledger that prints at drag rate is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 39. P-UI-78: the poll is back to finishing on one up-reading - a KEYSTATE
+    #     flicker murders the live drag mid-press again
+    with_source(PANELS, "         if(!s_PnlPollUpArmed) { s_PnlPollUpArmed = true; return; }",
+                "         // seed: single-reading finish")
+    cases.append(("a poll finish without the rumour filter is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 40. P-UI-78: one refusal goes silent - that press shape reads as dead
+    #     with no line saying why
+    with_source(PANELS, '   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) { PnlGrabRefused("H",byPoll,mx,my); return false; }',
+                '   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) return false;')
+    cases.append(("a silent grab refusal is caught", bool(check_drag())))
     reset()
 
     for name, ok in cases:

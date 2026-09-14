@@ -5821,6 +5821,9 @@ static bool s_PnlMoveMoved   = false;  // the card really moved (the poll may pi
 // that bit must not own its release (below). Set on every arm, cleared on
 // every finish; meaningful only while g_PnlMoveItem >= 0.
 static bool s_PnlMoveByPoll  = false;
+// P-UI-78: the poll's release rumour filter (below) — one up-reading arms,
+// the second consecutive one finishes. Reset with every finish, like the rest.
+static bool s_PnlPollUpArmed = false;
 
 //--- chart-lock integrity layer ---------------------------------------
 // BUG: MT4 emits CHARTEVENT_MOUSE_MOVE only on cursor MOVEMENT. A button-up
@@ -5945,6 +5948,7 @@ void ChartPointerFinalizeOnUps()
    if(g_PnlMoveItem >= 0) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
    s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
    s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
+   s_PnlPollUpArmed = false;   // P-UI-78: and so does the rumour filter
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
    g_LongPressItem  = -1;
@@ -6774,17 +6778,29 @@ bool PnlPointOnControl(const int mx,const int my)
    return false;
 }
 
+//--- P-UI-78: WHY the grab refused, in one place — and the ledger prints it
+//--- here, but ONLY for the event channel (one line per user press). The poll
+//--- calls the grab per tick while held, so its refusals stay silent, or the
+//--- log floods. Codes: M = a move already owns it, X = closed/strip,
+//--- P = the palette owns the pixel, C = a card control owns it,
+//--- H = neither the header nor the body is under the cursor.
+void PnlGrabRefused(const string why,const bool byPoll,const int mx,const int my)
+{
+   if(!byPoll)
+      _LOG_GATE_W Print("[UI] panel drag grab refused (" + why + ") item=", g_PnlOpen, " at ", mx, ",", my);
+}
+
 //--- THE GRAB — one owner, two entries (the press chain and the poll).
 //--- Returns true when this call took the pointer for a card move.
 //--- `byPoll` records WHO armed it (P-UI-77): the release belongs to the
 //--- arming channel, so the move block below knows which witness may end it.
 bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
 {
-   if(g_PnlMoveItem >= 0) return false;   // a move already owns the pointer
-   if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;   // the strip re-anchors
-   if(PnlPalettePointInside(mx,my)) return false;
-   if(PnlPointOnControl(mx,my)) return false;
-   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) return false;
+   if(g_PnlMoveItem >= 0) { PnlGrabRefused("M",byPoll,mx,my); return false; }
+   if(g_PnlOpen < 0 || g_PnlOpen == 13) { PnlGrabRefused("X",byPoll,mx,my); return false; }
+   if(PnlPalettePointInside(mx,my)) { PnlGrabRefused("P",byPoll,mx,my); return false; }
+   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my); return false; }
+   if(!PnlHeaderHit(mx,my) && !PnlCardBodyHit(mx,my)) { PnlGrabRefused("H",byPoll,mx,my); return false; }
    g_PnlMoveItem    = g_PnlOpen;
    g_PnlMoveLastX   = mx;
    g_PnlMoveLastY   = my;
@@ -6794,6 +6810,9 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    s_PnlMoveTick    = 0;                       // its first batch applies at once
    DragClaim(DRAG_PANEL_MOVE);
    CircLockChart();
+   // P-UI-78: one line per gesture (never per move) — the next "can't drag"
+   // names its own arming channel instead of being re-investigated.
+   _LOG_GATE_W Print("[UI] panel drag armed by " + (byPoll ? "poll" : "event") + " item=", g_PnlOpen, " at ", mx, ",", my);
    return true;
 }
 
@@ -6830,10 +6849,14 @@ void PnlDragStep(const int mx,const int my)
 void PnlDragFinish(const bool commit,const bool suppressClick)
 {
    if(g_PnlMoveItem < 0) return;
+   // P-UI-78: one line per gesture — did it move, and whose release rule ran?
+   // Read BEFORE the resets below. The next "jumped / never moved" starts here.
+   _LOG_GATE_W Print("[UI] panel drag finished moved=", (s_PnlMoveMoved ? 1 : 0), " byPoll=", (s_PnlMoveByPoll ? 1 : 0));
    if(commit) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
    g_PnlMoveItem = -1;
    s_PnlMoveMoved = false;
    s_PnlMoveByPoll = false;   // P-UI-77: the channel flag dies with the gesture
+   s_PnlPollUpArmed = false;  // P-UI-78: the rumour filter dies with it too
    DragReleaseIf(DRAG_PANEL_MOVE);
    if(suppressClick) UISuppressNextClick();
    CircUnlockChart();
@@ -8121,12 +8144,20 @@ void PnlDragPoll()
    if(g_PnlMoveItem >= 0)
    {
       // The release MT4 never reported (cursor held still, focus lost, another
-      // chart). Both KEYSTATE conventions must agree it is free (P-UI-73a).
+      // chart). Both KEYSTATE conventions must agree it is free (P-UI-73a) —
+      // TWICE in a row (P-UI-78): a single up-reading is a rumour, the probe
+      // flickers mid-gesture (P-BK-05) and one agreement murdered live drags
+      // mid-press. A real release spans many passes, and the event path plus
+      // the CLICK finalizer usually finish first anyway — so this costs a live
+      // drag nothing and a real release at most one poll period.
       if(UILeftButtonUp())
       {
+         if(!s_PnlPollUpArmed) { s_PnlPollUpArmed = true; return; }
+         s_PnlPollUpArmed = false;
          PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved);
          return;
       }
+      s_PnlPollUpArmed = false;
       PnlDragStep(g_LastUIX, g_LastUIY);   // apply what the event channel missed
       return;
    }
