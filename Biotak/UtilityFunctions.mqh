@@ -70,6 +70,61 @@ int PnlLineH(const int nominalPt)
 {
    return (int)MathRound(PnlPt(nominalPt) * (double)PnlDpi() / 72.0);
 }
+//--- the line box MT4 gives a RAW point size (the CHART label family, which
+//--- hands MT4 `inpFontSize` unchanged - P-UI-42). The RAW sibling of
+//--- PnlLineH, and the ONE owner of the raw em arithmetic: PnlRawTextW
+//--- measures with it and every chart-side row stack (the bottom-right trade
+//--- card, P-LBL-07) pitches with it instead of a magic pixel offset.
+int PnlRawLineH(const int rawPt)
+{
+   int pt = (rawPt > 0) ? rawPt : 1;
+   return (int)MathRound(pt * (double)PnlDpi() / 72.0);
+}
+// ══════════════════════════════════════════════════════════════════════════
+// THE PHYSICAL MOUSE BUTTON — the ONE owner (P-UI-73)
+//
+// WHY THIS EXISTS. Four engines have to answer "is the left button down RIGHT
+// NOW?" from a place no mouse event can reach them: the panels' stale-claim
+// recovery (`PnlPressAllowed` — a missed release used to dead-lock every
+// coordinate control of an open card, P-UI-70b), the box-hold zero-move latch
+// (`BkHoldPoll` — a press with ZERO movement emits no CHARTEVENT_MOUSE_MOVE at
+// all, so only a probe can ever see it), and the two stale-drag watchdogs
+// (`BaseKnotSyncBadges`, `CustomPriceDragHealStale` — both 1.5 s of event
+// silence away from their own probe).
+//
+// They disagreed, and BOTH spellings were in this tree:
+//     `TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) < 0`     (BiotakPanels)
+//     `(TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1)`   (EventHandlers,
+//                                                            BaseKnotTool)
+// MQL4 build lineages report this property either way: under one a pressed
+// button is NEGATIVE (0 = free, and -128 is down with bit 0 CLEAR), under the
+// other it is bit 0 (1 = down, 0 = free). Each spelling is blind to the other
+// convention, so at least one of those four sites was answering at random — the
+// ones asking "is it UP?" could report up in the middle of a live gesture (the
+// P-UI-49b class: a teardown written into the press that started it) and the
+// ones asking "is it DOWN?" could never see a press at all (the zero-move hold
+// never latched).
+//
+// THE RULE: one owner, and every caller asks it. Both answers are deliberately
+// CONSERVATIVE — they never invent a transition the terminal did not make:
+//   * `UILeftButtonDown()` is TRUE if EITHER convention says pressed. A false
+//     "down" only defers a recovery to the next event, never breaks one.
+//   * `UILeftButtonUp()` is TRUE only if BOTH conventions agree the button is
+//     free. A false "up" would tear a LIVE gesture down, so it is never
+//     inferred from one convention.
+// Never read TERMINAL_KEYSTATE_LEFT anywhere else again.
+// ══════════════════════════════════════════════════════════════════════════
+bool UILeftButtonDown()
+{
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
+   return (v < 0) || ((v & 1) != 0);
+}
+bool UILeftButtonUp()
+{
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
+   return (v >= 0) && ((v & 1) == 0);
+}
+
 //--- Arial Bold advances, units per 1000 em (the face the panels set).
 int PnlAdvUnits(const ushort ch)
 {
@@ -141,7 +196,7 @@ int PnlTextW(const string s,const int nominalPt)
 int PnlRawTextW(const string s,const int rawPt)
 {
    if(StringLen(s) <= 0) return 0;
-   int em = (int)MathRound(rawPt * (double)PnlDpi() / 72.0);
+   int em = PnlRawLineH(rawPt);      // one owner for the raw em (P-LBL-07)
    return (int)MathRound(PnlTextUnits(s) * em / 1000.0);
 }
 //--- the longest whole prefix of `txt` that fits `maxW` px, with ".." when it

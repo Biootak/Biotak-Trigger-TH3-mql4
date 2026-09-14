@@ -261,14 +261,21 @@ void ClearAllLabels(const string objectPrefix) {
 // R-TRADEPLAN: trade-plan math lives ONLY in TradePlanFormulas.mqh.
 // This file renders its values - never recompute coefficients here.
 
+// P-UI-70d: the row's FONT is a parameter, exactly like `CreateTRexPiece`'s —
+// the string this row is CENTRED on is measured at `L.fontSize`, so the size it
+// is DRAWN at must come from the same owner. It used to call SetLabelFont(),
+// which applies the SHARED grid `inpFontSize`: the moment the card's own TRADE
+// SIZE differed from the grid's, the row would be measured at one size and
+// painted at another (the P-UI-30 trap, inside the card).
 bool CreateATRTradePiece(const string name, const string text, const color textColor,
-                         const int xPos, const int yPos) {
+                         const int fontSize, const int xPos, const int yPos) {
     if(ObjectFind(0, name) < 0) {
         if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
     }
     ObjectSetString(0, name, OBJPROP_TEXT, text);
     ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-    SetLabelFont(name);
+    ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
+    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, MathMax(4, fontSize));
     InitATRChartLabel(name, CORNER_RIGHT_LOWER, ANCHOR_RIGHT_LOWER);
     ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(8, xPos));
     ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(8, yPos));
@@ -458,19 +465,164 @@ bool CreateLivePriceCountdown(const string name)
    return true;
 }
 
-bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
-                         const int xPos, const int yPos)
+// The card's two measured rows - ONE text owner each (P-LBL-08). The layout has
+// to MEASURE a row before it can centre it, and the row it draws has to be the
+// same string: two StringFormats of the same thing is how a card ends up
+// centred on a width it never draws (P-UI-30's lesson on the chart side).
+string TradePlanTPRowText(const STradePlan &plan)
 {
-   // Bottom-right block (R-TRADEPLAN): one right-aligned row —
-   //   #SL:-<sl> #TP1+<t1> #TP2+<t2> #TP3+<t3>     (blue)
-   // The old top row of this block (`Close in : <countdown>`, red) now rides
-   // the LIVE PRICE in the same right column instead (CreateLivePriceCountdown,
-   // 2026-09-11 user request). Same object name, so visibility + cleanup
-   // wiring is unchanged.
-   string tpName = objectPrefix + "ATR_Trade_Current_TPRow";
+   // TWO spaces between the tokens (2026-09-14 user: "the bottom row reads
+   // stuck together"). The tokens themselves are the professor's format.
+   return StringFormat("#SL:-%d  #TP1+%d  #TP2+%d  #TP3+%d",
+                       plan.sl, plan.tp1, plan.tp2, plan.tp3);
+}
 
-   string tpText = StringFormat("#SL:-%d #TP1+%d #TP2+%d #TP3+%d",
-                                plan.sl, plan.tp1, plan.tp2, plan.tp3);
+string TradePlanHunterText(const STradePlan &plan)
+{
+   return StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
+}
+
+//+------------------------------------------------------------------+
+//| Bottom-right trade card geometry - ONE owner (P-LBL-06/07/08)    |
+//| The card is THREE rows, bottom to top: the blue `#SL/TP` row,    |
+//| the red `Hunter SL / Eng.SL` row and the `TR|ex` brand with its  |
+//| live-spread superscript. Every row's Y AND X comes from here.    |
+//|                                                                  |
+//| Y: one PITCH between every pair, growing upward off the row that  |
+//|    owns `inpLabelsMarginBottom` (2026-09-14 user: "why are these   |
+//|    so far apart"). The first version stacked em+gap+rows*pitch,   |
+//|    which left a DOUBLE gap under the Hunter row and a single one  |
+//|    above it - a card where only one seam looks wrong.             |
+//| X: every row is CENTRED on the widest row's axis (user: "TRex     |
+//|    should be in the middle"), because all three pieces are        |
+//|    ANCHOR_RIGHT_LOWER: x = rightEdge + (cardW - w)/2 puts every    |
+//|    row's centre on `rightEdge + cardW/2`. Widths are MEASURED     |
+//|    (PnlRawTextW over the raw-em owner), never guessed: the old    |
+//|    brand pair placed `TR` at `2.0 * brandSize * 0.7` px, which is |
+//|    ~2 px short of `ex` at 96 DPI and ~12 px short at 144 DPI - the |
+//|    letters read as one blob (user: "why is TRex stuck together"). |
+//| The row count is the INPUT (`inpTrexStampGapRows`), clamped twice: |
+//| the user bound, then the chart's own height, so no input can park  |
+//| the card off the top edge. The same three-input story owns the     |
+//| card's HEIGHT off the floor: `inpLabelsMarginBottom` (its floor,    |
+//| 8 px by default - 2026-09-14 user: "it sits too far from the        |
+//| bottom"), the row count and the seam, each with its own named bound.|
+//| Both clamps are named constants so the  |
+//| audit can read them instead of trusting a comment.                |
+//+------------------------------------------------------------------+
+struct STrexCardLayout {
+   bool showTP, showSL;           // which rows this pass actually DRAWS
+   int yTrade, yHunter, yBrand;   // bottom distances (-1 = that row is not drawn)
+   int xTrade, xHunter, xBrand;   // distances from the chart's RIGHT edge
+   int xEx, xTR, xSp, ySp;        // the `TR|ex` pair + its spread superscript
+   int fontSize, brandSize;       // the two measured point sizes
+   int cardW;                     // the width every drawn row is centred on
+   int rows;                      // blank rows actually granted (after clamps)
+};
+
+void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
+{
+   // P-UI-70d: the card's OWN row font. `inpATRTradeLabelFontSize` is 0 by
+   // default, which means "follow the shared grid size" — i.e. the shipped look
+   // is byte-identical — and any positive value scales THIS CARD ONLY (the
+   // label columns keep reading `inpFontSize`). The brand stays a fixed 6 pt
+   // above the rows, so the card's proportion is preserved at every size.
+   int fs = (inpATRTradeLabelFontSize > 0) ? inpATRTradeLabelFontSize : inpFontSize;
+   if(fs < 1) fs = 1;                     // a 0/negative input has no em box
+   int brandSize = fs + 6;
+   int em      = PnlRawLineH(fs);        if(em < 1) em = 1;
+   int brandEm = PnlRawLineH(brandSize); if(brandEm < 1) brandEm = 1;
+   // The card's OWN seam (P-LBL-09): `inpATRTradeLabelRowGap` is the input that
+   // names the ATR trade rows, and it used to be dead - the card read the
+   // shared column `inpLabelRowGap`, so the corner card inherited the grid's
+   // spacing and read as stretched. Clamped by hand: the input is applied raw
+   // at init (an input of 0 or -5 must not collapse or invert the stack), and
+   // the bound is named so the audit reads it instead of trusting this comment.
+   int gap     = inpATRTradeLabelRowGap;
+   if(gap < 0) gap = 0;
+   if(gap > TREX_CARD_MAX_ROW_GAP) gap = TREX_CARD_MAX_ROW_GAP;
+   int pitch   = em + gap;                // ONE pitch from the lowest row upward
+
+   // WHICH rows this pass draws. These four names are the runtime copies (the
+   // settings layer macro-redirects `inpShowATRTrade*` to `g_showATRTrade*`), so
+   // the ATR card's TRADE PLAN ROWS switches move the card for real - and the
+   // card must therefore reflow, not leave a hole (P-LBL-09).
+   bool want = inpShowATRTradeLabels;
+   L.showTP = (want && inpShowATRTradeTPLabels);
+   L.showSL = (want && inpShowATRTradeSLLabels);
+
+   // Measured widths (the drawn strings come from the same two owners). Only the
+   // rows that are DRAWN take part: hiding the wide `#SL/TP` row must re-centre
+   // the remaining ones, not keep the card on an axis nothing occupies.
+   int wTR     = PnlRawTextW("TR", brandSize);
+   int wEx     = PnlRawTextW("ex", brandSize);
+   int wBrand  = wTR + wEx;
+   int wHunter = PnlRawTextW(TradePlanHunterText(plan), fs);
+   int wTP     = PnlRawTextW(TradePlanTPRowText(plan), fs);
+   int cardW = MathMax(wBrand, MathMax(L.showTP ? wTP : 0, L.showSL ? wHunter : 0));
+   if(cardW < 1) cardW = 1;
+
+   int rows = inpTrexStampGapRows;
+   if(rows < 0) rows = 0;                        // a negative count would collide
+   if(rows > TREX_CARD_MAX_GAP_ROWS) rows = TREX_CARD_MAX_GAP_ROWS;
+   // The card's distance from the chart's BOTTOM edge: its OWN input
+   // (`inpLabelsMarginBottom`, group 13 - the label columns use
+   // `inpTHLabelsMarginBottom`, so this one is the card's alone). Clamped by
+   // hand because the input is applied raw at init: 0 or -5 would push the rows
+   // through the floor, and a mistyped 5000 would park the card mid-screen. The
+   // second bound is the chart's own height, applied with the row clamp above.
+   int bottom = inpLabelsMarginBottom;
+   if(bottom < 0) bottom = 0;
+   if(bottom > TREX_CARD_MAX_MARGIN_BOTTOM) bottom = TREX_CARD_MAX_MARGIN_BOTTOM;
+   // The card is 1 (brand) + 0..2 (the two optional rows) tall, so the height
+   // budget counts exactly what is drawn: rows <= room/pitch - (drawn - 1).
+   int drawn = 1 + (L.showTP ? 1 : 0) + (L.showSL ? 1 : 0);
+   int chartH = GetCachedChartHeight();          // 100 ms cache; <= 0 = unknown
+   if(chartH > 0)
+   {
+      int maxRows = (chartH - TREX_CARD_TOP_PAD - brandEm - bottom) / pitch - (drawn - 1);
+      if(maxRows < 0) maxRows = 0;
+      if(rows > maxRows) rows = maxRows;
+   }
+
+   // PACKED, never fixed slots (P-LBL-09, user: "when one is switched off the
+   // others must take its place, so the structure does not break"): the lowest
+   // DRAWN row sits on the bottom margin (plus the requested blank rows) and
+   // every drawn row above it is exactly one pitch higher. A hidden row does not
+   // reserve its slot, so the card below it slides down into that place instead
+   // of leaving a hole above the chart's floor.
+   int y = bottom + rows * pitch;
+   L.yTrade  = -1;
+   L.yHunter = -1;
+   if(L.showTP) { L.yTrade  = y; y += pitch; }
+   if(L.showSL) { L.yHunter = y; y += pitch; }
+   L.yBrand = y;                            // the brand is the card's top row
+
+   L.fontSize  = fs;
+   L.brandSize = brandSize;
+   L.rows      = rows;
+   L.cardW     = cardW;
+
+   int rightEdge = MathMax(8, inpLabelsMarginLeft);
+   L.xTrade  = rightEdge + (cardW - wTP) / 2;
+   L.xHunter = rightEdge + (cardW - wHunter) / 2;
+   L.xBrand  = rightEdge + (cardW - wBrand) / 2;
+   L.xEx     = L.xBrand;                 // the pair's right end is the row's edge
+   L.xTR     = L.xEx + wEx;              // measured: exactly 0 px of overlap
+   L.xSp     = L.xEx + 6;                // spread rides over the `ex`
+   L.ySp     = L.yBrand + brandEm - 4;   // ... just under the brand's cap line
+}
+
+bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
+                         const STrexCardLayout &L)
+{
+   // Bottom-right card (R-TRADEPLAN): the blue row
+   //   #SL:-<sl>  #TP1+<t1>  #TP2+<t2>  #TP3+<t3>
+   // is the BOTTOM of the card whose geometry TRexTradeCardLayout owns.
+   // The old top row of this block (`Close in : <countdown>`, red) now rides
+   // the LIVE PRICE instead (CreateLivePriceCountdown, 2026-09-11 user
+   // request). Same object name, so visibility + cleanup wiring is unchanged.
+   string tpName = objectPrefix + "ATR_Trade_Current_TPRow";
 
     // PERF: the two "Current" pieces below are upserted in place by
     // CreateATRTradePiece (create-if-missing + set), so wiping the Current_
@@ -489,13 +641,15 @@ bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
        ObjectDelete(0, objectPrefix + "ATR_Trade_Formula");
     }
 
-   bool showTP = (inpShowATRTradeLabels && inpShowATRTradeTPLabels);
-   int rightMargin  = MathMax(8, MathAbs(xPos));
-   int bottomMargin = MathMax(8, MathAbs(yPos));
-
-   if(showTP) {
-       // Single row now, so it right-aligns straight on the block edge.
-       if(!CreateATRTradePiece(tpName, tpText, clrBlue, rightMargin, bottomMargin)) return false;
+   if(L.showTP) {
+       if(!CreateATRTradePiece(tpName, TradePlanTPRowText(plan), inpATRTradeRowColor, L.fontSize, L.xTrade, L.yTrade)) return false;
+   }
+   else {
+       // PRESENCE == THE SWITCH (P-LBL-09). The relayout path wipes LBL_ before
+       // this runs, but the 2 s live pump does not: without this delete a row
+       // switched off mid-session keeps drawing at the Y the PACKED stack no
+       // longer reserves for it - the "structure broke" report.
+       ObjectDelete(0, tpName);
    }
    // The countdown is its own layer (own switch/color/size/gap) — repaint it
    // from here too, but NEVER through this block's show flags.
@@ -509,41 +663,32 @@ bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
 // read as a duplicate. The engine sb1/sb2 values stay (log + golden test still
 // pair them against the professor's screenshots); only the on-chart text is
 // gone. Delete/visibility paths for TREX_StrBond stay as purge for old charts.
-bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan)
+bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan,
+                             const STrexCardLayout &L)
 {
-   int fontSize  = inpFontSize;
-   int brandSize = inpFontSize + 6;
-   int rightMargin = MathMax(8, inpLabelsMarginLeft);
-   int yBrand  = MathMax(8, inpLabelsMarginTop);
-   int yCap    = yBrand + brandSize + inpLabelRowGap;
-   int yHunter = yCap + fontSize + inpLabelRowGap;
-   string hText = StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
-   if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", hText, clrRed, fontSize, rightMargin, yHunter)) return false;
+   // ONE owner for this row's POSITION and its PRESENCE (P-LBL-09): the caller
+   // computed the card once, so a row switched off is never placed - and the
+   // object is removed here rather than at the call site, so no caller can
+   // forget the off-case and leave the row hanging over the chart.
+   if(!L.showSL) {
+      ObjectDelete(0, labelPrefix + "TREX_Hunter");
+      ObjectDelete(0, labelPrefix + "TREX_StrBond");
+      return true;
+   }
+   if(!CreateTRexPiece(labelPrefix + "TREX_Hunter", TradePlanHunterText(plan),
+                       inpATRTradeHunterColor, L.fontSize, L.xHunter, L.yHunter)) return false;
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| TRex title stamp (top-right): brand + live spread + caption      |
-//| Screenshot order: TR|ex with spread superscript / caption (the    |
-//| small number is the pair's live spread in pips - NOT a version   |
-//| and not a TH value; v0.5's daily-TH value row is retired in 3.x). |
-//| Caption = price-behavior tagline, built from codes below - never |
-//| a literal, see P-LBL-01).                                         |
+//| TRex brand piece: `TR` (blue) + `ex` (red) + the pair's LIVE     |
+//| spread superscript in pips. The small number is spread - never a  |
+//| version and never a TH value (the v0.5 daily-TH row is retired in |
+//| 3.x; the green Persian caption row was retired 2026-09-14,       |
+//| P-LBL-06). Both pieces are the TOP of the bottom-right trade card |
+//| (P-LBL-07/08): their Y AND X come from TRexTradeCardLayout(), the  |
+//| ONE owner of that geometry - never re-derived here.                |
 //+------------------------------------------------------------------+
-string TRexCaptionText() {
-    ushort cap[20];
-    cap[0]=0x0631; cap[1]=0x0641; cap[2]=0x062A; cap[3]=0x0627; cap[4]=0x0631;
-    cap[5]=0x0634; cap[6]=0x0646; cap[7]=0x0627; cap[8]=0x0633; cap[9]=0x06CC;
-    cap[10]=0x0020;
-    cap[11]=0x062D; cap[12]=0x0631; cap[13]=0x06A9; cap[14]=0x062A;
-    cap[15]=0x0020;
-    cap[16]=0x0642; cap[17]=0x06CC; cap[18]=0x0645; cap[19]=0x062A;
-    string s = "";
-    for(int k = 0; k < 20; k++) s = s + " ";
-    for(int i = 0; i < 20; i++) StringSetCharacter(s, i, cap[i]);
-    return s;
-}
-
 bool CreateTRexPiece(const string name, const string text, const color textColor,
                      const int fontSize, const int xPos, const int yPos,
                      const string fontName = "") {
@@ -552,29 +697,45 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
     }
     ObjectSetString(0, name, OBJPROP_TEXT, text);
     ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-    // Empty fontName = default indicator font. The caption passes "Tahoma"
-    // explicitly: "Arial Bold" (inpFontName) is not a real family and MT4
-    // falls back to a font without Arabic glyphs ("????").
+    // Empty fontName = default indicator font (inpFontName). A piece that
+    // needs a non-Latin family must pass it explicitly: "Arial Bold" is not a
+    // real family name, so MT4 would fall back to a font with no Arabic
+    // coverage (P-LBL-02). Nothing on the chart needs that any more - the
+    // caption that did is retired (P-LBL-06) - but the knob stays for the
+    // next non-ASCII row instead of being silently re-derived.
     ObjectSetString(0, name, OBJPROP_FONT,
                     StringLen(fontName) > 0 ? fontName : inpFontName);
     ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fontSize);
-    InitATRChartLabel(name, CORNER_RIGHT_UPPER, ANCHOR_RIGHT_UPPER);
+    // Bottom-right, like CreateATRTradePiece (P-LBL-07): the stamp stacks
+    // ABOVE the trade row off one shared anchor and can never overlap it.
+    InitATRChartLabel(name, CORNER_RIGHT_LOWER, ANCHOR_RIGHT_LOWER);
     ObjectSetInteger(0, name, OBJPROP_XDISTANCE, MathMax(8, xPos));
-    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(0, yPos));
+    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, MathMax(8, yPos));
     ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES,
                      IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
     return true;
 }
 
-bool DisplayTRexTitleBlock(const string labelPrefix) {
+bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     string spName  = labelPrefix + "TREX_Spread";
-    string capName = labelPrefix + "TREX_Caption";
+    string capName = labelPrefix + "TREX_Caption";   // RETIRED (P-LBL-06) - purge only
     string trName  = labelPrefix + "TREX_TR";
     string exName  = labelPrefix + "TREX_EX";
 
+    // P-LBL-06 (2026-09-14, user request: "that Persian text should go"): the
+    // green Persian caption row is RETIRED from the chart. The name is still
+    // purged so a chart painted by an older build loses it for good, but only
+    // ONCE per chart family: this function also runs from the 2 s live pump,
+    // and an unconditional ObjectDelete would be a kernel call every 2 s for
+    // an object that can only ever exist on the first pass.
+    static string s_trexCapPurged = "";
+    if(s_trexCapPurged != labelPrefix) {
+        s_trexCapPurged = labelPrefix;
+        ObjectDelete(0, capName);
+    }
+
     if(IsIndicatorHidden()) {
         ObjectSetInteger(0, spName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
-        ObjectSetInteger(0, capName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, trName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, exName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         return true;
@@ -589,39 +750,23 @@ bool DisplayTRexTitleBlock(const string labelPrefix) {
         if(ask > 0 && bid > 0 && ask >= bid)
             spText = DoubleToString((ask - bid) / pip, 1);
     }
-    string capText = TRexCaptionText();
-
-    // Top-RIGHT stamp: every row flush-right to the same margin (xPos here is
-    // the right-edge distance, like the bottom-right trade block).
-    int fontSize  = inpFontSize;
-    int brandSize = inpFontSize + 6;
-    int rightMargin = MathMax(8, inpLabelsMarginLeft);
-    int yBrand = MathMax(8, inpLabelsMarginTop);
-    int yCap   = yBrand + brandSize + inpLabelRowGap;
-
-    int xEx = rightMargin;
-    int xTR = rightMargin + (int)(2.0 * brandSize * 0.7);
-    // Spread superscript rides over the "ex" top-right (screenshot look).
-    int xSp = rightMargin + 6;
-    int ySp = yBrand - 6;
-    if(ySp < 0) ySp = 0;
-
-    if(!CreateTRexPiece(spName, spText, clrBlack, fontSize, xSp, ySp)) return false;
-    if(!CreateTRexPiece(capName, capText, clrGreen, fontSize, rightMargin, yCap, "Tahoma")) return false;
-    // P-LBL-02 follow-up: Tahoma ships with every Windows and covers Arabic -
-    // the caption renders with no Persian font to download. One-shot Experts
-    // log below proves string-vs-font root cause if ???? ever returns.
-    static bool s_trexCapLogged = false;
-    if(!s_trexCapLogged) {
-        s_trexCapLogged = true;
-        string backFont = "";
-        ObjectGetString(0, capName, OBJPROP_FONT, 0, backFont);
-        Print("TREX caption len=", StringLen(capText),
-              " c0=", IntegerToString(StringGetCharacter(capText, 0)),
-              " font=", backFont);
-    }
-    if(!CreateTRexPiece(trName, "TR", clrBlue, brandSize, xTR, yBrand)) return false;
-    if(!CreateTRexPiece(exName, "ex", clrRed, brandSize, xEx, yBrand)) return false;
+    // Every position below comes from the ONE card owner (computed once per pass
+    // by the caller): it knows the row pitch, the centring axis and the MEASURED
+    // width of `ex` - the piece order here (`sp`, `TR`, `ex`) is the only thing
+    // this function still decides.
+    // P-UI-70d: every colour of this card is a setting now (the ATR card's CARD
+    // COLORS row / the group-13 inputs), so the five literals that used to live
+    // here are gone: they are the ONE reason "personalise the TRex SL/TP" was
+    // impossible. Defaults are the same five values, so the shipped look is
+    // unchanged; a pick reaches the chart through the label relayout
+    // (PaletteApplyColor sets g_labelsRelayoutNeeded).
+    if(!CreateTRexPiece(spName, spText, inpATRTradeSpreadColor, L.fontSize, L.xSp, L.ySp)) return false;
+    // The caption piece (and its one-shot Tahoma/P-LBL-02 diagnostic) is gone
+    // with the row: P-LBL-02's font lesson stays in AGENTS.md, but nothing on
+    // the chart needs an Arabic-capable family any more - every remaining
+    // piece is pure ASCII and rides the default indicator font.
+    if(!CreateTRexPiece(trName, "TR", inpATRTradeTRColor, L.brandSize, L.xTR, L.yBrand)) return false;
+    if(!CreateTRexPiece(exName, "ex", inpATRTradeExColor, L.brandSize, L.xEx, L.yBrand)) return false;
     return true;
 }
 
@@ -766,16 +911,16 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     STradePlan plan;
     if(!TradePlanComputeLive(Period(), plan)) return;
 
-    // Both margins are distances from the right/bottom chart edges.
-    CreateATRTradeLabel(labelPrefix, plan,
-                       inpLabelsMarginLeft, inpLabelsMarginBottom);
-    DisplayTRexTitleBlock(labelPrefix);
-    if(inpShowATRTradeSLLabels)
-        DisplayTradePlanTopRows(labelPrefix, plan);
-    else {
-        ObjectDelete(0, labelPrefix + "TREX_Hunter");
-        ObjectDelete(0, labelPrefix + "TREX_StrBond");
-    }
+    // ONE card layout per pass (P-LBL-09): the margins, the row pitch, the
+    // drawn-row set and the centring axis are read inside the owner, and all
+    // three writers below only PLACE what it laid out. That is also the whole
+    // cost story: the layout is measured twice per pass at most (this path and
+    // the live pump), never once per row and never per tick.
+    STrexCardLayout L;
+    TRexTradeCardLayout(plan, L);
+    CreateATRTradeLabel(labelPrefix, plan, L);
+    DisplayTRexTitleBlock(labelPrefix, L);
+    DisplayTradePlanTopRows(labelPrefix, plan, L);
 }
 
 // Live trade-block pump (P-LBL-03 fix): the relayout path above repaints
@@ -1116,6 +1261,12 @@ void TradePlanLiveTick()
     s_lastMs = nowMs;
     STradePlan plan;
     if(!TradePlanComputeLive(Period(), plan)) return;
+    // ONE card layout for BOTH branches below (P-LBL-09): the drawn-row set and
+    // the measured centring axis do not depend on which branch runs, so the
+    // steady state costs exactly the same 4 text measurements as the full pass
+    // and nothing more. Never compute it per row and never per tick.
+    STrexCardLayout L;
+    TRexTradeCardLayout(plan, L);
     // Display only — this path NEVER prints (user decision 2026-09-10: logs
     // only on demand via the X hotkey). The numeric sig still picks the full
     // vs cheap in-place label path; pixels identical either way.
@@ -1142,24 +1293,20 @@ void TradePlanLiveTick()
     }
     TradePlanExportEnd();
 
-    CreateATRTradeLabel(labelPrefix, plan,
-                        inpLabelsMarginLeft, inpLabelsMarginBottom);
-    DisplayTRexTitleBlock(labelPrefix);
-    if(inpShowATRTradeSLLabels)
-        DisplayTradePlanTopRows(labelPrefix, plan);
-    else {
-        ObjectDelete(0, labelPrefix + "TREX_Hunter");
-        ObjectDelete(0, labelPrefix + "TREX_StrBond");
-    }
+    CreateATRTradeLabel(labelPrefix, plan, L);
+    DisplayTRexTitleBlock(labelPrefix, L);
+    DisplayTradePlanTopRows(labelPrefix, plan, L);
     } // numeric change: full block above
     else
     {
        // Steady state: numerics frozen — only the 1-second countdown and the
-       // live-spread superscript move. Both pieces upsert in place (no
-       // delete); TopRows text is identical, skipped.
-       CreateATRTradeLabel(labelPrefix, plan,
-                           inpLabelsMarginLeft, inpLabelsMarginBottom);
-       DisplayTRexTitleBlock(labelPrefix);
+       // live-spread superscript move. All three writers upsert in place, so an
+       // unchanged row costs a compare and no write; the Hunter writer runs here
+       // too because it owns its row's EXISTENCE - a switch flipped while the
+       // numbers were frozen must still remove the row (P-LBL-09).
+       CreateATRTradeLabel(labelPrefix, plan, L);
+       DisplayTRexTitleBlock(labelPrefix, L);
+       DisplayTradePlanTopRows(labelPrefix, plan, L);
     }
     ThrottledChartRedraw();
 }
@@ -1212,7 +1359,9 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     // retired name is purged here so charts from older builds lose it for good.
     ObjectDelete(0, uniquePrefix + LIVE_COUNTDOWN_LEGACY_NAME);
     ObjectSetInteger(0, uniquePrefix + "TREX_Spread", OBJPROP_TIMEFRAMES, tradeTF);
-    ObjectSetInteger(0, uniquePrefix + "TREX_Caption", OBJPROP_TIMEFRAMES, tradeTF);
+    // The caption is RETIRED (P-LBL-06): no mask to write, only a purge so a
+    // chart painted by an older build loses the row on the next relayout.
+    ObjectDelete(0, uniquePrefix + "TREX_Caption");
     ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Hunter", OBJPROP_TIMEFRAMES, slTF);

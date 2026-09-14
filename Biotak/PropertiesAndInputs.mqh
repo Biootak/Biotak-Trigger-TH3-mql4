@@ -58,7 +58,13 @@ input bool inpShowATRTargets = true;             // Show ATR Targets
 input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels
 input bool inpShowATRTradeSLLabels = true;       // Show Hunter row (Str Bond row retired 2026-09-10 — R-STBOND)
 input bool inpShowATRTradeTPLabels = true;       // Show #SL/#TP1-3 row
-input int inpATRTradeLabelRowGap = 10;           // Compact vertical gap between ATR trade rows
+// The bottom-right trade card's OWN seam (P-LBL-09): the card is three rows in
+// a corner, the label columns are grids, and one shared number cannot be right
+// for both - `inpLabelRowGap` (18) made the card read as stretched. This input
+// is what `TRexTradeCardLayout()` reads (it was dead until 2026-09-14), clamped
+// by hand to 0..TREX_CARD_MAX_ROW_GAP so an input of 0 or -5 cannot collapse
+// the stack. The panel's ATR/AXIS slider writes the same runtime copy.
+input int inpATRTradeLabelRowGap = 10;           // Trade card row gap (px, its own seam)
 // --- Live countdown tag: its OWN switch (the ATR labels toggle no longer
 //     takes it away) + its own look. All four are panel-editable in the ATR
 //     LABELS card's top rows (persisted per chart as OV_CD/CDC/CDS/CDG).
@@ -239,9 +245,55 @@ input color inpModeLabelColor = clrDarkBlue;
 
 input group "13) ADVANCED - LABEL LAYOUT"
 input string S21 = "[13] ADVANCED / LABEL LAYOUT";
+// Group 13 — LABEL LAYOUT. WHICH input moves WHAT (verified by readers, not by
+// name): `inpLabelsMarginBottom` is read by the bottom-right TRADE CARD ONLY —
+// it is that card's floor, 8 px by default since 2026-09-14 (user: "it sits too
+// far from the bottom"); the card's other knobs are `inpATRTradeLabelRowGap`
+// (the seam between its three rows), `inpTrexStampGapRows` (extra blank
+// rows) and `inpATRTradeLabelFontSize` (its row font), all below. P-UI-70d:
+// ALL FOUR are live runtime settings, so the ATR card's TRADE CARD band renders
+// them as ROW GAP / TRADE SIZE / STAMP GAP / CARD MARGIN and the panel slider
+// and the dialog input write the same value. `inpLabelsMarginTop` / `inpLabelsMarginLeft` are SHARED
+// with the ATR/TH label COLUMNS (`DisplayATRLabels`, `DisplayFractalTHs`,
+// `DisplayStandardTHs`, the TH title), and `inpLabelRowGap` / `inpFontSize` are
+// shared the same way — moving those moves the columns too, which is why the
+// card's own seam is a separate input (P-LBL-09) and why the card's layout is
+// banned from reading `inpLabelRowGap` by `tools/chart-label-audit.py`.
 input int inpLabelsMarginTop = 30;        // Distance from top of chart
-input int inpLabelsMarginLeft = 25;       // Distance from left edge
-input int inpLabelsMarginBottom = 25;      // Distance from bottom of chart
+// The bottom-right trade card is (top to bottom): the TRex brand `TR`/`ex`
+// with its live-spread superscript, the red `Hunter SL / Eng.SL` row, and the
+// blue `#SL/TP` row. Their seams are `inpLabelRowGap` each (2026-09-14 user:
+// "why are these so far apart" - the old card left a double gap under one row
+// and a single one under the next); this input adds this many EXTRA blank rows
+// between the trade row and the Hunter row when a looser card is wanted.
+// 0 = the tight card (default), 1+ = extra air, capped by the chart's own
+// height so no value can park the card off the top edge. (P-UI-70d: it is a
+// LIVE runtime setting now — the ATR card's TRADE CARD band renders it as
+// STAMP GAP, and the settings layer redirects this name to that copy, so the
+// dialog and the slider are the same value.)
+input int inpTrexStampGapRows = 0;        // TRex card: extra blank rows (0=tight)
+// The card's ROW FONT, its own setting at last (P-UI-70d, user: «تنظیمات
+// شخصی سازی این trex sl , tp ها چرا در پنل نیستش»): the card used to draw at
+// `inpFontSize`, which is SHARED with the ATR/TH label columns — so a bigger
+// trade card also blew up the whole label grid. 0 = follow `inpFontSize`
+// (default, byte-identical to the old look), 4..24 = this card only. Every row
+// of the card (brand included, at size + 6) is measured AND drawn from it.
+input int inpATRTradeLabelFontSize = 0;   // Trade card row font pt (0 = follow inpFontSize)
+// The card's five COLOURS (P-UI-70d) - the same five cells the ATR card's CARD
+// COLORS row shows, so a colour can be picked either way. Defaults ARE the
+// literals the card used to draw with, so this changes no shipped pixel.
+input color inpATRTradeTRColor = clrBlue;       // TRex card: `TR` of the wordmark
+input color inpATRTradeExColor = clrRed;        // TRex card: `ex` of the wordmark
+input color inpATRTradeHunterColor = clrRed;    // TRex card: Hunter SL / Eng.SL row
+input color inpATRTradeRowColor = clrBlue;      // TRex card: #SL/#TP row
+input color inpATRTradeSpreadColor = clrBlack;  // TRex card: spread superscript
+// ...and the one naming trap in this group: the card is right-anchored
+// (CORNER_RIGHT_LOWER), so for the CARD this number is the distance from the
+// RIGHT edge; the column stacks are left-anchored, so for THEM it is the
+// distance from the LEFT edge. Same input, two meanings - set it by the column
+// side you care about, or move the card with a code-free margin instead.
+input int inpLabelsMarginLeft = 25;       // Distance from left edge (card: from RIGHT)
+input int inpLabelsMarginBottom = 8;       // Trade card: distance from bottom (px)
 input int inpTHLabelsMarginBottom = 40;   // TH labels distance from bottom (bottom-left)
 input int inpLabelRowGap = 18;            // Vertical gap between rows
 input int inpLabelColumnGap = 50;         // Horizontal gap between columns

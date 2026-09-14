@@ -520,10 +520,34 @@ int GetCachedChartWidth() {
 }
 
 //+------------------------------------------------------------------+
+//| Cached chart height (pixel height for corner-label layout)       |
+//| The sibling of GetCachedChartWidth, same TTL, same contract:     |
+//| <= 0 means UNKNOWN (minimized window / not attached yet) and     |
+//| every caller must treat it as "no bound" rather than 0 px.       |
+//| P-LBL-07: the bottom-right card's row budget is derived from it, |
+//| so an input asking for more rows than the chart can hold is       |
+//| clamped instead of drawn off the top edge.                       |
+//+------------------------------------------------------------------+
+static int g_cachedChartHeight = 0;
+static uint g_cachedChartHeightTime = 0;
+int GetCachedChartHeight() {
+    uint now = GetTickCount();
+    if(now - g_cachedChartHeightTime > HIDDEN_CACHE_TTL_MS || g_cachedChartHeight <= 0) {
+        g_cachedChartHeight = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+        g_cachedChartHeightTime = now;
+    }
+    return g_cachedChartHeight;
+}
+
+//+------------------------------------------------------------------+
 //| Cleanup function (call from OnDeinit)                            |
 //+------------------------------------------------------------------+
 void CleanupPerformanceOptimizations() {
     // PERF FIX: g_functionCache and g_batchQueue are static fixed arrays — just reset counters
+    g_cachedChartWidth = 0;
+    g_cachedChartWidthTime = 0;
+    g_cachedChartHeight = 0;
+    g_cachedChartHeightTime = 0;
     g_cacheSize = 0;
     g_cacheRingHead = 0;
     g_cachedPeriodSecondsGlobal = 0;

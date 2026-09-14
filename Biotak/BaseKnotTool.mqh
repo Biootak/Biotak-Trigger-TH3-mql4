@@ -1232,7 +1232,9 @@ void BaseKnotSyncBadges()
    BaseKnotLazyInit();   // the registry IS the box list — rebuild once (guarded, O(1) after)
    if(BaseKnotSessionActive()) BaseKnotReassertLock(true);   // P-BK-14: pump drift-heal (timer path, tick-less charts)
    if(s_bkDragLock && g_bkState == BK_IDLE &&
-      (TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) == 0 &&
+      UILeftButtonUp() &&          // the ONE button owner (P-UI-73): both MQL4
+                                   // conventions must agree, or a live drag
+                                   // would be torn down by the watchdog
       GetTickCount() - s_bkDragActMs > 1500)
    {
       // Missed release (button up off-window, event stream silent): never

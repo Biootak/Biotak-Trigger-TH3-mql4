@@ -47,6 +47,7 @@ OBJCACHE = "Biotak/ObjectCache.mqh"
 PIPELINE = "Biotak/LevelPipeline.mqh"
 EVENTS = "Biotak/EventHandlers.mqh"
 HTF = "Biotak/HTFCandles.mqh"
+PANELS = "Biotak/BiotakPanels.mqh"
 GLOBALS = "Biotak/GlobalVariables.mqh"
 
 FAILURES = []
@@ -287,6 +288,222 @@ def check_htf(o):
         fail("htf", "the HTF history must be capped to the viewport")
     else:
         ok("htf", "HTF history is viewport-capped")
+
+
+# ---------------------------------------------------------------------------
+# 5b. HTF LOOK - a setting written at CREATE must be re-written when it CHANGES
+#
+# WHY. Every HTF object is UPSERTED, never re-created: the same wick/rectangle is
+# found again on the next pass and only the properties that differ are written.
+# That makes a look property set ONLY in the create branch WRITE-ONCE - and a
+# write-once look is a slider that lies. Reported as "the shadows are still thin
+# and the setting does not apply": the HTF card's WICK WIDTH slider moved,
+# g_HTFWickWidth changed, REFRESH_HTF drew everything again, and every existing
+# wick kept the 1 px it was born with, while its counterpart (the body rectangle)
+# obeyed the same slider instantly. The asymmetry is the tell: an upsert that
+# re-compares its colour but not its width never re-asserts half its look.
+#
+# The gate asserts the SHAPE of the fix rather than a list of names: for every
+# property an upsert writes from a LIVE value (a setting global or a function
+# parameter - never a literal like STYLE_SOLID or BACK=true, which never change
+# for a given object name), the update branch must carry a GUARDED write of that
+# same property. Losing the guard is caught too, so the fix cannot decay into
+# "write it every frame", which is the budget this file exists to protect.
+# ---------------------------------------------------------------------------
+LOOK_PROPS = ("COLOR", "WIDTH", "STYLE", "FILL")
+
+
+def _live_props(create_body, params):
+    """Look properties the create branch writes from a value that can CHANGE:
+    a setting global or one of the function's own parameters."""
+    props = set()
+    for m in re.finditer(r"ObjectSet\w+\(0,\s*name,\s*OBJPROP_(\w+)\s*,\s*([^;]*?)\);", create_body):
+        prop, val = m.group(1), m.group(2).strip()
+        if prop not in LOOK_PROPS:
+            continue
+        if "g_" in val or val in params:
+            props.add(prop)
+    return props
+
+
+def _guarded(update_body, prop):
+    """A write of `prop` that sits behind a comparison (the P-PERF-02 rule)."""
+    return re.search(r"if\s*\([^)]*!=[^)]*\)\s*ObjectSet\w+\(0,\s*name,\s*OBJPROP_"
+                     + prop + r"\b", update_body)
+
+
+def check_htf_look(o):
+    htf = read(HTF, o)
+    # P-UI-68: the shadow is a FILLED RECTANGLE now, so the wick's own upsert is
+    # gone — every HTF object (body, shadow, border pair) goes through this one
+    # upsert, which keeps the create/update split the rule is about.
+    upserts = [("HTFRectUpsert", "void HTFRectUpsert(")]
+    for short, sig in upserts:
+        body = fn_body(htf, sig) or ""
+        if not body:
+            fail("htf-look", "%s is gone (this gate reads it)" % short)
+            continue
+        create_at = body.find("if(!onChart)")
+        update_at = body.find("if(known)")
+        create = brace_block(body, create_at) if create_at >= 0 else None
+        update = brace_block(body, update_at) if update_at >= 0 else None
+        if not create or not update:
+            fail("htf-look", "%s must keep its create/update split, or a setting can be written once and "
+                             "never re-asserted" % short)
+            continue
+        params = set(re.findall(r"\b(?:string|datetime|double|color|int|bool)\s+(\w+)",
+                                body[:body.find("{")]))
+        live = _live_props(create, params)
+        if not live:
+            fail("htf-look", "%s no longer writes any live look property at create - the parse "
+                             "lost its anchor" % short)
+            continue
+        dropped = sorted(p for p in live if not _guarded(update, p))
+        if dropped:
+            fail("htf-look", "%s writes %s at CREATE but never re-compares it on UPDATE: that "
+                             "setting is write-once - moving its slider changes nothing on an "
+                             "object that already exists" % (short, "/".join(dropped)))
+        else:
+            ok("htf-look", "%s re-asserts every live look it can change (%s)"
+                           % (short, "/".join(sorted(live))))
+
+
+# ---------------------------------------------------------------------------
+# 5c. HTF GEOMETRY - one owner for the candle's SHAPE (P-UI-68)
+#
+# WHY. The candle's shape is four times (body L/R, shadow L/R) and every one of
+# them used to be computed where it was used: the body was the whole period, the
+# shadow was a 1 px trend line in the CALENDAR middle. The user's screenshot asks
+# for a shape instead — a shadow BOX, centred, and a gap between neighbouring
+# candles — which makes "where does this edge sit" a real computation that must
+# have exactly one answer. The regression this gate exists for is the one that
+# already happened once: the calendar middle of a W1/MN candle (a weekend inside
+# one candle) is ~70% across, so a shadow computed from the calendar is visibly
+# off-centre on exactly the high timeframes, and a gap/share measured in calendar
+# seconds is visibly fatter on exactly them too.
+#
+# The gate asserts the SHAPE, not a list of lines:
+#   (a) DrawHTFCandleCore derives the whole candle from ONE call and computes no
+#       edge of its own (no calendar midpoint, no chart-time conversion);
+#   (b) the old second owner (HTFBodyMidTime) does not exist;
+#   (c) the geometry maps through the chart-INDEX bridge, so equal index distance
+#       is equal pixel distance;
+#   (d) it is NaN-fenced and CLAMPED (both settings, the shadow against the body);
+#   (e) the shadow is a filled RECTANGLE — an OBJ_TREND wick may not come back;
+#   (f) every geometry key the saver writes is deleted by the cleanup owner, and
+#       the loader clamps what it reads (a GV is not user input).
+# ---------------------------------------------------------------------------
+def check_htf_geometry(o):
+    htf = read(HTF, o)
+    core = fn_body(htf, "void DrawHTFCandleCore(") or ""
+    geom = fn_body(htf, "SHTFCandleGeom HTFCandleGeometry(") or ""
+    if not core or not geom:
+        fail("htf-geometry", "DrawHTFCandleCore / HTFCandleGeometry are gone (this gate reads them)")
+        return
+
+    # (a) one call, no hand-computed edge in the core
+    if core.count("HTFCandleGeometry(") != 1:
+        fail("htf-geometry", "DrawHTFCandleCore must derive the candle from exactly ONE "
+                             "HTFCandleGeometry() call (found %d)" % core.count("HTFCandleGeometry("))
+    elif "(nt - ot)" in core or "HTFChartTimeAt" in core:
+        fail("htf-geometry", "DrawHTFCandleCore computes an edge itself (calendar span or chart "
+                             "time) instead of using the geometry owner")
+    else:
+        ok("htf-geometry", "the candle's four edges come from one owner")
+
+    # (b) no second owner of the middle
+    if "HTFBodyMidTime" in htf:
+        fail("htf-geometry", "HTFBodyMidTime is back: the mid is HTFCandleGeometry's alone")
+    else:
+        ok("htf-geometry", "the drawn middle has one owner")
+
+    # (c) the index bridge
+    if "HTFChartIndexAt(" not in geom or "HTFChartTimeAt(" not in geom:
+        fail("htf-geometry", "the geometry must map through the chart-index bridge "
+                             "(HTFChartIndexAt -> HTFChartTimeAt), or a weekend inside the period "
+                             "skews every high timeframe")
+    else:
+        ok("htf-geometry", "edges are measured where they are drawn (index space)")
+
+    # (d) fences
+    missing = [n for n in ("MathIsValidNumber(iL)", "MathIsValidNumber(iR)",
+                           "HTF_GAP_PCT_MAX", "HTF_SHADOW_PCT_MAX",
+                           "if(halfShadow > bodyHalf) halfShadow = bodyHalf;",
+                           "if(halfShadow * 2.0 < 1.0) halfShadow = 0.5;")
+               if n not in geom]
+    if missing:
+        fail("htf-geometry", "the geometry lost a fence: %s (a NaN or an out-of-range setting "
+                             "would reach ObjectSetDouble)" % ", ".join(missing))
+    else:
+        ok("htf-geometry", "both settings clamped, NaN-fenced, the shadow bounded by the body")
+
+    # (e) the shape: a filled rectangle, never the retired trend-line wick
+    box = fn_body(htf, "void HTFShadowBox(") or ""
+    # the retired type shows up in prose here (the P-UI-68 notes and the delete
+    # path's history), so the rule is about a CREATE, not a mention
+    if re.search(r"ObjectCreate\([^;]*OBJ_TREND", htf):
+        fail("htf-geometry", "an OBJ_TREND is being created again in the HTF engine: the shadow "
+                             "is a BOX")
+    elif "OBJ_RECTANGLE" not in htf:
+        fail("htf-geometry", "no rectangle creation left in the HTF engine")
+    elif "HTFRectUpsert(name, tL, p1, tR, p2, clr," not in box or "true, true)" not in box:
+        fail("htf-geometry", "HTFShadowBox must draw the shadow through the guarded upsert as a "
+                             "FILLED background box")
+    elif "OBJPROP_TYPE" not in htf:
+        fail("htf-geometry", "the upsert lost its TYPE FENCE: an old OBJ_TREND wick carried in by a "
+                             "template would be re-asserted as a rectangle and stay a line forever")
+    else:
+        ok("htf-geometry", "the shadow is a filled rectangle behind the price action")
+
+    # (f) persistence: every key the saver writes is deleted by the cleanup
+    save = fn_body(htf, "void SaveHTFCandlesSettings(") or ""
+    clean = fn_body(htf, "void CleanupHTFCandlesGVs(") or ""
+    keys = re.findall(r'GlobalVariableSet\(prefix \+ "(\w+)"', save)
+    if not keys:
+        fail("htf-geometry", "SaveHTFCandlesSettings no longer writes any key - the parse lost its anchor")
+        return
+    orphan = [k for k in keys if 'GlobalVariableDel(prefix + "%s")' % k not in clean]
+    if orphan:
+        fail("htf-geometry", "HTF key(s) %s are saved but never deleted: a removed indicator leaves "
+                             "them on the chart id forever (P-UI-60)" % ", ".join(orphan))
+    else:
+        ok("htf-geometry", "every saved geometry key has its cleanup owner (%d)" % len(keys))
+
+    # (g) the card's slider range and the engine's clamp are ONE contract. The row
+    # definitions live in the panel source and the bounds in the engine's, so the
+    # numbers appear twice by necessity - which is exactly why a gate has to read
+    # both. A slider that can reach past the clamp is a control that lies at its far
+    # end; a clamp narrower than the slider is a setting the user cannot use.
+    panel = read(PANELS, o)
+    bounds = dict(re.findall(r"#define (HTF_(?:GAP|SHADOW)_PCT_(?:MIN|MAX))\s+(\d+)", htf))
+    rows = {m[0]: (m[1], m[2]) for m in re.findall(
+        r'label="(SHADOW WIDTH|SHADOW GAP)";\s*unit="%";\s*minV=(\d+);\s*maxV=(\d+);', panel)}
+    want = {"SHADOW WIDTH": ("HTF_SHADOW_PCT_MIN", "HTF_SHADOW_PCT_MAX"),
+            "SHADOW GAP": ("HTF_GAP_PCT_MIN", "HTF_GAP_PCT_MAX")}
+    for label, (lo, hi) in want.items():
+        got = rows.get(label)
+        if got is None:
+            fail("htf-geometry", "the HTF card no longer renders the %s row (this gate reads it)" % label)
+        elif lo not in bounds or hi not in bounds:
+            fail("htf-geometry", "%s is no longer declared in the engine" % label)
+        elif (int(got[0]), int(got[1])) != (int(bounds[lo]), int(bounds[hi])):
+            fail("htf-geometry", "%s: the slider allows %s..%s while the engine clamps %s..%s - "
+                                 "the row and the clamp must be the same range"
+                                 % (label, got[0], got[1], bounds[lo], bounds[hi]))
+        else:
+            ok("htf-geometry", "%s slider range == the engine clamp (%s..%s)"
+                               % (label, got[0], got[1]))
+
+    load = fn_body(htf, "void InitializeHTFCandles(") or ""
+    for key, lo, hi in (("GapPct", "HTF_GAP_PCT_MIN", "HTF_GAP_PCT_MAX"),
+                        ("ShadowPct", "HTF_SHADOW_PCT_MIN", "HTF_SHADOW_PCT_MAX")):
+        at = load.find('GlobalVariableCheck(prefix + "%s")' % key)
+        block = load[at:at + 400] if at >= 0 else ""
+        if at < 0 or lo not in block or hi not in block:
+            fail("htf-geometry", "%s must be CLAMPED when it is loaded: a persisted value from "
+                                 "another build is not user input" % key)
+        else:
+            ok("htf-geometry", "%s is clamped on the way in" % key)
 
 
 # ---------------------------------------------------------------------------
@@ -944,6 +1161,30 @@ def selftest():
         ("staging", "Biotak/BiotakPanels.mqh",
          "   // picks still land within 100 ms — imperceptible.\n   ThrottledChartRedraw();\n}",
          "   // picks still land within 100 ms — imperceptible.\n   ChartRedraw();\n}"),
+        ("htf-look", HTF,
+         "      if(e.lastWidth != width) ObjectSetInteger(0, name, OBJPROP_WIDTH, width);",
+         "      // seed: the width is set at create and never re-asserted"),
+        ("htf-geometry", HTF,
+         "   SHTFCandleGeom gm = HTFCandleGeometry(ot, nt);",
+         "   SHTFCandleGeom gm;\n   gm.bodyL = ot; gm.bodyR = nt;\n   gm.shadowL = gm.shadowR = ot + (datetime)((nt - ot) / 2);"),
+        ("htf-geometry", HTF,
+         "   if(halfShadow > bodyHalf) halfShadow = bodyHalf;",
+         "   // seed: the shadow is unbounded"),
+        ("htf-geometry", HTF,
+         "   double iL = HTFChartIndexAt(ot);\n   double iR = HTFChartIndexAt(nt);",
+         "   double iL = ot;\n   double iR = nt;"),
+        ("htf-geometry", HTF,
+         "   HTFRectUpsert(name, tL, p1, tR, p2, clr, 1, true, true);",
+         "   ObjectCreate(0, name, OBJ_TREND, 0, tL, p1, tR, p2);"),
+        ("htf-geometry", HTF,
+         '   GlobalVariableDel(prefix + "GapPct");',
+         "   // seed: the gap key is saved and never deleted"),
+        ("htf-geometry", HTF,
+         '      g_HTFShadowPct = (int)MathMax(HTF_SHADOW_PCT_MIN, MathMin(HTF_SHADOW_PCT_MAX, (int)GlobalVariableGet(prefix + "ShadowPct")));',
+         '      g_HTFShadowPct = (int)GlobalVariableGet(prefix + "ShadowPct");'),
+        ("htf-geometry", PANELS,
+         'label="SHADOW GAP"; unit="%"; minV=0; maxV=40;',
+         'label="SHADOW GAP"; unit="%"; minV=0; maxV=90;'),
     ]
     seeded = 0
     for check, rel, needle, repl in faults:
@@ -971,6 +1212,8 @@ def run(overrides=None):
     check_signature(overrides)
     check_teardown(overrides)
     check_htf(overrides)
+    check_htf_look(overrides)
+    check_htf_geometry(overrides)
     check_boundary(overrides)
     check_bulk_series(overrides)
     check_alerts(overrides)

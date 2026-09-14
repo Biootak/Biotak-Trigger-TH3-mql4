@@ -2055,8 +2055,14 @@ void ToolsCreateBadge(const int i)
    ObjectSetInteger(0, bg, OBJPROP_XSIZE, CIRC_BADGE_SIZE);
    ObjectSetInteger(0, bg, OBJPROP_YSIZE, CIRC_BADGE_SIZE);
    ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, CLR_CIRC_BADGE_BG);
-   ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, "::Files\\Icons\\badge.bmp");
-   ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, "::Files\\Icons\\badge.bmp");
+   // BADGEBMP-OFF (P-UI-71c): this used to point BMPFILE at `badge.bmp`, a file
+   // that has never existed in Files/Icons and was never declared with
+   // `#resource` — so it resolved to nothing on every build (badges are retired
+   // anyway, NOBADGES) and asked MT4 to re-load a missing bitmap on every badge
+   // repaint. The badge is its BGCOLOR + the value label below; a dead bitmap
+   // reference can only ever fail silently, so it is gone. Restore the two
+   // OBJPROP_BMPFILE writes together with a real, DECLARED `badge.bmp` if the
+   // badge skin ever comes back.
    ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircBadgeTooltip(feat));
    ObjectSetInteger(0, bg, OBJPROP_STATE, false);
    ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
@@ -2139,8 +2145,14 @@ void CircCreateBadge(const int i)
    ObjectSetInteger(0, bg, OBJPROP_XSIZE, size);
    ObjectSetInteger(0, bg, OBJPROP_YSIZE, size);
    ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, CLR_CIRC_BADGE_BG);
-   ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, "::Files\\Icons\\badge.bmp");
-   ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, "::Files\\Icons\\badge.bmp");
+   // BADGEBMP-OFF (P-UI-71c): this used to point BMPFILE at `badge.bmp`, a file
+   // that has never existed in Files/Icons and was never declared with
+   // `#resource` — so it resolved to nothing on every build (badges are retired
+   // anyway, NOBADGES) and asked MT4 to re-load a missing bitmap on every badge
+   // repaint. The badge is its BGCOLOR + the value label below; a dead bitmap
+   // reference can only ever fail silently, so it is gone. Restore the two
+   // OBJPROP_BMPFILE writes together with a real, DECLARED `badge.bmp` if the
+   // badge skin ever comes back.
    ObjectSetString(0, bg, OBJPROP_TOOLTIP, CircBadgeTooltip(feat));
    ObjectSetInteger(0, bg, OBJPROP_STATE, false);
    ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
@@ -2572,6 +2584,35 @@ void PnlUnlockForeground()
       ChartSetInteger(0, CHART_FOREGROUND, true);
 }
 
+// P-UI-73 (2026-09-14) - OPENING A CARD TAKES THE POINTER AWAY FROM THE RING.
+//
+// The ring's long-press latch is ARMED by the press on a ring item and normally
+// consumed by that press's own release - but the card it opens exists from the
+// moment the hold fires, while the latch lives until the button comes up. The
+// latch's block sits at the TOP of CircHandleMouseMove, i.e. BEFORE the modal
+// guard P-UI-72 added, so for as long as it is set the ring answers the press:
+// a press landing within LONG_PRESS_MOVE of the arming point is swallowed (it
+// returns without ever reaching the card), and a press further away is only
+// rescued by the move-cancel. The card therefore reads as un-draggable and its
+// controls as dead for that whole gesture - P-UI-72's "one press, one owner"
+// failure, one state further in. The abort is called from PnlOpen, the instant
+// the card really does own the pointer, and it takes back exactly what the
+// armer took: the latch, its DRAG_MENU claim and its chart lock.
+//
+// What it deliberately does NOT touch:
+//   * `g_LongPressFired` - the release-click claim still has to eat the
+//     release that ends this hold (the card was opened BY it), and that claim
+//     is what clears the fired flag in the CLICK handler (P-UI-40c).
+//   * a LIVE orb drag - its own release must reach its own branch.
+void CircAbortRingGesture()
+{
+   if(g_OrbDragging) return;
+   if(g_LongPressItem < 0) return;
+   g_LongPressItem = -1;
+   DragReleaseIf(DRAG_MENU);
+   CircUnlockChart();   // the lock the long-press armer took, released once
+}
+
 void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
                          const bool pressStart)
 {
@@ -2614,6 +2655,24 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          CircUnlockChart();
       }
    }
+
+   // P-UI-72 (2026-09-14) - A SETTINGS CARD OWNS EVERY PRESS WHILE IT IS OPEN.
+   //
+   // The ring's hit boxes are GEOMETRIC (CircItemAt / ToolsItemAt / the orb
+   // rect), not objects, and the card is movable - so parking the card on the
+   // menu (or onto the orb, which is where the menu usually sits) put a ring
+   // item UNDER the control the user was aiming at. The press then claimed
+   // DRAG_MENU before PnlHandleMouseMove ever saw it, and the two symptoms the
+   // user reported as separate bugs were one bug:
+   //   * `PnlPressAllowed()` returns false for a foreign live claim, so every
+   //     card control under that hit box read as DEAD ("the colour buttons do
+   //     nothing when I click them");
+   //   * the orb followed the cursor out from under the card ("the panel
+   //     detaches and moves to another part").
+   // A long-press armed BEFORE the card opened still finishes (its own block
+   // above), and a live orb drag still runs to its release - only a NEW grab is
+   // refused. Closing the card hands the ring back; nothing is lost.
+   if(g_UIPanelOpen && g_LongPressItem < 0 && !g_OrbDragging) return;
 
    if(!g_OrbDragging)
    {

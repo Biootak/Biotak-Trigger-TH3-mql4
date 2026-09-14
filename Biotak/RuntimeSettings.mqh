@@ -117,6 +117,20 @@ static bool g_showATRTradeLabels = true;                         // [03] inpShow
 static bool g_showATRTradeSLLabels = true;                       // [03] inpShowATRTradeSLLabels
 static bool g_showATRTradeTPLabels = true;                       // [03] inpShowATRTradeTPLabels
 static int g_atrLabelRowGap = 10;                                // [03] inpATRTradeLabelRowGap
+// P-UI-70d — the trade card's OWN personalisation, promoted from "dialog only"
+// to live settings so the ATR card's TRADE CARD band can drive them. Each one
+// has exactly ONE reader (the card's layout owner), so a panel row and the
+// dialog input are the same value, never two copies.
+static int g_atrTradeFontSize = 0;                               // [03] inpATRTradeLabelFontSize (0 = follow inpFontSize)
+static int g_trexStampGapRows = 0;                               // [13] inpTrexStampGapRows
+static int g_tradeMarginBottom = 8;                              // [13] inpLabelsMarginBottom (the card's floor)
+// The card's five colours (P-UI-70d). Defaults are the SHIPPED literals, so a
+// chart that never touches them looks exactly as before.
+static color g_atrTradeTRColor = clrBlue;                        // [13] inpATRTradeTRColor
+static color g_atrTradeExColor = clrRed;                         // [13] inpATRTradeExColor
+static color g_atrTradeHunterColor = clrRed;                     // [13] inpATRTradeHunterColor
+static color g_atrTradeRowColor = clrBlue;                       // [13] inpATRTradeRowColor
+static color g_atrTradeSpreadColor = clrBlack;                   // [13] inpATRTradeSpreadColor
 // [03] LIVE COUNTDOWN TAG — its own switch/look (2026-09-11, user request):
 // it must survive the ATR labels toggle (A / g_atrLabelsVisible).
 static bool g_showLiveCountdown = true;                          // [03] inpShowLiveCountdown
@@ -195,6 +209,14 @@ enum FactorySetting
    FF_ATR_TRADE_TP,        // inpShowATRTradeTPLabels
    FF_PIP_LABELS,          // inpShowPipDistanceLabels
    FF_ATR_ROW_GAP,         // inpATRTradeLabelRowGap
+   FF_TRADE_SIZE,          // inpATRTradeLabelFontSize  (P-UI-70d)
+   FF_STAMP_ROWS,          // inpTrexStampGapRows       (P-UI-70d)
+   FF_TRADE_MARGIN,        // inpLabelsMarginBottom     (P-UI-70d)
+   FF_ATR_TR_COLOR,        // inpATRTradeTRColor        (P-UI-70d; the five
+   FF_ATR_EX_COLOR,        // inpATRTradeExColor         entries are CONSECUTIVE
+   FF_ATR_HUNTER_COLOR,    // inpATRTradeHunterColor     on purpose: the cset row's
+   FF_ATR_ROW_COLOR,       // inpATRTradeRowColor        cell index maps 1:1)
+   FF_ATR_SPREAD_COLOR,    // inpATRTradeSpreadColor
    FF_SHOW_COUNTDOWN,      // inpShowLiveCountdown
    FF_COUNTDOWN_COLOR,     // inpCountdownColor
    FF_COUNTDOWN_SIZE,      // inpCountdownFontSize
@@ -296,6 +318,14 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_ATR_TRADE_TP]        = inpShowATRTradeTPLabels;
    g_factoryDefaults[FF_PIP_LABELS]          = inpShowPipDistanceLabels;
    g_factoryDefaults[FF_ATR_ROW_GAP]         = inpATRTradeLabelRowGap;
+   g_factoryDefaults[FF_TRADE_SIZE]          = inpATRTradeLabelFontSize;
+   g_factoryDefaults[FF_STAMP_ROWS]          = inpTrexStampGapRows;
+   g_factoryDefaults[FF_TRADE_MARGIN]        = inpLabelsMarginBottom;
+   g_factoryDefaults[FF_ATR_TR_COLOR]        = inpATRTradeTRColor;
+   g_factoryDefaults[FF_ATR_EX_COLOR]        = inpATRTradeExColor;
+   g_factoryDefaults[FF_ATR_HUNTER_COLOR]    = inpATRTradeHunterColor;
+   g_factoryDefaults[FF_ATR_ROW_COLOR]       = inpATRTradeRowColor;
+   g_factoryDefaults[FF_ATR_SPREAD_COLOR]    = inpATRTradeSpreadColor;
    g_factoryDefaults[FF_SHOW_COUNTDOWN]      = inpShowLiveCountdown;
    g_factoryDefaults[FF_COUNTDOWN_COLOR]     = inpCountdownColor;
    g_factoryDefaults[FF_COUNTDOWN_SIZE]      = inpCountdownFontSize;
@@ -553,6 +583,14 @@ void RuntimeSettingsInit()
 #define inpShowATRTradeSLLabels g_showATRTradeSLLabels
 #define inpShowATRTradeTPLabels g_showATRTradeTPLabels
 #define inpATRTradeLabelRowGap g_atrLabelRowGap
+#define inpATRTradeLabelFontSize g_atrTradeFontSize
+#define inpTrexStampGapRows g_trexStampGapRows
+#define inpLabelsMarginBottom g_tradeMarginBottom
+#define inpATRTradeTRColor g_atrTradeTRColor
+#define inpATRTradeExColor g_atrTradeExColor
+#define inpATRTradeHunterColor g_atrTradeHunterColor
+#define inpATRTradeRowColor g_atrTradeRowColor
+#define inpATRTradeSpreadColor g_atrTradeSpreadColor
 #define inpShowLiveCountdown g_showLiveCountdown
 #define inpCountdownColor g_countdownColor
 #define inpCountdownFontSize g_countdownFontSize
@@ -825,6 +863,14 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "A3",  g_showATRTradeSLLabels ? 1 : 0);
    RSSetNext(p + "A4",  g_showATRTradeTPLabels ? 1 : 0);
    RSSetNext(p + "AG",  g_atrLabelRowGap);
+   RSSetNext(p + "ATS", g_atrTradeFontSize);     // P-UI-70d
+   RSSetNext(p + "ASG", g_trexStampGapRows);
+   RSSetNext(p + "AMB", g_tradeMarginBottom);
+   RSSetNext(p + "ATC", g_atrTradeTRColor);      // P-UI-70d, the card's colours
+   RSSetNext(p + "AXC", g_atrTradeExColor);
+   RSSetNext(p + "AHC", g_atrTradeHunterColor);
+   RSSetNext(p + "ARC", g_atrTradeRowColor);
+   RSSetNext(p + "ASC", g_atrTradeSpreadColor);
    RSSetNext(p + "CD",  g_showLiveCountdown ? 1 : 0);
    RSSetNext(p + "CDC", g_countdownColor);
    RSSetNext(p + "CDS", g_countdownFontSize);
@@ -978,7 +1024,18 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "A2"))  g_showATRTradeLabels = (GlobalVariableGet(p + "A2") > 0.5);
    if(GlobalVariableCheck(p + "A3"))  g_showATRTradeSLLabels = (GlobalVariableGet(p + "A3") > 0.5);
    if(GlobalVariableCheck(p + "A4"))  g_showATRTradeTPLabels = (GlobalVariableGet(p + "A4") > 0.5);
-   if(GlobalVariableCheck(p + "AG"))  g_atrLabelRowGap = ClampSettingInt((int)GlobalVariableGet(p + "AG"), 1, 60);
+   // P-UI-70c: the range IS the card's clamp (TREX_CARD_MAX_ROW_GAP), not a
+   // literal — `AG` was clamped to 1..60 while the owner accepted 0..60, so a
+   // stored 0 (a tight card) was silently lifted to 1 on every reload.
+   if(GlobalVariableCheck(p + "AG"))  g_atrLabelRowGap = ClampSettingInt((int)GlobalVariableGet(p + "AG"), 0, TREX_CARD_MAX_ROW_GAP);
+   if(GlobalVariableCheck(p + "ATS")) g_atrTradeFontSize = ClampSettingInt((int)GlobalVariableGet(p + "ATS"), 0, 24);          // P-UI-70d
+   if(GlobalVariableCheck(p + "ASG")) g_trexStampGapRows = ClampSettingInt((int)GlobalVariableGet(p + "ASG"), 0, TREX_CARD_MAX_GAP_ROWS);
+   if(GlobalVariableCheck(p + "AMB")) g_tradeMarginBottom = ClampSettingInt((int)GlobalVariableGet(p + "AMB"), 0, TREX_CARD_MAX_MARGIN_BOTTOM);
+   if(GlobalVariableCheck(p + "ATC")) g_atrTradeTRColor = (color)(int)GlobalVariableGet(p + "ATC");        // P-UI-70d
+   if(GlobalVariableCheck(p + "AXC")) g_atrTradeExColor = (color)(int)GlobalVariableGet(p + "AXC");
+   if(GlobalVariableCheck(p + "AHC")) g_atrTradeHunterColor = (color)(int)GlobalVariableGet(p + "AHC");
+   if(GlobalVariableCheck(p + "ARC")) g_atrTradeRowColor = (color)(int)GlobalVariableGet(p + "ARC");
+   if(GlobalVariableCheck(p + "ASC")) g_atrTradeSpreadColor = (color)(int)GlobalVariableGet(p + "ASC");
    // [03] live countdown tag — new keys, no legacy layout to upgrade from
    if(GlobalVariableCheck(p + "CD"))  g_showLiveCountdown = (GlobalVariableGet(p + "CD") > 0.5);
    if(GlobalVariableCheck(p + "CDC")) g_countdownColor = (color)(int)GlobalVariableGet(p + "CDC");

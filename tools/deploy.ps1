@@ -4,6 +4,8 @@
 
     Guarantees that whenever icons change, EVERY copy lands in its place:
       1. Regenerate all 42 icons  -> Files/Icons/  (tools/gen-th3-icons.js)
+      1b. Re-slice the DERIVED art + re-declare every panel bitmap
+          (tools/slice-card-skins.py, tools/add-panel-resources.py)
       2. Compile workspace + installed .ex4        (compile-th3.ps1 -Project all,
                                                     which first syncs Files/Icons into
                                                     EVERY MT4 terminal hosting the project)
@@ -48,6 +50,23 @@ if ($SkipIconRegen) {
     } finally { Pop-Location }
     Write-Host "      OK - icons regenerated." -ForegroundColor Green
 }
+
+# ------------------------------------------------- 1b/3 derived art + declares
+# `pnl_cardWtop/mid/bot/fade.bmp` are SLICED from a baked wide skin, not drawn by
+# the generator, and every runtime bitmap must have a `#resource` line or
+# MetaEditor embeds NOTHING and the surface silently draws without chrome
+# (P-PANELUI-01 / P-UI-71c). Both steps are idempotent, so they run on every
+# deploy — a regenerated skin must re-slice or the composed wide card keeps the
+# old pixels, and a new piece must be declared or the card loses its body.
+Write-Host "`n[1b/3] Re-slicing the derived card body + declaring panel resources" -ForegroundColor DarkCyan
+Push-Location $Root
+try {
+    & python (Join-Path $PSScriptRoot 'slice-card-skins.py')
+    if ($LASTEXITCODE -ne 0) { throw "slice-card-skins.py failed (exit $LASTEXITCODE)" }
+    & python (Join-Path $PSScriptRoot 'add-panel-resources.py')
+    if ($LASTEXITCODE -ne 0) { throw "add-panel-resources.py failed (exit $LASTEXITCODE)" }
+} finally { Pop-Location }
+Write-Host "      OK - derived pieces re-sliced, declarations up to date." -ForegroundColor Green
 
 # ---------------------------------------------------------------- 2/3 compile
 Write-Host "`n[2/3] Compiling workspace + installed (auto-syncs icons into every hosting terminal)" -ForegroundColor DarkCyan

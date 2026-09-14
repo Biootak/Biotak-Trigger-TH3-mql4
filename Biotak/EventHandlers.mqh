@@ -772,7 +772,7 @@ void CustomPriceDragHealStale()
 {
     if(!s_cpChartLocked) return;
     if(GetTickCount() - s_cpLockActMs <= 1500) return;                     // a live drag keeps producing events
-    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;     // still holding the button
+    if(!UILeftButtonUp()) return;             // still holding the button (one owner, P-UI-73)
     CustomPriceDragLockOff();
     g_customPriceLineDragging = false;
     g_customPriceDragOwn = false;

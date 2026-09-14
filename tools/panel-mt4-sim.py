@@ -264,11 +264,33 @@ def parse_spec_build():
     return specs
 
 
+def range_consts():
+    """Numeric `#define`s + enum-free constants a VALUE range may name.
+
+    PnlSetDef's ranges are allowed to name the ENGINE's bound instead of
+    repeating its number (P-UI-70d: the trade card's slider max IS
+    `TREX_CARD_MAX_ROW_GAP`), so the sim - which is the second reader of every
+    range - has to resolve those names from the same source the MQL compiles.
+    Anything it cannot resolve raises here, on purpose: a range the simulator
+    cannot evaluate is a range nothing can verify.
+    """
+    g = {"ILS_COUNT": 5, "__builtins__": {}}
+    g.update(D)                        # this file's own geometry defines
+    # ...plus the ENGINE's bounds, which live in the shared constants header.
+    # Reading them (rather than copying numbers) is what keeps a slider range
+    # and its clamp one value (P-UI-70d).
+    shared = os.path.join(ROOT, "Biotak", "ConstantsAndEnums.mqh")
+    if os.path.exists(shared):
+        g.update(parse_defines(open(shared, encoding="utf-8", errors="replace").read()))
+    return g
+
+
 def parse_set_def():
     """PnlSetDef -> {(item, row): {kind,label,opts,unit,minV,maxV}}."""
     start = SRC_TEXT.index("void PnlSetDef(")
     body = SRC_TEXT[start:SRC_TEXT.index("\n}\n", start)]
     defs = {}
+    rng = range_consts()
     # Each `if(item==N)` / `else if(item==N)` opens a block; scan to the next one.
     blocks = list(re.finditer(r"(?:else\s+)?if\(item==(\d+)\)", body))
     for bi, bm in enumerate(blocks):
@@ -293,7 +315,7 @@ def parse_set_def():
             for f in ("kind", "minV", "maxV"):
                 fm = re.search(r"\b%s\s*=\s*([\w.]+)" % f, seg)
                 if fm:
-                    d[f] = int(eval(fm.group(1), {"ILS_COUNT": 5, "__builtins__": {}}))  # noqa: S307
+                    d[f] = int(eval(fm.group(1), rng))  # noqa: S307
             for f in ("label", "opts", "unit"):
                 fm = re.search(r'\b%s\s*=\s*"([^"]*)"' % f, seg)
                 if fm:
@@ -309,7 +331,7 @@ def parse_set_def():
             for f in ("kind", "minV", "maxV"):
                 fm = re.search(r"\b%s\s*=\s*([\w.]+)" % f, seg)
                 if fm:
-                    d[f] = int(eval(fm.group(1), {"ILS_COUNT": 5, "__builtins__": {}}))  # noqa: S307
+                    d[f] = int(eval(fm.group(1), rng))  # noqa: S307
             for f in ("label", "opts", "unit"):
                 fm = re.search(r'\b%s\s*=\s*"([^"]*)"' % f, seg)
                 if fm:
@@ -596,14 +618,28 @@ ON = {"SHOW", "SHOW LINES", "MID ZONES", "SS/LS ORDER", "COUNTDOWN", "ATR LABELS
       "TH TARGETS", "ENABLED", "MAGNET", "SHOW STRUCTURE", "SHOW WICKS",
       "STRUCTURE L1", "STRUCTURE L2", "STRUCTURE L3", "STRUCTURE L4"}
 PCT = {"TRANSPARENCY": 28, "HEIGHT": 62, "BORDER TR": 20, "FILL TR": 55,
-       "COUNT SIZE": 9, "COUNT GAP": 6, "ROW GAP": 18, "MARGIN BOTTOM": 40,
+       "COUNT SIZE": 9, "COUNT GAP": 6, "ROW GAP": 10, "MARGIN BOTTOM": 40,
        "MAGNET SENS": 12, "VALUE": 100, "WIDTH": 2, "BORDER WIDTH": 2,
-       "WICK WIDTH": 1, "SIZE": 11, "TARGET R": 2, "MAX LEVELS": 5}
+       "WICK WIDTH": 1, "SIZE": 11, "TARGET R": 2, "MAX LEVELS": 5,
+       "SHADOW MIN": 1, "SHADOW WIDTH": 30, "SHADOW GAP": 8,
+       # P-UI-70d: the trade card's four knobs, at their SHIPPED defaults, so the
+       # proof shows the card the user actually gets (0 pt = follow the grid).
+       "TRADE SIZE": 0, "STAMP GAP": 0, "CARD MARGIN": 8}
 SEG0 = {"ZONE STYLE": 0, "BORDER": 0, "STYLE": 0, "TIMEFRAME": 1, "BOX MODE": 0,
         "MODE": 0, "DISPLAY": 0, "BASIS": 0, "B INFO": 0, "ALIGN": 1,
         "VALIGN": 1, "TEMPLATE": 0, "B | I": 1}
-CSET_DEMO = {6: [(63, 236, 189), (240, 69, 95), (140, 150, 166), (45, 52, 65)],
-             12: [(46, 139, 87), (220, 50, 50), (30, 144, 255)]}
+# P-UI-68: the 4th HTF cell is WICK COLOR, whose SHIPPED default is clrNONE =
+# "follow the candle". clrNONE paints as the AUTO face (PnlCsetCellColor) instead
+# of MT4's ink-black for NONE, so the preview shows the same tone the card does.
+AUTO_CELL = (52, 60, 74)
+CSET_DEMO = {6: [(63, 236, 189), (240, 69, 95), AUTO_CELL, (45, 52, 65)],
+             12: [(46, 139, 87), (220, 50, 50), (30, 144, 255)],
+             # card 2 CARD COLORS (P-UI-70d): the five SHIPPED colours of the
+             # TRex card - TR blue · ex red · Hunter red · #SL/TP blue · spread
+             # black - so the proof doubles as the "this is what it looks like"
+             # reference for the default card.
+             2: [(30, 144, 255), (220, 50, 50), (220, 50, 50),
+                 (30, 144, 255), (0, 0, 0)]}
 
 
 def demo_value(item, r):
@@ -882,7 +918,30 @@ def render_card(item):
     #    MT4 blits it M px up-left of the card origin — exactly what the MQL does
     #    with (px-PNL_MARGIN, py-PNL_MARGIN). So the fringe is drawn at 0,0 and
     #    the chrome origin is pushed in by MARGIN to match.
-    c.img(skin_name, 0, 0, skin_w, skin_h, 0)
+    #
+    #    P-UI-71c: a WIDE body is COMPOSED, never looked up. `pnl_cardW{n}` stops
+    #    at PNL_WIDE_ROWS_MAX pair-lines while card 2 needs 13 and the Base Box
+    #    card 19, so `PnlCreate` builds the body from ONE header cap + one band
+    #    per pair-line + ONE footer cap, plus the `.fade` wash as its own
+    #    overlay (four pieces sliced by tools/slice-card-skins.py). This proof
+    #    composes them the SAME way from the SAME constants — a sim that kept
+    #    drawing `pnl_cardW{n}` would happily keep showing a card the terminal no
+    #    longer draws, which is exactly how a body with no `#resource` shipped
+    #    (the art proof looked fine while the chart had no background).
+    M = D["PNL_MARGIN"]
+    TOP_H = M + HH                 # == PNL_CARD_TOP_H (margin + header)
+    BOT_H = FH + M                 # == PNL_CARD_BOT_H (footer + margin)
+    FADE_H = D["PNL_FADE_H"]
+    if not wide:
+        c.img(skin_name, 0, 0, skin_w, skin_h, 0)
+    else:
+        c.img("pnl_cardWtop.bmp", 0, 0, skin_w, TOP_H, 0)
+        for li in range(pairN):
+            c.img("pnl_cardWmid.bmp", 0, M + HH + li * RH, skin_w, RH, 0)
+        c.img("pnl_cardWbot.bmp", 0, M + HH + pairN * RH, skin_w, BOT_H, 0)
+        if item in FADE_CARDS:
+            c.img("pnl_cardWfade.bmp", 0, M + HH + pairN * RH - FADE_H,
+                  skin_w, FADE_H, 0)
     c.origin(D["PNL_MARGIN"], D["PNL_MARGIN"])
 
     # ── header

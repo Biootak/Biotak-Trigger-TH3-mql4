@@ -104,7 +104,16 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 #define PAL_BOX_FILL       17   // Base box FILL color (TV-parity 2026-09-07 — bucket button)
 #define PAL_BK_TEXT        18   // Base box user-TEXT color (TV-parity 2026-09-07 — T button)
 #define PAL_COUNTDOWN      19   // Live bar-close countdown tag color (own layer)
-#define PAL_BASE_TARGETS 20
+// P-UI-70d — the TRex TRADE CARD's own five colours. They are palette kinds
+// like any other, so a colour picked for them rides the same RECENT ring, the
+// same persistence and the same "apply to" cycler; the count below is the ONE
+// owner of how many targets exist (PalTgtLabel's names table must match it).
+#define PAL_ATR_TR     20   // TRex card: the `TR` half of the wordmark
+#define PAL_ATR_EX     21   // TRex card: the `ex` half
+#define PAL_ATR_HUNTER 22   // TRex card: the Hunter SL / Eng.SL row
+#define PAL_ATR_TRADE  23   // TRex card: the #SL/#TP row
+#define PAL_ATR_SPREAD 24   // TRex card: the live-spread superscript
+#define PAL_BASE_TARGETS 25
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }

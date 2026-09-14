@@ -14,6 +14,20 @@ static string g_HTFPrefix;
 #define MIN_WIDTH 1
 #define MAX_WIDTH 5
 
+//--- HTF CANDLE GEOMETRY (P-UI-68)
+// A candle's SHAPE is three settings, not a drawing detail: how much of its
+// period the BODY fills (SHADOW GAP), how wide the SHADOW box is relative to
+// that body (SHADOW WIDTH) and the thinnest the shadow may ever get in pixels
+// (SHADOW MIN, the old WICK WIDTH row — a floor, because a percentage width
+// collapses to nothing on a zoomed-out chart). All three are RANGED, so a
+// corrupt persisted value (a stale GV, a hand-edited one, a NaN) can never
+// reach the geometry: see HTFCandleGeometry's clamp.
+#define HTF_GAP_PCT_MIN     0
+#define HTF_GAP_PCT_MAX     40
+#define HTF_SHADOW_PCT_MIN  6
+#define HTF_SHADOW_PCT_MAX  100
+#define HTF_BODY_MAX_SHARE  0.80   // the gap may never eat more than 80% of a period
+
 // HTF box modes
 #define HTF_BOX_HOLLOW 0
 #define HTF_BOX_FILLED 1
@@ -39,11 +53,13 @@ static int    g_HTFPeriod = PERIOD_H4;
 static bool   g_HTFIsAuto = true;
 static color  g_HTFBullColor = C'66,200,155';
 static color  g_HTFBearColor = C'255,100,124';
-static color  g_HTFWickColor = C'150,155,165';
+static color  g_HTFWickColor = clrNONE;   // P-UI-68: NONE = follow the candle's colour
 static color  g_HTFBorderColor = clrNONE;
 static int    g_HTFOpacity = 30;
 static bool   g_HTFShowWicks = true;
-static int    g_HTFWickWidth = 1;
+static int    g_HTFWickWidth = 1;      // SHADOW MIN — pixel floor of the shadow box
+static int    g_HTFGapPct = 8;         // free space between two candle bodies (%)
+static int    g_HTFShadowPct = 30;     // shadow box width, % of the body
 static int    g_HTFBorderWidth = 1;
 static int    g_HTFBoxMode = HTF_BOX_HOLLOW;
 static bool   g_HTFShowBody = true;
@@ -54,11 +70,13 @@ static int    InpHTFAutoMode = HTF_AUTO_FRACTAL;
 static int    InpHTFTimeframe = PERIOD_H4;
 static color  InpHTFBullColor = C'66,200,155';
 static color  InpHTFBearColor = C'255,100,124';
-static color  InpHTFWickColor = C'150,155,165';
+static color  InpHTFWickColor = clrNONE;   // P-UI-68: NONE = follow the candle's colour
 static color  InpHTFBorderColor = clrNONE;
 static int    InpHTFOpacity = 30;
 static bool   InpHTFShowWicks = true;
-static int    InpHTFWickWidth = 1;
+static int    InpHTFWickWidth = 1;     // SHADOW MIN — pixel floor of the shadow box
+static int    InpHTFGapPct = 8;        // SHADOW GAP default
+static int    InpHTFShadowPct = 30;    // SHADOW WIDTH default
 static int    InpHTFBorderWidth = 1;
 static int    InpHTFBoxMode = HTF_BOX_HOLLOW;
 static bool   InpHTFShowBody = true;
@@ -230,6 +248,254 @@ datetime HTFBarCloseTime(const datetime ot, const int tf)
 }
 
 //+------------------------------------------------------------------+
+//| THE SHADOW'S X — the middle of the body AS THE TERMINAL DRAWS IT. |
+//|                                                                  |
+//| WHY (ot + nt) / 2 IS WRONG. MT4 maps a time to an x by finding    |
+//| the two chart bars that BRACKET it and interpolating inside that  |
+//| one slot (that is how a trend line typed as 12:30 lands between   |
+//| the 12:00 and 13:00 bars). A CLOSED MARKET HAS NO BARS: the whole  |
+//| weekend between Friday's close and Monday's open collapses into    |
+//| ONE slot, exactly like any other single bar. Halving the CALENDAR  |
+//| span therefore does not halve the DRAWN span — the calendar middle |
+//| of a W1 candle (Thursday 12:00) sits ~3.5 trading days from the    |
+//| left edge and only ~1.7 plus that one weekend slot from the right, |
+//| i.e. roughly 70% across: the shadow is off-centre and the candle    |
+//| reads lopsided. Measured on an H1 24/5 series: a W1 candle's shadow |
+//| sat at 70%, the last D1 bar of the week at 97%, its H4 bar at 87% —  |
+//| and a normal H4/D1 candle at exactly 50%, which is why only the      |
+//| HIGH timeframes looked wrong (they are where a market gap falls      |
+//| inside one candle; the same happens inside MN when a holiday does).  |
+//|                                                                  |
+//| The middle is therefore computed where it is DRAWN: in chart-bar   |
+//| index space, where equal index distance IS equal pixel distance.   |
+//| Index convention: 0 = bar 0, +1 per bar OLDER (further left), and  |
+//| a negative index is a time newer than bar 0 (the forming candle's  |
+//| scheduled close, which the terminal lays out at the last slot's    |
+//| pitch). Fractional indices are exact both ways: the same fraction  |
+//| the terminal computes from the time is the fraction we convert back|
+//| to a time, so the shadow lands on the pixel centre and, on a       |
+//| wickless-in-that-spot candle, nothing moves at all.                |
+//|                                                                  |
+//| Reads: one iBarShift + one iTime per DISTINCT time, memoised for   |
+//| two slots — a history bar's `nt` is the previous bar's `ot`, so a  |
+//| full pass converts each boundary once instead of twice (~3 series   |
+//| reads per bar, same family as the loop's own iHigh/iLow/iOpen/iClose|
+//| and only on a pass that already decided to draw; P-PERF-08's rule    |
+//| is about CHART-PROPERTY reads inside the blend, which this is not).  |
+//|                                                                  |
+//| The memo is valid for ONE geometry snapshot, and something that     |
+//| changes the snapshot changes EVERY index — a closed bar shifts them |
+//| all by one, a timeframe switch rebuilds them — so the pass heads    |
+//| (DrawHTFCandles, UpdateHTFFormingCandle) reset it: a memo may only   |
+//| be believed inside the pass that built it.                          |
+//+------------------------------------------------------------------+
+#define HTF_MID_MEMO 2
+static datetime s_midT[HTF_MID_MEMO];
+static double   s_midIdx[HTF_MID_MEMO];
+static int      s_midNext = 0;
+
+void HTFMidMemoReset()
+{
+   for(int k = 0; k < HTF_MID_MEMO; k++) { s_midT[k] = 0; s_midIdx[k] = 0.0; }
+   s_midNext = 0;
+}
+
+double HTFChartIndexAt(const datetime t)
+{
+   for(int k = 0; k < HTF_MID_MEMO; k++)
+      if(t != 0 && s_midT[k] == t) return s_midIdx[k];
+
+   int p = Period();
+   double idx;
+   int i = iBarShift(_Symbol, p, t, false);
+   if(i < 0)
+   {
+      datetime t0 = iTime(_Symbol, p, 0);
+      datetime t1 = iTime(_Symbol, p, 1);
+      if(t0 > 0 && t > t0)
+      {
+         // Newer than the last bar: extend at the last slot's pitch, the way
+         // the terminal lays out a future time.
+         idx = (t1 > 0 && t0 > t1) ? -(double)(t - t0) / (double)(t0 - t1) : 0;
+      }
+      else
+      {
+         idx = Bars - 1;      // older than the oldest loaded bar
+      }
+   }
+   else if(i == 0)
+   {
+      idx = 0;
+   }
+   else
+   {
+      datetime ti = iTime(_Symbol, p, i);      // bar that OPENS the slot holding t
+      datetime tj = iTime(_Symbol, p, i - 1);  // the slot's other edge (one bar newer)
+      idx = (ti > 0 && tj > ti) ? (double)i - (double)(t - ti) / (double)(tj - ti) : (double)i;
+   }
+
+   s_midT[s_midNext]  = t;
+   s_midIdx[s_midNext] = idx;
+   s_midNext = (s_midNext + 1) % HTF_MID_MEMO;
+   return idx;
+}
+
+datetime HTFChartTimeAt(const double idx)
+{
+   int p = Period();
+   datetime t0 = iTime(_Symbol, p, 0);
+   if(idx <= 0)
+   {
+      datetime t1 = iTime(_Symbol, p, 1);
+      if(t0 <= 0) return 0;
+      if(t1 <= 0 || t0 <= t1) return t0;
+      return t0 + (datetime)MathRound((-idx) * (double)(t0 - t1));
+   }
+   int i = (int)MathCeil(idx);
+   if(i > Bars - 1) i = Bars - 1;
+   if(i < 1) return t0;
+   datetime ti = iTime(_Symbol, p, i);
+   datetime tj = iTime(_Symbol, p, i - 1);
+   if(ti <= 0 || tj <= ti) return ti;
+   double f = (double)i - idx;                 // 0 at bar i, 1 at bar i-1
+   return ti + (datetime)MathRound(f * (double)(tj - ti));
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-68 (2026-09-14): ONE OWNER FOR THE CANDLE'S SHAPE.           |
+//|                                                                  |
+//| The request was a screenshot: the candle's SHADOW is a small      |
+//| FILLED BOX centred on the body — not a 1 px trend line — and the  |
+//| body does not run edge to edge: neighbouring candles keep a gap    |
+//| so two same-coloured bodies can never fuse into one blob. Both      |
+//| numbers are SETTINGS (SHADOW GAP %, SHADOW WIDTH % of the body),    |
+//| and both are fractions of the candle AS DRAWN.                     |
+//|                                                                  |
+//| WHY THE INDEX SPACE AND NOT THE CALENDAR. MT4 maps a time to an x  |
+//| by bracketing it between two chart bars and interpolating inside    |
+//| that one slot (that is how a trend line typed as 12:30 lands        |
+//| between the 12:00 and 13:00 bars). A CLOSED MARKET HAS NO BARS: the  |
+//| whole weekend between Friday's close and Monday's open collapses     |
+//| into ONE slot, exactly like any other single bar. So "half the       |
+//| calendar span" is NOT "half the drawn span": a W1 candle's calendar   |
+//| middle lands ~70% across (measured on an H1 24/5 series: W1 70%, the  |
+//| last D1 bar 97%, its H4 87% — while a normal H4/D1 candle sits at     |
+//| exactly 50%, which is why only the HIGH timeframes ever looked        |
+//| lopsided). The same trap applies to a gap or a shadow share measured  |
+//| in calendar seconds: MN1/W1/D1 would get a shadow that is visibly      |
+//| fatter (or thinner) than every other timeframe's.                    |
+//|                                                                  |
+//| So every edge is computed where it is DRAWN — in chart-bar index      |
+//| space, where equal index distance IS equal pixel distance — and       |
+//| converted back with HTFChartTimeAt. Index convention: 0 = bar 0,      |
+//| +1 per bar OLDER (further left), negative = newer than bar 0.         |
+//|                                                                      |
+//| COST: two iBarShift + a handful of iTime per candle, all memoised      |
+//| (HTF_MID_MEMO) for one geometry snapshot, and the pass heads reset     |
+//| it — the same budget profile the mid-time fix already shipped. A       |
+//| CANDLE THAT IS NOT DRAWING COSTS NOTHING: this function is only        |
+//| reached from DrawHTFCandleCore.                                       |
+//|                                                                       |
+//| FRAGILITY FENCES (every one of them a real chart, not a hypothesis):  |
+//|  * non-finite index (a NaN from a broken series) -> the calendar       |
+//|    fallback below, so a candle can never be drawn from a NaN geometry; |
+//|  * a period thinner than two chart bars (a fresh TF switch with three  |
+//|    bars loaded, M1 charts) -> no inset, no narrower shadow: the        |
+//|    calendar form, i.e. exactly the pre-P-UI-68 look;                   |
+//|  * a collapsed round trip (both edges map to the same instant) -> the  |
+//|    share is recomputed in calendar seconds, so the shadow is still     |
+//|    drawn instead of silently vanishing;                               |
+//|  * both settings are CLAMPED to their ranges here, not only at the UI  |
+//|    edge, because a persisted GV from another build is not input.       |
+//+------------------------------------------------------------------+
+struct SHTFCandleGeom
+{
+   datetime bodyL, bodyR;      // body edges (period inset by SHADOW GAP)
+   datetime shadowL, shadowR;  // shadow box edges (centred on the body)
+};
+
+//--- pass-scoped chart zoom, read at most twice per draw pass. The shadow's
+//    pixel FLOOR is the one place a pixel quantity is needed, and 1 bar of
+//    index space is not 1 px — CHART_VISIBLE_BARS is how many bars fit on the
+//    chart, so CW/VB is the px pitch. Approximate by design (it ignores the
+//    right-margin shift): it is a visibility floor, not geometry, and the
+//    clamp below still bounds it by the body.
+static double s_HTFPxPerBar = 0.0;
+
+void HTFRefreshPixelMetrics()
+{
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int vb = (int)ChartGetInteger(0, CHART_VISIBLE_BARS, 0);
+   s_HTFPxPerBar = (cw > 0 && vb > 0) ? (double)cw / (double)vb : 0.0;
+   if(!MathIsValidNumber(s_HTFPxPerBar)) s_HTFPxPerBar = 0.0;
+}
+
+SHTFCandleGeom HTFCandleGeometry(const datetime ot, const datetime nt)
+{
+   SHTFCandleGeom g;
+   // The calendar form is ALWAYS the fallback: it is what the candle looked
+   // like before this change (body edge to edge, shadow in the calendar
+   // middle), so every fence below degrades to the previous look rather than
+   // to something new.
+   g.bodyL = ot;
+   g.bodyR = nt;
+   g.shadowL = ot + (datetime)((nt - ot) / 2);
+   g.shadowR = g.shadowL;
+   if(ot <= 0 || nt <= ot) return g;
+
+   int gapPct = (int)MathMax(HTF_GAP_PCT_MIN, MathMin(HTF_GAP_PCT_MAX, g_HTFGapPct));
+   int shPct  = (int)MathMax(HTF_SHADOW_PCT_MIN, MathMin(HTF_SHADOW_PCT_MAX, g_HTFShadowPct));
+   int floorPx = (int)MathMax(MIN_WIDTH, MathMin(MAX_WIDTH, g_HTFWickWidth));
+
+   double iL = HTFChartIndexAt(ot);
+   double iR = HTFChartIndexAt(nt);
+   if(!MathIsValidNumber(iL) || !MathIsValidNumber(iR)) return g;   // NaN fence
+   double span = iL - iR;
+   if(span < 2.0) return g;                 // thinner than two chart bars
+
+   double half = span / 2.0;
+   double gap = span * (double)gapPct / 200.0;      // half of the gap, each side
+   if(gap > half * HTF_BODY_MAX_SHARE) gap = half * HTF_BODY_MAX_SHARE;
+   g.bodyL = HTFChartTimeAt(iL - gap);
+   g.bodyR = HTFChartTimeAt(iR + gap);
+   if(g.bodyL <= ot || g.bodyL >= nt) g.bodyL = ot;      // never trust the map
+   if(g.bodyR >= nt || g.bodyR <= ot) g.bodyR = nt;
+   if(g.bodyR <= g.bodyL) { g.bodyL = ot; g.bodyR = nt; }
+
+   // The shadow: a share of the CANDLE (so it is proportional to what is on
+   // screen), at least `floorPx` pixels thick when the zoom can be measured,
+   // never wider than the body it sits on, and never below one chart bar.
+   double halfShadow = span * (double)shPct / 200.0;
+   if(s_HTFPxPerBar > 0.0)
+   {
+      double floorHalf = (double)floorPx / (2.0 * s_HTFPxPerBar);
+      if(halfShadow < floorHalf) halfShadow = floorHalf;
+   }
+   double bodyHalf = ((iL - iR) - 2.0 * gap) / 2.0;
+   if(bodyHalf <= 0.0) bodyHalf = half;
+   if(halfShadow > bodyHalf) halfShadow = bodyHalf;
+   if(halfShadow * 2.0 < 1.0) halfShadow = 0.5;    // never thinner than one bar
+
+   double mid = (iL + iR) / 2.0;       // the middle AS DRAWN (P-UI-68's fix)
+   g.shadowL = HTFChartTimeAt(mid + halfShadow);
+   g.shadowR = HTFChartTimeAt(mid - halfShadow);
+   if(g.shadowR <= g.shadowL || g.shadowL >= nt || g.shadowR <= ot)
+   {
+      // Degenerate round trip / the box fell outside the period: fall back to
+      // the calendar share, so a shadow is always drawn.
+      datetime halfCal = (datetime)((nt - ot) * (double)shPct / 200);
+      if(halfCal < 1) halfCal = 1;
+      g.shadowL = ot + (datetime)((nt - ot) / 2) + halfCal;
+      g.shadowR = ot + (datetime)((nt - ot) / 2) - halfCal;
+      if(g.shadowR < ot) g.shadowR = ot;
+      if(g.shadowL > nt) g.shadowL = nt;
+   }
+   if(g.shadowL > nt) g.shadowL = nt;
+   if(g.shadowR < ot) g.shadowR = ot;
+   return g;
+}
+
+//+------------------------------------------------------------------+
 //| Upsert rectangle object on chart                                 |
 //|                                                                  |
 //| P-PERF-02: the 10 unconditional property writes became "write     |
@@ -269,6 +535,19 @@ void HTFRectUpsert(const string name, const datetime t1, const double p1,
    } else {
       // First sight of an object we did not create (template reload, another
       // chart of the same id): re-assert the whole look once.
+      //
+      // TYPE FENCE: a name in our namespace is a RECTANGLE by construction, but
+      // an older build drew the HTF shadow as an OBJ_TREND, and a template can
+      // carry one into this instance. Writing rectangle properties onto a trend
+      // line would leave a thin line where a shadow box belongs — for the life
+      // of the chart, because the name never changes. Rebuild it instead. ONE
+      // read on a path that already writes ten properties, and it cannot be
+      // reached for an object this instance created (the cache would know it).
+      if(ObjectGetInteger(0, name, OBJPROP_TYPE) != OBJ_RECTANGLE)
+      {
+         ObjectDelete(0, name);
+         if(!ObjectCreate(0, name, OBJ_RECTANGLE, 0, t1, p1, t2, p2)) return;
+      }
       ObjectSetInteger(0, name, OBJPROP_TIME1, t1);
       ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
       ObjectSetInteger(0, name, OBJPROP_TIME2, t2);
@@ -365,52 +644,31 @@ void HTFDeleteIndices(const int from, const int to)
 }
 
 //+------------------------------------------------------------------+
-//| Draw a single wick segment                                       |
+//| THE SHADOW BOX (P-UI-68)                                         |
+//|                                                                  |
+//| A wick used to be an OBJ_TREND of g_HTFWickWidth px. The request  |
+//| is a BOX — the shape of the screenshot — so the shadow is now a   |
+//| FILLED RECTANGLE whose x span is owned by HTFCandleGeometry (a    |
+//| share of the candle, centred on the body) and whose look is        |
+//| re-asserted, never written once, by the same guarded upsert the    |
+//| body uses. Steady state = one ObjectFind per box per pass and zero |
+//| terminal writes; a look that changes (colour, fill, width) is      |
+//| re-compared and re-written (the P-UI-66 lesson: a write-once look  |
+//| is a slider that lies).                                            |
+//|                                                                   |
+//| The width argument stays 1: the fill and the border share one      |
+//| colour, so a border could only fatten the box. Thickness is a      |
+//| GEOMETRY question — SHADOW WIDTH (%) floored by SHADOW MIN (px) —  |
+//| and it is answered in one place, HTFCandleGeometry.                |
+//|                                                                   |
+//| OBJPROP_BACK stays TRUE, exactly like the old wick: the shadow is  |
+//| a wash UNDER the price action, never above the terminal's candles, |
+//| the level lines or the indicator's own overlays (Z-ORDER rule).    |
 //+------------------------------------------------------------------+
-void DrawHTFWickSegment(const string name, const datetime t,
-                        const double p1, const double p2, const color clr)
+void HTFShadowBox(const string name, const datetime tL, const double p1,
+                  const datetime tR, const double p2, const color clr)
 {
-   // P-PERF-02: same write-only-what-changed rule as HTFRectUpsert (a wick is
-   // a trend line whose two prices move with the live candle).
-   bool onChart = (ObjectFind(0, name) >= 0);
-   if(!onChart)
-   {
-      if(!ObjectCreate(0, name, OBJ_TREND, 0, t, p1, t, p2)) return;
-      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
-      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-      ObjectSetInteger(0, name, OBJPROP_WIDTH, g_HTFWickWidth);
-      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, name, OBJPROP_BACK, true);
-      CacheUpdateZone(name, p1, p2, t, t, clr, false, (int)STYLE_SOLID, g_HTFWickWidth);
-      return;
-   }
-
-   SObjectCacheEntry e;
-   bool known = CacheGetObject(name, e) && e.exists;
-   if(known) {
-      if(e.lastTime1 != t)  ObjectSetInteger(0, name, OBJPROP_TIME1, t);
-      if(e.lastTime2 != t)  ObjectSetInteger(0, name, OBJPROP_TIME2, t);
-      if(e.lastPrice != p1) ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
-      if(e.lastPrice2 != p2) ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
-      if(e.lastColor != clr) ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-   } else {
-      ObjectSetInteger(0, name, OBJPROP_TIME1, t);
-      ObjectSetDouble(0, name, OBJPROP_PRICE1, p1);
-      ObjectSetInteger(0, name, OBJPROP_TIME2, t);
-      ObjectSetDouble(0, name, OBJPROP_PRICE2, p2);
-      ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, false);
-      ObjectSetInteger(0, name, OBJPROP_RAY_LEFT, false);
-      ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
-      ObjectSetInteger(0, name, OBJPROP_WIDTH, g_HTFWickWidth);
-      ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
-      ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-      ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, name, OBJPROP_BACK, true);
-   }
-   CacheUpdateZone(name, p1, p2, t, t, clr, false, (int)STYLE_SOLID, g_HTFWickWidth);
+   HTFRectUpsert(name, tL, p1, tR, p2, clr, 1, true, true);
 }
 
 //+------------------------------------------------------------------+
@@ -423,9 +681,22 @@ void DrawHTFCandleCore(const int i, const datetime ot, const datetime nt,
    double bodyHi = g_HTFShowWicks ? MathMax(op, cl) : hi;
    double bodyLo = g_HTFShowWicks ? MathMin(op, cl) : lo;
 
+   // ONE geometry for the whole candle: where the body starts and ends (the
+   // SHADOW GAP inset) and where the shadow box sits (a share of the candle,
+   // centred on the DRAWN middle). Nothing below recomputes an x by hand, so a
+   // calendar midpoint cannot creep back into one of the three objects while
+   // the others use the drawn one.
+   SHTFCandleGeom gm = HTFCandleGeometry(ot, nt);
+
    double opct = g_HTFOpacity / 100.0;
    color candleClr = BlendWithBackground(cl >= op ? g_HTFBullColor : g_HTFBearColor, opct);
-   color wickClr   = BlendWithBackground(g_HTFWickColor, opct);
+   // WICK COLOR = NONE means "follow the candle", the same contract BORDER
+   // COLOR already had (clrNONE -> the body's own colour). It is what makes a
+   // shadow box look like the reference: one colour per candle, direction
+   // included, without a second colour setting to keep in sync.
+   color wickClr   = (g_HTFWickColor == clrNONE)
+                     ? candleClr
+                     : BlendWithBackground(g_HTFWickColor, opct);
    color borderClr = (g_HTFBorderColor == clrNONE)
                      ? candleClr
                      : BlendWithBackground(g_HTFBorderColor, opct);
@@ -438,12 +709,14 @@ void DrawHTFCandleCore(const int i, const datetime ot, const datetime nt,
    }
    else
    {
-      datetime wt = ot + (datetime)((nt - ot) / 2);
+      // Both shadows come from the SAME box columns, so they stay vertically
+      // aligned with each other and centred on the body whatever the weekend
+      // (or a holiday) does to the calendar inside the period.
       string upName = g_HTFPrefix + "WU" + wickId;
       string dnName = g_HTFPrefix + "WL" + wickId;
-      if(hi > bodyHi) DrawHTFWickSegment(upName, wt, bodyHi, hi, wickClr);
+      if(hi > bodyHi) HTFShadowBox(upName, gm.shadowL, bodyHi, gm.shadowR, hi, wickClr);
       else            ObjectDelete(0, upName);
-      if(lo < bodyLo) DrawHTFWickSegment(dnName, wt, lo, bodyLo, wickClr);
+      if(lo < bodyLo) HTFShadowBox(dnName, gm.shadowL, lo, gm.shadowR, bodyLo, wickClr);
       else            ObjectDelete(0, dnName);
    }
 
@@ -459,19 +732,19 @@ void DrawHTFCandleCore(const int i, const datetime ot, const datetime nt,
 
    if(g_HTFBoxMode == HTF_BOX_FILLED)
    {
-      HTFRectUpsert(baseName, ot, bodyHi, nt, bodyLo,
+      HTFRectUpsert(baseName, gm.bodyL, bodyHi, gm.bodyR, bodyLo,
                     BlendWithBackground(bodyBase, HTF_FILL_STRONG), 1, true, true);
    }
    else if(g_HTFBoxMode == HTF_BOX_BOTH)
    {
-      HTFRectUpsert(baseName + "_F", ot, bodyHi, nt, bodyLo,
+      HTFRectUpsert(baseName + "_F", gm.bodyL, bodyHi, gm.bodyR, bodyLo,
                     BlendWithBackground(bodyBase, HTF_FILL_FAINT), 1, true, true);
-      HTFRectUpsert(baseName + "_B", ot, bodyHi, nt, bodyLo,
+      HTFRectUpsert(baseName + "_B", gm.bodyL, bodyHi, gm.bodyR, bodyLo,
                     borderClr, g_HTFBorderWidth, false, false);
    }
    else
    {
-      HTFRectUpsert(baseName, ot, bodyHi, nt, bodyLo,
+      HTFRectUpsert(baseName, gm.bodyL, bodyHi, gm.bodyR, bodyLo,
                     borderClr, g_HTFBorderWidth, false, false);
    }
 }
@@ -513,7 +786,9 @@ bool UpdateHTFFormingCandle()
    g_HTFLastFormO = op; g_HTFLastFormH = hi;
    g_HTFLastFormL = lo; g_HTFLastFormC = cl;
 
+   HTFMidMemoReset();             // its own snapshot: a bar may have closed since the last pass
    HTFRefreshBlendBackground();   // P-PERF-08: once per draw pass, not once per colour
+   HTFRefreshPixelMetrics();      // P-UI-68: the shadow's pixel floor needs the zoom once
    DrawHTFCandleCore(0, ot, HTFBarCloseTime(ot, tf), hi, lo, op, cl);
    return true;
 }
@@ -569,7 +844,9 @@ int DrawHTFCandles()
    if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    int tf = ResolveHTFPeriod();
    if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
+   HTFMidMemoReset();             // one geometry snapshot per pass — see the memo
    HTFRefreshBlendBackground();   // P-PERF-08: one background read for the whole pass
+   HTFRefreshPixelMetrics();      // P-UI-68: one zoom read for the whole pass too
    int total = iBars(_Symbol, tf);
    if(total <= 0) return -1;
    datetime ot0 = iTime(_Symbol, tf, 0);
@@ -733,6 +1010,9 @@ void InitializeHTFCandles()
    g_HTFOpacity = InpHTFOpacity;
    g_HTFShowWicks = InpHTFShowWicks;
    g_HTFWickWidth = InpHTFWickWidth;
+   g_HTFGapPct = InpHTFGapPct;
+   g_HTFShadowPct = InpHTFShadowPct;
+   HTFRefreshPixelMetrics();   // the panel can open before the first draw pass
    g_HTFBorderWidth = InpHTFBorderWidth;
    g_HTFBoxMode = InpHTFBoxMode;
    g_HTFShowBody = InpHTFShowBody;
@@ -756,6 +1036,13 @@ void InitializeHTFCandles()
    if(GlobalVariableCheck(prefix + "Opacity"))     g_HTFOpacity     = (int)GlobalVariableGet(prefix + "Opacity");
    if(GlobalVariableCheck(prefix + "ShowWicks"))   g_HTFShowWicks   = (GlobalVariableGet(prefix + "ShowWicks") > 0.5);
    if(GlobalVariableCheck(prefix + "WickWidth"))   g_HTFWickWidth   = (int)GlobalVariableGet(prefix + "WickWidth");
+   // P-UI-68: the two geometry numbers are CLAMPED on the way in, not merely at
+   // the UI edge — a chart saved by another build, or by a future one with a
+   // wider range, must never be able to inject a gap that eats the body.
+   if(GlobalVariableCheck(prefix + "GapPct"))
+      g_HTFGapPct = (int)MathMax(HTF_GAP_PCT_MIN, MathMin(HTF_GAP_PCT_MAX, (int)GlobalVariableGet(prefix + "GapPct")));
+   if(GlobalVariableCheck(prefix + "ShadowPct"))
+      g_HTFShadowPct = (int)MathMax(HTF_SHADOW_PCT_MIN, MathMin(HTF_SHADOW_PCT_MAX, (int)GlobalVariableGet(prefix + "ShadowPct")));
    if(GlobalVariableCheck(prefix + "BorderWidth")) g_HTFBorderWidth = (int)GlobalVariableGet(prefix + "BorderWidth");
    if(GlobalVariableCheck(prefix + "BoxMode"))     g_HTFBoxMode     = (int)GlobalVariableGet(prefix + "BoxMode");
    if(GlobalVariableCheck(prefix + "ShowBody"))    g_HTFShowBody    = (GlobalVariableGet(prefix + "ShowBody") > 0.5);
@@ -785,6 +1072,8 @@ void SaveHTFCandlesSettings()
    GlobalVariableSet(prefix + "Opacity",     (double)g_HTFOpacity);
    GlobalVariableSet(prefix + "ShowWicks",   g_HTFShowWicks ? 1.0 : 0.0);
    GlobalVariableSet(prefix + "WickWidth",   (double)g_HTFWickWidth);
+   GlobalVariableSet(prefix + "GapPct",      (double)g_HTFGapPct);
+   GlobalVariableSet(prefix + "ShadowPct",   (double)g_HTFShadowPct);
    GlobalVariableSet(prefix + "BorderWidth", (double)g_HTFBorderWidth);
    GlobalVariableSet(prefix + "BoxMode",     (double)g_HTFBoxMode);
    GlobalVariableSet(prefix + "ShowBody",    g_HTFShowBody ? 1.0 : 0.0);
@@ -806,6 +1095,8 @@ void CleanupHTFCandlesGVs()
    GlobalVariableDel(prefix + "Opacity");
    GlobalVariableDel(prefix + "ShowWicks");
    GlobalVariableDel(prefix + "WickWidth");
+   GlobalVariableDel(prefix + "GapPct");
+   GlobalVariableDel(prefix + "ShadowPct");
    GlobalVariableDel(prefix + "BorderWidth");
    GlobalVariableDel(prefix + "BoxMode");
    GlobalVariableDel(prefix + "ShowBody");

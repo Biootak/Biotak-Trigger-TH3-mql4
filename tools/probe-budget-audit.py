@@ -2699,11 +2699,23 @@ def check_custom_price_mode(o):
     heal = fn_body(code_ev, "void CustomPriceDragHealStale()")
     calcb = fn_body(code_ev, "int OnCalculateHandler(")
     deinitb = fn_body(code_ev, "void OnDeinitHandler(")
-    if not heal or "TERMINAL_KEYSTATE_LEFT" not in heal:
+    # P-UI-73: the probe is still required, but it must be THE OWNER's
+    # (`UILeftButtonUp`, conservatively TRUE only when both MQL4 conventions
+    # agree the button is free) - a local spelling is what the owner exists to
+    # remove, and the heal is exactly the site where a wrong "up" reading tears a
+    # live gesture down.
+    if not heal or ("UILeftButtonUp()" not in heal and "TERMINAL_KEYSTATE_LEFT" not in heal):
         fail("custom-price-mode",
              "the stale-gesture heal is gone or lost its button probe: a release that emits no "
              "mouse move (off-window, lost focus - the P-BK-03 trap) then leaves the chart "
              "locked until the next attach")
+        return
+    if "TERMINAL_KEYSTATE_LEFT" in heal:
+        fail("custom-price-mode",
+             "the stale-gesture heal probes TERMINAL_KEYSTATE_LEFT by itself again: the two "
+             "MQL4 readings (`<0` vs bit 0) disagree, so a local probe can report \"up\" in "
+             "the middle of a live drag and tear the gesture down - ask UILeftButtonUp() "
+             "(P-UI-73)")
         return
     if "CustomPriceDragHealStale();" not in (calcb or "") \
        or "CustomPriceDragLockOff();" not in (deinitb or ""):
@@ -4368,8 +4380,11 @@ def selftest():
          "    CustomPriceDragReassertLock();\n",
          "")
     seed("the stale-drag heal stops checking the button", EVENTS,
-         "    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;     // still holding the button\n",
+         "    if(!UILeftButtonUp()) return;             // still holding the button (one owner, P-UI-73)\n",
          "")
+    seed("the stale-drag heal probes the button itself again", EVENTS,
+         "    if(!UILeftButtonUp()) return;             // still holding the button (one owner, P-UI-73)\n",
+         "    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;\n")
     seed("the UI press guard is dropped", PANELS,
          "      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();\n",
          "")
@@ -4401,10 +4416,15 @@ def selftest():
          "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
          "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
          "      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, \"magnet\");\n")
+    # P-LBL-09 (2026-09-14): the ATR card's ROW GAP row is no longer the dead one
+    # - `g_atrLabelRowGap` became LIVE, because the bottom-right trade card's
+    # layout now reads it. The seed moves to the still-dead MIDPOINT row of card
+    # 1 (`g_showMidpointLine`: its line is deleted every render by the pipeline's
+    # own legacy cleanup, and nothing outside the panel reads the flag).
     seed("a dead slider is rendered again", PANELS,
-         "      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, \"ruler\");\n",
-         "      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, \"ruler\");\n"
-         "      PnlSpecAdd(2, PNL_K_LEGACY, 10, 1, \"gap\");\n")
+         "      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, \"contrast\");\n",
+         "      PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, \"contrast\");\n"
+         "      PnlSpecAdd(1, PNL_K_LEGACY, 9, 1, \"line\");\n")
     seed("a TH source row reads its mode back from its own mirrors", PANELS,
          "            g_thLabelsMode=m1;\n",
          "            if(g_showTHLabels && m1==0) m1=1;\n"

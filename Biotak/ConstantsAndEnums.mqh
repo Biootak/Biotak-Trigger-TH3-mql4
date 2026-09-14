@@ -133,6 +133,30 @@
 // just purges it so old charts lose it for good.
 #define LIVE_COUNTDOWN_LEGACY_NAME "ATR_Trade_Current_CloseIn"
 
+// The bottom-right trade card (P-LBL-06/07/08): `#SL/TP` row, then the
+// `Hunter SL / Eng.SL` row, then the `TR|ex` brand. TWO clamps on the input
+// that asks for blank rows between the trade row and the Hunter row:
+//   TREX_CARD_MAX_GAP_ROWS  the user bound (what the settings dialog offers)
+//   the chart's own height  the owner's second bound (a 400px chart cannot
+//                           hold 20 rows, so the owner gives what fits)
+// Named so `tools/chart-label-audit.py` reads the BOUNDS instead of trusting a
+// comment, and so the same number is never typed twice.
+#define TREX_CARD_MAX_GAP_ROWS 20
+#define TREX_CARD_TOP_PAD      8    // the card may not touch the chart ceiling
+// The card's SEAM is its own input (`inpATRTradeLabelRowGap`, "compact gap
+// between ATR trade rows"), not the shared column `inpLabelRowGap`: the card is
+// three rows in a corner and the columns are grids, so one number for both is
+// why the card read as stretched (2026-09-14 user: "the rows are so far apart
+// it looks broken"). Same rule as the row count: the bound is named, so the
+// gate reads it and the number is never typed twice.
+#define TREX_CARD_MAX_ROW_GAP  60
+// How far the card may sit above the chart's bottom edge. The input
+// (`inpLabelsMarginBottom`, group 13, personalisable) is applied RAW at init,
+// so an input of 0 or -5 must not push the card through the floor; the upper
+// bound keeps a mistyped value from parking the card in the middle of the
+// screen, and the chart-height clamp in the owner is the second bound.
+#define TREX_CARD_MAX_MARGIN_BOTTOM 200
+
 // Division Safety Constants (GOLD FIX v3)
 #define MIN_SAFE_DIVISIONS 0.001      // Minimum divisions to prevent precision loss
 #define MAX_SAFE_FACTOR 10000.0       // Maximum factor value to prevent overflow
