@@ -299,6 +299,38 @@ def _judge(bad, inv, ok, rel, line, name, expr, ladder, aliases):
         bad.append((rel, line, expr))
 
 
+def check_text_rung(ladder):
+    """The CHART TEXT LAYER must carry its own rung (P-UI-85).
+
+    The ladder has always declared `Z_CHART_LABEL 100` for "price/level labels,
+    view anchor, countdown tag" — and every chart label the indicator draws (the
+    ATR columns, the TH columns, the bottom-right trade card, the countdown tag)
+    reaches the chart through ONE funnel, `InitATRChartLabel()` in
+    `Biotak/LabelFunctions.mqh`. That funnel never wrote the rung, so the whole
+    text layer sat at ObjectCreate's default ZORDER 0 — the SAME rung as the
+    chart's own art (zones 0, level lines 1, box fills/edges 50-61) — and the
+    paint order was decided by creation order plus whatever a given MT4 build
+    does with OBJPROP_BACK (some builds flatten a rectangle whose FILL=false,
+    which the zone code already documents). A drawn HTF candle or a zone edge
+    could therefore end up on top of a label the user is reading.
+    """
+    rel = "Biotak/LabelFunctions.mqh"
+    src = read(rel)
+    if "void InitATRChartLabel(" not in src:
+        return ["%s: InitATRChartLabel() is gone - it owns the chart text layer's rung" % rel]
+    if not re.search(r"ObjectSetInteger\(0,\s*name,\s*OBJPROP_ZORDER,\s*Z_CHART_LABEL\)", src):
+        return ["%s: the chart text layer no longer writes its rung (Z_CHART_LABEL): every "
+                "label falls back to ObjectCreate's default ZORDER 0, i.e. the same rung "
+                "as the candle/zone art, and the paint order is creation order again" % rel]
+    art = ("Z_CHART_ZONE", "Z_CHART_LINE", "Z_CHART_TOOL", "Z_BOX_RAY",
+           "Z_BOX_FILL", "Z_BOX_EDGE", "Z_BOX_INFO", "Z_BOX_TEXT")
+    if ladder.get("Z_CHART_LABEL", 0) <= max(ladder.get(n, 0) for n in art):
+        return ["the text rung Z_CHART_LABEL (%d) is no longer above every chart-space art "
+                "rung (max %d)"
+                % (ladder.get("Z_CHART_LABEL", 0), max(ladder.get(n, 0) for n in art))]
+    return []
+
+
 def check_reads():
     """`ObjectGetInteger(..., OBJPROP_ZORDER)` is a read and must exist only in
     the diagnostics — the indicator itself has no business asking."""
@@ -443,6 +475,11 @@ def main():
             fails.append("%s:%d READS OBJPROP_ZORDER (a diagnostic, not product "
                          "code)" % (rel, line))
 
+    # 4b. the chart TEXT layer carries its rung (P-UI-85) - the ladder's own
+    #     comment says the labels live at Z_CHART_LABEL; this asserts the code does.
+    for msg in check_text_rung(ladder):
+        fails.append(msg)
+
     # 5. the proof's paint order
     text_band, used, problems = check_sim_bands(ladder)
     if text_band is None:
@@ -562,6 +599,13 @@ def selftest():
     read = with_source(SIM_FILE, "kw, kw, 4)", "kw, kw, 7)")
     _tb, _used, problems = check_sim_bands(ladder)
     cases.append(("an undeclared rank at a call site is reported", bool(problems)))
+
+    # 5b. the chart text layer losing its rung (P-UI-85)
+    read = with_source("Biotak/LabelFunctions.mqh",
+                       "    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31 ladder",
+                       "    // seed: the text layer drops back to the default ZORDER 0")
+    cases.append(("the chart text layer dropping its rung is reported",
+                  bool(check_text_rung(ladder))))
 
     # 5. the declared bands are exactly the ranks in use (no silent band)
     read = real_read

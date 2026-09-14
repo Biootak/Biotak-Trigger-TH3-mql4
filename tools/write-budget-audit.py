@@ -494,6 +494,32 @@ def check_htf_geometry(o):
             ok("htf-geometry", "%s slider range == the engine clamp (%s..%s)"
                                % (label, got[0], got[1]))
 
+    # (h) P-UI-85 - THE LIVE CANDLE'S SLOT COMES FROM THE BAR PITCH.
+    #
+    # `iBarShift(..., false)` answers with the NEAREST bar whenever the exact
+    # time is not a bar open - and for a FUTURE time the nearest bar IS bar 0.
+    # The forming HTF candle's scheduled close is exactly such a time, so the
+    # old shape (extrapolate only under `i < 0`) left the answer to the
+    # terminal's dictionary: on a build that says 0, the candle measured its
+    # period as the ELAPSED bars and drew visibly narrower than every closed
+    # candle beside it (the report behind P-UI-85 - «این کندل لایو اندازه کندل
+    # مثل بقیه باشه که بفهم کجای کندل لایو هستیم»). The gate reads the BRIDGE,
+    # so a future refactor cannot quietly reintroduce the ambiguity.
+    bridge = fn_body(htf, "double HTFChartIndexAt(") or ""
+    missing = [n for n in ("if(i <= 0)", "t > t0",
+                           "-(double)(t - t0) / (double)(t0 - t1)")
+               if n not in bridge]
+    if not bridge:
+        fail("htf-geometry", "HTFChartIndexAt() is gone - it is the bridge P-UI-85 guards")
+    elif missing:
+        fail("htf-geometry", "the chart-index bridge no longer resolves a time NEWER than bar 0 from "
+                             "the bar pitch (%s missing): iBarShift's answer for such a time is 'the "
+                             "nearest bar' = bar 0, so the forming candle measures the elapsed bars "
+                             "and draws narrower than its neighbours (P-UI-85)" % ", ".join(missing))
+    else:
+        ok("htf-geometry", "the live candle's slot comes from the bar pitch, never from "
+                           "iBarShift's nearest-bar answer")
+
     load = fn_body(htf, "void InitializeHTFCandles(") or ""
     for key, lo, hi in (("GapPct", "HTF_GAP_PCT_MIN", "HTF_GAP_PCT_MAX"),
                         ("ShadowPct", "HTF_SHADOW_PCT_MIN", "HTF_SHADOW_PCT_MAX")):
@@ -991,13 +1017,56 @@ def check_staging(o):
             ok("staging", "%s OnChartEvent scopes the deferral window" % os.path.basename(entry))
 
     pnl = read("Biotak/BiotakPanels.mqh", o)
+    # P-UI-82 moved the scan OUT of the batch and into a per-gesture builder, so
+    # the promise this block owns is now a pair: the BUILD scans UI types only
+    # (never the whole chart), and the BATCH does not scan at all — it pays N
+    # writes. Reading the old site (PnlMoveBy) would have kept this block green
+    # while the batch went back to sweeping the chart.
     mv = fn_body(pnl, "void PnlMoveBy(") or ""
-    if "ObjectsTotal(0, otype, -1)" not in mv:
-        fail("staging", "PnlMoveBy must enumerate UI object types, not the whole chart")
-    elif "ObjectsTotal(0, -1, -1)" in mv:
-        fail("staging", "PnlMoveBy still scans every chart object per move tick")
+    bld = fn_body(pnl, "void PnlMoveListBuild(") or ""
+    if "ObjectsTotal(0, otype, -1)" not in bld:
+        fail("staging", "PnlMoveListBuild must enumerate UI object types, not the whole chart")
+    elif "ObjectsTotal(0, -1, -1)" in bld:
+        fail("staging", "the move list still scans every chart object")
+    elif "ObjectsTotal" in mv:
+        fail("staging", "PnlMoveBy scans again — the batch must pay for its own "
+                        "objects, not re-derive them sixty times a second (P-UI-82)")
+    elif "PnlMoveListSync(" not in mv or "PnlMoveOne(" not in mv:
+        fail("staging", "PnlMoveBy no longer moves the cached list")
     else:
-        ok("staging", "a panel move touches UI-type objects only")
+        ok("staging", "a panel move pays N writes over a per-gesture list")
+    grab = fn_body(pnl, "bool PnlTryGrabMove(") or ""
+    if "PnlMoveListSync(g_PnlOpen, true)" not in grab:
+        fail("staging", "the grab must rebuild the move list (once per gesture), or "
+                        "the batch can move a list the card has outlived")
+    else:
+        ok("staging", "every gesture starts from the card as it is drawn")
+    fresh = fn_body(pnl, "bool PnlMoveListFresh(") or ""
+    missing = [k for k in ("s_PnlMoveItemLk", "s_PnlMoveRowsLk", "s_PnlMoveWLk",
+                           "s_PnlMoveHLk", "s_PnlMovePalLk", "s_PnlMoveDdLk")
+               if k not in fresh]
+    if missing:
+        fail("staging", "the move list's shape key is incomplete (%s) — a rebuild "
+                         "that changes it would move a stale list and tear the card"
+                         % ", ".join(missing))
+    else:
+        ok("staging", "the move list is valid only for the shape it was built for")
+    # P-UI-83: and the batch COMPUTES — it never reads back. The engine the user
+    # measures this one against (`SubChromeMove`, the menu's orb drag) sets
+    # `px + offset` and never asks an object where it is; the card paid GET+SET
+    # per object per axis, so half of every batch was a read of a value the held
+    # press cannot change. The offsets are read once per gesture (the builder),
+    # the batch writes `x0 + (target - origin)`, and the axis guards moved with
+    # them: an axis whose TARGET did not move is still not written.
+    one = fn_body(pnl, "void PnlMoveOne(") or ""
+    if one.count("ObjectSetInteger") != 2 or one.count("ObjectGetInteger") != 0:
+        fail("staging", "PnlMoveOne get-then-sets / writes an axis twice — the batch "
+                        "must compute its spot and never read it back (P-UI-83)")
+    elif one.count("s_PnlMoveOx") < 2 or one.count("s_PnlMoveOy") < 2:
+        fail("staging", "PnlMoveOne lost an axis guard "
+                        "(R-PERF: never write a property you would not change)")
+    else:
+        ok("staging", "the batch computes both axes, reads nothing, and skips")
 
     # P-PERF-24 — this block used to require BOTH dispatcher repaints to be
     # throttled. That encoded P-PERF-06's fix (a second raw repaint doubled every
@@ -1126,6 +1195,15 @@ def selftest():
         ("interaction", "Biotak/BiotakPanels.mqh",
          "   DragFrameRedraw();    // the drag's own frame, once per applied batch",
          "   ;   // seed: the batch no longer pays for its frame"),
+        # P-UI-83: the batch reads its objects back again (get-then-set) - half of
+        # every batch spent on a value a held press cannot change.
+        ("staging", "Biotak/BiotakPanels.mqh",
+         "   if(nx != s_PnlMoveOx)\n"
+         "      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,\n"
+         "                       s_PnlMoveX0[i] + (nx - s_PnlMoveOx));",
+         "   if(nx != s_PnlMoveOx)\n"
+         "      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,\n"
+         "                       (int)ObjectGetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE) + (nx - s_PnlMoveOx));"),
         ("interaction", "Biotak Trigger TH3.mq4", "    P4ReportSlow(\"OnDeinit reason=\"", "    //P4ReportSlow(\"OnDeinit reason=\""),
         ("atr", "Biotak/ATRCalculations.mqh",
          "    TrexSMALegsBatch(tf, periods, results);",
@@ -1190,6 +1268,14 @@ def selftest():
         ("htf-geometry", HTF,
          "   if(halfShadow > bodyHalf) halfShadow = bodyHalf;",
          "   // seed: the shadow is unbounded"),
+        ("htf-geometry", HTF,
+         "   if(i <= 0)\n   {\n      datetime t0 = iTime(_Symbol, p, 0);\n"
+         "      datetime t1 = iTime(_Symbol, p, 1);\n"
+         "      idx = (t0 > 0 && t1 > 0 && t0 > t1 && t > t0)\n"
+         "            ? -(double)(t - t0) / (double)(t0 - t1)\n"
+         "            : (i < 0 ? Bars - 1 : 0);   // -1 = older than the oldest loaded bar\n   }",
+         "   if(i < 0)\n   {\n      idx = Bars - 1;\n   }\n"
+         "   else if(i == 0)\n   {\n      idx = 0;\n   }"),
         ("htf-geometry", HTF,
          "   double iL = HTFChartIndexAt(ot);\n   double iR = HTFChartIndexAt(nt);",
          "   double iL = ot;\n   double iR = nt;"),

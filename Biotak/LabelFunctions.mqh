@@ -70,6 +70,32 @@ void InitATRChartLabel(const string name, ENUM_BASE_CORNER corner, ENUM_ANCHOR_P
     ObjectSetInteger(0, name, OBJPROP_ANCHOR, anchor);
     ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, name, OBJPROP_HIDDEN, false);
+    // P-UI-85 — THE CHART TEXT LAYER OWNS ITS RUNG (P-UI-31's ladder).
+    //
+    // Everything this family draws is TEXT a human reads: the ATR columns, the
+    // TH columns, the bottom-right trade card and the countdown tag — and the
+    // ladder file has always declared exactly that rung for it
+    // (`Z_CHART_LABEL 100`, "price/level labels, view anchor, countdown tag").
+    // The family simply never WROTE it, so every one of these labels sat at
+    // ObjectCreate's default ZORDER 0 — the same rung the chart's own art uses
+    // (zones 0, level lines 1, box fills/edges 50-61) — and the winner was
+    // decided by CREATION ORDER plus whatever a given MT4 build does with
+    // OBJPROP_BACK (some builds flatten a rectangle whose FILL=false anyway —
+    // the same build quirk the zone code already documents). A drawn HTF candle
+    // or a zone edge could therefore sit on top of the ATR text, which is what
+    // the report's screenshot shows (white theme: a candle body over the
+    // top-left `M1:`/steps labels). Writing the rung here — the ONE funnel every
+    // label piece already passes through (CreateATRLabelSimple, the ATR trade
+    // pieces and CreateTRexPiece) — makes the order PROVABLE instead of
+    // incidental: text 100 is above every chart-space art rung and every box
+    // pill (<= 61), and still far below the ring menu (1004+) and the cards
+    // (1480+), which stay on top where the user asked for them.
+    //
+    // COST: one ObjectSetInteger on the CREATE path only, because that is the
+    // only place this function runs — the label family is recreated after every
+    // ClearAllLabels (relayout, TF switch, re-attach), so no steady-state frame
+    // pays for it.
+    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_LABEL);   // P-UI-31 ladder
 }
 
 string GetBaseTimeframeName(const string fullName) {
@@ -887,7 +913,18 @@ void DisplayATRLabels(const string objectPrefix) {
 
 void DisplayATRTradeLabels(const string objectPrefix) {
     string labelPrefix = objectPrefix + "LBL_";
-    if(!inpShowATRTradeLabels || !g_atrLabelsVisible) {
+    // P-UI-84 (2026-09-14, user: «این trex sl , tp جدا از atr خاموش و روشن بشه
+    // الان atr روش تاثیر میزاره»): THE CARD ANSWERS TO ITS OWN MASTER AND TO
+    // NOTHING ELSE. Until this row every gate that decided the card ALSO ANDed
+    // `g_atrLabelsVisible` — the ATR OVERVIEW switch (the ring's `ATR` tile, the
+    // label card's `ATR LABELS` row 4, the A hotkey) — so switching the per-TF
+    // ATR columns off took the whole trade plan with them, and the two read as
+    // one control in all but name. The card is a TRADE PLAN (brand + Hunter SL
+    // row + #SL/#TP row); its own switches (`inpShowATRTradeLabels` and the two
+    // row flags below, the label card's TRADE PLAN ROWS band) are the ONLY thing
+    // that may remove it. The ATR overview gate stays where it belongs: inside
+    // DisplayATRLabels, over the ATR columns it actually owns.
+    if(!inpShowATRTradeLabels) {
         // Defensive wipe: the relayout callers clear LBL_ first, but a bare
         // toggle path may reach here without a prior clear.
         ObjectDelete(0, labelPrefix + "ATR_Trade_Current_ATR");
@@ -1253,7 +1290,10 @@ void TradePlanLiveTick()
         ThrottledChartRedraw();
     }
 
-    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;
+    // P-UI-84: the card's OWN master, never the ATR overview (see
+    // DisplayATRTradeLabels). `IsIndicatorHidden()` stays — the F-hide must
+    // still park this pump with the rest of the chart.
+    if(!inpShowATRTradeLabels || IsIndicatorHidden()) return;
     static uint s_lastMs = 0;
     string labelPrefix = GetLevelObjectPrefix() + "LBL_";
 
@@ -1349,7 +1389,13 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_TP3_Value", OBJPROP_TIMEFRAMES, tf);
     // R-TRADEPLAN block + TRex stamp (purge lines for the retired
     // 12-piece + ATR-row names above stay so old charts clean up).
-    long tradeTF = (shouldShow && inpShowATRTradeLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
+    // P-UI-84: the card is NOT part of `shouldShow` (the ATR overview). It owns
+    // its master switch and answers to that one alone, so an `ATR` tile press,
+    // the label card's `ATR LABELS` row or the A key can never mask the trade
+    // plan away. `IsIndicatorHidden()` is the ONE term it still shares with the
+    // ATR block, because that is the whole-indicator F-hide, not a layer choice.
+    bool cardOn = (inpShowATRTradeLabels && !IsIndicatorHidden());
+    long tradeTF = cardOn ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long slTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeSLLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long tpTF = (tradeTF == OBJ_ALL_PERIODS && inpShowATRTradeTPLabels) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     ObjectSetInteger(0, uniquePrefix + "ATR_Trade_Current_ATR", OBJPROP_TIMEFRAMES, tradeTF);

@@ -1912,7 +1912,11 @@ void RedrawAllObjects(bool force_redraw=false)
         bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
         if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
-        if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
+        // P-UI-84: UNGATED. The trade card owns its master switch and self-wipes
+        // (DisplayATRTradeLabels), so the ATR overview gate above it never
+        // governed it - guarding the call here is exactly what made an `ATR`
+        // press remove the trade plan and leave the clear's empty corner behind.
+        DisplayATRTradeLabels(objectPrefix);
         // Own layer: repaint AFTER the clear so switching the ATR labels off
         // never removes the countdown (2026-09-11).
         RefreshLiveCountdown();
@@ -3959,7 +3963,7 @@ void RedrawLabelsOnly() {
         if(showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
     }
-    if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);
+    DisplayATRTradeLabels(objectPrefix);   // P-UI-84: own master, not the ATR overview
     RefreshLiveCountdown();   // own switch — survives the ATR labels being off
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();

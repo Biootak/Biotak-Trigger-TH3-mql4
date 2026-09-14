@@ -42,6 +42,12 @@ Checks, all on the source, no terminal:
              defaults from PropertiesAndInputs.mqh, the clamp bounds from the
              constants file, and the clamp's condition must name the same
              constant it clamps to (a decorative bound is a lie).
+  7 DECOUPLED the trade card answers to its OWN master (`inpShowATRTradeLabels`
+             + the two row flags) and never to the ATR-overview global
+             (`g_atrLabelsVisible`): the wipe gate, the 2 s pump, the mask writer
+             and BOTH EventHandlers call sites are checked, so the ring's `ATR`
+             tile / the label card's `ATR LABELS` row / the A key cannot remove
+             the trade plan again (P-UI-84).
   6 GEOMETRY a python mirror of the owner's arithmetic over an input grid
              (font 4..24, row gap 0..60, bottom margin 0..120, rows -1000..1000,
              DPI 96/120/144/192, chart height 320..2160, row widths 20..640):
@@ -75,6 +81,7 @@ LABELS = os.path.join(ROOT, "Biotak", "LabelFunctions.mqh")
 INPUTS = os.path.join(ROOT, "Biotak", "PropertiesAndInputs.mqh")
 CONSTS = os.path.join(ROOT, "Biotak", "ConstantsAndEnums.mqh")
 METRICS = os.path.join(ROOT, "Biotak", "UtilityFunctions.mqh")
+EVENTS = os.path.join(ROOT, "Biotak", "EventHandlers.mqh")
 
 QUIET = "--quiet" in sys.argv
 SHOW_MODEL = "--model" in sys.argv
@@ -478,6 +485,57 @@ def check_presence():
     return problems
 
 
+def check_decoupled():
+    """P-UI-84 - THE TRADE CARD ANSWERS TO ITS OWN MASTER.
+
+    The card (brand + Hunter SL row + #SL/#TP row) is a TRADE PLAN, not part of
+    the ATR overview - yet until 2026-09-14 every gate that decided it ALSO ANDed
+    `g_atrLabelsVisible`, so the ring's `ATR` tile, the label card's
+    `ATR LABELS` row 4 and the A hotkey each took the trade plan away with the
+    ATR columns, and the two read as one control in all but name.
+
+    The coupling had four faces and all four are asserted here: the wipe gate
+    (`DisplayATRTradeLabels`), the 2 s pump (`TradePlanLiveTick`), the mask
+    writer (`SetATRLabelsVisibility`) and both EventHandlers call sites. The ONE
+    legal reader of `g_atrLabelsVisible` in the label module is
+    `DisplayATRLabels` itself - the ATR columns it actually owns.
+    """
+    problems = []
+    code = strip_comments(read(LABELS))
+    atr_block = body(code, "void DisplayATRLabels(") or ""
+    if code.count("g_atrLabelsVisible") != atr_block.count("g_atrLabelsVisible"):
+        problems.append("a label pass other than DisplayATRLabels() reads "
+                        "g_atrLabelsVisible (the trade card is coupled to the "
+                        "ATR overview again)")
+    wipe = body(code, "void DisplayATRTradeLabels(")
+    if wipe is None:
+        problems.append("DisplayATRTradeLabels() is gone")
+    elif "if(!inpShowATRTradeLabels)" not in wipe:
+        problems.append("the trade card no longer wipes on its OWN master switch")
+    pump = body(code, "void TradePlanLiveTick(")
+    if pump is None:
+        problems.append("TradePlanLiveTick() is gone")
+    elif "if(!inpShowATRTradeLabels || IsIndicatorHidden()) return;" not in pump:
+        problems.append("the trade-card pump is not gated on the card's own "
+                        "master + the indicator F-hide")
+    mask = body(code, "void SetATRLabelsVisibility(")
+    if mask is None:
+        problems.append("SetATRLabelsVisibility() is gone")
+    else:
+        if "bool cardOn = (inpShowATRTradeLabels && !IsIndicatorHidden());" not in mask:
+            problems.append("the card's mask writer lost its OWN predicate")
+        if re.search(r"shouldShow\s*&&\s*inpShowATRTradeLabels", mask):
+            problems.append("the card's mask writer is back on the ATR "
+                            "overview's shouldShow")
+    events = strip_comments(read(EVENTS))
+    if re.search(r"if\s*\(\s*g_atrLabelsVisible\s*\)\s*DisplayATRTradeLabels\(", events):
+        problems.append("an EventHandlers call site guards the trade card with "
+                        "the ATR overview switch")
+    if "DisplayATRTradeLabels(objectPrefix);" not in events:
+        problems.append("EventHandlers no longer paints the trade card")
+    return problems
+
+
 def check_inputs(owner):
     problems = []
     (lo, hi), honest = owner_clamps(owner)
@@ -619,10 +677,11 @@ def main():
     measured_problems = check_measured()
     em_problems = check_raw_em()
     presence_problems = check_presence()
+    decoupled_problems = check_decoupled()
     input_problems, defaults, lo, hi = check_inputs(owner if owner else "")
     problems = {}
     for msg in (owner_problems + anchor_problems + measured_problems
-                + em_problems + presence_problems + input_problems):
+                + em_problems + presence_problems + decoupled_problems + input_problems):
         problems.setdefault(msg, "")
 
     if lo is None:
@@ -634,6 +693,7 @@ def main():
                              ("[measured] row widths measured, brand gap = wEx", measured_problems),
                              ("[raw em] PnlRawLineH owns the raw em", em_problems),
                              ("[presence] a switched-off row is removed by its writer", presence_problems),
+                             ("[decoupled] the card answers to its own master, never the ATR overview", decoupled_problems),
                              ("[inputs] defaults + clamp bounds read from the source", input_problems)):
             print("  %s %s%s" % ("ok  " if not plist else "FAIL", label,
                                  "" if not plist else " - %d problem(s)" % len(plist)))
@@ -721,6 +781,7 @@ def selftest():
     cases.append(("the clean source passes every check",
                   not check_owner()[0] and not check_anchor() and not check_measured()
                   and not check_raw_em() and not check_presence()
+                  and not check_decoupled()
                   and check_geometry(0, 20)[0] == {}))
 
     # 1. a writer lays the card out itself again - the card computed once per
@@ -842,6 +903,43 @@ def selftest():
     with_source(CONSTS, "#define TREX_CARD_MAX_GAP_ROWS 20", "#define TREX_CARD_MAX_GAP_ROWSX 20")
     problems, _defaults, _lo, _hi = check_inputs(body(read(LABELS), "void TRexTradeCardLayout("))
     cases.append(("a renamed/missing bound constant is caught", bool(problems)))
+    reset()
+
+    # 12. the trade card is re-coupled to the ATR overview - all four faces
+    #     (P-UI-84). Each seed patches ONE face and the check must catch it.
+    with_source(LABELS,
+                "    if(!inpShowATRTradeLabels) {\n        // Defensive wipe",
+                "    if(!inpShowATRTradeLabels || !g_atrLabelsVisible) {\n"
+                "        // Defensive wipe")
+    cases.append(("the card's wipe gate back on the ATR overview is caught",
+                  bool(check_decoupled())))
+    reset()
+
+    with_source(LABELS,
+                "    if(!inpShowATRTradeLabels || IsIndicatorHidden()) return;\n"
+                "    static uint s_lastMs = 0;",
+                "    if(!inpShowATRTradeLabels || !g_atrLabelsVisible || IsIndicatorHidden()) return;\n"
+                "    static uint s_lastMs = 0;")
+    cases.append(("the card's pump back on the ATR overview is caught",
+                  bool(check_decoupled())))
+    reset()
+
+    with_source(LABELS,
+                "    bool cardOn = (inpShowATRTradeLabels && !IsIndicatorHidden());\n"
+                "    long tradeTF = cardOn ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;",
+                "    long tradeTF = (shouldShow && inpShowATRTradeLabels) ? "
+                "OBJ_ALL_PERIODS : OBJ_NO_PERIODS;")
+    cases.append(("the card's mask writer back on shouldShow is caught",
+                  bool(check_decoupled())))
+    reset()
+
+    with_source(EVENTS,
+                "        DisplayATRTradeLabels(objectPrefix);\n"
+                "        // Own layer: repaint AFTER the clear",
+                "        if(g_atrLabelsVisible) DisplayATRTradeLabels(objectPrefix);\n"
+                "        // Own layer: repaint AFTER the clear")
+    cases.append(("an EventHandlers call site guarded by the ATR overview is caught",
+                  bool(check_decoupled())))
     reset()
 
     # 11. the model's own invariants have teeth

@@ -308,24 +308,36 @@ double HTFChartIndexAt(const datetime t)
    int p = Period();
    double idx;
    int i = iBarShift(_Symbol, p, t, false);
-   if(i < 0)
+   // P-UI-85 — A TIME NEWER THAN BAR 0 IS NEVER BELIEVED FROM iBarShift.
+   //
+   // `iBarShift(..., false)` answers with the NEAREST bar whenever the exact
+   // time is not a bar open, and for a FUTURE time the nearest bar IS bar 0.
+   // The forming HTF candle's scheduled close (`HTFBarCloseTime`, i.e. a time
+   // that has not happened yet) therefore came back as index 0 and the candle
+   // measured its period as "the elapsed bars" instead of ONE FULL SLOT: the
+   // live candle was drawn over the elapsed part only — visibly narrower than
+   // every closed candle beside it, which is the report («این کندل لایو اندازه
+   // کندل مثل بقیه باشه که بفهم کجای کندل لایو هستیم»). The old code only
+   // extrapolated in its `i < 0` branch, so the fix depended on the terminal's
+   // dictionary (`-1` on some builds, `0` on others). Now the ANSWER cannot
+   // decide it: `i <= 0` is resolved from the bar PITCH whenever the time is
+   // newer than bar 0, which is exactly how the terminal itself lays out a
+   // future time. One canonical form for "inside bar 0's slot" and for
+   // "after it", so the live candle's slot — and therefore its body, its
+   // shadow and its gap — measures one full period like every closed candle.
+   //
+   // COST: the historical path is byte-identical (i > 0 never enters here). The
+   // live candle now costs two iTime + one divide instead of an iBarShift plus
+   // the same two iTime — the hottest caller (`HTFChartIndexAt(nt)` on every
+   // forming-candle update) gets CHEAPER, and the memo below still bounds the
+   // conversion to one per distinct time per pass.
+   if(i <= 0)
    {
       datetime t0 = iTime(_Symbol, p, 0);
       datetime t1 = iTime(_Symbol, p, 1);
-      if(t0 > 0 && t > t0)
-      {
-         // Newer than the last bar: extend at the last slot's pitch, the way
-         // the terminal lays out a future time.
-         idx = (t1 > 0 && t0 > t1) ? -(double)(t - t0) / (double)(t0 - t1) : 0;
-      }
-      else
-      {
-         idx = Bars - 1;      // older than the oldest loaded bar
-      }
-   }
-   else if(i == 0)
-   {
-      idx = 0;
+      idx = (t0 > 0 && t1 > 0 && t0 > t1 && t > t0)
+            ? -(double)(t - t0) / (double)(t0 - t1)
+            : (i < 0 ? Bars - 1 : 0);   // -1 = older than the oldest loaded bar
    }
    else
    {
