@@ -487,13 +487,41 @@ def check_panels(src, facts):
             fails.append("the arm at %s:%d (%s) is not anchored on a gesture claim "
                          "(%s) — a refresh is being throttled for no visible reason"
                          % (PANELS, ln, fn_of(ln), " / ".join(ARM_ANCHORS)))
-    if len(arms) != 4:
-        fails.append("expected 4 arm sites (palette mixer, slider knob, slider track, "
-                     "native knob drag), found %d" % len(arms))
-    elif per_func != {"PnlHandleMouseMove": 3, "PnlHandleDrag": 1}:
-        fails.append("the arm sites moved: expected PnlHandleMouseMove x3 + "
+    # P-UI-76 became law: the knob and the track are two shapes of the SAME
+    # press, so their arms may be MERGED into one `||` branch or kept as two.
+    # Both shapes are legal (the promise is "a slider press arms the budget",
+    # not "the source has four call sites") — what may never change is that a
+    # slider press arms at all, and that no arm appears outside the two engines
+    # that own a gesture. Keying the count on the merger is what keeps this
+    # check honest instead of merely green (it went red for the merged build
+    # precisely because the old expectation counted a shape, not a promise).
+    merged = bool(re.search(r"if\(PnlKnobHit\([^;]*\|\|\s*PnlTrackHit\(", src))
+    want_mm = 2 if merged else 3
+    if len(arms) != want_mm + 1:
+        fails.append("expected %d arm sites (palette mixer, %s, native knob drag), "
+                     "found %d"
+                     % (want_mm + 1,
+                        "slider (PnlKnobHit || PnlTrackHit)" if merged
+                        else "slider knob, slider track", len(arms)))
+    elif per_func != {"PnlHandleMouseMove": want_mm, "PnlHandleDrag": 1}:
+        fails.append("the arm sites moved: expected PnlHandleMouseMove x%d + "
                      "PnlHandleDrag x1, got %s"
-                     % ", ".join("%s x%d" % (k, v) for k, v in sorted(per_func.items())))
+                     % (want_mm,
+                        ", ".join("%s x%d" % (k, v) for k, v in sorted(per_func.items()))))
+    engine = body(src, "void PnlHandleMouseMove(") or ""
+    for shape, why in (("PnlKnobHit", "the knob shape"),
+                       ("PnlTrackHit", "the track shape")):
+        if shape not in engine:
+            fails.append("%s no longer reaches the slider branch — half of one "
+                         "slider gesture would run its heavy pass at pointer "
+                         "rate (P-UI-33/P-UI-76)" % why)
+    slider_arms = [ln for ln, fn, _ in facts["arms"]
+                   if fn_of(ln) == "PnlHandleMouseMove"
+                   and any(("PnlKnobHit" in l or "PnlTrackHit" in l)
+                           for l in srclines[max(0, ln - 17):ln])]
+    if not slider_arms:
+        fails.append("no arm sits on a slider claim — a slider press would skip "
+                     "the live-gesture budget (P-UI-33)")
 
     fin_start = src.find("void ChartPointerFinalizeOnUps()")
     fin = body(src, "void ChartPointerFinalizeOnUps()")

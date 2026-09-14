@@ -238,7 +238,16 @@ def check_owner():
     flush = body(text, "void PalRefreshRecents(")
     if flush is not None and "PalPaintRecents(" not in flush:
         problems.append("PalRefreshRecents() stopped painting through the owner")
-    if "PalRefreshRecents(true)" not in text:
+    # P-UI-81: the flush must sit in the MIXER RELEASE branch itself. Asking the
+    # whole file (the old shape) went VACUOUS the moment the same flush appeared
+    # at a second site (the gesture reaper in `PnlHandleMouseMove`): its negative
+    # control patched the mixer block and the check still found the other copy,
+    # so the seed passed without patching anything that mattered - the exact
+    # "a gate that counts text instead of a promise" trap.
+    engine = body(text, "void PnlHandleMouseMove(") or ""
+    at = engine.find("if(g_PalMixDrag > 0)")
+    mixer = engine[at:at + 420] if at >= 0 else ""
+    if "PalRefreshRecents(true)" not in mixer:
         problems.append("nothing flushes the coalesced recents repaint at the end of a "
                         "mixer drag (the strip would stay one colour behind)")
     if "PalRefreshRecents(false)" not in text:

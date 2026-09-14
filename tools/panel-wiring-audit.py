@@ -38,7 +38,11 @@ So the gate walks the REAL source and requires, for every card:
             as loose widgets on the chart ("پشت پس زمینه نداره");
   [mouse]   the physical mouse button has ONE owner (P-UI-73) and a gesture is
             only torn down by a release, so a press-side CLICK/OBJECT_CLICK echo
-            cannot kill the drag that same press started.
+            cannot kill the drag that same press started;
+  [heal]    no panel gesture LATCH can outlive its gesture (P-UI-81): a press
+            edge — the one witness the terminal cannot withhold — reaps every
+            latch through its own finish path, so one missed release can never
+            brick every control of every card.
 
 USAGE
 -----
@@ -638,9 +642,65 @@ def check_drag():
     if fin is None or "s_PnlMoveMoved" not in fin:
         problems.append("the button-up finalizer leaves the moved witness set, so "
                         "a later poll could pin a spot the card never reached")
-    if fin is None or "via=finalizer" not in fin:
+    # P-UI-83: this reads the SITE, not the file — the finalizer's own note names
+    # this ledger in prose (`via=finalizer`), so a bare substring test stayed
+    # true even with the Print deleted (the same vacuity panel-colour-audit was
+    # caught by in P-UI-81: a gate must read the site).
+    if fin is None or "panel drag finished moved=" not in fin or \
+            "ms via=finalizer" not in fin:
         problems.append("the finalizer ends missed-release drags silently - an "
                         "arm/arm pair reads as a double-grab (P-UI-78 ledger)")
+    # (h) P-UI-82: the batch pays for the card's OWN objects (a per-gesture list,
+    #     never a chart sweep — that scan is what the adaptive window was
+    #     converging onto, so the card stepped instead of tracking), and the spot
+    #     is parked when the drag is PROVEN, not at the release: the next open
+    #     reads the park, and a gesture that never gets a release (hotkey close,
+    #     TF switch, focus stolen) must still reopen where the user left it.
+    grab2 = body(panels, "bool PnlTryGrabMove(") or ""
+    if "PnlMoveListSync(g_PnlOpen, true)" not in grab2:
+        problems.append("the grab no longer rebuilds the move list - the batch can "
+                        "move names the card has outlived and tear it (P-UI-82)")
+    if step is None or "if(!s_PnlMoveMoved) PnlCommitMove(" not in step:
+        problems.append("the drag parks the spot only at its RELEASE - a gesture that "
+                        "never gets one reopens at the old position (P-UI-82)")
+    # (i) P-UI-83: A NON-EVENT WITNESS MAY NOT END A GESTURE WHOSE EVENT CHANNEL IS
+    #     STILL DELIVERING DOWN-READINGS. The user's yardstick is the menu, whose
+    #     drag lives on the event bit alone (`if(!leftDown)`, BiotakMenu); the
+    #     panel had two extra enders and BOTH consult the KEYSTATE probe — so on a
+    #     terminal whose probe answers "free" while the button is held, the poll
+    #     executed every drag it had not armed (253-500 ms per press) and the
+    #     P-UI-49b delivery echo executed the rest (125-176 ms). Today's ledger:
+    #     150 arms, ZERO by the poll, and no drag outliving half a second while
+    #     the user kept the button down. The separator is the event bit's own
+    #     RECENCY: an echo lands while down-readings are still arriving, a
+    #     motionless release emits no move at all (P-BK-03) and is quiet by
+    #     construction.
+    wit = body(panels, "bool PnlPointerQuiet(") or ""
+    if not wit:
+        problems.append("the down-recency witness is gone - a non-event witness can "
+                        "execute a live drag again (P-UI-83)")
+    elif "s_PnlDownAt" not in wit or "PNL_DOWN_RECENT_MS" not in wit:
+        problems.append("the down-recency witness no longer reads the stamp and its "
+                        "window (P-UI-83)")
+    if poll is not None and "UILeftButtonUp() && PnlPointerQuiet()" not in poll:
+        problems.append("the poll ends a live drag on the probe ALONE - a terminal "
+                        "whose probe reads free kills every drag on its second "
+                        "pass (P-UI-83)")
+    if fin is None or "!PnlPointerQuiet()" not in fin:
+        problems.append("the button-up finalizer tears a gesture down on the probe "
+                        "alone - the P-UI-49b echo of the arming press ends a live "
+                        "drag ~130 ms in (P-UI-83)")
+    if bridge is None or "s_PnlDownAt = GetTickCount();" not in bridge:
+        problems.append("the down-recency stamp is never written - the witness "
+                        "cannot answer (P-UI-83)")
+    one = body(panels, "void PnlMoveOne(") or ""
+    if "ObjectGetInteger" in one:
+        problems.append("the move batch reads objects back again - half of every "
+                        "batch is a read of a value the gesture cannot change "
+                        "(P-UI-83: the menu computes its chrome, it never reads)")
+    if step is None or "s_PnlMoveFrames" not in step or "s_PnlMoveWorst" not in step:
+        problems.append("the gesture no longer measures its own frames - \"not live\" "
+                        "cannot be answered from the log (P-UI-83)")
     return problems
 
 
@@ -1640,6 +1700,70 @@ def check_dual():
     return problems
 
 
+def check_heal():
+    """P-UI-81: no panel gesture latch may survive the gesture that owns it.
+
+    The report was «بعضی اوقات جابجا میشه ولی دیگه قفل میشه هیچی کار نمیکنه» —
+    the card MOVED, and from then on every control of every card was dead until
+    the indicator was re-attached. The mechanism is a LATCH, not a drag: while
+    `g_PnlMoveItem` (or the slider / mixer latch) is set the move chain returns
+    before its control block, and all three of the latch's exits need a witness
+    the terminal may never deliver — a later move event carrying the release bit
+    (MT4 emits none for a release that does not travel), the KEYSTATE probe (a
+    heuristic), and the button-up finalizer, which is itself gated by that same
+    probe. Lose all three in one gesture and the latch is permanent.
+
+    The repair is the witness that cannot be missed: a press EDGE proves the
+    previous gesture is over, so it must reap EVERY panel latch — each one
+    through its OWN finish path (claim, budget and chart lock included) — before
+    anything reads the state, and never on the click channel (that button is
+    already up and must not kill a live drag).
+    """
+    panels = read(PANELS)
+    problems = []
+    reap = body(panels, "void PnlReapStaleGestures(")
+    if reap is None:
+        problems.append("PnlReapStaleGestures() is gone - one missed release "
+                        "bricks every control of every card until re-attach "
+                        "(P-UI-81)")
+        return problems
+    for latch, why in ((r"if\(g_PnlDragItem >= 0\)", "the slider drag"),
+                       (r"if\(g_PalMixDrag > 0\)", "the palette mixer drag"),
+                       (r"if\(g_PnlMoveItem >= 0\)", "the card move drag")):
+        if not re.search(latch, reap):
+            problems.append("the reaper forgets %s - that latch alone can still "
+                            "brick every control of the panel (P-UI-81)" % why)
+    if "PnlDragFinish(" not in reap:
+        problems.append("the reaper clears the move latch INLINE - its claim, its "
+                        "chart lock and its ledger line would be left behind "
+                        "(P-UI-81)")
+    for owner in ("DragReleaseIf(DRAG_PANEL_KNOB)", "UIDragBudgetEnd()",
+                  "CircUnlockChart()"):
+        if owner not in reap:
+            problems.append("the reaper leaves %s behind for a knob/mixer "
+                            "gesture - a second owner of the same state "
+                            "(P-UI-81)" % owner)
+    if "commitMove" not in reap:
+        problems.append("the reap has no commit switch - a card closed under a "
+                        "gesture would pin a spot, or a real drag would lose one")
+    chain = body(panels, "void PnlHandleMouseMove(") or ""
+    call = re.search(r"if\(pressStart && !s_PnlClickChannel\)\s*"
+                     r"PnlReapStaleGestures\(", chain)
+    if call is None:
+        problems.append("the move chain no longer reaps on a press edge - the next "
+                        "missed release bricks the panel again (P-UI-81)")
+    else:
+        head = chain.find("if(g_PalOpen)")
+        if head < 0 or call.start() > head:
+            problems.append("the reap runs AFTER the palette/drag branches - the "
+                            "latch is read before it is healed (P-UI-81)")
+    poll = body(panels, "void PnlDragPoll(") or ""
+    if "PnlReapStaleGestures(" in poll:
+        problems.append("the tick path reaps gestures - a poll would murder a "
+                        "live drag (P-UI-81)")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -1652,7 +1776,8 @@ def main():
               ("chrome", check_chrome()),
               ("dual", check_dual()),
               ("drag", check_drag()),
-              ("mouse", check_mouse()))
+              ("mouse", check_mouse()),
+              ("heal", check_heal()))
     for name, plist in groups:
         if not QUIET:
             print("  %s [%s]" % ("ok  " if not plist else "FAIL", name))
@@ -1711,7 +1836,8 @@ def selftest():
                        or check_relayout() or check_purge()
                        or check_card_body() or check_modal()
                        or check_press(read(PANELS)) or check_chrome()
-                       or check_dual() or check_drag() or check_mouse())))
+                       or check_dual() or check_drag() or check_mouse()
+                       or check_heal())))
     reset()
 
     # 1. P-UI-70c: the row is retired again while its address stays live
@@ -1845,7 +1971,9 @@ def selftest():
     reset()
 
     # 18. the finalizer tears down again without asking whether the button is up
-    with_source(PANELS, "   if(!UILeftButtonUp()) return;",
+    #     (P-UI-83 widened the gate to the down-recency witness; the seed asks
+    #     about the WITNESS, so it moves with the site, not with the string)
+    with_source(PANELS, "   if(!UILeftButtonUp() || !PnlPointerQuiet()) return;",
                 "   if(false) return;")
     cases.append(("a press-side echo that can kill the drag is caught",
                   bool(check_mouse())))
@@ -2035,8 +2163,9 @@ def selftest():
 
     # 43. P-UI-78 ledger: the finalizer's missed-release end goes silent again -
     #     an arm/arm pair reads as a double-grab instead of tap, release, tap
-    with_source(PANELS, "      _LOG_GATE_W Print(\"[UI] panel drag finished moved=\", (s_PnlMoveMoved ? 1 : 0),\n"
-                        "                        \" byPoll=\", (s_PnlMoveByPoll ? 1 : 0), \" via=finalizer\");",
+    with_source(PANELS, "                        \" byPoll=\", (s_PnlMoveByPoll ? 1 : 0),\n"
+                        "                        \" frames=\", s_PnlMoveFrames, \" worst=\", s_PnlMoveWorst,\n"
+                        "                        \"ms via=finalizer\");",
                 "      // seed: silent finalizer end")
     cases.append(("a silent finalizer drag-end is caught", bool(check_drag())))
     reset()
@@ -2055,6 +2184,67 @@ def selftest():
                 "         PnlDragFinish(true, true);   // seed: unconditional finish")
     cases.append(("an unconditional press-chain finish is caught",
                   bool(check_drag())))
+    reset()
+
+    # 46. P-UI-81: the press-edge reap is gone - a missed release bricks the
+    #     whole panel again (the report: it moves, then nothing works)
+    with_source(PANELS, "   if(pressStart && !s_PnlClickChannel) PnlReapStaleGestures(s_PnlMoveMoved);",
+                "   // seed: no press-edge reap")
+    cases.append(("a panel with no press-edge heal is caught", bool(check_heal())))
+    reset()
+
+    # 47. P-UI-81: the reap migrates onto the TICK path - a poll murders a live
+    #     drag (the P-UI-73b class, one state further in)
+    with_source(PANELS, "   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,true)) return;",
+                "   PnlReapStaleGestures(true);\n"
+                "   if(!PnlTryGrabMove(g_LastUIX, g_LastUIY,true)) return;")
+    cases.append(("a tick-path reap is caught", bool(check_heal())))
+    reset()
+
+    # 48. P-UI-81: the reaper forgets one latch - that latch alone keeps the
+    #     whole panel dead
+    with_source(PANELS, "   if(g_PalMixDrag > 0)\n", "   if(false && g_PalMixDrag > 0)\n")
+    cases.append(("a reaper that forgets a latch is caught", bool(check_heal())))
+    reset()
+
+    # 49. P-UI-82: the park migrates back to the release only - a hotkey-closed
+    #     card reopens at the previous spot (the report's second half)
+    with_source(PANELS, "   if(!s_PnlMoveMoved) PnlCommitMove(g_PnlMoveItem);\n", "")
+    cases.append(("a drag that parks only on release is caught", bool(check_drag())))
+    reset()
+
+    # 50. P-UI-82: the grab stops rebuilding the list - a batch can move a stale
+    #     shape and tear the card
+    with_source(PANELS, "   PnlMoveListSync(g_PnlOpen, true);",
+                "   // seed: no per-gesture rebuild")
+    cases.append(("a grab that reuses a stale move list is caught", bool(check_drag())))
+    reset()
+
+    # 51. P-UI-83: the poll goes back to ending a live drag on the probe alone -
+    #     on a terminal whose probe reads "free" while the button is held, every
+    #     drag it did not arm dies on its second pass (253-500 ms per press)
+    with_source(PANELS, "      if(UILeftButtonUp() && PnlPointerQuiet())",
+                "      if(UILeftButtonUp())")
+    cases.append(("a probe-only poll finish is caught", bool(check_drag())))
+    reset()
+
+    # 52. P-UI-83: the finalizer tears a gesture down on the probe alone again -
+    #     the OBJECT_CLICK echo of the arming press executes the live drag
+    with_source(PANELS, "   if(!UILeftButtonUp() || !PnlPointerQuiet()) return;",
+                "   if(!UILeftButtonUp()) return;")
+    cases.append(("a probe-only finalizer teardown is caught", bool(check_drag())))
+    reset()
+
+    # 53. P-UI-83: the batch reads its objects back (get-then-set) - half of every
+    #     batch spent on a value the gesture cannot change (the menu never reads)
+    with_source(PANELS,
+                "   if(nx != s_PnlMoveOx)\n"
+                "      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,\n"
+                "                       s_PnlMoveX0[i] + (nx - s_PnlMoveOx));",
+                "   if(nx != s_PnlMoveOx)\n"
+                "      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,\n"
+                "                       (int)ObjectGetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE) + (nx - s_PnlMoveOx));")
+    cases.append(("a batch that reads its objects back is caught", bool(check_drag())))
     reset()
 
     for name, ok in cases:

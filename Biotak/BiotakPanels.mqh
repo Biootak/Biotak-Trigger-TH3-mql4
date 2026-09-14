@@ -5827,6 +5827,59 @@ static bool s_PnlMoveByPoll  = false;
 // P-UI-78: the poll's release rumour filter (below) — one up-reading arms,
 // the second consecutive one finishes. Reset with every finish, like the rest.
 static bool s_PnlPollUpArmed = false;
+// P-UI-83: the batch counters the finish line reports (see the P-UI-83 block
+// right below). Zero cost when no gesture is live: the poll's own first test
+// returns before any of this is touched.
+static int  s_PnlMoveFrames = 0;   // batches this gesture actually applied
+static int  s_PnlMoveWorst  = 0;   // the worst single batch cost it paid (ms)
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-83 (2026-09-14) — «هنوز به صورت لایو جابجا نمیشه، پنل باید مثل منوی اصلی
+// جابجا بشه» — THE PANEL'S DRAG STILL DIED ON WITNESSES THE MENU NEVER ASKS.
+//
+// THE MENU'S DRAG LIVES ON **ONE** WITNESS: the event bit (`if(!leftDown)`,
+// BiotakMenu's orb / chrome path). The user's yardstick is exactly that —
+// "the menu works, make the panel like it" — so the diff that matters is
+// *who may end a live panel drag*.
+//
+// THE PANEL HAD TWO MORE ENDERS, and both consult the PHYSICAL probe
+// `UILeftButtonUp()`:
+//   * `PnlDragPoll`'s release rule (one probe reading, twice in a row, ends the
+//     gesture), and
+//   * `ChartPointerFinalizeOnUps`'s teardown gate (probe says "up" ⇒ this
+//     CLICK/OBJECT_CLICK is a release, so tear every panel latch down).
+// On a terminal whose KEYSTATE probe answers "free" while the button is HELD
+// (the docstring above `UILeftButtonDown` records that the two MQL4 lineages
+// spell this property differently, and P-UI-73 exists because of it), BOTH of
+// them end a live drag:
+//   * the poll's rule fires on its second pass — a tick or the 250 ms timer —
+//     so a press buys 250-500 ms of drag, and
+//   * the P-UI-49b delivery echo (MT4 hands the indicator the OBJECT_CLICK of
+//     the press that grabbed the object) ends it in ~125-176 ms.
+// TODAY'S LEDGER IS EXACTLY THAT — 150 arms, ALL from the event channel (0 by
+// the poll: a probe that never reads "down" can never arm one), 55 finishes
+// `via=finalizer` at 125-176 ms and 76 `moved=1` finishes at 253-500 ms — i.e.
+// NO drag in the whole session outlived half a second while the user kept
+// holding the button. The grab, the window and the frame were all fine; the
+// gesture was being executed by the wrong witness.
+//
+// THE WITNESS THAT SEPARATES AN ECHO FROM A RELEASE is the event bit's own
+// RECENCY. During a live press the terminal keeps delivering `leftDown=1`
+// moves, so a click that lands while a down-reading is still warm belongs to
+// that very press (P-UI-49b's echo), not to its release. A release with the
+// cursor held still emits NO move at all (P-BK-03), so its stamp is old by
+// construction — which is precisely the case the finalizer exists for. ONE
+// stamp, TWO gates: no non-event witness may end a gesture whose event channel
+// is still delivering DOWN readings. A terminal whose probe is honest sees no
+// change at all (there the probe already answered the same way).
+// ══════════════════════════════════════════════════════════════════════════
+#define PNL_DOWN_RECENT_MS 250   // a down-reading this fresh IS a live press
+static uint s_PnlDownAt = 0;     // last leftDown=1 mouse-move (0 = never seen)
+
+bool PnlPointerQuiet()
+{
+   return (s_PnlDownAt == 0 || GetTickCount() - s_PnlDownAt >= PNL_DOWN_RECENT_MS);
+}
 
 //--- chart-lock integrity layer ---------------------------------------
 // BUG: MT4 emits CHARTEVENT_MOUSE_MOVE only on cursor MOVEMENT. A button-up
@@ -5929,7 +5982,18 @@ void ChartPointerFinalizeOnUps()
    // resynced to false just above, so an ignored echo leaves the press edge
    // available: the next MOUSE_MOVE of that same press registers as a fresh
    // press and RE-CLAIMS what the echo would have thrown away.
-   if(!UILeftButtonUp()) return;
+   //
+   // P-UI-83: THE PROBE ALONE IS NOT ENOUGH TO TEAR A GESTURE DOWN. On a
+   // terminal whose KEYSTATE probe reads "free" while the button is held, this
+   // gate let the P-UI-49b delivery echo (the OBJECT_CLICK of the very press
+   // that grabbed the card) end a live drag 125-176 ms into it — the ledger is
+   // full of those (`via=finalizer`, today's session). The event bit's RECENCY
+   // separates the two cases: an echo lands while the terminal is still
+   // delivering down-readings, a release with the cursor held still emits NO
+   // move at all (P-BK-03) and is therefore quiet by construction. Both must
+   // agree, and if this click was an echo the press edge was already resynced
+   // above, so the very next MOUSE_MOVE of that press re-claims the gesture.
+   if(!UILeftButtonUp() || !PnlPointerQuiet()) return;
 
    // P-UI-33: EVERY button-up ends the heavy-pass budget (idempotent). A knob
    // gesture can only live while the button is down, so this ONE net makes a
@@ -5954,8 +6018,16 @@ void ChartPointerFinalizeOnUps()
    if(g_PnlMoveItem >= 0)
    {
       _LOG_GATE_W Print("[UI] panel drag finished moved=", (s_PnlMoveMoved ? 1 : 0),
-                        " byPoll=", (s_PnlMoveByPoll ? 1 : 0), " via=finalizer");
-      PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
+                        " byPoll=", (s_PnlMoveByPoll ? 1 : 0),
+                        " frames=", s_PnlMoveFrames, " worst=", s_PnlMoveWorst,
+                        "ms via=finalizer");
+      // P-UI-80 parity, closed on the last path: `s_PnlMoveMoved` IS the dragged
+      // latch, so a TAP (press + release under the dead zone) must not pin the
+      // spot either — `g_PnlManualPos` + its GV are the manual park, and pinning
+      // them on every tap is how a card stops following the menu's auto-anchor.
+      // A real drag still commits here, which is the missed-release case this
+      // finalizer exists for.
+      if(s_PnlMoveMoved) PnlCommitMove(g_PnlMoveItem);   // keep the spot a real drag reached
    }
    s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
    s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
@@ -6373,15 +6445,157 @@ void PnlClampSpot(const int item, const int dx, const int dy, int &ndx, int &ndy
 // the ~900 level/zone objects are HLINE / TREND / RECTANGLE / TEXT and can
 // never match a Pnl_/Pal_ prefix, so enumerating them per move tick was pure
 // waste. Same match, same move — fewer candidates.
-void PnlMoveOne(const string nm, const int ndx, const int ndy,
-                const string pfx, const string palPx, const bool palFollow)
+// P-UI-82: and the AXIS that does not move is not written at all — R-PERF's
+// own law ("never write an object property you would not change"). A horizontal
+// drag used to pay the Y read+write on every one of the card's objects: half of
+// the batch spent on a value that never changed.
+//
+// P-UI-83: **A BATCH COMPUTES, IT NEVER READS BACK** — the menu's own rule.
+// `SubChromeMove` (the engine the user compares this one to) sets `px + offset`
+// and never asks an object where it is. The card used to pay GET+SET per object
+// per axis, i.e. HALF OF EVERY BATCH was a read of a value that cannot change
+// while the press is held (the card is frozen: the move chain returns before
+// any control can touch it). The offsets are now read ONCE per gesture, at the
+// grab (`PnlMoveListBuild`), into `s_PnlMoveX0/Y0` against the card origin
+// `s_PnlMoveOx/Oy`, so a batch is exactly `x0 + (target - origin)`: SET-only.
+// Two futures follow from that, and the menu has both: a dropped frame can no
+// longer drift the card (every batch writes the ABSOLUTE spot the cursor asks
+// for, in the frame the offsets were read in), and the measured batch cost —
+// the very number the adaptive window converges onto — is halved.
+void PnlMoveOne(const int i,const int nx,const int ny)
 {
-   bool mine = (StringFind(nm, pfx) == 0);
-   if(!mine && !(palFollow && StringFind(nm, palPx) == 0)) return;
-   long x = ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
-   long y = ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
-   ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, x + ndx);
-   ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y + ndy);
+   if(nx != s_PnlMoveOx)
+      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,
+                       s_PnlMoveX0[i] + (nx - s_PnlMoveOx));
+   if(ny != s_PnlMoveOy)
+      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_YDISTANCE,
+                       s_PnlMoveY0[i] + (ny - s_PnlMoveOy));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-82 (2026-09-14) — THE DRAG PAYS FOR ITS OWN OBJECTS, AND THE SPOT IS
+// PARKED THE MOMENT THE DRAG IS PROVEN.
+//
+// THE REPORT: «جابه جا میشه ولی به صورت ریل تایم نیستش یعنی وقتی باز و بسته کنه
+// پنل رو موقعیتش عوض میشه» — the card moves, but the move is not LIVE: only
+// after closing and reopening does the position come out right.
+//
+// TWO DEFECTS, one per half of that sentence.
+//
+// (a) NOT LIVE — the batch re-scanned the chart to re-derive a list that cannot
+//     have changed. `PnlMoveBy` walked the five UI types (5 `ObjectsTotal` +
+//     one `ObjectName` + one `StringFind` per candidate, EVERY batch) sixty
+//     times a second, although the card is FROZEN while a press is held: the
+//     move chain returns before any control can rebuild it. That scan is the
+//     cost the adaptive window (P-UI-75b) was converging onto, so the window sat
+//     at its ceiling and the card stepped to the cursor instead of tracking it.
+//     The list is now built ONCE PER GESTURE (at the grab) into `s_PnlMoveNm`,
+//     and a batch is exactly N writes. The palette rides the same list (its
+//     `Pal_` family is appended when it is anchored to this card), and a SHAPE
+//     KEY (item · rows · width · height · palette-follows · this card's popover)
+//     still re-builds on the one case a same-shape rebuild cannot cover: a
+//     dropdown popover that appeared after the cached list was built. Same-shape
+//     rebuilds need no invalidation at all — `PnlDestroy`/`PnlCreate` recreate
+//     the SAME names for the same shape, which is why this is a key, not an
+//     epoch. Idle cost: zero callers; the key is six compares.
+//
+// (b) NOT PARKED — `PnlCommitMove` ran only at the END of a gesture, so between
+//     the first applied batch and the release the LOGICAL spot (what the next
+//     open reads: `g_PnlManualPos` + `PnlComputePosition`) was still the OLD
+//     one. Anything that ended the gesture without a release — a hotkey that
+//     closes the card, a timeframe switch, a release MT4 never reported —
+//     reopened the card at the previous spot: the report's second half, exactly.
+//     The park is now written when the drag is PROVEN (the first batch past the
+//     dead zone, which is what P-UI-80 defines a park to be), and the release
+//     still refreshes it with the final pixel. ONE `GlobalVariableSet` per
+//     gesture, never per batch.
+// ══════════════════════════════════════════════════════════════════════════
+#define PNL_MOVE_LIST_MAX 768
+static string s_PnlMoveNm[PNL_MOVE_LIST_MAX];
+static int    s_PnlMoveX0[PNL_MOVE_LIST_MAX];   // P-UI-83: object X when built
+static int    s_PnlMoveY0[PNL_MOVE_LIST_MAX];   //            object Y when built
+static int    s_PnlMoveN      = 0;      // names in the list (0 = never built)
+static int    s_PnlMoveOx     = 0;      // P-UI-83: the card origin those X0/Y0
+static int    s_PnlMoveOy     = 0;      // belong to (the frame of the batch)
+static int    s_PnlMoveItemLk = -1;     // the SHAPE the list was built for
+static int    s_PnlMoveRowsLk = -1;
+static int    s_PnlMoveWLk    = 0;
+static int    s_PnlMoveHLk    = 0;
+static bool   s_PnlMovePalLk  = false;
+static bool   s_PnlMoveDdLk   = false;  // this card's dropdown popover existed
+
+//--- ONE owner for the palette-rides-along rule (P-UI-26/F5): only one panel is
+//--- ever open, and a strip (13) move carries a hanging palette whatever its
+//--- anchor item says (the bucket opens Pal(12,5) while the strip stays open).
+//--- The shape key and the coordinate bookkeeping MUST agree, so both ask this.
+bool PnlPalFollows(const int item)
+{
+   return (g_PalOpen && (g_PalAnchorItem == item || item == 13));
+}
+
+//--- does the cached list still describe the card as it is drawn NOW?
+bool PnlMoveListFresh(const int item,const int rows,const int w,const int h,
+                      const bool palFollow,const bool ddOpen)
+{
+   return (s_PnlMoveN > 0 && s_PnlMoveItemLk == item && s_PnlMoveRowsLk == rows &&
+           s_PnlMoveWLk == w && s_PnlMoveHLk == h &&
+           s_PnlMovePalLk == palFollow && s_PnlMoveDdLk == ddOpen);
+}
+
+//--- ONE scan per gesture: every name this card owns, by the P-PERF-06 type
+//--- filter (the five UI types panels create — never the whole chart).
+void PnlMoveListBuild(const int item,const int rows,const int w,const int h,
+                      const bool palFollow,const bool ddOpen)
+{
+   s_PnlMoveN      = 0;
+   s_PnlMoveItemLk = item;
+   s_PnlMoveRowsLk = rows;
+   s_PnlMoveWLk    = w;
+   s_PnlMoveHLk    = h;
+   s_PnlMovePalLk  = palFollow;
+   s_PnlMoveDdLk   = ddOpen;
+   // P-UI-83: the FRAME every offset below is measured in. The objects are read
+   // once, here, at the origin the card is drawn at right now — so a batch may
+   // write `x0 + (target - origin)` for the rest of the gesture without ever
+   // reading again, exactly like the menu's chrome translate.
+   s_PnlMoveOx     = g_PnlX[item];
+   s_PnlMoveOy     = g_PnlY[item];
+   const string pfx   = g_UI.btnPrefix + "Pnl" + IntegerToString(item) + "_";
+   const string palPx = g_UI.btnPrefix + "Pal_";
+   for(int t = 0; t < 5; t++)
+   {
+      int otype = OBJ_LABEL;
+      if(t == 1) otype = OBJ_BUTTON;
+      else if(t == 2) otype = OBJ_BITMAP_LABEL;
+      else if(t == 3) otype = OBJ_EDIT;
+      else if(t == 4) otype = OBJ_RECTANGLE_LABEL;
+      int ttotal = ObjectsTotal(0, otype, -1);
+      for(int i = 0; i < ttotal; i++)
+      {
+         if(s_PnlMoveN >= PNL_MOVE_LIST_MAX) break;
+         string nm = ObjectName(0, i, otype, -1);
+         if(StringFind(nm, pfx) != 0 && !(palFollow && StringFind(nm, palPx) == 0)) continue;
+         s_PnlMoveNm[s_PnlMoveN] = nm;
+         // P-UI-83: the ONE read of this object's coordinates (the batch never
+         // reads again) — the offset is fixed for the whole gesture.
+         s_PnlMoveX0[s_PnlMoveN] = (int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
+         s_PnlMoveY0[s_PnlMoveN] = (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
+         s_PnlMoveN++;
+      }
+      if(s_PnlMoveN >= PNL_MOVE_LIST_MAX) break;
+   }
+}
+
+//--- the ONE place the key is computed (grab, batch and clamp all agree).
+void PnlMoveListSync(const int item,const bool force)
+{
+   const bool palFollow = PnlPalFollows(item);
+   const int  rows      = PnlRowsCount(item);
+   const int  w         = PnlPanelW(item);
+   const int  h         = PnlPanelH(item);
+   const bool ddOpen    = (g_PnlDdItem == item);
+   if(force || !PnlMoveListFresh(item, rows, w, h, palFollow, ddOpen))
+      PnlMoveListBuild(item, rows, w, h, palFollow, ddOpen);
 }
 
 void PnlMoveBy(const int item, const int dx, const int dy)
@@ -6393,31 +6607,21 @@ void PnlMoveBy(const int item, const int dx, const int dy)
    int ndx, ndy;
    PnlClampSpot(item, dx, dy, ndx, ndy);
    if(ndx == 0 && ndy == 0) return;
-   const string pfx   = g_UI.btnPrefix + "Pnl" + IntegerToString(item) + "_";
-   const string palPx = g_UI.btnPrefix + "Pal_";
    // P-UI-26/F5: only one panel is ever open — a strip (13) move carries a
    // hanging palette whatever its anchor item says (bucket opens Pal(12,5)
    // while the strip stays open, so anchor!=13 and the old test stranded it).
-   const bool palFollow = (g_PalOpen && (g_PalAnchorItem == item || item == 13));
-   // P-PERF-06: enumerate the five UI types natively instead of the whole
-   // chart. (No brace-initialised type array — MQL4 vintage dialects reject
-   // it — so the five arms are spelled out.)
-   for(int t = 0; t < 5; t++)
-   {
-      int otype = OBJ_LABEL;
-      if(t == 1) otype = OBJ_BUTTON;
-      else if(t == 2) otype = OBJ_BITMAP_LABEL;
-      else if(t == 3) otype = OBJ_EDIT;
-      else if(t == 4) otype = OBJ_RECTANGLE_LABEL;
-      int ttotal = ObjectsTotal(0, otype, -1);
-      for(int i = 0; i < ttotal; i++)
-      {
-         string nm = ObjectName(0, i, otype, -1);
-         PnlMoveOne(nm, ndx, ndy, pfx, palPx, palFollow);
-      }
-   }
+   const bool palFollow = PnlPalFollows(item);
+   // P-UI-82: the list is built ONCE per gesture (`PnlTryGrabMove`) and only
+   // re-built here when the card's SHAPE moved under it — never per batch.
+   PnlMoveListSync(item, false);
+   // P-UI-83: the batch's target is ABSOLUTE — the card's new origin — and each
+   // object is the offset it had in the frame the list was read in. No reads,
+   // and a dropped frame cannot drift (the next batch writes the true spot).
+   const int nx = g_PnlX[item] + ndx;
+   const int ny = g_PnlY[item] + ndy;
+   for(int i = 0; i < s_PnlMoveN; i++) PnlMoveOne(i, nx, ny);
    if(palFollow) { g_PalX += ndx; g_PalY += ndy; }
-   if(g_PnlDdItem == item) { g_PnlDdX += ndx; g_PnlDdY += ndy; }   // generic-dropdown hit-rect rides the header drag (PDDR objects move via the prefix scan above)
+   if(g_PnlDdItem == item) { g_PnlDdX += ndx; g_PnlDdY += ndy; }   // generic-dropdown hit-rect rides the header drag (PDDR objects move via the same list)
    // P-UI-26/F4: the strip popover hit-rect rides too — header drag can
    // never open one (PnlHeaderHit refuses 13) but the resize clamp moves it.
    if(item == 13 && g_BkDd != 0) { g_BkDdX += ndx; g_BkDdY += ndy; }
@@ -6847,6 +7051,10 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
       if(!PnlSkinHit(g_PnlOpen,mx,my)) { PnlGrabRefused("H",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
       viaSkin = true;
    }
+   // P-UI-82: ONE scan per gesture — the batch then pays N writes, never a
+   // chart sweep. Forced here (not only key-checked) so a gesture ALWAYS starts
+   // from the drawing as it is, whatever an earlier gesture cached.
+   PnlMoveListSync(g_PnlOpen, true);
    g_PnlMoveItem    = g_PnlOpen;
    g_PnlMoveLastX   = mx;
    g_PnlMoveLastY   = my;
@@ -6856,6 +7064,8 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    s_PnlMoveByPoll  = byPoll;
    s_PnlMoveFrameMs = PNL_MOVE_FRAME_MIN_MS;   // a fresh gesture starts smooth
    s_PnlMoveTick    = 0;                       // its first batch applies at once
+   s_PnlMoveFrames  = 0;                       // P-UI-83: its evidence starts empty
+   s_PnlMoveWorst   = 0;
    DragClaim(DRAG_PANEL_MOVE);
    CircLockChart();
    // P-UI-78: one line per gesture (never per move) — the next "can't drag"
@@ -6896,12 +7106,26 @@ void PnlDragStep(const int mx,const int my)
    PnlMoveBy(g_PnlMoveItem, mx - g_PnlMoveLastX, my - g_PnlMoveLastY);
    g_PnlMoveLastX = mx;
    g_PnlMoveLastY = my;
+   // P-UI-82: park the spot the moment the drag is PROVEN, not at the release.
+   // The next open reads `g_PnlManualPos` + `g_PnlX/Y`, so a gesture that never
+   // gets its release (hotkey close, TF switch, focus stolen, a missed event)
+   // must still reopen exactly where the user left it — that IS the report
+   // «وقتی باز و بسته کنیم پنل رو موقعیتش عوض میشه». One write per gesture; the
+   // release below still refreshes it with the final pixel.
+   if(!s_PnlMoveMoved) PnlCommitMove(g_PnlMoveItem);
    s_PnlMoveMoved = true;
    DragFrameRedraw();    // the drag's own frame, once per applied batch
    // Converge the window on the MEASURED batch (writes + frame). GetTickCount()
    // resolves ~16 ms and that is enough: the question is the order of magnitude,
    // and the floor keeps a zero measurement from asking for an unbounded rate.
    int cost = (int)(GetTickCount() - t0) + PNL_MOVE_SLACK_MS;
+   // P-UI-83: and the gesture MEASURES ITSELF, so "not live" can be answered
+   // from the log instead of re-investigated: the finish line prints how many
+   // batches this press really bought and what the worst one cost. Both are
+   // gesture-scoped (never per-frame output — the ledger stays off the batch
+   // path, P-UI-78).
+   s_PnlMoveFrames++;
+   if(cost > s_PnlMoveWorst) s_PnlMoveWorst = cost;
    if(cost < PNL_MOVE_FRAME_MIN_MS) cost = PNL_MOVE_FRAME_MIN_MS;
    if(cost > PNL_MOVE_FRAME_MAX_MS) cost = PNL_MOVE_FRAME_MAX_MS;
    s_PnlMoveFrameMs = (s_PnlMoveFrameMs * 3 + cost) / 4;   // EWMA 3:1, no oscillation
@@ -6914,7 +7138,7 @@ void PnlDragFinish(const bool commit,const bool suppressClick)
    if(g_PnlMoveItem < 0) return;
    // P-UI-78: one line per gesture — did it move, and whose release rule ran?
    // Read BEFORE the resets below. The next "jumped / never moved" starts here.
-   _LOG_GATE_W Print("[UI] panel drag finished moved=", (s_PnlMoveMoved ? 1 : 0), " byPoll=", (s_PnlMoveByPoll ? 1 : 0));
+   _LOG_GATE_W Print("[UI] panel drag finished moved=", (s_PnlMoveMoved ? 1 : 0), " byPoll=", (s_PnlMoveByPoll ? 1 : 0), " frames=", s_PnlMoveFrames, " worst=", s_PnlMoveWorst, "ms");
    if(commit) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
    g_PnlMoveItem = -1;
    s_PnlMoveMoved = false;
@@ -6923,6 +7147,79 @@ void PnlDragFinish(const bool commit,const bool suppressClick)
    DragReleaseIf(DRAG_PANEL_MOVE);
    if(suppressClick) UISuppressNextClick();
    CircUnlockChart();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-81 (2026-09-14) — A NEW PRESS IS THE PROOF THAT THE LAST GESTURE IS OVER.
+//
+// THE REPORT (fifth time in the same shape, and the first that names the SECOND
+// half): «بعضی اوقات جابجا میشه ولی دیگه قفل میشه هیچی کار نمیکنه» — the card
+// CAN be moved, and from that moment the panel is DEAD until the indicator is
+// removed and re-attached. That is not a drag defect, it is a LATCH defect: the
+// move chain `return`s before its control block while `g_PnlMoveItem >= 0`, and
+// the slider / mixer latches skip that same block the same way — so ONE panel
+// gesture latch left set switches off EVERY control of EVERY card, and the grab
+// with them, which is exactly why the next press "moves the card instead of
+// clicking anything".
+//
+// WHY A LATCH COULD STAY SET: all three of its exits need a witness the terminal
+// is free to never deliver —
+//   * a later CHARTEVENT_MOUSE_MOVE carrying the release bit (MT4 emits NO move
+//     event for a release that does not travel — P-BK-03);
+//   * the physical probe `UILeftButtonUp()` (a heuristic, and the KEYSTATE
+//     spelling differs between build lineages — P-UI-73a);
+//   * the button-up finalizer — which is itself gated by that same probe.
+// Lose all three inside one gesture (a release with no travel, focus stolen by
+// the terminal's own dialog, a probe that disagrees) and the latch is PERMANENT.
+//
+// THE WITNESS THAT CANNOT BE MISSED IS THE NEXT PRESS. A press EDGE means the
+// button went up and came back down — nothing else can produce one — so while
+// the panel is being told that a NEW press just began, any panel latch still set
+// belongs to a gesture that is already over, by construction. The heal is
+// FORWARD: the next press the user makes IS the repair. No clock, no probe, no
+// extra event, no new state — and the tick path never reaches this.
+//
+// HEALTHY GESTURES ARE UNTOUCHED: exactly ONE press edge exists while the button
+// is genuinely held (`MousePressStart`'s rising edge, P-UI-74), and a live
+// gesture is armed BY that edge — so by the time a drag is live there is no
+// second edge left to reap it. The one shape that does produce a second edge is
+// the P-UI-49b delivery echo (MT4 hands the indicator the click of the press
+// that grabs an object): the reap ends a drag that is still held, and the SAME
+// press re-grabs it through `PnlTryGrabMove` on the next line, re-anchored on the
+// CURRENT cursor point — so the card keeps following the cursor instead of being
+// bricked. At most one frame is paid; that is the trade P-UI-73b already relies
+// on.
+//
+// `commitMove` keeps the two callers honest: a press-edge reap keeps the spot a
+// REAL drag reached (P-UI-70a's release contract), while a reap on the way out
+// of a card that is being closed pins nothing.
+// ══════════════════════════════════════════════════════════════════════════
+void PnlReapStaleGestures(const bool commitMove)
+{
+   // The slider drag and the palette mixer drag end exactly as their own release
+   // paths end them, so neither can leave its claim, its heavy-pass budget or
+   // its chart lock behind.
+   if(g_PnlDragItem >= 0)
+   {
+      g_PnlDragItem = -1;
+      g_PnlDragRow  = -1;
+      DragReleaseIf(DRAG_PANEL_KNOB);
+      UIDragBudgetEnd();
+      CircUnlockChart();
+   }
+   if(g_PalMixDrag > 0)
+   {
+      g_PalMixDrag = 0;
+      PalRefreshRecents(true);   // the coalesced recents tail still lands
+      DragReleaseIf(DRAG_PANEL_KNOB);
+      UIDragBudgetEnd();
+      CircUnlockChart();
+   }
+   // The move drag goes through its OWN finish — ONE owner for its claim, its
+   // chart lock, its release claim and its ledger line. Never `suppressClick`
+   // here: the click that follows belongs to the NEW press, not to the dead
+   // gesture (arming a claim for it would eat the next genuine click, P-UI-65).
+   if(g_PnlMoveItem >= 0) PnlDragFinish(commitMove, false);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -6997,6 +7294,12 @@ void UIPressAct()
 
 void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool pressStart)
 {
+   // P-UI-81: a NEW press is the proof that the previous gesture is over — reap
+   // every panel latch BEFORE anything reads it, so one missed release can never
+   // brick the card (see PnlReapStaleGestures). Paid only on a press edge, and
+   // never on the click channel: that button is already UP, and a released button
+   // must not kill a live drag.
+   if(pressStart && !s_PnlClickChannel) PnlReapStaleGestures(s_PnlMoveMoved);
    // ── Palette popup mixer drag (independent channel; palette sits above) ──
    if(g_PalOpen)
    {
@@ -7917,6 +8220,13 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       g_LastUIX = mx;
       g_LastUIY = my;
       bool leftDown = (((int)sparam & 1) != 0);
+      // P-UI-83: the bit's own RECENCY, stamped where the bit is read. Every
+      // non-event witness (the KEYSTATE probe in the poll, the CLICK/OBJECT_CLICK
+      // finalizer) must ask this before it may end a gesture: while the terminal
+      // is still delivering down-readings the press is LIVE, and a click that
+      // arrives in that window is the echo of that press (P-UI-49b), never its
+      // release. One store per down-move; nothing else reads it on this path.
+      if(leftDown) s_PnlDownAt = GetTickCount();
       bool pressStart = MousePressStart(leftDown);
       // P-PERF-15: the cursor-move path is the one the user FEELS ("the lag is
       // there when I work with the chart"), and the pair budget line can only
@@ -8216,7 +8526,14 @@ void PnlDragPoll()
       // mid-press. A real release spans many passes, and the event path plus
       // the CLICK finalizer usually finish first anyway — so this costs a live
       // drag nothing and a real release at most one poll period.
-      if(UILeftButtonUp())
+      // P-UI-83: TWO witnesses again — the probe AND the event bit's recency (see
+      // the P-UI-83 block above PnlPointerQuiet). This rule was the OTHER way a
+      // live press died: on a terminal whose probe always reads "free", the
+      // poll's second pass (a tick or the 250 ms timer) executed every drag it
+      // had not armed — 253-500 ms per press, exactly what the ledger shows. A
+      // gesture whose event channel is still delivering down-readings is live,
+      // whatever the probe says about the button.
+      if(UILeftButtonUp() && PnlPointerQuiet())
       {
          if(!s_PnlPollUpArmed) { s_PnlPollUpArmed = true; return; }
          s_PnlPollUpArmed = false;
