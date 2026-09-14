@@ -1016,6 +1016,21 @@ void RenderTriggerLines(
     const bool makeLabels)
 {    double currentPrice = GetCurrentPriceForLabels();
 
+    // P-UI-66: THE LOOK IS A PAINT PROPERTY. `lines[].clr/lineStyle/lineWidth`
+    // are the BUILD's copy of the unified [08.4] look, and they are only correct
+    // in the frame that rebuilt the geometry (see PipelineGeometryKey). Painting
+    // from them is what made the Lines card's WIDTH and STYLE rows dead: the
+    // panel wrote the global, the key stayed equal, the cache served the old
+    // array, and the old array painted the old look.
+    //
+    // Read once per pass - `GetLineRenderColor()` is change-cached internally,
+    // and every writer below is already change-guarded against the object cache
+    // (`CreateOrUpdateHLine` compares colour/style/width before it writes), so a
+    // steady frame still costs zero terminal calls for an unchanged look.
+    color           lineClr   = GetLineRenderColor();
+    ENUM_LINE_STYLE lineStyle = inpLineStyle;
+    int             lineWidth = inpLineWidth;
+
     // P-PERF-03: record the level prices in the pass that already has them in
     // hand. CheckAlerts() then scans this array instead of walking the chart
     // with 2 x inpMaxLevels ObjectFind/ObjectGetDouble calls per heavy frame.
@@ -1049,7 +1064,7 @@ void RenderTriggerLines(
         // Use the individual line color instead of config.triggerColor
         if(makeLines) {
             bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
-                                              lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,
+                                              lineClr, lineStyle, lineWidth,
                                               lines[i].tooltip);
             long lineTf = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
             SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);
@@ -1079,7 +1094,11 @@ void RenderTriggerLines(
             double pipNow = GetCachedPipSize();
             double pips = (pipNow > 0) ? MathAbs(lines[i].price - currentPrice) / pipNow
                                        : MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
-            CreatePipDistanceLabel(labelName, lines[i].price, pips, lines[i].clr, lines[i].labelText);
+            // P-UI-66: the pip label wears the same live look as its line -
+            // `lines[i].clr` is the BUILD's copy, so a colour edit would have
+            // gone stale on the label in exactly the frames the line was fixed
+            // up in (`CreatePipDistanceLabel` is change-guarded too).
+            CreatePipDistanceLabel(labelName, lines[i].price, pips, lineClr, lines[i].labelText);
             long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
             SetPipelineObjectTimeframesIfExists(labelName, labelTf);
         }
@@ -1289,10 +1308,25 @@ string PipelineGeometryKey(const SModeConfig &config,
               + IntegerToString((int)inpStructureL5Color)
               + "," + IntegerToString((int)GetTriggerRenderColor());
     key += "|" + IntegerToString(g_customPriceLineDragging ? 1 : 0);
-    // ClassifyLevels() reads the LIVE line appearance, so a style/colour edit
-    // mid-rebuild must miss the cache too (otherwise the other families of that
-    // rebuild would paint the pre-edit look).
-    key += "|" + IntegerToString((int)g_lineColor) + "," + IntegerToString(g_lineTransparency);
+    // P-UI-66 - THE LINE LOOK IS NOT GEOMETRY, SO IT IS NOT A KEY TERM.
+    //
+    // This slot used to carry `g_lineColor` and `g_lineTransparency` as a
+    // workaround for a stale read: ClassifyLevels() copies the live look into
+    // `classified[]`, BuildZonesAndLines() copies it on into `lines[]`, and the
+    // PAINT read it back out of that array. A look edit therefore only reached
+    // the chart when this key MISSED - and only the two inputs that happened to
+    // be listed here could ever miss it. WIDTH and STYLE were not listed, so on
+    // the Lines card ("ONE STYLE FOR ALL LINES") the colour row and the
+    // transparency slider moved the chart while the width slider and the style
+    // dropdown did NOTHING until an unrelated edit rebuilt the geometry.
+    //
+    // Naming all four inputs here would have been the wrong repair: every width
+    // drag would then throw the whole level family away (CalculateLevels +
+    // Classify + Build) on the weak PC this project is written for. The owner is
+    // fixed instead - RenderTriggerLines reads the live look, exactly as
+    // RenderZones already reads the BAND/EDGE border live - so **no look input
+    // belongs in this key at all**, and leaving one out can no longer make a
+    // control dead. The gate that holds this: probe-budget-audit `look-live`.
     // P-PERF-23b: `g_linesVisible` used to sit here, described as "ClassifyLevels()
     // reads the LIVE line appearance and the L toggle". That was FALSE: no stage
     // of this pipeline reads it. grep says it has exactly two consumers in the

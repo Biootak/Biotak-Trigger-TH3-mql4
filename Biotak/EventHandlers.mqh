@@ -494,16 +494,16 @@ int OnInitHandler() {
 
     // Restore SS/LS sequence origin selected from the Custom Price menu
     // (0 = SS first, 1 = LS first, any other value = use input).
-    g_sslsFirstOverride = -1;
+    // P-UI-67: the restore ADOPTS the persisted answer, through the owners - the
+    // read happens first because the clear (which owns the key) deletes it, and an
+    // absent or corrupt key must end as "the input answers", never as a bare
+    // `= -1` that leaves the persisted value behind for the next attach to read.
     string sslsFirstGvarName = "Biotak_SSLSFirst_" + chartIdStr;
-    if(GlobalVariableCheck(sslsFirstGvarName)) {
-        int restoredSSLSFirst = (int)GlobalVariableGet(sslsFirstGvarName);
-        if(restoredSSLSFirst == 0 || restoredSSLSFirst == 1) {
-            g_sslsFirstOverride = restoredSSLSFirst;
-        } else {
-            GlobalVariableDel(sslsFirstGvarName);
-        }
-    }
+    bool sslsKeyPresent = GlobalVariableCheck(sslsFirstGvarName);
+    int restoredSSLSFirst = sslsKeyPresent ? (int)GlobalVariableGet(sslsFirstGvarName) : -1;
+    SSLSOrderOverrideClear();
+    if(restoredSSLSFirst == 0 || restoredSSLSFirst == 1)
+        SSLSOrderOverrideSet(restoredSSLSFirst);
 
     // Restore factor with validation (0 < val <= MAX_SAFE_FACTOR)
     string factorGvarName = "Biotak_Factor_" + chartIdStr;
@@ -2307,7 +2307,23 @@ string P4MsTag(const uint ms) { return IntegerToString((int)ms); }
 // frames skip on the unchanged signature; the geometry key keeps the switch
 // terms, so any LATER real render recomputes with live switches and the
 // walk can never desync it. idx: 0 = master, 1-5 = L1-L5.
+//
+// The settle step is shared with the batch (P-UI-66): a group press defers the
+// walk + repaint to the end of the batch so one press still costs ONE of each.
 //==============================================================================
+static int s_structSwitchBatch = 0;   // >0 = a group press owns the settle
+
+void StructureSwitchSettle(const uint p32t, const int idx, const bool visible)
+{
+   RuntimeSettingsSaveOverridesThrottled();
+   int touched = StructureRecolourWalk();
+   P4ReportSlow("structure toggle [idx=" + IntegerToString(idx) +
+                " on=" + IntegerToString(visible ? 1 : 0) +
+                " touched=" + IntegerToString(touched) +
+                " cache=" + IntegerToString(CacheGetSize()) + "]",
+                GetTickCount() - p32t, P_P4_MOVE_WARN_MS);
+   RepaintForDiscreteAction();
+}
 void SetStructureVisible(const int idx, const bool visible)
 {
    uint p32t = GetTickCount();
@@ -2317,14 +2333,29 @@ void SetStructureVisible(const int idx, const bool visible)
    else if(idx == 3) g_showStructureL3 = visible;
    else if(idx == 4) g_showStructureL4 = visible;
    else              g_showStructureL5 = visible;
-   RuntimeSettingsSaveOverridesThrottled();
-   int touched = StructureRecolourWalk();
-   P4ReportSlow("structure toggle [idx=" + IntegerToString(idx) +
-                " on=" + IntegerToString(visible ? 1 : 0) +
-                " touched=" + IntegerToString(touched) +
-                " cache=" + IntegerToString(CacheGetSize()) + "]",
-                GetTickCount() - p32t, P_P4_MOVE_WARN_MS);
-   RepaintForDiscreteAction();
+   // P-UI-66: a GROUP press (the dual row's ALL cell) writes several switches in
+   // ONE event. Every write must land - state, persisted OV_ key - but the walk
+   // and the repaint are per PASS, not per switch: five switches meant five
+   // recolour walks and five forced repaints for one press, which is the cost
+   // P-PERF-32 exists to remove. The panel opens the batch, this owner defers,
+   // and the batch's owner closes it ONCE.
+   if(s_structSwitchBatch > 0) return;
+   StructureSwitchSettle(p32t, idx, visible);
+}
+
+void StructureSwitchBatchBegin()
+{
+   s_structSwitchBatch++;
+}
+
+//--- close the batch: one persist, ONE recolour walk, one repaint - and the
+//--- walk is unconditional (it reads the live flags, not this press's list), so
+//--- any subset of switches is settled by it.
+void StructureSwitchBatchEnd()
+{
+   if(s_structSwitchBatch > 0) s_structSwitchBatch--;
+   if(s_structSwitchBatch > 0) return;
+   StructureSwitchSettle(GetTickCount(), -1, false);
 }
 
 // P-PERF-10: named-phase report for the INIT path (attach / TF switch). The
@@ -3045,8 +3076,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             string chartIdStr = GetCachedChartIdStr();
             string symbolName = GetCachedSymbol();
             GlobalVariableDel("Biotak_StepMode_" + chartIdStr);
-            GlobalVariableDel("Biotak_SSLSFirst_" + chartIdStr);
-            g_sslsFirstOverride = -1;
+            // P-UI-67: the reset drops the override through its owner (state + key),
+            // so the panel's SS/LS ORDER switch is the answer again.
+            SSLSOrderOverrideClear();
             // P-UI-40: the reset key rewrites nearly every displayed state, so
             // the whole UI layer (ring states, badges, the open card) must be
             // told once. This is also how the reset path already behaved when it
@@ -3331,11 +3363,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // The price remains unchanged; only the sequence origin changes.
             int selectedStart = MessageBox("SS/LS sequence start\n\nYes = LS first\nNo = SS first\nCancel = keep current",
                                            "Select SS/LS start", MB_YESNOCANCEL | MB_ICONQUESTION);
-            if(selectedStart == IDYES || selectedStart == IDNO) {
-                g_sslsFirstOverride = (selectedStart == IDYES) ? 1 : 0;
-                string sslsFirstGvarName = "Biotak_SSLSFirst_" + GetCachedChartIdStr();
-                GlobalVariableSet(sslsFirstGvarName, (double)g_sslsFirstOverride);
-            }
+            // P-UI-67: the prompt is the per-chart OVERRIDE's owner (state + key in
+            // one place, next to the getter that consults it). IDCANCEL keeps the
+            // current answer, so it writes nothing.
+            if(selectedStart == IDYES) SSLSOrderOverrideSet(1);
+            else if(selectedStart == IDNO) SSLSOrderOverrideSet(0);
             g_waitingForCustomPriceClick = false;
             g_customPriceKeyboardOverride = true;
             double selectedPrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);

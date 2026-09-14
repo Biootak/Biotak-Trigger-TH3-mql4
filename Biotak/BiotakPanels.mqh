@@ -589,6 +589,14 @@ bool PnlCardFade(const int item)
 #define PNL_K_DUAL   9    // two switches in one 42px row (preview .dual)
 #define PNL_K_LEGACY (-1) // "whatever the setting's own def says"
 
+//--- P-UI-67: the SS/LS sequence-order caption. ONE string, because the row is
+//--- rendered from two places (the Step card's SS-LS ENGINE section builds its
+//--- own descriptor BEFORE `PnlSetDef` exists — MQL4 is define-before-use — and
+//--- the setting's own def names it too). Two spellings is how "LS FIRST" ended
+//--- up naming the switch's ON state on a switch that can also be OFF: the label
+//--- names the QUESTION (OFF = SS first · ON = LS first), never the answer.
+#define PNL_LBL_SSLS_ORDER  "SS/LS ORDER"
+
 //--- colour swatch row geometry (preview .q / .prev / .q.add):
 //---   46 + 8*22 + 9*4 = 280 = exactly the content width. Never widen it.
 //--- (was 6 swatches at a 5px gap; the redesign spends the freed 9px on two
@@ -1237,7 +1245,7 @@ string PalHexText(const color clr)
 //| Row 0 = STEP MODE segments; rows 1..K = section; last = MAX LEVELS|
 //|   TH (0):    no rows — TH has no level settings of its own (its    |
 //|              FRACTAL/STANDARD flags are LABEL settings, not levels)|
-//|   SS-LS (1): 1 row  — LS FIRST (card 1 global)                    |
+//|   SS-LS (1): 1 row  — the SS/LS ORDER switch (card 1 setting 8)   |
 //|   Combo (2): 8 rows — MODE/PRESET/COMP1 TF+STEP/OP/COMP2 ON+TF+STEP|
 //|   Factor(3): 7 rows — mirrors of Factor card 10 rows 0..6         |
 //+------------------------------------------------------------------+
@@ -1334,13 +1342,22 @@ void PnlSpecBuild(const int item)
       // (BORDER / BORDER WIDTH). No new section and no sub-card: «شلوغ نشه» was half the
       // ask - the two transparencies are now two rows, each in the family it belongs to.
       PnlSpecAdd(1, PNL_K_LEGACY, 7, 1, "contrast");
-      PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "ORDER", 1);
+      // P-UI-67: the ORDER band held exactly ONE row — the SS/LS sequence order —
+      // and that question belongs to the SS-LS STEP MODE, not to Zones & Levels:
+      // `def.lsFirst` is assigned in ModeDefinitions ONLY for `SS_LS_STEP`, so in
+      // TH (the shipped default) / Combo / Factor the switch could not change one
+      // pixel, and the user's words were «باید در مود SS/LS باشه اینجا چیکار میکنه».
+      // The row now lives ONLY inside the Step card's SS-LS ENGINE section, which
+      // is the one surface that exists exactly when the setting is read; the
+      // setting keeps address 8 (nothing else moved), so the Step card's
+      // delegation `PnlApplySet(1, 8, v)` and the persisted `LF` key are unchanged.
+      //
       // MIDPOINT-OFF (2026-09-13): the midpoint LINE is retired — the pipeline
       // deletes every `_Midpoint_` object on each render (CleanupSurplusPipeline
-      // "legacy cleanup", LevelPipeline), so this switch wrote a flag that NO
-      // module reads and changed nothing on the chart (P-UI-47). The row is gone;
-      // setting 9 stays persisted and inert so the addresses below it do not move.
-      PnlSpecAdd(1, PNL_K_LEGACY, 8, 1, "swap");   // LS FIRST (was LS FIRST · MIDPOINT)
+      // "legacy cleanup", LevelPipeline), so its switch wrote a flag that NO
+      // module reads and changed nothing on the chart (P-UI-47). That row is gone
+      // too; setting 9 stays persisted and inert so the addresses above it do not
+      // move.
       PnlSpecAdd(1, PNL_K_SEC, -1, 0, "", "", "SUB-CARDS", 2);
       PnlSpecAdd(1, PNL_K_LEGACY, 10, 1, "steps", "", "", 0, "5 LEVELS");
       PnlSpecAdd(1, PNL_K_LEGACY, 11, 1, "line", "", "", 0, "ONE STYLE");
@@ -1432,7 +1449,7 @@ void PnlSpecBuild(const int item)
          PnlSpecAdd(9, PNL_K_LEGACY, base+6, 1, "clock");
          PnlSpecAdd(9, PNL_K_LEGACY, base+7, 1, "sigma");
       }
-      else if(mode == 1)   // SS-LS — one row (LS FIRST)
+      else if(mode == 1)   // SS-LS — one row (the SS/LS ORDER switch)
       {
          PnlSpecAdd(9, PNL_K_SEC, -1, 0, "", "", "ENGINE", 1);
          PnlSpecAdd(9, PNL_K_LEGACY, base, 1, "swap");
@@ -2267,9 +2284,13 @@ void PnlStepSectionRowDef(const int s,int &kind,string &label,
    kind=0; label=""; minV=0; maxV=100; step=1; unit=""; opts="";
    int mode=(int)g_stepCalculationMode;
    // NOTE: TH mode has no section (count 0) — it owns no level settings.
-   if(mode==1)   // SS-LS — same flag as ZONES card row 8
+   if(mode==1)   // SS-LS — the SAME setting as Zones setting 8 (its only home now)
    {
-      kind=1; label="LS FIRST";
+      // P-UI-67: ONE owner for the caption (PNL_LBL_SSLS_ORDER). It used to be
+      // spelled here as well as in `PnlSetDef(1,8)`, so the two surfaces could
+      // drift, and the old spelling named the switch's ON state instead of the
+      // question the switch answers.
+      kind=1; label=PNL_LBL_SSLS_ORDER;
    }
    else if(mode==2)   // COMBO — preset or advanced components
    {
@@ -2300,7 +2321,7 @@ double PnlStepSectionDefVal(const int s)
 {
    int mode=(int)g_stepCalculationMode;
    // NOTE: TH mode has no section (count 0).
-   if(mode==1) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;   // LS FIRST
+   if(mode==1) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;   // SS/LS ORDER
    if(mode==2)   // COMBO
    {
       if(s==0) return (int)FactoryDefault(FF_COMBO_MODE);
@@ -2327,7 +2348,7 @@ double PnlStepSectionCurrent(const int s)
 {
    int mode=(int)g_stepCalculationMode;
    // NOTE: TH mode has no section (count 0).
-   if(mode==1) return g_lsFirst?1.0:0.0;   // LS FIRST
+   if(mode==1) return g_lsFirst?1.0:0.0;   // SS/LS ORDER
    if(mode==2)   // COMBO
    {
       if(s==0) return (int)g_comboMode;
@@ -2542,7 +2563,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       // P-UI-63: the EDGE's transparency. `TRANSPARENCY` above is the BAND's - one row
       // per half of the picture, so «شفافیت خط و زون جدا از هم» needs no other control.
       else if(row==7)  { label="BORDER TRANSPARENCY"; unit="%"; minV=0; maxV=100; }
-      else if(row==8)  { kind=1; label="LS FIRST"; }
+      else if(row==8)  { kind=1; label=PNL_LBL_SSLS_ORDER; }
       // MIDPOINT-OFF (2026-09-13, P-UI-47): the midpoint line is deleted every
       // render by the pipeline's legacy cleanup — row kept for the address space
       // only, no display row renders it.
@@ -3242,7 +3263,20 @@ int PnlApplySet(const int item,const int row,const double v)
          // one owner per value (the band row writes g_midZoneTransparency, this one
          // writes the edge's). P-UI-64 rides along in the ZONE STYLE row below.
          else if(row==7)  { g_midZoneBorderTransparency=ClampInt((int)MathRound(v),0,100); flags=REFRESH_BUFFERS; }
-         else if(row==8)  { g_lsFirst=(v>0.5); g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC; }
+         else if(row==8)  {
+                            // P-UI-67: ONE ANSWER PER QUESTION. This flag has TWO
+                            // owners that both answer "which of SS/LS comes first":
+                            // the chart prompt's per-chart OVERRIDE and this switch.
+                            // The override WINS, so pressing the switch while a stale
+                            // override existed wrote `g_lsFirst` and changed NOTHING on
+                            // the chart — a dead-looking row. A press here is the
+                            // user's latest explicit answer FOR THIS CHART, so it
+                            // takes the question over and the override dies with it;
+                            // the prompt owns the opposite direction.
+                            SSLSOrderOverrideClear();
+                            g_lsFirst=(v>0.5);
+                            g_forceClearOnNextDraw=true; g_redrawTHLevelsNeeded=true;
+                            flags=REFRESH_RECALC; }
          else if(row==9) { g_showMidpointLine=(v>0.5); flags=REFRESH_BUFFERS; }
          break;
       case 2:   // ATR LABELS — rows 0-3 are the countdown tag's OWN layer (own
@@ -3417,7 +3451,7 @@ int PnlApplySet(const int item,const int row,const double v)
          {
             int sec=row-1, md=(int)g_stepCalculationMode;
             // NOTE: TH mode has no section rows (count 0).
-            if(md==1) return PnlApplySet(1, 8, v);       // LS FIRST
+            if(md==1) return PnlApplySet(1, 8, v);       // SS/LS ORDER (card 1 setting 8)
             if(md==3) return PnlApplySet(10, sec, v);    // Factor rows 0..6
             // COMBO section — same rails as the Factor rows above
             // (OV_CM/CP/... persist via ApplyRefreshFlags).
@@ -4393,6 +4427,64 @@ int PnlDualCellX(const int item,const int row,const int cell)
    }
    return x;
 }
+
+//--- THE SETTINGS a dual row's synthetic "ALL" cell really owns (P-UI-66).
+//---
+//--- The cell means the GROUP the row lives in - the section band's members -
+//--- not the row's own members. On card 11 the third row is `L5 | ALL` and holds
+//--- ONE member, so a row-local ALL was a SECOND L5 switch: it could not turn
+//--- the five levels on or off together, and its face mirrored L5 alone. That is
+//--- the "same button twice" shape P-UI-62 removed from the zone picture, and
+//--- it is what the report "STRUCTURE L1-L5 does not work" was describing.
+//---
+//--- The span is only used when the band's members are CONTIGUOUS settings (the
+//--- write loop walks `first+k`): a band that interleaves anything else falls
+//--- back to the row's own members, so the cell can never write a setting the
+//--- row does not own. Returns the member count; `first` = the first setting.
+int PnlAllCellSpan(const int item,const int dispRow,int &first,int &count)
+{
+   first = -1; count = 0;
+   int s0 = PnlSetRow(item,dispRow);
+   if(s0 < 0) return 0;
+   int own = PnlRowMembers(item,dispRow);
+   int n   = PnlRowsCount(item);
+   // the band this row belongs to: the nearest SEC slot at or above it
+   int band = -1;
+   for(int r=dispRow;r>=0;r--)
+      if(PnlRowKind(item,r) == PNL_K_SEC) { band = r; break; }
+   if(band >= 0)
+   {
+      int f = -1, c = 0, expect = -1;
+      bool contiguous = true;
+      for(int r=band+1;r<n;r++)
+      {
+         if(PnlRowKind(item,r) == PNL_K_SEC) break;
+         int r0 = PnlSetRow(item,r);
+         if(r0 < 0) continue;
+         int rc = PnlRowMembers(item,r);
+         if(f < 0) { f = r0; }
+         else if(r0 != expect) contiguous = false;
+         c += rc;
+         expect = r0 + rc;
+      }
+      if(f >= 0 && c > own && contiguous) { first = f; count = c; return count; }
+   }
+   first = s0; count = own;   // a lone dual row: the cell IS its members
+   return count;
+}
+
+//--- face of the synthetic "ALL" cell: lit only when EVERY member of the group
+//--- is on. The renderer, the row refresher and PnlAllCellSpan share this ONE
+//--- owner, so the pill can never disagree with what its press will write.
+bool PnlAllCellOn(const int item,const int dispRow)
+{
+   int f=0, c=0;
+   PnlAllCellSpan(item,dispRow,f,c);
+   if(f < 0 || c <= 0) return true;
+   bool on = true;
+   for(int k=0;k<c;k++) on = on && (PnlCurrentSet(item,f+k) > 0.5);
+   return on;
+}
 int PnlDualTotalW(const int item,const int row)
 {
    int cells = PnlDualCells(item,row);
@@ -4659,9 +4751,8 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          else
          {
             txt = extra;
-            on  = true;                       // ALL lights only when every level does
-            for(int q=0;q<n;q++)
-               on = on && (PnlCurrentSet(item,PnlMemberRow(item,row,q)) > 0.5);
+            // P-UI-66: the ALL cell is the GROUP's switch (see PnlAllCellSpan)
+            on  = PnlAllCellOn(item,row);
          }
          cx = px + PNL_WEL - PNL_PAD_X - PnlDualTotalW(item,row) + PnlDualCellX(item,row,j);
          PnlPaintSwitch(item,row,PnlName(item,row,"SW"+IntegerToString(j)), cx, ry+11, on, true);
@@ -6282,6 +6373,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       {
          int dn=PnlRowMembers(dui,dur);
          int flags=REFRESH_NONE;
+         bool grouped=false;   // P-UI-66: the ALL cell owns more than this row
          if(duc<dn)
          {
             int sr=PnlMemberRow(dui,dur,duc);
@@ -6290,14 +6382,34 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          }
          else
          {
+            // P-UI-66: the synthetic ALL cell owns the whole GROUP (the band's
+            // members), not this row's members. On card 11 the row is `L5 | ALL`
+            // with one member, so this used to re-write L5 and nothing else - the
+            // design's "ALL" master switch did not exist.
+            int af=0, ac=0;
+            PnlAllCellSpan(dui,dur,af,ac);
             bool all=true;
-            for(int dq=0;dq<dn;dq++)
-               all=all && (PnlCurrentSet(dui,PnlMemberRow(dui,dur,dq))>0.5);
+            for(int dq=0;dq<ac;dq++)
+               all=all && (PnlCurrentSet(dui,af+dq)>0.5);
             double v=all?0.0:1.0;
-            for(int dq2=0;dq2<dn;dq2++)
-               flags|=PnlApplySet(dui,PnlMemberRow(dui,dur,dq2),v);
+            grouped=(ac>dn);
+            // One press = ONE recolour walk + ONE repaint (P-PERF-32's contract,
+            // kept for a press that writes five switches instead of one).
+            if(grouped) StructureSwitchBatchBegin();
+            for(int dq2=0;dq2<ac;dq2++)
+               flags|=PnlApplySet(dui,af+dq2,v);
+            if(grouped) StructureSwitchBatchEnd();
          }
-         PnlUpdateRow(dui,dur);
+         // A group press moves switches that live on OTHER rows of the card, so
+         // every row that renders one of them repaints - never just this row
+         // (the face of a stale switch is a control that disagrees with the chart).
+         if(grouped)
+         {
+            int rn=PnlRowsCount(dui);
+            for(int gr=0;gr<rn;gr++)
+               if(PnlRowKind(dui,gr) == PNL_K_DUAL) PnlUpdateRow(dui,gr);
+         }
+         else PnlUpdateRow(dui,dur);
          UISuppressNextClick();
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
@@ -6432,12 +6544,7 @@ void PnlUpdateRow(const int item,const int row)
       {
          bool on=false;
          if(j<dn) on=(PnlCurrentSet(item,PnlMemberRow(item,row,j))>0.5);
-         else
-         {
-            on=true;
-            for(int q=0;q<dn;q++)
-               on=on && (PnlCurrentSet(item,PnlMemberRow(item,row,q))>0.5);
-         }
+         else     on=PnlAllCellOn(item,row);   // P-UI-66: the group's own face
          string swn=PnlName(item,row,"SW"+IntegerToString(j));
          if(ObjectFind(0,swn)>=0)
          {

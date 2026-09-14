@@ -1324,9 +1324,31 @@ def check_toggle_path(o):
         if need not in walk32:
             fail("toggle-path", "the recolour walk lost %s: %s" % (need, why))
             return
+    # P-UI-66: the settle step (persist + recolour walk + forced repaint) moved
+    # into `StructureSwitchSettle`, because a GROUP press (the dual row's ALL cell)
+    # writes five switches in one event: each write must land, but the walk and the
+    # repaint belong to the PASS. So the owner must still settle through that one
+    # function, and it must DEFER while a group press holds the batch - five walks
+    # and five forced repaints for one press is exactly what P-PERF-32 removed.
     owner32 = fn_body(events, "void SetStructureVisible(const int idx, const bool visible)")
-    if not owner32 or "StructureRecolourWalk()" not in owner32 or "RepaintForDiscreteAction()" not in owner32:
+    if not owner32 or "StructureSwitchSettle(" not in owner32:
+        fail("toggle-path", "the structure owner no longer routes to the recolour settle")
+        return
+    if "s_structSwitchBatch" not in owner32:
+        fail("toggle-path",
+             "the structure owner stopped deferring to the group batch: five switches in "
+             "one event cost five recolour walks and five forced repaints")
+        return
+    settle32 = fn_body(events, "void StructureSwitchSettle(")
+    if not settle32 or "StructureRecolourWalk()" not in settle32 \
+       or "RepaintForDiscreteAction()" not in settle32:
         fail("toggle-path", "the structure owner no longer recolours and repaints")
+        return
+    closer32 = fn_body(events, "void StructureSwitchBatchEnd()")
+    if not closer32 or "StructureSwitchSettle(" not in closer32:
+        fail("toggle-path",
+             "the group batch never settles: a group press would leave the chart on the "
+             "pre-press colours until an unrelated repaint")
         return
     ok("toggle-path", "structure switches recolour through one owner, never recompute")
 
@@ -3478,6 +3500,269 @@ def check_teardown_census(o):
        "that runs on removal" % len(families))
 
 
+def check_look_live(o):
+    """P-UI-66 - a LOOK edit must reach the PAINT, not only a cache key.
+
+    `check_live_control` proves every reachable row writes a global somebody
+    reads. That is necessary and NOT sufficient: a global read only by a cache
+    key - or copied by a build stage into an array the paint reads back - is
+    still a dead control in every frame the cache HITS. That is precisely the
+    report "ONE STYLE does not work" (the Lines card):
+
+      * `g_lineColor` / `g_lineTransparency` sat in `PipelineGeometryKey`, so the
+        colour row and the transparency slider invalidated the geometry and the
+        new look was rebuilt;
+      * `g_lineWidth` / `g_lineStyle` did NOT, and the paint read
+        `lines[i].lineWidth/lineStyle` - the BUILD's copy - so the width slider
+        and the style dropdown changed nothing until an unrelated edit threw the
+        whole level family away.
+
+    The repair is an OWNER decision, not another key term: the look is a PAINT
+    property, exactly as the zone BAND/EDGE border already was (`RenderZones`
+    reads `inpMidZoneBorder*` live and no key names them). Naming all four inputs
+    in the key would instead make every width drag recompute the level family on
+    the weak PC this project is written for.
+
+    Invariants:
+      (a) `RenderTriggerLines` paints from the LIVE look and reads NO staged look
+          field of `lines[]` - reintroducing one is the bug, not a style choice;
+      (b) the geometry key names no line-look input: a look edit is not a
+          geometry change, and naming one input while missing another IS the bug;
+      (c) `GetLineRenderColor()` stays the colour owner and reads both inputs, so
+          the rows that did work keep working;
+      (d) the zone border stays a live read (regression guard: "fix" this one the
+          wrong way - by pushing the border into the key - and the same class of
+          dead control comes back for BORDER WIDTH / BORDER TRANSPARENCY).
+    """
+    pipe = strip_comments(read(PIPELINE, o))
+    paint = fn_body(pipe, "void RenderTriggerLines(")
+    key = fn_body(pipe, "string PipelineGeometryKey(")
+    if paint is None or key is None:
+        fail("look-live",
+             "RenderTriggerLines / PipelineGeometryKey are gone: the line look has no "
+             "paint owner to be live-read from")
+        return
+
+    stale = [t for t in ("lines[i].clr", "lines[i].lineStyle", "lines[i].lineWidth")
+             if t in paint]
+    if stale:
+        fail("look-live",
+             "the line paint reads the BUILD's copy of its own look (%s): the row that "
+             "owns it only moves the chart when the geometry key happens to miss - a "
+             "width slider that works one time in ten" % ", ".join(stale))
+        return
+    missing = [n for n in ("GetLineRenderColor()", "inpLineStyle", "inpLineWidth")
+               if n not in paint]
+    if missing:
+        fail("look-live",
+             "the line paint stopped reading the live look (%s): those Lines-card rows "
+             "become dead controls again" % ", ".join(missing))
+        return
+    ok("look-live",
+       "the line look is painted from the live owner, never from the build's copy")
+
+    named = [t for t in ("g_lineColor", "g_lineTransparency", "g_lineWidth", "g_lineStyle")
+             if t in key]
+    if named:
+        fail("look-live",
+             "PipelineGeometryKey names the line look (%s): a look edit then rides the "
+             "geometry cache, so every input the key forgets is a dead row - and the "
+             "ones it remembers throw the level family away instead" % ", ".join(named))
+        return
+    ok("look-live", "the geometry key carries no look input, so no look edit can be cached out")
+
+    rt = strip_comments(read(RUNTIME, o))
+    clr = fn_body(rt, "color GetLineRenderColor()")
+    if clr is None:
+        fail("look-live", "GetLineRenderColor is gone: the Lines card's colour row has no reader")
+        return
+    lost = [n for n in ("g_lineColor", "g_lineTransparency") if n not in clr]
+    if lost:
+        fail("look-live",
+             "the colour owner stopped reading %s: that row now only moves itself"
+             % ", ".join(lost))
+        return
+    ok("look-live", "the colour owner still reads the colour AND its transparency")
+
+    zones = fn_body(pipe, "void RenderZones(")
+    if zones is None:
+        fail("look-live", "RenderZones is gone: nothing owns the zone paint")
+        return
+    dead = [n for n in ("inpMidZoneBorderWidth", "inpMidZoneBorderTransparency",
+                        "inpMidZoneBorderStyle") if n not in zones]
+    if dead:
+        fail("look-live",
+             "the zone paint stopped reading %s live: the GEOMETRY rows BORDER / BORDER "
+             "WIDTH / BORDER TRANSPARENCY become geometry-key dependants again"
+             % ", ".join(dead))
+        return
+    ok("look-live", "the zone border is still a live read, so its three rows cannot be cached out")
+
+
+def check_dual_all(o):
+    """P-UI-66 - a synthetic "ALL" cell owns the GROUP, and its face says so.
+
+    A dual row's `ext` cell ("ALL") has no setting of its own: its meaning IS what
+    its press writes. It used to write the ROW's members only, so on card 11's
+    `L5 | ALL` row - one member - it re-wrote L5: the design's master switch for
+    the five LEVEL TOGGLES did not exist, and the pill's face mirrored L5 alone.
+    That is the "same button twice" shape P-UI-62 removed from the zone picture,
+    and it is half of the report "STRUCTURE L1-L5 does not work".
+
+    Invariants:
+      (a) the span has ONE owner (`PnlAllCellSpan`) that walks the row's BAND and
+          only falls back to the row's own members when the band is not a
+          contiguous set of settings; the press writes every setting of it;
+      (b) the face comes from the SAME owner (`PnlAllCellOn`), so the pill can
+          never disagree with what its press writes;
+      (c) a group press costs ONE recolour walk and ONE repaint (the batch), and
+          every row that renders an affected switch is refreshed - a face is part
+          of the control.
+    """
+    panels = strip_comments(read(PANELS, o))
+    span = fn_body(panels, "int PnlAllCellSpan(")
+    face = fn_body(panels, "bool PnlAllCellOn(")
+    if span is None or face is None:
+        fail("dual-all",
+             "PnlAllCellSpan / PnlAllCellOn are gone: the ALL cell has no span owner and "
+             "no face owner")
+        return
+    if "PNL_K_SEC" not in span or "PnlRowMembers" not in span or "contiguous" not in span:
+        fail("dual-all",
+             "the ALL span stopped walking the row's BAND (or lost its contiguity guard): "
+             "on a one-member row the cell degrades into a duplicate of that switch")
+        return
+    if "PnlCurrentSet(item,f+k)" not in face:
+        fail("dual-all",
+             "the ALL face stopped asking every member of the span: the pill lies about "
+             "what the press will write")
+        return
+    ok("dual-all", "the ALL cell spans the band's members and its face mirrors all of them")
+
+    press = fn_body(panels, "void PnlHandleMouseMove(")
+    if press is None:
+        fail("dual-all", "PnlHandleMouseMove is gone: the ALL cell has no press owner")
+        return
+    if "PnlAllCellSpan(dui,dur,af,ac)" not in press \
+       or "PnlApplySet(dui,af+dq2,v)" not in press:
+        fail("dual-all",
+             "the ALL press writes this ROW's members again: the group the cell names is "
+             "not the group it flips")
+        return
+    ok("dual-all", "the ALL press writes every setting the span names, once each")
+
+    if "PnlAllCellOn(item,row)" not in fn_body(panels, "void PnlCreateRow("):
+        fail("dual-all", "the dual renderer stopped using the span's face owner")
+        return
+    ok("dual-all", "the renderer paints the ALL face through the same owner")
+
+    if "StructureSwitchBatchBegin" not in press or "StructureSwitchBatchEnd" not in press:
+        fail("dual-all",
+             "a group press is unbudgeted again: five switches = five recolour walks and "
+             "five forced repaints for one press (what P-PERF-32 exists to prevent)")
+        return
+    ok("dual-all", "a group press costs one walk and one repaint")
+
+    events = strip_comments(read(EVENTS, o))
+    batch = fn_body(events, "void StructureSwitchBatchEnd()")
+    if batch is None or "StructureSwitchSettle" not in batch:
+        fail("dual-all",
+             "the batch's close no longer settles the recolour: the group press would "
+             "leave the chart painting the pre-press colours")
+        return
+    ok("dual-all", "the batch settles the recolour exactly once, through the owner")
+
+
+def check_order_owner(o):
+    """P-UI-67 - a row lives where its setting is read, and one answer has one winner.
+
+    The user's report: «این LS FIRST … باید در مود SS/LS باشه اینجا چیکار میکنه».
+    Two defects behind one row:
+
+      * WRONG HOME - `def.lsFirst` is assigned in `ModeDefinitions` ONLY for
+        `SS_LS_STEP`, so on the Zones & Levels card (the row's old home) the switch
+        could not change one pixel in TH - the shipped default - or in Combo/Factor.
+        It also named its own ON value ("LS FIRST"), which reads as a lie while the
+        switch is OFF.
+      * TWO OWNERS, THE WRONG ONE WINNING - the question "which of SS/LS comes
+        first?" is answered by the chart prompt's per-chart OVERRIDE and by the
+        panel's DEFAULT flag, and `GetEffectiveSSLSLongFirst` prefers the override.
+        So pressing the switch while a stale override existed wrote `g_lsFirst` and
+        changed nothing on the chart: a dead-looking row, the same "two owners
+        disagree" shape P-UI-62 removed from the zone picture.
+
+    Invariants:
+      (a) the switch TAKES the question over (a press clears the per-chart override,
+          so the chart follows the surface the user just touched);
+      (b) the override's key has exactly ONE setter and ONE deleter, both inside the
+          owner pair (`SSLSOrderOverrideSet` / `SSLSOrderOverrideClear`) - a bare
+          `= -1` or a stray `GlobalVariableDel` leaves state and key disagreeing;
+      (c) the row is rendered ONLY by the SS-LS section (a Zones-card display row
+          for setting 8 would offer it in every step mode);
+      (d) the caption has ONE owner: a literal spelling in either surface is how the
+          two drift.
+    """
+    panels = _code_only(read(PANELS, o))
+    events = _code_only(read(EVENTS, o))
+    globalsrc = _code_only(read(GLOBALS, o))
+
+    branch = fn_body(panels, "int PnlApplySet(const int item,const int row,const double v)")
+    if branch is None:
+        fail("order-owner", "PnlApplySet is gone: the SS/LS row has no press owner")
+        return
+    if "SSLSOrderOverrideClear()" not in branch:
+        fail("order-owner",
+             "the SS/LS ORDER press leaves the per-chart override alone: while one is "
+             "set the switch writes the default and the chart does not move")
+        return
+    ok("order-owner", "the switch press takes the question over from the chart override")
+
+    setter = fn_body(globalsrc, "void SSLSOrderOverrideSet(const int v)")
+    clearer = fn_body(globalsrc, "void SSLSOrderOverrideClear()")
+    if setter is None or clearer is None:
+        fail("order-owner", "the SS/LS override owner pair is gone: state and key can drift")
+        return
+    if "GlobalVariableSet(" not in setter or "GlobalVariableDel(" not in clearer:
+        fail("order-owner",
+             "the override owners stopped writing/removing the persisted key: the answer "
+             "would not survive an attach, or would survive the reset")
+        return
+    stray = []
+    for rel, src in (("panels", panels), ("events", events)):
+        for i, line in enumerate(src.splitlines(), 1):
+            if "Biotak_SSLSFirst_" in line and "GlobalVariable" in line:
+                stray.append("%s:%d" % (rel, i))
+    if stray:
+        fail("order-owner",
+             "the override key is written outside its owner (%s): one owner per answer, "
+             "or the two surfaces disagree silently" % ", ".join(stray))
+        return
+    ok("order-owner", "the override's key has exactly one setter and one deleter")
+
+    if re.search(r"PnlSpecAdd\(\s*1\s*,\s*PNL_K_\w+\s*,\s*8\s*,", panels):
+        fail("order-owner",
+             "the SS/LS order row is back on the Zones & Levels card: that card exists in "
+             "every step mode, and `def.lsFirst` is only assigned for SS-LS, so the row "
+             "cannot move anything in the shipped TH mode")
+        return
+    if 'PnlSpecAdd(9, PNL_K_LEGACY, base, 1, "swap")' not in panels:
+        fail("order-owner",
+             "the Step card's SS-LS section no longer renders the SS/LS order row: the "
+             "setting is now unreachable from the panel")
+        return
+    ok("order-owner", "the row is rendered only by the SS-LS section, where the setting is read")
+
+    if panels.count("label=PNL_LBL_SSLS_ORDER") < 2:
+        fail("order-owner",
+             "a surface spells the caption itself instead of reading PNL_LBL_SSLS_ORDER: "
+             "two spellings is how a switch ends up named after its own ON state")
+        return
+    if '"LS FIRST"' in panels:
+        fail("order-owner", "the old state-naming caption (\"LS FIRST\") is back")
+        return
+    ok("order-owner", "one caption, two readers - the label names the question, not the answer")
+
+
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
@@ -3485,7 +3770,8 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_topology_adoption, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
-          check_zone_picture, check_edge_look, check_click_claim]
+          check_zone_picture, check_edge_look, check_click_claim,
+          check_look_live, check_dual_all, check_order_owner]
 
 
 def run(overrides=None):
@@ -3837,6 +4123,12 @@ def selftest():
          "                          IntegerToString(g_customPriceLineDragging ? 1 : 0) +\n"
          "                          IntegerToString(inpShowPipDistanceLabels ? 1 : 0);\n"
          "        frameSig = frameCore + \"|\";")
+    seed("the structure settle loses its recolour", EVENTS,
+         "void StructureSwitchSettle(const uint p32t, const int idx, const bool visible)\n{\n   RuntimeSettingsSaveOverridesThrottled();\n   int touched = StructureRecolourWalk();",
+         "void StructureSwitchSettle(const uint p32t, const int idx, const bool visible)\n{\n   RuntimeSettingsSaveOverridesThrottled();\n   int touched = 0;")
+    seed("the group batch never settles", EVENTS,
+         "   if(s_structSwitchBatch > 0) return;\n   StructureSwitchSettle(GetTickCount(), -1, false);",
+         "   if(s_structSwitchBatch > 0) return;")
     seed("card 11 bypasses the recolour owner", PANELS,
          "         if(row==1)       { SetStructureVisible(0, (v>0.5)); flags=REFRESH_NONE; }",
          "         if(row==1)       { g_showStructure=(v>0.5); flags=REFRESH_BUFFERS; }")
@@ -4297,6 +4589,51 @@ def selftest():
          "   if(s_uiReleaseEchoMs != 0 && (int)(GetTickCount() - s_uiReleaseEchoMs) < 0) return;\n"
          "   s_uiClickClaim     = false;\n",
          "   s_uiClickClaim     = false;\n")
+
+    # 25. P-UI-66 - the look goes back into the build's copy / the key (look-live)
+    seed("the line paint reads the build's look again", PIPELINE,
+         "            bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,\n"
+         "                                              lineClr, lineStyle, lineWidth,",
+         "            bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,\n"
+         "                                              lines[i].clr, lines[i].lineStyle, lines[i].lineWidth,")
+    seed("a line-look input goes back into the geometry key", PIPELINE,
+         "    // P-UI-66 - THE LINE LOOK IS NOT GEOMETRY, SO IT IS NOT A KEY TERM.\n",
+         "    // P-UI-66 - THE LINE LOOK IS NOT GEOMETRY, SO IT IS NOT A KEY TERM.\n"
+         "    key += \"|\" + IntegerToString(g_lineStyle);\n")
+    seed("the zone border stops being a live read", PIPELINE,
+         "            request.borderTransparency = inpMidZoneBorderTransparency;",
+         "            request.borderTransparency = 0;")
+
+    # 26. P-UI-66 - the ALL cell degrades into a duplicate switch (dual-all)
+    seed("the ALL face mirrors one member again", PANELS,
+         "            on  = PnlAllCellOn(item,row);",
+         "            on  = true;")
+    seed("the ALL cell owns its own row again", PANELS,
+         "            PnlAllCellSpan(dui,dur,af,ac);",
+         "            int af=dn; int ac=1;")
+    seed("the group press is unbudgeted again", PANELS,
+         "            if(grouped) StructureSwitchBatchBegin();\n",
+         "")
+
+    # 27. P-UI-67 - the SS/LS order row: wrong home, two owners
+    seed("the SS/LS row goes back to the Zones card", PANELS,
+         "      // MIDPOINT-OFF (2026-09-13): the midpoint LINE is retired",
+         "      PnlSpecAdd(1, PNL_K_LEGACY, 8, 1, \"swap\");\n"
+         "      // MIDPOINT-OFF (2026-09-13): the midpoint LINE is retired")
+    seed("the switch leaves a stale override standing", PANELS,
+         "                            SSLSOrderOverrideClear();\n",
+         "")
+    seed("the override loses its persister", GLOBALS,
+         "    GlobalVariableSet(\"Biotak_SSLSFirst_\" + GetCachedChartIdStr(), (double)v);\n",
+         "")
+    seed("a surface writes the override key directly", EVENTS,
+         "    SSLSOrderOverrideClear();\n    if(restoredSSLSFirst == 0 || restoredSSLSFirst == 1)",
+         "    g_sslsFirstOverride = -1;\n"
+         "    GlobalVariableDel(\"Biotak_SSLSFirst_\" + chartIdStr);\n"
+         "    if(restoredSSLSFirst == 0 || restoredSSLSFirst == 1)")
+    seed("a surface spells the SS/LS caption itself", PANELS,
+         "      kind=1; label=PNL_LBL_SSLS_ORDER;",
+         "      kind=1; label=\"LS FIRST\";")
 
     caught = 0
     for label, rel, old, new in seeds:

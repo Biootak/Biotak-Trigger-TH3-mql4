@@ -591,7 +591,7 @@ def card_rows(item):
 # ─────────────────────────────────────────────────────────────────────────────
 # Demo state — deterministic, chosen so every control type is visible
 # ─────────────────────────────────────────────────────────────────────────────
-ON = {"SHOW", "SHOW LINES", "MID ZONES", "LS FIRST", "COUNTDOWN", "ATR LABELS",
+ON = {"SHOW", "SHOW LINES", "MID ZONES", "SS/LS ORDER", "COUNTDOWN", "ATR LABELS",
       "ATR TARGETS", "TRADE LABELS", "TP ROW", "TH LABELS", "FRACTAL THs",
       "TH TARGETS", "ENABLED", "MAGNET", "SHOW STRUCTURE", "SHOW WICKS",
       "STRUCTURE L1", "STRUCTURE L2", "STRUCTURE L3", "STRUCTURE L4"}

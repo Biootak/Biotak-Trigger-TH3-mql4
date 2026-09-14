@@ -355,6 +355,36 @@ bool GetEffectiveSSLSLongFirst()
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-67 — THE TWO WRITERS OF ONE QUESTION, IN ONE PLACE.        |
+//|                                                                  |
+//| "Which of SS/LS comes first?" has two surfaces: the chart prompt  |
+//| (double-click Custom Price) answers it PER CHART and persists the |
+//| answer under a `Biotak_SSLSFirst_` key, and the panel's SS/LS      |
+//| ORDER switch answers the DEFAULT. The override WINS (see           |
+//| GetEffectiveSSLSLongFirst), so pressing the switch while a stale   |
+//| override existed wrote `g_lsFirst` and changed nothing on the      |
+//| chart — a row that looks dead, and the same "two owners disagree"   |
+//| shape as the zone picture's retired third pill (P-UI-62).          |
+//|                                                                  |
+//| One owner per DIRECTION, so the chart always uses the last thing    |
+//| the user actually touched: the prompt SETS (and persists), the      |
+//| panel CLEARS (and drops the key), and the reset path clears too.    |
+//| Both are pure state writers — no caller has to remember the key     |
+//| name, and no writer can forget to delete it.                       |
+//+------------------------------------------------------------------+
+void SSLSOrderOverrideSet(const int v)
+{
+    if(v != 0 && v != 1) { SSLSOrderOverrideClear(); return; }
+    g_sslsFirstOverride = v;
+    GlobalVariableSet("Biotak_SSLSFirst_" + GetCachedChartIdStr(), (double)v);
+}
+void SSLSOrderOverrideClear()
+{
+    g_sslsFirstOverride = -1;
+    GlobalVariableDel("Biotak_SSLSFirst_" + GetCachedChartIdStr());
+}
+
+//+------------------------------------------------------------------+
 //| Cleanup All GlobalVariables (array-based, matching MT5)          |
 //+------------------------------------------------------------------+
 //| VIEW LOCK core — VIEWLOCK-OFF: retired, kept dormant (see note above).|
