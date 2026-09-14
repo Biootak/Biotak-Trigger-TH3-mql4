@@ -360,6 +360,11 @@ color QuickPalColor(const int i)
 #define PNL_BTN_PAD    8
 #define PNL_KEY_ESC    27
 #define PNL_BOTTOM_SAFE 30     // keep the card clear of the bottom date-scale bar
+// P-UI-91: breathing room between a card and the price action it now avoids.
+// A TASTE margin (the same language as PNL_PAD_X between card and menu), NOT a
+// measurement: the candle band itself is measured bar by bar, so this only
+// keeps a wick from touching the card's edge.
+#define PNL_CANDLE_PAD  8
 
 //--- TV-style floating strip (item 13 = Base Box MINI quick style) — the
 //    mini is NOT a vertical row-card anymore: it is a compact horizontal
@@ -390,6 +395,9 @@ color QuickPalColor(const int i)
 #define PNL_CLR_TITLE    C'243,246,251'   // #F3F6FB --title / --val
 #define PNL_CLR_MUTED    C'140,150,166'   // #8C96A6 --muted
 #define PNL_CLR_LABEL    C'203,212,226'   // #CBD4E2 --lbl
+// R-KEYCAP: the header .key cap's letter when its master switch is OFF (the
+// shipped ink, unchanged - pixel parity for every card whose cap is a hint).
+#define PNL_CLR_KEYCAP_OFF C'183,193,208'
 #define PNL_CLR_ACCENT   C'255,194,71'    // #FFC247 --a1 (gold ramp top)
 #define PNL_CLR_ACCENT_TX C'26,18,6'      // #1A1206 --aInk
 #define PNL_CLR_VALUE    C'243,246,251'   // #F3F6FB --val
@@ -4354,6 +4362,85 @@ int PnlSplit(const string opts,string &arr[],const int maxLen=8)
    return n;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-91 (2026-09-14) — WHERE THE CANDLES ARE, AND WHY THE CARD MUST CARE.
+//
+// «حالا که جابجایی دستی حذف شده، جای باز شدن کارت را هوشمند کن تا با منوی رینگ و
+// کندل‌ها اورلپ نکند» — with the card-move gesture retired (PANELDRAG-OFF,
+// P-UI-90) the user can no longer pull a card off the price action by hand, so
+// the OPENING spot has to be right the FIRST time. Placement already avoided the
+// ring/orb rect (`PnlComputeMenuBounds`); the price action — the far bigger
+// obstacle on a live chart — was never consulted at all.
+//
+// THE BAND IS MEASURED, NEVER ASSUMED. The candles of the VISIBLE bars occupy
+// exactly the Y range of the window's lowest low .. highest high (a candle
+// pixel cannot exist outside it: wicks are included by construction), and one
+// price maps to one Y through the terminal's own `ChartTimePriceToXY` — the
+// same function the box tool and the TV strip already talk pixels with. No
+// "the candles live in the middle third" constant, because that is the exact
+// class of guess this project keeps paying for (P-UI-69, P-UI-71c, P-UI-79).
+//
+// COST, stated once so nobody re-derives it: ONE pass over the visible bars per
+// card OPEN. `PnlComputePosition` runs from `PnlCreate` only — never per tick,
+// never per mouse event — and the gate asserts the band has exactly ONE caller.
+// ══════════════════════════════════════════════════════════════════════════
+//--- The vertical band the VISIBLE candles occupy, in pixels (full width by
+//--- construction: every visible bar has a candle). Returns false when there is
+//--- nothing to measure (no history yet), and the caller then places the card
+//--- exactly as it did before this rule — a placement that cannot measure the
+//--- chart must not invent a band.
+bool PnlCandleBandPx(int &top,int &bot)
+{
+   top = 0; bot = 0;
+   int first = WindowFirstVisibleBar();
+   if(first < 0) return false;                  // no history yet
+   int bars = first + 1;
+   int vis  = WindowBarsPerChart();
+   if(vis > 0 && bars > vis) bars = vis;        // the WINDOW, never all history
+   if(bars < 1) return false;
+   double hi = 0.0, lo = 0.0;
+   bool seen = false;
+   for(int i = 0; i < bars; i++)
+   {
+      // `_Symbol` explicit: `iHigh(0, …)` handed the COMPILER a number where the
+      // signature wants a symbol string (warning 181) - the symbol is ours, the
+      // period is the chart's own.
+      double h = iHigh(_Symbol, 0, i);
+      double l = iLow(_Symbol, 0, i);
+      if(h <= 0.0 || l <= 0.0) continue;        // an empty slot is not a price
+      if(!seen || h > hi) hi = h;
+      if(!seen || l < lo) lo = l;
+      seen = true;
+   }
+   if(!seen) return false;
+   // One bar we KNOW is on screen supplies the X (the mapping is defined there);
+   // only its Y is used, and both extremes come through the same call so the
+   // band can never be half-mapped.
+   datetime tmid = iTime(_Symbol, 0, bars / 2);
+   if(tmid <= 0) return false;
+   int xa = 0, ya = 0, xb = 0, yb = 0;
+   if(!ChartTimePriceToXY(0, 0, tmid, hi, xa, ya)) return false;
+   if(!ChartTimePriceToXY(0, 0, tmid, lo, xb, yb)) return false;
+   int y1 = (int)MathMin(ya, yb);
+   int y2 = (int)MathMax(ya, yb);
+   if(y2 <= y1) y2 = y1 + 1;                    // a flat window still owns a band
+   top = y1 - PNL_CANDLE_PAD;
+   bot = y2 + PNL_CANDLE_PAD;
+   return true;
+}
+
+//--- P-UI-91: the vertical overlap (px) of [a, a+ah) with [b, b+bh). ZERO is the
+//--- answer placement actually wants, so the function returns the SCORE itself
+//--- instead of a boolean: the caller minimises a measured number, which is what
+//--- makes "no clean spot exists" (a card taller than the free space) degrade
+//--- into "the smallest overlap" instead of into a coin flip.
+int PnlIntervalOverlap(const int a,const int ah,const int b,const int bh)
+{
+   int lo = (int)MathMax(a, b);
+   int hi = (int)MathMin(a + ah, b + bh);
+   return (hi > lo ? hi - lo : 0);
+}
+
 //+------------------------------------------------------------------+
 //| Compute safe zone: the rectangle that all ring items + orb occupy |
 //+------------------------------------------------------------------+
@@ -4487,20 +4574,40 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
    if(ch<=0) ch=1080;
    int pw = PnlPanelW(item);
 
-   // A panel dragged to a manual spot reopens exactly where it was left
-   // (clamped on-screen) instead of re-anchoring around the menu.
-   if(g_PnlManualPos[item])
-   {
-      px = MathMax(4, MathMin(cw - pw - 8, g_PnlX[item]));
-      py = MathMax(4, MathMin(ch - ph - PNL_BOTTOM_SAFE, g_PnlY[item]));
-      return;
-   }
-
+   // P-UI-91: the two rects every spot must clear — the ring/orb box, and the
+   // band the VISIBLE price action occupies (measured once per open; `false`
+   // when the chart is too young to measure, and then this card behaves exactly
+   // as it did before the rule existed — a placement that cannot measure the
+   // chart must not invent a band).
    int mbx, mby, mbw, mbh;
    PnlComputeMenuBounds(mbx, mby, mbw, mbh);
+   int cdTop = 0, cdBot = 0;
+   bool hasBand = PnlCandleBandPx(cdTop, cdBot);
+
+   // A panel dragged to a manual spot reopens where it was left (clamped
+   // on-screen) — but only while that spot still PASSES the same two rules a
+   // fresh spot must pass. Before P-UI-91 a park was honoured blindly, which is
+   // how a card could sit on the candles for good; and now that the gesture is
+   // retired (PANELDRAG-OFF) an unclean park would be permanent with no way to
+   // correct it by hand, so a dirty park falls through to the SAME search a
+   // fresh open uses: the card keeps its place only while the place is good.
+   if(g_PnlManualPos[item])
+   {
+      int manX = (int)MathMax(4, MathMin(cw - pw - 8, g_PnlX[item]));
+      int manY = (int)MathMax(4, MathMin(ch - ph - PNL_BOTTOM_SAFE, g_PnlY[item]));
+      bool parkMenuHit = !(manX + pw <= mbx - PNL_PAD_X ||
+                           manX >= mbx + mbw + PNL_PAD_X ||
+                           manY + ph <= mby - PNL_PAD_X ||
+                           manY >= mby + mbh + PNL_PAD_X);
+      int parkOv = (hasBand ? PnlIntervalOverlap(manY, ph, cdTop, cdBot) : 0);
+      if(!parkMenuHit && parkOv == 0) { px = manX; py = manY; return; }
+   }
 
    int candX[4], candY[4];
-   bool valid[4];
+   // Initialised: every slot IS assigned by the loop below, but the compiler's
+   // flow analysis cannot prove it across the second (scoring) loop and warns
+   // 60 - and this project ships 0 warnings.
+   bool valid[4] = {false, false, false, false};
 
    candX[0] = mbx + mbw + PNL_PAD_X;
    candY[0] = mby + mbh/2 - ph/2;
@@ -4532,14 +4639,27 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
       valid[c] = !hits;
    }
 
+   // P-UI-91: the MENU rule stays HARD — a spot that lands on the ring/orb is
+   // never used — and the CANDLE rule decides AMONG the survivors: the winner is
+   // the spot with the LEAST measured overlap with the price band, and the order
+   // below breaks a tie. So the card stays as close to the menu as the scores
+   // allow instead of jumping across the chart, and "right/left of the menu"
+   // (usually inside the band) only wins when "above/below" is no better. With
+   // no clean survivor at all — a card taller than the free space — the smallest
+   // overlap wins, which is the honest "least bad" and not a coin flip.
    int order[4] = {0, 1, 3, 2};
+   int pick = -1, pickOv = 0;
+   int anyPick = -1, anyOv = 0;
    for(int o=0; o<4; o++)
    {
       int c = order[o];
-      if(valid[c]) { px = candX[c]; py = candY[c]; return; }
+      int ov = (hasBand ? PnlIntervalOverlap(candY[c], ph, cdTop, cdBot) : 0);
+      if(anyPick < 0 || ov < anyOv) { anyPick = c; anyOv = ov; }
+      if(valid[c] && (pick < 0 || ov < pickOv)) { pick = c; pickOv = ov; }
    }
-   px = candX[0];
-   py = candY[0];
+   if(pick < 0) pick = (anyPick >= 0 ? anyPick : 0);
+   px = candX[pick];
+   py = candY[pick];
 }
 
 //+------------------------------------------------------------------+
@@ -5460,6 +5580,130 @@ void PnlFooterBtn(const int item,const string tag,const int bx,const int fy,
    ObjectSetString(0,nm+"lb",OBJPROP_FONT,"Arial Bold");
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// R-KEYCAP (2026-09-14) — THE HEADER .key CAP IS A REAL SWITCH, AND IT WEARS
+// ITS OWN STATE.
+//
+// «این دکمه چرا کار نمیکنه رنگ ها عوض نمیشه» + a screenshot with the card's
+// header chip circled. That chip is `PnlKeycapAt`'s `.key` cap - a bitmap plus
+// a label - and it was a HINT and nothing else: no hit test, no handler. The
+// header it sits in is the card's DRAG HANDLE, so a press on it did not merely
+// do nothing, it started a move gesture and walked the card out from under the
+// cursor (P-UI-70's shape: a control that cannot be REACHED is worse than a
+// missing one, and a button that only drags is worse than both).
+//
+// The chip now does the job it advertises: it is the card's OWN master switch -
+// the same value its hotkey and the ring item write (`PnlKeyMasterSet` names
+// the SETTING, never a display row: bands collapse and renumber those) -
+// applied through `PnlApplySet` and repainted through `PnlSyncOpenCard`, the
+// very calls the row's own press and the hotkey/ring path reach, so chip, row
+// and chart cannot disagree about the value. AND it reads its state back: the
+// letter wears the card's accent while the master is ON and
+// `PNL_CLR_KEYCAP_OFF` while it is OFF, so "did it work?" is answered on the
+// control itself, not only on the chart - which is the other half of the
+// report («رنگ ها عوض نمیشه»).
+//
+// The cap lives on BOTH delivery channels: the press chain claims it before the
+// body grab (P-UI-70's position rule) and `PnlClickFallback` re-enters that same
+// chain for the click a bitmap skin produces (P-UI-74), so no channel can lose
+// it. Its geometry is READ BACK from the drawn cap rather than recomputed, so
+// the hit box follows a dragged card for free and cannot drift from the paint
+// (P-UI-79) - four reads, and only on an actual press.
+// ══════════════════════════════════════════════════════════════════════════
+//--- the SETTING whose switch IS the card's master, in the SETTING address
+//--- space (`PnlSetDef` row index) - NOT a display row: bands collapse and
+//--- renumber those, which is exactly how a master would start pointing at
+//--- another row.
+int PnlKeyMasterSet(const int item)
+{
+   // The setting whose switch is exactly the state the card's own hotkey
+   // toggles:
+   //   card 0  (T) -> 3 SHOW       == the T hotkey, g_triggerLevelsEnabled
+   //   card 7  (L) -> 1 SHOW       == the L hotkey, g_linesVisible
+   if(item == 0) return 3;
+   if(item == 7) return 1;
+   return -1;   // a .key with no master stays a hint: nothing to press
+}
+
+bool PnlKeyOn(const int item)
+{
+   int ms = PnlKeyMasterSet(item);
+   return (ms >= 0) && (PnlCurrentSet(item,ms) > 0.5);
+}
+
+color PnlKeycapInk(const int item)
+{
+   if(PnlKeyMasterSet(item) < 0) return PNL_CLR_KEYCAP_OFF;
+   return PnlKeyOn(item) ? PnlAccentA1(PnlCardAccent(item)) : PNL_CLR_KEYCAP_OFF;
+}
+
+string PnlKeycapTip(const int item)
+{
+   string k = PnlCardKey(item);
+   if(k == "" || PnlKeyMasterSet(item) < 0) return "";
+   return k + " = " + PnlTitleText(item) + ": " + (PnlKeyOn(item) ? "ON" : "OFF") +
+          "\nClick: toggle";
+}
+
+//--- the create pass: the cap bitmap AND its letter, in the state's own ink
+void PnlKeycapDraw(const int item,const int x,const int y)
+{
+   string k = PnlCardKey(item);
+   PnlKeycapAt(PnlHead(item,"keyc"), PnlHead(item,"keyl"), x, y, k,
+               PnlKeycapInk(item), Z_PANEL_SKIN);
+   string tip = PnlKeycapTip(item);
+   if(tip == "") return;
+   ObjectSetString(0,PnlHead(item,"keyc"),OBJPROP_TOOLTIP,tip);
+   ObjectSetString(0,PnlHead(item,"keyl"),OBJPROP_TOOLTIP,tip);
+}
+
+//--- the state a writer OUTSIDE the panel changed (T/L hotkey, ring item) -
+//--- change-guarded, so the per-sync cost is one read and one string compare.
+void PnlKeycapSync(const int item)
+{
+   if(PnlKeyMasterSet(item) < 0) return;   // a hint-only cap has no state
+   string lbl = PnlHead(item,"keyl");
+   if(ObjectFind(0,lbl) < 0) return;        // the card painted no cap
+   color want = PnlKeycapInk(item);
+   if((int)ObjectGetInteger(0,lbl,OBJPROP_COLOR) != (int)want)
+      ObjectSetInteger(0,lbl,OBJPROP_COLOR,want);
+   string tip = PnlKeycapTip(item);
+   if(ObjectGetString(0,lbl,OBJPROP_TOOLTIP) != tip)
+   {
+      ObjectSetString(0,lbl,OBJPROP_TOOLTIP,tip);
+      ObjectSetString(0,PnlHead(item,"keyc"),OBJPROP_TOOLTIP,tip);
+   }
+}
+
+bool PnlKeycapHit(const int mx,const int my,int &item)
+{
+   item = g_PnlOpen;
+   if(item < 0 || item == 13) return false;
+   if(PnlKeyMasterSet(item) < 0) return false;
+   string nm = PnlHead(item,"keyc");
+   if(ObjectFind(0,nm) < 0) return false;   // that card carries no .key cap
+   int x = (int)ObjectGetInteger(0,nm,OBJPROP_XDISTANCE);
+   int y = (int)ObjectGetInteger(0,nm,OBJPROP_YDISTANCE);
+   int w = (int)ObjectGetInteger(0,nm,OBJPROP_XSIZE);
+   int h = (int)ObjectGetInteger(0,nm,OBJPROP_YSIZE);
+   return (mx >= x && mx <= x+w && my >= y && my <= y+h);
+}
+
+int PnlKeycapAct(const int item)
+{
+   int ms = PnlKeyMasterSet(item);
+   if(ms < 0) return REFRESH_NONE;
+   double v = PnlKeyOn(item) ? 0.0 : 1.0;
+   // ONE owner: the SAME call the row's own switch reaches (the press chain
+   // translates its display row through `PnlSetRow` and lands on exactly this).
+   int flags = PnlApplySet(item,ms,v);
+   // ... and the SAME repaint the hotkey/ring path gets: the owner of "the open
+   // card follows a value it does not own" repaints every row of this card
+   // (and, through the R-KEYCAP hook, the cap's own state).
+   PnlSyncOpenCard();
+   return flags;
+}
+
 //+------------------------------------------------------------------+
 //| Create panel for one item                                         |
 //+------------------------------------------------------------------+
@@ -5676,9 +5920,10 @@ void PnlCreate(const int item)
     {
        // same owner as the row keycaps (P-UI-32): the cap AND its centred
        // letter — the header used to place the letter at a hard-coded -9.
-       PnlKeycapAt(PnlHead(item,"keyc"), PnlHead(item,"keyl"),
-                   hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
-                   py+19-PNL_KEYCAP_PAD, ck, C'183,193,208', Z_PANEL_SKIN);
+       // R-KEYCAP: the same owner now also paints the STATE (the card accent
+       // while the master switch is ON) and attaches the live tooltip.
+       PnlKeycapDraw(item, hx-PNL_KEYCAP_VIS-PNL_KEYCAP_PAD-PNL_CHIP_PAD,
+                     py+19-PNL_KEYCAP_PAD);
     }
 
     // .x — 26px ghost close. The BUTTON stays the click target (name-based
@@ -5823,11 +6068,20 @@ void PnlCommitMove(const int item)
 //--- chain and the polled shadow gate themselves through ONE window instead of
 //--- each carrying its own. See the P-UI-75 block below for why the rate is
 //--- adaptive and why the drag owns its frames.
+//--- PANELDRAG-OFF: DORMANT with the gesture — no caller can reach the window
+//--- any more (`PnlDragStep` is unreachable and `PnlDragPoll` is uncalled).
 #define PNL_MOVE_COALESCE_MS  16   // the window at a grab (P-UI-75b)
 #define PNL_MOVE_FRAME_MIN_MS 16   // floor: never slower than this
 #define PNL_MOVE_FRAME_MAX_MS 50   // ceiling: a weak machine may back off here
 #define PNL_MOVE_SLACK_MS      8   // headroom a batch needs beyond its own cost
 #define PNL_DRAG_THRESHOLD_PX  3   // P-UI-80: menu parity (ORB_DRAG_THRESHOLD)
+//--- P-UI-89: a press that landed on a CONTROL's own pixel owes the card a
+//--- LONGER proof before it may drag it. P-UI-76 measured the hand that keeps
+//--- reporting this ("a hand that moves 1-3 px on every real click"): with the
+//--- menu's 3 px dead zone a toggle tap would creep the card by a pixel on every
+//--- press, so the bound for those pixels is the project's own click-slop
+//--- language (`BK_CLICK_SLOP` 10 px, the box tool's drag-vs-click separator).
+#define PNL_DRAG_CTRL_PX      10
 
 static uint s_PnlMoveTick    = 0;      // last applied batch (0 = none yet)
 static int  s_PnlMoveFrameMs = PNL_MOVE_COALESCE_MS;
@@ -5839,6 +6093,12 @@ static int  s_PnlMoveGrabY   = 0;
 // that bit must not own its release (below). Set on every arm, cleared on
 // every finish; meaningful only while g_PnlMoveItem >= 0.
 static bool s_PnlMoveByPoll  = false;
+// P-UI-89: did this gesture START on a control's own pixel? Then the proof it
+// owes the card is `PNL_DRAG_CTRL_PX`, not the menu's 3 px (PnlDragThreshPx) -
+// the card is draggable from every pixel of the control's FACE, but a tap on a
+// switch must still not nudge the card. Set on every arm, cleared on every
+// finish; meaningful only while g_PnlMoveItem >= 0.
+static bool s_PnlMoveOnCtrl  = false;
 // P-UI-78: the poll's release rumour filter (below) — one up-reading arms,
 // the second consecutive one finishes. Reset with every finish, like the rest.
 static bool s_PnlPollUpArmed = false;
@@ -5888,6 +6148,10 @@ static int  s_PnlMoveWorst  = 0;   // the worst single batch cost it paid (ms)
 // is still delivering DOWN readings. A terminal whose probe is honest sees no
 // change at all (there the probe already answered the same way).
 // ══════════════════════════════════════════════════════════════════════════
+//--- PANELDRAG-OFF: STAYS ACTIVE — the card-move consumer is retired, but this
+//--- recency witness is what keeps `ChartPointerFinalizeOnUps` from tearing the
+//--- SLIDER and the palette MIXER down on the P-UI-49b delivery echo, so the
+//--- stamp and the gate both stay exactly as they are.
 #define PNL_DOWN_RECENT_MS 250   // a down-reading this fresh IS a live press
 static uint s_PnlDownAt = 0;     // last leftDown=1 mouse-move (0 = never seen)
 
@@ -6046,6 +6310,7 @@ void ChartPointerFinalizeOnUps()
    }
    s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
    s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
+   s_PnlMoveOnCtrl  = false;   // P-UI-89: and so does the control-press proof
    s_PnlPollUpArmed = false;   // P-UI-78: and so does the rumour filter
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
@@ -6818,7 +7083,16 @@ bool PnlPressAllowed()
    //     claim and lock every coordinate control of the open card out for good.
    // Either witness saying "free" takes the claim back — the safe direction,
    // because the panel is only ever taking its OWN pointer back.
-   if(g_MouseWasDown && UILeftButtonDown()) return false;
+   if(g_MouseWasDown && UILeftButtonDown())
+   {
+      // P-UI-88: the ONE press shape that used to vanish without a line. A
+      // foreign live claim is respected by design, so a stuck DRAG_MENU / box
+      // drag reads as "the whole panel is dead" with nothing in the log to say
+      // so - name the owner instead (gated: one line per refused press, and
+      // only when the press really is refused).
+      _LOG_GATE_W Print("[UI] panel press refused (foreign claim owner=", (int)g_DragOwner, ")");
+      return false;
+   }
    g_DragOwner = DRAG_NONE;
    return true;
 }
@@ -6939,6 +7213,65 @@ bool PnlCtrlRectHit(const string nm,const int mx,const int my,const int pad)
 //--- ONE owner for that question: the grab (press + poll) asks it, so a new
 //--- such control can never be half-wired (it is named here once, and the gate
 //--- fails if this list loses a family).
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-87 (2026-09-14) — A CLAIM IS NOT AN ACTION.
+//
+// «این رنگ ها کار نمیکنه هر چی روش کلیک میکنم انگار ایراد داره» + the ATR
+// card's COUNT COLOR strip. The LIVE LEDGER named it in one line: on EURUSD M1
+// three presses landed on card 0's colour strip (x 697/720/725, y 285 - inside
+// the strip's own 275..297 band) and each was refused by the grab with `(C)`,
+// i.e. "a card control owns this pixel" (`PnlNameControlAt`, P-UI-76) - and
+// nothing ever acted, and no colour changed.
+//
+// That is the P-UI-74 defect one widget further in: `PnlNameControlAt` CLAIMED
+// the preview block and the eight quick swatches - which is what keeps the grab
+// from dragging the card out from under them - but the strip existed ONLY on
+// the NAME router (`PnlHandleClick`), and this is the one widget family whose
+// pixels are its own glass skins (`pnl_glass46`/`pnl_glass22`), the objects MT4
+// hands no `OBJECT_CLICK` for. A claim without an action is a control that eats
+// its own press.
+//
+// So the strip is a REAL affordance of the coordinate chain now, applied
+// through ONE owner (`PnlQuickSwatchApply`) that the name router also calls -
+// the swatches cannot apply twice or drift apart, and the preview block opens
+// the picker from either channel.
+// ══════════════════════════════════════════════════════════════════════════
+int PnlQuickSwatchApply(const int item,const int row,const int qi)
+{
+   if(g_PnlOpen != item) return REFRESH_NONE;
+   if(qi < 0 || qi >= PNL_QSW_N) return REFRESH_NONE;
+   int k = PnlColorKind(item,row);
+   if(k < 0) return REFRESH_NONE;
+   color qc = QuickPalColor(qi);
+   int flags = PaletteApplyColor(k,qc);
+   PushPalRecent(qc);
+   PnlUpdateRow(item,row);
+   if(g_PalOpen && g_PalKind==k) PalUpdateLive();
+   return flags;
+}
+
+//--- where IS the strip? Read back from the cells the row PAINTED (P-UI-79's
+//--- doctrine), never recomputed from the layout maths. `qi == -1` = the
+//--- preview block, whose press opens the full picker.
+bool PnlQuickSwatchHit(const int mx,const int my,int &item,int &row,int &qi)
+{
+   item = g_PnlOpen;
+   row = -1; qi = -2;
+   if(item < 0 || item == 13) return false;
+   int rows = PnlRowsCount(item);
+   for(int r=0;r<rows;r++)
+   {
+      int kind=0,minV=0,maxV=0; double step=1; string label="",unit="",opts="";
+      PnlRowDef(item,r,kind,label,minV,maxV,step,unit,opts);
+      if(kind != PNL_K_COL) continue;
+      if(PnlCtrlRectHit(PnlName(item,r,"CB"),mx,my,0)) { row=r; qi=-1; return true; }
+      for(int q=0;q<PNL_QSW_N;q++)
+         if(PnlCtrlRectHit(PnlName(item,r,"Q"+IntegerToString(q)),mx,my,0))
+         { row=r; qi=q; return true; }
+   }
+   return false;
+}
+
 bool PnlNameControlAt(const int mx,const int my)
 {
    if(g_PnlOpen < 0 || g_PnlOpen == 13) return false;   // the strip re-anchors
@@ -6981,31 +7314,46 @@ bool PnlNameControlAt(const int mx,const int my)
    return false;
 }
 
-//--- would a CONTROL of the open card have claimed this press? The grab is the
-//--- LAST affordance of the press chain, so this predicate names the coordinate
-//--- controls in exactly the same set and order (the [drag] gate checks that
+//--- WHICH control of the open card owns this pixel? The grab is the LAST
+//--- affordance of the press chain, so this predicate names the coordinate
+//--- controls in exactly the same set and order (the [press] gate checks that
 //--- positionally): a POLLED grab must never steal a press aimed at a control.
-//--- P-UI-76 appends the RELEASE-channel controls as one owner (PnlNameControlAt):
-//--- they are not claimed by the press chain, but a grab that takes their press
-//--- still eats their click, so they must be refused here as well.
 //--- Every call here is a pure hit test — `PnlDdHit` is deliberately NOT used
 //--- (it closes the popover and APPLIES the option it lands on) because an open
 //--- dropdown owns the next press anywhere, which is what `g_PnlDdItem` says.
-bool PnlPointOnControl(const int mx,const int my)
+//---
+//--- It answers with a CODE, not a bool (P-UI-88): the refusal line prints the
+//--- claimant, so the next «پنل درگ نمیشه» names its own blocker instead of
+//--- being re-derived from a screenshot and a coordinate guess. The codes are
+//--- the widgets' own names: close (X/Done) · dd (an open popover) · anch (a
+//--- select button) · knob/track (a slider) · sw (a switch) · cset (a colour
+//--- cell) · dual (a member/ALL cell) · add (the "+") · strip (the colour
+//--- strip) · band (a section header) · key (the header's .key cap) · rel (a
+//--- RELEASE-channel control, see below).
+string PnlPressClaimCode(const int mx,const int my)
 {
    int it=0,r=0,c=0;
-   if(PnlClosePressHit(mx,my)) return true;
-   if(g_PnlDdItem >= 0) return true;   // an open popover owns the next press
-   if(PnlDdAnchorHit(mx,my,it,r)) return true;
-   if(PnlKnobHit(mx,my,it,r)) return true;
-   if(PnlTrackHit(mx,my,it,r)) return true;
-   if(PnlSwitchHit(mx,my,it,r)) return true;
-   if(PnlCsetHit(mx,my,it,r,c)) return true;
-   if(PnlDualHit(mx,my,it,r,c)) return true;
-   if(PnlColorAddHit(mx,my,it,r)) return true;
-   if(PnlBandHit(mx,my,it,r)) return true;
-   if(PnlNameControlAt(mx,my)) return true;   // P-UI-76: the release channel's own
-   return false;
+   if(PnlClosePressHit(mx,my)) return "close";
+   if(g_PnlDdItem >= 0) return "dd";   // an open popover owns the next press
+   if(PnlDdAnchorHit(mx,my,it,r)) return "anch";
+   if(PnlKnobHit(mx,my,it,r)) return "knob";
+   if(PnlTrackHit(mx,my,it,r)) return "track";
+   if(PnlSwitchHit(mx,my,it,r)) return "sw";
+   if(PnlCsetHit(mx,my,it,r,c)) return "cset";
+   if(PnlDualHit(mx,my,it,r,c)) return "dual";
+   if(PnlColorAddHit(mx,my,it,r)) return "add";
+   if(PnlQuickSwatchHit(mx,my,it,r,c)) return "strip";   // P-UI-87: preview + quick strip
+   if(PnlBandHit(mx,my,it,r)) return "band";
+   if(PnlKeycapHit(mx,my,it)) return "key";    // R-KEYCAP: the header's .key cap
+   if(PnlNameControlAt(mx,my)) return "rel";   // P-UI-76/P-UI-88: the release channel's own
+   return "";
+}
+
+//--- the same question as a predicate, for the callers that only need the yes/no
+//--- (the ONE list is above; this can never drift from it).
+bool PnlPointOnControl(const int mx,const int my)
+{
+   return (PnlPressClaimCode(mx,my) != "");
 }
 
 //--- P-UI-78: WHY the grab refused, in one place — and the ledger prints it
@@ -7040,6 +7388,50 @@ bool PnlSkinHit(const int item,const int mx,const int my)
    return false;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// PANELDRAG-OFF (2026-09-14) — THE CARD-MOVE GESTURE IS RETIRED.
+//
+// User decision, after eight reports and a full day of measured evidence:
+// «به نظرم درگ پنل تنظیمات حذف کنیم بهتر هستش الکی هزینه اضافی رو اندیکاتور فشار
+// نیاد». The measurement that settled it — pulled from the LIVE terminal, not
+// from a theory:
+//   * 197 drags armed by the event channel in one day, ZERO by the poll, so the
+//     poll's per-tick KEYSTATE probe (the feature's only always-on cost) bought
+//     nothing on this terminal;
+//   * the press path paid a 12-family hit-test sweep (`PnlPressClaimCode`) and
+//     then the tap family re-ran those same families — the panel's mouse-move
+//     handler measured 78-79 ms twice in one day, which is the «فشار الکی» the
+//     user names;
+//   * `PnlMoveBy`'s batch was already paid only while a press was held, but a
+//     gesture that the user no longer wants must not keep its guards alive.
+//
+// WHAT IS RETIRED (all of it commented IN PLACE, at its own site, with this
+// marker): the arm site in the press chain, the move branch of
+// `PnlHandleMouseMove`, and the `PnlDragPoll()` call in `RefreshKitOnBar`.
+//
+// WHAT IS LEFT COMPILING AND DORMANT on purpose (the TH3TOOL-OFF/VIEWLOCK-OFF
+// pattern — a restore must be an uncomment, never a rewrite): `PnlTryGrabMove`,
+// `PnlDragThreshPx`, `PnlDragStep`, `PnlDragFinish`, `PnlDragPoll`, `PnlMoveBy`,
+// `PnlMoveOne`, `PnlMoveListBuild/Sync/Fresh`, `PnlCommitMove`, `PnlHeaderHit`,
+// `PnlCardBodyHit`, `PnlSkinHit`, `PnlPressClaimCode`, `PnlPointOnControl`,
+// `PnlGrabRefused`, `PnlDragThreshPx`'s two bounds and the `PNL_MOVE_*` window.
+//
+// WHAT STAYS ACTIVE, because it belongs to someone else:
+//   * `PnlMoveBy` / `PnlMoveList*` — still the RELAYOUT PRIMITIVE: the two
+//     re-clamp paths (`PnlClampOpenPanel` on a shrunken chart, and
+//     `PnlComputePosition` on reopen) move the card through them;
+//   * `PnlReapStaleGestures` and `PnlPointerQuiet` / `s_PnlDownAt` — they heal
+//     and protect the SLIDER and the palette MIXER, two live gestures;
+//   * `PnlPressAllowed` — the coordinate controls' one guard;
+//   * every position already parked (`g_PnlManualPos` + `PNLPV<n>` GVs) is still
+//     read on open and still purged by the Q reset; only NEW parking is gone.
+//
+// A future session that wants the feature back: grep `PANELDRAG-OFF`, uncomment
+// the three sites, delete the `false &&` in `PnlHandleMouseMove`, and re-teach
+// the gates (`panel-wiring-audit` `[drag]`/`[press]`, `gesture-budget-audit`,
+// `probe-budget-audit` `[drag-anchor]`, `write-budget-audit` `[staging]`) — they
+// now assert the RETIREMENT, so a half-restore fails instead of shipping.
+// ══════════════════════════════════════════════════════════════════════════
 //--- THE GRAB — one owner, two entries (the press chain and the poll).
 //--- Returns true when this call took the pointer for a card move.
 //--- `byPoll` records WHO armed it (P-UI-77): the release belongs to the
@@ -7056,7 +7448,41 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    if(g_PnlMoveItem >= 0) { PnlGrabRefused("M",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
    if(g_PnlOpen < 0 || g_PnlOpen == 13) { PnlGrabRefused("X",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
    if(PnlPalettePointInside(mx,my)) { PnlGrabRefused("P",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
-   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   // P-UI-88: A CLAIM MAY REFUSE A PRESS ONLY IF THE PRESS **IS** ITS ACTION.
+   // The claim answers with a CODE now, so the ledger prints the claimant
+   // (`C:strip`, `C:band`, …) instead of an anonymous "C" the user pays for
+   // with another screenshot round-trip.
+   const string claim = PnlPressClaimCode(mx,my);
+   // P-UI-89: THE CARD IS A HANDLE FROM EVERY PIXEL. Only the widgets whose press
+   // IS their own pointer gesture may keep a press: the X/Done pair (a press there
+   // is a deliberate close), an open popover (`dd` — a modal overlay whose option
+   // press owns the pixel) and its anchor, and the SLIDER (`knob`/`track`, whose
+   // press seeds the value and whose MOVES are the slide). Every other claim — a
+   // switch, a colour cell, the colour strip, a section band, the header's .key cap
+   // — ARMS this move AND still acts: a TAP ends `moved=0` (nothing moves, no click
+   // is eaten, the control's action stands unchanged), a DRAG past the proof moves
+   // the card (P-UI-80's dead zone judges, P-UI-65 eats that release's click).
+   // P-UI-76's hard refusal was written before the dead zone existed; it left those
+   // widget faces as the part of the card that could not be dragged at all, which
+   // is the standing demand («پنل تنظیمات درگ نمیشه ... مثل منوی اصلی»).
+   const bool ownGesture = (claim == "close" || claim == "dd" ||
+                            claim == "anch"  || claim == "knob" ||
+                            claim == "track");
+   if(ownGesture)
+   {
+      PnlGrabRefused("C:"+claim,byPoll,mx,my,rpx,rpy,rpw,rph);
+      return false;
+   }
+   // ...and EVERY remaining claim — including the RELEASE-channel `rel` family (a
+   // NAV pill, a segmented cell, the text field, the footer's Reset/palette button)
+   // — claims the press SOFTLY: the move arms and P-UI-80's dead zone is the judge.
+   // A TAP ends `moved=0`, so nothing is committed and no click is suppressed - the
+   // control's own action lands exactly as before. A DRAG past the proof moves the
+   // card and eats that click (P-UI-65). The point is the user's standing demand:
+   // the card must be draggable like the ring menu, from ANY pixel. What a control
+   // keeps is the press ITSELF; what the card takes is the MOVEMENT past
+   // `PnlDragThreshPx()` (P-UI-89: the proof is longer on a control's own pixel).
+   const bool softClaim = (claim != "");
    // The rect missed — ask the PAINT itself before giving up. When rect and
    // paint ever disagree, the skins are ground truth and the grab still
    // stands (ledgered as via=skin, so the divergence stays visible too).
@@ -7077,6 +7503,7 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    s_PnlMoveGrabY   = my;
    s_PnlMoveMoved   = false;
    s_PnlMoveByPoll  = byPoll;
+   s_PnlMoveOnCtrl  = softClaim;   // P-UI-89: the proof this gesture owes the card
    s_PnlMoveFrameMs = PNL_MOVE_FRAME_MIN_MS;   // a fresh gesture starts smooth
    s_PnlMoveTick    = 0;                       // its first batch applies at once
    s_PnlMoveFrames  = 0;                       // P-UI-83: its evidence starts empty
@@ -7086,8 +7513,17 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    // P-UI-78: one line per gesture (never per move) — the next "can't drag"
    // names its own arming channel instead of being re-investigated.
    // P-UI-79: via=skin names a grab the remembered rect missed.
-   _LOG_GATE_W Print("[UI] panel drag armed by " + (byPoll ? "poll" : "event") + " item=", g_PnlOpen, " via=", (viaSkin ? "skin" : "rect"), " at ", mx, ",", my);
+   _LOG_GATE_W Print("[UI] panel drag armed by " + (byPoll ? "poll" : "event") + " item=", g_PnlOpen, " via=", (viaSkin ? "skin" : "rect"), (softClaim ? " soft=" : ""), (softClaim ? claim : ""), " at ", mx, ",", my);
    return true;
+}
+
+//--- P-UI-89: how far the pointer must travel before THIS gesture is a DRAG.
+//--- A press that landed on a control's own pixel owes the longer proof
+//--- (`PNL_DRAG_CTRL_PX`), a press on the card's own body the menu's 3 px. ONE
+//--- owner: the batch path asks it twice and can never resolve its own bound.
+int PnlDragThreshPx()
+{
+   return (s_PnlMoveOnCtrl ? PNL_DRAG_CTRL_PX : PNL_DRAG_THRESHOLD_PX);
 }
 
 //--- ONE batch of the move: apply what the cursor travelled since the last one,
@@ -7108,8 +7544,8 @@ void PnlDragStep(const int mx,const int my)
    // with no jump. `s_PnlMoveMoved` is the dragged latch from here on, exactly
    // like the menu's `g_OrbWasDragged`.
    if(!s_PnlMoveMoved &&
-      MathAbs(mx - s_PnlMoveGrabX) <= PNL_DRAG_THRESHOLD_PX &&
-      MathAbs(my - s_PnlMoveGrabY) <= PNL_DRAG_THRESHOLD_PX)
+      MathAbs(mx - s_PnlMoveGrabX) <= PnlDragThreshPx() &&
+      MathAbs(my - s_PnlMoveGrabY) <= PnlDragThreshPx())
    {
       g_PnlMoveLastX = mx;
       g_PnlMoveLastY = my;
@@ -7158,6 +7594,7 @@ void PnlDragFinish(const bool commit,const bool suppressClick)
    g_PnlMoveItem = -1;
    s_PnlMoveMoved = false;
    s_PnlMoveByPoll = false;   // P-UI-77: the channel flag dies with the gesture
+   s_PnlMoveOnCtrl = false;   // P-UI-89: and so does the control-press proof
    s_PnlPollUpArmed = false;  // P-UI-78: the rumour filter dies with it too
    DragReleaseIf(DRAG_PANEL_MOVE);
    if(suppressClick) UISuppressNextClick();
@@ -7301,8 +7738,18 @@ bool PnlGestureConsumed()
 //--- (P-UI-65) is armed on the PRESS channel only — on the click channel the
 //--- release IS the event being handled, and a claim armed there would eat the
 //--- NEXT genuine click (the P-UI-01 symptom).
-void UIPressAct()
+//--- P-UI-88: THE LEDGER'S ACT HALF. The grab's refusal line answered "which
+//--- control owns the press that did nothing"; this answers "which control
+//--- SPENT it". Together the two make the empty log impossible for any press
+//--- inside the card — which is the property the last four "can't drag / can't
+//--- click" reports were missing: "nothing happened" and "nothing was pressed"
+//--- are different facts and only a line can tell them apart. ONE line per
+//--- press that a control owned (the twin delivery is latched before it acts),
+//--- and the code comes from the SAME names `PnlPressClaimCode` answers with.
+void UIPressAct(const string code="")
 {
+   if(code != "")
+      _LOG_GATE_W Print("[UI] panel press acted (", code, ") item=", g_PnlOpen);
    s_PnlActedSeq = g_UIPressSeq;
    if(!s_PnlClickChannel) UISuppressNextClick();
 }
@@ -7361,7 +7808,16 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
    }
 
    // ── Drag-to-move: header grabbed → the whole panel follows the cursor ──
-   if(g_PnlMoveItem >= 0)
+   // PANELDRAG-OFF (2026-09-14): the move half of the gesture is RETIRED with
+   // its arm site (see the PANELDRAG-OFF block in the press chain). The two
+   // OTHER panel latches this branch's siblings heal — the slider
+   // (`g_PnlDragItem`) and the palette mixer (`g_PalMixDrag`) — are untouched
+   // and still end through their own paths. `g_PnlMoveItem` is left at -1 by
+   // every path, so the condition below is dead by construction, while the
+   // engine it reached (PnlDragStep / PnlDragFinish / PnlDragPoll / PnlMoveBy /
+   // PnlCommitMove / the PNL_MOVE_* window) stays COMPILING and dormant: a
+   // restore is this `false &&` deleted plus the arm site uncommented.
+   if(false && g_PnlMoveItem >= 0)
    {
       // Panel closed mid-drag (Esc / Done) → abort the move cleanly
       if(g_PnlOpen < 0 || g_PnlOpen != g_PnlMoveItem)
@@ -7413,7 +7869,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlClosePressHit(mx,my))
       {
          PnlCloseAll();
-         UIPressAct();    // P-UI-74: latch the gesture + claim its release
+         UIPressAct("close");   // P-UI-74: latch the gesture + claim its release
          ChartRedraw();
          return;
       }
@@ -7433,7 +7889,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          int df=PnlDdHit(mx,my);
          if(df!=-1)
          {
-            UIPressAct();    // P-UI-74
+            UIPressAct("dd");   // P-UI-74
             if(df!=REFRESH_NONE) RefreshDisplay(df); else ChartRedraw();
             return;
          }
@@ -7443,7 +7899,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlDdAnchorHit(mx,my,it,r))
       {
          PnlDdOpen(it,r);
-         UIPressAct();    // P-UI-74
+         UIPressAct("anch");   // P-UI-74
          return;
       }
       // P-UI-76: ONE slider gesture — the knob and the track are different shapes
@@ -7464,16 +7920,49 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          PnlValueFromX(it,r,mx,v);
          int flags0=PnlApply(it,r,v);
          PnlSetVisualValue(it,r,v);
-         UIPressAct();   // P-UI-74: the jump IS the gesture's action
+         UIPressAct("slider");   // P-UI-74: the jump IS the gesture's action
          if(flags0!=REFRESH_NONE) RefreshDisplay(flags0);
          return;
       }
+      // ══════════════════════════════════════════════════════════════════
+      // P-UI-89 (2026-09-14) — THE CARD IS A HANDLE FROM EVERY PIXEL.
+      //
+      // «هنوز درگ نمیشه پنل تنظیمات هر ایتم» — the seventh report in the same
+      // family, and this time the LIVE LEDGER said which pixels: of every drag
+      // the user got all day, the arms that ended `moved=1` are all in the 56 px
+      // HEADER; every arm inside the rows either died as a tap or was refused as
+      // `(C)` on a control's own pixel. P-UI-70a made the body a handle, P-UI-88
+      // softened the RELEASE-channel family — but a switch, a colour cell, the
+      // colour strip, a band and the header cap still HARD-refused the press, so
+      // a press on them could only do their own job. That is the whole remaining
+      // gap between the card and the yardstick the user names («مثل منوی اصلی»).
+      //
+      // The menu's contract, applied to a card full of controls: THE PRESS ARMS
+      // THE GESTURE, THE FIRST MOVEMENT PAST THE PROOF DECIDES WHO OWNS IT. A
+      // tap stays the control's — its action fires on the press exactly as
+      // before and a sub-threshold press moves nothing, pins nothing and eats
+      // nothing (P-UI-80) — while a press that travels moves the CARD. ONE arm
+      // site (never two): the widgets whose press IS their own pointer gesture
+      // (the X/Done pair above, an open popover, its anchor, the slider) are
+      // consulted BEFORE it, and the tap family below is consulted AFTER it and
+      // still acts — which is what makes its pixels draggable without making it
+      // unreachable (P-UI-70's position rule, now split by WHO OWNS THE MOVE).
+      // P-UI-74: never on the click channel — a released button must not start a
+      // move gesture.
+      // PANELDRAG-OFF (2026-09-14): THE CARD-MOVE GESTURE IS RETIRED. User
+      // decision — «به نظرم درگ پنل تنظیمات حذف کنیم بهتر هستش، الکی هزینه اضافی
+      // رو اندیکاتور فشار نیاد». This arm site was the ONE entry that made every
+      // press of a card a move candidate, and `PnlPressClaimCode` above it (12
+      // hit-test families, then the tap family below ran them a SECOND time) was
+      // the single most expensive thing a press could do (measured: `[W][PERF]
+      // mouse move breakdown: panel=78ms`). Restore = uncomment this one line.
+      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);
       if(PnlSwitchHit(mx,my,it,r))
       {
          double v=(PnlCurrent(it,r)>0.5)?0.0:1.0;
          int flags=PnlApply(it,r,v);
          PnlUpdateRow(it,r);
-         UIPressAct();    // P-UI-74: one flip, and the release stays spent
+         UIPressAct("sw");   // P-UI-74: one flip, and the release stays spent
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
@@ -7483,7 +7972,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       {
          int ck=PnlColorKindSet(csi,css);
          if(ck>=0) PalOpenKind(csi,ck);
-         UIPressAct();    // P-UI-74
+         UIPressAct("cset");   // P-UI-74
          return;
       }
       // dual cell → flip that member (ALL cell flips the whole group)
@@ -7529,7 +8018,7 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
                if(PnlRowKind(dui,gr) == PNL_K_DUAL) PnlUpdateRow(dui,gr);
          }
          else PnlUpdateRow(dui,dur);
-         UIPressAct();    // P-UI-74
+         UIPressAct("dual");   // P-UI-74
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
@@ -7538,7 +8027,22 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       if(PnlColorAddHit(mx,my,qai,qar))
       {
          PalOpen(qai,qar);
-         UIPressAct();    // P-UI-74
+         UIPressAct("add");   // P-UI-74
+         return;
+      }
+      // P-UI-87: the colour strip itself — the preview block and the eight
+      // quick swatches. These are exactly the pixels the grab already refused
+      // as `(C)` (PnlNameControlAt) while NOTHING owned the action, because
+      // their cells are covered by the strip's own glass skins, for which MT4
+      // fires no OBJECT_CLICK at all.
+      int qsi,qsr,qsq;
+      if(PnlQuickSwatchHit(mx,my,qsi,qsr,qsq))
+      {
+         int qf = REFRESH_NONE;
+         if(qsq < 0) PalOpen(qsi,qsr);                    // the preview → the picker
+         else        qf = PnlQuickSwatchApply(qsi,qsr,qsq);
+         UIPressAct("strip");   // P-UI-74: one gesture, one owner (both channels)
+         if(qf != REFRESH_NONE) RefreshDisplay(qf);
          return;
       }
       // section band → collapse/expand (preview .acc intent); the card
@@ -7551,17 +8055,29 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          {
             PnlToggleBand(bi,bb);
             PnlRebuildKeepSpot(bi);
-            UIPressAct();    // P-UI-74
+            UIPressAct("band");   // P-UI-74
          }
          return;
       }
-      // grab the header — OR any unclaimed spot of the card (P-UI-70a: a press
-      // in the body used to fall through and read as "can't drag the panel") —
-      // and the whole panel follows the cursor anywhere on the chart.
-      // P-UI-74: NEVER on the click channel — that is a released button, not a
-      // grab, and claiming a move gesture for it made the card follow the next
-      // cursor move (and armed a claim nobody was owed).
-      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;
+      // R-KEYCAP: the header's .key cap is the card's OWN master switch — the
+      // same value its hotkey and the ring item write, applied through the row's
+      // own owner. It MUST sit before the grab below (P-UI-70's position rule):
+      // the cap lives inside the drag handle, so a press it does not claim drags
+      // the card out from under the cursor instead of flipping anything.
+      int kci = 0;
+      if(PnlKeycapHit(mx,my,kci))
+      {
+         int kf = PnlKeycapAct(kci);
+         UIPressAct("key");   // P-UI-74: one gesture, one owner (both channels)
+         if(kf != REFRESH_NONE) RefreshDisplay(kf);
+         return;
+      }
+      // The press landed on NO control of this card: the arm above is its whole
+      // answer (the header, the card body and the pixels BETWEEN the controls all
+      // grab there, P-UI-70a/P-UI-89), and the whole panel then follows the
+      // cursor anywhere on the chart. There is deliberately NO second grab call
+      // here: one arm site per press is what keeps the ledger at one line per
+      // gesture and the claim at one owner.
       return;
    }
 
@@ -7974,14 +8490,10 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       if(rkind!=4) return REFRESH_NONE;
       int qi=(int)StringToInteger(StringSubstr(kind,1));
       if(qi<0 || qi>=PNL_QSW_N) return REFRESH_NONE;
-      int k=PnlColorKind(item,row);
-      if(k<0) return REFRESH_NONE;
-      color qc=QuickPalColor(qi);
-      int flags=PaletteApplyColor(k,qc);
-      PushPalRecent(qc);
-      PnlUpdateRow(item,row);
-      if(g_PalOpen && g_PalKind==k) PalUpdateLive();
-      return flags;
+      // P-UI-87: ONE owner — the coordinate chain's own quick-swatch branch
+      // calls this very function, so the two channels cannot apply twice
+      // (`UIPressAct` latches the gesture) nor apply different colours.
+      return PnlQuickSwatchApply(item,row,qi);
    }
 
    // ── NAV row → open the target card (STRUCTURE sub-card / BACK) ──
@@ -8481,6 +8993,9 @@ void PnlSyncOpenCard()
    if(g_PnlOpen == 13) { BkMiniRefresh(); return; }   // item 13 is one toolbar, not rows
    int rows = PnlRowsCount(g_PnlOpen);
    for(int r = 0; r < rows; r++) PnlUpdateRow(g_PnlOpen, r);
+   // R-KEYCAP: the header .key cap shows (and now flips) the card's master, so
+   // it follows a hotkey / ring toggle exactly like the row that owns the value.
+   PnlKeycapSync(g_PnlOpen);
 }
 
 // The drain. Called from the event tail (so a hotkey is reflected in the SAME
@@ -8530,6 +9045,9 @@ void SaveBiotakKit()
 //|         when it can prove the card moved (a recovery path stays conservative
 //|         — the `UILeftButtonUp` rule one gesture up).
 //|     Cost when no drag is live: four reads.
+//--- PANELDRAG-OFF: DORMANT. `PnlDragPoll` is no longer called (see its call
+//--- site in `RefreshKitOnBar`) and `g_PnlMoveItem` can no longer be set, so
+//--- this whole shadow is unreachable — kept compiled for the restore path.
 void PnlDragPoll()
 {
    if(g_PnlMoveItem >= 0)
@@ -8576,7 +9094,13 @@ void RefreshKitOnBar()
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
-   PnlDragPoll();  // P-UI-75a: the same net for the card drag (one press contract)
+   // PANELDRAG-OFF (2026-09-14): the card drag's polled shadow is retired with
+   // the gesture. It had armed ZERO of today's 197 drags (the terminal's
+   // KEYSTATE probe never reads "down", P-UI-83) while its per-tick probe was
+   // the feature's ONLY always-on cost — paying for it with no gesture left to
+   // serve is exactly the «هزینه اضافی» the user removed. The function stays
+   // below, dormant; restore = uncomment this call.
+   // PnlDragPoll();  // P-UI-75a: the same net for the card drag (one press contract)
    PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
    UISyncDrain();          // P-UI-40: hotkey-raised requests settle here too
    BkMiniStripHeal();      // strip closes itself when its box vanished (R-BKSTRIP)

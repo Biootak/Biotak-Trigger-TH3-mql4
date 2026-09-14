@@ -891,6 +891,12 @@ void ThrottledChartRedraw(bool forceRedraw = false) {
 //| owner is reachable once per batch and ONLY while a live grab owns |
 //| the pointer - never from the tick path, never per mouse event.    |
 //| Cost when idle: zero (no caller runs).                           |
+//|                                                                  |
+//| PANELDRAG-OFF (2026-09-14): the card-move gesture was REMOVED    |
+//| (user decision — see BiotakPanels.mqh), so this owner is now     |
+//| UNCALLED. Kept compiled on purpose: it is one half of the        |
+//| restore path, and deleting it would be the only part of the      |
+//| feature that cannot come back by uncommenting.                   |
 //+------------------------------------------------------------------+
 void DragFrameRedraw() {
     ChartRedraw();

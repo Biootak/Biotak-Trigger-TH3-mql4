@@ -4247,9 +4247,14 @@ def selftest():
     seed("a row displays a state its writers never ask about", PANELS,
          "      case 8: if(row==0) return g_customPriceLevelWidth;\n",
          "      case 8: if(row==0) return g_customTHStartPrice;\n")
+    # The anchor is the DRAIN's call, context included: R-KEYCAP added a SECOND
+    # `PnlSyncOpenCard();` call site (the cap's own repaint), and a bare
+    # `   PnlSyncOpenCard();` matched THAT one first - the seed then patched a
+    # call no term of `check_ui_sync` asserts and "caught" nothing (the P-UI-81
+    # lesson: a gate must read the SITE, never the first thing that looks like it).
     seed("drain stops repairing the card", PANELS,
-         "   PnlSyncOpenCard();\n",
-         "")
+         "   UpdateCircularBadges();\n   PnlSyncOpenCard();\n",
+         "   UpdateCircularBadges();\n")
     seed("drain repaints before consuming", PANELS,
          "   UISyncConsume();\n",
          "")

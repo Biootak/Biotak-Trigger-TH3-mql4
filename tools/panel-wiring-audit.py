@@ -305,14 +305,28 @@ def check_press(text):
     # drags the whole card away under the user's finger. The order rule is now
     # anchored on the SHARED predicate the grab asks (`PnlPointOnControl`), which
     # must name the same controls, in the same order, as the press chain.
+    # R-KEYCAP (2026-09-14): the header's .key cap joined the list - it sits
+    # INSIDE the drag handle, so a cap the chain does not claim before the grab
+    # is a cap that moves the card instead of flipping the switch it advertises.
     CONTROLS = ("PnlClosePressHit(", "PnlDdAnchorHit(", "PnlKnobHit(",
                 "PnlTrackHit(", "PnlSwitchHit(", "PnlCsetHit(",
-                "PnlDualHit(", "PnlColorAddHit(", "PnlBandHit(")
-    pc = body(text, "bool PnlPointOnControl(")
+                "PnlDualHit(", "PnlColorAddHit(", "PnlQuickSwatchHit(",
+                "PnlBandHit(", "PnlKeycapHit(")
+    pc = body(text, "string PnlPressClaimCode(")
     if pc is None:
-        problems.append("PnlPointOnControl() is gone - a POLLED grab would steal a "
-                        "press aimed at a control (P-UI-75a)")
+        problems.append("PnlPressClaimCode() is gone - a POLLED grab would steal a "
+                        "press aimed at a control (P-UI-75a) and a refusal can no "
+                        "longer name the claimant (P-UI-88)")
     else:
+        wrapper = body(text, "bool PnlPointOnControl(")
+        if wrapper is None or "PnlPressClaimCode(" not in wrapper:
+            problems.append("PnlPointOnControl() no longer delegates to the ONE "
+                            "claim owner - two lists of controls, free to drift "
+                            "(P-UI-88)")
+        if "PnlPressClaimCode(" not in (grab or ""):
+            problems.append("the grab does not ask the claim owner - the press "
+                            "chain and the polled shadow cannot share one list "
+                            "(P-UI-88)")
         seen = []
         for control in CONTROLS:
             c = pc.find(control)
@@ -337,9 +351,56 @@ def check_press(text):
         # is every human click. The grab must refuse their pixels as well, through
         # ONE owner whose geometry is READ BACK from the control's own object.
         if "PnlNameControlAt(" not in pc:
-            problems.append("the grab does not refuse the RELEASE-channel controls, "
-                            "so a tap on them starts a card drag and their own click "
-                            "is spent (P-UI-76)")
+            problems.append("the claim owner lost the RELEASE-channel family "
+                            "(PnlNameControlAt), so those widgets are no longer "
+                            "named at all (P-UI-76/P-UI-88)")
+        # P-UI-88 (2026-09-14): A CLAIM MAY REFUSE A PRESS ONLY IF THE PRESS **IS**
+        # ITS ACTION - AND EVERY PRESS LEAVES A LINE.
+        #   * the claim owner answers with the claimant's own NAME (a code), so a
+        #     refusal reads `C:strip` instead of an anonymous `C` (the report that
+        #     needed a screenshot, a coordinate guess and a log archaeology pass);
+        #   * `rel` is the ONE claim the grab does NOT refuse: those widgets act on
+        #     the RELEASED click, and P-UI-80's dead zone - written AFTER P-UI-76 -
+        #     already keeps a tap from moving the card, so the hard refusal only
+        #     left the pill / field / button faces as the last un-draggable pixels
+        #     of the card («پنل هم درگ نمیشه کردش»);
+        #   * every affordance of the press chain names its code AT THE ACT SITE,
+        #     the twin of the refusal line, so "nothing happened" and "nothing was
+        #     pressed" are distinguishable from the log alone.
+        CLAIM_CODES = ("close", "dd", "anch", "knob", "track", "sw",
+                       "cset", "dual", "add", "strip", "band", "key", "rel")
+        ACT_CODES = ("close", "dd", "anch", "slider", "sw", "cset", "dual",
+                     "add", "strip", "band", "key")
+        for code in CLAIM_CODES:
+            if 'return "%s";' % code not in pc:
+                problems.append("the claim owner lost the code `%s` - a press on "
+                                "that widget is refused (or stolen) anonymously "
+                                "again (P-UI-88)" % code)
+        if 'if(ownGesture)' not in (grab or ""):
+            problems.append("the grab's refusal is not driven by the ONE "
+                            "own-gesture set - the refusal rule and the set it "
+                            "names are free to drift (P-UI-89)")
+        for code in ("close", "dd", "anch", "knob", "track"):
+            if 'claim == "%s"' % code not in (grab or ""):
+                problems.append("the own-gesture set lost `%s` - a widget whose "
+                                "press IS its own pointer gesture now has its "
+                                "gesture stolen (P-UI-89)" % code)
+        if 'claim != "" && claim != "rel"' in (grab or ""):
+            problems.append("the grab refuses the TAP family outright again - the "
+                            "faces of the switch / colour cell / colour strip / "
+                            "band / cap are the part of the card that cannot be "
+                            "dragged, and the dead zone already protects their "
+                            "click (P-UI-88/P-UI-89)")
+        if "softClaim" not in (grab or ""):
+            problems.append("the grab does not record that its press was soft-"
+                            "claimed - a soft grab and a body grab look identical "
+                            "in the ledger (P-UI-88)")
+        for code in ACT_CODES:
+            if 'UIPressAct("%s")' % code not in blk:
+                problems.append("the press chain acts for `%s` without naming it - "
+                                "the act half of the ledger is silent for that "
+                                "control, i.e. a press that DID something leaves no "
+                                "line either (P-UI-88)" % code)
         nc = body(text, "bool PnlNameControlAt(")
         if nc is None:
             problems.append("PnlNameControlAt() is gone - the grab can no longer ask "
@@ -390,9 +451,64 @@ def check_press(text):
         c = blk.find(control)
         if c < 0:
             problems.append("the press chain lost %s" % control.rstrip("("))
-        elif g >= 0 and c > g:
-            problems.append("%s is consulted AFTER the grab, so the grab steals "
-                            "the control's own press" % control.rstrip("("))
+    # P-UI-89 (2026-09-14): A CARD FULL OF CONTROLS CAN STILL BE DRAGGED FROM
+    # EVERY PIXEL — the one rule this group has carried since P-UI-70 ("every
+    # affordance BEFORE the grab, or the grab steals its press") is now SPLIT BY
+    # WHO OWNS THE MOVE, because the grab no longer steals anything: it only ARMS.
+    #   * the widgets whose press IS their own pointer gesture (the X/Done pair, an
+    #     open popover, its anchor, the slider's knob/track) MUST be consulted
+    #     before the arm — an arm taken first would hold the pointer they need;
+    #   * the TAP family (switch, colour cell, colour strip, dual/ALL cell, `+`
+    #     chip, section band, the header's .key cap) MUST be consulted after the
+    #     arm and must still ACT — that is what makes their pixels draggable
+    #     without making them unreachable.
+    # Before this rule the faces of that second family were the part of the card
+    # that could not be dragged at all (the ledger: every `moved=1` arm of the day
+    # sat in the 56 px header), which is the report this rule answers.
+    OWN_GESTURE = ("PnlClosePressHit(", "PnlDdAnchorHit(", "PnlKnobHit(",
+                   "PnlTrackHit(")
+    TAP_FAMILY = ("PnlSwitchHit(", "PnlCsetHit(", "PnlDualHit(",
+                  "PnlColorAddHit(", "PnlQuickSwatchHit(", "PnlBandHit(",
+                  "PnlKeycapHit(")
+    # ── PANELDRAG-OFF (2026-09-14): THE ARM IS RETIRED — AND THIS GROUP SAYS SO.
+    #    The assertion that lived here read a SUBSTRING that the comment now
+    #    CONTAINS (`...PnlTryGrabMove(mx,my,false);` is still spelled inside the
+    #    retired line), i.e. the gate would have stayed green with the feature
+    #    commented out — the exact "green that means nothing" this project has
+    #    paid for twice (P-UI-81, P-UI-83: a gate must read the SITE). Retirement
+    #    is therefore its own assertion, and it fails in BOTH directions:
+    #      * an ACTIVE arm line = the removed gesture is half-restored;
+    #      * a DELETED site = the restore path is gone (R-RETIRED says a retired
+    #        surface is commented in place, never removed);
+    #      * a second copy = the feature is growing back beside the marker.
+    #    The order rules below (own-gesture before the arm, tap family after it)
+    #    still run against the retired site's POSITION, so a restore inherits
+    #    them unchanged.
+    if blk.count("PnlTryGrabMove(mx,my,false)") != 1:
+        problems.append("the retired arm site is not exactly ONE line - a second "
+                        "copy of the card-move gesture is growing beside the "
+                        "marker (PANELDRAG-OFF)")
+    if "      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);" not in blk:
+        problems.append("the retired card-move arm site is GONE instead of "
+                        "commented - the restore path no longer exists, and "
+                        "R-RETIRED keeps a retired surface commented in place "
+                        "(PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*(?:if\(!s_PnlClickChannel\)\s*)?PnlTryGrabMove\(mx,my,false\);", blk):
+        problems.append("the press chain ARMS the card-move gesture again - the "
+                        "removed feature is half-restored (PANELDRAG-OFF)")
+    if g >= 0:
+        for control in OWN_GESTURE:
+            c = blk.find(control)
+            if c > g:
+                problems.append("%s is consulted AFTER the arm, so the arm takes "
+                                "the gesture that control needs (P-UI-89)"
+                                % control.rstrip("("))
+        for control in TAP_FAMILY:
+            c = blk.find(control)
+            if c < 0 or c < g:
+                problems.append("%s is not consulted after the arm - its face is "
+                                "either un-draggable (the arm was never reached) "
+                                "or stolen (P-UI-89)" % control.rstrip("("))
     own = body(text, "bool PnlPressAllowed(")
     if own is None:
         problems.append("PnlPressAllowed() is gone")
@@ -402,6 +518,10 @@ def check_press(text):
                             "button - it would steal a LIVE gesture")
         if "g_DragOwner = DRAG_NONE" not in own:
             problems.append("the stale-claim recovery never releases the claim")
+        if "foreign claim" not in own:
+            problems.append("a press refused by a foreign live claim is silent "
+                            "again - a stuck ring/box claim reads as \"the whole "
+                            "panel is dead\" with nothing in the log (P-UI-88)")
     return problems
 
 
@@ -473,6 +593,10 @@ def check_drag():
         problems.append("DragFrameRedraw must have exactly ONE caller (the batch "
                         "owner) - found %d calls" % panels.count("DragFrameRedraw("))
     owner = body(util, "void DragFrameRedraw(") or ""
+    if "PANELDRAG-OFF" not in util:
+        problems.append("DragFrameRedraw's owner lost its PANELDRAG-OFF note - it "
+                        "is now an unexplained uncalled function the next session "
+                        "will either delete or rewire blind")
     if "ChartRedraw()" not in owner:
         problems.append("DragFrameRedraw() no longer paints")
     if "g_lastChartRedrawTime" not in owner:
@@ -486,9 +610,19 @@ def check_drag():
                         "channel, where a press without a mouse-move edge is dead "
                         "(the P-BK-03 trap)")
     else:
-        if "PnlDragPoll();" not in polled:
-            problems.append("the poll is not wired into the tick/timer pump, so it "
-                            "never runs")
+        # PANELDRAG-OFF: the shadow is retired WITH the gesture — the pump must
+        # NOT call it (its per-tick KEYSTATE probe was the feature's only
+        # always-on cost and it armed ZERO of the day's 197 drags, so a restored
+        # call would buy nothing and pay every tick), while the function stays
+        # compiled for the restore path.
+        if re.search(r"(?m)^\s*//\s*PnlDragPoll\(\);", polled) is None:
+            problems.append("the retired poll call was DELETED instead of "
+                            "commented - the restore path is gone "
+                            "(PANELDRAG-OFF)")
+        if re.search(r"(?m)^\s*PnlDragPoll\(\);", polled):
+            problems.append("the card drag's poll is wired back into the tick/"
+                            "timer pump - the removed gesture is half-restored "
+                            "and pays a probe per tick (PANELDRAG-OFF)")
         if "PnlTryGrabMove(g_LastUIX, g_LastUIY,true)" not in poll:
             problems.append("the poll arms the grab with its own code instead of "
                             "the shared owner")
@@ -525,6 +659,7 @@ def check_drag():
                              tail.find("s_PnlClickActed"),
                              tail.find("UILeftButtonDown()"),
                              tail.find("PnlTryGrabMove("),
+                             tail.find("PnlPressClaimCode("),
                              tail.find("PnlPointOnControl("),
                              tail.find("PnlHeaderHit("),
                              tail.find("PnlCardBodyHit("),
@@ -541,9 +676,28 @@ def check_drag():
     if "PnlDragFinish(true, true)" in chain:
         problems.append("the press chain ends every drag unconditionally - a tap "
                         "drifts the card and eats its own release (P-UI-80)")
-    if "if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;" not in chain:
-        problems.append("the grab is not refused on the click channel - a released "
-                        "button would start a move gesture")
+    # P-UI-89: ONE arm site, and it is the click channel's excluding guard. Two
+    # calls would make the second refuse a press the first one already armed (a
+    # bogus `M` refusal per press in the ledger); none would leave the card
+    # un-draggable from every pixel except the header.
+    # PANELDRAG-OFF: the same retirement rule as `[press]`, on the SAME site read
+    # through the drag's own reader — plus the branch itself, which is what
+    # actually diverts a held press: a live `if(g_PnlMoveItem >= 0)` with the arm
+    # retired is dead code, but a live branch with the arm back is a gesture the
+    # user removed. Both halves must agree or the retirement is a coat of paint.
+    if chain.count("PnlTryGrabMove(mx,my,false)") != 1 or \
+            "      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);" not in chain:
+        problems.append("the chain's retired arm site is gone or duplicated - the "
+                        "card-move gesture is back, or unrestorable "
+                        "(PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*(?:if\(!s_PnlClickChannel\)\s*)?PnlTryGrabMove\(mx,my,false\);", chain):
+        problems.append("the chain arms the removed card-move gesture again "
+                        "(PANELDRAG-OFF)")
+    if "if(false && g_PnlMoveItem >= 0)" not in chain:
+        problems.append("the move branch is not RETIRED (it must read "
+                        "`if(false && g_PnlMoveItem >= 0)` while PANELDRAG-OFF "
+                        "holds) - a live branch can divert a press into the "
+                        "removed gesture (PANELDRAG-OFF)")
     # (c) P-UI-77: the channel that ARMED the drag owns its release. The event
     #     sparam bit is one witness of two (P-UI-73a): a drag the poll armed
     #     never showed its press on that bit, so ending it on a bare bit-clear
@@ -581,10 +735,16 @@ def check_drag():
         problems.append("PnlGrabRefused() is gone - refusals have no single "
                         "owner again (P-UI-78)")
     else:
-        for code in ("\"M\"", "\"X\"", "\"P\"", "\"C\"", "\"H\""):
-            if "PnlGrabRefused(%s,byPoll" % code not in grab:
+        # P-UI-88: the control refusal carries the CLAIMANT's code, so its needle
+        # is the opening of the expression rather than the bare `"C"`.
+        for code, needle in (("M", 'PnlGrabRefused("M",byPoll'),
+                             ("X", 'PnlGrabRefused("X",byPoll'),
+                             ("P", 'PnlGrabRefused("P",byPoll'),
+                             ("C:<claimant>", 'PnlGrabRefused("C:"+claim,byPoll'),
+                             ("H", 'PnlGrabRefused("H",byPoll')):
+            if needle not in grab:
                 problems.append("a grab refusal lost its ledger call (%s) - that "
-                                "refusal is silent again (P-UI-78)" % code)
+                                "refusal is silent again (P-UI-78/P-UI-88)" % code)
         if "if(!byPoll)" not in ref:
             problems.append("refusals print from the poll too - one line per "
                             "tick while held, i.e. a log flood (P-UI-78)")
@@ -620,9 +780,30 @@ def check_drag():
                              "s_PnlMoveGrabY" not in grab):
         problems.append("the grab does not record the press point - the dead "
                         "zone has no anchor (P-UI-80)")
-    if step is None or step.count("PNL_DRAG_THRESHOLD_PX") < 2:
+    # P-UI-89: the bound the batch path applies is resolved by ONE owner, because
+    # a press that landed on a control's own pixel owes the card a LONGER proof
+    # (P-UI-76 measured the hand: "a hand that moves 1-3 px on every real click",
+    # so the menu's 3 px would creep the card on every toggle attempt).
+    if define(panels, "PNL_DRAG_CTRL_PX") is None:
+        problems.append("the control-pixel proof bound is gone "
+                        "(PNL_DRAG_CTRL_PX) - a tap on a switch creeps the card "
+                        "again (P-UI-89)")
+    helper = body(panels, "int PnlDragThreshPx(") or ""
+    if "PNL_DRAG_CTRL_PX" not in helper or "PNL_DRAG_THRESHOLD_PX" not in helper \
+            or "s_PnlMoveOnCtrl" not in helper:
+        problems.append("the dead zone has no ONE owner resolving the menu bound "
+                        "against the control-pixel bound (PnlDragThreshPx, P-UI-89)")
+    if step is None or step.count("PnlDragThreshPx()") < 2:
         problems.append("sub-threshold tremor reaches the batch owner - taps "
-                        "drift the card (P-UI-80)")
+                        "drift the card (P-UI-80/P-UI-89)")
+    onctrl = re.search(r"s_PnlMoveOnCtrl\s*=\s*softClaim;", grab or "")
+    if onctrl is None:
+        problems.append("the arm does not record whether the press landed on a "
+                        "control - the longer proof can never engage (P-UI-89)")
+    if not re.search(r"s_PnlMoveOnCtrl\s*=\s*false;", fin2 or ""):
+        problems.append("the finish does not drop the control-press flag - a "
+                        "later body drag inherits another gesture's proof "
+                        "(P-UI-89)")
     # (e) P-UI-78: the poll ends a live drag only on TWO consecutive release
     #     readings - one up-reading is a KEYSTATE-flicker rumour (P-BK-05) and
     #     murdered live drags mid-press.
@@ -642,6 +823,10 @@ def check_drag():
     if fin is None or "s_PnlMoveMoved" not in fin:
         problems.append("the button-up finalizer leaves the moved witness set, so "
                         "a later poll could pin a spot the card never reached")
+    if fin is None or not re.search(r"s_PnlMoveOnCtrl\s*=\s*false;", fin):
+        problems.append("the button-up finalizer leaves the control-press flag "
+                        "set - the next drag measures its dead zone against a "
+                        "press that is long over (P-UI-89)")
     # P-UI-83: this reads the SITE, not the file — the finalizer's own note names
     # this ledger in prose (`via=finalizer`), so a bare substring test stayed
     # true even with the Print deleted (the same vacuity panel-colour-audit was
@@ -1764,6 +1949,179 @@ def check_heal():
     return problems
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# P-UI-91 (2026-09-14) — WHERE THE CARD OPENS IS NOW A DECISION, NOT A DEFAULT.
+#
+# The report: «حالا که جابجایی دستی حذف شده، جای باز شدن کارت را هوشمند کن تا با
+# منوی رینگ و کندل‌ها اورلپ نکند» — with the drag retired (P-UI-90) the user can no
+# longer pull a card off the price action by hand, so the first spot has to be
+# right. This group is what keeps that a MEASUREMENT:
+#   * the band is read from the VISIBLE window's own bars and mapped through the
+#     terminal's own price→pixel call — never a fraction of the chart (the
+#     guessed-geometry class this project keeps paying for: P-UI-69/71c/79);
+#   * it stays ONE caller on the OPEN path — a placement that measures the chart
+#     per frame would be a new always-on cost, which is exactly what P-UI-90
+#     removed;
+#   * the MENU rule stays HARD (a spot on the ring/orb can never win) while the
+#     candle rule is the SCORE among survivors;
+#   * a parked spot only survives while it passes the same two rules.
+# Seeds 60-64 revert each half.
+# ─────────────────────────────────────────────────────────────────────────────
+def check_placement():
+    problems = []
+    panels = read(PANELS)
+    pos = body(panels, "void PnlComputePosition(") or ""
+    band = body(panels, "bool PnlCandleBandPx(") or ""
+    ovl = body(panels, "int PnlIntervalOverlap(") or ""
+    if not band:
+        problems.append("PnlCandleBandPx() is gone - placement no longer knows "
+                        "where the candles are, and with the card drag retired "
+                        "(PANELDRAG-OFF) nothing can move a card off them "
+                        "(P-UI-91)")
+    else:
+        for needle, why in (("WindowFirstVisibleBar",
+                             "the band does not ask which bars are VISIBLE"),
+                            ("WindowBarsPerChart",
+                             "the band does not bound its scan to the window"),
+                            ("iHigh(", "the band does not read the bars' highs"),
+                            ("iLow(", "the band does not read the bars' lows"),
+                            ("ChartTimePriceToXY",
+                             "the band does not map price -> pixels through the "
+                             "terminal's own mapping")):
+            if needle not in band:
+                problems.append("%s (P-UI-91)" % why)
+        if "PNL_CANDLE_PAD" not in band:
+            problems.append("the band's breathing room is a magic number again "
+                            "instead of the declared margin (P-UI-91)")
+        if re.search(r"(?m)^#define\s+PNL_CANDLE_PAD\s+\d+", panels) is None:
+            problems.append("PNL_CANDLE_PAD is not declared as a constant, so the "
+                            "margin cannot be reasoned about (P-UI-91)")
+        if re.search(r"\bch\s*[*/]", band):
+            problems.append("the candle band is GUESSED from the chart height "
+                            "(a fraction) instead of measured from the bars - "
+                            "the card would avoid a place the candles may not "
+                            "be (P-UI-91)")
+        if "if(vis > 0 && bars > vis) bars = vis;" not in band:
+            problems.append("the band's scan is no longer clamped to the visible "
+                            "window - it walks all history once per open "
+                            "(P-UI-91)")
+    if panels.count("PnlCandleBandPx(") != 2:
+        problems.append("PnlCandleBandPx has %d sites (definition + the ONE call "
+                        "in PnlComputePosition expected) - a placement that "
+                        "measures the chart on a hot path is the always-on cost "
+                        "P-UI-90 removed (P-UI-91)"
+                        % panels.count("PnlCandleBandPx("))
+    if "PnlCandleBandPx(cdTop, cdBot)" not in pos:
+        problems.append("PnlComputePosition does not measure the band - the candle "
+                        "rule is declared but never asked (P-UI-91)")
+    if "valid[c] = !hits;" not in pos or \
+            "cx + pw <= mbx - PNL_PAD_X" not in pos or \
+            "cy + ph <= mby - PNL_PAD_X" not in pos:
+        problems.append("the menu rule lost its rect test - a candidate can land "
+                        "on the ring/orb again (P-UI-91)")
+    if "if(valid[c] &&" not in pos:
+        problems.append("the MENU rule went SOFT - a candidate that overlaps the "
+                        "ring/orb can now win the score (P-UI-91)")
+    if "PnlIntervalOverlap(candY[c], ph, cdTop, cdBot)" not in pos:
+        problems.append("the candle score is not the MEASURED overlap of the "
+                        "candidate with the band (P-UI-91)")
+    if "hasBand ? PnlIntervalOverlap(" not in pos:
+        problems.append("the band is not optional - a chart too young to "
+                        "measure must keep the OLD placement, never a made-up "
+                        "band (P-UI-91)")
+    if "if(!parkMenuHit && parkOv == 0)" not in pos:
+        problems.append("a parked spot is honoured without passing BOTH rules - "
+                        "with the drag retired an unclean park is permanent "
+                        "(P-UI-91)")
+    if "PnlIntervalOverlap(manY, ph, cdTop, cdBot)" not in pos:
+        problems.append("the parked spot is not scored against the candle band "
+                        "(P-UI-91)")
+    if not ovl or "hi > lo ? hi - lo : 0" not in ovl:
+        problems.append("PnlIntervalOverlap no longer returns the measured "
+                        "overlap (zero only when the intervals really are "
+                        "disjoint) (P-UI-91)")
+    return problems
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PANELDRAG-OFF (2026-09-14) — THE CARD-MOVE GESTURE IS RETIRED, AND A
+# RETIREMENT IS A STATE THIS AUDIT HAS TO BE ABLE TO SEE.
+#
+# User decision, on measured evidence: «درگ پنل تنظیمات حذف کنیم بهتر هستش الکی
+# هزینه اضافی رو اندیکاتور فشار نیاد». The two entries are cut (the press chain's
+# arm, the move branch, the poll's pump call) and three things must be true at
+# once, or the retirement is a coat of paint:
+#   1. the SITES are retired the project's way — commented in place with the
+#      marker, never deleted (R-RETIRED), and no active arm / live branch / polled
+#      call may exist;
+#   2. the ENGINE stays COMPILED and dormant, so a restore is an uncomment and
+#      not a rewrite (the TH3TOOL-OFF / VIEWLOCK-OFF pattern);
+#   3. the retirement takes NOTHING ELSE with it: the relayout primitive the two
+#      re-clamp paths use, the parked positions read on open, the press-edge heal
+#      of the SLIDER / MIXER latches, and the finalizer's recency gate (which is
+#      what keeps a press echo from tearing a live slider gesture down).
+# Seeds 25 / 31 / 54 / 59 mutate exactly these sites.
+# ─────────────────────────────────────────────────────────────────────────────
+def check_paneldrag_off():
+    problems = []
+    panels = read(PANELS)
+    util = read(UTILS)
+    chain = body(panels, "void PnlHandleMouseMove(") or ""
+    pump = body(panels, "void RefreshKitOnBar(") or ""
+    fin = body(panels, "void ChartPointerFinalizeOnUps(") or ""
+    if panels.count("PANELDRAG-OFF") < 3:
+        problems.append("the card-move retirement lost its marker(s) - the next "
+                        "session cannot tell a dormant engine from a live one "
+                        "(PANELDRAG-OFF)")
+    if "      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);" not in chain:
+        problems.append("the retired arm site is missing from the press chain - "
+                        "the restore path is gone (PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*(?:if\(!s_PnlClickChannel\)\s*)?PnlTryGrabMove\(mx,my,false\);", chain):
+        problems.append("the press chain arms the removed card-move gesture - "
+                        "half-restored (PANELDRAG-OFF)")
+    if "if(false && g_PnlMoveItem >= 0)" not in chain:
+        problems.append("the move branch is not dead by construction - the "
+                        "removed gesture can still divert a held press "
+                        "(PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*if\(g_PnlMoveItem >= 0\)", chain):
+        problems.append("a live move branch exists beside the retired arm "
+                        "(PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*//\s*PnlDragPoll\(\);", pump) is None:
+        problems.append("the retired poll call is not in the pump (deleted, not "
+                        "commented) - the restore path is gone "
+                        "(PANELDRAG-OFF)")
+    if re.search(r"(?m)^\s*PnlDragPoll\(\);", pump):
+        problems.append("the poll is wired back into the tick/timer pump - the "
+                        "removed gesture pays a KEYSTATE probe per tick and "
+                        "armed nothing when it was live (PANELDRAG-OFF)")
+    # 2. the engine must still be there to uncomment
+    for fn in ("bool PnlTryGrabMove(", "void PnlDragStep(", "void PnlDragFinish(",
+               "void PnlDragPoll(", "int PnlDragThreshPx(",
+               "void PnlCommitMove(", "void PnlMoveBy(",
+               "void PnlMoveListBuild(", "void PnlMoveListSync("):
+        if body(panels, fn) is None:
+            problems.append("the retired engine lost %s - a restore is a rewrite "
+                            "again (PANELDRAG-OFF)" % fn.rstrip("("))
+    # 3. and the retirement took nothing else with it
+    if panels.count("PnlMoveBy(g_PnlOpen, ndx, ndy);") != 1:
+        problems.append("the resize re-clamp no longer moves a card - the "
+                        "retirement took the relayout primitive with it "
+                        "(PANELDRAG-OFF)")
+    if "g_PnlManualPos[item])" not in panels:
+        problems.append("the parked positions are no longer read on open - "
+                        "retiring the gesture must not relocate every card "
+                        "(PANELDRAG-OFF)")
+    if "if(pressStart && !s_PnlClickChannel) PnlReapStaleGestures(" not in chain:
+        problems.append("the press-edge heal of the SLIDER / MIXER latches went "
+                        "with the drag - one missed release bricks the panel "
+                        "again (PANELDRAG-OFF)")
+    if "!UILeftButtonUp() || !PnlPointerQuiet()" not in fin:
+        problems.append("the finalizer's recency gate went with the drag - the "
+                        "P-UI-49b press echo tears a live slider / mixer gesture "
+                        "down again (PANELDRAG-OFF)")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -1777,7 +2135,9 @@ def main():
               ("dual", check_dual()),
               ("drag", check_drag()),
               ("mouse", check_mouse()),
-              ("heal", check_heal()))
+              ("heal", check_heal()),
+              ("paneldrag-off", check_paneldrag_off()),
+              ("placement", check_placement()))
     for name, plist in groups:
         if not QUIET:
             print("  %s [%s]" % ("ok  " if not plist else "FAIL", name))
@@ -2022,11 +2382,13 @@ def selftest():
                   bool(check_dual())))
     reset()
 
-    # 25. a released button starts the card-move gesture again
-    with_source(PANELS, "      if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;",
-                "      if(PnlTryGrabMove(mx,my,false)) return;")
-    cases.append(("a plain click that drags the card is caught",
-                  bool(check_dual() or check_drag())))
+    # 25. PANELDRAG-OFF: the retired arm is UNCOMMENTED without a decision - the
+    #     removed gesture is half-restored, which is the one way this feature can
+    #     come back without anybody choosing it
+    with_source(PANELS, "      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);",
+                "      if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);")
+    cases.append(("a half-restored card-move arm is caught",
+                  bool(check_dual() or check_drag() or check_paneldrag_off())))
     reset()
 
     # 26. the palette's colour ids go back to a prefix test
@@ -2068,9 +2430,12 @@ def selftest():
 
     # 31. the polled shadow leaves the pump - the drag is back on one delivery
     #     channel, where a press without a mouse-move edge is dead (P-BK-03)
-    with_source(PANELS, "   PnlDragPoll();  // P-UI-75a", "   // seed: the poll is gone")
-    cases.append(("a drag reachable from one delivery channel only is caught",
-                  bool(check_drag())))
+    # PANELDRAG-OFF: the same seed, re-anchored on the RETIRED call - a restored
+    # poll pays a KEYSTATE probe per tick for a gesture that no longer exists
+    with_source(PANELS, "   // PnlDragPoll();  // P-UI-75a",
+                "   PnlDragPoll();  // P-UI-75a")
+    cases.append(("a half-restored drag poll is caught",
+                  bool(check_drag() or check_paneldrag_off())))
     reset()
 
     # 32. the poll pays for a hit test before it can bail out - an idle tick
@@ -2081,12 +2446,43 @@ def selftest():
     cases.append(("a poll that is not free when idle is caught", bool(check_drag())))
     reset()
 
-    # 33. P-UI-76: the grab stops refusing the RELEASE-channel controls - a tap on
-    #     a quick swatch / NAV pill / Reset starts a card drag and its own click is
-    #     spent by the drag's release claim (the control reads as dead)
-    with_source(PANELS, "   if(PnlNameControlAt(mx,my)) return true;   // P-UI-76: the release channel's own",
-                "   // seed: the release channel is grabbable")
-    cases.append(("a grab that eats a release-channel control is caught",
+    # 33. P-UI-88/P-UI-89: the grab refuses every claim outright again - the
+    #     switch / colour-cell / strip / band / cap faces go back to being the part
+    #     of the card that cannot be dragged («هنوز درگ نمیشه پنل تنظیمات»). The
+    #     dead zone (P-UI-80) is what replaced P-UI-76's hard rule: a tap ends
+    #     `moved=0`, so the control's own action still lands either way.
+    with_source(PANELS, '   if(ownGesture)', '   if(claim != "")')
+    cases.append(("a grab that refuses a soft claim is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 33b. P-UI-88: the claim owner answers with a bool again - the refusal line
+    #      loses the claimant's name and the ledger is anonymous once more
+    with_source(PANELS, "   if(PnlQuickSwatchHit(mx,my,it,r,c)) return \"strip\";   // P-UI-87: preview + quick strip",
+                "   if(PnlQuickSwatchHit(mx,my,it,r,c)) return \"\";   // seed: an anonymous claim")
+    cases.append(("a claim owner that cannot name the claimant is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 33c. P-UI-88: the wrapper stops delegating - two control lists, free to drift
+    with_source(PANELS, '   return (PnlPressClaimCode(mx,my) != "");',
+                "   return false;   // seed: a second list would live here")
+    cases.append(("a claim predicate with its own list is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 33d. P-UI-88: an affordance acts without naming itself - a press that DID
+    #      something leaves no line, which is how "nothing works" was read
+    with_source(PANELS, 'UIPressAct("sw")', "UIPressAct()")
+    cases.append(("an act site that does not name its control is caught",
+                  bool(check_press(read(PANELS)))))
+    reset()
+
+    # 33e. P-UI-88: the foreign-claim refusal goes silent again - a stuck ring /
+    #      box claim reads as "the whole panel is dead" with no line to say so
+    with_source(PANELS, '      _LOG_GATE_W Print("[UI] panel press refused (foreign claim owner=", (int)g_DragOwner, ")");',
+                "      // seed: the foreign-claim refusal is silent")
+    cases.append(("a silent foreign-claim refusal is caught",
                   bool(check_press(read(PANELS)))))
     reset()
 
@@ -2141,8 +2537,8 @@ def selftest():
 
     # 40. P-UI-78: one refusal goes silent - that press shape reads as dead
     #     with no line saying why
-    with_source(PANELS, '   if(PnlPointOnControl(mx,my)) { PnlGrabRefused("C",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }',
-                '   if(PnlPointOnControl(mx,my)) return false;')
+    with_source(PANELS, '      PnlGrabRefused("C:"+claim,byPoll,mx,my,rpx,rpy,rpw,rph);',
+                '      PnlGrabRefused("C",byPoll,mx,my,rpx,rpy,rpw,rph);')
     cases.append(("a silent grab refusal is caught", bool(check_drag())))
     reset()
 
@@ -2172,7 +2568,7 @@ def selftest():
 
     # 44. P-UI-80: the dead zone collapses to zero - tremor moves, pins and
     #     suppresses again, like before the menu parity
-    with_source(PANELS, "      MathAbs(mx - s_PnlMoveGrabX) <= PNL_DRAG_THRESHOLD_PX &&\n      MathAbs(my - s_PnlMoveGrabY) <= PNL_DRAG_THRESHOLD_PX)",
+    with_source(PANELS, "      MathAbs(mx - s_PnlMoveGrabX) <= PnlDragThreshPx() &&\n      MathAbs(my - s_PnlMoveGrabY) <= PnlDragThreshPx())",
                 "      MathAbs(mx - s_PnlMoveGrabX) <= 0 &&\n      MathAbs(my - s_PnlMoveGrabY) <= 0)")
     cases.append(("a batch path without the dead zone is caught",
                   bool(check_drag())))
@@ -2245,6 +2641,97 @@ def selftest():
                 "      ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,\n"
                 "                       (int)ObjectGetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE) + (nx - s_PnlMoveOx));")
     cases.append(("a batch that reads its objects back is caught", bool(check_drag())))
+    reset()
+
+    # 54. PANELDRAG-OFF: the retired site is DELETED instead of commented - the
+    #     feature can never come back, which is the R-RETIRED rule (comment in
+    #     place, never remove)
+    with_source(PANELS, "      // if(!s_PnlClickChannel) PnlTryGrabMove(mx,my,false);\n",
+                "      // seed: the retired site was deleted\n")
+    cases.append(("a deleted (not commented) retired site is caught",
+                  bool(check_press(read(PANELS)) or check_drag()
+                       or check_paneldrag_off())))
+    reset()
+
+    # 55. P-UI-89: a second arm site - the tail refuses a press the early arm
+    #     already owns, one bogus `M` refusal per press in the ledger
+    with_source(PANELS,
+                "      // The press landed on NO control of this card: the arm above is its whole",
+                "      PnlTryGrabMove(mx,my,false);   // seed: the tail arms again\n"
+                "      // The press landed on NO control of this card: the arm above is its whole")
+    cases.append(("a chain that arms twice is caught",
+                  bool(check_press(read(PANELS)) or check_drag())))
+    reset()
+
+    # 56. P-UI-89: a control press is measured by the MENU's dead zone - every
+    #     toggle tap (1-3 px of hand travel, P-UI-76) creeps the card
+    with_source(PANELS, "   return (s_PnlMoveOnCtrl ? PNL_DRAG_CTRL_PX : PNL_DRAG_THRESHOLD_PX);",
+                "   return (PNL_DRAG_THRESHOLD_PX);")
+    cases.append(("a dead zone that ignores the control-pixel bound is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 57. P-UI-89: a control press inherits the body's proof - the flag is set to a
+    #     constant, so the longer bound is dead code
+    with_source(PANELS, "   s_PnlMoveOnCtrl  = softClaim;   // P-UI-89: the proof this gesture owes the card",
+                "   s_PnlMoveOnCtrl  = false;")
+    cases.append(("a control press that keeps the body's proof is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 58. P-UI-89: the finish keeps the flag - the NEXT drag measures its dead zone
+    #     against a press that is long over
+    with_source(PANELS, "   s_PnlMoveOnCtrl = false;   // P-UI-89:",
+                "   // seed: the finish keeps the flag")
+    cases.append(("a finish that leaves the control-press flag set is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 59. PANELDRAG-OFF: the move branch is switched back ON while the arm stays
+    #     retired - dead code becomes a live divert of every held press, and the
+    #     two halves of the retirement disagree
+    with_source(PANELS, "   if(false && g_PnlMoveItem >= 0)",
+                "   if(g_PnlMoveItem >= 0)")
+    cases.append(("a re-enabled move branch is caught",
+                  bool(check_drag() or check_paneldrag_off())))
+    reset()
+
+    # 60. P-UI-91: the candle score becomes a GUESS - a third of the band that
+    #     the placement never measured
+    with_source(PANELS, "      int ov = (hasBand ? PnlIntervalOverlap(candY[c], ph, cdTop, cdBot) : 0);",
+                "      int ov = (hasBand ? (cdBot - cdTop) / 3 : 0);   // seed: a guessed score")
+    cases.append(("a guessed candle score is caught", bool(check_placement())))
+    reset()
+
+    # 61. P-UI-91: the band is measured on a HOT path (the move batch) - the
+    #     always-on cost P-UI-90 removed comes back as a per-batch chart scan
+    with_source(PANELS, "   PnlClampSpot(item, dx, dy, ndx, ndy);",
+                "   int bt,bb; PnlCandleBandPx(bt,bb);   // seed: a per-batch band\n"
+                "   PnlClampSpot(item, dx, dy, ndx, ndy);")
+    cases.append(("a band measured off the open path is caught",
+                  bool(check_placement())))
+    reset()
+
+    # 62. P-UI-91: the MENU rule goes soft - a spot that lands on the ring/orb can
+    #     win the candle score (the card covers the menu the user needs to reach)
+    with_source(PANELS, "      if(valid[c] && (pick < 0 || ov < pickOv)) { pick = c; pickOv = ov; }",
+                "      if(pick < 0 || ov < pickOv) { pick = c; pickOv = ov; }   // seed: menu rule soft")
+    cases.append(("a softened menu rule is caught", bool(check_placement())))
+    reset()
+
+    # 63. P-UI-91: a parked spot is honoured without the candle rule - an unclean
+    #     park is permanent now that the drag is retired
+    with_source(PANELS, "      if(!parkMenuHit && parkOv == 0) { px = manX; py = manY; return; }",
+                "      if(!parkMenuHit) { px = manX; py = manY; return; }   // seed: park ignores candles")
+    cases.append(("a park that ignores the candles is caught",
+                  bool(check_placement())))
+    reset()
+
+    # 64. P-UI-91: the scan loses its window clamp - the band walks all history
+    #     once per open
+    with_source(PANELS, "   if(vis > 0 && bars > vis) bars = vis;",
+                "   // seed: the scan is not clamped to the window")
+    cases.append(("an unclamped band scan is caught", bool(check_placement())))
     reset()
 
     for name, ok in cases:

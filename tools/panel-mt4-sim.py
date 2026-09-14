@@ -419,6 +419,9 @@ ACCENT_TITLE = parse_item_map("PnlTitleText")
 ACCENT_SUB = parse_item_map("PnlSubtitleText")
 ACCENT_HSUB = parse_item_map("PnlHeaderSub")
 ACCENT_KEY = parse_item_map("PnlCardKey")
+# R-KEYCAP: the row whose SWITCH is the card's master - the state the header's
+# .key cap both flips and shows (BiotakPanels PnlKeyMasterRow). Keep in step.
+KEY_MASTER = {0: 3, 7: 1}
 ACCENT_MARK = parse_item_map("PnlMarkIcon")
 FADE_CARDS = parse_bool_map("PnlCardFade")
 
@@ -1008,8 +1011,16 @@ def render_card(item):
     c.text(hx - vw / 2, 24, vtxt, rgb(A1[acc]), PT["ver"], True, "cu")
     hx -= vw + 10
     if ck:
+        # R-KEYCAP: the letter wears the card accent while the card's own master
+        # row is ON and the neutral ink while it is OFF. The state is read from
+        # the SAME demo table the switch row below is painted from, so the proof
+        # cannot show a cap the terminal would not (P-UI-71c's lesson).
+        kink = rgb(CLR["LABEL"])
+        krow = KEY_MASTER.get(item, -1)
+        if krow >= 0 and DEFS.get((item, krow), {}).get("label", "") in ON:
+            kink = rgb(A1[acc])
         keycap_at(c, hx - D["PNL_KEYCAP_VIS"] - D["PNL_KEYCAP_PAD"] - D["PNL_CHIP_PAD"],
-                  19 - D["PNL_KEYCAP_PAD"], ck, rgb(CLR["LABEL"]), 3)
+                  19 - D["PNL_KEYCAP_PAD"], ck, kink, 3)
     xbx = cardW - PAD - D["PNL_XBTN_VIS"]
     c.img("pnl_xbtn.bmp", xbx - D["PNL_XBTN_PAD"], 15 - D["PNL_XBTN_PAD"],
           D["PNL_XBTN_VIS"] + 2 * D["PNL_XBTN_PAD"], D["PNL_XBTN_VIS"] + 2 * D["PNL_XBTN_PAD"], 3)
