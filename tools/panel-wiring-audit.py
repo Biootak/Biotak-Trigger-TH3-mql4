@@ -619,6 +619,9 @@ def check_drag():
     if fin is None or "s_PnlMoveMoved" not in fin:
         problems.append("the button-up finalizer leaves the moved witness set, so "
                         "a later poll could pin a spot the card never reached")
+    if fin is None or "via=finalizer" not in fin:
+        problems.append("the finalizer ends missed-release drags silently - an "
+                        "arm/arm pair reads as a double-grab (P-UI-78 ledger)")
     return problems
 
 
@@ -2009,6 +2012,14 @@ def selftest():
     with_source(PANELS, "\" at \", mx, \",\", my, \" rect=\", px, \",\", py, \",\", pw, \",\", ph);",
                 "\" at \", mx, \",\", my);")
     cases.append(("a refusal without its rect is caught", bool(check_drag())))
+    reset()
+
+    # 43. P-UI-78 ledger: the finalizer's missed-release end goes silent again -
+    #     an arm/arm pair reads as a double-grab instead of tap, release, tap
+    with_source(PANELS, "      _LOG_GATE_W Print(\"[UI] panel drag finished moved=\", (s_PnlMoveMoved ? 1 : 0),\n"
+                        "                        \" byPoll=\", (s_PnlMoveByPoll ? 1 : 0), \" via=finalizer\");",
+                "      // seed: silent finalizer end")
+    cases.append(("a silent finalizer drag-end is caught", bool(check_drag())))
     reset()
 
     for name, ok in cases:

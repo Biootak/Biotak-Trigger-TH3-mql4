@@ -419,7 +419,7 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   And the poll ends a live drag only on TWO consecutive release readings: one
   `UILeftButtonUp` is a KEYSTATE-flicker rumour (P-BK-05) that murdered live
   drags mid-press; a real release spans many passes, and the event path + the
-  CLICK finalizer usually finish first anyway. Gate: `[drag]` (+3 seeds).
+  CLICK finalizer usually finish first anyway. Gate: `[drag]` (+4 seeds ⇒ 46/46; the 4th closes the finalizer path).
   Debugging rule for the next "can't X": make the gesture ledger FIRST —
   never re-guess what the log can name (P-PERF-05/10).
 

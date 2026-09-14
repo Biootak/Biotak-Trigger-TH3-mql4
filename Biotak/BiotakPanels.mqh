@@ -5945,7 +5945,15 @@ void ChartPointerFinalizeOnUps()
    // (cursor finally moving after a stationary release) will call
    // CircUnlockChart() for the drag's press-lock that was already clamped
    // away by ChartScrollReconcile, underflowing the panel's modal lock.
-   if(g_PnlMoveItem >= 0) PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
+   // P-UI-78 ledger, last silent path: a release with no travel ends here, not
+   // in PnlDragFinish — without this line an arm/arm pair 200 ms apart reads
+   // as a double-grab instead of tap, release-click, tap.
+   if(g_PnlMoveItem >= 0)
+   {
+      _LOG_GATE_W Print("[UI] panel drag finished moved=", (s_PnlMoveMoved ? 1 : 0),
+                        " byPoll=", (s_PnlMoveByPoll ? 1 : 0), " via=finalizer");
+      PnlCommitMove(g_PnlMoveItem);   // keep the spot even on a missed release
+   }
    s_PnlMoveMoved   = false;   // P-UI-75a: the gesture is over — nothing left to pin
    s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
    s_PnlPollUpArmed = false;   // P-UI-78: and so does the rumour filter
