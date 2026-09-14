@@ -5812,10 +5812,13 @@ void PnlCommitMove(const int item)
 #define PNL_MOVE_FRAME_MIN_MS 16   // floor: never slower than this
 #define PNL_MOVE_FRAME_MAX_MS 50   // ceiling: a weak machine may back off here
 #define PNL_MOVE_SLACK_MS      8   // headroom a batch needs beyond its own cost
+#define PNL_DRAG_THRESHOLD_PX  3   // P-UI-80: menu parity (ORB_DRAG_THRESHOLD)
 
 static uint s_PnlMoveTick    = 0;      // last applied batch (0 = none yet)
 static int  s_PnlMoveFrameMs = PNL_MOVE_COALESCE_MS;
 static bool s_PnlMoveMoved   = false;  // the card really moved (the poll may pin)
+static int  s_PnlMoveGrabX   = 0;      // P-UI-80: press point, the dead-zone anchor
+static int  s_PnlMoveGrabY   = 0;
 // P-UI-77: WHO armed this drag. The event sparam bit is one witness of two
 // (P-UI-73a) — a drag the poll armed never showed its press on that bit, so
 // that bit must not own its release (below). Set on every arm, cleared on
@@ -6847,6 +6850,8 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    g_PnlMoveItem    = g_PnlOpen;
    g_PnlMoveLastX   = mx;
    g_PnlMoveLastY   = my;
+   s_PnlMoveGrabX   = mx;   // P-UI-80: the dead zone is measured from the press
+   s_PnlMoveGrabY   = my;
    s_PnlMoveMoved   = false;
    s_PnlMoveByPoll  = byPoll;
    s_PnlMoveFrameMs = PNL_MOVE_FRAME_MIN_MS;   // a fresh gesture starts smooth
@@ -6871,6 +6876,20 @@ void PnlDragStep(const int mx,const int my)
    uint now = GetTickCount();
    if(s_PnlMoveTick != 0 && now - s_PnlMoveTick < (uint)s_PnlMoveFrameMs) return;
    if(mx == g_PnlMoveLastX && my == g_PnlMoveLastY) return;   // nothing to apply
+   // P-UI-80: the menu's dead zone (ORB_DRAG_THRESHOLD parity) — tremor at or
+   // under the threshold tracks the cursor but moves NOTHING and paints
+   // nothing, so a tap can never drift the card nor eat its own release. The
+   // last point still advances, so crossing the threshold later starts clean
+   // with no jump. `s_PnlMoveMoved` is the dragged latch from here on, exactly
+   // like the menu's `g_OrbWasDragged`.
+   if(!s_PnlMoveMoved &&
+      MathAbs(mx - s_PnlMoveGrabX) <= PNL_DRAG_THRESHOLD_PX &&
+      MathAbs(my - s_PnlMoveGrabY) <= PNL_DRAG_THRESHOLD_PX)
+   {
+      g_PnlMoveLastX = mx;
+      g_PnlMoveLastY = my;
+      return;
+   }
    s_PnlMoveTick = now;
    uint t0 = GetTickCount();
    CircReassertLock();   // LEARNING §5: the panel owns the view until release
@@ -7045,8 +7064,11 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       // `||` short-circuits before any terminal read — zero added cost).
       if(!leftDown && (!s_PnlMoveByPoll || UILeftButtonUp()))
       {
-         // lock the spot for future opens + eat the release of this gesture
-         PnlDragFinish(true, true);
+         // P-UI-80: menu parity — only a REAL drag (past the dead zone, like
+         // `g_OrbWasDragged`) pins the spot and eats its release; a tap keeps
+         // neither, so taps can never drift the card nor swallow a click. The
+         // poll already finished this way — now both entries speak one rule.
+         PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved);
          return;
       }
       // ONE batch owner (P-UI-75b): the adaptive window coalesces, the batch

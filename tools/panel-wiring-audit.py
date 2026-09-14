@@ -529,9 +529,14 @@ def check_drag():
             problems.append("the poll's idle path is not cheap: the open-card guard "
                             "(`g_PnlOpen`) must come BEFORE every hit test and "
                             "every TerminalInfoInteger read")
-    if "PnlDragStep(mx, my)" not in chain or "PnlDragFinish(true, true)" not in chain:
+    if "PnlDragStep(mx, my)" not in chain or \
+            "PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved)" not in chain:
         problems.append("the press chain does not use the shared batch owner / "
-                        "finish - the two entries cannot share one window")
+                        "conditional finish - the two entries cannot share one "
+                        "window (P-UI-80: a tap must pin nothing)")
+    if "PnlDragFinish(true, true)" in chain:
+        problems.append("the press chain ends every drag unconditionally - a tap "
+                        "drifts the card and eats its own release (P-UI-80)")
     if "if(!s_PnlClickChannel && PnlTryGrabMove(mx,my,false)) return;" not in chain:
         problems.append("the grab is not refused on the click channel - a released "
                         "button would start a move gesture")
@@ -600,6 +605,20 @@ def check_drag():
     if grab is not None and 'viaSkin ? "skin" : "rect"' not in grab:
         problems.append("the arm line lost its via= origin - a skin-fallback "
                         "grab is indistinguishable from a rect one (P-UI-79)")
+    # (g) P-UI-80: the menu's dead zone (ORB_DRAG_THRESHOLD parity). Tremor at
+    #     or under the threshold must track without moving, painting, pinning
+    #     or suppressing - otherwise every tap drifts the committed spot and
+    #     eats its own release click (the 12:44 chase).
+    if define(panels, "PNL_DRAG_THRESHOLD_PX") is None:
+        problems.append("the drag lost its dead-zone bound "
+                        "(PNL_DRAG_THRESHOLD_PX)")
+    if grab is not None and ("s_PnlMoveGrabX" not in grab or
+                             "s_PnlMoveGrabY" not in grab):
+        problems.append("the grab does not record the press point - the dead "
+                        "zone has no anchor (P-UI-80)")
+    if step is None or step.count("PNL_DRAG_THRESHOLD_PX") < 2:
+        problems.append("sub-threshold tremor reaches the batch owner - taps "
+                        "drift the card (P-UI-80)")
     # (e) P-UI-78: the poll ends a live drag only on TWO consecutive release
     #     readings - one up-reading is a KEYSTATE-flicker rumour (P-BK-05) and
     #     murdered live drags mid-press.
@@ -2020,6 +2039,22 @@ def selftest():
                         "                        \" byPoll=\", (s_PnlMoveByPoll ? 1 : 0), \" via=finalizer\");",
                 "      // seed: silent finalizer end")
     cases.append(("a silent finalizer drag-end is caught", bool(check_drag())))
+    reset()
+
+    # 44. P-UI-80: the dead zone collapses to zero - tremor moves, pins and
+    #     suppresses again, like before the menu parity
+    with_source(PANELS, "      MathAbs(mx - s_PnlMoveGrabX) <= PNL_DRAG_THRESHOLD_PX &&\n      MathAbs(my - s_PnlMoveGrabY) <= PNL_DRAG_THRESHOLD_PX)",
+                "      MathAbs(mx - s_PnlMoveGrabX) <= 0 &&\n      MathAbs(my - s_PnlMoveGrabY) <= 0)")
+    cases.append(("a batch path without the dead zone is caught",
+                  bool(check_drag())))
+    reset()
+
+    # 45. P-UI-80: the press chain pins and suppresses every release again -
+    #     taps drift the card and swallow their own click
+    with_source(PANELS, "         // poll already finished this way — now both entries speak one rule.\n         PnlDragFinish(s_PnlMoveMoved, s_PnlMoveMoved);",
+                "         PnlDragFinish(true, true);   // seed: unconditional finish")
+    cases.append(("an unconditional press-chain finish is caught",
+                  bool(check_drag())))
     reset()
 
     for name, ok in cases:
