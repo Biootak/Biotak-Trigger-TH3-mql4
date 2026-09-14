@@ -750,7 +750,7 @@ const CARDS = [
 {n:6, ac:'gold', t:'HTF Candles', s:'HIGHER TIMEFRAME OVERLAY', mi:'candle', fade:true, rows:[
   {k:'sec',l:'SOURCE',cnt:2,acc:true},
   {k:'sw',l:'ENABLED',ic:'power',on:true},
-  {k:'dd',l:'TIMEFRAME',ic:'clock',v:'Auto',dic:'clock',o:['Auto','H4','H1','M30','M15','D1']},
+  {k:'dd',l:'TIMEFRAME',ic:'clock',v:'Structure',dic:'clock',o:['Structure','Pattern','H4','H1','M30','M15','D1','W1','MN1']},   // P-UI-92: the shipped list
   {k:'sec',l:'COLORS',cnt:4,strip:['#12B886','#F0455F','#8C96A6','#FFFFFF']},
   {k:'cset',act:0,o:[{k:'BULL',v:'#12B886'},{k:'BEAR',v:'#F0455F'},{k:'WICK',v:'#8C96A6'},{k:'BORDER',v:'#FFFFFF'}]},
   {k:'sec',l:'APPEARANCE',cnt:3},
@@ -871,10 +871,10 @@ const STRIP = '<div class="mt4 t-og ac-gold"><div class="strip">' +
   '</div></div>';
 
 const DD = '<div class="mt4 t-og ac-gold"><div class="pop">' +
-  ['Auto|clock','H4|clock','H1|clock','M30|clock','M15|clock','D1|clock'].map((s, i) => {
+  ['Structure|clock','Pattern|clock','H4|clock','H1|clock','M30|clock','M15|clock','D1|clock','W1|clock','MN1|clock'].map((s, i) => {
     const p = s.split('|');
-    return '<div class="pi' + (i === 1 ? ' on' : '') + '">' + svg(p[1]) + p[0] +
-      (i === 1 ? '<span class="ck">' + svg('check') + '</span>' : '') + '</div>';
+    return '<div class="pi' + (i === 2 ? ' on' : '') + '">' + svg(p[1]) + p[0] +
+      (i === 2 ? '<span class="ck">' + svg('check') + '</span>' : '') + '</div>';
   }).join('') + '</div></div>';
 
 const PALETTE = '<div class="mt4 t-og ac-gold"><div class="pal">' +

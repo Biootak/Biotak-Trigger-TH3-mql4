@@ -37,6 +37,15 @@ static string g_HTFPrefix;
 #define HTF_AUTO_FRACTAL 0
 #define HTF_AUTO_FIXED   1
 
+// P-UI-92: the TIMEFRAME dropdown has two KINDS of entry. STRUCTURE/PATTERN
+// are DYNAMIC — they follow the chart TF, so a TF switch moves the overlay —
+// and FIXED is a period the user picked by name. The panel maps option index
+// -> mode, this file owns what each rung MEANS, and nothing else may answer
+// that question (the two names mirror the Factor card's BASIS entries).
+#define HTF_TF_STRUCTURE 0   // 16x current TF — the shipped "Auto" (two fractal steps up)
+#define HTF_TF_PATTERN   1   //  4x current TF — one fractal step up
+#define HTF_TF_FIXED     2   // g_HTFPeriod, straight off the dropdown's ladder
+
 // Color blending cache
 #define BLEND_CACHE_SIZE 8
 
@@ -50,7 +59,7 @@ static ColorBlendCache g_BlendCache[BLEND_CACHE_SIZE];
 
 // Runtime settings
 static int    g_HTFPeriod = PERIOD_H4;
-static bool   g_HTFIsAuto = true;
+static int    g_HTFTfMode = HTF_TF_STRUCTURE;   // P-UI-92: was the bool g_HTFIsAuto
 static color  g_HTFBullColor = C'66,200,155';
 static color  g_HTFBearColor = C'255,100,124';
 static color  g_HTFWickColor = clrNONE;   // P-UI-68: NONE = follow the candle's colour
@@ -201,36 +210,77 @@ color BlendWithBackground(const color fg, const double opacity)
 }
 
 //+------------------------------------------------------------------+
-//| Resolve Auto HTF Timeframe (Fractal mode: two steps up)          |
+//| SNAP a raw minute count to the nearest standard timeframe.        |
+//|                                                                  |
+//| WHY THIS REPLACED A 9-CASE SWITCH (P-UI-92). The overlay needs TWO|
+//| rungs of the SAME ladder now — STRUCTURE (16x) and PATTERN (4x) —   |
+//| and a second hand-written case table is the P-ARCH-01 duplicate     |
+//| waiting to drift from the first. One table, one rule, both rungs    |
+//| read it. The retired switch's answers are reproduced EXACTLY (M1   |
+//| M15, M5 H1, M15 H4, M30 H4, H1 D1, H4 W1, D1 MN1, W1 MN1) and the |
+//| PATTERN column is the same rule one step lower (M1 M5, M5 M15, M15 |
+//| H1, M30 H1, H1 H4, H4 D1, D1 W1, W1 MN1). NEAREST, not ceiling:    |
+//| `GetStructureTimeframe()`/`GetPatternTimeframe()` in               |
+//| ExtendedDrawingFunctions.mqh round UP (16x M1 = 16 → M30, 16x M5 = |
+//| 80 → H4), which is their own contract for the Factor card's BASIS  |
+//| — NOT this overlay's, whose rung has been nearest-snapped since    |
+//| P-HTF-01. Ties (nothing is closer) resolve DOWN, so a rung can     |
+//| never jump over its own neighbour: M30 x4 = 120 sits exactly       |
+//| between H1 and H4 → H1, one step up, not H4 (the 8x structure rung)|.
+//| Nothing above MN1 has a candidate, so MN1 itself is returned and   |
+//| the callers' `> Period()` gate does the hiding.                    |
 //+------------------------------------------------------------------+
-int ResolveAutoHTFPeriod()
+int HTFSnapTf(const int mins)
 {
-   switch(Period())
+   static int ladder[9] = {PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30,
+                           PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_MN1};
+   if(mins <= ladder[0]) return ladder[0];
+   int    best  = ladder[8];
+   double bestD = 1e18;
+   for(int i = 0; i < 9; i++)
    {
-      case PERIOD_M1:  return PERIOD_M15;   // 1m  *16 = 16m  → M15
-      case PERIOD_M5:  return PERIOD_H1;    // 5m  *16 = 80m  → H1
-      case PERIOD_M15: return PERIOD_H4;    // 15m *16 = 240m → H4 (exact)
-      case PERIOD_M30: return PERIOD_H4;    // 30m *16 = 480m → H4
-      case PERIOD_H1:  return PERIOD_D1;    // 1h  *16 = 16h  → D1
-      case PERIOD_H4:  return PERIOD_W1;    // 4h  *16 = 64h  → W1
-      case PERIOD_D1:  return PERIOD_MN1;   // 1d  *16 = 16d  → MN1
-      case PERIOD_W1:  return PERIOD_MN1;   // 1w  *16 → MN1 (highest available)
-      default:         return 0;            // MN1: nothing above → hidden
+      double d = MathAbs(MathLog((double)mins / (double)ladder[i]));
+      if(d < bestD) { bestD = d; best = ladder[i]; }   // strict < : ties go DOWN
    }
+   return best;
+}
+
+//| STRUCTURE rung — the shipped "Auto": 16x, two fractal steps up    |
+int ResolveAutoHTFPeriod() { return HTFSnapTf((int)Period() * 16); }
+
+//| PATTERN rung — one fractal step up (4x)                          |
+int ResolvePatternHTFPeriod() { return HTFSnapTf((int)Period() * 4); }
+
+//| Is the dropdown on a DYNAMIC entry (one that follows the chart)?  |
+bool HTFTfIsDynamic() { return (g_HTFTfMode <= HTF_TF_PATTERN); }
+
+//| The rung itself, UNGATED (what the badge mirrors).                |
+int HTFResolveRung()
+{
+   return (g_HTFTfMode == HTF_TF_PATTERN) ? ResolvePatternHTFPeriod()
+                                          : ResolveAutoHTFPeriod();
+}
+
+//| Mode name, for the ring tooltip ("ON · Pattern · H4").            |
+string HTFTfModeName()
+{
+   if(g_HTFTfMode == HTF_TF_PATTERN)   return "Pattern";
+   if(g_HTFTfMode == HTF_TF_STRUCTURE) return "Structure";
+   return "";   // fixed TF: the badge's own label already names it
 }
 
 //+------------------------------------------------------------------+
-//| Effective HTF period honoring Auto/Manual mode                    |
+//| Effective HTF period: a DYNAMIC rung is recomputed from the       |
+//| chart TF every call (that is what makes a TF switch move it —     |
+//| P-HTF-02), a FIXED one is the user's period, and nothing above the|
+//| chart TF exists so the overlay hides ("").                        |
 //+------------------------------------------------------------------+
 int ResolveHTFPeriod()
 {
-   if(g_HTFIsAuto)
-   {
-      int autoTf = ResolveAutoHTFPeriod();
-      if(autoTf > (int)Period()) return autoTf;
-      return 0;   // MN1: nothing above → HTF hidden
-   }
-   return g_HTFPeriod;
+   if(!HTFTfIsDynamic()) return g_HTFPeriod;
+   int rung = HTFResolveRung();
+   if(rung > (int)Period()) return rung;
+   return 0;   // MN1: nothing above → HTF hidden
 }
 
 //+------------------------------------------------------------------+
@@ -1032,9 +1082,21 @@ void InitializeHTFCandles()
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
 
-   g_HTFIsAuto = true;
+   // P-UI-92: the MODE is the restored state (0 Structure · 1 Pattern · 2
+   // fixed). A chart saved by a build that only knew the bool reads through
+   // the old "IsAuto" key ONCE — dynamic maps to Structure, manual to fixed
+   // with its own "Period" — so nobody's choice is silently reset by an
+   // upgrade. "TfMode" wins whenever it exists, and there is no third state
+   // for a value a foreign build might have written: out of range = Structure.
+   g_HTFTfMode = HTF_TF_STRUCTURE;
    g_HTFPeriod = PERIOD_H4;
-   if(GlobalVariableCheck(prefix + "IsAuto")) g_HTFIsAuto = (GlobalVariableGet(prefix + "IsAuto") > 0.5);
+   if(GlobalVariableCheck(prefix + "TfMode"))
+      g_HTFTfMode = (int)GlobalVariableGet(prefix + "TfMode");
+   else if(GlobalVariableCheck(prefix + "IsAuto"))
+      g_HTFTfMode = (GlobalVariableGet(prefix + "IsAuto") > 0.5) ? HTF_TF_STRUCTURE
+                                                                 : HTF_TF_FIXED;
+   if(g_HTFTfMode < HTF_TF_STRUCTURE || g_HTFTfMode > HTF_TF_FIXED)
+      g_HTFTfMode = HTF_TF_STRUCTURE;
    if(GlobalVariableCheck(prefix + "Period"))
    {
       int savedTf = (int)GlobalVariableGet(prefix + "Period");
@@ -1059,8 +1121,8 @@ void InitializeHTFCandles()
    if(GlobalVariableCheck(prefix + "BoxMode"))     g_HTFBoxMode     = (int)GlobalVariableGet(prefix + "BoxMode");
    if(GlobalVariableCheck(prefix + "ShowBody"))    g_HTFShowBody    = (GlobalVariableGet(prefix + "ShowBody") > 0.5);
 
-   if(g_HTFIsAuto) g_HTFPeriod = ResolveAutoHTFPeriod();
-   else if(g_HTFPeriod <= 0) { g_HTFIsAuto = true; g_HTFPeriod = ResolveAutoHTFPeriod(); }
+   if(HTFTfIsDynamic()) g_HTFPeriod = HTFResolveRung();
+   else if(g_HTFPeriod <= 0) { g_HTFTfMode = HTF_TF_STRUCTURE; g_HTFPeriod = HTFResolveRung(); }
 
    g_HTFLastFormOpen = 0;
    g_HTFLastFormO = 0; g_HTFLastFormH = 0;
@@ -1075,7 +1137,11 @@ void SaveHTFCandlesSettings()
 {
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
-   GlobalVariableSet(prefix + "IsAuto",      g_HTFIsAuto ? 1.0 : 0.0);
+   // P-UI-92: "TfMode" is the state; "IsAuto" is still written (1 = either
+   // dynamic rung) so ONE downgrade to a previous build keeps its own
+   // Auto/Manual meaning instead of reading Structure as a manual period.
+   GlobalVariableSet(prefix + "TfMode",      (double)g_HTFTfMode);
+   GlobalVariableSet(prefix + "IsAuto",      HTFTfIsDynamic() ? 1.0 : 0.0);
    GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod);
    GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor);
    GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor);
@@ -1098,6 +1164,7 @@ void CleanupHTFCandlesGVs()
 {
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
+   GlobalVariableDel(prefix + "TfMode");
    GlobalVariableDel(prefix + "IsAuto");
    GlobalVariableDel(prefix + "Period");
    GlobalVariableDel(prefix + "BullColor");

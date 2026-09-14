@@ -886,6 +886,10 @@ string CircTooltipStatus(const int i)
    if(i == CIR_HTF)
    {
       string st = g_UI.showHTF ? "ON" : "OFF";
+      // P-UI-92: the badge names the TF, so the MODE has to be named here or
+      // Structure and Pattern are indistinguishable (both read "4H" on M15).
+      string mode = HTFTfModeName();
+      if(mode != "") st += " · " + mode;
       string lbl = CircHtfBadgeLabel(g_HTFPeriod);
       if(lbl != "") st += " · " + lbl;
       return st;

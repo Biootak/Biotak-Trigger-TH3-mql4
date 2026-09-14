@@ -625,7 +625,10 @@ PCT = {"TRANSPARENCY": 28, "HEIGHT": 62, "BORDER TR": 20, "FILL TR": 55,
        # P-UI-70d: the trade card's four knobs, at their SHIPPED defaults, so the
        # proof shows the card the user actually gets (0 pt = follow the grid).
        "TRADE SIZE": 0, "STAMP GAP": 0, "CARD MARGIN": 8}
-SEG0 = {"ZONE STYLE": 0, "BORDER": 0, "STYLE": 0, "TIMEFRAME": 1, "BOX MODE": 0,
+# P-UI-92: option 0 of TIMEFRAME is the DYNAMIC "Structure" rung - the state a
+# freshly attached chart is in (HTF_TF_STRUCTURE), so the proof shows the card
+# the user actually opens instead of a fixed H4 that only a pick produces.
+SEG0 = {"ZONE STYLE": 0, "BORDER": 0, "STYLE": 0, "TIMEFRAME": 0, "BOX MODE": 0,
         "MODE": 0, "DISPLAY": 0, "BASIS": 0, "B INFO": 0, "ALIGN": 1,
         "VALIGN": 1, "TEMPLATE": 0, "B | I": 1}
 # P-UI-68: the 4th HTF cell is WICK COLOR, whose SHIPPED default is clrNONE =

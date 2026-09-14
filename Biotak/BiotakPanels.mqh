@@ -2900,7 +2900,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    else if(item==6)   // HTF CANDLES
    {
        if(row==0)       { kind=1; label="ENABLED"; }
-       else if(row==1)  { kind=2; label="TIMEFRAME"; opts="Auto|H4|H1|M30|M15|D1"; }
+       else if(row==1)  { kind=2; label="TIMEFRAME"; opts="Structure|Pattern|H4|H1|M30|M15|D1|W1|MN1"; }
        else if(row==2)  { label="TRANSPARENCY"; unit="%"; }
       else if(row==3)  { kind=4; label="BULL COLOR"; }
       else if(row==4)  { kind=4; label="BEAR COLOR"; }
@@ -3155,28 +3155,35 @@ string PnlSubtitleText(const int item)
    return "Factor step calculation";
 }
 
-//--- Cycle options: 0=Auto (two fractal steps up), 1..5 = fixed TFs
-int HTFOptionCount() { return 6; }
+//--- Cycle options (P-UI-92): 0=Structure (16x — two fractal steps up, the
+//--- shipped "Auto"), 1=Pattern (4x — one step up), 2..8 = fixed TFs.
+//--- The two DYNAMIC entries are the Factor card's BASIS names, and W1/MN1
+//--- close the ladder the overlay is most often asked for (a D1/H4 candle on
+//--- an intraday chart). The MODE is the engine's state (HTFCandles.mqh) —
+//--- these two functions only translate between an option INDEX and it, so a
+//--- reordering here can never rename a rung.
+int HTFOptionCount() { return 9; }
 
 int HTFOptionFromPeriod(const int p)
 {
-   if(g_HTFIsAuto) return 0;
-   int vals[5]={240,60,30,15,1440};
-   for(int i=0;i<5;i++) if(vals[i]==p) return i+1;
+   if(g_HTFTfMode == HTF_TF_STRUCTURE) return 0;
+   if(g_HTFTfMode == HTF_TF_PATTERN)   return 1;
+   int vals[7]={240,60,30,15,1440,10080,43200};
+   for(int i=0;i<7;i++) if(vals[i]==p) return i+2;
    // Manual TF outside the cycle list → snap display to the closest option
-   int best=0; double bestD=1e18;
-   for(int i=0;i<5;i++)
+   int best=2; double bestD=1e18;
+   for(int i=0;i<7;i++)
    {
       double d=MathAbs(MathLog((double)p/(double)vals[i]));
-      if(d<bestD) { bestD=d; best=i+1; }
+      if(d<bestD) { bestD=d; best=i+2; }
    }
    return best;
 }
 int HTFPeriodFromOption(const int idx)
 {
-   int vals[5]={240,60,30,15,1440};
-   int i=idx-1;
-   if(i<0) i=0; if(i>4) i=4;
+   int vals[7]={240,60,30,15,1440,10080,43200};
+   int i=idx-2;
+   if(i<0) i=0; if(i>6) i=6;
    return vals[i];
 }
 
@@ -3351,9 +3358,11 @@ double PnlDefValSet(const int item,const int row)
        case 6: if(row==0) return 0.0;                   // HTF off by default
               if(row==1)
               {
+                 // P-UI-92: factory default = the Structure rung, or the
+                 // fixed ladder entry InpHTFTimeframe names (option 2+).
                  if(InpHTFAutoMode==HTF_AUTO_FRACTAL) return 0.0;
-                 int vals[5]={240,60,30,15,1440};
-                 for(int i=0;i<5;i++) if(vals[i]==(int)InpHTFTimeframe) return i+1;
+                 int vals[7]={240,60,30,15,1440,10080,43200};
+                 for(int i=0;i<7;i++) if(vals[i]==(int)InpHTFTimeframe) return i+2;
                  return 0.0;
               }
                if(row==2) return 100-ClampInt(InpHTFOpacity,MIN_OPACITY_PCT,MAX_OPACITY_PCT);
@@ -3726,8 +3735,14 @@ int PnlApplySet(const int item,const int row,const double v)
          if(row==0)       { g_UI.showHTF=(v>0.5); flags=REFRESH_HTF; }
          else if(row==1)
          {
-            if((int)MathRound(v)<=0) { g_HTFIsAuto=true;  g_HTFPeriod=ResolveAutoHTFPeriod(); }
-            else                     { g_HTFIsAuto=false; g_HTFPeriod=HTFPeriodFromOption((int)MathRound(v)); }
+            // P-UI-92: option 0/1 are the DYNAMIC rungs (they follow the
+            // chart TF), 2+ is a fixed period. The mode is the state; the
+            // period is mirrored here only so the ring badge has a value
+            // before the next resolve (ResolveHTFPeriod() recomputes).
+            int opt=(int)MathRound(v);
+            if(opt<=0)      { g_HTFTfMode=HTF_TF_STRUCTURE; g_HTFPeriod=ResolveAutoHTFPeriod(); }
+            else if(opt==1) { g_HTFTfMode=HTF_TF_PATTERN;   g_HTFPeriod=ResolvePatternHTFPeriod(); }
+            else            { g_HTFTfMode=HTF_TF_FIXED;     g_HTFPeriod=HTFPeriodFromOption(opt); }
             flags=REFRESH_HTF;
          }
           else if(row==2)  { g_HTFOpacity=100-(int)MathRound(v); flags=REFRESH_HTF; }

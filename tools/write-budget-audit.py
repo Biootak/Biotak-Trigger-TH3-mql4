@@ -35,6 +35,7 @@ Usage:  python tools/write-budget-audit.py [--quiet] [--selftest]
 Exit 0 = the budget holds, 1 = a per-frame write (or an O(n) teardown) is back.
 """
 
+import math
 import os
 import re
 import sys
@@ -393,6 +394,168 @@ def check_htf_look(o):
 #   (f) every geometry key the saver writes is deleted by the cleanup owner, and
 #       the loader clamps what it reads (a GV is not user input).
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# 5d. HTF TIMEFRAME OPTIONS — the card's list, its count, the ladder and the
+#     engine's mode map are ONE contract (P-UI-92)
+#
+# WHY. TIMEFRAME is the HTF card's only multi-value control and it is written
+# down in FOUR places that must agree: the option STRING the dropdown renders,
+# `HTFOptionCount()` (how many rows it draws), `HTFPeriodFromOption`'s ladder
+# (what a FIXED pick means) and the engine's `HTF_TF_*` modes (what the two
+# DYNAMIC picks mean). Nothing in the language ties them together, so adding an
+# option in one place renders a control that does nothing (P-UI-47's class), and
+# REORDERING them silently renames every rung the user already selected. The row
+# also has a HARD ceiling — `PnlSplit(opts, arr, 12)` and `PnlDdClose`'s 12-row
+# loop — so a 13th option is an option the terminal can never draw.
+#
+# The gate asserts the CONTRACT, then MODELS it from the source: it reads the
+# snapped ladder and the two multipliers out of the MQL and recomputes both
+# rungs for all nine chart timeframes, because "Structure" is the rung the
+# overlay already shipped as Auto (its answers must not move) and Pattern is
+# defined as the same rule one step lower.
+# ---------------------------------------------------------------------------
+def check_htf_options(o):
+    htf = read(HTF, o)
+    panels = read(PANELS, o)
+    grp = "htf-timeframe"
+    DD_ROWS = 12                       # PnlSplit/PnlDdClose draw at most this many
+    MINS = {"M1": 1, "M5": 5, "M15": 15, "M30": 30, "H1": 60, "H4": 240,
+            "D1": 1440, "W1": 10080, "MN1": 43200}
+    # MT4's own ENUM_TIMEFRAMES values, for the ladder the engine snaps against
+    PERS = {"PERIOD_" + k: v for k, v in MINS.items()}
+    # the rungs the overlay shipped BEFORE this change, per chart TF (0 = hidden):
+    # the STRUCTURE column must still answer exactly this
+    SHIPPED = {1: 15, 5: 60, 15: 240, 30: 240, 60: 1440,
+               240: 10080, 1440: 43200, 10080: 43200, 43200: 0}
+
+    row = re.search(r'label="TIMEFRAME"; opts="([^"]*)"', panels)
+    if not row:
+        fail(grp, "the HTF card's TIMEFRAME row is gone (this gate reads it)")
+        return
+    opts = [x for x in row.group(1).split("|") if x]
+
+    cnt = re.search(r"int HTFOptionCount\(\)\s*\{\s*return (\d+);", panels)
+    if cnt is None:
+        fail(grp, "HTFOptionCount() is gone - the list and the count must not be two owners")
+    elif int(cnt.group(1)) != len(opts):
+        fail(grp, "HTFOptionCount() says %s but the card lists %d options: the dropdown draws "
+                  "one and the card counts the other" % (cnt.group(1), len(opts)))
+    elif len(opts) > DD_ROWS:
+        fail(grp, "%d options for a dropdown that draws %d rows (PnlSplit/PnlDdClose) - the "
+                  "tail can never be picked" % (len(opts), DD_ROWS))
+    else:
+        ok(grp, "the card lists %d options inside the dropdown's %d-row ceiling"
+                % (len(opts), DD_ROWS))
+
+    # the engine's mode defines: option 0/1 are the DYNAMIC rungs, 2 starts fixed
+    mode = {}
+    for name in ("HTF_TF_STRUCTURE", "HTF_TF_PATTERN", "HTF_TF_FIXED"):
+        m = re.search(r"#define\s+%s\s+(\d+)" % name, htf)
+        mode[name] = int(m.group(1)) if m else None
+    if mode["HTF_TF_STRUCTURE"] != 0 or mode["HTF_TF_PATTERN"] != 1:
+        fail(grp, "the two dynamic options are STRUCTURE=%s / PATTERN=%s, not 0 / 1: every option "
+                  "of the card now means a different rung than it is labelled"
+                  % (mode["HTF_TF_STRUCTURE"], mode["HTF_TF_PATTERN"]))
+    elif mode["HTF_TF_FIXED"] != 2:
+        fail(grp, "HTF_TF_FIXED is %s, so the fixed half is not option 2" % mode["HTF_TF_FIXED"])
+    else:
+        ok(grp, "option 0 = Structure, 1 = Pattern, 2.. = a fixed period")
+
+    # every FIXED label must map to its OWN period, in the order it is listed
+    lam = re.search(r"int vals\[(\d+)\]\s*=\s*\{([^}]*)\}",
+                    fn_body(panels, "int HTFPeriodFromOption(") or "")
+    if lam is None:
+        fail(grp, "HTFPeriodFromOption's ladder is gone (this gate reads it)")
+        return
+    ladder = [int(v) for v in lam.group(2).replace(" ", "").split(",") if v]
+    labels = opts[2:]
+    if len(ladder) != len(labels) or int(lam.group(1)) != len(ladder):
+        fail(grp, "the ladder holds %d periods for %d fixed options - a pick at the end of the "
+                  "list would read a period nobody wrote" % (len(ladder), len(labels)))
+    else:
+        bad = [(l, mins) for l, mins in zip(labels, ladder) if MINS.get(l) != mins]
+        if bad:
+            fail(grp, "a label and the ladder disagree: %s"
+                      % ", ".join("%s -> %d" % b for b in bad))
+        else:
+            ok(grp, "every fixed option maps to its own period (%s)" % "/".join(labels))
+
+    # the index/state mapping: display index <- mode, and the press <- index
+    flat = re.sub(r"\s+", "", panels)
+    disp = fn_body(panels, "int HTFOptionFromPeriod(") or ""
+    if not re.search(r"g_HTFTfMode == HTF_TF_STRUCTURE\)\s*return 0;", disp) or \
+       not re.search(r"g_HTFTfMode == HTF_TF_PATTERN\)\s*return 1;", disp) or \
+       "i+2" not in disp:
+        fail(grp, "HTFOptionFromPeriod no longer answers the dynamic rungs with options 0/1 and "
+                  "the fixed half with a base of i+2")
+    elif any(n not in flat for n in ("g_HTFTfMode=HTF_TF_STRUCTURE",
+                                     "g_HTFTfMode=HTF_TF_PATTERN",
+                                     "g_HTFTfMode=HTF_TF_FIXED;g_HTFPeriod=HTFPeriodFromOption(",
+                                     "vals[i]==(int)InpHTFTimeframe)returni+2;")):
+        fail(grp, "the TIMEFRAME press (or the factory default) does not set all THREE states "
+                  "through the same ladder - a pick lands on a rung nothing stores")
+    else:
+        ok(grp, "display index, press and factory default all speak the same three states")
+
+    # MODEL: recompute both rungs from the SOURCE and pin the historical column
+    snap = fn_body(htf, "int HTFSnapTf(") or ""
+    lam2 = re.search(r"static int ladder\[9\]\s*=\s*\{([^}]*)\}", snap)
+    mul = {}
+    for name, sig in (("STRUCTURE", "int ResolveAutoHTFPeriod()"),
+                      ("PATTERN", "int ResolvePatternHTFPeriod()")):
+        m = re.search(r"HTFSnapTf\(\(int\)Period\(\)\s*\*\s*(\d+)\)",
+                      fn_body(htf, sig) or "")
+        mul[name] = int(m.group(1)) if m else None
+    if not lam2 or None in (mul["STRUCTURE"], mul["PATTERN"]) or mul["PATTERN"] >= mul["STRUCTURE"]:
+        fail(grp, "the two rungs are not (one step, two steps) of one snapped ladder: %s" % mul)
+        return
+    tokens = [v for v in lam2.group(1).replace(" ", "").replace("\n", "").split(",") if v]
+    unknown = [t for t in tokens if t not in PERS]
+    if unknown:
+        fail(grp, "the snapped ladder names something that is not a standard timeframe: %s"
+                  % ", ".join(unknown))
+        return
+    lad = [PERS[t] for t in tokens]
+
+    def rung(cur, mult):
+        want = cur * mult
+        if want <= lad[0]:
+            return lad[0]
+        best, bd = lad[-1], 1e18
+        for t in lad:
+            d = abs(math.log(want / t))
+            if d < bd:                      # strict < : ties resolve DOWN
+                bd, best = d, t
+        return best if best > cur else 0
+
+    got = {t: rung(t, mul["STRUCTURE"]) for t in SHIPPED}
+    if got != SHIPPED:
+        moved = ["%d:%d->%d" % (t, SHIPPED[t], got[t]) for t in SHIPPED if got[t] != SHIPPED[t]]
+        fail(grp, "the STRUCTURE rung moved on %s - an installed chart silently draws a "
+                  "different overlay than the one the user chose" % ", ".join(moved))
+        return
+    pat = {t: rung(t, mul["PATTERN"]) for t in SHIPPED}
+    top = max(lad)
+    bad = []
+    for t in sorted(SHIPPED):
+        if not SHIPPED[t]:                       # Structure hides: Pattern must hide too
+            if pat[t]:
+                bad.append("%d draws a Pattern where Structure hides" % t)
+        elif not pat[t]:                         # Structure draws: Pattern must draw
+            bad.append("%d hides Pattern while Structure draws" % t)
+        elif pat[t] > SHIPPED[t]:                # never HIGHER than the structure rung
+            bad.append("%d Pattern %d above Structure %d" % (t, pat[t], SHIPPED[t]))
+        elif SHIPPED[t] != top and pat[t] == SHIPPED[t]:
+            # W1 is the one chart with nothing between it and MN1, so equal is
+            # legal there and NOWHERE else: one step up must be one step up.
+            bad.append("%d Pattern == Structure (%d) with a rung in between" % (t, pat[t]))
+    if bad:
+        fail(grp, "Pattern is not the rung BELOW Structure: %s" % "; ".join(bad))
+    else:
+        ok(grp, "model: %dx reproduces the shipped rung on all 9 chart TFs, %dx is the rung "
+                "below it (one step, never higher)" % (mul["STRUCTURE"], mul["PATTERN"]))
+
+
 def check_htf_geometry(o):
     htf = read(HTF, o)
     core = fn_body(htf, "void DrawHTFCandleCore(") or ""
@@ -1291,6 +1454,14 @@ def selftest():
         ("htf-geometry", PANELS,
          'label="SHADOW GAP"; unit="%"; minV=0; maxV=40;',
          'label="SHADOW GAP"; unit="%"; minV=0; maxV=90;'),
+        # P-UI-92: the four owners of the TIMEFRAME contract, one seed each -
+        # a reordered list (the labels stop naming the ladder), a count that is
+        # no longer the list's length, and a mode define that moves a rung.
+        ("htf-timeframe", PANELS, 'opts="Structure|Pattern|H4|H1|M30|M15|D1|W1|MN1"',
+         'opts="Structure|Pattern|H1|H4|M30|M15|D1|W1|MN1"'),
+        ("htf-timeframe", PANELS, "int HTFOptionCount() { return 9; }",
+         "int HTFOptionCount() { return 8; }"),
+        ("htf-timeframe", HTF, "#define HTF_TF_PATTERN   1", "#define HTF_TF_PATTERN   2"),
     ]
     seeded = 0
     for check, rel, needle, repl in faults:
@@ -1319,6 +1490,7 @@ def run(overrides=None):
     check_teardown(overrides)
     check_htf(overrides)
     check_htf_look(overrides)
+    check_htf_options(overrides)
     check_htf_geometry(overrides)
     check_boundary(overrides)
     check_bulk_series(overrides)
