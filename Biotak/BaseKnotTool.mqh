@@ -99,12 +99,15 @@ static datetime    g_bkLiveT      = 0;       // last rubber-band cursor point (o
 static double      g_bkLiveP      = 0.0;
 static bool        g_bkInitDone   = false;
 //--- IDLE box-drag follow (unified lean follow, P-BK-07): the press latches
-//--- the drag candidate + its anchors; per-step moves go through
-//--- BaseKnotFollowDrag ONLY — anchor-exact while the terminal moves the BOX
-//--- anchors, cursor-delta fallback while they are frozen mid-drag (some
-//--- builds); release re-syncs authoritatively. The two event channels
-//--- (per-step OBJECT_DRAG + MOUSE_MOVE) share the one follow + paint budget,
-//--- so they never fight over children positions.
+//--- the drag candidate + its anchor cache; per-step moves go through
+//--- BaseKnotFollowDrag ONLY, and that function now has ONE owner path: the
+//--- terminal's own native drag (anchor-exact, unbudgeted, pixel-locked with the
+//--- fill). The cursor-delta fallback that used to write the BOX itself while the
+//--- anchors sat frozen is RETIRED dead-by-construction (BKCURSOR-OFF — the user's
+//--- «اونی که لایو نیست» call: a 30 ms-budgeted second writer is exactly what reads
+//--- as stepped, and the live path covers every build that drags a box at all);
+//--- release re-syncs authoritatively and the 500 ms pump settles a lost gesture
+//--- end (P-BK-18).
 static string      s_bkDragId = "";
 static datetime    s_bkDragT0 = 0;
 static double      s_bkDragP0 = 0.0;
@@ -125,6 +128,94 @@ static double      s_bkFolP2 = 0.0;
 // Press slop for drag-vs-hold/tap (mirrors the UI BK_HOLD_MOVE/BK_CLICK_SLOP
 // language; defined HERE because Lite compiles this module without Panels).
 #define BK_DRAG_SLOP 8
+// P-BK-24: THE PRESS IS MEASURED IN PIXELS. The user aims at the VISIBLE border
+// — a line `inpBoxBorderWidth` px wide sitting exactly ON the boundary — so half
+// of that line is already outside the rectangle, and the inside-only test that
+// used to guard the press rejected a third of the gestures the TERMINAL accepted
+// (the user's own ledger, 68 gestures in one day: 42 `drag latch` / 26 `drag
+// adopt … (the press missed it)`). ~4-6 px is the terminal's own hit tolerance.
+#define BK_PRESS_SLOP_PX 5
+// P-BK-18: the CURSOR-DELTA fallback is the only follow path that writes the BOX
+// itself, so it keeps a 30 ms budget. The anchor path (children only) is
+// CHANGE-driven and needs no budget: it writes exactly when the terminal moved
+// the box, which is what MT4 already repaints for the box on the same frame.
+#define BK_DRAG_CURSOR_MS 30
+//--- P-BK-19 — WHO owns a box gesture, and WHAT the press grabbed. Two
+//--- independent lessons, one per field below:
+//---  (a) OWNERSHIP — kept as the LAW a restore must obey. Its consumer, the
+//---      cursor-delta fallback, is RETIRED dead-by-construction (BKCURSOR-OFF:
+//---      «دوتا درگ فعال داشتیم، اونی که لایو نیست حذف شود») — the defines and the
+//---      statics below stay compiled so the restore is one word. While it WAS
+//---      live: the cursor fallback was the ONE path that writes the BOX,
+//---      and a native drag is the TERMINAL's gesture: it announces itself with
+//---      CHARTEVENT_OBJECT_DRAG (and by moving the anchors), and MT4 CANCELS an
+//---      in-progress native drag whose object is rewritten mid-flight (P-BK-15).
+//---      So the fallback may only ever write a box the terminal has NOT claimed
+//---      — two writers on one box is the P-BK-07 fight one layer down — and the
+//---      terminal is asked FIRST (BK_DRAG_OWNER_MS): on a healthy build the
+//---      first OBJECT_DRAG lands within the first travelled pixels, long before
+//---      this window closes, so a real drag is never touched.
+//---  (b) THE GRAB. The fallback used to translate BOTH anchors whatever the
+//---      press had grabbed, so dragging one EDGE also moved the far side —
+//---      «من یک طرف درگ میکنم طرف دیگه تکون میخوره». The press point is now
+//---      MEASURED in pixels against the box's two corners (ChartTimePriceToXY —
+//---      the same call the placement rule and this module's own preview already
+//---      place objects with) into a 4-bit selection over {t1,p1,t2,p2}:
+//---      a body grab moves all four (offsets kept), an edge/corner grab resizes
+//---      exactly the grabbed side and leaves the opposite one where it is.
+#define BK_GRAB_T1  1     // the box's first anchor TIME is the grabbed value
+#define BK_GRAB_P1  2     // ...its first anchor PRICE
+#define BK_GRAB_T2  4     // ...its second anchor TIME
+#define BK_GRAB_P2  8     // ...its second anchor PRICE
+#define BK_GRAB_ALL (BK_GRAB_T1 | BK_GRAB_P1 | BK_GRAB_T2 | BK_GRAB_P2)
+#define BK_GRAB_CORNER_PX 8   // press this close to a corner grabs BOTH of its values
+#define BK_GRAB_EDGE_PX   6   // ...this close to one edge grabs that edge only
+#define BK_GRAB_MIN_SPAN_PX 24 // a box this small has no targetable edge: every press
+                               // inside it is within the band, so the body grab stands
+#define BK_DRAG_OWNER_MS  250 // the terminal's first refusal: a native drag speaks
+                              // with its own OBJECT_DRAG this soon after the press
+static int         s_bkGrabSel     = BK_GRAB_ALL;  // what this gesture may write
+static bool        s_bkNativeClaim = false;        // the TERMINAL owns this gesture
+// P-BK-25: is the press-time anchor snapshot (s_bkDragBP1/BP2) TRUSTWORTHY?  It
+// is only when OUR press hit test latched the box: the adopt path below takes
+// its snapshot AFTER the terminal has already moved the box, and the release
+// magnet decides "did ONE side move?" by comparing against exactly that
+// snapshot — so an untrusted baseline can read a whole-box MOVE as a one-side
+// resize and snap it. A role that cannot be measured must not invent
+// (P-BK-19b's rule, one layer up).
+static bool        s_bkSnapTrusted = false;
+static uint        s_bkOwnerMs     = 0;            // press moment — the settle window above
+static bool        s_bkFallLogged  = false;        // one ledger line per gesture
+//--- P-PERF-42 — ONE child-existence probe per GESTURE, never per child per step.
+//--- The per-step move used to ask `ObjectFind` for EVERY child before every
+//--- `ObjectMove` (~10 terminal calls per drag event, at event rate), yet the
+//--- child set is a property of the BOX: a drag never creates or deletes one
+//--- (`BaseKnotMoveChildren` only moves), so the answer cannot change mid-gesture.
+//--- It is now one 9-bit mask built on the first move of a gesture and keyed on
+//--- the id it was built for, so the overlap-adopt path (the press latched one
+//--- box and the terminal drags another) rebuilds instead of trusting it; the
+//--- press clears the key so the SAME box dragged twice probes twice. A missing
+//--- child is skipped exactly as before, and any child that really did vanish is
+//--- recreated by the release `BaseKnotSync` / the pump's missing-edge heal.
+#define BK_CH_EDGE_T 1
+#define BK_CH_EDGE_B 2
+#define BK_CH_EDGE_L 4
+#define BK_CH_EDGE_R 8
+#define BK_CH_ENTRY  16
+#define BK_CH_SL     32
+#define BK_CH_TP     64
+#define BK_CH_INFO   128
+#define BK_CH_TEXT   256
+static int         s_bkChildMask   = 0;            // which children existed at the gesture's start
+static string      s_bkChildMaskId = "";           // the box that mask was built for ("" = probe on the next move)
+//--- P-PERF-43 — the BOX drag measures ITSELF (P-PERF-15 pattern). The gesture
+//--- ledger (P-BK-19) says WHO owned the drag; these two numbers say what it
+//--- COST, split by phase (children/box writes vs the throttled repaint), so the
+//--- next "the drag lags" is attributed from the log instead of guessed at.
+//--- Cost on the fast path: a GetTickCount around each phase that already ran.
+static uint        s_bkPerfMoveWorst  = 0;         // worst children/box write pass, ms
+static uint        s_bkPerfPaintWorst = 0;         // worst repaint, ms
+static uint        s_bkPerfPasses     = 0;         // move passes applied this gesture
 static bool        g_bkRestoreReq = false;  // UI side: re-show the menu once
 static bool        g_bkTouched    = false;  // Arm ran → OnDeinit must restore chart props
 static bool        g_bkScrollWas  = true;
@@ -275,6 +366,29 @@ string BaseKnotGV(const string id)
 {
    return "Biotak_BK_" + id + "_" + GetCachedChartIdStr();
 }
+//+------------------------------------------------------------------+
+//| P-BK-26 — DROP THE TERMINAL'S SELECTION OF A BOX, ONCE, GUARDED.  |
+//|                                                                  |
+//| `OBJPROP_SELECTABLE` is the DRAG (P-UI-48's lesson: MT4 grabs a     |
+//| selectable object exactly once, on the press that lands on it) while|
+//| `OBJPROP_SELECTED` is the HIJACK — a selected object is moved by     |
+//| MT4 on every LATER drag anywhere on the chart, whatever that drag    |
+//| was meant for (P-UI-45's law, fixed for the custom-price line in     |
+//| P-UI-48 and never for this handle). ONE owner, read then write only  |
+//| while the box really is selected (a gesture that never selected it   |
+//| pays one bool read), and never called while the button is down       |
+//| (P-BK-15: writing into a live native drag cancels it).               |
+//+------------------------------------------------------------------+
+void BaseKnotDropSelection(const string id)
+{
+   if(id == "") return;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED))
+      ObjectSetInteger(0, box, OBJPROP_SELECTED, false);
+}
 
 //+------------------------------------------------------------------+
 //| Box look — SINGLE source of truth (P-BK-04/06 + TV-fill 2026-09-07)|
@@ -283,8 +397,31 @@ string BaseKnotGV(const string id)
 //| the drag/select handle, while the VISIBLE border stays 4 OBJ_TREND |
 //| edges from BaseKnotDrawEdges (edges can't fill, identical on every |
 //| build). Fill invisible (TR=100, the pre-fill default) → bg color + |
-//| FILL false = the old hollow look, pixel-identical. Fill set → FILL |
+//| FILL false = the old hollow look, pixel-identical. Fill set → FILL  |
 //| true + GetBoxFillRenderColor() (TV Style-tab bucket, e.g. 36%).    |
+//|                                                                    |
+//| P-BK-23 (2026-09-15) — THE HOLLOW HANDLE IS A FOREGROUND OBJECT,   |
+//| LIKE MT4'S OWN. «مال خودِ متاتریدر راحت درگ میشه ولی این بیس نات    |
+//| یکم سخته»: the saved chart records say what the difference was.    |
+//| MT4 stores its own objects `background=0`, and every other object  |
+//| of ours in this box (4 edges, Entry/SL/TP, badges, text) is already |
+//| `BACK false` — this handle was the ONE background rectangle, and a  |
+//| background object forces the terminal to repaint the BARS under it  |
+//| on every frame of a native drag, over an area exactly the size of   |
+//| the box. That is the «چسبناک» the user feels exactly where the      |
+//| candles are and never in the empty part of the chart — while our    |
+//| own follow measures `move=0ms paint=0ms` and the gesture ledger     |
+//| says `native=1` (the cost is the TERMINAL's, never ours).           |
+//| A HOLLOW handle paints nothing but its own outline, and that        |
+//| outline is drawn in the BACKGROUND colour so a build that fills a   |
+//| rectangle despite FILL=false fills it invisibly — so moving it to   |
+//| the foreground costs no pixel and buys the terminal's cheap drag.   |
+//| Its own outline wears the VISIBLE border's style AND width, so the  |
+//| 4 edge children cover it pixel-for-pixel (dash gaps included) and   |
+//| the grabbable ring IS the ring the user sees.                       |
+//| A FILLED handle stays where it was: behind the candles. That fill   |
+//| IS the object's own pixel, it must not cover the bars, and the user |
+//| asked for that look (16 zones/drag cost is the price of the look).  |
 //+------------------------------------------------------------------+
 //--- edge suffixes (committed pfx AND preview tag share them)
 #define BK_EDGE_T "_T"
@@ -298,15 +435,18 @@ void BaseKnotStyleBox(const string box)   // fill layer + drag handle
    {
       ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxFillRenderColor());
       ObjectSetInteger(0, box, OBJPROP_FILL, true);
+      ObjectSetInteger(0, box, OBJPROP_BACK, true);          // the fill belongs behind the candles (zone-like)
+      ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);  // the fill's own edge stays flat — the visible border is the 4 edges
+      ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
    }
    else
    {
-      ObjectSetInteger(0, box, OBJPROP_COLOR, bg);
+      ObjectSetInteger(0, box, OBJPROP_COLOR, bg);           // invisible on every build (incl. the FILL=false quirk)
       ObjectSetInteger(0, box, OBJPROP_FILL, false);
+      ObjectSetInteger(0, box, OBJPROP_BACK, false);         // P-BK-23: foreground, like MT4's own rectangle
+      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);   // same ink as the visible border ⇒ the 4 edges cover it exactly
+      ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    }
-   ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);
-   ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
-   ObjectSetInteger(0, box, OBJPROP_BACK, true);   // fill stays behind candles (zone-like); the 4 edges are the foreground border
    ObjectSetInteger(0, box, OBJPROP_ZORDER, Z_BOX_FILL);   // single source — Commit no longer sets it separately
 }
 // True when the BOX rect currently shows the live fill look (heal check).
@@ -320,6 +460,10 @@ bool BaseKnotFillHealed(const string box)
       return true;
    }
    if(ObjectGetInteger(0, box, OBJPROP_FILL) != 0) return false;
+   // P-BK-23: a hollow handle must also be a FOREGROUND object (MT4's own
+   // objects are stored background=0). One extra read per box per pump — and
+   // it is what heals the boxes committed before this rule existed.
+   if(ObjectGetInteger(0, box, OBJPROP_BACK) != 0) return false;
    return ((color)ObjectGetInteger(0, box, OBJPROP_COLOR) == bg);
 }
 
@@ -404,6 +548,12 @@ bool BaseKnotTFVisible(const int tfMin)
 //| shadows and the box never landed where clicked, unlike the native |
 //| rectangle tool): NO snapping — a click IS the corner, exactly like |
 //| MT4's own box. Body kept (commented) for a one-line restore.      |
+//| P-BK-21 (2026-09-15): that decision covers DRAWING only, and it      |
+//| stands — this function stays the identity. The magnet lives on the   |
+//| ADJUST gesture instead (`BaseKnotMagnetSettle`, called on the drag   |
+//| release), because there the user HAS chosen the edge and is asking   |
+//| for the exact wick. Do not "restore" the body below: two magnets      |
+//| would fight and the draw-time one is the one that was rejected.      |
 //+------------------------------------------------------------------+
 double BaseKnotSnapPrice(const datetime t, const double price)
 {
@@ -1081,10 +1231,28 @@ void BaseKnotDragPaint()
 // BaseKnotCalcLevels, text via BaseKnotTextPlace), so the authoritative
 // release Sync lands on identical pixels. Missing children are skipped (the
 // release Sync rebuilds them) — never resurrect mid-drag.
+// P-PERF-42: the ONE existence probe — reads only, 9 names, once per gesture.
+int BaseKnotChildMaskBuild(const string pfx)
+{
+   int m = 0;
+   if(ObjectFind(0, pfx + BK_EDGE_T) >= 0)            m |= BK_CH_EDGE_T;
+   if(ObjectFind(0, pfx + BK_EDGE_B) >= 0)            m |= BK_CH_EDGE_B;
+   if(ObjectFind(0, pfx + BK_EDGE_L) >= 0)            m |= BK_CH_EDGE_L;
+   if(ObjectFind(0, pfx + BK_EDGE_R) >= 0)            m |= BK_CH_EDGE_R;
+   if(ObjectFind(0, BaseKnotEntryName(pfx)) >= 0)     m |= BK_CH_ENTRY;
+   if(ObjectFind(0, BaseKnotSLName(pfx)) >= 0)        m |= BK_CH_SL;
+   if(ObjectFind(0, BaseKnotTPName(pfx)) >= 0)        m |= BK_CH_TP;
+   if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)      m |= BK_CH_INFO;
+   if(ObjectFind(0, BaseKnotTextName(pfx)) >= 0)      m |= BK_CH_TEXT;
+   return m;
+}
+// ObjectMove ONLY (no style/color/create/delete syscalls) for per-step drag
+// following. P-PERF-42: no `ObjectFind` here any more — the caller only passes
+// names its gesture mask proved exist (a missing object would have made
+// ObjectMove a silent no-op, i.e. the probe only paid terminal calls).
 void BaseKnotMoveOne(const string nm, const datetime tA, const double pA,
                      const datetime tB, const double pB)
 {
-   if(ObjectFind(0, nm) < 0) return;
    ObjectMove(0, nm, 0, tA, pA);
    ObjectMove(0, nm, 1, tB, pB);
 }
@@ -1096,6 +1264,13 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    string pfx = BaseKnotPrefix(id);
    if(pfx == "") return;
    if(ObjectFind(0, BaseKnotBoxName(pfx)) < 0) return;
+   // P-PERF-42: built on the gesture's FIRST move (a tap never builds it), and
+   // rebuilt whenever the id it was built for is not the box being moved.
+   if(s_bkChildMaskId != id)
+   {
+      s_bkChildMaskId = id;
+      s_bkChildMask = BaseKnotChildMaskBuild(pfx);
+   }
    if(t2 < t1) { datetime tt = t1; t1 = t2; t2 = tt; }
    double top = MathMax(p1, p2), bot = MathMin(p1, p2);
    double entry = 0, sl = 0, tp = 0;
@@ -1103,18 +1278,17 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;
    BaseKnotTPTickSpan(t1, t2, tps, tpe);   // TP tick rides the right edge, not the box
-   BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);
-   BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
-   BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
-   BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
-   BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
-   BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
-   BaseKnotMoveOne(BaseKnotTPName(pfx), tps, tp, tpe, tp);
-   string in = BaseKnotInfoName(pfx);
-   if(ObjectFind(0, in) >= 0) ObjectMove(0, in, 0, t2, top);
-   string tn = BaseKnotTextName(pfx);
-   if(ObjectFind(0, tn) >= 0)
+   if((s_bkChildMask & BK_CH_EDGE_T) != 0) BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);
+   if((s_bkChildMask & BK_CH_EDGE_B) != 0) BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
+   if((s_bkChildMask & BK_CH_EDGE_L) != 0) BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
+   if((s_bkChildMask & BK_CH_EDGE_R) != 0) BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
+   if((s_bkChildMask & BK_CH_ENTRY) != 0)  BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
+   if((s_bkChildMask & BK_CH_SL) != 0)     BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
+   if((s_bkChildMask & BK_CH_TP) != 0)     BaseKnotMoveOne(BaseKnotTPName(pfx), tps, tp, tpe, tp);
+   if((s_bkChildMask & BK_CH_INFO) != 0)   ObjectMove(0, BaseKnotInfoName(pfx), 0, t2, top);
+   if((s_bkChildMask & BK_CH_TEXT) != 0)
    {
+      string tn = BaseKnotTextName(pfx);
       datetime tx; double px; int anchor;
       BaseKnotTextPlace(t1, t2, top, bot, tx, px, anchor);
       ObjectMove(0, tn, 0, tx, px);
@@ -1126,15 +1300,26 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
 // reads anchors there too), MOUSE_MOVE brings the trusted cursor. Source
 // priority is single: BOX live anchors while the terminal moves them (exact —
 // MT4 magnet/snap included, ~14 cheap syscalls, never a full Sync),
-// cursor-delta from the press latch only while anchors sit frozen mid-drag
-// (builds that refresh anchors at release). One 30ms budget covers moves +
-// paint; release still does the authoritative BaseKnotSync.
+// [BKCURSOR-OFF: the cursor-delta path that used to run "only while anchors sit
+// frozen mid-drag" is retired dead-by-construction below — the terminal's own
+// native drag is the ONE writer of a box, and it is the LIVE one.] Release still does the
+// authoritative BaseKnotSync; the 500 ms pump heals anything that loses it
+// (P-BK-18).
+//
+// P-BK-18 (2026-09-14, user report «یکیش لایو درگ میشه یکیش نمیشه»): the
+// CHILD MOVE STEP IS NOT BUDGETED ANY MORE. It used to share one 30 ms gate
+// with the cursor fallback and the paint, so the border (4 OBJ_TREND edges) was
+// up to 30 ms of cursor travel BEHIND the native BOX rectangle — the fill
+// tracked the hand at event rate while the border stepped at 33 fps, which is
+// exactly what "one drags live, the other does not" looks like on a fast drag.
+// The move step is CHANGE-DRIVEN (4 property reads, then writes only when the
+// box really moved), so an unbudgeted call is free while nothing moves, and it
+// never adds a REPAINT: MT4 already repaints the dragged box on this very
+// frame, and BaseKnotDragPaint() keeps its own 30 ms gate. The runs are
+// therefore pixel-locked with the fill and no heavier than before.
 void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
 {
-   s_bkDragActMs = GetTickCount();   // activity even when the 30ms gate below absorbs this call
-   uint now = s_bkDragActMs;
-   if(now - s_bkDragMs < 30) return;   // one budget for moves + paint
-   s_bkDragMs = now;
+   s_bkDragActMs = GetTickCount();   // activity even when the cursor budget below absorbs this call
    BaseKnotReassertLock(false);   // P-BK-14: the drag owns the view until release (drag took ctxToo=false)
    string pfx = BaseKnotPrefix(id);
    if(pfx == "") return;
@@ -1146,31 +1331,93 @@ void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
    double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
    if(t1 != s_bkFolT1 || t2 != s_bkFolT2 || p1 != s_bkFolP1 || p2 != s_bkFolP2)
    {
+      // P-BK-19a: the anchors moved WITHOUT us — a fallback write folds itself
+      // into s_bkFol* the moment it lands, so a difference here IS somebody else
+      // moving the box, i.e. the TERMINAL's own native drag. The gesture is
+      // claimed for the rest of it: a second writer is the P-BK-07 fight, and
+      // P-BK-15 says MT4 cancels the drag the second writer would be fighting.
+      s_bkNativeClaim = true;
       s_bkFolT1 = t1; s_bkFolT2 = t2; s_bkFolP1 = p1; s_bkFolP2 = p2;
+      uint mkT = GetTickCount();   // P-PERF-43: this gesture measures itself (see the release line)
       BaseKnotMoveChildren(id, t1, p1, t2, p2);
+      uint mkD = GetTickCount() - mkT;
+      if(mkD > s_bkPerfMoveWorst) s_bkPerfMoveWorst = mkD;
+      s_bkPerfPasses++;
    }
-   else if(curT > 0 && curP > 0 && id == s_bkDragId && s_bkDragT0 > 0)
+   // BKCURSOR-OFF (2026-09-14, user decision — «داخل باکس دوتا درگ فعال داریم،
+   // یکیش رو حذف کن، اونی که لایو نیست»). TWO drags wrote the box: the
+   // TERMINAL's own native drag (the LIVE one — it moves the anchors at event
+   // rate and MT4 repaints the fill on that same frame) and this CURSOR-DELTA
+   // fallback, which was rate-limited by design (BK_DRAG_CURSOR_MS 30) because
+   // every write it makes is a full repaint the terminal did not ask for — i.e.
+   // the one the user feels as stepped, not live. The live path is enough on any
+   // build that drags the box at all (that is what the gesture ledger shows:
+   // `native=1` on every real drag), so the second writer is retired DEAD BY
+   // CONSTRUCTION, exactly like the panel drag (PANELDRAG-OFF). Its whole body
+   // stays in place and compiles, so a restore is one word. TO RESTORE: drop the
+   // `false &&`, and keep the P-BK-19a claim + the P-BK-19b role measurement
+   // (BaseKnotGrabRole) that made it a second writer of ONE owner instead of a
+   // fight — the gate group `[bkcursor-off]` asserts the retirement in both
+   // directions, so a half-restore FAILS.
+   else if(false && !s_bkNativeClaim &&
+           curT > 0 && curP > 0 && id == s_bkDragId && s_bkDragT0 > 0 &&
+           GetTickCount() - s_bkOwnerMs >= BK_DRAG_OWNER_MS)
    {
-      // Anchors frozen — the terminal is NOT moving the BOX natively on this
-      // gesture (frozen build, or the grab never engaged): cursor-delta
-      // fallback (the press latch belongs to s_bkDragId, so only that box
-      // may use it). P-BK-16: move the BOX itself too, not just the children
-      // — children-only left the box behind, so release-Sync snapped
-      // everything back and the box could never be relocated. Absolute from
-      // the press base (never incremental), so rounds converge exactly and
-      // can never drift or double-count; the moment the terminal moves the
-      // anchors itself, the exact branch above wins again.
+      // P-BK-18: THIS path moves the BOX itself (below), so it keeps the budget
+      // — an unbudgeted box-write storm would drive a repaint per mouse move
+      // where the terminal is not repainting anything of its own.
+      uint cms = GetTickCount();
+      if(cms - s_bkDragMs < BK_DRAG_CURSOR_MS) return;
+      s_bkDragMs = cms;
+      // Anchors frozen and NOBODY else claimed the box: the terminal is NOT
+      // moving it natively on this gesture (frozen build, or the grab never
+      // engaged), so the cursor owns it (the press latch belongs to s_bkDragId,
+      // so only that box may use it). Absolute from the press base (never
+      // incremental), so rounds converge exactly and can never drift or
+      // double-count; the moment the terminal moves the anchors itself, the
+      // exact branch above wins again.
+      //
+      // P-BK-19b: write ONLY what the press grabbed (s_bkGrabSel, measured on the
+      // press pixels). A body grab translates both corners with their offset kept
+      // — byte-identical to P-BK-16 — while an edge/corner grab is a RESIZE: that
+      // side's value follows the cursor and the OPPOSITE side is never written.
       int dt = (int)(curT - s_bkDragT0);
       double dp = curP - s_bkDragP0;
-      datetime ft1 = s_bkDragBT1 + dt, ft2 = s_bkDragBT2 + dt;
-      double fp1 = s_bkDragBP1 + dp, fp2 = s_bkDragBP2 + dp;
+      datetime ft1 = s_bkDragBT1, ft2 = s_bkDragBT2;
+      double fp1 = s_bkDragBP1, fp2 = s_bkDragBP2;
+      if(s_bkGrabSel == BK_GRAB_ALL)   // body grab = MOVE (the press offset is preserved)
+      {
+         ft1 += dt; ft2 += dt; fp1 += dp; fp2 += dp;
+      }
+      else                             // edge/corner grab = RESIZE (only the grabbed side travels)
+      {
+         if((s_bkGrabSel & BK_GRAB_T1) != 0) ft1 = curT;
+         if((s_bkGrabSel & BK_GRAB_P1) != 0) fp1 = curP;
+         if((s_bkGrabSel & BK_GRAB_T2) != 0) ft2 = curT;
+         if((s_bkGrabSel & BK_GRAB_P2) != 0) fp2 = curP;
+      }
+      if(!s_bkFallLogged)   // ONE line per gesture: who owned it is the answer the next report needs
+      {
+         s_bkFallLogged = true;
+         Print("[BK] drag cursor-owned box=", id, " role=", s_bkGrabSel,
+               (s_bkGrabSel == BK_GRAB_ALL ? " (move)" : " (resize)"));
+      }
       ObjectMove(0, box, 0, ft1, fp1);
       ObjectMove(0, box, 1, ft2, fp2);
       s_bkFolT1 = ft1; s_bkFolT2 = ft2; s_bkFolP1 = fp1; s_bkFolP2 = fp2;
+      uint fkT = GetTickCount();   // P-PERF-43
       BaseKnotMoveChildren(id, ft1, fp1, ft2, fp2);
+      uint fkD = GetTickCount() - fkT;
+      if(fkD > s_bkPerfMoveWorst) s_bkPerfMoveWorst = fkD;
+      s_bkPerfPasses++;
    }
-   else return;   // nothing moved and no cursor — skip the repaint too
+   // BKCURSOR-OFF: the live path is the ONLY path — no anchor move and no
+   // terminal drag means there is nothing to follow and nothing to paint.
+   else return;   // nothing moved — skip the repaint too
+   uint pkT = GetTickCount();   // P-PERF-43: the repaint is the other half of the lag
    BaseKnotDragPaint();
+   uint pkD = GetTickCount() - pkT;
+   if(pkD > s_bkPerfPaintWorst) s_bkPerfPaintWorst = pkD;
 }
 void BaseKnotDelete(const string id)
 {
@@ -1226,6 +1473,76 @@ string BaseKnotBoxAt(const datetime t, const double price)
    }
    return "";
 }
+// P-BK-24 — THE SAME QUESTION, ASKED IN PIXELS. `BaseKnotBoxAt` is an exact
+// INSIDE test in price/time terms, which is the right answer when the cursor is
+// genuinely inside the box — and the wrong one when the user presses the drawn
+// border: the visible line is `inpBoxBorderWidth` px wide and sits ON the
+// boundary, so its outer half is already outside the rectangle, and the terminal
+// accepts that press (its own hit test has a few px of tolerance) while our
+// latch did not. The press point is therefore measured against the box's two
+// corners through `ChartTimePriceToXY` (the same projection `BaseKnotGrabRole`
+// already uses), inflated by `BK_PRESS_SLOP_PX` — never a price estimate.
+string BaseKnotBoxAtPx(const int mx, const int my)
+{
+   if(StringLen(inpObjectPrefix) == 0) return "";
+   BaseKnotLazyInit();
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
+      if(ObjectFind(0, box) < 0) continue;
+      int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+      if(!ChartTimePriceToXY(0, 0, (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0),
+                             ObjectGetDouble(0, box, OBJPROP_PRICE, 0), x1, y1)) continue;
+      if(!ChartTimePriceToXY(0, 0, (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1),
+                             ObjectGetDouble(0, box, OBJPROP_PRICE, 1), x2, y2)) continue;
+      if(mx >= MathMin(x1, x2) - BK_PRESS_SLOP_PX && mx <= MathMax(x1, x2) + BK_PRESS_SLOP_PX &&
+         my >= MathMin(y1, y2) - BK_PRESS_SLOP_PX && my <= MathMax(y1, y2) + BK_PRESS_SLOP_PX)
+         return g_bkBoxes[i].id;
+   }
+   return "";
+}
+// P-BK-19b — WHAT did this press grab? MEASURED in pixels against the box's own
+// two corners (ChartTimePriceToXY — the same call the placement rule and the
+// box's own preview place objects with), never assumed: inside
+// BK_GRAB_CORNER_PX of a corner ⇒ that corner's two values; inside
+// BK_GRAB_EDGE_PX of one edge ⇒ that edge's single value; anywhere else ⇒ the
+// body (all four = the P-BK-16 MOVE). Neither axis counts as an edge if the box
+// is too small to aim inside it (every press would land in the band), and a box
+// whose corners cannot be projected (off-window, zero-size) answers BK_GRAB_ALL —
+// a role that cannot be measured must not invent, it falls back to the move it
+// always did. Reads only; called once per gesture, at the press.
+int BaseKnotGrabRole(const string box, const int mx, const int my)
+{
+   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   datetime bt1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
+   datetime bt2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+   if(!ChartTimePriceToXY(0, 0, bt1, ObjectGetDouble(0, box, OBJPROP_PRICE, 0), x1, y1)) return BK_GRAB_ALL;
+   if(!ChartTimePriceToXY(0, 0, bt2, ObjectGetDouble(0, box, OBJPROP_PRICE, 1), x2, y2)) return BK_GRAB_ALL;
+   int dCorner = BK_GRAB_CORNER_PX, dEdge = BK_GRAB_EDGE_PX;
+   if(MathAbs(mx - x1) <= dCorner && MathAbs(my - y1) <= dCorner)   // corner at anchor 1
+      return BK_GRAB_T1 | BK_GRAB_P1;
+   if(MathAbs(mx - x2) <= dCorner && MathAbs(my - y2) <= dCorner)   // corner at anchor 2
+      return BK_GRAB_T2 | BK_GRAB_P2;
+   int wSpan = MathAbs(x2 - x1), hSpan = MathAbs(y2 - y1);
+   if(wSpan >= BK_GRAB_MIN_SPAN_PX && MathAbs(mx - x1) <= dEdge) return BK_GRAB_T1;   // vertical edge, anchor 1
+   if(wSpan >= BK_GRAB_MIN_SPAN_PX && MathAbs(mx - x2) <= dEdge) return BK_GRAB_T2;   // vertical edge, anchor 2
+   if(hSpan >= BK_GRAB_MIN_SPAN_PX && MathAbs(my - y1) <= dEdge) return BK_GRAB_P1;   // horizontal edge, anchor 1
+   if(hSpan >= BK_GRAB_MIN_SPAN_PX && MathAbs(my - y2) <= dEdge) return BK_GRAB_P2;   // horizontal edge, anchor 2
+   return BK_GRAB_ALL;   // body press = MOVE
+}
+// P-BK-18 — does the box's own VISIBLE top edge still describe the box?
+// The top edge is the child that carries both the box's time span and its top
+// price, so it is the cheapest honest witness that the border is where the box
+// is; false = the border is behind and needs the authoritative Sync (the pump's
+// settle heal). Reads only: three property reads in steady state, no writes.
+bool BaseKnotBorderSettled(const string pfx, const datetime t1, const datetime t2, const double top)
+{
+   string edgeT = pfx + BK_EDGE_T;
+   if(ObjectFind(0, edgeT) < 0) return false;   // missing edge = not settled (Sync rebuilds it)
+   if((datetime)ObjectGetInteger(0, edgeT, OBJPROP_TIME, 0) != t1) return false;
+   if((datetime)ObjectGetInteger(0, edgeT, OBJPROP_TIME, 1) != t2) return false;
+   return (ObjectGetDouble(0, edgeT, OBJPROP_PRICE, 0) == top);
+}
 // Per-tick (500 ms) re-glue: scroll/zoom moves pixel badges, box anchors don't.
 void BaseKnotSyncBadges()
 {
@@ -1247,6 +1564,7 @@ void BaseKnotSyncBadges()
    if(ArraySize(g_bkBoxes) == 0) return;
     datetime tpEdge = BaseKnotTPEdgeTime();   // chart-global: one conversion for the whole pump
     double bkRef = BaseKnotLiveRef();         // P-BK-13: one live price for every follow check below
+    bool bkHandOff = UILeftButtonUp();        // P-BK-18: ONE button probe for the settle heal below
     // PERF: coalesce repaints — N boxes healing in one pump used to issue N
     // full ChartRedraws; final pixels are identical with one after the loop.
     bool bkNeedPaint = false;
@@ -1296,6 +1614,23 @@ void BaseKnotSyncBadges()
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
       double bot = MathMin(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+      // P-BK-18 SETTLE HEAL — the BOX owns the truth, the border only mirrors it.
+      // A native box drag is the TERMINAL's gesture and its children ride our
+      // copy, so any path that loses the gesture's END leaves the visible border
+      // permanently behind the fill: a motionless release emits NO mouse-move at
+      // all (P-BK-03), a registry gap skips the follow entirely, and MT4's own
+      // snap at the drop can land a pixel the last follow never saw. Nothing
+      // else ever re-derives the edges, so that residue used to survive until a
+      // TF switch. The top edge is COMPARED against the box on the existing
+      // 500 ms pump: steady state is three property reads and zero writes, a
+      // diverged box costs one authoritative Sync, and the gate is the button
+      // being UP through the ONE owner (P-UI-73) — writing into a live native
+      // drag would cancel it (P-BK-15).
+      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))
+      {
+         BaseKnotSync(g_bkBoxes[i].id);
+         bkNeedPaint = true;
+      }
       int tfMin = g_bkBoxes[i].tfMin;
       if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
       if(tpEdge > 0 && BaseKnotTFVisible(tfMin)) BaseKnotTPGlue(pfx, tpEdge);   // right-edge hug, hidden-TF boxes skipped
@@ -1361,6 +1696,98 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
                     (dir >= 0 ? "BUY" : "SELL") + " set (" +
                     DoubleToString(hPips, 1) + " pips)", 4000);   // result nags 4 s, then clean
    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| P-BK-21 — THE ADJUST MAGNET: the magnet lives on the RELEASE.     |
+//|
+//| «می‌خوام روی یک شدو بزارم، بارها باید انجام بدم که روی همون چیز |
+//| بزارم» — placing an EDGE of a committed box on a wick was          |
+//| pixel work: the terminal's native drag lands the anchor where the  |
+//| cursor is, and one chart pixel is many pips once the chart is      |
+//| zoomed out, so the target is reachable only by repeating the drag. |
+//|
+//| BKMAGNET-OFF (2026-09-06) retired the DRAW-time magnet for a real    |
+//| reason — corners jumped onto candle shadows and the box never        |
+//| landed where the user clicked — and that decision stands:            |
+//| `BaseKnotSnapPrice` is still the identity for corner 1 / corner 2.   |
+//| The two gestures are NOT the same question, though. While DRAWING    |
+//| the user is sketching a range and any pull is noise; while ADJUSTING |
+//| he has already chosen the edge and is asking for EXACTLY that wick.  |
+//| So the magnet is now a property of the ADJUST gesture only:          |
+//|  · it runs ONCE, on the release (the terminal's drag is over —       |
+//|    writing into a live native drag would cancel it, P-BK-15);        |
+//|  · it may move ONE price anchor — the side the gesture moved and     |
+//|    only when it is the ONLY side that moved, so a whole-box move     |
+//|    keeps its exact geometry;                                         |
+//|  · it is side-aware (the top side may only take a High, the bottom   |
+//|    side only a Low), so a snap can never cross the opposite edge;    |
+//|  · candidate wicks are the moved anchor's own bar ±BK_MAGNET_BARS,   |
+//|    inside `g_magnetSensitivityPips` × the SYMBOL's pip (gold, JPY,   |
+//|    indices and crypto included — never a hard-coded point).          |
+//| These are the retirement's own knobs, so the two settings that the   |
+//| card had left inert (MAGNET / MAGNET SENS) are live again.           |
+//+------------------------------------------------------------------+
+#define BK_MAGNET_BARS 1   // candidate window around the anchor's bar (taste)
+
+// Nearest candle extreme to `price`, restricted to the side being moved.
+// `topSide` = the anchor is the box's upper corner, so only Highs qualify.
+double BaseKnotMagnetPrice(const datetime t, const double price, const bool topSide)
+{
+   if(!g_enableMagnet) return price;
+   if(t <= 0 || price <= 0) return price;
+   double pip = BaseKnotPipSize();
+   double gate = (double)g_magnetSensitivityPips * pip;
+   if(gate <= 0) gate = pip;   // sensitivity 0 = exact touch only (retired rule)
+   int sh = iBarShift(_Symbol, 0, t, false);
+   if(sh < 0) return price;
+   double best = price, bestD = gate;
+   for(int k = -BK_MAGNET_BARS; k <= BK_MAGNET_BARS; k++)
+   {
+      int s = sh + k;
+      if(s < 0) continue;
+      double cand = 0.0;
+      if(topSide) cand = iHigh(_Symbol, 0, s);
+      else        cand = iLow(_Symbol, 0, s);
+      if(cand <= 0) continue;
+      double d = MathAbs(price - cand);
+      if(d <= bestD) { bestD = d; best = cand; }   // <= : a tie takes the LATER bar
+   }
+   return best;
+}
+
+// ONE write per adjusted gesture, issued on the release, before the Sync that
+// repaints the children. Compares the box's live anchors against the press-time
+// snapshot the native-drag latch already took (s_bkDragBP1/BP2).
+void BaseKnotMagnetSettle(const string bid)
+{
+   if(!g_enableMagnet || bid == "") return;
+   // P-BK-25: the magnet's whole decision is "did ONE side move?" — a comparison
+   // against a snapshot of the press. A gesture we ADOPTED mid-drag has no such
+   // snapshot (its baseline was taken after the terminal had already moved the
+   // box), so the honest answer is to snap NOTHING: leave the box exactly where
+   // the hand let it go. A role that cannot be measured must not invent.
+   if(!s_bkSnapTrusted) return;
+   if(BaseKnotFind(bid) < 0) return;
+   string box = BaseKnotBoxName(BaseKnotPrefix(bid));
+   if(ObjectFind(0, box) < 0) return;
+   double pt = GetCachedPoint();
+   if(pt <= 0) pt = _Point;
+   double p1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
+   double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
+   bool moved1 = (MathAbs(p1 - s_bkDragBP1) > pt * 0.5);
+   bool moved2 = (MathAbs(p2 - s_bkDragBP2) > pt * 0.5);
+   if(moved1 == moved2) return;   // a whole-box move (or a tap) — never re-shape it
+   int idx = (moved1 ? 0 : 1);
+   datetime ta = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, idx);
+   double pa = (idx == 0 ? p1 : p2);
+   double other = (idx == 0 ? p2 : p1);
+   double snap = BaseKnotMagnetPrice(ta, pa, (pa > other));
+   if(MathAbs(snap - pa) <= pt * 0.5) return;   // already on the wick — zero writes
+   if(!ObjectMove(0, box, idx, ta, snap)) return;
+   Print("[BK] magnet box=", bid, " side=", (idx == 0 ? 1 : 2), " ",
+         DoubleToString(pa, _Digits), " -> ", DoubleToString(snap, _Digits),
+         " (", DoubleToString(BaseKnotToPips(MathAbs(snap - pa)), 1), " pips)");
 }
 
 // Press (MOUSE_MOVE rising edge, or a CLICK when no press edge was seen —
@@ -1432,12 +1859,16 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
         if(BaseKnotFind(bid) >= 0)
         {
            if(BaseKnotLocked(bid)) return true;   // locked — swallow, children stay put
+           // P-BK-19a: the terminal just NAMED the object it is dragging, so the
+           // gesture is ITS — the cursor fallback stays off for the rest of it.
+           s_bkNativeClaim = true;
            // Unified lean follow (P-BK-07): anchor-exact moves only — never a
            // full Sync per step (its style/tooltip rewrites lagged children
            // behind the native BOX on heavy charts). This event carries no
            // trusted cursor (in-repo pattern: TH3Tool reads live anchors here
-           // too), so it is anchor-exact only — the cursor fallback rides the
-           // MOUSE_MOVE channel. Release still does the authoritative Sync.
+           // too), so it is anchor-exact only — the cursor fallback that used to
+           // ride the MOUSE_MOVE channel is RETIRED (BKCURSOR-OFF). Release still
+           // does the authoritative Sync.
            if(bid != s_bkDragId)
            {
               // Overlap hole: the press latched another box — adopt the
@@ -1446,7 +1877,8 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
               if(ObjectFind(0, abox) >= 0)
               {
                  s_bkDragId = bid; s_bkDragMoved = true;
-                 LOG_IP1(LOG_CAT_DRAW, "BK drag adopt ", bid);   // diag: terminal drags a box the press missed
+                 Print("[BK] drag adopt box=", bid, " (the press missed it)");   // diag: terminal drags a box the press missed
+                 s_bkSnapTrusted = false;   // P-BK-25: this baseline is taken MID-DRAG
                  BaseKnotDragLockOn();   // definitively dragging — freeze the view
                  s_bkDragBT1 = (datetime)ObjectGetInteger(0, abox, OBJPROP_TIME, 0);
                  s_bkDragBT2 = (datetime)ObjectGetInteger(0, abox, OBJPROP_TIME, 1);
@@ -1466,7 +1898,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
             static uint s_bkDiagUnkMs = 0;
             uint unow = GetTickCount();
             if(bid != s_bkDiagUnk || unow - s_bkDiagUnkMs > 5000)
-            { s_bkDiagUnk = bid; s_bkDiagUnkMs = unow; LOG_WP1(LOG_CAT_DRAW, "BK drag: box not in registry ", bid); }
+            { s_bkDiagUnk = bid; s_bkDiagUnkMs = unow; Print("[BK] drag: box not in registry ", bid); }
          }
          return true;
     }
@@ -1538,9 +1970,9 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    }
 
     //--- IDLE box-drag follow (unified lean follow, P-BK-07): the terminal
-    //--- moves the BOX natively, children follow through BaseKnotFollowDrag —
-    //--- anchor-exact while anchors move, cursor-delta fallback while frozen
-    //--- (build-dependent). One 30ms budget for moves + paint, then one
+    //--- moves the BOX natively and children follow through BaseKnotFollowDrag —
+    //--- anchor-exact and unbudgeted (the ONE, LIVE writer; the cursor-delta
+    //--- fallback is retired, BKCURSOR-OFF). One paint budget, then one
     //--- authoritative BaseKnotSync from the committed anchors on release.
     //--- Never consumes — menus/panels/hold still see every move (Lite-safe:
     //--- Object* only).
@@ -1554,10 +1986,18 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
        if(srising)
        {
           s_bkDragId = ""; s_bkDragMoved = false; s_bkDragActMs = GetTickCount();
+          s_bkSnapTrusted = false;   // P-BK-25: a fresh press has no trusted baseline yet
+          // P-BK-19: a fresh press is a fresh gesture — nobody owns it yet, and
+          // the window in which the terminal is asked first starts NOW.
+          s_bkNativeClaim = false; s_bkOwnerMs = GetTickCount(); s_bkFallLogged = false;
+          // P-PERF-42/41: the child mask is re-probed for THIS gesture (the same
+          // box dragged twice probes twice) and the timing counters restart.
+          s_bkChildMaskId = ""; s_bkPerfMoveWorst = 0; s_bkPerfPaintWorst = 0; s_bkPerfPasses = 0;
          int ssw = 0; datetime sct = 0; double scp = 0;
          if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp) && ssw == 0 && sct > 0 && scp > 0)
          {
-            string shit = BaseKnotBoxAt(sct, scp);
+            string shit = BaseKnotBoxAt(sct, scp);   // exact INSIDE test first — it never lies
+            if(shit == "") shit = BaseKnotBoxAtPx((int)lparam, (int)dparam);   // P-BK-24: the drawn BORDER is a target too
             if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
             {
                string shbox = BaseKnotBoxName(BaseKnotPrefix(shit));
@@ -1572,7 +2012,12 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
                     s_bkDragBP2 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 1);
                     s_bkFolT1 = s_bkDragBT1; s_bkFolT2 = s_bkDragBT2;
                     s_bkFolP1 = s_bkDragBP1; s_bkFolP2 = s_bkDragBP2;
-                    LOG_IP1(LOG_CAT_DRAW, "BK drag latch ", shit);   // diag: press found a box — follow armed
+                    // BKCURSOR-OFF: the press-time grab role fed the retired cursor
+                    // fallback only, so it is dormant with it — kept commented so a
+                    // restore is one line (BaseKnotGrabRole stays compiled).
+                    // s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
+                    s_bkSnapTrusted = true;   // P-BK-25: OUR press latched it — the baseline predates any terminal move
+                    Print("[BK] drag latch box=", shit);   // diag: press found a box — follow armed
                 }
             }
          }
@@ -1586,7 +2031,13 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          // box — the drop point is under the cursor, so sync that box too.
           if(s_bkDragId != "" && s_bkDragMoved)
           {
-              LOG_IP1(LOG_CAT_DRAW, "BK drag release sync ", s_bkDragId);   // diag: authoritative final
+              // P-PERF-43: the same line carries WHAT the gesture cost, split by
+              // phase — the ledger that answers the next "the drag lags" with a
+              // number (children/box writes vs the throttled repaint) instead of a
+              // guess. One line per gesture, never per step.
+              Print("[BK] drag release sync box=", s_bkDragId, " native=", (s_bkNativeClaim ? 1 : 0),
+                    " follow=", s_bkPerfPasses, " move=", (int)s_bkPerfMoveWorst, "ms paint=",
+                    (int)s_bkPerfPaintWorst, "ms");   // diag: authoritative final
               bool painted = false;
              double relRef = BaseKnotLiveRef();   // P-BK-13: a drag across the price flips NOW, not 500 ms later
              int ssw3 = 0; datetime sct3 = 0; double scp3 = 0;
@@ -1602,12 +2053,29 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
              }
              if(BaseKnotFind(s_bkDragId) >= 0)
              {
+                // P-BK-21: the ADJUST magnet — the release is the moment the
+                // user means "exactly there". It runs BEFORE the Sync so the
+                // children (edges, badges, Entry/SL/TP) are placed from the
+                // snapped anchors: ONE write, one repaint, no second writer
+                // beside the terminal's own drag (P-BK-15/BKCURSOR-OFF).
+                BaseKnotMagnetSettle(s_bkDragId);
                 BaseKnotRefreshDirection(s_bkDragId, relRef);
                 BaseKnotSync(s_bkDragId);
                 painted = true;
              }
             if(painted) ChartRedraw();
           }
+          // P-BK-26: A DRAG IS NOT A SELECT. MT4 keeps the grabbed object SELECTED
+          // after a native drag, and a SELECTED object is moved by MT4 on EVERY
+          // later drag anywhere on the chart — the box then follows the hand
+          // through gestures that were never meant to touch it (the «چسبناک»
+          // report), and since P-BK-23 that stale selection also paints MT4's own
+          // square handles on a foreground handle. The gesture that MOVED the box
+          // drops the selection HERE, on the release (writing earlier would cancel
+          // the terminal's drag, P-BK-15); a TAP keeps it, because the box's
+          // tooltip promises "select + Delete key removes all" and that promise
+          // needs the selection to survive a click.
+          if(s_bkDragMoved) BaseKnotDropSelection(s_bkDragId);
           s_bkDragId = ""; s_bkDragMoved = false;
           BaseKnotDragLockOff();   // gesture over — hand the view back (self-guarded)
        }

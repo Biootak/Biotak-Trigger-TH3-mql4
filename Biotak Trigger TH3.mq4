@@ -143,6 +143,10 @@ int OnInit()
 void OnDeinit(const int reason)
 {
     uint p4d = GetTickCount();   // P-PERF-04: teardown budget (timeframe switch)
+    // P-PERF-44: the ledger is read by the breakdown line below, so it is cleared
+    // HERE - at the start of the transaction it describes, never inside a saver
+    // (a saver that returns early would leave the previous teardown's numbers).
+    GVLedgerResetAll();
     // --- UI teardown (before the base handler clears chart objects) ---
     // P-UI-21: close panels/palette/strip/dropdowns FIRST (flushes the
     // card-12 text edit + releases the modal chart lock) — otherwise
@@ -174,11 +178,25 @@ void OnDeinit(const int reason)
     // proved were already on disk, whether the terminal-wide `GlobalVariablesFlush`
     // ran, and the NAMES of the first writers. A number without a cause is what
     // this project refuses to act on; this line is the cause.
+    // P-PERF-44: EVERY saver reports now, not only the override pass. The line
+    // that carried `save writes=0/106 flushed=0` next to a 125 ms phase was a
+    // number without an owner: the palette and UI-state blocks wrote 13 + 6 keys
+    // plus a terminal-wide flush that no field of this line could see, and the HTF
+    // block wrote 15 more with no guard at all. `flush=` counts the disk copies
+    // this teardown actually performed (ONE owner, GVFlushCommit, so 1 is the
+    // ceiling however many saver blocks ran).
     if(p15total > P_P4_INIT_WARN_MS)
         _LOG_GATE_W Print("[W][PERF] OnDeinit breakdown: pnl=", (int)p15Pnl, "ms menu=", (int)p15Menu,
               "ms htf=", (int)p15Htf, "ms save=", (int)p15Save, "ms cleanup=", (int)p15Cleanup,
-              "ms handler=", (int)p15Handler, "ms | save writes=", RSSaveWrites(), "/",
-              (RSSaveWrites() + RSSaveSkipped()), " flushed=", (RSSaveFlushed() ? 1 : 0),
+              "ms handler=", (int)p15Handler, "ms | ovr w=", RSSaveWrites(), "/",
+              (RSSaveWrites() + RSSaveSkipped()),
+              " pal w=", GVLedgerWrites(GV_BLOCK_PALETTE), "/",
+              (GVLedgerWrites(GV_BLOCK_PALETTE) + GVLedgerSkipped(GV_BLOCK_PALETTE)),
+              " ui w=", GVLedgerWrites(GV_BLOCK_UI), "/",
+              (GVLedgerWrites(GV_BLOCK_UI) + GVLedgerSkipped(GV_BLOCK_UI)),
+              " htf w=", GVLedgerWrites(GV_BLOCK_HTF), "/",
+              (GVLedgerWrites(GV_BLOCK_HTF) + GVLedgerSkipped(GV_BLOCK_HTF)),
+              " flush=", GVFlushRuns(),
               " first=", RSSaveNamed(0), ",", RSSaveNamed(1), ",", RSSaveNamed(2));
 }
 

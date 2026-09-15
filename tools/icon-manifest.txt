@@ -21,8 +21,6 @@ bk_w2.bmp
 bk_w3.bmp
 bk_w4.bmp
 bk_w5.bmp
-box_off.bmp
-box_on.bmp
 cell_off.bmp
 cell_on.bmp
 circ_off.bmp
@@ -222,6 +220,8 @@ pnl_topbar_gold.bmp
 pnl_trackgloss.bmp
 pnl_vchip_gold.bmp
 pnl_xbtn.bmp
+ruler_off.bmp
+ruler_on.bmp
 step_off.bmp
 step_on.bmp
 sub_panel_r1.bmp

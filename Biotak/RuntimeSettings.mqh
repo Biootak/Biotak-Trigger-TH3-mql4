@@ -671,9 +671,87 @@ int ClampSettingInt(const int v, const int lo, const int hi)
 #define RS_SAVE_SLOTS 160
 static int    s_rsSlot = 0;                 // next shadow slot; reset per pass
 static bool   s_rsDirty = false;            // did this pass write anything?
-static bool   s_rsDryRun = false;           // record the shadow, touch nothing
+static bool   g_gvShadowDry = false;         // record, touch nothing (P-PERF-44: ONE latch for every block)
 static double s_rsShadow[RS_SAVE_SLOTS];
 static bool   s_rsShadowKnown[RS_SAVE_SLOTS];
+
+//==============================================================================
+// P-PERF-44 — ONE DRY RUN, ONE FLUSH OWNER, ONE LEDGER
+//
+// P-PERF-37 taught the teardown line to REPORT the override pass (`writes=0/106
+// flushed=0`) and the same `save=125ms` kept coming back on every timeframe
+// switch, i.e. the number had an owner the line could not see. FOUR savers run in
+// that window and only the override table was ever PRIMED — `SavePalRecent`
+// (13 keys) and `SaveUIStates` (6 keys) recorded their first value in the ONE
+// save that mattered (the teardown itself), so every switch paid their writes
+// plus a terminal-wide `GlobalVariablesFlush` although nothing had been edited,
+// while `SaveHTFCandlesSettings` wrote its 15 keys unconditionally with no
+// shadow at all. Three of those blocks each flushed the terminal's whole table.
+//
+// The three rules that make a shadow free instead of decorative:
+//  (1) ONE dry-run latch (`GVShadowDryRun`) obeyed by EVERY sink, so any block is
+//      primed by REPLAYING ITS OWN WRITE ORDER from its own load pass - no second
+//      key list that can drift out of sync with the writer;
+//  (2) every saver only REQUESTS the disk copy (`GVFlushRequest`) while ONE owner
+//      commits it (`GVFlushCommit`, this project's only `GlobalVariablesFlush`),
+//      so a teardown with four writers touches the disk at most ONCE;
+//  (3) every block REPORTS what it did (`GVLedger*`), so the next teardown line
+//      NAMES its owner instead of leaving a duration unattributed.
+//==============================================================================
+static bool s_gvFlushOwed = false;
+static int  s_gvFlushRuns  = 0;
+
+#define GV_BLOCK_OVERRIDES 0
+#define GV_BLOCK_PALETTE   1
+#define GV_BLOCK_UI        2
+#define GV_BLOCK_HTF       3
+#define GV_BLOCK_COUNT     4
+static int s_gvBlockWrites[GV_BLOCK_COUNT];
+static int s_gvBlockSkipped[GV_BLOCK_COUNT];
+static int s_gvBlockTotal[GV_BLOCK_COUNT];
+
+// P-PERF-44 (1): the ONE priming latch. Set it, replay a saver's own write order,
+// clear it: the shadow now knows what the terminal already holds.
+void GVShadowDryRun(const bool on) { g_gvShadowDry = on; }
+
+// P-PERF-44 (2): a saver ASKS, exactly one owner ANSWERS. Idempotent by design -
+// the flag collapses four requests into the one disk serialisation they need.
+void GVFlushRequest() { s_gvFlushOwed = true; }
+
+bool GVFlushCommit()
+{
+   if(!s_gvFlushOwed) return false;
+   s_gvFlushOwed = false;
+   s_gvFlushRuns++;
+   GlobalVariablesFlush();
+   return true;
+}
+
+// P-PERF-44 (3): the block ledger. Every saver reports on EVERY pass and always
+// BEFORE its own early return, because a counter that survives a no-op pass is a
+// counter that lies about the next teardown.
+void GVLedgerReport(const int block, const int writes, const int total)
+{
+   if(block < 0 || block >= GV_BLOCK_COUNT) return;
+   s_gvBlockWrites[block]  = writes;
+   s_gvBlockSkipped[block] = (total > writes) ? (total - writes) : 0;
+   s_gvBlockTotal[block]   = total;
+}
+
+void GVLedgerResetAll()
+{
+   for(int i = 0; i < GV_BLOCK_COUNT; i++)
+   {
+      s_gvBlockWrites[i]  = 0;
+      s_gvBlockSkipped[i] = 0;
+      s_gvBlockTotal[i]   = 0;
+   }
+   s_gvFlushRuns = 0;
+}
+
+int GVLedgerWrites(const int block)  { if(block < 0 || block >= GV_BLOCK_COUNT) return 0; return s_gvBlockWrites[block]; }
+int GVLedgerSkipped(const int block) { if(block < 0 || block >= GV_BLOCK_COUNT) return 0; return s_gvBlockSkipped[block]; }
+int GVFlushRuns() { return s_gvFlushRuns; }
 
 //==============================================================================
 // P-PERF-37 - THE SAVE PASS MUST BE ABLE TO SAY WHAT IT ACTUALLY WROTE
@@ -728,7 +806,7 @@ void RSSetNext(const string name, const double value)
 {
    if(s_rsSlot >= RS_SAVE_SLOTS)   // never silently drop a key
    {
-      if(!s_rsDryRun)
+      if(!g_gvShadowDry)
       {
          GlobalVariableSet(name, value);
          s_rsDirty = true;
@@ -740,12 +818,12 @@ void RSSetNext(const string name, const double value)
    int i = s_rsSlot++;
    if(s_rsShadowKnown[i] && s_rsShadow[i] == value)   // already on disk
    {
-      if(!s_rsDryRun) s_rsSkipped++;
+      if(!g_gvShadowDry) s_rsSkipped++;
       return;
    }
    s_rsShadow[i] = value;
    s_rsShadowKnown[i] = true;
-   if(!s_rsDryRun)
+   if(!g_gvShadowDry)
    {
       GlobalVariableSet(name, value);
       s_rsDirty = true;
@@ -757,9 +835,13 @@ void RSSetNext(const string name, const double value)
 // Only a pass that really wrote something pays the terminal-wide disk flush.
 void RSShadowCommit()
 {
-   s_rsFlushed = s_rsDirty;   // P-PERF-37: report the flush that actually ran
+   s_rsFlushed = s_rsDirty;   // P-PERF-37: this pass owes a disk copy
+   // P-PERF-44 (3): a dry run reports nothing - the REAL pass overwrites this.
+   if(!g_gvShadowDry) GVLedgerReport(GV_BLOCK_OVERRIDES, s_rsWrites, s_rsWrites + s_rsSkipped);
    if(!s_rsDirty) return;
-   GlobalVariablesFlush();
+   // P-PERF-44 (2): the overrides ASK for the disk copy; GVFlushCommit is this
+   // project's only GlobalVariablesFlush and the teardown calls it once.
+   GVFlushRequest();
    s_rsDirty = false;
 }
 
@@ -795,7 +877,9 @@ bool GVSlotChanged(int &blockEpoch, bool &known[], double &shadow[], const int s
    if(known[slot] && shadow[slot] == value) return false;
    shadow[slot] = value;
    known[slot] = true;
-   return true;
+   // P-PERF-44 (1): a dry run RECORDS the value and claims no change, which is
+   // exactly what priming needs - the caller must not write anything.
+   return !g_gvShadowDry;
 }
 
 void RuntimeSettingsSaveOverrides()
@@ -918,9 +1002,9 @@ void RuntimeSettingsSaveOverrides()
 void RuntimeSettingsPrimeOverrideShadow()
 {
    if(StringLen(g_settingsGVPrefix) == 0) return;
-   s_rsDryRun = true;
+   GVShadowDryRun(true);
    RuntimeSettingsSaveOverrides();
-   s_rsDryRun = false;
+   GVShadowDryRun(false);
 }
 
 void RuntimeSettingsLoadOverrides()

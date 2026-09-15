@@ -761,7 +761,7 @@ string PnlHeaderSub(const int item)
    if(item==3)  return "FRACTAL · STANDARD · TARGETS";
    if(item==6)  return "HIGHER TIMEFRAME OVERLAY";
    if(item==7)  return "ONE STYLE FOR ALL LINES";
-   if(item==8)  return "PIN · WIDTH + COLOR";   // P-UI-47: MAGNET retired (BKMAGNET-OFF)
+   if(item==8)  return "PIN · WIDTH · COLOR · MAGNET";   // P-BK-21: rows 2/3 are live again
    if(item==9)  return "ENGINE · SECTION SWAPS WITH MODE";
    if(item==10) return "AUTO / MANUAL STEP ENGINE";
    if(item==11) return "L1 - L5 ZONE TOGGLES";
@@ -1103,18 +1103,41 @@ void SavePalRecent()
    static bool   s_palKnown[PAL_RECENT_MAX/2 + 1];
    static int    s_palEpoch = -1;
    int palChanged = 0;
-   if(GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, 0, g_PalRecentCount)) palChanged++;
+   // P-PERF-44: PER KEY. The old pass wrote all 13 keys whenever ONE of them
+   // moved (and only reported how MANY slots differed), so the write count and
+   // the block's own line could disagree.
+   if(GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, 0, g_PalRecentCount))
+      { GlobalVariableSet(GetGVName("PALN"), g_PalRecentCount); palChanged++; }
    for(int j = 0; j < PAL_RECENT_MAX/2; j++)
    {
       double packed = g_PalRecent[2*j] + g_PalRecent[2*j+1]*16777216.0;
-      if(GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, j + 1, packed)) palChanged++;
+      if(!GVSlotChanged(s_palEpoch, s_palKnown, s_palShadow, j + 1, packed)) continue;
+      GlobalVariableSet(GetGVName("PALR"+IntegerToString(j)), packed);
+      palChanged++;
    }
+   // P-PERF-44 (3): report BEFORE the early return - see SaveUIStates.
+   GVLedgerReport(GV_BLOCK_PALETTE, palChanged, PAL_RECENT_MAX/2 + 1);
    if(palChanged == 0) return;   // nothing changed - no writes, no disk flush
-   GlobalVariableSet(GetGVName("PALN"), g_PalRecentCount);
-   for(int i = 0; i < PAL_RECENT_MAX/2; i++)
-      GlobalVariableSet(GetGVName("PALR"+IntegerToString(i)),
-                       g_PalRecent[2*i] + g_PalRecent[2*i+1]*16777216.0);
-   GlobalVariablesFlush();
+   GVFlushRequest();   // P-PERF-44 (2): ASK; the one owner commits the disk copy
+}
+
+// P-PERF-44 (1): prime the palette shadow from its own LOAD pass. This is the
+// block that produced the unattributed `save=125ms`: its shadow learned its first
+// value inside the teardown itself, so every timeframe switch paid 13 writes plus
+// a terminal-wide GlobalVariablesFlush on a chart whose palette was never touched.
+void PrimePalRecentShadow()
+{
+   GVShadowDryRun(true);
+   SavePalRecent();
+   GVShadowDryRun(false);
+}
+
+// P-PERF-44 (2): an INTERACTIVE save (a colour pick, a closing palette) is its own
+// transaction - no teardown is coming to commit it - so it asks AND commits.
+void SavePalRecentDurable()
+{
+   SavePalRecent();
+   GVFlushCommit();
 }
 
 void LoadPalRecent()
@@ -1122,20 +1145,28 @@ void LoadPalRecent()
    for(int i = 0; i < PAL_RECENT_MAX; i++) g_PalRecent[i] = clrNONE;
    g_PalRecentCount = 0;
    string n = GetGVName("PALN");
-   if(!GlobalVariableCheck(n)) return;
-   g_PalRecentCount = ClampInt((int)GlobalVariableGet(n), 0, PAL_RECENT_MAX);
-   int cnt = 0;
-   for(int i = 0; i < PAL_RECENT_MAX/2 && cnt < g_PalRecentCount; i++)
+   if(GlobalVariableCheck(n))
    {
-      string vn = GetGVName("PALR"+IntegerToString(i));
-      if(!GlobalVariableCheck(vn)) continue;
-      double packed = GlobalVariableGet(vn);
-      int c1 = (int)MathMod(packed, 16777216.0);
-      int c2 = (int)MathMod(packed / 16777216.0, 16777216.0);
-      if(cnt < g_PalRecentCount) g_PalRecent[cnt++] = (color)c1;
-      if(cnt < g_PalRecentCount) g_PalRecent[cnt++] = (color)c2;
+      g_PalRecentCount = ClampInt((int)GlobalVariableGet(n), 0, PAL_RECENT_MAX);
+      int cnt = 0;
+      for(int i = 0; i < PAL_RECENT_MAX/2 && cnt < g_PalRecentCount; i++)
+      {
+         string vn = GetGVName("PALR"+IntegerToString(i));
+         if(!GlobalVariableCheck(vn)) continue;
+         double packed = GlobalVariableGet(vn);
+         int c1 = (int)MathMod(packed, 16777216.0);
+         int c2 = (int)MathMod(packed / 16777216.0, 16777216.0);
+         if(cnt < g_PalRecentCount) g_PalRecent[cnt++] = (color)c1;
+         if(cnt < g_PalRecentCount) g_PalRecent[cnt++] = (color)c2;
+      }
+      g_PalRecentCount = cnt;
    }
-   g_PalRecentCount = cnt;
+   // P-PERF-44 (1): the shadow learns HERE, never at the teardown - including the
+   // empty case (an unused palette primes "nothing to write", the same equivalence
+   // an absent key has for the override table: what we would write IS what the
+   // load just produced). The early return that used to sit above is what left
+   // the never-primed path reachable on the commonest chart of all.
+   PrimePalRecentShadow();
 }
 
 void PushPalRecent(const color clr)
@@ -1160,7 +1191,7 @@ void PalRecentPersistThrottled()
 {
    static uint s_LastSave = 0;
    uint now = GetTickCount();
-   if(now - s_LastSave >= 400) { s_LastSave = now; SavePalRecent(); }
+   if(now - s_LastSave >= 400) { s_LastSave = now; SavePalRecentDurable(); }
 }
 
 //--- "RRGGBB" / "#RRGGBB" / "0xRRGGBB" → color (clrNONE when invalid)
@@ -1599,16 +1630,28 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(7, PNL_K_SEC, -1, 0, "", "", "COLOR", 1);
       PnlSpecAdd(7, PNL_K_LEGACY, 5, 1, "droplet");
    }
-   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 4 display rows
+   else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 2 bands + 4 rows
    {
       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
       PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
       PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
-      // MAGNET-OFF (2026-09-13): magnet snapping was retired BY USER DECISION
-      // (BKMAGNET-OFF 2026-09-06 — snapping pulled corners onto candle shadows),
-      // yet this card kept offering MAGNET + MAGNET SENS. Neither flag is read by
-      // any module, so both controls only ever moved themselves (P-UI-47).
-      // Settings 2/3 stay persisted and inert.
+      // The MAGNET band P-UI-47 removed with its two rows comes back with them:
+      // a band's count pill is a promise about the rows UNDER it, so leaving
+      // "PIN 2" over four rows would be the same lie in reverse.
+      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "MAGNET", 2);
+      // P-BK-21 (2026-09-15): the two MAGNET controls are BACK, with a job that
+      // cannot repeat the 2026-09-06 complaint. Their old consumer was the
+      // DRAW-time snap, which pulled corners onto candle shadows and made a new
+      // box land nowhere near the click — that behaviour stays retired
+      // (`BaseKnotSnapPrice` is still the identity). The consumer now is the
+      // ADJUST gesture: releasing a dragged box edge/corner snaps THAT one side
+      // onto the nearest wick (High/Low, side-aware, `BK_MAGNET_BARS`), i.e. the
+      // exact case the user reported as «بارها بايد انجام بدم تا روي همون چيز
+      // بزارم». Appended AFTER rows 0/1 so no existing address moves (P-UI-72's
+      // ghost-row rule), and the whole chain — PnlApply/PnlCurrent/DefVal +
+      // OV_ MG/MP2 persistence — was never removed (P-UI-47 kept it).
+      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");
+      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "magnet");
    }
    else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
    {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
@@ -1878,7 +1921,7 @@ void PalClose()
 {
    UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
    if(!g_PalOpen) return;
-   SavePalRecent();   // flush the throttled mixer drag tail
+   SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
    g_PalOpen=false; g_PalMixDrag=0; g_PalHexFocus=false;
    ChartRedraw();
@@ -2949,8 +2992,8 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
       else if(row==1)  { kind=4; label="COLOR"; }
-      // MAGNET-OFF (2026-09-13, P-UI-47): rows 2/3 kept for the address space
-      // only — no display row renders them and nothing reads their globals.
+      // P-BK-21: ADJUST-time magnet — see the spec note above; the settings were
+      // never removed, only their display was (P-UI-47).
       else if(row==2)  { kind=1; label="MAGNET"; }
       else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
    }
@@ -3155,7 +3198,9 @@ string PnlSubtitleText(const int item)
    if(item==5)  return "TH3 pattern drawing tool";
    if(item==6)  return "Higher timeframe candle overlay";
    if(item==7)  return "One style for ALL lines";
-   if(item==8)  return "Custom price pin (width & color)";   // P-UI-47: magnet retired
+   // P-BK-21: the magnet is live again, so the subtitle names all four rows the
+   // card now offers (it said "width & color" while rows 2/3 were hidden).
+   if(item==8)  return "Pin, width, color & the adjust magnet";
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
    if(item==12) return "Style · Text · Setup (TV-like)";
@@ -8631,7 +8676,14 @@ void BkHoldLatch(const int mx, const int my)   // (re)start press tracking
    if(PnlPointInside(mx, my)) return;
    int sw = 0; datetime ct = 0; double cp = 0;
    if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
-      s_BkHoldId = BaseKnotBoxAt(ct, cp);
+      s_BkHoldId = BaseKnotBoxAt(ct, cp);   // exact INSIDE test first
+   // P-BK-24: the SAME press tolerance the drag latch has. The user holds the
+   // DRAWN border (a line `inpBoxBorderWidth` px wide sitting exactly ON the
+   // boundary, so its outer half is outside the rectangle) and an inside-only
+   // test made the toolbar of every border-held box unreachable — the hold
+   // simply never fired. Measured in pixels against the box's corners, never
+   // guessed in price.
+   if(s_BkHoldId == "") s_BkHoldId = BaseKnotBoxAtPx(mx, my);
 }
 void BkHoldForgetBox() { s_BkHoldId = ""; }   // keep the press latch (dragging!)
 void BkHoldClear() { s_BkHoldId = ""; s_BkHoldMs = 0; s_BkDownNow = false; }
@@ -8666,7 +8718,20 @@ void BkHoldFire()
             int mh = PNL_TB_H;   // TV strip height, not the old 7-row card (R-BKSTRIP)
             int nx = x2 + 14;
             int ny = y2 - mh - 14;
-            if(ny < 4) ny = y2 + 14;   // no room above — flip below the corner
+            if(ny < 4)
+            {
+               // P-BK-27: NO ROOM ABOVE → BELOW THE BOX'S BOTTOM EDGE, not below
+               // its top edge. Flipping under the TOP edge drops the whole strip
+               // INSIDE the rectangle, and then the press on any of its controls
+               // lands on the box as well — the terminal grabs the SELECTABLE
+               // handle, so picking a width or a style drags the box with the
+               // hand. The toolbar never overlaps the handle it belongs to.
+               double bp = MathMin(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
+                                   ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
+               int bx = 0, by = 0;
+               if(ChartTimePriceToXY(0, 0, t2, bp, bx, by) && by > y2) ny = by + 14;
+               else ny = y2 + 14;   // unprojectable (off-window) — the old flip
+            }
             if(nx < 4) nx = 4; if(nx > cw - PNL_TB_W - 4) nx = cw - PNL_TB_W - 4;
             if(ny < 4) ny = 4; if(ny > ch - mh - PNL_BOTTOM_SAFE) ny = ch - mh - PNL_BOTTOM_SAFE;
             if(nx < 4) nx = 4; if(ny < 4) ny = 4;   // tiny-chart fallback
@@ -8723,7 +8788,17 @@ void BkHoldPoll()
 }
 // Release NEVER opens (single method: mid-hold fire above). Any button-up only
 // clears the latch — the press already fired, or it was a tap/drag.
-void BkHoldOnBoxUp() { BkHoldClear(); }
+void BkHoldOnBoxUp()
+{
+   // P-BK-26: the press that opened (or that ends with) the strip ALSO selected
+   // the box in the terminal, and a SELECTED handle is moved by MT4 on every
+   // LATER drag anywhere on the chart (P-UI-45's law). The strip is not a "select
+   // me for Delete" gesture, so the selection goes back here, on a release where
+   // the write cannot cancel a live drag (P-BK-15). A plain TAP — no strip —
+   // keeps it: the box's own tooltip promises "select + Delete key removes all".
+   if(g_PnlOpen == 13 && g_BkMiniBox != "") BaseKnotDropSelection(g_BkMiniBox);
+   BkHoldClear();
+}
 
 void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {

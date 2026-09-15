@@ -135,6 +135,7 @@ EXTDRAW = "Biotak/ExtendedDrawingFunctions.mqh"
 OBJFUN = "Biotak/ObjectFunctions.mqh"
 PERFOPT = "Biotak/PerformanceOptimizations.mqh"
 LABEL = "Biotak/LabelFunctions.mqh"
+BASEKNOT = "Biotak/BaseKnotTool.mqh"
 FULL = "Biotak Trigger TH3.mq4"
 LITE = "Biotak Trigger TH3 Lite.mq4"
 
@@ -1401,6 +1402,7 @@ def check_persist_write_shape(o):
     runtime = strip_comments(read(RUNTIME, o))
     menu = strip_comments(read(MENU, o))
     panels = strip_comments(read(PANELS, o))
+    htf = strip_comments(read(HTF, o))
 
     save = fn_body(runtime, "void RuntimeSettingsSaveOverrides()")
     if not save:
@@ -1415,23 +1417,65 @@ def check_persist_write_shape(o):
     ok("persist-write-shape", "every persisted override goes through the write shadow")
 
     commit = fn_body(runtime, "void RSShadowCommit()")
-    if not commit or "GlobalVariablesFlush()" not in commit or "if(!s_rsDirty) return;" not in commit:
+    if not commit or "if(!s_rsDirty) return;" not in commit:
         fail("persist-write-shape", "the disk flush is unguarded: an unchanged pass would still serialise the terminal's whole global-variable table")
         return
-    if "RSShadowCommit()" not in save:
-        fail("persist-write-shape", "the override pass stopped using the guarded flush")
+    if "GVFlushRequest();" not in commit or "RSShadowCommit()" not in save:
+        fail("persist-write-shape", "the override pass no longer asks for the disk copy through the one owner")
         return
-    ok("persist-write-shape", "the disk flush runs only for a pass that really wrote")
+    ok("persist-write-shape", "the disk copy is asked for only by a pass that really wrote")
 
+    # P-PERF-44: the flush has ONE owner. The teardown runs FOUR savers and three
+    # of them used to call GlobalVariablesFlush themselves - which is exactly how
+    # a `save=125ms` phase could sit next to `writes=0/106 flushed=0`: the field
+    # counted one block while two others paid a terminal-wide disk serialisation
+    # nobody had to change a setting for.
+    flush = fn_body(runtime, "bool GVFlushCommit()")
+    if not flush or "GlobalVariablesFlush()" not in flush or "if(!s_gvFlushOwed) return false;" not in flush:
+        fail("persist-flush-owner", "the single flush owner GVFlushCommit is gone, or is no longer gated on the request flag")
+        return
+    sites = []
+    for sub in ("Biotak", ""):
+        for ext in ("mqh", "mq4"):
+            for p in sorted(glob.glob(os.path.join(ROOT, sub, "*." + ext))):
+                rel = os.path.relpath(p, ROOT).replace("\\", "/")
+                sites += [rel] * strip_comments(read(rel, o)).count("GlobalVariablesFlush()")
+    if len(sites) != 1 or sites[0] != RUNTIME:
+        fail("persist-flush-owner", "%d `GlobalVariablesFlush()` call site(s) (%s): every saver must ASK (GVFlushRequest) and the teardown must pay ONE terminal-wide serialisation"
+             % (len(sites), ", ".join(sorted(set(sites))) or "none"))
+        return
+    for rel, text, block in ((MENU, menu, "GV_BLOCK_UI"), (PANELS, panels, "GV_BLOCK_PALETTE"),
+                             (HTF, htf, "GV_BLOCK_HTF")):
+        if "GVFlushRequest();" not in text or block not in text:
+            fail("persist-flush-owner", "%s does not route its own disk copy through the one owner" % rel)
+            return
+    ok("persist-flush-owner", "one GlobalVariablesFlush call site in the project, shared by all four saver blocks")
+
+    # P-PERF-44: priming is a BLOCK property, not the override table's privilege.
+    # A block whose shadow learns its first value inside the TEARDOWN pays that
+    # teardown - the palette and the UI-state blocks did exactly that.
     prime = fn_body(runtime, "void RuntimeSettingsPrimeOverrideShadow()")
-    if not prime or "s_rsDryRun = true;" not in prime:
-        fail("persist-write-shape", "the shadow is not primed in dry-run: an untouched session would re-write every key at teardown")
-        return
     load = fn_body(runtime, "void RuntimeSettingsLoadOverrides()")
-    if not load or "RuntimeSettingsPrimeOverrideShadow();" not in load:
-        fail("persist-write-shape", "the load pass does not prime the shadow, so what it just read is written back at teardown")
+    if not prime or "GVShadowDryRun(true);" not in prime or not load \
+            or "RuntimeSettingsPrimeOverrideShadow();" not in load:
+        fail("persist-write-shape", "the override shadow is not primed in dry-run from its load pass")
         return
-    ok("persist-write-shape", "the load pass primes the shadow with what it read")
+    for rel, text, sig, call, fn, host in (
+            (MENU, menu, "void PrimeUIStatesShadow()", "PrimeUIStatesShadow();",
+             "SaveUIStates(false);", "void InitializeUIStates()"),
+            (PANELS, panels, "void PrimePalRecentShadow()", "PrimePalRecentShadow();",
+             "SavePalRecent();", "void LoadPalRecent()"),
+            (HTF, htf, "void HTFPrimeCandleSettings()", "HTFPrimeCandleSettings();",
+             "SaveHTFCandlesSettings();", "void InitializeHTFCandles()")):
+        pbody = fn_body(text, sig)
+        hbody = fn_body(text, host)
+        if not pbody or "GVShadowDryRun(true);" not in pbody or fn not in pbody:
+            fail("persist-write-shape", "%s does not prime its shadow by replaying its own write order in dry-run (%s)" % (sig, rel))
+            return
+        if not hbody or call not in hbody:
+            fail("persist-write-shape", "%s is never called from its load pass (%s)" % (sig, host))
+            return
+    ok("persist-write-shape", "every saver block is primed from its own load pass, never from the teardown")
 
     # The load-bearing one: a shadow is only valid while the keys exist.
     inv = fn_body(runtime, "void GVShadowsInvalidate()")
@@ -1447,20 +1491,28 @@ def check_persist_write_shape(o):
         return
     ok("persist-write-shape", "deleting the keys invalidates every shadow that claims they exist")
 
-    # The other two owners of the same teardown window.
-    for rel, text, sig, guard, flushed in (
+    # The other THREE owners of the same teardown window: guarded, and - the rule
+    # that keeps the ledger honest - reporting BEFORE their own early return, so a
+    # no-op pass cannot leave the previous teardown's numbers standing.
+    for rel, text, sig, guard, total in (
             (MENU, menu, "void SaveUIStates(const bool flushNow = false)",
-             "if(uiChanged == 0) return;", "GVSlotChanged"),
+             "if(uiChanged == 0) return;", "GV_BLOCK_UI"),
             (PANELS, panels, "void SavePalRecent()",
-             "if(palChanged == 0) return;", "GVSlotChanged")):
+             "if(palChanged == 0) return;", "GV_BLOCK_PALETTE"),
+            (HTF, htf, "void SaveHTFCandlesSettings()",
+             "if(htfChanged == 0) return;", "GV_BLOCK_HTF")):
         body = fn_body(text, sig)
         if not body:
             fail("persist-write-shape", "%s is gone" % sig)
             return
-        if guard not in body or flushed not in body:
+        if guard not in body or "GVSlotChanged" not in body:
             fail("persist-write-shape", "%s in %s still writes and flushes unconditionally on every timeframe switch" % (sig, rel))
             return
-    ok("persist-write-shape", "all three teardown writers are change-guarded")
+        report = "GVLedgerReport(%s" % total
+        if report not in body or body.index(report) > body.index(guard):
+            fail("persist-write-shape", "%s reports its writes only AFTER it may have returned: a no-op pass would keep the last teardown's numbers" % sig)
+            return
+    ok("persist-write-shape", "all four teardown writers are change-guarded and name their own writes")
 
 
 def check_chart_change_prime(o):
@@ -2294,7 +2346,11 @@ def check_live_control(o):
         the pipeline's own legacy cleanup, so the switch wrote `g_showMidpointLine`
         and changed nothing;
       * Custom Price / MAGNET + MAGNET SENS - snapping was retired by user
-        decision (BKMAGNET-OFF), the flags have no reader at all;
+        decision (BKMAGNET-OFF), the flags had no reader at all. Both rows left
+        this family in P-BK-21: the magnet is LIVE again, on the ADJUST gesture
+        (its reader is `BaseKnotMagnetPrice`), so the check now guards them from
+        the other side - delete that reader and the two rows are rendered
+        controls that move nothing again (see the seeds below);
       * ATR Labels / ROW GAP - the label layout reads the INPUT `inpLabelRowGap`,
         not the runtime copy this slider wrote.
     And card 3's source rows (1/2) re-derived the mode from the very mirrors they
@@ -3805,6 +3861,18 @@ def run(overrides=None):
 # selftest: every check must catch its OWN mutant (a stale seed is a hard error)
 # ---------------------------------------------------------------------------
 def selftest():
+    # A mutant of a BROKEN tree is caught by everything, so a selftest that never
+    # checks its own baseline can report "all 225 caught" on a gate whose real run
+    # is FAILING - the seeds would be certifying the failure as sensitivity.
+    global QUIET
+    quietWas = QUIET
+    QUIET = True
+    baseline = run()
+    QUIET = quietWas
+    if baseline != 0:
+        print("  selftest REFUSED: the unmutated tree already FAILS - fix that first")
+        return 1
+
     seeds = []
 
     def seed(label, rel, old, new):
@@ -4183,8 +4251,24 @@ def selftest():
     seed("shadow bypassed", RUNTIME,
          "RSSetNext(p + ", "GlobalVariableSet(p + ")
     seed("flush unguarded", RUNTIME,
-         "   if(!s_rsDirty) return;\n   GlobalVariablesFlush();",
-         "   GlobalVariablesFlush();")
+         "   if(!s_rsDirty) return;\n",
+         "   if(false) return;\n")
+    # P-PERF-44: the flush owner and the priming of the OTHER three blocks.
+    seed("the flush grows a second owner", MENU,
+         "   if(flushNow) { GVFlushRequest(); GVFlushCommit(); }",
+         "   if(flushNow) { GlobalVariablesFlush(); GVFlushCommit(); }")
+    seed("a saver stops priming from its load pass", PANELS,
+         "   PrimePalRecentShadow();\n}",
+         "}")
+    seed("the ledger reports after the early return", MENU,
+         "   GVLedgerReport(GV_BLOCK_UI, uiChanged, 6);\n",
+         "")
+    seed("a saver stops asking for the disk copy", HTF,
+         "   GVFlushRequest();   // P-PERF-44 (2): ASK; the teardown's one commit pays for it",
+         "   ;")
+    seed("the HTF block loses its guard", HTF,
+         "   if(htfChanged == 0) return;",
+         "   if(false) return;")
     seed("shadow never primed", RUNTIME,
          "   RuntimeSettingsPrimeOverrideShadow();\n}",
          "}")
@@ -4417,10 +4501,19 @@ def selftest():
          "")
 
     # 18. a rendered control that moves nothing anybody reads (P-UI-46/47)
-    seed("a retired switch is rendered again", PANELS,
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, \"magnet\");\n")
+    # P-BK-21 (2026-09-15): the two MAGNET rows LEFT this family — the adjust
+    # magnet reads both flags (`BaseKnotMagnetPrice`), so the old specimen here
+    # (re-render the retired magnet row) is no longer a fault, and the class
+    # keeps its own corpse one line down (the MIDPOINT row). These two replace
+    # it and pin the pair from the READER's side: the specimen is a rendered row
+    # whose write nobody reads, once by rewriting the row and once by deleting
+    # the only reader the setting has.
+    seed("the magnet switch writes a flag nobody reads", PANELS,
+         "         else if(row==2)  { g_enableMagnet=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }",
+         "         else if(row==2)  { g_showMidpointLine=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }")
+    seed("the magnet sensitivity loses its reader", BASEKNOT,
+         "   double gate = (double)g_magnetSensitivityPips * pip;\n",
+         "   double gate = pip;\n")
     # P-LBL-09 (2026-09-14): the ATR card's ROW GAP row is no longer the dead one
     # - `g_atrLabelRowGap` became LIVE, because the bottom-right trade card's
     # layout now reads it. The seed moves to the still-dead MIDPOINT row of card

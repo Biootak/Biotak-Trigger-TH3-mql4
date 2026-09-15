@@ -1607,6 +1607,273 @@ def check_chrome():
     return problems
 
 
+def check_bk_drag():
+    """[bk-drag] - P-BK-18: the fill and the border must track in lockstep.
+
+    A Base/Knot box is TWO families by design: the OBJ_RECTANGLE that carries the
+    fill AND the only native drag handle MT4 will grab, and four OBJ_TREND edge
+    segments that draw the visible border (P-BK-06 — some builds render a filled
+    rectangle even with FILL=false, so the border cannot be the rectangle). The
+    children therefore ride OUR copy of the box's anchors, and that copy is what
+    the user feels:
+
+      * it used to share ONE 30 ms gate with the cursor fallback and the paint,
+        so the border stepped at 33 fps while the native fill tracked the hand at
+        event rate - «یکیش لایو درگ میشه یکیش نمیشه» on a fast drag;
+      * nothing re-derived the border when a gesture's END was lost (a motionless
+        release emits no mouse-move at all, P-BK-03), so the residue could
+        survive until a timeframe switch.
+
+    P-BK-19 is the OTHER half of the same gesture, and it is the half the user
+    feels as «من یک طرف درگ میکنم طرف دیگه تکون میخوره» - I drag one side and the
+    other side moves:
+
+      * OWNERSHIP (a). The cursor fallback is the ONE path that writes the BOX,
+        and a native drag is the TERMINAL's gesture - two writers on one box is
+        P-BK-07's fight one layer down, and MT4 cancels the drag the second writer
+        fights (P-BK-15). The terminal now claims the gesture through its own
+        OBJECT_DRAG (and through the anchors moving without us), and it is asked
+        FIRST (BK_DRAG_OWNER_MS); a fresh press takes the claim back.
+      * THE GRAB (b). The fallback used to translate BOTH anchors whatever the
+        press had grabbed, so an EDGE drag moved the far side too. The press point
+        is measured in pixels against the box's corners into a 4-bit selection,
+        and the fallback writes exactly those values: a body grab is a MOVE, an
+        edge/corner grab is a RESIZE that leaves the opposite side where it is.
+    """
+    problems = []
+    src = read(BASEKNOT)
+    fol = body(src, "void BaseKnotFollowDrag(")
+    if fol is None:
+        return ["BaseKnotFollowDrag() is gone - the ONE mid-drag children writer (P-BK-07)"]
+    # (a) the child MOVE step is change-driven: the anchor compare precedes any
+    #     use of the budget stamp, so a copy is paid for only when the box moved.
+    cmp_at = fol.find("s_bkFolT1")
+    gate_at = fol.find("s_bkDragMs")
+    if cmp_at < 0:
+        problems.append("BaseKnotFollowDrag() no longer compares the BOX anchors (s_bkFol*) - "
+                        "the follow would write on every event instead of when the box moved")
+    elif gate_at >= 0 and gate_at < cmp_at:
+        problems.append("BaseKnotFollowDrag() gates the CHILD MOVE STEP on s_bkDragMs again - that "
+                        "shared 30 ms budget is exactly what left the visible border trailing the "
+                        "native fill (P-BK-18)")
+    #     (anchored on the GATE LINE, not on the name: the retirement comments
+    #     mention BK_DRAG_CURSOR_MS, so a name test would pass for the wrong reason)
+    if "#define BK_DRAG_CURSOR_MS" not in src or "BK_DRAG_CURSOR_MS) return;" not in fol:
+        problems.append("the (dormant) cursor-delta fallback lost its own budget (BK_DRAG_CURSOR_MS) - "
+                        "it is the one path that writes the BOX itself, so a restore must stay "
+                        "rate-limited")
+    # (b) the settle heal: the pump must compare the box against its own top edge,
+    #     through the ONE button owner, and must keep skipping a live drag.
+    pump = body(src, "void BaseKnotSyncBadges(")
+    if pump is None:
+        problems.append("BaseKnotSyncBadges() is gone - the 500 ms pump is the settle owner")
+    else:
+        if "if(bkHandOff && !BaseKnotBorderSettled(" not in pump:
+            problems.append("the pump no longer settles a box whose border is behind it (P-BK-18) - "
+                            "a lost gesture end leaves the border adrift until a TF switch")
+        if "bkHandOff" not in pump or "UILeftButtonUp()" not in pump:
+            problems.append("the settle heal lost its button gate (the ONE owner, P-UI-73) - writing "
+                            "into a live native drag cancels it (P-BK-15)")
+        if "s_bkDragId != \"\" && g_bkBoxes[i].id == s_bkDragId" not in pump:
+            problems.append("the pump stopped skipping the actively dragged box (P-BK-15)")
+    settle = body(src, "bool BaseKnotBorderSettled(")
+    if settle is None:
+        problems.append("BaseKnotBorderSettled() is gone - the settle compare needs its ONE owner")
+    else:
+        if "BK_EDGE_T" not in settle or "OBJPROP_TIME, 1" not in settle or "OBJPROP_PRICE, 0" not in settle:
+            problems.append("BaseKnotBorderSettled() no longer compares the top edge's span AND price "
+                            "against the box - half the divergence would go unseen")
+    # (c) P-BK-19a: the BOX has ONE writer per gesture. The fallback may not write
+    #     a box the terminal has claimed, and the claim must be made from both
+    #     witnesses the terminal gives us: its own OBJECT_DRAG, and the anchors
+    #     moving without us.
+    #     (the cursor fallback that USED to sit here is retired - its live/dead
+    #     state is `check_bkcursor_off()`'s job, one group per promise)
+    events = body(src, "bool BaseKnotOnChartEvent(")
+    if "s_bkNativeClaim = true;" not in fol:
+        problems.append("the anchor-driven branch stopped claiming the gesture for the terminal "
+                        "(P-BK-19a) - the fallback stays armed through a live native drag")
+    if events is None:
+        problems.append("BaseKnotOnChartEvent() is gone - the box drag has no event entry")
+    else:
+        if "s_bkNativeClaim = true;" not in events:
+            problems.append("an OBJECT_DRAG no longer claims the gesture for the terminal (P-BK-19a) - "
+                            "the fallback would write over the gesture the terminal just started")
+        if "s_bkNativeClaim = false;" not in events:
+            problems.append("a fresh press does not take the claim back (P-BK-19a) - the NEXT gesture "
+                            "starts out owned by the terminal that owned the last one")
+    # (d) P-BK-19b: the grab-role measurement fed the CURSOR FALLBACK only, and that
+    #     fallback is retired (BKCURSOR-OFF) - so the press must NOT measure a role
+    #     any more. The dormant restore-path integrity is
+    #     `check_bkcursor_off()`'s job, one group per promise.
+    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src):
+        problems.append("the press measures a grab role again although the cursor fallback is "
+                        "retired - that role has no consumer (BKCURSOR-OFF/P-BK-19b)")
+    # (e) P-PERF-42: the child set is probed ONCE per gesture, not per child per
+    #     step - and the probe cannot outlive the gesture it was built for.
+    one = body(src, "void BaseKnotMoveOne(")
+    if one is None:
+        problems.append("BaseKnotMoveOne() is gone - the per-step child mover has ONE owner")
+    elif "ObjectFind" in one:
+        problems.append("the per-step child move probes existence again (P-PERF-42) - that is ~10 "
+                        "terminal calls per drag event for an answer that cannot change mid-gesture")
+    kids = body(src, "void BaseKnotMoveChildren(")
+    if kids is None:
+        problems.append("BaseKnotMoveChildren() is gone - the drag's child pass has ONE owner")
+    else:
+        if "BaseKnotChildMaskBuild(pfx)" not in kids or "BK_CH_EDGE_T" not in kids:
+            problems.append("the child move pass stopped using the per-gesture child mask (P-PERF-42)")
+    if events is not None and 's_bkChildMaskId = "";' not in events:
+        problems.append("a fresh press does not clear the child mask key (P-PERF-42) - the same box "
+                        "dragged twice would reuse the first gesture's answer")
+    # (f) P-PERF-43: the drag measures ITSELF, and the release line carries it.
+    if events is not None and "s_bkPerfMoveWorst = 0" not in events:
+        problems.append("the drag's own timing counters are not reset per gesture (P-PERF-43)")
+    if "paint=" not in src or "move=" not in src:
+        problems.append("the drag ledger no longer reports its phases (P-PERF-43) - 'the drag lags' "
+                        "would be guesswork again")
+    #     (the ledger line NAMES the role too, so the check is anchored on the
+    #     BRANCH itself - `if(`, not on the comparison somewhere in the body)
+    if "if(s_bkGrabSel == BK_GRAB_ALL)" not in fol:
+        problems.append("the cursor fallback no longer separates a body MOVE from an edge/corner "
+                        "RESIZE (P-BK-19b) - an edge drag would move the opposite side again")
+    if "BK_GRAB_T1" not in fol or "BK_GRAB_P2" not in fol:
+        problems.append("the resize half of the cursor fallback stopped writing the grabbed values "
+                        "(P-BK-19b) - the side the user holds would not follow the hand")
+    return problems
+
+
+def check_bkcursor_off():
+    """[bkcursor-off] - the cursor-delta fallback is RETIRED (2026-09-14).
+
+    «داخل باکس دوتا درگ فعال داریم، یکیش رو حذف کن، اونی که لایو نیست» - TWO
+    writers moved one box: the terminal's own native drag (the LIVE one: it moves
+    the anchors at event rate and MT4 repaints the fill on that same frame) and a
+    cursor-delta fallback that wrote the BOX itself under a 30 ms budget, because
+    every write it made was a repaint the terminal never asked for - which is
+    exactly what a user feels as "not live". The fallback is now DEAD BY
+    CONSTRUCTION (like PANELDRAG-OFF), its body and its grab-role measurement stay
+    compiled so a restore is one word.
+
+    This group asserts the retirement in BOTH directions: a live second writer
+    must FAIL, and so must a half-restore that deletes the dormant engine.
+    """
+    problems = []
+    src = read(BASEKNOT)
+    fol = body(src, "void BaseKnotFollowDrag(")
+    if fol is None:
+        return ["BaseKnotFollowDrag() is gone - the live box follow has ONE owner"]
+    if src.count("BKCURSOR-OFF") < 3:
+        problems.append("the cursor-fallback retirement lost its marker(s) - the next session cannot "
+                        "tell a dormant engine from a live one (BKCURSOR-OFF)")
+    if "else if(false && !s_bkNativeClaim" not in fol:
+        problems.append("the cursor-delta fallback is not dead by construction - a second writer of "
+                        "the BOX is back beside the terminal's own drag (BKCURSOR-OFF)")
+    if re.search(r"(?m)^\s*else if\(!s_bkNativeClaim", fol):
+        problems.append("a LIVE fallback branch exists beside the dead one (BKCURSOR-OFF)")
+    if "ObjectMove(0, box," in fol.split("BKCURSOR-OFF")[0]:
+        problems.append("the follow writes the BOX itself before the retirement marker - only the "
+                        "TERMINAL may move a box it is dragging (BKCURSOR-OFF/P-BK-15)")
+    # the dormant engine must still be there to uncomment
+    grab = body(src, "int BaseKnotGrabRole(")
+    if grab is None:
+        problems.append("the retired grab-role measurement lost its body - a restore is a rewrite "
+                        "again (BKCURSOR-OFF)")
+    else:
+        if "ChartTimePriceToXY" not in grab:
+            problems.append("the dormant grab role is no longer MEASURED (P-BK-19b) - a restored "
+                            "fallback would guess and move the wrong side")
+        missing = [n for n in ("BK_GRAB_CORNER_PX", "BK_GRAB_EDGE_PX", "BK_GRAB_ALL")
+                   if n not in grab]
+        if missing:
+            problems.append("the dormant grab role lost %s from its bands (P-BK-19b)" % "/".join(missing))
+    if re.search(r"(?m)^\s*//\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
+        problems.append("the retired press-time role measurement is deleted, not commented - the "
+                        "restore path is gone (BKCURSOR-OFF)")
+    #     the dormant body's own role split must survive (a restored fallback
+    #     without it is the very bug P-BK-19b fixed)
+    if "if(s_bkGrabSel == BK_GRAB_ALL)" not in fol:
+        problems.append("the dormant fallback body lost the MOVE/RESIZE split (P-BK-19b) - a restore "
+                        "would move the opposite side of an edge drag again")
+    return problems
+
+
+def check_bkmagnet():
+    """[bkmagnet] - the ADJUST magnet lives on the RELEASE, and only there.
+
+    «اینو می‌خوای از لبه جابجاش بکنی ... می‌خوام روی یک شدو بزارم، بارها باید
+    انجام بدم که روی همون چیز بزارم» - placing a committed box's edge on a wick
+    was pixel work: MT4's native drag lands the anchor where the cursor is, and one
+    pixel is many pips on a zoomed-out chart. The magnet that used to do this at
+    DRAW time was retired by USER DECISION (BKMAGNET-OFF 2026-09-06: corners jumped
+    onto candle shadows and a new box landed nowhere near the click). P-BK-21 moves
+    it to the gesture where the user HAS chosen the edge. This group keeps BOTH
+    halves true, because they are the two ways this feature can regress:
+
+      * the DRAW path stays the identity (a revived draw-time magnet fails);
+      * the snap is ONE write on the release - never in the follow, which would be
+        a second writer beside the terminal's own drag (P-BK-15/BKCURSOR-OFF);
+      * it is SIDE-AWARE (top takes a High, bottom takes a Low) so it can never
+        cross the box's own opposite edge;
+      * it moves ONE anchor and only when it is the ONLY price that moved, so a
+        whole-box MOVE keeps the geometry the user just positioned;
+      * the gate is the SYMBOL's pip (gold, JPY, indices, crypto), never a point;
+      * the two card rows are declared again - the engine reads settings whose
+        controls P-UI-47 had hidden, and a setting with no control is the bug.
+    """
+    problems = []
+    src = read(BASEKNOT)
+    snap = body(src, "double BaseKnotSnapPrice(")
+    if snap is None:
+        return ["BaseKnotSnapPrice() is gone - the draw-time magnet owner must stay"]
+    if "return price;   // BKMAGNET-OFF" not in snap.split("//--- retired snap body", 1)[0]:
+        problems.append("the DRAW-time magnet is live again: corners snap onto shadows mid-draw, "
+                        "exactly the behaviour BKMAGNET-OFF was a user decision to remove (P-BK-21)")
+    magnet = body(src, "double BaseKnotMagnetPrice(")
+    if magnet is None:
+        problems.append("BaseKnotMagnetPrice() is gone - the adjust magnet has no owner")
+    else:
+        if "!g_enableMagnet" not in magnet or "g_magnetSensitivityPips * pip" not in magnet:
+            problems.append("the adjust magnet is not gated on the persisted MAGNET / MAGNET SENS "
+                            "settings - the card's two controls would be inert decorations again (P-UI-47)")
+        if "BaseKnotPipSize()" not in magnet:
+            problems.append("the snap distance is not the SYMBOL's pip: gold, JPY, indices and crypto "
+                            "must all measure through the shared pip owner (P-BK-21)")
+        if "iHigh(_Symbol, 0, s)" not in magnet or "iLow(_Symbol, 0, s)" not in magnet:
+            problems.append("the magnet no longer searches the candle extremes (iHigh/iLow)")
+        if "if(topSide) cand = iHigh(_Symbol, 0, s);" not in magnet:
+            problems.append("the magnet is not SIDE-AWARE: a bottom edge could take a High and cross "
+                            "the box's own top edge")
+    settle = body(src, "void BaseKnotMagnetSettle(")
+    if settle is None:
+        problems.append("BaseKnotMagnetSettle() is gone - nothing applies the snap")
+    else:
+        if "if(moved1 == moved2) return;" not in settle:
+            problems.append("the whole-box guard is gone: a MOVE would snap one side and re-shape the "
+                            "box the user just positioned")
+        if settle.count("ObjectMove(") != 1:
+            problems.append("the settle writes the box %d times - an adjust gesture owes ONE write"
+                            % settle.count("ObjectMove("))
+        if "s_bkDragBP1" not in settle or "s_bkDragBP2" not in settle:
+            problems.append("the settle no longer compares against the press-time snapshot, so it "
+                            "cannot tell WHICH side the gesture moved")
+    fol = body(src, "void BaseKnotFollowDrag(")
+    if fol:
+        if "BaseKnotMagnetSettle" in fol or "BaseKnotMagnetPrice" in fol:
+            problems.append("the magnet runs inside the follow: a second writer beside the terminal's "
+                            "own drag (BKCURSOR-OFF/P-BK-15)")
+    rel = body(src, "bool BaseKnotOnChartEvent(")
+    if rel is None or "BaseKnotMagnetSettle(s_bkDragId);" not in rel:
+        problems.append("no release path calls the magnet - the feature is unreachable")
+    panels = read(PANELS)
+    for r in ('PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");',
+              'PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "magnet");'):
+        if r not in panels:
+            problems.append("the card row %s is gone: the engine reads a setting whose control was "
+                            "hidden (P-UI-47's inversion)" % r.split(",")[2].strip())
+    return problems
+
+
 def check_mouse():
     """[mouse] - P-UI-73: one owner for the button, and release-only teardown.
 
@@ -2135,7 +2402,10 @@ def main():
               ("dual", check_dual()),
               ("drag", check_drag()),
               ("mouse", check_mouse()),
+              ("bk-drag", check_bk_drag()),
               ("heal", check_heal()),
+              ("bkcursor-off", check_bkcursor_off()),
+              ("bkmagnet", check_bkmagnet()),
               ("paneldrag-off", check_paneldrag_off()),
               ("placement", check_placement()))
     for name, plist in groups:
@@ -2197,6 +2467,7 @@ def selftest():
                        or check_card_body() or check_modal()
                        or check_press(read(PANELS)) or check_chrome()
                        or check_dual() or check_drag() or check_mouse()
+                       or check_bk_drag() or check_bkcursor_off()
                        or check_heal())))
     reset()
 
@@ -2732,6 +3003,132 @@ def selftest():
     with_source(PANELS, "   if(vis > 0 && bars > vis) bars = vis;",
                 "   // seed: the scan is not clamped to the window")
     cases.append(("an unclamped band scan is caught", bool(check_placement())))
+    reset()
+
+    # 65. P-BK-18: the blanket 30 ms gate comes back above the anchor compare
+    #     (the border steps at 33 fps again while the fill tracks the hand)
+    with_source(BASEKNOT, "   BaseKnotReassertLock(false);   // P-BK-14: the drag owns the view until release (drag took ctxToo=false)",
+                "   if(GetTickCount() - s_bkDragMs < 30) return;   // seed: blanket gate\n"
+                "   BaseKnotReassertLock(false);   // P-BK-14: the drag owns the view until release (drag took ctxToo=false)")
+    cases.append(("a blanket 30 ms gate on the child move step is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 66. P-BK-18: the cursor fallback loses its budget (a box-write storm per
+    #     mouse move where the terminal repaints nothing of its own)
+    with_source(BASEKNOT, "      if(cms - s_bkDragMs < BK_DRAG_CURSOR_MS) return;",
+                "      // seed: the fallback writes the BOX unbudgeted")
+    cases.append(("an unbudgeted cursor fallback is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 67. P-BK-18: the settle heal's gate is opened (a write into a live native
+    #     drag would cancel the terminal's own gesture, P-BK-15)
+    with_source(BASEKNOT, "      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))",
+                "      if(true)")
+    cases.append(("a settle heal that ignores the button gate is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 68. BKCURSOR-OFF: the retired fallback is brought back to life (a second
+    #     writer of the box beside the terminal's own drag)
+    with_source(BASEKNOT, "   else if(false && !s_bkNativeClaim &&",
+                "   else if(!s_bkNativeClaim &&")
+    cases.append(("a revived cursor fallback is caught",
+                  bool(check_bkcursor_off())))
+    reset()
+
+    # 69. P-BK-19a: the anchor-driven branch stops claiming the gesture
+    with_source(BASEKNOT, "      s_bkNativeClaim = true;\n      s_bkFolT1 = t1; s_bkFolT2 = t2; s_bkFolP1 = p1; s_bkFolP2 = p2;",
+                "      s_bkFolT1 = t1; s_bkFolT2 = t2; s_bkFolP1 = p1; s_bkFolP2 = p2;")
+    cases.append(("an anchor move that does not claim the gesture is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 70. BKCURSOR-OFF: the dormant restore path is DELETED instead of commented
+    with_source(BASEKNOT,
+                "                    // s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);",
+                "                    // seed: the dormant role call was deleted, not commented")
+    cases.append(("a deleted (not dormant) role call is caught",
+                  bool(check_bkcursor_off())))
+    reset()
+
+    # 70b. BKCURSOR-OFF: the dormant engine loses its body entirely
+    with_source(BASEKNOT, "int BaseKnotGrabRole(const string box, const int mx, const int my)",
+                "int BaseKnotGrabRoleRetiredUnused(const string box, const int mx, const int my)")
+    cases.append(("a deleted dormant grab-role engine is caught",
+                  bool(check_bkcursor_off())))
+    reset()
+
+    # 71. P-BK-19b: the DORMANT body loses the role split (a restore would then
+    #     move the opposite side of an edge drag again)
+    with_source(BASEKNOT, "      if(s_bkGrabSel == BK_GRAB_ALL)   // body grab = MOVE",
+                "      if(true)   // seed: every grab translates both anchors")
+    cases.append(("a dormant fallback body that lost its role split is caught",
+                  bool(check_bkcursor_off())))
+    reset()
+
+    # 73. P-PERF-42: the per-step child move probes existence again
+    with_source(BASEKNOT, "   ObjectMove(0, nm, 0, tA, pA);",
+                "   if(ObjectFind(0, nm) < 0) return;\n   ObjectMove(0, nm, 0, tA, pA);")
+    cases.append(("a per-child ObjectFind in the drag step is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 74. P-PERF-42: the child mask is never built (the pass moves nothing)
+    with_source(BASEKNOT, "      s_bkChildMask = BaseKnotChildMaskBuild(pfx);",
+                "      s_bkChildMask = 0;   // seed: no probe")
+    cases.append(("a child pass that never builds its mask is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 75. P-PERF-43: the drag stops measuring itself per gesture
+    with_source(BASEKNOT,
+                "          s_bkChildMaskId = \"\"; s_bkPerfMoveWorst = 0; s_bkPerfPaintWorst = 0; s_bkPerfPasses = 0;",
+                "          s_bkChildMaskId = \"\";")
+    cases.append(("a drag that never resets its timing is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 72. P-BK-19a: the terminal's OBJECT_DRAG no longer claims the gesture
+    #     (nth=1: the anchor-driven claim in BaseKnotFollowDrag comes FIRST in the
+    #     file, so the handler's is the second occurrence)
+    with_source(BASEKNOT, "s_bkNativeClaim = true;",
+                "/* seed: the terminal's own drag does not claim the gesture */", nth=1)
+    cases.append(("an OBJECT_DRAG that does not claim the gesture is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 76. P-BK-21: the adjust magnet - each half of the rule has its own mutant.
+    with_source(BASEKNOT, "return price;   // BKMAGNET-OFF", "// seed: draw-time snap is back")
+    cases.append(("a revived DRAW-time magnet (the retired behaviour) is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(BASEKNOT, "BaseKnotMagnetSettle(s_bkDragId);", "/* seed: nobody snaps */")
+    cases.append(("an adjust magnet no release path calls is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(BASEKNOT, "if(moved1 == moved2) return;", "if(false) return;")
+    cases.append(("a magnet that re-shapes a whole-box move is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(BASEKNOT, "if(topSide) cand = iHigh(_Symbol, 0, s);",
+                "if(true) cand = iHigh(_Symbol, 0, s);")
+    cases.append(("a side-blind magnet (a bottom edge taking a High) is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(BASEKNOT, "g_magnetSensitivityPips * pip", "g_magnetSensitivityPips * _Point")
+    cases.append(("a hard-coded point instead of the symbol pip is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(PANELS, 'PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");', "")
+    cases.append(("a magnet control hidden while the engine still reads it is caught",
+                  bool(check_bkmagnet())))
     reset()
 
     for name, ok in cases:

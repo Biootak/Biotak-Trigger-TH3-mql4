@@ -6,7 +6,8 @@
 // circular menu is identical there. Glyph art below is the TH3 semantic set:
 //   zone=trigger/zone levels, chk=visibility check, tl=(legacy) trend arrow,
 //   atr=ATR range labels (vertical range bracket + double arrow),
-//   dots=TH dotted levels, box=timeframe lock, custom=TH3 tool,
+//   dots=TH dotted levels, box=(dead) timeframe-lock padlock, custom=TH3 tool,
+//   ruler=Base / Knot measurement (replaced the padlock on the ring),
 //   htf=HTF candles, pin=price pin, step=step-mode stairs,
 //   factor=factor gauge, tools=tools menu.
 // Run: node tools/gen-th3-icons.js   (regenerates every BMP in Files/Icons)
@@ -69,7 +70,8 @@ function dashPoly(points, dash, gap, w) {
 //   chikou : lagging wave + back-arrow (close shifted back in time)
 //   dots   : dotted line style toggle (bold dotted wave + baseline)
 //   mtf    : stacked timeframe frames + ichimoku wave inside
-//   box    : zone rectangle with selection corner handles
+//   box    : (legacy) padlock — the retired View-Lock art, NOT a rectangle
+//   ruler  : scale bar with ticks — Base / Knot measurement
 //   htf    : candlesticks with wicks (higher timeframe)
 //   orb    : bow-medallion ingest — tools/orb-bow-master.bgra (built by
 //            tools/make-orb-bow.ps1). No yy overlay anymore (retired).
@@ -123,10 +125,28 @@ const ART = {
     ...dashSegs(8, 23, 27, 23, 2.4, 2.8, 2.0),
   ],
   box: [
-    // box — timeframe lock: rounded padlock body + shackle + keyhole
+    // box — RETIRED ART (DEAD_ART): a PADLOCK (shackle + body + keyhole), drawn
+    // for the retired View-Lock ring slot. Nothing builds it any more: the
+    // Base/Knot tool borrowed the name `box` back when the lock slot died and
+    // therefore shipped a LOCK icon for a measuring tool (2026-09-14). Kept
+    // here — not emitted — so a one-line restore stays possible.
     ...rect(9.5, 14.5, 22.5, 25.5, 1.9),
     seg(12.5, 14.5, 12.5, 10.5, 1.9), seg(12.5, 10.5, 19.5, 10.5, 1.9), seg(19.5, 10.5, 19.5, 14.5, 1.9),
     cfill(16, 19.5, 1.7),
+  ],
+  ruler: [
+    // ruler — the Base / Knot MEASUREMENT tool, read the same way as the panel
+    // row glyph `ruler` (tools/glyphs.js) so ring and cards speak one language.
+    // Proportions matter more than detail at 28px: a CHUNKY lozenge (1.7:1)
+    // with TWO short ticks hanging off ONE edge. Rendered and rejected first:
+    // a thin bar's outline eats its own body (reads as a feather), and ticks
+    // that cross the whole bar turn it into a herringbone (reads as a leaf).
+    seg(3.4, 19.4, 12.6, 28.6, 2.0),     // lower-left end cap
+    seg(12.6, 28.6, 28.6, 12.6, 2.0),    // long edge (lower-right)
+    seg(28.6, 12.6, 19.4, 3.4, 2.0),     // upper-right end cap
+    seg(19.4, 3.4, 3.4, 19.4, 2.0),      // long edge (upper-left) — the tick edge
+    seg(9.2, 14.3, 13.1, 18.2, 1.8),     // two graduation ticks, inward from it
+    seg(14.3, 9.2, 18.2, 13.1, 1.8),
   ],
   custom: [
     // custom — TH3 tool: analysis trend with markers
@@ -1398,7 +1418,7 @@ const EMIT_RETIRED_ACCENTS = false;
 const ACCENT_EMIT = EMIT_RETIRED_ACCENTS ? ACCENT_NAMES : ['gold'];
 const DEAD_GLYPHS = new Set(['alignL','alignR','bolt','down','grid','hand',
   'italic','lock','more','palette','search','trash','up','warn']);
-const DEAD_ART = new Set(['custom','ssls','chk','tl','factor']);
+const DEAD_ART = new Set(['custom','ssls','chk','tl','factor','box']);
 
 const files = [];
 for (const [name, art] of Object.entries(ART)) {

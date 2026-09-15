@@ -1128,33 +1128,77 @@ void InitializeHTFCandles()
    g_HTFLastFormO = 0; g_HTFLastFormH = 0;
    g_HTFLastFormL = 0; g_HTFLastFormC = 0;
    HTFRefreshBlendBackground();   // P-PERF-08: seed the blend cache
+
+   // P-PERF-44 (1): the HTF shadow learns what this LOAD just resolved - not what
+   // the first teardown would have written. Without it the 15 keys were written
+   // again on every timeframe switch even when the card had never been opened.
+   HTFPrimeCandleSettings();
 }
 
 //+------------------------------------------------------------------+
 //| Save HTF Candles Settings                                        |
 //+------------------------------------------------------------------+
+#define HTF_SAVE_SLOTS 15
+
+// P-PERF-44: these 15 keys used to be written UNCONDITIONALLY on every teardown -
+// the one saver in that window with no shadow at all, and the reason the P-PERF-37
+// line could report `save writes=0/106 flushed=0` while the phase still cost a
+// hundred milliseconds: that counter covered the override table only. Same guard,
+// same sink, same report as every other block now, and primed at init
+// (HTFPrimeCandleSettings) so an untouched session writes nothing.
 void SaveHTFCandlesSettings()
 {
+   static double s_htfShadow[HTF_SAVE_SLOTS];
+   static bool   s_htfKnown[HTF_SAVE_SLOTS];
+   static int    s_htfEpoch = -1;
+   int htfChanged = 0;
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
    // P-UI-92: "TfMode" is the state; "IsAuto" is still written (1 = either
    // dynamic rung) so ONE downgrade to a previous build keeps its own
    // Auto/Manual meaning instead of reading Structure as a manual period.
-   GlobalVariableSet(prefix + "TfMode",      (double)g_HTFTfMode);
-   GlobalVariableSet(prefix + "IsAuto",      HTFTfIsDynamic() ? 1.0 : 0.0);
-   GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod);
-   GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor);
-   GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor);
-   GlobalVariableSet(prefix + "WickColor",   (double)g_HTFWickColor);
-   GlobalVariableSet(prefix + "BorderColor", (double)g_HTFBorderColor);
-   GlobalVariableSet(prefix + "Opacity",     (double)g_HTFOpacity);
-   GlobalVariableSet(prefix + "ShowWicks",   g_HTFShowWicks ? 1.0 : 0.0);
-   GlobalVariableSet(prefix + "WickWidth",   (double)g_HTFWickWidth);
-   GlobalVariableSet(prefix + "GapPct",      (double)g_HTFGapPct);
-   GlobalVariableSet(prefix + "ShadowPct",   (double)g_HTFShadowPct);
-   GlobalVariableSet(prefix + "BorderWidth", (double)g_HTFBorderWidth);
-   GlobalVariableSet(prefix + "BoxMode",     (double)g_HTFBoxMode);
-   GlobalVariableSet(prefix + "ShowBody",    g_HTFShowBody ? 1.0 : 0.0);
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 0, (double)g_HTFTfMode))
+      { GlobalVariableSet(prefix + "TfMode",      (double)g_HTFTfMode); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 1, HTFTfIsDynamic() ? 1.0 : 0.0))
+      { GlobalVariableSet(prefix + "IsAuto",      HTFTfIsDynamic() ? 1.0 : 0.0); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 2, (double)g_HTFPeriod))
+      { GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 3, (double)g_HTFBullColor))
+      { GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 4, (double)g_HTFBearColor))
+      { GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 5, (double)g_HTFWickColor))
+      { GlobalVariableSet(prefix + "WickColor",   (double)g_HTFWickColor); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 6, (double)g_HTFBorderColor))
+      { GlobalVariableSet(prefix + "BorderColor", (double)g_HTFBorderColor); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 7, (double)g_HTFOpacity))
+      { GlobalVariableSet(prefix + "Opacity",     (double)g_HTFOpacity); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 8, g_HTFShowWicks ? 1.0 : 0.0))
+      { GlobalVariableSet(prefix + "ShowWicks",   g_HTFShowWicks ? 1.0 : 0.0); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 9, (double)g_HTFWickWidth))
+      { GlobalVariableSet(prefix + "WickWidth",   (double)g_HTFWickWidth); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 10, (double)g_HTFGapPct))
+      { GlobalVariableSet(prefix + "GapPct",      (double)g_HTFGapPct); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 11, (double)g_HTFShadowPct))
+      { GlobalVariableSet(prefix + "ShadowPct",   (double)g_HTFShadowPct); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 12, (double)g_HTFBorderWidth))
+      { GlobalVariableSet(prefix + "BorderWidth", (double)g_HTFBorderWidth); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 13, (double)g_HTFBoxMode))
+      { GlobalVariableSet(prefix + "BoxMode",     (double)g_HTFBoxMode); htfChanged++; }
+   if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 14, g_HTFShowBody ? 1.0 : 0.0))
+      { GlobalVariableSet(prefix + "ShowBody",    g_HTFShowBody ? 1.0 : 0.0); htfChanged++; }
+   GVLedgerReport(GV_BLOCK_HTF, htfChanged, HTF_SAVE_SLOTS);
+   if(htfChanged == 0) return;
+   GVFlushRequest();   // P-PERF-44 (2): ASK; the teardown's one commit pays for it
+}
+
+// P-PERF-44 (1): prime the HTF shadow from its own load pass (the end of
+// InitializeHTFCandles), by replaying this write order in dry-run.
+void HTFPrimeCandleSettings()
+{
+   GVShadowDryRun(true);
+   SaveHTFCandlesSettings();
+   GVShadowDryRun(false);
 }
 
 //+------------------------------------------------------------------+

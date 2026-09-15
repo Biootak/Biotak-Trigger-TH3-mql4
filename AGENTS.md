@@ -1,9 +1,10 @@
 # AGENTS.md — Biotak Trigger TH3 (MQL4)
 
 > خلاصه فارسی: این فایل را هر ایجنت در شروع هر سشن (حتی سشن جدید) باید بخواند و به‌کار ببندد.
-> دو قانون طلایی: (۱) هر جا چیزی اضافه/تعمیر می‌کنی، طبق «Where things go» همین‌جا بگذار؛
+> سه قانون طلایی: (۱) هر جا چیزی اضافه/تعمیر می‌کنی، طبق «Where things go» همین‌جا بگذار؛
 > (۲) هر مشکلی که حل کردی و ممکن است دوباره پیش بیاید، همین لحظه در جدول
-> «Recurring Problems» پایین همین فایل ثبت کن تا هیچ سشن بعدی آن را از نو حل نکند.
+> «Recurring Problems» پایین همین فایل ثبت کن تا هیچ سشن بعدی آن را از نو حل نکند؛
+> (۳) هر گزارش به کاربر را فارسی، کوتاه و روان بنویس — جواب در خط اول، جزئیات بعد از آن (R-REPORT).
 
 **MetaTrader 4 custom indicator** implementing Prof. Saeed Khakestar's TH
 (Time Harmonic) levels formula. MQL4 only — no JS/TS/Python in the product
@@ -44,6 +45,10 @@ project.
     intended hunks changed; anchor edits on short unique substrings — never
     reconstruct long single-line table rows (a corrupted row is worse than
     a missing one).
+11. **Report so the user understands it on ONE read** (see R-REPORT): Persian
+    and short, the answer in the first line, the detail after it, one idea per
+    line, proof instead of adjectives, and the test steps at the end. A report
+    the user has to re-read is a report that was never delivered.
 
 ---
 
@@ -137,6 +142,50 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 - **Never commit:** uncompiled work, mixed topics ("also fixed X while here"),
   or build outputs (`.ex4`, `build-logs/` are gitignored and stay out).
 
+### R-REPORT — how EVERY reply to the user is written (2026-09-15)
+
+The user's own words: «چرا اینقدر سخت گزارش میدی که من نمی‌فهمم ... گزارش‌ها روان
+و قابل فهم باشه سریع و از جملات درست». A report the user cannot read delivered
+nothing, so its style is a RULE, not a taste. Every agent reply follows it:
+
+- **Persian, and only Persian sentences.** Everyday Persian, normal word order,
+  the verb at the end of the sentence. English may appear ONLY as the literal
+  name of something in the code or on the screen (`OBJ_*`, a file or function
+  name, a log field, a hotkey). Never write a whole English sentence inside a
+  Persian report, and never invent a Persian translation for a name — quote the
+  name exactly as it is written in the code.
+- **The answer in line one.** Line 1 says what changed, what the fix is, or
+  whether the work is done. The investigation comes AFTER it. Never open with
+  the trail that led to the conclusion.
+- **Short by construction.** A few short lines, one idea per line, a blank line
+  between ideas. A paragraph longer than ~3 terminal lines gets split or becomes
+  a bullet list. No wall of text, no parenthesis inside a parenthesis.
+- **Plain words, not a jargon wall.** A heavy term is allowed only when it is
+  the name of something the user can see or press. Everything else is said in
+  everyday words.
+- **Proof, not adjectives.** Give the number, the file, the log line. Never
+  «بهتر شد» / «بهینه شد» / «حل شد» without the measurement that proves it.
+- **End with the test.** When code changed, finish with the one or two concrete
+  steps the user does (which chart, which gesture, remove-and-re-add the
+  indicator).
+- **Say the gaps plainly.** What is NOT fixed, NOT measured, or NOT certain gets
+  its own short line in the same plain tone — never buried mid-sentence.
+- **Speed.** The transcript is live: give the conclusion as soon as it exists,
+  then the detail once — and do not narrate every step while it happens.
+
+Bad / good, in this project's own voice:
+
+> **بد** — یک بندِ بلند؛ کاربر باید دو بار بخواند:
+> «مکانیزم این بود که آبجکتِ پس‌نشین که جابجا می‌شود، ترمینال باید هر فریم
+> کندل‌های زیرش را در کلِ مساحتِ باکس دوباره بکشد، و این هزینه در طولِ درگِ
+> نیتیوِ خودِ ترمینال تمام می‌شود، نه در کدِ ما ...»
+
+> **خوب** — سه خط، هر خط یک ایده:
+> - باکس حالا مثل مستطیلِ خودِ متاتریدر جلوی کندل‌ها کشیده می‌شود.
+> - در طولِ حرکت، ترمینال دیگر مجبور نیست کندل‌های زیرِ باکس را از نو بکشد.
+> - **تست:** اندیکاتور را از چارت بردار و دوباره اضافه کن، بعد باکس را نزدیکِ
+>   کندل بکش.
+
 ### R-PERF — the chart write budget (MT4 repaints on every `ObjectSet*`)
 
 - **Never write an object property you would not change.** MT4 marks the chart
@@ -159,8 +208,39 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 - **Teardown and show/hide are bulk, never O(all objects)**: `ObjectsDeleteAll`
   per TF namespace (Base/Knot survives because `inpObjectPrefix + _BK_` can never
   start with a TF namespace), and hide-all runs once per transition.
+- **A HOT LOOP PROBES ONCE PER GESTURE, AND MEASURES ITSELF** (P-PERF-42/43,
+  2026-09-14): the BK child move asked `ObjectFind` for EVERY child before every
+  `ObjectMove` (~10 terminal calls per drag event at event rate) for an answer
+  that cannot change mid-gesture — a drag never creates or deletes a child. The
+  child set is now ONE 9-bit mask (`BaseKnotChildMaskBuild`) built on the
+  gesture's first move and keyed on the id it was built for, so the overlap-adopt
+  path rebuilds instead of trusting it and the press clears the key (the same box
+  dragged twice probes twice). A missing child is skipped exactly as before and
+  the release `Sync` / the pump's missing-edge heal still recreate anything that
+  really vanished — behavior identical, work lower. The same rule as P-UI-82's
+  per-gesture move list: **the LIST is a property of the gesture, the VALUE is a
+  property of the frame.** And the drag now reports its OWN cost (`move=`/`paint=`
+  on the release line, `[BK] drag release sync ...`), because "the drag lags"
+  cannot be aimed at a phase from a gesture ledger that only names the owner.
 - **Gate: `python tools/write-budget-audit.py`** (+ `--selftest`). Run it with
   the compile before calling any perf work done.
+- **PERSISTENCE IS A BLOCK PROPERTY, NOT THE OVERRIDE TABLE'S PRIVILEGE**
+  (P-PERF-44, 2026-09-15): the teardown runs FOUR savers and the write shadow was
+  only ever PRIMED for one of them, so `save=125ms` sat next to
+  `writes=0/106 flushed=0` — a duration whose owner the line could not see. Three
+  rules, and every saver obeys all three: (1) ONE dry-run latch
+  (`GVShadowDryRun`) is obeyed by EVERY sink, so a block is primed by REPLAYING
+  ITS OWN WRITE ORDER from its own load pass, never from the teardown it must not
+  cost; (2) every saver only ASKS (`GVFlushRequest`) and `GVFlushCommit` is the
+  project's ONLY `GlobalVariablesFlush`, so four writers pay ONE terminal-wide
+  disk serialisation; (3) every block REPORTS (`GVLedgerReport`) on EVERY pass and
+  always BEFORE its own early return, because a counter that survives a no-op pass
+  describes a teardown that already happened. A new saver that skips any of the
+  three is the bug this rule exists for.
+- **Gate: `python tools/probe-budget-audit.py`** — `persist-write-shape` +
+  `persist-flush-owner` (one flush site in the whole project, every block primed
+  from its own load pass, every block naming its writes), and `--selftest` now
+  REFUSES to run against a baseline that is already failing.
 
 ### R-PLACE — where a card OPENS is measured, never assumed (2026-09-14)
 
@@ -222,6 +302,13 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   object its toggle draws** — TH = dotted horizontal levels (`dots`), never
   a wave (waves read as "trend"). Verify a redesign at byte level (ASCII
   dump of the 28px BMP), never by eyeballing an upscaled preview.
+- **A GLYPH NAME IS NOT A MEANING — the ART is** (P-ICONS-08, 2026-09-14):
+  a `base` string in `CircIconRes()` / `CircCardIcon()` must be checked
+  against `ART` in `tools/gen-th3-icons.js`, because a name outlives its art.
+  The ring's `box` had been a PADLOCK (shackle + body + keyhole — the retired
+  View Lock skin) while the mapping's comment called it "a rectangle", so
+  Base / Knot, a MEASURING tool, shipped a lock icon for months. It has its
+  own `ruler` now and `box` sits in `DEAD_ART`.
 
 ### R-RETIRED — retired features (commented out, never deleted)
 
@@ -253,6 +340,30 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   `PANELDRAG-OFF`, uncomment the three sites, delete the `false &&`, and re-teach
   the gates — `tools/panel-wiring-audit.py`'s new `[paneldrag-off]` group asserts
   the RETIREMENT in both directions, so a half-restore FAILS (seeds 25/31/54/59).
+
+- **THE BASE BOX'S CURSOR-DELTA FALLBACK IS RETIRED** (2026-09-14, user
+  decision — «داخل باکس دوتا درگ فعال داریم یکیش حذف کن اونی که لایو نیست»,
+  the seventh report naming the box drag). TWO writers moved one box: the
+  TERMINAL's own native drag (the LIVE one — it moves the anchors at event rate
+  and MT4 repaints the fill on that same frame) and the cursor-delta fallback,
+  which was rate-limited BY DESIGN (`BK_DRAG_CURSOR_MS` 30 — every write it made
+  was a repaint the terminal never asked for), i.e. exactly the one a user feels
+  as stepped. Dead by construction: `else if(false && !s_bkNativeClaim …)` in
+  `BaseKnotFollowDrag`, its whole body still compiling in place, the press-time
+  role measurement commented at its call site, and the `BKCURSOR-OFF:` marker
+  (3 sites) naming the decision. Dormant on purpose and still compiled:
+  `BaseKnotGrabRole`, `BK_GRAB_*`, `BK_DRAG_CURSOR_MS`, `s_bkGrabSel`,
+  `s_bkOwnerMs`, `s_bkFallLogged`, `s_bkDragBT*/BP*/T0/P0/X0/Y0` (the claim
+  latch `s_bkNativeClaim` stays ACTIVE — it is the witness the release ledger
+  prints as `native=`). Stays ACTIVE because it was never the fallback's: the
+  anchor-exact children follow (change-driven, unbudgeted, P-BK-18), the
+  per-gesture child mask (P-PERF-42), the gesture's own `move=`/`paint=`
+  measurement (P-PERF-43), the release `Sync`, the pump's settle heal and the
+  always-on ledger. TO RESTORE: delete the `false &&` and re-comment the role
+  call — `tools/panel-wiring-audit.py`'s new `[bkcursor-off]` group asserts the
+  retirement in BOTH directions (a revived live branch, a live box write before
+  the marker or a half-restore that deletes the dormant engine all FAIL), and
+  its seeds 68/70/70b/71 keep it honest.
 
 - **TH3Tool is retired** (2026-09-04, user decision — the toggle/drag-draw
   behavior was broken and the tool is unwanted). Everything is commented in
@@ -837,9 +948,99 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   live anchors while the terminal moves them (exact, moves-only, ~14 syscalls)
   and falls back to cursor delta only while anchors sit frozen (some builds).
   `OBJECT_DRAG` carries no trusted cursor (anchor-exact only — in-repo pattern,
-  TH3Tool reads anchors there too), `MOUSE_MOVE` carries the cursor fallback;
-  the shared 30ms gate dedups the channels so neither fights nor starves.
+  TH3Tool reads anchors there too), `MOUSE_MOVE` carries the cursor fallback.
+  The CHILD MOVE STEP is change-driven and UNBUDGETED (P-BK-18 — it used to
+  share one 30ms gate with the paint, which left the border/rays up to 30ms of
+  cursor travel behind the natively-dragged BOX fill: "one layer drags live,
+  the other doesn't"); only the path that writes the BOX itself (the cursor
+  fallback) keeps `BK_DRAG_CURSOR_MS`, and the repaint keeps its own
+  `BaseKnotDragPaint` gate. The fallback is RETIRED as of P-BK-20 (dead by
+  construction) — `BK_DRAG_CURSOR_MS` and the grab-role defines stay compiled as
+  the conditions a restore must satisfy.
+  ONE OWNER PER GESTURE, AND THE GRAB IS MEASURED (P-BK-19, 2026-09-14 —
+  «من یک طرف درگ میکنم طرف دیگه تکون میخوره»). **Status: the rule is the LAW a
+  restore must obey; the fallback itself is now RETIRED dead-by-construction
+  (P-BK-20 / BKCURSOR-OFF, the user's «اونی که لایو نیست» call) — read the two
+  together, the P-BK-19 rules are why a restore cannot simply delete the
+  `false &&`.** While it was live, the cursor fallback could write the
+  BOX only while NOBODY else had claimed it: the terminal claims through its own
+  `OBJECT_DRAG` (`s_bkNativeClaim`) and through the anchors moving without us
+  (a fallback write folds itself into `s_bkFol*`, so a difference IS somebody
+  else), and it is asked FIRST (`BK_DRAG_OWNER_MS` 250 — a healthy build speaks
+  within the first travelled pixels), while a fresh press takes the claim back.
+  Two writers on one box is P-BK-07's fight one layer down, and MT4 cancels the
+  native drag a second writer fights (P-BK-15). And the fallback writes exactly
+  what the PRESS grabbed (`BaseKnotGrabRole`, MEASURED in pixels against the
+  box's corners through `ChartTimePriceToXY`): a body press is a MOVE over all
+  four values (offsets kept), an edge/corner press is a RESIZE that follows the
+  hand on that side ONLY — it used to translate both anchors whatever it had
+  grabbed, which is why dragging one edge moved the far side. A box too small to
+  aim inside, or one whose corners cannot be projected, answers `BK_GRAB_ALL`
+  (the move it always did) — a role that cannot be measured must not invent.
+  The BK gesture ledger is ALWAYS ON (`Print("[BK] ..."`: latch / adopt /
+  cursor-owned / release — a handful of lines per gesture, never per step),
+  because P-BK-18's own ledger was `LOG_IP1` and therefore SILENT by default: a
+  report could not name which writer owned the gesture.
   Release does one authoritative `BaseKnotSync` — full pattern: `LEARNING.md` §1.
+  THE MOVEMENT IS THE TERMINAL'S AND ITS MAGNET IS NOT OURS (2026-09-15,
+  P-BK-22 — «وقتی نزدیک کندل میشم سخت جابجا میشه», reported on BOTH tools at
+  once, right after P-BK-21 shipped): MT4 has its OWN object magnet (Tools →
+  Options → **Objects** → `Magnet sensitivity`, in PIXELS — 0 disables): it
+  anchors a DRAGGED object's checkpoint to the nearest bar's OHLC whenever
+  that checkpoint is within the sensitivity of that price. It runs INSIDE the
+  terminal's own drag and is terminal-wide (no MQL4 property disables it), so
+  a drag that RESISTS NEAR CANDLES while staying free in empty price space is
+  never diagnosed in our code: the always-on gesture ledger answers it from
+  the user's own terminal — `native=1` in 48 of 49 gestures, `move=0ms
+  paint=0ms` in every one of them, and ZERO `[BK] magnet` lines (the P-BK-21
+  release magnet never fired at all). A differential that needs no code: drag
+  a rectangle drawn with MT4's OWN drawing dock near a candle — if it sticks
+  the same way, the magnet is the owner (terminal setting), not us. Read the
+  two halves together: the terminal's magnet owns the MOVEMENT (resistance),
+  ours owns the DROP (precision) — complementary, never substitutes. Detail:
+  `LEARNING.md` §63.
+  AND THE HANDLE IS NOT A BACKGROUND OBJECT (P-BK-23, same day — the user's own
+  differential settled it: a rectangle drawn with MT4's OWN tool dragged
+  smoothly beside the candles while the box went sticky there, so the magnet
+  was not the owner of THIS one). MT4 stores its own objects `background=0`;
+  the box handle was the ONE background rectangle of the family (4 edges,
+  Entry/SL/TP, badges and text are all `BACK false`), and a background object
+  makes the terminal repaint the BARS under it on every frame of a native
+  drag, over an area the size of the box — the cost is the TERMINAL's, which
+  is why our own ledger read `move=0ms paint=0ms` while the hand felt stuck.
+  A HOLLOW handle is now foreground (its outline is painted in the background
+  colour, so it costs no pixel on any build, quirk included) and wears the
+  VISIBLE border's style AND width so the 4 edge children cover it
+  pixel-for-pixel — the grabbable ring IS the ring the user sees. A FILLED
+  handle stays behind the candles: that fill is the object's own pixel and
+  must not cover the bars. `BaseKnotFillHealed` requires the foreground flag
+  too, so boxes committed before this rule heal on the next pump.
+  THE UI-AUDIT ROUND THAT FOLLOWED (2026-09-15, P-BK-24..27) — every item is a
+  measured fact, not a theory: **(P-BK-24)** the press was guarded by an
+  INSIDE-only hit test while the user aims at the DRAWN BORDER (a line
+  `inpBoxBorderWidth` px wide sitting exactly ON the boundary), so a third of the
+  gestures the terminal accepted were logged `drag adopt … (the press missed it)`
+  (68 gestures: 42 latch / 26 adopt) — `BaseKnotBoxAtPx` now measures the press
+  in PIXELS against the box's corners (the `BaseKnotGrabRole` projection),
+  inflated by `BK_PRESS_SLOP_PX`, and both the drag latch and the strip's hold
+  latch use it as the fallback. **(P-BK-25)** the release magnet's whole decision
+  is "did ONE side move?" and the ADOPT path takes its baseline snapshot MID-DRAG
+  (after the terminal already moved the box), so an adopted gesture could read a
+  whole-box MOVE as a one-side resize — `s_bkSnapTrusted` is set ONLY by our own
+  press latch and `BaseKnotMagnetSettle` refuses to snap without it (a role that
+  cannot be measured must not invent). **(P-BK-26)** the box's terminal SELECTION
+  was never dropped: `OBJPROP_SELECTABLE` is the drag, `OBJPROP_SELECTED` is the
+  hijack (MT4 moves a selected object on every later drag anywhere, P-UI-45's law
+  — fixed for the custom-price line in P-UI-48, never for this handle), so the
+  box trailed unrelated gestures and, since P-BK-23, painted MT4's square handles
+  on a foreground handle. `BaseKnotDropSelection` (one guarded owner) is called on
+  the RELEASE of a MOVING gesture and when the strip closes its press — a TAP
+  keeps the selection, because the tooltip's "select + Delete key removes all"
+  needs it. **(P-BK-27)** the strip flipped BELOW the box's TOP edge when there
+  was no room above, which put the whole toolbar INSIDE the rectangle: the press
+  on any of its controls then also grabbed the SELECTABLE handle, so picking a
+  width or a style dragged the box with the hand. It now flips below the box's
+  BOTTOM edge — never over the handle it belongs to.
 
 - **Base Box is TradingView-parity — toolbar, fill, text, tabs**
   (2026-09-07, user decision — the strip + card mirror TV's rectangle tool:
@@ -1014,11 +1215,16 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
   first one is inside the id. Each box carries its commit-TF mask
   (`BaseKnotTFMask`: own + lower TFs, hidden above — no hairline boxes) and
   `BaseKnotPlaceBadges` ANDs it with on-screen state (never let badge code
-  overwrite the mask with plain ALL/NO). NO magnet (`BKMAGNET-OFF`
+  overwrite the mask with plain ALL/NO). NO draw-time magnet (`BKMAGNET-OFF`
   2026-09-06, user decision — snapping pulled corners to candle shadows so
   the box never landed where clicked: `BaseKnotSnapPrice()` returns the click
   untouched, exactly like MT4's own rectangle; body kept commented for a
-  one-line restore). Info badge is chart-anchored
+  one-line restore) — and since P-BK-21 the magnet lives on the ADJUST
+  gesture instead: ONE write on the drag release (`BaseKnotMagnetSettle`), one
+  side at a time and only when exactly one anchor moved, side-aware
+  (top→High, bottom→Low) inside `g_magnetSensitivityPips × BaseKnotPipSize()`
+  bars ±1. Never put it in the follow/`BaseKnotSnapPrice` — a second writer
+  beside the terminal's own drag is P-BK-15's cancel. Info badge is chart-anchored
   `"[H Pips | R:R 1:N]"`; the X is the only pixel badge. Box delete cascades
   via one `ObjectsDeleteAll(pfx)`; a manually deleted CHILD self-heals via
   `BaseKnotSync`, trailing deletes of a gone box only mop up by prefix. The BK
@@ -1446,6 +1652,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-ENV-01 | The agent's model stream dies mid-response with `TypeError: unknown certificate verification error at async <anonymous> (orchestrator.js)` and the whole turn is lost — the repo can be left mid-edit | **Not a repo bug — a half-applied local MITM state.** The model traffic is intercepted by **9router** (`%APPDATA%\npm\node_modules\9router`, v0.5.65): it resolves its hosts by writing `127.0.0.1 <host>` lines into `C:\Windows\System32\drivers\etc\hosts` (`api.anthropic.com`, `api.individual.githubcopilot.com`, `cloudcode-pa.googleapis.com`, `daily-cloudcode-pa.googleapis.com`), mints leaf certs from its own root CA (`%APPDATA%\9router\mitm\rootCA.crt`, 2036 expiry), runs its MITM listener on **:443** (needs admin), `setx NODE_EXTRA_CA_CERTS` on start and **`reg delete HKCU\Environment /V NODE_EXTRA_CA_CERTS` on stop**. Killed instead of stopped = half-state: hosts still redirect to 127.0.0.1 while nothing listens on :443 (verified 2026-09-11 19:14: hosts had 2 cloudcode lines, `Get-NetTCPConnection -LocalPort 443 -State Listen` = none, `NODE_EXTRA_CA_CERTS` still set) → the TLS layer fails on that path and the stream breaks mid-response. Also seen as `Start-Process : Item has already been added. Key in dictionary: 'http_proxy'` (the app carries BOTH casings of the proxy vars). | Diagnose in ONE pass: `[Environment]::GetEnvironmentVariable('NODE_EXTRA_CA_CERTS','User')` > the hosts file for `127.0.0.1 <api host>` lines > `Get-NetTCPConnection -LocalPort 443 -State Listen`. Then pick an END state, never the middle: **RUN 9router** (it re-owns hosts + CA var + :443; re-adds its hosts lines itself on start) **or CLEAN the leftovers** (delete its hosts lines — admin — and unset the user CA var). Never kill 9router while a session is streaming. Agent side: the answer to "don't corrupt the repo" is atomic steps — edit + verify-on-disk in the SAME step, keep the resume point in `.workbuddy-ai/memory/`, and re-read every file after a reconnect instead of trusting the transcript. | 2026-09-11 |
 | P-UI-21 | Panel X sometimes drags instead of closing; REMOVE leaves Pnl*/Pal_* ghosts; every bulk wipe fires N OBJECT_DELETE storms (label clear even flags a full level redraw); param-change loop deletes the same 14 names 8x; strip recreate orphans an open STYLE/WIDTH popover | Header-hit exclusion ended at py+39 while the xbg skin runs to py+43; Full entry OnDeinit never called PnlCloseAll; DeleteAll/ClearAllLabels/PARAMETERS bulks had no suppress window; TF-invariant ATR_Trade_Current* names sat inside the 8-TF loop; BkMiniStripCreate zeroed g_BkDd instead of closing | Extend PnlHeaderHit to py+43; PnlCloseAll() first in Full entry OnDeinit (flushes card-12 text + modal lock); suppress window around EVERY inpObjectPrefix* bulk (DeleteAll both branches, ClearAllLabels, PARAMETERS branch — closed by DeleteAll at branch end); hoist invariants out of the TF loop; drop the dead second pass in DeleteAll(true); BkDdClose() in BkMiniStripCreate | 2026-09-11 |
 | P-BK-17 | Toggling timeframe-lock (inpLockKey) permanently deletes the user's Base/Knot boxes | Raw ObjectsDeleteAll(0, inpObjectPrefix) with no _BK_ guard, unlike DeleteAllIndicatorObjects(false); the registry rebuilds from box anchors, so deleted boxes never come back | Guarded per-object loop with the _BK_ skip, inlined (DeleteAll is defined BELOW the caller — P-ARCH-02 forbids calling it); keep the suppress window + empty-prefix guard | 2026-09-11 |
+| P-BK-20 | «داخل باکس دوتا درگ فعال داریم یکیش حذف کن اونی که لایو نیست» — two drag writers inside one box, and the user asked for the non-live one to go | The box had the TERMINAL's native drag (live: anchors at event rate, the fill repainted by MT4 on the same frame) and a cursor-delta fallback that wrote the BOX itself under a 30 ms budget — a budget that existed exactly because every write from it forced a repaint the terminal had not asked for. Two writers on one object is also the P-BK-07/P-BK-15 class (MT4 cancels a native drag whose object is rewritten mid-gesture), so the fallback could only ever be a slower copy of a writer the terminal already owns | Retired DEAD BY CONSTRUCTION, the PANELDRAG-OFF pattern: `else if(false && !s_bkNativeClaim …)`, the body left compiling, the press-time role measurement commented at its call site, `BKCURSOR-OFF:` markers naming it, and the claim latch / ledger kept ACTIVE (they witness the LIVE path, `native=`). Dormant and compiled on purpose: `BaseKnotGrabRole`, `BK_GRAB_*`, `BK_DRAG_CURSOR_MS`, the role/owner statics. Restore = delete `false &&` + re-comment the role call. Gate: `panel-wiring-audit.py` `[bkcursor-off]` — marker count, the dead-by-construction branch, no live box write before the marker, the dormant engine AND its P-BK-19b role split intact, no live role measurement at the press ⇒ **83/83** with 4 new seeds | 2026-09-14 |
+| P-PERF-42 | «چرا درگ کردن و کشیدن‌ها این‌قدر لگ داره فکر کنم محاسبات الکی داریم» — the drag step re-derived, per event, what the gesture had already answered | `BaseKnotMoveOne` ran `ObjectFind` before EVERY `ObjectMove` (≈10 terminal calls per drag event, at event rate) although the child set is a property of the BOX — a drag only MOVES children, it never creates or deletes one, so the answer cannot change mid-gesture. Same shape as the pre-P-UI-82 panel drag (a per-batch re-scan of an immutable list) | ONE probe per gesture: `BaseKnotChildMaskBuild` fills a 9-bit mask (`BK_CH_*`) on the first move, keyed on the box id it was built for (`s_bkChildMaskId`, cleared by the press so the same box dragged twice probes twice), the pass moves only the children the mask proved exist, and `BaseKnotMoveOne` is pure `ObjectMove` — a missing object would only have made ObjectMove a silent no-op anyway, and the release `Sync`/pump heal still recreate anything that really vanished. **Gate:** `panel-wiring-audit.py` `[bk-drag]` (`ObjectFind` may not appear in the per-step mover; the mask build + the press-time key clear must exist) with 2 seeds | 2026-09-14 |
+| P-PERF-43 | The drag gesture had a ledger for WHO owned it (P-BK-19) but none for WHAT it cost, so "the drag lags" could only be aimed at a phase by argument | Every other user-felt path in this project was instrumented FIRST (P-PERF-04/15/26) and each time the number named the culprit (a repaint count, a hit-test sweep); the BK follow was the one hot loop with no timing at all | `BaseKnotFollowDrag` times its two phases (`BaseKnotMoveChildren` = the children/box writes, `BaseKnotDragPaint` = the throttled repaint), keeps the worst pass of each and puts them on the gesture's own release line: `[BK] drag release sync box=… native=… follow=N move=Wms paint=Wms` (counters reset by the press; zero extra lines, zero per-step output). **Gate:** `[bk-drag]` requires the press reset + the phase fields on the ledger | 2026-09-14 |
+| P-BK-19 | «من یک طرف درگ میکنم طرف دیگه تکون میخوره» — dragging one EDGE of a Base/Knot box moved the opposite edge with it | The cursor fallback (the ONE path that writes the BOX) had two defects: (a) it stayed armed for the whole gesture, so it could write a box the TERMINAL was dragging — the P-BK-07 two-writer fight one layer down, and MT4 cancels the native drag a second writer fights (P-BK-15); (b) it always translated BOTH anchors from the press base, whatever the press had grabbed, so a RESIZE was executed as a MOVE | (a) ONE owner: `s_bkNativeClaim` is set by the terminal's own `OBJECT_DRAG` AND by the anchors moving without us (our write folds into `s_bkFol*`, so a difference IS somebody else), the fallback requires `!s_bkNativeClaim` plus `BK_DRAG_OWNER_MS` 250 (the terminal is asked first), and a fresh press takes the claim back; (b) the press MEASURES its grab (`BaseKnotGrabRole`: pixels vs the box's corners through `ChartTimePriceToXY`, a 4-bit selection over {t1,p1,t2,p2}; too small / unprojectable ⇒ the body) and the fallback writes only those values — body = MOVE as before, edge/corner = RESIZE with the opposite side never written. Same commit: the BK gesture ledger is an always-on `Print` (it was `LOG_IP1`, silent by default, so P-BK-18's ledger could not name a single writer). Gate: `panel-wiring-audit.py` `[bk-drag]` (+5 seeds ⇒ **79/79**; the group also joined the clean-source case, which had never included it) | 2026-09-14 |
+| P-BK-18 | «یکیش درگ میشه لایو یکیش نمیشه» — mid-drag the BOX fill tracked the hand at event rate while its border/rays trailed ~30ms behind, so one rectangle read as "live" and the other did not (two partly-overlapping rects in the report screenshot) | The CHILD MOVE STEP shared ONE 30ms gate (`s_bkDragMs`) with the cursor-delta fallback AND the repaint, so children stepped at ~33fps while the fill was repainted natively every frame — the doc described the intended split ("positions sync every event, the repaint does not") but the code never matched it | The move step is CHANGE-DRIVEN and UNBUDGETED (4 property reads, then writes only when the BOX really moved — free while nothing moves, and it adds no repaint: MT4 already repaints the dragged box on that frame); only the path that writes the BOX itself (cursor fallback) keeps `BK_DRAG_CURSOR_MS` 30, and `BaseKnotDragPaint` keeps its own gate. Net work DROPS (an idle drag event now costs reads only) and the layer speeds up, so rules 8+9 hold: release behavior and the authoritative `Sync` are untouched | 2026-09-14 |
 | P-UI-22 | MT4 panels look washed/blurry vs the preview although every hex matches: flat GDI buttons/rects (no gradient/radius/glow), spec whites sinking after the blit, knob gray ring, dual/DD size mismatches | MT4 buttons are square+flat by construction; sub-10% alpha washes + 0.69px glyph stems die on the blit; pnl_dsw baked 38x23 vs the 46x31 layout slot; bk_style/bk_w baked 24 vs the 16 slot; TRACK_BD/field rims reused the wrong tokens | RICH-MT4: baked overlays with TRANSPARENT middles over fixed geometry (pnl_trackgloss 278x7 over track+fill, pnl_glass22/46/38 over swatches/cells, pnl_nav 118x26 pill, pal_card 293x309 gradient) — live colours show through; knob spec dark rim; dual pad 6 (46x31); bk icons native 16; glyph stroke 2.3; chip/secband bumps; TRACK_BD/FIELD_BD/keycap/close hex to spec; every new BMP needs #resource (re-run add-panel-resources.py) + PnlDestroy purge; PAL_W/H + TRACK_GLOSS + NAV consts are a 3-way contract (gen/MQL) | 2026-09-11 |
 | P-UI-23 | Tall settings cards ran 700px+ down the chart; every paint/hit/update site derived X from g_PnlX/px and Y from row*42 assuming 312, and skins are baked per width — naive widening breaks hit-testing and leaves bare rows | One geometry per column assumed everywhere (PnlCreateRow px param, hit loops, DdRect, ValueFromX, ComputePosition, HeaderHit, PanelW/H) | R-WIDE: 624 cards (two full 312 slots), pairing sim (RowCol/RowLine/BaseX/PairRows) as the single owner; row bodies take the shifted px untouched; SEC/TAB span full width (W skins for band/topbar/hair); ComputePosition moved below the sim; narrow cards byte-identical | 2026-09-11 |
 | P-UI-24 | Panel X/Done press never closes (release OBJECT_CLICK eaten when the press also arms another gesture — header-drag grab + release suppress is the classic; the click never arrives) | suppress is TIME-based (350ms, BiotakMenu.mqh), so any press-side consumer (drag grab, Dd open, switch flip) can poison the release that carries close; header-hit magic offsets drift per width | PnlClosePressHit + close on PRESS first in the press pipeline (strip-button parity; OBJECT_CLICK close stays as idempotent fallback); HeaderHit exclusion in xbx terms (skin-exact, width-proof). LOCKED BY Biotak_PanelFlow_Test.mq4 ([PFTEST]: wide X/Done press, click fallback, narrow regression, suppress immunity, strip wipe, prop restore — refuses to run with a live panel open since objects are shared) | 2026-09-11 |
@@ -1575,6 +1786,11 @@ Icon filename ↔ ring feature mapping lives in `CircIconRes()` in
 | P-UI-74 | «این رنگ ها که هستش کلیک میکنم هیچ تغییر رنگی نداریم؛ از پنل پالت درستش هستش ولی از اینجا نه» — the ATR card's colour strip (CARD COLORS) did nothing when tapped, while the palette popover applied the same colours fine. Third report in the P-UI-69/72 shape, so this time the control was MEASURED before anything was touched | **THE CONTROL WAS NOT WRONG, IT WAS UNREACHABLE — and the measurement is what says so.** The shipped screenshot was decoded pixel by pixel against the shipped source: the strip paints at x 617/661/705/749/793 (the `PNL_CSET_W 38` + `PNL_CSET_GAP 6` pitch, centred in column 0 of the 624 px wide body) with cell tops y 794..813, while `PnlCsetHit` looks for them at `x0 = bx + (PNL_WEL-total)/2` = 616 and `ry+13 .. ry+41` = 790..818 — the wide two-column origins, the row grid (`PNL_HEAD_H 56 + line*42`), the section hairlines, the footer at `py+56+13*42` and the sliders' tracks in BOTH columns all landed pixel-exact, and every gate was green. So geometry and apply logic were never the hole: **DELIVERY was.** A card control exists on ONE channel only — the name router (nav/segments/preview/X/Done/quick swatches) or the coordinate press chain (switch/cset/`+`/band/sliders) — and the press chain can be eaten by a foreign drag claim, by a release MT4 never reported, or by a control whose topmost object is the bitmap "glass" skin (MT4 fires no `OBJECT_CLICK` for a bitmap label at all). Second, smaller defect found in the same pass: `PalHandleClick` parsed the palette's own swatch ids with `StringFind(id,"s")==0` (a PREFIX test — the exact shape P-UI-69 removed from `Q0..Q7`), so the recents strip's empty-state hint `rempty` parsed as recent **0** and applied a colour nobody picked, and any future `s*` control would have applied material (0,0) | **(a) ONE affordance list, TWO delivery channels.** `PnlClickFallback()` (BiotakPanels) bounds itself to the open card's rect, refuses while the popover's own pixels/mixer/a live drag own the pointer, then re-enters the SAME dispatch with a synthetic fresh press — so the list, its ORDER (the P-UI-70 position rule is what makes a control reachable) and every arm stay single-owned and cannot drift. It is wired from `PnlHandleClick` (object-click) AND from the plain `CHARTEVENT_CLICK` branch (the event a bitmap-skinned cell's pixels ever produce), and returns TRUE only when a CONTROL acted, so the name router still runs for nav/segments/preview/swatches exactly as before. **(b) ONE GESTURE, ONE OWNER.** `UIPressAct()` replaces the dispatch's raw `UISuppressNextClick()`: it latches the press identity (`s_PnlActedSeq == g_UIPressSeq` → `PnlGestureConsumed()`) so the twin event of one release cannot act twice, and arms the release claim on the PRESS channel only — on the click channel the release IS the event being handled, and arming there is P-UI-65's over-eating (it would eat the NEXT genuine click). `s_PnlClickActed` covers the opposite order (P-UI-49b: MT4 hands the indicator the click of the very press that grabbed the object): the press chain consumes that echo before acting. The body-grab branch is refused on the click channel (`!s_PnlClickChannel`), because a released button must never start a move gesture. **(c)** the palette ids are parsed exactly (`PalMatIdParse`/`PalRecentIdParse`: `s{digits}_{digits}` + bounds, `r{digits}` + bounds), and `rempty` can no longer apply anything. **Gate: new `[dual]` group in `python tools/panel-wiring-audit.py`** — the click channel must RE-ENTER the dispatch (and must not re-implement any of the eight hit tests), BOTH click events must carry it, the latch must be bound to the press identity and must not arm a claim on the click channel, the press chain must consume the echo, the body grab must be refused there, the fallback must refuse the popover's pixels, and the two palette id families must have exact parsers; 6 new seeds (`--selftest` now seeds 29 faults and catches all 29) ⇒ Full + Lite **0 errors / 0 warnings**; write 49/49, panel-colour 19/19, probe, gesture, zorder, ui-text, chart-label, `panel-mt4-sim --audit` all clean | 2026-09-14 |
 | P-UI-73 | «پنل درگ نمیشه کردش» — a press on the card sometimes did nothing at all: no drag, no control, on a card that was otherwise fine, and only where certain things lay under the cursor | **TWO DEFECTS IN THE LIFETIME OF ONE GESTURE, both invisible to every gate that existed.** **(a) THE PHYSICAL BUTTON WAS PROBED IN TWO INCOMPATIBLE DIALECTS.** `TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT)` is reported either as `<0` while pressed (0 = free, and -128 is down with bit 0 CLEAR) or as bit 0 (1 = pressed, 0 = free) depending on the MQL4 build lineage, and BOTH spellings were live in one binary: `PnlPressAllowed` + `BkHoldPoll` asked `<0`, `EventHandlers` + `BaseKnotSyncBadges` asked `& 1`. So on any given terminal half of the safety net answered at random — under the bit-0 reading the stale-claim recovery could never fire (the panel stays locked out after ONE missed release: the exact P-UI-70b symptom, i.e. that fix could be dead code) and the zero-move box hold could never latch; under the other reading a watchdog could decide the button was free in the middle of a LIVE drag. **(b) A PRESS-SIDE `CLICK`/`OBJECT_CLICK` KILLED THE DRAG THAT PRESS HAD JUST STARTED.** `ChartPointerFinalizeOnUps()` is the "the gesture is over" half of every button-up and is reached from CHARTEVENT_CLICK *and* CHARTEVENT_OBJECT_CLICK — and P-UI-49b already recorded that one of those two is delivered ON the press that grabs an object. Running it then clears the move claim in the instant it is made (`g_PnlMoveItem = -1`, `g_DragOwner = DRAG_NONE`), so the remainder of the press drags nothing: position-dependent, which is exactly why it reads as "sometimes". **(c) A PRE-OPEN LONG-PRESS LATCH OUTLIVED ITS OWN GESTURE**: the ring's latch block sits BEFORE P-UI-72's modal guard, so a latch armed by the press that OPENED the card swallowed the next press within 8 px — P-UI-72's "one press, one owner" failure, one state further in | **(a) ONE OWNER** in `Biotak/UtilityFunctions.mqh` (below every surface that asks it): `UILeftButtonDown()` is TRUE if EITHER convention says pressed (a false "down" only defers a recovery) and `UILeftButtonUp()` is TRUE only if BOTH agree (a false "up" would tear a live gesture down — the P-UI-49b class). All four old sites call the owner; `PnlPressAllowed()` now ALSO requires the event latch (`g_MouseWasDown`, cleared by every CLICK/OBJECT_CLICK), so a stuck "down" reading cannot lock a card out either — either witness saying "free" takes the claim back. **(b)** the finalizer returns early unless `UILeftButtonUp()`, and because it resyncs `g_MouseWasDown` first, an ignored echo leaves the press edge intact: the next MOUSE_MOVE of that same press registers as a FRESH press and re-claims what the echo would have thrown away. No sticky drag either way — the move branch only ever follows a cursor whose event says the button is down. **(c)** `CircAbortRingGesture()` (called by `PnlOpen`) takes the pointer back from the ring: the latch, its `DRAG_MENU` claim and its chart lock — and deliberately leaves `g_LongPressFired` alone, because that release-click claim must still eat the release and clears itself in the CLICK handler. **Gate: new `[mouse]` group in `python tools/panel-wiring-audit.py`** — both owners must answer under BOTH conventions, no file of the compiled unit may read `TERMINAL_KEYSTATE_LEFT` outside the owner, the finalizer's release gate must precede the teardown it protects, `PnlPressAllowed` must use the owner AND the latch, and `CircAbortRingGesture` must exist, take back all three things and be called from `PnlOpen`; 3 new seeds. `probe-budget-audit` `[custom-price-mode]` DEMANDED the raw spelling and was taught the owner + given a reversal seed ⇒ **220/220** | 2026-09-14 |
 | P-UI-92 | «چرا تایم ها هفتگی و ماهانه رو نداره و اینکه auto روی ساختاره دیگه اسم ش ساختار باشه و یک تایم پترن هم اضافه بشه» — the HTF card's TIMEFRAME dropdown stopped at D1 and its two dynamic rungs were unrepresentable: the one it had was named `Auto`, a word that names neither what it does nor the ladder the rest of the panel speaks | **THE CARD'S VOCABULARY AND THE ENGINE'S STATE WERE BOTH TOO SMALL FOR THE QUESTION.** The option list was one literal (`"Auto|H4|H1|M30|M15|D1"`), the engine one BOOL (`g_HTFIsAuto`) beside a 9-case `switch(Period())`, and the pair could express exactly two things: "16x, snapped" or one of five fixed periods. So (a) W1/MN1 — which `HTFBarCloseTime`/`HTFCandleGeometry` already handle, and which are the rungs a D1/H4 overlay is asked for on an intraday chart — were not offered at all; (b) the single dynamic entry wore `Auto`, a label that hides the fact that it IS the STRUCTURE rung (16x), the name the Factor card's BASIS already uses for exactly this; (c) there was no PATTERN (4x) entry at all, i.e. `Manual` had no medium-term rung to choose. `PnlSplit(opts,arr,12)` + `PnlDdClose`'s 12-row loop also mean the row has a HARD ceiling nobody had written down | **The dropdown now speaks the panel's own ladder: `Structure` (16x — the rung the shipped Auto resolved to) · `Pattern` (4x — one fractal step up) · H4 · H1 · M30 · M15 · D1 · W1 · MN1** (9 options, inside the popover's 12). The engine's bool became a MODE (`HTF_TF_STRUCTURE` / `HTF_TF_PATTERN` / `HTF_TF_FIXED`), saved as `TfMode` with a ONE-TIME read of the retired `IsAuto` key (a legacy MANUAL chart keeps its period; an out-of-range value is Structure) and still writing `IsAuto`, so one downgrade to the previous build means what it meant. The 9-case `switch` — a second copy of a formula table, the P-ARCH-01 class — is now ONE ladder + ONE nearest snap (`HTFSnapTf`, ties resolve DOWN): the STRUCTURE column reproduces the retired switch on all nine chart TFs (proved by the gate's model, so an installed chart draws exactly what it drew before), and PATTERN is the same rule one step lower (M1→M5 · M5→M15 · M15→H1 · M30→H1 — the tie goes DOWN, H4 would be the 8x structure rung · H1→H4 · H4→D1 · D1→W1 · W1→MN1, where nothing sits between W1 and MN1). The badge keeps naming the TF, so the tooltip names the MODE (`ON · Structure · 4H`), and the factory default is Structure — or the ladder entry `InpHTFTimeframe` names. **Gate: new `[htf-timeframe]` group in `python tools/write-budget-audit.py`** — the list's length == `HTFOptionCount()` == the fixed ladder's length, every label maps to its own period, options 0/1 are the two dynamic modes, display index + press + factory default all speak the three states, the 12-row ceiling, and a MODEL that recomputes both rungs from the source and pins the historical column (`16x` unchanged, `4x` strictly below it wherever there is room) ⇒ selftest **55/55** (3 new seeds: reordered list, wrong count, moved mode define — each caught by THIS group); panel-wiring / probe / gesture / ui-text / panel-colour / zorder / chart-label clean, `panel-mt4-sim --audit` clean (card 6 regenerated), Full **0 errors / 0 warnings** | 2026-09-14 |
+
+| P-ICONS-08 | «این اندازه‌گیری بیس‌ها چرا ایکونش مرتبط نیستش» + a screenshot of the open Tools fan: the Base / Knot button wore a glyph that reads as a magnifier/lock beside "Base / Knot Measure · 1 set" | **THE RING'S ICON MAP NAMED AN ART THAT MEANS SOMETHING ELSE.** `CircIconRes()` gave `CIR_BASEKNOT` `base = "box"` with the comment "Base box = a rectangle (glyph shows the object)", but `ART.box` in `tools/gen-th3-icons.js` draws a PADLOCK (shackle + body + keyhole) — the retired View Lock's own skin (the commented `CIR_VLOCK` branch used the same base), inherited the day that slot died. Proven, not eyeballed: the shipped 28px BMP was dumped to ASCII and matched the screenshot's own pixels exactly (two rectangles + keyhole), so in the whole library that glyph had ONE meaning — "lock" — and nothing about measurement. `CircCardIcon(12)` borrowed the same glyph, so the Base Box card header read as a lock too. | A NEW ring glyph `ruler` (28px `_off`/`_on`): a chunky 45° lozenge with two graduation ticks, reading exactly like the panel's row glyph `ruler` (tools/glyphs.js) so the ring and the cards speak ONE language for this tool; both mappings resolve `ruler` now, `box` moved into `DEAD_ART` (art kept for a one-line restore, the two BMPs + their `#resource` lines purged — the manifest is the reachable set) and both stale `box` descriptions were corrected. Two first renders were REJECTED with their reasons written into the art (a thin bar's outline eats its own body → reads as a feather; ticks crossing the whole bar → reads as a leaf vein), because 28px forgives nothing. Rebuild + re-attach still required, icons embed at compile time (P-ICONS-03). Side find from the same pass: `purge-dead-icons.py` ALSO deletes the sliced `pnl_cardWtop/mid/bot/fade.bmp` (cut from a baked skin, so they are absent from the generator's manifest) — `deploy.ps1` re-slices them, a standalone purge does not, so always deploy after a purge. | 2026-09-14 |
+
+| P-PERF-44 | `OnDeinit breakdown: ... save=125ms cleanup=125ms handler=31ms \| save writes=0/106 flushed=0` on EVERY timeframe switch and chart close — a 125 ms phase whose own report said it wrote nothing, i.e. a duration with no owner; the user reads the family as «قفل‌کردن روی تعویض تایم‌فریم/حذف» | **FOUR savers run in that window and only the OVERRIDE TABLE was ever primed.** `SavePalRecent` (13 keys) and `SaveUIStates` (6 keys) learn their shadow on their FIRST CALL, and for a session that never touched the palette or the menu that first call IS the teardown: `known[]` starts empty and the version-OK load path (`LoadUIState`, `LoadPalRecent`) recorded nothing, so every switch paid 13+6 writes plus `GlobalVariablesFlush`, which per docs.mql4.com/globals/globalvariablesflush serialises the terminal's ENTIRE table to disk. `SaveHTFCandlesSettings` was the worst of the four: 15 keys written UNCONDITIONALLY, no shadow, no guard. Three blocks flushed back to back, and the `save writes=` field P-PERF-37 added could only see the ONE block that was already correct — which is why the 125 ms kept coming back after that fix | ONE engine for all four blocks: **(1)** ONE dry-run latch `GVShadowDryRun` obeyed by `RSSetNext` AND `GVSlotChanged`, so every block is primed by REPLAYING ITS OWN WRITE ORDER from its own load pass — `RuntimeSettingsPrimeOverrideShadow` (existing), new `PrimeUIStatesShadow` ← `LoadUIState`, new `PrimePalRecentShadow` ← `LoadPalRecent` (whose `if(!GlobalVariableCheck(n)) return;` WAS the hole: the commonest chart of all returned before any priming could happen) and new `HTFPrimeCandleSettings` ← `InitializeHTFCandles`; **(2)** every saver only ASKS (`GVFlushRequest`) and `GVFlushCommit` is the project's ONLY `GlobalVariablesFlush`, committed once per teardown in `CleanupUIStates` → 3-4 terminal-wide disk serialisations become ≤1; **(3)** per-key writes (never "one key moved, re-assert all six") and `GVLedgerReport` on EVERY pass and BEFORE the early return, printed per block (`ovr w=n/m pal w=n/m ui w=n/m htf w=n/m flush=n`). An untouched switch now writes 0 keys, flushes 0 times and names every block that could have written. **Gate: `probe-budget-audit` `persist-write-shape` + new `persist-flush-owner`** (one flush site in the whole project, every block primed from its own load pass, every block naming its writes before its early return) + 6 seeds ⇒ 225/225, and `--selftest` now REFUSES to run against a failing baseline | 2026-09-15 |
+| P-BK-21 | «اینو می‌خوای از لبه جابجاش بکنی و یک لب شو بکشی خیلی سخت و روان نیستش مثلا من میخوام روی یک شدو بزارم بارها باید انجام بدم که روی همون چیز که میخوام بزارم نباید اینطوری باشه دیگه» + a screenshot of a chosen box — landing one EDGE of a committed Base/Knot box ON a wick was pixel work | The magnet the user asked for was the one `BKMAGNET-OFF` (2026-09-06, the user's own decision) had retired, and the two card rows that drive it (`MAGNET` / `MAGNET SENS`) had been hidden by P-UI-47 for the same reason: the flag had no reader left. But ONE gesture was conflated with two. While DRAWING, any pull is noise — the box must land where the click was, and that decision stands (`BaseKnotSnapPrice` is still the identity, deliberately). While ADJUSTING a committed box, the user has ALREADY chosen the edge and is asking for exactly that wick — and the terminal's native drag lands the anchor at the CURSOR's price, one chart pixel of which is many pips once the chart is zoomed out, so the target is reachable only by repeating the drag | The magnet is now a property of the ADJUST gesture only, and `BaseKnotMagnetPrice`/`BaseKnotMagnetSettle` (called from the drag RELEASE, `s_bkDragId` — never inside the follow, which would be a second writer beside the terminal's own drag, P-BK-15) obey five rules: it runs ONCE per gesture on the release; it may move ONE price anchor and only when it is the ONLY price that moved (compared against the press-time snapshot `s_bkDragBP1/BP2`, so a whole-box MOVE keeps the geometry the user just positioned — `if(moved1 == moved2) return;`); it is SIDE-AWARE (the top anchor may only take a High, the bottom only a Low, so a snap can never cross the opposite edge); the candidate wicks are the moved anchor's own bar ±`BK_MAGNET_BARS`, inside `g_magnetSensitivityPips × BaseKnotPipSize()` (the SYMBOL's pip — gold, JPY, indices and crypto all measure through the shared owner, never a `Point`); and a snap that is already within half a point writes NOTHING. The two card rows are re-declared after rows 0/1 so no existing address moves, and the settings chain that P-UI-47 kept (`PnlApplySet`/`PnlCurrent`/`DefVal` + the `OV_MG`/`OV_MP2` persistence) was never removed — the controls are live again, so `probe-budget-audit` `live-control` now guards the pair from the READER's side (delete the reader and they are rendered controls that move nothing). Full / Installed / Lite **0 errors / 0 warnings**; new gate `panel-wiring-audit` **`[bkmagnet]`** (draw path stays the identity, the snap is ONE release write and never in the follow, side-aware, one-anchor-only, the symbol's pip, both card rows declared) + its seeds; `probe-budget-audit` **226/226**, `ui-text` / `zorder` / `write` / `gesture` / `colour` / `label` / `art` clean | 2026-09-15 |
 
 > When you close a new recurring issue, add the next row above (highest
 > `P-####-##`). One line per distinct trap is enough — the point is that a

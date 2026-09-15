@@ -21,8 +21,10 @@
 #resource "\\Files\\Icons\\dots_on.bmp"
 #resource "\\Files\\Icons\\atr_off.bmp"
 #resource "\\Files\\Icons\\atr_on.bmp"
-#resource "\\Files\\Icons\\box_off.bmp"
-#resource "\\Files\\Icons\\box_on.bmp"
+// box_off/box_on (a PADLOCK, drawn for the retired View Lock) are RETIRED
+// 2026-09-14: Base / Knot is a MEASURING tool, so it draws a ruler now.
+#resource "\\Files\\Icons\\ruler_off.bmp"
+#resource "\\Files\\Icons\\ruler_on.bmp"
 #resource "\\Files\\Icons\\htf_off.bmp"
 #resource "\\Files\\Icons\\htf_on.bmp"
 // TH3TOOL-OFF: custom_* icons retired with the tool:
@@ -613,6 +615,7 @@ void InitializeUIStates()
    if(versionOk && GlobalVariableCheck(GetGVName("INIT")))
    {
       LoadUIState();
+      PrimeUIStatesShadow();   // P-PERF-44: what the load read is on disk
    }
    else
    {
@@ -650,24 +653,47 @@ void SaveUIStates(const bool flushNow = false)
    static bool   s_uiKnown[8];
    static int    s_uiEpoch = -1;
    int uiChanged = 0;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 0, UI_STATE_VERSION))          uiChanged++;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 1, 1.0))                       uiChanged++;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 2, g_UI.menuVisible ? 1.0 : 0.0)) uiChanged++;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 3, g_UI.menuX))                uiChanged++;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 4, g_UI.menuY))                uiChanged++;
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 5, g_UI.showHTF ? 1.0 : 0.0))  uiChanged++;
+   // P-PERF-44: PER KEY. The old pass wrote all six keys whenever ONE of them
+   // moved, which is the same "re-assert for safety" that R-PERF bans - and it
+   // made this block's own report a guess instead of a count.
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 0, UI_STATE_VERSION))
+      { GlobalVariableSet(GetGVName("VER"), UI_STATE_VERSION); uiChanged++; }
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 1, 1.0))
+      { GlobalVariableSet(GetGVName("INIT"), 1.0); uiChanged++; }
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 2, g_UI.menuVisible ? 1.0 : 0.0))
+      { GlobalVariableSet(GetGVName("MEN"), g_UI.menuVisible ? 1.0 : 0.0); uiChanged++; }
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 3, g_UI.menuX))
+      { GlobalVariableSet(GetGVName("MENUX"), g_UI.menuX); uiChanged++; }
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 4, g_UI.menuY))
+      { GlobalVariableSet(GetGVName("MENUY"), g_UI.menuY); uiChanged++; }
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 5, g_UI.showHTF ? 1.0 : 0.0))
+      { GlobalVariableSet(GetGVName("HTF_EN"), g_UI.showHTF ? 1.0 : 0.0); uiChanged++; }
+   // P-PERF-44 (3): report BEFORE the early return. A skip count that survives a
+   // no-op pass would describe a teardown that already happened.
+   GVLedgerReport(GV_BLOCK_UI, uiChanged, 6);
    // Nothing changed: no writes. No flush either - there is nothing new to make
    // durable, and the keys themselves stay in the terminal's table regardless
    // (GlobalVariablesFlush only forces the DISK copy, which the terminal also
    // writes on shutdown).
    if(uiChanged == 0) return;
-   GlobalVariableSet(GetGVName("VER"), UI_STATE_VERSION);
-   GlobalVariableSet(GetGVName("INIT"), 1.0);
-   GlobalVariableSet(GetGVName("MEN"), g_UI.menuVisible ? 1.0 : 0.0);
-   GlobalVariableSet(GetGVName("MENUX"), g_UI.menuX);
-   GlobalVariableSet(GetGVName("MENUY"), g_UI.menuY);
-   GlobalVariableSet(GetGVName("HTF_EN"), g_UI.showHTF ? 1.0 : 0.0);
-   if(flushNow) GlobalVariablesFlush();
+   // P-PERF-44 (2): `flushNow` means "these keys must be DURABLE when this call
+   // returns", and every caller on that path (the version reset, the teardown)
+   // sits outside any other flush transaction - so it asks AND commits. The
+   // plain saves only ask, and the one commit pays for all of them.
+   if(flushNow) { GVFlushRequest(); GVFlushCommit(); }
+}
+
+// P-PERF-44 (1): prime this block from its own LOAD pass. LoadUIState() has just
+// read these six keys, so replaying this write order in dry-run teaches the
+// shadow "this is already on disk" - the rule P-PERF-27b applied to the override
+// table, which was the ONE block that had it (and the reason `save=125ms` could
+// not be attributed: this saver recorded its first value in the teardown it cost).
+void PrimeUIStatesShadow()
+{
+   if(StringLen(g_UI.gvPrefix) == 0) return;   // UI never initialized
+   GVShadowDryRun(true);
+   SaveUIStates(false);
+   GVShadowDryRun(false);
 }
 
 //+------------------------------------------------------------------+
@@ -741,13 +767,16 @@ string CircIconRes(const int i, const bool on)
    else if(i == CIR_TRIGGER)    base = "zone";    // Trigger level-ladder icon
    else if(i == CIR_ATR)        base = "atr";     // ATR range-bracket icon
    else if(i == CIR_TH)         base = "dots";    // TH dotted-level icon
-   // VIEWLOCK-OFF: else if(i == CIR_VLOCK) base = "box";   // View lock (same padlock skin)
+   // VIEWLOCK-OFF: else if(i == CIR_VLOCK) base = "box";   // View lock — `box` was a
+   //   PADLOCK (ART.box in tools/gen-th3-icons.js), never a rectangle; retired 2026-09-14.
    // TH3TOOL-OFF: else if(i == CIR_TH3) base = "custom";  // TH3 tool/gauge icon
    else if(i == CIR_HTF)        base = "htf";     // HTF candle icon
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
     else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
-    else if(i == CIR_BASEKNOT)   base = "box";     // Base box = a rectangle (glyph shows the object)
+    else if(i == CIR_BASEKNOT)   base = "ruler";   // Base / Knot MEASURE = a scale bar with ticks
+                                                   // (the old `box` slot shipped a padlock — the
+                                                   // glyph was never the rectangle this line claimed)
     else if(i == CIR_TOOLS)      base = "tools";
    else                         base = "htf";
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
@@ -772,12 +801,17 @@ string CircCardIcon(const int item, const bool on)
    // VIEWLOCK-OFF: else if(item == 4) base = "box";   // View lock
    // TH3TOOL-OFF: else if(item == 5) base = "custom";  // TH3 tool
    else if(item == 6)     base = "htf";     // HTF candles
-   else if(item == 7)     base = "tl";      // Lines (shares the line glyph with ATR)
+   else if(item == 7)     base = "tl";      // Lines — DEAD ART: `tl` sits in DEAD_ART
+                                             // (no tl_*.bmp is emitted), so this header
+                                             // would load NOTHING. Harmless only because
+                                             // nothing calls CircCardIcon() yet — repoint
+                                             // it at live art before wiring that up
+                                             // (P-ICONS-08: check `base` against ART).
    else if(item == 8)     base = "pin";     // Custom price pin
    else if(item == 9)     base = "step";    // Step mode
    else if(item == 10)    base = "factor";  // Factor step
    else if(item == 11)    base = "step";    // Structure levels (stair levels)
-   else if(item == 12)    base = "box";     // Base Box border (reuses the box glyph)
+   else if(item == 12)    base = "ruler";   // Base Box card — the same measuring tool as the ring item
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
 }
 
@@ -3317,8 +3351,18 @@ void CleanupUIStates(const int reason)
    }
    else
    {
-      SaveUIStates(true);
+      // P-PERF-44 (2): the HTF block writes FIRST so the ONE disk flush covers
+      // it as well. The two used to serialise the terminal's whole
+      // global-variable table back to back.
       SaveHTFCandlesSettings();
+      SaveUIStates(true);
+      // The teardown's ONE flush point. `SaveUIStates(true)` already commits
+      // whatever was owed, and this call is the net for the case where it
+      // early-returned (nothing of ITS six keys moved while the HTF block did
+      // edit one): a request nobody commits is a setting that only lives in
+      // memory, and the previous shape let exactly that happen. Nothing owed ⇒
+      // one bool read, zero terminal calls.
+      GVFlushCommit();
    }
 }
 
