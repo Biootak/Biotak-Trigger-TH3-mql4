@@ -891,7 +891,9 @@ void BaseKnotArm()
    BaseKnotLockChart(true);   // no chart slide under the hand while drawing
    BaseKnotWipePreview();
    BaseKnotWipeLive();
-   BaseKnotHintShow("BASE TOOL — press + drag (release = done) · or click 2 corners · right-click / ESC: cancel");
+   // No bottom hint while armed either (user: nothing is written at the
+   // bottom — guidance lives in the ring tooltip, errors stay silent).
+   // BaseKnotHintShow("BASE TOOL — press + drag (release = done) · or click 2 corners · right-click / ESC: cancel");
    ChartRedraw();
 }
 void BaseKnotCancel()
@@ -1663,9 +1665,8 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    if(tc == g_bkT1) tc = g_bkT1 + PeriodSeconds();   // same-bar drag: corner times snap to bar opens,
                                                      // so the honest box is one bar wide — never reject it
    if(tc < g_bkT1) { datetime tt = g_bkT1; g_bkT1 = tc; tc = tt; double pp = g_bkP1; g_bkP1 = p2; p2 = pp; }   // dragged right-to-left: store canonical corner order
-   if(MathAbs(p2 - g_bkP1) < pt)   // a true point-click, not a box — say so instead of dying silent
+   if(MathAbs(p2 - g_bkP1) < pt)   // a true point-click, not a box — ignore it silently (no bottom text)
    {
-      BaseKnotHintShow("Too small — press + drag a real box (needs height + width)", 2000);
       return;
    }
    int tfMin = Period();
