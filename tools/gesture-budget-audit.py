@@ -51,7 +51,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KIT = "Biotak/BiotakKit.mqh"
 PANELS = "Biotak/BiotakPanels.mqh"
 
-# P-UI-33's window must stay in the documented throttle band (LEARNING.md §3):
+# P-UI-33's window must stay in the 60..250ms throttle band:
 # below 60ms it is not a budget (the pointer path already hides 2 of every 3
 # ticks at 33Hz), above 250ms the heavy pass is coarser than the domain's own
 # settle and the drag visibly steps.
@@ -372,8 +372,7 @@ def check_kit(src):
     else:
         facts["window"] = int(wins[0])
         if not WINDOW_MIN <= facts["window"] <= WINDOW_MAX:
-            fails.append("UI_DRAG_HEAVY_MS %d is outside the documented band %d..%d "
-                         "(LEARNING.md section 3)"
+            fails.append("UI_DRAG_HEAVY_MS %d is outside the throttle band %d..%d "
                          % (facts["window"], WINDOW_MIN, WINDOW_MAX))
 
     for name, pat in (("s_UIDragLive", r"(?m)^static bool\s+s_UIDragLive\s*=\s*false;"),

@@ -545,4 +545,4 @@ console.log(`F30 one-algorithm candidates:          ${r30.length}`);
 console.log('=========================================================');
 console.log('Interpretation: a hit list is NOT a formula. A family is ALIVE only if');
 console.log('ONE rule reproduces the professor across ≥3 ladder cells (F30) or the');
-console.log('same block on two days (F11). See TRADEPLAN_D1_HYPOTHESIS.md §8.');
+console.log('same block on two days (F11).');

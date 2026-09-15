@@ -13,7 +13,7 @@
 #include "MathConstants.mqh"
 // Zone settings come from ZoneConfig.mqh (single owner); the legacy zone
 // engines (UnifiedZoneSystem/ZoneTrackingHelpers/DrawingPipeline) were
-// removed 2026-09-07 (dead, never included in any build) - see ARCHITECTURE.md.
+// removed 2026-09-07 (dead, never included in any build).
 
 // Note: CalculateFactorStepSize has been moved to THCalculations.mqh
 

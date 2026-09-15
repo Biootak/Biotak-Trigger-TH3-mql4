@@ -144,7 +144,7 @@ color DefBKTargetColor()     { return C'46,139,87'; }     // sea green Target ra
 // mixer, slider knob, slider track — and PnlHandleDrag for a native knob drag)
 // and ended by EACH release path plus ChartPointerFinalizeOnUps, the ONE net
 // every button-up passes through: a forgotten release cannot strand a gesture.
-// Same shape as the domain's BaseKnotDragPaint budget (LEARNING.md §3).
+// Same shape as the domain's BaseKnotDragPaint budget (one heavy pass per window).
 //==============================================================================
 #define UI_DRAG_HEAVY_MS 120
 static bool s_UIDragLive   = false;

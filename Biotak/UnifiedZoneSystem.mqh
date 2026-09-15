@@ -160,7 +160,7 @@ bool CreateUnifiedZone(const string zoneName,
     // P-UI-62: the band and its edge are independent halves of the picture - slot 2 is
     // OUTLINED (both), so `filled = (style == FILLED)` alone would silently draw a
     // band-only picture for it. (Retired module: not included by any build, kept
-    // honest for whoever revives it - see ARCHITECTURE.md.)
+    // honest for whoever revives it.)
     request.filled  = (config.style != FACTOR_ZONE_BOX_EMPTY);
     request.outline = (config.style != FACTOR_ZONE_BOX_FILLED);
     request.startTime = 0;  // Auto-calculate

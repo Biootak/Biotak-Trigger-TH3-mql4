@@ -26,7 +26,7 @@
 'use strict';
 
 // ---------------------------------------------------------------------------
-// 1. DATASET (all pips; provenance in TRADEPLAN_D1_HYPOTHESIS.md)
+// 1. DATASET (all pips; provenance: Sep-9-2026 XAUUSD professor screenshots)
 // ---------------------------------------------------------------------------
 const TF = ['M1', 'M5', 'M15', 'H1', 'H4', 'D1', 'W1', 'MN'];
 const MIN = { M1: 1, M5: 5, M15: 15, H1: 60, H4: 240, D1: 1440, W1: 10080, MN: 43200 };
@@ -313,4 +313,4 @@ console.log('=========================================================');
 console.log('Bottom line: no fixed-% / power / log formula of the DAILY number');
 console.log('reproduces the professor across symbols AND days. His Eng is per-TF');
 console.log('session data: Eng(TF) = ATR(TF, N_TF)/4.266666 (R-ENGSOURCE). Open');
-console.log('question = the N_TF rule. See TRADEPLAN_D1_HYPOTHESIS.md.');
+console.log('question = the N_TF rule.');

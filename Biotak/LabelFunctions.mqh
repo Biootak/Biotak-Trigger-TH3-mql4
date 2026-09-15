@@ -788,9 +788,9 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     // (PaletteApplyColor sets g_labelsRelayoutNeeded).
     if(!CreateTRexPiece(spName, spText, inpATRTradeSpreadColor, L.fontSize, L.xSp, L.ySp)) return false;
     // The caption piece (and its one-shot Tahoma/P-LBL-02 diagnostic) is gone
-    // with the row: P-LBL-02's font lesson stays in AGENTS.md, but nothing on
-    // the chart needs an Arabic-capable family any more - every remaining
-    // piece is pure ASCII and rides the default indicator font.
+    // with the row: non-ASCII chart text must still be built from ushort codes,
+    // but nothing on the chart needs an Arabic-capable family any more - every
+    // remaining piece is pure ASCII and rides the default indicator font.
     if(!CreateTRexPiece(trName, "TR", inpATRTradeTRColor, L.brandSize, L.xTR, L.yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", inpATRTradeExColor, L.brandSize, L.xEx, L.yBrand)) return false;
     return true;

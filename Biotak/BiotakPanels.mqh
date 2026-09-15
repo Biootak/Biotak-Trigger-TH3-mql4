@@ -6615,7 +6615,7 @@ int BkMiniStripPress(const int mx, const int my)
 // moved by its explicit head-name (slots via BkMiniSlotName = single source —
 // a new slot is picked up automatically; the fixed tail covers bars/labels).
 // PnlMoveBy's ObjectsTotal loop is for generic row-cards; at drag-event rate
-// the strip must cost ~15 syscalls, not thousands (LEARNING.md §1).
+// the strip must cost ~15 syscalls, not thousands (explicit names, never a scan).
 void BkStripMoveBy(const int dx, const int dy)
 {
    if(dx == 0 && dy == 0) return;
@@ -8965,7 +8965,7 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       // event the domain used to re-sync the children (consumed ≠ hidden —
       // the entry forwards every event to both handlers). String pre-check
       // first (free), syscalls only on a hit; 30ms throttle + 4px dead band
-      // inside BkStripFollow keep drag storms cheap (LEARNING.md §1).
+      // inside BkStripFollow keep drag storms cheap (throttled, explicit list).
       if(g_PnlOpen == 13 && g_BkMiniBox != "" &&
          sparam == BaseKnotBoxName(BaseKnotPrefix(g_BkMiniBox)))
       {
