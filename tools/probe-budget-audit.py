@@ -3969,6 +3969,137 @@ def check_click_ownership(o):
        "one writer: the claim is published by the UI, read by the domain, never the reverse")
 
 
+# The CHECKS list is assembled at the bottom of this file, after the last check's
+# definition: a name the list references must already exist when it runs.
+
+
+def _pp_lite_view(src):
+    """(line, compiled_in_lite) per line: a conservative #ifdef BUILD_LITE walk.
+
+    Only `#ifndef BUILD_LITE` proves a line is compiled OUT of Lite (the entry
+    defines BUILD_LITE); `#ifdef BUILD_LITE` proves it is compiled IN. Any other
+    condition is assumed COMPILED, so it can never excuse a call: the gate's job is
+    to be sensitive on the family of names it tracks (the UI layer's own functions
+    below), and a miss there is a broken build.
+    """
+    out = []
+    stack = [True]
+    for line in src.splitlines():
+        s = line.strip()
+        if s.startswith("#ifndef BUILD_LITE"):
+            stack.append(False)
+        elif s.startswith("#ifdef BUILD_LITE"):
+            stack.append(True)
+        elif s.startswith("#if"):
+            stack.append(stack[-1])
+        elif s.startswith("#else"):
+            stack[-1] = not stack[-1]
+        elif s.startswith("#endif") and len(stack) > 1:
+            stack.pop()
+        out.append((line, all(stack)))
+    return out
+
+
+def check_lite_wall(o):
+    """THE RULE: the LITE build compiles (P-BUILD-01).
+
+    Lite is not a feature flag, it is a second ENTRY: it defines BUILD_LITE and
+    includes the domain half (EventHandlers, BaseKnotTool, LabelFunctions, ...)
+    but NOT the UI half (BiotakKit/BiotakMenu/BiotakPanels/HTFCandles). A shared
+    module that calls a UI-only function therefore compiles in Full and breaks in
+    Lite - and nothing in the verify list compiled Lite, so the break shipped.
+    That is exactly how the first cut of P-UI-92 arrived: `error 168: function not
+    defined` at six sites in two shared files, all of them green in Full.
+
+    The rule, mechanically: every function/macro DEFINED outside the Lite file set
+    must not be CALLED from inside it, unless the call sits in a `#ifndef
+    BUILD_LITE` region (compiled out) or the name has a Lite stub - a definition
+    in a Lite-included file, which is the project's `#ifdef BUILD_LITE` pattern
+    (GlobalVariables carries the UIPointerOverSurface stub that way).
+    """
+    lite_files = []
+    seen = set()
+
+    def walk(rel):
+        if rel in seen:
+            return
+        seen.add(rel)
+        lite_files.append(rel)
+        for line, live in _pp_lite_view(read(rel, o)):
+            s = line.strip()
+            if not live or not s.startswith("#include"):
+                continue
+            m = re.match(r'#include\s+"([^"]+)"', s)
+            if not m:
+                continue
+            inc = m.group(1).replace("\\", "/")
+            walk(inc if "/" in inc else "Biotak/" + inc)
+
+    walk(LITE)
+    if LITE not in lite_files:
+        fail("lite-wall", "the Lite entry could not be read")
+        return
+
+    every = ["Biotak/" + os.path.basename(p)
+             for p in sorted(glob.glob(os.path.join(ROOT, "Biotak", "*.mqh")))]
+    ui_only = [f for f in every if f not in lite_files]
+    if not ui_only:
+        fail("lite-wall", "no module is UI-only: the Lite entry now includes the whole UI")
+        return
+
+    type_re = (r"(?:void|int|bool|double|string|long|datetime|uint|float|char|short|"
+               r"ushort|color|unsigned\s+int)")
+    def_re = re.compile(r"^\s*(?:static\s+)?(?:const\s+)?" + type_re + r"\s+(\w+)\s*\(",
+                        re.M)
+    macro_re = re.compile(r"^#define\s+(\w+)\s*\(", re.M)
+
+    # SCOPE: the UI layer's own function families. Tracking every Full-only
+    # definition instead would flag calls that resolve to an MQL4 builtin through a
+    # compat shim (`MarketInfo`, `Close`), or to a debug-only macro; those are not
+    # what this gate is about, and a false FAIL would make it noise. A UI surface
+    # that the shared half must ask for always wears one of these prefixes.
+    families = ("Pnl", "Circ", "Pal", "Bk", "Menu", "Sub", "HTF", "UI", "Tools")
+    names = {}
+    for rel in ui_only:
+        src = strip_comments(read(rel, o))
+        for m in list(def_re.finditer(src)) + list(macro_re.finditer(src)):
+            if m.group(1).startswith(families):
+                names.setdefault(m.group(1), rel)
+
+    # What the Lite build itself DEFINES - region-filtered, because a definition
+    # inside `#ifndef BUILD_LITE` is not there when Lite compiles (that is the
+    # whole point of the P-UI-92c stub: it lives under `#ifdef BUILD_LITE`).
+    provided = set()
+    for rel in lite_files:
+        for line, live in _pp_lite_view(strip_comments(read(rel, o))):
+            if not live:
+                continue
+            provided.update(m.group(1) for m in def_re.finditer(line))
+            provided.update(m.group(1) for m in macro_re.finditer(line))
+    names = {k: v for k, v in names.items() if k not in provided}
+
+    hits = []
+    for rel in lite_files:
+        if rel == LITE:
+            continue
+        for i, (line, live) in enumerate(_pp_lite_view(strip_comments(read(rel, o))), 1):
+            if not live:
+                continue
+            for name, owner in names.items():
+                if name in line and (name + "(") in line.replace(" ", ""):
+                    hits.append((rel, i, name, owner))
+    if hits:
+        shown = ", ".join("%s:%d calls %s (%s)" % h for h in hits[:4])
+        fail("lite-wall",
+             "%d call(s) from the Lite file set into a Full-only definition: the Lite "
+             "build must fail to compile. %s%s"
+             % (len(hits), shown, " ..." if len(hits) > 4 else ""))
+        return
+    ok("lite-wall",
+       "every call in the Lite file set resolves inside Lite (%d Full-only names guarded)"
+       % len(names))
+
+
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
@@ -3977,7 +4108,8 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
           check_zone_picture, check_edge_look, check_click_claim,
-          check_look_live, check_dual_all, check_order_owner, check_click_ownership]
+          check_look_live, check_dual_all, check_order_owner, check_click_ownership,
+          check_lite_wall]
 
 
 def run(overrides=None):
@@ -4939,6 +5071,21 @@ def selftest():
     seed("the peek ignores the up-armed TTL", GLOBALS,
          "   if(g_uiClickClaimMs != 0 && (int)(GetTickCount() - g_uiClickClaimMs) >= 0) return false;",
          "   if(g_uiClickClaimMs != 0) return false;")
+
+    # P-BUILD-01: the Lite entry must keep compiling - one seed per way it broke.
+    seed("a shared module calls a UI-only function unguarded", BASEKNOT,
+         "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
+         "if(PnlPointInside((int)lparam, (int)dparam)) return true;\n"
+         "         if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n")
+    seed("the shared call loses its Lite stub", GLOBALS,
+         "bool UIPointerOverSurface(const int mx,const int my)\n{\n   return false;\n}\n#endif\n",
+         "#endif\n")
+    seed("the stub stops being compiled in Lite", GLOBALS,
+         "#ifdef BUILD_LITE\n//+------------------------------------------------------------------+",
+         "#ifndef BUILD_LITE\n//+------------------------------------------------------------------+")
+    seed("the Custom Price pick calls the UI surface test directly", EVENTS,
+         "!UIPeekClickClaim() && !UIPointerOverSurface((int)lparam, (int)dparam)",
+         "!UIPeekClickClaim() && !PnlPointInside((int)lparam, (int)dparam)")
 
     caught = 0
     for label, rel, old, new in seeds:

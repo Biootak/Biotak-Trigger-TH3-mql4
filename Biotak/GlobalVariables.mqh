@@ -69,6 +69,30 @@ bool UIPeekClickClaim()
    return true;
 }
 
+#ifdef BUILD_LITE
+//+------------------------------------------------------------------+
+// P-UI-92c (2026-09-16) — THE LITE STUB OF THE UI'S PIXEL TEST.
+//
+// `UIPointerOverSurface` is the UI layer's own layout arithmetic, so its real
+// body lives in BiotakPanels — the file that owns every surface rectangle (the
+// card, its popovers, the strip, the ring menu, the countdown tag). The LITE
+// entry has NO UI half (it includes EventHandlers/BaseKnotTool but not
+// BiotakMenu/BiotakPanels), while the domain half that asks the question is
+// shared. Without this stub the shared half would not COMPILE in Lite - which is
+// exactly how the first cut of P-UI-92 shipped: `error 168: function not
+// defined` at six sites, caught only by compiling the Lite entry.
+//
+// The answer is honest, not a fallback: Lite draws no UI, so no pixel belongs to
+// the UI layer and the chart owns every one of them. Defined here (Lite only)
+// so there is ONE call spelling at every domain site instead of a second,
+// Lite-only branch that would rot.
+//+------------------------------------------------------------------+
+bool UIPointerOverSurface(const int mx,const int my)
+{
+   return false;
+}
+#endif
+
 // Custom Price Selection
 static bool g_waitingForCustomPriceClick = false;
 static string g_customPriceHorizontalLineName = "CustomPriceHorizontalLine";

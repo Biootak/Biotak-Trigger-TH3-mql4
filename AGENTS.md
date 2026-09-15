@@ -40,6 +40,8 @@ Linux: `./compile-th3-linux.sh all` (isolated Wine prefix, terminal stays open).
 ## Verify before every commit
 
 ```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile ".\Biotak Trigger TH3 Lite.mq4"
 python tools/panel-wiring-audit.py --selftest
 python tools/probe-budget-audit.py --selftest
 python tools/write-budget-audit.py --selftest
@@ -53,7 +55,12 @@ python tools/panel-mt4-sim.py --audit
 node tools/submenu_geometry_check.js
 ```
 
-All must be green. `panel_mt4_sim.html` / `panel_mt4_sim*.png` /
+All must be green, and **both entries must compile**: Lite is a second entry that
+includes the domain half but not the UI half, so a shared module that calls a UI
+function compiles green in Full and breaks Lite (P-BUILD-01 — six `error 168`
+sites shipped that way once). `probe-budget-audit`'s `lite-wall` check guards the
+same rule statically; the compiles are the real gate.
+`panel_mt4_sim.html` / `panel_mt4_sim*.png` /
 `panel_art_proof.html` regenerate on audit runs and are gitignored.
 
 ## Working rules
