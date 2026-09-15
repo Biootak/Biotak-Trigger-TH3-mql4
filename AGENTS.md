@@ -48,6 +48,7 @@ python tools/zorder-audit.py --selftest
 python tools/ui-text-audit.py --selftest
 python tools/chart-label-audit.py --selftest
 python tools/panel-colour-audit.py --selftest
+python tools/base-count-audit.py --selftest
 python tools/panel-mt4-sim.py --audit
 node tools/submenu_geometry_check.js
 ```
