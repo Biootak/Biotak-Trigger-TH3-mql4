@@ -189,6 +189,9 @@ input color inpBKEntryColor = C'46,139,87';              // Base Box Entry Line 
 input color inpBKStopColor = C'220,50,50';               // Base Box Stop Line Color (red)
 input color inpBKTargetColor = C'30,144,255';            // Base Box Target Line Color (bold blue, width 2 tick)
 input int inpBKShowInfo = 0;                             // Base Box Info Label: 0=Auto (hide after set), 1=Show
+// P-BK-27: the "[H Pips | R:R]" readout's OWN size. 0 = follow "Base Box Text
+// Size" (the readout is the box' own text); 1-24 = raw points.
+input int inpBKInfoFontSize = 0;                         // Base Box Info Size (0 = follow Base Box Text Size)
 input color inpBoxFillColor = C'255,171,0';              // Base Box Fill Color (bucket — TV Style tab)
 input color inpBKTextColor = C'255,255,255';             // Base Box Text Color (T button — TV Text tab)
 input int inpBKTextSize = 10;                            // Base Box Text Size (TV default 10)

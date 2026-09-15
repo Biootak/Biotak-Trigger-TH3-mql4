@@ -773,11 +773,13 @@ string PnlHeaderSub(const int item)
    }
    return "";
 }
-// Section row counts (WITHOUT the TAB row 0): 6 each tab (Style 6 ·
-// Text 6 · Setup 6) — tallest is 7 rows total, existing card skins suffice.
+// Section row counts (WITHOUT the TAB row 0): Style 6 · Text 6 · Setup 7
+// (P-BK-27 added INFO SIZE to Setup) — tallest is 8 rows total, and the card
+// skins are baked for up to card16, so no new asset is needed. Returns the
+// MAX; the real per-tab length is the display spec (PnlSpecRows).
 int BkSecRows()
 {
-   return 6;
+   return 7;
 }
 
 //--- display name for a line-style index (panel value text)
@@ -1718,14 +1720,16 @@ void PnlSpecBuild(const int item)
          PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "valign");
          PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "droplet");
       }
-      else if(g_BkTab == 2)   // SETUP — 6 rows, the 3 leg colours in ONE row
+      else if(g_BkTab == 2)   // SETUP — 7 rows, the 3 leg colours in ONE row
+                              // (P-BK-27 added INFO SIZE to the EXTRAS band)
       {
          PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "RISK / REWARD", 1);
          PnlSpecAdd(12, PNL_K_LEGACY, 1, 1, "target");
          PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "LEG COLORS", 3, "strip");
          PnlSpecAdd(12, PNL_K_CSET, 2, 3);
-         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 2);
+         PnlSpecAdd(12, PNL_K_SEC, -1, 0, "", "", "EXTRAS", 3);
          PnlSpecAdd(12, PNL_K_LEGACY, 5, 1, "info");
+         PnlSpecAdd(12, PNL_K_LEGACY, 7, 1, "textsize");   // P-BK-27 INFO SIZE
          PnlSpecAdd(12, PNL_K_LEGACY, 6, 1, "template");
       }
       else                    // STYLE — 6 rows
@@ -2670,8 +2674,9 @@ double PnlStepSectionCurrent(const int s)
 //| Style (TV Style tab): BORDER/WIDTH/STYLE/BORDER-TR/FILL/FILL-TR.   |
 //| Text (TV Text tab): TEXT edit + SIZE + B|I + ALIGN + VALIGN + COLOR|
 //| (VALIGN = TV's Inside-dropdown: Top|Inside|Bottom).                |
-//| Setup: TARGET R + ENTRY/STOP/TARGET + INFO + TEMPLATE (= TV        |
-//| Template dropdown). Coords = drag natively, tooltip shows live    |
+//| Setup: TARGET R + ENTRY/STOP/TARGET + INFO + INFO SIZE (P-BK-27)   |
+//| + TEMPLATE (= TV Template dropdown). Coords = drag natively,       |
+//| tooltip shows live                                                |
 //| (TV Coordinates); visibility automatic commit-TF + lower (TV       |
 //| Visibility). kind 6 = TEXT edit field (OBJ_EDIT, MT4's one text   |
 //| control — same as the palette hex field).                         |
@@ -2696,6 +2701,10 @@ void BkSecRowDef(const int sec,int &kind,string &label,
       else if(sec==2)  { kind=4; label="STOP COLOR"; }
       else if(sec==3)  { kind=4; label="TARGET COLOR"; }
       else if(sec==4)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      // P-BK-27: the readout's own size — «اطلاعات بیس نوت خیلی ریزه».
+      // Same shape as the ATR card's COUNT SIZE / TRADE SIZE rows: 0 = follow
+      // the card's own text size, so the freed number is the user's.
+      else if(sec==6)  { label="INFO SIZE"; minV=0; maxV=24; unit="pt"; }
       else             { kind=2; label="TEMPLATE"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
    }
    else   // STYLE
@@ -2730,6 +2739,7 @@ double BkSecCurrent(const int sec)
       if(sec==0) return g_bkTargetR;
       if(sec==4) return g_bkShowInfo;
       if(sec==5) return BkPresetMatch();
+      if(sec==6) return g_bkInfoFontSize;   // P-BK-27
       return 0;   // COLOR rows (palette only)
    }
    if(sec==1) return g_boxBorderWidth;
@@ -2753,6 +2763,7 @@ int BkSecApply(const int sec,const double v)
       if(sec==0)      { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
       else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
       else if(sec==5) { flags=BkApplyPreset((int)MathRound(v)); }
+      else if(sec==6) { g_bkInfoFontSize=ClampInt((int)MathRound(v),0,24); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-27
    }
    else
    {
@@ -2778,6 +2789,7 @@ double BkSecDefVal(const int sec)
       if(sec==0) return FactoryDefault(FF_BK_TARGET_R);
       if(sec==4) return FactoryDefault(FF_BK_SHOW_INFO);
       if(sec==5) return 0;   // TEMPLATE (Amber shipped)
+      if(sec==6) return FactoryDefault(FF_BK_INFO_SIZE);   // P-BK-27 (Reset → follow)
       return 3;              // COLOR rows → palette sentinel
    }
    if(sec==1) return FactoryDefault(FF_BOX_WIDTH);
@@ -3018,8 +3030,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
                       // inside the box (TV Text tab: content + size + B/I +
                       // align + color; coords are edited by dragging, shown in
                       // the box tooltip = TV Coordinates) · Setup = R:R +
-                      // Entry/SL/TP + INFO + TEMPLATE (= TV Template dropdown;
-                      // visibility is automatic: commit TF + lower, tooltip).
+                      // Entry/SL/TP + INFO + INFO SIZE (P-BK-27) + TEMPLATE
+                      // (= TV Template dropdown; visibility is automatic:
+                      // commit TF + lower, tooltip).
    {
       if(row==0) { kind=2; label="TAB"; opts="Style|Text|Setup"; minV=0; maxV=2; }
       else BkSecRowDef(row-1, kind, label, minV, maxV, step, unit, opts);

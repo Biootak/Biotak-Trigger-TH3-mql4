@@ -39,12 +39,14 @@
 //|    shows on that TF and lower ones only — a low-TF knot never      |
 //|    collapses into a hairline on a much higher TF.                  |
 //|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
-//|    rectangle (snapping pulled corners to candle shadows).           |
+//|    rectangle (snapping pulled corners to candle shadows).          |
 //|  * Info label: chart-anchored "[H Pips | R:R 1:N]" — Auto (default)  |
 //|    shows it live while sizing + 4 s after commit, then hides it so  |
 //|    the chart stays clean (Base Box card INFO row pins it on); full  |
-//|    numbers always ride the box/edge hover tooltips. Entry/SL/TP    |
-//|    are OBJ_TREND rays (RAY_RIGHT) anchored at the box right edge,   |
+//|    numbers always ride the box/edge hover tooltips. Its SIZE is the |
+//|    user's (P-BK-27: `inpBKInfoFontSize`, 0 = follow the Base Box    |
+//|    text size — Base Box > Setup > INFO SIZE). Entry/SL/TP          |
+//|    are OBJ_TREND rays (RAY_RIGHT) anchored at the box right edge,  |
 //|    BACK + unselectable.                                             |
 //|  * Chain cleanup: deleting the BOX wipes every child in one        |
 //|    ObjectsDeleteAll(prefix) call; deleting a CHILD self-heals it   |
@@ -62,7 +64,10 @@
 // PnlPt so a scaled display draws the design's px instead of +25% (the same exposure
 // P-UI-30 fixed inside the settings cards). g_bkTextSize stays a user setting.
 #define BK_PT_HINT   9    // the bottom-corner hint line
-#define BK_PT_INFO   8    // the box' [H Pips | R:R] readout
+// P-BK-27 (2026-09-15): the INFO readout's frozen nominal is RETIRED IN PLACE —
+// the size is a user setting now (`inpBKInfoFontSize`; 0 = follow the Base Box
+// text size). Restoring the old look = BKInfoFontPt() returning PnlPt(BK_PT_INFO).
+#define BK_PT_INFO   8    // the box' [H Pips | R:R] readout (P-BK-27: retired size)
 #define BK_PT_BADGE  8    // the retired badge (one-line restorable)
 #define BK_IDLE    0
 #define BK_ARMED   1   // menu hidden, waiting for the first corner click
@@ -1104,6 +1109,23 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
    }
    return n;
 }
+// P-BK-27 — THE INFO READOUT'S SIZE (user: «اطلاعات بیس نوت خیلی ریزه»).
+// It used to be frozen at PnlPt(BK_PT_INFO): a DESIGN nominal, so on a 120-DPI
+// terminal the readout drew at 6pt while the box' own text drew at
+// `g_bkTextSize` (10 raw pt) — the numbers were the smallest text on the box.
+// One owner now, two rungs:
+//   * 0 (shipped) = follow `g_bkTextSize`, so the readout ships at the text size
+//     the user already set — the bigger-by-default fix needs no input at all;
+//   * 1..24 = the user's OWN raw points, the same unit the neighbouring SIZE /
+//     COUNT SIZE / TRADE SIZE rows use. Never PnlPt here: that re-expresses the
+//     module's NON-user chrome (P-UI-34), and a panel number that means a
+//     different size than the number beside it is the bug, not the feature.
+int BKInfoFontPt()
+{
+   int own = ClampSettingInt(g_bkInfoFontSize, 0, 24);
+   if(own > 0) return own;
+   return ClampSettingInt(g_bkTextSize, 8, 24);
+}
 // Chart-anchored "[H Pips | R:R 1:N]" label at the box top-right corner.
 void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
                        const double hPips, const double rr, const double tpPips,
@@ -1114,7 +1136,7 @@ void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
    ObjectSetString(0, in, OBJPROP_TEXT,
                    "[" + side + " " + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + barsPart + "]");
    ObjectSetString(0, in, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, PnlPt(BK_PT_INFO));
+   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27
    ObjectSetInteger(0, in, OBJPROP_COLOR, BaseKnotFgForBg());
    ObjectSetInteger(0, in, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
    ObjectSetInteger(0, in, OBJPROP_BACK, false);

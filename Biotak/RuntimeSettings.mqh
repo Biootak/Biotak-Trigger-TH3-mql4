@@ -68,6 +68,11 @@ static color g_bkEntryColor = C'46,139,87';                      // [08.5] inpBK
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
 static color g_bkTargetColor = C'30,144,255';                    // [08.5] inpBKTargetColor
 static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide, 1=Always show)
+// P-BK-27: the INFO readout's own size (user: «اطلاعات بیس نوت خیلی ریزه»).
+// 0 = follow `g_bkTextSize` (raw pt — the box' own text), else its own raw pt:
+// the readout is a USER setting, so it carries the SAME unit as the SIZE row
+// beside it and never the module's PnlPt chrome scale (P-UI-34).
+static int g_bkInfoFontSize = 0;                                 // [08.5] inpBKInfoFontSize (0 = follow inpBKTextSize)
 // [08.5] BASE BOX FILL + USER TEXT — TV-parity 2026-09-07 (Style/Text tabs).
 // Fill default transparency = 100 (invisible) so pre-fill charts stay
 // pixel-identical hollow boxes until the user touches FILL.
@@ -272,6 +277,7 @@ enum FactorySetting
    FF_BK_ITALIC,         // inpBKItalic
    FF_BK_ALIGN,          // inpBKAlign
    FF_BK_VALIGN,         // inpBKVAlign
+   FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -393,6 +399,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_BK_ITALIC]           = inpBKItalic;
    g_factoryDefaults[FF_BK_ALIGN]            = inpBKAlign;
    g_factoryDefaults[FF_BK_VALIGN]           = inpBKVAlign;
+   g_factoryDefaults[FF_BK_INFO_SIZE]        = inpBKInfoFontSize;   // P-BK-27
 
    // [01] CALCULATION / MODE & CORE
    g_useDynamicTradingDay = inpUseDynamicTradingDay;
@@ -498,6 +505,7 @@ void RuntimeSettingsInit()
    g_bkItalic = inpBKItalic;
    g_bkAlign = inpBKAlign;
    g_bkVAlign = inpBKVAlign;
+   g_bkInfoFontSize = inpBKInfoFontSize;   // P-BK-27
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
@@ -569,6 +577,7 @@ void RuntimeSettingsInit()
 #define inpBKItalic g_bkItalic
 #define inpBKAlign g_bkAlign
 #define inpBKVAlign g_bkVAlign
+#define inpBKInfoFontSize g_bkInfoFontSize
 #define inpSSLevelWidth g_ssLevelWidth
 #define inpSSLevelStyle g_ssLevelStyle
 #define inpSSLevelColor g_ssLevelColor
@@ -914,6 +923,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "BXIT", g_bkItalic ? 1 : 0);
    RSSetNext(p + "BXAL", g_bkAlign);
    RSSetNext(p + "BXVA", g_bkVAlign);
+   RSSetNext(p + "BXIF", g_bkInfoFontSize);   // P-BK-27 (same slot order as the restore)
    RSSetNext(p + "SW",  g_ssLevelWidth);
    RSSetNext(p + "SS",  g_ssLevelStyle);
    RSSetNext(p + "SC",  g_ssLevelColor);
@@ -1047,6 +1057,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXIT")) g_bkItalic = (GlobalVariableGet(p + "BXIT") > 0.5);
    if(GlobalVariableCheck(p + "BXAL")) g_bkAlign = ClampSettingInt((int)GlobalVariableGet(p + "BXAL"), 0, 2);
    if(GlobalVariableCheck(p + "BXVA")) g_bkVAlign = ClampSettingInt((int)GlobalVariableGet(p + "BXVA"), 0, 2);
+   if(GlobalVariableCheck(p + "BXIF")) g_bkInfoFontSize = ClampSettingInt((int)GlobalVariableGet(p + "BXIF"), 0, 24);   // P-BK-27
    if(GlobalVariableCheck(p + "SW"))  g_ssLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "SW"), 1, 5);
    if(GlobalVariableCheck(p + "SS"))  g_ssLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "SS"), 0, 4);
    if(GlobalVariableCheck(p + "SC"))  g_ssLevelColor = (color)(int)GlobalVariableGet(p + "SC");
