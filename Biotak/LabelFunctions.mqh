@@ -503,9 +503,23 @@ string TradePlanTPRowText(const STradePlan &plan)
                        plan.sl, plan.tp1, plan.tp2, plan.tp3);
 }
 
+// ONE leg formatter for the two 0.1-pip legs (P-TRADEPLAN-DEC, user 2026-09-16):
+// a leg with no tenth prints as the INTEGER the professor's own card shows
+// (`Hunter SL: 44`, `Eng.SL: 600`), and a leg that carries one prints it —
+// XAUUSD M15 `Eng.SL: 16.5` (his unrounded value is 16.515, his card rounds it to
+// 17), EURUSD M1 `Eng.SL: 0.3`. The card's width is MEASURED from this same string
+// (TRexTradeCardLayout), so the variable width is what the centring already
+// expects. The [SNAP]/[TRADEPLAN] logs print DoubleToString(x, 1) instead: a
+// diagnostic shows the value the engine used, not the card's face.
+string TradePlanLegText(const double v)
+{
+   if(MathAbs(v - MathRound(v)) < 0.05) return IntegerToString((int)MathRound(v));
+   return DoubleToString(v, 1);
+}
+
 string TradePlanHunterText(const STradePlan &plan)
 {
-   return StringFormat("Hunter SL: %d Eng.SL: %d", plan.hunter, plan.eng);
+   return "Hunter SL: " + TradePlanLegText(plan.hunter) + " Eng.SL: " + TradePlanLegText(plan.eng);
 }
 
 //+------------------------------------------------------------------+
@@ -1194,8 +1208,8 @@ void TradePlanLogAllTFs()
         TpxLine("[SNAP] " + s_tfNames[i]
               + " | " + DoubleToString(trOwn, 2)
               + " | " + DoubleToString(p.engTrue, 2)
-              + " | " + IntegerToString(p.eng)
-              + " | " + IntegerToString(p.hunter)
+              + " | " + DoubleToString(p.eng, 1)
+              + " | " + DoubleToString(p.hunter, 1)
               + " | " + DoubleToString(p.slTrue, 2)
               + " | " + IntegerToString(p.sl)
               + " | " + IntegerToString(p.tp1)
@@ -1228,8 +1242,8 @@ void TradePlanPrintRow(STradePlan &plan)
     string ts = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS);
     TpxLine("[TRADEPLAN] " + Symbol() + " " + GetCurrentTimeframe() + " " + ts);
     TpxLine("[TRADEPLAN]   TR(own)=" + DoubleToString(plan.ownPips, 1)
-          + "  Eng.SL=" + IntegerToString(plan.eng)
-          + "  Hunter=" + IntegerToString(plan.hunter));
+          + "  Eng.SL=" + DoubleToString(plan.eng, 1)
+          + "  Hunter=" + DoubleToString(plan.hunter, 1));
     TpxLine("[TRADEPLAN]   SL=" + IntegerToString(plan.sl)
           + "  TP1=" + IntegerToString(plan.tp1)
           + "  TP2=" + IntegerToString(plan.tp2)
@@ -1260,7 +1274,7 @@ void TradePlanDumpNow()
     if(!inpUseAltTradeFormulas)
     {
         if(TradePlanSelfCheck(plan))
-            TpxLine("[SELFCHECK] OK  - every displayed leg within 0.5 pip of its engine value");
+            TpxLine("[SELFCHECK] OK  - every displayed leg on its engine value (SL/TP/SB to half a pip, Eng/Hunter to half of their 0.1)");
         else
             TpxLine("[SELFCHECK] FAIL - a displayed leg is off its unrounded engine value; "
                     "check TradePlanCompute/SelfCheck on " + Symbol());
@@ -1310,7 +1324,9 @@ void TradePlanLiveTick()
     // Display only — this path NEVER prints (user decision 2026-09-10: logs
     // only on demand via the X hotkey). The numeric sig still picks the full
     // vs cheap in-place label path; pixels identical either way.
-    string sig = StringFormat("%d|%d|%d|%d|%d|%d|%d|%d",
+    // %.1f on the two 0.1-pip legs: a change that only moves a decimal (0.3 -> 0.4)
+    // MUST re-key the signature, or the card would keep the previous number.
+    string sig = StringFormat("%d|%d|%d|%d|%.1f|%.1f|%d|%d",
                               plan.sl, plan.tp1, plan.tp2, plan.tp3,
                               plan.hunter, plan.eng, plan.sb1, plan.sb2);
     static string s_sig = "";

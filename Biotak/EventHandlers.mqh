@@ -2419,7 +2419,8 @@ string P4InitLedgerTag(const uint indMs, const uint uiMs)
 //|                                                                   |
 //| P-BK-50 (2026-09-15) — THE PLAN'S TARGET LEGS RIDE THE SAME CALL.  |
 //| One plan per TF answers BOTH numbers a knot draws: the risk        |
-//| (`plan.engTrue` = EngSL, the TRex card's Eng.SL row) and the three |
+//| (`plan.eng` = EngSL, the very number the TRex card's Eng.SL row   |
+//| prints: one decimal since P-TRADEPLAN-DEC, 2026-09-16) and the    |
 //| targets (`plan.tp1..3` — the very numbers the corner row prints as  |
 //| `#TP1+n #TP2+n #TP3+n`). So the box can never disagree with that    |
 //| row about a target, and the tool is never asked to read ATR.       |
@@ -2452,10 +2453,15 @@ void BaseKnotEngPump()
          pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
          continue;
       }
-      pips[i] = (plan.engTrue > 0.0 ? (double)TradePlanRound(plan.engTrue) : 0.0);
+      // P-TRADEPLAN-DEC (2026-09-16): the pushed risk is the CARD'S OWN NUMBER —
+      // `plan.eng`, one decimal — not a second rounding of `engTrue`, so the box and the
+      // `Eng.SL` row it is checked against cannot drift apart. A sub-pip size survives
+      // the push (EURUSD M1: 0.3); only a TF the plan has no value for pushes 0, which
+      // stays the tool's word for "never pushed" (BaseKnotEngPips).
+      pips[i] = (plan.eng > 0.0 ? plan.eng : 0.0);
       // P-BK-51: HUNTSL RIDES THE SAME ROW — the very leg the TRex card prints as
       // `Hunter SL:`, which is what an ETR/CTR/OTR knot's entry waits for.
-      hunts[i] = (plan.hunter > 0 ? (double)plan.hunter : 0.0);
+      hunts[i] = (plan.hunter > 0.0 ? plan.hunter : 0.0);   // P-TRADEPLAN-DEC: 0.1 pip, same rule
       tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);
       tp2[i]  = (plan.tp2 > 0 ? (double)plan.tp2 : 0.0);
       tp3[i]  = (plan.tp3 > 0 ? (double)plan.tp3 : 0.0);

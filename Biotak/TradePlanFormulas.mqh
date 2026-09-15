@@ -70,6 +70,10 @@
 #define TRADEPLAN_ALT_HUNT_DEN 1.66666
 
 // Hunter = 8/3 × Eng (unrounded Eng input).
+// Eng and Hunter — the two legs a KNOT is measured with — carry ONE DECIMAL
+// (USER 2026-09-16: «engsl , huntsl تا یک رقم اعشار پشتیبانی بکنه»); SL/TP/SB
+// stay whole pips, so the professor's verified integers and the Eng parity that
+// produces them are untouched. TradePlanRound1 owns that precision.
 #define TRADEPLAN_HUNTER_NUM 8.0
 #define TRADEPLAN_HUNTER_DEN 3.0
 
@@ -136,6 +140,21 @@ int TradePlanStructureMinutes(const int chartMinutes)
 
 int TradePlanRound(const double x) { return (int)MathRound(x); }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// EngSL / HuntSL PRECISION — ONE DECIMAL (user 2026-09-16).
+// W H Y: a whole-pip round turns a real low-TF size into 0. On EURUSD the M1
+// composite is ~1.4 pips, so Eng = 1.4/4.266666 = 0.34 -> round -> 0, and 0 is
+// the pump's word for "no EngSL pushed for this TF": the knot then sizes itself
+// by the box' own height instead of by the plan. One decimal keeps the size the
+// plan actually published (0.3), which is small but real and checkable.
+// W H A T   S T A Y S: SL/TP1..TP3/SB are WHOLE pips by construction — they are
+// the numbers verified against the professor's screenshots (XAUUSD 20/48/105/
+// 303/720/1180, EURUSD M1 SL=2), and Eng is still TR_composite/4.266666 with no
+// floor, no TH and no cap. Only the ROUNDING of the two knot legs changed.
+// 0 stays the ABSENCE value: a TF the pump never pushed keeps it, and the box
+// keeps saying so (BaseKnotEntryWhy / BaseKnotRiskTag).
+double TradePlanRound1(const double x) { return MathRound(x * 10.0) / 10.0; }
+
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
 // Calls CalculateWeightedATR (ATRCalculations.mqh) — the Trex SMA composite
 // (weights 1/1/2/3/5/8 over periods 5/10/21/66/132/264, W1/MN overrides;
@@ -197,9 +216,12 @@ double TradePlanSLTrue(const int chartMinutes)
    return TRADEPLAN_SL_COEFF * engStr;
 }
 
-int TradePlanHunterFromEng(const double engTrue)
+// HuntSL in PIPS at 0.1 precision. The input stays the UNROUNDED Eng, so the diagonal
+// theorem SB_Width(TF) == Hunter(StructureTF) keeps holding (both sides round 8/3 × the
+// same engStr double).
+double TradePlanHunterFromEng(const double engTrue)
 {
-   return TradePlanRound(TRADEPLAN_HUNTER_NUM * engTrue / TRADEPLAN_HUNTER_DEN);
+   return TradePlanRound1(TRADEPLAN_HUNTER_NUM * engTrue / TRADEPLAN_HUNTER_DEN);
 }
 
 //+------------------------------------------------------------------+
@@ -216,17 +238,19 @@ struct STradePlan
    double slTrue;      // unrounded SL = 1.2 × basePips — EVERY leg from THIS
    double engTrue;     // unrounded Eng (Hunter derives from THIS)
    int    sl, tp1, tp2, tp3;
-   int    hunter, eng;
+   double hunter, eng; // EngSL / HuntSL: 0.1 pip precision (TradePlanRound1)
    int    sb1, sb2;    // StrBond display legs (group layout, see below)
 };
 
 // MASTER IDENTITY (diagonal theorem, observed Sep-9-2026):
-//   SB1(TF) == Hunter(StructureTF) == SL × 20/9
-// Because: 1.20 × 20/9 = 8/3, so both sides round the same double.
+//   round(SB1(TF)) == round(Hunter(StructureTF)) == round(SL × 20/9)
+// Because: 1.20 × 20/9 = 8/3, so both sides round the same double (Hunter keeps a
+// decimal now, SB stays whole — the identity is checked on the WHOLE pip).
 // Observed: H1 SB1 673 == D1 Hunter 673; M5 SB1 109 == H1 Hunter 109.
 
 // Full computation. SL = 1.2 × Eng(StructureTF).
-// All TP/Hunter/SB legs derive from unrounded slTrue / engTrue.
+// All TP/Hunter/SB legs derive from unrounded slTrue / engTrue; Eng/Hunter keep ONE
+// decimal (TradePlanRound1) while SL/TP/SB stay whole pips.
 bool TradePlanCompute(const int chartMinutes, STradePlan &p)
 {
    p.valid    = false;
@@ -235,7 +259,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
 
    p.basePips = 0.0; p.ownPips = 0.0; p.slTrue = 0.0; p.engTrue = 0.0;
    p.sl = 0; p.tp1 = 0; p.tp2 = 0; p.tp3 = 0;
-   p.hunter = 0; p.eng = 0; p.sb1 = 0; p.sb2 = 0;
+   p.hunter = 0.0; p.eng = 0.0; p.sb1 = 0; p.sb2 = 0;
 
    // Own strip ATR first: the alt path below derives EVERYTHING from it.
    p.ownPips = TradePlanStripPips(p.chartMin);
@@ -269,15 +293,15 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
       // HuntSL = TR/1.66666 — independent leg, NOT 8/3×Eng (the alt triple
       // does not share the ladder's Hunter identity: 0.6/0.234375 = 2.56).
       p.trigMin  = TradePlanTriggerMinutes(p.chartMin);  // label only, no iATR call
-      p.eng      = TradePlanRound(p.engTrue);
-      p.hunter   = TradePlanRound(p.ownPips / TRADEPLAN_ALT_HUNT_DEN);
+      p.eng      = TradePlanRound1(p.engTrue);
+      p.hunter   = TradePlanRound1(p.ownPips / TRADEPLAN_ALT_HUNT_DEN);
    }
    else
    {
       double eT = TradePlanEngTrue(p.chartMin, p.trigMin);
       if(eT <= 0.0) return false;
       p.engTrue = eT;
-      p.eng     = TradePlanRound(eT);
+      p.eng     = TradePlanRound1(eT);
       p.hunter  = TradePlanHunterFromEng(eT);
    }
 
@@ -296,8 +320,9 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    return true;
 }
 
-// Rounding-integrity self-check: every displayed int must sit within
-// half a pip of its unrounded engine value. Symbol-free (catches wiring
+// Rounding-integrity self-check: every displayed leg must sit within half a
+// STEP of its unrounded engine value (SL/TP/SB: half a pip; Eng/Hunter: half of
+// their 0.1 pip). Symbol-free (catches wiring
 // regressions on any symbol without knowing market numbers in advance).
 bool TradePlanSelfCheck(const STradePlan &p)
 {
@@ -306,8 +331,8 @@ bool TradePlanSelfCheck(const STradePlan &p)
    if(MathAbs(p.tp1 - p.slTrue * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN) > 0.5001) return false;
    if(MathAbs(p.tp2 - p.slTrue * TRADEPLAN_TP2_MULT) > 0.5001) return false;
    if(MathAbs(p.tp3 - p.slTrue * TRADEPLAN_TP3_NUM / TRADEPLAN_TP3_DEN) > 0.5001) return false;
-   if(MathAbs(p.eng - p.engTrue) > 0.5001) return false;
-   if(MathAbs(p.hunter - TRADEPLAN_HUNTER_NUM * p.engTrue / TRADEPLAN_HUNTER_DEN) > 0.5001) return false;
+   if(MathAbs(p.eng - p.engTrue) > 0.0501) return false;   // 0.1 pip legs: half a step
+   if(MathAbs(p.hunter - TRADEPLAN_HUNTER_NUM * p.engTrue / TRADEPLAN_HUNTER_DEN) > 0.0501) return false;
    double bBase  = p.slTrue * TRADEPLAN_SBB_NUM / TRADEPLAN_SBB_DEN;
    double bWidth = p.slTrue * TRADEPLAN_SBW_NUM / TRADEPLAN_SBW_DEN;
    if(MathAbs(p.sb2 - bBase) > 0.5001) return false;

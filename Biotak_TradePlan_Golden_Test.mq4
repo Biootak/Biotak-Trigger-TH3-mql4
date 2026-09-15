@@ -71,6 +71,13 @@ int StrIndex (const int i) { int s = i + 2; return (s > LADDER - 1 ? LADDER - 1 
 
 int RInt(const double x) { return (int)MathRound(x); }
 
+// Eng/Hunter carry ONE decimal since 2026-09-16 (P-TRADEPLAN-DEC, the engine's
+// TradePlanRound1): they are the two legs a Base/Knot box is MEASURED with, and a
+// whole-pip round turned a low-TF size into 0 (EURUSD M1: 0.34 -> 0), which the box
+// reads as "no EngSL pushed". SL/TP1..TP3/SB stay whole pips — those are the
+// professor's verified integers and the mirror below keeps checking them exactly.
+double RInt1(const double x) { return MathRound(x * 10.0) / 10.0; }
+
 //--- pip rule mirrors GetCachedPipSize(): gold 0.1, JPY 0.01, 5-digit FX 0.0001
 double PipLocal()
 {
@@ -85,19 +92,20 @@ double PipLocal()
 //|   slRaw = 1.20 * Eng(StructureTF)          <- UNROUNDED           |
 //|   SL    = round(slRaw)                                            |
 //|   TP1/TP2/TP3 = round(slRaw * 7/3, 5, 31/3)  <- from slRaw        |
-//|   Hunter = round(Eng(own) * 8/3)             <- from raw Eng      |
+//|   Hunter = round1(Eng(own) * 8/3)            <- from raw Eng, 0.1 |
+//|   Eng    = round1(Eng(own))                  <- the box' own size |
 //|   Base   = round(slRaw * 95/9)  Width = round(slRaw * 20/9)       |
 //|   display: M1..D1 "Width -- Base" | W1 "round(slRaw*16/3) -- Base"|
 //|            MN "(Base+Width) -- Base"  <- sum of the ROUNDED legs  |
 //+------------------------------------------------------------------+
 void Chain(const double engOwn, const double engStr, const int rung,
-           int &eng, int &hunter, int &sl,
+           double &eng, double &hunter, int &sl,
            int &tp1, int &tp2, int &tp3, int &sb1, int &sb2)
 {
    double slRaw = 1.20 * engStr;
 
-   eng    = RInt(engOwn);
-   hunter = RInt(engOwn * 8.0 / 3.0);
+   eng    = RInt1(engOwn);
+   hunter = RInt1(engOwn * 8.0 / 3.0);
 
    sl  = RInt(slRaw);
    tp1 = RInt(slRaw * 7.0  / 3.0);
@@ -137,6 +145,15 @@ int    GSB2 [LADDER] = {   209,   505,   1111,   3196,   7600,   12451,   12451,
 int    GTol [LADDER] = {     0,     0,      1,      0,      0,       0,       0,       0 };
 
 int g_fail = 0;
+
+// 0.1-pip legs: same idea, half-a-pip tolerance against the DISPLAY integer.
+void ChkD(const string tf, const string leg, const double got, const int want, const double tol)
+{
+   if(MathAbs(got - want) <= tol) return;
+   g_fail++;
+   Print(StringFormat("[TPGOLD] FAIL %-3s %-6s got %.1f expected %d (tol %.1f)",
+                      tf, leg, got, want, tol));
+}
 
 void Chk(const string tf, const string leg, const int got, const int want, const int tol)
 {
@@ -216,22 +233,25 @@ void OnStart()
    //================================================================
    // PART A - static golden vectors
    //================================================================
-   int eng, hunter, sl, tp1, tp2, tp3, sb1, sb2;
+   double eng, hunter;   // 0.1 pip legs (RInt1)
+   int sl, tp1, tp2, tp3, sb1, sb2;
    int rowsOK = 0;
 
    Print("[TPGOLD] PART A | professor XAUUSD Sep-9-2026 replay");
-   Print("[TPGOLD] TF  | Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
+   Print("[TPGOLD] TF  |   Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
 
    for(int i = 0; i < LADDER; i++)
    {
       int before = g_fail;
       Chain(GEng[i], GEng[StrIndex(i)], i, eng, hunter, sl, tp1, tp2, tp3, sb1, sb2);
 
-      Print(StringFormat("[TPGOLD] %-3s | %3d %6d | %4d %5d %5d %6d | %5d %6d",
+      Print(StringFormat("[TPGOLD] %-3s | %5.1f %6.1f | %4d %5d %5d %6d | %5d %6d",
                          LadName(i), eng, hunter, sl, tp1, tp2, tp3, sb1, sb2));
 
-      Chk(LadName(i), "Eng",    eng,    GEngI[i], 0);
-      Chk(LadName(i), "Hunter", hunter, GHunt[i], 0);
+      // The golden cells are DISPLAY integers from the screenshots, so a 0.1 leg is
+      // checked at half a pip — exactly what his own card rounds away.
+      ChkD(LadName(i), "Eng",    eng,    GEngI[i], 0.5);
+      ChkD(LadName(i), "Hunter", hunter, GHunt[i], 0.5);
       Chk(LadName(i), "SL",     sl,     GSL  [i], 0);
       Chk(LadName(i), "TP1",    tp1,    GTP1 [i], GTol[i]);
       Chk(LadName(i), "TP2",    tp2,    GTP2 [i], GTol[i]);
@@ -248,11 +268,11 @@ void OnStart()
    {
       double slRaw = 1.20 * GEng[StrIndex(i)];
       int width    = RInt(slRaw * 20.0 / 9.0);
-      int huntStr  = RInt(GEng[StrIndex(i)] * 8.0 / 3.0);
-      if(width != huntStr)
+      double huntStr = RInt1(GEng[StrIndex(i)] * 8.0 / 3.0);
+      if(MathAbs(width - huntStr) > 0.5)
       {
          g_fail++;
-         Print(StringFormat("[TPGOLD] FAIL diagonal %s: Width %d != Hunter(%s) %d",
+         Print(StringFormat("[TPGOLD] FAIL diagonal %s: Width %d != Hunter(%s) %.1f",
                             LadName(i), width, LadName(StrIndex(i)), huntStr));
       }
    }
@@ -272,8 +292,8 @@ void OnStart()
       trOwn[i]  = CompositeTR(LadMinutes(i)) / pip;
       engPar[i] = (trOwn[i] > 0.0) ? trOwn[i] / ENG_DIVISOR : 0.0;
 
-      Print(StringFormat("[TPGOLD] %-3s | TRown %9.2f | Eng %8.3f -> %d",
-                         LadName(i), trOwn[i], engPar[i], RInt(engPar[i])));
+      Print(StringFormat("[TPGOLD] %-3s | TRown %9.2f | Eng %8.3f -> %.1f",
+                         LadName(i), trOwn[i], engPar[i], RInt1(engPar[i])));
    }
 
    //--- regression detector 1: M1/M5/M15 must stay DISTINCT
@@ -303,12 +323,12 @@ void OnStart()
    }
 
    //--- full live plan table for eyeballing against the screenshots
-   Print("[TPGOLD] live plan | TF  | Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
+   Print("[TPGOLD] live plan | TF  |   Eng Hunter |   SL   TP1   TP2    TP3 |   SB1    SB2");
    for(int i = 0; i < LADDER; i++)
    {
       if(engPar[i] <= 0.0 || engPar[StrIndex(i)] <= 0.0) continue;
       Chain(engPar[i], engPar[StrIndex(i)], i, eng, hunter, sl, tp1, tp2, tp3, sb1, sb2);
-      Print(StringFormat("[TPGOLD] live      | %-3s | %3d %6d | %4d %5d %5d %6d | %5d %6d",
+      Print(StringFormat("[TPGOLD] live      | %-3s | %5.1f %6.1f | %4d %5d %5d %6d | %5d %6d",
                          LadName(i), eng, hunter, sl, tp1, tp2, tp3, sb1, sb2));
    }
 
