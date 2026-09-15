@@ -3,6 +3,19 @@
 
 #property strict
 
+// P-BUILD-02 (2026-09-16) — THIS FILE'S OWN DEPENDENCY, DECLARED HERE.
+//
+// The label layer takes the trade plan's legs as `STradePlan&` (P-BK-50: the
+// box/card rows print the plan's own risk, hunter and targets), and that type is
+// declared in TradePlanFormulas.mqh. Both entries happen to include that module
+// EARLIER, so the dependency stayed implicit — and every harness that mirrors the
+// entry's include list without that one line failed with
+// `error 116: 'STradePlan' - declaration without type` (three of them did: Sync
+// Compare, ComboRender, ModeLabel). A module declares what it uses, like
+// ComboEngine and CalculationCache already do; the include guard makes this a
+// no-op in the entries, where the module is already in.
+#include "TradePlanFormulas.mqh"
+
 bool DrawMainLevels(const string prefix) {
     // Skip drawing High/Low lines when Custom Price mode is active
     // In Custom Price mode, user defines their own reference point

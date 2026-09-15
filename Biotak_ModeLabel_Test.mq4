@@ -30,10 +30,16 @@
 #include "Biotak\ObjectCountManager.mqh"
 #include "Biotak\PerformanceOptimizations.mqh"
 #include "Biotak\InputValidationEnhanced.mqh"
+// MUST precede GlobalVariables: the inpX->gX mirrors live in RuntimeSettings
+#include "Biotak\RuntimeSettings.mqh"
 #include "Biotak\GlobalVariables.mqh"
 #include "Biotak\UtilityFunctions.mqh"
+// The measurement tool is domain code (Lite includes it too): the harness runs the
+// real box/plan path, so it must be in the chain exactly like the entry's.
+#include "Biotak\BaseKnotTool.mqh"
 #include "Biotak\CalculationCache.mqh"
 #include "Biotak\ZoneFactory.mqh"
+#include "Biotak\ZoneConfig.mqh"       // SUnifiedZoneConfig (ExtendedDrawingFunctions)
 #include "Biotak\ZoneValidator.mqh"
 #include "Biotak\ZoneConstants.mqh"
 #include "Biotak\ObjectCache.mqh"
@@ -44,6 +50,7 @@
 #include "Biotak\StandardTimeframes.mqh"
 #include "Biotak\THCalculations.mqh"
 #include "Biotak\ATRCalculations.mqh"
+#include "Biotak\TradePlanFormulas.mqh"   // STradePlan: the plan's own legs (P-BK-50)
 #include "Biotak\AdaptiveScaling.mqh"
 #include "Biotak\BasePriceManager.mqh"
 #ifndef BUILD_LITE
@@ -62,6 +69,15 @@
 #include "Biotak\AlertFunctions.mqh"
 #include "Biotak\HistoricalDataFunctions.mqh"
 #include "Biotak\EventHandlers.mqh"
+
+// The UI half, exactly as the Full entry composes it. A domain-only chain would
+// leave the shared modules' UI calls unresolved (P-BUILD-01/P-BUILD-02: the box
+// tool and the Custom Price pick ask `UIPointerOverSurface`, which lives in the
+// panels) - a harness must fail like the build it mirrors, not diverge from it.
+#include "Biotak\HTFCandles.mqh"
+#include "Biotak\BiotakKit.mqh"
+#include "Biotak\BiotakMenu.mqh"
+#include "Biotak\BiotakPanels.mqh"
 
 int    g_testPass = 0;
 int    g_testFail = 0;

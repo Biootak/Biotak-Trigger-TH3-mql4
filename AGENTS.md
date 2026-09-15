@@ -42,6 +42,7 @@ Linux: `./compile-th3-linux.sh all` (isolated Wine prefix, terminal stays open).
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile ".\Biotak Trigger TH3 Lite.mq4"
+Get-ChildItem *.mq4 | ForEach-Object { powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile $_.FullName }
 python tools/panel-wiring-audit.py --selftest
 python tools/probe-budget-audit.py --selftest
 python tools/write-budget-audit.py --selftest
@@ -55,11 +56,14 @@ python tools/panel-mt4-sim.py --audit
 node tools/submenu_geometry_check.js
 ```
 
-All must be green, and **both entries must compile**: Lite is a second entry that
+All must be green, and **every `.mq4` must compile**: Lite is a second entry that
 includes the domain half but not the UI half, so a shared module that calls a UI
 function compiles green in Full and breaks Lite (P-BUILD-01 — six `error 168`
 sites shipped that way once). `probe-budget-audit`'s `lite-wall` check guards the
-same rule statically; the compiles are the real gate.
+same rule statically; the compiles are the real gate. The root harnesses
+(`Biotak_*_Test.mq4`, `Biotak ATR Audit.mq4`, `Biotak Sync Compare.mq4`) mirror
+the entry's include chain by hand — a module added to the entry and not to them
+breaks them silently, which is why they are compiled here too (P-BUILD-02).
 `panel_mt4_sim.html` / `panel_mt4_sim*.png` /
 `panel_art_proof.html` regenerate on audit runs and are gitignored.
 
