@@ -344,7 +344,7 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
    string ut = (k >= 0 ? BaseKnotGetText(BaseKnotPrefix(id)) : "");
    if(StringLen(ut) > 0) tt += "\n\"" + ut + "\"";
    if(k >= 0 && g_bkBoxes[k].locked) tt += "\nLOCKED (hold to unlock)";
-   else tt += "\nselect + Delete key removes all";
+   else tt += "\nclick: info badge · select + Delete key removes all";
    return tt;
 }
 string BaseKnotPrevTag()   // sizing-preview edges live under this tag (4 segments)
@@ -1589,8 +1589,8 @@ void BaseKnotSyncBadges()
       if(BaseKnotRefreshDirection(g_bkBoxes[i].id, bkRef))
       {
          BaseKnotSync(g_bkBoxes[i].id);
-         if(g_bkState == BK_IDLE && BaseKnotVisibleNow(g_bkBoxes[i].id))
-            BaseKnotHintShow("Base box -> " + (g_bkBoxes[i].dir >= 0 ? "BUY" : "SELL") + " (price crossed the box)", 3000);
+         // No bottom hint on flip either: the rebuilt badge + tooltips already
+         // show the new side where the box is.
          bkNeedPaint = true;
       }
       // P-BK-05/06 self-heal + TV-fill 2026-09-07: the BOX rect is the fill
@@ -1694,10 +1694,8 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    g_bkHeld = false;
    BaseKnotUnlockChart();
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
-   double hPips = BaseKnotToPips(MathAbs(p2 - g_bkP1));
-   BaseKnotHintShow("BASE #" + IntegerToString(ArraySize(g_bkBoxes)) + " " +
-                    (dir >= 0 ? "BUY" : "SELL") + " set (" +
-                    DoubleToString(hPips, 1) + " pips)", 4000);   // result nags 4 s, then clean
+   // No bottom hint: the info lives ON the box (INFO badge + hover tooltips).
+   // To look again: tap the box (re-opens the badge grace) or hover it.
    ChartRedraw();
 }
 
@@ -1858,6 +1856,17 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          }
          if(kind == "BUY") { ObjectDelete(0, sparam); return true; }   // NOBUYSELL leftover
          if(kind == "") return true;   // PREVIEW/HINT tails — swallow, no action
+         // Click-to-recall: a tap on a committed box re-opens its INFO grace,
+         // so the badge comes back for BK_INFO_GRACE_MS — the "look again"
+         // path, with the info exactly ON the box (never at the bottom).
+         // One Sync per click (clicks are rare; drags already Sync on release).
+         int kr = BaseKnotFind(bid);
+         if(kr >= 0)
+         {
+            g_bkBoxes[kr].commitMs = GetTickCount();
+            BaseKnotSync(bid);
+            ChartRedraw();
+         }
          return true;   // clicks on box/lines/info text die here — never reach menus
       }
    }
