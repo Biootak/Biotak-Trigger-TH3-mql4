@@ -333,12 +333,13 @@ string BaseKnotTFName(const int tfMin)
 // Coords · TF-scope · user text · risk numbers — nothing unreachable.
 string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
                           const double top, const double bot, const string side,
-                          const double hPips, const double rr)
+                          const double hPips, const double rr, const int bars)
 {
    int k = BaseKnotFind(id);
    int tfMin = (k >= 0 ? g_bkBoxes[k].tfMin : 0);
    if(tfMin <= 0) tfMin = BaseKnotIdTF(id);
-   string tt = "Base box " + side + " · " + DoubleToString(hPips, 1) + " pips · R:R 1:" + DoubleToString(rr, 0);
+   string tt = "Base box " + side + " · " + DoubleToString(hPips, 1) + " pips · R:R 1:" + DoubleToString(rr, 0) +
+               (bars > 0 ? " · " + IntegerToString(bars) + " bars" : "");
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
    tt += "\nVisible: " + BaseKnotTFName(tfMin) + (tfMin > 0 ? " and lower" : "") + " (drag to move)";
    string ut = (k >= 0 ? BaseKnotGetText(BaseKnotPrefix(id)) : "");
@@ -1085,14 +1086,26 @@ bool BaseKnotInfoVisible(const string id)
    if(k < 0) return true;
    return ((int)(GetTickCount() - g_bkBoxes[k].commitMs) < (int)BK_INFO_GRACE_MS);
 }
+// Bars inside a box (floor-to-ceiling or ceiling-to-floor — direction-free):
+// corner times snap to bar opens, so the count is |shift1 - shift2| + 1.
+// 0 = unmeasurable (series not ready) — callers then omit the bars part.
+int BaseKnotBarCount(const datetime t1, const datetime t2)
+{
+   if(t1 <= 0 || t2 <= 0) return 0;
+   int sh1 = iBarShift(_Symbol, 0, t1, false);
+   int sh2 = iBarShift(_Symbol, 0, t2, false);
+   if(sh1 < 0 || sh2 < 0) return 0;
+   return MathAbs(sh1 - sh2) + 1;
+}
 // Chart-anchored "[H Pips | R:R 1:N]" label at the box top-right corner.
 void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
                        const double hPips, const double rr, const double tpPips,
-                       const string side, const long tfMask)
+                       const string side, const int bars, const long tfMask)
 {
    if(ObjectFind(0, in) < 0) ObjectCreate(0, in, OBJ_TEXT, 0, t2, top);
+   string barsPart = (bars > 0 ? " | " + IntegerToString(bars) + " bars" : "");
    ObjectSetString(0, in, OBJPROP_TEXT,
-                   "[" + side + " " + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + "]");
+                   "[" + side + " " + DoubleToString(hPips, 1) + " Pips | R:R 1:" + DoubleToString(rr, 0) + barsPart + "]");
    ObjectSetString(0, in, OBJPROP_FONT, "Arial");
    ObjectSetInteger(0, in, OBJPROP_FONTSIZE, PnlPt(BK_PT_INFO));
    ObjectSetInteger(0, in, OBJPROP_COLOR, BaseKnotFgForBg());
@@ -1103,7 +1116,8 @@ void BaseKnotWriteInfo(const string in, const datetime t2, const double top,
    ObjectSetInteger(0, in, OBJPROP_ZORDER, Z_BOX_INFO);
    ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, tfMask);
    ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": risk " + DoubleToString(hPips, 1) +
-                   " pips, target +" + DoubleToString(tpPips, 1) + " pips");
+                   " pips, target +" + DoubleToString(tpPips, 1) + " pips" +
+                   (bars > 0 ? ", " + IntegerToString(bars) + " bars" : ""));
    ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
    ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
 }
@@ -1147,7 +1161,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                    "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + " (" + DoubleToString(hPips, 1) + " pips)", tfMask, true);
    BaseKnotMakeRay(tag + "TP", tLiveTps, tLiveTpe, tp, g_bkTargetColor, BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
                    "BK " + side + " Target (sizing): " + DoubleToString(tp, dg) + " (+" + DoubleToString(tpPips, 1) + " pips, R:R 1:" + DoubleToString(rr, 0) + ")", tfMask, false);
-   BaseKnotWriteInfo(tag + "INFO", te, top, hPips, rr, tpPips, side, tfMask);
+   BaseKnotWriteInfo(tag + "INFO", te, top, hPips, rr, tpPips, side, BaseKnotBarCount(t1, te), tfMask);
 }
 // INFO text is chart-anchored and only TF-gated (no pixel button —
 // NOBKDEL 2026-09-06: the X delete badge is retired, boxes delete via
@@ -1195,7 +1209,7 @@ void BaseKnotSync(const string id)
    double rr     = (hPips > 0 ? tpPips / hPips : (g_bkTargetR >= 1 ? (double)g_bkTargetR : BK_TP_R_MULT));
    string side = (dir >= 0 ? "BUY" : "SELL");
    int dg = GetCachedDigits();
-   string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, rr);
+   string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, rr, BaseKnotBarCount(t1, t2));
    ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
                      GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip, tfMask);
@@ -1213,7 +1227,7 @@ void BaseKnotSync(const string id)
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
    if(BaseKnotInfoVisible(id))
    {
-      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, tfMask);
+      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t2, top, hPips, rr, tpPips, side, BaseKnotBarCount(t1, t2), tfMask);
       BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
    }
    else
