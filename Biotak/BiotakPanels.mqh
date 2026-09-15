@@ -2674,7 +2674,7 @@ double PnlStepSectionCurrent(const int s)
 //| Style (TV Style tab): BORDER/WIDTH/STYLE/BORDER-TR/FILL/FILL-TR.   |
 //| Text (TV Text tab): TEXT edit + SIZE + B|I + ALIGN + VALIGN + COLOR|
 //| (VALIGN = TV's Inside-dropdown: Top|Inside|Bottom).                |
-//| Setup: TARGET R + ENTRY/STOP/TARGET + INFO + INFO SIZE (P-BK-27)   |
+//| Setup: TP COUNT + ENTRY/STOP/TARGET + INFO + INFO SIZE (P-BK-27)   |
 //| + TEMPLATE (= TV Template dropdown). Coords = drag natively,       |
 //| tooltip shows live                                                |
 //| (TV Coordinates); visibility automatic commit-TF + lower (TV       |
@@ -2696,7 +2696,11 @@ void BkSecRowDef(const int sec,int &kind,string &label,
    }
    else if(g_BkTab == 2)   // SETUP
    {
-      if(sec==0)       { label="TARGET R"; unit="R"; minV=1; maxV=4; }
+      // P-BK-50: the box' targets are the TRADE PLAN's own TP1..TP3 now, so this row is
+      // no longer an R multiple — it is HOW MANY of the plan's legs are DRAWN. Same
+      // state, same GV key, same enum address: a saved chart keeps its number (4 clamps
+      // into 1..3).
+      if(sec==0)       { label="TP COUNT"; minV=1; maxV=BK_TP_PLAN_MAX; }
       else if(sec==1)  { kind=4; label="ENTRY COLOR"; }
       else if(sec==2)  { kind=4; label="STOP COLOR"; }
       else if(sec==3)  { kind=4; label="TARGET COLOR"; }
@@ -2760,7 +2764,7 @@ int BkSecApply(const int sec,const double v)
    }
    else if(g_BkTab == 2)
    {
-      if(sec==0)      { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+      if(sec==0)      { g_bkTargetR=ClampInt((int)MathRound(v),1,BK_TP_PLAN_MAX); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-50: TP COUNT
       else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
       else if(sec==5) { flags=BkApplyPreset((int)MathRound(v)); }
       else if(sec==6) { g_bkInfoFontSize=ClampInt((int)MathRound(v),0,24); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-27
@@ -3045,7 +3049,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
                       // the palette code. R-BKSTRIP (2026-09-07).
    {
       if(row==0)       { kind=4; label="BORDER COLOR"; }
-      else if(row==1)  { label="TARGET R"; unit="R"; minV=1; maxV=4; }
+      else if(row==1)  { label="TP COUNT"; minV=1; maxV=BK_TP_PLAN_MAX; }   // P-BK-50
       else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
       else if(row==3)  { kind=2; label="PRESET"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
       else if(row==4)  { kind=2; label="LOCK"; opts="Off|On"; minV=0; maxV=1; }
@@ -3271,21 +3275,21 @@ void BkPresetGet(const int i, BkPreset &p)
 {
    if(i == 1)         // Ocean
    {
-      p.border=C'41,182,246'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
+      p.border=C'41,182,246'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-50: all three plan legs (the shipped look)
       p.entry=C'41,182,246'; p.sl=C'240,98,146'; p.tp=C'102,187,106';
       p.fill=C'41,182,246'; p.fillTr=80;
       p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
    else if(i == 2)    // Mono
    {
-      p.border=C'176,190,197'; p.style=STYLE_DASH; p.width=1; p.tr=0; p.rr=2;
+      p.border=C'176,190,197'; p.style=STYLE_DASH; p.width=1; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-50
       p.entry=C'144,164,174'; p.sl=C'120,144,156'; p.tp=C'207,216,220';
       p.fill=C'176,190,197'; p.fillTr=88;
       p.text=C'207,216,220'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
    else               // 0 Amber (shipped look)
    {
-      p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=2;
+      p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-50
       p.entry=C'46,139,87'; p.sl=C'220,50,50'; p.tp=C'30,144,255';
       p.fill=C'255,171,0'; p.fillTr=100;
       p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
@@ -3312,7 +3316,7 @@ int BkApplyPreset(const int i)   // apply + restyle live boxes + persist via fla
    BkPreset p; BkPresetGet(i, p);
    g_boxBorderColor=p.border; g_boxBorderStyle=(ENUM_LINE_STYLE)ClampInt(p.style,0,4);
    g_boxBorderWidth=ClampInt(p.width,1,5); g_boxBorderTransparency=ClampInt(p.tr,0,100);
-   g_bkTargetR=ClampInt(p.rr,1,4);
+   g_bkTargetR=ClampInt(p.rr,1,BK_TP_PLAN_MAX);   // P-BK-50: TP COUNT
    g_bkEntryColor=p.entry; g_bkStopColor=p.sl; g_bkTargetColor=p.tp;
    g_boxFillColor=p.fill; g_boxFillTransparency=ClampInt(p.fillTr,0,100);
    g_bkTextColor=p.text; g_bkTextSize=ClampInt(p.textSize,8,24);
@@ -3887,7 +3891,7 @@ int PnlApplySet(const int item,const int row,const double v)
           else             { flags=BkSecApply(row-1,v); }
           break;
        case 13:  // BASE BOX MINI — same mirrors as card 12, never duplicated.
-          if(row==1)       { g_bkTargetR=ClampInt((int)MathRound(v),1,4); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          if(row==1)       { g_bkTargetR=ClampInt((int)MathRound(v),1,BK_TP_PLAN_MAX); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-50: TP COUNT
           else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
           else if(row==3)  { flags=BkApplyPreset((int)MathRound(v)); }
           else if(row==4)  { if(g_BkMiniBox!="" && BaseKnotFind(g_BkMiniBox)>=0) BaseKnotSetLocked(g_BkMiniBox, v>0.5); }
@@ -4389,7 +4393,7 @@ string PnlFormat(const int item,const int row,const double v)
    if(unit=="%") return IntegerToString((int)MathRound(v))+"%";
    if(unit=="x") return DoubleToStr(v,1);
    // P-UI-26: unit-suffixed chips (COUNT SIZE 12pt, COUNT GAP 6px, MAGNET
-   // SENS 50p, TARGET R 4R) — the chip is 46px, longest live value "100%"
+   // SENS 50p) — the chip is 46px, longest live value "100%"
    // is 4 chars, so suffixed values always fit; bare numbers hid the unit.
    if(unit=="pt" || unit=="px" || unit=="p" || unit=="R")
       return IntegerToString((int)MathRound(v))+unit;

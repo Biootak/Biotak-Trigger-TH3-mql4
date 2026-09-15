@@ -623,7 +623,7 @@ ON = {"SHOW", "SHOW LINES", "MID ZONES", "SS/LS ORDER", "COUNTDOWN", "ATR LABELS
 PCT = {"TRANSPARENCY": 28, "HEIGHT": 62, "BORDER TR": 20, "FILL TR": 55,
        "COUNT SIZE": 9, "COUNT GAP": 6, "ROW GAP": 10, "MARGIN BOTTOM": 40,
        "MAGNET SENS": 12, "VALUE": 100, "WIDTH": 2, "BORDER WIDTH": 2,
-       "WICK WIDTH": 1, "SIZE": 11, "TARGET R": 2, "MAX LEVELS": 5,
+       "WICK WIDTH": 1, "SIZE": 11, "TP COUNT": 3, "MAX LEVELS": 5,
        "SHADOW MIN": 1, "SHADOW WIDTH": 30, "SHADOW GAP": 8,
        # P-UI-70d: the trade card's four knobs, at their SHIPPED defaults, so the
        # proof shows the card the user actually gets (0 pt = follow the grid).

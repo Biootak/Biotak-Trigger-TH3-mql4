@@ -184,7 +184,7 @@ input string S16e = "[08.5] BASE BOX / BORDER";
 input color inpBoxBorderColor = C'255,171,0';            // Base Box Border Color (amber, no fill — like MT4)
 input ENUM_LINE_STYLE inpBoxBorderStyle = STYLE_SOLID;   // Base Box Border Style
 input int inpBoxBorderWidth = 2;                         // Base Box Border Width (1-5)
-input int inpBKTargetR = 2;                              // Base Box Target R:R multiple (TP = Entry + R x N)
+input int inpBKTargetR = 3;                              // Base Box TP COUNT (P-BK-50: how many of the trade plan's TP1..TP3 legs the box draws, 1..3)
 input color inpBKEntryColor = C'46,139,87';              // Base Box Entry Line Color (green)
 input color inpBKStopColor = C'220,50,50';               // Base Box Stop Line Color (red)
 input color inpBKTargetColor = C'30,144,255';            // Base Box Target Line Color (bold blue, width 2 tick)

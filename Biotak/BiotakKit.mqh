@@ -308,6 +308,18 @@ void RefreshUIPerTick()
    {
       s_LastMenuSync = now;
       UpdateMenuSyncIfChanged();
+      // P-BK-29/47: the note's BREAK STORY is measured in MOVEMENT STEPS (ATR) — the
+      // type itself is the node's LENGTH and needs no size — and ATR lives ABOVE
+      // BaseKnotTool (ATRCalculations), so the pump pushes it in and the domain never
+      // reads it (layer law). Change-guarded inside: one cached ATR read and one
+      // compare per round, and only a value that MOVED re-arms the re-read.
+      BaseKnotStepPush(CalculateWeightedATR_Locked());
+      // P-BK-46: the knot's trade is measured in EngSL of ITS OWN TF, and EngSL is
+      // trade-plan math (TradePlanFormulas, above this file too) — the same pump
+      // hands it in: it asks the tool which TFs its boxes call their own, computes
+      // one EngSL per TF, and pushes the pairs back. Change-guarded inside, so a
+      // warm chart pays cache hits and compares and rebuilds nothing.
+      BaseKnotEngPump();
       BaseKnotSyncBadges();   // pixel badges re-glued after scroll/zoom (cheap, runs only with boxes)
       BaseKnotHintTick();     // result-hint auto-hide pump
    }

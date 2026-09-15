@@ -63,7 +63,7 @@ static color g_boxBorderColor = C'255,171,0';                    // [08.5] inpBo
 static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBoxBorderStyle
 static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
 static int g_boxBorderTransparency = 0;                          // [08.5] palette TR (default solid)
-static int g_bkTargetR = 2;                                      // [08.5] inpBKTargetR (TP = Entry + R x N)
+static int g_bkTargetR = 3;                                      // [08.5] inpBKTargetR (P-BK-50: TP COUNT — how many of the plan's TP1..TP3 legs are drawn)
 static color g_bkEntryColor = C'46,139,87';                      // [08.5] inpBKEntryColor
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
 static color g_bkTargetColor = C'30,144,255';                    // [08.5] inpBKTargetColor
@@ -264,7 +264,7 @@ enum FactorySetting
    FF_BOX_WIDTH,         // inpBoxBorderWidth
    FF_BOX_STYLE,         // inpBoxBorderStyle
    FF_BOX_TRANSPARENCY,  // palette TR (default solid, no input)
-   FF_BK_TARGET_R,       // inpBKTargetR
+   FF_BK_TARGET_R,       // inpBKTargetR (P-BK-50: the same address now means TP COUNT)
    FF_BK_ENTRY,          // inpBKEntryColor
    FF_BK_SL,             // inpBKStopColor
    FF_BK_TP,             // inpBKTargetColor
@@ -1044,7 +1044,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXS")) g_boxBorderStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "BXS"), 0, 4);
    if(GlobalVariableCheck(p + "BXC")) g_boxBorderColor = (color)(int)GlobalVariableGet(p + "BXC");
    if(GlobalVariableCheck(p + "BXT")) g_boxBorderTransparency = ClampSettingInt((int)GlobalVariableGet(p + "BXT"), 0, 100);
-   if(GlobalVariableCheck(p + "BXR")) g_bkTargetR = ClampSettingInt((int)GlobalVariableGet(p + "BXR"), 1, 4);
+   if(GlobalVariableCheck(p + "BXR")) g_bkTargetR = ClampSettingInt((int)GlobalVariableGet(p + "BXR"), 1, BK_TP_PLAN_MAX);   // P-BK-50: 1..3 plan legs (a saved 4 clamps in)
    if(GlobalVariableCheck(p + "BXE")) g_bkEntryColor = (color)(int)GlobalVariableGet(p + "BXE");
    if(GlobalVariableCheck(p + "BXL")) g_bkStopColor = (color)(int)GlobalVariableGet(p + "BXL");
    if(GlobalVariableCheck(p + "BXG")) g_bkTargetColor = (color)(int)GlobalVariableGet(p + "BXG");

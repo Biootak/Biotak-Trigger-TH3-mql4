@@ -133,6 +133,13 @@
 // just purges it so old charts lose it for good.
 #define LIVE_COUNTDOWN_LEGACY_NAME "ATR_Trade_Current_CloseIn"
 
+// The Base/Knot box' targets (P-BK-50, 2026-09-15): a box draws the TRADE PLAN's own
+// TP1..TP3 legs, and the `TP COUNT` row (Base Box > Setup) picks HOW MANY of them are
+// drawn. The bound lives here — ABOVE both owners: RuntimeSettings owns the setting's
+// 1..3 clamp and BaseKnotTool draws the ticks, so the number is written ONCE (the
+// layer law: the clamp cannot read a constant the drawing module declares).
+#define BK_TP_PLAN_MAX 3
+
 // The bottom-right trade card (P-LBL-06/07/08): `#SL/TP` row, then the
 // `Hunter SL / Eng.SL` row, then the `TR|ex` brand. TWO clamps on the input
 // that asks for blank rows between the trade row and the Hunter row:

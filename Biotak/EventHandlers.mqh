@@ -2399,6 +2399,70 @@ string P4InitLedgerTag(const uint indMs, const uint uiMs)
            " atr=" + IntegerToString((int)g_pInitMsAtr) + "]";
 }
 
+//+------------------------------------------------------------------+
+//| P-BK-46 — THE KNOT'S OWN EngSL: THE ASK / PUSH PAIR (one owner).   |
+//|                                                                   |
+//| The Base/Knot trade is measured in EngSL of the knot's OWN TF     |
+//| (its base class), and EngSL is TRADE-PLAN MATH — TradePlanFormulas,
+//| which sits ABOVE BaseKnotTool (the layer law, the same one P-BK-29's
+//| movement step obeys). So the tool is never asked to read it here:  |
+//| it SAYS which TFs its live boxes call their own, this layer       |
+//| computes exactly those (TradePlanEngOf — the number the TRex       |
+//| card's Eng.SL row shows, rounded to the same whole pips) and       |
+//| pushes the pairs back, where the domain stores them and rebuilds   |
+//| a knot's stop / target the moment one really moved.               |
+//|                                                                   |
+//| One ask per pump round (500 ms), no boxes = one TF (this chart's,  |
+//| which is what the sizing preview uses), and every value comes from |
+//| the SAME multi-TF ATR cache the strip and the trade block read, so |
+//| a warm chart pays cache hits and compares.                        |
+//|                                                                   |
+//| P-BK-50 (2026-09-15) — THE PLAN'S TARGET LEGS RIDE THE SAME CALL.  |
+//| One plan per TF answers BOTH numbers a knot draws: the risk        |
+//| (`plan.engTrue` = EngSL, the TRex card's Eng.SL row) and the three |
+//| targets (`plan.tp1..3` — the very numbers the corner row prints as  |
+//| `#TP1+n #TP2+n #TP3+n`). So the box can never disagree with that    |
+//| row about a target, and the tool is never asked to read ATR.       |
+//|                                                                   |
+//| P-BK-51 (2026-09-15) — AND SO DOES THE HUNTER LEG. The user's own   |
+//| rule («و برای گره etr میشه به اندازه huntsl محل ورود») sizes an     |
+//| ETR/CTR/OTR entry by ONE HuntSL, so `plan.hunter` — the leg the     |
+//| TRex card prints as `Hunter SL:` — is pushed per TF beside EngSL.   |
+//| The ask list grew with it: a CTR/OTR knot is measured ONE TF HIGHER |
+//| than its class, so that rung is asked for as well                |
+//| (BaseKnotEngNeeds walks each box' own TF AND its measure TF).       |
+//+------------------------------------------------------------------+
+void BaseKnotEngPump()
+{
+   int    mins[BK_ENG_TF_MAX];
+   double pips[BK_ENG_TF_MAX];
+   double hunts[BK_ENG_TF_MAX];   // P-BK-51: HuntSL, the second measure a knot draws with
+   double tp1[BK_ENG_TF_MAX];
+   double tp2[BK_ENG_TF_MAX];
+   double tp3[BK_ENG_TF_MAX];
+   int n = BaseKnotEngNeeds(mins);
+   for(int i = 0; i < n && i < BK_ENG_TF_MAX; i++)
+   {
+      // P-BK-50: ONE plan call feeds all four pushes (it computes the strip ATRs
+      // this loop used to ask for), and a plan that is not warm pushes ZEROES — the
+      // absence the tool then reports instead of drawing a guessed level.
+      STradePlan plan;
+      if(!TradePlanCompute(mins[i], plan))
+      {
+         pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
+         continue;
+      }
+      pips[i] = (plan.engTrue > 0.0 ? (double)TradePlanRound(plan.engTrue) : 0.0);
+      // P-BK-51: HUNTSL RIDES THE SAME ROW — the very leg the TRex card prints as
+      // `Hunter SL:`, which is what an ETR/CTR/OTR knot's entry waits for.
+      hunts[i] = (plan.hunter > 0 ? (double)plan.hunter : 0.0);
+      tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);
+      tp2[i]  = (plan.tp2 > 0 ? (double)plan.tp2 : 0.0);
+      tp3[i]  = (plan.tp3 > 0 ? (double)plan.tp3 : 0.0);
+   }
+   BaseKnotEngPush(mins, pips, hunts, tp1, tp2, tp3, n);
+}
+
 int OnCalculateHandler(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[]) {
     static uint s_lastCPUTime = 0;
     static int s_cpuWarningCount = 0;
@@ -2419,7 +2483,12 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
     static uint s_bkLitePumpMs = 0;
     {
        uint bkNow = GetTickCount();
-       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotSyncBadges(); TradePlanLiveTick(); }
+       // P-BK-29/47: the Full pump (BiotakKit) pushes the movement step for the
+       // note's break story (the type is the node's length and needs no size);
+       // ATR is above BaseKnotTool, so Lite — which has no RefreshOnBar — hands
+       // the same cached ATR in from its tick pump.
+       // P-BK-46: and the same pump hands the knots' EngSL risk in (BaseKnotEngPump).
+       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotStepPush(CalculateWeightedATR_Locked()); BaseKnotEngPump(); BaseKnotSyncBadges(); TradePlanLiveTick(); }
     }
 #endif
 
