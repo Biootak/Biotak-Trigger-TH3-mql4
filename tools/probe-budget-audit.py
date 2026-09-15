@@ -3832,6 +3832,143 @@ def check_order_owner(o):
     ok("order-owner", "one caption, two readers - the label names the question, not the answer")
 
 
+# The list is assembled AFTER the last check's definition, below - a name the
+# `CHECKS = [...]` line references must already exist when it runs.
+
+
+def check_click_ownership(o):
+    """THE RULE: a click on the UI never reaches the chart (P-UI-92 / P-UI-92b).
+
+    The composer runs `OnChartEventHandler` (domain) BEFORE `HandleUIChartEvent`
+    (UI) for the same event, so a press or release that landed on a panel used to
+    be read as chart input, before the panel's own handler could object:
+
+      * the armed Base/Knot tool committed a corner at the price hidden under the
+        card (its CLICK fallback and its press both take the price from `dparam`),
+      * its committed-box drag latch armed on a box behind the panel, so the next
+        move dragged something the user could not even see,
+      * the Custom Price pick consumed the same release as its starting price.
+
+    Two halves, one rule, and BOTH must stay wired:
+      WHERE - `UIPointerOverSurface` answers from the UI's own layout (exact, no
+              time window) and every domain site that reads a pixel as chart
+              input asks it;
+      WHOSE - a gesture can begin off the UI (an orb drag, a card opened by a
+              release) and still be the UI's, so the claim the UI publishes is
+              peeked by the domain half through the mirror in GlobalVariables.
+    """
+    panels = strip_comments(read(PANELS, o))
+    menu = strip_comments(read(MENU, o))
+    glb = strip_comments(read(GLOBALS, o))
+    events = strip_comments(read(EVENTS, o))
+    bk = strip_comments(read(BASEKNOT, o))
+
+    surf = fn_body(panels, "bool UIPointerOverSurface(const int mx,const int my)")
+    if not surf:
+        fail("click-ownership",
+             "UIPointerOverSurface is gone: the domain half has no way to ask whose "
+             "pixel it is reading")
+        return
+    for need in ("PnlPointInside(mx,my)", "BkMiniStripPointInside(mx,my)",
+                 "LiveCountdownPointInside(mx,my)"):
+        if need not in surf:
+            fail("click-ownership",
+                 "a visible UI surface stopped being claimed (%s): clicks on it bleed "
+                 "into the chart behind it" % need)
+            return
+    hidden = "   if(g_UI.menuVisible)\n   {\n      int bx = 0, by = 0, bw = 0, bh = 0;"
+    if hidden not in surf:
+        fail("click-ownership",
+             "the ring menu's pixels are claimed unconditionally: a HIDDEN menu would "
+             "eat presses in a patch of chart the draw session still needs (P-BK-02)")
+        return
+    if "PnlComputeMenuBounds(bx,by,bw,bh);" not in surf:
+        fail("click-ownership", "the menu's claimed rectangle is no longer measured")
+        return
+    ok("click-ownership",
+       "the UI claims exactly the surfaces it has VISIBLE, measured from its own layout")
+
+    if "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&" not in bk:
+        fail("click-ownership",
+             "the box tool's press latch arms on a press that landed on a panel: the "
+             "next move drags the box hidden behind the card")
+        return
+    swallow = "if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;"
+    if bk.count(swallow) < 3:
+        fail("click-ownership",
+             "the box tool reads a UI pixel again (%d of 3 sites guarded: press, "
+             "release, tap-commit): a corner is placed at the price hidden under the "
+             "panel" % bk.count(swallow))
+        return
+    ok("click-ownership",
+       "the box tool asks WHERE before it places a corner, drags a box or commits")
+
+    if ("if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick &&" not in events or
+            "!UIPeekClickClaim() && !UIPointerOverSurface((int)lparam, (int)dparam)" not in events):
+        fail("click-ownership",
+             "the Custom Price pick takes any release as its price: a click on a card "
+             "sets the origin from the price hidden under it")
+        return
+    if "pressEdge && !UIPointerOverSurface((int)lparam, (int)dparam) &&" not in events:
+        fail("click-ownership",
+             "the Custom Price line's press-edge grab ignores the UI: a press on a "
+             "panel can grab the line through it")
+        return
+    ok("click-ownership",
+       "the Custom Price pick asks WHERE and WHOSE before it reads `dparam` as a price")
+
+    peek = fn_body(glb, "bool UIPeekClickClaim()")
+    if not peek:
+        fail("click-ownership", "UIPeekClickClaim is gone: the published claim has no reader")
+        return
+    if "g_uiClickClaimDown" not in peek or "g_uiClickClaimSeq == g_uiPressSeq" not in peek:
+        fail("click-ownership",
+             "the peek drops the press-bound half of the claim: a release after a long "
+             "hold is classified differently by the two halves of one event")
+        return
+    if "(int)(GetTickCount() - g_uiClickClaimMs) >= 0" not in peek:
+        fail("click-ownership",
+             "the peek ignores the up-armed TTL: a claim with no press to bind to then "
+             "waits forever and eats a genuine chart click")
+        return
+    ok("click-ownership", "the domain peeks the SAME three tests the UI half applies")
+
+    pub = fn_body(menu, "void UIPublishClickClaim()")
+    if not pub:
+        fail("click-ownership", "UIPublishClickClaim is gone: the domain half is blind again")
+        return
+    for sig, why in (
+            ("void UISuppressNextClick()", "arming a claim no longer publishes it"),
+            ("bool UIShouldSuppressClick()", "taking a claim no longer publishes its echo"),
+            ("void UIReleaseClaimReset()", "the reset leaves the mirror armed across an attach"),
+            ("bool MousePressStart(const bool leftDown)",
+             "the press counter is not published, so a stale claim cannot be retired for "
+             "both halves at the same instant")):
+        body = fn_body(menu, sig)
+        if not body or "UIPublishClickClaim()" not in body:
+            fail("click-ownership", why)
+            return
+    ok("click-ownership",
+       "every transition of the claim publishes it, and the press edge retires it")
+
+    writers = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "Biotak", "*.mqh"))):
+        rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        if rel == GLOBALS:
+            continue                     # the declaration itself
+        if re.search(r"g_uiClickClaim(Live|Down|Seq|Ms)\s*=[^=]", strip_comments(read(rel, o))):
+            writers.append(rel)
+    if writers != ["Biotak/BiotakMenu.mqh"]:
+        fail("click-ownership",
+             "the published claim has %d owner(s) (%s): a second writer is how the "
+             "mirror and the state machine start disagreeing - the state machine in "
+             "BiotakMenu is the only writer, the domain only reads"
+             % (len(writers), ", ".join(writers) or "none"))
+        return
+    ok("click-ownership",
+       "one writer: the claim is published by the UI, read by the domain, never the reverse")
+
+
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
@@ -3840,7 +3977,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
           check_zone_picture, check_edge_look, check_click_claim,
-          check_look_live, check_dual_all, check_order_owner]
+          check_look_live, check_dual_all, check_order_owner, check_click_ownership]
 
 
 def run(overrides=None):
@@ -4754,6 +4891,54 @@ def selftest():
     seed("a surface spells the SS/LS caption itself", PANELS,
          "      kind=1; label=PNL_LBL_SSLS_ORDER;",
          "      kind=1; label=\"LS FIRST\";")
+
+    # P-UI-92: a click on the UI must not reach the chart - one seed per way it could.
+    seed("the hidden ring menu keeps claiming pixels", PANELS,
+         "   if(g_UI.menuVisible)\n   {\n      int bx = 0, by = 0, bw = 0, bh = 0;",
+         "   if(true)\n   {\n      int bx = 0, by = 0, bw = 0, bh = 0;")
+    seed("the menu rect stops being measured", PANELS,
+         "      PnlComputeMenuBounds(bx,by,bw,bh);\n",
+         "")
+    seed("the open card stops being claimed", PANELS,
+         "   if(PnlPointInside(mx,my)) return true;",
+         "   if(false) return true;")
+    seed("the floating strip stops being claimed", PANELS,
+         "   if(BkMiniStripPointInside(mx,my)) return true;",
+         "   if(false) return true;")
+    seed("the countdown tag stops being claimed", PANELS,
+         "   if(LiveCountdownPointInside(mx,my)) return true;",
+         "   if(false) return true;")
+    seed("the box drag latch arms from a press on the panel", BASEKNOT,
+         "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
+         "if(true &&\n")
+    seed("one box-tool site stops asking where the pixel is", BASEKNOT,
+         "if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;",
+         "if(false) return true;")
+    seed("the custom-price pick ignores the published claim", EVENTS,
+         "!UIPeekClickClaim() && !UIPointerOverSurface((int)lparam, (int)dparam)",
+         "true")
+    seed("the custom-price line can be grabbed through a panel", EVENTS,
+         "pressEdge && !UIPointerOverSurface((int)lparam, (int)dparam) &&",
+         "pressEdge &&")
+    seed("a second writer publishes the claim", EVENTS,
+         "    if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick &&",
+         "    g_uiClickClaimLive = false;\n"
+         "    if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick &&")
+    seed("arming a claim stops publishing it", MENU,
+         "   UIPublishClickClaim();   // P-UI-92b: the domain half of this gesture reads the mirror\n",
+         "")
+    seed("taking a claim stops publishing its echo", MENU,
+         "   UIPublishClickClaim();\n   return true;\n",
+         "   return true;\n")
+    seed("the press edge stops retiring a stale claim", MENU,
+         "   if(pressStart) UIPublishClickClaim();\n",
+         "")
+    seed("the peek drops the press-bound identity", GLOBALS,
+         "   if(g_uiClickClaimDown) return (g_uiClickClaimSeq == g_uiPressSeq);",
+         "   if(g_uiClickClaimDown) return true;")
+    seed("the peek ignores the up-armed TTL", GLOBALS,
+         "   if(g_uiClickClaimMs != 0 && (int)(GetTickCount() - g_uiClickClaimMs) >= 0) return false;",
+         "   if(g_uiClickClaimMs != 0) return false;")
 
     caught = 0
     for label, rel, old, new in seeds:

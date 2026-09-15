@@ -23,6 +23,52 @@ static bool g_redrawNeeded = true;
 static int g_objectCountLast = 0;
 static datetime g_lastObjectCleanup = 0;
 
+// P-UI-92b (2026-09-16) — THE UI LAYER'S LIVE "THIS RELEASE IS MINE" CLAIM, published.
+//
+// The composer runs OnChartEventHandler BEFORE HandleUIChartEvent, so the DOMAIN
+// half of one click cannot call the UI state machine that knows whose gesture the
+// release belongs to (the claim lives in BiotakMenu's file statics, and the domain
+// is compiled from EventHandlers/BaseKnotTool, i.e. earlier). So the UI half
+// MIRRORS its claim here — one writer, `UIPublishClickClaim()` in BiotakMenu, called
+// from the two transitions of the claim and from its reset — and the domain PEEKS:
+// `UIPeekClickClaim()` is a read, never a consume, because the UI half of the SAME
+// release must still take the claim it published (P-UI-65: one claim, one consumer).
+//
+// `g_uiClickClaimMs` is the deadline the UI wrote for its own claim, so a claim that
+// outlives its gesture (a press whose release never arrived) can never eat a later,
+// genuine chart click. Both fields are plain state: no timer, no allocation, and the
+// steady state is two bool reads for the domain (see UIPointerOverSurface for the
+// WHERE half of the same rule — this is the WHOSE half).
+// The mirror is the claim's OWN shape, not a summary of it: `down` + `seq` are the
+// press-bound form (the release it belongs to is however long the user holds), the
+// deadline is the up-armed form's TTL, and `pressSeq` is the counter's live value so
+// the domain can apply the UI's exact "a new press owns the click" rule without
+// reaching into the UI's file statics. All four are written by ONE function,
+// `UIPublishClickClaim()` in BiotakMenu.
+static bool g_uiClickClaimLive = false;
+static bool g_uiClickClaimDown = false;   // armed under a live press (bound by seq)
+static uint g_uiClickClaimSeq  = 0;       // the press it was armed under
+static uint g_uiClickClaimMs   = 0;       // TTL of the up-armed form (0 = none)
+static uint g_uiPressSeq       = 0;       // the UI's live press counter (mirrored)
+
+// The domain's ONE reader of the UI's claim. A peek: it never clears, expires or
+// consumes anything it looks at, so the UI half of the same event still finds its
+// claim armed exactly as it left it (P-UI-65: one claim, one consumer).
+// The three tests are the SAME three the UI applies, in the same order — that is the
+// whole point: both halves of one event must classify the same release identically.
+bool UIPeekClickClaim()
+{
+   if(!g_uiClickClaimLive) return false;
+   // Press-bound: valid while its own press is still the live press (no clock —
+   // how long the user holds a button is the user's choice, P-UI-65).
+   if(g_uiClickClaimDown) return (g_uiClickClaimSeq == g_uiPressSeq);
+   // A new press retired it: the click belongs to that press, not to this claim.
+   if(g_uiClickClaimSeq != g_uiPressSeq) return false;
+   // Up-armed (a drag end, a card opened by a release): it keeps its short TTL.
+   if(g_uiClickClaimMs != 0 && (int)(GetTickCount() - g_uiClickClaimMs) >= 0) return false;
+   return true;
+}
+
 // Custom Price Selection
 static bool g_waitingForCustomPriceClick = false;
 static string g_customPriceHorizontalLineName = "CustomPriceHorizontalLine";

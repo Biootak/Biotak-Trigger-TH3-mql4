@@ -10,6 +10,20 @@
 #define CACHE_TIMEOUT 60
 
 // ══════════════════════════════════════════════════════════════════════════
+// P-UI-92 / P-UI-92b: THE TWO HALVES OF ONE RULE — a click on the UI never reaches
+// the chart. (1) WHERE: `UIPointerOverSurface()` (BiotakPanels) hit-tests the pixel
+// against the UI's own layout — exact, no constant needed. (2) WHOSE: the claim the
+// UI publishes for the domain half of the same release (`UIPeekClickClaim` in
+// GlobalVariables).
+//
+// This is the TTL of an UP-ARMED published claim (armed while the button is already
+// UP — a drag end, a card opened by a release), i.e. the only form with no press to
+// bind to. Long enough to cover the release plus its echo event (the UI's own
+// UI_RELEASE_ECHO_MS is 80), short enough that a claim whose click event never arrived
+// cannot swallow a later, genuine chart click. The press-bound form carries no clock
+// at all — it retires with its own press.
+#define UI_CLAIM_TTL_MS  600
+
 // Z LADDER — the ONE owner of every OBJPROP_ZORDER in the project (P-UI-31)
 //
 // MT4 keeps the SCREEN-SPACE objects (OBJ_LABEL / OBJ_BUTTON / OBJ_BITMAP_LABEL

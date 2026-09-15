@@ -6457,6 +6457,58 @@ bool PnlPointInside(const int mx,const int my)
 }
 
 //+------------------------------------------------------------------+
+// P-UI-92 (2026-09-16) — THE UI'S PIXEL SOVEREIGNTY TEST (the WHERE half).
+//
+// THE BUG. The composer runs the DOMAIN half of one event first
+// (`OnChartEventHandler`) and the UI half second (`HandleUIChartEvent`, called
+// unconditionally right after it in OnChartEvent). So the domain read a pixel that
+// sat ON A PANEL as chart input, before the panel's own handler could object:
+//   * the armed Base/Knot tool committed a corner behind the card — its CLICK
+//     fallback takes the price from `dparam`, i.e. the chart price hidden under
+//     the panel ("the box appeared behind the panel"),
+//   * the committed-box drag latch armed from the same press, so the next move
+//     dragged a box the user could not even see,
+//   * the Custom Price pick consumed the release as its starting price.
+// All three are the same defect: the UI's pixels were not subtracted from the
+// chart before the domain hit-tested them.
+//
+// THE RULE — one method, one owner. The UI layer answers ONE question, exactly,
+// from the layout it already maintains: "does this pixel belong to a VISIBLE UI
+// surface?". The domain half asks it before it reads a pixel as chart input
+// (`BaseKnotOnChartEvent`'s press/latch/click and the Custom Price pick are the
+// three call sites; any future one asks the same function rather than inventing a
+// new guard). The WHOSE half of the same rule is the published click claim
+// (`UIPeekClickClaim`) for gestures that began off the UI.
+//
+// WHY A HIT TEST AND NOT A TIME WINDOW: the panel rect is layout state, valid at
+// the instant of the press regardless of when the cursor last moved — so a hover
+// that stopped 10 seconds ago cannot leak, and a press that emits no mouse-move at
+// all (P-BK-03) is still classified correctly. No TTL, no drift, no timer.
+//
+// WHAT IS *NOT* CLAIMED: the ring menu's pixels are claimed only while
+// `g_UI.menuVisible` — P-BK-02 hides the whole menu for a draw session, and a
+// hidden menu must own nothing, or the tool would lose a 40px patch of chart where
+// the orb used to sit. Same reason the countdown tag is included: it is a real,
+// visible surface of the UI's own layer (P-CLICK opens card 2 from it).
+//
+// COST: a handful of int compares on a press/release — never on a hover — so the
+// mouse-move path and the per-tick path pay nothing.
+//+------------------------------------------------------------------+
+bool UIPointerOverSurface(const int mx,const int my)
+{
+   if(PnlPointInside(mx,my)) return true;            // open card + the palette popover
+   if(BkMiniStripPointInside(mx,my)) return true;    // floating strip + its STYLE/WIDTH popover
+   if(g_UI.menuVisible)
+   {
+      int bx = 0, by = 0, bw = 0, bh = 0;
+      PnlComputeMenuBounds(bx,by,bw,bh);
+      if(mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) return true;
+   }
+   if(LiveCountdownPointInside(mx,my)) return true;  // the countdown tag (a UI-layer object)
+   return false;
+}
+
+//+------------------------------------------------------------------+
 //| Generic dropdown-select engine (TV popover language)              |
 //| One open at a time; content-fitted width; dark-pill selection.    |
 //| Selecting applies through PnlApplyOption — the same path as a     |

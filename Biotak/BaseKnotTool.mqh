@@ -3897,7 +3897,15 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
           // box dragged twice probes twice) and the timing counters restart.
           s_bkChildMaskId = ""; s_bkPerfMoveWorst = 0; s_bkPerfPaintWorst = 0; s_bkPerfPasses = 0;
          int ssw = 0; datetime sct = 0; double scp = 0;
-         if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp) && ssw == 0 && sct > 0 && scp > 0)
+         // P-UI-92: a press that lands ON a visible UI surface is the UI's pixel — the
+         // card/strip/menu sits OVER the box, so the user is reading or setting a
+         // control, not grabbing what is behind it. Without this test the latch armed
+         // on the hidden box and the next move dragged it (click bleed-through: the
+         // panel's own press is classified in the UI half of the same event, which
+         // runs AFTER this one). The press is never consumed by the box tool — the
+         // rejection is deliberately NOT a claim on the gesture.
+         if(!UIPointerOverSurface((int)lparam, (int)dparam) &&
+            ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp) && ssw == 0 && sct > 0 && scp > 0)
          {
             string shit = BaseKnotBoxAt(sct, scp);   // exact INSIDE test first — it never lies
             if(shit == "") shit = BaseKnotBoxAtPx((int)lparam, (int)dparam);   // P-BK-24: the drawn BORDER is a target too
@@ -4025,6 +4033,12 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       g_bkLeftPrev = left;
       if(rising)
       {
+         // P-UI-92: a press on a UI surface belongs to the UI, not to the draw session.
+         // Corner 1 must not be placed at the chart price hidden under the card (a
+         // press/release pair on the panel used to place BOTH corners of a box the
+         // user never saw). The event is still swallowed so the session keeps owning
+         // the mouse; the UI half of this same event runs right after the domain half.
+         if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;
          if(g_bkState == BK_ARMED)
          {
             int sw = 0; datetime ct = 0; double cp = 0;
@@ -4037,6 +4051,11 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       }
       if(falling)
       {
+         // P-UI-92: the release that lands on a UI surface is not a chart release —
+         // committing here would put corner 2 under the panel from a press the panel
+         // already consumed. The session stays alive so sizing continues from the last
+         // chart point the cursor actually visited.
+         if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;
          if(g_bkState == BK_PREVIEW)
          {
             g_bkHeld = false;
@@ -4081,6 +4100,11 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
    //--- drag-release commit the state is IDLE so the trailing CLICK dies).
    if(id == CHARTEVENT_CLICK)
    {
+      // P-UI-92: the tap/commit path is the one that actually leaked — CLICK carries
+      // the price under the cursor (`dparam`), so a click on a panel committed a box
+      // corner AT THE PRICE HIDDEN BEHIND IT. A click on a UI surface is the UI's:
+      // swallowed here, acted on by the UI half of the same event.
+      if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;
       int sw = 0; datetime ct = 0; double cp = 0;
       if(ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
       {

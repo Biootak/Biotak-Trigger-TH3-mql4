@@ -341,6 +341,13 @@ bool MousePressStart(const bool leftDown)
    const bool pressStart = (leftDown && !g_MouseWasDown);
    g_MouseWasDown = leftDown;
    if(pressStart) g_UIPressSeq++;
+   // P-UI-92b: the counter the claim's identity is bound to IS published state,
+   // because the domain half of the release has to apply the same "a new press owns
+   // the click" rule without reaching into this file's statics. Written on the press
+   // EDGE only, through the one publisher, so the mirror can never disagree with the
+   // state machine it mirrors — this edge is what retires a stale claim for BOTH
+   // halves at the same instant.
+   if(pressStart) UIPublishClickClaim();
    return pressStart;
 }
 
@@ -389,12 +396,59 @@ static uint s_uiClickClaimSeq  = 0;      // the press it was armed under
 static uint s_uiClickClaimMs   = 0;      // TTL for the up-armed form
 static uint s_uiReleaseEchoMs  = 0;      // we already ate this release
 
+//+------------------------------------------------------------------+
+// P-UI-92b (2026-09-16) — THE CLAIM'S SINGLE PUBLISHER (the WHOSE half of
+// UIPointerOverSurface's WHERE half).
+//
+// The claim above is this file's private state, and the composer runs the DOMAIN
+// half of an event BEFORE this half. So the domain could not ask the only code that
+// knows whose release a click is — it read an orb drag's end, a long-press release
+// or a panel press-release as a plain chart click. The mirror (GlobalVariables) is
+// the published form of the SAME three-part rule, and this function is its ONLY
+// writer, called from every transition of the claim (arm, consume, retire-on-new-
+// press, echo, reset) plus the press counter's edge.
+//
+// It recomputes instead of being told: the mirror is derived from the state machine,
+// so the two can never drift — the failure mode a hand-maintained flag would bring.
+// Cost: four stores on a press/release transition only; nothing on the move path.
+//+------------------------------------------------------------------+
+void UIPublishClickClaim()
+{
+   uint nowMs = GetTickCount();
+   // The echo: this hand already took this release, and its twin event is in flight.
+   if(s_uiReleaseEchoMs != 0 && (int)(nowMs - s_uiReleaseEchoMs) < 0)
+   {
+      g_uiClickClaimLive = true;
+      g_uiClickClaimDown = false;
+      g_uiClickClaimSeq  = g_UIPressSeq;
+      g_uiClickClaimMs   = s_uiReleaseEchoMs;
+      g_uiPressSeq       = g_UIPressSeq;
+      return;
+   }
+   g_uiPressSeq = g_UIPressSeq;              // always current, claimed or not
+   if(!s_uiClickClaim)
+   {
+      g_uiClickClaimLive = false;
+      g_uiClickClaimDown = false;
+      g_uiClickClaimMs   = 0;
+      return;
+   }
+   g_uiClickClaimLive = true;
+   g_uiClickClaimDown = s_uiClickClaimDown;
+   g_uiClickClaimSeq  = s_uiClickClaimSeq;
+   // Press-bound form: the click it eats is its own release, so the published
+   // deadline is only the stuck-claim safety bound (UIPeekClickClaim checks the
+   // press identity FIRST, exactly like this file's predicate).
+   g_uiClickClaimMs = (s_uiClickClaimDown ? (nowMs + UI_CLAIM_TTL_MS) : s_uiClickClaimMs);
+}
+
 void UISuppressNextClick()
 {
    s_uiClickClaim     = true;
    s_uiClickClaimDown = g_MouseWasDown;
    s_uiClickClaimSeq  = g_UIPressSeq;
    s_uiClickClaimMs   = GetTickCount() + UI_UP_CLAIM_TTL_MS;
+   UIPublishClickClaim();   // P-UI-92b: the domain half of this gesture reads the mirror
 }
 
 bool UIShouldSuppressClick()
@@ -417,6 +471,15 @@ bool UIShouldSuppressClick()
    }
    s_uiClickClaim    = false;                    // consumed by its own release, once
    s_uiReleaseEchoMs = nowMs + UI_RELEASE_ECHO_MS;
+   // P-UI-92b: published AFTER the state moved, so the domain half of the very same
+   // event (which ran first and only PEEKED) gets one consistent story: it was either
+   // told the press was the UI's before this release, or it is told now that this
+   // release's twin event is the UI's too. The early returns above change NOTHING in
+   // the state machine — their mirror was already published correctly by the last
+   // transition (the press edge re-publishes the counter, the expiry is a deadline the
+   // reader applies itself) — so no branch can leave the mirror ahead of or behind the
+   // claim it mirrors.
+   UIPublishClickClaim();
    return true;
 }
 
@@ -439,6 +502,7 @@ void UIReleaseClaimReset()
    s_uiClickClaimMs   = 0;
    s_uiReleaseEchoMs  = 0;
    g_UIPressSeq       = 0;
+   UIPublishClickClaim();   // P-UI-92b: the mirror is part of the claim state
 }
 
 //+------------------------------------------------------------------+

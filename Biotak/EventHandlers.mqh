@@ -3404,7 +3404,14 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     //  
     // CHARTEVENT_CLICK   Custom Price Click
     //  
-    if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick)
+    // P-UI-92: the pick mode's click must be a CHART click. CLICK carries the price
+    // under the cursor, so a click on an open card/strip/menu used to set the custom
+    // price origin from the price hidden under that control (and the panel's own
+    // press was handled in the UI half of the same event, which runs after this one).
+    // Two tests, one rule (see UIPointerOverSurface): WHERE the release landed, and
+    // WHOSE release it is (a claim the UI published before this half ran).
+    if(id == CHARTEVENT_CLICK && g_waitingForCustomPriceClick &&
+       !UIPeekClickClaim() && !UIPointerOverSurface((int)lparam, (int)dparam))
     {
         if(StringFind(sparam, "r") >= 0)
         {
@@ -3510,7 +3517,12 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // must not disappear because a build/setting never selects the
                 // object (the P-BK-16 reality, on the boxes).
                 bool terminalGrab = (bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED);
-                if(terminalGrab || (pressEdge && CustomPriceGrabAt((int)lparam, (int)dparam)))
+                // P-UI-92: the pixel test guards the PIXEL hit test only. `terminalGrab`
+                // is deliberately left alone: that is MT4's own selection, i.e. the
+                // terminal already decided the press belongs to the line (and P-UI-45
+                // exists precisely because a selection outlives its gesture).
+                if(terminalGrab || (pressEdge && !UIPointerOverSurface((int)lparam, (int)dparam) &&
+                                    CustomPriceGrabAt((int)lparam, (int)dparam)))
                 {
                     g_customPriceLineDragging = true;
                     g_customPriceDragOwn = true;
