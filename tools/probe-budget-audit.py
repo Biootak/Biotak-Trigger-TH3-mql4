@@ -4100,6 +4100,36 @@ def check_lite_wall(o):
        % len(names))
 
 
+def check_tick_wrap(o):
+    """THE RULE: a tick-count deadline is asked through its ONE owner (P-TICKWRAP).
+
+    `GetTickCount()` wraps every ~49.7 days. `GetTickCount() <= deadline` is NOT the
+    wrap-safe form: a deadline armed before the wrap is a huge number, so after the
+    counter restarts near 0 the test stays TRUE for the rest of the cycle and the
+    window never closes. The reader that used it gated the OBJECT_DELETE path
+    (`g_suppressDeleteEventsUntilMs`, armed for 250 ms at ten sites) - a terminal
+    left open that long would silently ignore every delete until the counter climbed
+    past the stale deadline. The form that is correct is the SIGNED DIFFERENCE
+    (`(int)(GetTickCount() - deadline) <= 0`, valid for any interval under 24 days),
+    owned by `TickDeadlinePending` in GlobalVariables.
+    """
+    pats = (re.compile(r"GetTickCount\(\)\s*(<=|>=|<|>)"),
+            re.compile(r"[\w\)\]]\s*(<=|>=|<|>)\s*GetTickCount\(\)"))
+    hits = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "Biotak", "*.mqh"))):
+        rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        for i, line in enumerate(strip_comments(read(rel, o)).splitlines(), 1):
+            if any(p.search(line) for p in pats):
+                hits.append("%s:%d" % (rel, i))
+    if hits:
+        fail("tick-wrap",
+             "%d absolute GetTickCount() comparison(s): a window armed before the "
+             "49.7-day wrap never closes (ask TickDeadlinePending instead). %s"
+             % (len(hits), ", ".join(hits[:4])))
+        return
+    ok("tick-wrap", "every tick deadline is asked through the wrap-safe owner")
+
+
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
@@ -4109,7 +4139,7 @@ CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check
           check_live_control, check_teardown_census, check_drag_anchor,
           check_zone_picture, check_edge_look, check_click_claim,
           check_look_live, check_dual_all, check_order_owner, check_click_ownership,
-          check_lite_wall]
+          check_lite_wall, check_tick_wrap]
 
 
 def run(overrides=None):
@@ -5086,6 +5116,11 @@ def selftest():
     seed("the Custom Price pick calls the UI surface test directly", EVENTS,
          "!UIPeekClickClaim() && !UIPointerOverSurface((int)lparam, (int)dparam)",
          "!UIPeekClickClaim() && !PnlPointInside((int)lparam, (int)dparam)")
+
+    # P-TICKWRAP: the deadline reader must ask its owner, not compare a clock.
+    seed("a tick window is compared against the clock absolutely", EVENTS,
+         "TickDeadlinePending(g_suppressDeleteEventsUntilMs)",
+         "(g_suppressDeleteEventsUntilMs != 0 && GetTickCount() <= g_suppressDeleteEventsUntilMs)")
 
     caught = 0
     for label, rel, old, new in seeds:

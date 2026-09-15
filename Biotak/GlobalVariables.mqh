@@ -344,6 +344,28 @@ static uint g_lastDragRedrawTime = 0;
 static bool g_suppressDeleteEvents = false;
 static uint g_suppressDeleteEventsUntilMs = 0;
 
+//+------------------------------------------------------------------+
+// P-TICKWRAP (2026-09-16) — THE ONE OWNER OF "IS THIS DEADLINE STILL AHEAD?".
+//
+// `GetTickCount()` wraps every ~49.7 days, and the two spellings of a deadline
+// test are NOT equivalent:
+//   * `GetTickCount() <= deadline`  - WRONG after a wrap. A deadline armed before
+//     the wrap is a huge number; once the counter restarts near 0 the test stays
+//     TRUE for the rest of the cycle (up to 49 days), so the window it was armed
+//     for never closes. The reader here gates the OBJECT_DELETE path: a chart left
+//     open that long would silently keep ignoring every delete.
+//   * `(int)(GetTickCount() - deadline) <= 0` - the SIGNED DIFFERENCE, correct
+//     across the wrap for any interval under 2^31 ms (24 days), which is what a
+//     tick-window here always is.
+// One owner, so the next window asks it instead of re-deriving the comparison.
+// Cost: one subtraction, one compare, and the sentinel test first.
+//+------------------------------------------------------------------+
+bool TickDeadlinePending(const uint deadlineMs)
+{
+   if(deadlineMs == 0) return false;                  // never armed
+   return (int)(GetTickCount() - deadlineMs) <= 0;    // wrap-safe
+}
+
 #ifndef BUILD_LITE
 // AB=CD drawing state now lives in TH3DrawingSession (TH3Controller.mqh)
 static string g_activeABCDPattern = "";

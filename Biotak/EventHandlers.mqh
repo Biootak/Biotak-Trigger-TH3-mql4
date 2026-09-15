@@ -2736,7 +2736,11 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // their badge/drag/delete events in every state.
     if(BaseKnotOnChartEvent(id, lparam, dparam, sparam)) return;
 
-    bool suppressDeleteEvent = g_suppressDeleteEvents || (g_suppressDeleteEventsUntilMs != 0 && GetTickCount() <= g_suppressDeleteEventsUntilMs);
+    // P-TICKWRAP: the window is asked through its owner, never compared against
+    // GetTickCount() directly — an absolute compare stays true forever after the
+    // 49.7-day counter wrap, and then EVERY delete would be ignored for the rest of
+    // the cycle (see TickDeadlinePending in GlobalVariables).
+    bool suppressDeleteEvent = g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs);
     if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
         string indicatorPrefix = inpObjectPrefix;
         int prefixLen = StringLen(indicatorPrefix);
