@@ -1799,27 +1799,19 @@ def check_bkcursor_off():
 
 
 def check_bkmagnet():
-    """[bkmagnet] - the ADJUST magnet lives on the RELEASE, and only there.
+    """[bkmagnet] - the ADJUST magnet is RETIRED (2026-09-15, BKMAGNET2-OFF).
 
-    «اینو می‌خوای از لبه جابجاش بکنی ... می‌خوام روی یک شدو بزارم، بارها باید
-    انجام بدم که روی همون چیز بزارم» - placing a committed box's edge on a wick
-    was pixel work: MT4's native drag lands the anchor where the cursor is, and one
-    pixel is many pips on a zoomed-out chart. The magnet that used to do this at
-    DRAW time was retired by USER DECISION (BKMAGNET-OFF 2026-09-06: corners jumped
-    onto candle shadows and a new box landed nowhere near the click). P-BK-21 moves
-    it to the gesture where the user HAS chosen the edge. This group keeps BOTH
-    halves true, because they are the two ways this feature can regress:
+    «مگنت نمیخواد باشه حذفش کن» - the adjust magnet P-BK-21 had put on the drag
+    release is gone by user decision. The box stays where the hand let it go,
+    exactly like MT4's own rectangle. Retired the BKMAGNET-OFF way (commented
+    in place, NOT merely uncalled): a dormant-but-compiling reader would still
+    count as a reader in `probe-budget-audit`'s discovered reader index, and a
+    re-added card row would then pass `live-control` while moving nothing -
+    P-UI-47's exact failure. So the engine is comments, the release call is a
+    comment, and the card rows are hidden again (addresses stay, P-UI-47).
 
-      * the DRAW path stays the identity (a revived draw-time magnet fails);
-      * the snap is ONE write on the release - never in the follow, which would be
-        a second writer beside the terminal's own drag (P-BK-15/BKCURSOR-OFF);
-      * it is SIDE-AWARE (top takes a High, bottom takes a Low) so it can never
-        cross the box's own opposite edge;
-      * it moves ONE anchor and only when it is the ONLY price that moved, so a
-        whole-box MOVE keeps the geometry the user just positioned;
-      * the gate is the SYMBOL's pip (gold, JPY, indices, crypto), never a point;
-      * the two card rows are declared again - the engine reads settings whose
-        controls P-UI-47 had hidden, and a setting with no control is the bug.
+    This group asserts the retirement in BOTH directions: a revived magnet
+    must FAIL, and so must a half-retirement that leaves a live reader behind.
     """
     problems = []
     src = read(BASEKNOT)
@@ -1828,49 +1820,30 @@ def check_bkmagnet():
         return ["BaseKnotSnapPrice() is gone - the draw-time magnet owner must stay"]
     if "return price;   // BKMAGNET-OFF" not in snap.split("//--- retired snap body", 1)[0]:
         problems.append("the DRAW-time magnet is live again: corners snap onto shadows mid-draw, "
-                        "exactly the behaviour BKMAGNET-OFF was a user decision to remove (P-BK-21)")
-    magnet = body(src, "double BaseKnotMagnetPrice(")
-    if magnet is None:
-        problems.append("BaseKnotMagnetPrice() is gone - the adjust magnet has no owner")
+                        "exactly the behaviour BKMAGNET-OFF was a user decision to remove")
+    if "BKMAGNET2-OFF" not in src or "// BaseKnotMagnetSettle(s_bkDragId);" not in src:
+        problems.append("the retired release call is gone, not commented - the next session cannot "
+                        "tell a retired magnet from a live one (BKMAGNET2-OFF)")
+    stripped = strip_comments(src)
+    if "BaseKnotMagnetSettle(s_bkDragId);" in stripped:
+        problems.append("the ADJUST magnet is back on the release: the box no longer stays where "
+                        "the hand let it go (BKMAGNET2-OFF)")
+    if "BaseKnotMagnetPrice(" in stripped or "void BaseKnotMagnetSettle(" in stripped:
+        problems.append("a LIVE magnet reader survived the retirement: a re-added card row would "
+                        "pass live-control while the release never snaps (BKMAGNET2-OFF/P-UI-47)")
+    if body(src, "void BaseKnotFollowDrag(") is None:
+        problems.append("BaseKnotFollowDrag() is gone - the live box follow has ONE owner")
     else:
-        if "!g_enableMagnet" not in magnet or "g_magnetSensitivityPips * pip" not in magnet:
-            problems.append("the adjust magnet is not gated on the persisted MAGNET / MAGNET SENS "
-                            "settings - the card's two controls would be inert decorations again (P-UI-47)")
-        if "BaseKnotPipSize()" not in magnet:
-            problems.append("the snap distance is not the SYMBOL's pip: gold, JPY, indices and crypto "
-                            "must all measure through the shared pip owner (P-BK-21)")
-        if "iHigh(_Symbol, 0, s)" not in magnet or "iLow(_Symbol, 0, s)" not in magnet:
-            problems.append("the magnet no longer searches the candle extremes (iHigh/iLow)")
-        if "if(topSide) cand = iHigh(_Symbol, 0, s);" not in magnet:
-            problems.append("the magnet is not SIDE-AWARE: a bottom edge could take a High and cross "
-                            "the box's own top edge")
-    settle = body(src, "void BaseKnotMagnetSettle(")
-    if settle is None:
-        problems.append("BaseKnotMagnetSettle() is gone - nothing applies the snap")
-    else:
-        if "if(moved1 == moved2) return;" not in settle:
-            problems.append("the whole-box guard is gone: a MOVE would snap one side and re-shape the "
-                            "box the user just positioned")
-        if settle.count("ObjectMove(") != 1:
-            problems.append("the settle writes the box %d times - an adjust gesture owes ONE write"
-                            % settle.count("ObjectMove("))
-        if "s_bkDragBP1" not in settle or "s_bkDragBP2" not in settle:
-            problems.append("the settle no longer compares against the press-time snapshot, so it "
-                            "cannot tell WHICH side the gesture moved")
-    fol = body(src, "void BaseKnotFollowDrag(")
-    if fol:
-        if "BaseKnotMagnetSettle" in fol or "BaseKnotMagnetPrice" in fol:
+        fol = body(src, "void BaseKnotFollowDrag(")
+        if "MagnetSettle" in fol or "MagnetPrice" in fol:
             problems.append("the magnet runs inside the follow: a second writer beside the terminal's "
                             "own drag (BKCURSOR-OFF/P-BK-15)")
-    rel = body(src, "bool BaseKnotOnChartEvent(")
-    if rel is None or "BaseKnotMagnetSettle(s_bkDragId);" not in rel:
-        problems.append("no release path calls the magnet - the feature is unreachable")
     panels = read(PANELS)
     for r in ('PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");',
               'PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "magnet");'):
-        if r not in panels:
-            problems.append("the card row %s is gone: the engine reads a setting whose control was "
-                            "hidden (P-UI-47's inversion)" % r.split(",")[2].strip())
+        if r in panels:
+            problems.append("the card row %s is rendered again while its engine is retired: "
+                            "a control that moves nothing (P-UI-47/BKMAGNET2-OFF)" % r.split(",")[2].strip())
     return problems
 
 
@@ -3099,35 +3072,31 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 76. P-BK-21: the adjust magnet - each half of the rule has its own mutant.
+    # 76. BKMAGNET2-OFF: the adjust magnet is retired - each half of the
+    # retirement has its own mutant (a revived magnet AND a half-retirement).
     with_source(BASEKNOT, "return price;   // BKMAGNET-OFF", "// seed: draw-time snap is back")
     cases.append(("a revived DRAW-time magnet (the retired behaviour) is caught",
                   bool(check_bkmagnet())))
     reset()
 
-    with_source(BASEKNOT, "BaseKnotMagnetSettle(s_bkDragId);", "/* seed: nobody snaps */")
-    cases.append(("an adjust magnet no release path calls is caught",
+    with_source(BASEKNOT, "// BaseKnotMagnetSettle(s_bkDragId);", "BaseKnotMagnetSettle(s_bkDragId);")
+    cases.append(("a revived ADJUST magnet on the release is caught",
                   bool(check_bkmagnet())))
     reset()
 
-    with_source(BASEKNOT, "if(moved1 == moved2) return;", "if(false) return;")
-    cases.append(("a magnet that re-shapes a whole-box move is caught",
+    with_source(BASEKNOT, "// void BaseKnotMagnetSettle(const string bid)", "void BaseKnotMagnetSettle(const string bid)")
+    cases.append(("a live magnet reader behind the retirement is caught",
                   bool(check_bkmagnet())))
     reset()
 
-    with_source(BASEKNOT, "if(topSide) cand = iHigh(_Symbol, 0, s);",
-                "if(true) cand = iHigh(_Symbol, 0, s);")
-    cases.append(("a side-blind magnet (a bottom edge taking a High) is caught",
+    with_source(PANELS, 'PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");',
+                'PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");\n      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");')
+    cases.append(("a magnet row rendered while its engine is retired is caught",
                   bool(check_bkmagnet())))
     reset()
 
-    with_source(BASEKNOT, "g_magnetSensitivityPips * pip", "g_magnetSensitivityPips * _Point")
-    cases.append(("a hard-coded point instead of the symbol pip is caught",
-                  bool(check_bkmagnet())))
-    reset()
-
-    with_source(PANELS, 'PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");', "")
-    cases.append(("a magnet control hidden while the engine still reads it is caught",
+    with_source(BASEKNOT, "                 // BaseKnotMagnetSettle(s_bkDragId);\n", "")
+    cases.append(("a retirement call deleted instead of commented is caught",
                   bool(check_bkmagnet())))
     reset()
 

@@ -761,7 +761,7 @@ string PnlHeaderSub(const int item)
    if(item==3)  return "FRACTAL · STANDARD · TARGETS";
    if(item==6)  return "HIGHER TIMEFRAME OVERLAY";
    if(item==7)  return "ONE STYLE FOR ALL LINES";
-   if(item==8)  return "PIN · WIDTH · COLOR · MAGNET";   // P-BK-21: rows 2/3 are live again
+   if(item==8)  return "PIN · WIDTH + COLOR";   // P-UI-47: MAGNET retired (BKMAGNET-OFF); BKMAGNET2-OFF keeps it retired
    if(item==9)  return "ENGINE · SECTION SWAPS WITH MODE";
    if(item==10) return "AUTO / MANUAL STEP ENGINE";
    if(item==11) return "L1 - L5 ZONE TOGGLES";
@@ -1635,23 +1635,10 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
       PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
       PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
-      // The MAGNET band P-UI-47 removed with its two rows comes back with them:
-      // a band's count pill is a promise about the rows UNDER it, so leaving
-      // "PIN 2" over four rows would be the same lie in reverse.
-      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "MAGNET", 2);
-      // P-BK-21 (2026-09-15): the two MAGNET controls are BACK, with a job that
-      // cannot repeat the 2026-09-06 complaint. Their old consumer was the
-      // DRAW-time snap, which pulled corners onto candle shadows and made a new
-      // box land nowhere near the click — that behaviour stays retired
-      // (`BaseKnotSnapPrice` is still the identity). The consumer now is the
-      // ADJUST gesture: releasing a dragged box edge/corner snaps THAT one side
-      // onto the nearest wick (High/Low, side-aware, `BK_MAGNET_BARS`), i.e. the
-      // exact case the user reported as «بارها بايد انجام بدم تا روي همون چيز
-      // بزارم». Appended AFTER rows 0/1 so no existing address moves (P-UI-72's
-      // ghost-row rule), and the whole chain — PnlApply/PnlCurrent/DefVal +
-      // OV_ MG/MP2 persistence — was never removed (P-UI-47 kept it).
-      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, "magnet");
-      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, "magnet");
+      // BKMAGNET2-OFF (2026-09-15, user decision): the MAGNET band and its two
+      // rows are hidden again — the engine is commented, so the rows have no
+      // reader by construction (P-UI-47's shape).
+      // Settings 2/3 stay persisted and inert.
    }
    else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
    {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
@@ -2992,8 +2979,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
       else if(row==1)  { kind=4; label="COLOR"; }
-      // P-BK-21: ADJUST-time magnet — see the spec note above; the settings were
-      // never removed, only their display was (P-UI-47).
+      // BKMAGNET2-OFF (2026-09-15): rows kept for the address space only —
+      // no display row renders them (P-UI-47's convention); the engine that
+      // read them is commented in `BaseKnotTool.mqh`.
       else if(row==2)  { kind=1; label="MAGNET"; }
       else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
    }
@@ -3198,9 +3186,7 @@ string PnlSubtitleText(const int item)
    if(item==5)  return "TH3 pattern drawing tool";
    if(item==6)  return "Higher timeframe candle overlay";
    if(item==7)  return "One style for ALL lines";
-   // P-BK-21: the magnet is live again, so the subtitle names all four rows the
-   // card now offers (it said "width & color" while rows 2/3 were hidden).
-   if(item==8)  return "Pin, width, color & the adjust magnet";
+   if(item==8)  return "Custom price pin (width & color)";   // P-UI-47: magnet retired; BKMAGNET2-OFF keeps it retired
    if(item==9)  return "Step calculation engine";
    if(item==11) return "L1-L5 structural zone toggles";
    if(item==12) return "Style · Text · Setup (TV-like)";
@@ -8790,13 +8776,9 @@ void BkHoldPoll()
 // clears the latch — the press already fired, or it was a tap/drag.
 void BkHoldOnBoxUp()
 {
-   // P-BK-26: the press that opened (or that ends with) the strip ALSO selected
-   // the box in the terminal, and a SELECTED handle is moved by MT4 on every
-   // LATER drag anywhere on the chart (P-UI-45's law). The strip is not a "select
-   // me for Delete" gesture, so the selection goes back here, on a release where
-   // the write cannot cancel a live drag (P-BK-15). A plain TAP — no strip —
-   // keeps it: the box's own tooltip promises "select + Delete key removes all".
-   if(g_PnlOpen == 13 && g_BkMiniBox != "") BaseKnotDropSelection(g_BkMiniBox);
+   // BKSELECT-KEPT (2026-09-15): the strip no longer deselects the box — the
+   // selection stays like MT4's own rectangle, so styling then resizing needs
+   // no re-click (retired with the release drop in `BaseKnotOnChartEvent`).
    BkHoldClear();
 }
 

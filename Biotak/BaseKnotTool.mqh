@@ -378,6 +378,9 @@ string BaseKnotGV(const string id)
 //| while the box really is selected (a gesture that never selected it   |
 //| pays one bool read), and never called while the button is down       |
 //| (P-BK-15: writing into a live native drag cancels it).               |
+//| BKSELECT-KEPT (2026-09-15): currently no callers — both drops are    |
+//| retired so the box stays selected like MT4's own; kept for a         |
+//| one-line restore.                                                    |
 //+------------------------------------------------------------------+
 void BaseKnotDropSelection(const string id)
 {
@@ -1728,67 +1731,77 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
 //| These are the retirement's own knobs, so the two settings that the   |
 //| card had left inert (MAGNET / MAGNET SENS) are live again.           |
 //+------------------------------------------------------------------+
-#define BK_MAGNET_BARS 1   // candidate window around the anchor's bar (taste)
+//+------------------------------------------------------------------+
+//| BKMAGNET2-OFF (2026-09-15, user decision — «مگنت نمیخواد باشه حذفش |
+//| کن»): the ADJUST magnet is RETIRED — both functions below are        |
+//| commented in place (the BKMAGNET-OFF pattern), so the release does   |
+//| not snap and the box stays where the hand let it go, exactly like    |
+//| MT4's own rectangle. `g_enableMagnet` / `g_magnetSensitivityPips`     |
+//| have no reader again, so the card hides their rows (P-UI-47's shape).|
+//| To restore: uncomment the two functions + the release call and       |
+//| re-add the two card rows, then re-teach `[bkmagnet]`.                |
+//+------------------------------------------------------------------+
+// #define BK_MAGNET_BARS 1   // candidate window around the anchor's bar (taste)
 
 // Nearest candle extreme to `price`, restricted to the side being moved.
 // `topSide` = the anchor is the box's upper corner, so only Highs qualify.
-double BaseKnotMagnetPrice(const datetime t, const double price, const bool topSide)
-{
-   if(!g_enableMagnet) return price;
-   if(t <= 0 || price <= 0) return price;
-   double pip = BaseKnotPipSize();
-   double gate = (double)g_magnetSensitivityPips * pip;
-   if(gate <= 0) gate = pip;   // sensitivity 0 = exact touch only (retired rule)
-   int sh = iBarShift(_Symbol, 0, t, false);
-   if(sh < 0) return price;
-   double best = price, bestD = gate;
-   for(int k = -BK_MAGNET_BARS; k <= BK_MAGNET_BARS; k++)
-   {
-      int s = sh + k;
-      if(s < 0) continue;
-      double cand = 0.0;
-      if(topSide) cand = iHigh(_Symbol, 0, s);
-      else        cand = iLow(_Symbol, 0, s);
-      if(cand <= 0) continue;
-      double d = MathAbs(price - cand);
-      if(d <= bestD) { bestD = d; best = cand; }   // <= : a tie takes the LATER bar
-   }
-   return best;
-}
+// double BaseKnotMagnetPrice(const datetime t, const double price, const bool topSide)
+// {
+//    if(!g_enableMagnet) return price;
+//    if(t <= 0 || price <= 0) return price;
+//    double pip = BaseKnotPipSize();
+//    double gate = (double)g_magnetSensitivityPips * pip;
+//    if(gate <= 0) gate = pip;   // sensitivity 0 = exact touch only (retired rule)
+//    int sh = iBarShift(_Symbol, 0, t, false);
+//    if(sh < 0) return price;
+//    double best = price, bestD = gate;
+//    for(int k = -BK_MAGNET_BARS; k <= BK_MAGNET_BARS; k++)
+//    {
+//       int s = sh + k;
+//       if(s < 0) continue;
+//       double cand = 0.0;
+//       if(topSide) cand = iHigh(_Symbol, 0, s);
+//       else        cand = iLow(_Symbol, 0, s);
+//       if(cand <= 0) continue;
+//       double d = MathAbs(price - cand);
+//       if(d <= bestD) { bestD = d; best = cand; }   // <= : a tie takes the LATER bar
+//    }
+//    return best;
+// }
 
 // ONE write per adjusted gesture, issued on the release, before the Sync that
 // repaints the children. Compares the box's live anchors against the press-time
 // snapshot the native-drag latch already took (s_bkDragBP1/BP2).
-void BaseKnotMagnetSettle(const string bid)
-{
-   if(!g_enableMagnet || bid == "") return;
-   // P-BK-25: the magnet's whole decision is "did ONE side move?" — a comparison
-   // against a snapshot of the press. A gesture we ADOPTED mid-drag has no such
-   // snapshot (its baseline was taken after the terminal had already moved the
-   // box), so the honest answer is to snap NOTHING: leave the box exactly where
-   // the hand let it go. A role that cannot be measured must not invent.
-   if(!s_bkSnapTrusted) return;
-   if(BaseKnotFind(bid) < 0) return;
-   string box = BaseKnotBoxName(BaseKnotPrefix(bid));
-   if(ObjectFind(0, box) < 0) return;
-   double pt = GetCachedPoint();
-   if(pt <= 0) pt = _Point;
-   double p1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
-   double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
-   bool moved1 = (MathAbs(p1 - s_bkDragBP1) > pt * 0.5);
-   bool moved2 = (MathAbs(p2 - s_bkDragBP2) > pt * 0.5);
-   if(moved1 == moved2) return;   // a whole-box move (or a tap) — never re-shape it
-   int idx = (moved1 ? 0 : 1);
-   datetime ta = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, idx);
-   double pa = (idx == 0 ? p1 : p2);
-   double other = (idx == 0 ? p2 : p1);
-   double snap = BaseKnotMagnetPrice(ta, pa, (pa > other));
-   if(MathAbs(snap - pa) <= pt * 0.5) return;   // already on the wick — zero writes
-   if(!ObjectMove(0, box, idx, ta, snap)) return;
-   Print("[BK] magnet box=", bid, " side=", (idx == 0 ? 1 : 2), " ",
-         DoubleToString(pa, _Digits), " -> ", DoubleToString(snap, _Digits),
-         " (", DoubleToString(BaseKnotToPips(MathAbs(snap - pa)), 1), " pips)");
-}
+// void BaseKnotMagnetSettle(const string bid)
+// {
+//    if(!g_enableMagnet || bid == "") return;
+//    // P-BK-25: the magnet's whole decision is "did ONE side move?" — a comparison
+//    // against a snapshot of the press. A gesture we ADOPTED mid-drag has no such
+//    // snapshot (its baseline was taken after the terminal had already moved the
+//    // box), so the honest answer is to snap NOTHING: leave the box exactly where
+//    // the hand let it go. A role that cannot be measured must not invent.
+//    if(!s_bkSnapTrusted) return;
+//    if(BaseKnotFind(bid) < 0) return;
+//    string box = BaseKnotBoxName(BaseKnotPrefix(bid));
+//    if(ObjectFind(0, box) < 0) return;
+//    double pt = GetCachedPoint();
+//    if(pt <= 0) pt = _Point;
+//    double p1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
+//    double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
+//    bool moved1 = (MathAbs(p1 - s_bkDragBP1) > pt * 0.5);
+//    bool moved2 = (MathAbs(p2 - s_bkDragBP2) > pt * 0.5);
+//    if(moved1 == moved2) return;   // a whole-box move (or a tap) — never re-shape it
+//    int idx = (moved1 ? 0 : 1);
+//    datetime ta = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, idx);
+//    double pa = (idx == 0 ? p1 : p2);
+//    double other = (idx == 0 ? p2 : p1);
+//    double snap = BaseKnotMagnetPrice(ta, pa, (pa > other));
+//    if(MathAbs(snap - pa) <= pt * 0.5) return;   // already on the wick — zero writes
+//    if(!ObjectMove(0, box, idx, ta, snap)) return;
+//    Print("[BK] magnet box=", bid, " side=", (idx == 0 ? 1 : 2), " ",
+//          DoubleToString(pa, _Digits), " -> ", DoubleToString(snap, _Digits),
+//          " (", DoubleToString(BaseKnotToPips(MathAbs(snap - pa)), 1), " pips)");
+// }
 
 // Press (MOUSE_MOVE rising edge, or a CLICK when no press edge was seen —
 // some builds/mice emit no clean rising edge): ARMED → corner 1. Never
@@ -2053,29 +2066,24 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
              }
              if(BaseKnotFind(s_bkDragId) >= 0)
              {
-                // P-BK-21: the ADJUST magnet — the release is the moment the
-                // user means "exactly there". It runs BEFORE the Sync so the
-                // children (edges, badges, Entry/SL/TP) are placed from the
-                // snapped anchors: ONE write, one repaint, no second writer
-                // beside the terminal's own drag (P-BK-15/BKCURSOR-OFF).
-                BaseKnotMagnetSettle(s_bkDragId);
-                BaseKnotRefreshDirection(s_bkDragId, relRef);
+                 // BKMAGNET2-OFF (2026-09-15, user decision): the ADJUST magnet
+                 // is retired — the release does not snap (the engine above is
+                 // commented). The box stays where the hand let it go.
+                 // BaseKnotMagnetSettle(s_bkDragId);
+                 BaseKnotRefreshDirection(s_bkDragId, relRef);
                 BaseKnotSync(s_bkDragId);
                 painted = true;
              }
             if(painted) ChartRedraw();
           }
-          // P-BK-26: A DRAG IS NOT A SELECT. MT4 keeps the grabbed object SELECTED
-          // after a native drag, and a SELECTED object is moved by MT4 on EVERY
-          // later drag anywhere on the chart — the box then follows the hand
-          // through gestures that were never meant to touch it (the «چسبناک»
-          // report), and since P-BK-23 that stale selection also paints MT4's own
-          // square handles on a foreground handle. The gesture that MOVED the box
-          // drops the selection HERE, on the release (writing earlier would cancel
-          // the terminal's drag, P-BK-15); a TAP keeps it, because the box's
-          // tooltip promises "select + Delete key removes all" and that promise
-          // needs the selection to survive a click.
-          if(s_bkDragMoved) BaseKnotDropSelection(s_bkDragId);
+           // BKSELECT-KEPT (2026-09-15, user decision — «مثل خود متاتریدر»):
+           // the box STAYS selected after a drag, like MT4's own rectangle, so
+           // a second resize needs no re-click (P-BK-26's drop forced a
+           // select-then-drag double step for every edge). The hijack P-BK-26
+           // feared is gone with the retired cursor fallback (BKCURSOR-OFF):
+           // nothing of ours writes the box except this gesture's own follow,
+           // and the terminal single-selects on press like for its own objects.
+           // Deselect as always via empty-chart click / Esc / another object.
           s_bkDragId = ""; s_bkDragMoved = false;
           BaseKnotDragLockOff();   // gesture over — hand the view back (self-guarded)
        }

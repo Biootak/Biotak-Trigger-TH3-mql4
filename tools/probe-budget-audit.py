@@ -2346,11 +2346,12 @@ def check_live_control(o):
         the pipeline's own legacy cleanup, so the switch wrote `g_showMidpointLine`
         and changed nothing;
       * Custom Price / MAGNET + MAGNET SENS - snapping was retired by user
-        decision (BKMAGNET-OFF), the flags had no reader at all. Both rows left
-        this family in P-BK-21: the magnet is LIVE again, on the ADJUST gesture
-        (its reader is `BaseKnotMagnetPrice`), so the check now guards them from
-        the other side - delete that reader and the two rows are rendered
-        controls that move nothing again (see the seeds below);
+        decision twice (BKMAGNET-OFF 2026-09-06 for the DRAW-time snap,
+        BKMAGNET2-OFF 2026-09-15 for the ADJUST-time snap P-BK-21 had added):
+        the engine is comments, so the flags have no reader at all. Both rows
+        left this family the day the engine was commented - and the specimen
+        below (re-render the retired row) is the fault again, exactly as in
+        P-UI-47 (see the seeds below);
       * ATR Labels / ROW GAP - the label layout reads the INPUT `inpLabelRowGap`,
         not the runtime copy this slider wrote.
     And card 3's source rows (1/2) re-derived the mode from the very mirrors they
@@ -4501,19 +4502,20 @@ def selftest():
          "")
 
     # 18. a rendered control that moves nothing anybody reads (P-UI-46/47)
-    # P-BK-21 (2026-09-15): the two MAGNET rows LEFT this family — the adjust
-    # magnet reads both flags (`BaseKnotMagnetPrice`), so the old specimen here
-    # (re-render the retired magnet row) is no longer a fault, and the class
-    # keeps its own corpse one line down (the MIDPOINT row). These two replace
-    # it and pin the pair from the READER's side: the specimen is a rendered row
-    # whose write nobody reads, once by rewriting the row and once by deleting
-    # the only reader the setting has.
-    seed("the magnet switch writes a flag nobody reads", PANELS,
-         "         else if(row==2)  { g_enableMagnet=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }",
-         "         else if(row==2)  { g_showMidpointLine=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }")
-    seed("the magnet sensitivity loses its reader", BASEKNOT,
-         "   double gate = (double)g_magnetSensitivityPips * pip;\n",
-         "   double gate = pip;\n")
+    # BKMAGNET2-OFF (2026-09-15): the ADJUST magnet P-BK-21 had added is
+    # commented out again, so the two MAGNET rows are retired rows again and
+    # the P-UI-47 specimen (re-render the retired row) is the fault again.
+    # The engine MUST stay comments, not merely uncalled: the reader index is
+    # textual, so a dormant-but-compiling `BaseKnotMagnetPrice` would count as
+    # a reader and the re-added row would pass while moving nothing.
+    seed("a retired magnet row is rendered again", PANELS,
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, \"magnet\");\n")
+    seed("a retired magnet-sens row is rendered again", PANELS,
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
+         "      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, \"magnet\");\n")
     # P-LBL-09 (2026-09-14): the ATR card's ROW GAP row is no longer the dead one
     # - `g_atrLabelRowGap` became LIVE, because the bottom-right trade card's
     # layout now reads it. The seed moves to the still-dead MIDPOINT row of card
