@@ -6236,24 +6236,25 @@ void ChartScrollReconcile()
 {
    if(ChartLockIntended())
    {
-      // Locked state expected: ensure the properties actually match.
-      if((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL))
-         ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
-      if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
-         ChartSetInteger(0, CHART_CONTEXT_MENU, false);
+      // P-UI-90: the props are no longer written here - they have ONE owner
+      // (`ChartViewLockAssert`), read-guarded, which is what this branch used to
+      // open-code for the scroll prop while the two panel globals restored a
+      // value that could have been captured under somebody else's lock.
+      ChartViewLockAssert();
       // Orphaned surplus locks (e.g., leaked press-lock + modal panel):
       // clamp count down to the intended number without touching props —
       // the chart stays locked exactly once and restores cleanly later.
       if(g_ChartLockCount > 1) g_ChartLockCount = 1;
+      ChartViewLockClampToOne();
    }
-   else if(g_ChartLockCount > 0)
+   else if(g_ChartLockCount > 0 || ChartViewLockHeld())
    {
-      // No owner and no modal panel: any remaining lock count is a LEAK.
-      // Hard-reset to restored state (bypasses paired decrement). Whatever
-      // these props were BEFORE our first lock is what the user had.
+      // No owner and no modal panel: any remaining claim is a LEAK.
+      // Hard-reset (bypasses the paired decrement) and hand the chart back to
+      // the USER's captured pair - the one value that is guaranteed not to be
+      // our own `false` (see the P-UI-90 block in GlobalVariables).
       g_ChartLockCount = 0;
-      ChartSetInteger(0, CHART_MOUSE_SCROLL, g_ScrollWasEnabled);
-      ChartSetInteger(0, CHART_CONTEXT_MENU, g_ContextMenuWasEnabled);
+      ChartViewLockForceRelease();
    }
 
 }

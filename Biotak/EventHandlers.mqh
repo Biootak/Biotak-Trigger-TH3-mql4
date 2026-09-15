@@ -281,6 +281,10 @@ int OnInitHandler() {
 #endif
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);
+    // P-UI-90: resolve "what is the user's view pair on THIS chart?" before any
+    // owner can take the lock, and heal a chart an older build left locked (see
+    // the block note in GlobalVariables.mqh). Two chart reads + three GVar reads.
+    ChartViewLockInit();
     // P-PERF-02: a fresh instance knows nothing about the visibility masks the
     // previous one left on the chart (and re-attach / TF switch reuses the same
     // chart objects), so every guarded mask write must land once. The
@@ -704,23 +708,39 @@ void ClearCustomPriceSelection()
 // Chart* calls so the Lite build compiles without the UI module. This is the same
 // lock, same shape, for the line, in the same domain layer.
 //
+// P-UI-90 (2026-09-15) superseded the fourth bullet's "remembers what the user
+// had" and the sentence that closed this block: the capture moved to ONE owner,
+// because four private copies of it (this one, BaseKnot's, the panels' and the
+// watchdog's) read the props while somebody ELSE held the lock and recorded our
+// own `false` as the user's - so the last release wrote `false` back and the
+// chart stayed scroll-locked until re-attach, and after Remove too. The lock's
+// SHAPE is unchanged: the grab takes it, every throttled step re-asserts it, the
+// button-up hands it back, the watchdog heals a release that never arrived, and
+// OnDeinit releases it for EVERY reason. Only the bookkeeping moved.
+//
 // Four owners keep it honest:
-//   * the GRAB takes it (once per gesture, and it remembers what the user had);
+//   * the GRAB takes it (once per gesture; `ChartViewLockAcquire` remembers what
+//     the user had, and only at the moment NO owner holds the lock);
 //   * every throttled drag step RE-ASSERTS it - read-guarded, a write only on
 //     drift, because third writers (a panel closing, a watchdog restore, a
 //     template reset) can flip the props back while the button is still down;
-//   * the BUTTON-UP releases it (restoring what the user had, never a blind true);
+//   * the BUTTON-UP releases it (`ChartViewLockRelease` restores the user's pair,
+//     and only on the LAST release - never a blind true);
 //   * a watchdog heals a release that never arrived (off-window release, lost
 //     focus): the P-BK-03 trap - no mouse move, so no release event either.
 // CHART_AUTOSCROLL is held down too while we own the view: a tick sliding the
 // scale mid-drag moves the line with it (BaseKnot makes the same call).
-// OnDeinit releases it for EVERY reason, so a stale lock can never outlive the
-// instance, and `g_cpTouched` records that this instance ever changed the props.
+// OnDeinit releases it for EVERY reason (`ChartViewLockForceRelease` is the net),
+// so a stale lock can never outlive the instance.
 //==============================================================================
 static bool s_cpChartLocked = false;
-static bool g_cpTouched     = false;   // OnDeinit must restore, whatever happens
-static bool s_cpScrollWas   = true;
-static bool s_cpCtxWas      = true;
+// P-UI-90: this owner no longer SAVES the scroll / context-menu pair. Its own
+// capture could be taken while the Base/Knot tool (or the panels) already held
+// the lock, so it recorded OUR `false` as "what the user had" and wrote it back
+// on release - one of the four writers behind the chart that stayed scroll-locked
+// for the life of the terminal. `ChartViewLock*` (GlobalVariables) is the single
+// owner of that capture/restore now; AUTOSCROLL stays here because nothing else
+// ratchets it (both writers only restore what they saw).
 static bool s_cpAutoWas     = true;
 static uint s_cpLockActMs   = 0;       // last activity of the owning gesture
 
@@ -730,15 +750,15 @@ void CustomPriceDragLockOn()
 {
     if(!s_cpChartLocked)
     {
-        s_cpScrollWas = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
-        s_cpCtxWas    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
         s_cpAutoWas   = (ChartGetInteger(0, CHART_AUTOSCROLL) != 0);
         s_cpChartLocked = true;
+        ChartViewLockAcquire();   // P-UI-90: scroll + context menu have ONE owner
     }
-    ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
-    if(s_cpAutoWas) ChartSetInteger(0, CHART_AUTOSCROLL, false);
-    ChartSetInteger(0, CHART_CONTEXT_MENU, false);   // the menu must not steal the gesture
-    g_cpTouched = true;
+    else ChartViewLockAssert();
+    if(s_cpAutoWas && (ChartGetInteger(0, CHART_AUTOSCROLL) != 0))
+        ChartSetInteger(0, CHART_AUTOSCROLL, false);
+    if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
+        ChartSetInteger(0, CHART_CONTEXT_MENU, false);   // the menu must not steal the gesture
     s_cpLockActMs = GetTickCount();
 }
 
@@ -746,19 +766,17 @@ void CustomPriceDragReassertLock()
 {
     if(!s_cpChartLocked) return;
     s_cpLockActMs = GetTickCount();
-    if(ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0)
-    { ChartSetInteger(0, CHART_MOUSE_SCROLL, false); g_cpTouched = true; }
+    ChartViewLockAssert();   // P-UI-90: read-guarded, one owner for scroll + ctx
     if(s_cpAutoWas && ChartGetInteger(0, CHART_AUTOSCROLL) != 0)
-    { ChartSetInteger(0, CHART_AUTOSCROLL, false); g_cpTouched = true; }
+    { ChartSetInteger(0, CHART_AUTOSCROLL, false); }
     if(ChartGetInteger(0, CHART_CONTEXT_MENU) != 0)
-    { ChartSetInteger(0, CHART_CONTEXT_MENU, false); g_cpTouched = true; }
+    { ChartSetInteger(0, CHART_CONTEXT_MENU, false); }
 }
 
 void CustomPriceDragLockOff()
 {
     if(!s_cpChartLocked) return;
-    ChartSetInteger(0, CHART_MOUSE_SCROLL, s_cpScrollWas);
-    ChartSetInteger(0, CHART_CONTEXT_MENU, s_cpCtxWas);
+    ChartViewLockRelease();   // P-UI-90: hands the view back only when NO owner is left
     if(s_cpAutoWas) ChartSetInteger(0, CHART_AUTOSCROLL, true);
     s_cpChartLocked = false;
 }
@@ -973,7 +991,12 @@ void OnDeinitHandler(const int reason) {
     BumpTfEpoch();
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
     CustomPriceDragLockOff();   // P-UI-53: same rule for the custom-price drag lock
-    g_cpTouched = false;
+    // P-UI-90: THE NET, for EVERY deinit reason. Whatever the counters of the
+    // owners above believe (a release that never arrived, a panel unlock that
+    // was clamped away, a leaked orb claim), the chart gets the USER's captured
+    // view pair back - which is why removing the indicator can no longer leave a
+    // scroll-locked chart behind. A no-op costs two reads.
+    ChartViewLockForceRelease();
     // Save TF-switch timestamp for deferred init debounce
     if(reason == REASON_CHARTCHANGE || reason == REASON_PARAMETERS) {
         string tfSwitchStampGvar = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();

@@ -536,12 +536,201 @@ void RequestUISync() { g_uiSyncRequested = true; }
 bool UISyncRequested() { return g_uiSyncRequested; }
 void UISyncConsume() { g_uiSyncRequested = false; }
 
+//+------------------------------------------------------------------+
+//| P-UI-90 — THE CHART'S VIEW HAS ONE OWNER (scroll + context menu)  |
+//+------------------------------------------------------------------+
+// Reported (recurring, and it OUTLIVES the indicator): «وقتی اندیکاتور رو
+// روی چارت می‌ندازم اسکرول چارت قفل میشه … و وقتی حذفش می‌کنم هم همچنان
+// قفل می‌مونه». Four independent writers owned the same two chart
+// properties - the ring/panels (`CircLockChart`), the Base/Knot tool
+// (`BaseKnotLockChart`), the custom-price line drag (`CustomPriceDragLockOn`)
+// and the watchdog (`ChartScrollReconcile`, `CustomPriceDragHealStale`) - and
+// each one SAVED "what the user had" and wrote it back ITSELF:
+//
+//   * the saved pair was READ while another owner already held the lock, so
+//     OUR OWN `false` was recorded as the user's preference;
+//   * whoever released LAST then restored that recorded `false`.
+//
+// That is a one-way ratchet. Once one owner's release wrote the poisoned
+// value, every later capture read `false` again - so the chart stayed locked
+// for the life of the terminal, INCLUDING after Remove, because
+// `CHART_MOUSE_SCROLL` belongs to the CHART and survives the indicator. No
+// watchdog could help: they all restored the same poisoned value.
+//
+// So there is ONE owner now. The rules ARE the fix:
+//   * CAPTURE only on the 0 -> 1 step of ONE shared refcount. At that instant
+//     no other owner is holding the lock, so the live props are the user's -
+//     the only moment that is true;
+//   * RESTORE only on the 1 -> 0 step (or a force-release), always from the
+//     one captured pair;
+//   * the pair is persisted per chart, so a re-attach / timeframe switch
+//     adopts the user's preference instead of guessing at it;
+//   * `ChartViewLockForceRelease()` is the net every teardown (every reason)
+//     and every watchdog calls, so no leaked counter can outlive a gesture;
+//   * the props are restored only ON DRIFT, so steady state costs two reads
+//     and not one terminal write.
+//
+// THE ONE-TIME HEAL: a chart locked by an older build (or a template saved
+// mid-gesture) reads BOTH properties false with no owner live. That pair is
+// the exact signature our own lock writes - a user's own preference is never
+// the pair, because no consumer ever leaves exactly one of the two alone
+// under a lock - so `ChartViewLockInit()` hands such a chart back and says so
+// once. Deliberately narrow: a chart whose user turned ONE of the two off
+// does not match and is left exactly as it is.
+//+------------------------------------------------------------------+
+static int  s_viewLockCount     = 0;      // live owners (ring/panels + tool + line)
+static bool s_viewScrollUser    = true;   // the USER's pair - captured at 0 -> 1 ONLY
+static bool s_viewCtxUser       = true;
+static bool s_viewPersistKnown  = false;  // the pair is mirrored in the GVars below
+static bool s_viewPersistScroll = true;   // last pair PERSISTED (change guard)
+static bool s_viewPersistCtx    = true;
+static bool s_viewInitDone      = false;
+
+bool ChartViewLockHeld()  { return (s_viewLockCount > 0); }
+int  ChartViewLockCount() { return s_viewLockCount; }
+
+// ONE accessor per family: the literal keeps a single owner, and the
+// REASON_REMOVE purge reaches it by NAME (see CleanupAllGlobalVariables and the
+// teardown census that enforces it).
+string ChartViewScrollGV() { return "Biotak_ViewScroll_" + GetCachedChartIdStr(); }
+string ChartViewCtxGV()    { return "Biotak_ViewCtx_"    + GetCachedChartIdStr(); }
+string ChartViewKnownGV()  { return "Biotak_ViewKnown_"  + GetCachedChartIdStr(); }
+
+// Persist the user's pair - change-guarded, so a gesture that starts on the
+// same pair as the last one costs nothing.
+void ChartViewPersistUser()
+{
+    if(s_viewPersistKnown && s_viewScrollUser == s_viewPersistScroll &&
+       s_viewCtxUser == s_viewPersistCtx) return;
+    GlobalVariableSet(ChartViewScrollGV(), s_viewScrollUser ? 1.0 : 0.0);
+    GlobalVariableSet(ChartViewCtxGV(),    s_viewCtxUser    ? 1.0 : 0.0);
+    GlobalVariableSet(ChartViewKnownGV(),  1.0);
+    s_viewPersistScroll = s_viewScrollUser;
+    s_viewPersistCtx    = s_viewCtxUser;
+    s_viewPersistKnown  = true;
+}
+
+// The lock's own state: both props off. Read-guarded on every write.
+void ChartViewForceLocked()
+{
+    if((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL))
+        ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+    if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
+        ChartSetInteger(0, CHART_CONTEXT_MENU, false);
+}
+
+// Hand the view back to the captured pair - and ONLY the props that actually
+// drifted, so a user who disables scroll between gestures is never overridden
+// and a restore costs zero terminal writes in steady state.
+void ChartViewRestoreUser()
+{
+    if(((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL)) != s_viewScrollUser)
+        ChartSetInteger(0, CHART_MOUSE_SCROLL, s_viewScrollUser);
+    if(((bool)ChartGetInteger(0, CHART_CONTEXT_MENU)) != s_viewCtxUser)
+        ChartSetInteger(0, CHART_CONTEXT_MENU, s_viewCtxUser);
+}
+
+// THE taker. Every caller pairs it with exactly one Release.
+void ChartViewLockAcquire()
+{
+    if(s_viewLockCount == 0)
+    {
+        s_viewScrollUser = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);   // 0 -> 1: the user's
+        s_viewCtxUser    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
+        ChartViewPersistUser();
+    }
+    s_viewLockCount++;
+    ChartViewForceLocked();
+}
+
+// THE giver-backer. Restores on the LAST release, never before.
+void ChartViewLockRelease()
+{
+    if(s_viewLockCount <= 0) return;   // a release without a claim is a no-op, never an underflow
+    s_viewLockCount--;
+    if(s_viewLockCount == 0) ChartViewRestoreUser();
+}
+
+// Re-force an OWNED lock - every throttled step of every gesture. A third
+// writer (a template reset, a leaked native drag) can flip the props back while
+// the button is down; read-guarded, so steady state is two reads.
+void ChartViewLockAssert()
+{
+    if(s_viewLockCount <= 0) return;
+    ChartViewForceLocked();
+}
+
+// The watchdog's "one lock is enough" - clamp a surplus without touching props.
+void ChartViewLockClampToOne()
+{
+    if(s_viewLockCount > 1) s_viewLockCount = 1;
+}
+
+// THE NET: every teardown (all reasons) and every watchdog calls this, so
+// whatever the counters believe, the chart gets the USER's view back.
+void ChartViewLockForceRelease()
+{
+    s_viewLockCount = 0;
+    ChartViewRestoreUser();
+}
+
+// Once per instance, BEFORE any owner can take the lock.
+void ChartViewLockInit()
+{
+    if(s_viewInitDone) return;
+    s_viewInitDone = true;
+
+    bool liveScroll = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
+    bool liveCtx    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
+
+    if(GlobalVariableCheck(ChartViewKnownGV()))
+    {
+        s_viewScrollUser = (GlobalVariableGet(ChartViewScrollGV()) != 0.0);
+        s_viewCtxUser    = (GlobalVariableGet(ChartViewCtxGV())    != 0.0);
+        // The GVars already hold this exact pair: nothing to write below.
+        s_viewPersistKnown = true;
+    }
+    else if(!liveScroll && !liveCtx)
+    {
+        // No memory of this chart AND the lock signature: an older build (or a
+        // template saved mid-gesture) left it locked. MT4 ships both ON and no
+        // consumer leaves exactly one of the pair off under a lock, so ON/ON is
+        // what preceded it.
+        s_viewScrollUser = true;
+        s_viewCtxUser    = true;
+        // This chart has no memory yet, so the memory MUST be created here -
+        // otherwise every later attach re-learns the pair from whatever the
+        // props happen to read and the heal could never tell "the user turned
+        // both off" from "an older build left them off".
+        s_viewPersistKnown = false;
+    }
+    else
+    {
+        // A fresh chart, seen for the first time: the live props ARE the user's.
+        s_viewScrollUser   = liveScroll;
+        s_viewCtxUser      = liveCtx;
+        s_viewPersistKnown = false;   // create the memory (see the branch above)
+    }
+
+    s_viewPersistScroll = s_viewScrollUser;
+    s_viewPersistCtx    = s_viewCtxUser;
+    ChartViewPersistUser();   // no-op when the GVars already hold this pair
+
+    // The one-time heal - narrow by construction (see the block note above).
+    if(!liveScroll && !liveCtx && (s_viewScrollUser || s_viewCtxUser))
+    {
+        ChartViewRestoreUser();
+        _LOG_GATE_W Print("[W][UI] P-UI-90: healed a chart-view lock (scroll + context menu "
+                          "were BOTH off with no gesture live) - the chart is the user's again");
+    }
+}
+
 void CleanupAllGlobalVariables() {
     string chartIdStr = GetCachedChartIdStr();
     string rawSymbolName = GetCachedSymbol();
     string sanitizedSymbolName = SanitizeSymbolName(rawSymbolName);
     string gvars[];
-    ArrayResize(gvars, 26);
+    ArrayResize(gvars, 29);
     gvars[24] = "Biotak_CustomPrice_" + chartIdStr;             // P-UI-56: the live (chart-scoped) pair
     gvars[25] = "Biotak_CustomPriceOverride_" + chartIdStr;     //   must not outlive the indicator
     gvars[0]  = "Biotak_isHidden_" + chartIdStr;
@@ -568,6 +757,13 @@ void CleanupAllGlobalVariables() {
     gvars[21] = "Biotak_ViewAnchorT_" + chartIdStr;
     gvars[22] = "Biotak_ViewAnchorMin_" + chartIdStr;
     gvars[23] = "Biotak_ViewAnchorMax_" + chartIdStr;
+    // P-UI-90: the view-ownership pair + its stamp go with the chart they
+    // describe - a REMOVE empties the chart, so nothing here has a reason to
+    // outlive it (and the next attach re-learns the user's pair from the props
+    // themselves).
+    gvars[26] = "Biotak_ViewScroll_" + chartIdStr;
+    gvars[27] = "Biotak_ViewCtx_" + chartIdStr;
+    gvars[28] = "Biotak_ViewKnown_" + chartIdStr;
     for(int i = 0; i < ArraySize(gvars); i++) {
         if(GlobalVariableCheck(gvars[i])) GlobalVariableDel(gvars[i]);
     }

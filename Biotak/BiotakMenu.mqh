@@ -269,29 +269,27 @@ static bool g_LongPressFired  = false;  // true after panel opened (prevents tog
 #define CIRC_DRAG_REDRAW_INTERVAL 30
 
 //--- chart lock while dragging or while a settings panel is open
+//
+// P-UI-90: `g_ChartLockCount` counts only MINE (the ring's/panels' own claims),
+// exactly as it always did, and the PROPS are no longer saved or restored here
+// — that is `ChartViewLock*`'s single job now (see the block note in
+// GlobalVariables.mqh: four owners each saved "what the user had", read it while
+// another owner held the lock, and the LAST release then wrote OUR false back).
+// This layer keeps only what it owns: its own count and the context-menu force.
 static int  g_ChartLockCount        = 0;
-static bool g_ScrollWasEnabled      = true;
-static bool g_ContextMenuWasEnabled = true;
 
 void CircLockChart()
 {
+   ChartViewLockAcquire();                    // the props' ONE owner (capture on 0 -> 1)
    if(g_ChartLockCount++ == 0)
-   {
-      g_ScrollWasEnabled      = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);
-      g_ContextMenuWasEnabled = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
-      ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
-      ChartSetInteger(0, CHART_CONTEXT_MENU, false);
-   }
+      ChartSetInteger(0, CHART_CONTEXT_MENU, false);   // modal: the menu must not steal the press
 }
 
 void CircUnlockChart()
 {
    if(g_ChartLockCount == 0) return;
-   if(--g_ChartLockCount == 0)
-   {
-      ChartSetInteger(0, CHART_MOUSE_SCROLL, g_ScrollWasEnabled);
-      ChartSetInteger(0, CHART_CONTEXT_MENU, g_ContextMenuWasEnabled);
-   }
+   g_ChartLockCount--;
+   ChartViewLockRelease();                    // restores only when the LAST owner lets go
 }
 // Re-assert an owned menu/panel lock (LEARNING §5 rule 2, UI side of
 // BaseKnotReassertLock): a one-time CircLockChart is not enough — a third
@@ -302,8 +300,7 @@ void CircUnlockChart()
 void CircReassertLock()
 {
    if(g_ChartLockCount <= 0) return;
-   if((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL))
-      ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+   ChartViewLockAssert();
    if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
       ChartSetInteger(0, CHART_CONTEXT_MENU, false);
 }
@@ -2651,10 +2648,55 @@ void CircAbortRingGesture()
    CircUnlockChart();   // the lock the long-press armer took, released once
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-90 (2026-09-15) — A NEW PRESS IS THE WITNESS THAT ENDED THE OLD ONE.
+//
+// The ring's own latches (`g_OrbDragging` + its DRAG_MENU claim + the orb's
+// `CircLockChart`) all end in the SAME place: the MOUSE_MOVE that carries the
+// button-up bit. MT4 emits no such move for a release that does not travel
+// (P-BK-03), and the button-up finalizer is itself gated by a physical probe
+// (P-UI-73a) — lose both (off-window release, a dialog stealing focus, a probe
+// that disagrees) and `g_OrbDragging` stays TRUE forever. The consequences are
+// exactly the reported pair:
+//   * `ChartLockIntended()` keeps returning true, so `ChartScrollReconcile`
+//     re-forces the lock on every 250 ms timer tick, forever;
+//   * the orb's `CircLockChart` is never paired with its unlock, and the
+//     poisoned "what the user had" that the old capture recorded was written
+//     back on the next release — the CHART stayed scroll-locked even after the
+//     indicator was removed.
+//
+// THE WITNESS THAT CANNOT BE MISSED IS THE NEXT PRESS — the same rule
+// `PnlReapStaleGestures` (P-UI-81) already uses for the panel's latches. A
+// press EDGE means the button went up and came back down; nothing else can
+// produce one. So while the ring is being told a NEW press just began, any
+// ring latch still set belongs to a gesture that is already over, by
+// construction. The heal is FORWARD (the user's next press IS the repair), it
+// costs one bool per move, and `MousePressStart`'s rising edge emits exactly
+// once per genuine press — so a live drag has no second edge left to reap it,
+// and if the terminal ever does deliver one the same press re-arms the claim on
+// the very next lines (with the grab offsets recomputed from the orb's current
+// spot, so nothing jumps).
+// ══════════════════════════════════════════════════════════════════════════
+void CircReapStaleRingClaims()
+{
+   if(g_LongPressItem < 0 && !g_OrbDragging && g_DragOwner != DRAG_MENU) return;
+   _LOG_GATE_W Print("[W][UI] P-UI-90: reaped a stale ring claim on a new press "
+                     "(orb=", (g_OrbDragging ? 1 : 0), " hold=", g_LongPressItem, ")");
+   g_LongPressItem  = -1;
+   g_LongPressFired = false;
+   g_OrbDragging    = false;   // the press edge proves the previous press is over
+   DragReleaseIf(DRAG_MENU);
+   CircUnlockChart();          // its chart lock, released once (paired with the arm)
+}
+
 void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
                          const bool pressStart)
 {
    g_OrbMovedThisEvent = false;
+
+   // P-UI-90: BEFORE anything below claims, drop what a previous press left
+   // behind (see the block note). One bool on the steady-state path.
+   if(pressStart) CircReapStaleRingClaims();
 
    CircTipOnMove(mx, my, leftDown);   // custom hover tooltip (runs before
    // the hidden-menu guard below so a stale tip also hides when hidden)
