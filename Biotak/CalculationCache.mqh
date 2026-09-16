@@ -102,7 +102,13 @@ void InvalidateTHCache() {
     g_thCalcCache.digits = -1;
     g_thCalcCache.result = 0.0;
     g_thCalcCache.lastUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] TH Cache Invalidated");
+    // P-LOG-02 (2026-09-16): an invalidation is a NORMAL lifecycle event, not an
+    // error. Logged at ERROR it was never gated (ERROR always prints), so it
+    // reached Experts at production log level - 40 lines a day of fake errors,
+    // which is exactly what makes a real ERROR invisible in that tab. INFO
+    // restores the honest level; set inpLogLevel to DEBUG/INFO to see them again
+    // when chasing a cache-thrash question.
+    _LOG_GATE_I Print("[I][SYNC] TH Cache Invalidated");
 }
 
 double GetCachedFactorStepSize(double highPrice, double lowPrice, double factor) {
@@ -147,7 +153,8 @@ void InvalidateFactorCache() {
     g_factorCache.period = 0;
     g_factorCache.stepSize = 0.0;
     g_factorCache.lastUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] Factor Cache Invalidated");
+    // P-LOG-02: see InvalidateTHCache() above - lifecycle, not error.
+    _LOG_GATE_I Print("[I][SYNC] Factor Cache Invalidated");
 }
 
 string GetCachedFractalTimeframe(int period) {

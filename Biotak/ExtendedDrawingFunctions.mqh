@@ -829,7 +829,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("  GetTimeframeByType: Invalid tfType=", tfType, ", using current period");
         #endif
-        return (ENUM_TIMEFRAMES)Period();  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
+        return CompatTF(Period());  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
     }
     
     ENUM_TIMEFRAMES result;
@@ -862,7 +862,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
 
         case COMBO_TF_PATTERN:
             // User Request: Pattern = Current Timeframe
-            result = (ENUM_TIMEFRAMES)Period();
+            result = CompatTF(Period());
             break;
 
         case COMBO_TF_STRUCTURE:
@@ -874,7 +874,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
             #ifdef ENABLE_DEBUG_LOGS
             Print("   GetTimeframeByType: Unexpected tfType=", tfType, ", using current period");
             #endif
-            result = (ENUM_TIMEFRAMES)Period();
+            result = CompatTF(Period());
             break;
     }
     
@@ -883,7 +883,7 @@ ENUM_TIMEFRAMES GetTimeframeByType(const ENUM_COMBO_TIMEFRAME_TYPE tfType) {
         #ifdef ENABLE_DEBUG_LOGS
         Print("  GetTimeframeByType: Invalid result=", result, " for tfType=", tfType);
         #endif
-        return (ENUM_TIMEFRAMES)Period();  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
+        return CompatTF(Period());  // GOLD FIX: Use Period() instead of PERIOD_CURRENT (0)
     }
     
     return result;

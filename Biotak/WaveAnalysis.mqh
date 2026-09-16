@@ -175,7 +175,12 @@ void BuildWaveData(WaveData &wave, double p1, datetime t1, double p2, datetime t
     wave.fib786 = p1 + 0.786 * dir;   //    reciprocal   deep retracement
 
     // Time/speed   iBarShift is native to MT4
-    wave.barDuration = iBarShift(Symbol(), Period(), t1) - iBarShift(Symbol(), Period(), t2);
+    // R-TF-UNIT: the timeframe crosses to ENUM_TIMEFRAMES here, through the one
+    // sanctioned converter. A bare Period() is a minute count (MT4 model), and
+    // MQL5 would reject it outright - unlike iTime/iClose there is no shim macro
+    // for iBarShift, which is exactly why this is the site the compiler catches.
+    wave.barDuration = iBarShift(Symbol(), CompatTF(Period()), t1)
+                     - iBarShift(Symbol(), CompatTF(Period()), t2);
     if(wave.barDuration < 0) wave.barDuration = -wave.barDuration;
     if(wave.barDuration < 1) wave.barDuration = 1;
     wave.speed = wave.distance / (double)wave.barDuration;

@@ -58,7 +58,7 @@ struct ColorBlendCache {
 static ColorBlendCache g_BlendCache[BLEND_CACHE_SIZE];
 
 // Runtime settings
-static int    g_HTFPeriod = PERIOD_H4;
+static int    g_HTFPeriod = 240;   // R-TF-UNIT: minutes (H4), not PERIOD_H4
 static int    g_HTFTfMode = HTF_TF_STRUCTURE;   // P-UI-92: was the bool g_HTFIsAuto
 static color  g_HTFBullColor = C'66,200,155';
 static color  g_HTFBearColor = C'255,100,124';
@@ -76,7 +76,7 @@ static bool   g_HTFShowBody = true;
 // Default inputs
 static int    InpHTFMaxBars = 200;
 static int    InpHTFAutoMode = HTF_AUTO_FRACTAL;
-static int    InpHTFTimeframe = PERIOD_H4;
+static int    InpHTFTimeframe = 240;   // R-TF-UNIT: minutes (H4), not PERIOD_H4
 static color  InpHTFBullColor = C'66,200,155';
 static color  InpHTFBearColor = C'255,100,124';
 static color  InpHTFWickColor = clrNONE;   // P-UI-68: NONE = follow the candle's colour
@@ -232,8 +232,16 @@ color BlendWithBackground(const color fg, const double opacity)
 //+------------------------------------------------------------------+
 int HTFSnapTf(const int mins)
 {
-   static int ladder[9] = {PERIOD_M1, PERIOD_M5, PERIOD_M15, PERIOD_M30,
-                           PERIOD_H1, PERIOD_H4, PERIOD_D1, PERIOD_W1, PERIOD_MN1};
+   // R-TF-UNIT: the ladder is in MINUTES, which is what `mins` is - and what
+   // every caller compares the result against (`rung > Period()`,
+   // `tf <= Period()`, `g_HTFPeriod`). On MT4 the PERIOD_* constants held these
+   // same numbers, so writing them as constants read as minutes by accident.
+   // On MT5 they hold 1/5/15/30/16385/16388/16408/32769/49153, so every rung
+   // above M30 was snapped against a nonsense distance: an H1 chart asked for a
+   // 960-minute rung and got MN1 instead of H4, and the overlay then hid itself
+   // behind the `rung > Period()` gate. Written as minutes the ladder means on
+   // MT5 exactly what it has always meant on MT4.
+   static int ladder[9] = {1, 5, 15, 30, 60, 240, 1440, 10080, 43200};
    if(mins <= ladder[0]) return ladder[0];
    int    best  = ladder[8];
    double bestD = 1e18;
@@ -288,7 +296,7 @@ int ResolveHTFPeriod()
 //+------------------------------------------------------------------+
 datetime HTFBarCloseTime(const datetime ot, const int tf)
 {
-   if(tf == PERIOD_MN1)
+   if(tf == 43200)   // R-TF-UNIT: MN1 in minutes; `tf` is a minute count
    {
       int y = TimeYear(ot), m = TimeMonth(ot) + 1;
       if(m > 12) { m = 1; y++; }
@@ -357,7 +365,7 @@ double HTFChartIndexAt(const datetime t)
 
    int p = Period();
    double idx;
-   int i = iBarShift(_Symbol, (ENUM_TIMEFRAMES)p, t, false);
+   int i = iBarShift(_Symbol, CompatTF(p), t, false);
    // P-UI-85 — A TIME NEWER THAN BAR 0 IS NEVER BELIEVED FROM iBarShift.
    //
    // `iBarShift(..., false)` answers with the NEAREST bar whenever the exact
@@ -650,6 +658,30 @@ bool HTFAnyBoxesExist()
 }
 
 //+------------------------------------------------------------------+
+//| Delete HTF objects for history indices [from,to) — used to prune |
+//| only the trailing tail after an in-place redraw shrinks, instead  |
+//| of a full delete+recreate (no flicker, no drag-freeze).          |
+//|                                                                  |
+//| P-PERF-47: DEFINED HERE, above DeleteHTFCandles(), for the same   |
+//| reason HTFAnyBoxesExist is (P-PERF-14 above): that function now   |
+//| uses it, and MQL4 has no clean forward declaration (a bare        |
+//| prototype compiles as warning 46).                                |
+//+------------------------------------------------------------------+
+void HTFDeleteIndices(const int from, const int to)
+{
+   if(StringLen(g_HTFPrefix) == 0 || to <= from) return;
+   for(int i = from; i < to; i++)
+   {
+      string id = IntegerToString(i);
+      ObjectDelete(0, g_HTFPrefix + id);
+      ObjectDelete(0, g_HTFPrefix + id + "_F");
+      ObjectDelete(0, g_HTFPrefix + id + "_B");
+      ObjectDelete(0, g_HTFPrefix + "WU" + id);
+      ObjectDelete(0, g_HTFPrefix + "WL" + id);
+   }
+}
+
+//+------------------------------------------------------------------+
 //| Delete all HTF candle objects                                    |
 //| Empty-prefix guard: StringFind(name,"")==0 matches EVERY object — |
 //| without this, a call before InitializeHTFCandles would wipe other|
@@ -682,28 +714,53 @@ void DeleteHTFCandles()
    // at index 0 - so "nothing at 0..2" cannot hide a tail).
    if(g_HTFDrawnCount <= 0 && !HTFAnyBoxesExist()) return;
 
+   // P-PERF-47: NAME-BASED DELETE FOR THE FAMILY WE CAN ACCOUNT FOR; THE PREFIX
+   // WIPE IS KEPT ONLY AS THE NET.
+   //
+   // The single bulk call above was not cheap, and the teardown ledger said so:
+   //   [W][PERF] OnDeinit breakdown: pnl=… menu=0ms htf=219ms save=0ms …
+   // on EVERY timeframe switch, against an MT4 teardown that never once exceeded
+   // the 150 ms budget in a whole trading day.
+   //
+   // The reason is the SHAPE of the cost. `ObjectsDeleteAll(chart, prefix)` walks
+   // the WHOLE chart object list and removes every match, so its bill scales with
+   // the CHART — and this indicator fills the chart with the level family. The WORK,
+   // though, is bounded by the HTF family, which is one to two orders of magnitude
+   // smaller: a few dozen candles carrying exactly five names each. The live MT5
+   // probe prices the two sides: a prefix scan pays ~85 us per chart object, while a
+   // name probe on a name we drew costs ~52 us — so keying the delete on the family
+   // instead of on the chart is a large win, and it gets larger the fuller the chart.
+   //
+   // WHY AN INDEX-KEYED DELETE IS CORRECT *HERE* — this is the one family where the
+   // index and the price move together, so it does not repeat the R-LEVEL-NAME
+   // mistake. `i` is the i-th HTF bar: `DrawHTFCandleCore` builds every name from it
+   // (`string wickId = IntegerToString(i);` and the body names `g_HTFPrefix +
+   // IntegerToString(i)`), so the same `i` always means the same candle and the same
+   // five names. There is no context that could re-point it at a different price.
+   //
+   // The net is what keeps this honest. `g_HTFDrawnCount` is the drawer's own
+   // bookkeeping, so a chart it cannot account for — a stale prefix, an interrupted
+   // draw, a template that carried our names — still gets the unconditional wipe,
+   // and the wipe is reached whenever the 4-probe question says anything is left.
+   // The probe set is a sound superset of "something of ours survives": in
+   // HTF_BOX_BOTH mode `_F` is created whenever `_B` is (see the `baseName + "_F"`
+   // / `baseName + "_B"` pair in DrawHTFCandleCore), so the four names checked cover
+   // all three box modes plus both wicks.
+   if(g_HTFDrawnCount > 0)
+   {
+      HTFDeleteIndices(0, g_HTFDrawnCount);
+      g_HTFDrawnCount = 0;
+      if(!HTFAnyBoxesExist()) return;   // family fully accounted for — no wipe
+   }
+
    ObjectsDeleteAll(0, g_HTFPrefix);
    g_HTFDrawnCount = 0;   // nothing of ours is on the chart any more
 }
 
-//+------------------------------------------------------------------+
-//| Delete HTF objects for history indices [from,to) — used to prune |
-//| only the trailing tail after an in-place redraw shrinks, instead |
-//| of a full delete+recreate (no flicker, no drag-freeze).          |
-//+------------------------------------------------------------------+
-void HTFDeleteIndices(const int from, const int to)
-{
-   if(StringLen(g_HTFPrefix) == 0 || to <= from) return;
-   for(int i = from; i < to; i++)
-   {
-      string id = IntegerToString(i);
-      ObjectDelete(0, g_HTFPrefix + id);
-      ObjectDelete(0, g_HTFPrefix + id + "_F");
-      ObjectDelete(0, g_HTFPrefix + id + "_B");
-      ObjectDelete(0, g_HTFPrefix + "WU" + id);
-      ObjectDelete(0, g_HTFPrefix + "WL" + id);
-   }
-}
+// P-PERF-47: the SINGLE definition of HTFDeleteIndices now lives ABOVE this
+// function (beside HTFAnyBoxesExist), because DeleteHTFCandles calls it and MQL4
+// has no clean forward declaration — a bare prototype compiles as warning 46, the
+// same trap the P-PERF-14 note above records. Do not re-add a copy here.
 
 //+------------------------------------------------------------------+
 //| THE SHADOW BOX (P-UI-68)                                         |
@@ -1089,7 +1146,7 @@ void InitializeHTFCandles()
    // upgrade. "TfMode" wins whenever it exists, and there is no third state
    // for a value a foreign build might have written: out of range = Structure.
    g_HTFTfMode = HTF_TF_STRUCTURE;
-   g_HTFPeriod = PERIOD_H4;
+   g_HTFPeriod = 240;   // R-TF-UNIT: minutes (H4)
    if(GlobalVariableCheck(prefix + "TfMode"))
       g_HTFTfMode = (int)GlobalVariableGet(prefix + "TfMode");
    else if(GlobalVariableCheck(prefix + "IsAuto"))

@@ -1329,9 +1329,24 @@ def check_node():
                 "nd.kind" not in dblk))
     out.append(("the live-price follow leaves a NAMED SIDE alone (not a named type)",
                 "if(g_bkBoxes[k].nodeSide != 0) return false;" in plain))
+    # The enum crossing in front of `tfRead` is OPTIONAL, and three forms are
+    # accepted because the tree has legitimately used all three:
+    #     tfRead                    - MQL4, where the enum IS the minute count
+    #     (ENUM_TIMEFRAMES)tfRead   - MQL5 before R-TF-UNIT
+    #     CompatTF(tfRead)          - MQL5 after R-TF-UNIT, the sanctioned crossing
+    # The history: MQL5 converts a CONSTANT int to an enum implicitly but NOT a
+    # variable, so `iBarShift(_Symbol, 0, t, false)` compiles bare (20 sites pass
+    # the literal 0) while a variable needs help. MQL5Compat.mqh covers
+    # iClose/iOpen/iHigh/iLow/iTime with a casting macro but has none for
+    # iBarShift, so the crossing belongs at the call site.
+    #
+    # What this check is really about is that the lookup uses `tfRead` - the
+    # CLASS's own timeframe - and never the chart's, so the crossing is tolerated
+    # rather than treated as a lost invariant.
+    _TFREAD = r"(?:\(ENUM_TIMEFRAMES\)\s*tfRead|CompatTF\(\s*tfRead\s*\)|tfRead)"
     out.append(("the story still runs on the CLASS' own candles (one side, one box)",
                 re.search(r"BaseKnotRungLoaded\(baseTFMin\)", blk) is not None
-                and re.search(r"iBarShift\(_Symbol,\s*tfRead,\s*t2", blk) is not None
+                and re.search(r"iBarShift\(_Symbol,\s*" + _TFREAD + r",\s*t2", blk) is not None
                 and re.search(r"iClose\(_Symbol,\s*tfRead,\s*s\)", blk) is not None))
     out.append(("... and the far edge is still read off the box (the side's own fact)",
                 re.search(r"if\(c\s*<\s*bot\)\s*nd\.crossed\s*=\s*true;", blk) is not None
@@ -1355,7 +1370,7 @@ def check_node():
     app = re.search(r"if\(tFrom\s*>\s*0\)(.*?)nd\.pattern\s*=", blk, flags=re.S)
     out.append(("the APPROACH is the last close outside the band before that entry",
                 app is not None
-                and re.search(r"iBarShift\(_Symbol,\s*tfRead,\s*tFrom,\s*false\)", app.group(1)) is not None
+                and re.search(r"iBarShift\(_Symbol,\s*" + _TFREAD + r",\s*tFrom,\s*false\)", app.group(1)) is not None
                 and re.search(r"if\(ca\s*<\s*bot\)\s*\{\s*nd\.approach\s*=\s*1;", app.group(1)) is not None
                 and re.search(r"if\(ca\s*>\s*top\)\s*\{\s*nd\.approach\s*=\s*-1;", app.group(1)) is not None))
     out.append(("... on the SAME story TF (one pattern, one box) and bounded",
@@ -2215,7 +2230,11 @@ def selftest():
     reset()
 
     # P-BK-38: the story belongs to the base's TF, not to the chart that drew it
-    with_source("iBarShift(_Symbol, tfRead, t2, false)", "iBarShift(_Symbol, 0, t2, false)")
+    # R-TF-UNIT moved the enum crossing in front of `tfRead` (CompatTF(tfRead));
+    # the seed names the site as it is written now and still removes the CLASS
+    # from it - the chart's own series is the fault either way.
+    with_source("iBarShift(_Symbol, CompatTF(tfRead), t2, false)",
+                "iBarShift(_Symbol, 0, t2, false)")
     cases.append(("reading the story on the chart's own series again is caught",
                   bool(fires(check_node))))
     reset()

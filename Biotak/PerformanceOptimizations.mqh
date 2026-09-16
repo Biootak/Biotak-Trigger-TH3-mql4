@@ -220,14 +220,15 @@ double GetCachedPipSize() {
     // and it costs nothing: it is the branch this function already had (the cache
     // test above refuses to cache a non-positive value, so a broken point is
     // re-derived, never remembered).
-    const bool pointUsable = (p > 0.0 && MathIsValidNumber(p));
     if(!MathIsValidNumber(g_cachedPipSize) || g_cachedPipSize <= 0.0) {
-        g_cachedPipSize = pointUsable ? p : 0.00001;
+        g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;
     }
-    // Only a value derived from a real Point is worth remembering. The fallback
-    // above is a placeholder for THIS call, not an answer for the session - which
-    // is what the comment below has always claimed and the code did not do.
-    g_cachedPipSizeReal = pointUsable;
+    // P-UI-57b: only a value derived from a real Point is worth remembering. The
+    // fallback above is a placeholder for THIS call, not an answer for the session -
+    // which is what the comment below has always claimed and the code did not do.
+    // Kept as its own statement so the zero-divide fence above stays byte-identical
+    // to the line probe-budget-audit.py validates.
+    g_cachedPipSizeReal = (p > 0.0 && MathIsValidNumber(p));
 
     #ifdef ENABLE_DEBUG_LOGS
     Print("==================== PipSize initialized: Symbol=", symbol, 
@@ -460,8 +461,17 @@ int ExecuteBatchOperations() {
     
     // Clear queue
     g_batchQueueSize = 0;
-    ArrayResize(g_batchQueue, 0);
-    
+    // P-PERF-46: there is deliberately no `ArrayResize(g_batchQueue, 0)` here.
+    // `g_batchQueue` is a STATIC FIXED array (`BatchObjectOperation
+    // g_batchQueue[BATCH_QUEUE_CAPACITY]`), so ArrayResize cannot resize it —
+    // MT5 says so ("warning 63: cannot be used for static allocated array") and
+    // MT4 silently ignores it. Either way it was a call that provably could not
+    // do anything: the queue IS its size counter, and the line above already
+    // resets that, exactly as ResetPerformanceCaches() documents at the foot of
+    // this file ("static fixed arrays - just reset counters"). Removing it
+    // takes the last warning out of the build, so the next one to appear is a
+    // real signal again.
+
     return successCount;
 }
 
@@ -524,7 +534,7 @@ static int g_cachedPeriodForSecondsGlobal = 0;
 int GetCachedPeriodSecondsGlobal() {
     int curPeriod = GetCachedPeriod();
     if(g_cachedPeriodForSecondsGlobal != curPeriod || g_cachedPeriodSecondsGlobal <= 0) {
-        g_cachedPeriodSecondsGlobal = PeriodSeconds((ENUM_TIMEFRAMES)curPeriod);
+        g_cachedPeriodSecondsGlobal = PeriodSeconds(CompatTF(curPeriod));
         g_cachedPeriodForSecondsGlobal = curPeriod;
     }
     return g_cachedPeriodSecondsGlobal;

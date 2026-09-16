@@ -3285,7 +3285,7 @@ int HandleButtonClick(const string clickedObject)
             g_customPriceKeyboardOverride = true;
             ObjectDelete(0, g_customPriceHorizontalLineName);
             g_customPriceLineCreated = false;
-            double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
+            double currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
             g_customTHStartPrice = currentPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             // P-UI-56: the placement pair has ONE writer, in the domain layer

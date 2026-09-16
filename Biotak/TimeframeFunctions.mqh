@@ -72,33 +72,38 @@ string GetTimeframeStringFromMinutes(int minutes) {
 }
 
 //+------------------------------------------------------------------+
-//| Get higher pattern timeframe period (one fractal level up)      |
-//| Returns ENUM_TIMEFRAMES value for the higher pattern timeframe  |
+//| HIGHERPATTERN-OFF: retired 2026-09-16 (R-TF-UNIT sweep).          |
+//|                                                                  |
+//| Uncalled. `grep -rn GetHigherPatternTimeframePeriod` matches this  |
+//| definition and nothing else, in either repository. It was also the |
+//| one place left in the tree that returned a PERIOD_* constant from  |
+//| a function whose own inputs and outputs are minutes - which reads |
+//| as a live API to the next person and is a coin-flip to "fix".      |
+//| The live path for "one fractal step up" is ResolvePatternHTFPeriod |
+//| (HTFCandles.mqh), which is built on the minutes ladder.            |
+//|                                                                  |
+//| int GetHigherPatternTimeframePeriod() {                           |
+//|     int currentPeriod = (g_timeframeLocked && g_lockedPeriod > 0)  |
+//|                         ? g_lockedPeriod : Period();               |
+//|     int higherMinutes = currentPeriod * 4;                         |
+//|     if(higherMinutes == 1) return PERIOD_M1;                       |
+//|     if(higherMinutes == 5) return PERIOD_M5;                       |
+//|     if(higherMinutes == 15) return PERIOD_M15;                     |
+//|     if(higherMinutes == 30) return PERIOD_M30;                     |
+//|     if(higherMinutes == 60) return PERIOD_H1;                      |
+//|     if(higherMinutes == 240) return PERIOD_H4;                     |
+//|     if(higherMinutes == 1440) return PERIOD_D1;                    |
+//|     if(higherMinutes == 10080) return PERIOD_W1;                   |
+//|     if(higherMinutes >= 43200) return PERIOD_MN1;                  |
+//|     if(higherMinutes < 5) return PERIOD_M1;                        |
+//|     if(higherMinutes < 15) return PERIOD_M5;                       |
+//|     if(higherMinutes < 30) return PERIOD_M15;                      |
+//|     if(higherMinutes < 60) return PERIOD_M30;                      |
+//|     if(higherMinutes < 240) return PERIOD_H1;                      |
+//|     if(higherMinutes < 1440) return PERIOD_H4;                     |
+//|     if(higherMinutes < 10080) return PERIOD_D1;                    |
+//|     return PERIOD_W1;                                              |
+//| }                                                                  |
 //+------------------------------------------------------------------+
-int GetHigherPatternTimeframePeriod() {
-    int currentPeriod = (g_timeframeLocked && g_lockedPeriod > 0) ? g_lockedPeriod : Period();
-    int higherMinutes = currentPeriod * 4;
-    
-    // Map to ENUM_TIMEFRAMES
-    if(higherMinutes == 1) return PERIOD_M1;
-    if(higherMinutes == 5) return PERIOD_M5;
-    if(higherMinutes == 15) return PERIOD_M15;
-    if(higherMinutes == 30) return PERIOD_M30;
-    if(higherMinutes == 60) return PERIOD_H1;
-    if(higherMinutes == 240) return PERIOD_H4;
-    if(higherMinutes == 1440) return PERIOD_D1;
-    if(higherMinutes == 10080) return PERIOD_W1;
-    if(higherMinutes >= 43200) return PERIOD_MN1;
-    
-    // For non-standard timeframes, return closest standard timeframe
-    if(higherMinutes < 5) return PERIOD_M1;
-    if(higherMinutes < 15) return PERIOD_M5;
-    if(higherMinutes < 30) return PERIOD_M15;
-    if(higherMinutes < 60) return PERIOD_M30;
-    if(higherMinutes < 240) return PERIOD_H1;
-    if(higherMinutes < 1440) return PERIOD_H4;
-    if(higherMinutes < 10080) return PERIOD_D1;
-    return PERIOD_W1;
-}
 
 #endif // TIMEFRAME_FUNCTIONS_MQH

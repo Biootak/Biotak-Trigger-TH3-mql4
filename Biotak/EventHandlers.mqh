@@ -81,13 +81,105 @@ void MigrateTimeframeNamedObjects()
 // safe here because every object the render does not produce is still swept by
 // CleanupSurplusPipeline and the label generation sweep — both run on every
 // render.
-#define NAME_SCHEME_ID 38
+#define NAME_SCHEME_ID 40
 
 string AdoptionStampName() { return "Biotak_AdoptTopology_" + GetCachedChartIdStr(); }
 
 // The fingerprint packs the inputs that decide which NAMES may exist, built from
 // small integers so it is EXACT — no string hashing and therefore no collisions
 // to reason about.
+//
+// P-LEVEL-FOREIGN-01 — AND THE INPUTS THAT DECIDE THE PRICES, BECAUSE A NAME
+// IS NOT A PLACE.
+//
+// This function used to fold in only the naming/structure inputs (the comment
+// above said so explicitly: "never the prices, which genuinely do change per
+// timeframe"), on the theory that a kept object whose price moved would be
+// corrected by "the RENDER signature, which re-asserts in place". That theory
+// is FALSE, and the live chart proved it:
+//
+//   a biotak-level-dump of the running MT5 chart showed TWO level ladders
+//   interleaved in one family - `_Above_1..9` at 2.41 pips (the M1 geometry)
+//   and `_Above_10..43` at 9.65 pips (the H1 geometry) - with near-duplicate
+//   PAIRS 0.06-0.16 pips apart, one member from each geometry. One build can
+//   never emit that: CalculateLevels() uses ONE ladder per build, and
+//   BuildZonesAndLines() DROPS a level that fails to advance, so a duplicate
+//   can only come from a different build.
+//
+// The render re-asserts in place ONLY for the objects it actually touches, and
+// RenderTriggerLines() touches a line only when `lines[i].inViewport` is true -
+// every other object merely gets a mask. So on a timeframe switch:
+//
+//   * the teardown KEEPS the whole family (REASON_CHARTCHANGE, above),
+//   * CacheClear() empties the object cache, so the fresh instance cannot even
+//     enumerate what it kept,
+//   * the new render corrects the levels INSIDE the viewport and nothing else,
+//   * and CleanupSurplusObjects() cannot sweep the rest, because it walks STEP
+//     INDICES - and `_Above_7` of the old timeframe and `_Above_7` of the new
+//     one share the same index. The index is a LOGICAL LABEL; the price is
+//     geometry. The sweep therefore sees a name it expects and stops.
+//
+// The old safety argument ("every object the render does not produce is still
+// swept by CleanupSurplusPipeline") rested on that sweep being able to
+// recognise a foreign object. It cannot. So the family accumulated every
+// geometry the chart had ever been through, and the visible result is exactly
+// the report: ladders that stop in the middle of the chart, holes where no
+// viewport ever covered a geometry, and doubled lines where two geometries
+// nearly coincide.
+//
+// A stamp is a CLAIM that the objects already on the chart are still correct.
+// It may only be written when that claim is true, so the price-determining
+// inputs belong in it:
+//
+//   * the TIMEFRAME      - `thValue` is derived from GetTimeframeTH(), so this
+//                          is the dominant term and the reported case.
+//   * the ANCHOR (daily close) and the SCALING factor - the other two inputs
+//                          GetMidpointPrice/GetAdaptedStepSize move every level
+//                          with.
+//
+// P-LEVEL-FOREIGN-02 (2026-09-16) — THE PRICES LEFT THE FINGERPRINT, BECAUSE
+// THE PITCH SWEEP ANSWERS FOR THEM NOW.
+//
+// Reported: «انگاری در هر تعویض تایم فریم حذف و دوباره ساخته میشه سطوح که الکی
+// هستش … در متاتریدر 4 اصلا اینطوری نیستش» — every timeframe switch deletes the
+// level family and builds it again.
+//
+// The three price terms above used to sit in this function, and the paragraph
+// before this one still explains why: a stamp is a CLAIM that the objects
+// already on the chart are still right, and after a timeframe switch the
+// PRICES are exactly what makes that claim false. That reasoning was never
+// wrong. What was wrong is the ANSWER it chose: refusing the handoff wipes the
+// whole family and restarts the four-frame staged rebuild, i.e. it deletes
+// ~900 objects and re-creates them in order to correct the price of the ~90
+// that are painted - and every single timeframe switch paid it. Measured on the
+// live charts: MT5 spends 250-300 ms of teardown plus four 60-95 ms frames on
+// one switch, while MT4 - the same source, the same ladder - spends ~30 ms, so
+// the user sees the delete and the rebuild on MT5 and nothing at all on MT4.
+//
+// A stale price has a cheaper answer, and the machinery for it already exists:
+// `SweepForeignLadderObjects()` (LevelPipeline, P-LEVEL-FOREIGN-02) walks the
+// chart ONCE on the frame the LADDER PITCH changed - the one moment a foreign
+// object is identifiable - and deletes every family object whose NAME the build
+// did not just produce, while the render re-asserts the ones it did, IN PLACE,
+// on the objects that are already there (the cache-first creator updates an
+// existing object rather than failing on it). The two halves are
+// provably complete: an index the new ladder produces has its price written by
+// the render, and an index it does not produce is deleted by the sweep. So the
+// family is CORRECTED, not destroyed, and the switch reduces to one property
+// pass over the objects that were already on the chart - MT4's behaviour, on
+// MT5's chart.
+//
+// What this function must therefore still name is every input that decides WHICH
+// NAMES may exist: the naming scheme, the mode, the level count, the start-point
+// type, the LS-first flag, the harmonic pair. A name mismatch is NOT repaired in
+// place - a mode change renames the whole family, and a survivor of the old name
+// would be visited by neither sweep - so those inputs still refuse the handoff,
+// and what they refuse is a WIPE, which is correct.
+//
+// NAME_SCHEME_ID was bumped 39 -> 40 with this change: every chart drawn by the
+// previous build carries a stamp whose value this one must refuse, so the model
+// changes once on the next attach instead of being adopted by a build whose
+// ladder sweep this one does not have.
 int AdoptionFingerprint()
 {
    int fp = NAME_SCHEME_ID;
@@ -99,6 +191,10 @@ int AdoptionFingerprint()
    fp = fp * 31 + (inpEnableHarmonicPattern ? 1 : 0);
    fp = fp * 31 + (int)MathRound(inpHarmonicRatio * 1000.0);
 #endif
+   // P-LEVEL-FOREIGN-02: and NOT the prices - the note above this function is
+   // the whole argument. A price that moved is repaired IN PLACE by the pitch
+   // sweep; a NAME that moved is not, which is the only distinction that
+   // belongs in a stamp.
    return fp;
 }
 
@@ -120,8 +216,10 @@ void ClearTopologyAdoptionStamp()
 
 // Resolved ONCE per instance, at the end of OnInitHandler — after the custom-
 // price restore has had its say about `g_thStartPointType`, which is one of the
-// fingerprint's inputs.
-bool g_adoptPreviousTopology = false;
+// fingerprint's inputs. The VALUE itself lives in GlobalVariables.mqh: the
+// pipeline's ladder sweep reads it too, and LevelPipeline.mqh is included
+// BEFORE this file (entry lines 93 and 99), where MQL4 has no forward reference
+// for a global.
 
 void ResolveTopologyAdoption()
 {
@@ -363,10 +461,40 @@ int OnInitHandler() {
     bool deferHeavyInit = recentTimeframeSwitch;
     if(!deferHeavyInit) {
         if(!UpdateHistoricalValues()) {
-            _LOG_GATE_E Print("[E][GEN] OnInit: UpdateHistoricalValues failed. Error: ", GetLastError());
-            return INIT_FAILED;
+            // P-MT5-01b (2026-09-16): A NOT-YET-LOADED HISTORY IS A DEFERRAL, NOT A FATAL.
+            //
+            // This used to `return INIT_FAILED`. That aborts the whole
+            // initialisation, so the terminal renders an indicator that never
+            // draws anything - and the live MT5 log carries precisely that
+            // abort 17 times in one day, as "[E][GEN] OnInit:
+            // UpdateHistoricalValues failed. Error: 4401"
+            // (ERR_HISTORY_NOT_FOUND), on the symbols whose top timeframe the
+            // terminal had not built yet (SPXUSD-ECN H1 among them).
+            //
+            // MT4 CANNOT REACH THIS BRANCH: its series are resident, so iBars()
+            // never answers 0. The MT4-observable behaviour is therefore "init
+            // succeeds and the levels appear", and that is what MT5 must show
+            // too. So rather than invent a recovery path, fall through to the
+            // deferral the recent-TF-switch branch beside it already uses:
+            // g_initialized stays false, and RedrawAllObjects - which tests
+            // exactly that flag - retries this call every frame, logs that it is
+            // retrying, and draws the moment the data lands.
+            //
+            // The warning is rate-limited so a genuinely unavailable symbol
+            // cannot flood Experts; a re-request is issued by
+            // UpdateHistoricalValues itself (P-MT5-01b), so the retry converges
+            // instead of polling a series nobody asked for.
+            static uint s_lastHistInitWarnMs = 0;
+            uint histInitNowMs = GetTickCount();
+            if(histInitNowMs - s_lastHistInitWarnMs > 30000) {
+                _LOG_GATE_W Print("[W][GEN] OnInit: historical data not ready (err ",
+                                  GetLastError(), ") - deferring; the redraw path retries");
+                s_lastHistInitWarnMs = histInitNowMs;
+            }
+            g_initialized = false;
+        } else {
+            g_initialized = true;
         }
-        g_initialized = true;
     } else {
         g_initialized = false;
     }
@@ -374,9 +502,34 @@ int OnInitHandler() {
     InitializeAdaptiveScaling();
 
     g_dailyClosePriceForTH = GetPriceForPreviousDay(inpTHPriceType);
-    if(g_dailyClosePriceForTH == EMPTY_VALUE) {
-        _LOG_GATE_E Print("[E][GEN] OnInit: GetPriceForPreviousDay failed, returning INIT_FAILED.");
-        return INIT_FAILED;
+    if(g_dailyClosePriceForTH == EMPTY_VALUE || !MathIsValidNumber(g_dailyClosePriceForTH) || g_dailyClosePriceForTH <= 0) {
+        // P-MT5-01b (2026-09-16): DEFER, DO NOT ABORT.
+        //
+        // GetPriceForPreviousDay now answers EMPTY_VALUE while the D1 series has
+        // never been readable (MT5 synthesises it on demand; see the guard in
+        // HistoricalDataFunctions.mqh), because the alternative was worse: it
+        // used to return a stamped 0 for a full day, which made the TH base
+        // price - and therefore the whole level family - zero.
+        //
+        // Returning INIT_FAILED here would just move the failure, so this takes
+        // the same deferral the history branch above takes: g_initialized stays
+        // false, RedrawAllObjects retries, and the first redraw frame runs
+        // UpdateBasePrice() (its 30-minute gate is empty on a fresh instance,
+        // so it fires immediately and fills g_basePriceCached), which is what
+        // GetBasePriceForTH() reads. No new recovery path - the one that already
+        // exists is simply no longer bypassed by an aborted init.
+        //
+        // The wider test (non-finite, negative, zero) is the P-UI-57 discipline:
+        // a NaN is neither > 0 nor < 0, so a strict `== EMPTY_VALUE` would let
+        // it through and it would become the anchor of every level.
+        g_dailyClosePriceForTH = 0.0;
+        g_initialized = false;
+        static uint s_lastPrevDayWarnMs = 0;
+        uint prevDayNowMs = GetTickCount();
+        if(prevDayNowMs - s_lastPrevDayWarnMs > 30000) {
+            _LOG_GATE_W Print("[W][GEN] OnInit: previous-day prices not ready (D1 series still loading) - deferring");
+            s_lastPrevDayWarnMs = prevDayNowMs;
+        }
     }
     g_pInitMsHistory = GetTickCount() - pInitTick;   // P-PERF-10
     pInitTick = GetTickCount();
@@ -463,7 +616,13 @@ int OnInitHandler() {
     }
     string lockPeriodName = "Biotak_LockTFPeriod_" + chartIdStr;
     if(GlobalVariableCheck(lockPeriodName)) {
-        g_lockedPeriod = (int)GlobalVariableGet(lockPeriodName);
+        // R-TF-UNIT: this value outlives the process that wrote it. An MT5 build
+        // from before the unit fix persisted an ENUM_TIMEFRAMES constant here
+        // (16385 for H1), which would restore as a lock on a timeframe that does
+        // not exist - the badge reading "16385" and every `tf == Period()` test
+        // failing. CompatMinutes() normalises whatever is on disk to minutes, so
+        // the upgrade is invisible to the user.
+        g_lockedPeriod = CompatMinutes((int)GlobalVariableGet(lockPeriodName));
     }
 
     // VIEWLOCK-OFF: view-lock restore retired —
@@ -982,14 +1141,47 @@ void DeactivateCustomPriceMode(const string src)
 //+------------------------------------------------------------------+
 //| OnDeinit Handler - cleanup and state persistence (matching MT5)  |
 //+------------------------------------------------------------------+
+// P-PERF-49: the gate of the teardown-handler ledger below. It carries the same
+// 40 ms the coop ledger calls COOP_WARN_MS, and it is spelled again here for the
+// one reason this project keeps re-learning (P-PERF-14, twice): MQL4 has no
+// forward declaration for a macro, and COOP_WARN_MS is #defined ~650 lines BELOW
+// OnDeinitHandler - a use above its own #define is `error 256: undeclared
+// identifier`, measured, not guessed. When the ledger constants are collected
+// into one early block this name folds back into COOP_WARN_MS; until then the
+// value is the same number with the meaning written next to it.
+#define P49_DEINIT_WARN_MS 40
+
 void OnDeinitHandler(const int reason) {
     DEBUG_PRINT("Starting cleanup");
+    // P-PERF-49 (2026-09-16) - THE TEARDOWN'S SECOND-LARGEST ITEM HAD NO OWNER.
+    //
+    // The live MT5 ledger (151 teardowns in one day, against ZERO budget
+    // violations on MT4) charges `handler=` a median of 78 ms and a p90 of 313 ms,
+    // and the field named a FUNCTION where every other field in that line names a
+    // STEP. This function is seven independent promises - release the scroll/view
+    // locks, stamp the switch, release the ATR handle, kill the timer, delete the
+    // named singletons, run the reason branch, tear the managers down - and each
+    // one is a different suspect (a handle release and a prefix sweep are not the
+    // same animal on MT5).
+    //
+    // Five fields, cut where the ownership actually changes, so the next report
+    // is "atr=78" instead of "handler=78, somewhere in here". `stamp=` is the
+    // GlobalVariableSet behind the TF-switch debounce: it is a TERMINAL write
+    // (0.128 us) and would be invisible, but it is a WRITE, and every other write
+    // in this project has a field.
+    //
+    // Read the ms as tick-quantized (GetTickCount steps in ~15.6 ms, so every
+    // number is n x 15.625): the split's job is to pick the OWNER, and an owner
+    // above one tick is exactly the size class this ledger exists for.
+    uint p49t = GetTickCount();
+    uint p49knot = 0, p49locks = 0, p49stamp = 0, p49atr = 0, p49names = 0, p49branch = 0;
     // P-PERF-02: after this teardown the chart holds none of our masks, so the
     // next instance must re-assert every one of them, and the once-per-
     // transition hide pass is re-armed.
     ResetHideAllState();
     BumpTfEpoch();
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
+    p49knot = GetTickCount() - p49t; p49t = GetTickCount();
     CustomPriceDragLockOff();   // P-UI-53: same rule for the custom-price drag lock
     // P-UI-90: THE NET, for EVERY deinit reason. Whatever the counters of the
     // owners above believe (a release that never arrived, a panel unlock that
@@ -997,6 +1189,7 @@ void OnDeinitHandler(const int reason) {
     // view pair back - which is why removing the indicator can no longer leave a
     // scroll-locked chart behind. A no-op costs two reads.
     ChartViewLockForceRelease();
+    p49locks = GetTickCount() - p49t; p49t = GetTickCount();
     // Save TF-switch timestamp for deferred init debounce
     if(reason == REASON_CHARTCHANGE || reason == REASON_PARAMETERS) {
         string tfSwitchStampGvar = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
@@ -1008,8 +1201,10 @@ void OnDeinitHandler(const int reason) {
     //    ViewLockCapture();
     //}
 
+    p49stamp = GetTickCount() - p49t; p49t = GetTickCount();
     ReleaseATRHandle();
     EventKillTimer();
+    p49atr = GetTickCount() - p49t; p49t = GetTickCount();
 
     // PERF: ObjectDelete is safe to call on non-existent objects (returns false, no error)
     // Eliminates ObjectFind syscalls
@@ -1022,6 +1217,7 @@ void OnDeinitHandler(const int reason) {
     ObjectDelete(0, g_lockStatusLabelName);
     ObjectDelete(0, g_customPriceHorizontalLineName);
     ObjectDelete(0, g_viewAnchorLineName);   // VIEWLOCK-OFF: purge only — the lock itself is retired
+    p49names = GetTickCount() - p49t; p49t = GetTickCount();
 
     if(reason == REASON_REMOVE)
     {
@@ -1168,6 +1364,7 @@ void OnDeinitHandler(const int reason) {
         ClearTopologyAdoptionStamp();
     }
 
+    p49branch = GetTickCount() - p49t; p49t = GetTickCount();
     CleanupCustomPriceObjects(false, true);
     // FIX: Force ChartRedraw after cleanup so deleted objects disappear immediately
     if(reason != REASON_REMOVE) ChartRedraw();
@@ -1192,6 +1389,16 @@ void OnDeinitHandler(const int reason) {
     g_dailyClosePriceForTH = EMPTY_VALUE;
     g_objectCountLast = 0;
     g_lastObjectCleanup = 0;
+    // P-PERF-49: the split, printed only when the handover is actually slow - the
+    // same gate and the same "no line while it is cheap" rule as every ledger here.
+    uint p49rest = GetTickCount() - p49t;
+    uint p49total = p49knot + p49locks + p49stamp + p49atr + p49names + p49branch + p49rest;
+    if(p49total >= P49_DEINIT_WARN_MS)
+        _LOG_GATE_W Print("[W][PERF] deinit handler breakdown: knot=", (int)p49knot,
+              "ms locks=", (int)p49locks, "ms stamp=", (int)p49stamp,
+              "ms atr=", (int)p49atr, "ms names=", (int)p49names,
+              "ms branch=", (int)p49branch, "ms rest=", (int)p49rest,
+              "ms total=", (int)p49total, "ms reason=", reason);
     DEBUG_PRINT("Cleanup completed successfully");
 }
 
@@ -1671,6 +1878,7 @@ void RedrawAllObjects(bool force_redraw=false)
     // P-PERF-03: reset the phase ledger for this frame (see the CPU report at
     // the end of OnCalculateHandler).
     g_p3MsBase = 0; g_p3MsAtr = 0; g_p3MsHistory = 0; g_p3MsLevels = 0; g_p3MsLabels = 0; g_p3MsOverlay = 0;
+    g_p3MsPre = 0; g_p3MsPost = 0;   // P-PERF-49b: the two spans outside RedrawAllObjects()
     g_p3MsLastTick = GetTickCount();
     // PERF: Soft millisecond guard for burst calls (independent from second-based gate)
     static uint s_lastRedrawAttemptMs = 0;
@@ -2221,6 +2429,20 @@ void RedrawAllObjects(bool force_redraw=false)
         }
         s_lastLevelSig = levelSig;
         TH3_PROF_END(Levels);
+        // P-PERF-49b (2026-09-16): BILL THE FAMILY RENDER TO THE SLOT THAT NAMES IT.
+        //
+        // `g_p3MsLevels` was sampled immediately after DrawMainLevels() - the cheap
+        // half - so the render BELOW it (DrawLevelsBasedOnMode, ~900 objects) was
+        // billed to NOBODY. The `rest` field this ledger just gained proved it on
+        // its first live frame:
+        //   [CRIT] OnCalculate took 3563ms! [levels=31 labels=313 overlay=62 rest=3157]
+        // 88% of a 3.5 s frame unowned, and the unowned part WAS the level render.
+        //
+        // g_p3MsLastTick was advanced by the overlay sample just before this block,
+        // so this difference is exactly this block's own cost - nothing above is
+        // counted twice, and the sum can still never exceed the frame.
+        g_p3MsLevels += GetTickCount() - g_p3MsLastTick;
+        g_p3MsLastTick = GetTickCount();
         g_forceClearOnNextDraw = false;
         g_redrawTHLevelsNeeded = false;
     }
@@ -2573,6 +2795,12 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
         s_lastPeriod = currentPeriod;
         s_lastCustomPrice = currentCustomPrice;
 
+        // P-PERF-49b: name the two spans OUTSIDE RedrawAllObjects() as well, so
+        // `rest` narrows to "inside RedrawAllObjects but after the overlay slot"
+        // instead of hiding the pre-work (price/invalidation/decisions, which on
+        // a timeframe switch is ApplyCacheInvalidation's WIPE) together with the
+        // post-work (ChartRedraw + the object-count check) in one anonymous pile.
+        g_p3MsPre = GetTickCount() - startTime;
         TH3_PROF_START(RedrawCall);
         RedrawAllObjects(g_redrawTHLevelsNeeded || g_forceClearOnNextDraw);
         TH3_PROF_END(RedrawCall);
@@ -2580,10 +2808,12 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
         // P-PERF-02: ChartRedraw after RedrawAllObjects — but ONLY when that
         // frame actually painted. The idle frames (nothing pending) used to ask
         // the terminal for a full chart repaint at tick rate anyway.
+        uint afterRedrawMs = GetTickCount();
         if(g_lastRedrawDidWork) {
             g_lastRedrawDidWork = false;
             ThrottledChartRedraw();
         }
+        g_p3MsPost = GetTickCount() - afterRedrawMs;
 
         if(barsChanged || s_lastBarTime == 0) {
             // PERF: Use cached object count
@@ -2611,12 +2841,36 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
     if(elapsed > CPU_WARNING_MS) {
         // P-PERF-03: name the phase. The ledger costs a few int adds per frame
         // and turns "it is slow somewhere" into "levels took 1780 of 1797 ms".
+        // P-PERF-49 (2026-09-16): THE LEDGER CAN NO LONGER LIE.
+        //
+        // The six slots are successive deltas of ONE GetTickCount() clock, all
+        // taken inside RedrawAllObjects(), which itself runs inside the span
+        // `elapsed` measures - so their sum is always <= elapsed, and the
+        // difference is work the ledger never named. That difference was not
+        // small. Today's live MT5 log carried a 94 ms frame as
+        // "[levels=16 labels=0 ...]" with 78 ms owned by NOBODY, and every
+        // other slot read 0 on 191 of 191 frames - because a phase shorter than
+        // one 15.625 ms tick is invisible to this clock, not free.
+        //
+        // `rest` is what makes those two facts visible instead of silent: either
+        // a named phase owns the frame's time, or `rest` does. An un-instrumented
+        // tail can no longer hide behind a zero - including the code after the
+        // overlay slot (custom-price / start-point work), which was never billed
+        // to any slot at all. Integer math on a string that was being built
+        // anyway, and a pure addition, so every existing reader still matches.
+        uint phaseSum = g_p3MsBase + g_p3MsAtr + g_p3MsHistory +
+                        g_p3MsLevels + g_p3MsLabels + g_p3MsOverlay +
+                        g_p3MsPre + g_p3MsPost;
+        uint restMs = (elapsed > phaseSum) ? (elapsed - phaseSum) : 0;
         string phase = " [base=" + IntegerToString((int)g_p3MsBase) +
                        " atr=" + IntegerToString((int)g_p3MsAtr) +
                        " hist=" + IntegerToString((int)g_p3MsHistory) +
                        " levels=" + IntegerToString((int)g_p3MsLevels) +
                        " labels=" + IntegerToString((int)g_p3MsLabels) +
-                       " overlay=" + IntegerToString((int)g_p3MsOverlay) + "]";
+                       " overlay=" + IntegerToString((int)g_p3MsOverlay) +
+                       " pre=" + IntegerToString((int)g_p3MsPre) +
+                       " post=" + IntegerToString((int)g_p3MsPost) +
+                       " rest=" + IntegerToString((int)restMs) + "]";
         if(elapsed > CPU_CRITICAL_MS) {
             _LOG_GATE_E Print("[E][GEN] [CRIT] CRITICAL CPU: OnCalculate took ", elapsed, "ms!", phase, " Reduce inpMaxTHLevels!");
         }
@@ -2937,7 +3191,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             _LOG_GATE_D Print("[D][GEN] Press anywhere on the chart to set custom TH start price");
             ObjectDelete(0, g_customPriceHorizontalLineName);
             g_customPriceLineCreated = false;
-            double currentPrice = iClose(_Symbol, (ENUM_TIMEFRAMES)GetCachedPeriod(), 0);
+            double currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
             g_customTHStartPrice = currentPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
             // P-UI-56: ONE writer for the placement pair (this chart's price + flag).
@@ -3408,10 +3662,47 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // this hook is what keeps the tag glued during a drag-scroll. Own
         // switch: never gated by the ATR block (2026-09-11).
         RefreshLiveCountdown();
+        uint p28count = GetTickCount() - p28t;
+        p28t = GetTickCount();
         ThrottledChartRedraw();
-        if(p28redraw + p28labels + (GetTickCount() - p28t) >= P_P4_EVENT_WARN_MS)
+        uint p28paint = GetTickCount() - p28t;
+        if(p28redraw + p28labels + p28count + p28paint >= P_P4_EVENT_WARN_MS)
+        {
+            // P-PERF-49 (2026-09-16) - `tail=` HAD NO OWNER, AND IT WAS THE WHOLE
+            // STALL. The live MT5 log:
+            //   chart change breakdown: redraw=0ms labels=390ms tail=3016ms
+            //   chart event CHART_CHANGE(id=9) [indicator=3485 ...] took 3485ms
+            // so P-PERF-28b's split ended exactly where the biggest number began:
+            // the tail is RefreshLiveCountdown() + ThrottledChartRedraw(), and 3016
+            // of the 3485 ms sat in whichever of those two it was. They are two
+            // different problems - one rebuilds a label, the other asks the
+            // TERMINAL to repaint a chart carrying 500-850 objects (ChartRedraw is
+            // 2.14 us on an idle chart and is priced per OBJECT on a full one) - so
+            // they get a field each. A number without a cause is what this project
+            // refuses to act on.
+            //
+            // THE SECOND FIELD NAMES THE PASS `redraw=` PAID FOR: the per-phase
+            // ledger P-PERF-03 already keeps (EventHandlers ~1745..2036) describes
+            // the very RedrawAllObjects() call made nine lines above, so it is read
+            // here instead of duplicated. On MT5 that is the difference between
+            // "a scroll costs 328 ms" and "the LEVELS block of that pass is 328 ms".
+            //
+            // READ THE NUMBERS AS TICK-QUANTIZED: GetTickCount() steps in Windows'
+            // ~15.6 ms tick, so every ms in this ledger is n x 15.625 (the day's
+            // 694 lines carry 56 distinct values and they are exactly that set).
+            // A phase under one tick reads 0 ms; the ordering is trustworthy, the
+            // absolute value is +/- one tick. Anything finer needs
+            // GetMicrosecondCount(), which is MT5-only - see the next step.
+            string renderSplit = " render[levels=" + IntegerToString((int)g_p3MsLevels) +
+                                 " labels=" + IntegerToString((int)g_p3MsLabels) +
+                                 " overlay=" + IntegerToString((int)g_p3MsOverlay) +
+                                 " base=" + IntegerToString((int)g_p3MsBase) +
+                                 " atr=" + IntegerToString((int)g_p3MsAtr) +
+                                 " hist=" + IntegerToString((int)g_p3MsHistory) + "]";
             _LOG_GATE_W Print("[W][PERF] chart change breakdown: redraw=", (int)p28redraw,
-                  "ms labels=", (int)p28labels, "ms tail=", (int)(GetTickCount() - p28t), "ms");
+                  "ms labels=", (int)p28labels, "ms tail=", (int)(p28count + p28paint),
+                  "ms [count=", (int)p28count, " paint=", (int)p28paint, "]", renderSplit);
+        }
         return;
     }
 
@@ -4072,14 +4363,31 @@ void RedrawLabelsOnly() {
     datetime currentTime = TimeGMT();
     string objectPrefix = GetLevelObjectPrefix();
 
+    // P-PERF-49 (2026-09-16) - P-PERF-28b NAMED THIS FUNCTION'S PRICE AND NOTHING
+    // INSIDE IT. The live MT5 log charged a chart resize 188/390/954 ms to
+    // `labels=`, i.e. to this one call, which is seven steps: the clear, the ATR
+    // overview, the TH block, the trade-plan block, the countdown, the overlay
+    // reposition and the terminal repaint. `labels=954ms` therefore named a
+    // FUNCTION where every other ledger here names a STEP, and the next action
+    // could only be a guess between seven candidates.
+    //
+    // FIVE TIMERS, ONE PER CANDIDATE THAT CAN BE BIG, and the repaint folded into
+    // the last one because it is the tail by construction. The getters run only on
+    // this path (a relayout is a resize/stage event, never a tick), so the cost is
+    // five GetTickCount() reads against a call that is already hundreds of ms.
+    uint p49t = GetTickCount();
+    uint p49clear = 0, p49atr = 0, p49th = 0, p49trade = 0;
+
     // CRITICAL: Reset stacking offsets and clear old labels
     g_currentLabelYOffset = 0;
     g_currentLabelYOffsetBottom = 0;
     ClearAllLabels(objectPrefix);
+    p49clear = GetTickCount() - p49t; p49t = GetTickCount();
 
     if(g_atrLabelsVisible) {
         DisplayATRLabels(objectPrefix);
     }
+    p49atr = GetTickCount() - p49t; p49t = GetTickCount();
 
     bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
     bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
@@ -4087,11 +4395,25 @@ void RedrawLabelsOnly() {
         if(showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
     }
+    p49th = GetTickCount() - p49t; p49t = GetTickCount();
+
     DisplayATRTradeLabels(objectPrefix);   // P-UI-84: own master, not the ATR overview
+    p49trade = GetTickCount() - p49t; p49t = GetTickCount();
+
     RefreshLiveCountdown();   // own switch — survives the ATR labels being off
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
     ThrottledChartRedraw();
+    uint p49tail = GetTickCount() - p49t;
+
+    // Same gate and the same shape as every other ledger here: nothing is printed
+    // while the relayout is cheap. Read the ms as tick-quantized (n x 15.625); a
+    // step listed as 0 ms spent under one tick, which is the answer that matters
+    // when the total is hundreds.
+    if(p49clear + p49atr + p49th + p49trade + p49tail >= COOP_WARN_MS)
+        _LOG_GATE_W Print("[W][PERF] labels relayout: clear=", (int)p49clear, "ms atr=", (int)p49atr,
+              "ms th=", (int)p49th, "ms trade=", (int)p49trade,
+              "ms tail=", (int)p49tail, "ms (count+repo+paint)");
 }
 
 //+------------------------------------------------------------------+

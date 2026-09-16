@@ -83,7 +83,7 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
     static int s_cachedPeriodForSecs = 0;
     int curPeriod = GetCachedPeriod();
     if(s_cachedPeriodForSecs != curPeriod || s_cachedPeriodSecs == 0) {
-        s_cachedPeriodSecs = PeriodSeconds((ENUM_TIMEFRAMES)curPeriod);
+        s_cachedPeriodSecs = PeriodSeconds(CompatTF(curPeriod));
         s_cachedPeriodForSecs = curPeriod;
     }
     datetime futureTime = currentTime + s_cachedPeriodSecs * 10000;

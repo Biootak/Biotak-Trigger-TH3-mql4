@@ -61,6 +61,13 @@ def read(rel, overrides=None):
         return fh.read()
 
 
+def no_comments(s):
+    """Comments off, so a check that COUNTS a call cannot be answered by the
+    prose that explains it (the P-UI-84 block next to the walk quotes the very
+    calls this audit counts)."""
+    return re.sub(r"//[^\n]*", "", re.sub(r"/\*.*?\*/", "", s, flags=re.S))
+
+
 def fail(check, msg):
     FAILURES.append((check, msg))
     if not QUIET:
@@ -509,13 +516,21 @@ def check_htf_options(o):
     if not lam2 or None in (mul["STRUCTURE"], mul["PATTERN"]) or mul["PATTERN"] >= mul["STRUCTURE"]:
         fail(grp, "the two rungs are not (one step, two steps) of one snapped ladder: %s" % mul)
         return
+    # R-TF-UNIT: the ladder is written in MINUTES now, because every consumer
+    # compares its rungs against `Period()` and `g_HTFPeriod`, which are minute
+    # counts - on MT4 the PERIOD_* constants happen to hold the same numbers, on
+    # MT5 they do not (PERIOD_H1 == 16385), which is what made an H1 chart snap
+    # to MN1. A bare PERIOD_* name is still accepted; what this check has always
+    # been about is that every rung is a STANDARD timeframe, so a number is
+    # accepted only if it is one of those lengths.
     tokens = [v for v in lam2.group(1).replace(" ", "").replace("\n", "").split(",") if v]
-    unknown = [t for t in tokens if t not in PERS]
+    unknown = [t for t in tokens
+               if t not in PERS and not (t.isdigit() and int(t) in set(MINS.values()))]
     if unknown:
         fail(grp, "the snapped ladder names something that is not a standard timeframe: %s"
                   % ", ".join(unknown))
         return
-    lad = [PERS[t] for t in tokens]
+    lad = [PERS[t] if t in PERS else int(t) for t in tokens]
 
     def rung(cur, mult):
         want = cur * mult
@@ -1187,10 +1202,33 @@ def check_staging(o):
     # while the batch went back to sweeping the chart.
     mv = fn_body(pnl, "void PnlMoveBy(") or ""
     bld = fn_body(pnl, "void PnlMoveListBuild(") or ""
-    if "ObjectsTotal(0, otype, -1)" not in bld:
-        fail("staging", "PnlMoveListBuild must enumerate UI object types, not the whole chart")
-    elif "ObjectsTotal(0, -1, -1)" in bld:
-        fail("staging", "the move list still scans every chart object")
+    # P-UI-84: this block used to DEMAND `ObjectsTotal(0, otype, -1)` - the
+    # OBJECT TYPE in the `sub_window` slot. Both platforms share one signature,
+    # `ObjectsTotal(chart_id, sub_window = -1, type = -1)`, so the type was read
+    # as a sub-window number: OBJ_LABEL is 22, the terminal answered 0, the move
+    # list stayed EMPTY and dragging a panel did nothing at all - silently, since
+    # an empty list is not an error. The builder now enumerates the graph ONCE in
+    # the shared 4-arg form and scopes by NAME (one pass, the prefix test before
+    # the first property read, the batch itself free). This gate was left on the
+    # old text while the fix landed, so it failed on the fixed source: the seeds
+    # below are the P-UI-84 fault itself, not a shape from before it.
+    bc = no_comments(bld)
+    if bc.count("ObjectsTotal(") > 1:
+        fail("staging", "PnlMoveListBuild walks the chart in several passes - one "
+                        "gesture buys ONE enumeration (P-UI-82)")
+    elif re.search(r'Objects(?:Total|Name)\(\s*0\s*,\s*OBJ_\w+\s*,', bc):
+        fail("staging", "the object TYPE is passed as the sub_window again - the "
+                        "terminal answers 0 and the drag moves an empty list (P-UI-84)")
+    elif "ObjectsTotal(0, -1, -1)" not in bc:
+        fail("staging", "PnlMoveListBuild must enumerate in the shared 4-arg form "
+                        "(chart_id, sub_window, type)")
+    elif re.search(r'if\(\s*!isCard\s*&&\s*!isPal\s*\)\s*continue;', bc) is None:
+        fail("staging", "the move list reads a property of every chart object - the "
+                        "scan must be scoped by NAME first (the prefix test is the "
+                        "cheap one, the type read is not)")
+    elif bc.find("StringFind(nm, pfx)") > bc.find("OBJPROP_TYPE"):
+        fail("staging", "PnlMoveListBuild reads OBJPROP_TYPE before it has scoped the "
+                        "name to this card")
     elif "ObjectsTotal" in mv:
         fail("staging", "PnlMoveBy scans again — the batch must pay for its own "
                         "objects, not re-derive them sixty times a second (P-UI-82)")
@@ -1404,9 +1442,15 @@ def selftest():
         ("staging", "Biotak Trigger TH3.mq4",
          "  g_inChartEvent = true;",
          "  g_inChartEvent = false;   // seed: the deferral window never opens"),
+        # P-UI-84 itself: the type back in the sub_window slot (the walk returns
+        # nothing, so the drag moves an empty list).
         ("staging", "Biotak/BiotakPanels.mqh",
-         "      int ttotal = ObjectsTotal(0, otype, -1);",
-         "      int ttotal = ObjectsTotal(0, -1, -1);"),
+         "   const int total = ObjectsTotal(0, -1, -1);",
+         "   const int total = ObjectsTotal(0, OBJ_LABEL, -1);"),
+        # ... and the name scope dropped, so every chart object gets a type read.
+        ("staging", "Biotak/BiotakPanels.mqh",
+         "      if(!isCard && !isPal) continue;",
+         "      if(false) continue;"),
         ("staging", "Biotak/BiotakKit.mqh",
          "         ThrottledChartRedraw();\n         return;",
          "         ChartRedraw();\n         return;"),

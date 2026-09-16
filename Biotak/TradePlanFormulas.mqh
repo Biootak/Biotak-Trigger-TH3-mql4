@@ -163,7 +163,7 @@ double TradePlanStripPips(const int tfMinutes)
 {
    double pip = GetCachedPipSize();
    if(IsZero(pip, EPSILON_PRICE)) return 0.0;
-   ENUM_TIMEFRAMES tf = (ENUM_TIMEFRAMES)tfMinutes;
+   ENUM_TIMEFRAMES tf = CompatTF(tfMinutes);
    double atr = CalculateWeightedATR(tf);
    if(atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;

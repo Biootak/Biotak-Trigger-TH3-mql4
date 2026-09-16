@@ -1352,6 +1352,282 @@ string PipelineGeometryKey(const SModeConfig &config,
 //+------------------------------------------------------------------+
 //| UNIFIED PIPELINE EXECUTOR                                        |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-LEVEL-FOREIGN-01 — A NAME IS NOT A PLACE                       |
+//|                                                                  |
+//| THE DEFECT THIS CLOSES                                           |
+//|                                                                  |
+//| A level object is named by its LOGICAL STEP INDEX (`_Above_7`),   |
+//| but its PRICE is a function of the geometry: the anchor, the step |
+//| sizes and the mode. The index therefore survives a change that    |
+//| moves every price, and NOTHING in the project could tell the two  |
+//| apart:                                                           |
+//|                                                                  |
+//|   * RenderTriggerLines() creates or updates a line only when it   |
+//|     is inside the viewport; every other object merely gets a mask |
+//|     (OBJ_NO_PERIODS). Out of view, a price is never corrected.    |
+//|   * CleanupSurplusPipeline() sweeps by STEP INDEX, from           |
+//|     `maxStep + 1` upward - and the previous geometry's `_Above_7` |
+//|     and this one's `_Above_7` are the same index. The sweep sees  |
+//|     a name it expects and stops. It cannot see a foreign object.  |
+//|                                                                  |
+//| So an object written by a previous geometry keeps its name, keeps |
+//| its index, keeps its price, and is never removed. The live chart  |
+//| showed the result: `_Above_1..9` at 2.41 pips (M1) interleaved    |
+//| with `_Above_10..43` at 9.65 pips (H1), including near-duplicate  |
+//| PAIRS 0.06-0.16 pips apart - one member from each geometry, which |
+//| a single build can never emit (BuildZonesAndLines drops a level   |
+//| that fails to advance, so a duplicate proves two builds).         |
+//|                                                                  |
+//| WHAT THIS DOES                                                    |
+//|                                                                  |
+//| When the LADDER ITSELF changes (the step signature: mode, count,  |
+//| the sizes - i.e. a timeframe switch, a mode change, an ATR-scaling |
+//| regime change), walk the freshly built lists and delete any object |
+//| whose CACHED price disagrees with the price this geometry gives   |
+//| its step index. The cache stores the price we last wrote, so the  |
+//| comparison costs one hash probe and no terminal read; only a      |
+//| genuine mismatch costs a delete. The render that follows re-creates |
+//| whatever is inside the viewport, so the family ends up exactly the |
+//| current geometry - and the objects that are gone are the ones the |
+//| current geometry never owned.                                     |
+//|                                                                  |
+//| WHY ONLY ON A LADDER CHANGE                                       |
+//|                                                                  |
+//| A centre-only move (a price-anchored start point ticking) shifts  |
+//| the whole ladder coherently: anything that enters the viewport is |
+//| corrected by the render, and anything else is masked, not visible. |
+//| The corruption that reaches the SCREEN comes from a change of     |
+//| PITCH - two different step sizes coexisting - so that is the gate. |
+//| It makes the pass rare (a switch, not a tick) and keeps the cost  |
+//| bounded on the weak PC this project is written for.               |
+//|                                                                  |
+//| THE COLD-CACHE CORNER, STATED HONESTLY                            |
+//|                                                                  |
+//| On a timeframe switch the teardown clears the object cache, so a  |
+//| fresh instance's cache holds nothing to compare and this pass     |
+//| finds nothing. That corner is NOT covered here - it is covered by |
+//| AdoptionFingerprint(), which now folds in the timeframe and the   |
+//| anchor so the kept family is never ADOPTED when its prices are    |
+//| stale (see P-LEVEL-FOREIGN-01 there). This function is the net    |
+//| for the WARM-cache case: a ladder change inside one instance.     |
+//+------------------------------------------------------------------+
+int SweepForeignLevelObjects(const SModeConfig &config,
+                             const STriggerLine &lines[],
+                             const int lineCount,
+                             const SZoneDefinition &zones[],
+                             const int zoneCount)
+{
+   const double tol = GetCachedPoint() * 0.1;
+   int removed = 0;
+
+   for(int i = 0; i < lineCount; i++)
+   {
+      // The line and its pip-distance label share one price and one owner.
+      for(int pass = 0; pass < 2; pass++)
+      {
+         string nm = (pass == 0) ? lines[i].name : (lines[i].name + "_Label");
+         SObjectCacheEntry e;
+         if(!CacheGetObject(nm, e)) continue;   // cold cache: nothing to compare
+         if(!e.exists) continue;                // dead slot: no object under this name
+         if(MathAbs(e.lastPrice - lines[i].price) <= tol) continue;   // ours
+         if(DeleteIndicatorObjectManaged(nm, true)) removed++;
+      }
+   }
+
+   for(int i = 0; i < zoneCount; i++)
+   {
+      SObjectCacheEntry e;
+      if(!CacheGetObject(zones[i].name, e)) continue;
+      if(!e.exists) continue;
+      if(MathAbs(e.lastPrice - zones[i].midPrice) <= tol) continue;
+      if(DeleteManagedZoneObjects(zones[i].name, true)) removed++;
+   }
+
+   return removed;
+}
+
+//| A zone exists as ONE band plus up to six NAMED sub-objects — `_Top`,
+//| `_Bottom` (the boundary lines) and `_B_Top`/`_B_Bottom`/`_B_Left`/
+//| `_B_Right` (the empty-box border segments) — and `DeleteManaged- |
+//| ZoneObjects()` removes the whole set from the BAND's name. So the   |
+//| walk has to act on the band only, or one foreign zone would be     |
+//| deleted six times over.
+bool ZoneNameIsBand(const string nm)
+{
+    int n = StringLen(nm);
+    if(n > 4 && StringSubstr(nm, n - 4, 4) == "_Top")    return false;   // also _B_Top
+    if(n > 7 && StringSubstr(nm, n - 7, 7) == "_Bottom") return false;   // also _B_Bottom
+    if(n > 5 && StringSubstr(nm, n - 5, 5) == "_Left")   return false;   // also _B_Left
+    if(n > 6 && StringSubstr(nm, n - 6, 6) == "_Right")  return false;   // also _B_Right
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| P-LEVEL-FOREIGN-02 — THE OTHER HALF OF THE FOREIGN-OBJECT SWEEP.  |
+//|                                                                  |
+//| `SweepForeignLevelObjects()` above can only judge the names the    |
+//| new ladder PRODUCES: it walks the built lists and asks the cache   |
+//| whether the object under each name is still at the built price.    |
+//| An object whose STEP INDEX the new ladder does not produce at all  |
+//| is never in those lists, so nothing ever asked about it - and that |
+//| is exactly why the family could carry a foreign pitch (the        |
+//| reported `_Above_1..9` at 2.41 pips beside `_Above_10..43` at     |
+//| 9.65). THAT hole is what put `Period()` into the adoption          |
+//| fingerprint, and the fingerprint is what made every timeframe      |
+//| switch wipe and rebuild the level family.                          |
+//|                                                                  |
+//| This walks the CHART instead - once, on the frame the ladder PITCH |
+//| changed, which is the only moment the two pitches can be told      |
+//| apart - and deletes every family object whose tail step is above   |
+//| the newest one. Names carry the step and the ladder produces a     |
+//| CONTIGUOUS 1..maxStep range (the same range `CleanupSurplus-        |
+//| Pipeline` walks from maxStep + 1), so "step > maxStep" is exact:   |
+//|                                                                  |
+//|   * an index <= maxStep is produced by this ladder, so the render  |
+//|     owns it and re-asserts its price IN PLACE;                    |
+//|   * an index >  maxStep cannot be produced by this ladder at any   |
+//|     price, so it can only be a survivor of another pitch.          |
+//|                                                                  |
+//| Called only when the family was HANDED OVER (`g_adoptPrevious-     |
+//| Topology`), never after a wipe: a wiped chart has nothing foreign  |
+//| on it, and this is a whole-chart walk.                             |
+//|                                                                  |
+//| The names are COLLECTED first and deleted afterwards, because a     |
+//| delete renumbers the terminal's object-list indices - deleting     |
+//| inside the walk would step over the next object.                   |
+//+------------------------------------------------------------------+
+// Is this chart name one of the names the build JUST produced?  The produced
+// list is small (the culled ladder: tens of entries) and the walk only asks
+// about names the family test already accepted, so a linear scan is the right
+// shape here - and it is EXACT, which is the whole point (see below).
+bool ProducedLadderName(const string nm, const string &produced[], const int producedCount)
+{
+    for(int p = 0; p < producedCount; p++)
+        if(produced[p] == nm) return true;
+    return false;
+}
+
+// Only a name that looks like OUR family is judged. `_BK_` is the user's
+// Base/Knot layer (P-BK-01: it has no expiry whichever build made it).
+bool LadderFamilyName(const string nm, const string fam)
+{
+    if(StringLen(nm) <= StringLen(fam)) return false;
+    if(StringSubstr(nm, 0, StringLen(fam)) != fam) return false;
+    if(StringFind(nm, "_BK_") >= 0) return false;
+    return true;
+}
+
+// Zone sub-objects are paid for by their band's name, so a band that survives
+// carries its borders with it and a band that goes takes them with it.
+bool LadderNameIsZoneBand(const string nm)
+{
+    return (StringFind(nm, "_Zone_") >= 0) && ZoneNameIsBand(nm);
+}
+
+//+------------------------------------------------------------------+
+//| P-LEVEL-FOREIGN-02 — EXACTLY THE PRODUCED SET, OR NOTHING.        |
+//|                                                                  |
+//| Reported (after the P-PERF-38d handoff landed): «سطوح که باید   |
+//| نمایش بده نمایش نمیده، و سطوحی که توی دید نیست رو نمایش میده   |
+//| — برعکس» — the family near the price is not drawn while objects  |
+//| far outside the window are.                                       |
+//|                                                                  |
+//| That is ONE structural defect with two faces. The family on the   |
+//| chart must be EXACTLY the set the current build produces; nothing |
+//| enforced it, so the kept objects of a former geometry (a wider    |
+//| window, another pitch, another timeframe) could stay VISIBLE       |
+//| outside the window while the produced set could be attacked from   |
+//| the other side. The previous attempt at this walked the indices    |
+//| from `maxStep + 1` upward, which is only right when the numbering  |
+//| is contiguous AND `${fam}` ... `maxStep` is a window/geometry     |
+//| quantity, not a name-space bound.                                 |
+//|                                                                  |
+//| So the question this pass asks is the only exact one: "is this     |
+//| chart name one of the names the build just produced?" - and the    |
+//| answer is available for free, because the build is standing in     |
+//| this very call with `lines[]` and `zones[]` in hand.               |
+//|                                                                  |
+//| Two faces it closes, in one pass:                                  |
+//|   * a survivor the build does not produce is DELETED (whatever its |
+//|     index, pitch or price) - the far visible objects go;           |
+//|   * a name the build DOES produce is left alone, so the render     |
+//|     re-asserts it in place (the cache-first creator updates an      |
+//|     existing object) - which is what makes the handoff cheaper      |
+//|     than the wipe it replaced.                                     |
+//|                                                                  |
+//| NOTHING is deleted when the window is not usable (`vpTop >         |
+//| vpBottom > 0`) or the build produced nothing: an unusable window   |
+//| means the produced set is not trustworthy, and the next real pass  |
+//| re-derives it and re-creates whatever is missing. A delete-every-  |
+//| thing-then-rebuild flash on an attach is exactly the class of bug  |
+//| this project refuses to trade a flicker for.                        |
+//+------------------------------------------------------------------+
+int SweepForeignLadderObjects(const SModeConfig &config,
+                              const STriggerLine &lines[],
+                              const int lineCount,
+                              const SZoneDefinition &zones[],
+                              const int zoneCount,
+                              const double vpTop,
+                              const double vpBottom)
+{
+    if(!(vpTop > vpBottom) || vpBottom <= 0) return 0;   // unusable window: no judgement
+    if(lineCount <= 0) return 0;                        // nothing produced: nothing to say
+
+    // What this build owns, by NAME (labels included: a line and its pip label
+    // are one decision, and RenderTriggerLines writes both).
+    string produced[];
+    int pc = 0;
+    ArrayResize(produced, lineCount * 2 + zoneCount);
+    for(int l = 0; l < lineCount; l++)
+    {
+        produced[pc++] = lines[l].name;
+        produced[pc++] = lines[l].name + "_Label";
+    }
+    for(int z = 0; z < zoneCount; z++)
+        produced[pc++] = zones[z].name;
+
+    const string fam = config.objectPrefix + config.modeName + "_";
+    const int total = ObjectsTotal(0, -1, -1);
+    string doomed[];
+    int nd = 0;
+
+    for(int i = total - 1; i >= 0; i--)
+    {
+        const string nm = ObjectName(0, i, -1, -1);
+        if(!LadderFamilyName(nm, fam)) continue;
+
+        if(LadderNameIsZoneBand(nm))
+        {
+            if(ProducedLadderName(nm, produced, pc)) continue;
+            ArrayResize(doomed, nd + 1);
+            doomed[nd++] = nm;
+            continue;
+        }
+        if(StringFind(nm, "_Zone_") >= 0) continue;   // a border sub-object: its band decides
+
+        if(ProducedLadderName(nm, produced, pc)) continue;
+        ArrayResize(doomed, nd + 1);
+        doomed[nd++] = nm;
+    }
+
+    if(nd == 0) return 0;
+
+    g_suppressDeleteEvents = true;
+    int removed = 0;
+    for(int d = 0; d < nd; d++)
+    {
+        if(StringFind(doomed[d], "_Zone_") >= 0)
+        {
+            if(DeleteManagedZoneObjects(doomed[d], true)) removed++;
+        }
+        else if(DeleteIndicatorObjectManaged(doomed[d], true)) removed++;
+    }
+    g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+    g_suppressDeleteEvents = false;
+    return removed;
+}
+
 SPipelineResult ExecutePipeline(
     const SModeConfig &config,
     const double centerPrice,
@@ -1426,6 +1702,19 @@ SPipelineResult ExecutePipeline(
     static int    s_geoZoneCount = 0;
     static int    s_geoLineCount = 0;
     static int    s_geoMaxStep = 0;
+    // P-LEVEL-FOREIGN-01: the ladder signature the foreign-object sweep last ran
+    // against. "" means "never run" - the first real build always sweeps, which
+    // is what cleans a chart that a previous instance left a foreign pitch on.
+    static string s_lastStepSig = "";
+    // P-LEVEL-FOREIGN-02: the chart walk below runs at most ONCE per instance.
+    // The handoff is a per-instance event (the first real build of the new
+    // instance is the frame after the switch), while a later intraday pitch
+    // drift is not - and a whole-chart walk is ~26 ms on a chart carrying 800
+    // objects, so it may not become a tax on every step-size refresh. Nothing
+    // regresses by stopping there: before this sweep existed NO index was ever
+    // swept on a drift either, and the price sweep plus the 6-miss index walk
+    // still run on every pitch change.
+    static bool s_foreignSweepDone = false;
 
     if(s_geoValid && geoKey == s_geoKey) {
         // Same geometry, another family: copy the built lists, skip the math.
@@ -1479,6 +1768,44 @@ SPipelineResult ExecutePipeline(
         s_geoMaxStep = maxStep;
         s_geoKey = geoKey;
         s_geoValid = true;
+
+        // P-LEVEL-FOREIGN-01: the ladder itself moved (a timeframe switch, a mode
+        // change, an ATR-scaling regime change), so objects written by the
+        // previous pitch are still on the chart with valid names and valid step
+        // indices - and no sweep in the project could recognise them. This is the
+        // one moment they can be identified: against the lists just built. Runs
+        // BEFORE the render below, which re-creates whatever is in the viewport.
+        {
+            string stepSig = IntegerToString((int)stepMode) + "," + IntegerToString(stepSizeCount);
+            for(int ss = 0; ss < stepSizeCount; ss++) stepSig += "," + DoubleToString(stepSizes[ss], 8);
+            if(stepSig != s_lastStepSig)
+            {
+                s_lastStepSig = stepSig;
+                int swept = SweepForeignLevelObjects(config, lines, result.lineCount,
+                                                     zones, result.zoneCount);
+                if(swept > 0)
+                    _LOG_GATE_I Print("[I][GEN] P-LEVEL-FOREIGN-01: swept ", swept,
+                                      " level object(s) left by a previous step geometry");
+                // P-LEVEL-FOREIGN-02: and the names that sweep cannot reach - the
+                // ones the new ladder does not produce AT ALL, which its own lists
+                // can never name. This is what lets a timeframe switch UPDATE the
+                // family in place (the render re-asserts every produced name, this
+                // deletes the rest) instead of wiping and rebuilding it, and it is
+                // only meaningful after a HANDOFF: a wiped chart holds nothing to
+                // find, and this is a whole-chart walk.
+                if(g_adoptPreviousTopology && !s_foreignSweepDone)
+                {
+                    s_foreignSweepDone = true;   // this frame IS the handoff
+                    int stale = SweepForeignLadderObjects(config, lines, result.lineCount,
+                                                          zones, result.zoneCount,
+                                                          vpTop, vpBottom);
+                    if(stale > 0)
+                        _LOG_GATE_W Print("[W][GEN] P-LEVEL-FOREIGN-02: deleted ", stale,
+                                          " ladder object(s) this build does not produce ",
+                                          "(handoff, family=", config.modeName, ")");
+                }
+            }
+        }
     }
     
     // Stage 5: Render and cleanup.

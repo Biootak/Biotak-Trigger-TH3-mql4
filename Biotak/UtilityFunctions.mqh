@@ -180,7 +180,7 @@ bool UILeftButtonUp()
    return (v >= 0) && ((v & 1) == 0);
 }
 
-//--- P-BK-61: the ONE owner of "is CONTROL held RIGHT NOW?" — the gate of the
+//--- P-BK-61/66: the ONE owner of "is the magnet's MODIFIER held RIGHT NOW?" —
 //--- base-box handle magnet («با کنترل هم مگنت فعال میشه ... حرکت رو چسبوند به
 //--- کندل های و لو که دقیق باشه»). It sits here for the same reason the button
 //--- pair above does: the gesture channel (an OBJECT_DRAG) carries no keyboard
@@ -190,11 +190,30 @@ bool UILeftButtonUp()
 //--- TRUE if EITHER convention says held. The asymmetry is DELIBERATE and the
 //--- opposite of `UILeftButtonUp()`: a false "held" only means a handle drag
 //--- snaps a value the user is dragging anyway (visible, one pixel wide, and
-//--- undone by dragging on), while a false "free" would make Ctrl look dead on
-//--- exactly the build lineage that spells the probe the other way.
-bool UICtrlKeyDown()
+//--- undone by dragging on), while a false "free" would make the modifier
+//--- look dead on exactly the build lineage that spells the probe the other way.
+//---
+//--- WHY THE MODIFIER IS SHIFT AND NOT CTRL (P-BK-66, 2026-09-16). Reported:
+//--- «من ctrl که میگیرم برای مگنت این باکس رو کپی میکنه» — MetaTrader's own
+//--- Ctrl+drag DUPLICATES a draggable object, and the box' handles ARE draggable
+//--- objects (their OBJPROP_SELECTABLE is what makes them handles at all,
+//--- P-BK-61), so the terminal cloned the chip instead of letting the magnet
+//--- snap it: Ctrl is the terminal's copy gesture, never ours, and a magnet on
+//--- Ctrl is a magnet the user can never hold down. The modifier must be a key
+//--- the terminal's OWN object drag does not claim:
+//---   * SHIFT   — pollable as TERMINAL_KEYSTATE_SHIFT, and MT4 binds no
+//---               object-drag behaviour to it. THIS IS THE CHOICE (P-BK-66).
+//---   * CONTROL — the terminal's duplicate gesture («این باکس رو کپی میکنه»).
+//---   * ALT     — pollable as TERMINAL_KEYSTATE_MENU, but Windows and the
+//---               terminal both eat it (menu access, Alt+Tab): a magnet that
+//---               dies on a window switch is worse than no magnet.
+//---   * MIDDLE  — pollable (TERMINAL_KEYSTATE_MIDDLE), but no hand holds the
+//---               middle button while dragging with the left one.
+//--- The caller asks by ROLE (`UIMagnetModifierDown()`), so moving the magnet to
+//--- another key is THIS function and nothing else.
+bool UIMagnetModifierDown()
 {
-   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL);
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_SHIFT);
    return (v < 0) || ((v & 1) != 0);
 }
 

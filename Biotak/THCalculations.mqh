@@ -123,7 +123,7 @@ double CalculateTimeframeTH(const string timeframe) {
             double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
             
             // Store in cache for future use
-            int periodSeconds = PeriodSeconds((ENUM_TIMEFRAMES)currentPeriod);
+            int periodSeconds = PeriodSeconds(CompatTF(currentPeriod));
             StoreTimeframeConversion(currentPeriod, timeframe, percentage, periodSeconds);
             return percentage;
         }
@@ -131,7 +131,7 @@ double CalculateTimeframeTH(const string timeframe) {
     
     // Fallback: return 1.0% for unknown timeframes
     double fallbackPercentage = 1.0;
-    int periodSeconds = PeriodSeconds((ENUM_TIMEFRAMES)currentPeriod);
+    int periodSeconds = PeriodSeconds(CompatTF(currentPeriod));
     StoreTimeframeConversion(currentPeriod, timeframe, fallbackPercentage, periodSeconds);
     return fallbackPercentage;
 }

@@ -407,7 +407,7 @@ double CalculateHybridATR(const int currentMinutes, const int targetMinutes) {
     }
     
     // Calculate weighted ATR for current timeframe (unlocked for consistent scaling)
-    double currentATR = CalculateWeightedATR((ENUM_TIMEFRAMES)Period());
+    double currentATR = CalculateWeightedATR(CompatTF(Period()));
     
     // AUDIT FIX: Use IsZero for comparison
     if(IsZero(currentATR, EPSILON_PRICE)) {
@@ -1126,7 +1126,7 @@ int GetTriggerDurationSeconds(ENUM_TIMEFRAMES tf) {
 double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     // If tf is PERIOD_CURRENT, use effective timeframe (respects lock)
     if(tf == PERIOD_CURRENT) {
-        tf = (ENUM_TIMEFRAMES)GetEffectiveTimeframe();
+        tf = CompatTF(GetEffectiveTimeframe());
     }
     
     int currentBars = iBars(Symbol(), tf);

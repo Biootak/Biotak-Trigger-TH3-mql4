@@ -1624,10 +1624,22 @@ def check_purge():
     dblk = body(text, "PnlDestroy(")
     if dblk is None:
         return problems + ["PnlDestroy() is gone - a card can never be torn down"]
-    if not re.search(r'ObjectsDeleteAll\(\s*0\s*,\s*head\s*,\s*0\s*,\s*-1\s*\)', dblk):
-        problems.append("PnlDestroy() no longer wipes the card's whole prefix - an "
-                        "index-bounded hand list cannot cover a card whose rows "
-                        "grew, and every row it misses stays on the chart")
+    # P-PERF-47: ONE prefix wipe, and it must cover EVERY subwindow.
+    #
+    # The hand list this replaced was bounded TWICE - by PNL_CARD_ROWS_MAX (a row
+    # ceiling the cards outgrow) and by a window argument of 0 - and both bounds
+    # dropped rows silently, which is the P-UI-71 report. The teardown is now a
+    # single `ObjectsDeleteAll(0, head, -1, -1)`; what this check has to keep
+    # honest is the shape of it: ONE scan, all windows. The old form (window 0)
+    # is caught by name because it is what a "small tidy-up" reintroduces.
+    if not re.search(r'ObjectsDeleteAll\(\s*0\s*,\s*head\s*,\s*-1\s*,\s*-1\s*\)', dblk):
+        problems.append("PnlDestroy() no longer wipes the card's whole prefix in one "
+                        "pass - an index-bounded hand list cannot cover a card whose "
+                        "rows grew, and every row it misses stays on the chart")
+    elif re.search(r'ObjectsDeleteAll\(\s*0\s*,\s*head\s*,\s*0\s*,', dblk):
+        problems.append("PnlDestroy()'s wipe is bounded to the main subwindow again - "
+                        "an object parked in another window survives the teardown")
+    wipe = None
     m = re.search(r'string\s+head\s*=\s*([^;]+);', dblk)
     if m is None:
         problems.append("PnlDestroy() no longer derives `head`")
@@ -1646,11 +1658,23 @@ def check_purge():
     if re.search(r'for\s*\(\s*int\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*PNL_CARD_ROWS_MAX', dblk):
         problems.append("PnlDestroy() still carries a PNL_CARD_ROWS_MAX index loop - "
                         "that ceiling is a row count the cards outgrow (P-UI-71)")
-    # the card body pieces must be torn down too
-    m = re.search(r'ObjectsDeleteAll\(\s*0\s*,\s*head\s*\+\s*"card"', dblk)
-    if m is None:
-        problems.append("PnlDestroy() does not wipe the composed card body - a "
-                        "card that shrinks would leave its own tiles behind")
+    # P-PERF-47 deleted the SECOND scan (`head + "card"`) and the ~33 hand
+    # probes as strict subsets of the one above. That claim is only safe while
+    # the card body is named out of the very same prefix: `PnlHead(item,"card")`
+    # must be literally `head` + the kind. Check the composition rather than the
+    # deleted call, so the wipe cannot drift away from the body it must cover
+    # (a card that shrinks would otherwise leave its own tiles behind).
+    hblk = body(text, "PnlHead(")
+    if hblk is None:
+        problems.append("PnlHead() is gone - the composed card body has no naming owner")
+    else:
+        hm = re.search(r'return\s+([^;]+);', hblk)
+        head_naming = re.sub(r"\s+", "", hm.group(1)) if hm else ""
+        want = (wipe + "+kind") if wipe else "?"
+        if wipe is None or head_naming != want:
+            problems.append("PnlHead() no longer builds every card object out of the "
+                            "wipe's own prefix (%s is not %s) - the ONE wipe would stop "
+                            "covering the composed card body" % (head_naming[:60], want[:60]))
     return problems
 
 
@@ -2240,7 +2264,7 @@ def check_bkmagnet():
     grip = body(src, "void BaseKnotGripDrag(")
     snap = body(src, "double BaseKnotGripSnapPrice(")
     if snap is None:
-        problems.append("BaseKnotGripSnapPrice() is gone - the Ctrl magnet's reader must stay "
+        problems.append("BaseKnotGripSnapPrice() is gone - the handle magnet's reader must stay "
                         "declared (P-BK-61), or the two MAGNET rows go back to being controls "
                         "with no reader at all")
     elif "inpMagnetSensitivityPips" not in snap or "iHigh" not in snap or "iLow" not in snap:
@@ -2264,10 +2288,30 @@ def check_bkmagnet():
                             "(Open/High/Low/Close), and the nearest-by-pixel rule is what makes "
                             "it feel exact instead of arbitrary")
     if grip is None:
-        problems.append("BaseKnotGripDrag() is gone - the Ctrl magnet's ONLY caller (P-BK-61)")
-    elif "if(ctrl && " not in grip or "BaseKnotGripSnapPrice(" not in grip:
-        problems.append("the magnet is not gated on CONTROL inside the handle drag (P-BK-61) - an "
-                        "ungated magnet IS the behaviour BKMAGNET2-OFF removed")
+        problems.append("BaseKnotGripDrag() is gone - the handle magnet's ONLY caller (P-BK-61)")
+    elif "if(modifier && " not in grip or "BaseKnotGripSnapPrice(" not in grip:
+        problems.append("the magnet is not gated on a held modifier inside the handle drag "
+                        "(P-BK-61) - an ungated magnet IS the behaviour BKMAGNET2-OFF removed")
+    # P-BK-66 (2026-09-16): THE MODIFIER IS SHIFT, BECAUSE CTRL IS THE TERMINAL'S OWN
+    # DUPLICATE GESTURE. «من ctrl که میگیرم برای مگنت این باکس رو کپی میکنه»: MetaTrader
+    # copies a draggable object on Ctrl+drag, and these handles ARE draggable objects
+    # (OBJPROP_SELECTABLE is what makes them handles at all), so Ctrl cloned the chip
+    # instead of letting the magnet snap it. Asserted in BOTH directions - the probe
+    # reads SHIFT, and no site on the magnet's path spells CONTROL again: a magnet on
+    # the terminal's copy key is a magnet the user can never hold down.
+    utils = strip_comments(read(UTILS))
+    if "bool UIMagnetModifierDown()" not in utils or "TERMINAL_KEYSTATE_SHIFT" not in utils:
+        problems.append("the magnet's modifier probe is gone or no longer reads SHIFT (P-BK-66) - "
+                        "on CONTROL the terminal DUPLICATES the dragged handle instead "
+                        "(«این باکس رو کپی میکنه») and the magnet can never fire")
+    if "TERMINAL_KEYSTATE_CONTROL" in utils:
+        problems.append("the magnet's modifier probe reads CONTROL again (P-BK-66) - Ctrl+drag is "
+                        "MetaTrader's object-copy gesture, so the handle is cloned instead of "
+                        "snapped")
+    if grip is not None and "UIMagnetModifierDown()" not in grip:
+        problems.append("the handle drag no longer asks UIMagnetModifierDown() by role (P-BK-66) - "
+                        "moving the magnet to another key must stay a one-line change in the "
+                        "one owner that probes it")
     if len(re.findall(r"BaseKnotGripSnapPrice\(", stripped)) > 2:
         problems.append("BaseKnotGripSnapPrice() is called from more than the handle gesture "
                         "(P-BK-61) - the magnet may never run inside the box' own drag")
@@ -2996,9 +3040,16 @@ def selftest():
     reset()
 
     # 12. P-UI-71: the index-bounded purge comes back (the ghost row)
-    with_source(PANELS, "   ObjectsDeleteAll(0, head, 0, -1);",
+    with_source(PANELS, "   ObjectsDeleteAll(0, head, -1, -1);",
                 "   for(int r=0;r<PNL_CARD_ROWS_MAX;r++) ObjectDelete(0,head+IntegerToString(r));")
     cases.append(("a card teardown that cannot cover its rows is caught",
+                  bool(check_purge())))
+    reset()
+
+    # 12b. P-PERF-47: the ONE wipe is bounded to the main subwindow again
+    with_source(PANELS, "   ObjectsDeleteAll(0, head, -1, -1);",
+                "   ObjectsDeleteAll(0, head, 0, -1);")
+    cases.append(("a card wipe bounded to one subwindow is caught",
                   bool(check_purge())))
     reset()
 
@@ -3588,13 +3639,34 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 77. P-BK-61: the Ctrl gate is the whole difference between the magnet the user
-    #     asked for and the one BKMAGNET2-OFF removed - drop it and the handle drag
-    #     snaps on every step.
+    # 77. P-BK-61: the held-modifier gate is the whole difference between the magnet
+    #     the user asked for and the one BKMAGNET2-OFF removed - drop it and the
+    #     handle drag snaps on every step.
     with_source(BASEKNOT,
-                "   if(ctrl && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);",
+                "   if(modifier && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);",
                 "   gp = BaseKnotGripSnapPrice(gt, gp);")
     cases.append(("an UNGATED handle magnet is caught", bool(check_bkmagnet())))
+    reset()
+
+    # 77b. P-BK-66: the modifier must NOT be the terminal's own copy key. Ctrl+drag
+    #      duplicates the dragged object («این باکس رو کپی میکنه»), so a probe back on
+    #      CONTROL is a magnet that can never fire - and the mutant that renames the
+    #      probe is the same fault told the other way (the call site asks by ROLE).
+    with_source(UTILS, "long v = TerminalInfoInteger(TERMINAL_KEYSTATE_SHIFT);",
+                "long v = TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL);")
+    cases.append(("a magnet modifier back on Ctrl (the copy key) is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(UTILS, "bool UIMagnetModifierDown()", "bool UICtrlKeyDown()")
+    cases.append(("a magnet modifier probe renamed away from its role is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    with_source(BASEKNOT, "bool modifier = UIMagnetModifierDown();",
+                "bool modifier = UICtrlKeyDown();")
+    cases.append(("a handle drag that stops asking for the modifier by role is caught",
+                  bool(check_bkmagnet())))
     reset()
 
     # 78. P-BK-61: the magnet may never ride the box' own live follow (that is what

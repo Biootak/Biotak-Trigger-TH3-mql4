@@ -2497,8 +2497,8 @@ int BaseKnotRungHoldCount(const int tfMin, const datetime s1, const datetime s2,
    if(tfMin <= 0 || s2 <= 0 || top <= bot) return -1;
    if(tfMin == Period()) return BK_BASE_RUNG_MIN;   // this chart's own walk already did it
    if(!BaseKnotRungLoaded(tfMin)) return -1;
-   int sh1 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfMin, s1, false);
-   int sh2 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfMin, s2, false);
+   int sh1 = iBarShift(_Symbol, CompatTF(tfMin), s1, false);
+   int sh2 = iBarShift(_Symbol, CompatTF(tfMin), s2, false);
    if(sh1 < 0 || sh2 < 0) return -1;                // the box is older than this series
    int newer = (sh1 < sh2 ? sh1 : sh2);             // smaller shift = newer candle
    int older = (sh1 < sh2 ? sh2 : sh1);
@@ -2721,7 +2721,7 @@ void BaseKnotNodeRead(const datetime t2, const double top, const double bot,
    if(baseTFMin > 0 && baseTFMin != Period() && BaseKnotRungLoaded(baseTFMin))
       tfRead = baseTFMin;
    nd.storyTF = (tfRead > 0 ? tfRead : Period());
-   int s2 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfRead, t2, false);
+   int s2 = iBarShift(_Symbol, CompatTF(tfRead), t2, false);
    if(s2 <= 0) return;                    // the edge IS the newest candle — nothing happened after it
    // P-BK-48 — THE WHOLE PAST MARKET OF THIS NODE, from its right side to the newest
    // CLOSED candle, capped by BK_BIAS_MAX bars of the class' TF (the read stays bounded;
@@ -2788,7 +2788,7 @@ void BaseKnotNodeRead(const datetime t2, const double top, const double bot,
    //--- BK_APPROACH_MAX, and an unreadable leg answers 0 (no pattern) — never a guess.
    if(tFrom > 0)
    {
-      int sFrom = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfRead, tFrom, false);
+      int sFrom = iBarShift(_Symbol, CompatTF(tfRead), tFrom, false);
       if(sFrom > 0)
       {
          int lim = sFrom + BK_APPROACH_MAX;
@@ -3774,7 +3774,7 @@ void BaseKnotGripCreate(const string name, const color clr, const long tfMask)
    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_GRIP);
    ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);
    ObjectSetString(0, name, OBJPROP_TOOLTIP,
-                   "Base box corner — drag it to resize the box (Ctrl held = magnet: the price " +
+                   "Base box corner — drag it to resize the box (Shift held = magnet: the price " +
                    "snaps to the nearest candle OHLC under it)");
 }
 // Keep / place / retire the corner chips of ONE box (`BK_GRIP_COUNT` of them).
@@ -4438,11 +4438,11 @@ datetime BaseKnotGripSnapTime(const datetime t)
 //| P-BK-61 — AND THE CONTROL MAGNET.                                |
 //|                                                                  |
 //| «با کنترل هم مگنت فعال میشه ... حرکت رو چسبوند به کندل های و لو  |
-//| که دقیق باشه» — while the hand drags a handle AND Ctrl is held,  |
+//| که دقیق باشه» — while the hand drags a handle AND Shift is held, |
 //| the price it writes snaps to the candle HIGH/LOW of the bar under|
 //| the cursor, inside `inpMagnetSensitivityPips` (MAGNET SENS — the |
 //| user's own input, still editable on the indicator's Inputs tab;   |
-//| its card row stays retired). A plain (Ctrl-free) handle drag is   |
+//| its card row stays retired). A plain (Shift-free) handle drag is  |
 //| still hand-exact, which is the whole point of the modifier.       |
 //|                                                                  |
 //| WHY THIS IS NOT BKMAGNET2-OFF REVIVED: that decision («مگنت نمیخواد|
@@ -4454,6 +4454,32 @@ datetime BaseKnotGripSnapTime(const datetime t)
 // the identity). `check_bkmagnet` now asserts all four of those —    |
 // see tools/panel-wiring-audit.py, and never relax that group without|
 // reading it first.
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-BK-66 — THE MAGNET'S MODIFIER IS SHIFT, NOT CONTROL.           |
+//|                                                                  |
+//| Reported: «من ctrl که میگیرم برای مگنت این باکس رو کپی میکنه» —  |
+//| MetaTrader's own Ctrl+drag DUPLICATES a draggable object, and    |
+//| the box' handles ARE draggable objects (their OBJPROP_SELECTABLE |
+//| is what makes them handles at all, P-BK-61), so the terminal     |
+//| cloned the chip instead of letting the magnet snap it. Ctrl is   |
+//| the terminal's copy gesture, so the magnet needed another key.   |
+//|                                                                  |
+//| THE FOUR POLLABLE MODIFIERS, and why only one works:             |
+//|   * SHIFT   — pollable as TERMINAL_KEYSTATE_SHIFT, and MT4 binds |
+//|               no object-drag behaviour to it. THIS IS THE CHOICE.|
+//|   * CONTROL — the terminal's duplicate gesture. Never again.     |
+//|   * ALT     — pollable as TERMINAL_KEYSTATE_MENU, but Windows    |
+//|               and the terminal both eat it (menus, Alt+Tab):     |
+//|               a magnet that dies on a window switch is worse     |
+//|               than no magnet.                                    |
+//|   * MIDDLE  — pollable (TERMINAL_KEYSTATE_MIDDLE), but no hand   |
+//|              holds the middle button while dragging the left one.|
+//|                                                                  |
+//| The probe is ONE function by ROLE (UIMagnetModifierDown(), see   |
+//| UtilityFunctions.mqh), so the next report is a key name, not a   |
+//| refactor — and `check_bkmagnet` asserts BOTH halves: the probe   |
+//| reads SHIFT, and nothing in the magnet's path spells CONTROL.    |
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
 //| P-BK-64 (2026-09-16) — THE MAGNET MEASURES IN PIXELS.            |
@@ -4491,7 +4517,7 @@ datetime BaseKnotGripSnapTime(const datetime t)
 //|                                                                  |
 //| COST: reads only, on the gesture's own OBJECT_DRAG steps (nothing  |
 //| per tick): 4 bar reads + up to 6 projections per step, and ZERO    |
-//| when the magnet is off or Ctrl is not held — `BaseKnotGripDrag`    |
+//| when the magnet is off or Shift is not held — `BaseKnotGripDrag`   |
 //| gates the call, and the two early returns here are the other half. |
 //+------------------------------------------------------------------+
 #define BK_MAGNET_MIN_PX 8    // a hand cannot aim finer than this at any zoom
@@ -4549,12 +4575,12 @@ void BaseKnotGripDrag(const string id, const int side, const string name)
    int w = 0; datetime gt = 0; double gp = 0;
    if(!ChartXYToTimePrice(0, gx, gy, w, gt, gp)) return;
    if(w != 0 || gt <= 0 || gp <= 0) return;
-   bool ctrl = UICtrlKeyDown();
+   bool modifier = UIMagnetModifierDown();   // P-BK-66: SHIFT — MT4's Ctrl+drag copies the chip
    gt = BaseKnotGripSnapTime(gt);
-   if(ctrl && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);
+   if(modifier && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);
    // P-BK-64: the magnet answers with a NUMBER — once per gesture, on the step that
    // snapped, carrying the pixel distance it accepted and the value it took. A
-   // snapping gesture is rare (Ctrl held + inside the proximity), so the line costs
+   // snapping gesture is rare (modifier held + inside the proximity), so the line costs
    // nothing in steady state and turns the next report into a reading.
    if(s_bkMagnetPx >= 0.0 && !s_bkMagnetLogged)
    {
@@ -4595,7 +4621,7 @@ void BaseKnotGripDrag(const string id, const int side, const string name)
    {
       s_bkGripLogged = true;
       Print("[BK] grip resize box=", id, " side=", side,
-            " tag=", StringSubstr(name, StringLen(pfx)), " magnet=", (ctrl ? 1 : 0));
+            " tag=", StringSubstr(name, StringLen(pfx)), " magnet=", (modifier ? 1 : 0));
    }
    BaseKnotDragPaint();
 }

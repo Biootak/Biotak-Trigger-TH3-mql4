@@ -1356,6 +1356,29 @@ void TradePlanLiveTick()
     // Auto-log OUR numbers (user decision 2026-09-10: our log flows on its
     // own, change-guarded + throttled — the professor's side arrives via
     // screenshots and is paired offline by timestamp).
+    // P-PERF-48 / P-LOG-01 (2026-09-16): THIS BLOCK NOW OBEYS THE LOG LEVEL.
+    //
+    // It used to run unconditionally, here, on the label pump. The cost is not
+    // hypothetical and it is measured: over one day the live MT5 interaction
+    // ledger put the LABEL phase at avg 22.7 ms / MAX 625 ms per frame against
+    // levels 10.3/94 and overlay 4.3/78 - labels are the dominant term of the
+    // whole OnCalculate budget, and inside their pump sat (a) a FileOpen with
+    // FILE_WRITE - which TRUNCATES MQL5/Files/tradeplan-auto-<symbol>.log, so
+    // "paired offline by timestamp" was never actually possible - (b) four
+    // Print lines, and (c) every 3 s the full 8-TF snapshot: 12 more lines and
+    // ~250 number->string conversions, on the thread that owns the pixels.
+    //
+    // The block 30 lines above already declares this path "Display only - this
+    // path NEVER prints (user decision 2026-09-10: logs only on demand via the
+    // X hotkey)". Two comments, two answers; the code now agrees with that one.
+    //
+    // NOTHING IS LOST. The identical dump is one hotkey away (X ->
+    // TradePlanDumpNow, which emits [DUMP]+row+snapshot+legs atomically), and
+    // raising inpLogLevel to DEBUG/INFO brings this auto log straight back for
+    // offline pairing. The gate is the same runtime check the logger macros use,
+    // so there is exactly one rule for "may a hot path print" in the project.
+    if(g_runtimeLogLevel <= LOG_LEVEL_INFO)
+    {
     TradePlanExportBegin();
     TradePlanPrintRow(plan);
 
@@ -1367,6 +1390,7 @@ void TradePlanLiveTick()
         TradePlanLogAllTFs();
     }
     TradePlanExportEnd();
+    } // end log-level gate (P-LOG-01)
 
     CreateATRTradeLabel(labelPrefix, plan, L);
     DisplayTRexTitleBlock(labelPrefix, L);

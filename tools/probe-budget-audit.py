@@ -190,6 +190,19 @@ def fn_body(src, signature):
     return None
 
 
+def fn_code(src, signature):
+    """A function body WITHOUT its commentary.
+
+    P-PERF-47/P-PERF-02: the prose in this tree quotes the very calls it
+    explains - CacheClear's own note names `MarkDrawGeneration()`, the ladder
+    sweep's names `doomed[nd++]` - so a substring gate answered by a comment is
+    a gate that stays green while the code it guards is deleted. (The negative
+    controls found exactly that: four seeds patched the code away and no check
+    noticed.) Every body this audit judges for a CALL must go through here.
+    """
+    return strip_comments(fn_body(src, signature) or "")
+
+
 # ---------------------------------------------------------------------------
 # 1. negative existence cache
 # ---------------------------------------------------------------------------
@@ -227,8 +240,8 @@ def check_negative_cache(o):
     # droppable path either bumps the generation (CacheClear, which wipes the
     # chart and the cache together) or frees the stamps (a fresh instance, which
     # re-attaches onto a chart the previous one drew on).
-    body = fn_body(cache, "void CacheClear()")
-    if not body or "MarkDrawGeneration()" not in body:
+    body = fn_code(cache, "void CacheClear()")
+    if "MarkDrawGeneration();" not in body:
         fail("negative-cache", "CacheClear does not bump the generation: a mark outlives the chart it was proved on")
     else:
         ok("negative-cache", "CacheClear bumps the generation, so the marks die with the wipe")
@@ -488,13 +501,14 @@ def check_delete_paths(o):
     if not body:
         fail("delete-path", "DeleteHTFCandles is gone")
         return
-    if "ObjectsTotal" in body or "ObjectName(" in body:
+    code = strip_comments(body)
+    if "ObjectsTotal" in code or "ObjectName(" in code:
         fail("delete-path", "DeleteHTFCandles walks every rectangle/trend on the chart again")
-    elif "ObjectsDeleteAll(0, g_HTFPrefix)" not in body:
+    elif "ObjectsDeleteAll(0, g_HTFPrefix)" not in code:
         fail("delete-path", "DeleteHTFCandles does not use the bulk prefix delete")
     else:
         ok("delete-path", "DeleteHTFCandles is one bulk prefix delete")
-    if "HTFAnyBoxesExist()" not in body:
+    if re.search(r"if\(g_HTFDrawnCount\s*<=\s*0\s*&&\s*!HTFAnyBoxesExist\(\)\)\s*return;", code) is None:
         fail("delete-path", "no O(1) guard: the HTF-steady-state delete still fires every pass")
     else:
         ok("delete-path", "the HTF steady state costs no terminal call (bookkeeping + name probe)")
@@ -1556,6 +1570,82 @@ def check_chart_change_prime(o):
     ok("chart-change-prime", "the chart-change branch names its own cost")
 
 
+def check_perf49_ledgers(o):
+    """P-PERF-49 — A LEDGER FIELD MUST NAME A STEP, NOT A FUNCTION.
+
+    The MT4-vs-MT5 reconciliation of 2026-09-16 (docs/CACHE-LIFECYCLE-PERF47_FA.md
+    in the MT5 mirror) left three numbers that named a whole FUNCTION where every
+    other field in this project's ledgers names a step - and each one was the
+    biggest number on its own line:
+
+      * `chart change breakdown: redraw=0ms labels=390ms tail=3016ms` on the very
+        event that took 3485 ms: the tail is RefreshLiveCountdown() +
+        ThrottledChartRedraw(), i.e. the split ended exactly where the stall was;
+      * `labels=390/954ms` - the whole of RedrawLabelsOnly(), which is seven steps;
+      * `handler=78ms` (p90 313 ms, on MT5, against ZERO MT4 budget violations) -
+        the whole of OnDeinitHandler(), which is seven independent promises.
+
+    A number without an owner is not actionable - the project's own rule - so all
+    three are split, and this group is what stops the split being folded back into
+    the function it was taken out of. `redraw=` additionally reads the render's own
+    P-PERF-03 phase counters, because that is the pass it just paid for: a scroll's
+    328 ms must read as a step (levels/labels/overlay/...), not as a function.
+    """
+    events = strip_comments(read(EVENTS, o))
+    body = fn_body(events, "void OnChartEventHandler(")
+    if not body:
+        fail("perf49", "OnChartEventHandler is gone")
+        return
+    i = body.find("if(id == CHARTEVENT_CHART_CHANGE)")
+    if i < 0:
+        fail("perf49", "the CHART_CHANGE branch is gone")
+        return
+    j = body.find("CHARTEVENT_CLICK", i)
+    branch = body[i:j if j > i else len(body)]
+    for need, why in (
+            ("uint p28count = GetTickCount()",
+             "the chart-change tail is measured as one number again: tail=3016ms of a "
+             "3485ms event cannot be told from the 2.14us ChartRedraw (P-PERF-49)"),
+            ("ms [count=",
+             "the countdown is no longer separated from the repaint in the line that "
+             "reports them (P-PERF-49)"),
+            (" render[levels=",
+             "redraw= no longer names the render pass it paid for: a scroll's 328ms "
+             "reads as a function instead of a step (P-PERF-49)")):
+        if need not in branch:
+            fail("perf49", why)
+            return
+    ok("perf49", "the chart-change branch splits its tail and names the render pass")
+
+    rl = fn_body(events, "void RedrawLabelsOnly()")
+    if not rl:
+        fail("perf49", "RedrawLabelsOnly is gone")
+        return
+    if "labels relayout" not in rl:
+        fail("perf49", "RedrawLabelsOnly lost its phase ledger: labels=390/954ms names a "
+                       "function again instead of the step that spent it (P-PERF-49)")
+        return
+    for need in ("p49clear", "p49atr", "p49th", "p49trade"):
+        if need not in rl:
+            fail("perf49", "the labels relayout ledger dropped the %s phase (P-PERF-49)" % need)
+            return
+    ok("perf49", "the labels relayout names its five phases")
+
+    d = fn_body(events, "void OnDeinitHandler(const int reason)")
+    if not d:
+        fail("perf49", "OnDeinitHandler is gone")
+        return
+    if "deinit handler breakdown" not in d:
+        fail("perf49", "the teardown handler lost its phase ledger: handler=78ms (p90 313ms "
+                       "on MT5) names a function again (P-PERF-49)")
+        return
+    for need in ("p49knot", "p49atr", "p49names", "p49branch"):
+        if need not in d:
+            fail("perf49", "the deinit handler ledger dropped the %s phase (P-PERF-49)" % need)
+            return
+    ok("perf49", "the deinit handler names its six phases")
+
+
 def check_name_scheme(o):
     """P-PERF-38 — ONE level-object prefix, and it does not name the timeframe.
 
@@ -1785,6 +1875,131 @@ def check_topology_adoption(o):
         fail("topology-adoption", "the start point is restored after the adoption is resolved: the fingerprint would mismatch")
         return
     ok("topology-adoption", "the adoption is resolved once, after every fingerprint input is final")
+
+
+def check_level_foreign_02(o):
+    """P-LEVEL-FOREIGN-02 — a stale PRICE is repaired, never a reason to WIPE.
+
+    Reported: «در هر تعویض تایم فریم حذف و دوباره ساخته میشه سطوح» — every
+    timeframe switch deletes the level family and builds it again.
+
+    The wipe was the answer P-LEVEL-FOREIGN-01 gave to "the kept objects are
+    priced for another timeframe": the adoption fingerprint folded in the
+    period, the scaling factor and the daily-close anchor, so a switch could
+    NEVER adopt, `ApplyCacheInvalidation` force-cleared the family, and the four
+    frame staged rebuild re-created it. That is one shared source, so it was
+    true on both platforms — only the price differed (MT4 ~30 ms, MT5 250-300 ms
+    of teardown plus four 60-95 ms frames), which is why the user reads it as an
+    MT5 defect and sees nothing on MT4.
+
+    The cheap answer is a reconciliation, and BOTH halves must exist before the
+    fingerprint may drop the prices:
+      * the render re-asserts every name the new ladder PRODUCES, in place, on
+        the objects already on the chart (the cache-first creator updates),
+      * `SweepForeignLadderObjects` deletes every chart object of the family
+        whose NAME the build did not just produce — the half
+        `SweepForeignLevelObjects` can never see, because its lists only ever
+        name the produced ones.
+
+    The reported symptom when only the first half existed:
+    «سطوحی که باید نمایش بده نمایش نمیده، و سطوحی که توی دید نیست رو نمایش
+    میده» — a kept object stays VISIBLE outside the window while the produced
+    set is attacked from the other side. An index-bound sweep cannot fix that
+    (`maxStep` is a window quantity, and the numbering is not the name space),
+    so the pass must ask the ONLY exact question: is this name one the build
+    just produced? Those lists are in hand at the call site.
+    """
+    events = strip_comments(read(EVENTS, o))
+    pipeline = strip_comments(read(PIPELINE, o))
+
+    # (a) the fingerprint names NAMES, not prices
+    fp = fn_body(events, "int AdoptionFingerprint()")
+    if not fp:
+        fail("level-foreign", "AdoptionFingerprint is gone")
+        return
+    for term, why in (("Period()", "the chart period"),
+                      ("GetCurrentScalingFactor", "the ATR scaling factor"),
+                      ("g_dailyClosePriceForTH", "the daily-close anchor")):
+        if term in fp:
+            fail("level-foreign",
+                 "the adoption fingerprint names %s again: a timeframe switch wipes "
+                 "the level family and rebuilds it instead of correcting it" % why)
+            return
+    ok("level-foreign", "the fingerprint names NAMES, not prices: a moved price is repaired, not refused")
+
+    # (b) the reconciliation walks the CHART and asks the EXACT question: is this
+    #     name one the build just produced?  Those lists are passed in.
+    body = fn_code(pipeline, "int SweepForeignLadderObjects(")
+    if not body:
+        fail("level-foreign",
+             "SweepForeignLadderObjects is gone: nothing deletes the family objects the "
+             "new ladder does not produce, and stale ones stay VISIBLE outside the window")
+        return
+    # ... and it receives them, so the ONLY question it can ask is the exact one
+    # (`fn_body` starts after the parameter list, so the signature is read here).
+    sigAt = pipeline.find("int SweepForeignLadderObjects(")
+    sig = pipeline[sigAt:sigAt + 400] if sigAt >= 0 else ""
+    for term, why in (("const STriggerLine &lines[]", "the produced lines"),
+                      ("const SZoneDefinition &zones[]", "the produced zones"),
+                      ("const double vpTop", "the cull window")):
+        if term not in sig:
+            fail("level-foreign",
+                 "the reconciliation does not receive %s: it cannot know what the build "
+                 "produced, so it can only guess by index" % why)
+            return
+    if "ObjectName(0, i, -1, -1)" not in body or "ObjectsTotal(0, -1, -1)" not in body:
+        fail("level-foreign",
+             "the reconciliation no longer walks the chart: it can only judge the names the build produced")
+        return
+    if "if(!(vpTop > vpBottom) || vpBottom <= 0) return 0;" not in body:
+        fail("level-foreign",
+             "the reconciliation judges the family with an unusable cull window: the "
+             "delete-everything-then-rebuild flash on attach comes back")
+        return
+    if "if(lineCount <= 0) return 0;" not in body:
+        fail("level-foreign",
+             "a build that produced nothing still reconciles: the whole family is deleted on a bad frame")
+        return
+    if "if(ProducedLadderName(nm, produced, pc)) continue;" not in body:
+        fail("level-foreign",
+             "the reconciliation stopped asking the exact question: a produced name can be "
+             "deleted, and the switch deletes the ladder it just built")
+        return
+    if "ArrayResize(doomed, nd + 1);" not in body or \
+       "DeleteIndicatorObjectManaged(doomed[d], true)" not in body:
+        fail("level-foreign",
+             "the reconciliation deletes while it walks: a delete renumbers the object "
+             "list, so the next survivor is stepped over")
+        return
+    if "bool LadderNameIsZoneBand(" not in pipeline or \
+       'if(StringFind(nm, "_Zone_") >= 0) continue;' not in body:
+        fail("level-foreign",
+             "the walk acts on a zone's border sub-objects as if they were bands: one "
+             "stale zone is deleted six times over and the family is counted wrong")
+        return
+    ok("level-foreign", "the reconciliation walks the chart and keeps exactly the produced names")
+
+    # (c) it runs once, on the pitch-change frame, and only on a HANDOFF
+    if pipeline.count("SweepForeignLadderObjects(config, lines, result.lineCount") != 1:
+        fail("level-foreign", "the reconciliation is not called exactly once from the pitch-change frame")
+        return
+    pitch = pipeline.find("SweepForeignLevelObjects(config, lines, result.lineCount")
+    call = pipeline.find("SweepForeignLadderObjects(config, lines, result.lineCount")
+    guard = pipeline.find("if(g_adoptPreviousTopology && !s_foreignSweepDone)")
+    if pitch < 0 or call < pitch:
+        fail("level-foreign", "the reconciliation left the frame that detects the pitch change")
+        return
+    if guard < 0 or guard > call:
+        fail("level-foreign",
+             "the reconciliation is not gated on the handoff: a wiped chart gets a whole-chart walk")
+        return
+    consume = pipeline.find("s_foreignSweepDone = true;")
+    if consume < 0 or consume > call:
+        fail("level-foreign",
+             "the reconciliation is not consumed once per instance: a whole-chart walk "
+             "becomes a tax on every intraday pitch drift")
+        return
+    ok("level-foreign", "the reconciliation runs once, on the pitch-change frame of a handed-over family")
 
 
 def check_event_settle(o):
@@ -4140,8 +4355,9 @@ def check_tick_wrap(o):
 CHECKS = [check_negative_cache, check_blend_background, check_combo_guard, check_init_ledger,
           check_history_format, check_delete_paths, check_ui_hot_path, check_geometry_cache,
           check_base_price_state, check_family_isolation, check_toggle_path,
-          check_persist_write_shape, check_chart_change_prime, check_name_scheme,
-          check_topology_adoption, check_event_settle, check_ui_sync,
+          check_persist_write_shape, check_chart_change_prime, check_perf49_ledgers,
+          check_name_scheme,
+          check_topology_adoption, check_level_foreign_02, check_event_settle, check_ui_sync,
           check_longpress_latch, check_custom_price_mode, check_custom_price_source,
           check_live_control, check_teardown_census, check_drag_anchor,
           check_zone_picture, check_edge_look, check_click_claim,
@@ -4194,11 +4410,12 @@ def selftest():
          ";")
     # NOTE: read() opens in text mode, so seeds are written with LF even though
     # the MQL sources carry CRLF (they are normalised on read).
+    # P-PERF-47 moved the bump to the TOP of CacheClear, ahead of the two early
+    # returns that used to skip it. The seed follows the CODE, not the old line:
+    # it is still "the bump is missing" that must be caught, whatever explains it.
     seed("CacheClear keeps marks", OBJCACHE,
-         "    // P-PERF-02: the cache is what the draw guards compare against — whoever\n"
-         "    // wiped it must also invalidate the level render's geometry signature.\n"
-         "    MarkDrawGeneration();",
-         "")
+         "    MarkDrawGeneration();\n    if(!g_objectCacheHashInitialized) return;",
+         "    if(!g_objectCacheHashInitialized) return;")
     seed("OnInit keeps marks", EVENTS,
          "    CacheAbsentResetAll();",
          "")
@@ -4594,10 +4811,19 @@ def selftest():
          "        if(!s_ccPrimed)\n        {\n            s_ccPrimed = true;\n            viewportChanged = false;\n        }",
          "        ;")
     seed("chart-change breakdown dropped", EVENTS,
-         '        if(p28redraw + p28labels + (GetTickCount() - p28t) >= P_P4_EVENT_WARN_MS)\n'
-         '            _LOG_GATE_W Print("[W][PERF] chart change breakdown: redraw=", (int)p28redraw,\n'
-         '                  "ms labels=", (int)p28labels, "ms tail=", (int)(GetTickCount() - p28t), "ms");\n',
+         '            _LOG_GATE_W Print("[W][PERF] chart change breakdown: redraw=", (int)p28redraw,\n',
          "")
+    # P-PERF-49: each of the three new splits has a mutant that folds it back into
+    # the function it was taken out of - the fault the group exists to catch.
+    seed("chart-change tail folded back into one field", EVENTS,
+         '        uint p28count = GetTickCount() - p28t;\n        p28t = GetTickCount();\n',
+         '        // seed: the tail is one number again (RefreshLiveCountdown + repaint)\n')
+    seed("render split dropped from the breakdown", EVENTS,
+         '" render[levels="', '" render["')
+    seed("labels relayout ledger dropped", EVENTS,
+         '"[W][PERF] labels relayout:', '"[W][PERF] labels:')
+    seed("deinit handler ledger dropped", EVENTS,
+         '"[W][PERF] deinit handler breakdown:', '"[W][PERF] deinit:')
 
     # 12. keeping the family leaves the create path facing objects it did not
     #     make (P-PERF-38e)
@@ -4703,6 +4929,40 @@ def selftest():
          "")
     seed("adoption never resolved", EVENTS,
          "    ResolveTopologyAdoption();\n",
+         "")
+
+    # 11b. the stale PRICE is answered with a wipe again (P-LEVEL-FOREIGN-02)
+    seed("the fingerprint names the period again", EVENTS,
+         "int AdoptionFingerprint()\n{\n   int fp = NAME_SCHEME_ID;",
+         "int AdoptionFingerprint()\n{\n   int fp = NAME_SCHEME_ID;\n"
+         "   fp = fp * 31 + (int)Period();")
+    seed("the fingerprint names the daily-close anchor again", EVENTS,
+         "int AdoptionFingerprint()\n{\n   int fp = NAME_SCHEME_ID;",
+         "int AdoptionFingerprint()\n{\n   int fp = NAME_SCHEME_ID;\n"
+         "   fp = fp * 31 + (int)MathRound(g_dailyClosePriceForTH * 100000.0) % 1000003;")
+    seed("the reconciliation stops walking the chart", PIPELINE,
+         "        const string nm = ObjectName(0, i, -1, -1);",
+         "        const string nm = \"\";")
+    seed("the reconciliation deletes the live ladder too", PIPELINE,
+         "        if(ProducedLadderName(nm, produced, pc)) continue;\n        ArrayResize(doomed, nd + 1);",
+         "        ArrayResize(doomed, nd + 1);")
+    seed("the reconciliation judges an unusable window", PIPELINE,
+         "    if(!(vpTop > vpBottom) || vpBottom <= 0) return 0;   // unusable window: no judgement\n",
+         "")
+    seed("the reconciliation runs on an empty build", PIPELINE,
+         "    if(lineCount <= 0) return 0;                        // nothing produced: nothing to say\n",
+         "")
+    seed("the index sweep runs on a wiped chart too", PIPELINE,
+         "                if(g_adoptPreviousTopology && !s_foreignSweepDone)\n                {",
+         "                if(true)\n                {")
+    seed("the index sweep runs on every pitch drift", PIPELINE,
+         "                if(g_adoptPreviousTopology && !s_foreignSweepDone)\n                {",
+         "                if(g_adoptPreviousTopology)\n                {")
+    seed("the sweep deletes while it walks", PIPELINE,
+         "        ArrayResize(doomed, nd + 1);\n        doomed[nd++] = nm;",
+         "        DeleteIndicatorObjectManaged(nm, true);")
+    seed("the sweep treats a zone border as a band", PIPELINE,
+         '        if(StringFind(nm, "_Zone_") >= 0) continue;   // a border sub-object: its band decides\n',
          "")
 
     # 17. the custom price line's ON/OFF + interaction state (P-UI-45)

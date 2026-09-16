@@ -321,6 +321,24 @@ bool DeleteManagedZoneObjects(const string zoneName, const bool verifyChartObjec
 }
 
 void CacheClear() {
+    // P-PERF-47: THE GENERATION BUMP IS NOT CONDITIONAL ON OCCUPANCY.
+    //
+    // MarkDrawGeneration() used to sit at the very END of this function, behind
+    // two early returns (`!initialized` and `size == 0`). The bump means "the
+    // chart no longer holds what we rendered" — a fact about the CHART, not
+    // about this table. So a caller that wiped the family and then called
+    // CacheClear() to invalidate the render signature got NOTHING whenever the
+    // cache happened to be empty (a fresh instance, or a family that was never
+    // cached at all — ClearFactorLevels is exactly that shape), and the next
+    // frame compared against a stale geometry signature and SKIPPED the render.
+    // The picture then stayed wrong until something unrelated moved. That is the
+    // "cache is not invalidated on time" half of the report; the fix is to make
+    // the invalidation unconditional, which is what every caller already assumes.
+    //
+    // Cost: one increment on a cold path (OnDeinit, a mode change, a deep
+    // rebuild). It is deliberately BEFORE the guards, because the guards are
+    // about the table and this is about the chart.
+    MarkDrawGeneration();
     if(!g_objectCacheHashInitialized) return;
     if(g_objectCacheSize == 0) return;
     // PERF FIX: Walk only occupied slots (tracked by g_objectCacheSize) via a
@@ -346,9 +364,9 @@ void CacheClear() {
     g_lruMinIdx = -1;
     g_lruMinTime = 0;
     _LOG_GATE_I Print("[I][SYNC] Object cache cleared");
-    // P-PERF-02: the cache is what the draw guards compare against — whoever
-    // wiped it must also invalidate the level render's geometry signature.
-    MarkDrawGeneration();
+    // P-PERF-02 / P-PERF-47: the generation bump that belongs with this wipe is
+    // issued ONCE, at the TOP of the function (see the note there) — not here,
+    // where the two early returns above would skip it.
 }
 
 bool CacheObjectExists(const string name) {
@@ -709,15 +727,40 @@ int CacheGetSize()
 
 void CacheRebuild() {
     CacheClear();
-    
+
     // MT4: ObjectsTotal() with chart_id parameter
     int totalObjects = ObjectsTotal(0, -1, -1);
-    
+
+    // P-PERF-47: THE "OURS" TEST IS THE OBJECT PREFIX, NOT TWO HARD-CODED LETTERS.
+    //
+    // This filter used to be `name[0]=='T' && name[1]=='H'`. That is wrong in both
+    // directions at once:
+    //   - TOO NARROW: `inpObjectPrefix` is an INPUT (default "THLevels"), so a
+    //     user who renames it to anything not starting with "TH" makes every
+    //     rebuild cache NOTHING. It also misses the families that do not carry
+    //     the level prefix at all (`BiotakHTF_<chartId>_<i>`), so a rebuild
+    //     produced a cache that described only part of what is on the chart —
+    //     and every uncached name then costs a fresh ObjectFind on every walk,
+    //     which on MT5 is the most expensive primitive there is (~88 us for a
+    //     miss, measured by MT5PrimitiveProbe).
+    //   - TOO BROAD: a foreign object whose name happens to start with "TH"
+    //     (another indicator's, or a template's) got cached as OURS, so the
+    //     cache claimed liveness for a name this program must never write.
+    //
+    // The prefix test is the one the rest of the project already uses to answer
+    // "is this ours?" and it cannot drift from the input that names the family.
+    // The function has no live caller today (only the test harness drives it) —
+    // which is exactly why the wrong filter survived: nothing exercised it.
+    string ownPrefix = inpObjectPrefix;
+    int ownPrefixLen = StringLen(ownPrefix);
+
     for(int i = 0; i < totalObjects; i++) {
         string objName = ObjectName(0, i);
-        
-        // Only cache TH-related objects
-        if(StringLen(objName) >= 2 && StringGetCharacter(objName, 0) == 'T' && StringGetCharacter(objName, 1) == 'H') {
+
+        // Only cache objects that belong to this indicator's namespace.
+        if(ownPrefixLen == 0 || StringLen(objName) < ownPrefixLen) continue;
+        if(StringSubstr(objName, 0, ownPrefixLen) != ownPrefix) continue;
+        {
             double price = ObjectGetDouble(0, objName, OBJPROP_PRICE);
             color clr = (color)ObjectGetInteger(0, objName, OBJPROP_COLOR);
             int style = (int)ObjectGetInteger(0, objName, OBJPROP_STYLE);

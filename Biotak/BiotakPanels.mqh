@@ -2536,34 +2536,41 @@ void ParsePnlName(const string name,int &item,int &row,string &kind)
 }
 
 //--- Timeframe-lock option helpers (panel 4 — TIMEFRAME segment row)
+//
+// R-TF-UNIT: the lock period is a MINUTE COUNT everywhere it is consumed -
+// `g_lockedPeriod` is compared against `Period()`, written to the lock's global
+// variable, and named by `PeriodToString(g_lockedPeriod)`. These two helpers
+// used to speak in PERIOD_* constants, which on MT4 are the same numbers and on
+// MT5 are not: the badge read "16385" instead of "H1", and LockOptFromPeriod()
+// matched nothing, so the panel always showed the segment as "Cur".
 int LockPeriodFromOpt(const int idx)
 {
    switch(idx)
    {
-      case 1:  return PERIOD_M1;
-      case 2:  return PERIOD_M5;
-      case 3:  return PERIOD_M15;
-      case 4:  return PERIOD_M30;
-      case 5:  return PERIOD_H1;
-      case 6:  return PERIOD_H4;
-      case 7:  return PERIOD_D1;
-      case 8:  return PERIOD_W1;
-      case 9:  return PERIOD_MN1;
+      case 1:  return 1;       // M1
+      case 2:  return 5;       // M5
+      case 3:  return 15;      // M15
+      case 4:  return 30;      // M30
+      case 5:  return 60;      // H1
+      case 6:  return 240;     // H4
+      case 7:  return 1440;    // D1
+      case 8:  return 10080;   // W1
+      case 9:  return 43200;   // MN1
    }
    return 0;   // Cur → locks to the active timeframe
 }
 
 int LockOptFromPeriod(const int p)
 {
-   if(p==PERIOD_M1)  return 1;
-   if(p==PERIOD_M5)  return 2;
-   if(p==PERIOD_M15) return 3;
-   if(p==PERIOD_M30) return 4;
-   if(p==PERIOD_H1)  return 5;
-   if(p==PERIOD_H4)  return 6;
-   if(p==PERIOD_D1)  return 7;
-   if(p==PERIOD_W1)  return 8;
-   if(p==PERIOD_MN1) return 9;
+   if(p==1)     return 1;
+   if(p==5)     return 2;
+   if(p==15)    return 3;
+   if(p==30)    return 4;
+   if(p==60)    return 5;
+   if(p==240)   return 6;
+   if(p==1440)  return 7;
+   if(p==10080) return 8;
+   if(p==43200) return 9;
    return 0;
 }
 
@@ -6049,62 +6056,40 @@ void PnlDestroy(const int item)
    // object as `g_UI.btnPrefix + "Pnl" + item + "_" + ...`, so the wipe and the
    // drawer share ONE spelling (the gate asserts it). Cost is ONE terminal scan
    // per card teardown instead of ~450 ObjectDelete calls.
-   ObjectsDeleteAll(0, head, 0, -1);
-   // Every row object this card could have made is now gone - cells, glass,
-   // rings, captions, ticks, keycaps, dropdowns and section chrome alike.
-   // PnlDdClose() drops the popover, which belongs to no row.
+   ObjectsDeleteAll(0, head, -1, -1);
+   // P-PERF-47: AND THAT ONE WIPE IS THE WHOLE TEARDOWN.
+   //
+   // This function used to follow the wipe with a SECOND full-chart prefix scan
+   // (`head+"card"`) plus ~33 hand-listed `ObjectDelete(0, head+...)` probes.
+   // Every one of those names is a strict SUBSET of the prefix just wiped —
+   // `head+"card"`, `head+"ticon"`, `head+"head"`, `head+"sub"`, `head+"close"`,
+   // `head+"topbar"`, ... — because `PnlName()`/`PnlHead()` (BiotakPanels.mqh:2472
+   // and :2476) build every object of this family as
+   // `g_UI.btnPrefix + "Pnl" + item + "_" + ...`, and `head` is exactly
+   // `btnPrefix + "Pnl" + item + "_"`. So the extra scan and the 33 probes could
+   // never find anything the wipe had not already removed: they were 33
+   // guaranteed misses, and the live MT5 probe prices a miss at ~88 us — the most
+   // expensive primitive on the chart, and ~360x the cost of the ObjectSetInteger
+   // the same terminal answers in 0.245 us.
+   //
+   // The window argument is now -1 rather than 0 so this ONE wipe is a strict
+   // superset of the hand list it replaces: `ObjectDelete(0,name)` searched every
+   // subwindow while `ObjectsDeleteAll(...,0,...)` searched only the main one.
+   // Panel objects are main-window by construction, so this changes nothing on a
+   // healthy chart — it only removes a way for a stray to survive the teardown.
+   //
+   // PnlDdClose()/BkDdClose() are still called because they reset STATE
+   // (g_PnlDdItem, g_BkDd) as well as removing objects; their own deletes are now
+   // misses, and a miss on a handful of names is not worth a branch.
    PnlDdClose();   // open select popover (PDDBG/PDDSH/PDDR*) belongs to no row
-   ObjectsDeleteAll(0, head+"card", 0, -1);   // card / cardm<i> / cardb / cardf
-   ObjectDelete(0,head+"ticon");
-   ObjectDelete(0,head+"head");
-   ObjectDelete(0,head+"sub");
-   for(int sb=0;sb<6;sb++)   // .subttl per-segment caption + its 4px dot
-                                   // (P-UI-26: longest live run is 3 segs —
-                                   // the margin is for the next long subtitle)
-   {                         // (longest subtitle has 3 segments — SUBDOTS)
-      ObjectDelete(0,head+"sub"+IntegerToString(sb));
-      ObjectDelete(0,head+"subd"+IntegerToString(sb));
-   }
-   ObjectDelete(0,head+"close");
-   // R-PANELUI2 header chrome
-   ObjectDelete(0,head+"topbar");   // .card::before accent top bar
-   ObjectDelete(0,head+"hair");     // .hd::after accent hairline
-   ObjectDelete(0,head+"mark");     // 30px .mark chip
-   ObjectDelete(0,head+"markg");    // .mark glyph ink
-   ObjectDelete(0,head+"keyc");     // .key cap skin
-   ObjectDelete(0,head+"keyl");     // .key caption
-   ObjectDelete(0,head+"ver");      // .ver number badge
-   ObjectDelete(0,head+"xbg");      // .x ghost skin
-   ObjectDelete(0,head+"xgl");      // .x glyph ink
-   ObjectDelete(0,head+"pal");
-   ObjectDelete(0,head+"add");
-   ObjectDelete(0,head+"del");
-   ObjectDelete(0,head+"rst");
-   ObjectDelete(0,head+"done");
-   // footer button chrome — skin + glyph + caption per button (PnlFooterBtn)
-   ObjectDelete(0,head+"rstbg");   ObjectDelete(0,head+"rstic");   ObjectDelete(0,head+"rstlb");
-   ObjectDelete(0,head+"donebg");  ObjectDelete(0,head+"doneic");  ObjectDelete(0,head+"donelb");
    // purge: pre-fix builds created the switch faces as PREFIXLESS globals
-   // ("SW","SW0".."SW3") — one object all rows fought over. Delete once here.
+   // ("SW","SW0".."SW3") — one object all rows fought over. The only names below
+   // that the prefix wipe genuinely cannot reach.
    ObjectDelete(0,"SW");
    for(int swp=0;swp<4;swp++) ObjectDelete(0,"SW"+IntegerToString(swp));
-   if(item == 13)   // TV-strip objects carry head-kind names (TB*) — purge
-   {                // them here or they leak on close. R-BKSTRIP.
-      ObjectDelete(0,PnlHead(13,"TBborder"));
-      ObjectDelete(0,PnlHead(13,"TBfill"));
-      ObjectDelete(0,PnlHead(13,"TBtext"));
-      ObjectDelete(0,PnlHead(13,"TBstyle"));
-      ObjectDelete(0,PnlHead(13,"TBwidth"));
-      ObjectDelete(0,PnlHead(13,"TBlock"));
-      ObjectDelete(0,PnlHead(13,"TBdel"));
-      ObjectDelete(0,PnlHead(13,"TBmore"));
-      ObjectDelete(0,PnlHead(13,"TBbar0"));
-      ObjectDelete(0,PnlHead(13,"TBbar1"));
-      ObjectDelete(0,PnlHead(13,"TBbar2"));
-      ObjectDelete(0,PnlHead(13,"TBwlabel"));
-      ObjectDelete(0,PnlHead(13,"TBchev1"));
-      ObjectDelete(0,PnlHead(13,"TBchev2"));
-      BkDdClose();   // dropdown popover objects (TBdd + DD row set)
+   if(item == 13)   // TV-strip dropdown popover (TBdd + DD row set) — state + objects
+   {
+      BkDdClose();
    }
 }
 
@@ -6412,7 +6397,51 @@ void PnlCloseAll()
    BkFlushTextEdit();   // close = apply (TV Ok semantics)
    g_BkTextFocus = false;
    bool wasOpen = (g_PnlOpen >= 0);
-   for(int i=0;i<PNL_COUNT;i++) PnlDestroy(i);
+   // P-PERF-47: ONE FAMILY WIPE INSTEAD OF FOURTEEN PER-ITEM TEARDOWNS.
+   //
+   // The loop this replaces called PnlDestroy(i) for ALL PNL_COUNT (14) items
+   // whether or not that item had ever been built — and at most ONE panel is
+   // ever on screen, because PnlOpen() calls PnlCloseAll() before it creates
+   // (BiotakPanels.mqh:6441). So thirteen of the fourteen teardowns were work on
+   // an empty family, and each one still paid a full-chart prefix scan plus its
+   // own probes. The measured bill, on the live MT5 terminal:
+   //
+   //   [W][PERF] OnDeinit breakdown: pnl=437ms ...        (every timeframe switch)
+   //   [W][PERF] OnDeinit reason=3 took 734ms (budget 150ms)
+   //
+   // against an MT4 teardown that never once exceeded the 150 ms budget in a
+   // whole trading day (the AMarkets MT4 log for 2026-09-16 carries zero
+   // OnDeinit budget warnings and completes a full Full-build timeframe switch
+   // in 42 ms). The gap is not the platform being slow at the WORK — the MT5
+   // probe prices a WRITE at 0.245 us — it is the platform charging for every
+   // QUESTION, and this loop asked hundreds of them.
+   //
+   // WHY A PREFIX WIPE IS THE CORRECT FIX, NOT A LEDGER OF "WHICH PANELS EXIST":
+   // a ledger can only ever be as right as every writer of it, and a panel that
+   // is on the chart while its flag says "not built" leaks silently — which is
+   // the exact ghost class the per-item list was written to fight (see P-UI-71).
+   // A prefix wipe cannot leak: it removes by NAME, so it is complete by
+   // construction and needs no bookkeeping to stay honest.
+   //
+   // The prefix is exact, not approximate. PnlName()/PnlHead() (:2472/:2476)
+   // spell EVERY object of this family as
+   // `g_UI.btnPrefix + "Pnl" + item + "_" + ...`, and `g_UI.btnPrefix` is
+   // `"BiotakMenuV2_" + ChartID() + "_"` (BiotakMenu.mqh:680). So
+   // `btnPrefix + "Pnl"` matches the whole panel family and nothing else — the
+   // palette is `btnPrefix + "Pal_"`, the ring/menu are `btnPrefix` itself, and
+   // the chart's own objects share none of it.
+   //
+   // Cost: ONE scan, one time, instead of 28 scans and ~560 absent-name probes.
+   ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl", -1, -1);
+   // The two popovers still go through their own closers because they reset
+   // STATE as well as objects (g_PnlDdItem / g_BkDd), and both are guarded by
+   // "is it open?" so a closed popover costs one compare.
+   PnlDdClose();
+   BkDdClose();
+   // The pre-fix switch faces ("SW","SW0".."SW3") are PREFIXLESS globals that no
+   // panel prefix can reach. Purged once per close, not once per panel.
+   ObjectDelete(0, "SW");
+   for(int swp = 0; swp < 4; swp++) ObjectDelete(0, "SW" + IntegerToString(swp));
    PalClose();
    g_PnlOpen=-1;
    g_UIPanelOpen = false;   // the menu hover tip may arm again
@@ -6963,19 +6992,44 @@ void PnlMoveListBuild(const int item,const int rows,const int w,const int h,
    s_PnlMoveOy     = g_PnlY[item];
    const string pfx   = g_UI.btnPrefix + "Pnl" + IntegerToString(item) + "_";
    const string palPx = g_UI.btnPrefix + "Pal_";
-   for(int t = 0; t < 5; t++)
+   // P-UI-84: THE TYPE FILTER IS A TEST, NOT AN ARGUMENT SLOT.
+   //
+   // This used to be five passes of
+   //     ObjectsTotal(0, otype, -1) / ObjectName(0, i, otype, -1)
+   // which pass the OBJECT TYPE into the `sub_window` slot. Both platforms now
+   // share one signature —
+   //     ObjectsTotal(chart_id, sub_window = -1, type = -1)
+   //     ObjectName (chart_id, index,      sub_window = -1, type = -1)
+   // — and OBJ_LABEL is 22, OBJ_BUTTON 23, so the terminal was asked for the
+   // object count of sub-window 22 of a chart that has one window. It returned
+   // 0. The loop body never ran, `s_PnlMoveN` stayed 0, `PnlMoveListFresh()`
+   // could never be true, and the drag batch had an empty list — so GRABBING A
+   // PANEL AND MOVING IT DID NOTHING, silently, on both platforms. (An empty
+   // list is not an error the terminal reports; it is simply nothing to move.)
+   //
+   // The repair is deliberately NOT `ObjectsTotal(0, -1, otype)`. Whether MQL4
+   // honours a type filter in that third slot is a platform question, and a
+   // build that compiles while quietly ignoring the filter would be a parity
+   // bug of exactly the kind this project exists to prevent. So the type is
+   // tested explicitly, and the enumeration uses the four-argument form that
+   // every other walk in this tree already uses (`ObjectsTotal(0,-1,-1)` /
+   // `ObjectName(0,i,-1,-1)`).
+   //
+   // One pass instead of five, the prefix still scopes the scan to this card
+   // (a panel name is `btnPrefix + "Pnl<item>_"`; no level, zone or HTF object
+   // can match it), and the type test runs only on names that already matched.
+   const int total = ObjectsTotal(0, -1, -1);
+   for(int i = 0; i < total; i++)
    {
-      int otype = OBJ_LABEL;
-      if(t == 1) otype = OBJ_BUTTON;
-      else if(t == 2) otype = OBJ_BITMAP_LABEL;
-      else if(t == 3) otype = OBJ_EDIT;
-      else if(t == 4) otype = OBJ_RECTANGLE_LABEL;
-      int ttotal = ObjectsTotal(0, otype, -1);
-      for(int i = 0; i < ttotal; i++)
+      if(s_PnlMoveN >= PNL_MOVE_LIST_MAX) break;
+      const string nm = ObjectName(0, i, -1, -1);
+      const bool isCard = (StringFind(nm, pfx) == 0);
+      const bool isPal  = (palFollow && StringFind(nm, palPx) == 0);
+      if(!isCard && !isPal) continue;
+      const int otype = (int)ObjectGetInteger(0, nm, OBJPROP_TYPE);
+      if(otype != OBJ_LABEL && otype != OBJ_BUTTON && otype != OBJ_BITMAP_LABEL &&
+         otype != OBJ_EDIT  && otype != OBJ_RECTANGLE_LABEL) continue;
       {
-         if(s_PnlMoveN >= PNL_MOVE_LIST_MAX) break;
-         string nm = ObjectName(0, i, otype, -1);
-         if(StringFind(nm, pfx) != 0 && !(palFollow && StringFind(nm, palPx) == 0)) continue;
          s_PnlMoveNm[s_PnlMoveN] = nm;
          // P-UI-83: the ONE read of this object's coordinates (the batch never
          // reads again) — the offset is fixed for the whole gesture.
@@ -6983,7 +7037,6 @@ void PnlMoveListBuild(const int item,const int rows,const int w,const int h,
          s_PnlMoveY0[s_PnlMoveN] = (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
          s_PnlMoveN++;
       }
-      if(s_PnlMoveN >= PNL_MOVE_LIST_MAX) break;
    }
 }
 

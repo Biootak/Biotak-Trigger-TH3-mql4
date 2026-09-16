@@ -13,6 +13,18 @@ static bool g_labelsRelayoutNeeded = false;
 static double g_dailyClosePriceForTH = EMPTY_VALUE;
 bool g_redrawTHLevelsNeeded = true;
 bool g_forceClearOnNextDraw = false;
+// P-PERF-38d: "this chart already carries our ladder, handed over by the
+// instance a timeframe change unloaded" — resolved ONCE per instance at the end
+// of OnInitHandler (ResolveTopologyAdoption, EventHandlers) and read in three
+// places: the timeframe invalidation (which skips the wipe when it is true), the
+// first level pass (which seeds the stored topology signature), and the ladder
+// sweep in LevelPipeline (P-LEVEL-FOREIGN-02), which may only walk the chart
+// when the handoff happened — a wiped chart has no foreign index to find.
+//
+// It is declared HERE rather than beside its resolver because LevelPipeline.mqh
+// is included before EventHandlers.mqh (entry lines 93 and 99) and MQL4 has no
+// forward reference for a global.
+bool g_adoptPreviousTopology = false;
 // g_viewportOnlyRedraw removed   scroll no longer triggers level redraw
 int g_currentLabelYOffset = 0;       // Cumulative Y offset for stacking top label sections (ATR)
 int g_currentLabelYOffsetBottom = 0;  // Cumulative Y offset for stacking bottom label sections (TH)
@@ -314,6 +326,8 @@ static uint g_p3MsAtr = 0;       // P-PERF-05: ATR composite + adaptive scaling
 static uint g_p3MsHistory = 0;   // UpdateHistoricalValues
 static uint g_p3MsLevels = 0;    // level pipeline block
 static uint g_p3MsLabels = 0;    // ATR/TH label block
+static uint g_p3MsPre = 0;      // P-PERF-49b: OnCalculate BEFORE RedrawAllObjects (incl. the TF-switch wipe)
+static uint g_p3MsPost = 0;     // P-PERF-49b: OnCalculate AFTER it (ChartRedraw + object-count check)
 static uint g_p3MsOverlay = 0;   // DrawMainLevels + overlay reposition
 static uint g_p3MsLastTick = 0;  // frame-local scratch
 
@@ -500,11 +514,11 @@ void ViewLockPersistAnchor()
 
 void ViewLockCapture()
 {
-    int bars = iBars(_Symbol, (ENUM_TIMEFRAMES)Period());
+    int bars = iBars(_Symbol, CompatTF(Period()));
     if(bars <= 0) return;
     int firstVisible = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
     if(firstVisible < 0 || firstVisible >= bars) return;
-    datetime t = iTime(_Symbol, (ENUM_TIMEFRAMES)Period(), firstVisible);
+    datetime t = iTime(_Symbol, CompatTF(Period()), firstVisible);
     if(t <= 0) return;
     double mn = ChartGetDouble(0, CHART_PRICE_MIN);
     double mx = ChartGetDouble(0, CHART_PRICE_MAX);
