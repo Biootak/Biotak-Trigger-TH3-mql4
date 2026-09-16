@@ -357,7 +357,7 @@ double HTFChartIndexAt(const datetime t)
 
    int p = Period();
    double idx;
-   int i = iBarShift(_Symbol, p, t, false);
+   int i = iBarShift(_Symbol, (ENUM_TIMEFRAMES)p, t, false);
    // P-UI-85 — A TIME NEWER THAN BAR 0 IS NEVER BELIEVED FROM iBarShift.
    //
    // `iBarShift(..., false)` answers with the NEAREST bar whenever the exact

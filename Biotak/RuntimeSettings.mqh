@@ -67,7 +67,9 @@ static int g_bkTargetR = 3;                                      // [08.5] inpBK
 static color g_bkEntryColor = C'46,139,87';                      // [08.5] inpBKEntryColor
 static color g_bkStopColor = C'220,50,50';                       // [08.5] inpBKStopColor
 static color g_bkTargetColor = C'30,144,255';                    // [08.5] inpBKTargetColor
-static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide, 1=Always show)
+static int g_bkShowInfo = 0;                                     // [08.5] inpBKShowInfo (0=Auto-hide on the box, 1=Always on the box,
+                                                                 //         2=the label family's corner row — P-BK-58: the note's TWO HOMES,
+                                                                 //         the user picks one; the text and its writer never change)
 // P-BK-27: the INFO readout's own size (user: «اطلاعات بیس نوت خیلی ریزه»).
 // 0 = follow `g_bkTextSize` (raw pt — the box' own text), else its own raw pt:
 // the readout is a USER setting, so it carries the SAME unit as the SIZE row
@@ -496,7 +498,7 @@ void RuntimeSettingsInit()
    g_bkEntryColor = inpBKEntryColor;
    g_bkStopColor = inpBKStopColor;
    g_bkTargetColor = inpBKTargetColor;
-   g_bkShowInfo = inpBKShowInfo;
+   g_bkShowInfo = ClampSettingInt(inpBKShowInfo, 0, 2);   // P-BK-58: three rungs — box (Auto/Always) or the family's corner
    g_boxFillColor = inpBoxFillColor;
    g_boxFillTransparency = 100;
    g_bkTextColor = inpBKTextColor;
@@ -1048,7 +1050,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "BXE")) g_bkEntryColor = (color)(int)GlobalVariableGet(p + "BXE");
    if(GlobalVariableCheck(p + "BXL")) g_bkStopColor = (color)(int)GlobalVariableGet(p + "BXL");
    if(GlobalVariableCheck(p + "BXG")) g_bkTargetColor = (color)(int)GlobalVariableGet(p + "BXG");
-   if(GlobalVariableCheck(p + "BXI")) g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 1);
+   if(GlobalVariableCheck(p + "BXI")) g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 2);   // P-BK-58: the third rung
    if(GlobalVariableCheck(p + "BXF")) g_boxFillColor = (color)(int)GlobalVariableGet(p + "BXF");
    if(GlobalVariableCheck(p + "BXFT")) g_boxFillTransparency = ClampSettingInt((int)GlobalVariableGet(p + "BXFT"), 0, 100);
    if(GlobalVariableCheck(p + "BXTX")) g_bkTextColor = (color)(int)GlobalVariableGet(p + "BXTX");

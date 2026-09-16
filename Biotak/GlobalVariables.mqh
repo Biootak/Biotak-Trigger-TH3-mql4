@@ -500,7 +500,7 @@ void ViewLockPersistAnchor()
 
 void ViewLockCapture()
 {
-    int bars = Bars(_Symbol, (ENUM_TIMEFRAMES)Period());
+    int bars = iBars(_Symbol, (ENUM_TIMEFRAMES)Period());
     if(bars <= 0) return;
     int firstVisible = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR);
     if(firstVisible < 0 || firstVisible >= bars) return;
@@ -519,7 +519,7 @@ void ViewLockCapture()
 bool ViewLockRestore()
 {
     if(g_viewAnchorTime <= 0 || g_viewAnchorMax <= g_viewAnchorMin) return true;
-    if(Bars(_Symbol, 0) <= 5) return false;   // history not ready — retry next tick
+    if(iBars(_Symbol, 0) <= 5) return false;   // history not ready — retry next tick
     int sh = iBarShift(_Symbol, 0, g_viewAnchorTime, false);
     if(sh < 0) return false;                  // anchor not in history yet — retry
     ChartSetInteger(0, CHART_AUTOSCROLL, false);

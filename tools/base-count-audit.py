@@ -3,7 +3,9 @@
 
 WHY THIS EXISTS
 Every base knot carries one number the user reads to size a trade: `N bars` in
-`[BUY 2.4 Pips | R:R 1:2 | N bars · M15 base - OTR]`, and the SAME number picks
+`[BUY · EngSL 2.4 | 26.4 | N bars · M15 base · OTR]` (P-BK-54 gave the note this
+glance shape - risk + source, then the base's own story; P-BK-57 put the box'
+own height, bare, between them), and the SAME number picks
 the size class (`3 x rung / chartTF`, P-BK-28). It is the only part of the note
 that is a BAR WALK instead of arithmetic on the box, so it is the only part that
 can disagree with what the user sees on the chart - and it did, twice:
@@ -1547,7 +1549,9 @@ def run_checks():
     rows = []
     for fn in (check_owner, check_anchor, check_break_and_budget, check_one_value,
                check_model, check_invariance, check_node, check_node_model,
-               check_rung, check_rung_model, check_live_reuse):
+               check_rung, check_rung_model, check_live_reuse, check_leg_fit,
+               check_label_short, check_note_fields, check_note_height,
+               check_note_life, check_note_home):
         rows.extend(fn())
     return rows
 
@@ -1613,6 +1617,379 @@ def check_live_reuse():
     return out
 
 
+# --- 10: P-BK-52 — the node's own power is the CEILING of both legs ----------
+# The knot's two legs are the PLAN's (EngSL / HuntSL of the measure TF, P-BK-46/51) and the
+# plan may publish a leg DEEPER than the node it is drawn in — the entry then landed past the
+# box' opposite edge while the hover said «INSIDE the box' top edge», and a TF the pump had
+# never pushed fell back to the box' WHOLE height (the stop a whole box behind the entry).
+# The fix is a CEILING: the node's own power (its height over the plan's OWN divisor) bounds
+# both legs, so `off + risk <= 5/8 H + 15/64 H = 55/64 H` and BOTH sit inside on every type.
+# The divisor cannot be imported (layering law: the plan sits ABOVE this module), so this
+# gate is what keeps the two IN SYNC — and it PROVES the bound from the source constants
+# instead of trusting the comment.
+PLAN = "Biotak/TradePlanFormulas.mqh"
+
+
+def _defines(src):
+    """`#define NAME value` as floats, for the constants the two files must agree on."""
+    out = {}
+    for m in re.finditer(r"^#define\s+([A-Za-z_]\w*)\s+([^\s/]+)", src, flags=re.M):
+        try:
+            out[m.group(1)] = float(m.group(2))
+        except ValueError:
+            pass
+    return out
+
+
+def check_leg_fit():
+    """P-BK-52: one owner for the pair, one rule, one unit — and the box is never left."""
+    src = strip_comments(read(KNOT))
+    plan = strip_comments(read(PLAN))
+    out = []
+    for name in ("BaseKnotNodeEngPips", "BaseKnotNodeHuntPips", "BaseKnotLegPick",
+                 "BaseKnotLegCapped", "BaseKnotLegPair", "BaseKnotCapTag", "BaseKnotCapWhy"):
+        got = len(re.findall(r"^\s*(?:double|bool|void|string)\s+" + name + r"\s*\(", src, flags=re.M))
+        out.append(("one definition of %s (found %d)" % (name, got), got == 1))
+
+    b, p = _defines(src), _defines(plan)
+    div = b.get("BK_NODE_POWER_DIV", 0.0)
+    plan_div = p.get("TRADEPLAN_ENG_DIVISOR", 0.0)
+    out.append(("the node's divisor IS the plan's own (%.6f vs %.6f)" % (div, plan_div),
+                div > 0.0 and abs(div - plan_div) < 1e-9))
+    hunt = (b.get("BK_NODE_HUNT_NUM", 0.0) / b["BK_NODE_HUNT_DEN"]
+            if b.get("BK_NODE_HUNT_DEN") else 0.0)
+    want = (p.get("TRADEPLAN_HUNTER_NUM", 0.0) / p["TRADEPLAN_HUNTER_DEN"] / plan_div
+            if p.get("TRADEPLAN_HUNTER_DEN") and plan_div else 0.0)
+    # 1e-6, not 1e-9: the plan spells 64/15 as the literal 4.266666, so 8/3 ÷ 4.266666 holds only
+    # to that many digits — the tolerance IS that spelling, and a real drift is a whole pip.
+    out.append(("the node's Hunt leg is that same unit (%.7f vs %.7f)" % (hunt, want),
+                hunt > 0.0 and abs(hunt - want) < 1e-6))
+    fit = hunt + 1.0 / div if div else 9.9
+    out.append(("both legs fit INSIDE the box by construction (%.6f + %.6f = %.6f <= 1)"
+                % (hunt, 1.0 / div if div else 0.0, fit), fit <= 1.0))
+
+    calc = body(read(KNOT), "void BaseKnotCalcLevels(") or ""
+    pair = body(read(KNOT), "void BaseKnotLegPair(") or ""
+    out.append(("the geometry takes its pair from the ONE owner",
+                "BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP);" in calc))
+    out.append(("the pair's ENTRY leg is picked against the node's power",
+                re.search(r"offPips\s*=\s*BaseKnotLegPick\(", pair) is not None))
+    out.append(("... and so is the leg the stop is drawn with",
+                re.search(r"riskPips\s*=\s*BaseKnotLegPick\(", pair) is not None))
+    out.append(("... and never sizes a leg off the plan unbounded (no raw Eng/Hunt size)",
+                re.search(r"=\s*BaseKnot(?:Eng|Hunt)Pips\s*\(", calc) is None))
+    risk = body(read(KNOT), "double BaseKnotRiskPips(") or ""
+    out.append(("the R every text prints is picked by the same rule",
+                "BaseKnotLegPick(" in risk))
+    tag = body(read(KNOT), "string BaseKnotRiskTag(") or ""
+    out.append(("... and the NAME of that R by the same rule too",
+                "BaseKnotLegCapped(" in tag and "BaseKnotCapTag(" in tag))
+    why = body(read(KNOT), "string BaseKnotEntryWhy(") or ""
+    out.append(("the entry's sentence names the ceiling when it spoke",
+                "BaseKnotCapClause(" in why))
+    stopwhy = body(read(KNOT), "string BaseKnotStopWhy(") or ""
+    out.append(("the stop's sentence names its source (plan / node / box)",
+                "BaseKnotRiskIsEng(" in stopwhy and stopwhy.count("stands in") == 3))
+    for name, guard in (("BaseKnotNodeEngPips", "BK_NODE_POWER_DIV <= 0.0"),
+                        ("BaseKnotNodeHuntPips", "BK_NODE_HUNT_DEN <= 0.0")):
+        fn = body(read(KNOT), "double %s(" % name) or ""
+        out.append(("%s guards its own divisor (never a Zero Divide)" % name,
+                    guard in fn and "pip <= 0.0" in fn))
+    out.append(("the retired unbounded pair is kept in place, restorable (`-OFF`, never rewritten)",
+                read(KNOT).count("BKATRLEG-OFF:") >= 3))
+    others = []
+    for path in sorted(ROOT.glob("Biotak/*.mqh")):
+        rel = path.relative_to(ROOT).as_posix()
+        if rel != KNOT and "BaseKnotNodeEngPips" in strip_comments(read(rel)):
+            others.append(Path(rel).name)
+    out.append(("no other module sizes a knot's legs (%s)" % (", ".join(others) or "none"),
+                not others))
+    return out
+
+
+# --- 11: P-BK-53 — the chart's OWN label is a NAME, the proof rides the hover --------
+# The user's ask («اطلاعات خلاصه و قابل فهمی باشه») came from a note that read
+# «[BUY · the node's own EngSL (its height / 4.2667) 17.9 Pips | …]»: P-BK-52 had named
+# the ceiling with its FORMULA everywhere it spoke. The chart-side note has room for a NAME
+# and nothing else; the hover has room for the proof — and P-BK-52's own rule (a number
+# nobody can check is never printed) survives by putting the proof where it is READ OUT.
+# ONE flag (`isHunt`, the one the pick was made with) decides both names, so the short one
+# and the long one can never describe different legs.
+def check_label_short():
+    """P-BK-53: the chart's label is a NAME; the formula lives in the hover's clause."""
+    src = read(KNOT)
+    out = []
+    tag = body(src, "string BaseKnotCapTag(")
+    why = body(src, "string BaseKnotCapWhy(")
+    if tag is None or why is None:
+        return [("the short name and the proof form both exist", False)]
+    names = re.findall(r'"([^"]*)"', tag)   # the literals the name is built from
+    out.append(("the chart's own name is a NAME — no formula, no bracket, no divisor (%s)"
+                % (" | ".join(names) or "nothing"),
+                names == ["node HuntSL", "node EngSL"]
+                and all("height" not in n and "/" not in n and "(" not in n for n in names)))
+    out.append(("... and it still says WHICH leg the node sized (both names spelled)",
+                len(names) == 2 and "HuntSL" in names[0] and "EngSL" in names[1]))
+    out.append(("... and ONE flag decides both names (the pick's own `isHunt`)",
+                tag.count("isHunt") == 1 and why.count("isHunt") == 1))
+    out.append(("the hover keeps the arithmetic that sized the number",
+                "its height / 4.2667" in why and "its height x 5/8" in why))
+    clause = body(src, "string BaseKnotCapClause(") or ""
+    out.append(("the ceiling's clause prints the PROOF, never the short name again",
+                "BaseKnotCapWhy(isHunt)" in clause and "BaseKnotCapTag(" not in clause))
+    stopwhy = body(src, "string BaseKnotStopWhy(") or ""
+    out.append(("the stop's sentence says the node's own leg in words a user can check",
+                stopwhy.count("BaseKnotCapWhy(false)") == 2
+                and "stands in" in stopwhy and "power" not in stopwhy))
+    rt = body(src, "string BaseKnotRiskTag(") or ""
+    out.append(("the name the chart-side note prints is the SHORT one",
+                "return BaseKnotCapTag(false);" in rt and "BaseKnotCapWhy" not in rt))
+    wib = body(src, "void BaseKnotWriteInfo(") or ""
+    out.append(("the note hands the name through — it spells no formula of its own",
+                "riskTag" in wib and "4.2667" not in wib and "5/8" not in wib))
+    return out
+
+
+# --- 12: P-BK-54 — the note is a GLANCE: no targets, no unit word ----------------
+# The user: «تی پی رو … در اطلاعات نشون نده … EngSL 17.9 همین بنویسه فقط اینطوری خلاصهه».
+# The note is read AT A GLANCE on a live chart, so it prints the risk and its SOURCE
+# (P-BK-46/53) and nothing the chart already draws: the plan's legs are TICKS on the chart
+# (P-BK-50) and every leg with its level, its pips and its R in the HOVER
+# (BaseKnotTPPlanTip). The retired field stays ONE uncomment away (BKTAGTP-OFF).
+def check_note_fields():
+    """P-BK-54: the chart's note is risk + source + the base's story, and nothing else."""
+    src = read(KNOT)
+    wib = body(src, "void BaseKnotWriteInfo(")
+    if wib is None:
+        return [("the note's writer is present", False)]
+    out = []
+    plain = strip_comments(wib)
+    at = plain.find("OBJPROP_TEXT,")
+    expr = plain[at:plain.find(");", at)] if at >= 0 else ""
+    out.append(("the note's own text still carries the risk and the NAME of its source",
+                "riskTag" in expr and "DoubleToString(hPips, 1)" in expr and "side" in expr))
+    out.append(("... and NO target field in it (the plan's legs live in the hover now)",
+                "tpTag" not in expr and "BaseKnotTPPlanTag(" not in expr))
+    # ... read on the LITERALS: the field name `hPips` carries the word, so a raw
+    # `"Pips" in expr` would pass for the wrong reason (and fail on the right one).
+    lits = re.findall(r'"([^"]*)"', expr)
+    out.append(("... and no unit word — the plan's own row names the unit (`Eng.SL: 0.2`)",
+                not any("Pips" in s for s in lits)))
+    out.append(("the class, the type and the pattern still ride the note (P-BK-28/29/49)",
+                all(x in expr for x in ("BaseKnotBaseTag(", "BaseKnotNodeTag(",
+                                        "BaseKnotPatternTag("))))
+    # P-BK-57: the note's SECOND number is the box' own height, and it rides the ONE owner
+    # that builds it — read on the expression, so a hand-spelt copy in the text fails.
+    out.append(("the box' own height rides the note, from its one owner (P-BK-57)",
+                "BaseKnotHeightTag(top, bot, riskTag)" in expr))
+    sig = src[src.find("void BaseKnotWriteInfo("):src.find("{", src.find("void BaseKnotWriteInfo("))]
+    out.append(("the writer no longer even takes a target field", "tpTag" not in sig))
+    out.append(("the hover KEEPS the plan's own legs, leg by leg",
+                "tpTip" in plain and "BaseKnotTPPlanTip(" in strip_comments(src)))
+    for fn, who in (("void BaseKnotSync(", "the committed box"),
+                    ("void BaseKnotSyncLive(", "the live preview")):
+        blk = body(src, fn) or ""
+        out.append(("%s still builds that leg list and hands it to the writer" % who,
+                    "BaseKnotTPPlanTip(" in blk and "tpTip," in blk))
+    out.append(("the retired target field is kept in place, restorable (BKTAGTP-OFF)",
+                src.count("BKTAGTP-OFF") >= 3))
+    return out
+
+
+# --- 12b: P-BK-57 — the note's second number: the BOX' own height, BARE ----------------
+# The user: «مقدار حرکت رو هم به صورت عدد فقط نمایش بده بفهمیم چقدره». The risk says how big
+# the STOP is; the note never said how big the BOX is — the size everything else is read
+# against (the step multiples, the candle count, the class). The chart face gets the NUMBER
+# ALONE (no name, no unit word — P-BK-54's own rule), the hover gets the name and the
+# arithmetic, and the field is WRITTEN ONCE: when the risk' own source IS the box' height
+# (BaseKnotBoxHeightTag), the first number already carries it and this one stays empty.
+# One owner: `BaseKnotToPips(top - bot)` — the very expression BaseKnotRiskPips falls back
+# to, so "the box' height" cannot mean two things in this module.
+def check_note_height():
+    """P-BK-57: the box' own height, in pips, bare beside the risk — never twice."""
+    src = read(KNOT)
+    fn = body(src, "string BaseKnotHeightTag(")
+    if fn is None:
+        return [("the note's height field has one owner", False)]
+    out = []
+    plain = strip_comments(fn)
+    # only what the field actually WRITES: `return "";` contributes no literal at all, so
+    # an empty string is dropped and what is left must be the separator alone.
+    written = [s for s in re.findall(r'"([^"]*)"', plain) if s]
+    out.append(("the field writes a bare number — a separator and nothing else (%s)"
+                % (" | ".join(written) or "nothing"),
+                written == [" | "]
+                and not any(ch.isalpha() or ch.isdigit() for s in written for ch in s)))
+    out.append(("... and no unit word, the plan's own row names the unit (P-BK-54)",
+                not any("Pips" in s or "pip" in s for s in written)))
+    out.append(("... and its number is the module's ONE box height (`BaseKnotToPips`)",
+                "BaseKnotToPips(top - bot)" in plain))
+    out.append(("... and it is written ONCE — silent while the risk IS that height (P-BK-46)",
+                re.search(r'if\s*\(\s*riskTag\s*==\s*BaseKnotBoxHeightTag\(\)\s*\)\s*return\s*"";',
+                          plain) is not None))
+    out.append(("... and an empty box claims no height (no zero, no negative)",
+                "p <= 0.0" in plain))
+    # the fallback NAME has one owner too — the tag the note prints and the tag this field
+    # tests itself against must be the same string, or the note prints the size twice.
+    rt = strip_comments(body(src, "string BaseKnotRiskTag(") or "")
+    out.append(("the risk' fallback name and the height's own test are ONE string",
+                "return BaseKnotBoxHeightTag();" in rt
+                and 'return "box height";' not in rt))
+    # ... and the hover names what the chart face only numbers (P-BK-46's promise keeps):
+    # a SIBLING owner, so the writer hands the fact through and spells nothing itself.
+    tip = body(src, "string BaseKnotHeightTip(")
+    if tip is None:
+        out.append(("the hover's own version of the number exists", False))
+    else:
+        tplain = strip_comments(tip)
+        out.append(("the hover NAMES it, with `top - bottom` and its pips (ONE spelling)",
+                    tplain.count("box height (top - bottom) = ") == 1
+                    and "BaseKnotToPips(top - bot)" in tplain))
+        out.append(("... on the SAME number and the SAME test the field uses (one owner)",
+                    tplain.count("BaseKnotToPips(top - bot)") == 1
+                    and "riskTag == BaseKnotBoxHeightTag()" in tplain))
+    wib = strip_comments(body(src, "void BaseKnotWriteInfo(") or "")
+    out.append(("... and the note writer hands it through, spelling no arithmetic of its own",
+                "BaseKnotHeightTip(top, bot, riskTag)" in wib
+                and "box height (top - bottom)" not in wib))
+    return out
+
+
+# --- 13: P-BK-55/56 — the note's TYPE and the note's LOOK ---------------------------
+# P-BK-55 (2026-09-16, user: «توی اطلاعات چرا نوع گره رو نشون نمیده»): the type is the node's
+# LENGTH — a count of rungs between the class the note already prints and the TF the node is
+# seen on — so a box being SIZED can answer it from the very span its class came from. It used
+# to claim BK_NODE_NONE while sizing, i.e. the note showed a class with no type beside it.
+# P-BK-56 (user: «این لیبل اطلاعات مثل بقیه لیبل اطلاعات باشه»): the note is a chart-anchored
+# text a human reads, so it follows the LABEL FAMILY's own grid — font `inpFontName`, size
+# `inpFontSize`, rung Z_CHART_LABEL — instead of the box' own text size and the box' art rung.
+def check_note_life():
+    """P-BK-55/56: the sizing note reads the TYPE; the note looks like the label family."""
+    src = read(KNOT)
+    live = body(src, "void BaseKnotSyncLive(")
+    if live is None:
+        return [("the live preview is present", False)]
+    out = []
+    out.append(("the sizing note reads the TYPE from the very span its class comes from",
+                "BaseKnotNodeRungs(liveTF," in live and "BaseKnotNodeKindOf(" in live
+                and "BaseKnotBaseTFMin(spLive." in live))
+    out.append(("... on the SAME rule the committed read uses (one length, two callers)",
+                "BaseKnotNodeRungs(nodeTFMin, baseTFMin)" in (body(src, "void BaseKnotNodeRead(") or "")
+                and "BaseKnotNodeKindOf(nd.rungs)" in (body(src, "void BaseKnotNodeRead(") or "")))
+    out.append(("... while the STORY stays a committed-only read (no side, no story TF live)",
+                "ndLive.side = 0;" in live and "ndLive.storyTF = 0;" in live))
+    wib = strip_comments(body(src, "void BaseKnotWriteInfo(") or "")
+    out.append(("the note's FONT is the label family's own (`inpFontName`, never a literal)",
+                "OBJPROP_FONT, inpFontName" in wib
+                and not re.search(r'OBJPROP_FONT,\s*"', wib)))
+    fn = body(src, "int BKInfoFontPt(")
+    if fn is None:
+        out.append(("the note's size owner exists", False))
+    else:
+        out.append(("the note's shipped size is the LABEL grid (`inpFontSize`)",
+                    "ClampSettingInt(inpFontSize, 4, 24)" in fn))
+        # the marker lives in a COMMENT, and body() strips those — so the retired rung
+        # is read on the RAW source (a marker the gate cannot see is a marker nobody keeps).
+        out.append(("... and the retired rung (the box' own text size) is kept, restorable",
+                    src.count("BKINFOSIZE-OFF") >= 2
+                    and "BKINFOSIZE-OFF: return ClampSettingInt(g_bkTextSize, 8, 24);" in src))
+    out.append(("the note rides the TEXT layer's rung (Z_CHART_LABEL), not the box' art one",
+                "OBJPROP_ZORDER, Z_CHART_LABEL" in wib and "Z_BOX_INFO" not in wib))
+    return out
+
+
+# --- 14: P-BK-58 — the note's SECOND HOME (the family's corner) ---------------------
+# The user: «لیبل اطلاعات بیس را کنار همان کارت/ردیف خانوادهٔ لیبلها هم نشان بده تا کاربر
+# بتواند بین «چسبیده به باکس» و «گوشهٔ ثابت» یکی را انتخاب کند». The note's TEXT and its one
+# writer do not change; its HOME becomes a user setting (`g_bkShowInfo`'s third rung). What can
+# silently break, and what this section reads the source for:
+#
+#   * the note drawn TWICE (a mode change that leaves the box-side copy behind, or a box that
+#     is not the one the row answers wiping the row);
+#   * the row drawn NOWHERE (the decision owner not consulted, the box-side probe not refusing
+#     in corner mode, or the row's keeper never called);
+#   * a margin GUESSED by this module (the slot must be pushed in by the label module, which
+#     owns the column: `inpLabelsMargin*` may not appear in this file);
+#   * a row that answers a box the user did not choose (the SELECTED box, MT4's own single
+#     select — the newest only while nothing is selected);
+#   * a stale row after a cancel (the keeper must stand down while the box is being SIZED, and
+#     re-decide the round after);
+#   * a per-round cost (the keeper writes on a CHANGE only).
+def check_note_home():
+    """P-BK-58: one note, two homes, one decision owner — and no margin guessed."""
+    src = read(KNOT)
+    out = []
+    plain = strip_comments(src)
+    place = body(src, "bool BaseKnotNoteInCorner(")
+    ask = body(src, "bool BaseKnotNoteAtCorner(")
+    sel = body(src, "string BaseKnotSelectedId(")
+    ref = body(src, "void BaseKnotNoteCornerRefresh(")
+    wib = body(src, "void BaseKnotWriteInfo(")
+    for name, fn in (("the rung reader", place), ("the placement owner", ask),
+                     ("the selected-box read", sel), ("the row's keeper", ref),
+                     ("the note writer", wib)):
+        if fn is None:
+            return [("the note's home has ONE owner per question (%s)" % name, False)]
+    vis = body(src, "bool BaseKnotInfoVisible(")
+    out.append(("the box-side probe refuses in the corner rung (one place at a time)",
+                vis is not None and re.search(r"if\s*\(\s*BaseKnotNoteInCorner\(\)\s*\)\s*return\s*false;",
+                                              strip_comments(vis)) is not None))
+    out.append(("the rung is the setting's own, never a literal (the user picks it)",
+                "g_bkShowInfo == BK_NOTE_CHART" in strip_comments(place)))
+    out.append(("... and it is ONE question — the writer's callers ask the owner",
+                plain.count("BaseKnotNoteAtCorner(") == 3   # the owner + the two Sync sites
+                and "BaseKnotNoteAtCorner(\"\")" in plain))   # the box being SIZED always wins
+    # the keeper: called by the pump, stands down while sizing, writes only on a change
+    pump = body(src, "void BaseKnotSyncBadges(")
+    out.append(("the row's keeper rides the existing pump (no second event path)",
+                pump is not None and "BaseKnotNoteCornerRefresh();" in strip_comments(pump)))
+    rp = strip_comments(ref)
+    out.append(("... it stands down while the box is being SIZED (the live writer owns it)",
+                "g_bkState == BK_PREVIEW" in rp))
+    out.append(("... and it re-decides the round AFTER (a cancelled band leaves no preview)",
+                re.search(r"if\s*\(\s*g_bkState\s*==\s*BK_PREVIEW\s*\)\s*\{[^}]*"
+                          r"s_bkCornerDirty\s*=\s*true;", rp, flags=re.S) is not None))
+    out.append(("... it deletes a row nothing answers (a stale note is worse than none)",
+                "if(id == \"\")" in rp and "ObjectDelete(0, nm)" in rp))
+    out.append(("... a box hidden on this TF claims no row",
+                "BaseKnotVisibleNow(id)" in rp))
+    out.append(("... steady state is ONE compare — no write per pump round",
+                re.search(r"if\(id == s_bkCornerId && !s_bkCornerDirty\)\s*\{", rp) is not None))
+    out.append(("... and the row SELF-HEALS if something else deleted it",
+                re.search(r"if\(id == s_bkCornerId && !s_bkCornerDirty\)\s*\{[^}]*"
+                          r"ObjectFind\(0, nm\)", rp, flags=re.S) is not None))
+    # the selected box: MT4's own single select first, the newest commit otherwise
+    sp = strip_comments(sel)
+    out.append(("the row answers the SELECTED box (the terminal's own select, read not rebuilt)",
+                "OBJPROP_SELECTED" in sp and "BaseKnotBoxName(pfx)" in sp))
+    out.append(("... and the NEWEST box while nothing is selected",
+                "commitMs" in sp))
+    # the slot: pushed in, never guessed here
+    out.append(("this module reads NO column margin — the slot is pushed in from above",
+                not re.search(r"inpLabelsMargin", plain)))
+    out.append(("... and the pushed slot is the row's only source of corner/x/y",
+                "s_bkCornerSide" in strip_comments(wib) and "s_bkCornerX" in strip_comments(wib)
+                and "s_bkCornerY" in strip_comments(wib)
+                and plain.count("s_bkCornerSide  = corner;") == 1))   # ONE writer of the slot
+    # ONE object at a time, both directions of a mode change
+    wp = strip_comments(wib)
+    out.append(("the two homes never both hold the note (the writer empties the other one)",
+                re.search(r"if\(atCorner\)\s*\{[^}]*ObjectDelete\(0, in\);", wp, flags=re.S) is not None
+                and re.search(r"else if\(!BaseKnotNoteInCorner\(\)", wp) is not None))
+    out.append(("... and it writes ONE object name, so both homes share text/font/size/rung",
+                re.search(r"ObjectSet\w+\(0,\s*in,", wp) is None
+                and re.search(r"ObjectSet\w+\(0,\s*o,", wp) is not None))
+    out.append(("... the corner row is right-aligned at the pushed slot (a LABEL, not a TEXT)",
+                "OBJ_LABEL" in wp and "ANCHOR_RIGHT_LOWER" in wp))
+    out.append(("... and only the LAST lines differ between the homes (time/price vs x/y)",
+                "OBJPROP_XDISTANCE" in wp and "OBJPROP_YDISTANCE" in wp
+                and "OBJPROP_PRICE, 0, top" in wp))
+    # deinit
+    out.append(("a remove / TF switch never leaves the row behind",
+                "BaseKnotCornerWipe();" in strip_comments(body(src, "void BaseKnotOnDeinit(") or "")))
+    return out
+
+
 def main():
     rows = run_checks()
     for name, ok in rows:
@@ -1631,7 +2008,19 @@ def main():
           "deciding,\nread on the past market too), the size class is confirmed on the "
           "rung's own candles,\nand while "
           "the user draws a BAND decides the base - an edge that slides inside the run it "
-          "already found reuses that one reading")
+          "already found reuses that one reading,\nand the knot's own two legs are the "
+          "plan's, CAPPED by the node's own power (one owner, one rule, one unit, both "
+          "inside the box by construction - P-BK-52),\nand the CHART's own label is a "
+          "NAME (node EngSL) while the hover keeps the proof that sized it (P-BK-53),\n"
+          "and the NOTE is a glance - the risk with its source and the base's own story, "
+          "no target field and no unit word (the legs are ticks + the hover, P-BK-54),\n"
+          "with the box' OWN height in pips beside the risk, bare and written once "
+          "(named in its hover - P-BK-57),\n"
+          "its TYPE is answered by the same length rule while the box is being sized "
+          "(P-BK-55), and it wears the label family's own font, size grid and text rung "
+          "(P-BK-56),\nand the note has TWO HOMES the user picks between (the box' corner "
+          "or the label family's own column - P-BK-58), with ONE decision owner, ONE "
+          "object at a time, and the slot PUSHED IN by the label module")
     return 0
 
 
@@ -2008,6 +2397,235 @@ def selftest():
     with_source("g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : t2", "t2")
     cases.append(("a pump reading the story from the box' edge again is caught",
                   bool(fires(check_node))))
+    reset()
+
+    # P-BK-52: the ceiling — the pair, its unit, its gate and the retired unbounded path
+    with_source("   offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);",
+                "   offPips  = planO;   // the plan's leg, unbounded again")
+    cases.append(("an entry sized off the plan with no ceiling is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("   double p = BaseKnotLegPick(BaseKnotEngPips(tfMin), BaseKnotNodeEngPips(top, bot));",
+                "   double p = BaseKnotEngPips(tfMin);   // the R, off the plan again")
+    cases.append(("a printed R that ignores the ceiling is caught", bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("   if(BaseKnotLegCapped(plan, cap)) return BaseKnotCapTag(false);", "")
+    cases.append(("a name that stops following the pick is caught", bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("#define BK_NODE_POWER_DIV 4.266666", "#define BK_NODE_POWER_DIV 1.2")
+    cases.append(("a node divisor that leaves the box' far edge reachable is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("#define BK_NODE_HUNT_NUM  5.0", "#define BK_NODE_HUNT_NUM  8.0")
+    cases.append(("a node Hunt leg that stops being the plan's own unit is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("#define TRADEPLAN_ENG_DIVISOR  4.266666",
+                "#define TRADEPLAN_ENG_DIVISOR  4.0", path=PLAN)
+    cases.append(("drift on the PLAN's side of the shared divisor is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("   if(pip <= 0.0 || BK_NODE_HUNT_DEN <= 0.0) return 0.0;",
+                "   if(pip <= 0.0) return 0.0;   // the divisor unguarded")
+    cases.append(("an unguarded node divisor (a Zero Divide) is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    with_source("   // BKATRLEG-OFF: double risk = BaseKnotEngPips(mtf) * pip;",
+                "   // the retired pair is gone, not restorable")
+    cases.append(("a retired unbounded pair that was rewritten away is caught",
+                  bool(fires(check_leg_fit))))
+    reset()
+
+    # P-BK-53: the chart's own label is a NAME — the proof belongs to the hover
+    with_source('   return (isHunt ? "node HuntSL" : "node EngSL");',
+                '   return (isHunt ? "the node\'s own HuntSL (its height x 5/8)"\n'
+                '                  : "the node\'s own EngSL (its height / 4.2667)");')
+    cases.append(("the formula smuggled back onto the chart's label is caught",
+                  bool(fires(check_label_short))))
+    reset()
+
+    with_source('   return " — CAPPED by " + BaseKnotCapWhy(isHunt) + " = " '
+                '+ DoubleToString(cap, 1) + " pips";',
+                '   return " — CAPPED by " + BaseKnotCapTag(isHunt) + " = " '
+                '+ DoubleToString(cap, 1) + " pips";')
+    cases.append(("a clause that prints the short name where the proof belongs is caught",
+                  bool(fires(check_label_short))))
+    reset()
+
+    with_source("   if(BaseKnotLegCapped(plan, cap)) return BaseKnotCapTag(false);",
+                "   if(BaseKnotLegCapped(plan, cap)) return BaseKnotCapWhy(false);")
+    cases.append(("a note that prints the proof instead of the name is caught",
+                  bool(fires(check_label_short))))
+    reset()
+
+    # P-BK-54: the note is read at a glance — the target field and the unit word stay out
+    risk_and_height = "+ DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart"
+    with_source(risk_and_height,
+                "+ DoubleToString(hPips, 1) + \" Pips\" + BaseKnotHeightTag(top, bot, riskTag) + barsPart")
+    cases.append(("a unit word smuggled back onto the note is caught",
+                  bool(fires(check_note_fields))))
+    reset()
+
+    with_source(risk_and_height,
+                "+ DoubleToString(hPips, 1) + tpTag + BaseKnotHeightTag(top, bot, riskTag) + barsPart")
+    cases.append(("the plan's targets printed on the note again are caught",
+                  bool(fires(check_note_fields))))
+    reset()
+
+    with_source("const double hPips, const string tpTip,\n",
+                "const double hPips, const string tpTag, const string tpTip,\n")
+    cases.append(("a note writer that takes a target field again is caught",
+                  bool(fires(check_note_fields))))
+    reset()
+
+    with_source("   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips);",
+                "   string tpTip = \"\";   // the hover lost the legs")
+    cases.append(("a hover that dropped the plan's own legs is caught",
+                  bool(fires(check_note_fields))))
+    reset()
+
+    # P-BK-57: the box' own height on the note — bare, one owner, written ONCE
+    with_source('   return " | " + DoubleToString(p, 1);',
+                '   return " | " + DoubleToString(p, 1) + " pips";')
+    cases.append(("a unit word back on the note's own height is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source('   return " | " + DoubleToString(p, 1);',
+                '   return " | (box) " + DoubleToString(p, 1);')
+    cases.append(("a NAME back on the note's bare second number is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source('   if(riskTag == BaseKnotBoxHeightTag()) return "";   // the risk already IS this height',
+                '   if(riskTag == "never") return "";   // a guard that never fires')
+    cases.append(("the box' height printed beside a risk that already IS it is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source("   double p = BaseKnotToPips(top - bot);",
+                "   double p = (top - bot) / BaseKnotPipSize();   // a second spelling")
+    cases.append(("a second owner of the box' height is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source('   return BaseKnotBoxHeightTag();', '   return "box height";   // the name, spelt again')
+    cases.append(("a fallback name the height field cannot test itself against is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source("box height (top - bottom) = ", "")
+    cases.append(("a hover that left the note's second number unnamed is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source('          (riskTag == BaseKnotBoxHeightTag()\n'
+                '           ? "and it IS the risk above: the note prints it once"\n'
+                '           : "the note\'s own second number, in pips");',
+                '          "the note\'s own second number, in pips");   // the fallback test, gone')
+    cases.append(("a hover whose second copy stopped testing the fallback risk is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source("BaseKnotHeightTip(top, bot, riskTag) +   // P-BK-57",
+                "\" pips\" +   // the writer spells it itself again")
+    cases.append(("a note writer that spells the height's arithmetic itself is caught",
+                  bool(fires(check_note_height))))
+    reset()
+
+    with_source("+ DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart",
+                "+ DoubleToString(hPips, 1) + barsPart")
+    cases.append(("a note that dropped the box' own height again is caught",
+                  bool(fires(check_note_fields))))
+    reset()
+
+    # P-BK-58: the note's two homes — every silent breakage has its own mutant
+    with_source("   if(BaseKnotNoteInCorner()) return false;   // P-BK-58: the note's home is the family's column",
+                "   // seed: the box-side note stays in the corner mode too (two copies)")
+    cases.append(("a mode that leaves TWO copies of the note is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source("   BaseKnotNoteCornerRefresh();\n", "")
+    cases.append(("a row nobody keeps is caught", bool(fires(check_note_home))))
+    reset()
+
+    with_source("   if(g_bkState == BK_PREVIEW)\n   {\n      s_bkCornerDirty = true;",
+                "   if(false)\n   {\n      s_bkCornerDirty = true;")
+    cases.append(("a keeper that re-decides nothing after a cancelled band is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source("   if(id == s_bkCornerId && !s_bkCornerDirty)\n",
+                "   if(false)\n")
+    cases.append(("a per-round row rebuild is caught", bool(fires(check_note_home))))
+    reset()
+
+    with_source("      if(id == \"\" || ObjectFind(0, nm) >= 0) return;\n", "")
+    cases.append(("a row that never heals after a chart cleanup is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source('      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) return g_bkBoxes[i].id;   // clicked = the answer',
+                '      // seed: the user\'s own selection is ignored')
+    cases.append(("a row that ignores the user's selection is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source("   ObjectSetInteger(0, o, OBJPROP_XDISTANCE, MathMax(8, s_bkCornerX));",
+                "   ObjectSetInteger(0, o, OBJPROP_XDISTANCE, MathMax(8, inpLabelsMarginLeft));")
+    cases.append(("a module that guesses the column's margin is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source("      if(ObjectFind(0, in) >= 0) ObjectDelete(0, in);   // the box-side copy goes with the mode that wanted it",
+                "      // seed: the box-side copy is left behind (two objects hold one note)")
+    cases.append(("a writer that leaves the other home filled is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    with_source("   bool atCorner = BaseKnotNoteAtCorner(id);",
+                "   bool atCorner = BaseKnotNoteInCorner();   // the decision owner is bypassed")
+    cases.append(("a caller that decides the home for itself is caught",
+                  bool(fires(check_note_home))))
+    reset()
+
+    # P-BK-55: the sizing note stops answering the type again (a class with no type)
+    with_source("   ndLive.kind   = BaseKnotNodeKindOf(liveRungs);",
+                "   ndLive.kind   = BK_NODE_NONE;   // the sizing note claims no type again")
+    cases.append(("a sizing note that answers no type is caught",
+                  bool(fires(check_note_life))))
+    reset()
+
+    # P-BK-55: the live half starts claiming a STORY it never read
+    with_source("   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0; ndLive.storyTF = 0;",
+                "   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0; ndLive.storyTF = Period();")
+    cases.append(("a sizing note that claims an unread story is caught",
+                  bool(fires(check_note_life))))
+    reset()
+
+    # P-BK-56: the note goes back to its own font / size rung / box art rung
+    with_source("   ObjectSetString(0, o, OBJPROP_FONT, inpFontName);   // P-BK-56: the label family's own font",
+                '   ObjectSetString(0, o, OBJPROP_FONT, "Arial");')
+    cases.append(("a note that drops the family's font is caught", bool(fires(check_note_life))))
+    reset()
+
+    with_source("   return ClampSettingInt(inpFontSize, 4, 24);         // P-BK-56: the label family's grid",
+                "   return ClampSettingInt(g_bkTextSize, 8, 24);   // the box' own text size again")
+    cases.append(("a note sized off the box' text again is caught", bool(fires(check_note_life))))
+    reset()
+
+    with_source("   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_CHART_LABEL);",
+                "   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_BOX_INFO);")
+    cases.append(("a note dropped under the chart art again is caught",
+                  bool(fires(check_note_life))))
     reset()
 
     # the model's own teeth: the old rules must be caught by the same promises

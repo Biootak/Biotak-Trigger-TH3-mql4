@@ -24,7 +24,7 @@ bool DetectFetchBarTimes(const int timeframe, const int count, datetime &times[]
     got = 0;
     if(count <= 0) return false;
     if(ArrayResize(times, count) != count) return false;
-    got = CopyTime(Symbol(), timeframe, 0, count, times);
+    got = CopyTime(Symbol(), (ENUM_TIMEFRAMES)timeframe, 0, count, times);
     if(got <= 0) return false;
     // MT4 may hand the array back either way round; normalise to OLDEST FIRST
     // so the callers below never depend on terminal array convention.

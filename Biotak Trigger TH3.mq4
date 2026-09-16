@@ -197,7 +197,12 @@ void OnDeinit(const int reason)
               " htf w=", GVLedgerWrites(GV_BLOCK_HTF), "/",
               (GVLedgerWrites(GV_BLOCK_HTF) + GVLedgerSkipped(GV_BLOCK_HTF)),
               " flush=", GVFlushRuns(),
-              " first=", RSSaveNamed(0), ",", RSSaveNamed(1), ",", RSSaveNamed(2));
+              " first=", RSSaveNamed(0), ",", RSSaveNamed(1), ",", RSSaveNamed(2),
+              // P-PERF-45 evidence: frames that actually ran, over the ticks that
+              // ended with the frame still owed (the starvation count). `starved`
+              // must read ~0 - a number tracking the frame count means the pump is
+              // starving the progress-maker again.
+              " | coop frame=", CoopFrameRuns(), "/", (CoopFrameRuns() + CoopFrameStarved()));
 }
 
 //+------------------------------------------------------------------+

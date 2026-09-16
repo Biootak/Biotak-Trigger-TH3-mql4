@@ -44,16 +44,71 @@
 // ══════════════════════════════════════════════════════════════════════════
 #define PNL_PT_MIN    4       // never go below 4pt (unreadable + MT4 clamps)
 
-//--- the terminal's screen DPI, cached. 96 = the DPI the design assumes.
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-93 (2026-09-16) — THE DISPLAY'S DPI IS A MEASUREMENT, NOT A LATCH.
+//
+// The DPI this whole layer is sized by was read ONCE, into a function-local
+// `static`, and nothing in the tree could ever move it again: the value lives
+// for the life of the INDICATOR INSTANCE, and an instance lives until the
+// indicator is removed or the terminal closes. So the one display event the
+// user actually performs — dragging the terminal from the laptop's 100%
+// panel onto the 4K monitor at 150%, or changing Windows' scale while the
+// chart stays attached — left every surface on the OLD metric:
+//   * `PnlPt()` keeps converting the design's px with dpi = 96, so MT4 draws
+//     every caption at the pixel size of the smaller screen while the pixels
+//     are now 1.5x bigger → captions that fit at 100% overflow their boxes
+//     ("LS FIRST" touches the next switch again, the segment pills clip);
+//   * `PnlLineH()`/`PnlRawLineH()` keep the old em box, so the row stacks
+//     (the panel rows AND the chart-side trade card) pitch by the wrong
+//     line height and drift out of their cards;
+//   * and in the other direction (4K → laptop) every size comes out
+//     microscopic, which is the report this block exists for.
+// The old code could only be healed by remove + re-attach, i.e. by losing the
+// user's live state — for a change the terminal itself reports.
+//
+// THE RULE: the DPI is re-probed, but by ONE owner and at a studied rate —
+// `PnlDpi()` stays a pure cached read (it is called several times per drawn
+// caption), and `PnlDpiPoll()` is the only thing that may touch the terminal,
+// once per `PNL_DPI_PROBE_MS`. It answers TRUE only when the value really
+// CHANGED, and the UI layer's one reaction to that answer is to rebuild the
+// surfaces from the new metrics (`UIRebuildForMetrics`, BiotakPanels). Cost in
+// steady state: one GetTickCount comparison per call site per 2 s.
+//
+// Deliberately NOT a per-call `TerminalInfoInteger`: that would put a terminal
+// property read inside every `PnlTextW` of every row of every frame, which is
+// exactly the class of cost P-PERF-16 removed from the hit tests.
+// ══════════════════════════════════════════════════════════════════════════
+#define PNL_DPI_PROBE_MS 2000   // P-UI-93: how often the display may be asked
+static int  s_pnlDpi        = 0;   // the LATEST measurement (PnlDpi's answer)
+static uint s_pnlDpiProbeMs = 0;   // the last time the terminal was asked
+
+//--- the terminal's screen DPI as of RIGHT NOW. 96 = the DPI the design assumes.
+int PnlDpiRead()
+{
+   int dpi = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
+   if(dpi < 96 || dpi > 288) dpi = 96;   // outside the sane band = "unknown"
+   return dpi;
+}
+
+//--- the cached, measured DPI. ONE owner of the value (P-UI-93).
 int PnlDpi()
 {
-   static int dpi = 0;
-   if(dpi <= 0)
-   {
-      dpi = (int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);
-      if(dpi < 96 || dpi > 288) dpi = 96;
-   }
-   return dpi;
+   if(s_pnlDpi <= 0) s_pnlDpi = PnlDpiRead();
+   return s_pnlDpi;
+}
+
+//--- the re-probe. TRUE = the display's DPI CHANGED, and the caller owes the UI
+//--- a rebuild from the new metrics. Rate-limited to one terminal read per
+//--- `PNL_DPI_PROBE_MS`; every other call is one subtraction and a compare.
+bool PnlDpiPoll()
+{
+   uint now = GetTickCount();
+   if(s_pnlDpiProbeMs != 0 && now - s_pnlDpiProbeMs < PNL_DPI_PROBE_MS) return false;
+   s_pnlDpiProbeMs = now;
+   int dpi = PnlDpiRead();
+   if(dpi == PnlDpi()) return false;
+   s_pnlDpi = dpi;
+   return true;
 }
 //--- a NOMINAL (design px * 3/4) point size, re-expressed for this display.
 int PnlPt(const int nominal)
@@ -123,6 +178,24 @@ bool UILeftButtonUp()
 {
    long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
    return (v >= 0) && ((v & 1) == 0);
+}
+
+//--- P-BK-61: the ONE owner of "is CONTROL held RIGHT NOW?" — the gate of the
+//--- base-box handle magnet («با کنترل هم مگنت فعال میشه ... حرکت رو چسبوند به
+//--- کندل های و لو که دقیق باشه»). It sits here for the same reason the button
+//--- pair above does: the gesture channel (an OBJECT_DRAG) carries no keyboard
+//--- state at all, so a modifier can only be answered by a live probe, and a
+//--- second spelling of that probe is how the button's two conventions came to
+//--- disagree (P-UI-73). Same two readings of TERMINAL_KEYSTATE_*, same rule:
+//--- TRUE if EITHER convention says held. The asymmetry is DELIBERATE and the
+//--- opposite of `UILeftButtonUp()`: a false "held" only means a handle drag
+//--- snaps a value the user is dragging anyway (visible, one pixel wide, and
+//--- undone by dragging on), while a false "free" would make Ctrl look dead on
+//--- exactly the build lineage that spells the probe the other way.
+bool UICtrlKeyDown()
+{
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_CONTROL);
+   return (v < 0) || ((v & 1) != 0);
 }
 
 //--- Arial Bold advances, units per 1000 em (the face the panels set).
@@ -945,7 +1018,15 @@ void ClearSingleModeLabel(const string labelName, uint &createTime) {
 //+------------------------------------------------------------------+
 bool CheckAndClearExpiredLabels() {
     uint now = GetTickCount();
-    uint durationMs = (uint)inpModeLabelDuration * 1000;
+    // P-UI-57d: clamp BEFORE the cast, not after. `inpModeLabelDuration` is an int
+    // input that ValidateInputs does not cover, so a negative or oversized value
+    // wrapped right here: (uint)(-1) * 1000 = 4294966296 ms, about 49.7 days, and a
+    // label the user expected to vanish in seconds outlived the session. 0 is left
+    // as 0 - "never expire" - which the `durationMs > 0` test below already honours.
+    int durSec = inpModeLabelDuration;
+    if(durSec < 0) durSec = 0;
+    if(durSec > 86400) durSec = 86400;          // one day is the sane ceiling
+    uint durationMs = (uint)durSec * 1000;
     bool anyRemaining = false;
     bool anyCleared = false;
 

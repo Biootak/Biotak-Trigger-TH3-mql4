@@ -73,16 +73,24 @@
 //|  * Multi-instance: box ids are "<commitTFmin>_<tick>" (+ rand on   |
 //|    collision), so any number of knots coexist; tails are split at  |
 //|    the LAST underscore because ids themselves contain one.         |
-//|  * TF-scoped visibility: each box carries its commit-TF mask and   |
-//|    shows on that TF and lower ones only — a low-TF knot never      |
-//|    collapses into a hairline on a much higher TF.                  |
+//|  * Visibility: a box lives on EVERY timeframe (P-BK-60 —          |
+//|    «این باکس در تایم های بالاتر هم نمایش داده بشه ... پیش فرض»).   |
+//|    The old commit-TF mask ("that TF and every lower one", P-BK-01) |
+//|    is retired in place: the anchors are real chart time/price, so  |
+//|    a knot drawn on M5 is still on the chart on H1/D1 — exactly     |
+//|    where it was drawn, only longer across the window.              |
 //|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
 //|    rectangle (snapping pulled corners to candle shadows).          |
-//|  * Info label ("the base note"): chart-anchored "[<side> <risk>      |
-//|    Pips | TP 12/25/51 | N bars · M15 base · FTR]" — the field after  |
-//|    the risk is the PLAN's own targets (P-BK-50; the retired          |
-//|    "R:R 1:N"), and P-BK-28 names the base's SIZE CLASS               |
-//|    (3 candles = a base, 9..12 = the 3 candles of the TF above; one  |
+//|  * Info label ("the base note"): chart-anchored, a GLANCE —           |
+//|    "[<side> · <EngSL|node EngSL> 17.9 | 26.4 | N bars · M15 base ·    |
+//|    FTR]" — the risk and the NAME of its source (P-BK-46/53), then    |
+//|    the box' OWN HEIGHT in pips, bare (P-BK-57 — its hover names it,   |
+//|    and it stays out when the risk IS that height), never a unit      |
+//|    word and never a target list; the plan's legs are the TICKS on    |
+//|    the chart (P-BK-50) and every leg's level/pips/R live in the box   |
+//|    hover. The old "… 17.9 Pips | TP 12/25/51 …" field is retired in   |
+//|    place (BKTAGTP-OFF, P-BK-54). P-BK-28 names the base's SIZE CLASS |
+//|    (3 candles = a base, 9..12 = the 3 candles of the TF above; one    |
 //|    or two candles = structure) and P-BK-47 names the NODE TYPE from |
 //|    the SAME ladder: how many rungs the class stands above the TF the |
 //|    node is SEEN ON (0 = FTR, 1 = ETR, 2 = CTR, 3+ = OTR) — the type |
@@ -95,11 +103,30 @@
 //|    the chart stays clean (Base Box card INFO row pins it on); full  |
 //|    numbers always ride the box/edge hover tooltips. Its SIZE is the |
 //|    user's (P-BK-27: `inpBKInfoFontSize`, 0 = follow the Base Box    |
-//|    text size — Base Box > Setup > INFO SIZE). ENTRY and SL are      |
+//|    text size — Base Box > Setup > INFO SIZE).                       |
+//|    P-BK-58: the note has TWO HOMES and the user picks one on that   |
+//|    same INFO row — the box' corner (rungs 0/1) or the LABEL         |
+//|    FAMILY'S OWN COLUMN next to the TRex trade card (rung 2,         |
+//|    «گوشهٔ ثابت»). Same text, same writer, ONE object at a time; the  |
+//|    corner row answers the SELECTED box (the newest while none is     |
+//|    selected, the box being SIZED always), and its slot is PUSHED IN  |
+//|    by the label module, which owns that column.                    |
+//|    ENTRY and SL are      |
 //|    OBJ_TREND rays (RAY_RIGHT, width BK_LEVEL_WIDTH — P-BK-50)       |
 //|    anchored at the box right edge; the plan's TARGETS (TP1..TP3,    |
 //|    one short thick tick each at the chart's right edge) are the     |
 //|    same family without RAY_RIGHT. All BACK + unselectable.          |
+//|  * P-BK-59 (2026-09-16) — THE CENTRE GRIP WEARS THE BORDER INK.   |
+//|    «این نقطه وسط باکس به رنگ سفید هستش توی پس زمینه سفید به خوبی    |
+//|    دیده نمیشه همون رنگ بوردر بگیره»: that dot is not ours — it is  |
+//|    MetaTrader's OWN selection marker (a 2x2 WHITE square at the     |
+//|    centre of a selected rectangle), and the terminal gives the EA no |
+//|    colour for it. The marker is painted WITH the object, so it sits  |
+//|    below every rung above it (the amber edges already clip the       |
+//|    corner markers), and a SCREEN square of our own, in the box'      |
+//|    border ink, covers it whole. The grip mirrors the terminal — it   |
+//|    exists exactly while MT4 would draw that marker (box unlocked AND |
+//|    SELECTED) — rides the 500 ms pump and the drag's own child step.  |
 //|  * Chain cleanup: deleting the BOX wipes every child in one        |
 //|    ObjectsDeleteAll(prefix) call; deleting a CHILD self-heals it   |
 //|    via BaseKnotSync. The BK layer is independent: HideAllTHObjects,|
@@ -146,6 +173,14 @@
 #define BK_BADGE_H        18   // NOBKDEL: retired with the X badge (kept for one-line restore)
 #define BK_DIR_LOOKBACK   128   // bars scanned for the entry-side resolve
 #define BK_INFO_GRACE_MS  4000  // Auto INFO: label stays this long after commit, then hides (chart stays clean)
+//--- P-BK-58 (2026-09-16) — THE NOTE'S THIRD HOME. The Base Box card's INFO row grew a third
+//--- rung (0 = Auto on the box, 1 = Always on the box, 2 = the label family's corner column —
+//--- «تا کاربر بتواند بین «چسبیده به باکس» و «گوشهٔ ثابت» یکی را انتخاب کند»). The rung is the
+//--- user's own setting (`inpBKShowInfo` / `g_bkShowInfo`), so it is NOT owned here: this module
+//--- only reads it. `BK_NOTE_CORNER` is the corner row's own tag — it hangs off the chart's
+//--- prefix, never off a box' (a box' `ObjectsDeleteAll(pfx)` must not wipe the shared row).
+#define BK_NOTE_CHART     2    // the rung that means "the family's corner, not the box"
+#define BK_NOTE_CORNER "NOTE_CORNER"
 //--- P-BK-47 (2026-09-15): THE NOTE'S NODE TYPE IS THE NODE'S LENGTH. The user's own
 //--- rule, word for word: «دسته بندی گره های معاملاتی براساس طول گره: FTR گرهی که طولش
 //--- مساوی تایم تریگر تایمی باشد که گره در آن دیده میشود سه کندل · ETR گرهی که طولش
@@ -475,6 +510,62 @@ static bool        s_bkNativeClaim = false;        // the TERMINAL owns this ges
 static bool        s_bkSnapTrusted = false;
 static uint        s_bkOwnerMs     = 0;            // press moment — the settle window above
 static bool        s_bkFallLogged  = false;        // one ledger line per gesture
+//--- P-BK-61 — THE HANDLE GESTURE, in two statics (the same shape every other
+//--- gesture of this module keeps): WHICH SIDE the hand is dragging right now
+//--- (0 = none — the keeper's `skip`, the one chip that may never be written
+//--- mid-gesture, P-BK-15), and whether this gesture's single ledger line was
+//--- already written. Both are cleared on the press edge and on the release, so
+//--- a missed release can only ever lose one line, never a box.
+//+------------------------------------------------------------------+
+//| P-BK-65 (2026-09-16) — ONE FIELD, ONE QUESTION: "IS A CHIP HELD"  |
+//| IS NOT "WAS THIS GESTURE A RESIZE".                               |
+//|                                                                  |
+//| Reported: «چرا باکس ری‌سایز می‌کنم برمی‌گرده سر جای خودش یا لبه دیگه |
+//| سمت دیگه میرن» — a handle resize SNAPPED BACK to the press-time     |
+//| size, and the OPPOSITE edge jumped. The only writer that can do     |
+//| that is `BaseKnotBodySizeHeal` (P-BK-61b: it re-imposes the press-  |
+//| time WIDTH/HEIGHT around the box' left/top corner), so the resize   |
+//| was being read as a BODY drag on the release. WHY: the release      |
+//| decided "was this a resize" from `s_bkGripLive` — the keeper's own  |
+//| skip field — and EVERY press edge of the mouse channel cleared it   |
+//| ("a fresh press is a fresh gesture"). A press edge lands DURING a   |
+//| live chip drag (the terminal's spurious down-flicker, the same       |
+//| KEYSTATE family P-BK-03/P-UI-73 record), and the moment it does,     |
+//| the resize loses its identity twice over:                          |
+//|   * the RELEASE reads `bkGripWas == 0` → the body-size heal fires   |
+//|     → the box springs back to its old size and the far edge jumps;  |
+//|   * the KEEPER's skip goes to 0 → `BaseKnotGripsFollow` rewrites    |
+//|     the very chip the hand is dragging, and MT4 CANCELS the native  |
+//|     drag it is running (P-BK-15).                                   |
+//|                                                                  |
+//| SO the two questions get two fields:                                |
+//|   * `s_bkGripLive`  — WHICH chip the hand holds RIGHT NOW (the       |
+//|     keeper's `skip`). Correctly follows the press edge: at a real    |
+//|     press nothing is held.                                          |
+//|   * `s_bkGripGesture` — THE KIND OF THIS PRESS (the side of the chip|
+//|     the TERMINAL named). Latched on the first OBJECT_DRAG of a chip  |
+//|     and cleared ONLY by a witness that cannot lie: the release, the  |
+//|     pump's silence watchdog, an OBJECT_DRAG that names the BOX itself|
+//|     (the terminal says which object it drags — that IS the ground    |
+//|     truth), or teardown.                                            |
+//|   * `s_bkBoxNamed` — did the terminal name the BOX in this press?    |
+//|     The body-size heal's own precondition (a magnet-enlarged FILL is |
+//|     fixed only for a gesture the terminal moved the BOX on; a chip   |
+//|     gesture can never run it), so the heal has TWO independent gates |
+//|     and a lost latch can no longer spring the box back.             |
+//|                                                                  |
+//| COST: two int/bool stores on a gesture's FIRST event, one compare on |
+//| the press edge and one at the release. Nothing per tick, nothing per |
+//| step, no new terminal read anywhere.                                |
+//+------------------------------------------------------------------+
+static int         s_bkGripLive    = 0;            // the side being dragged (0 = none)
+static int         s_bkGripGesture = 0;            // P-BK-65: this PRESS is a RESIZE (the chip's side)
+static bool        s_bkBoxNamed    = false;        // P-BK-65: the terminal named the BOX in this press
+static bool        s_bkGripLogged  = false;        // one "grip resize" line per gesture
+static bool        s_bkMagnetLogged = false;       // P-BK-64: one "magnet" line per gesture —
+                                                   // it carries the px distance the snap used, so
+                                                   // the next «مگنت کار نمی‌کنه» is a number in the
+                                                   // log instead of another guess
 //--- P-PERF-42 — ONE child-existence probe per GESTURE, never per child per step.
 //--- The per-step move used to ask `ObjectFind` for EVERY child before every
 //--- `ObjectMove` (~10 terminal calls per drag event, at event rate), yet the
@@ -497,6 +588,11 @@ static bool        s_bkFallLogged  = false;        // one ledger line per gestur
 #define BK_CH_TP3    1024  //           next free bits
 #define BK_CH_INFO   128
 #define BK_CH_TEXT   256
+#define BK_CH_DOT    2048  // P-BK-59: the centre grip — a SCREEN object, so the drag step
+                           //           cannot move it with ObjectMove (see the mover below)
+#define BK_CH_GRIP   4096  // P-BK-61: the HANDLE family — ONE bit for the whole set (the corner
+                           //           chips of BK_GRIP_COUNT are created, retired and carried
+                           //           together, and the keeper re-measures each one itself)
 static int         s_bkChildMask   = 0;            // which children existed at the gesture's start
 static string      s_bkChildMaskId = "";           // the box that mask was built for ("" = probe on the next move)
 //--- P-PERF-43 — the BOX drag measures ITSELF (P-PERF-15 pattern). The gesture
@@ -615,7 +711,8 @@ void BaseKnotPlaceText(const string pfx, const datetime t1, const datetime t2,
    ObjectSetInteger(0, tn, OBJPROP_ZORDER, Z_BOX_TEXT);
    ObjectSetInteger(0, tn, OBJPROP_TIMEFRAMES, tfMask);
 }
-// Short TF name for tooltips / visibility info ("M5 and lower").
+// Short TF name for tooltips / risk text (P-BK-60: the box is on every TF, so a
+// name here means the box' OWN commit TF — "M5" — and never a scope).
 string BaseKnotTFName(const int tfMin)
 {
    if(tfMin <= 0) return "all TFs";
@@ -671,7 +768,9 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
    }
    tt += nodeLine;                 // P-BK-29/47 — the node type (its length) + the story's numbers
    tt += tpTip;                    // P-BK-50 — the plan's own targets, leg by leg
-   tt += "\nVisible: " + BaseKnotTFName(tfMin) + (tfMin > 0 ? " and lower" : "") + " (drag to move)";
+   // P-BK-60: the box is on every timeframe — the hover says so ONCE (the commit TF
+   // still rides the note and the risk text above; it is no longer a scope).
+   tt += "\nVisible: every timeframe (drag to move)";
    string ut = (k >= 0 ? BaseKnotGetText(BaseKnotPrefix(id)) : "");
    if(StringLen(ut) > 0) tt += "\n\"" + ut + "\"";
    if(k >= 0 && g_bkBoxes[k].locked) tt += "\nLOCKED (hold to unlock)";
@@ -802,6 +901,19 @@ bool BaseKnotFillHealed(const string box)
 }
 
 bool BaseKnotSessionActive() { return (g_bkState != BK_IDLE); }
+// P-BK-62 (2026-09-16) — THE BOX TOOL'S ONE ANSWER TO "DO WE OWN THE VIEW?".
+//
+// Three gestures of this module take the chart view: the draw session, an IDLE
+// body drag and a handle RESIZE (`BaseKnotDragLockOn`). The reconcile watchdog
+// (`ChartScrollReconcile`, run from the entry's timer and from every button-up
+// finalizer) rebuilds the lock from OWNERSHIP INTENT, and that query only ever
+// asked the draw SESSION — so an IDLE drag/resize was invisible to it, the next
+// round handed the view back under the user's hand, and the drag's own guard then
+// early-returned for the rest of the gesture. The chart scrolled while the user
+// was dragging/resizing the box. This is P-UI-53's fix, for the second owner:
+// every holder of the lock answers ONE query, and nobody restores it from under
+// a live gesture. Two bool reads; no writes of its own.
+bool BaseKnotViewOwned() { return (s_bkDragLock || g_bkState != BK_IDLE); }
 int  BaseKnotCount()         { return ArraySize(g_bkBoxes); }
 
 // UI side polls this after OnChartEventHandler to re-show the hidden menu.
@@ -852,29 +964,55 @@ int BaseKnotIdTF(const string bid)
    if(us <= 0) return 0;
    return (int)StringToInteger(StringSubstr(bid, 0, us));
 }
-// Visibility mask: commit TF + every lower TF. Higher TFs stay hidden so
-// a low-TF knot never renders as a hairline there (P-BK-01).
+//+------------------------------------------------------------------+
+//| P-BK-60 (2026-09-16) — THE BOX LIVES ON EVERY TIMEFRAME.         |
+//|                                                                  |
+//| «این باکس در تایم های بالاتر هم نمایش داده بشه ... پیش فرض». The  |
+//| commit-TF mask (the box' own TF and every LOWER one, P-BK-01's    |
+//| hairline rule) is the DEFAULT no longer: the mask is ALL periods, |
+//| so a knot drawn on M5 is still on the chart on H1 and D1. The     |
+//| box' anchors ARE chart time/price, so it lands exactly where the  |
+//| user drew it — the same two candles' worth of time simply covers  |
+//| more of the window; it never moves, and nothing re-reads a TF to  |
+//| decide whether it may be seen.                                    |
+//|                                                                  |
+//| ONE MASK, ONE PROBE: every object of the family (the handle, the  |
+//| 4 edges, Entry/SL/TP, the note, the user text, the P-BK-59 grip)  |
+//| rides THIS function's answer, and the question "is this box on    |
+//| the chart here?" is asked through BaseKnotTFVisible — never       |
+//| through `Period()` at a call site.                                |
+//|                                                                  |
+//| BKTFSCOPE-OFF: the retired rule stays in place below, one word    |
+//| away; `tfMin` stays a parameter because the RETIRED body is what  |
+//| reads it, not the caller (so a restore is: delete the first       |
+//| `return`, uncomment, and re-teach nothing else).                  |
+//+------------------------------------------------------------------+
 long BaseKnotTFMask(const int tfMin)
 {
-   if(tfMin <= 0) return OBJ_ALL_PERIODS;   // legacy box — keep old behavior
-   long m = 0;
-   if(tfMin >= 1)     m |= OBJ_PERIOD_M1;
-   if(tfMin >= 5)     m |= OBJ_PERIOD_M5;
-   if(tfMin >= 15)    m |= OBJ_PERIOD_M15;
-   if(tfMin >= 30)    m |= OBJ_PERIOD_M30;
-   if(tfMin >= 60)    m |= OBJ_PERIOD_H1;
-   if(tfMin >= 240)   m |= OBJ_PERIOD_H4;
-   if(tfMin >= 1440)  m |= OBJ_PERIOD_D1;
-   if(tfMin >= 10080) m |= OBJ_PERIOD_W1;
-   if(tfMin >= 43200) m |= OBJ_PERIOD_MN1;
-   if(m == 0) m = OBJ_ALL_PERIODS;
-   return m;
+   return OBJ_ALL_PERIODS;   // P-BK-60: on every TF — see the note above
+   //--- BKTFSCOPE-OFF: commit TF + every lower TF (restore by deleting the line above) ---
+   //if(tfMin <= 0) return OBJ_ALL_PERIODS;   // legacy box — keep old behavior
+   //long m = 0;
+   //if(tfMin >= 1)     m |= OBJ_PERIOD_M1;
+   //if(tfMin >= 5)     m |= OBJ_PERIOD_M5;
+   //if(tfMin >= 15)    m |= OBJ_PERIOD_M15;
+   //if(tfMin >= 30)    m |= OBJ_PERIOD_M30;
+   //if(tfMin >= 60)    m |= OBJ_PERIOD_H1;
+   //if(tfMin >= 240)   m |= OBJ_PERIOD_H4;
+   //if(tfMin >= 1440)  m |= OBJ_PERIOD_D1;
+   //if(tfMin >= 10080) m |= OBJ_PERIOD_W1;
+   //if(tfMin >= 43200) m |= OBJ_PERIOD_MN1;
+   //if(m == 0) m = OBJ_ALL_PERIODS;
+   //return m;
 }
-// Minutes compare — robust on exotic chart TFs (no flag mapping needed).
+// The same question in minutes (no flag mapping, so an exotic chart TF is safe) —
+// and the ONE owner the strip, the note row and the TP glue ask (P-BK-60).
 bool BaseKnotTFVisible(const int tfMin)
 {
-   if(tfMin <= 0) return true;
-   return (Period() <= tfMin);
+   return true;   // P-BK-60: on every TF — see BaseKnotTFMask's note above
+   //--- BKTFSCOPE-OFF: the commit-TF floor (restore by deleting the line above) ---
+   //if(tfMin <= 0) return true;
+   //return (Period() <= tfMin);
 }
 
 //+------------------------------------------------------------------+
@@ -1087,6 +1225,26 @@ void BaseKnotLazyInit()
          g_bkBoxes[q].locked = (ObjectGetInteger(0, nm, OBJPROP_SELECTABLE) == 0);   // lock rides the handle itself — no GV, survives TF-switch/restart
       }
    }
+   // BKMIDGRIP-OFF (2026-09-16) — RETIRED-PAIR SWEEP, ONCE PER ATTACH.
+   // The four mid-edge chips of the older build are SELECTABLE objects sitting
+   // on the box: the new family sweeps only its four corners, so without this
+   // they would outlive the feature forever as squares that drag nothing (a
+   // chart saved mid-selection carries them, and the terminal's own single-
+   // select would keep handing the selection to a ghost). ONE pass per attach,
+   // 4 name lookups per box, no GV and no per-pump cost — the same shape as
+   // the pre-edge migration right below (and the reason the retired tails are
+   // still NAMEABLE above: this is what names them).
+   for(int b = 0; b < ArraySize(g_bkBoxes); b++)
+   {
+      string midPfx = BaseKnotPrefix(g_bkBoxes[b].id);
+      if(midPfx == "") continue;
+      string midNames[4] = {"GT", "GB", "GL", "GR"};
+      for(int m = 0; m < 4; m++)
+      {
+         string mid = midPfx + midNames[m];
+         if(ObjectFind(0, mid) >= 0) ObjectDelete(0, mid);
+      }
+   }
    // P-BK-06 migration: hollow-by-construction (bg handle + edge segments) —
    // every inherited box is re-synced once so pre-edge boxes gain their
    // border edges and lose their visible fill immediately, no drag needed.
@@ -1204,11 +1362,38 @@ void BaseKnotReassertLock(const bool ctxToo)
 // IDLE box-drag holder: lock once a REAL drag starts (past slop — taps never
 // flicker the props), release on button-up. The state check keeps a drag
 // release from unlocking a draw session's lock in the pathological overlap.
+// P-BK-62 (2026-09-16): AN OWNED DRAG LOCK IS RE-ASSERTED ON EVERY STEP — the
+// P-BK-14 rule, extended from the draw session to the drag/resize the session is
+// NOT running. The one-time lock is not enough for exactly the reasons P-BK-14
+// recorded (a panel release, a modal card, a template reset can flip the props
+// back while the button is still down), and here it was worse than a leak: the
+// guard below early-returns once `s_bkDragLock` is set, so a single third-writer
+// flip left the chart panning under the hand for the REST of the gesture with
+// nothing left to take the lock back. Read-guarded through `ChartViewLockAssert`
+// (the props' ONE owner): steady state is two property reads per throttled step,
+// a write only on drift.
 void BaseKnotDragLockOn()
 {
-   if(s_bkDragLock || g_bkState != BK_IDLE) return;   // taps/sessions never take the drag lock
+   if(s_bkDragLock)
+   {
+      BaseKnotReassertLock(false);   // P-BK-62: owned — re-force, never re-capture
+      return;
+   }
+   if(g_bkState != BK_IDLE) return;   // taps/sessions never take the drag lock
    BaseKnotLockChart(false);
    s_bkDragLock = true;
+}
+// P-BK-65: THE GESTURE STATE HAS ONE OWNER, and teardown is one of its four callers
+// (the others are the release, the watchdog and the terminal-named box drag). Called
+// from OnDeinit (every reason) and from BaseKnotCancel: a removed or cancelled instance
+// must not hand a stale "this press is a resize" answer to the next attach. No chart
+// write, no probe — three stores.
+void BaseKnotGestureClear()
+{
+   s_bkGripGesture = 0;
+   s_bkGripLive    = 0;
+   s_bkBoxNamed    = false;
+   s_bkDragMoved   = false;
 }
 void BaseKnotDragLockOff()
 {
@@ -1245,6 +1430,7 @@ void BaseKnotCancel()
    BaseKnotHintHide();
    g_bkState = BK_IDLE;
    g_bkHeld = false;
+   BaseKnotGestureClear();   // P-BK-65: a cancelled session leaves no gesture answer behind
    BaseKnotUnlockChart();
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
    ChartRedraw();
@@ -1261,12 +1447,16 @@ void BaseKnotOnDeinit(const int reason)
    g_bkTouched = false;
    s_bkDragLock = false;
    s_bkDragId = ""; s_bkDragMoved = false;
+   BaseKnotGestureClear();   // P-BK-65: no gesture state outlives the instance either
    g_bkState = BK_IDLE;
    g_bkRestoreReq = false;
    g_bkHeld = false;
    BaseKnotWipePreview();
    BaseKnotWipeLive();
    ObjectDelete(0, BaseKnotHintName());
+   BaseKnotCornerWipe();   // P-BK-58: the family's row is the chart's, not a box child — a remove /
+                           // TF switch must never leave a ghost note behind (nor a "nothing changed"
+                           // marker that would keep the next init from rebuilding it)
    if(reason == REASON_REMOVE) ArrayResize(g_bkBoxes, 0);
 }
 
@@ -1336,8 +1526,8 @@ void BaseKnotDrawEdges(const string tag, datetime t1, const double p1,
 //|     owns that hop and is the only place it exists.                 |
 //| Both numbers are PUSHED IN (EngSL / HuntSL per TF — trade-plan math|
 //| sits ABOVE this module, the P-BK-46/50 ask / push pair), and a TF  |
-//| the table cannot answer keeps the box' own height for the number it |
-//| is missing: an ABSENCE every text then NAMES (BaseKnotRiskTag),    |
+//| the table cannot answer is NO LONGER the box' whole height: the     |
+//| node's OWN power caps it (P-BK-52, BaseKnotLegPair) — the ABSENCE  |
 //| never a guess. P-BK-50's geometry (entry ONE R OUTSIDE the edge,   |
 //| the stop ON that edge) is SUPERSEDED IN PLACE by the two lines     |
 //| below — the pair it replaced is kept verbatim under BKGEOM-OFF, one |
@@ -1378,7 +1568,8 @@ double BaseKnotEntryOffsetPips(const int kind, const int tfMin)
 // P-BK-51 — WHY THE ENTRY WAITS THAT DEEP: the node's TYPE names the measure, and the
 // number is never shown without the TF it was read on. ONE owner, so the box hover, the
 // entry ray and the note's hover can never describe two different measurements.
-string BaseKnotEntryWhy(const int kind, const int measureTF, const bool isHunt)
+string BaseKnotEntryWhy(const int kind, const int measureTF, const bool isHunt,
+                        const double top, const double bot)
 {
    string what = BaseKnotEntryOffsetTag(isHunt);
    string tf   = BaseKnotTFName(measureTF > 0 ? measureTF : Period());
@@ -1390,24 +1581,164 @@ string BaseKnotEntryWhy(const int kind, const int measureTF, const bool isHunt)
    else                         why = "no type yet (the box is being sized): " + what + " of " + tf;
    if(!isHunt && kind != BK_NODE_FTR && kind != BK_NODE_NONE)
       why += " — no HuntSL pushed for " + tf + " yet, so EngSL stands in";
+   why += BaseKnotCapClause(measureTF, isHunt, top, bot);   // P-BK-52: ... and the ceiling, when it spoke
    return why;
 }
 // ... and the SHORT form of the same fact — the box hover's first line and the note's
 // own hover read THIS sentence, so "how deep" is answered once.
-string BaseKnotEntryLine(const int kind, const int measureTF, const bool isHunt, const int dir)
+string BaseKnotEntryLine(const int kind, const int measureTF, const bool isHunt, const int dir,
+                         const double top, const double bot)
 {
    return " · the entry waits ONE " + BaseKnotEntryOffsetTag(isHunt) + " INSIDE the box' " +
-          (dir >= 0 ? "top" : "bottom") + " edge (" + BaseKnotEntryWhy(kind, measureTF, isHunt) + ")";
+          (dir >= 0 ? "top" : "bottom") + " edge (" +
+          BaseKnotEntryWhy(kind, measureTF, isHunt, top, bot) + ")";
+}
+// P-BK-52 (2026-09-16) — THE NODE'S OWN POWER IS THE CEILING OF BOTH LEGS.
+// WHY: P-BK-46/51 push the plan's EngSL / HuntSL in, and a plan leg can be DEEPER than the
+// node it is drawn in — a 9-pip node measured with EngSL(M15) = 17 pips put the entry 8 pips
+// BEYOND the box' opposite edge while the hover still said «ONE EngSL INSIDE the box' top
+// edge» (the user's «برای محل های ورود میگم که دقیق باشه»), and a TF the pump had never
+// pushed fell back to the box' WHOLE height, putting the stop a whole box past the entry.
+// WHAT: the node's OWN power is its height over the SAME divisor the plan divides its
+// composite TR by (64/15), so the ceiling is the same UNIT as the leg it bounds — only
+// sourced from the node instead of the market:
+//   EngSL_node  = H / 4.266666                    (BK_NODE_POWER_DIV)
+//   HuntSL_node = 8/3 x EngSL_node = H x 5/8      (BK_NODE_HUNT_NUM / BK_NODE_HUNT_DEN)
+//   leg = min(planLeg, nodeLeg)                   (BaseKnotLegPick — the only rule)
+// A node BIGGER than the plan's leg keeps the plan's number exactly (nothing a user sees
+// today moves); a node SMALLER than it is sized by its own power. And because
+//   off + risk <= HuntSL_node + EngSL_node = (5/8 + 15/64) x H = 55/64 x H < H,
+// BOTH legs sit strictly inside the box on EVERY node type — no reserve percentage, no clamp
+// constant and no per-type special case.
+// THE GATE: the divisor belongs to the plan and the layering law forbids reading
+// TradePlanFormulas from this module, so the constants below are kept IN SYNC (and the 55/64
+// bound PROVEN from them) by tools/base-count-audit.py [leg-fit], which reads both files —
+// drift fails the build, not the chart.
+// ONE OWNER: BaseKnotLegPair is the only place the two sizes are decided; the geometry
+// (BaseKnotCalcLevels), the R every hover prints (BaseKnotRiskPips), the NAME of that R
+// (BaseKnotRiskTag), the stop's sentence (BaseKnotStopWhy) and the entry's
+// (BaseKnotEntryWhy / BaseKnotCapClause) all read IT — no line and no number can describe
+// two different measurements.
+#define BK_NODE_POWER_DIV 4.266666   // == TradePlanFormulas TRADEPLAN_ENG_DIVISOR (gate: leg-fit)
+#define BK_NODE_HUNT_NUM  5.0        // 8/3 / 4.266666 == 5/8 exactly — the NODE's own HuntSL
+#define BK_NODE_HUNT_DEN  8.0        // ... against the plan's 8/3 (gate: leg-fit keeps one unit)
+// The node's own power, in pips — its height over the plan's own Eng divisor. 0 when the box
+// has no height yet or the symbol has no pip size: an ABSENCE every caller's fallback names.
+double BaseKnotNodeEngPips(const double top, const double bot)
+{
+   double pip = BaseKnotPipSize();
+   if(pip <= 0.0 || BK_NODE_POWER_DIV <= 0.0) return 0.0;
+   double h = (top - bot) / pip;
+   return (h > 0.0 ? h / BK_NODE_POWER_DIV : 0.0);
+}
+double BaseKnotNodeHuntPips(const double top, const double bot)
+{
+   double pip = BaseKnotPipSize();
+   if(pip <= 0.0 || BK_NODE_HUNT_DEN <= 0.0) return 0.0;
+   double h = (top - bot) / pip;
+   return (h > 0.0 ? BK_NODE_HUNT_NUM * h / BK_NODE_HUNT_DEN : 0.0);
+}
+// THE RULE, in one place — the plan's leg when it is no deeper than the node's own power, the
+// node's own power when it is. 0 = BOTH absent (the caller falls back, and NAMES it).
+bool BaseKnotLegCapped(const double planPips, const double capPips)
+{
+   return (capPips > 0.0 && (planPips <= 0.0 || planPips > capPips));
+}
+double BaseKnotLegPick(const double planPips, const double capPips)
+{
+   if(BaseKnotLegCapped(planPips, capPips)) return capPips;
+   return (planPips > 0.0 ? planPips : 0.0);
+}
+// THE EFFECTIVE PAIR of one node, in pips — the ONE owner the geometry, the R every text
+// prints and both sentences read, so the drawn lines and the printed pips cannot part.
+void BaseKnotLegPair(const double top, const double bot, const int kind, const int tfMin,
+                     double &offPips, double &riskPips)
+{
+   int    mtf   = BaseKnotMeasureTFMin(kind, tfMin);
+   bool   hunt  = BaseKnotOffsetIsHunt(kind, mtf);
+   double capE  = BaseKnotNodeEngPips(top, bot);
+   double planO = BaseKnotEntryOffsetPips(kind, mtf);
+   double planR = BaseKnotEngPips(mtf);
+   offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);
+   riskPips = BaseKnotLegPick(planR, capE);
+   double h = BaseKnotToPips(top - bot);
+   if(offPips  <= 0.0) offPips  = (h > 0.0 ? h : 0.0);   // neither source answered — the box'
+   if(riskPips <= 0.0) riskPips = (h > 0.0 ? h : 0.0);   //   own height, named by the texts
+}
+// P-BK-53 (2026-09-16) — ONE SHORT NAME ON THE CHART, THE PROOF IN THE HOVER.
+// WHY: P-BK-52 named the ceiling with its formula EVERYWHERE it spoke, so the box' own note
+// read «[BUY · the node's own EngSL (its height / 4.2667) 17.9 Pips | …]» — a sentence where
+// a NAME belongs (user: «اطلاعات خلاصه و قابل فهمی باشه»). What the user reads a level off is
+// the LEG and its SOURCE; the divisor is the PROOF that the number was measured at all, and a
+// proof belongs where there is room to read it.
+// WHAT: TWO names for ONE fact, both decided by the ONE flag the pick was made with
+// (`isHunt` — BaseKnotLegPair's own):
+//   * BaseKnotCapTag — the SHORT name ("node EngSL" / "node HuntSL"): what the chart-side
+//     note prints and what every `riskTag` inside a hover's parentheses prints;
+//   * BaseKnotCapWhy — the SAME source spelled out WITH the arithmetic that sized it
+//     ("the node's own EngSL (its height / 4.2667)"): the hovers' own clauses only.
+// P-BK-52's rule — a number nobody can check is never printed — still holds: the name rides
+// the chart, the proof rides the hover, and neither is a second number.
+// THE GATE: tools/base-count-audit.py [leg-fit / the chart's own label] reads BOTH — a formula
+// smuggled back into the tag, or a short name leaking into the clause, fails the build.
+string BaseKnotCapTag(const bool isHunt)
+{
+   return (isHunt ? "node HuntSL" : "node EngSL");
+}
+// ... and the SAME source spelled for the room a HOVER has: the source and the formula that
+// sized it, so a number nobody can check never gets printed where it is read out.
+string BaseKnotCapWhy(const bool isHunt)
+{
+   return (isHunt ? "the node's own HuntSL (its height x 5/8)"
+                  : "the node's own EngSL (its height / 4.2667)");
+}
+// ... and the ONE clause every entry sentence appends when the ceiling really spoke (an empty
+// string while the plan's leg still fits): the box hover, the note's hover and the entry ray
+// share these exact words — the PROOF form (P-BK-53), because a hover has the room for it.
+string BaseKnotCapClause(const int measureTF, const bool isHunt, const double top, const double bot)
+{
+   double plan = (isHunt ? BaseKnotHuntPips(measureTF) : BaseKnotEngPips(measureTF));
+   double cap  = (isHunt ? BaseKnotNodeHuntPips(top, bot) : BaseKnotNodeEngPips(top, bot));
+   if(!BaseKnotLegCapped(plan, cap)) return "";
+   return " — CAPPED by " + BaseKnotCapWhy(isHunt) + " = " + DoubleToString(cap, 1) + " pips";
+}
+// ... and the stop's own sentence, shared by the hover and the note, so the two texts can
+// never name two different sources for the one R they draw. P-BK-53: it answers WHICH source
+// spoke and WHY in plain words (the plan's leg against the node's own), never in code words
+// («power stands in» said nothing a user could check).
+string BaseKnotStopWhy(const int measureTF, const double top, const double bot)
+{
+   double plan = BaseKnotEngPips(measureTF);
+   double cap  = BaseKnotNodeEngPips(top, bot);
+   if(BaseKnotLegCapped(plan, cap))
+      return (BaseKnotRiskIsEng(measureTF)
+              ? " — the plan's EngSL of " + BaseKnotTFName(measureTF) + " (" + DoubleToString(plan, 1) +
+                " pips) is deeper than the node, so " + BaseKnotCapWhy(false) + " stands in"
+              : " — the pump has no EngSL for " + BaseKnotTFName(measureTF) +
+                " yet, so " + BaseKnotCapWhy(false) + " stands in");
+   if(plan > 0.0) return "";
+   return " — neither the plan nor the node could size it, so the box' own height stands in";
 }
 void BaseKnotCalcLevels(const double top, const double bot, const int dir,
                         const int kind, const int tfMin, double &entry, double &sl)
 {
-   int    mtf  = BaseKnotMeasureTFMin(kind, tfMin);
    double pip  = BaseKnotPipSize();
-   double off  = BaseKnotEntryOffsetPips(kind, mtf) * pip;   // P-BK-51: the entry waits this deep
-   double risk = BaseKnotEngPips(mtf) * pip;                 // ... and the stop is ONE EngSL behind it
+   // P-BK-52: the pair comes from ONE owner — the plan's legs, bounded by the node's own
+   // power — so the lines drawn here and the R every hover prints cannot part.
+   // BKATRLEG-OFF (P-BK-51/52): the retired pair that used the plan's leg UNBOUNDED — a leg
+   // deeper than the node put the entry past the box' far edge, and a TF the pump had not
+   // pushed put the stop a whole box behind it. Restore by uncommenting the three lines below
+   // and dropping the pair above them.
+   // BKATRLEG-OFF: int    mtf  = BaseKnotMeasureTFMin(kind, tfMin);
+   // BKATRLEG-OFF: double off  = BaseKnotEntryOffsetPips(kind, mtf) * pip;   // P-BK-51: the entry waits this deep
+   // BKATRLEG-OFF: double risk = BaseKnotEngPips(mtf) * pip;                 // ... and the stop is ONE EngSL behind it
+   double offP = 0.0, riskP = 0.0;
+   BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP);
+   double off  = offP  * pip;   // the entry waits this deep INSIDE the side's own edge
+   double risk = riskP * pip;   // ... and the stop is ONE EngSL behind it
    // BKGEOM-OFF (P-BK-50): the retired "ONE R OUTSIDE the edge, stop ON that edge" pair —
-   // restore by uncommenting these four lines and DROPPING the two below.
+   // restore by uncommenting these four lines and DROPPING the two below (the R it reads
+   // carries the P-BK-52 ceiling, so restoring it restores that geometry, not the old sizes).
    // BKGEOM-OFF: double r = BaseKnotRiskPips(tfMin, top, bot) * BaseKnotPipSize();
    // BKGEOM-OFF: if(r <= 0.0) r = top - bot;
    // BKGEOM-OFF: if(dir >= 0) { entry = top + r; sl = top; }
@@ -1535,12 +1866,152 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
 // sizing (LIVE_ tag always writes) and for BK_INFO_GRACE_MS after commit,
 // then hides it so the chart stays clean. Full numbers always ride the
 // box/edge hover tooltips, so nothing is ever unreachable.
+// P-BK-58: and the CORNER rung (2) takes the note off the box altogether — the box-side copy
+// is the one that has to be off, because the note then lives in ONE place only (the family's
+// row, BaseKnotNoteAtCorner). Both callers of this probe already delete a note they are told
+// not to show, so the rung needs no second switch anywhere.
 bool BaseKnotInfoVisible(const string id)
 {
+   if(BaseKnotNoteInCorner()) return false;   // P-BK-58: the note's home is the family's column
    if(g_bkShowInfo == 1) return true;
    int k = BaseKnotFind(id);
    if(k < 0) return true;
    return ((int)(GetTickCount() - g_bkBoxes[k].commitMs) < (int)BK_INFO_GRACE_MS);
+}
+//+------------------------------------------------------------------+
+//| P-BK-58 — THE NOTE HAS TWO HOMES, AND THE USER PICKS ONE.        |
+//|                                                                  |
+//| «لیبل اطلاعات بیس را کنار همان کارت/ردیف خانوادهٔ لیبلها هم نشان  |
+//| بده تا کاربر بتواند بین «چسبیده به باکس» و «گوشهٔ ثابت» یکی را    |
+//| انتخاب کند». What each home is FOR: the box-side note tells the  |
+//| box' own story where the box is (it moves with the trade, and    |
+//| that is what makes it hard to read on a busy chart); the CORNER   |
+//| row lines up with the ATR/TH columns and the TRex trade card, so  |
+//| the same numbers can be read as a readout.                       |
+//| WHAT DOES NOT CHANGE: the TEXT (one writer, BaseKnotWriteInfo),  |
+//| its size/font/colour/rung (P-BK-27/56), the box hover tooltips    |
+//| and every drawn level. The two homes differ ONLY in the object    |
+//| they write to and how it is anchored.                            |
+//|                                                                  |
+//| WHICH BOX the corner answers (user decision 2026-09-16): THE       |
+//| SELECTED one — the user clicked it, so the row answers the        |
+//| question he just asked. MT4's own single-select is READ           |
+//| (`OBJPROP_SELECTED` on the box' handle, which P-BK-26's           |
+//| BKSELECT-KEPT leaves intact), never re-implemented; with nothing  |
+//| selected the NEWEST box answers, and the box being SIZED always   |
+//| wins (sizing is the one moment the readout is looked at).         |
+//|                                                                  |
+//| THE SLOT IS PUSHED IN, never read here: the column's margins and  |
+//| its row pitch belong to the label module (`inpLabelsMarginLeft`,  |
+//| the ATR trade card's own layout), which sits ABOVE this module —  |
+//| so it pushes the corner, the x and the y (BaseKnotCornerSlotPush) |
+//| and this module only draws there. No margin is ever guessed.      |
+//|                                                                  |
+//| ONE OBJECT AT A TIME: the writer empties the other home as it     |
+//| fills this one, so a mode change can never leave two copies of    |
+//| the same number on the chart. Steady state costs NOTHING: the row |
+//| is written on a CHANGE (mode, selection, slot, or the box' own    |
+//| Sync), never once per pump round.                                 |
+//+------------------------------------------------------------------+
+bool BaseKnotNoteInCorner() { return (g_bkShowInfo == BK_NOTE_CHART); }
+// The row's object name. ONE row for the whole chart (it is the family's column, not a box
+// child — see BK_NOTE_CORNER).
+string BaseKnotCornerName()
+{
+   if(StringLen(inpObjectPrefix) == 0) return "";
+   return inpObjectPrefix + BK_TAG + BK_NOTE_CORNER;
+}
+// The pushed slot (-1 = the family has never pushed one, i.e. there is nowhere to draw).
+static int  s_bkCornerSide  = -1;
+static int  s_bkCornerX     = 0;
+static int  s_bkCornerY     = 0;
+static bool s_bkCornerDirty = true;   // a slot write is owed (the row may not exist yet)
+static string s_bkCornerId  = "";     // the box the row currently carries ("" = the sizing box)
+// The row's own wipe (deinit + a mode change): the object goes AND the books are cleared, so the
+// next refresh rebuilds instead of believing the row it just deleted is still there.
+void BaseKnotCornerWipe()
+{
+   string nm = BaseKnotCornerName();
+   if(nm != "" && ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);
+   s_bkCornerId    = "";
+   s_bkCornerDirty = true;
+}
+void BaseKnotCornerSlotPush(const int corner, const int xPos, const int yPos)
+{
+   if(corner == s_bkCornerSide && xPos == s_bkCornerX && yPos == s_bkCornerY) return;
+   s_bkCornerSide  = corner;
+   s_bkCornerX     = xPos;
+   s_bkCornerY     = yPos;
+   s_bkCornerDirty = true;   // read by the pump (≤500 ms) — never a chart write per push
+}
+// THE box the corner answers — see the block above: the SELECTED one, else the NEWEST.
+string BaseKnotSelectedId()
+{
+   if(StringLen(inpObjectPrefix) == 0) return "";
+   string best = "";
+   uint   bestMs = 0;
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string pfx = BaseKnotPrefix(g_bkBoxes[i].id);
+      if(pfx == "") continue;
+      string box = BaseKnotBoxName(pfx);
+      if(ObjectFind(0, box) < 0) continue;
+      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) return g_bkBoxes[i].id;   // clicked = the answer
+      if(best == "" || g_bkBoxes[i].commitMs >= bestMs)
+      {
+         best = g_bkBoxes[i].id;
+         bestMs = g_bkBoxes[i].commitMs;
+      }
+   }
+   return best;
+}
+// ONE decision owner for WHERE the note is drawn: the writer (and its callers) ask THIS.
+// `id` = "" is the box being SIZED (its own live tag is not in the registry) — it always wins,
+// because while the user draws the readout must answer the box under his cursor.
+bool BaseKnotNoteAtCorner(const string id)
+{
+   if(!BaseKnotNoteInCorner()) return false;
+   if(id == "") return true;
+   return (id == BaseKnotSelectedId());
+}
+// The row's own keeper — called from the existing 500 ms pump (BaseKnotSyncBadges), so the
+// corner follows a selection change, a mode change, a pushed slot or a box that left this TF
+// without a new event path of its own. NOTHING IS WRITTEN while nothing changed.
+void BaseKnotNoteCornerRefresh()
+{
+   string nm = BaseKnotCornerName();
+   if(nm == "") return;
+   if(!BaseKnotNoteInCorner())
+   {
+      if(ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);   // the box-side home owns the note now
+      s_bkCornerId    = "";
+      s_bkCornerDirty = false;   // nothing is owed while the rung is not the corner one
+      return;
+   }
+   if(g_bkState == BK_PREVIEW)
+   {
+      s_bkCornerDirty = true;   // the live writer owns the row while the user draws — the NEXT round
+      return;                    // re-decides, so a cancelled BAND cannot leave its preview text behind
+   }
+   string id = BaseKnotSelectedId();
+   if(id != "" && !BaseKnotVisibleNow(id)) id = "";   // a box hidden on this TF claims no row
+   if(id == s_bkCornerId && !s_bkCornerDirty)
+   {
+      // Steady state: not one chart write. The ONE read left is the heal — something else
+      // (a chart-wide cleanup, the user's own delete) may have taken the row away, and a
+      // readout that silently disappears is the bug this keeper exists for.
+      if(id == "" || ObjectFind(0, nm) >= 0) return;
+      s_bkCornerDirty = true;   // rebuild it below
+   }
+   s_bkCornerId = id;
+   s_bkCornerDirty = false;
+   if(id == "")
+   {
+      if(ObjectFind(0, nm) >= 0) ObjectDelete(0, nm);   // nothing answers: a stale note is worse than none
+      return;
+   }
+   BaseKnotSync(id);   // the ONE writer rebuilds the box AND its note — into the row
+   ChartRedraw();
 }
 // ONE candle's "is it inside the box" read — the BODY is the criterion (both
 // open and close inside [bot,top], boundary INCLUSIVE, direction-free): wicks may
@@ -2009,7 +2480,7 @@ bool BaseKnotRungLoaded(const int tfMin)
 {
    if(tfMin <= 0) return false;
    if(tfMin == Period()) return true;
-   return (Bars(_Symbol, tfMin) > 0);
+   return (iBars(_Symbol, tfMin) > 0);
 }
 // Does the rung STAND STILL in this band? The number of the rung's candles
 // overlapping the box whose BODIES are inside [bot,top]. Bounded: it stops on the
@@ -2026,8 +2497,8 @@ int BaseKnotRungHoldCount(const int tfMin, const datetime s1, const datetime s2,
    if(tfMin <= 0 || s2 <= 0 || top <= bot) return -1;
    if(tfMin == Period()) return BK_BASE_RUNG_MIN;   // this chart's own walk already did it
    if(!BaseKnotRungLoaded(tfMin)) return -1;
-   int sh1 = iBarShift(_Symbol, tfMin, s1, false);
-   int sh2 = iBarShift(_Symbol, tfMin, s2, false);
+   int sh1 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfMin, s1, false);
+   int sh2 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfMin, s2, false);
    if(sh1 < 0 || sh2 < 0) return -1;                // the box is older than this series
    int newer = (sh1 < sh2 ? sh1 : sh2);             // smaller shift = newer candle
    int older = (sh1 < sh2 ? sh2 : sh1);
@@ -2250,7 +2721,7 @@ void BaseKnotNodeRead(const datetime t2, const double top, const double bot,
    if(baseTFMin > 0 && baseTFMin != Period() && BaseKnotRungLoaded(baseTFMin))
       tfRead = baseTFMin;
    nd.storyTF = (tfRead > 0 ? tfRead : Period());
-   int s2 = iBarShift(_Symbol, tfRead, t2, false);
+   int s2 = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfRead, t2, false);
    if(s2 <= 0) return;                    // the edge IS the newest candle — nothing happened after it
    // P-BK-48 — THE WHOLE PAST MARKET OF THIS NODE, from its right side to the newest
    // CLOSED candle, capped by BK_BIAS_MAX bars of the class' TF (the read stays bounded;
@@ -2317,7 +2788,7 @@ void BaseKnotNodeRead(const datetime t2, const double top, const double bot,
    //--- BK_APPROACH_MAX, and an unreadable leg answers 0 (no pattern) — never a guess.
    if(tFrom > 0)
    {
-      int sFrom = iBarShift(_Symbol, tfRead, tFrom, false);
+      int sFrom = iBarShift(_Symbol, (ENUM_TIMEFRAMES)tfRead, tFrom, false);
       if(sFrom > 0)
       {
          int lim = sFrom + BK_APPROACH_MAX;
@@ -2451,7 +2922,7 @@ string BaseKnotNodeTag(BaseKnotNode &nd)
 }
 // Hover sentence: the claim (the LENGTH), the story that named the side, and the step
 // those numbers are in — a type without its numbers is a claim nobody can check.
-string BaseKnotNodeLine(BaseKnotNode &nd)
+string BaseKnotNodeLine(BaseKnotNode &nd, const double top, const double bot)
 {
    if(nd.kind == BK_NODE_NONE) return "";
    string t = "\nNode: " + BaseKnotNodeShort(nd.kind) + " — ";
@@ -2481,13 +2952,13 @@ string BaseKnotNodeLine(BaseKnotNode &nd)
    string wTag = BaseKnotEntryOffsetTag(wHu);
    if(nd.side == 0)
       t += "\n      trade: the live price names the side (no departure measured yet) — the entry waits ONE " +
-           wTag + " INSIDE that edge, the stop ONE EngSL behind it";
+           wTag + " INSIDE that edge, the stop ONE EngSL behind it" + BaseKnotCapClause(wTF, wHu, top, bot);
    // BKNODEDIR-OFF (P-BK-49): else if(nd.crossed || (nd.returned && nd.rebreaks == 0))
    // BKNODEDIR-OFF (P-BK-49):   t += "\n      trade: the return's own side — entry ONE R INSIDE the FAR edge, stop 1 EngSL behind it";
    else
       t += "\n      trade: the base pattern's own side — entry ONE " + wTag +
            " INSIDE the edge the departure left by, the stop ONE EngSL behind it" +
-           BaseKnotPatternLine(nd);
+           BaseKnotCapClause(wTF, wHu, top, bot) + BaseKnotPatternLine(nd);
    if(nd.side != 0)
    {
       t += "\n      break " + (nd.side > 0 ? "up " : "down ") + IntegerToString(nd.barsAgo) + " bars ago";
@@ -2658,6 +3129,11 @@ double BaseKnotTPLevel(const double entry, const int dir, const int tfMin, const
    if(p <= 0.0 || entry <= 0.0) return 0.0;
    return (dir >= 0 ? entry + p * BaseKnotPipSize() : entry - p * BaseKnotPipSize());
 }
+// BKTAGTP-OFF (P-BK-54): THE NOTE'S TARGET FIELD IS RETIRED IN PLACE. The user: «تی پی رو
+// … در اطلاعات نشون نده» — the note is read at a glance, the targets are drawn as ticks
+// (P-BK-50) and spelled leg by leg in the hover (BaseKnotTPPlanTip, still live), so the
+// field was three numbers between the risk and the bar count and nothing else. Restore by
+// feeding this tag back into BaseKnotWriteInfo's text (the marked site in the note).
 // P-BK-50 — the note's own field: the plan's targets in pips, as drawn. A plan that
 // is not warm SAYS SO instead of printing a number nobody can check.
 string BaseKnotTPPlanTag(const int tfMin)
@@ -2698,82 +3174,192 @@ string BaseKnotTPPlanTip(const int tfMin, const double entry, const int dir, con
       t = "\n     the plan's targets are not warm yet (nothing pushed for " + BaseKnotTFName(tfMin) + ")";
    return t;
 }
-// P-BK-46 — R: THE PIPS EVERY LEG OF THE KNOT'S TRADE IS MEASURED IN. EngSL of the
-// knot's OWN TF when the pump has pushed it; the box' own height only while it has
-// not (ATR cold, a rung the terminal never loaded). Never <= 0 for a real box, and
-// the caller ALWAYS shows which of the two it got (BaseKnotRiskTag).
+// P-BK-46 — R: THE PIPS EVERY LEG OF THE KNOT'S TRADE IS MEASURED IN. THE PLAN's EngSL of
+// the knot's measure TF, BOUNDED by the node's own power (P-BK-52 — the plan's leg while it
+// is no deeper than the node, the node's own EngSL when it is: the ATR cold case, a rung the
+// terminal never loaded, a node smaller than the leg); the box' own height only when NEITHER
+// answered. Never <= 0 for a real box, the SAME BaseKnotLegPick rule the geometry is drawn
+// with (one owner), and the caller ALWAYS shows which of the three it got
+// (BaseKnotRiskTag / BaseKnotStopWhy).
 double BaseKnotRiskPips(const int tfMin, const double top, const double bot)
 {
-   double e = BaseKnotEngPips(tfMin);
-   if(e > 0.0) return e;
+   double p = BaseKnotLegPick(BaseKnotEngPips(tfMin), BaseKnotNodeEngPips(top, bot));
+   if(p > 0.0) return p;
    return BaseKnotToPips(top - bot);
 }
 // How the risk is NAMED wherever it is shown — the badge's number and every stop /
 // target tooltip: a size without its source is a number nobody can check.
-string BaseKnotRiskTag(const bool isEng, const int measureTF, const int baseTF)
+// P-BK-52: the name is decided by the SAME rule the number was picked with, over the SAME
+// pair, so a hover can never describe another measurement than the line it sits on.
+// P-BK-53: and the name itself is the SHORT one (BaseKnotCapTag) — this is the string that
+// reaches the chart-side note, so it says WHICH source spoke and nothing more.
+// P-BK-57: the name the LAST rung wears (neither leg answered) has ONE owner here, because
+// the note's own height field tests itself against it (see BaseKnotHeightTag): a renamed
+// fallback could otherwise print the box' height twice in the same line.
+string BaseKnotBoxHeightTag() { return "box height"; }
+string BaseKnotRiskTag(const int measureTF, const int baseTF, const double top, const double bot)
 {
-   if(!isEng) return "box height";
-   // P-BK-51: a CTR/OTR knot's numbers are read ONE TF HIGHER than its own class, and a
-   // size without its source is a number nobody can check — so the reading TF rides
-   // beside the name whenever it is not the class the note already prints.
-   if(measureTF > 0 && baseTF > 0 && measureTF != baseTF)
-      return "EngSL " + BaseKnotTFName(measureTF);
-   return "EngSL";
+   double plan = BaseKnotEngPips(measureTF);
+   double cap  = BaseKnotNodeEngPips(top, bot);
+   if(BaseKnotLegCapped(plan, cap)) return BaseKnotCapTag(false);
+   if(plan > 0.0)
+   {
+      // P-BK-51: a CTR/OTR knot's numbers are read ONE TF HIGHER than its own class, and a
+      // size without its source is a number nobody can check — so the reading TF rides
+      // beside the name whenever it is not the class the note already prints.
+      if(measureTF > 0 && baseTF > 0 && measureTF != baseTF)
+         return "EngSL " + BaseKnotTFName(measureTF);
+      return "EngSL";
+   }
+   return BaseKnotBoxHeightTag();
+}
+// P-BK-57 (2026-09-16, user: «مقدار حرکت رو هم به صورت عدد فقط نمایش بده بفهمیم چقدره»):
+// THE NOTE'S SECOND NUMBER IS THE BOX' OWN HEIGHT IN PIPS, AND IT IS BARE. WHY: the risk
+// says how big the STOP is, and the note never said how big the BOX is — the one size the
+// whole box is read against (the step multiples, the candle count, the class). The user
+// asked for the number on its own («به صورت عدد فقط»), so there is no name and no unit
+// word on the chart face (P-BK-54's own rule); the HOVER names it, its arithmetic and its
+// reading, so P-BK-46's promise (a size without its source is a number nobody can check)
+// is kept where there is room for it.
+// ONE OWNER: the number is `BaseKnotToPips(top - bot)` — the very expression the risk falls
+// back to (BaseKnotRiskPips), so "the box' height" means ONE thing in this module.
+// WRITTEN ONCE: when that fallback IS the risk (neither the plan nor the node's own leg
+// answered) the first number already carries the height, so this field stays EMPTY and the
+// note never prints the same size twice; the test is on the SOURCE (BaseKnotBoxHeightTag),
+// never on the two values happening to be equal.
+// THE GATE: tools/base-count-audit.py [note height] reads this body AND the note's own text
+// expression — a name or unit word in the field, a second copy beside the fallback risk, or
+// a box height that stopped coming from BaseKnotToPips fails the build.
+string BaseKnotHeightTag(const double top, const double bot, const string riskTag)
+{
+   if(riskTag == BaseKnotBoxHeightTag()) return "";   // the risk already IS this height
+   double p = BaseKnotToPips(top - bot);
+   if(p <= 0.0) return "";                            // no box, no number
+   return " | " + DoubleToString(p, 1);
+}
+// ... and the HOVER's own version of the SAME number — the split P-BK-53 made for the risk
+// name (the chart face gets the NAME, the hover gets the proof), here for the box' size: one
+// line that names it, spells the arithmetic (`top - bottom`) and gives its pips, so P-BK-46's
+// promise is kept where there is room for it. The SAME test the field uses (`BaseKnotBoxHeightTag`)
+// decides the wording, so a reader is never told to look for a second number the note did not
+// print — the number itself and the test both stay owned here, and no caller spells either.
+string BaseKnotHeightTip(const double top, const double bot, const string riskTag)
+{
+   double p = BaseKnotToPips(top - bot);
+   if(p <= 0.0) return "";
+   return "\n     box height (top - bottom) = " + DoubleToString(p, 1) + " pips - " +
+          (riskTag == BaseKnotBoxHeightTag()
+           ? "and it IS the risk above: the note prints it once"
+           : "the note's own second number, in pips");
 }
 // P-BK-27 — THE INFO READOUT'S SIZE (user: «اطلاعات بیس نوت خیلی ریزه»).
 // It used to be frozen at PnlPt(BK_PT_INFO): a DESIGN nominal, so on a 120-DPI
 // terminal the readout drew at 6pt while the box' own text drew at
 // `g_bkTextSize` (10 raw pt) — the numbers were the smallest text on the box.
 // One owner now, two rungs:
-//   * 0 (shipped) = follow `g_bkTextSize`, so the readout ships at the text size
-//     the user already set — the bigger-by-default fix needs no input at all;
+//   * 0 (shipped) = the LABEL FAMILY's own size, `inpFontSize` (P-BK-56 — see below);
 //   * 1..24 = the user's OWN raw points, the same unit the neighbouring SIZE /
 //     COUNT SIZE / TRADE SIZE rows use. Never PnlPt here: that re-expresses the
 //     module's NON-user chrome (P-UI-34), and a panel number that means a
 //     different size than the number beside it is the bug, not the feature.
+// P-BK-56 (2026-09-16, user: «این لیبل اطلاعات مثل بقیه لیبل اطلاعات باشه»): the shipped
+// rung used to be the BOX' text size (`g_bkTextSize`, 10 raw pt), which made the note the
+// one readout on the chart sized by a different grid than the label family it sits among
+// (``Arial Bold`` 8pt — the ATR/TH columns and the trade card). The note IS that family's
+// sibling — a chart-anchored text a human reads (P-UI-85's Z_CHART_LABEL rung) — so it
+// follows the SAME grid now: font `inpFontName`, size `inpFontSize`, rung Z_CHART_LABEL.
+// The box' own TEXT (the TV-style box label) keeps `g_bkTextSize`: it is box art, not a
+// readout. BKINFOSIZE-OFF keeps the retired rung one uncomment away.
 int BKInfoFontPt()
 {
    int own = ClampSettingInt(g_bkInfoFontSize, 0, 24);
-   if(own > 0) return own;
-   return ClampSettingInt(g_bkTextSize, 8, 24);
+   if(own > 0) return own;                            // the user's own pt — unchanged
+   return ClampSettingInt(inpFontSize, 4, 24);         // P-BK-56: the label family's grid
+   // BKINFOSIZE-OFF (P-BK-27/56): the retired rung — the box' own text size.
+   // BKINFOSIZE-OFF: return ClampSettingInt(g_bkTextSize, 8, 24);
 }
-// Chart-anchored "[<side> <risk> Pips | TP 12/25/51 | N bars …]" label at the box
-// top-right corner.
+// Chart-anchored "[<side> · <riskTag> <risk> | <box height> | N bars · <class> <type>]"
+// label at the box' top-right corner (P-BK-57: the second number, bare — BaseKnotHeightTag).
 // P-BK-46: the first number is the TRADE'S RISK (R) and `riskTag` NAMES WHERE IT
-// CAME FROM — "EngSL" of the knot's own TF, or "box height" while the pump has no
-// EngSL for that TF. A size without its source is a number nobody can check.
-// P-BK-50: the field after it is the PLAN's own targets (`tpTag`, built by
-// BaseKnotTPPlanTag) — the retired `TARGET R` x R "R:R 1:N" field, whose place it
-// takes. `tpTip` is the same thing read out leg by leg for the hover.
+// CAME FROM — "EngSL" of the knot's own TF (or the node's own when it capped the plan,
+// P-BK-52/53), or "box height" while neither answered. A size without its source is a
+// number nobody can check.
+// P-BK-54 (2026-09-16, user: «تی پی رو … در اطلاعات نشون نده … EngSL 17.9 همین بنویسه
+// فقط اینطوری خلاصه‌ه») — THE NOTE CARRIES NO TARGETS AND NO UNIT WORD. WHY: the note is
+// read AT A GLANCE on a live chart, and the plan's TP1..TP3 field made it a sentence:
+// three numbers the user did not ask for, printed between the risk and the bar count,\r
+// while the targets are ALREADY DRAWN (P-BK-50's ticks) and ALREADY SPELLED OUT leg by
+// leg in the hover (`tpTip`). So the field is retired IN PLACE (BKTAGTP-OFF —
+// `BaseKnotTPPlanTag` is kept, one call away) and the risk reads `EngSL 17.9`, the unit
+// implied by the plan's own row (the TRex card prints `Eng.SL: 0.2` the same way).
+// WHAT IS NOT AFFECTED: the hover still prints every leg with its level, its pips from
+// the entry and its R (BaseKnotTPPlanTip), and the ticks on the chart are unchanged.
+// P-BK-57 (2026-09-16, user: «مقدار حرکت رو هم به صورت عدد فقط نمایش بده بفهمیم چقدره»)
+// — the SECOND number is the box' OWN HEIGHT, bare (BaseKnotHeightTag): the risk says how
+// big the stop is, this says how big the thing the order is read on is. The chart face
+// keeps the number alone; the hover right below names it, spells `top - bottom` and gives
+// its pips, so the number is checkable where there is room to check it (P-BK-46/53's split).
+// THE GATE: tools/base-count-audit.py [note fields]/[note height] reads the note's own TEXT
+// expression AND the field's builder — a target field, the word "Pips", or a height field
+// that grew a name (or a second copy beside the fallback risk) fails the build.
 void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
                        const double top, const double bot,
-                       const double hPips, const string tpTag, const string tpTip,
+                       const double hPips, const string tpTip,
                        const string side, BaseKnotSpan &sp,
                        BaseKnotNode &nd, const long tfMask, const string riskTag,
-                       const string tradeTip)   // P-BK-51: the stop's sentence + the entry's own
+                       const string tradeTip,   // P-BK-51: the stop's sentence + the entry's own
+                       const bool atCorner = false)   // P-BK-58: the family's row instead of the box
 {
-   if(ObjectFind(0, in) < 0) ObjectCreate(0, in, OBJ_TEXT, 0, t2, top);
+   // P-BK-58: ONE object at a time. The placement is a PARAMETER (decided by
+   // BaseKnotNoteAtCorner), and the other home is emptied as this one is written, so a mode
+   // change can never leave two copies of the same number on the chart. The box-side note is
+   // an OBJ_TEXT pinned to the box' top-right corner (time/price); the corner row is an
+   // OBJ_LABEL pinned to the slot the label module pushed in — the same text, the same font,
+   // size, colour and rung (P-BK-27/56), only its anchor differs.
+   string cn = BaseKnotCornerName();
+   if(atCorner)
+   {
+      if(cn == "" || s_bkCornerSide < 0) return;   // no slot pushed: nothing to draw into
+      if(ObjectFind(0, in) >= 0) ObjectDelete(0, in);   // the box-side copy goes with the mode that wanted it
+   }
+   else if(!BaseKnotNoteInCorner() && cn != "" && ObjectFind(0, cn) >= 0)
+      ObjectDelete(0, cn);   // a MODE change took the note back to the box (P-BK-58); while the mode
+                             // IS corner the row belongs to BaseKnotNoteCornerRefresh, so a box that
+                             // is not the one it answers never wipes it
+   // ONE name: everything below is the SAME write in either home — the text, the font, the
+   // size, the colour, the rung and the hover are shared, and only the last four lines differ.
+   string o = (atCorner ? cn : in);
+   if(ObjectFind(0, o) < 0) ObjectCreate(0, o, (atCorner ? OBJ_LABEL : OBJ_TEXT), 0, t2, top);
    int bars = sp.life, still = sp.still;   // P-BK-41: one span, read once
    string barsPart = (bars > 0 ? " | " + IntegerToString(bars) + " bars" : "");
    // P-BK-28: the BASE'S SIZE CLASS rides the note itself — "… | 12 bars · H1 base".
    // P-BK-29: so does the node type — "… · FTR" — when there is one to claim.
-   ObjectSetString(0, in, OBJPROP_TEXT,
-                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + " Pips" + tpTag + barsPart + BaseKnotBaseTag(still, sp.tStart, sp.tExit, top, bot) + BaseKnotNodeTag(nd) + BaseKnotPatternTag(nd) + "]");   // P-BK-46/50/40/41: the risk and its source, the plan's own targets, then the class, from the stand-still count, on the base's own story
-   ObjectSetString(0, in, OBJPROP_FONT, "Arial");
-   ObjectSetInteger(0, in, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27
-   ObjectSetInteger(0, in, OBJPROP_COLOR, BaseKnotFgForBg());
-   ObjectSetInteger(0, in, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
-   ObjectSetInteger(0, in, OBJPROP_BACK, false);
-   ObjectSetInteger(0, in, OBJPROP_SELECTABLE, false);
-   ObjectSetInteger(0, in, OBJPROP_HIDDEN, true);
-   ObjectSetInteger(0, in, OBJPROP_ZORDER, Z_BOX_INFO);
-   ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, tfMask);
+   // BKTAGTP-OFF (P-BK-54): the retired plan-target field sat here — restore it by
+   // putting `+ tpTag` back after the risk (and taking BaseKnotTPPlanTag from BKTAGTP-OFF
+   // in BaseKnotSync / BaseKnotSyncLive, which still build `tpTip` for the hover).
+   ObjectSetString(0, o, OBJPROP_TEXT,
+                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, sp.tStart, sp.tExit, top, bot) + BaseKnotNodeTag(nd) + BaseKnotPatternTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class, from the stand-still count, on the base's own story
+   ObjectSetString(0, o, OBJPROP_FONT, inpFontName);   // P-BK-56: the label family's own font
+   ObjectSetInteger(0, o, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27/56
+   ObjectSetInteger(0, o, OBJPROP_COLOR, BaseKnotFgForBg());
+   ObjectSetInteger(0, o, OBJPROP_ANCHOR, (atCorner ? ANCHOR_RIGHT_LOWER : ANCHOR_LEFT_LOWER));   // P-BK-58: the row is right-aligned in the family's column
+   ObjectSetInteger(0, o, OBJPROP_BACK, false);
+   ObjectSetInteger(0, o, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, o, OBJPROP_HIDDEN, true);
+   // P-BK-56: the note is TEXT A HUMAN READS, so it rides the TEXT layer's rung — the rung
+   // the whole label family writes (P-UI-85) and the one that is ABOVE every chart-space art
+   // rung, so no box, ray, zone edge or drawn HTF candle can be painted over it. It used to
+   // ride Z_BOX_INFO (60): the box family's own rung, i.e. under the box' art and under every
+   // label. P-BK-58: the corner row is the same readout, so it rides the same rung.
+   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_CHART_LABEL);
+   ObjectSetInteger(0, o, OBJPROP_TIMEFRAMES, tfMask);
    // P-BK-51: the trade's numbers arrive READY-BUILT (`tradeTip` — the stop's size and its
    // placement behind the entry, then how deep the entry waits and what sized it), so this
    // writer never spells a geometry of its own.
-   ObjectSetString(0, in, OBJPROP_TOOLTIP, "BK " + side + ": " + tradeTip +
+   ObjectSetString(0, o, OBJPROP_TOOLTIP, "BK " + side + ": " + tradeTip +
                    (bars > 0 ? ", " + IntegerToString(bars) + " bars" : "") +
-                   tpTip +   // P-BK-50: the plan's own targets, leg by leg (level + pips + R)
+                   tpTip +   // P-BK-50: the plan's own targets, leg by leg (level + pips + R) — P-BK-54: the note's ONLY home for them
+                   BaseKnotHeightTip(top, bot, riskTag) +   // P-BK-57: the note's bare second number, NAMED here, with its arithmetic
                    BaseKnotBaseLine(still, sp.tStart, sp.tExit, top, bot) +   // P-BK-28/36/41
                    (bars > 0 ? "\n     " + IntegerToString(bars) + " bars: between the ENTRY candle " +
                                "and the EXIT candle (entry not counted, exit counted) · " +
@@ -2782,9 +3368,22 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
                                (sp.tExit > sp.tLast
                                 ? " -> exit candle " + TimeToString(sp.tExit, TIME_DATE|TIME_MINUTES)
                                 : " -> no exit yet: the base is still holding the band") : "") +
-                   BaseKnotNodeLine(nd));     // P-BK-29
-   ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
-   ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
+                   BaseKnotNodeLine(nd, top, bot) +   // P-BK-29
+                   (atCorner ? "\n     the row above the trade card is this box' note (P-BK-58): " +
+                               "the selected box, or the newest while nothing is selected" : ""));
+   // P-BK-58: the ONE difference between the two homes — a chart-space text pinned to the box'
+   // corner, or a corner-anchored label pinned to the slot the label module pushed in.
+   if(atCorner)
+   {
+      ObjectSetInteger(0, o, OBJPROP_CORNER, s_bkCornerSide);
+      ObjectSetInteger(0, o, OBJPROP_XDISTANCE, MathMax(8, s_bkCornerX));
+      ObjectSetInteger(0, o, OBJPROP_YDISTANCE, MathMax(8, s_bkCornerY));
+   }
+   else
+   {
+      ObjectSetInteger(0, o, OBJPROP_TIME, 0, t2);
+      ObjectSetDouble(0, o, OBJPROP_PRICE, 0, top);
+   }
 }
 // Live sizing set — Entry/SL/TP + info shown WHILE drawing (before click 2).
 // ONE fixed tag (single sizing at a time); wiped at commit/cancel/deinit.
@@ -2820,20 +3419,19 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    int    liveTF = Period();
    double entry = 0, sl = 0;
    BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl);
-   bool   riskIsEng = BaseKnotRiskIsEng(liveTF);
-   string riskTag   = BaseKnotRiskTag(riskIsEng, liveTF, liveTF);
+   string riskTag   = BaseKnotRiskTag(liveTF, liveTF, top, bot);   // P-BK-52: named with the number the pick drew
    double hPips  = BaseKnotRiskPips(liveTF, top, bot);
    int dg = GetCachedDigits();
    string side = (dir >= 0 ? "BUY" : "SELL");
-   string tpTag = BaseKnotTPPlanTag(0);   // P-BK-50: the note's target field
-   string tpTip = BaseKnotTPPlanTip(0, entry, dir, hPips);
+   // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(0);   // the retired note field
+   string tpTip = BaseKnotTPPlanTip(0, entry, dir, hPips);   // P-BK-54: the hover keeps every leg
    string edgeLive  = (dir >= 0 ? "top" : "bottom");
    string lvWhy = " (ONE " + BaseKnotEntryOffsetTag(false) + " INSIDE the box' " + edgeLive +
-                  " edge — " + BaseKnotEntryWhy(BK_NODE_NONE, liveTF, false) + ")";
+                  " edge — " + BaseKnotEntryWhy(BK_NODE_NONE, liveTF, false, top, bot) + ")";
    string stopWhyLive = " (INSIDE the box' " + edgeLive + " edge, ONE " + riskTag + " behind the entry" +
-                        (riskIsEng ? "" : " — no EngSL pushed for " + BaseKnotTFName(liveTF) + " yet, so the box' own height stands in") + ")";
+                        BaseKnotStopWhy(liveTF, top, bot) + ")";
    string tradeTipLive = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhyLive +
-                         BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir);
+                         BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir, top, bot);
    datetime tLiveFar = te + (te > t1 ? (te - t1) : PeriodSeconds());
    datetime tLiveTps, tLiveTpe;
    BaseKnotTPTickSpan(t1, te, tLiveTps, tLiveTpe);
@@ -2856,18 +3454,38 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
                       " — the plan's own TP" + IntegerToString(tk) + ")", tfMask, false);
    }
-   // P-BK-29: a box being SIZED has no bars to its right yet, so the node read
-   // is skipped here (kind = NONE) instead of paying a bar scan on every mouse
-   // move of the hot sizing path — the committed Sync is where a type is read.
-   BaseKnotNode ndLive;
-   ndLive.kind = BK_NODE_NONE; ndLive.side = 0; ndLive.barsAgo = 0; ndLive.rebreaks = 0;
-   ndLive.crossed = false;
-   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0;
-   ndLive.storyTF = Period();
    BaseKnotSpan spLive;   // P-BK-41: the live label reads the same span record
    BaseKnotLiveBarCount(t1, te, top, bot, spLive);
-   BaseKnotWriteInfo(tag + "INFO", t1, te, top, bot, hPips, tpTag, tpTip, side,
-                     spLive, ndLive, tfMask, riskTag, tradeTipLive);
+   // P-BK-29: a box being SIZED pays no STORY read here — the walk of the past market
+   // (side, break, second break, state) is what the hot sizing path must not run per mouse
+   // move; the committed Sync reads it.
+   // P-BK-55 (2026-09-16, user: «توی اطلاعات چرا نوع گره رو نشون نمیده»): THE TYPE IS NOT
+   // THAT READ. The type is the node's LENGTH (P-BK-47) — a count of rungs between the class
+   // the note ALREADY prints and the TF the node is seen on — pure arithmetic on two TFs, no
+   // series and no ATR, so a box being SIZED answers it from the VERY span its class came
+   // from. The sizing note used to show a class with no type beside it.
+   // ONE RULE, ONE READ: the same two owners the committed read uses
+   // (BaseKnotBaseTFMin for the class, BaseKnotNodeRungs/BaseKnotNodeKindOf for the type).
+   // The record is zeroed in the SAME shape BaseKnotNodeRead opens with, so an unread half
+   // can never be a garbage field the hover prints.
+   BaseKnotNode ndLive;
+   ndLive.kind = BK_NODE_NONE; ndLive.rungs = -1; ndLive.nodeTF = liveTF; ndLive.baseTF = 0;
+   ndLive.approach = 0; ndLive.pattern = BK_PAT_NONE;
+   ndLive.side = 0; ndLive.barsAgo = 0; ndLive.rebreaks = 0;
+   ndLive.returned = false; ndLive.crossed = false;
+   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0; ndLive.storyTF = 0;
+   ndLive.state = 0; ndLive.depBars = 0; ndLive.depStep = 0.0;
+   ndLive.revisits = 0; ndLive.lastSide = 0; ndLive.lifeBars = 0;
+   ndLive.ctxAlign = 0; ndLive.sideLevel = 0;
+   // ... and the TYPE half is read, off the span the note's class came from (P-BK-55).
+   int liveClass = BaseKnotBaseTFMin(spLive.still, spLive.tStart, spLive.tExit, top, bot);   // the class the note prints
+   int liveRungs = BaseKnotNodeRungs(liveTF, liveClass);
+   ndLive.rungs  = liveRungs;
+   ndLive.kind   = BaseKnotNodeKindOf(liveRungs);
+   ndLive.baseTF = liveClass;
+   bool liveCorner = BaseKnotNoteAtCorner("");   // P-BK-58: while the user SIZES, the row is the answer
+   BaseKnotWriteInfo(tag + "INFO", t1, te, top, bot, hPips, tpTip, side,
+                     spLive, ndLive, tfMask, riskTag, tradeTipLive, liveCorner);   // P-BK-55: the type rides in `ndLive`
 }
 // INFO text is chart-anchored and only TF-gated (no pixel button —
 // NOBKDEL 2026-09-06: the X delete badge is retired, boxes delete via
@@ -2882,6 +3500,479 @@ void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
    if(!tfVis) return;
    ObjectSetInteger(0, in, OBJPROP_TIME, 0, t2);
    ObjectSetDouble(0, in, OBJPROP_PRICE, 0, top);
+}
+//+------------------------------------------------------------------+
+//| P-BK-59 (2026-09-16) — THE CENTRE GRIP WEARS THE BORDER'S OWN INK.|
+//|                                                                  |
+//| The dot a user sees in the middle of a SELECTED box is NOT drawn  |
+//| by this module: MetaTrader paints its own selection marker there  |
+//| (a 2x2 WHITE square, plus one on each control corner — «the       |
+//| object can be considered as selected if square markers … appear», |
+//| MT4 Help), and it is white on every chart, which is why it        |
+//| vanishes on a white background and why no EA call can recolour it.|
+//| What CAN be done is cover it: the marker is painted WITH the object|
+//| and therefore BELOW every rung above it — the amber edges already  |
+//| clip the two corner markers exactly this way (visible in the user's|
+//| own screenshot) — so a SCREEN square of our own, wearing the box'  |
+//| border ink, hides it whole. A screen object (OBJ_RECTANGLE_LABEL)  |
+//| is painted above the whole chart layer (P-UI-31's ladder), so the  |
+//| cover cannot be defeated by a re-paint of the chart's own art.    |
+//|                                                                  |
+//| PLACEMENT IS THE MARKER'S OWN: the box' PIXEL centre, from the two|
+//| corners the terminal marks, one read-only ChartTimePriceToXY pair |
+//| per pass (never a guess at the chart's zoom, and the same pattern  |
+//| BaseKnotGrabRole already uses). A conversion that fails (a box     |
+//| scrolled out of the window by TIME) retires the grip: the terminal |
+//| draws no marker for an object it cannot place either.              |
+//|                                                                  |
+//| IT MIRRORS THE TERMINAL, it never invents state: the grip exists   |
+//| exactly while MT4 would draw that marker — the box is SELECTABLE   |
+//| (unlocked) and SELECTED — so a chart nobody has clicked gains      |
+//| nothing. The 500 ms pump is the keeper (selection is an event that |
+//| pass already watches, P-BK-58), the drag's own child step carries  |
+//| it while the hand moves the box, and the sizing PREVIEW stays out  |
+//| of it: the rubber band draws no selectable object, so there is no  |
+//| marker to cover until the box is committed.                        |
+//+------------------------------------------------------------------+
+// P-BK-59 size (2026-09-16, user: «این وسط باکس اون نقطه ضخیم بشه دیده نمیشه
+// 5 باشه»): MT4's own marker is a 2x2 at the box' centre, and a 3x3 cover of it
+// was still easy to MISS on a busy chart (the user's own screenshot: a navy box
+// on a dark chart). 5 px is the user's number — it still reads as a dot on a
+// 160x60 px box, and it leaves a clear margin around the marker it covers.
+#define BK_DOT_SIZE 5   // px — the user's size (5), always ODD so it centres on one pixel
+string BaseKnotDotName(const string pfx)   { return pfx + "DOT"; }
+// The box' PIXEL centre — the point the terminal's marker is drawn on.
+bool BaseKnotDotPixel(const datetime t1, const datetime t2, const double top, const double bot,
+                      int &cx, int &cy)
+{
+   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   if(!ChartTimePriceToXY(0, 0, t1, top, x1, y1)) return false;
+   if(!ChartTimePriceToXY(0, 0, t2, bot, x2, y2)) return false;
+   cx = (x1 + x2) / 2;
+   cy = (y1 + y2) / 2;
+   return true;
+}
+// Create + style once: the ink is written here and re-compared on later passes.
+void BaseKnotDotCreate(const string name, const color clr, const long tfMask)
+{
+   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, BK_DOT_SIZE);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, BK_DOT_SIZE);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);     // the frame …
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clr);   // … and the fill: ONE ink, the border's
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);   // the BOX is the only handle
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_DOT);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);   // a box hidden on this TF carries no marker
+   ObjectSetString(0, name, OBJPROP_TOOLTIP,
+                   "BK box centre grip (P-BK-59): the box' own border ink, drawn over MetaTrader's " +
+                   "white selection marker — drag the BOX, never the grip");
+}
+// Keep or retire the grip of ONE box. Returns true when it wrote anything, so
+// the caller can pay ONE repaint (MT4 repaints on every ObjectSet*). Steady state
+// is reads only: zero writes while the box, its selection and the ink are still.
+bool BaseKnotDotFollow(const string pfx, const datetime t1, const datetime t2,
+                       const double top, const double bot, const bool selectable,
+                       const bool selected, const color clr, const long tfMask)
+{
+   if(pfx == "") return false;
+   string nm = BaseKnotDotName(pfx);
+   if(!selectable || !selected)
+   {
+      if(ObjectFind(0, nm) >= 0)   // the box is locked, or nothing selected it — the terminal
+      {                            // draws no marker here, so the grip goes with it
+         ObjectDelete(0, nm);
+         return true;
+      }
+      return false;
+   }
+   int cx = 0, cy = 0;
+   if(!BaseKnotDotPixel(t1, t2, top, bot, cx, cy))   // off the window by TIME: no placeable dot
+   {
+      if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); return true; }
+      return false;
+   }
+   if(ObjectFind(0, nm) < 0)
+   {
+      BaseKnotDotCreate(nm, clr, tfMask);
+      ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, cx - BK_DOT_SIZE / 2);
+      ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, cy - BK_DOT_SIZE / 2);
+      return true;
+   }
+   bool wrote = false;
+   if((color)ObjectGetInteger(0, nm, OBJPROP_BGCOLOR) != clr)   // the card's border colour moved
+   {
+      ObjectSetInteger(0, nm, OBJPROP_COLOR, clr);
+      ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, clr);
+      wrote = true;
+   }
+   if((long)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != tfMask)
+   {
+      ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, tfMask);
+      wrote = true;
+   }
+   int nx = cx - BK_DOT_SIZE / 2, ny = cy - BK_DOT_SIZE / 2;
+   if((int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE) != nx ||
+      (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE) != ny)
+   {
+      ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, nx);
+      ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, ny);
+      wrote = true;
+   }
+   return wrote;
+}
+//+------------------------------------------------------------------+
+//| P-BK-61 (2026-09-16) — THE GRIP HANDLES.                          |
+//|                                                                  |
+//| «یک کلیک چپ میکنم راحت هر طرف که بخوام میکشم اینطوری باشه» — the |
+//| user's own TradingView screenshot: a selected rectangle wearing    |
+//| handles. WHY THEY MUST BE OUR OWN OBJECTS: MetaTrader's own        |
+//| rectangle has NO resize points at all (a native drag moves the     |
+//| rectangle has NO resize points at all (a native drag moves the     |
+//| whole rect), so resize was reachable only through the cursor       |
+//| fallback P-BK-18/P-BK-19 retired (BKCURSOR-OFF) — i.e. today it is |
+//| simply absent, which is exactly what the user reported.           |
+//|                                                                  |
+//| MT4 DRAGS OUR CHIP, AND WE WRITE THE BOX. Each handle is a 9x9    |
+//| SCREEN square (OBJ_RECTANGLE_LABEL — the family the P-BK-59 grip  |
+//| and every card already live in), filled with the box' own border  |
+//| ink, sitting exactly ON the point it moves. `SELECTABLE` is the   |
+//| whole feature: the terminal hands a press on a selectable screen  |
+//| object to its OWN drag — the very thing P-BK-59 had to refuse     |
+//| («drag the BOX, never the grip»). So the hand never touches the    |
+//| box, the ONE writer of the gesture is this module, and the reading |
+//| is the CHIP'S OWN PIXEL (OBJECT_DRAG carries no trusted cursor —   |
+//| the box' own follow reads live anchors for the same reason).       |
+//|                                                                  |
+//| WHEN THEY EXIST: exactly while the box would show MT4's selection |
+//| markers — unlocked AND selected (P-BK-59's rule) — PLUS the one    |
+//| case that rule cannot see: MT4 single-selects, so grabbing a chip  |
+//| takes the selection OFF the box. A chip of this family being        |
+//| selected therefore keeps the whole family alive, and the release   |
+//| hands the selection BACK to the box, so the next side is one grab  |
+//| away — «یک کلیک چپ ... راحت هر طرف که بخوام» with no second click. |
+//|                                                                  |
+//| BKMIDGRIP-OFF (2026-09-16, user decision — «این وسط‌ها که کار    |
+//| نمی‌کنن رو بردار کلا همون چهار گوشه کافیه») : the four MID-EDGE  |
+//| chips are RETIRED — four corner handles remain. Restore by adding |
+//| the four rows back to `BaseKnotGripSideAt` and raising           |
+//| `BK_GRIP_COUNT`; the rest of the family (names, names→side, the   |
+//| pixel projection, the keeper's sweep) is deliberately kept TOTAL   |
+//| over the side bits, so those rows are the whole restore.           |
+//|                                                                  |
+//| COST: 4 objects, and steady state is READS ONLY (ink, mask and the|
+//| two pixels are compared before every write — the BaseKnotDotFollow|
+//| contract). The 500 ms pump is the keeper, the box' own Sync/CLICK  |
+//| path is the instant one (a click shows the handles on that frame), |
+//| and a box MOVE carries them in its own child step (BK_CH_GRIP).    |
+//+------------------------------------------------------------------+
+#define BK_GRIP_PX 9      // the chip a hand aims at; odd, so it centres on one pixel
+#define BK_GRIP_COUNT 4   // BKMIDGRIP-OFF: the four corners. The count lives HERE so a
+                          // restore is one number, and every sweep asks it, never an 8
+// The four sides as BITS (`GS` = grip side) — the node's own bias ladder above
+// spells its answers `BK_SIDE_*`, which is a different question entirely. A
+// CORNER is two bits (the two sides it moves), so the family below stays total
+// over the bit space even though only corners carry chips now.
+#define BK_GS_T 1
+#define BK_GS_B 2
+#define BK_GS_L 4
+#define BK_GS_R 8
+// A chip's name tail is `G` + a tag (two letters for a corner, one for a retired
+// edge chip). NO other child of this family starts with G (BOX, _T/_B/_L/_R,
+// ENTRY, SL, TPn, INFO, TEXT, HINT, DOT), so a tag can never be read as another
+// child's.
+// BKMIDGRIP-OFF: four corners, `BK_GRIP_COUNT` of them. The single-bit rows are
+// the retirement (kept in the comment so the restore is one edit):
+//   if(i == 4) return BK_GS_T;   // the top edge's mid chip — retired
+//   if(i == 5) return BK_GS_B;   // ...and its three siblings
+//   if(i == 6) return BK_GS_L;
+//   if(i == 7) return BK_GS_R;
+int BaseKnotGripSideAt(const int i)
+{
+   if(i == 0) return (BK_GS_T | BK_GS_L);
+   if(i == 1) return (BK_GS_T | BK_GS_R);
+   if(i == 2) return (BK_GS_B | BK_GS_L);
+   if(i == 3) return (BK_GS_B | BK_GS_R);
+   return 0;
+}
+string BaseKnotGripName(const string pfx, const int side)
+{
+   if(side == (BK_GS_T | BK_GS_L)) return pfx + "GTL";
+   if(side == (BK_GS_T | BK_GS_R)) return pfx + "GTR";
+   if(side == (BK_GS_B | BK_GS_L)) return pfx + "GBL";
+   if(side == (BK_GS_B | BK_GS_R)) return pfx + "GBR";
+   // BKMIDGRIP-OFF: the four mid-edge tails. No live chip carries them, but the
+   // function stays TOTAL over the bit space (and the one-time sweep below names
+   // them to clean a chart an older build already wrote).
+   if(side == BK_GS_T) return pfx + "GT";
+   if(side == BK_GS_B) return pfx + "GB";
+   if(side == BK_GS_L) return pfx + "GL";
+   if(side == BK_GS_R) return pfx + "GR";
+   return "";
+}
+// The name TAIL → side. 0 = not a handle of ours (every other child tail, the BOX
+// itself and the four edge tails land here — which is what keeps the router honest).
+// BKMIDGRIP-OFF: the single-letter tails stay MAPPED on purpose — a chart that the
+// older build already wrote may still carry such a chip until the one-time sweep in
+// `BaseKnotLazyInit` deletes it, and a chip the router cannot name would be a
+// selectable square that drags nothing.
+int BaseKnotGripSide(const string tag)
+{
+   if(tag == "GTL") return (BK_GS_T | BK_GS_L);
+   if(tag == "GTR") return (BK_GS_T | BK_GS_R);
+   if(tag == "GBL") return (BK_GS_B | BK_GS_L);
+   if(tag == "GBR") return (BK_GS_B | BK_GS_R);
+   if(tag == "GT") return BK_GS_T;
+   if(tag == "GB") return BK_GS_B;
+   if(tag == "GL") return BK_GS_L;
+   if(tag == "GR") return BK_GS_R;
+   return 0;
+}
+// The ONE point a chip stands on, in PIXELS: its corner (the mid-edge rows are
+// BKMIDGRIP-OFF, kept TOTAL over the bit space for a restore). false = that chip
+// has no place on this window (the box is out of it by TIME) and is retired ALONE
+// — the terminal places no object it cannot place either (P-BK-59), and the chips
+// that still have a place keep theirs.
+bool BaseKnotGripPixel(const datetime tL, const double top, const datetime tR, const double bot,
+                       const int side, int &cx, int &cy)
+{
+   long   half = (long)(tR - tL) / 2;
+   datetime tMid = (datetime)((long)tL + half);
+   double pMid = bot + (top - bot) / 2.0;
+   if(side == (BK_GS_T | BK_GS_L)) return ChartTimePriceToXY(0, 0, tL, top, cx, cy);
+   if(side == (BK_GS_T | BK_GS_R)) return ChartTimePriceToXY(0, 0, tR, top, cx, cy);
+   if(side == (BK_GS_B | BK_GS_L)) return ChartTimePriceToXY(0, 0, tL, bot, cx, cy);
+   if(side == (BK_GS_B | BK_GS_R)) return ChartTimePriceToXY(0, 0, tR, bot, cx, cy);
+   if(side == BK_GS_T) return ChartTimePriceToXY(0, 0, tMid, top, cx, cy);
+   if(side == BK_GS_B) return ChartTimePriceToXY(0, 0, tMid, bot, cx, cy);
+   if(side == BK_GS_L) return ChartTimePriceToXY(0, 0, tL, pMid, cx, cy);
+   if(side == BK_GS_R) return ChartTimePriceToXY(0, 0, tR, pMid, cx, cy);
+   return false;
+}
+// Create + style once (the ink is written here and RE-COMPARED on every later pass
+// — the BaseKnotDotCreate contract). The fill IS the box' border ink, so a handle
+// reads as the shape's own mark, the way the user's own screenshot shows it.
+void BaseKnotGripCreate(const string name, const color clr, const long tfMask)
+{
+   if(ObjectFind(0, name) < 0) ObjectCreate(0, name, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, BK_GRIP_PX);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, BK_GRIP_PX);
+   ObjectSetInteger(0, name, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+   ObjectSetInteger(0, name, OBJPROP_STYLE, STYLE_SOLID);
+   ObjectSetInteger(0, name, OBJPROP_WIDTH, 1);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, clr);     // the frame …
+   ObjectSetInteger(0, name, OBJPROP_BGCOLOR, clr);   // … and the fill: ONE ink
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);   // THIS is the drag (P-BK-61)
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_GRIP);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);
+   ObjectSetString(0, name, OBJPROP_TOOLTIP,
+                   "Base box corner — drag it to resize the box (Ctrl held = magnet: the price " +
+                   "snaps to the nearest candle OHLC under it)");
+}
+// Keep / place / retire the corner chips of ONE box (`BK_GRIP_COUNT` of them).
+// true = it wrote something (the caller owes one repaint). `skip` = the side the
+// hand is dragging right now (0 = none): THAT chip may never be written mid-gesture
+// (P-BK-15 — the terminal cancels a native drag whose object is rewritten), which is
+// also the reason the handles are their own objects instead of a resize on the box
+// itself.
+bool BaseKnotGripsFollow(const string id, const datetime tL, const double top, const datetime tR,
+                         const double bot, const bool unlocked, const color clr, const long tfMask,
+                         const int skip)
+{
+   if(StringLen(inpObjectPrefix) == 0) return false;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return false;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return false;
+   // SELECTION, MEASURED (never assumed): either the box', or — the case MT4's own
+   // single-select creates — one of the chips'. ONE probe decides whether the sweep
+   // below is worth its reads at all (the family is created and retired as a set).
+   bool sel = (bool)ObjectGetInteger(0, box, OBJPROP_SELECTED);
+   if(!sel && ObjectFind(0, BaseKnotGripName(pfx, (BK_GS_T | BK_GS_L))) >= 0)
+   {
+      for(int i = 0; i < BK_GRIP_COUNT && !sel; i++)
+      {
+         string cn = BaseKnotGripName(pfx, BaseKnotGripSideAt(i));
+         if(cn != "" && ObjectFind(0, cn) >= 0 &&
+            (bool)ObjectGetInteger(0, cn, OBJPROP_SELECTED)) sel = true;
+      }
+   }
+   bool want = (unlocked && (sel || skip != 0));
+   bool wrote = false;
+   for(int i = 0; i < BK_GRIP_COUNT; i++)
+   {
+      int side = BaseKnotGripSideAt(i);
+      if(side == 0 || side == skip) continue;   // the hand's own chip is never touched
+      string nm = BaseKnotGripName(pfx, side);
+      if(nm == "") continue;
+      if(!want)
+      {
+         if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); wrote = true; }
+         continue;
+      }
+      int cx = 0, cy = 0;
+      if(!BaseKnotGripPixel(tL, top, tR, bot, side, cx, cy))
+      {
+         if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); wrote = true; }
+         continue;
+      }
+      int nx = cx - BK_GRIP_PX / 2, ny = cy - BK_GRIP_PX / 2;
+      if(ObjectFind(0, nm) < 0)
+      {
+         BaseKnotGripCreate(nm, clr, tfMask);
+         ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, nx);
+         ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, ny);
+         wrote = true;
+         continue;
+      }
+      if((color)ObjectGetInteger(0, nm, OBJPROP_BGCOLOR) != clr ||
+         (color)ObjectGetInteger(0, nm, OBJPROP_COLOR) != clr)
+      {
+         ObjectSetInteger(0, nm, OBJPROP_COLOR, clr);
+         ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, clr);
+         wrote = true;
+      }
+      if((long)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != tfMask)
+      {
+         ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, tfMask);
+         wrote = true;
+      }
+      if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTABLE))
+      {
+         // heal: a chip stored unselectable could never be dragged, i.e. the whole
+         // feature would be silently absent (the P-BK-05/06 self-heal pattern).
+         ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, true);
+         wrote = true;
+      }
+      if((int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE) != nx ||
+         (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE) != ny)
+      {
+         ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, nx);
+         ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, ny);
+         wrote = true;
+      }
+   }
+   return wrote;
+}
+// The release hands the SELECTION back to the box (the terminal gave it to the chip
+// the hand grabbed): the keeper's rule above then keeps the eight handles on screen
+// and the NEXT side is one grab away — the user's «یک کلیک چپ ... راحت هر طرف که
+// بخوام میکشم» with no second click. Never re-selects a locked box (the keeper
+// retires that family anyway) nor one the terminal no longer offers for selection.
+void BaseKnotGripReselect(const string id)
+{
+   if(id == "") return;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   if(!(bool)ObjectGetInteger(0, box, OBJPROP_SELECTABLE)) return;
+   if(!(bool)ObjectGetInteger(0, box, OBJPROP_SELECTED))
+      ObjectSetInteger(0, box, OBJPROP_SELECTED, true);
+}
+//+------------------------------------------------------------------+
+//| P-BK-63 (2026-09-16) — A CLICK OUTSIDE THE BOX LETS IT GO.        |
+//|                                                                  |
+//| «زمانی که خارج از باکس کلیک شد سلکت بودنش غیرفعال بشه» — the box  |
+//| KEEPS its selection where MT4's own rectangle does (BKSELECT-KEPT: |
+//| a drag, a resize and a click ON the box never drop it, so the next |
+//| gesture needs no re-click), and a click anywhere ELSE on the chart  |
+//| lets it go — the same pair MT4's own rectangle answers.            |
+//|                                                                  |
+//| WHY THIS IS OURS AND NOT THE TERMINAL'S: the box IS selectable, so |
+//| an empty-chart click usually deselects it natively. The exception  |
+//| is the family we added in P-BK-61: the eight handles are           |
+//| SELECTABLE objects too, and MT4 single-selects — so a resize      |
+//| hands the selection to the CHIP, and its release hands it BACK to  |
+//| the box (`BaseKnotGripReselect`). From the terminal's side the user  |
+//| never selected anything but a screen square, so there is no        |
+//| terminal-side event that owes the box a deselect; from the user's  |
+//| side the box is plainly selected (it wears its handles). One        |
+//| explicit owner makes the pair deterministic instead of             |
+//| build-dependent — and it is the exact mirror of GripReselect above.|
+//|                                                                  |
+//| COST — the pass is gated three times BEFORE it reads anything, and |
+//| a chart click is user-paced, never a tick:                             |
+//|   * the tool must be IDLE (no draw session, no live drag) — a click|
+//|     during a gesture is the gesture's own;                       |
+//|   * the click must not be the UI's (P-UI-92: a card sits OVER the   |
+//|     box, and the Base Box strip EDITS the selected box — dropping  |
+//|     that selection on a card click would kill the thing the card is|
+//|     editing);                                                      |
+//|   * the point must be OUTSIDE every box (a click inside it, or on  |
+//|     its drawn border within P-BK-24's own slop, is the box' press).|
+//| Only then is the registry walked, and only for a box the terminal   |
+//| really reports as SELECTED: no box on the chart, or none selected,  |
+//| is one short loop of reads and ZERO writes (steady state).          |
+//+------------------------------------------------------------------+
+// The box the terminal reports as SELECTED right now — "" when none is.
+// Deliberately NOT `BaseKnotSelectedId()`: that answers the NEWEST box when
+// nothing is selected (the note's own question, P-BK-58), and a drop must never
+// touch a box the user did not select.
+string BaseKnotSelectedBoxId()
+{
+   if(StringLen(inpObjectPrefix) == 0) return "";
+   BaseKnotLazyInit();
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+   {
+      string box = BaseKnotBoxName(BaseKnotPrefix(g_bkBoxes[i].id));
+      if(ObjectFind(0, box) < 0) continue;
+      if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) return g_bkBoxes[i].id;
+   }
+   return "";
+}
+// The selection's OWN marks — P-BK-59's centre grip and P-BK-61's eight handles —
+// exist exactly while the box is selected, and their keepers re-measure that on
+// the 500 ms pump, so a drop would leave them on screen for up to half a second
+// after the click the user just made. Same names, same rule, immediately: this is
+// the other half of "a click on the box shows the handles on that frame".
+// A locked box answers nothing here (the keeper retired its family already), and
+// a name that was never created is one `ObjectFind` and no delete.
+bool BaseKnotSelectionMarkersWipe(const string id)
+{
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return false;
+   bool wrote = false;
+   string dn = BaseKnotDotName(pfx);
+   if(ObjectFind(0, dn) >= 0) { ObjectDelete(0, dn); wrote = true; }
+   for(int i = 0; i < BK_GRIP_COUNT; i++)
+   {
+      string nm = BaseKnotGripName(pfx, BaseKnotGripSideAt(i));
+      if(nm == "") continue;
+      if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); wrote = true; }
+   }
+   return wrote;
+}
+// THE entry, called from `BaseKnotOnChartEvent`'s CLICK branch (id 4 — the event
+// MT4 sends for a click on the CHART; a click on a SELECTABLE object is
+// CHARTEVENT_OBJECT_CLICK, id 1, and the branches above own it). true = it
+// dropped a selection, so the caller owes one repaint.
+bool BaseKnotDeselectOnChartClick(const int mx, const int my)
+{
+   if(g_bkState != BK_IDLE || s_bkDragId != "") return false;   // a gesture owns the mouse
+   if(!UILeftButtonUp()) return false;   // the ONE button owner (P-UI-73): a press echo is
+                                         // not a click, and the "outside" test below is
+                                         // measured against a live native drag otherwise
+   if(UIPointerOverSurface(mx, my)) return false;               // P-UI-92: the UI is over the box
+   int sw = 0; datetime ct = 0; double cp = 0;
+   if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
+   {
+      if(BaseKnotBoxAt(ct, cp) != "") return false;     // inside a box: its own press
+      if(BaseKnotBoxAtPx(mx, my) != "") return false;   // ...or on its drawn border (P-BK-24)
+   }
+   string sel = BaseKnotSelectedBoxId();
+   if(sel == "") return false;   // nothing of ours is selected — the common case
+   BaseKnotDropSelection(sel);   // P-BK-26's ONE owner: read-guarded, one write
+   BaseKnotSelectionMarkersWipe(sel);
+   return true;
 }
 // (Re)build every child of one box from its live anchors. Direction is read
 // from the registry — NEVER recomputed here (P-BK-13: the pump /
@@ -2973,23 +4064,22 @@ void BaseKnotSync(const string id)
    // geometry below asks the same function, so the drawn legs and the texts cannot part).
    int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);
    if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
-   bool   riskIsEng = BaseKnotRiskIsEng(mTF);
-   string riskTag   = BaseKnotRiskTag(riskIsEng, mTF, baseTF);
+   string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot);   // P-BK-52: named with the number the pick drew
    double hPips  = BaseKnotRiskPips(mTF, top, bot);
    bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, mTF);   // P-BK-51: which measure the TYPE asks for
    BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl);
-   string tpTag = BaseKnotTPPlanTag(baseTF);
-   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips);
+   // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(baseTF);   // the retired note field
+   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips);   // P-BK-54: the hover keeps every leg
    string side = (dir >= 0 ? "BUY" : "SELL");
    // P-BK-51: the trade's own two sentences, ready-built — how deep the entry waits and
    // what sized the stop. The box hover, the note's hover and the two rays read THESE.
    string edgeName  = (dir >= 0 ? "top" : "bottom");
-   string entryLine = BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir);
+   string entryLine = BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir, top, bot);
    string stopWhy   = " (ONE " + riskTag + " behind the entry, INSIDE the box' " + edgeName + " edge" +
-                      (riskIsEng ? "" : " — the pump has no EngSL for " + BaseKnotTFName(mTF) + " yet, so the box' own height stands in") + ")";
+                      BaseKnotStopWhy(mTF, top, bot) + ")";
    string tradeTip  = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhy + entryLine;
    string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, tpTip, sp,
-                                   riskTag, BaseKnotNodeLine(nd), entryLine);
+                                   riskTag, BaseKnotNodeLine(nd, top, bot), entryLine);
    ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
    BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
                      GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip, tfMask);
@@ -3006,15 +4096,14 @@ void BaseKnotSync(const string id)
    // P-BK-51: and HOW DEEP the entry waits INSIDE that edge (EngSL for FTR, HuntSL for the
    // longer nodes) — the box hover's own sentence, spelled once by BaseKnotEntryLine.
    string entryWhy = " (ONE " + BaseKnotEntryOffsetTag(offIsHunt) + " INSIDE the box' " + edgeName + " edge — " +
-                     BaseKnotEntryWhy(nd.kind, mTF, offIsHunt) + "; the side is " +
+                     BaseKnotEntryWhy(nd.kind, mTF, offIsHunt, top, bot) + "; the side is " +
                      (nd.pattern != 0 ? "the base pattern " + BaseKnotPatternName(nd.pattern)
                                       : (nd.side != 0 ? "the departure" : "the live price")) + ")";
    BaseKnotMakeRay(BaseKnotEntryName(pfx), t2, tFar, entry, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
                    "BK " + side + " Entry: " + DoubleToString(entry, dg) + entryWhy, tfMask, true);
    BaseKnotMakeRay(BaseKnotSLName(pfx), t2, tFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + ", INSIDE the box' " + edgeName +
-                   " edge, ONE " + riskTag + " behind the entry" +
-                   (riskIsEng ? "" : " — the pump has no EngSL for " + BaseKnotTFName(mTF) + " yet") + ")", tfMask, true);
+                   " edge, ONE " + riskTag + " behind the entry" + BaseKnotStopWhy(mTF, top, bot) + ")", tfMask, true);
    // P-BK-50: the TARGETS are the plan's own legs (TP1..TP3) — one SHORT, THICK tick
    // each at the chart's right edge, never a ray and never box-wide (the user's own
    // 2026-09-08 decision, now for three of them). A leg the plan has not pushed is
@@ -3035,14 +4124,30 @@ void BaseKnotSync(const string id)
    ObjectDelete(0, BaseKnotTPName(pfx));   // BKTPR-OFF: purge a pre-P-BK-50 build's single tick
    ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
-   if(BaseKnotInfoVisible(id))
+   // P-BK-58: WHERE this box' note is drawn is ONE question, asked once (BaseKnotNoteAtCorner):
+   // the family's row for the selected/newest box in the corner mode, the box' own corner
+   // otherwise. A box the row does not answer keeps NO box-side note in that mode — the note
+   // exists in exactly one place at a time.
+   bool atCorner = BaseKnotNoteAtCorner(id);
+   if(atCorner || BaseKnotInfoVisible(id))
    {
-      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTag, tpTip, side,
-                        sp, nd, tfMask, riskTag, tradeTip);
-      BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
+      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
+                        sp, nd, tfMask, riskTag, tradeTip, atCorner);
+      if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
    }
    else
-      ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto mode, grace over — chart stays clean
+      ObjectDelete(0, BaseKnotInfoName(pfx));   // the other home owns it (P-BK-58), or the grace is over
+   // P-BK-59: the box' centre grip — the rebuild owns its first placement (a fresh box
+   // inherits MT4's selection, so the white marker is already there when this runs).
+   BaseKnotDotFollow(pfx, t1, t2, top, bot, !g_bkBoxes[k].locked,
+                     (bool)ObjectGetInteger(0, box, OBJPROP_SELECTED),
+                     GetBoxBorderRenderColor(), tfMask);
+   // P-BK-61: the corner handles follow the SAME rule (rebuild/keep/retire), and this
+   // is the INSTANT half of the keeper — a click on the box runs this Sync, so the
+   // handles appear on that very frame instead of on the pump's next pass.
+   if(BaseKnotGripsFollow(id, t1, top, t2, bot, !g_bkBoxes[k].locked,
+                          GetBoxBorderRenderColor(), tfMask, s_bkGripLive))
+      ChartRedraw();
 }
 // Shared drag-paint budget: position writes are cheap, FULL repaints are not
 // (a heavy chart costs 100ms+ per repaint — an unthrottled ChartRedraw per
@@ -3061,7 +4166,8 @@ void BaseKnotDragPaint()
 // BaseKnotCalcLevels, text via BaseKnotTextPlace), so the authoritative
 // release Sync lands on identical pixels. Missing children are skipped (the
 // release Sync rebuilds them) — never resurrect mid-drag.
-// P-PERF-42: the ONE existence probe — reads only, 9 names, once per gesture.
+// P-PERF-42: the ONE existence probe — reads only, 10 names (P-BK-61 added the handle
+// set, which is one name: the eight chips live and die together), once per gesture.
 int BaseKnotChildMaskBuild(const string pfx)
 {
    int m = 0;
@@ -3076,6 +4182,8 @@ int BaseKnotChildMaskBuild(const string pfx)
    if(ObjectFind(0, BaseKnotTPTickName(pfx, 3)) >= 0) m |= BK_CH_TP3;   //           next free bits
    if(ObjectFind(0, BaseKnotInfoName(pfx)) >= 0)      m |= BK_CH_INFO;
    if(ObjectFind(0, BaseKnotTextName(pfx)) >= 0)      m |= BK_CH_TEXT;
+   if(ObjectFind(0, BaseKnotDotName(pfx)) >= 0)       m |= BK_CH_DOT;   // P-BK-59: the centre grip
+   if(ObjectFind(0, BaseKnotGripName(pfx, (BK_GS_T | BK_GS_L))) >= 0) m |= BK_CH_GRIP;   // P-BK-61: the handle set (one probe)
    return m;
 }
 // ObjectMove ONLY (no style/color/create/delete syscalls) for per-step drag
@@ -3129,6 +4237,20 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
       if(lv <= 0.0) continue;
       BaseKnotMoveOne(BaseKnotTPTickName(pfx, tk), tps, lv, tpe, lv);
    }
+   // P-BK-59: the grip is a SCREEN object — its position is a pixel, not an anchor, so it
+   // cannot ride ObjectMove. ONE conversion pair per step (the mover's only non-ObjectMove
+   // work) keeps the cover ON the marker while the hand moves the box; the ink, the size and
+   // the rung never change mid-gesture, so nothing else is written here.
+   if((s_bkChildMask & BK_CH_DOT) != 0)
+   {
+      int dcx = 0, dcy = 0;
+      if(BaseKnotDotPixel(t1, t2, top, bot, dcx, dcy))
+      {
+         string dn = BaseKnotDotName(pfx);
+         ObjectSetInteger(0, dn, OBJPROP_XDISTANCE, dcx - BK_DOT_SIZE / 2);
+         ObjectSetInteger(0, dn, OBJPROP_YDISTANCE, dcy - BK_DOT_SIZE / 2);
+      }
+   }
    if((s_bkChildMask & BK_CH_INFO) != 0)   ObjectMove(0, BaseKnotInfoName(pfx), 0, t2, top);
    if((s_bkChildMask & BK_CH_TEXT) != 0)
    {
@@ -3136,6 +4258,18 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
       datetime tx; double px; int anchor;
       BaseKnotTextPlace(t1, t2, top, bot, tx, px, anchor);
       ObjectMove(0, tn, 0, tx, px);
+   }
+   // P-BK-61: the handles are carried by the move step like every other child — from
+   // the NEW GEOMETRY, never from a pixel delta (the terminal's own snap can move the
+   // box a pixel a delta would not know about), and the chip the HAND is dragging is
+   // the one side this call is told to leave alone (s_bkGripLive, P-BK-15). ONE bit
+   // answers "is the family there at all" (probed once per gesture, P-PERF-42).
+   if((s_bkChildMask & BK_CH_GRIP) != 0)
+   {
+      int gTf = g_bkBoxes[k].tfMin;
+      if(gTf <= 0) gTf = BaseKnotIdTF(id);
+      BaseKnotGripsFollow(id, t1, top, t2, bot, !g_bkBoxes[k].locked,
+                          GetBoxBorderRenderColor(), BaseKnotTFMask(gTf), s_bkGripLive);
    }
 }
 // Unified per-step drag follow — the ONLY mid-drag children writer (P-BK-07).
@@ -3262,6 +4396,273 @@ void BaseKnotFollowDrag(const string id, const datetime curT, const double curP)
    BaseKnotDragPaint();
    uint pkD = GetTickCount() - pkT;
    if(pkD > s_bkPerfPaintWorst) s_bkPerfPaintWorst = pkD;
+}
+//+------------------------------------------------------------------+
+//| P-BK-61 — THE HANDLE GESTURE: the terminal drags the CHIP, we    |
+//| write the grabbed side of the box.                               |
+//|                                                                  |
+//| ONE WRITER, AND IT IS NOT THE DRAGGED OBJECT. A native drag is   |
+//| cancelled by rewriting the object the terminal drags (P-BK-15) — |
+//| here that object is the CHIP, so the box, its four edges,         |
+//| Entry/SL/TP, the note and every OTHER chip are free to follow     |
+//| live, while the chip under the hand is left exactly where the     |
+//| terminal put it (the keeper's `skip`). The P-BK-59 grip already   |
+//| proved the other half of the same rule: a screen object written   |
+//| during a BOX drag does not cancel that drag.                     |
+//|                                                                  |
+//| ROLES BY VALUE, NEVER BY INDEX: the box' two anchors arrive in    |
+//| either order (every other reader here normalises with min/max),   |
+//| so "the top edge" IS whichever anchor holds the top price. A side |
+//| dragged past the far one MIRRORS the rectangle instead of          |
+//| inverting it — what the terminal's own rectangle does — and since |
+// the roles are min/max the box can never collapse to zero height.  |
+//|                                                                  |
+//| THE TIME LANDS ON A BAR OPEN when one is that close (`the terminal|
+// snaps corner times to bar opens` — BaseKnotCommit's own rule), so  |
+// a resized box keeps the base walk counting WHOLE candles. A time  |
+// PAST the last bar (the very common "pull the right edge into the  |
+// future") has no such bar and is kept exactly as the hand left it. |
+//+------------------------------------------------------------------+
+datetime BaseKnotGripSnapTime(const datetime t)
+{
+   if(t <= 0) return t;
+   int shift = iBarShift(_Symbol, 0, t, false);
+   if(shift < 0) return t;
+   datetime bo = iTime(_Symbol, 0, shift);
+   if(bo <= 0) return t;
+   double half = (double)PeriodSeconds() / 2.0;
+   if(MathAbs((double)(t - bo)) > half) return t;   // not "that close" to a bar open
+   return bo;
+}
+//+------------------------------------------------------------------+
+//| P-BK-61 — AND THE CONTROL MAGNET.                                |
+//|                                                                  |
+//| «با کنترل هم مگنت فعال میشه ... حرکت رو چسبوند به کندل های و لو  |
+//| که دقیق باشه» — while the hand drags a handle AND Ctrl is held,  |
+//| the price it writes snaps to the candle HIGH/LOW of the bar under|
+//| the cursor, inside `inpMagnetSensitivityPips` (MAGNET SENS — the |
+//| user's own input, still editable on the indicator's Inputs tab;   |
+//| its card row stays retired). A plain (Ctrl-free) handle drag is   |
+//| still hand-exact, which is the whole point of the modifier.       |
+//|                                                                  |
+//| WHY THIS IS NOT BKMAGNET2-OFF REVIVED: that decision («مگنت نمیخواد|
+// باشه حذفش کن») retired the magnet on the BOX' OWN drag, and the box |
+// still stays exactly where the hand let it go. This is a different  |
+// gesture, asked for later, gated by a modifier the user holds on     |
+// purpose, and it never runs inside BaseKnotFollowDrag (the box' live |
+// follow) nor in BaseKnotSnapPrice (the draw-time owner, which stays  |
+// the identity). `check_bkmagnet` now asserts all four of those —    |
+// see tools/panel-wiring-audit.py, and never relax that group without|
+// reading it first.
+//+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-BK-64 (2026-09-16) — THE MAGNET MEASURES IN PIXELS.            |
+//|                                                                  |
+//| Reported: «مگنت درست کار نمی‌کنه». The gate was the UNIT, not the |
+//| idea: `inpMagnetSensitivityPips` × the symbol's pip. 10 pips on a |
+//| D1 GBP/USD chart is under ONE pixel of a 1000-pip candle — the    |
+//| hand aims at a wick it can SEE, and at that zoom ±5 px IS ±50     |
+//| pips, so the gate was narrower than the eye and the magnet never  |
+//| fired. A magnet that only works when you are already exact reads  |
+//| as dead.                                                          |
+//|                                                                  |
+//| HOW THE SHIPPED MAGNETS DO IT (the reference this follows, from   |
+//| the published MetaTrader magnet utilities — MT5's own chart       |
+//| magnet and the MQL5 market tools «OHLC Magnet» 38178, «KT Drawing |
+//| Tool» 161169, «Easy Toolbar»'s magnet mode — all of them the SAME |
+//| rule): the reach is a PIXEL PROXIMITY, and the target is the      |
+//| NEAREST of a bar's FOUR prices — «drag ... within the Pixel        |
+//| Proximity ... snaps to Open/High/Low/Close», «stick to nearest     |
+//| Open/High/Low/Close values of bars». Pixels are what the hand     |
+//| actually controls, and the conversion is the chart's own price→Y   |
+//| projection, so nothing here assumes a zoom, a timeframe or an      |
+//| instrument.                                                       |
+//|                                                                  |
+//| SO: the candidates are O/H/L/C of the bar under the cursor (the    |
+//| time was already snapped to a bar OPEN by BaseKnotGripSnapTime, so |
+//| it is the bar the user points at); the winner is the smallest PIXEL|
+//| distance to the dragged point; the reach is the user's own        |
+//| `inpMagnetSensitivityPips` converted through the LIVE pip→pixel    |
+//| scale and then clamped to [BK_MAGNET_MIN_PX, BK_MAGNET_MAX_PX] —   |
+//| so a snap is never unreachable (a wide zoom cannot shrink the      |
+//| reach to nothing) and never wild (a tight zoom cannot fling the    |
+//| edge across the candle). Sensitivity 0 keeps its old meaning as    |
+//| the tightest reach the hand can still use.                        |
+//|                                                                  |
+//| COST: reads only, on the gesture's own OBJECT_DRAG steps (nothing  |
+//| per tick): 4 bar reads + up to 6 projections per step, and ZERO    |
+//| when the magnet is off or Ctrl is not held — `BaseKnotGripDrag`    |
+//| gates the call, and the two early returns here are the other half. |
+//+------------------------------------------------------------------+
+#define BK_MAGNET_MIN_PX 8    // a hand cannot aim finer than this at any zoom
+#define BK_MAGNET_MAX_PX 26   // ...and a snap must stay local (never across the candle)
+static double s_bkMagnetPx = -1.0;   // px distance of the last snap (-1 = it did not fire)
+double BaseKnotGripSnapPrice(const datetime t, const double price)
+{
+   s_bkMagnetPx = -1.0;
+   if(t <= 0 || price <= 0) return price;
+   if(!inpEnableMagnet) return price;
+   int shift = iBarShift(_Symbol, 0, t, false);
+   if(shift < 0) return price;
+   double cand[4];
+   cand[0] = iOpen(_Symbol, 0, shift);
+   cand[1] = iHigh(_Symbol, 0, shift);
+   cand[2] = iLow(_Symbol, 0, shift);
+   cand[3] = iClose(_Symbol, 0, shift);
+   int dx = 0, dy = 0;
+   if(!ChartTimePriceToXY(0, 0, t, price, dx, dy)) return price;
+   double pipPx = 0.0;   // the user's own sensitivity, in the unit the hand uses
+   int sx = 0, sy = 0;
+   if(ChartTimePriceToXY(0, 0, t, price + BaseKnotPipSize(), sx, sy))
+      pipPx = MathAbs((double)(sy - dy));
+   double gatePx = pipPx * (double)inpMagnetSensitivityPips;
+   if(gatePx < BK_MAGNET_MIN_PX) gatePx = BK_MAGNET_MIN_PX;
+   if(gatePx > BK_MAGNET_MAX_PX) gatePx = BK_MAGNET_MAX_PX;
+   double best = price, bestPx = -1.0;
+   for(int i = 0; i < 4; i++)
+   {
+      if(cand[i] <= 0) continue;   // an absence (no data for that bar) — never invented
+      int cx = 0, cy = 0;
+      if(!ChartTimePriceToXY(0, 0, t, cand[i], cx, cy)) continue;
+      double d = MathAbs((double)(cy - dy));
+      if(bestPx < 0.0 || d < bestPx) { bestPx = d; best = cand[i]; }
+   }
+   if(bestPx < 0.0 || bestPx > gatePx) return price;   // nothing inside the proximity
+   s_bkMagnetPx = bestPx;   // the gesture ledger reads this (one line per snap)
+   return best;
+}
+// A handle drag → the grabbed side of the box, live (one OBJECT_DRAG per step: the
+// channel the box' own follow already runs on). `name` is the chip the terminal moved;
+// its CENTRE pixel is the reading (see the block above). Locked boxes answer nothing:
+// the keeper has already retired their family.
+void BaseKnotGripDrag(const string id, const int side, const string name)
+{
+   if(id == "" || name == "" || side == 0) return;
+   if(BaseKnotFind(id) < 0) return;
+   if(BaseKnotLocked(id)) return;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   int gx = (int)ObjectGetInteger(0, name, OBJPROP_XDISTANCE) + BK_GRIP_PX / 2;
+   int gy = (int)ObjectGetInteger(0, name, OBJPROP_YDISTANCE) + BK_GRIP_PX / 2;
+   int w = 0; datetime gt = 0; double gp = 0;
+   if(!ChartXYToTimePrice(0, gx, gy, w, gt, gp)) return;
+   if(w != 0 || gt <= 0 || gp <= 0) return;
+   bool ctrl = UICtrlKeyDown();
+   gt = BaseKnotGripSnapTime(gt);
+   if(ctrl && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);
+   // P-BK-64: the magnet answers with a NUMBER — once per gesture, on the step that
+   // snapped, carrying the pixel distance it accepted and the value it took. A
+   // snapping gesture is rare (Ctrl held + inside the proximity), so the line costs
+   // nothing in steady state and turns the next report into a reading.
+   if(s_bkMagnetPx >= 0.0 && !s_bkMagnetLogged)
+   {
+      s_bkMagnetLogged = true;
+      Print("[BK] magnet box=", id, " side=", side, " px=", (int)s_bkMagnetPx,
+            " -> ", DoubleToString(gp, GetCachedDigits()));
+   }
+   datetime bt1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
+   datetime bt2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+   double bp1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
+   double bp2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
+   datetime tL = bt1, tR = bt2;
+   if(tR < tL) { datetime tt = tL; tL = tR; tR = tt; }
+   double top = MathMax(bp1, bp2), bot = MathMin(bp1, bp2);
+   if((side & BK_GS_T) != 0) top = gp;
+   if((side & BK_GS_B) != 0) bot = gp;
+   if((side & BK_GS_L) != 0) tL = gt;
+   if((side & BK_GS_R) != 0) tR = gt;
+   // THE GESTURE IS THE TERMINAL'S (it drags the chip): claim it, so the release path
+   // Syncs exactly this box, the pump leaves it alone for the rest of the gesture
+   // (P-BK-15), and the retired cursor fallback could never touch it either.
+   s_bkNativeClaim = true;
+   // P-BK-65: the terminal NAMED this chip, so THIS PRESS IS A RESIZE — the answer
+   // the release needs, latched here and cleared only by a witness that cannot lie
+   // (the release, the pump's silence watchdog, an OBJECT_DRAG that names the BOX
+   // instead, or teardown). `s_bkGripLive` below stays what it always was: which
+   // chip the hand holds RIGHT NOW, i.e. the keeper's skip.
+   s_bkGripGesture = side;
+   s_bkBoxNamed    = false;   // it is dragging a CHIP, so by definition not the box
+   s_bkGripLive = side;
+   s_bkDragId = id;
+   s_bkDragActMs = GetTickCount();
+   ObjectMove(0, box, 0, tL, top);
+   ObjectMove(0, box, 1, tR, bot);
+   BaseKnotMoveChildren(id, tL, top, tR, bot);   // the SAME mover every other live step uses
+   BaseKnotDragLockOn();                         // a resize owns the view, like a move
+   if(!s_bkGripLogged)
+   {
+      s_bkGripLogged = true;
+      Print("[BK] grip resize box=", id, " side=", side,
+            " tag=", StringSubstr(name, StringLen(pfx)), " magnet=", (ctrl ? 1 : 0));
+   }
+   BaseKnotDragPaint();
+}
+//+------------------------------------------------------------------+
+//| P-BK-61b (2026-09-16) — THE BODY DRAG IS A MOVE, AND ONLY A MOVE.|
+//|                                                                  |
+//| User: «این باکس الآن از دو روش میشه بزرگ و کوچیکش کرد ... از رنگ  |
+//| ریسایز نشه فقط درگ بشه» — resize must have ONE home (the eight   |
+//| handles on the border), and grabbing the FILL must only carry the|
+//| box. WHY IT COULD GROW BEFORE: MetaTrader's own magnet snaps EACH |
+//| of a dragged rectangle's two anchors to a wick INDEPENDENTLY (the |
+//| fact behind P-BK-25's "a whole-box MOVE can read as a one-side     |
+//| resize"), so a body drag on a magnet-enabled terminal could leave |
+//| the box a different SIZE than the hand took it with.             |
+//|                                                                  |
+//| WHAT IS RESTORED, AND WHAT IS NOT: only the SIZE — from the      |
+//| press-time snapshot, which P-BK-25's `s_bkSnapTrusted` proves was |
+//| taken BEFORE the terminal moved anything (a snapshot taken mid-   |
+//| drag could read a translation as a resize, and a role that cannot |
+//| be measured must not invent one). The POSITION stays exactly where|
+//| the hand let it go, magnet included (BKMAGNET2-OFF's own rule).   |
+//|                                                                  |
+//| COST: one call at the RELEASE only, steady state an anchor read   |
+//| plus a compare; and it runs after the button is up, never into a  |
+//| live native drag (P-BK-15). The alternative — translating the box |
+//| by the hand's own cursor delta — was rejected because it would    |
+//| throw the terminal's own position snapping away with it.          |
+//+------------------------------------------------------------------+
+bool BaseKnotBodySizeHeal(const string id)
+{
+   if(id == "" || !s_bkSnapTrusted) return false;   // unmeasured baseline — never invent
+   // P-BK-65: AND THE HEAL'S OWN PRECONDITION IS THE GESTURE, NOT THE BASELINE. This
+   // function exists for ONE fault shape — MetaTrader's magnet enlarging the FILL of a
+   // rectangle the TERMINAL is moving. A press that dragged a CHIP is a resize the user
+   // asked for, and restoring a press-time size there is exactly the «برمی‌گرده سر جای
+   // خودش» report (the far edge jumped to `tL + wT`). `s_bkBoxNamed` is that answer from
+   // the terminal's own mouth (its OBJECT_DRAG named the BOX), so the heal now needs the
+   // trusted baseline AND a terminal-named box drag: even if the release's own gate were
+   // ever lost to a future edit, a chip gesture still cannot spring the box back.
+   if(!s_bkBoxNamed) return false;
+   int k = BaseKnotFind(id);
+   if(k < 0) return false;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return false;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return false;
+   datetime pT1 = s_bkDragBT1, pT2 = s_bkDragBT2;
+   if(pT2 < pT1) { datetime pt = pT1; pT1 = pT2; pT2 = pt; }
+   double pTop = MathMax(s_bkDragBP1, s_bkDragBP2), pBot = MathMin(s_bkDragBP1, s_bkDragBP2);
+   long   wT = (long)(pT2 - pT1);
+   double hP = pTop - pBot;
+   if(wT <= 0 || hP <= 0) return false;   // the snapshot cannot describe a box
+   datetime lt1 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 0);
+   datetime lt2 = (datetime)ObjectGetInteger(0, box, OBJPROP_TIME, 1);
+   double lp1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
+   double lp2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
+   datetime tL = lt1, tR = lt2;
+   if(tR < tL) { datetime tt = tL; tL = tR; tR = tt; }
+   double top = MathMax(lp1, lp2), bot = MathMin(lp1, lp2);
+   if((long)(tR - tL) == wT && MathAbs((top - bot) - hP) < GetCachedPoint())
+      return false;   // the size IS the press-time size — a pure move, nothing to write
+   // The size comes back around the corner the drop left in place (the box' left /
+   // top edge IS the hand's own answer for where the box went): one write pair, and
+   // never a touch on the position.
+   ObjectMove(0, box, 0, tL, top);
+   ObjectMove(0, box, 1, (datetime)((long)tL + wT), top - hP);
+   return true;
 }
 void BaseKnotDelete(const string id)
 {
@@ -3391,6 +4792,11 @@ bool BaseKnotBorderSettled(const string pfx, const datetime t1, const datetime t
 void BaseKnotSyncBadges()
 {
    BaseKnotLazyInit();   // the registry IS the box list — rebuild once (guarded, O(1) after)
+   // P-BK-58: the corner row's own keeper rides this pump (≤500 ms in Lite, and on every chart
+   // change): a selection, a mode change, a pushed slot or a box that left this TF are all
+   // noticed here, without a second event path of its own. NOTHING is written while nothing
+   // changed — steady state is a compare (see BaseKnotNoteCornerRefresh).
+   BaseKnotNoteCornerRefresh();
    if(BaseKnotSessionActive()) BaseKnotReassertLock(true);   // P-BK-14: pump drift-heal (timer path, tick-less charts)
    if(s_bkDragLock && g_bkState == BK_IDLE &&
       UILeftButtonUp() &&          // the ONE button owner (P-UI-73): both MQL4
@@ -3402,7 +4808,12 @@ void BaseKnotSyncBadges()
       // leave the view locked. The 1.5 s silence requirement keeps KEYSTATE
       // flicker mid-hold (P-BK-05) from false-triggering — a real drag keeps
       // producing events. KEYSTATE poll in the timer path is P-BK-03 pattern.
-      s_bkDragId = ""; s_bkDragMoved = false;
+      s_bkDragId = "";
+      BaseKnotGestureClear();   // P-BK-65/P-BK-61: no release, no live side — and the
+                                // gesture's KIND goes with it, so the next press starts
+                                // fresh. The settle heal below then Syncs the box from the
+                                // anchors the resize already wrote.
+      s_bkGripLogged = false; s_bkMagnetLogged = false;
       BaseKnotDragLockOff();
    }
    if(ArraySize(g_bkBoxes) == 0) return;
@@ -3528,6 +4939,19 @@ void BaseKnotSyncBadges()
          ObjectDelete(0, BaseKnotInfoName(pfx));   // Auto grace over — hide within 500 ms
          bkNeedPaint = true;
       }
+      // P-BK-59: the grip follows its box on this same pass — and, exactly like the
+      // terminal's own marker, it exists only while the box is SELECTED.
+      if(BaseKnotDotFollow(pfx, t1, t2, top, bot, !g_bkBoxes[i].locked,
+                           (bool)ObjectGetInteger(0, box, OBJPROP_SELECTED),
+                           GetBoxBorderRenderColor(), BaseKnotTFMask(tfMin)))
+         bkNeedPaint = true;
+      // P-BK-61: the corner resize handles ride the SAME rule on the SAME pass (they are
+      // the only other screen object of a box). `skip` is 0 here on purpose: the box the
+      // hand is resizing never reaches this pass (the drag guard at the top of the loop
+      // skips it), so no chip of it can be written mid-gesture from here either.
+      if(BaseKnotGripsFollow(g_bkBoxes[i].id, t1, top, t2, bot, !g_bkBoxes[i].locked,
+                             GetBoxBorderRenderColor(), BaseKnotTFMask(tfMin), 0))
+         bkNeedPaint = true;
    }
    if(bkNeedPaint) ChartRedraw();
 }
@@ -3752,6 +5176,24 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       }
    }
 
+   //--- P-BK-61: a HANDLE drag is a RESIZE — the terminal moved the CHIP (its own
+   //--- selectable object), never the box, so nothing written here can cancel the
+   //--- native drag (P-BK-15 is about the DRAGGED object). The side is read from the
+   //--- chip's own name tail; every other child of this family answers 0 and falls
+   //--- through to the box/edge branches below, unchanged.
+   if(id == CHARTEVENT_OBJECT_DRAG && tag != "" && StringFind(sparam, tag) == 0)
+   {
+      string gtail = StringSubstr(sparam, StringLen(tag));
+      string gid = "", gkind = "";
+      BaseKnotSplitTail(gtail, gid, gkind);
+      int gside = BaseKnotGripSide(gkind);
+      if(gside != 0)
+      {
+         BaseKnotGripDrag(gid, gside, sparam);
+         return true;
+      }
+   }
+
    //--- box drag → children follow; box delete → cascade; child delete → heal
    if(id == CHARTEVENT_OBJECT_DRAG && tag != "" && StringFind(sparam, tag) == 0 &&
       StringFind(sparam, "BOX", StringLen(sparam) - 3) >= 0)
@@ -3765,6 +5207,14 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
            // P-BK-19a: the terminal just NAMED the object it is dragging, so the
            // gesture is ITS — the cursor fallback stays off for the rest of it.
            s_bkNativeClaim = true;
+           // P-BK-65: AND IT JUST SAID WHICH OBJECT: the BOX, not a chip. That is the
+           // ground truth behind two answers this press needs — "the body-size heal may
+           // run" (`s_bkBoxNamed`) and "this press is NOT a resize" (a chip gesture
+           // latched earlier belongs to a gesture that is already over: the terminal
+           // cannot drag a chip and the box at once). Two stores on the gesture's own
+           // events; nothing here runs per tick.
+           s_bkBoxNamed    = true;
+           s_bkGripGesture = 0;
            // Unified lean follow (P-BK-07): anchor-exact moves only — never a
            // full Sync per step (its style/tooltip rewrites lagged children
            // behind the native BOX on heavy charts). This event carries no
@@ -3888,15 +5338,31 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
       g_bkLeftPrev = sleft;
        if(srising)
        {
-          s_bkDragId = ""; s_bkDragMoved = false; s_bkDragActMs = GetTickCount();
-          s_bkSnapTrusted = false;   // P-BK-25: a fresh press has no trusted baseline yet
-          // P-BK-19: a fresh press is a fresh gesture — nobody owns it yet, and
-          // the window in which the terminal is asked first starts NOW.
-          s_bkNativeClaim = false; s_bkOwnerMs = GetTickCount(); s_bkFallLogged = false;
-          // P-PERF-42/41: the child mask is re-probed for THIS gesture (the same
-          // box dragged twice probes twice) and the timing counters restart.
-          s_bkChildMaskId = ""; s_bkPerfMoveWorst = 0; s_bkPerfPaintWorst = 0; s_bkPerfPasses = 0;
-         int ssw = 0; datetime sct = 0; double scp = 0;
+          s_bkDragActMs = GetTickCount();
+          // P-BK-65: A RISING EDGE WHILE A CHIP IS HELD IS A FLICKER, NOT A PRESS.
+          // The terminal's own OBJECT_DRAG of a chip is the ground truth that this
+          // press is a RESIZE, and re-labelling it here is what made a resize snap
+          // back (see the P-BK-65 block above the statics): the release then read it
+          // as a body drag and the size heal put the old size back, and the keeper
+          // rewrote the chip under the hand. While that latch is live the press edge
+          // leaves the GESTURE's identity alone — it may only touch the fields a new
+          // gesture needs. A REAL press always finds the latch at 0 (the release or
+          // the silence watchdog cleared it), so a fresh gesture still starts fresh.
+          const bool bkGripHeld = (s_bkGripGesture != 0);
+          if(!bkGripHeld)
+          {
+             s_bkDragId = ""; s_bkDragMoved = false;
+             s_bkSnapTrusted = false;   // P-BK-25: a fresh press has no trusted baseline yet
+             // P-BK-19: a fresh press is a fresh gesture — nobody owns it yet, and
+             // the window in which the terminal is asked first starts NOW.
+             s_bkNativeClaim = false; s_bkOwnerMs = GetTickCount(); s_bkFallLogged = false;
+             s_bkBoxNamed = false;   // P-BK-65: no terminal-named box drag in this press yet
+             // P-PERF-42/41: the child mask is re-probed for THIS gesture (the same
+             // box dragged twice probes twice) and the timing counters restart.
+             s_bkChildMaskId = ""; s_bkPerfMoveWorst = 0; s_bkPerfPaintWorst = 0; s_bkPerfPasses = 0;
+             s_bkGripLive = 0; s_bkGripLogged = false; s_bkMagnetLogged = false;   // P-BK-61: a fresh press is a fresh gesture
+          }
+          int ssw = 0; datetime sct = 0; double scp = 0;
          // P-UI-92: a press that lands ON a visible UI surface is the UI's pixel — the
          // card/strip/menu sits OVER the box, so the user is reading or setting a
          // control, not grabbing what is behind it. Without this test the latch armed
@@ -3904,7 +5370,11 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          // panel's own press is classified in the UI half of the same event, which
          // runs AFTER this one). The press is never consumed by the box tool — the
          // rejection is deliberately NOT a claim on the gesture.
-         if(!UIPointerOverSurface((int)lparam, (int)dparam) &&
+         // P-BK-65: while a chip is held this press edge owns NOTHING — the live
+         // resize already latched its box and took its baseline before the terminal
+         // moved anything, and a mid-drag snapshot here would be the P-BK-25 trap.
+         if(!bkGripHeld &&
+            !UIPointerOverSurface((int)lparam, (int)dparam) &&
             ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp) && ssw == 0 && sct > 0 && scp > 0)
          {
             string shit = BaseKnotBoxAt(sct, scp);   // exact INSIDE test first — it never lies
@@ -3940,7 +5410,24 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          // A tap (no move) syncs nothing — tap-select stays untouched.
          // Overlap hole: the press candidate may differ from the truly dragged
          // box — the drop point is under the cursor, so sync that box too.
-          if(s_bkDragId != "" && s_bkDragMoved)
+          // P-BK-61: a HANDLE resize ends here too, and it owes the same authoritative
+          // Sync even when the hand barely moved (a 3px correction is a resize, not a
+          // tap) — so the gesture's own flag joins the condition. P-BK-65: that flag
+          // is the KIND (`s_bkGripGesture`, latched from the terminal's own
+          // OBJECT_DRAG of a chip), never the keeper's `s_bkGripLive` — a mouse-channel
+          // flicker cleared the skip and the release then re-sized the box back. The
+          // flag is READ and CLEARED first, so the Sync below may glue every chip, the
+          // one the hand just let go of included (never written while the terminal
+          // still held it).
+          // P-BK-65: THE KIND OF GESTURE DECIDES THIS PATH, NEVER THE SKIP FIELD.
+          // `s_bkGripLive` says which chip the hand holds (the keeper's skip, cleared
+          // by a press edge); `s_bkGripGesture` says this press WAS a resize, and only
+          // a real end can clear it. Reading the skip here is the bug the user
+          // reported: one flicker made the release call a resize a body drag.
+          int bkGripWas = s_bkGripGesture;
+          s_bkGripLive = 0; s_bkGripLogged = false; s_bkMagnetLogged = false;
+          s_bkGripGesture = 0; s_bkBoxNamed = false;   // this gesture is over
+          if(s_bkDragId != "" && (s_bkDragMoved || bkGripWas != 0))
           {
               // P-PERF-43: the same line carries WHAT the gesture cost, split by
               // phase — the ledger that answers the next "the drag lags" with a
@@ -3948,7 +5435,7 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
               // guess. One line per gesture, never per step.
               Print("[BK] drag release sync box=", s_bkDragId, " native=", (s_bkNativeClaim ? 1 : 0),
                     " follow=", s_bkPerfPasses, " move=", (int)s_bkPerfMoveWorst, "ms paint=",
-                    (int)s_bkPerfPaintWorst, "ms");   // diag: authoritative final
+                    (int)s_bkPerfPaintWorst, "ms resize=", bkGripWas);   // diag: authoritative final
               bool painted = false;
              double relRef = BaseKnotLiveRef();   // P-BK-13: a drag across the price flips NOW, not 500 ms later
              int ssw3 = 0; datetime sct3 = 0; double scp3 = 0;
@@ -3968,11 +5455,19 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
                  // is retired — the release does not snap (the engine above is
                  // commented). The box stays where the hand let it go.
                  // BaseKnotMagnetSettle(s_bkDragId);
+                 // P-BK-61b: a BODY drag carries the box and nothing else — the size
+                 // the hand took it with comes back before the authoritative Sync (a
+                 // HANDLE drag, bkGripWas, IS the size gesture and is left alone).
+                 if(bkGripWas == 0) BaseKnotBodySizeHeal(s_bkDragId);
                  BaseKnotRefreshDirection(s_bkDragId, relRef);
                 BaseKnotSync(s_bkDragId);
                 painted = true;
              }
             if(painted) ChartRedraw();
+            // P-BK-61: a RESIZE hands the selection back to the box (the terminal gave
+            // it to the chip), so the corner handles stay on screen and the next side is
+            // one grab away — no second click.
+            if(bkGripWas != 0) BaseKnotGripReselect(s_bkDragId);
           }
            // BKSELECT-KEPT (2026-09-15, user decision — «مثل خود متاتریدر»):
            // the box STAYS selected after a drag, like MT4's own rectangle, so
@@ -4010,6 +5505,20 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
              }
          }
       }
+   }
+
+   //--- P-BK-63: a CLICK (id 4 = a click on the CHART; a click on a SELECTABLE
+   //--- object arrives as OBJECT_CLICK, id 1, and the branches above own it)
+   //--- that lands OUTSIDE every box lets the box' selection go — the mirror of
+   //--- `BaseKnotGripReselect`, so the handles that a click shows disappear on
+   //--- the click that dismisses them. Right-clicks are left alone (the context
+   //--- menu is a different gesture), and the event is NOT consumed: the menu
+   //--- and panel halves read it exactly as they did before.
+   if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") < 0 &&
+      BaseKnotDeselectOnChartClick((int)lparam, (int)dparam))
+   {
+      ChartRedraw();
+      return false;
    }
 
    if(!BaseKnotSessionActive()) return false;

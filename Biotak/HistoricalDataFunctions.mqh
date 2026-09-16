@@ -55,6 +55,24 @@ bool UpdateHistoricalValues() {
         return false;
     }
 
+    // P-UI-57e: TRIM TO WHAT WAS ACTUALLY COPIED BEFORE MEASURING.
+    //
+    // ArrayResize zero-fills, so when the terminal holds fewer bars than
+    // `inpHistoricalPeriods` asked for, the tail of these two arrays is a run of
+    // zeros. ArrayMinimum then returned that padding, `g_lowestLow` came back as 0,
+    // and the `<= 0` test below failed - permanently, because CopyHigh can never
+    // return more bars than the terminal actually has. The Historical High/Low
+    // lines therefore never appeared for any inpHistoricalPeriods larger than the
+    // available history, and not at all in the first frames after attach.
+    // Measure the copied prefix, never the padding.
+    int usable = MathMin(copiedHigh, copiedLow);
+    if(ArrayResize(highArray, usable) != usable || ArrayResize(lowArray, usable) != usable) {
+        Print("UpdateHistoricalValues: Failed to trim arrays. Error: ", GetLastError());
+        ArrayFree(highArray);
+        ArrayFree(lowArray);
+        return false;
+    }
+
     // Optimize max/min calculation
     g_highestHigh = highArray[ArrayMaximum(highArray)];
     g_lowestLow = lowArray[ArrayMinimum(lowArray)];
@@ -90,7 +108,7 @@ double GetPriceForPreviousDay(ENUM_APPLIED_PRICE priceType) {
         lastUpdate = currentTime;
     }
     
-    switch(priceType) {
+    switch((int)priceType) {
         case 1: return cachedPrices[1]; // Open
         case 2: return cachedPrices[2]; // High
         case 3: return cachedPrices[3]; // Low

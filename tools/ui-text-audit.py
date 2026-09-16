@@ -61,6 +61,7 @@ ALLOW_FONTSIZE = {
     "Biotak/TH3/TH3Renderer.mqh": "TH3 tool is retired (TH3TOOL-OFF)",
 }
 MENU = "Biotak/BiotakMenu.mqh"
+PANELS = "Biotak/BiotakPanels.mqh"
 DPIS = (96, 120, 144)
 
 
@@ -277,6 +278,69 @@ def check_readout(menu):
     return fails, {}
 
 
+# ── 6. the display metric is measured, not latched (P-UI-93) ───────────────────
+def check_dpi_live(sources):
+    """P-UI-93: a DPI read ONCE is a DPI that never moves again.
+
+    Every caption this file measures is sized by that number, so it must be
+    re-probed - and the probe needs ONE owner, a studied rate, and a consumer.
+    Each failure below is silent: the build is clean and the numbers are right
+    until the user drags the terminal onto a monitor with other scaling, and
+    then every caption is sized for the screen they left (or, coming back, is
+    microscopic) for the life of the instance.
+    """
+    fails = []
+    facts = {}
+    owner = code_only(sources.get(OWNER, ""))
+    reads = [rel for rel, src in sorted(sources.items())
+             for _m in re.finditer(r"TerminalInfoInteger\s*\(\s*TERMINAL_SCREEN_DPI\s*\)",
+                                   code_only(src))]
+    facts["reads"] = reads
+    if reads != [OWNER]:
+        fails.append("the screen DPI must be read exactly once, in %s (found: %s)" %
+                     (OWNER, ", ".join(reads) or "nowhere"))
+    if defines(owner, "PNL_DPI_PROBE_MS") is None:
+        fails.append("PNL_DPI_PROBE_MS is gone - the DPI re-probe has no studied rate")
+    dpi = body(owner, "int PnlDpi()")
+    if dpi is None:
+        fails.append("PnlDpi() is gone")
+    elif "TerminalInfoInteger" in dpi:
+        fails.append("PnlDpi() reads the terminal itself: the display metric is a "
+                     "per-call terminal read again (P-UI-93)")
+    poll = body(owner, "bool PnlDpiPoll()")
+    if poll is None:
+        fails.append("PnlDpiPoll() is gone - nothing ever re-probes the display, so "
+                     "moving the window to another monitor is invisible until the "
+                     "indicator is re-attached")
+    else:
+        if "PnlDpiRead()" not in poll:
+            fails.append("PnlDpiPoll() does not re-read the display")
+        if "PNL_DPI_PROBE_MS" not in poll:
+            fails.append("PnlDpiPoll() is not rate-limited by PNL_DPI_PROBE_MS")
+        if "PnlDpi()" not in poll:
+            fails.append("PnlDpiPoll() cannot tell a change from a repeat")
+    panels = code_only(sources.get(PANELS, ""))
+    rebuild = body(panels, "void UIRebuildForMetrics()")
+    if rebuild is None:
+        fails.append("UIRebuildForMetrics() is gone - a DPI change has no reaction")
+    else:
+        for need, what in (("PnlRebuildKeepSpot(", "the open card"),
+                           ("g_labelsRelayoutNeeded", "the chart-side text")):
+            if need not in rebuild:
+                fails.append("UIRebuildForMetrics() no longer rebuilds %s" % what)
+        if "DeleteMenu()" not in rebuild or "CreateMenu()" not in rebuild:
+            fails.append("UIRebuildForMetrics() no longer rebuilds the ring (the ring's "
+                         "delete/create pair is its only full re-derive)")
+    calls = len(re.findall(r"if\s*\(\s*PnlDpiPoll\(\)\s*\)\s*UIRebuildForMetrics\(\)",
+                           panels))
+    facts["poll_calls"] = calls
+    if calls < 2:
+        fails.append("the DPI probe is consumed in %d place(s): it needs the chart-change "
+                     "EVENT and the tick/timer pump (a Windows scale change with the "
+                     "window in place emits no chart event)" % calls)
+    return fails, facts
+
+
 # ── main -----------------------------------------------------------------------
 def main():
     sim = load_sim()
@@ -292,9 +356,13 @@ def main():
     fails += f4
     f5, _ = check_readout(sources[MENU])
     fails += f5
+    f6, dpi = check_dpi_live(sources)
+    fails += f6
 
     note("owner: %s (%s defined once each)" % (OWNER, ", ".join(OWNER_FUNCS)))
     note("point sizes: %d site(s), all through the owner" % sites)
+    note("dpi: %d read site(s) (%s), %d consumer(s) of the re-probe"
+         % (len(dpi["reads"]), ", ".join(dpi["reads"]) or "nowhere", dpi["poll_calls"]))
     if tip:
         note("tip: %dx%d, inner %dpx, worst caption %dpx at %d/%d/%d dpi, %d tooltip(s), "
              "worst status %r"
@@ -307,7 +375,8 @@ def main():
         print("\n%d problem(s) - a UI surface is measuring text by hand again." % len(fails))
         return 1
     print("ui-text audit: clean - one metrics owner in %s, every chrome caption "
-          "measured, the ring tooltip still fits" % OWNER)
+          "measured, the display metric re-probed and rebuilt, the ring tooltip "
+          "still fits" % OWNER)
     return 0
 
 
@@ -335,6 +404,7 @@ def selftest():
         f += check_literals(sources)[0]
         f += check_tip(sources[MENU], sim)[0]
         f += check_readout(sources[MENU])[0]
+        f += check_dpi_live(sources)[0]
         return f
 
     # 1. a second copy of the metrics owner (the drift this check exists for)
@@ -380,6 +450,18 @@ def selftest():
                        "      ObjectSetInteger(0, SubPanelCnt(), OBJPROP_XDISTANCE,\n"
                        "                       px + pw - SUB_GRID_PAD - 5 * StringLen(cnt));")
     cases.append(("a readout placed by hand again is reported", bool(run())))
+
+    # 6. the display metric goes back to a one-time latch: the monitor move is
+    #    invisible again, which is the whole of P-UI-93
+    read = with_source(OWNER, "   if(s_pnlDpi <= 0) s_pnlDpi = PnlDpiRead();",
+                       "   if(s_pnlDpi <= 0) s_pnlDpi = "
+                       "(int)TerminalInfoInteger(TERMINAL_SCREEN_DPI);")
+    cases.append(("a DPI latched at load is reported", bool(run())))
+
+    # 7. the re-probe keeps running but nobody listens (a Windows scale change
+    #    with the window in place emits no chart event)
+    read = with_source(PANELS, "   if(PnlDpiPoll()) UIRebuildForMetrics();\n}\n", "}\n")
+    cases.append(("an unconsumed DPI re-probe is reported", bool(run())))
 
     read = real_read
     cases.append(("the unmodified sources pass every check", not run()))

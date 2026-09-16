@@ -1613,6 +1613,12 @@ static string g_heavyFrameWhy     = "";
 static bool   s_coopOwed[COOP_JOB_COUNT];
 static uint   s_coopOwedMs[COOP_JOB_COUNT];
 static uint   s_coopRuns = 0;
+// P-PERF-45 evidence. `runs` counts frames that actually executed; `starved`
+// counts the ticks on which the slice would have been spent on a sweep while
+// the frame was still owed - i.e. exactly the ticks the frame used to lose.
+// Reported in OnDeinit so the before/after is a number, not an impression.
+static uint   s_coopFrameRuns    = 0;
+static uint   s_coopFrameStarved = 0;
 
 // Mark a heavy frame owed. Single-flight: the FIRST ask owns the clock, so the
 // logged wait is the latency of the press that started it, not of the last one.
@@ -1651,6 +1657,10 @@ bool CoopOwes(const int job)
    if(job <= COOP_JOB_NONE || job >= COOP_JOB_COUNT) return false;
    return s_coopOwed[job];
 }
+
+// P-PERF-45 evidence accessors (see the counters above and the pump below).
+uint CoopFrameRuns()    { return s_coopFrameRuns; }
+uint CoopFrameStarved() { return s_coopFrameStarved; }
 
 void RedrawAllObjects(bool force_redraw=false)
 {
@@ -4181,6 +4191,34 @@ void CoopPump()
    // enum value.
    int coopOrder[COOP_JOB_COUNT - 1] = { COOP_JOB_OBJ_CLEANUP, COOP_JOB_LABEL_EXPIRY,
                                          COOP_JOB_STATUS_TEXT,  COOP_JOB_HEAVY_FRAME };
+
+   // P-PERF-45: THE FRAME OUTRANKS THE SWEEPS WHILE IT IS THE PROGRESS-MAKER.
+   //
+   // Cheap-first is correct when the frame is just another job. It is wrong while
+   // a staged rebuild is in flight, and the reason is the cadence: OnTimer owes
+   // the three sweeps on EVERY tick, so a slice spent on them starves the frame
+   // on every tick, not once. The frame is the only advancer of g_buildStage, so
+   // the rebuild never seals, labels never draw (they need stage 0 or BLOCK) and
+   // the HTF bulk pass never runs (it returns while g_buildStage != 0). The
+   // user-visible symptom was "change the timeframe again and the next label
+   // appears".
+   //
+   // Note what the budget actually is: GetTickCount() steps in ~15.6 ms
+   // increments, so `>= COOP_BUDGET_MS` with a value of 12 asks "was a tick
+   // boundary crossed?", not "did 12 ms of work happen" - a two-millisecond
+   // sweep can spend the slice by landing across a boundary. Ordering is the
+   // honest fix here, because ordering cannot be mis-calibrated the way a
+   // constant can.
+   //
+   // The sweeps are idempotent and are owed again next tick, so postponing one
+   // costs a tick. Postponing the frame costs the whole rebuild.
+   const bool frameIsProgressMaker = (g_heavyFramePending || !g_initialized || g_buildStage != 0);
+   if(frameIsProgressMaker)
+   {
+      for(int mv = COOP_JOB_COUNT - 2; mv > 0; mv--) coopOrder[mv] = coopOrder[mv - 1];
+      coopOrder[0] = COOP_JOB_HEAVY_FRAME;
+   }
+
    for(int oi = 0; oi < COOP_JOB_COUNT - 1; oi++)
    {
       int job = coopOrder[oi];
@@ -4219,6 +4257,7 @@ void CoopPump()
             // ran - so a gate that refuses the pass leaves the job owed instead
             // of silently dropping the user's edit.
             RedrawAllObjects(false);
+            s_coopFrameRuns++;
             if(!g_heavyFramePending) s_coopOwed[job] = false;
             break;
       }
@@ -4229,7 +4268,17 @@ void CoopPump()
          _LOG_GATE_W Print("[W][PERF] coop job=", CoopJobName(job), " waited=", (int)waited,
                            "ms ran=", (int)spent, "ms stillOwed=", (CoopOwes(job) ? 1 : 0));
 
-      if(GetTickCount() - sliceStart >= COOP_BUDGET_MS) break;   // this pump's slice is spent
+      // P-PERF-45b: a tick that ends with the progress-maker still owed IS the
+      // starvation event this patch removes. With the reorder above the frame has
+      // already had its turn, so this counts only the legitimate case where the
+      // frame's own gate refused the pass. The number that used to read "once per
+      // tick" must now read ~0 - that is the evidence, not the claim.
+      if(GetTickCount() - sliceStart >= COOP_BUDGET_MS)   // this pump's slice is spent
+      {
+         if(job != COOP_JOB_HEAVY_FRAME && s_coopOwed[COOP_JOB_HEAVY_FRAME] && frameIsProgressMaker)
+            s_coopFrameStarved++;
+         break;
+      }
    }
 }
 

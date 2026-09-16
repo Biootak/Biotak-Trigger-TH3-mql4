@@ -2307,6 +2307,8 @@ void ClearFactorLevels(const string objectPrefix)
     CacheClear();
 }
 
+#endif // BUILD_LITE
+
 #endif // EXTENDED_DRAWING_FUNCTIONS_MQH
 
 

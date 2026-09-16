@@ -733,10 +733,15 @@ LEARNING_ERROR_CODE SavePatternForLearning(
     data.timeframe = _Period;
     
     // ویژگی‌های موج - Validate positive values
-    int cachedDig = GetCachedDigits();
-    double cachedPt = GetCachedPoint();
-    double pipSize = (cachedDig == 3 || cachedDig == 5) ? cachedPt * 10 : cachedPt;
-    if(pipSize <= 0) pipSize = 0.0001; // Fallback
+    // P-UI-57c: use the ONE pip definition the rest of the indicator draws with.
+    // This line used to derive its own - `(digits == 3 || digits == 5) ? p*10 : p`
+    // - which disagrees with GetCachedPipSize() on 2-digit metals (gold and silver
+    // want p*10 there) and on 1-digit instruments. On XAUUSD the labels read 0.1
+    // while the learning CSV was written in 0.01: a silent 10x disagreement
+    // between the number the user sees and the number the frequency optimiser
+    // learns from. One owner, one answer.
+    double pipSize = GetCachedPipSize();
+    if(!(pipSize > 0.0) || !MathIsValidNumber(pipSize)) pipSize = 0.0001; // Fallback
     
     data.XA_Pips = MathAbs(waves.XA_Distance) / pipSize;
     data.AB_Pips = MathAbs(waves.AB_Distance) / pipSize;

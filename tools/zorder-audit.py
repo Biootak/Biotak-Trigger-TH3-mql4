@@ -113,9 +113,14 @@ def parse_aliases():
 # Each line is a chain of rungs that must be strictly increasing. Split into
 # sections exactly as the ladder file documents them.
 ORDER = [
+    # P-BK-61: Z_BOX_GRIP (the corner resize handles — BKMIDGRIP-OFF retired the four
+    # mid-edge squares) joins the box' own band, right
+    # above the P-BK-59 centre grip: both are SCREEN objects of one box, and a handle
+    # must never be paintable over the text layer / the card rungs above it.
     ("chart content", ["Z_CHART_ZONE", "Z_CHART_LINE", "Z_CHART_TOOL", "Z_BOX_RAY",
-                       "Z_BOX_FILL", "Z_BOX_EDGE", "Z_BOX_INFO", "Z_BOX_TEXT",
-                       "Z_CHART_LABEL"]),
+                       "Z_BOX_FILL", "Z_BOX_EDGE", "Z_BOX_DOT", "Z_BOX_GRIP",
+                       "Z_BOX_INFO",
+                       "Z_BOX_TEXT", "Z_CHART_LABEL"]),
     ("under the card", ["Z_BOX_HINT", "Z_BOX_BADGE", "Z_STRIP", "Z_STRIP_ICON",
                         "Z_STRIP_OVER"]),
     ("ring menu", ["Z_MENU_PANEL", "Z_MENU_DOT", "Z_MENU_ITEM", "Z_MENU_ICON",
@@ -323,7 +328,7 @@ def check_text_rung(ladder):
                 "label falls back to ObjectCreate's default ZORDER 0, i.e. the same rung "
                 "as the candle/zone art, and the paint order is creation order again" % rel]
     art = ("Z_CHART_ZONE", "Z_CHART_LINE", "Z_CHART_TOOL", "Z_BOX_RAY",
-           "Z_BOX_FILL", "Z_BOX_EDGE", "Z_BOX_INFO", "Z_BOX_TEXT")
+           "Z_BOX_FILL", "Z_BOX_EDGE", "Z_BOX_DOT", "Z_BOX_INFO", "Z_BOX_TEXT")
     if ladder.get("Z_CHART_LABEL", 0) <= max(ladder.get(n, 0) for n in art):
         return ["the text rung Z_CHART_LABEL (%d) is no longer above every chart-space art "
                 "rung (max %d)"

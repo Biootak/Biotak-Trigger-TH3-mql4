@@ -3888,7 +3888,14 @@ def check_click_ownership(o):
     ok("click-ownership",
        "the UI claims exactly the surfaces it has VISIBLE, measured from its own layout")
 
-    if "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&" not in bk:
+    # P-BK-65 re-anchored this gate: the latch's condition now leads with the gesture
+    # guard (`!bkGripHeld &&`) so a mouse-channel press edge cannot re-latch a box that a
+    # live chip drag already owns (a mid-drag baseline is the P-BK-25 trap). The UI test
+    # still stands exactly where it did - one term later - and the anchor below proves it
+    # is still the term that gates the time/price conversion, not a mention in passing.
+    latch = ("!UIPointerOverSurface((int)lparam, (int)dparam) &&\n"
+             "            ChartXYToTimePrice(0, (int)lparam, (int)dparam, ssw, sct, scp)")
+    if latch not in bk:
         fail("click-ownership",
              "the box tool's press latch arms on a press that landed on a panel: the "
              "next move drags the box hidden behind the card")
@@ -4807,14 +4814,19 @@ def selftest():
     # The engine MUST stay comments, not merely uncalled: the reader index is
     # textual, so a dormant-but-compiling `BaseKnotMagnetPrice` would count as
     # a reader and the re-added row would pass while moving nothing.
-    seed("a retired magnet row is rendered again", PANELS,
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 2, 1, \"magnet\");\n")
-    seed("a retired magnet-sens row is rendered again", PANELS,
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n",
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, \"droplet\");\n"
-         "      PnlSpecAdd(8, PNL_K_LEGACY, 3, 1, \"magnet\");\n")
+    # P-BK-61 (2026-09-16): THE TWO MAGNET SEEDS MOVED OUT OF THIS LIST, and the
+    # reason is the check's own rule rather than a weakening of it. BKMAGNET2-OFF had
+    # left both MAGNET rows hidden with NO reader at all, so re-rendering one was this
+    # check's specimen ("a control whose press moves nothing"). The box' new HANDLE
+    # magnet («با کنترل هم مگنت فعال میشه ... حرکت رو چسبوند به کندل های و لو که دقیق
+    # باشه») reads `inpEnableMagnet` / `inpMagnetSensitivityPips` again — deliberately,
+    # through ONE gated reader in BaseKnotTool (BaseKnotGripSnapPrice; the scoping is
+    # asserted by panel-wiring-audit's `[bkmagnet]` group) — so a re-rendered row would
+    # now move state that IS read elsewhere and can no longer be a specimen here.
+    # What still proves this check is the MIDPOINT specimen below (P-LBL-09 moved it
+    # there for exactly the same reason: that flag is still read by nobody). The rows
+    # themselves stay HIDDEN, and `check_bkmagnet` fails loudly if one comes back —
+    # which is the right place for that decision to be argued, not this seed.
     # P-LBL-09 (2026-09-14): the ATR card's ROW GAP row is no longer the dead one
     # - `g_atrLabelRowGap` became LIVE, because the bottom-right trade card's
     # layout now reads it. The seed moves to the still-dead MIDPOINT row of card
@@ -5070,9 +5082,11 @@ def selftest():
     seed("the countdown tag stops being claimed", PANELS,
          "   if(LiveCountdownPointInside(mx,my)) return true;",
          "   if(false) return true;")
+    #  (P-BK-65 re-anchored these two: the latch's UI term is now the second term of
+    #  its condition, the first being the live-gesture guard)
     seed("the box drag latch arms from a press on the panel", BASEKNOT,
-         "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
-         "if(true &&\n")
+         "            !UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
+         "            true &&\n")
     seed("one box-tool site stops asking where the pixel is", BASEKNOT,
          "if(UIPointerOverSurface((int)lparam, (int)dparam)) return true;",
          "if(false) return true;")
@@ -5104,9 +5118,9 @@ def selftest():
 
     # P-BUILD-01: the Lite entry must keep compiling - one seed per way it broke.
     seed("a shared module calls a UI-only function unguarded", BASEKNOT,
-         "if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
-         "if(PnlPointInside((int)lparam, (int)dparam)) return true;\n"
-         "         if(!UIPointerOverSurface((int)lparam, (int)dparam) &&\n")
+         "            !UIPointerOverSurface((int)lparam, (int)dparam) &&\n",
+         "            PnlPointInside((int)lparam, (int)dparam) &&\n"
+         "            !UIPointerOverSurface((int)lparam, (int)dparam) &&\n")
     seed("the shared call loses its Lite stub", GLOBALS,
          "bool UIPointerOverSurface(const int mx,const int my)\n{\n   return false;\n}\n#endif\n",
          "#endif\n")

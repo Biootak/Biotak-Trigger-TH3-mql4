@@ -104,12 +104,24 @@
 #define CIR_PIN             8   // Custom Price Pin
 #define CIR_STEP_OVERRIDE   9   // Step Mode Override
 // FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
-#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (drag-draw or 2-click box + Entry/SL/TP)
-
-//--- ring layout (main circle — 6 items; Zones first = the main feature)
+#define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (drag-draw or 2-click box + Entry/SL/TP).
+                                // P-UI-95: a MAIN-RING item now — never behind the Tools ladder
+//--- ring layout (main circle — 7 items; Zones first = the main feature)
 // TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
 // VIEWLOCK-OFF: RING_VLOCK slot retired (was 4) — HTF/TOOLS shifted down again.
-#define RING_COUNT 6
+// P-UI-95 (2026-09-16, user: «ایتم اندازه گیری بیس رو بیار توی منوی اصلی»): THE
+// MEASURING TOOL IS A MAIN-RING ITEM. It was TOOL_BASEKNOT — the third cell of the
+// Tools sub-menu, behind one more click than the features it measures those levels
+// for. It is APPENDED (`RING_BASEKNOT`), so no existing slot moves and every
+// persisted state key keeps its meaning.
+// The item needs NO new machinery: it has no on/off state of its own (the light is
+// `BaseKnotSessionActive`, the same query every momentary item uses), a PRESS arms
+// the draw session through the ONE arm path (`CircArmBaseKnot`) and a HOLD opens the
+// Base Box card (`FeaturePanel`) — both of which the Tools cell already ran.
+// Seven items need r >= (44 + 6) / 2 / sin(180/7) = 57.6 px to keep their pitch; the
+// shipped CIRC_RADIUS is 64, so the default look clears it with 6.4 px to spare — and
+// a menu dragged near an edge collapses to the rail at CIRC_EDGE_TRIGGER anyway.
+#define RING_COUNT 7
 #define CIRC_ITEM_COUNT RING_COUNT  // alias for legacy code
 #define RING_ZONES    0
 #define RING_TRIGGER  1
@@ -118,17 +130,23 @@
 // VIEWLOCK-OFF: #define RING_VLOCK    4
 #define RING_HTF      4
 #define RING_TOOLS    5
+#define RING_BASEKNOT 6   // P-UI-95: the MEASURING tool — click arms, hold = Base Box card
 
 //--- Tools sub-menu (sub-menu under Tools) — SCALABLE LADDER
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
-// the Step Mode card now. Base/Knot is the momentary drawing tool (click =
-// draw, hold = Base Box style card).
+// the Step Mode card now.
+// UIBK-OFF (P-UI-95): Base/Knot was the cell at 2 (click = draw, hold = Base Box
+// style card); the MEASURING tool is a MAIN-RING item now (RING_BASEKNOT), so the
+// ladder is back to two cells. Restore it by counting 3 back into TOOL_COUNT and
+// uncommenting the three sites marked UIBK-OFF (the define, ToolFeature's line and
+// the click branch in HandleButtonClick) — the layout needs no change, because
+// TOOL_COUNT is the only number it reads.
 // Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); TOOL_COUNT
 // is the only number the layout reads — it picks its own geometry from it.
-#define TOOL_COUNT 3
+#define TOOL_COUNT 2
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
-#define TOOL_BASEKNOT         2
+// UIBK-OFF: #define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 
 // R-SUBLADDER (2026-09-11): the sub-menu picks its geometry from TOOL_COUNT so
@@ -209,17 +227,25 @@ enum ENUM_SUB_MODE
 //+------------------------------------------------------------------+
 
 // Tools sub-panels mapping
-int RingPanel(const int ringIdx)  { return RingFeature(ringIdx); }
-int ToolPanel(const int toolIdx)
+//--- WHICH CARD DOES ONE FEATURE OPEN? ONE OWNER for both families (P-UI-95).
+// A ring item's card used to be its feature code by IDENTITY, which could only hold
+// while no ring item needed a card of its own: the measuring tool opens the Base Box
+// style card (12) — the answer the Tools cell always gave, and the reason a HOLD on
+// the NEW ring item must not fall through to panel 10 (the retired Factor card).
+// With one owner the ring's hold and the (retired) Tools cell's hold can never open
+// two different cards, and a future item that needs its own changes THIS function.
+// `-1` (an unknown tool index) keeps the callers' own "nothing to open" guard valid.
+int FeaturePanel(const int feat)
 {
-   int feat = ToolFeature(toolIdx);
-   if(feat == CIR_PIN) return 8; // PIN panel
-   if(feat == CIR_STEP_OVERRIDE) return 9; // Step Mode override panel
-   // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override panel
-   // Base/Knot opens the Base Box style card (12) on hold — click still arms drawing.
-   if(feat == CIR_BASEKNOT) return 12; // Base Box border card
-   return -1;
+   if(feat == CIR_PIN)           return 8;    // Custom Price Pin card
+   if(feat == CIR_STEP_OVERRIDE) return 9;    // Step Mode override card
+   // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override card
+   if(feat == CIR_BASEKNOT)      return 12;   // Base Box style card (a press still arms drawing)
+   return feat;                               // every other feature's card IS its code
 }
+
+int RingPanel(const int ringIdx)  { return FeaturePanel(RingFeature(ringIdx)); }
+int ToolPanel(const int toolIdx)  { return FeaturePanel(ToolFeature(toolIdx)); }
 
 //--- Ring / Tools mapping helpers (feature indices are stable panel keys)
 int RingFeature(const int ringIdx)
@@ -234,6 +260,7 @@ int RingFeature(const int ringIdx)
        // TH3TOOL-OFF: case RING_TH3: return CIR_TH3;
        case RING_HTF:     return CIR_HTF;
       case RING_TOOLS:   return CIR_TOOLS;
+      case RING_BASEKNOT: return CIR_BASEKNOT;   // P-UI-95: the measure tool's own ring slot
    }
    return -1;
 }
@@ -242,7 +269,7 @@ int ToolFeature(const int toolIdx)
 {
    if(toolIdx == TOOL_PIN)             return CIR_PIN;
    if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
-   if(toolIdx == TOOL_BASEKNOT)        return CIR_BASEKNOT;
+   // UIBK-OFF (P-UI-95): if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;
    // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
    return -1;
 }
@@ -3137,6 +3164,36 @@ void BaseKnotExitToMenu()
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-95 (2026-09-16) — THE MEASURING TOOL'S ARM PATH, ONE OWNER.  |
+//|                                                                  |
+//| The steps below used to be spelled INSIDE the Tools cell's        |
+//| click branch, and the item they belong to is a MAIN-RING item now |
+//| (RING_BASEKNOT, the user's «ایتم اندازه گیری بیس رو بیار توی منوی   |
+//| اصلی»). A second copy is how the two surfaces would drift — the   |
+//| ring forgetting `PnlCloseAll` (a stale style card or MINI strip    |
+//| left floating over a live draw session), or the save landing      |
+//| after the object wipe. So the steps MOVE here, verbatim: the ring  |
+//| item calls it, and the retired Tools cell (UIBK-OFF) still calls   |
+//| the same one — restoring that cell cannot restore a second path.  |
+//|                                                                  |
+//| Momentary by construction: the ring hides (room for analysis), the |
+//| chart locks inside BaseKnotArm(), and the drag-draw flow starts.   |
+//| No indicator recalc — REFRESH_NONE (Arm redraws itself).           |
+//+------------------------------------------------------------------+
+int CircArmBaseKnot()
+{
+   g_UI.menuVisible = false;
+   DeleteMenu();
+   CreateMenu();   // orb only — the ring is gone while menuVisible=false
+   SaveUIStates();
+   PnlCloseAll();   // a stale strip/card must not survive under the draw session
+   BaseKnotArm();
+   UpdateCircularBadges();
+   ChartRedraw();
+   return REFRESH_NONE;
+}
+
+//+------------------------------------------------------------------+
 //| Handle Button Click Events                                       |
 //+------------------------------------------------------------------+
 int HandleButtonClick(const string clickedObject)
@@ -3261,19 +3318,13 @@ int HandleButtonClick(const string clickedObject)
        }
        else if(tfeat == CIR_BASEKNOT)
        {
-          // Momentary drawing tool: hide the ring (room for analysis),
-           // lock the chart inside BaseKnotArm(), enter the drag-draw flow.
-          // No indicator recalc — REFRESH_NONE (Arm redraws itself).
-          g_UI.menuVisible = false;
-          DeleteMenu();
-          CreateMenu();   // orb only — the ring is gone while menuVisible=false
-          SaveUIStates();
-          PnlCloseAll();   // a stale strip/card must not survive under the draw session
-          BaseKnotArm();
-          ToolsUpdateItemState(tidx);
-          UpdateCircularBadges();
-          ChartRedraw();
-          return REFRESH_NONE;
+          // UIBK-OFF (P-UI-95): the MEASURING tool has its own RING slot now
+          // (RING_BASEKNOT) and this cell is retired in place. It can no longer be
+          // reached (ToolFeature no longer maps TOOL_BASEKNOT), and the arm path it
+          // ran is `CircArmBaseKnot`'s own — restore the cell by counting
+          // TOOL_BASEKNOT back into TOOL_COUNT and uncommenting these two lines.
+          // UIBK-OFF: ToolsUpdateItemState(tidx);
+          // UIBK-OFF: return CircArmBaseKnot();
        }
       // FACTORBTN-OFF:
       //else if(tfeat == CIR_FACTOR_OVERRIDE)
@@ -3419,6 +3470,14 @@ int HandleButtonClick(const string clickedObject)
       // gate's displayed-state list (it is now).
       RequestUISync();   // P-UI-40b: the HTF card's SHOW row displays this flag
       refreshFlags = REFRESH_HTF;
+   }
+   else if(feat == CIR_BASEKNOT)
+   {
+      // P-UI-95: the MEASURING tool. It carries NO on/off state of its own — the light
+      // is `BaseKnotSessionActive` (CircFeatureOn) and the press ARMS the drag-draw
+      // session through the ONE arm path, exactly as the Tools cell used to. Nothing
+      // on the chart is recalculated for it (REFRESH_NONE).
+      refreshFlags = CircArmBaseKnot();
    }
 
    CircUpdateItemState(idx);

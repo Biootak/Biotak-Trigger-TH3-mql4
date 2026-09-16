@@ -183,6 +183,10 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
                 #ifdef ENABLE_DEBUG_LOGS
                 // CRITICAL LOG: Now showing Pips instead of Points for clarity
                 static datetime s_lastLogTime = 0;
+                // `now` was never declared anywhere in this tree - the debug build
+                // has not compiled since this block was added. TimeCurrent() is what
+                // the 10-second gate against a datetime was always meant to read.
+                datetime now = TimeCurrent();
                 if(now - s_lastLogTime > 10) { // Log every 10 seconds
                     string currentFractal = FRACTAL_TIMEFRAMES[baseIdx + g_fractalShift];
                     Print("[FRACTAL_LOG] Stable ATR: ", DoubleToString(atrPips, 1), " Pips",

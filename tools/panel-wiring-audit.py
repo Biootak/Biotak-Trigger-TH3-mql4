@@ -1001,6 +1001,172 @@ def check_modal():
     return problems
 
 
+def check_measure_item():
+    """[measure] - the measuring tool is ONE item with ONE arm path (P-UI-95).
+
+    P-UI-95 (2026-09-16, user: «ایتم اندازه گیری بیس رو بیار توی منوی اصلی»): the
+    Base / Knot measuring tool left the Tools sub-menu and became a MAIN-RING item.
+    Three silent breakages are what this section exists for:
+
+      * the item is reachable from EXACTLY ONE family: `RING_COUNT` counts it, its
+        APPENDED `RING_BASEKNOT` slot maps to `CIR_BASEKNOT`, and the Tools ladder
+        does not count it a second time - a tool index with no mapping is a cell
+        that draws and does nothing;
+      * a press ARMS through ONE owner (`CircArmBaseKnot`), whose steps must all
+        survive, and `BaseKnotArm()` has exactly ONE call site: a second copy of the
+        arm path is how one surface would forget `PnlCloseAll()` (the style card or
+        MINI strip left floating over a live draw session) or `SaveUIStates()`;
+      * a HOLD opens the card the Tools cell always opened - `FeaturePanel` maps the
+        measure feature to the Base Box card (12) and BOTH families resolve through
+        it. By identity a ring item's card id is its feature code, so the measure
+        tool's hold would open panel 10 (the retired Factor card) instead.
+    """
+    problems = []
+    code = strip_comments(read(MENU))
+
+    def num(name):
+        m = re.search(r"(?m)^\s*#define\s+%s\s+(\d+)" % name, code)
+        return int(m.group(1)) if m else None
+
+    ring, slot, tools = num("RING_COUNT"), num("RING_BASEKNOT"), num("TOOL_COUNT")
+    if ring is None or slot is None or tools is None:
+        return ["RING_COUNT / RING_BASEKNOT / TOOL_COUNT are gone - the measure item "
+                "has no declared slot (P-UI-95)"]
+    if slot != ring - 1:
+        problems.append("RING_BASEKNOT (%d) is not the slot RING_COUNT (%d) counts: an "
+                        "APPENDED slot is what keeps every existing state key's "
+                        "meaning (P-UI-95)" % (slot, ring))
+    feats = body(code, "RingFeature(") or ""
+    if "case RING_BASEKNOT: return CIR_BASEKNOT;" not in feats:
+        problems.append("the measure slot no longer maps to CIR_BASEKNOT - the item "
+                        "cannot be reached at all")
+    tf = body(code, "ToolFeature(") or ""
+    if "TOOL_BASEKNOT" in tf:
+        problems.append("the measure tool is counted in the Tools ladder again: ONE "
+                        "family owns it, or two cells arm one session (P-UI-95)")
+    arm = body(code, "CircArmBaseKnot(")
+    if arm is None:
+        problems.append("CircArmBaseKnot() is gone - the arm path has no owner")
+    else:
+        for need in ("g_UI.menuVisible = false;", "DeleteMenu();", "CreateMenu();",
+                     "SaveUIStates();", "PnlCloseAll();", "BaseKnotArm();",
+                     "ChartRedraw();", "return REFRESH_NONE;"):
+            if need not in arm:
+                problems.append("the ONE arm path no longer runs `%s`" % need)
+        if code.count("BaseKnotArm();") != 1:
+            problems.append("BaseKnotArm() is called from %d site(s): a second copy of "
+                            "the arm path is how two surfaces drift (P-UI-95)"
+                            % code.count("BaseKnotArm();"))
+        if code.count("CircArmBaseKnot(") < 2:
+            problems.append("nothing consumes the arm path - no surface can start a "
+                            "measuring session")
+    panel = body(code, "FeaturePanel(")
+    if panel is None or not re.search(r"if\(feat == CIR_BASEKNOT\)\s*return 12;", panel):
+        problems.append("FeaturePanel() no longer sends the measure feature to the "
+                        "Base Box card (12): a hold would open the item's own feature "
+                        "code instead (P-UI-95)")
+    for who, sig in (("the ring", "RingPanel("), ("the tools cell", "ToolPanel(")):
+        if "FeaturePanel(" not in (body(code, sig) or ""):
+            problems.append("%s no longer resolves its card through FeaturePanel - the "
+                            "two families can open different cards for one feature" % who)
+    return problems
+
+
+def check_bk_info_rungs():
+    """[bk-info] - the Base Box INFO row's THREE rungs, on every surface (P-BK-58).
+
+    P-BK-58 (2026-09-16, user: «لیبل اطلاعات بیس را کنار همان کارت/ردیف خانوادهٔ لیبلها
+    هم نشان بده تا کاربر بتواند بین «چسبیده به باکس» و «گوشهٔ ثابت» یکی را انتخاب کند»):
+    the note's HOME became a user setting, so the SAME number is now written by four
+    surfaces and read by one probe:
+
+      * the row's own def (`BkSecRowDef`, sec 4) offers the third option;
+      * BOTH card mirrors (card 12's Setup tab and the MINI strip, card 13 row 2) clamp
+        it to the same bound - a strip that clamps 0..1 silently eats the new rung;
+      * the settings layer clamps it on INIT (the input is a raw int) and on RESTORE
+        (a chart saved before the rung must not come back as something else);
+      * `BK_NOTE_CHART` (BaseKnotTool) is the LAST rung the row offers, because that
+        is the value the module compares against - a row that grew a fourth option
+        without moving it would make the corner unreachable.
+    NOTE: the row's own VALUE layer is delegated to `BkSecCurrent`/`BkSecApply`, so the
+    generic [values] walk above is not the place for this: the two mirrors are.
+    """
+    problems = []
+    panels = read(PANELS)
+    settings = read(SETTINGS)
+    knot = read(BASEKNOT)
+    rung = re.search(r"(?m)^\s*#define\s+BK_NOTE_CHART\s+(\d+)", strip_comments(knot))
+    if not rung:
+        return ["BK_NOTE_CHART is gone - the corner rung has no address (P-BK-58)"]
+    top = int(rung.group(1))
+
+    sec = body(panels, "BkSecRowDef(") or ""
+    m = re.search(r'sec\s*==\s*4\s*\)\s*\{\s*kind\s*=\s*2;\s*label\s*=\s*"INFO";\s*'
+                  r'opts\s*=\s*"([^"]*)";\s*minV\s*=\s*(\d+);\s*maxV\s*=\s*(\d+);', sec)
+    if not m:
+        problems.append("the Base Box Setup INFO row is gone or was reshaped - the note's "
+                        "home is not reachable from the card (P-BK-58)")
+    else:
+        opts, lo, hi = m.group(1).split("|"), int(m.group(2)), int(m.group(3))
+        if hi != top:
+            problems.append("the INFO row offers 0..%d while BK_NOTE_CHART is %d: the "
+                            "corner is unreachable (P-BK-58)" % (hi, top))
+        if lo != 0:
+            problems.append("the INFO row's floor is %d, not 0: Auto is unreachable" % lo)
+        if len(opts) != top + 1:
+            problems.append("the INFO row names %d option(s) (%s) for %d rung(s) - a rung "
+                            "with no name (P-BK-58)"
+                            % (len(opts), "|".join(opts), top + 1))
+        if not opts or opts[0].strip() != "Auto":
+            problems.append("the INFO row's first rung is `%s`, not Auto: the shipped "
+                            "behaviour moved" % (opts[0] if opts else ""))
+
+    # both card mirrors write the SAME state with the SAME bound
+    for what, pat in (("the Setup tab", r"sec\s*==\s*4\)\s*\{\s*g_bkShowInfo\s*=\s*ClampInt\("
+                                     r"\(int\)MathRound\(v\),\s*0,\s*(\d+)\)"),
+                      ("the MINI strip", r"row\s*==\s*2\)\s*\{\s*g_bkShowInfo\s*=\s*ClampInt\("
+                                        r"\(int\)MathRound\(v\),\s*0,\s*(\d+)\)")):
+        hit = re.search(pat, panels)
+        if not hit:
+            problems.append("%s no longer writes g_bkShowInfo - a surface that stopped "
+                            "mirroring the row (P-BK-58)" % what)
+        elif int(hit.group(1)) != top:
+            problems.append("%s clamps the note's home to 0..%s while the rung is %d: the "
+                            "corner is eaten there (P-BK-58)" % (what, hit.group(1), top))
+
+    # ... and the settings layer, on init AND on restore
+    for what, pat in (("init", r"g_bkShowInfo\s*=\s*ClampSettingInt\(inpBKShowInfo,\s*0,\s*(\d+)\)"),
+                      ("restore", r"g_bkShowInfo\s*=\s*ClampSettingInt\(\(int\)GlobalVariableGet\([^)]*\)"
+                                  r",\s*0,\s*(\d+)\)")):
+        hit = re.search(pat, settings)
+        if not hit:
+            problems.append("the settings layer no longer clamps the note's home on %s "
+                            "- a raw input or an old chart can land outside the rungs "
+                            "(P-BK-58)" % what)
+        elif int(hit.group(1)) != top:
+            problems.append("the settings layer clamps to 0..%s on %s while the rung is "
+                            "%d (P-BK-58)" % (hit.group(1), what, top))
+
+    # the MINI strip's own def must offer the same list (a strip that shows only two
+    # captions cannot be scrolled to the third rung on that surface)
+    # The MINI strip's own def (card 13 lives in the same row-def writer) must offer the same
+    # list: a strip whose captions stop at two cannot be scrolled to the third rung there.
+    mini = body(panels, "void PnlSetDef(") or ""
+    mm = re.search(r'row\s*==\s*2\s*\)\s*\{\s*kind\s*=\s*2;\s*label\s*=\s*"INFO";\s*'
+                   r'opts\s*=\s*"([^"]*)";\s*minV\s*=\s*\d+;\s*maxV\s*=\s*(\d+);', mini)
+    if mm is None:
+        problems.append("the MINI strip's INFO row is gone or was reshaped (P-BK-58)")
+    else:
+        if mm.group(1).split("|") != (opts if m else []):
+            problems.append("the MINI strip names `%s` where the card names `%s`: two "
+                            "captions for one setting (P-BK-58)"
+                            % (mm.group(1), "|".join(opts) if m else ""))
+        if int(mm.group(2)) != top:
+            problems.append("the MINI strip offers 0..%s while the rung is %d (P-BK-58)"
+                            % (mm.group(2), top))
+    return problems
+
+
 def check_rows():
     """[spec]/[def]/[values] - a row nobody can read, or an address nobody wrote."""
     problems = []
@@ -1740,6 +1906,226 @@ def check_bk_drag():
     if "BK_GRAB_T1" not in fol or "BK_GRAB_P2" not in fol:
         problems.append("the resize half of the cursor fallback stopped writing the grabbed values "
                         "(P-BK-19b) - the side the user holds would not follow the hand")
+    # (g) P-BK-61: THE EIGHT HANDLE GRIPS are the resize gesture the user asked for
+    #     («یک کلیک چپ میکنم راحت هر طرف که بخوام میکشم»). They exist BECAUSE a native
+    #     drag may not be fought: MT4's own rectangle has no resize points at all, so
+    #     the handles are separate selectable screen objects, the TERMINAL drags the
+    #     chip, and this module is the gesture's ONE writer. Three promises hold it
+    #     together, and each one has a seed below.
+    grip = body(src, "void BaseKnotGripDrag(")
+    if grip is None:
+        problems.append("BaseKnotGripDrag() is gone - the handle resize has no writer (P-BK-61)")
+    else:
+        if "s_bkGripLive = side;" not in grip:
+            problems.append("the handle drag does not publish WHICH side it writes (P-BK-61) - the "
+                            "keeper would rewrite the chip under the hand and MT4 would cancel the "
+                            "native drag (P-BK-15)")
+        if "s_bkNativeClaim = true;" not in grip:
+            problems.append("the handle drag does not claim the gesture for the terminal (P-BK-61) - "
+                            "the retired cursor fallback would stay armed over a gesture it may not "
+                            "write")
+        if "BaseKnotMoveChildren(" not in grip:
+            problems.append("the handle drag stopped carrying the rest of the family (P-BK-61) - the "
+                            "edges and the levels would only catch up on release")
+        if "BaseKnotSync(" in grip:
+            problems.append("the handle drag runs a FULL Sync per step (P-BK-61) - the box' own "
+                            "lesson (P-BK-07/P-PERF-42) is that this is exactly the lag")
+    # (g0) BKMIDGRIP-OFF (2026-09-16): FOUR CORNERS, and the COUNT lives in ONE place.
+    #     The mid-edge chips are retired by user decision, so the live family is the
+    #     four corners; every sweep must ask `BK_GRIP_COUNT` instead of a literal 8,
+    #     and a chart the older build already wrote must be swept ONCE - a ghost chip
+    #     is a SELECTABLE square that drags nothing (the terminal would keep handing
+    #     the selection to it).
+    at = body(src, "int BaseKnotGripSideAt(")
+    if at is None:
+        problems.append("BaseKnotGripSideAt() is gone - the handle family has no plan (BKMIDGRIP-OFF)")
+    else:
+        corners = re.findall(r"if\(i == \d+\) return \(BK_GS_[TBLR] \| BK_GS_[TBLR]\);", at)
+        if re.search(r"if\(i == \d+\) return BK_GS_[TBLR];", at):
+            problems.append("a single-side (mid-edge) chip row is live again (BKMIDGRIP-OFF) - the "
+                            "user retired exactly those four squares")
+        if len(corners) != 4:
+            problems.append("BaseKnotGripSideAt() plans %d corner chips, the family is FOUR corners "
+                            "(BKMIDGRIP-OFF)" % len(corners))
+        cnt = re.search(r"#define\s+BK_GRIP_COUNT\s+(\d+)", src)
+        if cnt is None or int(cnt.group(1)) != len(corners):
+            problems.append("BK_GRIP_COUNT does not equal the corner rows of BaseKnotGripSideAt() "
+                            "(BKMIDGRIP-OFF) - a sweep would walk a chip that has no side")
+        for sig, why in (("bool BaseKnotGripsFollow(", "the keeper's sweep"),
+                         ("bool BaseKnotSelectionMarkersWipe(", "the drop's wipe")):
+            blk = body(src, sig)
+            if blk is not None and re.search(r"i < 8\b", blk):
+                problems.append("%s loops to a hard-coded 8 (BKMIDGRIP-OFF) - the count lives in "
+                                "BK_GRIP_COUNT and nowhere else" % why)
+    lazy = body(src, "void BaseKnotLazyInit(")
+    if lazy is None or '"GT"' not in lazy:
+        problems.append("the one-time sweep of the retired mid-edge chips is gone (BKMIDGRIP-OFF) - "
+                        "a chart the older build wrote keeps four selectable squares that drag nothing")
+    keep = body(src, "bool BaseKnotGripsFollow(")
+    if keep is None:
+        problems.append("BaseKnotGripsFollow() is gone - the handle family has no owner (P-BK-61)")
+    else:
+        if "side == skip" not in keep:
+            problems.append("the handle keeper no longer spares the chip the hand is dragging "
+                            "(P-BK-61/P-BK-15) - writing it cancels the terminal's own drag")
+        if "ObjectDelete" not in keep:
+            problems.append("the handle keeper never retires a chip (P-BK-61) - a deselected or "
+                            "locked box would keep its eight handles on screen")
+        if "OBJPROP_SELECTABLE, true" not in keep and "OBJPROP_SELECTABLE, true" not in (body(src, "void BaseKnotGripCreate(") or ""):
+            problems.append("a handle is stored UNSELECTABLE (P-BK-61) - the terminal would never "
+                            "drag it and the whole feature would be silently absent")
+    mk = body(src, "void BaseKnotGripCreate(")
+    if mk is None:
+        problems.append("BaseKnotGripCreate() is gone - the handle look has no owner (P-BK-61)")
+    elif "OBJ_RECTANGLE_LABEL" not in mk:
+        problems.append("a handle is no longer a SCREEN object (P-BK-61) - the design rests on MT4 "
+                        "dragging a selectable screen square natively")
+    if events is not None and "BaseKnotGripDrag(" not in events:
+        problems.append("no OBJECT_DRAG branch routes a handle to its resize (P-BK-61) - the handles "
+                        "would be draggable objects that move nothing (P-UI-47's fault, in a new place)")
+    # (h) P-BK-61b: A BODY DRAG IS A MOVE AND ONLY A MOVE («از رنگ ریسایز نشه فقط درگ بشه»).
+    #     MetaTrader's magnet snaps a dragged rectangle's two anchors independently (the
+    #     fact behind P-BK-25), so the FILL could grow the box on a magnet-enabled chart.
+    #     The release puts the press-time SIZE back - measured, never invented (P-BK-25's
+    #     trusted baseline), and gated so a handle resize is not undone by it.
+    heal = body(src, "bool BaseKnotBodySizeHeal(")
+    if heal is None:
+        problems.append("BaseKnotBodySizeHeal() is gone (P-BK-61b) - grabbing the box' FILL can "
+                        "resize it again on a magnet-enabled terminal")
+    else:
+        if "s_bkSnapTrusted" not in heal:
+            problems.append("the body-size heal runs without a TRUSTED press baseline "
+                            "(P-BK-25/P-BK-61b) - a snapshot taken mid-drag reads the terminal's "
+                            "own translation as a resize and snaps the box")
+        if "GetCachedPoint()" not in heal:
+            problems.append("the body-size heal lost its \"size unchanged\" compare (P-BK-61b) - "
+                            "every plain body drag would pay a box rewrite on release")
+    if events is not None and "BaseKnotBodySizeHeal(" not in events:
+        problems.append("the release no longer restores the press-time SIZE for a body drag "
+                        "(P-BK-61b) - the FILL resizes the box again")
+    if events is not None and "if(bkGripWas == 0) BaseKnotBodySizeHeal(" not in events:
+        problems.append("the body-size heal is not gated on the gesture being a BODY drag "
+                        "(P-BK-61b) - it would undo a handle resize on every release")
+    # (i) P-BK-62: THE VIEW THE DRAG/RESIZE OWNS MUST STAY OWNED. «همیشه موقع درگ و
+    #     ریسایز چارت پشتش قفل بشه» - the box tool locks the view from three
+    #     gestures, but only ONE of them (the draw session) was visible to the
+    #     reconcile watchdog, and the drag's own guard then early-returned for the
+    #     rest of the gesture: the chart panned under a live drag/resize. Two
+    #     promises hold it, and neither may be lost alone.
+    owned = body(src, "bool BaseKnotViewOwned(")
+    if owned is None:
+        problems.append("BaseKnotViewOwned() is gone (P-BK-62) - the reconcile watchdog has "
+                        "no way to see an IDLE box drag or a handle resize, so it hands the "
+                        "view back under the user's hand")
+    else:
+        if "s_bkDragLock" not in owned or "g_bkState" not in owned:
+            problems.append("BaseKnotViewOwned() no longer answers for ALL THREE gestures "
+                            "(P-BK-62) - whichever latch it drops is the one the watchdog "
+                            "yanks the lock away from mid-gesture")
+    intended = body(read(PANELS), "bool ChartLockIntended(")
+    if intended is None:
+        problems.append("ChartLockIntended() is gone - the chart lock's intent query has no owner")
+    elif "BaseKnotViewOwned()" not in intended:
+        problems.append("the chart-lock reconcile stopped asking the BOX TOOL's own latch "
+                        "(P-BK-62/P-UI-53) - an IDLE drag or a handle resize would have its "
+                        "lock restored from under it, and `BaseKnotDragLockOn`'s guard then "
+                        "keeps it unlocked for the rest of the gesture")
+    on = body(src, "void BaseKnotDragLockOn(")
+    if on is None:
+        problems.append("BaseKnotDragLockOn() is gone - the drag/resize has no lock holder (P-BK-62)")
+    elif "BaseKnotReassertLock(" not in on:
+        problems.append("an OWNED drag lock is taken once and never re-forced (P-BK-62) - the "
+                        "P-BK-14 rule the draw session already obeys (a third writer flips the "
+                        "props back while the button is still down)")
+    # (j) P-BK-63: A CLICK OUTSIDE THE BOX LETS IT GO («زمانی که خارج از باکس کلیک
+    #     شد سلکت بودنش غیرفعال بشه»). The drop must be reachable from the CHART
+    #     click, must ask the EXACT selection question, and must never run on a
+    #     click that belongs to the box itself or to the UI that is sitting over it.
+    drop = body(src, "bool BaseKnotDeselectOnChartClick(")
+    if drop is None:
+        problems.append("BaseKnotDeselectOnChartClick() is gone (P-BK-63) - a click outside "
+                        "the box leaves it selected and wearing its eight handles")
+    else:
+        if "UIPointerOverSurface" not in drop:
+            problems.append("the outside-click drop lost its UI gate (P-BK-63/P-UI-92) - a click "
+                            "on the Base Box strip would deselect the very box the card edits")
+        if "BaseKnotBoxAtPx(" not in drop or "BaseKnotBoxAt(" not in drop:
+            problems.append("the outside-click drop no longer proves the click is OUTSIDE "
+                            "(P-BK-63/P-BK-24) - a press on the box' own border would let go of "
+                            "the selection it just made")
+        if "BaseKnotDropSelection(" not in drop:
+            problems.append("the drop writes SELECTED itself instead of going through its ONE "
+                            "owner `BaseKnotDropSelection` (P-BK-26/P-BK-63)")
+        if "BaseKnotSelectedBoxId()" not in drop:
+            problems.append("the drop asks `BaseKnotSelectedId()` (P-BK-63) - that answers the "
+                            "NEWEST box when NOTHING is selected (P-BK-58's question), so a "
+                            "click on empty chart could deselect a box the user never chose")
+        if "BaseKnotSelectionMarkersWipe(" not in drop:
+            problems.append("the drop leaves the eight handles (and the centre grip) on screen "
+                            "(P-BK-63) - they are only retired by the 500 ms pump, so the "
+                            "deselected box keeps wearing its marks for up to half a second")
+    if events is not None and "BaseKnotDeselectOnChartClick(" not in events:
+        problems.append("no CHARTEVENT_CLICK branch drops the selection (P-BK-63) - the drop "
+                        "has no caller, which is how BKSELECT-KEPT's `BaseKnotDropSelection` "
+                        "went dormant in the first place")
+    # (k) P-BK-65: A RESIZE MAY NOT BE READ AS A MOVE. «چرا باکس ری‌سایز می‌کنم برمی‌گرده
+    #     سر جای خودش یا لبه دیگه سمت دیگه میرن» - the release decided the gesture's KIND
+    #     from the keeper's skip field (`s_bkGripLive`), and every mouse-channel press
+    #     edge cleared that field, so one down-flicker mid-drag made the release run
+    #     `BaseKnotBodySizeHeal` (the old WIDTH/HEIGHT back around the left/top corner →
+    #     the far edge jumps) and let the keeper rewrite the chip under the hand (P-BK-15:
+    #     MT4 cancels that drag). The kind now lives in its own latch, latched from the
+    #     terminal's own OBJECT_DRAG of a chip and cleared only by a real end.
+    if "s_bkGripGesture" not in src:
+        problems.append("the grip GESTURE latch is gone (P-BK-65) - the release has only the "
+                        "keeper's skip to read, and a press edge clears it mid-resize")
+    elif grip is not None and "s_bkGripGesture = side;" not in grip:
+        problems.append("a handle drag no longer latches the KIND of this press (P-BK-65) - the "
+                        "terminal just named the chip and that answer is dropped")
+    if events is not None:
+        if "int bkGripWas = s_bkGripGesture;" not in events:
+            problems.append("the release no longer reads the gesture's KIND (P-BK-65) - a chip "
+                            "resize can be executed as a body drag again, and the size heal "
+                            "then springs the box back to its press-time size")
+        if "int bkGripWas = s_bkGripLive;" in events:
+            problems.append("the release reads the keeper's SKIP as the gesture's kind "
+                            "(P-BK-65) - a mouse-channel press edge clears that field mid-drag, "
+                            "which IS the reported springback")
+        if "const bool bkGripHeld = (s_bkGripGesture != 0);" not in events:
+            problems.append("the press edge stopped asking whether a chip is held (P-BK-65) - it "
+                            "re-labels a live resize and arms a mid-drag baseline (P-BK-25)")
+        #     (anchored on the RESET block itself — `if(!bkGripHeld)` with the brace
+        #     that opens it — because the press LATCH below wears the same guard and
+        #     an anchor on the bare token would pass while one of the two was opened)
+        if "if(!bkGripHeld)\n" not in events:
+            problems.append("the press edge resets the gesture unconditionally again (P-BK-65) - "
+                            "the same flicker that made a resize snap back")
+        if "if(!bkGripHeld &&" not in events:
+            problems.append("the press edge latches its box AND re-takes the baseline during a "
+                            "live resize (P-BK-65/P-BK-25) - a mid-drag snapshot is a baseline "
+                            "the size heal may not measure against")
+        if "s_bkBoxNamed    = true;" not in events:
+            problems.append("the terminal's OBJECT_DRAG of a BOX no longer records WHAT it named "
+                            "(P-BK-65) - the body-size heal loses its ground truth and the "
+                            "press can stay labelled a resize")
+    heal = body(src, "bool BaseKnotBodySizeHeal(")
+    if heal is not None and "if(!s_bkBoxNamed) return false;" not in heal:
+        problems.append("the body-size heal runs without the terminal's own \"it dragged the "
+                        "BOX\" witness (P-BK-65) - a handle resize would be re-sized back "
+                        "around its left/top corner and the OPPOSITE edge would jump")
+    clear = body(src, "void BaseKnotGestureClear(")
+    if clear is None:
+        problems.append("BaseKnotGestureClear() is gone (P-BK-65) - the gesture state has no "
+                        "teardown owner")
+    else:
+        for tok in ("s_bkGripGesture = 0;", "s_bkGripLive    = 0;", "s_bkBoxNamed    = false;"):
+            if tok not in clear:
+                problems.append("BaseKnotGestureClear() does not clear %s (P-BK-65) - a stale "
+                                "gesture answer would outlive its press" % tok.strip())
+        deinit = body(src, "void BaseKnotOnDeinit(") or ""
+        if "BaseKnotGestureClear();" not in deinit:
+            problems.append("a removed/switched instance keeps its gesture answer (P-BK-65) - the "
+                            "next attach inherits \"this press is a resize\"")
     return problems
 
 
@@ -1844,6 +2230,51 @@ def check_bkmagnet():
         if r in panels:
             problems.append("the card row %s is rendered again while its engine is retired: "
                             "a control that moves nothing (P-UI-47/BKMAGNET2-OFF)" % r.split(",")[2].strip())
+    # P-BK-61 (2026-09-16): THE MAGNET CAME BACK, SCOPED. The user asked for it on
+    # the NEW gesture («با کنترل هم مگنت فعال میشه ... حرکت رو بچسبوند به کندل های و
+    # لو که دقیق باشه»): while the hand drags a HANDLE and CONTROL is held, the price
+    # snaps to the candle high/low. `inpEnableMagnet`/`inpMagnetSensitivityPips`
+    # therefore have a reader again - so this group now asserts WHERE that reader may
+    # live (three promises), on top of the retirement above, which does NOT move: the
+    # box' own drag still snaps to nothing, and its live follow is still clean.
+    grip = body(src, "void BaseKnotGripDrag(")
+    snap = body(src, "double BaseKnotGripSnapPrice(")
+    if snap is None:
+        problems.append("BaseKnotGripSnapPrice() is gone - the Ctrl magnet's reader must stay "
+                        "declared (P-BK-61), or the two MAGNET rows go back to being controls "
+                        "with no reader at all")
+    elif "inpMagnetSensitivityPips" not in snap or "iHigh" not in snap or "iLow" not in snap:
+        problems.append("the handle magnet no longer measures the candle high/low inside the user's "
+                        "own sensitivity (P-BK-61) - a magnet that invents its own measure")
+    # P-BK-64 (2026-09-16): THE UNIT IS THE PIXEL, AND THE TARGET IS THE NEAREST OF
+    # FOUR PRICES. «مگنت درست کار نمی‌کنه» was a unit bug: a pip gate is under 1 px
+    # on a D1 chart, so the snap could never fire where the user aims. Every
+    # published MT magnet (MT5's own, MQL5 market 38178/161169/Easy Toolbar) snaps
+    # within a PIXEL proximity to the nearest OHLC — both halves are asserted here,
+    # because only the pair makes the gesture usable.
+    if snap is not None:
+        if "ChartTimePriceToXY" not in snap or "BK_MAGNET_MIN_PX" not in snap \
+                or "BK_MAGNET_MAX_PX" not in snap:
+            problems.append("the handle magnet gates on a PRICE distance again (P-BK-64) - a pip "
+                            "gate is under one pixel on a wide-timeframe chart, so a snap the "
+                            "user can aim at never fires (the reported «مگنت درست کار نمی‌کنه»)")
+        if "iOpen" not in snap or "iClose" not in snap:
+            problems.append("the handle magnet only considers the candle high/low (P-BK-64) - every "
+                            "shipped MT magnet snaps to the NEAREST of a bar's four prices "
+                            "(Open/High/Low/Close), and the nearest-by-pixel rule is what makes "
+                            "it feel exact instead of arbitrary")
+    if grip is None:
+        problems.append("BaseKnotGripDrag() is gone - the Ctrl magnet's ONLY caller (P-BK-61)")
+    elif "if(ctrl && " not in grip or "BaseKnotGripSnapPrice(" not in grip:
+        problems.append("the magnet is not gated on CONTROL inside the handle drag (P-BK-61) - an "
+                        "ungated magnet IS the behaviour BKMAGNET2-OFF removed")
+    if len(re.findall(r"BaseKnotGripSnapPrice\(", stripped)) > 2:
+        problems.append("BaseKnotGripSnapPrice() is called from more than the handle gesture "
+                        "(P-BK-61) - the magnet may never run inside the box' own drag")
+    follow = body(src, "void BaseKnotFollowDrag(")
+    if follow is not None and "BaseKnotGripSnap" in follow:
+        problems.append("the magnet runs inside the box' live follow again (BKMAGNET2-OFF) - a "
+                        "second writer beside the terminal's own drag (BKCURSOR-OFF/P-BK-15)")
     return problems
 
 
@@ -2370,6 +2801,8 @@ def main():
               ("relayout", check_relayout()), ("purge", check_purge()),
               ("body", check_card_body()),
               ("modal", check_modal()),
+              ("measure", check_measure_item()),
+              ("bk-info", check_bk_info_rungs()),
               ("press", check_press(read(PANELS))),
               ("chrome", check_chrome()),
               ("dual", check_dual()),
@@ -2438,6 +2871,7 @@ def selftest():
                        or check_captions() or check_trex_card()
                        or check_relayout() or check_purge()
                        or check_card_body() or check_modal()
+                       or check_measure_item() or check_bk_info_rungs()
                        or check_press(read(PANELS)) or check_chrome()
                        or check_dual() or check_drag() or check_mouse()
                        or check_bk_drag() or check_bkcursor_off()
@@ -2509,6 +2943,36 @@ def selftest():
                 "")
     cases.append(("a modal guard placed after the grab is caught",
                   bool(check_modal())))
+    reset()
+
+    # 8d. P-UI-95: the measure tool is owned by TWO families at once (two cells
+    #     that arm one session, and a tool index the layout still counts)
+    with_source(MENU,
+                "   // UIBK-OFF (P-UI-95): if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;",
+                "   if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;")
+    cases.append(("a measure tool counted in both families is caught",
+                  bool(check_measure_item())))
+    reset()
+
+    # 8e. a SECOND copy of the arm path (the ring's own steps re-spelled)
+    with_source(MENU, "   BaseKnotArm();\n", "   BaseKnotArm();\n   BaseKnotArm();\n")
+    cases.append(("an arm path with two call sites is caught",
+                  bool(check_measure_item())))
+    reset()
+
+    # 8f. the hold opens the item's own feature code (panel 10, the retired Factor
+    #     card) instead of the Base Box card the Tools cell always opened
+    with_source(MENU, "   if(feat == CIR_BASEKNOT)      return 12;",
+                "   if(feat == CIR_BASEKNOT)      return feat;")
+    cases.append(("a hold that opens another card than the Tools cell's is caught",
+                  bool(check_measure_item())))
+    reset()
+
+    # 8g. the measure slot is inserted BETWEEN the existing ones (every persisted
+    #     state key of the ring shifts by one)
+    with_source(MENU, "#define RING_BASEKNOT 6", "#define RING_BASEKNOT 4")
+    cases.append(("a measure slot inserted before the others is caught",
+                  bool(check_measure_item())))
     reset()
 
     # 9. a non-ASCII caption (the P-LBL-02 lesson, on the panel side)
@@ -3011,6 +3475,50 @@ def selftest():
                   bool(check_bkcursor_off())))
     reset()
 
+    # 77. P-BK-58: the note's home loses a rung somewhere in the chain
+    with_source(PANELS, 'else if(sec==4)  { kind=2; label="INFO"; opts="Auto|Show|Corner"; minV=0; maxV=2; }',
+                'else if(sec==4)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }')
+    cases.append(("a card row that stopped offering the corner is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(PANELS, 'else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,2);',
+                'else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,1);')
+    cases.append(("a Setup tab that eats the corner rung is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(PANELS, 'else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,2);',
+                'else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1);')
+    cases.append(("a MINI strip that eats the corner rung is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(SETTINGS,
+                "g_bkShowInfo = ClampSettingInt(inpBKShowInfo, 0, 2);",
+                "g_bkShowInfo = inpBKShowInfo;")
+    cases.append(("a settings layer that stopped clamping on init is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(SETTINGS,
+                'g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 2);',
+                'g_bkShowInfo = ClampSettingInt((int)GlobalVariableGet(p + "BXI"), 0, 1);')
+    cases.append(("a restore that clamps an old chart to two rungs is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(BASEKNOT, "#define BK_NOTE_CHART     2", "#define BK_NOTE_CHART     3")
+    cases.append(("a rung the row cannot reach is caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
+    with_source(PANELS, 'else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show|Corner"; minV=0; maxV=2; }',
+                'else if(row==2)  { kind=2; label="INFO"; opts="Auto|Corner"; minV=0; maxV=2; }')
+    cases.append(("two captions on one surface for three rungs are caught",
+                  bool(check_bk_info_rungs())))
+    reset()
+
     # 69. P-BK-19a: the anchor-driven branch stops claiming the gesture
     with_source(BASEKNOT, "      s_bkNativeClaim = true;\n      s_bkFolT1 = t1; s_bkFolT2 = t2; s_bkFolP1 = p1; s_bkFolP2 = p2;",
                 "      s_bkFolT1 = t1; s_bkFolT2 = t2; s_bkFolP1 = p1; s_bkFolP2 = p2;")
@@ -3063,13 +3571,50 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 72. P-BK-19a: the terminal's OBJECT_DRAG no longer claims the gesture
-    #     (nth=1: the anchor-driven claim in BaseKnotFollowDrag comes FIRST in the
-    #     file, so the handler's is the second occurrence)
-    with_source(BASEKNOT, "s_bkNativeClaim = true;",
-                "/* seed: the terminal's own drag does not claim the gesture */", nth=1)
+    # 72. P-BK-19a: the terminal's OBJECT_DRAG no longer claims the gesture.
+    #     The anchor is TEXTUAL now, not the nth occurrence: P-BK-61 added a THIRD
+    #     claim site (the handle drag, which claims a gesture the terminal owns just
+    #     as much), and an index would silently point at whichever claim happened to
+    #     sit second in the file - the mutant would then patch the wrong branch and
+    #     the fault would go undetected (the seed IS the check's only proof).
+    #     (re-anchored for P-BK-65, which landed its own two stores between the
+    #     claim and the follow comment: the anchor is the CLAIM LINE plus the line
+    #     that follows it NOW, so the mutant still patches the box branch itself)
+    with_source(BASEKNOT,
+                "s_bkNativeClaim = true;\n           // P-BK-65: AND IT JUST SAID WHICH OBJECT: the BOX, not a chip.",
+                "/* seed: the terminal's own drag does not claim the gesture */\n"
+                "           // P-BK-65: AND IT JUST SAID WHICH OBJECT: the BOX, not a chip.")
     cases.append(("an OBJECT_DRAG that does not claim the gesture is caught",
                   bool(check_bk_drag())))
+    reset()
+
+    # 77. P-BK-61: the Ctrl gate is the whole difference between the magnet the user
+    #     asked for and the one BKMAGNET2-OFF removed - drop it and the handle drag
+    #     snaps on every step.
+    with_source(BASEKNOT,
+                "   if(ctrl && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);",
+                "   gp = BaseKnotGripSnapPrice(gt, gp);")
+    cases.append(("an UNGATED handle magnet is caught", bool(check_bkmagnet())))
+    reset()
+
+    # 78. P-BK-61: the magnet may never ride the box' own live follow (that is what
+    #     BKMAGNET2-OFF retired).
+    with_source(BASEKNOT, "      BaseKnotMoveChildren(id, t1, p1, t2, p2);",
+                "      BaseKnotGripSnapPrice(0, 0.0);\n      BaseKnotMoveChildren(id, t1, p1, t2, p2);")
+    cases.append(("a magnet inside the box' live follow is caught", bool(check_bkmagnet())))
+    reset()
+
+    # 79. P-BK-61: without the published side the keeper rewrites the chip the hand
+    #     is holding, and MT4 cancels the drag it is running (P-BK-15).
+    with_source(BASEKNOT, "   s_bkGripLive = side;",
+                "   /* seed: the hand's own side is not published */")
+    cases.append(("a handle drag that hides its side is caught", bool(check_bk_drag())))
+    reset()
+
+    # 80. P-BK-61b: the body drag must never resize the box - resize has ONE home
+    #     (the eight handles), and the FILL only carries it.
+    with_source(BASEKNOT, "if(bkGripWas == 0) BaseKnotBodySizeHeal(s_bkDragId);", "")
+    cases.append(("a body drag that may resize the box is caught", bool(check_bk_drag())))
     reset()
 
     # 76. BKMAGNET2-OFF: the adjust magnet is retired - each half of the
@@ -3098,6 +3643,125 @@ def selftest():
     with_source(BASEKNOT, "                 // BaseKnotMagnetSettle(s_bkDragId);\n", "")
     cases.append(("a retirement call deleted instead of commented is caught",
                   bool(check_bkmagnet())))
+    reset()
+
+    # 81. P-BK-62: the reconcile stops asking the box tool whether it owns the view
+    #     - an IDLE drag or a handle resize then has its lock handed back mid-gesture.
+    with_source(PANELS, "   if(BaseKnotViewOwned()) return true;\n", "")
+    cases.append(("a watchdog that restores the view under a box drag is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 82. P-BK-62: an OWNED drag lock is taken once and never re-forced (the
+    #     P-BK-14 rule) - one third-writer flip and the rest of the gesture pans.
+    with_source(BASEKNOT, "      BaseKnotReassertLock(false);   // P-BK-62: owned — re-force, never re-capture\n",
+                "")
+    cases.append(("a drag lock that is never re-forced is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 83. P-BK-63: the outside-click drop loses its UI gate - a click on the Base
+    #     Box strip would deselect the very box the card is editing.
+    with_source(BASEKNOT, "   if(UIPointerOverSurface(mx, my)) return false;               // P-UI-92: the UI is over the box\n",
+                "")
+    cases.append(("a drop that lets go of the box a card is editing is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 84. P-BK-63: the drop stops proving the click is OUTSIDE - its own press on
+    #     the border would let go of the selection it just made.
+    with_source(BASEKNOT, "      if(BaseKnotBoxAtPx(mx, my) != \"\") return false;   // ...or on its drawn border (P-BK-24)\n",
+                "")
+    cases.append(("a drop that fires on the box' own border is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 85. P-BK-63: the drop asks the NOTE's question (the newest box when nothing is
+    #     selected) instead of the exact SELECTED one.
+    with_source(BASEKNOT, "   string sel = BaseKnotSelectedBoxId();",
+                "   string sel = BaseKnotSelectedId();")
+    cases.append(("a drop aimed at a box the user never selected is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 86. P-BK-63: the drop leaves the handles on screen - the marks outlive the
+    #     selection by up to the pump's half second.
+    with_source(BASEKNOT, "   BaseKnotSelectionMarkersWipe(sel);\n", "")
+    cases.append(("a dropped box that keeps its handles is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 87. BKMIDGRIP-OFF: a mid-edge chip row comes back to life.
+    with_source(BASEKNOT, "   if(i == 3) return (BK_GS_B | BK_GS_R);",
+                "   if(i == 3) return (BK_GS_B | BK_GS_R);\n   if(i == 4) return BK_GS_T;")
+    cases.append(("a revived mid-edge chip is caught", bool(check_bk_drag())))
+    reset()
+
+    # 88. BKMIDGRIP-OFF: a corner row is dropped (the count and the plan part ways).
+    with_source(BASEKNOT, "   if(i == 3) return (BK_GS_B | BK_GS_R);\n", "")
+    cases.append(("a corner that the family no longer plans is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 89. BKMIDGRIP-OFF: a sweep walks a hard-coded 8 again.
+    with_source(BASEKNOT, "   for(int i = 0; i < BK_GRIP_COUNT; i++)\n   {\n      int side = BaseKnotGripSideAt(i);",
+                "   for(int i = 0; i < 8; i++)\n   {\n      int side = BaseKnotGripSideAt(i);")
+    cases.append(("a sweep that walks a retired chip is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 90. BKMIDGRIP-OFF: the one-time sweep of a chart the older build wrote is gone -
+    #     four selectable squares stay on it, dragging nothing.
+    with_source(BASEKNOT, '      string midNames[4] = {"GT", "GB", "GL", "GR"};',
+                '      string midNames[4] = {"", "", "", ""};')
+    cases.append(("a chart keeping the retired chips is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 91. P-BK-64: the magnet's reach stops being a pixel proximity.
+    with_source(BASEKNOT, "   if(gatePx > BK_MAGNET_MAX_PX) gatePx = BK_MAGNET_MAX_PX;\n", "")
+    cases.append(("a magnet with no pixel ceiling is caught", bool(check_bkmagnet())))
+    reset()
+
+    # 92. P-BK-64: the magnet goes back to the candle high/low alone.
+    with_source(BASEKNOT, "   cand[3] = iClose(_Symbol, 0, shift);\n", "")
+    cases.append(("a magnet that ignores the body prices is caught",
+                  bool(check_bkmagnet())))
+    reset()
+
+    # 93. P-BK-65: the release reads the keeper's skip again as the gesture's KIND -
+    #     the reported springback, in one line.
+    with_source(BASEKNOT, "          int bkGripWas = s_bkGripGesture;",
+                "          int bkGripWas = s_bkGripLive;")
+    cases.append(("a resize that can be executed as a body drag is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 94. P-BK-65: the press edge re-labels a live resize again.
+    with_source(BASEKNOT,
+                "          if(!bkGripHeld)\n          {\n             s_bkDragId = \"\"; s_bkDragMoved = false;",
+                "          if(true)\n          {\n             s_bkDragId = \"\"; s_bkDragMoved = false;")
+    cases.append(("a press edge that re-labels a live resize is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 95. P-BK-65: the heal loses the "the terminal dragged the BOX" ground truth.
+    with_source(BASEKNOT, "   if(!s_bkBoxNamed) return false;\n", "")
+    cases.append(("a heal that can undo a handle resize is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 96. P-BK-65: the kind latch is never set, so nothing knows it was a resize.
+    with_source(BASEKNOT, "   s_bkGripGesture = side;\n", "")
+    cases.append(("a resize whose kind is never latched is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 97. P-BK-65: teardown stops clearing the gesture, so it outlives the instance.
+    with_source(BASEKNOT, "   BaseKnotGestureClear();   // P-BK-65: no gesture state outlives the instance either\n",
+                "")
+    cases.append(("a gesture answer that outlives the instance is caught",
+                  bool(check_bk_drag())))
     reset()
 
     for name, ok in cases:

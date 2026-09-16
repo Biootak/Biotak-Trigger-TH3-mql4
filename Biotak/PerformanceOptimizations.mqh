@@ -37,6 +37,7 @@ void InitializeGlobalCache() {
     g_cachedChartId = ChartID();
     g_cachedChartIdStr = IntegerToString(g_cachedChartId);
     g_cachedPipSize = 0.0;  // Will be calculated by GetCachedPipSize() with proper asset detection
+    g_cachedPipSizeReal = false;  // P-UI-57b: and only a real Point may fill it
     g_globalCacheInitialized = true;
     
     #ifdef ENABLE_DEBUG_LOGS
@@ -95,6 +96,19 @@ double GetCachedPoint() {
     if(!g_globalCacheInitialized) {
         return Point;  // Fallback if not initialized
     }
+    // P-UI-57b: `Point` is NOT a fixed property of the symbol the way `Digits` is.
+    // It is 0 until the terminal has loaded the symbol's contract data - which is
+    // exactly the state at attach on a weekend, on an offline chart, or in the
+    // first frames after a symbol switch. The one-shot assignment in
+    // InitializeGlobalCache therefore froze a zero Point for the whole life of the
+    // chart, and every pip figure derived from it (ATR labels, TH columns, the
+    // Base/Knot box, the pip distances) was wrong by the digits factor - 10 000x
+    // on XAUUSD. Re-derive while the cached value is unusable, exactly the way
+    // GetCachedPeriod already does.
+    if(!(g_cachedPoint > 0.0) || !MathIsValidNumber(g_cachedPoint)) {
+        double live = Point;
+        if(live > 0.0 && MathIsValidNumber(live)) g_cachedPoint = live;
+    }
     return g_cachedPoint;
 }
 
@@ -144,8 +158,15 @@ long GetCachedChartId() {
 //| - Exotic pairs: Digits=4, Point=0.0001, PipSize=0.0001          |
 //+------------------------------------------------------------------+
 static double g_cachedPipSize = 0.0;
+// P-UI-57b: whether the cached pip size was derived from a REAL Point. The fence
+// at the bottom of this function installs a placeholder when Point is not usable
+// yet, and that placeholder is positive - so the `> 0` cache test alone returned
+// it forever, which is the exact opposite of what its own comment promised
+// ("a broken point is re-derived, never remembered"). The cache now remembers
+// only a real answer.
+static bool   g_cachedPipSizeReal = false;
 double GetCachedPipSize() {
-    if(g_cachedPipSize > 0.0) return g_cachedPipSize;
+    if(g_cachedPipSizeReal && g_cachedPipSize > 0.0) return g_cachedPipSize;
     
     int d = GetCachedDigits();
     double p = GetCachedPoint();
@@ -199,9 +220,14 @@ double GetCachedPipSize() {
     // and it costs nothing: it is the branch this function already had (the cache
     // test above refuses to cache a non-positive value, so a broken point is
     // re-derived, never remembered).
+    const bool pointUsable = (p > 0.0 && MathIsValidNumber(p));
     if(!MathIsValidNumber(g_cachedPipSize) || g_cachedPipSize <= 0.0) {
-        g_cachedPipSize = (p > 0.0 && MathIsValidNumber(p)) ? p : 0.00001;
+        g_cachedPipSize = pointUsable ? p : 0.00001;
     }
+    // Only a value derived from a real Point is worth remembering. The fallback
+    // above is a placeholder for THIS call, not an answer for the session - which
+    // is what the comment below has always claimed and the code did not do.
+    g_cachedPipSizeReal = pointUsable;
 
     #ifdef ENABLE_DEBUG_LOGS
     Print("==================== PipSize initialized: Symbol=", symbol, 
@@ -498,7 +524,7 @@ static int g_cachedPeriodForSecondsGlobal = 0;
 int GetCachedPeriodSecondsGlobal() {
     int curPeriod = GetCachedPeriod();
     if(g_cachedPeriodForSecondsGlobal != curPeriod || g_cachedPeriodSecondsGlobal <= 0) {
-        g_cachedPeriodSecondsGlobal = PeriodSeconds(curPeriod);
+        g_cachedPeriodSecondsGlobal = PeriodSeconds((ENUM_TIMEFRAMES)curPeriod);
         g_cachedPeriodForSecondsGlobal = curPeriod;
     }
     return g_cachedPeriodSecondsGlobal;

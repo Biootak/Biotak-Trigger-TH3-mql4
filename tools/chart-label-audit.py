@@ -360,6 +360,18 @@ def check_owner():
             problems.append("%s() does not use %s()" % (defined_in, helper))
         if "%s(plan)" % helper not in owner:
             problems.append("the owner does not measure %s()" % helper)
+    # P-BK-58: the FLOOR's clamp is shared with the note row's fallback slot, so it moved into
+    # its own owner (`LabelFloorMargin`) and the card CALLS it - asking the card's body for the
+    # two literals would now report a lost owner that is merely one call away. The floor's OWN
+    # body is what gets read (and it must be a single definition).
+    floor = body(labels, "int LabelFloorMargin(")
+    if floor is None:
+        problems.append("the card's floor has no owner (LabelFloorMargin)")
+        floor = ""
+    elif labels.count("int LabelFloorMargin(") != 1:
+        problems.append("LabelFloorMargin() is not defined exactly once")
+    if floor and "LabelFloorMargin()" not in owner:
+        problems.append("the card does not read the floor's own owner")
     # the knobs must be READ here: an input nobody reads is a dead control
     # (P-UI-47). `inpATRTradeLabelRowGap` is the card's own seam - it was dead
     # until P-LBL-09 wired it, and the shared `inpLabelRowGap` must NOT come
@@ -367,13 +379,15 @@ def check_owner():
     for needed in ("inpTrexStampGapRows", "inpATRTradeLabelRowGap",
                    "GetCachedChartHeight()", "TREX_CARD_TOP_PAD",
                    "TREX_CARD_MAX_GAP_ROWS", "TREX_CARD_MAX_ROW_GAP",
-                   "TREX_CARD_MAX_MARGIN_BOTTOM", "inpLabelsMarginBottom",
                    "PnlRawTextW(\"TR\"", "PnlRawTextW(\"ex\"",
                    "L.xTR", "rightEdge"):
         if needed not in owner:
             problems.append("the owner lost: %s" % needed)
+    for needed in ("TREX_CARD_MAX_MARGIN_BOTTOM", "inpLabelsMarginBottom"):
+        if needed not in owner + floor:
+            problems.append("the owner lost: %s" % needed)
     for banned in ("inpLabelRowGap", "inpLabelColumnGap"):
-        if banned in owner:
+        if banned in owner or banned in floor:
             problems.append("the owner reads the shared grid input %s" % banned)
     # the seam clamp must be honest: condition and value name the same bound
     if not re.search(r"if\(gap\s*<\s*0\)\s*gap\s*=\s*0;", owner):
@@ -381,10 +395,10 @@ def check_owner():
     if not re.search(r"if\(gap\s*>\s*TREX_CARD_MAX_ROW_GAP\)\s*gap\s*=\s*TREX_CARD_MAX_ROW_GAP;",
                      owner):
         problems.append("the card's row gap is not clamped to the named bound")
-    if not re.search(r"if\(bottom\s*<\s*0\)\s*bottom\s*=\s*0;", owner):
+    if not re.search(r"if\(bottom\s*<\s*0\)\s*bottom\s*=\s*0;", floor):
         problems.append("the card's floor has no lower bound (a 0/-5 input)")
     if not re.search(r"if\(bottom\s*>\s*TREX_CARD_MAX_MARGIN_BOTTOM\)\s*"
-                     r"bottom\s*=\s*TREX_CARD_MAX_MARGIN_BOTTOM;", owner):
+                     r"bottom\s*=\s*TREX_CARD_MAX_MARGIN_BOTTOM;", floor):
         problems.append("the card's floor is not clamped to the named bound")
     return problems, owner
 
@@ -443,6 +457,45 @@ def check_raw_em():
     wid = body(read(METRICS), "int PnlRawTextW(")
     if wid is None or "PnlRawLineH(" not in wid:
         problems.append("PnlRawTextW() does not measure through PnlRawLineH()")
+    return problems
+
+
+def check_row_bound():
+    """A ROW'S WIDTH BOUND IS NEVER DERIVED FROM A SIZE WE DO NOT HAVE (P-UI-94).
+
+    The three column sections (ATR, fractal TH, standard TH) each asked the
+    chart-width cache for the width a row may use before it wraps. That cache
+    answers 0 while the size is not known yet - a fresh attach, a minimized
+    window, a failed read - so `cache - margin * 2` came out NEGATIVE and the
+    wrap test was TRUE for every column: the block laid itself out one column
+    per ROW, and its own section slot was measured from that, pushing the next
+    section (and the mode/overlay rows after it) down the chart.
+
+    The bound has ONE owner now, an unknown size answers 0 = "no bound", and
+    every wrap test must ask for that sentinel explicitly. A bound derived by
+    hand again - or a test that treats 0 as a real width - is the same bug back.
+    """
+    problems = []
+    labels = read(LABELS)
+    code = strip_comments(labels)      # the retired formula lives on in prose
+    owner = body(labels, "int LabelRowMaxWidth(")
+    if owner is None:
+        return ["LabelRowMaxWidth() is gone - the row bound has no owner again"]
+    if not re.search(r"if\s*\(\s*cw\s*<=\s*0\s*\)\s*return\s+0\s*;", owner):
+        problems.append("LabelRowMaxWidth() no longer answers 0 for an unknown chart width")
+    if not re.search(r">\s*0\s*\)\s*\?\s*usable\s*:\s*0", owner):
+        problems.append("LabelRowMaxWidth() can return a negative bound again")
+    for m in re.finditer(r"int\s+maxWidth\s*=\s*([^;]+);", code):
+        if "LabelRowMaxWidth(" not in m.group(1):
+            problems.append("a label section derives its row bound by hand again (%s)"
+                            % m.group(1).strip())
+    sites = code.count("LabelRowMaxWidth(") - 1          # minus the definition
+    if sites < 3:
+        problems.append("only %d of the three column sections use the row bound" % sites)
+    guarded = len(re.findall(r"if\s*\(\s*maxWidth\s*>\s*0\s*&&", code))
+    if guarded < sites:
+        problems.append("a wrap test treats the \"no bound\" sentinel as a real width "
+                        "(%d of %d guarded)" % (guarded, sites))
     return problems
 
 
@@ -679,9 +732,11 @@ def main():
     presence_problems = check_presence()
     decoupled_problems = check_decoupled()
     input_problems, defaults, lo, hi = check_inputs(owner if owner else "")
+    bound_problems = check_row_bound()
     problems = {}
     for msg in (owner_problems + anchor_problems + measured_problems
-                + em_problems + presence_problems + decoupled_problems + input_problems):
+                + em_problems + presence_problems + decoupled_problems + input_problems
+                + bound_problems):
         problems.setdefault(msg, "")
 
     if lo is None:
@@ -694,6 +749,7 @@ def main():
                              ("[raw em] PnlRawLineH owns the raw em", em_problems),
                              ("[presence] a switched-off row is removed by its writer", presence_problems),
                              ("[decoupled] the card answers to its own master, never the ATR overview", decoupled_problems),
+                             ("[row bound] one owner, unknown size = no bound", bound_problems),
                              ("[inputs] defaults + clamp bounds read from the source", input_problems)):
             print("  %s %s%s" % ("ok  " if not plist else "FAIL", label,
                                  "" if not plist else " - %d problem(s)" % len(plist)))
@@ -781,7 +837,7 @@ def selftest():
     cases.append(("the clean source passes every check",
                   not check_owner()[0] and not check_anchor() and not check_measured()
                   and not check_raw_em() and not check_presence()
-                  and not check_decoupled()
+                  and not check_decoupled() and not check_row_bound()
                   and check_geometry(0, 20)[0] == {}))
 
     # 1. a writer lays the card out itself again - the card computed once per
@@ -940,6 +996,25 @@ def selftest():
                 "        // Own layer: repaint AFTER the clear")
     cases.append(("an EventHandlers call site guarded by the ATR overview is caught",
                   bool(check_decoupled())))
+    reset()
+
+    # 10b. the row bound goes back to a raw chart-size subtraction (P-UI-94): an
+    #      unknown width is negative, and every column wraps
+    with_source(LABELS, "    int maxWidth = LabelRowMaxWidth(startXPos);",
+                        "    int maxWidth = GetCachedChartWidth() - startXPos * 2;")
+    cases.append(("a hand-derived row bound is caught", bool(check_row_bound())))
+    reset()
+
+    # 10c. the wrap test stops asking for the "no bound" sentinel
+    with_source(LABELS, "if(maxWidth > 0 && currentXPos + labelWidth + xStep > maxWidth) {",
+                        "if(currentXPos + labelWidth + xStep > maxWidth) {")
+    cases.append(("an unguarded wrap test is caught", bool(check_row_bound())))
+    reset()
+
+    # 10d. the owner stops answering 0 for an unknown chart width
+    with_source(LABELS, "    if(cw <= 0) return 0;",
+                        "    if(cw <= 0) cw = 0;")
+    cases.append(("an owner that no longer answers 0 is caught", bool(check_row_bound())))
     reset()
 
     # 11. the model's own invariants have teeth

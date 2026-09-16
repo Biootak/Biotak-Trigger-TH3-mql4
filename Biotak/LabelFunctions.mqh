@@ -624,9 +624,7 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    // hand because the input is applied raw at init: 0 or -5 would push the rows
    // through the floor, and a mistyped 5000 would park the card mid-screen. The
    // second bound is the chart's own height, applied with the row clamp above.
-   int bottom = inpLabelsMarginBottom;
-   if(bottom < 0) bottom = 0;
-   if(bottom > TREX_CARD_MAX_MARGIN_BOTTOM) bottom = TREX_CARD_MAX_MARGIN_BOTTOM;
+   int bottom = LabelFloorMargin();
    // The card is 1 (brand) + 0..2 (the two optional rows) tall, so the height
    // budget counts exactly what is drawn: rows <= room/pitch - (drawn - 1).
    int drawn = 1 + (L.showTP ? 1 : 0) + (L.showSL ? 1 : 0);
@@ -664,6 +662,10 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    L.xTR     = L.xEx + wEx;              // measured: exactly 0 px of overlap
    L.xSp     = L.xEx + 6;                // spread rides over the `ex`
    L.ySp     = L.yBrand + brandEm - 4;   // ... just under the brand's cap line
+   // P-BK-58 — and the BASE NOTE's row is stacked on TOP of the brand: the row's slot is pushed
+   // in here, while the card's own top row is known, so the shared column keeps ONE order (the
+   // note, then the brand, then the two trade rows) whatever the switches do.
+   LabelPushBaseNoteSlot(L.yBrand, brandEm);
 }
 
 bool CreateATRTradeLabel(const string objectPrefix, const STradePlan &plan,
@@ -899,7 +901,7 @@ void DisplayATRLabels(const string objectPrefix) {
     int currentXPos = labelStartX;
     int currentYPos = startYPos;
     int xStep = horizontalPadding;
-    int maxWidth = GetCachedChartWidth() - startXPos * 2;
+    int maxWidth = LabelRowMaxWidth(startXPos);   // P-UI-94: one owner, never negative
     int lineHeight = GetLabelLineHeight(inpShowATRTargets, rowSpacing);
     
     int renderedCount = 0;
@@ -922,7 +924,7 @@ void DisplayATRLabels(const string objectPrefix) {
             if(!CreateATRLabelSimple(labelPrefix, timeframes[i], atrPoints, currentXPos, currentYPos, labelColor, xStep, rowSpacing)) continue;
             currentYPos += lineHeight;
         } else {
-            if(currentXPos + labelWidth + xStep > maxWidth) {
+            if(maxWidth > 0 && currentXPos + labelWidth + xStep > maxWidth) {   // P-UI-94
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
@@ -951,6 +953,10 @@ void DisplayATRTradeLabels(const string objectPrefix) {
     // row flags below, the label card's TRADE PLAN ROWS band) are the ONLY thing
     // that may remove it. The ATR overview gate stays where it belongs: inside
     // DisplayATRLabels, over the ATR columns it actually owns.
+    // P-BK-58: the base note's row lives in THIS column, so its slot is pushed here first —
+    // the family's floor is all that is stacked when the card is off or its plan is cold, and
+    // the card's own layout (below) moves the row above its brand when it IS drawn.
+    LabelPushBaseNoteSlot(LabelFloorMargin(), 0);
     if(!inpShowATRTradeLabels) {
         // Defensive wipe: the relayout callers clear LBL_ first, but a bare
         // toggle path may reach here without a prior clear.
@@ -1677,7 +1683,7 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int currentXPos = labelStartX;
     int currentYPos = startYPos;
     int xStep = horizontalPadding;
-    int maxWidth = GetCachedChartWidth() - startXPos * 2;
+    int maxWidth = LabelRowMaxWidth(startXPos);   // P-UI-94: one owner, never negative
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
     int _nFrac = ArraySize(FRACTAL_TIMEFRAMES);
@@ -1707,7 +1713,7 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
             painted++;
             currentYPos += lineHeight;
         } else {
-            if(currentXPos + labelWidth + xStep > maxWidth) {
+            if(maxWidth > 0 && currentXPos + labelWidth + xStep > maxWidth) {   // P-UI-94
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
@@ -1773,7 +1779,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int currentXPos = labelStartX;
     int currentYPos = startYPos;
     int xStep = horizontalPadding;
-    int maxWidth = GetCachedChartWidth() - startXPos * 2;
+    int maxWidth = LabelRowMaxWidth(startXPos);   // P-UI-94: one owner, never negative
     int lineHeight = GetLabelLineHeight(inpShowTHTargets, rowSpacing);
 
     int _nStd = ArraySize(STANDARD_TIMEFRAMES);
@@ -1797,7 +1803,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
             painted++;
             currentYPos += lineHeight;
         } else {
-            if(currentXPos + labelWidth + xStep > maxWidth) {
+            if(maxWidth > 0 && currentXPos + labelWidth + xStep > maxWidth) {   // P-UI-94
                 currentXPos = labelStartX;
                 currentYPos += lineHeight;
             }
@@ -1888,6 +1894,49 @@ double CalculateTextWidth(string text) {
 }
 
 //+------------------------------------------------------------------+
+//| P-BK-58 — THE BASE NOTE'S SLOT IN THE FAMILY'S COLUMN.           |
+//|                                                                  |
+//| The Base Box card's INFO row grew a third rung ("Corner",         |
+//| `BK_NOTE_CHART`): the base note stops riding the box and becomes  |
+//| a READOUT in this column, next to the ATR/TH columns and the       |
+//| TRex trade card. The rung is the user's choice («بین «چسبیده به     |
+//| باکس» و «گوشهٔ ثابت» یکی را انتخاب کند»), never an automatic       |
+//| switch, and the note's TEXT does not change with it.              |
+//|                                                                  |
+//| WHERE IT SITS: one row ABOVE whatever this column already stacked |
+//| at its floor — the trade card's brand row when the card is drawn  |
+//| (its layout pushes that slot), the floor itself when the card is  |
+//| off or its plan is cold (the caller's fallback below). `stackEm`  |
+//| = 0 means "nothing is stacked": the note then TAKES the floor row |
+//| instead of floating a pitch above an empty column.                |
+//|                                                                  |
+//| THE SLOT IS PUSHED, not read: every margin, pitch and clamp here  |
+//| belongs to this module (the label column's own settings), and     |
+//| BaseKnotTool sits BELOW it — so it is told the corner, the x and  |
+//| the y, and it never reads `inpLabelsMargin*` or the card's layout.|
+//+------------------------------------------------------------------+
+// The column's floor: `inpLabelsMarginBottom`, clamped by hand (the inputs are applied raw at
+// init, so a 0 or a -5 must not push a row through the floor, and a mistyped 5000 must not park
+// one mid-screen). ONE owner: the trade card's layout and the note's fallback slot both read it,
+// so the two rows can never disagree about where the column ends.
+int LabelFloorMargin()
+{
+   int bottom = inpLabelsMarginBottom;
+   if(bottom < 0) bottom = 0;
+   if(bottom > TREX_CARD_MAX_MARGIN_BOTTOM) bottom = TREX_CARD_MAX_MARGIN_BOTTOM;
+   return bottom;
+}
+void LabelPushBaseNoteSlot(const int stackY, const int stackEm)
+{
+   int gap = inpATRTradeLabelRowGap;
+   if(gap < 0) gap = 0;
+   if(gap > TREX_CARD_MAX_ROW_GAP) gap = TREX_CARD_MAX_ROW_GAP;
+   int y = stackY + (stackEm > 0 ? stackEm + gap : 0);
+   if(y < 8) y = 8;
+   BaseKnotCornerSlotPush(CORNER_RIGHT_LOWER, MathMax(8, inpLabelsMarginLeft), y);
+}
+
+//+------------------------------------------------------------------+
 //| Label layout helpers (ported from MT5)                            |
 //+------------------------------------------------------------------+
 int GetLabelLineHeight(const bool showTargets, const int rowSpacing) {
@@ -1909,6 +1958,38 @@ int GetLabelBlockWidth(const string mainText, const string stepsText, const stri
 int GetLabelStartX(const int baseX, const int titleWidth, const int padding, const bool isVertical) {
     int titleGap = MathMin(padding, 6);
     return isVertical ? baseX : baseX + titleWidth + titleGap;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// P-UI-94 (2026-09-16) — A LAYOUT BOUND IS NEVER DERIVED FROM A SIZE
+// WE DO NOT HAVE.
+//
+// The three bottom/top column sections (ATR, fractal TH, standard TH)
+// each asked `GetCachedChartWidth() - startXPos * 2` for the width a
+// row may use before it wraps, and that cache answers 0 when the
+// chart's size is not known yet (a fresh attach, a minimized window, a
+// `ChartGetInteger` that failed). The expression then went NEGATIVE -
+// e.g. `-66` at the default left margin of 33 - and the wrap test
+// `currentXPos + labelWidth + xStep > maxWidth` was TRUE for EVERY
+// column. So the whole block laid itself out ONE COLUMN PER ROW: a
+// 13-column ATR block 13 rows tall, its own section slot measured from
+// that (so the next section was pushed ~13 line heights down), and the
+// chart covered by columns that were never meant to stack - until the
+// next relayout, which is one frame away on a ticking chart and much
+// further away on a quiet one.
+//
+// THE RULE, in ONE owner (three call sites, one answer): an UNKNOWN
+// width is "no bound", never "zero width". `0` is the sentinel and the
+// wrap test must ask for it explicitly (`maxWidth > 0 && ...`), which
+// also keeps the known-size arithmetic byte-for-byte what it was: a
+// real chart wraps at exactly the same column as before. A chart that
+// really IS narrow still wraps - it answers > 0.
+// ══════════════════════════════════════════════════════════════════════
+int LabelRowMaxWidth(const int startXPos) {
+    int cw = GetCachedChartWidth();      // 100 ms cache; <= 0 = UNKNOWN
+    if(cw <= 0) return 0;                // 0 = no bound (the wrap test no-ops)
+    int usable = cw - startXPos * 2;
+    return (usable > 0) ? usable : 0;    // a known-but-tiny chart still wraps
 }
 
 int GetBottomTitleYOffset(const bool showTargets, const int rowSpacing) {

@@ -2387,13 +2387,22 @@ bool PalRecentIdParse(const string id,int &i)
 int PalHandleClick(const string name)
 {
    if(!g_PalOpen) return REFRESH_NONE;
+
+   // P-UI-91: commit a pending hex edit before ANYTHING ELSE - including a click
+   // that is not ours at all.
+   //
+   // This used to sit BELOW the namespace test on the next line, so a click on the
+   // chart, on a ring button, or on a card behind the palette returned at that test
+   // and never committed the typed colour. The value was silently discarded AND
+   // g_PalHexFocus stayed latched, which made EventHandlers' hotkey guard
+   // (`if(g_PalHexFocus || g_BkTextFocus) return;`) swallow F, E and hide-all for
+   // as long as the palette stayed open. The flush has to own the click-away case,
+   // because MT4 gives a focused OBJ_EDIT no ENDEDIT when focus is lost that way.
+   if(g_PalHexFocus) FlushPalHex();
+
    string pfx=g_UI.btnPrefix+"Pal_";
    if(StringFind(name,pfx)!=0) return REFRESH_NONE;
    string id=StringSubstr(name,StringLen(pfx));
-
-   // commit a pending hex edit before ANY other palette action (clicking away
-   // from the field loses keyboard focus without a KEYDOWN in MT4)
-   if(g_PalHexFocus) FlushPalHex();
 
    if(id=="done" || id=="close")
    {
@@ -2704,7 +2713,10 @@ void BkSecRowDef(const int sec,int &kind,string &label,
       else if(sec==1)  { kind=4; label="ENTRY COLOR"; }
       else if(sec==2)  { kind=4; label="STOP COLOR"; }
       else if(sec==3)  { kind=4; label="TARGET COLOR"; }
-      else if(sec==4)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      // P-BK-58: three rungs — where the note LIVES is the user's own choice («بین «چسبیده به
+      // باکس» و «گوشهٔ ثابت» یکی را انتخاب کند»): Auto/Show keep it on the box (they differ only
+      // in the Auto grace), Corner moves it to the label family's column (`BK_NOTE_CHART`).
+      else if(sec==4)  { kind=2; label="INFO"; opts="Auto|Show|Corner"; minV=0; maxV=2; }
       // P-BK-27: the readout's own size — «اطلاعات بیس نوت خیلی ریزه».
       // Same shape as the ATR card's COUNT SIZE / TRADE SIZE rows: 0 = follow
       // the card's own text size, so the freed number is the user's.
@@ -2765,7 +2777,7 @@ int BkSecApply(const int sec,const double v)
    else if(g_BkTab == 2)
    {
       if(sec==0)      { g_bkTargetR=ClampInt((int)MathRound(v),1,BK_TP_PLAN_MAX); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-50: TP COUNT
-      else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+      else if(sec==4) { g_bkShowInfo=ClampInt((int)MathRound(v),0,2); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-58: the third rung
       else if(sec==5) { flags=BkApplyPreset((int)MathRound(v)); }
       else if(sec==6) { g_bkInfoFontSize=ClampInt((int)MathRound(v),0,24); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-27
    }
@@ -3050,7 +3062,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    {
       if(row==0)       { kind=4; label="BORDER COLOR"; }
       else if(row==1)  { label="TP COUNT"; minV=1; maxV=BK_TP_PLAN_MAX; }   // P-BK-50
-      else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show"; minV=0; maxV=1; }
+      else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show|Corner"; minV=0; maxV=2; }   // P-BK-58 (same mirror as card 12)
       else if(row==3)  { kind=2; label="PRESET"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
       else if(row==4)  { kind=2; label="LOCK"; opts="Off|On"; minV=0; maxV=1; }
       else if(row==5)  { kind=5; label="DELETE"; opts="DEL"; }   // ACTION → delete held box
@@ -3892,7 +3904,7 @@ int PnlApplySet(const int item,const int row,const double v)
           break;
        case 13:  // BASE BOX MINI — same mirrors as card 12, never duplicated.
           if(row==1)       { g_bkTargetR=ClampInt((int)MathRound(v),1,BK_TP_PLAN_MAX); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-50: TP COUNT
-          else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,1); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }
+          else if(row==2)  { g_bkShowInfo=ClampInt((int)MathRound(v),0,2); BaseKnotRestyleAll(); flags=REFRESH_BUFFERS; }   // P-BK-58
           else if(row==3)  { flags=BkApplyPreset((int)MathRound(v)); }
           else if(row==4)  { if(g_BkMiniBox!="" && BaseKnotFind(g_BkMiniBox)>=0) BaseKnotSetLocked(g_BkMiniBox, v>0.5); }
           break;
@@ -6233,7 +6245,15 @@ bool ChartLockIntended()
    // live and restore the user's scroll props UNDER the gesture — the exact pan
    // the lock exists to prevent.
    if(CustomPriceDragLocked()) return true;
-   return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0) || BaseKnotSessionActive();
+   // P-BK-62: the Base/Knot tool's OWN latch — an IDLE body drag or a handle
+   // RESIZE, which lock the view from its own module exactly as the draw session
+   // does. `BaseKnotSessionActive()` alone was the blind spot: the session is only
+   // the DRAW gesture, so this query answered "nobody intends the lock" while the
+   // user's hand was on a box, the reconcile handed the view back mid-drag, and
+   // the drag's own guard then kept it unlocked for the rest of the gesture. The
+   // accessor answers all three gestures at once (two bool reads).
+   if(BaseKnotViewOwned()) return true;
+   return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
 }
 
 void ChartScrollReconcile()
@@ -8510,17 +8530,26 @@ void PnlUpdateRow(const int item,const int row)
 //+------------------------------------------------------------------+
 int PnlHandleClick(const string name,const int mouseX,const int mouseY)
 {
+   // P-UI-91: DRAIN THE OTHER TEXT FIELD BEFORE THE CLICK IS ROUTED ANYWHERE.
+   //
+   // Card 12's commit used to sit BELOW the `palFlags` early return on the next
+   // block, so a click on a palette control skipped it and left g_BkTextFocus
+   // latched - the same "hotkeys are dead until you close the surface" symptom as
+   // the palette's hex field, reached from the other direction. Hoisting it here
+   // gives both fields the one click-away rule, in the one place that can see it.
+   int feI, feR; string feK;
+   ParsePnlName(name, feI, feR, feK);
+   const bool clickIsBkEdit = (feI == 12 && feK == "ED");
+   if(g_BkTextFocus && !clickIsBkEdit) BkFlushTextEdit();
+
    // Palette popup first (it sits above any open panel). Swatch/mixer/hex
    // clicks are consumed; panel clicks still pass through so the user can
    // tweak other rows while the palette stays open.
    int palFlags=PalHandleClick(name);
    if(palFlags!=REFRESH_NONE) return palFlags;
    // TEXT edit focus (card 12 Text tab): the ED field owns the keyboard
-   // (letter-hotkey guard in EventHandlers); any other click flushes first.
-   int feI, feR; string feK;
-   ParsePnlName(name, feI, feR, feK);
-   if(feI == 12 && feK == "ED") { g_BkTextFocus = true; return REFRESH_NONE; }
-   if(g_BkTextFocus) BkFlushTextEdit();
+   // (letter-hotkey guard in EventHandlers); clicking the field sets the focus.
+   if(clickIsBkEdit) { g_BkTextFocus = true; return REFRESH_NONE; }
    // footer mini-opacity track (click-to-set; geometry mirrors PalDraw)
    if(g_PalOpen)
    {
@@ -8852,6 +8881,63 @@ void BkHoldOnBoxUp()
    BkHoldClear();
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// P-UI-93 (2026-09-16) — ONE REACTION TO "THE DISPLAY CHANGED".
+//
+// `PnlDpiPoll()` (UtilityFunctions) answers the QUESTION — has the
+// terminal's screen DPI moved since we last looked — and this is the ONE
+// place that answers it. No surface may probe the terminal itself, and no
+// surface may keep a metric it was sized with before the change: every
+// one of them is rebuilt from the new numbers through its OWN existing
+// builder, so this function owns nothing but the roll call.
+//
+// Why the ring/panel are DELETED and recreated instead of re-asserted:
+// a point size and a measured caption width decide object GEOMETRY
+// (positions, XSIZE of the cells, where a row's text is centred), and the
+// create pair is the only path that re-derives all of it - the same pair
+// the ring already uses for "the menu came back" and "the menu was
+// toggled" (BiotakMenu: BaseKnotExitToMenu / ToggleMenuVisibility).
+// `PnlRebuildKeepSpot` is the card's version of it: the card is built
+// again where it is (a metric change must not re-anchor a card the user
+// is looking at), which is exactly what a height-changing tab already
+// asked it for.
+//
+// The floaters are re-derived rather than closed: the palette is rebuilt
+// through `PalOpenKind` (same anchor item, same colour target - the
+// rebuild its own draw path already uses), and a hanging Base Box
+// dropdown is closed with `BkDdClose`, which is a pure delete (no click
+// is eaten, so the user's next press still lands where it was aimed).
+//
+// Cost: this runs ONLY on a real DPI change (a monitor move, a Windows
+// scale change) - i.e. essentially never in a session, and never on a
+// tick. Steady state pays one time-gated probe, in `RefreshKitOnBar`.
+void UIRebuildForMetrics()
+{
+   // A rebuild while the user is mid-gesture would fight the gesture for the
+   // same objects (the ring/panel builders delete what the drag is holding).
+   // The probe keeps running, so the change lands on the first frame after
+   // the hand comes off - one event on a display that was just moved.
+   if(g_DragOwner != DRAG_NONE || g_PnlDragItem >= 0 || g_PalMixDrag > 0 ||
+      g_OrbDragging || g_LongPressItem >= 0 || g_BkTextFocus)
+   {
+      CircUIMetricsInvalidate();
+      return;
+   }
+   CircUIMetricsInvalidate();
+   // 1. the ring / orb (and whatever sub-menu the ring was showing)
+   DeleteMenu();
+   CreateMenu();
+   // 2. the open card - rebuilt on the spot, never re-anchored
+   if(g_PnlOpen >= 0) PnlRebuildKeepSpot(g_PnlOpen);
+   // 3. the floaters (the palette first: it anchors off the card above)
+   if(g_BkDd != 0) BkDdClose();
+   if(g_PalOpen) PalOpenKind(g_PalAnchorItem, g_PalKind);
+   // 4. the chart-side text is measured with the same em box (`PnlRawLineH`),
+   //    so the ATR/TH columns and the trade-plan card must re-lay-out too.
+   g_labelsRelayoutNeeded = true;
+   RepaintForDiscreteAction();   // P-PERF-24's owner: a discrete event paints now
+}
+
 void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    // Base/Knot session ended via ESC/right-click (handled in EventHandlers
@@ -9006,6 +9092,18 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
    {
       int ei, er; string ek;
       ParsePnlName(sparam, ei, er, ek);
+      // P-UI-91: the palette's HEX field gets the same treatment card 12 gets.
+      // It was invisible here - the branch below only matches `ei == 12 &&
+      // ek == "ED"` - so pressing Enter in the hex field did nothing at all and the
+      // colour stayed uncommitted until the user happened to click another palette
+      // control. FlushPalHex() clears g_PalHexFocus itself and applies the colour,
+      // so the EventHandlers hotkey guard is released on the same event.
+      if(g_PalOpen && sparam == g_UI.btnPrefix + "Pal_hex")
+      {
+         FlushPalHex();
+         ChartRedraw();
+         return;
+      }
       if(ei == 12 && ek == "ED")
       {
          string t = ObjectGetString(0, sparam, OBJPROP_TEXT);
@@ -9073,6 +9171,14 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       // size once, instead of every hit test re-reading it.
       CircUIMetricsInvalidate();
       if(g_UI.menuVisible) UpdateCircularMenuPosition();
+      // P-UI-93: and the event a DPI change is most likely to arrive on (a window
+      // dragged to another monitor is resized by the terminal first). The probe is
+      // time-gated, so a resize/zoom storm costs one compare per event; a real
+      // change rebuilds every surface from the new metrics. It sits AFTER the pair
+      // above on purpose: the rebuild re-derives the ring's geometry itself, and
+      // the metrics invalidation is the contract this branch already declares
+      // (probe-budget-audit's `chart change stops invalidating` seed anchors on it).
+      if(PnlDpiPoll()) UIRebuildForMetrics();
       if(PnlClampOpenPanel()) ChartRedraw();   // shrunken chart: keep header grabbable
       // P-PERF-02: pan/zoom changes what the HTF overlay must cover — re-check
       // its viewport cap on the event that moved the view, not on the next 1 s
@@ -9231,4 +9337,9 @@ void RefreshKitOnBar()
    PnlSyncOpenStepRow();   // open Step card follows E/Tools changes (change-guarded)
    UISyncDrain();          // P-UI-40: hotkey-raised requests settle here too
    BkMiniStripHeal();      // strip closes itself when its box vanished (R-BKSTRIP)
+   // P-UI-93: the display is a measurement too. The tick/timer pump is where a
+   // DPI change that emits NO chart event is still caught (a Windows scale
+   // change with the window in place); the probe is 2 s-gated, and the rebuild
+   // happens only when the value really moved.
+   if(PnlDpiPoll()) UIRebuildForMetrics();
 }

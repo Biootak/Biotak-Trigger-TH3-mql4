@@ -63,7 +63,20 @@
 #define Z_BOX_RAY       50      // Base/Knot rays
 #define Z_BOX_FILL      55      // box fill layer + drag handle
 #define Z_BOX_EDGE      56      // box border edges
-#define Z_BOX_INFO      60      // box info text
+// P-BK-59: the box' centre GRIP — a 5x5 SCREEN square in the box' border ink. It is not
+// decoration: MetaTrader paints its OWN selection marker (a 2x2 WHITE square) at the centre of
+// a SELECTED rectangle and gives the EA no colour for it («توی پس زمینه سفید به خوبی دیده
+// نمیشه»). The marker is painted WITH the object, i.e. below every rung above it, so a screen
+// object at this rung hides it — above the box art, below the text layer.
+#define Z_BOX_DOT       58
+// P-BK-61: the resize handles (a screen square on each CORNER of a selected rectangle —
+// «یک کلیک چپ میکنم راحت هر طرف که بخوام میکشم اینطوری باشه»). BKMIDGRIP-OFF retired the
+// four mid-edge squares (they did not behave: «این وسط‌ها که کار نمیکنن رو بردار»), which
+// is also the whole delta for this rung — same family as Z_BOX_DOT above (they are the
+// only two screen objects of the box), so they sit on the same rung band: above the box' art,
+// below the text layer, and — like every rung here — under the card/strip rungs far above.
+#define Z_BOX_GRIP      59
+#define Z_BOX_INFO      60      // box info text — P-BK-56: the base note moved to Z_CHART_LABEL (the rung is kept for a one-line restore)
 #define Z_BOX_TEXT      61      // box user text
 #define Z_CHART_LABEL  100      // price/level labels, view anchor, countdown tag
 
