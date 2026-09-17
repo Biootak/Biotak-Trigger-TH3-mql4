@@ -1809,6 +1809,14 @@ def check_rung_model():
          rung_model(ladder, [0, 0, 0, 0, 0, 0, 0, 0], 40) == 15),
         ("... and the same span answers the same rung on any chart",
          rung_model(ladder, [0, 0, 0, 0, 0, 0, 0, 0], 40, chart=1440) == 15),
+        # P-BK-82 — THE USER'S OWN BOX, end to end: 17 minutes wide (68 px at ~4 px per M1
+        # bar) around a base of 5 M1 candles, so M15's three candles cannot fit the span,
+        # M5's own candles did not stand still in a 0.7-pip band, and the FIVE M1 candles
+        # did — «گره که مال یک دقیقه هستش» reads M1, not M15.
+        ("P-BK-82: a 17-minute box around a 5-bar M1 base reads M1",
+         rung_model(ladder, [5, 0, 0, 0, 0, 0, 0, 0], 17) == 1),
+        ("... and the SAME box reads M15 on the ladder that had no M1 rung (the bug reported)",
+         rung_model(ladder[1:], [0, 0, 0, 0, 0, 0, 0], 17) == 15),
     ]
 
 
