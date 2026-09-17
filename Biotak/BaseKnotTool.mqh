@@ -814,7 +814,7 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
                " behind the entry, INSIDE the box) · BOTH legs sit INSIDE the box" + entryLine +
                (sp.life > 0 ? " · " + IntegerToString(sp.life) + " bars" : "");
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
-   tt += BaseKnotBaseLine(sp.still, sp.tStart, sp.tExit, top, bot);   // P-BK-28/36/41 — the class, spelled out
+   tt += BaseKnotBaseLine(sp.still, sp.tStart, sp.tExit, top, bot, tfMin);   // P-BK-28/36/41/75 — the class, spelled out (read from the BOX' own TF)
    if(sp.life > 0)   // P-BK-40/41/42: what the note's number is MADE OF, and HOW it is counted
       tt += "\n     " + IntegerToString(sp.life) + " bars = the candles between the ENTRY candle " +
             "and the EXIT candle (entry not counted, exit counted) · " + IntegerToString(sp.still) +
@@ -2736,15 +2736,26 @@ int BaseKnotRungHoldCount(const int tfMin, const datetime s1, const datetime s2,
 // Minutes of the TF this base belongs to; 0 = unmeasurable (series not
 // ready), -1 = structure (1-2 candles — not a base at all).
 // P-BK-36: THE LADDER PROPOSES, THE RUNG'S OWN CANDLES DECIDE.
+//
+// P-BK-75 (2026-09-17, user: «بله، از تایمِ باکس»): THE LADDER STARTS AT THE BOX' OWN
+// TF AND THE FALLBACK IS THE BOX' OWN TF — `baseMin`, never `chartMin`. Before this the
+// class was anchored to whatever chart happened to be open: the candidates were built
+// upward FROM `chartMin` and a band no rung stood still in answered `chartMin`, so one
+// box could be an «M15 base» on one chart and an «H1 base» on another. Only the LADDER
+// and the FALLBACK moved — the walk that counts `bars` is still the CHART's candles
+// (`BaseKnotBarCount`), which is why `chartMin` is still needed here: it is the unit the
+// span is expressed in, not where the ladder starts. When `baseMin == chartMin` the read
+// is byte-for-byte the old one, so a chart opened at the box' own TF is unchanged.
 int BaseKnotBaseTFRead(const int bars, const datetime s1, const datetime s2,
-                       const double top, const double bot, const int chartMin)
+                       const double top, const double bot, const int chartMin, const int baseMin)
 {
    if(bars <= 0) return 0;
    if(bars < BK_BASE_MIN_BARS) return -1;
+   int from = (baseMin > 0 ? baseMin : chartMin);   // P-BK-75: the BOX' TF, this chart's only as a fallback
    int rungs[9];
    ArrayInitialize(rungs, 0);   // explicit: the loop below fills it in order, the reads go backwards
    int cnt = 0;
-   int rung = chartMin;
+   int rung = from;
    for(int i = 0; i < 9; i++)
    {
       rung = BaseKnotNextTFMin(rung);
@@ -2759,55 +2770,64 @@ int BaseKnotBaseTFRead(const int bars, const datetime s1, const datetime s2,
       if(held < 0) return rungs[i];           // series unreadable — the ladder stands
       if(held >= BK_BASE_RUNG_MIN) return rungs[i];
    }
-   return chartMin;   // no rung stands still in this band: a base of THIS chart's TF
+   return from;   // no rung stands still in this band: a base of the BOX' OWN TF
 }
 // The memo (P-BK-36): the answer is closed-bar data, so it can only change when the
 // QUESTION changes — the box' edges, its band, the count it was computed from, the
-// chart TF, or a new closed bar.
+// chart TF (the span's unit), the BOX' TF (P-BK-75: where the ladder starts), or a new
+// closed bar. Both TFs are in the key: a TF switch changes the unit, and two boxes on
+// two TFs must never read each other's answer.
 static int      s_bkRungBars   = -1;
 static datetime s_bkRungS1     = 0;   // P-BK-41: the STORY's start (not the box' left edge)
 static datetime s_bkRungS2     = 0;   // ... and its exit candle (not the box' right edge)
 static double   s_bkRungTop    = 0.0;
 static double   s_bkRungBot    = 0.0;
 static int      s_bkRungChart  = 0;
+static int      s_bkRungBase   = 0;   // P-BK-75: the BOX' own TF the ladder started from
 static datetime s_bkRungBar    = 0;
 static int      s_bkRungAnswer = 0;
+// P-BK-75: `baseMin` = the TF the BOX is seen on (BaseKnotNodeTFMin). 0 = unknown, and
+// then the read falls back to this chart's TF, which is exactly the old behaviour.
 int BaseKnotBaseTFMin(const int bars, const datetime s1, const datetime s2,
-                      const double top, const double bot)
+                      const double top, const double bot, const int baseMin)
 {
    int chartMin = Period();
    if(chartMin <= 0) chartMin = 1;
+   int from = (baseMin > 0 ? baseMin : chartMin);
    datetime lastClosed = iTime(_Symbol, 0, 1);
    if(bars == s_bkRungBars && s1 == s_bkRungS1 && s2 == s_bkRungS2 &&
       top == s_bkRungTop && bot == s_bkRungBot && chartMin == s_bkRungChart &&
-      lastClosed == s_bkRungBar)
+      from == s_bkRungBase && lastClosed == s_bkRungBar)
       return s_bkRungAnswer;
-   int answer = BaseKnotBaseTFRead(bars, s1, s2, top, bot, chartMin);
+   int answer = BaseKnotBaseTFRead(bars, s1, s2, top, bot, chartMin, from);
    s_bkRungBars = bars; s_bkRungS1 = s1; s_bkRungS2 = s2;
    s_bkRungTop = top; s_bkRungBot = bot; s_bkRungChart = chartMin;
-   s_bkRungBar = lastClosed; s_bkRungAnswer = answer;
+   s_bkRungBase = from; s_bkRungBar = lastClosed; s_bkRungAnswer = answer;
    return answer;
 }
 // Compact note suffix: " · M15 base" / " · H1 base" / " · struct" / "".
 // P-BK-41: `s1..s2` = the base's OWN STORY (the span its number counts).
 string BaseKnotBaseTag(const int bars, const datetime s1, const datetime s2,
-                       const double top, const double bot)
+                       const double top, const double bot, const int baseMin)
 {
-   int tf = BaseKnotBaseTFMin(bars, s1, s2, top, bot);
+   int tf = BaseKnotBaseTFMin(bars, s1, s2, top, bot, baseMin);
    if(tf == 0) return "";   // unmeasurable — the bars part is omitted too
    if(tf <  0) return " · struct";
    return " · " + BaseKnotTFName(tf) + " base";
 }
 // The same read spelled out for the hover line (the note's full sentence).
 string BaseKnotBaseLine(const int bars, const datetime s1, const datetime s2,
-                        const double top, const double bot)
+                        const double top, const double bot, const int baseMin)
 {
-   int tf = BaseKnotBaseTFMin(bars, s1, s2, top, bot);
+   int tf = BaseKnotBaseTFMin(bars, s1, s2, top, bot, baseMin);
    if(tf == 0) return "\nBase: size not measurable yet";
    if(tf <  0) return "\nBase: " + IntegerToString(bars) +
                       " bars -> structure (a base needs " + IntegerToString(BK_BASE_MIN_BARS) + " candles inside)";
-   if(tf == Period()) return "\nBase: " + IntegerToString(bars) + " bars -> " + BaseKnotTFName(tf) +
-                              " base (this chart's TF)";
+   // P-BK-75: the fallback rung is the BOX' own TF now, so the sentence says so — and
+   // it is `baseMin` (what the read was anchored on), never `Period()`.
+   if(tf == (baseMin > 0 ? baseMin : Period()))
+      return "\nBase: " + IntegerToString(bars) + " bars -> " + BaseKnotTFName(tf) +
+             " base (the box' own TF)";
    // P-BK-36: the claim the class is read from — the rung's OWN candles, spelled out.
    return "\nBase: " + IntegerToString(bars) + " bars -> " + BaseKnotTFName(tf) +
           " base (" + IntegerToString(BK_BASE_RUNG_MIN) + " candles of " + BaseKnotTFName(tf) +
@@ -3724,7 +3744,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
    // putting `+ tpTag` back after the risk (and taking BaseKnotTPPlanTag from BKTAGTP-OFF
    // in BaseKnotSync / BaseKnotSyncLive, which still build `tpTip` for the hover).
    ObjectSetString(0, o, OBJPROP_TEXT,
-                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, sp.tStart, sp.tExit, top, bot) + BaseKnotNodeTag(nd) + BaseKnotPatternTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class, from the stand-still count, on the base's own story
+                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, sp.tStart, sp.tExit, top, bot, nd.nodeTF) + BaseKnotNodeTag(nd) + BaseKnotPatternTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class, from the stand-still count, on the base's own story
    ObjectSetString(0, o, OBJPROP_FONT, inpFontName);   // P-BK-56: the label family's own font
    ObjectSetInteger(0, o, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27/56
    ObjectSetInteger(0, o, OBJPROP_COLOR, BaseKnotFgForBg());
@@ -3746,7 +3766,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
                    (bars > 0 ? ", " + IntegerToString(bars) + " bars" : "") +
                    tpTip +   // P-BK-50: the plan's own targets, leg by leg (level + pips + R) — P-BK-54: the note's ONLY home for them
                    BaseKnotHeightTip(top, bot, riskTag) +   // P-BK-57: the note's bare second number, NAMED here, with its arithmetic
-                   BaseKnotBaseLine(still, sp.tStart, sp.tExit, top, bot) +   // P-BK-28/36/41
+                   BaseKnotBaseLine(still, sp.tStart, sp.tExit, top, bot, nd.nodeTF) +   // P-BK-28/36/41/75
                    (bars > 0 ? "\n     " + IntegerToString(bars) + " bars: between the ENTRY candle " +
                                "and the EXIT candle (entry not counted, exit counted) · " +
                                IntegerToString(still) + " stood still in the band" : "") +   // P-BK-40/42
@@ -3864,7 +3884,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    ndLive.revisits = 0; ndLive.lastSide = 0; ndLive.lifeBars = 0;
    ndLive.ctxAlign = 0; ndLive.sideLevel = 0;
    // ... and the TYPE half is read, off the span the note's class came from (P-BK-55).
-   int liveClass = BaseKnotBaseTFMin(spLive.still, spLive.tStart, spLive.tExit, top, bot);   // the class the note prints
+   int liveClass = BaseKnotBaseTFMin(spLive.still, spLive.tStart, spLive.tExit, top, bot, liveTF);   // P-BK-75: the class, read from the box' own TF
    ndLive.height = top - bot;   // P-BK-75: «طول گره» is the box' own height
    ndLive.kind   = BaseKnotNodeKindOfLength(liveTF, ndLive.height);
    BaseKnotAbilityGet(liveTF, ndLive.abTrig, ndLive.abPat, ndLive.abStr);
@@ -4432,7 +4452,9 @@ void BaseKnotSync(const string id)
    // SAME story instead of a second one of its own. P-BK-40: the class is read from
    // the candles that STOOD STILL (a base's own length), while the note's number
    // stays the base's LIFE.
-   int baseTF = BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot);
+   // P-BK-75: anchored on the TF the BOX is seen on, so a TF switch cannot move the
+   // class (and with it the story, the entry and the plan legs that ride it).
+   int baseTF = BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot, BaseKnotNodeTFMin(k));
    g_bkBoxes[k].baseTFMin = baseTF;
    g_bkBoxes[k].storyT = sp.tLast;   // P-BK-41: the same story the pump re-reads
    g_bkBoxes[k].baseT  = sp.tStart;  // P-BK-49: the base's OWN entry — the approach's anchor
