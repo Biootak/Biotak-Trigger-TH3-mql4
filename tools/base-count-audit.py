@@ -151,15 +151,20 @@ lies to the right of the rectangle, while a box dragged past its own break is un
 (the run cannot extend at all: the next candle already closed outside). The class's
 span and the node's story start ride the same head (P-BK-41).
 
-P-BK-49 (2026-09-15) — and the SIDE is the BASE PATTERN's, and it is FIXED: «جهت سل و
-بای رو حتی در گذشته مارکت باید درست تشخیص بده از رالی بیس رالی و رالی بیس دراپ و برعکس
-شون». The pattern is [APPROACH]-base-[DEPARTURE]: the APPROACH is the last close outside
-the band BEFORE the base's own entry (below the floor = a rally in, above the ceiling = a
-drop in), the DEPARTURE is the story's own first close outside it — and the DEPARTURE
-alone names buy/sell (out up -> Buy: RBR/DBR; out down -> Sell: RBD/DBD), the approach
-only telling continuation from reversal. What the P-BK-46 read did instead was let price
-REWRITE the side later (the return's own edge, the second break, and P-BK-48's zeroing of
-a CONSUMED node) — which on history answers whatever price did LAST: the LIVE price's
+P-BK-81 (2026-09-17) — and the SIDE is the BASE'S OWN EXIT CANDLE, and it is FIXED. The
+user: «چرا جهت درست تشخیص نمیده rbr , dbd rbd … کلا از شر این rbr , dbd rbd خلاص بشیم و
+جهت سل و بای به صورت صدردصدی درست تشخیص داده بشه». P-BK-49's four names are GONE: the
+standard definitions make RBR and DBR BOTH Buy and RBD and DBD BOTH Sell («the move OUT of
+the base decides the direction … the exit shows current intent»), so the approach leg could
+only split continuation from reversal and the four names carried no directional information
+the exit leg did not already carry. The story walk now STARTS at the base's own exit candle
+— the candle that CLOSED OUTSIDE the band, the very one the note's number is counted to —
+instead of one bar after the box' right edge: the old start moved with the drawn rectangle
+(«کمی که جابجا میکن نوع گره عوض میشه چرا») and, on a chart coarser than the node's own
+time, sat a whole bar PAST the exit, so the first close it examined was a later candle —
+often a return — and named the opposite side. What the P-BK-46 read did instead was let
+price REWRITE the side later (the return's own edge, the second break, and P-BK-48's zeroing
+of a CONSUMED node) — which on history answers whatever price did LAST: the LIVE price's
 business, not the base's. Retired in place (BKNODEDIR-OFF), replaced by ONE return off
 `nd.side`, so the same box reads the same direction on every chart and in the past
 market alike.
@@ -285,52 +290,80 @@ Checks, all on the source (+ one model), no terminal:
              kept in place behind `BKNODERUNG-OFF` and is asserted DEAD on
              `strip_comments()` text — a name test on raw source would pass on the
              retirement comment alone (P-BK-74).
-             P-BK-38/P-BK-49 ride here, as the SIDE: the story still runs on the
+             P-BK-38/81 ride here, as the SIDE: the story still runs on the
              CLASS' own candles (so one box has one side on every chart), the far
              edge is still read off top/bot (the node's LIFE STATE, P-BK-48), and
-             `BaseKnotNodeDir` is ONE return off `nd.side` — the departure's own
-             direction — with the P-BK-46 branches retired in place, so no return,
-             second break or far-edge close can rewrite which side the base left
-             on. The APPROACH leg rides the same read, off the base's own entry
-             (`tFrom`, published as `baseT` so the pump asks the same question),
-             and names the pattern RBR/RBD/DBR/DBD without ever touching the side.
+             `BaseKnotNodeDir` is ONE return off `nd.side` — with the P-BK-46
+             branches retired in place, so no return, second break or far-edge close
+             can rewrite which side the base left on.
+             P-BK-81 (2026-09-17) — THE FOUR PATTERN NAMES ARE GONE AND THE
+             DIRECTION IS ONE BIT. The user: «چرا جهت درست تشخیص نمیده rbr , dbd
+             rbd … کلا از شر این rbr , dbd rbd خلاص بشیم و جهت سل و بای به صورت
+             صدردصدی درست تشخیص داده بشه». The standard definitions make RBR and DBR
+             BOTH Buy and RBD and DBD BOTH Sell — «the move OUT of the base decides
+             the direction, because the move into it only shows past direction while
+             the exit shows current intent» (alphaexcapital.com) — so the approach
+             leg could only split continuation from reversal and the four names
+             carried no directional information the exit leg did not already carry.
+             `BK_PAT_*`, `BK_APPROACH_MAX`, the struct's `approach`/`pattern`, the
+             approach walk, the two assignments, `BaseKnotPatternName/Tag/Line` and
+             the registry's `baseT` are DELETED (the `BKPAT-OFF` markers are prose,
+             like BKNODEKIND-OFF: there is no corpse to test on). The DIRECTION is
+             `nd.side`, read off the base's OWN EXIT CANDLE: the story walk now
+             STARTS at that candle — the one that CLOSED OUTSIDE the band, the very
+             candle the note's number is counted to (`sp.tExit`, published as the
+             registry's `exitT` so the pump reads the same candle) — instead of one
+             bar after the box' right edge. That start is the whole fix for the
+             user's two reports: the old start moved with the drawn rectangle (a nudge
+             flipped the side), and on a chart coarser than the node's own time it sat
+             a whole bar PAST the exit, so the first close it examined was a later
+             candle — often a return — and named the opposite side. Above the ceiling
+             -> +1 Buy, below the floor -> -1 Sell, inside -> 0 (the live price's
+             turn). A later return, a revisit, a second break and a far-edge close are
+             the node's LIFE and are REPORTED; none of them is a direction.
              The model then proves the promises on scenes: the six band answers,
              the four HEIGHT bands on a real ladder (a height on each side of each
              midpoint, a height equal to the structure ability, one above it, and
              the absence when that TF's ATR was never pushed), the story scenes'
-             sides (the departure's, in BOTH directions, return or not), the four
-             PATTERN scenes and their two absences, the step moving the numbers but
-             never the side, the closes moving the side but never the type, and —
-             the point of the change — the RETIRED reading's own answer for the
-             user's D1 box (ETR) against the length's (FTR: it is its own trigger)
-             and against the pattern's own side (+1: that box departed UP).
+             sides (the exit candle's, in BOTH directions, return or not), the step
+             moving the numbers but never the side, the closes moving the side but
+             never the type, and — the point of the length change — the RETIRED
+             reading's own answer for the user's D1 box (ETR) against the length's
+             (FTR: it is its own trigger).
   8 RUNG     THE NODE'S TIME IS CHART-INDEPENDENT (P-BK-77, 2026-09-17 — the user:
              «اولین چیزی که خیلی مهم تایم گره باید پیدا بکنیم ... صدردصد تایم گره درست
              تشخیص داده بشه که فرقی نکنه در چه تایم فریمی هستیم»). The class is
-             CONFIRMED on the rung's OWN candles (P-BK-36) over the base's OWN STORY
-             span (P-BK-41: `s1..s2`, never the box' t1/t2), on the PROJECT'S WHOLE
+             CONFIRMED on the rung's OWN candles (P-BK-36), on the PROJECT'S WHOLE
              LADDER (P-BK-43: M1·M5·M15·H1·H4·D1·W1·MN1, no M30 — enumerated by
              `BaseKnotLadderAll`, the ONE owner, off `BaseKnotNextTFMin`), and the walk
              goes TOP-DOWN: the FIRST rung whose own candles stand still
              (`BaseKnotRungHoldCount >= BK_BASE_RUNG_MIN`) IS the node's time — the
              user's own definition of «تایم گره» («سه کندل درجا زدن»), and their own
-             choice of the HIGHEST rung when several stand still. The span is measured
-             in MINUTES (`(s2 - s1)/60 + the chart's own candle width`), so a rung is
-             admitted by `3 * rung <= spanMin`: the OLD test counted CHART candles
-             (`3 * rung / chartMin > bars`) and therefore let the open chart refuse
-             rungs it had no business refusing. A rung whose series cannot be read is
-             REMEMBERED (`unread`) and answers only when nothing stood still at all;
-             and a band where nothing stood still falls back to the SPAN'S OWN RUNG
-             (the largest rung a single candle of which still fits), never to the open
-             chart's TF. The retired free confirmation — `if(tfMin == Period()) return
-             BK_BASE_RUNG_MIN;`, which let THIS chart's own TF confirm itself without
-             reading a single candle and so made the CHART decide the class — is GONE.
-             `chartMin` survives ONLY as the span's unit (the exit candle's own width);
-             the memo keys on the box' own geometry (bars, both story ends, the band,
-             the chart's candle width) and a new closed bar, so two boxes on two TFs
-             cannot read each other's answer. The class' own texts (`BaseKnotBaseTag` /
-             `BaseKnotBaseLine`) take NO TF at all, and the hover RE-READS the rung it
-             named before it claims its candles.
+             choice of the HIGHEST rung when several stand still. A rung whose series
+             cannot be read is REMEMBERED (`unread`) and answers only when nothing
+             stood still at all; and a band where nothing stood still falls back to the
+             SPAN'S OWN RUNG (the largest rung a single candle of which still fits),
+             never to the open chart's TF. The retired free confirmation —
+             `if(tfMin == Period()) return BK_BASE_RUNG_MIN;`, which let THIS chart's
+             own TF confirm itself without reading a single candle and so made the
+             CHART decide the class — is GONE. The class' own texts
+             (`BaseKnotBaseTag` / `BaseKnotBaseLine`) take NO TF at all, and the hover
+             RE-READS the rung it named before it claims its candles.
+             P-BK-80 (2026-09-17) — AND THE SPAN IS THE BOX' OWN. The user:
+             «تایم گره توی یکساعته درست تشخیص داده ... ولی تایم بالا که میریم میزنه ftr
+             کلا یک گره فقط یک تایم میتونه داشته باشه متعلق به یک تایم هستش». The span
+             used to be `(s2 - s1)/60 + the chart's own candle width`, over the STORY
+             span `sp.tStart..sp.tExit` — and that span is read off the CHART's candles
+             (P-BK-41), so the SAME box measured 480..660 minutes on H1 and 480+240 ..
+             660+240 on H4: the `+ chartMin` admitted a TALLER rung on the higher chart,
+             and the taller rung's ATRs then typed a short box FTR. Now the span is
+             `(b2 - b1)/60` over the BOX' OWN two anchors (`t1..t2`, the values stored
+             on the chart OBJECT) with NO chart term and NO `chartMin` anywhere in the
+             read, so the answer is bit-identical on every chart TF. The memo keys on
+             `bars`, `b1`, `b2`, the band and a new closed bar — the chart's candle
+             width is gone from the key too, because it is no longer an input. Every
+             call site hands the box' own two anchors (`t1, t2`; the live preview its
+             own `t1, te`).
   9 AS-OF    EVERY NUMBER THE KNOT DRAWS IS READ AT THE BOX' OWN BAR (P-BK-79,
              2026-09-17 — the user: «مثلا atr یک دقیقه زمان گره بوده مثلا 20 ... با
              گذشت زمان ممکن 40 بشه یا 10 بشه که اینطوری نمیشه نوع گره دقیق مشخص
@@ -579,10 +612,13 @@ def check_one_value():
                 re.search(r"BaseKnotSpan sp;\s*\n\s*int bars = BaseKnotBarCount\(t1, t2, top, bot, sp\)", sync) is not None))
     out.append(("the CLASS is read from the candles that stood still",
                 re.search(r"BaseKnotBaseTFMin\(still,", sync) is not None))
-    # P-BK-41/42: ONE span — the number, the class, the node's read and the note's own
+    # P-BK-41/42/80: ONE span — the number, the class, the node's read and the note's own
     # badge all read the SAME record, so no two of them can describe different objects.
-    out.append(("the class is read on the STORY's own two ends",
-                re.search(r"BaseKnotBaseTFMin\(still,\s*sp\.tStart,\s*sp\.tExit,\s*top,\s*bot\)",
+    # P-BK-80: the CLASS is the one exception, and on purpose: its span is the BOX' own two
+    # anchors, not the chart-read story span — feeding it `sp.tStart..sp.tExit` is exactly
+    # what let one box answer H1 on an H1 chart and H4 on an H4 chart.
+    out.append(("the class is read on the BOX' own two anchors, never the chart-read span",
+                re.search(r"BaseKnotBaseTFMin\(still,\s*t1,\s*t2,\s*top,\s*bot\)",
                           sync) is not None
                 # P-BK-77: and it is asked the box' OWN geometry ONLY — no TF argument,
                 # because the box' commit TF no longer names the node's time.
@@ -1104,10 +1140,11 @@ def check_invariance():
 NODE_NONE, NODE_FTR, NODE_ETR, NODE_CTR, NODE_OTR = 0, 1, 2, 3, 4
 NODE_NAME = {NODE_NONE: "none", NODE_FTR: "FTR", NODE_ETR: "ETR",
              NODE_CTR: "CTR", NODE_OTR: "OTR"}
-# P-BK-49: the four base patterns, and the side each one rides (the DEPARTURE's own).
-PAT_NONE, PAT_RBR, PAT_RBD, PAT_DBR, PAT_DBD = 0, 1, 2, 3, 4
-PAT_NAME = {PAT_NONE: "none", PAT_RBR: "RBR", PAT_RBD: "RBD",
-            PAT_DBR: "DBR", PAT_DBD: "DBD"}
+# BKPAT-OFF (P-BK-81): the four pattern names' own constants lived here —
+# `PAT_NONE, PAT_RBR, PAT_RBD, PAT_DBR, PAT_DBD` and `PAT_NAME`. They are gone with
+# `BK_PAT_*`, the approach walk and `BaseKnotPatternName`; the direction is one bit now
+# (`node_side_model`), and restoring the names means restoring that whole block AND the
+# `check_node` gates named "the four names are GONE".
 
 
 def ladder():
@@ -1205,9 +1242,11 @@ def node_kind_model(h, trig, pat, str_):
 
 
 def node_story_model(closes, top, bot, step=0.0):
-    """Mirrors the BREAK's story walk in BaseKnotNodeRead (P-BK-29/35): the break, the
-    return, the far edge and the second break on the class's own candles. It names the
-    SIDE the trade comes in on now (P-BK-46) — never the type (P-BK-47).
+    """Mirrors the story walk in BaseKnotNodeRead (P-BK-29/35/81): the exit, the return,
+    the far edge and the second break on the class's own candles. Its FIRST close IS the
+    base's own exit candle (P-BK-81: the walk starts there, not at the drawn rectangle),
+    so the side it names is that candle's answer and nothing else — never the type
+    (P-BK-47).
 
     `step` is accepted and IGNORED on purpose: the story's SIDE is a fact about levels,
     and the step only SIZES the numbers beside it.
@@ -1240,35 +1279,59 @@ def node_story_model(closes, top, bot, step=0.0):
 
 
 def node_side_model(story):
-    """Mirrors BaseKnotNodeDir (P-BK-49): the DEPARTURE decides the side and it is FIXED
-    — a return into the base, a second break of the same edge and a close through the far
-    edge all leave it alone (that is what makes a box on the PAST market read its own
-    direction). +1 / -1 / 0, where 0 = no departure measured: the live price's turn."""
+    """Mirrors BaseKnotNodeDir (P-BK-81): the base's OWN EXIT CANDLE decides the side and
+    it is FIXED — a return into the base, a second break of the same edge and a close
+    through the far edge all leave it alone (that is what makes a box on the PAST market
+    read its own direction). +1 / -1 / 0, where 0 = the exit candle closed inside the
+    band (nothing claimed): the live price's turn.
+
+    `story["side"]` IS that candle's answer: P-BK-81 starts the walk AT the exit candle,
+    so its first close is the one that names the side. The walk's other facts
+    (`returned`, `rebreaks`, `crossed`) are the node's LIFE — reported, never a direction.
+    """
     return story["side"]
 
 
-def node_pattern_model(approach, side):
-    """Mirrors the P-BK-49 pattern read: [APPROACH]-base-[DEPARTURE]. The DEPARTURE names
-    the side; the approach only tells continuation (it agrees with it) from reversal (it
-    does not) — so RBR and RBD differ ONLY in the approach, never in the direction."""
-    if side == 0 or approach == 0:
-        return PAT_NONE
-    if approach > 0:
-        return PAT_RBR if side > 0 else PAT_RBD
-    return PAT_DBR if side > 0 else PAT_DBD
+# BKPAT-OFF (P-BK-81): `node_pattern_model(approach, side)` and `node_pattern_scenes()`
+# lived here — the [APPROACH]-base-[DEPARTURE] model and the four scenes that pinned
+# RBR/RBD/DBR/DBD. Restoring the names means restoring both, the `PAT_*` constants above
+# and the `check_node_model` loop that walked the scenes.
 
 
-def node_pattern_scenes():
-    """(name, approach, departure side, expected pattern) — the four names, their two
-    absences, and the promise that unites them: the pattern's side is the departure's."""
+def node_exit_start_model(s2, s_x):
+    """Mirrors the START of the story walk in BaseKnotNodeRead (P-BK-81): the base's OWN
+    exit candle whenever it is a CLOSED bar of the story TF, and the box' own right side
+    (`s2 - 1`) ONLY as the fallback — a base that published no exit candle at all, or one
+    whose exit candle is the forming bar.
+
+    `s2` = the shift of the base's right side (`sp.tLast`), `s_x` = the shift the base's own
+    exit candle (`sp.tExit`) maps to on the story TF (`-1` = none published).
+
+    The three answers that matter: an exit on the SAME bar as the base's right side starts
+    one bar EARLIER than the old read did (that bar's close IS the exit's close, and the
+    old read stepped straight past it — which is how a coarse chart named a later candle,
+    often a return, as the direction); an exit one bar past the base reproduces the old
+    start exactly (so a fine chart's answer is unchanged); and no exit at all falls back to
+    the box' own right side instead of inventing a candle.
+    """
+    start = s2 - 1
+    if s_x >= 1:
+        start = s_x
+    return start
+
+
+def node_exit_start_scenes():
+    """(name, s2, s_x, expected start) — the start rule's three cases and its two
+    fallbacks."""
     return [
-        ("a rally in and a rally out is RBR (demand, continuation)", 1, 1, PAT_RBR),
-        ("a rally in and a drop out is RBD (supply, reversal)", 1, -1, PAT_RBD),
-        ("a drop in and a rally out is DBR (demand, reversal)", -1, 1, PAT_DBR),
-        ("a drop in and a drop out is DBD (supply, continuation)", -1, -1, PAT_DBD),
-        ("no approach read (the leg sits past the budget) claims no pattern", 0, 1, PAT_NONE),
-        ("no departure claims no pattern (the live price's turn)", 1, 0, PAT_NONE),
-        ("... whichever way the approach came", -1, 0, PAT_NONE),
+        ("the exit candle IS a closed bar of the story TF -> the walk starts THERE", 6, 5, 5),
+        ("... and an exit on the SAME bar as the base's right side starts one bar earlier "
+         "(its close IS the exit's close — the coarse-chart case)", 6, 6, 6),
+        ("... nor does an exit two bars earlier skip the story it must measure", 9, 7, 7),
+        ("no exit candle published (a box whose story was never read) -> the box' own right side",
+         6, -1, 5),
+        ("an exit candle that is the FORMING bar is not a closed fact -> the box' own right side",
+         6, 0, 5),
     ]
 
 
@@ -1368,8 +1431,9 @@ def node_kind_v29_retired(closes, top, bot):
 
 
 def check_node():
-    """P-BK-47 — the type is the node's LENGTH (rung count); the break's story names the
-    trade's SIDE and nothing else, and the two can never change places."""
+    """P-BK-47/81 — the type is the node's LENGTH (the box' height against the ladder's
+    ATRs); the base's OWN EXIT CANDLE names the trade's SIDE and nothing else, and the two
+    can never change places."""
     src = read(KNOT)
     blk = body(src, "void BaseKnotNodeRead(")
     if blk is None:
@@ -1379,10 +1443,13 @@ def check_node():
     # --- the LENGTH half: the type comes from the rung count and from nothing else
     # P-BK-77/78: ONE TF, and it is the NODE'S OWN TIME the ladder search found — the box'
     # own commit TF (`baseTFMin`) no longer has a parameter here at all.
+    # P-BK-81: and the datetime BEFORE the anchor is the base's OWN EXIT CANDLE (`tExit`),
+    # never the base's entry (`tFrom`): the approach leg it anchored is gone.
     out.append(("the read takes the NODE'S OWN TIME as its only TF (P-BK-77/78)",
                 re.search(r"void\s+BaseKnotNodeRead\s*\(\s*const\s+datetime\s+t2,\s*const\s+double\s+top,\s*"
-                          r"const\s+double\s+bot,\s*const\s+int\s+nodeTimeMin,\s*const\s+datetime\s+tFrom,",
+                          r"const\s+double\s+bot,\s*const\s+int\s+nodeTimeMin,\s*const\s+datetime\s+tExit,",
                           plain) is not None
+                and re.search(r"const\s+int\s+nodeTimeMin,\s*const\s+datetime\s+tFrom,", plain) is None
                 and "nd.nodeTF = nodeTimeMin; nd.baseTF = nodeTimeMin;" in blk))
     kinds = [k.strip() for k in re.findall(r"nd\.kind\s*=\s*([^;]+);", blk)]
     out.append(("the type is ONE read off the box' HEIGHT (its reset, then the height - no branch)",
@@ -1473,16 +1540,16 @@ def check_node():
     # reason (the mutant that zeroes the NODE READ's class went unseen exactly that way).
     out.append(("... and the pump asks the SAME question of the SAME story and the SAME TF",
                 re.search(r"BaseKnotNodeRead\([^;]*g_bkBoxes\[i\]\.baseTFMin,\s*"
-                          r"g_bkBoxes\[i\]\.baseT", pump) is not None
+                          r"g_bkBoxes\[i\]\.exitT", pump) is not None
                 and re.search(r"storyT\s*>\s*0\s*\?\s*g_bkBoxes\[i\]\.storyT\s*:\s*t2", pump) is not None))
     out.append(("Sync publishes BOTH answers and the pump compares both",
                 "g_bkBoxes[k].nodeKind = nd.kind;" in sync
                 and "g_bkBoxes[k].nodeSide = ndDir;" in sync
                 and re.search(r"ndNow\.kind\s*!=\s*g_bkBoxes\[i\]\.nodeKind", pump) is not None
                 and "BaseKnotNodeDir(ndNow) != g_bkBoxes[i].nodeSide" in pump))
-    # --- the SIDE half: P-BK-49's rule — the base PATTERN's side, and it is FIXED
+    # --- the SIDE half: P-BK-81's rule — the base's OWN EXIT CANDLE, and it is FIXED
     dblk = body(src, "int BaseKnotNodeDir(") or ""
-    out.append(("the SIDE is ONE return off the DEPARTURE (the pattern's own direction)",
+    out.append(("the SIDE is ONE return off the exit candle's own read (one bit, no branch)",
                 re.search(r"return\s+nd\.side;", dblk) is not None
                 and re.search(r"\bif\s*\(", dblk) is None
                 and re.search(r"nd\.(crossed|returned|rebreaks|state)\b", dblk) is None))
@@ -1512,9 +1579,29 @@ def check_node():
                 re.search(r"BaseKnotRungLoaded\(nodeTimeMin\)", blk) is not None
                 and re.search(r"iBarShift\(_Symbol,\s*" + _TFREAD + r",\s*t2", blk) is not None
                 and re.search(r"iClose\(_Symbol,\s*tfRead,\s*s\)", blk) is not None))
-    out.append(("... and the far edge is still read off the box (the side's own fact)",
+    out.append(("... and the far edge is still read off the box (the node's own life)",
                 re.search(r"if\(c\s*<\s*bot\)\s*nd\.crossed\s*=\s*true;", blk) is not None
                 and re.search(r"if\(c\s*>\s*top\)\s*nd\.crossed\s*=\s*true;", blk) is not None))
+    # --- P-BK-81: THE WALK STARTS AT THE BASE'S OWN EXIT CANDLE, NEVER AT THE DRAWN BOX.
+    # The user's two reports — «کمی که جابجا میکن نوع گره عوض میشه چرا» and «چرا جهت درست
+    # تشخیص نمیده» — are both this start: it moved with the box, and on a chart coarser than
+    # the node's own time it stepped PAST the exit candle.
+    out.append(("the walk STARTS at the base's own exit candle, mapped onto the story TF",
+                re.search(r"int\s+sX\s*=\s*iBarShift\(_Symbol,\s*" + _TFREAD + r",\s*tExit,\s*false\);",
+                          blk) is not None
+                and re.search(r"if\(sX\s*>=\s*1\)\s*start\s*=\s*sX;", blk) is not None))
+    out.append(("... and the box' own right side is ONLY the fallback (no exit candle, or one "
+                "that is the forming bar)",
+                re.search(r"int\s+start\s*=\s*s2\s*-\s*1;", blk) is not None
+                and re.search(r"if\(tExit\s*>\s*0\)", blk) is not None
+                and re.search(r"for\(int\s+s\s*=\s*start;\s*s\s*>=\s*oldest;\s*s--\)", blk) is not None
+                # ... and the loop no longer starts at the box: that IS the old read.
+                and re.search(r"for\(int\s+s\s*=\s*s2\s*-\s*1;", blk) is None))
+    out.append(("... and the walk refuses to read a bar that is not closed",
+                re.search(r"if\(start\s*<\s*1\)\s*return;", blk) is not None))
+    out.append(("the read takes the base's OWN EXIT CANDLE, and no base ENTRY at all",
+                re.search(r"const\s+int\s+nodeTimeMin,\s*const\s+datetime\s+tExit,", plain) is not None
+                and re.search(r"\btFrom\b", plain) is None))
     # --- the texts: the claim AND the numbers it was read from
     line = body(src, "string BaseKnotNodeLine(") or ""
     out.append(("the hover says the type IS the length", "the type is the HEIGHT" in line))
@@ -1526,52 +1613,53 @@ def check_node():
                 and "BaseKnotNodeBandEtrCtr(nd.nodeTF, nd.anchor)" in line))
     out.append(("... keeping the TF-invariance promise for the type",
                 "the same on every chart TF" in line))
-    out.append(("... while the story, its side and its step ride their own lines",
-                "story read on" in line and "trade:" in line and "far edge" in line.lower()))
+    out.append(("... while the story, its direction and its step ride their own lines",
+                "story read on" in line and "trade:" in line))
     namefn = body(src, "string BaseKnotNodeName(") or ""
     out.append(("the classic pairs (the story's names) are no longer printed as the type",
                 "ABO" not in namefn and "ABO" not in line))
-    # --- P-BK-49: the APPROACH leg and the four PATTERNS, read on the past market too
-    out.append(("the read takes the base's OWN entry — the approach leg's anchor",
-                re.search(r"const\s+int\s+nodeTimeMin,\s*const\s+datetime\s+tFrom,", plain) is not None))
-    app = re.search(r"if\(tFrom\s*>\s*0\)(.*?)nd\.pattern\s*=", blk, flags=re.S)
-    out.append(("the APPROACH is the last close outside the band before that entry",
-                app is not None
-                and re.search(r"iBarShift\(_Symbol,\s*" + _TFREAD + r",\s*tFrom,\s*false\)", app.group(1)) is not None
-                and re.search(r"if\(ca\s*<\s*bot\)\s*\{\s*nd\.approach\s*=\s*1;", app.group(1)) is not None
-                and re.search(r"if\(ca\s*>\s*top\)\s*\{\s*nd\.approach\s*=\s*-1;", app.group(1)) is not None))
-    out.append(("... on the SAME story TF (one pattern, one box) and bounded",
-                app is not None
-                and re.search(r"iClose\(_Symbol,\s*tfRead,\s*a\)", app.group(1)) is not None
-                and "BK_APPROACH_MAX" in app.group(1)))
-    out.append(("the PATTERN is ONE pair of assignments off the approach and the departure",
-                re.search(r"nd\.pattern\s*=\s*\(side\s*>\s*0\s*\?\s*BK_PAT_RBR\s*:\s*BK_PAT_RBD\);",
-                          blk) is not None
-                and re.search(r"nd\.pattern\s*=\s*\(side\s*>\s*0\s*\?\s*BK_PAT_DBR\s*:\s*BK_PAT_DBD\);",
-                              blk) is not None))
-    out.append(("... so the DEPARTURE alone names the side (no `-nd.side`, no level test)",
-                re.search(r"nd\.pattern\s*=\s*[^;]*-nd\.side", blk) is None
-                and re.search(r"nd\.pattern\s*=\s*[^;]*nd\.(crossed|returned|rebreaks)", blk) is None))
-    pname = body(src, "string BaseKnotPatternName(") or ""
-    out.append(("the four names are spelled in ONE place",
-                all(('"%s"' % x) in pname for x in ("RBR", "RBD", "DBR", "DBD"))))
+    # --- P-BK-81: THE FOUR NAMES ARE GONE — the defines, the fields, the read, the texts.
+    out.append(("the four names are GONE: no define, no struct field, no assignment",
+                re.search(r"#define\s+BK_PAT_\w+", plain) is None
+                and re.search(r"#define\s+BK_APPROACH_MAX\b", plain) is None
+                and re.search(r"\bnd\.pattern\b", plain) is None
+                and re.search(r"\bnd\.approach\b", plain) is None
+                and re.search(r"\bBK_PAT_\w+", plain) is None
+                and re.search(r"\bBK_APPROACH_MAX\b", plain) is None))
+    out.append(("... their three functions are gone with them",
+                re.search(r"string\s+BaseKnotPattern(Name|Tag|Line)\s*\(", plain) is None))
+    out.append(("... and no text prints them any more (the names are on no object)",
+                not re.search(r'"(RBR|RBD|DBR|DBD)"', plain)))
+    out.append(("... the retirement is marked in place, not silently deleted",
+                "BKPAT-OFF" in src))
+    # ... and what replaced them: the direction's own sentence, off the ONE candle.
+    out.append(("the direction gets its own sentence, off the exit candle",
+                re.search(r"string\s+BaseKnotExitLine\s*\(\s*BaseKnotNode\s*&nd\s*\)", plain) is not None
+                and "the base's own EXIT candle closed" in plain))
     wib = body(src, "void BaseKnotWriteInfo(") or ""
-    pline = body(src, "string BaseKnotPatternLine(") or ""
-    out.append(("the note carries the pattern and the hover spells its two legs",
-                "BaseKnotPatternTag(nd)" in wib
-                and "BaseKnotPatternLine(nd)" in line
-                and "rallied into the base" in pline and "dropped into the base" in pline))
-    out.append(("Sync publishes the base's ENTRY and names the pattern on the entry",
-                "g_bkBoxes[k].baseT  = sp.tStart;" in sync
-                and "BaseKnotPatternName(nd.pattern)" in sync))
-    out.append(("... and the pump re-reads the SAME pattern, off the SAME entry",
-                re.search(r"BaseKnotNodeRead\([^;]*g_bkBoxes\[i\]\.baseT,", pump) is not None
+    out.append(("the hover spells the direction and the note carries it as BUY/SELL",
+                "BaseKnotExitLine(nd)" in line
+                and "BaseKnotPatternTag(nd)" not in wib
+                and "the side the base was LEFT by" in line
+                and "exit candle " in line))
+    out.append(("Sync publishes the base's EXIT candle and reads the direction at it",
+                "g_bkBoxes[k].exitT  = sp.tExit;" in sync
+                and re.search(r"\bsp\.tExit,\s*g_bkBoxes\[k\]\.storyT,\s*nd\);", sync) is not None
+                # ... and the base's ENTRY is gone with the approach leg it anchored. The
+                # `\b` matters: `g_bkBoxes[k].baseTFMin` (the CLASS) is a different field and
+                # a bare substring test would call it the retired one.
+                and re.search(r"g_bkBoxes\[k\]\.baseT\b", sync) is None))
+    out.append(("... and the pump re-reads the SAME direction, off the SAME exit candle",
+                re.search(r"g_bkBoxes\[i\]\.exitT,\s*g_bkBoxes\[i\]\.storyT,\s*ndNow\)", pump)
+                is not None
                 # P-BK-79: and BOTH hand the read the box' own `storyT` as the anchor — the
                 # very key the pump pushed its rows with, so the type the pump compares is
                 # the type the Sync published and not a live row nobody draws with.
-                and re.search(r"\bsp\.tStart,\s*g_bkBoxes\[k\]\.storyT,\s*nd\);", sync) is not None
-                and re.search(r"g_bkBoxes\[i\]\.baseT,\s*g_bkBoxes\[i\]\.storyT,\s*ndNow\)", pump)
-                is not None))
+                and re.search(r"g_bkBoxes\[i\]\.baseT\b", pump) is None))
+    out.append(("... and the registry carries the exit candle (published, not re-derived)",
+                re.search(r"datetime\s+exitT;", plain) is not None
+                and re.search(r"g_bkBoxes\[n\]\.exitT\s*=\s*0;", plain) is not None
+                and re.search(r"datetime\s+baseT;", plain) is None))
     return out
 
 
@@ -1618,16 +1706,19 @@ def check_node_model():
                 "reads NO story at all (its whole input is the height + the three abilities)",
                 node_kind_v29_retired(D1_CLOSES, D1_TOP, D1_BOT) == NODE_ETR
                 and node_kind_model.__code__.co_argcount == 4))
-    out.append(("... while its SIDE is the pattern's: the box DEPARTED UP, so +1",
+    out.append(("... while its SIDE is the exit candle's: the box' first close outside was ABOVE "
+                "the band, so +1",
                 node_side_model(node_story_model(D1_CLOSES, D1_TOP, D1_BOT)) == 1))
-    for name, approach, side, want in node_pattern_scenes():
-        got = node_pattern_model(approach, side)
-        out.append(("%s (%s)" % (name, PAT_NAME[got]), got == want))
-    out.append(("the pattern's side IS the departure's, whichever way the approach came",
-                all(node_pattern_model(a, s) == PAT_NONE
-                    or (s > 0 and node_pattern_model(a, s) in (PAT_RBR, PAT_DBR))
-                    or (s < 0 and node_pattern_model(a, s) in (PAT_RBD, PAT_DBD))
-                    for a in (-1, 1) for s in (-1, 1))))
+    # P-BK-81: THE WALK'S START IS THE BASE'S OWN EXIT CANDLE. These are the cases the user's
+    # two reports were about — the old start moved with the drawn rectangle, and on a chart
+    # coarser than the node's own time it stepped PAST the exit candle.
+    for name, s2, s_x, want in node_exit_start_scenes():
+        got = node_exit_start_model(s2, s_x)
+        out.append(("%s (start %d)" % (name, got), got == want))
+    starts = {node_exit_start_model(6, s_x) for s_x in (4, 5, 6)}
+    out.append(("and the start is never LATER than the base's own right side — the walk can "
+                "only move EARLIER, never past the exit (%d answer(s))" % len(starts),
+                all(s <= 6 for s in starts)))
     return out
 
 
@@ -1702,17 +1793,17 @@ def check_rung():
     src = read(KNOT)
     plain = strip_comments(src)
     out = []
-    out.append(("the class takes the base's own story (the span the number counts)",
-                re.search(r"int\s+BaseKnotBaseTFMin\s*\(\s*const\s+int\s+bars,\s*const\s+datetime\s+s1,\s*"
-                          r"const\s+datetime\s+s2,\s*const\s+double\s+top,\s*const\s+double\s+bot\s*\)",
+    out.append(("the class takes the BOX' OWN two anchors (P-BK-80: never a chart term)",
+                re.search(r"int\s+BaseKnotBaseTFMin\s*\(\s*const\s+int\s+bars,\s*const\s+datetime\s+b1,\s*"
+                          r"const\s+datetime\s+b2,\s*const\s+double\s+top,\s*const\s+double\s+bot\s*\)",
                           plain) is not None
                 and re.search(r"BaseKnotBaseTFMin\s*\([^)]*baseMin", plain) is None))
-    out.append(("... and no call hands the class the box' own left edge",
-                re.search(r"BaseKnotBaseTFMin\([^)]*\bt1\b", plain) is None))
-    out.append(("... and the read itself walks s1..s2",
-                re.search(r"BaseKnotBaseTFRead\(bars,\s*s1,\s*s2,\s*top,\s*bot,\s*chartMin\)",
-                          plain) is not None
-                and re.search(r"BaseKnotRungHoldCount\(rung,\s*s1,\s*s2,", plain) is not None))
+    out.append(("... and EVERY call hands it the box' own two anchors, never the story span",
+                re.search(r"BaseKnotBaseTFMin\([^)]*\bt1\b", plain) is not None
+                and re.search(r"BaseKnotBaseTFMin\([^)]*sp\.t(Start|Exit)\b", plain) is None))
+    out.append(("... and the read itself walks b1..b2",
+                re.search(r"BaseKnotBaseTFRead\(bars,\s*b1,\s*b2,\s*top,\s*bot\)", plain) is not None
+                and re.search(r"BaseKnotRungHoldCount\(rung,\s*b1,\s*b2,", plain) is not None))
     read_block = body(src, "int BaseKnotBaseTFRead(")
     hold = body(src, "int BaseKnotRungHoldCount(")
     if read_block is None or hold is None:
@@ -1737,10 +1828,27 @@ def check_rung():
                 ladder_fn != "" and "BaseKnotNextTFMin(r)" in ladder_fn
                 and re.search(r"for\(int\s+i\s*=\s*0;\s*i\s*<\s*9;\s*i\+\+\)", ladder_fn) is not None))
     out.append(("... and the search admits on MINUTES, not on chart candles (P-BK-77)",
-                re.search(r"spanMin\s*=\s*\(int\)\(\(s2\s*>\s*s1\s*\?\s*\(s2\s*-\s*s1\)\s*/\s*60\s*:\s*0\)\)\s*\+\s*unit;",
+                re.search(r"spanMin\s*=\s*\(int\)\(\(b2\s*>\s*b1\s*\?\s*\(b2\s*-\s*b1\)\s*/\s*60\s*:\s*0\)\);",
                           read_block) is not None
                 and re.search(r"3\s*\*\s*rung\s*>\s*spanMin", read_block) is not None
                 and re.search(r"3\s*\*\s*rung\s*/\s*chartMin", read_block) is None))
+    # P-BK-80 (2026-09-17, user: «تایم بالا که میریم میزنه ftr ... کلا یک گره فقط یک تایم
+    # میتونه داشته باشه متعلق به یک تایم هستش»): THE CHART CONTRIBUTES NOTHING TO THE SPAN.
+    # The old span was `(s2 - s1)/60 + the chart's own candle width` over the CHART-read story
+    # span, so one box measured 480..660 minutes on H1 and 720..900 on H4 — the `+ chartMin`
+    # admitted a TALLER rung on the higher chart, and that rung's ATRs typed a short box FTR.
+    out.append(("... with NO chart term in the span at all (P-BK-80: the `+ unit` is gone)",
+                re.search(r"\+\s*unit", read_block) is None
+                and re.search(r"\bchartMin\b", read_block) is None
+                and re.search(r"int\s+spanMin\s*=\s*\(int\)\(\(b2\s*>\s*b1\s*\?\s*\(b2\s*-\s*b1\)\s*/\s*60\s*:\s*0\)\);",
+                              read_block) is not None))
+    out.append(("... and the read takes no chart TF and no chart candle width at all",
+                re.search(r"int\s+BaseKnotBaseTFRead\s*\(\s*const\s+int\s+bars,\s*const\s+datetime\s+b1,\s*"
+                          r"const\s+datetime\s+b2,\s*const\s+double\s+top,\s*const\s+double\s+bot\s*\)",
+                          plain) is not None
+                and re.search(r"\bchartMin\b", plain) is None))
+    out.append(("... and a band nothing stood still in still falls back to the SPAN's own rung",
+                re.search(r"return\s+rungs\[0\];", read_block) is not None))
     out.append(("... and it walks the ladder TOP-DOWN, so the FIRST rung that stands still wins",
                 re.search(r"for\(int\s+i\s*=\s*n\s*-\s*1;\s*i\s*>=\s*0;\s*i--\)", read_block) is not None
                 # ... and NEVER bottom-up: a walk that starts at the ladder's foot would let
@@ -1770,7 +1878,7 @@ def check_rung():
                 and re.search(r"string\s+BaseKnotBaseLine\([^)]*const\s+double\s+bot\s*\)", plain) is not None
                 and re.search(r"baseMin", plain) is None))
     out.append(("the hover claims the rung's candles only after RE-READING that rung",
-                re.search(r"if\(BaseKnotRungHoldCount\(tf,\s*s1,\s*s2,\s*top,\s*bot\)\s*<\s*BK_BASE_RUNG_MIN\)",
+                re.search(r"if\(BaseKnotRungHoldCount\(tf,\s*b1,\s*b2,\s*top,\s*bot\)\s*<\s*BK_BASE_RUNG_MIN\)",
                           plain) is not None
                 and "no rung of the ladder stood still" in plain))
     out.append(("the rung read uses the RUNG's own series",
@@ -1793,11 +1901,17 @@ def check_rung():
     memo = body(src, "int BaseKnotBaseTFMin(")
     out.append(("the class is memoised on the exact question (one read per Sync)",
                 memo is not None and "s_bkRungAnswer" in memo and "s_bkRungBar" in memo
-                and "s_bkRungChart" in memo and "s_bkRungBase" not in memo))
+                and "s_bkRungBase" not in memo))
+    # P-BK-80: the memo keys on the BOX' OWN two anchors, and the chart's candle width is
+    # gone from the key — it is no longer an input, so it cannot be a key.
+    out.append(("... and the key is the box' own two anchors, with NO chart term (P-BK-80)",
+                memo is not None and "s_bkRungB1" in memo and "s_bkRungB2" in memo
+                and "s_bkRungChart" not in memo and "Period()" not in memo))
     note = body(src, "void BaseKnotWriteInfo(") or ""
-    out.append(("the note's class rides the same STORY, read from the stand-still number",
-                re.search(r"BaseKnotBaseTag\(still,\s*sp\.tStart,\s*sp\.tExit,\s*top,\s*bot\)", note) is not None
-                and re.search(r"BaseKnotBaseTag\(bars,", note) is None))
+    out.append(("the note's class rides the BOX' own two anchors (P-BK-80)",
+                re.search(r"BaseKnotBaseTag\(still,\s*t1,\s*t2,\s*top,\s*bot\)", note) is not None
+                and re.search(r"BaseKnotBaseTag\(bars,", note) is None
+                and re.search(r"BaseKnotBaseTag\(still,\s*sp\.", note) is None))
     hover = body(src, "string BaseKnotBaseLine(") or ""
     out.append(("the hover line claims the rung's own candles",
                 "stood still in the band" in hover))
@@ -2082,7 +2196,7 @@ def check_asof():
                 re.search(r"const\s+datetime\s+anchor,\s*BaseKnotNode\s+&nd\)", plain) is not None))
     out.append(("... and never re-derives it from the box' edge or the clock",
                 "nd.anchor = (anchor > 0 ? anchor : 0);" in nread
-                and re.search(r"nd\.anchor\s*=\s*(?:t2|tFrom|Period\(\)|TimeCurrent\(\))", nread)
+                and re.search(r"nd\.anchor\s*=\s*(?:t2|tExit|Period\(\)|TimeCurrent\(\))", nread)
                 is None))
     out.append(("... and the box' record PUBLISHES the bar it was read at",
                 "datetime anchor;" in (body(src, "struct BaseKnotNode") or "")))
@@ -2215,9 +2329,10 @@ def check_note_fields():
     lits = re.findall(r'"([^"]*)"', expr)
     out.append(("... and no unit word — the plan's own row names the unit (`Eng.SL: 0.2`)",
                 not any("Pips" in s for s in lits)))
-    out.append(("the class, the type and the pattern still ride the note (P-BK-28/29/49)",
-                all(x in expr for x in ("BaseKnotBaseTag(", "BaseKnotNodeTag(",
-                                        "BaseKnotPatternTag("))))
+    out.append(("the class and the type still ride the note, and NO pattern name does "
+                "(P-BK-28/29, P-BK-81: the four names are gone)",
+                all(x in expr for x in ("BaseKnotBaseTag(", "BaseKnotNodeTag("))
+                and "BaseKnotPatternTag(" not in expr))
     # P-BK-57: the note's SECOND number is the box' own height, and it rides the ONE owner
     # that builds it — read on the expression, so a hand-spelt copy in the text fails.
     out.append(("the box' own height rides the note, from its one owner (P-BK-57)",
@@ -2316,11 +2431,13 @@ def check_note_life():
     out.append(("... on the SAME rule the committed read uses (one length, two callers)",
                 "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)"
                 in (body(src, "void BaseKnotNodeRead(") or "")
-                # P-BK-77/78: and BOTH callers read the type against the LADDER's own
+                # P-BK-77/78/80: and BOTH callers read the type against the LADDER's own
                 # answer — the live preview's class comes off the same whole-ladder search,
-                # with NO extra TF argument, and its type is read on THAT class.
-                and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*spLive\.tStart,\s*spLive\.tExit,"
+                # with NO extra TF argument, and its span is the BOX' own two anchors
+                # (`t1..te`, the rubber band), never the chart-read story span.
+                and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*t1,\s*te,"
                               r"\s*top,\s*bot\)", live) is not None
+                and "spLive.tStart" not in live and "spLive.tExit" not in live
                 # P-BK-79: and at the SAME KIND OF KEY — the live preview's anchor is 0 (the
                 # LIVE row, the only one it can have before a base exists), while the committed
                 # read carries the box' own `storyT`. A preview that copied `nd.anchor` or a
@@ -2456,9 +2573,11 @@ def main():
           "nothing, the walk is capped on both the commit and the mouse path,\nthe node "
           "type IS the box' HEIGHT against the movement ability (that TF's own ATR) of "
           "the TF it is SEEN ON — the same type on every chart TF (bands at the midpoints, P-BK-76: "
-          "FTR < trig|pat · ETR < pat|str · CTR <= str · OTR above),\nthe base PATTERN names the "
-          "trade's side and it is FIXED (RBR/DBR Buy · RBD/DBD Sell, the departure "
-          "deciding,\nread on the past market too), the size class is confirmed on the "
+          "FTR < trig|pat · ETR < pat|str · CTR <= str · OTR above),\nthe base's OWN EXIT CANDLE "
+          "names the trade's side and it is FIXED (it closed above the ceiling -> Buy, below "
+          "the floor -> Sell,\nthe four pattern names are GONE, and the walk starts at that "
+          "candle so no drag and no chart TF can move it - read on the past market too), "
+          "the size class is confirmed on the "
           "rung's own candles,\nand while "
           "the user draws a BAND decides the base - an edge that slides inside the run it "
           "already found reuses that one reading,\nand the knot's own two legs are the "
@@ -2672,23 +2791,72 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    # P-BK-49: the side is the DEPARTURE's and it is FIXED — every way back to a
-    # price-rewrites-the-side read is caught
-    with_source("   return nd.side;   // P-BK-49: the departure's own direction = the pattern's side (FIXED)",
+    # P-BK-81: the side is the BASE'S OWN EXIT CANDLE and it is FIXED — every way back to a
+    # price-rewrites-the-side read is caught, and every way back to the drawn rectangle is too.
+    with_source("   return nd.side;   // P-BK-81: the base's own EXIT CANDLE's close vs the band (ONE bit, FIXED)",
                 "   if(nd.returned) return -nd.side;   // the return's side again\n"
                 "   return nd.side;")
     cases.append(("a side a RETURN can flip again is caught", bool(fires(check_node))))
     reset()
 
-    with_source("      if(nd.approach > 0) nd.pattern = (side > 0 ? BK_PAT_RBR : BK_PAT_RBD);",
-                "      if(nd.approach > 0) nd.pattern = (side > 0 ? BK_PAT_RBR : BK_PAT_DBR);")
-    cases.append(("a pattern that lets the APPROACH pick the side is caught",
+    with_source("   if(sX >= 1) start = sX;",
+                "   if(sX >= 1) start = s2 - 1;   // the exit candle read but never used")
+    cases.append(("a walk that reads the exit candle and then starts at the box anyway is caught",
                   bool(fires(check_node))))
     reset()
 
-    with_source("   g_bkBoxes[k].baseT  = sp.tStart;  // P-BK-49: the base's OWN entry — the approach's anchor",
-                "")
-    cases.append(("a Sync that never publishes the base's entry is caught",
+    with_source("   int start = s2 - 1;\n"
+                "   if(tExit > 0)\n"
+                "   {\n"
+                "      int sX = iBarShift(_Symbol, CompatTF(tfRead), tExit, false);\n"
+                "      if(sX >= 1) start = sX;\n"
+                "   }",
+                "   int start = s2 - 1;")
+    cases.append(("a walk that IGNORES the base's exit candle is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("   g_bkBoxes[k].exitT  = sp.tExit;", "")
+    cases.append(("a Sync that never publishes the exit candle is caught (the pump would "
+                  "read a different bar)", bool(fires(check_node))))
+    reset()
+
+    with_source("                          g_bkBoxes[i].exitT, g_bkBoxes[i].storyT, ndNow);",
+                "                          g_bkBoxes[i].storyT, g_bkBoxes[i].storyT, ndNow);")
+    cases.append(("a pump reading the direction off the base's RIGHT SIDE is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source('   return "\\nDirection: " + (nd.side > 0 ? "BUY" : "SELL") + " — the base\'s own EXIT candle closed " +',
+                '   return "\\nPattern: RBR";')
+    cases.append(("putting the four names back into the hover is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("BaseKnotBaseTag(still, t1, t2, top, bot) + BaseKnotNodeTag(nd) + \"]\");",
+                "BaseKnotBaseTag(still, t1, t2, top, bot) + BaseKnotNodeTag(nd) + "
+                "BaseKnotPatternTag(nd) + \"]\");")
+    cases.append(("re-printing a pattern name in the note is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source('#define BK_TAG "_BK_"',
+                '#define BK_PAT_RBR  1   // the four names, back\n#define BK_TAG "_BK_"')
+    cases.append(("putting a pattern define back is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("// P-BK-81: the DIRECTION's own sentence",
+                'string BaseKnotPatternName(const int pattern) { return "RBR"; }\n'
+                "// P-BK-81: the DIRECTION's own sentence")
+    cases.append(("putting a pattern function back is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("   return nd.side;   // P-BK-81: the base's own EXIT CANDLE's close vs the band (ONE bit, FIXED)",
+                "   if(nd.crossed) return 0;   // P-BK-48: the orders are SPENT\n"
+                "   return nd.side;")
+    cases.append(("zeroing a CONSUMED node's direction again is caught",
                   bool(fires(check_node))))
     reset()
 
@@ -2736,16 +2904,36 @@ def selftest():
                   bool(fires(check_rung))))
     reset()
 
-    with_source("   if(BaseKnotRungHoldCount(tf, s1, s2, top, bot) < BK_BASE_RUNG_MIN)",
+    with_source("   if(BaseKnotRungHoldCount(tf, b1, b2, top, bot) < BK_BASE_RUNG_MIN)",
                 "   if(false)   // the sentence claims the rung's candles for free")
     cases.append(("a fallback sentence that names a rung without re-reading it is caught",
                   bool(fires(check_rung))))
     reset()
 
-    with_source("   int baseTF = BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot);",
+    with_source("   int baseTF = BaseKnotBaseTFMin(still, t1, t2, top, bot);   // P-BK-80: the node's time, from the box' own geometry",
                 "   int baseTF = 0;   // the chart's story again")
     cases.append(("a Sync that never publishes the class is caught",
                   bool(fires(check_node))))
+    reset()
+
+    # P-BK-80: the class' span is the BOX' own two anchors — every way back to the CHART-read
+    # story span is caught.
+    with_source("   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));",
+                "   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0)) + unit;")
+    cases.append(("putting the chart's candle width back into the span is caught",
+                  bool(fires(check_rung))))
+    reset()
+
+    with_source("BaseKnotBaseTFMin(still, t1, t2, top, bot)",
+                "BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot)")
+    cases.append(("classing the base on the CHART-read story span again is caught",
+                  bool(fires(check_rung))))
+    reset()
+
+    with_source("   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));",
+                "   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0)) + Period();")
+    cases.append(("letting the OPEN CHART widen the span is caught (the «H4 says FTR» bug)",
+                  bool(fires(check_rung))))
     reset()
 
     with_source("g_bkBoxes[i].baseTFMin,", "0,")
@@ -2765,15 +2953,15 @@ def selftest():
                   bool(fires(check_one_value))))
     reset()
 
-    with_source("BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot)",
-                "BaseKnotBaseTFMin(bars, sp.tStart, sp.tExit, top, bot)")
+    with_source("BaseKnotBaseTFMin(still, t1, t2, top, bot)",
+                "BaseKnotBaseTFMin(bars, t1, t2, top, bot)")
     cases.append(("classing the base from its LIFE instead of its stand-still candles is caught",
                   bool(fires(check_one_value))))
     reset()
 
-    with_source("BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot)",
-                "BaseKnotBaseTFMin(still, t1, t2, top, bot)")
-    cases.append(("classing the base on the BOX' rectangle again is caught",
+    with_source("   if(bars == s_bkRungBars && b1 == s_bkRungB1 && b2 == s_bkRungB2 &&",
+                "   if(bars == s_bkRungBars && b1 == s_bkRungB1 && b2 == s_bkRungB2 && Period() > 0 &&")
+    cases.append(("keying the class memo on a chart term again is caught",
                   bool(fires(check_rung))))
     reset()
 
@@ -2786,8 +2974,8 @@ def selftest():
     cases.append(("a hover that hides the EXIT end is caught", bool(fires(check_one_value))))
     reset()
 
-    with_source("BaseKnotBaseTag(still, sp.tStart, sp.tExit, top, bot)",
-                "BaseKnotBaseTag(bars, sp.tStart, sp.tExit, top, bot)")
+    with_source("BaseKnotBaseTag(still, t1, t2, top, bot)",
+                "BaseKnotBaseTag(bars, t1, t2, top, bot)")
     cases.append(("classing the NOTE from the life (and not the stand-still count) is caught",
                   bool(fires(check_rung))))
     reset()
