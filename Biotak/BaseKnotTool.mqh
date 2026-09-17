@@ -148,6 +148,17 @@
 //|    after one re-attach. A trendline carrier a P-BK-67/68/69 build   |
 //|    left behind is re-created as the rectangle from its own two      |
 //|    anchors (no pixel moves) by the same migration.                  |
+//|  * P-BK-72 (2026-09-17) — A NATIVE RESIZE SURVIVES THE RELEASE.     |
+//|    «مال خود متاتریدر که اینطوریه»: the docs' own rule (anchor       |
+//|    points change the size) means a corner/edge press is a RESIZE,   |
+//|    and the P-BK-61b size heal — which fires on every release whose  |
+//|    size moved — would spring it back to the press-time size         |
+//|    («برمی‌گرده سر جای خودش», now on a native gesture). So the       |
+//|    press measures its grab role again (BaseKnotGrabRole — live,      |
+//|    but its consumer is the heal, NOT the retired cursor fallback),  |
+//|    and the heal only fires when that role IS the body. A body move  |
+//|    the magnet enlarged still heals; a resize the user asked for     |
+//|    is left exactly where the hand let it go.                        |
 //+------------------------------------------------------------------+
 #ifndef BASE_KNOT_TOOL_MQH
 #define BASE_KNOT_TOOL_MQH
@@ -5495,10 +5506,12 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
                     s_bkDragBP2 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 1);
                     s_bkFolT1 = s_bkDragBT1; s_bkFolT2 = s_bkDragBT2;
                     s_bkFolP1 = s_bkDragBP1; s_bkFolP2 = s_bkDragBP2;
-                    // BKCURSOR-OFF: the press-time grab role fed the retired cursor
-                    // fallback only, so it is dormant with it — kept commented so a
-                    // restore is one line (BaseKnotGrabRole stays compiled).
-                    // s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
+                     // P-BK-72: the press-time grab role is LIVE — its consumer is NOT the
+                     // retired cursor fallback (BKCURSOR-OFF stays dead) but the release's
+                     // size heal below: a press on a corner/edge marker is a native RESIZE
+                     // (the docs' own rule — anchors change the size), and the heal must
+                     // only ever fire for a BODY move. BaseKnotGrabRole stays the measurer.
+                     s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
                     s_bkSnapTrusted = true;   // P-BK-25: OUR press latched it — the baseline predates any terminal move
                     Print("[BK] drag latch box=", shit);   // diag: press found a box — follow armed
                 }
@@ -5557,10 +5570,12 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
                  // is retired — the release does not snap (the engine above is
                  // commented). The box stays where the hand let it go.
                  // BaseKnotMagnetSettle(s_bkDragId);
-                 // P-BK-61b: a BODY drag carries the box and nothing else — the size
-                 // the hand took it with comes back before the authoritative Sync (a
-                 // HANDLE drag, bkGripWas, IS the size gesture and is left alone).
-                 if(bkGripWas == 0) BaseKnotBodySizeHeal(s_bkDragId);
+                  // P-BK-61b/P-BK-72: a BODY drag carries the box and nothing else — the size
+                  // the hand took it with comes back before the authoritative Sync (a
+                  // HANDLE drag, bkGripWas, IS the size gesture and is left alone — and so
+                  // is a NATIVE corner/edge resize: the press-time role says it was never
+                  // a body move, so the heal would spring the user's own resize back).
+                  if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(s_bkDragId);
                  BaseKnotRefreshDirection(s_bkDragId, relRef);
                 BaseKnotSync(s_bkDragId);
                 painted = true;

@@ -1892,13 +1892,22 @@ def check_bk_drag():
         if "s_bkNativeClaim = false;" not in events:
             problems.append("a fresh press does not take the claim back (P-BK-19a) - the NEXT gesture "
                             "starts out owned by the terminal that owned the last one")
-    # (d) P-BK-19b: the grab-role measurement fed the CURSOR FALLBACK only, and that
-    #     fallback is retired (BKCURSOR-OFF) - so the press must NOT measure a role
-    #     any more. The dormant restore-path integrity is
+    # (d) P-BK-19b/P-BK-72: the grab role has ONE live consumer now - the release's
+    #     size heal - and the retired one (the cursor fallback, BKCURSOR-OFF) stays dead.
+    #     The role is what tells a native corner/edge RESIZE (the docs' own rule: anchors
+    #     change the size) from a BODY move (which the magnet may have enlarged), so a
+    #     press that stops measuring it hands the heal an answer it must not invent, and
+    #     a heal that ignores it springs the user's own resize back (the P-BK-65 report,
+    #     on a native gesture now). The dormant restore-path integrity is
     #     `check_bkcursor_off()`'s job, one group per promise.
-    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src):
-        problems.append("the press measures a grab role again although the cursor fallback is "
-                        "retired - that role has no consumer (BKCURSOR-OFF/P-BK-19b)")
+    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
+        problems.append("the press no longer measures WHICH part of the box it grabbed "
+                        "(P-BK-19b/P-BK-72) - the release's size heal then cannot tell a "
+                        "native resize from a body move and undoes the user's own resize")
+    if events is not None and "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(" not in events:
+        problems.append("the body-size heal is no longer gated on the press-time ROLE being the "
+                        "BODY (P-BK-72) - every native resize would be healed back to its "
+                        "press-time size on release")
     # (e) P-PERF-42: the child set is probed ONCE per gesture, not per child per
     #     step - and the probe cannot outlive the gesture it was built for.
     one = body(src, "void BaseKnotMoveOne(")
@@ -2098,9 +2107,9 @@ def check_bk_drag():
     if events is not None and "BaseKnotBodySizeHeal(" not in events:
         problems.append("the release no longer restores the press-time SIZE for a body drag "
                         "(P-BK-61b) - the FILL resizes the box again")
-    if events is not None and "if(bkGripWas == 0) BaseKnotBodySizeHeal(" not in events:
+    if events is not None and "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(" not in events:
         problems.append("the body-size heal is not gated on the gesture being a BODY drag "
-                        "(P-BK-61b) - it would undo a handle resize on every release")
+                        "(P-BK-61b/P-BK-72) - it would undo a native resize on every release")
     # (i) P-BK-62: THE VIEW THE DRAG/RESIZE OWNS MUST STAY OWNED. «همیشه موقع درگ و
     #     ریسایز چارت پشتش قفل بشه» - the box tool locks the view from three
     #     gestures, but only ONE of them (the draw session) was visible to the
@@ -2269,9 +2278,14 @@ def check_bkcursor_off():
                    if n not in grab]
         if missing:
             problems.append("the dormant grab role lost %s from its bands (P-BK-19b)" % "/".join(missing))
-    if re.search(r"(?m)^\s*//\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
-        problems.append("the retired press-time role measurement is deleted, not commented - the "
-                        "restore path is gone (BKCURSOR-OFF)")
+    #     P-BK-72: the press-time measurement itself is LIVE again — its consumer is the
+    #     release's size heal (`check_bk_drag`'s (d) owns that promise), NOT the fallback
+    #     above, which stays dead by construction. What this group owns is that the
+    #     FALLBACK stays dead and that the engine it would need is still whole.
+    if "s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);" not in src:
+        problems.append("the press-time role measurement is gone (P-BK-19b/P-BK-72) - the size "
+                        "heal would obey a role nobody measured, and the dormant fallback lost "
+                        "the call its restore needs")
     #     the dormant body's own role split must survive (a restored fallback
     #     without it is the very bug P-BK-19b fixed)
     if "if(s_bkGrabSel == BK_GRAB_ALL)" not in fol:
@@ -3649,12 +3663,22 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 70. BKCURSOR-OFF: the dormant restore path is DELETED instead of commented
+    # 70. P-BK-19b/P-BK-72: the press-time role measurement is DELETED - the release's
+    #     size heal then obeys a role nobody measured (and the dormant fallback loses
+    #     the call its restore needs).
     with_source(BASEKNOT,
-                "                    // s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);",
-                "                    // seed: the dormant role call was deleted, not commented")
-    cases.append(("a deleted (not dormant) role call is caught",
-                  bool(check_bkcursor_off())))
+                "                     s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);",
+                "                     // seed: the role measurement was deleted")
+    cases.append(("a deleted role measurement is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 70c. P-BK-72: the ROLE gate drops - a native resize (the size the user asked for)
+    #      is then healed back to the press-time size on every release.
+    with_source(BASEKNOT,
+                "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(",
+                "if(bkGripWas == 0) BaseKnotBodySizeHeal(")
+    cases.append(("a heal that can undo a native resize is caught", bool(check_bk_drag())))
     reset()
 
     # 70b. BKCURSOR-OFF: the dormant engine loses its body entirely
@@ -3756,8 +3780,8 @@ def selftest():
     reset()
 
     # 80. P-BK-61b: the body drag must never resize the box - resize has ONE home
-    #     (the eight handles), and the FILL only carries it.
-    with_source(BASEKNOT, "if(bkGripWas == 0) BaseKnotBodySizeHeal(s_bkDragId);", "")
+    #     (the native corner/edge markers now), and the FILL only carries it.
+    with_source(BASEKNOT, "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(s_bkDragId);", "")
     cases.append(("a body drag that may resize the box is caught", bool(check_bk_drag())))
     reset()
 
