@@ -37,6 +37,12 @@ After BMP changes: recompile, then remove & re-add the indicator in MT4
 (icons load only at attach). Full deploy: `powershell -File tools/deploy.ps1`.
 Linux: `./compile-th3-linux.sh all` (isolated Wine prefix, terminal stays open).
 
+From the agent side the same script is called as `& .\compile-th3.ps1 -Project all`
+(the PowerShell tool already IS PowerShell, and `powershell.exe` from Bash is
+blocked by policy), after `$env:APPDATA` is set and the six `*_proxy` variables
+are nulled — otherwise it cannot resolve the MQL4 directory. The tool may return
+no stdout; redirect to a file and read it (`*>` writes UTF-16).
+
 ## Verify before every commit
 
 ```powershell
@@ -66,6 +72,27 @@ the entry's include chain by hand — a module added to the entry and not to the
 breaks them silently, which is why they are compiled here too (P-BUILD-02).
 `panel_mt4_sim.html` / `panel_mt4_sim*.png` /
 `panel_art_proof.html` regenerate on audit runs and are gitignored.
+
+## Tool environment (Windows, this machine)
+
+The app runs the **PowerShell tool** through a ConPTY — inside its own terminal —
+and sets `CODEBUDDY_POWERSHELL_USE_PTY=1` for the CLI. The **Bash tool** runs with
+pipes and **no console** (`stdoutMode=pipe`, `stdinMode=pipe` in
+`logs/sandbox/*/sandbox_*.log`), so every console program it spawns is handed a
+brand-new console, which Windows 11 gives to its default terminal app (Windows
+Terminal): an external window, failing `0x800700e8` (ERROR_NO_DATA) on handoff.
+
+The safe-delete guard is what spawns one: bash's `rm`/`rmdir`/`unlink` shims
+(`cli/vendor/shim/safe-bin/rm` → `safe-delete-common.sh`) run
+`node.exe safe-delete-bulk-guard.cjs check --target …`. So:
+
+- **Never delete with `rm`/`rmdir`/`unlink` from Bash.** Use the PowerShell tool
+  (`Remove-Item`), whose guard override is a `function global:Remove-Item` that
+  runs in-process inside the app's own terminal. Paths under `%TEMP%` are skipped
+  by the guard entirely.
+- Prefer the PowerShell tool for anything that spawns a console program.
+- Bulk deletes need the user's approval; a blocked or denied delete leaves the
+  file in place — report it, never route around it.
 
 ## Working rules
 
