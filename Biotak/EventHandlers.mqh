@@ -2673,6 +2673,8 @@ void BaseKnotEngPump()
    double tp1[BK_ENG_TF_MAX];
    double tp2[BK_ENG_TF_MAX];
    double tp3[BK_ENG_TF_MAX];
+   double ab[BK_ENG_TF_MAX];      // P-BK-75: that TF's composite ATR in PRICE units
+   ArrayInitialize(ab, 0.0);      // explicit: the push below reads it for every `mins`
    int n = BaseKnotEngNeeds(mins);
    for(int i = 0; i < n && i < BK_ENG_TF_MAX; i++)
    {
@@ -2683,6 +2685,7 @@ void BaseKnotEngPump()
       if(!TradePlanCompute(mins[i], plan))
       {
          pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
+         ab[i]   = 0.0;
          continue;
       }
       // P-TRADEPLAN-DEC (2026-09-16): the pushed risk is the CARD'S OWN NUMBER —
@@ -2697,8 +2700,26 @@ void BaseKnotEngPump()
       tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);
       tp2[i]  = (plan.tp2 > 0 ? (double)plan.tp2 : 0.0);
       tp3[i]  = (plan.tp3 > 0 ? (double)plan.tp3 : 0.0);
+      // P-BK-75: AND THE SAME PLAN CARRIES THE MOVEMENT ABILITY. `plan.ownPips` is
+      // THIS TF's composite ATR (TradePlanStripPips -> CalculateWeightedATR, the very
+      // number the strip and the trade block read), so the knot's type is decided by
+      // the SAME ATR the rest of the chart is drawn with — not a second reading that
+      // could drift from it. Pips -> price here, because the knot's box is in prices.
+      double pip = GetCachedPipSize();
+      ab[i] = (plan.ownPips > 0.0 && pip > 0.0) ? plan.ownPips * pip : 0.0;
    }
    BaseKnotEngPush(mins, pips, hunts, tp1, tp2, tp3, n);
+   // P-BK-75 — THE NODE'S TYPE IS ITS HEIGHT AGAINST THE MOVEMENT ABILITIES OF ITS OWN
+   // TF (user: «به جای th از atr استفاده بشه»), so the pump hands ONE number per TF in —
+   // that TF's ATR — exactly as it already hands EngSL in: one row per TF the boxes
+   // asked for, off the SAME `mins` list, so the ask and the answer cannot disagree
+   // about which TFs a box draws with. The RATIOS (0.25 / 0.50 / 1.00) live in the
+   // tool's own table, never here: a second place that halved an ATR would be a second
+   // owner of the rule. A TF whose ATR is not warm pushes 0, which BaseKnotAbilityGet
+   // reads as an ABSENCE: the type stays BK_NODE_NONE and the tooltip says so.
+   BaseKnotAbilityReset();
+   for(int i = 0; i < n && i < BK_ENG_TF_MAX; i++)
+      BaseKnotAbilityPush(mins[i], ab[i]);
 }
 
 int OnCalculateHandler(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[]) {

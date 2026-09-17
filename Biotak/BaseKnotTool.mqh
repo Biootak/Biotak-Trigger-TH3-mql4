@@ -238,40 +238,41 @@
 //--- prefix, never off a box' (a box' `ObjectsDeleteAll(pfx)` must not wipe the shared row).
 #define BK_NOTE_CHART     2    // the rung that means "the family's corner, not the box"
 #define BK_NOTE_CORNER "NOTE_CORNER"
-//--- P-BK-47 (2026-09-15): THE NOTE'S NODE TYPE IS THE NODE'S LENGTH. The user's own
-//--- rule, word for word: «دسته بندی گره های معاملاتی براساس طول گره: FTR گرهی که طولش
+//--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): P-BK-47 below IS RETIRED. It named the type
+//--- by a RUNG DISTANCE, which was a DURATION in disguise; the user replaced it with the
+//--- box' own HEIGHT against the movement abilities (that TF's own ATR) — see the
+//--- P-BK-75 block above the ability table
+//--- further down, which owns the type now. Kept here because the user's words and the
+//--- old reasoning are the restore path's own context (restore = uncomment the pair below
+//--- and re-teach the audit, never rewrite).
+//---
+//--- P-BK-47 (2026-09-15, RETIRED): THE NOTE'S NODE TYPE IS THE NODE'S LENGTH. The user's
+//--- own rule, word for word: «دسته بندی گره های معاملاتی براساس طول گره: FTR گرهی که طولش
 //--- مساوی تایم تریگر تایمی باشد که گره در آن دیده میشود سه کندل · ETR گرهی که طولش
 //--- مساوی تایم پترن باشد · CTR گرهی که طولش مساوی تایم ساختار باشد · OTR گرهی که
-//--- طولش بیشتر از تایم ساختار باشد». The length is read on the PROJECT'S ladder
+//--- طولش بیشتر از تایم ساختار باشد». The length was read on the PROJECT'S ladder
 //--- (M1 · M5 · M15 · H1 · H4 · D1 · W1 · MN1 — the same eight the base's size class
-//--- walks, P-BK-43) and it is the SAME 3-candles-per-rung arithmetic: a node whose
-//--- length reaches the rung one step up holds THREE candles of that rung, which is
-//--- exactly the pattern time («۹ الی ۱۲ کندل میره برای تایم بالاتر» — P-BK-28), two
-//--- steps up is the structure time (P-BK-36 confirms the class on the rung's OWN
-//--- candles, so the rung — and therefore the type — is price-action, not a chart TF).
-//---
-//--- So ONE number decides the type: how many rungs the base's class sits ABOVE the
-//--- TF the node is SEEN ON (the box' commit TF — a property of the BOX, so the same
-//--- box reads the same type on every chart it is opened on):
-//---   * 0 rungs up  -> FTR — the node is the TRIGGER length of its own TF («سه کندل»);
-//---   * 1 rung  up  -> ETR — the PATTERN time (three candles of the rung above);
-//---   * 2 rungs up  -> CTR — the STRUCTURE time (three candles of the rung two up);
-//---   * 3+ rungs up -> OTR — LONGER than the structure time.
-//--- A node whose class is unmeasurable, or shorter than a base (structure, 1-2
-//--- candles in P-BK-28's ladder), claims nothing (BK_NODE_NONE) — no length, no type.
+//--- walks, P-BK-43) as a count of rungs the class sat above the node's TF:
+//---   * 0 rungs up  -> FTR;  1 rung up -> ETR;  2 rungs up -> CTR;  3+ -> OTR.
+//--- A node whose class was unmeasurable claimed nothing (BK_NODE_NONE).
 //--- The pairs the course lists beside the names (ABO/EBO/CBO/OBO) describe the
 //--- BREAK's story («بیس … برگشت»), which still decides the SIDE the trade comes in on
-//--- (BaseKnotNodeDir, P-BK-46) and is still shown beside the type — it no longer
-//--- names the type. Numbers never renumber: NONE/FTR/ETR/CTR/OTR stay 0..4.
-#define BK_NODE_RUNG_FTR  0   // the TRIGGER length — the node's own TF (three candles)
-#define BK_NODE_RUNG_ETR  1   // the PATTERN time — one rung above the node's TF
-#define BK_NODE_RUNG_CTR  2   // the STRUCTURE time — two rungs above the node's TF
-                              // ... 3 or more rungs up = OTR (past the structure time)
-#define BK_NODE_NONE   0   // no length measured (no class yet / not a base) — nothing claimed
-#define BK_NODE_FTR    1   // trigger length   — three candles of the node's own TF
-#define BK_NODE_ETR    2   // pattern length   — the pattern time, one rung up
-#define BK_NODE_CTR    3   // structure length — the structure time, two rungs up
-#define BK_NODE_OTR    4   // longer than the structure time (three or more rungs up)
+//--- (BaseKnotNodeDir, P-BK-46) and is still shown beside the type — it never names
+//--- the type. Numbers never renumber: NONE/FTR/ETR/CTR/OTR stay 0..4.
+//--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): the three defines below are the RETIRED rung
+//--- read's own vocabulary (how many ladder rungs the class sat above the node's TF).
+//--- Nothing compares against them any more — the type is the box' HEIGHT against the
+//--- movement abilities (ATR) — but they stay, because the retired pair below is written in them
+//--- and the restore path is "uncomment, re-teach", never "rewrite".
+#define BK_NODE_RUNG_FTR  0   // (retired) the TRIGGER length — the node's own TF
+#define BK_NODE_RUNG_ETR  1   // (retired) the PATTERN time — one rung above the node's TF
+#define BK_NODE_RUNG_CTR  2   // (retired) the STRUCTURE time — two rungs above the node's TF
+                              // ... 3 or more rungs up was OTR (past the structure time)
+#define BK_NODE_NONE   0   // nothing claimed (no height / that TF's ATR not warm yet)
+#define BK_NODE_FTR    1   // as long as the TRIGGER ability   — 0.25 x ATR
+#define BK_NODE_ETR    2   // as long as the PATTERN ability   — 0.50 x ATR
+#define BK_NODE_CTR    3   // as long as the STRUCTURE ability — 1.00 x ATR
+#define BK_NODE_OTR    4   // LONGER than the structure ability (1.00 x ATR)
 //--- P-BK-38: the BREAK's story — the side, never the type any more — is read on the
 //--- BASE'S OWN TF's candles (below), so this window is a count of THAT TF's bars,
 //--- never of the chart's: 1500 D1 bars are the same years on every chart.
@@ -416,6 +417,15 @@ struct BaseKnotNode
    int    depBars;    // the DEPARTURE's length in candles («طول حرکت»): the leg that left
                       // the base, counted until price came back inside (or until now)
    double depStep;    // ... and that leg's reach past the edge, in movement steps (ATR)
+   //--- P-BK-75: the box' HEIGHT (the length the user's rule compares) and the THREE
+   //--- MOVEMENT ABILITIES of the node's own TF it was compared against — that TF's own
+   //--- composite ATR, halved and quartered (price units; 0 = the pump never pushed that
+   //--- TF, or pushed it while the ATR was not warm). Published on the record so the
+   //--- tooltip can spell the comparison without a second read.
+   double height;     // top - bot — «طول گره» is «ارتفاع باکس»
+   double abTrig;     // 0.25 x ATR — the trigger ability
+   double abPat;      // 0.50 x ATR — the pattern ability
+   double abStr;      // 1.00 x ATR — the structure ability
    int    revisits;   // how many times the market came back INSIDE after leaving
    int    lastSide;   // the side of the NEWEST close outside the band (0 = inside now)
    int    lifeBars;   // bars from the base's right side to the newest closed candle (age)
@@ -2846,36 +2856,186 @@ int BaseKnotNodeTFMin(const int k)
    if(tf <= 0) tf = 1;
    return tf;
 }
-// P-BK-47: HOW MANY LADDER RUNGS the class sits ABOVE the TF the node is seen on.
-// -1 = nothing to class (no class yet, a node shorter than a base, or a class the
-// ladder cannot name above it) — an ABSENCE, never a band. Pure arithmetic on two
-// TFs: no series, no closes, no ATR, so the type is claimable on the first Sync and
-// no chart TF, drag or warm-up can move it.
-int BaseKnotNodeRungs(const int nodeTFMin, const int classMin)
+//+------------------------------------------------------------------+
+//| P-BK-75 (2026-09-17) — THE TYPE IS THE BOX' HEIGHT AGAINST THE     |
+//| MOVEMENT ABILITIES OF THE NODE'S OWN TF.                           |
+//|                                                                  |
+//| The user restated his own rule («باید اینطوری باشه»):              |
+//|   «دسته بندی گره های معاملاتی براساس طول گره … اف تی ار (FTR):      |
+//|   گرهی که طولش مساوی توان حرکتی تایمی باشد که گره در آن دیده        |
+//|   میشود · ای تی ار(ETR): مساوی توان حرکتی تایم پترن · سی تی ار     |
+//|   (CTR): مساوی توان حرکتی تایم ساختار · او تی ار (OTR): بیشتر از    |
+//|   توان حرکتی تایم ساختار» + «تایم گره هم که باید سه کندل دیده بشه   |
+//|   میشه تایم گره سه کندل درجا زدن» + «طول گره باید با th هر تایم     |
+//|   مقایسه بکنی» + «ارتفاع باکس».                                    |
+//|                                                                  |
+//| «توان حرکتی تایم» IS THAT TIMEFRAME'S ATR (user decision,          |
+//| 2026-09-17: «به جای th از atr استفاده بشه» — TH was the first      |
+//| answer, ATR replaced it) — the PROJECT'S OWN composite ATR          |
+//| (`CalculateWeightedATR`, ATRCalculations.mqh: the weighted SMA      |
+//| blend over 5/10/21/66/132/264, the very number the strip and the    |
+//| trade plan already read per TF). The three abilities are its own    |
+//| three levels, the same shape the TH family had:                     |
+//|   structure = ATR · pattern = 0.5 x ATR · trigger = 0.25 x ATR      |
+//| of the TF the node is SEEN ON — so the comparison is one ATR        |
+//| against the box' own height, and nothing else.                      |
+//|                                                                  |
+//| THE LENGTH IS THE BOX' HEIGHT (top - bot, the user: «ارتفاع باکس») |
+//| and the four names are the four bands that height falls in:        |
+//|   h <= trigger   -> FTR — the trigger ability                      |
+//|   h <= pattern   -> ETR — the pattern ability                      |
+//|   h <= structure -> CTR — the structure ability                    |
+//|   h >  structure -> OTR — LONGER than the structure ability        |
+//| The bands ARE the levels because no name exists BELOW the trigger: |
+//| the shortest node there is, IS the trigger length.                 |
+//|                                                                  |
+//| WHAT THIS REPLACED (BKNODERUNG-OFF, below): the rung count named   |
+//| the type by a DURATION — the class the base was GIVEN (P-BK-36:   |
+//| three candles of a higher rung standing still inside the band) —   |
+//| while the user's rule names it by a PRICE. On one box the two      |
+//| could disagree, and the class itself is read against the OPEN      |
+//| CHART's TF (BaseKnotBaseTFMin takes no TF), so a TF switch could   |
+//| move a type. The height read below takes the NODE's own TF and     |
+//| nothing else.                                                      |
+//|                                                                  |
+//| LAYER LAW: the ATR lives ABOVE this module, so the three numbers   |
+//| are PUSHED IN per TF exactly like the EngSL table (P-BK-46/50/51)  |
+//| — `BaseKnotEngPump` (EventHandlers) computes one row per TF the    |
+//| live boxes ask for and hands it back here. A TF with no row is an  |
+//| ABSENCE (0 = "never pushed"), never a guess: the type then stays   |
+//| BK_NODE_NONE and every text says so.                               |
+//|                                                                  |
+//| THE RATIOS LIVE HERE, NOT AT THE PUSH SITE: the pump hands in ONE  |
+//| number per TF — that TF's ATR — and this table derives the three   |
+//| abilities from it. A second place that multiplied by 0.25 would be |
+//| a second owner of the rule.                                        |
+//+------------------------------------------------------------------+
+#define BK_AB_TF_MAX BK_ENG_TF_MAX
+#define BK_AB_TRIG_RATIO 0.25   // the trigger ability = 0.25 x that TF's ATR
+#define BK_AB_PAT_RATIO  0.50   // the pattern ability = 0.50 x that TF's ATR
+static int    s_bkAbTF[BK_AB_TF_MAX];
+static double s_bkAbTrig[BK_AB_TF_MAX];   // 0.25 x ATR — the trigger ability, price units
+static double s_bkAbPat[BK_AB_TF_MAX];    // 0.50 x ATR — the pattern ability
+static double s_bkAbStr[BK_AB_TF_MAX];    // 1.00 x ATR — the structure ability
+static int    s_bkAbN = 0;
+// One round of the pump opens with this, so a TF nobody asks for any more cannot
+// answer a later question with a stale row.
+void BaseKnotAbilityReset() { s_bkAbN = 0; }
+// One row per TF — the pump's own ask list (BaseKnotEngNeeds) is the TF list, so the
+// ask and the answer can never disagree about which TFs a box draws with. A repeated
+// TF overwrites (the newest round wins) and a full table refuses quietly: both are
+// bounded refusals, never an eviction that would silently drop another box's TF.
+//
+// `atr` is that TF's composite ATR in PRICE units. 0 is the absence ("not warm"), and
+// it is stored AS an absence: the three abilities stay 0 and BaseKnotAbilityGet refuses
+// the row, so a cold ATR can never become a threshold of zero.
+void BaseKnotAbilityPush(const int tfMin, const double atr)
 {
-   if(nodeTFMin <= 0 || classMin == 0) return -1;   // no class measured -> no length
-   if(classMin < 0) return -1;                      // structure (1-2 candles): not a base
-   if(classMin == nodeTFMin) return BK_NODE_RUNG_FTR;
-   int rung = nodeTFMin;
-   for(int i = 0; i < 8; i++)                       // the ladder's own eight, bounded
+   if(tfMin <= 0) return;
+   double trig = (atr > 0.0) ? atr * BK_AB_TRIG_RATIO : 0.0;
+   double pat  = (atr > 0.0) ? atr * BK_AB_PAT_RATIO  : 0.0;
+   double str  = (atr > 0.0) ? atr                    : 0.0;
+   for(int i = 0; i < s_bkAbN; i++)
    {
-      rung = BaseKnotNextTFMin(rung);
-      if(rung <= 0) break;                          // the top of the ladder
-      if(rung == classMin) return i + 1;
-      if(rung > classMin) break;                    // a class the ladder cannot name
+      if(s_bkAbTF[i] != tfMin) continue;
+      s_bkAbTrig[i] = trig; s_bkAbPat[i] = pat; s_bkAbStr[i] = str;
+      return;
    }
-   return -1;
+   if(s_bkAbN >= BK_AB_TF_MAX) return;
+   s_bkAbTF[s_bkAbN]   = tfMin;
+   s_bkAbTrig[s_bkAbN] = trig;
+   s_bkAbPat[s_bkAbN]  = pat;
+   s_bkAbStr[s_bkAbN]  = str;
+   s_bkAbN++;
 }
-// The band the count falls in — the ONLY place the four names' sizes are spelled, so
-// the note, the hover, the tooltip and the pump cannot disagree about a band.
-int BaseKnotNodeKindOf(const int rungs)
+// One TF's row. false = that TF was never pushed, or pushed while its ATR was not warm
+// (structure 0) — an absence the caller reports, never a zero dressed up as a threshold.
+bool BaseKnotAbilityGet(const int tfMin, double &trig, double &pat, double &str)
 {
-   if(rungs == BK_NODE_RUNG_FTR) return BK_NODE_FTR;
-   if(rungs == BK_NODE_RUNG_ETR) return BK_NODE_ETR;
-   if(rungs == BK_NODE_RUNG_CTR) return BK_NODE_CTR;
-   if(rungs >  BK_NODE_RUNG_CTR) return BK_NODE_OTR;
-   return BK_NODE_NONE;
+   trig = 0.0; pat = 0.0; str = 0.0;
+   if(tfMin <= 0) return false;
+   for(int i = 0; i < s_bkAbN; i++)
+   {
+      if(s_bkAbTF[i] != tfMin) continue;
+      if(s_bkAbStr[i] <= 0.0) return false;
+      trig = s_bkAbTrig[i]; pat = s_bkAbPat[i]; str = s_bkAbStr[i];
+      return true;
+   }
+   return false;
 }
+// P-BK-75/76 — THE ONLY PLACE THE FOUR NAMES ARE SPELLED. `h` is the box' height (the
+// length the user's rule compares); the three thresholds come from the NODE'S OWN TF,
+// so no chart TF, drag or warm-up can move the type. BK_NODE_NONE = no threshold to
+// compare against (ATR not warm / this TF never pushed) — an absence, never a band.
+//
+// P-BK-76 (2026-09-17, user: «هر کدوم از توان حرکتی به اندازه تایم تریگرش محدوده داره
+// دیگه … توی مقایسه ها در نظر بگیرش زیاد خشک نباشه در مقایسات»): THE BOUNDARIES ARE THE
+// MIDPOINTS, NOT THE LEVELS THEMSELVES. Each ability OWNS A RANGE around itself — half a
+// trigger below its own level to half a trigger above — so a box landing a hair either
+// side of an ability answers the ability it is NEAREST to instead of flipping on a knife
+// edge. The midpoints are computed from the pushed abilities themselves, so nothing is
+// hardcoded and a different ATR table moves them with it. OTR keeps the boundary the user
+// named for it — «بیشتر از توان حرکتی تایم ساختار» — so the structure ability is CTR's
+// ceiling and anything above it is OTR.
+int BaseKnotNodeKindOfLength(const int nodeTFMin, const double h)
+{
+   double trig = 0.0, pat = 0.0, str = 0.0;
+   if(h <= 0.0) return BK_NODE_NONE;
+   if(!BaseKnotAbilityGet(nodeTFMin, trig, pat, str)) return BK_NODE_NONE;
+   if(h <= (trig + pat) * 0.5) return BK_NODE_FTR;   // midpoint of trigger | pattern
+   if(h <= (pat + str) * 0.5)  return BK_NODE_ETR;   // midpoint of pattern | structure
+   if(h <= str)                return BK_NODE_CTR;   // the structure ability itself
+   return BK_NODE_OTR;
+}
+// P-BK-76: THE TWO BOUNDARIES, for the texts — the same midpoints the read above uses,
+// so a tooltip cannot print a band the type was not decided by.
+double BaseKnotNodeBandFtrEtr(const int nodeTFMin)
+{
+   double trig = 0.0, pat = 0.0, str = 0.0;
+   if(!BaseKnotAbilityGet(nodeTFMin, trig, pat, str)) return 0.0;
+   return (trig + pat) * 0.5;
+}
+double BaseKnotNodeBandEtrCtr(const int nodeTFMin)
+{
+   double trig = 0.0, pat = 0.0, str = 0.0;
+   if(!BaseKnotAbilityGet(nodeTFMin, trig, pat, str)) return 0.0;
+   return (pat + str) * 0.5;
+}
+//--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): THE RUNG COUNT THAT NAMED THE TYPE.
+//--- It read how many ladder rungs the base's class sat above the TF the node is seen
+//--- on (P-BK-47). Retired IN PLACE because the user's rule names the type by the box'
+//--- HEIGHT against the ATR abilities, not by a rung distance — restore by uncommenting
+//--- the pair below, putting the two calls back into BaseKnotNodeRead and the live read
+//--- (the sites BaseKnotNodeKindOfLength now occupies), and re-teaching
+//--- base-count-audit's length cases to strip_comments() — never by rewriting the height
+//--- read above, which owns the type now. `BK_NODE_RUNG_*` and the `nd.rungs` field stay
+//--- as the retired pair's own vocabulary (they are the numbers the pair below compares
+//--- against), but NOTHING reads them any more: the field is initialised to -1 and never
+//--- set, and the audit's own mirror of the pair is retired the same way.
+//
+// int BaseKnotNodeRungs(const int nodeTFMin, const int classMin)
+// {
+//    if(nodeTFMin <= 0 || classMin == 0) return -1;   // no class measured -> no length
+//    if(classMin < 0) return -1;                      // structure (1-2 candles): not a base
+//    if(classMin == nodeTFMin) return BK_NODE_RUNG_FTR;
+//    int rung = nodeTFMin;
+//    for(int i = 0; i < 8; i++)                       // the ladder's own eight, bounded
+//    {
+//       rung = BaseKnotNextTFMin(rung);
+//       if(rung <= 0) break;                          // the top of the ladder
+//       if(rung == classMin) return i + 1;
+//       if(rung > classMin) break;                    // a class the ladder cannot name
+//    }
+//    return -1;
+// }
+// int BaseKnotNodeKindOf(const int rungs)
+// {
+//    if(rungs == BK_NODE_RUNG_FTR) return BK_NODE_FTR;
+//    if(rungs == BK_NODE_RUNG_ETR) return BK_NODE_ETR;
+//    if(rungs == BK_NODE_RUNG_CTR) return BK_NODE_CTR;
+//    if(rungs >  BK_NODE_RUNG_CTR) return BK_NODE_OTR;
+//    return BK_NODE_NONE;
+// }
 // P-BK-48 — L4: the class rung's OWN drift, read closed-bar only and bounded to
 // BK_BIAS_CTX_BARS of its bars. +1 = the rung drifts WITH this side, -1 = against it,
 // 0 = unknown (no side to compare, series not ready). It is a LABEL, so a chart TF that
@@ -2913,11 +3073,14 @@ void BaseKnotNodeRead(const datetime t2, const double top, const double bot,
    nd.side = 0; nd.barsAgo = 0; nd.rebreaks = 0; nd.returned = false; nd.crossed = false;
    nd.approach = 0; nd.pattern = BK_PAT_NONE;   // P-BK-49
    nd.baseStep = 0.0; nd.breakStep = 0.0; nd.retStep = 0.0; nd.storyTF = 0;
-   //--- (a) THE TYPE — the node's LENGTH, and nothing else. Read FIRST, because it
-   //--- needs nothing this module has to fetch: the class is already published
-   //--- (P-BK-36) and the TF the node is seen on is the box' own commit TF.
-   nd.rungs = BaseKnotNodeRungs(nodeTFMin, baseTFMin);
-   nd.kind  = BaseKnotNodeKindOf(nd.rungs);
+   nd.height = 0.0; nd.abTrig = 0.0; nd.abPat = 0.0; nd.abStr = 0.0;   // P-BK-75
+   //--- (a) THE TYPE — the node's LENGTH against the ATR abilities of the node's OWN TF
+   //--- (P-BK-75). Read FIRST, because it needs nothing this module has to fetch: the TF
+   //--- is the box' own commit TF and the three thresholds were pushed in by the pump.
+   //--- The rung count that used to name it is retired (BKNODERUNG-OFF).
+   nd.height = top - bot;   // «طول گره» — the box' own height, in price units
+   nd.kind = BaseKnotNodeKindOfLength(nodeTFMin, nd.height);
+   BaseKnotAbilityGet(nodeTFMin, nd.abTrig, nd.abPat, nd.abStr);   // published so the tooltip can spell the compare
    //--- (b) THE STORY — the break / return / second-break walk below, which names the
    //--- SIDE only. A box nobody has left still has a side of 0, and the live price
    //--- then decides the trade exactly as it did before P-BK-46.
@@ -3132,18 +3295,29 @@ string BaseKnotNodeLine(BaseKnotNode &nd, const double top, const double bot)
 {
    if(nd.kind == BK_NODE_NONE) return "";
    string t = "\nNode: " + BaseKnotNodeShort(nd.kind) + " — ";
-   if(nd.kind == BK_NODE_FTR)      t += "the node is as long as its own TF's TRIGGER time (three candles)";
-   else if(nd.kind == BK_NODE_ETR) t += "the node is as long as the PATTERN time (three candles of the rung above)";
-   else if(nd.kind == BK_NODE_CTR) t += "the node is as long as the STRUCTURE time (three candles two rungs above)";
-   else                            t += "the node is LONGER than the structure time";
-   // P-BK-47: the length spelled the way it was measured — the class the base was
-   // GIVEN (P-BK-36) and how far it stands above the TF the node is SEEN ON.
-   t += "\n      length: " + BaseKnotTFName(nd.baseTF) + " class = " + IntegerToString(nd.rungs) +
-        " rung(s) above " + BaseKnotTFName(nd.nodeTF) + " (the TF the node is seen on)";
-   // P-BK-47: and the promise the old read kept is kept by the LENGTH now: the class is
-   // confirmed on the rung's own candles and the box carries its own TF, so the same box
-   // answers the same type whichever chart opens it.
-   t += "\n      the type is the LENGTH, read on the project's ladder — the same on every TF";
+   if(nd.kind == BK_NODE_FTR)      t += "the node is as long as its own TF's TRIGGER ability";
+   else if(nd.kind == BK_NODE_ETR) t += "the node is as long as the PATTERN ability";
+   else if(nd.kind == BK_NODE_CTR) t += "the node is as long as the STRUCTURE ability";
+   else                            t += "the node is LONGER than the STRUCTURE ability";
+   // P-BK-75: the length spelled the way it was MEASURED — the box' own HEIGHT against the
+   // three ATR abilities of the TF the node is seen on. The rung count that used to sit here
+   // is retired (BKNODERUNG-OFF); the class the base was GIVEN (P-BK-36) still rides
+   // `nd.baseTF` and the note's own "… base" suffix.
+   t += "\n      length: " + DoubleToString(BaseKnotToPips(nd.height), 1) + " pips (the box' height)";
+   if(nd.abStr > 0.0)
+   {
+      t += " vs " + BaseKnotTFName(nd.nodeTF) + " ATR — trigger " + DoubleToString(BaseKnotToPips(nd.abTrig), 1) +
+           " · pattern " + DoubleToString(BaseKnotToPips(nd.abPat), 1) +
+           " · structure " + DoubleToString(BaseKnotToPips(nd.abStr), 1) + " pips";
+      // P-BK-76: the bands the height fell in, spelled as the MIDPOINTS they are — so a box
+      // a hair either side of an ability can be seen to still answer that ability.
+      t += "\n      bands: FTR < " + DoubleToString(BaseKnotToPips(BaseKnotNodeBandFtrEtr(nd.nodeTF)), 1) +
+           " · ETR < " + DoubleToString(BaseKnotToPips(BaseKnotNodeBandEtrCtr(nd.nodeTF)), 1) +
+           " · CTR <= " + DoubleToString(BaseKnotToPips(nd.abStr), 1) + " · OTR above";
+   }
+   else
+      t += " — " + BaseKnotTFName(nd.nodeTF) + "'s ATR not warm yet, so no type is claimed";
+   t += "\n      the type is the HEIGHT against those three — the same on every chart TF";
    // P-BK-46: WHAT THE STORY DOES TO THE TRADE — the same rule BaseKnotNodeDir and
    // BaseKnotCalcLevels apply, spelled for the user: which edge the entry sits on
    // (the break's own side, or the far one) and that the stop is one EngSL behind it.
@@ -3213,13 +3387,19 @@ int BaseKnotEngNeeds(int &mins[])
    {
       int tf = g_bkBoxes[i].baseTFMin;
       if(tf <= 0) tf = chartTF;                // no class published yet — the chart's own
+      // P-BK-75: AND THE TF THE NODE IS SEEN ON — the type compares the box' height
+      // against THAT TF's ATR, so a box whose class sits higher up the ladder (an M15
+      // box whose class is H1) would otherwise have no row to be typed against and
+      // would answer BK_NODE_NONE for ever. This is the ask side of the SAME rule the
+      // read uses (BaseKnotNodeTFMin), so the two cannot drift apart.
       // P-BK-51: the knot's OWN TF is the class (P-BK-46), and a CTR/OTR knot is measured
-      // ONE RUNG ABOVE it («یک تایم بالاتر») — so ONE box can ask for TWO TFs. Both go
-      // through the same dedup, so every other kind still costs exactly one row.
-      int asked[2];
-      asked[0] = tf;
-      asked[1] = BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf);
-      for(int a = 0; a < 2; a++)
+      // ONE RUNG ABOVE it («یک تایم بالاتر») — so ONE box can ask for THREE TFs. They all
+      // go through the same dedup, so a box whose class IS its own TF still costs one row.
+      int asked[3];
+      asked[0] = BaseKnotNodeTFMin(i);
+      asked[1] = tf;
+      asked[2] = BaseKnotMeasureTFMin(g_bkBoxes[i].nodeKind, tf);
+      for(int a = 0; a < 3; a++)
       {
          if(asked[a] <= 0 || asked[a] == chartTF) continue;   // slot 0 already answers it
          bool dup = false;
@@ -3666,12 +3846,12 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    // (side, break, second break, state) is what the hot sizing path must not run per mouse
    // move; the committed Sync reads it.
    // P-BK-55 (2026-09-16, user: «توی اطلاعات چرا نوع گره رو نشون نمیده»): THE TYPE IS NOT
-   // THAT READ. The type is the node's LENGTH (P-BK-47) — a count of rungs between the class
-   // the note ALREADY prints and the TF the node is seen on — pure arithmetic on two TFs, no
-   // series and no ATR, so a box being SIZED answers it from the VERY span its class came
-   // from. The sizing note used to show a class with no type beside it.
+   // THAT READ. The type is the node's LENGTH (P-BK-75: the box' own HEIGHT against the
+   // abilities of the TF the node is seen on) — pure arithmetic on numbers the module was
+   // PUSHED, no series and no ATR, so a box being SIZED answers it from the VERY span its
+   // class came from. The sizing note used to show a class with no type beside it.
    // ONE RULE, ONE READ: the same two owners the committed read uses
-   // (BaseKnotBaseTFMin for the class, BaseKnotNodeRungs/BaseKnotNodeKindOf for the type).
+   // (BaseKnotBaseTFMin for the class, BaseKnotNodeKindOfLength for the type).
    // The record is zeroed in the SAME shape BaseKnotNodeRead opens with, so an unread half
    // can never be a garbage field the hover prints.
    BaseKnotNode ndLive;
@@ -3685,9 +3865,9 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    ndLive.ctxAlign = 0; ndLive.sideLevel = 0;
    // ... and the TYPE half is read, off the span the note's class came from (P-BK-55).
    int liveClass = BaseKnotBaseTFMin(spLive.still, spLive.tStart, spLive.tExit, top, bot);   // the class the note prints
-   int liveRungs = BaseKnotNodeRungs(liveTF, liveClass);
-   ndLive.rungs  = liveRungs;
-   ndLive.kind   = BaseKnotNodeKindOf(liveRungs);
+   ndLive.height = top - bot;   // P-BK-75: «طول گره» is the box' own height
+   ndLive.kind   = BaseKnotNodeKindOfLength(liveTF, ndLive.height);
+   BaseKnotAbilityGet(liveTF, ndLive.abTrig, ndLive.abPat, ndLive.abStr);
    ndLive.baseTF = liveClass;
    bool liveCorner = BaseKnotNoteAtCorner("");   // P-BK-58: while the user SIZES, the row is the answer
    BaseKnotWriteInfo(tag + "INFO", t1, te, top, bot, hPips, tpTip, side,

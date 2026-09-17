@@ -247,18 +247,35 @@ Checks, all on the source (+ one model), no terminal:
              (P-BK-43: «1 bars» then, the base behind it now), a box whose walk holds
              no base at all (0), the cap, and - P-BK-40 - the same walk's OTHER
              answer, the stand-still count the class is read from.
-  7 NODE     the four types ARE THE NODE'S LENGTH (P-BK-47) — the rung count above
-             the TF the node is SEEN ON, and NOTHING price did: the kind is ONE
-             assignment off `BaseKnotNodeRungs` (so no branch and no restored read
-             can rewrite it), that count reads two TFs and no series at all (no
-             closes, no ATR, no `Period()`), it walks the PROJECT'S ladder only, it
-             is bounded, and every unknown (no class, a 1-2 candle structure, a
-             class off the ladder) answers an ABSENCE instead of a band. Sync
-             classes the base BEFORE the length is counted and counts it from the
+  7 NODE     the four types ARE THE NODE'S LENGTH (P-BK-75) — the box' own HEIGHT
+             (`top - bot`, in price units) against the MOVEMENT ABILITY of the TF
+             the node is SEEN ON, and NOTHING else: the kind is ONE assignment off
+             `BaseKnotNodeKindOfLength(nodeTFMin, nd.height)` (so no branch and no
+             restored read can rewrite it), that read touches four numbers and no
+             series at all (no closes, no ATR call, no `Period()`), and every unknown
+             (a zero/negative height, a TF whose ATR was never pushed) answers an
+             ABSENCE instead of a band. «توان حرکتی» IS THAT TIMEFRAME'S ATR
+             (2026-09-17: «به جای th از atr استفاده بشه») — the project's own
+             composite ATR (`CalculateWeightedATR`) — so the three abilities are
+             `trigger = 0.25 * ATR`, `pattern = 0.50 * ATR`, `structure = ATR`, and
+             they are PUSHED IN per TF (the layer law: `THCalculations.mqh` sits
+             ABOVE `BaseKnotTool.mqh`), reusing the pump's own ask list so the ask
+             and the answer cannot disagree about which TFs a box draws with.
+             The four bands are the user's rule, made tolerant (P-BK-76): FTR up to
+             the MIDPOINT of trigger|pattern, ETR up to the midpoint of
+             pattern|structure, CTR up to the structure ability itself, OTR above
+             it — so no box lands on a knife edge. The thresholds come from the
+             NODE'S OWN TF (`nodeTFMin`), never from the open chart, so one box has
+             ONE type on every chart TF. Sync
+             classes the base BEFORE the length is measured and measures it from the
              box' OWN commit TF (`BaseKnotNodeTFMin`: the tfMin, the id for a legacy
              box, this chart only when neither knows), the pump asks the SAME
              question of the SAME story candle, and BOTH answers are published and
              compared (the type, and the side the break's story names).
+             The RETIRED reading (P-BK-47: the rung count above the node's TF) is
+             kept in place behind `BKNODERUNG-OFF` and is asserted DEAD on
+             `strip_comments()` text — a name test on raw source would pass on the
+             retirement comment alone (P-BK-74).
              P-BK-38/P-BK-49 ride here, as the SIDE: the story still runs on the
              CLASS' own candles (so one box has one side on every chart), the far
              edge is still read off top/bot (the node's LIFE STATE, P-BK-48), and
@@ -269,15 +286,15 @@ Checks, all on the source (+ one model), no terminal:
              (`tFrom`, published as `baseT` so the pump asks the same question),
              and names the pattern RBR/RBD/DBR/DBD without ever touching the side.
              The model then proves the promises on scenes: the six band answers,
-             the rung model on the PROJECT'S ladder (0/1/2/3+ rungs, a class BELOW
-             the node's TF, an unmeasurable class, an M30 class, an exotic chart TF
-             stepped onto the ladder), the story scenes' sides (the departure's, in
-             BOTH directions, return or not), the four PATTERN scenes and their two
-             absences, the step moving the numbers but never the side, the closes
-             moving the side but never the type, and — the point of the change —
-             the RETIRED reading's own answer for the user's D1 box (ETR) against
-             the length's (FTR: it is its own trigger) and against the pattern's
-             own side (+1: that box departed UP).
+             the four HEIGHT bands on a real ladder (a height on each side of each
+             midpoint, a height equal to the structure ability, one above it, and
+             the absence when that TF's ATR was never pushed), the story scenes'
+             sides (the departure's, in BOTH directions, return or not), the four
+             PATTERN scenes and their two absences, the step moving the numbers but
+             never the side, the closes moving the side but never the type, and —
+             the point of the change — the RETIRED reading's own answer for the
+             user's D1 box (ETR) against the length's (FTR: it is its own trigger)
+             and against the pattern's own side (+1: that box departed UP).
   8 RUNG     the class is CONFIRMED on the rung's own candles (P-BK-36) over the
              base's OWN STORY span (P-BK-41: `s1..s2`, never the box' t1/t2), on the
              PROJECT'S ladder (P-BK-43: the ATR warm-up queue's eight, no M30): the
@@ -1025,7 +1042,7 @@ def check_invariance():
              not reach)]
 
 
-# --- 7: the node type (P-BK-47) — the node's LENGTH on the project's ladder -------
+# --- 7: the node type (P-BK-75/76) — the box' HEIGHT against its TF's ATR ---------
 NODE_NONE, NODE_FTR, NODE_ETR, NODE_CTR, NODE_OTR = 0, 1, 2, 3, 4
 NODE_NAME = {NODE_NONE: "none", NODE_FTR: "FTR", NODE_ETR: "ETR",
              NODE_CTR: "CTR", NODE_OTR: "OTR"}
@@ -1059,50 +1076,74 @@ def ladder_next(tf, lad):
     return 0
 
 
-def rung_band(name):
-    """One of P-BK-47's band defines, read FROM THE SOURCE (0/1/2 = the trigger, the
-    pattern and the structure time — the numbers the code actually compares against)."""
-    m = re.search(r"#define\s+" + name + r"\s+(\d+)", strip_comments(read(KNOT)))
-    return int(m.group(1)) if m else None
+# BKNODERUNG-OFF (P-BK-75, 2026-09-17): the TYPE no longer rides the ladder.
+# The two mirrors below modelled the RETIRED read (the rung count above the node's TF
+# and the four band defines it fell in). They are kept in place, not deleted, so the
+# restore path is the module's own: uncomment, put the two calls back into
+# BaseKnotNodeRead / the live read, and re-teach the gates in `check_node` that are
+# named "RETIRED" — nothing else in this file reads them.
+#
+# def rung_band(name):
+#     """One of P-BK-47's band defines, read FROM THE SOURCE (0/1/2 = the trigger, the
+#     pattern and the structure time — the numbers the code actually compares against)."""
+#     m = re.search(r"#define\s+" + name + r"\s+(\d+)", strip_comments(read(KNOT)))
+#     return int(m.group(1)) if m else None
+#
+# def node_kind_model(rungs):
+#     """Mirrors BaseKnotNodeKindOf: the bands the rung count falls in."""
+#     f, p, c = (rung_band("BK_NODE_RUNG_FTR"), rung_band("BK_NODE_RUNG_ETR"),
+#                rung_band("BK_NODE_RUNG_CTR"))
+#     if rungs == f:
+#         return NODE_FTR
+#     if rungs == p:
+#         return NODE_ETR
+#     if rungs == c:
+#         return NODE_CTR
+#     if rungs > c:
+#         return NODE_OTR
+#     return NODE_NONE
+#
+# def node_rungs_model(node_tf, class_tf, lad=None):
+#     """Mirrors BaseKnotNodeRungs: how many LADDER RUNGS the class sits ABOVE the TF the
+#     node is seen on. -1 = nothing to class (no class, a structure of 1-2 candles, or a
+#     class the ladder cannot name above that TF)."""
+#     if lad is None:
+#         lad = ladder()
+#     if node_tf <= 0 or class_tf <= 0:
+#         return -1
+#     if class_tf == node_tf:
+#         return 0
+#     rung = node_tf
+#     for i in range(8):                       # the ladder's own eight, bounded
+#         rung = ladder_next(rung, lad)
+#         if rung == 0:
+#             return -1                        # the top of the ladder
+#         if rung == class_tf:
+#             return i + 1
+#         if rung > class_tf:
+#             return -1                        # a class the ladder cannot name
+#     return -1
 
 
-def node_kind_model(rungs):
-    """Mirrors BaseKnotNodeKindOf: the bands the rung count falls in. NO closes, NO
-    step and NO chart TF enter this function — that IS the law (`rungs` alone is the
-    whole input, which is why nothing price did can move a type any more)."""
-    f, p, c = (rung_band("BK_NODE_RUNG_FTR"), rung_band("BK_NODE_RUNG_ETR"),
-               rung_band("BK_NODE_RUNG_CTR"))
-    if rungs == f:
+def node_kind_model(h, trig, pat, str_):
+    """Mirrors BaseKnotNodeKindOfLength (P-BK-75/76): the bands the box' HEIGHT falls
+    in, against the three MOVEMENT ABILITIES of the TF the node is SEEN ON. NO closes,
+    NO step, NO chart TF and NO ATR enter this function — `h` against those three is
+    the whole input, which is why nothing price did can move a type any more.
+
+    The boundaries are the MIDPOINTS of adjacent abilities (P-BK-76: «زیاد خشک نباشه
+    در مقایسات»), and OTR keeps the user's own ceiling — «بیشتر از توان حرکتی تایم
+    ساختار». A missing ability (str_ <= 0, i.e. that TF's ATR was never pushed) is an
+    ABSENCE, never a zero dressed as a threshold."""
+    if h <= 0.0 or str_ <= 0.0:
+        return NODE_NONE
+    if h <= (trig + pat) * 0.5:
         return NODE_FTR
-    if rungs == p:
+    if h <= (pat + str_) * 0.5:
         return NODE_ETR
-    if rungs == c:
+    if h <= str_:
         return NODE_CTR
-    if rungs > c:
-        return NODE_OTR
-    return NODE_NONE
-
-
-def node_rungs_model(node_tf, class_tf, lad=None):
-    """Mirrors BaseKnotNodeRungs: how many LADDER RUNGS the class sits ABOVE the TF the
-    node is seen on. -1 = nothing to class (no class, a structure of 1-2 candles, or a
-    class the ladder cannot name above that TF)."""
-    if lad is None:
-        lad = ladder()
-    if node_tf <= 0 or class_tf <= 0:
-        return -1
-    if class_tf == node_tf:
-        return 0
-    rung = node_tf
-    for i in range(8):                       # the ladder's own eight, bounded
-        rung = ladder_next(rung, lad)
-        if rung == 0:
-            return -1                        # the top of the ladder
-        if rung == class_tf:
-            return i + 1
-        if rung > class_tf:
-            return -1                        # a class the ladder cannot name
-    return -1
+    return NODE_OTR
 
 
 def node_story_model(closes, top, bot, step=0.0):
@@ -1218,15 +1259,28 @@ def node_story_scenes():
 
 
 def node_length_scenes():
-    """(name, expected type, rungs) — the TYPE, whose ONLY input is the rung count: the
-    same list would answer the same types on any closes, any step and any chart TF."""
+    """(name, expected type, height, trigger, pattern, structure) — the TYPE, whose ONLY
+    inputs are the height and the node's own TF's three abilities: the same list would
+    answer the same types on any closes, any step and any chart TF.
+
+    The ATR used here is 100 pips, so the trigger is 25, the pattern 50 and the
+    structure 100 (P-BK-75: 0.25 / 0.50 / 1.00 of the TF's own ATR), and the two
+    midpoints P-BK-76 moved the boundaries onto are 37.5 and 75."""
     return [
-        ("no class measured claims nothing", NODE_NONE, -1),
-        ("0 rungs above the node's TF is the TRIGGER length -> FTR", NODE_FTR, 0),
-        ("1 rung up is the PATTERN time -> ETR", NODE_ETR, 1),
-        ("2 rungs up is the STRUCTURE time -> CTR", NODE_CTR, 2),
-        ("3 rungs up is LONGER than the structure time -> OTR", NODE_OTR, 3),
-        ("... and stays OTR however much longer the node is (7 rungs)", NODE_OTR, 7),
+        ("a box with no height claims nothing", NODE_NONE, 0.0, 25.0, 50.0, 100.0),
+        ("a box as tall as the TRIGGER ability -> FTR", NODE_FTR, 25.0, 25.0, 50.0, 100.0),
+        ("... and one up to the trigger|pattern MIDPOINT is still FTR",
+         NODE_FTR, 37.5, 25.0, 50.0, 100.0),
+        ("a box past that midpoint -> ETR", NODE_ETR, 37.6, 25.0, 50.0, 100.0),
+        ("a box as tall as the PATTERN ability -> ETR", NODE_ETR, 50.0, 25.0, 50.0, 100.0),
+        ("... and one up to the pattern|structure MIDPOINT is still ETR",
+         NODE_ETR, 75.0, 25.0, 50.0, 100.0),
+        ("a box past that midpoint -> CTR", NODE_CTR, 75.1, 25.0, 50.0, 100.0),
+        ("a box as tall as the STRUCTURE ability -> CTR", NODE_CTR, 100.0, 25.0, 50.0, 100.0),
+        ("a box LONGER than the structure ability -> OTR", NODE_OTR, 100.1, 25.0, 50.0, 100.0),
+        ("... and stays OTR however much longer it is (4x)", NODE_OTR, 400.0, 25.0, 50.0, 100.0),
+        ("a TF whose ATR was never pushed claims nothing (an absence, not a band)",
+         NODE_NONE, 50.0, 0.0, 0.0, 0.0),
     ]
 
 
@@ -1263,8 +1317,8 @@ def check_node():
                           r"const\s+double\s+bot,\s*const\s+int\s+nodeTFMin,\s*const\s+int\s+baseTFMin,",
                           plain) is not None))
     kinds = [k.strip() for k in re.findall(r"nd\.kind\s*=\s*([^;]+);", blk)]
-    out.append(("the type is ONE read off the rung count (its reset, then the count - no branch)",
-                kinds == ["BK_NODE_NONE", "BaseKnotNodeKindOf(nd.rungs)"]))
+    out.append(("the type is ONE read off the box' HEIGHT (its reset, then the height - no branch)",
+                kinds == ["BK_NODE_NONE", "BaseKnotNodeKindOfLength(nodeTFMin, nd.height)"]))
     out.append(("the retired level read cannot set the type again (BKNODEKIND-OFF)",
                 re.search(r"nd\.kind\s*=\s*BK_NODE_(FTR|ETR|CTR|OTR);", blk) is None
                 # ... and no branch of the retired read hangs a `nd.kind = ` off price action
@@ -1273,28 +1327,55 @@ def check_node():
     out.append(("... and no ATR gate withholds it (the length needs no size at all)",
                 re.search(r"s_bkStepATR\s*<=\s*0\s*\)\s*return", blk) is None))
     out.append(("the LENGTH is read BEFORE the story walk (it needs no series)",
-                blk.find("nd.kind  = BaseKnotNodeKindOf") > 0
-                and blk.find("nd.kind  = BaseKnotNodeKindOf") < blk.find("iClose(")))
-    rungs = body(src, "int BaseKnotNodeRungs(") or ""
-    kindb = body(src, "int BaseKnotNodeKindOf(") or ""
-    out.append(("the rung count reads two TFs and nothing else (no closes, no step, no chart TF)",
-                rungs != ""
-                and re.search(r"i(Open|Close|High|Low|Time|BarShift)\s*\(", rungs) is None
-                and "s_bkStepATR" not in rungs and "Period()" not in rungs))
-    out.append(("... on the PROJECT'S ladder (P-BK-43's own eight, and ONE step per rung)",
-                re.search(r"rung\s*=\s*BaseKnotNextTFMin\(rung\);\s*\n\s*if\(rung\s*<=\s*0\)\s*break;",
-                          rungs) is not None
-                and rungs.count("BaseKnotNextTFMin(") == 1))
-    out.append(("... bounded, and every unknown answers an ABSENCE (-1), never a band",
-                "for(int i = 0; i < 8; i++)" in rungs and "return -1;" in rungs
-                and re.search(r"classMin\s*<\s*0\)\s*return\s+-1;", rungs) is not None))
-    out.append(("the node's own TF IS the FTR band (class == the TF the node is seen on)",
-                re.search(r"if\(classMin\s*==\s*nodeTFMin\)\s*return\s+BK_NODE_RUNG_FTR;",
-                          rungs) is not None))
-    out.append(("the four names' sizes are spelled in ONE place (the bands)",
-                kindb != ""
-                and all(("BK_NODE_RUNG_" + x) in kindb for x in ("FTR", "ETR", "CTR"))
-                and re.search(r"rungs\s*>\s*BK_NODE_RUNG_CTR\)\s*return\s+BK_NODE_OTR;", kindb) is not None))
+                blk.find("nd.kind = BaseKnotNodeKindOfLength(") > 0
+                and blk.find("nd.kind = BaseKnotNodeKindOfLength(") < blk.find("iClose(")))
+    # P-BK-75/76: the rung count is RETIRED IN PLACE — tested on strip_comments(), because
+    # the retirement comments spell the old definitions verbatim and a NAME test against
+    # raw source would pass on the corpse (the "gate satisfied by code that no longer runs"
+    # trap P-BK-74 paid for).
+    out.append(("the rung count that used to name the type is RETIRED, not merely unused",
+                "int BaseKnotNodeRungs(" not in plain and "int BaseKnotNodeKindOf(" not in plain
+                and "BKNODERUNG-OFF" in src))
+    hb = body(src, "int BaseKnotNodeKindOfLength(") or ""
+    out.append(("the four names' sizes are spelled in ONE place — the HEIGHT against the abilities",
+                hb != ""
+                and all(("BK_NODE_" + x) in hb for x in ("FTR", "ETR", "CTR", "OTR"))
+                and re.search(r"if\(h\s*<=\s*str\)\s*return\s+BK_NODE_CTR;", hb) is not None
+                and re.search(r"return\s+BK_NODE_OTR;", hb) is not None))
+    out.append(("... and the bands are the MIDPOINTS of the abilities, never hardcoded (P-BK-76)",
+                re.search(r"if\(h\s*<=\s*\(trig\s*\+\s*pat\)\s*\*\s*0\.5\)\s*return\s+BK_NODE_FTR;",
+                          hb) is not None
+                and re.search(r"if\(h\s*<=\s*\(pat\s*\+\s*str\)\s*\*\s*0\.5\)\s*return\s+BK_NODE_ETR;",
+                              hb) is not None
+                and re.search(r"0\.375|0\.75", hb) is None))
+    out.append(("... and the thresholds come from the NODE'S OWN TF, pushed in (never the chart's)",
+                re.search(r"BaseKnotAbilityGet\(\s*nodeTFMin\s*,", hb) is not None
+                and "Period()" not in hb))
+    out.append(("... and a TF whose ATR was never pushed answers an ABSENCE, never a band",
+                re.search(r"if\(h\s*<=\s*0\.0\)\s*return\s+BK_NODE_NONE;", hb) is not None))
+    # P-BK-75 (2026-09-17, user: «به جای th از atr استفاده بشه»): THE ABILITY IS THAT
+    # TF'S OWN ATR. The push takes ONE number — the ATR — and derives the three
+    # abilities ITSELF, so the ratios have ONE owner; and a cold ATR is stored as an
+    # ABSENCE, so a threshold of zero can never be invented.
+    ab = body(src, "void BaseKnotAbilityPush(") or ""
+    abg = body(src, "bool BaseKnotAbilityGet(") or ""
+    out.append(("the push takes the TF's ATR and derives the three abilities ITSELF "
+                "(one owner of the ratios)",
+                "BK_AB_TRIG_RATIO" in ab and "BK_AB_PAT_RATIO" in ab
+                and re.search(r"atr\s*\*\s*BK_AB_TRIG_RATIO", ab) is not None
+                and re.search(r"atr\s*\*\s*BK_AB_PAT_RATIO", ab) is not None
+                and re.search(r"\?\s*atr\s*:", ab) is not None
+                and re.search(r"atr\s*\*\s*0\.(25|50)", ab) is None))
+    out.append(("... and the three ratios are the ones the user named (0.25 / 0.50 / 1.00)",
+                re.search(r"#define\s+BK_AB_TRIG_RATIO\s+0\.25", plain) is not None
+                and re.search(r"#define\s+BK_AB_PAT_RATIO\s+0\.50", plain) is not None))
+    out.append(("... and a cold ATR is stored AS an absence, never as a threshold of zero",
+                re.search(r"if\(s_bkAbStr\[i\]\s*<=\s*0\.0\)\s*return\s+false;", abg) is not None))
+    # ... and the ASK side must carry the same TF, or no box whose class sits higher up
+    # the ladder (an M15 box classed H1) would ever have a row to be typed against.
+    needs = body(src, "int BaseKnotEngNeeds(") or ""
+    out.append(("the ask list carries the TF the node is SEEN ON (BaseKnotNodeTFMin)",
+                "BaseKnotNodeTFMin(i)" in needs))
     # --- the foot: the TF the node is SEEN ON is the BOX' own, in the note AND the pump
     foot = body(src, "int BaseKnotNodeTFMin(") or ""
     out.append(("the TF the node is seen on is the BOX' commit TF (its id for a legacy box)",
@@ -1357,12 +1438,15 @@ def check_node():
                 and re.search(r"if\(c\s*>\s*top\)\s*nd\.crossed\s*=\s*true;", blk) is not None))
     # --- the texts: the claim AND the numbers it was read from
     line = body(src, "string BaseKnotNodeLine(") or ""
-    out.append(("the hover says the type IS the length", "the type is the LENGTH" in line))
-    out.append(("... and names the rung count between the two TFs it was counted on",
-                "rung(s) above" in line and "nd.rungs" in line and "nd.nodeTF" in line
-                and "nd.baseTF" in line))
+    out.append(("the hover says the type IS the length", "the type is the HEIGHT" in line))
+    out.append(("... and names the box' height beside the three abilities it was compared to",
+                "pips (the box' height)" in line and "nd.height" in line
+                and "trigger " in line and "pattern " in line and "structure " in line))
+    out.append(("... and the bands it fell in, off the SAME midpoints the read uses (P-BK-76)",
+                "bands:" in line and "BaseKnotNodeBandFtrEtr(nd.nodeTF)" in line
+                and "BaseKnotNodeBandEtrCtr(nd.nodeTF)" in line))
     out.append(("... keeping the TF-invariance promise for the type",
-                "the same on every TF" in line))
+                "the same on every chart TF" in line))
     out.append(("... while the story, its side and its step ride their own lines",
                 "story read on" in line and "trade:" in line and "far edge" in line.lower()))
     namefn = body(src, "string BaseKnotNodeName(") or ""
@@ -1409,27 +1493,26 @@ def check_node():
 
 def check_node_model():
     out = []
-    for name, want, rungs in node_length_scenes():
-        got = node_kind_model(rungs)
+    for name, want, h, trig, pat, str_ in node_length_scenes():
+        got = node_kind_model(h, trig, pat, str_)
         out.append(("%s (%s)" % (name, NODE_NAME[got]), got == want))
     lad = ladder()
-    out.append(("the model counts on the PROJECT's ladder (M1·M5·M15·H1·H4·D1·W1·MN1, no M30)",
+    out.append(("the model still reads the PROJECT's ladder (M1·M5·M15·H1·H4·D1·W1·MN1, no M30)",
                 lad == [1, 5, 15, 60, 240, 1440, 10080, 43200]))
-    for name, want, node_tf, class_tf in [
-            ("the node's own TF is 0 rungs — the TRIGGER length", 0, 15, 15),
-            ("one rung up is the PATTERN time", 1, 15, 60),
-            ("two rungs up is the STRUCTURE time", 2, 15, 240),
-            ("three rungs up is beyond the structure time", 3, 15, 1440),
-            ("a node far beyond it stays OTR's length", 4, 15, 10080),
-            ("a D1 node seen on H1 is two rungs up (the same box, another chart)", 2, 60, 1440),
-            ("... and seen on its own D1 it is its own trigger length", 0, 1440, 1440),
-            ("a class BELOW the TF the node is seen on classes nothing", -1, 1440, 15),
-            ("a structure (1-2 candles) classes nothing", -1, 60, -1),
-            ("an unmeasurable class classes nothing", -1, 60, 0),
-            ("a class off the ladder (M30) classes nothing", -1, 60, 30),
-            ("an exotic chart TF is stepped ONTO the ladder (M30 chart, H1 class = one rung)", 1, 30, 60)]:
-        got = node_rungs_model(node_tf, class_tf, lad)
-        out.append(("%s (%d rung(s))" % (name, got), got == want))
+    # P-BK-75: the abilities are 0.25 / 0.50 / 1.00 of the TF's own ATR, so the SAME box
+    # height can be two types on two TFs — the whole point of «توان حرکتی تایمی که گره در
+    # آن دیده میشود»: the ability is a property of the TF the node is SEEN on.
+    out.append(("the abilities are that TF's own ATR at 0.25 / 0.50 / 1.00 — a 50-pip box "
+                "is OTR where the ATR is 25, ETR where it is 100, FTR where it is 400",
+                node_kind_model(50.0, 6.25, 12.5, 25.0) == NODE_OTR
+                and node_kind_model(50.0, 25.0, 50.0, 100.0) == NODE_ETR
+                and node_kind_model(50.0, 100.0, 200.0, 400.0) == NODE_FTR))
+    triples = [(25.0, 50.0, 100.0), (1.0, 2.0, 4.0), (100.0, 200.0, 400.0)]
+    steps = [(0.0, 1.0), (1.0, 50.0), (50.0, 99.0), (99.0, 100.0), (100.0, 101.0), (101.0, 1e6)]
+    monotone = all(node_kind_model(h2, t, p, s) >= node_kind_model(h1, t, p, s)
+                   for (t, p, s) in triples for (h1, h2) in steps)
+    out.append(("and the answer is MONOTONE in the height — a taller box never comes back a "
+                "shorter type, on any ability triple", monotone))
     for name, want, closes, top, bot in node_story_scenes():
         got = node_side_model(node_story_model(closes, top, bot))
         out.append(("%s (%+d)" % (name, got), got == want))
@@ -1437,12 +1520,16 @@ def check_node_model():
              for s in (0.00005, 0.0005, H1_STEP, D1_STEP, 1.0)}
     out.append(("the step never moves the SIDE (it only sizes its numbers) (%d answer(s))"
                 % len(sides), len(sides) == 1))
-    out.append(("and the closes never move the TYPE — the rung count is the whole input",
-                {node_kind_model(r) for r in (0, 1, 2, 3, 4)}
-                == {NODE_FTR, NODE_ETR, NODE_CTR, NODE_OTR, NODE_OTR}))
-    out.append(("the retired reading named the user's own D1 box ETR - the length names it FTR",
+    out.append(("and the closes never move the TYPE — one box answers ONE type across every "
+                "story scene (%d answer(s))"
+                % len({node_kind_model(top - bot, 25.0, 50.0, 100.0)
+                       for _, _, _, top, bot in node_story_scenes()}),
+                len({node_kind_model(top - bot, 25.0, 50.0, 100.0)
+                     for _, _, _, top, bot in node_story_scenes()}) == 1))
+    out.append(("the retired STORY reading named the user's own D1 box ETR — and the height rule "
+                "reads NO story at all (its whole input is the height + the three abilities)",
                 node_kind_v29_retired(D1_CLOSES, D1_TOP, D1_BOT) == NODE_ETR
-                and node_kind_model(0) == NODE_FTR))
+                and node_kind_model.__code__.co_argcount == 4))
     out.append(("... while its SIDE is the pattern's: the box DEPARTED UP, so +1",
                 node_side_model(node_story_model(D1_CLOSES, D1_TOP, D1_BOT)) == 1))
     for name, approach, side, want in node_pattern_scenes():
@@ -1890,11 +1977,11 @@ def check_note_life():
         return [("the live preview is present", False)]
     out = []
     out.append(("the sizing note reads the TYPE from the very span its class comes from",
-                "BaseKnotNodeRungs(liveTF," in live and "BaseKnotNodeKindOf(" in live
+                "BaseKnotNodeKindOfLength(liveTF," in live
                 and "BaseKnotBaseTFMin(spLive." in live))
     out.append(("... on the SAME rule the committed read uses (one length, two callers)",
-                "BaseKnotNodeRungs(nodeTFMin, baseTFMin)" in (body(src, "void BaseKnotNodeRead(") or "")
-                and "BaseKnotNodeKindOf(nd.rungs)" in (body(src, "void BaseKnotNodeRead(") or "")))
+                "BaseKnotNodeKindOfLength(nodeTFMin, nd.height)"
+                in (body(src, "void BaseKnotNodeRead(") or "")))
     out.append(("... while the STORY stays a committed-only read (no side, no story TF live)",
                 "ndLive.side = 0;" in live and "ndLive.storyTF = 0;" in live))
     wib = strip_comments(body(src, "void BaseKnotWriteInfo(") or "")
@@ -2021,8 +2108,9 @@ def main():
     print("base count: clean — one owner, one span: the number is the base's own story "
           "(the entry candle is not counted, the exit candle is),\nthe left edge bounds "
           "nothing, the walk is capped on both the commit and the mouse path,\nthe node "
-          "type IS the node's LENGTH on the project's ladder (rungs above the TF it is "
-          "seen on: 0 FTR · 1 ETR · 2 CTR · 3+ OTR),\nthe base PATTERN names the "
+          "type IS the box' HEIGHT against the movement ability (that TF's own ATR) of "
+          "the TF it is SEEN ON — the same type on every chart TF (bands at the midpoints, P-BK-76: "
+          "FTR < trig|pat · ETR < pat|str · CTR <= str · OTR above),\nthe base PATTERN names the "
           "trade's side and it is FIXED (RBR/DBR Buy · RBD/DBD Sell, the departure "
           "deciding,\nread on the past market too), the size class is confirmed on the "
           "rung's own candles,\nand while "
@@ -2149,8 +2237,9 @@ def selftest():
                   bool(fires(check_anchor))))
     reset()
 
-    # P-BK-47: the LENGTH owns the type — every way back to the retired read is caught
-    with_source("   nd.kind  = BaseKnotNodeKindOf(nd.rungs);",
+    # P-BK-75/76: the HEIGHT owns the type — every way back to the retired read, and every
+    # way to a knife-edge boundary or a band out of thin air, is caught
+    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTFMin, nd.height);",
                 "   if(nd.crossed)        nd.kind = BK_NODE_OTR;\n"
                 "   else if(rebreaks > 0) nd.kind = BK_NODE_CTR;\n"
                 "   else                  nd.kind = BK_NODE_ETR;")
@@ -2158,28 +2247,55 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("   nd.kind  = BaseKnotNodeKindOf(nd.rungs);",
-                "   nd.kind  = BK_NODE_FTR;   // the type, guessed")
-    cases.append(("a type that is not read from the rung count is caught",
+    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTFMin, nd.height);",
+                "   nd.kind = BK_NODE_FTR;   // the type, guessed")
+    cases.append(("a type that is not read from the box' height is caught",
                   bool(fires(check_node))))
     reset()
 
-    with_source("      rung = BaseKnotNextTFMin(rung);\n"
-                "      if(rung <= 0) break;                          // the top of the ladder",
-                "      rung = rung * 2;   // a ladder of its own\n"
-                "      if(rung <= 0) break;   // an invented top")
-    cases.append(("a length counted on a ladder that is not the project's is caught",
+    with_source("   if(h <= (trig + pat) * 0.5) return BK_NODE_FTR;   // midpoint of trigger | pattern",
+                "   if(h <= trig) return BK_NODE_FTR;   // back to the knife edge")
+    cases.append(("a boundary moved back onto the ability itself (P-BK-76) is caught",
                   bool(fires(check_node))))
     reset()
 
-    with_source("   if(classMin < 0) return -1;                      // structure (1-2 candles): not a base",
+    with_source("      asked[0] = BaseKnotNodeTFMin(i);",
+                "      asked[0] = tf;")
+    cases.append(("an ask list that drops the node's own TF is caught (no box would type)",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("atr * BK_AB_TRIG_RATIO", "atr * 0.25")
+    cases.append(("a ratio hardcoded at the push site (a second owner) is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("#define BK_AB_TRIG_RATIO 0.25", "#define BK_AB_TRIG_RATIO 0.5")
+    cases.append(("a trigger ratio that is no longer the user's 0.25 is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("      if(s_bkAbStr[i] <= 0.0) return false;",
+                "      if(s_bkAbStr[i] < 0.0) return false;")
+    cases.append(("a cold ATR becoming a threshold of zero is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("   if(!BaseKnotAbilityGet(nodeTFMin, trig, pat, str)) return BK_NODE_NONE;",
+                "   trig = trig; pat = pat; str = str;   // a band out of thin air")
+    cases.append(("a TF whose ATR was never pushed getting a band is caught",
+                  bool(fires(check_node))))
+    reset()
+
+    with_source("   if(h <= str)                return BK_NODE_CTR;   // the structure ability itself",
                 "")
-    cases.append(("classing a 1-2 candle structure as a length is caught",
+    cases.append(("a node LONGER than the structure ability losing its OTR ceiling is caught",
                   bool(fires(check_node))))
     reset()
 
-    with_source("   if(classMin == nodeTFMin) return BK_NODE_RUNG_FTR;", "")
-    cases.append(("a node that is its own TF's trigger length losing its band is caught",
+    with_source("BaseKnotNodeKindOfLength(nodeTFMin, nd.height)",
+                "BaseKnotNodeKindOfLength(Period(), nd.height)")
+    cases.append(("counting the height against the CHART's TF instead of the node's own is caught",
                   bool(fires(check_node))))
     reset()
 
@@ -2219,7 +2335,7 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("the type is the LENGTH", "")
+    with_source("the type is the HEIGHT", "")
     cases.append(("a hover that hides that the type is a length is caught",
                   bool(fires(check_node))))
     reset()
@@ -2228,7 +2344,7 @@ def selftest():
     cases.append(("dropping the far-edge read is caught", bool(fires(check_node))))
     reset()
 
-    with_source("the same on every TF", "")
+    with_source("the same on every chart TF", "")
     cases.append(("a hover line that hides the TF-invariance is caught",
                   bool(fires(check_node))))
     reset()
@@ -2621,7 +2737,7 @@ def selftest():
     reset()
 
     # P-BK-55: the sizing note stops answering the type again (a class with no type)
-    with_source("   ndLive.kind   = BaseKnotNodeKindOf(liveRungs);",
+    with_source("   ndLive.kind   = BaseKnotNodeKindOfLength(liveTF, ndLive.height);",
                 "   ndLive.kind   = BK_NODE_NONE;   // the sizing note claims no type again")
     cases.append(("a sizing note that answers no type is caught",
                   bool(fires(check_note_life))))
