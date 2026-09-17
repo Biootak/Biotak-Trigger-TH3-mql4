@@ -159,6 +159,21 @@
 //|    and the heal only fires when that role IS the body. A body move  |
 //|    the magnet enlarged still heals; a resize the user asked for     |
 //|    is left exactly where the hand let it go.                        |
+//|  * P-BK-73 (2026-09-17) — THE COMMIT HANDS THE BOX ITS OWN MARKERS. |
+//|    «این باکس ما مثل متاتریدر نیست» — the user's own screenshot:     |
+//|    MT4's rectangle wears FIVE squares (the four corners and the     |
+//|    centre, 7x7 px, one white pixel each) and ours wore NONE, so the |
+//|    first corner grab — the whole native resize P-BK-72 measures —   |
+//|    was one click away instead of zero. The terminal paints those    |
+//|    markers for a SELECTED object only, and `BaseKnotCommit` never   |
+//|    selected the box it had just built, while MT4's own rectangle is |
+//|    still in edit mode the instant the draw is let go. One read-then-|
+//|    write call at the commit's end (BaseKnotSelectBox — the mirror   |
+//|    of P-BK-26's drop, and the ONE owner of the grant) closes it.    |
+//|    The cost is MT4's own (P-UI-45): a selected object is moved by   |
+//|    the terminal on any LATER drag anywhere on the chart until a     |
+//|    click lands elsewhere — exactly what MT4's own rectangle does in |
+//|    edit mode, with P-BK-63's outside-click drop as the way out.     |
 //+------------------------------------------------------------------+
 #ifndef BASE_KNOT_TOOL_MQH
 #define BASE_KNOT_TOOL_MQH
@@ -847,6 +862,58 @@ void BaseKnotDropSelection(const string id)
    if(ObjectFind(0, box) < 0) return;
    if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED))
       ObjectSetInteger(0, box, OBJPROP_SELECTED, false);
+}
+
+//+------------------------------------------------------------------+
+//| P-BK-73 — GRANT THE SELECTION, ONCE, GUARDED (the mirror of the    |
+//| drop above and the ONE owner of the grant).                        |
+//|                                                                   |
+//| WHY IT EXISTS: the terminal paints its selection markers — the      |
+//| centre square plus one on every control corner, the five the user   |
+//| sees on MT4's own rectangle — for a SELECTED object only, and with  |
+//| BKGRIP-OFF (P-BK-71) those markers ARE this module's only resize    |
+//| handles (`BK_GRAB_CORNER_PX` measures the press against them). An   |
+//| unselected box therefore wears nothing and its native resize — the  |
+//| gesture P-BK-72 was written for — is unreachable until the user     |
+//| clicks it. MT4's own rectangle never has that gap: it is still in   |
+//| edit mode the instant the draw is let go, which is what            |
+//| `BaseKnotCommit` now answers.                                       |
+//|                                                                   |
+//| THE GUARDS: a LOCKED box is not selectable, so the terminal draws   |
+//| no marker on it and a granted selection would only lie — refused.   |
+//| An already-selected box pays ONE read and no repaint (the perf law  |
+//| this module follows everywhere: never write a property you would    |
+//| not change). The commit is the only caller and both of its call     |
+//| sites are a RELEASE (mouse-up) or a CLICK, never a live button — so |
+//| the P-BK-15 rule (a write cancels a drag the terminal owns) cannot  |
+//| be broken from here.                                                |
+//|                                                                    |
+//| THIS IS THE DOCS' OWN RECIPE, not a trick of ours. The MQL4         |
+//| Reference's OBJ_RECTANGLE page ships a `RectangleCreate()` example  |
+//| whose property block is exactly                                    |
+//|   ObjectCreate(chart_ID, name, OBJ_RECTANGLE, sub_window,           |
+//|                time1, price1, time2, price2);                       |
+//|   … OBJPROP_COLOR / STYLE / WIDTH / FILL / BACK …                   |
+//|   ObjectSetInteger(chart_ID, name, OBJPROP_SELECTABLE, selection);  |
+//|   ObjectSetInteger(chart_ID, name, OBJPROP_SELECTED,  selection);   |
+//|   … OBJPROP_HIDDEN / ZORDER …                                       |
+//| under the comment «when creating a graphical object using           |
+//| ObjectCreate function, the object cannot be highlighted and moved   |
+//| by default. Inside this method, selection parameter is true by      |
+//| default making it possible to highlight and move the object». So    |
+//| the terminal's own way to hand a fresh rectangle its five markers   |
+//| is ONE line at creation — the line this function is.               |
+//+------------------------------------------------------------------+
+void BaseKnotSelectBox(const string id)
+{
+   if(id == "") return;
+   string pfx = BaseKnotPrefix(id);
+   if(pfx == "") return;
+   string box = BaseKnotBoxName(pfx);
+   if(ObjectFind(0, box) < 0) return;
+   if(!(bool)ObjectGetInteger(0, box, OBJPROP_SELECTABLE)) return;   // a locked box wears no markers anyway
+   if((bool)ObjectGetInteger(0, box, OBJPROP_SELECTED)) return;      // already selected: no write, no repaint
+   ObjectSetInteger(0, box, OBJPROP_SELECTED, true);
 }
 
 //+------------------------------------------------------------------+
@@ -5115,6 +5182,12 @@ void BaseKnotCommit(const datetime t2, const double p2raw)
    g_bkRestoreReq = true;   // UI side re-shows the hidden ring menu
    // No bottom hint: the info lives ON the box (INFO badge + hover tooltips).
    // To look again: tap the box (re-opens the badge grace) or hover it.
+   // P-BK-73: and the box is handed ITS OWN selection, exactly as MT4's own
+   // rectangle is still in edit mode when the draw is let go — that is what
+   // makes the terminal paint the five markers, i.e. the corner handles the
+   // native resize (P-BK-72) is measured against. Last write of the commit,
+   // after every property this function owns, so nothing here can undo it.
+   BaseKnotSelectBox(id);
    ChartRedraw();
 }
 
