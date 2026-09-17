@@ -63,15 +63,13 @@
 #define Z_BOX_RAY       50      // Base/Knot rays
 #define Z_BOX_FILL      55      // box fill layer + drag handle
 #define Z_BOX_EDGE      56      // box border edges
-// P-BK-68/P-BK-69 (2026-09-17): ONE rung below is live, one is not. The mark IS a trend line
-// (P-BK-67), and a selected trend line carries the terminal's OWN control points on its two
-// anchors — white and unstyleable — so P-BK-69 draws them again as TWO 5 px SCREEN squares in
-// the mark's own ink, which is Z_BOX_DOT's family: P-BK-59's centre cover went (BKGRIP-OFF/
-// BKDOT-OFF retired the SELECTABLE chips), and this rung carries the two POINTS. Z_BOX_GRIP
-// stays UNUSED (its chips were the resize gesture, and the terminal's own end drag is that
-// gesture now). Both NUMBERS stay where they are: the ladder is a contract every rung above
-// and below it is measured against, and the restore path wants them exactly where the
-// P-BK-59/P-BK-61 notes below put them.
+// P-BK-71 (2026-09-17): THE MARK IS A BOX AGAIN, WITH NO POINTS OF OURS. The carrier
+// is MT4's OWN rectangle — moved and selected natively — so no family needs to cover
+// or repeat the terminal's markers: the centre cover (P-BK-59/BKDOT-OFF), the resize
+// chips (P-BK-61/BKGRIP-OFF) and the trendline points (P-BK-69/BKPOINT-OFF) are all
+// retired, and Z_BOX_DOT / Z_BOX_GRIP stay UNUSED rungs. Both NUMBERS stay where they
+// are: the ladder is a contract every rung above and below it is measured against,
+// and the restore path wants them exactly where the P-BK-59/P-BK-61 notes put them.
 // P-BK-59: the box' centre GRIP — a 5x5 SCREEN square in the box' border ink. It is not
 // decoration: MetaTrader paints its OWN selection marker (a 2x2 WHITE square) at the centre of
 // a SELECTED rectangle and gives the EA no colour for it («توی پس زمینه سفید به خوبی دیده

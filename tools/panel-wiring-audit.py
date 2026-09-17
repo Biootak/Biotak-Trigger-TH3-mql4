@@ -1800,13 +1800,12 @@ def check_chrome():
 def check_bk_drag():
     """[bk-drag] - P-BK-18: the fill and the border must track in lockstep.
 
-    P-BK-67: the mark is ONE diagonal trend line now — the carrier object IS the
-    visible shape (the OBJ_RECTANGLE handle AND its four OBJ_TREND border segments
-    are retired in place, BKEDGE-OFF; the two anchors of a line ARE the rectangle's
-    own two corners, so every number this module computes still reads the same four
-    values). MT4's own trend-line drag is the gesture: the BODY moves it, an END
-    resizes it. The children ride OUR copy of the carrier's anchors, and that copy
-    is what the user feels:
+    A Base/Knot box is TWO families by design: the OBJ_RECTANGLE that carries the
+    fill AND the only native drag handle MT4 will grab, and four OBJ_TREND edge
+    segments that draw the visible border (P-BK-06 — some builds render a filled
+    rectangle even with FILL=false, so the border cannot be the rectangle). The
+    children therefore ride OUR copy of the box's anchors, and that copy is what
+    the user feels:
 
       * it used to share ONE 30 ms gate with the cursor fallback and the paint,
         so the border stepped at 33 fps while the native fill tracked the hand at
@@ -1859,27 +1858,21 @@ def check_bk_drag():
     if pump is None:
         problems.append("BaseKnotSyncBadges() is gone - the 500 ms pump is the settle owner")
     else:
-        # P-BK-67: the witness moved from the top edge to the ENTRY ray (there is no
-        # border segment any more, BKEDGE-OFF), so the promise is asserted on the settle
-        # CALL and its owner - never on the retired edge's name.
-        if "if(bkHandOff)" not in pump or "!BaseKnotMarkSettled(" not in pump:
-            problems.append("the pump no longer settles a family that drifted behind the carrier "
-                            "(P-BK-18/P-BK-67) - a lost gesture end leaves the levels adrift "
-                            "until a TF switch")
+        if "if(bkHandOff && !BaseKnotBorderSettled(" not in pump:
+            problems.append("the pump no longer settles a box whose border is behind it (P-BK-18) - "
+                            "a lost gesture end leaves the border adrift until a TF switch")
         if "bkHandOff" not in pump or "UILeftButtonUp()" not in pump:
             problems.append("the settle heal lost its button gate (the ONE owner, P-UI-73) - writing "
                             "into a live native drag cancels it (P-BK-15)")
         if "s_bkDragId != \"\" && g_bkBoxes[i].id == s_bkDragId" not in pump:
             problems.append("the pump stopped skipping the actively dragged box (P-BK-15)")
-    settle = body(src, "bool BaseKnotMarkSettled(")
+    settle = body(src, "bool BaseKnotBorderSettled(")
     if settle is None:
-        problems.append("BaseKnotMarkSettled() is gone - the settle compare needs its ONE owner "
-                        "(P-BK-67: the ENTRY ray is the witness now that the top edge is retired)")
+        problems.append("BaseKnotBorderSettled() is gone - the settle compare needs its ONE owner")
     else:
-        if ("BaseKnotEntryName" not in settle or "OBJPROP_TIME, 0" not in settle
-                or "OBJPROP_PRICE, 0" not in settle):
-            problems.append("BaseKnotMarkSettled() no longer compares the entry ray's right-edge TIME "
-                            "AND level against the carrier - half the divergence would go unseen")
+        if "BK_EDGE_T" not in settle or "OBJPROP_TIME, 1" not in settle or "OBJPROP_PRICE, 0" not in settle:
+            problems.append("BaseKnotBorderSettled() no longer compares the top edge's span AND price "
+                            "against the box - half the divergence would go unseen")
     # (c) P-BK-19a: the BOX has ONE writer per gesture. The fallback may not write
     #     a box the terminal has claimed, and the claim must be made from both
     #     witnesses the terminal gives us: its own OBJECT_DRAG, and the anchors
@@ -1899,20 +1892,13 @@ def check_bk_drag():
         if "s_bkNativeClaim = false;" not in events:
             problems.append("a fresh press does not take the claim back (P-BK-19a) - the NEXT gesture "
                             "starts out owned by the terminal that owned the last one")
-    # (d) P-BK-19b/P-BK-67: the grab role has ONE live consumer now - the release's
-    #     size heal - and the retired one (the cursor fallback, BKCURSOR-OFF) stays dead.
-    #     The role is what tells an END drag (a resize the user asked for) from a BODY
-    #     drag (a move MetaTrader's own magnet may have lengthened), so a press that
-    #     stops measuring it hands the heal an answer it must not invent, and a heal that
-    #     ignores it springs the user's own resize back (the P-BK-65 report).
-    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
-        problems.append("the press no longer measures WHICH part of the mark it grabbed "
-                        "(P-BK-19b/P-BK-67) - the release's size heal then cannot tell an END "
-                        "drag from a BODY drag and undoes the user's own resize")
-    if "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(" not in events:
-        problems.append("the body-size heal is no longer gated on the press-time ROLE being the "
-                        "BODY (P-BK-67) - every end drag would be healed back to its press-time "
-                        "size on release")
+    # (d) P-BK-19b: the grab-role measurement fed the CURSOR FALLBACK only, and that
+    #     fallback is retired (BKCURSOR-OFF) - so the press must NOT measure a role
+    #     any more. The dormant restore-path integrity is
+    #     `check_bkcursor_off()`'s job, one group per promise.
+    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src):
+        problems.append("the press measures a grab role again although the cursor fallback is "
+                        "retired - that role has no consumer (BKCURSOR-OFF/P-BK-19b)")
     # (e) P-PERF-42: the child set is probed ONCE per gesture, not per child per
     #     step - and the probe cannot outlive the gesture it was built for.
     one = body(src, "void BaseKnotMoveOne(")
@@ -1925,10 +1911,7 @@ def check_bk_drag():
     if kids is None:
         problems.append("BaseKnotMoveChildren() is gone - the drag's child pass has ONE owner")
     else:
-        # P-BK-67: the bit the check names is a LIVE one (the entry ray) - the four edge
-        # bits are retired with their segments, so they can no longer be the witness that
-        # the pass walks its own probe.
-        if "BaseKnotChildMaskBuild(pfx)" not in kids or "BK_CH_ENTRY" not in kids:
+        if "BaseKnotChildMaskBuild(pfx)" not in kids or "BK_CH_EDGE_T" not in kids:
             problems.append("the child move pass stopped using the per-gesture child mask (P-PERF-42)")
     if events is not None and 's_bkChildMaskId = "";' not in events:
         problems.append("a fresh press does not clear the child mask key (P-PERF-42) - the same box "
@@ -1971,113 +1954,105 @@ def check_bk_drag():
         if "BaseKnotSync(" in grip:
             problems.append("the handle drag runs a FULL Sync per step (P-BK-61) - the box' own "
                             "lesson (P-BK-07/P-PERF-42) is that this is exactly the lag")
-    # (g0) BKDOT-OFF/BKGRIP-OFF (P-BK-68): THE MARK CARRIES ITS OWN TWO POINTS, AND
-    #     OURS ARE GONE. «خود ترند لاین اونا رو داره دیگه نیاز نیستش ما خودمون نقاط
-    #     بزاریم همون مال خود تریندلاین بزار»: the carrier IS a trend line, so the
-    #     terminal draws its own control points on the two anchors AND resizes from them
-    #     (a rectangle had NO resize points at all — that is the only reason the P-BK-61
-    #     chips existed). Both point families are therefore retired IN PLACE, and a
-    #     retirement may not come half back — this group holds it to four promises:
+    # (g0) BKDOT-OFF/BKGRIP-OFF/BKPOINT-OFF (P-BK-71): THE MARK IS A NATIVE BOX, AND
+    #     OURS POINT AT NOTHING. «یک باکس خود متاتریدر باشه»: the carrier is MT4's own
+    #     rectangle — moved and selected natively — so the centre cover (P-BK-59), the
+    #     corner chips (P-BK-61) and the trendline points (P-BK-69) are ALL retired IN
+    #     PLACE, and a retirement may not come half back — this group holds it to five
+    #     promises:
     #       * the PLAN is empty: `BaseKnotGripSideAt()` plans no live row and
     #         `BK_GRIP_COUNT` is 0, with the restore rows still spelled under
-    #         `BKGRIP-OFF` (that commented pair IS the restore path);
-    #       * every CALL SITE is commented — a live one draws, keeps and carries a chip
-    #         while the plan says there is none, i.e. a second selectable square sitting
-    #         on the anchor the terminal already marks;
+    #         `BKGRIP-OFF` (that commented block IS the restore path);
+    #       * every CALL SITE is commented — a live one draws, keeps and carries a point
+    #         while the plan says there is none;
     #       * the RETIRED TAILS have ONE owner (`BaseKnotRetiredPointName`) that BOTH
     #         readers walk — the once-per-attach sweep in BaseKnotLazyInit and the
     #         deselect wipe — because a chart an older build wrote keeps those squares
     #         until something deletes them, and a name swept by one reader and forgotten
     #         by the other is a ghost square that drags nothing;
-    #       * the keeper that USED to place them refuses to run while the plan is empty.
+    #       * the keeper that USED to place them refuses to run while the plan is empty;
+    #       * the trendline carrier a P-BK-67/68/69 build left behind is migrated back to
+    #         the rectangle from its own anchors, once per attach (BKTREND-OFF).
     at = body(src, "int BaseKnotGripSideAt(")
     if at is None:
-        problems.append("BaseKnotGripSideAt() is gone - the handle family has no plan (BKGRIP2)")
+        problems.append("BaseKnotGripSideAt() is gone - the handle family has no plan (BKGRIP-OFF)")
     else:
         live = re.findall(r"(?m)^\s*if\(i == \d+\) return[^;]*;", at)
         if live:
-            problems.append("BaseKnotGripSideAt() plans %d live chip(s) again (BKGRIP-OFF/P-BK-68) - "
-                            "the terminal marks the mark's own two anchors, so a chip of ours is a "
-                            "second, selectable square on the same point" % len(live))
+            problems.append("BaseKnotGripSideAt() plans %d live chip(s) again (BKGRIP-OFF/P-BK-71) - "
+                            "the mark is a native box, so a chip of ours is a selectable square "
+                            "that answers no gesture" % len(live))
         if "BKGRIP-OFF" not in at:
-            problems.append("the retired anchor rows are gone from BaseKnotGripSideAt() (P-BK-68) - "
-                            "that commented pair IS the restore path")
-        if "BKGRIP2-OFF" not in src:
-            problems.append("the retired four-corner rows are gone from the source (BKGRIP2) - the "
-                            "restore path is those rows, and the migration still sweeps their tails")
+            problems.append("the retired corner rows are gone from BaseKnotGripSideAt() (P-BK-71) - "
+                            "that commented block IS the restore path")
         cnt = re.search(r"#define\s+BK_GRIP_COUNT\s+(\d+)", src)
         if cnt is None or int(cnt.group(1)) != len(live):
             problems.append("BK_GRIP_COUNT does not equal the LIVE rows of BaseKnotGripSideAt() "
-                            "(BKGRIP2) - every sweep and keeper asks that number, so a stale one "
+                            "(P-BK-71) - every sweep and keeper asks that number, so a stale one "
                             "walks chips no keeper creates")
-        for sig, why in (("bool BaseKnotGripsFollow(", "the keeper's sweep"),
-                         ("bool BaseKnotSelectionMarkersWipe(", "the drop's wipe")):
-            blk = body(src, sig)
-            if blk is not None and re.search(r"i\s*<\s*\d+", blk):
-                problems.append("%s walks a hard-coded count (BKGRIP2) - the count lives in "
-                                "BK_GRIP_COUNT (and the retired tails in BaseKnotRetiredPointName) "
-                                "and nowhere else" % why)
+        blk = body(src, "bool BaseKnotSelectionMarkersWipe(")
+        if blk is not None and "BaseKnotRetiredPointName(" not in blk:
+            problems.append("the drop's wipe no longer walks the retired tails' ONE table (P-BK-71) - "
+                            "a reader that spells its own list drifts apart from the attach sweep")
     #     the call sites, one probe each: the definition is the ONE live mention left, so a
     #     second one is a family that came back to life without a plan (the pair that makes
     #     a half-restored feature — a chip on screen that no keeper knows about).
     stripped = strip_comments(src)
     for call, why in (("BaseKnotDotFollow(", "P-BK-59's centre cover"),
-                      ("BaseKnotGripsFollow(", "the P-BK-61/67 END chips"),
+                      ("BaseKnotGripsFollow(", "the P-BK-61 corner chips"),
                       ("BaseKnotGripDrag(", "the chip resize writer")):
         if len(re.findall(re.escape(call), stripped)) > 1:
-            problems.append("%s is called from a LIVE site again (P-BK-68) - %s is retired in place: "
-                            "the terminal's own drag of the mark's END is the resize, so every "
-                            "call site stays commented" % (call, why))
-    #     the retired tails, ONE table: it must NAME the squares the older builds wrote,
+            problems.append("%s is called from a LIVE site again (P-BK-71) - %s is retired in place: "
+                            "the box' own body drag is the gesture, so every call site stays "
+                            "commented" % (call, why))
+    #     the retired tails, ONE table: it must NAME the squares every older build wrote,
     #     and both readers must walk IT (a reader that spells its own list is the drift
     #     this table exists to prevent).
     tbl = body(src, "string BaseKnotRetiredPointName(")
     if tbl is None:
-        problems.append("BaseKnotRetiredPointName() is gone (BKDOT-OFF/BKGRIP-OFF) - the retired "
-                        "point tails have no ONE owner, so the attach sweep and the deselect wipe "
-                        "can drift apart")
+        problems.append("BaseKnotRetiredPointName() is gone (P-BK-71) - the retired point tails "
+                        "have no ONE owner, so the attach sweep and the deselect wipe can drift "
+                        "apart")
     else:
         tails = re.findall(r'"(\w+)"', tbl)
-        for want in ("G1", "G2", "DOT", "GTL", "GT"):
+        for want in ("GT", "GB", "GL", "GR", "GTL", "GTR", "GBL", "GBR",
+                     "G1", "G2", "DOT", "P1", "P2"):
             if want not in tails:
-                problems.append("the retired tail %s is not in BaseKnotRetiredPointName() (P-BK-68) - "
-                                "a chart an older build wrote keeps that square on a knot whose "
+                problems.append("the retired tail %s is not in BaseKnotRetiredPointName() (P-BK-71) - "
+                                "a chart an older build wrote keeps that square on a box whose "
                                 "points are the terminal's own" % want)
         n = re.search(r"#define\s+BK_RETIRED_POINTS\s+(\d+)", src)
         if n is None or int(n.group(1)) != len(tails):
-            problems.append("BK_RETIRED_POINTS does not equal the table's own rows (P-BK-68) - the "
+            problems.append("BK_RETIRED_POINTS does not equal the table's own rows (P-BK-71) - the "
                             "readers then walk past the list")
-        if "BK_RETIRED_POINTS" not in strip_comments(tbl):
-            problems.append("BaseKnotRetiredPointName() no longer bounds itself on "
-                            "BK_RETIRED_POINTS (P-BK-68) - the table and its readers part ways")
     lazy = body(src, "void BaseKnotLazyInit(")
     if lazy is None:
-        problems.append("BaseKnotLazyInit() is gone - the one-time sweep has no home (P-BK-68)")
-    elif "BaseKnotRetiredPointName(" not in lazy:
-        problems.append("the one-time sweep of the retired points is gone (P-BK-68/BKMIDGRIP-OFF) - a "
-                        "chart the older builds wrote keeps selectable squares that drag nothing")
-    # (g1) P-BK-67: THE MARK IS THE CARRIER - a single diagonal trend line. Its two
-    #     anchors ARE the knot's geometry (t1,p1,t2,p2), so the TYPE is load-bearing: a
-    #     rectangle carrier means the retired mark came back (it fills, it has no end
-    #     resize), and the four border segments must return with it (BKEDGE-OFF).
-    if re.search(r"ObjectCreate\(0, box, OBJ_RECTANGLE", src):
-        problems.append("an OBJ_RECTANGLE carrier is back (P-BK-67) - that is the retired mark, "
-                        "and the two anchors of a LINE are what every number reads")
-    if re.search(r"ObjectCreate\(0, box, OBJ_TREND", src) is None:
-        problems.append("the carrier is no longer created as an OBJ_TREND (P-BK-67) - the mark the "
-                        "user asked for is a trend line, and MT4's own drag of it (body = move, "
-                        "end = resize) is the gesture this module's follow rides")
-    if "BKEDGE-OFF" not in src:
-        problems.append("the border-segment retirement markers are gone (BKEDGE-OFF/P-BK-67) - the "
-                        "four edges are then either live without a call site or deleted without a "
-                        "restore path")
+        problems.append("BaseKnotLazyInit() is gone - the one-time sweep has no home (P-BK-71)")
+    else:
+        if "BaseKnotRetiredPointName(" not in lazy:
+            problems.append("the one-time sweep of the retired points is gone (P-BK-71) - a chart "
+                            "the older builds wrote keeps selectable squares that drag nothing")
+        if "OBJ_RECTANGLE" not in lazy:
+            problems.append("the trendline-carrier migration is gone (BKTREND-OFF/P-BK-71) - a chart "
+                            "a P-BK-67/68/69 build wrote keeps a carrier no Sync restyles")
+    # (g1) P-BK-71: THE MARK IS THE BOX — MT4's own rectangle. Its two anchors ARE the
+    #     knot's geometry (min/max normalisation reads them), so the TYPE is load-bearing:
+    #     a trendline carrier means the retired mark came back (it has no fill, no native
+    #     body drag the children ride), and the four border segments ride with the box.
+    if re.search(r"ObjectCreate\(0, box, OBJ_TREND", src):
+        problems.append("an OBJ_TREND carrier is back (BKTREND-OFF/P-BK-71) - the mark the user "
+                        "asked for is MT4's own box")
+    if re.search(r"ObjectCreate\(0, box, OBJ_RECTANGLE", src) is None:
+        problems.append("the carrier is no longer created as an OBJ_RECTANGLE (P-BK-71) - the box "
+                        "the user asked for is the terminal's own rectangle, and its body drag "
+                        "is the gesture this module's follow rides")
     keep = body(src, "bool BaseKnotGripsFollow(")
     if keep is None:
         problems.append("BaseKnotGripsFollow() is gone - the handle family has no owner (P-BK-61), "
-                        "nor a refusal while it is retired (P-BK-68)")
+                        "nor a refusal while it is retired (P-BK-71)")
     else:
         if "BK_GRIP_COUNT <= 0" not in keep:
-            problems.append("the retired handle keeper no longer refuses to run (P-BK-68) - it would "
+            problems.append("the retired handle keeper no longer refuses to run (P-BK-71) - it would "
                             "walk a plan whose rows are still commented out, i.e. restore itself "
                             "half-way on the first call a partial restore leaves behind")
         if "side == skip" not in keep:
@@ -2095,73 +2070,14 @@ def check_bk_drag():
     elif "OBJ_RECTANGLE_LABEL" not in mk:
         problems.append("a handle is no longer a SCREEN object (P-BK-61) - the design rests on MT4 "
                         "dragging a selectable screen square natively")
-    # (g2) P-BK-68: AND THE ROUTE STAYS RETIRED. The chip OBJECT_DRAG branch is what made MT4
-    #     resize the mark; the carrier's own END is that gesture now, and it arrives on the
-    #     `BOX` branch (whose follow reads the anchors the terminal just wrote). A live chip
-    #     branch would route a name no keeper creates into a writer the plan says is empty.
+    # (g2) P-BK-71: AND THE ROUTE STAYS RETIRED. The chip OBJECT_DRAG branch is what made MT4
+    #     resize the box; the box' own BODY is that gesture now, and it arrives on the BOX
+    #     branch. A live chip branch would route a name no keeper creates into a writer the
+    #     plan says is empty.
     if events is not None and "BaseKnotGripDrag(" in strip_comments(events):
         problems.append("the OBJECT_DRAG branch that routes a CHIP to its resize is live again "
-                        "(P-BK-68) - the mark's points are the terminal's own, and the chip the "
+                        "(P-BK-71) - the mark's points are the terminal's own, and the chip the "
                         "branch would write is never created (P-UI-47's fault, in a new place)")
-    # (g3) P-BK-69: AND THE LOOK COMES BACK, IN THE MARK'S INK. «حالا همون نقاط شو
-    #     کاستومایز کن ترند لاین رو و اینکه رنگ پیش فرض آبی تیره باشه»: MT4's own control
-    #     points are WHITE on every theme and the EA gets no colour for them (P-BK-59's
-    #     finding), so the two anchors wear two 5 px SCREEN squares of ours in the mark's
-    #     ink — the card's Style > BORDER droplet row, dark blue by default. Four promises
-    #     hold the feature together, and each one has a seed below:
-    #       * NON-SELECTABLE — the press must reach the CHART, or the terminal never gets the
-    #         end drag (MT4 single-selects: one object per click) and the mark stops resizing;
-    #       * the ink is the MARK'S (`GetBoxBorderRenderColor`), resolved by the CALLERS —
-    #         the look's owner takes it as an argument, so it cannot invent its own colour;
-    #       * the look MIRRORS the terminal: unlocked AND selected, exactly like its markers;
-    #       * the two pixels are CARRIED by a body drag and swept by the deselect wipe (they
-    #         are pixel objects, so nothing else can move or retire them).
-    pts = body(src, "bool BaseKnotPointsFollow(")
-    if pts is None:
-        problems.append("BaseKnotPointsFollow() is gone (P-BK-69) - the two anchors wear no look "
-                        "of ours, so an unstyleable WHITE terminal marker is what the user sees")
-    else:
-        if "unlocked && selected" not in pts:
-            problems.append("the points no longer mirror the terminal's own rule (P-BK-69) - they "
-                            "would hang on a knot the user never selected")
-        if "GetBoxBorderRenderColor" in pts:
-            problems.append("the point look resolves its own ink (P-BK-69) - the ink is a CALLER "
-                            "argument, so the card's BORDER row keeps ONE reader per pass")
-        if "ObjectDelete" not in pts:
-            problems.append("the point look never retires a point (P-BK-69) - a lock or a "
-                            "deselect would leave the square on the anchor")
-    pmk = body(src, "void BaseKnotPointCreate(")
-    if pmk is None:
-        problems.append("BaseKnotPointCreate() is gone - the point look has no owner (P-BK-69)")
-    else:
-        if "OBJPROP_SELECTABLE, false" not in pmk:
-            problems.append("a point is no longer stored UNSELECTABLE (P-BK-69) - the terminal "
-                            "would hand it the press (MT4 single-selects), so the mark's END "
-                            "would stop resizing: the one property this family must never wear")
-        if "OBJ_RECTANGLE_LABEL" not in pmk or "Z_BOX_DOT" not in pmk:
-            problems.append("a point is no longer a SCREEN square on the P-BK-59 rung (P-BK-69) - "
-                            "a chart-space object would sit UNDER the candles and the cover over "
-                            "the terminal's marker would be a guess")
-    n = re.search(r"#define\s+BK_POINT_COUNT\s+(\d+)", src)
-    if n is None or int(n.group(1)) != 2:
-        problems.append("BK_POINT_COUNT is not the mark's TWO anchors (P-BK-69) - the step and "
-                        "the wipe would then walk a point that has no anchor")
-    mvc = body(src, "void BaseKnotMoveChildren(")
-    if mvc is None or "BK_CH_POINT" not in mvc or "BaseKnotPointsStep(" not in mvc:
-        problems.append("the drag's own move step no longer carries the points (P-BK-69) - they "
-                        "are PIXEL objects, so ObjectMove cannot move them and they would sit "
-                        "still while the line and every other child follow the hand")
-    for sig, why in (("void BaseKnotSync(", "the rebuild's instant half"),
-                     ("void BaseKnotSyncBadges(", "the pump's keeper")):
-        blk = body(src, sig)
-        if blk is None or "BaseKnotPointsFollow(" not in blk:
-            problems.append("%s no longer places the points (P-BK-69) - the look would then be "
-                            "born only on a drag step" % why)
-    wipe = body(src, "bool BaseKnotSelectionMarkersWipe(")
-    if wipe is None or "BaseKnotPointName(" not in wipe:
-        problems.append("the deselect wipe no longer retires the two POINTS (P-BK-69) - a knot "
-                        "would keep wearing them for up to the pump's half second after the "
-                        "click that let it go")
     # (h) P-BK-61b: A BODY DRAG IS A MOVE AND ONLY A MOVE («از رنگ ریسایز نشه فقط درگ بشه»).
     #     MetaTrader's magnet snaps a dragged rectangle's two anchors independently (the
     #     fact behind P-BK-25), so the FILL could grow the box on a magnet-enabled chart.
@@ -2182,9 +2098,9 @@ def check_bk_drag():
     if events is not None and "BaseKnotBodySizeHeal(" not in events:
         problems.append("the release no longer restores the press-time SIZE for a body drag "
                         "(P-BK-61b) - the FILL resizes the box again")
-    if events is not None and "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(" not in events:
+    if events is not None and "if(bkGripWas == 0) BaseKnotBodySizeHeal(" not in events:
         problems.append("the body-size heal is not gated on the gesture being a BODY drag "
-                        "(P-BK-61b/P-BK-67) - it would undo a handle resize on every release")
+                        "(P-BK-61b) - it would undo a handle resize on every release")
     # (i) P-BK-62: THE VIEW THE DRAG/RESIZE OWNS MUST STAY OWNED. «همیشه موقع درگ و
     #     ریسایز چارت پشتش قفل بشه» - the box tool locks the view from three
     #     gestures, but only ONE of them (the draw session) was visible to the
@@ -2241,7 +2157,7 @@ def check_bk_drag():
                             "click on empty chart could deselect a box the user never chose")
         if "BaseKnotSelectionMarkersWipe(" not in drop:
             problems.append("the drop no longer sweeps the point family's leftovers (P-BK-63/"
-                            "P-BK-68) - the one-time attach sweep is then the ONLY reader of "
+                            "P-BK-71) - the one-time attach sweep is then the ONLY reader of "
                             "BaseKnotRetiredPointName, so a chart an older build wrote keeps "
                             "those squares until the next re-attach")
     if events is not None and "BaseKnotDeselectOnChartClick(" not in events:
@@ -2353,15 +2269,9 @@ def check_bkcursor_off():
                    if n not in grab]
         if missing:
             problems.append("the dormant grab role lost %s from its bands (P-BK-19b)" % "/".join(missing))
-    #     P-BK-67: the press-time role measurement is LIVE again, and its consumer is
-    #     NOT the retired fallback - it is the release's size heal (P-BK-61b), which must
-    #     tell an END drag from a BODY drag. What this group owns is that the FALLBACK
-    #     stays dead (the `else if(false && ...)` assertion above) and that the engine
-    #     it would need is still whole; the measurement itself is `[bk-drag]`'s promise.
-    if re.search(r"(?m)^\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
-        problems.append("the press-time role measurement is gone (P-BK-19b/P-BK-67) - the size "
-                        "heal would obey a role nobody measured, and the dormant fallback lost "
-                        "the call its restore needs")
+    if re.search(r"(?m)^\s*//\s*s_bkGrabSel = BaseKnotGrabRole\(shbox", src) is None:
+        problems.append("the retired press-time role measurement is deleted, not commented - the "
+                        "restore path is gone (BKCURSOR-OFF)")
     #     the dormant body's own role split must survive (a restored fallback
     #     without it is the very bug P-BK-19b fixed)
     if "if(s_bkGrabSel == BK_GRAB_ALL)" not in fol:
@@ -2423,11 +2333,6 @@ def check_bkmagnet():
     # therefore have a reader again - so this group now asserts WHERE that reader may
     # live (three promises), on top of the retirement above, which does NOT move: the
     # box' own drag still snaps to nothing, and its live follow is still clean.
-    # P-BK-68: AND THE MAGNET IS RETIRED WITH ITS GESTURE — DEAD BY CONSTRUCTION. The Shift
-    # magnet lived on the CHIP drag (P-BK-61/64/66) and the chips went with P-BK-68, so
-    # `BaseKnotGripDrag` has no live caller any more (`check_bk_drag`'s (g0) holds every
-    # call site commented) and nothing can reach the snap. The reader STAYS declared on
-    # purpose: it is the restore path's other half, and the checks below keep it honest.
     grip = body(src, "void BaseKnotGripDrag(")
     snap = body(src, "double BaseKnotGripSnapPrice(")
     if snap is None:
@@ -3679,8 +3584,8 @@ def selftest():
 
     # 67. P-BK-18: the settle heal's gate is opened (a write into a live native
     #     drag would cancel the terminal's own gesture, P-BK-15)
-    with_source(BASEKNOT, "      if(bkHandOff)\n",
-                "      if(true)\n")
+    with_source(BASEKNOT, "      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))",
+                "      if(true)")
     cases.append(("a settle heal that ignores the button gate is caught",
                   bool(check_bk_drag())))
     reset()
@@ -3744,13 +3649,11 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 70. P-BK-19b/P-BK-67: the press-time role measurement is DELETED - the release's
-    #     size heal then obeys a role nobody measured (and the dormant fallback loses
-    #     the call its restore needs).
+    # 70. BKCURSOR-OFF: the dormant restore path is DELETED instead of commented
     with_source(BASEKNOT,
-                "                    s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);",
-                "                    // seed: the role measurement was deleted")
-    cases.append(("a deleted role measurement is caught",
+                "                    // s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);",
+                "                    // seed: the dormant role call was deleted, not commented")
+    cases.append(("a deleted (not dormant) role call is caught",
                   bool(check_bkcursor_off())))
     reset()
 
@@ -3812,7 +3715,7 @@ def selftest():
     #     the user asked for and the one BKMAGNET2-OFF removed - drop it and the
     #     handle drag snaps on every step.
     with_source(BASEKNOT,
-                "   if(modifier && (side & (BK_GS_A1 | BK_GS_A2)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);",
+                "   if(modifier && (side & (BK_GS_T | BK_GS_B)) != 0) gp = BaseKnotGripSnapPrice(gt, gp);",
                 "   gp = BaseKnotGripSnapPrice(gt, gp);")
     cases.append(("an UNGATED handle magnet is caught", bool(check_bkmagnet())))
     reset()
@@ -3854,18 +3757,8 @@ def selftest():
 
     # 80. P-BK-61b: the body drag must never resize the box - resize has ONE home
     #     (the eight handles), and the FILL only carries it.
-    with_source(BASEKNOT,
-                "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(s_bkDragId);",
-                "")
-    cases.append(("a body drag that may resize the mark is caught", bool(check_bk_drag())))
-    reset()
-
-    # 80b. P-BK-67: the ROLE gate drops - an END drag (the resize the user asked for) is
-    #      then healed back to the press-time size on every release.
-    with_source(BASEKNOT,
-                "if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(",
-                "if(bkGripWas == 0) BaseKnotBodySizeHeal(")
-    cases.append(("a heal that can undo an end drag is caught", bool(check_bk_drag())))
+    with_source(BASEKNOT, "if(bkGripWas == 0) BaseKnotBodySizeHeal(s_bkDragId);", "")
+    cases.append(("a body drag that may resize the box is caught", bool(check_bk_drag())))
     reset()
 
     # 76. BKMAGNET2-OFF: the adjust magnet is retired - each half of the
@@ -3942,65 +3835,65 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 87. BKGRIP-OFF (P-BK-68): a retired chip row is uncommented - the family comes back
-    #     without a keeper, so a selectable square sits on the anchor the terminal marks.
-    with_source(BASEKNOT, "   // BKGRIP-OFF: if(i == 0) return BK_GS_A1;",
-                "   if(i == 0) return BK_GS_A1;")
+    # 87. BKGRIP-OFF (P-BK-71): a retired chip row is uncommented - the family comes back
+    #     without a keeper, so a selectable square sits on a native box that needs none.
+    with_source(BASEKNOT, "   // BKGRIP-OFF: if(i == 0) return (BK_GS_T | BK_GS_L);",
+                "   if(i == 0) return (BK_GS_T | BK_GS_L);")
     cases.append(("a revived chip plan is caught", bool(check_bk_drag())))
     reset()
 
-    # 88. BKDOT-OFF (P-BK-68): a retired CALL SITE comes back to life while the plan says
-    #     there is no chip - the half-restore that draws a square no keeper knows about.
-    with_source(BASEKNOT,
-                "      // BKDOT-OFF: if(BaseKnotDotFollow(pfx, t1, t2, top, bot, !g_bkBoxes[i].locked,",
-                "      if(BaseKnotDotFollow(pfx, t1, t2, top, bot, !g_bkBoxes[i].locked,")
-    cases.append(("a centre cover that comes back to life is caught",
-                  bool(check_bk_drag())))
-    reset()
-
-    # 88b. P-BK-68: the count and the plan part ways again (a stale BK_GRIP_COUNT walks
-    #      chips no keeper creates).
+    # 88. BKGRIP-OFF (P-BK-71): the count and the plan part ways again (a stale
+    #     BK_GRIP_COUNT walks chips no keeper creates).
     with_source(BASEKNOT, "#define BK_GRIP_COUNT 0", "#define BK_GRIP_COUNT 2")
     cases.append(("a count that disagrees with the retired plan is caught",
                   bool(check_bk_drag())))
     reset()
 
-    # 88b. P-BK-67: the carrier goes back to the retired rectangle (the mark that
-    #      fills, that has no end resize, and whose fill quirks P-BK-04/06/23 all
-    #      existed to work around).
-    with_source(BASEKNOT, "   if(!ObjectCreate(0, box, OBJ_TREND, 0, g_bkT1, g_bkP1, tc, p2)) return;",
-                "   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, tc, p2)) return;")
-    cases.append(("a mark back on the retired rectangle is caught",
-                  bool(check_bk_drag())))
-    reset()
-
-    # 89. BKMIDGRIP-OFF: a sweep walks a hard-coded 8 again.
-    with_source(BASEKNOT, "   for(int i = 0; i < BK_GRIP_COUNT; i++)\n   {\n      int side = BaseKnotGripSideAt(i);",
-                "   for(int i = 0; i < 8; i++)\n   {\n      int side = BaseKnotGripSideAt(i);")
-    cases.append(("a sweep that walks a retired chip is caught",
-                  bool(check_bk_drag())))
-    reset()
-
-    # 90. BKMIDGRIP-OFF/P-BK-68: the one-time sweep of a chart the older build wrote is
-    #     gone - selectable squares stay on it, dragging nothing.
-    with_source(BASEKNOT, '                                      "G1", "G2", "DOT"};',
-                '                                      "G1", "G2", ""};')
-    cases.append(("a chart keeping the retired chips is caught",
-                  bool(check_bk_drag())))
-    reset()
-
-    # 90b. P-BK-68: a READER stops walking the ONE table (the deselect wipe spells its own
-    #      list again), so the two sweeps can drift apart.
-    with_source(BASEKNOT, "      string mid = midPfx + BaseKnotRetiredPointName(m);",
-                '      string mid = midPfx + "GT";')
+    # 89. P-BK-71: a READER stops walking the ONE table (the deselect wipe spells its own
+    #     tail again), so the two sweeps can drift apart.
+    with_source(BASEKNOT, "      string tail = BaseKnotRetiredPointName(i);",
+                '      string tail = "GT";')
     cases.append(("a sweep that spells its own tail list is caught",
                   bool(check_bk_drag())))
     reset()
 
-    # 90c. P-BK-68: the retired keeper loses its refusal - a partial restore then walks a
+    # 90. P-BK-71: the one-time sweep of a chart the older builds wrote is gone -
+    #     selectable squares stay on it, dragging nothing.
+    with_source(BASEKNOT, "         string mtail = BaseKnotRetiredPointName(m);",
+                '         string mtail = "GT";')
+    cases.append(("a chart keeping the retired points is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 90b. BKTREND-OFF (P-BK-71): the carrier goes back to the retired trendline (the mark
+    #      with no fill, no native body drag, and children that ride nothing).
+    with_source(BASEKNOT, "   if(!ObjectCreate(0, box, OBJ_RECTANGLE, 0, g_bkT1, g_bkP1, tc, p2)) return;",
+                "   if(!ObjectCreate(0, box, OBJ_TREND, 0, g_bkT1, g_bkP1, tc, p2)) return;")
+    cases.append(("a mark back on the retired trendline is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 90c. P-BK-71: the retired keeper loses its refusal - a partial restore then walks a
     #      plan whose rows are still commented out.
-    with_source(BASEKNOT, "   if(BK_GRIP_COUNT <= 0) return false;\n", "")
+    with_source(BASEKNOT, "   if(BK_GRIP_COUNT <= 0) return false;", "")
     cases.append(("a retired keeper that can still run is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 90d. BKGRIP-OFF (P-BK-71): a retired CALL SITE comes back to life while the plan says
+    #      there is no chip - the half-restore that draws a square no keeper knows about.
+    with_source(BASEKNOT,
+                "   // BKGRIP-OFF: if(BaseKnotGripsFollow(id, t1, top, t2, bot, !g_bkBoxes[k].locked,",
+                "   if(BaseKnotGripsFollow(id, t1, top, t2, bot, !g_bkBoxes[k].locked,")
+    cases.append(("a chip call site that comes back to life is caught",
+                  bool(check_bk_drag())))
+    reset()
+
+    # 90e. P-BK-71: the trendline era's tails drop out of the ONE table - a chart the
+    #      committed trendline build wrote keeps its P1/P2 squares.
+    with_source(BASEKNOT, '"G1", "G2", "DOT", "P1", "P2"};',
+                '"G1", "G2", "DOT", "", ""};')
+    cases.append(("a table that forgets the trendline tails is caught",
                   bool(check_bk_drag())))
     reset()
 
@@ -4048,32 +3941,6 @@ def selftest():
                 "")
     cases.append(("a gesture answer that outlives the instance is caught",
                   bool(check_bk_drag())))
-    reset()
-
-    # 98. P-BK-69: the point becomes SELECTABLE - MT4 single-selects, so the press that was
-    #     meant for the mark's END lands on our square and the end stops resizing.
-    with_source(BASEKNOT,
-                "   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);   // P-BK-69: the LOOK is ours, the",
-                "   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);   // seed: the point steals the press")
-    cases.append(("a point that steals the end drag is caught", bool(check_bk_drag())))
-    reset()
-
-    # 99. P-BK-69: the look stops mirroring the terminal.
-    with_source(BASEKNOT, "   bool want = (unlocked && selected);", "   bool want = unlocked;")
-    cases.append(("a point that ignores the selection is caught", bool(check_bk_drag())))
-    reset()
-
-    # 99b. P-BK-69: the points are pixel objects - a move step that stops carrying them
-    #      leaves them behind while the line and every other child follow the hand.
-    with_source(BASEKNOT,
-                "   if((s_bkChildMask & BK_CH_POINT) != 0) BaseKnotPointsStep(pfx, t1, p1, t2, p2);\n",
-                "")
-    cases.append(("a drag that leaves its points behind is caught", bool(check_bk_drag())))
-    reset()
-
-    # 99c. P-BK-69: the count and the anchors part ways.
-    with_source(BASEKNOT, "#define BK_POINT_COUNT 2", "#define BK_POINT_COUNT 3")
-    cases.append(("a point count that has no anchor is caught", bool(check_bk_drag())))
     reset()
 
     for name, ok in cases:
