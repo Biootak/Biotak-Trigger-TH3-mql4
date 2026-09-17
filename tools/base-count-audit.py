@@ -169,6 +169,20 @@ business, not the base's. Retired in place (BKNODEDIR-OFF), replaced by ONE retu
 `nd.side`, so the same box reads the same direction on every chart and in the past
 market alike.
 
+P-BK-82 (2026-09-17) — and M1 IS A RUNG OF THE LADDER THE CLASS IS FOUND ON. The user:
+«چرا تایم گره رو درست و اصولی تشخیص نمیده، گره که مال یک دقیقه هستش رو مال پانزده دقیقه
+نشون میده». The read walks the ladder from its HIGHEST rung DOWN and returns the first rung
+whose OWN three candles stood still; `BaseKnotNextTFMin` answered 5 for a walk that starts at
+0, so that ladder began at M5 and a base standing still on M1 could never be NAMED M1 — every
+rung was refused and the "nothing stood still" fallback named the SPAN's own rung instead
+(his box: 17 minutes wide around a 5-bar M1 base, so `3 * 15 > 17` refused M15 and
+`rungs[i] <= spanMin` named it anyway → «M15 base»). The floor is M1 now — the ATR warm-up
+queue's own first member and the eight P-BK-43 names — so the chart's own TF is always a
+candidate and the fallback is the last resort it was always meant to be. Nothing else moves:
+every other caller hands a tfMin >= 1, where `tfMin < 5` still answers 5. `ladder()` derives
+its floor from the code's own first branch, so a model that walks a ladder the code does not
+have cannot happen again.
+
 P-BK-47 (2026-09-15) — THE TYPE IS THE NODE'S LENGTH, and the break's story keeps only
 its SIDE (see check 7). The user's rule, word for word: «دسته بندی گره های معاملاتی
 براساس طول گره: FTR گرهی که طولش مساوی تایم تریگر تایمی باشد که گره در آن دیده میشود
@@ -1151,11 +1165,21 @@ def ladder():
     """The PROJECT'S ladder, READ FROM THE SOURCE (`BaseKnotNextTFMin`, P-BK-43):
     M1 · M5 · M15 · H1 · H4 · D1 · W1 · MN1. A model carrying its own copy of the
     ladder could name a rung the code cannot (the M30 that came back once as
-    «M30 base»), so it is derived here like every other budget."""
+    «M30 base»), so it is derived here like every other budget.
+
+    P-BK-82 (2026-09-17): AND THE FLOOR IS DERIVED TOO. This used to seed itself with a
+    hard-coded `[1]` — the ladder the DOCS name — while `BaseKnotNextTFMin` answered 5 for
+    a walk that starts at 0, so the model walked a ladder the code did not have and the
+    missing M1 rung could not fail anything. The first branch's own answer IS the floor now,
+    so a ladder that stops reaching M1 fails the floor gate in `check_rung` instead of
+    quietly changing the answer."""
     blk = body(read(KNOT), "int BaseKnotNextTFMin(") or ""
-    out, cur = [1], 1
-    for m in re.finditer(r"if\(tfMin\s*<\s*(\d+)\)\s*return\s+(\d+);", blk):
-        bound, nxt = int(m.group(1)), int(m.group(2))
+    steps = [(int(m.group(1)), int(m.group(2)))
+             for m in re.finditer(r"if\(tfMin\s*<\s*(\d+)\)\s*return\s+(\d+);", blk)]
+    if not steps:
+        return []
+    out, cur = [steps[0][1]], steps[0][1]   # the FLOOR is the first branch's own answer
+    for bound, nxt in steps:
         if cur < bound:
             out.append(nxt)
             cur = nxt
@@ -1817,9 +1841,21 @@ def check_rung():
     rungs = [int(m.group(1)) for m in
              re.finditer(r"if\(tfMin\s*<\s*\d+\)\s*return\s+(\d+);", nextblk)]
     out.append(("the base's ladder IS the project's ladder (M1·M5·M15·H1·H4·D1·W1·MN1)",
-                bool(queue) and rungs == [x for x in queue if x != 1]))
+                bool(queue) and rungs == queue))
     out.append(("... and M30 is not a rung of it (a 7-candle M15 box is not «M30 base»)",
                 30 not in rungs))
+    # P-BK-82 (2026-09-17, user: «چرا تایم گره رو درست و اصولی تشخیص نمیده، گره که مال یک
+    # دقیقه هستش رو مال پانزده دقیقه نشون میده»): M1 IS THE LADDER'S FLOOR. The walk that
+    # names the class starts at the HIGHEST rung and comes down, so a floor at M5 left a base
+    # standing still on M1 with no rung able to name it: every rung was refused and the
+    # "nothing stood still" fallback named the SPAN's own rung instead — the user's 17-minute
+    # box around a 5-bar M1 base came out «M15 base». The gate is the code's own first branch,
+    # and `ladder()` takes its floor from that same branch, so the model can never walk a
+    # ladder the code does not have again.
+    out.append(("M1 IS A RUNG — the class ladder's floor reaches the terminal's smallest TF",
+                re.search(r"if\(tfMin\s*<\s*1\)\s*return\s+1;", nextblk) is not None
+                and bool(rungs) and rungs[0] == 1
+                and ladder()[:1] == [1]))
     # P-BK-77 (2026-09-17, user: «باید تایم گره صد در صد درست تشخیص داده بشه، مهم نیست روی چه
     # تایمی هستیم»): THE SEARCH IS THE WHOLE LADDER AND THE SPAN IS MINUTES. Everything below
     # is what makes the answer the SAME on every chart TF.
@@ -2933,6 +2969,15 @@ def selftest():
     with_source("   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));",
                 "   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0)) + Period();")
     cases.append(("letting the OPEN CHART widen the span is caught (the «H4 says FTR» bug)",
+                  bool(fires(check_rung))))
+    reset()
+
+    # P-BK-82: M1 IS THE LADDER'S FLOOR. The walk that names the class starts at the HIGHEST
+    # rung and comes down, so a floor at M5 leaves a base standing still on M1 with no rung to
+    # name it — every rung is refused and the fallback names the SPAN's own rung instead,
+    # which is exactly the «M15 base» the user reported.
+    with_source("if(tfMin < 1)     return 1;", "")
+    cases.append(("a class ladder whose floor stops at M5 is caught (the «M15 base» bug)",
                   bool(fires(check_rung))))
     reset()
 

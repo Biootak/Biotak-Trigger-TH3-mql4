@@ -62,6 +62,14 @@
 //|    used to move the walk's start and flip the side), and no later   |
 //|    return, second break or far-edge close can rewrite it — those   |
 //|    are the node's LIFE and are reported, never a direction.        |
+//|  * P-BK-82 (2026-09-17) — M1 IS A RUNG OF THE CLASS LADDER. The     |
+//|    ladder the class read walks began at M5, so a base whose candles |
+//|    stand still on M1 could NEVER be named M1: the read fell past    |
+//|    every rung and named the SPAN's own rung instead — the user's    |
+//|    17-minute box around a 5-bar M1 base printed «M15 base»          |
+//|    («گره که مال یک دقیقه هستش رو مال پانزده دقیقه نشون میده»).      |
+//|    The floor is M1 now, and nothing else moves: every other caller  |
+//|    hands a tfMin >= 1, where the old first step still answers 5.    |
 //|  * Direction is decided at commit, then FOLLOWS the live price — a    |
 //|    box below it = demand = Buy (the entry sits INSIDE the top edge — |
 //|    see the P-BK-51 bullet above for the measure and the stop); a      |
@@ -2682,8 +2690,19 @@ int BaseKnotLiveBarCount(const datetime t1, const datetime t2, const double top,
 // and the rung read then found those three lying inside the band. The ladder steps
 // 15 -> 60 now. An M30 CHART still names M30, and it names it as `Period()` — the base's
 // own TF — never as a rung.
+// P-BK-82 (2026-09-17) — AND M1 IS A RUNG. The user: «چرا تایم گره رو درست و اصولی تشخیص
+// نمیده، گره که مال یک دقیقه هستش رو مال پانزده دقیقه نشون میده». The steps above start at
+// 5, so a walk that STARTS at 0 — `BaseKnotLadderAll`, i.e. the CLASS read's own ladder —
+// could never reach M1: a base whose candles stand still on M1 fell past every rung, and the
+// read then named the SPAN's own rung instead (the user's box: 17 minutes wide around a
+// 5-bar M1 base — `3 * 15 > 17` refused M15, and the fallback `rungs[i] <= spanMin` named it
+// anyway -> «M15 base»). The floor is the ATR queue's own first member (P-BK-43's
+// `g_atrWarmupQueue[]` starts at 1) and the eight names above. NOTHING ELSE MOVES: every
+// other caller hands a tfMin >= 1, where `tfMin < 5` still answers 5 — the ladder's own walk
+// is the only caller that starts from 0, so it is the only one that gains the rung.
 int BaseKnotNextTFMin(const int tfMin)
 {
+   if(tfMin < 1)     return 1;       // P-BK-82: the FLOOR — M1 is a rung of our ladder
    if(tfMin < 5)     return 5;
    if(tfMin < 15)    return 15;
    if(tfMin < 60)    return 60;      // P-BK-43: 30 is NOT in our ladder
@@ -2804,6 +2823,16 @@ int BaseKnotRungHoldCount(const int tfMin, const datetime s1, const datetime s2,
 // on every chart TF — the promise P-BK-77 made and P-BK-41's chart read was still breaking.
 // The box' own span is also the honest input: «تایم گره» is a property of what the user
 // DREW (the band and the range), never of the chart he happens to look through.
+//
+// P-BK-82 (2026-09-17) — AND THE LADDER HAS TO REACH M1 (the floor itself lives in
+// `BaseKnotNextTFMin`). The walk below starts at the ladder's HIGHEST rung and comes down,
+// so a floor at M5 meant a base standing still on M1 could never be NAMED M1: every rung was
+// refused and the "nothing stood still" fallback named the span's own rung instead — which
+// is exactly how the user's 17-minute box around a 5-bar M1 base came out as «M15 base»
+// («گره که مال یک دقیقه هستش رو مال پانزده دقیقه نشون میده»). With M1 in the ladder the
+// chart's own TF is always a candidate, so a base of >= 3 stand-still candles confirms a rung
+// instead of falling through to the span — and the fallback below is the last resort it was
+// always meant to be.
 int BaseKnotLadderAll(int &rungs[])
 {
    int all[9];
@@ -2847,6 +2876,9 @@ int BaseKnotBaseTFRead(const int bars, const datetime b1, const datetime b2,
    // candle of which still fits in it. A real TF of THIS span, on every chart.
    // P-BK-80: and a degenerate span (a box narrower than one M1 candle) ends at the
    // ladder's own first rung — never at the open chart's TF, which is what leaked before.
+   // P-BK-82: and with M1 IN the ladder this whole branch is a LAST RESORT again — the
+   // chart's own TF is a candidate of the walk above, so a base with >= 3 stand-still
+   // candles is named by a rung that really holds it, never by the width of the box.
    for(int i = n - 1; i >= 0; i--)
       if(rungs[i] <= spanMin) return rungs[i];
    return rungs[0];
