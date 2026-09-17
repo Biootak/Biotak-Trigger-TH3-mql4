@@ -174,6 +174,22 @@
 //|    the terminal on any LATER drag anywhere on the chart until a     |
 //|    click lands elsewhere — exactly what MT4's own rectangle does in |
 //|    edit mode, with P-BK-63's outside-click drop as the way out.     |
+//|  * P-BK-74 (2026-09-17) — THE BOX IS METATRADER'S OWN RECTANGLE.    |
+//|    «یک باکس متاتریدر چطور ساخته میشه همون میخوام بزاری» +          |
+//|    «باکس پیش فرض بدون fill باشه و بگراندش غیر فعال باشه»: the       |
+//|    box was ONE OBJ_RECTANGLE painted in the CHART BACKGROUND colour |
+//|    with four OBJ_TREND children drawing the border on top of it.    |
+//|    That is not what the terminal's own Rectangle tool makes. Now    |
+//|    the rectangle wears the border ink/style/width itself, FILL      |
+//|    false (hollow) and BACK false (foreground) — the two properties  |
+//|    the MQL4 Reference's own OBJ_RECTANGLE example sets as `fill`    |
+//|    and `back`. ONE object, and the object the terminal draws IS the |
+//|    object the user sees.                                            |
+//|    The four trend-line edges (and the P-BK-18 settle heal that      |
+//|    existed only because the border was a COPY of the box) are       |
+//|    RETIRED IN PLACE — BKEDGE-OFF, six marked sites. The sizing      |
+//|    rubber band is one rectangle again too, so what the user sizes   |
+//|    is literally what he gets.                                       |
 //+------------------------------------------------------------------+
 #ifndef BASE_KNOT_TOOL_MQH
 #define BASE_KNOT_TOOL_MQH
@@ -917,68 +933,76 @@ void BaseKnotSelectBox(const string id)
 }
 
 //+------------------------------------------------------------------+
-//| Box look — SINGLE source of truth (P-BK-04/06 + TV-fill 2026-09-07)|
-//| Some MT4 builds render OBJ_RECTANGLE filled even with FILL=false   |
-//| (see ZoneFactory), so the rectangle doubles as the FILL layer AND  |
-//| the drag/select handle, while the VISIBLE border stays 4 OBJ_TREND |
-//| edges from BaseKnotDrawEdges (edges can't fill, identical on every |
-//| build). Fill invisible (TR=100, the pre-fill default) → bg color + |
-//| FILL false = the old hollow look, pixel-identical. Fill set → FILL  |
-//| true + GetBoxFillRenderColor() (TV Style-tab bucket, e.g. 36%).    |
+//| Box look — SINGLE source of truth (P-BK-04/06, TV-fill 2026-09-07, |
+//| P-BK-74 2026-09-17).                                               |
+//| ONE object, and it is the terminal's own rectangle:                |
+//|   * HOLLOW (TR=100, the default) → FILL false, BACK false, COLOR =  |
+//|     GetBoxBorderRenderColor() with the user's border style/width.   |
+//|     That is the Rectangle tool's own look — no fill, not a          |
+//|     background object — and the outline the user sees IS the object |
+//|     the terminal drags and marks. BKEDGE-OFF (P-BK-74) retired the  |
+//|     four OBJ_TREND children that used to draw this border, and with |
+//|     them the P-BK-18 settle heal (the border is no longer a COPY of |
+//|     the box, so there is nothing left to fall behind).              |
+//|   * FILL set → FILL true + GetBoxFillRenderColor() (TV Style-tab    |
+//|     bucket, e.g. 36%) and BACK true: the fill belongs BEHIND the    |
+//|     candles. That fill IS the object's own pixel, it must not cover |
+//|     the bars, and the user asked for that look (16 zones/drag cost  |
+//|     is the price of the look).                                      |
 //|                                                                    |
-//| P-BK-23 (2026-09-15) — THE HOLLOW HANDLE IS A FOREGROUND OBJECT,   |
-//| LIKE MT4'S OWN. «مال خودِ متاتریدر راحت درگ میشه ولی این بیس نات    |
-//| یکم سخته»: the saved chart records say what the difference was.    |
-//| MT4 stores its own objects `background=0`, and every other object  |
-//| of ours in this box (4 edges, Entry/SL/TP, badges, text) is already |
-//| `BACK false` — this handle was the ONE background rectangle, and a  |
-//| background object forces the terminal to repaint the BARS under it  |
-//| on every frame of a native drag, over an area exactly the size of   |
-//| the box. That is the «چسبناک» the user feels exactly where the      |
-//| candles are and never in the empty part of the chart — while our    |
-//| own follow measures `move=0ms paint=0ms` and the gesture ledger     |
-//| says `native=1` (the cost is the TERMINAL's, never ours).           |
-//| A HOLLOW handle paints nothing but its own outline, and that        |
-//| outline is drawn in the BACKGROUND colour so a build that fills a   |
-//| rectangle despite FILL=false fills it invisibly — so moving it to   |
-//| the foreground costs no pixel and buys the terminal's cheap drag.   |
-//| Its own outline wears the VISIBLE border's style AND width, so the  |
-//| 4 edge children cover it pixel-for-pixel (dash gaps included) and   |
-//| the grabbable ring IS the ring the user sees.                       |
-//| A FILLED handle stays where it was: behind the candles. That fill   |
-//| IS the object's own pixel, it must not cover the bars, and the user |
-//| asked for that look (16 zones/drag cost is the price of the look).  |
+//| P-BK-23 (2026-09-15) — THE HOLLOW BOX IS A FOREGROUND OBJECT, LIKE  |
+//| MT4'S OWN, and that part of the lesson still stands. «مال خودِ       |
+//| متاتریدر راحت درگ میشه ولی این بیس نات یکم سخته»: the saved chart   |
+//| records say what the difference was. MT4 stores its own objects     |
+//| `background=0`, and a background object forces the terminal to      |
+//| repaint the BARS under it on every frame of a native drag, over an  |
+//| area exactly the size of the box. That is the «چسبناک» the user     |
+//| feels exactly where the candles are and never in the empty part of  |
+//| the chart — while our own follow measures `move=0ms paint=0ms` and  |
+//| the gesture ledger says `native=1` (the cost is the TERMINAL's).    |
+//| P-BK-74 is what makes that free: with the rectangle wearing the     |
+//| border ink itself, the grabbable ring IS the ring the user sees —   |
+//| no cover, no children to keep in step, and the terminal moves the   |
+//| outline with the object it belongs to.                              |
 //+------------------------------------------------------------------+
 //--- edge suffixes (committed pfx AND preview tag share them)
 #define BK_EDGE_T "_T"
 #define BK_EDGE_B "_B"
 #define BK_EDGE_L "_L"
 #define BK_EDGE_R "_R"
-void BaseKnotStyleBox(const string box)   // fill layer + drag handle
+void BaseKnotStyleBox(const string box)   // fill layer + drag handle + (P-BK-74) the border itself
 {
-   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
    if(BoxFillVisible())
    {
       ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxFillRenderColor());
       ObjectSetInteger(0, box, OBJPROP_FILL, true);
       ObjectSetInteger(0, box, OBJPROP_BACK, true);          // the fill belongs behind the candles (zone-like)
-      ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);  // the fill's own edge stays flat — the visible border is the 4 edges
+      ObjectSetInteger(0, box, OBJPROP_STYLE, STYLE_SOLID);  // a fill's own edge is flat — the ink that reads is the FILL
       ObjectSetInteger(0, box, OBJPROP_WIDTH, 1);
    }
    else
    {
-      ObjectSetInteger(0, box, OBJPROP_COLOR, bg);           // invisible on every build (incl. the FILL=false quirk)
+      // P-BK-74 — THE RECTANGLE **IS** THE BOX, MetaTrader's own way. Its own
+      // outline wears the border ink/style/width the user set, so the object the
+      // terminal draws is the object the user sees — one object, not a visible
+      // cover for four trend-line children (BKEDGE-OFF below).
+      // FILL false = HOLLOW and BACK false = FOREGROUND are the terminal's own
+      // defaults for its Rectangle tool («باکس پیش فرض بدون fill باشه و
+      // بگراندش غیر فعال باشه») and the two properties its OBJ_RECTANGLE example
+      // sets as `fill` and `back`; the docs' own `RectangleCreate()` ships them
+      // false. Nothing here is a workaround any more: the rectangle renders its
+      // border because it IS a rectangle, exactly as the terminal renders its own.
+      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());
       ObjectSetInteger(0, box, OBJPROP_FILL, false);
-      ObjectSetInteger(0, box, OBJPROP_BACK, false);         // P-BK-23: foreground, like MT4's own rectangle
-      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);   // same ink as the visible border ⇒ the 4 edges cover it exactly
+      ObjectSetInteger(0, box, OBJPROP_BACK, false);
+      ObjectSetInteger(0, box, OBJPROP_STYLE, inpBoxBorderStyle);
       ObjectSetInteger(0, box, OBJPROP_WIDTH, inpBoxBorderWidth);
    }
    ObjectSetInteger(0, box, OBJPROP_ZORDER, Z_BOX_FILL);   // single source — Commit no longer sets it separately
 }
-// True when the BOX rect currently shows the live fill look (heal check).
+// True when the BOX rect currently shows the live look (heal check).
 bool BaseKnotFillHealed(const string box)
 {
-   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
    if(BoxFillVisible())
    {
       if(ObjectGetInteger(0, box, OBJPROP_FILL) == 0) return false;
@@ -986,11 +1010,14 @@ bool BaseKnotFillHealed(const string box)
       return true;
    }
    if(ObjectGetInteger(0, box, OBJPROP_FILL) != 0) return false;
-   // P-BK-23: a hollow handle must also be a FOREGROUND object (MT4's own
-   // objects are stored background=0). One extra read per box per pump — and
-   // it is what heals the boxes committed before this rule existed.
+   // P-BK-23: a hollow box must also be a FOREGROUND object (MT4's own objects
+   // are stored background=0). One extra read per box per pump — and it is what
+   // heals the boxes committed before this rule existed.
    if(ObjectGetInteger(0, box, OBJPROP_BACK) != 0) return false;
-   return ((color)ObjectGetInteger(0, box, OBJPROP_COLOR) == bg);
+   // P-BK-74: and the ink is the BORDER's now (it used to be the background
+   // colour, because the visible border was four trend edges). This one compare
+   // is what heals every box an older build left invisible.
+   return ((color)ObjectGetInteger(0, box, OBJPROP_COLOR) == GetBoxBorderRenderColor());
 }
 
 bool BaseKnotSessionActive() { return (g_bkState != BK_IDLE); }
@@ -1627,6 +1654,10 @@ void BaseKnotMakeEdge(const string name, const datetime t1, const double p1,
 }
 // Draw/refresh the 4 outline edges under one tag (committed pfx or preview
 // tag) — the hollow look on builds that ignore FILL (P-BK-06).
+// BKEDGE-OFF (P-BK-74) — DORMANT, DEAD BY CONSTRUCTION: the border is the box'
+// OWN outline now (BaseKnotStyleBox wears the border ink), so no call site draws
+// this family any more. The body stays compiled and whole so a restore is ONE
+// uncomment — the `BaseKnotDrawEdges(pfx, ...)` call in BaseKnotSync.
 void BaseKnotDrawEdges(const string tag, datetime t1, const double p1,
                        datetime t2, const double p2,
                        const color clr, const int style, const int width,
@@ -1639,7 +1670,42 @@ void BaseKnotDrawEdges(const string tag, datetime t1, const double p1,
    BaseKnotMakeEdge(tag + BK_EDGE_B, t1, bot, t2, bot, clr, style, width, tooltip, tfMask);
    BaseKnotMakeEdge(tag + BK_EDGE_L, t1, bot, t1, top, clr, style, width, tooltip, tfMask);
    BaseKnotMakeEdge(tag + BK_EDGE_R, t2, bot, t2, top, clr, style, width, tooltip, tfMask);
-}//+------------------------------------------------------------------+
+}
+//+------------------------------------------------------------------+
+//| P-BK-74 (2026-09-17) — THE PREVIEW IS ONE RECTANGLE AGAIN.         |
+//|                                                                   |
+//| The sizing rubber band used to be four OBJ_TREND edges too (the    |
+//| "legacy single-rect preview" the two call sites kept deleting).    |
+//| With the edges retired it goes back to the family it belongs to:   |
+//| ONE OBJ_RECTANGLE, hollow, foreground, wearing the final look —    |
+//| the same object the commit will hand over, so what the user sizes  |
+//| is literally what he gets. Ensure-create + move + style in one     |
+//| call, so a TF switch or a deleted object heals on the next frame.  |
+//| It carries NO selection: the terminal marks nothing while sizing,  |
+//| and `BaseKnotCommit` is the one place the selection is granted     |
+//| (P-BK-73).                                                        |
+//+------------------------------------------------------------------+
+void BaseKnotDrawPreviewRect(const string tag, const datetime t1, const double p1,
+                             const datetime t2, const double p2,
+                             const color clr, const int style, const int width,
+                             const string tooltip, const long tfMask)
+{
+   if(tag == "") return;
+   if(ObjectFind(0, tag) < 0) ObjectCreate(0, tag, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
+   ObjectMove(0, tag, 0, t1, p1);
+   ObjectMove(0, tag, 1, t2, p2);
+   ObjectSetInteger(0, tag, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, tag, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, tag, OBJPROP_WIDTH, width);
+   ObjectSetInteger(0, tag, OBJPROP_FILL, false);        // hollow — the user's own default
+   ObjectSetInteger(0, tag, OBJPROP_BACK, false);        // foreground
+   ObjectSetInteger(0, tag, OBJPROP_TIMEFRAMES, tfMask);
+   ObjectSetInteger(0, tag, OBJPROP_SELECTABLE, false);  // nothing is selected until the commit
+   ObjectSetInteger(0, tag, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, tag, OBJPROP_ZORDER, Z_BOX_EDGE);
+   ObjectSetString(0, tag, OBJPROP_TOOLTIP, tooltip);
+}
+//+------------------------------------------------------------------+
 //| Children geometry — single source of truth for commit / drag-sync.|
 //| P-BK-51 (2026-09-15) — BOTH LEGS SIT INSIDE THE KNOT, and the      |
 //| PENETRATION the entry waits for is named by the node's own TYPE.   |
@@ -4243,8 +4309,12 @@ void BaseKnotSync(const string id)
    string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, tpTip, sp,
                                    riskTag, BaseKnotNodeLine(nd, top, bot), entryLine);
    ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
-   BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
-                     GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip, tfMask);
+   // BKEDGE-OFF (P-BK-74): the visible border is the BOX' OWN outline now — the
+   // rectangle wears the border ink in BaseKnotStyleBox, so there is nothing to
+   // draw beside it. The four trend-line children are retired in place: the
+   // function below stays compiled and this one call is the whole restore.
+   // BaseKnotDrawEdges(pfx, t1, p1, t2, p2,
+   //                   GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth, tip, tfMask);
    BaseKnotPlaceText(pfx, t1, t2, top, bot, tfMask, tip);   // existing user text follows the box (never resurrected)
    datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;
@@ -4332,10 +4402,13 @@ void BaseKnotDragPaint()
 int BaseKnotChildMaskBuild(const string pfx)
 {
    int m = 0;
-   if(ObjectFind(0, pfx + BK_EDGE_T) >= 0)            m |= BK_CH_EDGE_T;
-   if(ObjectFind(0, pfx + BK_EDGE_B) >= 0)            m |= BK_CH_EDGE_B;
-   if(ObjectFind(0, pfx + BK_EDGE_L) >= 0)            m |= BK_CH_EDGE_L;
-   if(ObjectFind(0, pfx + BK_EDGE_R) >= 0)            m |= BK_CH_EDGE_R;
+   // BKEDGE-OFF (P-BK-74): the border is the box' own outline, so the four edge
+   // names are gone and their four probes could only ever answer "no" — the
+   // gesture's ONE existence sweep is that much cheaper.
+   // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_T) >= 0)            m |= BK_CH_EDGE_T;
+   // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_B) >= 0)            m |= BK_CH_EDGE_B;
+   // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_L) >= 0)            m |= BK_CH_EDGE_L;
+   // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_R) >= 0)            m |= BK_CH_EDGE_R;
    if(ObjectFind(0, BaseKnotEntryName(pfx)) >= 0)     m |= BK_CH_ENTRY;
    if(ObjectFind(0, BaseKnotSLName(pfx)) >= 0)        m |= BK_CH_SL;
    if(ObjectFind(0, BaseKnotTPTickName(pfx, 1)) >= 0) m |= BK_CH_TP;    // P-BK-50: bit 6 = TP1
@@ -4385,10 +4458,14 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;
    BaseKnotTPTickSpan(t1, t2, tps, tpe);   // TP tick rides the right edge, not the box
-   if((s_bkChildMask & BK_CH_EDGE_T) != 0) BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);
-   if((s_bkChildMask & BK_CH_EDGE_B) != 0) BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
-   if((s_bkChildMask & BK_CH_EDGE_L) != 0) BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
-   if((s_bkChildMask & BK_CH_EDGE_R) != 0) BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
+   // BKEDGE-OFF (P-BK-74): the border IS the box, so a body drag carries no edge
+   // — the terminal moves the rectangle and its outline with it, natively and for
+   // free. The four lines below are the whole restore (with the four probes above
+   // and the Sync call site).
+   // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_T) != 0) BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);
+   // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_B) != 0) BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
+   // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_L) != 0) BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
+   // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_R) != 0) BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
    if((s_bkChildMask & BK_CH_ENTRY) != 0)  BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
    if((s_bkChildMask & BK_CH_SL) != 0)     BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
    // P-BK-50: one tick per DRAWN plan leg — the mask bit the gesture's probe found
@@ -5003,7 +5080,9 @@ void BaseKnotSyncBadges()
    if(ArraySize(g_bkBoxes) == 0) return;
     datetime tpEdge = BaseKnotTPEdgeTime();   // chart-global: one conversion for the whole pump
     double bkRef = BaseKnotLiveRef();         // P-BK-13: one live price for every follow check below
-    bool bkHandOff = UILeftButtonUp();        // P-BK-18: ONE button probe for the settle heal below
+    // BKEDGE-OFF (P-BK-74): this probe fed the P-BK-18 settle heal only, so it is
+    // dormant with it — the restore re-adds this line and the heal together.
+    // BKEDGE-OFF: bool bkHandOff = UILeftButtonUp();   // P-BK-18: ONE button probe for the settle heal below
     // P-BK-29/47 — the NOTE'S TWO ANSWERS are derived closed-bar data, so the pump is
     // what has to notice they moved: the LENGTH moves with the class (a new closed bar
     // the rung's own candles are re-read on, or a drag) and the SIDE with the break's
@@ -5054,9 +5133,9 @@ void BaseKnotSyncBadges()
          BaseKnotStyleBox(box);
          bkNeedPaint = true;
       }
-      if(ObjectFind(0, pfx + BK_EDGE_T) < 0 || ObjectFind(0, pfx + BK_EDGE_B) < 0 ||
-         ObjectFind(0, pfx + BK_EDGE_L) < 0 || ObjectFind(0, pfx + BK_EDGE_R) < 0 ||
-         BaseKnotTPStale(pfx))   // pre-tick ray → rebuild
+      // BKEDGE-OFF (P-BK-74): the four "is an edge segment missing" probes are
+      // retired with the family — there is nothing beside the box to lose.
+      if(BaseKnotTPStale(pfx))   // pre-tick ray → rebuild
        {
          BaseKnotSync(g_bkBoxes[i].id);
          bkNeedPaint = true;
@@ -5068,18 +5147,16 @@ void BaseKnotSyncBadges()
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
       double bot = MathMin(ObjectGetDouble(0, box, OBJPROP_PRICE, 0),
                            ObjectGetDouble(0, box, OBJPROP_PRICE, 1));
-      // P-BK-18 SETTLE HEAL — the BOX owns the truth, the border only mirrors it.
-      // A native box drag is the TERMINAL's gesture and its children ride our
-      // copy, so any path that loses the gesture's END leaves the visible border
-      // permanently behind the fill: a motionless release emits NO mouse-move at
-      // all (P-BK-03), a registry gap skips the follow entirely, and MT4's own
-      // snap at the drop can land a pixel the last follow never saw. Nothing
-      // else ever re-derives the edges, so that residue used to survive until a
-      // TF switch. The top edge is COMPARED against the box on the existing
-      // 500 ms pump: steady state is three property reads and zero writes, a
-      // diverged box costs one authoritative Sync, and the gate is the button
-      // being UP through the ONE owner (P-UI-73) — writing into a live native
-      // drag would cancel it (P-BK-15).
+      // BKEDGE-OFF (P-BK-74) — RETIRED HERE: the P-BK-18 SETTLE HEAL. It compared
+      // the top edge against the box on this 500 ms pump because the visible border
+      // was a COPY of the box (four trend lines our own follow had to keep in step),
+      // so a lost gesture end — a motionless release emits NO mouse-move at all
+      // (P-BK-03), a registry gap skips the follow, MT4's own snap at the drop can
+      // land a pixel the last follow never saw — left the copy behind until a TF
+      // switch. The border IS the box now: the terminal moves it with the rectangle,
+      // natively, so there is no second copy to fall behind and nothing to compare.
+      // The full story, the dormant `BaseKnotBorderSettled` and the one-line restore
+      // are at the retired block below.
       // P-BK-29: the type moved (new bar / warm step) → publish it through the
       // same authoritative Sync the flip and settle heals use. The dragged box
       // never reaches here (it is skipped at the top of the loop — P-BK-15:
@@ -5106,11 +5183,18 @@ void BaseKnotSyncBadges()
          BaseKnotSync(g_bkBoxes[i].id);
          bkNeedPaint = true;
       }
-      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))
-      {
-         BaseKnotSync(g_bkBoxes[i].id);
-         bkNeedPaint = true;
-      }
+      // BKEDGE-OFF (P-BK-74): THE SETTLE HEAL IS RETIRED WITH THE THING IT HEALED.
+      // P-BK-18 existed because the visible border was a COPY of the box (four
+      // trend lines that our own follow had to keep in step), so a lost gesture
+      // end left the copy behind. The border IS the box now — the terminal moves
+      // it with the rectangle, natively, and there is no second copy to fall
+      // behind. `BaseKnotBorderSettled` stays compiled (dead by construction) and
+      // this one line is the restore.
+      // BKEDGE-OFF: if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))
+      // BKEDGE-OFF: {
+      // BKEDGE-OFF:    BaseKnotSync(g_bkBoxes[i].id);
+      // BKEDGE-OFF:    bkNeedPaint = true;
+      // BKEDGE-OFF: }
       int tfMin = g_bkBoxes[i].tfMin;
       if(tfMin <= 0) tfMin = BaseKnotIdTF(g_bkBoxes[i].id);
       if(tpEdge > 0 && BaseKnotTFVisible(tfMin)) BaseKnotTPGlue(pfx, tpEdge);   // right-edge hug, hidden-TF boxes skipped
@@ -5308,10 +5392,12 @@ void BaseKnotPress(const datetime t, const double praw)
    g_bkState = BK_PREVIEW;
    string pv = BaseKnotPrevTag();
    if(pv == "") return;
-   ObjectDelete(0, pv);   // legacy single-rect preview (pre-P-BK-06) — edges replace it
-   BaseKnotDrawEdges(pv, t, p, t, p,
-                     GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,   // preview wears the final look (no fill yet)
-                     "Base box sizing — release / second click to commit", BaseKnotTFMask(Period()));
+   // P-BK-74: the rubber band is ONE rectangle again (the family the commit
+   // hands over), hollow and foreground, wearing the final look — what the user
+   // sizes is literally what he gets.
+   BaseKnotDrawPreviewRect(pv, t, p, t, p,
+                           GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
+                           "Base box sizing — release / second click to commit", BaseKnotTFMask(Period()));
    ChartRedraw();
 }
 
@@ -5781,10 +5867,11 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          if(pv != "" && ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ht, hp) && sw == 0 && ht > 0 && hp > 0)
          {
             hp = BaseKnotSnapPrice(ht, hp);   // click = corner (magnet off — identity)
-            ObjectDelete(0, pv);   // legacy single-rect preview — edges only from P-BK-06
-            BaseKnotDrawEdges(pv, g_bkT1, g_bkP1, ht, hp,
-                              GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,   // preview wears the final look (no fill yet)
-                              "Base box sizing — release / second click to commit", BaseKnotTFMask(Period()));
+            // P-BK-74: ONE rectangle, moved — no delete/recreate per frame, so a
+            // hover costs two ObjectMove calls and one paint, not a create storm.
+            BaseKnotDrawPreviewRect(pv, g_bkT1, g_bkP1, ht, hp,
+                                    GetBoxBorderRenderColor(), inpBoxBorderStyle, inpBoxBorderWidth,
+                                    "Base box sizing — release / second click to commit", BaseKnotTFMask(Period()));
              g_bkLiveT = ht; g_bkLiveP = hp;
              BaseKnotSyncLive(ht, hp);   // Entry/SL/TP + info follow while sizing
             ChartRedraw();

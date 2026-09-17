@@ -1852,27 +1852,21 @@ def check_bk_drag():
         problems.append("the (dormant) cursor-delta fallback lost its own budget (BK_DRAG_CURSOR_MS) - "
                         "it is the one path that writes the BOX itself, so a restore must stay "
                         "rate-limited")
-    # (b) the settle heal: the pump must compare the box against its own top edge,
-    #     through the ONE button owner, and must keep skipping a live drag.
+    # (b) the pump's ONE drag promise: it must keep skipping a live drag.
+    #     P-BK-18's settle heal USED to be asserted here - it is RETIRED now
+    #     (BKEDGE-OFF/P-BK-74) and its live/dead state is `check_bkedge_off()`'s
+    #     job, one group per promise. It is NOT re-asserted here on purpose: the
+    #     two gates that stood in this spot were name tests against the pump body,
+    #     and the retirement COMMENTS still spell `if(bkHandOff && !BaseKnotBorderSettled(`
+    #     and `UILeftButtonUp()` - i.e. they passed on the comment, which is the
+    #     exact "a gate satisfied by code that no longer runs" this file warns
+    #     about elsewhere. The live form is asserted where comments are stripped.
     pump = body(src, "void BaseKnotSyncBadges(")
     if pump is None:
         problems.append("BaseKnotSyncBadges() is gone - the 500 ms pump is the settle owner")
     else:
-        if "if(bkHandOff && !BaseKnotBorderSettled(" not in pump:
-            problems.append("the pump no longer settles a box whose border is behind it (P-BK-18) - "
-                            "a lost gesture end leaves the border adrift until a TF switch")
-        if "bkHandOff" not in pump or "UILeftButtonUp()" not in pump:
-            problems.append("the settle heal lost its button gate (the ONE owner, P-UI-73) - writing "
-                            "into a live native drag cancels it (P-BK-15)")
         if "s_bkDragId != \"\" && g_bkBoxes[i].id == s_bkDragId" not in pump:
             problems.append("the pump stopped skipping the actively dragged box (P-BK-15)")
-    settle = body(src, "bool BaseKnotBorderSettled(")
-    if settle is None:
-        problems.append("BaseKnotBorderSettled() is gone - the settle compare needs its ONE owner")
-    else:
-        if "BK_EDGE_T" not in settle or "OBJPROP_TIME, 1" not in settle or "OBJPROP_PRICE, 0" not in settle:
-            problems.append("BaseKnotBorderSettled() no longer compares the top edge's span AND price "
-                            "against the box - half the divergence would go unseen")
     # (c) P-BK-19a: the BOX has ONE writer per gesture. The fallback may not write
     #     a box the terminal has claimed, and the claim must be made from both
     #     witnesses the terminal gives us: its own OBJECT_DRAG, and the anchors
@@ -2231,6 +2225,191 @@ def check_bk_drag():
         if "BaseKnotGestureClear();" not in deinit:
             problems.append("a removed/switched instance keeps its gesture answer (P-BK-65) - the "
                             "next attach inherits \"this press is a resize\"")
+    return problems
+
+
+def check_bkbox_ink():
+    """[bkbox-ink] - THE DEFAULT BOX IS HOLLOW AND IN THE FOREGROUND (P-BK-74).
+
+    «باکس پیش فرض بدون fill باشه و بگراندش غیر فعال باشه اوکی» - the user's own
+    words, and the terminal's own defaults: MT4 stores its objects `background=0`,
+    and its Rectangle tool draws an empty outline. The user's screenshot of MT4's
+    own rectangle next to ours is what forced this: ours was painted in the CHART
+    BACKGROUND colour (an invisible cover), and the border colour only ever reached
+    four OBJ_TREND children drawn on top of it. The ink the object wears is the
+    user's own `inpBoxBorderColor` / `inpBoxBorderStyle` / `inpBoxBorderWidth` now,
+    because the rectangle IS the border (BKEDGE-OFF retires the children).
+
+    The FILLED branch is the other half of the same promise: with the fill turned
+    on the ink IS the fill, so that arm keeps colour=fill + BACK=true (behind the
+    candles, zone-like) — P-BK-23's lesson, unchanged.
+
+    `BaseKnotFillHealed()` is the pump's ONE reader deciding a box drifted, so it
+    must ask the same questions the writer answers: FILL, BACK, and the ink the
+    look actually uses. A reader still asking for the chart background colour is
+    the P-BK-74 bug in reverse — it would pass on the very box the writer just
+    changed, so a chart an older build painted invisible is never healed.
+    """
+    problems = []
+    src = read(BASEKNOT)
+    sty = body(src, "void BaseKnotStyleBox(")
+    if sty is None:
+        return ["BaseKnotStyleBox() is gone - the box look has ONE writer (P-BK-74)"]
+    sty = strip_comments(sty)
+    for prop, why in (
+            ("GetBoxBorderRenderColor()",
+             "the hollow rectangle is painted in a colour that is not the border's again - it "
+             "becomes an invisible cover whose outline only shows because something else draws "
+             "it (BKEDGE-OFF retired that something)"),
+            ("OBJPROP_FILL, false",
+             "the default box comes up FILLED - the user asked for no fill"),
+            ("OBJPROP_BACK, false",
+             "a background object forces the terminal to repaint the bars under it on every frame "
+             "of a native drag, over an area exactly the size of the box (P-BK-23)"),
+            ("inpBoxBorderStyle",
+             "the user's border STYLE no longer reaches the object that draws the border"),
+            ("inpBoxBorderWidth",
+             "the user's border WIDTH no longer reaches the object that draws the border")):
+        if prop not in sty:
+            problems.append("BaseKnotStyleBox() lost %s (P-BK-74) - %s" % (prop, why))
+    for prop, why in (("GetBoxFillRenderColor()", "the fill would be drawn with the border ink"),
+                      ("OBJPROP_FILL, true", "the fill is asked for but never turned on"),
+                      ("OBJPROP_BACK, true", "the fill would be drawn IN FRONT of the candles")):
+        if prop not in sty:
+            problems.append("the FILLED look lost %s (P-BK-74) - %s" % (prop, why))
+    heal = body(src, "bool BaseKnotFillHealed(")
+    if heal is None:
+        problems.append("BaseKnotFillHealed() is gone - the pump's drift reader has ONE owner "
+                        "(P-BK-05/06)")
+    else:
+        heal = strip_comments(heal)
+        for prop, why in (("GetBoxBorderRenderColor()",
+                           "it no longer asks the ink the hollow look actually uses, so a box an "
+                           "older build left invisible reads as healed forever (P-BK-74)"),
+                          ("OBJPROP_BACK",
+                           "a hollow box is no longer required to be a FOREGROUND object "
+                           "(P-BK-23)"),
+                          ("GetBoxFillRenderColor()",
+                           "the filled half of the compare is gone, so a fill the user just "
+                           "turned on never gets re-asserted")):
+            if prop not in heal:
+                problems.append("BaseKnotFillHealed() lost %s (P-BK-74) - %s" % (prop, why))
+    return problems
+
+
+def check_bkedge_off():
+    """[bkedge-off] - THE BORDER IS THE BOX' OWN OUTLINE (P-BK-74, 2026-09-17).
+
+    «یک باکس متاتریدر چطور ساخته میشه همون میخوام بزاری خودش از داک رسمی نگاه کن
+    متودش چیه» → the official OBJ_RECTANGLE recipe (docs.mql4.com/constants/
+    objectconstants/enum_object/obj_rectangle) draws its own border; ours drew an
+    invisible background-coloured rectangle and put FOUR OBJ_TREND children on top
+    of it to fake the outline. The terminal's is ONE object with a native body drag
+    and its own five sizing markers (P-BK-73 hands them over at the commit); ours
+    was five objects with a custom gesture.
+
+    So the four edges are RETIRED IN PLACE — BKEDGE-OFF, six marked sites — and the
+    rectangle wears the border ink itself (see `check_bkbox_ink`). The P-BK-18
+    settle heal goes with them: it existed only because the visible border was a
+    COPY of the box that our own follow had to keep in step, so a lost gesture end
+    left the copy behind. With one object there is no copy to fall behind — the
+    terminal moves the outline with the object it belongs to. The sizing rubber
+    band becomes one rectangle again too, so what the user sizes is what he gets.
+
+    This group asserts the retirement in BOTH directions: a live edge (a call site
+    that came back, a probe that answers "no" forever, a settle heal with nothing
+    to heal) must FAIL, and so must a half-restore that deletes the dormant engine
+    the uncomment would need.
+    """
+    problems = []
+    src = read(BASEKNOT)
+    marks = src.count("BKEDGE-OFF")
+    if marks < 6:
+        problems.append("the edge retirement lost its marker(s) - %d left, six sites are expected - "
+                        "the next session cannot tell a dormant family from a live one "
+                        "(BKEDGE-OFF)" % marks)
+    #     THE LIVE FORM IS TESTED ON STRIPPED TEXT. A name test against the raw
+    #     source would pass on the retirement comments themselves (they spell the
+    #     very call they retired) - the "gate satisfied by code that no longer
+    #     runs" failure this file has already been bitten by once.
+    stripped = strip_comments(src)
+    #     ONE live mention of the drawer is allowed: its own definition. Every call
+    #     site stays commented (the same shape as the BKGRIP-OFF family's gate).
+    if len(re.findall(r"BaseKnotDrawEdges\(", stripped)) > 1:
+        problems.append("BaseKnotDrawEdges() is called from a LIVE site again (BKEDGE-OFF/P-BK-74) - "
+                        "the border is the box' own outline, so a drawn copy sits on top of the "
+                        "object the terminal already paints, and it is a second writer of the same "
+                        "geometry (P-BK-07)")
+    kids = body(src, "void BaseKnotMoveChildren(")
+    if kids is None:
+        problems.append("BaseKnotMoveChildren() is gone - the drag's child pass has ONE owner")
+    elif re.search(r"(?m)^\s*if\(\(s_bkChildMask & BK_CH_EDGE_[TBLR]\) != 0\)", strip_comments(kids)):
+        problems.append("the child move pass carries an edge again (BKEDGE-OFF/P-BK-74) - a trend "
+                        "line the box' own outline made redundant would be moved on every drag "
+                        "step to land on pixels the rectangle already paints")
+    mask = body(src, "int BaseKnotChildMaskBuild(")
+    if mask is None:
+        problems.append("BaseKnotChildMaskBuild() is gone - the gesture's ONE existence sweep "
+                        "(P-PERF-42)")
+    elif re.search(r"(?m)^\s*if\(ObjectFind\(0, pfx \+ BK_EDGE_", strip_comments(mask)):
+        problems.append("the gesture's existence sweep probes an edge again (BKEDGE-OFF/P-BK-74) - "
+                        "nothing creates those names any more, so the probe can only answer \"no\" "
+                        "while still costing a terminal call (P-PERF-42)")
+    pump = body(src, "void BaseKnotSyncBadges(")
+    if pump is None:
+        problems.append("BaseKnotSyncBadges() is gone - the 500 ms pump has ONE owner")
+    else:
+        live = strip_comments(pump)
+        if re.search(r"(?m)^\s*if\(bkHandOff", live) or "BaseKnotBorderSettled(" in live:
+            problems.append("the P-BK-18 settle heal is LIVE again (BKEDGE-OFF/P-BK-74) - it healed "
+                            "a COPY of the box; with the border retired it can only Sync a box that "
+                            "is already right, and writing into a live native drag cancels it "
+                            "(P-BK-15)")
+        if "BaseKnotTPStale(pfx)" not in live:
+            problems.append("the pump lost the pre-tick ray rebuild it shared that probe line with "
+                            "(P-BK-50) - retiring the edges took a LIVE heal with it")
+    #     the dormant engine stays compiled so a restore is one uncomment, and stays
+    #     WHOLE so the restore is not a rewrite (the BKGRIP-OFF family's rule).
+    if body(src, "void BaseKnotDrawEdges(") is None:
+        problems.append("BaseKnotDrawEdges() lost its body - the retirement must stay one uncomment "
+                        "away, and deleting it turns the restore into a rewrite (BKEDGE-OFF)")
+    settle = body(src, "bool BaseKnotBorderSettled(")
+    if settle is None:
+        problems.append("BaseKnotBorderSettled() is gone - the dormant settle compare has ONE owner, "
+                        "and a half-restore that uncomments the heal must find it whole (BKEDGE-OFF)")
+    elif ("BK_EDGE_T" not in settle or "OBJPROP_TIME, 1" not in settle
+          or "OBJPROP_PRICE, 0" not in settle):
+        problems.append("BaseKnotBorderSettled() no longer compares the top edge's span AND price "
+                        "against the box - half the divergence would go unseen (BKEDGE-OFF)")
+    #     the sizing rubber band: ONE rectangle, MOVED. The two call sites used to
+    #     delete and redraw four edges per frame - a create storm per hover, for an
+    #     object the terminal never asked to be recreated.
+    if len(re.findall(r"BaseKnotDrawPreviewRect\(", stripped)) < 3:
+        problems.append("the sizing preview is not drawn as ONE rectangle from BOTH call sites "
+                        "(BKEDGE-OFF/P-BK-74) - a call site still draws the retired edge family, or "
+                        "the drawer is gone")
+    if re.search(r"ObjectDelete\(0, pv\)", stripped):
+        problems.append("a preview call site deletes its object again (P-BK-74) - the rectangle is "
+                        "MOVED now, so a delete/recreate per mouse-move is a paint storm the "
+                        "terminal never asked for")
+    prev = body(src, "void BaseKnotDrawPreviewRect(")
+    if prev is None:
+        problems.append("BaseKnotDrawPreviewRect() is gone - the preview has no ONE drawer (P-BK-74)")
+    else:
+        prev = strip_comments(prev)
+        for prop, why in (("OBJ_RECTANGLE",
+                           "a trend-line preview is back, i.e. a shape the commit will not hand "
+                           "over - what the user sizes must be what he gets"),
+                          ("OBJPROP_FILL, false",
+                           "the preview would show a fill the committed box does not have"),
+                          ("OBJPROP_BACK, false",
+                           "a background preview makes the terminal repaint the candles under it "
+                           "on every frame of the sizing gesture"),
+                          ("OBJPROP_SELECTABLE, false",
+                           "the terminal would put its sizing markers on a box that is not "
+                           "committed yet (P-BK-73)")):
+            if prop not in prev:
+                problems.append("BaseKnotDrawPreviewRect() lost %s (P-BK-74) - %s" % (prop, why))
     return problems
 
 
@@ -2939,6 +3118,8 @@ def main():
               ("drag", check_drag()),
               ("mouse", check_mouse()),
               ("bk-drag", check_bk_drag()),
+              ("bkbox-ink", check_bkbox_ink()),
+              ("bkedge-off", check_bkedge_off()),
               ("heal", check_heal()),
               ("bkcursor-off", check_bkcursor_off()),
               ("bkmagnet", check_bkmagnet()),
@@ -3005,6 +3186,7 @@ def selftest():
                        or check_press(read(PANELS)) or check_chrome()
                        or check_dual() or check_drag() or check_mouse()
                        or check_bk_drag() or check_bkcursor_off()
+                       or check_bkbox_ink() or check_bkedge_off()
                        or check_heal())))
     reset()
 
@@ -3596,12 +3778,89 @@ def selftest():
                   bool(check_bk_drag())))
     reset()
 
-    # 67. P-BK-18: the settle heal's gate is opened (a write into a live native
-    #     drag would cancel the terminal's own gesture, P-BK-15)
-    with_source(BASEKNOT, "      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))",
-                "      if(true)")
-    cases.append(("a settle heal that ignores the button gate is caught",
-                  bool(check_bk_drag())))
+    # 67. P-BK-18/BKEDGE-OFF: THE SETTLE HEAL COMES BACK TO LIFE. It healed a COPY
+    #     of the box; the border IS the box now (P-BK-74), so a live heal can only
+    #     Sync a box that is already right - and it writes into whatever gesture is
+    #     running (P-BK-15). This is the half-restore the retirement must catch.
+    with_source(BASEKNOT,
+                "      // BKEDGE-OFF: if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))",
+                "      if(bkHandOff && !BaseKnotBorderSettled(pfx, t1, t2, top))")
+    cases.append(("a settle heal uncommented beside the retired border is caught",
+                  bool(check_bkedge_off())))
+    reset()
+
+    # 67b. BKEDGE-OFF: a retired EDGE CALL SITE comes back to life - a drawn copy of
+    #      the border on top of the object the terminal already paints
+    with_source(BASEKNOT, "   // BaseKnotDrawEdges(pfx, t1, p1, t2, p2,",
+                "   BaseKnotDrawEdges(pfx, t1, p1, t2, p2,")
+    cases.append(("a live edge call site is caught", bool(check_bkedge_off())))
+    reset()
+
+    # 67c. BKEDGE-OFF: the existence sweep probes an edge again (a terminal call
+    #      whose only possible answer is "no" - P-PERF-42)
+    with_source(BASEKNOT,
+                "   // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_T) >= 0)            m |= BK_CH_EDGE_T;",
+                "   if(ObjectFind(0, pfx + BK_EDGE_T) >= 0)            m |= BK_CH_EDGE_T;")
+    cases.append(("an edge probe back in the gesture sweep is caught", bool(check_bkedge_off())))
+    reset()
+
+    # 67d. BKEDGE-OFF: the drag's child pass carries an edge again
+    with_source(BASEKNOT,
+                "   // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_T) != 0) BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);",
+                "   if((s_bkChildMask & BK_CH_EDGE_T) != 0) BaseKnotMoveOne(pfx + BK_EDGE_T, t1, top, t2, top);")
+    cases.append(("a drag step that carries a retired edge is caught", bool(check_bkedge_off())))
+    reset()
+
+    # 67e. BKEDGE-OFF: the dormant engine is DELETED instead of commented - the
+    #      uncomment that restores the family finds half of it gone (a rewrite)
+    with_source(BASEKNOT, "void BaseKnotDrawEdges(const string tag, datetime t1, const double p1,",
+                "void BaseKnotDrawEdgesX(const string tag, datetime t1, const double p1,")
+    cases.append(("a retirement that deleted its own engine is caught", bool(check_bkedge_off())))
+    reset()
+
+    # 67f. BKEDGE-OFF: the sizing preview deletes and redraws per frame again
+    with_source(BASEKNOT, "   BaseKnotDrawPreviewRect(pv, t, p, t, p,",
+                "   ObjectDelete(0, pv);\n   BaseKnotDrawPreviewRect(pv, t, p, t, p,")
+    cases.append(("a preview that recreates its object per frame is caught",
+                  bool(check_bkedge_off())))
+    reset()
+
+    # 67g. BKEDGE-OFF: the preview shows a fill the committed box does not have
+    with_source(BASEKNOT, "   ObjectSetInteger(0, tag, OBJPROP_FILL, false);",
+                "   ObjectSetInteger(0, tag, OBJPROP_FILL, true);")
+    cases.append(("a preview that lies about the committed look is caught",
+                  bool(check_bkedge_off())))
+    reset()
+
+    # 67h. P-BK-74/bkbox-ink: THE HOLLOW BOX IS PAINTED IN THE FILL INK AGAIN - the
+    #      invisible cover the user's screenshot caught (the outline then only shows
+    #      because the retired trend lines drew it)
+    with_source(BASEKNOT, "      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxBorderRenderColor());",
+                "      ObjectSetInteger(0, box, OBJPROP_COLOR, GetBoxFillRenderColor());")
+    cases.append(("a box painted in something other than the border ink is caught",
+                  bool(check_bkbox_ink())))
+    reset()
+
+    # 67i. P-BK-74/bkbox-ink: the default box comes up FILLED (the user asked for
+    #      no fill, and MT4's own rectangle ships fill=false)
+    with_source(BASEKNOT, "      ObjectSetInteger(0, box, OBJPROP_FILL, false);",
+                "      ObjectSetInteger(0, box, OBJPROP_FILL, true);")
+    cases.append(("a default box that comes up filled is caught", bool(check_bkbox_ink())))
+    reset()
+
+    # 67j. P-BK-74/bkbox-ink: the drift reader stops asking the ink the writer uses
+    #      (a box an older build left invisible then reads as healed forever)
+    with_source(BASEKNOT,
+                "   return ((color)ObjectGetInteger(0, box, OBJPROP_COLOR) == GetBoxBorderRenderColor());",
+                "   return (true);")
+    cases.append(("a drift reader that cannot see the ink is caught", bool(check_bkbox_ink())))
+    reset()
+
+    # 67k. P-BK-15: the pump stops skipping the box the user is dragging (any Sync
+    #      mid-gesture snaps it back to the drag start)
+    with_source(BASEKNOT,
+                '      if(s_bkDragId != "" && g_bkBoxes[i].id == s_bkDragId) continue;', "")
+    cases.append(("a pump that writes into a live drag is caught", bool(check_bk_drag())))
     reset()
 
     # 68. BKCURSOR-OFF: the retired fallback is brought back to life (a second
