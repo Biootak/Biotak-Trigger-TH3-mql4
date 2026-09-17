@@ -250,8 +250,8 @@ Checks, all on the source (+ one model), no terminal:
   7 NODE     the four types ARE THE NODE'S LENGTH (P-BK-75) — the box' own HEIGHT
              (`top - bot`, in price units) against the MOVEMENT ABILITY of the TF
              the node is SEEN ON, and NOTHING else: the kind is ONE assignment off
-             `BaseKnotNodeKindOfLength(nodeTimeMin, nd.height)` (so no branch and no
-             restored read can rewrite it), that read touches four numbers and no
+             `BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)` (so no branch
+             and no restored read can rewrite it), that read touches four numbers and no
              series at all (no closes, no ATR call, no `Period()`), and every unknown
              (a zero/negative height, a TF whose ATR was never pushed) answers an
              ABSENCE instead of a band. «توان حرکتی» IS THAT TIMEFRAME'S ATR
@@ -331,6 +331,32 @@ Checks, all on the source (+ one model), no terminal:
              cannot read each other's answer. The class' own texts (`BaseKnotBaseTag` /
              `BaseKnotBaseLine`) take NO TF at all, and the hover RE-READS the rung it
              named before it claims its candles.
+  9 AS-OF    EVERY NUMBER THE KNOT DRAWS IS READ AT THE BOX' OWN BAR (P-BK-79,
+             2026-09-17 — the user: «مثلا atr یک دقیقه زمان گره بوده مثلا 20 ... با
+             گذشت زمان ممکن 40 بشه یا 10 بشه که اینطوری نمیشه نوع گره دقیق مشخص
+             کرد»). Every number the knot drew was a LIVE read: the strip ATR took no
+             shift, the plan's EngSL / HuntSL / TP1..3 were pushed PER TF and cached
+             per TF, and the type compared the box' height against TODAY's ATR — so one
+             box changed its type and its levels as the market's volatility moved, and
+             TWO boxes on the same TF could never be told apart: the table had one row
+             for the both of them. A ROW IS NOW `(TF, ANCHOR)`, where the anchor is the
+             box' own `storyT` — the bar its story ended on, which is the same bar the
+             type and the story are read from — and 0 means «no anchor»: the LIVE row,
+             which is what the sizing preview asks for before it has a base. One table,
+             one key, one owner per side (`BaseKnotEngNeeds` asks, `BaseKnotEngPush`
+             answers, and a moved ANCHOR re-arms the pump's gate exactly like a moved
+             EngSL). Every reader takes the anchor as a DEFAULTED LAST parameter, so a
+             caller that never learned the word — the plan card, the live preview —
+             stays byte-identical; the committed box reads `nd.anchor`, the preview
+             reads 0, and a drag follows the SAME anchor the release Sync will land on.
+             The ATR side is a SIBLING read (`CalculateWeightedATRAt`), never a shift on
+             the live one: the live cache's ten rows must not be evicted by boxes, and
+             the anchored read is keyed on the BAR'S OWN TIME (a shift-keyed cache
+             would serve a stale answer). The model proves the ask list on the pair:
+             two boxes on one TF with two story ends get TWO rows, two boxes that ended
+             on the same bar SHARE one, a CTR/OTR box asks its measure rung at its own
+             anchor, a box with neither class nor story stays on the live row, and the
+             list is bounded like the table.
 
 Run:  python tools/base-count-audit.py [--selftest]
 """
@@ -1360,7 +1386,8 @@ def check_node():
                 and "nd.nodeTF = nodeTimeMin; nd.baseTF = nodeTimeMin;" in blk))
     kinds = [k.strip() for k in re.findall(r"nd\.kind\s*=\s*([^;]+);", blk)]
     out.append(("the type is ONE read off the box' HEIGHT (its reset, then the height - no branch)",
-                kinds == ["BK_NODE_NONE", "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height)"]))
+                kinds == ["BK_NODE_NONE",
+                          "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)"]))
     out.append(("the retired level read cannot set the type again (BKNODEKIND-OFF)",
                 re.search(r"nd\.kind\s*=\s*BK_NODE_(FTR|ETR|CTR|OTR);", blk) is None
                 # ... and no branch of the retired read hangs a `nd.kind = ` off price action
@@ -1495,8 +1522,8 @@ def check_node():
                 "pips (the box' height)" in line and "nd.height" in line
                 and "trigger " in line and "pattern " in line and "structure " in line))
     out.append(("... and the bands it fell in, off the SAME midpoints the read uses (P-BK-76)",
-                "bands:" in line and "BaseKnotNodeBandFtrEtr(nd.nodeTF)" in line
-                and "BaseKnotNodeBandEtrCtr(nd.nodeTF)" in line))
+                "bands:" in line and "BaseKnotNodeBandFtrEtr(nd.nodeTF, nd.anchor)" in line
+                and "BaseKnotNodeBandEtrCtr(nd.nodeTF, nd.anchor)" in line))
     out.append(("... keeping the TF-invariance promise for the type",
                 "the same on every chart TF" in line))
     out.append(("... while the story, its side and its step ride their own lines",
@@ -1539,7 +1566,12 @@ def check_node():
                 and "BaseKnotPatternName(nd.pattern)" in sync))
     out.append(("... and the pump re-reads the SAME pattern, off the SAME entry",
                 re.search(r"BaseKnotNodeRead\([^;]*g_bkBoxes\[i\]\.baseT,", pump) is not None
-                and re.search(r"\bsp\.tStart,\s*nd\);", sync) is not None))
+                # P-BK-79: and BOTH hand the read the box' own `storyT` as the anchor — the
+                # very key the pump pushed its rows with, so the type the pump compares is
+                # the type the Sync published and not a live row nobody draws with.
+                and re.search(r"\bsp\.tStart,\s*g_bkBoxes\[k\]\.storyT,\s*nd\);", sync) is not None
+                and re.search(r"g_bkBoxes\[i\]\.baseT,\s*g_bkBoxes\[i\]\.storyT,\s*ndNow\)", pump)
+                is not None))
     return out
 
 
@@ -1778,7 +1810,7 @@ def run_checks():
     for fn in (check_owner, check_anchor, check_break_and_budget, check_one_value,
                check_model, check_invariance, check_node, check_node_model,
                check_rung, check_rung_model, check_live_reuse, check_leg_fit,
-               check_label_short, check_note_fields, check_note_height,
+               check_asof, check_label_short, check_note_fields, check_note_height,
                check_note_life, check_note_home):
         rows.extend(fn())
     return rows
@@ -1899,7 +1931,7 @@ def check_leg_fit():
     calc = body(read(KNOT), "void BaseKnotCalcLevels(") or ""
     pair = body(read(KNOT), "void BaseKnotLegPair(") or ""
     out.append(("the geometry takes its pair from the ONE owner",
-                "BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP);" in calc))
+                "BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP, anchor);" in calc))
     out.append(("the pair's ENTRY leg is picked against the node's power",
                 re.search(r"offPips\s*=\s*BaseKnotLegPick\(", pair) is not None))
     out.append(("... and so is the leg the stop is drawn with",
@@ -1932,6 +1964,186 @@ def check_leg_fit():
             others.append(Path(rel).name)
     out.append(("no other module sizes a knot's legs (%s)" % (", ".join(others) or "none"),
                 not others))
+    return out
+
+
+# --- 10b: P-BK-79 — every number the knot draws is read AS OF the box' own bar ----------
+# The user's report: «مثلا atr یک دقیقه زمان گره بوده مثلا 20 … با گذشت زمان ممکن 40 بشه یا 10
+# بشه که اینطوری نمیشه نوع گره دقیق مشخص کرد». Every number the knot drew was a LIVE read:
+# the strip ATR took no shift at all, the plan's EngSL / HuntSL / TP1..3 were pushed per TF
+# and cached per TF, and the type compared the box' height against TODAY's ATR. So ONE box
+# changed its type and its levels as the market's volatility moved, and TWO boxes on the SAME
+# TF could never be told apart — the table had one row for the both of them.
+# THE RULE: a row is (TF, ANCHOR), where the anchor is the box' own `storyT` — the bar its
+# story ended on, which is the same bar the type and the story are read from. 0 means "no
+# anchor": the LIVE row, which is what the sizing preview asks for before it has a base.
+# ONE TABLE, ONE KEY, ONE OWNER PER SIDE: BaseKnotEngNeeds asks, BaseKnotEngPush answers,
+# and every reader takes the anchor as a DEFAULTED last parameter — so a caller that never
+# learned the word (the live preview, the plan card) is byte-identical to what it was.
+ASOF_ROW_MAX = 48
+EVENT = "Biotak/EventHandlers.mqh"
+ATR = "Biotak/ATRCalculations.mqh"
+
+
+def asof_ask(boxes, chart_tf, lad):
+    """Mirrors BaseKnotEngNeeds: the (TF, anchor) pairs one pump round asks for.
+
+    `boxes` is a list of (tf, storyT, kind). The live row comes first, then each box asks
+    its own TF, the two rungs above it and its measure TF — ALL AT ITS OWN ANCHOR — and the
+    list is deduped on the PAIR and bounded exactly like the table.
+    """
+    out = [(chart_tf, 0)]
+    for tf, story, kind in boxes:
+        tf = tf or chart_tf
+        an = story or 0
+        up1 = ladder_next(tf, lad)
+        up2 = ladder_next(up1, lad) if up1 else 0
+        measure = up1 if kind in (NODE_CTR, NODE_OTR) else tf
+        for a in (tf, up1, up2, measure):
+            if a <= 0 or (a, an) in out:
+                continue
+            if len(out) >= ASOF_ROW_MAX:
+                break
+            out.append((a, an))
+    return out
+
+
+def check_asof():
+    """P-BK-79: one row per (TF, anchor), and the anchor is the box' own story end."""
+    out = []
+    src = read(KNOT)
+    plain = strip_comments(src)
+    lad = ladder()
+    #--- the model: the ask list is keyed on the PAIR, not on the TF -----------------
+    two = asof_ask([(60, 1000, NODE_ETR), (60, 2000, NODE_ETR)], 60, lad)
+    out.append(("two boxes on the SAME TF, different story ends -> TWO rows for that TF (%s)"
+                % (two,),
+                (60, 1000) in two and (60, 2000) in two
+                and sum(1 for tf, _ in two if tf == 60) == 3))
+    same = asof_ask([(60, 1000, NODE_ETR), (60, 1000, NODE_ETR)], 60, lad)
+    out.append(("... and two boxes that ended on the SAME bar share ONE row each (%s)" % (same,),
+                same == [(60, 0), (60, 1000), (240, 1000), (1440, 1000)]))
+    hop = asof_ask([(60, 1000, NODE_CTR)], 60, lad)
+    out.append(("... and a CTR/OTR box asks its measure rung too, at its own anchor (%s)" % (hop,),
+                (60, 1000) in hop and (240, 1000) in hop and (1440, 1000) in hop))
+    bare = asof_ask([(0, 0, NODE_NONE)], 15, lad)
+    out.append(("... while a box with no class and no story stays on the LIVE row (%s)" % (bare,),
+                bare[0] == (15, 0) and all(an == 0 for _, an in bare)))
+    many = asof_ask([(60, 1000 + i, NODE_ETR) for i in range(40)], 60, lad)
+    out.append(("... and the list is BOUNDED like the table (%d rows)" % len(many),
+                len(many) <= ASOF_ROW_MAX))
+    #--- the table: the anchor rides beside the TF -----------------------------------
+    out.append(("the table carries the ANCHOR beside the TF (P-BK-79)",
+                "#define BK_ENG_ROW_MAX %d" % ASOF_ROW_MAX in src
+                and "static datetime s_bkEngAnchor[BK_ENG_ROW_MAX];" in src))
+    for col in ("s_bkEngTF", "s_bkEngAnchor", "s_bkEngPips", "s_bkEngHunt",
+                "s_bkEngTP1", "s_bkEngTP2", "s_bkEngTP3"):
+        got = len(re.findall(r"static\s+\w+\s+%s\[BK_ENG_ROW_MAX\];" % col, src))
+        out.append(("the row's %s is sized by the ROW bound (found %d)" % (col, got), got == 1))
+    out.append(("... and no TF-only bound is left behind (the half-renamed define that shipped)",
+                "BK_ENG_TF_MAX" not in plain))
+    out.append(("the ability table is keyed on the pair too (one ladder, two tables)",
+                "#define BK_AB_TF_MAX BK_ENG_ROW_MAX" in src
+                and "static datetime s_bkAbAnchor[BK_AB_TF_MAX];" in src
+                and "s_bkAbTF[i] != tfMin || s_bkAbAnchor[i] != an" in src))
+    #--- the push: the anchors arrive and the anchor re-arms the gate -----------------
+    push = body(src, "void BaseKnotEngPush(") or ""
+    out.append(("the push takes the anchors beside the TFs and stores the pair",
+                re.search(r"void\s+BaseKnotEngPush\s*\(\s*const\s+int\s+&mins\[\],\s*"
+                          r"const\s+datetime\s+&anchors\[\]", plain) is not None
+                and "anNew[m] = (anchors[i] > 0 ? anchors[i] : 0);" in push
+                and "s_bkEngAnchor[i] = anNew[i];" in push))
+    out.append(("... and a MOVED anchor re-arms the gate exactly like a moved EngSL",
+                re.search(r"tfNew\[i\]\s*!=\s*s_bkEngTF\[i\]\s*\|\|\s*"
+                          r"anNew\[i\]\s*!=\s*s_bkEngAnchor\[i\]", push) is not None))
+    #--- the readers: the pair, never the TF ------------------------------------------
+    for sig, who in (("double BaseKnotEngPips(", "the risk"),
+                     ("double BaseKnotHuntPips(", "the Hunter leg"),
+                     ("double BaseKnotPlanTPPips(", "the plan's target legs")):
+        fn = body(src, sig) or ""
+        out.append(("%s is read at ONE (TF, anchor) pair, never a TF alone" % who,
+                    re.search(r"s_bkEngTF\[i\]\s*==\s*tf\s*&&\s*s_bkEngAnchor\[i\]\s*==\s*anchor",
+                              fn) is not None))
+    #--- the ask: the pair, and the dedup on the pair ---------------------------------
+    needs = body(src, "int BaseKnotEngNeeds(") or ""
+    out.append(("the ask list carries the ANCHOR beside every TF (P-BK-79)",
+                re.search(r"int\s+BaseKnotEngNeeds\s*\(\s*int\s+&mins\[\],\s*"
+                          r"datetime\s+&anchors\[\]\s*\)", plain) is not None
+                and "mins[n] = chartTF; anchors[n] = 0; n++;" in needs
+                and "datetime an = (g_bkBoxes[i].storyT > 0 ? g_bkBoxes[i].storyT : 0);" in needs
+                and "mins[n] = asked[a]; anchors[n] = an; n++;" in needs))
+    out.append(("... and the dedup is on the PAIR — the chart-TF shortcut had to go",
+                re.search(r"mins\[j\]\s*==\s*asked\[a\]\s*&&\s*anchors\[j\]\s*==\s*an", needs)
+                is not None
+                and "asked[a] == chartTF" not in needs))
+    #--- the read: the anchor is HANDED IN, never re-derived ---------------------------
+    nread = body(src, "void BaseKnotNodeRead(") or ""
+    out.append(("the read TAKES the anchor as its own argument",
+                re.search(r"const\s+datetime\s+anchor,\s*BaseKnotNode\s+&nd\)", plain) is not None))
+    out.append(("... and never re-derives it from the box' edge or the clock",
+                "nd.anchor = (anchor > 0 ? anchor : 0);" in nread
+                and re.search(r"nd\.anchor\s*=\s*(?:t2|tFrom|Period\(\)|TimeCurrent\(\))", nread)
+                is None))
+    out.append(("... and the box' record PUBLISHES the bar it was read at",
+                "datetime anchor;" in (body(src, "struct BaseKnotNode") or "")))
+    #--- every reader threads it, as a DEFAULTED last parameter ------------------------
+    unthreaded = []
+    for name in ("BaseKnotOffsetIsHunt", "BaseKnotEntryOffsetPips", "BaseKnotEntryWhy",
+                 "BaseKnotEntryLine", "BaseKnotCapClause", "BaseKnotStopWhy",
+                 "BaseKnotLegPair", "BaseKnotCalcLevels", "BaseKnotRiskPips",
+                 "BaseKnotRiskTag", "BaseKnotTPLevel", "BaseKnotTPPlanTag",
+                 "BaseKnotTPPlanTip", "BaseKnotNodeKindOfLength", "BaseKnotNodeBandFtrEtr",
+                 "BaseKnotNodeBandEtrCtr"):
+        m = re.search(r"^\s*(?:bool|int|double|string|void)\s+%s\s*\(([^)]*)\)" % name, plain,
+                      re.M)
+        if not re.search(r"const\s+datetime\s+anchor\s*=\s*0", m.group(1) if m else ""):
+            unthreaded.append(name)
+    out.append(("every reader takes the anchor as a DEFAULTED last parameter (%s)"
+                % (", ".join(unthreaded) or "all %d" % 16), not unthreaded))
+    #--- the call sites: the committed box, the preview and the drag -------------------
+    sync = body(src, "void BaseKnotSync(") or ""
+    liveb = body(src, "void BaseKnotSyncLive(") or ""
+    drag = body(src, "void BaseKnotMoveChildren(") or ""
+    line = body(src, "string BaseKnotNodeLine(") or ""
+    out.append(("the committed box reads EVERY number at `nd.anchor`",
+                "BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);" in sync
+                and "BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor)" in sync
+                and "BaseKnotRiskPips(mTF, top, bot, nd.anchor)" in sync
+                and "BaseKnotStopWhy(mTF, top, bot, nd.anchor)" in sync
+                and "BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir, top, bot, nd.anchor)" in sync
+                and "BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor)" in sync
+                and "BaseKnotTPLevel(entry, dir, baseTF, tk, nd.anchor)" in sync
+                and "BaseKnotPlanTPPips(baseTF, tk, nd.anchor)" in sync))
+    out.append(("... and the sizing preview reads the LIVE row (anchor 0) and says so",
+                "ndLive.anchor = 0;" in liveb
+                and "BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, 0);" in liveb
+                and "BaseKnotRiskPips(liveTF, top, bot, 0)" in liveb
+                and "BaseKnotTPLevel(entry, dir, 0, tk, 0)" in liveb))
+    out.append(("... and a drag follows the SAME anchor the release Sync will land on",
+                re.search(r"datetime\s+an\s*=\s*g_bkBoxes\[k\]\.storyT;", drag) is not None
+                and "g_bkBoxes[k].baseTFMin, entry, sl, an);" in drag
+                and "g_bkBoxes[k].baseTFMin, tk, an);" in drag))
+    out.append(("... and the box hover's own sentences ride the SAME anchor",
+                "BaseKnotOffsetIsHunt(nd.kind, wTF, nd.anchor)" in line
+                and "BaseKnotCapClause(wTF, wHu, top, bot, nd.anchor)" in line))
+    #--- the pump: the plan is computed AT the row's anchor ---------------------------
+    ev = strip_comments(read(EVENT))
+    out.append(("the pump asks for the pairs and computes each row at ITS anchor",
+                "datetime anchors[BK_ENG_ROW_MAX];" in ev
+                and "int n = BaseKnotEngNeeds(mins, anchors);" in ev
+                and "TradePlanCompute(mins[i], plan, anchors[i])" in ev
+                and "BaseKnotEngPush(mins, anchors, pips, hunts, tp1, tp2, tp3, n);" in ev
+                and "BaseKnotAbilityPush(mins[i], anchors[i], ab[i]);" in ev))
+    #--- the ATR side: a SIBLING read, keyed by the bar's own TIME --------------------
+    atr = read(ATR)
+    out.append(("the anchored ATR is a SIBLING of the live read, never a shift on it",
+                "ATRWeightedComposite(tf, 1)" in (body(atr, "double CalculateWeightedATR(") or "")
+                and "return CalculateWeightedATR(t);" in (body(atr, "double CalculateWeightedATRAt(") or "")))
+    out.append(("... keyed by the BAR'S OWN TIME (a shift-keyed cache would serve a stale answer)",
+                "barTime = iTime(Symbol(), t, shift);" in (body(atr, "double CalculateWeightedATRAt(") or "")))
+    out.append(("... and its cache is big enough for the pump's own ask list (%d rows)"
+                % ASOF_ROW_MAX,
+                "#define ATR_ANCHOR_CACHE_SIZE %d" % ASOF_ROW_MAX in atr))
     return out
 
 
@@ -2102,14 +2314,20 @@ def check_note_life():
                 "BaseKnotNodeKindOfLength(liveClass," in live
                 and "BaseKnotBaseTFMin(spLive." in live))
     out.append(("... on the SAME rule the committed read uses (one length, two callers)",
-                "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height)"
+                "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)"
                 in (body(src, "void BaseKnotNodeRead(") or "")
                 # P-BK-77/78: and BOTH callers read the type against the LADDER's own
                 # answer — the live preview's class comes off the same whole-ladder search,
                 # with NO extra TF argument, and its type is read on THAT class.
                 and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*spLive\.tStart,\s*spLive\.tExit,"
                               r"\s*top,\s*bot\)", live) is not None
-                and "BaseKnotAbilityGet(liveClass," in live))
+                # P-BK-79: and at the SAME KIND OF KEY — the live preview's anchor is 0 (the
+                # LIVE row, the only one it can have before a base exists), while the committed
+                # read carries the box' own `storyT`. A preview that copied `nd.anchor` or a
+                # committed read that fell back to 0 would draw the other one's numbers.
+                and "BaseKnotNodeKindOfLength(liveClass, ndLive.height, ndLive.anchor)" in live
+                and "ndLive.anchor = 0;" in live
+                and "BaseKnotAbilityGet(liveClass, ndLive.anchor," in live))
     out.append(("... while the STORY stays a committed-only read (no side, no story TF live)",
                 "ndLive.side = 0;" in live and "ndLive.storyTF = 0;" in live))
     wib = strip_comments(body(src, "void BaseKnotWriteInfo(") or "")
@@ -2255,7 +2473,10 @@ def main():
           "(P-BK-55), and it wears the label family's own font, size grid and text rung "
           "(P-BK-56),\nand the note has TWO HOMES the user picks between (the box' corner "
           "or the label family's own column - P-BK-58), with ONE decision owner, ONE "
-          "object at a time, and the slot PUSHED IN by the label module")
+          "object at a time, and the slot PUSHED IN by the label module,\n"
+          "and EVERY number it draws is read AS OF the box' own bar - one row per "
+          "(TF, anchor), the anchor being the story's own last candle, so a box keeps "
+          "the type and the levels ITS market gave it (P-BK-79)")
     return 0
 
 
@@ -2368,7 +2589,7 @@ def selftest():
     # P-BK-75/76/78: the HEIGHT owns the type, against the LADDER's three ATRs — every way
     # back to the retired read, and every way to a knife-edge boundary or a band out of
     # thin air, is caught
-    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTimeMin, nd.height);",
+    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor);",
                 "   if(nd.crossed)        nd.kind = BK_NODE_OTR;\n"
                 "   else if(rebreaks > 0) nd.kind = BK_NODE_CTR;\n"
                 "   else                  nd.kind = BK_NODE_ETR;")
@@ -2376,7 +2597,7 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTimeMin, nd.height);",
+    with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor);",
                 "   nd.kind = BK_NODE_FTR;   // the type, guessed")
     cases.append(("a type that is not read from the box' height is caught",
                   bool(fires(check_node))))
@@ -2422,7 +2643,7 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("   if(!BaseKnotAbilityGet(nodeTFMin, trig, pat, str)) return BK_NODE_NONE;",
+    with_source("   if(!BaseKnotAbilityGet(nodeTFMin, anchor, trig, pat, str)) return BK_NODE_NONE;",
                 "   trig = trig; pat = pat; str = str;   // a band out of thin air")
     cases.append(("a TF whose ATR was never pushed getting a band is caught",
                   bool(fires(check_node))))
@@ -2434,8 +2655,8 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("BaseKnotNodeKindOfLength(nodeTimeMin, nd.height)",
-                "BaseKnotNodeKindOfLength(Period(), nd.height)")
+    with_source("BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)",
+                "BaseKnotNodeKindOfLength(Period(), nd.height, nd.anchor)")
     cases.append(("counting the height against the CHART's TF instead of the node's own is caught",
                   bool(fires(check_node))))
     reset()
@@ -2707,7 +2928,7 @@ def selftest():
                   bool(fires(check_leg_fit))))
     reset()
 
-    with_source("   double p = BaseKnotLegPick(BaseKnotEngPips(tfMin), BaseKnotNodeEngPips(top, bot));",
+    with_source("   double p = BaseKnotLegPick(BaseKnotEngPips(tfMin, anchor), BaseKnotNodeEngPips(top, bot));",
                 "   double p = BaseKnotEngPips(tfMin);   // the R, off the plan again")
     cases.append(("a printed R that ignores the ceiling is caught", bool(fires(check_leg_fit))))
     reset()
@@ -2742,6 +2963,48 @@ def selftest():
                 "   // the retired pair is gone, not restorable")
     cases.append(("a retired unbounded pair that was rewritten away is caught",
                   bool(fires(check_leg_fit))))
+    reset()
+
+    # P-BK-79: every number is read AS OF the box' own bar — the pair, the read, the pump
+    # and the call sites. Each way back to a TF-keyed (live) read is caught.
+    with_source("         for(int j = 0; j < n; j++) if(mins[j] == asked[a] && anchors[j] == an) { dup = true; break; }",
+                "         for(int j = 0; j < n; j++) if(mins[j] == asked[a]) { dup = true; break; }")
+    cases.append(("an ask list that dedups on the TF alone (two boxes, one row) is caught",
+                  bool(fires(check_asof))))
+    reset()
+
+    with_source("      if(s_bkEngTF[i] == tf && s_bkEngAnchor[i] == anchor) return s_bkEngPips[i];",
+                "      if(s_bkEngTF[i] == tf) return s_bkEngPips[i];   // the TF alone, live again")
+    cases.append(("a reader that matches on the TF alone is caught", bool(fires(check_asof))))
+    reset()
+
+    with_source("      if(!TradePlanCompute(mins[i], plan, anchors[i]))",
+                "      if(!TradePlanCompute(mins[i], plan))   // the LIVE row again", path=EVENT)
+    cases.append(("a pump that computes every row at the live bar is caught",
+                  bool(fires(check_asof))))
+    reset()
+
+    with_source("   nd.anchor = (anchor > 0 ? anchor : 0);",
+                "   nd.anchor = 0;   // the anchor, re-derived from nowhere")
+    cases.append(("a read that drops the anchor it was handed is caught",
+                  bool(fires(check_asof))))
+    reset()
+
+    with_source("   BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);",
+                "   BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, 0);")
+    cases.append(("a committed box drawn off the LIVE row is caught", bool(fires(check_asof))))
+    reset()
+
+    with_source("      if(tfNew[i] != s_bkEngTF[i] || anNew[i] != s_bkEngAnchor[i] ||",
+                "      if(tfNew[i] != s_bkEngTF[i] ||")
+    cases.append(("a moved anchor that no longer re-arms the gate is caught",
+                  bool(fires(check_asof))))
+    reset()
+
+    with_source("#define BK_ENG_ROW_MAX 48",
+                "#define BK_ENG_ROW_MAX 48\n#define BK_ENG_TF_MAX 10")
+    cases.append(("the half-renamed TF-only bound coming back is caught",
+                  bool(fires(check_asof))))
     reset()
 
     # P-BK-53: the chart's own label is a NAME — the proof belongs to the hover
@@ -2786,7 +3049,7 @@ def selftest():
                   bool(fires(check_note_fields))))
     reset()
 
-    with_source("   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips);",
+    with_source("   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor);",
                 "   string tpTip = \"\";   // the hover lost the legs")
     cases.append(("a hover that dropped the plan's own legs is caught",
                   bool(fires(check_note_fields))))
@@ -2899,7 +3162,7 @@ def selftest():
     reset()
 
     # P-BK-55/78: the sizing note stops answering the type again (a class with no type)
-    with_source("   ndLive.kind   = BaseKnotNodeKindOfLength(liveClass, ndLive.height);",
+    with_source("   ndLive.kind   = BaseKnotNodeKindOfLength(liveClass, ndLive.height, ndLive.anchor);",
                 "   ndLive.kind   = BK_NODE_NONE;   // the sizing note claims no type again")
     cases.append(("a sizing note that answers no type is caught",
                   bool(fires(check_note_life))))

@@ -159,12 +159,18 @@ double TradePlanRound1(const double x) { return MathRound(x * 10.0) / 10.0; }
 // Calls CalculateWeightedATR (ATRCalculations.mqh) — the Trex SMA composite
 // (weights 1/1/2/3/5/8 over periods 5/10/21/66/132/264, W1/MN overrides;
 // P-ATR-02), shift=1 on every leg. Same source the strip display uses.
-double TradePlanStripPips(const int tfMinutes)
+//
+// P-BK-79 (2026-09-17): `anchor` IS THE BAR THE PLAN IS READ AT. 0 (the default, and
+// every caller that does not pass one) = the LIVE read, byte-identical to before. A
+// datetime = P-BK-79's as-of read, so a knot's EngSL/HuntSL/SL/TP are the ones the
+// market showed when the knot happened instead of the ones it shows now — the user's
+// own report («atr … با گذشت زمان ممکن 40 بشه یا 10 بشه»).
+double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
 {
    double pip = GetCachedPipSize();
    if(IsZero(pip, EPSILON_PRICE)) return 0.0;
    ENUM_TIMEFRAMES tf = CompatTF(tfMinutes);
-   double atr = CalculateWeightedATR(tf);
+   double atr = (anchor > 0 ? CalculateWeightedATRAt(tf, anchor) : CalculateWeightedATR(tf));
    if(atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;
 }
@@ -183,35 +189,35 @@ double TradePlanStripPips(const int tfMinutes)
 //   Trigger ladder (kept for labels only): M1←M1 M5←M1 M15←M1 H1←M5
 //   H4←M15 D1←H1 W1←H4 MN←D1
 // ─────────────────────────────────────────────────────────────────────────────
-double TradePlanEngTrue(const int chartMinutes, int &trigMinOut)
+double TradePlanEngTrue(const int chartMinutes, int &trigMinOut, const datetime anchor = 0)
 {
    int cm = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
    trigMinOut = TradePlanTriggerMinutes(cm);
 
-   double tr = TradePlanStripPips(cm);      // own-TF composite TR
+   double tr = TradePlanStripPips(cm, anchor);      // own-TF composite TR
    return (tr > 0.0) ? tr / TRADEPLAN_ENG_DIVISOR : 0.0;
 }
 
 // EngOf(TF): Eng of any TF (used by SL engine for the structure TF).
-double TradePlanEngOf(const int tfMinutes)
+double TradePlanEngOf(const int tfMinutes, const datetime anchor = 0)
 {
    int dummy = 0;
-   return TradePlanEngTrue(tfMinutes, dummy);
+   return TradePlanEngTrue(tfMinutes, dummy, anchor);
 }
 
 // Legacy alias.
-double TradePlanCompositeEngOf(const int tfMinutes)
+double TradePlanCompositeEngOf(const int tfMinutes, const datetime anchor = 0)
 {
-   return TradePlanEngOf(tfMinutes);
+   return TradePlanEngOf(tfMinutes, anchor);
 }
 
 // SL = 1.20 × Eng(StructureTF). Unrounded. 0 when not ready.
 // W1/MN structure clamps to MN; Eng(MN) = TR_composite(MN)/divisor (parity,
 // R-ENGPARITY) naturally produces the macro SL — no special cap needed.
-double TradePlanSLTrue(const int chartMinutes)
+double TradePlanSLTrue(const int chartMinutes, const datetime anchor = 0)
 {
    int strMin = TradePlanStructureMinutes(chartMinutes);
-   double engStr = TradePlanEngOf(strMin);
+   double engStr = TradePlanEngOf(strMin, anchor);
    if(engStr <= 0.0) return 0.0;
    return TRADEPLAN_SL_COEFF * engStr;
 }
@@ -251,7 +257,9 @@ struct STradePlan
 // Full computation. SL = 1.2 × Eng(StructureTF).
 // All TP/Hunter/SB legs derive from unrounded slTrue / engTrue; Eng/Hunter keep ONE
 // decimal (TradePlanRound1) while SL/TP/SB stay whole pips.
-bool TradePlanCompute(const int chartMinutes, STradePlan &p)
+// P-BK-79: `anchor` (0 = live) is handed to EVERY measure this plan takes, so an as-of
+// plan is the same plan read at another bar — never a mix of past and present.
+bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anchor = 0)
 {
    p.valid    = false;
    p.chartMin = TradePlanLadderMinutes(TradePlanLadderIndex(chartMinutes));
@@ -262,7 +270,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    p.hunter = 0.0; p.eng = 0.0; p.sb1 = 0; p.sb2 = 0;
 
    // Own strip ATR first: the alt path below derives EVERYTHING from it.
-   p.ownPips = TradePlanStripPips(p.chartMin);
+   p.ownPips = TradePlanStripPips(p.chartMin, anchor);
 
    bool altForm = (inpUseAltTradeFormulas && p.ownPips > 0.0);
    if(altForm)
@@ -276,7 +284,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    else
    {
       // --- SL = 1.20 × Eng(StructureTF) ---
-      p.basePips = TradePlanEngOf(p.strMin);   // SessionEng of structure TF
+      p.basePips = TradePlanEngOf(p.strMin, anchor);   // SessionEng of structure TF
       if(p.basePips <= 0.0) return false;
       p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
    }
@@ -298,7 +306,7 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p)
    }
    else
    {
-      double eT = TradePlanEngTrue(p.chartMin, p.trigMin);
+      double eT = TradePlanEngTrue(p.chartMin, p.trigMin, anchor);
       if(eT <= 0.0) return false;
       p.engTrue = eT;
       p.eng     = TradePlanRound1(eT);
@@ -355,11 +363,14 @@ int s_tpFzSL = 0, s_tpFzTP1 = 0, s_tpFzTP2 = 0, s_tpFzTP3 = 0;
 int s_tpFzSB1 = 0, s_tpFzSB2 = 0;
 double s_tpFzSLTrue = 0.0;
 
-bool TradePlanComputeLive(const int chartMinutes, STradePlan &p)
+// P-BK-79: the freeze key carries the ANCHOR, or an as-of plan would be served the live
+// plan's frozen legs (and vice versa) whenever the two share a bar and a symbol.
+bool TradePlanComputeLive(const int chartMinutes, STradePlan &p, const datetime anchor = 0)
 {
-   if(!TradePlanCompute(chartMinutes, p)) return false;
+   if(!TradePlanCompute(chartMinutes, p, anchor)) return false;
    datetime bar0 = iTime(Symbol(), Period(), 0);
-   string key = Symbol() + "|" + IntegerToString(Period()) + "|" + TimeToString(bar0);
+   string key = Symbol() + "|" + IntegerToString(Period()) + "|" + TimeToString(bar0) +
+                "|" + IntegerToString((long)anchor);
    if(key == s_tpFzKey && s_tpFzKey != "")
    {
       // Restore frozen slow legs; keep live Eng/Hunter from fresh Compute.

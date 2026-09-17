@@ -1011,30 +1011,39 @@ bool TrexBatchOrient(double &highArr[], double &lowArr[], double &closeArr[],
 }
 
 // ONE bulk-copy engine for the professor's SMA family. Computes
-// `out[i] = TrexSMALeg(tf, periods[i], 1)` for every requested period with
+// `out[i] = TrexSMALeg(tf, periods[i], shift)` for every requested period with
 // three copy calls per series instead of ~4 series calls per bar. Callers: the
 // composite below (the six composite periods) and the [ATRLEGS] diagnostic's
 // s-legs (ten neighbour periods x nine timeframes, which is the single biggest
 // series-read consumer in the program).
-void TrexSMALegsBatch(const ENUM_TIMEFRAMES tf, const int &periods[], double &out[])
+//
+// P-BK-79 (2026-09-17): `shift` IS A PARAMETER NOW, defaulting to 1 so every existing
+// caller keeps the very window it had. The bulk copy still starts at bar 0 (the
+// orientation guard's `newest` test is unchanged); the window is simply WIDENED by the
+// shift, and each leg reads at that shift — so an as-of read is the same arithmetic on
+// the same data, just anchored lower. `TrexSMALeg` already took a shift (P-ATR-02's
+// scalar reference leg), so the fallback path needed nothing.
+void TrexSMALegsBatch(const ENUM_TIMEFRAMES tf, const int &periods[], double &out[],
+                      const int shift = 1)
 {
     int n = ArraySize(periods);
     ArrayResize(out, n);
     ArrayInitialize(out, 0.0);
     if(n <= 0) return;
 
+    int sh = (shift > 0 ? shift : 1);   // shift 0 is the FORMING bar — never a leg's anchor
     int nb = iBars(Symbol(), tf);
     if(nb <= 10) return;
 
-    // Window the legs actually need: the oldest leg reads shift `period` plus its
-    // own previous close at `period + 1`, so period + 2 bars cover every leg.
+    // Window the legs actually need: the oldest leg reads shift `sh + period` plus its
+    // own previous close one further back, so period + sh + 2 bars cover every leg.
     int maxPeriodNeeded = 0;
     for(int i = 0; i < n; i++)
     {
-        if(nb > periods[i] + 1 && periods[i] > maxPeriodNeeded) maxPeriodNeeded = periods[i];
+        if(nb > periods[i] + sh && periods[i] > maxPeriodNeeded) maxPeriodNeeded = periods[i];
     }
     if(maxPeriodNeeded == 0) return;
-    int need = maxPeriodNeeded + 2;
+    int need = maxPeriodNeeded + sh + 2;
 
     // ONE bulk copy per series (was ~4 scalar calls per bar). CopyTime needs a
     // datetime[] (MQL4 does not convert array types), the prices need double[].
@@ -1064,38 +1073,40 @@ void TrexSMALegsBatch(const ENUM_TIMEFRAMES tf, const int &periods[], double &ou
 
     for(int i = 0; i < n; i++)
     {
-        if(nb <= periods[i] + 1) continue;   // history gate, as before
-        double val = batchOk ? TrexLegFromBatch(highArr, lowArr, closeArr, periods[i], 1)
-                             : TrexSMALeg(tf, periods[i], 1);
+        if(nb <= periods[i] + sh) continue;   // history gate, as before (widened by the shift)
+        double val = batchOk ? TrexLegFromBatch(highArr, lowArr, closeArr, periods[i], sh)
+                             : TrexSMALeg(tf, periods[i], sh);
         out[i] = (val > 0.0) ? val : 0.0;
     }
 }
 
-void CalculateATRBatchTrex(double &results[], const ENUM_TIMEFRAMES tf) {
+void CalculateATRBatchTrex(double &results[], const ENUM_TIMEFRAMES tf,
+                           const int shift = 1) {
     ArrayResize(results, 6);
     ArrayInitialize(results, 0.0);
 
+    int sh = (shift > 0 ? shift : 1);
     int nb = iBars(Symbol(), tf);
     if(nb <= 10) return;
 
     if(tf == PERIOD_MN1)
     {
-        if(nb <= TREX_MN_PERIOD + 1) return;
-        double v = iATR(Symbol(), tf, TREX_MN_PERIOD, 1);
+        if(nb <= TREX_MN_PERIOD + sh) return;
+        double v = iATR(Symbol(), tf, TREX_MN_PERIOD, sh);
         results[0] = (v != EMPTY_VALUE && v > 0.0) ? v : 0.0;
         return;
     }
     if(tf == PERIOD_W1)
     {
-        if(nb <= TREX_W1_PERIOD + 1) return;
-        double w = iATR(Symbol(), tf, TREX_W1_PERIOD, 1);
+        if(nb <= TREX_W1_PERIOD + sh) return;
+        double w = iATR(Symbol(), tf, TREX_W1_PERIOD, sh);
         results[0] = (w != EMPTY_VALUE && w > 0.0) ? w : 0.0;
         return;
     }
 
     int periods[] = {ATR_PERIOD_1, ATR_PERIOD_2, ATR_PERIOD_3,
                      ATR_PERIOD_4, ATR_PERIOD_5, ATR_PERIOD_6};
-    TrexSMALegsBatch(tf, periods, results);
+    TrexSMALegsBatch(tf, periods, results, sh);
 }
 
 //+------------------------------------------------------------------+
@@ -1123,6 +1134,33 @@ int GetTriggerDurationSeconds(ENUM_TIMEFRAMES tf) {
 //| Calculate Weighted ATR                                           |
 //| v3.15: Dynamic fractal caching based on Trigger Timeframe        |
 //+------------------------------------------------------------------+
+// P-BK-79 (2026-09-17): THE COMPOSITE ITSELF, at any shift — ONE owner for both reads.
+// It is the exact block `CalculateWeightedATR` always ran (P-ATR-02's weights over the six
+// Trex legs), lifted out so the live read (shift 1) and the as-of read below cannot drift:
+// a weight or a period changed here moves both, and the `ArraySize < 6` refusal stays a
+// ZERO rather than a partial average.
+double ATRWeightedComposite(const ENUM_TIMEFRAMES tf, const int shift)
+{
+    double atrValues[];
+    CalculateATRBatchTrex(atrValues, tf, shift);
+
+    if(ArraySize(atrValues) < 6) return 0.0;
+
+    double weightedSum = 0.0;
+    int totalWeight = 0;
+    int weights[] = {ATR_WEIGHT_1, ATR_WEIGHT_2, ATR_WEIGHT_3,
+                     ATR_WEIGHT_4, ATR_WEIGHT_5, ATR_WEIGHT_6};
+
+    for(int i = 0; i < 6; i++) {
+        if(!IsZero(atrValues[i], EPSILON_PRICE)) {
+            weightedSum += atrValues[i] * weights[i];
+            totalWeight += weights[i];
+        }
+    }
+
+    return SafeDivide(weightedSum, (double)totalWeight, 0.0, EPSILON_GENERAL);
+}
+
 double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     // If tf is PERIOD_CURRENT, use effective timeframe (respects lock)
     if(tf == PERIOD_CURRENT) {
@@ -1159,25 +1197,7 @@ double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
         }
     }
     
-    // Calculate using Wilder's via iATR
-    double atrValues[];
-    CalculateATRBatchTrex(atrValues, tf);
-    
-    if(ArraySize(atrValues) < 6) return 0.0;
-    
-    double weightedSum = 0.0;
-    int totalWeight = 0;
-    int weights[] = {ATR_WEIGHT_1, ATR_WEIGHT_2, ATR_WEIGHT_3, 
-                     ATR_WEIGHT_4, ATR_WEIGHT_5, ATR_WEIGHT_6};
-    
-    for(int i = 0; i < 6; i++) {
-        if(!IsZero(atrValues[i], EPSILON_PRICE)) {
-            weightedSum += atrValues[i] * weights[i];
-            totalWeight += weights[i];
-        }
-    }
-    
-    double result = SafeDivide(weightedSum, (double)totalWeight, 0.0, EPSILON_GENERAL);
+    double result = ATRWeightedComposite(tf, 1);
     
     if(IsValidPrice(result, EPSILON_PRICE)) {
         UpdateMultiTFCache(tf, result, currentBars);
@@ -1185,6 +1205,81 @@ double CalculateWeightedATR(ENUM_TIMEFRAMES tf = PERIOD_CURRENT) {
     }
     
     return 0.0;
+}
+
+//+------------------------------------------------------------------+
+//| P-BK-79 — THE AS-OF READ: the composite at a bar in the PAST.    |
+//+------------------------------------------------------------------+
+// The user: «مثلا atr یک دقیقه زمان گره بوده مثلا 20 … با گذشت زمان ممکن 40 بشه یا 10 بشه
+// که اینطوری نمیشه نوع گره دقیق مشخص کرد». He is right, and it bites the knot twice: its
+// TYPE compares the box' height against three ladder ATRs, and its EngSL / HuntSL / SL /
+// TP1..3 all come off the same composite — so a box read with the LIVE ATR changes its mind
+// every time the market's volatility moves. This reads the SAME composite at the bar the
+// box' own story ended on, so a box' numbers are fixed the moment its base is.
+//
+// It is a SIBLING of `CalculateWeightedATR`, not a parameter on it, on purpose: the live
+// cache below holds TEN rows with LRU eviction, so mixing anchors into it would evict the
+// live rows and make the whole chart pay for the boxes. The live path is therefore
+// byte-identical to before this change; only this one is new.
+//
+// KEYED BY THE BAR'S TIME, never by a shift: shift 5 means "five bars back from now", which
+// points at a different bar once one closes — a shift-keyed cache would serve a stale
+// answer. `anchor <= 0` means "no anchor": the live read, so a caller with no story yet
+// (the sizing preview before its first base) degrades to today's behaviour instead of
+// inventing a bar.
+// SIZED FOR THE PUMP'S OWN ASK LIST: one box asks up to four rungs (its class, the two
+// above it, its measure TF) at its own anchor, and the tool's table holds up to
+// BK_ENG_ROW_MAX of them — a cache smaller than that would evict a row it is about to be
+// asked for again on the very next pump round.
+#define ATR_ANCHOR_CACHE_SIZE 48
+struct ATRAnchorEntry
+{
+   ENUM_TIMEFRAMES tf;
+   datetime        anchor;   // the bar's own TIME (iTime of the resolved shift)
+   double          atr;
+   bool            valid;
+};
+static ATRAnchorEntry g_atrAnchorCache[ATR_ANCHOR_CACHE_SIZE];
+static int           g_atrAnchorCount = 0;
+
+double CalculateWeightedATRAt(const ENUM_TIMEFRAMES tf, const datetime anchor)
+{
+   ENUM_TIMEFRAMES t = (tf == PERIOD_CURRENT ? CompatTF(GetEffectiveTimeframe()) : tf);
+   if(anchor <= 0) return CalculateWeightedATR(t);   // no anchor: the live read, unchanged
+
+   int shift = iBarShift(Symbol(), t, anchor, false);
+   if(shift <= 0) shift = 1;   // the anchor IS the forming bar (or lies ahead): the newest CLOSED bar
+   datetime barTime = iTime(Symbol(), t, shift);
+   if(barTime <= 0) barTime = anchor;   // series not ready — key on what we were asked for
+
+   for(int i = 0; i < g_atrAnchorCount; i++)
+      if(g_atrAnchorCache[i].tf == t && g_atrAnchorCache[i].anchor == barTime &&
+         g_atrAnchorCache[i].valid)
+         return g_atrAnchorCache[i].atr;
+
+   double result = ATRWeightedComposite(t, shift);
+   if(!IsValidPrice(result, EPSILON_PRICE)) return 0.0;   // an ABSENCE, never a cached zero
+
+   int slot = -1;
+   for(int i = 0; i < g_atrAnchorCount; i++)
+      if(g_atrAnchorCache[i].tf == t && g_atrAnchorCache[i].anchor == barTime) { slot = i; break; }
+   if(slot < 0)
+   {
+      if(g_atrAnchorCount < ATR_ANCHOR_CACHE_SIZE) slot = g_atrAnchorCount++;
+      else
+      {
+         // Full: drop the oldest row (rows are appended in first-use order, and a box'
+         // anchor is reused every pump round, so this only evicts boxes that went away).
+         for(int i = 1; i < ATR_ANCHOR_CACHE_SIZE; i++)
+            g_atrAnchorCache[i - 1] = g_atrAnchorCache[i];
+         slot = ATR_ANCHOR_CACHE_SIZE - 1;
+      }
+   }
+   g_atrAnchorCache[slot].tf     = t;
+   g_atrAnchorCache[slot].anchor = barTime;
+   g_atrAnchorCache[slot].atr    = result;
+   g_atrAnchorCache[slot].valid  = true;
+   return result;
 }
 
 //+------------------------------------------------------------------+

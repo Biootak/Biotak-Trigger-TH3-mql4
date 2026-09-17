@@ -1407,7 +1407,7 @@ def selftest():
          "                       (int)ObjectGetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE) + (nx - s_PnlMoveOx));"),
         ("interaction", "Biotak Trigger TH3.mq4", "    P4ReportSlow(\"OnDeinit reason=\"", "    //P4ReportSlow(\"OnDeinit reason=\""),
         ("atr", "Biotak/ATRCalculations.mqh",
-         "    TrexSMALegsBatch(tf, periods, results);",
+         "    TrexSMALegsBatch(tf, periods, results, sh);",
          "    for(int i = 0; i < 6; i++) { if(nb > periods[i] + 1) results[i] = TrexSMALeg(tf, periods[i], 1); }"),
         ("atr", "Biotak/ATRCalculations.mqh",
          "            batchOk = TrexBatchOrient(highArr, lowArr, closeArr, timeArr, need,",

@@ -2667,22 +2667,27 @@ string P4InitLedgerTag(const uint indMs, const uint uiMs)
 //+------------------------------------------------------------------+
 void BaseKnotEngPump()
 {
-   int    mins[BK_ENG_TF_MAX];
-   double pips[BK_ENG_TF_MAX];
-   double hunts[BK_ENG_TF_MAX];   // P-BK-51: HuntSL, the second measure a knot draws with
-   double tp1[BK_ENG_TF_MAX];
-   double tp2[BK_ENG_TF_MAX];
-   double tp3[BK_ENG_TF_MAX];
-   double ab[BK_ENG_TF_MAX];      // P-BK-75: that TF's composite ATR in PRICE units
+   int      mins[BK_ENG_ROW_MAX];
+   datetime anchors[BK_ENG_ROW_MAX];   // P-BK-79: the bar each row is read at (0 = the live row)
+   double   pips[BK_ENG_ROW_MAX];
+   double   hunts[BK_ENG_ROW_MAX];   // P-BK-51: HuntSL, the second measure a knot draws with
+   double   tp1[BK_ENG_ROW_MAX];
+   double   tp2[BK_ENG_ROW_MAX];
+   double   tp3[BK_ENG_ROW_MAX];
+   double   ab[BK_ENG_ROW_MAX];      // P-BK-75: that TF's composite ATR in PRICE units
    ArrayInitialize(ab, 0.0);      // explicit: the push below reads it for every `mins`
-   int n = BaseKnotEngNeeds(mins);
-   for(int i = 0; i < n && i < BK_ENG_TF_MAX; i++)
+   int n = BaseKnotEngNeeds(mins, anchors);
+   for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
    {
       // P-BK-50: ONE plan call feeds all four pushes (it computes the strip ATRs
       // this loop used to ask for), and a plan that is not warm pushes ZEROES — the
       // absence the tool then reports instead of drawing a guessed level.
+      // P-BK-79: AND AT THE ROW'S OWN ANCHOR. `anchors[i]` is the box' `storyT` — the bar
+      // its story ended on — so the ATRs, the EngSL, the Hunter leg and the three targets
+      // are the ones THAT bar's market gave, not today's drifted ones («با گذشت زمان ممکن
+      // 40 بشه یا 10 بشه»). 0 stays the live row the sizing preview asks for.
       STradePlan plan;
-      if(!TradePlanCompute(mins[i], plan))
+      if(!TradePlanCompute(mins[i], plan, anchors[i]))
       {
          pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
          ab[i]   = 0.0;
@@ -2705,10 +2710,13 @@ void BaseKnotEngPump()
       // number the strip and the trade block read), so the knot's type is decided by
       // the SAME ATR the rest of the chart is drawn with — not a second reading that
       // could drift from it. Pips -> price here, because the knot's box is in prices.
+      // P-BK-79: at THIS ROW'S anchor, so `plan.ownPips` is the anchored composite — the
+      // same number the row's own EngSL was divided out of, and the number the box' type
+      // is read against (BaseKnotAbilityGet at the same anchor).
       double pip = GetCachedPipSize();
       ab[i] = (plan.ownPips > 0.0 && pip > 0.0) ? plan.ownPips * pip : 0.0;
    }
-   BaseKnotEngPush(mins, pips, hunts, tp1, tp2, tp3, n);
+   BaseKnotEngPush(mins, anchors, pips, hunts, tp1, tp2, tp3, n);
    // P-BK-75 — THE NODE'S TYPE IS ITS HEIGHT AGAINST THE MOVEMENT ABILITIES OF ITS OWN
    // TF (user: «به جای th از atr استفاده بشه»), so the pump hands ONE number per TF in —
    // that TF's ATR — exactly as it already hands EngSL in: one row per TF the boxes
@@ -2717,9 +2725,10 @@ void BaseKnotEngPump()
    // tool's own table, never here: a second place that halved an ATR would be a second
    // owner of the rule. A TF whose ATR is not warm pushes 0, which BaseKnotAbilityGet
    // reads as an ABSENCE: the type stays BK_NODE_NONE and the tooltip says so.
+   // P-BK-79: one row per (TF, anchor) — the same list, the same keys.
    BaseKnotAbilityReset();
-   for(int i = 0; i < n && i < BK_ENG_TF_MAX; i++)
-      BaseKnotAbilityPush(mins[i], ab[i]);
+   for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
+      BaseKnotAbilityPush(mins[i], anchors[i], ab[i]);
 }
 
 int OnCalculateHandler(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[]) {
