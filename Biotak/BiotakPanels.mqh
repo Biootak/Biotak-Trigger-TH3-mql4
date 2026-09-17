@@ -2728,7 +2728,7 @@ void BkSecRowDef(const int sec,int &kind,string &label,
       // Same shape as the ATR card's COUNT SIZE / TRADE SIZE rows: 0 = follow
       // the card's own text size, so the freed number is the user's.
       else if(sec==6)  { label="INFO SIZE"; minV=0; maxV=24; unit="pt"; }
-      else             { kind=2; label="TEMPLATE"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
+      else             { kind=2; label="TEMPLATE"; opts="Navy|Ocean|Mono|Custom"; minV=0; maxV=3; }
    }
    else   // STYLE
    {
@@ -2811,7 +2811,7 @@ double BkSecDefVal(const int sec)
    {
       if(sec==0) return FactoryDefault(FF_BK_TARGET_R);
       if(sec==4) return FactoryDefault(FF_BK_SHOW_INFO);
-      if(sec==5) return 0;   // TEMPLATE (Amber shipped)
+      if(sec==5) return 0;   // TEMPLATE (Navy shipped — P-BK-69)
       if(sec==6) return FactoryDefault(FF_BK_INFO_SIZE);   // P-BK-27 (Reset → follow)
       return 3;              // COLOR rows → palette sentinel
    }
@@ -3070,7 +3070,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       if(row==0)       { kind=4; label="BORDER COLOR"; }
       else if(row==1)  { label="TP COUNT"; minV=1; maxV=BK_TP_PLAN_MAX; }   // P-BK-50
       else if(row==2)  { kind=2; label="INFO"; opts="Auto|Show|Corner"; minV=0; maxV=2; }   // P-BK-58 (same mirror as card 12)
-      else if(row==3)  { kind=2; label="PRESET"; opts="Amber|Ocean|Mono|Custom"; minV=0; maxV=3; }
+      else if(row==3)  { kind=2; label="PRESET"; opts="Navy|Ocean|Mono|Custom"; minV=0; maxV=3; }
       else if(row==4)  { kind=2; label="LOCK"; opts="Off|On"; minV=0; maxV=1; }
       else if(row==5)  { kind=5; label="DELETE"; opts="DEL"; }   // ACTION → delete held box
       else             { kind=5; label="MORE"; opts="12"; }      // NAV → full Base Box card
@@ -3283,7 +3283,7 @@ struct BkPreset
    color sl;
    color tp;
    color fill;    // TV-parity 2026-09-07: Style-tab bucket
-   int   fillTr;  // (Amber = 100 invisible = the shipped hollow look)
+   int   fillTr;  // (the shipped preset = 100 invisible = the hollow look)
    color text;    // TV-parity: Text-tab color
    int   textSize;
    int   bi;      // 0 Reg · 1 Bold · 2 Italic · 3 B+I
@@ -3306,9 +3306,9 @@ void BkPresetGet(const int i, BkPreset &p)
       p.fill=C'176,190,197'; p.fillTr=88;
       p.text=C'207,216,220'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
-   else               // 0 Amber (shipped look)
+   else               // 0 Navy (the shipped look — P-BK-69)
    {
-      p.border=C'255,171,0'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-50
+      p.border=C'0,0,139'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-69: the mark's ink (and its points') — dark blue
       p.entry=C'46,139,87'; p.sl=C'220,50,50'; p.tp=C'30,144,255';
       p.fill=C'255,171,0'; p.fillTr=100;
       p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
@@ -3483,7 +3483,7 @@ double PnlDefValSet(const int item,const int row)
       case 13: if(row==0) return 3;   // Mini BORDER COLOR → palette sentinel
                if(row==1) return FactoryDefault(FF_BK_TARGET_R);
                if(row==2) return FactoryDefault(FF_BK_SHOW_INFO);
-               if(row==3) return 0;   // Mini PRESET (Amber shipped)
+               if(row==3) return 0;   // Mini PRESET (Navy shipped — P-BK-69)
                if(row==4) return 0;   // Mini LOCK off
                return 0;                        // action/nav rows
   }

@@ -1960,12 +1960,22 @@ def check_level_foreign_02(o):
         fail("level-foreign",
              "a build that produced nothing still reconciles: the whole family is deleted on a bad frame")
         return
-    if "if(ProducedLadderName(nm, produced, pc)) continue;" not in body:
+    # `fn_code`'s own lesson, one step further: the family has TWO collection sites (the
+    # zone-band branch and the general path), so a SUBSTRING test on either promise is
+    # satisfied by the SURVIVOR while the other site deletes the live ladder or renumbers
+    # the list mid-walk (both negative controls sat here unanswered until now). The two
+    # promises are asserted as BALANCES instead: one exact-question guard per COLLECT
+    # site (an append to `doomed`), and no delete fed the walk's own name.
+    guards = body.count("if(ProducedLadderName(nm, produced, pc)) continue;")
+    collects = len(re.findall(r"ArrayResize\(doomed, nd \+ 1\);[ \t]*\n[ \t]*doomed\[nd\+\+\] = nm;",
+                              body))
+    if guards < 1 or collects != guards:
         fail("level-foreign",
-             "the reconciliation stopped asking the exact question: a produced name can be "
-             "deleted, and the switch deletes the ladder it just built")
+             "the reconciliation stopped asking the exact question at EVERY collection site "
+             "(%d guard(s) for %d collect site(s)): a produced name can be deleted, and the "
+             "switch deletes the ladder it just built" % (guards, collects))
         return
-    if "ArrayResize(doomed, nd + 1);" not in body or \
+    if re.search(r"Delete\w+\(nm", body) or \
        "DeleteIndicatorObjectManaged(doomed[d], true)" not in body:
         fail("level-foreign",
              "the reconciliation deletes while it walks: a delete renumbers the object "

@@ -181,7 +181,7 @@ input int inpLineTransparency = 50;                // Lines Transparency (0=Soli
 
 input group "08.5) BASE BOX - BORDER"
 input string S16e = "[08.5] BASE BOX / BORDER";
-input color inpBoxBorderColor = C'255,171,0';            // Base Box Border Color (amber, no fill — like MT4)
+input color inpBoxBorderColor = C'0,0,139';              // Base Box Border Color (P-BK-69: DARK BLUE — the mark's ink, and the ink of its two points)
 input ENUM_LINE_STYLE inpBoxBorderStyle = STYLE_SOLID;   // Base Box Border Style
 input int inpBoxBorderWidth = 2;                         // Base Box Border Width (1-5)
 input int inpBKTargetR = 3;                              // Base Box TP COUNT (P-BK-50: how many of the trade plan's TP1..TP3 legs the box draws, 1..3)

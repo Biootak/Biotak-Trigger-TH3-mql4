@@ -59,7 +59,7 @@ static color g_lineColor = clrBlack;                             // [08.4] inpLi
 static int g_lineTransparency = 50;                              // [08.4] inpLineTransparency
 // [08.5] BASE BOX BORDER — the committed box look (border only, never
 // filled — like MT4's own rectangle). Edited from the Base Box card (12).
-static color g_boxBorderColor = C'255,171,0';                    // [08.5] inpBoxBorderColor
+static color g_boxBorderColor = C'0,0,139';                      // [08.5] inpBoxBorderColor (P-BK-69: dark blue default — the mark and its two points)
 static ENUM_LINE_STYLE g_boxBorderStyle = STYLE_SOLID;           // [08.5] inpBoxBorderStyle
 static int g_boxBorderWidth = 2;                                 // [08.5] inpBoxBorderWidth
 static int g_boxBorderTransparency = 0;                          // [08.5] palette TR (default solid)

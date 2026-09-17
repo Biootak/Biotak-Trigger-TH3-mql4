@@ -125,7 +125,7 @@ color DefTH3PipColor()       { return clrDarkBlue; }
 color DefCustomPriceColor()  { return clrDodgerBlue; }
 color DefFactorColor()       { return C'0,100,0'; }
 color DefLineColor()         { return clrBlack; }
-color DefBoxBorderColor()    { return C'255,171,0'; }   // amber — the shipped Base Box look
+color DefBoxBorderColor()    { return clrDarkBlue; }   // P-BK-69: DARK BLUE — the shipped Base Box look; it is the mark's ink AND the ink of its two points
 color DefBoxFillColor()      { return C'255,171,0'; }   // amber fill (invisible until FILL TR < 100)
 color DefBKTextColor()       { return C'255,255,255'; } // white user text inside the box
 color DefBKEntryColor()      { return C'30,144,255'; }    // dodger blue Entry ray

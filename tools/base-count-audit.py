@@ -1307,9 +1307,13 @@ def check_node():
                 and "baseTFMin = baseTF" in sync))
     out.append(("Sync counts the length from that same TF",
                 re.search(r"BaseKnotNodeRead\([^;]*BaseKnotNodeTFMin\(k\)", sync) is not None))
+    # P-BK-67: the class and the foot are asked INSIDE THE SAME CALL - the pump's own
+    # settle heal (BaseKnotMarkSettled) legitimately reads the published class too, so a
+    # bare "the pump mentions g_bkBoxes[i].baseTFMin somewhere" would pass for the wrong
+    # reason (the mutant that zeroes the NODE READ's class went unseen exactly that way).
     out.append(("... and the pump asks the SAME question of the SAME story and the SAME TF",
-                re.search(r"BaseKnotNodeRead\([^;]*BaseKnotNodeTFMin\(i\)", pump) is not None
-                and "g_bkBoxes[i].baseTFMin" in pump
+                re.search(r"BaseKnotNodeRead\([^;]*BaseKnotNodeTFMin\(i\),\s*"
+                          r"g_bkBoxes\[i\]\.baseTFMin", pump) is not None
                 and re.search(r"storyT\s*>\s*0\s*\?\s*g_bkBoxes\[i\]\.storyT\s*:\s*t2", pump) is not None))
     out.append(("Sync publishes BOTH answers and the pump compares both",
                 "g_bkBoxes[k].nodeKind = nd.kind;" in sync
