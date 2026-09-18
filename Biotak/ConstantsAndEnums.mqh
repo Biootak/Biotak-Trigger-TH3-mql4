@@ -83,7 +83,7 @@
 // only two screen objects of the box), so they sit on the same rung band: above the box' art,
 // below the text layer, and — like every rung here — under the card/strip rungs far above.
 #define Z_BOX_GRIP      59
-#define Z_BOX_INFO      60      // box info text — P-BK-56: the base note moved to Z_CHART_LABEL (the rung is kept for a one-line restore)
+#define Z_BOX_INFO      60      // the base note's PLATE — P-BK-86: the note itself is a SCREEN object now and rides Z_CHART_LABEL, so this rung is what its background bar wears (under the ink, above the chart art). P-BK-56 left it free for a one-line restore; P-BK-86 is the second owner of the same number.
 #define Z_BOX_TEXT      61      // box user text
 #define Z_CHART_LABEL  100      // price/level labels, view anchor, countdown tag
 

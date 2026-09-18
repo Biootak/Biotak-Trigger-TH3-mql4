@@ -2064,7 +2064,7 @@ def run_checks():
                check_model, check_invariance, check_node, check_node_model,
                check_rung, check_rung_model, check_live_reuse, check_leg_fit,
                check_asof, check_label_short, check_note_fields, check_note_height,
-               check_note_life, check_note_home):
+               check_note_life, check_note_home, check_note_plate):
         rows.extend(fn())
     return rows
 
@@ -2608,8 +2608,13 @@ def check_note_life():
         out.append(("... and the retired rung (the box' own text size) is kept, restorable",
                     src.count("BKINFOSIZE-OFF") >= 2
                     and "BKINFOSIZE-OFF: return ClampSettingInt(g_bkTextSize, 8, 24);" in src))
-    out.append(("the note rides the TEXT layer's rung (Z_CHART_LABEL), not the box' art one",
-                "OBJPROP_ZORDER, Z_CHART_LABEL" in wib and "Z_BOX_INFO" not in wib))
+    # P-BK-86: the rung is a GUARANTEE now, not a hope — the box-side note is a SCREEN object,
+    # i.e. one layer above every chart-space rung, and the PLATE it is read on rides the box'
+    # own rung (Z_BOX_INFO) in its own drawer (see check_note_plate). The note's own rung is
+    # read HERE, on the object the writer writes (`o`) — a note dropped back to a box rung is
+    # a note the chart art can cover again.
+    out.append(("the note rides the TEXT layer's rung (Z_CHART_LABEL), the readout's own rung",
+                re.search(r"ObjectSetInteger\(0,\s*o,\s*OBJPROP_ZORDER,\s*Z_CHART_LABEL\);", wib) is not None))
     return out
 
 
@@ -2696,12 +2701,120 @@ def check_note_home():
                 and re.search(r"ObjectSet\w+\(0,\s*o,", wp) is not None))
     out.append(("... the corner row is right-aligned at the pushed slot (a LABEL, not a TEXT)",
                 "OBJ_LABEL" in wp and "ANCHOR_RIGHT_LOWER" in wp))
-    out.append(("... and only the LAST lines differ between the homes (time/price vs x/y)",
-                "OBJPROP_XDISTANCE" in wp and "OBJPROP_YDISTANCE" in wp
-                and "OBJPROP_PRICE, 0, top" in wp))
+    out.append(("... and only the LAST lines differ between the homes (the pushed slot vs the box' projection)",
+                "s_bkCornerSide" in wp and "ChartTimePriceToXY" in wp
+                and "OBJPROP_PRICE" not in wp and "OBJPROP_TIME," not in wp))
     # deinit
     out.append(("a remove / TF switch never leaves the row behind",
                 "BaseKnotCornerWipe();" in strip_comments(body(src, "void BaseKnotOnDeinit(") or "")))
+    return out
+
+
+# --- 14c: P-BK-86 — THE BOX-SIDE NOTE WEARS ITS OWN PLATE ---------------------------
+# The user, on his own screenshot: «این اطلاعات میره داخل کندل ها خونده نمیشه اینو باید
+# چیکارش کنیم که هیچ تداخل نداشته باشه و همیشه بتونه خونده بشه». The box-side note was a
+# CHART-SPACE `OBJ_TEXT`, so the candles it sits among and the level lines that cross it were
+# painted OVER its glyphs — and no `OBJ_TEXT` can carry a background. The fix is one move that
+# answers both: a SCREEN pair (an `OBJ_LABEL` above every chart-space rung) plus a PLATE under
+# it, filled with the CHART'S OWN background. Every line below is a way the plate can silently
+# stop being a plate:
+#
+#   * the note going back to the CHART layer (an OBJ_TEXT again) — the whole reason it exists;
+#   * a plate whose size is a GUESS (a literal width/height) instead of the measured ink;
+#   * a plate that is not the chart's own ink (a colour of its own fights the note's own
+#     fg-for-bg foreground and reads as a sticker over the price);
+#   * HALF a readout left on the chart — the note deleted without its plate (an empty bar) or
+#     the plate without its note (the unreadable text this change exists for);
+#   * a SCREEN pair nobody re-projects: a scroll, a zoom or a new bar would leave the note at
+#     the pixels of the old view (the chart-space text followed the chart by itself; a screen
+#     one never does);
+#   * the plate and the ink placed by two spellings of the same arithmetic, i.e. drifting apart;
+#   * and a follower that writes on every pump round — the project's perf law says steady state
+#     is reads only.
+def check_note_plate():
+    """P-BK-86: the box-side note is a screen pair — the ink and the plate under it."""
+    src = read(KNOT)
+    wib = body(src, "void BaseKnotWriteInfo(")
+    pdr = body(src, "void BaseKnotNotePlateDraw(")
+    ppx = body(src, "void BaseKnotNotePlatePx(")
+    fol = body(src, "void BaseKnotNotePlateFollow(")
+    top = body(src, "void BaseKnotNotePlateTop(")
+    for name, fn in (("the note writer", wib), ("the plate's drawer", pdr),
+                     ("the plate's geometry", ppx), ("the pair's follower", fol),
+                     ("the offsets' owner", top)):
+        if fn is None:
+            return [("the note's plate has ONE owner per question (%s)" % name, False)]
+    out = []
+    wp = strip_comments(wib)
+    # 1. the note itself is a SCREEN object in BOTH homes, and a pre-plate build's OBJ_TEXT is
+    #    purged — ObjectCreate never re-types an object it finds, so an upgrade would otherwise
+    #    keep the very object the chart art can paint over.
+    out.append(("the note is a SCREEN label in both homes — nothing is left for the chart art to cover",
+                re.search(r"ObjectCreate\(0,\s*o,\s*OBJ_LABEL,\s*0,\s*0,\s*0\);", wp) is not None
+                and "OBJ_TEXT" not in wp))
+    out.append(("... and a pre-plate build's OBJ_TEXT note is purged, never kept at its old type",
+                "OBJPROP_TYPE) != OBJ_LABEL" in wp and "ObjectDelete(0, o);" in wp))
+    # 2. the plate itself: a screen rectangle in the CHART'S OWN background, drawn as a fill
+    pd = strip_comments(pdr)
+    out.append(("the plate is a SCREEN rectangle, filled with the CHART'S OWN background "
+                "(frame and fill are ONE ink)",
+                "OBJ_RECTANGLE_LABEL" in pd and "CHART_COLOR_BACKGROUND" in pd
+                and re.search(r"OBJPROP_COLOR,\s*bg\)", pd) is not None
+                and re.search(r"OBJPROP_BGCOLOR,\s*bg\)", pd) is not None))
+    out.append(("... with no border ink of its own (a frame would read as a sticker over the price)",
+                "BORDER_FLAT" in pd))
+    out.append(("... and it is hidden with the note it belongs to (the same mask)",
+                "OBJPROP_TIMEFRAMES, tfMask" in pd))
+    out.append(("... riding the box' own rung (Z_BOX_INFO), i.e. UNDER the ink and above the chart art",
+                re.search(r"ObjectSetInteger\(0,\s*pn,\s*OBJPROP_ZORDER,\s*Z_BOX_INFO\);", pd) is not None))
+    # 3. the size is MEASURED, never guessed — and measured in the note's OWN font grid.
+    #    TWO owners, both read: the width comes off the ink in `BaseKnotNotePlatePx`, the height
+    #    off the raw em in `BaseKnotNotePlateH` (a literal in EITHER is a plate sized by hand).
+    ph_fn = body(src, "int BaseKnotNotePlateH(")
+    if ph_fn is None:
+        return [("the plate's height owner exists", False)]
+    meas = strip_comments(ph_fn) + strip_comments(ppx)
+    out.append(("the plate is MEASURED off the ink, never a literal size",
+                "PnlRawTextW(" in strip_comments(ppx) and "PnlRawLineH(" in strip_comments(ph_fn)
+                # a bare `pw = 300;` / `ph = 16;` is the hand-typed size this forbids; a floor
+                # derived from the padding constants (`pw = 2 * BK_NOTE_PAD_X + 8;`) is not.
+                and not re.search(r"\b(?:pw|ph)\s*=\s*[0-9]+\s*;", meas)))
+    out.append(("... in the note's OWN grid (`BKInfoFontPt` — the raw chart-label em)",
+                meas.count("BKInfoFontPt()") >= 2))
+    # 4. ONE owner of the placement: the writer and the follower both come through it
+    out.append(("the writer and the follower place the pair through the ONE offsets owner "
+                "(they can never drift apart)",
+                "BaseKnotNotePlateTop(sx, sy, ph," in strip_comments(fol)
+                and "BaseKnotNotePlatePx(sx, sy," in wp
+                and "BaseKnotNotePlateTop(sx, sy, ph," in strip_comments(
+                    body(src, "void BaseKnotNotePlatePx(") or "")))
+    # 5. the pair is deleted TOGETHER at every delete site — one wipe, never half a readout
+    body_plain = strip_comments(src)
+    out.append(("the note and its plate are wiped TOGETHER (ONE wipe, used by every delete site)",
+                re.search(r"void BaseKnotInfoWipe\([^)]*\)\s*\{[^}]*"
+                          r"ObjectDelete\(0, in\);\s*"
+                          r"ObjectDelete\(0, BaseKnotInfoPlateName\(in\)\);",
+                          body_plain, flags=re.S) is not None))
+    out.append(("... the wipe is the only way a box-side note is removed",
+                body_plain.count("BaseKnotInfoWipe(") >= 3
+                and re.search(r"ObjectDelete\(0, BaseKnotInfoName\(", body_plain) is None))
+    out.append(("... and the plate follows the note out of the box home too (the mode change)",
+                "ObjectDelete(0, BaseKnotInfoPlateName(in));" in wp))
+    # 6. the follower: called where the note is kept on its box, and read-guarded
+    fs = strip_comments(fol)
+    out.append(("the pair is re-projected where the note is kept on its box (the drag + the pump)",
+                "BaseKnotNotePlateFollow(pfx, t2, top);" in strip_comments(
+                    body(src, "void BaseKnotPlaceBadges(") or "")
+                and "BaseKnotNotePlateFollow(pfx, t2, top);" in body_plain))
+    out.append(("... and the pump reaches it (a scroll, a zoom, a new bar)",
+                "BaseKnotPlaceBadges(" in strip_comments(
+                    body(src, "void BaseKnotSyncBadges(") or "")))
+    out.append(("... the follower WRITES ONLY WHEN THE PIXELS MOVED (steady state is reads)",
+                re.search(r"==\s*ty\)\s*return;", fs) is not None
+                and "ChartTimePriceToXY" in fs))
+    out.append(("... and it refuses to guess when the window cannot answer the projection",
+                re.search(r"if\(!ChartTimePriceToXY\(0,\s*0,\s*t2,\s*top,\s*sx,\s*sy\)\)\s*return;",
+                          fs) is not None))
     return out
 
 
@@ -2741,7 +2854,11 @@ def main():
           "object at a time, and the slot PUSHED IN by the label module,\n"
           "and EVERY number it draws is read AS OF the box' own bar - one row per "
           "(TF, anchor), the anchor being the story's own last candle, so a box keeps "
-          "the type and the levels ITS market gave it (P-BK-79)")
+          "the type and the levels ITS market gave it (P-BK-79),\n"
+          "and the box-side NOTE wears its OWN PLATE - a screen pair (the ink and the "
+          "chart's own background under it), so no candle and no level line can be read "
+          "through it, re-projected by ONE geometry owner and written only when the pixels "
+          "moved (P-BK-86)")
     return 0
 
 
@@ -3537,6 +3654,55 @@ def selftest():
                 "   bool atCorner = BaseKnotNoteInCorner();   // the decision owner is bypassed")
     cases.append(("a caller that decides the home for itself is caught",
                   bool(fires(check_note_home))))
+    reset()
+
+    # P-BK-86: the note's PLATE — the user's «خونده نمیشه» has its own mutant per way back
+    with_source("   if(ObjectFind(0, o) < 0) ObjectCreate(0, o, OBJ_LABEL, 0, 0, 0);",
+                "   if(ObjectFind(0, o) < 0) ObjectCreate(0, o, OBJ_TEXT, 0, t2, top);")
+    cases.append(("a note that goes back to the CHART layer (the art can cover it again) is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   if(ObjectFind(0, o) >= 0 && (int)ObjectGetInteger(0, o, OBJPROP_TYPE) != OBJ_LABEL)\n",
+                "   if(false)\n")
+    cases.append(("an upgrade that keeps a pre-plate OBJ_TEXT note is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   ObjectSetInteger(0, pn, OBJPROP_BGCOLOR, bg);     // … and the fill: ONE ink, the chart's own",
+                "   ObjectSetInteger(0, pn, OBJPROP_BGCOLOR, clrBlack);   // a plate with an ink of its own")
+    cases.append(("a plate that is not the chart's own background is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;",
+                "   pw = 300;   // a hand-typed plate width")
+    cases.append(("a plate sized by hand instead of by the ink is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   ObjectSetInteger(0, pn, OBJPROP_ZORDER, Z_BOX_INFO);",
+                "   ObjectSetInteger(0, pn, OBJPROP_ZORDER, Z_CHART_LABEL);   // the plate over its own ink")
+    cases.append(("a plate painted OVER the note's ink is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   ObjectDelete(0, in);\n   ObjectDelete(0, BaseKnotInfoPlateName(in));\n",
+                "   ObjectDelete(0, in);   // the plate is left behind: an empty bar on the chart\n")
+    cases.append(("half a readout (a note wiped without its plate) is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   BaseKnotNotePlateFollow(pfx, t2, top);\n}",
+                "   // seed: nothing re-projects the pair on the pump (a scroll leaves it behind)\n}")
+    cases.append(("a screen pair nobody re-projects is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("      (int)ObjectGetInteger(0, in, OBJPROP_YDISTANCE) == ty) return;   // steady state: reads only",
+                "      (int)ObjectGetInteger(0, in, OBJPROP_YDISTANCE) == ty) { }   // seed: the follower writes every round")
+    cases.append(("a follower that writes on every pump round is caught",
+                  bool(fires(check_note_plate))))
     reset()
 
     # P-BK-55/78: the sizing note stops answering the type again (a class with no type)
