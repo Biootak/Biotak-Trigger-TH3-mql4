@@ -40,9 +40,10 @@
 //|    بالاتر استفاده کرده») OWNS the three legs: BOTH of them sit INSIDE|
 //|    the knot, measured from the edge the side comes in on (top for a  |
 //|    Buy, bottom for a Sell) — the ENTRY waits ONE EngSL of penetration|
-//|    for an FTR node and ONE HuntSL for ETR/CTR/OTR (and a CTR/OTR knot |
-//|    is read ONE TF HIGHER, «یک تایم بالاتر»), while the SL is ALWAYS  |
-//|    one EngSL behind the entry. The TARGETS are the trade plan's OWN  |
+//|    for an FTR node and ONE HuntSL for ETR/CTR/OTR, read on the NODE'S|
+//|    OWN time, while the SL is ALWAYS one EngSL behind the entry read  |
+//|    on the NODE TYPE'S OWN time (P-BK-83: ETR one rung above the      |
+//|    node's time, CTR two, OTR three). The TARGETS are the plan's OWN  |
 //|    TP1..TP3 of the knot's TF (the numbers the label's `#SL/-TP` row   |
 //|    prints), measured from the entry exactly as that row measures     |
 //|    them. The old `TARGET R` x R target stays RETIRED IN PLACE        |
@@ -70,6 +71,20 @@
 //|    («گره که مال یک دقیقه هستش رو مال پانزده دقیقه نشون میده»).      |
 //|    The floor is M1 now, and nothing else moves: every other caller  |
 //|    hands a tfMin >= 1, where the old first step still answers 5.    |
+//|  * P-BK-83 (2026-09-17) — THE STOP IS READ ON THE NODE TYPE'S OWN    |
+//|    TIME (the ENTRY stays on the node's own). The stop used the node's|
+//|    own class for FTR **and ETR**, so an ETR node standing on an M1   |
+//|    base wore EngSL(M1): the user's box read                        |
+//|    `[BUY · EngSL 0.3 | 2.9 | 5 bars · M1 base · ETR]` — a 0.3-pip   |
+//|    stop on a 2.9-pip node whose LENGTH belongs to M5. The type IS the|
+//|    rung whose ability the length matched (P-BK-75/78), so the time   |
+//|    that OWNS the node is its own time stepped up by the type's own   |
+//|    count: FTR 0 · ETR 1 · CTR 2 · OTR 3 (BaseKnotMeasureHops is the  |
+//|    ONE owner). The ENTRY does not hop — the user confirmed that read |
+//|    («ورودش که درسته»): BaseKnotEntryTFMin is the node's own time.    |
+//|    The label prints the stop's TF beside the name (`EngSL M5`)       |
+//|    whenever it differs from the class, and nothing moves outside the |
+//|    box: P-BK-52's 55/64 bound caps each leg by the node's own power. |
 //|  * Direction is decided at commit, then FOLLOWS the live price — a    |
 //|    box below it = demand = Buy (the entry sits INSIDE the top edge — |
 //|    see the P-BK-51 bullet above for the measure and the stop); a      |
@@ -1769,10 +1784,12 @@ void BaseKnotDrawPreviewRect(const string tag, const datetime t1, const double p
 //|           EngSL («به اندازه engsl ... داخل گره»);                  |
 //|       ETR / CTR / OTR = ONE HuntSL («به اندازه huntsl محل ورود»);   |
 //|   * THE STOP IS ALWAYS ONE EngSL BEHIND THE ENTRY, whichever of    |
-//|     the two sized the entry («به اندازه engsl از محل ورود استاپ»);  |
-//|   * A CTR/OTR NODE IS MEASURED ONE TF HIGHER than its own TF        |
-//|     («برای نوع هی بعدی … یک تایم بالاتر») — BaseKnotMeasureTFMin    |
-//|     owns that hop and is the only place it exists.                 |
+//|     the two sized the entry («به اندازه engsl از محل ورود استاپ»),  |
+//|     and it is read on the NODE TYPE'S OWN TIME (P-BK-83 — ETR one   |
+//|     rung above the node's own time, CTR two, OTR three) while the   |
+//|     ENTRY stays on the node's own («ورودش که درسته») —             |
+//|     BaseKnotMeasureTFMin owns that hop and BaseKnotEntryTFMin the   |
+//|     entry's own time, and each is the only place its answer exists. |
 //| Both numbers are PUSHED IN (EngSL / HuntSL per TF — trade-plan math|
 //| sits ABOVE this module, the P-BK-46/50 ask / push pair), and a TF  |
 //| the table cannot answer is NO LONGER the box' whole height: the     |
@@ -1788,14 +1805,50 @@ void BaseKnotDrawPreviewRect(const string tag, const datetime t1, const double p
 //| the plan's legs are drawn (BaseKnotTPCount).                       |
 //+------------------------------------------------------------------+
 // P-BK-51 — WHICH TF'S NUMBERS SIZE THE TRADE. The knot's own TF is the class the note
-// names (P-BK-46); a CTR/OTR knot — as long as the structure time or longer — is read
-// ONE RUNG ABOVE that TF (the user's «یک تایم بالاتر»). One owner: the geometry, the
-// pump's own TF list (BaseKnotEngNeeds) and every text that names the source ask HERE.
+// names (P-BK-46). P-BK-83 (2026-09-17) — AND THE TWO LEGS DO NOT SHARE ONE ANSWER:
+//   * THE ENTRY's penetration is read on the NODE'S OWN time (the class the note prints),
+//     because that is the reading the user checked and confirmed is right («ورودش که درسته»);
+//   * THE STOP is read on the NODE TYPE'S OWN time: the type IS the rung whose ability the
+//     node's LENGTH matched (P-BK-75/78), so the time that OWNS the node — the one whose
+//     EngSL the risk belongs to — is the node's own time stepped up by the type's own count.
+// The user, on the stop only: «استاپ باید از eng sl تایم etr بیاد براساس نوع گره که هستش» +
+// «باید از همون تایم etr که تایم بالاتر از تایم گره هستش گرفته بشه و بقیه هم همین طور».
+// THE BUG THIS REPLACES: ETR shared FTR's branch, so an ETR node standing on an M1 class wore
+// EngSL(M1) — the user's own box read `[BUY · EngSL 0.3 | 2.9 | 5 bars · M1 base · ETR]`, a
+// 0.3-pip stop on a 2.9-pip node whose length belongs to M5.
+// ONE OWNER EACH, so the geometry, the pump's own TF list (BaseKnotEngNeeds) and every text
+// that names a source ask the right one of the two: BaseKnotEntryTFMin for the entry,
+// BaseKnotMeasureTFMin (with BaseKnotMeasureHops as its count) for the stop.
+int BaseKnotMeasureHops(const int kind)
+{
+   if(kind == BK_NODE_ETR) return 1;   // the PATTERN time   — one rung above the node's own
+   if(kind == BK_NODE_CTR) return 2;   // the STRUCTURE time — two rungs above
+   if(kind == BK_NODE_OTR) return 3;   // past the structure — three rungs above
+   return 0;                           // FTR (and no type yet): the node's own time
+}
 int BaseKnotMeasureTFMin(const int kind, const int tfMin)
 {
-   if(kind != BK_NODE_CTR && kind != BK_NODE_OTR) return tfMin;   // FTR/ETR: its own TF
-   int up = BaseKnotNextTFMin(tfMin > 0 ? tfMin : Period());
-   return (up > 0 ? up : tfMin);   // already at the ladder's top — the own TF stands
+   int hops = BaseKnotMeasureHops(kind);
+   if(hops <= 0) return tfMin;   // FTR / no type yet — the node's own time, unchanged
+   int r = (tfMin > 0 ? tfMin : Period());
+   for(int i = 0; i < hops; i++)
+   {
+      int up = BaseKnotNextTFMin(r);
+      if(up <= 0) break;   // the ladder's top — the highest rung it can reach stands
+      r = up;
+   }
+   return r;
+}
+// ... and the ENTRY's own time: the NODE'S OWN, whatever its type is (the user's «ورودش که
+// درسته» — the entry was already the reading he confirmed). A function rather than a bare
+// `tfMin` at the call sites because the two readings must never be confused: a leg measured on
+// the other one is a silent mispricing, and this name is what the geometry, the texts and the
+// gate all ask. SAFE BY CONSTRUCTION: both legs stay inside the box whatever this answers —
+// P-BK-52 caps each at the NODE's own power (off + risk <= 55/64 x H).
+int BaseKnotEntryTFMin(const int kind, const int tfMin)
+{
+   if(kind == BK_NODE_NONE && tfMin <= 0) return Period();   // the sizing preview: this chart's TF
+   return (tfMin > 0 ? tfMin : Period());
 }
 // P-BK-51 — DID THE ENTRY'S PENETRATION COME FROM THE HUNTER LEG? The TYPE asks (ETR and
 // the longer CTR/OTR want HuntSL), the TABLE answers: a TF whose HuntSL was never pushed
@@ -1821,30 +1874,36 @@ double BaseKnotEntryOffsetPips(const int kind, const int tfMin, const datetime a
 // P-BK-51 — WHY THE ENTRY WAITS THAT DEEP: the node's TYPE names the measure, and the
 // number is never shown without the TF it was read on. ONE owner, so the box hover, the
 // entry ray and the note's hover can never describe two different measurements.
-string BaseKnotEntryWhy(const int kind, const int measureTF, const bool isHunt,
+// P-BK-83: AND THAT TF IS THE NODE'S OWN TIME. The entry's penetration never hops to the
+// type's rung — that is the STOP's own time (BaseKnotMeasureTFMin) — so the sentence names
+// the class the note already prints, and says so in words: a reader who is told «one TF above
+// the base» must be looking at a line that was really drawn one TF above it.
+string BaseKnotEntryWhy(const int kind, const int entryTF, const bool isHunt,
                         const double top, const double bot, const datetime anchor = 0)
 {
    string what = BaseKnotEntryOffsetTag(isHunt);
-   string tf   = BaseKnotTFName(measureTF > 0 ? measureTF : Period());
+   string tf   = BaseKnotTFName(entryTF > 0 ? entryTF : Period());
    string why;
    if(kind == BK_NODE_FTR)      why = "FTR — the node is the TRIGGER length: " + what + " of " + tf;
    else if(kind == BK_NODE_ETR) why = "ETR — the node is the PATTERN length: " + what + " of " + tf;
-   else if(kind == BK_NODE_CTR) why = "CTR — the node is the STRUCTURE length: " + what + " of " + tf + ", one TF above the base";
-   else if(kind == BK_NODE_OTR) why = "OTR — longer than the structure time: " + what + " of " + tf + ", one TF above the base";
+   else if(kind == BK_NODE_CTR) why = "CTR — the node is the STRUCTURE length: " + what + " of " + tf;
+   else if(kind == BK_NODE_OTR) why = "OTR — longer than the structure time: " + what + " of " + tf;
    else                         why = "no type yet (the box is being sized): " + what + " of " + tf;
+   if(kind != BK_NODE_NONE) why += ", the node's own time";   // P-BK-83: the entry never hops
    if(!isHunt && kind != BK_NODE_FTR && kind != BK_NODE_NONE)
       why += " — no HuntSL pushed for " + tf + " yet, so EngSL stands in";
-   why += BaseKnotCapClause(measureTF, isHunt, top, bot, anchor);   // P-BK-52: ... and the ceiling, when it spoke
+   why += BaseKnotCapClause(entryTF, isHunt, top, bot, anchor);   // P-BK-52: ... and the ceiling, when it spoke
    return why;
 }
 // ... and the SHORT form of the same fact — the box hover's first line and the note's
-// own hover read THIS sentence, so "how deep" is answered once.
-string BaseKnotEntryLine(const int kind, const int measureTF, const bool isHunt, const int dir,
+// own hover read THIS sentence, so "how deep" is answered once. P-BK-83: its TF is the
+// ENTRY's own time (the node's class), never the stop's rung.
+string BaseKnotEntryLine(const int kind, const int entryTF, const bool isHunt, const int dir,
                          const double top, const double bot, const datetime anchor = 0)
 {
    return " · the entry waits ONE " + BaseKnotEntryOffsetTag(isHunt) + " INSIDE the box' " +
           (dir >= 0 ? "top" : "bottom") + " edge (" +
-          BaseKnotEntryWhy(kind, measureTF, isHunt, top, bot, anchor) + ")";
+          BaseKnotEntryWhy(kind, entryTF, isHunt, top, bot, anchor) + ")";
 }
 // P-BK-52 (2026-09-16) — THE NODE'S OWN POWER IS THE CEILING OF BOTH LEGS.
 // WHY: P-BK-46/51 push the plan's EngSL / HuntSL in, and a plan leg can be DEEPER than the
@@ -1907,11 +1966,17 @@ double BaseKnotLegPick(const double planPips, const double capPips)
 void BaseKnotLegPair(const double top, const double bot, const int kind, const int tfMin,
                      double &offPips, double &riskPips, const datetime anchor = 0)
 {
-   int    mtf   = BaseKnotMeasureTFMin(kind, tfMin);
-   bool   hunt  = BaseKnotOffsetIsHunt(kind, mtf, anchor);
+   // P-BK-83 — TWO TFs, ONE LEG EACH: the ENTRY's penetration is the NODE'S OWN time's leg
+   // (HuntSL for ETR/CTR/OTR, EngSL for FTR — the reading the user confirmed is right), while
+   // the STOP is the EngSL of the TYPE'S OWN time (the time the node's LENGTH belongs to).
+   // Both owners are asked HERE and nowhere else, so the drawn lines and every printed number
+   // come off the same pair.
+   int    etf   = BaseKnotEntryTFMin(kind, tfMin);
+   int    stf   = BaseKnotMeasureTFMin(kind, tfMin);
+   bool   hunt  = BaseKnotOffsetIsHunt(kind, etf, anchor);
    double capE  = BaseKnotNodeEngPips(top, bot);
-   double planO = BaseKnotEntryOffsetPips(kind, mtf, anchor);
-   double planR = BaseKnotEngPips(mtf, anchor);
+   double planO = BaseKnotEntryOffsetPips(kind, etf, anchor);
+   double planR = BaseKnotEngPips(stf, anchor);
    offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);
    riskPips = BaseKnotLegPick(planR, capE);
    double h = BaseKnotToPips(top - bot);
@@ -3484,17 +3549,22 @@ string BaseKnotNodeLine(BaseKnotNode &nd, const double top, const double bot)
    // P-BK-51: the placement — the edge is the SIDE's, BOTH legs sit inside it, and the
    // penetration's measure follows the node's TYPE (EngSL for FTR, HuntSL for the longer
    // ones). Built from the SAME two owners the geometry reads, so hover and drawing part not.
-   int    wTF  = BaseKnotMeasureTFMin(nd.kind, nd.baseTF);
+   // P-BK-83: AND THE TWO LEGS READ TWO TIMES — the entry the NODE'S OWN (the class), the stop
+   // the TYPE'S OWN (the rung the length matched). Both are named here, so a reader can check
+   // each line against the time it was really measured on.
+   int    wTF  = BaseKnotEntryTFMin(nd.kind, nd.baseTF);     // P-BK-83: the ENTRY's own time
+   int    sTF  = BaseKnotMeasureTFMin(nd.kind, nd.baseTF);   // ... and the STOP's own time
    bool   wHu  = BaseKnotOffsetIsHunt(nd.kind, wTF, nd.anchor);   // P-BK-79: the box' own anchor
    string wTag = BaseKnotEntryOffsetTag(wHu);
+   string wSrc = "ONE EngSL" + (sTF > 0 && sTF != wTF ? " of " + BaseKnotTFName(sTF) : "");
    if(nd.side == 0)
       t += "\n      trade: the live price names the side (the exit candle closed inside the band) — the entry waits ONE " +
-           wTag + " INSIDE that edge, the stop ONE EngSL behind it" + BaseKnotCapClause(wTF, wHu, top, bot, nd.anchor);
+           wTag + " INSIDE that edge, the stop " + wSrc + " behind it" + BaseKnotCapClause(wTF, wHu, top, bot, nd.anchor);
    // BKNODEDIR-OFF (P-BK-49): else if(nd.crossed || (nd.returned && nd.rebreaks == 0))
    // BKNODEDIR-OFF (P-BK-49):   t += "\n      trade: the return's own side — entry ONE R INSIDE the FAR edge, stop 1 EngSL behind it";
    else
       t += "\n      trade: the side the base was LEFT by — entry ONE " + wTag +
-           " INSIDE the edge the exit candle closed past, the stop ONE EngSL behind it" +
+           " INSIDE the edge the exit candle closed past, the stop " + wSrc + " behind it" +
            BaseKnotCapClause(wTF, wHu, top, bot, nd.anchor) + BaseKnotExitLine(nd);
    if(nd.side != 0)
    {
@@ -3560,8 +3630,9 @@ int BaseKnotEngNeeds(int &mins[], datetime &anchors[])
       // ever. This is the ask side of the SAME rule BaseKnotAbilityGet applies, so the two
       // cannot drift apart. (Before P-BK-78 the slot carried the box' own TF, which stopped
       // naming anything once the type moved onto the class P-BK-77 finds.)
-      // P-BK-51: the knot's OWN TF is the class (P-BK-46), and a CTR/OTR knot is measured
-      // ONE RUNG ABOVE it («یک تایم بالاتر») — so ONE box can ask for FOUR TFs. They all go
+      // P-BK-51/83: the knot's OWN TF is the class (P-BK-46) and it is the ENTRY's own time,
+      // while the STOP is read on the TYPE'S own time — the rung its LENGTH matched, at most
+      // THREE rungs above the class (OTR) — so ONE box can ask for FOUR TFs. They all go
       // through the same dedup, and every one of them is a rung of the same ladder, so the
       // table can never be asked for more than the eight per anchor.
       int asked[4];
@@ -4663,24 +4734,25 @@ void BaseKnotSync(const string id)
       g_bkBoxes[k].dir = dir;
       GlobalVariableSet(BaseKnotGV(id), (double)dir);
    }
-   // P-BK-46/50/51 — R IS EngSL OF THE KNOT'S OWN TF (the class just published), and
-   // the box' own height only while the pump has no EngSL for that TF. P-BK-51's
-   // geometry: the ENTRY waits ONE EngSL (FTR) or ONE HuntSL (ETR/CTR/OTR) INSIDE the
-   // edge the side comes in on, the STOP is ONE EngSL behind the entry, and the TARGETS
-   // are the plan's own TP1..TP3 of the same TF — every one of them SAYS which measure /
-   // which TF / which plan it rode.
-   // P-BK-51: which TF's numbers the knot is measured in — its own class for FTR/ETR, ONE
-   // RUNG ABOVE it for CTR/OTR (BaseKnotMeasureTFMin is the ONE owner of that hop; the
-   // geometry below asks the same function, so the drawn legs and the texts cannot part).
+   // P-BK-46/50/51 — R IS EngSL OF THE STOP'S OWN TF (P-BK-83: the TYPE'S own time — the rung
+   // the node's length matched), and the box' own height only while the pump has no EngSL for
+   // that TF. P-BK-51's geometry: the ENTRY waits ONE EngSL (FTR) or ONE HuntSL (ETR/CTR/OTR)
+   // INSIDE the edge the side comes in on, the STOP is ONE EngSL behind the entry, and the
+   // TARGETS are the plan's own TP1..TP3 of the node's own TF — every one of them SAYS which
+   // measure / which TF / which plan it rode.
+   // P-BK-51/83: WHICH TF EACH LEG IS READ ON — the ENTRY on the node's own class, the STOP on
+   // the TYPE'S own time (BaseKnotEntryTFMin / BaseKnotMeasureTFMin are the TWO owners; the
+   // geometry below asks the same pair, so the drawn legs and the texts cannot part).
    // P-BK-79: AND EVERY ONE OF THEM IS READ AT THE BOX' OWN ANCHOR (`nd.anchor` — the bar its
    // story ended on), the very key the pump pushed its rows with, so the drawn legs and the
    // printed pips come off ONE row and a box whose base ended on an older bar keeps the numbers
    // that bar's market gave it instead of today's drifted ATR.
-   int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);
+   int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);   // P-BK-83: the STOP's own time
    if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
+   int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);     // ... and the ENTRY's own time
    string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
-   bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, mTF, nd.anchor);   // P-BK-51: which measure the TYPE asks for
+   bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the ENTRY's own time
    BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);
    // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(baseTF);   // the retired note field
    string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor);   // P-BK-54: the hover keeps every leg
@@ -4688,7 +4760,7 @@ void BaseKnotSync(const string id)
    // P-BK-51: the trade's own two sentences, ready-built — how deep the entry waits and
    // what sized the stop. The box hover, the note's hover and the two rays read THESE.
    string edgeName  = (dir >= 0 ? "top" : "bottom");
-   string entryLine = BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir, top, bot, nd.anchor);
+   string entryLine = BaseKnotEntryLine(nd.kind, eTF, offIsHunt, dir, top, bot, nd.anchor);
    string stopWhy   = " (ONE " + riskTag + " behind the entry, INSIDE the box' " + edgeName + " edge" +
                       BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")";
    string tradeTip  = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhy + entryLine;
@@ -4713,8 +4785,9 @@ void BaseKnotSync(const string id)
    // which of the two spoke, the same way the entry's measure names where its depth came from.
    // P-BK-51: and HOW DEEP the entry waits INSIDE that edge (EngSL for FTR, HuntSL for the
    // longer nodes) — the box hover's own sentence, spelled once by BaseKnotEntryLine.
+   // P-BK-83: on the ENTRY's own time (`eTF` — the node's class), never the stop's rung.
    string entryWhy = " (ONE " + BaseKnotEntryOffsetTag(offIsHunt) + " INSIDE the box' " + edgeName + " edge — " +
-                     BaseKnotEntryWhy(nd.kind, mTF, offIsHunt, top, bot, nd.anchor) + "; the side is " +
+                     BaseKnotEntryWhy(nd.kind, eTF, offIsHunt, top, bot, nd.anchor) + "; the side is " +
                      (nd.side != 0 ? "the base's own exit candle" : "the live price") + ")";
    BaseKnotMakeRay(BaseKnotEntryName(pfx), t2, tFar, entry, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
                    "BK " + side + " Entry: " + DoubleToString(entry, dg) + entryWhy, tfMask, true);

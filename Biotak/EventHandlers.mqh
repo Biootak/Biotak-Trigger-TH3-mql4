@@ -2661,8 +2661,10 @@ string P4InitLedgerTag(const uint indMs, const uint uiMs)
 //| rule («و برای گره etr میشه به اندازه huntsl محل ورود») sizes an     |
 //| ETR/CTR/OTR entry by ONE HuntSL, so `plan.hunter` — the leg the     |
 //| TRex card prints as `Hunter SL:` — is pushed per TF beside EngSL.   |
-//| The ask list grew with it: a CTR/OTR knot is measured ONE TF HIGHER |
-//| than its class, so that rung is asked for as well                |
+//| The ask list grew with it: the ENTRY is read on the knot's own TF |
+//| and the STOP on the node TYPE'S own time (P-BK-83 — one rung above |
+//| the class for ETR, two for CTR, three for OTR), so that rung is    |
+//| asked for as well                                                  |
 //| (BaseKnotEngNeeds walks each box' own TF AND its measure TF).       |
 //+------------------------------------------------------------------+
 void BaseKnotEngPump()

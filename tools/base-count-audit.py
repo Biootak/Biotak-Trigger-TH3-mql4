@@ -2268,10 +2268,14 @@ def check_asof():
                 and "BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor)" in sync
                 and "BaseKnotRiskPips(mTF, top, bot, nd.anchor)" in sync
                 and "BaseKnotStopWhy(mTF, top, bot, nd.anchor)" in sync
-                and "BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir, top, bot, nd.anchor)" in sync
+                and "BaseKnotEntryLine(nd.kind, eTF, offIsHunt, dir, top, bot, nd.anchor)" in sync
                 and "BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor)" in sync
                 and "BaseKnotTPLevel(entry, dir, baseTF, tk, nd.anchor)" in sync
                 and "BaseKnotPlanTPPips(baseTF, tk, nd.anchor)" in sync))
+    out.append(("... and the ENTRY rides the node's own time while the STOP rides the type's (P-BK-83)",
+                "int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);" in sync
+                and "bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);" in sync
+                and "BaseKnotEntryWhy(nd.kind, eTF, offIsHunt, top, bot, nd.anchor)" in sync))
     out.append(("... and the sizing preview reads the LIVE row (anchor 0) and says so",
                 "ndLive.anchor = 0;" in liveb
                 and "BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, 0);" in liveb
@@ -3234,6 +3238,21 @@ def selftest():
     with_source("   BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);",
                 "   BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, 0);")
     cases.append(("a committed box drawn off the LIVE row is caught", bool(fires(check_asof))))
+    reset()
+
+    with_source("   string entryLine = BaseKnotEntryLine(nd.kind, eTF, offIsHunt, dir, top, bot, nd.anchor);",
+                "   string entryLine = BaseKnotEntryLine(nd.kind, mTF, offIsHunt, dir, top, bot, nd.anchor);   // the entry on the stop's rung again")
+    cases.append(("an entry drawn on the STOP's rung again is caught", bool(fires(check_asof))))
+    reset()
+
+    with_source("   bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);",
+                "   bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, mTF, nd.anchor);   // the entry's measure on the stop's rung again")
+    cases.append(("an entry measure read on the STOP's rung again is caught", bool(fires(check_asof))))
+    reset()
+
+    with_source("   int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);",
+                "   int    eTF       = mTF;   // the entry's own time, gone")
+    cases.append(("an entry with no TF of its own is caught", bool(fires(check_asof))))
     reset()
 
     with_source("      if(tfNew[i] != s_bkEngTF[i] || anNew[i] != s_bkEngAnchor[i] ||",
