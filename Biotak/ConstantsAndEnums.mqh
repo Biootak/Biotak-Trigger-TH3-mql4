@@ -238,6 +238,34 @@ const double MODIFIED_FRACTAL_PERCENTAGES[] = {
     2.6664,   // D11+H9+M4: 266.64%
     5.3328    // D45+H12+M16: 533.28%
 };
+
+//==============================================================================
+// P-TH-01 (2026-09-18) — THE TH PERCENTAGE KNOB'S ONE BOUND.
+//
+// The table above is the professor's ladder and it is NEVER edited. The knob
+// (`inpTHPercentOverride`) is read as "the percentage for THIS chart's own
+// rung" and turns into ONE ratio (`FractalPercentScale()`,
+// FractalTimeframes.mqh), which every rung is multiplied by — so the ladder's
+// nine x2 relationships survive whatever the knob says.
+//
+// WHY 200 IS THE END STOP. The panel's slider is a POSITION, not a value:
+// `PnlValueFromX` maps the track's ~230 px of travel onto [minV, maxV] and
+// then rounds to `step`. At `step = 1` every integer is reachable only while
+// `maxV <= the travel`, because a grid coarser than 1 makes the knob skip
+// integers (at maxV = 533 one pixel is 2.32 and 75 is simply unreachable —
+// the user's own example would be impossible to dial). 200 covers the whole
+// research range on the charts that matter (D1's own rung is 66.66, so 100
+// and 133.32 are inside it) and keeps every integer reachable. A value above
+// 200 is still legal through the INPUT — only the slider stops there, and
+// this bound is also what the persisted-override load clamps to, so a saved
+// GV can never ask for a ladder the slider cannot reproduce.
+//
+// It is an INT on purpose: `PnlSetDef`'s `maxV` is `int&`, and the panel
+// simulator resolves this name straight out of this file to draw the same
+// track the MQL compiles — a `200.0` here would need a cast in the panel and
+// the simulator's `int(eval(...))` would silently read 0.
+#define TH_PERCENT_OVERRIDE_MAX 200
+
 const color FRACTAL_COLORS[] = {
     clrBlack, clrBlack, clrBlack, clrBlue, clrRed,
     clrRed, clrGreen, clrBlack, clrBlack

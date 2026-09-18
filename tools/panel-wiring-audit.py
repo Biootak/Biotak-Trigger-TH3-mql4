@@ -66,6 +66,11 @@ ENTRY = os.path.join(ROOT, "Biotak Trigger TH3.mq4")
 UTILS = os.path.join(ROOT, "Biotak", "UtilityFunctions.mqh")
 BASEKNOT = os.path.join(ROOT, "Biotak", "BaseKnotTool.mqh")
 ICONS = os.path.join(ROOT, "Files", "Icons")
+# P-TH-01: the fractal ladder and its two measuring sticks — the modules the
+# [th-percent] check and its mutants patch.
+FRACTALS = os.path.join(ROOT, "Biotak", "FractalTimeframes.mqh")
+THCALC = os.path.join(ROOT, "Biotak", "THCalculations.mqh")
+ADAPT = os.path.join(ROOT, "Biotak", "AdaptiveScaling.mqh")
 
 QUIET = "--quiet" in sys.argv
 _PATCHED = {}
@@ -3102,6 +3107,165 @@ def check_paneldrag_off():
     return problems
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# P-TH-01 (2026-09-18) — the TH-percentage research knob's ENGINE half.
+#
+# WHY IT NEEDS A GATE OF ITS OWN
+# The [rows] / [persist] / [relayout] checks above already prove the PANEL half:
+# the row exists, it reads, it writes, it is saved, it asks for a relayout. What
+# none of them can see is whether the number the slider writes ever reaches the
+# LADDER THE CHART DRAWS — the P-UI-47 shape ("a slider that writes a mirror the
+# engine never reads"), one layer deeper. And there is a second, quieter failure
+# the panel half cannot see at all: a LATER reader scaling the two sites that
+# must stay raw, which re-picks `g_fractalShift` — and with it the Structure TF
+# and the whole zone hierarchy — every time the research knob moves. That is the
+# confound the user's own rule forbids («بقیه دست نمیخوره روابطه به جایی 66 دیگه
+# چیزها میاد»), and it would be invisible on the chart.
+#
+# THE MODEL: one knob -> one ratio -> one ladder.
+#   `g_thPercentOverride` is read in EXACTLY one function
+#   (`FractalPercentScale()`, FractalTimeframes.mqh) and turns into the ratio
+#   every rung is multiplied by; `FractalPercentScaled()` is the only reader the
+#   drawing paths may use. The professor's table is never edited, so 0 = OFF is
+#   byte-for-byte the shipped ladder.
+# ─────────────────────────────────────────────────────────────────────────────
+
+#--- every path that resolves a rung INTO a percentage the chart draws. These
+#--- MUST go through the knob (a raw read here is the knob doing nothing).
+TH_PERCENT_DRAW_SITES = (
+    ("FractalTimeframes.mqh", "double result = FractalPercentScaled(targetIndex);"),
+    ("FractalTimeframes.mqh", "return FractalPercentScaled(i);"),
+    ("THCalculations.mqh", "double percentage = FractalPercentScaled(i);"),
+    ("LabelFunctions.mqh", "double percentage = FractalPercentScaled(i);"),
+)
+
+#--- ...and the two readers that must stay on the RAW table. They answer "which
+#--- rung of the PROFESSOR's ladder matches this ATR / this frequency" — a
+#--- measuring stick, not the drawn ladder.
+TH_PERCENT_RAW_SITES = (
+    ("AdaptiveScaling.mqh", "double p = MODIFIED_FRACTAL_PERCENTAGES[i];"),
+    ("FrequencyOptimizer.mqh", "double fracPct = MODIFIED_FRACTAL_PERCENTAGES[f];"),
+)
+
+TH_PERCENT_OWNER = "FractalTimeframes.mqh"
+#--- RuntimeSettings owns the mirror (seed / redirect / persist / restore) and
+#--- BiotakPanels owns the ROW (display the value, write it back). Both are the
+#--- knob's own plumbing. Everything else is the ENGINE, and the engine must go
+#--- through the ratio — a module that reads the raw mirror has its own ladder.
+TH_PERCENT_EXEMPT = (TH_PERCENT_OWNER, "RuntimeSettings.mqh", "BiotakPanels.mqh")
+
+
+def check_th_percent():
+    """[th-percent] - the research knob reaching the ladder, and ONLY the ladder."""
+    problems = []
+    src = {}
+    for name in sorted(os.listdir(os.path.join(ROOT, "Biotak"))):
+        if name.endswith(".mqh"):
+            src[name] = read(os.path.join(ROOT, "Biotak", name))
+    owner = src.get(TH_PERCENT_OWNER)
+    if owner is None:
+        return ["%s is gone - the TH percentage knob has no owner" % TH_PERCENT_OWNER]
+
+    # 1. ONE owner. A second module reading the mirror is a second ladder: the
+    #    two would disagree the moment either one changed.
+    for name in sorted(src):
+        if name in TH_PERCENT_EXEMPT:
+            continue
+        for i, line in enumerate(strip_comments(src[name]).splitlines(), 1):
+            if "g_thPercentOverride" in line:
+                problems.append("%s:%d reads g_thPercentOverride outside its ONE "
+                                "owner (%s) - a second ladder that can disagree "
+                                "with the first (P-TH-01)"
+                                % (name, i, TH_PERCENT_OWNER))
+
+    # 2. the ratio itself exists, and 0 really is OFF. The OFF path is spelled
+    #    out rather than left to arithmetic: "0 = the professor's table byte for
+    #    byte" is the knob's contract with every existing chart, and a ratio of
+    #    1.0 is what makes `x * 1.0` bit-identical to `x`.
+    for need in ("double FractalPercentScale()", "double FractalPercentScaled(",
+                 "double FractalPercentRaw("):
+        if need not in strip_comments(owner):
+            problems.append("%s lost %s - the knob no longer turns into ONE ratio "
+                            "(P-TH-01)" % (TH_PERCENT_OWNER, need))
+    if "if(g_thPercentOverride <= 0.0) return 1.0;" not in strip_comments(owner):
+        problems.append("%s lost the knob's OFF path - 0 must mean the professor's "
+                        "table byte for byte, not a scaled ladder (P-TH-01)"
+                        % TH_PERCENT_OWNER)
+
+    # 3. every DRAWING reader goes through the knob
+    for name, snip in TH_PERCENT_DRAW_SITES:
+        if snip not in strip_comments(src.get(name) or ""):
+            problems.append("%s no longer resolves its rung through "
+                            "FractalPercentScaled (%r) - the slider would move and "
+                            "the chart would not (P-TH-01)" % (name, snip))
+
+    # 4. the measuring sticks stay raw, and say so
+    for name, snip in TH_PERCENT_RAW_SITES:
+        body_t = strip_comments(src.get(name) or "")
+        if snip not in body_t:
+            problems.append("%s no longer reads the professor's table raw (%r) - it "
+                            "is a MEASURING STICK: 'which rung matches the "
+                            "ATR/frequency', not the drawn ladder (P-TH-01)"
+                            % (name, snip))
+        if "FractalPercentScaled" in body_t:
+            problems.append("%s now follows the research knob - scaling a measuring "
+                            "stick re-picks g_fractalShift (and the Structure TF and "
+                            "the zone hierarchy) under the knob, which is the "
+                            "confound P-TH-01 must not introduce" % name)
+
+    # 5. the panel row writes the mirror, invalidates the CACHED percentage, and
+    #    asks for the relayout the label pass needs. `CalculateTimeframeTH` stores
+    #    what it resolved, so a knob change without the invalidation keeps drawing
+    #    the OLD ladder until an unrelated event clears it.
+    panels_t = strip_comments(src.get("BiotakPanels.mqh") or "")
+    # `item_block` -> `body` needs the line-start DEFINITION, so the FULL text
+    # goes in and only the returned arm is stripped.
+    arm = strip_comments(item_block(src.get("BiotakPanels.mqh") or "",
+                                    "PnlApplySet(", 3) or "")
+    cut = arm.find("row==5")
+    stop = arm.find("break;", cut) if cut >= 0 else -1
+    seg = arm[cut:stop] if cut >= 0 and stop > cut else ""
+    if not seg:
+        problems.append("the TH PERCENT row (card 3, setting 5) has no PnlApplySet "
+                        "branch - the slider is decoration (P-TH-01)")
+    else:
+        if "g_thPercentOverride" not in seg:
+            problems.append("the TH PERCENT row no longer writes g_thPercentOverride "
+                            "(P-TH-01)")
+        if "InvalidateTimeframeDependentCaches()" not in seg:
+            problems.append("the TH PERCENT row no longer invalidates the cached "
+                            "rung->percentage - the chart would keep drawing the OLD "
+                            "ladder until an unrelated event cleared the cache "
+                            "(P-TH-01)")
+        if "g_labelsRelayoutNeeded=true" not in seg:
+            problems.append("the TH PERCENT row no longer asks for a relayout - the "
+                            "TH label strip is drawn by the label pass, so the knob "
+                            "would move the lines and not the numbers beside them "
+                            "(P-TH-01)")
+
+    # 6. ONE bound. The slider's end stop and the persisted-override clamp must
+    #    name the same constant, or a saved value is unreachable on the slider
+    #    (the P-UI-70d rule: a slider whose max is past the engine's clamp stops
+    #    responding at the end of its travel).
+    consts = read(os.path.join(ROOT, "Biotak", "ConstantsAndEnums.mqh"))
+    if "#define TH_PERCENT_OVERRIDE_MAX" not in consts:
+        problems.append("TH_PERCENT_OVERRIDE_MAX is gone from ConstantsAndEnums.mqh "
+                        "- the knob's one bound has no owner (P-TH-01)")
+    if "maxV=TH_PERCENT_OVERRIDE_MAX" not in panels_t:
+        problems.append("the TH PERCENT slider no longer names TH_PERCENT_OVERRIDE_MAX "
+                        "as its max - a range that repeats a number is a range that "
+                        "drifts from its clamp (P-TH-01)")
+    settings_t = strip_comments(src.get("RuntimeSettings.mqh") or "")
+    if not re.search(r'GlobalVariableCheck\(p \+ "TPC"\)', settings_t):
+        problems.append("the TH percentage is no longer restored from its override "
+                        "key (TPC) - the research value would die with the session "
+                        "(P-TH-01)")
+    if "TH_PERCENT_OVERRIDE_MAX" not in settings_t:
+        problems.append("the restore no longer clamps through TH_PERCENT_OVERRIDE_MAX "
+                        "(P-TH-01)")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -3124,6 +3288,7 @@ def main():
               ("bkcursor-off", check_bkcursor_off()),
               ("bkmagnet", check_bkmagnet()),
               ("paneldrag-off", check_paneldrag_off()),
+              ("th-percent", check_th_percent()),
               ("placement", check_placement()))
     for name, plist in groups:
         if not QUIET:
@@ -3187,7 +3352,7 @@ def selftest():
                        or check_dual() or check_drag() or check_mouse()
                        or check_bk_drag() or check_bkcursor_off()
                        or check_bkbox_ink() or check_bkedge_off()
-                       or check_heal())))
+                       or check_heal() or check_th_percent())))
     reset()
 
     # 1. P-UI-70c: the row is retired again while its address stays live
@@ -3319,6 +3484,43 @@ def selftest():
                 "   ObjectsDeleteAll(0, head, 0, -1);")
     cases.append(("a card wipe bounded to one subwindow is caught",
                   bool(check_purge())))
+    reset()
+
+    # 12c. P-TH-01: the knob's own read disappears (the slider writes a mirror
+    #      nothing consumes — P-UI-47, one layer deeper)
+    with_source(FRACTALS, "if(g_thPercentOverride <= 0.0) return 1.0;", "")
+    cases.append(("a research knob nothing consumes is caught",
+                  bool(check_th_percent())))
+    reset()
+
+    # 12d. a DRAWING reader skips the knob (the slider moves, the chart does not)
+    with_source(THCALC, "double percentage = FractalPercentScaled(i);",
+                "double percentage = FractalPercentRaw(i);")
+    cases.append(("a ladder reader that skips the knob is caught",
+                  bool(check_th_percent())))
+    reset()
+
+    # 12e. a MEASURING STICK starts following the knob — the quiet one: the chart
+    #      still draws, but the fractal shift (and the zone hierarchy) now moves
+    #      with the research knob.
+    with_source(ADAPT, "double p = MODIFIED_FRACTAL_PERCENTAGES[i];",
+                "double p = FractalPercentScaled(i);")
+    cases.append(("a measuring stick that follows the knob is caught",
+                  bool(check_th_percent())))
+    reset()
+
+    # 12f. the knob change stops invalidating the CACHED rung->percentage (the
+    #      chart keeps drawing the old ladder until something else clears it)
+    with_source(PANELS, "               InvalidateTimeframeDependentCaches();\n", "")
+    cases.append(("a knob whose change is cached away is caught",
+                  bool(check_th_percent())))
+    reset()
+
+    # 12g. a SECOND module reads the mirror (two ladders that can disagree)
+    with_source(THCALC, "double GetTimeframeTH() {",
+                "double GetTimeframeTH() { double _k = g_thPercentOverride;")
+    cases.append(("a second ladder owner is caught",
+                  bool(check_th_percent())))
     reset()
 
     # 13. the row naming and the purge prefix stop agreeing

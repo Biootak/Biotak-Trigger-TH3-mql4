@@ -15,6 +15,97 @@ string GetBaseFractalTimeframeForCurrent() {
     return "M1";
 }
 
+//==============================================================================
+// P-TH-01 (2026-09-18) — THE TH PERCENTAGE KNOB.
+//
+// User: «این درصد محاسبات هم th هم بشه تنظیم کرد برای تحقیقات لازم دارمش الان
+// 66 درصد قیمت جاری هستش فکر کنم یا نه یک نگاه بکن» — and then, fixing the
+// shape: «مثلا 66 درصد هستم من ساشد 100 بزارم شاید 75 درصد بزارم» (one free
+// percentage, live from the panel) with the limit «بقیه دست نمیخوره روابطه به
+// جایی 66 دیگه چیزها میاد» (the rest must not be touched — the relationships
+// hang off the 66).
+//
+// WHERE THE NUMBER COMES FROM, FOR THE RECORD. There is no single "TH
+// percentage" in this program: `MODIFIED_FRACTAL_PERCENTAGES`
+// (ConstantsAndEnums.mqh:230) is a nine-rung table and the rung a chart reads
+// is chosen by its own TF (`GetBaseFractalTimeframeForCurrent` above) — on D1
+// that rung is H17+M4 = 66.66%. `CalculateTHPoints` then does
+// `(price * percentage) / 100.0`, so the TH really is ~66% of the price. The
+// user's reading was right; what was missing was a way to move it.
+//
+// WHAT THE KNOB IS ALLOWED TO BE. It is read as "the percentage for THIS
+// chart's own rung" and becomes ONE ratio, which EVERY rung is multiplied by.
+// 66.66 -> 75 on D1 makes the ladder 2.34/4.69/9.38/18.75/37.5/75/150/300/600:
+// every x2 relationship the ladder is built on survives, so Pattern (one rung
+// DOWN) is still half the Structure step and Trigger (two rungs down) still a
+// quarter — which is exactly the «روابطه به جایی» the user forbade breaking.
+// Replacing ONE rung would have been a different, silently broken feature.
+//
+// WHAT IS DELIBERATELY *NOT* SCALED — this is the user's «بقیه دست نمیخوره»,
+// spelled out so a later reader does not "fix" it:
+//   * AdaptiveScaling.mqh:172 (JUMP_AGGRESSIVE) walks the RAW table to answer
+//     "which rung of the professor's ladder reaches the ATR". That is a
+//     MEASURING STICK, not the drawn ladder; moving it would silently re-pick
+//     `g_fractalShift` (and with it the Structure TF and the whole zone
+//     hierarchy) every time the research knob moved, which is precisely the
+//     confound the user is trying to avoid.
+//   * FrequencyOptimizer.mqh:574 scores a measured frequency against the
+//     professor's reference percentages — same reasoning.
+//   * TH3/TH3Math.mqh (TH3TOOL-OFF) keeps its own copy and is retired.
+//
+// ONE CONSEQUENCE THAT IS NOT A BUG, so nobody "fixes" it: `GetBaseTimeframeTH()`
+// resolves through `CalculateTimeframeTH`, so the knob also scales the
+// `theoreticalTH` that AdaptiveScaling.mqh:93 divides the ATR by — i.e. the
+// displayed ATR/TH ratio (`g_atrScalingFactor`) moves with the knob. That is the
+// TRUE ratio (the TH really did change). It does NOT move `g_fractalShift` on
+// the DEFAULT path (ADAPTIVE_FRACTAL + JUMP_AGGRESSIVE): that shift comes from
+// the raw-table walk above, which is deliberately unscaled. Only the
+// non-default JUMP_CONSERVATIVE branch derives its shift from the ratio.
+//
+// 0 (the factory default) = OFF = 1.0 = the professor's table byte for byte.
+// There is no drift at rest: the ratio is exactly 1.0 and `x * 1.0` is
+// bit-identical to `x` for every finite x.
+//==============================================================================
+
+//--- the professor's table, RAW. The ONE reader of the array, so a future
+//--- caller cannot accidentally scale twice.
+double FractalPercentRaw(const int index)
+{
+    int n = ArraySize(MODIFIED_FRACTAL_PERCENTAGES);
+    if(index < 0 || index >= n) return 0.0;
+    return MODIFIED_FRACTAL_PERCENTAGES[index];
+}
+
+//--- rung index of a fractal timeframe NAME, or -1. Same lookup the resolvers
+//--- below do inline; here so the scale has one source for "my own rung".
+int FractalRungIndex(const string timeframe)
+{
+    int n = ArraySize(FRACTAL_TIMEFRAMES);
+    for(int i = 0; i < n; i++) {
+        if(FRACTAL_TIMEFRAMES[i] == timeframe) return i;
+    }
+    return -1;
+}
+
+//--- the knob as ONE ratio. 1.0 = OFF (the professor's table untouched).
+double FractalPercentScale()
+{
+    if(g_thPercentOverride <= 0.0) return 1.0;
+    int baseIdx = FractalRungIndex(GetBaseFractalTimeframeForCurrent());
+    if(baseIdx < 0) return 1.0;
+    double base = FractalPercentRaw(baseIdx);
+    if(base <= 0.0) return 1.0;
+    return g_thPercentOverride / base;
+}
+
+//--- the professor's table x the knob's ratio: the ONE reader every
+//--- DRAWING and LABEL path must use (THCalculations, FractalTimeframes'
+//--- own two resolvers, LabelFunctions' TH strip).
+double FractalPercentScaled(const int index)
+{
+    return FractalPercentRaw(index) * FractalPercentScale();
+}
+
 string ApplyFractalShift(const string timeframeStr) {
     int shift = g_fractalShift;
     if(shift <= 0) return timeframeStr;
@@ -106,7 +197,10 @@ double GetLowerTimeframeTH(const string currentTimeframe, int offset) {
               ", TF: " + currentTimeframe, ", Offset: " + IntegerToString(offset));
         return EMPTY_VALUE;
     }
-    double result = MODIFIED_FRACTAL_PERCENTAGES[targetIndex];
+    // P-TH-01: SCALED — this is Pattern/Trigger, the two rungs the user's
+    // «روابطه به جایی» rule is about. `FractalPercentScaled` keeps them at
+    // exactly half and a quarter of the Structure step whatever the knob says.
+    double result = FractalPercentScaled(targetIndex);
     if(result <= 0.0) {
         DEBUG_PRINTF("GetLowerTimeframeTH - Warning: Zero or negative percentage at index ", targetIndex);
     }
@@ -125,11 +219,16 @@ double GetTriggerTH() {
 }
 
 // Get percentage for a specific timeframe (matching MotiveWave implementation)
+// P-TH-01: SCALED — this is the canonical rung -> percentage resolver. The
+// value it returns is what `CalculateTHPoints` turns into the drawn TH, so the
+// knob reaches the chart through here and through THCalculations' own copy of
+// the same lookup (which has a cache; a knob change invalidates it, see
+// `PnlApplySet` case 3).
 double GetTimeframePercentage(const string timeframe) {
     int arraySize = ArraySize(FRACTAL_TIMEFRAMES);
     for(int i = 0; i < arraySize; i++) {
         if(FRACTAL_TIMEFRAMES[i] == timeframe) {
-            return MODIFIED_FRACTAL_PERCENTAGES[i];
+            return FractalPercentScaled(i);
         }
     }
     // Default fallback

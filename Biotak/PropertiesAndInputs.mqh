@@ -32,6 +32,26 @@ input ENUM_ADAPTIVE_MODE inpAdaptiveMode = ADAPTIVE_FRACTAL;      // Adaptive Mo
 input double inpAdaptiveBlendRatio = 0.5;                        // Adaptive Blend Ratio
 input int inpAdaptiveSmoothingPeriod = 10;                       // Adaptive Smoothing (v3.11: reduced to 10 for better response)
 input ENUM_FRACTAL_JUMP_STRATEGY inpFractalJumpStrategy = JUMP_AGGRESSIVE; // Fractal Jump Strategy
+// P-TH-01 (2026-09-18) — THE TH PERCENTAGE, AS A RESEARCH KNOB.
+//
+// User: «این درصد محاسبات هم th هم بشه تنظیم کرد برای تحقیقات لازم دارمش».
+//
+// The percentage is NOT one number and NOT an Input today: it is the nine-rung
+// ladder `MODIFIED_FRACTAL_PERCENTAGES` (ConstantsAndEnums.mqh:230), and the rung
+// this chart reads is picked by its own TF (FractalTimeframes.mqh:5). On D1 that
+// rung is H17+M4 = 66.66%.
+//
+// WHAT THIS KNOB ACTUALLY SETS — read this before changing its meaning: the value
+// is the percentage for THIS chart's own rung, and every other rung scales by the
+// SAME ratio (`FractalPercentScale`). So 66.66 -> 75 makes the whole ladder
+// 2.34/4.69/9.38/18.75/37.5/75/150/300/600 — every x2 relationship the ladder is
+// built on survives. Replacing only ONE rung would be a different feature: Pattern
+// and Trigger are read one and two rungs DOWN (GetLowerTimeframeTH), so a
+// single-rung override silently breaks their half/quarter relationship with the
+// Structure step and the zone hierarchy stops being provable.
+//
+// 0 (the default) = OFF: the professor's table, byte for byte.
+input double inpTHPercentOverride = 0.0;   // TH % for THIS chart's rung (0 = professor's table)
 
 input group "02) BASE PRICE - ANCHOR"
 input string S4 = "[02] BASE PRICE / ANCHOR";

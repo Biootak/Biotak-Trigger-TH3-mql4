@@ -148,6 +148,11 @@ static bool g_showTHLabels = false;                              // [03] inpShow
 static bool g_showFractalTHs = false;                            // [03] inpShowFractalTHs
 static bool g_showStandardTHs = false;                           // [03] inpShowStandardTHs
 static bool g_showTHTargets = true;                              // [03] inpShowTHTargets
+// [01] P-TH-01 — the TH percentage for THIS chart's rung (0 = the professor's
+// table). The ladder itself is NOT stored here: `FractalPercentScale` derives the
+// ratio from this one number, so a panel edit and the engine can never hold two
+// different ladders. See the Input's own note in PropertiesAndInputs.mqh.
+static double g_thPercentOverride = 0.0;                         // [01] inpTHPercentOverride
 static int g_thLabelsMarginBottom = 40;                          // [13] inpTHLabelsMarginBottom
 static bool g_enableTH3Tool = true;                              // [14] inpEnableTH3Tool
 static ENUM_TH3_DRAWING_MODE g_th3DrawingMode = TH3_MODE_ABCD;  // [14] inpTH3DrawingMode
@@ -280,6 +285,7 @@ enum FactorySetting
    FF_BK_ALIGN,          // inpBKAlign
    FF_BK_VALIGN,         // inpBKVAlign
    FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
+   FF_TH_PERCENT,        // inpTHPercentOverride (P-TH-01 — appended for the same reason)
    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -343,6 +349,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_TH_STANDARD]         = inpShowStandardTHs;
    g_factoryDefaults[FF_TH_TARGETS]          = inpShowTHTargets;
    g_factoryDefaults[FF_TH_MARGIN_BOTTOM]    = inpTHLabelsMarginBottom;
+   g_factoryDefaults[FF_TH_PERCENT]          = inpTHPercentOverride;   // P-TH-01
 #ifndef BUILD_LITE
     // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
     //g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
@@ -512,6 +519,11 @@ void RuntimeSettingsInit()
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
 
+   // P-TH-01: the TH-percentage knob. MUST be seeded HERE, above the #define
+   // block — below it `inpTHPercentOverride` already IS the mirror and this
+   // line would be a no-op self-assign (this file's own header warning).
+   g_thPercentOverride = inpTHPercentOverride;
+
 #ifndef BUILD_LITE
     // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
     // [14] TH3 TOOL
@@ -611,6 +623,7 @@ void RuntimeSettingsInit()
 #define inpShowStandardTHs g_showStandardTHs
 #define inpShowTHTargets g_showTHTargets
 #define inpTHLabelsMarginBottom g_thLabelsMarginBottom
+#define inpTHPercentOverride g_thPercentOverride
 #define inpEnableTH3Tool g_enableTH3Tool
 #define inpTH3DrawingMode g_th3DrawingMode
 #define inpTH3BaseStepPercent g_th3BaseStepPercent
@@ -653,6 +666,19 @@ void RuntimeSettingsSetPersistPrefix(const string prefix)
 }
 
 int ClampSettingInt(const int v, const int lo, const int hi)
+{
+   if(v < lo) return lo;
+   if(v > hi) return hi;
+   return v;
+}
+
+// P-TH-01: the double sibling of the above. `inpTHPercentOverride` is the
+// only double setting the panel can edit, so this exists for exactly one
+// caller pair — the persisted-override load and nothing else. The bound is
+// named once (`TH_PERCENT_OVERRIDE_MAX`, ConstantsAndEnums.mqh) because the
+// panel's slider reads the same number: a slider whose max is past the
+// engine's clamp stops responding at the end of its travel.
+double ClampSettingDbl(const double v, const double lo, const double hi)
 {
    if(v < lo) return lo;
    if(v > hi) return hi;
@@ -976,6 +1002,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "TS2", g_showStandardTHs ? 1 : 0);
    RSSetNext(p + "TG",  g_showTHTargets ? 1 : 0);
    RSSetNext(p + "TB",  g_thLabelsMarginBottom);
+   RSSetNext(p + "TPC", g_thPercentOverride);   // P-TH-01 — 0 = professor's table
    RSSetNext(p + "E3",  g_enableTH3Tool ? 1 : 0);
    RSSetNext(p + "D3",  g_th3DrawingMode);
    RSSetNext(p + "B3",  g_th3BaseStepPercent);
@@ -1143,6 +1170,10 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "TS2")) g_showStandardTHs = (GlobalVariableGet(p + "TS2") > 0.5);
    if(GlobalVariableCheck(p + "TG"))  g_showTHTargets = (GlobalVariableGet(p + "TG") > 0.5);
    if(GlobalVariableCheck(p + "TB"))  g_thLabelsMarginBottom = ClampSettingInt((int)GlobalVariableGet(p + "TB"), 10, 200);
+   // P-TH-01: `ClampSettingDbl` is the same bound the panel slider and the
+   // engine read (0 = OFF, 200 = the slider's own end stop) — a GV written by
+   // an older build cannot ask for a ladder the slider cannot reproduce.
+   if(GlobalVariableCheck(p + "TPC")) g_thPercentOverride = ClampSettingDbl(GlobalVariableGet(p + "TPC"), 0.0, TH_PERCENT_OVERRIDE_MAX);
    if(GlobalVariableCheck(p + "E3"))  g_enableTH3Tool = (GlobalVariableGet(p + "E3") > 0.5);
    if(GlobalVariableCheck(p + "D3"))  g_th3DrawingMode = (ENUM_TH3_DRAWING_MODE)ClampSettingInt((int)GlobalVariableGet(p + "D3"), 0, 1);
    if(GlobalVariableCheck(p + "B3"))  g_th3BaseStepPercent = MathMax(0.5, GlobalVariableGet(p + "B3"));

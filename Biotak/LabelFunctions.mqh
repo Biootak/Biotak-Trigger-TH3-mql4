@@ -1714,7 +1714,11 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int painted = 0;   // P-UI-43: columns this section really painted (slot booking)
     for(int i = 0; i < _nFrac; i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
-        double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
+        // P-TH-01: SCALED — the strip is the DISPLAY of the ladder that gets
+        // drawn, so it must show the knob's numbers, never the raw table's.
+        // A strip that disagreed with the lines would be the one way the user
+        // could not tell whether the knob did anything.
+        double percentage = FractalPercentScaled(i);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
         // P-UI-52: pips through the ONE owner (`GetCachedPipSize()`), never the
         // hard-coded `point * 10`: on a 2-digit index/crypto symbol a pip is one

@@ -120,7 +120,11 @@ double CalculateTimeframeTH(const string timeframe) {
     // StringFind can cause false matches (e.g., "M1" matches "H1+M4")
     for(int i = 0; i < totalTimeframes; i++) {
         if(FRACTAL_TIMEFRAMES[i] == timeframe) {
-            double percentage = MODIFIED_FRACTAL_PERCENTAGES[i];
+            // P-TH-01: SCALED, through the ONE owner in FractalTimeframes.mqh —
+            // this value becomes the drawn TH step, so the knob reaches the
+            // chart here. The cache above holds the SCALED value, which is why
+            // a knob change must invalidate it (`InvalidateTimeframeCache()`).
+            double percentage = FractalPercentScaled(i);
             
             // Store in cache for future use
             int periodSeconds = PeriodSeconds(CompatTF(currentPeriod));

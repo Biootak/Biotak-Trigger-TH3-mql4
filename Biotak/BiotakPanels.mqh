@@ -720,7 +720,9 @@ bool PnlCardFade(const int item)
 // (PNL_COUNT lives in BiotakKit.mqh — Kit is included first.)
 // [2] ATR LABELS: 7 → 11 on 2026-09-11 — the countdown tag's OWN rows sit on
 // top (switch/color/size/gap), then the ATR block's rows unchanged.
-int g_PnlRows[PNL_COUNT] = {4,11,11,5,1,8,11,6,4,2,7,7,1,7};
+// P-TH-01: [3] TH 5 → 6 — the TH-percentage research knob is setting index 5
+// (the address is APPENDED, so nothing above it moved).
+int g_PnlRows[PNL_COUNT] = {4,11,11,6,1,8,11,6,4,2,7,7,1,7};
 // g_PnlRows[12] is the BASE (TAB row only) — PnlRowsCount(12) returns
 // 1 + the open tab's section rows (6 each tab), the same dynamic pattern
 // as the Step card 9. Never hardcode card-12 rows.
@@ -1587,7 +1589,7 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "CARD COLORS", 1);
       PnlSpecAdd(2, PNL_K_CSET, 14, 5);
    }
-   else if(item == 3)   // TH LABELS (ember) — 5 settings / 8 display rows
+   else if(item == 3)   // TH LABELS (ember) — 6 settings / 9 display rows
    {
       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TH SOURCES", 3);
       PnlSpecAdd(3, PNL_K_LEGACY, 0, 1, "wave");
@@ -1595,8 +1597,13 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
       PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
+      // P-TH-01: TH PERCENT lives here, not in a band of its own, on purpose:
+      // the card is 8 display rows and `PNL_WIDE_MIN_ROWS` is 10, so a ninth
+      // row keeps it NARROW. A tenth would flip the whole card to the
+      // two-column layout — a redesign, not a research knob.
+      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 2);
       PnlSpecAdd(3, PNL_K_LEGACY, 4, 1, "valign");
+      PnlSpecAdd(3, PNL_K_LEGACY, 5, 1, "sigma");
    }
    else if(item == 6)   // HTF CANDLES — 13 settings / 14 display rows
    {                    // the 4 colours fold into ONE .cset row
@@ -2951,7 +2958,28 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==1)  { kind=1; label="FRACTAL THs"; }
       else if(row==2)  { kind=1; label="STANDARD THs"; }
       else if(row==3)  { kind=1; label="TH TARGETS"; }
-      else             { label="MARGIN BOTTOM"; minV=10; maxV=200; }
+      else if(row==4)  { label="MARGIN BOTTOM"; minV=10; maxV=200; }
+      // P-TH-01: the research knob, as the block's trailing fallthrough. That
+      // placement is not cosmetic: `tools/panel-mt4-sim.py` derives the
+      // fallthrough's row number as "how many row branches preceded it"
+      // (`parse_set_def`), so it MUST be the LAST branch in the block or the
+      // simulator reads MARGIN BOTTOM's row as this one and silently drops a
+      // row from the proof. MARGIN BOTTOM therefore gets an EXPLICIT branch of
+      // its own above — which the wiring audit also needs, because it treats
+      // the trailing statement as answering only the card's TOP address.
+      //
+      // (Never write a COMPLETE row-branch test in this comment: `row_arms` in
+      // panel-wiring-audit.py scans the raw text for the whole `if(`+`row`+`==`
+      // shape, so a branch spelled here becomes a phantom arm with no caption
+      // and the audit reports a blank control. This cost one red run already.)
+      //
+      // min 0 = OFF (the professor's table); `TH_PERCENT_OVERRIDE_MAX` is the
+      // slider's own end stop AND the load clamp — one number, so the slider
+      // can always reproduce what it saved. step 1 (not 0.01) is deliberate:
+      // `PnlValueFromX` maps ~230 px of travel onto the range, so a 0.01 grid
+      // would print values no drag can ever land on and 75 — the user's own
+      // example — would be unreachable.
+      else             { label="TH PERCENT"; minV=0; maxV=TH_PERCENT_OVERRIDE_MAX; step=1; unit="%"; }
    }
    // VIEWLOCK-OFF: item==4 (VIEW LOCK card) retired —
    //else if(item==4)   // VIEW LOCK — one row: keep this view across timeframes
@@ -3420,6 +3448,8 @@ double PnlDefValSet(const int item,const int row)
               if(row==1) return (FactoryDefault(FF_TH_FRACTAL)>0.5)?1.0:0.0;
               if(row==2) return (FactoryDefault(FF_TH_STANDARD)>0.5)?1.0:0.0;
               if(row==3) return (FactoryDefault(FF_TH_TARGETS)>0.5)?1.0:0.0;
+              if(row==4) return 40;                    // default margin bottom
+              if(row==5) return FactoryDefault(FF_TH_PERCENT);   // P-TH-01 — 0 = professor's table
               return 40;                               // default margin bottom
        // VIEWLOCK-OFF: case 4: return 0.0;   // view lock off by default
        // TH3TOOL-OFF: case 5 (TH3 TOOL defaults) retired —
@@ -3531,6 +3561,11 @@ double PnlCurrentSet(const int item,const int row)
               if(row==1) return g_showFractalTHs?1.0:0.0;
               if(row==2) return g_showStandardTHs?1.0:0.0;
               if(row==3) return g_showTHTargets?1.0:0.0;
+              // P-TH-01: row 4 is spelled out rather than left to the trailing
+              // `return` below, because the wiring audit reads the trailing
+              // statement as answering only the card's TOP address (setting 5).
+              if(row==4) return g_thLabelsMarginBottom;
+              if(row==5) return g_thPercentOverride;   // P-TH-01 (0 = OFF)
               return g_thLabelsMarginBottom;
        // VIEWLOCK-OFF: case 4: if(row==0) return g_viewLockEnabled?1.0:0.0;
        //               return 0.0;
@@ -3790,6 +3825,43 @@ int PnlApplySet(const int item,const int row,const double v)
                             string opT3=GetLevelObjectPrefix();
                             SetTHLabelsVisibility(opT3,g_thLabelsMode);
                             g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         // P-TH-01: row 4 (MARGIN BOTTOM) is spelled out rather than left to the
+         // trailing `else` below, because the wiring audit reads the trailing
+         // statement as answering only the card's TOP address (setting 5).
+         else if(row==4)  { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
+         // P-TH-01 (2026-09-18) — THE TH PERCENTAGE, LIVE.
+         //
+         // User: «این درصد محاسبات هم th هم بشه تنظیم کرد برای تحقیقات لازم
+         // دارمش» + «پنل، زنده», with the limit «بقیه دست نمیخوره روابطه به
+         // جایی 66 دیگه چیزها میاد».
+         //
+         // The row writes ONE number, `g_thPercentOverride`, and NOTHING else:
+         // every derived value (the drawn TH step, Pattern, Trigger, the label
+         // strip) re-resolves through `FractalPercentScale()` on the next pass,
+         // so the ladder's internal relationships cannot be broken by an edit
+         // here. 0 = OFF = the professor's table, unchanged.
+         //
+         // THE CACHE IS THE TRAP. `CalculateTimeframeTH` stores the percentage
+         // it resolved, so a knob change that did not invalidate the cache
+         // would keep drawing the OLD ladder until some unrelated event (a TF
+         // switch, a re-attach) happened to clear it — the classic "the slider
+         // moves and nothing changes". `InvalidateTimeframeDependentCaches()`
+         // is the existing owner of exactly that invalidation.
+         //
+         // The write is guarded by `!=` so a drag that lands on the value it
+         // already holds returns REFRESH_NONE and costs nothing: a live gesture
+         // sends a batch per frame, and repainting a 43200-bar chart for a
+         // no-op frame is the one way this row could make the panel feel slow.
+         else if(row==5)
+         {
+            double nv = ClampSettingDbl(v, 0.0, TH_PERCENT_OVERRIDE_MAX);
+            if(nv != g_thPercentOverride)
+            {
+               g_thPercentOverride = nv;
+               InvalidateTimeframeDependentCaches();
+               g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
+            }
+         }
          else             { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          break;
        // VIEWLOCK-OFF: case 4 (VIEW LOCK apply) retired —
