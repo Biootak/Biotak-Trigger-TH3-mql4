@@ -291,6 +291,21 @@
 #define BK_NOTE_PAD_X    4     // px of plate on each side of the ink
 #define BK_NOTE_PAD_Y    2     // px of plate above and below the ink
 #define BK_NOTE_LIFT     2     // px between the plate's bottom edge and the box' top edge
+//--- P-BK-87 (2026-09-18) — THE PAIR IS KEPT INSIDE THE WINDOW.
+//--- Going screen-space (P-BK-86) traded one collision for another: a chart-space object
+//--- is clipped by the chart, but a SCREEN object is not — it is simply projected to
+//--- whatever pixel the box' corner lands on, and off-window pixels do not paint. So a box
+//--- scrolled to the top edge, or to the right one, took the note with it: the user's own
+//--- words for the whole line of work are «همیشه بتونه خونده بشه» — ALWAYS readable — and a
+//--- note that vanishes at the window edge is not. The chart's four edges are therefore the
+//--- one boundary the plate is pulled back inside, by the SAME rule the label family's own
+//--- countdown tag already uses (`LabelFunctions.mqh`: `cw - MathMax(8, inpLabelsMarginLeft)`
+//--- on the right — beyond that sits the price scale — and a bottom reserve for the
+//--- date-scale bar). The bottom reserve is spelled HERE rather than reused from the panel
+//--- half's `PNL_BOTTOM_SAFE`: `BiotakPanels.mqh` is the UI half, which the Lite entry does
+//--- not compile, so a domain-half module that read it would break Lite (P-BUILD-01).
+#define BK_NOTE_EDGE_MARGIN  4     // px the plate keeps from the window's top and left edges
+#define BK_NOTE_BOTTOM_SAFE 20     // px the plate keeps from the bottom edge (the date-scale bar)
 //--- BKNODERUNG-OFF (P-BK-75, 2026-09-17): P-BK-47 below IS RETIRED. It named the type
 //--- by a RUNG DISTANCE, which was a DURATION in disguise; the user replaced it with the
 //--- box' own HEIGHT against the movement abilities (that TF's own ATR) — see the
@@ -4059,18 +4074,44 @@ int BKInfoFontPt()
 //--- and the follower can never place them differently: a plate that drifts off its own
 //--- ink is worse than no plate at all.
 int BaseKnotNotePlateH() { return PnlRawLineH(BKInfoFontPt()) + 2 * BK_NOTE_PAD_Y; }
+//--- the plate's WIDTH, off the very string the note prints — its own ONE owner, so the
+//--- writer (which draws the plate) and the follower (which keeps its size in step with the
+//--- ink, P-BK-87) can never measure two different things.
+int BaseKnotNotePlateW(const string txt)
+{
+   int pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;
+   if(pw < 2 * BK_NOTE_PAD_X + 8) pw = 2 * BK_NOTE_PAD_X + 8;   // a not-yet-written note still gets a plate
+   return pw;
+}
 //--- the pair's two TOP-LEFT corners, from the projected corner. ONE owner of the offsets:
-//--- the writer (which also measures the width) and the follower (which only moves the pair)
-//--- both come through here, so the plate and the ink inside it can never be placed by two
-//--- spellings of the same arithmetic — a plate that drifts off its own ink is worse than none.
+//--- the writer and the follower both come through here, so the plate and the ink inside it can
+//--- never be placed by two spellings of the same arithmetic — a plate that drifts off its own
+//--- ink is worse than none.
 //--- `sx,sy` = the box' top-right corner in chart-window pixels (ChartTimePriceToXY); the
 //--- plate's BOTTOM edge sits on that corner, so the note still reads as the box' own caption
 //--- and grows to the RIGHT exactly as the chart-space text it replaced did.
-void BaseKnotNotePlateTop(const int sx, const int sy, const int ph,
+//--- P-BK-87: and then the pair is FITTED BACK INTO THE WINDOW. `pw` is an input here, not a
+//--- by-product — the right-hand fit cannot be decided without it. A screen object has no chart
+//--- to clip it, so this is the only place the note can be kept on screen at all.
+void BaseKnotNotePlateTop(const int sx, const int sy, const int pw, const int ph,
                           int &px, int &py, int &tx, int &ty)
 {
    px = sx - BK_NOTE_PAD_X;
    py = sy - BK_NOTE_LIFT - ph;
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   if(cw > 0)
+   {
+      int right = cw - MathMax(8, inpLabelsMarginLeft);   // the label family's own right boundary
+      if(px + pw > right) px = right - pw;
+      if(px < BK_NOTE_EDGE_MARGIN) px = BK_NOTE_EDGE_MARGIN;
+   }
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(ch > 0)
+   {
+      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;
+      else if(py + ph > ch - BK_NOTE_BOTTOM_SAFE) py = ch - BK_NOTE_BOTTOM_SAFE - ph;
+      if(py < BK_NOTE_EDGE_MARGIN) py = BK_NOTE_EDGE_MARGIN;   // a window shorter than the plate
+   }
    tx = px + BK_NOTE_PAD_X;
    ty = py + BK_NOTE_PAD_Y;
 }
@@ -4078,9 +4119,8 @@ void BaseKnotNotePlatePx(const int sx, const int sy, const string txt,
                          int &px, int &py, int &pw, int &ph, int &tx, int &ty)
 {
    ph = BaseKnotNotePlateH();
-   BaseKnotNotePlateTop(sx, sy, ph, px, py, tx, ty);
-   pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;
-   if(pw < 2 * BK_NOTE_PAD_X + 8) pw = 2 * BK_NOTE_PAD_X + 8;   // a not-yet-written note still gets a plate
+   pw = BaseKnotNotePlateW(txt);
+   BaseKnotNotePlateTop(sx, sy, pw, ph, px, py, tx, ty);
 }
 //--- The plate: the CHART'S OWN background, and no border of its own — invisible over an
 //--- empty chart, an honest cut-out where the candles are (the way MetaTrader's own price
@@ -4115,8 +4155,11 @@ void BaseKnotNotePlateDraw(const string pn, const int px, const int py, const in
 //--- replaced did. The projection is therefore ours to redo, and it is redone in exactly the
 //--- two places that already keep the note on its box: the child-move path (a drag) and the
 //--- pump (a scroll, a zoom, a window resize, a new bar). READ-GUARDED the project's own way:
-//--- while the pixels are where they already are this costs four terminal reads and NOT ONE
+//--- while the pair is where it already is this costs six terminal reads and NOT ONE
 //--- ObjectSet*, so a still chart pays nothing for it.
+//--- P-BK-87: the guard covers the plate's SIZE too. The note's own text is not constant — the
+//--- bar count, the risk, the type — so a plate that only ever moved would sooner or later be
+//--- too narrow for the ink it carries, which is the one thing a plate exists to prevent.
 void BaseKnotNotePlateFollow(const string pfx, const datetime t2, const double top)
 {
    string in = BaseKnotInfoName(pfx);
@@ -4126,17 +4169,22 @@ void BaseKnotNotePlateFollow(const string pfx, const datetime t2, const double t
    string pn = BaseKnotInfoPlateName(in);
    bool hasPlate = (ObjectFind(0, pn) >= 0);
    int ph = BaseKnotNotePlateH();
+   int pw = BaseKnotNotePlateW(ObjectGetString(0, in, OBJPROP_TEXT));
    int px, py, tx, ty;
-   BaseKnotNotePlateTop(sx, sy, ph, px, py, tx, ty);
+   BaseKnotNotePlateTop(sx, sy, pw, ph, px, py, tx, ty);
    if(hasPlate &&
       (int)ObjectGetInteger(0, pn, OBJPROP_XDISTANCE) == px &&
       (int)ObjectGetInteger(0, pn, OBJPROP_YDISTANCE) == py &&
+      (int)ObjectGetInteger(0, pn, OBJPROP_XSIZE) == pw &&
+      (int)ObjectGetInteger(0, pn, OBJPROP_YSIZE) == ph &&
       (int)ObjectGetInteger(0, in, OBJPROP_XDISTANCE) == tx &&
       (int)ObjectGetInteger(0, in, OBJPROP_YDISTANCE) == ty) return;   // steady state: reads only
    if(hasPlate)
    {
       ObjectSetInteger(0, pn, OBJPROP_XDISTANCE, px);
       ObjectSetInteger(0, pn, OBJPROP_YDISTANCE, py);
+      ObjectSetInteger(0, pn, OBJPROP_XSIZE, pw);
+      ObjectSetInteger(0, pn, OBJPROP_YSIZE, ph);
    }
    ObjectSetInteger(0, in, OBJPROP_XDISTANCE, tx);
    ObjectSetInteger(0, in, OBJPROP_YDISTANCE, ty);

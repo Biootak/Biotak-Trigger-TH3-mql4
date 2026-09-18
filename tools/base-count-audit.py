@@ -2686,9 +2686,13 @@ def check_note_home():
                 "OBJPROP_SELECTED" in sp and "BaseKnotBoxName(pfx)" in sp))
     out.append(("... and the NEWEST box while nothing is selected",
                 "commitMs" in sp))
-    # the slot: pushed in, never guessed here
+    # the slot: pushed in, never guessed here. P-BK-87's window fit is the ONE exception, and
+    # it is not the column: it reads the same right boundary so the plate cannot run under the
+    # price scale. The rule that matters — this module never PLACES the corner row — is kept by
+    # stripping the fit's body out before the search.
+    body_no_fit = plain.replace(strip_comments(body(src, "void BaseKnotNotePlateTop(") or ""), "")
     out.append(("this module reads NO column margin — the slot is pushed in from above",
-                not re.search(r"inpLabelsMargin", plain)))
+                not re.search(r"inpLabelsMargin", body_no_fit)))
     out.append(("... and the pushed slot is the row's only source of corner/x/y",
                 "s_bkCornerSide" in strip_comments(wib) and "s_bkCornerX" in strip_comments(wib)
                 and "s_bkCornerY" in strip_comments(wib)
@@ -2741,9 +2745,10 @@ def check_note_plate():
     ppx = body(src, "void BaseKnotNotePlatePx(")
     fol = body(src, "void BaseKnotNotePlateFollow(")
     top = body(src, "void BaseKnotNotePlateTop(")
+    wfn = body(src, "int BaseKnotNotePlateW(")
     for name, fn in (("the note writer", wib), ("the plate's drawer", pdr),
                      ("the plate's geometry", ppx), ("the pair's follower", fol),
-                     ("the offsets' owner", top)):
+                     ("the offsets' owner", top), ("the plate's width owner", wfn)):
         if fn is None:
             return [("the note's plate has ONE owner per question (%s)" % name, False)]
     out = []
@@ -2770,14 +2775,16 @@ def check_note_plate():
     out.append(("... riding the box' own rung (Z_BOX_INFO), i.e. UNDER the ink and above the chart art",
                 re.search(r"ObjectSetInteger\(0,\s*pn,\s*OBJPROP_ZORDER,\s*Z_BOX_INFO\);", pd) is not None))
     # 3. the size is MEASURED, never guessed — and measured in the note's OWN font grid.
-    #    TWO owners, both read: the width comes off the ink in `BaseKnotNotePlatePx`, the height
-    #    off the raw em in `BaseKnotNotePlateH` (a literal in EITHER is a plate sized by hand).
+    #    TWO owners, both read: the width off the ink in `BaseKnotNotePlateW` (P-BK-87 gave it
+    #    its own owner, because the follower has to measure the same width the writer drew),
+    #    the height off the raw em in `BaseKnotNotePlateH`. A literal in EITHER is a plate
+    #    sized by hand.
     ph_fn = body(src, "int BaseKnotNotePlateH(")
     if ph_fn is None:
         return [("the plate's height owner exists", False)]
-    meas = strip_comments(ph_fn) + strip_comments(ppx)
+    meas = strip_comments(ph_fn) + strip_comments(wfn)
     out.append(("the plate is MEASURED off the ink, never a literal size",
-                "PnlRawTextW(" in strip_comments(ppx) and "PnlRawLineH(" in strip_comments(ph_fn)
+                "PnlRawTextW(" in strip_comments(wfn) and "PnlRawLineH(" in strip_comments(ph_fn)
                 # a bare `pw = 300;` / `ph = 16;` is the hand-typed size this forbids; a floor
                 # derived from the padding constants (`pw = 2 * BK_NOTE_PAD_X + 8;`) is not.
                 and not re.search(r"\b(?:pw|ph)\s*=\s*[0-9]+\s*;", meas)))
@@ -2786,10 +2793,30 @@ def check_note_plate():
     # 4. ONE owner of the placement: the writer and the follower both come through it
     out.append(("the writer and the follower place the pair through the ONE offsets owner "
                 "(they can never drift apart)",
-                "BaseKnotNotePlateTop(sx, sy, ph," in strip_comments(fol)
+                "BaseKnotNotePlateTop(sx, sy, pw, ph," in strip_comments(fol)
                 and "BaseKnotNotePlatePx(sx, sy," in wp
-                and "BaseKnotNotePlateTop(sx, sy, ph," in strip_comments(
-                    body(src, "void BaseKnotNotePlatePx(") or "")))
+                and "BaseKnotNotePlateTop(sx, sy, pw, ph," in strip_comments(ppx)))
+    out.append(("the plate's WIDTH has one owner too — the drawer and the follower measure the same string",
+                "BaseKnotNotePlateW(txt)" in strip_comments(ppx)
+                and "BaseKnotNotePlateW(ObjectGetString" in strip_comments(fol)))
+    # 4b. P-BK-87 — and that owner FITS the pair into the window. Going screen-space bought
+    #     immunity from the chart art at the price of immunity from the chart itself: a screen
+    #     object is not clipped, it is simply not painted outside the window, so a box scrolled
+    #     to the top or the right edge used to take the note with it. The four edges are the
+    #     one boundary the note can still be lost to, and this is the only place it is handled.
+    tp = strip_comments(top)
+    out.append(("the pair is FITTED BACK INTO THE WINDOW (a screen object has no chart to clip it)",
+                "CHART_WIDTH_IN_PIXELS" in tp and "CHART_HEIGHT_IN_PIXELS" in tp
+                and "BK_NOTE_EDGE_MARGIN" in tp))
+    out.append(("... on the right by the label family's OWN boundary (past it sits the price scale)",
+                "inpLabelsMarginLeft" in tp))
+    out.append(("... and on the bottom by a reserve this half owns, never the panel half's "
+                "(`PNL_BOTTOM_SAFE` is UI-half — reading it would break Lite, P-BUILD-01)",
+                "BK_NOTE_BOTTOM_SAFE" in tp and "PNL_BOTTOM_SAFE" not in strip_comments(src)))
+    out.append(("... and the follower keeps the plate's SIZE in step with the ink, not only its place",
+                "ObjectSetInteger(0, pn, OBJPROP_XSIZE, pw);" in strip_comments(fol)
+                and "ObjectSetInteger(0, pn, OBJPROP_YSIZE, ph);" in strip_comments(fol)
+                and "BaseKnotNotePlateW(" in strip_comments(fol)))
     # 5. the pair is deleted TOGETHER at every delete site — one wipe, never half a readout
     body_plain = strip_comments(src)
     out.append(("the note and its plate are wiped TOGETHER (ONE wipe, used by every delete site)",
@@ -3725,8 +3752,8 @@ def selftest():
                   bool(fires(check_note_plate))))
     reset()
 
-    with_source("   pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;",
-                "   pw = 300;   // a hand-typed plate width")
+    with_source("   int pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;",
+                "   int pw = 300;   // a hand-typed plate width")
     cases.append(("a plate sized by hand instead of by the ink is caught",
                   bool(fires(check_note_plate))))
     reset()
@@ -3746,6 +3773,42 @@ def selftest():
     with_source("   BaseKnotNotePlateFollow(pfx, t2, top);\n}",
                 "   // seed: nothing re-projects the pair on the pump (a scroll leaves it behind)\n}")
     cases.append(("a screen pair nobody re-projects is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    # P-BK-87: the window fit — every way back to "the note can leave the screen" gets one
+    with_source("   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);",
+                "   int cw = 0;   // seed: no horizontal fit")
+    cases.append(("a pair that is never fitted back into the window is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("      int right = cw - MathMax(8, inpLabelsMarginLeft);   // the label family's own right boundary",
+                "      int right = cw;   // seed: the price scale is not reserved")
+    cases.append(("a right boundary that ignores the price scale is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("      else if(py + ph > ch - BK_NOTE_BOTTOM_SAFE) py = ch - BK_NOTE_BOTTOM_SAFE - ph;",
+                "      // seed: no bottom reserve (the plate sinks under the date scale)")
+    cases.append(("a plate allowed to sink under the date scale is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("      ObjectSetInteger(0, pn, OBJPROP_XDISTANCE, px);\n"
+                "      ObjectSetInteger(0, pn, OBJPROP_YDISTANCE, py);\n"
+                "      ObjectSetInteger(0, pn, OBJPROP_XSIZE, pw);\n"
+                "      ObjectSetInteger(0, pn, OBJPROP_YSIZE, ph);\n",
+                "      ObjectSetInteger(0, pn, OBJPROP_XDISTANCE, px);\n"
+                "      ObjectSetInteger(0, pn, OBJPROP_YDISTANCE, py);\n"
+                "      // seed: the plate moves but never resizes\n")
+    cases.append(("a plate that only moves, never grows with the ink, is caught",
+                  bool(fires(check_note_plate))))
+    reset()
+
+    with_source("   pw = BaseKnotNotePlateW(txt);",
+                "   pw = PnlRawTextW(txt, BKInfoFontPt()) + 2 * BK_NOTE_PAD_X;   // a second spelling")
+    cases.append(("a second spelling of the plate's width is caught",
                   bool(fires(check_note_plate))))
     reset()
 
