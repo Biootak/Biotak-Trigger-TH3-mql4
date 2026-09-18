@@ -246,6 +246,17 @@ int PnlAdvUnits(const ushort ch)
    if(ch == 47)  return 278;   // /
    if(ch == 37)  return 889;   // %
    if(ch == 183) return 333;   // · (the P-LBL-01 middle dot)
+   //--- P-BK-86: the three characters the BASE NOTE prints that this table never carried.
+   //--- `[`, `]` and `|` all fell through to the 611 below, so the note's plate — the opaque
+   //--- bar the ink is read on — was measured +1.27 em too wide: +14 px at 8pt/96dpi, +20 px
+   //--- at 8pt/144dpi. A tail with nothing in it, and the note is the one surface whose whole
+   //--- point is that its box fits its ink. The values are READ OFF the installed face, never
+   //--- guessed: `tools/font-adv-check.py` parses arialbd.ttf's own `hmtx` table (unitsPerEm
+   //--- 2048) and prints these three beside every other entry here. Nothing else measures
+   //--- them — the panels split their option lists on `|` before measuring a single option
+   //--- (PnlDdOptText), so this closes a gap rather than moving a layout.
+   if(ch == 91 || ch == 93) return 333;   // [ ]  (arialbd.ttf hmtx)
+   if(ch == 124) return 280;              // |    (arialbd.ttf hmtx)
    if(ch == 38)  return 722;   // &
    if(ch == 40 || ch == 41) return 333;   // ( )
    if(ch == 47 || ch == 39) return 278;   // / '

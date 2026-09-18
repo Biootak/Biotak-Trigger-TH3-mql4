@@ -413,6 +413,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 KNOT = "Biotak/BaseKnotTool.mqh"
+UTIL = "Biotak/UtilityFunctions.mqh"
 
 _PATCHED = {}
 _CACHE = {}
@@ -2064,7 +2065,8 @@ def run_checks():
                check_model, check_invariance, check_node, check_node_model,
                check_rung, check_rung_model, check_live_reuse, check_leg_fit,
                check_asof, check_label_short, check_note_fields, check_note_height,
-               check_note_life, check_note_home, check_note_plate):
+               check_note_life, check_note_home, check_note_plate,
+               check_note_advances):
         rows.extend(fn())
     return rows
 
@@ -2815,6 +2817,54 @@ def check_note_plate():
     out.append(("... and it refuses to guess when the window cannot answer the projection",
                 re.search(r"if\(!ChartTimePriceToXY\(0,\s*0,\s*t2,\s*top,\s*sx,\s*sy\)\)\s*return;",
                           fs) is not None))
+    return out
+
+
+# --- 14d: P-BK-86 — THE NOTE'S PLATE IS SIZED BY A MEASURED ADVANCE ------------------
+# `PnlRawTextW` answers with `PnlAdvUnits`' table, and falls back to "a mid-weight
+# capital" (611) for any character the table does not carry. That fallback is fine for a
+# panel caption (a few px of slack in a row that already reserves room); the note is the
+# ONE surface whose whole point is that its plate fits its ink, so a missing character is
+# not a rounding error there — it is a tail on the plate with nothing in it.
+#
+# Measured on the real face, not guessed: `tools/font-adv-check.py` parses arialbd.ttf's
+# own `hmtx` table (unitsPerEm 2048) and prints it beside every entry `PnlAdvUnits`
+# carries. It found `[`, `]` and `|` absent, which made the plate +1.27 em wide — +14 px
+# at 8pt/96dpi and +20 px at 8pt/144dpi. Those three are the note's own brackets and its
+# two separators, i.e. exactly the part of the string THIS module spells.
+#
+# WHAT IT DOES NOT COVER, deliberately: the characters the note inherits from its
+# builders — the digits of the risk, `BUY`/`SELL`, the risk tag's own letters. Those
+# belong to the owners that spell them; this gate holds the part the note writes itself,
+# which is also the part that changed.
+def check_note_advances():
+    """P-BK-86: every literal the note prints has a MEASURED advance, not the fallback."""
+    src = read(KNOT)
+    wib = body(src, "void BaseKnotWriteInfo(")
+    adv = body(read(UTIL), "int PnlAdvUnits(")
+    if wib is None or adv is None:
+        return [("the note and the table that measures it are both present", False)]
+    out = []
+    plain = strip_comments(wib)
+    at = plain.find("OBJPROP_TEXT,")
+    expr = plain[at:plain.find(");", at)] if at >= 0 else ""
+    lits = re.findall(r'"([^"]*)"', expr)
+    # what `PnlAdvUnits` can actually answer for: its ranges and its explicit entries.
+    # The table is written in CODE POINTS (`ch == 32`), so the set is code points too and
+    # the lookup below compares `ord(c)` — comparing the chars themselves would subtract
+    # nothing and every literal would look unmeasured.
+    known = set()
+    for lo, hi in re.findall(r"ch >= '([^'])' && ch <= '([^'])'\)", adv):
+        known |= set(range(ord(lo), ord(hi) + 1))
+    for n in re.findall(r"ch == ([0-9]+)", adv):
+        known.add(int(n))
+    missing = sorted(c for c in set("".join(lits)) if ord(c) not in known)
+    out.append(("every literal the note prints has a MEASURED advance (never the 611 fallback)",
+                len(lits) >= 4 and not missing))
+    out.append(("... and the three the table was missing carry the values read off the real face "
+                "(`[` `]` `|` — arialbd.ttf hmtx, see tools/font-adv-check.py)",
+                re.search(r"ch == 91 \|\| ch == 93\) return 333;", adv) is not None
+                and re.search(r"ch == 124\) return 280;", adv) is not None))
     return out
 
 
@@ -3703,6 +3753,30 @@ def selftest():
                 "      (int)ObjectGetInteger(0, in, OBJPROP_YDISTANCE) == ty) { }   // seed: the follower writes every round")
     cases.append(("a follower that writes on every pump round is caught",
                   bool(fires(check_note_plate))))
+    reset()
+
+    # P-BK-86: the plate is sized by a MEASURED advance — the note's own literals must be
+    # in the table, and the three the table was missing must keep their measured values.
+    # This first mutant drops the MIDDLE DOT (183) — a character the note really prints, and
+    # the one row 2 does not assert — so it can only be caught by the row that walks the
+    # note's own literals. That is the point: it proves row 1 measures, not just row 2.
+    with_source("   if(ch == 183) return 333;   // · (the P-LBL-01 middle dot)",
+                "", UTIL)
+    cases.append(("a note literal the advance table does not carry (sized by the 611 fallback) is caught",
+                  bool(fires(check_note_advances))))
+    reset()
+
+    with_source("   if(ch == 91 || ch == 93) return 333;   // [ ]  (arialbd.ttf hmtx)",
+                "   if(ch == 91 || ch == 93) return 611;   // seed: back to the fallback",
+                UTIL)
+    cases.append(("a bracket re-guessed instead of measured off the face is caught",
+                  bool(fires(check_note_advances))))
+    reset()
+
+    with_source("   if(ch == 124) return 280;              // |    (arialbd.ttf hmtx)",
+                "", UTIL)
+    cases.append(("a character the table now owns (the panels' `|` separator) dropped again is caught",
+                  bool(fires(check_note_advances))))
     reset()
 
     # P-BK-55/78: the sizing note stops answering the type again (a class with no type)
