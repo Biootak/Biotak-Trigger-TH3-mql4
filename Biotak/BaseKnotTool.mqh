@@ -412,6 +412,36 @@ void BaseKnotSpanClear(BaseKnotSpan &sp)
 {
    sp.life = 0; sp.still = 0; sp.tStart = 0; sp.tLast = 0; sp.tExit = 0;
 }
+//+------------------------------------------------------------------+
+//| P-BK-84 (2026-09-18) — THE CLASS' SPAN IS THE BASE'S OWN, AND THE  |
+//| BOX IS ONLY A FLOOR.                                              |
+//|                                                                  |
+//| The user: «این قانون شمارش کندل ها باید اضافه بشه … از روی همون که |
+//| الان هستش میشه برای ۵ دقیقه دیگه» — a 17-bar M1 base IS 17 minutes |
+//| of base, so three M5 candles (15 minutes) fit inside it and the    |
+//| node's time is M5.                                                 |
+//|                                                                  |
+//| P-BK-80 had moved the class' span onto the BOX' two anchors to kill |
+//| the `+ chartMin` term — and that half was RIGHT and stays. But it   |
+//| also moved the span OFF THE BASE, and the user draws with the       |
+//| MEASURING tool: the rectangle is routinely NARROWER than the base   |
+//| it points at (P-BK-44: the run is walked on BOTH sides of the box'  |
+//| right edge). An 11-minute box around a 17-minute base then refused  |
+//| M5 on `3 * 5 > 11` and the whole box fell back to M1.               |
+//|                                                                  |
+//| The span is the UNION: the box' own two anchors (chart-free, stored |
+//| on the object — P-BK-80's floor, so a box dragged WIDE can never    |
+//| shrink the reading) and the base's own entry..exit (P-BK-41's own   |
+//| ends, so a box drawn NARROW can never shrink it either).            |
+//| `b1`/`b2` stand in only while no base was measured at all.          |
+//+------------------------------------------------------------------+
+void BaseKnotClassSpan(BaseKnotSpan &sp, const datetime b1, const datetime b2,
+                       datetime &c1, datetime &c2)
+{
+   c1 = b1; c2 = b2;
+   if(sp.tStart > 0 && (c1 == 0 || sp.tStart < c1)) c1 = sp.tStart;
+   if(sp.tExit  > 0 && sp.tExit > c2)               c2 = sp.tExit;
+}
 //--- P-BK-47/77/78/81: what the note's node read measures — ONE record per read, and it
 //--- answers TWO different questions (never the same one twice):
 //---   * the TYPE (`kind`) is the node's LENGTH — the box' own HEIGHT against the ATR of the
@@ -861,12 +891,14 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
                " behind the entry, INSIDE the box) · BOTH legs sit INSIDE the box" + entryLine +
                (sp.life > 0 ? " · " + IntegerToString(sp.life) + " bars" : "");
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
-   tt += BaseKnotBaseLine(sp.still, t1, t2, top, bot);   // P-BK-80: the class, off the BOX' own two anchors (the node's own time, the same on every chart)
+   datetime cs1, cs2;                                    // P-BK-84: the class' span — box ∪ base
+   BaseKnotClassSpan(sp, t1, t2, cs1, cs2);
+   tt += BaseKnotBaseLine(sp.still, cs1, cs2, top, bot);   // P-BK-84: the class, off the BASE'S OWN entry..exit (the node's own time, the same on every chart)
    if(sp.life > 0)   // P-BK-40/41/42: what the note's number is MADE OF, and HOW it is counted
       tt += "\n     " + IntegerToString(sp.life) + " bars = the candles between the ENTRY candle " +
             "and the EXIT candle (entry not counted, exit counted) · " + IntegerToString(sp.still) +
-            " of them stood still inside the band (the base's own length — NOT the class' input: "
-            "P-BK-80 reads the class on the box' own span, so the chart cannot move it)";
+            " of them stood still inside the band (the base's own length — P-BK-84 reads the class"
+            " on the base's own span ∪ the box', so neither a narrow box nor the chart can move it)";
    if(sp.life > 0 && sp.tStart > 0 && sp.tExit > 0)   // P-BK-41/42: band, entry, exit, then the number
    {
       int dg = GetCachedDigits();
@@ -2343,6 +2375,36 @@ bool BaseKnotBarBodyInside(const int shift, const double top, const double bot)
    double c = iClose(_Symbol, 0, shift);
    return (o >= bot && o <= top && c >= bot && c <= top);
 }
+//+------------------------------------------------------------------+
+//| P-BK-85 (2026-09-18) — THE EXIT CANDLE IS THE ONE THAT CLOSED      |
+//| OUTSIDE, AND THAT IS THE ONLY TEST.                                |
+//|                                                                  |
+//| P-BK-42's own definition, word for word: the ENTRY is the base's   |
+//| oldest candle whose body is inside the band and is NOT counted;    |
+//| the EXIT is the candle that CLOSED OUTSIDE it and IS counted. The  |
+//| two are told apart by the BAND, and the exit's own test is its     |
+//| CLOSE — P-BK-41 calls `tExit` «the candle that closed outside the  |
+//| band», and P-BK-81 reads the whole trade's DIRECTION off that same |
+//| candle's close.                                                    |
+//|                                                                  |
+//| `BaseKnotBarBodyInside` asks for open AND close, so a candle that  |
+//| poked out of the band and CLOSED BACK INSIDE it fails that test    |
+//| while it never closed outside at all. Reading the exit off it      |
+//| would put the knot's formation one candle too early — and since    |
+//| P-BK-84 that candle's time is also the class' span's right end and |
+//| the direction walk's own start, so one wrong candle moves the      |
+//| count, the node's time AND the side together.                      |
+//|                                                                  |
+//| The user: «کندل ورود و خروج بیس باید دقیق پیدا بشه … اگر تعداد      |
+//| اشتباه بشه همه چیز اشتباه میشه پس باید صد در صد کندل ورود و خروج   |
+//| رو مطمئن باشیم که تعداد درست باشه».                               |
+//+------------------------------------------------------------------+
+bool BaseKnotBarCloseOut(const int shift, const double top, const double bot)
+{
+   double c = iClose(_Symbol, 0, shift);
+   if(c <= 0) return false;              // series not ready — never a CLAIMED exit
+   return (c < bot || c > top);
+}
 // THE BASE'S OWN LENGTH — the candles that go nowhere, ending where it BREAKS.
 //
 // P-BK-31 (2026-09-15) — «عدد واقعی ۱۹ باید در هر حالت نشون بده، الان ۲۰ نشون
@@ -2618,6 +2680,15 @@ int BaseKnotBarCount(const datetime t1, const datetime t2, const double top, con
    // whole base, and dragged forward past the break the run cannot extend at all (the
    // next candle out is already outside), so the number cannot be inflated by the drag.
    int end = (head > 1 ? head - 1 : head);
+   // P-BK-85 — AND THE EXIT IS VERIFIED, NOT ASSUMED. `head` is the run's newest candle whose
+   // BODY is inside the band, so `head - 1` is normally the first candle past it — but «past
+   // the body» is not «closed outside»: a candle that poked out and closed back inside is
+   // still a candle the base holds, and naming it the exit would count the knot's formation
+   // one candle early and hand P-BK-84's span a break that never happened. The CLOSE is the
+   // only test (P-BK-42/41/81). When nothing closed outside yet, the base simply has NO exit:
+   // the end stays the base's OWN right side (`head`, == `tLast`), which is exactly what
+   // P-BK-34 asks for — the number stops at the newest closed candle, never one past it.
+   if(!BaseKnotBarCloseOut(end, top, bot)) end = head;
    // P-BK-42 (2026-09-15) — HOW THE TWO ENDS ARE COUNTED: «اول باید سقف و کف بیس یا
    // گره معاملاتی رو مشخص کنیم که ببینم کدوم کندل وارد شده و کدوم کندل خارج شده — کندل
    // ورود جز شمارش حساب نکنیم ولی کندل خروج جز شمارش حساب بکنیم». The band (top/bot) is
@@ -2920,33 +2991,52 @@ int BaseKnotBaseTFRead(const int bars, const datetime b1, const datetime b2,
 {
    if(bars <= 0) return 0;
    if(bars < BK_BASE_MIN_BARS) return -1;
-   // P-BK-80: THE SPAN IS THE BOX' OWN TWO ANCHORS, IN MINUTES, AND NOTHING ELSE. The chart
-   // TF used to add its own candle width here (`+ chartMin`) and to supply the span's two
-   // ends; both are gone, so `3 * rung <= spanMin` answers the same on M1 and on MN1.
+   // P-BK-80: NO CHART TERM, EVER. The chart TF used to add its own candle width here
+   // (`+ chartMin`) and to supply the span's two ends; both are gone, so `3 * rung <= spanMin`
+   // answers the same on M1 and on MN1.
+   // P-BK-84: and the span is the BASE'S OWN entry..exit, unioned with the box' two anchors
+   // (BaseKnotClassSpan — the box is a FLOOR, never the measurement). No chart term anywhere.
    int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));
    int rungs[9];
    int n = BaseKnotLadderAll(rungs);
    if(n <= 0) return 1;   // no ladder at all — M1 is the only rung left to name
-   int unread = 0;   // the HIGHEST rung that fits the span but whose series cannot be read
-   for(int i = n - 1; i >= 0; i--)   // the HIGHEST rung first — the first one that stands still IS the answer
-   {
-      int rung = rungs[i];
-      if(3 * rung > spanMin) continue;            // three of its candles cannot fit in the span
-      int held = BaseKnotRungHoldCount(rung, b1, b2, top, bot);
-      if(held < 0) { if(unread <= 0) unread = rung; continue; }   // cannot tell — keep looking down
-      if(held >= BK_BASE_RUNG_MIN) return rung;   // THE NODE'S TIME — «سه کندل درجا زدن»
-   }
-   if(unread > 0) return unread;   // nothing stood still and a series was unreadable: the ladder stands
-   // P-BK-77: nothing stood still at all — the span's OWN rung, the largest one a single
-   // candle of which still fits in it. A real TF of THIS span, on every chart.
+   // P-BK-84 (2026-09-18) — THE LENGTH IS THE CRITERION (BKHOLD-OFF). The user: «اون سه
+   // کندل درجا زدن یکم قانونش خیلی سخت و خشک هستش اگر این سه کندل ملاک بشه عالی میشه ولی
+   // مولتی تایم که هر گره یک تایم بیشتر نداشته باشه در هر تایم فریمی که بودیم». The walk
+   // returns the HIGHEST rung whose THREE candles fit inside the base — «سه کندل» of the
+   // rung, exactly as the user's own rule spells it — and NOTHING ELSE. It reads no series
+   // at all, so the answer is pure arithmetic on the span: one knot, ONE time, on every
+   // chart TF (P-BK-77's promise), and the class' cost on the Sync path is now zero bars.
+   for(int i = n - 1; i >= 0; i--)
+      if(3 * rungs[i] <= spanMin) return rungs[i];   // three of its candles fit -> THE NODE'S TIME
+   // P-BK-77: the span is shorter than three M1 candles — the span's OWN rung, the largest
+   // one a single candle of which still fits in it. A real TF of THIS span, on every chart.
    // P-BK-80: and a degenerate span (a box narrower than one M1 candle) ends at the
    // ladder's own first rung — never at the open chart's TF, which is what leaked before.
-   // P-BK-82: and with M1 IN the ladder this whole branch is a LAST RESORT again — the
-   // chart's own TF is a candidate of the walk above, so a base with >= 3 stand-still
-   // candles is named by a rung that really holds it, never by the width of the box.
    for(int i = n - 1; i >= 0; i--)
       if(rungs[i] <= spanMin) return rungs[i];
    return rungs[0];
+   // BKHOLD-OFF (P-BK-84, 2026-09-18): THE STAND-STILL VETO IS RETIRED IN PLACE. It asked
+   // the rung's OWN candles to keep their bodies inside the band and only named the rung
+   // when >= BK_BASE_RUNG_MIN of them did (P-BK-36's «سه کندل درجا زدن»). The user's own
+   // call is that the rule is «خیلی سخت و خشک»: a 17-minute base overlaps FOUR M5 candles,
+   // and the two on the span's edges start before the base or close after it, so the count
+   // could never reach three however still the base was — the veto was reading the SPAN'S
+   // EDGES, not the base. The count is still read and still REPORTED (the hover prints it,
+   // BaseKnotRungHoldCount is its one owner), it just no longer decides. Restore by putting
+   // the three commented lines back and re-teaching base-count-audit's RUNG gate — never
+   // by rewriting the length walk above, which owns the class now.
+   //
+   // int unread = 0;
+   // for(int i = n - 1; i >= 0; i--)
+   // {
+   //    int rung = rungs[i];
+   //    if(3 * rung > spanMin) continue;
+   //    int held = BaseKnotRungHoldCount(rung, b1, b2, top, bot);
+   //    if(held < 0) { if(unread <= 0) unread = rung; continue; }
+   //    if(held >= BK_BASE_RUNG_MIN) return rung;
+   // }
+   // if(unread > 0) return unread;
 }
 // The memo (P-BK-36): the answer is closed-bar data, so it can only change when the
 // QUESTION changes — the box' two anchors, its band, the count it was computed from, or a
@@ -2994,15 +3084,17 @@ string BaseKnotBaseLine(const int bars, const datetime b1, const datetime b2,
    if(tf == 0) return "\nBase: size not measurable yet";
    if(tf <  0) return "\nBase: " + IntegerToString(bars) +
                       " bars -> structure (a base needs " + IntegerToString(BK_BASE_MIN_BARS) + " candles inside)";
-   // P-BK-77: the fallback is the span's OWN rung now (no rung stood still in it), so the
-   // sentence may not claim the candles — it is re-read here, on the rung the read named.
-   if(BaseKnotRungHoldCount(tf, b1, b2, top, bot) < BK_BASE_RUNG_MIN)
+   // P-BK-84: THE LENGTH IS THE CRITERION, and the stand-still count is REPORTED beside it —
+   // it no longer decides anything (BKHOLD-OFF). The sentence states the rule it was named by.
+   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));
+   if(3 * tf > spanMin)   // the span's own rung: no rung's three candles fit it
       return "\nBase: " + IntegerToString(bars) + " bars -> " + BaseKnotTFName(tf) +
-             " base (no rung of the ladder stood still in it — the span's own rung)";
-   // P-BK-36: the claim the class is read from — the rung's OWN candles, spelled out.
+             " base (no rung's " + IntegerToString(BK_BASE_RUNG_MIN) + " candles fit the span — the span's own rung)";
+   int held = BaseKnotRungHoldCount(tf, b1, b2, top, bot);   // P-BK-84: REPORTED, never a decider
    return "\nBase: " + IntegerToString(bars) + " bars -> " + BaseKnotTFName(tf) +
           " base (" + IntegerToString(BK_BASE_RUNG_MIN) + " candles of " + BaseKnotTFName(tf) +
-          " stood still in the band)";
+          " fit the span" +
+          (held > 0 ? "; " + IntegerToString(held) + " of them stood still in the band" : "") + ")";
 }
 //+------------------------------------------------------------------+
 //| P-BK-47 — THE NOTE'S NODE TYPE IS THE NODE'S LENGTH (the user's own  |
@@ -3976,13 +4068,15 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
    if(ObjectFind(0, o) < 0) ObjectCreate(0, o, (atCorner ? OBJ_LABEL : OBJ_TEXT), 0, t2, top);
    int bars = sp.life, still = sp.still;   // P-BK-41: one span, read once
    string barsPart = (bars > 0 ? " | " + IntegerToString(bars) + " bars" : "");
+   datetime ws1, ws2;                       // P-BK-84: the class' span — box ∪ base (the box is a floor)
+   BaseKnotClassSpan(sp, t1, t2, ws1, ws2);
    // P-BK-28: the BASE'S SIZE CLASS rides the note itself — "… | 12 bars · H1 base".
    // P-BK-29: so does the node type — "… · FTR" — when there is one to claim.
    // BKTAGTP-OFF (P-BK-54): the retired plan-target field sat here — restore it by
    // putting `+ tpTag` back after the risk (and taking BaseKnotTPPlanTag from BKTAGTP-OFF
    // in BaseKnotSync / BaseKnotSyncLive, which still build `tpTip` for the hover).
    ObjectSetString(0, o, OBJPROP_TEXT,
-                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, t1, t2, top, bot) + BaseKnotNodeTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class — P-BK-80: off the BOX' own two anchors, so the chart TF cannot move it. P-BK-81: the four pattern names are gone — `side` (BUY/SELL) IS the direction now
+                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, ws1, ws2, top, bot) + BaseKnotNodeTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class — P-BK-84: off the BASE'S OWN span (∪ the box'), so neither a narrow box nor the chart TF can move it. P-BK-81: the four pattern names are gone — `side` (BUY/SELL) IS the direction now
    ObjectSetString(0, o, OBJPROP_FONT, inpFontName);   // P-BK-56: the label family's own font
    ObjectSetInteger(0, o, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27/56
    ObjectSetInteger(0, o, OBJPROP_COLOR, BaseKnotFgForBg());
@@ -4004,7 +4098,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
                    (bars > 0 ? ", " + IntegerToString(bars) + " bars" : "") +
                    tpTip +   // P-BK-50: the plan's own targets, leg by leg (level + pips + R) — P-BK-54: the note's ONLY home for them
                    BaseKnotHeightTip(top, bot, riskTag) +   // P-BK-57: the note's bare second number, NAMED here, with its arithmetic
-                   BaseKnotBaseLine(still, t1, t2, top, bot) +   // P-BK-80: the class, off the BOX' own two anchors
+                   BaseKnotBaseLine(still, ws1, ws2, top, bot) +   // P-BK-84: the class, off the BASE'S OWN span
                    (bars > 0 ? "\n     " + IntegerToString(bars) + " bars: between the ENTRY candle " +
                                "and the EXIT candle (entry not counted, exit counted) · " +
                                IntegerToString(still) + " stood still in the band" : "") +   // P-BK-40/42
@@ -4125,7 +4219,9 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    ndLive.revisits = 0; ndLive.lastSide = 0; ndLive.lifeBars = 0;
    ndLive.ctxAlign = 0; ndLive.sideLevel = 0;
    // ... and the TYPE half is read, off the span the note's class came from (P-BK-55).
-   int liveClass = BaseKnotBaseTFMin(spLive.still, t1, te, top, bot);   // P-BK-80: the node's time, off the box' own two anchors
+   datetime ls1, ls2;                       // P-BK-84: the class' span — box ∪ base
+   BaseKnotClassSpan(spLive, t1, te, ls1, ls2);
+   int liveClass = BaseKnotBaseTFMin(spLive.still, ls1, ls2, top, bot);   // P-BK-84: the node's time, off the BASE'S OWN span (∪ the box')
    ndLive.height = top - bot;   // P-BK-75: «طول گره» is the box' own height
    ndLive.kind   = BaseKnotNodeKindOfLength(liveClass, ndLive.height, ndLive.anchor);   // P-BK-78/79: the SAME node's time and the SAME anchor the committed read uses
    BaseKnotAbilityGet(liveClass, ndLive.anchor, ndLive.abTrig, ndLive.abPat, ndLive.abStr);
@@ -4696,11 +4792,14 @@ void BaseKnotSync(const string id)
    // stays the base's LIFE.
    // P-BK-75: anchored on the TF the BOX is seen on, so a TF switch cannot move the
    // class (and with it the story, the entry and the plan legs that ride it).
-   // P-BK-80: and the class' SPAN IS THE BOX' OWN TWO ANCHORS (`t1..t2`), never the story
-   // span `sp.tStart..sp.tExit` — that span is read off the CHART's candles (P-BK-41), so
-   // feeding it here is exactly what let one box answer H1 on an H1 chart and H4 on an H4
-   // chart. The box' anchors are stored on the OBJECT: the same on every chart, always.
-   int baseTF = BaseKnotBaseTFMin(still, t1, t2, top, bot);   // P-BK-80: the node's time, from the box' own geometry
+   // P-BK-84: AND THE SPAN IS THE BASE'S OWN — the drawn rectangle is a POINTER, not the
+   // measurement (the user draws with the measuring tool, and P-BK-44 already ruled that the
+   // run is walked on both sides of the box' right edge, so the base is routinely WIDER than
+   // the box). The box' two anchors stay as the FLOOR, so a box dragged wide cannot shrink
+   // the reading either. `t1..t2` below are the box' own; the union is what the class reads.
+   datetime bs1, bs2;
+   BaseKnotClassSpan(sp, t1, t2, bs1, bs2);
+   int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot);   // P-BK-84: the node's time, from the base's own span
    g_bkBoxes[k].baseTFMin = baseTF;
    g_bkBoxes[k].storyT = sp.tLast;   // P-BK-41: the same story the pump re-reads
    g_bkBoxes[k].exitT  = sp.tExit;   // P-BK-81: the base's OWN exit candle — the ONE candle the

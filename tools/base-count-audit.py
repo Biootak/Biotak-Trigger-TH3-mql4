@@ -585,6 +585,7 @@ def check_break_and_budget():
     # margin could be measured against the band is through top/bot, so the walk
     # may use them in the shared criterion and nowhere else.
     bare = re.sub(r"BaseKnotBarBodyInside\([^)]*\)", "", walk)   # the shared criterion
+    bare = re.sub(r"BaseKnotBarCloseOut\([^)]*\)", "", bare)     # P-BK-85: the exit's own test
     bare = re.sub(r"[^\n]*top\s*<=\s*bot[^;]*;", "", bare)         # the validity guard
     out.append(("the tolerance is a count, not a margin (no band term in the walk)",
                 re.search(r"\btop\b|\bbot\b", bare) is None))
@@ -626,14 +627,17 @@ def check_one_value():
                 re.search(r"BaseKnotSpan sp;\s*\n\s*int bars = BaseKnotBarCount\(t1, t2, top, bot, sp\)", sync) is not None))
     out.append(("the CLASS is read from the candles that stood still",
                 re.search(r"BaseKnotBaseTFMin\(still,", sync) is not None))
-    # P-BK-41/42/80: ONE span — the number, the class, the node's read and the note's own
+    # P-BK-41/42/84: ONE span — the number, the class, the node's read and the note's own
     # badge all read the SAME record, so no two of them can describe different objects.
-    # P-BK-80: the CLASS is the one exception, and on purpose: its span is the BOX' own two
-    # anchors, not the chart-read story span — feeding it `sp.tStart..sp.tExit` is exactly
-    # what let one box answer H1 on an H1 chart and H4 on an H4 chart.
-    out.append(("the class is read on the BOX' own two anchors, never the chart-read span",
-                re.search(r"BaseKnotBaseTFMin\(still,\s*t1,\s*t2,\s*top,\s*bot\)",
+    # P-BK-84 (2026-09-18, user: «این قانون شمارش کندل ها باید اضافه بشه … از روی همون که
+    # الان هستش میشه برای ۵ دقیقه دیگه»): the class' span is the BASE'S OWN entry..exit
+    # UNIONED with the box' two anchors — `BaseKnotClassSpan`, the box being a FLOOR and never
+    # the measurement. P-BK-80's own half stays untouched: NO chart term is anywhere in the
+    # read, so the answer is still the same on every chart TF.
+    out.append(("the class is read on the BASE'S OWN span ∪ the box', never the chart-read story span",
+                re.search(r"BaseKnotBaseTFMin\(still,\s*bs1,\s*bs2,\s*top,\s*bot\)",
                           sync) is not None
+                and re.search(r"BaseKnotClassSpan\(sp,\s*t1,\s*t2,\s*bs1,\s*bs2\)", sync) is not None
                 # P-BK-77: and it is asked the box' OWN geometry ONLY — no TF argument,
                 # because the box' commit TF no longer names the node's time.
                 and "BaseKnotNodeTFMin" not in sync))
@@ -1825,17 +1829,28 @@ def check_rung():
     src = read(KNOT)
     plain = strip_comments(src)
     out = []
-    out.append(("the class takes the BOX' OWN two anchors (P-BK-80: never a chart term)",
+    out.append(("the class takes the BASE'S OWN span (P-BK-84), never the drawn box alone",
                 re.search(r"int\s+BaseKnotBaseTFMin\s*\(\s*const\s+int\s+bars,\s*const\s+datetime\s+b1,\s*"
                           r"const\s+datetime\s+b2,\s*const\s+double\s+top,\s*const\s+double\s+bot\s*\)",
                           plain) is not None
-                and re.search(r"BaseKnotBaseTFMin\s*\([^)]*baseMin", plain) is None))
-    out.append(("... and EVERY call hands it the box' own two anchors, never the story span",
-                re.search(r"BaseKnotBaseTFMin\([^)]*\bt1\b", plain) is not None
+                and re.search(r"BaseKnotBaseTFMin\s*\([^)]*baseMin", plain) is None
+                and re.search(r"void\s+BaseKnotClassSpan\s*\(\s*BaseKnotSpan\s*&sp,\s*const\s+datetime\s+b1,\s*"
+                              r"const\s+datetime\s+b2,", plain) is not None))
+    out.append(("... and EVERY call hands it a span the box can only WIDEN (never the raw chart-read span)",
+                re.search(r"BaseKnotBaseTFMin\(still,\s*bs1,\s*bs2,", plain) is not None
+                and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*ls1,\s*ls2,", plain) is not None
                 and re.search(r"BaseKnotBaseTFMin\([^)]*sp\.t(Start|Exit)\b", plain) is None))
+    # P-BK-84: and the union is COMPUTED at every site that classes a base — a declared
+    # `bs1/bs2` that is never filled from BaseKnotClassSpan silently falls back to whatever
+    # the locals happen to hold, and the class reads the DRAWN box again (the «M1 base» bug).
+    # The gate names all four sites, so dropping one call cannot pass on the other three.
+    out.append(("... and the union is actually COMPUTED at every classing site (not just declared)",
+                re.search(r"BaseKnotClassSpan\(sp,\s*t1,\s*t2,\s*bs1,\s*bs2\);", plain) is not None
+                and re.search(r"BaseKnotClassSpan\(spLive,\s*t1,\s*te,\s*ls1,\s*ls2\);", plain) is not None
+                and re.search(r"BaseKnotClassSpan\(sp,\s*t1,\s*t2,\s*ws1,\s*ws2\);", plain) is not None
+                and re.search(r"BaseKnotClassSpan\(sp,\s*t1,\s*t2,\s*cs1,\s*cs2\);", plain) is not None))
     out.append(("... and the read itself walks b1..b2",
-                re.search(r"BaseKnotBaseTFRead\(bars,\s*b1,\s*b2,\s*top,\s*bot\)", plain) is not None
-                and re.search(r"BaseKnotRungHoldCount\(rung,\s*b1,\s*b2,", plain) is not None))
+                re.search(r"BaseKnotBaseTFRead\(bars,\s*b1,\s*b2,\s*top,\s*bot\)", plain) is not None))
     read_block = body(src, "int BaseKnotBaseTFRead(")
     hold = body(src, "int BaseKnotRungHoldCount(")
     if read_block is None or hold is None:
@@ -1874,7 +1889,7 @@ def check_rung():
     out.append(("... and the search admits on MINUTES, not on chart candles (P-BK-77)",
                 re.search(r"spanMin\s*=\s*\(int\)\(\(b2\s*>\s*b1\s*\?\s*\(b2\s*-\s*b1\)\s*/\s*60\s*:\s*0\)\);",
                           read_block) is not None
-                and re.search(r"3\s*\*\s*rung\s*>\s*spanMin", read_block) is not None
+                and re.search(r"3\s*\*\s*rungs\[i\]\s*<=\s*spanMin", read_block) is not None
                 and re.search(r"3\s*\*\s*rung\s*/\s*chartMin", read_block) is None))
     # P-BK-80 (2026-09-17, user: «تایم بالا که میریم میزنه ftr ... کلا یک گره فقط یک تایم
     # میتونه داشته باشه متعلق به یک تایم هستش»): THE CHART CONTRIBUTES NOTHING TO THE SPAN.
@@ -1891,21 +1906,31 @@ def check_rung():
                           r"const\s+datetime\s+b2,\s*const\s+double\s+top,\s*const\s+double\s+bot\s*\)",
                           plain) is not None
                 and re.search(r"\bchartMin\b", plain) is None))
-    out.append(("... and a band nothing stood still in still falls back to the SPAN's own rung",
-                re.search(r"return\s+rungs\[0\];", read_block) is not None))
-    out.append(("... and it walks the ladder TOP-DOWN, so the FIRST rung that stands still wins",
+    out.append(("... and it walks the ladder TOP-DOWN, so the HIGHEST rung the length admits wins",
                 re.search(r"for\(int\s+i\s*=\s*n\s*-\s*1;\s*i\s*>=\s*0;\s*i--\)", read_block) is not None
                 # ... and NEVER bottom-up: a walk that starts at the ladder's foot would let
                 # the SMALLEST time win, which is the opposite of the user's own rule.
                 and re.search(r"for\(int\s+i\s*=\s*0;\s*i\s*<\s*n;", read_block) is None))
-    out.append(("a rung is named ONLY through the rung's own candles",
-                re.search(r"held\s*>=\s*BK_BASE_RUNG_MIN\)\s*return\s+rung;", read_block) is not None))
-    out.append(("an unreadable rung series is REMEMBERED, not returned on the spot",
-                re.search(r"if\(held\s*<\s*0\)\s*\{\s*if\(unread\s*<=\s*0\)\s*unread\s*=\s*rung;\s*continue;\s*\}",
-                          read_block) is not None
-                and re.search(r"if\(unread\s*>\s*0\)\s*return\s+unread;", read_block) is not None))
+    # P-BK-84 (2026-09-18, user: «اون سه کندل درجا زدن یکم قانونش خیلی سخت و خشک هستش اگر این
+    # سه کندل ملاک بشه عالی میشه ولی مولتی تایم که هر گره یک تایم بیشتر نداشته باشه در هر تایم
+    # فریمی که بودیم»): THE LENGTH IS THE CRITERION. The stand-still veto that used to gate the
+    # walk is RETIRED IN PLACE (`BKHOLD-OFF`) and the walk reads NO series at all — three
+    # candles of the rung fitting inside the base IS the node's time. The retired pair is
+    # asserted DEAD on the comment-stripped text, so a gate can never pass on its own prose.
+    out.append(("a rung is named by the LENGTH — three of its candles fit inside the base",
+                re.search(r"if\(3\s*\*\s*rungs\[i\]\s*<=\s*spanMin\)\s*return\s+rungs\[i\];",
+                          read_block) is not None))
+    out.append(("the stand-still VETO is retired (BKHOLD-OFF: the walk reads no series)",
+                re.search(r"if\(held\s*>=\s*BK_BASE_RUNG_MIN\)\s*return\s+rung;", read_block) is None
+                and re.search(r"if\(unread\s*>\s*0\)\s*return\s+unread;", read_block) is None
+                and "BKHOLD-OFF" in src))
+    out.append(("... and the count is still read and REPORTED, never a decider (P-BK-84)",
+                re.search(r"int\s+held\s*=\s*BaseKnotRungHoldCount\(tf,\s*b1,\s*b2,\s*top,\s*bot\);",
+                          plain) is not None
+                and re.search(r"BaseKnotRungHoldCount\(tf,\s*b1,\s*b2,\s*top,\s*bot\)\s*<", plain) is None))
     out.append(("... and the miss fallback is the SPAN's own rung, never the open chart's",
-                re.search(r"if\(rungs\[i\]\s*<=\s*spanMin\)\s*return\s+rungs\[i\];", read_block) is not None
+                re.search(r"return\s+rungs\[0\];", read_block) is not None
+                and re.search(r"if\(rungs\[i\]\s*<=\s*spanMin\)\s*return\s+rungs\[i\];", read_block) is not None
                 and re.search(r"return\s+chartMin;", read_block) is None
                 and re.search(r"return\s+from;", read_block) is None))
     # P-BK-77: THIS CHART'S OWN TF IS READ LIKE ANY OTHER RUNG. The shortcut that answered
@@ -1921,10 +1946,15 @@ def check_rung():
                 re.search(r"string\s+BaseKnotBaseTag\([^)]*const\s+double\s+bot\s*\)", plain) is not None
                 and re.search(r"string\s+BaseKnotBaseLine\([^)]*const\s+double\s+bot\s*\)", plain) is not None
                 and re.search(r"baseMin", plain) is None))
-    out.append(("the hover claims the rung's candles only after RE-READING that rung",
-                re.search(r"if\(BaseKnotRungHoldCount\(tf,\s*b1,\s*b2,\s*top,\s*bot\)\s*<\s*BK_BASE_RUNG_MIN\)",
-                          plain) is not None
-                and "no rung of the ladder stood still" in plain))
+    # P-BK-84: the hover states the rule it was NAMED by — three candles of the rung fitting
+    # inside the span — and reports the stand-still count beside it without letting it decide.
+    out.append(("the hover names the LENGTH it was read by, and REPORTS the stand-still count",
+                re.search(r"if\(3\s*\*\s*tf\s*>\s*spanMin\)", plain) is not None
+                and "no rung's " in plain
+                and "fit the span" in plain
+                and "stood still in the band" in plain
+                and re.search(r"BaseKnotRungHoldCount\(tf,\s*b1,\s*b2,\s*top,\s*bot\)\s*<\s*BK_BASE_RUNG_MIN",
+                              plain) is None))
     out.append(("the rung read uses the RUNG's own series",
                 re.search(r"iOpen\(_Symbol,\s*tfMin,", hold) is not None
                 and re.search(r"iClose\(_Symbol,\s*tfMin,", hold) is not None))
@@ -1952,10 +1982,11 @@ def check_rung():
                 memo is not None and "s_bkRungB1" in memo and "s_bkRungB2" in memo
                 and "s_bkRungChart" not in memo and "Period()" not in memo))
     note = body(src, "void BaseKnotWriteInfo(") or ""
-    out.append(("the note's class rides the BOX' own two anchors (P-BK-80)",
-                re.search(r"BaseKnotBaseTag\(still,\s*t1,\s*t2,\s*top,\s*bot\)", note) is not None
+    out.append(("the note's class rides the BASE'S OWN span ∪ the box' (P-BK-84)",
+                re.search(r"BaseKnotBaseTag\(still,\s*ws1,\s*ws2,\s*top,\s*bot\)", note) is not None
+                and re.search(r"BaseKnotClassSpan\(sp,\s*t1,\s*t2,\s*ws1,\s*ws2\)", note) is not None
                 and re.search(r"BaseKnotBaseTag\(bars,", note) is None
-                and re.search(r"BaseKnotBaseTag\(still,\s*sp\.", note) is None))
+                and re.search(r"BaseKnotBaseTag\(still,\s*t1,", note) is None))
     hover = body(src, "string BaseKnotBaseLine(") or ""
     out.append(("the hover line claims the rung's own candles",
                 "stood still in the band" in hover))
@@ -2479,13 +2510,16 @@ def check_note_life():
     out.append(("... on the SAME rule the committed read uses (one length, two callers)",
                 "BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)"
                 in (body(src, "void BaseKnotNodeRead(") or "")
-                # P-BK-77/78/80: and BOTH callers read the type against the LADDER's own
-                # answer — the live preview's class comes off the same whole-ladder search,
-                # with NO extra TF argument, and its span is the BOX' own two anchors
-                # (`t1..te`, the rubber band), never the chart-read story span.
-                and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*t1,\s*te,"
+                # P-BK-77/78/84: and BOTH callers read the type against the LADDER's own
+                # answer — the live preview's class comes off the same whole-ladder length
+                # walk, with NO extra TF argument, and its span is the BASE'S OWN ∪ the
+                # rubber band (`t1..te`), never the raw chart-read story span.
+                and re.search(r"BaseKnotClassSpan\(spLive,\s*t1,\s*te,\s*ls1,\s*ls2\)", live) is not None
+                and re.search(r"BaseKnotBaseTFMin\(spLive\.still,\s*ls1,\s*ls2,"
                               r"\s*top,\s*bot\)", live) is not None
-                and "spLive.tStart" not in live and "spLive.tExit" not in live
+                # P-BK-84: the span is the BASE'S OWN ∪ the rubber band — never the raw
+                # chart-read story span (P-BK-80's half, which stays), and never the box alone.
+                and re.search(r"BaseKnotBaseTFMin\([^)]*spLive\.t(Start|Exit)\b", live) is None
                 # P-BK-79: and at the SAME KIND OF KEY — the live preview's anchor is 0 (the
                 # LIVE row, the only one it can have before a base exists), while the committed
                 # read carries the box' own `storyT`. A preview that copied `nd.anchor` or a
@@ -2881,8 +2915,8 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("BaseKnotBaseTag(still, t1, t2, top, bot) + BaseKnotNodeTag(nd) + \"]\");",
-                "BaseKnotBaseTag(still, t1, t2, top, bot) + BaseKnotNodeTag(nd) + "
+    with_source("BaseKnotBaseTag(still, ws1, ws2, top, bot) + BaseKnotNodeTag(nd) + \"]\");",
+                "BaseKnotBaseTag(still, ws1, ws2, top, bot) + BaseKnotNodeTag(nd) + "
                 "BaseKnotPatternTag(nd) + \"]\");")
     cases.append(("re-printing a pattern name in the note is caught",
                   bool(fires(check_node))))
@@ -2940,41 +2974,58 @@ def selftest():
 
     # P-BK-77: the class search is the WHOLE ladder, TOP-DOWN, on MINUTES — every way back
     # to the open chart deciding the node's time is caught.
-    with_source("   for(int i = n - 1; i >= 0; i--)   // the HIGHEST rung first",
-                "   for(int i = 0; i < n; i++)   // the chart's own rung first")
+    # P-BK-84: the walk's first rung-test is the one the gate reads, so the seed names it as
+    # it is written now (the comment that used to ride the `for` is on the `if` below it).
+    with_source("   for(int i = n - 1; i >= 0; i--)\n"
+                "      if(3 * rungs[i] <= spanMin) return rungs[i];",
+                "   for(int i = 0; i < n; i++)\n"
+                "      if(3 * rungs[i] <= spanMin) return rungs[i];   // the chart's own rung first")
     cases.append(("a class ladder walked BOTTOM-UP (a lower rung would win) is caught",
                   bool(fires(check_rung))))
     reset()
 
-    with_source("   if(unread > 0) return unread;   // nothing stood still and a series was unreadable: the ladder stands",
-                "   if(unread > 0) return Period();   // the open chart again")
+    # P-BK-84: the miss fallback is the SPAN's own rung. `return rungs[0];` is that answer;
+    # handing back the open chart's TF instead is the P-BK-80 fault, and the gate reads it.
+    with_source("   for(int i = n - 1; i >= 0; i--)\n"
+                "      if(rungs[i] <= spanMin) return rungs[i];\n"
+                "   return rungs[0];",
+                "   for(int i = n - 1; i >= 0; i--)\n"
+                "      if(rungs[i] <= spanMin) return rungs[i];\n"
+                "   return Period();   // the open chart again")
     cases.append(("a class fallback that is the chart's TF again is caught",
                   bool(fires(check_rung))))
     reset()
 
-    with_source("   if(BaseKnotRungHoldCount(tf, b1, b2, top, bot) < BK_BASE_RUNG_MIN)",
-                "   if(false)   // the sentence claims the rung's candles for free")
-    cases.append(("a fallback sentence that names a rung without re-reading it is caught",
+    with_source("   int held = BaseKnotRungHoldCount(tf, b1, b2, top, bot);   // P-BK-84: REPORTED, never a decider",
+                "   if(BaseKnotRungHoldCount(tf, b1, b2, top, bot) < BK_BASE_RUNG_MIN) return \"\";\n"
+                "   int held = BaseKnotRungHoldCount(tf, b1, b2, top, bot);   // P-BK-84: REPORTED, never a decider")
+    cases.append(("a hover that lets the stand-still count VETO again is caught",
                   bool(fires(check_rung))))
     reset()
 
-    with_source("   int baseTF = BaseKnotBaseTFMin(still, t1, t2, top, bot);   // P-BK-80: the node's time, from the box' own geometry",
+    with_source("   int baseTF = BaseKnotBaseTFMin(still, bs1, bs2, top, bot);   // P-BK-84: the node's time, from the base's own span",
                 "   int baseTF = 0;   // the chart's story again")
     cases.append(("a Sync that never publishes the class is caught",
                   bool(fires(check_node))))
     reset()
 
-    # P-BK-80: the class' span is the BOX' own two anchors — every way back to the CHART-read
-    # story span is caught.
+    # P-BK-84: the class' span is the BASE'S OWN ∪ the box' — every way back to the raw
+    # CHART-read story span is caught.
     with_source("   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0));",
                 "   int spanMin = (int)((b2 > b1 ? (b2 - b1) / 60 : 0)) + unit;")
     cases.append(("putting the chart's candle width back into the span is caught",
                   bool(fires(check_rung))))
     reset()
 
-    with_source("BaseKnotBaseTFMin(still, t1, t2, top, bot)",
+    with_source("BaseKnotBaseTFMin(still, bs1, bs2, top, bot)",
                 "BaseKnotBaseTFMin(still, sp.tStart, sp.tExit, top, bot)")
     cases.append(("classing the base on the CHART-read story span again is caught",
+                  bool(fires(check_rung))))
+    reset()
+
+    with_source("BaseKnotClassSpan(sp, t1, t2, bs1, bs2);",
+                "bs1 = t1; bs2 = t2;   // the drawn box is the measurement again")
+    cases.append(("reading the class off the DRAWN box alone again is caught (the «M1 base» bug)",
                   bool(fires(check_rung))))
     reset()
 
@@ -3010,8 +3061,8 @@ def selftest():
                   bool(fires(check_one_value))))
     reset()
 
-    with_source("BaseKnotBaseTFMin(still, t1, t2, top, bot)",
-                "BaseKnotBaseTFMin(bars, t1, t2, top, bot)")
+    with_source("BaseKnotBaseTFMin(still, bs1, bs2, top, bot)",
+                "BaseKnotBaseTFMin(bars, bs1, bs2, top, bot)")
     cases.append(("classing the base from its LIFE instead of its stand-still candles is caught",
                   bool(fires(check_one_value))))
     reset()
@@ -3031,8 +3082,8 @@ def selftest():
     cases.append(("a hover that hides the EXIT end is caught", bool(fires(check_one_value))))
     reset()
 
-    with_source("BaseKnotBaseTag(still, t1, t2, top, bot)",
-                "BaseKnotBaseTag(bars, t1, t2, top, bot)")
+    with_source("BaseKnotBaseTag(still, ws1, ws2, top, bot)",
+                "BaseKnotBaseTag(bars, ws1, ws2, top, bot)")
     cases.append(("classing the NOTE from the life (and not the stand-still count) is caught",
                   bool(fires(check_rung))))
     reset()
@@ -3049,9 +3100,12 @@ def selftest():
     cases.append(("a second walk in Sync is caught", bool(fires(check_one_value))))
     reset()
 
-    # P-BK-36/77: the class must be confirmed on the rung's own candles, top-down
-    with_source("      if(held >= BK_BASE_RUNG_MIN) return rung;",
-                "      return rung;   // the ladder alone")
+    # P-BK-36/77/84: the class must be confirmed on the rung's OWN candles — under P-BK-84
+    # that confirmation is the LENGTH test itself (`3 * rungs[i] <= spanMin`), because three
+    # of the rung's candles fitting inside the base IS the rung's own candles. Naming a rung
+    # off the ladder alone, with no length test, is the fault the gate reads.
+    with_source("      if(3 * rungs[i] <= spanMin) return rungs[i];   // three of its candles fit -> THE NODE'S TIME",
+                "      return rungs[i];   // the ladder alone, no candles asked for")
     cases.append(("naming a rung without its own candles is caught",
                   bool(fires(check_rung))))
     reset()
