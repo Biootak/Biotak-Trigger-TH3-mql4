@@ -43,6 +43,16 @@ blocked by policy), after `$env:APPDATA` is set and the six `*_proxy` variables
 are nulled — otherwise it cannot resolve the MQL4 directory. The tool may return
 no stdout; redirect to a file and read it (`*>` writes UTF-16).
 
+Nulling them needs `[System.Environment]::SetEnvironmentVariable($n, $null,
+'Process')`, not `Set-Item env:$n -Value $null`: the PowerShell `env:` provider is
+case-insensitive, so it leaves the second case of the pair behind and
+`Start-Process` (compile-th3.ps1:691) then dies with «Item has already been added.
+Key in dictionary: 'http_proxy' Key being added: 'HTTP_PROXY'» — a FAIL that is
+the environment, not the code. Null both cases of each pair, in the SAME
+invocation as the compile; shell state does not persist between tool calls.
+`-Project all` builds only the MAIN entry (workspace + installed) — every `.mq4`
+needs its own `-SourceFile` run.
+
 ## Verify before every commit
 
 ```powershell
