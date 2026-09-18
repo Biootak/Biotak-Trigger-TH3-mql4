@@ -563,6 +563,25 @@ def check_break_and_budget():
                 re.search(r"if\(fprobe\s*>=\s*BK_BASE_MIN_BARS\)", walk) is not None))
     out.append(("the base's own right side is the RUN's head, not the box' edge",
                 re.search(r"sp\.tLast\s*=\s*iTime\(_Symbol,\s*0,\s*head\)", walk) is not None))
+    # P-BK-85 (2026-09-18, user: «کندل ورود و خروج … باید صد در صد مطمئن باشیم که تعداد درست
+    # باشه»): THE EXIT IS THE CANDLE THAT CLOSED OUTSIDE, AND THAT IS VERIFIED. `head` is the
+    # run's newest BODY-inside candle, so `head - 1` is «the candle past the body» — a candle
+    # that poked out and closed back inside is still one the base holds, and naming it the
+    # exit counts the knot's formation one candle early (and, since P-BK-84, moves the class'
+    # span's right end and the direction walk's own start with it). The CLOSE is the only
+    # test, and with nothing closed outside yet the base has NO exit: the span ends at its own
+    # right side. `check_model`'s reclose/exitok pair holds the same rule on a tape.
+    out.append(("the EXIT candle is VERIFIED by its CLOSE, never assumed from `head - 1`",
+                re.search(r"int\s+end\s*=\s*\(head\s*>\s*1\s*\?\s*head\s*-\s*1\s*:\s*head\);", walk) is not None
+                and re.search(r"if\(!BaseKnotBarCloseOut\(end,\s*top,\s*bot\)\)\s*end\s*=\s*head;",
+                              walk) is not None))
+    closeout = body(src, "bool BaseKnotBarCloseOut(") or ""
+    out.append(("... and its test is the CLOSE alone — the body's open is never asked",
+                re.search(r"iClose\(_Symbol,\s*0,\s*shift\)", closeout) is not None
+                and re.search(r"return\s*\(c\s*<\s*bot\s*\|\|\s*c\s*>\s*top\);", closeout) is not None
+                and "iOpen(" not in closeout
+                # an unreadable series is never a CLAIMED exit
+                and re.search(r"if\(c\s*<=\s*0\)\s*return\s+false;", closeout) is not None))
     out.append(("the walking run is capped in the walk (probe included)",
                 re.search(r"n\s*\+\s*probe\s*<\s*BK_BASE_MAX", walk) is not None))
     out.append(("the live count is rate-limited",
@@ -686,8 +705,15 @@ def budgets():
     return _BUDGETS["v"]
 
 
-def walk_span(flags, right):
+def walk_span(flags, right, closed=None):
     """`flags[i]` = the i-th bar's body is inside the band; OLDER bars = larger i.
+
+    `closed[i]` = the i-th bar's CLOSE is OUTSIDE the band — P-BK-85's exit test, and the
+    only thing that tells «the candle past the run's body» apart from «the candle that
+    closed outside». Omitted, a body-out bar is taken to have closed out too: that is the
+    assumption P-BK-85 retired, kept as the default so every scene which does not care
+    about the exit's close keeps the number it always read. `reclose` is the scene that
+    separates the two, and `check_model` carries the pair.
 
     Mirrors BaseKnotBarCount (P-BK-31's anchored run + P-BK-32's tolerance + P-BK-37's
     start + P-BK-41/42's two ends): anchor on `right` (the box' right edge), step over
@@ -714,8 +740,10 @@ def walk_span(flags, right):
     """
     b = budgets()
     total = len(flags)
+    if closed is None:
+        closed = [not f for f in flags]
     if right < 0 or right >= total:
-        return 0, 0
+        return 0, 0, -1, -1
     # P-BK-43: the anchor search asks the SAME question of every candidate it meets -
     # "does a base start here?" - and only a candle whose run holds a base's own length
     # becomes the anchor; a stray body is stepped over and the search looks behind it,
@@ -775,12 +803,21 @@ def walk_span(flags, right):
     if anchor <= 0 or oldest < 0:
         return 0, 0, -1, -1
     end = head - 1 if head > 1 else head
+    # P-BK-85: THE EXIT IS VERIFIED, NOT ASSUMED. `head` is the run's newest BODY-inside
+    # candle, so `head - 1` is «the candle past the run's body» — NOT «the candle that
+    # closed outside». A candle that poked out and closed back INSIDE is still one the base
+    # holds, and naming it the exit counts the knot's formation one candle early (and, since
+    # P-BK-84, also moves the class' span's right end and the direction walk's own start).
+    # The CLOSE is the only test; when nothing closed outside yet the base has NO exit and
+    # the span ends at its OWN right side (`head`), exactly as P-BK-34 asks.
+    if not closed[end]:
+        end = head
     return oldest - end, n, oldest, head
 
 
-def walk_parts(flags, right):
+def walk_parts(flags, right, closed=None):
     """The same walk, the two numbers its callers already asked for (P-BK-40/42)."""
-    life, still, _oldest, _head = walk_span(flags, right)
+    life, still, _oldest, _head = walk_span(flags, right, closed)
     return life, still
 
 
@@ -891,9 +928,9 @@ def walk_v41(flags, right):
     return oldest - end
 
 
-def walk(flags, right):
+def walk(flags, right, closed=None):
     """The note's number: the base's own story (P-BK-42)."""
-    return walk_parts(flags, right)[0]
+    return walk_parts(flags, right, closed)[0]
 
 
 def walk_still(flags, right):
@@ -1046,10 +1083,26 @@ def model_scenes():
         nested[i] = True
     for i in range(15, 24):
         nested[i] = True
+    # P-BK-85: THE EXIT IS THE CANDLE THAT CLOSED OUTSIDE — and the two readings below are
+    # the same tape with ONE bit moved, so `check_model` can hold them apart.
+    #
+    # `reclose`: shift 39, the candle just NEWER than the run's own right side (40), has its
+    # BODY outside the band — so it is not a base candle — but its CLOSE back INSIDE it. The
+    # base never left, so there is NO exit: the span ends at the base's own right side and
+    # the note reads 18 (19 candles, entry out). Reading the exit off `head - 1` alone called
+    # that candle «کندل خروج» and printed 19.
+    reclose_closed = [not f for f in base]
+    reclose_closed[39] = False
+    # ... and the SAME tape with shift 39 really closing outside: this one IS the exit, it
+    # IS counted, and the note reads 19 exactly as before — the positive control that proves
+    # P-BK-85 only fires when the candle never left.
+    exitok_closed = [not f for f in base]
+    exitok_closed[39] = True
     return {"base": base, "scattered": scattered, "poked": poked,
             "clustered": clustered, "entry": entry, "two": two, "older": older,
             "deep": deep, "d1": d1, "zone": zone, "crowd": crowd, "nobase": nobase,
-            "nested": nested}
+            "nested": nested,
+            "closed": {"reclose": reclose_closed, "exitok": exitok_closed}}
 
 
 def model_cases():
@@ -1098,13 +1151,24 @@ def model_cases():
         ("three in a row past the gap are the same band (the gap candle is inside too)",
          23, s["older"], 40),
         ("the cap holds on a runaway band", cap - 1, [True] * (cap + 50), 1),
+        # P-BK-85: the exit's own test. The two cases are the SAME tape with one bit moved,
+        # so neither can pass by accident: the close decides, and nothing else.
+        ("a candle that poked out but CLOSED back inside is NOT the exit (18, not 19)",
+         18, s["base"], 40, s["closed"]["reclose"]),
+        ("... and with the same candle really CLOSING outside it IS the exit (19)",
+         19, s["base"], 40, s["closed"]["exitok"]),
     ]
 
 
 def check_model():
     out = []
-    for name, want, flags, right in model_cases():
-        got = walk(flags, right)
+    # P-BK-85: a case may carry a fifth element — the scene's own CLOSE series — and then
+    # the walk is asked the question the code asks. Without it the old assumption stands
+    # (a body-out bar closed out), so every older case keeps the number it always read.
+    for case in model_cases():
+        name, want, flags, right = case[:4]
+        closed = case[4] if len(case) > 4 else None
+        got = walk(flags, right, closed)
         out.append(("%s (%d)" % (name, got), got == want))
     # P-BK-40: the SAME walk answers the other question too, and the two must not be
     # each other: life vs stand-still.
@@ -3528,6 +3592,26 @@ def selftest():
                   walk_gap_only(sc["entry"], 40) == 20 and walk(sc["entry"], 40) == 19))
     cases.append(("the left-edge sweep is clean (positive control)",
                   check_invariance()[0][1]))
+
+    # P-BK-85: THE EXIT'S OWN TEST — the CLOSE — in the code and on the tape. The tape pair
+    # is the same nineteen candles with ONE bit moved (shift 39 closed outside / closed back
+    # inside), so neither number can be reached by accident.
+    with_source("   if(!BaseKnotBarCloseOut(end, top, bot)) end = head;",
+                "   // the exit is whatever sits past the body")
+    cases.append(("an exit assumed from `head - 1` again is caught",
+                  bool(fires(check_break_and_budget))))
+    reset()
+
+    with_source("   if(c <= 0) return false;              // series not ready",
+                "   if(iOpen(_Symbol, 0, shift) <= 0) return false;")
+    cases.append(("an exit test that asks the body instead of the close is caught",
+                  bool(fires(check_break_and_budget))))
+    reset()
+
+    cases.append(("the exit read off `head - 1` alone names a candle that never left (19 vs 18)",
+                  walk(sc["base"], 40) == 19
+                  and walk(sc["base"], 40, sc["closed"]["reclose"]) == 18
+                  and walk(sc["base"], 40, sc["closed"]["exitok"]) == 19))
 
     for name, ok in cases:
         print("%-56s %s" % (name, "caught" if ok else "MISSED"))
