@@ -1,4 +1,4 @@
-﻿  //+------------------------------------------------------------------+
+  //+------------------------------------------------------------------+
 //|                                           Biotak Trigger TH3.mq4 |
 //+------------------------------------------------------------------+
 #property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
@@ -79,14 +79,22 @@
 #ifndef BUILD_LITE
 #include "Biotak\WaveAnalysis.mqh"
 #include "Biotak\FrequencyOptimizer.mqh"
-// TH3TOOL-OFF (tool retired — commented out, not deleted):
-// #include "Biotak\TH3Tool.mqh"
+// TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF — the TH3 tool is LIVE again.
+#include "Biotak\TH3Tool.mqh"
 #endif
 
 //                                                                    
 // Drawing & Rendering Pipeline
 //                                                                    
 #include "Biotak\ObjectFunctions.mqh"
+// P-DRAW-01: the user's OWN drawings (fib, trend, hline, channel, box, …) and
+// the style memory behind their toolbar. Above EventHandlers/BiotakPanels so
+// both halves can ask it (the strip lives in the panels, the create hook in the
+// event handlers).
+#include "Biotak\DrawToolbar.mqh"
+// P-DRAW-08: the floating strip the drawings' hold opens. Full only — it is a
+// screen surface, and Lite owns none (P-BUILD-01).
+#include "Biotak\DrawStrip.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
 #include "Biotak\ComboEngine.mqh"
 #include "Biotak\FactorMode.mqh"
@@ -158,6 +166,9 @@ void OnDeinit(const int reason)
     uint p15Pnl, p15Menu, p15Htf, p15Save, p15Cleanup, p15Handler;
     PnlCloseAll();
     p15Pnl = GetTickCount() - p15t; p15t = GetTickCount();
+    // P-DRAW-08: the drawing strip's own objects die with the instance — the
+    // removal path owns them, so no Biotak_DS_* button survives a REASON_REMOVE.
+    DrawStripClose();
     DeleteMenu();
     p15Menu = GetTickCount() - p15t; p15t = GetTickCount();
     DeleteHTFCandles();
@@ -246,6 +257,9 @@ void OnChartEvent(const int id,
   p4t = GetTickCount();
   // --- Circular menu / settings panels / palette ---
   HandleUIChartEvent(id,lparam,dparam,sparam);
+  // P-DRAW-08: the drawing strip's own buttons and its dismiss clicks. Its own
+  // owner, its own objects — it shares no state with the panels.
+  DrawStripOnEvent(id,lparam,dparam,sparam);
   uint p4b = GetTickCount() - p4t;
   g_inChartEvent = false;
   // P-PERF-40: A USER ACTION SETTLES THE FRAME IT OWED — IN THE SAME EVENT.
@@ -299,10 +313,18 @@ void OnChartEvent(const int id,
   // P-PERF-40: `settle=` is the frame this event drained, and it is IN the budget
   // check on purpose — a drain that hides its own cost from the ledger would be
   // the same defect this cycle is fixing, one level up.
-  P4ReportSlow("chart event " + P4EventName(id) + "(id=" + IntegerToString(id) + ") [indicator=" +
+   // P-PERF-50: the ledger message is ~15 string ops (P4EventName + six
+   // IntegerToString + concatenations) and P4ReportSlow no-ops under budget —
+   // so building it on EVERY event (a MOUSE_MOVE storm is hundreds/sec) was
+   // pure garbage for the same silence. The total is hoisted first and the
+   // message is built only when it will actually print: identical log lines,
+   // zero steady-state strings. Same gate in the Lite entry.
+   uint p4tot = p4a + p4b + p4c + p4e;
+   if(p4tot >= P_P4_EVENT_WARN_MS)
+      P4ReportSlow("chart event " + P4EventName(id) + "(id=" + IntegerToString(id) + ") [indicator=" +
                P4MsTag(p4a) + " ui=" + P4MsTag(p4b) + " settle=" + P4MsTag(p4c) +
                " panels=" + P4MsTag(p4e) + "]",
-               p4a + p4b + p4c + p4e, P_P4_EVENT_WARN_MS);
+               p4tot, P_P4_EVENT_WARN_MS);
 }
 
 //+------------------------------------------------------------------+
@@ -335,4 +357,48 @@ void OnTimer()
     // (P-UI-40's UISyncDrain rides inside RefreshKitOnBar — one drain owner.)
     RefreshKitOnBar();
     ChartScrollReconcile();
+
+    // P-LM-09: the leg meter's readout is a 4-second VISITOR, and this is its clock.
+    // It belongs here and not in OnCalculate: a plate must expire on a chart that has
+    // not ticked (a weekend, a dead symbol) exactly as on a busy one, and the timer is
+    // the only thing already running when the market is asleep. The sweep is one
+    // comparison while the tool has no measurement on the chart, and one bool per
+    // measurement while it has; the four deletes of an expiry happen exactly once.
+    // (P-LM-10's drag channel retired here with the native drag itself: P-LM-11's
+    // edit owner moves the family in the mouse event, so there is nothing left
+    // for a timer to chase.)
+    LegMeasureExpireSweep();
+
+    // P-LM-16b: the handles' third riding channel — the net under MOUSE_MOVE
+    // (drag-pans) and CHART_CHANGE (wheel, keys, auto-scroll). Guarded writes:
+    // a chart that has not moved costs one loop of reads and no ObjectSet*.
+    LegMeasureRideChart();
+
+    // P-UI-100 (2026-09-22): the selection net of the two hand-set lines — the
+    // one owner that does not depend on any event reaching us. A selection that
+    // outlived the gesture that made it is what lets MT4 drag the custom price
+    // line (and the whole ladder derived from its price) along with somebody
+    // else's fib or box («وقتی فیو یا باکس از همون محل میکشم کاستوم پرایس
+    // جابجا میشه»). The 250 ms clock is the net under the layers whose events
+    // are consumed whole (the box tool's draw session); the gesture starts
+    // themselves clear it in their own event, so this is a floor, not the path.
+    // Cost: one probe while the button is down, then three guarded reads.
+    HandLinesSelectionNet();
+
+    // P-TH3-INFO-11 (2026-09-22): the caption heal net - the active family's
+    // one question every 250 ms (reads-only while healthy; one TH3CAP line
+    // per action). Full entry only: Lite owns no caption UI (P-BUILD-01).
+    TH3InfoCaptionHeal();
+
+    // P-UI-98r: the net under the card-cull's event hooks (open/close/drag/
+    // draw) - zoom, resize and forming-candle drift converge here within one
+    // tick of the 250 ms clock. Closed / HTF-off / nothing drawn: three bool
+    // reads and out.
+    HTFCardCullRefresh();
+
+    // P-TH3-PB-DRAG-LOCK (2026-09-22): the band's drag heartbeat - a stuck
+    // terminal or an off-chart release leaves OBJECT_DRAG silent, and the
+    // button-up MOUSE_MOVE never arrives; the 1.5 s idle here is the only
+    // heal that does not need the terminal to cooperate.
+    TH3BaseBandDragHeartbeat();
 }

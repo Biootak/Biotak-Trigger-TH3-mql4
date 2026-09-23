@@ -82,29 +82,44 @@ void TH3PatternStoreClear()
 }
 
 //+------------------------------------------------------------------+
-//| Build a TH3Pattern model from A/B/C (+optional X)                |
-//| Computes D via the pure AB=CD rule. Returns false if invalid.    |
+//| Build a TH3Pattern model from A/B/C/D                            |
+//| If D is not provided, computes D via the AB=CD rule.             |
 //+------------------------------------------------------------------+
 bool TH3PatternBuild(const string name,
-                     datetime tX, double pX,
                      datetime tA, double pA,
                      datetime tB, double pB,
                      datetime tC, double pC,
+                     datetime tD, double pD,
                      TH3Pattern &out)
 {
-    datetime tD;
-    double pD;
-    if(!CalculateABCDPointD(tA, pA, tB, pB, tC, pC, tD, pD)) return false;
+    if(tD <= 0 || pD <= 0) {
+        if(!CalculateABCDPointD(tA, pA, tB, pB, tC, pC, tD, pD)) return false;
+    }
 
     out.name = name;
-    out.X.time = tX;   out.X.price = pX;
+    out.X.time = 0;    out.X.price = 0;
     out.A.time = tA;   out.A.price = pA;
     out.B.time = tB;   out.B.price = pB;
     out.C.time = tC;   out.C.price = pC;
     out.D.time = tD;   out.D.price = pD;
     out.bullish = (pB > pA);
     out.frequency = 0; // set by caller (auto-selected or override)
+    // P-TH3-PB-OFF (2026-09-21): the drawn base is retired — a fresh model
+    // carries none, and Path 1 comes from `inpTH3PivotBasePips` instead.
+    out.pivotBaseTop = 0;
+    out.pivotBaseBottom = 0;
+
+    // Measure the five arrangement axes off the bars and derive the step they
+    // imply. A pattern that cannot be measured still builds - it just carries an
+    // INVALID skeleton rather than a fabricated one, so "unmeasured" stays
+    // distinguishable from "a standard pivot with no cover" all the way out.
+    out.skeleton.valid = false;
+    TH3Skeleton skel;
+    if(TH3SkeletonFromBars(tA, pA, tB, pB, tC, pC, skel)) out.skeleton = skel;
+
     return true;
 }
 
+// P-TH3-D4: legacy X overload removed (same arity as the A/B/C/D build,
+// MQL4 error 165). Callers pass placed A/B/C/D directly.
 #endif // TH3_PATTERN_STORE_MQH

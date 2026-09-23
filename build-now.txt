@@ -1,0 +1,177 @@
+﻿
+============================================================
+  Compiling: Biotak Trigger TH3 (Workspace)
+============================================================
+  Source:   C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak Trigger TH3.mq4
+  Include:  C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4
+  Log:      C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\build-logs\Biotak-Trigger-TH3--Workspace--20260922-190247.log
+
+  Result: 0 errors, 0 warnings, 748 msec elapsed
+  Compiler exit code: 1 (non-fatal, no compile errors in log)
+
+  LOG OUTPUT (last 120 lines):
+    
+    
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak Trigger TH3.mq4 : information: compiling 'Biotak Trigger TH3.mq4'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BuildConfig.mqh : information: including 'BuildConfig.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\MathConstants.mqh : information: including 'MathConstants.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\Logger.mqh : information: including 'Logger.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\Profiler.mqh : information: including 'Profiler.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\PropertiesAndInputs.mqh : information: including 'PropertiesAndInputs.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ConstantsAndEnums.mqh : information: including 'ConstantsAndEnums.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ProjectConstants.mqh : information: including 'ProjectConstants.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\InputValidator.mqh : information: including 'InputValidator.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\FloatingPointHelper.mqh : information: including 'FloatingPointHelper.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ObjectCountManager.mqh : information: including 'ObjectCountManager.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\PerformanceOptimizations.mqh : information: including 'PerformanceOptimizations.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\InputValidationEnhanced.mqh : information: including 'InputValidationEnhanced.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\RuntimeSettings.mqh : information: including 'RuntimeSettings.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\GlobalVariables.mqh : information: including 'GlobalVariables.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\UtilityFunctions.mqh : information: including 'UtilityFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ZoneFactory.mqh : information: including 'ZoneFactory.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ObjectCache.mqh : information: including 'ObjectCache.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BaseKnotTool.mqh : information: including 'BaseKnotTool.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\CalculationCache.mqh : information: including 'CalculationCache.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ZoneConfig.mqh : information: including 'ZoneConfig.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ZoneConstants.mqh : information: including 'ZoneConstants.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\PropertyChangeDetector.mqh : information: including 'PropertyChangeDetector.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\VisibilityManager.mqh : information: including 'VisibilityManager.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TimeframeFunctions.mqh : information: including 'TimeframeFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\FractalTimeframes.mqh : information: including 'FractalTimeframes.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\StandardTimeframes.mqh : information: including 'StandardTimeframes.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\THCalculations.mqh : information: including 'THCalculations.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ATRCalculations.mqh : information: including 'ATRCalculations.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TradePlanFormulas.mqh : information: including 'TradePlanFormulas.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\AdaptiveScaling.mqh : information: including 'AdaptiveScaling.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BasePriceManager.mqh : information: including 'BasePriceManager.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BasePriceHistoryManager.mqh : information: including 'BasePriceHistoryManager.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\MarketHoursDetector.mqh : information: including 'MarketHoursDetector.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\DynamicTradingDayDetector.mqh : information: including 'DynamicTradingDayDetector.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\WaveAnalysis.mqh : information: including 'WaveAnalysis.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\FrequencyOptimizer.mqh : information: including 'FrequencyOptimizer.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3Tool.mqh : information: including 'TH3Tool.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3Types.mqh : information: including 'TH3Types.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3Math.mqh : information: including 'TH3Math.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3Pivots.mqh : information: including 'TH3Pivots.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3PatternStore.mqh : information: including 'TH3PatternStore.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3Controller.mqh : information: including 'TH3Controller.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\TH3\TH3Renderer.mqh : information: including 'TH3Renderer.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ObjectFunctions.mqh : information: including 'ObjectFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ExtendedDrawingFunctions.mqh : information: including 'ExtendedDrawingFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ComboEngine.mqh : information: including 'ComboEngine.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\FactorMode.mqh : information: including 'FactorMode.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\LevelPipeline.mqh : information: including 'LevelPipeline.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\ModeDefinitions.mqh : information: including 'ModeDefinitions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\LabelFunctions.mqh : information: including 'LabelFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\AlertFunctions.mqh : information: including 'AlertFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\HistoricalDataFunctions.mqh : information: including 'HistoricalDataFunctions.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\EventHandlers.mqh : information: including 'EventHandlers.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\HTFCandles.mqh : information: including 'HTFCandles.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BiotakKit.mqh : information: including 'BiotakKit.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BiotakMenu.mqh : information: including 'BiotakMenu.mqh'
+    C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak\BiotakPanels.mqh : information: including 'BiotakPanels.mqh'
+    Result: 0 errors, 0 warnings, 748 msec elapsed
+
+  Runtime Experts: no new lines since previous snapshot
+  Runtime snapshot appended to: C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\build-logs\Biotak-Trigger-TH3--Workspace--20260922-190247.log
+
+  Compile time: 1.0s
+  Output: C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\Biotak Trigger TH3.ex4 (3,066,234 bytes)
+
+
+============================================================
+  Compiling: Biotak Trigger TH3 (Installed)
+============================================================
+  Source:   C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak Trigger TH3.mq4
+  Include:  C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4
+  Log:      C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\build-logs\Biotak-Trigger-TH3--Installed--20260922-190249.log
+
+  Result: 0 errors, 0 warnings, 751 msec elapsed
+  Compiler exit code: 1 (non-fatal, no compile errors in log)
+
+  LOG OUTPUT (last 120 lines):
+    
+    
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak Trigger TH3.mq4 : information: compiling 'Biotak Trigger TH3.mq4'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BuildConfig.mqh : information: including 'BuildConfig.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\MathConstants.mqh : information: including 'MathConstants.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\Logger.mqh : information: including 'Logger.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\Profiler.mqh : information: including 'Profiler.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\PropertiesAndInputs.mqh : information: including 'PropertiesAndInputs.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ConstantsAndEnums.mqh : information: including 'ConstantsAndEnums.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ProjectConstants.mqh : information: including 'ProjectConstants.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\InputValidator.mqh : information: including 'InputValidator.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\FloatingPointHelper.mqh : information: including 'FloatingPointHelper.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ObjectCountManager.mqh : information: including 'ObjectCountManager.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\PerformanceOptimizations.mqh : information: including 'PerformanceOptimizations.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\InputValidationEnhanced.mqh : information: including 'InputValidationEnhanced.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\RuntimeSettings.mqh : information: including 'RuntimeSettings.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\GlobalVariables.mqh : information: including 'GlobalVariables.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\UtilityFunctions.mqh : information: including 'UtilityFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ZoneFactory.mqh : information: including 'ZoneFactory.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ObjectCache.mqh : information: including 'ObjectCache.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BaseKnotTool.mqh : information: including 'BaseKnotTool.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\CalculationCache.mqh : information: including 'CalculationCache.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ZoneConfig.mqh : information: including 'ZoneConfig.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ZoneConstants.mqh : information: including 'ZoneConstants.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\PropertyChangeDetector.mqh : information: including 'PropertyChangeDetector.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\VisibilityManager.mqh : information: including 'VisibilityManager.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TimeframeFunctions.mqh : information: including 'TimeframeFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\FractalTimeframes.mqh : information: including 'FractalTimeframes.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\StandardTimeframes.mqh : information: including 'StandardTimeframes.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\THCalculations.mqh : information: including 'THCalculations.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ATRCalculations.mqh : information: including 'ATRCalculations.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TradePlanFormulas.mqh : information: including 'TradePlanFormulas.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\AdaptiveScaling.mqh : information: including 'AdaptiveScaling.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BasePriceManager.mqh : information: including 'BasePriceManager.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BasePriceHistoryManager.mqh : information: including 'BasePriceHistoryManager.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\MarketHoursDetector.mqh : information: including 'MarketHoursDetector.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\DynamicTradingDayDetector.mqh : information: including 'DynamicTradingDayDetector.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\WaveAnalysis.mqh : information: including 'WaveAnalysis.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\FrequencyOptimizer.mqh : information: including 'FrequencyOptimizer.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3Tool.mqh : information: including 'TH3Tool.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3Types.mqh : information: including 'TH3Types.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3Math.mqh : information: including 'TH3Math.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3Pivots.mqh : information: including 'TH3Pivots.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3PatternStore.mqh : information: including 'TH3PatternStore.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3Controller.mqh : information: including 'TH3Controller.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\TH3\TH3Renderer.mqh : information: including 'TH3Renderer.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ObjectFunctions.mqh : information: including 'ObjectFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ExtendedDrawingFunctions.mqh : information: including 'ExtendedDrawingFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ComboEngine.mqh : information: including 'ComboEngine.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\FactorMode.mqh : information: including 'FactorMode.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\LevelPipeline.mqh : information: including 'LevelPipeline.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\ModeDefinitions.mqh : information: including 'ModeDefinitions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\LabelFunctions.mqh : information: including 'LabelFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\AlertFunctions.mqh : information: including 'AlertFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\HistoricalDataFunctions.mqh : information: including 'HistoricalDataFunctions.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\EventHandlers.mqh : information: including 'EventHandlers.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\HTFCandles.mqh : information: including 'HTFCandles.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BiotakKit.mqh : information: including 'BiotakKit.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BiotakMenu.mqh : information: including 'BiotakMenu.mqh'
+    C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak\BiotakPanels.mqh : information: including 'BiotakPanels.mqh'
+    Result: 0 errors, 0 warnings, 751 msec elapsed
+
+  Runtime Experts: no new lines since previous snapshot
+  Runtime snapshot appended to: C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\build-logs\Biotak-Trigger-TH3--Installed--20260922-190249.log
+
+  Compile time: 1.0s
+  Output: C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4\Indicators\BiotakProject\Biotak Trigger TH3.ex4 (3,065,282 bytes)
+
+
+============================================================
+  SUMMARY
+============================================================
+  [PASS] Biotak Trigger TH3 (Installed)
+  [PASS] Biotak Trigger TH3 (Workspace)
+
+  Total time: 5.0s
+
+  MetaEditor: C:\Program Files (x86)\AMarkets - MetaTrader 4\metaeditor.exe
+  MQL4 dir:  C:\Users\Bioootak\AppData\Roaming\MetaQuotes\Terminal\0727F3F88B5F0FE006962B330B91FF37\MQL4
+
+  Logs folder: C:\Users\Bioootak\Desktop\Trading\Biotak-Trigger-TH3-mql4\build-logs
+
+  All compilations PASSED!
+
+  Log cleanup: removed 2 old log file(s).

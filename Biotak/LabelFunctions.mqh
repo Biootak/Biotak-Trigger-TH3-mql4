@@ -1328,10 +1328,12 @@ void TradePlanLiveTick()
     // still park this pump with the rest of the chart.
     if(!inpShowATRTradeLabels || IsIndicatorHidden()) return;
     static uint s_lastMs = 0;
-    string labelPrefix = GetLevelObjectPrefix() + "LBL_";
-
     if(nowMs - s_lastMs < 2000) return;
     s_lastMs = nowMs;
+    // P-PERF-50: the prefix string was built on EVERY tick+timer call and then
+    // thrown away by the 2 s gate above — same "string before the gate" waste
+    // as the per-event ledger. Built here, it runs once per 2 s pass.
+    string labelPrefix = GetLevelObjectPrefix() + "LBL_";
     STradePlan plan;
     if(!TradePlanComputeLive(Period(), plan)) return;
     // ONE card layout for BOTH branches below (P-LBL-09): the drawn-row set and

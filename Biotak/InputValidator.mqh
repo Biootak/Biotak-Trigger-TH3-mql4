@@ -139,22 +139,21 @@ int ValidateInputs()
         return INIT_PARAMETERS_INCORRECT;
     }
     
-    // 9. TH3 Zone Transparency (0-100) — TH3TOOL-OFF: retired with the tool
-    // TH3TOOL-OFF:
-    //#ifndef BUILD_LITE
-    //    if(inpTH3ZoneTransparency < 0 || inpTH3ZoneTransparency > 100) {
-    //        Print("  ERROR: TH3 Zone Transparency (", inpTH3ZoneTransparency, ") out of range");
-    //        Print("   Valid range: 0 - 100");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //
-    //    // 9.1 TH3 Zone Height Percent (1-100)
-    //    if(inpTH3ZoneHeightPercent < 1.0 || inpTH3ZoneHeightPercent > 100.0) {
-    //        Print("  ERROR: TH3 Zone Height Percent (", inpTH3ZoneHeightPercent, ") out of range");
-    //        Print("   Valid range: 1.0 - 100.0");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //#endif
+    // 9. TH3 Zone Transparency (0-100) — TH3TOOL-ON (2026-09-19): restored.
+#ifndef BUILD_LITE
+    if(inpTH3ZoneTransparency < 0 || inpTH3ZoneTransparency > 100) {
+        Print("  ERROR: TH3 Zone Transparency (", inpTH3ZoneTransparency, ") out of range");
+        Print("   Valid range: 0 - 100");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+
+    // 9.1 TH3 Zone Height Percent (1-100)
+    if(inpTH3ZoneHeightPercent < 1.0 || inpTH3ZoneHeightPercent > 100.0) {
+        Print("  ERROR: TH3 Zone Height Percent (", inpTH3ZoneHeightPercent, ") out of range");
+        Print("   Valid range: 1.0 - 100.0");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+#endif
     
     // 9.2 Mid-Zone Height Percent (1-100)
     if(!MathIsValidNumber(inpMidZoneHeightPercent) ||
@@ -266,7 +265,9 @@ int ValidateInputs()
     //                                                                
     
     // SECURITY FIX: Validate factor value
-    if(inpFactorValue < 0.01 || inpFactorValue > 10000) {
+    // P-UI-57: NaN passes EVERY range test (all comparisons false), so the
+    // finite check comes first — same one-line gate as the threshold gates.
+    if(!MathIsValidNumber(inpFactorValue) || inpFactorValue < 0.01 || inpFactorValue > 10000) {
         Print("  ERROR: Factor Value (", DoubleToString(inpFactorValue, 2), ") out of range");
         Print("   Valid range: 0.01 - 10000");
         return INIT_PARAMETERS_INCORRECT;
@@ -284,7 +285,8 @@ int ValidateInputs()
     }
 #endif
     
-    if(inpFactorAdjustStep <= 0 || inpFactorAdjustStep > 100) {
+    // P-UI-57: finite gate first (NaN would pass the range test below).
+    if(!MathIsValidNumber(inpFactorAdjustStep) || inpFactorAdjustStep <= 0 || inpFactorAdjustStep > 100) {
         Print("  ERROR: Factor Adjust Step (", DoubleToString(inpFactorAdjustStep, 2), ") out of range");
         Print("   Valid range: 0.01 - 100");
         return INIT_PARAMETERS_INCORRECT;
@@ -318,41 +320,46 @@ int ValidateInputs()
         return INIT_PARAMETERS_INCORRECT;
     }
     
-    // TH3TOOL-OFF: TH3 TOOL + AB=CD VALIDATIONS retired with the tool —
-    // TH3TOOL-OFF:
-    //#ifndef BUILD_LITE
-    //    if(inpTH3BaseStepPercent < 0.1 || inpTH3BaseStepPercent > 120.0) {
-    //        Print("  ERROR: TH3 Base Step Percent (", DoubleToString(inpTH3BaseStepPercent, 3), ") out of range");
-    //        Print("   Valid range: 0.1 - 120.0 (extended range)");
-    //        Print("   Recommended: 28.125 (default)");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //    if(inpTH3Width <= 0 || inpTH3Width > 10) {
-    //        Print("  ERROR: TH3 Level Width (", inpTH3Width, ") out of range");
-    //        Print("   Valid range: 1 - 10");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //    if(inpABCDWidth <= 0 || inpABCDWidth > 10) {
-    //        Print("  ERROR: AB=CD Line Width (", inpABCDWidth, ") out of range");
-    //        Print("   Valid range: 1 - 10");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //    if(inpTH3ZoneBorderWidth <= 0 || inpTH3ZoneBorderWidth > 10) {
-    //        Print("  ERROR: TH3 Zone Border Width (", inpTH3ZoneBorderWidth, ") out of range");
-    //        Print("   Valid range: 1 - 10");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //    if(inpABCDInfoFontSize <= 0 || inpABCDInfoFontSize > 100) {
-    //        Print("  ERROR: AB=CD Info Font Size (", inpABCDInfoFontSize, ") out of range");
-    //        Print("   Valid range: 1 - 100");
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //    if(inpABCDInfoXDistance < 0 || inpABCDInfoYDistance < 0) {
-    //        Print("  ERROR: AB=CD Info position must be non-negative");
-    //        Print("   X: ", inpABCDInfoXDistance, ", Y: ", inpABCDInfoYDistance);
-    //        return INIT_PARAMETERS_INCORRECT;
-    //    }
-    //#endif
+    // TH3TOOL-ON (2026-09-19): TH3 TOOL + AB=CD validations restored.
+#ifndef BUILD_LITE
+    if(inpTH3BaseStepPercent < 0.1 || inpTH3BaseStepPercent > 120.0) {
+        Print("  ERROR: TH3 Base Step Percent (", DoubleToString(inpTH3BaseStepPercent, 3), ") out of range");
+        Print("   Valid range: 0.1 - 120.0 (extended range)");
+        Print("   Recommended: 28.125 (default)");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    // P-TH3-PB-MAN (2026-09-21): the hand-typed pivot base, in pips. 0 = OFF.
+    if(inpTH3PivotBasePips < 0.0 || inpTH3PivotBasePips > 2000.0) {
+        Print("  ERROR: TH3 Pivot Base Pips (", DoubleToString(inpTH3PivotBasePips, 1), ") out of range");
+        Print("   Valid range: 0.0 - 2000.0 (0 = OFF, the pattern TF's own ATR)");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    if(inpTH3Width <= 0 || inpTH3Width > 10) {
+        Print("  ERROR: TH3 Level Width (", inpTH3Width, ") out of range");
+        Print("   Valid range: 1 - 10");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    if(inpABCDWidth <= 0 || inpABCDWidth > 10) {
+        Print("  ERROR: AB=CD Line Width (", inpABCDWidth, ") out of range");
+        Print("   Valid range: 1 - 10");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    if(inpTH3ZoneBorderWidth <= 0 || inpTH3ZoneBorderWidth > 10) {
+        Print("  ERROR: TH3 Zone Border Width (", inpTH3ZoneBorderWidth, ") out of range");
+        Print("   Valid range: 1 - 10");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    if(inpABCDInfoFontSize <= 0 || inpABCDInfoFontSize > 100) {
+        Print("  ERROR: AB=CD Info Font Size (", inpABCDInfoFontSize, ") out of range");
+        Print("   Valid range: 1 - 100");
+        return INIT_PARAMETERS_INCORRECT;
+    }
+    if(inpABCDInfoXDistance < 0 || inpABCDInfoYDistance < 0) {
+        Print("  ERROR: AB=CD Info position must be non-negative");
+        Print("   X: ", inpABCDInfoXDistance, ", Y: ", inpABCDInfoYDistance);
+        return INIT_PARAMETERS_INCORRECT;
+    }
+#endif
     
     //                                                                
     // STRUCTURE LEVEL VALIDATIONS

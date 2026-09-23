@@ -271,21 +271,20 @@ Checks, all on the source (+ one model), no terminal:
              the node is SEEN ON, and NOTHING else: the kind is ONE assignment off
              `BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor)` (so no branch
              and no restored read can rewrite it), that read touches four numbers and no
-             series at all (no closes, no ATR call, no `Period()`), and every unknown
-             (a zero/negative height, a TF whose ATR was never pushed) answers an
-             ABSENCE instead of a band. «توان حرکتی» IS THAT TIMEFRAME'S ATR
-             (2026-09-17: «به جای th از atr استفاده بشه») — the project's own
-             composite ATR (`CalculateWeightedATR`) — and P-BK-78 makes the THREE
-             abilities THREE TIMEFRAMES' ATRs: the NODE'S OWN TIME's (`trigger`), the
+             series at all (no closes, no TH call, no `Period()`), and every unknown
+             (a zero/negative height, a TF whose TH was never pushed) answers an
+             ABSENCE instead of a band. «توان حرکتی» IS THAT TIMEFRAME'S TH
+             (P-BK-92: reversed — «به جای atr از th استفاده بکن») — the rung's
+             own TH points — and P-BK-78 makes the THREE
+             abilities THREE TIMEFRAMES' THs: the NODE'S OWN TIME's (`trigger`), the
              PATTERN time's — ONE RUNG ABOVE it on the project's ladder (`pattern`) —
              and the STRUCTURE time's, TWO rungs above (`structure`). The old
              0.25/0.50/1.00 ratios are GONE: they could only ever express «a fraction
-             of this TF's own ATR», never «belongs to a HIGHER time» — the user's own
+             of this TF's own TH», never «belongs to a HIGHER time» — the user's own
              report («اندازه گره مال یک تایم بالاتر از تایم گره هستش پس etr باید
-             باشه»). They are PUSHED IN per TF (the layer law: `THCalculations.mqh`
-             sits ABOVE `BaseKnotTool.mqh`), the push stores ONE RAW ATR per TF and
-             scales nothing (a ratio at the push site would be a second owner of the
-             rule), and the Get resolves the LADDER itself, reusing the pump's own ask
+             باشه»). They are PUSHED IN per TF (the layer law), the push stores
+             ONE RAW TH per TF and scales nothing (a ratio at the push site would
+             be a second owner of the rule), and the Get resolves the LADDER itself, reusing the pump's own ask
              list so the ask and the answer cannot disagree about which TFs a box
              draws with.
              The four bands are the user's rule, made tolerant (P-BK-76): FTR up to
@@ -338,7 +337,7 @@ Checks, all on the source (+ one model), no terminal:
              The model then proves the promises on scenes: the six band answers,
              the four HEIGHT bands on a real ladder (a height on each side of each
              midpoint, a height equal to the structure ability, one above it, and
-             the absence when that TF's ATR was never pushed), the story scenes'
+             the absence when that TF's TH was never pushed), the story scenes'
              sides (the exit candle's, in BOTH directions, return or not), the step
              moving the numbers but never the side, the closes moving the side but
              never the type, and — the point of the length change — the RETIRED
@@ -1219,7 +1218,7 @@ def check_invariance():
              not reach)]
 
 
-# --- 7: the node type (P-BK-75/76) — the box' HEIGHT against its TF's ATR ---------
+# --- 7: the node type (P-BK-75/76) — the box' HEIGHT against its TF's TH ---------
 NODE_NONE, NODE_FTR, NODE_ETR, NODE_CTR, NODE_OTR = 0, 1, 2, 3, 4
 NODE_NAME = {NODE_NONE: "none", NODE_FTR: "FTR", NODE_ETR: "ETR",
              NODE_CTR: "CTR", NODE_OTR: "OTR"}
@@ -1316,12 +1315,12 @@ def ladder_next(tf, lad):
 def node_kind_model(h, trig, pat, str_):
     """Mirrors BaseKnotNodeKindOfLength (P-BK-75/76): the bands the box' HEIGHT falls
     in, against the three MOVEMENT ABILITIES of the TF the node is SEEN ON. NO closes,
-    NO step, NO chart TF and NO ATR enter this function — `h` against those three is
+    NO step, NO chart TF and NO TH enter this function — `h` against those three is
     the whole input, which is why nothing price did can move a type any more.
 
     The boundaries are the MIDPOINTS of adjacent abilities (P-BK-76: «زیاد خشک نباشه
     در مقایسات»), and OTR keeps the user's own ceiling — «بیشتر از توان حرکتی تایم
-    ساختار». A missing ability (str_ <= 0, i.e. that TF's ATR was never pushed) is an
+    ساختار». A missing ability (str_ <= 0, i.e. that TF's TH was never pushed) is an
     ABSENCE, never a zero dressed as a threshold."""
     if h <= 0.0 or str_ <= 0.0:
         return NODE_NONE
@@ -1474,13 +1473,13 @@ def node_story_scenes():
 
 def node_length_scenes():
     """(name, expected type, height, trigger, pattern, structure) — the TYPE, whose ONLY
-    inputs are the height and the three abilities of the LADDER around the node's own
+    inputs are the height and the three TH abilities of the LADDER around the node's own
     time: the same list would answer the same types on any closes, any step and any
     chart TF.
 
-    P-BK-78: the three abilities are THREE TIMEFRAMES' ATRs — the node's own time's
+    P-BK-78: the three abilities are THREE TIMEFRAMES' THs — the node's own time's
     (`trigger`), the PATTERN time's (one rung above it, `pattern`) and the STRUCTURE
-    time's (two rungs above, `structure`). A natural ladder has a bigger ATR the higher
+    time's (two rungs above, `structure`). A natural ladder has a bigger TH the higher
     you climb, so the scene's three are 25 / 50 / 100 pips (say the node's time, the
     rung above and the rung above that), and the two midpoints P-BK-76 moved the
     boundaries onto are 37.5 and 75. The ratios the OLD reading used (0.25 / 0.50 /
@@ -1488,19 +1487,19 @@ def node_length_scenes():
     time ABOVE the node's time» — the user's own ETR report."""
     return [
         ("a box with no height claims nothing", NODE_NONE, 0.0, 25.0, 50.0, 100.0),
-        ("a box as tall as the NODE'S OWN TIME's ATR -> FTR", NODE_FTR, 25.0, 25.0, 50.0, 100.0),
+        ("a box as tall as the NODE'S OWN TIME's TH -> FTR", NODE_FTR, 25.0, 25.0, 50.0, 100.0),
         ("... and one up to the trigger|pattern MIDPOINT is still FTR",
          NODE_FTR, 37.5, 25.0, 50.0, 100.0),
         ("a box past that midpoint -> ETR (its size belongs to a time ABOVE the node's)",
          NODE_ETR, 37.6, 25.0, 50.0, 100.0),
-        ("a box as tall as the PATTERN time's ATR -> ETR", NODE_ETR, 50.0, 25.0, 50.0, 100.0),
+        ("a box as tall as the PATTERN time's TH -> ETR", NODE_ETR, 50.0, 25.0, 50.0, 100.0),
         ("... and one up to the pattern|structure MIDPOINT is still ETR",
          NODE_ETR, 75.0, 25.0, 50.0, 100.0),
         ("a box past that midpoint -> CTR", NODE_CTR, 75.1, 25.0, 50.0, 100.0),
-        ("a box as tall as the STRUCTURE time's ATR -> CTR", NODE_CTR, 100.0, 25.0, 50.0, 100.0),
-        ("a box LONGER than the structure time's ATR -> OTR", NODE_OTR, 100.1, 25.0, 50.0, 100.0),
+        ("a box as tall as the STRUCTURE time's TH -> CTR", NODE_CTR, 100.0, 25.0, 50.0, 100.0),
+        ("a box LONGER than the structure time's TH -> OTR", NODE_OTR, 100.1, 25.0, 50.0, 100.0),
         ("... and stays OTR however much longer it is (4x)", NODE_OTR, 400.0, 25.0, 50.0, 100.0),
-        ("a TF whose ATR was never pushed claims nothing (an absence, not a band)",
+        ("a TF whose TH was never pushed claims nothing (an absence, not a band)",
          NODE_NONE, 50.0, 0.0, 0.0, 0.0),
     ]
 
@@ -1553,8 +1552,8 @@ def check_node():
                 # ... and no branch of the retired read hangs a `nd.kind = ` off price action
                 and re.search(r"if\([^\n]*nd\.(crossed|returned|rebreaks)[^\n]*\)[^\n]*nd\.kind\s*=", blk) is None
                 and re.search(r"retStep\s*[<>]=?\s*[0-9]", blk) is None))
-    out.append(("... and no ATR gate withholds it (the length needs no size at all)",
-                re.search(r"s_bkStepATR\s*<=\s*0\s*\)\s*return", blk) is None))
+    out.append(("... and no TH gate withholds it (the length needs no size at all)",
+                re.search(r"s_bkStepTH\s*<=\s*0\s*\)\s*return", blk) is None))
     out.append(("the LENGTH is read BEFORE the story walk (it needs no series)",
                 blk.find("nd.kind = BaseKnotNodeKindOfLength(") > 0
                 and blk.find("nd.kind = BaseKnotNodeKindOfLength(") < blk.find("iClose(")))
@@ -1580,30 +1579,30 @@ def check_node():
     out.append(("... and the thresholds come from the NODE'S OWN TF, pushed in (never the chart's)",
                 re.search(r"BaseKnotAbilityGet\(\s*nodeTFMin\s*,", hb) is not None
                 and "Period()" not in hb))
-    out.append(("... and a TF whose ATR was never pushed answers an ABSENCE, never a band",
+    out.append(("... and a TF whose TH was never pushed answers an ABSENCE, never a band",
                 re.search(r"if\(h\s*<=\s*0\.0\)\s*return\s+BK_NODE_NONE;", hb) is not None))
-    # P-BK-75/78 (2026-09-17, user: «به جای th از atr استفاده بشه» + «اندازه گره متعلق به
-    # تایم بالاتر از تایم گره هستش پس باید ETR بشه»): THE ABILITY IS THAT TF'S OWN ATR, AND
-    # THE THREE ABILITIES ARE THREE TFs' ATRs. The push stores ONE raw number per TF and
-    # scales nothing (a ratio at the push site would be a second owner of the rule); the Get
-    # resolves the LADDER — the node's own time, the pattern time one rung above, the
-    # structure time two rungs above — and a cold ATR stays an ABSENCE, never a zero dressed
+    # P-BK-75/78 (2026-09-17, user reversed 2026-09-18, P-BK-92): THE ABILITY IS
+    # THAT TF'S OWN TH, AND THE THREE ABILITIES ARE THREE TFs' THs. The push
+    # stores ONE raw number per TF and scales nothing (a ratio at the push site
+    # would be a second owner of the rule); the Get resolves the LADDER — the
+    # node's own time, the pattern time one rung above, the structure time two
+    # rungs above — and a cold rung stays an ABSENCE, never a zero dressed
     # up as a threshold.
     ab = body(src, "void BaseKnotAbilityPush(") or ""
     abg = body(src, "bool BaseKnotAbilityGet(") or ""
     abr = body(src, "bool BaseKnotAbilityRow(") or ""
-    out.append(("the push stores that TF's RAW ATR and scales NOTHING (one number, one owner)",
-                re.search(r"double\s+v\s*=\s*\(atr\s*>\s*0\.0\)\s*\?\s*atr\s*:\s*0\.0;", ab) is not None
+    out.append(("the push stores that TF's RAW TH and scales NOTHING (one number, one owner)",
+                re.search(r"double\s+v\s*=\s*\(th\s*>\s*0\.0\)\s*\?\s*th\s*:\s*0\.0;", ab) is not None
                 and re.search(r"\*\s*0\.\d", ab) is None
                 and re.search(r"BK_AB_(TRIG|PAT)_RATIO", plain) is None))
-    out.append(("... and the three abilities are the LADDER's three ATRs (P-BK-78)",
+    out.append(("... and the three abilities are the LADDER's three THs (P-BK-78)",
                 re.search(r"BaseKnotNextTFMin\(\s*tfMin\s*\)", abg) is not None
                 and re.search(r"BaseKnotNextTFMin\(\s*up1\s*\)", abg) is not None
                 and re.search(r"if\(up1\s*<=\s*0\s*\|\|\s*up2\s*<=\s*0\)\s*return\s+false;", abg) is not None
                 and abg.count("BaseKnotAbilityRow(") == 3))
-    out.append(("... and a cold ATR is stored AS an absence, never as a threshold of zero",
-                re.search(r"return\s+\(atr\s*>\s*0\.0\);", abr) is not None
-                and re.search(r"double\s+v\s*=\s*\(atr\s*>\s*0\.0\)\s*\?\s*atr\s*:\s*0\.0;", ab) is not None))
+    out.append(("... and a cold TH is stored AS an absence, never as a threshold of zero",
+                re.search(r"return\s+\(th\s*>\s*0\.0\);", abr) is not None
+                and re.search(r"double\s+v\s*=\s*\(th\s*>\s*0\.0\)\s*\?\s*th\s*:\s*0\.0;", ab) is not None))
     # ... and the ASK side must carry the CLASS and the two rungs above it, or the ladder the
     # Get reads would have no rows and every box would answer BK_NODE_NONE for ever.
     needs = body(src, "int BaseKnotEngNeeds(") or ""
@@ -2023,7 +2022,7 @@ def check_rung():
     out.append(("the rung read uses the RUNG's own series",
                 re.search(r"iOpen\(_Symbol,\s*tfMin,", hold) is not None
                 and re.search(r"iClose\(_Symbol,\s*tfMin,", hold) is not None))
-    out.append(("the rung read uses the SHARED body shape (no margin, no ATR)",
+    out.append(("the rung read uses the SHARED body shape (no margin, no TH)",
                 re.search(r"o\s*>=\s*bot\s*&&\s*o\s*<=\s*top\s*&&\s*c\s*>=\s*bot\s*&&\s*c\s*<=\s*top",
                           hold) is not None
                 and re.search(r"top\s*-\s*bot|\*\s*0\.", hold) is None))
@@ -2832,9 +2831,10 @@ def check_note_plate():
     # 6. the follower: called where the note is kept on its box, and read-guarded
     fs = strip_comments(fol)
     out.append(("the pair is re-projected where the note is kept on its box (the drag + the pump)",
-                "BaseKnotNotePlateFollow(pfx, t2, top);" in strip_comments(
-                    body(src, "void BaseKnotPlaceBadges(") or "")
-                and "BaseKnotNotePlateFollow(pfx, t2, top);" in body_plain))
+                 # P-BK-91: the home is the box' TOP-LEFT corner (t1), not top-right (t2).
+                 "BaseKnotNotePlateFollow(pfx, t1, top);" in strip_comments(
+                     body(src, "void BaseKnotPlaceBadges(") or "")
+                 and "BaseKnotNotePlateFollow(pfx, t1, top);" in body_plain))
     out.append(("... and the pump reaches it (a scroll, a zoom, a new bar)",
                 "BaseKnotPlaceBadges(" in strip_comments(
                     body(src, "void BaseKnotSyncBadges(") or "")))
@@ -2842,8 +2842,8 @@ def check_note_plate():
                 re.search(r"==\s*ty\)\s*return;", fs) is not None
                 and "ChartTimePriceToXY" in fs))
     out.append(("... and it refuses to guess when the window cannot answer the projection",
-                re.search(r"if\(!ChartTimePriceToXY\(0,\s*0,\s*t2,\s*top,\s*sx,\s*sy\)\)\s*return;",
-                          fs) is not None))
+                 re.search(r"if\(!ChartTimePriceToXY\(0,\s*0,\s*t1,\s*top,\s*sx,\s*sy\)\)\s*return;",
+                           fs) is not None))
     return out
 
 
@@ -2907,7 +2907,7 @@ def main():
     print("base count: clean — one owner, one span: the number is the base's own story "
           "(the entry candle is not counted, the exit candle is),\nthe left edge bounds "
           "nothing, the walk is capped on both the commit and the mouse path,\nthe node "
-          "type IS the box' HEIGHT against the movement ability (that TF's own ATR) of "
+          "type IS the box' HEIGHT against the movement ability (that TF's own TH) of "
           "the TF it is SEEN ON — the same type on every chart TF (bands at the midpoints, P-BK-76: "
           "FTR < trig|pat · ETR < pat|str · CTR <= str · OTR above),\nthe base's OWN EXIT CANDLE "
           "names the trade's side and it is FIXED (it closed above the ceiling -> Buy, below "
@@ -3045,7 +3045,7 @@ def selftest():
                   bool(fires(check_anchor))))
     reset()
 
-    # P-BK-75/76/78: the HEIGHT owns the type, against the LADDER's three ATRs — every way
+    # P-BK-75/76/78: the HEIGHT owns the type, against the LADDER's three THs — every way
     # back to the retired read, and every way to a knife-edge boundary or a band out of
     # thin air, is caught
     with_source("   nd.kind = BaseKnotNodeKindOfLength(nodeTimeMin, nd.height, nd.anchor);",
@@ -3082,10 +3082,10 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    # P-BK-78: the three abilities are the ladder's own ATRs — a push that scales, and a Get
+    # P-BK-78: the three abilities are the ladder's own THs — a push that scales, and a Get
     # that stops climbing, are both caught.
-    with_source("   double v = (atr > 0.0) ? atr : 0.0;",
-                "   double v = atr * 0.25;   // a ratio at the push site (a second owner)")
+    with_source("   double v = (th > 0.0) ? th : 0.0;",
+                "   double v = th * 0.25;   // a ratio at the push site (a second owner)")
     cases.append(("a ratio hardcoded at the push site (a second owner) is caught",
                   bool(fires(check_node))))
     reset()
@@ -3096,15 +3096,15 @@ def selftest():
                   bool(fires(check_node))))
     reset()
 
-    with_source("      return (atr > 0.0);",
-                "      return (atr >= 0.0);")
-    cases.append(("a cold ATR becoming a threshold of zero is caught",
+    with_source("      return (th > 0.0);",
+                "      return (th >= 0.0);")
+    cases.append(("a cold TH becoming a threshold of zero is caught",
                   bool(fires(check_node))))
     reset()
 
     with_source("   if(!BaseKnotAbilityGet(nodeTFMin, anchor, trig, pat, str)) return BK_NODE_NONE;",
                 "   trig = trig; pat = pat; str = str;   // a band out of thin air")
-    cases.append(("a TF whose ATR was never pushed getting a band is caught",
+    cases.append(("a TF whose TH was never pushed getting a band is caught",
                   bool(fires(check_node))))
     reset()
 
@@ -3770,7 +3770,7 @@ def selftest():
                   bool(fires(check_note_plate))))
     reset()
 
-    with_source("   BaseKnotNotePlateFollow(pfx, t2, top);\n}",
+    with_source("   BaseKnotNotePlateFollow(pfx, t1, top);\n}",
                 "   // seed: nothing re-projects the pair on the pump (a scroll leaves it behind)\n}")
     cases.append(("a screen pair nobody re-projects is caught",
                   bool(fires(check_note_plate))))
@@ -3867,8 +3867,13 @@ def selftest():
     cases.append(("a note sized off the box' text again is caught", bool(fires(check_note_life))))
     reset()
 
-    with_source("   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_CHART_LABEL);",
-                "   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_BOX_INFO);")
+    # The anchor is TWO lines on purpose: the same rung line also stands inside
+    # `BaseKnotNoteInkToFront`, and replace(…, 1) would mutate THAT one — a seed
+    # the gate (which reads BaseKnotWriteInfo) then cannot see.
+    with_source("   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_CHART_LABEL);\n"
+                "   ObjectSetInteger(0, o, OBJPROP_TIMEFRAMES, tfMask);",
+                "   ObjectSetInteger(0, o, OBJPROP_ZORDER, Z_BOX_INFO);\n"
+                "   ObjectSetInteger(0, o, OBJPROP_TIMEFRAMES, tfMask);")
     cases.append(("a note dropped under the chart art again is caught",
                   bool(fires(check_note_life))))
     reset()

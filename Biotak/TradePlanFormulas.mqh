@@ -168,10 +168,13 @@ double TradePlanRound1(const double x) { return MathRound(x * 10.0) / 10.0; }
 double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
 {
    double pip = GetCachedPipSize();
-   if(IsZero(pip, EPSILON_PRICE)) return 0.0;
+   // P-UI-57: a non-finite pip/ATR passes every `<= 0` test (all NaN compares
+   // are false) and would poison the whole plan — same finite-first gate as
+   // the input validators, zero cost on valid data (two compares, no syscalls).
+   if(!MathIsValidNumber(pip) || IsZero(pip, EPSILON_PRICE)) return 0.0;
    ENUM_TIMEFRAMES tf = CompatTF(tfMinutes);
    double atr = (anchor > 0 ? CalculateWeightedATRAt(tf, anchor) : CalculateWeightedATR(tf));
-   if(atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
+   if(!MathIsValidNumber(atr) || atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;
 }
 
@@ -227,6 +230,8 @@ double TradePlanSLTrue(const int chartMinutes, const datetime anchor = 0)
 // same engStr double).
 double TradePlanHunterFromEng(const double engTrue)
 {
+   // P-UI-57: non-finite input would round into a garbage int — report absence.
+   if(!MathIsValidNumber(engTrue)) return 0.0;
    return TradePlanRound1(TRADEPLAN_HUNTER_NUM * engTrue / TRADEPLAN_HUNTER_DEN);
 }
 
@@ -284,11 +289,14 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    else
    {
       // --- SL = 1.20 × Eng(StructureTF) ---
+      // P-UI-57: NaN passes `<= 0` (false), so finiteness is tested first —
+      // otherwise a NaN ATR (gap/offline/D1-loading) would validate a plan of
+      // garbage ints. Valid data pays two compares, nothing else.
       p.basePips = TradePlanEngOf(p.strMin, anchor);   // SessionEng of structure TF
-      if(p.basePips <= 0.0) return false;
+      if(!MathIsValidNumber(p.basePips) || p.basePips <= 0.0) return false;
       p.slTrue = TRADEPLAN_SL_COEFF * p.basePips;
    }
-   if(p.slTrue <= 0.0) return false;
+   if(!MathIsValidNumber(p.slTrue) || p.slTrue <= 0.0) return false;
 
    p.sl  = TradePlanRound(p.slTrue);
    p.tp1 = TradePlanRound(p.slTrue * TRADEPLAN_TP1_NUM / TRADEPLAN_TP1_DEN);
@@ -307,7 +315,9 @@ bool TradePlanCompute(const int chartMinutes, STradePlan &p, const datetime anch
    else
    {
       double eT = TradePlanEngTrue(p.chartMin, p.trigMin, anchor);
-      if(eT <= 0.0) return false;
+      // P-UI-57: finite-first (see the SL gate above) — NaN Eng must read as
+      // "not ready", never as rounded garbage.
+      if(!MathIsValidNumber(eT) || eT <= 0.0) return false;
       p.engTrue = eT;
       p.eng     = TradePlanRound1(eT);
       p.hunter  = TradePlanHunterFromEng(eT);

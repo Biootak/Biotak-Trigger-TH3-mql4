@@ -73,11 +73,17 @@
 #ifndef BUILD_LITE
 #include "Biotak\WaveAnalysis.mqh"
 #include "Biotak\FrequencyOptimizer.mqh"
-// TH3TOOL-OFF (tool retired — commented out, not deleted):
-// #include "Biotak\TH3Tool.mqh"
+// TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+#include "Biotak\TH3Tool.mqh"
 #endif
 
 #include "Biotak\ObjectFunctions.mqh"
+// P-DRAW-01 / P-DRAW-08 / P-DRAW-09 (P-BUILD-02): the entries' own drawing chain.
+// The user's drawings' style memory, the hold/edit hit test and the floating strip
+// are product modules now, so a harness that mirrors the entry by hand carries them
+// too — five of these stopped compiling the day the draw hook landed, silently.
+#include "Biotak\DrawToolbar.mqh"
+#include "Biotak\DrawStrip.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
 #include "Biotak\ComboEngine.mqh"
 #include "Biotak\FactorMode.mqh"

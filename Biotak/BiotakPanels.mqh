@@ -1605,6 +1605,29 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(3, PNL_K_LEGACY, 4, 1, "valign");
       PnlSpecAdd(3, PNL_K_LEGACY, 5, 1, "sigma");
    }
+    // TH3TOOL-ON (2026-09-19): the TH3 card is back. Its 8 settings keep their
+    // addresses (g_PnlRows[5] was left dormant at 8), so a persisted OV/GV from
+    // before the retirement still loads into the row it was written for.
+    // P-TH3-PB-MAN (2026-09-21): row 8 APPENDED — the hand-typed pivot base, in
+    // pips. Appended last, so rows 0..7 keep their addresses AND their display
+    // order; the BASE band renders after LABELS.
+    else if(item == 5)   // TH3 TOOL (violet) — 9 settings / 13 display rows
+    {
+       PnlSpecAdd(5, PNL_K_SEC, -1, 0, "", "", "ENGINE", 3);
+       PnlSpecAdd(5, PNL_K_LEGACY, 0, 1, "power");
+       PnlSpecAdd(5, PNL_K_LEGACY, 1, 1, "swap");
+       PnlSpecAdd(5, PNL_K_LEGACY, 2, 1, "sigma");
+       PnlSpecAdd(5, PNL_K_SEC, -1, 0, "", "", "LOOK", 2);
+       PnlSpecAdd(5, PNL_K_LEGACY, 3, 1, "weight");
+       PnlSpecAdd(5, PNL_K_LEGACY, 4, 1, "linestyle");
+       PnlSpecAdd(5, PNL_K_SEC, -1, 0, "", "", "COLORS", 2);
+       PnlSpecAdd(5, PNL_K_LEGACY, 5, 1, "droplet");
+       PnlSpecAdd(5, PNL_K_LEGACY, 6, 1, "droplet");
+       PnlSpecAdd(5, PNL_K_SEC, -1, 0, "", "", "LABELS", 1);
+       PnlSpecAdd(5, PNL_K_LEGACY, 7, 1, "tag");
+       PnlSpecAdd(5, PNL_K_SEC, -1, 0, "", "", "BASE", 1);
+       PnlSpecAdd(5, PNL_K_LEGACY, 8, 1, "sigma");
+    }
    else if(item == 6)   // HTF CANDLES — 13 settings / 14 display rows
    {                    // the 4 colours fold into ONE .cset row
       PnlSpecAdd(6, PNL_K_SEC, -1, 0, "", "", "SOURCE", 2);
@@ -1641,13 +1664,20 @@ void PnlSpecBuild(const int item)
    }
    else if(item == 8)   // CUSTOM PRICE (violet) — 4 settings / 2 bands + 4 rows
    {
+      // P-UI-101 (2026-09-22): THE LOCK COMES FIRST. The user reaches this card
+      // by holding the line («روی خط کاستوم پرایس که هولد کردم پنل تنظیماتش بازه
+      // بشه و بشه از اونجا قفلش کرد»), and the one thing that gesture is for is
+      // the lock — so it is the first row, above the look settings. It has no
+      // glyph chip on purpose: the padlock art belongs to the box strip
+      // (bk_lock_*.bmp), and a row may carry none (PnlPaintChip returns early).
+      PnlSpecAdd(8, PNL_K_SW, 2, 1, "");
       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
       PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
       PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
       // BKMAGNET2-OFF (2026-09-15, user decision): the MAGNET band and its two
       // rows are hidden again — the engine is commented, so the rows have no
-      // reader by construction (P-UI-47's shape).
-      // Settings 2/3 stay persisted and inert.
+      // reader by construction (P-UI-47's shape). Setting 3 stays persisted and
+      // inert; setting 2 is the LOCK's now (P-UI-101), never the magnet's.
    }
    else if(item == 9)   // STEP MODE (violet) — TAB row + the OPEN MODE's section
    {                    // + MAX LEVELS. Rebuilt whenever the mode changes.
@@ -1759,6 +1789,7 @@ void PnlSpecBuild(const int item)
 bool PnlSpecCard(const int item)
 {
    if(item==0 || item==1 || item==2 || item==3) return true;
+   if(item==5) return true;   // TH3TOOL-ON (2026-09-19): the TH3 card has a spec now
    if(item==6 || item==7 || item==8) return true;
    if(item==9 || item==10 || item==11 || item==12) return true;
    return false;
@@ -1922,6 +1953,9 @@ void PalClose()
    SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
    g_PalOpen=false; g_PalMixDrag=0; g_PalHexFocus=false;
+   // P-UI-98r: palette gone - republish (invalidates) and uncover now.
+   PnlPublishCover();
+   HTFCardCullRefresh();
    ChartRedraw();
 }
 
@@ -1991,9 +2025,14 @@ void PalOpenKind(const int anchorItem,const int kind)
    g_PalMixDrag=0; g_PalHexFocus=false;
    PalComputePos();
    PalDraw();
+   // P-UI-98r: the palette hangs next to the card - same cover rule.
+   PnlPublishCover();
+   HTFCardCullRefresh();
    ChartRedraw();
 }
 
+//--- open the palette on an explicit kind (cset cells address their own
+//--- target; the anchor item only positions the popup)
 void PalOpen(const int item, const int row)
 {
    int k=PnlColorKind(item,row);
@@ -2986,18 +3025,31 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    //{
    //   if(row==0)       { kind=1; label="ENABLED"; }
    //}
-   // TH3TOOL-OFF: item==5 (TH3 TOOL card) retired —
-   //else if(item==5)   // TH3 TOOL
-   //{
-   //   if(row==0)       { kind=1; label="ENABLED"; }
-   //   else if(row==1)  { kind=2; label="MODE"; opts="Steps|AB=CD"; }
-   //   else if(row==2)  { label="BASE STEP"; minV=1; maxV=100; step=0.5; unit="%"; }
-   //   else if(row==3)  { label="WIDTH"; minV=1; maxV=5; }
-   //   else if(row==4)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
-   //   else if(row==5)  { kind=4; label="COLOR"; }
-   //   else if(row==6)  { kind=4; label="PIP COLOR"; }
-   //   else             { kind=1; label="SHOW LABELS"; }
-   //}
+    // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+    // P-TH3-PB-MAN (2026-09-21): BASE PIPS is the trailing fallthrough, like
+    // P-TH-01's TH PERCENT on card 3 — `tools/panel-mt4-sim.py` derives the
+    // fallthrough's row as "how many row branches preceded it", so it MUST be
+    // the LAST branch or the simulator drops a row from the proof. SHOW LABELS
+    // therefore gets its own EXPLICIT branch above (the wiring audit also
+    // needs it: it reads the trailing statement as answering only row 8).
+    else if(item==5)   // TH3 TOOL
+    {
+       if(row==0)       { kind=1; label="ENABLED"; }
+       else if(row==1)  { kind=2; label="MODE"; opts="Steps|AB=CD"; }
+       // "MOVEMENT STEP", not "BASE STEP": this slider is the step of the move
+       // (its old label sat next to nothing called a "base", and the tool also
+       // called the same number a "frequency" on the chart — one value, one name).
+       else if(row==2)  { label="MOVEMENT STEP"; minV=1; maxV=100; step=0.5; unit="%"; }
+       else if(row==3)  { label="WIDTH"; minV=1; maxV=5; }
+       else if(row==4)  { label="STYLE"; minV=0; maxV=ILS_COUNT-1; }
+       else if(row==5)  { kind=4; label="COLOR"; }
+       else if(row==6)  { kind=4; label="PIP COLOR"; }
+       else if(row==7)  { kind=1; label="SHOW LABELS"; }
+       // 0 = OFF: the pattern timeframe's own ATR answers (the shipped default
+       // before this knob). Same bound the load clamp reads, so the slider can
+       // always reproduce what it saved.
+       else             { label="BASE PIPS"; minV=0; maxV=2000; step=1; unit="p"; }
+    }
    else if(item==6)   // HTF CANDLES
    {
        if(row==0)       { kind=1; label="ENABLED"; }
@@ -3229,7 +3281,7 @@ string PnlTitleText(const int item)
    if(item==2)  return "ATR Labels";
    if(item==3)  return "TH Labels";
    // VIEWLOCK-OFF: if(item==4) return "View Lock";
-   // TH3TOOL-OFF: if(item==5) return "TH3 Tool";
+   if(item==5)  return "TH3 Tool";   // TH3TOOL-ON (2026-09-19)
    if(item==6)  return "HTF Candles";
    if(item==7)  return "Lines";
    if(item==8)  return "Custom Price";
@@ -3452,14 +3504,15 @@ double PnlDefValSet(const int item,const int row)
               if(row==5) return FactoryDefault(FF_TH_PERCENT);   // P-TH-01 — 0 = professor's table
               return 40;                               // default margin bottom
        // VIEWLOCK-OFF: case 4: return 0.0;   // view lock off by default
-       // TH3TOOL-OFF: case 5 (TH3 TOOL defaults) retired —
-       //case 5: if(row==0) return (FactoryDefault(FF_ENABLE_TH3)>0.5)?1.0:0.0;
-       //        if(row==1) return (int)FactoryDefault(FF_TH3_DRAW_MODE);
-       //        if(row==2) return FactoryDefault(FF_TH3_BASE_STEP);
-       //        if(row==3) return FactoryDefault(FF_TH3_WIDTH);
-       //        if(row==4) return (int)FactoryDefault(FF_TH3_STYLE);
-       //        if(row==7) return (FactoryDefault(FF_TH3_SHOW_LABELS)>0.5)?1.0:0.0;
-       //        return 3;
+       // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+       case 5: if(row==0) return (FactoryDefault(FF_ENABLE_TH3)>0.5)?1.0:0.0;
+               if(row==1) return (int)FactoryDefault(FF_TH3_DRAW_MODE);
+               if(row==2) return FactoryDefault(FF_TH3_BASE_STEP);
+               if(row==3) return FactoryDefault(FF_TH3_WIDTH);
+               if(row==4) return (int)FactoryDefault(FF_TH3_STYLE);
+               if(row==7) return (FactoryDefault(FF_TH3_SHOW_LABELS)>0.5)?1.0:0.0;
+               if(row==8) return FactoryDefault(FF_TH3_PIVOT_BASE);   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+               return 3;
        case 6: if(row==0) return 0.0;                   // HTF off by default
               if(row==1)
               {
@@ -3488,7 +3541,9 @@ double PnlDefValSet(const int item,const int row)
               if(row==4) return FactoryDefault(FF_LINE_TRANSPARENCY);
               return 3;   // row 5 = COLOR row → palette sentinel
       case 8: if(row==0) return FactoryDefault(FF_CUSTOM_WIDTH);
-              if(row==2) return (FactoryDefault(FF_ENABLE_MAGNET)>0.5)?1.0:0.0;
+              // P-UI-101: row 2 is the LOCK now (the magnet's retired row). Its
+              // factory default is "unlocked" — a fresh placement is free.
+              if(row==2) return 0.0;
               if(row==3) return FactoryDefault(FF_MAGNET_SENS);
               return 3;   // COLOR row → palette sentinel
       case 9: if(row==0) return (int)FactoryDefault(FF_STEP_CALC_MODE);
@@ -3521,6 +3576,67 @@ double PnlDefValSet(const int item,const int row)
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-93 — WHICH ROWS DISPLAY THE F MUTE.                          |
+//|                                                                   |
+//| Reported: «این روشن و خاموش کردن سطوح روی بقیه لیبلها چرا تاثیر    |
+//| میزاره ... این دکمه های با پنل هماهنگ نیستش همه رو هماهنگ کن».     |
+//|                                                                   |
+//| The mute is ONE master and the ENGINE already shares it: every     |
+//| family writer spells `... && !IsIndicatorHidden()` (labels, zones, |
+//| the level writer, the countdown). That is the honest answer to the |
+//| first half of the report — the F press reaching the labels is by   |
+//| design, not a leak.                                                |
+//|                                                                   |
+//| What was NOT harmonised is the PANEL: these rows answered the      |
+//| STORED switch alone, so after an F press every row still claimed   |
+//| its family was painted while the chart was blank.                  |
+//|                                                                   |
+//| ONE OWNER for the list. Two spellings of the same set (one in the  |
+//| display layer, one in the apply layer) drift the day a family is   |
+//| added — the class of bug P-PERF-41 fixed for the zone walk.        |
+//|                                                                   |
+//| The RULE, applied mechanically, is one line: a row is gated iff the  |
+//| writer its switch feeds already spells `!IsIndicatorHidden()` AND    |
+//| the switch is the TOP of its own visibility family. The second half  |
+//| is what keeps the sub-rows out — a piece of another row's family     |
+//| (ATR TARGETS / TRADE SL / TRADE TP, TH FRACTAL / STANDARD / TARGETS) |
+//| does not gate anything by itself, so a mute term on it would claim a |
+//| control the F walk never reads.                                      |
+//|                                                                     |
+//| Verified writers, one per entry:                                     |
+//|   trigger overlay  → LevelPipeline's zone mask                      |
+//|   MID ZONES        → VisibilityZoneMask / GetZoneColorForLevel       |
+//|   SHOW LINES       → LevelPipeline:803,1069 (the L switch)           |
+//|   COUNTDOWN        → LiveCountdownEnabled()                          |
+//|   ATR LABELS       → SetATRLabelsVisibility (`shouldShow`)           |
+//|   TRADE LABELS     → SetATRLabelsVisibility (`cardOn`, P-UI-84)      |
+//|   H/L PIP LABELS   → LevelPipeline:1102                              |
+//|   TH LABELS        → SetTHLabelsVisibility (`shouldShow`)            |
+//|   STRUCTURE L1-L5  → LevelPipeline:802 (`visible && !hidden`)        |
+//+------------------------------------------------------------------+
+bool PnlSettingIsMuteGated(const int item,const int row)
+{
+   if(item==0)  return (row==3);              // trigger overlay
+   if(item==1)  return (row==0 || row==1);    // MID ZONES · SHOW LINES
+   if(item==2)  return (row==0 || row==4 || row==6 || row==9);
+                                              // COUNTDOWN · ATR LABELS ·
+                                              // TRADE LABELS · H/L PIP LABELS
+   if(item==3)  return (row==0);              // TH LABELS (the family's master)
+   if(item==7)  return (row==1);              // SHOW LINES (same switch, other card)
+   if(item==11) return (row>=1 && row<=6);    // SHOW STRUCTURE + L1..L5
+   return false;
+}
+
+// The displayed value of a mute-gated row: the family's own switch AND the
+// master mute. `storedOn` is passed in, never re-read, so this stays a pure
+// fold of the two terms and cannot become a third owner of either.
+double PnlMuteGatedValue(const bool storedOn)
+{
+   if(!storedOn) return 0.0;
+   return IsIndicatorHidden() ? 0.0 : 1.0;
+}
+
+//+------------------------------------------------------------------+
 //| Current displayed value of a row                                  |
 //+------------------------------------------------------------------+
 double PnlCurrentSet(const int item,const int row)
@@ -3529,9 +3645,13 @@ double PnlCurrentSet(const int item,const int row)
    {
       case 0: if(row==0) return g_triggerTransparency;
               if(row==1 || row==2) return 0;   // COLOR rows (palette only)
-              return g_triggerLevelsEnabled?1.0:0.0;   // row 3 — SHOW
-      case 1: if(row==0) return g_showMidZones?1.0:0.0;
-              if(row==1) return g_showLines?1.0:0.0;
+              // P-UI-93: row 3 is this card's TOP address, so the muted form rides
+              // the trailing statement — the wiring audit reads the trailing
+              // statement as answering exactly `top`, and rows 0..2 above are
+              // already explicit, so no address moves and no branch is added.
+              return PnlMuteGatedValue(g_triggerLevelsEnabled);   // row 3 — SHOW
+      case 1: if(row==0) return PnlMuteGatedValue(g_showMidZones);   // P-UI-93
+              if(row==1) return PnlMuteGatedValue(g_showLines);      // P-UI-93
               if(row==2) return (int)g_midZoneStyle;
               if(row==3) return g_midZoneTransparency;
               if(row==4) return g_midZoneHeightPercent;
@@ -3541,23 +3661,34 @@ double PnlCurrentSet(const int item,const int row)
               if(row==8) return g_lsFirst?1.0:0.0;
               if(row==9) return g_showMidpointLine?1.0:0.0;
               return 0;                        // rows 10-11 = NAV rows
-      case 2: if(row==0) return g_showLiveCountdown?1.0:0.0;   // countdown's own layer
+      case 2: if(row==0) return PnlMuteGatedValue(g_showLiveCountdown);   // countdown's own layer · P-UI-93
               if(row==1) return 0;   // COUNT COLOR (palette only)
               if(row==2) return g_countdownFontSize;
               if(row==3) return g_countdownGapPx;
-              if(row==4) return g_showATRLabels?1.0:0.0;
+              // P-UI-93: the ATR block and the TRADE CARD are each their own
+              // family top (the trade card owns its master switch alone, P-UI-84),
+              // so those two rows answer the mute. Rows 5 / 7 / 8 are PIECES of
+              // one of those families - a mute term on them would claim a control
+              // the F walk never reads (see PnlSettingIsMuteGated).
+              if(row==4) return PnlMuteGatedValue(g_showATRLabels);
               if(row==5) return g_showATRTargets?1.0:0.0;
-              if(row==6) return g_showATRTradeLabels?1.0:0.0;
+              if(row==6) return PnlMuteGatedValue(g_showATRTradeLabels);
               if(row==7) return g_showATRTradeSLLabels?1.0:0.0;
               if(row==8) return g_showATRTradeTPLabels?1.0:0.0;
-              if(row==9) return g_showPipDistanceLabels?1.0:0.0;
+              // H/L pip labels are their own family (LevelPipeline:1102 writes the
+              // mask with the mute as one of its two terms), so this row answers it.
+              if(row==9) return PnlMuteGatedValue(g_showPipDistanceLabels);
               if(row==10) return g_atrLabelRowGap;
               if(row==11) return g_atrTradeFontSize;
               if(row==12) return g_trexStampGapRows;
               if(row==13) return g_tradeMarginBottom;
               if(row>=14 && row<=18) return 0;   // palette-only (P-UI-70d)
               return g_tradeMarginBottom;
-      case 3: if(row==0) return g_showTHLabels?1.0:0.0;
+      case 3: // P-UI-93: SetTHLabelsVisibility spells its mask
+              // `(mode != 0) && !IsIndicatorHidden()`, so the TH family's master
+              // row answers the mute. Rows 1/2/3 are the mode's SOURCES and the
+              // targets piece inside that one family, so they stay as they were.
+              if(row==0) return PnlMuteGatedValue(g_showTHLabels);
               if(row==1) return g_showFractalTHs?1.0:0.0;
               if(row==2) return g_showStandardTHs?1.0:0.0;
               if(row==3) return g_showTHTargets?1.0:0.0;
@@ -3569,14 +3700,15 @@ double PnlCurrentSet(const int item,const int row)
               return g_thLabelsMarginBottom;
        // VIEWLOCK-OFF: case 4: if(row==0) return g_viewLockEnabled?1.0:0.0;
        //               return 0.0;
-       // TH3TOOL-OFF: case 5 (TH3 TOOL values) retired —
-       //case 5: if(row==0) return g_enableTH3Tool?1.0:0.0;
-       //        if(row==1) return (int)g_th3DrawingMode;
-       //        if(row==2) return g_th3BaseStepPercent;
-       //        if(row==3) return g_th3Width;
-       //        if(row==4) return (int)g_th3Style;
-       //        if(row==7) return g_showTH3Labels?1.0:0.0;
-       //        return 0;
+       // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+       case 5: if(row==0) return g_enableTH3Tool?1.0:0.0;
+               if(row==1) return (int)g_th3DrawingMode;
+               if(row==2) return g_th3BaseStepPercent;
+               if(row==3) return g_th3Width;
+               if(row==4) return (int)g_th3Style;
+               if(row==7) return g_showTH3Labels?1.0:0.0;
+               if(row==8) return g_th3PivotBasePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+               return 0;
        case 6: if(row==0) return g_UI.showHTF?1.0:0.0;
                if(row==1) return HTFOptionFromPeriod(g_HTFPeriod);
                if(row==2) return 100-g_HTFOpacity;   // stored as opacity, shown as transparency
@@ -3587,24 +3719,28 @@ double PnlCurrentSet(const int item,const int row)
               if(row==11) return g_HTFShadowPct;
               return g_HTFGapPct;
       case 7: if(row==0) return 0;            // BACK nav row
-              if(row==1) return g_showLines?1.0:0.0;
+              if(row==1) return PnlMuteGatedValue(g_showLines);   // P-UI-93 (same switch as card 1 row 1)
               if(row==2) return g_lineWidth;
               if(row==3) return (int)g_lineStyle;
               if(row==4) return g_lineTransparency;
               return 0;   // row 5 = COLOR row (palette only)
       case 8: if(row==0) return g_customPriceLevelWidth;
-              if(row==2) return g_enableMagnet?1.0:0.0;
+              if(row==2) return g_customPriceLocked ? 1.0 : 0.0;   // P-UI-101
               return g_magnetSensitivityPips;
       case 9: if(row==0) return (int)g_stepCalculationMode;
               if(row==PnlStepMaxLevelsRow()) return g_maxLevels;
               return PnlStepSectionCurrent(row-1);
       case 11: if(row==0) return 0;            // BACK nav row
-              if(row==1) return g_showStructure?1.0:0.0;
-              if(row==2) return g_showStructureL1?1.0:0.0;
-              if(row==3) return g_showStructureL2?1.0:0.0;
-              if(row==4) return g_showStructureL3?1.0:0.0;
-              if(row==5) return g_showStructureL4?1.0:0.0;
-              return g_showStructureL5?1.0:0.0;
+              // P-UI-93: the structure zones and their five rungs are all zone
+              // objects, and LevelPipeline writes their mask as
+              // `visible && !IsIndicatorHidden()` (line 802) — so the mute is one
+              // of their two terms and every row here answers both.
+              if(row==1) return PnlMuteGatedValue(g_showStructure);
+              if(row==2) return PnlMuteGatedValue(g_showStructureL1);
+              if(row==3) return PnlMuteGatedValue(g_showStructureL2);
+              if(row==4) return PnlMuteGatedValue(g_showStructureL3);
+              if(row==5) return PnlMuteGatedValue(g_showStructureL4);
+              return PnlMuteGatedValue(g_showStructureL5);
       case 10: if(row==0) return (int)g_factorMode;
                if(row==1) return (int)g_factorDisplayMode;
                if(row==2) return (int)g_factorAutoBasis;
@@ -3636,6 +3772,20 @@ int PnlApplySet(const int item,const int row,const double v)
    PnlSetDef(item,row,rk,rl,rMin,rMax,rst,ru,ro);
    if(rk==4) return REFRESH_NONE;   // COLOR rows change only via the palette popup
    if(rk==5) return REFRESH_NONE;   // NAV rows only open another card (PnlHandleClick)
+   // P-UI-93: while the chart is muted every gated row READS OFF (PnlCurrentSet),
+   // so the press arrives here as v=1 for a family that is already stored ON and
+   // would paint the moment the mute went. Writing the switch alone would change
+   // nothing the user can see - the row would snap straight back to OFF and the
+   // two controls would still disagree. The press releases the mute instead, and
+   // then the switch below is written normally (a family stored OFF comes ON in
+   // the same press, which is what the OFF row promised).
+   //
+   // The `v>0.5` term is what keeps this to the PRESS paths: while muted every
+   // gated row displays 0, so any press computes 1. A reset that restores an
+   // ON-by-default family passes 1 too - and a reset that leaves the chart blank
+   // would be the same lie in the other direction.
+   if(v>0.5 && PnlSettingIsMuteGated(item,row) && IsIndicatorHidden())
+      ReleaseIndicatorMute();   // P-UI-93: one owner, shared with the ring
    int flags=REFRESH_NONE;
    switch(item)
    {
@@ -3869,15 +4019,22 @@ int PnlApplySet(const int item,const int row,const double v)
        //   ViewLockSetEnabled((v>0.5));
        //   flags=REFRESH_NONE;
        //   break;
-       // TH3TOOL-OFF: case 5 (TH3 TOOL apply) retired —
-       //case 5:   // TH3 TOOL
-       //   if(row==0)       { g_enableTH3Tool=(v>0.5); flags=REFRESH_ALL; }
-       //   else if(row==1)  { g_th3DrawingMode=(ENUM_TH3_DRAWING_MODE)(int)MathRound(v); flags=REFRESH_TH3; }
-       //   else if(row==2)  { g_th3BaseStepPercent=MathMax(0.5,v); flags=REFRESH_TH3; }
-       //   else if(row==3)  { g_th3Width=ClampInt((int)MathRound(v),1,5); flags=REFRESH_TH3; }
-       //   else if(row==4)  { g_th3Style=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_TH3; }
-       //   else             { g_showTH3Labels=(v>0.5); flags=REFRESH_TH3; }
-       //   break;
+       // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+       case 5:   // TH3 TOOL
+         if(row==0)       { g_enableTH3Tool=(v>0.5); flags=REFRESH_ALL; }
+         else if(row==1)  { g_th3DrawingMode=(ENUM_TH3_DRAWING_MODE)(int)MathRound(v); flags=REFRESH_TH3; }
+         else if(row==2)  { g_th3BaseStepPercent=MathMax(0.5,v); flags=REFRESH_TH3; }
+         else if(row==3)  { g_th3Width=ClampInt((int)MathRound(v),1,5); flags=REFRESH_TH3; }
+         else if(row==4)  { g_th3Style=NativeStyleFromIdx((int)MathRound(v)); flags=REFRESH_TH3; }
+         else if(row==7)  { g_showTH3Labels=(v>0.5); flags=REFRESH_TH3; }
+         // P-TH3-PB-MAN: the hand-typed pivot base, in pips. 0 = OFF (the
+         // pattern TF's own ATR). A ladder input, so it re-steps every
+         // pattern exactly like the rows above (REFRESH_TH3 owns the redraw
+         // AND the throttled OV_ persist in ApplyRefreshFlags).
+         // P-TH3-PB-UI: typing also re-projects the editor band around its
+         // own centre (0 deletes it) — the band and the row never disagree.
+         else if(row==8)  { g_th3PivotBasePips=MathMax(0.0,v); TH3BaseEditorSync(); flags=REFRESH_TH3; }
+         break;
        case 6:   // HTF CANDLES
          if(row==0)       { g_UI.showHTF=(v>0.5); flags=REFRESH_HTF; }
          else if(row==1)
@@ -3915,9 +4072,10 @@ int PnlApplySet(const int item,const int row,const double v)
          break;
       case 8:   // CUSTOM PRICE PIN — the pin only
          if(row==0)       { g_customPriceLevelWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
-         // Magnet rows return REFRESH_NONE (no redraw needed) — save the OV_
-         // overrides directly or the edits would be lost on re-attach.
-         else if(row==2)  { g_enableMagnet=(v>0.5); RuntimeSettingsSaveOverridesThrottled(); }
+         // P-UI-101: row 2 is the LOCK — the one control the hold-on-line gesture
+         // exists for. It goes through the ONE owner, which is also where the
+         // lock is ENFORCED (a locked line never arms) and persisted.
+         else if(row==2)  { CustomPriceLineOwnLock(v > 0.5); flags=REFRESH_BUFFERS; }
          else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
          break;
       case 9:   // STEP MODE — mode segments + the SELECTED mode's own
@@ -6310,7 +6468,26 @@ bool ChartLockIntended()
    // the drag's own guard then kept it unlocked for the rest of the gesture. The
    // accessor answers all three gestures at once (two bool reads).
    if(BaseKnotViewOwned()) return true;
-   return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
+   // P-LM-11: the leg meter is the same story — its armed draw session and its
+   // edit drag hold the lock from TH3Tool, a list that did not name them read
+   // that as a leak and hard-released it under the user's hand every 250 ms
+   // (the report: «موقع کشیدن صفحه اسکرول میشه نمیزاره درست کشیده بشه»).
+    if(LegMeasureViewOwned()) return true;
+    // P-TH3-PB-LOCK (2026-09-22): the base mark's PRESS-DRAG holds the view
+    // from TH3Tool's own raw lock, exactly like the leg meter above. Without
+    // this term the 250 ms reconcile read that lock as a LEAK and handed the
+    // chart back under the hand mid-drag («اسکرول پشتش باید قفل باشه که راحت
+    // بتونم بکشم مثل بقیه»). ARMED-but-idle stays FREE on purpose: the
+    // two-click mode must scroll between its two clicks (P-TH3-PB-UI).
+    if(TH3BaseMarkViewOwned()) return true;
+    // P-TH3-PB-DRAG-LOCK (2026-09-22): the BAND's own anchor drag (resizing
+    // the committed band by its anchors) holds the view the same way — the
+    // press-drag lock above only covers the initial DRAW, not the resize,
+    // and the chart was panning under the user's hand during the resize.
+    if(TH3BaseBandDragViewOwned()) return true;
+    // P-TH3-PB-OFF (2026-09-21): TH3BaseViewOwned retired with the stage-5
+    // base drag — the base is hand-typed, so no term of it can hold the view.
+    return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
 }
 
 void ChartScrollReconcile()
@@ -6340,6 +6517,18 @@ void ChartScrollReconcile()
 
 }
 
+// P-UI-100 (2026-09-22): THE LAST UI CURSOR, DECLARED HERE FOR ITS READER BELOW.
+// Both callers of `ChartPointerFinalizeOnUps` publish the press position in the
+// same event, immediately above the call (the mouse-move leg the moving cursor,
+// the two click legs the click's own point), and the finalizer's own new question
+// — "is this press on a hand-set line?" — is answered from it. The declaration
+// used to sit ~2500 lines below, beside the BaseKnot hold that also reads it;
+// this is the project's own rule for a value two readers need (GlobalVariables'
+// note on `g_s1DragLive`): the FIRST reader in the translation unit declares it,
+// so no reader can be compiled out of the answer by include position.
+static int g_LastUIX = 0;
+static int g_LastUIY = 0;
+
 void ChartPointerFinalizeOnUps()
 {
    // Every gesture ends here — OBJECT_CLICK / CHARTEVENT_CLICK fire reliably
@@ -6368,6 +6557,35 @@ void ChartPointerFinalizeOnUps()
    // line while the button is down. Cost: one bool store; a chart with no custom
    // price line still pays only the guarded read of the clear.
    g_customPriceNativeDrag = true;
+
+   // P-UI-100 (2026-09-22): AND THE ONE PRESS THAT CANNOT BE DEFERRED IS DROPPED
+   // NOW — everywhere it cannot be a grab of a hand-set line.
+   //
+   // The deferral above exists for exactly one press: the one that grabs a
+   // selectable object, where the write would drop the terminal's own selection
+   // out of the drag it just started. Every OTHER press (a panel, a card, the
+   // ring, a pan) owns no hand-set line, and MT4 carries the line through that
+   // whole gesture if it is still selected (P-UI-45's law — the interference this
+   // file already arms the latch for). So the same hit test the claim uses, with
+   // the same tolerance, answers which of the two this press is: over a UI surface
+   // or away from both lines is not a grab, and the stale selection goes in the
+   // press's OWN event, before any drag can carry it.
+   //
+   // The position is `g_LastUIX`/`g_LastUIY` — the press position both callers of
+   // this finalizer publish in the same event, immediately above the call (the
+   // mouse-move leg publishes the moving cursor, the two click legs the click's
+   // own point). No parameter is added: the signature is the net's identity, and
+   // three audits name it.
+   {
+      bool onHandLine = false;
+      if(!UIPointerOverSurface(g_LastUIX, g_LastUIY))
+      {
+         string cpRow = "";
+         onHandLine = CustomPriceGrabAt(g_LastUIX, g_LastUIY) ||
+                      Step1HandleUnderCursor(g_LastUIX, g_LastUIY, cpRow);
+      }
+      if(!onHandLine) HandLinesSelectionGuard();
+   }
 
    // P-UI-73 (2026-09-14) — A TEARDOWN NEEDS A RELEASE TO TEAR DOWN.
    //
@@ -6464,9 +6682,32 @@ void BkFlushTextEdit()
    if(g_BkMiniBox != "" && BaseKnotFind(g_BkMiniBox) >= 0) BaseKnotSetText(g_BkMiniBox, t);
 }
 
-void PnlCloseAll()
+//+------------------------------------------------------------------+
+//| P-UI-98r: publish the open surfaces' screen rects (margin incl.)  |
+//| for chart-anchored readers that cannot see this module. HTFCandles|
+//| is included BEFORE this file, so the card-cull reads these shared |
+//| globals (the g_UIPanelOpen precedent) instead of calling back.    |
+//+------------------------------------------------------------------+
+void PnlPublishCover()
 {
-   BkFlushTextEdit();   // close = apply (TV Ok semantics)
+   if(g_PnlOpen >= 0)
+   {
+      g_UIPanelRX = g_PnlX[g_PnlOpen] - PNL_MARGIN;
+      g_UIPanelRY = g_PnlY[g_PnlOpen] - PNL_MARGIN;
+      g_UIPanelRW = PnlPanelW(g_PnlOpen) + 2 * PNL_MARGIN;
+      g_UIPanelRH = PnlPanelH(g_PnlOpen) + 2 * PNL_MARGIN;
+   }
+   else { g_UIPanelRX = -1; g_UIPanelRY = -1; g_UIPanelRW = 0; g_UIPanelRH = 0; }
+   if(g_PalOpen)
+   {
+      g_UIPPalRX = g_PalX; g_UIPPalRY = g_PalY;
+      g_UIPPalRW = PalW(); g_UIPPalRH = PalH();
+   }
+   else { g_UIPPalRX = -1; g_UIPPalRY = -1; g_UIPPalRW = 0; g_UIPPalRH = 0; }
+}
+
+void PnlCloseAll()
+{   BkFlushTextEdit();   // close = apply (TV Ok semantics)
    g_BkTextFocus = false;
    bool wasOpen = (g_PnlOpen >= 0);
    // P-PERF-47: ONE FAMILY WIPE INSTEAD OF FOURTEEN PER-ITEM TEARDOWNS.
@@ -6517,6 +6758,9 @@ void PnlCloseAll()
    PalClose();
    g_PnlOpen=-1;
    g_UIPanelOpen = false;   // the menu hover tip may arm again
+   // P-UI-98r: cover invalidated - give back what the cull took, now.
+   PnlPublishCover();
+   HTFCardCullRefresh();
    if(wasOpen)
    {
       CircUnlockChart();   // release the modal chart lock
@@ -6543,6 +6787,10 @@ void PnlOpen(const int item)
    PnlCreate(item);
    CircLockChart();   // modal: freeze chart pan/context menu while settings are open
    PnlLockForeground(); // ensure panel is ABOVE candles (not under)
+   // P-UI-98r: the card is placed - mask the HTF boxes under it at once
+   // (chart rectangles paint over screen skins at any rung).
+   PnlPublishCover();
+   HTFCardCullRefresh();
    ChartRedraw();
 }
 
@@ -7153,6 +7401,10 @@ void PnlMoveBy(const int item, const int dx, const int dy)
    if(item == 13 && g_BkDd != 0) { g_BkDdX += ndx; g_BkDdY += ndy; }
    g_PnlX[item] += ndx;
    g_PnlY[item] += ndy;
+   // P-UI-98r: the card moved under the hand - republish and re-cull now
+   // (projections + cache probes, writes only for flipped boxes).
+   PnlPublishCover();
+   HTFCardCullRefresh();
 }
 
 // Clamp the OPEN panel into a shrunken chart (Ctrl+T / navigator toggles).
@@ -8840,8 +9092,9 @@ int PnlHandleDrag(const string name,const int mouseX)
 //| Feeds the circular menu + settings panels from chart events.     |
 //| MOUSE_MOVE: sparam bit 0 = left mouse button state (MQL4).       |
 //+------------------------------------------------------------------+
-static int g_LastUIX = 0;
-static int g_LastUIY = 0;
+// (P-UI-100: `g_LastUIX`/`g_LastUIY` are declared ABOVE `ChartPointerFinalizeOnUps`
+//  — the first reader in the translation unit — so this bridge and the finalizer
+//  read the same pair. Do not re-declare them here.)
 
 //--- hold-on-box → Base Box MINI (TradingView-like floating icon strip):
 //--- press on a committed BK box, hold still ≥500ms → PnlOpen(13) fires WHILE
@@ -8870,6 +9123,131 @@ static bool   s_BkFireReleasePending = false;
 #define BK_CLICK_SLOP 10   // button-up farther than this from its press-down is a
                            // drag end, never a dismissal click (hold slop is 8)
 #define BK_LATCH_TTL 30000   // stale-press safety (capture loss etc.)
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-101 (2026-09-22) — THE CUSTOM PRICE LINE'S OWN HOLD.
+//
+// User order: «روی خط کاستوم پرایس که هولد کردم پنل تنظیماتش بازه بشه و بشه از
+// اونجا قفلش کرد مثل مینی تولبار گره ها». It is the BOXES' own language, worn by
+// the second object that has settings: a 500 ms still press on the line opens its
+// card (the Custom Price card, item 8), whose first row is the LOCK.
+//
+// WHY IT CAN COEXIST WITH THE DRAG. The press on the line already claims the drag
+// (P-UI-99: the claim is immediate), but a claim only ever MOVES the line after
+// real travel (`CP_DRAG_SLOP`), so a still press moves nothing. The hold is
+// therefore a second reading of the same press: it latches on the press edge,
+// stands down the moment the cursor travels past the hold slop (that gesture is a
+// drag, and the drag owns it), and fires while the button is still down.
+//
+// The release that ends a fired hold must NOT also be read as a click on the line
+// (a single click SETS it, a double re-arms it): `CpHoldFire` clears the click
+// contract's own state in the same breath, which is the one-shot release guard
+// the box strip uses (`s_BkFireReleasePending`) in the shape this gesture needs.
+//
+// The hit test is the DRAG's own (`CustomPriceGrabAt`, the drawn tolerance) and
+// deliberately does NOT ask the armed state: a SET or LOCKED line must still be
+// reachable by the hold — that is how it is ever unlocked again.
+// ══════════════════════════════════════════════════════════════════════════
+#define CP_HOLD_UI_MS  500     // one hold language with the ring and the boxes
+#define CP_HOLD_MOVE   8       // travel past this = a drag, never a hold
+static uint s_CpHoldMs     = 0;
+static int  s_CpHoldX      = 0;
+static int  s_CpHoldY      = 0;
+static bool s_CpDownNow    = false;   // a press is tracked (zero-move backup)
+static bool s_CpHoldOnLine = false;   // THIS press landed on the line
+
+void CpHoldClear() { s_CpHoldMs = 0; s_CpHoldOnLine = false; }
+
+void CpHoldLatch(const int mx, const int my)
+{
+   s_CpDownNow = true;
+   s_CpHoldMs = GetTickCount();
+   s_CpHoldX = mx; s_CpHoldY = my;
+   s_CpHoldOnLine = false;
+   if(!g_customPriceLineCreated) return;
+   if(g_PnlOpen == 8 && PnlPointInside(mx, my)) return;   // a press inside the open card is the card's
+   if(UIPointerOverSurface(mx, my)) return;               // a panel owns its own presses
+   s_CpHoldOnLine = CustomPriceGrabAt(mx, my);            // the drag's own tolerance
+}
+
+void CpHoldFire()
+{
+   s_CpHoldMs = 0;
+   s_CpHoldOnLine = false;
+   if(!g_customPriceLineCreated) return;
+   // the press that opened the card is not a click on the line — see the note above
+   g_cpClickArmed = false;
+   g_cpClickY = 0;
+   g_cpSetPending = "";
+   g_cpSetPendingMs = 0;
+   if(g_PnlOpen == 8) { PnlCloseAll(); return; }   // the same hold closes what it opened
+   PnlOpen(8);
+   ChartRedraw();
+}
+
+void CpHoldOnMove(const int mx, const int my, const bool leftDown, const bool pressStart)
+{
+   if(pressStart) { CpHoldLatch(mx, my); return; }
+   if(!leftDown) { CpHoldClear(); return; }               // release — opens NOTHING
+   if(s_CpHoldMs == 0 || !s_CpHoldOnLine) return;
+   if(MathAbs(mx - s_CpHoldX) > CP_HOLD_MOVE || MathAbs(my - s_CpHoldY) > CP_HOLD_MOVE)
+   { s_CpHoldOnLine = false; return; }                    // it is a drag, not a hold
+   if(GetTickCount() - s_CpHoldMs >= CP_HOLD_UI_MS) CpHoldFire();
+}
+
+//--- the polled half, for a press with ZERO movement (no MOUSE_MOVE is emitted):
+//--- the box hold's own P-BK-03 lesson, same shape, same 250 ms + tick cadence.
+void CpHoldPoll()
+{
+   if(s_CpHoldMs == 0 && !s_CpDownNow && g_customPriceLineCreated && UILeftButtonDown())
+      CpHoldLatch(g_LastUIX, g_LastUIY);
+   if(s_CpHoldMs == 0)
+   {
+      if(s_CpDownNow && UILeftButtonUp()) s_CpDownNow = false;
+      return;
+   }
+   if(!s_CpDownNow) { CpHoldClear(); return; }
+   if(GetTickCount() - s_CpHoldMs < CP_HOLD_UI_MS) return;
+   if(MathAbs(g_LastUIX - s_CpHoldX) > CP_HOLD_MOVE || MathAbs(g_LastUIY - s_CpHoldY) > CP_HOLD_MOVE)
+   { s_CpHoldOnLine = false; return; }
+   if(!s_CpHoldOnLine) return;
+   CpHoldFire();
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-06 (2026-09-22) — THE DRAWINGS' OWN HOLD: THE LEAST-SPACE TOOLBAR.
+// RETIRED — see DRHOLD-OFF below (right-click is the trigger since 2026-09-23).
+// History kept: the paragraphs below are why the hold existed first.
+//
+// «ابزار تولبار باید با کمترین فضا بهترین نتیجه رو بده» — taken literally, the
+// least space a toolbar can occupy is NONE, and the presets (P-DRAW-02) are what
+// make that possible: the looks are already saved, so the only thing the gesture
+// has to say is WHICH one. A 500 ms still press on any drawing the user made
+// applies that kind's NEXT preset and remembers it as the kind's look, so the
+// next drawing of the same tool wears it too (P-DRAW-01c).
+//
+// WHY THIS IS THE RIGHT FIRST SURFACE, AND NOT A PLACEHOLDER. It costs no panel,
+// no bitmap, no z-order rung and no per-move work: the hit test is the memoised
+// one (`DrawObjectAtCached`: ONE walk per press, P-DRAW-04), the apply touches
+// the one held object, and the steady state is a single bool read in the mouse
+// stream the panels already walk. A visual strip can be laid over this later
+// without changing any of it — the gesture, the target and the presets are the
+// parts that had to exist first.
+//
+// It also obeys the two laws this project paid for: the indicator's OWN objects
+// are never touched (the classifier's prefix test), and a press that lands on a
+// panel, a card or our own strip is never claimed (the same guards the box hold
+// uses).
+// ══════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-06 — RETIRED (DRHOLD-OFF, 2026-09-23). User order: «به جای هولد راست
+// کلیک باشه» — right-click is the strip's trigger now (P-DRAW-12/13/14), the
+// 500 ms hold no longer opens anything. Deleted owners: DRAW_HOLD_UI_MS,
+// DRAW_HOLD_MOVE, s_DrHoldMs/X/Y/DownNow/Name, s_DrCycle, DrHoldClear/Latch/
+// Fire/OnMove/Poll + the two call sites below. Restore = git (this deletion),
+// not a rewrite. The box hold (BkHold*) and the custom-price hold (CpHold*)
+// are separate gestures and stay.
+// ══════════════════════════════════════════════════════════════════════════
+
 void BkHoldLatch(const int mx, const int my)   // (re)start press tracking
 {
    s_BkDownNow = true;
@@ -9109,6 +9487,8 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
       uint p15panel = GetTickCount() - p15t; p15t = GetTickCount();
       BkHoldOnMove(mx, my, leftDown, pressStart);
+      CpHoldOnMove(mx, my, leftDown, pressStart);   // P-UI-101: the line's own hold
+      // DRHOLD-OFF (2026-09-23): the drawings' hold is retired — right-click opens.
       uint p15hold = GetTickCount() - p15t;
       // P-UI-48: the custom price line is SELECTABLE again - that IS its drag -
       // so a press a UI owner just claimed must not leave MT4 holding the line:
@@ -9117,7 +9497,11 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       // drag). The test is one bool read on a press edge; the clear is one
       // property write per UI press, and the line's own grab claims no owner, so
       // this can never drop the selection out of a legitimate line drag.
-      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();
+      // P-UI-100 (2026-09-22): and it is now the SHARED owner, so the step-1 pair
+      // is released by the same press — the two hand-set lines answer one law, and
+      // a UI press that keeps holding the red handles would drag the ladder's own
+      // step-1 line along with the card.
+      if(pressStart && g_DragOwner != DRAG_NONE) HandLinesDropAll();
       if(p15ring + p15panel + p15hold >= P_P4_MOVE_WARN_MS)
          _LOG_GATE_W Print("[W][PERF] mouse move breakdown: ring=", (int)p15ring, "ms panel=",
                (int)p15panel, "ms hold=", (int)p15hold, "ms");
@@ -9452,6 +9836,8 @@ void RefreshKitOnBar()
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
+   CpHoldPoll();   // P-UI-101: the custom price line's own hold, same zero-move backup
+   // DRHOLD-OFF (2026-09-23): DrHoldPoll retired with the hold (see above).
    // PANELDRAG-OFF (2026-09-14): the card drag's polled shadow is retired with
    // the gesture. It had armed ZERO of today's 197 drags (the terminal's
    // KEYSTATE probe never reads "down", P-UI-83) while its per-tick probe was

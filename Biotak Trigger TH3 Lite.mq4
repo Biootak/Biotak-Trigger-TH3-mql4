@@ -81,14 +81,20 @@
 #ifndef BUILD_LITE
 #include "Biotak\WaveAnalysis.mqh"
 #include "Biotak\FrequencyOptimizer.mqh"
-// TH3TOOL-OFF (tool retired — commented out, not deleted):
-// #include "Biotak\TH3Tool.mqh"
+// TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF (Lite keeps its
+// #ifndef BUILD_LITE guard, so this line compiles out here).
+#include "Biotak\TH3Tool.mqh"
 #endif
 
 //                                                                    
 // Drawing & Rendering Pipeline
 //                                                                    
 #include "Biotak\ObjectFunctions.mqh"
+// P-DRAW-01/02: the user's own drawings and their style memory. Compiled in BOTH
+// entries — the module owns no UI (the strip lives in the panels, which Lite does
+// not have), so the style the user's drawings wear is the same in Lite as in Full
+// (P-BUILD-01: a shared module that reached for a UI function would break here).
+#include "Biotak\DrawToolbar.mqh"
 #include "Biotak\ExtendedDrawingFunctions.mqh"
 #include "Biotak\ComboEngine.mqh"
 #include "Biotak\FactorMode.mqh"
@@ -171,9 +177,14 @@ void OnChartEvent(const int id,
   uint p4c = GetTickCount() - p4t;
   // P-PERF-26: name + id (see EventHandlers: id=1 is OBJECT_CLICK, not the cursor).
   // `settle=` is in the budget check on purpose — a drain must not hide its cost.
-  P4ReportSlow("chart event " + P4EventName(id) + "(id=" + IntegerToString(id) + ")" +
-               " [settle=" + P4MsTag(p4c) + "]",
-               p4a + p4c, P_P4_EVENT_WARN_MS);
+   // P-PERF-50: same gate as the Full entry — the ledger message is string
+   // garbage on every MOUSE_MOVE while P4ReportSlow would stay silent under
+   // budget. Total first, message only when it prints; identical log lines.
+   uint p4tot = p4a + p4c;
+   if(p4tot >= P_P4_EVENT_WARN_MS)
+      P4ReportSlow("chart event " + P4EventName(id) + "(id=" + IntegerToString(id) + ")" +
+                   " [settle=" + P4MsTag(p4c) + "]",
+                   p4tot, P_P4_EVENT_WARN_MS);
 }
 
 //+------------------------------------------------------------------+
@@ -192,4 +203,10 @@ void OnTimer()
     CoopOwe(COOP_JOB_LABEL_EXPIRY);
     CoopOwe(COOP_JOB_STATUS_TEXT);
     CoopPump();
+
+    // P-UI-100 (2026-09-22): the selection net of the two hand-set lines — the
+    // custom price line and the step-1 pair exist in this entry too, so the law
+    // and its net are compiled in both (P-BUILD-01: one rule, one spelling).
+    // Cost: one probe while the button is down, then three guarded reads.
+    HandLinesSelectionNet();
 }

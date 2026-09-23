@@ -1,0 +1,342 @@
+﻿the clean source passes every check                        caught
+a setting no row can reach is caught                       caught
+a control with no PnlCurrentSet branch is caught           caught
+a press that changes nothing is caught                     caught
+a setting with no override key is caught                   caught
+a palette target with no name is caught                    caught
+a colour kind with no painter is caught                    caught
+a body fallback that eats controls is caught               caught
+a press chain that can dead-lock is caught                 caught
+a ring that can grab under an open card is caught          caught
+a modal guard placed after the grab is caught              caught
+a measure tool counted in both families is caught          caught
+an arm path with two call sites is caught                  caught
+a hold that opens another card than the Tools cell's is caught caught
+a measure slot inserted before the others is caught        caught
+a TH3 press that only flips the enable flag is caught      caught
+a TH3 light that reads the switch instead of the session is caught caught
+a TH3 arm path that skips a precondition repair is caught  caught
+a TH3 session that switches the shared mouse-move flag off is caught caught
+a hoisted ink that is never resolved is caught             caught
+a caption cap above MT4's 63-character limit is caught     caught
+a caption writer that no longer wraps is caught            caught
+a delete path that spares the caption's continuation lines is caught caught
+an active-pattern sweep blind to the caption family is caught caught
+a draw that wears every pattern's ladder is caught         caught
+a draw that lights inactive ladders is caught              caught
+an activation sweep that never darkens a ladder is caught  caught
+a missing ladder family test is caught                     caught
+a delete path with no base extraction is caught            caught
+a delete sweep blind to the mother overlay is caught       caught
+a delete path whose sweep never walks is caught            caught
+a delete path with no maintenance window is caught         caught
+a delete path that never asks the anchors is caught        caught
+a delete path that heals nothing back is caught            caught
+a caption drop that cascades into a whole-family wipe is caught caught
+a caption exemption that strands a broken family is caught caught
+a tick-clock maintenance window is caught                  caught
+a tick-clock dropped-object stamp is caught                caught
+a base press-drag that never takes the view lock is caught caught
+a base drag that stops asserting the view lock is caught   caught
+a base drag whose motionless release keeps the lock is caught caught
+a base mark cancel that leaks the view lock is caught      caught
+a reconcile blind to the base mark's own lock is caught    caught
+the band-anchor drag takes no view lock on the resize      MISSED
+the band-anchor resize stops re-asserting the view lock    caught
+the band-anchor resize never releases on button-up         caught
+the band-anchor resize leaks the lock past the band's delete caught
+the band-anchor resize heartbeat stops healing             caught
+a reconcile blind to the band's resize lock is caught      caught
+a cascade window that closes before the band drag ends is caught caught
+a caption heal that verifies nothing is caught             caught
+a timer that never runs the caption heal is caught         caught
+a caption safe-Y that forgets the modes' +45 is caught     caught
+a family hide that masks the plate is caught               caught
+a caption writer that plates a dark family is caught       caught
+a verify that leaves an inactive plate on the chart is caught caught
+an active sweep that masks the plate is caught             caught
+a leg readout whose expiry never runs is caught            caught
+a click that cannot bring the leg readout back is caught   caught
+a half-deleted leg readout is caught                       caught
+a follower that re-opens an expired readout is caught      caught
+a plate that bypasses its one tip place is caught          caught
+a plate with no distance from its tip is caught            caught
+a plate that walks off its tip when busy is caught         caught
+a Lite entry running the leg meter's sweep is caught       caught
+a drag that bypasses the family's one writer is caught     caught
+a preview whose retired head sweep is dropped is caught    caught
+an arrowhead back on the committed leg is caught           caught
+a preview wearing an arrow again is caught                 caught
+a drag with no mouse-event owner is caught                 caught
+a retired drag channel wired back into the entry is caught caught
+a non-selectable leg line (native gestures go deaf) is caught caught
+a create-only SELECTABLE (legacy legs stay deaf) is caught caught
+a drag that lets the terminal move the line alone is caught caught
+a drag commit that keeps the line unselectable is caught   caught
+a drag abort that keeps the line unselectable is caught    caught
+a drag selectable write blind to the line is caught        caught
+handles that ignore the selection (solid on selected) are caught caught
+a ride pass that drops the selection width is caught       caught
+an ink pass that drops the selection width is caught       caught
+a selected-handle raster without its #resource is caught   caught
+a leg meter whose two direction colours are one is caught  caught
+an up leg that is no longer the strong blue is caught      caught
+a drag that re-inks the leg in the fixed violet is caught  caught
+a drag that ignores the leg's direction is caught          caught
+a preview that hides the leg's direction is caught         caught
+an ATR that is not the labels' own composite is caught     caught
+a leg readout back on the bar-count gate is caught         caught
+a leg TF band that is not 240-360 is caught                caught
+a leg TF walk that trusts an unjudged step is caught       caught
+a leg TF walk off the labels' composite is caught          caught
+a handle placed at its grab radius, not its canvas centre, is caught caught
+a mid handle that does not sit on the exact 50% is caught  caught
+a baked palette out of step with the line's ink is caught  caught
+a selection repaint that bypasses the one ink writer is caught caught
+a selection that the terminal reports and nothing answers is caught caught
+an OBJECT_CLICK the leg meter never sees is caught         caught
+a deselection the family keeps painting as selected is caught caught
+a handle whose ZORDER is only set at create is caught      caught
+a handle whose rung is read back is caught                 caught
+a selection shadow that reads the terminal itself is caught caught
+a delete that leaves the painted state behind is caught    caught
+a family drawn without its handle rings is caught          caught
+a chart-space ellipse handle (the hairline) is caught      caught
+a handle hanging off its anchor is caught                  caught
+a stuck drag no motionless click can end is caught         caught
+a click that deletes the leg outright is caught            caught
+a leg meter with one fixed colour is caught                caught
+a native deletion that leaves the family behind is caught  caught
+dots left behind by a drag-pan are caught                  caught
+a leg that steals the pointer from a held gesture is caught caught
+handles ignoring the leg's direction colour are caught     caught
+a session that can spend one press as two pivots is caught caught
+an arm that lets its own press become pivot X is caught    caught
+a hardcoded bright session ink is caught                   caught
+a raw ink on the readout plate is caught                   caught
+an unresolved pattern ink is caught                        caught
+a missing ink owner is caught                              caught
+a caption in another script is caught                      caught
+the TRex card's panel settings are caught if removed       caught
+a swatch that writes a different copy is caught            caught
+a card teardown that cannot cover its rows is caught       caught
+a card wipe bounded to one subwindow is caught             caught
+a research knob nothing consumes is caught                 caught
+a ladder reader that skips the knob is caught              caught
+a measuring stick that follows the knob is caught          caught
+a knob whose change is cached away is caught               caught
+a second ladder owner is caught                            caught
+a naming shape the wipe cannot match is caught             caught
+a spec slice that would DROP a card's rows is caught       caught
+a body that does not reach the card's bottom is caught     caught
+a bitmap with no #resource declaration is caught           caught
+a runtime reference to a missing bitmap is caught          caught
+a press-side echo that can kill the drag is caught         caught
+a local button probe outside the owner is caught           caught
+a ring latch that can outlive the card open is caught      caught
+a control reachable from one delivery channel only is caught caught
+a click that never reaches the card's dispatch is caught   caught
+a click-channel action that eats the NEXT click is caught  caught
+a gesture that acts once per channel (twice) is caught     caught
+a half-restored card-move arm is caught                    caught
+a prefix-parsed swatch id is caught                        caught
+a drag whose frame lags its coordinates is caught          caught
+a second mover of the card is caught                       caught
+a drag frame rate that cannot adapt is caught              caught
+a drag frame outside the tick throttle is caught           caught
+a half-restored drag poll is caught                        caught
+a poll that is not free when idle is caught                caught
+a grab that refuses a soft claim is caught                 caught
+a claim owner that cannot name the claimant is caught      caught
+a claim predicate with its own list is caught              caught
+an act site that does not name its control is caught       caught
+a silent foreign-claim refusal is caught                   caught
+a lost release-channel control family is caught            caught
+a slider press that applies nothing is caught              caught
+a poll-armed drag murdered by its own event channel is caught caught
+a poll that never owns its drag's release is caught        caught
+a ledger that prints at drag rate is caught                caught
+a poll finish without the rumour filter is caught          caught
+a silent grab refusal is caught                            caught
+a grab without its paint fallback is caught                caught
+a refusal without its rect is caught                       caught
+a silent finalizer drag-end is caught                      caught
+a batch path without the dead zone is caught               caught
+an unconditional press-chain finish is caught              caught
+a panel with no press-edge heal is caught                  caught
+a tick-path reap is caught                                 caught
+a reaper that forgets a latch is caught                    caught
+a drag that parks only on release is caught                caught
+a grab that reuses a stale move list is caught             caught
+a probe-only poll finish is caught                         caught
+a probe-only finalizer teardown is caught                  caught
+a batch that reads its objects back is caught              caught
+a deleted (not commented) retired site is caught           caught
+a chain that arms twice is caught                          caught
+a dead zone that ignores the control-pixel bound is caught caught
+a control press that keeps the body's proof is caught      caught
+a finish that leaves the control-press flag set is caught  caught
+a re-enabled move branch is caught                         caught
+a guessed candle score is caught                           caught
+a band measured off the open path is caught                caught
+a softened menu rule is caught                             caught
+a park that ignores the candles is caught                  caught
+an unclamped band scan is caught                           caught
+a blanket 30 ms gate on the child move step is caught      caught
+an unbudgeted cursor fallback is caught                    caught
+a settle heal uncommented beside the retired border is caught caught
+a live edge call site is caught                            caught
+an edge probe back in the gesture sweep is caught          caught
+a drag step that carries a retired edge is caught          caught
+a retirement that deleted its own engine is caught         caught
+a preview that recreates its object per frame is caught    caught
+a preview that lies about the committed look is caught     caught
+a box painted in something other than the border ink is caught caught
+a default box that comes up filled is caught               caught
+a drift reader that cannot see the ink is caught           caught
+a pump that writes into a live drag is caught              caught
+a revived cursor fallback is caught                        caught
+a card row that stopped offering the corner is caught      caught
+a Setup tab that eats the corner rung is caught            caught
+a MINI strip that eats the corner rung is caught           caught
+a settings layer that stopped clamping on init is caught   caught
+a restore that clamps an old chart to two rungs is caught  caught
+a rung the row cannot reach is caught                      caught
+two captions on one surface for three rungs are caught     caught
+an anchor move that does not claim the gesture is caught   caught
+a deleted role measurement is caught                       caught
+a heal that can undo a native resize is caught             caught
+a deleted dormant grab-role engine is caught               caught
+a dormant fallback body that lost its role split is caught caught
+a per-child ObjectFind in the drag step is caught          caught
+a child pass that never builds its mask is caught          caught
+a drag that never resets its timing is caught              caught
+an OBJECT_DRAG that does not claim the gesture is caught   caught
+an UNGATED handle magnet is caught                         caught
+a magnet modifier back on Ctrl (the copy key) is caught    caught
+a magnet modifier probe renamed away from its role is caught caught
+a handle drag that stops asking for the modifier by role is caught caught
+a magnet inside the box' live follow is caught             caught
+a handle drag that hides its side is caught                caught
+a body drag that may resize the box is caught              caught
+a revived DRAW-time magnet (the retired behaviour) is caught caught
+a revived ADJUST magnet on the release is caught           caught
+a live magnet reader behind the retirement is caught       caught
+a magnet row rendered while its engine is retired is caught caught
+a retirement call deleted instead of commented is caught   caught
+a watchdog that restores the view under a box drag is caught caught
+a drag lock that is never re-forced is caught              caught
+a drop that lets go of the box a card is editing is caught caught
+a drop that fires on the box' own border is caught         caught
+a drop aimed at a box the user never selected is caught    caught
+a dropped box that keeps its handles is caught             caught
+a revived chip plan is caught                              caught
+a count that disagrees with the retired plan is caught     caught
+a sweep that spells its own tail list is caught            caught
+a chart keeping the retired points is caught               caught
+a mark back on the retired trendline is caught             caught
+a retired keeper that can still run is caught              caught
+a chip call site that comes back to life is caught         caught
+a table that forgets the trendline tails is caught         caught
+a magnet with no pixel ceiling is caught                   caught
+a magnet that ignores the body prices is caught            caught
+a resize that can be executed as a body drag is caught     caught
+a press edge that re-labels a live resize is caught        caught
+a heal that can undo a handle resize is caught             caught
+a resize whose kind is never latched is caught             caught
+a gesture answer that outlives the instance is caught      caught
+a computed ladder's step-1 becomes draggable - caught      caught
+a red handle on the custom price line is caught            caught
+a write on the dragged handle is caught                    caught
+a face write that lands before creation is caught          caught
+a zone rect eating the handle's grab is caught             caught
+a drag that reads as the same picture is caught            caught
+a dragged step that never reaches the ladder is caught     caught
+a selection that outlives the step-1 drag is caught        caught
+a drag's click echo setting the line is caught             caught
+a step-1 release with no settle is caught                  caught
+a lost release pinning the handle is caught                caught
+an override that survives its own reset is caught          caught
+a set handle that survives the R reset is caught           caught
+a click that never moves again never committing is caught  caught
+a handle without its click owner is caught                 caught
+a marker that ignores the lines mask is caught             caught
+the retired hold-to-arm beat returning is caught           caught
+a set line grabbed by the pixel test is caught             caught
+a stale selection riding another object's drag is caught   caught
+a grab without its select face is caught                   caught
+a step-1 handle no press can claim is caught               caught
+a step-1 carry that snaps the handle onto the cursor is caught caught
+a step-1 click that re-steps the whole ladder is caught    caught
+a finished step-1 gesture that keeps carrying the line is caught caught
+a freshly placed line born inert is caught                 caught
+a SET handle that answers the press again is caught        caught
+a step-1 drag the levels do not follow is caught           caught
+a step-1 drag whose frames are only scheduled is caught    caught
+a step-1 drag the terminal's own drag fights is caught     caught
+a lost release that leaves the handle stuck is caught      caught
+a drag that SETs its own handle is caught                  caught
+a handle left un-selectable after its own drag is caught   caught
+a line drag that re-steps the ladder instead is caught     caught
+another timeframe's step 1 answering the press is caught   caught
+a click whose twin event reads as a double is caught       caught
+a still click that never commits is caught                 caught
+a click that cannot name its handle is caught              caught
+a red handle over a SET line is caught                     caught
+a handle on the ladder's below rung 1 is caught            caught
+a handle picked off another anchor is caught               caught
+a pair that changes under the drag is caught               caught
+a below handle no suffix can name is caught                caught
+a below handle read as the above one is caught             caught
+a pick that shadows a side is caught                       caught
+a phantom grab that snaps the step is caught               caught
+a handle that loses its offset under the hand is caught    caught
+a carry that stands down forever is caught                 caught
+a carry that reads its own write as the terminal is caught caught
+a healed gesture that poisons the next one is caught       caught
+a green circle that waits for a click is caught            caught
+a red circle the ride resurrects unasked is caught         caught
+an armed line with no way to show its handle is caught     caught
+a drag that leaves no circle behind is caught              caught
+a placement that is born shown is caught                   caught
+a circle left over a SET line is caught                    caught
+a placement that inherits a shown handle is caught         caught
+a drag whose release SETs its own handle is caught         caught
+a CLICK on the PRESS that kills the drag is caught         caught
+a SET armed under a live drag is caught                    caught
+a SET committed while the button is down is caught         caught
+a pending SET that outlives the grab is caught             caught
+a SET that survives the drag it belonged to is caught      caught
+a handle whose icon rim cannot be grabbed is caught        caught
+a handle no press near both rows can take is caught        caught
+a handle dead after a missed press edge is caught          caught
+a native-only drag no carry adopts is caught               caught
+a frozen grab latch no retry heals is caught               caught
+a surplus sweep under the step-1 hand is caught            caught
+a tick path without the step-1 net is caught               caught
+a self-heal that repairs blind is caught                   caught
+a self-heal that rebuilds under the hand is caught         caught
+a windowed delete with no heal armed is caught             caught
+a self-heal that blinks the chart is caught                caught
+a self-heal that churns culled lines is caught             caught
+a sweep that eats the dragged handle is caught             caught
+a red circle the L key cannot hide is caught               caught
+a below circle the L key cannot hide is caught             caught
+a transition that repaints the line is caught              caught
+a single click that re-arms is caught                      caught
+a press claimed by two click owners is caught              caught
+an F press that repaints the line is caught                caught
+a creator that paints the line is caught                   caught
+a LINES switch the circles follow late is caught           caught
+a LINES switch that leaves the red circles is caught       caught
+a green circle the L key hides is caught                   caught
+a mis-centred green circle is caught                       caught
+a card that opens over HTF boxes is caught                 caught
+a closed card that keeps boxes masked is caught            caught
+a card-cull with no timer net is caught                    caught
+a cull that resurrects hidden boxes is caught              caught
+an untracked cull nothing releases is caught               caught
+a pruned box the cull set keeps is caught                  caught
+a leaked-visible line with no enforcer is caught           caught
+
+selftest FAILED: 1 fault(s) went undetected, 0 stale seed anchor(s)

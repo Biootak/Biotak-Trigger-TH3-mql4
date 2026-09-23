@@ -1008,6 +1008,154 @@ int StructureRecolourWalk()
 //| Creates/updates MT5 horizontal line objects.                     |
 //| Uses CreateOrUpdateHLine for consistency.                        |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-UI-98: THE STEP-1 HANDLE'S FACE AND ITS MARKER.                 |
+//|                                                                   |
+//| In custom-price start-point mode the two rung-1 trigger lines are |
+//| the user's step handle: while ARMED they are SELECTABLE (MT4's    |
+//| own drag moves them), they sit at a z-order above the zone fills  |
+//| (a zone rectangle under the cursor would otherwise eat the grab — |
+//| the reported «الان step اول قابل درگ کردن نیستش»), and ONE small  |
+//| red dot at the chart's right edge (time 0 — the pip labels' own   |
+//| anchoring, so it follows the market with no per-bar write) marks  |
+//| them. The user's marker order: «خط کاستوم پرایس ... نشانه سبز و   |
+//| step اول ... نشانه قرمز ... یک نشانه باشه که خیلی مزاحم هم نباشه» |
+//| and «وقتی لاین ها رو خاموش میکنم نشان ها هم نباشه» — the dot      |
+//| wears the line family's mask, so the L switch owns it with the    |
+//| lines.                                                            |
+//|                                                                   |
+//| SET (the click-to-commit model, P-UI-98d): a set handle is not    |
+//| selectable, its dot is gone, and the marker object is DELETED —   |
+//| not masked — so no other mask writer can resurrect it. The       |
+//| armed/set pair is owned HERE in the refresh path, so a state that |
+//| changed under the chart is re-owned on the next render. Guarded:  |
+//| one read per line per frame, a write only on drift (the perf law).|
+//+------------------------------------------------------------------+
+void Step1HandleOwnFace(const string name, const double price, const int direction,
+                        const long lineTf, const string naturalTip)
+{
+    bool draggable = (g_thStartPointType == TH_START_POINT_CUSTOM_PRICE) && g_s1LinesArmed;
+    // P-UI-98e: WHILE OUR OWN CARRY OWNS THIS LINE, THE FLAG IS BORROWED.
+    // P-LM-21 learned it on the leg metre: MT4 re-arms its own per-object drag on
+    // every paint for as long as SELECTABLE sits on the object, so the line fights
+    // the hand and the gesture «سریع قطع میشه». The face owner must not re-arm
+    // what the gesture took, and the selection face it would otherwise drop
+    // mid-drag stays (that is the separate property the borrow leaves alone).
+    bool dragOwnsThis = (g_s1DragLive && g_s1DragName == name);
+    if(!dragOwnsThis)
+    {
+        bool current = (bool)ObjectGetInteger(0, name, OBJPROP_SELECTABLE);
+        if(current != draggable)
+            ObjectSetInteger(0, name, OBJPROP_SELECTABLE, draggable);
+        if(!draggable && (bool)ObjectGetInteger(0, name, OBJPROP_SELECTED))
+            ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+    }
+    // P-UI-31's rule: the rung is NOT read back (the zorder audit bans
+    // OBJPROP_ZORDER reads in product code - a diagnostic, not a product
+    // question) and it is not re-decided either: the handle's one rung is
+    // Z_CHART_LABEL, spelled here and nowhere else.
+    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_LABEL);
+    // P-UI-98g: an armed handle whose circle is not up yet asks for the click.
+    string tip = draggable
+        ? (g_s1HandleShown
+           ? "[STEP 1] Drag the red handle to set the ladder step - click to commit, double-click re-arms"
+           : "[STEP 1] Click it to bring up the red handle")
+        : naturalTip;
+    if(tip != "" && ObjectGetString(0, name, OBJPROP_TOOLTIP) != tip)
+        ObjectSetString(0, name, OBJPROP_TOOLTIP, tip);
+
+    // the drag handle: ONE circular icon (S1_HANDLE_RES), centred on the line
+    // at the screen's horizontal middle; a SET or hidden handle PARKS it
+    // off-window (nothing can grab a set line, so nothing points at it either).
+    // The name AND the price are stashed for the grab hit test and the ride
+    // channels (P-UI-98e): the press edge must name the line it claims, and the
+    // carry needs the object to move.
+    // P-UI-98e: the rung-1 line's own NAME and PRICE are stashed whenever the
+    // line is THERE — not only while it is draggable. A SET handle stays
+    // CLICKABLE: the double-click that re-arms it has to find the row it names,
+    // and the click's hit test reads this very stash. What a SET handle LOSES is
+    // the icon (parked below), never the address — and the icon itself is placed
+    // only while the pair is armed (HandsetMarkersRide obeys the same term).
+    bool addressable = (price > 0.0) && MathIsValidNumber(price) && !IsIndicatorHidden();
+    if(addressable) g_s1MarkPeriod = Period();   // P-UI-98e: the stash's own timeframe
+    if(direction > 0) { g_s1MarkAbovePrice = addressable ? price : 0.0; g_s1MarkAboveName = addressable ? name : ""; }
+    else              { g_s1MarkBelowPrice = addressable ? price : 0.0; g_s1MarkBelowName = addressable ? name : ""; }
+    string mark = S1MarkName(direction);
+    // P-UI-98g: the RED circle is painted on request too («فقط وقتی روش کلیک
+    // کردیم دایره ها بیاد برای درگ کردن») — `g_s1HandleShown` is what the click
+    // on the line sets, and a SET or unasked pair keeps the circle parked.
+    if(!draggable || !g_s1HandleShown || !(price > 0.0) || !MathIsValidNumber(price) ||
+       IsIndicatorHidden() || !g_linesVisible)
+    {
+        HandsetHandlePark(mark, S1_HANDLE_RES);
+        return;
+    }
+    HandsetHandleAt(mark, price, S1_HANDLE_RES);
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-98f: WHICH LINE WEARS THE STEP-1 HANDLE (2026-09-22).        |
+//|                                                                   |
+//| Reported: «استپ اول که کلیک میکنم دوتا فعال میشه ... اون قرمز    |
+//| خیلی نزدیک کاستوم پرایس نباید باشه». The old rule was             |
+//| `logicalStep == 1` — the LADDER's rung 1, which is not the line    |
+//| one STEP away from the custom price. Trigger lines are drawn at    |
+//| the MIDPOINT of each pair of neighbouring levels, and the custom   |
+//| price line is a zone EDGE (the ladder's centre sits half a step    |
+//| above it, P-UI-98's `shiftedCenter`), so the drawn family is:      |
+//|                                                                   |
+//|     above:  start + 1*step, + 2*step, + 3*step ...  (= _Above_1)   |
+//|     below:  start + 0*step, - 1*step, - 2*step ...  (= _Below_2)   |
+//|                                                                   |
+//| `_Below_1` is the boundary between the centre zone and the first   |
+//| below zone: it is drawn ON the custom price line, so its red icon  |
+//| landed exactly under the custom price line's green one - the two   |
+//| reds the user saw, one of them «خیلی نزدیک». And the drag math     |
+//| (`newFirst = |dragged - start| / natural`, the ONE owner in        |
+//| EventHandlers) only reads correctly for a line that IS one step    |
+//| from the start: on the coincident line it read 0 at rest and any   |
+//| hair of a downward move collapsed the whole ladder to a fraction   |
+//| of a step - «step اول سریع قطع میشه».                             |
+//|                                                                   |
+//| So the handle is picked by GEOMETRY, never by rung number: on each |
+//| side, the drawn trigger line nearest ONE STEP from the custom      |
+//| price line, and never a line closer than half a step to it (the    |
+//| coincident boundary can never carry a handle - nothing may be      |
+//| grabbed on top of the custom price line's own handle). The step is |
+//| the project's ONE owner of "the current step", F x the F-free       |
+//| natural first step the mode factory noted, so the pick is          |
+//| invariant under the override: F scales every line and the step     |
+//| together, and the same two lines stay the handle (a drag can       |
+//| never hand the gesture to a different line mid-flight).            |
+//+------------------------------------------------------------------+
+void Step1HandlePick(const STriggerLine &lines[], const int lineCount,
+                     const double anchor, const double stepNow,
+                     string &aboveName, string &belowName)
+{
+    aboveName = "";
+    belowName = "";
+    if(!(anchor > 0.0) || !(stepNow > 0.0)) return;   // no step known = no handle
+    double bestAbove = 0.0, bestBelow = 0.0;
+    for(int i = 0; i < lineCount; i++)
+    {
+        if(lines[i].isMidpoint) continue;
+        if(!(lines[i].price > 0.0) || !MathIsValidNumber(lines[i].price)) continue;
+        double dist = MathAbs(lines[i].price - anchor);
+        if(dist < stepNow * 0.5) continue;             // on the anchor: never a handle
+        double err = MathAbs(dist - stepNow);          // how far from ONE step
+        if(lines[i].direction > 0)
+        {
+            if(aboveName == "" || err < bestAbove)
+            { bestAbove = err; aboveName = lines[i].name; }
+        }
+        else
+        {
+            if(belowName == "" || err < bestBelow)
+            { bestBelow = err; belowName = lines[i].name; }
+        }
+    }
+}
+
 void RenderTriggerLines(
     const STriggerLine &lines[],
     const int lineCount,
@@ -1015,6 +1163,16 @@ void RenderTriggerLines(
     const bool makeLines,
     const bool makeLabels)
 {    double currentPrice = GetCurrentPriceForLabels();
+
+    // P-UI-98f: the step-1 handle is picked by GEOMETRY once per render (the
+    // line one step from the custom price on each side - see Step1HandlePick),
+    // so the face owner below is reached by the same pair the click and drag
+    // channels will answer, in every start-point mode (the owner itself makes
+    // the handle grabbable in the custom-price mode only).
+    string s1AboveName = "", s1BelowName = "";
+    Step1HandlePick(lines, lineCount, GetMidpointPrice(g_thStartPointType),
+                    StepOverrideFactor() * NaturalFirstStep(),
+                    s1AboveName, s1BelowName);
 
     // P-UI-66: THE LOOK IS A PAINT PROPERTY. `lines[].clr/lineStyle/lineWidth`
     // are the BUILD's copy of the unified [08.4] look, and they are only correct
@@ -1045,6 +1203,14 @@ void RenderTriggerLines(
         AlertCacheAdd(lines[i].name, lines[i].price, lines[i].logicalStep,
                       lines[i].direction > 0);
 
+        // P-UI-98: the step-1 handle. While ITS gesture is live the line is
+        // MT4's to move: nothing on the object (P-BK-15), and the recomputed
+        // line price equals the dragged price anyway (it is where F came
+        // from) — the settle frame re-asserts it. Keyed on the NAME alone
+        // (P-UI-98f): the handle is not always the ladder's rung 1, so a rung
+        // number here let the render write the line the hand was holding.
+        if(g_s1DragLive && lines[i].name == g_s1DragName)
+            continue;
 
         // ALL pipeline lines (trigger-subdivision AND structure-interval)
         // share the unified [08.4] appearance set in ClassifyLevels. They are
@@ -1078,6 +1244,13 @@ void RenderTriggerLines(
                     ObjectSetInteger(0, lines[i].name, OBJPROP_ZORDER, config.zOrder);
                 }
             }
+            // P-UI-98: the face is owned AFTER the creator — CreateOrUpdateHLine
+            // writes SELECTABLE=false on every fresh object, so a face write
+            // before it landed on nothing and a just-created handle stayed
+            // un-grabbable until a topology change re-rendered the family.
+            if(lines[i].name == s1AboveName || lines[i].name == s1BelowName)
+                Step1HandleOwnFace(lines[i].name, lines[i].price, lines[i].direction,
+                                   lineTf, lines[i].tooltip);
         }
 
         // Render Pip Distance Label
@@ -1119,8 +1292,11 @@ void CleanupSurplusPipeline(
     const SModeConfig &config,
     const int maxLogicalStep)
 {
-    // During custom-price drag, do lightweight throttled cleanup instead of skipping entirely.
-    if(g_customPriceLineDragging) {
+    // During a hand-set drag (custom-price or step-1), do lightweight throttled
+    // cleanup instead of skipping entirely. P-UI-98i: the step-1 drag re-steps
+    // the ladder live like the line's drag, so it owns the same throttle - a
+    // full surplus sweep mid-gesture deletes under the hand.
+    if(g_customPriceLineDragging || g_s1DragLive) {
         static uint s_lastDragCleanupMs = 0;
         uint nowMs = GetTickCount();
         if(s_lastDragCleanupMs != 0 && (nowMs - s_lastDragCleanupMs) < 250)
@@ -1421,12 +1597,26 @@ int SweepForeignLevelObjects(const SModeConfig &config,
    const double tol = GetCachedPoint() * 0.1;
    int removed = 0;
 
-   for(int i = 0; i < lineCount; i++)
-   {
-      // The line and its pip-distance label share one price and one owner.
-      for(int pass = 0; pass < 2; pass++)
-      {
-         string nm = (pass == 0) ? lines[i].name : (lines[i].name + "_Label");
+    for(int i = 0; i < lineCount; i++)
+    {
+       // P-UI-98k: the render skips the live-dragged handle (it must never
+       // rewrite a line the hand is holding, P-BK-15) - so this sweep must
+       // not delete it either. Every step-1 drag changes the pitch (F), so
+       // this pass runs on the drag's own frames and the cache still holds
+       // the pre-drag price: without this term the sweep deletes the very
+       // line being dragged, the render refuses to re-create it while the
+       // gesture is live, the factor math reads 0 and freezes (no write, no
+       // redraw flag), and the settle's forced frame is gated off - the
+       // handle stays missing until an unrelated rebuild. The above handle
+       // never blinks because it is deleted AND re-created in the same
+       // frame; only the dragged one (here: the below handle) vanishes.
+       bool s1SkipSweep = (g_s1DragLive && g_s1DragName != "" &&
+                           lines[i].name == g_s1DragName);
+       // The line and its pip-distance label share one price and one owner.
+       for(int pass = 0; pass < 2; pass++)
+       {
+          if(s1SkipSweep) continue;
+          string nm = (pass == 0) ? lines[i].name : (lines[i].name + "_Label");
          SObjectCacheEntry e;
          if(!CacheGetObject(nm, e)) continue;   // cold cache: nothing to compare
          if(!e.exists) continue;                // dead slot: no object under this name

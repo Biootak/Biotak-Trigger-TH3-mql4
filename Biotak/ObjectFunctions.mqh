@@ -219,6 +219,29 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
         labelText = StringFormat("%.1f pips", pips);
     }
 
+    // P-LBL-10: the pip label is READABLE and owns its own row. It used to sit
+    // exactly on its line at the right edge with ANCHOR_LEFT — half of it under
+    // the price axis (a clipped fragment like "3.6") and the rest mashed with
+    // any same-price text (the TH3 step fibo texts live on the same rows at the
+    // same edge). It now ends at the edge (ANCHOR_RIGHT) and floats one text
+    // row above its line, lifted by a pixel-aware amount so the row holds at
+    // every zoom. Same color as its line (P-UI-66), same text.
+    // One text row, in price, at the current zoom (static cache: the scale only
+    // moves on scroll/zoom, not per frame — the 3 reads below validate it).
+    static int    s_h = -1;
+    static double s_hi = 0.0, s_lo = 0.0, s_lift = 0.0;
+    int hNow = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+    double hiNow = ChartGetDouble(0, CHART_PRICE_MAX);
+    double loNow = ChartGetDouble(0, CHART_PRICE_MIN);
+    if(hNow != s_h || hiNow != s_hi || loNow != s_lo || s_lift <= 0.0) {
+        s_h = hNow; s_hi = hiNow; s_lo = loNow; s_lift = 0.0;
+        if(hNow > 0 && hiNow > loNow && loNow > 0) {
+            double rowPx = (double)inpFontSize + 6.0;
+            s_lift = rowPx * (hiNow - loNow) / (double)hNow;
+        }
+    }
+    double labelPrice = price + s_lift;
+
     string cachedText;
     color cachedColor;
     bool hasCachedLabel = CacheGetLabel(name, cachedText, cachedColor);
@@ -234,7 +257,7 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
     }
 
     if(!objectExists) {
-        if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, price)) {
+        if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, labelPrice)) {
             #ifdef ENABLE_DEBUG_LOGS
             int error = GetLastError();
             Print("  CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
@@ -245,7 +268,7 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
         ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
         ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
         ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpFontSize);
-        ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_LEFT);
+        ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_RIGHT);
         ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, name, OBJPROP_BACK, false);
     } else {
@@ -253,16 +276,21 @@ bool CreatePipDistanceLabel(const string name, const double price, const double 
             ObjectSetString(0, name, OBJPROP_TEXT, labelText);
         if(!hasCachedLabel || cachedColor != textColor)
             ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
+        // P-TH3-INFO-09: the BACK flag is re-owned in the refresh path — a
+        // stale label left with BACK=true paints behind the chart art and
+        // reads as "the label does not show".
+        if((bool)ObjectGetInteger(0, name, OBJPROP_BACK))
+            ObjectSetInteger(0, name, OBJPROP_BACK, false);
         // P-PERF-02: the pip-distance label follows a level that is stable for
         // minutes, but this write used to land on EVERY heavy frame. Compare
         // against the cached price first (a label's price IS cached).
         double havePrice = 0.0;
-        if(!CacheGetPrice(name, havePrice) || MathAbs(havePrice - price) > GetCachedPoint() * 0.1)
-            ObjectSetDouble(0, name, OBJPROP_PRICE, price);
+        if(!CacheGetPrice(name, havePrice) || MathAbs(havePrice - labelPrice) > GetCachedPoint() * 0.1)
+            ObjectSetDouble(0, name, OBJPROP_PRICE, labelPrice);
     }
 
     CacheUpdateLabel(name, labelText, textColor);
-    CacheSetPrice(name, price);
+    CacheSetPrice(name, labelPrice);
     ApplyVisibilityStateIfUnchangedSkip(name, false);
 
     return true;

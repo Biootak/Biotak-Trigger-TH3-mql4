@@ -157,16 +157,27 @@ static int g_thLabelsMarginBottom = 40;                          // [13] inpTHLa
 static bool g_enableTH3Tool = true;                              // [14] inpEnableTH3Tool
 static ENUM_TH3_DRAWING_MODE g_th3DrawingMode = TH3_MODE_ABCD;  // [14] inpTH3DrawingMode
 static double g_th3BaseStepPercent = 28.125;                     // [14] inpTH3BaseStepPercent
+static double g_th3PivotBasePips = 0.0;                            // [14] inpTH3PivotBasePips (P-TH3-PB-MAN: 0 = OFF, the pattern TF's own ATR)
 static int g_th3Width = 1;                                       // [14] inpTH3Width
 static ENUM_LINE_STYLE g_th3Style = STYLE_SOLID;                 // [14] inpTH3Style
 static color g_th3Color = clrDarkBlue;                           // [14] inpTH3Color
 static color g_th3PipTextColor = clrDarkBlue;                    // [14] inpTH3PipTextColor
 static bool g_showTH3Labels = true;                              // [14] inpShowTH3Labels
+static bool g_showMotherPivotZone = true;                        // [14] inpShowMotherPivotZone (P-TH3-P6e)
 static int g_customPriceLevelWidth = 1;                          // [02] inpCustomPriceLevelWidth
 static color g_customPriceLevelColor = clrDodgerBlue;            // [02] inpCustomPriceLevelColor
 static int g_customPriceTransparency = 0;                        // palette TR (default solid)
 static bool g_enableMagnet = true;                               // [02] inpEnableMagnet
 static int g_magnetSensitivityPips = 10;                         // [02] inpMagnetSensitivityPips
+// P-UI-101 (2026-09-22): THE CUSTOM PRICE PLACEMENT'S OWN LOCK.
+//
+// User order: «روی خط کاستوم پرایس که هولد کردم پنل تنظیماتش بازه بشه و بشه از
+// اونجا قفلش کرد». A LOCK is not the armed/set state (P-UI-98d): SET is one click
+// away from being undone — a double-click re-arms it — and the user asked for a
+// state that only a deliberate act in the panel can release. It is therefore its
+// own flag, and it is PERSISTED (the placement survives a re-attach, so its lock
+// must too, or the line would be free again after every recompile).
+static bool g_customPriceLocked = false;                         // [02] P-UI-101 — no Input: a placement's own lock
 static ENUM_FACTOR_MODE g_factorMode = FACTOR_MODE_AUTO;         // [06] inpFactorMode
 static ENUM_FACTOR_DISPLAY_MODE g_factorDisplayMode = FACTOR_DISPLAY_DIRECT; // [06] inpFactorDisplayMode
 static ENUM_FACTOR_AUTO_BASIS g_factorAutoBasis = FACTOR_BASIS_CONTROL;      // [06] inpFactorAutoBasis
@@ -179,7 +190,7 @@ static int g_factorLevelWidth = 1;                               // [06] inpFact
 // section can edit them live (same rails as every other mirror: FF_ defaults,
 // OV_ persistence, Q-reset). Consumers read inpComboX == these copies.
 static ENUM_COMBO_MODE g_comboMode = COMBO_MODE_PRESET;           // [05] inpComboMode
-static ENUM_COMBO_PRESET g_comboPreset = COMBO_PRESET_BALANCED_MEDIUM; // [05] inpComboPreset
+static ENUM_COMBO_PRESET g_comboPreset = COMBO_PRESET_RATIO_4_3; // [05] inpComboPreset (P-COMBO-01)
 static ENUM_COMBO_TIMEFRAME_TYPE g_comboComp1TF = COMBO_TF_PATTERN;    // [05] inpComboComp1TF
 static ENUM_COMBO_STEP_TYPE g_comboComp1Step = COMBO_STEP_TH;     // [05] inpComboComp1Step
 static ENUM_COMBO_OPERATION g_comboOp1 = COMBO_OP_AVERAGE;        // [05] inpComboOp1
@@ -284,9 +295,10 @@ enum FactorySetting
    FF_BK_ITALIC,         // inpBKItalic
    FF_BK_ALIGN,          // inpBKAlign
    FF_BK_VALIGN,         // inpBKVAlign
-   FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
-   FF_TH_PERCENT,        // inpTHPercentOverride (P-TH-01 — appended for the same reason)
-   FF_COUNT
+    FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
+    FF_TH_PERCENT,        // inpTHPercentOverride (P-TH-01 — appended for the same reason)
+    FF_TH3_PIVOT_BASE,    // inpTH3PivotBasePips (P-TH3-PB-MAN — appended for the same reason)
+    FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
 
@@ -351,19 +363,21 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_TH_MARGIN_BOTTOM]    = inpTHLabelsMarginBottom;
    g_factoryDefaults[FF_TH_PERCENT]          = inpTHPercentOverride;   // P-TH-01
 #ifndef BUILD_LITE
-    // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
-    //g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
-    //g_factoryDefaults[FF_TH3_DRAW_MODE]       = inpTH3DrawingMode;
-    //g_factoryDefaults[FF_TH3_BASE_STEP]       = inpTH3BaseStepPercent;
-    //g_factoryDefaults[FF_TH3_WIDTH]           = inpTH3Width;
-    //g_factoryDefaults[FF_TH3_STYLE]           = inpTH3Style;
-    //g_factoryDefaults[FF_TH3_SHOW_LABELS]     = inpShowTH3Labels;
+    // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+    g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
+    g_factoryDefaults[FF_TH3_DRAW_MODE]       = inpTH3DrawingMode;
+    g_factoryDefaults[FF_TH3_BASE_STEP]       = inpTH3BaseStepPercent;
+    g_factoryDefaults[FF_TH3_PIVOT_BASE]      = inpTH3PivotBasePips;   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
+    g_factoryDefaults[FF_TH3_WIDTH]           = inpTH3Width;
+    g_factoryDefaults[FF_TH3_STYLE]           = inpTH3Style;
+    g_factoryDefaults[FF_TH3_SHOW_LABELS]     = inpShowTH3Labels;
 #else
    // Lite: TH3 inputs don't exist; factory = the same static defaults the
    // runtime copies keep (no input seeding happens in Lite for TH3).
-   g_factoryDefaults[FF_ENABLE_TH3]          = true;
-   g_factoryDefaults[FF_TH3_DRAW_MODE]       = TH3_MODE_ABCD;
-   g_factoryDefaults[FF_TH3_BASE_STEP]       = 28.125;
+    g_factoryDefaults[FF_ENABLE_TH3]          = true;
+    g_factoryDefaults[FF_TH3_DRAW_MODE]       = TH3_MODE_ABCD;
+    g_factoryDefaults[FF_TH3_BASE_STEP]       = 28.125;
+    g_factoryDefaults[FF_TH3_PIVOT_BASE]      = 0.0;   // P-TH3-PB-MAN (Lite: same OFF default, no input seeding)
    g_factoryDefaults[FF_TH3_WIDTH]           = 1;
    g_factoryDefaults[FF_TH3_STYLE]           = STYLE_SOLID;
    g_factoryDefaults[FF_TH3_SHOW_LABELS]     = true;
@@ -525,16 +539,18 @@ void RuntimeSettingsInit()
    g_thPercentOverride = inpTHPercentOverride;
 
 #ifndef BUILD_LITE
-    // TH3TOOL-OFF: inputs retired — mirrors keep their static defaults:
+    // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     // [14] TH3 TOOL
-    //g_enableTH3Tool = inpEnableTH3Tool;
-    //g_th3DrawingMode = inpTH3DrawingMode;
-    //g_th3BaseStepPercent = inpTH3BaseStepPercent;
-    //g_th3Width = inpTH3Width;
-    //g_th3Style = inpTH3Style;
-    //g_th3Color = inpTH3Color;
-    //g_th3PipTextColor = inpTH3PipTextColor;
-    //g_showTH3Labels = inpShowTH3Labels;
+    g_enableTH3Tool = inpEnableTH3Tool;
+    g_th3DrawingMode = inpTH3DrawingMode;
+    g_th3BaseStepPercent = inpTH3BaseStepPercent;
+    g_th3PivotBasePips = inpTH3PivotBasePips;   // P-TH3-PB-MAN (seeded HERE, above the #defines, like every mirror)
+    g_th3Width = inpTH3Width;
+    g_th3Style = inpTH3Style;
+    g_th3Color = inpTH3Color;
+    g_th3PipTextColor = inpTH3PipTextColor;
+    g_showTH3Labels = inpShowTH3Labels;
+    g_showMotherPivotZone = inpShowMotherPivotZone;   // P-TH3-P6e (no FF_/OV_: display-only, like the TH3 inks)
 #endif
 }
 
@@ -627,11 +643,13 @@ void RuntimeSettingsInit()
 #define inpEnableTH3Tool g_enableTH3Tool
 #define inpTH3DrawingMode g_th3DrawingMode
 #define inpTH3BaseStepPercent g_th3BaseStepPercent
+#define inpTH3PivotBasePips g_th3PivotBasePips   // P-TH3-PB-MAN
 #define inpTH3Width g_th3Width
 #define inpTH3Style g_th3Style
 #define inpTH3Color g_th3Color
 #define inpTH3PipTextColor g_th3PipTextColor
 #define inpShowTH3Labels g_showTH3Labels
+#define inpShowMotherPivotZone g_showMotherPivotZone   // P-TH3-P6e
 #define inpCustomPriceLevelWidth g_customPriceLevelWidth
 #define inpCustomPriceLevelColor g_customPriceLevelColor
 #define inpEnableMagnet g_enableMagnet
@@ -973,6 +991,12 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "MP",  g_showMidpointLine ? 1 : 0);
    RSSetNext(p + "ZO",  g_showMidZones ? 1 : 0);
    RSSetNext(p + "MZ",  g_midZoneStyle);
+   // P-UI-62b: the migration stamp travels WITH the value it protects. The stamp
+   // was load-only, so a freshly picked OUTLINED (MZ = 2, saved before any load
+   // stamped it) reloaded as retired-HIDDEN: style forced to FILLED and zones
+   // turned OFF. Load-before-save keeps the old-HIDDEN migration intact (it runs
+   // before any save of this instance can stamp).
+   RSSetNext(p + "MZ2", 1.0);
    RSSetNext(p + "ZT",  g_midZoneTransparency);
    RSSetNext(p + "ZH",  g_midZoneHeightPercent);
    RSSetNext(p + "ZB",  g_midZoneBorderStyle);
@@ -1010,12 +1034,14 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "Y3",  g_th3Style);
    RSSetNext(p + "C3",  g_th3Color);
    RSSetNext(p + "P3",  g_th3PipTextColor);
-   RSSetNext(p + "L3",  g_showTH3Labels ? 1 : 0);
+    RSSetNext(p + "L3",  g_showTH3Labels ? 1 : 0);
+    RSSetNext(p + "PBP", g_th3PivotBasePips);   // P-TH3-PB-MAN (0 = OFF, the pattern TF's own ATR)
    RSSetNext(p + "CW",  g_customPriceLevelWidth);
    RSSetNext(p + "CC",  g_customPriceLevelColor);
    RSSetNext(p + "CPT", g_customPriceTransparency);
    RSSetNext(p + "MG",  g_enableMagnet ? 1 : 0);
    RSSetNext(p + "MP2", g_magnetSensitivityPips);
+   RSSetNext(p + "CPL", g_customPriceLocked ? 1 : 0);   // P-UI-101
    RSSetNext(p + "FM",  g_factorMode);
    RSSetNext(p + "FD",  g_factorDisplayMode);
    RSSetNext(p + "FB",  g_factorAutoBasis);
@@ -1181,12 +1207,16 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "Y3"))  g_th3Style = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "Y3"), 0, 4);
    if(GlobalVariableCheck(p + "C3"))  g_th3Color = (color)(int)GlobalVariableGet(p + "C3");
    if(GlobalVariableCheck(p + "P3"))  g_th3PipTextColor = (color)(int)GlobalVariableGet(p + "P3");
-   if(GlobalVariableCheck(p + "L3"))  g_showTH3Labels = (GlobalVariableGet(p + "L3") > 0.5);
+    if(GlobalVariableCheck(p + "L3"))  g_showTH3Labels = (GlobalVariableGet(p + "L3") > 0.5);
+    // P-TH3-PB-MAN: 0 = OFF (the pattern TF's own ATR); the panel slider and the
+    // dialog input share this bound, so a stored value is always reproducible.
+    if(GlobalVariableCheck(p + "PBP")) g_th3PivotBasePips = ClampSettingDbl(GlobalVariableGet(p + "PBP"), 0.0, 2000.0);
    if(GlobalVariableCheck(p + "CW"))  g_customPriceLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "CW"), 1, 5);
    if(GlobalVariableCheck(p + "CC"))  g_customPriceLevelColor = (color)(int)GlobalVariableGet(p + "CC");
    if(GlobalVariableCheck(p + "CPT")) g_customPriceTransparency = ClampSettingInt((int)GlobalVariableGet(p + "CPT"), 0, 100);
    if(GlobalVariableCheck(p + "MG"))  g_enableMagnet = (GlobalVariableGet(p + "MG") > 0.5);
    if(GlobalVariableCheck(p + "MP2")) g_magnetSensitivityPips = ClampSettingInt((int)GlobalVariableGet(p + "MP2"), 0, 100);
+   if(GlobalVariableCheck(p + "CPL")) g_customPriceLocked = (GlobalVariableGet(p + "CPL") > 0.5);   // P-UI-101
    if(GlobalVariableCheck(p + "FM"))  g_factorMode = (ENUM_FACTOR_MODE)ClampSettingInt((int)GlobalVariableGet(p + "FM"), 0, 1);
    if(GlobalVariableCheck(p + "FD"))  g_factorDisplayMode = (ENUM_FACTOR_DISPLAY_MODE)ClampSettingInt((int)GlobalVariableGet(p + "FD"), 0, 1);
    if(GlobalVariableCheck(p + "FB"))  g_factorAutoBasis = (ENUM_FACTOR_AUTO_BASIS)ClampSettingInt((int)GlobalVariableGet(p + "FB"), 0, 7);

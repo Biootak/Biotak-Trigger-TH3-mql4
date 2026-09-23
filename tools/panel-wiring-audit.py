@@ -63,9 +63,25 @@ KIT = os.path.join(ROOT, "Biotak", "BiotakKit.mqh")
 MENU = os.path.join(ROOT, "Biotak", "BiotakMenu.mqh")
 GLOBALS = os.path.join(ROOT, "Biotak", "GlobalVariables.mqh")
 ENTRY = os.path.join(ROOT, "Biotak Trigger TH3.mq4")
+# P-LM-09: the second entry. Lite compiles the domain half and no UI half, so the
+# leg meter's timer line must exist in ONE OnTimer and not both (P-BUILD-01's shape).
+ENTRY_LITE = os.path.join(ROOT, "Biotak Trigger TH3 Lite.mq4")
 UTILS = os.path.join(ROOT, "Biotak", "UtilityFunctions.mqh")
 BASEKNOT = os.path.join(ROOT, "Biotak", "BaseKnotTool.mqh")
+# P-UI-96: the TH3 item's own modules - the arm path's three halves live one
+# per file (the press in the menu, the session in the controller, the toggle in
+# the tool), and the mouse-move channel's owner lives in the event router.
+TH3TOOL = os.path.join(ROOT, "Biotak", "TH3Tool.mqh")
+TH3CTRL = os.path.join(ROOT, "Biotak", "TH3", "TH3Controller.mqh")
+TH3RENDER = os.path.join(ROOT, "Biotak", "TH3", "TH3Renderer.mqh")
+EVENTS = os.path.join(ROOT, "Biotak", "EventHandlers.mqh")
+PIPELINE = os.path.join(ROOT, "Biotak", "LevelPipeline.mqh")
+HTF = os.path.join(ROOT, "Biotak", "HTFCandles.mqh")
 ICONS = os.path.join(ROOT, "Files", "Icons")
+MANIFEST_PATH = os.path.join(ROOT, "tools", "icon-manifest.txt")
+# P-LM-19: the baked handle rasters' palette — the [leg-dir] check keeps the
+# generator's two colours on the same two the line wears.
+GENICONS = os.path.join(ROOT, "tools", "gen-th3-icons.js")
 # P-TH-01: the fractal ladder and its two measuring sticks — the modules the
 # [th-percent] check and its mutants patch.
 FRACTALS = os.path.join(ROOT, "Biotak", "FractalTimeframes.mqh")
@@ -124,6 +140,33 @@ def body(text, sig):
             depth -= 1
             if depth == 0:
                 return text[i + 1:j]
+    return None
+
+
+def stmt_body(text, head):
+    """The `{ ... }` body of a STATEMENT whose line starts with `head` - an `if(...)`
+    branch, a `for(...)` loop, a bare call. `body()` above anchors on a function
+    DEFINITION (SR-PANELWIRE-0) and cannot reach a branch at all: it looks the
+    signature up as a name and requires a return-type prefix, so `body(x,
+    "if(id == CHARTEVENT_OBJECT_CLICK)")` never matched anything and every check
+    built on it reported its "the branch lost its call" fault on clean source - a
+    gate that fires unconditionally is as useless as one that never fires. The
+    first matching statement wins (the branches of a router are written in the
+    order the events are handled). Brace-counted from the opening brace, so a
+    nested block cannot terminate the scan early.
+    """
+    for m in re.finditer(r"(?m)^[ \t]*" + re.escape(head) + r"[ \t]*\r?\n?[ \t]*\{",
+                         text):
+        i = m.end() - 1
+        depth = 0
+        for j in range(i, len(text)):
+            if text[j] == "{":
+                depth += 1
+            elif text[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return text[i + 1:j]
+        break
     return None
 
 
@@ -1034,17 +1077,49 @@ def check_measure_item():
         return int(m.group(1)) if m else None
 
     ring, slot, tools = num("RING_COUNT"), num("RING_BASEKNOT"), num("TOOL_COUNT")
+    th3 = num("RING_TH3")   # TH3TOOL-ON (2026-09-19): the TH3 slot is APPENDED too
+    # P-LM-09 (2026-09-20): the leg meter's item is the THIRD appended slot. This gate
+    # did not know it — RING_LEG arrived with the tool and was not added here — so the
+    # rule below read RING_COUNT 9 against a top of 7 and reported a fault that was the
+    # GATE's, not the code's. That is the same failure mode as a stale seed anchor: a
+    # gate that is wrong about the source is worse than no gate, because the reported
+    # fault sends the reader to code that is doing the right thing.
+    leg = num("RING_LEG")
     if ring is None or slot is None or tools is None:
         return ["RING_COUNT / RING_BASEKNOT / TOOL_COUNT are gone - the measure item "
                 "has no declared slot (P-UI-95)"]
-    if slot != ring - 1:
-        problems.append("RING_BASEKNOT (%d) is not the slot RING_COUNT (%d) counts: an "
-                        "APPENDED slot is what keeps every existing state key's "
-                        "meaning (P-UI-95)" % (slot, ring))
+    # The rule is "the ring's LAST slot is an APPENDED one" - that is what keeps
+    # every existing state key's meaning. RING_BASEKNOT held it until the TH3
+    # item returned (TH3TOOL-ON, 2026-09-19) and took the new top slot, and the leg
+    # meter's item took it again (RING_LEG, P-LM-09); all three are appended, so the
+    # top of them is the one RING_COUNT must count.
+    top = max([v for v in (slot, th3, leg) if v is not None])
+    if top != ring - 1:
+        problems.append("the last ring slot (%d) is not the one RING_COUNT (%d) counts: "
+                        "an APPENDED slot is what keeps every existing state key's "
+                        "meaning (P-UI-95)" % (top, ring))
+    # ...and no two slots may collide: a slot inserted BETWEEN the others both
+    # collides with the one it displaces and shifts every persisted key below.
+    seen_slots = {}
+    for nm, val in re.findall(r"(?m)^\s*#define\s+(RING_[A-Z0-9_]+)\s+(\d+)\b", code):
+        if nm == "RING_COUNT":
+            continue
+        v = int(val)
+        if v in seen_slots:
+            problems.append("%s and %s both claim ring slot %d - a slot inserted "
+                            "between the others shifts every persisted state key "
+                            "(P-UI-95)" % (seen_slots[v], nm, v))
+        seen_slots[v] = nm
     feats = body(code, "RingFeature(") or ""
     if "case RING_BASEKNOT: return CIR_BASEKNOT;" not in feats:
         problems.append("the measure slot no longer maps to CIR_BASEKNOT - the item "
                         "cannot be reached at all")
+    if th3 is not None and "case RING_TH3: return CIR_TH3;" not in feats:
+        problems.append("the appended RING_TH3 slot does not map to CIR_TH3 - the "
+                        "TH3 item cannot be reached at all (TH3TOOL-ON)")
+    if leg is not None and not re.search(r"case\s+RING_LEG:\s*return\s+CIR_LEG;", feats):
+        problems.append("the appended RING_LEG slot does not map to CIR_LEG - the leg "
+                        "meter's item cannot be reached at all (P-LM-09)")
     tf = body(code, "ToolFeature(") or ""
     if "TOOL_BASEKNOT" in tf:
         problems.append("the measure tool is counted in the Tools ladder again: ONE "
@@ -1074,6 +1149,1631 @@ def check_measure_item():
         if "FeaturePanel(" not in (body(code, sig) or ""):
             problems.append("%s no longer resolves its card through FeaturePanel - the "
                             "two families can open different cards for one feature" % who)
+    return problems
+
+
+def check_th3_item():
+    """[th3draw] - a press on the TH3 item ARMS the draw (P-UI-96).
+
+    P-UI-96 (2026-09-19, user: the tool is pressed and there is nothing to draw
+    with - the AB=CD pivots cannot be marked): the TH3 ring item flipped
+    `g_enableTH3Tool` and did nothing else, so the item lit up and no session
+    ever started. The only way into a drawing session was the V key, which no
+    surface of the panel mentions. Four properties have to survive, and each of
+    them was silently wrong before:
+
+      * the press reaches the ONE arm path (`CircArmTH3Draw`) and NOT the enable
+        flag - that switch has its own home, the TH3 TOOL card's row 0;
+      * that path REPAIRS both preconditions a session needs (engine enabled;
+        drawing mode AB=CD, since `TH3_MODE_STEPS` ships no click path at all)
+        and persists the mode, or the card's MODE row would disagree with the
+        session that is running;
+      * the item is MOMENTARY like the measuring tool next to it:
+        `CircFeatureOn(CIR_TH3)` reads the ARMED SESSION, so the light can never
+        say "armed" while no session exists;
+      * the arming press is not pivot X (`ToggleTH3Tool(true)` ->
+        `TH3SessionStart(swallowGesture)`) and the session never touches the
+        chart-wide mouse-move channel the ring/panel gestures ride
+        (P-TH3-PERF-07: that flag has exactly ONE writer, in EventHandlers).
+    """
+    problems = []
+    code = strip_comments(read(MENU))
+    tool = strip_comments(read(TH3TOOL))
+    ctrl = strip_comments(read(TH3CTRL))
+
+    # 1. the press reaches the arm path, not the switch.
+    m = re.search(r"else if\(feat == CIR_TH3\)\s*\{(.*?)\n   \}", code, re.S)
+    if m is None:
+        problems.append("the TH3 item's press branch is gone - nothing can arm a "
+                        "draw session (P-UI-96)")
+    else:
+        branch = m.group(1)
+        if "CircArmTH3Draw()" not in branch:
+            problems.append("the TH3 item's press no longer reaches CircArmTH3Draw: "
+                            "the tool is back to flipping a flag and drawing "
+                            "nothing (P-UI-96)")
+        if re.search(r"g_enableTH3Tool\s*=", branch):
+            problems.append("the TH3 item's press writes the ENABLED switch again - "
+                            "that flag's home is the card's row 0, and flipping it "
+                            "is what the press used to do INSTEAD of drawing "
+                            "(P-UI-96)")
+
+    # 2. the arm path repairs what a session needs, then starts it.
+    arm = body(code, "CircArmTH3Draw(")
+    if arm is None:
+        problems.append("CircArmTH3Draw() is gone - the arm path has no owner "
+                        "(P-UI-96)")
+    else:
+        for need, why in (("g_enableTH3Tool = true;", "the engine-off repair"),
+                          ("TH3_MODE_ABCD", "the AB=CD mode repair"),
+                          ("RuntimeSettingsSaveOverridesThrottled();",
+                           "the persistence of that repair"),
+                          ("PnlCloseAll();", "the stale-card close"),
+                          ("ToggleTH3Tool(true);",
+                           "the ONE toggle, with the arming press swallowed"),
+                          ("return REFRESH_NONE;", "the no-recalc return")):
+            if need not in arm:
+                problems.append("the TH3 arm path no longer runs `%s` (%s): a press "
+                                "would arm a session that is not on, not AB=CD, "
+                                "or not visible (P-UI-96)" % (need, why))
+
+    # 3. momentary, exactly like the measuring tool.
+    lit = body(code, "bool CircFeatureOn(")
+    if lit is None or "TH3SessionActive()" not in lit:
+        problems.append("CircFeatureOn(CIR_TH3) no longer reads TH3SessionActive - "
+                        "the ring light can say 'armed' while no session exists, "
+                        "which is exactly how the dead press looked (P-UI-96)")
+
+    # 4. the arming press must not be spent as the first pivot.
+    if "TH3SessionStart(fromRingItem)" not in (body(tool, "ToggleTH3Tool(") or ""):
+        problems.append("ToggleTH3Tool() no longer forwards `fromRingItem` to "
+                        "TH3SessionStart - the press that armed the session lands "
+                        "as pivot X, in the ring's own corner (P-UI-96)")
+    if "void TH3SessionStart(const bool swallowGesture = false)" not in ctrl:
+        problems.append("TH3SessionStart() lost its `swallowGesture` parameter or "
+                        "its false default - the V key would have to swallow a "
+                        "gesture it does not have (P-UI-96)")
+    if "swallowGesture ? GetTickCount() : 0" not in (body(ctrl, "TH3SessionStart(") or ""):
+        problems.append("TH3SessionStart() no longer primes `lastClickTime` from "
+                        "`swallowGesture` - the debounce cannot reject the arming "
+                        "press (P-UI-96)")
+
+    # 5. one press is one pivot (P-UI-96b): MT4 can deliver a single press on both
+    #    the move channel and as a CLICK, and the 300 ms debounce only rejects the
+    #    echo of a SHORT click - a longer hold stored the same point twice, so X
+    #    and A landed on one candle and the drawn pattern had no D.
+    addp = body(ctrl, "bool TH3SessionAddPoint(")
+    if addp is None:
+        problems.append("TH3SessionAddPoint() is gone - the session has no owner for "
+                        "its four pivots (P-UI-96b)")
+    else:
+        for need, why in (("g_th3Session.pointCount > 0", "the previous-point test"),
+                          ("iBarShift", "the bar identity"),
+                          ("GetCachedPoint()", "the price tolerance")):
+            if need not in addp:
+                problems.append("TH3SessionAddPoint() no longer runs `%s` (%s): one "
+                                "press can be spent as two pivots and the zero-length "
+                                "leg that follows has no D (P-UI-96b)" % (need, why))
+
+    # 6. the session does NOT own the chart-wide mouse-move channel.
+    for path, label in ((ctrl, "the TH3 session"), (tool, "the TH3 tool")):
+        if "CHART_EVENT_MOUSE_MOVE" in path:
+            problems.append("%s writes CHART_EVENT_MOUSE_MOVE: that flag is "
+                            "chart-scoped and shared (orb drag, panel gestures, "
+                            "BaseKnot's poll shadow), so switching it OFF ends "
+                            "the whole interactive UI for the rest of the attach "
+                            "(P-TH3-PERF-07)" % label)
+    if strip_comments(read(EVENTS)).count("CHART_EVENT_MOUSE_MOVE") != 1:
+        problems.append("EventHandlers no longer has exactly ONE mouse-move "
+                        "writer - the P-TH3-PERF-07 owner is not verifiable")
+    return problems
+
+
+def check_th3_ink():
+    """[th3ink] - every TH3 ink is resolved for the chart it is drawn on (P-UI-97).
+
+    P-UI-97 (2026-09-19, user: the drawing cannot be seen against a white chart):
+    the session preview was hardcoded `clrYellow` / `clrAqua` / `clrLime`, and the
+    committed pattern wrote its ladder palette (`clrGold`, `clrLimeGreen`, ...) and
+    its colour inputs straight into OBJPROP_COLOR. On white paper a yellow letter
+    is a smudge and gold is invisible - while on a dark chart those are exactly
+    the right inks, which is why the fix cannot be "pick other constants":
+
+      * a BRIGHT literal may not be written into OBJPROP_COLOR by either drawing
+        module (the dark ones - clrDarkBlue, clrGray, ... - stay legal: they read
+        on light paper and are the dark half the resolver returns unchanged);
+      * every ink must arrive through `TH3InkForChart` (lightness only, hue kept,
+        identity on a dark chart) or through the preview's pair
+        (`TH3SessionPointInk` / `TH3SessionLineInk`, which is the renderer's own
+        `(g_th3* == clrNONE) ? inpABCD* : g_th3*` rule), so the session cannot
+        preview a colour the committed pattern will not keep;
+      * a variable is accepted only when it was itself assigned from one of those
+        (`zoneColor`, `targetInk`, `wantClr`) - an unwrapped input is the bug;
+      * P-TH3-INFO-04 (2026-09-20): THE READOUT PLATE IS THE ONE SURFACE THE
+        PAPER MUST NOT DECIDE. The leg meter's box and the AB=CD caption draw on
+        a fixed dark plate on every theme, so its rows are its own palette
+        (`TH3RO_TEXT` / `TH3RO_ACCENT`, asked through the `TH3ReadoutInk` owner)
+        and its border its own hairline (`TH3RO_EDGE`): resolved, they would be
+        dark-on-dark on light paper and near-white-on-white on a dark one, i.e.
+        unreadable. Those names are allowed BY NAME - a palette of its own, one
+        table in one place - while a raw `clrYellow` written anywhere is still
+        the bug this gate exists for (see the readout-plate seed below).
+    """
+    problems = []
+    ctrl = strip_comments(read(TH3CTRL))
+    rend = strip_comments(read(TH3RENDER))
+    if not ctrl or not rend:
+        return ["the TH3 drawing modules are gone - P-UI-97's ink owner cannot be "
+                "verified"]
+    if "color TH3InkForChart(" not in ctrl:
+        problems.append("TH3InkForChart() is gone from the session module - there is "
+                        "no owner deciding what reads on this chart's background "
+                        "(P-UI-97)")
+    if "TH3InkForChart(" not in rend and "TH3SessionLineInk(" not in rend:
+        problems.append("the renderer no longer resolves any ink - the committed "
+                        "pattern would be painted with the raw settings again "
+                        "(P-UI-97)")
+
+    bright = re.compile(r"^clr(Yellow|Aqua|Lime|LimeGreen|Gold|DodgerBlue|OrangeRed|"
+                        r"YellowGreen|Khaki|Cyan|White)$")
+    # P-TH3-INFO-04: the readout plate's own palette, by name only.
+    readout = re.compile(r"^TH3RO_[A-Z_]+$")
+    for text, who in ((ctrl, "the session"), (rend, "the renderer")):
+        # "resolved where it was computed" is READ OFF THE CODE, not assumed from a
+        # name list: any local a resolver was assigned to counts, so hoisting the
+        # ink out of the write call (P-TH3-INFO-01's caption writer does exactly
+        # that) stays honest without teaching this gate a second allowlist. The
+        # name list survives for the two local names that predate the rule.
+        resolved = set(re.findall(r"\b([A-Za-z_]\w*)\s*=\s*(?:TH3InkForChart|TH3Session\w*Ink|"
+                                  r"TH3ReadoutInk)\s*\(",
+                                  text))
+        for m in re.finditer(r"OBJPROP_COLOR\s*,\s*([^;\n]+?)\)\s*;", text):
+            arg = m.group(1).strip()
+            if arg.startswith("TH3InkForChart(") or arg.startswith("TH3Session"):
+                continue
+            if arg in resolved or arg in ("zoneColor", "targetInk", "wantClr"):
+                continue                      # resolved where it was computed
+            if re.fullmatch(r"clr\w+", arg) and not bright.match(arg):
+                continue                      # a dark literal reads on both papers
+            if readout.match(arg):
+                continue                      # the readout plate's own palette (P-TH3-INFO-04)
+            problems.append("%s writes `%s` into OBJPROP_COLOR - an unresolved ink is "
+                            "invisible on the other background (P-UI-97)"
+                            % (who, arg))
+    return problems
+
+
+def check_th3_caption():
+    """[th3caption] - the step caption is WRAPPED, never clipped (P-TH3-INFO-01).
+
+    MT4 truncates an object's text at 63 CHARACTERS. The user's EURUSD D1 chart
+    showed exactly that cliff, mid-word:
+
+        AB=CD | AB:504.1 | BC:765.0 | Step:267.7 pips [closed K=3.0 rat
+
+    - 63 characters - while the walk-up SHIFT that produced the 267.7 (its own
+    words are `-> SHIFT 2xLS(D1)=267.7`), the rung, T3/T5 and the milestone were
+    all in the part that never rendered. The caption was ARITHMETICALLY right
+    (read off the chart's own price axis: Step1 1.1290 and Step3 1.0754 are 536
+    pips apart = 2 x 267.7, projecting from the real D at 1.1558, and the closed
+    seed really was 162.7 pips at K=3.0), so the failure was purely the lost
+    line - which is why the report reads «گام اشتباه میندازه». A caption whose
+    explanation is invisible is a caption that lies.
+
+    The gate: the cap is MT4's own 63; the caption is written ONLY by the family
+    owner (`TH3InfoFamilyDraw`, which wraps); and the other TH3 modules ask the
+    family owner instead of spelling `_Info` themselves - a sweep that matches
+    the literal `_Info` recognises line 1 only and leaves the previous pattern's
+    continuation lines lit beside the new one's.
+    """
+    problems = []
+    rend = strip_comments(read(TH3RENDER))
+    m = re.search(r"#define\s+TH3_INFO_TEXT_MAX\s+(\d+)", rend)
+    if not m:
+        problems.append("TH3_INFO_TEXT_MAX is gone from TH3Renderer.mqh: the caption "
+                        "no longer states the cap it wraps to (P-TH3-INFO-01)")
+    elif int(m.group(1)) > 63:
+        problems.append("TH3_INFO_TEXT_MAX is %s, but MT4 truncates an object's text "
+                        "at 63 characters: every line past that is silently cut "
+                        "mid-word (P-TH3-INFO-01)" % m.group(1))
+
+    draw = body(rend, "int TH3InfoFamilyDraw(")
+    if draw is None:
+        problems.append("TH3InfoFamilyDraw() is gone - the caption has no owner, so "
+                        "nothing wraps it (P-TH3-INFO-01)")
+    elif "TH3InfoWrap(" not in draw:
+        problems.append("the caption writer no longer wraps its text: it goes to "
+                        "OBJPROP_TEXT raw and MT4 cuts it at 63 characters "
+                        "(P-TH3-INFO-01)")
+
+    # the caption text itself is written NOWHERE else (one owner, or the wrap is optional)
+    stray = [i for i, ln in enumerate(rend.splitlines(), 1)
+             if "OBJPROP_TEXT" in ln and "infoText" in ln]
+    if stray:
+        problems.append("TH3Renderer.mqh still writes the caption text straight into "
+                        "OBJPROP_TEXT at line(s) %s: the wrap is bypassed "
+                        "(P-TH3-INFO-01)" % ", ".join(str(s) for s in stray))
+
+    tool = strip_comments(read(TH3TOOL))
+    # P-TH3-INFO-06b: the sweep SITE, not the substring. `TH3InfoFamilyDelete(`
+    # now legitimately appears in the restore path too (orphan plates of skipped
+    # bases), so whole-file presence no longer proves the DELETE path goes
+    # through the family owner — mutant 8p walked through exactly that hole.
+    # The pattern-delete sweep names its base `baseName`; only that call counts.
+    if "TH3InfoFamilyDelete(baseName)" not in tool:
+        problems.append("TH3Tool's pattern-delete path no longer deletes the caption through the family owner: "
+                        "a surviving `_Info2` becomes the next pattern's tail "
+                        "(P-TH3-INFO-01)")
+    # P-TH3-DEL3: bound to the SWEEP SITE's own test, never the bare substring.
+    # The delete path now names the family too (`TH3IsInfoLabelName(sparam)`),
+    # and a whole-file test was satisfied by that line alone — mutant 8q walked
+    # through the hole this comment's predecessors already warned about.
+    if "if(!TH3IsInfoLabelName(nm))" not in tool:
+        problems.append("the active-pattern sweep no longer tests the caption FAMILY: "
+                        "matching the literal `_Info` recognises line 1 only, so the "
+                        "previous pattern's continuation lines stay lit beside the new "
+                        "one's (P-TH3-INFO-01)")
+
+    # P-TH3-INFO-02: the caption parks BELOW the mode rows, and the mode rows
+    # stand a hardcoded +45 below the ATR stack (ApplyModeLabelStyle) — a safe-Y
+    # that forgets the +45 slides the caption's dark plate up inside the mode
+    # block (the top-left mash: the SS/LS row wearing the caption's plate).
+    safe = body(tool, "int GetABCDInfoSafeYDistance(")
+    if safe is None:
+        problems.append("GetABCDInfoSafeYDistance() is gone - the caption has no safe-Y "
+                        "owner, so nothing keeps it below the mode block (P-TH3-INFO-02)")
+    elif "g_modeLabelYOffset + 45" not in safe:
+        problems.append("the caption's safe-Y no longer mirrors the mode rows' +45 "
+                        "below-ATR offset: the caption parks inside the mode block "
+                        "(P-TH3-INFO-02)")
+
+    # P-TH3-INFO-10 (2026-09-22): the plate's visibility is EXISTENCE, never a
+    # mask. An OBJ_RECTANGLE_LABEL does not go away under OBJPROP_TIMEFRAMES
+    # (the same screen-object fact P-UI-98n proved for OBJ_BITMAP_LABEL), while
+    # the OBJ_LABEL rows DO obey theirs - so every family path that masked the
+    # plate left a dark bar with no ink on the chart: the report «اول نمایش
+    # میده ولی بعد دیگه فقط سیاه هستش» and the fourth recurrence of the
+    # "top-left dark empty bar" (INFO-06/06b/06c/08 all aimed at the rows).
+    for m in re.finditer(r"ObjectSetInteger\s*\(\s*0,\s*plate,\s*OBJPROP_TIMEFRAMES\s*,\s*([^);]+)\)", rend):
+        if "OBJ_ALL_PERIODS" not in m.group(1):
+            problems.append(
+                "the caption family writes `%s` onto its PLATE's TIMEFRAMES: a mask does "
+                "not hide an OBJ_RECTANGLE_LABEL, so a darkened family leaves its empty "
+                "bar on the chart (P-TH3-INFO-10)" % m.group(1).strip())
+    for head, need in (("void TH3InfoFamilySetVisible(",
+                        ("TH3InfoFamilyPlateDrop(", "TH3InfoFamilyPlateGrow(")),
+                       ("void TH3InfoFamilyVerify(",
+                        ("if(!isActive) { TH3InfoFamilyPlateDrop(base); return; }",
+                         "TH3InfoFamilyPlateGrow(")),
+                       ("int TH3InfoFamilyDraw(",
+                        ("TH3InfoFamilyPlateDrop(",))):
+        b = body(rend, head)
+        if b is None:
+            problems.append("%s is gone - the caption family has no visibility owner "
+                            "(P-TH3-INFO-10)" % head.rstrip("("))
+            continue
+        for token in need:
+            if token not in b:
+                problems.append("%s no longer carries `%s` - a plate whose visibility is "
+                                "not EXISTENCE is a plate only a mask could hide, and a "
+                                "mask leaves it on the chart (P-TH3-INFO-10)"
+                                % (head.rstrip("("), token))
+    draw_b = body(rend, "int TH3InfoFamilyDraw(")
+    if draw_b is not None and not re.search(r"if\s*\(\s*isActive\s*\)\s*\{[^}]*TH3ROPlateAt\(", draw_b):
+        problems.append("TH3InfoFamilyDraw no longer gates the plate's creation on isActive: "
+                        "an inactive family gets a plate no mask can hide (P-TH3-INFO-10)")
+    set_b = body(tool, "void SetActiveABCDPattern(")
+    if set_b is None:
+        problems.append("SetActiveABCDPattern() is gone - the active-pattern sweep has no "
+                        "owner (P-TH3-INFO-10)")
+    elif "TH3IsInfoPlateName(" not in set_b:
+        problems.append("the active-pattern sweep masks the PLATE again instead of dropping "
+                        "it: a darkened family leaves its empty bar on the chart "
+                        "(P-TH3-INFO-10)")
+    # P-TH3-INFO-11 (2026-09-22): the heal net behind the 250 ms clock.
+    heal_b = body(rend, "void TH3InfoCaptionHeal(")
+    if heal_b is None:
+        problems.append("TH3InfoCaptionHeal() is gone - no timer asks after a caption "
+                        "whose rows died between redraws, so the dark plate recurs "
+                        "(P-TH3-INFO-11)")
+    elif "TH3InfoFamilyVerify(base, true)" not in heal_b:
+        problems.append("the caption heal no longer verifies through the one owner: "
+                        "a second writer of the family's masks (P-TH3-INFO-11)")
+    # P-TH3-INFO-13 (2026-09-22): the caption is a TIMED VISITOR. The user's
+    # order: «لیبل مود ها و لیبل abcd باید بعد چند ثانیه حذف بشن هرچی که
+    # اطلاعاتی هستش» — every info readout leaves after a few seconds, the leg
+    # meter's own contract (P-LM-09). The sweep lives in the heal net (the 250
+    # ms clock) BEFORE the heal half, so a heal can never resurrect an expired
+    # visit; the duration is inpModeLabelDuration, the mode rows' own input.
+    heal13 = body(rend, "void TH3InfoCaptionHeal(")
+    if heal13 is None:
+        problems.append("TH3InfoCaptionHeal() is gone - the caption visit has no sweep "
+                        "(P-TH3-INFO-13)")
+    else:
+        heal_head = heal13[:heal13.find("TH3InfoFamilyVerify(base, true)")
+                            if "TH3InfoFamilyVerify(base, true)" in heal13 else len(heal13)]
+        if "TickDeadlinePending(g_th3InfoVisitUntilMs)" not in heal_head:
+            problems.append("the heal never asks the caption's visit deadline before "
+                            "healing: an expired visit is resurrected by the very net "
+                            "meant to keep the family honest (P-TH3-INFO-13)")
+        if "TH3InfoFamilyDropActive()" not in heal_head:
+            problems.append("an expired caption visit no longer drops the family through "
+                            "its ONE owner: rows and plate would age apart (P-TH3-INFO-13)")
+    arm = body(rend, "void TH3InfoVisitArm(")
+    if arm is None:
+        problems.append("TH3InfoVisitArm() is gone - the caption visit has no clock "
+                        "owner (P-TH3-INFO-13)")
+    elif "inpModeLabelDuration" not in arm:
+        problems.append("the caption visit no longer reads inpModeLabelDuration: the "
+                        "mode rows and the caption would expire on two different "
+                        "settings (P-TH3-INFO-13)")
+    # P-UI-57f-OFF (2026-09-22): the step-mode row's clock exemption is retired
+    # by the same user order - the SS/LS row expires like every event row.
+    expire = body(strip_comments(read(UTILS)), "bool CheckAndClearExpiredLabels(")
+    if expire is None:
+        problems.append("CheckAndClearExpiredLabels() is gone - the mode rows have no "
+                        "expiry owner at all (P-UI-57f-OFF)")
+    elif "g_stepModeLabelCreateTime) >= durationMs" not in expire:
+        problems.append("the step-mode (SS/LS) row no longer expires on the clock: an "
+                        "info row that outlives its duration is the furniture the user "
+                        "ordered off the chart (P-UI-57f-OFF)")
+    return problems
+
+
+def check_th3_ladder():
+    """[th3ladder] - AT MOST ONE LADDER IS VISIBLE (P-TH3-P6f).
+
+    Two patterns in the store drew two Step1/3/5/7 families and the chart
+    read as one mixed ladder (XAUUSD M15: Step1 115.4 against 109.6, Step3
+    346.3 against 328.8 - each pattern owns its closedStep, so each owns its
+    q winner and its lock). The ladder follows the caption: drawn per
+    pattern, worn by the ACTIVE one only, through the same two owners - the
+    draw gates it on isActive, the activation sweep re-masks the family.
+    Chart objects obey TIMEFRAMES (the P-TH3-INFO-10 exception is screen
+    plates only).
+    """
+    problems = []
+    rend = strip_comments(read(TH3RENDER))
+    if "bool TH3IsLadderName(" not in rend:
+        problems.append("TH3IsLadderName() is gone - the ladder family has no test, so "
+                        "the activation sweep cannot tell a target from ABCD ink "
+                        "(P-TH3-P6f)")
+    draw = body(rend, "void DrawABCDPattern(")
+    if draw is None:
+        problems.append("DrawABCDPattern() is gone - no owner draws the ladder at all "
+                        "(P-TH3-P6f)")
+    elif "TH3LadderSetVisible(mainObjName, isActive)" not in draw:
+        problems.append("DrawABCDPattern no longer gates the ladder on the active "
+                        "pattern: every stored pattern wears Step1/3/5/7 and the "
+                        "chart reads as one mixed ladder (P-TH3-P6f)")
+    tool = strip_comments(read(TH3TOOL))
+    set_b = body(tool, "void SetActiveABCDPattern(")
+    if set_b is None:
+        problems.append("SetActiveABCDPattern() is gone - the active-pattern sweep has "
+                        "no owner (P-TH3-P6f)")
+    else:
+        if "TH3IsLadderName(" not in set_b:
+            problems.append("the active-pattern sweep is blind to the ladder family: "
+                            "the newly-active pattern stays ladder-less until an "
+                            "unrelated redraw (P-TH3-P6f)")
+        if "ownLadder ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS" not in set_b:
+            problems.append("the active-pattern sweep no longer darkens other ladders: "
+                            "activation lights the new family without killing the old "
+                            "one (P-TH3-P6f)")
+    return problems
+
+
+def check_th3_delete():
+    """[th3delete] - DELETE BY PREFIX, NOT BY SUFFIX LIST (P-TH3-DEL1).
+
+    The old cascade stripped one of seven known suffixes off the deleted
+    name: deleting _Line_CD, _Ray_D/_Ray_C, _CDLabel, _HitLine/_HitLabel,
+    _MPTick*, _LegPiv, _Temp_*, _Point_X, or any TH3_MP_* overlay member
+    (its own prefix never matched at all) extracted NO base and the whole
+    family stayed on the chart. Any member reduces to the same base
+    (TH3FamilyBaseOf: prefix + digits) and ONE backward sweep kills every
+    object wearing it - a rare event, so one sweep is the whole extra load.
+    """
+    problems = []
+    rend = strip_comments(read(TH3RENDER))
+    if "string TH3FamilyBaseOf(" not in rend:
+        problems.append("TH3FamilyBaseOf() is gone - a deleted member no longer "
+                        "reduces to its family base, so only seven suffixed "
+                        "members can ever cascade (P-TH3-DEL1)")
+    tool = strip_comments(read(TH3TOOL))
+    del_b = body(tool, "void OnABCDMouseEvent(")
+    if del_b is None:
+        problems.append("OnABCDMouseEvent() is gone - pattern deletion has no owner "
+                        "(P-TH3-DEL1)")
+    else:
+        if "TH3FamilyBaseOf(sparam)" not in del_b:
+            problems.append("the delete path no longer reduces the deleted member to "
+                            "its base: only members wearing a known suffix cascade "
+                            "(P-TH3-DEL1)")
+        if '"TH3_MP_" + baseName + "_"' not in del_b:
+            problems.append("the delete sweep no longer covers the mother overlay: "
+                            "deleting a pattern orphans its TH3_MP_* badge and bounds "
+                            "(P-TH3-DEL1)")
+        if "for(int k = ObjectsTotal(0, -1, -1) - 1; k >= 0; k--)" not in del_b:
+            problems.append("the delete sweep no longer walks the object list: member "
+                            "deletes remove nothing but themselves (P-TH3-DEL1)")
+        # P-TH3-DEL2: our own drops queue behind our draws - the anchors decide.
+        if "TH3FamilyAnchorsAlive(baseName)" not in del_b:
+            problems.append("the delete path no longer asks the anchors: a redraw's "
+                            "own overlay/proof drop wipes the whole ABCD "
+                            "(P-TH3-DEL2)")
+        if "g_th3OwnDeleteMs" not in del_b:
+            problems.append("the delete path lost its maintenance window: every "
+                            "member delete wipes, including the draw's own drops "
+                            "(P-TH3-DEL2)")
+        # P-TH3-DEL3: the window AND its stamp are WALL clock. TimeCurrent only
+        # moves when a tick arrives, so on a live chart a drop queued behind our
+        # own multi-second redraw read the window as already closed and wiped a
+        # healthy family; a frozen clock (no-tick chart) held it open forever.
+        # The window is the two-line test itself — the anchors ask AND the wall
+        # clock, together. A check on either half alone is satisfied by the
+        # other half's line elsewhere in the cascade (mutant 8q-15 walked through
+        # exactly that hole once the DEL3 guard named the anchors too).
+        # P-TH3-PB-DRAG-LOCK (2026-09-22): the window is 5 s, not 1 s - the
+        # band's resize can drag for several seconds and queue MP_* drops that
+        # read a 1 s window as already closed on a slow chart (the bug that
+        # survived the DEL3 fix).
+        if ("if(TH3FamilyAnchorsAlive(baseName)\n"
+            "           && GetTickCount() - g_th3OwnDeleteMs <= 5000)") not in del_b:
+            problems.append("the maintenance window lost its shape: the anchors "
+                            "and the WALL clock must ask together, or a drop "
+                            "queued behind our own redraw wipes the family "
+                            "(P-TH3-DEL2/DEL3 / P-TH3-PB-DRAG-LOCK)")
+        if "g_th3OwnDeleteMs = GetTickCount();" not in rend:
+            problems.append("the dropped-object stamp is back on the tick clock "
+                            "(P-TH3-DEL3)")
+        # P-TH3-DEL3: a caption member's drop is DISPLAY maintenance, never a
+        # delete trigger - but only while the family is alive. The anchors term
+        # is load-bearing: P-TH3-RESTORE's orphan sweep drops exactly those
+        # captions, and those rows carry the delete events that kill a broken
+        # family whole.
+        if "TH3IsInfoLabelName(sparam) && TH3FamilyAnchorsAlive(baseName)" not in del_b:
+            problems.append("a caption drop is a delete trigger again: every plate "
+                            "SetActive/Verify/Draw drops wipes a healthy ABCD "
+                            "(P-TH3-DEL3)")
+        if "bool TH3IsInfoLabelName(" not in rend:
+            problems.append("TH3IsInfoLabelName() is gone - the delete path cannot "
+                            "tell a caption member from a real one (P-TH3-DEL3)")
+        if "TH3PatternStoreGet(baseName, patH)" not in del_b:
+            problems.append("the delete path heals nothing back: an internally "
+                            "dropped member stays missing until an unrelated "
+                            "redraw (P-TH3-DEL2)")
+    return problems
+
+
+def check_th3_pb_lock():
+    """[pb-lock] - the base mark's PRESS-DRAG owns the chart view (P-TH3-PB-LOCK).
+
+    Reported: «وقتی بیس مبنا رو میکشم اسکرول پشتش باید قفل باشه که راحت بتونم
+    بکشم مثل بقیه». The base mark is a press-drag (P-TH3-PB-DRAG), and a
+    press-drag that holds no view lock lets the chart pan under the hand - the
+    same report the leg meter (P-LM-11) and the Base/Knot box (P-BK-62) each
+    answered. Four things must all hold, in the order the gesture needs them:
+
+      1. ACQUIRE on the press edge - the earliest moment the gesture is provably
+         ours.
+      2. ASSERT on the held pass (P-BK-14: a third writer can flip the props
+         mid-gesture).
+      3. RELEASE on EVERY end: the held-move release edge, a cancel
+         (right-click / B / leg-meter / draw steal), and the CHARTEVENT_CLICK
+         that carries a release no move ever reported (P-LM-13: a motionless
+         press/release emits no MOUSE_MOVE).
+      4. ChartLockIntended NAMES the owner. Without that term the 250 ms
+         ChartScrollReconcile reads our lock as a LEAK and hands the view back
+         under the hand mid-drag - which is the whole reason the accessor was
+         written (the P-LM-11 precedent, one for one).
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    press = body(tool, "void TH3BaseMarkDragPress(")
+    if press is None or "ChartViewLockAcquire()" not in press:
+        problems.append("the base mark's press edge never takes the view lock: "
+                        "the chart pans under the hand mid-drag (P-TH3-PB-LOCK)")
+    elif "s_bmViewLockHeld = true" not in press:
+        problems.append("the base mark's press edge takes the raw lock but never "
+                        "latches ownership, so nothing can release it "
+                        "(P-TH3-PB-LOCK)")
+    move = body(tool, "void TH3BaseMarkDragMove(")
+    if move is None or "ChartViewLockAssert()" not in move:
+        problems.append("the held pass stops re-asserting the view lock: a third "
+                        "writer flips the props mid-gesture (P-TH3-PB-LOCK)")
+    for what, src in (("the release edge", body(tool, "void TH3BaseMarkDragRelease(")),
+                      ("a cancel", body(tool, "void TH3BaseMarkCancel(")),
+                      ("the CLICK fallback", body(tool, "void OnABCDMouseEvent("))):
+        if src is None or "TH3BaseMarkViewRelease()" not in src:
+            problems.append("the base mark's view lock has no release on %s: the "
+                            "chart stays locked with nothing holding it "
+                            "(P-TH3-PB-LOCK)" % what)
+    own = body(tool, "bool TH3BaseMarkViewOwned(")
+    if own is None or "s_bmViewLockHeld" not in own:
+        problems.append("TH3BaseMarkViewOwned() no longer answers the gesture's "
+                        "own latch (P-TH3-PB-LOCK)")
+    intended = body(strip_comments(read(PANELS)), "bool ChartLockIntended(")
+    if intended is None or "TH3BaseMarkViewOwned()" not in intended:
+        problems.append("ChartLockIntended() does not name the base mark's lock: "
+                        "the 250 ms reconcile hard-releases it under the hand "
+                        "(P-TH3-PB-LOCK)")
+    return problems
+
+
+def check_th3_pb_band_drag_lock():
+    """[pb-band-drag-lock] - the BAND's anchor drag owns the chart view
+    (P-TH3-PB-DRAG-LOCK, 2026-09-22).
+
+    The press-drag [pb-lock] covers only the initial DRAW of the base mark.
+    The BAND itself (the committed rectangle the user draws with the press-drag
+    or two clicks) also gets dragged - resized by its own anchors, via
+    CHARTEVENT_OBJECT_DRAG. That second drag is its own gesture, and the
+    chart was panning under the hand during it because no owner held the
+    view lock.
+
+    Six things must all hold, in the order the gesture needs them:
+
+      1. ACQUIRE on the FIRST OBJECT_DRAG for the band - the earliest moment
+         we know the gesture is ours (MT4 owns the click that started the
+         resize).
+      2. ASSERT on every subsequent OBJECT_DRAG (P-BK-14: a third writer
+         flips the props mid-drag).
+      3. RELEASE on EVERY end: a button-up MOUSE_MOVE (a motionless release
+         never emits MOUSE_MOVE — P-BK-03 / P-LM-13), CHARTEVENT_CLICK on
+         the band, and the band's own delete path.
+      4. HEARTBEAT — a stuck terminal or an off-chart release leaves both
+         streams silent; the 250 ms timer is the only heal that doesn't need
+         the terminal to cooperate.
+      5. ChartLockIntended NAMES the owner — the same P-LM-11 / P-BK-62 rule
+         the press-drag [pb-lock] enforces.
+      6. The cascade recovery window holds a band drag end-to-end (5 s, not
+         1 s). The original 1 s window was tuned for a single commit; a
+         multi-second resize queues MP_* drops that read a 1 s window as
+         already closed on a slow chart and wipe a healthy ABCD.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    on_drag = body(tool, "void TH3BaseEditorOnDrag(")
+    if on_drag is None:
+        problems.append("TH3BaseEditorOnDrag() is gone - the band's resize has "
+                        "no owner (P-TH3-PB-DRAG-LOCK)")
+    else:
+        if "ChartViewLockAcquire()" not in on_drag:
+            problems.append("the band's anchor drag never takes the view lock: "
+                            "the chart pans under the hand mid-resize "
+                            "(P-TH3-PB-DRAG-LOCK)")
+        if "ChartViewLockAssert()" not in on_drag:
+            problems.append("the band's resize stops re-asserting the view lock: "
+                            "a third writer flips the props mid-drag "
+                            "(P-TH3-PB-DRAG-LOCK)")
+        if "s_bandDragLockHeld" not in on_drag:
+            problems.append("the band's resize takes the raw lock but never "
+                            "latches ownership, so nothing can release it "
+                            "(P-TH3-PB-DRAG-LOCK)")
+    on_delete = body(tool, "void TH3BaseEditorOnDelete(")
+    if on_delete is None or "ChartViewLockRelease()" not in on_delete:
+        problems.append("the band's delete path leaves the resize lock held: "
+                        "a user Delete leaks the view lock until the 250 ms "
+                        "reconcile (P-TH3-PB-DRAG-LOCK)")
+    heartbeat = body(tool, "void TH3BaseBandDragHeartbeat(")
+    if heartbeat is None or "ChartViewLockRelease()" not in heartbeat:
+        problems.append("the band's resize has no heartbeat heal: a stuck "
+                        "terminal or off-chart release leaks the lock forever "
+                        "(P-TH3-PB-DRAG-LOCK)")
+    move_handler = body(tool, "void OnABCDMouseEvent(")
+    if (move_handler is None
+        or "s_bandDragLockHeld && !leftButtonDown" not in move_handler
+        or "ChartViewLockRelease()" not in move_handler):
+        problems.append("the band's resize has no button-up release on the "
+                        "MOUSE_MOVE stream: a still release never emits "
+                        "MOUSE_MOVE — P-BK-03 / P-LM-13 (P-TH3-PB-DRAG-LOCK)")
+    own = body(tool, "bool TH3BaseBandDragViewOwned(")
+    if own is None or "s_bandDragLockHeld" not in own:
+        problems.append("TH3BaseBandDragViewOwned() no longer answers the "
+                        "band's resize latch (P-TH3-PB-DRAG-LOCK)")
+    intended = body(strip_comments(read(PANELS)), "bool ChartLockIntended(")
+    if intended is None or "TH3BaseBandDragViewOwned()" not in intended:
+        problems.append("ChartLockIntended() does not name the band's resize "
+                        "lock: the 250 ms reconcile hands the view back under "
+                        "the hand during a resize (P-TH3-PB-DRAG-LOCK)")
+    del_b = move_handler if move_handler is not None else tool
+    if "<= 5000" not in del_b:
+        problems.append("the cascade recovery window is back at 1 s: a band "
+                        "resize queues MP_* drops that wipe a healthy ABCD "
+                        "(P-TH3-PB-DRAG-LOCK)")
+    return problems
+
+
+def check_th3_band_gesture():
+    """[pb-band-gesture] - the band's press edge owns the view, and a click on
+    the TH3 tool's own objects never blanks the pattern (P-TH3-BAND-PRESS /
+    P-TH3-BANDSEL, 2026-09-22).
+
+    Two residuals survived P-TH3-PB-DRAG-LOCK, both from the same gesture -
+    aiming at the committed band at working zoom:
+
+      1. THE PRESS PAN. The resize lock was taken on the FIRST OBJECT_DRAG -
+         but between the press and that first event the terminal had already
+         begun the chart pan (the press that misses the anchor by a hair).
+         The press edge on the MOUSE_MOVE stream now hit-tests the band's
+         outline corridor and takes the lock there. The same early-out
+         (P-TH3-PERF-05) returned before the button-up release branch ever
+         ran, so the lock leaked to the 1.5 s heartbeat after EVERY resize -
+         the release branch must be reachable, which means the early-out must
+         name the live band gesture.
+      2. THE CLICK DESELECTION. CHARTEVENT_OBJECT_CLICK on anything that is
+         not an ABCD_Pattern_* member blanked the active pattern - and the
+         band's click, plus the click echo that follows EVERY band drag's
+         button-up, fell exactly there: the ladder masked, the caption plate
+         dropped, every later re-step redraw keeping them dark. The whole
+         ABCD read as deleted («بیس مبنا که میکشم ... باعث حذف abcd میشه»).
+         The TH3 tool's own namespace (TH3_BaseEditor, TH3_BaseMark_1,
+         TH3_P6_*, TH3_MP_*) is the pattern's own tooling - its click is a
+         no-op for activation.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    events = strip_comments(read(EVENTS))
+
+    hit = body(tool, "bool TH3BaseBandPressHit(")
+    if hit is None:
+        problems.append("TH3BaseBandPressHit() is gone - the band's press edge "
+                        "cannot claim the view and the chart pans before the "
+                        "first OBJECT_DRAG (P-TH3-BAND-PRESS)")
+    elif "TH3_BAND_HIT" not in hit or "ChartTimePriceToXY" not in hit:
+        problems.append("the band's press hit test lost its outline corridor "
+                        "or its pixel projection (P-TH3-BAND-PRESS)")
+
+    move_handler = body(tool, "void OnABCDMouseEvent(")
+    if move_handler is None:
+        problems.append("OnABCDMouseEvent() is gone (P-TH3-BAND-PRESS)")
+    else:
+        if "TH3BaseBandPressHit(" not in move_handler or \
+           "s_bandPressDown" not in move_handler:
+            problems.append("the move stream no longer claims the view on the "
+                            "press edge ON the band (P-TH3-BAND-PRESS)")
+        if "s_bandDragLockHeld && !leftButtonDown" not in move_handler:
+            problems.append("the band gesture's button-up release branch is "
+                            "gone from the move stream (P-TH3-PB-DRAG-LOCK)")
+        # The P-TH3-PERF-05 early-out must let a live band gesture (and a
+        # chart that carries a band) through, or the release edge above stays
+        # dead code and every resize leaks the lock to the heartbeat.
+        early = re.search(r"if\(id == CHARTEVENT_MOUSE_MOVE && !TH3SessionActive\(\) "
+                          r"&& !TH3BaseMarkArmed\(\)\s*\n\s*&&[^\n]*\)",
+                          tool)
+        if not early or "s_bandDragLockHeld" not in early.group(0):
+            problems.append("the idle-move early-out does not name the live "
+                            "band gesture: the button-up release branch is "
+                            "unreachable and every resize leaks the lock to "
+                            "the 1.5 s heartbeat (P-TH3-BAND-PRESS)")
+
+    # P-TH3-BANDSEL: the OBJECT_CLICK else-branch must not deselect on the
+    # TH3 tool's own namespace.
+    if "else if(StringFind(sparam, \"TH3_\") != 0)" not in events:
+        problems.append("a click on the TH3 tool's own objects blanks the "
+                        "active pattern again: the band's click (and every "
+                        "band drag's click echo) masks the ladder and drops "
+                        "the plate - the ABCD reads as deleted "
+                        "(P-TH3-BANDSEL)")
+    return problems
+
+
+def check_leg_plate_lifetime():
+    """[legplate] - the leg meter's readout is a VISITOR, and it belongs to the LINE
+    (P-LM-09, place retired by P-LM-23).
+
+    The reference leg meter prints its three rows in a dark plate ON the candles the
+    leg crosses. The tool's first cut did the same, and the user's own screenshot is
+    the report: a box over the price action is a box nobody reads, and one that stays
+    there is furniture the chart has to live with. Two rules came out of it, and this
+    gate exists so that neither can be dropped by a refactor:
+
+      1. PLACE (P-LM-23). The plate has ONE place: past the SECOND tip ALONG the
+         leg, LEG_INFO_GAP away, so the tip and its handle stay visible and the
+         plate reads as the label of the head. P-LM-07/09's seven-slot walk is
+         retired: it put the plate wherever was clear, and on the user's chart
+         that was up-left of the tip, ON the candles - «همیشه سر نوک دوم باشه».
+         A fallback slot is how the plate lands on candles, so the order, its
+         push, the hit test, the strip readers and the remembered slot must all
+         stay retired.
+      2. LIFETIME. `LEG_INFO_SHOW_MS` on a `GetTickCount()` deadline, swept from the
+         FULL entry's OnTimer (250 ms) so a tick-less chart expires it too, deleted
+         through ONE owner (which deletes the plate AND its three rows), never
+         resurrected by the follower, and brought back by a click on the leg -- the
+         line, because the plate itself is deliberately non-selectable (P-LM-05).
+
+    The direction is read OFF THE CODE (the placement is handed `tx - sx`), not
+    assumed: the plate is one line's label, and a tip-relative slot is exactly the
+    shape this rule replaced.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    entry = strip_comments(read(ENTRY))
+    lite = strip_comments(read(ENTRY_LITE))
+
+    m = re.search(r"(?m)^\s*#define\s+LEG_INFO_SHOW_MS\s+(-?\d+)", tool)
+    if not m:
+        problems.append("LEG_INFO_SHOW_MS is gone from TH3Tool - the plate's visit has "
+                        "no declared length, so 'it disappears' is a promise with no "
+                        "number behind it (P-LM-09)")
+    elif int(m.group(1)) <= 0:
+        problems.append("LEG_INFO_SHOW_MS is %s: a plate that never expires is the "
+                        "furniture this rule exists to remove (P-LM-09)" % m.group(1))
+
+    sweep = body(tool, "void LegMeasureExpireSweep(")
+    if sweep is None:
+        problems.append("LegMeasureExpireSweep() is gone - nothing ever ends a visit, so "
+                        "every readout ever drawn stays on the chart (P-LM-09)")
+    else:
+        if "LegMeasurePlateHide(" not in sweep:
+            problems.append("the sweep no longer hides a plate through its ONE owner: a "
+                            "second delete path is how a row outlives its plate (P-LM-09)")
+        if "TickDeadlinePending(g_legShownUntil[" not in sweep:
+            problems.append("the sweep no longer asks the visit's deadline through the "
+                            "wrap-safe owner (TickDeadlinePending): an absolute comparison "
+                            "against GetTickCount() never closes across the 49.7-day wrap "
+                            "(P-LM-09 / [tick-wrap])")
+        if "g_legPlateUp[" not in sweep:
+            problems.append("the sweep no longer asks whether a plate is UP: a 250 ms "
+                            "timer that re-deletes every measurement forever is work the "
+                            "expiry cannot need (P-PERF-02 / P-LM-09)")
+        if not re.search(r"if\(g_legCount\s*<=\s*0\)\s*return;", sweep):
+            problems.append("the sweep lost its empty-registry early exit: on a chart "
+                            "with no measurement it must cost one comparison "
+                            "(P-PERF-02 / P-LM-09)")
+
+    dele = body(tool, "void LegInfoBoxDelete(")
+    if dele is None:
+        problems.append("LegInfoBoxDelete() is gone - the plate and its three rows have "
+                        "no single delete owner (P-LM-09)")
+    else:
+        for nm in ('"_Box"', '"_Info"', '"_Info2"', '"_Info3"'):
+            if nm not in dele:
+                problems.append("LegInfoBoxDelete() no longer removes %s: the readout's "
+                                "family is FOUR objects, and every survivor is a dark bar "
+                                "or a stray row left on the chart (P-LM-09)" % nm)
+
+    hide = body(tool, "void LegMeasurePlateHide(")
+    if hide is None:
+        problems.append("LegMeasurePlateHide() is gone (P-LM-09)")
+    elif "LegInfoBoxDelete(" not in hide or "g_legPlateUp[" not in hide:
+        problems.append("hiding a plate no longer clears its flag and/or deletes through "
+                        "LegInfoBoxDelete(): the sweep and the click would disagree about "
+                        "whether the readout is on the chart (P-LM-09)")
+
+    show = body(tool, "void LegMeasurePlateShow(")
+    if show is None:
+        problems.append("LegMeasurePlateShow() is gone - a click has nothing to bring the "
+                        "readout back with (P-LM-09)")
+    else:
+        if "LegMeasureBoxFromLine(" not in show:
+            problems.append("the re-show path no longer rebuilds the plate from the LINE's "
+                            "own anchors: it would show a tip the line has left (P-LM-09)")
+        arm = show.find("g_legShownUntil[idx]")
+        build = show.find("LegMeasureBoxFromLine(")
+        if arm < 0 or "g_legPlateUp[idx]" not in show:
+            problems.append("showing a plate no longer re-arms the visit "
+                            "(g_legShownMs/g_legPlateUp): it would return only to vanish on "
+                            "the previous visit's clock (P-LM-09)")
+        elif build >= 0 and arm > build:
+            problems.append("the clock is re-armed AFTER the plate is rebuilt, so a rebuild "
+                            "that fails leaves a running timer and no plate (P-LM-09)")
+
+    # P-LM-11: the click is the EDIT owner's still press now (the family is not
+    # selectable, so no OBJECT_CLICK ever names it). The drag's END must bring the
+    # readout back on a click, and the STILL-CLICK branch specifically must — the
+    # moved path's own call does not answer a click.
+    click = body(tool, "void LegMeasureDragEnd(")
+    if click is None or "LegMeasurePlateShow(" not in click:
+        problems.append("a click on the leg no longer calls LegMeasurePlateShow(): the "
+                        "readout expires once and can never be read again, which is the "
+                        "half of P-LM-09 the user asked for by name (P-LM-09 / P-LM-11)")
+    if "        LegMeasurePlateShow(base);\n        return;" not in read(TH3TOOL):
+        problems.append("the STILL-CLICK branch no longer re-arms the visit (the moved "
+                        "path's own call is not a click): the readout becomes readable "
+                        "only right after a real drag (P-LM-09 / P-LM-11)")
+
+    follow = body(tool, "void LegMeasureFollowAll(")
+    if follow is None:
+        problems.append("LegMeasureFollowAll() is gone (P-LM-02)")
+    elif "g_legPlateUp[i]" not in follow:
+        problems.append("the follower no longer gates on g_legPlateUp[]: a scroll or a zoom "
+                        "re-opens a plate that has finished its visit (P-LM-09)")
+
+    # P-LM-23: ONE place - the walk and its memory are retired. A fallback slot
+    # is how the plate landed on the user's candles, so the order, its push,
+    # the hit test, the strip readers and the remembered slot must all stay gone.
+    for dead in ("LegInfoSlotOrder(", "LegInfoSlotPush(", "LegInfoHits(",
+                 "LegInfoStrip(", "LegMeasureSetSlot(", "g_legSlot"):
+        if dead in tool:
+            problems.append("%s survives in TH3Tool: the slot walk P-LM-23 retired is "
+                            "one call away from putting the plate back on the candles "
+                            "(P-LM-23)" % dead)
+
+    rect = body(tool, "void LegInfoSlotRect(")
+    if rect is None or "LEG_INFO_GAP" not in rect or "dirX" not in rect:
+        problems.append("LegInfoSlotRect() no longer stands past the tip ALONG the leg "
+                        "at the fixed gap: the plate's one place is gone (P-LM-23)")
+    elif "LEG_INFO_SLOT_" in rect:
+        problems.append("LegInfoSlotRect() still branches on slot ids: a second place "
+                        "for the plate is one call away (P-LM-23)")
+
+    if "LegInfoBoxPlace(base, tx, ty, tx - sx, ty - sy, txt, create);" not in tool:
+        problems.append("the plate is no longer placed from the leg's own direction (tip "
+                        "minus start, read back off the line): every candidate becomes "
+                        "tip-relative again (P-LM-09)")
+
+    top = body(tool, "void LegInfoBoxTop(")
+    if top is None or "LegInfoSlotRect(" not in top or "LegInfoClampY(" not in top:
+        problems.append("LegInfoBoxTop() no longer projects the one LINE rectangle and "
+                        "fits it in the window: the plate is not at the second tip (P-LM-23)")
+
+    place = body(tool, "void LegInfoBoxPlace(")
+    if place is None or "LegInfoBoxTop(" not in place:
+        problems.append("LegInfoBoxPlace() no longer goes through LegInfoBoxTop(): the "
+                        "plate is placed from somewhere the tip rule does not own (P-LM-23)")
+
+    gap = re.search(r"(?m)^\s*#define\s+LEG_INFO_GAP\s+(-?\d+)", tool)
+    if not gap:
+        problems.append("LEG_INFO_GAP is gone: the tip-to-plate distance has no declared "
+                        "value, so 'with a distance' is a promise with no number (P-LM-23)")
+    elif int(gap.group(1)) <= 0:
+        problems.append("LEG_INFO_GAP is %s: the plate sits ON the tip it must stand "
+                        "clear of, and the tip's own handle with it (P-LM-23)"
+                        % gap.group(1))
+
+    ontimer = body(entry, "void OnTimer(")
+    if ontimer is None or "LegMeasureExpireSweep();" not in ontimer:
+        problems.append("the FULL entry's OnTimer no longer runs LegMeasureExpireSweep(): a "
+                        "plate then expires only on a tick, i.e. never on a weekend or a "
+                        "dead symbol (P-LM-09)")
+    if "LegMeasureExpireSweep" in (body(lite, "void OnTimer(") or ""):
+        problems.append("the LITE entry runs the leg meter's sweep: Lite compiles the "
+                        "domain half and not this tool's UI (P-BUILD-01 / P-LM-09)")
+
+    return problems
+
+
+def check_leg_head_follow():
+    """[legdrag] - the leg is a CUSTOM trendline: the drag is ours, one pass, zero lag (P-LM-11).
+
+    The user's report: «الان خط جابجا میشه ولی اون دایره دیرتر میچسبه» — the line moved
+    under a NATIVE drag and the markers caught up late. P-LM-10 answered with three
+    follow channels and the race STAYED, because the race was the terminal moving one
+    object on its own paint schedule against us writing the others. So the race is
+    removed: NOTHING of a measurement is selectable, and the drag is the tool's own —
+    a press hit-tests the family in screen pixels, and every held move rewrites the
+    whole drawing (line, both rings, the mid handle, the head, the plate) from the
+    same anchors in the same MOUSE_MOVE event. What moves together, stays together.
+
+    Pinned here:
+
+      * THE HANDLES. `LegHandleAt` sizes an OBJ_ELLIPSE in SCREEN pixels by probing
+        the chart's own projection ±rpx — a ring of exactly rpx radius, centred on
+        the anchor from every direction, on every zoom (the user's «وسط باشه دقیقا
+        از هر جهت»; the retired OBJ_ARROW dot anchored at its glyph's corner, 1px
+        wide). `LegMeasureInk` builds the whole family through it and sets the line
+        SELECTABLE=false — a native drag is the very race this rule removes.
+      * THE ONE PASS. `LegMeasureEditMouse` is the edit's only entry, routed from
+        EventHandlers' MOUSE_MOVE; a live drag re-anchors through `LegMeasureInk`
+        ITSELF (LegMeasureDragApply — the same writer the fresh draw and the
+        migration use), the view lock is taken on the press and released on every
+        exit, a cancel restores the press-time snapshot, and the retired channels
+        (OBJECT_DRAG, the selection gate, the timer) must stay retired.
+      * THE HEAD STAYS RETIRED (P-LM-12). The user's verdict on the finished shape:
+        «پیکان نباشه سرش هر دو سر دایره باشه مثل این» — the drawing is the plain
+        line wearing its rings, no triangle head, in the committed family AND in
+        the draw preview. The retired `_Arrow`/`LM_prev_Arrow` names survive only
+        as sweeps (migration, deletes, `LegPreviewClear`), and the gate fails if
+        the shape owner (`LegArrowAt`) or an `OBJ_TRIANGLE` returns.
+      * THE DELETE PROMISE (P-LM-08) in its P-LM-17 shape: the line is
+        SELECTABLE again, so the terminal's OWN gestures answer - right-click
+        menu (Properties AND Delete), keyboard Delete on the selection, the
+        object list - and CHARTEVENT_OBJECT_DELETE cascades to the whole
+        family. The click-era gestures (virtual selection, the armed
+        right-click, the double-click) stay retired.
+      * P-LM-21: the native drag is disarmed for the drag's own duration, and
+        ONLY for it. Selectability (above) and MT4's armed native drag are two
+        different things: the terminal arms the drag at the press and then moves
+        ONE object on its own paint schedule, and the discs are separate bitmaps
+        it cannot carry, so the line slides out from under them mid-drag
+        («دایره ها از خط جدا میشه»). `LegMeasureDragSelectable` is the one
+        borrower: the drag turns the flag OFF once the gesture is a real drag
+        (never on a still press - the terminal's own click-selection, P-LM-20,
+        answers that), and BOTH exits (the commit and the abort) put it back,
+        or the leg stays deaf to every native gesture the moment after the user
+        first dragged it. A gate that borrows and never returns is a one-way
+        `SELECTABLE=false`, which is exactly the P-LM-17 bug with a new seat.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    events = strip_comments(read(EVENTS))
+    entry = strip_comments(read(ENTRY))
+
+    # ── P-LM-21: the drag borrows selectability, and must return it ──
+    sup = body(tool, "void LegMeasureDragSelectable(")
+    if sup is None:
+        problems.append("LegMeasureDragSelectable() is gone - the drag has no way to "
+                        "disarm MT4's native drag, and the line parts from its discs "
+                        "while the user drags it (P-LM-21)")
+    else:
+        if "OBJPROP_SELECTABLE" not in sup or "ObjectFind" not in sup:
+            problems.append("LegMeasureDragSelectable() does not guard its write on the "
+                            "line's own SELECTABLE: a drag on a deleted leg, or one "
+                            "written blind, is a property write on nothing (P-LM-21)")
+    edit = body(tool, "bool LegMeasureEditMouse(")
+    if edit is None or "LegMeasureDragSelectable(s_legDragBase, false)" not in edit:
+        problems.append("LegMeasureEditMouse() no longer disarms the native drag on the "
+                        "first held move: the terminal moves the trendline on its own "
+                        "paint schedule and the discs cannot follow it, so the family "
+                        "comes apart in the user's hand (P-LM-21)")
+    for name in ("void LegMeasureDragEnd(", "void LegMeasureDragAbort("):
+        fn = body(tool, name)
+        if fn is None or "LegMeasureDragSelectable(base, true)" not in fn:
+            problems.append("%s does not return the line's SELECTABLE: the drag borrowed "
+                            "it and a gesture that ends without returning it leaves the "
+                            "leg deaf to the right-click menu and keyboard Delete "
+                            "forever after (P-LM-21)" % name)
+
+    # ── the handles: baked icons, centred in screen pixels, never selectable ──
+    # (P-LM-16 split the owner: LegHandleAt only projects, LegHandleAtXY
+    # places — the pins below read the PLACE, which is where the rules live.)
+    hand = body(tool, "void LegHandleAtXY(")
+    if hand is None and body(tool, "void LegHandleAt(") is None:
+        problems.append("LegHandleAt()/LegHandleAtXY() are gone - the ring has no "
+                        "single owner, so the handles can drift off the exact-centre "
+                        "rule that replaced the glyph dot (P-LM-11)")
+    if hand is None:
+        hand = body(tool, "void LegHandleAt(") or ""
+    if hand is None:
+        problems.append("LegHandleAt() is gone - the ring has no single owner, so the "
+                        "handles can drift off the exact-centre rule that replaced the "
+                        "glyph dot (P-LM-11)")
+    else:
+        if "OBJ_BITMAP_LABEL" not in hand or "OBJPROP_BMPFILE" not in hand:
+            problems.append("LegHandleAt() is not a baked-icon bitmap label any more: "
+                            "chart-space rings drew as hairlines (an ellipse whose "
+                            "anchors share a bar) and the user asked for icons - "
+                            "«از ایکون بساز براش» (P-LM-13/14)")
+        if "x - half" not in hand or "y - half" not in hand:
+            problems.append("the icon is no longer CENTRED on its anchor (x/y - half): "
+                            "the handle hangs off the line end (P-LM-14)")
+        if "ChartTimePriceToXY" not in (body(tool, "void LegHandleAt(") or ""):
+            problems.append("LegHandleAt() no longer projects its anchor through the "
+                            "chart's own projection: the handle would not follow the "
+                            "line (P-LM-14)")
+        if "OBJPROP_SELECTABLE, false" not in hand:
+            problems.append("a handle is SELECTABLE again: MT4 would drag it alone, which "
+                            "is the separation this rule removes (P-LM-11)")
+    if "OBJ_ELLIPSE" in tool:
+        problems.append("a chart-space ellipse ring is back in the leg module: it drew "
+                        "as a hairline at working zoom - the handles are baked icons "
+                        "(P-LM-13/14)")
+    for res in ('leg_handle_up.bmp', 'leg_handle_up_mid.bmp',
+                'leg_handle_dn.bmp', 'leg_handle_dn_mid.bmp'):
+        if ('#resource "\\\\Files\\\\Icons\\\\' + res + '"') not in read(TH3TOOL):
+            problems.append("the handle icon %s has no #resource in TH3Tool: the bitmap "
+                            "stops embedding and the handles go blank (P-LM-14/17)" % res)
+        if res not in read(MANIFEST_PATH):
+            problems.append("the handle icon %s is not in the icon manifest: a #resource "
+                            "outside the manifest embeds a ghost (P-LM-14 / R-ICON)" % res)
+    if '#resource "\\\\Files\\\\Icons\\\\leg_handle.bmp"' in read(TH3TOOL) or \
+       '#resource "\\\\Files\\\\Icons\\\\leg_handle_del.bmp"' in read(TH3TOOL):
+        problems.append("a retired handle raster (the violet/del pair) is embedded again: "
+                        "the handles wear the leg's DIRECTION pair now (P-LM-17)")
+    hnd = body(tool, "void LegMeasureHandles(")
+    if hnd is None or "LEG_HANDLE_UP_RES" not in hnd or "LEG_HANDLE_DN_RES" not in hnd:
+        problems.append("LegMeasureHandles() no longer builds the family's three icon "
+                        "handles through the DIRECTION resource constants (P-LM-17)")
+    ro = body(tool, "void LegMeasureReadout(")
+    if ro is None or "LEG_BULL_INK" not in ro or "LEG_BEAR_INK" not in ro:
+        problems.append("the readout no longer answers the leg's DIRECTION ink "
+                        "(bull/bear, automatic): «رنگ لگ متر صعودی و نزول فرق بکنه "
+                        "خودکار» (P-LM-17)")
+    ink = body(tool, "void LegMeasureInk(")
+    if ink is None:
+        problems.append("LegMeasureInk() is gone - the family has no one writer, which is "
+                        "the one-pass guarantee itself (P-LM-11)")
+    else:
+        if "LegMeasureHandles(base" not in ink:
+            problems.append("the ink writer no longer builds the handles: a measurement "
+                            "can exist without its rings again (P-LM-11)")
+        if ink.count("OBJPROP_SELECTABLE, true") < 2:
+            problems.append("the leg's line is not SELECTABLE twice over (create + the "
+                            "refresh re-own): the terminal's own gestures (right-click "
+                            "Properties/Delete, keyboard Delete) answer the selection, and "
+                            "a line owned false on one path stays deaf - the user's «حذف "
+                            "مثل بقیه باشه» and «تنظیماتش مثل بقیه بیاد» (P-LM-17)")
+        # P-LM-17: the create branch alone is NOT enough - a leg drawn by the
+        # non-selectable era survives the migration through LegMeasureInk's
+        # refresh path, and a line that stays SELECTABLE=false never reaches
+        # MT4's right-click menu («مثل بقیه ابجکت ها دکمه دیلیچ نمیاد»).
+        # P-LM-21: the re-own is GATED now - while our own drag owns this base the
+        # flag must stay OFF (MT4's native drag parts the line from its discs), so
+        # the gate the check asks for is the pair, not the bare re-own line.
+        if "OBJPROP_SELECTABLE, true" not in ink or "dragOwnsThis" not in ink:
+            problems.append("the ink's refresh path no longer re-owns SELECTABLE, or lost "
+                            "the drag-owns-this gate on that re-own: a legacy leg (drawn "
+                            "before P-LM-17) stays non-selectable through the migration "
+                            "and its right-click Delete never comes, and a drag that "
+                            "re-owns mid-gesture re-arms the native drag that parts the "
+                            "line from its discs (P-LM-17 / P-LM-21)")
+        if "OBJPROP_ARROWCODE" in tool:
+            problems.append("a Wingdings glyph marker is being created again in the leg "
+                            "module: the dot was retired for a ring that is centred from "
+                            "every direction (P-LM-11)")
+    # ── P-LM-12: the head STAYS retired — the drawing is the plain line + rings ──
+    # The user's verdict: «پیکان نباشه سرش هر دو سر دایره باشه مثل این». The
+    # triangle projection, its shape owner and the preview's head are gone; the
+    # `_Arrow` name survives only as a retired name the sweep paths delete.
+    if "OBJ_TRIANGLE" in tool or "LegArrowAt" in tool:
+        problems.append("the leg's arrowhead is back: the user retired it - the drawing "
+                        "is the plain line wearing its rings, no head (P-LM-12)")
+    pre = body(tool, "void LegPreviewClear(")
+    if pre is None:
+        problems.append("LegPreviewClear() is gone - the preview's line has no single "
+                        "teardown (P-LM-10)")
+    else:
+        if '"LM_prev_Line"' not in pre:
+            problems.append("LegPreviewClear() no longer deletes \"LM_prev_Line\": the "
+                            "preview is left on the chart (P-LM-10)")
+    lineOcc = tool.count('ObjectDelete(0, "LM_prev_Line");')
+    if lineOcc != 1 or pre is None or 'ObjectDelete(0, "LM_prev_Line");' not in pre:
+        problems.append("the preview line is deleted %d time(s) in TH3Tool and not "
+                        "through LegPreviewClear() alone: one exit from the gesture then "
+                        "leaves the preview behind (P-LM-10)" % lineOcc)
+    if tool.count('"LM_prev_Arrow"') != 1 or pre is None or '"LM_prev_Arrow"' not in pre:
+        problems.append("the preview's retired head name is referenced outside its ONE "
+                        "retired-name sweep (LegPreviewClear): the preview is wearing an "
+                        "arrow again (P-LM-12)")
+
+    # ── the family still follows the CHART (scroll/zoom) through the follower ──
+    follow = body(tool, "void LegMeasureFollowAll(")
+    if follow is None:
+        problems.append("LegMeasureFollowAll() is gone (P-LM-02)")
+    elif "LegMeasureHandles(base" not in follow:
+        problems.append("the follower no longer re-projects the handles: a zoom leaves "
+                        "rings built for the previous scale (and the retired dot's sin, "
+                        "a marker off its anchor, again) (P-LM-02 / P-LM-11)")
+
+    # ── the edit owner and its three exits ──
+    edit = body(tool, "bool LegMeasureEditMouse(")
+    if edit is None:
+        problems.append("LegMeasureEditMouse() is gone - the drag has no owner, so "
+                        "nothing moves the family in lockstep any more (P-LM-11)")
+    else:
+        for need in ("LegMeasureHitTest(", "ChartViewLockAcquire()", "ChartViewLockHeld()",
+                     "LegMeasureDragApply(", "LegMeasureDragEnd(", "LegMeasureDragAbort(",
+                     "LegMeasureRideChart();",
+                     "if(s_legDragMode != 0 && pressed) LegMeasureDragEnd();"):
+            if need not in edit:
+                problems.append("LegMeasureEditMouse() lost `%s`: the press/drag/cancel/"
+                                "release state machine is incomplete (P-LM-11)" % need)
+        if "g_legSess.active" not in edit:
+            problems.append("the edit owner no longer stands down while the draw session "
+                            "is ARMED: a press could start a drag instead of a new "
+                            "measurement (P-LM-11)")
+    apply_ = body(tool, "void LegMeasureDragApply(")
+    if apply_ is None or "LegMeasureInk(" not in apply_:
+        problems.append("the drag step no longer re-anchors through LegMeasureInk() - the "
+                        "family's ONE writer: parts written elsewhere move on a different "
+                        "schedule, which is the lag this rule removes (P-LM-11)")
+    abort = body(tool, "void LegMeasureDragAbort(")
+    if abort is None or "ChartViewLockRelease()" not in abort or "s_legSnapT1" not in abort:
+        problems.append("the cancel path is gone or no longer restores the press-time "
+                        "snapshot (s_legSnapT1) / no longer releases the view lock: a "
+                        "right-click mid-drag would leave the leg moved and the chart "
+                        "scroll-locked (P-UI-90 / P-LM-11)")
+    end = body(tool, "void LegMeasureDragEnd(")
+    if end is None:
+        problems.append("LegMeasureDragEnd() is gone - the release has no owner (P-LM-11)")
+    else:
+        if "ChartViewLockRelease()" not in end:
+            problems.append("the release no longer gives the view back: one drag locks "
+                            "scroll + context menu forever (P-UI-90 / P-LM-11)")
+        if "LegMeasureReadout(" not in end:
+            problems.append("the release no longer recomputes the readout from the FINAL "
+                            "anchors: the plate would advertise the numbers of the leg as "
+                            "the press found it (P-LM-03 / P-LM-11)")
+        if "LegMeasureDelete(" in end:
+            problems.append("the CLICK gesture deletes directly again: deletion belongs "
+                            "to the terminal's OWN selection gestures (right-click menu, "
+                            "keyboard Delete) - a stray click must never cost a drawing "
+                            "(P-LM-17)")
+    # ── P-LM-17: the selection/delete gestures of the non-selectable era stay retired
+    for dead in ("LegMeasureSelectionDelete", "s_legSelBase", "LegMeasureArmDelete",
+                 "LegMeasureDisarm", "s_legDelArmBase", "LEG_CTX_HOLD_MS"):
+        if dead in tool:
+            problems.append("%s is back in TH3Tool: the click/right-click delete "
+                            "gestures were rejected («دابل کلیک سخته», «حذف مثل بقیه "
+                            "باشه») - the terminal's own selection answers now "
+                            "(P-LM-17)" % dead)
+
+    # ── the motionless click's release (P-LM-13) ──
+    fin = body(tool, "void LegMeasureClickFinalize(")
+    if fin is None or "LegMeasureDragEnd(" not in fin or "s_legDragMoved" not in fin:
+        problems.append("LegMeasureClickFinalize() is gone - a motionless press/release "
+                        "emits no MOUSE_MOVE, so the drag state sticks live: the view "
+                        "lock stays held, the plate hangs, and the Delete key finds no "
+                        "selection («چرا نمیشه حذفش کرد») (P-LM-13)")
+    if "if(id == CHARTEVENT_CLICK) LegMeasureClickFinalize();" not in events:
+        problems.append("CHARTEVENT_CLICK no longer reaches LegMeasureClickFinalize(): "
+                        "the motionless click has no release path (P-LM-13)")
+
+    # ── the retired channels must stay retired ──
+    for dead in ("LegMeasurePickUp", "LegMeasurePickedUp", "LegMeasureFollowHeld",
+                 "LegMeasureFollowTimer", "LEG_FOLLOW_MS"):
+        if dead in tool:
+            problems.append("%s is back in TH3Tool: a follow channel chases a native drag "
+                            "that no longer exists - the race this rule removed is back "
+                            "with it (P-LM-11)" % dead)
+    if "LegMeasureEditMouse((int)lparam" not in events:
+        problems.append("EventHandlers no longer routes MOUSE_MOVE to the edit owner "
+                        "(LegMeasureEditMouse): the drag has no event to move in (P-LM-11)")
+    if "LegMeasureFollowHeld" in events or \
+       "CHARTEVENT_OBJECT_DRAG && StringFind(sparam, TH3_LEG_PREFIX)" in events:
+        problems.append("a retired drag channel is wired again in EventHandlers "
+                        "(FollowHeld / the leg OBJECT_DRAG branch) (P-LM-11)")
+    if "LegMeasureSelectionDelete()" in events:
+        problems.append("the retired virtual-selection Delete route is wired again in "
+                        "EventHandlers (P-LM-17)")
+    if "LegMeasureOnObjectDelete(sparam)" not in events:
+        problems.append("EventHandlers no longer cascades the NATIVE delete of the leg's "
+                        "line (LegMeasureOnObjectDelete): a right-click-menu or keyboard "
+                        "deletion leaves the icons and the plate behind (P-LM-08 / "
+                        "P-LM-17)")
+    if "LegMeasureFollowTimer" in (body(entry, "void OnTimer(") or ""):
+        problems.append("the FULL entry's OnTimer still runs the retired drag channel "
+                        "(LegMeasureFollowTimer) (P-LM-11)")
+    if "LegMeasureRideChart();" not in (body(entry, "void OnTimer(") or ""):
+        problems.append("the FULL entry's OnTimer no longer runs the handles' third "
+                        "riding channel (LegMeasureRideChart): a scroll that reports "
+                        "neither mouse move nor chart change leaves the dots behind "
+                        "(P-LM-16b)")
+
+    return problems
+
+
+def check_leg_selection():
+    """[leg-sel] - the selection has a FACE (P-LM-18).
+
+    The user: «حالت سلکتش با سلکت نبودنش اصلا متوجه نمیشیم همش یک شکله متر لگ» —
+    the line is SELECTABLE again (P-LM-17), but a selected leg looked EXACTLY
+    like a resting one: MT4's own anchor squares hide UNDER the baked handle
+    icons, so nothing on the drawing answered the selection.
+
+    Pinned here:
+
+      * ONE READER. `LegMeasureSelected()` reads the terminal's OWN
+        `OBJPROP_SELECTED` off the `_Line` — a cached second opinion of the
+        selection is the lie that made the two states look alike in the first
+        place.
+      * THE HOLLOW PAIR. While selected, the three solid dots swap to the
+        hollow `_sel` rasters (same canvases, same centres, so the grab radii
+        and the exact-centre rule are untouched); all four are `#resource`d and
+        manifest-listed.
+      * THE WIDER LINE. `LEG_LINE_W` -> `LEG_LINE_W_SEL` through the guarded
+        writers on channels that are ALREADY running — `LegMeasureInk`'s
+        refresh (so a drag on a selected leg keeps the width) and
+        `LegMeasureRideChart` (so a native click that selects the leg is
+        answered on the next mouse-move/timer pass). No new event channel,
+        therefore nothing to lag.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    sel = body(tool, "bool LegMeasureSelected(")
+    if sel is None or "OBJPROP_SELECTED" not in sel or "_Line" not in sel:
+        problems.append("LegMeasureSelected() is gone or no longer reads the terminal's "
+                        "own OBJPROP_SELECTED off the `_Line`: a cached second opinion of "
+                        "the selection is what made the two states look alike (P-LM-18)")
+    hnd = body(tool, "void LegMeasureHandles(")
+    if hnd is None or "LEG_HANDLE_UP_SEL_RES" not in hnd \
+            or "LEG_HANDLE_DN_SEL_RES" not in hnd \
+            or "LEG_HANDLE_UP_MID_SEL_RES" not in hnd \
+            or "LEG_HANDLE_DN_MID_SEL_RES" not in hnd:
+        problems.append("LegMeasureHandles() no longer swaps to the HOLLOW pair while "
+                        "the leg is selected: a selected leg reads exactly like a "
+                        "resting one - «حالت سلکتش با سلکت نبودنش ... یک شکله» (P-LM-18)")
+    for res in ('leg_handle_up_sel.bmp', 'leg_handle_up_mid_sel.bmp',
+                'leg_handle_dn_sel.bmp', 'leg_handle_dn_mid_sel.bmp'):
+        if ('#resource "\\\\Files\\\\Icons\\\\' + res + '"') not in read(TH3TOOL):
+            problems.append("the selected-handle icon %s has no #resource in TH3Tool: "
+                            "the bitmap stops embedding and the selected face goes "
+                            "blank (P-LM-18)" % res)
+        if res not in read(MANIFEST_PATH):
+            problems.append("the selected-handle icon %s is not in the icon manifest: a "
+                            "#resource outside the manifest embeds a ghost "
+                            "(P-LM-18 / R-ICON)" % res)
+    ride = body(tool, "void LegMeasureRideChart(")
+    if ride is None or "LegMeasureLineWidth" not in ride or "OBJPROP_WIDTH" not in ride:
+        problems.append("LegMeasureRideChart() no longer re-widths the line on the ride "
+                        "channels: a native click that selects the leg never widens it - "
+                        "the state change has no event left to answer in (P-LM-18)")
+    ink = body(tool, "void LegMeasureInk(")
+    if ink is None or "LegMeasureLineWidth" not in ink:
+        problems.append("LegMeasureInk() no longer wears the selection width in its own "
+                        "pass: a drag on a selected leg drops the wider line mid-gesture "
+                        "(P-LM-18)")
+    if "LEG_LINE_W_SEL" not in tool:
+        problems.append("the selected line width (LEG_LINE_W_SEL) is gone - the width "
+                        "half of the selection face has no constant to wear (P-LM-18)")
+    return problems
+
+
+def check_leg_direction():
+    """[leg-dir] - the leg's own direction answers everything that draws it (P-LM-19).
+
+    The user (2026-09-21): «لگ نزول قرمز و لگ صعودی آبی پررنگ» and «۵۰ درصد
+    دقیقا ۵۰ درصد باشه». P-LM-17 made the committed line directional; P-LM-19
+    closes the three paths that were still drawing the leg in a colour it does not
+    have, plus the one geometry rule the dot's centring depends on.
+
+    Pinned here:
+
+      * THE USER'S TWO COLOURS, and they must stay DISTINCT. An up leg is the
+        STRONG BLUE `LEG_BULL_INK`, a down leg the RED `LEG_BEAR_INK`. Both are
+        saturated mid-tone so the baked icons' white halo reads on white AND
+        black charts. A gate that lets them converge to one colour silently
+        retires the direction axis while every name still exists.
+      * THE DRAG WRITES THE LEG'S OWN DIRECTION. `LegMeasureDragApply` used to
+        re-ink the family through the fixed violet `LEG_INK`, so a green leg
+        turned violet the moment the hand touched it and went back on release —
+        and a leg dragged past horizontal kept its old colour while the geometry
+        under it had flipped.
+      * THE PREVIEW ANSWERS THE SAME QUESTION BEFORE THE RELEASE. The dashed
+        draft wore the violet too, so the user could not see which leg he was
+        drawing until it was drawn.
+      * THE ATR IS THE LABELS' OWN COMPOSITE. `LegAtr14` was a plain Wilder
+        iATR(14) — a second volatility ruler next to the Trex composite the
+        strip, the knots and the trade-plan labels all read. The user:
+        «از همون ATRهای ترکیبی که استفاده کردیم و در لیبل‌ها هست استفاده بشه
+        و از چیز جدیدی استفاده نشه». The function is now a thin caller of
+        `CalculateWeightedATR`, which already owns its multi-TF TTL cache, so a
+        chart whose labels are current serves the readout a cached fetch.
+      * THE DOT'S CENTRE IS THE DOT'S PLACEMENT. The baked rasters are 15px (ends)
+        and 11px (mid) with the disc at canvas pixel 7 / 5; placing the icon at
+        the GRAB radius (`LEG_HANDLE_R` 6 / `LEG_HANDLE_MID_R` 4) sat the visual
+        centre one pixel past the anchor. The placement offsets
+        (`LEG_HANDLE_HALF` 7 / `LEG_HANDLE_MID_HALF` 5) are the geometry; the
+        grab radii are hit-test business and may not stand in for them again.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    gen = read(GENICONS)
+
+    bull = re.search(r"(?m)^\s*#define\s+LEG_BULL_INK\s+C'(\d+),(\d+),(\d+)'", tool)
+    bear = re.search(r"(?m)^\s*#define\s+LEG_BEAR_INK\s+C'(\d+),(\d+),(\d+)'", tool)
+    if not bull:
+        problems.append("LEG_BULL_INK is gone - the up leg has no colour of its own (P-LM-19)")
+    if not bear:
+        problems.append("LEG_BEAR_INK is gone - the down leg has no colour of its own (P-LM-19)")
+    if bull and bear:
+        br, bg, bb = (int(bull.group(i)) for i in (1, 2, 3))
+        rr, rg, rb = (int(bear.group(i)) for i in (1, 2, 3))
+        if (br, bg, bb) == (rr, rg, rb):
+            problems.append("LEG_BULL_INK and LEG_BEAR_INK are the SAME colour: the leg meter's "
+                            "direction axis is retired in everything but name (P-LM-19)")
+        # the user asked for a STRONG BLUE up leg and a RED down one. A green or
+        # a grey up leg is the P-LM-17 palette, which the user replaced.
+        if not (bb > max(br, bg) and bb >= 120):
+            problems.append("LEG_BULL_INK is no longer a strong blue: the user asked for "
+                            "«آبی پررنگ» on the up leg and this is not it (P-LM-19)")
+        if not (rr > max(rg, rb) and rr >= 150):
+            problems.append("LEG_BEAR_INK is no longer a red: the user asked for «قرمز» on "
+                            "the down leg and this is not it (P-LM-19)")
+
+    # the drag's ink: the direction answer, read off the anchors it is writing
+    drag = body(tool, "void LegMeasureDragApply(")
+    if drag is None or "dragInk" not in drag or "LEG_BULL_INK" not in drag \
+            or "LEG_BEAR_INK" not in drag:
+        problems.append("LegMeasureDragApply() no longer re-inks the leg in its OWN "
+                        "direction: a coloured leg turns violet under the hand and a leg "
+                        "dragged past horizontal keeps its old colour (P-LM-19)")
+    if drag is not None and "LEG_INK" in drag:
+        problems.append("LegMeasureDragApply() still writes the fixed violet LEG_INK: the "
+                        "drag repainted a green leg violet and put it back on release "
+                        "(P-LM-19)")
+    # the abort restores the SNAPSHOT, and the snapshot's own direction with it
+    abort = body(tool, "void LegMeasureDragAbort(")
+    if abort is None or "LEG_INK" in abort:
+        problems.append("LegMeasureDragAbort() restores the snapshot in the fixed violet: a "
+                        "cancelled drag leaves the leg in a colour it never had (P-LM-19)")
+
+    # the preview: the direction the drag is heading, before the release
+    prev = body(tool, "bool LegMeasureMouseMove(")
+    if prev is None or "preCol" not in prev:
+        problems.append("LegMeasureMouseMove() lost its preview colour: the dashed draft "
+                        "has no ink to wear (P-LM-19)")
+    elif "LEG_INK" in prev:
+        problems.append("the draw preview still wears the fixed violet LEG_INK: the user "
+                        "cannot see whether the leg he is drawing is up or down until the "
+                        "release (P-LM-19)")
+    elif "LEG_BULL_INK" not in prev or "LEG_BEAR_INK" not in prev:
+        problems.append("the draw preview ignores the leg's direction: the dashed draft no "
+                        "longer answers «سبز یا قرمز؟» — blue or red — before the "
+                        "release (P-LM-19)")
+
+    # the ATR: the labels' own composite, not a second ruler
+    atr = body(tool, "double LegAtr14(")
+    if atr is None:
+        problems.append("LegAtr14() is gone - the readout has no ATR owner (P-LM-19)")
+    else:
+        if "CalculateWeightedATR" not in atr:
+            problems.append("LegAtr14() no longer reads the labels' own composite "
+                            "(CalculateWeightedATR): the box and the strip carry two "
+                            "different ATRs for one timeframe - «از چیز جدیدی استفاده "
+                            "نشده» is violated (P-LM-19)")
+        if "iATR(" in atr:
+            problems.append("LegAtr14() still reads a raw iATR: a second Wilder ruler next "
+                            "to the composite the labels read is exactly the duplication "
+                            "the user asked to retire (P-LM-19)")
+        if "s_legAtr" in tool or "LEG_ATR_SLOTS" in tool:
+            problems.append("the leg meter's own ATR memo table survives in front of the "
+                            "composite's own TTL cache: a second cache for one number, "
+                            "and the one behind it is already keyed by the bar count "
+                            "(P-LM-19)")
+
+    # the dot's placement offset is the canvas centre, not the grab radius
+    for name, half, radius in (("LEG_HANDLE_HALF", 7, "LEG_HANDLE_R"),
+                               ("LEG_HANDLE_MID_HALF", 5, "LEG_HANDLE_MID_R")):
+        m = re.search(r"(?m)^\s*#define\s+%s\s+(\d+)" % name, tool)
+        if not m:
+            problems.append("%s is gone - the %s canvas has no placement offset, so the "
+                            "icon's visual centre is back on the grab radius (P-LM-19)"
+                            % (name, "15px" if half == 7 else "11px"))
+            continue
+        if int(m.group(1)) != half:
+            problems.append("%s is %s but the canvas centres its disc at pixel %d: the "
+                            "handle sits off its anchor (P-LM-19)" % (name, m.group(1), half))
+        r = re.search(r"(?m)^\s*#define\s+%s\s+(\d+)" % radius, tool)
+        if r and int(r.group(1)) == half:
+            problems.append("%s has converged on %s: the grab radius is again standing in "
+                            "for the placement offset, which is the off-centre bug "
+                            "(P-LM-19)" % (radius, name))
+    handles = body(tool, "void LegMeasureHandles(")
+    if handles is None or "LEG_HANDLE_HALF" not in handles \
+            or "LEG_HANDLE_MID_HALF" not in handles:
+        problems.append("LegMeasureHandles() no longer places the icons at their canvas "
+                        "centres: the ends and the mid dot drift off their anchors - the "
+                        "«دقیقا وسط» rule (P-LM-19)")
+    if handles is not None and re.search(r"MathRound\(\(\(double\)sx \+ \(double\)tx\) \* 0\.5\)",
+                                         handles) is None:
+        problems.append("the mid handle no longer rounds the EXACT pixel midpoint of the "
+                        "two projected ends: integer division truncates toward zero and "
+                        "the dot sits a pixel off the line's true 50%% (P-LM-19)")
+
+    # the generator's palette must wear the same two colours the line wears
+    upm = re.search(r"(?m)^\s*const LEG_UP_RGB\s*=\s*\[(\d+),\s*(\d+),\s*(\d+)\]", gen)
+    dnm = re.search(r"(?m)^\s*const LEG_DN_RGB\s*=\s*\[(\d+),\s*(\d+),\s*(\d+)\]", gen)
+    if not upm or not dnm:
+        problems.append("gen-th3-icons.js lost its LEG_UP_RGB/LEG_DN_RGB pair: the baked "
+                        "handles have no direction palette to bake (P-LM-19)")
+    else:
+        for label, m, want in (("LEG_UP_RGB", upm, (31, 95, 255)),
+                               ("LEG_DN_RGB", dnm, (224, 64, 64))):
+            got = tuple(int(m.group(i)) for i in (1, 2, 3))
+            if got != want:
+                problems.append("%s is %s, out of step with the line's ink %s: the baked "
+                                "icons and the line disagree about the leg's direction "
+                                "(P-LM-19)" % (label, got, want))
+    return problems
+
+
+def check_leg_tf():
+    """[leg-tf] - the leg meter's TF badge is the course's 240-360% band (P-LM-22).
+
+    The course (PDF pp. 74, 106): a leg IS three ATRs of its own TF. The user
+    (2026-09-21): the leg's TF is the one where the leg reads 240%..360% of
+    that TF's ATR, otherwise it belongs to a higher or a lower TF. The
+    readout's line 1 already prints the leg as a share of H1/H4/D1, so the
+    owner TF is the TF that lands in that band.
+
+    Pinned here:
+
+      * THE BAND IS THE USER'S TWO NUMBERS. `TH3_LEG_TF_LO` 2.40 and
+        `TH3_LEG_TF_HI` 3.60. A band that drifts (or a midpoint that stops
+        being 3.0) re-badges legs the course would hand to another TF.
+      * THE WALK READS THE LABELS' COMPOSITE, one chain step at a time.
+        `TH3LegOwnerTF` judges each TF through `LegAtr14` (the labels' own
+        composite, P-LM-19 - never a raw `iATR`), and climbs/descends the
+        chain with `TH3FractalStepTF`: above the band the leg belongs higher,
+        below it lower.
+      * A TF WITH NO HISTORY IS NOT A READING. The walk clears `trusted`
+        there and stops on the last judged TF - the readout's contract (a
+        guessed 1.0 is a lie the migration refuses to write) is unchanged.
+      * THE READOUT ASKS THE WALK, NOT THE BAR COUNT. `LegMeasureReadout`
+        names `TH3LegOwnerTF(legSize, ...)`; the closed step's bar-count gate
+        (`TH3ClosedOwnerTF`, P-TH3-STEP-08/10) answers which GRID owns the
+        pattern's B->C leg, and a free measurement wearing it could read D1
+        on line 3 while line 1 showed 140% of H4.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+
+    lo = re.search(r"(?m)^\s*#define\s+TH3_LEG_TF_LO\s+([\d.]+)", tool)
+    hi = re.search(r"(?m)^\s*#define\s+TH3_LEG_TF_HI\s+([\d.]+)", tool)
+    mid = re.search(r"(?m)^\s*#define\s+TH3_LEG_TF_MID\s+([\d.]+)", tool)
+    if not lo or not hi:
+        problems.append("TH3_LEG_TF_LO/HI is gone - the leg's TF band has no declared "
+                        "numbers, so '240-360%' is a promise with no value behind it (P-LM-22)")
+    elif abs(float(lo.group(1)) - 2.40) > 1e-9 or abs(float(hi.group(1)) - 3.60) > 1e-9:
+        problems.append("the leg's TF band is %s-%s, not the user's 2.40-3.60: legs the "
+                        "course hands to another TF are badged here (P-LM-22)"
+                        % (lo.group(1), hi.group(1)))
+    if mid is not None and abs(float(mid.group(1)) - 3.00) > 1e-9:
+        problems.append("TH3_LEG_TF_MID is %s, not 3.00: the bracket/straddle fallback no "
+                        "longer aims at the leg's own three ATRs (P-LM-22)" % mid.group(1))
+
+    walk = body(tool, "int TH3LegOwnerTF(")
+    if walk is None:
+        problems.append("TH3LegOwnerTF() is gone - the readout has no size-based TF owner (P-LM-22)")
+    else:
+        if "LegAtr14(" not in walk:
+            problems.append("TH3LegOwnerTF() no longer judges through LegAtr14(): the walk "
+                            "reads a second volatility ruler next to the labels' composite "
+                            "(P-LM-19/22)")
+        if "iATR(" in walk:
+            problems.append("TH3LegOwnerTF() reads a raw iATR: a second Wilder ruler next to "
+                            "the composite the labels read (P-LM-19/22)")
+        if "TH3FractalStepTF(" not in walk:
+            problems.append("TH3LegOwnerTF() no longer climbs the chain with TH3FractalStepTF(): "
+                            "above-the-band no longer means a higher TF (P-LM-22)")
+        if "trusted = false" not in walk:
+            problems.append("TH3LegOwnerTF() no longer clears trusted on a TF with no history: "
+                            "a readout built on an unjudged step is printed as read (P-LM-22)")
+
+    ro = body(tool, "void LegMeasureReadout(")
+    if ro is None:
+        problems.append("LegMeasureReadout() is gone (P-LM-03)")
+    else:
+        if "TH3LegOwnerTF(" not in ro:
+            problems.append("LegMeasureReadout() no longer asks TH3LegOwnerTF(): line 3's TF "
+                            "badge is not the 240-360% band (P-LM-22)")
+        if "TH3ClosedOwnerTF(" in ro:
+            problems.append("LegMeasureReadout() answers the bar-count gate (TH3ClosedOwnerTF) "
+                            "again: a free measurement wears the closed step's grid rule, and "
+                            "line 3 can contradict line 1's own columns (P-LM-22)")
+    return problems
+
+
+def check_leg_sel_atomic():
+    """[leg-sel-atomic] - the selection is ONE drawing, assembled in ONE pass (P-LM-20).
+
+    The user (2026-09-21): «موقع سلکت دایره‌ها بهم مریزه چرا اینا جز از یک چیز
+    باید باشن و به هیچ وجه در هیچ سناریویی نباید بهم بریزن». The face was built
+    from PIECES, each guarded and each correct alone: the line's width in one writer,
+    the three handle rasters in another, the selection flag read by both at whatever
+    moment each ran. A still click on the selectable line reports
+    CHARTEVENT_OBJECT_CLICK — not a mouse move — so the flag changed BETWEEN two of
+    those writers, and the family assembled itself out of state: a 3px line under
+    the resting solid discs, or the selected rasters under a 2px line.
+
+    Pinned here:
+
+      * ONE ATOMIC REPAINT. `LegMeasureSelectionRepaint()` reads the terminal's own
+        flag once and feeds the whole family through the ONE ink writer, so the
+        line's width and the three discs cannot be written by two passes that
+        disagreed.
+      * THE TERMINAL'S OWN EVENT. `LegMeasureOnObjectClick()` answers
+        CHARTEVENT_OBJECT_CLICK, which is the ONLY channel a still click on a
+        selectable line reaches; a repaint that waits for the next mouse move is
+        the race the user saw. A click OFF the family deselects the line, and the
+        router's else-branch must answer that too.
+      * THE DISCS PAINT ABOVE THE LINE. The handles carry an explicit ZORDER above
+        the line's own; at the default 0 MT4 ties creation order, and the line is
+        always created before its handles — so the selection's widened line painted
+        OVER the discs that sit on its own ends and halved them.
+      * THE SHADOW IS NOT AN AUTHORITY. `LegMeasureSelShadowMoved` only spots a
+        CHANGE to answer; it must never BE the selection (the terminal owns the
+        flag, and the object list, a script or a keyboard Delete can flip it
+        outside any event we see). Its forget must run on the delete path, or a
+        re-created leg of the same stamp inherits another leg's painted state.
+    """
+    problems = []
+    tool = strip_comments(read(TH3TOOL))
+    events = strip_comments(read(EVENTS))
+
+    rep = body(tool, "void LegMeasureSelectionRepaint(")
+    if rep is None:
+        problems.append("LegMeasureSelectionRepaint() is gone - the selection has no "
+                        "atomic answer, and the face is assembled from pieces again "
+                        "(P-LM-20)")
+    else:
+        if "LegMeasureInk(" not in rep:
+            problems.append("LegMeasureSelectionRepaint() does not feed the family "
+                            "through the ONE ink writer: the line and the discs are "
+                            "written by separate passes that can disagree about the "
+                            "selection (P-LM-20)")
+        if "OBJPROP_WIDTH" in rep or "LegMeasureHandles(" in rep:
+            problems.append("LegMeasureSelectionRepaint() writes the width or the "
+                            "handles directly instead of through LegMeasureInk: a "
+                            "second writer is exactly how the face desynchronised "
+                            "(P-LM-20)")
+
+    clk = body(tool, "bool LegMeasureOnObjectClick(")
+    if clk is None:
+        problems.append("LegMeasureOnObjectClick() is gone - a still click on the "
+                        "selectable line reports OBJECT_CLICK and nothing else, so the "
+                        "selection changes between two ride passes and the discs "
+                        "«به هم مریزه» (P-LM-20)")
+    elif "LegMeasureSelectionRepaint(" not in clk:
+        problems.append("LegMeasureOnObjectClick() does not call the atomic repaint: "
+                        "the terminal names the object it selected and the answer is "
+                        "still deferred to the next mouse move (P-LM-20)")
+    elif "TH3_LEG_PREFIX" not in clk or "_Line" not in clk:
+        problems.append("LegMeasureOnObjectClick() no longer gates on the leg's own "
+                        "prefix and _Line suffix: a foreign object's click repaints a "
+                        "family it does not own (P-LM-20)")
+
+    # the router must carry OBJECT_CLICK to the handler, and answer a DESELECT too
+    if "LegMeasureOnObjectClick" not in events:
+        problems.append("EventHandlers does not route CHARTEVENT_OBJECT_CLICK to "
+                        "LegMeasureOnObjectClick: the terminal's own selection event "
+                        "never reaches the family (P-LM-20)")
+    else:
+        branch = stmt_body(events, "if(id == CHARTEVENT_OBJECT_CLICK)")
+        if branch is None or "LegMeasureOnObjectClick" not in branch:
+            problems.append("the OBJECT_CLICK branch lost its LegMeasureOnObjectClick "
+                            "call: a still click selects the line and nothing answers "
+                            "it (P-LM-20)")
+        if branch is None or "LegMeasureRideChart" not in branch:
+            problems.append("the OBJECT_CLICK branch lost its else-branch ride: a click "
+                            "elsewhere DESELECTS the line, and without re-reading every "
+                            "flag the family keeps the selected face on a leg the "
+                            "terminal no longer has selected (P-LM-20)")
+
+    # the discs must paint above the line. P-LM-20's rung carries its own Z_ ladder
+    # name now (`Z_CHART_LEG_HANDLE`, declared right above Z_CHART_TOOL): the Z
+    # ladder IS the paint order the zorder audit proves, and a rung named outside
+    # it could not be placed. The rung is written, never read back - the zorder
+    # audit bans OBJPROP_ZORDER reads in product code (P-UI-31's rule).
+    if "Z_CHART_LEG_HANDLE" not in tool:
+        problems.append("Z_CHART_LEG_HANDLE is gone - the discs have no paint order "
+                        "over the line, and the widened selection line covers its own "
+                        "handles (P-LM-20)")
+    else:
+        xy = body(tool, "void LegHandleAtXY(")
+        if xy is None or "OBJPROP_ZORDER" not in xy:
+            problems.append("LegHandleAtXY() never writes the handle ZORDER: the discs "
+                            "stay at the default 0 and the line paints over them at "
+                            "every width (P-LM-20)")
+        if xy is None or xy.count("Z_CHART_LEG_HANDLE") < 2:
+            problems.append("LegHandleAtXY() sets the ZORDER only at CREATE: a leg the "
+                            "pre-ZORDER build drew keeps its default 0 forever, and the "
+                            "migration is the only pass that reaches it (P-LM-20)")
+        if xy is not None and "ObjectGetInteger(0, hn, OBJPROP_ZORDER)" in xy:
+            problems.append("the handle's rung is read back before it is written - a "
+                            "z-order read is a diagnostic, and the zorder audit bans "
+                            "it in product code (P-UI-31 / P-LM-20)")
+
+    # the shadow must stay a shadow
+    sh = body(tool, "bool LegMeasureSelShadowMoved(")
+    if sh is None:
+        problems.append("LegMeasureSelShadowMoved() is gone - the ride pass has no way "
+                        "to spot a selection change, so it re-paints nothing and the "
+                        "face rides stale until the next chart event (P-LM-20)")
+    elif "ObjectGetInteger" in sh or "OBJPROP_SELECTED" in sh or "LegMeasureSelected(" in sh:
+        problems.append("LegMeasureSelShadowMoved() reads the terminal's selection "
+                        "itself: it is a SHADOW of the painted state, never an "
+                        "authority — the object list or a script can flip the flag "
+                        "outside any event we see (P-LM-20)")
+    forg = body(tool, "void LegMeasureSelShadowForget(")
+    if forg is None:
+        problems.append("LegMeasureSelShadowForget() is gone - a deleted measurement's "
+                        "painted state outlives it, and a re-created leg of the same "
+                        "stamp inherits it (P-LM-20)")
+    dele = body(tool, "void LegMeasureDelete(")
+    if dele is None or "LegMeasureSelShadowForget" not in dele:
+        problems.append("LegMeasureDelete() does not forget the selection shadow: the "
+                        "shadow outlives the family and the next leg of that stamp "
+                        "starts in a state it never earned (P-LM-20)")
+    ride = body(tool, "void LegMeasureRideChart(")
+    if ride is None or "LegMeasureSelShadowMoved" not in ride:
+        problems.append("LegMeasureRideChart() does not spot selection changes: a "
+                        "selection that arrives by any other path (the object list, a "
+                        "script) is never answered, and the face waits on the chart "
+                        "to move (P-LM-20)")
     return problems
 
 
@@ -3266,6 +4966,1065 @@ def check_th_percent():
     return problems
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# P-UI-98 / P-UI-99 (2026-09-21) — THE FIRST STEP IS DRAGGABLE, AND THE HOLD
+# IS RETIRED.
+#
+# P-UI-98: in custom-price start-point mode the rung-1 trigger lines are the
+# user's step handle. User order: «در مود کاستوم پرایس step اول قابل ویرایش
+# باشه که کاربر با درگ کردن از همون جا گام دلخواهشو در تمام مود ها بتونه اعمال
+# بکنه که به صورت خودکار با همون نسبت ها در تایم ها دیگه اعمال بشه ... فقط
+# step اول قابل ویرایش باشه بقیه نه». The rules that make it real:
+#   1. the handle match is EXACT and selective — custom-price mode only, the
+#      _Zone_ rectangles excluded, the step number suffix-exact;
+#   2. the drag math divides by the F-FREE natural first step the factory
+#      noted (no second copy of the per-mode first-step logic);
+#   3. ONE factor multiplies the factory's step sizes (the SS/LS pair keeps
+#      its ratio) — and the geometry signature carries it, or a drag reads as
+#      the same picture (the P-UI-52 trap with a new seat);
+#   4. the render skips the dragged line's own writes (P-BK-15) — and the
+#      selectability face is owned in that refresh path, step 1 ONLY;
+#   5. the release settles: forced frame, deselect, the view back — and the
+#      stale-drag heal drops the flags a lost release would pin forever;
+#   6. the override is the placement's property — it resets with it, dies on
+#      REASON_REMOVE, and the R reset clears it;
+#   7. the override has ONE writer, bounded, chart-scoped.
+# P-UI-99: the custom-price line's hold-to-arm is RETIRED by user order
+# («اون هولد از خط کاستوم پرایس بردار ... کلیک شو بقیه ابجکت ها در حین درگ
+# کردن روش ندزده») — the claim is immediate and the select/deselect pair
+# carries the comfort. A retirement is a state this audit must see: no hold
+# define, no hold statics, the immediate claim and the foreign-drag drain both
+# present.
+# ─────────────────────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# P-UI-98 / P-UI-98d / P-UI-99 (2026-09-21) — THE FIRST STEP IS DRAGGABLE, THE
+# HAND-SET LINES ARM/SET, AND THE HOLD IS RETIRED.
+#
+# P-UI-98: in custom-price start-point mode the rung-1 trigger lines are the
+# user's step handle. User order: «در مود کاستوم پرایس step اول قابل ویرایش
+# باشه که کاربر با درگ کردن از همون جا گام دلخواهشو در تمام مود ها بتونه اعمال
+# بکنه که به صورت خودکار با همون نسبت ها در تایم ها دیگه اعمال بشه ... فقط
+# step اول قابل ویرایش باشه بقیه نه». The rules that make it real:
+#   1. the handle match is EXACT and selective — custom-price mode only, the
+#      _Zone_ rectangles excluded, the step number suffix-exact;
+#   2. the drag math divides by the F-FREE natural first step the factory
+#      noted (no second copy of the per-mode first-step logic);
+#   3. ONE factor multiplies the factory's step sizes (the SS/LS pair keeps
+#      its ratio) — and the geometry signature carries it, or a drag reads as
+#      the same picture (the P-UI-52 trap with a new seat);
+#   4. the render skips the dragged line's own writes (P-BK-15), the face is
+#      owned AFTER the guarded creator (its fresh objects are born
+#      non-selectable — the reported «الان step اول قابل درگ کردن نیستش»),
+#      and the handle sits at a z-order above the zone fills that would
+#      otherwise eat the grab;
+#   5. the release settles: forced frame, deselect, the view back — the
+#      stale-drag heal drops the flags a lost release would pin forever;
+#   6. the override is the placement's property — it resets with it, dies on
+#      REASON_REMOVE, and the R reset clears it;
+#   7. the override has ONE writer, bounded, chart-scoped.
+# P-UI-98d: the ARMED/SET contract — «وقتی بعد جابجایی روش کلیک شد ست نهایی
+# بشه و با دبل کلیک فعال بشه؛ تا زمانی که ست نهایی نشده آزادنه درگ بشه». A
+# single click SETS (deferred past the double-click window in the pending
+# slots; the sweep commits — the sweep that rides BOTH always-on channels),
+# a double-click re-arms, a drag's own click echo sets nothing, and a SET line
+# is inert so no other object's drag can steal it. The markers are ONE small
+# dot per line at the right edge (green custom line, red step-1 — «یک نشانه
+# باشه که خیلی مزاحم هم نباشه»), they obey the LINES switch («وقتی لاین ها رو
+# خاموش میکنم نشان ها هم نباشه»), and a SET line's dot is DELETED, not masked,
+# so no mask writer can resurrect it.
+# P-UI-99: the custom-price line's hold-to-arm is RETIRED by user order
+# («اون هولد از خط کاستوم پرایس بردار ... کلیک شو بقیه ابجکت ها در حین درگ
+# کردن روش ندزده») — the claim is immediate and ARMED-gATED, and the
+# select/deselect pair carries the comfort. A retirement is a state this
+# audit must see: no hold define, no hold statics, the immediate claim and
+# the foreign-drag drain both present.
+# ─────────────────────────────────────────────────────────────────────────────
+def check_step1():
+    problems = []
+    events = read(EVENTS)
+    glob = read(GLOBALS)
+    pipe = read(PIPELINE)
+
+    def body(src, head):
+        i = src.find(head)
+        if i < 0:
+            return ""
+        j = src.find("\n}", i)
+        return src[i:j if j > 0 else len(src)]
+
+    # 1. the handle match  (P-UI-98f: the render's own stash names the pair)
+    match_fn = body(events, "bool Step1LineIsDragHandle(")
+    if not match_fn:
+        problems.append("Step1LineIsDragHandle() is gone - no drag handle, no "
+                        "editable first step (P-UI-98)")
+    else:
+        if "TH_START_POINT_CUSTOM_PRICE" not in match_fn:
+            problems.append("the handle match forgot the custom-price gate - a "
+                            "computed midpoint ladder would be draggable too, "
+                            "and its step cannot be set by hand (P-UI-98)")
+        if ("g_s1MarkAboveName" not in match_fn or
+                "g_s1MarkBelowName" not in match_fn):
+            problems.append("the handle match no longer asks the render's own "
+                            "stash - the handle is the line ONE STEP from the "
+                            "custom price, which is _Above_1 above but _Below_2 "
+                            "below, so no name-tail rule can name it and the "
+                            "channels would answer a different line than the "
+                            "one the pick chose (P-UI-98f)")
+        if "g_s1MarkPeriod != Period()" not in match_fn:
+            problems.append("the handle match answers another timeframe's pair "
+                            "again - the stashed handle belongs to the TF it "
+                            "was drawn on (P-UI-98e)")
+        if "StringSubstr(name, len - 8, 8)" in match_fn:
+            problems.append("the retired name-tail match is back - a suffix "
+                            "cannot name _Below_2, so the below handle would be "
+                            "invisible to the drag, the click and the "
+                            "terminal's own channel (P-UI-98f)")
+
+    # 1b. P-UI-98f: WHICH LINE IS THE HANDLE, AND ON WHICH SIDE.
+    pick_fn = body(pipe, "void Step1HandlePick(")
+    if not pick_fn:
+        problems.append("Step1HandlePick() is gone - the handle is chosen by "
+                        "rung number again, and the ladder's below rung 1 is "
+                        "the line drawn ON the custom price line (P-UI-98f)")
+    else:
+        if "stepNow * 0.5" not in pick_fn:
+            problems.append("a line drawn on the custom price line can carry "
+                            "the step-1 handle again - its red icon lands on the "
+                            "green one (the reported «اون قرمز خیلی نزدیک کاستوم "
+                            "پرایس») and a hair of a downward drag collapses the "
+                            "ladder to a fraction of a step (P-UI-98f)")
+        if "MathAbs(dist - stepNow)" not in pick_fn:
+            problems.append("the pick no longer chooses the line nearest ONE "
+                            "step from the custom price (P-UI-98f)")
+        if "lines[i].direction" not in pick_fn:
+            problems.append("the pick no longer answers one handle per SIDE - "
+                            "one line would shadow the other and a drag would "
+                            "move the wrong side (P-UI-98f)")
+    if ("Step1HandlePick(lines, lineCount, GetMidpointPrice(g_thStartPointType),"
+            not in pipe):
+        problems.append("the render does not pick the handle off the custom "
+                        "price line's own anchor (P-UI-98f)")
+    if "StepOverrideFactor() * NaturalFirstStep()" not in pipe:
+        problems.append("the pick measures against a step of its own instead of "
+                        "the project's ONE current step (F x the F-free natural "
+                        "first step) - the picked pair could change mid-drag and "
+                        "hand the gesture to another line (P-UI-98f)")
+    if "lines[i].name == s1AboveName || lines[i].name == s1BelowName" not in pipe:
+        problems.append("the render's face gate is not the picked pair - the "
+                        "handle and the drag/click channels would answer "
+                        "different lines (P-UI-98f)")
+    if "lines[i].logicalStep == 1" in pipe:
+        problems.append("the retired rung-1 gate is back in the render - the "
+                        "ladder's below rung 1 IS the custom price line "
+                        "(P-UI-98f)")
+    above_fn = body(events, "bool Step1LineIsAbove(")
+    if not above_fn:
+        problems.append("Step1LineIsAbove() is gone - the drag math has to read "
+                        "the side off a name tail again, and the below handle is "
+                        "not _Below_1 (P-UI-98f)")
+    hit_fn = body(events, "bool Step1HandleUnderCursor(")
+    if not hit_fn:
+        problems.append("Step1HandleUnderCursor() is gone - the press never "
+                        "names the handle it landed on (P-UI-98e)")
+    elif "g_s1MarkPeriod != Period()" not in hit_fn:
+        problems.append("the press can be answered by another timeframe's "
+                        "stash - the handle belongs to the TF it was drawn on "
+                        "(P-UI-98e)")
+
+    # 2. the drag math
+    apply_fn = body(events, "void Step1LineDragApply(")
+    if not apply_fn:
+        problems.append("Step1LineDragApply() is gone - the drag events have no "
+                        "owner (P-UI-98)")
+    else:
+        if "NaturalFirstStep()" not in apply_fn:
+            problems.append("the drag math re-derives the first step instead of "
+                            "reading the factory-noted F-free one - a second "
+                            "copy of the per-mode logic that will drift "
+                            "(P-UI-98)")
+        if "StepOverrideFactorSet(" not in apply_fn:
+            problems.append("the drag does not write the override through its "
+                            "ONE writer (P-UI-98)")
+        if "CustomPriceDragFrame(" not in apply_fn:
+            problems.append("the drag runs its own redraw budget instead of "
+                            "sharing the custom-price drag's ONE frame owner "
+                            "(P-UI-61 / P-UI-98)")
+        if "newFirst < _Point" not in apply_fn:
+            problems.append("the wrong-side drop is not refused - a step across "
+                            "the start is not a small step, it is no step "
+                            "(P-UI-98)")
+        if "bool above = Step1LineIsAbove(name);" not in apply_fn:
+            problems.append("the drag math still decides the side by name tail - "
+                            "the below handle is _Below_2, so it would be read "
+                            "as the above one and the sign of the drag would "
+                            "invert (P-UI-98f)")
+        if "s_s1GrabDist = MathAbs(dragged - start);" not in apply_fn:
+            problems.append("the drag takes no press baseline - every mode "
+                            "whose drawn pair does not sit at EXACTLY one step "
+                            "(SS/LS, Factor) would snap the ladder the instant "
+                            "the hand closed, and a phantom drag would "
+                            "re-scale it (P-UI-98f)")
+        elif "s_s1GrabFactor * (newFirst / s_s1GrabDist)" not in apply_fn:
+            problems.append("the drag no longer scales the factor relative to "
+                            "the grab - the handle does not keep its own offset "
+                            "from the custom price line (P-UI-98f)")
+
+    # 2b. P-UI-98f: the carry's stand-down must ask "is the terminal STILL
+    # moving it", not "does the price differ from our last write".
+    move_fn = body(events, "void Step1HandleOwnDragMove(")
+    if not move_fn:
+        problems.append("Step1HandleOwnDragMove() is gone - the handle's own "
+                        "carry has no owner (P-UI-98e)")
+    else:
+        if "bool terminalLive" not in move_fn or "s_s1SeenPrice = current;" not in move_fn:
+            problems.append("the carry stands down on 'the price differs from my "
+                            "last write' instead of 'the terminal moved it since "
+                            "the previous event': MT4's armed drag ends as soon as "
+                            "the claim borrows SELECTABLE, so a price it moved ONCE "
+                            "leaves the carry standing down with nobody moving the "
+                            "line - «هی قطع میشه موقع درگ کردن» (P-UI-98f)")
+        if "s_s1SeenPrice = wishPrice;" not in move_fn:
+            problems.append("the carry does not record its own write as the seen "
+                            "price - the next event reads its own write as the "
+                            "terminal moving the line and stands down again "
+                            "(P-UI-98f)")
+
+    # 2c. the gesture's own state has ONE clear owner, and it runs after the
+    # echo stamp (which reads the base it clears).
+    settle_fn = body(events, "void Step1DragSettle(")
+    heal_fn = body(events, "void CustomPriceDragHealStale(")
+    for b, who in ((settle_fn, "the settle"), (heal_fn, "the stale-drag heal")):
+        if not b or "Step1GestureStateClear()" not in b:
+            problems.append("%s does not clear the gesture's own state through its "
+                            "ONE owner - a path that leaves the grab base, the "
+                            "press baseline and the seen price behind poisons the "
+                            "NEXT gesture (P-UI-98f)" % who)
+    if settle_fn and "Step1GestureStateClear()" in settle_fn and \
+            "g_s1JustDraggedMs = GetTickCount();" in settle_fn and \
+            settle_fn.index("Step1GestureStateClear()") < \
+            settle_fn.index("g_s1JustDraggedMs = GetTickCount();"):
+        problems.append("the settle clears the gesture's state BEFORE its echo "
+                        "stamp - the stamp reads the grab base the clear wipes, so "
+                        "no drag is ever recognised as one and every release SETs "
+                        "the handle it just moved (P-UI-98f)")
+
+    # 3. the factory application + the signature term
+    if "NaturalFirstStepNote(def.stepSizes[s1FirstIdx]);" not in events:
+        problems.append("the factory's natural first step is not noted - the "
+                        "drag denominator would be zero or stale (P-UI-98)")
+    if "def.stepSizes[s1i] *= s1Factor;" not in events:
+        problems.append("the override no longer multiplies the factory's step "
+                        "sizes - the dragged step would not reach the ladder "
+                        "(P-UI-98)")
+    if "DoubleToString(StepOverrideFactor(), 6)" not in events:
+        problems.append("the geometry signature dropped the override term - a "
+                        "drag would read as the same picture and the ladder "
+                        "would not move until a forced frame (P-UI-52 / "
+                        "P-UI-98)")
+
+    # 3b. P-UI-98g — THE CIRCLES COME WHEN YOU CLICK («فقط وقتی روش کلیک کردیم
+    # دایره ها بیاد برای درگ کردن»): ARMED is not SHOWN. Every circle owner asks
+    # the reveal latch, the click writes it on BOTH lines, our own drags reveal as
+    # well (a hand on the line is the loudest request), and a SET, a fresh
+    # placement and the placement's teardown all take it away again.
+    markers_fn = body(events, "void CustomPriceMarkerSync(")
+    choose_fn = body(events, "bool Step1HandleOwnClaim(")
+    arm_fn = body(events, "void HandsetPlacementArm(")
+    sweep_fn = body(events, "void HandsetClickSweep(")
+    teardown_fn = body(events, "void CleanupCustomPriceObjects(")
+    ride_fn = body(events, "void HandsetMarkersRide(")
+    reveal_checks = (
+        # P-UI-98q: the green circle IS the placement's face (the line is never
+        # painted): it shows whenever the placement is live, with no reveal
+        # latch and no LINES switch. The latch survives only as the armed
+        # click-flow state, never as a visibility term.
+        (markers_fn and "bool show = g_customPriceLineCreated &&" in markers_fn and
+         "g_cpHandleShown" not in markers_fn and "g_linesVisible" not in markers_fn,
+         "CustomPriceMarkerSync gates the green circle on the reveal latch or "
+         "the LINES switch again - a live placement shows no marker until "
+         "clicked, or hides it with the line family (P-UI-98q)"),
+        (ride_fn and "g_s1HandleShown" in ride_fn,
+         "the ride channel places the red circles without the reveal latch - a "
+         "pan resurrects a handle the user never asked for (P-UI-98g)"),
+        ("    if(!g_cpHandleShown)\n" in events,
+         "the click on the custom price line no longer brings the green handle "
+         "up - armed-but-unshown would have no way to become shown (P-UI-98g)"),
+        (choose_fn and "g_cpHandleShown = true;" in events,
+         "a drag of the custom price line no longer reveals its handle - the "
+         "hand is on the line and no circle comes (P-UI-98g)"),
+        (choose_fn and "g_s1HandleShown = true;" in choose_fn,
+         "a drag of a step-1 line no longer reveals its handle - the hand is on "
+         "the line and no circle comes (P-UI-98g)"),
+        (arm_fn and "g_cpHandleShown = false;" in arm_fn and
+         "g_s1HandleShown = false;" in arm_fn,
+         "a fresh placement is no longer born hidden - the circles are back the "
+         "moment the line is placed (P-UI-98g)"),
+        (sweep_fn and "g_s1HandleShown = false;" in sweep_fn,
+         "a SET no longer takes the red circles away - nothing may point at a "
+         "line nothing can grab (P-UI-98g)"),
+        (sweep_fn and "g_cpHandleShown = false;" in sweep_fn,
+         "a SET no longer takes the green circle away (P-UI-98g)"),
+        (teardown_fn and "g_cpHandleShown = false;" in teardown_fn and
+         "g_s1HandleShown = false;" in teardown_fn,
+         "the placement's teardown leaves the reveal latches set - the next "
+         "placement inherits a shown handle it never asked for (P-UI-98g)"),
+    )
+    for ok, msg in reveal_checks:
+        if not ok:
+            problems.append(msg)
+
+    # 3c. P-UI-98m - A SET CUSTOM LINE IS HIDDEN, ITS GREEN CIRCLE IS THE
+    # MARKER («وقتی سلکت نیس فقط دایره سبز بمونه»). A masked line fires no
+    # OBJECT_CLICK, so the re-arm is a row-based click contract (the press
+    # edge records, the button-up and CHARTEVENT_CLICK edges ask it, the
+    # circle's own click is the third edge), and a single click is a no-op -
+    # only a double re-arms.
+    cpmark_fn = body(events, "void CustomPriceMarkerSync(")
+    ownarm_fn = body(events, "void CustomPriceLineOwnArm(")
+    creator_fn = body(events, "bool CreateCustomPriceLine(")
+    rearm_fn = body(events, "void CustomPriceRearmClickAt(")
+    rearmfin_fn = body(events, "void CustomPriceRearmFinalize(")
+    # P-UI-98q: the green raster reads one size up (19 px) and centres with
+    # its own half; the grab tolerance covers the visible circle.
+    hath_fn = body(glob, "void HandsetHandleAt(")
+    if "#define CP_HANDLE_HALF       9" not in glob:
+        problems.append("the green circle lost its own half: a 19 px raster "
+                        "centred with the reds' half sits off its price "
+                        "(P-UI-98q)")
+    if "CP_HANDLE_HALF : HANDSET_HANDLE_HALF" not in (hath_fn or ""):
+        problems.append("the projector centres every raster with one half: "
+                        "the bigger green circle is mis-centred (P-UI-98q)")
+    # P-UI-98o: the green circle ignores the LINES switch - it marks the
+    # placement itself, so L hides the lines and the red circles but never it.
+    if "g_linesVisible" in (cpmark_fn or ""):
+        problems.append("the green circle obeys the LINES switch: with lines "
+                        "off (L key) the custom price marker disappears with "
+                        "them, though it marks the placement itself (P-UI-98o)")
+    if "armMask" in (ownarm_fn or "") or "OBJ_ALL_PERIODS" in (ownarm_fn or "") or \
+            "OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS" not in (ownarm_fn or ""):
+        problems.append("the transition paints the custom line again: it is "
+                        "never painted (the green circle is the placement), "
+                        "the mask is only ever re-asserted (P-UI-98p)")
+    if "armMask" in (creator_fn or "") or "OBJ_ALL_PERIODS" in (creator_fn or "") or \
+            "OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS" not in (creator_fn or ""):
+        problems.append("the creator paints the custom line: a fresh line "
+                        "arrives visible though the line is never painted "
+                        "(P-UI-98p)")
+    showall_fn = body(events, "int ApplyHideAllState(")
+    if "g_customPriceHorizontalLineName" in (showall_fn or ""):
+        problems.append("the F show path resurrects the custom line: it is "
+                        "never painted in any state (P-UI-98p)")
+    # P-UI-98p: NEVER-PAINTED, enforced every frame. The creator and the
+    # transition skip mid-gesture, and a stuck gesture flag births the next
+    # line visible - one guarded read per frame re-masks on drift.
+    if "if(lineExists &&" not in events:
+        problems.append("the never-painted mask has no per-frame enforcer: a "
+                        "line leaked visible (stuck gesture flag at creation, "
+                        "profile restore) stays painted (P-UI-98p)")
+    if not rearm_fn:
+        problems.append("CustomPriceRearmClickAt() is gone - a masked SET "
+                        "line fires no OBJECT_CLICK, so nothing can re-arm it "
+                        "any more (P-UI-98m)")
+    else:
+        for needle, why in (
+            ("if(g_cpLineArmed) return;",
+             "an armed press would enter the re-arm contract beside the "
+             "line's own click owner"),
+            ("ObjectFind(0, g_customPriceHorizontalLineName) < 0",
+             "re-arming a deleted line arms nothing"),
+            ("g_cpClickHandledMs",
+             "one physical click reaches two edges and reads as a double"),
+            ("if(!dbl) return;",
+             "a single click re-arms: the first click of a double fires "
+             "first, and a deliberate look costs a drag"),
+            ("CustomPriceLineOwnArm(true);",
+             "the re-arm never transitions the line")):
+            if needle not in rearm_fn:
+                problems.append("the custom re-arm owner lost '%s': %s (P-UI-98m)"
+                                % (needle, why))
+    if not rearmfin_fn or "if(!g_cpClickArmed) return;" not in rearmfin_fn or \
+            "if(!UILeftButtonUp()) return;" not in rearmfin_fn:
+        problems.append("the still click on a SET line never finalizes: a "
+                        "motionless press/release emits no MOUSE_MOVE "
+                        "(P-BK-03 / P-UI-98m)")
+    if "if(id == CHARTEVENT_CLICK) CustomPriceRearmFinalize();" not in events:
+        problems.append("the CHARTEVENT_CLICK edge never reaches the custom "
+                        "re-arm finalize (P-UI-98m)")
+    if "if(pixelHit && !g_cpLineArmed)" not in events:
+        problems.append("the press edge records no re-arm candidate on a SET "
+                        "line: the row nobody can click wakes nothing "
+                        "(P-UI-98m)")
+    if "if(g_cpClickArmed)" not in events:
+        problems.append("the button-up never asks the re-arm candidate "
+                        "(P-UI-98m)")
+    if "sparam == g_cpMarkerName" not in events:
+        problems.append("the green circle's own click never reaches the "
+                        "re-arm owner (P-UI-98m)")
+
+    # 4. the render side: face AFTER creation, above the zones, dot owned
+    face_fn = body(pipe, "void Step1HandleOwnFace(")
+    if not face_fn:
+        problems.append("the selectability face has no owner in the render - "
+                        "a state that changed under the chart is never "
+                        "re-owned (P-UI-98)")
+    else:
+        if "TH_START_POINT_CUSTOM_PRICE" not in face_fn:
+            problems.append("the face owner does not gate selectability on the "
+                            "custom-price mode (P-UI-98)")
+        if "OBJPROP_SELECTABLE" not in face_fn or "OBJPROP_SELECTED" not in face_fn:
+            problems.append("the face owner no longer writes the select/"
+                            "deselect pair (P-UI-98)")
+        if "ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_LABEL)" not in face_fn:
+            problems.append("the handle lost its z-order above the zone fills - "
+                            "a rectangle under the cursor eats the grab and "
+                            "step 1 is not draggable again (P-UI-98)")
+        if "S1MarkName(" not in face_fn or "S1_HANDLE_RES" not in face_fn:
+            problems.append("the step-1 marker handle has no owner in the face - "
+                            "the red circular drag icon the user asked for is "
+                            "gone (P-UI-98d v2)")
+        if "HandsetHandleAt(mark" not in face_fn:
+            problems.append("the red handle is not placed through the shared "
+                            "screen-middle projector - two placement idioms "
+                            "drift (P-UI-98d v2)")
+        if "HandsetHandlePark(mark, S1_HANDLE_RES)" not in face_fn:
+            problems.append("a SET handle's icon is left on the chart - a set "
+                            "line cannot be grabbed, so nothing may point at it "
+                            "either (P-UI-98d v2)")
+        if "g_s1MarkAboveName" not in face_fn or "g_s1MarkBelowName" not in face_fn:
+            problems.append("the face owner no longer stashes the armed handles' "
+                            "own OBJECT NAMES: the grab hit test cannot name the "
+                            "line it claims without walking the chart, and the "
+                            "carry does not know what to move (P-UI-98e)")
+        if "g_linesVisible" not in face_fn:
+            problems.append("the handle's show condition forgot the LINES "
+                            "switch - the markers must obey the L switch with "
+                            "the lines (P-UI-98d v2)")
+    create_idx = pipe.find("CreateOrUpdateHLine(lines[i].name")
+    face_idx = pipe.find("Step1HandleOwnFace(lines[i].name")
+    if create_idx < 0:
+        problems.append("the render no longer creates lines through the "
+                        "guarded creator (P-UI-98)")
+    elif face_idx < 0:
+        problems.append("the face owner is never called from the render "
+                        "(P-UI-98)")
+    elif face_idx < create_idx:
+        problems.append("the face is owned BEFORE the creator - a fresh line is "
+                        "born SELECTABLE=false and the face write lands on "
+                        "nothing, so the handle stays un-grabbable until a "
+                        "topology change re-renders (P-UI-98)")
+    if "Step1HandleOwnFace(lines[i].name, lines[i].price, lines[i].direction," not in pipe:
+        problems.append("the face call does not pass the price/direction the "
+                        "marker dot needs (P-UI-98d)")
+    if "if(g_s1DragLive && lines[i].name == g_s1DragName)" not in pipe:
+        problems.append("the render's drag-skip is gone - a write on the line "
+                        "MT4 is dragging cancels that drag (P-BK-15 / P-UI-98)")
+    if "lines[i].logicalStep == 1 &&\n           lines[i].name == g_s1DragName" in pipe:
+        problems.append("the drag-skip is keyed on a RUNG again - the handle is "
+                        "not always the ladder's rung 1, so the render writes "
+                        "the line the hand is holding and MT4 cancels that drag "
+                        "(P-BK-15 / P-UI-98f)")
+
+    # 5. the release, the echo stamp, and the heal
+    settle_fn = body(events, "void Step1DragSettle(")
+    if not settle_fn:
+        problems.append("Step1DragSettle() is gone - the release never settles "
+                        "(P-UI-98)")
+    else:
+        if "CustomPriceDragFrame(true)" not in settle_fn:
+            problems.append("the settle is not a FORCED frame - the gesture's "
+                            "last pixel would not be painted from the final "
+                            "step (P-UI-98)")
+        if "OBJPROP_SELECTED" not in settle_fn:
+            problems.append("the settle does not drop the grab's selection - a "
+                            "selection that outlives its gesture is moved by "
+                            "every later drag anywhere (P-UI-45 / P-UI-98)")
+        if "g_s1JustDraggedMs = GetTickCount();" not in settle_fn:
+            problems.append("the settle no longer stamps the drag echo - the "
+                            "click MT4 reports at a drag's end would set the "
+                            "line the user just moved (P-UI-98d)")
+    if "if(g_s1DragLive) Step1DragSettle();" not in events:
+        problems.append("the button-up latch no longer settles the step-1 "
+                        "gesture (P-UI-98)")
+    heal_fn = body(events, "void CustomPriceDragHealStale(")
+    if "if(g_s1DragLive)" not in heal_fn:
+        problems.append("the stale-drag heal does not cover the step-1 flags - "
+                        "a lost release would pin the handle's price forever "
+                        "(P-BK-03 / P-UI-98)")
+
+    # 6. the resets
+    if events.count("StepOverrideFactorReset();") < 2:
+        problems.append("the override does not reset at BOTH owners (the "
+                        "custom-price placement teardown and the R key) - a "
+                        "stale factor would silently scale other start points "
+                        "(P-UI-98)")
+    # P-UI-98e: FOUR owners now - the placement teardown, the R key, the re-arm
+    # click, and the fresh placement (HandsetPlacementArm). The two that are named
+    # by their own function are pinned by name; the count is the floor that also
+    # covers the two inline sites (the R key and the re-arm click).
+    if events.count("g_s1LinesArmed = true;") < 4 or \
+            "g_s1LinesArmed = true;" not in body(events, "void CleanupCustomPriceObjects(") or \
+            "g_s1LinesArmed = true;" not in body(events, "void HandsetPlacementArm("):
+        problems.append("the armed/set state does not wake ARMED at every reset "
+                        "owner (the placement teardown, the R key, the re-arm "
+                        "click, a fresh placement) - a set line would survive "
+                        "its own reset (P-UI-98d / P-UI-98e)")
+    # P-UI-98e: a FRESH placement wakes the pair ARMED (the C key and the ring
+    # PIN both go through this one owner) - a line the user had SET must not come
+    # back inert, or the first gesture on it is refused for a second reason.
+    if "void HandsetPlacementArm(" not in events:
+        problems.append("HandsetPlacementArm() is gone - a fresh placement cannot "
+                        "wake the armed/set pair (P-UI-98e)")
+    else:
+        arm_fn = body(events, "void HandsetPlacementArm(")
+        if "g_cpLineArmed  = true;" not in arm_fn:
+            problems.append("a fresh placement leaves the custom price line SET - "
+                            "the line the user just placed cannot be dragged "
+                            "(P-UI-98e)")
+        if "g_s1LinesArmed = true;" not in arm_fn:
+            problems.append("a fresh placement leaves the step-1 handles SET - "
+                            "the first step cannot be dragged on the line the "
+                            "user just placed (P-UI-98e)")
+        if "g_s1SetPendingMs = 0;" not in arm_fn or "g_cpSetPendingMs = 0;" not in arm_fn:
+            problems.append("HandsetPlacementArm() leaves a pending click alive - "
+                            "the SET a previous line's click armed would commit "
+                            "against the fresh placement (P-UI-98e)")
+    if "HandsetPlacementArm();" not in events or "HandsetPlacementArm();" not in read(MENU):
+        problems.append("a fresh placement does not wake through "
+                        "HandsetPlacementArm() at BOTH activations (the C key and "
+                        "the ring PIN) - the second surface disagrees about what "
+                        "\"fresh\" means again (P-UI-98e)")
+    if '"Biotak_StepFactor_" + chartIdStr' not in glob:
+        problems.append("the override key is not purged on REASON_REMOVE - a "
+                        "removed indicator's step override would outlive it "
+                        "(P-UI-98)")
+
+    # 7. the one writer, bounded
+    writer_fn = body(glob, "void StepOverrideFactorSet(")
+    if not writer_fn:
+        problems.append("StepOverrideFactorSet() is gone - the override has no "
+                        "one writer (P-UI-98)")
+    elif "MathMax(0.05, MathMin(20.0" not in writer_fn:
+        problems.append("the override writer lost its bounds - a stray drop "
+                        "can flatten the ladder to nothing or blow it out "
+                        "(P-UI-98)")
+
+    # 8. P-UI-98d: the armed/set machinery and its always-on sweeper
+    sweep_fn = body(events, "void HandsetClickSweep(")
+    if not sweep_fn or "DOUBLE_CLICK_THRESHOLD_MS" not in sweep_fn:
+        problems.append("the click's double-click window has no sweeper - a "
+                        "single click would set instantly and the first click "
+                        "of a double would commit before the second arrives "
+                        "(P-UI-98d)")
+    if events.count("HandsetClickSweep();") < 2:
+        problems.append("the sweeper does not ride BOTH always-on channels "
+                        "(the mouse stream and the tick path) - a click that "
+                        "never moves again would never commit (P-UI-98d)")
+    if "if(id == CHARTEVENT_OBJECT_CLICK && Step1LineIsDragHandle(sparam))" not in events:
+        problems.append("the step-1 handle has no click owner - click-to-set "
+                        "and double-click-to-re-arm are words, not wiring "
+                        "(P-UI-98d)")
+    sync_fn = body(events, "void CustomPriceMarkerSync(")
+    if not sync_fn or "CP_HANDLE_RES" not in sync_fn:
+        problems.append("the custom line's green handle has no owner - it is a "
+                        "baked GREEN raster now, so the colour is the icon's "
+                        "(P-UI-98d v2)")
+    elif "HandsetHandleAt(g_cpMarkerName, price, CP_HANDLE_RES)" not in sync_fn or \
+            "HandsetHandlePark(g_cpMarkerName, CP_HANDLE_RES)" not in sync_fn:
+        problems.append("the custom line's green handle is not placed (and "
+                        "parked) through the shared screen-middle projector - "
+                        "two placement idioms drift (P-UI-98d v2)")
+    # P-UI-98d v2: the two markers are BAKED rasters, so green/red lives in the
+    # icon - and a #resource outside the manifest embeds a GHOST (R-ICON, the leg
+    # meter's own rule).
+    for res in ("cp_handle.bmp", "s1_handle.bmp"):
+        if ('#resource "\\\\Files\\\\Icons\\\\' + res + '"') not in glob:
+            problems.append("the handset handle raster %s has no #resource in "
+                            "GlobalVariables: the bitmap stops embedding and the "
+                            "handle goes blank (P-UI-98d v2)" % res)
+        if res not in read(MANIFEST_PATH):
+            problems.append("the handset handle raster %s is not in the icon "
+                            "manifest: a #resource outside the manifest embeds "
+                            "a ghost (P-UI-98d v2 / R-ICON)" % res)
+    if "OBJ_ARROW" in face_fn or "OBJ_ARROW" in sync_fn:
+        problems.append("the handset markers are chart-space arrows again - the "
+                        "user asked for a circular DRAG ICON centred on the line "
+                        "(P-UI-98d v2)")
+    if "CustomPriceMarkerSync();   // P-UI-98d: the green dot rides the line's own writer" not in events:
+        problems.append("the marker sync is not called from the line's own "
+                        "creator - a restored line would wear no marker "
+                        "(P-UI-98d)")
+    # P-UI-98n: the LINES switch syncs the markers SYNCHRONOUSLY through the
+    # ride (all three circles at once). A TIMEFRAMES mask does not hide screen
+    # objects, so syncing only the green dot left the reds to the next
+    # render/mousemove («دیر پنهان میشن»).
+    if "HandsetMarkersRide();" not in body(events, "void SetLinesVisible("):
+        problems.append("the LINES switch no longer syncs the handset markers - "
+                        "the circles wait for the next render/mousemove instead "
+                        "of following the key (P-UI-98n)")
+
+    # P-UI-98r: HTF CANDLES STAY BEHIND OPEN UI. Chart rectangles with
+    # BACK=false paint over screen skins at ANY rung, so an open card/palette
+    # masks the boxes it covers, by name, from published screen rects.
+    htf = read(HTF)
+    panels = read(PANELS)
+    entry = read(ENTRY)
+    pub_fn = body(panels, "void PnlPublishCover(")
+    if not pub_fn or "PNL_MARGIN" not in pub_fn or "g_PalOpen" not in pub_fn:
+        problems.append("the cover publisher is gone or half: the card-cull "
+                        "reads stale rects (or none) and boxes stay over the "
+                        "card (P-UI-98r)")
+    open_fn = body(panels, "void PnlOpen(")
+    close_fn = body(panels, "void PnlCloseAll(")
+    move_fn = body(panels, "void PnlMoveBy(")
+    draw_fn = body(htf, "int DrawHTFCandles(")
+    prune_fn = body(htf, "void HTFDeleteIndices(")
+    timer_fn = body(entry, "void OnTimer()")
+    for fn, where in ((open_fn, "PnlOpen"), (close_fn, "PnlCloseAll"),
+                      (move_fn, "PnlMoveBy")):
+        if not fn or "PnlPublishCover();" not in fn or "HTFCardCullRefresh();" not in fn:
+            problems.append("%s no longer publishes + culls: boxes drawn "
+                            "before it opened (or moved with it) stay over "
+                            "it (P-UI-98r)" % where)
+    if not draw_fn or "HTFCardCullRefresh();" not in draw_fn:
+        problems.append("a draw while a card is open births boxes unmasked: "
+                        "a settings drag flickers HTF over the card until the "
+                        "timer net (P-UI-98r)")
+    if not timer_fn or "HTFCardCullRefresh();" not in timer_fn:
+        problems.append("the timer net is gone: zoom/resize/forming drift "
+                        "while a card is open converges on nothing (P-UI-98r)")
+    refresh_fn = body(htf, "void HTFCardCullRefresh(")
+    if not refresh_fn:
+        problems.append("HTFCardCullRefresh() is gone - no cull, no release "
+                        "(P-UI-98r)")
+    else:
+        if "HTFCullRelease();" not in refresh_fn:
+            problems.append("the cull never releases: a closed card leaves "
+                            "its boxes masked (P-UI-98r)")
+        if "HTFCullTrack(nm[k]);" not in refresh_fn:
+            problems.append("masked boxes are not tracked: the release cannot "
+                            "name what the cull took (P-UI-98r)")
+        if htf.count("IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS") < 2:
+            problems.append("a cull release unmasks naively: it resurrects "
+                            "boxes an F-hide put away (P-UI-98r)")
+    if "HTFCullForget(" not in (prune_fn or ""):
+        problems.append("a pruned box lingers in the cull set: its release "
+                        "write fails silent and the slot lies (P-UI-98r)")
+    if "OBJPROP_ZORDER" in htf:
+        problems.append("the cull reaches for ZORDER: chart rectangles paint "
+                        "over screen skins at any rung, so a rung cannot fix "
+                        "this - masks can (P-UI-98r)")
+
+    # 9. P-UI-99: the hold is retired, the claim is immediate AND armed-gated
+    if re.search(r"(?m)^#define\s+CP_HOLD_MS", events) is not None:
+        problems.append("the hold-to-arm beat is back (CP_HOLD_MS) - retired by "
+                        "user order, the immediate claim replaced it "
+                        "(P-UI-99-OFF)")
+    if "s_cpHoldArmed" in events:
+        problems.append("the hold-to-arm statics are back (s_cpHoldArmed) - "
+                        "retired by user order (P-UI-99-OFF)")
+    # P-UI-100 (2026-09-22): the claim may carry MORE terms than the two it was
+    # born with - the foreign-draw fence (!TickDeadlinePending(s_cpForeignDrawUntil))
+    # was added between the armed gate and the two condition pairs. The promise is
+    # unchanged and this check still enforces every part of it: the armed gate, the
+    # yield to the step-1 claim, and BOTH condition pairs verbatim.
+    if re.search(r"!s1Claimed\s*&&\s*g_cpLineArmed\s*&&[\s\S]{0,300}?"
+                 r"\(\(pressEdge && \(terminalGrab \|\| pixelHit\)\) \|\| \(terminalGrab && atLineNow\)\)",
+                 events) is None:
+        problems.append("the immediate (armed-gated) claim is gone - a press "
+                        "would not grab an armed line, or worse, a SET line "
+                        "would answer the pixel test (P-UI-99 / P-UI-98d)")
+    if "!s1Claimed && g_cpLineArmed &&" not in events:
+        problems.append("the step-1 claim no longer yields the custom-price "
+                        "claim: one press would be claimed by BOTH gestures, and "
+                        "the line and the handle would move together (P-UI-98e)")
+
+    # 10. P-UI-98e: THE HANDLE'S OWN CARRY. MT4's per-object native drag is the
+    # half the custom price line already stopped trusting (P-UI-49c: several
+    # builds never engage it at all), so step 1 must move through the SAME own
+    # channel - with the SAME numbers (the cursor conversion, the drawn-width
+    # tolerance, CP_DRAG_SLOP, the absolute-off-the-grab carry, the frozen
+    # stand-down) and through the SAME math owner.
+    hit_fn = body(events, "bool Step1HandleUnderCursor(")
+    if not hit_fn:
+        problems.append("Step1HandleUnderCursor() is gone - the handle has no "
+                        "hit test of its own, so its drag lives or dies by a "
+                        "terminal grab that never engaged (P-UI-98e)")
+    else:
+        if "TH_START_POINT_CUSTOM_PRICE" not in hit_fn or "g_linesVisible" not in hit_fn:
+            problems.append("the handle hit test lost its mode / visibility gates - "
+                            "a press outside the custom-price placement, or on a "
+                            "hidden line family, could be claimed (P-UI-98e)")
+        if "ChartXYToTimePrice(" not in hit_fn or "inpCustomPriceLevelWidth" not in hit_fn:
+            problems.append("the handle hit test no longer converts the cursor "
+                            "(ChartXYToTimePrice) or lost its pixel tolerance: a "
+                            "press the terminal does not pick up would move "
+                            "nothing (P-UI-98e)")
+    claim_fn = body(events, "bool Step1HandleOwnClaim(")
+    if not claim_fn:
+        problems.append("Step1HandleOwnClaim() is gone - no press is ever "
+                        "claimed for the step-1 handle (P-UI-98e)")
+    else:
+        if "g_s1LinesArmed" not in claim_fn:
+            problems.append("the step-1 CLAIM is not armed-gated - a SET handle "
+                            "would move again, which is the half of the "
+                            "user's order that makes SET mean anything "
+                            "(P-UI-98e)")
+        if "Step1LineDragApply(" not in claim_fn:
+            problems.append("the claim does not record the grab price through the "
+                            "drag's own owner - the settle's echo stamp then has "
+                            "no baseline and a drag release would SET the line it "
+                            "has just moved (P-UI-98e / P-UI-98d)")
+        if "CustomPriceDragLockOn();" not in claim_fn:
+            problems.append("the claim does not take the view lock - the chart "
+                            "pans under the dragged handle and the handle is "
+                            "moved against a rebased price scale (P-UI-53 / "
+                            "P-UI-98e)")
+    move_fn = body(events, "void Step1HandleOwnDragMove(")
+    if not move_fn:
+        problems.append("Step1HandleOwnDragMove() is gone - the claim has "
+                        "nothing that moves the line (P-UI-98e)")
+    else:
+        if "CP_DRAG_SLOP" not in move_fn:
+            problems.append("the carry lost its travel fence: the one-pixel "
+                            "jitter of a click would write the handle's price "
+                            "and re-step the whole ladder (P-UI-98e)")
+        if "g_s1OwnGrabPrice + (cursorPrice - g_s1OwnGrabCursorPrice)" not in move_fn:
+            problems.append("the carry is absolute-to-cursor: a gesture that was "
+                            "not aimed at the line snaps it onto the cursor and "
+                            "the step jumps under the user (P-UI-98e)")
+        if "g_s1OwnLastWrite" not in move_fn:
+            problems.append("the carry has no frozen stand-down: it rewrites the "
+                            "object MT4 may be dragging itself, which cancels "
+                            "that drag, or fights it (P-BK-15 / P-UI-98e)")
+        if "Step1LineDragApply(g_s1DragName)" not in move_fn:
+            problems.append("the carry does not route the math through the ONE "
+                            "step-1 owner - a second copy of the factor "
+                            "arithmetic that will drift (P-UI-98e)")
+    # P-UI-98e: IN THE MOMENT. The user's order is explicit - «مثل خط کاستوم پرایس
+    # که جابجا میشه بقیه سطوح هم جابجا میشن در لحظه باشه برای step اول». The
+    # step-1 drag must therefore (a) mark the ladder STALE, because the levels
+    # block is gated on `g_redrawTHLevelsNeeded` (the custom price line's own live
+    # follow sets it through CustomPriceDragAnchorSet), and (b) be exempt from the
+    # P-PERF-34 event deferral (a deferred drag frame is the lag).
+    if "g_redrawTHLevelsNeeded = true;" not in apply_fn:
+        problems.append("the step-1 drag no longer marks the ladder stale after it "
+                        "writes the factor: the levels block is gated on that flag, "
+                        "so the whole ladder would stay where it was and only the "
+                        "dragged line itself would move (P-UI-98e)")
+    if "if(force_redraw && g_inChartEvent && !g_customPriceLineDragging && !g_s1DragLive)" not in events:
+        problems.append("the step-1 drag is not exempt from the P-PERF-34 event "
+                        "deferral: its frames are scheduled instead of run, and "
+                        "the other levels do not follow the hand in the moment "
+                        "(P-PERF-34 / P-UI-98e)")
+    # P-UI-98e: A PRESS ON THE CUSTOM PRICE LINE IS NOT THE HANDLE'S. The rung-1
+    # row and the line sit within the same few pixels often enough, and the
+    # step-1 claim runs first - so the line's own grab test must decide, or the
+    # gesture the user aimed at the LINE re-steps the ladder instead
+    # («میخوام خط کاستوم پرایس جابجا بکنم ... و step جابجا میشن»).
+    # P-UI-98i: NEAREST WINS inside that yield - a press clearly on the line
+    # stays the line's, but a press nearer the handle's own row belongs to the
+    # handle even when the line's tolerance also covers it (a coarse chart puts
+    # both within a few pixels - «روان درگ نمیشه»).
+    if "bool onCustomLine = CustomPriceGrabAt((int)lparam, (int)dparam);" not in events or \
+            "bool s1OnRow = (s1Hit && (!onCustomLine ||" not in events:
+        problems.append("the step-1 press edge does not yield to the custom price "
+                        "line's own grab test: with the two rows close, dragging "
+                        "the LINE re-steps the ladder (P-UI-98e)")
+    if "Step1NearerThanCustom((int)lparam, (int)dparam, s1Row)" not in events:
+        problems.append("a press on BOTH rows always drags the line: the handle "
+                        "has no nearest-wins term, so on a coarse chart - where "
+                        "one step is a few pixels - the red handle can never be "
+                        "grabbed (P-UI-98i)")
+    # P-UI-98i: A MISSED PRESS EDGE STILL CLAIMS. The edge is seen on the first
+    # MOVE after the press, so a press whose first move never arrived (a release
+    # off-chart leaves the shared latch set) had no edge to arm on - while the
+    # custom-price claim beside it recovers through MT4's own selection. The
+    # terminal's pick-up is the second opinion for the handle too.
+    if "if(!s1OnRow && !pressEdge && g_s1LinesArmed && !onCustomLine &&" not in events:
+        problems.append("a press whose edge was missed never claims the handle: "
+                        "the step-1 claim has no terminal-selection fallback, so "
+                        "after one off-chart release the handle is dead until an "
+                        "unrelated click resets the latch (P-UI-98i)")
+    # P-UI-98i: A NATIVE-ONLY DRAG IS ADOPTED. When MT4's own drag moves the
+    # line first, g_s1DragLive is up through OBJECT_DRAG with the own carry
+    # never armed - and the gesture then lives or dies by OBJECT_DRAG alone
+    # (the builds that stutter it cut the drag, P-UI-49c).
+    if "else if(g_s1DragLive && !g_s1OwnActive && !g_customPriceLineDragging)" not in events or \
+            "Step1HandleOwnClaim(g_s1DragName, (int)lparam, (int)dparam)" not in events:
+        problems.append("a native-only step-1 drag is never adopted into the own "
+                        "carry: on a build whose OBJECT_DRAG stutters the line "
+                        "stops following the hand mid-gesture (P-UI-49c / "
+                        "P-UI-98i)")
+    # P-UI-98i: the press latch is retried, never frozen - with the draggable
+    # flag borrowed no other channel moves the line, so a failed grab-cursor
+    # conversion would freeze it for the whole gesture.
+    if "if(!(g_s1OwnGrabCursorPrice > 0.0))" not in events:
+        problems.append("a failed grab-cursor conversion freezes the step-1 "
+                        "carry for the whole gesture: the latch is never "
+                        "retried (P-UI-98i)")
+    # P-UI-98i: the step-1 drag re-steps the ladder live like the line's drag,
+    # so the surplus sweep owes it the same throttle.
+    if "if(g_customPriceLineDragging || g_s1DragLive) {" not in pipe:
+        problems.append("a full surplus sweep runs mid step-1-drag: the cleanup "
+                        "throttle only knows the custom-price gesture, so it "
+                        "deletes under the hand (P-UI-98i)")
+    # P-UI-98j: THE STEP-1 PAIR HEALS ITSELF. A stashed handle whose object
+    # vanished behind our back (a delete inside the 250 ms suppression window,
+    # so the OBJECT_DELETE self-heal never fired) is never re-created by
+    # sealed steady-state frames - only a TF switch rebuilt for real, which is
+    # why only that fixed it («ناپدید میشه ... دیگه نمیشه جابجاش کرد»).
+    healmiss_fn = body(events, "void Step1HandleHealMissing(")
+    if not healmiss_fn:
+        problems.append("Step1HandleHealMissing() is gone - a stashed step-1 "
+                        "handle whose object vanished is never re-created: the "
+                        "red circle floats on an empty chart and no press can "
+                        "grab it until a TF switch rebuilds (P-UI-98j)")
+    else:
+        for needle, why in (
+            ("TH_START_POINT_CUSTOM_PRICE",
+             "the heal fires outside the custom-price placement"),
+            ("!g_s1LinesArmed || g_s1DragLive",
+             "the heal fires on a SET pair or mid-gesture"),
+            ("IsIndicatorHidden() || !g_linesVisible",
+             "the heal fires while hidden or with lines off"),
+            ("g_s1MarkPeriod != Period()",
+             "the heal answers another timeframe's stash"),
+            ("g_buildStage != 0 || g_forceClearOnNextDraw",
+             "the heal fires mid-rebuild"),
+            ("S1_HEAL_MS",
+             "the heal has no throttle - two ObjectFind probes per tick"),
+            ("WindowPriceMax()", "the heal has no visible-window proof"),
+            ("if(!(wMax > wMin)) return;",
+             "the heal guesses with no window known"),
+            ("g_s1MarkAbovePrice >= wMin",
+             "the heal repairs a correctly culled off-screen line"),
+            ("ObjectFind(0, g_s1MarkAboveName) < 0",
+             "the heal rebuilds without verifying the object is gone"),
+            ("g_redrawTHLevelsNeeded = true;",
+             "the heal never arms the rebuild"),
+            ("MarkDrawGeneration();",
+             "the heal reuses a sealed signature, so no rebuild runs")):
+            if needle not in healmiss_fn:
+                problems.append("the step-1 self-heal lost '%s': %s (P-UI-98j)"
+                                % (needle, why))
+        for bad, why in (
+            ("g_forceClearOnNextDraw = true",
+             "the heal wipes the family for a hole - a wipe answers a "
+             "topology change, and every repair would blink the chart"),
+            ("ClearAllLevels(",
+             "the heal deletes to repair - the render re-asserts in place")):
+            if bad in healmiss_fn:
+                problems.append("the step-1 self-heal contains '%s': %s (P-UI-98j)"
+                                % (bad, why))
+    tick_fn = body(events, "int OnCalculateHandler(")
+    if not tick_fn or "Step1HandleHealMissing();" not in tick_fn:
+        problems.append("the tick path never runs the step-1 self-heal: a "
+                        "vanished handle waits for an unrelated rebuild "
+                        "(P-UI-98j)")
+    # P-UI-98j: even a SUPPRESSED delete of a stashed handle is verified -
+    # our own deletes never name one, so a missing one fell inside the window.
+    if "else if(id == CHARTEVENT_OBJECT_DELETE && suppressDeleteEvent && sparam != \"\" &&" not in events:
+        problems.append("a suppressed delete of a step-1 handle is ignored "
+                        "again: inside the 250 ms window the line vanishes "
+                        "with no heal armed (P-UI-98j)")
+    if "!g_s1DragLive && g_thStartPointType == TH_START_POINT_CUSTOM_PRICE" not in events:
+        problems.append("the suppressed-delete fast path lost its live-gesture "
+                        "and mode terms: it would rebuild mid-drag or answer "
+                        "another mode's stash (P-UI-98j)")
+    # P-UI-98k: OUR OWN SWEEP MUST NOT DELETE THE DRAGGED HANDLE. Every step-1
+    # drag changes the pitch (F), so SweepForeignLevelObjects runs on the
+    # drag's own frames while the cache still holds the pre-drag price - and
+    # the render skips that same line while the gesture is live (P-BK-15). A
+    # sweep without this term deletes the line being dragged, the factor math
+    # then reads 0 and freezes without ever arming the redraw flag, and the
+    # settle's forced frame is gated off: the below handle vanishes mid-drag
+    # and stays missing until an unrelated rebuild.
+    sweepforeign_fn = body(pipe, "int SweepForeignLevelObjects(")
+    if not sweepforeign_fn:
+        problems.append("SweepForeignLevelObjects() is gone (P-UI-98k)")
+    elif "bool s1SkipSweep = (g_s1DragLive && g_s1DragName != \"\" &&" not in sweepforeign_fn:
+        problems.append("the foreign sweep deletes the live-dragged handle: "
+                        "the drag holds a name the chart no longer carries, "
+                        "the factor math reads 0 and freezes, and the handle "
+                        "stays missing past the settle (P-UI-98k)")
+
+    # P-UI-98e / P-LM-21: THE BORROWED DRAGGABLE FLAG. MT4 re-arms its own drag on
+    # every paint while SELECTABLE sits on the object, so a gesture that owns the
+    # movement takes the flag off - and gives it back on both exits, or the line
+    # stays deaf afterwards (the P-LM-17 bug with a new seat).
+    borrow_fn = body(events, "void Step1DragSelectable(")
+    if not borrow_fn:
+        problems.append("Step1DragSelectable() is gone - the step-1 drag cannot "
+                        "borrow the draggable flag, so the terminal keeps re-arming "
+                        "its own drag and the line fights the hand "
+                        "(«سریع قطع میشه», P-LM-21 / P-UI-98e)")
+    elif "OBJPROP_SELECTABLE" not in borrow_fn or "OBJPROP_SELECTABLE, on" not in borrow_fn:
+        problems.append("the borrow owner no longer writes the flag it borrows "
+                        "(P-UI-98e)")
+    if "    Step1DragSelectable(handle, false);" not in claim_fn:
+        problems.append("the CLAIM never borrows the flag off - the terminal's own "
+                        "drag arms at the press and re-arms on every paint, so the "
+                        "gesture is cut off (P-LM-21 / P-UI-98e)")
+    if "        Step1DragSelectable(name, g_s1LinesArmed &&" not in settle_fn:
+        problems.append("the settle does not RETURN the borrowed flag - from the "
+                        "first drag on the handle is deaf to the terminal's own "
+                        "selection, its context menu and the Delete key "
+                        "(P-UI-98e)")
+    if "g_s1OwnBorrowed = false;" not in heal_fn:
+        problems.append("the stale-drag heal leaves the borrow set - the flag is "
+                        "never returned after a lost release (P-UI-98e)")
+    if 'bool dragOwnsThis = (g_s1DragLive && g_s1DragName == name);' not in pipe:
+        problems.append("the face owner re-arms the flag mid-gesture: the terminal's "
+                        "drag loop restarts under the hand and the line fights it "
+                        "(P-UI-98e)")
+
+    # P-UI-98e: «فقط هر step اول در تایم خودش فعال باشه» - the stash names the
+    # PERIOD it came from, so a stash left by the previous timeframe cannot answer
+    # a press on the new one (before the TF switch's own frame re-stashes it).
+    if "g_s1MarkPeriod = Period();" not in pipe:
+        problems.append("the handle stash no longer stamps its own PERIOD - a stash "
+                        "from the previous timeframe could answer a press on the "
+                        "new one (P-UI-98e)")
+    if "if(g_s1MarkPeriod != Period()) return false;" not in events:
+        problems.append("the handle hit test does not refuse another timeframe's "
+                        "stash (P-UI-98e)")
+
+    if "Step1HandleOwnClaim(s1Row, (int)lparam, (int)dparam)" not in events:
+        problems.append("the mouse-move press edge never claims the step-1 "
+                        "handle: the handle is draggable by nothing (P-UI-98e)")
+
+    # 10b. P-UI-98e: THE CLICK CONTRACT. ONE owner, THREE edges - our own press/
+    # release pair, the CHARTEVENT_CLICK finalize (a motionless release emits no
+    # MOUSE_MOVE at all, P-BK-03), and MT4's own OBJECT_CLICK. A click can reach
+    # the owner twice, so the twin must be dropped or a double reads as two
+    # singles and a SET lands on a line the user was re-arming.
+    click_fn = body(events, "void Step1HandleClickAt(")
+    if not click_fn:
+        problems.append("Step1HandleClickAt() is gone - the step-1 click has no "
+                        "owner, so click-to-SET and double-click-to-re-arm are "
+                        "words, not wiring (P-UI-98e)")
+    else:
+        if "DOUBLE_CLICK_THRESHOLD_MS" not in click_fn or "g_s1SetPendingMs = now;" not in click_fn:
+            problems.append("the step-1 click owner lost the double-click "
+                            "window or the deferred SET slot - the first click "
+                            "of a double would commit, and a double could never "
+                            "cancel it (P-UI-98d / P-UI-98e)")
+        if "g_s1ClickHandledMs != 0" not in click_fn or "g_s1ClickHandledMs = now;" not in click_fn:
+            problems.append("the click owner has no twin-event dedupe GUARD; one "
+                            "physical click reaches it through two transports "
+                            "and the second would read as a double-click "
+                            "(P-UI-98e)")
+        if "g_s1JustDraggedMs" not in click_fn:
+            problems.append("a DRAG's own click echo would SET the handle the "
+                            "user just moved - the just-dragged stamp is not "
+                            "read any more (P-UI-98d / P-UI-98e)")
+    if "Step1HandleClickAt(sparam)" not in events:
+        problems.append("MT4's own OBJECT_CLICK no longer reaches the click "
+                        "owner - the terminal's report is one of the three "
+                        "edges, not a second contract (P-UI-98e)")
+    if "if(id == CHARTEVENT_CLICK) Step1ClickFinalize();" not in events:
+        problems.append("the CHARTEVENT_CLICK finalize is gone - a still click "
+                        "on a handle emits no MOUSE_MOVE, so it would never SET "
+                        "or re-arm anything (P-BK-03 / P-UI-98e)")
+    if "if(!rowTravelled) Step1HandleClickAt(row);" not in events:
+        problems.append("the button-up half of the click contract is gone - the "
+                        "press that never travelled no longer counts as a click "
+                        "(P-UI-98e)")
+    if "g_s1ClickRow = s1Row;" not in events:
+        problems.append("the press edge no longer records the row it landed on - "
+                        "a click on a SET handle cannot name the line the "
+                        "double-click has to wake (P-UI-98e)")
+    # P-UI-98e: THE BUTTON-UP THAT CARRIES NO MOVE MUST ALSO END THE GESTURE.
+    # Without it the drag stayed live (the render keeps skipping the line's writes,
+    # the borrowed flag stays off, and BOTH claims refuse the next press) until the
+    # 1.5 s heal - «جابجا میشه بعد دیگه نمیشه درگش کرد».
+    fin_fn = body(events, "void Step1ClickFinalize(")
+    if "if(g_s1DragLive)" not in fin_fn or "Step1DragSettle();" not in fin_fn:
+        problems.append("the click finalizer no longer settles a LIVE gesture: a "
+                        "release that emits no MOUSE_MOVE leaves the drag stuck "
+                        "and nothing can be grabbed again until the heal "
+                        "(P-BK-03 / P-UI-98e)")
+    if "bool wrote = (g_s1OwnLastWrite > 0.0);" not in fin_fn:
+        problems.append("the click finalizer asks the click question without asking "
+                        "whether the gesture WROTE a price - a drag would SET the "
+                        "handle the user just moved (P-UI-98e)")
+    # 10c. P-UI-98h: THE PRESS ECHO MUST NOT END A GESTURE, AND MUST NOT ARM A
+    # SET. The measured MT4 fact is the panels' own (P-UI-49b/P-UI-73: one of
+    # CHARTEVENT_CLICK / OBJECT_CLICK is delivered ON the PRESS that grabs a
+    # selectable object); the step-1 pair met it as «هی قطع میشه موقع درگ
+    # کردن» — the finalize settled the gesture that same press had claimed and
+    # armed its deferred SET, which then committed after the drag and left the
+    # handle inert (Step1HandleOwnClaim refuses a SET handle).
+    if fin_fn and "UILeftButtonUp()" not in fin_fn:
+        problems.append("the click finalizer settles a LIVE gesture without asking "
+                        "whether the button is even up - a CHARTEVENT_CLICK "
+                        "delivered on the PRESS kills the gesture that same press "
+                        "just started (P-UI-98h)")
+    if click_fn and "if(g_s1LinesArmed && !g_s1DragLive && now - g_s1JustDraggedMs > 350)" \
+            not in click_fn:
+        problems.append("the click owner arms the deferred SET while a drag is live - "
+                        "the sweeper commits it the moment the button comes up, i.e. "
+                        "right after a working drag (P-UI-98h)")
+    if sweep_fn and sweep_fn.count("UILeftButtonUp()") < 2:
+        problems.append("the sweeper commits a SET with the button still down - the "
+                        "press echo's pending slot lands mid-press (P-UI-98h)")
+    if choose_fn and "g_s1SetPendingMs = 0;" not in choose_fn:
+        problems.append("the claim does not cancel the pending SET - the press echo "
+                        "armed one and it commits right after the drag (P-UI-98h)")
+    if settle_fn and "g_s1SetPendingMs = 0;" not in settle_fn:
+        problems.append("a settle that MOVED the line leaves the pending SET alive - "
+                        "the handle goes inert right after a working drag (P-UI-98h)")
+    if hit_fn and "HANDSET_HANDLE_HALF" not in hit_fn:
+        problems.append("the handle hit test still gates on the 1 px line instead of "
+                        "the 15 px circle the hand grabs - a press on the icon's own "
+                        "rim is rejected (P-UI-98h)")
+    if "bool s1Wrote = (g_s1OwnLastWrite > 0.0);" not in events:
+        problems.append("the release latch reads the travel AFTER the settle - the "
+                        "settle clears that stamp, so the answer is always \"never "
+                        "travelled\" and every drag would SET its own handle "
+                        "(P-UI-98e)")
+    ride_fn = body(events, "void HandsetMarkersRide(")
+    if "g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0" not in ride_fn:
+        problems.append("the ride channel no longer asks the armed state before "
+                        "placing a step-1 icon: it would resurrect the red "
+                        "handle over a SET line nothing can grab (P-UI-98d v2)")
+    # P-UI-98l: the ride obeys the LINES switch and the hide-all state, on
+    # BOTH sides - without them the L key parks the circles through the render
+    # and the next mouse move puts them straight back.
+    if ride_fn.count("&& g_linesVisible && !IsIndicatorHidden())") < 2:
+        problems.append("the ride channel ignores the LINES switch or the "
+                        "hide-all state: with lines off (L key) the red "
+                        "circles come back on the next mouse move (P-UI-98l)")
+    if "if(g_s1OwnActive)" not in events:
+        problems.append("the OWNED step-1 gesture has no held pass on the mouse "
+                        "stream - the line would not follow the hand (P-UI-98e)")
+    # P-UI-98f: both exits clear the carry's own state through its ONE owner
+    # (`Step1GestureStateClear`) - a bare flag write in one path and not the
+    # other is exactly the bug the owner exists to kill.
+    if "g_s1OwnActive = false;" not in settle_fn and \
+            "Step1GestureStateClear()" not in settle_fn:
+        problems.append("the settle leaves the carry's own flag up - a gesture "
+                        "that is over keeps reading the cursor on every move "
+                        "(P-UI-98e)")
+    if "g_s1OwnActive = false;" not in heal_fn and \
+            "Step1GestureStateClear()" not in heal_fn:
+        problems.append("the stale-drag heal leaves the carry's own flag up - a "
+                        "healed gesture keeps carrying the line (P-UI-98e)")
+    if "else if(pressEdge || terminalGrab)" not in events:
+        problems.append("the foreign-drag drain lost its arm - a selection left "
+                        "by a click would ride the NEXT drag of any other "
+                        "object, which is the interference the user ordered "
+                        "gone (P-UI-99)")
+    if "ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);" not in events:
+        problems.append("the claim no longer SELECTS the line - a grab without "
+                        "a face, and the deselect pair half-blind (P-UI-99)")
+    if "ClearCustomPriceSelection();" not in events:
+        problems.append("the button-up deselect owner is gone - the select/"
+                        "deselect pair is broken (P-UI-99)")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -3275,6 +6034,20 @@ def main():
               ("body", check_card_body()),
               ("modal", check_modal()),
               ("measure", check_measure_item()),
+              ("th3draw", check_th3_item()),
+              ("th3ink", check_th3_ink()),
+               ("th3caption", check_th3_caption()),
+               ("th3ladder", check_th3_ladder()),
+               ("th3delete", check_th3_delete()),
+               ("pb-lock", check_th3_pb_lock()),
+               ("pb-band-drag-lock", check_th3_pb_band_drag_lock()),
+               ("pb-band-gesture", check_th3_band_gesture()),
+              ("leg-plate", check_leg_plate_lifetime()),
+              ("leg-head", check_leg_head_follow()),
+              ("leg-sel", check_leg_selection()),
+               ("leg-dir", check_leg_direction()),
+               ("leg-tf", check_leg_tf()),
+              ("leg-sel-atomic", check_leg_sel_atomic()),
               ("bk-info", check_bk_info_rungs()),
               ("press", check_press(read(PANELS))),
               ("chrome", check_chrome()),
@@ -3289,7 +6062,8 @@ def main():
               ("bkmagnet", check_bkmagnet()),
               ("paneldrag-off", check_paneldrag_off()),
               ("th-percent", check_th_percent()),
-              ("placement", check_placement()))
+              ("placement", check_placement()),
+              ("step1", check_step1()))
     for name, plist in groups:
         if not QUIET:
             print("  %s [%s]" % ("ok  " if not plist else "FAIL", name))
@@ -3348,11 +6122,21 @@ def selftest():
                        or check_relayout() or check_purge()
                        or check_card_body() or check_modal()
                        or check_measure_item() or check_bk_info_rungs()
+                       or check_th3_item() or check_th3_ink()
+                       or check_th3_caption() or check_th3_ladder()
+                       or check_th3_delete()
+                       or check_th3_pb_lock()
+                       or check_leg_plate_lifetime()
+                       or check_leg_head_follow() or check_leg_selection()
+                        or check_leg_direction()
+                        or check_leg_tf()
+                       or check_leg_sel_atomic()
                        or check_press(read(PANELS)) or check_chrome()
                        or check_dual() or check_drag() or check_mouse()
                        or check_bk_drag() or check_bkcursor_off()
                        or check_bkbox_ink() or check_bkedge_off()
-                       or check_heal() or check_th_percent())))
+                       or check_heal() or check_th_percent()
+                       or check_step1())))
     reset()
 
     # 1. P-UI-70c: the row is retired again while its address stays live
@@ -3450,6 +6234,962 @@ def selftest():
     with_source(MENU, "#define RING_BASEKNOT 6", "#define RING_BASEKNOT 4")
     cases.append(("a measure slot inserted before the others is caught",
                   bool(check_measure_item())))
+    reset()
+
+    # 8h. P-UI-96: the TH3 press goes back to flipping the enable flag (the user's
+    #     own report - the tool is pressed and there is nothing to draw with)
+    with_source(MENU, "      refreshFlags = CircArmTH3Draw();",
+                "      g_enableTH3Tool = !g_enableTH3Tool;\r\n"
+                "      refreshFlags = REFRESH_ALL;")
+    cases.append(("a TH3 press that only flips the enable flag is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8i. the ring light reads the switch again: it can say "armed" with no session
+    with_source(MENU, "   if(i == CIR_TH3)             return TH3SessionActive();",
+                "   if(i == CIR_TH3)             return g_enableTH3Tool;")
+    cases.append(("a TH3 light that reads the switch instead of the session is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8j. the arm path stops repairing a precondition (the engine-off repair here;
+    #     the mode repair is anchored the same way, one line below it)
+    with_source(MENU, "      g_enableTH3Tool = true;\n", "")
+    cases.append(("a TH3 arm path that skips a precondition repair is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8k. P-TH3-PERF-07: the session takes the chart-wide mouse-move channel back.
+    #     Anchored on the FUNCTION HEAD, not a body line: stage 5 added a trailing
+    #     comment to TH3PreviewClear()'s call site, and a `\n`-terminated anchor
+    #     then matched nothing - the seed turned into a silent no-op and the gate
+    #     reported green on a rule it had stopped testing.
+    with_source(TH3CTRL, "void TH3SessionCancel()\n{\n",
+                "void TH3SessionCancel()\n{\n"
+                "    ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, false);\n")
+    cases.append(("a TH3 session that switches the shared mouse-move flag off is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8m2. P-UI-97: the hoisted ink is no longer resolved (a raw input reaches the
+    #      write call through a local, which the name allowlist used to hide)
+    with_source(TH3RENDER, "    color wantInk = TH3InkForChart(inpABCDInfoColor);",
+                "    color wantInk = inpABCDInfoColor;")
+    cases.append(("a hoisted ink that is never resolved is caught",
+                  bool(check_th3_ink())))
+    reset()
+
+    # 8n. P-TH3-INFO-01: the caption cap is raised past MT4's own 63 characters
+    #     (the user's chart lost everything after character 63, mid-word)
+    with_source(TH3RENDER, "#define TH3_INFO_TEXT_MAX  63",
+                "#define TH3_INFO_TEXT_MAX  120")
+    cases.append(("a caption cap above MT4's 63-character limit is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8o. P-TH3-INFO-01: the writer stops wrapping (the raw text goes to OBJPROP_TEXT)
+    with_source(TH3RENDER, "    int n = TH3InfoWrap(text, TH3_INFO_TEXT_MAX, lines);",
+                "    string lines2[]; lines2 = lines; int n = 1; lines[0] = text;")
+    cases.append(("a caption writer that no longer wraps is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8p. P-TH3-INFO-01: the delete path spells `_Info` again (lines 2..4 survive it)
+    with_source(TH3TOOL, "            TH3InfoFamilyDelete(baseName);",
+                "            ObjectDelete(0, baseName + \"_Info\");")
+    cases.append(("a delete path that spares the caption's continuation lines is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q. P-TH3-INFO-01: the active sweep stops testing the caption family.
+    #     P-TH3-P6f re-taught the anchor: the bare `continue;` is now a block
+    #     (the ladder branch lives under it), so the seed names the opener.
+    with_source(TH3TOOL, "        if(!TH3IsInfoLabelName(nm))\n        {\n", "")
+    cases.append(("an active-pattern sweep blind to the caption family is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-7. P-TH3-P6f: the draw stops gating the ladder on the active pattern -
+    #        every stored pattern wears Step1/3/5/7 (the user's mixed chart).
+    with_source(TH3RENDER, "    TH3LadderSetVisible(mainObjName, isActive);\n", "")
+    cases.append(("a draw that wears every pattern's ladder is caught",
+                  bool(check_th3_ladder())))
+    reset()
+
+    # 8q-8. P-TH3-P6f: the draw lights the ladder unconditionally (isActive -> true).
+    with_source(TH3RENDER, "    TH3LadderSetVisible(mainObjName, isActive);\n",
+                "    TH3LadderSetVisible(mainObjName, true);\n")
+    cases.append(("a draw that lights inactive ladders is caught",
+                  bool(check_th3_ladder())))
+    reset()
+
+    # 8q-9. P-TH3-P6f: the activation sweep never darkens (own OR other).
+    with_source(TH3TOOL,
+                "            int wantLad = ownLadder ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;\n",
+                "            int wantLad = OBJ_ALL_PERIODS;\n")
+    cases.append(("an activation sweep that never darkens a ladder is caught",
+                  bool(check_th3_ladder())))
+    reset()
+
+    # 8q-10. P-TH3-P6f: the ladder family test itself is renamed away.
+    with_source(TH3RENDER, "bool TH3IsLadderName(const string objName)\n",
+                "bool TH3IsLadderNameX(const string objName)\n")
+    cases.append(("a missing ladder family test is caught",
+                  bool(check_th3_ladder())))
+    reset()
+
+    # 8q-11. P-TH3-DEL1: the base is never extracted (nothing cascades).
+    with_source(TH3TOOL, "        string baseName = TH3FamilyBaseOf(sparam);\n",
+                "        string baseName = \"\";\n")
+    cases.append(("a delete path with no base extraction is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-12. P-TH3-DEL1: the sweep loses the overlay prefix (TH3_MP_* orphans).
+    with_source(TH3TOOL,
+                '            string delMP = "TH3_MP_" + baseName + "_";\n',
+                '            string delMP = "";\n')
+    cases.append(("a delete sweep blind to the mother overlay is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-13. P-TH3-DEL1: the sweep loop never runs (members delete alone).
+    with_source(TH3TOOL,
+                "            for(int k = ObjectsTotal(0, -1, -1) - 1; k >= 0; k--) {\n",
+                "            for(int k = 0; k < 0; k++) {\n")
+    cases.append(("a delete path whose sweep never walks is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-14. P-TH3-DEL2: the maintenance window is gone (every member delete
+    #        wipes - a base commit's own overlay drop kills the ABCD).
+    with_source(TH3TOOL,
+                "           && GetTickCount() - g_th3OwnDeleteMs <= 5000)\n",
+                "           && false)\n")
+    cases.append(("a delete path with no maintenance window is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-15. P-TH3-DEL2: the anchors are never asked (always wipe).
+    with_source(TH3TOOL,
+                "        if(TH3FamilyAnchorsAlive(baseName)\n",
+                "        if(false)\n")
+    cases.append(("a delete path that never asks the anchors is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-16. P-TH3-DEL2: the heal never reads the store (dropped member stays
+    #        missing until an unrelated redraw).
+    with_source(TH3TOOL,
+                "            if(TH3PatternStoreGet(baseName, patH))\n",
+                "            if(false)\n")
+    cases.append(("a delete path that heals nothing back is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-17. P-TH3-DEL3: a caption drop is a delete trigger again - every plate
+    #        the SetActive/Verify/Draw owners drop wipes a healthy ABCD.
+    with_source(TH3TOOL,
+                "        if(TH3IsInfoLabelName(sparam) && TH3FamilyAnchorsAlive(baseName)) return;\n",
+                "        if(false) return;\n")
+    cases.append(("a caption drop that cascades into a whole-family wipe is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-18. P-TH3-DEL3: the caption exemption forgets the anchors term - a
+    #        broken family's own cleanup (P-TH3-RESTORE) can never finish.
+    with_source(TH3TOOL,
+                "        if(TH3IsInfoLabelName(sparam) && TH3FamilyAnchorsAlive(baseName)) return;\n",
+                "        if(TH3IsInfoLabelName(sparam)) return;\n")
+    cases.append(("a caption exemption that strands a broken family is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-19. P-TH3-DEL3: the maintenance window is back on the TICK clock (a
+    #        drop queued behind our own multi-second redraw wipes the family).
+    with_source(TH3TOOL,
+                "           && GetTickCount() - g_th3OwnDeleteMs <= 5000)\n",
+                "           && TimeCurrent() - (datetime)(g_th3OwnDeleteMs / 1000) <= 1)\n")
+    cases.append(("a tick-clock maintenance window is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-20. P-TH3-DEL3: the stamp itself goes back to the tick clock.
+    with_source(TH3RENDER,
+                "    g_th3OwnDeleteMs = GetTickCount();\n",
+                "    g_th3OwnDeleteMs = (uint)TimeCurrent();\n")
+    cases.append(("a tick-clock dropped-object stamp is caught",
+                  bool(check_th3_delete())))
+    reset()
+
+    # 8q-21. P-TH3-PB-LOCK: the press edge never takes the view (the chart pans
+    #        under the hand - the user's report).
+    with_source(TH3TOOL,
+                "    s_bmViewLockHeld = true; ChartViewLockAcquire();   // P-TH3-PB-LOCK: the drag owns scroll+ctx\n",
+                "    s_bmViewLockHeld = false;\n")
+    cases.append(("a base press-drag that never takes the view lock is caught",
+                  bool(check_th3_pb_lock())))
+    reset()
+
+    # 8q-22. P-TH3-PB-LOCK: the held pass stops re-asserting it (a third writer
+    #        flips the props mid-gesture).
+    with_source(TH3TOOL,
+                "    ChartViewLockAssert();   // P-BK-14: a third writer can flip the props mid-gesture\n",
+                "")
+    cases.append(("a base drag that stops asserting the view lock is caught",
+                  bool(check_th3_pb_lock())))
+    reset()
+
+    # 8q-23. P-TH3-PB-LOCK: the CLICK fallback keeps the lock (a motionless
+    #        release leaves the chart locked with nothing holding it).
+    with_source(TH3TOOL,
+                "            TH3BaseMarkViewRelease();\n            s_bmDragDown = false; s_bmDragMoved = false;\n            TH3BaseMarkClick(",
+                "            s_bmDragDown = false; s_bmDragMoved = false;\n            TH3BaseMarkClick(")
+    cases.append(("a base drag whose motionless release keeps the lock is caught",
+                  bool(check_th3_pb_lock())))
+    reset()
+
+    # 8q-24. P-TH3-PB-LOCK: a cancel no longer releases (right-click mid-drag
+    #        leaves the view locked).
+    with_source(TH3TOOL,
+                "    TH3BaseMarkViewRelease();    // P-TH3-PB-LOCK: a cancel ends the drag's lock too\n",
+                "")
+    cases.append(("a base mark cancel that leaks the view lock is caught",
+                  bool(check_th3_pb_lock())))
+    reset()
+
+    # 8q-25. P-TH3-PB-LOCK: the reconcile stops naming the owner, so the 250 ms
+    #        watchdog hands the view back under the hand.
+    with_source(PANELS,
+                "    if(TH3BaseMarkViewOwned()) return true;\n",
+                "")
+    cases.append(("a reconcile blind to the base mark's own lock is caught",
+                  bool(check_th3_pb_lock())))
+    reset()
+
+    # 8q-26. P-TH3-PB-DRAG-LOCK (2026-09-22): the band-anchor resize also
+    #         takes the view lock (the press-drag lock above only covers the
+    #         initial two-click / press-drag DRAW, not the resize).
+    with_source(TH3TOOL,
+                "        s_bandDragLockHeld = true;\n"
+                "        ChartViewLockAcquire();\n",
+                "")
+    cases.append(("the band-anchor drag takes no view lock on the resize",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-27. P-TH3-PB-DRAG-LOCK: the resize drag stops re-asserting the lock
+    #         (a third writer flips the props mid-drag — P-BK-14).
+    with_source(TH3TOOL,
+                "        ChartViewLockAssert();   // P-BK-14: a third writer can flip the props mid-drag\n",
+                "")
+    cases.append(("the band-anchor resize stops re-asserting the view lock",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-28. P-TH3-PB-DRAG-LOCK: the resize drag never releases on button-up
+    #         (a still release never emits MOUSE_MOVE — P-BK-03 / P-LM-13 —
+    #         so the MOUSE_MOVE branch is the heal).
+    with_source(TH3TOOL,
+                "        if(s_bandDragLockHeld && !leftButtonDown) {\n"
+                "            s_bandDragLockHeld = false;\n"
+                "            s_bandDragLive = false;\n"
+                "            s_bandDragName = \"\";\n"
+                "            ChartViewLockRelease();\n"
+                "        }\n",
+                "")
+    cases.append(("the band-anchor resize never releases on button-up",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-29. P-TH3-PB-DRAG-LOCK: the resize drag leaks the lock past the
+    #         band's delete (no release path on user delete).
+    with_source(TH3TOOL,
+                "    if(s_bandDragLockHeld) {\n"
+                "        s_bandDragLockHeld = false;\n"
+                "        s_bandDragLive = false;\n"
+                "        s_bandDragName = \"\";\n"
+                "        ChartViewLockRelease();\n"
+                "    }\n",
+                "")
+    cases.append(("the band-anchor resize leaks the lock past the band's delete",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-30. P-TH3-PB-DRAG-LOCK: the heartbeat stops healing (a stuck
+    #         terminal or off-chart release never emits button-up).
+    with_source(TH3TOOL,
+                "void TH3BaseBandDragHeartbeat()\n",
+                "")
+    cases.append(("the band-anchor resize heartbeat stops healing",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-31. P-TH3-PB-DRAG-LOCK: the reconcile stops naming the band's
+    #         own lock, so the 250 ms watchdog hands the view back under
+    #         the hand during a resize.
+    with_source(PANELS,
+                "    if(TH3BaseBandDragViewOwned()) return true;\n",
+                "")
+    cases.append(("a reconcile blind to the band's resize lock is caught",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-32. P-TH3-PB-DRAG-LOCK: the cascade time window reverts to 1 s —
+    #         the DEL2/DEL3 fix was correct for the original commit path
+    #         but a multi-second band resize (every step re-draws the
+    #         family) queues drops that read a 1 s window as already
+    #         closed on a slow chart and wipe a healthy ABCD.
+    with_source(TH3TOOL,
+                "           && GetTickCount() - g_th3OwnDeleteMs <= 5000)",
+                "           && GetTickCount() - g_th3OwnDeleteMs <= 1000)")
+    cases.append(("a cascade window that closes before the band drag ends is caught",
+                  check_th3_pb_band_drag_lock()))
+    reset()
+
+    # 8q-33. P-TH3-BAND-PRESS: the press-edge hit test is gone - the chart
+    #         pans between the press and the first OBJECT_DRAG.
+    with_source(TH3TOOL,
+                "bool TH3BaseBandPressHit(const int mx, const int my)\n",
+                "")
+    cases.append(("a band press that cannot hit-test the outline is caught",
+                  check_th3_band_gesture()))
+    reset()
+
+    # 8q-34. P-TH3-BAND-PRESS: the move stream stops claiming the view on the
+    #         press edge (the lock is back to first-OBJECT_DRAG only).
+    with_source(TH3TOOL,
+                "                if(!s_bandDragLockHeld\n"
+                "                   && TH3BaseBandPressHit((int)lparam, (int)dparam)) {",
+                "                if(false) {")
+    cases.append(("a move stream that never claims the band press is caught",
+                  check_th3_band_gesture()))
+    reset()
+
+    # 8q-35. P-TH3-BAND-PRESS: the idle-move early-out stops naming the live
+    #         band gesture - the button-up release branch becomes dead code
+    #         and every resize leaks the lock to the 1.5 s heartbeat.
+    with_source(TH3TOOL,
+                "       && !s_bandDragLockHeld && ObjectFind(0, TH3_BASE_EDITOR) < 0) return;",
+                "       && ObjectFind(0, TH3_BASE_EDITOR) < 0) return;")
+    cases.append(("an early-out that starves the band's release edge is caught",
+                  check_th3_band_gesture()))
+    reset()
+
+    # 8q-36. P-TH3-BANDSEL: the OBJECT_CLICK else-branch deselects on the
+    #         TH3 tool's own namespace again (the band's click and every
+    #         band drag's click echo blank the active pattern).
+    with_source(EVENTS,
+                "        else if(StringFind(sparam, \"TH3_\") != 0)\n",
+                "        else\n")
+    cases.append(("a click on the band that blanks the pattern is caught",
+                  check_th3_band_gesture()))
+    reset()
+
+    # 8q-17. P-TH3-INFO-11: the heal net stops verifying (dead question).
+    # The anchor is the call's CURRENT text — the trailing comment is part of the
+    # line, and a seed that no longer matches the source proves nothing (it was
+    # reported as STALE, and the three cases below it went uncaught).
+    with_source(TH3RENDER,
+                "    TH3InfoFamilyVerify(base, true);              // (its grow re-arms the visit)\n",
+                "    ;\n")
+    cases.append(("a caption heal that verifies nothing is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-18. P-TH3-INFO-11: the timer never runs the heal (dead net).
+    with_source(ENTRY, "    TH3InfoCaptionHeal();\n", "")
+    cases.append(("a timer that never runs the caption heal is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-2. P-TH3-INFO-02: the caption's safe-Y forgets the mode rows' +45
+    #       below-ATR offset - the plate parks inside the mode block.
+    with_source(TH3TOOL,
+                "            modeBottomY = inpModeLabelYDistance + g_modeLabelYOffset + 45 + modeBlockHeight + 4;\n",
+                "            modeBottomY = inpModeLabelYDistance + g_modeLabelYOffset + modeBlockHeight + 4;\n")
+    cases.append(("a caption safe-Y that forgets the modes' +45 is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-3. P-TH3-INFO-10: the hide path masks the PLATE again - an
+    #       OBJ_RECTANGLE_LABEL ignores that mask, so the rows go dark and the
+    #       empty bar stays (the user's «اول نمایش میده ولی بعد دیگه فقط سیاه»).
+    with_source(TH3RENDER, "    if(!visible) { TH3InfoFamilyPlateDrop(base); return; }",
+                "    if(!visible) { ObjectSetInteger(0, plate, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); return; }")
+    cases.append(("a family hide that masks the plate is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-4. P-TH3-INFO-10: the writer keeps a plate under an INACTIVE family
+    #       (and masks it instead of dropping it).
+    with_source(TH3RENDER, "    if(!isActive) { TH3InfoFamilyPlateDrop(base); return n; }",
+                "    if(!isActive) { ObjectSetInteger(0, plate, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); return n; }")
+    cases.append(("a caption writer that plates a dark family is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-5. P-TH3-INFO-10: the healer stops dropping an inactive family's plate
+    with_source(TH3RENDER, "    if(!isActive) { TH3InfoFamilyPlateDrop(base); return; }",
+                "    if(!isActive) { return; }")
+    cases.append(("a verify that leaves an inactive plate on the chart is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-6. P-TH3-INFO-10: the active sweep masks the plate instead of deleting it
+    with_source(TH3TOOL, "        if(TH3IsInfoPlateName(nm)) ObjectDelete(0, nm);",
+                "        ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);")
+    cases.append(("an active sweep that masks the plate is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-7. P-TH3-INFO-12: the grow path leaves rows older than the plate it
+    #       just grew - creation order paints them UNDER it (the black box).
+    with_source(TH3RENDER,
+                "    for(int line = 0; line < n; line++)\n    {\n        string nm = TH3InfoLineName(base, line);\n        ObjectDelete(0, nm);\n        TH3RORowAt(nm, rows[line], corner, nearX,",
+                "    for(int line = 0; line < n; line++)\n    {\n        string nm = TH3InfoLineName(base, line);\n")
+    cases.append(("a grow that leaves rows under their own fresh plate is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-8. P-TH3-INFO-13: the heal resurrects an expired caption visit.
+    with_source(TH3RENDER,
+                "    if(TH3InfoVisitPending() && !TickDeadlinePending(g_th3InfoVisitUntilMs))\n",
+                "    if(false)\n")
+    cases.append(("a heal that resurrects an expired caption is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-9. P-TH3-INFO-13: the visit clock stops reading inpModeLabelDuration
+    with_source(TH3RENDER, "    int durSec = inpModeLabelDuration;",
+                "    int durSec = 5;")
+    cases.append(("a caption visit on its own private duration is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8q-10. P-UI-57f-OFF: the step-mode row regains its clock exemption
+    with_source(UTILS,
+                "        if(g_stepModeLabelCreateTime > 0) {\n            if((now - g_stepModeLabelCreateTime) >= durationMs) {\n                ClearSingleModeLabel(g_stepModeLabelName, g_stepModeLabelCreateTime);\n                anyCleared = true;\n            } else {\n                anyRemaining = true;\n            }\n        }\n",
+                "")
+    cases.append(("a step-mode row that outlives its duration is caught",
+                  bool(check_th3_caption())))
+    reset()
+
+    # 8r. P-LM-09: the leg plate's visit has no clock on the entry's timer - the only
+    #     thing running on a chart that is not ticking (weekend, dead symbol).
+    with_source(ENTRY, "    LegMeasureExpireSweep();\n", "")
+    cases.append(("a leg readout whose expiry never runs is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8s. P-LM-09: the STILL-CLICK path stops calling the readout back (the plate
+    #     expires once and is never readable again; the moved path's own call is
+    #     not a click).
+    with_source(TH3TOOL,
+                "        LegMeasurePlateShow(base);\n        return;\n    }\n",
+                "        return;\n    }\n")
+    cases.append(("a click that cannot bring the leg readout back is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8t. P-LM-09: the plate is deleted in pieces (row 3 survives its plate).
+    with_source(TH3TOOL, '    ObjectDelete(0, base + "_Info3");\n', "")
+    cases.append(("a half-deleted leg readout is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8u. P-LM-09: the follower resurrects a plate that has finished its visit.
+    with_source(TH3TOOL, "        if(g_legPlateUp[i])\n",
+                "        if(true)\n")
+    cases.append(("a follower that re-opens an expired readout is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8v. P-LM-23: the plate stops going through its one place - a hardcoded box
+    #     near the tip instead of the tip's own continuation.
+    with_source(TH3TOOL, "    LegInfoBoxTop(tipX, tipY, dirX, dirY, bw, bh, bx, by);\n",
+                "    bx = tipX - bw / 2; by = tipY - LEG_INFO_GAP - bh;\n")
+    cases.append(("a plate that bypasses its one tip place is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8v-2. P-LM-23: the tip-to-plate gap collapses - the plate sits ON the tip.
+    with_source(TH3TOOL, "#define LEG_INFO_GAP        40",
+                "#define LEG_INFO_GAP        0")
+    cases.append(("a plate with no distance from its tip is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8v-3. P-LM-23: the hit test returns - a busy LINE slot falls back to a box
+    #       on the candles again.
+    with_source(TH3TOOL, "    LegInfoClampY(ch, bh, by);\n",
+                "    LegInfoClampY(ch, bh, by);\n"
+                "    if(LegInfoHits(bx, by, bw, bh) > 0) { bx = tipX - bw / 2; by = tipY - LEG_INFO_GAP - bh; }\n")
+    cases.append(("a plate that walks off its tip when busy is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8w. P-BUILD-01's shape, on this tool: Lite runs the UI half's sweep.
+    with_source(ENTRY_LITE, "    CoopPump();\n",
+                "    CoopPump();\n    LegMeasureExpireSweep();\n")
+    cases.append(("a Lite entry running the leg meter's sweep is caught",
+                  bool(check_leg_plate_lifetime())))
+    reset()
+
+    # 8x. P-LM-11: the drag step stops re-anchoring through the family's ONE writer —
+    #     a part written elsewhere moves on another schedule (the lag is back).
+    #     P-LM-19: the ink the drag writes is the leg's OWN direction (dragInk),
+    #     not the fixed violet, so the seed anchors on that writer.
+    with_source(TH3TOOL, "    LegMeasureInk(base, nt1, np1, nt2, np2, dragInk, false);\n", "")
+    cases.append(("a drag that bypasses the family's one writer is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8y. P-LM-12: the preview's teardown loses its retired-name sweep - a preview
+    #     mid-gesture from an older build could outlive this one wearing a head.
+    with_source(TH3TOOL, '    ObjectDelete(0, "LM_prev_Arrow");   // retired name (P-LM-12)\n', "")
+    cases.append(("a preview whose retired head sweep is dropped is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ag. P-LM-12: the arrowhead returns to the committed family (the shape owner
+    #      is resurrected) - the user retired the head explicitly.
+    with_source(TH3TOOL,
+                "    LegMeasureHandles(base, t1, p1, t2, p2, ink);\n",
+                "    LegMeasureHandles(base, t1, p1, t2, p2, ink);\n"
+                "    LegArrowAt(base + \"_Arrow\", t1, p1, t2, p2, ink, 0);\n")
+    cases.append(("an arrowhead back on the committed leg is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ah. P-LM-12: the draw preview wears an arrow again.
+    with_source(TH3TOOL,
+                "        // P-LM-12: the preview is the dashed line and NOTHING else — the head\n"
+                "        // it used to wear was retired with the committed drawing's own head.\n"
+                "        return false;",
+                "        LegArrowAt(\"LM_prev_Arrow\", g_legSess.t1, g_legSess.p1, curT, curP, preCol, 0);\n"
+                "        return false;")
+    cases.append(("a preview wearing an arrow again is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8z. P-LM-11: the edit owner loses its MOUSE_MOVE route - the drag has no event
+    #     to move in.
+    with_source(EVENTS,
+                "    if(id == CHARTEVENT_MOUSE_MOVE && LegMeasureEditMouse((int)lparam, (int)dparam, sparam))\n",
+                "")
+    cases.append(("a drag with no mouse-event owner is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8aa. P-LM-11: a retired channel comes back (chasing a drag that no longer
+    #      exists natively).
+    with_source(ENTRY, "    LegMeasureExpireSweep();\n",
+                "    LegMeasureExpireSweep();\n    LegMeasureFollowTimer();\n")
+    cases.append(("a retired drag channel wired back into the entry is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab. P-LM-17: the line stops being SELECTABLE - the terminal's own gestures
+    #      (right-click Properties/Delete, keyboard Delete) go deaf.
+    with_source(TH3TOOL,
+                "            ObjectSetInteger(0, ln, OBJPROP_SELECTABLE, true);",
+                "            ObjectSetInteger(0, ln, OBJPROP_SELECTABLE, false);")
+    cases.append(("a non-selectable leg line (native gestures go deaf) is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-2. P-LM-17: the re-own retreats into the create branch only - a leg the
+    #        non-selectable era (P-LM-11) drew stays SELECTABLE=false through the
+    #        migration and its right-click Delete never comes («مثل بقیه ابجکت ها
+    #        دکمه دیلیتش نمیاد»).
+    with_source(TH3TOOL,
+                "        bool dragOwnsThis = (s_legDragMode != 0 && s_legDragBase == base);\n"
+                "        if(!dragOwnsThis && !ObjectGetInteger(0, ln, OBJPROP_SELECTABLE))\n"
+                "            ObjectSetInteger(0, ln, OBJPROP_SELECTABLE, true);\n",
+                "")
+    cases.append(("a create-only SELECTABLE (legacy legs stay deaf) is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-2b. P-LM-21: the drag stops disarming the native drag - the line moves on
+    #         the terminal's paint schedule and the discs stay behind it.
+    with_source(TH3TOOL, "        LegMeasureDragSelectable(s_legDragBase, false);\n", "")
+    cases.append(("a drag that lets the terminal move the line alone is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-2c. P-LM-21: the commit forgets to return the borrowed flag - the leg is
+    #         deaf to every native gesture from the first drag on.
+    with_source(TH3TOOL, "    LegMeasureDragSelectable(base, true);\n", "")
+    cases.append(("a drag commit that keeps the line unselectable is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-2d. P-LM-21: the ABORT path keeps the flag - a cancelled drag leaves the
+    #         same deafness behind.
+    with_source(TH3TOOL, "        LegMeasureDragSelectable(base, true);\n", "")
+    cases.append(("a drag abort that keeps the line unselectable is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-2e. P-LM-21: the borrower loses its guard on the line's existence.
+    with_source(TH3TOOL,
+                "    if(ObjectFind(0, ln) < 0) return;\n"
+                "    if((bool)ObjectGetInteger(0, ln, OBJPROP_SELECTABLE) == draggable) return;\n",
+                "    if((bool)ObjectGetInteger(0, ln, OBJPROP_SELECTABLE) == draggable) return;\n")
+    cases.append(("a drag selectable write blind to the line is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ab-3. P-LM-18: the selection loses its face - the mid handle stops asking
+    #        the terminal's own selection and a selected leg reads exactly like
+    #        a resting one («حالت سلکتش با سلکت نبودنش ... یک شکله»).
+    with_source(TH3TOOL,
+                '    string bmpM = up ? (sel ? LEG_HANDLE_UP_MID_SEL_RES : LEG_HANDLE_UP_MID_RES)\n'
+                '                     : (sel ? LEG_HANDLE_DN_MID_SEL_RES : LEG_HANDLE_DN_MID_RES);\n',
+                '    string bmpM = up ? LEG_HANDLE_UP_MID_RES : LEG_HANDLE_DN_MID_RES;\n')
+    cases.append(("handles that ignore the selection (solid on selected) are caught",
+                  bool(check_leg_selection())))
+    reset()
+
+    # 8ab-4. P-LM-18: the ride channels stop re-widthing the line - a native click
+    #        that selects the leg never widens it, the state change has no event
+    #        left to answer in.
+    with_source(TH3TOOL, "        int w = LegMeasureLineWidth(g_legBase[i]);\n",
+                "        int w = LEG_LINE_W;\n")
+    cases.append(("a ride pass that drops the selection width is caught",
+                  bool(check_leg_selection())))
+    reset()
+
+    # 8ab-5. P-LM-18: the ink pass drops the selection width - a drag on a selected
+    #        leg would fall back to the resting width mid-gesture.
+    with_source(TH3TOOL, "        int w = LegMeasureLineWidth(base);\n",
+                "        int w = LEG_LINE_W;\n")
+    cases.append(("an ink pass that drops the selection width is caught",
+                  bool(check_leg_selection())))
+    reset()
+
+    # 8ab-6. P-LM-18: a hollow raster loses its #resource - the selected face goes
+    #        blank (an icon outside the embedding is a ghost).
+    with_source(TH3TOOL,
+                '#resource "\\\\Files\\\\Icons\\\\leg_handle_up_sel.bmp"\n', "")
+    cases.append(("a selected-handle raster without its #resource is caught",
+                  bool(check_leg_selection())))
+    reset()
+
+    # 8ab-7. P-LM-19: the two direction colours converge - the axis is retired in
+    #        everything but name, and every leg on the chart wears one ink.
+    with_source(TH3TOOL, "#define LEG_BULL_INK   C'31,95,255'",
+                "#define LEG_BULL_INK   C'224,64,64'")
+    cases.append(("a leg meter whose two direction colours are one is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-8. P-LM-19: the up leg stops being the strong blue the user asked for.
+    with_source(TH3TOOL, "#define LEG_BULL_INK   C'31,95,255'",
+                "#define LEG_BULL_INK   C'0,168,107'")
+    cases.append(("an up leg that is no longer the strong blue is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-9. P-LM-19: the drag re-inks through the fixed violet again - a coloured
+    #        leg turns violet under the hand.
+    with_source(TH3TOOL, "    LegMeasureInk(base, nt1, np1, nt2, np2, dragInk, false);\n",
+                "    LegMeasureInk(base, nt1, np1, nt2, np2, LEG_INK, false);\n")
+    cases.append(("a drag that re-inks the leg in the fixed violet is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-10. P-LM-19: the drag's ink stops answering the leg's own direction -
+    #         a leg dragged past horizontal keeps its old colour.
+    with_source(TH3TOOL,
+                '    color dragInk = ((nt2 >= nt1 ? np2 : np1) >= (nt2 >= nt1 ? np1 : np2))\n'
+                '                    ? LEG_BULL_INK : LEG_BEAR_INK;\n',
+                "    color dragInk = LEG_BULL_INK;\n")
+    cases.append(("a drag that ignores the leg's direction is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-11. P-LM-19: the preview goes back to the fixed violet - the user cannot
+    #         see which leg he is drawing until the release.
+    with_source(TH3TOOL,
+                "        color preCol = ((curP >= g_legSess.p1) ? LEG_BULL_INK : LEG_BEAR_INK);\n",
+                "        color preCol = LEG_INK;\n")
+    cases.append(("a preview that hides the leg's direction is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-12. P-LM-19: the ATR goes back to a raw Wilder read - a second ruler next
+    #         to the composite the labels read.
+    with_source(TH3TOOL, "    double a = CalculateWeightedATR(CompatTF(tf));\n",
+                "    double a = iATR(NULL, tf, 14, 1);\n")
+    cases.append(("an ATR that is not the labels' own composite is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-12b. P-LM-22: the readout badges the bar-count gate again - a free
+    #          measurement wears the closed step's grid rule (P-TH3-STEP-08/10).
+    with_source(TH3TOOL, "    ownerTF = TH3LegOwnerTF(legSize, trusted);\n",
+                "    ownerTF = TH3ClosedOwnerTF(60);\n")
+    cases.append(("a leg readout back on the bar-count gate is caught",
+                  bool(check_leg_tf())))
+    reset()
+
+    # 8ab-12c. P-LM-22: the band drifts off the user's 240-360.
+    with_source(TH3TOOL, "#define TH3_LEG_TF_HI   3.60",
+                "#define TH3_LEG_TF_HI   5.00")
+    cases.append(("a leg TF band that is not 240-360 is caught",
+                  bool(check_leg_tf())))
+    reset()
+
+    # 8ab-12d. P-LM-22: the walk stops clearing trusted on a TF with no
+    #          history - an unjudged step prints as read.
+    with_source(TH3TOOL, "        if(a <= 0) { trusted = false; break; }\n",
+                "        if(a <= 0) { break; }\n")
+    cases.append(("a leg TF walk that trusts an unjudged step is caught",
+                  bool(check_leg_tf())))
+    reset()
+
+    # 8ab-12e. P-LM-22: the walk judges through a raw Wilder read - a second
+    #          ruler next to the labels' composite.
+    with_source(TH3TOOL, "        double a = LegAtr14(tf);",
+                "        double a = iATR(NULL, tf, 14, 1);")
+    cases.append(("a leg TF walk off the labels' composite is caught",
+                  bool(check_leg_tf())))
+    reset()
+
+    # 8ab-13. P-LM-19: the placement offset collapses back onto the grab radius -
+    #         the handle's visual centre lands a pixel past its anchor.
+    with_source(TH3TOOL, "#define LEG_HANDLE_HALF      7",
+                "#define LEG_HANDLE_HALF      6")
+    cases.append(("a handle placed at its grab radius, not its canvas centre, is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-14. P-LM-19: the mid handle stops rounding the exact pixel midpoint -
+    #         truncating integer division sits it a pixel off the true 50%.
+    with_source(TH3TOOL,
+                "                      (int)MathRound(((double)sx + (double)tx) * 0.5),\n"
+                "                      (int)MathRound(((double)sy + (double)ty) * 0.5),\n",
+                "                      (sx + tx) / 2,\n"
+                "                      (sy + ty) / 2,\n")
+    cases.append(("a mid handle that does not sit on the exact 50% is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-15. P-LM-19: the generator's palette drifts off the line's ink - the
+    #         baked icons and the line disagree about the direction.
+    with_source(GENICONS, "const LEG_UP_RGB    = [31, 95, 255];",
+                "const LEG_UP_RGB    = [0, 168, 107];")
+    cases.append(("a baked palette out of step with the line's ink is caught",
+                  bool(check_leg_direction())))
+    reset()
+
+    # 8ab-16. P-LM-20: the atomic repaint goes - the selection is assembled from
+    #         pieces again, and the line and the discs disagree about it.
+    #         (strip_comments removes the trailing P-LM-20 marker, so the anchor
+    #         is the repaint's own writer call.)
+    with_source(TH3TOOL,
+                "    LegMeasureInk(base, t1, p1, t2, p2, ink, false);\n"
+                "}\n",
+                "    LegMeasureHandles(base, t1, p1, t2, p2, ink);\n"
+                "}\n")
+    cases.append(("a selection repaint that bypasses the one ink writer is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-17. P-LM-20: the OBJECT_CLICK handler goes - a still click selects the
+    #         line and nothing answers it until the chart happens to move.
+    with_source(TH3TOOL,
+                "    string base = StringSubstr(objName, 0, len - 5);\n"
+                "    LegMeasureSelectionRepaint(base);   // ONE pass: line + the three discs\n"
+                "    return true;\n",
+                "    return true;\n")
+    cases.append(("a selection that the terminal reports and nothing answers is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-18. P-LM-20: the router stops carrying OBJECT_CLICK - the terminal's own
+    #         selection event never reaches the family.
+    with_source(EVENTS, "        if(LegMeasureOnObjectClick(sparam)) ThrottledChartRedraw();\n",
+                "        ThrottledChartRedraw();\n")
+    cases.append(("an OBJECT_CLICK the leg meter never sees is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-19. P-LM-20: the router's else-branch goes - a click elsewhere
+    #         DESELECTS the line and the family keeps the selected face.
+    with_source(EVENTS,
+                "        else LegMeasureRideChart();   // a click off the family: deselection lands whole\n",
+                "")
+    cases.append(("a deselection the family keeps painting as selected is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-20. P-LM-20: the handle ZORDER stops being re-asserted on every pass - a
+    #         leg the pre-ZORDER build drew keeps its discs under the line forever.
+    with_source(TH3TOOL,
+                "    ObjectSetInteger(0, hn, OBJPROP_ZORDER, Z_CHART_LEG_HANDLE);\n", "")
+    cases.append(("a handle whose ZORDER is only set at create is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-20b. P-LM-20 / P-UI-31: the rung is read back before it is written.
+    with_source(TH3TOOL, "    ObjectSetInteger(0, hn, OBJPROP_ZORDER, Z_CHART_LEG_HANDLE);\n",
+                "    if((int)ObjectGetInteger(0, hn, OBJPROP_ZORDER) != Z_CHART_LEG_HANDLE)\n"
+                "        ObjectSetInteger(0, hn, OBJPROP_ZORDER, Z_CHART_LEG_HANDLE);\n")
+    cases.append(("a handle whose rung is read back is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-21. P-LM-20: the shadow becomes an authority - it reads the terminal's
+    #         own flag and a selection changed outside any event we see goes
+    #         unanswered.
+    with_source(TH3TOOL,
+                "    for(int i = 0; i < s_legSelCount; i++)\n"
+                "    {\n"
+                "        if(s_legShadowBase[i] != base) continue;\n",
+                "    bool realSel = LegMeasureSelected(base);\n"
+                "    for(int i = 0; i < s_legSelCount; i++)\n"
+                "    {\n"
+                "        if(s_legShadowBase[i] != base) continue;\n"
+                "        if(s_legSelState[i] == realSel) return false;\n")
+    cases.append(("a selection shadow that reads the terminal itself is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ab-22. P-LM-20: the delete path stops forgetting the shadow - a re-created
+    #         leg of the same stamp inherits another leg's painted state.
+    with_source(TH3TOOL, "    LegMeasureSelShadowForget(base);  // P-LM-20: its painted "
+                         "state goes with it\n", "")
+    cases.append(("a delete that leaves the painted state behind is caught",
+                  bool(check_leg_sel_atomic())))
+    reset()
+
+    # 8ac. P-LM-11: the ink writer stops building the handles - a measurement can
+    #      exist without its rings.
+    with_source(TH3TOOL, "    LegMeasureHandles(base, t1, p1, t2, p2, ink);\n", "")
+    cases.append(("a family drawn without its handle rings is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ad. P-LM-13/14: the handle reverts to a chart-space ellipse - the shape that
+    #      drew as a hairline at working zoom (an ellipse whose anchors share a bar).
+    with_source(TH3TOOL,
+                "        if(!ObjectCreate(0, hn, OBJ_BITMAP_LABEL, 0, 0, 0)) return;",
+                "        if(!ObjectCreate(0, hn, OBJ_ELLIPSE, 0, t, p, t, p)) return;")
+    cases.append(("a chart-space ellipse handle (the hairline) is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ai. P-LM-14: the icon stops being centred on its anchor - it hangs off the
+    #      line end by half its own width.
+    with_source(TH3TOOL,
+                "    int nx = x - half, ny = y - half;    // the icon's CENTRE sits on the anchor",
+                "    int nx = x, ny = y;")
+    cases.append(("a handle hanging off its anchor is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8aj. P-LM-13: CHARTEVENT_CLICK stops reaching the motionless-click finalize -
+    #      the drag state sticks live and nothing can be deleted or selected.
+    with_source(EVENTS,
+                "    if(id == CHARTEVENT_CLICK) LegMeasureClickFinalize();\n", "")
+    cases.append(("a stuck drag no motionless click can end is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ak. P-LM-17: the click gesture deletes DIRECTLY again - a stray click
+    #      costs a drawing.
+    with_source(TH3TOOL,
+                "        LegMeasurePlateShow(base);\n        return;",
+                "        LegMeasureDelete(base);\n        LegMeasurePlateShow(base);\n        return;")
+    cases.append(("a click that deletes the leg outright is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8al. P-LM-17: the ink stops answering the leg's DIRECTION (automatic
+    #      bull/bear colouring).
+    with_source(TH3TOOL,
+                "    accent = (pLate >= pEarly) ? LEG_BULL_INK : LEG_BEAR_INK;",
+                "    accent = LEG_BULL_INK;")
+    cases.append(("a leg meter with one fixed colour is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8am. P-LM-17: the native delete stops cascading to the family - the icons
+    #      and the plate survive their own line.
+    with_source(EVENTS, "        LegMeasureOnObjectDelete(sparam);", "")
+    cases.append(("a native deletion that leaves the family behind is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8an. P-LM-16b: the dots stop riding the chart in the MOUSE_MOVE event - a
+    #      drag-pan separates them from the line (the user's screenshot).
+    with_source(TH3TOOL,
+                "    LegMeasureRideChart();\n\n    bool leftDown  = (StringFind(buttons, \"1\") >= 0);",
+                "    bool leftDown  = (StringFind(buttons, \"1\") >= 0);")
+    cases.append(("dots left behind by a drag-pan are caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8ae. P-LM-11: the edit owner stops standing down while another gesture holds
+    #      the view lock - a leg would steal a panel's/menu's press (P-UI-90).
+    with_source(TH3TOOL,
+                "    if(ChartViewLockHeld()) return false;\n",
+                "")
+    cases.append(("a leg that steals the pointer from a held gesture is caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8af. P-LM-17: the handles stop following the line's direction colour - the
+    #      icons and the line disagree about bullish and bearish.
+    with_source(TH3TOOL,
+                '    string bmpH = up ? (sel ? LEG_HANDLE_UP_SEL_RES     : LEG_HANDLE_UP_RES)\n'
+                '                     : (sel ? LEG_HANDLE_DN_SEL_RES     : LEG_HANDLE_DN_RES);\n',
+                '    string bmpH = LEG_HANDLE_UP_RES;\n')
+    cases.append(("handles ignoring the leg's direction colour are caught",
+                  bool(check_leg_head_follow())))
+    reset()
+
+    # 8m. P-UI-96b: the duplicate-point guard is dropped (a held click is stored twice)
+    with_source(TH3CTRL,
+                "           MathAbs(g_th3Session.points[prev].price - p) <= GetCachedPoint())",
+                "           false)")
+    cases.append(("a session that can spend one press as two pivots is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8l. the arming press is spent as pivot X (the swallow is no longer forwarded)
+    with_source(TH3TOOL, "TH3SessionStart(fromRingItem);", "TH3SessionStart();")
+    cases.append(("an arm that lets its own press become pivot X is caught",
+                  bool(check_th3_item())))
+    reset()
+
+    # 8n. P-UI-97: a bright literal written straight into OBJPROP_COLOR again (the
+    #     session's placed letter - the ink the user could not see on white)
+    with_source(TH3CTRL, "TH3SessionPointInk());", "clrYellow);")
+    cases.append(("a hardcoded bright session ink is caught", bool(check_th3_ink())))
+    reset()
+
+    # 8m3. P-TH3-INFO-04: the readout plate's palette is allowed BY NAME, so a raw
+    #      bright literal on the plate itself is still the bug (the allowance is
+    #      narrow: it is the palette, not "anything on the plate")
+    with_source(TH3RENDER, "        ObjectSetInteger(0, plate, OBJPROP_COLOR,       TH3RO_EDGE);",
+                "        ObjectSetInteger(0, plate, OBJPROP_COLOR,       clrYellow);")
+    cases.append(("a raw ink on the readout plate is caught",
+                  bool(check_th3_ink())))
+    reset()
+
+    # 8o. P-UI-97: an ink setting reaches OBJPROP_COLOR without the resolver
+    with_source(TH3RENDER, "TH3InkForChart(inpABCDInfoColor)", "inpABCDInfoColor")
+    cases.append(("an unresolved pattern ink is caught", bool(check_th3_ink())))
+    reset()
+
+    # 8p. P-UI-97: the resolver is deleted (nothing decides what reads on the paper)
+    with_source(TH3CTRL, "color TH3InkForChart(", "color TH3InkForCharts(")
+    cases.append(("a missing ink owner is caught", bool(check_th3_ink())))
     reset()
 
     # 9. a non-ASCII caption (the P-LBL-02 lesson, on the panel side)
@@ -4426,6 +8166,663 @@ def selftest():
                 "")
     cases.append(("a gesture answer that outlives the instance is caught",
                   bool(check_bk_drag())))
+    reset()
+
+
+    reset()
+
+    # 98. P-UI-98: the handle match forgets the custom-price gate.
+    with_source(EVENTS, "    if(g_thStartPointType != TH_START_POINT_CUSTOM_PRICE) return false;\n", "")
+    cases.append(("a computed ladder's step-1 becomes draggable - caught",
+                  bool(check_step1())))
+    reset()
+
+    # 99. P-UI-98f: the coincident boundary line carries the step-1 handle again
+    # (the reported «اون قرمز خیلی نزدیک کاستوم پرایس»).
+    with_source(PIPELINE, "        if(dist < stepNow * 0.5) continue;             // on the anchor: never a handle\n", "")
+    cases.append(("a red handle on the custom price line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 100. P-UI-98: the render writes the dragged line again (P-BK-15).
+    with_source(PIPELINE, "        if(g_s1DragLive && lines[i].name == g_s1DragName)\n            continue;",
+                "        if(false)\n            continue;")
+    cases.append(("a write on the dragged handle is caught", bool(check_step1())))
+    reset()
+
+    # 101. P-UI-98: the face is owned BEFORE the guarded creator again.
+    with_source(PIPELINE, "            bool isNew = CreateOrUpdateHLine(lines[i].name",
+                "            Step1HandleOwnFace(lines[i].name, 0, 0, 0, \"\");\n            bool isNew = CreateOrUpdateHLine(lines[i].name")
+    cases.append(("a face write that lands before creation is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 102. P-UI-98: the handle loses its z-order above the zone fills.
+    with_source(PIPELINE,
+                "    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_CHART_LABEL);\n", "")
+    cases.append(("a zone rect eating the handle's grab is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 103. P-UI-98: the geometry signature drops the override term.
+    with_source(EVENTS, "                          DoubleToString(StepOverrideFactor(), 6) + \"|\" +\n", "")
+    cases.append(("a drag that reads as the same picture is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 104. P-UI-98: the override stops multiplying the factory's sizes.
+    with_source(EVENTS, "            for(int s1i = 0; s1i < def.stepSizeCount; s1i++)\n                def.stepSizes[s1i] *= s1Factor;", "")
+    cases.append(("a dragged step that never reaches the ladder is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 105. P-UI-98: the settle keeps the grab's selection.
+    with_source(EVENTS, "    if(name != \"\" && (bool)ObjectGetInteger(0, name, OBJPROP_SELECTED))\n        ObjectSetInteger(0, name, OBJPROP_SELECTED, false);", "")
+    cases.append(("a selection that outlives the step-1 drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 106. P-UI-98d: the settle stops stamping the drag echo.
+    with_source(EVENTS, "        g_s1JustDraggedMs = GetTickCount();\n", "")
+    cases.append(("a drag's click echo setting the line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 107. P-UI-98: the button-up latch forgets the step-1 gesture.
+    with_source(EVENTS, "            if(g_s1DragLive) Step1DragSettle();", "")
+    cases.append(("a step-1 release with no settle is caught", bool(check_step1())))
+    reset()
+
+    # 108. P-UI-98: the stale-drag heal forgets the step-1 flags.
+    with_source(EVENTS, "    if(g_s1DragLive)\n    {\n        g_s1DragLive = false;\n", "")
+    cases.append(("a lost release pinning the handle is caught", bool(check_step1())))
+    reset()
+
+    # 109. P-UI-98: one reset site disappears (the R key's).
+    with_source(EVENTS, "            StepOverrideFactorReset();", "")
+    cases.append(("an override that survives its own reset is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 110. P-UI-98d: a set line survives its own reset (armed wake gone).
+    with_source(EVENTS, "            g_s1LinesArmed = true;", "            ;")
+    cases.append(("a set handle that survives the R reset is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 111. P-UI-98d: the sweeper leaves the tick path.
+    with_source(EVENTS, "    HandsetClickSweep();" + chr(10) + chr(10) + "    if(IsIndicatorHidden())", "")
+    cases.append(("a click that never moves again never committing is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 112. P-UI-98d: the step-1 click owner disappears.
+    with_source(EVENTS, "    if(id == CHARTEVENT_OBJECT_CLICK && Step1LineIsDragHandle(sparam))",
+                "    if(false)")
+    cases.append(("a handle without its click owner is caught", bool(check_step1())))
+    reset()
+
+    # 113. P-UI-98d: the custom marker leaves the LINES switch.
+    # 112b. P-UI-98d v2: the red handle stops obeying the LINES switch - the
+    # user's «وقتی لاین ها رو خاموش میکنم نشان ها هم نباشه».
+    with_source(PIPELINE, "       IsIndicatorHidden() || !g_linesVisible)",
+                "       IsIndicatorHidden())")
+    cases.append(("a marker that ignores the lines mask is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 114. P-UI-99-OFF: the hold-to-arm beat comes back.
+    with_source(EVENTS, "// P-UI-99-OFF (2026-09-21, user order):",
+                "#define CP_HOLD_MS 500\n// P-UI-99-OFF (2026-09-21, user order):")
+    cases.append(("the retired hold-to-arm beat returning is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 115. P-UI-99: the immediate claim loses its armed gate (a SET line
+    # answers the pixel test again). P-UI-100: the anchor carries the claim's
+    # current text, foreign-draw fence included.
+    with_source(EVENTS, "                if(!s1Claimed && g_cpLineArmed && !TickDeadlinePending(s_cpForeignDrawUntil) &&\n                   ((pressEdge && (terminalGrab || pixelHit)) || (terminalGrab && atLineNow)))",
+                "                if(!s1Claimed &&\n                   ((pressEdge && (terminalGrab || pixelHit)) || (terminalGrab && atLineNow)))")
+    cases.append(("a set line grabbed by the pixel test is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 116. P-UI-99: the foreign-drag drain loses its arm.
+    with_source(EVENTS, "                else if(pressEdge || terminalGrab)", "                else if(false)")
+    cases.append(("a stale selection riding another object's drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 117. P-UI-99: the claim stops selecting the line (no face).
+    with_source(EVENTS, "                        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, true);", "")
+    cases.append(("a grab without its select face is caught", bool(check_step1())))
+    reset()
+
+    # 118. P-UI-98e: the press edge stops claiming the handle (the drag dies back
+    # to a terminal grab that never engaged - the report this rule exists for).
+    with_source(EVENTS, "                bool s1Claimed = (s1OnRow &&\n"
+                        "                                  Step1HandleOwnClaim(s1Row, (int)lparam, (int)dparam));",
+                "                bool s1Claimed = false;")
+    cases.append(("a step-1 handle no press can claim is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 119. P-UI-98e: the carry writes the cursor's own price again.
+    with_source(EVENTS, "                double wishPrice = g_s1OwnGrabPrice + (cursorPrice - g_s1OwnGrabCursorPrice);",
+                "                double wishPrice = cursorPrice;")
+    cases.append(("a step-1 carry that snaps the handle onto the cursor is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 120. P-UI-98e: the carry loses its travel fence (a click re-steps the ladder).
+    with_source(EVENTS, "    if(MathAbs(y - g_s1OwnGrabY) >= CP_DRAG_SLOP && g_s1OwnGrabCursorPrice > 0.0)",
+                "    if(g_s1OwnGrabCursorPrice > 0.0)")
+    cases.append(("a step-1 click that re-steps the whole ladder is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 121. P-UI-98e/98f: the settle stops clearing the carry's own state.
+    with_source(EVENTS, "    Step1GestureStateClear();\n    CustomPriceDragFrame(true);",
+                "    CustomPriceDragFrame(true);")
+    cases.append(("a finished step-1 gesture that keeps carrying the line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 121b. P-UI-98e: a fresh placement stops waking the pair ARMED.
+    with_source(EVENTS, "            HandsetPlacementArm();   // P-UI-98e: the fresh line and its handles wake draggable\n", "")
+    cases.append(("a freshly placed line born inert is caught", bool(check_step1())))
+    reset()
+
+    # 122. P-UI-98e: the CLAIM loses its armed gate (a SET handle moves again).
+    with_source(EVENTS, "    if(!g_s1LinesArmed) return false;      // a SET handle is inert: nothing may grab it\n",
+                "")
+    cases.append(("a SET handle that answers the press again is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122b. P-UI-98e: the step-1 drag stops marking the ladder stale (only the
+    # dragged line moves, the other levels stand still).
+    with_source(EVENTS, "    g_redrawTHLevelsNeeded = true;\n    CustomPriceDragFrame(false);",
+                "    CustomPriceDragFrame(false);")
+    cases.append(("a step-1 drag the levels do not follow is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122c. P-UI-98e: the step-1 drag loses its deferral exemption (the follow
+    # becomes a scheduled frame - the lag the user reported).
+    with_source(EVENTS, "    if(force_redraw && g_inChartEvent && !g_customPriceLineDragging && !g_s1DragLive)",
+                "    if(force_redraw && g_inChartEvent && !g_customPriceLineDragging)")
+    cases.append(("a step-1 drag whose frames are only scheduled is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122d. P-UI-98e: the held pass stops borrowing the draggable flag (the
+    # terminal's own drag re-arms and cuts the gesture off - «سریع قطع میشه»).
+    with_source(EVENTS, "    Step1DragSelectable(handle, false);\n", "")
+    cases.append(("a step-1 drag the terminal's own drag fights is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122d-2. P-UI-98e: the finalizer stops ending a live gesture (the release that
+    # emits no MOUSE_MOVE leaves everything stuck).
+    with_source(EVENTS, "    if(g_s1DragLive)\n    {\n        bool wrote = (g_s1OwnLastWrite > 0.0);\n        Step1DragSettle();          // the release the mouse stream never delivered\n",
+                "    if(false)\n    {\n        bool wrote = (g_s1OwnLastWrite > 0.0);\n        Step1DragSettle();\n")
+    cases.append(("a lost release that leaves the handle stuck is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122d-3. P-UI-98e: the release latch asks the travel after the settle.
+    with_source(EVENTS, "            bool s1Wrote = (g_s1OwnLastWrite > 0.0);\n            if(g_s1DragLive) Step1DragSettle();",
+                "            if(g_s1DragLive) Step1DragSettle();")
+    cases.append(("a drag that SETs its own handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122e. P-UI-98e: the settle stops returning the borrowed flag.
+    with_source(EVENTS, "        Step1DragSelectable(name, g_s1LinesArmed &&\n"
+                        "                                  g_thStartPointType == TH_START_POINT_CUSTOM_PRICE);\n",
+                "")
+    cases.append(("a handle left un-selectable after its own drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122f. P-UI-98e: a press on the custom price line is claimed by the handle.
+    with_source(EVENTS, "                bool onCustomLine = CustomPriceGrabAt((int)lparam, (int)dparam);",
+                "                bool onCustomLine = false;")
+    cases.append(("a line drag that re-steps the ladder instead is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 122g. P-UI-98e: another timeframe's stash is answerable again.
+    with_source(EVENTS, "    if(g_s1MarkPeriod != Period()) return false;   // P-UI-98e: THIS tf's step 1 only\n",
+                "")
+    cases.append(("another timeframe's step 1 answering the press is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 123. P-UI-98e: the click owner loses its twin-event dedupe (one click reads
+    # as a double, or a double as two singles).
+    with_source(EVENTS, "    if(g_s1ClickHandledMs != 0 && now - g_s1ClickHandledMs < 60) return;   // the same click's twin event\n",
+                "")
+    cases.append(("a click whose twin event reads as a double is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 124. P-UI-98e: the still click never reaches the click owner (no MOUSE_MOVE
+    # is emitted for a motionless release).
+    with_source(EVENTS, "    if(id == CHARTEVENT_CLICK) Step1ClickFinalize();\n", "")
+    cases.append(("a still click that never commits is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 125. P-UI-98e: the press edge stops recording the row it landed on.
+    with_source(EVENTS, "                    g_s1ClickRow = s1Row;\n", "")
+    cases.append(("a click that cannot name its handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 126. P-UI-98e: the ride places a step-1 icon while the pair is SET.
+    with_source(EVENTS, "    if(g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0 && g_linesVisible && !IsIndicatorHidden())",
+                "    if(g_s1MarkAbovePrice > 0.0 && g_linesVisible && !IsIndicatorHidden())")
+    cases.append(("a red handle over a SET line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 127. P-UI-98f: the face gate goes back to the rung number (the ladder's
+    # below rung 1 is the boundary line ON the custom price).
+    with_source(PIPELINE, "            if(lines[i].name == s1AboveName || lines[i].name == s1BelowName)",
+                "            if(lines[i].logicalStep == 1)")
+    cases.append(("a handle on the ladder's below rung 1 is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 128. P-UI-98f: the pick stops being anchored on the custom price line.
+    with_source(PIPELINE, "    Step1HandlePick(lines, lineCount, GetMidpointPrice(g_thStartPointType),\n", "")
+    cases.append(("a handle picked off another anchor is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 129. P-UI-98f: the pick measures against a step of its own (the pair could
+    # change under a live drag and hand the gesture to another line).
+    with_source(PIPELINE, "                    StepOverrideFactor() * NaturalFirstStep(),\n",
+                "                    GetMidpointPrice(g_thStartPointType) * 0.1,\n")
+    cases.append(("a pair that changes under the drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 130. P-UI-98f: the handle match goes back to a name tail.
+    with_source(EVENTS, "    return (name == g_s1MarkAboveName || name == g_s1MarkBelowName);\n",
+                '    return (StringSubstr(name, StringLen(name) - 8, 8) == "_Above_1");\n')
+    cases.append(("a below handle no suffix can name is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 131. P-UI-98f: the drag math reads the side off the name again.
+    with_source(EVENTS, "    bool above = Step1LineIsAbove(name);\n",
+                '    bool above = (StringSubstr(name, StringLen(name) - 8, 8) == "_Above_1");\n')
+    cases.append(("a below handle read as the above one is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 132. P-UI-98f: the pick answers one side only.
+    with_source(PIPELINE, "        if(lines[i].direction > 0)\n", "        if(true)\n")
+    cases.append(("a pick that shadows a side is caught", bool(check_step1())))
+    reset()
+
+    # 133. P-UI-98f: the drag drops its press baseline (a grab that moves nothing
+    # rescales the ladder by the handle's own offset).
+    with_source(EVENTS, "        s_s1GrabDist = MathAbs(dragged - start);\n", "")
+    cases.append(("a phantom grab that snaps the step is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 134. P-UI-98f: the drag goes back to the absolute reading only.
+    with_source(EVENTS, "                       ? (s_s1GrabFactor * (newFirst / s_s1GrabDist))\n",
+                "                       ? (newFirst / natural)\n")
+    cases.append(("a handle that loses its offset under the hand is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 135. P-UI-98f: the stand-down goes back to "differs from my last write".
+    with_source(EVENTS, "        s_s1SeenPrice = current;\n", "")
+    cases.append(("a carry that stands down forever is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 136. P-UI-98f: the carry forgets its own write is what the next event sees.
+    with_source(EVENTS, "                    s_s1SeenPrice = wishPrice;   // we are the last mover\n", "")
+    cases.append(("a carry that reads its own write as the terminal is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 137. P-UI-98f: the stale-drag heal stops clearing the gesture's state.
+    with_source(EVENTS, "        Step1GestureStateClear();\n", "")
+    cases.append(("a healed gesture that poisons the next one is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 139. P-UI-98q: the green circle waits for a click again (the placement
+    # it alone faces shows nothing until asked).
+    with_source(EVENTS, "    bool show = g_customPriceLineCreated &&\n                !IsIndicatorHidden() &&\n                g_thStartPointType == TH_START_POINT_CUSTOM_PRICE;\n",
+                "    bool show = g_customPriceLineCreated && g_cpLineArmed && g_cpHandleShown &&\n                !IsIndicatorHidden() && g_linesVisible &&\n                g_thStartPointType == TH_START_POINT_CUSTOM_PRICE;\n")
+    cases.append(("a green circle that waits for a click is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 140. P-UI-98g: the red circles come up without a click (the ride channel).
+    with_source(EVENTS, "g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0",
+                "g_s1LinesArmed && g_s1MarkAbovePrice > 0.0")
+    cases.append(("a red circle the ride resurrects unasked is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 141. P-UI-98g: the click on the custom price line stops revealing.
+    with_source(EVENTS, "    if(!g_cpHandleShown)\n", "    if(false)\n")
+    cases.append(("an armed line with no way to show its handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 142. P-UI-98g: our own drag stops revealing the circles.
+    with_source(EVENTS, "    g_s1HandleShown = true;\n    g_s1OwnActive = true;",
+                "    g_s1OwnActive = true;")
+    cases.append(("a drag that leaves no circle behind is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 143. P-UI-98g: a fresh placement is born with the circles already up.
+    with_source(EVENTS, "    g_cpHandleShown = false;\n    g_s1HandleShown = false;\n}\n",
+                "}\n")
+    cases.append(("a placement that is born shown is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 144. P-UI-98g: a SET leaves the circles up.
+    with_source(EVENTS, "            g_s1HandleShown = false;  // P-UI-98g: nothing points at a set line\n", "")
+    cases.append(("a circle left over a SET line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 145. P-UI-98g: the teardown leaves the reveal latches set.
+    with_source(EVENTS, "        g_cpHandleShown = false;\n        g_s1HandleShown = false;\n        g_cpSetPending = \"\";",
+                "        g_cpSetPending = \"\";")
+    cases.append(("a placement that inherits a shown handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 138. P-UI-98f: the settle clears before its own echo stamp.
+    with_source(EVENTS, "    if(!g_s1DragLive) return;\n    g_s1DragLive = false;\n",
+                "    if(!g_s1DragLive) return;\n    g_s1DragLive = false;\n    Step1GestureStateClear();\n")
+    cases.append(("a drag whose release SETs its own handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 146. P-UI-98h: the finalizer runs with no button witness, i.e. on the
+    # press echo that the panels already measured (P-UI-49b / P-UI-73).
+    with_source(EVENTS, "    if(!UILeftButtonUp()) return;\n    string row = g_s1ClickRow;\n",
+                "    string row = g_s1ClickRow;\n")
+    cases.append(("a CLICK on the PRESS that kills the drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 147. P-UI-98h: the click owner arms the SET while the gesture is live.
+    with_source(EVENTS, "    if(g_s1LinesArmed && !g_s1DragLive && now - g_s1JustDraggedMs > 350)\n",
+                "    if(g_s1LinesArmed && now - g_s1JustDraggedMs > 350)\n")
+    cases.append(("a SET armed under a live drag is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 148. P-UI-98h: the sweeper goes back to committing with the button down
+    # (the first slot - the check counts both).
+    with_source(EVENTS, "DOUBLE_CLICK_THRESHOLD_MS\n       && UILeftButtonUp())",
+                "DOUBLE_CLICK_THRESHOLD_MS)")
+    cases.append(("a SET committed while the button is down is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 149. P-UI-98h: the claim stops cancelling the pending SET.
+    with_source(EVENTS, '    g_s1SetPending = "";\n    g_s1SetPendingMs = 0;\n', "")
+    cases.append(("a pending SET that outlives the grab is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 150. P-UI-98h: a settle that moved the line leaves the pending SET alive.
+    with_source(EVENTS, '    if(s1Moved) { g_s1SetPending = ""; g_s1SetPendingMs = 0; }\n', "")
+    cases.append(("a SET that survives the drag it belonged to is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 151. P-UI-98h: the grab gate goes back to the 1 px line instead of the
+    # 15 px circle the hand actually grabs.
+    with_source(EVENTS, "    int tolPx = HANDSET_HANDLE_HALF + (int)inpCustomPriceLevelWidth + 3;",
+                "    int tolPx = (int)inpCustomPriceLevelWidth + 4;")
+    cases.append(("a handle whose icon rim cannot be grabbed is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 152. P-UI-98i: nearest-wins goes back to custom-always-wins (on a coarse
+    # chart the red handle can never be grabbed).
+    with_source(EVENTS, "                bool s1OnRow = (s1Hit && (!onCustomLine ||\n                                          Step1NearerThanCustom((int)lparam, (int)dparam, s1Row)));",
+                "                bool s1OnRow = (s1Hit && !onCustomLine);")
+    cases.append(("a handle no press near both rows can take is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 153. P-UI-98i: the missed press edge stops claiming through the
+    # terminal's own selection (one off-chart release kills the handle).
+    with_source(EVENTS, "                if(!s1OnRow && !pressEdge && g_s1LinesArmed && !onCustomLine &&",
+                "                if(false &&")
+    cases.append(("a handle dead after a missed press edge is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 154. P-UI-98i: a native-only drag is never adopted into the own carry
+    # (OBJECT_DRAG alone, and the builds where it stutters cut the drag).
+    with_source(EVENTS, "            else if(g_s1DragLive && !g_s1OwnActive && !g_customPriceLineDragging)",
+                "            else if(false)")
+    cases.append(("a native-only drag no carry adopts is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 155. P-UI-98i: the press latch stops retrying (one failed conversion
+    # freezes the carry for the whole gesture).
+    with_source(EVENTS, "    if(!(g_s1OwnGrabCursorPrice > 0.0))",
+                "    if(false)")
+    cases.append(("a frozen grab latch no retry heals is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 156. P-UI-98i: the surplus sweep throttles for the line's drag only
+    # (a full sweep deletes under the step-1 hand).
+    with_source(PIPELINE, "    if(g_customPriceLineDragging || g_s1DragLive) {",
+                "    if(g_customPriceLineDragging) {")
+    cases.append(("a surplus sweep under the step-1 hand is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 157. P-UI-98j: the tick path stops running the self-heal (a vanished
+    # handle waits for an unrelated rebuild again).
+    with_source(EVENTS, "    Step1HandleHealMissing();\n", "")
+    cases.append(("a tick path without the step-1 net is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 158. P-UI-98j: the heal guesses with no window known.
+    with_source(EVENTS, "    if(!(wMax > wMin)) return;   // no window known: do not guess\n", "")
+    cases.append(("a self-heal that repairs blind is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 159. P-UI-98j: the heal fires mid-gesture again.
+    with_source(EVENTS, "    if(!g_s1LinesArmed || g_s1DragLive) return;\n",
+                "    if(!g_s1LinesArmed) return;\n")
+    cases.append(("a self-heal that rebuilds under the hand is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 160. P-UI-98j: a suppressed delete of a handle is ignored again.
+    with_source(EVENTS, "    else if(id == CHARTEVENT_OBJECT_DELETE && suppressDeleteEvent && sparam != \"\" &&",
+                "    else if(false &&")
+    cases.append(("a windowed delete with no heal armed is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 161. P-UI-98j: the heal wipes the family for a hole.
+    with_source(EVENTS, "    // topology change, never a hole.\n    g_redrawTHLevelsNeeded = true;\n    MarkDrawGeneration();\n}",
+                "    // topology change, never a hole.\n    g_redrawTHLevelsNeeded = true;\n    g_forceClearOnNextDraw = true;\n    MarkDrawGeneration();\n}")
+    cases.append(("a self-heal that blinks the chart is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 162. P-UI-98j: the heal repairs correctly culled off-screen lines.
+    with_source(EVENTS, "    if(g_s1MarkAboveName != \"\" && g_s1MarkAbovePrice >= wMin && g_s1MarkAbovePrice <= wMax &&\n",
+                "    if(g_s1MarkAboveName != \"\" &&\n")
+    cases.append(("a self-heal that churns culled lines is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 163. P-UI-98k: the foreign sweep deletes the live-dragged handle again
+    # (the drag holds a name the chart no longer carries).
+    with_source(PIPELINE, "       bool s1SkipSweep = (g_s1DragLive && g_s1DragName != \"\" &&\n                           lines[i].name == g_s1DragName);\n",
+                "")
+    cases.append(("a sweep that eats the dragged handle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 164. P-UI-98l: the ride stops obeying the LINES switch on the above
+    # side (L off parks the circle, the next mouse move resurrects it).
+    with_source(EVENTS, "    if(g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0 && g_linesVisible && !IsIndicatorHidden())",
+                "    if(g_s1LinesArmed && g_s1HandleShown && g_s1MarkAbovePrice > 0.0)")
+    cases.append(("a red circle the L key cannot hide is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 165. P-UI-98l: the ride stops obeying the LINES switch on the below
+    # side.
+    with_source(EVENTS, "    if(g_s1LinesArmed && g_s1HandleShown && g_s1MarkBelowPrice > 0.0 && g_linesVisible && !IsIndicatorHidden())",
+                "    if(g_s1LinesArmed && g_s1HandleShown && g_s1MarkBelowPrice > 0.0)")
+    cases.append(("a below circle the L key cannot hide is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 167. P-UI-98p: the transition stops re-asserting the never-painted
+    # mask (the line comes back).
+    with_source(EVENTS, "    // P-UI-98p: the mask is re-asserted, never lifted - the line is never\n    // painted (see the creator), the green circle is the placement.\n    if(ObjectFind(0, g_customPriceHorizontalLineName) >= 0 &&\n       (long)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)\n        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);\n",
+                "")
+    cases.append(("a transition that repaints the line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 168. P-UI-98m: a single click re-arms (the deliberate look costs a
+    # drag).
+    with_source(EVENTS, "    if(!dbl) return;\n", "")
+    cases.append(("a single click that re-arms is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 169. P-UI-98m: the press edge records the candidate on an ARMED line
+    # too (two click contracts answer one press).
+    with_source(EVENTS, "                if(pixelHit && !g_cpLineArmed)\n", "                if(pixelHit)\n")
+    cases.append(("a press claimed by two click owners is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 170. P-UI-98p: the F show path resurrects the custom line.
+    with_source(EVENTS, "        // P-UI-98p: no custom-line restore - the line is never painted (the\n        // green circle is the placement), so the F cycle must not resurrect it\n        // in any state.\n",
+                "        if(g_customPriceLineCreated)\n            ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);\n")
+    cases.append(("an F press that repaints the line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 174. P-UI-98p: the creator stops re-asserting the never-painted mask
+    # (a fresh line arrives visible).
+    with_source(EVENTS, "    if(!g_customPriceLineDragging && !g_customPriceNativeDrag &&\n       (long)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)\n        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);\n",
+                "")
+    cases.append(("a creator that paints the line is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 171. P-UI-98n: the LINES switch stops syncing the markers (the circles
+    # wait for the next render/mousemove again).
+    with_source(EVENTS, "    HandsetMarkersRide();\n}\n\n//==============================================================================\n// P-PERF-30",
+                "}\n\n//==============================================================================\n// P-PERF-30")
+    cases.append(("a LINES switch the circles follow late is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 172. P-UI-98n: the switch syncs the green dot only (the reds lag
+    # again).
+    with_source(EVENTS, "    HandsetMarkersRide();\n}\n\n//==============================================================================\n// P-PERF-30",
+                "    CustomPriceMarkerSync();\n}\n\n//==============================================================================\n// P-PERF-30")
+    cases.append(("a LINES switch that leaves the red circles is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 173. P-UI-98o: the green circle obeys the LINES switch again (L hides
+    # the placement marker with the line family).
+    with_source(EVENTS, "    bool show = g_customPriceLineCreated &&\n                !IsIndicatorHidden() &&\n                g_thStartPointType == TH_START_POINT_CUSTOM_PRICE;\n",
+                "    bool show = g_customPriceLineCreated &&\n                !IsIndicatorHidden() && g_linesVisible &&\n                g_thStartPointType == TH_START_POINT_CUSTOM_PRICE;\n")
+    cases.append(("a green circle the L key hides is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 175. P-UI-98q: the green half shrinks to the reds' (the 19 px raster
+    # sits off its price).
+    with_source(GLOBALS, "#define CP_HANDLE_HALF       9", "#define CP_HANDLE_HALF       7")
+    cases.append(("a mis-centred green circle is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 177. P-UI-98r: PnlOpen stops publishing + culling (boxes drawn before
+    # it opened stay over it).
+    with_source(PANELS, "   // P-UI-98r: the card is placed - mask the HTF boxes under it at once\n   // (chart rectangles paint over screen skins at any rung).\n   PnlPublishCover();\n   HTFCardCullRefresh();\n",
+                "")
+    cases.append(("a card that opens over HTF boxes is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 178. P-UI-98r: PnlCloseAll stops releasing (closed card leaves boxes
+    # masked).
+    with_source(PANELS, "   // P-UI-98r: cover invalidated - give back what the cull took, now.\n   PnlPublishCover();\n   HTFCardCullRefresh();\n",
+                "")
+    cases.append(("a closed card that keeps boxes masked is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 179. P-UI-98r: the timer net goes (zoom/resize drift converges on
+    # nothing).
+    with_source(ENTRY, "    // P-UI-98r: the net under the card-cull's event hooks (open/close/drag/\n    // draw) - zoom, resize and forming-candle drift converge here within one\n    // tick of the 250 ms clock. Closed / HTF-off / nothing drawn: three bool\n    // reads and out.\n    HTFCardCullRefresh();\n",
+                "")
+    cases.append(("a card-cull with no timer net is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 180. P-UI-98r: the uncover unmasks naively (resurrects F-hidden boxes).
+    with_source(HTF, "            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES,\n                             IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);\n",
+                "            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);\n")
+    cases.append(("a cull that resurrects hidden boxes is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 181. P-UI-98r: masked boxes are not tracked (the release names
+    # nothing).
+    with_source(HTF, "            HTFCullTrack(nm[k]);\n", "")
+    cases.append(("an untracked cull nothing releases is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 182. P-UI-98r: a pruned box lingers in the cull set.
+    with_source(HTF, "      // P-UI-98r: a pruned box leaves the card-cull set with it - a tracked\n      // name that no longer exists must not linger (its release write would\n      // fail silent, and the slot is a lie the next refresh would keep).\n      HTFCullForget(g_HTFPrefix + id);\n      HTFCullForget(g_HTFPrefix + id + \"_F\");\n      HTFCullForget(g_HTFPrefix + id + \"_B\");\n      HTFCullForget(g_HTFPrefix + \"WU\" + id);\n      HTFCullForget(g_HTFPrefix + \"WL\" + id);\n",
+                "")
+    cases.append(("a pruned box the cull set keeps is caught",
+                  bool(check_step1())))
+    reset()
+
+    # 176. P-UI-98p: the per-frame enforcer goes (a leaked-visible line stays
+    # painted).
+    with_source(EVENTS, "    // P-UI-98p: NEVER-PAINTED, enforced every frame. The creator and the\n    // transition both skip mid-gesture (P-BK-15) - and a gesture flag stuck\n    // set (a release off-chart leaves NativeDrag armed) births the next line\n    // with the terminal default, VISIBLE. Whatever the leak, one guarded read\n    // per frame re-masks on drift; a steady frame costs nothing. No gesture\n    // gate: a masked line is never MT4-dragged, so there is no native drag\n    // to cancel - and the mask is the correct state mid-gesture too.\n    if(lineExists &&\n",
+                "    if(false &&\n")
+    cases.append(("a leaked-visible line with no enforcer is caught",
+                  bool(check_step1())))
     reset()
 
     for name, ok in cases:

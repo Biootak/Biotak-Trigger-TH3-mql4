@@ -7,6 +7,9 @@
 #define TH3_PATTERN_PREFIX      "ABCD_Pattern_"
 #define TH3_TEMP_PREFIX         "ABCD_Temp_"
 #define TH3_TEMP_LINE_PREFIX    "ABCD_Temp_Line_"
+// P-LM-01: the leg-measure family (TH3Tool). Its own namespace so the REASON_REMOVE
+// teardown can wipe it like every other family this tool creates.
+#define TH3_LEG_PREFIX          "LM_"
 #define CACHE_TIMEOUT 60
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -59,6 +62,13 @@
 
 #define Z_CHART_ZONE 0      // zone bodies/borders, Trigger level lines
 #define Z_CHART_LINE     1      // Factor level lines (drawn above their zone)
+// P-LM-20: the leg metre's handle discs. They must paint ABOVE the measurement
+// line they sit on - a line widened for the selection face (LEG_LINE_W_SEL)
+// otherwise covers its own discs - and below every tool dot and label. The rung
+// was introduced beside the leg metre as `LEG_HANDLE_ZORDER`; it carries its own
+// Z_ ladder name now, because the Z ladder IS the paint order the zorder audit
+// proves and a rung outside it is a rung nothing can reason about.
+#define Z_CHART_LEG_HANDLE 3    // leg-metre handle discs (P-LM-20)
 #define Z_CHART_TOOL    10      // TH3 tool dots
 #define Z_BOX_RAY       50      // Base/Knot rays
 #define Z_BOX_FILL      55      // box fill layer + drag handle
@@ -85,6 +95,13 @@
 #define Z_BOX_GRIP      59
 #define Z_BOX_INFO      60      // the base note's PLATE — P-BK-86: the note itself is a SCREEN object now and rides Z_CHART_LABEL, so this rung is what its background bar wears (under the ink, above the chart art). P-BK-56 left it free for a one-line restore; P-BK-86 is the second owner of the same number.
 #define Z_BOX_TEXT      61      // box user text
+// P-TH3-INFO-08 (2026-09-21) — THE READOUT'S OWN RUNGS. TH3ROPlateAt/TH3RORowAt
+// (TH3Renderer.mqh) draw the AB=CD caption AND the leg box on the same fixed
+// dark plate. Both wore the default ZORDER 0, so the paint order was creation
+// order: a plate newer than its rows covered its own text (the top-left dark
+// empty bar). Plate 62, ink 63 — above the box art, below the chart text layer.
+#define Z_TH3_RO_PLATE  62      // readout plate (caption + leg box)
+#define Z_TH3_RO_TEXT   63      // readout ink (always above its own plate)
 #define Z_CHART_LABEL  100      // price/level labels, view anchor, countdown tag
 
 // ── Base/Knot floating pills — over the chart, UNDER the settings card

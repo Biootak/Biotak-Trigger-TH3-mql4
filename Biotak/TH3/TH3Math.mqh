@@ -9,8 +9,29 @@
 #define TH3_MATH_MQH
 #property strict
 
+// The skeleton axis types live in TH3Types.mqh and are declared before this file
+// by every host (TH3PatternStore.mqh includes Types first). Including it here too
+// keeps this file compilable on its own: the axis-measuring functions at the
+// bottom return a TH3Skeleton, so they cannot be declared without it.
+#include "TH3Types.mqh"
+#include "TH3Pivots.mqh"   // the course's own six-condition pivot + fractal TF chain (PDF pp. 3, 6-7, 50)
+
 //+------------------------------------------------------------------+
 //| Get Cached Daily ATR (performance optimization)                  |
+//|                                                                  |
+//| P-TH3-STEP-01 (2026-09-19) — THE STRUCTURE ATR READS COMPLETED   |
+//| DAYS. Shift 0 on D1 is the FORMING day: its range is partial     |
+//| until the day closes, so the ATR(14) it feeds is biased low, and |
+//| the per-day cache freeze (invalidated only when a new daily bar  |
+//| appears) then locks the biased value in for the whole day -      |
+//| measured over the broker's own daily series the bias is -5.8% at |
+//| h02 falling to -0.2% at h22, so a continuously-attached chart    |
+//| carried ~6% less structure for every step the skeleton derives   |
+//| (S enters the candidates with weight 3 and -2). The function's   |
+//| own fallback (the 20-bar average below) already reads bars 1..20 |
+//| - completed days only - so the primary path now agrees with it:  |
+//| shift 1. With shift 1 the cached value is constant within the    |
+//| day, which makes the per-day freeze correct instead of harmful.  |
 //+------------------------------------------------------------------+
 double GetCachedDailyATR()
 {
@@ -20,7 +41,7 @@ double GetCachedDailyATR()
     int currentBar = iBars(NULL, PERIOD_D1);
 
     if(currentBar != cachedBar || IsZero(cachedATR, EPSILON_PRICE)) {
-        double atrValue = iATR(NULL, PERIOD_D1, 14, 0);
+        double atrValue = iATR(NULL, PERIOD_D1, 14, 1);   // P-TH3-STEP-01: completed days only
         cachedBar = currentBar;
 
         double pipSize = GetCachedPipSize();
@@ -126,6 +147,58 @@ double CalculateWaveAngle(datetime tStart, double pStart, datetime tEnd, double 
 #define ANGLE_STRONG_THRESHOLD 55.0
 #define ANGLE_BALANCED_THRESHOLD 40.0
 #define ANGLE_SLOW_THRESHOLD 25.0
+
+//+------------------------------------------------------------------+
+//| THE MOMENTUM BANDS, in R units (see TH3MomentumSpeed)             |
+//|                                                                  |
+//| These are NOT a conversion of the degree bands above - the two    |
+//| metrics are not proportional, so no factor exists. They are the   |
+//| degree bands' own QUANTILES read on 22,538 real zigzag legs from  |
+//| 15 series (gold / euro / cable, M5..H4) by                     |
+//| `python tools/th3_momentum_bands.py --report`, which prints the   |
+//| class mix both ways. The mix is preserved to 0.1pp, so the axis   |
+//| keeps classifying the same share of legs and the step the axis    |
+//| selects does not silently change: 7.3% weak / 10.0% normal /      |
+//| 44.0% strong / 38.7% explosive against the old 7.3 / 10.0 /       |
+//| 43.9 / 38.7.                                                      |
+//|                                                                  |
+//| The tool reads the trigger ATR at pivot B, because that is the    |
+//| series TH3SkeletonFromBars passes in. Reading it at the leg's     |
+//| START instead gives 0.66 / 0.85 / 1.43 - a one-index slip would   |
+//| have shipped bands that are subtly off their own evidence.        |
+//|                                                                  |
+//| WHY THE QUANTILE MIX WAS ITSELF THE DEFECT, and these bounds are  |
+//| no longer read that way. The quantile rule preserved the OLD      |
+//| class mix, and the old mix was the problem: 7.3% weak /           |
+//| 10.0% normal / 44.0% strong / 38.7% explosive, i.e. 82.7% of      |
+//| legs at STRONG or better. TH3StepFromSkeleton then answered the   |
+//| same thing for almost every pattern. Preserving a lopsided mix    |
+//| only preserves the inertia, so the bounds are read off the R      |
+//| ladder below and the mix is allowed to move.                      |
+//|                                                                  |
+//| THE LADDER (pooled legs, R):                                      |
+//|    p5 0.65  p10 0.78  p25 1.01  p50 1.28  p75 1.63  p90 2.06      |
+//|                                                                  |
+//| R = 1 IS KEPT EXACTLY. It is the one bound whose meaning does not |
+//| depend on any sample: below it a leg travelled less than the      |
+//| trigger timeframe's own ATR predicts for its duration. The        |
+//| measured p25 is 1.01, so honouring R = 1 costs a 0.01 shift and   |
+//| buys a bound that can be argued about instead of quoted. The      |
+//| other two are that ladder rounded - 1.30 is p52, 1.60 is p73.     |
+//|                                                                  |
+//| THE RESULTING MIX: 24.1% weak / 27.7% normal / 21.4% strong /     |
+//| 26.7% explosive. STRONG-or-better falls from 82.7% to 48.1%, so   |
+//| the axis now separates rather than stamps.                        |
+//|                                                                  |
+//| MOMENTUM_SPEED_SPIKE DOES NOT MOVE THE STEP. STRONG and           |
+//| EXPLOSIVE both select the largest candidate, so the third bound   |
+//| is a LABEL: it changes what the log calls a pattern and nothing   |
+//| about the step. Do not retune it expecting a number to change -   |
+//| the two bounds that matter are BALANCED and STRONG.               |
+//+------------------------------------------------------------------+
+#define MOMENTUM_SPEED_BALANCED 1.00
+#define MOMENTUM_SPEED_STRONG   1.30
+#define MOMENTUM_SPEED_SPIKE    1.60
 
 #define REST_SPIKE_BASE 3
 #define REST_SPIKE_MAX 4
@@ -638,6 +711,352 @@ bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
     if(pD <= 0) return false;
 
     return true;
+}
+
+//+==================================================================+
+//| THE SKELETON: five measured axes, and the step they imply        |
+//+==================================================================+
+//| Mapping to the ABCD model, stated once so it is not re-guessed:  |
+//|                                                                  |
+//|   A -> B   the IMPULSE.  Its angle is the momentum axis.         |
+//|   B        the PIVOT.    Its own candle is the pivot-candle axis.|
+//|   B -> C   the COVER.    The first candle here that reverses     |
+//|            B's range is the covering candle; its distance from B |
+//|            is the cover delay, and how completely it takes B out |
+//|            is the cover depth.                                   |
+//|   direction  pB > pA.                                            |
+//+==================================================================+
+
+//+------------------------------------------------------------------+
+//| Classify one candle's length into the course's four classes      |
+//| Bands 0.80 / 1.20 / 2.50 ATR are the course's published ones.   |
+//+------------------------------------------------------------------+
+TH3_PIVOT_CANDLE TH3ClassifyCandle(const double candleRange, const double atr)
+{
+    if(candleRange <= 0 || atr <= 0) return TH3_PC_UNKNOWN;
+    double x = candleRange / atr;
+    if(x < 0.80) return TH3_PC_SPINNING;
+    if(x < 1.20) return TH3_PC_STANDARD;
+    if(x < 2.50) return TH3_PC_LONGBAR;
+    return TH3_PC_SPIKE;
+}
+
+//+------------------------------------------------------------------+
+//| The impulse leg's momentum, as a speed the trigger clock can      |
+//| actually express.                                                |
+//|                                                                  |
+//|        R = |A->B| / (ATR(trigger) * sqrt(elapsed / triggerBar))   |
+//|                                                                  |
+//| WHY NOT AN ANGLE. `CalculateWaveAngle` is not one. It computes    |
+//| atan((pips/min) / (dailyATR/1440)), and a geometric angle needs a |
+//| fixed price-per-pixel and time-per-pixel scale that MT4's          |
+//| autoscaled chart does not have. So the shipped number is a speed   |
+//| ratio mislabelled as an angle, and it carries two real defects:    |
+//|                                                                  |
+//|  * Its reference is the DAILY ATR. A fast H1 impulse is scored     |
+//|    against that day's range, so it reads WEAK exactly when the day  |
+//|    is busy - the opposite of what momentum should say.             |
+//|  * It divides by elapsed time LINEARLY. Displacement accumulates    |
+//|    like the SQUARE ROOT of time, so a leg taking 4x as long is      |
+//|    penalised 4x when volatility justifies only 2x: long legs read   |
+//|    weak by construction.                                           |
+//|                                                                  |
+//| R has neither problem. Both sides are in the same units, so no pip  |
+//| convention is involved. R = 1 means the leg travelled exactly as    |
+//| far as the trigger timeframe predicts for that many bars; R = 2 is  |
+//| twice that. Time enters under the sqrt, at the rate volatility      |
+//| actually grows. And nothing mentions the D1 series, so "weak" no   |
+//| longer means "big daily range".                                    |
+//|                                                                  |
+//| Timeframe invariance is preserved because the timeframe enters as   |
+//| a RATIO (elapsed / bar minutes) and the ATR is the same clock's -   |
+//| which is what lets ONE band set serve every chart. Dividing by a    |
+//| raw bar count instead would have needed separate bands per          |
+//| timeframe, wrong on the one nobody tested.                          |
+//+------------------------------------------------------------------+
+double TH3MomentumSpeed(const datetime tA, const double pA,
+                        const datetime tB, const double pB,
+                        const double atrTrigger)
+{
+    if(atrTrigger <= 0 || atrTrigger == EMPTY_VALUE) return 0.0;
+
+    double dp = MathAbs(pB - pA);
+    if(dp <= 0) return 0.0;
+
+    int minutes = (int)((tB - tA) / 60);
+    if(minutes <= 0) minutes = 1;
+
+    double barMinutes = (double)Period();
+    if(barMinutes <= 0) barMinutes = 1.0;
+
+    double bars = (double)minutes / barMinutes;
+    if(bars < 1.0) bars = 1.0;   // a same-bar leg is still one bar of travel
+
+    double r = dp / (atrTrigger * MathSqrt(bars));
+    if(r != r) return 0.0;       // NaN guard, same reason the old path had one
+    return r;
+}
+
+//+------------------------------------------------------------------+
+//| Momentum band from the impulse's R reading.                      |
+//| The bounds are measured, not chosen - see the band block above.  |
+//+------------------------------------------------------------------+
+TH3_MOMENTUM TH3MomentumFromSpeed(const double speed)
+{
+    if(speed >= MOMENTUM_SPEED_SPIKE)    return TH3_MOM_EXPLOSIVE;
+    if(speed >= MOMENTUM_SPEED_STRONG)   return TH3_MOM_STRONG;
+    if(speed >= MOMENTUM_SPEED_BALANCED) return TH3_MOM_NORMAL;
+    return TH3_MOM_WEAK;
+}
+
+//+------------------------------------------------------------------+
+//| Momentum band from the impulse angle - RETIRED (MOMENTUM-ANGLE-OFF)|
+//|                                                                  |
+//| Kept for two reasons and no others: `Biotak_TH3_Test.mq4` still   |
+//| pins its boundaries, and keeping it makes the old reading and the  |
+//| new one comparable from one build. NOTHING decides on it. To      |
+//| restore the old axis, point TH3SkeletonFromBars back here and      |
+//| re-teach those test lines - do not rewrite the function.           |
+//+------------------------------------------------------------------+
+TH3_MOMENTUM TH3MomentumFromAngle(const double angle)
+{
+    if(angle >= ANGLE_SPIKE_THRESHOLD)    return TH3_MOM_EXPLOSIVE;
+    if(angle >= ANGLE_STRONG_THRESHOLD)   return TH3_MOM_STRONG;
+    if(angle >= ANGLE_BALANCED_THRESHOLD) return TH3_MOM_NORMAL;
+    return TH3_MOM_WEAK;
+}
+
+//+------------------------------------------------------------------+
+//| Pack the five axes into one coordinate                           |
+//|                                                                  |
+//| Mixed radix 4 x 4 x 4 x 6 x 2 = 768 cells. That is NOT the       |
+//| atlas's 1440, and the difference is deliberate: the atlas         |
+//| enumerates 8 pivot-candle ARRANGEMENTS and 3 momentum classes,    |
+//| while these are 4 classes and 4 bands - the coarse, MEASURABLE    |
+//| subset. The point is not to reach a particular count; it is that  |
+//| a live pattern finally has a coordinate at all.                   |
+//+------------------------------------------------------------------+
+int TH3SkeletonKey(const TH3Skeleton &skel)
+{
+    if(!skel.valid) return -1;
+    int pc = ((int)skel.pivotCandle) - 1;          // SPINNING..SPIKE -> 0..3
+    if(pc < 0) return -1;                          // UNKNOWN has no coordinate
+    int mom = (int)skel.momentum;                  // 0..3
+    int cd  = (int)skel.coverDepth;                // 0..3
+    int dl  = skel.coverDelay;
+    if(dl < 1) dl = 1;
+    if(dl > 6) dl = 6;                             // 1..6 -> 0..5
+    int dir = (skel.direction > 0) ? 1 : 0;
+    return ((((mom * 4 + pc) * 4 + cd) * 6 + (dl - 1)) * 2 + dir);
+}
+
+//+------------------------------------------------------------------+
+//| The movement step implied by the skeleton                        |
+//|                                                                  |
+//| Course method 1 gives three step lengths from the two timeframe  |
+//| abilities:                                                       |
+//|   long  = 3 x ATR(structure) - 2 x ATR(pattern)                  |
+//|   med   = 2 x ATR(structure) -     ATR(pattern)                  |
+//|   short = (long + med) / 2                                       |
+//| Momentum picks which of the three applies, and it picks them in   |
+//| ASCENDING order of size: WEAK the smallest, NORMAL the middle,    |
+//| STRONG and EXPLOSIVE the largest. The order is the point -        |
+//| `short` is a BLEND and does not sit below the other two, so       |
+//| handing it to WEAK made the axis run backwards over its own mid   |
+//| band. The three values are the course's; only the assignment is   |
+//| ours. Cover depth and cover delay then CONTAIN the step: a fully  |
+//| covered pivot has less room left to travel, and a late cover      |
+//| means the move already spent itself - both shrink the step.       |
+//| Those two multipliers are deliberate choices, not course numbers, |
+//| and are the only part of this function that is tunable.           |
+//|                                                                  |
+//| Returns false and leaves stepOut alone when there is no answer:   |
+//| the SELECTED candidate goes non-positive - `long` as soon as the  |
+//| pattern's ATR passes 1.5 times the structure's, which the course's|
+//| own formula does, and the smallest candidate for a WEAK impulse   |
+//| earlier than that.                                                |
+//| A negative step is not a small step, it is no step - so callers   |
+//| keep what they had rather than being handed a guess.              |
+//+------------------------------------------------------------------+
+bool TH3StepFromSkeleton(const TH3Skeleton &skel,
+                         const double atrStructure, const double atrPattern,
+                         double &stepOut)
+{
+    if(!skel.valid) return false;
+    if(atrStructure <= 0 || atrPattern <= 0) return false;
+
+    double longStep  = 3.0 * atrStructure - 2.0 * atrPattern;
+    double medStep   = 2.0 * atrStructure -       atrPattern;
+    double shortStep = 0.5 * (longStep + medStep);
+
+    // THE THREE CANDIDATES ARE ORDERED, NOT ASSUMED, and the assignment to the
+    // momentum bands is then MONOTONE. This is a bug fix with a measurement
+    // behind it: `shortStep` is a BLEND, 0.5*(long+med), so it sits BETWEEN the
+    // other two rather than below them. Shipping `base = shortStep` for WEAK
+    // therefore handed the weakest impulses a step BIGGER than NORMAL's on every
+    // chart where P < S - which is every intraday chart, since P here is the
+    // chart ATR and S the daily one. Measured over 22,538 real legs the shipped
+    // assignment gave WEAK 2.264 S against NORMAL 1.870 S: +21.1% for a weaker
+    // impulse. The candidate VALUES are unchanged - no new number is invented -
+    // only which band gets which, and the harness already asserted the ordered
+    // behaviour at `3S - 2P <= 0` (which the old assignment could never reach
+    // from WEAK, because the blend stayed positive).
+    double cand[3];
+    cand[0] = longStep;
+    cand[1] = medStep;
+    cand[2] = shortStep;
+    for(int i = 1; i < 3; i++) {           // three elements, insertion sort
+        double v = cand[i];
+        int j = i - 1;
+        while(j >= 0 && cand[j] > v) {
+            cand[j + 1] = cand[j];
+            j--;
+        }
+        cand[j + 1] = v;
+    }
+
+    double base = (skel.momentum >= TH3_MOM_STRONG) ? cand[2]
+                : (skel.momentum == TH3_MOM_NORMAL) ? cand[1]
+                :                                     cand[0];
+    if(base <= 0) return false;
+
+    double mult = 1.0;
+    if(skel.coverDepth == TH3_CD_DEEP)       mult *= 0.70;
+    else if(skel.coverDepth == TH3_CD_FULL)  mult *= 0.85;
+    if(skel.coverDelay >= 4)                 mult *= 0.80;
+    else if(skel.coverDelay == 3)            mult *= 0.90;
+
+    stepOut = base * mult;
+    return (stepOut > 0);
+}
+
+//+------------------------------------------------------------------+
+//| Measure all five axes from the bars themselves                   |
+//|                                                                  |
+//| Cost: this runs ONCE per finalised pattern (TH3PatternBuild),     |
+//| never per tick and never on mouse-move, so the handful of bar     |
+//| reads here do not touch TH3's hot path.                           |
+//+------------------------------------------------------------------+
+bool TH3SkeletonFromBars(const datetime tA, const double pA,
+                         const datetime tB, const double pB,
+                         const datetime tC, const double pC,
+                         TH3Skeleton &out)
+{
+    out.valid          = false;
+    out.direction      = (pB > pA) ? 1 : -1;
+    out.momentum       = TH3_MOM_WEAK;
+    out.pivotCandle    = TH3_PC_UNKNOWN;
+    out.coverDepth     = TH3_CD_NONE;
+    out.coverDelay     = 0;
+    out.coverEngulf    = 0;
+    out.abAngle        = 0;
+    out.abSpeed        = 0;
+    out.pivotAtrRatio  = 0;
+    out.coverBodyRatio = 0;
+    out.stepPips       = 0;
+    out.key            = -1;
+
+    if(tA <= 0 || tB <= 0 || pA <= 0 || pB <= 0) return false;
+
+    int barB = iBarShift(NULL, 0, tB, false);
+    if(barB < 0) return false;
+    int barC = (tC > 0) ? iBarShift(NULL, 0, tC, false) : 0;
+    if(barC < 0) barC = 0;
+    if(barC > barB) barC = barB;   // C must not sit before B in time
+
+    // The two timeframe abilities the step formula consumes: the structure's
+    // (daily, cached) and the pattern's (this chart, at the pivot bar).
+    double atrStructure = GetCachedDailyATR();
+    double atrPattern   = iATR(NULL, 0, 14, barB);
+    if(atrPattern == EMPTY_VALUE || atrPattern <= 0) atrPattern = atrStructure;
+
+    // --- axis 1: momentum, from the impulse leg's SPEED on this clock.
+    // atrPattern IS the trigger timeframe's ability - the same series the step
+    // formula consumes - so the axis and the step are read off one ruler, and the
+    // axis no longer depends on the daily ATR of whatever day it is run.
+    // This must come after barB: it is the reason axis 1 moved down.
+    out.abSpeed  = TH3MomentumSpeed(tA, pA, tB, pB, atrPattern);
+    out.momentum = TH3MomentumFromSpeed(out.abSpeed);
+
+    // The retired angle is still filled, once per finalised pattern, so the log
+    // can print both readings side by side while the change is being checked.
+    out.abAngle  = CalculateWaveAngle(tA, pA, tB, pB);   // MOMENTUM-ANGLE-OFF
+
+    // --- axis 2: the pivot candle, at B
+    double pHigh = iHigh(NULL, 0, barB);
+    double pLow  = iLow(NULL, 0, barB);
+    double pOpen = iOpen(NULL, 0, barB);
+    double pClose= iClose(NULL, 0, barB);
+    if(pHigh <= 0 || pLow <= 0) return false;
+    out.pivotAtrRatio = (pHigh - pLow) / atrPattern;
+    out.pivotCandle   = TH3ClassifyCandle(pHigh - pLow, atrPattern);
+
+    // --- axes 3+4: walk B -> C for the first candle that reverses B's range
+    double pBodyHi = MathMax(pOpen, pClose);
+    double pBodyLo = MathMin(pOpen, pClose);
+    int coverIdx = -1;
+    for(int i = barB - 1; i >= barC && i >= 0; i--) {
+        double h = iHigh(NULL, 0, i);
+        double l = iLow(NULL, 0, i);
+        if(h <= 0 || l <= 0) continue;
+        if(h >= pHigh && l <= pLow) { coverIdx = i; break; }
+    }
+
+    if(coverIdx >= 0) {
+        out.coverDelay = barB - coverIdx;
+        double cHigh = iHigh(NULL, 0, coverIdx);
+        double cLow  = iLow(NULL, 0, coverIdx);
+        double cRange= cHigh - cLow;
+        out.coverBodyRatio = (cRange > 0)
+                           ? MathAbs(iClose(NULL, 0, coverIdx) - iOpen(NULL, 0, coverIdx)) / cRange
+                           : 0;
+
+        // how many candles OLDER than the covering candle fit inside its range
+        int bars = iBars(NULL, 0);
+        int engulf = 0;
+        for(int k = coverIdx + 1; k <= coverIdx + 4 && k < bars; k++) {
+            double h = iHigh(NULL, 0, k);
+            double l = iLow(NULL, 0, k);
+            if(h > 0 && l > 0 && cHigh >= h && cLow <= l) engulf++;
+        }
+        out.coverEngulf = engulf;
+
+        bool bodyCovered = (cHigh >= pBodyHi && cLow <= pBodyLo);
+        if(bodyCovered && engulf >= 2) out.coverDepth = TH3_CD_DEEP;
+        else if(bodyCovered)           out.coverDepth = TH3_CD_FULL;
+        else                           out.coverDepth = TH3_CD_SHALLOW;
+    }
+
+    out.valid = true;
+    // TH3StepFromSkeleton works in PRICE units so it stays pure and testable
+    // with two numbers; the field is in PIPS, converted once here, because every
+    // other surface in this tool speaks pips and one unit change beats a
+    // conversion scattered across the label, the log and the panel.
+    double stepPrice = 0;
+    if(TH3StepFromSkeleton(out, atrStructure, atrPattern, stepPrice)) {
+        double pipSize = GetCachedPipSize();
+        if(pipSize > 0) out.stepPips = stepPrice / pipSize;
+    }
+    out.key = TH3SkeletonKey(out);
+    return true;
+}
+
+//+------------------------------------------------------------------+
+//| Human-readable skeleton, for logs and the test harness           |
+//+------------------------------------------------------------------+
+string TH3SkeletonDescribe(const TH3Skeleton &skel)
+{
+    if(!skel.valid) return "skeleton: unmeasured";
+    // Both momentum readings are printed: `speed` is what the axis decides on,
+    // `angle` is the retired one (MOMENTUM-ANGLE-OFF), kept here so the two can be
+    // compared on live patterns without a second build.
+    return StringFormat("skeleton key=%d dir=%s mom=%d pivot=%d depth=%d delay=%d "
+                        "engulf=%d speed=%.2f angle=%.1f pivotATR=%.2f coverBody=%.2f "
+                        "step=%.1f pips",
+                        skel.key, (skel.direction > 0 ? "up" : "down"),
+                        (int)skel.momentum, (int)skel.pivotCandle, (int)skel.coverDepth,
+                        skel.coverDelay, skel.coverEngulf, skel.abSpeed, skel.abAngle,
+                        skel.pivotAtrRatio, skel.coverBodyRatio, skel.stepPips);
 }
 
 #endif // TH3_MATH_MQH

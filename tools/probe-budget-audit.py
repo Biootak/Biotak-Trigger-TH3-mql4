@@ -125,6 +125,12 @@ RUNTIME = "Biotak/RuntimeSettings.mqh"
 EVENTS = "Biotak/EventHandlers.mqh"
 HTF = "Biotak/HTFCandles.mqh"
 COMBO = "Biotak/ComboEngine.mqh"
+# The custom-price / step-1 gesture block's HEAD, spelled once. P-UI-98e added a
+# second reason for the block to exist (the step-1 handle is armed off the
+# PLACEMENT, not off the line object), and three checks below anchor on this
+# exact head - a rename must fail them loudly, never silently empty.
+CP_MM_HEAD = ("if(id == CHARTEVENT_MOUSE_MOVE &&\n"
+              "       (g_customPriceLineCreated || g_thStartPointType == TH_START_POINT_CUSTOM_PRICE))")
 GLOBALS = "Biotak/GlobalVariables.mqh"
 HISTMGR = "Biotak/BasePriceHistoryManager.mqh"
 BASEMGR = "Biotak/BasePriceManager.mqh"
@@ -1149,8 +1155,16 @@ def check_family_isolation(o):
         fail("family-isolation", "the CIR_ZONES ring branch is gone (or is no longer an else-if chain)")
         return
     branch = click[iZ:iNext]
-    if "g_showMidZones = !g_showMidZones;" not in branch:
+    # P-UI-93: the press writes `wantOn` (the light's own inversion while the
+    # chart is unmuted, the mute release while muted) instead of spelling the
+    # flip inline. Either spelling must still invert the item's OWN switch when
+    # the mute is off - otherwise the press silently keeps a state the light
+    # just showed as changed.
+    if "g_showMidZones = !g_showMidZones;" not in branch and "g_showMidZones = wantOn;" not in branch:
         fail("family-isolation", "the Zones & Levels press no longer flips the zone switch")
+        return
+    if "g_showMidZones = wantOn;" in branch and "? !CircFeatureOn(feat) : mutedPress" not in click:
+        fail("family-isolation", "the Zones & Levels press no longer inverts its own switch when unmuted")
         return
     for bad, why in (("SetLinesVisible", "the SHOW LINES row and the L key own the line switch"),
                      ("g_linesVisible", "the line state is not this item's to move"),
@@ -1267,7 +1281,16 @@ def check_toggle_path(o):
     # F owns the span between its own report and the L switch's report; L owns
     # the short span after its report. Exact spans, so neither can hide in the
     # other's window.
-    if "RepaintForDiscreteAction()" not in events[fsite:lsite]:
+    # P-UI-93: the F transition (and its report) moved into the shared
+    # ApplyHideAllState owner ABOVE the handler, so the span between the two
+    # reports now also covers ReleaseIndicatorMute's own repaint call and can
+    # never see the F branch losing its own. The repaint span therefore anchors
+    # on the hotkey dispatch itself, which still brackets exactly the F branch.
+    fkey = events.find('if(IsHotkeyPressed(lparam, sparam, inpHideKey))')
+    if fkey < 0:
+        fail("toggle-path", "the F hotkey dispatch is gone")
+        return
+    if "RepaintForDiscreteAction()" not in events[fkey:lsite]:
         fail("toggle-path", "the F switch does not use the discrete repaint owner")
         return
     if "RepaintForDiscreteAction()" not in events[lsite:lsite + 900]:
@@ -2609,7 +2632,14 @@ def check_live_control(o):
     _sources = {}
     for sub in ("Biotak", ""):
         for ext in ("mqh", "mq4"):
-            for p in sorted(glob.glob(os.path.join(ROOT, sub, "*." + ext))):
+            # TH3TOOL-ON (2026-09-19): the walk is RECURSIVE — the tool's own
+            # renderer lives in Biotak/TH3/ and is part of the indicator, so a
+            # read it performs (the TH3 card's WIDTH/STYLE/COLOR/SHOW-LABELS
+            # rows) must count. A subdirectory was invisible to this scan, which
+            # is how three LIVE controls looked dead.
+            pat = (os.path.join(ROOT, sub, "**", "*." + ext) if sub
+                   else os.path.join(ROOT, "*." + ext))
+            for p in sorted(glob.glob(pat, recursive=True)):
                 rel = os.path.relpath(p, ROOT).replace("\\", "/")
                 _sources[rel] = _code_only(read(rel, o))
     for rel, src in _sources.items():
@@ -2810,12 +2840,20 @@ def check_custom_price_mode(o):
     if not helper:
         fail("custom-price-mode", "CreateCustomPriceLine is gone")
         return
-    if "OBJPROP_SELECTABLE, true" not in helper:
+    # P-UI-98d: the creator writes the ARMED state now (an armed line drags -
+    # this IS the movement, P-UI-48; a set line is inert so no other object's
+    # drag can steal it) and the armed/SET transitions have ONE owner.
+    if "OBJPROP_SELECTABLE, g_cpLineArmed" not in helper:
         fail("custom-price-mode",
-             "the creator no longer makes the line GRABBABLE: SELECTABLE is the drag itself, "
-             "and a line nothing can grab is the regression this group now locks - the "
-             "reported interference was a SELECTION that outlived its gesture, not "
-             "selectability")
+             "the creator no longer writes the line's ARMED state: SELECTABLE "
+             "follows g_cpLineArmed (the armed/SET contract), and a creator "
+             "that hard-codes either value breaks the pair's one owner")
+        return
+    if "void CustomPriceLineOwnArm(" not in events:
+        fail("custom-price-mode",
+             "the armed/SET transitions lost their ONE owner "
+             "(CustomPriceLineOwnArm) - click-to-set and double-click-to-re-arm "
+             "would drift apart (P-UI-98d)")
         return
     if "OBJPROP_SELECTED, false" not in helper:
         fail("custom-price-mode",
@@ -2843,11 +2881,19 @@ def check_custom_price_mode(o):
     # (the C key, the chart click, the TF-lock restore, the ring PIN and the
     # helper) and every copy was a chance to leave the stale selection behind -
     # which is how it survived a fix that had already been reasoned about.
+    # P-UI-98d: TWO writers now - the creator (the state re-assert) and the
+    # armed/SET transitions' ONE owner (CustomPriceLineOwnArm). Any third copy
+    # is a drift.
     code_ev = _code_only(events)
-    if len(re.findall(r"OBJPROP_SELECTABLE", code_ev)) != 1:
+    if len(re.findall(r"ObjectSetInteger\(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE", code_ev)) != 2:
         fail("custom-price-mode",
-             "the line's SELECTABLE flag is written in more than one place: one creator, or "
-             "the copies drift apart")
+             "the line's SELECTABLE flag is written outside its two owners "
+             "(the creator and CustomPriceLineOwnArm): the copies drift apart")
+        return
+    if "void CustomPriceLineOwnArm(" not in code_ev or             "OBJPROP_SELECTABLE" not in fn_body(code_ev, "void CustomPriceLineOwnArm("):
+        fail("custom-price-mode",
+             "the armed/SET owner no longer writes the flag it owns "
+             "(P-UI-98d)")
         return
     # P-UI-49d: SELECTED *true* may exist in exactly ONE place - the user's own
     # grab. git is explicit about this one: the drag was never a per-object
@@ -2865,7 +2911,7 @@ def check_custom_price_mode(o):
              "interference (MT4 moves a SELECTED object with every later drag), and selecting "
              "it nowhere is the regression: nothing moves the line at all" % len(grabs))
         return
-    mm = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)") or ""
+    mm = fn_body(code_ev, CP_MM_HEAD) or ""
     if "OBJPROP_SELECTED, true" not in mm:
         fail("custom-price-mode",
              "the SELECTED, true write left the mouse-move press edge: the line is only "
@@ -2878,7 +2924,10 @@ def check_custom_price_mode(o):
     # OBJPROP_SELECTED is true, i.e. exactly when the terminal is holding the line.
     # Writing it there dropped MT4's own selection out of the drag that same press
     # had just started: "the drag state is cut off very quickly".
-    not_ours = re.search(r"else if\(pressEdge\)\s*\{(.*?)\n\s*\}", mm, re.S)
+    # P-UI-96: ... or a stuck selection seen while the button is down (`||
+    # terminalGrab`): the press edge can be missed (release off-chart leaves
+    # s_dragDownSeen set), so the arm must not depend on the edge alone.
+    not_ours = re.search(r"else if\(pressEdge(?:\s*\|\|\s*terminalGrab)?\)\s*\{(.*?)\n\s*\}", mm, re.S)
     if not not_ours:
         fail("custom-price-mode",
              "the mouse-move press edge lost its not-ours branch: a press that starts somebody "
@@ -2908,8 +2957,13 @@ def check_custom_price_mode(o):
     # P-UI-51/P-UI-55: the carry's fence, in one place - it must skip the press
     # edge's own move (where the frozen test is meaningless), require real TRAVEL,
     # and have a valid press latch to move FROM.
-    if "if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&" not in mm \
-       or "s_ownGrabY = (int)dparam;" not in mm:
+    # P-UI-100 (2026-09-22): the fence gained a term (the foreign-draw stand-down,
+    # `!s_drawNotGrab`), so the check asks for every PROMISE the fence makes —
+    # skip the press edge, require travel past the slop, and have a line price and
+    # a press latch to move from — instead of one byte-exact line.
+    fence = re.search(r"if\(g_customPriceDragOwn && !pressEdge && pastSlop[\s\S]{0,200}?"
+                      r"currentLinePrice > 0 &&[\s\S]{0,80}?s_ownGrabCursorPrice > 0\)", mm)
+    if not fence or "s_ownGrabY = (int)dparam;" not in mm:
         fail("custom-price-mode",
              "the carry lost its fence: it must skip the press edge (a write on the object MT4 "
              "just grabbed cancels that drag, P-BK-15), require travel past CP_DRAG_SLOP (the "
@@ -3005,7 +3059,9 @@ def check_custom_price_mode(o):
              "the lock lost its watchdog or its OnDeinit release: a chart left with scroll "
              "disabled is the reported 'the chart is locked'")
         return
-    if len(re.findall(r"OBJPROP_SELECTED, false", code_ev)) != 2:
+    # P-UI-98d: scoped to the LINE's own writes - the step-1 handle's settle
+    # and heal own their objects' deselects separately.
+    if len(re.findall(r"ObjectSetInteger\(0, g_customPriceHorizontalLineName, OBJPROP_SELECTED, false", code_ev)) != 2:
         fail("custom-price-mode",
              "the SELECTED flag is not the creator/clear-owner pair (expected exactly two "
              "writes, both false)")
@@ -3088,7 +3144,11 @@ def check_custom_price_mode(o):
              "the finalizer no longer defers the clear either: a motionless release emits no "
              "mouse move, so the button-up that ends a grab must still arm the latch")
         return
-    if "if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();" not in panels:
+    # P-UI-100 (2026-09-22): the UI press guard asks the SHARED owner now
+    # (`HandLinesDropAll`), so the same press also releases the step-1 pair — the
+    # promise is unchanged and stronger, and either spelling satisfies it.
+    if not re.search(r"if\(pressStart && g_DragOwner != DRAG_NONE\)\s*"
+                     r"(?:ClearCustomPriceSelection|HandLinesDropAll)\(\);", panels):
         fail("custom-price-mode",
              "the UI press guard is gone: a press a panel or the ring owns can leave MT4 "
              "holding the line, which is the interference the user reported")
@@ -3131,12 +3191,15 @@ def check_custom_price_mode(o):
              "the drag tooltip text lost its one owner (UpdateCustomPriceTooltip must be "
              "the only writer of the line's tooltip)")
         return
-    mov = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)")
-    if code_ev.count("UpdateCustomPriceTooltip();") != 1 or not mov \
-       or "UpdateCustomPriceTooltip();" not in mov:
+    # P-UI-98d: TWO callers now - the drag's release path (below) and the
+    # armed/SET owner (the wording follows the state the user just changed).
+    mov = fn_body(code_ev, CP_MM_HEAD)
+    if code_ev.count("UpdateCustomPriceTooltip();") != 2 or not mov \
+       or "UpdateCustomPriceTooltip();" not in mov \
+       or "UpdateCustomPriceTooltip();" not in (fn_body(code_ev, "void CustomPriceLineOwnArm(") or ""):
         fail("custom-price-mode",
-             "the tooltip is no longer written from the RELEASE path: it must have exactly "
-             "one caller, inside the button-up branch of the drag's own mouse-move handler")
+             "the tooltip is no longer written from the RELEASE path and the "
+             "armed/SET owner: exactly those two callers, or the wording drifts")
         return
     ok("custom-price-mode",
        "the selection dies on button-up, on a UI press, and under any foreign native drag; "
@@ -3190,7 +3253,7 @@ def check_drag_anchor(o):
              "older than the anchor and RE-ANCHORS the settle to it - the whole ladder is "
              "rebuilt at a price the cursor was never at (the reported jump on release)")
         return
-    mm = fn_body(code_ev, "if(id == CHARTEVENT_MOUSE_MOVE && g_customPriceLineCreated)") or ""
+    mm = fn_body(code_ev, CP_MM_HEAD) or ""
     dragb = fn_body(code_ev, "if(id == CHARTEVENT_OBJECT_DRAG && sparam == g_customPriceHorizontalLineName)") or ""
     handlers = mm + "\n" + dragb
     if handlers.count("g_customTHStartPrice =") != 0:
@@ -4616,11 +4679,14 @@ def selftest():
     seed("F show path decides the zone mask itself", VISIBILITY,
          "            ApplyTfMaskGuarded(nm, VisibilityZoneMask(nm, zonesVisible, linesVisible));",
          "            ApplyTfMaskGuarded(nm, linesVisible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);")
+    # P-UI-93: the F transition moved into ApplyHideAllState, so the seed anchors
+    # on the call's new home - the planted defect (hard-wiring the zone switch
+    # to true) is unchanged.
     seed("F key stops passing the zone switch", EVENTS,
-         "                                                           g_triggerLevelsEnabled, g_linesVisible,\n"
-         "                                                           inpShowMidZones);",
-         "                                                           g_triggerLevelsEnabled, g_linesVisible,\n"
-         "                                                           true);")
+         "                                                   g_triggerLevelsEnabled, g_linesVisible,\n"
+         "                                                   inpShowMidZones);",
+         "                                                   g_triggerLevelsEnabled, g_linesVisible,\n"
+         "                                                   true);")
     seed("trigger-off branch stops skipping its band", PIPELINE,
          "        if(zones[i].isTrigger && !triggerEnabled) {\n"
          "            DeleteManagedZoneObjects(zones[i].name);\n"
@@ -4663,12 +4729,15 @@ def selftest():
     seed("ring badge reads the line layer too", MENU,
          '   if(i == CIR_ZONES)           return g_showMidZones ? "On" : "";',
          '   if(i == CIR_ZONES)           return (g_showMidZones && g_linesVisible) ? "On" : "";')
+    # P-UI-93: the press writes `wantOn`, so the cross-effect mutants anchor on
+    # the new spelling - the defect they plant (moving/deleting another layer)
+    # is unchanged.
     seed("ring press also moves the line switch", MENU,
-         "      g_showMidZones = !g_showMidZones;",
-         "      g_showMidZones = !g_showMidZones;\n      SetLinesVisible(g_showMidZones, true);")
+         "      g_showMidZones = wantOn;",
+         "      g_showMidZones = wantOn;\n      SetLinesVisible(g_showMidZones, true);")
     seed("ring press deletes to hide", MENU,
-         "      g_showMidZones = !g_showMidZones;",
-         "      g_showMidZones = !g_showMidZones;\n      ObjectsDeleteAll(0, inpObjectPrefix);")
+         "      g_showMidZones = wantOn;",
+         "      g_showMidZones = wantOn;\n      ObjectsDeleteAll(0, inpObjectPrefix);")
     # P-PERF-35b - the pump that ran the rebuild before the sweeps.
     seed("pump runs the heavy frame before the sweep jobs", EVENTS,
          "   int coopOrder[COOP_JOB_COUNT - 1] = { COOP_JOB_OBJ_CLEANUP, COOP_JOB_LABEL_EXPIRY,\n                                         COOP_JOB_STATUS_TEXT,  COOP_JOB_HEAVY_FRAME };",
@@ -4982,9 +5051,14 @@ def selftest():
     seed("ESC stops routing through the exit owner", EVENTS,
          "                DeactivateCustomPriceMode(\"ESC\");\n",
          "")
+    # P-UI-98d: the creator writes the ARMED state; the movement regression is
+    # now "the armed owner stops writing the pair" alongside it.
     seed("the line stops being grabbable (the movement regression)", EVENTS,
-         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, true);   // P-UI-48: this IS the drag\n",
+         "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, g_cpLineArmed);\n",
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, false);\n")
+    seed("the armed/SET owner stops owning its flag", EVENTS,
+         "        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, armed);\n",
+         "")
     seed("a fifth hand-written copy of the property set returns", EVENTS,
          "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n",
          "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n"
@@ -5014,20 +5088,22 @@ def selftest():
     seed("the grab hit test goes back to the conversion MT4 refuses", EVENTS,
          "    if(!ChartXYToTimePrice(0, x, y, subW, cursorT, priceAtCursor)) return false;\n",
          "    if(!ChartTimePriceToXY(0, 0, 0, linePrice, x, y)) return false;\n")
+    # P-UI-100 (2026-09-22): the not-ours press now also WRITES the clear, through
+    # the shared guard, for every press the hit test did not recognize (the cursor
+    # is not on the line, so the terminal cannot be dragging it) — see the check
+    # above. The seeds below still anchor on the deferral itself, which must stay.
     seed("a foreign press stops deferring the clear", EVENTS,
-         "                    g_customPriceNativeDrag = true;\n                }\n",
-         "                }\n")
+         "                    g_customPriceNativeDrag = true;\n",
+         "")
     seed("a foreign press clears the selection inline again", EVENTS,
-         "                    g_customPriceNativeDrag = true;\n                }\n",
-         "                    ClearCustomPriceSelection();\n                }\n")
+         "                    g_customPriceNativeDrag = true;\n",
+         "                    ClearCustomPriceSelection();\n")
     seed("the carry writes on the press edge again", EVENTS,
-         "                bool pastSlop = (MathAbs(cursorY - s_ownGrabY) >= CP_DRAG_SLOP);\n"
-         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&\n",
-         "                bool pastSlop = (MathAbs(cursorY - s_ownGrabY) >= CP_DRAG_SLOP);\n"
-         "                if(g_customPriceDragOwn && pastSlop && currentLinePrice > 0 &&\n")
+         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && !s_drawNotGrab &&\n",
+         "                if(g_customPriceDragOwn && pastSlop && !s_drawNotGrab &&\n")
     seed("the carry loses its slop fence", EVENTS,
-         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && currentLinePrice > 0 &&\n",
-         "                if(g_customPriceDragOwn && !pressEdge && currentLinePrice > 0 &&\n")
+         "                if(g_customPriceDragOwn && !pressEdge && pastSlop && !s_drawNotGrab &&\n",
+         "                if(g_customPriceDragOwn && !pressEdge && !s_drawNotGrab &&\n")
     seed("the carry snaps the line onto the cursor again", EVENTS,
          "                            double wishPrice = s_ownGrabPrice + (cursorPrice - s_ownGrabCursorPrice);\n",
          "                            double wishPrice = cursorPrice;\n")
@@ -5052,7 +5128,7 @@ def selftest():
          "    if(!UILeftButtonUp()) return;             // still holding the button (one owner, P-UI-73)\n",
          "    if((TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT) & 1) != 0) return;\n")
     seed("the UI press guard is dropped", PANELS,
-         "      if(pressStart && g_DragOwner != DRAG_NONE) ClearCustomPriceSelection();\n",
+         "      if(pressStart && g_DragOwner != DRAG_NONE) HandLinesDropAll();\n",
          "")
     seed("a BaseKnot box drag stops clearing the line's selection", PANELS,
          "      if(sparam != g_customPriceHorizontalLineName) ClearCustomPriceSelection();\n",

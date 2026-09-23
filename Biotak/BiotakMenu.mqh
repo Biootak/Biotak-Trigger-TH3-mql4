@@ -27,9 +27,11 @@
 #resource "\\Files\\Icons\\ruler_on.bmp"
 #resource "\\Files\\Icons\\htf_off.bmp"
 #resource "\\Files\\Icons\\htf_on.bmp"
-// TH3TOOL-OFF: custom_* icons retired with the tool:
-// #resource "\\Files\\Icons\\custom_off.bmp"
-// #resource "\\Files\\Icons\\custom_on.bmp"
+// TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+#resource "\\Files\\Icons\\custom_off.bmp"
+#resource "\\Files\\Icons\\custom_on.bmp"
+#resource "\\Files\\Icons\\leg_off.bmp"
+#resource "\\Files\\Icons\\leg_on.bmp"
 #resource "\\Files\\Icons\\pin_off.bmp"
 #resource "\\Files\\Icons\\pin_on.bmp"
 #resource "\\Files\\Icons\\tools_off.bmp"
@@ -76,7 +78,9 @@
 #define CIRC_BADGE_SIZE  16
 #define CIRC_BADGE_FLOAT 12   // badge float gap outside the item skin edge
 #define CIRC_ITEM_REACH  (CIRC_BTN_SIZE / 2 + CIRC_BADGE_FLOAT + CIRC_BADGE_SIZE / 2)  // outermost badge pixel from item center
-#define CIRC_RADIUS      64
+// Nine main-ring items need r >= (44+6)/2 / sin(π/9) = 73.1 px. Raised from 64
+// when RING_LEG was appended (was 64 with 8 items, 6.4 px spare; now 80 gives 6.9 px).
+#define CIRC_RADIUS      80
 #define CIRC_GAP         6
 #define CIRC_RAIL        90
 #define CIRC_PAD         10
@@ -95,10 +99,11 @@
 #define CIR_TH              3   // TH Labels (g_thLabelsVisible)
 // VIEWLOCK-OFF: CIR_VLOCK slot retired (was 4, View Lock) — ring is now 6 items.
 // #define CIR_VLOCK           4   // View Lock (g_viewLockEnabled; old TF-lock is keyboard-only now)
-// TH3TOOL-OFF: CIR_TH3 slot retired (was 5, TH3 Tool / Freq)
-// #define CIR_TH3             5   // TH3 Tool / Freq
+// TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF (slot 5 was vacant).
+#define CIR_TH3             5   // TH3 Tool / movement step
 #define CIR_HTF             6   // HTF Candles
 #define CIR_TOOLS           7   // Tools sub-menu
+#define CIR_LEG             11  // Leg Measure tool (trendline 2-click, pips/ATR/TF info)
 
 // Tools half-circle
 #define CIR_PIN             8   // Custom Price Pin
@@ -106,8 +111,10 @@
 // FACTORBTN-OFF: #define CIR_FACTOR_OVERRIDE 10  // Factor Override button retired (settings live in the Step card now)
 #define CIR_BASEKNOT        10  // Base / Knot Measurement Tool (drag-draw or 2-click box + Entry/SL/TP).
                                 // P-UI-95: a MAIN-RING item now — never behind the Tools ladder
-//--- ring layout (main circle — 7 items; Zones first = the main feature)
-// TH3TOOL-OFF: RING_TH3 slot retired (was 5) — HTF/TOOLS shifted down.
+//--- ring layout (main circle — 8 items; Zones first = the main feature)
+// TH3TOOL-ON (2026-09-19): RING_TH3 comes back APPENDED (slot 7), never in the
+// middle — HTF/TOOLS/BASEKNOT keep the numbers they were renumbered to when
+// TH3TOOL-OFF removed it, and every persisted state key keeps its meaning.
 // VIEWLOCK-OFF: RING_VLOCK slot retired (was 4) — HTF/TOOLS shifted down again.
 // P-UI-95 (2026-09-16, user: «ایتم اندازه گیری بیس رو بیار توی منوی اصلی»): THE
 // MEASURING TOOL IS A MAIN-RING ITEM. It was TOOL_BASEKNOT — the third cell of the
@@ -121,7 +128,9 @@
 // Seven items need r >= (44 + 6) / 2 / sin(180/7) = 57.6 px to keep their pitch; the
 // shipped CIRC_RADIUS is 64, so the default look clears it with 6.4 px to spare — and
 // a menu dragged near an edge collapses to the rail at CIRC_EDGE_TRIGGER anyway.
-#define RING_COUNT 7
+// RING_LEG appended as slot 8 — no existing slot moves.
+// Nine items: min-r = (44+6)/2 / sin(π/9) = 73.1 px → CIRC_RADIUS raised to 80.
+#define RING_COUNT 9
 #define CIRC_ITEM_COUNT RING_COUNT  // alias for legacy code
 #define RING_ZONES    0
 #define RING_TRIGGER  1
@@ -131,6 +140,8 @@
 #define RING_HTF      4
 #define RING_TOOLS    5
 #define RING_BASEKNOT 6   // P-UI-95: the MEASURING tool — click arms, hold = Base Box card
+#define RING_TH3      7   // TH3TOOL-ON (2026-09-19): the TH3 tool / frequency — APPENDED, so no slot moves
+#define RING_LEG      8   // Leg Measure — APPENDED, so no existing slot moves
 
 //--- Tools sub-menu (sub-menu under Tools) — SCALABLE LADDER
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
@@ -257,10 +268,11 @@ int RingFeature(const int ringIdx)
       case RING_ATR:     return CIR_ATR;
       case RING_TH:      return CIR_TH;
        // VIEWLOCK-OFF: case RING_VLOCK: return CIR_VLOCK;
-       // TH3TOOL-OFF: case RING_TH3: return CIR_TH3;
+       case RING_TH3: return CIR_TH3;   // TH3TOOL-ON (2026-09-19)
        case RING_HTF:     return CIR_HTF;
       case RING_TOOLS:   return CIR_TOOLS;
       case RING_BASEKNOT: return CIR_BASEKNOT;   // P-UI-95: the measure tool's own ring slot
+      case RING_LEG:      return CIR_LEG;         // Leg Measure — APPENDED
    }
    return -1;
 }
@@ -800,6 +812,23 @@ void PrimeUIStatesShadow()
 // read/write this one flag, so they can never disagree about it.
 //+------------------------------------------------------------------+
 
+// P-UI-93 — THE LIGHT ANSWERS THE SAME QUESTION THE CHART DOES.
+//
+// `CircFeatureOn` below answers the SWITCH's own question: it is the value the
+// item owns, and the press inverts it. It must stay that way — the family
+// isolation this file is built on (one item, one switch, no cross-effects) is
+// only meaningful while the switch owner speaks about one switch.
+//
+// The F mute is NOT a switch. It is the whole-indicator master that every
+// family's writer already shares (`... && !IsIndicatorHidden()`), so a light
+// that read the switch alone stayed LIT on a blank chart — the ring and the
+// chart disagreeing, which is the report «این دکمه های با پنل هماهنگ نیستش».
+//
+// So the mute is folded in `CircFeatureLit` below, in the question the LIGHT
+// asks, and the four family lights are exactly the four families the F key
+// hides. Everything the ring DRAWS goes through it (light, icon, badge, and the
+// state fingerprint that decides when to repaint); everything the ring DECIDES
+// stays on `CircFeatureOn`, so a press is still an inversion of its own switch.
 bool CircFeatureOn(const int i)
 {
    if(i == CIR_ZONES)           return g_showMidZones;
@@ -807,7 +836,23 @@ bool CircFeatureOn(const int i)
    if(i == CIR_ATR)             return g_atrLabelsVisible;
    if(i == CIR_TH)              return g_thLabelsVisible;
    // VIEWLOCK-OFF: if(i == CIR_VLOCK) return g_viewLockEnabled;
-   // TH3TOOL-OFF: if(i == CIR_TH3) return g_enableTH3Tool;
+   // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+   // P-UI-96 (2026-09-19) — MOMENTARY, like the measuring tool one line below:
+   // the light is the ARMED AB=CD DRAW, not the ENABLED switch. It used to read
+   // `g_enableTH3Tool`, which is what made the item look armed while no session
+   // existed anywhere (the user: pressing the tool leaves nothing to draw with).
+   // The switch keeps the card's row 0 (PnlGetSetting/SetSetting case 5 row 0)
+   // and is NAMED in the tooltip, so nothing became unreachable.
+#ifndef BUILD_LITE
+   if(i == CIR_TH3)             return TH3SessionActive();
+#else
+   if(i == CIR_TH3)             return g_enableTH3Tool;   // Lite ships no draw engine
+#endif
+#ifndef BUILD_LITE
+   if(i == CIR_LEG)             return LegMeasureSessionActive();
+#else
+   if(i == CIR_LEG)             return false;
+#endif
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
    // CIR_BASEKNOT is momentary: lit while the draw session is armed.
@@ -818,6 +863,17 @@ bool CircFeatureOn(const int i)
    // FACTORBTN-OFF: if(i == CIR_FACTOR_OVERRIDE) return (g_factorValueOverride > 0.0);
    if(i == CIR_TOOLS)           return g_ToolsOpen;
    return false;
+}
+
+// P-UI-93: the switch AND the whole-indicator mute. The other items (HTF, pin,
+// tools) have their own masks and are not part of the hide-all walk, so the mute
+// is not one of their terms.
+bool CircFeatureLit(const int i)
+{
+   if(!CircFeatureOn(i)) return false;
+   if(i == CIR_ZONES || i == CIR_TRIGGER || i == CIR_ATR || i == CIR_TH)
+      return !IsIndicatorHidden();
+   return true;
 }
 
 bool CircHasBadge(const int i)
@@ -857,14 +913,13 @@ string CircIconRes(const int i, const bool on)
    else if(i == CIR_TH)         base = "dots";    // TH dotted-level icon
    // VIEWLOCK-OFF: else if(i == CIR_VLOCK) base = "box";   // View lock — `box` was a
    //   PADLOCK (ART.box in tools/gen-th3-icons.js), never a rectangle; retired 2026-09-14.
-   // TH3TOOL-OFF: else if(i == CIR_TH3) base = "custom";  // TH3 tool/gauge icon
+   else if(i == CIR_TH3)        base = "custom";  // TH3 tool/gauge icon   // TH3TOOL-ON (2026-09-19)
    else if(i == CIR_HTF)        base = "htf";     // HTF candle icon
    else if(i == CIR_PIN)        base = "pin";     // Pin icon
     else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
     else if(i == CIR_BASEKNOT)   base = "ruler";   // Base / Knot MEASURE = a scale bar with ticks
-                                                   // (the old `box` slot shipped a padlock — the
-                                                   // glyph was never the rectangle this line claimed)
+    else if(i == CIR_LEG)        base = "leg";     // Leg Measure — trendline + bracket
     else if(i == CIR_TOOLS)      base = "tools";
    else                         base = "htf";
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
@@ -887,7 +942,7 @@ string CircCardIcon(const int item, const bool on)
    else if(item == 2)     base = "atr";     // ATR labels (range bracket)
    else if(item == 3)     base = "dots";    // TH labels
    // VIEWLOCK-OFF: else if(item == 4) base = "box";   // View lock
-   // TH3TOOL-OFF: else if(item == 5) base = "custom";  // TH3 tool
+   else if(item == 5)     base = "custom";  // TH3 tool   // TH3TOOL-ON (2026-09-19)
    else if(item == 6)     base = "htf";     // HTF candles
    else if(item == 7)     base = "tl";      // Lines — DEAD ART: `tl` sits in DEAD_ART
                                              // (no tl_*.bmp is emitted), so this header
@@ -938,12 +993,12 @@ string CircBadgeText(const int i)
    //   if(g_viewLockEnabled) return "On";
    //   return "";
    //}
-   // TH3TOOL-OFF:
-   //if(i == CIR_TH3)
-   //{
-   //   if(g_th3FreqOverride > 0) return DoubleToString(g_th3FreqOverride, 1) + "x";
-   //   return "Aut";
-   //}
+   // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+   if(i == CIR_TH3)
+   {
+      if(g_th3FreqOverride > 0) return DoubleToString(g_th3FreqOverride, 1) + "x";
+      return "Aut";
+   }
    if(i == CIR_HTF)     return CircHtfBadgeLabel(g_HTFPeriod);
    if(i == CIR_PIN)
    {
@@ -1003,8 +1058,23 @@ string CircTooltipStatus(const int i)
    }
    // VIEWLOCK-OFF:
    //if(i == CIR_VLOCK)             return g_viewLockEnabled ? "ON" : "OFF";
-   // TH3TOOL-OFF:
-   //if(i == CIR_TH3)               return "Off";
+   // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+   // P-UI-96: the status is a STATE, not a sentence — the audit substitutes the
+   // longest literal here into EVERY tooltip title (`ui-text-audit`
+   // `tooltip_texts`), so a longer phrase does not just widen this one tip, it
+   // pushes all ten past CIRC_TIP_INNER at every DPI (measured: 328px for 270px
+   // of room). "Ready"/"Drawing"/"Disabled" are the same three words the
+   // measuring tool next door uses, and they are what the NEXT press does.
+   if(i == CIR_TH3)
+   {
+#ifndef BUILD_LITE
+      if(TH3SessionActive())   return "Drawing";
+      if(!g_enableTH3Tool)     return "Disabled";
+      return "Ready";
+#else
+      return g_enableTH3Tool ? "Enabled" : "Disabled";
+#endif
+   }
    if(i == CIR_HTF)
    {
       string st = g_UI.showHTF ? "ON" : "OFF";
@@ -1042,6 +1112,13 @@ string CircTooltipStatus(const int i)
       int n = BaseKnotCount();
       return (n > 0 ? IntegerToString(n) + " set" : "Ready");
    }
+#ifndef BUILD_LITE
+   if(i == CIR_LEG)
+   {
+      if(LegMeasureSessionActive()) return "Drawing";
+      return "Ready";
+   }
+#endif
    if(i == CIR_TOOLS)             return g_ToolsOpen ? "Open" : "Closed";
    return "";
 }
@@ -1055,12 +1132,23 @@ string CircItemTooltip(const int i)
       case CIR_ATR:             return "ATR Labels · " + CircTooltipStatus(i) + "\nClick: toggle ATR labels · Hold: settings";
       case CIR_TH:              return "TH Labels · " + CircTooltipStatus(i) + "\nClick: cycle mode · Hold: settings";
        // VIEWLOCK-OFF: case CIR_VLOCK: return "View Lock\nClick: keep this view across timeframes · Hold: settings";
-       // TH3TOOL-OFF: case CIR_TH3: return "TH3 Pattern Frequency\nClick: toggle TH3 · Hold: settings";
+      // "Movement step", not "frequency": the badge/label number is how far one
+      // step of the move is (AB cut into 100/step pieces), not a frequency.
+      // P-UI-96: the press ARMS the AB=CD draw (X, A, B, C) — the tool's own
+      // momentary path, the same shape BASEKNOT uses. It used to toggle the
+      // ENABLED flag, which is why "Click: toggle TH3" produced no drawing: the
+      // AB=CD session was reachable only from the V key. The status fragment is
+      // the item's own state, so the tip says what the NEXT press does instead
+      // of what one flag is set to.
+      case CIR_TH3:             return "TH3 Movement Step · " + CircTooltipStatus(i) + "\nClick: draw AB=CD (X,A,B,C) · Hold: settings";   // TH3TOOL-ON (2026-09-19)
       case CIR_HTF:             return "HTF Candles · " + CircTooltipStatus(i) + "\nClick: toggle · Hold: settings";
       case CIR_PIN:             return "Custom Price Pin · " + CircTooltipStatus(i) + "\nClick: place pin · Drag: adjust · ESC: clear";
        case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i) + "\nClick: cycle step mode · Hold: settings";
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
       case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i) + "\nDrag: draw box · Hold box: style · ESC: done";
+      // P-UI-TIP: the hint must fit the tooltip box' own 270px inner width — the
+      // measured budget the ui-text audit holds. Drag is the shipped gesture.
+      case CIR_LEG:             return "Leg Measure · " + CircTooltipStatus(i) + "\nDrag to measure · ESC: cancel · Feeds ABCD";
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i) + "\nClick: open tools menu";
    }
    return "";
@@ -2312,7 +2400,7 @@ void CircCreateItem(const int i)
    int bx = x - CIRC_BTN_SIZE / 2;
    int by = y - CIRC_BTN_SIZE / 2;
    int feat = RingFeature(i);
-   bool on = CircFeatureOn(feat);
+   bool on = CircFeatureLit(feat);
 
    string bg = CircBg(i);
    if(ObjectFind(0, bg) < 0)
@@ -2354,7 +2442,7 @@ void ToolsCreateItem(const int toolIdx)
    int x, y;
    ToolsLayout(toolIdx, x, y);
    int feat = ToolFeature(toolIdx);
-   bool on = CircFeatureOn(feat);
+   bool on = CircFeatureLit(feat);
 
    // Skin follows the MODE: circular glass disc in the fan/rail/ring, rounded
    // tile in the grid panel. Size and margin move together with it (see SubBgSize).
@@ -2390,7 +2478,7 @@ void ToolsCreateItem(const int toolIdx)
    if(CircHasBadge(feat))
    {
       ToolsCreateBadge(toolIdx);
-      if(!CircFeatureOn(feat)) ToolsShowBadge(toolIdx, false);
+      if(!CircFeatureLit(feat)) ToolsShowBadge(toolIdx, false);
    }
 }
 
@@ -2605,7 +2693,7 @@ void CircMoveItem(const int i)
 void CircMoveBadge(const int i)
 {
    int feat = RingFeature(i);
-   if(!CircFeatureOn(feat))
+   if(!CircFeatureLit(feat))
    {
       CircShowBadge(i, false);
       return;
@@ -2968,7 +3056,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
 void CircUpdateItemState(const int i)
 {
    int feat = RingFeature(i);
-   bool on = CircFeatureOn(feat);
+   bool on = CircFeatureLit(feat);
 
    string icon = CircIcon(i);
    if(ObjectFind(0, icon) >= 0)
@@ -2994,7 +3082,7 @@ void ToolsUpdateItemState(const int t)
    if(!SubItemOnPage(t)) { SubParkItem(t); return; }   // page not shown -> park
 
    int feat = ToolFeature(t);
-   bool on = CircFeatureOn(feat);
+   bool on = CircFeatureLit(feat);
    string icon = ToolsIcon(t);
    if(ObjectFind(0, icon) >= 0)
    {
@@ -3088,7 +3176,7 @@ void UpdateMenuSyncIfChanged()
    for(int i = 0; i < RING_COUNT; i++)
    {
       int feat = RingFeature(i);
-      ulong v = (ulong)(CircFeatureOn(feat) ? 1 : 0);
+      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
       h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
       string t = CircBadgeText(feat);
       for(int c = 0; c < StringLen(t); c++)
@@ -3097,7 +3185,7 @@ void UpdateMenuSyncIfChanged()
    for(int t = 0; t < TOOL_COUNT; t++)
    {
       int feat = ToolFeature(t);
-      ulong v = (ulong)(CircFeatureOn(feat) ? 1 : 0);
+      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
       h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
       string bt = CircBadgeText(feat);
       for(int c = 0; c < StringLen(bt); c++)
@@ -3194,6 +3282,69 @@ int CircArmBaseKnot()
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-96 (2026-09-19) — THE TH3 TOOL'S ARM PATH, ONE OWNER.        |
+//|                                                                  |
+//| The ring press used to flip `g_enableTH3Tool` and nothing else:   |
+//| the switch moved, the light came on, and no drawing ever started  |
+//| — the AB=CD session was reachable only from the V key, which no   |
+//| surface of the panel ever mentions.                              |
+//|                                                                  |
+//| A press now does what the item's tooltip promises: it gets the    |
+//| tool READY and takes the four pivots (X, A, B, C). Both           |
+//| preconditions are REPAIRED when false, never obeyed silently:     |
+//|                                                                  |
+//|   * `g_enableTH3Tool` off — the four clicks would draw into a     |
+//|     chart whose TH3 objects the visibility hooks skip, i.e. a     |
+//|     pattern nobody can see;                                     |
+//|   * drawing mode STEPS — that mode ships no click path at all     |
+//|     (`ToggleTH3Tool` handles AB=CD only), so the press would be   |
+//|     the dead press P-UI-93 forbids. The mode is switched, logged  |
+//|     AND persisted, so the card's MODE row cannot disagree with    |
+//|     the session that is running.                                |
+//|                                                                  |
+//| A second press CANCELS, so the item is a toggle whose "on" is the |
+//| armed session — which is exactly what the ring light reads.      |
+//|                                                                  |
+//| The ring is deliberately NOT hidden while placing (BASEKNOT hides |
+//| its own): that tool needs the whole chart for ONE drag gesture,   |
+//| while four discrete clicks do not compete with a corner menu —    |
+//| and the visible item is what lets the same press cancel.         |
+//+------------------------------------------------------------------+
+int CircArmTH3Draw()
+{
+#ifndef BUILD_LITE
+   if(!g_enableTH3Tool)
+   {
+      g_enableTH3Tool = true;
+      RequestUISync();   // the TH3 TOOL card's ENABLED row displays this flag
+      Print("TH3: engine was DISABLED - enabled by the ring press that armed the draw");
+   }
+   if(g_th3DrawingMode != TH3_MODE_ABCD)
+   {
+      g_th3DrawingMode = TH3_MODE_ABCD;
+      // The mode is a PERSISTED setting, so a repair that lived only in RAM
+      // would come back as STEPS on the next attach (the E key's own save
+      // rides the same owner).
+      RuntimeSettingsSaveOverridesThrottled();
+      RequestUISync();   // ...and the MODE row shows the mode the session is in
+      Print("TH3: drawing mode STEPS has no click path - switched to AB=CD");
+   }
+   PnlCloseAll();        // a stale card must not sit under the four clicks (BASEKNOT's arm does the same)
+   ToggleTH3Tool(true);  // ONE owner for the toggle; true = swallow the arming press
+   CircTipDisarm();      // a hover tip describing "Ready" must not outlive the press
+   ChartRedraw();
+   return REFRESH_NONE;  // the session draws itself - nothing to recalculate
+#else
+   // Lite ships no chart-event routing for the AB=CD session (EventHandlers
+   // compiles that block out), so an armed session there would take no click
+   // and could never end. This build keeps the control it already had.
+   g_enableTH3Tool = !g_enableTH3Tool;
+   UpdateAllTH3Objects();
+   return REFRESH_ALL;
+#endif
+}
+
+//+------------------------------------------------------------------+
 //| Handle Button Click Events                                       |
 //+------------------------------------------------------------------+
 int HandleButtonClick(const string clickedObject)
@@ -3285,9 +3436,18 @@ int HandleButtonClick(const string clickedObject)
             g_customPriceKeyboardOverride = true;
             ObjectDelete(0, g_customPriceHorizontalLineName);
             g_customPriceLineCreated = false;
-            double currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
+            // P-UI-98d v2: the line is born where the user is LOOKING — the
+            // vertical middle of the visible chart, wherever they have scrolled
+            // («زمانی که فعال میشه هر جایی که کاربر هست وسط صفحه ظاهر بشه») —
+            // and the market's last price is only the fallback.
+            double currentPrice = ScreenMiddlePrice();
+            if(!(currentPrice > 0.0))
+                currentPrice = iClose(_Symbol, CompatTF(GetCachedPeriod()), 0);
             g_customTHStartPrice = currentPrice;
             g_thStartPointType = TH_START_POINT_CUSTOM_PRICE;
+            // P-UI-98e: a FRESH placement wakes the armed/set pair through its
+            // ONE owner - a line the user had SET must not come back inert.
+            HandsetPlacementArm();
             // P-UI-56: the placement pair has ONE writer, in the domain layer
             // (`EventHandlers`, included before this file). The keys are chart-scoped
             // now, so pressing PIN on this chart can no longer move the ladder of
@@ -3372,10 +3532,25 @@ int HandleButtonClick(const string clickedObject)
       return REFRESH_NONE;
    }
 
+   // P-UI-93 — THE PRESS ANSWERS WHAT THE LIGHT SHOWED.
+   //
+   // While the chart is muted the four family lights read OFF (CircFeatureOn
+   // folds the mute), so this press means "show the family again", and the mute
+   // has to go for that to be visible at all. `wantOn` is captured BEFORE the
+   // release, because the release is exactly what changes what the light reports.
+   //
+   // The mute is NOT a switch (P-PERF-41 stays intact: each light still owns one
+   // switch), it is the whole-indicator master every family already shares.
+   bool familyToggle = (feat == CIR_TRIGGER || feat == CIR_ZONES ||
+                        feat == CIR_ATR     || feat == CIR_TH);
+   bool mutedPress   = (familyToggle && IsIndicatorHidden());
+   bool wantOn       = (familyToggle && !mutedPress) ? !CircFeatureOn(feat) : mutedPress;
+   if(mutedPress) ReleaseIndicatorMute();
+
    int refreshFlags = REFRESH_NONE;
    if(feat == CIR_TRIGGER)
    {
-      g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
+      g_triggerLevelsEnabled = wantOn;   // P-UI-93: what the light showed, inverted
       // P-UI-40: the ring repaints ITSELF below (CircUpdateItemState +
       // UpdateCircularBadges), but it cannot repaint an OPEN card — this file is
       // included before the panel's. The same state is the TRIGGER card's SHOW
@@ -3401,14 +3576,14 @@ int HandleButtonClick(const string clickedObject)
       // It must NOT call SetLinesVisible: the SHOW LINES row (and the L key) own
       // that switch, and a press that turned the lines on would overwrite a
       // choice the user made elsewhere. See the note on CircFeatureOn.
-      g_showMidZones = !g_showMidZones;
+      g_showMidZones = wantOn;   // P-UI-93: what the light showed, inverted
       RequestUISync();   // P-UI-40: the Zones card's MID ZONES row shows this
       g_redrawTHLevelsNeeded = true;
       refreshFlags = REFRESH_BUFFERS;
    }
    else if(feat == CIR_ATR)
    {
-      g_atrLabelsVisible = !g_atrLabelsVisible;
+      g_atrLabelsVisible = wantOn;   // P-UI-93: what the light showed, inverted
       RequestUISync();   // P-UI-40: the ATR card's own rows show this switch
       g_showATRLabels = g_atrLabelsVisible;   // keep the ATR card mirror in sync
       string atrGvarNameKey = "Biotak_ATRLabels_" + GetCachedChartIdStr();
@@ -3430,6 +3605,12 @@ int HandleButtonClick(const string clickedObject)
       else {
          g_thLabelsMode = 1;
       }
+      // P-UI-93: this item CYCLES the mode rather than flipping a switch, and the
+      // cycle contains 0 (off). A muted press means "show TH", so it must not land
+      // on 0 - the mute would go and the family would stay hidden, which is the
+      // dead press again. A mode of 0 is raised to the remembered ON mode.
+      if(mutedPress && g_thLabelsMode == 0)
+         g_thLabelsMode = (inpShowStandardTHs ? 3 : 1);
       g_thLabelsVisible = (g_thLabelsMode != 0);
       RequestUISync();   // P-UI-40: the TH LABELS card cycles on this mode
       SyncTHFlagsFromMode();   // flags follow the mode → TH card stays in sync
@@ -3450,13 +3631,15 @@ int HandleButtonClick(const string clickedObject)
    //   SaveUIStates();
    //   return REFRESH_NONE;
    //}
-   // TH3TOOL-OFF:
-   //else if(feat == CIR_TH3)
-   //{
-   //   g_enableTH3Tool = !g_enableTH3Tool;
-   //   UpdateAllTH3Objects();
-   //   refreshFlags = REFRESH_ALL;
-   //}
+   // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+   else if(feat == CIR_TH3)
+   {
+      // P-UI-96: the press ARMS the AB=CD draw. One owner for the whole
+      // decision (enable + mode repairs + the session itself) lives in
+      // `CircArmTH3Draw`; the ENABLED switch this branch used to flip is the
+      // TH3 TOOL card's row 0.
+      refreshFlags = CircArmTH3Draw();
+   }
    else if(feat == CIR_HTF)
    {
       g_UI.showHTF = !g_UI.showHTF;
@@ -3479,6 +3662,15 @@ int HandleButtonClick(const string clickedObject)
       // on the chart is recalculated for it (REFRESH_NONE).
       refreshFlags = CircArmBaseKnot();
    }
+#ifndef BUILD_LITE
+   else if(feat == CIR_LEG)
+   {
+      // Momentary: the light is LegMeasureSessionActive(). A press arms/cancels
+      // the 2-click trendline session. No chart recalc needed.
+      LegMeasureToggle();
+      refreshFlags = REFRESH_NONE;
+   }
+#endif
 
    CircUpdateItemState(idx);
    UpdateCircularBadges();

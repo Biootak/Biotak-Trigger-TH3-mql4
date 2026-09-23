@@ -195,11 +195,11 @@ void ApplyRefreshFlags(const int flags)
    if((apply & (REFRESH_ALL | REFRESH_BUFFERS | REFRESH_RECALC | REFRESH_LABELS | REFRESH_TH3)) != 0)
    {
       if((apply & (REFRESH_LABELS | REFRESH_ALL)) != 0) g_labelsRelayoutNeeded = true;
-      // TH3TOOL-OFF:
-      //if((apply & (REFRESH_TH3 | REFRESH_ALL)) != 0)
-      //{
-      //   UpdateAllTH3Objects();
-      //}
+      // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
+      if((apply & (REFRESH_TH3 | REFRESH_ALL)) != 0)
+      {
+         UpdateAllTH3Objects();
+      }
       // P-PERF-30: this dispatcher is only ever reached from a USER action
       // (click, key, gesture end) - never from the tick or a drag loop - so the
       // edit must paint even when the geometry signature cannot see the input
@@ -308,12 +308,12 @@ void RefreshUIPerTick()
    {
       s_LastMenuSync = now;
       UpdateMenuSyncIfChanged();
-      // P-BK-29/47: the note's BREAK STORY is measured in MOVEMENT STEPS (ATR) — the
-      // type itself is the node's LENGTH and needs no size — and ATR lives ABOVE
-      // BaseKnotTool (ATRCalculations), so the pump pushes it in and the domain never
-      // reads it (layer law). Change-guarded inside: one cached ATR read and one
-      // compare per round, and only a value that MOVED re-arms the re-read.
-      BaseKnotStepPush(CalculateWeightedATR_Locked());
+      // P-BK-29/47: the note's BREAK STORY is measured in MOVEMENT STEPS (TH points,
+      // P-BK-92, was ATR) - the type itself is the node's LENGTH and needs no size -
+      // and TH lives in THCalculations (below this file), so the pump pushes it in
+      // and the domain never reads it (layer law). Change-guarded inside: one cached
+      // TH read and one compare per round, and only a value that MOVED re-arms the re-read.
+      BaseKnotStepPush(THAbilityPrice(Period(), 0));
       // P-BK-46: the knot's trade is measured in EngSL of ITS OWN TF, and EngSL is
       // trade-plan math (TradePlanFormulas, above this file too) — the same pump
       // hands it in: it asks the tool which TFs its boxes call their own, computes

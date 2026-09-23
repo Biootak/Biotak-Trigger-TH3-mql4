@@ -1173,8 +1173,16 @@ def check_staging(o):
     # the deferral must not turn a live drag into a lag.
     if "g_inChartEvent" not in ev:
         fail("staging", "the frame body must know it is inside a chart event")
-    elif "if(force_redraw && g_inChartEvent && !g_customPriceLineDragging)" not in ev:
-        fail("staging", "a forced frame inside an event must be DEFERRED (and the live drag exempt)")
+    # P-UI-98e: the exemption names BOTH hand-set drags - the custom price line
+    # and the step-1 handle, whose own carry is a drag too.
+    elif "if(force_redraw && g_inChartEvent && !g_customPriceLineDragging && !g_s1DragLive)" not in ev:
+        fail("staging", "a forced frame inside an event must be DEFERRED (and BOTH live drags "
+                        "exempt - a deferred drag frame is the 'the levels do not follow my "
+                        "hand' report)")
+    elif "    g_redrawTHLevelsNeeded = true;\n    CustomPriceDragFrame(false);" not in ev:
+        fail("staging", "the step-1 drag no longer marks the ladder stale - the levels block is "
+                        "gated on that flag, so the drag would move nothing but its own line "
+                        "(P-UI-98e)")
     elif "ScheduleHeavyFrame(\"chart-event\")" not in ev:
         fail("staging", "a deferred event frame must be SCHEDULED, not silently dropped")
     elif "g_buildStage != 0 || g_heavyFramePending" not in ev:
@@ -1425,7 +1433,7 @@ def selftest():
          "bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary || g_buildStage != 0 || g_heavyFramePending);",
          "bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary || g_buildStage != 0);"),
         ("staging", EVENTS,
-         "    if(force_redraw && g_inChartEvent && !g_customPriceLineDragging)",
+         "    if(force_redraw && g_inChartEvent && !g_customPriceLineDragging && !g_s1DragLive)",
          "    if(force_redraw && false)"),
         ("staging", EVENTS,
          "        if(g_heavyFramePending)      minWait = 0;",

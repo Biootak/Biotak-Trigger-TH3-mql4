@@ -194,6 +194,24 @@ bool CreateOrUpdateZoneBorder(const string name,
 //| - Atomic object creation (cleanup on failure)                   |
 //| - Comprehensive error context                                   |
 //+------------------------------------------------------------------+
+
+// P-UI-62b: the EDGE half's dirt is its own. The band entry stores the BAND's
+// blend, so asking it about the edge's color is always "changed". Three cache
+// probes, zero terminal calls on a hit - an absent segment answers changed
+// (the create path below is what brings it back).
+bool ZoneEdgeColorChanged(const string baseName, const color borderColor)
+{
+   string t0 = "_B_Top", t1 = "_B_Bottom", t2 = "_B_Left";
+   for(int i = 0; i < 3; i++)
+   {
+      string tn = baseName + (i == 0 ? t0 : (i == 1 ? t1 : t2));
+      SObjectCacheEntry e;
+      if(!CacheGetObject(tn, e) || !e.exists) return true;
+      if(e.lastColor != borderColor) return true;
+   }
+   return false;
+}
+
 SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
 {
     SZoneCreationResult result;
@@ -355,8 +373,9 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
         // Check if anything actually changed
         bool geometryChanged = (cache.lastPrice != request.topPrice || cache.lastPrice2 != request.bottomPrice ||
                                cache.lastTime1 != startTime || cache.lastTime2 != endTime);
-        bool visualChanged = (cache.lastColor != borderColor || cache.lastFilled != request.filled ||
-                             cache.lastStyle != borderStyle || cache.lastWidth != borderWidth);
+        bool visualChanged = (cache.lastColor != finalColor || cache.lastFilled != request.filled ||
+                              cache.lastStyle != borderStyle || cache.lastWidth != borderWidth ||
+                              (request.outline && ZoneEdgeColorChanged(request.name, borderColor)));
         
         if(!geometryChanged && !visualChanged) {
             result.success = true;

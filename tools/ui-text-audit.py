@@ -57,8 +57,11 @@ CHROME = ("Biotak/BiotakPanels.mqh", "Biotak/BiotakMenu.mqh", "Biotak/BaseKnotTo
 # Free chart labels / retired modules: a size literal here cannot overflow a box.
 ALLOW_FONTSIZE = {
     "Biotak/ExtendedDrawingFunctions.mqh": "domain chart labels (no chrome box)",
-    "Biotak/TH3/TH3Controller.mqh": "TH3 tool is retired (TH3TOOL-OFF)",
-    "Biotak/TH3/TH3Renderer.mqh": "TH3 tool is retired (TH3TOOL-OFF)",
+    # TH3TOOL-ON (2026-09-19): the tool is live again, but its captions are
+    # still FREE chart labels (OBJ_TEXT / OBJ_LABEL on the chart, never a fixed
+    # chrome box), so a size literal here cannot overflow a box.
+    "Biotak/TH3/TH3Controller.mqh": "TH3 tool: free chart labels (no chrome box)",
+    "Biotak/TH3/TH3Renderer.mqh": "TH3 tool: free chart labels (no chrome box)",
 }
 MENU = "Biotak/BiotakMenu.mqh"
 PANELS = "Biotak/BiotakPanels.mqh"

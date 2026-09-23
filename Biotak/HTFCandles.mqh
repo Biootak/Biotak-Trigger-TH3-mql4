@@ -658,6 +658,82 @@ bool HTFAnyBoxesExist()
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-98r — HTF CANDLES STAY BEHIND OPEN UI (card, palette).       |
+//|                                                                  |
+//| Reported with a screenshot: hollow HTF boxes paint OVER the open  |
+//| settings card. The Z ladder cannot fix this: MT4 keeps            |
+//| SCREEN-SPACE objects (the panel skins) in one list painted in     |
+//| ZORDER order, while CHART objects (these rectangles) paint in     |
+//| their own pass - a chart rectangle with BACK=false lands over a   |
+//| screen skin at ANY rung (the hollow mode needs BACK=false to stay |
+//| over the M5 candles, so flipping BACK would sink the whole family |
+//| behind the price it overlays). What CAN put a chart object behind |
+//| an opaque card is absence: a masked box paints nowhere, which is  |
+//| pixel-identical to "behind" under an opaque surface.              |
+//|                                                                  |
+//| So an open card/palette masks the boxes it covers, by NAME, from  |
+//| the published screen rects (PnlPublishCover - this module is      |
+//| included BEFORE BiotakPanels, so the rects cross on shared        |
+//| globals, the g_UIPanelOpen precedent). Geometry comes from the    |
+//| object cache the upsert already maintains - no terminal reads per  |
+//| box, no geometry recompute. Masked names are TRACKED, so the      |
+//| release path unmasks exactly what the cull masked (never a naive  |
+//| ALL that would resurrect a family F-hide put away: the target is  |
+//| hidden ? NO : ALL). Anything the cull cannot prove - no card,     |
+//| HTF off, nothing drawn, an unprojectable window - fails OPEN      |
+//| (hands off, old behaviour).                                       |
+//+------------------------------------------------------------------+
+static string s_htfCulled[];
+static int    s_htfCulledN = 0;
+
+bool HTFCullHas(const string name)
+{
+   for(int i = 0; i < s_htfCulledN; i++)
+      if(s_htfCulled[i] == name) return true;
+   return false;
+}
+
+void HTFCullTrack(const string name)
+{
+   if(HTFCullHas(name)) return;
+   ArrayResize(s_htfCulled, s_htfCulledN + 1);
+   s_htfCulled[s_htfCulledN] = name;
+   s_htfCulledN++;
+}
+
+void HTFCullUntrack(const string name)
+{
+   for(int i = 0; i < s_htfCulledN; i++)
+   {
+      if(s_htfCulled[i] != name) continue;
+      s_htfCulled[i] = s_htfCulled[s_htfCulledN - 1];
+      s_htfCulledN--;
+      ArrayResize(s_htfCulled, s_htfCulledN);
+      return;
+   }
+}
+
+void HTFCullForget(const string name) { HTFCullUntrack(name); }
+
+// One published rect to a chart window. False = unusable (fail open).
+bool HTFCullRectWindow(const int rx, const int ry, const int rw, const int rh,
+                       datetime &t1, datetime &t2, double &pHi, double &pLo)
+{
+   t1 = 0; t2 = 0; pHi = 0.0; pLo = 0.0;
+   if(rx < 0 || rw <= 0 || rh <= 0) return false;
+   int swA = 0, swB = 0;
+   datetime ta = 0, tb = 0;
+   double pa = 0.0, pb = 0.0;
+   if(!ChartXYToTimePrice(0, rx, ry, swA, ta, pa)) return false;
+   if(!ChartXYToTimePrice(0, rx + rw, ry + rh, swB, tb, pb)) return false;
+   t1 = (ta < tb ? ta : tb);
+   t2 = (ta < tb ? tb : ta);
+   pHi = (pa > pb ? pa : pb);
+   pLo = (pa > pb ? pb : pa);
+   return ((t2 > t1) && (pHi > pLo));
+}
+
+//+------------------------------------------------------------------+
 //| Delete HTF objects for history indices [from,to) — used to prune |
 //| only the trailing tail after an in-place redraw shrinks, instead  |
 //| of a full delete+recreate (no flicker, no drag-freeze).          |
@@ -678,7 +754,82 @@ void HTFDeleteIndices(const int from, const int to)
       ObjectDelete(0, g_HTFPrefix + id + "_B");
       ObjectDelete(0, g_HTFPrefix + "WU" + id);
       ObjectDelete(0, g_HTFPrefix + "WL" + id);
+      // P-UI-98r: a pruned box leaves the card-cull set with it - a tracked
+      // name that no longer exists must not linger (its release write would
+      // fail silent, and the slot is a lie the next refresh would keep).
+      HTFCullForget(g_HTFPrefix + id);
+      HTFCullForget(g_HTFPrefix + id + "_F");
+      HTFCullForget(g_HTFPrefix + id + "_B");
+      HTFCullForget(g_HTFPrefix + "WU" + id);
+      HTFCullForget(g_HTFPrefix + "WL" + id);
    }
+}
+
+// The cull pass. Reads-only while healthy: two projections per open surface,
+// cache probes per box, a terminal write only for a box that FLIPS state.
+void HTFCardCullRefresh()
+{
+   if(!g_UIPanelOpen || !g_UI.showHTF || g_HTFDrawnCount <= 0 || StringLen(g_HTFPrefix) == 0)
+   {
+      HTFCullRelease();
+      return;
+   }
+   datetime t1A = 0, t2A = 0, t1B = 0, t2B = 0;
+   double pHiA = 0.0, pLoA = 0.0, pHiB = 0.0, pLoB = 0.0;
+   bool winA = HTFCullRectWindow(g_UIPanelRX, g_UIPanelRY, g_UIPanelRW, g_UIPanelRH,
+                                 t1A, t2A, pHiA, pLoA);
+   bool winB = HTFCullRectWindow(g_UIPPalRX, g_UIPPalRY, g_UIPPalRW, g_UIPPalRH,
+                                 t1B, t2B, pHiB, pLoB);
+   if(!winA && !winB)
+   {
+      HTFCullRelease();
+      return;
+   }
+   for(int i = 0; i < g_HTFDrawnCount; i++)
+   {
+      string id = IntegerToString(i);
+      string nm[5];
+      nm[0] = g_HTFPrefix + id;
+      nm[1] = g_HTFPrefix + id + "_F";
+      nm[2] = g_HTFPrefix + id + "_B";
+      nm[3] = g_HTFPrefix + "WU" + id;
+      nm[4] = g_HTFPrefix + "WL" + id;
+      for(int k = 0; k < 5; k++)
+      {
+         SObjectCacheEntry e;
+         if(!CacheGetObject(nm[k], e) || !e.exists) { HTFCullUntrack(nm[k]); continue; }
+         datetime bt1 = (e.lastTime1 < e.lastTime2 ? e.lastTime1 : e.lastTime2);
+         datetime bt2 = (e.lastTime1 < e.lastTime2 ? e.lastTime2 : e.lastTime1);
+         double bHi = (e.lastPrice > e.lastPrice2 ? e.lastPrice : e.lastPrice2);
+         double bLo = (e.lastPrice > e.lastPrice2 ? e.lastPrice2 : e.lastPrice);
+         bool cover = false;
+         if(winA && bt1 <= t2A && bt2 >= t1A && bLo <= pHiA && bHi >= pLoA) cover = true;
+         if(!cover && winB && bt1 <= t2B && bt2 >= t1B && bLo <= pHiB && bHi >= pLoB) cover = true;
+         bool tracked = HTFCullHas(nm[k]);
+         if(cover && !tracked)
+         {
+            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            HTFCullTrack(nm[k]);
+         }
+         else if(!cover && tracked)
+         {
+            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES,
+                             IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+            HTFCullUntrack(nm[k]);
+         }
+      }
+   }
+}
+
+// Give back exactly what the cull took (open-order callers only).
+void HTFCullRelease()
+{
+   if(s_htfCulledN <= 0) return;
+   long back = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+   for(int i = 0; i < s_htfCulledN; i++)
+      ObjectSetInteger(0, s_htfCulled[i], OBJPROP_TIMEFRAMES, back);
+   ArrayResize(s_htfCulled, 0);
+   s_htfCulledN = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -1013,6 +1164,10 @@ int DrawHTFCandles()
    }
    HTFDeleteIndices(count, s_prevCount);
    s_prevCount = count;
+   // P-UI-98r: a draw while a card is open births boxes unmasked - cull the
+   // fresh set at once (slider drags redraw continuously; the timer net would
+   // leave a 250 ms flicker under the hand).
+   HTFCardCullRefresh();
    return count;
 }
 

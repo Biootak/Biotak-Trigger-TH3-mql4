@@ -97,6 +97,46 @@ double CalculateTHPoints(const double price, const int digits, const double perc
     return thStepPriceUnits <= 0 ? 0 : (thStepPriceUnits / s_pointValue);
 }
 
+//+------------------------------------------------------------------+
+//| P-BK-92 - TH ABILITY of one ladder rung at one bar (PRICE units). |
+//|                                                                  |
+//| The knot's type and step used to read ATR; they read the rung's   |
+//| own TH points now: (anchor-bar close x rung %) / 100. The rung    |
+//| table mirrors GetBaseFractalTimeframeForCurrent, the % is the     |
+//| knob-aware FractalPercentScaled (knob OFF = professor's table).   |
+//| Anchor-stable by construction (same bar -> same number).          |
+//| 0 = absence (unknown rung, cold series) - never a guess.          |
+//+------------------------------------------------------------------+
+string THRungNameForTFMin(const int tfMin)
+{
+   if(tfMin == 1) return "M1";
+   if(tfMin == 5) return "M4";
+   if(tfMin == 15 || tfMin == 30) return "M16";
+   if(tfMin == 60) return "H1+M4";
+   if(tfMin == 240) return "H4+M16";
+   if(tfMin == 1440) return "H17+M4";
+   if(tfMin == 10080) return "D11+H9+M4";
+   if(tfMin == 43200) return "D45+H12+M16";
+   return "";
+}
+double THAbilityPrice(const int tfMin, const datetime anchor)
+{
+   int idx = FractalRungIndex(THRungNameForTFMin(tfMin));
+   if(idx < 0) return 0.0;
+   double pct = FractalPercentScaled(idx);
+   if(pct <= 0.0) return 0.0;
+   double price = 0.0;
+   if(anchor > 0)
+   {
+      int sh = iBarShift(_Symbol, tfMin, anchor, false);
+      if(sh < 0) return 0.0;
+      price = iClose(_Symbol, tfMin, sh);
+   }
+   else price = iClose(_Symbol, tfMin, 0);
+   if(price <= 0.0) return 0.0;
+   return price * pct / 100.0;
+}
+
 double GetTimeframeTH() {
     return CalculateTimeframeTH(GetFractalTimeframeForCurrent());
 }

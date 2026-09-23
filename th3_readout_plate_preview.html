@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<title>readout plate — یک زبان، دو سطح (P-TH3-INFO-04)</title>
+<style>
+ :root{--bg:#0a0d13;--panel:#111722;--panel2:#0d1219;--ink:#e8edf6;--dim:#8d99ad;
+       --line:#1e2634;--hot:#f59e0b;--good:#34d399;--bad:#f87171;
+       --violet:#7C5CFF;--plate:#121621;--plateEdge:#8C96A6;--plateTx:#EBF0F8}
+ *{box-sizing:border-box}
+ body{margin:0;background:var(--bg);color:var(--ink);
+      font-family:Vazirmatn,"Segoe UI",Tahoma,sans-serif;line-height:1.85}
+ .wrap{max-width:1280px;margin:0 auto;padding:28px 22px 70px}
+ h1{font-size:26px;margin:0 0 6px;font-weight:800}
+ h1 span{color:var(--hot)}
+ .sub{color:var(--dim);font-size:14px;margin-bottom:22px}
+ .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+       padding:20px 22px;margin:0 0 20px}
+ .card h2{font-size:17px;margin:0 0 12px;font-weight:700}
+ p{margin:8px 0}
+ .k{color:var(--hot);font-weight:700}
+ .good{color:var(--good);font-weight:700}.bad{color:var(--bad);font-weight:700}
+ code{background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:1px 6px;
+      font-size:12px;unicode-bidi:isolate;direction:ltr;display:inline-block}
+ .row2{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:0 0 14px}
+ button{background:#1a2130;color:var(--ink);border:1px solid #2b3546;border-radius:8px;
+        padding:5px 12px;font:inherit;font-size:13px;cursor:pointer}
+ button[aria-pressed="true"]{background:#2a2450;border-color:var(--violet);color:#cfc6ff}
+ .stagewrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel2);
+            padding:12px;margin:0 0 14px;direction:ltr}   /* the chart scrolls from its
+            LEFT edge even on an RTL page — the captions live there */
+ .stage{position:relative;transform-origin:top left}
+ .stage .paper{position:relative;overflow:hidden;border:1px solid #3a4354}
+ .plate{position:absolute;background:var(--plate);border:1px solid var(--plateEdge);z-index:3}
+ .rlbl{position:absolute;font:700 12px/12px Arial,Helvetica,sans-serif;color:var(--plateTx);
+       white-space:pre;letter-spacing:0;z-index:4}
+ .rlbl.live{color:var(--violet)}
+ .cap{font-size:12.5px;color:var(--dim);margin:0 0 10px}
+ .sw{display:inline-block;width:11px;height:11px;border-radius:3px;vertical-align:-1px;
+     margin-inline-end:5px;border:1px solid #ffffff22}
+ .tblwrap{overflow-x:auto;direction:ltr}   /* the table is LTR content, like the charts */
+ table{width:100%;min-width:620px;border-collapse:collapse;font-size:12.5px;direction:ltr}
+ th,td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+ td.r{font-family:Consolas,"Courier New",monospace;font-size:12px}
+ th{color:var(--dim);font-weight:600}
+ td.n{font-variant-numeric:tabular-nums;text-align:right;color:var(--ink)}
+ tr.ref td{opacity:.62}
+ .pill{display:inline-block;font-size:11.5px;border:1px solid var(--line);border-radius:999px;
+       padding:1px 9px;color:var(--dim);margin-inline-end:6px}
+ .pill.ok{border-color:#34d39955;color:var(--good)}
+ .pill.new{border-color:#f59e0b55;color:var(--hot)}
+ ul{margin:6px 0;padding-inline-start:20px}
+ li{margin:4px 0}
+ .legend{font-size:12.5px;color:var(--dim);margin-top:8px}
+ .legend b{color:var(--ink);font-weight:700}
+</style></head><body><div class="wrap">
+
+<h1>readout plate — <span>یک زبان، دو سطح</span></h1>
+<div class="sub">همان جعبهٔ تیرهٔ سه‌خطی مرجع، این بار مالِ <b>هر دو</b> سطحِ خواندنیِ ابزار:
+مترِ لگ (P-LM-01) و کپشن AB=CD (P-TH3-INFO-04). این صفحه رندر <b>۱:۱ پیکسلی</b> است — هر عددِ
+اندازه‌گیری با جدولِ advance خودِ پروژه و <code>dpi = 96</code> حساب می‌شود، نه با چشم.</div>
+
+<div class="card">
+<h2>۱) خودِ محصول، روی دو کاغذ</h2>
+<div class="row2">
+  <span class="cap" style="margin:0">مقیاس:</span>
+  <button id="zfit" aria-pressed="true">تناسب</button>
+  <button id="z1" aria-pressed="false">۱×</button>
+  <button id="z2" aria-pressed="false">۲×</button>
+  <span class="legend" style="margin:0" id="zOut"></span>
+</div>
+<p class="cap">"۱×" یعنی همان پیکسلِ MT4 روی نمایشگر ۹۶dpi. هر مقیاسِ دیگری فقط بزرگ‌نمایی است
+و عددهای §۲ را عوض نمی‌کند.</p>
+
+<div class="stagewrap"><div class="stage" id="stageLight"></div></div>
+<div class="legend">کاغذِ روشن — پلیت همان <b id="inkFillLight"></b> می‌ماند، پس خطِ زنده
+(<span class="k">violet</span>) و ردیف‌های near-white روی هر دو کاغذ خوانا هستند.</div>
+
+<div class="stagewrap" style="margin-top:14px"><div class="stage" id="stageDark"></div></div>
+<div class="legend">کاغذِ تیره — همان پلیت، همان متن. تیپِ لگ نزدیک سقف است، پس جعبه
+طبق قاعده روی <b>پایین</b> تیپ می‌افتد (نه بیرون از کادر). ردیف پایین همان ردیف زنده است
+و رنگ کاغذ به آن دست نمی‌زند.</div>
+</div>
+
+<div class="card">
+<h2>۲) اندازه‌ها — همان اعدادی که MT4 می‌کشد</h2>
+<p class="cap">em = round(9pt × 96/72) = <span id="emOut"></span>px · pitch سطر =
+<span id="rowHOut"></span>px · ارتفاع پلیت‌ سه‌سطر = <span id="plateHOut"></span>px ·
+فاصلهٔ دو کپشن = ارتفاع + 8 = <span id="slotOut"></span>px</p>
+<div class="tblwrap"><table id="metrics"><thead><tr><th>surface</th><th>row</th>
+<th class="n">units/1000</th><th class="n">text px</th><th class="n">plate px (W×H)</th>
+</tr></thead><tbody></tbody></table></div>
+<p class="legend">ردیف‌های <b>ref</b> متنِ خودِ اسکرین‌شات مرجع است (با براکت)، فقط برای مقایسه؛
+عددِ پلیتِ ما روی <b>پهن‌ترین سطرِ خودش</b> بسته می‌شود (<code>TH3ROPlateW</code>).</p>
+</div>
+
+<div class="card">
+<h2>۳) این تصویر از کجا می‌آید</h2>
+<p><span class="pill ok">امروز کار می‌کند</span> خط + نقطهٔ شروع + سرِ مثلثی هم‌راستا با خط
+(<code>LegMeasureArrowhead</code>، لنگرها: <code>OBJ_TRIANGLE</code> + تصویرِ پیکسلی روی محور نمودار)،
+پلیتِ تیره با بوردر مویی، و follower ای که با اسکرول/زوم جعبه را روی لگ نگه می‌دارد.</p>
+<p><span class="pill new">پیاده نشده / تأییدنشده</span> لیبلِ <b>50% ATR</b> زیر لگ در مرجع هست و
+ما نداریم؛ و خودِ این صفحه فقط <b>هندسه</b> را ثابت می‌کند — ترتیبِ ZORDER، رفتارِ follower و
+اینکه پلیت روی کاغذِ واقعی همین‌قدر خوانا هست، فقط در ترمینال دیده می‌شود.</p>
+<ul>
+ <li>پالتِ پلیت یک جدولِ واحد است: <code>TH3RO_*</code> و مالکِ ردیف <code>TH3ReadoutInk</code>
+     — <code>Biotak/TH3/TH3Controller.mqh:271</code>.</li>
+ <li>هندسه و نویسنده‌های پلیت: <code>TH3ROPlateW/PlateH/PlateY/PlateX</code> و
+     <code>TH3RORowAt</code> — <code>Biotak/TH3/TH3Renderer.mqh</code>.</li>
+ <li>متنِ مترِ لگ (سه خط، جدول H1/H4/D1 و TF مالک):
+     <code>LegMeasureReadout()</code> — <code>Biotak/TH3Tool.mqh</code>.</li>
+ <li>متنِ کپشن AB=CD (سه سطر با <code>\n</code> که هر کدام جداگانه wrap می‌شود):
+     <code>DrawABCDPattern()</code> — <code>Biotak/TH3/TH3Renderer.mqh</code>.</li>
+ <li>جدول advance و <code>PnlRawLineH</code>: <code>Biotak/UtilityFunctions.mqh:221</code> و
+     <code>:133</code> — همین جدول در پایتونِ این صفحه پورت شده، پس عددِ صفحه و عددِ MT4
+     از یک ریشه می‌آیند.</li>
+</ul>
+</div>
+
+<div class="card">
+<h2>۴) برای دیدنش در ترمینال (قدم‌های مشخص)</h2>
+<ul>
+ <li>کامپایل کامل، بعد اندیکاتور را <b>remove &amp; re-add</b> کن (pixel/glyph فقط در attach خوانده می‌شود).</li>
+ <li>کلید <code>V</code> (کارت TH3 در پنل) → کشیدنِ یک لگ روی چارت: باید <b>خط بنفش + نقطهٔ شروع +
+     سرِ مثلثی در راستای خط</b> و جعبهٔ سه‌خطی <b>۱۰px بالای نوک، وسط‌چین</b> ظاهر شود.</li>
+ <li>لگ را بکش تا نوکش به <b>سقف کادر</b> برسد: جعبه باید زیرِ نوک بیفتد، نه بیرونِ پنجره.</li>
+ <li>چارت را با اسکرول/زوم جابه‌جا کن: جعبه روی لگ بماند و <b>لگ را رها نکن</b>؛ چارت باید
+     یک‌بار هم نلرزد (P-LM-05/C4-lock).</li>
+ <li>یک الگوی AB=CD بکش: کپشنش باید همان پلیت را بپوشد و سه سطرش با
+     <code>\n</code> بشکند، و ردیفِ آخر (عدد زنده) بنفش باشد.</li>
+ <li>روی کاغذِ سفید و کاغذِ مشکی هر دو را نگاه کن: پلیت نباید رنگ کاغذ را بگیرد.</li>
+</ul>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════
+   THE MIRROR — every measurement below is a port of the OWNER in
+   Biotak/, at dpi 96 (the design's own DPI). If the MQL changes, this
+   page must change with it; the numbers printed in §2 are the port's
+   own answers, so a drift is visible rather than silent.
+   ══════════════════════════════════════════════════════════════════ */
+// ── PnlAdvUnits: Biotak/UtilityFunctions.mqh:221 — Arial Bold, units/1000 em ──
+const LOWER=[556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500];
+const UPPER=[722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,722,611];
+const SPC={32:278,46:278,44:278,58:333,59:333,45:333,47:278,37:889,183:333,91:333,93:333,
+           124:280,38:722,40:333,41:333,39:278,43:584,61:584,60:584,62:584,33:333,63:611,
+           95:556,35:556,42:389,64:975};
+function advUnits(cp){
+  if(cp>=48&&cp<=57) return 556;
+  if(cp>=97&&cp<=122) return LOWER[cp-97];
+  if(cp>=65&&cp<=90)  return UPPER[cp-65];
+  return (cp in SPC)?SPC[cp]:611;
+}
+function textUnits(s){let u=0;for(const ch of s)u+=advUnits(ch.codePointAt(0));return u;}
+// ── PnlRawLineH / PnlRawTextW: UtilityFunctions.mqh:133 / :299, dpi = 96 ──
+const DPI=96, FONT_PT=9;
+const EM=Math.round(FONT_PT*DPI/72);            // 12 px
+const textW = s => s.length? Math.round(textUnits(s)*EM/1000) : 0;
+// ── the plate's own layout: TH3Renderer.mqh, TH3RO_* ──
+const RO_PAD_X=10, RO_PAD_Y=5, RO_LINE_GAP=5;
+const rowH   = () => EM + RO_LINE_GAP;                                     // 17
+const plateH = rows => rows*EM + (rows-1)*RO_LINE_GAP + 2*RO_PAD_Y;        // 3 rows -> 56
+function plateW(rows){let bw=2*RO_PAD_X+8;for(const r of rows){if(!r.length)continue;
+  bw=Math.max(bw,textW(r)+2*RO_PAD_X);}return bw;}
+// ── the caption's own block and slot pitch (P-TH3-INFO-04) ──
+const TH3_INFO_MAX_LINES=6, TH3_INFO_ROWS=3, TH3_INFO_SLOT_GAP=8, TH3_INFO_TEXT_MAX=63;
+const captionBlockH = () => plateH(TH3_INFO_ROWS);
+const captionTopY   = (baseY,slot) => slot<=0? baseY : baseY + slot*(captionBlockH()+TH3_INFO_SLOT_GAP);
+// ── the wrap: splits on "\n" first, then wraps EACH row (P-TH3-INFO-04) ──
+function wrapRow(row,maxLen,lines){
+  let rest=row, guard=0;
+  while(rest.length>0 && guard<32){
+    guard++;
+    const lastSlot = lines.length >= TH3_INFO_MAX_LINES-1;
+    if(rest.length<=maxLen || lastSlot){ lines.push(rest); break; }
+    let cut=-1, from=0;
+    while(true){ const p=rest.indexOf(" | ",from); if(p<0||p+3>maxLen)break; cut=p+3; from=p+1; }
+    if(cut>0 && (maxLen-cut) > maxLen/5) cut=-1;
+    if(cut<=0){ cut=maxLen; for(let i=maxLen;i>=1;i--){ if(rest.charCodeAt(i-1)===32){cut=i;break;} } }
+    lines.push(rest.slice(0,cut));
+    rest=rest.slice(cut);
+    while(rest.length>0 && rest.charCodeAt(0)===32) rest=rest.slice(1);
+  }
+}
+function wrapCaption(text){
+  const lines=[];
+  for(const row of text.split("\n")){
+    if(lines.length>=TH3_INFO_MAX_LINES) break;
+    wrapRow(row,TH3_INFO_TEXT_MAX,lines);
+  }
+  return lines;
+}
+// ── LegInfoBoxTop: TH3Tool.mqh — centred over the tip, 10px clear of it ──
+const LEG_INFO_GAP=10, LEG_INFO_MARGIN=4;
+function legBoxTop(tipX,tipY,bw,bh,cw,ch){
+  let bx=tipX-bw/2, by=tipY-LEG_INFO_GAP-bh;
+  if(by<LEG_INFO_MARGIN) by=tipY+LEG_INFO_GAP;          // no room above: go below
+  const right=cw-LEG_INFO_MARGIN;
+  if(bx+bw>right) bx=right-bw;
+  if(bx<LEG_INFO_MARGIN) bx=LEG_INFO_MARGIN;
+  if(by<LEG_INFO_MARGIN) by=LEG_INFO_MARGIN;
+  else if(by+bh>ch-LEG_INFO_MARGIN) by=Math.max(LEG_INFO_MARGIN, ch-LEG_INFO_MARGIN-bh);
+  return {bx:Math.round(bx),by:Math.round(by)};
+}
+// ── the SVG helpers ──
+const SVGNS="http://www.w3.org/2000/svg";
+function el(name,attrs,parent){const e=document.createElementNS(SVGNS,name);
+  for(const k in attrs) e.setAttribute(k,attrs[k]); if(parent)parent.appendChild(e); return e;}
+function seedRandom(seed){let s=seed>>>0||1;return()=>(s=(1103515245*s+12345)&0x7fffffff)/0x7fffffff;}
+
+/* ── one chart, at 1:1 ─────────────────────────────────────────── */
+function paintChart(host,cfg){
+  const W=cfg.w, H=cfg.h;
+  const stage=document.getElementById(host);
+  const paper=document.createElement("div");
+  paper.className="paper"; paper.style.width=W+"px"; paper.style.height=H+"px";
+  paper.style.background = cfg.paper==="dark" ? "#0f1319" : "#ffffff";
+  stage.appendChild(paper);
+  const svg=el("svg",{width:W,height:H,viewBox:`0 0 ${W} ${H}`,
+                      style:"position:absolute;left:0;top:0;z-index:1"},paper);
+  // candles — a decorative market, normalized into the chart's own ladder so a
+  // leg can sit on the real tips of the real bars it spans
+  const rnd=seedRandom(cfg.seed);
+  const up=cfg.paper==="dark"?"#2ebd85":"#26a69a", dn=cfg.paper==="dark"?"#ef5350":"#e53935";
+  const pitch=8, n=Math.floor((W-20)/pitch), mk=[];
+  const smooth = i => -40*Math.cos(i/20) + i*0.1;             // trough at the left, peak at ~i 62
+  for(let i=0;i<n;i++){
+    const v   = smooth(i) + (rnd()-0.5)*14;
+    const o   = v, c = v + (rnd()-0.5)*16;
+    mk.push({o:o, c:c, hi:Math.max(o,c)+rnd()*8, lo:Math.min(o,c)-rnd()*8});
+  }
+  // the leg's own two bars: the swing's trough -> its peak (the SHAPE's extremes,
+  // not a noise spike — a 12px leg would make the head the whole line)
+  let iLo=0, iHi=0;
+  mk.forEach((k,i)=>{ if(smooth(i)<smooth(iLo)) iLo=i; if(smooth(i)>smooth(iHi)) iHi=i; });
+  let hiMax=-1e9, loMin=1e9;
+  for(const k of mk){ hiMax=Math.max(hiMax,k.hi); loMin=Math.min(loMin,k.lo); }
+  // on the dark chart the TIP defines the ceiling (cfg.tipAtCeiling), so its y IS the
+  // top pad — that is what forces the plate to flip below it. A wick or two then pokes
+  // past the top of the window, exactly as the reference's own chart does.
+  if(cfg.tipAtCeiling) hiMax = mk[iHi].hi;
+  const topPad=cfg.topPad, botPad=40;
+  const y  = p => topPad + (hiMax-p)/(hiMax-loMin)*(H-topPad-botPad);
+  const cx = i => 10 + i*pitch + 3;
+  mk.forEach((k,i)=>{
+    const col = k.c>=k.o?up:dn;
+    el("line",{x1:cx(i),y1:y(k.hi),x2:cx(i),y2:y(k.lo),stroke:col,"stroke-width":1,
+               "shape-rendering":"crispEdges"},svg);
+    const top=y(Math.max(k.o,k.c)), bot=y(Math.min(k.o,k.c));
+    el("rect",{x:10+i*pitch,y:top,width:6,height:Math.max(1,bot-top),
+               fill:col,stroke:col,"shape-rendering":"crispEdges"},svg);
+  });
+  // the leg sits on those two bars' own tips
+  const A=[cx(iLo),y(mk[iLo].lo)], B=[cx(iHi),y(mk[iHi].hi)];
+  const leg=cfg.leg, ink="#7C5CFF";
+  // line, start dot, and a head that points ALONG the line (P-LM-05)
+  el("line",{x1:A[0],y1:A[1],x2:B[0],y2:B[1],stroke:ink,"stroke-width":2,
+             "stroke-linecap":"round"},svg);
+  el("circle",{cx:A[0],cy:A[1],r:4.5,fill:ink},svg);
+  {
+    const dx=B[0]-A[0], dy=B[1]-A[1], len=Math.hypot(dx,dy)||1, ux=dx/len, uy=dy/len;
+    let headLen=14, headHalf=6;
+    if(len<3*headLen){ headLen=Math.max(4,len/3); headHalf=Math.max(2,headLen*0.45); }
+    const bcx=B[0]-ux*headLen, bcy=B[1]-uy*headLen, prx=-uy, pry=ux;
+    el("polygon",{points:`${B[0]},${B[1]} ${bcx+prx*headHalf},${bcy+pry*headHalf} `+
+                         `${bcx-prx*headHalf},${bcy-pry*headHalf}`,fill:ink},svg);
+    if(leg.mid){   // the reference's own "50% ATR" ruler label — NOT in our code yet
+      const mx=(A[0]+B[0])/2, my=(A[1]+B[1])/2;
+      el("line",{x1:mx-26,y1:my-10,x2:mx+26,y2:my-10,stroke:"#8C96A6","stroke-width":1,
+                 "stroke-dasharray":"1 2"},svg);
+      el("text",{x:mx+30,y:my-7,fill:"#8C96A6","font-family":"Arial","font-size":11},
+         svg).textContent=leg.mid;
+    }
+  }
+  // the plate and its rows — the SAME two writes the MQL makes (plate first, ink after)
+  {
+    const rows=leg.rows, bw=plateW(rows), bh=plateH(rows.length);
+    const {bx,by}=legBoxTop(B[0],B[1],bw,bh,W,H);
+    addPlate(paper,bx,by,bw,bh,"Leg measure readout (P-LM-01): the leg as a share of each "+
+                               "TF's own ATR — the owner TF's column is the live row");
+    rows.forEach((r,i)=>addRow(paper,bx+RO_PAD_X,by+RO_PAD_Y+i*rowH(),r,i===rows.length-1));
+  }
+  for(const cap of cfg.captions||[]){
+    const lines=wrapCaption(cap.text);
+    const bw=plateW(lines), bh=plateH(lines.length);
+    const topY=captionTopY(cap.baseY,cap.slot||0);
+    const px=10-RO_PAD_X, py=topY-RO_PAD_Y;         // TH3ROPlateX / TH3ROPlateY (LEFT_UPPER)
+    addPlate(paper,px,py,bw,bh,cap.tip||"AB=CD caption (P-TH3-INFO-04)");
+    lines.forEach((r,i)=>addRow(paper,10,topY+i*rowH(),r,i===lines.length-1));
+  }
+  // the trade plan row the reference also shows — already a shipped surface
+  if(cfg.plan){
+    const t=el("text",{x:W-14,y:H-16,fill:"#8C96A6","font-family":"Arial",
+                       "font-size":12,"text-anchor":"end"},svg);
+    t.textContent=cfg.plan;
+  }
+  return paper;
+}
+function addPlate(host,x,y,w,h,tip){
+  const d=document.createElement("div"); d.className="plate";
+  d.title=tip; d.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+  host.appendChild(d); return d;
+}
+function addRow(host,x,y,text,live){
+  const d=document.createElement("div"); d.className="rlbl"+(live?" live":"");
+  d.style.cssText=`left:${x}px;top:${y}px`; d.textContent=text;
+  host.appendChild(d); return d;
+}
+
+/* ── the two surfaces, exactly as the code spells them ─────────── */
+const LEG_ROWS=["H1: 589% | H4: 268% | D1: 95%",      // LegMeasureReadout txt[0]
+                "H1: 208 | H4: 388 | D1: 1899",       // ... txt[1]
+                "TF H4 | ATR 387.7 | Leg 268%"];      // ... txt[2] — the live row
+const CAP_ROWS="AB=CD | H1 | CD 18 bars\n" +          // DrawABCDPattern rowIdentity
+               "AB 504p | BC 765p | CD 1200p\n" +     // ... rowLegs
+               "Step 255.0p | K 3.0 | M0(0.4)";       // ... rowLive — the live row
+const CAP_WRAP="AB=CD | H4 | CD 22 bars | owner M15 x2\n" +
+               "AB 1204p | BC 765p | CD 2200p\n" +
+               "Step 255.0p | 1/3M 0.83 | K 3.0 | step3 hit x2 (T3 -> M15 H x2 (0.4%))";
+
+// the paper's own size, in MT4 pixels: a WINDOW, so a caption cannot sit off its edge
+// and the leg's plate has to be fitted back into it — exactly the code's problem.
+const chartW=600, chartH=380;
+// topPad is the ONLY difference between the two papers: on the light one the peak
+// keeps 110px of headroom (so the plate sits ABOVE the tip), on the dark one it is
+// 30px — i.e. the tip is near the ceiling and the plate must flip BELOW it.
+paintChart("stageLight",{w:chartW,h:chartH,paper:"light",seed:7,topPad:110,
+  leg:{rows:LEG_ROWS,mid:"50% ATR"},
+  captions:[{text:CAP_ROWS,baseY:20,slot:0},{text:CAP_WRAP,baseY:20,slot:1}]});
+paintChart("stageDark",{w:chartW,h:chartH,paper:"dark",seed:23,topPad:30,tipAtCeiling:true,
+  leg:{rows:LEG_ROWS,mid:"50% ATR"},
+  captions:[{text:CAP_WRAP,baseY:20,slot:0}],
+  plan:"#SL: 308  #TP1: 720  #TP2: 1542  #TP3: 3187"});
+
+/* ── §2 — the measured table, from the port itself ─────────────── */
+const REF_ROWS=["[H1: 1883 | H4: 953 | D1: 30%]",
+                "[H1: 177 | H4: 353 | D1: 1099]",
+                "[TF M30 | ATR 118.0 | Leg 283%]"];
+(function metrics(){
+  const tb=document.querySelector("#metrics tbody");
+  const add=(who,rows,ref)=>{
+    const bw=plateW(rows), bh=plateH(rows.length);
+    rows.forEach((r,i)=>{
+      const tr=document.createElement("tr"); if(ref) tr.className="ref";
+      tr.innerHTML=`<td>${who}</td><td class="r">${r}</td><td class="n">${textUnits(r)}</td>`+
+                   `<td class="n">${textW(r)}</td>`+
+                   (i===0?`<td class="n" rowspan="${rows.length}">${bw} × ${bh}</td>`:"");
+      tb.appendChild(tr);
+    });
+  };
+  add("leg meter", LEG_ROWS, false);
+  add("AB=CD caption", wrapCaption(CAP_ROWS), false);
+  add("AB=CD caption (wrapped row)", wrapCaption(CAP_WRAP), false);
+  add("ref (screenshot)", REF_ROWS, true);
+  document.getElementById("emOut").textContent=EM;
+  document.getElementById("rowHOut").textContent=rowH();
+  document.getElementById("plateHOut").textContent=plateH(3);
+  document.getElementById("slotOut").textContent=captionBlockH()+TH3_INFO_SLOT_GAP;
+  document.getElementById("inkFillLight").textContent=
+    "#121621 — C'18,22,33'";
+})();
+
+/* ── the loupe: fit / 1:1 / 2:1 — and the factor it actually used ──── */
+function setZoom(mode){
+  const wrapW=document.getElementById("stageLight").parentElement.clientWidth-26;
+  const z = (mode==="fit") ? Math.min(1, wrapW/chartW) : mode;
+  for(const id of ["stageLight","stageDark"]){
+    const g=document.getElementById(id);
+    g.style.transform=`scale(${z})`;
+    g.parentElement.style.height=(chartH*z+24)+"px";
+  }
+  for(const pair of [["zfit","fit"],["z1",1],["z2",2]])
+    document.getElementById(pair[0]).setAttribute("aria-pressed",mode===pair[1]);
+  document.getElementById("zOut").textContent = (mode==="fit")
+    ? ("تناسب → "+z.toFixed(2)+"× (پلیت ۱:۱ ساخته شده، فقط نمایش کوچک شده)")
+    : (z+"× بزرگ‌نمایی — چارت را افقی اسکرول کن");
+}
+document.getElementById("zfit").onclick=()=>setZoom("fit");
+document.getElementById("z1").onclick=()=>setZoom(1);
+document.getElementById("z2").onclick=()=>setZoom(2);
+setZoom("fit");
+addEventListener("resize",()=>setZoom("fit"));
+</script>
+</div></body></html>

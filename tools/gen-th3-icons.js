@@ -148,6 +148,17 @@ const ART = {
     seg(9.2, 14.3, 13.1, 18.2, 1.8),     // two graduation ticks, inward from it
     seg(14.3, 9.2, 18.2, 13.1, 1.8),
   ],
+  leg: [
+    // leg — LEG MEASURE tool: diagonal trendline from bottom-left to top-right,
+    // filled dots at both ends, and a vertical bracket in the middle showing
+    // the price range. Reads as "measure this leg" at 28px.
+    seg(5, 24, 23, 6, 2.2),          // the trendline itself
+    cfill(5, 24, 2.2),               // start dot (bottom-left)
+    cfill(23, 6, 2.2),               // end dot (top-right)
+    seg(15, 9, 15, 21, 1.6),         // vertical bracket (center)
+    seg(12, 9, 18, 9, 1.6),          // top tick of bracket
+    seg(12, 21, 18, 21, 1.6),        // bottom tick of bracket
+  ],
   custom: [
     // custom — TH3 tool: analysis trend with markers
     seg(4, 21, 10, 13, 2.2), seg(10, 13, 15, 17, 2.2), seg(15, 17, 22, 7, 2.2),
@@ -270,6 +281,49 @@ const BK_MORE = [   // three horizontal dots (TV "more")
 const BK_CHEV = [   // down-chevron for the STYLE/WIDTH ▾ selector buttons
   seg(8.0, 12.5, 16.0, 20.0, 4.2),
   seg(16.0, 20.0, 24.0, 12.5, 4.2),
+];
+// P-DRAW-13 (2026-09-23) — DrawStrip V6 icon set: the strip is icon-only, so
+// every value/toggle/action needs a face. State-carrying families vary per
+// value (ray0..3 like w/style); pure glyphs are one raster and the gold face
+// carries the state. 16px for in-cell value samples, 24px for glyphs.
+const BK_RAYS = [
+  [ seg(5, 16, 27, 16, 3.0) ],                                            // 0 segment
+  [ seg(4, 16, 21, 16, 3.0), seg(21, 16, 27, 10.5, 2.6), seg(21, 16, 27, 21.5, 2.6) ],  // 1 ray right
+  [ seg(11, 16, 28, 16, 3.0), seg(11, 16, 5, 10.5, 2.6), seg(11, 16, 5, 21.5, 2.6) ],    // 2 ray left
+  [ seg(9, 16, 23, 16, 3.0), seg(23, 16, 28, 11.5, 2.4), seg(23, 16, 28, 20.5, 2.4),
+    seg(9, 16, 4, 11.5, 2.4), seg(9, 16, 4, 20.5, 2.4) ],                              // 3 both
+];
+const BK_GLYPH = [   // arrow mark (generic; the code lives in the tooltip/rows)
+  seg(7, 6.5, 23, 16, 3.2),
+  seg(7, 25.5, 23, 16, 3.2),
+  seg(7, 6.5, 7, 25.5, 3.2),
+];
+const BK_LEVELS = [   // fibo level stack
+  seg(5, 9.5, 27, 9.5, 2.4),
+  seg(5, 16, 27, 16, 2.4),
+  seg(5, 22.5, 27, 22.5, 2.4),
+  seg(5, 9.5, 5, 13.5, 2.0), seg(27, 14.5, 27, 18.5, 2.0),
+];
+const BK_GEAR = [   // full-settings gear
+  ring(16, 16, 6.5, 3.4),
+  seg(16, 4.5, 16, 8.5, 3.0), seg(16, 23.5, 16, 27.5, 3.0),
+  seg(4.5, 16, 8.5, 16, 3.0), seg(23.5, 16, 27.5, 16, 3.0),
+  seg(8.0, 8.0, 10.8, 10.8, 2.8), seg(21.2, 21.2, 24.0, 24.0, 2.8),
+  seg(24.0, 8.0, 21.2, 10.8, 2.8), seg(10.8, 21.2, 8.0, 24.0, 2.8),
+];
+const BK_GRIP = [   // six-dot drag handle
+  cfill(12, 8, 2.0), cfill(20, 8, 2.0),
+  cfill(12, 16, 2.0), cfill(20, 16, 2.0),
+  cfill(12, 24, 2.0), cfill(20, 24, 2.0),
+];
+const BK_COPY = [   // duplicate: two overlapping rects
+  ...rect(6.5, 6.5, 19.5, 19.5, 2.2),
+  ...rect(12.5, 12.5, 25.5, 25.5, 2.2),
+];
+const BK_UNDO = [   // single-step undo: left arrow
+  seg(13.5, 7.5, 6.5, 14.5, 2.8),
+  seg(6.5, 14.5, 13.5, 21.5, 2.8),
+  seg(6.5, 14.5, 25.5, 14.5, 2.8),
 ];
 
 // --- orb center art: bow-medallion ingest (NOT procedural) ---
@@ -1418,7 +1472,9 @@ const EMIT_RETIRED_ACCENTS = false;
 const ACCENT_EMIT = EMIT_RETIRED_ACCENTS ? ACCENT_NAMES : ['gold'];
 const DEAD_GLYPHS = new Set(['alignL','alignR','bolt','down','grid','hand',
   'italic','lock','more','palette','search','trash','up','warn']);
-const DEAD_ART = new Set(['custom','ssls','chk','tl','factor','box']);
+// TH3TOOL-ON (2026-09-19): 'custom' left DEAD_ART — the TH3 ring item loads it
+// again (BiotakMenu's CIR_TH3 resource + CircIconRes base).
+const DEAD_ART = new Set(['ssls','chk','tl','factor','box']);
 
 const files = [];
 for (const [name, art] of Object.entries(ART)) {
@@ -1426,6 +1482,84 @@ for (const [name, art] of Object.entries(ART)) {
   files.push([name + '_off.bmp', () => render(28, art, OFF)]);
   files.push([name + '_on.bmp',  () => render(28, art, ON)]);
 }
+
+// Leg-meter HANDLE RINGS (P-LM-14/17/19) — baked, not chart-space: MT4 does not
+// interpolate an object's time inside its own bar, so every chart-space ring
+// the leg meter tried (an ellipse box on ±pixel probes, then a one-bar-wide
+// one) collapsed to a hairline at working zoom. Direction pair: the user's own
+// colours (2026-09-21, «لگ نزول قرمز و لگ صعودی آبی پررنگ») — a STRONG BLUE
+// core for an up leg, RED for a down one, white halo under both so the handle
+// reads on white AND black charts. Native-size canvases (15px ends, 11px mid) —
+// OBJ_BITMAP_LABEL renders at the BMP's own size and TH3Tool centres it on the
+// projected anchor (LegHandleAt/LegHandleAtXY).
+const LEG_HALO_RGB  = [255, 255, 255];
+const LEG_UP_RGB    = [31, 95, 255];     // bullish, strong blue — matches LEG_BULL_INK
+const LEG_DN_RGB    = [224, 64, 64];     // bearish, red — matches LEG_BEAR_INK
+files.push(['leg_handle_up.bmp', () => render(15, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16, 10),     { color: LEG_UP_RGB }),
+], LEG_UP_RGB)]);
+files.push(['leg_handle_up_mid.bmp', () => render(11, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16,  9.5),   { color: LEG_UP_RGB }),
+], LEG_UP_RGB)]);
+files.push(['leg_handle_dn.bmp', () => render(15, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16, 10),     { color: LEG_DN_RGB }),
+], LEG_DN_RGB)]);
+files.push(['leg_handle_dn_mid.bmp', () => render(11, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16,  9.5),   { color: LEG_DN_RGB }),
+], LEG_DN_RGB)]);
+// P-LM-18/P-LM-20 — the SELECTED pair: a RING AROUND A DOT — a thick
+// direction-coloured ring with a small solid core inside it — against the
+// resting SOLID DISC above. The user: «حالت سلکتش با سلکت نبودنش اصلا متوجه
+// نمیشیم همش یک شکل» AND «موقع سلکت دایره‌ها بهم مریزه ... جز از یک چیز باید
+// باشن». A hollow ring alone read as a THINNER dot at a glance and as a broken
+// one at small zoom; the ring+core keeps the same visual WEIGHT as the resting
+// disc (the family stays one shape) while changing its FACE completely, and the
+// core keeps the direction colour through the selection so the ink never drops.
+// Same canvases and centre, so the grab radii and the exact-centre rule are
+// untouched; only the raster changes.
+files.push(['leg_handle_up_sel.bmp', () => render(15, [
+  Object.assign(ring(16, 16, 12.5, 7),  { color: LEG_HALO_RGB }),
+  Object.assign(ring(16, 16, 11,   7.5), { color: LEG_UP_RGB }),
+  Object.assign(cfill(16, 16,  4),      { color: LEG_UP_RGB }),
+], LEG_UP_RGB)]);
+files.push(['leg_handle_up_mid_sel.bmp', () => render(11, [
+  Object.assign(ring(16, 16, 12.5, 7),  { color: LEG_HALO_RGB }),
+  Object.assign(ring(16, 16, 10.5, 7),  { color: LEG_UP_RGB }),
+  Object.assign(cfill(16, 16,  3),      { color: LEG_UP_RGB }),
+], LEG_UP_RGB)]);
+files.push(['leg_handle_dn_sel.bmp', () => render(15, [
+  Object.assign(ring(16, 16, 12.5, 7),  { color: LEG_HALO_RGB }),
+  Object.assign(ring(16, 16, 11,   7.5), { color: LEG_DN_RGB }),
+  Object.assign(cfill(16, 16,  4),      { color: LEG_DN_RGB }),
+], LEG_DN_RGB)]);
+files.push(['leg_handle_dn_mid_sel.bmp', () => render(11, [
+  Object.assign(ring(16, 16, 12.5, 7),  { color: LEG_HALO_RGB }),
+  Object.assign(ring(16, 16, 10.5, 7),  { color: LEG_DN_RGB }),
+  Object.assign(cfill(16, 16,  3),      { color: LEG_DN_RGB }),
+], LEG_DN_RGB)]);
+// P-UI-98d — the hand-set lines' drag handles: ONE circular icon per line,
+// green for the custom price line, red for the step-1 handles. The leg meter's
+// own disc language (white halo under a solid colour core, so the icon reads on
+// white AND black charts), 15px, centred on the line at the screen's horizontal
+// middle. User order: «نشانه ها هندلر وسط خط باشه و به صورت ایکون درگ و به
+// صورت دایره باشه از هر طرف وسط».
+const CP_HANDLE_RGB = [46, 204, 113];   // green — the armed custom price line
+const S1_HANDLE_RGB = [235, 67, 52];    // red   — the armed step-1 handles
+// P-UI-98q: the green circle is the placement's whole face (the custom price
+// line is never painted), so it reads one size up (19px vs the reds' 15px).
+// Same 32-unit art — the rasterizer scales it — centred with CP_HANDLE_HALF.
+files.push(['cp_handle.bmp', () => render(19, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16, 10),     { color: CP_HANDLE_RGB }),
+], CP_HANDLE_RGB)]);
+files.push(['s1_handle.bmp', () => render(15, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16, 10),     { color: S1_HANDLE_RGB }),
+], S1_HANDLE_RGB)]);
 // Base Box MINI floating strip (item 13) — obsidian glass: light outlined
 // glyphs on the dark strip, amber only for the locked padlock.
 // R-BKSTRIP 2026-09-07.
@@ -1438,6 +1572,33 @@ files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
 files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
 files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
 files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
+// P-DRAW-13 (2026-09-23) — DrawStrip V6 faces (see the art above).
+for (let i = 0; i < 4; i++) files.push(['bk_ray' + i + '.bmp', () => render(16, BK_RAYS[i], BK_DARK)]);
+files.push(['bk_glyph.bmp',    () => render(24, BK_GLYPH,    BK_DARK)]);
+files.push(['bk_levels.bmp',   () => render(24, BK_LEVELS,   BK_DARK)]);
+files.push(['bk_gear.bmp',     () => render(24, BK_GEAR,     BK_DARK)]);
+files.push(['bk_grip.bmp',     () => render(24, BK_GRIP,     BK_DARK)]);
+files.push(['bk_copy.bmp',     () => render(24, BK_COPY,     BK_DARK)]);
+files.push(['bk_undo.bmp',     () => render(24, BK_UNDO,     BK_DARK)]);
+// P-DRAW-13 — ON-state faces: a light raster on the gold ON face is unreadable,
+// so toggles wear a dark-ink twin while ON (the preview's dark-on-gold rule).
+const BK_DARKINK = [26, 18, 6];   // dark icon ink for gold faces
+const BK_FILL_ON = [   // filled rect (twin of the bucket's "on" meaning)
+  { ...rfill(7.5, 10.5, 24.5, 21.5), color: BK_DARKINK },
+  ...rect(7.5, 10.5, 24.5, 21.5, 2.2),
+];
+const BK_BACK_ON = [   // layered rects, dark
+  ...rect(6.5, 6.5, 18.5, 18.5, 2.4),
+  ...rect(13.5, 13.5, 25.5, 25.5, 2.4),
+];
+const BK_LOCK_OND = [   // CLOSED padlock, dark (twin of bk_lock_on for gold faces)
+  ...rect(9.5, 15.5, 22.5, 24.5, 2.2),
+  seg(12.5, 15.5, 12.5, 10.5, 2.2), seg(12.5, 10.5, 19.5, 10.5, 2.2), seg(19.5, 10.5, 19.5, 15.5, 2.2),
+  cfill(16, 19.5, 1.9),
+];
+files.push(['bk_fill_on.bmp',   () => render(24, BK_FILL_ON,   BK_DARKINK)]);
+files.push(['bk_back_on.bmp',   () => render(24, BK_BACK_ON,   BK_DARKINK)]);
+files.push(['bk_lock_on_d.bmp', () => render(24, BK_LOCK_OND,  BK_DARKINK)]);
 files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
 // ICON-DIET: badge.bmp (NOBADGES gates every create/show — purges use
 // ObjectDelete and need no file) and knob.bmp (superseded by pnl_knob.bmp)

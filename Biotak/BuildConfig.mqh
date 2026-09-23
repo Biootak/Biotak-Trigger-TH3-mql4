@@ -116,6 +116,11 @@
 //| Version info                                                     |
 //+------------------------------------------------------------------+
 #define INDICATOR_VERSION "3.10"
+// P-TH3-D4c: ONE line that answers "old or new?" forever. Version and
+// __DATE__ cannot: two builds on the same day print the same stamp, so a
+// stale root copy (Indicators\ vs BiotakProject\) is invisible. Bump this
+// tag on every shipped fix; PrintBuildInfo prints it on init.
+#define INDICATOR_BUILD_TAG "D4m-native 2026-09-20"
 
 //+------------------------------------------------------------------+
 //| Print build info on init                                         |
@@ -124,6 +129,7 @@ void PrintBuildInfo()
 {
     Print("====================");
     Print("   ", BUILD_MODE_EMOJI, " Biotak Trigger TH3 - Version ", INDICATOR_VERSION);
+    Print("   Build Tag: ", INDICATOR_BUILD_TAG);
     Print("   Build Mode: ", BUILD_MODE_STR, " (", LITE_MODE_STR, ")");
     Print("   Compiled: ", __DATE__);
     #ifdef BUILD_LITE
