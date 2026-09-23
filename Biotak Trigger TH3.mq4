@@ -136,6 +136,9 @@ int OnInit()
         InitializeBiotakKit();   // panel state, colors, boxes, custom lines
         InitializeHTFCandles();    // HTF candle engine
         CreateMenu();              // orb + ring + tools
+        // P-DRAW-16: the strip owns right-click while attached — the terminal
+        // menu goes off here and returns in OnDeinit (Full only, P-BUILD-01).
+        DrawStripMenuTake();
         ChartRedraw();
     }
     uint p4ui = GetTickCount() - p4i;
@@ -169,6 +172,7 @@ void OnDeinit(const int reason)
     // P-DRAW-08: the drawing strip's own objects die with the instance — the
     // removal path owns them, so no Biotak_DS_* button survives a REASON_REMOVE.
     DrawStripClose();
+    DrawStripMenuGive();   // P-DRAW-16: the terminal menu returns (every reason)
     DeleteMenu();
     p15Menu = GetTickCount() - p15t; p15t = GetTickCount();
     DeleteHTFCandles();

@@ -6,7 +6,7 @@
 //|   P-DRAW-11 (2026-09-23) — DIRECT PICK, NO CYCLING (BASEKNOT PARITY+).|
 //|   P-DRAW-12 (2026-09-23) — RIGHT-CLICK OPENS THE STRIP.               |
 //|   P-DRAW-14 (2026-09-23) — RIGHT-CLICK REPLACES HOLD + MENU.          |
-//|   P-DRAW-15 (2026-09-23) — HOVER VOTER (still-press hole).            |
+//|   P-DRAW-16 (2026-09-23) — MENU OFF FOR THE WHOLE ATTACH (no race).  |
 //+------------------------------------------------------------------+
 #property copyright "Copyright 2025, Biotak Project"
 #property strict
@@ -327,30 +327,28 @@ static bool     s_dsGripLive = false;
 static int      s_dsGripDX = 0, s_dsGripDY = 0;
 static uint     s_dsGripMs = 0;
 static bool     s_dsLeftPrev = false;
-//--- P-DRAW-13: the suppressed context menu (preview parity: the menu returns
-//--- on strip close). Menu-only — scroll stays alive, so this is NOT the view
-//--- lock (P-UI-90): no counter, no watchdog term, capture + restore around the
-//--- open instead. Deliberate edge: a user flip mid-open is restored over.
-//--- P-DRAW-14: pre-suppressed from the right-DOWN edge, so the menu never pops
-//--- over the strip on a drawing (s_dsMenuOff tracks WHO holds it off).
+//--- P-DRAW-16 (2026-09-23) — THE MENU IS OFF FOR THE WHOLE ATTACH. Three
+//--- generations of press-timed suppression (open-time, right-DOWN edge, hover
+//--- voter) all lost the same race: MT4 shows its object menu on the press, and
+//--- a still press emits no MOVE to pre-empt it with — the user's screenshot is
+//--- the proof. So the menu is not timed any more: Take() captures the user's
+//--- value once per Full attach and forces it off; Give() hands it back on
+//--- deinit (every reason — the entry calls it beside DrawStripClose). Menu-only
+//--- on purpose: scroll stays alive, so this is NOT the view lock (P-UI-90) —
+//--- no counter (the reconcile only hunts counters, never props), no watchdog
+//--- term. Price, stated plainly: while attached, right-click NEVER shows the
+//--- terminal menu anywhere on the chart (empty chart included — the strip, the
+//--- gear and the hotkeys already cover Delete/Properties/Objects-List's jobs;
+//--- Ctrl+B and the top menu bar are untouched). Remove the Take/Give pair to
+//--- get the menu back; nothing else in this file touches the prop.
 static bool     s_dsCtxUser = true;
-static bool     s_dsMenuOff = false;
-static bool     s_dsRightPrev = false;
-//--- P-DRAW-14: hover voter state (below).
-static int      s_dsHovX = -1, s_dsHovY = -1;
-static uint     s_dsHovMs = 0;
-#define DSTRIP_HOV_MS 300   // hover re-vote cadence (a walk, never per-event)
-void DrawStripMenuSuppress()
+void DrawStripMenuTake()
 {
-   if(s_dsMenuOff) return;
    s_dsCtxUser = ((bool)ChartGetInteger(0, CHART_CONTEXT_MENU));
    if(s_dsCtxUser) ChartSetInteger(0, CHART_CONTEXT_MENU, false);
-   s_dsMenuOff = true;
 }
-void DrawStripMenuRestore()
+void DrawStripMenuGive()
 {
-   if(!s_dsMenuOff) return;
-   s_dsMenuOff = false;
    if(!(bool)ChartGetInteger(0, CHART_CONTEXT_MENU) && s_dsCtxUser)
       ChartSetInteger(0, CHART_CONTEXT_MENU, true);
 }
@@ -1501,7 +1499,6 @@ void DrawStripClose()
    s_dsPN = 0;                      // (the recent colours survive: they are the trader's)
    s_dsPinned = false;
    s_dsGripLive = false;
-   DrawStripMenuRestore();   // P-DRAW-13/14: the menu returns with the strip
    // P-DRAW-09b: the group belongs to the OPEN strip — a new one takes its own
    // snapshot (the selection may have changed on the chart in between).
    DrawSelClear();
@@ -2181,7 +2178,6 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    if(s_dsX > cw - s_dsW - 4) s_dsX = cw - s_dsW - 4;
    if(s_dsY > ch - s_dsH - 4) s_dsY = ch - s_dsH - 4;
    s_dsAX = ax; s_dsAY = ay;
-   DrawStripMenuSuppress();   // P-DRAW-13/14: the menu leaves with the strip
    DrawStripPaint();
    return true;
 }
@@ -3011,42 +3007,9 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    }
    // P-DRAW-13: the grip carry rides the terminal's own move stream (left = bit 0,
    // BaseKnotTool.mqh:6887 parity). Never consumed: every other half reads moves.
-   // P-DRAW-14: the right-DOWN edge (bit 1) over a drawing pre-suppresses the
-   // context menu, so the release opens the strip with no menu ever popping.
-   // Rising edge only (one cached walk per press, P-DRAW-04) — a held button
-   // repeats nothing, and the release side is owned by the CLICK branch.
-   // P-DRAW-15 (2026-09-23) — THE HOVER VOTER. A perfectly still press-release
-   // emits no MOVE at all (P-LM-13), so press-edge suppression has a hole the
-   // user's screenshot caught: the terminal menu over the rectangle. The cursor
-   // almost always ARRIVES via movement, so the menu state follows the HOVER:
-   // over a user drawing the menu is already off before any button goes down.
-   // Throttled (300 ms AND pixel-changed — never per-event, P-DRAW-04's law)
-   // and skipped while open (open owns the menu). Both voters write through
-   // the same idempotent Suppress/Restore pair, so they can never fight.
    if(id == CHARTEVENT_MOUSE_MOVE)
    {
       int st = (int)StringToInteger(sparam);
-      bool right = ((st & 2) != 0);
-      if(right && !s_dsRightPrev && !s_dsOpen)
-      {
-         if(DrawObjectAtCached((int)lparam, (int)dparam) != "")
-            DrawStripMenuSuppress();
-      }
-      s_dsRightPrev = right;
-      if(!s_dsOpen)
-      {
-         uint hnow = GetTickCount();
-         if(hnow - s_dsHovMs >= DSTRIP_HOV_MS &&
-            ((int)lparam != s_dsHovX || (int)dparam != s_dsHovY))
-         {
-            s_dsHovMs = hnow;
-            s_dsHovX = (int)lparam; s_dsHovY = (int)dparam;
-            if(DrawObjectAtCached(s_dsHovX, s_dsHovY) != "")
-               DrawStripMenuSuppress();
-            else
-               DrawStripMenuRestore();
-         }
-      }
       DrawStripGripMove((int)lparam, (int)dparam, ((st & 1) != 0));
       return false;
    }
@@ -3082,27 +3045,21 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    if(id == CHARTEVENT_CLICK)
    {
       DrawStripGripRelease();   // motionless releases emit no MOVE (P-LM-13 net)
-      // P-DRAW-14 (2026-09-23) — RIGHT-CLICK IS THE TRIGGER (replaces the hold).
+      // P-DRAW-14/16 — RIGHT-CLICK IS THE TRIGGER and owns the menu's place.
       // The button encoding is the project's own measured one: on CHARTEVENT_CLICK
       // a right button is an "r" in sparam (EventHandlers.mqh:5226,
       // BaseKnotTool.mqh:6881). A right-click on a user drawing opens the strip
-      // beside the press (OpenAt, preview parity) and TAKES THE TERMINAL MENU'S
-      // PLACE there: the menu is suppressed from the right-DOWN edge (MOVE rising
-      // edge over a drawing) so it never pops over the strip, and returns on
-      // close / on a right-release with no hit. A right-click on the strip itself
-      // is owned by the strip (never a self-dismiss); on empty chart it falls
-      // through to the dismissal below. A click on the held drawing never
-      // dismisses either (every click, not just the first). The still-press hole
-      // (no MOVE before the release) is covered by the hover voter above: the
-      // menu was already off when the cursor arrived over the drawing.
+      // beside the press (OpenAt, preview parity). The terminal menu cannot pop:
+      // it has been off since attach (Take/Give, P-DRAW-16 above). A right-click
+      // on the strip itself is owned by the strip (never a self-dismiss); on
+      // empty chart it falls through to the dismissal below. A click on the held
+      // drawing never dismisses either (every click, not just the first).
       bool right = (StringFind(sparam, "r") >= 0);
-      if(!s_dsOpen && s_dsMenuOff && !right) DrawStripMenuRestore();
       if(right)
       {
          if(DrawStripPointInside((int)lparam, (int)dparam)) return false;
          string hit = DrawObjectAtCached((int)lparam, (int)dparam);
          if(hit != "") { DrawStripOpenAt(hit, (int)lparam, (int)dparam); return true; }
-         if(!s_dsOpen) DrawStripMenuRestore();
       }
       if(s_dsObj != "" && DrawHitObject(s_dsObj, (int)lparam, (int)dparam)) return false;
       // P-DRAW-13: pin survives outside clicks (only ✕ paths, Del and Esc dismiss).
