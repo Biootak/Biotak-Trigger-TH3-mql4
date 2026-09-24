@@ -6872,13 +6872,14 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
 
    if(!BaseKnotSessionActive()) return false;
 
-   //--- right-click cancels (both encodings MT4 uses)
-   if(id == CHARTEVENT_MOUSE_MOVE)
-   {
-      int st = (int)StringToInteger(sparam);
-      if((st & 2) != 0) { BaseKnotCancel(); return true; }
-   }
-   if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") >= 0) { BaseKnotCancel(); return true; }
+    //--- right-click cancels (both encodings MT4 uses).
+    if(id == CHARTEVENT_MOUSE_MOVE)
+    {
+       int st = (int)StringToInteger(sparam);
+       if((st & 2) != 0) { BaseKnotCancel(); return true; }
+    }
+    if(id == CHARTEVENT_CLICK && StringFind(sparam, "r") >= 0)
+       { BaseKnotCancel(); return true; }
 
    //--- press / drag / release (native-like). Rising = corner 1 on PRESS;
    //--- held moves = live preview; falling (release) = commit at release.

@@ -5056,8 +5056,19 @@ def selftest():
     seed("the line stops being grabbable (the movement regression)", EVENTS,
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, g_cpLineArmed);\n",
          "    ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, false);\n")
+    # P-UI-103 (2026-09-23): RE-POINTED, and the reason is worth keeping. This
+    # anchor went STALE and turned the whole audit into a permanent red that
+    # blamed clean code: the owner grew its guarded-write form (P-UI-98d/P-UI-101)
+    # and the line it used to spell - `..., OBJPROP_SELECTABLE, armed);` - no
+    # longer exists anywhere, because the owner now publishes `want` (the lock is
+    # a REFUSAL, not a rewrite of what the caller asked for) inside an
+    # `if(... != want)` guard. The regression the seed stands for is unchanged -
+    # the owner stops publishing the flag it owns - so the seed now removes the
+    # guarded write the owner actually has, which is what the check at
+    # "the armed/SET owner no longer writes the flag it owns" counts.
     seed("the armed/SET owner stops owning its flag", EVENTS,
-         "        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, armed);\n",
+         "    if((bool)ObjectGetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE) != want)\n"
+         "        ObjectSetInteger(0, g_customPriceHorizontalLineName, OBJPROP_SELECTABLE, want);\n",
          "")
     seed("a fifth hand-written copy of the property set returns", EVENTS,
          "            if(!CreateCustomPriceLine(currentPrice, Digits)) return;\n",

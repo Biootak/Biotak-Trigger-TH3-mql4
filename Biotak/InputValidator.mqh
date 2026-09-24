@@ -148,7 +148,9 @@ int ValidateInputs()
     }
 
     // 9.1 TH3 Zone Height Percent (1-100)
-    if(inpTH3ZoneHeightPercent < 1.0 || inpTH3ZoneHeightPercent > 100.0) {
+    // P-UI-57: finite gate first (NaN would pass the range test below).
+    if(!MathIsValidNumber(inpTH3ZoneHeightPercent) ||
+       inpTH3ZoneHeightPercent < 1.0 || inpTH3ZoneHeightPercent > 100.0) {
         Print("  ERROR: TH3 Zone Height Percent (", inpTH3ZoneHeightPercent, ") out of range");
         Print("   Valid range: 1.0 - 100.0");
         return INIT_PARAMETERS_INCORRECT;
@@ -322,14 +324,18 @@ int ValidateInputs()
     
     // TH3TOOL-ON (2026-09-19): TH3 TOOL + AB=CD validations restored.
 #ifndef BUILD_LITE
-    if(inpTH3BaseStepPercent < 0.1 || inpTH3BaseStepPercent > 120.0) {
+    // P-UI-57: finite gate first (NaN would pass the range test below).
+    if(!MathIsValidNumber(inpTH3BaseStepPercent) ||
+       inpTH3BaseStepPercent < 0.1 || inpTH3BaseStepPercent > 120.0) {
         Print("  ERROR: TH3 Base Step Percent (", DoubleToString(inpTH3BaseStepPercent, 3), ") out of range");
         Print("   Valid range: 0.1 - 120.0 (extended range)");
         Print("   Recommended: 28.125 (default)");
         return INIT_PARAMETERS_INCORRECT;
     }
     // P-TH3-PB-MAN (2026-09-21): the hand-typed pivot base, in pips. 0 = OFF.
-    if(inpTH3PivotBasePips < 0.0 || inpTH3PivotBasePips > 2000.0) {
+    // P-UI-57: finite gate first (NaN would pass the range test below).
+    if(!MathIsValidNumber(inpTH3PivotBasePips) ||
+       inpTH3PivotBasePips < 0.0 || inpTH3PivotBasePips > 2000.0) {
         Print("  ERROR: TH3 Pivot Base Pips (", DoubleToString(inpTH3PivotBasePips, 1), ") out of range");
         Print("   Valid range: 0.0 - 2000.0 (0 = OFF, the pattern TF's own ATR)");
         return INIT_PARAMETERS_INCORRECT;

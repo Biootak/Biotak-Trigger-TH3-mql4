@@ -698,6 +698,11 @@ int ClampSettingInt(const int v, const int lo, const int hi)
 // engine's clamp stops responding at the end of its travel.
 double ClampSettingDbl(const double v, const double lo, const double hi)
 {
+   // P-UI-57: NaN passes every range test, so a non-finite value fell through
+   // both gates and was returned as-is (a NaN TH-percent / pivot-base override
+   // persisted and reloaded). Non-finite clamps to the floor: for every caller
+   // (TPC, PBP) the floor is 0.0 = OFF, the safe default.
+   if(!MathIsValidNumber(v)) return lo;
    if(v < lo) return lo;
    if(v > hi) return hi;
    return v;

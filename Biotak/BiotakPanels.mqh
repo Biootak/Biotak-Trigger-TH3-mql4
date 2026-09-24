@@ -6485,6 +6485,19 @@ bool ChartLockIntended()
     // press-drag lock above only covers the initial DRAW, not the resize,
     // and the chart was panning under the user's hand during the resize.
     if(TH3BaseBandDragViewOwned()) return true;
+    // P-DRAW-19 (2026-09-24) — THE DRAW STRIP'S GRIP CARRY, the blind spot this
+    // list just closed. Reported: «هنوز هنگام درگ چارت پشتش قفل نمیشه». The carry
+    // takes the view from `DrawStrip.mqh`'s own lock (P-UI-113d: acquire at the
+    // press edge, assert on every held step, release at every end) — and this list
+    // did not name it, so the 250 ms reconcile read that lock as a LEAK, hard-
+    // released it inside the first quarter second of the gesture and handed the
+    // scroll back: the chart panned under the hand for the REST of the drag, which
+    // is exactly what the user still saw. P-LM-11 / P-BK-62's law, one gesture
+    // later: a gesture that takes the view lock names itself here the day it is
+    // born. `DrawStrip.mqh` is a Full-only UI module included BEFORE this one, so
+    // the accessor is defined by the time this line compiles (and Lite, which owns
+    // no strip, does not include this file at all - P-BUILD-01).
+    if(DrawStripViewOwned()) return true;
     // P-TH3-PB-OFF (2026-09-21): TH3BaseViewOwned retired with the stage-5
     // base drag — the base is hand-typed, so no term of it can hold the view.
     return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
@@ -9486,9 +9499,8 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       uint p15ring = GetTickCount() - p15t; p15t = GetTickCount();
       PnlHandleMouseMove(mx, my, leftDown, pressStart);
       uint p15panel = GetTickCount() - p15t; p15t = GetTickCount();
-      BkHoldOnMove(mx, my, leftDown, pressStart);
-      CpHoldOnMove(mx, my, leftDown, pressStart);   // P-UI-101: the line's own hold
-      // DRHOLD-OFF (2026-09-23): the drawings' hold is retired — right-click opens.
+       BkHoldOnMove(mx, my, leftDown, pressStart);
+       CpHoldOnMove(mx, my, leftDown, pressStart);   // P-UI-101: the line's own hold
       uint p15hold = GetTickCount() - p15t;
       // P-UI-48: the custom price line is SELECTABLE again - that IS its drag -
       // so a press a UI owner just claimed must not leave MT4 holding the line:
@@ -9837,7 +9849,8 @@ void RefreshKitOnBar()
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
    CpHoldPoll();   // P-UI-101: the custom price line's own hold, same zero-move backup
-   // DRHOLD-OFF (2026-09-23): DrHoldPoll retired with the hold (see above).
+   DrawStripHoldPollAt(g_LastUIX, g_LastUIY, UILeftButtonDown());   // P-UI-113: drawings' left-hold
+   DrawStripHoldSelectPoll();   // P-UI-113g: restore native selection after MT4's release
    // PANELDRAG-OFF (2026-09-14): the card drag's polled shadow is retired with
    // the gesture. It had armed ZERO of today's 197 drags (the terminal's
    // KEYSTATE probe never reads "down", P-UI-83) while its per-tick probe was

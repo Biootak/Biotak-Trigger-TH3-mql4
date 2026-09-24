@@ -136,9 +136,8 @@ int OnInit()
         InitializeBiotakKit();   // panel state, colors, boxes, custom lines
         InitializeHTFCandles();    // HTF candle engine
         CreateMenu();              // orb + ring + tools
-        // P-DRAW-16: the strip owns right-click while attached — the terminal
-        // menu goes off here and returns in OnDeinit (Full only, P-BUILD-01).
-        DrawStripMenuTake();
+        // P-UI-114: right-click era deleted — terminal menu untouched, strip on
+        // LEFT hold (DrawStrip.mqh).
         ChartRedraw();
     }
     uint p4ui = GetTickCount() - p4i;
@@ -172,7 +171,6 @@ void OnDeinit(const int reason)
     // P-DRAW-08: the drawing strip's own objects die with the instance — the
     // removal path owns them, so no Biotak_DS_* button survives a REASON_REMOVE.
     DrawStripClose();
-    DrawStripMenuGive();   // P-DRAW-16: the terminal menu returns (every reason)
     DeleteMenu();
     p15Menu = GetTickCount() - p15t; p15t = GetTickCount();
     DeleteHTFCandles();
@@ -259,14 +257,14 @@ void OnChartEvent(const int id,
   OnChartEventHandler(id,lparam,dparam,sparam);
   uint p4a = GetTickCount() - p4t;
   p4t = GetTickCount();
+  // P-UI-114: the strip opens on a LEFT hold inside DrawStripOnEvent below.
   // --- Circular menu / settings panels / palette ---
   HandleUIChartEvent(id,lparam,dparam,sparam);
   // P-DRAW-08: the drawing strip's own buttons and its dismiss clicks. Its own
   // owner, its own objects — it shares no state with the panels.
   DrawStripOnEvent(id,lparam,dparam,sparam);
   uint p4b = GetTickCount() - p4t;
-  g_inChartEvent = false;
-  // P-PERF-40: A USER ACTION SETTLES THE FRAME IT OWED — IN THE SAME EVENT.
+  g_inChartEvent = false;  // P-PERF-40: A USER ACTION SETTLES THE FRAME IT OWED — IN THE SAME EVENT.
   //
   // P-PERF-34 made a forced frame inside an event SCHEDULED instead of executed,
   // because the body it measured was 531 ms of rebuild and it froze the press
@@ -336,6 +334,8 @@ void OnChartEvent(const int id,
 //+------------------------------------------------------------------+
 void OnTimer()
 {
+    // P-UI-113-OFF (2026-09-23): no fast window — every tick is housekeeping.
+
     // P-PERF-16: the 250 ms safety refresh behind the cached UI metrics. Resizing
     // the chart also fires a chart-change event (which invalidates immediately);
     // this line covers a missed notification and costs two terminal reads per
@@ -405,4 +405,10 @@ void OnTimer()
     // button-up MOUSE_MOVE never arrives; the 1.5 s idle here is the only
     // heal that does not need the terminal to cooperate.
     TH3BaseBandDragHeartbeat();
+
+    // NOTE (2026-09-23, P-DRAW-18): `WindowPriceMax()/Min()` answer 0/0 during
+    // OnInit - the chart window is not mapped yet (`run hi=0.00000 lo=0.00000` in
+    // the terminal's log) - while a timer tick ~1 s later reads the real range
+    // (`window hi=4410.70000 lo=4230.80000` on XAUUSD,H1). Anything needing the
+    // visible window belongs HERE, never in OnInitHandler.
 }

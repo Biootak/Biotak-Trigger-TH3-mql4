@@ -1209,8 +1209,9 @@ void CustomPriceDragLockOn()
     else ChartViewLockAssert();
     if(s_cpAutoWas && (ChartGetInteger(0, CHART_AUTOSCROLL) != 0))
         ChartSetInteger(0, CHART_AUTOSCROLL, false);
-    if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
-        ChartSetInteger(0, CHART_CONTEXT_MENU, false);   // the menu must not steal the gesture
+    // P-UI-106 (2026-09-23): CHART_CONTEXT_MENU is a stub on this build
+    // (CTXMENU-OFF) - writing it costs a repaint for zero effect, so it is
+    // not written any more.
     s_cpLockActMs = GetTickCount();
 }
 
@@ -1221,8 +1222,7 @@ void CustomPriceDragReassertLock()
     ChartViewLockAssert();   // P-UI-90: read-guarded, one owner for scroll + ctx
     if(s_cpAutoWas && ChartGetInteger(0, CHART_AUTOSCROLL) != 0)
     { ChartSetInteger(0, CHART_AUTOSCROLL, false); }
-    if(ChartGetInteger(0, CHART_CONTEXT_MENU) != 0)
-    { ChartSetInteger(0, CHART_CONTEXT_MENU, false); }
+    // P-UI-106: stub write retired (see CustomPriceDragLockOn above).
 }
 
 void CustomPriceDragLockOff()
@@ -4396,6 +4396,9 @@ void ReleaseIndicatorMute()
 
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
+    // P-UI-114 (2026-09-23): right-click era deleted — terminal menu untouched,
+    // strip opens on a LEFT hold (DrawStripHoldStep/PollAt in DrawStrip.mqh).
+
     // Base / Knot tool FIRST: while armed it owns every mouse gesture (no
     // chart-click leak into custom-price/TH3/panels), and committed boxes own
     // their badge/drag/delete events in every state.

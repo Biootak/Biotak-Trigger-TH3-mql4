@@ -170,3 +170,9 @@ tools/*.prev
 # Python byte-code cache (never track compiled output)
 __pycache__/
 *.pyc
+
+# Token-stack guardrails: heavy/ephemeral dirs never indexed nor committed
+.venv/
+venv/
+target/
+.codegraph/

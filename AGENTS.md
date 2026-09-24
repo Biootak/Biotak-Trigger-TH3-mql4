@@ -37,6 +37,89 @@ After BMP changes: recompile, then remove & re-add the indicator in MT4
 (icons load only at attach). Full deploy: `powershell -File tools/deploy.ps1`.
 Linux: `./compile-th3-linux.sh all` (isolated Wine prefix, terminal stays open).
 
+**P-UI-114 (2026-09-23) — DELETED, not retired.** Right-click management
+(P-UI-102..112) is gone by user order («مدیریت کلیک راست ولش کن ... کدهای
+اضافی هم پاک بشه»): `Biotak/RightClickOwner.mqh` deleted, the Ctx menu tail
+(~670 lines in `BiotakPanels.mqh`) deleted, `DrawStrip`'s right trigger/peek/
+travel/MenuTake dead code deleted (~310 lines), `ChartViewCtx` leaf functions
+deleted (the scroll lock itself untouched), `UtilityFunctions` dead gates
+deleted, 20 era scratch files deleted. ~1300 lines out, warnings 2 → 0, all
+11 `.mq4` 0 errors, all audits green. The strip opens on a LEFT hold
+(`DrawStripHoldLatch/Step/Fire` + `DrawStripHoldPollAt` from `RefreshKitOnBar`,
+500 ms / 8 px); `DIAG-113` is three temporary verdict lines in the log
+(`[drawstrip] hold latch ...`, `hold opened ...`, `dismiss click ...`) until the
+whole gesture is proven on the live chart, then they go too.
+
+**P-UI-113b (2026-09-23) — the press edge is a STORE.** The P-UI-114 sweep left
+`s_dsLeftPrev = left;` behind, so `s_dsLeftPress` WAS the button state and every
+move of a held hand read as a fresh press: one 4.7 s press printed eight
+`hold latch` lines (20:17 log) and the 500 ms clock could never complete. One
+store per move in the router head is the whole fix; the same session's log
+(20:55) then shows one latch → one `hold opened` per press.
+
+**P-UI-113c (2026-09-23) — THE OPENING PRESS OWNS ITS OWN CLICK-FAMILY EVENTS.**
+Reported: «چرا با رها کردن هولد استریپ هم بسته میشه». The hold fires while the
+button is still DOWN, so its release lands on the drawing = outside the strip and
+the TV-style dismissal closed what the hold had just opened. A one-shot flag
+(`s_dsHoldFirePending`) cannot fix it because ONE release arrives on more than one
+channel (the chart's `CHARTEVENT_CLICK` and the object's
+`CHARTEVENT_OBJECT_CLICK`): the shot spends the first and the second dismisses.
+`s_dsOpenerUntil`/`s_dsOpenerTailUntil` (`DrawStripOpenerArm/Disarm/
+ClickSpent`) is the WINDOW instead — armed at the fire for the press's whole life,
+shortened by the move stream's release witness to an 800 ms twin-event tail, ended
+by a new press edge, a close, or the 10 s press cap.
+
+**P-UI-113d (2026-09-23) — the carry takes the view lock, and a drag-release is
+not a dismissal.** Two reports, one session. (1) «با درگ استریپ چارت پشتش نباید
+تکون بخوره که درگ کردن نمیشه یا سخت میشه»: screen objects are SELECTABLE=false,
+so MT4 never drags the plate for us — but the chart BEHIND stayed live and
+`CHART_MOUSE_SCROLL` is ON by default, so the hand panned the view while carrying
+the strip. `DrawStripGripRelease` (one ender, in the file's state block so
+`DrawStripClose` can call it) now owns `ChartViewLockAcquire/Assert/Release`
+for the carry (P-UI-53's law, P-UI-90's single owner). (2) the box mini-strip's
+own `dragRel` rule (BK_CLICK_SLOP) worn here: a button-up whose hand left its
+press point ends a DRAG and is never the outside-click dismissal — measured once
+in the router's click head (`relWasDrag`) and read by the dismissal below it. Compile wall time is dominated by the whole tree + `ex4`
+emit, so deletion helps directionally — report measured `msec elapsed`, never
+promise 400. Restore = git, never a rewrite.
+
+**P-DRAW-19 (2026-09-24) — THE WATCHDOG MUST NAME THE STRIP, TOO.** Reported:
+«هنوز هنگام درگ چارت پشتش قفل نمیشه». P-UI-113d's lock was never the defect: the
+carry DID take the view (`ChartViewLockAcquire` at the press edge,
+`ChartViewLockAssert` on every held step, `DrawStripGripRelease` at every end) and
+still did not hold, because the 250 ms `ChartScrollReconcile` rebuilds the lock
+from OWNERSHIP INTENT — `ChartLockIntended()` (`BiotakPanels.mqh`) lists every
+view owner, and the strip was NOT in it. The reconcile therefore read the live
+carry's lock as a LEAK and called `ChartViewLockForceRelease()` inside the first
+quarter second of every drag: the drag began locked, the 250 ms timer handed the
+scroll back, and `ChartViewLockAssert` could no longer re-force anything (a
+release zeroes the count, so the assert is a no-op). That is why the symptom
+survived a whole round of strip work — the fix was in the OTHER file. The term is
+`DrawStripViewOwned()` (`Biotak/DrawStrip.mqh`, one reader of the carry's own
+`s_dsGripLive` latch, defined before `BiotakPanels.mqh` is included). P-LM-11 /
+P-BK-62's law, unchanged and now enforced by two new audit groups:
+`[drawstrip-lock]` (acquire · latch · assert · one ender · the watchdog term) and
+`[drawstrip-place]` (below), with seven more mutants (355 total in
+`panel-wiring-audit --selftest`). **A gesture that takes the view lock names
+itself in `ChartLockIntended()` the day it is born** — the same rule the leg meter
+and the base mark each paid for once.
+
+**P-DRAW-20 (2026-09-24) — a FRESH strip opens on the DRAWING'S corner, not on the
+cursor.** User order: «به صورت پیش فرض استریپ در جای هوشمند ظاهر بشه». The hold
+fires ON the drawing, so the old `mx + 12 / my + 12` park put the plate over the
+very object it serves (and the on-screen clamp then pushed it further onto that
+object near an edge, never off it). `DrawStripPlaceFresh()` measures the drawing's
+own pixel box (every anchor that projects: 1 for an hline, 2 for a segment or box,
+3 for a channel/fork), builds four candidates off it — above its top edge, below
+its bottom edge, left, right, all edge-aligned — and takes the FIRST that needs no
+clamping AND does not overlap the drawing (the box mini-strip's P-BK-27 rule: the
+toolbar never covers the handle it belongs to). A drawing too big for the window
+keeps the reading order (above, else below) and clamps; an anchor that does not
+project at all falls back to the pre-P-DRAW-20 spot, so a placement that cannot
+measure the object never invents one. A RIDE (an open of the same object: the
+drawing's own drag, a zoom, a re-anchor) still keeps the hand's offset, and the
+user's own carry (`s_dsManual`) still wins everything.
+
 From the agent side the same script is called as `& .\compile-th3.ps1 -Project all`
 (the PowerShell tool already IS PowerShell, and `powershell.exe` from Bash is
 blocked by policy), after `$env:APPDATA` is set and the six `*_proxy` variables
@@ -1141,6 +1224,20 @@ The safe-delete guard is what spawns one: bash's `rm`/`rmdir`/`unlink` shims
 
 ## Working rules
 
+- **NEVER ANSWER A BUG REPORT WITH "IT IS OLD". THE PROBLEM IS IN THE CODE.**
+  (2026-09-23, user order: «هر مشکلی که میشی میگی قدیمه هزار بار چک کردیم که
+  قدیمی نیستش ... مشکل قطعا از کد دیگه بهانه قدیمی بودن نیاری ... چون دیدم
+  قدیمی بودن هیچ تاثیری نداره وقتی کامپایل بشه همه چی نو میشه اون قدیمه بودن
+  اشتباه نشون میده ... ذخیره‌کن برای همیشه».)
+  A compile rewrites every `.ex4` the project owns, so no data folder, terminal,
+  `.ex4`, log or object is "stale" evidence — freshness is not a diagnosis, and
+  reaching for it sends the hunt to the wrong place. A defect stands as a defect
+  IN THE CODE until a measurement says otherwise. This rule has one concrete
+  consequence: when a report depends on WHICH BUILD is live, prove it by
+  MEASUREMENT and name the measurement (the terminal's own log:
+  `Custom indicator BiotakProject\...: loaded successfully` + `[BUILD] ...`, a
+  trace line like `[ctxmenu] take ... prop=0`, a counter) — never by calling
+  something old, and never as an excuse for not having measured.
 - Git stays connected. No `git status` gate, no dirty-tree block. Work
   directly on files; commit only on request.
 - Comments carry `P-XX-NN` trap IDs and `-OFF` markers (e.g. `PANELDRAG-OFF`,
@@ -1178,3 +1275,21 @@ The safe-delete guard is what spawns one: bash's `rm`/`rmdir`/`unlink` shims
 - This file is the only `.md` in the repo. Keep it that way; research docs
   stay outside. Full history (superseded details, old `AGENTS.md`/`LEARNING.md`)
   is in git log and the outside-repo backup, not in this file.
+
+## Token stack (RTK + CodeGraph, 2026-09-24, global-first)
+
+- RTK 0.48.0 via winget, OpenCode plugin
+  `C:\Users\Bioootak\.config\opencode\plugins\rtk.ts`: shell output
+  auto-filtered. Prefer shell (`git status`, `rg`) over raw dumps.
+  P-PLUGIN-01: rtk's `init --opencode` template is V1 API (named export) and
+  Zen/v2 refuses it (`Missing key at ["default"]`); `rtk.ts` is a v2 port
+  (`export default { id, setup }` + `ctx.tool.hook("execute.before")`,
+  absolute rtk path). V1 original at global `rtk.ts.v1-bak`.
+- CodeGraph 1.6.0 MCP (absolute `codegraph.cmd` path in global `opencode.jsonc`
+  — PATH-independent, P-MCP-01), repo indexed
+  (53 files, 1880 nodes, 9243 edges): `codegraph explore` BEFORE grep/find
+  for structure questions.
+- Index/guard excludes (`.gitignore` tail): `node_modules .git .venv venv
+  dist build target __pycache__ .codegraph` + binaries.
+- Token discipline (also global `AGENTS.md`): no filler, dense tone,
+  summarize tool/test output, never dump raw logs.

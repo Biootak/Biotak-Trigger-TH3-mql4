@@ -125,6 +125,7 @@ enum EDrawKind
 //--- drawn" the terminal itself uses (the custom price line's own lesson,
 //--- P-UI-49c: a hit test expressed in price drifts with the zoom).
 #define DRAW_HIT_PX      6
+#define DRAW_SELECTED_HANDLE_PX 8
 //--- the style memory's bounds, mirrored from the panel's own rows.
 #define DRAW_WIDTH_MIN   1
 #define DRAW_WIDTH_MAX   5
@@ -423,13 +424,59 @@ bool DrawHitObject(const string name, const int px, const int py)
    }
 }
 
+//--- P-UI-113h (2026-09-24): THE TERMINAL'S SELECTED HANDLES BELONG TO THE DRAWING.
+//--- MT4 paints a rectangle/ellipse with nine controls when selected - four corners,
+//--- four side midpoints and the centre - while OBJPROP_TIME/PRICE expose only the
+//--- two diagonal construction anchors. Testing only 0..1 therefore recognises two
+//--- of the visible controls and misses the very points the hand is on. The
+//--- multi-point families have a third construction anchor; one-point families do
+//--- not. This is a click-TARGET fact, never a drag: it is read only after
+//--- DrawHitObject says the cursor is not already on the drawn shape.
+bool DrawHitSelectedHandle(const string name, const int px, const int py)
+{
+   EDrawKind k = DrawKindOf(name);
+   if(k == DK_RECT || k == DK_ELLIPSE)
+   {
+      int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+      if(!DrawAnchorXY(name, 0, x1, y1) || !DrawAnchorXY(name, 1, x2, y2)) return false;
+      int xa = MathMin(x1, x2), xb = MathMax(x1, x2);
+      int ya = MathMin(y1, y2), yb = MathMax(y1, y2);
+      int mx = (xa + xb) / 2, my = (ya + yb) / 2;
+      int hx[9], hy[9];
+      hx[0] = xa;  hy[0] = ya;   // corners
+      hx[1] = xb;  hy[1] = ya;
+      hx[2] = xb;  hy[2] = yb;
+      hx[3] = xa;  hy[3] = yb;
+      hx[4] = mx;  hy[4] = ya;   // side midpoints
+      hx[5] = mx;  hy[5] = yb;
+      hx[6] = xa;  hy[6] = my;
+      hx[7] = xb;  hy[7] = my;
+      hx[8] = mx;  hy[8] = my;   // centre control
+      for(int i = 0; i < 9; i++)
+         if(MathAbs(px - hx[i]) <= DRAW_SELECTED_HANDLE_PX &&
+            MathAbs(py - hy[i]) <= DRAW_SELECTED_HANDLE_PX) return true;
+      return false;
+   }
+
+   int count = 3;   // channel / pitchfork and the other three-anchor families
+   if(k == DK_HLINE || k == DK_VLINE || k == DK_ARROW || k == DK_TEXT) count = 1;
+   for(int i = 0; i < count; i++)
+   {
+      int x = 0, y = 0;
+      if(!DrawAnchorXY(name, i, x, y)) continue;
+      if(MathAbs(px - x) <= DRAW_SELECTED_HANDLE_PX &&
+         MathAbs(py - y) <= DRAW_SELECTED_HANDLE_PX) return true;
+   }
+   return false;
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // THE TWO ANSWERS TO "WHICH DRAWING IS UNDER THE CURSOR?".
 //
 // `DrawSelectedObjectAt` is the terminal's OWN answer: MT4 selects the object
-// it grabs on the press, so the newest selected object that is not ours is the
-// one the user is holding. It is asked FIRST because it costs no geometry and
-// it is exactly what the terminal decided.
+// it grabs on the press. It is asked first, but only after the cursor is proven
+// to be on that selected object's drawn shape or one of its visible controls -
+// selection alone is not a cursor hit.
 //
 // `DrawObjectAt` is the measured answer, for the builds and the moments the
 // terminal's selection does not arrive (P-UI-49c's own lesson: the pick-up is
@@ -440,7 +487,7 @@ bool DrawHitObject(const string name, const int px, const int py)
 // Both refuse the indicator's own objects: the harmonics, the levels, the
 // boxes and the panels have their own owners (the user's order).
 // ══════════════════════════════════════════════════════════════════════════
-string DrawSelectedObjectAt()
+string DrawSelectedObjectAt(const int px, const int py)
 {
    int total = ObjectsTotal(0, -1, -1);
    for(int i = total - 1; i >= 0; i--)
@@ -448,15 +495,16 @@ string DrawSelectedObjectAt()
       string nm = ObjectName(0, i, -1, -1);
       if(nm == "" || DrawIsIndicatorObject(nm)) continue;
       if(DrawKindOf(nm) == DK_NONE) continue;
-      if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return nm;
+      if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) continue;
+      if(DrawHitObject(nm, px, py) || DrawHitSelectedHandle(nm, px, py)) return nm;
    }
    return "";
 }
 
 string DrawObjectAt(const int px, const int py)
 {
-   string sel = DrawSelectedObjectAt();
-   if(sel != "" && DrawHitObject(sel, px, py)) return sel;   // the terminal agrees
+   string sel = DrawSelectedObjectAt(px, py);
+   if(sel != "") return sel;
    int total = ObjectsTotal(0, -1, -1);
    for(int i = total - 1; i >= 0; i--)
    {

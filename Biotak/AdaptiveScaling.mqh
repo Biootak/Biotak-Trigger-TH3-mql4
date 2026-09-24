@@ -266,7 +266,10 @@ double GetAdaptedStepSize(const double originalStepSize) {
             // Blended: interpolate between original and ATR-adapted
             // result = original * (1 - blendRatio) + (original * scalingFactor) * blendRatio
             // Simplified: result = original * ((1 - blendRatio) + scalingFactor * blendRatio)
-            double blendRatio = MathMax(0.0, MathMin(1.0, inpAdaptiveBlendRatio));
+            // P-UI-57: NaN poisons MathMax/Min (any comparison false), so guard finite first.
+            double blendRaw = inpAdaptiveBlendRatio;
+            if(!MathIsValidNumber(blendRaw)) blendRaw = 0.5;
+            double blendRatio = MathMax(0.0, MathMin(1.0, blendRaw));
             double blendedFactor = (1.0 - blendRatio) + factor * blendRatio;
             return originalStepSize * blendedFactor;
         }

@@ -993,14 +993,20 @@ void ChartViewPersistUser()
     s_viewPersistKnown  = true;
 }
 
-// The lock's own state: both props off. Read-guarded on every write.
+// The lock's own state. Read-guarded on every write.
+// CTXMENU-OFF (P-UI-100d, 2026-09-23): the menu half is RETIRED BY MEASUREMENT.
+// `CHART_CONTEXT_MENU` is a STUB on MT4 - `ChartSetInteger(0, ..., true)` returns
+// FALSE (refused) and `ChartGetInteger` answers 0 forever, while the control
+// property `CHART_MOUSE_SCROLL` reads back its own real value (the terminal's own
+// log: `[ctxmenu] impl-probe: mouseScroll=1 write(true)=refused readback=0 =>
+// STUB`). Writing it locked nothing, so the lock now holds the ONE property that
+// exists. Only `CHART_MOUSE_SCROLL` is locked.
 void ChartViewForceLocked()
 {
     if((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL))
         ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
-    if((bool)ChartGetInteger(0, CHART_CONTEXT_MENU))
-        ChartSetInteger(0, CHART_CONTEXT_MENU, false);
 }
+
 
 // Hand the view back to the captured pair - and ONLY the props that actually
 // drifted, so a user who disables scroll between gestures is never overridden
@@ -1009,17 +1015,18 @@ void ChartViewRestoreUser()
 {
     if(((bool)ChartGetInteger(0, CHART_MOUSE_SCROLL)) != s_viewScrollUser)
         ChartSetInteger(0, CHART_MOUSE_SCROLL, s_viewScrollUser);
-    if(((bool)ChartGetInteger(0, CHART_CONTEXT_MENU)) != s_viewCtxUser)
-        ChartSetInteger(0, CHART_CONTEXT_MENU, s_viewCtxUser);
+    // P-UI-114: menu half never restored - stub, unwritable (CTXMENU-OFF).
 }
+
+
 
 // THE taker. Every caller pairs it with exactly one Release.
 void ChartViewLockAcquire()
 {
     if(s_viewLockCount == 0)
     {
-        s_viewScrollUser = (ChartGetInteger(0, CHART_MOUSE_SCROLL) != 0);   // 0 -> 1: the user's
-        s_viewCtxUser    = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
+        // P-UI-114: no suppression exists - live value IS the user.
+        s_viewCtxUser = (ChartGetInteger(0, CHART_CONTEXT_MENU) != 0);
         ChartViewPersistUser();
     }
     s_viewLockCount++;

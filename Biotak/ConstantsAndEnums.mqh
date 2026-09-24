@@ -117,6 +117,7 @@
 // ── the ring menu — the card covers it (consequence 1 above)
 #define Z_MENU_PANEL    1004    // sub-menu panel chrome
 #define Z_MENU_DOT      1005    // sub-menu title dot
+#define Z_MENU_CELL     1006    // ctx menu icon-cell hover face (P-UI-105)
 #define Z_MENU_ITEM     1010    // ring/Tools item faces
 #define Z_MENU_ICON     1011    // item glyphs
 #define Z_MENU_BADGE    1012    // item badge bodies + captions

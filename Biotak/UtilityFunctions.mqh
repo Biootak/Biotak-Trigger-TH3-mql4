@@ -11,6 +11,10 @@
 #ifndef UTILITY_FUNCTIONS_MQH
 #define UTILITY_FUNCTIONS_MQH
 
+#import "user32.dll"
+short GetAsyncKeyState(int vKey);
+#import
+
 // Include ZoneFactory for centralized zone creation
 #include "ZoneFactory.mqh"
 
@@ -171,13 +175,11 @@ int PnlRawLineH(const int rawPt)
 // ══════════════════════════════════════════════════════════════════════════
 bool UILeftButtonDown()
 {
-   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
-   return (v < 0) || ((v & 1) != 0);
+   return ((GetAsyncKeyState(1) & 0x8000) != 0);
 }
 bool UILeftButtonUp()
 {
-   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
-   return (v >= 0) && ((v & 1) == 0);
+   return ((GetAsyncKeyState(1) & 0x8000) == 0);
 }
 
 //--- P-BK-61/66: the ONE owner of "is the magnet's MODIFIER held RIGHT NOW?" —
@@ -216,6 +218,10 @@ bool UIMagnetModifierDown()
    long v = TerminalInfoInteger(TERMINAL_KEYSTATE_SHIFT);
    return (v < 0) || ((v & 1) != 0);
 }
+
+//--- P-UI-114 (2026-09-23) — deleted: RightClickTerminalOwns[/Set],
+//--- RightClickStripOwns[Set/Take], RightClickSelfEsc[Stamp/Ms] (dead gates of
+//--- the deleted right-click era; the strip opens on a LEFT hold now).
 
 //--- Arial Bold advances, units per 1000 em (the face the panels set).
 int PnlAdvUnits(const ushort ch)

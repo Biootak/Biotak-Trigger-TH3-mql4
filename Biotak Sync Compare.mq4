@@ -48,6 +48,7 @@
 
 // The measurement tool is domain code (Lite includes it too): the harness runs the
 // real box/plan path, so it must be in the chain exactly like the entry's.
+// (P-UI-114: right-click era deleted — the gate is gone with it.)
 #include "Biotak\BaseKnotTool.mqh"
 
 #include "Biotak\CalculationCache.mqh"

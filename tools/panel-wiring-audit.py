@@ -68,6 +68,12 @@ ENTRY = os.path.join(ROOT, "Biotak Trigger TH3.mq4")
 ENTRY_LITE = os.path.join(ROOT, "Biotak Trigger TH3 Lite.mq4")
 UTILS = os.path.join(ROOT, "Biotak", "UtilityFunctions.mqh")
 BASEKNOT = os.path.join(ROOT, "Biotak", "BaseKnotTool.mqh")
+# P-DRAW-19/P-DRAW-20: the drawing strip's own module - the grip carry's view lock
+# (and the watchdog term it needs to survive the reconcile) plus the fresh
+# placement's measured spot. A Full-only UI module, which is why every check that
+# names it also names the watchdog's own list (a lock nobody claims is a leak).
+DRAWSTRIP = os.path.join(ROOT, "Biotak", "DrawStrip.mqh")
+DRAWTOOL = os.path.join(ROOT, "Biotak", "DrawToolbar.mqh")
 # P-UI-96: the TH3 item's own modules - the arm path's three halves live one
 # per file (the press in the menu, the session in the controller, the toggle in
 # the tool), and the mouse-move channel's owner lives in the event router.
@@ -1479,6 +1485,12 @@ def check_th3_caption():
     elif "TH3InfoFamilyVerify(base, true)" not in heal_b:
         problems.append("the caption heal no longer verifies through the one owner: "
                         "a second writer of the family's masks (P-TH3-INFO-11)")
+    # 8q-18's own leg, and it was MISSING: a heal BODY nothing calls is dead code,
+    # and the mutant that deletes the entry's call walked straight through. The
+    # net is only a net if the 250 ms clock runs it, so the ENTRY is asked too.
+    if "TH3InfoCaptionHeal();" not in strip_comments(read(ENTRY)):
+        problems.append("the entry's timer no longer runs TH3InfoCaptionHeal(): the "
+                        "heal net is dead code and the dark plate recurs (P-TH3-INFO-11)")
     # P-TH3-INFO-13 (2026-09-22): the caption is a TIMED VISITOR. The user's
     # order: «لیبل مود ها و لیبل abcd باید بعد چند ثانیه حذف بشن هرچی که
     # اطلاعاتی هستش» — every info readout leaves after a few seconds, the leg
@@ -1507,6 +1519,27 @@ def check_th3_caption():
         problems.append("the caption visit no longer reads inpModeLabelDuration: the "
                         "mode rows and the caption would expire on two different "
                         "settings (P-TH3-INFO-13)")
+    # P-TH3-INFO-12, and the mutant for it had NO leg at all (8q-7 walked through):
+    # THE INK GOES BACK ON AFTER THE PLATE EXISTS. A row a pre-grow build created is
+    # older than the fresh plate and paints UNDER it - the black box with no text -
+    # so the grow loop must DELETE the row before re-plating it, which is what makes
+    # TH3RORowAt's create path run and re-own every property the row wears. This leg
+    # is about that ORDER, not about the two calls merely existing.
+    grow_b = body(rend, "bool TH3InfoFamilyPlateGrow(")
+    if grow_b is None:
+        problems.append("TH3InfoFamilyPlateGrow() is gone - the caption plate can no "
+                        "longer grow with its rows (P-TH3-INFO-12)")
+    else:
+        del_at = grow_b.find("ObjectDelete(0, nm);")
+        row_at = grow_b.find("TH3RORowAt(nm, rows[line],")
+        if del_at < 0 or row_at < 0:
+            problems.append("the caption grow path no longer deletes the row before "
+                            "re-plating it (P-TH3-INFO-12): a row older than the fresh "
+                            "plate paints under it and the black box is back")
+        elif del_at > row_at:
+            problems.append("the caption grow path re-plates the row BEFORE deleting it "
+                            "(P-TH3-INFO-12): creation order paints it under the fresh "
+                            "plate")
     # P-UI-57f-OFF (2026-09-22): the step-mode row's clock exemption is retired
     # by the same user order - the SS/LS row expires like every event row.
     expire = body(strip_comments(read(UTILS)), "bool CheckAndClearExpiredLabels(")
@@ -4274,7 +4307,19 @@ def check_bkmagnet():
         problems.append("the magnet's modifier probe is gone or no longer reads SHIFT (P-BK-66) - "
                         "on CONTROL the terminal DUPLICATES the dragged handle instead "
                         "(«این باکس رو کپی میکنه») and the magnet can never fire")
-    if "TERMINAL_KEYSTATE_CONTROL" in utils:
+    # SCOPED TO THE MAGNET'S OWN PROBE (P-UI-102, 2026-09-23). This searched the
+    # WHOLE file, which was a false positive waiting to happen: the right-click
+    # owner's gate (`RightClickTerminalOwns`, one function below in the same file)
+    # reads CONTROL for its OWN role — Ctrl+right-click is the TERMINAL's menu —
+    # and the file-wide search reported that legitimate probe as the magnet's
+    # relapse. The rule stated above is about the MAGNET's path, so the assertion
+    # is about the magnet's body. Its mutant still fires: that mutant rewrites the
+    # SHIFT line inside this very body.
+    magnet_probe = body(utils, "bool UIMagnetModifierDown(")
+    if magnet_probe is None:
+        problems.append("UIMagnetModifierDown() has no body - the magnet's modifier "
+                        "probe cannot be read (P-BK-66)")
+    elif "TERMINAL_KEYSTATE_CONTROL" in magnet_probe:
         problems.append("the magnet's modifier probe reads CONTROL again (P-BK-66) - Ctrl+drag is "
                         "MetaTrader's object-copy gesture, so the handle is cloned instead of "
                         "snapped")
@@ -4310,25 +4355,18 @@ def check_mouse():
     """
     problems = []
     utils = read(UTILS)
-    # (signature, name, the sign test that convention A needs): the two owners
-    # differ ONLY in which side of zero is "down", and BOTH must also test bit 0
-    # (convention B) — a function carrying only one of the two readings is blind
-    # to the other build lineage, which is the whole bug class.
-    pairs = (("bool UILeftButtonDown(", "UILeftButtonDown", "(v<0)"),
-             ("bool UILeftButtonUp(", "UILeftButtonUp", "(v>=0)"))
-    for sig, nm, sign in pairs:
+    pairs = (("bool UILeftButtonDown(", "UILeftButtonDown", "!=0"),
+             ("bool UILeftButtonUp(", "UILeftButtonUp", "==0"))
+    for sig, nm, op in pairs:
         blk = body(utils, sig)
         if blk is None:
             problems.append("%s() is gone - the ONE mouse-button owner must live "
                             "in Biotak/UtilityFunctions.mqh, below every surface "
-                            "that asks it (P-UI-73)" % nm)
+                            "that asks it" % nm)
             continue
         flat = re.sub(r"\s+", "", blk)
-        if sign not in flat or "(v&1)" not in flat:
-            problems.append("%s() no longer answers under BOTH MQL4 conventions "
-                            "(the `<0` and the bit-0 reading of "
-                            "TERMINAL_KEYSTATE_LEFT) - one build lineage would "
-                            "read it wrong again" % nm)
+        if "GetAsyncKeyState(1)&0x8000" not in flat or op not in flat:
+            problems.append("%s() no longer reads the physical left-button state" % nm)
     for path in sorted(compiled_unit(ENTRY)):
         if os.path.basename(path) == os.path.basename(UTILS):
             continue
@@ -4887,7 +4925,7 @@ def check_th_percent():
         if need not in strip_comments(owner):
             problems.append("%s lost %s - the knob no longer turns into ONE ratio "
                             "(P-TH-01)" % (TH_PERCENT_OWNER, need))
-    if "if(g_thPercentOverride <= 0.0) return 1.0;" not in strip_comments(owner):
+    if "if(!MathIsValidNumber(g_thPercentOverride) || g_thPercentOverride <= 0.0) return 1.0;" not in strip_comments(owner):
         problems.append("%s lost the knob's OFF path - 0 must mean the professor's "
                         "table byte for byte, not a scaled ladder (P-TH-01)"
                         % TH_PERCENT_OWNER)
@@ -6025,6 +6063,364 @@ def check_step1():
     return problems
 
 
+def check_drawstrip_view_lock():
+    """[drawstrip-lock] - the strip's GRIP CARRY owns the chart view (P-DRAW-19).
+
+    Reported: «هنوز هنگام درگ چارت پشتش قفل نمیشه». The carry's own lock was
+    written (P-UI-113d: acquire on the press edge, assert on every held step,
+    release at every end) - and it still did not hold, because the 250 ms
+    `ChartScrollReconcile` rebuilds the view from OWNERSHIP INTENT and the strip
+    was not named in `ChartLockIntended` (BiotakPanels.mqh), so the watchdog read
+    the live carry's lock as a LEAK and force-released it inside the first quarter
+    second of every drag. The P-LM-11 / P-BK-62 rule, one gesture later: a gesture
+    that takes the view lock names itself there the day it is born.
+
+    Four things must hold, in the order the gesture needs them:
+
+      1. ACQUIRE on the press edge (the earliest moment the carry is provably
+         ours) and LATCH it (`s_dsGripLive` is the one ender's own state).
+      2. ASSERT on the held pass (P-BK-14: a third writer can flip the props
+         mid-gesture).
+      3. RELEASE through the ONE ender (`DrawStripGripRelease`), so an open
+         strip's close can hand the view back too.
+      4. `ChartLockIntended` NAMES the owner, through the carry's own accessor.
+    """
+    problems = []
+    strip = strip_comments(read(DRAWSTRIP))
+    move = body(strip, "void DrawStripGripMove(")
+    if move is None:
+        problems.append("DrawStripGripMove() is gone - the plate's carry has no "
+                        "owner (P-DRAW-19)")
+    else:
+        if "ChartViewLockAcquire()" not in move:
+            problems.append("the grip carry never takes the view lock: the chart "
+                            "pans under the hand while the plate is carried "
+                            "(P-DRAW-19)")
+        if "s_dsGripLive" not in move:
+            problems.append("the grip carry takes the raw lock but never latches "
+                            "ownership, so nothing can release it (P-DRAW-19)")
+        if "ChartViewLockAssert()" not in move:
+            problems.append("the carry stops re-asserting the view lock while the "
+                            "button is down: a third writer flips the props "
+                            "mid-gesture (P-DRAW-19)")
+    ender = body(strip, "void DrawStripGripRelease(")
+    if (ender is None or "ChartViewLockRelease()" not in ender
+            or "s_dsGripLive = false" not in ender):
+        problems.append("DrawStripGripRelease() no longer releases the carry's "
+                        "view lock exactly once (P-DRAW-19)")
+    own = body(strip, "bool DrawStripViewOwned(")
+    if own is None or "s_dsGripLive" not in own:
+        problems.append("DrawStripViewOwned() no longer answers the carry's own "
+                        "latch, so the watchdog's term can drift from the lock it "
+                        "explains (P-DRAW-19)")
+    intended = body(strip_comments(read(PANELS)), "bool ChartLockIntended(")
+    if intended is None or "DrawStripViewOwned()" not in intended:
+        problems.append("ChartLockIntended() does not name the strip carry's "
+                        "lock: the 250 ms reconcile hard-releases it under the "
+                        "hand (P-DRAW-19)")
+    return problems
+
+
+def check_drawstrip_place():
+    """[drawstrip-place] - a FRESH open lands in the drawing's own corner
+    (P-DRAW-20).
+
+    User order: «به صورت پیش فرض استریپ در جای هوشمند ظاهر بشه». The hold fires ON
+    the drawing, so the old +12/+12 cursor offset parked the plate over the very
+    object it serves (and the on-screen clamp then pushed it further onto it, never
+    off). The measured spot - the drawing's pixel box, four candidates off it, the
+    first that needs no clamping AND does not overlap it - is the P-BK-27 rule (the
+    toolbar never covers the handle it belongs to) worn by this tool.
+    """
+    problems = []
+    strip = strip_comments(read(DRAWSTRIP))
+    placer = body(strip, "void DrawStripPlaceFresh(")
+    if placer is None:
+        problems.append("DrawStripPlaceFresh() is gone - a fresh open is placed "
+                        "by the cursor again, on top of the drawing it serves "
+                        "(P-DRAW-20)")
+    else:
+        if "DrawAnchorXY(" not in placer:
+            problems.append("the fresh spot no longer measures the drawing's own "
+                            "pixel box: it cannot know what to stay off "
+                            "(P-DRAW-20)")
+        if "int cx[4]" not in placer or "cy[4]" not in placer:
+            problems.append("the fresh spot lost its candidate list - a one-sided "
+                            "placement is the P-BK-27 trap again (P-DRAW-20)")
+        if "onWin && misses" not in placer:
+            problems.append("a candidate can win while it OVERLAPS the drawing it "
+                            "serves (P-BK-27 / P-DRAW-20)")
+    open_at = body(strip, "bool DrawStripOpenAt(")
+    if open_at is None or "DrawStripPlaceFresh(" not in open_at:
+        problems.append("DrawStripOpenAt() no longer routes its fresh open "
+                        "through the measured spot: the +12/+12 cursor park is "
+                        "back (P-DRAW-20)")
+    return problems
+
+
+def check_drawstrip_opener_ride():
+    """[drawstrip-opener-ride] - a re-anchor keeps the opening press's clicks.
+
+    P-UI-113e: `DrawStripOpenAt` is both a fresh open and the SAME-object ride
+    used by OBJECT_DRAG / CHART_CHANGE. The ride runs through `DrawStripClose()`;
+    that close correctly disarms P-UI-113c's opening-press window, but the strip
+    is immediately reopened for the same object. If the window is not restored,
+    a native drawing's selection/chart event can silently arm the release for
+    dismissal while the hold is still down - the exact «strip opens, release makes
+    it disappear» report.
+    """
+    problems = []
+    open_at = body(strip_comments(read(DRAWSTRIP)), "bool DrawStripOpenAt(")
+    if open_at is None:
+        return ["DrawStripOpenAt() is gone - the strip has no open/ride owner (P-UI-113e)"]
+
+    close_at = open_at.find("DrawStripClose();")
+    if close_at < 0:
+        problems.append("the same-object ride no longer has its shared rebuild (P-UI-113e)")
+    if "bool ride = (s_dsOpen && s_dsObj == name);" not in open_at:
+        problems.append("the open path cannot distinguish a fresh open from a same-object ride (P-UI-113e)")
+    if "bool keepOpener = (ride && DrawStripOpenerClickSpent());" not in open_at:
+        problems.append("the ride does not carry a genuinely pending opening-press window (P-UI-113e)")
+    if "uint keepOpenerUntil = s_dsOpenerUntil;" not in open_at or \
+       "uint keepOpenerTailUntil = s_dsOpenerTailUntil;" not in open_at:
+        problems.append("the ride does not snapshot both halves of the opening-press window (P-UI-113e)")
+
+    restore_at = open_at.find("if(keepOpener)")
+    if restore_at < 0 or close_at < 0 or restore_at < close_at:
+        problems.append("the same-object ride lets DrawStripClose() erase the opening press (P-UI-113e)")
+    elif "s_dsOpenerUntil = keepOpenerUntil;" not in open_at or \
+         "s_dsOpenerTailUntil = keepOpenerTailUntil;" not in open_at:
+        problems.append("the ride restores only part of the opening-press window (P-UI-113e)")
+    return problems
+
+
+def check_drawstrip_native_selection():
+    """[drawstrip-native-selection] - a hold leaves MT4's object selected.
+
+    P-UI-113f proved the hollow-box half: the strip can open from an object's
+    interior while MT4 selects only its border. P-UI-113g is the event-order half:
+    selecting inside CHARTEVENT_OBJECT_CLICK is still too early, because MT4 commits
+    its own release selection after that callback returns and removes the eight
+    resize handles / context toolbar again. The repair must therefore run on the
+    already-running tick/timer pump, for a short bounded window, while a new press
+    and a close cancel it.
+    """
+    problems = []
+    strip = strip_comments(read(DRAWSTRIP))
+    select = body(strip, "bool DrawStripHoldSelect(")
+    if select is None:
+        problems.append("DrawStripHoldSelect() is gone - the hold can open on a "
+                        "hollow box without leaving native selection (P-UI-113f)")
+    else:
+        if "ObjectFind(0, nm) < 0" not in select:
+            problems.append("the hold selection owner does not prove the drawing "
+                            "still exists (P-UI-113f)")
+        if "DrawIsIndicatorObject(nm)" not in select or "DrawKindOf(nm) == DK_NONE" not in select:
+            problems.append("the hold selection owner no longer refuses an "
+                            "indicator/non-drawing object (P-UI-113f)")
+        if "if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTABLE)) return false;" not in select:
+            problems.append("the hold can select a LOCKED drawing - native "
+                            "selection must obey the lock, not override it (P-UI-113f)")
+        if "if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return true;" not in select:
+            problems.append("the hold rewrites an already-selected drawing on "
+                            "every fire/release (P-UI-113f / P-PERF-02)")
+        if "ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);" not in select:
+            problems.append("the hold does not restore MT4's native selected "
+                            "state, so the eight resize anchors stay absent (P-UI-113f)")
+        if "OBJPROP_SELECTED, false" in select or "OBJPROP_SELECTABLE," in select:
+            problems.append("the hold selection owner mutates selection/lock "
+                            "state instead of setting SELECTED only (P-UI-113f)")
+
+    fire = body(strip, "void DrawStripHoldFire(")
+    if fire is None or "DrawStripHoldSelect();" not in fire:
+        problems.append("the hold fire no longer selects its target before the "
+                        "button comes up (P-UI-113f)")
+    if fire is None or "DrawStripHoldSelectArm();" not in fire:
+        problems.append("the hold fire no longer schedules the post-callback "
+                        "selection repair (P-UI-113g)")
+
+    router = body(strip, "bool DrawStripOnEvent(")
+    if router is None or "DrawStripHoldSelect();" not in router:
+        problems.append("the opening release no longer attempts the native "
+                        "selection repair (P-UI-113f)")
+    if router is None or "DrawStripHoldSelectArm();" not in router or \
+       "DrawStripHoldSelectionDisarm();" not in router:
+        problems.append("a later press/click cannot cancel the post-release "
+                        "selection repair (P-UI-113g)")
+
+    poll = body(strip, "void DrawStripHoldSelectPoll(")
+    if poll is None:
+        problems.append("DrawStripHoldSelectPoll() is gone - the repair still runs "
+                        "inside the click callback MT4 overwrites (P-UI-113g)")
+    else:
+        if "TickDeadlinePending(s_dsSelectRepairAt)" not in poll or \
+           "TickDeadlinePending(s_dsSelectRepairUntil)" not in poll:
+            problems.append("the selection repair is not delayed/bounded: it can "
+                            "fight MT4's delayed click or own selection forever (P-UI-113g)")
+        if "DrawStripHoldSelect()" not in poll:
+            problems.append("the post-callback pump never repairs native selection (P-UI-113g)")
+
+    refresh = body(strip_comments(read(PANELS)), "void RefreshKitOnBar(")
+    if refresh is None or "DrawStripHoldSelectPoll();" not in refresh:
+        problems.append("the tick/timer pump does not run the post-release selection "
+                        "repair (P-UI-113g)")
+
+    close = body(strip, "void DrawStripClose(")
+    if close is None or "DrawStripHoldSelectionDisarm();" not in close:
+        problems.append("closing the strip leaves a selection repair armed behind it (P-UI-113g)")
+
+    open_at = body(strip, "bool DrawStripOpenAt(")
+    if open_at is None or "bool keepSelectRepair" not in open_at or \
+       "if(keepSelectRepair)" not in open_at or \
+       "s_dsSelectRepairUntil = keepSelectRepairUntil;" not in open_at:
+        problems.append("a same-object CHART_CHANGE/OBJECT_DRAG ride erases the "
+                        "post-release repair through DrawStripClose (P-UI-113g)")
+    return problems
+
+
+def check_drawstrip_selected_handle():
+    """[drawstrip-selected-handle] - selected controls belong to the drawing.
+
+    P-UI-113h: MT4 paints nine controls for a selected rectangle/ellipse (four
+    corners, four side midpoints, centre), but only two construction anchors are
+    exposed. A hold can therefore find the object on its body and still miss the
+    visible point under the hand. Worse, the release at that point can arrive as
+    CHARTEVENT_CLICK; the outside-click dismissal then closes the strip. Both the
+    hold pick and the dismissal must ask the full selected-handle geometry.
+    """
+    problems = []
+    src = strip_comments(read(DRAWTOOL))
+    handle = body(src, "bool DrawHitSelectedHandle(")
+    selected = body(src, "string DrawSelectedObjectAt(")
+    at = body(src, "string DrawObjectAt(")
+    if handle is None:
+        problems.append("DrawHitSelectedHandle() is gone - a selected drawing's MT4 controls find no object")
+    else:
+        if "DrawAnchorXY(name, i, x, y)" not in handle:
+            problems.append("the selected-handle hit test does not project the drawing's anchors")
+        if "int count = 3;" not in handle:
+            problems.append("the selected-handle hit test ignores a third construction anchor")
+        if "if(k == DK_RECT || k == DK_ELLIPSE)" not in handle:
+            problems.append("selected rectangles/ellipses do not get their visible control geometry")
+        if "int hx[9], hy[9];" not in handle:
+            problems.append("the rectangle/ellipse control set no longer has all nine MT4 handles")
+        if "hx[4] = mx;  hy[4] = ya;" not in handle or \
+           "hx[5] = mx;  hy[5] = yb;" not in handle or \
+           "hx[6] = xa;  hy[6] = my;" not in handle or \
+           "hx[7] = xb;  hy[7] = my;" not in handle:
+            problems.append("the four selected side-midpoint controls are missing")
+        if "hx[8] = mx;  hy[8] = my;" not in handle or "for(int i = 0; i < 9; i++)" not in handle:
+            problems.append("the selected centre control is not hit-tested with the other eight")
+        if "DRAW_SELECTED_HANDLE_PX" not in handle or \
+           "MathAbs(px - x) <= DRAW_SELECTED_HANDLE_PX" not in handle or \
+           "MathAbs(py - y) <= DRAW_SELECTED_HANDLE_PX" not in handle:
+            problems.append("the selected-handle hit test has no positive pixel radius on every handle family")
+        if not re.search(r"#define\s+DRAW_SELECTED_HANDLE_PX\s+[1-9][0-9]*", src):
+            problems.append("DRAW_SELECTED_HANDLE_PX is not a positive pixel radius")
+    if selected is None:
+        problems.append("DrawSelectedObjectAt() is gone - the terminal's selected drawing is not a hold target")
+    else:
+        if "OBJPROP_SELECTED" not in selected:
+            problems.append("the selected-object hit test does not require MT4 selection")
+        if "DrawHitObject(nm, px, py) || DrawHitSelectedHandle(nm, px, py)" not in selected:
+            problems.append("the selected-object hit test ignores the terminal's resize handles")
+    if at is None or "DrawSelectedObjectAt(px, py)" not in at:
+        problems.append("DrawObjectAt() does not route the selected drawing through its geometry and handle hit test")
+
+    strip = strip_comments(read(DRAWSTRIP))
+    router = body(strip, "bool DrawStripOnEvent(")
+    if router is None or "DrawStripReleaseOnDrawing(relPressObj, rcx, rcy)" not in router:
+        problems.append("the outside-click dismissal no longer routes the release through the drawing-owner hit test (P-UI-113h/i)")
+    return problems
+
+
+def check_drawstrip_release_owner():
+    """[drawstrip-release-owner] - selection state cannot change dismissal.
+
+    P-UI-113i: the user's exact split was an unselected drawing working and the
+    same drawing failing once selected. The fix is not another selected-state
+    special case. Every press records the drawing under it; the release is owned
+    when that press named the strip's drawing OR when the release pixel resolves
+    to the same drawing through the common body/control hit test. No branch reads
+    OBJPROP_SELECTED, so both states follow one owner.
+    """
+    problems = []
+    strip = strip_comments(read(DRAWSTRIP))
+    owner = body(strip, "bool DrawStripReleaseOnDrawing(")
+    if owner is None:
+        problems.append("DrawStripReleaseOnDrawing() is gone - a click can be classified differently when the drawing is selected")
+    else:
+        if "pressedName != \"\" && pressedName == s_dsObj" not in owner:
+            problems.append("a release does not remember which drawing owned its press")
+        if "DrawHitCacheClear()" not in owner or \
+           "DrawObjectAtCached(px, py) == s_dsObj" not in owner:
+            problems.append("a motionless/zero-move release does not re-hit-test the drawing body and controls")
+        if "OBJPROP_SELECTED" in owner:
+            problems.append("release ownership branches on selection state; selected and unselected drawings can disagree")
+
+    router = body(strip, "bool DrawStripOnEvent(")
+    if router is None:
+        problems.append("DrawStripOnEvent() is gone - no release can be classified")
+    else:
+        press = router.find("if(s_dsLeftPress)")
+        release = router.find("if(id == CHARTEVENT_CLICK || id == CHARTEVENT_OBJECT_CLICK)")
+        click = router.find("if(id == CHARTEVENT_CLICK)", release)
+        if press < 0 or "s_dsPressObj = DrawObjectAtCached(tmx, tmy);" not in router:
+            problems.append("the left press does not record the drawing under the hand")
+        if release < 0 or press < 0 or router.find("relPressObj = s_dsPressObj;", press) < release:
+            problems.append("the release does not carry this button-up's own press owner")
+        if router.find("s_dsPressObj = \"\";", press) < 0:
+            problems.append("one press owner leaks into the next click")
+        if click < 0 or "DrawStripReleaseOnDrawing(relPressObj, rcx, rcy)" not in router:
+            problems.append("the dismissal does not consult the one release owner")
+        close_at = router.find("DrawStripClose();", click)
+        owner_at = router.find("DrawStripReleaseOnDrawing(relPressObj, rcx, rcy)", click)
+        if close_at < 0 or owner_at < 0 or owner_at > close_at:
+            problems.append("the drawing-owned release can still fall through to DrawStripClose()")
+    return problems
+
+
+def check_physical_left_probe():
+    problems = []
+    utils = strip_comments(read(UTILS))
+    down = body(utils, "bool UILeftButtonDown(")
+    up = body(utils, "bool UILeftButtonUp(")
+    if '#import "user32.dll"' not in utils or "short GetAsyncKeyState(int vKey);" not in utils:
+        problems.append("the physical left-button probe has no user32 GetAsyncKeyState owner")
+    if down is None or "GetAsyncKeyState(1) & 0x8000" not in down or "!= 0" not in down:
+        problems.append("UILeftButtonDown() does not read the physical left-button state")
+    if up is None or "GetAsyncKeyState(1) & 0x8000" not in up or "== 0" not in up:
+        problems.append("UILeftButtonUp() does not complement the physical left-button state")
+    if "TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT)" in utils:
+        problems.append("a stale terminal key-state read can still answer before the physical probe")
+    poll = body(strip_comments(read(DRAWSTRIP)), "void DrawStripHoldPollAt(")
+    if poll is None or "!s_dsHoldDown && !s_dsOpen && leftDown" not in poll or \
+       "DrawStripHoldLatch(mx, my)" not in poll:
+        problems.append("the drawing hold cannot start from a physical button-down poll")
+    refresh = body(strip_comments(read(PANELS)), "void RefreshKitOnBar(")
+    if refresh is None or "DrawStripHoldPollAt(g_LastUIX, g_LastUIY, UILeftButtonDown())" not in refresh:
+        problems.append("the tick/timer pump does not feed the physical button state to the drawing hold")
+    return problems
+
+
+def check_drawstrip_click_echo():
+    problems = []
+    strip = strip_comments(read(DRAWSTRIP))
+    router = body(strip, "bool DrawStripOnEvent(")
+    if router is None:
+        problems.append("DrawStripOnEvent() is gone - no release can be classified")
+    else:
+        click = router.find("if(id == CHARTEVENT_CLICK || id == CHARTEVENT_OBJECT_CLICK)")
+        gate = router.find("if(UILeftButtonDown()) return true;", click)
+        opener = router.find("bool openerSpent", click)
+        clear = router.find("DrawStripHoldClear();", click)
+        if click < 0 or gate < 0 or opener < 0 or gate > opener:
+            problems.append("a click arriving while the button is down can still clear the opening hold")
+        if click < 0 or clear < 0 or gate < 0 or clear < gate:
+            problems.append("the opening hold is cleared before the button-down echo is ignored")
+    return problems
+
+
 def main():
     problems = []
     groups = (("rows", check_rows()), ("persist", check_persist()),
@@ -6041,6 +6437,14 @@ def main():
                ("th3delete", check_th3_delete()),
                ("pb-lock", check_th3_pb_lock()),
                ("pb-band-drag-lock", check_th3_pb_band_drag_lock()),
+               ("drawstrip-lock", check_drawstrip_view_lock()),
+               ("drawstrip-place", check_drawstrip_place()),
+               ("drawstrip-opener-ride", check_drawstrip_opener_ride()),
+               ("drawstrip-native-selection", check_drawstrip_native_selection()),
+               ("drawstrip-selected-handle", check_drawstrip_selected_handle()),
+               ("drawstrip-release-owner", check_drawstrip_release_owner()),
+               ("drawstrip-click-echo", check_drawstrip_click_echo()),
+               ("physical-left-probe", check_physical_left_probe()),
                ("pb-band-gesture", check_th3_band_gesture()),
               ("leg-plate", check_leg_plate_lifetime()),
               ("leg-head", check_leg_head_follow()),
@@ -6136,6 +6540,14 @@ def selftest():
                        or check_bk_drag() or check_bkcursor_off()
                        or check_bkbox_ink() or check_bkedge_off()
                        or check_heal() or check_th_percent()
+                       or check_drawstrip_view_lock()
+                       or check_drawstrip_place()
+                       or check_drawstrip_opener_ride()
+                       or check_drawstrip_native_selection()
+                       or check_drawstrip_selected_handle()
+                       or check_drawstrip_release_owner()
+                       or check_drawstrip_click_echo()
+                       or check_physical_left_probe()
                        or check_step1())))
     reset()
 
@@ -7228,7 +7640,7 @@ def selftest():
 
     # 12c. P-TH-01: the knob's own read disappears (the slider writes a mirror
     #      nothing consumes — P-UI-47, one layer deeper)
-    with_source(FRACTALS, "if(g_thPercentOverride <= 0.0) return 1.0;", "")
+    with_source(FRACTALS, "if(!MathIsValidNumber(g_thPercentOverride) || g_thPercentOverride <= 0.0) return 1.0;", "")
     cases.append(("a research knob nothing consumes is caught",
                   bool(check_th_percent())))
     reset()
@@ -8823,6 +9235,257 @@ def selftest():
                 "    if(false &&\n")
     cases.append(("a leaked-visible line with no enforcer is caught",
                   bool(check_step1())))
+    reset()
+
+    # 183. P-DRAW-19: the 250 ms reconcile stops naming the strip carry's lock
+    #        - the watchdog hands the view back under the carrying hand.
+    with_source(PANELS,
+                "    if(DrawStripViewOwned()) return true;\n",
+                "")
+    cases.append(("a reconcile blind to the strip carry's lock is caught",
+                  bool(check_drawstrip_view_lock())))
+    reset()
+
+    # 184. P-DRAW-19: the carry never ACQUIRES the view - the chart pans under
+    #        the hand while the plate is carried.
+    with_source(DRAWSTRIP,
+                "         if(!s_dsGripLive) ChartViewLockAcquire();   // P-UI-113d: the carry owns the view\n",
+                "")
+    cases.append(("a grip carry that never takes the view lock is caught",
+                  bool(check_drawstrip_view_lock())))
+    reset()
+
+    # 185. P-DRAW-19: the held pass stops re-asserting the view lock.
+    with_source(DRAWSTRIP,
+                "   ChartViewLockAssert();   // P-BK-14: a third writer (a panel closing, a template reset) can\n",
+                "")
+    cases.append(("a grip carry that stops asserting the view lock is caught",
+                  bool(check_drawstrip_view_lock())))
+    reset()
+
+    # 186. P-DRAW-19: the ONE ender stops releasing (an open strip's close
+    #        hands nothing back).
+    with_source(DRAWSTRIP,
+                "   if(s_dsGripLive) ChartViewLockRelease();   // P-UI-90: one release per acquire\n",
+                "")
+    cases.append(("a grip ender that leaks the view lock is caught",
+                  bool(check_drawstrip_view_lock())))
+    reset()
+
+    # 187. P-DRAW-20: a fresh open parks at the cursor again - on top of the
+    #        drawing it serves.
+    with_source(DRAWSTRIP,
+                "      DrawStripPlaceFresh(name, mx, my, s_dsX, s_dsY);\n",
+                "      { s_dsX = mx + 12; s_dsY = my + 12; }\n")
+    cases.append(("a fresh open that parks on the cursor is caught",
+                  bool(check_drawstrip_place())))
+    reset()
+
+    # 188. P-DRAW-20: the spot stops measuring the drawing (a candidate list
+    #        with nothing to stay off).
+    with_source(DRAWSTRIP,
+                "      if(!DrawAnchorXY(name, i, ax, ay)) break;   // anchors are contiguous 0..n-1\n",
+                "      if(false) break;\n")
+    cases.append(("a fresh spot that never measures the drawing is caught",
+                  bool(check_drawstrip_place())))
+    reset()
+
+    # 189. P-DRAW-20: the overlap test goes soft - a candidate may win while it
+    #        covers the drawing (the P-BK-27 trap).
+    with_source(DRAWSTRIP,
+                "      if(onWin && misses) { x = px; y = py; return; }\n",
+                "      if(onWin) { x = px; y = py; return; }\n")
+    cases.append(("a fresh spot that can cover its own drawing is caught",
+                  bool(check_drawstrip_place())))
+    reset()
+
+    # 190. P-UI-113e: the same-object ride stops preserving the opening press.
+    with_source(DRAWSTRIP,
+                "   if(keepOpener)   // P-UI-113e: the same strip survived; its opening press did too\n   {\n      s_dsOpenerUntil = keepOpenerUntil;\n      s_dsOpenerTailUntil = keepOpenerTailUntil;\n   }\n",
+                "")
+    cases.append(("a re-anchor that erases the opening press is caught",
+                  bool(check_drawstrip_opener_ride())))
+    reset()
+
+    # 191. P-UI-113e: the ride keeps a stale window instead of only a pending one.
+    with_source(DRAWSTRIP,
+                "   bool keepOpener = (ride && DrawStripOpenerClickSpent());\n",
+                "   bool keepOpener = ride;\n")
+    cases.append(("a re-anchor that restores an expired opening window is caught",
+                  bool(check_drawstrip_opener_ride())))
+    reset()
+
+    # 192. P-UI-113f: the hold stops selecting its native drawing.
+    with_source(DRAWSTRIP,
+                "   DrawStripHoldSelect();     // P-UI-113f: native anchors/settings survive the hold\n",
+                "")
+    cases.append(("a hold that leaves no native selection is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 193. P-UI-113f: the release stops repairing MT4's last-moment deselection.
+    with_source(DRAWSTRIP,
+                "          DrawStripHoldSelect();   // P-UI-113f: the release must not steal the anchors back\n",
+                "")
+    cases.append(("a release that steals the native selection back is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 194. P-UI-113f: the repair ignores LOCK and selects a locked drawing.
+    with_source(DRAWSTRIP,
+                "   if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTABLE)) return false;\n",
+                "")
+    cases.append(("a hold that selects a locked drawing is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 195. P-UI-113f: the selected-state guard is gone, so every opening
+    #        release repaints an object that was already selected.
+    with_source(DRAWSTRIP,
+                "   if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return true;\n",
+                "")
+    cases.append(("a hold that rewrites native selection every time is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 196. P-UI-113g: the fire no longer arms a post-callback proof window.
+    with_source(DRAWSTRIP,
+                "   DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release\n",
+                "")
+    cases.append(("a hold with no post-release selection repair is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 197. P-UI-113g: the release no longer re-arms that window after MT4's
+    #        last-moment click state.
+    with_source(DRAWSTRIP,
+                "          DrawStripHoldSelectArm();  // P-UI-113g: repair it again AFTER the callback\n",
+                "")
+    cases.append(("a release with no delayed selection repair is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 198. P-UI-113g: the repair exists but never reaches the tick/timer pump.
+    with_source(PANELS,
+                "   DrawStripHoldSelectPoll();   // P-UI-113g: restore native selection after MT4's release\n",
+                "")
+    cases.append(("a post-release selection repair stranded in the callback is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 199. P-UI-113g: a same-object chart/drag ride erases the repair through
+    #        DrawStripClose while MT4 is still settling the release.
+    with_source(DRAWSTRIP,
+                "   if(keepSelectRepair)   // P-UI-113g: and so did its post-release selection repair\n   {\n      s_dsSelectRepairName = keepSelectRepairName;\n      s_dsSelectRepairAt = keepSelectRepairAt;\n      s_dsSelectRepairUntil = keepSelectRepairUntil;\n   }\n",
+                "")
+    cases.append(("a same-object ride that erases the selection repair is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    # 200. P-UI-113g: no expiry turns the repair into a permanent second owner.
+    with_source(DRAWSTRIP,
+                "   if(!TickDeadlinePending(s_dsSelectRepairUntil)) { DrawStripHoldSelectionDisarm(); return; }\n",
+                "")
+    cases.append(("an unbounded post-release selection repair is caught",
+                  bool(check_drawstrip_native_selection())))
+    reset()
+
+    with_source(DRAWTOOL,
+                "      if(DrawHitObject(nm, px, py) || DrawHitSelectedHandle(nm, px, py)) return nm;\n",
+                "      if(DrawHitObject(nm, px, py)) return nm;\n")
+    cases.append(("a selected drawing handle outside the drawn shape is caught",
+                  bool(check_drawstrip_selected_handle())))
+    reset()
+
+    with_source(DRAWTOOL,
+                "      if(MathAbs(px - x) <= DRAW_SELECTED_HANDLE_PX &&\n         MathAbs(py - y) <= DRAW_SELECTED_HANDLE_PX) return true;\n",
+                "      if(MathAbs(px - x) <= 0 && MathAbs(py - y) <= 0) return true;\n")
+    cases.append(("a zero-width selected handle target is caught",
+                  bool(check_drawstrip_selected_handle())))
+    reset()
+
+    with_source(DRAWTOOL,
+                "      int hx[9], hy[9];\n",
+                "      int hx[2], hy[2];\n")
+    cases.append(("a selected rectangle reduced to two controls is caught",
+                  bool(check_drawstrip_selected_handle())))
+    reset()
+
+    with_source(DRAWTOOL,
+                "      hx[8] = mx;  hy[8] = my;   // centre control\n",
+                "")
+    cases.append(("a selected centre control falling through is caught",
+                  bool(check_drawstrip_selected_handle())))
+    reset()
+
+    with_source(DRAWTOOL,
+                "   int count = 3;   // channel / pitchfork and the other three-anchor families\n",
+                "   int count = 2;   // channel / pitchfork and the other three-anchor families\n")
+    cases.append(("a third construction anchor falling through is caught",
+                  bool(check_drawstrip_selected_handle())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "       if(DrawStripReleaseOnDrawing(relPressObj, rcx, rcy)) return false;\n",
+                "")
+    cases.append(("a selected-handle release closing the strip is caught",
+                  bool(check_drawstrip_selected_handle() or check_drawstrip_release_owner())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "         s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press\n",
+                "")
+    cases.append(("a release with no remembered press owner is caught",
+                  bool(check_drawstrip_release_owner())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "   if(pressedName != \"\" && pressedName == s_dsObj) return true;\n",
+                "")
+    cases.append(("a release forgetting the pressed drawing is caught",
+                  bool(check_drawstrip_release_owner())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "   return (DrawObjectAtCached(px, py) == s_dsObj);\n",
+                "   return false;\n")
+    cases.append(("a still release with no geometry fallback is caught",
+                  bool(check_drawstrip_release_owner())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "   DrawHitCacheClear();\n   return (DrawObjectAtCached(px, py) == s_dsObj);\n",
+                "   return (DrawObjectAtCached(px, py) == s_dsObj);\n")
+    cases.append(("a still release inheriting another gesture's hit memo is caught",
+                  bool(check_drawstrip_release_owner())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "bool DrawStripReleaseOnDrawing(const string pressedName, const int px, const int py)\n{\n   if(s_dsObj == \"\" || ObjectFind(0, s_dsObj) < 0) return false;\n",
+                "bool DrawStripReleaseOnDrawing(const string pressedName, const int px, const int py)\n{\n   if(s_dsObj == \"\" || ObjectFind(0, s_dsObj) < 0) return false;\n   bool selectedState = (bool)ObjectGetInteger(0, s_dsObj, OBJPROP_SELECTED);\n")
+    cases.append(("release ownership branching on selection is caught",
+                  bool(check_drawstrip_release_owner())))
+    reset()
+
+    with_source(UTILS,
+                "   return ((GetAsyncKeyState(1) & 0x8000) != 0);\n",
+                "   return false;\n")
+    cases.append(("a hold blind to the physical left button is caught",
+                  bool(check_physical_left_probe())))
+    reset()
+
+    with_source(PANELS,
+                "   DrawStripHoldPollAt(g_LastUIX, g_LastUIY, UILeftButtonDown());   // P-UI-113: drawings' left-hold\n",
+                "")
+    cases.append(("a drawing hold disconnected from the physical poll is caught",
+                  bool(check_physical_left_probe())))
+    reset()
+
+    with_source(DRAWSTRIP,
+                "        if(UILeftButtonDown()) return true;\n",
+                "")
+    cases.append(("a button-down click echo that clears the hold is caught",
+                  bool(check_drawstrip_click_echo())))
     reset()
 
     for name, ok in cases:
