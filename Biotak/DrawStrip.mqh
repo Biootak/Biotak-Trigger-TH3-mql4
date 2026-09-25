@@ -403,7 +403,7 @@ static int      s_dsGripDX = 0, s_dsGripDY = 0;
 static uint     s_dsGripMs = 0;
 //--- P-DRAW-32: and the SETTINGS PANEL carries itself the same way (its header is
 //--- its handle), with its own offset and its own cadence — one cursor, one of the
-//--- two gestures live at a time (`DrawStripGripAt` answers which).
+//--- two gestures live at a time (`DrawStripGripWhich` answers which).
 static bool     s_dsGGripLive = false;
 static int      s_dsGGripDX = 0, s_dsGGripDY = 0;
 static uint     s_dsGGripMs = 0;
@@ -514,6 +514,23 @@ static bool     s_dsPressTracked = false;   // P-UI-113d: a press EDGE was seen 
                                             // cycle, so `s_dsTravel` is this gesture's
                                             // (a zero-move press leaves no edge: the
                                             // release then reads as a click, never a drag)
+//--- P-UI-113j (2026-09-25) — THE PRESS NAMES ITS OWN DRAWING. `s_dsPressObj`
+//--- above exists only when the MOVE STREAM carried the press edge: a still press
+//--- carries none (P-LM-13). The release then fell back to a live hit test, and
+//--- MT4's selected controls are terminal UI - their handles are accepted only
+//--- while the object IS selected (P-UI-113h), which the terminal clears around
+//--- its own click. Reported: hold a SELECTED drawing, the strip opens, and the
+//--- release closes it - while the same gesture works on an unselected one.
+//--- So the latch - which hit-tests the press pixel anyway - KEEPS its answer for
+//--- the whole press cycle: one hit test per press (P-DRAW-04), selection-free.
+static bool     s_dsPressCycle = false;  // the latch named THIS press cycle
+static string   s_dsPressCycleObj = "";  // the drawing its press pixel landed on ("" = chart)
+static uint     s_dsPressCycleMs = 0;    // the cycle's life bound: the press cap below
+void DrawStripPressCycleSet(const string nm)
+{ s_dsPressCycle = true; s_dsPressCycleObj = nm; s_dsPressCycleMs = GetTickCount() + DSTRIP_OPEN_PRESS_MAX_MS; }
+void DrawStripPressCycleClear() { s_dsPressCycle = false; s_dsPressCycleObj = ""; s_dsPressCycleMs = 0; }
+bool DrawStripPressCycleLive()
+{ return (s_dsPressCycle && TickDeadlinePending(s_dsPressCycleMs)); }
 //--- P-UI-114 (2026-09-23) — dead right-click era deleted (user order:
 //--- extra code out, compile back down). The strip opens on a LEFT hold now.
 
@@ -2713,7 +2730,7 @@ bool DrawStripGearHeadPaint()
    int gx = DrawStripGearX();
    int hy = s_dsGEY + s_dsGearHeadY;
    // P-DRAW-31: the header IS a handle, and it says so (the whole top row of the
-   // plate carries it too — see DrawStripGripAt).
+   // plate carries it too — see DrawStripGripWhich).
    string tip = DrawKindName(s_dsKind) + " settings — drag this bar to move the panel";
    // P-DRAW-36 (2026-09-25): the head spans the PLATE's own width (s_dsGearW0),
    // not the content width — the old `s_dsGearW` left a bare 32px strip of plate
@@ -3608,6 +3625,37 @@ void DrawStripPlaceFresh(const string name, const int mx, const int my, int &x, 
    if(y > ch - s_dsH - 4 - DSTRIP_SKIN_M) y = ch - s_dsH - 4 - DSTRIP_SKIN_M;
 }
 
+//--- P-DRAW-37 (2026-09-25) — THE SAME OBJECT, MOVED. `DrawStripOpenAt` sends here
+//--- every re-open of the object the strip ALREADY serves (the drawing's own drag,
+//--- a zoom, a scroll, a re-anchor): the plate, the tab and the group are the same,
+//--- so only the spot is re-measured. Two facts it must not break:
+//---   * an anchor that cannot be measured keeps the OPEN strip (return true): a
+//---     ride is not a reason to tear the surface down (J-02);
+//---   * the hand's own offset survives, exactly as P-DRAW-20 says.
+//--- Cost: one projection + the layout/paint the strip owes anyway, against ~40
+//--- object deletes and re-creates at the drag's own 50 ms cadence.
+bool DrawStripRide(const string name, const int mx, const int my)
+{
+   int ax = 0, ay = 0;
+   if(!DrawAnchorXY(name, 0, ax, ay)) return true;
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+   int nx = s_dsX, ny = s_dsY;
+   if(s_dsManual) { nx = ax + (s_dsX - s_dsAX); ny = ay + (s_dsY - s_dsAY); }
+   else DrawStripPlaceFresh(name, mx, my, nx, ny);
+   if(nx < 4) nx = 4;
+   if(ny < 4) ny = 4;
+   if(nx > cw - s_dsW - 4) nx = cw - s_dsW - 4;
+   if(ny > ch - s_dsH - 4) ny = ch - s_dsH - 4;
+   if(nx == s_dsX && ny == s_dsY && ax == s_dsAX && ay == s_dsAY) return true;   // nothing moved: no writes
+   s_dsX = nx; s_dsY = ny;
+   s_dsAX = ax; s_dsAY = ay;
+   if(s_dsKind == DK_RECT) BoxMidSync(name);   // P-DRAW-21: the mid rides the same event
+   DrawStripLayout();
+   DrawStripPaint();
+   return true;
+}
+
 //--- OPEN AT CURSOR (P-DRAW-13, preview parity): the trigger's press point
 //--- answers where, clamped like the preview's openStripAt (+12, +12, 4px
 //--- margins). OPEN (anchor-0) is the fallback with no cursor in hand.
@@ -3619,34 +3667,21 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    if(name == "" || ObjectFind(0, name) < 0) return false;
    EDrawKind k = DrawKindOf(name);
    if(k == DK_NONE) return false;
-   // P-DRAW-08c: opening the SAME object again is a RE-ANCHOR, not a no-op.
+   // P-DRAW-37 (2026-09-25): A RIDE IS A RE-POSITION, NOT A REBUILD. The object
+   // is the one this strip already serves, so its plate, its tab and its group are
+   // the same picture MOVED. The rebuild deleted and re-created the whole family
+   // (~40 objects) at the drawing's own drag cadence, and P-UI-113e/g existed only
+   // to carry two windows across that close. One owner answers the ride now.
+   if(s_dsOpen && s_dsObj == name) return DrawStripRide(name, mx, my);
    int keepPicker = s_dsPicker, keepGear = s_dsGear;
    bool keepPin = s_dsPinned;
-   bool ride = (s_dsOpen && s_dsObj == name);
-   bool keepManual = ride ? s_dsManual : (mx >= 0);
-   int keepDX = 0, keepDY = 0;
-   // P-UI-113e (2026-09-24): A RE-ANCHOR IS NOT A NEW GESTURE. The same-object
-   // open below is the drag/chart-change ride, but its shared rebuild starts with
-   // `DrawStripClose()`, and the close rightly disarms the opening press window.
-   // Selecting a native drawing can emit one of those chart events WHILE the
-   // opening hold is still down: the strip stayed painted, yet the release a few
-   // seconds later arrived unarmed and the dismissal closed it. Measured on the
-   // live chart at 10:12:59.192 (`hold opened on "Rectangle 50790"`) and
-   // 10:13:02.076 (`dismiss click ... obj="Rectangle 50790"`). Preserve the
-   // window only while it is genuinely pending, and only across the SAME-object
-   // ride; a fresh strip still starts unarmed and the fire arms it afterwards.
-   bool keepOpener = (ride && DrawStripOpenerClickSpent());
-   uint keepOpenerUntil = s_dsOpenerUntil;
-   uint keepOpenerTailUntil = s_dsOpenerTailUntil;
-   // P-UI-113g: the same distinction for the post-release selection repair. MT4
-   // can emit CHART_CHANGE/OBJECT_DRAG while the repaired selection is settling;
-   // that is a RIDE, not a new session, so the repair must cross DrawStripClose.
-   bool keepSelectRepair = (ride && s_dsSelectRepairUntil != 0 &&
-                           s_dsSelectRepairName == name);
-   string keepSelectRepairName = s_dsSelectRepairName;
-   uint keepSelectRepairAt = s_dsSelectRepairAt;
-   uint keepSelectRepairUntil = s_dsSelectRepairUntil;
-   if(ride) { keepDX = s_dsX - s_dsAX; keepDY = s_dsY - s_dsAY; }
+   bool keepManual = (mx >= 0);
+   // P-DRAW-37: MEASURE BEFORE THE CLOSE — an object that cannot project must not
+   // leave the surface torn down (J-02: nothing may advertise a state that did not
+   // happen). The ride above keeps what was already open; this is the fresh path.
+   int ax = 0, ay = 0;
+   if(!DrawAnchorXY(name, 0, ax, ay))
+   { Print("[drawstrip] close: anchor projection failed on \"", name, "\""); return false; }
    DrawStripClose();
    // P-DRAW-09b: THE GROUP IS TAKEN HERE, ONCE, and AFTER the close (a close
    // drops the group, because a group belongs to an open strip). The terminal's
@@ -3654,23 +3689,9 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    // moment it can legitimately change — a live read would walk the object list
    // on a stream, and a group that shifted mid-edit is worse than a stale one.
    DrawSelSnapshot(name);
-   int ax = 0, ay = 0;
-   if(!DrawAnchorXY(name, 0, ax, ay))
-   { Print("[drawstrip] close: anchor projection failed on \"", name, "\" (re-anchor ride)"); return false; }
    s_dsKind = k;
    s_dsObj = name;
    s_dsOpen = true;
-   if(keepOpener)   // P-UI-113e: the same strip survived; its opening press did too
-   {
-      s_dsOpenerUntil = keepOpenerUntil;
-      s_dsOpenerTailUntil = keepOpenerTailUntil;
-   }
-   if(keepSelectRepair)   // P-UI-113g: and so did its post-release selection repair
-   {
-      s_dsSelectRepairName = keepSelectRepairName;
-      s_dsSelectRepairAt = keepSelectRepairAt;
-      s_dsSelectRepairUntil = keepSelectRepairUntil;
-   }
    s_dsManual = keepManual;
    s_dsPicker = DSTRIP_PICK_NONE;
    if((keepPicker != DSTRIP_PICK_NONE) &&
@@ -3678,23 +3699,6 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
       s_dsPicker = keepPicker;
    s_dsGear = 0;
    if(keepGear != 0) s_dsGear = keepGear;
-   else if(ride)
-   {
-      // P-DRAW-25/26: a RIDE (zoom/drag re-open of the SAME object) re-opens the
-      // kind's last tab so the user does not lose their place in settings.
-      // A FRESH open (a new hold on a different drawing) always starts with the
-      // compact quick row — gear=0 — never inheriting a tab the user opened on
-      // a different drawing. «وقتی هولد میکنم مستقیم پنل تنظیمات باز میشه» was
-      // s_dsGearMem being applied on every open, not just rides.
-      s_dsTplNameArmed = false;
-      int mem = (k > DK_NONE && k < DK_COUNT) ? s_dsGearMem[k] : 0;
-      if(mem != 0)
-      {
-         DrawStripGearTabs();
-         for(int t = 0; t < s_dsGearTab[0] && t < 4; t++)
-            if(s_dsGearTab[t + 1] == mem) { s_dsGear = mem; break; }
-      }
-   }
    else
    {
       // fresh open: compact quick row only, no gear panel.
@@ -3707,13 +3711,9 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
    // P-DRAW-20 (2026-09-24): ONE fresh path — the drawing's own corner, never the
    // cursor under the hand (the hold fires ON the drawing, so +12/+12 parked the
-   // plate on the very object it serves). A RIDE (an open of the SAME object: the
-   // drawing's own drag, a zoom, a re-anchor) still keeps the hand's offset, and a
-   // strip the hand has carried keeps it too (`s_dsManual`).
-   if(s_dsManual && (keepDX != 0 || keepDY != 0))
-   { s_dsX = ax + keepDX; s_dsY = ay + keepDY; }
-   else
-      DrawStripPlaceFresh(name, mx, my, s_dsX, s_dsY);
+   // plate on the very object it serves). A RIDE keeps the hand's offset and a
+   // strip the hand has carried keeps it too (`s_dsManual` — DrawStripRide).
+   DrawStripPlaceFresh(name, mx, my, s_dsX, s_dsY);
    if(s_dsX < 4) s_dsX = 4;
    if(s_dsY < 4) s_dsY = 4;
    if(s_dsX > cw - s_dsW - 4) s_dsX = cw - s_dsW - 4;
@@ -4503,10 +4503,6 @@ int DrawStripGripWhich(const int mx, const int my)
       mx <= s_dsX + DSTRIP_PAD + DSTRIP_CELL + DSTRIP_GAP + s_dsBadgeW) return 1;
    return 0;
 }
-bool DrawStripGripAt(const int mx, const int my)
-{
-   return (DrawStripGripWhich(mx, my) != 0);
-}
 //--- DrawStripGripRelease lives with the carry's STATE (the file's state block):
 //--- it owns the view lock's release, and `DrawStripClose` must be able to call it.
 void DrawStripGripMove(const int mx, const int my, const bool left)
@@ -4622,7 +4618,6 @@ void DrawStripHoldLatch(const int mx, const int my)
    s_dsHoldMs = GetTickCount(); s_dsHoldX = mx; s_dsHoldY = my;
    s_dsHoldObj = "";
    DrawStripOpenerDisarm();   // P-UI-113c: a latch is a press cycle of its OWN
-   if(s_dsOpen) return;
    if(BaseKnotSessionActive()) return;
    if(UIPeekClickClaim()) return;
    if(UIPointerOverSurface(mx, my)) return;
@@ -4630,7 +4625,15 @@ void DrawStripHoldLatch(const int mx, const int my)
    if(TH3SessionActive() || TH3BaseMarkArmed()) return;
    if(LegMeasureSessionActive()) return;
    if(g_waitingForCustomPriceClick) return;
+   // P-UI-113j: NAME THE PRESS'S OWN DRAWING - and name it even while the strip is
+   // OPEN, because the release that follows belongs to the same press and the
+   // terminal's selected controls are not part of any drawn body. Cost: the one
+   // hit test this latch already pays for on a press edge (P-DRAW-04), memoised;
+   // the guards above stay first so a session that owns the mouse pays nothing.
+   s_dsPressX = mx; s_dsPressY = my; s_dsTravel = 0; s_dsPressTracked = true;
    s_dsHoldObj = DrawObjectAtCached(mx, my);
+   DrawStripPressCycleSet(s_dsHoldObj);
+   if(s_dsOpen) return;   // an open strip owns no hold - the press is only NAMED
    // DIAG-113 (temporary): one line per hold latch so the log proves whether the
    // press reached us, what the hit test saw, and what the live probe reads.
    Print("[drawstrip] hold latch at ", mx, ",", my, " hit=\"", s_dsHoldObj,
@@ -4707,7 +4710,10 @@ void DrawStripHoldFire()
 }
 void DrawStripHoldStep(const int mx, const int my, const bool leftDown, const bool pressStart)
 {
-   if(pressStart) { DrawStripHoldLatch(mx, my); return; }
+   // P-UI-113j: a press we already NAMED is not a new gesture. The terminal's own
+   // object machinery flaps the button bit mid-press (a selected drawing's native
+   // drag), and re-latching there restarted the 500 ms clock every time it did.
+   if(pressStart) { if(!DrawStripPressCycleLive()) DrawStripHoldLatch(mx, my); return; }
    if(!leftDown) { DrawStripHoldClear(); return; }
    if(s_dsHoldMs == 0 || s_dsHoldObj == "") return;
    if(MathAbs(mx - s_dsHoldX) > DSTRIP_HOLD_MOVE || MathAbs(my - s_dsHoldY) > DSTRIP_HOLD_MOVE)
@@ -4736,7 +4742,7 @@ void DrawStripHoldPollAt(const int mx, const int my, const bool leftDown)
    {
       // The zero-move press's backup latch, the box hold's own shape: nothing
       // latched, no press tracked, and the probe says the button is down.
-      if(!s_dsHoldDown && !s_dsOpen && leftDown) DrawStripHoldLatch(mx, my);
+      if(!s_dsHoldDown && !s_dsOpen && !DrawStripPressCycleLive() && leftDown) DrawStripHoldLatch(mx, my);
       else if(s_dsHoldDown && !leftDown) s_dsHoldDown = false;   // expire a stuck flag
       return;
    }
@@ -4803,12 +4809,19 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       s_dsLeftPrev = tleft;
       if(s_dsLeftPress)
       {
-         s_dsPressX = tmx; s_dsPressY = tmy; s_dsTravel = 0;
-         s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
-         DrawHitCacheClear();   // the hit memo is a GESTURE's, never a session's
-         s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press
-         DrawStripOpenerDisarm();   // P-UI-113c: a NEW press is never the old gesture
-         DrawStripHoldSelectionDisarm();  // P-UI-113g: nor may the repair fight it
+         // P-UI-113j: the LATCH already named this press (a still press takes its
+         // edge from the poll, and a flapping bit re-reports ONE press as many).
+         // Its owner, its press point and the opening window survive untouched -
+         // re-declaring them here is what let a mid-press flap kill the window.
+         if(!DrawStripPressCycleLive())
+         {
+            s_dsPressX = tmx; s_dsPressY = tmy; s_dsTravel = 0;
+            s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
+            DrawHitCacheClear();   // the hit memo is a GESTURE's, never a session's
+            s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press
+            DrawStripOpenerDisarm();   // P-UI-113c: a NEW press is never the old gesture
+            DrawStripHoldSelectionDisarm();  // P-UI-113g: nor may the repair fight it
+         }
       }
       else if(tleft)
       {
@@ -4853,8 +4866,14 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        // is also the event that ends the press cycle.
        relWasDrag = (s_dsPressTracked && s_dsTravel > DSTRIP_CLICK_SLOP);
        relPressObj = s_dsPressObj;   // P-UI-113i: keep the press owner for the tail
+       // P-UI-113j: ELSE THE LATCH'S OWN OWNER. A still press left no move edge, and
+       // the terminal's LIVE selection is not a fact this release may ask: MT4
+       // clears it around its own click, and the control the hand is on stops being
+       // part of any drawn body at that exact moment.
+       if(relPressObj == "") relPressObj = s_dsPressCycleObj;
        s_dsPressObj = "";
        s_dsPressTracked = false;
+       DrawStripPressCycleClear();   // P-UI-113j: this event IS this press's release
        if(openerSpent)
        {
           DrawStripHoldSelect();   // P-UI-113f: the release must not steal the anchors back

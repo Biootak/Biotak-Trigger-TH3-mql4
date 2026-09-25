@@ -328,6 +328,55 @@ and into all three teardown paths. `[drawstrip-colour-glass]` is the gate (three
 mutants: a flat quick-row cell, a sheen that swallows its own tap, a gear panel
 that leaves its sheen behind on the chart).
 
+**P-UI-113j / P-DRAW-37 (2026-09-25) — THE PRESS NAMES ITS OWN DRAWING, AND A RIDE
+MOVES INSTEAD OF REBUILDING.** Reported, for the third time in this gesture's
+history: «موقع که ابجکت سلکت هستش من موس روش نگه میدارم استریپ باز میشه ولی رها که
+میکنم بسته میشه جالبتر اینکه اگر ابجکت مثل باکس که سلکت نباشه درست کار میکنه». The
+two existing witnesses both fail on a SELECTED drawing, and the code says why:
+
+* `DrawStripReleaseOnDrawing` (P-UI-113i) asks the release pixel for the drawing
+  through `DrawObjectAt` — and the only test that accepts a drawing's own CONTROLS
+  (`DrawHitSelectedHandle`, P-UI-113h) is consulted for the objects whose
+  `OBJPROP_SELECTED` reads true AT THAT MOMENT. MT4 commits its selection change
+  around the click (the same fact P-UI-113f/g were written for), so a release on the
+  handle the hand is holding resolves to `""` = outside click = the TV-style
+  dismissal closes the strip the hold just opened. An unselected drawing is grabbed
+  on its BODY (that is the only test a non-selected object passes), so its release
+  stays on the body and the same code works — the asymmetry the user describes.
+* the opening window (`s_dsOpenerUntil`, P-UI-113c) was disarmed by a LATE press
+  edge: the press edge is `tleft && !s_dsLeftPrev` on the move stream, and a selected
+  drawing is moved by MT4 itself while the hand rests on it, so the terminal reports
+  moves whose button bit does not match one continuous press. Every such edge ran
+  `DrawStripOpenerDisarm()` AND re-ran the latch, restarting the 500 ms clock
+  (P-UI-113b's shape, from the other side).
+
+The fix is one fact instead of two re-derivations: **the hold latch already
+hit-tests the press pixel** (`DrawObjectAtCached`), so it KEEPS that answer for the
+whole press cycle (`s_dsPressCycleObj`, bounded by the press's own cap) and the
+release asks it BEFORE it asks any pixel or any selection state. A press cycle
+already named is never re-declared: a late edge keeps the owner, the press point,
+the travel (now measured from the true press point, so a still press is a click and
+a drifting one is a drag — honest for the zero-move press too) and the opening
+window. `s_dsPressTracked` is set by the latch, not only by the move edge.
+
+**P-DRAW-37, the same walk's architecture finding.** `DrawStripOpenAt` treated a
+re-open of the SAME object (the drawing's own drag, a zoom, a scroll, a re-anchor)
+as a fresh open: `DrawStripClose()` (the whole ~40-object family deleted) then
+rebuild. That is where P-UI-113e/g's snapshot-and-restore dances came FROM — two
+windows that existed only to survive a round trip that never had to happen — and it
+ran at the drag's own 50 ms cadence on the weakest machine. A ride is now
+`DrawStripRide()`: one anchor projection, the hand's offset kept, layout+paint; the
+preserve logic is deleted (nothing crosses a close any more), and an object that
+cannot project keeps the strip OPEN instead of leaving the surface torn down (J-02).
+
+**P-DRAW-38 (the walk's catalogue-23/24 finding):** `DrawStripGripAt` — cited twice as "which of the two
+gestures is this press?" and called by nobody in any commit (audit row 9, catalogue
+23/24) — is deleted; both citations name the real reader `DrawStripGripWhich()`.
+Read clean and left alone: `DrawStripPointInside` covers the plate AND the gear
+panel (A-13/H-05), a right-click on the chart still dismisses an unpinned strip
+(E-09), and the panel's own header carries the panel (P-DRAW-32). DIAG-113's three
+lines stay until the live chart confirms the fixed gesture.
+
 From the agent side the same script is called as `& .\compile-th3.ps1 -Project all`
 (the PowerShell tool already IS PowerShell, and `powershell.exe` from Bash is
 blocked by policy), after `$env:APPDATA` is set and the six `*_proxy` variables
