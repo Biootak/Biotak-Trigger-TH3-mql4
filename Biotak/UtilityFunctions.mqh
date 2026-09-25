@@ -114,12 +114,111 @@ bool PnlDpiPoll()
    s_pnlDpi = dpi;
    return true;
 }
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-69e (2026-09-25) — THE TYPE SCALE SURVIVES EVERY DPI (D-03, solved).
+//
+// THE BUG, on the shipped formula `pt = round(nominal * 96 / dpi)`. Both tables
+// below are the SAME sweep (every dpi the band allows, step 12) computed twice:
+// once for the old formula, once for the rule under it.
+//
+//   OLD         96   120   144   168   192   240   288
+//     5          5     4     4     4     4     4     4
+//     6          6     5     4     4     4     4     4
+//     7          7     6     5     4     4     4     4
+//     8          8     6     5     5     4     4     4
+//     9          9     7     6     5     5     4     4
+//    10         10     8     6     6     5     4     4
+//   collapses    0     1     2     3     4     5     5   <- adjacent pairs drawn alike
+//
+// Twenty equal pairs across these seven scales (five after the fix, and those
+// five all sit at the row cap). At 125% the section caption (7) and the value (8)
+// are ONE SIZE; at 150% two pairs are; from 250% up the whole six-size scale is a
+// single 4pt size.
+//
+//   THE FIX     96   120   144   168   192   240   288
+//     5          5     4     4     4     4     4     4
+//     6          6     5     5     5     5     5     5
+//     7          7     6     6     6     6     6     6
+//     8          8     7     7     7     7     7     6
+//     9          9     8     8     8     8     7     6
+//    10         10     9     9     9     9     7     6
+//   collapses    0     0     0     0     0     2     3   <- at and above the ROW cap ONLY
+//
+// Two adjacent sizes land on the SAME integer point above 100%, so the panel's
+// section caption (7) draws exactly like its value (8), the colour-cell key (5)
+// like the keycap (6): the type hierarchy is the first casualty of a scaled
+// display, and it is invisible on the 96 DPI machine every number was measured on.
+//
+// THE RULE, in one line: a size is the design's device-px answer, LIFTED rung by
+// rung so no two sizes the UI uses are ever equal, and CAPPED at the tallest em
+// the row geometry can hold. Three properties, all asserted by
+// `tests/Biotak_TypeScale_Test.mq4`:
+//   1. IDENTITY AT 96 DPI — the shipped design does not move a pixel;
+//   2. NEVER EQUAL — below the cap, rung n is at least 1pt above rung n-1;
+//   3. NEVER OVERFLOWS — the em stays inside the row (`14 + 24 = 38 < 42`), so
+//      the "caption crosses into the next row" class cannot come from the scale.
+//
+// Above ~240 DPI the cap merges the top rungs: a 42px row cannot hold six
+// distinct sizes when one point is 4px. That is geometry, not policy — there,
+// hierarchy must come from weight or colour (D-03's second half), and the cap is
+// what keeps the surface legible instead of broken.
+//
+// The lift is the MINIMUM that makes the rungs distinct (each rung is the
+// smallest point size still above the one below), so at 125% — the commonest
+// scaling — only the top three sizes move, and by exactly one point.
+// ══════════════════════════════════════════════════════════════════════════
+#define PNL_PT_LADDER_MIN 5    // the smallest nominal the UI uses (PNL_PT_CSET)
+#define PNL_PT_LADDER_MAX 14   // head-room above the biggest (SUB_PT_PAGER 10)
+#define PNL_PT_LADDER_N  (PNL_PT_LADDER_MAX - PNL_PT_LADDER_MIN + 1)
+//--- the cap's own arithmetic, spelled out here because its INPUTS (PNL_ROW_H 42,
+//--- PNL_LBL_Y 14) live in BiotakPanels.mqh — include 116, above this module's 47
+//--- (MQL4 is define-before-use). One number, one derivation, named once: if the
+//--- row geometry ever moves, this line moves with it. 4px is the breathing gap.
+#define PNL_PT_FIT_PX    24    // 42 - 14 - 4
+
+//--- the PURE answer for one nominal at one dpi: no cache, no terminal read, so a
+//--- harness can sweep every scale a user owns. THE rule lives here.
+int PnlPtAt(const int nominal,const int dpi)
+{
+   int d = (dpi < 96 || dpi > 288) ? 96 : dpi;      // the sane band PnlDpiRead enforces
+   int rawMin = (int)MathRound(PNL_PT_LADDER_MIN * 96.0 / (double)d);
+   int shift  = (rawMin < PNL_PT_MIN) ? (PNL_PT_MIN - rawMin) : 0;   // the floor lifts the WHOLE ladder
+   int pt = 0;
+   for(int m = PNL_PT_LADDER_MIN; m <= nominal; m++)
+   {
+      // the rung for `nominal` if the ladder's floor were m, plus one point for
+      // every rung between: the maximum over m IS the minimal distinct ladder.
+      int c = (int)MathRound(m * 96.0 / (double)d) + (nominal - m) + shift;
+      if(c > pt) pt = c;
+   }
+   // FLOOR, never round: rounding the cap UP gave an em of 25px for a 24px budget
+   // at 180/228/252/264 DPI — the very overflow the cap exists to prevent (found
+   // by the type-scale sweep, tests/Biotak_TypeScale_Test.mq4).
+   int cap = (int)MathFloor(PNL_PT_FIT_PX * 72.0 / (double)d);
+   if(cap < PNL_PT_MIN) cap = PNL_PT_MIN;
+   if(pt > cap) pt = cap;                            // the row wins over the rung
+   if(pt < PNL_PT_MIN) pt = PNL_PT_MIN;
+   return pt;
+}
+//--- the ladder, built once per DPI: index = nominal - PNL_PT_LADDER_MIN.
+//--- PnlPt is called several times per drawn caption, so the per-DPI build is
+//--- amortised to nothing and the hot path stays two compares and an array read.
+static int s_pnlPtDpi = -1;
+static int s_pnlPtLad[PNL_PT_LADDER_N];
+void PnlPtBuild(const int dpi)
+{
+   for(int i = 0; i < PNL_PT_LADDER_N; i++)
+      s_pnlPtLad[i] = PnlPtAt(PNL_PT_LADDER_MIN + i, dpi);
+   s_pnlPtDpi = dpi;
+}
 //--- a NOMINAL (design px * 3/4) point size, re-expressed for this display.
 int PnlPt(const int nominal)
 {
-   int pt = (int)MathRound(nominal * 96.0 / (double)PnlDpi());
-   if(pt < PNL_PT_MIN) pt = PNL_PT_MIN;
-   return pt;
+   int dpi = PnlDpi();
+   if(s_pnlPtDpi != dpi) PnlPtBuild(dpi);            // P-UI-93: the DPI is a measurement
+   int i = nominal - PNL_PT_LADDER_MIN;
+   if(i >= 0 && i < PNL_PT_LADDER_N) return s_pnlPtLad[i];
+   return PnlPtAt(nominal, dpi);                     // off the ladder: a one-off size
 }
 //--- the line box MT4 gives a NOMINAL point size, in px (em = pt * dpi / 72).
 //--- the ONE owner of that arithmetic: PnlTextW measures with it, and every

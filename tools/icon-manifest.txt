@@ -43,6 +43,16 @@ custom_off.bmp
 custom_on.bmp
 dots_off.bmp
 dots_on.bmp
+ds_bot_l.bmp
+ds_bot_m.bmp
+ds_bot_r.bmp
+ds_mid_l.bmp
+ds_mid_r.bmp
+ds_top_l.bmp
+ds_top_m.bmp
+ds_top_r.bmp
+dsg_btn_ghost.bmp
+dsg_btn_primary.bmp
 gl_alignC_gold.bmp
 gl_alignC_m.bmp
 gl_back_gold.bmp
@@ -215,6 +225,10 @@ pnl_cardW8.bmp
 pnl_cardW8f.bmp
 pnl_cardW9.bmp
 pnl_cardW9f.bmp
+pnl_cardWbot.bmp
+pnl_cardWfade.bmp
+pnl_cardWmid.bmp
+pnl_cardWtop.bmp
 pnl_cb_off.bmp
 pnl_cb_on.bmp
 pnl_chev_gold.bmp
@@ -225,6 +239,8 @@ pnl_cntchip.bmp
 pnl_dsw_off.bmp
 pnl_dsw_on_gold.bmp
 pnl_glass22.bmp
+pnl_glass28.bmp
+pnl_glass32.bmp
 pnl_glass38.bmp
 pnl_glass46.bmp
 pnl_hairW_gold.bmp

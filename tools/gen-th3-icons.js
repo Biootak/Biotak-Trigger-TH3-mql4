@@ -73,8 +73,8 @@ function dashPoly(points, dash, gap, w) {
 //   box    : (legacy) padlock — the retired View-Lock art, NOT a rectangle
 //   ruler  : scale bar with ticks — Base / Knot measurement
 //   htf    : candlesticks with wicks (higher timeframe)
-//   orb    : bow-medallion ingest — tools/orb-bow-master.bgra (built by
-//            tools/make-orb-bow.ps1). No yy overlay anymore (retired).
+//   orb    : bow-medallion ingest — tools/orb/orb-bow-master.bgra (built by
+//            tools/orb/make-orb-bow.ps1). No yy overlay anymore (retired).
 const ART = {
   zone: [
     // zone — trigger/zone levels: two level lines joined by step ticks
@@ -327,8 +327,8 @@ const BK_UNDO = [   // single-step undo: left arrow
 ];
 
 // --- orb center art: bow-medallion ingest (NOT procedural) ---
-// Single source of truth: tools/orb-bow-master.bgra — 72x72 premultiplied
-// BGRA top-down bytes built by tools/make-orb-bow.ps1 from the artwork
+// Single source of truth: tools/orb/orb-bow-master.bgra — 72x72 premultiplied
+// BGRA top-down bytes built by tools/orb/make-orb-bow.ps1 from the artwork
 // (circle-cropped, checkerboard removed, black-lifted for dark charts).
 // P-ICONS-05: the retired yy overlay object is gone from the MQL side, so
 // yy.bmp is no longer generated at all — the orb is ONE 72px image.
@@ -340,9 +340,9 @@ const ORB_MASTER_SIZE = 72;
 // ingesting the bow artwork, so the two states share one chrome and the orb
 // only changes in the middle (P-ICONS-04/05).
 function orbMasterFrom(file, script) {
-  const master = path.join(__dirname, file);
+  const master = path.join(__dirname, 'orb', file);
   if (!fs.existsSync(master))
-    throw new Error('missing ' + master + ' — run powershell -File tools/' + script + ' first');
+    throw new Error('missing ' + master + ' — run powershell -File tools/orb/' + script + ' first');
   const m = fs.readFileSync(master);
   if (m.length !== ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4)
     throw new Error(file + ' bad size: ' + m.length + ' (want ' + (ORB_MASTER_SIZE * ORB_MASTER_SIZE * 4) + ')');
@@ -527,7 +527,7 @@ function circSkin(on) {
   });
 }
 
-// --- orb_bg.bmp : 72x72 bow-medallion, embedded from tools/orb-bow-master.bgra
+// --- orb_bg.bmp : 72x72 bow-medallion, embedded from tools/orb/orb-bow-master.bgra
 // (ingested artwork — see orbSkinFromMaster above, NOT a procedural skin)
 function orbSkin() { return orbSkinFromMaster(); }
 
@@ -1328,13 +1328,14 @@ function chevRSkin(name) {
 //     It was 92 while PNL_BTN_W had already moved to 72 — the Done face ran
 //     4px past the card's content edge and 20px of each face was dead.
 const FT_BTN_W = 72, FT_BTN_H = 28, FT_BTN_PAD = 8;
-function ftBtnSkin(accent, primary) {
-  const W = FT_BTN_W + 2 * FT_BTN_PAD, H = FT_BTN_H + 2 * FT_BTN_PAD;
+function ftBtnSkin(accent, primary, width) {
+  const BTW = width || FT_BTN_W;
+  const W = BTW + 2 * FT_BTN_PAD, H = FT_BTN_H + 2 * FT_BTN_PAD;
   const a1 = primary ? ACCENTS[accent].a1 : null;
   const a2 = primary ? A2[accent] : null;
   const glow = primary ? A_GLOW[accent] : null;
-  const cx = FT_BTN_W / 2, cy = FT_BTN_H / 2;
-  const hw = (FT_BTN_W - 1) / 2, hh = (FT_BTN_H - 1) / 2;
+  const cx = BTW / 2, cy = FT_BTN_H / 2;
+  const hw = (BTW - 1) / 2, hh = (FT_BTN_H - 1) / 2;
   const buf = renderFxWH(W, H, (x, y) => {
     const px = x - FT_BTN_PAD, py = y - FT_BTN_PAD;
     let col = [0, 0, 0, 0];
@@ -1455,6 +1456,92 @@ function palCardSkin() {
     return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
   });
   return { w: W, h: H, buf };
+}
+
+// --- ds_top_l/m/r · ds_mid_l/r · ds_bot_l/m/r : DrawStrip plate skin (P-DRAW-29).
+//     The strip wears the cards' own Obsidian-Gold surface at ITS OWN width: a
+//     9-slice. Corners baked; middles baked wide (DS_MIDW) and cropped at runtime
+//     via XSIZE/YSIZE (MT4 crops a smaller size, never stretches — the crop is
+//     invisible because every middle is uniform along its crop axis).
+//     Bands (content px): top 44 (quick row + gap) / mid 36 / bot 4; margin 14,
+//     radius 10 — the same margin/radius language as pnl/bk skins. Body:
+//     CARD_TOP->CARD_MID over the top band, flat CARD_MID middle (the mid-row
+//     centre is a plain rect in DSTRIP_CLR_PANEL, one level off — invisible),
+//     CARD_MID->CARD_BOT over the bottom 4px, so every seam lands on CARD_MID
+//     and the composition cannot stripe. Shadow is uniform along each crop axis
+//     by construction (straight-edge model), so caps and middles always agree.
+const DS_M = 14, DS_R = 14;
+const DS_CAP = DS_M + DS_R;          // 28 — corner cap width
+const DS_EDGE = DS_M + 1;            // 15 — mid-row side strip (margin + border)
+const DS_TOPC = 44, DS_MIDC = 42, DS_BOTC = 4;
+const DS_TOPH = DS_M + DS_TOPC;      // 58
+const DS_BOTH = DS_BOTC + DS_M;      // 18
+const DS_MIDW = 640;                 // baked middle width (covers s_dsW <= 660)
+const DS_MIDH = 42 * 24;             // 1008 — 24 mid bands of headroom
+
+// signed distance to the card boundary, piece-local coords (negative inside).
+// corner=0..3 (TL,TR,BL,BR) uses the infinite quarter-card model; edge=4..5
+// (top/bottom straight edge) and 6..7 (left/right straight edge) the half-plane.
+function dsSdf(x, y, W, H, kind) {
+  const big = 1000;
+  if (kind <= 3) {
+    let bx = x, by = y;
+    if (kind === 1 || kind === 3) bx = W - 1 - bx;
+    if (kind >= 2) by = H - 1 - by;
+    return rrSdf(bx, by, DS_M + big, DS_M + big, big, big, DS_R);
+  }
+  if (kind === 4) return y - DS_M;             // top edge
+  if (kind === 5) return (H - 1 - y) - DS_M;   // bottom edge
+  if (kind === 6) return x - DS_M;             // left edge
+  return (W - 1 - x) - DS_M;                   // right edge
+}
+
+// body tone at piece-local y for a band (content origin at DS_M).
+function dsBody(band, y) {
+  const cy = y - DS_M;
+  if (band === 0) return lerpColor(CARD_TOP, CARD_MID, clamp01(cy / DS_TOPC));
+  if (band === 2) return lerpColor(CARD_MID, CARD_BOT, clamp01(cy / DS_BOTC));
+  return CARD_MID.slice();
+}
+
+function dsSkinPiece(W, H, band, kind) {
+  const buf = renderFxWH(W, H, (x, y) => {
+    let col = [0, 0, 0, 0];
+    // drop shadow: the silhouette nudged down 5 (pnl's number), blurred to fit
+    // the 14px margin — identical behaviour to the shipped panel cards.
+    const sd = dsSdf(x, y - 5, W, H, kind);
+    if (sd > 0 && sd < 13) {
+      const k = 1 - sd / 13;
+      col = over(col, pm(CARD_SHADOW, Math.round(175 * k * k)));
+    }
+    const d = dsSdf(x, y, W, H, kind);
+    if (d < 0.7) {
+      if (d > -1.2) {
+        col = over(col, pm(CARD_BD, 255));                     // 1px #2C3444 border
+      } else {
+        col = over(col, pm(dsBody(band, y), 255));             // obsidian body
+        if (band === 0 && (y - DS_M) > -0.5 && (y - DS_M) < 1.0)
+          col = over(col, pm([255, 255, 255], 19));            // top catchlight
+      }
+    }
+    return col[3] > 0 ? col : null;
+  });
+  return { w: W, h: buf.length / (W * 4), buf };
+}
+
+function dsSkinFiles() {
+  return [
+    { name: 'ds_top_l.bmp', ...dsSkinPiece(DS_CAP, DS_TOPH, 0, 0) },
+    { name: 'ds_top_m.bmp', ...dsSkinPiece(DS_MIDW, DS_TOPH, 0, 4) },
+    { name: 'ds_top_r.bmp', ...dsSkinPiece(DS_CAP, DS_TOPH, 0, 1) },
+    { name: 'ds_mid_l.bmp', ...dsSkinPiece(DS_EDGE, DS_MIDH, 1, 6) },
+    { name: 'ds_mid_r.bmp', ...dsSkinPiece(DS_EDGE, DS_MIDH, 1, 7) },
+    { name: 'ds_bot_l.bmp', ...dsSkinPiece(DS_CAP, DS_BOTH, 2, 2) },
+    { name: 'ds_bot_m.bmp', ...dsSkinPiece(DS_MIDW, DS_BOTH, 2, 5) },
+    { name: 'ds_bot_r.bmp', ...dsSkinPiece(DS_CAP, DS_BOTH, 2, 3) },
+    { name: 'dsg_btn_ghost.bmp', ...ftBtnSkin(null, false, 64) },
+    { name: 'dsg_btn_primary.bmp', ...ftBtnSkin('gold', true, 64) },
+  ];
 }
 
 // ---------------------------------------------------------------- main
@@ -1621,8 +1708,18 @@ const panelFiles = [
   { name: 'pnl_glass22.bmp',    ...glassSkin(22, 22) },
   { name: 'pnl_glass46.bmp',    ...glassSkin(46, 22) },
   { name: 'pnl_glass38.bmp',    ...glassSkin(38, 20) },
+  // P-DRAW-33 (2026-09-24): the STRIP's colour surfaces wear the same sheen —
+  // «چرا از رنگ ها شیشه استفاده نشده مثل بقیه». The strip's cells are 32px
+  // (quick row + colour popover) and the gear's swatch grid is 28px, so the
+  // frame is baked at both of those sizes: MT4 CROPS a bitmap label, never
+  // scales it, so a 38px frame on a 28px cell loses its right/bottom edge.
+  { name: 'pnl_glass32.bmp',    ...glassSkin(32, 32) },
+  { name: 'pnl_glass28.bmp',    ...glassSkin(28, 28) },
   { name: 'pnl_nav.bmp',        ...navSkin() },
   { name: 'pal_card.bmp',       ...palCardSkin() },
+  // P-DRAW-29 (2026-09-24): the DrawStrip plate skin (9-slice, see above).
+  // The mid-row centre is a plain DSTRIP_CLR_PANEL rect (no file); the two
+  // side strips tile it vertically, the middles crop it horizontally.
   { name: 'pnl_cb_on.bmp',   w: 20, h: 20, buf: render(20, cbArt(true), CB_NAVY) },
   { name: 'pnl_cb_off.bmp',  w: 20, h: 20, buf: render(20, cbArt(false), [255, 255, 255]) },
   // R-SUBLADDER (2026-09-11): Tools sub-menu grid — cells + one panel per
@@ -1630,6 +1727,7 @@ const panelFiles = [
   { name: 'cell_off.bmp',    ...cellSkin(false) },
   { name: 'cell_on.bmp',     ...cellSkin(true)  },
 ];
+panelFiles.push(...dsSkinFiles());
 
 // One card skin per ROW COUNT: BiotakPanels.mqh resolves
 // "::Files\Icons\pnl_card" + cardRows + ".bmp", so the file name IS the row
@@ -1732,10 +1830,14 @@ for (const pf of panelFiles) {
     count++;
   }
 }
-// Emit manifest: the EXACT runtime-reachable set. Purge scripts and the
-// #resource preflight derive from it — a disk BMP outside this list is dead
-// weight, a #resource outside it embeds a ghost.
-const manifest = [...files.map(f => f[0]), ...panelFiles.map(f => f.name)].sort();
+// Emit manifest: the EXACT runtime-reachable set. This file is the record of
+// what is live — a disk BMP outside this list is dead weight, a #resource
+// outside it embeds a ghost.
+// P-DRAW-29: the sliced wide-card body (pnl_cardWtop/mid/bot/fade.bmp) is
+// runtime-reachable but pixel-sliced offline, not drawn here — list it too, or
+// the wide cards' body is unaccounted for.
+const SLICED = ['pnl_cardWtop.bmp', 'pnl_cardWmid.bmp', 'pnl_cardWbot.bmp', 'pnl_cardWfade.bmp'];
+const manifest = [...files.map(f => f[0]), ...panelFiles.map(f => f.name), ...SLICED].sort();
 fs.writeFileSync(path.join(__dirname, 'icon-manifest.txt'),
                  manifest.join('\n') + '\n');
 console.log('Manifest: ' + manifest.length + ' files -> tools/icon-manifest.txt');

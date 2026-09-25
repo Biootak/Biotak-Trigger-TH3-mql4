@@ -1,7 +1,7 @@
 <# P-TH3-LOG2: pull the indicator's own verdict CSVs into the repo.
    The indicator appends TH3LOG lines to MQL4/Files/TH3LOG_<sym>_<tf>.csv
-   (the sandbox answers nowhere else); this copies them to th3logs/ where
-   tools/th3_log_collect.py reads them - no Experts copy-paste. #>
+   (the sandbox answers nowhere else); this copies them to th3logs/ - no
+   Experts copy-paste. #>
 param([string]$Dest = "")
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ($Dest -eq "") { $Dest = Join-Path $repo "th3logs" }

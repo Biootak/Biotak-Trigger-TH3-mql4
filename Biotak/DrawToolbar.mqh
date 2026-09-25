@@ -163,6 +163,28 @@ int DrawObjectType(const string name)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-21 — THE BOX'S OWN CHILDREN. A box 50% line is a helper the terminal
+// cannot draw (OBJ_RECTANGLE has no mid line), so it lives as a separate
+// OBJ_TREND named `<box>_BX50`. It is nobody's drawing: the classifier below
+// answers DK_NONE for it, so the strip never serves it, the hit test never
+// lands on it, and no preset/style memory learns from it. One suffix, one
+// test, asked by every entry point that meets an object name.
+// ══════════════════════════════════════════════════════════════════════════
+#define BOXCHILD_SUFFIX "_BX50"
+bool BoxIsMidChild(const string name)
+{
+   int n = StringLen(name), s = StringLen(BOXCHILD_SUFFIX);
+   if(n <= s) return false;
+   return (StringSubstr(name, n - s, s) == BOXCHILD_SUFFIX);
+}
+string BoxMidName(const string box) { return box + BOXCHILD_SUFFIX; }
+string BoxMidParent(const string child)
+{
+   if(!BoxIsMidChild(child)) return "";
+   return StringSubstr(child, 0, StringLen(child) - StringLen(BOXCHILD_SUFFIX));
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // THE CLASSIFIER. MT4's type answers the kind, with ONE refinement: a trend
 // line that carries a ray is a different ANIMAL on the chart (it runs to the
 // edge and back), so the kind is decided by the flags, not by the type alone —
@@ -170,6 +192,7 @@ int DrawObjectType(const string name)
 // ══════════════════════════════════════════════════════════════════════════
 EDrawKind DrawKindOf(const string name)
 {
+   if(BoxIsMidChild(name)) return DK_NONE;   // P-DRAW-21: a box helper is served never
    int t = DrawObjectType(name);
    if(t < 0) return DK_NONE;
    switch(t)
@@ -692,6 +715,20 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
       default: return false;
    }
    s_dkValid[k] = true;
+   return true;
+}
+
+bool DrawSlotPreviewColor(const string name, const color c)
+{
+   if(name == "" || ObjectFind(0, name) < 0) return false;
+   EDrawKind k = DrawKindOf(name);
+   if(k == DK_NONE || !DrawSlotAvailable(k, DRAW_SLOT_COLOR)) return false;
+   bool same = ((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == c);
+   if(DrawKindHasLevels(k) && DrawLevelCount(name) > 0)
+      same = same && ((color)ObjectGetInteger(0, name, OBJPROP_LEVELCOLOR, 0) == c);
+   if(same) return false;
+   ObjectSetInteger(0, name, OBJPROP_COLOR, c);
+   if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, c);
    return true;
 }
 

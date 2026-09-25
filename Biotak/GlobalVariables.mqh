@@ -390,6 +390,14 @@ static bool g_UIPanelOpen = false;
 // under opaque UI without asking the UI layer per box.
 static int g_UIPanelRX = -1, g_UIPanelRY = -1, g_UIPanelRW = 0, g_UIPanelRH = 0;
 static int g_UIPPalRX = -1, g_UIPPalRY = -1, g_UIPPalRW = 0, g_UIPPalRH = 0;
+// P-DRAW-31 (2026-09-24): and the DRAW-STRIP's own plate, published the same way
+// by `DrawStripPublishRect()` for the ONE reader that cannot see it —
+// `PnlComputePosition` sizes a card with BiotakPanels' own arithmetic, and
+// BiotakPanels is included AFTER DrawStrip (MQL4 is define-before-use), so a card
+// must be TOLD where the strip is instead of re-deriving its geometry. Two panels
+// on one pixel is the user's own complaint («جایی که روی هم نیافتن»); margin
+// included by the publisher; -1 = no strip on the chart.
+static int g_UIStripRX = -1, g_UIStripRY = -1, g_UIStripRW = 0, g_UIStripRH = 0;
 
 // Toggle States (hotkey-controlled)
 // NOTE: g_triggerLevelsEnabled moved to RuntimeSettings.mqh — it is the runtime
@@ -864,7 +872,7 @@ void ViewAnchorLineEnsure()
         if(!ObjectCreate(0, g_viewAnchorLineName, OBJ_VLINE, 0, g_viewAnchorTime, 0)) return;
     }
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_TIME, 0, (long)g_viewAnchorTime);
-    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_COLOR, C'255,171,0');
+    ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_COLOR, BIO_CLR_BRAND);   // P-UI-117
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_STYLE, STYLE_DOT);
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_WIDTH, 1);
     ObjectSetInteger(0, g_viewAnchorLineName, OBJPROP_SELECTABLE, true);

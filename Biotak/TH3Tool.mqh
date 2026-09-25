@@ -208,23 +208,23 @@ void RepositionABCDInfoLabels()
     // nothing new.
     int safeY = GetABCDInfoSafeYDistance();
     int patCount = TH3PatternStoreCount();
-    int fontPt   = inpABCDInfoFontSize;
     bool reposition = inpEnableTH3Tool;
     for(int i = 0; i < patCount; i++)
     {
         // P-TH3-INFO-01: the caption is a stacked FAMILY, so the whole family
         // moves together - moving only `_Info` would pull line 1 up into the
         // mode labels and leave lines 2..n behind.
-        // P-TH3-INFO-04: and the family is its rows AND its plate, on the slot
-        // grid the writer used (TH3InfoCaptionTopY) - a reposition that placed
-        // every pattern's plate on the same Y would stack the plates instead.
+        // P-TH3-INFO-14: and it is its rows AND its plate, on the ONE Y
+        // P-TH3-INFO-10 left: only the active family carries a plate, so the
+        // slot grid (per-pattern index) is retired — every family is parked at
+        // the base and the visible one sits exactly where the user expects it.
+        // Whoever becomes active is re-placed by the draw pass on the same Y.
         // P-TH3-INFO-06c: verify FIRST (heal a visibility the redraw did not
         // write), then move.
         string pname = g_th3Patterns.items[i].name;
         TH3InfoFamilyVerify(pname, (pname == g_activeABCDPattern));
         if(reposition)
-            TH3InfoFamilyReposition(pname,
-                                    TH3InfoCaptionTopY(safeY, i, fontPt));
+            TH3InfoFamilyReposition(pname, safeY);
     }
     // P-TH3-INFO-06b: plus the chart-wide sweep — a plate whose base never
     // reached the store (skipped restore, build mix) has no rows to count
@@ -2224,15 +2224,71 @@ void LegInfoClampY(const int ch, const int bh, int &by)
         by = (int)MathMax((double)LEG_INFO_MARGIN, (double)(ch - LEG_INFO_MARGIN - bh));
 }
 
-// P-LM-23: the plate's place, with no walk and no memory. The second tip plus
-// the leg's own direction IS the answer — the same anchors always project the
-// same rectangle, so a scroll or a zoom can never move the plate anywhere else
-// and there is nothing to remember between re-projections.
+// P-LM-24 (2026-09-25) — THE PLATE MUST NEVER END UP ON THE TIP IT LABELS.
+//
+// P-LM-23 gave the plate ONE place (past the second tip, LEG_INFO_GAP away)
+// and P-LM-19 widened that gap for exactly one reason: the head, its handle
+// and the candles at the tip have to stay readable. But BOTH ways of fitting
+// the plate into the window can undo it, and the common chart is where they
+// meet: the leg runs into the newest bars, which IS the window's edge.
+//   * the X clamp — `bx = right - bw` slides the plate back over the tip (a
+//     200 px plate reaches the tip whenever the head is in the last 200 px);
+//   * the Y clamp — near the top edge `by = MARGIN` puts the plate's own rows
+//     on the tip's pixel row;
+// and because it is the FIXED direction that gets clamped, the plate lands on
+// the head with its gap still nominally honoured.
+//
+// So the place is chosen, not clamped: the preferred side first, then the
+// MIRROR of it across the tip (the same gap on the far side of the head, so a
+// head at the right edge is labelled from its left), then the two placements
+// beside the tip's row. Same purity as P-LM-23 — every candidate is a function
+// of the anchors, so the follower re-projects the same rectangle and a scroll
+// still cannot move it anywhere else. If the window cannot hold the plate clear
+// of the tip at all (a plate wider/taller than the chart), the preferred
+// placement stands: the documented floor.
+#define LEG_INFO_CLEAR  8   // px around the tip the plate may not cover (the
+                            // tip handle's own half + a hair, P-UI-98d)
+
+bool LegInfoCoversTip(const int bx, const int by, const int bw, const int bh,
+                      const int tipX, const int tipY)
+{
+    return (tipX >= bx - LEG_INFO_CLEAR && tipX <= bx + bw + LEG_INFO_CLEAR &&
+            tipY >= by - LEG_INFO_CLEAR && tipY <= by + bh + LEG_INFO_CLEAR);
+}
+
 void LegInfoBoxTop(const int tipX, const int tipY, const int dirX, const int dirY,
                    const int bw, const int bh, int &bx, int &by)
 {
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
     int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+
+    LegInfoSlotRect(tipX, tipY, dirX, dirY, bw, bh, cw, bx, by);   // 1. past the tip
+    LegInfoClampY(ch, bh, by);
+    if(!LegInfoCoversTip(bx, by, bw, bh, tipX, tipY)) return;
+
+    int mx = 0, my = 0;
+    LegInfoSlotRect(tipX, tipY, -dirX, -dirY, bw, bh, cw, mx, my); // 2. the far side
+    LegInfoClampY(ch, bh, my);
+    if(!LegInfoCoversTip(mx, my, bw, bh, tipX, tipY)) { bx = mx; by = my; return; }
+
+    // 3./4. the clamped X of the preferred side (inside the window by
+    // construction, so it keeps LEG_INFO_MARGIN) with the block moved above /
+    // below the tip's own row — the same gap, spent on the other axis.
+    int keepX = bx;
+    int above = tipY - LEG_INFO_GAP - bh;
+    if(above >= LEG_INFO_MARGIN)
+    {
+        by = above;
+        if(!LegInfoCoversTip(keepX, by, bw, bh, tipX, tipY)) { bx = keepX; return; }
+    }
+    int below = tipY + LEG_INFO_GAP;
+    if(ch <= 0 || below + bh <= ch - LEG_INFO_MARGIN)
+    {
+        by = below;
+        if(!LegInfoCoversTip(keepX, by, bw, bh, tipX, tipY)) { bx = keepX; return; }
+    }
+
+    // 5. the floor: no placement is clear of the tip — take P-LM-23's own answer.
     LegInfoSlotRect(tipX, tipY, dirX, dirY, bw, bh, cw, bx, by);
     LegInfoClampY(ch, bh, by);
 }

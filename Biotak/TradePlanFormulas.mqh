@@ -12,7 +12,7 @@
 //|   Hunter  = round(8/3 × Eng)                                     |
 //|   Structure = 2 ladder rungs UP; Trigger = 2 rungs DOWN.         |
 //|                                                                  |
-//|   Evidence (2026-09-10 evening rig, tools/eng_own_window.js):     |
+//|   Evidence (2026-09-10 evening rig, tools/research/eng_own_window.js):     |
 //|   Eng is a LONG-HORIZON measure per chart TF, not a short trigger |
 //|   window. The divisor reproduces all six of his SL-derived        |
 //|   XAUUSD legs {M15 16.515, H1 39.854, H4 87.766, D1 252.338,      |

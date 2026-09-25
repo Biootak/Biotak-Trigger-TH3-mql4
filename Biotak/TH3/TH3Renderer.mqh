@@ -312,7 +312,9 @@ bool TH3RORowAt(const string nm, const string txt, const ENUM_BASE_CORNER corner
 #define TH3_INFO_TEXT_MAX  63   // MT4's own cap on OBJPROP_TEXT
 #define TH3_INFO_MAX_LINES 6    // room for three rows, each of which may wrap
 #define TH3_INFO_ROWS      3    // P-TH3-INFO-04: the readout's layout is its rows
-#define TH3_INFO_SLOT_GAP  8    // px between two captions' plates in the stack
+#define TH3_INFO_SLOT_GAP  8    // RETIRED (P-TH3-INFO-14, 2026-09-25): the px between two
+                                // captions' plates in the stack. Kept for a one-line restore
+                                // (see the retirement note below), no reader now.
 
 // Line 0 keeps the historical name (`_Info`), so the base-name extraction,
 // the prefix wipes and any object already on a chart keep resolving.
@@ -328,14 +330,37 @@ string TH3InfoLineName(const string base, const int line)
 // BaseKnot note's own plate gate forbids on the other surface (P-BK-86).
 string TH3InfoPlateName(const string base) { return base + "_InfoPlate"; }
 
-// The caption's own block height and slot pitch, so the pattern stack and the
-// reposition pass cannot each assume a different number of rows.
-int TH3InfoCaptionBlockH(const int fontPt) { return TH3ROPlateH(TH3_INFO_ROWS, fontPt); }
-int TH3InfoCaptionTopY(const int baseY, const int slot, const int fontPt)
-{
-    if(slot <= 0) return baseY;
-    return baseY + slot * (TH3InfoCaptionBlockH(fontPt) + TH3_INFO_SLOT_GAP);
-}
+//+------------------------------------------------------------------+
+//| P-TH3-INFO-14 (2026-09-25) — THE SLOT PITCH IS DEAD; THE CAPTION |
+//| SITS AT THE BASE OF THE SAFE AREA.                                |
+//|                                                                  |
+//| P-TH3-INFO-03 gave every pattern its own SLOT so two captions'     |
+//| plates could not overlap, and P-TH3-INFO-04 sized that pitch on    |
+//| `TH3_INFO_ROWS` (three). Both are now wrong in the same way:      |
+//|                                                                  |
+//|   * P-TH3-INFO-10 made the plate follow visibility by EXISTENCE —  |
+//|     only the ACTIVE family carries a plate, and every inactive      |
+//|     family's rows wear OBJ_NO_PERIODS. So a second slot can never  |
+//|     be OCCUPIED, and the pitch could only ever push the one plate  |
+//|     the user sees down by `patternIndex x (56 + 8) = 64 px` at the |
+//|     reference size (pt 9, 96 dpi) — over the empty slot of a        |
+//|     caption that is not there; and switching the active pattern     |
+//|     made the caption JUMP by that much.                            |
+//|   * The pitch was a FIXED three rows while the wrap budget is       |
+//|     `TH3_INFO_MAX_LINES` (six): a four-line caption measures        |
+//|     TH3ROPlateH(4) = 73 px against a 64 px pitch, and a six-line    |
+//|     one 107 px — so the very overlap the slot existed to prevent    |
+//|     was 9..43 px of it, and the "two plates never overlap" note at   |
+//|     the call site was arithmetic that did not hold.                 |
+//|                                                                  |
+//| The pitch therefore has no reader that can be true, and the two    |
+//| helpers that computed it are gone. The plate is measured from its  |
+//| own final lines (`TH3ROPlateH(n)`), which is what makes it fit      |
+//| whatever the wrap produced — the height was never the problem, the |
+//| PITCH was. Restore a stack by giving `TH3_INFO_SLOT_GAP` a reader:  |
+//| `topY = baseY + slot * (TH3ROPlateH(n, fontPt) + TH3_INFO_SLOT_GAP)`|
+//| — with `n` the PREVIOUS family's own line count, never a constant.  |
+//+------------------------------------------------------------------+
 
 // Is this object part of ANY pattern's caption — a line, or the plate under them?
 // (the family test the active-pattern sweep needs, so a line 2 is swept with its
@@ -755,11 +780,12 @@ void TH3InfoFamilyVerify(const string base, const bool isActive)
     {
         string nm = TH3InfoLineName(base, line);
         if(ObjectFind(0, nm) < 0) continue;
-        // P-TH3-INFO-08: ink above plate, healed here too (old charts).
-        // P-TH3-INFO-11: guarded (this verify also runs on the 250 ms heal
-        // net - an unconditional write would repaint a healthy chart 4x/s).
-        if((int)ObjectGetInteger(0, nm, OBJPROP_ZORDER) != Z_TH3_RO_TEXT)
-            ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_TH3_RO_TEXT);
+        // P-TH3-INFO-08: ink above plate, re-asserted UNGUARDED (old charts).
+        // P-UI-31: the rung is never read back — a guarded read would be a
+        // product question about paint order, and the 8ab-20b seed bans it.
+        // The 250 ms net only reaches a family that already exists; seven
+        // same-value writes beat a diagnostic read the audit forbids.
+        ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_TH3_RO_TEXT);
         // P-TH3-INFO-09: and the BACK flag healed here — a stale row with
         // BACK=true is invisible behind its own plate between redraws.
         if((bool)ObjectGetInteger(0, nm, OBJPROP_BACK))
@@ -774,9 +800,9 @@ void TH3InfoFamilyVerify(const string base, const bool isActive)
     // visible — the empty dark bar).
     if(!isActive) { TH3InfoFamilyPlateDrop(base); return; }
     if(!hasPlate) { TH3InfoFamilyPlateGrow(base); return; }
-    // P-TH3-INFO-11: guarded (see the rows' twin above).
-    if((int)ObjectGetInteger(0, plate, OBJPROP_ZORDER) != Z_TH3_RO_PLATE)
-        ObjectSetInteger(0, plate, OBJPROP_ZORDER, Z_TH3_RO_PLATE);
+    // P-TH3-INFO-11 / P-UI-31: same unguarded re-assert as the rows above —
+    // the rung is never read back (see the rows' note).
+    ObjectSetInteger(0, plate, OBJPROP_ZORDER, Z_TH3_RO_PLATE);
     if((bool)ObjectGetInteger(0, plate, OBJPROP_BACK))
         ObjectSetInteger(0, plate, OBJPROP_BACK, false);
     if((int)ObjectGetInteger(0, plate, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
@@ -2251,11 +2277,13 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     }
     if(StringLen(mileState) > 0) rowLive += " | " + mileState;
 
-    // P-TH3-INFO-03: each pattern gets its own slot, so two plates never overlap.
+    // P-TH3-INFO-14: ONE visible caption, ONE Y — the slot pitch is retired (its
+    // note lives in the geometry block above with the arithmetic). Only the active
+    // family carries a plate (INFO-10), so `patIdx` buys nothing and costs the
+    // user a 64 px empty slot above the caption plus a jump whenever the active
+    // pattern changes. The caption sits at the base of the safe area.
     bool isActive = (g_activeABCDPattern == mainObjName);
-    int patIdx  = TH3PatternStoreFind(mainObjName);
-    if(patIdx < 0) patIdx = 0;
-    int rowY    = TH3InfoCaptionTopY(inpABCDInfoYDistance, patIdx, inpABCDInfoFontSize);
+    int rowY    = inpABCDInfoYDistance;
     int infoLines = TH3InfoFamilyDraw(mainObjName,
                                       rowIdentity + "\n" + rowLegs + "\n" + rowLive,
                                       isActive, rowY);

@@ -1481,12 +1481,13 @@ color GetBKTextRenderColor()
     if(s_c == g_bkTextColor && s_bg == bg) return s_out;
     s_c = g_bkTextColor; s_bg = bg;
     s_out = g_bkTextColor;
-    if(g_bkTextColor == C'255,255,255')
-    {
-       int lum = ((((int)bg) & 0xFF) * 299 + ((((int)bg) >> 8) & 0xFF) * 587 +
-                  ((((int)bg) >> 16) & 0xFF) * 114) / 1000;
-       if(lum > 128) s_out = C'150,70,0';
-    }
+    // P-UI-117: the gate and the readable ink are the palette owner's now
+    // (`BioChartBgIsLight`, `BIO_CLR_ON_LIGHT`). This block used to carry its own
+    // copy of the 299/587/114 arithmetic and its own `C'150,70,0'`, annotated
+    // "same luminance gate as the INFO label" — a rule in two places is a rule
+    // that drifts, and only one of the two could ever have followed a change.
+    if(g_bkTextColor == C'255,255,255' && BioChartBgIsLight())
+        s_out = BIO_CLR_ON_LIGHT;
     return s_out;
 }
 

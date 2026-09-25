@@ -1595,14 +1595,15 @@ void BaseKnotLazyInit()
 //| stay until the session ends.                                       |
 //+------------------------------------------------------------------+
 static uint g_bkHintExpireMs = 0;   // 0 = persistent; else GetTickCount deadline
-// Readable foreground for chart-anchored texts (hint + INFO label) — amber on
-// dark charts, dark brown on light ones (same luminance gate, one place).
+// Readable foreground for chart-anchored texts (hint + INFO label) — brand
+// amber on dark charts, deep amber on light ones. P-UI-117: the gate AND both
+// inks are the palette owner's now (`BioChartBgIsLight`, `BIO_CLR_BRAND`,
+// `BIO_CLR_ON_LIGHT`) — this function is the decision, not a second copy of the
+// rule (it used to carry its own luminance arithmetic and its own literals,
+// beside RuntimeSettings' identical copy).
 color BaseKnotFgForBg()
 {
-   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-   int lum = ((((int)bg) & 0xFF) * 299 + ((((int)bg) >> 8) & 0xFF) * 587 +
-              ((((int)bg) >> 16) & 0xFF) * 114) / 1000;
-   return (lum > 128 ? C'150,70,0' : C'255,171,0');
+   return (BioChartBgIsLight() ? BIO_CLR_ON_LIGHT : BIO_CLR_BRAND);
 }
 void BaseKnotHintShow(const string text, const int ttlMs = 0)
 {
@@ -2353,7 +2354,9 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(BK_PT_BADGE));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
-   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, C'18,22,33');
+   ObjectSetInteger(0, name, OBJPROP_BORDER_COLOR, BIO_CLR_DEEP);   // P-UI-117: the shared
+                                    // deep navy — a one-line restore must not reintroduce
+                                    // the literal the owner now names
    ObjectSetInteger(0, name, OBJPROP_BACK, false);
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);

@@ -1,4 +1,0 @@
-﻿
-selftest FAILED: 1 fault(s) went undetected, 0 stale seed anchor(s)
-
-

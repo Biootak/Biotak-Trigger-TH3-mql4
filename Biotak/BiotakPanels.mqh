@@ -337,19 +337,11 @@
 #define PNL_QSW_OGAP   6
 color QuickPalColor(const int i)
 {
-   // THE 8 QUICK SWATCHES — preview `const SW`. Index order is the card order
-   // left→right, so changing it re-paints every colour row.
-   switch(i)
-   {
-      case 0:  return C'255,171,0';    // #FFAB00 brand amber
-      case 1:  return C'240,69,95';    // #F0455F rose
-      case 2:  return C'18,184,134';   // #12B886 jade
-      case 3:  return C'31,168,224';   // #1FA8E0 cyan
-      case 4:  return C'124,92,255';   // #7C5CFF violet
-      case 5:  return C'207,227,255';  // #CFE3FF pale ice
-      case 6:  return C'255,255,255';  // #FFFFFF
-      default: return C'20,20,20';     // #141414
-   }
+   // P-DRAW-24 — ONE PALETTE: the 8 quick swatches are BioPal()'s first 8, in
+   // order (changing the order re-paints every colour row). The table lives in
+   // ConstantsAndEnums.mqh; this face only bounds the index.
+   if(i < 0 || i > 7) return C'20,20,20';     // #141414
+   return BioPal(i);
 }
 //--- .ft .btn — content-sized in the preview (Reset ~72px, Done ~69px), 28px
 //--- tall with an 8px radius. The face is a BAKED skin (pnl_btn_ghost /
@@ -392,31 +384,31 @@ color QuickPalColor(const int i)
 //--- --field #181D27, --track #222937, --card #1D222C. The single primary is
 //--- the gold accent ramp (#FFC247 -> #FF8A00) with --aInk #1A1206 on top.
 //--- Geometry is untouched — only paint.
-#define PNL_CLR_TITLE    C'243,246,251'   // #F3F6FB --title / --val
-#define PNL_CLR_MUTED    C'140,150,166'   // #8C96A6 --muted
-#define PNL_CLR_LABEL    C'203,212,226'   // #CBD4E2 --lbl
+#define PNL_CLR_TITLE    BIO_CLR_INK        // #F3F6FB --title / --val (= BIO_CLR_INK)
+#define PNL_CLR_MUTED    BIO_CLR_MUTED      // #8C96A6 --muted (= BIO_CLR_MUTED)
+#define PNL_CLR_LABEL    BIO_CLR_LABEL      // #CBD4E2 --lbl (= BIO_CLR_LABEL)
 // R-KEYCAP: the header .key cap's letter when its master switch is OFF (the
 // shipped ink, unchanged - pixel parity for every card whose cap is a hint).
 #define PNL_CLR_KEYCAP_OFF C'183,193,208'
-#define PNL_CLR_ACCENT   C'255,194,71'    // #FFC247 --a1 (gold ramp top)
-#define PNL_CLR_ACCENT_TX C'26,18,6'      // #1A1206 --aInk
-#define PNL_CLR_VALUE    C'243,246,251'   // #F3F6FB --val
+#define PNL_CLR_ACCENT   BIO_CLR_ACCENT     // #FFC247 --a1 (gold ramp top)
+#define PNL_CLR_ACCENT_TX BIO_CLR_ACCENT_INK // #1A1206 --aInk
+#define PNL_CLR_VALUE    BIO_CLR_INK        // #F3F6FB --val (= BIO_CLR_INK)
 #define PNL_CLR_TRACK_BD C'52,61,77'      // #343D4D --trackBd (spec, not the card border)
 #define PNL_CLR_TRACK    C'34,41,55'      // #222937 --track
-#define PNL_CLR_FIELD_BD C'51,60,76'      // #333C4C --fieldBd (edit/DD rims — NOT the seg border)
-#define PNL_CLR_SEG_ON   C'255,194,71'    // .seg.on  = accent ramp
-#define PNL_CLR_SEG_OFF  C'29,34,44'      // #1D222C .seg face
+#define PNL_CLR_FIELD_BD BIO_CLR_FIELD_BD   // #333C4C --fieldBd (edit/DD rims — NOT the seg border)
+#define PNL_CLR_SEG_ON   BIO_CLR_ACCENT     // .seg.on  = accent ramp
+#define PNL_CLR_SEG_OFF  BIO_CLR_CARD       // #1D222C .seg face (= BIO_CLR_CARD)
 #define PNL_CLR_SEG_BD   C'45,52,65'      // #2D3441 .seg border
-#define PNL_CLR_SEG_TX   C'140,150,166'   // --muted on a dark seg
-#define PNL_CLR_DONE_TX  C'26,18,6'       // --aInk on the primary button
-#define PNL_CLR_LINE     C'34,40,50'      // row separators + control borders
-#define PNL_CLR_FIELD    C'24,29,39'      // #181D27 edit fields + popover faces
-#define PNL_CLR_CARD     C'29,34,44'      // #1D222C palette card + inactive tabs
+#define PNL_CLR_SEG_TX   BIO_CLR_MUTED      // --muted on a dark seg
+#define PNL_CLR_DONE_TX  BIO_CLR_ACCENT_INK // --aInk on the primary button
+#define PNL_CLR_LINE     BIO_CLR_HAIRLINE   // row separators + control borders
+#define PNL_CLR_FIELD    BIO_CLR_FIELD      // #181D27 edit fields + popover faces
+#define PNL_CLR_CARD     BIO_CLR_CARD       // #1D222C palette card + inactive tabs
 //--- the card body at the FOOTER (cardGrad bottoms out at #12161D). The footer
 //--- buttons carry a baked rounded skin whose corners are transparent, so the
 //--- OBJ_BUTTON beneath them must be filled with exactly this or its square
 //--- would show through the radius.
-#define PNL_CLR_FOOTBG   C'18,22,29'      // #12161D
+#define PNL_CLR_FOOTBG   BIO_CLR_FOOT       // #12161D card footer (= BIO_CLR_FOOT)
 #define PNL_CLR_DISABLED C'90,98,110'     // greyed-out (no-transparency targets)
 #define PNL_CLR_DIS_BD   C'58,66,80'      // greyed-out control borders
 #define PNL_CLR_SHADOW   C'8,10,14'       // popover drop shadows (dark chart)
@@ -424,67 +416,27 @@ color QuickPalColor(const int i)
 #define PNL_KNOB_BMP     18
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-UI-69 (2026-09-14) — A SWATCH THAT IS THE BACKDROP'S OWN COLOUR IS A HOLE.
+// P-UI-69b (2026-09-25) — THE SWATCH FLOOR MOVED DOWN, NOT AWAY.
 //
-// User report: «رنگ ها کار نمیکنه». The colour row read as seven swatches and
-// one EMPTY SLOT, and tapping the "slot" applied a near-black that then vanished
-// on the chart. Measured from the shipped screenshot, not recalled:
-// QuickPalColor(7) = #141414 (20,20,20) painted on the card face #1A2029
-// (26,32,41) with a PNL_CLR_LINE border #222832 (34,40,50) — contrast 1.05:1
-// for the fill and 1.11:1 for the border. P-UI-68 closed exactly this trap one
-// layer down (a colour STRIP cell whose target was clrNONE painted ink-black);
-// the quick strip, the palette's own swatches and the strip cells still had it.
+// The owner is now `BioSwatchBorder()` / `BIO_SWATCH_MIN_CONTRAST` in
+// ConstantsAndEnums.mqh (include #1), because the drawing strip's OWN colour
+// grids could not reach a floor that lived here (include 116 vs DrawStrip's
+// 97) — and a rule you cannot reach is a rule that gets copied. The measured
+// story of the user's «رنگ ها کار نمیکنه» (P-UI-69, 2026-09-14) and the 198-
+// colour measurement that set the 1.7 boundary are kept THERE, with the value.
 //
-// ONE owner for "will this swatch be visible on its own backdrop?", used by
-// every swatch family (quick strip, preview block, palette matrix, recents,
-// strip cells, the palette's current-colour block). Under the threshold the
-// swatch keeps its COLOUR — fidelity matters, the user asked for black — and
-// gains a border that contrasts, so the affordance can never read as empty.
+// The `Pnl*` names below are FACES of that owner: same rule, one
+// implementation, no second threshold. Never re-derive the arithmetic here.
 // ══════════════════════════════════════════════════════════════════════════
-//--- The floor is MEASURED, not chosen: over the 198 colours the panel can paint
-//--- as a swatch (the 8 quick ones + PalMatColor's 190 cells), the shipped build
-//--- had ELEVEN indistinguishable from the face they sit on — from 1.05:1 to
-//--- 1.68:1 — and the first genuinely visible tone was 1.72:1. The boundary sits
-//--- in that gap, so "add an outline" fires on exactly the swatches that read as
-//--- empty space and on nothing else (WCAG's stricter 3:1 for non-text UI is NOT
-//--- enforced: the card's own subtle border is the design language for every
-//--- visible swatch, and raising the floor would re-outline half the palette).
-#define PNL_SWATCH_MIN_CONTRAST 1.7
+#define PNL_SWATCH_MIN_CONTRAST BIO_SWATCH_MIN_CONTRAST
 
-//--- WCAG relative luminance (Rec.709 over linearised channels). MT4 packs a
-//--- colour BGR, so R is the LOW byte — the same extraction PalColorText uses.
-//--- clrNONE (-1) has no channels: reported as white, so a stray value can never
-//--- pass the threshold by accident.
-double PnlLum(const color c)
-{
-   // `color` is UNSIGNED in MQL4, so `c < 0` is always false (warning 65): a
-   // stray clrNONE only shows up once the value is seen as a signed int.
-   int v=(int)c;
-   if(v < 0) return 1.0;
-   int cr=v%256, cg=(v/256)%256, cb=v/65536;
-   double r=(double)cr/255.0, g=(double)cg/255.0, b=(double)cb/255.0;
-   if(r > 0.03928) r=MathPow((r+0.055)/1.055,2.4); else r=r/12.92;
-   if(g > 0.03928) g=MathPow((g+0.055)/1.055,2.4); else g=g/12.92;
-   if(b > 0.03928) b=MathPow((b+0.055)/1.055,2.4); else b=b/12.92;
-   return 0.2126*r + 0.7152*g + 0.0722*b;
-}
-
-//--- contrast ratio between two colours (1.0 = identical, 21.0 = black|white)
-double PnlContrast(const color a,const color b)
-{
-   double la=PnlLum(a), lb=PnlLum(b);
-   double hi=MathMax(la,lb), lo=MathMin(la,lb);
-   return (hi+0.05)/(lo+0.05);
-}
-
-//--- the border a swatch of `fill` must carry on `backdrop`. The SELECTION ring
-//--- is the caller's business (it passes the accent); this is the legibility
-//--- floor that keeps every swatch visible whatever colour it holds.
-color PnlSwatchBorder(const color fill,const color backdrop)
-{
-   return (PnlContrast(fill,backdrop) < PNL_SWATCH_MIN_CONTRAST)
-             ? PNL_CLR_MUTED : PNL_CLR_LINE;
-}
+//--- The floor's FACES (P-UI-69b). The owner is `BioLum` / `BioContrast` /
+//--- `BioSwatchBorder` in ConstantsAndEnums.mqh — these three names keep the
+//--- panel's call sites, exactly as `QuickPalColor` is a face of `BioPal` (and
+//--- `DrawStripPal` is another). One implementation, never a second.
+double PnlLum(const color c)                        { return BioLum(c); }
+double PnlContrast(const color a,const color b)      { return BioContrast(a,b); }
+color  PnlSwatchBorder(const color fill,const color backdrop) { return BioSwatchBorder(fill,backdrop); }
 
 // ══════════════════════════════════════════════════════════════════════════
 // R-PANELUI2 (2026-09-11) — the 13-card redesign of
@@ -3390,7 +3342,7 @@ void BkPresetGet(const int i, BkPreset &p)
    {
       p.border=C'0,0,139'; p.style=STYLE_SOLID; p.width=2; p.tr=0; p.rr=BK_TP_PLAN_MAX;   // P-BK-69: the mark's ink (and its points') — dark blue
       p.entry=C'46,139,87'; p.sl=C'220,50,50'; p.tp=C'30,144,255';
-      p.fill=C'255,171,0'; p.fillTr=100;
+      p.fill=BIO_CLR_BRAND; p.fillTr=100;   // P-UI-117: the brand token, not a second literal
       p.text=C'255,255,255'; p.textSize=10; p.bi=0; p.align=2; p.valign=1;
    }
 }
@@ -4738,6 +4690,19 @@ int PnlIntervalOverlap(const int a,const int ah,const int b,const int bh)
    return (hi > lo ? hi - lo : 0);
 }
 
+//--- P-DRAW-31 (2026-09-24): do two rects share a pixel? The MENU test above is
+//--- written out longhand because its bounds are asymmetric (PNL_PAD_X on each
+//--- side of the ring box); a published SURFACE (the draw-strip's plate, the
+//--- palette) is a plain rect, and two panels on one pixel is the user's own
+//--- complaint («جایی که روی هم نیافتن»), so it gets the honest test.
+bool PnlRectHits(const int ax,const int ay,const int aw,const int ah,
+                 const int bx,const int by,const int bw,const int bh,const int pad)
+{
+   if(aw <= 0 || ah <= 0 || bw <= 0 || bh <= 0) return false;
+   return !(ax + aw <= bx - pad || ax >= bx + bw + pad ||
+            ay + ah <= by - pad || ay >= by + bh + pad);
+}
+
 //+------------------------------------------------------------------+
 //| Compute safe zone: the rectangle that all ring items + orb occupy |
 //+------------------------------------------------------------------+
@@ -4881,6 +4846,15 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
    int cdTop = 0, cdBot = 0;
    bool hasBand = PnlCandleBandPx(cdTop, cdBot);
 
+   // P-DRAW-31 (2026-09-24): and the DRAW-STRIP's published plate is a THIRD hard
+   // rect. Two surfaces on one pixel is the user's own complaint («جایی که روی هم
+   // نیافتن»), and the strip is the one surface this card cannot measure — it lives
+   // in the module included BEFORE this one, so it PUBLISHES (`g_UIStripR*`, the
+   // same contract `g_UIPanelR*` uses). Like the menu rule it is HARD: a spot that
+   // lands on the plate is never used while any survivor exists.
+   bool hasStrip = (g_UIStripRX >= 0 && g_UIStripRW > 0 && g_UIStripRH > 0);
+   int srX = g_UIStripRX, srY = g_UIStripRY, srW = g_UIStripRW, srH = g_UIStripRH;
+
    // A panel dragged to a manual spot reopens where it was left (clamped
    // on-screen) — but only while that spot still PASSES the same two rules a
    // fresh spot must pass. Before P-UI-91 a park was honoured blindly, which is
@@ -4896,8 +4870,11 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
                            manX >= mbx + mbw + PNL_PAD_X ||
                            manY + ph <= mby - PNL_PAD_X ||
                            manY >= mby + mbh + PNL_PAD_X);
+      // P-DRAW-31: a park on the strip's plate is as dirty as a park on the candles.
+      bool parkStripHit = (hasStrip && PnlRectHits(manX, manY, pw, ph, srX, srY, srW, srH,
+                                                   PNL_PAD_X));
       int parkOv = (hasBand ? PnlIntervalOverlap(manY, ph, cdTop, cdBot) : 0);
-      if(!parkMenuHit && parkOv == 0) { px = manX; py = manY; return; }
+      if(!parkMenuHit && !parkStripHit && parkOv == 0) { px = manX; py = manY; return; }
    }
 
    int candX[4], candY[4];
@@ -4933,7 +4910,12 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
                     cx >= mbx + mbw + PNL_PAD_X ||
                     cy + ph <= mby - PNL_PAD_X ||
                     cy >= mby + mbh + PNL_PAD_X);
-      valid[c] = !hits;
+      // P-DRAW-31: the strip's plate joins the menu rect as a HARD rule — never
+      // used while a survivor exists, and the least-overlap fallback below still
+      // covers the case where every spot is spoken for.
+      bool stripHit = (hasStrip && PnlRectHits(cx, cy, pw, ph, srX, srY, srW, srH,
+                                               PNL_PAD_X));
+      valid[c] = (!hits && !stripHit);
    }
 
    // P-UI-91: the MENU rule stays HARD — a spot that lands on the ring/orb is
@@ -5486,7 +5468,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                            OBJPROP_BORDER_COLOR,PnlSwatchBorder(cc,PNL_CLR_CARD));
           ObjectSetString(0,PnlName(item,row,"CS"+IntegerToString(i)),
                           OBJPROP_TOOLTIP, (cc==PNL_CLR_AUTO_CELL)
-                            ? PnlCsetKey(cl)+" · Auto (follows the candle) — tap to override"
+                            ? PnlCsetKey(cl)+" · Auto (follows the candle) — click to override"
                             : "Edit "+PnlCsetKey(cl)+" color");
           // RICH-MT4: glass frame over the flat cell (transparent middle).
           PnlSetBitmap(PnlName(item,row,"CSG"+IntegerToString(i)),
@@ -5566,7 +5548,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlPaintLabel(item,row,PnlLabelX(item,row,px),ry+14,label,PNL_PT_LBL,
                     px+PNL_SW_X-PnlLabelX(item,row,px)-PNL_ROW_GAP);
        PnlPaintSwitch(item,row,PnlName(item,row,"SW"),px+PNL_SW_X,ry+PNL_SW_Y,on,false);
-       ObjectSetString(0,PnlName(item,row,"SW"),OBJPROP_TOOLTIP,label+": tap to flip");
+       ObjectSetString(0,PnlName(item,row,"SW"),OBJPROP_TOOLTIP,label+": click to flip");
        return;
    }
 
@@ -5590,7 +5572,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        // Non-selectable, above the button: clicks still reach CB (footer pattern).
        PnlSetBitmap(PnlName(item,row,"GLS"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22,
                     "::Files\\Icons\\pnl_glass46.bmp", Z_PANEL_MARK);   // glass sheen
-       ObjectSetString(0,PnlName(item,row,"CB"),OBJPROP_TOOLTIP,label + " — open the colour picker");
+       ObjectSetString(0,PnlName(item,row,"CB"),OBJPROP_TOOLTIP,label + " — open the color picker");
        int qx = px+PNL_PAD_X+PNL_QSW_PREV+PNL_QSW_GAP;
        for(int qi=0; qi<PNL_QSW_N; qi++)
        {
@@ -5602,12 +5584,12 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                        qx+qi*(PNL_QSW_W+PNL_QSW_GAP), sy, PNL_QSW_W, 22,
                        "::Files\\Icons\\pnl_glass22.bmp", Z_PANEL_MARK);   // glass sheen
          ObjectSetString(0,PnlName(item,row,"Q"+IntegerToString(qi)),
-                         OBJPROP_TOOLTIP, "Apply this colour");
+                         OBJPROP_TOOLTIP, "Apply this color");
       }
       int axx = qx + PNL_QSW_N*(PNL_QSW_W+PNL_QSW_GAP);
        PnlSetBitmap(PnlName(item,row,"QA"), axx-PNL_CHIP_PAD, sy-PNL_CHIP_PAD, 26, 26,
                     PnlAccentRes(item,"pnl_add"), Z_PANEL_CHIP);
-       ObjectSetString(0,PnlName(item,row,"QA"),OBJPROP_TOOLTIP,"Open the full colour picker");
+       ObjectSetString(0,PnlName(item,row,"QA"),OBJPROP_TOOLTIP,"Open the full color picker");
       PnlSetBitmap(PnlName(item,row,"QAG"), axx+4, sy+4, PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
                    PnlAccentRes(item,"gl_plus"), Z_PANEL_GLYPH);
       return;
@@ -6867,14 +6849,27 @@ bool PnlPointInside(const int mx,const int my)
 // that stopped 10 seconds ago cannot leak, and a press that emits no mouse-move at
 // all (P-BK-03) is still classified correctly. No TTL, no drift, no timer.
 //
-// WHAT IS *NOT* CLAIMED: the ring menu's pixels are claimed only while
-// `g_UI.menuVisible` — P-BK-02 hides the whole menu for a draw session, and a
+// WHAT IS CLAIMED, AND WHAT IS NOT: the ring menu's CONTROLS are claimed only
+// while `g_UI.menuVisible` — P-BK-02 hides the whole menu for a draw session, and a
 // hidden menu must own nothing, or the tool would lose a 40px patch of chart where
-// the orb used to sit. Same reason the countdown tag is included: it is a real,
+// the orb used to sit. What they own is exactly `CircPointOnMenu`'s answer (the orb,
+// every ring item, every sub-menu tile, the grid panel's plate); the menu's
+// TRANSPARENT gaps are deliberately nobody's, because a click that hits no control
+// IS a chart click and the ring's bounding box is a 240px patch of a tool's
+// workspace. The countdown tag is included for the opposite reason: it is a real,
 // visible surface of the UI's own layer (P-CLICK opens card 2 from it).
 //
+// P-UI-116 (2026-09-25): the ring half of this sentence was WRITTEN here and never
+// COMPILED here — the body tested the card, the strip, the top menu bar and the
+// countdown tag, and `CircPointOnMenu` (the ring's own test, named for exactly this
+// question) had no caller in any commit. So for as long as this rule has existed,
+// every pixel of the ring the user sees as menu read as free chart to the domain.
+// The fix is the call below; the sentence above is now what the code does.
+//
 // COST: a handful of int compares on a press/release — never on a hover — so the
-// mouse-move path and the per-tick path pay nothing.
+// mouse-move path and the per-tick path pay nothing. The ring term is the one walk
+// (RING_COUNT item boxes over CACHED chart metrics, P-PERF-16), and it runs only on
+// those press/release paths and only while the menu is visible.
 //+------------------------------------------------------------------+
 bool UIPointerOverSurface(const int mx,const int my)
 {
@@ -6885,6 +6880,7 @@ bool UIPointerOverSurface(const int mx,const int my)
       int bx = 0, by = 0, bw = 0, bh = 0;
       PnlComputeMenuBounds(bx,by,bw,bh);
       if(mx >= bx && mx <= bx + bw && my >= by && my <= by + bh) return true;
+      if(CircPointOnMenu(mx,my)) return true;        // P-UI-116: the ring's own controls
    }
    if(LiveCountdownPointInside(mx,my)) return true;  // the countdown tag (a UI-layer object)
    return false;
@@ -9851,6 +9847,7 @@ void RefreshKitOnBar()
    CpHoldPoll();   // P-UI-101: the custom price line's own hold, same zero-move backup
    DrawStripHoldPollAt(g_LastUIX, g_LastUIY, UILeftButtonDown());   // P-UI-113: drawings' left-hold
    DrawStripHoldSelectPoll();   // P-UI-113g: restore native selection after MT4's release
+   BoxExtrasPump();             // P-DRAW-21/22: box mid follow + extend steps (2s/new-bar throttled)
    // PANELDRAG-OFF (2026-09-14): the card drag's polled shadow is retired with
    // the gesture. It had armed ZERO of today's 197 drags (the terminal's
    // KEYSTATE probe never reads "down", P-UI-83) while its per-tick probe was

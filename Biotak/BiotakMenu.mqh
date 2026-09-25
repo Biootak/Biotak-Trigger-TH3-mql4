@@ -40,7 +40,7 @@
 //--- ORBWORD-OFF (2026-09-12, user decision — no wordmark on the orb, ever:
 //--- the "TRex" text over the bow read as mud on the chart). The open-state
 //--- skin + its builder stay in place for a one-line restore (uncomment the
-//--- word branch in CircOrbRes below): tools/make-orb-word.ps1 (master),
+//--- word branch in CircOrbRes below): tools/orb/make-orb-word.ps1 (master),
 //--- tools/gen-th3-icons.js (embed), Files/Icons/orb_word.bmp (skin).
 #resource "\\Files\\Icons\\orb_word.bmp"
 #resource "\\Files\\Icons\\circ_off.bmp"
@@ -228,8 +228,21 @@ enum ENUM_SUB_MODE
 #define CLR_CIRC_ORB_BG     clrNONE
 #define CLR_CIRC_ORB_BORDER clrNONE
 #define CLR_CIRC_ORB_TXT    C'255,200,60'
-#define CLR_CIRC_BADGE_BG   C'255,171,0'
-#define CLR_CIRC_BADGE_TXT  C'18,22,33'
+// P-UI-69c: the ink BEHIND the orb's baked skin (`orb_bg.bmp`). It was a bare
+// `C'30,22,10'` at the OBJPROP_BGCOLOR call site — a literal at a call site is
+// what the owner law forbids: invisible to every reader and to every audit.
+// Deliberately NOT `CLR_CIRC_ORB_BG` above (that one is the BUTTON's face,
+// clrNONE, because the skin carries the look): two roles, two names. The first
+// cut of this fix reused the name and the compiler answered `warning 30: macro
+// redefinition` — the ladder's own measurement that the name was taken.
+#define CLR_CIRC_ORB_SKIN   C'30,22,10'
+// P-UI-69c: this IS the brand amber — the palette's own cell 0 (#FFAB00). The
+// menu had pasted the value; it now points at the one owner (BIO_CLR_BRAND, the
+// same literal BioPal(0) returns), so a palette change can never leave the
+// badge behind.
+#define CLR_CIRC_BADGE_BG   BIO_CLR_BRAND
+#define CLR_CIRC_BADGE_TXT  BIO_CLR_DEEP   // P-UI-117: the shared deep navy, not a
+                                            // second literal of the same value
 
 // Refresh flags are owned by BiotakKit.mqh (REFRESH_NONE..REFRESH_ALL).
 
@@ -595,16 +608,50 @@ int CircItemAt(const int mx, const int my)
 }
 
 //+------------------------------------------------------------------+
-//| Point over ANY menu control (orb or ring item)?                   |
+//| P-UI-116 — THE MENU'S OWN PIXELS, ONE TEST.                       |
+//|                                                                  |
+//| This is the WHERE half of P-UI-92 for the ring: which pixels does |
+//| the menu OWN? `UIPointerOverSurface` composes it (BiotakPanels)   |
+//| so the domain half reads the menu's own disc as UI and never as a  |
+//| chart point — the custom-price pick, the box tool's                |
+//| deselect-on-chart-click and the strip's hold latch all ask that    |
+//| one function.                                                     |
+//|                                                                  |
+//| It was written for exactly this question and — measured with       |
+//| `git log -S CircPointOnMenu` — had ZERO callers in every commit   |
+//| since the day it was born (`UIPointerOverSurface`'s own header     |
+//| promised the ring's pixels while its body tested everything but    |
+//| them). So the sentence and the code disagreed for as long as the   |
+//| claim has existed: a menu the user sees as solid UI was, to the    |
+//| domain, free chart.                                               |
+//|                                                                  |
+//| WHAT IS *NOT* CLAIMED, deliberately: the transparent gaps between  |
+//| items and the hole between the orb and the ring. Those pixels are  |
+//| not drawn — a click that hits no control IS a chart click, and      |
+//| claiming the ring's bounding box would steal a 240px patch of      |
+//| chart from the tool (the reason P-BK-02 gates the whole test on     |
+//| `g_UI.menuVisible`).                                              |
 //+------------------------------------------------------------------+
 bool CircPointOnMenu(const int mx, const int my)
 {
    int ox = g_UI.menuX - CIRC_ORB_SIZE/2 - CIRC_ORB_BG_MARGIN;
    int oy = g_UI.menuY - CIRC_ORB_SIZE/2 - CIRC_ORB_BG_MARGIN;
    int os = CIRC_ORB_SIZE + 2*CIRC_ORB_BG_MARGIN;
-   if(mx >= ox && mx <= ox + os && my >= oy && my <= oy + os) return true;
-   if(CircItemAt(mx, my) >= 0) return true;
-   if(ToolsItemAt(mx, my) >= 0) return true;
+   if(mx >= ox && mx <= ox + os && my >= oy && my <= oy + os) return true;   // the orb (with its glow)
+   if(CircItemAt(mx, my) >= 0) return true;                       // every ring item's own box
+   if(ToolsItemAt(mx, my) >= 0) return true;                      // fan / rail / grid tiles
+   // P-UI-116: the grid panel's PLATE — header strip, padding and the pager
+   // arrows ride it (`SubPagerGeom` places them inside this rect). The card is
+   // the precedent: a plate is a surface, so its whole rect is claimed, not only
+   // the controls sitting on it. The pager's clicks are routed BY OBJECT NAME in
+   // the click handler, but a click that lands on the plate must still never
+   // reach the chart.
+   if(g_ToolsOpen && SubIsPanelMode())
+   {
+      int px = 0, py = 0, pw = 0, ph = 0;
+      SubPanelRect(px, py, pw, ph);
+      if(mx >= px && mx <= px + pw && my >= py && my <= py + ph) return true;
+   }
    return false;
 }
 
@@ -1169,7 +1216,8 @@ string CircItemTooltip(const int i)
 #define CIRC_TIP_W   290
 #define CIRC_TIP_H   56
 #define CIRC_TIP_BG  C'13,20,32'
-#define CIRC_TIP_BD  C'255,171,0'
+#define CIRC_TIP_BD  BIO_CLR_BRAND   // P-UI-117: the palette's own cell 0; the tip's
+                                     // border follows the brand, not a copy of it
 #define CIRC_TIP_TX  C'235,240,248'
 // Dwell before the tip appears: stationary hover only, so normal navigation
 // never flashes it (native-OS-tooltip behavior, tuned long per UX request).
@@ -1945,8 +1993,8 @@ void SubParkItem(const int i)
 //| 1500+ < hover tip 1700+. The orb is never covered because         |
 //| SubPanelRect() keeps SUB_ORB_GAP clear of it.                     |
 //+------------------------------------------------------------------+
-#define SUB_CLR_HDR       C'140,150,166'   // #8C96A6 header text
-#define SUB_CLR_ACCENT    C'255,194,71'    // #FFC247 gold
+#define SUB_CLR_HDR       BIO_CLR_MUTED    // #8C96A6 header text — was a pasted literal (P-UI-69c)
+#define SUB_CLR_ACCENT    BIO_CLR_ACCENT   // #FFC247 gold — same
 #define SUB_CLR_DOT_OFF   C'58,66,82'      // inactive page dot
 // The pager chevrons are OBJ_BUTTONs (the only reliably clickable object) but
 // must read as PLAIN TEXT on the panel: bg == the panel body at that height and
@@ -2044,9 +2092,15 @@ void SubSetLabel(const string name, const int x, const int y, const string txt,
    ObjectSetInteger(0, name, OBJPROP_ZORDER, z);
 }
 
-// Single source of truth for the pager strip geometry: SubChromeCreate DRAWs it,
-// SubChromeMove translates it and SubPagerAt hit-tests it, so the three can
-// never drift apart (a drifting hit-box is a click that does nothing).
+// Single source of truth for the pager strip geometry: SubChromeCreate DRAWs it
+// and SubChromeMove translates it, so the two can never drift apart.
+//
+// P-UI-116: this used to promise a third reader, `SubPagerAt`, that was never
+// written — no commit contains it (`git log -S SubPagerAt` is empty), so the
+// comment named a hit test no reader could find. The pager needs none of its own:
+// the arrows and the dots sit INSIDE the panel plate, the plate is claimed as a
+// whole by `CircPointOnMenu` (its one test), and a pager press arrives by object
+// name in the click handler below. Geometry stays shared by the two real readers.
 void SubPagerGeom(const int px, const int py, const int pw, const int ph,
                   int &by, int &bh, int &bw, int &prevX, int &nextX)
 {
@@ -2523,7 +2577,7 @@ void CircCreateOrb()
    ObjectSetInteger(0, orbBg, OBJPROP_YSIZE, CIRC_ORB_BG_SIZE);
    ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 0, CircOrbRes());
    ObjectSetString(0, orbBg, OBJPROP_BMPFILE, 1, CircOrbRes());
-   ObjectSetInteger(0, orbBg, OBJPROP_BGCOLOR, C'30,22,10');
+   ObjectSetInteger(0, orbBg, OBJPROP_BGCOLOR, CLR_CIRC_ORB_SKIN);   // P-UI-69c: was a call-site literal
    ObjectSetInteger(0, orbBg, OBJPROP_STATE, false);
    ObjectSetInteger(0, orbBg, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, orbBg, OBJPROP_SELECTED, false);

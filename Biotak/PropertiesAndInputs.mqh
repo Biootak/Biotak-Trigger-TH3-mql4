@@ -213,6 +213,10 @@ input int inpBKShowInfo = 0;                             // Base Box Info Label:
 // Size" (the readout is the box' own text); 1-24 = raw points.
 input int inpBKInfoFontSize = 0;                         // Base Box Info Size (0 = follow Base Box Text Size)
 input color inpBoxFillColor = C'255,171,0';              // Base Box Fill Color (bucket — TV Style tab)
+// P-UI-117: this literal STAYS one (it is the brand amber's own value): this file
+// is included at 25, BEFORE the palette owner `ConstantsAndEnums` (26), so A-12
+// forbids naming `BIO_CLR_BRAND` here. Every runtime reader of the colour takes the
+// seed from this input and asks the owner.
 input color inpBKTextColor = C'255,255,255';             // Base Box Text Color (T button — TV Text tab)
 input int inpBKTextSize = 10;                            // Base Box Text Size (TV default 10)
 input bool inpBKBold = false;                            // Base Box Text Bold

@@ -39,6 +39,12 @@
 #      the terminal project dir, and prints the "Result: N errors" summary.
 #      Success = "Result: 0 errors".
 # ============================================================================
+#
+# P-TOOL-04 (2026-09-25): this script is bash + coreutils ONLY. The four python3
+# heredocs it used to carry (MQL4-dir scan, build-prefix path, the CRLF .bat
+# emitter, the UTF-16 log parser) are rewritten in bash: no Python interpreter,
+# matching the repo rule that no Python ships or runs here.
+# ============================================================================
 set -u
 
 SCRIPT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -77,16 +83,27 @@ fi
 
 # --- locate terminal MQL4 dir (for icon sync + BiotakProject link) ------------
 if [ -z "${MT4_MQL4_DIR:-}" ]; then
-  MT4_MQL4_DIR="$(python3 - "$BOTTLE_PATH" <<'EOF'
-import glob, os, sys
-cands = [m for m in glob.glob(os.path.join(
-    sys.argv[1], "drive_c/users/*/AppData/Roaming/MetaQuotes/Terminal/*/MQL4"))
-    if os.path.isdir(os.path.join(m, "Indicators"))]
-hosted = [m for m in cands if os.path.lexists(os.path.join(m, "Indicators", "BiotakProject"))]
-pool = hosted or cands
-print(max(pool, key=os.path.getmtime) if pool else "")
-EOF
-)"
+  # P-TOOL-04: pure bash (was python3). Candidates are every terminal MQL4 dir
+  # that has an Indicators/; the pool prefers the ones already hosting
+  # Indicators/BiotakProject (a symlink counts — hence -e OR -L), and the newest
+  # mtime wins. No interpreter, no temp file: the glob and stat are the job.
+  mql4_cands=()
+  for m in "$BOTTLE_PATH"/drive_c/users/*/AppData/Roaming/MetaQuotes/Terminal/*/MQL4; do
+    [ -d "$m/Indicators" ] && mql4_cands+=("$m")
+  done
+  mql4_pool=()
+  for m in ${mql4_cands[@]+"${mql4_cands[@]}"}; do
+    if [ -e "$m/Indicators/BiotakProject" ] || [ -L "$m/Indicators/BiotakProject" ]; then
+      mql4_pool+=("$m")
+    fi
+  done
+  [ ${#mql4_pool[@]} -gt 0 ] || mql4_pool=(${mql4_cands[@]+"${mql4_cands[@]}"})
+  MT4_MQL4_DIR=""
+  mql4_newest=-1
+  for m in ${mql4_pool[@]+"${mql4_pool[@]}"}; do
+    t="$(stat -c %Y "$m" 2>/dev/null || echo 0)"
+    if [ "$t" -gt "$mql4_newest" ]; then mql4_newest="$t"; MT4_MQL4_DIR="$m"; fi
+  done
 fi
 if [ -z "${MT4_MQL4_DIR:-}" ] || [ ! -d "$MT4_MQL4_DIR/Indicators" ]; then
   echo "ERROR: terminal MQL4 dir not found (run terminal.exe once first)." >&2
@@ -96,13 +113,12 @@ fi
 
 # --- isolated build prefix (visible inside the flatpak sandbox at same path) ---
 if [ -z "${TH3_WINEPREFIX:-}" ]; then
-  TH3_WINEPREFIX="$(python3 - "$BOTTLE_PATH" <<'EOF'
-import os, sys
-# <data>/bottles/bottles/<name> -> <data>/th3build-wine
-data = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[1]))))
-print(os.path.join(data, "th3build-wine"))
-EOF
-)"
+  # P-TOOL-04: pure bash (was python3). <data>/bottles/bottles/<name> -> <data>
+  # is three dirnames; the trailing slash is stripped first so a user-supplied
+  # BOTTLE_PATH with one still lands in <data>.
+  _bp="${BOTTLE_PATH%/}"
+  case "$_bp" in /*) ;; *) _bp="$PWD/$_bp" ;; esac
+  TH3_WINEPREFIX="$(dirname "$(dirname "$(dirname "$_bp")")")/th3build-wine"
 fi
 
 echo "Bottle:      $BOTTLE_PATH"
@@ -192,20 +208,17 @@ fi
 # --- 6. generate the CRLF .bat (quoting lives here — direct argv with spaces
 #        silently compiles nothing, see header) -----------------------------------
 BAT_UNIX="$BUILD_UNIX/compile.bat"
-python3 - "$BAT_UNIX" "${NAMES[@]}" "${SRCS[@]}" <<'EOF'
-import sys
-bat = sys.argv[1]
-rest = sys.argv[2:]
-names, srcs = rest[:len(rest)//2], rest[len(rest)//2:]
-lines = ["@echo off"]
-for name, src in zip(names, srcs):
-    lines.append(
-        '"C:\\mt4\\metaeditor.exe" /compile:"C:\\th3build\\%s" /log:"C:\\th3build\\logs\\%s.log" /include:"C:\\th3build"'
-        % (src, name))
-open(bat, "wb").write(("\r\n".join(lines) + "\r\n").encode("ascii"))
-print("BAT:")
-print("\n".join(lines))
-EOF
+# P-TOOL-04: pure bash (was python3). printf emits the CRLF bytes and the quoted
+# Windows paths directly — no interpreter, no encode step, byte-identical .bat.
+{
+  printf '@echo off\r\n'
+  for i in "${!NAMES[@]}"; do
+    printf '"C:\\mt4\\metaeditor.exe" /compile:"C:\\th3build\\%s" /log:"C:\\th3build\\logs\\%s.log" /include:"C:\\th3build"\r\n' \
+      "${SRCS[$i]}" "${NAMES[$i]}"
+  done
+} > "$BAT_UNIX"
+echo "BAT:"
+sed 's/\r$//' "$BAT_UNIX"
 
 # --- 7. run it (isolated prefix — the live terminal stays open) -------------------
 echo ""
@@ -221,6 +234,36 @@ if ! flatpak run \
 fi
 
 # --- 8. collect artifacts + report --------------------------------------------------
+# report_log <metaeditor-log> <target-name> — decode the compiler log, print the
+# verdict, and return 0 only for a clean compile. P-TOOL-04: pure bash (was
+# python3). The log is UTF-16 with a BOM so iconv does the decode, and a host
+# without iconv still works through the NUL-strip fallback — the payload here is
+# ASCII and UTF-16LE keeps every byte of it beside a NUL.
+report_log() {
+  local log="$1" name="$2" bom txt errs warns res
+  bom="$(head -c 2 "$log" 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+  txt=""
+  if command -v iconv >/dev/null 2>&1; then
+    case "$bom" in
+      # `-f UTF-16` (not LE/BE) on purpose: it consumes the BOM instead of
+      # emitting it as a U+FEFF into the first line.
+      feff|fffe) txt="$(iconv -f UTF-16 -t UTF-8 "$log" 2>/dev/null)";;
+    esac
+  fi
+  [ -n "$txt" ] || txt="$(tr -d '\000' < "$log")"
+  txt="$(printf '%s\n' "$txt" | tr -d '\r')"
+  # The real MetaEditor shape is `file.mq4(12,5) : error 256: 'x' - msg` (no
+  # space before the colon); the ` *` keeps a spaced variant matched too.
+  errs="$(printf '%s\n' "$txt" | grep -cE ': error [0-9]+ *:')"
+  warns="$(printf '%s\n' "$txt" | grep -cE ': warning [0-9]+ *:')"
+  res="$(printf '%s\n' "$txt" | grep -E '^Result:' | tail -n 1)"
+  echo "[$name] ${res:-NO RESULT LINE} | errors=$errs warnings=$warns"
+  printf '%s\n' "$txt" | grep -E ': error [0-9]+ *:' | head -n 25 | sed -E 's/^[[:space:]]*/  ERROR: /'
+  printf '%s\n' "$txt" | grep -E ': warning [0-9]+ *:' | head -n 15 | sed -E 's/^[[:space:]]*/  warn:  /'
+  [ -z "$res" ] && return 1
+  [ "$errs" -ne 0 ] && return 1
+  return 0
+}
 mkdir -p "$SCRIPT_ROOT/build-logs"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 overall=0
@@ -241,21 +284,7 @@ for i in "${!NAMES[@]}"; do
   else
     echo "[$name] WARNING: no .ex4 produced" >&2
   fi
-  python3 - "$SCRIPT_ROOT/build-logs/linux-$name-$STAMP.log" "$name" <<'EOF'
-import re, sys
-text = open(sys.argv[1], "rb").read().decode("utf-16", errors="replace")
-lines = text.splitlines()
-errs = [l for l in lines if re.search(r": error \d+:", l)]
-warns = [l for l in lines if re.search(r": warning \d+:", l)]
-res = [l for l in lines if l.startswith("Result:")]
-print("[%s] %s | errors=%d warnings=%d" % (sys.argv[2], res[-1] if res else "NO RESULT LINE", len(errs), len(warns)))
-for e in errs[:25]:
-    print("  ERROR: " + e.strip())
-for w in warns[:15]:
-    print("  warn:  " + w.strip())
-sys.exit(1 if errs or not res else 0)
-EOF
-  [ $? -ne 0 ] && overall=1
+  report_log "$SCRIPT_ROOT/build-logs/linux-$name-$STAMP.log" "$name" || overall=1
 done
 
 echo ""

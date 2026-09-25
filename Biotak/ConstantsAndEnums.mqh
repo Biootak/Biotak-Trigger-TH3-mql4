@@ -110,6 +110,7 @@
 
 // ── the mini Base Box strip (item 13) — its own drawing family, still under
 //    the full card 12 that it opens
+#define Z_STRIP_BG    1439      // P-DRAW-35: solid underlayer below the skin (alpha fill)
 #define Z_STRIP       1440      // bk_strip.bmp, the toolbar body
 #define Z_STRIP_ICON  1441      // strip slot glyphs
 #define Z_STRIP_OVER  1442      // strip popover chevrons
@@ -117,7 +118,14 @@
 // ── the ring menu — the card covers it (consequence 1 above)
 #define Z_MENU_PANEL    1004    // sub-menu panel chrome
 #define Z_MENU_DOT      1005    // sub-menu title dot
-#define Z_MENU_CELL     1006    // ctx menu icon-cell hover face (P-UI-105)
+#define Z_MENU_CELL     1006    // RETIRED (P-UI-69c, 2026-09-25): its owner was the ctx menu's
+                                        // icon-cell hover face (P-UI-105), and the whole right-click
+                                        // era was DELETED by user order (P-UI-113/114, 2026-09-23).
+                                        // The rung is kept, unused, exactly like Z_BOX_DOT/Z_BOX_GRIP:
+                                        // the ladder's numbers are what every rung above and below is
+                                        // measured against, so retiring the owner never renumbers it.
+                                        // A grep for Z_MENU_CELL answers THIS LINE and nothing else —
+                                        // that single hit IS the measurement that the face is gone.
 #define Z_MENU_ITEM     1010    // ring/Tools item faces
 #define Z_MENU_ICON     1011    // item glyphs
 #define Z_MENU_BADGE    1012    // item badge bodies + captions
@@ -803,5 +811,187 @@ struct FrequencyHistoryEntry {
         isUsed = false;
     }
 };
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-24 — ONE PALETTE. The panel quick swatches and the strip swatch grid
+// were two different colour sets, so one hand learned two palettes («پالت
+// رنگی از همون پالت رنگی بقیه ... یکدست بشه»). This table is the single
+// owner: the first 8 are the panel quick row, unchanged and in order (a
+// reorder repaints every colour row); the back 8 keep the old strip hues
+// reachable. Both faces (QuickPalColor, DrawStripPal) read here, nothing
+// else names a swatch.
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-69c: the brand amber IS the palette's cell 0 — ONE literal, and it must be
+// declared BEFORE BioPal() below: MQL4 is define-before-use, and a define placed
+// after its user is `error 256: undeclared identifier` (measured 2026-09-25).
+#define BIO_CLR_BRAND      C'255,171,0'     // #FFAB00 brand amber
+#define BIOPAL_N 16
+color BioPal(const int i)
+{
+   switch(i)
+   {
+      case 0:  return BIO_CLR_BRAND;   // #FFAB00 brand amber (one literal, P-UI-69c)
+      case 1:  return C'240,69,95';    // #F0455F rose
+      case 2:  return C'18,184,134';   // #12B886 jade
+      case 3:  return C'31,168,224';   // #1FA8E0 cyan
+      case 4:  return C'124,92,255';   // #7C5CFF violet
+      case 5:  return C'207,227,255';  // #CFE3FF pale ice
+      case 6:  return C'255,255,255';  // #FFFFFF
+      case 7:  return C'20,20,20';     // #141414 near-black
+      case 8:  return clrOrangeRed;
+      case 9:  return clrCrimson;
+      case 10: return clrDodgerBlue;
+      case 11: return clrTeal;
+      case 12: return clrLime;
+      case 13: return clrYellow;
+      case 14: return clrSilver;
+      default: return clrBlack;
+   }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-69b (2026-09-25) — THE INK HAS ONE OWNER, AND THE SWATCH FLOOR MOVES
+// DOWN WITH IT.
+//
+// `BioPal` above is the palette's one owner, and THIS file is include #1 in
+// every entry (Biotak Trigger TH3.mq4 line 26) — the only address a rule can
+// have that BOTH the drawing strip (include 97) and the settings cards
+// (include 116) obey. The ink used to be quoted twice: `PNL_CLR_*`
+// (BiotakPanels) and `DSTRIP_CLR_*` (DrawStrip), nine of them byte-for-byte
+// identical. Two tables that agree today are two tables that disagree
+// tomorrow, so the ink lives here now and both old families are ALIASES:
+// same names, same call sites, one literal each.
+//
+// P-UI-34 made the same move for the text metrics (`PnlPt`/`PnlTextW` left
+// BiotakPanels for UtilityFunctions): a rule the surfaces NEEDING it most
+// cannot see gets copied. And a copied swatch floor is exactly how the strip's
+// own colour grids went on painting #141414 on #1D222C through a 1.04:1
+// hairline — the "empty slot" the user reports as «رنگ ها کار نمیکنه» — the
+// same report P-UI-69 closed on the cards eleven days earlier.
+// ══════════════════════════════════════════════════════════════════════════
+#define BIO_CLR_INK        C'243,246,251'   // #F3F6FB --title / --val
+#define BIO_CLR_MUTED      C'140,150,166'   // #8C96A6 --muted (+ the swatch outline)
+#define BIO_CLR_LABEL      C'203,212,226'   // #CBD4E2 --lbl
+#define BIO_CLR_ACCENT     C'255,194,71'    // #FFC247 --a1 (gold ramp top)
+#define BIO_CLR_ACCENT_INK C'26,18,6'       // #1A1206 --aInk on the primary
+#define BIO_CLR_HAIRLINE   C'34,40,50'      // #222832 rows/controls — NOT a text ink
+#define BIO_CLR_FIELD      C'24,29,39'      // #181D27 edit fields + popover faces
+#define BIO_CLR_FIELD_BD   C'51,60,76'      // #333C4C edit/DD rims
+#define BIO_CLR_CARD       C'29,34,44'      // #1D222C card + plate body
+#define BIO_CLR_FOOT       C'18,22,29'      // #12161D card footer
+#define BIO_CLR_PANEL      C'23,28,37'      // #171C25 strip / popover body
+#define BIO_CLR_ACCENT2    C'255,138,0'     // #FF8A00 gold ramp bottom
+#define BIO_CLR_DEEP       C'18,22,33'      // deep navy ink — the ring badge's ink, the
+                                            // retired box badge's rim and the TH3 readout
+                                            // plate's own fill. Pasted at all three before
+                                            // P-UI-117 gave it a name (one value, one owner).
+#define BIO_CLR_ON_LIGHT   C'150,70,0'      // deep amber — the readable ink on a LIGHT chart
+                                            // background. Was pasted twice, next to a second
+                                            // copy of the gate below (P-UI-117).
+#define BIO_BG_LUM_THRESHOLD 128            // the ONE boundary of "this background is light":
+                                            // ask BioChartBgIsLight(), never re-derive it.
+
+//+------------------------------------------------------------------+
+//| P-UI-117 — THE READABLE-INK GATE, ONE OWNER (A-05/A-10/A-12).     |
+//|                                                                  |
+//| Two surfaces ask the same question — "is this chart's background |
+//| light?" — and each answered with its own copy of the same        |
+//| 299/587/114 luminance arithmetic AND its own `C'150,70,0'`        |
+//| (BaseKnotTool's corner hint, `BaseKnotFgForBg`, and               |
+//| RuntimeSettings' `GetBKTextRenderColor`). A palette change could  |
+//| only ever fix one of the two, and the second copy was already     |
+//| annotated "same luminance gate as the INFO label" — the comment   |
+//| knew, which is exactly the shape A-10 names.                      |
+//|                                                                  |
+//| The owner lives HERE because `ConstantsAndEnums` is included      |
+//| before `RuntimeSettings` (43) and before every UI file, so both    |
+//| readers can reach it — and, per A-12, neither may copy it up.      |
+//|                                                                  |
+//| The decision itself stays with the caller: the hint wears brand    |
+//| amber on a dark chart and `BIO_CLR_ON_LIGHT` on a light one; the   |
+//| box user text keeps the colour the user picked and only FACTORY    |
+//| WHITE is routed to the readable ink (an explicit pick is honoured  |
+//| untouched).                                                        |
+//+------------------------------------------------------------------+
+bool BioChartBgIsLight()
+{
+   static color s_bg = clrNONE;
+   static bool  s_light = false;
+   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+   if(bg != s_bg)
+   {
+      s_bg = bg;
+      int lum = ((((int)bg) & 0xFF) * 299 + ((((int)bg) >> 8) & 0xFF) * 587 +
+                 ((((int)bg) >> 16) & 0xFF) * 114) / 1000;
+      s_light = (lum > BIO_BG_LUM_THRESHOLD);
+   }
+   return s_light;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-69 (2026-09-14) — A SWATCH THAT IS THE BACKDROP'S OWN COLOUR IS A HOLE.
+// MOVED here by P-UI-69b; the VALUES are unchanged, only the address is — the
+// strip could not reach a floor that lived 19 includes above it.
+//
+// User report: «رنگ ها کار نمیکنه». The colour row read as seven swatches and
+// one EMPTY SLOT, and tapping the "slot" applied a near-black that then
+// vanished on the chart. Measured from the shipped screenshot, not recalled:
+// QuickPalColor(7) = #141414 (20,20,20) painted on the card face #1A2029
+// (26,32,41) with a PNL_CLR_LINE border #222832 (34,40,50) — contrast 1.05:1
+// for the fill and 1.11:1 for the border. P-UI-68 closed exactly this trap one
+// layer down (a colour STRIP cell whose target was clrNONE painted ink-black);
+// the quick strip, the palette's own swatches and the strip cells still had it.
+//
+// ONE owner for "will this swatch be visible on its own backdrop?", used by
+// every swatch family (quick strip, preview block, palette matrix, recents,
+// strip cells, the palette's current-colour block, AND the drawing strip's own
+// colour grids). Under the threshold the swatch keeps its COLOUR — fidelity
+// matters, the user asked for black — and gains a border that contrasts, so
+// the affordance can never read as empty.
+// ══════════════════════════════════════════════════════════════════════════
+//--- The floor is MEASURED, not chosen: over the 198 colours the panel can paint
+//--- as a swatch (the 8 quick ones + PalMatColor's 190 cells), the shipped build
+//--- had ELEVEN indistinguishable from the face they sit on — from 1.05:1 to
+//--- 1.68:1 — and the first genuinely visible tone was 1.72:1. The boundary sits
+//--- in that gap, so "add an outline" fires on exactly the swatches that read as
+//--- empty space and on nothing else (WCAG's stricter 3:1 for non-text UI is NOT
+//--- enforced: the card's own subtle border is the design language for every
+//--- visible swatch, and raising the floor would re-outline half the palette).
+#define BIO_SWATCH_MIN_CONTRAST 1.7
+
+//--- WCAG relative luminance (Rec.709 over linearised channels). MT4 packs a
+//--- colour BGR, so R is the LOW byte — the same extraction PalColorText uses.
+//--- clrNONE (-1) has no channels: reported as white, so a stray value can never
+//--- pass the threshold by accident.
+double BioLum(const color c)
+{
+   // `color` is UNSIGNED in MQL4, so `c < 0` is always false (warning 65): a
+   // stray clrNONE only shows up once the value is seen as a signed int.
+   int v=(int)c;
+   if(v < 0) return 1.0;
+   int cr=v%256, cg=(v/256)%256, cb=v/65536;
+   double r=(double)cr/255.0, g=(double)cg/255.0, b=(double)cb/255.0;
+   if(r > 0.03928) r=MathPow((r+0.055)/1.055,2.4); else r=r/12.92;
+   if(g > 0.03928) g=MathPow((g+0.055)/1.055,2.4); else g=g/12.92;
+   if(b > 0.03928) b=MathPow((b+0.055)/1.055,2.4); else b=b/12.92;
+   return 0.2126*r + 0.7152*g + 0.0722*b;
+}
+
+//--- contrast ratio between two colours (1.0 = identical, 21.0 = black|white)
+double BioContrast(const color a,const color b)
+{
+   double la=BioLum(a), lb=BioLum(b);
+   double hi=MathMax(la,lb), lo=MathMin(la,lb);
+   return (hi+0.05)/(lo+0.05);
+}
+
+//--- the border a swatch of `fill` must carry on `backdrop`. The SELECTION ring
+//--- is the caller's business (it passes the accent); this is the legibility
+//--- floor that keeps every swatch visible whatever colour it holds.
+color BioSwatchBorder(const color fill,const color backdrop)
+{
+   return (BioContrast(fill,backdrop) < BIO_SWATCH_MIN_CONTRAST)
+             ? BIO_CLR_MUTED : BIO_CLR_HAIRLINE;
+}
 
 #endif // CONSTANTS_AND_ENUMS_MQH

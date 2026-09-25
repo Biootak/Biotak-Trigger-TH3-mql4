@@ -160,19 +160,27 @@ panel_art_proof.html
 # render is 100% derivable from it via its own export mode, so it is not.
 pivot_arrangement_atlas.png
 pivot_wall_*.png
-tools/*.prev
+**/*.prev
 .claude/
 .freebuff/
 .playwright-mcp/
 .sync-test.tmp
 
 
-# Python byte-code cache (never track compiled output)
-__pycache__/
-*.pyc
+# P-BUILD-03: the harnesses in tests/ need the icon tree BESIDE them — MetaEditor
+# resolves `#resource "\Files\Icons\x.bmp"` against the SOURCE file's own tree, so
+# a harness looks in tests\Files. compile-th3.ps1 creates the junction on demand
+# (measured 2026-09-25: without it every icon-bearing module in a harness chain
+# fails with 325 x `error 310: resource file ... not found`, while the same
+# modules compile green from the repo root). It is a LINK, never repo content.
+tests/Files
+
+# Agent scratch: session memory and temp probes. Never repo content.
+.workbuddy-ai/
+.claude/
+.freebuff/
 
 # Token-stack guardrails: heavy/ephemeral dirs never indexed nor committed
 .venv/
 venv/
 target/
-.codegraph/

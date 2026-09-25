@@ -1,0 +1,7 @@
+// P-UI-108c (2026-09-23): tcc decorates stdcall exports (_Name@N) which MT4's
+// static loader cannot resolve (error 126). Export UNDECORATED aliases via a
+// .def file (build-rc-bridge.ps1 passes it) so #import sees plain names.
+LIBRARY BiotakRCBlock
+EXPORTS
+  RCBlock_Arm
+  RCBlock_Disarm

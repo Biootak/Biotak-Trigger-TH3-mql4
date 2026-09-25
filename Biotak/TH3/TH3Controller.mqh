@@ -282,7 +282,10 @@ color TH3InkForChart(const color c)
 //| wears the palette's near-white, and the LIVE row — the last one,  |
 //| the number that moves — wears its violet.                         |
 //+------------------------------------------------------------------+
-#define TH3RO_FILL     C'18,22,33'        // the plate's own ink — the SAME on every theme
+#define TH3RO_FILL     BIO_CLR_DEEP       // the plate's own ink — the SAME on every theme.
+                                          // P-UI-117: it used to spell `C'18,22,33'` again;
+                                          // the intent (a theme-independent plate) is the
+                                          // ALIAS's, and the value is the palette owner's.
 #define TH3RO_EDGE     C'140,150,166'     // ... and its hairline border
 #define TH3RO_TEXT     C'235,240,248'     // a readout row (CIRC_TIP_TX's near-white)
 #define TH3RO_ACCENT   C'124,92,255'      // the live row: the palette's own violet (#7C5CFF)

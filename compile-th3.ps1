@@ -881,6 +881,29 @@ if ($SourceFile -ne "") {
         $SourceFile = Join-Path $SCRIPT_ROOT $SourceFile
     }
 
+    # P-BUILD-03 (2026-09-25): MetaEditor resolves `#resource "\Files\Icons\x.bmp"`
+    # against the SOURCE FILE's own tree, NOT the terminal's MQL4 folder. A harness
+    # that lives in a subdirectory (tests\) therefore looks in <dir>\Files, and
+    # without it every icon-bearing module in its chain fails with
+    # `error 310: resource file ... not found` — 325 of them, measured 2026-09-25,
+    # while the SAME modules compiled green from the repo root in the same run.
+    # The link is created here so the documented gate ("every .mq4 must print
+    # Result: 0 errors") holds on a fresh clone, where this link does not exist:
+    # it is a link, never repo content (.gitignore has tests/Files).
+    $srcDir = Split-Path -Parent $SourceFile
+    if ($srcDir -and $srcDir -ne $SCRIPT_ROOT) {
+        $linkPath = Join-Path $srcDir "Files"
+        if (-not (Test-Path -LiteralPath $linkPath)) {
+            try {
+                New-Item -ItemType Junction -Path $linkPath -Target (Join-Path $SCRIPT_ROOT "Files") -ErrorAction Stop | Out-Null
+                Write-Host "  Icon link created: $(Split-Path -Leaf $srcDir)\Files -> Files (P-BUILD-03)" -ForegroundColor DarkCyan
+            }
+            catch {
+                Write-Host "  WARN: no icon link at $linkPath - icon modules will fail with error 310" -ForegroundColor Yellow
+            }
+        }
+    }
+
     $name = [System.IO.Path]::GetFileName($SourceFile)
     $results[$name] = Compile-MQL4 -Name $name -SourcePath $SourceFile -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
 }
