@@ -932,42 +932,18 @@ void UISyncConsume() { g_uiSyncRequested = false; }
 //+------------------------------------------------------------------+
 // Reported (recurring, and it OUTLIVES the indicator): «وقتی اندیکاتور رو
 // روی چارت می‌ندازم اسکرول چارت قفل میشه … و وقتی حذفش می‌کنم هم همچنان
-// قفل می‌مونه». Four independent writers owned the same two chart
-// properties - the ring/panels (`CircLockChart`), the Base/Knot tool
-// (`BaseKnotLockChart`), the custom-price line drag (`CustomPriceDragLockOn`)
-// and the watchdog (`ChartScrollReconcile`, `CustomPriceDragHealStale`) - and
-// each one SAVED "what the user had" and wrote it back ITSELF:
-//
-//   * the saved pair was READ while another owner already held the lock, so
-//     OUR OWN `false` was recorded as the user's preference;
-//   * whoever released LAST then restored that recorded `false`.
-//
-// That is a one-way ratchet. Once one owner's release wrote the poisoned
-// value, every later capture read `false` again - so the chart stayed locked
-// for the life of the terminal, INCLUDING after Remove, because
-// `CHART_MOUSE_SCROLL` belongs to the CHART and survives the indicator. No
-// watchdog could help: they all restored the same poisoned value.
-//
-// So there is ONE owner now. The rules ARE the fix:
-//   * CAPTURE only on the 0 -> 1 step of ONE shared refcount. At that instant
-//     no other owner is holding the lock, so the live props are the user's -
-//     the only moment that is true;
-//   * RESTORE only on the 1 -> 0 step (or a force-release), always from the
-//     one captured pair;
-//   * the pair is persisted per chart, so a re-attach / timeframe switch
-//     adopts the user's preference instead of guessing at it;
-//   * `ChartViewLockForceRelease()` is the net every teardown (every reason)
-//     and every watchdog calls, so no leaked counter can outlive a gesture;
-//   * the props are restored only ON DRIFT, so steady state costs two reads
-//     and not one terminal write.
-//
-// THE ONE-TIME HEAL: a chart locked by an older build (or a template saved
-// mid-gesture) reads BOTH properties false with no owner live. That pair is
-// the exact signature our own lock writes - a user's own preference is never
-// the pair, because no consumer ever leaves exactly one of the two alone
-// under a lock - so `ChartViewLockInit()` hands such a chart back and says so
-// once. Deliberately narrow: a chart whose user turned ONE of the two off
-// does not match and is left exactly as it is.
+// قفل می‌مونه». Four writers owned the same two chart properties (the ring/panels,
+// the Base/Knot tool, the custom-price line drag and the watchdog) and each one SAVED
+// "what the user had" and wrote it back ITSELF — so the pair was READ while another
+// owner already held the lock (OUR OWN `false` recorded as the user's preference) and
+// whoever released LAST restored it. A one-way ratchet, and it survives Remove because
+// the properties belong to the CHART and not to the indicator.
+// ONE owner now: CAPTURE on the 0 -> 1 step of ONE shared refcount (the only instant
+// nobody else holds the lock), RESTORE on the 1 -> 0 step or a force-release from that
+// one pair, persisted per chart, and written only ON DRIFT (steady state: two reads).
+// `ChartViewLockForceRelease()` is the net every teardown and watchdog calls; the
+// one-time heal hands back a chart whose BOTH props read false with no owner live — the
+// exact signature our own lock writes (a user's pair is never that).
 //+------------------------------------------------------------------+
 static int  s_viewLockCount     = 0;      // live owners (ring/panels + tool + line)
 static bool s_viewScrollUser    = true;   // the USER's pair - captured at 0 -> 1 ONLY

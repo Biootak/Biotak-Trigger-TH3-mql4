@@ -6366,49 +6366,20 @@ static int  s_PnlMoveFrames = 0;   // batches this gesture actually applied
 static int  s_PnlMoveWorst  = 0;   // the worst single batch cost it paid (ms)
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-UI-83 (2026-09-14) — «هنوز به صورت لایو جابجا نمیشه، پنل باید مثل منوی اصلی
-// جابجا بشه» — THE PANEL'S DRAG STILL DIED ON WITNESSES THE MENU NEVER ASKS.
-//
-// THE MENU'S DRAG LIVES ON **ONE** WITNESS: the event bit (`if(!leftDown)`,
-// BiotakMenu's orb / chrome path). The user's yardstick is exactly that —
-// "the menu works, make the panel like it" — so the diff that matters is
-// *who may end a live panel drag*.
-//
-// THE PANEL HAD TWO MORE ENDERS, and both consult the PHYSICAL probe
-// `UILeftButtonUp()`:
-//   * `PnlDragPoll`'s release rule (one probe reading, twice in a row, ends the
-//     gesture), and
-//   * `ChartPointerFinalizeOnUps`'s teardown gate (probe says "up" ⇒ this
-//     CLICK/OBJECT_CLICK is a release, so tear every panel latch down).
-// On a terminal whose KEYSTATE probe answers "free" while the button is HELD
-// (the docstring above `UILeftButtonDown` records that the two MQL4 lineages
-// spell this property differently, and P-UI-73 exists because of it), BOTH of
-// them end a live drag:
-//   * the poll's rule fires on its second pass — a tick or the 250 ms timer —
-//     so a press buys 250-500 ms of drag, and
-//   * the P-UI-49b delivery echo (MT4 hands the indicator the OBJECT_CLICK of
-//     the press that grabbed the object) ends it in ~125-176 ms.
-// TODAY'S LEDGER IS EXACTLY THAT — 150 arms, ALL from the event channel (0 by
-// the poll: a probe that never reads "down" can never arm one), 55 finishes
-// `via=finalizer` at 125-176 ms and 76 `moved=1` finishes at 253-500 ms — i.e.
-// NO drag in the whole session outlived half a second while the user kept
-// holding the button. The grab, the window and the frame were all fine; the
-// gesture was being executed by the wrong witness.
-//
-// THE WITNESS THAT SEPARATES AN ECHO FROM A RELEASE is the event bit's own
-// RECENCY. During a live press the terminal keeps delivering `leftDown=1`
-// moves, so a click that lands while a down-reading is still warm belongs to
-// that very press (P-UI-49b's echo), not to its release. A release with the
-// cursor held still emits NO move at all (P-BK-03), so its stamp is old by
-// construction — which is precisely the case the finalizer exists for. ONE
-// stamp, TWO gates: no non-event witness may end a gesture whose event channel
-// is still delivering DOWN readings. A terminal whose probe is honest sees no
-// change at all (there the probe already answered the same way).
+// P-UI-83 (2026-09-14) — the panel's drag died on witnesses the MENU never asks.
+// The menu's drag lives on ONE witness (the event bit, `if(!leftDown)`); the panel
+// had TWO more enders, both consulting the PHYSICAL probe `UILeftButtonUp()` —
+// `PnlDragPoll`'s release rule and `ChartPointerFinalizeOnUps`'s teardown gate — and
+// where that probe answers "free" while the button is HELD (P-UI-73) both of them end
+// a live drag. Measured: 150 arms, ALL from the event channel (0 by the poll), 55
+// finishes at 125-176 ms and 76 at 253-500 ms — NO drag outlived half a second.
+// THE WITNESS that separates the P-UI-49b echo from a real release is the event bit's
+// own RECENCY: a click landing while a down-reading is still warm belongs to that very
+// press, while a release with the cursor held still emits NO move (P-BK-03) and its
+// stamp is old by construction. ONE stamp, TWO gates — no non-event witness may end a
+// gesture whose event channel is still delivering DOWN readings.
 // ══════════════════════════════════════════════════════════════════════════
-//--- PANELDRAG-OFF: STAYS ACTIVE — the card-move consumer is retired, but this
-//--- recency witness is what keeps `ChartPointerFinalizeOnUps` from tearing the
-//--- SLIDER and the palette MIXER down on the P-UI-49b delivery echo, so the
-//--- stamp and the gate both stay exactly as they are.
+//--- PANELDRAG-OFF: STAYS ACTIVE — the card-move consumer is retired, but this recency witness keeps `ChartPointerFinalizeOnUps` from tearing the SLIDER and the palette MIXER down on the P-UI-49b echo.
 #define PNL_DOWN_RECENT_MS 250   // a down-reading this fresh IS a live press
 static uint s_PnlDownAt = 0;     // last leftDown=1 mouse-move (0 = never seen)
 
@@ -6822,54 +6793,23 @@ bool PnlPointInside(const int mx,const int my)
 
 //+------------------------------------------------------------------+
 // P-UI-92 (2026-09-16) — THE UI'S PIXEL SOVEREIGNTY TEST (the WHERE half).
-//
-// THE BUG. The composer runs the DOMAIN half of one event first
-// (`OnChartEventHandler`) and the UI half second (`HandleUIChartEvent`, called
-// unconditionally right after it in OnChartEvent). So the domain read a pixel that
-// sat ON A PANEL as chart input, before the panel's own handler could object:
-//   * the armed Base/Knot tool committed a corner behind the card — its CLICK
-//     fallback takes the price from `dparam`, i.e. the chart price hidden under
-//     the panel ("the box appeared behind the panel"),
-//   * the committed-box drag latch armed from the same press, so the next move
-//     dragged a box the user could not even see,
-//   * the Custom Price pick consumed the release as its starting price.
-// All three are the same defect: the UI's pixels were not subtracted from the
-// chart before the domain hit-tested them.
-//
-// THE RULE — one method, one owner. The UI layer answers ONE question, exactly,
-// from the layout it already maintains: "does this pixel belong to a VISIBLE UI
-// surface?". The domain half asks it before it reads a pixel as chart input
-// (`BaseKnotOnChartEvent`'s press/latch/click and the Custom Price pick are the
-// three call sites; any future one asks the same function rather than inventing a
-// new guard). The WHOSE half of the same rule is the published click claim
-// (`UIPeekClickClaim`) for gestures that began off the UI.
-//
-// WHY A HIT TEST AND NOT A TIME WINDOW: the panel rect is layout state, valid at
-// the instant of the press regardless of when the cursor last moved — so a hover
-// that stopped 10 seconds ago cannot leak, and a press that emits no mouse-move at
-// all (P-BK-03) is still classified correctly. No TTL, no drift, no timer.
-//
-// WHAT IS CLAIMED, AND WHAT IS NOT: the ring menu's CONTROLS are claimed only
-// while `g_UI.menuVisible` — P-BK-02 hides the whole menu for a draw session, and a
-// hidden menu must own nothing, or the tool would lose a 40px patch of chart where
-// the orb used to sit. What they own is exactly `CircPointOnMenu`'s answer (the orb,
-// every ring item, every sub-menu tile, the grid panel's plate); the menu's
-// TRANSPARENT gaps are deliberately nobody's, because a click that hits no control
-// IS a chart click and the ring's bounding box is a 240px patch of a tool's
-// workspace. The countdown tag is included for the opposite reason: it is a real,
-// visible surface of the UI's own layer (P-CLICK opens card 2 from it).
-//
-// P-UI-116 (2026-09-25): the ring half of this sentence was WRITTEN here and never
-// COMPILED here — the body tested the card, the strip, the top menu bar and the
-// countdown tag, and `CircPointOnMenu` (the ring's own test, named for exactly this
-// question) had no caller in any commit. So for as long as this rule has existed,
-// every pixel of the ring the user sees as menu read as free chart to the domain.
-// The fix is the call below; the sentence above is now what the code does.
-//
-// COST: a handful of int compares on a press/release — never on a hover — so the
-// mouse-move path and the per-tick path pay nothing. The ring term is the one walk
-// (RING_COUNT item boxes over CACHED chart metrics, P-PERF-16), and it runs only on
-// those press/release paths and only while the menu is visible.
+// THE BUG: the composer runs the DOMAIN half of an event first, so the domain read a
+// pixel that sat ON A PANEL as chart input — the armed Base/Knot tool committed a
+// corner behind the card, the committed-box drag latch armed from the same press, and
+// the Custom Price pick consumed the release as its starting price. One defect: the
+// UI's pixels were not subtracted from the chart before the domain hit-tested them.
+// THE RULE: the UI layer answers ONE question from the layout it already maintains —
+// "does this pixel belong to a VISIBLE UI surface?" — and the domain asks it before
+// reading a pixel; the WHOSE half is the published click claim (`UIPeekClickClaim`).
+// WHY A HIT TEST AND NOT A TIME WINDOW: the rect is layout state, valid at the instant
+// of the press, so a hover that stopped 10 s ago cannot leak and a press that emits no
+// move at all (P-BK-03) is still classified. No TTL, no drift, no timer.
+// WHAT IS CLAIMED: the ring's controls only while `g_UI.menuVisible` (P-BK-02 hides the
+// menu for a draw session) and exactly what `CircPointOnMenu` answers, plus the
+// countdown tag — the menu's TRANSPARENT gaps stay nobody's, because a click that hits
+// no control IS a chart click. P-UI-116: the ring half was WRITTEN here and never
+// COMPILED here, so every ring pixel read as free chart until the call was added.
+// COST: a handful of int compares on a press/release, never on a hover.
 //+------------------------------------------------------------------+
 bool UIPointerOverSurface(const int mx,const int my)
 {
@@ -7616,54 +7556,23 @@ bool PnlCardBodyHit(const int mx,const int my)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-UI-75 (2026-09-14) — THE DRAG HAS TWO ENTRIES AND ONE CONTRACT, AND IT
-// PAYS FOR ITS OWN FRAMES.
-//
-// THE REPORT (fourth time in the same shape): «پنل تنظیمات درگ نمیشه ثابت هستش
-// به صورت روان درگ بشه بدون هزینه اضافی» — the settings card cannot be dragged
-// at all, and where it moves it does not follow the cursor. Two separate
-// defects, one architecture lesson each:
-//
-// (a) A DRAG LIVED ON ONE DELIVERY CHANNEL. The grab was reachable ONLY from a
-//     fresh CHARTEVENT_MOUSE_MOVE press edge (`leftDown && !g_MouseWasDown`) —
-//     and this project's own history says that event is not reliable for a
-//     press: MT4 emits NO mouse-move for a press that does not move (P-BK-03,
-//     recorded in `UILeftButtonDown`'s comment), and the button bit of `sparam`
-//     is a second witness that can disagree with the physical button (P-UI-73a
-//     has the two KEYSTATE conventions disagreeing already). EVERY other
-//     gesture in this file has a polled shadow for exactly that reason —
-//     `BkHoldPoll` for the box hold, `CustomPriceDragHealStale` for the line,
-//     `ChartScrollReconcile` for the lock — and the drag, the gesture the user
-//     reports most, had none. So the SAME contract now has a second entry:
-//     `PnlDragPoll()` from the tick/timer pump (`RefreshKitOnBar`, beside
-//     `BkHoldPoll`) arms through the SAME `PnlTryGrabMove` the press chain
-//     uses, steps through the SAME `PnlDragStep`, and ends through the SAME
-//     `PnlDragFinish`. No second affordance list and no second owner: the poll
-//     can only reach the points the press chain would have refused anyway
-//     (`PnlPointOnControl` — a control under the cursor is never a grab), and
-//     it arms only while the PHYSICAL button reads down (`UILeftButtonDown`)
-//     *and* the event latch never saw that press (`!g_MouseWasDown`), so a
-//     working event channel always keeps its own gesture. Recovery paths stay
-//     conservative (the `UILeftButtonUp` rule): the poll PINS the card
-//     (`PnlCommitMove`) only when it can prove the card actually moved.
-//
-// (b) THE DRAG DID NOT PAY FOR ITS OWN FRAMES. P-PERF-04/06 made the move
-//     coalesce to 30 Hz and repaint through `ThrottledChartRedraw()` — a
-//     100 ms tick throttle. The two gates could not compose, so one repaint
-//     landed per ~10 applied batches. Neither fixed rate is right, because the
-//     right rate is a MEASUREMENT: a drag owes one repaint per applied batch,
-//     and how many batches per second a machine can afford is exactly what the
-//     batch costs. The window is adaptive — the grab starts it at
-//     `PNL_MOVE_FRAME_MIN_MS` (cursor-glued), each batch moves it a quarter of
-//     the way toward the measured batch cost + `PNL_MOVE_SLACK_MS`, capped at
-//     `PNL_MOVE_FRAME_MAX_MS` — so a weak machine converges to the frame rate
-//     it can actually hold instead of dropping frames, and a fast one gets a
-//     card glued to the cursor. Cost when no drag is live: the poll reads one
-//     int. That is the whole steady-state cost of this change.
+// P-UI-75 (2026-09-14) — the drag has TWO entries and ONE contract, and it pays for
+// its own frames. Reported (fourth time): the settings card cannot be dragged at all,
+// and where it moves it does not follow the cursor.
+// (a) A DRAG LIVED ON ONE DELIVERY CHANNEL — the MOUSE_MOVE press edge, and MT4 emits
+// NO mouse-move for a press that does not move (P-BK-03), while `sparam`'s button bit
+// can disagree with the physical button (P-UI-73a). Every other gesture here has a
+// polled shadow, so the drag has one now: `PnlDragPoll()` arms through the SAME
+// `PnlTryGrabMove`, steps through `PnlDragStep` and ends through `PnlDragFinish` — never
+// on a control (`PnlPointOnControl`) and only while the physical button reads down AND
+// the event latch never saw that press.
+// (b) THE DRAG DID NOT PAY FOR ITS OWN FRAMES — a 30 Hz coalesce and a 100 ms redraw
+// throttle could not compose (one repaint per ~10 batches). The window is adaptive now:
+// cursor-glued at the grab, moving a quarter toward the measured batch cost, capped at
+// `PNL_MOVE_FRAME_MAX_MS`. At rest the poll reads one int.
 // ══════════════════════════════════════════════════════════════════════════
 //--- the drag's frame window lives with the other gesture state below
-//--- (`PnlCommitMove`, P-UI-75b): the defines and the three counters are
-//--- declared there, because the button-up finalizer resets one of them.
+//--- (`PnlCommitMove`, P-UI-75b), because the button-up finalizer resets one of its counters.
 
 //--- is the point inside the palette popover? It floats ABOVE the card, so its
 //--- pixels are the popover's and a press there never belongs to the card.
@@ -7896,53 +7805,22 @@ bool PnlSkinHit(const int item,const int mx,const int my)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// PANELDRAG-OFF (2026-09-14) — THE CARD-MOVE GESTURE IS RETIRED.
-//
-// User decision, after eight reports and a full day of measured evidence:
-// «به نظرم درگ پنل تنظیمات حذف کنیم بهتر هستش الکی هزینه اضافی رو اندیکاتور فشار
-// نیاد». The measurement that settled it — pulled from the LIVE terminal, not
-// from a theory:
-//   * 197 drags armed by the event channel in one day, ZERO by the poll, so the
-//     poll's per-tick KEYSTATE probe (the feature's only always-on cost) bought
-//     nothing on this terminal;
-//   * the press path paid a 12-family hit-test sweep (`PnlPressClaimCode`) and
-//     then the tap family re-ran those same families — the panel's mouse-move
-//     handler measured 78-79 ms twice in one day, which is the «فشار الکی» the
-//     user names;
-//   * `PnlMoveBy`'s batch was already paid only while a press was held, but a
-//     gesture that the user no longer wants must not keep its guards alive.
-//
-// WHAT IS RETIRED (all of it commented IN PLACE, at its own site, with this
-// marker): the arm site in the press chain, the move branch of
-// `PnlHandleMouseMove`, and the `PnlDragPoll()` call in `RefreshKitOnBar`.
-//
-// WHAT IS LEFT COMPILING AND DORMANT on purpose (the TH3TOOL-OFF/VIEWLOCK-OFF
-// pattern — a restore must be an uncomment, never a rewrite): `PnlTryGrabMove`,
-// `PnlDragThreshPx`, `PnlDragStep`, `PnlDragFinish`, `PnlDragPoll`, `PnlMoveBy`,
-// `PnlMoveOne`, `PnlMoveListBuild/Sync/Fresh`, `PnlCommitMove`, `PnlHeaderHit`,
-// `PnlCardBodyHit`, `PnlSkinHit`, `PnlPressClaimCode`, `PnlPointOnControl`,
-// `PnlGrabRefused`, `PnlDragThreshPx`'s two bounds and the `PNL_MOVE_*` window.
-//
-// WHAT STAYS ACTIVE, because it belongs to someone else:
-//   * `PnlMoveBy` / `PnlMoveList*` — still the RELAYOUT PRIMITIVE: the two
-//     re-clamp paths (`PnlClampOpenPanel` on a shrunken chart, and
-//     `PnlComputePosition` on reopen) move the card through them;
-//   * `PnlReapStaleGestures` and `PnlPointerQuiet` / `s_PnlDownAt` — they heal
-//     and protect the SLIDER and the palette MIXER, two live gestures;
-//   * `PnlPressAllowed` — the coordinate controls' one guard;
-//   * every position already parked (`g_PnlManualPos` + `PNLPV<n>` GVs) is still
-//     read on open and still purged by the Q reset; only NEW parking is gone.
-//
-// A future session that wants the feature back: grep `PANELDRAG-OFF`, uncomment
-// the three sites, delete the `false &&` in `PnlHandleMouseMove`, and re-teach
-// the gates (`panel-wiring-audit` `[drag]`/`[press]`, `gesture-budget-audit`,
-// `probe-budget-audit` `[drag-anchor]`, `write-budget-audit` `[staging]`) — they
-// now assert the RETIREMENT, so a half-restore fails instead of shipping.
+// PANELDRAG-OFF (2026-09-14) — THE CARD-MOVE GESTURE IS RETIRED (user decision after
+// eight reports: «به نظرم درگ پنل تنظیمات حذف کنیم بهتر هستش الکی هزینه اضافی رو
+// اندیکاتور فشار نیاد»). Measured: 197 drags armed by the event channel and ZERO by
+// the poll, so the per-tick KEYSTATE probe bought nothing, and the press path paid a
+// 12-family hit-test sweep whose handler measured 78-79 ms.
+// RETIRED IN PLACE (grep `PANELDRAG-OFF`): the arm site in the press chain, the move
+// branch of `PnlHandleMouseMove`, and the `PnlDragPoll()` call in `RefreshKitOnBar`.
+// LEFT DORMANT ON PURPOSE (the TH3TOOL-OFF pattern — a restore is an uncomment, never a
+// rewrite): `PnlTryGrabMove`, `PnlDragStep`, `PnlDragFinish`, `PnlDragPoll`,
+// `PnlMoveBy/One/List*`, `PnlCommitMove`, the hit helpers and the `PNL_MOVE_*` window.
+// ACTIVE because it belongs to someone else: `PnlMoveBy`/`PnlMoveList*` are still the
+// RELAYOUT PRIMITIVE, `PnlReapStaleGestures`/`s_PnlDownAt` heal the SLIDER and the
+// MIXER, `PnlPressAllowed` guards the coordinate controls, and parked positions are
+// still read on open and purged by the Q reset.
 // ══════════════════════════════════════════════════════════════════════════
-//--- THE GRAB — one owner, two entries (the press chain and the poll).
-//--- Returns true when this call took the pointer for a card move.
-//--- `byPoll` records WHO armed it (P-UI-77): the release belongs to the
-//--- arming channel, so the move block below knows which witness may end it.
+//--- THE GRAB — one owner, two entries (the press chain and the poll); `byPoll` records WHO armed it (P-UI-77), so the release belongs to the arming channel.
 bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
 {
    // The remembered rect, for the ledger (P-UI-79): when a press misses it,
@@ -8110,48 +7988,21 @@ void PnlDragFinish(const bool commit,const bool suppressClick)
 
 // ══════════════════════════════════════════════════════════════════════════
 // P-UI-81 (2026-09-14) — A NEW PRESS IS THE PROOF THAT THE LAST GESTURE IS OVER.
-//
-// THE REPORT (fifth time in the same shape, and the first that names the SECOND
-// half): «بعضی اوقات جابجا میشه ولی دیگه قفل میشه هیچی کار نمیکنه» — the card
-// CAN be moved, and from that moment the panel is DEAD until the indicator is
-// removed and re-attached. That is not a drag defect, it is a LATCH defect: the
-// move chain `return`s before its control block while `g_PnlMoveItem >= 0`, and
-// the slider / mixer latches skip that same block the same way — so ONE panel
-// gesture latch left set switches off EVERY control of EVERY card, and the grab
-// with them, which is exactly why the next press "moves the card instead of
-// clicking anything".
-//
-// WHY A LATCH COULD STAY SET: all three of its exits need a witness the terminal
-// is free to never deliver —
-//   * a later CHARTEVENT_MOUSE_MOVE carrying the release bit (MT4 emits NO move
-//     event for a release that does not travel — P-BK-03);
-//   * the physical probe `UILeftButtonUp()` (a heuristic, and the KEYSTATE
-//     spelling differs between build lineages — P-UI-73a);
-//   * the button-up finalizer — which is itself gated by that same probe.
-// Lose all three inside one gesture (a release with no travel, focus stolen by
-// the terminal's own dialog, a probe that disagrees) and the latch is PERMANENT.
-//
-// THE WITNESS THAT CANNOT BE MISSED IS THE NEXT PRESS. A press EDGE means the
-// button went up and came back down — nothing else can produce one — so while
-// the panel is being told that a NEW press just began, any panel latch still set
-// belongs to a gesture that is already over, by construction. The heal is
-// FORWARD: the next press the user makes IS the repair. No clock, no probe, no
-// extra event, no new state — and the tick path never reaches this.
-//
-// HEALTHY GESTURES ARE UNTOUCHED: exactly ONE press edge exists while the button
-// is genuinely held (`MousePressStart`'s rising edge, P-UI-74), and a live
-// gesture is armed BY that edge — so by the time a drag is live there is no
-// second edge left to reap it. The one shape that does produce a second edge is
-// the P-UI-49b delivery echo (MT4 hands the indicator the click of the press
-// that grabs an object): the reap ends a drag that is still held, and the SAME
-// press re-grabs it through `PnlTryGrabMove` on the next line, re-anchored on the
-// CURRENT cursor point — so the card keeps following the cursor instead of being
-// bricked. At most one frame is paid; that is the trade P-UI-73b already relies
-// on.
-//
-// `commitMove` keeps the two callers honest: a press-edge reap keeps the spot a
-// REAL drag reached (P-UI-70a's release contract), while a reap on the way out
-// of a card that is being closed pins nothing.
+// Reported (fifth time, and the first that names the second half): the card CAN be
+// moved, and from that moment the panel is DEAD until the indicator is re-attached —
+// not a drag defect but a LATCH one: the move chain returns early while
+// `g_PnlMoveItem >= 0`, and the slider / mixer latches skip the same block, so ONE
+// panel latch left set switches off EVERY control of EVERY card.
+// WHY A LATCH COULD STAY SET: all three of its exits need a witness the terminal may
+// never deliver — a later MOUSE_MOVE carrying the release bit (MT4 emits NO move for a
+// release that does not travel, P-BK-03), the physical probe `UILeftButtonUp()` (a
+// heuristic whose KEYSTATE spelling differs by build lineage, P-UI-73a), and the
+// button-up finalizer, itself gated by that probe.
+// THE WITNESS THAT CANNOT BE MISSED IS THE NEXT PRESS: a press EDGE means the button
+// went up and came back down, so a panel latch still set belongs to a gesture already
+// over. Healthy gestures are untouched (exactly ONE edge exists while the button is
+// held), and the P-UI-49b echo case re-grabs from the same press, re-anchored on the
+// CURRENT cursor — one frame paid, never a bricked panel.
 // ══════════════════════════════════════════════════════════════════════════
 void PnlReapStaleGestures(const bool commitMove)
 {
@@ -8182,52 +8033,24 @@ void PnlReapStaleGestures(const bool commitMove)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-UI-74 (2026-09-14) — EVERY CARD CONTROL ANSWERS ON BOTH DELIVERY CHANNELS,
-// AND ONE GESTURE STILL HAS EXACTLY ONE OWNER.
-//
-// THE REPORT (third time in the same shape): «این رنگ ها که هستش کلیک میکنم هیچ
-// تغییر رنگی نداریم، از پلن پالت درستش هستش ولی از اینجا نه» — tapping the colour
-// strip of the ATR card does nothing, while the palette popover opened from
-// elsewhere applies fine.
-//
-// MEASURED FIRST, and the measurement is why the old fixes could not have
-// helped: the shipped build paints that strip EXACTLY where `PnlCsetHit` looks
-// for it (columns 617/661/705/749/793, band y 790..818 against a paint at
-// 794..813 — the wide body, the row grid, the two-column origins and the footer
-// all land pixel-exact), and every gate was green. So the geometry and the
-// apply logic were never the hole: the hole is DELIVERY. A control that exists
-// on ONE channel only is reachable only while that channel works, and this card
-// has two very different channels living side by side:
-//   * the NAME-based router (`PnlHandleClick`, driven by CHARTEVENT_OBJECT_CLICK)
-//     owns the nav/segment buttons, the colour preview block, X/Done and the
-//     quick-pick swatches — the user's palette opened and closed through it
-//     all session (the last one even logged itself: `control=..._Pal_close`);
-//   * the COORDINATE press chain (a fresh MOUSE_MOVE with the button down)
-//     owns the switch pill, the cset cells, the "+" chip, the section bands and
-//     the sliders — and ONLY that channel. Its events can be eaten by a foreign
-//     drag claim (P-UI-70b/72), by a released-but-unreported button, or simply
-//     not delivered for a control whose topmost object is a bitmap (the "glass"
-//     skin sits exactly on every colour cell and MT4 fires no OBJECT_CLICK for
-//     it), and then the control reads as DEAD while its neighbours keep working.
-//
-// THE FIX IS NOT A SECOND COPY OF THE DISPATCH. A duplicated handler is the
-// P-UI-31/P-UI-69 "two deciders" shape one layer up: the affordance list would
-// exist twice and drift. Instead the CLICK channel re-enters the SAME dispatch
-// (`PnlHandleMouseMove` with a synthetic fresh press) so the list, the order and
-// every arm stay single-owned, and two latches make the twin delivery safe:
-//   * `s_PnlActedSeq` — the press identity (P-UI-65's `g_UIPressSeq`) a control
-//     already acted for. The second event of the same release (CLICK and
-//     OBJECT_CLICK are both delivered) is skipped, so nothing double-acts.
-//   * `s_PnlClickActed` — set ONLY when the click channel acted while the button
-//     was still physically DOWN (the P-UI-49b delivery order: MT4 may hand the
-//     indicator the click of the press that grabbed the object). That press
-//     event is still in flight, so the next press chain pass consumes it — the
-//     same "one gesture, one owner" rule, from the other side.
-//   * `s_PnlClickChannel` — TRUE while the click channel dispatches. Two things
-//     depend on it: the release is ALREADY the event being handled, so no click
-//     claim may be armed (arming one there is P-UI-65's over-eating, one click
-//     later), and the card-body DRAG grab is refused (a plain click must never
-//     start a move gesture — only a press may).
+// P-UI-74 (2026-09-14) — EVERY CARD CONTROL ANSWERS ON BOTH DELIVERY CHANNELS, AND
+// ONE GESTURE STILL HAS EXACTLY ONE OWNER. Reported (third time): clicking the colour
+// strip of the ATR card does nothing, while the palette opened elsewhere applies fine.
+// MEASURED FIRST: the shipped build paints that strip exactly where `PnlCsetHit` looks
+// (columns 617/661/705/749/793, band y 790..818 against a paint at 794..813) and every
+// gate was green — so the geometry and the apply logic were never the hole. The hole is
+// DELIVERY: the NAME-based router (`PnlHandleClick`) owns the nav buttons, the colour
+// preview, X/Done and the swatches, while the COORDINATE press chain owns the switch
+// pill, the cset cells, the "+" chip, the section bands and the sliders — and only that
+// channel, whose events can be eaten by a foreign drag claim (P-UI-70b/72) or simply not
+// delivered for a control topped by a bitmap (MT4 fires no OBJECT_CLICK for the glass
+// skin).
+// THE FIX IS NOT A SECOND COPY OF THE DISPATCH (that is the two-deciders shape): the
+// CLICK channel re-enters the SAME `PnlHandleMouseMove` with a synthetic fresh press, and
+// three latches make the twin delivery safe — `s_PnlActedSeq` (the press identity already
+// acted for), `s_PnlClickActed` (acted while the button was still down, so the next press
+// pass consumes it) and `s_PnlClickChannel` (no click claim may be armed there, and the
+// card-body drag grab is refused — only a press may start a move).
 // ══════════════════════════════════════════════════════════════════════════
 static uint s_PnlActedSeq     = 0;      // press identity that a CONTROL acted for
 static bool s_PnlClickChannel = false;  // TRUE while the CLICK channel dispatches

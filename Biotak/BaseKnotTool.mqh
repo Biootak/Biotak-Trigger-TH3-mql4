@@ -2555,82 +2555,22 @@ bool BaseKnotBarCloseOut(const int shift, const double top, const double bot)
    return (c < bot || c > top);
 }
 // THE BASE'S OWN LENGTH — the candles that go nowhere, ending where it BREAKS.
-//
 // P-BK-31 (2026-09-15) — «عدد واقعی ۱۹ باید در هر حالت نشون بده، الان ۲۰ نشون
-// میده؛ عقب بکشیم ۴۳ میشه … ۱۹ تا هستش از [شروع] تا اصلاح که کرده و شکسته». Two
-// earlier rules measured the WRONG THING:
-//   * v1 counted every close inside the band over the box's span (51 bars on a
-//     19-candle base — trend candles merely passing through the band counted),
-//   * v2 counted every BODY inside the band anywhere in the box (20 on the same
-//     base, 43 once the box was widened backwards).
-// Both measured the BOX. The base is a property of the PRICE ACTION, so the
-// number must not move when the user drags the box: it is the run of candles that
-// sit inside the band, ending where price leaves it (the break).
-//
-// HOW IT IS READ (P-BK-31) + THE TOLERANCE (P-BK-32, 2026-09-15):
-//   * the anchor is the box's RIGHT edge — the newer end, which is where the base
-//     ends and the break happens (P-BK-29 reads the break to the right of it);
-//   * the walk goes OLDER from there, and it ends where price really LEFT the
-//     range: ONE isolated out-of-band body is stepped over and NOT counted — the
-//     user's «یک کندل منفرد با بدنه بیرونی ران بیس را قطع نکند» — while a CLUSTER of
-//     them (BK_BASE_GAP + 1 in a row) is the base's end, because several candles in
-//     a row outside the band are a MOVE while a single one is a poke;
-//   * THE TOLERANCE IS A COUNT OF CANDLES, NEVER A PRICE MARGIN. Widening the band
-//     for the test (x% of it, or k·ATR — the «interaction margin» family of the
-//     TradingView range scripts) would put the BAND back inside the number: a box
-//     drawn half a pip taller would print another base. The step-over lives on the
-//     bar INDEX alone — a morphological CLOSING of the inside/outside series with
-//     a one-candle structuring element, i.e. the same debounce every range
-//     detector in the wild counts in bars («hold for N consecutive bars», the
-//     Darvas-box code's M confirmation candles) — so the number still depends on
-//     nothing but the series, the band and the anchor;
-//   * A RE-ENTRY IS CONFIRMED BEFORE IT COUNTS (BK_BASE_MIN_BARS): the candles
-//     found past a tolerated gap join the base only once BK_BASE_MIN_BARS of them
-//     in a row hold the band. Without that confirmation a stray in-band candle on
-//     the ENTRY side would re-open the run and inflate the number — exactly the
-//     19 -> 20 the user already rejected;
-//   * the box may end ON the break — or anywhere INSIDE it, because the user drags
-//     the right edge forward over the move (breakout bodies are outside the band) —
-//     so the out-of-band candles between the edge and the base are stepped over
-//     first, up to BK_BASE_SKIP of them; if the band does not take over within
-//     that, there is no base at this anchor and the note omits the number instead
-//     of inventing one. P-BK-33 (2026-09-15): that budget was 4, and the user's own
-//     box was ONE candle beyond it — right edge 12:49, the base's last in-band body
-//     12:44, the break 12:45..12:49 (five BODIES outside the band, band
-//     1.15323..1.15346 = the 2.3 pips on his note) — so the number silently vanished
-//     from the note «جلو میبریم شمارش کندل ها رو نشون نمیده». P-BK-39: it is the
-//     walk's own cap now (300), because a candle count is TF-dependent — the same
-//     three-day break is 3 candles on D1 and 49 on H1, and 30 was only enough on the
-//     chart it was tuned on;
-//   * the box's LEFT edge bounds NOTHING (t1 is only a validity check): dragging
-//     the box backwards over older price can no longer inflate the number, which
-//     is exactly what the user asked for — the base's length is the same 19 in
-//     every state of the box. Verified on the user's own M1 history (EURUSD,
-//     15 Sep 2026, band 1.15333..1.15357 = the 2.4 pips on his note): an old build
-//     printed 20 with the box on the base and 43 after dragging it back, and this
-//     rule prints 19 in both states (the run 11:15..11:33 ending at the box' right
-//     edge; 11:14 is the candle that left the band — tolerated once, and only a
-//     full base-length stretch older than it could extend the run).
-//
-// Coherent with the rest of the note: P-BK-28's size class and P-BK-29's node
-// type are read from the same base, so count, class and type describe ONE object.
-// Cost: one bounded walk — the anchor steps over at most BK_BASE_SKIP bars and the
-// run counts at most BK_BASE_MAX (the probe candles are inside that cap), so the
-// walk reads at most ~2 · BK_BASE_MAX bars of the current chart, two series reads
-// each; it keeps a pathological box (a band wide enough to swallow hours of
-// candles) from walking the series.
-// 0 = nothing measurable (series not ready, or no base at that anchor) — callers
-// then omit the bars part and the size class.
-// P-BK-39 (2026-09-15) — «چه از تایم بزرگ به کوچیک و از کوچیک به بزرگ»: the anchor
-// budget is THE WALK'S OWN CAP (BK_BASE_MAX), not a third number. P-BK-33 set it to
-// 30 chart candles, which is TF-DEPENDENT: 30 M1 candles are half an hour, while the
-// user's own D1 box covers THREE D1 candles of break - 49 H1 candles on the H1 chart,
-// which blew the budget and made the note read «no base» with its «N bars · D1 base»
-// part missing on the very chart the base was measured on (measured on his own
-// EURUSD1440/EURUSD60 history). With the budget at the walk's cap the anchor search is
-// bounded by exactly what one base may cost the walk, so the SAME box finds the SAME
-// base on every chart TF - and a box dragged further than a whole walk from any base
-// still honestly reports none instead of latching onto an older range.
+// میده؛ عقب بکشیم ۴۳ میشه». Two earlier rules measured the WRONG THING (every close
+// inside the band over the box's span; every BODY inside it anywhere in the box) —
+// both measured the BOX, and the base is a property of the PRICE ACTION: the run of
+// candles that sit inside the band, ending where price leaves it.
+// HOW IT IS READ (P-BK-31/32/39): the anchor is the box's RIGHT edge and the walk
+// goes OLDER; ONE isolated out-of-band body is stepped over and NOT counted
+// (BK_BASE_GAP), while a cluster is the base's end; a re-entry joins only once
+// BK_BASE_MIN_BARS of them in a row hold the band; the anchor may step over up to
+// BK_BASE_SKIP bars (the walk's own cap — a bar count is TF-dependent, and 30 blew a
+// D1 box out); the LEFT edge bounds NOTHING (t1 is only a validity check), so
+// dragging the box back cannot inflate the number.
+// THE TOLERANCE IS A COUNT OF CANDLES, NEVER A PRICE MARGIN — widening the band for
+// the test would put the BAND back inside the number. Coherent with P-BK-28/29's
+// class and type, which read the same base. 0 = nothing measurable (callers then omit
+// the bars part). Cost: one bounded walk (~2 · BK_BASE_MAX series reads).
 #define BK_BASE_SKIP 300      // candles the anchor may step over the break (P-BK-39: the walk's cap)
 #define BK_BASE_GAP    1      // isolated out-of-band BODIES the run steps over (a COUNT of candles)
 #define BK_BASE_MIN_BARS 3    // «سه کندل درجا زدن» — a re-entry needs a base's own length to count

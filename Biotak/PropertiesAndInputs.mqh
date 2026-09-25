@@ -144,7 +144,12 @@ input group "07) ZONES - MID"
 input string S10 = "[07] ZONES / MID";
 input group "07.1) ZONES - ENABLE & TYPE"
 input string S10a = "[07.1] ZONES / ENABLE & TYPE";
-input bool inpShowMidZones = true;
+input bool inpShowMidZones = false;   // P-UI-119 (user order 2026-09-25: «سطوح هم پیش فرض
+                                     // خاموش باشه»): the ZONES & LEVELS band was the last
+                                     // level family still defaulting ON (trigger levels,
+                                     // level lines, TH labels and ATR labels were already
+                                     // OFF). The ring's own light is the switch — a chart
+                                     // attaches clean and the user lights what they want.
 input ENUM_ZONE_STYLE inpMidZoneStyle = ZONE_STYLE_BOX_FILLED;
 input group "07.2) ZONES - VISUAL DENSITY"
 input string S10b = "[07.2] ZONES / VISUAL DENSITY";

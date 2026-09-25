@@ -137,63 +137,18 @@
 #resource "\\Files\\Icons\\gl_droplet_m.bmp"
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-DRAW-08 — ONE STRIP, EVERY DRAWING TOOL, ITS OWN CONTROLS.
-//
-// User order: «روش نگه میدارم منوی تولباری باز نمیشه … مثل این برای هر ابزار به
-// صورت اختصاصی با تنظیماتش باز بشه». The screenshot's strip is the BOX's own
-// (item 13); this is the same idea for every drawing the user makes.
-//
-// WHY IT IS NOT ITEM 13's STRIP RETARGETED. That strip is a bitmap toolbar whose
-// slots are box properties and it is wired into ~30 places of the panel
-// framework. This one is deliberately the OPPOSITE shape: it renders itself from
-// the DRAWING's own kind, so it shows exactly the controls that kind has and
-// nothing else, and it owns its objects (create/refresh/destroy) with no
-// framework state at all. That is why it can serve seventeen drawing types with
-// one owner and no per-type code.
-//
-// THE MODEL — P-DRAW-11 RETIRED THE CYCLER (value cells open pickers now; only
-// toggles/actions fire at once). Kept as history: every slot WAS a cycler —
-// a tap advances the value, the cell always shows the CURRENT value (as its icon
-// where the value IS visual, as a word where it is not), and the tooltip names
-// the slot AND the value. No dropdown, no palette window, no second click to
-// close — five taps style a fibo. Every write goes through `DrawSlotWrite`,
-// which also learns the look for the next drawing of the kind (P-DRAW-01c), and
-// the TEMPLATE slot cycles the presets (P-DRAW-02/07, names and all).
-//
-// ── P-DRAW-09 (2026-09-23) — WHY THE FACE CHANGED, AND WHAT ELSE IT CARRIES ──
-//
-// User order: «استریپ ابزارهای ترسیمات خیلی مشکلات داره باید از استریپ بیس نات
-// هم مدرن تر باشه و همه نیازهای کاربر رو پوشش بده … و اینکه پرفورمنس فدا نشو …
-// از دید کاربر همیشه نگاه کن که سهولت استفاده داشته باشه و سریع و راحت ولی پر
-// امکانات». Four answers, each one measured against the box strip (item 13), the
-// surface the user is comparing this to:
-//
-//   a. THE CONTROLS MT4 BURIES (P-DRAW-09a, in DrawToolbar): FONT for a text's
-//      caption size, GLYPH for an arrow's mark, BEHIND for a zone. Three
-//      properties MT4 HAS and reaches only through a per-object dialog — the
-//      same class of gap the user names as «هر چیزی که متاتریدر پشتیبانی نمیکنه».
-//
-//   b. THE GROUP (P-DRAW-09b, in DrawToolbar): the terminal's own multi-select
-//      IS the group, and every tap edits the whole group. MT4's dialog is one
-//      object at a time and its style copy is all-or-nothing.
-//
-//   c. THE FACE (P-DRAW-09c + P-DRAW-10 here). A header line that NAMES the
-//      drawing the toolbar serves (and how many more it is editing), rows that
-//      wrap to a MINI toolbar instead of a ribbon, state-coloured faces (gold =
-//      this is ON: Filled, Locked, Behind), the colour cell carrying a real
-//      swatch with contrast-correct ink, and light ICON cells in the
-//      TradingView language with the value in the tooltip.
-//
-//   d. THE FRAME BUDGET (P-DRAW-09d, here). Every write is guarded (P-PERF-02's
-//      law: never touch a chart object with a value it already has) and the
-//      forced `ChartRedraw()` fires only when a pixel really moved, so a pan or a
-//      zoom no longer costs a full chart repaint per event. The re-anchor is
-//      throttled to the project's own drag cadence on BOTH channels (the drag
-//      and CHART_CHANGE), which is what "پرفورمنس فدا نشو" means in this file.
-//
-// COST. Created once per hold, destroyed on dismiss — never per frame. A refresh
-// reads the cells of the ONE held object (3-4 terminal calls each) and repaints
-// only when a value really changed. Nothing here runs in the mouse stream.
+// P-DRAW-08 — ONE STRIP, EVERY DRAWING TOOL, ITS OWN CONTROLS. A hold on any
+// drawing opens ITS OWN toolbar, not the box's. Deliberately the OPPOSITE shape
+// from item 13's bitmap strip: it renders itself from the drawing's KIND (so it
+// shows exactly the controls that kind has), owns its objects
+// (create/refresh/destroy) with no framework state, and one owner serves seventeen
+// kinds with no per-type code.
+// P-DRAW-11 retired the cycler (a value cell OPENS its picker now; only toggles and
+// actions fire at once) and P-DRAW-09/10/13 shaped the face: a header naming the
+// drawing, wrapping rows, state-coloured faces, contrast-correct swatch ink, the
+// controls MT4 buries (font, glyph, behind) and the group. Every write is guarded
+// (P-PERF-02) and the forced repaint fires only when a pixel moved — created once
+// per hold, destroyed on dismiss, nothing in the mouse stream.
 // ══════════════════════════════════════════════════════════════════════════
 
 // P-DRAW-08i: the paint loop walks DSTRIP_MAX_SLOTS, so a slot past the ceiling
@@ -201,59 +156,23 @@
 // (DSTRIP_QUICK_CAP); the twelve is headroom for the cap plus chrome.
 // P-DRAW-09: a kind has at most ten cells (six of its own + Tpl/Save/✕/All).
 #define DSTRIP_MAX_SLOTS 12
-//--- P-DRAW-11 (2026-09-23) — DIRECT PICK, NO CYCLING, AND WHY IT IS SHAPED LIKE THIS.
-//
-// User order: «حالت چرخشی نباشه مثل حالت بیس نات و بهتر ازش باشه». The cycler
-// (P-DRAW-08: "every slot is a CYCLER, a tap advances the value") is retired:
-// a tap on a VALUE cell no longer mutates anything — it OPENS that value's
-// picker, and the pick applies directly. Toggles (fill/lock/behind) and the
-// three actions (Save/All/Del) fire at once; they never had a list to show.
-//
-// WHY IT IS THE BASEKNOT SHAPE. The box strip (item 13, BiotakPanels.mqh:7011)
-// never cycles: STYLE/WIDTH toggle their ▾ dropdowns (TV popovers, NOT cycles),
-// pencil/bucket open the palette, and the popover owns the next press. This
-// strip is the same contract for all seventeen drawing kinds: one tap, one
-// list, the current value pill-highlighted, a row tap applies it live.
-//
-// WHY IT IS BETTER THAN ITEM 13, NOT A COPY OF IT:
-//   * the picker is INLINE — the strip's own second block, not a third window
-//     (no BkDdOpen/BkDdClose popover, no PalOpen palette, no card-12 jump for
-//     font/glyph/ray/template: every one of those has its own picker here);
-//   * the colour picker is 16 + the trader's own 5 recent (BaseKnot's is the
-//     shared palette window; the old 8-cycle is gone with the cycler);
-//   * the template list lives IN the strip (item 13 has no template row at all);
-//   * the group rides every pick (P-DRAW-09b), and the tip scope says so;
-//   * the picker survives a re-anchor (zoom/drag re-opens the strip around the
-//     open picker; item 13 closes its dropdown on the ride instead).
-//
-// THE AFFORDANCE WITHOUT A CHEVRON BITMAP. MT4 renders a text "▼" as "?" in
-// Wine fonts (BiotakPanels.mqh:4292), so a glued chevron would cost a baked
-// raster per cell. The rim carries it instead: a value cell (it HAS a picker)
-// wears DSTRIP_CLR_PICK, and the ACCENT rim while its own picker is open; an
-// ON toggle wears the ACCENT face (P-DRAW-09c, unchanged). Rim = has a list,
-// face = is on. The tooltip teaches it on the first hover ("click to choose").
-// P-UI-69d (2026-09-25): the UI's verb is ONE word — `click`, user order. Every
-// user-visible `tap to …` (28 strings, and `Colour:` three times) went `click to …`
-// and `Color:`; the historical quotes inside comments about the RETIRED cycler
-// stay as they were written (a quote is a record, not a label).
-//
-// COST. The picker is created on open demand and destroyed with the strip —
-// never per frame. A pick is one Store.Write fan-out plus one guarded repaint,
-// the same budget a cycler tap had. Nothing here runs in the mouse stream.
-// P-DRAW-13 (2026-09-23) — V6: ICON-ONLY, ONE ROW, GEAR PANEL. This paragraph is
-// the spec (the `drawstrip-v2-preview.html` mock it came from was deleted in the
-// root sweep, 2026-09-25): one 30px row — grip | badge | <=6 value icons |
-// more | gear | pin | trash — one docked
-// popover at a time, and a gear panel (Style / Levels-or-Mark / Template /
-// Strip + foot) for everything else. What the preview draws in SVG/CSS the
-// strip draws in baked BMP + native buttons; what MT4 cannot do is cut with a
-// named ceiling (ponytail), never silently dropped:
-//   * no text-edit inside the strip's own row (caption/hex/level-add live in
-//     the gear panel's OBJ_EDITs, the one place MT4 allows typing);
-//   * no per-level on/off visibility: MT4 draws every level a fibo HAS, so the
-//     levels editor edits MEMBERSHIP (add/remove), not visibility;
-//   * no font-name cycle (marginal for captions; size stays);
-//   * trash is not undoable (MT4 has no undelete; undo covers looks only).
+//--- P-DRAW-11 (2026-09-23) — DIRECT PICK, NO CYCLING. The cycler is retired: a tap
+// on a VALUE cell OPENS that value's picker and the pick applies directly; toggles
+// (fill/lock/behind) and the three actions (Save/All/Del) fire at once. Same
+// contract as the box strip (one tap, one list, the current value highlighted) for
+// all seventeen drawing kinds, and better than it: the picker is INLINE (the strip's
+// own second block — no popover, no palette window, no card-12 jump), it carries the
+// 16 + 5 recent colours, the template list lives in the strip, the group rides every
+// pick, and the picker survives a re-anchor.
+// THE AFFORDANCE WITHOUT A CHEVRON BITMAP: MT4 renders "▼" as "?" in Wine fonts, so
+// the rim carries it — a value cell wears DSTRIP_CLR_PICK (ACCENT while its own
+// picker is open) and an ON toggle wears the ACCENT face. Rim = has a list.
+// P-DRAW-13 — V6, icon-only one row (grip | badge | <=6 value icons | more | gear |
+// pin | trash) plus one docked popover and a gear panel. What MT4 cannot do is cut
+// with a named ceiling, never silently dropped: no text-edit in the row (the gear
+// panel's OBJ_EDITs own typing), no per-level on/off (levels edit MEMBERSHIP), no
+// font-name cycle, and trash is not undoable. Created on demand, destroyed with the
+// strip; nothing here runs in the mouse stream.
 #define DSTRIP_PICK_NONE (-99)  // no popover open
 #define DSTRIP_MORE      (-60)  // the more-popover (sections, not a slot)
 #define DSTRIP_SLOT_MORE   (-6) // quick: the "..." popover
@@ -4909,50 +4828,18 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        if(!tleft) DrawStripColorHoverAt(tmx, tmy);
     }
 
-   // P-DRAW-17: THE OPEN PATH RUNS BEFORE THE GUARD. This line is the whole fix
-   // for "the strip never appears": the guard below says the strip must be open,
-   // and the open trigger used to sit under it.
-    // P-UI-113 (2026-09-23): the release that ENDS the opening hold is part of
-    // the open gesture (it lands on the drawing = outside the strip) — swallow
-    // it once so the TV-style outside-click dismissal below never eats its own
-    // opening click (the BkHold s_BkFireReleasePending parity, worn as the press
-    // cycle's own window). A plain release otherwise opens nothing: the hold fired
-    // mid-press or it was a tap/drag.
-    // P-UI-113b (2026-09-23) — THE BUTTON-UP IS THE ONLY THING THAT ENDS A PRESS.
-    //
-    // MT4 has exactly two release channels and neither one is ever a press:
-    // CHARTEVENT_CLICK is a button-up on the chart (this file's own note below,
-    // P-BK-03: "the button-up that carries no MOUSE_MOVE"), and
-    // CHARTEVENT_OBJECT_CLICK is a button-up ON AN OBJECT — MQL4's own words are
-    // "mouse click in a graphical object", and MQL5's forum states it flatly:
-    // «CHARTEVENT_OBJECT_CLICK occurs when left button of mouse is released and
-    // not pressed». So the hold is ARMED from the mouse stream's own edge (the
-    // router head above) and DISARMED HERE — never by the poll, whose probe cannot
-    // answer the question at all (see the poll's own note).
-    //
-    // Clearing on the OBJECT channel is what lets a HOLD on a drawing reach its
-    // 500 ms: the release of a plain TAP on that same drawing arrives here as an
-    // OBJECT_CLICK, and without this term the latch would stay live and the poll
-    // would open the strip on a tap. The stream's own bit is resynced in the same
-    // breath, so a release the mouse stream never reported (off-window, focus
-    // lost) cannot leave the edge detector stuck DOWN and eat the next press.
-    //
-    // AND THE OPENING GESTURE'S OWN RELEASE IS SPENT ON EVERY CHANNEL THAT
-    // CARRIES IT — a WINDOW, never a one-shot (P-UI-113c, `s_dsOpenerUntil`): one
-    // physical release arrives on the chart's own CLICK and on the object's
-    // OBJECT_CLICK, and a flag that spends the first lets the second dismiss the
-    // strip the hold just opened. The release that ends an opening hold belongs to
-    // the gesture that opened it, so it may neither dismiss the strip nor act a
-    // control with it.
-    //   * A release after the hand MOVED OFF the drawing arrives as
-    //     CHARTEVENT_CLICK at a pixel that is neither the drawing nor the strip —
-    //     the TV-style dismissal below would close what the hold just opened,
-    //     i.e. the strip blinks on the press and is gone on the release.
-    //   * A release still ON the drawing arrives as CHARTEVENT_OBJECT_CLICK and
-    //     no dismissal branch is reachable from there — but the strip floats 12 px
-    //     off the cursor, so the release can already be on one of ITS cells, and
-    //     the ✕ / foot-Del cells would then DELETE the drawing the user only held.
-    // Both are spent, whichever channel carries them and in whatever order.
+    // P-DRAW-17: THE OPEN PATH RUNS BEFORE THE GUARD — the guard below says the strip
+    // must be open, and the open trigger used to sit under it ("the strip never appears").
+    // P-UI-113/113b — the release that ENDS the opening hold belongs to the gesture that
+    // opened it, so it is SPENT as a WINDOW (P-UI-113c, `s_dsOpenerUntil`), never as a
+    // one-shot: one physical release arrives on CHARTEVENT_CLICK and on the object's
+    // OBJECT_CLICK, and spending only the first lets the second dismiss the strip the hold
+    // just opened — or, landing on the strip's own cells (it floats 12 px off the cursor),
+    // DELETE the drawing. MT4 has exactly two release channels and neither is ever a press,
+    // so the hold is ARMED from the mouse stream's own edge and DISARMED here, never by the
+    // poll (whose probe cannot answer at all). Clearing on the OBJECT channel is what lets
+    // a HOLD reach its 500 ms: a plain tap's release arrives here as OBJECT_CLICK, and
+    // without this term the latch stays live and the poll opens the strip on a tap.
      if(id == CHARTEVENT_CLICK || id == CHARTEVENT_OBJECT_CLICK)
      {
          if(UILeftButtonDown()) return true;

@@ -689,13 +689,43 @@ string CircBg(const int i)        { return g_UI.btnPrefix + "CircBg" + IntegerTo
 string CircBadgeBg(const int i)  { return g_UI.btnPrefix + "CircBadge" + IntegerToString(i); }
 string CircBadgeTxt(const int i) { return g_UI.btnPrefix + "CircBadgeTxt" + IntegerToString(i); }
 
-#define UI_STATE_VERSION 11
+#define UI_STATE_VERSION 12   // P-UI-118 (2026-09-25): 11 -> 12 — the orb's default home is
+                              // the chart's CENTRE now, and this is the project's own way to
+                              // apply a new UI default: a version mismatch clears the saved
+                              // BIOMENU_* block once and re-seeds from CircDefaultMenuPos.
+
+//+------------------------------------------------------------------+
+//| P-UI-118 — THE ORB'S DEFAULT HOME IS THE CHART'S CENTRE, ONE OWNER.|
+//|                                                                  |
+//| User order 2026-09-25: «منو وسط باز بشه از هر طرف» — the menu must |
+//| open as a RING, fanning from every side. `CircLayout` leaves the   |
+//| arc the moment the orb is within `CIRC_EDGE_TRIGGER` (90 px) of    |
+//| any edge and collapses the ring into a train along it — which is   |
+//| exactly what a corner-parked orb does, and what the Tools          |
+//| sub-menu escalates away from (fan -> rail -> grid). The centre is  |
+//| the ONLY position where every layout family is reachable as         |
+//| designed, so it is the default.                                    |
+//|                                                                  |
+//| BOTH readers ask here — the first-attach default and the fallback  |
+//| when a saved position is missing — so the two can never disagree    |
+//| about where "default" is. A SAVED position still wins: the user's   |
+//| drag is the truth, and only a chart with no stored pair lands here. |
+//| The value is clamped like every other orb write on the next pass.   |
+//+------------------------------------------------------------------+
+void CircDefaultMenuPos(int &x, int &y)
+{
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(cw <= 0) cw = 1920;
+   if(ch <= 0) ch = 1080;
+   x = cw / 2;
+   y = ch / 2;
+}
 
 void ResetUIToDefaults()
 {
    g_UI.menuVisible = true;
-   g_UI.menuX = 100;
-   g_UI.menuY = 200;
+   CircDefaultMenuPos(g_UI.menuX, g_UI.menuY);   // P-UI-118: the chart's centre, both axes
    g_UI.showHTF = false;
 }
 
@@ -706,9 +736,12 @@ void LoadUIState()
    string gvMenuY = GetGVName("MENUY");
    string gvHtf   = GetGVName("HTF_EN");
 
+   int defX = 0, defY = 0;
+   CircDefaultMenuPos(defX, defY);               // P-UI-118: the SAME owner the reset uses
+
    g_UI.menuVisible = GlobalVariableCheck(gvMen)   ? (GlobalVariableGet(gvMen)   > 0.5) : true;
-   g_UI.menuX       = GlobalVariableCheck(gvMenuX) ? (int)GlobalVariableGet(gvMenuX)     : 100;
-   g_UI.menuY       = GlobalVariableCheck(gvMenuY) ? (int)GlobalVariableGet(gvMenuY)     : 200;
+   g_UI.menuX       = GlobalVariableCheck(gvMenuX) ? (int)GlobalVariableGet(gvMenuX)     : defX;
+   g_UI.menuY       = GlobalVariableCheck(gvMenuY) ? (int)GlobalVariableGet(gvMenuY)     : defY;
    g_UI.showHTF     = GlobalVariableCheck(gvHtf)   ? (GlobalVariableGet(gvHtf)   > 0.5) : false;
 }
 

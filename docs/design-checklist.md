@@ -267,6 +267,32 @@ This is that table. Each row is a limit, a wrong turn, and the shipped answer.
   is read as a leak and force-released inside the first quarter second — the user
   experiences that as the chart jumping under their hand.
 
+The user's order (2026-09-25): «باید حتی برای ضعیفترین کامپیوتر هم پرسرعت باشه و
+راهکار سرعتی انتخاب بشه». G-01…G-07 say what must never cost anything; G-08…G-12 say
+what a design has to prove before it ships.
+
+- **G-08 — THE TARGET IS THE WEAKEST SUPPORTED MACHINE.** A build is judged on the
+  slowest hardware and the slowest terminal the user actually runs it on, never on the
+  machine it was written on. A number measured on a fast box is an upper bound, not the
+  promise.
+- **G-09 — WHEN TWO SOLUTIONS BEHAVE THE SAME, THE CHEAPER ONE SHIPS.** Cost is a
+  decision input, and it is written down as a **number** (the measurement), not as a
+  feeling; a change that raises the steady-path cost states by how much.
+- **G-10 — EVERY WORK SLICE STATES A MILLISECOND BUDGET.** The owners exist:
+  `CPU_WARNING_MS 50` / `CPU_CRITICAL_MS 200` for `OnCalculate` (paired with
+  `pfLedgerPrint`, which prints a phase breakdown **only when the frame overruns**),
+  and `COOP_WARN_MS 40` for a scheduled frame or a coop job. A path that cannot name its
+  budget has not been designed, it has been hoped for.
+- **G-11 — A FIXED RATE MUST JUSTIFY ITSELF; A MEASURED WINDOW IS PREFERRED.** Where
+  the right rate depends on the machine, adapt to the measurement instead of pinning a
+  constant — `PNL_MOVE_FRAME_MIN_MS 16` / `PNL_MOVE_FRAME_MAX_MS 50` /
+  `PNL_MOVE_SLACK_MS 8` (P-UI-75b: "a weak machine may back off here") is the model. A
+  constant that survives must say what it costs on the weakest machine.
+- **G-12 — NOTHING UNCAPPED IN THE STREAM.** Every walk is bounded by a count
+  (viewport, cells on screen, levels, objects) and every per-event path states that
+  bound; a sweep that cannot be bounded runs STAGED (P-PERF-06's frame budget) or it
+  does not ship.
+
 ---
 
 ## LEVEL 85 — CONSISTENCY (one thing, used everywhere)
@@ -290,6 +316,41 @@ The user's order: «یکپارچه باشه هر جا از یک چیز که قب
   the one it knows about will drop a fresh strip on the open panel.
 - **H-06** **When a face and an owner drift apart, delete the face's copy.** Not
   "keep both in sync".
+
+---
+
+## LEVEL 86 — THE COMMENT BUDGET (C-01 — C-06)
+
+The user's order (2026-09-25): «یک قانون هم بزار که کامنت ها باید خلاصه باشه و زیاد هر
+جای کامنت نباشه». A comment is the **WHY**, in a few lines, at the place that needs
+it. The long investigation — every trap's measurements, every user quote — belongs in
+`docs/history.md`, not pasted where the code lives.
+
+- **C-01 — A comment states the WHY, and stops.** The **target is 6 lines**; the hard
+  ceiling is **16** for any one block (file header included). Longer than that is a
+  document, not a comment.
+- **C-02 — No run of comment lines over 16.** Measured by the check below. A block at
+  the ceiling that needs more becomes the ID + the one-line law + a pointer.
+- **C-03 — One home per story.** The investigation moves to `docs/history.md`; the code
+  keeps the ID and the law. Compressing is not deleting: git holds the old text.
+- **C-04 — No comment on a self-evident line.** `i++` needs no note; a comment that
+  restates the code is noise that will drift away from it.
+- **C-05 — The file's comment share is ≤ 25 %.** Measured by the check below. A file
+  over it has runs to compress, not a rule to bend.
+- **C-06 — One fact, one home.** A rule written in the code AND in a doc is the
+  two-voices defect (catalogue 22) one layer up: cite the owner instead.
+
+**The check** (bounded, no script — P-TOOL-04):
+
+```bash
+for f in Biotak/*.mqh Biotak/TH3/*.mqh *.mq4; do t=$(wc -l <"$f");
+  c=$(grep -cE '^[[:space:]]*//' "$f");
+  run=$(awk 'BEGIN{m=0;r=0} /^[[:space:]]*\/\//{r++; if(r>m)m=r; next}{r=0} END{print m}' "$f");
+  printf "%-42s %6s %6s %3s%% run=%s\n" "$f" "$t" "$c" "$((c*100/t))" "$run"; done
+```
+
+Exit condition: every file `run <= 16` and share `<= 25 %`. The before/after numbers
+are recorded in the **Audit log** (row 10).
 
 ---
 
@@ -324,6 +385,7 @@ list against any surface you touch; each one has a proof you can do without a ch
 | 21 | A **dead rung** | a face's owner was deleted and its `Z_*` name stayed, unexplained | grep the rung name: ONE hit (its own definition) means dead. Keep the NUMBER, write the retirement — `Z_MENU_CELL` died with the right-click era (P-UI-113/114), kept + annotated (P-UI-69c) |
 | 22 | The UI speaks with **two voices** | a pasted value instead of the owner, or two verbs/spellings for one act | one owner per value; one spelling and one verb per act, decided once. Measured 2026-09-25: `colour` 4 UI sites vs `color` 7 (aligned to `color`), `tap to …` 28 vs `click …` 6 — both closed the same day (1 `tap` left, inside a quoted historical note); and the palette's own cell 0 `C'255,171,0'` was pasted at **five** live UI sites beside `BIO_CLR_BRAND` (now aliased), while the readable-foreground rule itself was written twice with two copies of its arithmetic (now `BioChartBgIsLight()`) |
 | 23 | **A rule that lives only in prose** — its owner has no reader | the owner is written for a rule, the rule is then rewritten elsewhere/inline, and nobody ever calls the owner | for every `*At()` test that answers a UI question, count its callers: **1 hit = its own definition = nobody asks it**. Measured 2026-09-25: `CircPointOnMenu` ("which pixels does the menu own?") had **zero** callers in every commit since birth (`git log -S`), while `UIPointerOverSurface`'s header promised the ring's pixels and its body tested everything but them |
+| 25 | The comment is an **essay**, or there is a comment on every line | the whole investigation of a trap pasted where the code lives; narrative where the WHY belongs | **C-01..C-06** (LEVEL 86): the check is the run length + the file's share, and the fix is compress-in-place to the ceiling (the ID and the law stay, the story goes to `docs/history.md`). Measured 2026-09-25 at the rule's birth: **392** runs of ≥ 13 comment lines repo-wide (9563 lines), **40** of them ≥ 40 lines, the worst a **220-line** file header (`BaseKnotTool.mqh`) and a **48 %** share in the same file |
 | 24 | **A phantom owner in a comment** | a comment cites a function as a LIVE reader ("X hit-tests it") that was never written, or was deleted — the reader hunts a hit test that cannot be found | for every identifier inside a comment, grep the **whole tree** (not the one file), then drop the ones whose comments say they are retired (`was X`, `X-OFF`, `restore by …`) — those are documents, not lies. Measured 2026-09-25 over `BiotakMenu.mqh`: 77 comment identifiers → 13 candidates → 12 legitimate cross-file names, **1** phantom cited as a live third reader (`SubPagerAt`); the repo-wide re-run lists ~20 names, and nearly all are the retired-but-documented kind |
 
 ---
@@ -365,6 +427,11 @@ something "cosmetic".**
    is not embedded draws nothing — that is the "ghost icon" class.
 8. **Lean:** `AGENTS.md` is not the place for the detail; it points here.
 9. **The report** names the file, the number and the measurement (Part L).
+10. **Performance has a number (G-08…G-12).** Every new path states what it walks (the
+    bound, in objects/cells/bars) and its millisecond budget; the target is the weakest
+    supported machine, not the dev box. Nothing whose cost scales with the chart enters
+    the mouse stream or the tick path, and a fixed cadence has to justify itself
+    against a measured window.
 
 **Visual verification, honestly.** This repo has no chart renderer: a rendered frame
 cannot be produced from the compiler, and the manual tools that once did were deleted
@@ -426,6 +493,10 @@ The user's order: «اگر در هر جای از پروژه راهکار بهت�
 | text object cap | 63 chars | MT4 |
 | chart events in MQL4 | 9 — **no mouse wheel** | MT4 |
 | type ladder | nominals 5..14; distinct until the cap `PNL_PT_FIT_PX 24` (`42 − 14 − 4`) | `PnlPtAt` |
+| comment ceiling | target 6 lines, hard ceiling 16 per run (a file header included); file share ≤ 25 % | LEVEL 86 / C-01..C-06 |
+| frame budget | 50 ms warn / 200 ms critical (`OnCalculate`); 40 ms (`COOP_WARN_MS`, a scheduled frame or coop job) | `ConstantsAndEnums`, `EventHandlers` |
+| adaptive window | 16 ms floor / 50 ms ceiling / 8 ms slack — a weak machine backs off | `PNL_MOVE_FRAME_*`, P-UI-75b |
+| cadence constants vs measured windows | **80** fixed `*_MS/_SECONDS/…` constants against **1** measurement-driven window (2026-09-25) | Audit log row 11 |
 
 ---
 
@@ -447,9 +518,14 @@ this list.
 | 7 | palette popover + mixer, dropdowns, pager, badges | 2026-09-25 | **fixed:** the grid panel's plate was not claimed either — its header strip, padding and the pager arrows read as chart (`SubPanelRect` added to `CircPointOnMenu`, A-13); the pager's geometry comment promised a hit test, `SubPagerAt`, that no commit ever contained — corrected to name the two real readers (draw + translate) and the real click route (object name). **retired, recorded:** ring badges are globally off (NOBADGES, user decision 2026-09-04: `CircHasBadge()` returns false and gates every create/show/move path) — so the 16px plate is never drawn with text, and the 6-char values (`144.0x`, `2650.5`) cannot spill today. **Latent, one line away:** the day badges return, the value must go through `PnlFit` (the tip right beside it already does — P-UI-34) |
 | 8 | the type scale itself (D-02/D-03, every DPI) | 2026-09-25 | **fixed:** the retired `round(n*96/dpi)` merged 20 adjacent pairs across seven scales (7 == 8 at 125%, four sizes alike at 200%, one size at 250%+). The ladder + row cap replaced it: identity at 96, distinct until the cap, never taller than the row. `tests/Biotak_TypeScale_Test.mq4` asserts all four properties and keeps the retired formula as a witness |
 | 9 | the mini Base Box strip's own plate + its grip | 2026-09-25 | **found, NOT fixed (out of this walk):** `DrawStripGripAt` is defined (`DrawStrip.mqh:4587`) and cited twice as the answer to "which of the two gestures is this press?" (lines 487, 2797) — and has **no caller**. Same shape as catalogue 23; it belongs to the strip's own walk |
+| 10 | **every comment in the repo** (the C-rule sweep, pass 1) | 2026-09-25 | **rule + check born** (catalogue 25 / LEVEL 86): target 6 lines, hard ceiling **16**, file share ≤ 25 %. **fixed in pass 1 (22 blocks):** the two worst single blocks repo-wide are gone — `EventHandlers`' 95-line P-LEVEL-FOREIGN-01/02 essay and `DrawStrip`'s 59-line P-DRAW-08 banner — plus `EventHandlers` (P-UI-56, P-PERF-34/35, P-UI-61, P-UI-98), `BiotakPanels` (P-UI-74/75/81/83/92, PANELDRAG-OFF), `DrawToolbar` (P-DRAW-01), `FractalTimeframes` (P-TH-01), `UtilityFunctions` (P-UI-69e), `GlobalVariables` (P-UI-90), `BaseKnotTool` (P-BK-31/32/39). **measured (HEAD `435c91b` → worktree):** comment lines **24 503 → 23 868** (−635), total lines 75 357 → 74 754, runs over the 16-line ceiling **260 → 253**, share per file: `EventHandlers` 44 → 42 %, `BiotakPanels` 31 → 29 %, `DrawStrip` 20 → 19 %, `DrawToolbar` 28 → 26 %, `FractalTimeframes` 28 → 21 %. **still over the ceiling — pass 2, worst first:** `BaseKnotTool.mqh` alone owns 11 of them (its **220-line** ASCII file header at lines 1-220, then runs of 96/86/77→done/57/56/48/46/45/41/40 at lines 3248/5711/2931/1868/698/3075/4785/6317/1042), then `LevelPipeline:1528` (63), `TH3Pivots:1482` (50), `TH3Math:151` (48), `HTFCandles:434` (47) and `:308` (42), `TH3Tool:1657` (44), `TH3Pivots:1` (43), `TradePlanFormulas:1` (42), `TH3Renderer:81` (41), `ObjectCache:380` (40), `FrequencyOptimizer:659` (40), and ~230 more of 17-39 lines. **Why they are pass 2:** every one is an ASCII-bordered block whose `//|` padding was hand-broken (measured inside the 220-line header: line widths 70…121), so it cannot be `str_replace`d byte-exactly without guessing the padding — the plain-comment blocks were done first because they match exactly. The check above reports the rest in one command. |
+| 11 | **performance** (LEVEL 75, G-01…G-12) | 2026-09-25 | **rule completed:** G-08…G-12 added — the WEAKEST supported machine is the target, the cheaper of two equal solutions ships and its cost is written as a number, every slice states a millisecond budget, a measured window beats a fixed rate, nothing uncapped enters the stream — plus gate item 10 and the budget rows in the appendix. **measured clean (the witnesses exist and are wired):** `CPU_WARNING_MS 50` / `CPU_CRITICAL_MS 200` fire on an `OnCalculate` overrun and print the phase ledger only then (`pfLedgerPrint`, `g_p3Ms*`); `COOP_WARN_MS 40` covers a scheduled frame or a coop job; P-PERF-01…50 are the change guards themselves (P-PERF-02 write guard, P-PERF-16 no terminal read inside a hit test, P-PERF-06 staged rebuild, P-PERF-42 one probe per gesture, P-PERF-43/45 self-measured drag with the `starved` counter). **measured open:** **80** fixed cadence constants against **1** measurement-driven window, and ONE gesture class rides **seven** repaint/follow cadences — `CIRC_DRAG_REDRAW_INTERVAL 30`, `BK_DRAG_CURSOR_MS 30`, `DSTRIP_GRIP_MS 30`, `DSTRIP_FOLLOW_MS 50`, `DRAG_REDRAW_THROTTLE_MS 50`, `UI_DRAG_HEAVY_MS 120`, `CHART_REDRAW_THROTTLE_MS 100`. Only `PNL_MOVE_FRAME_MIN/MAX/SLACK_MS` (P-UI-75b) adapts to the measured batch cost, so the drag is the one gesture that already answers "weak machine". **next (pass 2):** collapse the seven cadences onto one owner with a measured window, and give `REDRAW_THROTTLE_SECONDS 10`, `CLEANUP_INTERVAL_SECONDS 300` and `CIRC_TIP_DELAY_MS 1500` their weakest-machine numbers before G-11 is called met. |
 
-Four rules (B-11, A-13, and catalogue 21–24) were **added by** these walks. Two of them
-exist because a rule was written in a comment and never compiled — the ring's claim (23)
-and the pager's hit test (24) — which is this repo's recurring shape: the sentence ages
-better than the code. An audit that finds nothing new is usually an audit that did not
-read the code.
+Seven rule families (B-11, A-13, catalogue 21–24, C-01…C-06 with catalogue 25, and
+G-08…G-12 with gate item 10) were
+**added by** these walks. Two of them exist because a rule was written in a comment and
+never compiled — the ring's claim (23) and the pager's hit test (24) — which is this
+repo's recurring shape: the sentence ages better than the code. Catalogue 25 is the same
+shape one layer up: the sentence was never *edited*, and reading the code for facts
+nobody needs costs every reader who comes after. An audit that finds nothing new is
+usually an audit that did not read the code.

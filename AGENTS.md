@@ -216,6 +216,14 @@ plausible default.
   owner; no follow channels, no timers for follow, and the drag frames are exempt
   from event deferral (`!g_s1DragLive`, `!g_customPriceLineDragging`) because a
   deferred drag frame IS the lag. At rest it costs nothing.
+- **PERFORMANCE IS A FEATURE, AND THE WEAKEST MACHINE IS THE TARGET** (user order
+  2026-09-25). Fast on the user's slowest hardware, not on the box it was written on;
+  between two implementations that behave the same, the CHEAPER one ships and its cost
+  is written as a number. Every path states its bound (what it walks) and its budget
+  (`CPU_WARNING_MS 50`/`CPU_CRITICAL_MS 200`, `COOP_WARN_MS 40`); nothing unbounded
+  enters the mouse stream or the tick, and a fixed cadence has to justify itself against
+  a measured window (`PNL_MOVE_FRAME_*`, P-UI-75b). The rules — G-01…G-12 — live in
+  `docs/design-checklist.md` (LEVEL 75) and the gate is its item 10.
 - **A gesture that takes the view lock names itself in `ChartLockIntended()`** the
   day it is born (P-DRAW-19) and releases through the one ender. The 250 ms
   `ChartScrollReconcile` rebuilds the lock from ownership intent, so an unlisted
@@ -260,10 +268,13 @@ and never copied from.
   compile rewrites every `.ex4`, so no data folder, terminal, log or object is
   "stale" evidence. When a report depends on WHICH build is live, prove it by a
   named MEASUREMENT (the terminal log line, a trace line, a counter) — never by
-  calling something old, and never as an excuse for not having measured.
-- **ONE PALETTE, AT-HAND LOOKS WITH USER NAMES.** Saved looks and smart/recent
-  colours sit one tap away; a saved template carries the name the user gave it,
-  not `My 1`.
+  calling something old, and never as an excuse for not having measured.- **A COMMENT STATES THE WHY AND STOPS.** Target 6 lines, hard ceiling **16** for any
+  one block (a file header included), never a note on a self-evident line, and a file
+  stays under a 25 % comment share. The investigation (what was measured, what it
+  read, what the user said) belongs in `docs/history.md` — never pasted where the code
+  lives; the code keeps the `P-*` ID and the law. The ceiling, the one-file check and
+  the before/after numbers live in `docs/design-checklist.md` (catalogue 25, LEVEL 86).
+- **ONE PALETTE, AT-HAND LOOKS WITH USER NAMES.** Saved looks and smart/recent colours sit one tap away; a saved template carries the name the user gave it, not `My 1`.
 - **REALTIME IS THE SAME EVENT, AND COSTS NOTHING AT REST.**
 - **A rule that loses its tooling does not lose its force.** Deleting an audit
   deletes the automation, not the rule; the compiler and reading now pin it. Say

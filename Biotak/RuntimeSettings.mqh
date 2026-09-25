@@ -46,7 +46,11 @@ static bool g_useDynamicTradingDay = true;                       // [01] inpUseD
 static bool g_basePriceThresholdEnabled = true;                  // [01] inpBasePriceThresholdEnabled
 static double g_basePriceThresholdPercent = 0.066;               // [01] inpBasePriceThresholdPercent
 static int g_maxLevels = 144;                                    // [01] inpMaxLevels
-static bool g_triggerLevelsEnabled = true;                       // [09.3] inpShowTrigger (+ hotkey toggle state)
+static bool g_triggerLevelsEnabled = false;                      // [09.3] inpShowTrigger (+ hotkey
+                                                                 // toggle state). P-UI-119: the
+                                                                 // initial now MATCHES the input's
+                                                                 // own default (false) — it used to
+                                                                 // advertise ON before the seed ran.
 static int g_triggerWidth = 1;                                   // [08.1] inpTriggerWidth (legacy — pipeline lines use g_line* [08.4])
 static ENUM_LINE_STYLE g_triggerStyle = STYLE_DOT;               // [08.1] inpTriggerStyle (legacy — pipeline lines use g_line* [08.4])
 static color g_triggerColor = clrBlack;                          // [08.1] inpTriggerColor (trigger ZONE fill)
@@ -107,7 +111,9 @@ static bool g_showStructureL3 = true;                            // [09.2] inpSh
 static bool g_showStructureL4 = true;                            // [09.2] inpShowStructureL4
 static bool g_showStructureL5 = true;                            // [09.2] inpShowStructureL5
 static bool g_showMidpointLine = true;                           // [03] inpShowMidpointLine
-static bool g_showMidZones = true;                               // [07.1] inpShowMidZones
+static bool g_showMidZones = false;                              // [07.1] inpShowMidZones.
+                                                                 // P-UI-119: the level families
+                                                                 // start OFF (user order).
 static ENUM_ZONE_STYLE g_midZoneStyle = ZONE_STYLE_BOX_FILLED;   // [07.1] inpMidZoneStyle
 static int g_midZoneTransparency = 50;                           // [07.2] inpMidZoneTransparency
 static double g_midZoneHeightPercent = 33.0;                     // [07.2] inpMidZoneHeightPercent
@@ -918,6 +924,22 @@ void GVShadowsInvalidate()
 {
    g_gvShadowEpoch++;
    for(int i = 0; i < RS_SAVE_SLOTS; i++) s_rsShadowKnown[i] = false;
+}
+
+// P-UI-119 — the mid-zone switch's SAVED state, forgotten on purpose.
+//
+// This file is the ONE owner of that key's spelling (`p + "ZO"` above, with
+// `p = g_settingsGVPrefix + "OV_"`), so the one-time levels-start-off migration
+// (EventHandlers, OnInit) asks HERE instead of re-spelling the prefix at a second
+// site. Deleting the key — not just overwriting the runtime flag — is what makes
+// the new default real: the loader re-applies `OV_*` on EVERY attach, so a stored
+// `ZO = 1` would have brought the band back and the user would call that "the
+// default did not change". The shadow epoch is bumped with it, or the saver would
+// compare against a key that no longer exists and skip writing the new value.
+void MidZonesStateForget()
+{
+   GlobalVariableDel(g_settingsGVPrefix + "OV_ZO");
+   GVShadowsInvalidate();
 }
 
 // P-PERF-27c: shared change-guard for the OTHER two blocks that persisted their

@@ -9,50 +9,22 @@
 #define DRAW_TOOLBAR_MQH
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-DRAW-01 — A MINI TOOLBAR FOR EVERY DRAWING THE USER MAKES.
-//
-// User order: «مینی تولبار برای همهٔ آبجکت‌ها باشه ... برای فیبو، ترندلاین، خط
-// افقی، ری، خطوط و باکس‌ها — یعنی برای DRAWING ها ... با بهترین معماری که بعداً
-// ریفکتور نخواد». And explicitly NOT for the indicator's own objects (the
-// harmonics / ABCD / levels / boxes) — those have their own toolbars already.
-//
-// WHY THIS MODULE EXISTS AT ALL, AND WHY IT IS THIS SHAPE.
-//
-// MT4 gives every drawing tool its own object TYPE (about thirty of them) and a
-// property surface that is only MOSTLY common: every drawing has COLOR, WIDTH,
-// STYLE and BACK; a rectangle/triangle/ellipse also has FILL; a trend line also
-// has RAY_RIGHT/RAY_LEFT; the fibo family has per-LEVEL colors, styles and
-// widths instead of one. A toolbar written per object type would be thirty
-// copies of the same five controls, and the sixth control would need thirty
-// edits. So the whole feature is expressed as ONE classifier plus ONE table:
-//
-//   * `DrawKindOf(name)`      — the object's TYPE (and the ray flags, which
-//     change what a line IS) answers an `EDrawKind`.
-//   * `DrawKindCaps(kind)`    — a BITMASK of the slots that kind can carry. A
-//     slot the kind does not carry is not drawn, never greyed: the strip shows
-//     the controls that exist for THIS object.
-//   * `DrawSlotRead/Write`    — one pair per slot, and each pair branches on the
-//     kind only where MT4's own API demands it (levels).
-//
-// Adding a drawing tool later is therefore ONE row in two switches, never a new
-// control, a new strip or a new owner. That is the "no refactor later" the user
-// asked for.
-//
-// THE HIT TEST IS MEASURED IN PIXELS, NOT GUESSED IN PRICE. MT4 has no
-// "object under the cursor" call, so the answer is geometry: every anchor is
-// projected with `ChartTimePriceToXY` and the cursor is compared against the
-// object's DRAWN shape (a segment, a level line, a border) with one tolerance
-// in pixels — the same tolerance MT4 itself uses to pick an object up. The
-// terminal's own selection is kept as a SECOND opinion (`DrawSelectedObjectAt`),
-// because MT4 selects the object it grabs on the press; whichever answers
-// first wins, and the pair is the reason a hold works on every build.
-//
-// THE STYLE MEMORY IS THE "LAST CHANGE SAVED". Every edit the toolbar makes is
-// written onto the object AND into that KIND's memory, and a freshly drawn
-// object of the kind is given the memory the moment it appears
-// (`DrawStyleApplyOnCreate`, called from the OBJECT_CREATE branch). That is what
-// makes the second fibo look like the one the user just styled — the order the
-// user asked for («آخرین تغییرات ذخیره بشه»), per drawing TOOL, not globally.
+// P-DRAW-01 — A MINI TOOLBAR FOR EVERY DRAWING THE USER MAKES (fibos, trendlines,
+// horizontals, rays, lines, boxes) — explicitly NOT for the indicator's own objects,
+// which already have their own toolbars.
+// WHY THIS SHAPE. MT4 gives every drawing tool its own type and a property surface
+// that is only MOSTLY common, so a per-type toolbar would be thirty copies of the same
+// five controls. The whole feature is ONE classifier plus ONE table: `DrawKindOf`
+// answers an EDrawKind, `DrawKindCaps` is the bitmask of slots that kind carries (a
+// slot the kind lacks is not drawn, never greyed), and `DrawSlotRead/Write` is one pair
+// per slot — so adding a drawing tool is one row in two switches, never a new control.
+// THE HIT TEST IS MEASURED IN PIXELS: every anchor is projected with
+// `ChartTimePriceToXY` and the cursor compared against the object's DRAWN shape within
+// one px (MT4 itself has no "object under the cursor" call), with the terminal's own
+// selection as a second opinion (`DrawSelectedObjectAt`).
+// THE STYLE MEMORY IS THE "LAST CHANGE SAVED": every edit goes onto the object AND
+// into that KIND's memory, and a freshly drawn object of the kind is given it on
+// create (`DrawStyleApplyOnCreate`), per drawing TOOL, not globally.
 // ══════════════════════════════════════════════════════════════════════════
 
 //--- THE KINDS. One per drawing BEHAVIOUR the toolbar must speak, not one per

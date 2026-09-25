@@ -85,101 +85,17 @@ void MigrateTimeframeNamedObjects()
 
 string AdoptionStampName() { return "Biotak_AdoptTopology_" + GetCachedChartIdStr(); }
 
-// The fingerprint packs the inputs that decide which NAMES may exist, built from
-// small integers so it is EXACT — no string hashing and therefore no collisions
-// to reason about.
-//
-// P-LEVEL-FOREIGN-01 — AND THE INPUTS THAT DECIDE THE PRICES, BECAUSE A NAME
-// IS NOT A PLACE.
-//
-// This function used to fold in only the naming/structure inputs (the comment
-// above said so explicitly: "never the prices, which genuinely do change per
-// timeframe"), on the theory that a kept object whose price moved would be
-// corrected by "the RENDER signature, which re-asserts in place". That theory
-// is FALSE, and the live chart proved it:
-//
-//   a biotak-level-dump of the running MT5 chart showed TWO level ladders
-//   interleaved in one family - `_Above_1..9` at 2.41 pips (the M1 geometry)
-//   and `_Above_10..43` at 9.65 pips (the H1 geometry) - with near-duplicate
-//   PAIRS 0.06-0.16 pips apart, one member from each geometry. One build can
-//   never emit that: CalculateLevels() uses ONE ladder per build, and
-//   BuildZonesAndLines() DROPS a level that fails to advance, so a duplicate
-//   can only come from a different build.
-//
-// The render re-asserts in place ONLY for the objects it actually touches, and
-// RenderTriggerLines() touches a line only when `lines[i].inViewport` is true -
-// every other object merely gets a mask. So on a timeframe switch:
-//
-//   * the teardown KEEPS the whole family (REASON_CHARTCHANGE, above),
-//   * CacheClear() empties the object cache, so the fresh instance cannot even
-//     enumerate what it kept,
-//   * the new render corrects the levels INSIDE the viewport and nothing else,
-//   * and CleanupSurplusObjects() cannot sweep the rest, because it walks STEP
-//     INDICES - and `_Above_7` of the old timeframe and `_Above_7` of the new
-//     one share the same index. The index is a LOGICAL LABEL; the price is
-//     geometry. The sweep therefore sees a name it expects and stops.
-//
-// The old safety argument ("every object the render does not produce is still
-// swept by CleanupSurplusPipeline") rested on that sweep being able to
-// recognise a foreign object. It cannot. So the family accumulated every
-// geometry the chart had ever been through, and the visible result is exactly
-// the report: ladders that stop in the middle of the chart, holes where no
-// viewport ever covered a geometry, and doubled lines where two geometries
-// nearly coincide.
-//
-// A stamp is a CLAIM that the objects already on the chart are still correct.
-// It may only be written when that claim is true, so the price-determining
-// inputs belong in it:
-//
-//   * the TIMEFRAME      - `thValue` is derived from GetTimeframeTH(), so this
-//                          is the dominant term and the reported case.
-//   * the ANCHOR (daily close) and the SCALING factor - the other two inputs
-//                          GetMidpointPrice/GetAdaptedStepSize move every level
-//                          with.
-//
-// P-LEVEL-FOREIGN-02 (2026-09-16) — THE PRICES LEFT THE FINGERPRINT, BECAUSE
-// THE PITCH SWEEP ANSWERS FOR THEM NOW.
-//
-// Reported: «انگاری در هر تعویض تایم فریم حذف و دوباره ساخته میشه سطوح که الکی
-// هستش … در متاتریدر 4 اصلا اینطوری نیستش» — every timeframe switch deletes the
-// level family and builds it again.
-//
-// The three price terms above used to sit in this function, and the paragraph
-// before this one still explains why: a stamp is a CLAIM that the objects
-// already on the chart are still right, and after a timeframe switch the
-// PRICES are exactly what makes that claim false. That reasoning was never
-// wrong. What was wrong is the ANSWER it chose: refusing the handoff wipes the
-// whole family and restarts the four-frame staged rebuild, i.e. it deletes
-// ~900 objects and re-creates them in order to correct the price of the ~90
-// that are painted - and every single timeframe switch paid it. Measured on the
-// live charts: MT5 spends 250-300 ms of teardown plus four 60-95 ms frames on
-// one switch, while MT4 - the same source, the same ladder - spends ~30 ms, so
-// the user sees the delete and the rebuild on MT5 and nothing at all on MT4.
-//
-// A stale price has a cheaper answer, and the machinery for it already exists:
-// `SweepForeignLadderObjects()` (LevelPipeline, P-LEVEL-FOREIGN-02) walks the
-// chart ONCE on the frame the LADDER PITCH changed - the one moment a foreign
-// object is identifiable - and deletes every family object whose NAME the build
-// did not just produce, while the render re-asserts the ones it did, IN PLACE,
-// on the objects that are already there (the cache-first creator updates an
-// existing object rather than failing on it). The two halves are
-// provably complete: an index the new ladder produces has its price written by
-// the render, and an index it does not produce is deleted by the sweep. So the
-// family is CORRECTED, not destroyed, and the switch reduces to one property
-// pass over the objects that were already on the chart - MT4's behaviour, on
-// MT5's chart.
-//
-// What this function must therefore still name is every input that decides WHICH
-// NAMES may exist: the naming scheme, the mode, the level count, the start-point
-// type, the LS-first flag, the harmonic pair. A name mismatch is NOT repaired in
-// place - a mode change renames the whole family, and a survivor of the old name
-// would be visited by neither sweep - so those inputs still refuse the handoff,
-// and what they refuse is a WIPE, which is correct.
-//
-// NAME_SCHEME_ID was bumped 39 -> 40 with this change: every chart drawn by the
-// previous build carries a stamp whose value this one must refuse, so the model
-// changes once on the next attach instead of being adopted by a build whose
-// ladder sweep this one does not have.
+// The topology stamp is a CLAIM (written at teardown, compared at init) that the
+// objects already on the chart are still correct: on a match the first pass
+// ADOPTS them, so a timeframe switch is one in-place property pass instead of a
+// wipe and a staged rebuild. It names every input that decides WHICH NAMES may
+// exist — naming scheme, mode, level count, start-point type, LS-first, harmonic
+// pair — because a name mismatch is never repaired in place (a mode change renames
+// the whole family). P-LEVEL-FOREIGN-02 — the PRICES left the stamp: a stale price
+// is repaired by `SweepForeignLadderObjects()` (LevelPipeline) on the one frame the
+// ladder PITCH changed (measured: 250-300 ms teardown + four 60-95 ms frames per
+// switch on MT5, ~30 ms on MT4). NAME_SCHEME_ID 39 -> 40 refuses every stamp a
+// previous build wrote.
 int AdoptionFingerprint()
 {
    int fp = NAME_SCHEME_ID;
@@ -233,46 +149,16 @@ void ResolveTopologyAdoption()
 }
 
 //==============================================================================
-// P-UI-56 — THE CUSTOM-PRICE *SOURCE* HAS ONE OWNER AND ONE PRECEDENCE
-//
-// Reported: «چرا سطوح سرجای خودشون نیستن، هر دفعه یک جایی دیگه میره … حتماً
-// نگاه کن منبع رسم قیمت چطوریه». The whole level family is anchored on
-// `GetMidpointPrice(g_thStartPointType)` → `g_customTHStartPrice`
-// (`CalculateCommonStepData` → `data.midpointPrice` → `ExecutePipeline`), so this
-// ONE value decides where every level sits. It was resolved by TWO copies of the
-// same three-branch chain — here in OnInitHandler and again in
-// `RedrawAllObjects` (the frame path) — and the chain had two defects that only
-// show on a chart that is actually used:
-//
-//  (1) THE PERSISTED PLACEMENT WAS PER *SYMBOL*, NOT PER CHART. The keys were
-//      "Biotak_CustomPrice_<SYMBOL>" / "…Override_<SYMBOL>" while every other
-//      per-chart state in this project is keyed by the CHART id (visibility,
-//      drag locks, the hide flag, the topology stamp). Two charts of the same
-//      symbol therefore shared ONE price: placing or dragging the line on one
-//      chart moved the ladder of the other on its very next frame, and turning
-//      it off on one turned it off on the other. The user runs five charts of
-//      two symbols — this is the reported "each time it goes somewhere else".
-//
-//  (2) THE INPUT SILENTLY OUTRANKED — AND OVERWROTE — THE PLACEMENT KEYS. With
-//      `inpCustomTHStartPrice > 0` and the override flag false, the frame path
-//      took the INPUT branch and wrote `GlobalVariableSet(priceKey, <input>)`:
-//      the price the user had dragged to was destroyed, so a later placement
-//      gesture (a new press sets the flag) inherited the INPUT's price, not the
-//      user's. The flag is false on every fresh instance whose override GVar is
-//      0/absent (another chart turned it off, the GVars were cleared, a
-//      REASON_REMOVE purge ran, …).
-//
-// ONE owner now answers "what is the custom price of THIS chart?" for both call
-// sites, and the rule is: the user's own placement (chart-scoped price + its
-// flag, written by every placement path through `CustomPricePersistPlacement`)
-// BEATS the static input, and the input is only the seed used when this chart has
-// no placement of its own — it never writes the placement keys (which is also why
-// the input's price still IS the "default state" the OFF paths return to, exactly
-// as before: OFF deletes the placement keys and the input speaks again).
-//
-// Cost: unchanged steady state — the same two GVar probes the frame path already
-// did, one compare more; the legacy (symbol-scoped) probe runs ONCE per instance;
-// the parsing is no longer duplicated, so the two copies can never drift again.
+// P-UI-56 — the custom-price SOURCE has ONE owner and ONE precedence. The whole
+// level family is anchored on `GetMidpointPrice(g_thStartPointType)` ->
+// `g_customTHStartPrice`, and it was resolved by TWO copies of the same
+// three-branch chain (here and in RedrawAllObjects) carrying two defects that only
+// a used chart shows: (1) the persisted placement was keyed per SYMBOL, so two
+// charts of one symbol shared one price; (2) the INPUT silently outranked and
+// OVERWROTE the placement keys. ONE owner answers "what is the custom price of
+// THIS chart?": the user's own chart-keyed placement BEATS the static input, and
+// the input is only the seed when the chart has no placement of its own — it never
+// writes the placement keys (so the OFF paths still return to the input).
 //==============================================================================
 string CustomPriceGVName()         { return "Biotak_CustomPrice_" + GetCachedChartIdStr(); }
 string CustomPriceOverrideGVName() { return "Biotak_CustomPriceOverride_" + GetCachedChartIdStr(); }
@@ -441,6 +327,40 @@ int OnInitHandler() {
         g_thLabelsMode = THModeFromFlags();
         if(g_showTHLabels && g_thLabelsMode == 0) g_thLabelsMode = 1;
         SyncTHFlagsFromMode();
+    }
+
+    //+------------------------------------------------------------------+
+    //| P-UI-119 (2026-09-25) — THE LEVEL AND ZONE FAMILIES START OFF,    |
+    //| ONCE PER CHART (user order «سطوح هم پیش فرض خاموش باشه»).           |
+    //|                                                                  |
+    //| The INPUTS default every one of them off now, but the states     |
+    //| restored just above are PER CHART — so a chart that ever had a   |
+    //| family on keeps it on for ever, and the new default would never  |
+    //| be visible to anyone who has used the chart before. A default is |
+    //| only real when it is applied to what is ALREADY stored, so this  |
+    //| runs once per chart (the stamp idiom the timeframe-name migration|
+    //| above uses) and then never again: from the next attach on the    |
+    //| saved state is the user's own again.                             |
+    //|                                                                  |
+    //| What it covers — the level/zone families the loader above reads   |
+    //| KEYS for: the trigger ladder, the hand-drawn level LINES           |
+    //| (`inpShowLines`' own label), the TH labels and the mid-zone band  |
+    //| (whose key spelling belongs to RuntimeSettings, so the asking is   |
+    //| delegated — one owner per key). The ATR/trade LABEL blocks are    |
+    //| not levels and are left exactly as the user set them.             |
+    //+------------------------------------------------------------------+
+    string levelsOffStamp = "Biotak_LevelsOffDefault_" + chartIdStr;
+    if(!GlobalVariableCheck(levelsOffStamp)) {
+        GlobalVariableDel("Biotak_TriggerLevels_" + chartIdStr);
+        GlobalVariableDel("Biotak_LinesVisible_"  + chartIdStr);
+        GlobalVariableDel("Biotak_THLabels_"      + chartIdStr);
+        MidZonesStateForget();          // the mid-zone band's own key (RuntimeSettings owner)
+        g_triggerLevelsEnabled = false; // ...and the runtime copies, so THIS attach is clean too
+        g_linesVisible         = false;
+        g_thLabelsMode         = 0;
+        SyncTHFlagsFromMode();          // the TH flag mirrors follow the single source of truth
+        g_showMidZones         = false;
+        GlobalVariableSet(levelsOffStamp, 1.0);
     }
 
     int validationResult = ValidateInputs();
@@ -2229,56 +2149,17 @@ void SetLinesVisible(const bool visible, const bool persist)
 static bool g_renderAllNeeded = false;
 
 //==============================================================================
-// P-PERF-34 / P-PERF-35 - A SCHEDULED FRAME, AND THE CO-OPERATIVE PUMP
-//
-// P-PERF-34 - THE EVENT PATH SCHEDULES THE FRAME; IT DOES NOT RUN IT.
-//
-// applyRefreshFlags is the EVENT-path dispatcher: a click, a hotkey or a
-// gesture end reaches it, never the tick. For every heavy flag group it called
-// RedrawAllObjects(true), and `force_redraw` bypasses BOTH gates (the 20 ms
-// coalescer below is the only guard) - so the WHOLE frame body ran INLINE
-// inside OnChartEvent: base price, the ATR composite, UpdateHistoricalValues,
-// DrawMainLevels, the label family (ClearAllLabels + four Display* passes),
-// RepositionAllOverlayLabels and the custom-price block. The live log names the
-// price exactly:
-//
-//   [PERF] click breakdown: button=0ms panel=0ms apply=531ms
-//
-// button and panel are ZERO - hit-testing is free and all 531 ms is the refresh
-// body. A block that long inside the event handler IS the freeze the user feels,
-// and it is the same defect class as the 3375 ms CHART_CHANGE frame: work
-// charged to the event instead of to a frame.
-//
-// So the frame body is never executed inline in a chart event any more. The
-// flags the callers already raised stay raised, a heavy frame is marked owed,
-// and the frame loop runs it - the next tick, or the 250 ms timer that exists
-// anyway to advance staged rebuilds. WHAT is rendered is unchanged; only WHERE
-// the cost is charged.
-//
-// The LIVE DRAG is deliberately exempt: the custom-price drag re-anchors every
-// throttled step and its synchronous pass is what makes the levels follow the
-// line. Deferring that would trade a freeze for a lag, which is not a fix.
-//
-// P-PERF-35 - CO-OPERATIVE MULTITASKING: THE THREAD SUBSTITUTE MQL4 ALLOWS.
-//
-// MQL4 does not have threads. A program gets exactly ONE OS thread and one core:
-// there is no `thread`, no `async`, no `Task`, and no in-language way to run two
-// functions at the same time. MetaQuotes' own material is explicit that the
-// terminal is multi-threaded while each individual program is not, and the only
-// two escapes are a DLL (which CAN create an OS thread) and the OpenCL pool
-// (MQL5-only). Claiming otherwise would be a lie dressed as an optimisation.
-//
-// What IS available, and what actually removes the lag, is CONCURRENCY: several
-// independent jobs advanced under a millisecond budget, so no job can hold the
-// terminal for its whole duration and a job that does not finish is simply still
-// owed - nothing to unwind, nothing to re-request. This is the guarantee the
-// staged level rebuild already gives (four frames, one family each); the pump
-// generalises it so the rebuild, the object cleanup, the label-expiry sweep and
-// the live text refresh stop competing for one timer slot that used to be spent
-// entirely on whatever ran first.
-//
-// Single-flight is the other half: three fast presses used to schedule three
-// full frames. A job that is already owed is not owed twice.
+// P-PERF-34 — the EVENT path SCHEDULES the frame, it never runs it. The whole
+// frame body used to run inline in OnChartEvent (live log: `[PERF] click
+// breakdown: button=0ms panel=0ms apply=531ms` — all 531 ms is the refresh), and a
+// block that long inside the event handler IS the freeze the user feels. The
+// raised flags stay raised, the heavy frame is marked OWED and the frame loop runs
+// it (next tick, or the 250 ms timer). The LIVE DRAG is deliberately exempt:
+// deferring it would trade a freeze for a lag.
+// P-PERF-35 — co-operative multitasking is MQL4's only thread substitute (one OS
+// thread, no `async`; a DLL or the MQL5-only OpenCL pool are the escapes), so
+// several jobs advance under a millisecond budget and one that does not finish is
+// simply still owed. Single-flight: an already-owed job is never owed twice.
 //==============================================================================
 #define COOP_WARN_MS        40   // a scheduled frame or coop job slower than this is logged
 #define BUILD_STAGE_GATE_MS 60   // P-PERF-34b: spacing between staged rebuild frames
@@ -3463,52 +3344,18 @@ bool IsZoneBoxBorderObject(const string name)
 }
 
 //==============================================================================
-// P-UI-61 — THE DRAG HAS ONE ANCHOR WRITER AND ONE FRAME OWNER
-//
-// Reported: «درگ خط کاستوم پرایس روان نیست و لگ داره، و وقتی خط را رها میکنم سطوح
-// از یک جای دیگه رسم میشن، همون سطوح نیستن».
-//
-// Both halves were the same defect: the drag had THREE writers for ONE value,
-// and the value the whole ladder is derived from (`g_customTHStartPrice` ->
-// `GetMidpointPrice` -> `CalculateCommonStepData.midpointPrice`) was written
-// INSIDE the redraw throttle:
-//
-//   if(nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS)
-//   {
-//       g_customTHStartPrice = currentLinePrice;   // <- the anchor, throttled
-//       RedrawAllObjects(true);
-//       g_lastDragRedrawTime = nowMs;
-//   }
-//
-// So every event inside the 50 ms window was DROPPED, not deferred: the LINE
-// object kept up with the cursor (MT4 moves it natively, our carry writes it) at
-// ~30 Hz while the ANCHOR advanced at 20 Hz, i.e. the ladder trailed the line by
-// an amount that depended on where the window happened to fall - and nothing was
-// owed, so the trailing error was silently lost on the last event before the
-// button came up. That is the lag.
-//
-// The release then made it visible. `RedrawAllObjects` re-resolves the price from
-// `CustomPriceResolveSource()` (P-UI-56), which reads the PERSISTED placement - and
-// the CARRY channel never persisted (only the native-drag channel did), so the key
-// held a price from before the gesture. The resolver's answer disagreed with the
-// anchor, the frame's `priceMoved` branch OVERWROTE the anchor with the key's older
-// value, and the ladder was rebuilt there: it matched neither the cursor nor the
-// picture that was on screen a moment earlier. That is «از یک جای دیگه رسم میشن».
-//
-// The rules are the project's usual ones: ONE owner for the value, ONE owner for
-// the frame, state always current, and a frame that was refused is OWED, never
-// dropped.
-//
-//   * `CustomPriceDragAnchorSet(price)` is the only writer of the anchor during a
-//     gesture, and it persists through the P-UI-56 writer so the key can never be
-//     older than the anchor (that disagreement WAS the release jump). A price that
-//     did not move costs one compare and returns - the steady state is free.
-//   * `CustomPriceDragFrame(force)` is the only caller of the heavy pass from the
-//     drag, so both event channels share ONE budget instead of each having its own
-//     gate on the same stamp; a refused frame sets the owed flag.
-//   * The release always settles from the OBJECT (the one value MT4 itself keeps
-//     exact) and forces the frame, so the last pixel of the gesture is painted
-//     from the current anchor. A click that moved nothing still owes nothing.
+// P-UI-61 — the drag has ONE anchor writer and ONE frame owner. Reported: the
+// custom-price drag lags and the released line rebuilds the ladder elsewhere —
+// both halves were one defect, because `g_customTHStartPrice` (the value the whole
+// ladder derives from) was written INSIDE the redraw throttle: every event in the
+// 50 ms window was DROPPED, not deferred (line ~30 Hz, anchor 20 Hz), and the
+// CARRY channel never persisted, so the release re-resolved from a key older than
+// the gesture and overwrote the anchor with it. Rules now:
+//   * `CustomPriceDragAnchorSet(price)` — the only writer of the anchor during a
+//     gesture, persisting through the P-UI-56 writer (steady state: one compare);
+//   * `CustomPriceDragFrame(force)` — the only caller of the heavy pass from the
+//     drag, so both channels share ONE budget; a refused frame is OWED.
+//   * the release settles from the OBJECT (the one value MT4 keeps exact).
 //==============================================================================
 static bool s_cpDragFrameOwed = false;
 
@@ -3626,59 +3473,20 @@ void HandLinesSelectionNet()
 }
 
 //==============================================================================
-// P-UI-98 — THE FIRST STEP IS DRAGGABLE (custom-price mode, 2026-09-21).
-// Requested: «در مود کاستوم پرایس step اول قابل ویرایش باشه که کاربر با درگ
-// کردن از همون جا گام دلخواهشو در تمام مود ها بتونه اعمال بکنه که به صورت
-// خودکار با همون نسبت ها در تایم ها دیگه اعمال بشه» — and: the custom line AND
-// step 1 selectable, draggable, deselectable; ONLY step 1, never the rest.
-//
-// THE HANDLE. The step-1 handle is the trigger line ONE STEP from the custom
-// price line on each side, picked by geometry at render time (Step1HandlePick,
-// LevelPipeline) — never by rung number. P-UI-98f corrected the premise this
-// block shipped with: "the rung-1 lines sit at start ± firstStep" is TRUE above
-// (the drawn family is `start + k*step`) but FALSE below, where the ladder's own
-// rung-1 line is the centre zone's lower boundary and lands exactly ON the
-// custom price line — the coincident red handle the user reported, and a drag
-// math reading 0 at rest. The below handle is therefore `_Below_2`, the line at
-// `start - step`; the pipeline draws all of them (LevelPipeline BuildZones) and
-// nothing new is drawn for the purpose.
-//
-// THE MATH. `newFirst = |draggedPrice - start|` and the override is ONE
-// MULTIPLIER of the mode's own natural first step: F = newFirst / natural.
-// The multiplier is applied to the mode factory's stepSizes (both entries of
-// the SS/LS pair, the Factor harmonic pair) — so the ratios the course defines
-// survive untouched — and it is stored CHART-SCOPED, so a timeframe switch
-// re-scales the new TF's natural steps by the same F. That is the "same ratios
-// on the other timeframes" half of the request. The natural first step is
-// noted F-free straight off the factory (NaturalFirstStepNote in
-// DrawLevelsBasedOnMode), never re-derived here.
-//
-// THE GESTURE. MT4's own object drag is the movement (the line is SELECTABLE
-// only in custom-price mode, only step 1 — the selectability owner lives in
-// RenderTriggerLines, the refresh path, so a flag that changed under us is
-// re-owned the next frame). The OBJECT_DRAG event is continuous; each step
-// recomputes F and shares the custom-price drag's ONE frame budget
-// (CustomPriceDragFrame — the P-PERF-34 live-drag exemption and the P-UI-61
-// one-owner rule, reused rather than duplicated). The FIRST drag event takes
-// the view lock through CustomPriceDragLockOn — the same lock, the same
-// watchdog heal, and the same ChartLockIntended() term as the custom-price
-// line's drag (the two gestures cannot be live at once: one cursor).
-//
-// THE THREE P-BK-15 RULES. (1) The dragged line's own price is NEVER written
-// mid-gesture — RenderTriggerLines skips the CreateOrUpdateHLine call for
-// Step1DragName() while the gesture is live, and the recomputed price of rung 1
-// equals the dragged price anyway (it is where F came from). (2) The release
-// settles: one forced frame (the last pixel painted from the final F) and the
-// selection MT4 made on the grab is DROPPED (the P-UI-45 rule — a selection
-// that outlives its gesture is moved by every later drag anywhere on the
-// chart), which is the deselect half of the request. (3) A release that never
-// arrives is healed by the same stale-drag net that heals the custom-price
-// lock (CustomPriceDragHealStale), because a motionless release emits no event
-// (P-BK-03) and a stuck s_s1DragLive would pin the handle's price forever.
-//
-// OFF. The override is a property of the custom-price placement: it resets
-// wherever the placement resets (CleanupCustomPriceObjects(reset), the R key)
-// and it is purged with the chart's other keys on REASON_REMOVE.
+// P-UI-98 — THE FIRST STEP IS DRAGGABLE (custom-price mode). Requested: the custom
+// line AND step 1 selectable / draggable / deselectable (only step 1), the chosen
+// step carrying to the other timeframes at the same ratios.
+// THE HANDLE: the trigger line ONE STEP from the custom price line, picked by
+// GEOMETRY at render time (`Step1HandlePick`), never by rung number — `_Above_1` /
+// `_Below_2`, since the below rung-1 line lands exactly ON the custom line (98f).
+// THE MATH: F = |dragged - start| / the mode's natural first step, ONE MULTIPLIER
+// on the factory's own stepSizes, CHART-SCOPED so every TF re-scales by the same F
+// and the ratios the course defines survive.
+// THE GESTURE: MT4's own OBJECT_DRAG, sharing the custom-price drag's ONE frame
+// budget and view lock; never write the dragged line's own price mid-gesture
+// (P-BK-15); the release settles with one forced frame and DROPS MT4's selection
+// (P-UI-45); a motionless release is healed by `CustomPriceDragHealStale`.
+// OFF: resets with the placement (R key) and on REASON_REMOVE.
 //==============================================================================
 bool   Step1DragLive()  { return g_s1DragLive; }
 string Step1DragName()  { return g_s1DragName; }

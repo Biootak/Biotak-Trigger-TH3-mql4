@@ -116,56 +116,19 @@ bool PnlDpiPoll()
 }
 // ══════════════════════════════════════════════════════════════════════════
 // P-UI-69e (2026-09-25) — THE TYPE SCALE SURVIVES EVERY DPI (D-03, solved).
-//
-// THE BUG, on the shipped formula `pt = round(nominal * 96 / dpi)`. Both tables
-// below are the SAME sweep (every dpi the band allows, step 12) computed twice:
-// once for the old formula, once for the rule under it.
-//
-//   OLD         96   120   144   168   192   240   288
-//     5          5     4     4     4     4     4     4
-//     6          6     5     4     4     4     4     4
-//     7          7     6     5     4     4     4     4
-//     8          8     6     5     5     4     4     4
-//     9          9     7     6     5     5     4     4
-//    10         10     8     6     6     5     4     4
-//   collapses    0     1     2     3     4     5     5   <- adjacent pairs drawn alike
-//
-// Twenty equal pairs across these seven scales (five after the fix, and those
-// five all sit at the row cap). At 125% the section caption (7) and the value (8)
-// are ONE SIZE; at 150% two pairs are; from 250% up the whole six-size scale is a
-// single 4pt size.
-//
-//   THE FIX     96   120   144   168   192   240   288
-//     5          5     4     4     4     4     4     4
-//     6          6     5     5     5     5     5     5
-//     7          7     6     6     6     6     6     6
-//     8          8     7     7     7     7     7     6
-//     9          9     8     8     8     8     7     6
-//    10         10     9     9     9     9     7     6
-//   collapses    0     0     0     0     0     2     3   <- at and above the ROW cap ONLY
-//
-// Two adjacent sizes land on the SAME integer point above 100%, so the panel's
-// section caption (7) draws exactly like its value (8), the colour-cell key (5)
-// like the keycap (6): the type hierarchy is the first casualty of a scaled
-// display, and it is invisible on the 96 DPI machine every number was measured on.
-//
-// THE RULE, in one line: a size is the design's device-px answer, LIFTED rung by
-// rung so no two sizes the UI uses are ever equal, and CAPPED at the tallest em
-// the row geometry can hold. Three properties, all asserted by
-// `tests/Biotak_TypeScale_Test.mq4`:
-//   1. IDENTITY AT 96 DPI — the shipped design does not move a pixel;
-//   2. NEVER EQUAL — below the cap, rung n is at least 1pt above rung n-1;
-//   3. NEVER OVERFLOWS — the em stays inside the row (`14 + 24 = 38 < 42`), so
-//      the "caption crosses into the next row" class cannot come from the scale.
-//
-// Above ~240 DPI the cap merges the top rungs: a 42px row cannot hold six
-// distinct sizes when one point is 4px. That is geometry, not policy — there,
-// hierarchy must come from weight or colour (D-03's second half), and the cap is
-// what keeps the surface legible instead of broken.
-//
-// The lift is the MINIMUM that makes the rungs distinct (each rung is the
-// smallest point size still above the one below), so at 125% — the commonest
-// scaling — only the top three sizes move, and by exactly one point.
+// THE BUG, on the shipped `pt = round(nominal * 96 / dpi)`: twenty adjacent pairs
+// across the seven scales the band allows (96..288 step 12) land on the SAME integer
+// point. At 125% the section caption (7) and the value (8) are ONE SIZE, at 150% two
+// pairs are, and from 250% up the whole six-size scale is a single 4pt size — the
+// hierarchy is the first casualty of a scaled display, and it is invisible on the 96
+// DPI machine every number was measured on.
+// THE FIX, one line: a size is the design's device-px answer, LIFTED rung by rung so
+// no two sizes the UI uses are ever equal, and CAPPED at the tallest em the row
+// geometry can hold (`14 + 24 = 38 < 42`). Three properties, asserted by
+// `tests/Biotak_TypeScale_Test.mq4`: identity at 96 DPI, never equal below the cap,
+// never overflows the row — and above ~240 DPI the cap must merge the top rungs, where
+// hierarchy comes from weight or colour instead. The lift is the MINIMUM that makes the
+// rungs distinct, so at 125% only the top three sizes move, by one point.
 // ══════════════════════════════════════════════════════════════════════════
 #define PNL_PT_LADDER_MIN 5    // the smallest nominal the UI uses (PNL_PT_CSET)
 #define PNL_PT_LADDER_MAX 14   // head-room above the biggest (SUB_PT_PAGER 10)
