@@ -45,6 +45,17 @@ struct SZoneCreationRequest {
     // stack struct) means "follow the band", i.e. the pre-P-UI-63 look - so the
     // default is a real fallback and not a silently opaque edge.
     int borderTransparency;   // The EDGE's transparency (0-100); outside = follow `transparency`
+    // P-UI-131h: THE EDGE'S TWO HALVES ARE TWO SURFACES. The bevel derives a LIT tone
+    // (top/left) and a SHADED one (bottom) from `zoneColor` at the edge's transparency;
+    // each half can now be pinned instead. `clrNONE` on a colour means AUTO (keep the
+    // derivation, which stays anchored to the surface the line lies on), and any value
+    // outside 0..100 on an opacity means "follow the edge's own" - the same "outside = the
+    // pre-existing look" fallback `borderTransparency` uses, so an unset request is
+    // exactly the shipped picture.
+    color borderTopColor;           // clrNONE = AUTO (the derived lit tone)
+    color borderBottomColor;        // clrNONE = AUTO (the derived shaded tone)
+    int   borderTopTransparency;    // 0-100; outside = follow `borderTransparency`
+    int   borderBottomTransparency; // 0-100; outside = follow `borderTransparency`
     bool filled;              // Draw the BAND (the filled rectangle)
     // P-UI-62: the EDGE is its own half of the picture, not a consequence of `filled`.
     // It used to be exactly `!filled`, which made two states out of three possible
@@ -56,6 +67,22 @@ struct SZoneCreationRequest {
     datetime startTime;       // Start time (optional, 0 = auto)
     datetime endTime;         // End time (optional, 0 = auto)
 };
+
+//--- P-UI-131h: THE ONE WAY TO START A REQUEST. MQL4 leaves a stack struct
+//--- uninitialised, so a producer that forgets a field hands the factory whatever was in
+//--- memory — the reason ZoneRenderer already writes `borderTransparency = -1` by hand.
+//--- The four per-half surfaces are the first fields a producer has no reason to know
+//--- about, so they get one owner: AUTO (clrNONE / -1) is the shipped look, and a request
+//--- that never mentions them is exactly the picture that was there before.
+SZoneCreationRequest ZoneRequestNew()
+{
+   SZoneCreationRequest r;
+   r.borderTopColor = clrNONE;
+   r.borderBottomColor = clrNONE;
+   r.borderTopTransparency = -1;
+   r.borderBottomTransparency = -1;
+   return r;
+}
 
 //+------------------------------------------------------------------+
 //| Zone Creation Result                                             |
@@ -199,7 +226,12 @@ bool CreateOrUpdateZoneBorder(const string name,
 // blend, so asking it about the edge's color is always "changed". Three cache
 // probes, zero terminal calls on a hit - an absent segment answers changed
 // (the create path below is what brings it back).
-bool ZoneEdgeColorChanged(const string baseName, const color borderColor)
+//
+// P-UI-131f: EACH SEGMENT IS ASKED ABOUT ITS OWN TONE. The 3D bevel draws Top/Left
+// with the LIT tone and Bottom with the SHADED one, so comparing all three against
+// one colour would answer "changed" forever - the whole edge rewritten on every
+// render, a permanent cost for a look that only changes when the band does.
+bool ZoneEdgeColorChanged(const string baseName,const color litColor,const color shadeColor)
 {
    string t0 = "_B_Top", t1 = "_B_Bottom", t2 = "_B_Left";
    for(int i = 0; i < 3; i++)
@@ -207,7 +239,7 @@ bool ZoneEdgeColorChanged(const string baseName, const color borderColor)
       string tn = baseName + (i == 0 ? t0 : (i == 1 ? t1 : t2));
       SObjectCacheEntry e;
       if(!CacheGetObject(tn, e) || !e.exists) return true;
-      if(e.lastColor != borderColor) return true;
+      if(e.lastColor != ((i == 1) ? shadeColor : litColor)) return true;
    }
    return false;
 }
@@ -334,6 +366,32 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     if(request.borderTransparency >= 0 && request.borderTransparency <= 100)
         edgeTransparency = request.borderTransparency;
     color borderColor = GetZoneRenderColor(request.zoneColor, edgeTransparency);
+    // P-UI-131f/g: THE 3D EDGE COSTS NOTHING. A zone's edge is already three objects,
+    // so the bevel is two TONES of this one colour - no new object, no extra draw call,
+    // no per-tick work: the lit tone for Top/Left, the shaded one for Bottom. The ANCHOR
+    // is the surface the line actually lies ON - the band when the picture owns one, the
+    // chart's background otherwise - which is what the v1 bevel got wrong (P-UI-131g).
+    color edgeUnder = request.filled ? finalColor : GetCachedChartBgColor();
+    // P-UI-131h: PER-HALF SURFACES. A pinned half is a colour of its own at its OWN
+    // opacity; an AUTO half keeps the derived tone. The LEFT segment is the vertical
+    // twin of the TOP one (both are the lit side of the light source), so it follows
+    // the top half - one rule, no third state to explain.
+    int edgeTopTr = (request.borderTopTransparency >= 0 && request.borderTopTransparency <= 100)
+                        ? request.borderTopTransparency : edgeTransparency;
+    int edgeBotTr = (request.borderBottomTransparency >= 0 && request.borderBottomTransparency <= 100)
+                        ? request.borderBottomTransparency : edgeTransparency;
+    color edgeTopBase = GetZoneRenderColor(request.zoneColor, edgeTopTr);
+    color edgeBotBase = GetZoneRenderColor(request.zoneColor, edgeBotTr);
+    // Each half is derived from ITS OWN base, so a half whose opacity is pinned without a
+    // pinned colour still gets a tone blended at that opacity (the memo makes the second
+    // call a hit in the shared-opacity case, which is the default).
+    color edgeLit = borderColor, edgeShade = borderColor, litT = borderColor, shdT = borderColor;
+    BioZoneEdgeTones(edgeTopBase, edgeUnder, litT, shdT);
+    edgeLit = litT;
+    BioZoneEdgeTones(edgeBotBase, edgeUnder, litT, shdT);
+    edgeShade = shdT;
+    if(request.borderTopColor    != clrNONE) edgeLit   = GetZoneRenderColor(request.borderTopColor, edgeTopTr);
+    if(request.borderBottomColor != clrNONE) edgeShade = GetZoneRenderColor(request.borderBottomColor, edgeBotTr);
 
     // P-UI-62: THE PICTURE IS RESOLVED BEFORE ANY DRAWING PATH.
     //
@@ -375,7 +433,7 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
                                cache.lastTime1 != startTime || cache.lastTime2 != endTime);
         bool visualChanged = (cache.lastColor != finalColor || cache.lastFilled != request.filled ||
                               cache.lastStyle != borderStyle || cache.lastWidth != borderWidth ||
-                              (request.outline && ZoneEdgeColorChanged(request.name, borderColor)));
+                              (request.outline && ZoneEdgeColorChanged(request.name, edgeLit, edgeShade)));
         
         if(!geometryChanged && !visualChanged) {
             result.success = true;
@@ -499,15 +557,17 @@ SZoneCreationResult CreateZone(const SZoneCreationRequest &request)
     // whenever this picture does not own it.
     if(request.outline) {
         bool okEdge = true;
+        // The light comes from the TOP-LEFT: the top and left edges catch it, the
+        // bottom edge falls into shade (P-UI-131f). Same three objects as before.
         if(!CreateOrUpdateZoneBorder(request.name + "_B_Top",
                                      startTime, request.topPrice, endTime, request.topPrice,
-                                     borderColor, borderStyle, borderWidth, true)) okEdge = false;
+                                     edgeLit, borderStyle, borderWidth, true)) okEdge = false;
         if(!CreateOrUpdateZoneBorder(request.name + "_B_Bottom",
                                      startTime, request.bottomPrice, endTime, request.bottomPrice,
-                                     borderColor, borderStyle, borderWidth, true)) okEdge = false;
+                                     edgeShade, borderStyle, borderWidth, true)) okEdge = false;
         if(!CreateOrUpdateZoneBorder(request.name + "_B_Left",
                                      startTime, request.bottomPrice, startTime, request.topPrice,
-                                     borderColor, borderStyle, borderWidth, false)) okEdge = false;
+                                     edgeLit, borderStyle, borderWidth, false)) okEdge = false;
         if(!okEdge) {
             result.errorMessage = "Failed to draw the zone edge: " + request.name;
             result.errorCode = ERR_ZONE_RENDER_FAILED;

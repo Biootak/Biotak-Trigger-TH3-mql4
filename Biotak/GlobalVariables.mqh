@@ -410,7 +410,8 @@ static bool g_atrLabelsVisible = true;
 static int  g_cdTagX = 0, g_cdTagY = 0, g_cdTagW = 0, g_cdTagH = 0;
 static bool g_cdTagValid = false;
 static bool g_thLabelsVisible = true;
-static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
+static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD (exclusive, never both)
+static int  g_thLastOnMode = 2; // remembered ON mode for the A toggle, default STANDARD
 
 //--- TH labels single source of truth: g_thLabelsMode drives the drawing and
 //    the hotkey cycle; the flag mirrors (g_showTHLabels / g_showFractalTHs /
@@ -419,18 +420,19 @@ static int  g_thLabelsMode = 0; // 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH
 //    after ANY change to g_thLabelsMode.
 int THModeFromFlags()
 {
-   if(g_showFractalTHs && g_showStandardTHs) return 3;
-   if(g_showFractalTHs)                      return 1;
-   if(g_showStandardTHs)                     return 2;
+   if(g_showStandardTHs) return 2;
+   if(g_showFractalTHs)  return 1;
    return 0;
 }
 
 void SyncTHFlagsFromMode()
 {
+   if(g_thLabelsMode == 3) g_thLabelsMode = 2; // legacy BOTH migrates to STANDARD
+   if(g_thLabelsMode == 1 || g_thLabelsMode == 2) g_thLastOnMode = g_thLabelsMode;
    g_thLabelsVisible    = (g_thLabelsMode != 0);
    g_showTHLabels       = (g_thLabelsMode != 0);
-   g_showFractalTHs     = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
-   g_showStandardTHs    = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
+   g_showFractalTHs     = (g_thLabelsMode == 1);
+   g_showStandardTHs    = (g_thLabelsMode == 2);
 }
 // STEPOVERRIDE-OFF (2026-09-05, user decision): single Step Mode — the override
 // layer is retired. E / Tools-ring / panel all write g_stepCalculationMode now.

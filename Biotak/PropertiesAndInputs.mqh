@@ -253,7 +253,10 @@ input group "09.3) TRIGGER - ENABLE & LABEL"
 input string S15c = "[09.3] TRIGGER / ENABLE & LABEL";
 input bool inpShowTrigger = false;       // Show Trigger Levels
 input int inpTriggerTransparency = 50;   // Trigger Transparency (0=Solid, 100=Invisible)
-input color inpTriggerLabelColor = clrBlack;     // Trigger Label Color
+// P-UI-131j: clrNONE = AUTO. The trigger family's pip label wears the unified [08.4]
+// line look until this is pinned (P-UI-66: a label wears its own line's live look);
+// the trigger card's LABEL COLOR / LABEL OPACITY rows own the pinned state.
+input color inpTriggerLabelColor = clrNONE;      // Trigger Label Color (none = AUTO)
 
 input group "10) HIGH/LOW - TOOLTIPS"
 input string S14c = "[10] HIGH-LOW / TOOLTIPS";

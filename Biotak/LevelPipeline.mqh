@@ -102,6 +102,8 @@ struct STriggerLine {
     string tooltip;
     color  clr;
     string labelText;
+    bool   isTrigger;       // P-UI-131j: this line's LEVEL is a trigger subdivision,
+                            // so its pip label wears the TRIGGER LABEL surface
     bool   inViewport;      // false = skip render
     bool   isMidpoint;
     bool   setBack;         // OBJPROP_BACK value (mode-specific)
@@ -646,6 +648,7 @@ void BuildZonesAndLines(
         lines[lIdx].lineWidth = s_aboveLevels[i].levelWidth;
         lines[lIdx].clr = s_aboveLevels[i].levelColor;
         lines[lIdx].labelText = s_aboveLevels[i].labelText;
+        lines[lIdx].isTrigger = s_aboveLevels[i].isTrigger;   // P-UI-131j
         lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -708,6 +711,7 @@ void BuildZonesAndLines(
         lines[lIdx].lineWidth = s_belowLevels[i].levelWidth;
         lines[lIdx].clr = s_belowLevels[i].levelColor;
         lines[lIdx].labelText = s_belowLevels[i].labelText;
+        lines[lIdx].isTrigger = s_belowLevels[i].isTrigger;   // P-UI-131j
         lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -896,7 +900,7 @@ void RenderZones(
             // `filled` = the band, `outline` = its edge (three segments), and each is
             // independent - so FILLED, EMPTY and OUTLINED are three real pictures and
             // the BORDER / BORDER WIDTH settings apply wherever an edge is drawn.
-            SZoneCreationRequest request;
+            SZoneCreationRequest request = ZoneRequestNew();   // P-UI-131h
             request.name = zones[i].name;
             request.topPrice = zones[i].renderTop;
             request.bottomPrice = zones[i].renderBottom;
@@ -910,6 +914,13 @@ void RenderZones(
             // independently, and both values are read here (next to the border style and
             // width they belong with) rather than threaded through the zone definition.
             request.borderTransparency = inpMidZoneBorderTransparency;
+            // P-UI-131h: the two halves' own surfaces, read here with the three rows
+            // above. AUTO (clrNONE / -1) is the factory state, so this changes nothing
+            // until a row is touched.
+            request.borderTopColor = inpZoneEdgeTopColor;
+            request.borderBottomColor = inpZoneEdgeBottomColor;
+            request.borderTopTransparency = inpZoneEdgeTopTransparency;
+            request.borderBottomTransparency = inpZoneEdgeBottomTransparency;
             request.startTime = 0;
             request.endTime = 0;
             
@@ -1156,6 +1167,32 @@ void Step1HandlePick(const STriggerLine &lines[], const int lineCount,
     }
 }
 
+//+------------------------------------------------------------------+
+//| P-UI-131j - THE TRIGGER LABEL'S OWN COLOUR + OPACITY.            |
+//|                                                                  |
+//| The trigger card has carried a LABEL COLOR row since the first   |
+//| card layout and nothing ever read it: the pip label took the     |
+//| unified line colour. The row is now live, with an opacity beside |
+//| it (the LABEL OPACITY row), and BOTH ends of both are AUTO -     |
+//| which is the shipped picture, so an untouched chart cannot move. |
+//|                                                                  |
+//| Lives here, not in RuntimeSettings (which owns the two mirrors), |
+//| because the generic blender `GetZoneRenderColor` is defined in   |
+//| ZoneFactory, a LATER file than RuntimeSettings - same include      |
+//| order that made the two effective-colour getters there duplicate |
+//| the blend inline. Cost: the AUTO/AUTO call is one cached         |
+//| getter, and a pinned one blends once per render pass.            |
+//+------------------------------------------------------------------+
+color GetTriggerLabelRenderColor()
+{
+    if(g_triggerLabelColor == clrNONE && g_triggerLabelTransparency < 0)
+        return GetLineRenderColor();   // AUTO/AUTO = P-UI-66's shipped look
+    color base = (g_triggerLabelColor == clrNONE) ? g_lineColor : g_triggerLabelColor;
+    int   tr   = (g_triggerLabelTransparency >= 0) ? g_triggerLabelTransparency
+                                                   : g_lineTransparency;
+    return GetZoneRenderColor(base, tr);
+}
+
 void RenderTriggerLines(
     const STriggerLine &lines[],
     const int lineCount,
@@ -1186,6 +1223,9 @@ void RenderTriggerLines(
     // (`CreateOrUpdateHLine` compares colour/style/width before it writes), so a
     // steady frame still costs zero terminal calls for an unchanged look.
     color           lineClr   = GetLineRenderColor();
+    // P-UI-131j: read once per pass - the trigger label's own surface. In the shipped
+    // AUTO state this is the line colour again (one cached getter, three compares).
+    color           lblClr    = GetTriggerLabelRenderColor();
     ENUM_LINE_STYLE lineStyle = inpLineStyle;
     int             lineWidth = inpLineWidth;
 
@@ -1271,7 +1311,11 @@ void RenderTriggerLines(
             // `lines[i].clr` is the BUILD's copy, so a colour edit would have
             // gone stale on the label in exactly the frames the line was fixed
             // up in (`CreatePipDistanceLabel` is change-guarded too).
-            CreatePipDistanceLabel(labelName, lines[i].price, pips, lineClr, lines[i].labelText);
+            // P-UI-131j: ... unless the level is the TRIGGER's, whose label is a
+            // surface of its own (`lblClr` == `lineClr` while both its ends are AUTO).
+            CreatePipDistanceLabel(labelName, lines[i].price, pips,
+                                   lines[i].isTrigger ? lblClr : lineClr,
+                                   lines[i].labelText);
             long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
             SetPipelineObjectTimeframesIfExists(labelName, labelTf);
         }

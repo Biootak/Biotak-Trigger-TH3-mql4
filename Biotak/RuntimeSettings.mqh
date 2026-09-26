@@ -90,7 +90,15 @@ static bool g_bkBold = false;                                  // [08.5] inpBKBo
 static bool g_bkItalic = false;                                // [08.5] inpBKItalic
 static int g_bkAlign = 2;                                      // [08.5] inpBKAlign (0=Left,1=Center,2=Right)
 static int g_bkVAlign = 1;                                     // [08.5] inpBKVAlign (0=Top,1=Inside,2=Bottom)
-static color g_triggerLabelColor = clrBlack;                     // [09.3] inpTriggerLabelColor
+// P-UI-131j: THE TRIGGER'S LABEL IS A SURFACE OF ITS OWN — colour AND opacity, the
+// shape the trigger ZONE has had since the beginning (TRANSPARENCY + COLOR). The
+// colour shipped DEAD: it was mirrored, persisted and painted on a card row, and no
+// renderer ever read it, so the pip label kept wearing the unified [08.4] line colour
+// whatever the row said. AUTO (`clrNONE` / `-1`) is the shipped picture — the label
+// wears its own line's live look (P-UI-66) — so an untouched chart is pixel-identical
+// and a pinned value is the trigger family's own.
+static color g_triggerLabelColor = clrNONE;                      // [09.3] inpTriggerLabelColor (clrNONE = AUTO)
+static int g_triggerLabelTransparency = -1;                      // P-UI-131j (-1 = AUTO: follow the Lines TR)
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency
 static int g_ssLevelWidth = 1;                                   // [04] inpSSLevelWidth
 static ENUM_LINE_STYLE g_ssLevelStyle = STYLE_DOT;               // [04] inpSSLevelStyle
@@ -123,6 +131,15 @@ static int g_midZoneBorderWidth = 1;                             // [07.2] inpMi
 // BAND (the filled rectangle); this one owns the edge the BORDER / BORDER WIDTH rows
 // style, so the two can be set apart - the reported «شفافیت خط و زون جدا از هم باشد».
 static int g_midZoneBorderTransparency = 50;                     // [07.2] inpMidZoneBorderTransparency
+// P-UI-131h: THE EDGE'S TWO HALVES, each one surface of its own. The bevel derives a LIT
+// tone (top/left) and a SHADED one (bottom) from the edge colour; the user can now pin
+// either half instead - clrNONE = AUTO, i.e. keep the derivation, and -1 opacity =
+// follow `g_midZoneBorderTransparency` above. The factory default is AUTO on all four, so
+// a fresh install draws exactly the soft, surface-anchored edge the derivation produces.
+static color g_zoneEdgeTopColor = clrNONE;
+static color g_zoneEdgeBottomColor = clrNONE;
+static int   g_zoneEdgeTopTransparency = -1;
+static int   g_zoneEdgeBottomTransparency = -1;
 static bool g_showPipDistanceLabels = true;                      // [03] inpShowPipDistanceLabels
 static bool g_showATRLabels = false;                             // [03] inpShowATRLabels
 static bool g_showATRTargets = true;                             // [03] inpShowATRTargets
@@ -137,6 +154,22 @@ static int g_atrLabelRowGap = 10;                                // [03] inpATRT
 static int g_atrTradeFontSize = 0;                               // [03] inpATRTradeLabelFontSize (0 = follow inpFontSize)
 static int g_trexStampGapRows = 0;                               // [13] inpTrexStampGapRows
 static int g_tradeMarginBottom = 8;                              // [13] inpLabelsMarginBottom (the card's floor)
+// P-UI-131 — the LABEL GRID's own two knobs, promoted from "Inputs only" to live
+// settings so the GENERAL SETTINGS card can drive them. Each has ONE reader family
+// (the label layout), so the dialog input and the panel row are the same value.
+static int g_labelFontSize = 8;                                  // [11] inpFontSize (the label grid's own size)
+static int g_labelRowGap   = 18;                                 // [13] inpLabelRowGap (the shared column pitch)
+// P-UI-131 — the rest of group 13, the LABEL LAYOUT. All six were "dialog only"
+// until the GENERAL card: they are the grid's own geometry (one font, four
+// margins/gaps, one width cap), read by LabelFunctions, BaseKnotTool,
+// ObjectFunctions, UtilityFunctions and TH3Tool. Each mirror keeps ONE reader
+// family, so the panel row and the dialog input are the same value.
+static int g_labelFontIdx     = 0;                               // [11] inpFontName, as a list index
+static int g_labelsMarginTop  = 30;                              // [13] inpLabelsMarginTop
+static int g_labelsMarginLeft = 25;                              // [13] inpLabelsMarginLeft
+static int g_labelColumnGap   = 50;                              // [13] inpLabelColumnGap
+static int g_sectionGap       = 30;                              // [13] inpSectionGap
+static int g_maxLabelWidth    = 250;                             // [13] inpMaxLabelWidth
 // The card's five colours (P-UI-70d). Defaults are the SHIPPED literals, so a
 // chart that never touches them looks exactly as before.
 static color g_atrTradeTRColor = clrBlue;                        // [13] inpATRTradeTRColor
@@ -304,6 +337,14 @@ enum FactorySetting
     FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
     FF_TH_PERCENT,        // inpTHPercentOverride (P-TH-01 — appended for the same reason)
     FF_TH3_PIVOT_BASE,    // inpTH3PivotBasePips (P-TH3-PB-MAN — appended for the same reason)
+    FF_LABEL_SIZE,        // inpFontSize (P-UI-131 — appended: FF_ addresses never renumber)
+    FF_LABEL_ROW_GAP,     // inpLabelRowGap (P-UI-131)
+    FF_LABEL_FONT,        // inpFontName, as the list index (P-UI-131)
+    FF_MARGIN_TOP,        // inpLabelsMarginTop (P-UI-131)
+    FF_MARGIN_LEFT,       // inpLabelsMarginLeft (P-UI-131)
+    FF_COLUMN_GAP,        // inpLabelColumnGap (P-UI-131)
+    FF_SECTION_GAP,       // inpSectionGap (P-UI-131)
+    FF_MAX_LABEL_W,       // inpMaxLabelWidth (P-UI-131)
     FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -368,6 +409,14 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_TH_TARGETS]          = inpShowTHTargets;
    g_factoryDefaults[FF_TH_MARGIN_BOTTOM]    = inpTHLabelsMarginBottom;
    g_factoryDefaults[FF_TH_PERCENT]          = inpTHPercentOverride;   // P-TH-01
+   g_factoryDefaults[FF_LABEL_SIZE]          = inpFontSize;            // P-UI-131
+   g_factoryDefaults[FF_LABEL_ROW_GAP]       = inpLabelRowGap;         // P-UI-131
+   g_factoryDefaults[FF_LABEL_FONT]          = LabelFontIdxOf(inpFontName);
+   g_factoryDefaults[FF_MARGIN_TOP]          = inpLabelsMarginTop;
+   g_factoryDefaults[FF_MARGIN_LEFT]         = inpLabelsMarginLeft;
+   g_factoryDefaults[FF_COLUMN_GAP]          = inpLabelColumnGap;
+   g_factoryDefaults[FF_SECTION_GAP]         = inpSectionGap;
+   g_factoryDefaults[FF_MAX_LABEL_W]         = inpMaxLabelWidth;
 #ifndef BUILD_LITE
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
@@ -538,6 +587,16 @@ void RuntimeSettingsInit()
 
    // [13] ADVANCED / LABEL LAYOUT
    g_thLabelsMarginBottom = inpTHLabelsMarginBottom;
+   // P-UI-131: the label grid's own size and pitch — seeded HERE, above the #define
+   // block (below it `inpFontSize` already IS the mirror and this is a no-op).
+   g_labelFontSize = inpFontSize;
+   g_labelRowGap = inpLabelRowGap;
+   g_labelFontIdx = LabelFontIdxOf(inpFontName);   // -1 = a name typed in the dialog
+   g_labelsMarginTop = inpLabelsMarginTop;
+   g_labelsMarginLeft = inpLabelsMarginLeft;
+   g_labelColumnGap = inpLabelColumnGap;
+   g_sectionGap = inpSectionGap;
+   g_maxLabelWidth = inpMaxLabelWidth;
 
    // P-TH-01: the TH-percentage knob. MUST be seeded HERE, above the #define
    // block — below it `inpTHPercentOverride` already IS the mirror and this
@@ -588,6 +647,10 @@ void RuntimeSettingsInit()
 #define inpMidZoneBorderStyle g_midZoneBorderStyle
 #define inpMidZoneBorderWidth g_midZoneBorderWidth
 #define inpMidZoneBorderTransparency g_midZoneBorderTransparency
+#define inpZoneEdgeTopColor g_zoneEdgeTopColor
+#define inpZoneEdgeBottomColor g_zoneEdgeBottomColor
+#define inpZoneEdgeTopTransparency g_zoneEdgeTopTransparency
+#define inpZoneEdgeBottomTransparency g_zoneEdgeBottomTransparency
 #define inpShowPipDistanceLabels g_showPipDistanceLabels
 #define inpTriggerWidth g_triggerWidth
 #define inpTriggerStyle g_triggerStyle
@@ -631,6 +694,22 @@ void RuntimeSettingsInit()
 #define inpATRTradeLabelFontSize g_atrTradeFontSize
 #define inpTrexStampGapRows g_trexStampGapRows
 #define inpLabelsMarginBottom g_tradeMarginBottom
+#define inpFontSize g_labelFontSize           // P-UI-131 — the label grid's own size
+#define inpLabelRowGap g_labelRowGap          // P-UI-131 — the shared column pitch
+// The font: the panel row is an INDEX (a dropdown), the readers want a STRING. A
+// name typed into the dialog has no list slot (index -1) and keeps winning until
+// the row is used, which is what makes this a promotion and not a lock-out.
+string LabelFontName()
+{
+   if(g_labelFontIdx < 0 || g_labelFontIdx >= LABEL_FONT_N) return inpFontName;
+   return LabelFontNameAt(g_labelFontIdx);
+}
+#define inpFontName LabelFontName()
+#define inpLabelsMarginTop  g_labelsMarginTop
+#define inpLabelsMarginLeft g_labelsMarginLeft
+#define inpLabelColumnGap   g_labelColumnGap
+#define inpSectionGap       g_sectionGap
+#define inpMaxLabelWidth    g_maxLabelWidth
 #define inpATRTradeTRColor g_atrTradeTRColor
 #define inpATRTradeExColor g_atrTradeExColor
 #define inpATRTradeHunterColor g_atrTradeHunterColor
@@ -974,6 +1053,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "TS",  g_triggerStyle);
    RSSetNext(p + "TC",  g_triggerColor);
    RSSetNext(p + "TL",  g_triggerLabelColor);
+   RSSetNext(p + "TLT", g_triggerLabelTransparency);   // P-UI-131j
    RSSetNext(p + "TT",  g_triggerTransparency);
    RSSetNext(p + "LNW", g_lineWidth);
    RSSetNext(p + "LNS", g_lineStyle);
@@ -1029,6 +1109,10 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "ZB",  g_midZoneBorderStyle);
    RSSetNext(p + "ZW",  g_midZoneBorderWidth);
    RSSetNext(p + "ZBT", g_midZoneBorderTransparency);   // P-UI-63
+   RSSetNext(p + "ZCT", g_zoneEdgeTopColor);            // P-UI-131h
+   RSSetNext(p + "ZCB", g_zoneEdgeBottomColor);
+   RSSetNext(p + "ZPT", g_zoneEdgeTopTransparency);
+   RSSetNext(p + "ZPB", g_zoneEdgeBottomTransparency);
    RSSetNext(p + "PD",  g_showPipDistanceLabels ? 1 : 0);
    RSSetNext(p + "AL",  g_showATRLabels ? 1 : 0);
    RSSetNext(p + "A1",  g_showATRTargets ? 1 : 0);
@@ -1085,6 +1169,14 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "C2E", g_comboComp2Enabled ? 1 : 0);
    RSSetNext(p + "C2T", g_comboComp2TF);
    RSSetNext(p + "C2S", g_comboComp2Step);
+   RSSetNext(p + "LFS", g_labelFontSize);   // P-UI-131 — the label grid's own
+   RSSetNext(p + "LRG", g_labelRowGap);
+   RSSetNext(p + "LFI", g_labelFontIdx);    // -1 = the dialog's own typed font
+   RSSetNext(p + "LMT", g_labelsMarginTop);
+   RSSetNext(p + "LML", g_labelsMarginLeft);
+   RSSetNext(p + "LCG", g_labelColumnGap);
+   RSSetNext(p + "LSG", g_sectionGap);
+   RSSetNext(p + "LMW", g_maxLabelWidth);
    RSShadowCommit();
 }
 
@@ -1108,6 +1200,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "TS"))  g_triggerStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "TS"), 0, 4);
    if(GlobalVariableCheck(p + "TC"))  g_triggerColor = (color)(int)GlobalVariableGet(p + "TC");
    if(GlobalVariableCheck(p + "TL"))  g_triggerLabelColor = (color)(int)GlobalVariableGet(p + "TL");
+   if(GlobalVariableCheck(p + "TLT")) g_triggerLabelTransparency = ClampSettingInt((int)GlobalVariableGet(p + "TLT"), -1, 100);   // P-UI-131j: -1 = AUTO
    if(GlobalVariableCheck(p + "TT"))  g_triggerTransparency = ClampSettingInt((int)GlobalVariableGet(p + "TT"), 0, 100);
    // [08.4] unified lines — upgrade path: charts customized under the old
    // layout (line look stored in TW/TS/TC/TT) carry their look over when the
@@ -1195,6 +1288,12 @@ void RuntimeSettingsLoadOverrides()
    // P-UI-63: absent key = the edge follows the band's value (the pre-split look), because
    // BOTH defaults are 50. There is no migration to write: the fallback IS the old look.
    if(GlobalVariableCheck(p + "ZBT")) g_midZoneBorderTransparency = ClampSettingInt((int)GlobalVariableGet(p + "ZBT"), 0, 100);
+   // P-UI-131h: absent key = AUTO (clrNONE / -1), which IS the pre-override look - so
+   // there is no migration to write and an older instance loads exactly as it shipped.
+   if(GlobalVariableCheck(p + "ZCT")) g_zoneEdgeTopColor    = (color)(int)GlobalVariableGet(p + "ZCT");
+   if(GlobalVariableCheck(p + "ZCB")) g_zoneEdgeBottomColor = (color)(int)GlobalVariableGet(p + "ZCB");
+   if(GlobalVariableCheck(p + "ZPT")) g_zoneEdgeTopTransparency    = ClampSettingInt((int)GlobalVariableGet(p + "ZPT"), -1, 100);
+   if(GlobalVariableCheck(p + "ZPB")) g_zoneEdgeBottomTransparency = ClampSettingInt((int)GlobalVariableGet(p + "ZPB"), -1, 100);
    if(GlobalVariableCheck(p + "PD"))  g_showPipDistanceLabels = (GlobalVariableGet(p + "PD") > 0.5);
    if(GlobalVariableCheck(p + "AL"))  g_showATRLabels = (GlobalVariableGet(p + "AL") > 0.5);
    if(GlobalVariableCheck(p + "A1"))  g_showATRTargets = (GlobalVariableGet(p + "A1") > 0.5);
@@ -1260,6 +1359,16 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "C2E")) g_comboComp2Enabled = (GlobalVariableGet(p + "C2E") > 0.5);
    if(GlobalVariableCheck(p + "C2T")) g_comboComp2TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2T"), 0, 3);
    if(GlobalVariableCheck(p + "C2S")) g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2S"), 0, 3);
+   // P-UI-131: the label grid's own two knobs. Each bound is the SAME number the
+   // panel row's slider reads, so a saved value is one the control can reproduce.
+   if(GlobalVariableCheck(p + "LFS")) g_labelFontSize = ClampSettingInt((int)GlobalVariableGet(p + "LFS"), 4, 24);
+   if(GlobalVariableCheck(p + "LRG")) g_labelRowGap = ClampSettingInt((int)GlobalVariableGet(p + "LRG"), 0, TREX_CARD_MAX_ROW_GAP);
+   if(GlobalVariableCheck(p + "LFI")) g_labelFontIdx = ClampSettingInt((int)GlobalVariableGet(p + "LFI"), -1, LABEL_FONT_N - 1);
+   if(GlobalVariableCheck(p + "LMT")) g_labelsMarginTop = ClampSettingInt((int)GlobalVariableGet(p + "LMT"), 0, 200);
+   if(GlobalVariableCheck(p + "LML")) g_labelsMarginLeft = ClampSettingInt((int)GlobalVariableGet(p + "LML"), 0, 300);
+   if(GlobalVariableCheck(p + "LCG")) g_labelColumnGap = ClampSettingInt((int)GlobalVariableGet(p + "LCG"), 0, 200);
+   if(GlobalVariableCheck(p + "LSG")) g_sectionGap = ClampSettingInt((int)GlobalVariableGet(p + "LSG"), 0, 200);
+   if(GlobalVariableCheck(p + "LMW")) g_maxLabelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LMW"), 50, 600);
    // P-PERF-27b: what was just read is what we would write back, so record it as
    // "already on disk" and stop the teardown from re-writing it.
    RuntimeSettingsPrimeOverrideShadow();

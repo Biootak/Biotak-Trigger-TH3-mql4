@@ -377,7 +377,1236 @@ panel (A-13/H-05), a right-click on the chart still dismisses an unpinned strip
 (E-09), and the panel's own header carries the panel (P-DRAW-32). DIAG-113's three
 lines stay until the live chart confirms the fixed gesture.
 
-From the agent side the same script is called as `& .\compile-th3.ps1 -Project all`
+**P-DRAW-39 (2026-09-25) — ONE PICKER PALETTE.** Reported with a screenshot of the
+popover: «چرا پالت از همون های قبلی نیستش ... همون که قبلا در جاهای دیگه هستش
+باشه» — the strip's colour popover offered `BioPal`'s 16 (the 8 quick swatches +
+8 retired strip hues) while the cards' colour popup had always shown a curated
+Material grid (`PAL_QCOLS 12` x `PAL_QROWS 5` at shades 100/300/500/700/900).
+Two colour owners is what A-01 forbids, so the picker's table moved DOWN to
+`ConstantsAndEnums.mqh` (include #1) where BOTH the strip (97) and the cards
+(116) can read it — the same move P-UI-34 made for the text metrics and
+P-UI-69b for the ink (A-12: the rule moves down, never sideways).
+
+What moved: the 19 x 10 Material matrix (`PalMatColor` -> `BioMatColor`, 190
+literals, verbatim) plus the curated indexers (`PalQHue`/`PalQShade` ->
+`BioPickHue`/`BioPickShade`) and the grid's own readers `BioPickColor(row,col)` /
+`BioPickAt(i)` / `BIOPICK_N 60`. The panels' old names are FACES now
+(`PalMatColor`, `PalQHue`, `PalQShade`, `PAL_ROWS`/`PAL_COLS` aliases), so not one
+call site of theirs changed, and no value exists twice.
+
+The strip side: `DrawStripPickPal`/`DrawStripPickSwatchAt` are the popover's own
+face of the owner (the gear's Style grid keeps `BioPal`'s 16 — see the audit log's
+row 13 for why that half is still open), the popover's count follows
+`BIOPICK_N`, and its grid is `BIOPICK_COLS` wide. The geometry was left exactly
+as it was in one important respect: `DSTRIP_PICK_ROW 42` IS `DSTRIP_SKIN_MID`, so
+one swatch row is one mid band and the plate stays on `48 + 42k` — the 6 rows of
+60 swatches + recents make the plate 48 + 6x42 = 300 px, and `DrawStripSkinKFor`
+still returns k = 6. `DSTRIP_PICK_MAX`/`DSTRIP_GRID_MAX` grew 24/48 -> 72 (the
+grid needs 60 + 5 recents; both were buffers the old 16 could never fill).
+Everything compiles green: main 925 ms, Lite, and all seven harnesses.
+
+**P-DRAW-40 (2026-09-25) — THE PANEL OWES THE DRAWING THE SAME RULE THE CARD GOT.**
+Reported: «پنل روی خوده ابجکت ظاهر میشه اصلا جالب نیست و تجربه کاربری بدی داره».
+Read from the code: `DrawStripPlaceGear` chose among four spots beside the PLATE
+and tested `onWin`, `onStrip` (the plate) and `onCard` (an open settings card) —
+and never the object the strip serves. The plate itself is placed at the
+drawing's corner (P-DRAW-20), so on a large drawing (or a zoomed chart) all four
+panel spots sit on the drawing and the panel lands on the user's own work — B-10
+and catalogue 18 exactly. The measurement is now ONE owner (`DrawStripDrawingBox`),
+asked by BOTH placers (PlaceFresh had its own copy of that anchor loop — H-06),
+and the panel's candidate ladder is: clears plate + card + drawing > clears plate
++ card > clears the plate > clamped reading order.
+
+**P-DRAW-41 (2026-09-25) — THE PLATE HAS A HOME, AND NOTHING FOLLOWS ANY MORE.**
+The user's question in the same breath as P-DRAW-40 — «بهترین کار چیه یا معماری
+ظاهری رو عوض کردن» — is the one a placer cannot answer: a surface that re-places
+itself beside the drawing it serves cannot win, because when the drawing fills the
+window EVERY candidate is inside the work and all a placer can do is pick the
+least-bad one. So the chase is gone. The first open of a chart measures the drawing
+once (the P-DRAW-20 corner placer) and that answer becomes the strip's HOME; every
+later open wears the home, and the hand's carry (the grip) rewrites it. State:
+`s_dsHomeX`/`s_dsHomeY` (-1 = none), read and written only through
+`DrawStripHomeGet`/`DrawStripHomeSet`.
+
+What that buys, one line each: the drag / zoom / chart-change channel no longer
+re-anchors (it keeps the box mid's same-event sync, P-DRAW-23, plus the window
+clamp — that is all), so a zoom, a scroll or the drawing's own drag moves the WORK
+and leaves the plate. P-DRAW-37's ride is deleted with it: a re-open of the same
+object is a re-state now (mid + return), which is exactly what an unchanged
+position means once nobody moves. And the whole follow apparatus went — the
+`s_dsManual`/`s_dsAX`/`s_dsAY` offset pair, the grip-live anchor refresh, and the
+`DSTRIP_FOLLOW_MS` name (now `DSTRIP_MID_MS 50`: the same cadence, honestly named,
+with the checklist's seven-cadence row renamed alongside). The window clamp is its
+own owner (`DrawStripHomeClamp`), because a shrunk window must never strand the
+home off-screen (E-05) — and it compares before it paints.
+
+Persistence rides the menu's own UI-state block instead of inventing an owner: two
+keys (`HOMEX`/`HOMEY`) in `SaveUIStates`, read back in `LoadUIState` under the same
+per-key change guard (`[8]` -> `[10]` shadows, ledger 6 -> 8). NO version bump: a
+chart whose keys are absent simply has no home yet, its first open measures one,
+and the existing save points (menu move, TF switch, teardown) already make it
+durable. The panel's carry (`s_dsGearManual`) still resets per session — a panel
+placed beside a plate that no longer moves lands in the same spot anyway.
+
+Cost, measured: a fresh open pays what it always did (one P-DRAW-20 placement, on
+the first open only); a re-open/ride is one `BoxMidSync` on rect kinds and zero
+projections, against P-DRAW-37's projection + layout + paint at a 50 ms cadence;
+a zoom or scroll pays the clamp's eight integer compares and paints only if the
+plate really moved. Gate: main `0 errors, 0 warnings` (installed + workspace),
+Lite the same, all seven harnesses the same,
+`node tools/submenu_geometry_check.js` green (1440 cases).
+
+**P-DRAW-42 (2026-09-25) — THE FLAT DARK RECTANGLE, AND WHY IT WAS THERE.**
+The user's next screenshot: the colour popover open at the bottom-left and, beside
+it, a bare dark rectangle the size of the settings panel with nothing on it. Read
+from the code: P-DRAW-35 gave each plate family a permanent flat underlayer
+(`PnlDrawS_BG`, `PnlDrawS_GBG`, an `OBJ_RECTANGLE_LABEL` in `DSTRIP_CLR_PANEL`),
+and every purge in the module took the nine skin tiles (`DrawStripSkinPurgeAt`)
+and never the underlayer. So a shut panel left `PnlDrawS_GBG` at its last size and
+position — exactly the reported rectangle (a two-column gear plate is ~640 x 426).
+The plate is ONE surface, so its one owner now takes both parts for both families,
+and the third defect of the same shape (a strip close left `PnlDrawS_BG` the same
+way) is closed by the same line.
+
+Two more things the same walk found. (1) That purge ran on EVERY paint — the
+popover's own path probed nine tile names plus a bg every frame for a panel that
+was never there; it is now gated on the plate family being live
+(`s_dsGearPlateLive`, set where the plate is painted, cleared where it is
+purged), so the popover's path probes nothing. (2) Nothing outside this module
+ever cleaned `PnlDrawS_*`: unlike the menu's own prefix (which `InitializeUIStates`
+sweeps on every init) these names carry no chart id, so a family left by a killed
+terminal survived the reattach with every static here starting clean. One
+`ObjectsDeleteAll(0, "PnlDrawS_")` on the first paint of a session — before this
+session made anything — makes every reattach self-healing, the same orphan purge
+the menu does for its own prefix.
+
+Verified on the read side, no change needed: the colour hover is already the
+one-event preview P-DRAW-27 promised. `DrawStripColorHoverAt` is reached from the
+same move stream that drives the hold (`DrawStrip.mqh:4938`), and its first line
+returns when the pointer is on the SAME cell — so a pointer standing still writes
+nothing, and crossing a cell costs one swatch rim + one live recolour per selected
+drawing + a redraw only if a colour really changed. Realtime and at rest free, as
+reported: «موس روی رنگها رفت اعمال بشه سریع».
+
+Gate: main `0 errors, 0 warnings` (installed + workspace), Lite and all seven
+harnesses the same, `node tools/submenu_geometry_check.js` green; comment share of
+`DrawStrip.mqh` 19 %, longest run 34 (nine >16 runs before this change, same five
+after).
+
+**P-DRAW-43 (2026-09-25) — THE PLATE'S TRANSPARENCY IS BAKED, AND THAT WAS THE
+CHOICE.** Asked for: «شفافیتش هم تنظیم بشه». The read first: MT4 has no runtime
+image API, and a bitmap label is cropped, never blended, so a percentage cannot be
+a slider over one file — the plate's whole look is baked (`ds_*`, generator
+`pm(...,255)`). Two honest options were put to the user (a tone-blend like the
+cards' own `GetZoneRenderColor`, or real alpha in baked steps); the user picked the
+baked steps. So `dsSkinPiece()` took a `t` parameter that multiplies the alpha of
+the body, the border, the shadow and the catchlight together — the SAME plate at
+30/60/90 %, never a different design — and `dsSkinFiles()` emits four file sets
+(24 new BMPs, all in the manifest; level 0 keeps the shipped names, so no file
+churn for the default). The runtime swaps the eight resources per level.
+
+The one subtlety worth keeping: P-DRAW-35's underlayer (`PnlDrawS_BG` /
+`PnlDrawS_GBG`) is what makes the plate read correctly on a white chart, and an
+opaque underlayer would have hidden the new alpha completely. It is now the CHART'S
+OWN BACKGROUND (`DrawStripPlateFill()`, from the already-cached
+`GetCachedChartBgColor()`) whenever a level is chosen: invisible against the chart
+and still filling the rounded corners and the shadow margin — the fringe fix and
+the transparency at once. The same owner feeds the mid-row centre and every
+plate-toned cell (quick row, actions, gear rows, popover rows, the grip), so a
+translucent plate does not sit under a solid row of buttons that quietly re-opaque
+it. At level 0 every one of those calls returns the old `DSTRIP_CLR_PANEL`, i.e.
+byte-identical pixels for the default.
+
+The control is one gear row, kind 9, in the Style tab's own "PLATE" section: it
+steps 0 → 30 → 60 → 90 → 0 on tap, shows the level in its text and its tooltip, and
+wears the nav chevron every stepper in that list wears. Both plates share the level
+("the plate" is one look; the panel is placed beside the strip and the user sees
+them as one surface family). The choice persists with the strip's home, in the same
+UI-state block (key `PLATE`, slot 8 of the same shadow, ledger 8 → 9, no version
+bump) — and a level change is 8 guarded resource re-points inside the paint that
+was owed anyway, never a purge-and-rebuild.
+
+Gate: main `0 errors, 0 warnings` (installed + workspace), Lite and all seven
+harnesses the same, `node tools/submenu_geometry_check.js` green; the 24 new BMPs
+are in `tools/icon-manifest.txt` (307 entries) and synced to the terminal's
+`MQL4\Files\Icons` by the same compile. `DrawStrip.mqh` share 19 %, longest run 34
+(unchanged).
+
+**P-UI-119 (2026-09-25) — WHY THE HOVER HAD TWO BOXES.** "Biotak Terminal Menu
+Click: open/close · Drag: move" appeared TWICE on the same hover, and every word
+of it was true in the source: `CircTipText(-1)` feeds the menu's own drawn chip
+(the dark box with the amber title, P-UI-31/34) while `CircCreateOrb()` ALSO wrote
+the same sentence into `OBJPROP_TOOLTIP` on the orb's bitmap label, so the
+terminal drew its own OS box beside it. The comment above the custom tip claimed
+"native hover tooltips do not display in this environment" — the user's screenshot
+is the measurement that falsifies it in this build, and per this repo's own law the
+answer is a code fix, not "that note was old".
+
+So the native channel is RETIRED on the menu's own objects: the orb, the ring
+items, the tool items and every badge plate/face writes an empty tooltip now (11
+sites in `BiotakMenu`, all inside the shapes the drawn chip already covers by
+geometry — the chip is hit-tested from the pointer, never from the object). The
+text keeps ONE owner (`CircTipText` / `CircItemTooltip` / `CircBadgeTooltip`) and
+the menu now shows one box. Objects outside the menu (the strip, the panels, the
+boxes, the levels) keep their native tooltips: this is a rule about the MENU's
+drawn chip, not about the project's hover language.
+
+With it, the title the user asked for: "Biotak Terminal Menu" -> "Trigger Price
+Action", Title Case, the same line the chip draws — the string lives in exactly
+one place (`CircTipText`), so the drawn box and the (now empty) native channel can
+never spell it differently again.
+
+Gate: main `0 errors, 0 warnings` (installed + workspace), Lite and all seven
+harnesses the same, `node tools/submenu_geometry_check.js` green; `BiotakMenu`
+share 27 % and longest run 36 (unchanged), the tooltip header inside the 16-line
+ceiling at 14.
+
+**P-UI-120 (2026-09-25) — THE CHIP IS ONE LINE, AND THE TILT IS IMPOSSIBLE.**
+Carried over from the Nastaliq probe, whose own report said it plainly: «تغییرِ
+خودِ چیپ ... هنوز در کد اعمال نشده — چون باید با گیت کامل بیاید» (that thread's
+probe file was deleted; the font and its OFL are in the repo, `tools/fonts/`).
+Applied here with the gate. The chip is ONE line: `CircItemTooltip()` lost its
+"\nClick: … · Hold: settings" tails and the orb reads "Trigger Price Action"
+alone, so the state fragment ("· ON") is the whole second sentence now. The box
+is no longer the fixed 290x56 rect — `CircTipLine()` measures the caption
+(`PnlTextW` / `PnlLineH`, the Arial Bold table, i.e. a deliberately SAFE
+over-estimate for Tahoma) and the hairline frame hugs it, the slack doing the
+centering. Tahoma 11pt (`CIRC_TIP_PT` / `CIRC_TIP_FONT`), the brand's 1px
+hairline, and the "gentle alpha" a label cannot express is
+`GetZoneRenderColor(CIRC_TIP_BG, CIRC_TIP_TINT)` — the tone blend toward the
+chart's own background, P-DRAW-43's language, no new owner. `CircTipRefresh()`
+re-SHOWS at the live anchor instead of rewriting two captions, because the state
+fragment changes the caption's LENGTH and so its box; `CircTipDropLegacy()`
+deletes a hint label left by an earlier build, once per show.
+
+The −3° slant is NOT possible on a LIVE line, and the reason is a measurement,
+not taste: `ObjectSetInteger(…, OBJPROP_ANGLE, …)` on the label fails the compile
+— «'OBJPROP_ANGLE' - improper enumerator cannot be used», error 230, 2026-09-25 —
+and an MT4 bitmap label cannot be rotated either.
+
+**So the orb's chip became ART (the user's call).** Asked which caption should be
+baked, the answer was: Latin «Trigger Price Action», Tahoma, the slant inside the
+pixels, and ONLY the orb's chip — the item captions carry live state ("· ON",
+"144.0", "12 set") and stay live text. First cut: the TITLE alone as art, on the
+live plate. Then the user sent a generated calligraphy plate and asked for it to
+be EDITED — «عبارتها قرانی شو حذف کن و فقط تریگر پرایس اکشن باشه با متن و املای
+درست و پس زمینه هم درست و بزا برای همون جا». Two things followed from that.
+
+(1) That first plate cannot be the chip's art at all: besides carrying the
+religious lettering the user wants gone, it is 1280x698 and MT4 CROPS a bitmap
+label and never scales it. It was used for its PALETTE, MEASURED not guessed:
+base navy `#0F1322` (the dominant colour, 191 144 px), gold `#CFA77C` (8 362 px),
+highlight `#FFFDC5` (the brightest gold), ember `#9F2924` (1 879 px) — and a
+procedural face was drawn from those four numbers.
+
+(2) That procedural face was then SUPERSEDED, and this is where it ends: the user
+sent a second plate — the Persian banner with the correct text — and said «اینو
+بزار». So the art itself is the source of truth now: `tools/orb/tip-face-src.png`
+is committed beside the baker, and `tools/orb/make-tip-face.ps1` INGESTS it (the
+same shape as `make-orb-bow.ps1` for the bow artwork) rather than drawing. The
+measured trap: **that PNG has no alpha channel at all** — every pixel is A=255 and
+the "transparency" is a PAINTED checkerboard (the corner reads `251,252,252`), so
+it would have shipped as a square of chess squares. The key is the checkerboard's
+own signature (every channel ≥ 210 AND the channel spread ≤ 14, chosen so the warm
+gold highlights survive): **1 132 534 checkerboard px keyed, 439 498 art px kept**,
+the keyed pixels zeroed in RGB as well (a rescale interpolates in premultiplied
+space, so white RGB under alpha 0 would bleed a pale halo). The art bbox is
+1343x510 and the master is **200x76** — MT4 needs the final pixel size baked,
+because it crops and never scales (P-DRAW-33). Before ingesting, four 1:1 crops of
+the ornaments (the top medallion, both ends, the arc crest) were inspected for
+lettering: the plate carries **none** — florals, scrollwork and a filigree only.
+`node tools/gen-th3-icons.js` embeds it as `Files/Icons/tip_face.bmp` and lists it
+(manifest **308** files), and `BiotakMenu` `#resource`s it. The chip's ONE box
+still carries two kinds — the live line, or that face — and the unused one is
+PARKED, never left behind, so orb → item → orb shows one caption at a time. Real
+alpha and the banner's own ARC shape are what the bake buys; a
+`OBJ_RECTANGLE_LABEL` can have neither. `docs/media/tip_face_art_4x.png` is the 4x
+preview on white AND on black (the two backgrounds the chip has to read on).
+
+The size is a CONTRACT, not a comment: MT4 cannot ask a bitmap how big it is, so
+`CIRC_TIP_FACE_W/H` (**200/76**) size the object and `TIP_FACE_W/H` in the
+generator refuse to embed a master whose byte length disagrees — a re-bake at
+another size fails the regen loudly instead of drawing a cropped face on a chart.
+Two earlier artefacts were deleted with the shapes that superseded them, so there
+is one art per chip and one baker per art: the title-only `make-tip-word.ps1` +
+`tip_word.bmp`, and the procedural plate (its four measured palette numbers are
+recorded above). `tools/fonts/NotoNastaliqUrdu.ttf` is no longer needed for the
+chip — the user's own plate carries the Persian lettering as art. **It is now DELETED
+together with its `OFL.txt` and with the `shot-tmp/` scratch (user order, 2026-09-26):**
+no code, generator or entry read `tools/fonts/` (grep = this note alone), and the shots
+carried numbers already written down here — so no future reader hunts a file that is gone.
+
+Gate: main `0 errors, 0 warnings` (workspace + installed), Lite the same, all
+seven harnesses the same, `node tools/submenu_geometry_check.js` green. The chip's
+footprint shrank with the fixed rect (h = 27 px at 96 dpi, was 56), so the audit
+record's tiny-chart bound moved with it; the art's own box is 157x33 (129x21 +
+2x14 / 2x6).
+
+**P-DRAW-44 (2026-09-25) — THE GEAR'S 16-SWATCH GRID IS GONE; ONE PICKER.**
+User order: «رنگ و تنظیماتِ استریپ روی همان دو مالکِ کارتها سوار شود، استریپ باید
+مثل اونا بشه... که کد کمتر داشته باشیم». The first cut of that unification is the
+clear duplicate: the Style tab's COLOUR section drew a 16-swatch grid from
+`BioPal` while the strip's own popover already offers the 60-cell Material grid
+(P-DRAW-39), i.e. exactly the open item the audit record kept as row 13.
+
+Deleted with it, so nothing unreachable is left behind: `DrawStripGearGridSwatches()`
+(the 16-cell builder), `DrawStripSwatchAt()` (its indexer — the popover has its own,
+`DrawStripPickSwatchAt`), the paint's kind-0 swatch branch (colour rect + its
+`pnl_glass28` glass), and the tap's kind-0 branch. The tab now opens on HEX, which
+is kept on purpose: typing an exact value exists nowhere else. The strip's grid is
+CHIPS only from here (border width, line style, ray), so `DrawStripGridTap` is one
+call, not a two-owner branch.
+
+Measured: `DrawStrip.mqh` 5252 -> 5196 lines, main `0 errors, 0 warnings`, Lite and
+all seven harnesses the same, `node tools/submenu_geometry_check.js` green; no
+reference to either deleted symbol survives (`grep` = 0). Still open — and this is
+where the rest of the order lives: the strip's POPOVER (~114 sites) is the second
+owner of colour, and it should ride the cards' palette (user's choice: the palette
+closes the panel, like the cards); the gear's rows (~441 sites) are the second
+owner of settings. Both are sized in the audit record's row 13/19.
+
+**P-DRAW-45 (2026-09-25) — EIGHT POSITIONS, SCORED, ON THE FINAL HEIGHT.**
+User order with a screenshot of the panel hanging off the bottom edge:
+«این فضا نیست، حتما نباید به سمت پایین باز بشه، باید هوشمند باز بشه سمت راست بالا و
+غیره، بهترین برای همه سناریو ممکن، و روی خود ابجکت نباید باز بشه ... هر دفهه باید
+کاربر بگیره درگ بکنه». Read from the code: the ladder was FOUR sides in a FIXED
+order (below first), each had to fit whole, and when none did the placer CLAMPED
+candidate 0 — so a tall tab on a short chart always opened downward and overflowed,
+which is exactly the "drag it every time" the user described.
+
+Now: the four sides and the four corners (below-right, above-right, right-low,
+left-low) are all measured, each is scored by the pixel AREA it covers — the work
+abut an order of magnitude above the surfaces it shares the screen with (B-10: the
+panel never covers the drawing it serves), then the plate (P-DRAW-31: no two
+surfaces on one pixel), then an open card — with the air left to the nearest window
+edge breaking a tie and the reading order breaking a real one. The height is the
+layout's own `s_dsGearH`, i.e. the FINAL height of the tab being opened (that pass
+runs before this paint), not the previous tab's. A candidate that cannot fit whole
+is skipped, and only when none fits does the reading order return — clamped.
+
+`DrawStripRectOverlap()` is the one measurement behind it (and it is reusable), and
+the chosen side names itself in ONE log line per real move — not per paint, because
+a paint runs many times a second while the pointer moves: `[drawstrip] gear
+side=below-right pos=(x,y) size=W x H chart=cw x ch air=n`. That line is the
+measurement the next report needs: it says WHICH side won and how much room was
+left, so "it opened somewhere silly" can be answered with numbers instead of a
+screenshot.
+
+Gate: main `0 errors, 0 warnings` (installed + workspace), Lite and all seven
+harnesses the same, `node tools/submenu_geometry_check.js` green; `DrawStrip.mqh`5236 lines, comment share 20 %, longest run 34 (unchanged).
+
+**P-UI-121 (2026-09-25) — THE CHIP LIVES ON THE ORB'S UPPER SEMICIRCLE, AND THE ORB PAYS
+FOR IT.** Three messages, one thread: «یکم چسیده هستش» → «روی همون نیم‌دایره بالا قرار
+بگیره به نظر بهتره» → a screenshot of the orb parked at the top of the chart with the
+banner hanging under it and «اینجاها اون حالت نیم‌دایره خراب میشه چیکار بکنیم بهتر در هر
+موقعیت چارت در هر سناریو درست باشه اون نیم‌دایره». Read from the code, the placement was
+four lines: a clamped `x = ax - w / 2`, `y = ay - h - 12`, and two window-edge fallbacks.
+The 12 was measured from the anchor's **center**, so on the orb (r = 32) the 76-tall face
+covered the medallion's top 20 px — the first screenshot, the "چسیده" — and when the top
+did not fit, the only other answer was the edge clamp, which hung the arc under the orb —
+the second, the "خراب میشه".
+
+Two owners now, and the split is the point. `CircTipPlace` (BiotakMenu) measures the four
+sides of the surface the chip describes (the orb's circle for the face, an item's button
+for a live caption): ABOVE first — the user's own pick, the chip riding the upper arc —
+then a side, and for the baked face never below (a rectangle can be flipped live, the
+baked arc cannot), while every live caption keeps above → below → right → left because
+there is nothing to break. A side counts only when its box fits WHOLE inside the window
+AND clears the orb (the menu's own anchor never hides under its own chip); when none does,
+the side with the most air on its outward edge wins, clamped — the one case where the chip
+touches what it labels. `CircOrbBounds` is the reason "above" is always available: the orb
+gives the crown its room, **`CIRC_TIP_ROOM` = 124 px** (r 32 + gap 12 + face 76 + edge 4)
+whenever the window holds it twice over (`ch >= 248`, i.e. exactly when a vertical side
+could hold the face anyway), so the flip survives on a genuinely short chart and nowhere
+else. The band is ONE owner now: `CircCreateOrb`, `UpdateCircularMenuPosition` and the orb
+drag each carried the same four `MathMax/MathMin` lines (H-06) and all three ask here.
+
+Measured: the placer is four integer boxes + eight compares, no trig and no terminal read
+(metrics cached, P-PERF-16), and it runs on show/refresh only — never the move stream (the
+hover path arms, the dwell fires, P-PERF-17). One consequence worth naming: the reserved
+band is 124 ≥ `CIRC_EDGE_TRIGGER` 90, so a parked orb can no longer collapse the ring into
+a top train by accident — the arc survives the top edge it used to lose. A saved orb
+position above the band is pulled into it on the next attach, which is where `LoadUIState`
+ends. Gate: main `0 errors, 0 warnings` (workspace 912 ms + installed), Lite and all seven
+harnesses the same, `node tools/submenu_geometry_check.js` green; `BiotakMenu.mqh` 3985
+lines, comment share 28 %, longest run 36 (two new blocks, both 15 lines).
+
+**P-UI-122 (2026-09-25) — THE FACE IS PLACED BY ITS INK, AND THE ORB KEEPS NO CROWN.**
+User, on the orb+chip screenshot: «الان خیلی از فاصله گرفته و همیشه نباید بالای المان‌ها
+باشه بسته به موقعیت شباید جاهای مختلف با نیم دایره درست باز بشه». Two reports in one
+sentence, so both were asked back before any edit — the surface is the orb's hover face
+(«نیم‌دایره»), and the distance is BOTH «اورب از لبهٔ بالا» AND «تریگر پرایس اکشن از دایرهٔ
+اصلی».
+
+(1) THE BOX WAS NEVER THE SHAPE. Measured on `tools/orb/tip-face-master.bgra`
+(200x76x4 = 60 800 bytes) by its ALPHA PROFILE — count, for each row, the pixels with
+alpha > 8: row 0 carries 33 px of ink (the arch's crown), rows 55-57 the FULL 200 px (the
+calligraphy band's own lowest line), then 58-75 taper 173 -> 6 px (the side ornaments hanging
+on to row 75). So the placer measured its 12 px from the BOX: the band's real bottom edge sat
+12 + 19 = **31 px** off the orb — the reported distance, and the code that claimed 12 was
+measuring a rectangle. `CIRC_TIP_FACE_HUG 57` is that line, and it is the same line the two
+end TIPS ride (rows 55-58), so ONE constant places the face above (box top = ay - r 32 -
+gap 12 - 57) and beside (the tip on the orb's centre line). Measured effect: the face now
+rides 19 px lower, its ink 12 px off the orb's edge — what the code always said it did.
+
+(2) THE RESERVE IS DELETED. `CIRC_TIP_ROOM` (124 px) is gone, with the `ch >= 248` term that
+applied it: `CircOrbBounds` is the plain window margin again (`CIRC_PAD + CIRC_ORB_RADIUS`),
+so a parked orb reaches the top of its own chart. The law it existed for was P-UI-121's
+"always above", and the user superseded it — "above" is a PREFERENCE now: ONE ladder (above
+-> below -> right -> left) serves both kinds of chip, and the face's own branch is deleted
+with it. What makes "below" legal again is that the art is transformed on NO side: MT4
+rotates no label (error 230) and no bitmap label either, and a mirrored bake would turn the
+Persian calligraphy into a water reflection — so below is the SAME face with its crown (row
+0) riding the orb's lower edge, the arc exactly as baked.
+
+Cost: the placer is still four integer boxes + eight compares (one `const bool face` and one
+offset wider). The "clears the orb" pass is a LIVE-CAPTION test only now: the face's four
+spots are derived from the orb's own radius + gap, and its above spot deliberately lets the
+box's last 7 px share the orb's box — that IS the hug, not an overlap. One consequence of
+(2) worth naming: the reserve was 124 >= `CIRC_EDGE_TRIGGER` 90, so a top-parked orb may
+collapse the ring into its train again — the designed edge behaviour, and the chip now has
+three other sides to answer with.
+
+Gate: main `0 errors, 0 warnings` (installed + workspace), Lite and all seven harnesses the
+same, `node tools/submenu_geometry_check.js` green; `BiotakMenu.mqh` 3987 lines, the three
+new comment blocks 7 / 5 / 8 lines (ceiling 16).
+
+**P-UI-123 (2026-09-25) — FOUR BAKED FACES, SO THE ARC ALWAYS OPENS ONTO THE ORB.**
+User, with a screenshot of the chip sitting UNDER a top-rail orb: «نیم دایره‌ها باید درست
+باشه چیز به سمت دایره اصلی باید باشه اگر پایین هستش حالت گردی باید پایین باشه به صورت
+هوشمند باید باشه و مثلا در گوشه به صورت اوریت نیم دایره باشه کامل همه سناریو درست کن و
+اینکه فشار بار الکی نداشته باشیم بدون هزینه باشه یا کم باشه». P-UI-122 had made "below"
+a first-class side but KEPT THE ART UNROTATED, so the crown still pointed at the orb from
+below — the screenshot, and the one thing the order names most precisely: below, the
+round part must be at the bottom.
+
+THE READ: an MT4 bitmap label is CROPPED, never scaled, and transformed never (a label
+takes no angle - error 230 - and a bitmap label cannot be mirrored either), so one file
+can never wear four orientations. The answer is four FILES derived from the ONE master, in
+`tipFaceVariants()` (`tools/gen-th3-icons.js`), with no new art and no second artist:
+`tip_face.bmp` (above, the master itself), `tip_face_dn.bmp` (mirror V - crown down),
+`tip_face_rt.bmp` / `tip_face_lt.bmp` (90 CW / CCW - crown right / left, box 76x200).
+
+THE GEOMETRY, ONE NUMBER. P-UI-122's hug line (row 57 of 76, i.e. the band's own lowest
+line) maps to the SAME 18 px inset off the near edge under all three transforms: mirror V
+puts it 18 px below the top, 90 CW 18 px in from the left, 90 CCW 18 px in from the right
+- so `CIRC_TIP_FACE_INSET (H - 1 - HUG) = 18` places every side, and `CircTipFaceBox`
+(one switch, four spots) is the ONE owner of the face's rect AND its file. `CircTipPlace`
+now walks the four boxes it is given by that owner (the live caption still builds its own
+one rectangle) and returns the SIDE it chose - the same reading order, above -> below ->
+right -> left, for both kinds. Corner case the order asked about (orb in a corner, above
+and one side both impossible): the remaining two sides are tested whole, so the arc is
+never clipped; the air-on-its-own-outward-edge fallback is unchanged.
+
+THE COST, because the order priced it («فشار بار الکی نداشته باشیم ... بدون هزینه»): the
+placer is four integer boxes + the same compares, no trig, no terminal read (metrics
+cached, P-PERF-16); it runs on SHOW/REFRESH only, never on a tick; and the art is written
+by `CircTipFaceSend` under a CHANGE GUARD - a pointer resting on the same hover re-shows
+the same side and returns before any `ObjectSetString`/`ObjectSetInteger`, so the steady
+state costs nothing at all (the same discipline as P-PERF-17's park-not-delete).
+
+Measured: `Files/Icons` 308 -> **311** (manifest 311, three new files, the other 308
+byte-identical on the regen); `tools/gen-th3-icons.js` GATES the master's size as before,
+so a re-bake that disagrees fails the generator instead of drawing a cropped face. Gate:
+main `0 errors, 0 warnings` (workspace 893 msec), Lite and all seven harnesses the same,
+`node tools/submenu_geometry_check.js` green; `BiotakMenu.mqh` 4068 lines (share 28 %,
+unchanged; the four new comment blocks are 7 / 5 / 8 / 10 lines, ceiling 16).
+
+One honest limit, stated so nobody hunts it later: the three derived faces carry the
+calligraphy WITH the band - mirrored below, sideways on the two sides - because a raster
+cannot be un-warped from its arc. If the lettering on those sides must stay upright, that
+is a NEW art bake (a crown-down and a vertical source, ingested the same way
+`tools/orb/make-tip-face.ps1` ingests the up one), not a code change.
+
+**P-UI-126 (2026-09-25) — THE CHIP STOPS TURNING AND GETS A PLACE OF ITS OWN.** The
+honest limit above is what the user hit, with a screenshot of the chip beside the orb
+column and the red line drawn through it: «این حالت‌ها گوشه هم باید درست بشه خودت برای هر
+سناریو درست کن و اینکه شیب نوشته ها باید تغییر پیدا بکنه». A 90° face carries the
+Persian calligraphy SIDEWAYS and nothing in MT4 can turn it back (a label takes no angle
+- error 230 - and a bitmap label is cropped, never scaled), so a rotated face can never
+hold upright lettering: the side faces were not a fix, they were the defect. The order
+that replaced them names both answers and no third: «اگر فضا داشته که همون بالا باز بشه،
+اگر فضا نداشت وسط صفحه» - ABOVE the surface while the whole box fits in the window,
+otherwise the chip's OWN PLACE, and «موقعیتشو خود کاربر مشخص میکنه ... اگر کاربر
+موقعیتشو انتخاب نکرده بود پیش فرض وسط صفحه» - the hand's, or the chart's middle when
+the hand has never placed one.
+
+WHAT THAT IS, IN CODE. `CircTipPlace` walks TWO spots for the face (above = the P-UI-122
+hug line, else `CircTipHomeBox`) and keeps its four for a live caption (a text rectangle
+never had the orientation problem). The place is P-DRAW-41's home one surface over:
+`s_TipHomeX/Y`, `-1` = "the hand has never placed it" (a STATE, not a reset - so no
+version bump), stored as the box's CENTRE and clamped by its own owner, measured LIVE so
+a resized chart is never stuck with a stale centre. Persistence rides the menu's own
+UI-state block under keys `TIPX`/`TIPY`/`TIPPIN`, shadows `[10]`→`[13]`, ledger `9`→`12`.
+The MODE (`g_UI.tipPin`, the new card 4 switch **ALWAYS SHOWN**) is the second half of
+«یک گزینه باشه که مثلا برای همیشه فعال باشه یا بعد با موس»: OFF = «با موس», the hover tip
+this always was and the shipped default («ولی با موس کلا بهتر باشه»); ON = «همیشه فعال»,
+the orb's banner kept up at its place by `CircTipTick` - one compare per tick and a write
+only when the box really moved (the orb's own move path raises a dirty bool; nothing walks
+the hover stream for it). The tick's own words for the cost: «فشار بار الکی نداشته باشیم».
+
+THE HAND PLACES IT. Pinned is the one state where the banner stands still, so that is
+where the grab lives: a press inside the box the chip is WEARING (`s_TipBoxX/Y/W/H`, the
+one show path's own numbers) claims the menu's drag, a move re-places it in two object
+writes per REAL move, the release writes the place once, and the button-up net
+(`ChartPointerFinalizeOnUps`, gated on `PnlPointerQuiet` because one of its two click legs
+rides the PRESS itself) ends a motionless release. The gesture names itself in
+`ChartLockIntended()` (`CircTipDragLive`, P-DRAW-19/A-09) on the day it is born, and a
+ring control under the banner is not clickable BY DESIGN - the chip is drawn at
+Z_MENU_TIP, so it is the surface that was pressed (A-13's one target per pixel).
+
+DELETED WITH THE SHAPES THAT NEEDED THEM (user order: «کارهای اضافی قبلی‌ها رو حذف کن»):
+`tip_face_dn/rt/lt.bmp` and `tipFaceVariants()`, `CircTipFaceSend`/`CircTipFaceBox` and
+their side table, `CIRC_TIP_FACE_DN/RT/LT`, and the whole P-UI-124 bowl experiment
+(`tools/orb/make-tip-bowl.ps1` + `tip-face-down-master.bgra` + its 4x preview): a
+synthesised crown-down face existed for one afternoon and the design it served is gone.
+The face's bitmap and size are now written ONCE, at creation - a hover that crosses orb
+and items re-writes two coordinates instead of re-pointing a resource.
+
+THE OPTION'S DOOR. The retired VIEW LOCK card (slot 4, `g_PnlRows[4] = 1` kept dormant
+through VIEWLOCK-OFF so the panel keys stayed stable) is REVIVED as **Hover Chip** -
+1 setting / 2 display rows - and reached by an APPENDED NAV row on the main card's
+SUB-CARDS band (row 12), so nothing renumbered and no ring item was invented. Measured:
+`Files/Icons` 311 → **308** (manifest 308, `tip_face.bmp` alone; the other 307
+byte-identical on the regen); `BiotakMenu.mqh` 4242 lines. Gate: main `0 errors, 0
+warnings` (833 / 902 msec), Lite + all seven harnesses `0 errors, 0 warnings`,
+`node tools/submenu_geometry_check.js` green (1440 cases).
+
+**P-UI-129 (2026-09-25) — A TOGGLE IS A VISIBILITY CHANGE, NOT A TEARDOWN.** User:
+«ر‌وی منوی اصلی که کلیک میکنم او تریگر پرایس اکشن هم حالت پرپر میکنه که نباید باشه و
+هزینه مصرف بارش باید نزدیک صفر باشه کلا».
+
+THE CAUSE IS THE CLICK'S OWN BODY. `ToggleMenuVisibility()` (the ORB's
+`OBJECT_CLICK` branch in `HandleButtonClick`) called `DeleteMenu()` + `CreateMenu()` — and
+that pair deletes and re-creates the **orb** and the **hover chip** as well as the ring
+(`DeleteMenu` names `CircOrbBg`/`CircOrbIcon`/`CircTipBg`/`CircTipTxT`/`CircTipTxH`/
+`CircTipArt` and zeroes `s_CircTipFeat`). The pointer is ON the orb at that moment, so the
+banner that had just named the control was destroyed and re-made under the cursor: the
+flash IS the chip's lifetime being punched once per click. The click also paid a family
+rebuild (ring + badges + orb + chip) for a state change that only the RING and the tools
+family can express — the orb's art does not depend on the state at all, because ORBSTATE
+is retired (`CircOrbRes()` returns one skin, the word branch commented at 2026-09-12).
+
+THE FIX: the toggle owns exactly the two families that change sides — `CircCreateItem` for
+the ring (and the tools items) when showing, a new `DeleteRing()` owner plus
+`DeleteToolsMenu(false)` when hiding. The orb and the chip are never named, their statics
+stay valid because nothing they own was deleted, and `UIReleaseClaimReset()` is kept from
+the pair's CreateMenu half (two bool reads under a live press, so it is a no-op inside the
+dispatch that called it). `DeleteMenu()` now calls the same `DeleteRing()` — one owner,
+not a loop written twice. `CircRefreshOrbSkin()` is **change-guarded** (P-PERF-51): the
+resource is read back first, so a toggle today is one read and zero decodes (P-PERF-01)
+instead of two `OBJPROP_BMPFILE` writes that force a decode for a picture that did not
+change. The other callers of the full pair (attach, Base-Knot arm/disarm, the metric
+rebuild) are untouched — a metric change still re-derives everything through
+`CreateMenu()`'s idempotent create path.
+
+**P-UI-130 (2026-09-25) — A FOOTER PILL IS AS WIDE AS ITS OWN CAPTION.** User:
+«دکمه ریست کار نیمکنه و اینکه پنل یک باز طراحی بکن که عالی تر بشه … نسبت ها و اندازها
+یا بزرگه یا خیلی کوچیک».
+
+MEASURED FIRST: the Reset press path is NOT the hole. `grep -o "press acted ([a-z]*)"` over
+the live ledger `20260925.log` counts **4 `(rst)`** (19:40:07.798 item=4, 19:40:08.350, and
+19:40:21.303 / .814 item=1) — the press is reached and `PnlResetItem` runs (the same minute
+prints `[W][PERF] mouse move breakdown: panel=31ms`, i.e. the rebuild was paid). What the
+user was pressing reads **"Res.."** in the screenshot: `PnlFooterBtn` built every pill at
+the fixed `PNL_BTN_W 72` while reserving 32px of it for the icon inset, leaving 32 for the
+caption — which fits "Done" and clips "Reset" through `PnlFit`. B-07 forbids exactly that
+("sizes itself from `PnlTextW(txt, pt) + 2*pad` … never from a magic number that happens to
+fit one language's string today"). `PnlFootBtnW(label)` is now the ONE owner of a footer
+pill's width, `PNL_BTN_W` became its FLOOR (the shipped look is preserved), the paint, the
+read-back hit rect and the Done pill's right-aligned x all ask it. And the reset now
+answers in the ledger with its EFFECT — `[UI] panel reset item=N rows=N flags=N` — because
+"reset did nothing" and "reset was never reached" must not be distinguishable only by
+argument (P-UI-88's rule, applied to the action rather than the press).
+
+**P-UI-131 (2026-09-25) — THE GENERAL SETTINGS CARD, BUILT.** User: «بعضی از چیزه تنظیمات
+عمومی هستش بهتر یک ایتم اضافه بشه به تولز ها یک ساب منو برای تنظیمات عمومی که از بقیه
+پنل ها بیاد … خیلی چیزا عمومی هستش که در جا ها مناسب نیستش اوکی همه رو بررسی کن». The
+review of all 14 slots (`PnlEnsureSpec`, read row by row) finds these settings that no
+single drawing owns: `g_maxLevels` (card 9's LIMIT — an engine ceiling, not a step mode),
+card 2's TRADE CARD band (`ROW GAP`, `TRADE SIZE`, `STAMP GAP`, `CARD MARGIN` — the whole
+LABEL grid), the label grid's own `inpFontSize`/`inpLabelRowGap` (they have NO card row at
+all today, Inputs only), and `g_UI.tipPin` (card 4 — a session-wide UI mode, not a chart
+setting).
+
+**SHAPE CHOSEN BY THE USER (same day, asked rather than guessed):** a NEW card slot
+(`PNL_COUNT 14 → 15`, so item 14) with **7 display rows in 3 bands** — ENGINE: MAX LEVELS ·
+LABEL GRID: LABEL SIZE, ROW GAP, CARD MARGIN · INTERFACE: HOVER CHIP — and TWO doors: one
+item in the ring's TOOLS sub-menu (`TOOL_COUNT 2 → 3`) plus an APPENDED `GENERAL` NAV row
+on card 1's SUB-CARDS band, exactly the way P-UI-126 reached the Hover Chip card.
+**What makes it a real slice, not a rename:** `inpFontSize`/`inpLabelRowGap` have no
+runtime setting row today, so they need `PnlSetDef` + `PnlDefValSet` + `PnlCurrentSet` +
+`PnlApplySet` wiring plus the `g_labelsRelayoutNeeded` edge; the moved rows must keep the
+user's VALUE, and a moved row is a moved address — `PnlSetRow` maps display row → the
+spec's `s0`, so the moved rows keep their OWN `s0` and only the DISPLAY numbering shifts
+(the persisted `OV_*` keys keep their meaning); and `tools/submenu_geometry_check.js` must
+stay green with a third tool (it models counts 1..20, so the new count is checked, not
+assumed). Held until it can be built and gated in one pass: a live card shipped half-wired
+is worse than a documented one.
+
+**BUILT the same day, as the list — and the list is 8 display rows, not 7.** The shape
+sentence's own enumeration is ENGINE: `MAX LEVELS`; LABEL GRID: `LABEL SIZE`, `ROW GAP`,
+`CARD MARGIN`; INTERFACE: `HOVER CHIP` — five MEMBER rows plus three band rows, and a band
+is itself a 42px row (`48 + 42k`), so `PnlRowsCount(14) = 8` and the card stays NARROW
+(`PNL_WIDE_MIN_ROWS 10`), i.e. one 312px column with no second one to place. The five
+addresses (0..4) are the card's whole address space.
+
+**Slots and doors.** `PNL_COUNT 14 → 15` (`BiotakKit.mqh`, the three `PNL_COUNT` arrays
+extended with one default each); `g_PnlRows[1] 13 → 14` (the `GENERAL` NAV row APPENDED on
+card 1's SUB-CARDS band, whose declared member count went 3 → 4) and `g_PnlRows[14] = 5`;
+`TOOL_COUNT 2 → 3` with `TOOL_GENERAL 2` → `CIR_GENERAL 14` (`BiotakMenu.mqh`), a code that
+IS its panel index through `FeaturePanel`'s identity fallback — 13 is the rows-less mini
+strip, so 14 is the first free slot that can own a card. Both doors were already generic:
+the NAV row opens `opts` through `PnlOpen` and a TOOLS cell opens `ToolPanel(toolIdx)` on
+HOLD; what was missing was the CLICK, so the gear cell opens the card on the same act the
+hold performs (`UISuppressNextClick` + `PnlOpen`, the badge's own shape) — a pure door has
+no switch to invert.
+
+**The moved settings keep their VALUE because the moved rows keep their ADDRESS.**
+`MAX LEVELS` (card 9) and `CARD MARGIN` (card 2) left those cards' DISPLAY only: their
+`PnlSetDef` / `PnlDefValSet` / `PnlCurrentSet` / `PnlApplySet` branches stay, and the two
+GENERAL rows DELEGATE to them (`PnlApplySet(9, PnlStepMaxLevelsRow(), v)`, `PnlApplySet(2,
+13, v)`), so the persisted `OV_ML` / `OV_AMB` keys still name what they always named and a
+saved value loads into the row it was written for. Card 2's TRADE CARD band keeps `ROW GAP`
+/ `TRADE SIZE` / `STAMP GAP` (that card's own seams — they are its grid, not the label
+grid's) and its band count went 4 → 3. The two genuinely NEW rows are the label grid's own
+knobs, which had no card row at all: `g_labelFontSize` / `g_labelRowGap` with
+`#define inpFontSize g_labelFontSize` / `#define inpLabelRowGap g_labelRowGap` (every
+existing reader keeps its name and now reads the live setting), defaults 8 / 18 = the input
+defaults, `FF_LABEL_SIZE` / `FF_LABEL_ROW_GAP` APPENDED to the factory list (`FF_` never
+renumbers), `OV_LFS` / `OV_LRG` in the saver/loader with the SAME clamps the sliders use
+(4..24, 0..`TREX_CARD_MAX_ROW_GAP`), and both rows raise `g_labelsRelayoutNeeded` with
+`REFRESH_ALL`, which is the relayout the label pass reads and the save the override rides.
+
+**Icons.** `ART.gear = BK_GEAR` in `tools/gen-th3-icons.js` — the gear the strip's "..."
+cell already wears is the SAME art, so the ART loop bakes `gear_off.bmp` / `gear_on.bmp` at
+28px, `icon-manifest.txt` lists them and `BiotakMenu.mqh` embeds them; `CircIconRes`
+(`CIR_GENERAL → "gear"`) and the MARGIN row's glyph are both checked against the live set
+(`gl_valign_gold.bmp` etc. exist; no new glyph name was invented). The card-skin loop now
+bakes counts **1..16** and the MQL floor is `MathMax(1, …)` instead of 3: the GENERAL card
+took MAX LEVELS off the Step card, whose TH mode — the shipped default — is then a LONE
+TAB row (1 display row) and the Hover Chip card is two, so both were drawing a 3-row skin
+taller than their own card.
+
+**GATE (final tree, measured).** `compile-th3.ps1 -Project all` → `[PASS] Biotak Trigger
+TH3 (Installed)` + `(Workspace)`, `Result: 0 errors, 0 warnings, 867 msec`; Lite
+`-SourceFile` → `0 errors, 0 warnings, 322 msec`; the seven harnesses in `tests/` → all
+`0 errors, 0 warnings` (97–813 msec each); `node tools/submenu_geometry_check.js` →
+`1440 cases checked — PASS: no collision, no orb overlap, nothing off-chart` with the third
+cell live (count 3 → FAN, 1 FAN 2 FAN 3 FAN at 1920 centre). One defect was found and fixed
+while wiring: the first pass had card 14's spec block nested INSIDE card 12's `else if`, so
+`PnlSpecBuild(14)` would never have run and the card would have rendered zero rows — the
+compiler cannot see that (it is a valid `else if` chain), which is why the card's spec is
+now closed by a `}` and opened by its own branch.
+
+**P-UI-131b — THE TRANSFER (same day).** User: «از بقیه پنل ها چیزها عمومی بیار اینجا منتقل
+کن و دو جا نباشه دیگه». The input census (all 19 dialog groups, each input's readers
+searched) turned up exactly two families still outside the card: **group 11/13's own grid
+knobs — `inpFontName`, `inpLabelsMarginTop`, `inpLabelsMarginLeft`, `inpLabelColumnGap`,
+`inpSectionGap`, `inpMaxLabelWidth` — which had NO panel row at all** (dialog-only), and
+**four general knobs living in a drawing's card** (card 2 whole TRADE CARD band +
+card 3 `MARGIN BOTTOM`). All ten are on the GENERAL card now, and the SOURCE rows are
+gone — one setting, one row, one card.
+
+**Shape and size.** Card 14 is now **15 addresses / 19 display rows / 4 bands** (ENGINE 1 ·
+LABEL GRID 10 · TRADE CARD 3 · INTERFACE 1) so it is the product's first genuinely wide
+card: `PnlPairRows(14) = 14` pair-lines → **624 × 692 px** (56 + 14×42 + 48), the tallest
+surface here. The wide BODY needed no new asset — P-UI-71b composes it from
+`pnl_cardWtop/mid/bot` — and the first pass proved it the expensive way: it raised
+`PNL_WIDE_ROWS_MAX` to 16 and generated `pnl_cardW13..16[.f].bmp` (8 files, ~1.9 MB each),
+then found the runtime never looks them up. The raise and the 8 new files were REVERTED and
+DELETED; the constant stays 12 and now says out loud that a wide body is composed, not
+looked up.
+
+**The moved rows keep their addresses, deleted from the card that used to show them:**
+`CARD MARGIN` → `PnlApplySet(2,13)`, `TH MARGIN` → `(3,4)`, `TRADE ROW GAP` → `(2,10)`,
+`TRADE SIZE` → `(2,11)`, `STAMP GAP` → `(2,12)` — so `OV_AMB` / `OV_TB` / `OV_AG` /
+`OV_ATS` / `OV_ASG` all still name what they named. Measured on the source cards: card 2
+**18 → 14 display rows** (its whole TRADE CARD band left; the five colours stay) and card 3
+**9 → 8** (MARGIN BOTTOM left the LAYOUT band, which is now one row — the card stays
+narrow, which the band's own comment had already sized).
+
+**The new rows and their owners.** `g_labelFontSize` / `g_labelRowGap` (previous slice) are
+joined by `g_labelFontIdx`, `g_labelsMarginTop`, `g_labelsMarginLeft`, `g_labelColumnGap`,
+`g_sectionGap`, `g_maxLabelWidth` — six mirrors seeded from the inputs, six `#define
+inpX gX` re-points (LabelFunctions, BaseKnotTool, ObjectFunctions, UtilityFunctions and
+TH3Tool keep reading the same NAMES), `FF_LABEL_FONT..FF_MAX_LABEL_W` APPENDED, and
+`OV_LFI/LMT/LML/LCG/LSG/LMW` whose load clamps are the sliders' own bounds (0/200, 0/300,
+0/200, 0/200, 50/600, −1..`LABEL_FONT_N−1`). The FONT is the one STRING setting a row had
+to face: a control is an INDEX, so the list moved down to `ConstantsAndEnums`
+(`LABEL_FONT_N 6` + `LabelFontNameAt`/`LabelFontIdxOf`/`LabelFontOpts`, one owner for the
+dropdown text too) and `inpFontName` is a `#define` on `LabelFontName()` — a name typed in
+the dialog is index −1 and keeps winning until the row is used, so this is a promotion,
+not a lock-out. **One honest limit, measured:** the width table (`PnlAdvUnits`) is Arial
+Bold's own metrics, so a wildly different family is DRAWN by MT4 at widths the layout still
+measures as Arial Bold — true of a typed font since P-UI-42, now reachable from a row.
+
+**Icons.** `alignL` left `DEAD_GLYPHS` (the MARGIN LEFT row's picture is a left-aligned
+stack), so `gl_alignL_gold.bmp` / `gl_alignL_m.bmp` are baked and embedded; no other new
+art. `icon-manifest.txt` **307 → 316** (gear pair, `pnl_card1/2[.f]`, alignL pair).
+**GATE (final tree, measured):** main `0 errors, 0 warnings, 905 msec` ×2 (workspace +
+installed), Lite `0 errors, 0 warnings, 322 msec`, the seven harnesses `0 errors, 0
+warnings` (79–785 msec), `submenu_geometry_check.js` `1440 cases checked — PASS`.
+
+**P-UI-131d (2026-09-25) — WHAT IS GLUED IS MEASURED, AND IT WAS FIVE SITES.** User, three
+reports in a row, with crops: «زون استایل چسبیده به filed»، «این متن هم از وسط خیلی چسبیده
+بهم … یکم فاصله از وسط بیشتر بشه در همه جا که هستش در تمام پنل ها». The crops named two
+surfaces (the card header's title-over-subtitle, and a slider row's caption-over-track) but
+the class is ONE: a caption handed less room than the checklist's own **B-02** allows
+(«label → control gap ≥ 10») — and the painted geometry said five sites, all in the one
+owner (`PnlCreateRow` / `PnlHead`), which is why the fix is not per-card.
+
+**THE BUG THAT MADE "ZONE STYLE" TOUCH ITS PILLS.** The pills branch computed the caption's
+ceiling from the loop's POST-loop cursor — the pills' RIGHT end — instead of their left
+edge, so `PnlFit` was handed 242px of room for a 76px caption and never clipped anything:
+"ZONE STYLE" ended 1-2px from the first pill (measured off the user's crop, where the
+pill-to-pill seams read 8-10px). Every other row kind (switch · slider · dropdown · dual)
+already passed its control's LEFT edge; this was the one family that did not. Two captions
+were also AT or over the room their own control leaves: Filled|Empty|Outlined is
+164px of pills (three 16px pads + 108px of text + two 4px seams), so the caption's budget
+is 132−46−10 = **76px** — and "ZONE STYLE" measures 6334 units = **76px** exactly, i.e. zero
+slack at 96 DPI and the 1-2px the user saw on a scaled display. "STYLE" (3278 units ≈ 39px)
+and "BOX" (Base Box) leave 37px, and the band above already says ZONES and the card IS the
+box; a caption with under one em of room is dropped rather than fitted to nothing.
+
+**THE MIDDLE OF A TWO-PART COMPONENT (before → after).** Card header: title `py+15`
+(ink 15..27) over subtitle `py+30` (ink 30..38) = **3px** → `py+12` / `py+35` = **11px**, and
+the 4px accent dot now rides the caption's own centre instead of a 1px guess. Slider rows:
+caption `+7` (ink 7..19) over the track `+27` = **8px** → caption `+6` over `+29` = **11px**;
+the icon chip's 26px canvas had been OVERLAPPING the track by 1px (2..28 vs 27) and is
+1..27 now. Colour row: caption `+3` → `+2` under the 22px swatch strip = 4 → **5px**. Text
+row: caption `+3` over the field `+15` = **1px** → `+2` / field `+18` h22 = **5px**. Three
+more row-height literals in the paint path (`ACT`, `RAIL`, `BAND`, all `42`) are
+`PNL_ROW_H` now, and the knob's GRAB ZONE is derived from the track's own centre — it was
+`+21`, i.e. `PNL_TRK_Y+PNL_TRK_H/2-PNL_KNOB_W/2` frozen for `TRK_Y 27`, so moving the track
+would have moved the knob's art and left its hit band behind.
+
+**THE HONEST SHORTFALL (measured, not hidden).** The text and colour rows still miss B-02
+and CANNOT reach it inside a 42px row: caption em 11 + gap 10 + control 22 = **43 > 42**.
+That is B-03's own "a row that needs more than 42 becomes two rows" case, and it is owed —
+the checklist (LEVEL 10 B-03) records the arithmetic and the two remaining levers (a
+caption row + control row split, or a taller pitch, which amends B-03 first). The slider
+and header sites are compliant now.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` ×2 (`[PASS]` workspace +
+installed), Lite `0 errors, 0 warnings, 303 msec`, the seven harnesses `0 errors, 0
+warnings`, `submenu_geometry_check.js` `1440 cases checked — PASS`.
+
+**P-UI-131k (2026-09-25) — THE HOVER THAT NEVER REACHED THE OBJECT, AND THE TR TRACK THAT ONLY ANSWERED A CLICK.**
+User, four items in one message: «موس که روی رنگ‌ها می‌برم ... سریع اعمال نمی‌شه روی سطوح ... مثل
+استریپ باید باشه ... موس که روی رنگ میره سریع روی آبجکت با هزینه نزدیک به صفر اعمال میشه» ·
+«tr هم با کشیدن بشه انجام داد الان با کلیک هستش توی پالت رنگی» · «چرا ترنسپرتی -1 درصد
+داریم» · «اون ترنسپریتی بورد شاید لازم نباشه چون هر کدوم جدا هستش».
+
+**(1) THE HOVER WAS A REPAINT, NOT AN APPLY.** P-UI-131h's driver ended in
+`ThrottledChartRedraw()` — a window repaint. But every surface this palette edits (zones, edges,
+lines, HTF, TH3, the trade card) has its look BAKED into its objects by a render pass, and the
+throttled repaint runs no pass. So the hovered colour was stored, the swatch preview and the card
+row moved, and the CHART stayed on the colour it was built with: exactly «سریع اعمال نمی‌شه روی
+سطوح». A sweep is now a GESTURE on the ONE heavy-pass budget the sliders and the mixer already
+share (P-UI-33): the first crossing calls `RefreshDisplay(flags)` and paints at once, the rest ride
+`UI_DRAG_HEAVY_MS 120`, and `PalHoverRestore` / `PalClose` call `UIDragBudgetEnd()` so the tail —
+including the put-back — lands exactly once. Cost, as numbers: zero chart reads per move (the
+hit-test is the paint's own recorded geometry), at most one heavy pass per 120 ms while the pointer
+keeps crossing cells, and literally nothing while it stands still or sits off the grid.
+
+**(2) THE FOOTER TR IS THE MIXER'S OWN CHANNEL, SO IT DRAGS.** `PaletteMixHit` answered the mixer's
+fourth slider only on the MIXER tab, and the footer's mini track (`opg`/`opf`) was reachable by a
+DISCRETE click (`PalHandleClick`). It is now code **5** — tested before the tab gate, because the
+footer belongs to both tabs — carrying its OWN origin and width (`PAL_FOP_DX/LW/TW`, the paint's
+numbers, never a second set). The press channel arms it exactly like the mixer (`DragClaim` +
+`UIDragBudgetBegin` + `CircLockChart` + `PaletteMixFromX(5, mx)`), `PaletteMixFromX` maps the
+footer's own fraction, and the click branch stays as the twin-delivery net P-UI-74 requires. One
+channel, one mirror (`PaletteApplyTransparency`), and the tooltip now says drag.
+
+**(3) A DECLARED `-1%` WAS A GUARD THAT COULD NEVER FIRE.** `PnlFormat` printed AUTO only for
+`item==1 && (row==16 || row==17)` — but `PnlFormat`'s `row` is a **DISPLAY** row while 16/17 are
+**ADDRESSES** (card 1's display rows 12/13), so the branch was dead and the two chips read the raw
+slider value: the user's screenshot, `TOP OPACITY -1%` next to `BOTTOM OPACITY -1%`. The rule now
+asks the RANGE — `v < 0 && minV < 0` — which is the same declaration that created the AUTO end
+(`PnlSetDef` `minV=-1`), so it cannot disagree with it again, and P-UI-131j's LABEL OPACITY inherits
+it for free. Exactly three rows in the tree have a negative floor.
+
+**(4) BORDER TRANSPARENCY — THE AUDIT, THEN THE USER'S CALL (and the call was "retire the row").**
+It is the edge opacity of every zone request (`LevelPipeline:916`,
+`ExtendedDrawingFunctions:241`, `UtilityFunctions:1088`) AND the value an unpinned half follows (its
+AUTO end), so it was not a duplicate of the two halves but the shared default they resolve to. Shown
+that, the user's answer was «ردیف حذف شود، مقدارش بماند»: the ROW is gone from card 1's GEOMETRY
+band (8 → 7 members, the card 19 → 18 display rows — nothing to bake, card 1 is a WIDE card whose
+body is composed from `pnl_cardWtop/mid/bot`) while the ADDRESS 7, its `BiotakPanels` def, its
+`inpMidZoneBorderTransparency` input and its `ZBT` key all stay, so nothing renumbers and the AUTO
+end of both halves keeps meaning what it meant. The MIDPOINT row is the precedent for exactly this:
+a setting that keeps its address and loses only its display row.
+
+**COST OF ALL FOUR (stated, not implied).** (1) is the only one that spends anything: while the
+pointer keeps CROSSING cells, at most one heavy pass per `UI_DRAG_HEAVY_MS` 120 ms, the first one
+immediate; a still pointer, a pointer off the grid, or a closed palette costs zero. (2) reuses the
+mixer's claim, budget and lock — two extra integer tests per mouse move while the palette is open.
+(3) and (4) remove work: one range compare instead of a dead branch, and one row no longer painted
+or hit-tested per frame.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` (`[PASS]` workspace + installed), Lite
+`0 errors, 0 warnings`, all seven harnesses `0 errors, 0 warnings`, `submenu_geometry_check.js`
+`1440 cases checked — PASS`.
+
+**MANUAL TEST:** open any card's palette → sweep the colour grid WITHOUT pressing: the chart object
+follows the pointer (first cell instantly, then ~8 updates/s), stopping the pointer stops the work,
+leaving the grid puts the old colour back and a click commits it. In the footer, DRAG the `TR` track
+(both tabs) → the value follows the pointer and the owning card's opacity row moves with it; a plain
+click still sets it. On card 1 the two opacity rows now read **AUTO**, not `-1%`.
+
+**P-UI-131j (2026-09-25) — THE TRIGGER'S OWN SURFACE SPLIT (its label gets a pair).**
+User: «Give the trigger card the same per-surface split: the trigger label its own opacity row, and
+audit the rest of the trigger's drawn pieces so each one is a colour + opacity pair on that card.»
+
+**THE AUDIT FIRST (walked on the DRAWN pieces, not assumed).** A "surface" here has always been a
+colour plus an opacity, and the Trigger card is where the project's shape was born. What the
+trigger actually draws, and what owns each half:
+
+| drawn piece | colour | opacity | verdict |
+| --- | --- | --- | --- |
+| the trigger ZONE band (`_Zone_Above_N`, inked by `GetTriggerRenderColor()`) | card 0 `COLOR` | card 0 `TRANSPARENCY` | **a pair** (the shipped shape) |
+| the trigger zone's EDGE (3 segments + the bevel) | card 1 `EDGE TOP` / `EDGE BOTTOM` | card 1 `TOP/BOTTOM OPACITY` | a pair — on card 1, and correctly: the edge is the MID ZONE family's shape, derived from the zone colour through `ZoneRequestNew()` |
+| the pip-distance LABEL on a trigger level | card 0 `LABEL COLOR` — **DEAD** | **missing** | **the gap** |
+| the unified LINES at the midpoints | card 7 | card 7 | by design (P-PERF-21: the trigger switch must never restyle lines) |
+| the step-1 handle | baked bitmap `s1_handle.bmp` | — | no colour surface at all |
+
+`g_triggerLabelColor` had **zero readers**: it was mirrored, seeded, persisted (`OV_TL`), painted on
+a card row the user could press, and no renderer ever asked for it — the pip label kept wearing the
+unified `[08.4]` line colour whatever the row said. So the pair was missing AND the half that existed
+was inert; both are fixed here.
+
+**THE CHANGE.** `g_triggerLabelTransparency` (new mirror, `OV_TLT`, `-1` = AUTO) and
+`GetTriggerLabelRenderColor()` (in LevelPipeline, above its one caller — RuntimeSettings is compiled
+BEFORE ZoneFactory, so the generic blender `GetZoneRenderColor` is not visible there; that same
+include order is why the two effective-colour getters in RuntimeSettings duplicate the blend inline).
+The trigger levels' pip labels wear it: `STriggerLine` carries `isTrigger` from the classify stage,
+and `RenderTriggerLines` picks `lblClr` for those lines and `lineClr` for the structure ones — so
+P-UI-66's rule (a label wears its own line's live look) stands for every other family unchanged.
+
+**BOTH ENDS OF BOTH ARE AUTO, AND THAT IS THE POINT.** `clrNONE` colour + `-1` opacity IS the
+shipped picture, so an untouched chart is pixel-identical and a pinned value is the trigger family's
+own (`inpTriggerLabelColor` now defaults to `clrNONE`, and `DefTriggerLabelColor()` returns it, so
+Reset returns to "never pinned" instead of pinning a colour nobody chose). The card reads **5
+settings / 7 display rows**: the opacity row is **address 4, APPENDED**, so addresses 0..3 and every
+persisted `OV_` key keep their meaning — the spec RENDERS it beside `LABEL COLOR`, because the spec
+order, not the address, is what the user sees. `g_PnlRows[0]` 4 → 5 and the ZONE APPEARANCE band's
+count pill 3 → 4. The skin is `pnl_card7f.bmp`, already baked and already `#resource`'d
+(`PnlCardFade(0)` picks the `.f` variant, and it existed for every count), so no art was regenerated.
+`PnlFormat` prints the `-1` end as **AUTO** — the same word the two zone-edge opacities use. The
+label also answers the popover's TR channel (`PaletteKindTransparency` / `PaletteApplyTransparency`
+on `PAL_TRIGGER_LABEL`), and a popover drag moves the card's own number in the same tick
+(`PalKindRow`'s TR-sync switch, orow 4): two faces, ONE mirror, never two copies.
+
+**COST:** zero new objects, zero extra draw calls, nothing per tick. The AUTO/AUTO call is one
+cached getter (three compares); a pinned one blends once per render pass, hoisted out of the per-line
+loop — no per-line read, no per-tick work.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` (`[PASS]` workspace + installed), Lite
+`0 errors, 0 warnings`, all seven harnesses `0 errors, 0 warnings`, `submenu_geometry_check.js`
+`1440 cases checked — PASS`.
+
+**MANUAL TEST (the two rows and what they must NOT touch):** reattach → the TRIGGER ZONES card reads
+`TRANSPARENCY · COLOR · LABEL COLOR · LABEL OPACITY` under ZONE APPEARANCE (count pill **4**) and the
+chart is unchanged (both new ends are AUTO). Drag LABEL OPACITY right → only the `+N` / `−N` pip
+labels sitting on TRIGGER levels fade; the structure labels (`L3 +4`) and the trigger zone itself do
+not. Pick a colour on LABEL COLOR → only those labels recolour. Drag LABEL OPACITY fully left → back
+to AUTO, and the row reads the word. Open the palette on LABEL COLOR (header button → Trigger) → its
+TR track is the same value; then footer Reset → both rows return to AUTO.
+
+**P-UI-131i (2026-09-25) — THE COLOUR PATH AUDIT, AND THE GRID THAT ANSWERS UNDER THE POINTER.**
+User: «همه رو تست کن که رنگها باهم تداخل نداشته باشن و موس که روی رنگها رفت اعمال بشه سریع و
+رنگها درست باهم ادغام بشه و تداخل و تأثیر دیگری غالب نشه ... یا در لحظه و بدون هزینه نباشه که کاربر
+سریع تغییرات ببینه و فکر نکنه که درست کار نمیکنه ... هرچی باگ داره پیدا بکن».
+
+**SIX REAL DEFECTS, every one in the path a colour travels (all fixed here).**
+1. **Card 1's header palette button was DEAD.** `PalOpenForItem` had no `item==1` entry, so the
+   handler found the button, pressed it, and the function returned with `srow=-1` — the main card
+   was the only card whose palette button did nothing. It now opens on EDGE TOP.
+2. **The row's LIVE refresh painted `clrNONE` raw**, i.e. MT4's ink-black: the create path had the
+   AUTO face (P-UI-68) and every update after a pick or a Reset went through `PnlUpdateRow` and lost
+   it — an AUTO edge half read as a new black colour.
+3. **`PalTgtIndexOfKind` clamped kinds 26/27 to 24**, so opening a page on a zone edge named the
+   header **"TRex Spread"** while the picker edited the edge.
+4. **`PalTgtToKind` clamped the name index back**, so the APPLY-TO cycler edited kind 24 while its
+   own label said "Edge Top" — a label and a target that disagreed.
+5. **The popover's own "current colour" box and its caption** painted `clrNONE` raw too, claiming a
+   colour nobody chose (same family as 2, different surface).
+6. **The TR channel was inert for the two new kinds** (`--` greyed) although they own an opacity;
+   the popover now drives the SAME mirror the row does — two faces of one value, the shape card 0
+   has had for the trigger, never a second copy.
+
+**THE FEATURE THE FIRST SENTENCE ASKS FOR: THE GRID ANSWERS UNDER THE POINTER.** The cards' palette
+applied only on a PRESS, so sweeping the colours showed nothing until the click. It is P-DRAW-27's
+one-event preview on the cards' palette now: hit-test the ALREADY-PAINTED cells, apply there, write
+NOTHING while the pointer stays on the same cell, put the colour that was there back when it leaves,
+and let the CLICK be the commitment (`PalHoverCommit`). Previews never enter the recents ring
+(`PaletteApplyColor(..., remember=false)`) — a sweep would otherwise fill the ring with colours the
+user only passed over — and the preview's repaint is the THROTTLED one, so a fast sweep cannot
+outrun the frame budget.
+
+**COST, as a number (the user's own condition).** The cell geometry is RECORDED BY THE PAINT
+(P-UI-79: the pixels that were painted answer where they are — `PalHoverRegionAdd`, one call per
+painted block, tab-tagged so a stale grid can never answer for the open one), so a MOUSE MOVE over
+the palette costs **ZERO chart reads**: at most two region tests of integer arithmetic. A cell
+CROSSING costs one colour apply + `PalUpdateLive` + `ThrottledChartRedraw`; a still pointer, a gap
+between cells, or the MIXER tab costs nothing beyond the arithmetic. A discrete CLICK still lands
+through `RefreshDisplay` → `RepaintForDiscreteAction` (immediate), and a slider/mixer DRAG rides
+`UI_DRAG_HEAVY_MS 120` — at most one heavy pass per 120 ms with cheap repaints between, the
+P-PERF-06 rule the two new OPACITY sliders inherit.
+
+**INTERFERENCE / DOMINANCE (read, not assumed).** One mirror per surface and one reader path (the
+request): `ZCT`/`ZCB`/`ZPT`/`ZPB` are written by the row and, for the opacities, by the popover's TR
+channel — never by two different settings. The band and its edge share `Z_CHART_ZONE 0` while the
+zone's edges stand `midPrice ± zoneHeight` (half the band), so the unified LINE at the level price
+runs through the MIDDLE of the band and cannot cover either edge; at the default HEIGHT 33 % the
+separation is a third of the step. The band is created before its edge by construction (P-UI-62's
+order rule), so nothing paints over the edge inside its own family.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` (`[PASS]` workspace + installed), Lite
+`0 errors, 0 warnings`, all seven harnesses `0 errors, 0 warnings`, `submenu_geometry_check.js`
+`1440 cases checked — PASS`.
+
+**MANUAL TEST (the hover is the part to watch):** open card 1 → tap the header's palette icon → it
+opens on EDGE TOP (before this it did nothing). Sweep the pointer across ALL COLORS with the button
+UP: the chart recolours as the pointer crosses each cell — no click needed; stop the pointer and
+nothing is written; move OFF the grid and the colour returns to what it was; click a cell and it
+stays. The RECENT strip behaves the same. Watch that the sweep does NOT add colours to RECENT, and
+that a colour picked by hover-then-click DOES appear there.
+
+**P-UI-131h (2026-09-25) — EVERY SURFACE ITS OWN COLOUR AND OPACITY (the zone edge split).**
+User: «هر خط و رنگها و شفافیت ... هر کدوم جدا بشه تغییرش داد بتونه، کاربر نهایت انعطاف ...
+هم رنگشو بتونه عوض کنه هر سطحی که میخواد رو در همان پنلها ... مال تریگر هم در تریگر باشه ...
+خط بالا جدا و خط پایین هم جدا بشه ... ولی پیشفرض توی بهترینها رو که حالت نیمهکمرنگ هستش و در
+پسزمینه خاکستری و سفید خوب دیده میشه رو انتخاب کن ... و پیشفرضی که روشن میکشه همون رو بزار».
+
+**THE INVENTORY FIRST (what was already separable, and the ONE thing that was not).** A "surface"
+in this UI has always been a colour plus an opacity, and the Trigger card is the shape the whole
+project already uses for it: `TRANSPARENCY` and `COLOR` as two rows on the card that owns the
+line. Walking the `PAL_*` table shows every family already has that pair — trigger + label
+(card 0), unified lines (card 7), TH3 (card 5), HTF ×4 (card 6), base box ×6 (card 12), the trade
+card's five (card 2), factor (card 10 / step 9), countdown (card 2) — **except ONE: the MID ZONE
+EDGE.** Its colour was the band's own `zoneColor` and its opacity the single `BORDER TRANSPARENCY`
+row, and the bevel (P-UI-131f/g) derived BOTH halves from those two numbers, so pinning the top
+line apart from the bottom line was unrepresentable — exactly the gap the user names.
+
+**THE CHANGE.** The edge's two halves are now surfaces of their own, built from the parts the
+codebase already has: `PAL_ZONE_EDGE_TOP` / `PAL_ZONE_EDGE_BOTTOM` (kinds 26/27) with mirrors
+`g_zoneEdgeTopColor` / `g_zoneEdgeBottomColor` (`clrNONE` = AUTO = the derived tone) and
+`g_zoneEdgeTopTransparency` / `g_zoneEdgeBottomTransparency` (`-1` = AUTO = follow the shared
+`BORDER TRANSPARENCY`). They ride the ONE picker, the recents ring, the row↔kind map and the
+`OV_` persistence (`ZCT`/`ZCB`/`ZPT`/`ZPB`) unchanged. The panel gets rows **14..17** — `EDGE TOP`,
+`EDGE BOTTOM`, `TOP OPACITY`, `BOTTOM OPACITY` — APPENDED inside card 1's GEOMETRY band (4 → 8
+members), so addresses 0..13 and every persisted key keep their meaning (the P-UI-131/126 rule);
+the card reads 15 → 19 display rows, still inside `PNL_SPEC_MAX` 32. The factory owns the
+building, so the decision travels in the REQUEST (four new fields), and the LEFT segment follows
+TOP — both are the lit side of the one light source.
+
+**THE DEFAULT IS THE POINT, NOT AN AFTERTHOUGHT.** «پیشفرضی که روشن میکشه همون رو بزار» is
+implemented literally: the factory default of all four is AUTO (`PnlDefColorSet` → `clrNONE`,
+`PnlDefValSet` → `-1`), so a fresh install draws the surface-anchored bevel measured in
+P-UI-131g (on the user's own pair: lit **2.42**, shade **5.03** against the fill — two visible
+lines on a WHITE chart), and **Reset returns to it** instead of to some other colour. The shipped
+zone is FILLED at 50 % with a 1 px solid edge: semi-faded by construction, not by taste.
+
+**TWO INSTRUMENTS THE AUTO STATE FORCED (both real defects, both one line):** (1) `PushPalRecent`
+pushed `clrNONE` into the user's own recents ring whenever a colour row was Reset — AUTO is not a
+colour anyone picked (this also covered the HTF wick/border overrides, which are AUTO by default);
+(2) the colour ROW's preview painted `clrNONE` raw, i.e. MT4's ink-black — the P-UI-68 defect,
+which had only ever been fixed for the cset cells. The preview now wears the same glass AUTO face
+and its tooltip says `AUTO (derived)`. And `PnlFormat` gives the `-1` end a text: the two opacities
+read **AUTO**, because a slider parked at its own left end otherwise reads as a deliberate 0 %.
+
+**COST:** zero new objects, zero extra draw calls, nothing per tick. The one thing that could have
+cost: each half derives from its OWN base, so the builder calls `BioZoneEdgeTones` twice — in the
+default (shared opacity) case the second call is a MEMO HIT, i.e. one key compare.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` (`[PASS]` workspace + installed), Lite
+`0 errors, 0 warnings`, all seven harnesses `0 errors, 0 warnings`, `submenu_geometry_check.js`
+`1440 cases checked — PASS`.
+
+**MANUAL TEST:** reattach → card 1 → GEOMETRY band now shows EDGE TOP / EDGE BOTTOM (glass = AUTO)
+and TOP OPACITY / BOTTOM OPACITY (both read AUTO at the far left). Tap `EDGE TOP` → pick a colour →
+that line alone changes; drag `TOP OPACITY` right → only the top gets solid, the bottom keeps
+BORDER TRANSPARENCY; drag it fully left → back to AUTO. A pinned half keeps its colour while the
+card's TRANSPARENCY moves the band. The other zone families (TH zones, TH3 bands) keep their own
+`borderTransparency` and their derived halves: they never mention the four new fields, and
+`ZoneRequestNew()` is what makes "never mentioned" mean AUTO instead of garbage — MQL4 leaves a
+stack struct uninitialised, so the four producers now build it through that one owner.
+
+**P-UI-131g (2026-09-25) — THE BEVEL GETS AN ANCHOR: "WHY IS THE TRANSPARENCY ON ONE BORDER?"**
+User, looking at the first 3D attempt: «چرا شفافیت روی یکی از بوردر ها اعمال میشه مشکل از چیه» plus
+«حداقل بوردر ها شکل سه بعدی بگیرن ... فقط میخوام متمایز دیده بشه» and «هزینه کمی هم داشته باشه
+قبول هستش اگر روش سه بعدی بهتری هستش».
+
+**THE MEASUREMENT (out of the user's own screenshot, not out of memory).** A vertical pixel scan at
+x=500 of the pasted PNG (rows 182–242) gave: fill `#D8E4FA`, top edge `#A2BFF3` then `#85A4F6`,
+bottom edge `#664597` then `#415E92`. And the arithmetic is an IDENTITY of the v1 code:
+`0.62 × #6998EC + 0.38 × white = #A2BFF3`, `0.62 × #6998EC = #415E92` — so the edge's own base was
+`#6998EC` (BORDER TRANSPARENCY 2 %) and the code was doing exactly what it said. Contrast against
+the band it lies on: **lit 1.45, shade 5.06** — a 3.5× asymmetry, and 1.45 is under the palette's
+own `BIO_SWATCH_MIN_CONTRAST` 1.7. THAT is what «شفافیت روی یکی از بوردرها» was: not the
+BORDER TRANSPARENCY row (which was applied to both halves), but one half having no room to read.
+
+**THE ROOT CAUSE.** Two layers of it. (1) The v1 tone was a FIXED 0.38 walk toward `clrWhite` /
+`clrBlack` — blind to what the line lies ON. The band is blended 75 % toward the chart's background
+(`TRANSPARENCY 50 %` → `tVis 75`), so on a light chart the FILL is itself a washed white-blue: the
+"lit" walk runs in the SAME direction as that wash and the highlight has nowhere to go. (2) In the
+rewrite, my ladder returned its DEEPEST step when no step cleared the floor — and for the lit
+direction every further step is FARTHER toward the pale fill, i.e. the least visible tone. Caught by
+mirroring the arithmetic in node before shipping (the -0.26 of contrast: 1.45 → 1.19 on a dry run).
+
+**THE FIX — THE BEVEL GETS AN ANCHOR.** The tones are now derived from the SURFACE they lie on: the
+band when the picture owns one, else `GetCachedChartBgColor()` — the same owner the transparency
+blend already uses, so a bevel can never disagree with the fill it sits on. Each tone is the WEAKEST
+that READS: a chroma gain first (`BioChroma`, 1.55 — the one axis a pale surface cannot take away),
+then the first ladder step toward white/black that clears ITS floor, and if none can, the strongest
+of the lot rather than the weakest. The floors are asymmetric **because the two halves are read by
+different things**: the shadow by luma (`BIO_EDGE_CONTRAST 2.00`), the highlight by chroma
+(`BIO_EDGE_LIT_MIN 1.40` — luma systematically understates a saturated line on a pale fill). Then
+the two halves are pulled apart until they separate from EACH OTHER (the bevel itself, the palette's
+own 1.7 floor) into whichever side the surface leaves free: above a BRIGHT surface the shadow,
+below a DARK one the light — so light-from-the-top-left holds on a light chart and a dark one alike.
+
+**AFTER (same node mirror of the same arithmetic, so the numbers are the code's):**
+- the user's pair: LIT `#4891FF` luma **2.42** (fill's own saturation 0.14 → 0.72), SHADE `#2E5EA5`
+  **5.03**, pair 2.08 — was 1.45 / 5.06;
+- pale green zone on a light chart: LIT 1.46 but saturation **0.60 vs the fill's 0.10**, SHADE 4.84,
+  pair 3.32 (the case the 1.40 lit floor exists for);
+- dark chart (`fill #141A26`, base `#3B6FD4`): LIT **6.39**, SHADE 3.63, pair 1.76 — top still the
+  brighter half, convention held;
+- EMPTY picture, under = chart background: on white 3.10 / 6.44, on `#161B24` 10.96 / 5.57.
+
+**COST (the user now allows "a little", and this is what it costs).** Still NO new object, NO extra
+draw call, NO per-tick work. The ladder runs at zone-build time only, and `BioZoneEdgeTones`
+memoises on `(base, under)` — 16 slots, linear probe — so at steady state a zone pays ONE key
+compare per render; a colour change pays ≤ 5 `BioContrast` per half plus ≤ 4 pushes. `new object /
+new draw call / per-tick work / new palette = 0` remains true.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` (`[PASS]` workspace + installed), Lite
+`0 errors, 0 warnings`, all seven harnesses `0 errors, 0 warnings`, `submenu_geometry_check.js`
+`1440 cases checked — PASS`.
+
+The settable border colour is still the P-UI-131f architecture note (one `PNL_K_COL` row in ZONES →
+GEOMETRY, the palette's "no override" cell as AUTO) — the derivation above is the default, not a
+replacement for it.
+
+**P-UI-131f (2026-09-25) — THE ZONE EDGE BECOMES 3D, AT ZERO COST.** User, two messages:
+«این حالت outline اگر بخوایم بوردر رنگ دیگه باشه چی؟ الان یکی جورهستش که هر دو مثل همه و خوب
+بوردر دیده نمیشه ... باید یکم متضاد هم باشه» and then «میشه کاری کرد که سه بعدی دیده بشه بدون
+هزینه اضافی؟ راهی فکر میکنم داره حتما».
+
+**THE MEASUREMENT (the border really was invisible, by construction).** A zone's edge is ALREADY
+three objects — `_B_Top` / `_B_Bottom` / `_B_Left`, `CreateOrUpdateZoneBorder` — and all three
+were handed ONE colour: `borderColor = GetZoneRenderColor(request.zoneColor, edgeTransparency)`,
+i.e. the band's own hue (the band itself is `finalColor` from the same `request.zoneColor`). In
+OUTLINED the fill and its edge are therefore the same colour family, and the card's BORDER /
+BORDER WIDTH / BORDER TRANSPARENCY rows had nothing visible to act on.
+
+**THE FIX IS THE OBJECTS THAT WERE ALREADY THERE.** The same three lines now wear a LIT and a
+SHADED tone of that one colour — `BioEdgeLit` / `BioEdgeShade`, `BIO_EDGE_BEVEL 0.38`, mixed
+through the palette's own `BioMixColor` (one owner of the arithmetic, so a bevel can never
+become a second colour language) — with Top/Left lit and Bottom shaded, the light source from
+the top-left that every raised surface in this UI already follows. That is the classic 1px
+emboss of a raised band, and it answers both halves of the ask at once: the edge is now a
+two-tone CONTRAST against its own fill, and it reads as 3D.
+
+**SUPERSEDED IN PART BY P-UI-131g (same day):** `BioEdgeLit`/`BioEdgeShade`/`BIO_EDGE_BEVEL` are
+gone — the fixed 0.38 walk they pinned was the very thing 131g replaced with a surface-anchored
+pair (`BioZoneEdgeTones`). Kept here as the record of what was measured and why it moved.
+
+**COST (the condition the user set).** ZERO new objects, ZERO extra draw calls, ZERO per-tick
+work: the tones are two colour mixes at the moment a zone is already being built, and the tone
+pair is stable until the band's colour or transparency changes. ONE thing had to move with it:
+`ZoneEdgeColorChanged` compared all three segments against a single colour, so the bevel would
+have answered "changed" FOREVER — the whole edge rewritten on every render, a permanent cost
+for a look that only changes with the band. It now asks each segment about its OWN tone.
+
+**THE OTHER HALF OF THE ASK (a settable border colour) — the architecture, not yet a row.** The
+derivation is per level and needs no setting, so the default is already the fix. For a hand-picked
+edge colour the right element is ONE `PNL_K_COL` row ("EDGE COLOR") in the ZONES card's GEOMETRY
+band, address appended, because (a) the project has exactly one colour instrument — the palette —
+and a new control for a colour would be the second voice A-01 forbids; (b) that card already owns
+this edge's STYLE, WIDTH and TRANSPARENCY, so its colour belongs in the same family (the P-UI-63
+precedent); (c) the palette's EXISTING "no override" state (`clrNONE` → `PNL_CLR_AUTO_CELL`) IS
+the auto value, so AUTO needs no new widget, no new convention and no "auto" flag. It rides an
+appended `PAL_ZONE_EDGE` kind + the `OV_` persistence every other colour already uses.
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` ×2 (`[PASS]` workspace + installed),
+Lite `0 errors, 0 warnings, 321 msec`, the seven harnesses `0 errors, 0 warnings`,
+`submenu_geometry_check.js` `1440 cases checked — PASS`.
+
+**P-UI-131e (2026-09-25) — THE TRIGGER'S PLACE SURVIVES THE CHART.** User: «این تریگر پرایس
+اکشن — اندیکاتور خاموش و روشن میکنی یا [MT را ریست میکنی] جاش عوض میشه. در هر چارت باید در
+هر شرایط همون جا باشه، بدون هزینه یا نزدیک به صفر». A screenshot with the orb parked at the
+chart's left edge and the ring collapsed along it (`CIRC_EDGE_TRIGGER` — the edge/parked
+mode), i.e. a PLACED orb, which is exactly the state that kept getting lost.
+
+**THREE MECHANISMS, ALL READ OUT OF THE CODE (not one of them a guess).**
+1. `g_UI.gvPrefix = "BIOMENU_" + _Symbol + "_" + ChartID() + "_"`. A chart id is handed out
+   per session and per window, so a terminal restart, a re-opened chart or a new window of
+   the same symbol found NO keys: the version check failed, `ClearAllGVs()` swept, the
+   defaults re-seeded — and the block the user had just placed was gone.
+2. `CleanupUIStates(REASON_REMOVE)` called `ClearAllGVs()` (there since the state block was
+   born, `cb6af16`, 2026-09-03 — an uninstall semantic nobody ordered). So **removing the
+   indicator deleted the state**, and the next attach re-seeded the defaults. That is the
+   user's «خاموش و روشن میکنی» verbatim. It took the `PNLP` panel positions and the `OV_`
+   card overrides with it.
+3. The orb's SAVED value was `g_UI.menuX/menuY` — the LIVE pair, which `CircCreateOrb` and
+   `UpdateCircularMenuPosition` CLAMP into the allowed band on every create/update. One
+   narrow chart (or one low `CIRC_EDGE_TRIGGER` band) therefore ratcheted the place inward
+   for good, with no way back to where the hand had put it.
+
+**THE FIX.** The state block's key carries the SYMBOL and never the chart id (durable
+across restarts, shared by that symbol's windows); the three placeable surfaces — the orb,
+`P-DRAW-41`'s strip and `P-UI-126`'s chip — keep their homes under keys with **no chart and
+no symbol** in them (`GVHomeName`, `BIOMENU_HOME_ORB/STRIP/CHIP`), which is the literal
+reading of «در هر چارت … همون جا»; `LoadUIPlaces()` is the ONE reader for all three and runs
+BEFORE the version branch, so a version reset can no longer lose — or save back — a home
+(`ResetUIToDefaults` is flags only now); the LIVE pair is DERIVED from the home on every
+chart reshape, guarded off mid-drag so the hand owns it until release; and the drag's
+RELEASE writes the home (`CircOrbHomeSet`), so the clamped value can never be the stored
+one. A remove SAVES like any other teardown. `MigrateLegacyUIState()` copies EVERY slot of
+a pre-131e per-chart block (not a list of names, so `OV_`/`PNLP` survive too) — one walk of
+the terminal's table, only while the new block is absent. `UI_STATE_VERSION` is NOT bumped:
+a bump would have wiped the very state this note is about.
+
+**COST (the user's «بدون هزینه»).** One read at load, one write when the hand really moved
+something, one table walk at init only on the upgrade; the paint path, the hit tests and the
+per-tick refresh are untouched — the added work in `UpdateCircularMenuPosition` is one
+getter and two compares, zero terminal calls. (That function is the per-tick path, which is
+why the re-derive lives there and not a probe.)
+
+**GATE (final tree, measured):** main `0 errors, 0 warnings` ×2 (`[PASS]` workspace +
+installed), Lite `0 errors, 0 warnings, 335 msec`, the seven harnesses `0 errors, 0
+warnings`, `submenu_geometry_check.js` `1440 cases checked — PASS`.
+
+**P-UI-128 (2026-09-25) — A BAKED FACE WEARS ITS ACTION ON THE PRESS.** User: «درگ درست
+شد ولی این دکمه کار نمی‌کنه … بعد که میکشی پنل‌ها میاد باید مستقیم با کلید کردن باز بشه
+همه دکمه همین مشکل رو داره», with the Zones card and the cursor resting on the HOVER CHIP
+row (its own «Open HOVER CHIP» tooltip visible) and then the Hover Chip card open.
+
+THE MEASUREMENT. The live ledger for the same minute carried the report as data:
+`19:27:26.384 [UI] panel drag armed by event item=1 via=rect at 1262,568` → `finished
+moved=0` — and NOT ONE `panel press acted` line, seven times in a row. So a tap on the
+NAV pill claimed nothing at all, while the terminal showed the row's tooltip. The cause
+is in the constants: `Z_PANEL_BASE 1500` ("covers + click targets (a button stays under
+its skin)") against `Z_PANEL_SKIN 1501` ("skins over their own click target"). The NAV
+pill and the footer pair (`rst`/`pal`) are OBJ_BUTTONs deliberately pushed UNDER their
+baked faces (`pnl_nav.bmp`, `pnl_btn_ghost.bmp`), and MT4 hands the pixel to the bitmap —
+which answers no click (P-UI-87's measured rule). Those two families could therefore only
+ever be reached by a name the terminal never sent. The X/Done pair is the control group
+that proves it: they are claimed by PIXELS (`PnlClosePressHit`), which is why they work.
+
+THE ARCHITECTURE (the user asked for the best one that WORKS, and the official docs were
+read for it: `CHARTEVENT_OBJECT_CLICK` is "clicking on a graphical object" — it names the
+object under the pointer, and a bake is what is under the pointer). So the project stops
+waiting for the click at all on any control that wears a bitmap: `PnlSkinButtonAct` is ONE
+read-back hit test per family, acted on the PRESS, through the SAME owners the name router
+calls (`PnlResetItem`, `PalOpenForItem`, the NAV branch), and the repaint is asked of its
+ONE owner (`RepaintForDiscreteAction`) instead of the bare `ChartRedraw()` that `PnlOpen`
+and `PnlCloseAll` each carried. The action sits AFTER the drag arm (P-UI-89's split by WHO
+OWNS THE MOVE), so a tap opens the card and a drag still moves it, and each one writes its
+own ledger line (`rst` / `pal` / `nav`) so the next report is a measurement again.
+
+Gate: main (workspace + installed) + Lite + all seven harnesses `Result: 0 errors, 0
+warnings`, `node tools/submenu_geometry_check.js` green. The live XAUUSD M1 chart took the
+build by itself at 19:39:52 (journal `removed` + `loaded successfully`); the EURUSD H1 chart
+was disconnected at 19:34:58 and needs the indicator re-attached.
+
+**P-UI-127 (2026-09-25) — THE CARD IS A HANDLE AGAIN, AND TWO DEAD CHANNELS.** User,
+with a screenshot of the open Zones & Levels card: «اینا هیچ کدوم کار نمیکنه و پنل رو هم
+بشه درگ کرد و قواین ui هم بخون».
+
+THE MEASUREMENT FIRST, because "nothing works" and "nothing was pressed" are different
+facts. The live terminal (`A1660…`, account 1979252, XAUUSD M1) had reloaded the
+indicator at **18:56:10** and printed NOTHING after it — while `BiotakMenu.mqh` was saved
+at **18:57:42** and the gate of 18:59:07 wrote an `.ex4` the terminal never loaded
+(no journal reload between 18:56:10 and 19:24:39). Before that reload the same ledger
+held 51 `[UI] panel press acted` lines between 18:53:49 and 18:54:37 (sw / dual / slider
+/ strip / close) — so the press chain answered on the previous build and answered nothing
+after the next one, with the user clicking in the gap. That is the shape of a build one
+edit behind the sources, and it is why this session's first fix is a MEASUREMENT the
+next reader can repeat: click one control, read `[UI] panel press acted (` in
+`MQL4/Logs/YYYYMMDD.log`.
+
+THE DRAG IS BACK (the user's order, superseding the 2026-09-14 one). PANELDRAG-OFF was
+reversed the way it was retired — its PRICE was answered, not paid: the 12-family
+`PnlPressClaimCode` sweep (78-79 ms on a press) is DELETED (the arm asks two compares for
+the only two pixels that keep a press whole — X/Done and an open dropdown — and the
+longer control proof is raised by `UIPressAct`, the ONE place a control's action passes
+through); `PnlDragPoll` stays UNCALLED (P-UI-75a: 197 drags armed by the event channel
+against ZERO by the poll, so its per-tick KEYSTATE probe is the «هزینه اضافی» the user
+removed). Deleted as one unit with the sweep: `PnlNameControlAt`, `PnlPressClaimCode`,
+`PnlPointOnControl` — the last had no caller in any commit, and the other two lost their
+only reader when the card became a soft-claim handle.
+
+THE CREATE CHANNEL WAS NEVER SUBSCRIBED. Reading the event composer for the report found
+`if(id == CHARTEVENT_OBJECT_CREATE …)` with a whole P-UI-100b/P-DRAW-01 branch — and
+`ChartSetInteger(0, CHART_EVENT_OBJECT_CREATE, true)` in NO commit: MT4 sends no such
+event until the flag is set, so `s_drawNotGrab`'s only writer (`CustomPriceForeignDrawSeen`)
+and `DrawStyleApplyOnCreate` had never run in any build. One line beside the two other
+flags (the third `ChartSetInteger` in `OnInitHandler`); cost is one prefix test per
+foreign create, which is exactly what the flag limits it to.
+
+Gate: main (workspace + installed) + Lite + all seven harnesses `Result: 0 errors, 0
+warnings`, `node tools/submenu_geometry_check.js` green. The live chart took the new build
+in the journal at 19:24:39 and 19:25:03 (`BiotakProject\Biotak Trigger TH3.ex4`,
+3 108 368 bytes at A1660…).
+
+**P-DRAW-46 (2026-09-26) — THE PALETTE IS THE USER'S OWN CHART, 8 x 8.** The user
+sent a palette chart and the answer to "what should happen to it" was: it IS the
+palette. There is no image tool, so the chart was MEASURED first, with a node probe
+that decodes the PNG (inflate + the five PNG filters) and reads the grid by
+run-length along each scanline, then votes a 5x5 patch at every cell's centre:
+**64 cells, all 25/25 uniform**, columns at x 12-39 / 51-78 / 91-117 / 130-157 /
+169-196 / 209-236 / 248-275 / 287-314 and rows at y 181 / 221 / 260 / 300 / 339 /
+378 / 418 / 457. Two scanlines first looked like 12 runs instead of 8; those runs
+are the screenshot's own right-hand panel (x > 340), not cells — the "extra
+swatches" were the frame around them.
+
+The table is the ONE owner in `ConstantsAndEnums.mqh` (include #1):
+`BioPickColor(row,col)` + `BioPickAt(i)`, `BIOPICK_COLS/ROWS` 8 x 8, `BIOPICK_N 64`,
+row-major — read left to right, top to bottom. Row 1 is the quick row:
+`BioPal(i)` = `BioPickColor(0,i)` and `BIOPAL_N` = `BIOPICK_COLS`, so the quick row
+can no longer disagree with the pickers, and cell 0 is still `BIO_CLR_BRAND` (one
+literal, P-UI-69c). Deleted as one unit, nothing unreachable left behind: the
+Material 19 x 10 matrix (190 literals), `BioPickHue`/`BioPickShade`, the
+family/shade captions (`PalMatName`/`PalShadeName`), the hue/shade mapping
+(`PalQHue`/`PalQShade`) and the `PAL_ROWS`/`PAL_COLS` aliases — a curated chart has
+no families and no shades, so a cell's caption is its own hex (`PalColorText` +
+`PalHexText`). Names that named the matrix went with it: `PalMatColor` is
+`PalPickColor`, `PalMatIdParse` is `PalCellIdParse`.
+
+Both pickers ride it BY CONSTRUCTION. The strip's popover iterates
+`BIOPICK_COLS`: 64 + 5 recents = 69 cells over 8 columns = **9 mid bands**, plate
+`48 + 42*9 = 426` px (`DSTRIP_SKIN_MAXK 24` already covers k = 9, so no new skin),
+width `8*32 + 7*8 = 312` + `2*8` pad, `DSTRIP_PICK_MAX/GRID_MAX 72` still cap it. The
+cards' popup is `PAL_QCOLS`/`PAL_QROWS` aliased to the owner's, 8 x 8 at `PAL_QSW 20`
+(`PalW` = 20 + 8*20 + 7*3 = 201, `PalH` grows one row band). The cell id is the
+grid's OWN identity now — row from y, column from x — and the same mapping is used
+by the paint, the hover preview and the click, so a previewed cell and the colour a
+click commits are one expression.
+
+Dead code deleted rather than parked: `DrawStripPal` / `DrawStripPalCount` /
+`DrawStripPalIndex` (reachable only through each other once P-DRAW-44 deleted the
+16-colour grid) and the recency's second rejection test, which existed to keep
+`BioPal`'s back 8 out of the recents.
+
+Measured: `ConstantsAndEnums.mqh` **1257 -> 1145 lines** (the 190-literal matrix is
+one table of 64), and the swatch floor is re-measured instead of carried over —
+over the 64 on the card face `#1A2029`, **10 read as holes** (worst 1.61 `#7A1F2E`,
+with `#1D222C` at 1.03 — a cell that IS the card) and the first visible tone is
+**1.75** (`#7C2D12`); on `#1D222C` the same 10, 1.57 to 1.70. The 1.7 boundary sits
+in the same gap it was measured in for the old 198 colours, so
+`BIO_SWATCH_MIN_CONTRAST` stays and the rule ("keep the colour, gain a border")
+needs no second reading.
+
+Gate: main (workspace + installed) + Lite + all seven harnesses `Result: 0 errors,
+0 warnings`, `node tools/submenu_geometry_check.js` green (exit 0, 20 geometry
+cases).
+
+ From the agent side the same script is called as `& .\compile-th3.ps1 -Project all`
 (the PowerShell tool already IS PowerShell, and `powershell.exe` from Bash is
 blocked by policy), after `$env:APPDATA` is set and the six `*_proxy` variables
 are nulled — otherwise it cannot resolve the MQL4 directory. The tool may return

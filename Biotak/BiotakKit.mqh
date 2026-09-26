@@ -66,26 +66,31 @@ struct UIState {
    int    menuX;            // orb center (pixels, top-left origin)
    int    menuY;
    bool   showHTF;
+   // P-UI-126: the hover chip's MODE — false = «با موس» (a hover tip, the shipped
+   // default, the user's own pick), true = «همیشه فعال» (the orb's banner stays up at
+   // its place). The PLACE itself is the chip's own state (BiotakMenu's s_TipHomeX/Y)
+   // and rides the same UI-state block as this flag.
+   bool   tipPin;
 };
 static UIState g_UI;
 
 string GetGVName(string key) { return g_UI.gvPrefix + key; }
 
-//--- settings-panel geometry (drag-to-move persistence; panel slots 0..12,
-//     1 = the main Zones & Levels card; 12 = Base Box card).
+//--- settings-panel geometry (drag-to-move persistence; panel slots 0..14,
+//     1 = the main Zones & Levels card; 12 = Base Box card; 14 = General Settings).
 //     PNL_COUNT lives here (Kit is included before Panels) so every loop
 //     and slot array in both files stays in sync from one define.
-#define PNL_COUNT 14
-static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false};
+#define PNL_COUNT 15
+static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false,false};
 
 //==============================================================================
 // PALETTE COLOR KINDS — one kind per colorable setting of THIS indicator.
 // Names/labels for the "Apply to" cycler live in BiotakPanels.mqh.
 //==============================================================================
 #define PAL_TRIGGER       0   // Trigger base color
-#define PAL_TRIGGER_LABEL 1   // Trigger label color
+#define PAL_TRIGGER_LABEL 1   // Trigger label color (clrNONE = AUTO); its TR channel is the LABEL OPACITY row (P-UI-131j)
 #define PAL_SS            2   // SS level color
 #define PAL_LS            3   // LS level color
 #define PAL_TH3           4   // TH3 line color
@@ -113,11 +118,20 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 #define PAL_ATR_HUNTER 22   // TRex card: the Hunter SL / Eng.SL row
 #define PAL_ATR_TRADE  23   // TRex card: the #SL/#TP row
 #define PAL_ATR_SPREAD 24   // TRex card: the live-spread superscript
+// P-UI-131h — the MID ZONE EDGE's TWO HALVES as surfaces of their own. They are palette
+// kinds so the ONE picker, the RECENT ring, the persistence and the row↔kind map all
+// serve them unchanged; clrNONE is AUTO (the derived lit/shaded tone), which is why they
+// sit OUTSIDE the count below: the "apply to" cycler is for surfaces a bulk pick makes
+// sense on, and a bulk pick here would only turn AUTO off everywhere.
+#define PAL_ZONE_EDGE_TOP    26   // MID ZONE edge upper line (the LIT half)
+#define PAL_ZONE_EDGE_BOTTOM 27   // MID ZONE edge lower line (the SHADED half)
 #define PAL_BASE_TARGETS 25
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }
-color DefTriggerLabelColor() { return clrBlack; }
+// P-UI-131j: AUTO — the factory look IS the derivation (follow the Lines colour),
+// so a Reset returns to "never pinned" instead of pinning a colour nobody chose.
+color DefTriggerLabelColor() { return clrNONE; }
 color DefSSLevelColor()      { return clrGoldenrod; }
 color DefLSLevelColor()      { return clrOrange; }
 color DefTH3Color()          { return clrDarkBlue; }

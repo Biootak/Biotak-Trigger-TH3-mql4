@@ -311,6 +311,10 @@ const BK_GEAR = [   // full-settings gear
   seg(8.0, 8.0, 10.8, 10.8, 2.8), seg(21.2, 21.2, 24.0, 24.0, 2.8),
   seg(24.0, 8.0, 21.2, 10.8, 2.8), seg(10.8, 21.2, 8.0, 24.0, 2.8),
 ];
+// P-UI-131: the General Settings icon. The gear shape above already existed for
+// the strip's "..." cell (bk_gear.bmp); the ring family needs its own ON/OFF
+// pair at 28px, so it is folded into ART under its own name.
+ART.gear = BK_GEAR;
 const BK_GRIP = [   // six-dot drag handle
   cfill(12, 8, 2.0), cfill(20, 8, 2.0),
   cfill(12, 16, 2.0), cfill(20, 16, 2.0),
@@ -353,6 +357,40 @@ function orbSkinFromMaster() {
 }
 function orbWordFromMaster() {
   return orbMasterFrom('orb-word-master.bgra', 'make-orb-word.ps1');
+}
+
+// --- the hover chip's FACE art (P-UI-120) ---
+// Single source of truth: tools/orb/tip-face-master.bgra, ingested by
+// tools/orb/make-tip-face.ps1 from the user's own calligraphy banner
+// (tools/orb/tip-face-src.png - the Persian 'Trigger Price Action' plate, keyed out
+// of its PAINTED checkerboard into real alpha and baked at chip size, since MT4
+// crops a bitmap label instead of scaling it). It is NOT square like the orb pair,
+// so the byte length is checked against the pair of numbers the MQL side also sizes
+// the object with (BiotakMenu's CIRC_TIP_FACE_W/H) - a re-bake at another size fails
+// HERE, loudly, instead of drawing a cropped face on a chart.
+const TIP_FACE_W = 200;
+const TIP_FACE_H = 76;
+function tipFaceFromMaster() {
+  const master = path.join(__dirname, 'orb', 'tip-face-master.bgra');
+  if (!fs.existsSync(master))
+    throw new Error('missing ' + master + ' - run: powershell -NoProfile -ExecutionPolicy Bypass -File tools\\orb\\make-tip-face.ps1');
+  const m = fs.readFileSync(master);
+  if (m.length !== TIP_FACE_W * TIP_FACE_H * 4)
+    throw new Error('tip-face-master.bgra is ' + m.length + ' bytes, not ' +
+                    TIP_FACE_W + 'x' + TIP_FACE_H + 'x4 - re-bake and update TIP_FACE_W/H here AND CIRC_TIP_FACE_W/H in BiotakMenu.mqh');
+  return { w: TIP_FACE_W, h: TIP_FACE_H, buf: Buffer.from(m) };
+}
+
+// --- P-UI-126: ONE MASTER, ONE FACE. The chip no longer turns: it opens ABOVE the orb
+// while there is room, else at its own place (BiotakMenu's own home, the chart's middle
+// by default), so ONE orientation is the whole art. P-UI-123's derived sides are gone
+// with the shapes that needed them - a rotated raster carries the Persian calligraphy
+// SIDEWAYS and MT4 cannot turn it back (a label takes no angle, error 230, and a bitmap
+// label is cropped, never scaled). The single number BiotakMenu places by is
+// CIRC_TIP_FACE_INSET (18 px, the band's own row-57 hug line) - a re-bake that moved
+// that line fails the size check above, instead of drawing a gap nobody can name.
+function tipFaceArt() {
+  return [{ name: 'tip_face.bmp', ...tipFaceFromMaster() }];
 }
 
 const BADGE_ART = [
@@ -1504,7 +1542,15 @@ function dsBody(band, y) {
   return CARD_MID.slice();
 }
 
-function dsSkinPiece(W, H, band, kind) {
+// --- P-DRAW-43 (2026-09-25) — THE PLATE'S TRANSPARENCY IS BAKED. MT4 has no
+//     runtime image API and crops a bitmap instead of blending it, so a % plate
+//     cannot be a slider over one file: every level is its own file set, and the
+//     runtime row swaps the 8 piece resources. `t` is the level in percent; the
+//     body, border, shadow and catchlight all scale by the same factor, so a
+//     transparent plate is the SAME plate with its alpha multiplied — never a
+//     different design. Level 0 keeps the shipped names (no file churn).
+function dsSkinPiece(W, H, band, kind, t = 0) {
+  const ka = 1 - clamp01(t / 100);
   const buf = renderFxWH(W, H, (x, y) => {
     let col = [0, 0, 0, 0];
     // drop shadow: the silhouette nudged down 5 (pnl's number), blurred to fit
@@ -1512,16 +1558,16 @@ function dsSkinPiece(W, H, band, kind) {
     const sd = dsSdf(x, y - 5, W, H, kind);
     if (sd > 0 && sd < 13) {
       const k = 1 - sd / 13;
-      col = over(col, pm(CARD_SHADOW, Math.round(175 * k * k)));
+      col = over(col, pm(CARD_SHADOW, Math.round(175 * k * k * ka)));
     }
     const d = dsSdf(x, y, W, H, kind);
     if (d < 0.7) {
       if (d > -1.2) {
-        col = over(col, pm(CARD_BD, 255));                     // 1px #2C3444 border
+        col = over(col, pm(CARD_BD, 255 * ka));                // 1px #2C3444 border
       } else {
-        col = over(col, pm(dsBody(band, y), 255));             // obsidian body
+        col = over(col, pm(dsBody(band, y), 255 * ka));        // obsidian body
         if (band === 0 && (y - DS_M) > -0.5 && (y - DS_M) < 1.0)
-          col = over(col, pm([255, 255, 255], 19));            // top catchlight
+          col = over(col, pm([255, 255, 255], 19 * ka));       // top catchlight
       }
     }
     return col[3] > 0 ? col : null;
@@ -1529,19 +1575,30 @@ function dsSkinPiece(W, H, band, kind) {
   return { w: W, h: buf.length / (W * 4), buf };
 }
 
+// The plate levels the gear's row offers, in percent. 0 == the shipped art.
+const DS_PLATE_T = [0, 30, 60, 90];
 function dsSkinFiles() {
-  return [
-    { name: 'ds_top_l.bmp', ...dsSkinPiece(DS_CAP, DS_TOPH, 0, 0) },
-    { name: 'ds_top_m.bmp', ...dsSkinPiece(DS_MIDW, DS_TOPH, 0, 4) },
-    { name: 'ds_top_r.bmp', ...dsSkinPiece(DS_CAP, DS_TOPH, 0, 1) },
-    { name: 'ds_mid_l.bmp', ...dsSkinPiece(DS_EDGE, DS_MIDH, 1, 6) },
-    { name: 'ds_mid_r.bmp', ...dsSkinPiece(DS_EDGE, DS_MIDH, 1, 7) },
-    { name: 'ds_bot_l.bmp', ...dsSkinPiece(DS_CAP, DS_BOTH, 2, 2) },
-    { name: 'ds_bot_m.bmp', ...dsSkinPiece(DS_MIDW, DS_BOTH, 2, 5) },
-    { name: 'ds_bot_r.bmp', ...dsSkinPiece(DS_CAP, DS_BOTH, 2, 3) },
+  const set = [
+    ['ds_top_l', DS_CAP,  DS_TOPH, 0, 0],
+    ['ds_top_m', DS_MIDW, DS_TOPH, 0, 4],
+    ['ds_top_r', DS_CAP,  DS_TOPH, 0, 1],
+    ['ds_mid_l', DS_EDGE, DS_MIDH, 1, 6],
+    ['ds_mid_r', DS_EDGE, DS_MIDH, 1, 7],
+    ['ds_bot_l', DS_CAP,  DS_BOTH, 2, 2],
+    ['ds_bot_m', DS_MIDW, DS_BOTH, 2, 5],
+    ['ds_bot_r', DS_CAP,  DS_BOTH, 2, 3],
+  ];
+  const out = [];
+  for (const t of DS_PLATE_T) {
+    const sfx = t === 0 ? '' : '_t' + t;
+    for (const [nm, W, H, band, kind] of set)
+      out.push({ name: nm + sfx + '.bmp', ...dsSkinPiece(W, H, band, kind, t) });
+  }
+  out.push(
     { name: 'dsg_btn_ghost.bmp', ...ftBtnSkin(null, false, 64) },
     { name: 'dsg_btn_primary.bmp', ...ftBtnSkin('gold', true, 64) },
-  ];
+  );
+  return out;
 }
 
 // ---------------------------------------------------------------- main
@@ -1557,7 +1614,9 @@ const outDirs = [path.join(__dirname, '..', 'Files', 'Icons')];
 // NAVC falls back to "nav" for forward nav rows (BiotakPanels.mqh:5078).
 const EMIT_RETIRED_ACCENTS = false;
 const ACCENT_EMIT = EMIT_RETIRED_ACCENTS ? ACCENT_NAMES : ['gold'];
-const DEAD_GLYPHS = new Set(['alignL','alignR','bolt','down','grid','hand',
+// P-UI-131: 'alignL' left this set — the GENERAL card's MARGIN LEFT row wears it
+// (a left-aligned stack IS the left margin picture), so the glyph is live art again.
+const DEAD_GLYPHS = new Set(['alignR','bolt','down','grid','hand',
   'italic','lock','more','palette','search','trash','up','warn']);
 // TH3TOOL-ON (2026-09-19): 'custom' left DEAD_ART — the TH3 ring item loads it
 // again (BiotakMenu's CIR_TH3 resource + CircIconRes base).
@@ -1733,13 +1792,15 @@ panelFiles.push(...dsSkinFiles());
 // "::Files\Icons\pnl_card" + cardRows + ".bmp", so the file name IS the row
 // count. Never stretch one skin across counts — the 14px corners and the 1px
 // border distort. Clamp is 3..16 BOTH sides (PNL_CARD_ROWS_MAX): tallest live
-// card is 14-15 display rows, so 16 keeps headroom — 1, 2 (clamp min is 3)
-// and 17..20 (the 8 largest files, zero runtime path) are not emitted
-// (ICON-DIET 2026-09-12). 20 also covers the section BANDS the redesign
-// inserts (a band is itself a 42px row, so a 11-setting card becomes
-// 15 display rows).
+// card is 14-15 display rows, so 16 keeps headroom — 17..20 (the 8 largest
+// files, zero runtime path) are not emitted (ICON-DIET 2026-09-12).
+// P-UI-131: counts 1 and 2 are emitted and the MQL floor is 1 — the GENERAL card
+// took MAX LEVELS off the Step card, whose TH mode is then a lone TAB row, and
+// the Hover Chip card is two rows; each drew a 3-row skin while its own card was
+// shorter. 20 also covers the section BANDS the redesign inserts (a band is
+// itself a 42px row, so a 11-setting card becomes 15 display rows).
 const PNL_CARD_ROWS_MAX = 16;
-for (let r = 3; r <= PNL_CARD_ROWS_MAX; r++) {
+for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
   panelFiles.push({ name: 'pnl_card' + r + '.bmp',  ...pnlCardSkin(r, false) });
   // the .fade variant — PnlCardFade() picks it for the scrollable cards
   panelFiles.push({ name: 'pnl_card' + r + 'f.bmp', ...pnlCardSkin(r, true)  });
@@ -1747,6 +1808,9 @@ for (let r = 3; r <= PNL_CARD_ROWS_MAX; r++) {
 // WIDE-CARDS (2026-09-11): two-column skins. PNL_WIDE_ROWS_MAX must equal the
 // MQL's PNL_WIDE_ROWS_MAX (Biotak/BiotakPanels.mqh) — the MQL clamps pairN to
 // it, so a missing file would draw bare rows.
+// P-UI-131: the GENERAL card needs 14 pair-lines — and needs NOTHING from here,
+// because a wide body is COMPOSED from pnl_cardWtop/mid/bot (P-UI-71b), not looked
+// up. This family is the pre-P-UI-71 era's lookup table and stays at 12.
 const PNL_WIDE_ROWS_MAX = 12;
 for (let r = 1; r <= PNL_WIDE_ROWS_MAX; r++) {
   panelFiles.push({ name: 'pnl_cardW' + r + '.bmp',  ...pnlCardSkin(r, false, true) });
@@ -1814,6 +1878,10 @@ uiFiles.push({ name: 'pnl_btn_ghost.bmp', ...ftBtnSkin(null, false) });
 for (const a of ACCENT_EMIT)
   uiFiles.push({ name: 'pnl_btn_prim_' + a + '.bmp', ...ftBtnSkin(a, true) });
 panelFiles.push(...uiFiles);
+// P-UI-120: the hover chip's face (plate + frame + tilted title) - a non-square
+// skin, so it rides the skin list (the square `files` loop derives its side from
+// the buffer length).
+for (const v of tipFaceArt()) panelFiles.push(v);
 
 let count = 0;
 for (const [fname, make] of files) {

@@ -1077,7 +1077,7 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     // OPTIMIZATION: Let factory handle update vs create decision
     //                                                                
     
-    SZoneCreationRequest request;
+    SZoneCreationRequest request = ZoneRequestNew();   // P-UI-131h
     request.name = zoneName;
     request.topPrice = upperPrice;
     request.bottomPrice = lowerPrice;
@@ -1086,6 +1086,12 @@ bool CreateGenericMidZone(const string zoneName, const double prevPrice, const d
     // P-UI-63: this path draws a BAND only (filled = true, so no edge is produced), but
     // the field is written anyway: a stack struct must never leave a value to chance.
     request.borderTransparency = inpMidZoneBorderTransparency;
+    // P-UI-131h: a band-only picture draws no edge, so the four half-surfaces are inert
+    // here - written anyway, because a stack struct must never leave a value to chance.
+    request.borderTopColor = inpZoneEdgeTopColor;
+    request.borderBottomColor = inpZoneEdgeBottomColor;
+    request.borderTopTransparency = inpZoneEdgeTopTransparency;
+    request.borderBottomTransparency = inpZoneEdgeBottomTransparency;
     request.filled = true;
     request.borderStyle = inpMidZoneBorderStyle;
     request.borderWidth = inpMidZoneBorderWidth;
@@ -1141,11 +1147,10 @@ void ThrottledChartRedraw(bool forceRedraw = false) {
 //| the pointer - never from the tick path, never per mouse event.    |
 //| Cost when idle: zero (no caller runs).                           |
 //|                                                                  |
-//| PANELDRAG-OFF (2026-09-14): the card-move gesture was REMOVED    |
-//| (user decision — see BiotakPanels.mqh), so this owner is now     |
-//| UNCALLED. Kept compiled on purpose: it is one half of the        |
-//| restore path, and deleting it would be the only part of the      |
-//| feature that cannot come back by uncommenting.                   |
+//| PANELDRAG-OFF (2026-09-14) retired the card-move gesture and left |
+//| this owner UNCALLED; P-UI-127 (2026-09-25, user order: «پنل رو هم  |
+//| بشه درگ کرد») restored the gesture, so it is called again — once  |
+//| per applied batch of a live drag, and nothing else.               |
 //+------------------------------------------------------------------+
 void DragFrameRedraw() {
     ChartRedraw();

@@ -845,19 +845,8 @@ void DisplayATRLabels(const string objectPrefix) {
     // separate rendering of the same composite and only cluttered the row.
     // Stale M30 pieces are purged by ClearAllLabels() before every redraw.
     string timeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
+    // Column colors are the shared STANDARD_COLORS owner (same TF order).
     int tfMinutes[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
-
-    // Use TH colors for ATR
-    color colors[] = {
-        clrBlack,        // M1
-        clrBlack,        // M5
-        clrBlack,        // M15
-        clrBlue,         // H1
-        clrRed,          // H4
-        clrGreen,        // D1
-        clrBlack,        // W1
-        clrBlack         // MN1
-    };
     
     bool isVerticalLayout = (inpLabelArrangement == LABEL_ARRANGEMENT_VERTICAL);
     int rowSpacing = inpLabelRowGap;
@@ -911,7 +900,7 @@ void DisplayATRLabels(const string objectPrefix) {
         
         double atrPoints = atrValue / point;
         double atrPips = NormalizeDouble(atrValue / pipSize, 1);
-        color labelColor = colors[i];
+        color labelColor = STANDARD_COLORS[i];
     
         string mainText = inpShowTimeframeInLabels ?
             StringFormat("%s: %.1f", timeframes[i], atrPips) :
@@ -1486,8 +1475,8 @@ void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
 
     ObjectSetInteger(0, objectPrefix + "TH_Title", OBJPROP_TIMEFRAMES, tf);
 
-    bool showFractal = (mode == 1 || mode == 3);
-    bool showStandard = (mode == 2 || mode == 3);
+    bool showFractal = (mode == 1);
+    bool showStandard = (mode == 2);
 
     long fractalTF = (shouldShow && showFractal) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long fractalTargetsTF = (shouldShow && showFractal && inpShowTHTargets) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
@@ -1664,12 +1653,9 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
 }
 
 void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
-    if(!g_thLabelsVisible || (g_thLabelsMode != 1 && g_thLabelsMode != 3)) return;
-    // P-UI-43: same rule on the bottom side - the fractal block is the FIRST
-    // bottom-side section whenever it is shown (modes 1 and 3), so it opens the
-    // side and owns `inpTHLabelsMarginBottom` instead of inheriting a stack offset
-    // from an earlier pass (which left the whole block one 108px slot off the
-    // floor). The standard block, when shown too, still stacks one slot above it.
+    if(!g_thLabelsVisible || g_thLabelsMode != 1) return;
+    // P-UI-43: the shown section opens the bottom side and owns the margin.
+    // Modes are exclusive now, so each block resets the stack when it paints.
     g_currentLabelYOffsetBottom = 0;
     
     double point = GetCachedPoint();
@@ -1776,10 +1762,9 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
 }
 
 void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH, const datetime currentTime) {
-    if(!g_thLabelsVisible || (g_thLabelsMode != 2 && g_thLabelsMode != 3)) return;
-    // P-UI-43: this block opens the bottom side only in standard-only mode; in
-    // "both" mode the fractal block below it owns the margin (see DisplayFractalTHs).
-    if(g_thLabelsMode == 2) g_currentLabelYOffsetBottom = 0;
+    if(!g_thLabelsVisible || g_thLabelsMode != 2) return;
+    // Exclusive mode: the shown block owns the bottom margin, no stacking.
+    g_currentLabelYOffsetBottom = 0;
 
     double point = GetCachedPoint();
     int digits = GetCachedDigits();
@@ -1801,7 +1786,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
         ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
         ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
     }
-    // Title already set in DisplayFractalTHs if BOTH mode, but we update Y position here
+    // Exclusive mode: only one block paints, the title Y is set here.
     ObjectSetInteger(0, thTitleObjName, OBJPROP_YDISTANCE, titleYPos + (inpShowTHTargets ? singleLineHeight * 2 : singleLineHeight));
 
     int titleWidth = (int)CalculateTextWidth("TH:");

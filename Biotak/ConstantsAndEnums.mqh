@@ -224,6 +224,40 @@
 // screen, and the chart-height clamp in the owner is the second bound.
 #define TREX_CARD_MAX_MARGIN_BOTTOM 200
 
+// P-UI-131 — THE LABEL FAMILY'S FONT IS AN INDEX AT LAST. `inpFontName` is a
+// STRING while every settings control is an INDEXED one (a dropdown), so the
+// list is the owner here and the string is one of its faces: the readers keep
+// reading `inpFontName` (RuntimeSettings re-points it at `LabelFontName()`),
+// the panel row stores `g_labelFontIdx`, and ONE integer (`OV_LFI`) persists it.
+// A font typed straight into the MT4 dialog still works — it is index -1 and
+// the string wins until the row is used.
+#define LABEL_FONT_N 6
+string LabelFontNameAt(const int i)
+{
+   switch(i)
+   {
+      case 0: return "Arial Bold";   // the shipped default (P-UI-42 hands MT4 this)
+      case 1: return "Arial";
+      case 2: return "Tahoma";
+      case 3: return "Verdana";
+      case 4: return "Trebuchet MS";
+      case 5: return "Courier New";
+   }
+   return "Arial Bold";
+}
+int LabelFontIdxOf(const string name)
+{
+   for(int i = 0; i < LABEL_FONT_N; i++)
+      if(LabelFontNameAt(i) == name) return i;
+   return -1;   // typed in the dialog: the string is the setting, not a list slot
+}
+string LabelFontOpts()   // the dropdown's own text, from the same list (one owner)
+{
+   string s = LabelFontNameAt(0);
+   for(int i = 1; i < LABEL_FONT_N; i++) s += "|" + LabelFontNameAt(i);
+   return s;
+}
+
 // Division Safety Constants (GOLD FIX v3)
 #define MIN_SAFE_DIVISIONS 0.001      // Minimum divisions to prevent precision loss
 #define MAX_SAFE_FACTOR 10000.0       // Maximum factor value to prevent overflow
@@ -296,9 +330,10 @@ const color FRACTAL_COLORS[] = {
     clrBlack, clrBlack, clrBlack, clrBlue, clrRed,
     clrRed, clrGreen, clrBlack, clrBlack
 };
-const string STANDARD_TIMEFRAMES[] = {"D1", "W1", "MN1"};
-const int STANDARD_MINUTES[] = {1440, 10080, 43200};
-const color STANDARD_COLORS[] = {clrBlue, clrBlue, clrBlue};
+const string STANDARD_TIMEFRAMES[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
+const int STANDARD_MINUTES[] = {1, 5, 15, 60, 240, 1440, 10080, 43200};
+// Column colors shared by the ATR overview and the standard TH strip (one owner).
+const color STANDARD_COLORS[] = {clrBlack, clrBlack, clrBlack, clrBlue, clrRed, clrGreen, clrBlack, clrBlack};
 
 enum ENUM_TH_START_POINT_TYPE {
     TH_START_POINT_MIDPOINT = 0,      // Midpoint (historical H+L / 2)
@@ -813,40 +848,54 @@ struct FrequencyHistoryEntry {
 };
 
 // ══════════════════════════════════════════════════════════════════════════
-// P-DRAW-24 — ONE PALETTE. The panel quick swatches and the strip swatch grid
-// were two different colour sets, so one hand learned two palettes («پالت
-// رنگی از همون پالت رنگی بقیه ... یکدست بشه»). This table is the single
-// owner: the first 8 are the panel quick row, unchanged and in order (a
-// reorder repaints every colour row); the back 8 keep the old strip hues
-// reachable. Both faces (QuickPalColor, DrawStripPal) read here, nothing
-// else names a swatch.
+// P-DRAW-46 (2026-09-26) — ONE PALETTE, AND IT IS THE USER'S OWN 64.
+// The user sent a palette chart (8 rows x 8 cells) and ordered it to BE the
+// palette. This table is the single owner: `BioPickColor` is its only reader,
+// `BioPal`'s quick row is its own first row, and BOTH pickers (the strip's
+// popover, the cards' popup) iterate the same 64 through faces. The retired
+// Material 19x10 matrix and its hue/shade mapping (P-DRAW-39) are deleted with
+// it: a curated chart has no families and no shades, so the family/shade
+// captions had nothing left to name and every cell reads as its own hex.
 // ══════════════════════════════════════════════════════════════════════════
 // P-UI-69c: the brand amber IS the palette's cell 0 — ONE literal, and it must be
-// declared BEFORE BioPal() below: MQL4 is define-before-use, and a define placed
+// declared BEFORE its readers: MQL4 is define-before-use, and a define placed
 // after its user is `error 256: undeclared identifier` (measured 2026-09-25).
-#define BIO_CLR_BRAND      C'255,171,0'     // #FFAB00 brand amber
-#define BIOPAL_N 16
+#define BIO_CLR_BRAND      C'255,171,0'     // #FFAB00 brand amber = cell 0
+#define BIOPICK_COLS 8
+#define BIOPICK_ROWS 8
+#define BIOPICK_N    (BIOPICK_COLS * BIOPICK_ROWS)
+//--- the user's chart, read left to right then top to bottom; row 1 is the
+//--- quick row. Measured off the chart itself (2026-09-26): every cell a flat
+//--- fill, a 5x5 pixel vote at its centre agreeing 25/25 on all 64.
+color BioPickColor(const int row, const int col)
+{
+   static color pal[BIOPICK_N] =
+   {
+      BIO_CLR_BRAND,  C'240,69,95',   C'18,184,134',  C'76,141,255',  C'155,93,229',  C'0,194,209',   C'255,138,0',   C'243,246,251',
+      C'140,150,166', C'29,34,44',    C'255,208,138', C'255,163,179', C'141,227,201', C'169,198,255', C'205,180,246', C'140,230,238',
+      C'255,194,71',  C'203,212,226', C'90,101,119',  C'18,22,29',    C'122,82,0',    C'122,31,46',   C'10,90,66',    C'32,64,112',
+      C'74,44,116',   C'0,94,102',    C'255,233,199', C'247,249,252', C'174,184,198', C'42,49,61',    C'201,138,0',   C'179,36,59',
+      C'6,122,92',    C'19,50,94',    C'94,58,153',   C'0,99,107',    C'255,201,163', C'240,242,247', C'154,164,178', C'5,7,10',
+      C'232,237,245', C'61,70,97',    C'0,163,163',   C'180,83,9',    C'124,58,237',  C'219,39,119',  C'21,128,61',   C'14,165,233',
+      C'253,230,138', C'252,165,165', C'167,243,208', C'191,219,254', C'221,214,254', C'103,232,249', C'253,186,116', C'229,231,235',
+      C'17,24,39',    C'55,65,81',    C'107,114,128', C'156,163,175', C'209,213,219', C'110,231,183', C'251,191,36',  C'124,45,18'
+   };
+   if(row < 0 || row >= BIOPICK_ROWS) return clrNONE;
+   if(col < 0 || col >= BIOPICK_COLS) return clrNONE;
+   return pal[row*BIOPICK_COLS + col];
+}
+color BioPickAt(const int i)
+{
+   if(i < 0 || i >= BIOPICK_N) return clrNONE;
+   return BioPickColor(i / BIOPICK_COLS, i % BIOPICK_COLS);
+}
+//--- P-DRAW-24's quick row survives as the table's FIRST row: one table, so a
+//--- reorder of the quick row can no longer disagree with the pickers.
+#define BIOPAL_N BIOPICK_COLS
 color BioPal(const int i)
 {
-   switch(i)
-   {
-      case 0:  return BIO_CLR_BRAND;   // #FFAB00 brand amber (one literal, P-UI-69c)
-      case 1:  return C'240,69,95';    // #F0455F rose
-      case 2:  return C'18,184,134';   // #12B886 jade
-      case 3:  return C'31,168,224';   // #1FA8E0 cyan
-      case 4:  return C'124,92,255';   // #7C5CFF violet
-      case 5:  return C'207,227,255';  // #CFE3FF pale ice
-      case 6:  return C'255,255,255';  // #FFFFFF
-      case 7:  return C'20,20,20';     // #141414 near-black
-      case 8:  return clrOrangeRed;
-      case 9:  return clrCrimson;
-      case 10: return clrDodgerBlue;
-      case 11: return clrTeal;
-      case 12: return clrLime;
-      case 13: return clrYellow;
-      case 14: return clrSilver;
-      default: return clrBlack;
-   }
+   if(i < 0 || i >= BIOPAL_N) return clrBlack;
+   return BioPickColor(0, i);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -949,9 +998,10 @@ bool BioChartBgIsLight()
 // matters, the user asked for black — and gains a border that contrasts, so
 // the affordance can never read as empty.
 // ══════════════════════════════════════════════════════════════════════════
-//--- The floor is MEASURED, not chosen: over the 198 colours the panel can paint
-//--- as a swatch (the 8 quick ones + PalMatColor's 190 cells), the shipped build
-//--- had ELEVEN indistinguishable from the face they sit on — from 1.05:1 to
+//--- The floor is MEASURED, not chosen: over the 198 colours the panel could then
+//--- paint as a swatch (the 8 quick ones + the retired 190-cell matrix), the
+//--- shipped build had ELEVEN indistinguishable from the face they sit on —
+//--- from 1.05:1 to
 //--- 1.68:1 — and the first genuinely visible tone was 1.72:1. The boundary sits
 //--- in that gap, so "add an outline" fires on exactly the swatches that read as
 //--- empty space and on nothing else (WCAG's stricter 3:1 for non-text UI is NOT
@@ -992,6 +1042,104 @@ color BioSwatchBorder(const color fill,const color backdrop)
 {
    return (BioContrast(fill,backdrop) < BIO_SWATCH_MIN_CONTRAST)
              ? BIO_CLR_MUTED : BIO_CLR_HAIRLINE;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-131f/g — THE 3D EDGE, ONE OWNER, ANCHORED TO ITS OWN SURFACE.
+//
+// A zone's edge is ALREADY three objects (`_B_Top`/`_B_Bottom`/`_B_Left`,
+// ZoneFactory), so a bevel costs NO new object and NO extra draw call: the SAME
+// three lines wear a LIT and a SHADED tone. What v1 got wrong is the ANCHOR — a
+// fixed 0.38 toward white/black ignores what the line lies ON, so a band washed
+// toward a light chart had no room above it and its "lit" half walked into its own
+// fill (measured 1.44 against 5.05: one border read as if IT carried the
+// transparency). The tones are therefore anchored to the SURFACE, and the two
+// halves are pulled apart on whichever side that surface leaves free.
+// ══════════════════════════════════════════════════════════════════════════
+#define BIO_EDGE_CONTRAST 2.00   // the SHADOW half reads by LUMA, so it carries the floor
+#define BIO_EDGE_LIT_MIN  1.40   // the HIGHLIGHT reads by CHROMA - luma understates it
+#define BIO_EDGE_CHROMA   1.55   // the lit tone's chroma gain (free on a pale fill)
+#define BIO_EDGE_TOPUP    0.35   // one push until the two halves separate from each other
+#define BIO_EDGE_STEP_N   4
+#define BIO_EDGE_MEMO_N   16
+
+double BIO_EDGE_STEP[BIO_EDGE_STEP_N] = {0.20, 0.32, 0.46, 0.60};
+
+//--- one per-channel mix: `t` 0 = a, 1 = b. The owner of the arithmetic both bevel
+//--- tones (and any future tone) go through, in the palette's BGR packing.
+color BioMixColor(const color a,const color b,const double t)
+{
+   int k  = (int)MathRound(MathMax(0.0, MathMin(1.0, t)) * 100.0);
+   int ar = (int)a & 0xFF, ag = ((int)a >> 8) & 0xFF, ab = ((int)a >> 16) & 0xFF;
+   int br = (int)b & 0xFF, bg = ((int)b >> 8) & 0xFF, bb = ((int)b >> 16) & 0xFF;
+   int r  = (ar * (100 - k) + br * k) / 100;
+   int g  = (ag * (100 - k) + bg * k) / 100;
+   int bl = (ab * (100 - k) + bb * k) / 100;
+   return (color)(r | (g << 8) | (bl << 16));
+}
+
+//--- the same colour further from its own grey. Chroma is the one axis a pale
+//--- surface cannot take away, so the LIT tone starts here (P-UI-131g).
+color BioChroma(const color c,const double k)
+{
+   int r = (int)c & 0xFF, g = ((int)c >> 8) & 0xFF, b = ((int)c >> 16) & 0xFF;
+   double m = (r + g + b) / 3.0;
+   int rr = (int)MathRound(m + (r - m) * k);
+   int gg = (int)MathRound(m + (g - m) * k);
+   int bb = (int)MathRound(m + (b - m) * k);
+   return (color)(MathMax(0,MathMin(255,rr)) | (MathMax(0,MathMin(255,gg)) << 8) |
+                  (MathMax(0,MathMin(255,bb)) << 16));
+}
+
+//--- the tone of this edge toward `target`: the CHROMA one if it already reads, else
+//--- the WEAKEST step that does, else the strongest of the lot. Walking toward white
+//--- moves TOWARD a pale surface rather than away from it, so "first step that fails"
+//--- must never mean "keep walking": the best tone is what is kept (P-UI-131g).
+color BioEdgeTone(const color base,const color under,const color target,const double floorC)
+{
+   color c = BioChroma(base, BIO_EDGE_CHROMA);
+   color best = c;
+   double bestC = BioContrast(c, under);
+   if(bestC >= floorC) return c;
+   for(int i = 0; i < BIO_EDGE_STEP_N; i++)
+   {
+      color t = BioMixColor(c, target, BIO_EDGE_STEP[i]);
+      double ct = BioContrast(t, under);
+      if(ct >= floorC) return t;
+      if(ct > bestC) { bestC = ct; best = t; }
+   }
+   return best;
+}
+
+//--- the two tones of one zone edge: LIT for `_B_Top`/`_B_Left`, SHADED for `_B_Bottom`.
+//--- Memoised on (base, under) — the ladder runs once per colour PAIR, not once per zone
+//--- per render; a hit is one key compare. `under` is the band when there is one and the
+//--- chart's background otherwise, which is exactly what the line lies on.
+void BioZoneEdgeTones(const color base,const color under,color &lit,color &shade)
+{
+   static int   s_key[BIO_EDGE_MEMO_N];
+   static bool  s_used[BIO_EDGE_MEMO_N];
+   static color s_lit[BIO_EDGE_MEMO_N], s_shade[BIO_EDGE_MEMO_N];
+   int k = (int)base * 31 + (int)under;
+   int slot = (int)MathAbs(k % BIO_EDGE_MEMO_N);
+   for(int i = 0; i < BIO_EDGE_MEMO_N; i++)
+   {
+      int j = (slot + i) % BIO_EDGE_MEMO_N;
+      if(!s_used[j]) { slot = j; break; }
+      if(s_key[j] == k) { lit = s_lit[j]; shade = s_shade[j]; return; }
+   }
+   lit   = BioEdgeTone(base, under, clrWhite, BIO_EDGE_LIT_MIN);
+   shade = BioEdgeTone(base, under, clrBlack, BIO_EDGE_CONTRAST);
+   // The halves must also separate from EACH OTHER — that is the bevel — pushed into the
+   // side the surface leaves free: above a BRIGHT surface the shadow, below a DARK one
+   // the light, so light-from-the-top-left holds on a light chart and a dark one alike.
+   bool pushShade = (BioLum(under) >= 0.5);
+   for(int i = 0; i < BIO_EDGE_STEP_N && BioContrast(lit, shade) < BIO_SWATCH_MIN_CONTRAST; i++)
+   {
+      if(pushShade) shade = BioMixColor(shade, clrBlack, BIO_EDGE_TOPUP);
+      else          lit   = BioMixColor(lit,   clrWhite, BIO_EDGE_TOPUP);
+   }
+   s_key[slot] = k; s_used[slot] = true; s_lit[slot] = lit; s_shade[slot] = shade;
 }
 
 #endif // CONSTANTS_AND_ENUMS_MQH

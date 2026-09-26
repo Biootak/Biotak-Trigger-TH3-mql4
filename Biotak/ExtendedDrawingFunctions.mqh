@@ -230,7 +230,7 @@ bool CreateFactorMidZone(const string zoneName,
     double halfHeight = (upperPrice - lowerPrice) / 2.0;
     
     // Create zone using unified system
-    SZoneCreationRequest request;
+    SZoneCreationRequest request = ZoneRequestNew();   // P-UI-131h
     request.name = zoneName;
     request.topPrice = upperPrice;
     request.bottomPrice = lowerPrice;
@@ -239,6 +239,11 @@ bool CreateFactorMidZone(const string zoneName,
     // P-UI-63: the edge fades on its own - the Factor bands answer to the same two rows
     // the mid zones do (the card is titled "MID ZONES", the bands are the same family).
     request.borderTransparency = inpMidZoneBorderTransparency;
+    // P-UI-131h: the Factor bands answer to the same two half-surfaces the mid zones do.
+    request.borderTopColor = inpZoneEdgeTopColor;
+    request.borderBottomColor = inpZoneEdgeBottomColor;
+    request.borderTopTransparency = inpZoneEdgeTopTransparency;
+    request.borderBottomTransparency = inpZoneEdgeBottomTransparency;
     // P-UI-62: the band and its edge are independent halves of the picture.
     request.filled  = (zoneStyle != FACTOR_ZONE_BOX_EMPTY);
     request.outline = (zoneStyle != FACTOR_ZONE_BOX_FILLED);

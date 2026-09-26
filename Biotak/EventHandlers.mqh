@@ -304,7 +304,7 @@ int OnInitHandler() {
     // Restore ATR labels visibility (Default to OFF on first load)
     g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + chartIdStr, false);
 
-    // Restore TH labels mode (Default to OFF on first load: 0=OFF, 1=FRACTAL, 2=STANDARD, 3=BOTH)
+    // Restore TH labels mode (Default OFF: 0=OFF, 1=FRACTAL, 2=STANDARD exclusive)
     string thLabelsGvarName = "Biotak_THLabels_" + chartIdStr;
     if(GlobalVariableCheck(thLabelsGvarName)) {
         double gvarValue = GlobalVariableGet(thLabelsGvarName);
@@ -314,6 +314,7 @@ int OnInitHandler() {
         bool isThree = MathAbs(gvarValue - 3.0) < EPSILON_GENERAL;
         if(isZero || isOne || isTwo || isThree) {
             g_thLabelsMode = (int)gvarValue;
+            if(g_thLabelsMode == 3) g_thLabelsMode = 2; // legacy BOTH -> STANDARD
             SyncTHFlagsFromMode();   // flags follow the restored mode
         } else {
             _LOG_GATE_E Print("[E][GEN] OnInit: Corrupted TH labels state (", DoubleToString(gvarValue, 10), "), resetting");
@@ -322,10 +323,9 @@ int OnInitHandler() {
             g_thLabelsVisible = false;
         }
     } else {
-        // First attach: honor the Inputs-dialog TH flags (master ON → FRACTAL
-        // when no specific flag is set) instead of forcing OFF.
+        // First attach: honor the Inputs-dialog TH flags, default ON is STANDARD.
         g_thLabelsMode = THModeFromFlags();
-        if(g_showTHLabels && g_thLabelsMode == 0) g_thLabelsMode = 1;
+        if(g_showTHLabels && g_thLabelsMode == 0) g_thLabelsMode = 2;
         SyncTHFlagsFromMode();
     }
 
@@ -370,6 +370,14 @@ int OnInitHandler() {
 
     ChartSetInteger(0, CHART_EVENT_OBJECT_DELETE, true);
     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, true);
+    // P-UI-127 (2026-09-25): THE CREATE CHANNEL IS SUBSCRIBED AT LAST. MT4 sends
+    // no CHARTEVENT_OBJECT_CREATE until this flag is set, and the handler's whole
+    // `if(id == CHARTEVENT_OBJECT_CREATE)` branch (P-UI-100b's "this gesture is a
+    // DRAW, not a grab" and P-DRAW-01's `DrawStyleApplyOnCreate`) had therefore
+    // never run in any build: `s_drawNotGrab`'s only writer is unreachable without
+    // it. The branch's own cost is one prefix test per foreign create, which is
+    // exactly what the flag limits it to — our own objects never reach it.
+    ChartSetInteger(0, CHART_EVENT_OBJECT_CREATE, true);
     ChartSetInteger(0, CHART_SHOW_GRID, false);
     // 250 ms cadence (not 1 s): hold-to-open polling + hint pumps stay
     // responsive on tick-less charts (weekends). Every OnTimer callee is
@@ -2516,8 +2524,8 @@ void RedrawAllObjects(bool force_redraw=false)
 
         TH3_PROF_START(Labels);
         if(g_atrLabelsVisible) DisplayATRLabels(objectPrefix);
-        bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
-        bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
+        bool showFractal = (g_thLabelsMode == 1);
+        bool showStandard = (g_thLabelsMode == 2);
         if(g_thLabelsMode != 0 && showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(g_thLabelsMode != 0 && showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         // P-UI-84: UNGATED. The trade card owns its master switch and self-wipes
@@ -4501,16 +4509,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             string thGvar = "Biotak_THLabels_" + GetCachedChartIdStr();
             
-            // Cycle: FRACTAL (1) -> BOTH (3) [if enabled] -> OFF (0)
-            if(g_thLabelsMode == 1) {
-                if(inpShowStandardTHs) g_thLabelsMode = 3;
-                else g_thLabelsMode = 0;
-            }
-            else if(g_thLabelsMode == 3) {
+            // Cycle exclusive: ON -> OFF (remembers), OFF -> remembered ON (default STANDARD).
+            if(g_thLabelsMode != 0) {
                 g_thLabelsMode = 0;
             }
             else {
-                g_thLabelsMode = 1;
+                g_thLabelsMode = g_thLastOnMode;
+                if(g_thLabelsMode == 0) g_thLabelsMode = 2;
             }
 
             g_thLabelsVisible = (g_thLabelsMode != 0);
@@ -4522,9 +4527,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             SetTHLabelsVisibility(objectPrefix, g_thLabelsMode);
             g_labelsRelayoutNeeded = true;
             RedrawLabelsOnly();
-            string logMsg = "TH Labels mode=" + IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL";
-            if(inpShowStandardTHs) logMsg += ",3=BOTH";
-            logMsg += ")";
+            string logMsg = "TH Labels mode=" + IntegerToString(g_thLabelsMode) + " (0=OFF,1=FRACTAL,2=STANDARD)";
             LOG_I(LOG_CAT_LABELS, logMsg);
             ThrottledChartRedraw();
             return;
@@ -4656,7 +4659,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             g_countdownFontSize = (int)FactoryDefault(FF_COUNTDOWN_SIZE);
             g_countdownGapPx = (int)FactoryDefault(FF_COUNTDOWN_GAP);
             RefreshLiveCountdown();
-            g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 1 : 0; // Default to FRACTAL if enabled
+            g_thLabelsMode = (FactoryDefault(FF_SHOW_TH_LABELS) > 0.5) ? 2 : 0; // Default STANDARD if enabled
             g_thLabelsVisible = (g_thLabelsMode != 0);
             // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
 #ifndef BUILD_LITE
@@ -6012,8 +6015,8 @@ void RedrawLabelsOnly() {
     }
     p49atr = GetTickCount() - p49t; p49t = GetTickCount();
 
-    bool showFractal = (g_thLabelsMode == 1 || g_thLabelsMode == 3);
-    bool showStandard = (g_thLabelsMode == 2 || g_thLabelsMode == 3);
+    bool showFractal = (g_thLabelsMode == 1);
+    bool showStandard = (g_thLabelsMode == 2);
     if(g_thLabelsMode != 0 && g_dailyClosePriceForTH != EMPTY_VALUE && g_dailyClosePriceForTH > 0.0) {
         if(showFractal)  DisplayFractalTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);
         if(showStandard) DisplayStandardTHs(objectPrefix, g_dailyClosePriceForTH, currentTime);

@@ -67,11 +67,11 @@ Biotak/                       ALL product logic, layered bottom-up
   GlobalVariables.mqh           indicator-wide state
   TradePlanFormulas.mqh         trade-plan math — nothing else may compute it
   TH3/                          the course module: pivots, skeleton, step, render
-Files/Icons/                  283 runtime BMPs, embedded via #resource
+Files/Icons/                  308 runtime BMPs, embedded via #resource
 Libraries/                    BiotakRCBlock.dll (deployed to MQL4/Libraries)
 tests/                        7 harnesses (contract + golden + type scale) — compiled by the gate
 tools/                        the live pipeline: deploy, icon gen, submenu check
-  orb/                        bow-medallion art tools + their .bgra masters
+  orb/                        orb art tools (bow, word, hover-chip face) + masters
   rc-bridge/                  RC blocker sources + the scripts that build them
   research/                   12 one-off .js studies (answered; not needed to build)
 docs/                         history.md + pivot_arrangement_atlas.html + media/
@@ -209,9 +209,11 @@ plausible default.
   delivery gate). Read it before touching a drawn surface. A surface that fails a
   line there is a bug even if it looks fine — and the fix moves the rule to its
   owner, never to a second copy.
-- **ONE PALETTE.** `BioPal()` (`ConstantsAndEnums.mqh`, first 8 = the panel quick
-  row) is the single owner; `QuickPalColor` and `DrawStripPal` are faces. Never
-  add a second palette, never a panel-specific colour table.
+- **ONE PALETTE, AND IT IS THE USER'S OWN 64 (P-DRAW-46).** `BioPickColor(r,c)` /
+  `BioPickAt(i)` over `BIOPICK_COLS/ROWS` 8 x 8 (`ConstantsAndEnums.mqh`) is the
+  single owner — the user's own palette chart. `BioPal(i)` is its FIRST ROW (the
+  panel quick row) and `QuickPalColor`, `DrawStripPickPal`, `PalPickColor` are
+  faces. Never add a second palette, never a panel-specific colour table.
 - **REALTIME is the same event.** A follower writes in the event that moved its
   owner; no follow channels, no timers for follow, and the drag frames are exempt
   from event deferral (`!g_s1DragLive`, `!g_customPriceLineDragging`) because a
@@ -229,6 +231,14 @@ plausible default.
   `ChartScrollReconcile` rebuilds the lock from ownership intent, so an unlisted
   owner has its lock read as a leak and force-released inside the first quarter
   second.
+- **THE HOVER CHIP DOES NOT TURN** (P-UI-126). It opens ABOVE the orb while the whole
+  box fits in the window, otherwise at its OWN PLACE — the hand's (a drag, pinned mode
+  only) or the chart's middle, and `-1` means "never placed", a state and not a reset.
+  No rotated or mirrored face may come back: MT4 crops a bitmap label and turns none,
+  so a rotated face is sideways calligraphy, which is the defect a screenshot named.
+  The mode is one switch (`g_UI.tipPin`, the Hover Chip card): OFF = hover only (the
+  default), ON = always up at its place — one compare per tick, a write only when the
+  box really moved, and the drag states its own bound (two writes per real move).
 - **The settings panel is its own surface** (P-DRAW-30/32), on the cards' own
   arithmetic: one column is 312, two columns 624, split at > 10 rows, and its
   plate height reads `48 + 42k` **on its own**. The strip stays the compact quick

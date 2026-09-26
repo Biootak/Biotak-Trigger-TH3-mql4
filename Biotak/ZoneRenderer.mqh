@@ -194,7 +194,7 @@ void RenderZones(const SZoneRenderInfo &zones[])
         //            Zone Factory (    DRY)
         //                                                            
         
-        SZoneCreationRequest request;
+        SZoneCreationRequest request = ZoneRequestNew();   // P-UI-131h: AUTO edge halves
         request.name = zones[i].name;
         request.topPrice = zones[i].topPrice;
         request.bottomPrice = zones[i].bottomPrice;
