@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Biotak TH3 — tools palette · LIVE prototype (full parity)</title>
+<style>
+  /* ══ tokens: Biotak/ConstantsAndEnums.mqh (BIO_CLR_*) + DrawStrip.mqh metrics ══ */
+  :root{
+    --ink:#F3F6FB; --muted:#8C96A6; --label:#CBD4E2;
+    --accent:#FFC247; --accent2:#FF8A00; --inkA:#1A1206;
+    --hair:#222832; --card:#1D222C; --panel:23,28,37; --glassA:.94; --rad:12px;
+    --chartBg:#0A0D12; --candleUp:#12B886; --candleDn:#F0455F;
+    --W:312px; --PAD:16px; --HEAD:52px; --ROW:42px; --FOOT:44px;
+    --blue:#4C8DFF; --green:#12B886; --red:#F0455F;
+  }
+  html.light{
+    --ink:#101722; --muted:#5C6779; --label:#39434F; --hair:#DCE2EA; --card:#F2F4F8;
+    --chartBg:#F7F9FC; --candleUp:#0E9B71; --candleDn:#D9304C; --panel:255,255,255; --glassA:.95;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;background:var(--chartBg);color:var(--ink);overflow:hidden;
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif}
+  button,input,select{font:inherit;color:inherit}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .glass{background:rgba(var(--panel),var(--glassA))}
+
+  /* ══ the icon language: our 22px chip + its 24-grid stroke glyph, in the
+        product's own faces (muted off, the accent's light stop on) ══ */
+  .ic{width:13px;height:13px;display:block;color:var(--muted);transition:color .12s}
+  .chip{width:22px;height:22px;flex:0 0 auto;border-radius:7px;display:grid;place-items:center;
+    background:rgba(255,255,255,.055);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+  html.light .chip{background:rgba(0,0,0,.045);box-shadow:inset 0 0 0 1px rgba(0,0,0,.08)}
+  .chip.on{background:rgba(255,171,0,.12);box-shadow:inset 0 0 0 1px rgba(255,171,0,.38)}
+  .chip.on .ic{color:var(--accent)}
+  .chip .ic{width:14px;height:14px}
+  .lg{font-size:14px;line-height:1}
+  .ico20 .ic,.railbtn .ic{width:19px;height:19px}
+  .railbtn.on .ic{color:var(--accent)}
+  .flyout .frow:hover .chip .ic,.flyout .frow.on .chip .ic{color:var(--accent)}
+  .flyout .frow:hover .chip,.flyout .frow.on .chip{background:rgba(255,171,0,.12);box-shadow:inset 0 0 0 1px rgba(255,171,0,.38)}
+  .ribbon .rb .chip{background:transparent;box-shadow:none;width:22px;height:22px}
+  .ribbon .rb .ic{width:15px;height:15px}
+  #strip .scell .ic{width:15px;height:15px}
+  #strip .scell:hover .ic{color:var(--ink)}
+  #strip .scell.on .ic{color:var(--accent)}
+  .tabs .tab{gap:5px}
+  .coord .cn .ic,.vgrid b .ic{width:12px;height:12px}
+
+  .top{display:flex;align-items:center;gap:8px;padding:8px 12px;height:46px;border-bottom:1px solid var(--hair)}
+  .top h1{font-size:13px;margin:0;font-weight:700;white-space:nowrap}
+  .tag{font-size:10px;color:var(--muted);white-space:nowrap}
+  .spacer{flex:1}
+  .tbtn{height:25px;padding:0 10px;border-radius:8px;border:0;cursor:pointer;font-size:11.5px;white-space:nowrap;
+    background:rgba(127,127,127,.14);box-shadow:inset 0 0 0 1px rgba(127,127,127,.22)}
+  .tbtn:hover{background:rgba(127,127,127,.24)}
+  .tbtn.on{background:linear-gradient(180deg,var(--accent),var(--accent2));color:var(--inkA);font-weight:700}
+  .tfset{display:flex;gap:1px;background:rgba(0,0,0,.3);border-radius:8px;padding:2px;
+    box-shadow:inset 0 0 0 1px rgba(127,127,127,.2)}
+  html.light .tfset{background:rgba(0,0,0,.06)}
+  .tfset b{height:21px;min-width:26px;border-radius:6px;display:grid;place-items:center;font-size:10.5px;
+    font-weight:500;color:var(--muted);cursor:pointer}
+  .tfset b:hover{color:var(--ink)}
+  .tfset b.on{background:linear-gradient(180deg,var(--accent),var(--accent2));color:var(--inkA);font-weight:700}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--green)}
+  .dot.dirty{background:var(--accent)}
+
+  .stage{position:relative;height:calc(100% - 46px);overflow:hidden;touch-action:none}
+  #draw{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+
+  /* ── the docked rail + flyout (Part 30 · 31) ─────────────────────── */
+  .rail{position:absolute;left:0;top:0;bottom:0;width:46px;z-index:6;display:flex;flex-direction:column;
+    align-items:center;gap:3px;padding:6px 0;overflow:hidden;box-shadow:inset -1px 0 0 rgba(127,127,127,.2)}
+  .rail.right{left:auto;right:0;box-shadow:inset 1px 0 0 rgba(127,127,127,.2)}
+  .rail .chev{width:30px;height:22px;border-radius:6px;display:grid;place-items:center;cursor:pointer;
+    color:var(--muted);font-size:12px}
+  .rail .chev:hover{color:var(--accent);background:rgba(127,127,127,.16)}
+  .railbtn{width:34px;height:31px;border-radius:9px;display:grid;place-items:center;cursor:pointer;
+    color:var(--label);font-size:16px;box-shadow:inset 0 0 0 1px rgba(127,127,127,.13)}
+  .railbtn:hover{background:rgba(127,127,127,.18)}
+  .railbtn.on{background:rgba(255,194,71,.18);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(255,194,71,.42)}
+  .rail.folded{width:14px}
+  .rail.folded .railbtn,.rail.folded .chev{display:none}
+  .flyout{position:absolute;z-index:8;width:252px;border-radius:12px;padding:8px 0 6px;display:none;
+    box-shadow:0 20px 44px -14px rgba(0,0,0,.72),inset 0 0 0 1px rgba(255,255,255,.07)}
+  .flyout .fh{padding:3px 12px 8px;font-size:10px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  .frow{display:flex;align-items:center;gap:9px;height:29px;padding:0 8px 0 12px;cursor:pointer;
+    font-size:11.5px;color:var(--label)}
+  .frow .g{width:16px;text-align:center;font-size:14px}
+  .frow .k{margin-left:auto;font-size:9.5px;color:var(--muted)}
+  .frow .pin{width:20px;height:20px;border-radius:6px;display:grid;place-items:center;font-size:11px;
+    color:var(--muted);opacity:.45}
+  .frow .pin:hover{background:rgba(127,127,127,.22);color:var(--ink);opacity:1}
+  .frow .pin.on{color:var(--accent);opacity:1;background:rgba(255,194,71,.14)}
+  .frow:hover{background:rgba(255,194,71,.12);color:var(--accent)}
+  .frow.on{background:rgba(255,194,71,.18);color:var(--accent);font-weight:600}
+
+  /* ── the pinned-tools ribbon (Part 39) ───────────────────────────── */
+  .ribbon{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:6;display:flex;gap:2px;
+    padding:4px;border-radius:11px;overflow:hidden;
+    box-shadow:0 12px 28px -12px rgba(0,0,0,.6),inset 0 0 0 1px rgba(127,127,127,.18)}
+  .ribbon .rb{width:28px;height:26px;flex:0 0 auto;border-radius:8px;display:grid;place-items:center;cursor:pointer;
+    color:var(--label);font-size:14px}
+  .ribbon .rb:hover{background:rgba(127,127,127,.2);color:var(--accent)}
+  .ribbon .rb.on{background:rgba(255,194,71,.2);color:var(--accent)}
+  .ribbon .rsep{width:1px;height:18px;flex:0 0 auto;background:rgba(127,127,127,.3);margin:4px 3px}
+  .ribbon .rmore{width:22px;height:26px;flex:0 0 auto;border-radius:8px;display:grid;place-items:center;
+    cursor:pointer;color:var(--muted);font-size:12px}
+  .ribbon .rgrip{width:7px;height:26px;flex:0 0 auto;border-radius:4px;cursor:ew-resize;color:var(--muted);
+    display:grid;place-items:center;font-size:9px}
+  .ribpop{position:absolute;z-index:9;display:none;padding:6px;border-radius:10px;max-width:300px;flex-wrap:wrap;gap:2px;
+    box-shadow:0 18px 40px -14px rgba(0,0,0,.75),inset 0 0 0 1px rgba(255,255,255,.07)}
+
+  /* ── the per-drawing properties bar ──────────────────────────────── */
+  #strip{position:absolute;z-index:5;display:none;align-items:center;gap:4px;padding:5px;border-radius:12px;
+    box-shadow:0 16px 34px -12px rgba(0,0,0,.65), inset 0 0 0 1px rgba(255,255,255,.07)}
+  .scell{height:30px;min-width:30px;padding:0 7px;border-radius:9px;display:grid;place-items:center;
+    cursor:pointer;color:var(--muted);font-size:11px;white-space:nowrap}
+  .scell:hover{background:rgba(127,127,127,.18);color:var(--ink)}
+  .scell.on{background:rgba(255,194,71,.16);color:var(--accent);box-shadow:inset 0 0 0 1px rgba(255,194,71,.34)}
+  .gripcell{cursor:grab;letter-spacing:2px}
+  .swcell{width:24px;height:24px;border-radius:6px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)}
+  .xcell{color:var(--candleDn)}
+  .bar{width:16px;border-radius:2px;background:currentColor}
+  .ln{width:18px;height:0;border-top:2px solid currentColor}
+
+  /* ── the tabbed settings window (Part 38 · 40) ───────────────────── */
+  #panel{position:absolute;z-index:7;width:var(--W);display:none;border-radius:var(--rad);overflow:hidden;
+    box-shadow:0 22px 48px -14px rgba(0,0,0,.72), inset 0 1px 0 rgba(255,255,255,.07),
+      inset 0 0 0 1px rgba(255,255,255,.06)}
+  #panel.slice{--rad:10px}
+  .ph2{height:var(--HEAD);display:flex;align-items:center;gap:11px;padding:0 14px;cursor:grab;
+    border-bottom:1px solid rgba(127,127,127,.16)}
+  .pic{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:var(--accent);
+    background:rgba(255,194,71,.12);box-shadow:inset 0 0 0 1px rgba(255,194,71,.3);font-size:14px}
+  .ptitle{font-size:12.5px;font-weight:700}
+  .psub{font-size:8.5px;letter-spacing:.14em;color:var(--muted);margin-top:2px;text-transform:uppercase}
+  .px{margin-left:auto;width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+    color:var(--muted);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(127,127,127,.22);flex:0 0 auto}
+  .px:hover{color:var(--candleDn)}
+  .tabs{display:flex;gap:3px;padding:8px 12px 0}
+  .tab{flex:1;height:29px;border-radius:9px;display:grid;place-items:center;cursor:pointer;font-size:11px;
+    color:var(--muted);box-shadow:inset 0 0 0 1px rgba(127,127,127,.16)}
+  .tab:hover{color:var(--label)}
+  .tab.on{color:var(--inkA);font-weight:700;background:linear-gradient(180deg,var(--accent),var(--accent2));
+    box-shadow:0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4)}
+  .body{max-height:346px;overflow:auto;padding-top:4px}
+  .row{min-height:var(--ROW);display:flex;align-items:center;gap:9px;padding:4px 14px;
+    border-bottom:1px solid rgba(127,127,127,.09)}
+  .lbl{font-size:11.5px;color:var(--label);white-space:nowrap}
+  .hint{font-size:10px;color:var(--muted)}
+  .val{margin-left:auto;font-size:10.5px;color:var(--muted)}
+  .seg{margin-left:auto;display:flex;background:rgba(0,0,0,.26);border-radius:9px;padding:2px;
+    box-shadow:inset 0 0 0 1px rgba(127,127,127,.18)}
+  html.light .seg{background:rgba(0,0,0,.06)}
+  .seg b{flex:0 0 auto;height:25px;min-width:32px;padding:0 8px;border-radius:7px;display:grid;place-items:center;
+    font-size:11px;font-weight:500;color:var(--muted);cursor:pointer}
+  .seg b:hover{color:var(--label)}
+  .seg b.on{background:linear-gradient(180deg,var(--accent),var(--accent2));color:var(--inkA);font-weight:700;
+    box-shadow:0 1px 2px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.4)}
+  .field{flex:1;height:30px;border-radius:9px;background:rgba(0,0,0,.3);padding:0 9px;display:flex;align-items:center;
+    box-shadow:inset 0 0 0 1px rgba(127,127,127,.2)}
+  html.light .field{background:#fff}
+  .field input{flex:1;width:100%;border:0;background:transparent;outline:none;font-size:11.5px;color:var(--ink);
+    font-family:ui-monospace,Menlo,Consolas,monospace}
+  .field:focus-within{box-shadow:inset 0 0 0 1px rgba(255,194,71,.6),0 0 0 3px rgba(255,194,71,.14)}
+  .swatch{width:22px;height:22px;flex:0 0 auto;border-radius:6px;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.24)}
+  .switch{margin-left:auto;width:36px;height:20px;border-radius:10px;cursor:pointer;position:relative;
+    background:rgba(127,127,127,.28);box-shadow:inset 0 0 0 1px rgba(127,127,127,.2);flex:0 0 auto}
+  .switch i{position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#7E8898;
+    transition:left .15s,background .15s}
+  .switch.on{background:rgba(255,194,71,.34)} .switch.on i{left:18px;background:var(--accent)}
+  .foot{height:var(--FOOT);display:flex;align-items:center;gap:8px;padding:0 14px;background:rgba(0,0,0,.24);
+    border-top:1px solid rgba(127,127,127,.14)}
+  .pill{height:26px;border-radius:9px;padding:0 11px;display:flex;align-items:center;cursor:pointer;font-size:11px;
+    color:var(--label);background:rgba(127,127,127,.14);box-shadow:inset 0 0 0 1px rgba(127,127,127,.2)}
+  .pill:hover{background:rgba(127,127,127,.22)}
+  .pill.on{color:var(--accent);background:rgba(255,194,71,.16);box-shadow:inset 0 0 0 1px rgba(255,194,71,.38)}
+  .pill.pri{margin-left:auto;color:var(--inkA);font-weight:700;background:linear-gradient(180deg,var(--accent),var(--accent2))}
+  .lv{display:flex;align-items:center;gap:8px;min-height:34px;padding:2px 14px;border-bottom:1px solid rgba(127,127,127,.08)}
+  .lv input{border:0;background:transparent;outline:none;font-size:11.5px;color:var(--ink);width:82px;
+    font-family:ui-monospace,Menlo,Consolas,monospace}
+  .tplrow{display:flex;align-items:center;gap:8px;padding:6px 14px;border-bottom:1px solid rgba(127,127,127,.08)}
+  .vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:4px 14px 10px}
+  .vgrid b{height:28px;border-radius:8px;display:grid;place-items:center;cursor:pointer;font-size:11px;
+    color:var(--muted);background:rgba(0,0,0,.24);box-shadow:inset 0 0 0 1px rgba(127,127,127,.18)}
+  .vgrid b.on{color:var(--inkA);font-weight:700;background:linear-gradient(180deg,var(--accent),var(--accent2))}
+  .coord{display:flex;align-items:center;gap:6px;padding:5px 14px;border-bottom:1px solid rgba(127,127,127,.08)}
+  .coord .cn{width:52px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+
+  /* ── colour picker + opacity (Part 34/37) ────────────────────────── */
+  #pop{position:absolute;z-index:9;display:none;width:268px;border-radius:12px;padding:11px;
+    box-shadow:0 20px 44px -14px rgba(0,0,0,.75),inset 0 0 0 1px rgba(255,255,255,.07)}
+  #pop .ttl{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0}
+  #pop .ph{display:flex;align-items:center;gap:8px;padding:0 0 8px;margin:-3px 0 9px;cursor:grab;
+    border-bottom:1px solid rgba(127,127,127,.14)}
+  #pop .ph .dg{color:var(--muted);display:grid;place-items:center}
+  #pop .ph .px{width:22px;height:22px;border-radius:7px}
+  #pop .ph .px:hover{color:var(--accent)}
+  #pop .ph .px.on{color:var(--accent);background:rgba(255,194,71,.14)}
+  #pop.floating{border-radius:12px;padding-top:9px}
+  .hexrow{display:flex;align-items:center;gap:8px;margin-top:9px}
+  .hexrow .rt{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .hexrow .field{height:26px}
+  .dragging{cursor:grabbing}
+  .dragging .ph{cursor:grabbing}
+  #popTarget{margin:0 0 9px;justify-content:space-between}
+  #popTarget b{flex:1;min-width:0}
+  .grid48{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+  .grid48 i{aspect-ratio:1;border-radius:6px;cursor:pointer;display:block;box-shadow:inset 0 0 0 1px rgba(127,127,127,.3)}
+  .grid48 i:hover{box-shadow:0 0 0 2px var(--accent)}
+  .grid48 i.on{box-shadow:0 0 0 2px var(--accent),0 0 0 4px rgba(255,194,71,.18)}
+  .rectt{display:flex;align-items:center;gap:6px;margin-top:9px}
+  .rectt .rt{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .rectt i{width:17px;height:17px;border-radius:5px;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(127,127,127,.3)}
+  .opwrap{margin-top:10px;display:flex;align-items:center;gap:8px}
+  .opwrap .ol{font-size:10.5px;color:var(--muted);width:52px}
+  .opwrap input{flex:1;accent-color:var(--accent);height:4px}
+  .opwrap .ov{font-size:10.5px;color:var(--ink);width:34px;text-align:right}
+
+  .mbox{position:absolute;z-index:5;display:none;padding:8px 10px;border-radius:10px;font-size:10.5px;
+    line-height:1.55;color:var(--label);background:rgba(var(--panel),.96);pointer-events:none;min-width:166px;
+    box-shadow:0 12px 28px -12px rgba(0,0,0,.72),inset 0 0 0 1px rgba(127,127,127,.22)}
+  .mbox b{color:var(--ink);font-weight:600}
+  .mbox .dt{color:var(--accent)}
+  #inline{position:absolute;z-index:10;display:none;border:0;outline:none;border-radius:6px;padding:2px 6px;
+    background:rgba(10,13,18,.86);color:var(--ink);font-size:12px;font-weight:600;
+    box-shadow:0 0 0 1px var(--accent),0 0 0 4px rgba(255,194,71,.18)}
+
+  /* ── status / instruction strip (the reference's own two strings) ── */
+  .sbar{position:absolute;left:56px;bottom:44px;z-index:5;display:flex;gap:14px;align-items:center;
+    padding:6px 12px;border-radius:10px;font-size:10.5px;color:var(--muted);
+    background:rgba(var(--panel),.9);box-shadow:inset 0 0 0 1px rgba(127,127,127,.18);pointer-events:none}
+  .sbar b{color:var(--label);font-weight:600}
+  .sbar .lock{color:var(--blue)}
+
+  .hud{position:absolute;right:12px;bottom:96px;z-index:4;width:292px;max-height:250px;overflow:auto;padding:10px 12px;border-radius:12px;
+    background:rgba(var(--panel),.92);font-size:11px;
+    box-shadow:0 14px 32px -14px rgba(0,0,0,.6),inset 0 0 0 1px rgba(127,127,127,.18)}
+  .hud h3{margin:0 0 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .hud .kv{display:flex;gap:8px;margin:3px 0}
+  .hud .kv b{color:var(--label);font-weight:600;min-width:80px}
+  .hud .kv span{color:var(--ink);font-family:ui-monospace,Menlo,monospace;font-size:10.5px}
+  .hud ol{margin:6px 0 0;padding-left:16px;color:var(--muted);max-height:126px;overflow:auto}
+  .hud li{cursor:pointer;padding:1px 0}
+  .hud li:hover,.hud li.on{color:var(--accent)}
+  .hud .note{margin-top:7px;color:var(--muted);font-size:10px;line-height:1.5}
+
+  #orb{position:absolute;right:22px;bottom:22px;width:50px;height:50px;border-radius:50%;z-index:8;
+    display:grid;place-items:center;cursor:pointer;font-size:19px;color:var(--inkA);
+    background:radial-gradient(circle at 35% 30%,#FFD37A,var(--accent) 55%,var(--accent2));
+    box-shadow:0 12px 26px -8px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.55)}
+  #ring{position:absolute;right:22px;bottom:22px;z-index:8;display:none}
+  .ritem{position:absolute;width:74px;height:28px;margin:-14px 0 0 -37px;border-radius:9px;display:grid;
+    place-items:center;font-size:10.5px;cursor:pointer;color:var(--label);
+    background:rgba(var(--panel),.94);box-shadow:0 8px 18px -8px rgba(0,0,0,.7),inset 0 0 0 1px rgba(127,127,127,.22)}
+  .ritem:hover{color:var(--accent)}
+  .ritem.on{color:var(--inkA);font-weight:700;background:linear-gradient(180deg,var(--accent),var(--accent2))}
+
+  /* ── icon-bearing rows: a flex row, so chip + label + trailing value sit
+        on one line after the originals' grid/place-items rules ── */
+  .tabs .tab,.coord,.vgrid b,.headic{display:flex;align-items:center;justify-content:center}
+  .tabs .tab{gap:5px}
+  .tab .ic,.vgrid b .ic{width:13px;height:13px}
+  .tab.on .ic,.vgrid b.on .ic{color:var(--inkA)}
+
+  /* ══ classic look: the pre-rebuild binary skin ══ */
+  .classic #panel,.classic #strip,.classic .flyout,.classic #pop,.classic .ribbon,.classic .rail,.classic .mbox{
+    border-radius:4px;box-shadow:inset 0 0 0 1px rgba(127,127,127,.34)}
+  .classic #panel,.classic #panel.slice{--rad:4px}
+  .classic .seg{border-radius:3px;padding:0;background:transparent;box-shadow:none}
+  .classic .seg b{border-radius:0;margin-left:-1px;background:var(--card);box-shadow:inset 0 0 0 1px rgba(127,127,127,.3)}
+  .classic .seg b.on{background:var(--accent);box-shadow:none}
+  .classic .switch,.classic .switch i{border-radius:2px}
+  .classic .pill,.classic .tab{background-color:var(--card)}
+  .classic .tab.on,.classic .pill.pri{background:var(--accent)}
+  .classic .railbtn,.classic .rb,.classic .frow,.classic .vgrid b{border-radius:3px}
+  .classic .frow .pin{border-radius:3px}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Biotak TH3 — tools palette · LIVE</h1>
+  <span class="tag mono" id="tState">state</span>
+  <span class="spacer"></span>
+  <span class="tfset" id="tfs"></span>
+  <button class="tbtn" id="tLayer">layer: above</button>
+  <button class="tbtn" id="tRibbon">ribbon</button>
+  <button class="tbtn on" id="tIcons">icons: biotak</button>
+  <button class="tbtn" id="tTheme">☾ theme</button>
+  <button class="tbtn" id="tClassic">classic look</button>
+  <span class="dot" id="tSave" title="session store"></span>
+  <button class="tbtn" id="tReset">reset</button>
+</div>
+
+<div class="stage" id="stage">
+  <svg id="draw"></svg>
+
+  <!-- Part 30/31: the docked rail and its flyout -->
+  <div class="rail glass" id="rail"></div>
+  <div class="flyout glass" id="flyout"></div>
+  <!-- Part 39: the pinned-tools ribbon (+ its overflow popover) -->
+  <div class="ribbon glass" id="ribbon"></div>
+  <div class="ribpop glass" id="ribpop"></div>
+  <!-- the live properties bar of the selected object -->
+  <div id="strip" class="glass"></div>
+  <!-- Part 38/40: the tabbed settings window -->
+  <div id="panel" class="glass"></div>
+  <!-- Part 34/37: the colour BOARD — its own surface, draggable, dockable -->
+  <div id="pop" class="glass">
+    <div class="ph" id="popHead"><span class="dg" id="popGrip"></span><span class="ttl" id="popTitle">Colour</span>
+      <span style="flex:1"></span><span class="px" id="popDock"></span><span class="px" id="popClose"></span></div>
+    <div class="seg" id="popTarget"></div>
+    <div class="grid48" id="popGrid"></div>
+    <div class="rectt"><span class="rt">recent</span><span id="popRecent" style="display:flex;gap:6px"></span></div>
+    <div class="hexrow"><span class="rt">hex</span>
+      <span class="field"><input id="popHex" spellcheck="false" placeholder="#FFC247"></span></div>
+    <div class="opwrap"><span class="ol">Opacity</span>
+      <input type="range" id="opRange" min="0" max="100" step="1">
+      <span class="ov" id="opVal">100%</span></div>
+  </div>
+
+  <div class="mbox" id="mbox"></div>
+  <input id="inline" spellcheck="false">
+  <div class="sbar" id="sbar"></div>
+
+  <div class="hud">
+    <h3>live state</h3>
+    <div class="kv"><b>tool armed</b><span id="hTool">—</span></div>
+    <div class="kv"><b>instruction</b><span id="hInstr">—</span></div>
+    <div class="kv"><b>selected</b><span id="hSel">—</span></div>
+    <div class="kv"><b>chart tf</b><span id="hTF">M1</span></div>
+    <div class="kv"><b>layer</b><span id="hLayer">above</span></div>
+    <div class="kv"><b>plate</b><span id="hPlate">0%</span></div>
+    <div class="kv"><b>objects</b><span id="hCount">0</span></div>
+    <ol id="hList"></ol>
+    <p class="note">Rail → hover an icon, click a tool, then the chart (rubber band on the second
+      point) · pin any row to the ribbon · drag an object or its handles · the bar edits it
+      (the ring cell is the BORDER colour, the swatch the FILL, AUTO = a tone of the fill) ·
+      ⚙ opens the tabbed window · swatch opens the picker + opacity · Crosshair: move, then
+      double-click to measure · <b>Esc</b> cancels · <b>Delete</b> removes.</p>
+  </div>
+
+  <div id="orb">◎</div>
+  <div id="ring"></div>
+</div>
+
+<script>
+"use strict";
+/* ═══ 1 · the roster — 32 tools in 7 categories (user order 2026-09-26) ═══════
+   Names come from the toolkit's published tool list; each row carries its
+   anchor count (pts) and, where a tool collects points until finished, grow.
+   RETIRED by the user's own order, in both the preview and the product:
+   regtrend · stddevtrend · the five patterns (elliott/abcd/xabcd/cypher/hs) ·
+   arc · curve · path · rotrect · brush · highlighter · eraser · fibfan ·
+   fibarc · fibtimes · arrow up/down/marker. The per-kind ART below (the icon
+   gallery and the geometry switches) is kept verbatim: it is the drawing
+   language, and nothing in the roster can arm a retired kind any more. */
+const F={wing:"Wingdings",wing3:"Wingdings 3",web:"Webdings",web2:"Webdings 2",sans:"Segoe UI Symbol"};
+/* ═══ 1b · ONE ICON LANGUAGE — the 57 glyphs of tools/glyphs.js VERBATIM
+   (24x24 grid, stroke 1.7, round caps/joins, single flat colour) plus the
+   drawing tools designed on that same grid, so the palette here and the
+   strip's baked gl_*.bmp are one family, not two. Faces are the product's
+   own: muted #8C96A6 off, the accent's light stop #FFC247 on. ══════════ */
+const GLYPH={
+ /* — verbatim from tools/glyphs.js — */
+ layers:'<path d="M12 3 3 7.5l9 4.5 9-4.5z"/><path d="M3 12.5 12 17l9-4.5"/><path d="M3 17 12 21.5 21 17"/>',
+ crosshair:'<circle cx="12" cy="12" r="7.5"/><path d="M12 1.5v3.5M12 19v3.5M1.5 12h3.5M19 12h3.5"/>',
+ gauge:'<path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-7"/><circle cx="12" cy="18" r="1.2" fill="currentColor" stroke="none"/>',
+ wave:'<path d="M2 14c2.5 0 2.5-6 5-6s2.5 6 5 6 2.5-6 5-6 2.5 6 5 6"/>',
+ candle:'<path d="M7 3.5v4M7 16.5v4M5 7.5h4v9H5z"/><path d="M17 5.5v3M17 17.5v3M15 8.5h4v9h-4z"/>',
+ line:'<path d="M3 17 21 7"/><circle cx="3" cy="17" r="1.4" fill="currentColor" stroke="none"/><circle cx="21" cy="7" r="1.4" fill="currentColor" stroke="none"/>',
+ pin:'<path d="M12 21.5s7-6.4 7-11.5a7 7 0 1 0-14 0c0 5.1 7 11.5 7 11.5z"/><circle cx="12" cy="10" r="2.4"/>',
+ ruler:'<path d="M3 15.5 8.5 10l5.5 5.5L8.5 21z"/><path d="M6 12.5 8 14.5M9 9.5l2 2"/>',
+ steps:'<path d="M3 20.5h4.5v-4.5H12V11.5h4.5V7H21"/>',
+ box:'<rect x="3.5" y="6" width="17" height="12" rx="2" stroke-dasharray="3.2 2.6"/>',
+ timer:'<circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.8v3.7l2.6 1.6M9.5 2.5h5"/>',
+ droplet:'<path d="M12 3s6 6.6 6 10.6a6 6 0 0 1-12 0C6 9.6 12 3 12 3z"/>',
+ textsize:'<path d="M2.5 19.5 7 5.5l4.5 14M4 15.5h6"/><path d="M15 19.5 18 11l3 8.5M16 17h4"/>',
+ gap:'<path d="M3.5 12h17M7 8.5 3.5 12 7 15.5M17 8.5l3.5 3.5-3.5 3.5"/>',
+ target:'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3"/>',
+ flag:'<path d="M6 21V4h11l-2 4 2 4H6"/>',
+ magnet:'<path d="M6 4v8a6 6 0 0 0 12 0V4h-4v8a2 2 0 0 1-4 0V4z"/>',
+ contrast:'<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor" stroke="none"/>',
+ weight:'<path d="M4 6.5h16M4 12h16M4 17.5h16"/>',
+ linestyle:'<path d="M3.5 12h5.5M12.5 12h3M19 12h1.5"/>',
+ eye:'<path d="M2 12s4-6.5 10-6.5S22 12 22 12s-4 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/>',
+ power:'<path d="M12 3v9"/><path d="M7.4 6.2a7 7 0 1 0 9.2 0"/>',
+ clock:'<circle cx="12" cy="12" r="8.5"/><path d="M12 6.8v5.4l3.4 2"/>',
+ up:'<path d="M3.5 17 10 10.5l3.5 3.5L20.5 7.5"/><path d="M20.5 7.5h-4.6M20.5 7.5v4.6"/>',
+ down:'<path d="M3.5 7 10 13.5l3.5-3.5 7 6.5"/><path d="M20.5 16.5h-4.6M20.5 16.5v-4.6"/>',
+ wick:'<path d="M12 2.5v19"/><path d="M8 8h8M8 16h8"/>',
+ square:'<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/>',
+ squarefill:'<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M7 7h10v10H7z" fill="currentColor" stroke="none"/>',
+ type:'<path d="M4 7V4.5h16V7"/><path d="M12 4.5v15M9 19.5h6"/>',
+ bold:'<path d="M7 4.5h5.5a3.5 3.5 0 0 1 0 7H7z"/><path d="M7 11.5h6.5a4 4 0 0 1 0 8H7z"/>',
+ italic:'<path d="M15.5 4.5h-5M13.5 19.5h-5M14 4.5l-4 15"/>',
+ alignL:'<path d="M3.5 6h17M3.5 11h10M3.5 16h13.5"/>',
+ alignC:'<path d="M3.5 6h17M7 11h10M5.5 16h13"/>',
+ alignR:'<path d="M3.5 6h17M10 11h10.5M7 16h13.5"/>',
+ valign:'<path d="M3.5 5h17M3.5 19h17"/><path d="M12 8.5v7M9.5 11 12 8.5 14.5 11M9.5 13 12 15.5 14.5 13"/>',
+ info:'<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.5"/>',
+ template:'<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.5h17M10 9.5v11"/>',
+ sparkles:'<path d="M11 4l1.5 4.2L16.7 9.7 12.5 11.2 11 15.4 9.5 11.2 5.3 9.7 9.5 8.2z"/><path d="M18 15l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>',
+ reset:'<path d="M3.8 12a8.2 8.2 0 1 0 2.6-6"/><path d="M3.8 3.6v4.2h4.2"/>',
+ lock:'<rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.2"/><path d="M8.4 10.4V7.9a3.6 3.6 0 0 1 7.2 0v2.5"/>',
+ trash:'<path d="M4.5 7h15M10 7V4.6h4V7M6.4 7l1 13.4h9.2l1-13.4"/>',
+ more:'<circle cx="5.5" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.5" fill="currentColor" stroke="none"/>',
+ back:'<path d="M20 12H4M10.5 5.5 4 12l6.5 6.5"/>',
+ nav:'<path d="M4 12h16M13.5 5.5 20 12l-6.5 6.5"/>',
+ search:'<circle cx="10.8" cy="10.8" r="6.6"/><path d="M15.6 15.6 20.8 20.8"/>',
+ warn:'<path d="M12 3.5 2.8 20h18.4z"/><path d="M12 9.8v4.6M12 17.2v.5"/>',
+ check:'<path d="M4.5 12.5 9.5 17.5 19.5 6.8"/>',
+ palette:'<path d="M12 3.5a8.5 8.5 0 0 0 0 17c1.5 0 2.1-.9 2.1-1.9 0-1.4-1.3-1.6-1.3-2.7 0-.9.7-1.5 1.8-1.5h1.5a4.4 4.4 0 0 0 4.4-4.4C20.5 6.3 16.7 3.5 12 3.5z"/><circle cx="8" cy="10" r="1.1" fill="currentColor" stroke="none"/><circle cx="12" cy="7.8" r="1.1" fill="currentColor" stroke="none"/><circle cx="15.6" cy="10.2" r="1.1" fill="currentColor" stroke="none"/>',
+ swap:'<path d="M4 8.5h13M14 5l3.5 3.5L14 12"/><path d="M20 15.5H7M10 12l-3.5 3.5L10 19"/>',
+ fn:'<path d="M14 4.8c-3 0-3 3.6-3 7.2s0 7.2-3 7.2"/><path d="M7 12h6.5"/><path d="M16.5 12H21"/>',
+ grid:'<rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/>',
+ tag:'<path d="M3.5 11.6V5.1A1.6 1.6 0 0 1 5.1 3.5h6.5L20.5 12 12 20.5z"/><circle cx="8.2" cy="8.2" r="1.3"/>',
+ bolt:'<path d="M13.2 2.8 5 14.2h6L10 21.2l8.2-11.4h-6z"/>',
+ x:'<path d="M6 6l12 12M18 6 6 18"/>',
+ plus:'<path d="M12 5.5v13M5.5 12h13"/>',
+ hand:'<path d="M8 11V5.6a1.6 1.6 0 0 1 3.2 0V11"/><path d="M11.2 10.4V4.6a1.6 1.6 0 0 1 3.2 0v6"/><path d="M14.4 11V6.6a1.6 1.6 0 0 1 3.2 0V14a7 7 0 0 1-7 7h-.6a6 6 0 0 1-6-6v-3.4a1.6 1.6 0 0 1 3.2 0"/>',
+ /* — the drawing tools, same grid and weight — */
+ hrule:'<path d="M2.8 12h18.4"/><circle cx="2.8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="21.2" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+ vrule:'<path d="M12 2.8v18.4"/><circle cx="12" cy="2.8" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="21.2" r="1.4" fill="currentColor" stroke="none"/>',
+ ray:'<path d="M3 19 20 9"/><circle cx="3" cy="19" r="1.5" fill="currentColor" stroke="none"/><path d="M15.6 7.9l5 1.1-1.1 5"/>',
+ extline:'<path d="M2 19.5 22 6.5"/><circle cx="6.5" cy="16.6" r="1.4" fill="currentColor" stroke="none"/><circle cx="17.5" cy="9.4" r="1.4" fill="currentColor" stroke="none"/>',
+ infoline:'<path d="M3 18.5 21 8.5"/><circle cx="12" cy="12.6" r="3.8"/><path d="M12 11.2v3.4"/>',
+ angleline:'<path d="M4 19.5h16"/><path d="M4 19.5 18.5 8"/><path d="M10 19.5a6 6 0 0 0 1.6-3.6"/>',
+ crossline:'<path d="M3.5 20.5 20.5 3.5"/><path d="M2.8 12h18.4"/>',
+ channel:'<path d="M3 15 12 7.5"/><path d="M8.5 20 20.5 10.5"/>',
+ regtrend:'<path d="M3 17.5 21 7"/><path d="M4.5 20.5h3M10.5 20.5h3M16.5 20.5h3"/>',
+ stddev:'<path d="M3 17 21 7"/><path d="M3 12.5 21 2.5"/><path d="M3 21 21 11.5"/>',
+ pitchfork:'<path d="M12 4v16"/><path d="M12 7 6.5 20"/><path d="M12 7 17.5 20"/><circle cx="12" cy="4" r="1.4" fill="currentColor" stroke="none"/>',
+ gannline:'<path d="M4.5 19.5 19.5 4.5"/><path d="M4.5 19.5h15"/><path d="M4.5 19.5v-15"/>',
+ gannfan:'<path d="M4 20 20 4"/><path d="M4 20 20 10.5"/><path d="M4 20 20 16.5"/>',
+ gannbox:'<rect x="4" y="4" width="16" height="16" rx="1.8"/><path d="M4 20 20 4"/>',
+ fibo:'<path d="M3.5 6.5h10M3.5 12h15M3.5 17.5h10"/>',
+ fibofan:'<path d="M4 19.5 20 5"/><path d="M4 19.5 20 12.5"/><path d="M4 19.5 20 18.5"/>',
+ fiboarc:'<path d="M3.5 18.5a8.5 8.5 0 0 1 17 0"/><path d="M7.5 18.5a4.5 4.5 0 0 1 9 0"/><circle cx="12" cy="18.5" r="1.2" fill="currentColor" stroke="none"/>',
+ fibotime:'<path d="M4 4v16M10.5 4v16M19 4v16"/>',
+ fiboexp:'<path d="M3.5 17h6"/><path d="M3.5 11.5h6" stroke-dasharray="1.4 2"/><path d="M3.5 6h6" stroke-dasharray="1.4 2"/><path d="M17 17V6.5"/><path d="M14.6 9 17 6.5 19.4 9"/>',
+ rotrect:'<path d="M12 3.5 20.5 12 12 20.5 3.5 12z"/>',
+ triangle:'<path d="M12 4.5 20.5 19.5H3.5z"/>',
+ ellipse:'<ellipse cx="12" cy="12" rx="9" ry="6.4"/>',
+ circle:'<circle cx="12" cy="12" r="8.4"/>',
+ arc:'<path d="M3.5 18.5a8.5 8.5 0 0 1 17 0"/>',
+ curve:'<path d="M3 18c4.5-13 13.5-13 18 0"/>',
+ apath:'<path d="M3 16.5 8 9l4.5 4L21 5"/><circle cx="3" cy="16.5" r="1.3" fill="currentColor" stroke="none"/><circle cx="8" cy="9" r="1.3" fill="currentColor" stroke="none"/><circle cx="12.5" cy="13" r="1.3" fill="currentColor" stroke="none"/><circle cx="21" cy="5" r="1.3" fill="currentColor" stroke="none"/>',
+ zig4:'<path d="M3 17 8 8l5 9 8-13"/><circle cx="3" cy="17" r="1.3" fill="currentColor" stroke="none"/><circle cx="21" cy="4" r="1.3" fill="currentColor" stroke="none"/>',
+ zig5:'<path d="M2.5 16 7 6l5 11 5-11 4.5 10"/>',
+ hs:'<path d="M3 17c1.4 0 1.4-5.5 3.4-5.5S8 17 9.6 17"/><path d="M9.6 17c1.4 0 1.4-11 3.4-11s2 11 3.6 11"/><path d="M16.6 17c1.4 0 1.4-5.5 3.6-5.5"/><path d="M2.5 20.5h19"/>',
+ note:'<path d="M4.5 3.5h15v12.5L15 20.5H4.5z"/><path d="M19.5 16H15v4.5"/>',
+ callout:'<path d="M3.5 5.5h17v11H11l-5 4v-4H3.5z"/>',
+ comment:'<path d="M3.5 6.5h17v11H9.5l-6 3.5z"/>',
+ arrow:'<path d="M3.5 20 20 4"/><path d="M12.5 4H20v7.5"/>',
+ arrowmark:'<path d="M12 4 20 20l-8-4.2-8 4.2z"/>',
+ brush:'<path d="M4.5 19.5 6 15l9.5-9.5a2.1 2.1 0 0 1 3 3L9 18z"/><path d="M4.5 19.5 9 18"/>',
+ highlighter:'<path d="M4 20.5h16"/><path d="M7 17V9l7-4.5V17z"/>',
+ eraser:'<path d="M5.5 18 14 9.5a2.4 2.4 0 0 1 3.4 3.4L12 18.5z"/><path d="M4 21h16"/>',
+ longpos:'<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M7.5 15.5 16 7"/><path d="M16 12V7h-5"/>',
+ shortpos:'<rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M7.5 8.5 16 17"/><path d="M16 12v5h-5"/>',
+ gear:'<circle cx="12" cy="12" r="3.1"/><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.4 5.4l1.9 1.9M16.7 16.7l1.9 1.9M18.6 5.4l-1.9 1.9M7.3 16.7l-1.9 1.9"/>',
+ unlock:'<rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.2"/><path d="M8.4 10.4V7.9a3.6 3.6 0 0 1 6.8-1.2"/>',
+ grip:'<circle cx="9" cy="7" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="7" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.25" fill="currentColor" stroke="none"/><circle cx="9" cy="17" r="1.25" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r="1.25" fill="currentColor" stroke="none"/>'
+};
+/* one owner for a glyph → svg, and for the product's own 22px chip that
+   carries it (chipSkin's radius 7 / soft 31 / border 97) */
+const ico=(n,st_) => '<svg class="ic'+(st_?' '+st_:'')+'" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+  +' stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+(GLYPH[n]||GLYPH.box)+'</svg>';
+const chip=(n,on) => '<span class="chip'+(on?' on':'')+'">'+ico(n)+'</span>';
+const legacy=t=>'<span class="lg" style="font-family:\''+t.f+'\',Wingdings,Webdings">'+t.g+'</span>';
+const glyph=t=>S.icons==='biotak'?chip(t.ic):legacy(t);
+const TOOLS={
+  /* cursors */
+  pointer:  {cat:"cursors", n:"Pointer",            g:"\u00D6", f:F.wing3, pts:0},
+  crosshair:{cat:"cursors", n:"Crosshair",          g:"v",      f:F.wing,  pts:0},
+  /* lines — the eight rows of the flyout in the reference screenshot */
+  trend:    {cat:"lines",   n:"Trendline",          g:".",      f:F.wing3, pts:2},
+  hline:    {cat:"lines",   n:"Horizontal line",    g:"*",      f:F.wing3, pts:1},
+  vline:    {cat:"lines",   n:"Vertical line",      g:"+",      f:F.wing3, pts:1},
+  ray:      {cat:"lines",   n:"Ray",                g:"\u00E0", f:F.wing3, pts:2},
+  extended: {cat:"lines",   n:"Extended line",      g:"\u00E1", f:F.wing3, pts:2},
+  infoline: {cat:"lines",   n:"Info line",          g:"\u00EC", f:F.wing3, pts:2},
+  angleline:{cat:"lines",   n:"Angle line",         g:"\u00C4", f:F.wing3, pts:2},
+  crossline:{cat:"lines",   n:"Cross line",         g:"\u00DB", f:F.wing3, pts:2},
+  /* channels, pitchforks and Gann */
+  channel:  {cat:"chan",    n:"Parallel channel",   g:"2",      f:F.wing3, pts:3},
+  andrews:  {cat:"chan",    n:"Andrews pitchfork",  g:"H",      f:F.wing3, pts:3},
+  schiff:   {cat:"chan",    n:"Schiff pitchfork",   g:"I",      f:F.wing3, pts:3},
+  modschiff:{cat:"chan",    n:"Modified Schiff pitchfork", g:"J",f:F.wing3,pts:3},
+  gannline: {cat:"chan",    n:"Gann line",          g:"T",      f:F.wing,  pts:2},
+  gannfan:  {cat:"chan",    n:"Gann fan",           g:"T",      f:F.wing,  pts:2},
+  gannbox:  {cat:"chan",    n:"Gann box",           g:"U",      f:F.wing,  pts:2},
+  /* fibonacci */
+  fibo:     {cat:"fibo",    n:"Fibonacci retracement", g:"\"",   f:F.web,  pts:2},
+  fiboexp:  {cat:"fibo",    n:"Fibonacci expansion",   g:"\"",   f:F.web,  pts:3},
+  fibochannel:{cat:"fibo",  n:"Fibonacci channel",     g:"\"",   f:F.web,  pts:3},
+  /* shapes */
+  rect:     {cat:"shapes",  n:"Rectangle",          g:"c",      f:F.web,   pts:2},
+  triangle: {cat:"shapes",  n:"Triangle",           g:"\u25B2", f:F.wing,  pts:3},
+  ellipse:  {cat:"shapes",  n:"Ellipse",            g:"\u25CB", f:F.wing,  pts:2},
+  circle:   {cat:"shapes",  n:"Circle",             g:"\u25CF", f:F.wing,  pts:2},
+  /* patterns */
+  /* annotations */
+  text:     {cat:"annot",   n:"Text",               g:">",      f:F.web,   pts:1, edit:true},
+  note:     {cat:"annot",   n:"Note",               g:"<",      f:F.web,   pts:1, edit:true},
+  pricenote:{cat:"annot",   n:"Price note",         g:"=",      f:F.web,   pts:1},
+  callout:  {cat:"annot",   n:"Callout",            g:"?",      f:F.web,   pts:2, edit:true},
+  comment:  {cat:"annot",   n:"Comment",            g:"@",      f:F.web,   pts:1, edit:true},
+  arrow:    {cat:"annot",   n:"Arrow",              g:"\u00E1", f:F.wing,  pts:2},
+  /* freehand and position tools */
+  longpos:  {cat:"free",    n:"Long position",      g:"\u00E9", f:F.wing,  pts:2},
+  shortpos: {cat:"free",    n:"Short position",     g:"\u00EA", f:F.wing,  pts:2}
+};
+const CATS=[
+  {id:"cursors", gl:"v", f:F.wing,          title:"Cursors"},
+  {id:"lines",   gl:".", f:F.wing3,         title:"Lines"},
+  {id:"chan",    gl:"H", f:F.wing3,         title:"Channels · pitchforks · Gann"},
+  {id:"fibo",    gl:"z", f:F.wing,          title:"Fibonacci"},
+  {id:"shapes",  gl:"o", f:F.wing,          title:"Shapes"},
+  {id:"annot",   gl:">", f:F.web,           title:"Annotations"},
+  {id:"free",    gl:"§", f:F.wing,          title:"Freehand & position"}
+];
+/* the roster → the icon language (and the category and tab faces), so the
+   palette, the strip and the window all draw ONE set of glyphs */
+const TOOL_ICON={pointer:"hand",crosshair:"crosshair",trend:"line",hline:"hrule",vline:"vrule",
+ ray:"ray",extended:"extline",infoline:"infoline",angleline:"angleline",crossline:"crossline",
+ channel:"channel",andrews:"pitchfork",schiff:"pitchfork",
+ modschiff:"pitchfork",gannline:"gannline",gannfan:"gannfan",gannbox:"gannbox",
+ fibo:"fibo",fiboexp:"fiboexp",fibochannel:"gap",
+ rect:"square",triangle:"triangle",ellipse:"ellipse",circle:"circle",
+ text:"type",note:"note",pricenote:"tag",callout:"callout",comment:"comment",arrow:"arrow",
+ longpos:"longpos",shortpos:"shortpos"};
+const CAT_ICON={cursors:"hand",lines:"line",chan:"pitchfork",fibo:"fibo",shapes:"square",
+ annot:"type",free:"brush"};
+const TAB_ICON={style:"palette",text:"type",coords:"ruler",vis:"eye",levels:"steps",tpl:"template"};
+Object.keys(TOOLS).forEach(k=>{ TOOLS[k].ic=TOOL_ICON[k]||"box"; });
+const DEFAULT_PINS=["trend","hline","ray","rect","fibo","text","arrow"];
+const PAL=[/* the 8 quick row first */
+  "FFAB00","F0455F","12B886","4C8DFF","9B5DE5","00C2D1","FF8A00","F3F6FB",
+  "8C96A6","1D222C","FFD08A","FFA3B3","8DE3C9","A9C6FF","CDB4F6","8CE6EE",
+  "FFC247","CBD4E2","5A6577","12161D","7A5200","7A1F2E","0A5A42","204070",
+  "4A2C74","005E66","FFE9C7","F7F9FC","AEB8C6","2A313D","C98A00","B3243B",
+  "067A5C","13325E","5E3A99","00636B","FFC9A3","F0F2F7","9AA4B2","05070A",
+  "E8EDF5","3D4661","00A3A3","B45309","7C3AED","DB2777","15803D","0EA5E9",
+  "FDE68A","FCA5A5","A7F3D0","BFDBFE","DDD6FE","67E8F9","FDBA74","E5E7EB",
+  "111827","374151","6B7280","9CA3AF","D1D5DB","6EE7B7","FBBF24","7C2D12"];
+const TFS=["M1","M5","M15","M30","H1","H4","D1","W1","MN"];
+const TFM={M1:1,M5:5,M15:15,M30:30,H1:60,H4:240,D1:1440,W1:10080,MN:43200};
+const BARW={M1:22,M5:28,M15:34,M30:40,H1:46,H4:54,D1:62,W1:70,MN:80};
+const TF_BASE=Date.UTC(2026,6,13,0,0,0);
+const FIB=[0,.236,.382,.5,.618,.786,1];
+const FIBT=[0,.236,.382,.5,.618,1,1.618,2.618];
+
+/* ═══ 2 · state ══════════════════════════════════════════════════════ */
+const S={
+  armed:null, pts:[], mouse:{x:0,y:0}, hover:null,
+  objs:[], sel:null, seq:0, cat:null, railFold:false, railRight:false,
+  ribbonOn:true, pins:DEFAULT_PINS.slice(), ribW:250, ribPop:false,
+  colour:"#F0455F", edge:null, op:100, width:2, style:"solid", fill:"none",
+  caption:"Head & Shoulders", font:12, align:"left", textColour:"#F3F6FB",
+  plate:0, tab:"style", theme:"dark", classic:false, tf:"M1", layerAbove:true,
+  levels:[{p:1.14312,on:true},{p:1.14520,on:true},{p:1.14755,on:false},
+          {p:1.14990,on:true},{p:1.15225,on:false},{p:1.15460,on:true}],
+  templates:[{name:"Demand box",colour:"#F0455F",edge:null,width:2,style:"solid",fill:"soft"}],
+  tplName:"", palOpen:false, palAnchor:null, pickTarget:"fill",
+  panelOpen:true, panelPos:{x:0,y:0}, stripPos:null, stripFor:null,
+  meas:null, ringOpen:false, recent:[], dirty:false, locked:false, icons:"biotak",
+  palPos:null, palDock:true, dragKey:null
+};
+/* per-tool style memory — the reference keeps one per tool (Part 34) */
+const MEM={};
+const P={min:1.14280,max:1.15820};
+const st=id=>document.getElementById(id), stage=st("stage"), svg=st("draw");
+const C=id=>TOOLS[id];
+
+/* ═══ 3 · chart geometry + the timeframe clock ═══════════════════════ */
+const px2price=y=>P.max-(y/stage.clientHeight)*(P.max-P.min);
+const price2px=p=>(P.max-p)/(P.max-P.min)*stage.clientHeight;
+const barw=()=>BARW[S.tf];
+const px2bar=x=>Math.max(1,Math.round((x-barw()/2)/barw())+1);
+const xForBar=b=>(b-1)*barw()+barw()/2;
+function timeFor(b){ const ms=TF_BASE+b*TFM[S.tf]*60000, d=new Date(ms);
+  const p=n=>String(n).padStart(2,"0");
+  return d.getUTCFullYear()+"."+p(d.getUTCMonth()+1)+"."+p(d.getUTCDate())+" "+p(d.getUTCHours())+":"+p(d.getUTCMinutes()); }
+const local=e=>{const r=svg.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top};};
+const capture=(n,e)=>{try{n.setPointerCapture(e.pointerId);}catch(_){}};
+const obj=id=>S.objs.find(o=>o.id===id)||null, sel=()=>obj(S.sel);
+const dash=k=>k==="solid"?"":k==="dash"?"6 4":k==="dot"?"1 3":k==="d-dash"?"8 3 2 3":"8 3 1 3";
+const hex2rgba=(h,a)=>{const n=parseInt(h.slice(1),16);
+  return "rgba("+((n>>16)&255)+","+((n>>8)&255)+","+(n&255)+","+a+")";};
+
+/* ═══ 4b · the BORDER is a colour of its own (P-DRAW-52) ═════════════
+   Its AUTO is a distinct TONE of the fill, because a border that equals what
+   it outlines is a border nobody sees (P-UI-131f, measured on the zone edge).
+   A drawing with NO fill keeps its colour as ink, so a hand-picked line
+   colour never turns pastel. AUTO is the default and an override is opt-in. */
+const rgbOf=h=>{const n=parseInt(String(h).replace("#",""),16);
+  return [(n>>16)&255,(n>>8)&255,n&255];};
+const lumOf=h=>{const c=rgbOf(h).map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);});
+  return .2126*c[0]+.7152*c[1]+.0722*c[2];};
+const contrast=(a,b)=>{const x=lumOf(a),y=lumOf(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+const mixHex=(a,b,k)=>{const A=rgbOf(a),B=rgbOf(b);
+  return "#"+A.map((v,i)=>Math.round(v+(B[i]-v)*k).toString(16).padStart(2,"0")).join("").toUpperCase();};
+const EDGE_K=.42, EDGE_MIN=1.45;   // the tone walk and its contrast floor
+function edgeTone(colour,filled){
+  if(!filled) return colour;
+  const pole=(S.theme==="dark")?"#FFFFFF":"#000000";
+  let k=EDGE_K, t=mixHex(colour,pole,k);
+  while(contrast(colour,t)<EDGE_MIN&&k<.95){ k+=.12; t=mixHex(colour,pole,k); }
+  return t;
+}
+function edgeOf(d){
+  if(d.edge) return d.edge;
+  const g=d._g||null;
+  const filled=!!((d.fill&&d.fill!=="none")||(g&&((g.fills&&g.fills.length)||(g.rounds&&g.rounds.length))));
+  return edgeTone(d.colour,filled);
+}
+
+let candles=[];
+function reseed(){ candles=[]; let y=.62, seed=S.tf.charCodeAt(0)*97+S.tf.length*13+7;
+  const rnd=()=>((seed=seed*1103515245%2147483647)/2147483647), w=barw();
+  for(let x=60;x<5200;x+=w){ y=Math.min(.82,Math.max(.2,y+(rnd()*2-1)*.05));
+    candles.push({x,y,body:10+rnd()*26,up:rnd()>.45}); } }
+function candlesSVG(){
+  const W=stage.clientWidth,H=stage.clientHeight; let o="";
+  candles.forEach(c=>{ if(c.x>W+40) return;
+    const x=c.x,y=c.y*H,h=c.body,col=c.up?"var(--candleUp)":"var(--candleDn)";
+    o+='<line x1="'+(x+2)+'" y1="'+(y-h-9)+'" x2="'+(x+2)+'" y2="'+(y+9)+'" stroke="'+col+'" opacity=".45"/>'
+     + '<rect x="'+(x-2)+'" y="'+(y-h)+'" width="5" height="'+h+'" rx="1.5" fill="'+col+'" opacity=".72"/>'; });
+  return o;
+}
+
+/* ═══ 4 · ONE geometry owner — every tool is described here, and both the
+        renderer and the hit test read THAT description (the reference's
+        engine in miniature: the drawing IS the description) ═══════════ */
+function seg(p,q){ return [p.x,p.y,q.x,q.y]; }
+function extend(p,q,both){ const W=stage.clientWidth,H=stage.clientHeight;
+  const dx=q.x-p.x, dy=q.y-p.y, L=Math.hypot(dx,dy)||1, r=Math.max(W,H)*1.7/L;
+  let x1=p.x,y1=p.y,x2=p.x+dx*r,y2=p.y+dy*r;
+  if(both){ x1=p.x-dx*r; y1=p.y-dy*r; }
+  return [x1,y1,x2,y2]; }
+const boxAB=(a,b)=>({x:Math.min(a.x,b.x),y:Math.min(a.y,b.y),w:Math.abs(b.x-a.x),h:Math.abs(b.y-a.y)});
+function angleDeg(a,b){ let d=Math.atan2(-(b.y-a.y),b.x-a.x)*180/Math.PI; if(d<0)d+=360; return d; }
+function circ3(a,b,c){ const d=2*(a.x*(b.y-c.y)+b.x*(c.y-a.y)+c.x*(a.y-b.y));
+  if(Math.abs(d)<1e-6) return null;
+  const ux=((a.x*a.x+a.y*a.y)*(b.y-c.y)+(b.x*b.x+b.y*b.y)*(c.y-a.y)+(c.x*c.x+c.y*c.y)*(a.y-b.y))/d;
+  const uy=((a.x*a.x+a.y*a.y)*(c.x-b.x)+(b.x*b.x+b.y*b.y)*(a.x-c.x)+(c.x*c.x+c.y*c.y)*(b.x-a.x))/d;
+  return {cx:ux,cy:uy,r:Math.hypot(a.x-ux,a.y-uy)}; }
+const polyLen=P_=>P_.reduce((s,p,i)=>s+(i?Math.hypot(p.x-P_[i-1].x,p.y-P_[i-1].y):0),0);
+
+function geom(d){
+  const W=stage.clientWidth,H=stage.clientHeight,p=d.pts,k=d.kind;
+  const g={segs:[],rects:[],rounds:[],ellipses:[],arcs:[],polys:[],fills:[],texts:[],chips:[],dots:[],paths:[],arrows:[],behind:[],tags:[]};
+  const A=p[0],B=p[1]||A,Cp=p[2]||B,D=p[3]||Cp,Ep=p[4]||D;
+  const fill=(poly,o)=>g.fills.push({poly:poly,a:o===undefined?.13:o});
+  const line=(q,r,o,w)=>{ g.segs.push(seg(q,r)); if(o||w) g.meta=(g.meta||[]).concat(); };
+  switch(k){
+    case "trend":      g.segs=[seg(A,B)]; break;
+    case "hline":      g.segs=[[0,A.y,W,A.y]]; break;
+    case "vline":      g.segs=[[A.x,0,A.x,H]]; break;
+    case "ray":        g.segs=[extend(A,B,false)]; break;
+    case "extended":   g.segs=[extend(A,B,true)]; break;
+    case "infoline":{  const dp=px2price(B.y)-px2price(A.y);
+      g.segs=[seg(A,B)];
+      g.chips=[{x:(A.x+B.x)/2+8,y:(A.y+B.y)/2-6,text:(dp>=0?"+":"")+dp.toFixed(5)+"  ("+(dp/px2price(A.y)*100).toFixed(2)+"%)  "+
+        (Math.abs(dp)/0.0001).toFixed(1)+" pips"}];
+      g.behind.push({x:Math.min(A.x,B.x),y:Math.min(A.y,B.y),w:Math.abs(B.x-A.x),h:Math.abs(B.y-A.y)});
+      break; }
+    case "angleline":{ const ang=angleDeg(A,B);
+      g.segs=[seg(A,B),[A.x,A.y,A.x+60,A.y]];
+      g.arcs=[{cx:A.x,cy:A.y,r:34,a0:0,a1:Math.max(ang,0.01)}];
+      g.chips=[{x:A.x+38,y:A.y-8,text:ang.toFixed(2)+"\u00B0"}];
+      break; }
+    case "crossline":{ const mx=(A.x+B.x)/2,my=(A.y+B.y)/2;
+      g.segs=[extend(A,B,true),[0,my,W,my]]; break; }
+    case "channel":{ const dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy)||1;
+      const off=((Cp.x-A.x)*dx+(Cp.y-A.y)*dy)/L, ox=(dx/L)*(off-((Cp.x-A.x)*dx+(Cp.y-A.y)*dy)/(L*L)*L);
+      const nx= (dy/L), ny=(-dx/L), dist=(Cp.x-A.x)*nx+(Cp.y-A.y)*ny;
+      const A2={x:A.x+nx*dist,y:A.y+ny*dist}, B2={x:B.x+nx*dist,y:B.y+ny*dist};
+      g.segs=[seg(A,B),seg(A2,B2),seg({x:(A.x+A2.x)/2,y:(A.y+A2.y)/2},{x:(B.x+B2.x)/2,y:(B.y+B2.y)/2})];
+      fill([{x:A.x,y:A.y},{x:B.x,y:B.y},{x:B2.x,y:B2.y},{x:A2.x,y:A2.y}],.09); break; }
+    case "regtrend":{ const dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy)||1,nx=dy/L,ny=-dx/L;
+      const ln=extend(A,B,true); g.segs=[ln];
+      [16,-16].forEach(o=>g.segs.push([ln[0]+nx*o,ln[1]+ny*o,ln[2]+nx*o,ln[3]+ny*o]));
+      g.chips=[{x:B.x+8,y:B.y+12,text:"r "+polyLen([A,B]).toFixed(0)+" px"}]; break; }
+    case "stddevtrend":{ const dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy)||1,nx=dy/L,ny=-dx/L;
+      const ln=extend(A,B,true); g.segs=[ln];
+      [[18,1],[36,2],[-18,1],[-36,2]].forEach(([o,i])=>{
+        g.segs.push([ln[0]+nx*o,ln[1]+ny*o,ln[2]+nx*o,ln[3]+ny*o]); });
+      fill([{x:ln[0]+nx*18,y:ln[1]+ny*18},{x:ln[2]+nx*18,y:ln[3]+ny*18},
+            {x:ln[2]-nx*18,y:ln[3]-ny*18},{x:ln[0]-nx*18,y:ln[1]-ny*18}],.07); break; }
+    case "andrews": case "schiff": case "modschiff":{
+      const m1={x:(B.x+Cp.x)/2,y:(B.y+Cp.y)/2};
+      let org=A;
+      if(k==="schiff") org={x:(A.x+B.x)/2,y:(A.y+B.y)/2};
+      if(k==="modschiff") org={x:(A.x+B.x)/2,y:A.y};
+      g.segs=[extend(org,m1,false),
+        [org.x+(B.x-A.x),org.y+(B.y-A.y),m1.x+(B.x-A.x),m1.y+(B.y-A.y)],
+        [org.x+(Cp.x-A.x),org.y+(Cp.y-A.y),m1.x+(Cp.x-A.x),m1.y+(Cp.y-A.y)]];
+      fill([org,m1,{x:m1.x+(Cp.x-A.x),y:m1.y+(Cp.y-A.y)},{x:org.x+(Cp.x-A.x),y:org.y+(Cp.y-A.y)}],.08); break; }
+    case "gannline":{ const s=Math.abs(B.x-A.x)||40, dir=(B.y<A.y)?-1:1;
+      g.segs=[[A.x,A.y,A.x+s*2,A.y+dir*s*2]]; break; }
+    case "gannfan":{ const R=Math.max(W,H); g.segs=[];
+      [7.5,15,22.5,30,45,60,67.5,75,82.5].forEach(a=>{ const t=a*Math.PI/180;
+        g.segs.push([A.x,A.y,A.x+Math.cos(t)*R,A.y-Math.sin(t)*R]);
+        g.segs.push([A.x,A.y,A.x+Math.cos(t)*R,A.y+Math.sin(t)*R]); });
+      g.chips=[{x:A.x+96,y:A.y-96,text:"45\u00B0"}]; break; }
+    case "gannbox":{ const b=boxAB(A,B); g.rects=[b];
+      for(let i=1;i<4;i++){ g.segs.push([b.x+b.w*i/4,b.y,b.x+b.w*i/4,b.y+b.h]);
+        g.segs.push([b.x,b.y+b.h*i/4,b.x+b.w,b.y+b.h*i/4]); }
+      g.segs.push([b.x,b.y,b.x+b.w,b.y+b.h],[b.x+b.w,b.y,b.x,b.y+b.h]); break; }
+    case "fibo":{ const b=boxAB(A,B); g.rects=[b]; g.segs=[]; g.chips=[];
+      FIB.forEach(f=>{ const y=b.y+b.h*f; g.segs.push([b.x,y,b.x+b.w,y]);
+        g.chips.push({x:b.x+b.w+6,y:y+4,text:(f*100).toFixed(1)+"%"}); }); break; }
+    case "fiboexp":{ const move=Cp.y-B.y; g.segs=[]; g.chips=[];
+      FIB.forEach(f=>{ const y=B.y+move*f; g.segs.push([Math.min(A.x,B.x),y,B.x,y]);
+        g.chips.push({x:B.x+6,y:y+4,text:(f*100).toFixed(1)+"%"}); }); break; }
+    case "fibochannel":{ const b=boxAB(A,B), off=Cp.y-B.y; g.rects=[b]; g.segs=[];
+      FIB.forEach(f=>{ const y=b.y+b.h*f; g.segs.push([b.x,y,b.x+b.w,y]);
+        g.segs.push([b.x,y+off,b.x+b.w,y+off]); }); break; }
+    case "fibotime":{ g.segs=[]; g.chips=[];
+      FIBT.forEach(f=>{ const x=A.x+(B.x-A.x)*f; g.segs.push([x,0,x,H]);
+        g.chips.push({x:x+4,y:22,text:f.toFixed(3)}); }); break; }
+    case "fibofan":{ g.segs=[]; g.chips=[];
+      FIB.forEach(f=>{ const y=B.y+(B.y-A.y)*f; g.segs.push([A.x,A.y,A.x+(B.x-A.x)*2,y+(B.y-A.y)]); });
+      break; }
+    case "fiboarc":{ const r=Math.hypot(B.x-A.x,B.y-A.y)||40;
+      g.arcs=FIB.slice(1).map(f=>({cx:A.x,cy:A.y,r:r*f,a0:0,a1:360})); break; }
+    case "rect":       g.rects=[boxAB(A,B)]; break;
+    case "rotrect":{ const ang=Math.atan2(B.y-A.y,B.x-A.x), w=Math.hypot(B.x-A.x,B.y-A.y),
+        hh=(Cp&&p.length>2)?((Cp.x-A.x)*Math.sin(ang)-(Cp.y-A.y)*Math.cos(ang)):40;
+      const ux=Math.cos(ang),uy=Math.sin(ang),nx=-uy,ny=ux;
+      const q=[{x:A.x,y:A.y},{x:A.x+ux*w,y:A.y+uy*w},{x:A.x+ux*w+nx*hh,y:A.y+uy*w+ny*hh},{x:A.x+nx*hh,y:A.y+ny*hh}];
+      g.polys=[q.map(v=>[v.x,v.y])]; fill([{x:q[0].x,y:q[0].y},{x:q[1].x,y:q[1].y},{x:q[2].x,y:q[2].y},{x:q[3].x,y:q[3].y}],.1); break; }
+    case "triangle":   g.polys=[[[A.x,A.y],[B.x,B.y],[Cp.x,Cp.y]]];
+      fill([{x:A.x,y:A.y},{x:B.x,y:B.y},{x:Cp.x,y:Cp.y}],.12); break;
+    case "ellipse": case "circle":{ const b=boxAB(A,B);
+      g.ellipses=[{cx:b.x+b.w/2,cy:b.y+b.h/2,rx:Math.max(3,b.w/2),ry:k==="circle"?Math.max(3,b.w/2):Math.max(3,b.h/2)}]; break; }
+    case "arc":{ const c=circ3(A,B,Cp);
+      if(c){ const a0=Math.atan2(A.y-c.cy,A.x-c.cx)*180/Math.PI, a1=Math.atan2(Cp.y-c.cy,Cp.x-c.cx)*180/Math.PI;
+        g.arcs=[{cx:c.cx,cy:c.cy,r:c.r,a0:a0,a1:a1}];
+        g.dots=[{x:c.cx,y:c.cy,label:"R "+c.r.toFixed(0)+" px"}]; }
+      else g.segs=[seg(A,B),seg(B,Cp)]; break; }
+    case "curve":      g.paths=[{pts:p.slice(0,3),curvy:true}]; break;
+    case "path":       g.paths=[{pts:p.slice()}]; break;
+    case "elliott":    g.paths=[{pts:p,curvy:false}];
+      g.dots=p.map((q,i)=>({x:q.x,y:q.y-10,label:String(i+1)})); break;
+    case "abcd":       g.paths=[{pts:p}];
+      g.dots=p.map((q,i)=>({x:q.x,y:q.y-10,label:"ABCD"[i]})); break;
+    case "xabcd":      g.paths=[{pts:p}];
+      g.dots=p.map((q,i)=>({x:q.x,y:q.y-10,label:"XABCD"[i]})); break;
+    case "cypher":     g.paths=[{pts:p}];
+      g.dots=p.map((q,i)=>({x:q.x,y:q.y-10,label:"XABCD"[i]}));
+      g.chips=[{x:p[4].x+8,y:p[4].y,text:"D "+(Math.hypot(p[4].x-p[3].x,p[4].y-p[3].y)/Math.max(1,Math.hypot(p[3].x-p[2].x,p[3].y-p[2].y))).toFixed(2)+" AB=CD"}];
+      break;
+    case "hs":{ g.paths=[{pts:p}];
+      const nl=()=>{ const a=p[1],b=p[3]; return [a.x,a.y,b.x,b.y]; };
+      g.segs.push(nl());
+      g.chips=[{x:p[0].x-16,y:p[0].y-30,text:"Left Shoulder"},{x:p[2].x-8,y:p[2].y-30,text:"Head"},
+        {x:p[4].x-16,y:p[4].y-30,text:"Right Shoulder"}];
+      const ny=(p[1].y+p[3].y)/2;
+      fill([{x:p[0].x,y:p[0].y},{x:p[1].x,y:p[1].y},{x:p[2].x,y:p[2].y},{x:p[3].x,y:p[3].y},
+        {x:p[4].x,y:p[4].y},{x:p[4].x,y:ny},{x:p[0].x,y:ny}],.11);
+      break; }
+    case "text":       g.texts=[{x:A.x,y:A.y,text:d.caption,size:d.font,edit:true}];
+      g.rects=[{x:A.x-6,y:A.y-(d.font||12)-4,w:Math.max(40,(d.caption||"").length*(d.font||12)*.62+14),h:(d.font||12)+12}];
+      break;
+    case "note":       g.rounds=[{x:A.x,y:A.y,w:158,h:54}]; g.texts=[{x:A.x+10,y:A.y+24,text:d.caption,size:11,edit:true}];
+      g.segs=[[A.x+2,A.y+54,A.x-22,A.y+84]]; break;
+    case "pricenote":{ const pr=px2price(A.y);
+      g.tags=[{x:A.x,y:A.y,text:pr.toFixed(5)}]; break; }
+    case "callout":{ const b=boxAB(A,B); g.rounds=[b]; g.segs=[seg(A,B)];
+      g.texts=[{x:b.x+10,y:b.y+22,text:d.caption,size:11,edit:true}]; break; }
+    case "comment":    g.rounds=[{x:A.x,y:A.y-15,w:Math.max(60,(d.caption||"").length*6.4+16),h:30}];
+      g.texts=[{x:A.x+9,y:A.y+4,text:d.caption,size:11,edit:true}]; break;
+    case "arrow":{ const ang=Math.atan2(B.y-A.y,B.x-A.x);
+      g.segs=[seg(A,B)]; g.arrows=[{x:B.x,y:B.y,ang:ang}]; break; }
+    case "arrowup":    g.arrows=[{x:A.x,y:A.y,ang:-Math.PI/2,big:true}]; break;
+    case "arrowdown":  g.arrows=[{x:A.x,y:A.y,ang:Math.PI/2,big:true}]; break;
+    case "arrowmark":  g.arrows=[{x:A.x,y:A.y,ang:-Math.PI/2,big:true,stem:true}]; break;
+    case "brush": case "highlighter": g.paths=[{pts:p.slice(),wide:k==="highlighter"}]; break;
+    case "longpos": case "shortpos":{ const b=boxAB(A,B), long=(k==="longpos");
+      const entry=B.y, tp=long?A.y:B.y+(B.y-A.y), sl=long?B.y+(B.y-A.y):A.y;
+      g.rects=[{x:b.x,y:Math.min(tp,sl),w:b.w,h:Math.abs(sl-tp)}];
+      g.segs=[[b.x,entry,b.x+b.w,entry],[b.x,tp,b.x+b.w,tp],[b.x,sl,b.x+b.w,sl]];
+      const rr=Math.abs(tp-entry)/Math.max(1,Math.abs(entry-sl));
+      g.chips=[{x:b.x+b.w+8,y:tp+4,text:"TP "+px2price(tp).toFixed(5)},
+        {x:b.x+b.w+8,y:sl+4,text:"SL "+px2price(sl).toFixed(5)},{x:b.x+b.w+8,y:entry+4,text:"R:R 1:"+rr.toFixed(2)}];
+      break; }
+    default: break;
+  }
+  if(!g.rects.length&&!g.rounds.length&&!g.ellipses.length&&!g.paths.length&&!g.polys.length
+     &&!g.texts.length&&!g.arcs.length&&!g.arrows.length&&!g.tags.length&&!g.segs.length&&!g.chips.length)
+    g.segs=[[A.x,A.y,A.x+1,A.y+1]];
+  return g;
+}
+const geomOf=d=>d._g||(d._g=geom(d));
+const invalidate=()=>{S.objs.forEach(o=>o._g=null);};
+
+/* ═══ 5 · render ═════════════════════════════════════════════════════ */
+function paintObj(d,hot){
+  const g=geomOf(d), on=(d.id===S.sel), col=d.colour, edge=edgeOf(d), w=d.width, ds=dash(d.style),
+        op=(d.op===undefined?100:d.op)/100, fillOn=(d.fill&&d.fill!=="none");
+  let o="";
+  o+='<g opacity="'+op+'"'+(hot?' style="filter:drop-shadow(0 0 6px '+col+')"':'')+'>';
+  (g.fills||[]).forEach(f=>{ if(!f.poly||f.poly.length<3) return;
+    o+='<polygon points="'+f.poly.map(q=>q.x+","+q.y).join(" ")+'" fill="'+col+'" fill-opacity="'+(f.a||.12)+'"/>'; });
+  (g.rects||[]).forEach(r=>{ o+='<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" rx="2" fill="'
+    +(fillOn?col:"none")+'" fill-opacity="'+(d.fill==="soft"?.14:.26)+'" stroke="'+edge+'" stroke-width="'+w
+    +'" stroke-dasharray="'+ds+'"/>'; });
+  (g.rounds||[]).forEach(r=>{ o+='<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" rx="8" fill="'+col
+    +'" fill-opacity=".2" stroke="'+edge+'" stroke-width="1"/>'; });
+  (g.polys||[]).forEach(q=>{ o+='<polygon points="'+q.map(v=>v[0]+","+v[1]).join(" ")+'" fill="'
+    +(fillOn?col:"none")+'" fill-opacity=".14" stroke="'+edge+'" stroke-width="'+w+'" stroke-dasharray="'+ds+'"/>'; });
+  (g.ellipses||[]).forEach(e=>{ o+='<ellipse cx="'+e.cx+'" cy="'+e.cy+'" rx="'+e.rx+'" ry="'+e.ry
+    +'" fill="'+(fillOn?col:"none")+'" fill-opacity=".16" stroke="'+edge+'" stroke-width="'+w+'" stroke-dasharray="'+ds+'"/>'; });
+  (g.arcs||[]).forEach(a=>{ const r=a.r, a0=a.a0*Math.PI/180, a1=a.a1*Math.PI/180;
+    const x0=a.cx+Math.cos(a0)*r, y0=a.cy+Math.sin(a0)*r, x1=a.cx+Math.cos(a1)*r, y1=a.cy+Math.sin(a1)*r;
+    const large=(Math.abs(a.a1-a.a0)>180)?1:0, sweep=(a.a1>a.a0)?1:0;
+    o+='<path d="M '+x0+' '+y0+' A '+r+' '+r+' 0 '+large+' '+sweep+' '+x1+' '+y1+'" fill="none" stroke="'+edge
+      +'" stroke-width="'+Math.max(1,w-1)+'" stroke-dasharray="'+ds+'"/>'; });
+  (g.paths||[]).forEach(P_=>{ const q=P_.pts; if(q.length<2) return;
+    const sw=P_.wide?Math.max(8,w*6):w, so=P_.wide?.35:1;
+    const pl=q.map(v=>v.x+","+v.y).join(" ");
+    o+=P_.curvy
+      ? '<path d="M '+q[0].x+' '+q[0].y+' Q '+q[1].x+' '+q[1].y+' '+q[2].x+' '+q[2].y+'" fill="none" stroke="'+edge
+        +'" stroke-width="'+w+'" stroke-dasharray="'+ds+'"/>'
+      : '<polyline points="'+pl+'" fill="none" stroke="'+edge+'" stroke-width="'+sw+'" stroke-opacity="'+so
+        +'" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="'+ds+'"/>'; });
+  (g.segs||[]).forEach(k2=>{ o+='<line x1="'+k2[0]+'" y1="'+k2[1]+'" x2="'+k2[2]+'" y2="'+k2[3]+'" stroke="'+edge
+    +'" stroke-width="'+w+'" stroke-dasharray="'+ds+'"/>'; });
+  (g.arrows||[]).forEach(a=>{ const s=a.big?15:10, an=a.ang||-Math.PI/2;
+    const tipx=a.x+Math.cos(an)*(a.big?0:s), tipy=a.y+Math.sin(an)*(a.big?0:s);
+    const l={x:tipx-Math.cos(an-0.42)*s,y:tipy-Math.sin(an-0.42)*s}, r={x:tipx-Math.cos(an+0.42)*s,y:tipy-Math.sin(an+0.42)*s};
+    if(a.stem) o+='<line x1="'+a.x+'" y1="'+a.y+'" x2="'+tipx+'" y2="'+tipy+'" stroke="'+edge+'" stroke-width="'+w+'"/>';
+    o+='<path d="M '+tipx+' '+tipy+' L '+l.x+' '+l.y+' L '+tipx+' '+tipy+' L '+r.x+' '+r.y+'" fill="none" stroke="'
+      +edge+'" stroke-width="'+Math.max(2,w+1)+'" stroke-linecap="round"/>'; });
+  (g.texts||[]).forEach(t=>{ o+='<text x="'+t.x+'" y="'+t.y+'" fill="'+(d.textColour||edge)+'" font-size="'+(t.size||12)
+    +'" font-weight="600" text-anchor="'+(d.align==="center"?"middle":d.align==="right"?"end":"start")
+    +'">'+String(t.text||"").replace(/</g,"&lt;")+'</text>'; });
+  (g.dots||[]).forEach(q=>{ o+='<circle cx="'+q.x+'" cy="'+q.y+'" r="3" fill="'+edge+'"/>'
+    +(q.label?'<text x="'+(q.x+6)+'" y="'+(q.y+4)+'" fill="'+edge+'" font-size="9.5" class="mono">'+q.label+'</text>':''); });
+  (g.chips||[]).forEach(c=>{ o+='<rect x="'+(c.x-3)+'" y="'+(c.y-11)+'" width="'+(String(c.text).length*5.6+8).toFixed(0)
+    +'" height="15" rx="4" fill="rgba(0,0,0,.55)"/><text x="'+(c.x+1)+'" y="'+c.y+'" fill="'+edge
+    +'" font-size="10" class="mono">'+String(c.text).replace(/</g,"&lt;")+'</text>'; });
+  (g.tags||[]).forEach(t=>{ o+='<rect x="'+(t.x+8)+'" y="'+(t.y-10)+'" width="62" height="19" rx="4" fill="rgba(255,194,71,.92)"/>'
+    +'<text x="'+(t.x+13)+'" y="'+(t.y+4)+'" fill="#1A1206" font-size="11" font-weight="700" class="mono">'+t.text+'</text>'; });
+  o+='</g>';
+  /* the hit shapes — the reference hit-tests in pixels; this is its equivalent */
+  const hb='fill="transparent" data-id="'+d.id+'" style="cursor:move"';
+  (g.segs||[]).forEach(k2=>o+='<line x1="'+k2[0]+'" y1="'+k2[1]+'" x2="'+k2[2]+'" y2="'+k2[3]+'" stroke="transparent" stroke-width="14" data-id="'+d.id+'" style="cursor:move"/>');
+  (g.rects||[]).forEach(r=>o+='<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" '+hb+'/>');
+  (g.rounds||[]).forEach(r=>o+='<rect x="'+r.x+'" y="'+r.y+'" width="'+r.w+'" height="'+r.h+'" '+hb+'/>');
+  (g.ellipses||[]).forEach(e=>o+='<ellipse cx="'+e.cx+'" cy="'+e.cy+'" rx="'+e.rx+'" ry="'+e.ry+'" '+hb+'/>');
+  (g.polys||[]).forEach(q=>o+='<polygon points="'+q.map(v=>v[0]+","+v[1]).join(" ")+'" '+hb+'/>');
+  (g.paths||[]).forEach(P_=>o+='<polyline points="'+P_.pts.map(v=>v.x+","+v.y).join(" ")+'" fill="none" stroke="transparent" stroke-width="14" data-id="'+d.id+'" style="cursor:move"/>');
+  (g.arrows||[]).forEach(a=>o+='<circle cx="'+a.x+'" cy="'+a.y+'" r="12" '+hb+'/>');
+  (g.chips||[]).forEach(c=>o+='<rect x="'+(c.x-4)+'" y="'+(c.y-12)+'" width="'+(String(c.text).length*5.6+10).toFixed(0)+'" height="17" '+hb+'/>');
+  (g.tags||[]).forEach(t=>o+='<rect x="'+(t.x+6)+'" y="'+(t.y-12)+'" width="66" height="22" '+hb+'/>');
+  /* handles (Part 34: whole-object drag + per-handle manipulation) */
+  if(on&&!d.locked){
+    d.pts.forEach((q,i)=>{ o+='<rect x="'+(q.x-4)+'" y="'+(q.y-4)+'" width="8" height="8" rx="2" fill="var(--accent)" stroke="#000" stroke-opacity=".5" data-h="'+i+'" data-id="'+d.id+'" style="cursor:crosshair"/>'; });
+    if(d.pts.length>1) o+='<circle cx="'+d.pts[0].x+'" cy="'+d.pts[0].y+'" r="7" fill="none" stroke="var(--accent)" stroke-width="1.4" data-h="0" data-id="'+d.id+'" style="cursor:grab"/>';
+  }
+  return o;
+}
+function render(){
+  const W=stage.clientWidth,H=stage.clientHeight;
+  const vis=S.objs.filter(d=>!d.tfs||d.tfs.indexOf(S.tf)>=0);
+  const hot=(d)=>d.id===S.hover&&d.id!==S.sel;
+  let pre="",post="";
+  vis.forEach(d=>{ const s=paintObj(d,hot(d)); (d.behind?pre+=s:post+=s); });
+  let o=pre+candlesSVG()+post;
+  /* the axis tags + connector band of the selected object (the reference's
+     price/time tags on both axes with the band that shows the range) */
+  const d0=sel();
+  if(d0&&vis.indexOf(d0)>=0){
+    const ys=d0.pts.map(q=>q.y), xs=d0.pts.map(q=>q.x);
+    const y0=Math.min(...ys), y1=Math.max(...ys), x0=Math.min(...xs), x1=Math.max(...xs);
+    o+='<g class="axes">';
+    o+='<rect x="0" y="'+y0+'" width="0" height="0" fill="none"/>';
+    o+='<rect x="'+(W-4)+'" y="'+y0+'" width="4" height="'+Math.max(2,y1-y0)+'" fill="rgba(255,194,71,.55)"/>';
+    d0.pts.forEach(q=>{ o+='<rect x="'+(W-70)+'" y="'+(q.y-9)+'" width="70" height="18" rx="3" fill="rgba(255,194,71,.92)"/>'
+      +'<text x="'+(W-66)+'" y="'+(q.y+4)+'" font-size="10.5" font-weight="700" fill="#1A1206" class="mono">'+px2price(q.y).toFixed(5)+'</text>'; });
+    o+='<rect x="'+x0+'" y="'+(H-30)+'" width="'+Math.max(2,x1-x0)+'" height="4" fill="rgba(255,194,71,.55)"/>';
+    d0.pts.forEach(q=>{ const lbl=timeFor(px2bar(q.x));
+      o+='<rect x="'+(q.x-52)+'" y="'+(H-26)+'" width="104" height="18" rx="3" fill="rgba(255,194,71,.92)"/>'
+      +'<text x="'+(q.x-48)+'" y="'+(H-13)+'" font-size="9.5" font-weight="700" fill="#1A1206" class="mono">'+lbl+'</text>'; });
+    o+='</g>';
+  }
+  /* the rubber band of a multi-point tool (Part 34) */
+  if(S.pts.length){
+    const k=S.armed, t=TOOLS[k]||{}, p0=S.pts[S.pts.length-1], p1=S.mouse;
+    if(t.pts>=2&&p0){
+      if(["rect","fibo","ellipse","circle","fiboexp","fibochannel","gannbox","longpos","shortpos"].indexOf(k)>=0)
+        o+='<rect x="'+Math.min(p0.x,p1.x)+'" y="'+Math.min(p0.y,p1.y)+'" width="'+Math.abs(p1.x-p0.x)+'" height="'
+          +Math.abs(p1.y-p0.y)+'" fill="'+S.colour+'" fill-opacity=".07" stroke="'+S.colour+'" stroke-width="1" stroke-dasharray="4 3"/>';
+      else if(!t.grow)
+        o+='<line x1="'+p0.x+'" y1="'+p0.y+'" x2="'+p1.x+'" y2="'+p1.y+'" stroke="'+S.colour+'" stroke-width="1" stroke-dasharray="4 3"/>';
+    }
+    S.pts.forEach(q=>o+='<circle cx="'+q.x+'" cy="'+q.y+'" r="3" fill="'+S.colour+'" opacity=".9"/>');
+  }
+  /* Part 32: crosshair manager — live reticle, locked cross, measure line, magnifier lens */
+  if(S.armed==="crosshair"||S.meas){
+    const mx=S.mouse.x,my=S.mouse.y,pr=px2price(my),tf=S.tf;
+    o+='<g opacity=".9"><line x1="0" y1="'+my+'" x2="'+W+'" y2="'+my+'" stroke="var(--red)" stroke-width="1"/>'
+      +'<line x1="'+mx+'" y1="0" x2="'+mx+'" y2="'+H+'" stroke="var(--red)" stroke-width="1"/></g>';
+    o+='<rect x="'+(W-78)+'" y="'+(my-9)+'" width="76" height="18" rx="4" fill="rgba(255,194,71,.92)"/>'
+      +'<text x="'+(W-72)+'" y="'+(my+4)+'" font-size="11" font-weight="700" fill="#1A1206" class="mono">'+pr.toFixed(5)+'</text>'
+      +'<rect x="'+(mx-62)+'" y="'+(H-26)+'" width="124" height="18" rx="4" fill="rgba(255,194,71,.92)"/>'
+      +'<text x="'+(mx-57)+'" y="'+(H-13)+'" font-size="10" font-weight="700" fill="#1A1206" class="mono">'+timeFor(px2bar(mx))+'</text>';
+    /* the magnifier: the same chart re-drawn at 2x inside a circular clip */
+    const lr=54, lx=mx+ (mx>W-160? -lr-40 : lr+40), ly=my+(my>H-160? -lr-40 : lr+40);
+    o+='<defs><clipPath id="lens"><circle cx="'+lx+'" cy="'+ly+'" r="'+lr+'"/></clipPath></defs>'
+      +'<g clip-path="url(#lens)" opacity=".96"><g transform="translate('+(lx-mx*2)+','+(ly-my*2)+') scale(2)">'
+      + candlesSVG()+'</g></g>'
+      +'<circle cx="'+lx+'" cy="'+ly+'" r="'+lr+'" fill="none" stroke="rgba(255,194,71,.75)" stroke-width="2"/>'
+      +'<line x1="'+(lx-lr)+'" y1="'+ly+'" x2="'+(lx+lr)+'" y2="'+ly+'" stroke="rgba(240,69,95,.85)" stroke-width="1"/>'
+      +'<line x1="'+lx+'" y1="'+(ly-lr)+'" x2="'+lx+'" y2="'+(ly+lr)+'" stroke="rgba(240,69,95,.85)" stroke-width="1"/>'
+      +'<rect x="'+(lx-52)+'" y="'+(ly+lr+3)+'" width="104" height="17" rx="4" fill="rgba(0,0,0,.6)"/>'
+      +'<text x="'+(lx-46)+'" y="'+(ly+lr+15)+'" font-size="9.5" fill="#FFC247" class="mono">'+tf+' \u00B7 '+pr.toFixed(5)+'</text>';
+    if(S.meas){
+      o+='<line x1="0" y1="'+S.meas.y+'" x2="'+W+'" y2="'+S.meas.y+'" stroke="var(--green)" stroke-width="1"/>'
+        +'<line x1="'+S.meas.x+'" y1="0" x2="'+S.meas.x+'" y2="'+H+'" stroke="var(--green)" stroke-width="1"/>'
+        +'<line x1="'+S.meas.x+'" y1="'+S.meas.y+'" x2="'+mx+'" y2="'+my+'" stroke="var(--blue)" stroke-width="1" stroke-dasharray="6 3 1 3"/>'
+        +'<rect x="'+Math.min(S.meas.x,mx)+'" y="'+Math.min(S.meas.y,my)+'" width="'+Math.abs(mx-S.meas.x)+'" height="'+Math.abs(my-S.meas.y)+'" fill="var(--blue)" fill-opacity=".06"/>';
+    }
+  }
+  svg.innerHTML=o;
+  const bx=st("mbox");
+  if(S.meas){ const m=measureText(S.meas,S.mouse);
+    bx.style.display="block"; bx.style.left=Math.min(S.mouse.x+18,W-200)+"px"; bx.style.top=Math.min(S.mouse.y+14,H-92)+"px";
+    bx.innerHTML='<div><b>'+m.price+'</b></div><div class="dt">'+m.bars+'</div><div>'+m.ang+'</div>';
+  } else bx.style.display="none";
+}
+function measureText(a,b){
+  const p1=px2price(a.y),p2=px2price(b.y),d=p2-p1,ad=Math.abs(d),px=Math.hypot(b.x-a.x,b.y-a.y);
+  const bars=Math.abs(px2bar(b.x)-px2bar(a.x)), mins=bars*TFM[S.tf];
+  return {price:"\u2194 "+d.toFixed(5)+" ("+(d/p1*100).toFixed(2)+"%), "+(ad/0.0001).toFixed(1),
+    bars:bars+" bars ("+(mins<60?mins+"m":(mins/60).toFixed(1)+"h")+"), distance: "+px.toFixed(0)+" px",
+    ang:angleDeg(a,b).toFixed(2)+"\u00B0"};
+}
+
+/* ═══ 6 · hit test — read from the SAME geom() ═══════════════════════ */
+function hitTest(x,y){
+  const d2=(px,py,x1,y1,x2,y2)=>{const L=(x2-x1)*(x2-x1)+(y2-y1)*(y2-y1)||1;
+    let t=((px-x1)*(x2-x1)+(py-y1)*(y2-y1))/L; t=Math.max(0,Math.min(1,t));
+    return Math.hypot(x1+t*(x2-x1)-px,y1+t*(y2-y1)-py);};
+  for(let i=S.objs.length-1;i>=0;i--){
+    const d=S.objs[i], g=geomOf(d);
+    if(d.tfs&&d.tfs.indexOf(S.tf)<0) continue;
+    if(g.segs&&g.segs.some(k=>d2(x,y,k[0],k[1],k[2],k[3])<7)) return d;
+    if(g.rects&&g.rects.some(r=>x>r.x-7&&x<r.x+r.w+7&&y>r.y-7&&y<r.y+r.h+7)) return d;
+    if(g.rounds&&g.rounds.some(r=>x>r.x-7&&x<r.x+r.w+7&&y>r.y-7&&y<r.y+r.h+7)) return d;
+    if(g.ellipses&&g.ellipses.some(e=>Math.hypot((x-e.cx)/(e.rx||1),(y-e.cy)/(e.ry||1))<=1.03)) return d;
+    if(g.arcs&&g.arcs.some(a=>{ const rr=Math.hypot(x-a.cx,y-a.cy);
+      if(Math.abs(rr-a.r)>7) return false;
+      let lo=Math.min(a.a0,a.a1), hi=Math.max(a.a0,a.a1), ang=Math.atan2(y-a.cy,x-a.cx)*180/Math.PI;
+      if(hi-lo>=359) return true;
+      if(ang<0) ang+=360;
+      return ang>=lo-7&&ang<=hi+7; })) return d;
+    if(g.paths&&g.paths.some(P_=>{ for(let j=1;j<P_.pts.length;j++){ const q=P_.pts[j-1],s=P_.pts[j];
+      if(d2(x,y,q.x,q.y,s.x,s.y)<9) return true; } return false; })) return d;
+    if(g.polys&&g.polys.some(q=>x>Math.min(...q.map(v=>v[0]))-7&&x<Math.max(...q.map(v=>v[0]))+7
+      &&y>Math.min(...q.map(v=>v[1]))-7&&y<Math.max(...q.map(v=>v[1]))+7)) return d;
+    if(g.texts&&g.texts.some(t=>x>t.x-10&&x<t.x+String(t.text||"").length*t.size*.62+10&&Math.abs(y-t.y)<t.size)) return d;
+    if(g.arrows&&g.arrows.some(q=>Math.hypot(q.x-x,q.y-y)<14)) return d;
+    if(g.tags&&g.tags.some(t=>x>t.x-8&&x<t.x+74&&Math.abs(y-t.y)<14)) return d;
+    if(g.chips&&g.chips.some(c=>x>c.x-6&&x<c.x+String(c.text).length*5.6+8&&Math.abs(y-c.y+3)<12)) return d;
+  }
+  return null;
+}
+
+/* ═══ 7 · pointer: create · select · drag · erase (Part 34) ══════════ */
+let drag=null;
+svg.addEventListener("pointerdown",e=>{
+  const p=local(e);
+  const h=e.target.getAttribute&&e.target.getAttribute("data-h");
+  const id=e.target.getAttribute&&e.target.getAttribute("data-id");
+  const t=S.armed?TOOLS[S.armed]:null;
+  if(t&&!t.erase){
+    if(t.pts===0){ capture(svg,e); return; }
+    if(t.pts===1&&!t.grow){ S.objs.push(newObj(S.armed,[p])); S.armed=null; afterDraw(); return; }
+    if(t.pts===1&&t.grow){ S.objs.push(newObj(S.armed,[p])); S.armed=null; S.drawing=S.objs[S.objs.length-1];
+      drag={m:"free",d:S.drawing}; capture(svg,e); afterDraw(); return; }
+    S.pts.push(p);
+    /* a click-accumulating tool (Path): points until Enter or a double-click,
+       and the double-click's OWN second down is not a point (Part 36/38) */
+    if(t.grow&&t.pts>=2){
+      if(e.detail>1&&S.pts.length>=3){ S.objs.push(newObj(S.armed,S.pts.slice(0,-1))); S.pts=[]; S.armed=null;
+        S.noDbl=Date.now(); afterDraw(); return; }
+      capture(svg,e); afterDraw(); return; }
+    if(S.pts.length>=t.pts){ S.objs.push(newObj(S.armed,S.pts.slice())); S.pts=[]; S.armed=null; afterDraw(); return; }
+    capture(svg,e); afterDraw(); return;
+  }
+  if(t&&t.erase){ S.sel=null; drag={m:"erase"}; capture(svg,e); return; }
+  if(h!==null&&h!==undefined&&id){ const d=obj(+id); if(!d||d.locked) return;
+    S.sel=d.id; invalidate(); drag={m:"h",d,i:+h}; capture(svg,e); afterDraw(); return; }
+  const d=(id?obj(+id):null)||hitTest(p.x,p.y);
+  if(d){ S.sel=d.id; drag=d.locked?null:{m:"mv",d,last:p}; if(drag) capture(svg,e); afterDraw(); return; }
+  S.sel=null; afterDraw();
+});
+svg.addEventListener("pointermove",e=>{
+  const p=local(e); S.mouse=p;
+  if(drag){
+    const d=drag.d;
+    if(drag.m==="mv"){ const dx=p.x-drag.last.x,dy=p.y-drag.last.y;
+      d.pts.forEach(q=>{q.x+=dx;q.y+=dy;}); drag.last=p; d._g=null; }
+    else if(drag.m==="h"&&d){ d.pts[drag.i]={x:p.x,y:p.y}; d._g=null; }
+    else if(drag.m==="free"&&d){ d.pts.push({x:p.x,y:p.y}); d._g=null; }
+    else if(drag.m==="erase"){ const o=hitTest(p.x,p.y); if(o){ S.objs=S.objs.filter(z=>z.id!==o.id); if(S.sel===o.id)S.sel=null; } }
+    markDirty(); afterDraw(); return;
+  }
+  if(S.armed&&TOOLS[S.armed]&&TOOLS[S.armed].erase){ const o=hitTest(p.x,p.y);
+    if(o){ S.objs=S.objs.filter(z=>z.id!==o.id); if(S.sel===o.id)S.sel=null; markDirty(); afterDraw(); return; } }
+  const h0=hitTest(p.x,p.y); const was=S.hover; S.hover=h0?h0.id:null;
+  /* realtime = the same event: reticle, rubber band, hover raise repaint here */
+  if(S.pts.length||S.armed==="crosshair"||S.meas||S.armed||was!==S.hover) render();
+});
+["pointerup","pointercancel"].forEach(ev=>svg.addEventListener(ev,()=>{ if(drag&&drag.m==="free"&&drag.d){
+  if(drag.d.pts.length<2) S.objs=S.objs.filter(z=>z.id!==drag.d.id); else markDirty(); } drag=null; afterDraw(); }));
+svg.addEventListener("dblclick",e=>{
+  const p=local(e);
+  /* a Path finished by double-click must not eat the NEXT double-click (the
+     measure mode's own gesture) — the debt expires with the gesture */
+  if(S.noDbl&&Date.now()-S.noDbl<350){ S.noDbl=0; return; }
+  if(S.armed==="crosshair"){ S.meas=S.meas?null:{x:p.x,y:p.y}; afterDraw(); return; }
+  const d=hitTest(p.x,p.y);
+  if(d&&TOOLS[d.kind]&&TOOLS[d.kind].edit){ startInline(d); return; }
+  if(d&&(d.kind==="path"||TOOLS[d.kind].grow)){ d.pts.push({x:p.x,y:p.y}); d._g=null; markDirty(); afterDraw(); }
+});
+function newObj(kind,pts){
+  const m=MEM[kind]||{};
+  return {id:++S.seq,kind,pts:pts.map(q=>({x:q.x,y:q.y})),
+    colour:m.colour||S.colour,edge:(m.edge===undefined?S.edge:m.edge),op:(m.op===undefined?S.op:m.op),width:m.width||S.width,
+    style:m.style||S.style,fill:m.fill||(kind==="rect"||kind==="triangle"?"none":"none"),
+    caption:m.caption||S.caption,font:S.font,align:S.align,textColour:S.textColour,
+    locked:false,behind:!S.layerAbove,tfs:null};
+}
+function afterDraw(){ markDirty(); refresh(); }
+function remember(d){
+  MEM[d.kind]={colour:d.colour,edge:d.edge,op:d.op,width:d.width,style:d.style,fill:d.fill,caption:d.caption};
+  S.colour=d.colour; S.edge=d.edge; S.op=d.op; S.width=d.width; S.style=d.style;
+}
+
+/* ═══ 8 · the rail + flyout (Part 30/31) · pins (Part 39) ════════════ */
+function renderRail(){
+  const r=st("rail");
+  r.classList.toggle("folded",!!S.railFold);
+  r.classList.toggle("right",!!S.railRight);
+  let h='<div class="chev" data-act="fold">'+(S.railFold?"\u00BB":"\u00AB")+'</div>'
+       +'<div class="chev" data-act="side">'+(S.railRight?"\u00AB":"\u00BB")+'</div>';
+  CATS.forEach(c=>{ h+='<div class="railbtn'+(S.cat===c.id?" on":"")+'" data-cat="'+c.id+'" title="'+c.title
+    +'">'+(S.icons==='biotak'?ico(CAT_ICON[c.id]):'<span class="lg" style="font-family:\''+c.f+'\',Wingdings,Webdings">'+c.gl+'</span>')+'</div>'; });
+  r.innerHTML=h;
+}
+function renderFlyout(){
+  const f=st("flyout");
+  if(!S.cat||S.railFold){ f.style.display="none"; return; }
+  const c=CATS.find(x=>x.id===S.cat);
+  const ids=Object.keys(TOOLS).filter(k=>TOOLS[k].cat===c.id);
+  f.style.display="block";
+  f.style.left=(S.railRight?"auto":"52px"); f.style.right=(S.railRight?"52px":"auto");
+  f.style.top=Math.max(8,Math.min(seatY(S.cat)-6,Math.max(8,stage.clientHeight-360)))+"px";
+  f.innerHTML='<div class="fh">'+c.title+'</div>'+ids.map(id=>{ const t=TOOLS[id];
+    const pin=S.pins.indexOf(id)>=0;
+    return '<div class="frow'+(S.armed===id?" on":"")+'" data-tool="'+id+'" title="'+t.n+' \u00B7 '
+      +(t.pts===0?"live":t.pts+(t.pts===1?" tap":" pts"))+'">'
+      +glyph(t)
+      +'<span>'+t.n+'</span>'
+      +'<span class="pin'+(pin?" on":"")+'" data-pin="'+id+'" title="pin to ribbon">'
+      + (S.icons==='biotak'?ico("pin") : (pin?"\u2B50":"\u2606"))+'</span></div>'; }).join("");
+}
+function seatY(cat){ const i=CATS.findIndex(c=>c.id===cat); return 24+12+i*34; }
+st("rail").addEventListener("click",e=>{
+  const c=e.target.closest("[data-cat]"), a=e.target.dataset.act;
+  if(a==="fold"){ S.railFold=!S.railFold; S.cat=null; return afterDraw(); }
+  if(a==="side"){ S.railRight=!S.railRight; return afterDraw(); }
+  if(!c) return;
+  S.cat=(S.cat===c.dataset.cat)?null:c.dataset.cat; afterDraw(); });
+st("flyout").addEventListener("click",e=>{
+  const p=e.target.closest("[data-pin]");
+  if(p){ togglePin(p.dataset.pin); return; }
+  const t=e.target.closest("[data-tool]"); if(t) armTool(t.dataset.tool); });
+st("flyout").addEventListener("pointerover",e=>{
+  const t=e.target.closest("[data-tool]"); if(t) S.hoverSel=t.dataset.tool; });
+window.addEventListener("pointermove",e=>{
+  const r=st("rail").getBoundingClientRect();
+  if(!S.railFold&&e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
+    const c=e.target.closest&&e.target.closest("[data-cat]");
+    if(c&&S.cat!==c.dataset.cat){ S.cat=c.dataset.cat; afterDraw(); } }
+});
+function togglePin(id){ const i=S.pins.indexOf(id);
+  if(i>=0) S.pins.splice(i,1); else S.pins.push(id);
+  markDirty(); afterDraw(); }
+function armTool(id){
+  S.pts=[]; S.armed=(S.armed===id)?null:id;
+  if(TOOLS[id]&&TOOLS[id].pts===0) S.meas=null;
+  afterDraw();
+}
+
+/* ═══ 9 · the pinned ribbon (Part 39) ════════════════════════════════ */
+function renderRibbon(){
+  const r=st("ribbon"), pop=st("ribpop");
+  r.style.display=S.ribbonOn?"flex":"none"; pop.style.display=(S.ribbonOn&&S.ribPop)?"flex":"none";
+  if(!S.ribbonOn){ pop.style.display="none"; return; }
+  r.style.maxWidth=S.ribW+"px";
+  let h='<div class="rgrip" id="ribGrip" title="resize">\u2551</div>', prev=null;
+  S.pins.forEach(id=>{ const t=TOOLS[id]; if(!t) return;
+    if(prev&&TOOLS[prev].cat!==t.cat) h+='<span class="rsep"></span>';
+    h+='<div class="rb'+(S.armed===id?" on":"")+'" data-tool="'+id+'" title="'+t.n+'">'
+      +(S.icons==='biotak'?ico(t.ic):'<span class="lg" style="font-family:\''+t.f+'\',Wingdings,Webdings">'+t.g+'</span>')+'</div>';
+    prev=id; });
+  h+='<div class="rmore" data-act="more" title="all pinned">\u00BB</div>';
+  r.innerHTML=h;
+  const rr=r.getBoundingClientRect(), sr=stage.getBoundingClientRect();
+  pop.style.left=Math.max(8,Math.min(rr.left-sr.left,stage.clientWidth-300))+"px";
+  pop.style.top=(rr.bottom-sr.top+6)+"px";
+  pop.innerHTML=S.pins.map(id=>{ const t=TOOLS[id];
+    return '<div class="rb'+(S.armed===id?" on":"")+'" data-tool="'+id+'" title="'+t.n+'">'+ico(t.ic)+'</div>'; }).join("");
+}
+st("ribbon").addEventListener("click",e=>{
+  if(e.target.dataset.act==="more"){ S.ribPop=!S.ribPop; return afterDraw(); }
+  const t=e.target.closest("[data-tool]"); if(t) armTool(t.dataset.tool); });
+st("ribpop").addEventListener("click",e=>{ const t=e.target.closest("[data-tool]"); if(t) armTool(t.dataset.tool); });
+function bindRibGrip(){
+  const g=st("ribGrip"); if(!g) return;
+  g.onpointerdown=e=>{ e.preventDefault(); e.stopPropagation(); const x0=e.clientX, w0=S.ribW;
+    const mv=ev=>{ S.ribW=Math.max(70,Math.min(560,w0+(ev.clientX-x0))); markDirty(); renderRibbon(); };
+    const up=()=>{ g.removeEventListener("pointermove",mv); g.removeEventListener("pointerup",up); };
+    g.addEventListener("pointermove",mv); g.addEventListener("pointerup",up); };
+}
+st("tRibbon").addEventListener("click",()=>{ S.ribbonOn=!S.ribbonOn; st("tRibbon").classList.toggle("on",S.ribbonOn); afterDraw(); });
+
+/* ═══ 10 · the live properties bar of the selection ══════════════════ */
+function renderStrip(){
+  const d=sel(), el=st("strip");
+  if(!d){ el.style.display="none"; return; }
+  el.style.display="flex";
+  el.innerHTML='<div class="scell gripcell" id="stripGrip" title="drag">'+ico("grip")+'</div>'
+    +'<div class="scell" title="'+TOOLS[d.kind].n+'">'+chip(d.ic)+'</div>'
+    +'<div class="scell" data-act="pick" title="Fill colour"><span class="swcell" style="background:'+d.colour+'"></span></div>'
+    +'<div class="scell" data-act="pickEdge" title="Border colour'+(d.edge?'':' \u00B7 auto')+'"><span class="swcell" style="background:transparent;box-shadow:inset 0 0 0 3px '+edgeOf(d)+'"></span></div>'
+    +'<div class="scell" data-act="width" title="Width '+d.width+'"><div class="bar" style="height:'+d.width*2+'px"></div></div>'
+    +'<div class="scell" data-act="style" title="'+d.style+'"><div class="ln" style="border-top-style:'
+      +(d.style==="dot"?"dotted":d.style==="solid"?"solid":"dashed")+'"></div></div>'
+    +(d.fill!==undefined?'<div class="scell'+(d.fill!=="none"?" on":"")+'" data-act="fill" title="Fill '+d.fill+'">'+ico("squarefill")+'</div>':"")
+    +'<div class="scell'+(d.behind?" on":"")+'" data-act="behind" title="Layer: '+(d.behind?"behind candles":"above candles")+'">'+ico("layers")+'</div>'
+    +'<div class="scell'+(d.locked?" on":"")+'" data-act="lock" title="Lock">'+ico(d.locked?"lock":"unlock")+'</div>'
+    +'<div class="scell" data-act="gear" title="Settings (tabbed)">'+ico("gear")+'</div>'
+    +'<div class="scell xcell" data-act="del" title="Delete">'+ico("x")+'</div>';
+}
+function placeStrip(){
+  const d=sel(), el=st("strip"); if(!d) return;
+  if(S.dragKey==="stripPos") return;          // the hand owns it while it drags
+  if(S.stripFor!==d.id){
+    const xs=d.pts.map(q=>q.x), ys=d.pts.map(q=>q.y);
+    S.stripFor=d.id; S.stripPos={x:Math.max(54,Math.min(...xs)),y:Math.max(6,Math.min(...ys)-46)};
+    if(S.stripPos.y<10) S.stripPos.y=Math.min(stage.clientHeight-46,Math.max(...ys)+16);
+  }
+  const w=el.offsetWidth||260, h=el.offsetHeight||40, pr=st("panel").getBoundingClientRect(), sr=stage.getBoundingClientRect();
+  S.stripPos.x=Math.max(50,Math.min(S.stripPos.x,stage.clientWidth-w-6));
+  S.stripPos.y=Math.max(40,Math.min(S.stripPos.y,stage.clientHeight-46));
+  const px0=pr.left-sr.left, py0=pr.top-sr.top;
+  const hit=(px0<S.stripPos.x+w&&px0+pr.width>S.stripPos.x&&py0<S.stripPos.y+h&&py0+pr.height>S.stripPos.y);
+  if(hit&&S.panelOpen){ const below=py0+pr.height+8;
+    S.stripPos.y=(below+h<stage.clientHeight-8)?below:Math.max(40,py0-h-8); }
+  el.style.left=S.stripPos.x+"px"; el.style.top=S.stripPos.y+"px";
+}
+st("strip").addEventListener("click",e=>{
+  const c=e.target.closest("[data-act]"); if(!c) return; const d=sel(); if(!d) return;
+  const a=c.dataset.act;
+  if(a==="del"){ S.objs=S.objs.filter(o=>o.id!==d.id); S.sel=null; S.stripFor=null; }
+  else if(a==="width"){ const o=[1,2,3,4,5],i=o.indexOf(d.width); d.width=o[(i+1)%o.length]; remember(d); }
+  else if(a==="style"){ const o=["solid","dash","dot","d-dash","d-dot"]; d.style=o[(o.indexOf(d.style)+1)%o.length]; remember(d); }
+  else if(a==="fill"){ const o=["none","soft","solid"]; d.fill=o[(o.indexOf(d.fill)+1)%o.length]; remember(d); }
+  else if(a==="lock") d.locked=!d.locked;
+  else if(a==="behind"){ d.behind=!d.behind; }
+  else if(a==="gear"){ S.panelOpen=true; S.tab="style"; }
+  else if(a==="pick"){ S.pickTarget="fill"; openPop("strip"); return; }
+  else if(a==="pickEdge"){ S.pickTarget="edge"; openPop("strip"); return; }
+  d._g=null; afterDraw();
+});
+
+/* ═══ 11 · the tabbed settings window (Part 38) + coords + visibility
+        (Part 40) + our Levels/Templates ═══════════════════════════════ */
+const PANEL_TABS=[["style","Style"],["text","Text"],["coords","Coords"],["vis","Visible"],["levels","Levels"],["tpl","Template"]];
+function renderPanel(){
+  const el=st("panel");
+  if(!S.panelOpen){ el.style.display="none"; return; }
+  const d=sel();
+  el.style.display="block";
+  el.className="glass"+(S.plate>0&&!S.classic?" slice":"");
+  el.style.left=Math.max(52,S.panelPos.x)+"px"; el.style.top=S.panelPos.y+"px";
+  let body="";
+  if(!d) body='<div class="row"><span class="lbl">No object selected</span><span class="hint" style="margin-left:auto">pick a tool, then click the chart</span></div>';
+  else if(S.tab==="style") body=tabStyle(d);
+  else if(S.tab==="text") body=tabText(d);
+  else if(S.tab==="coords") body=tabCoords(d);
+  else if(S.tab==="vis") body=tabVis(d);
+  else if(S.tab==="levels") body=tabLevels(d);
+  else body=tabTpl(d);
+  el.innerHTML='<div class="ph2" id="panelHead"><div class="pic">'+ico(d?d.ic:"box")+'</div>'
+    +'<div><div class="ptitle">'+(d?TOOLS[d.kind].n:"Settings")+'</div>'
+    +'<div class="psub">'+(d?TOOLS[d.kind].cat+" \u00B7 "+d.kind:"idle")+'</div></div>'
+    +(d?'<div class="swatch" style="background:'+d.colour+';box-shadow:inset 0 0 0 2px '+edgeOf(d)+'" data-act="pick" title="Fill + border"></div>':"")
+    +'<div class="px" data-act="close">'+ico("x")+'</div></div>'
+    +'<div class="tabs">'+PANEL_TABS.map(([k,l])=>'<div class="tab'+(S.tab===k?" on":"")+'" data-act="tab" data-arg="'+k+'">'
+      +ico(TAB_ICON[k])+'<span>'+l+'</span></div>').join("")+'</div>'
+    +'<div class="body">'+body+'</div>'
+    +'<div class="foot"><span class="pill" data-act="defaults">Apply defaults</span><span class="pill" data-act="cancel">Cancel</span>'
+    +'<span class="pill pri" data-act="ok">Ok</span></div>';
+}
+const segCtrl=(slot,items,cur)=>'<div class="seg">'+items.map(([v,l])=>
+  '<b class="'+(String(cur)===String(v)?"on":"")+'" data-act="set" data-arg="'+slot+":"+v+'">'+l+'</b>').join("")+'</div>';
+const barsA=()=>[1,2,3,4,5].map(w=>[String(w),'<div class="bar" style="height:'+w*2+'px"></div>']);
+const linesA=()=>[["solid",'<div class="ln"></div>'],["dash",'<div class="ln" style="border-top-style:dashed"></div>'],
+  ["dot",'<div class="ln" style="border-top-style:dotted"></div>'],
+  ["d-dash",'<div class="ln" style="border-top:2px dashed"></div>'],
+  ["d-dot",'<div class="ln" style="border-top:2px dotted"></div>']];
+function tabStyle(d){ return ''
+  +'<div class="row"><span class="lbl">Fill colour</span>'
+    +'<span class="field"><input id="hexIn" value="'+d.colour.toUpperCase()+'" spellcheck="false"></span>'
+    +'<span class="swatch" style="background:'+d.colour+'" data-act="pick"></span></div>'
+  +'<div class="row"><span class="lbl">Border</span>'
+    +'<span class="field"><input id="edgeIn" value="'+edgeOf(d).toUpperCase()+'" spellcheck="false"></span>'
+    +'<span class="swatch" style="background:'+edgeOf(d)+'" data-act="pickEdge" title="Border colour"></span>'
+    +'<span class="pill'+(d.edge?"":" on")+'" data-act="edgeAuto" title="'+(d.edge?"manual \u00B7 click for auto":"auto \u00B7 a tone of the fill")+'">AUTO</span></div>'
+  +'<div class="row"><span class="lbl">Opaque</span><span class="hint">0-100%</span><span class="val">'+(d.op===undefined?100:d.op)+'%</span></div>'
+  +'<div class="row"><span class="lbl">Width</span>'+segCtrl("width",barsA(),d.width)+'</div>'
+  +'<div class="row"><span class="lbl">Line</span>'+segCtrl("style",linesA(),d.style)+'</div>'
+  +'<div class="row"><span class="lbl">Fill</span>'+segCtrl("fill",[["none","None"],["soft","Soft"],["solid","Solid"]],d.fill)+'</div>'
+  +'<div class="row"><span class="lbl">Layer</span><span class="hint">above / behind candles</span>'
+    +segCtrl("behind",[[ "false","Above"],["true","Behind"]],String(!!d.behind))+'</div>'
+  +'<div class="row"><span class="lbl">Plate</span><span class="hint">backdrop</span>'
+    +segCtrl("plate",[[0,"0%"],[30,"30%"],[60,"60%"],[90,"90%"]],S.plate)+'</div>'
+  +'<div class="row"><span class="lbl">Radius</span><span class="hint">card shell 14px</span><span class="val">'
+    +((S.plate>0&&!S.classic)?"10px \u00B7 9-slice fallback":"14px")+'</span></div>';
+}
+function tabText(d){ return ''
+  +'<div class="row"><span class="lbl">Label</span><span class="field"><input id="capIn" value="'
+    +String(d.caption||"").replace(/"/g,"&quot;")+'" spellcheck="false"></span></div>'
+  +'<div class="row"><span class="lbl">Size</span>'+segCtrl("font",[[9,"9"],[11,"11"],[12,"12"],[14,"14"],[18,"18"]],d.font||12)+'</div>'
+  +'<div class="row"><span class="lbl">Align</span>'+segCtrl("align",[["left","Left"],["center","Centre"],["right","Right"]],d.align)+'</div>'
+  +'<div class="row"><span class="lbl">Text color</span><span class="field"><input id="tcolIn" value="'
+    +String(d.textColour||"#F3F6FB").toUpperCase()+'" spellcheck="false"></span>'
+    +'<span class="swatch" style="background:'+(d.textColour||"#F3F6FB")+'" data-act="pickText"></span></div>'
+  +'<div class="row"><span class="lbl">Anchors</span><span class="val">'+d.pts.length+(d.pts.length===1?" point":" points")+'</span></div>'
+  +'<div class="row"><span class="lbl">Edit in place</span><span class="hint">double-click the object</span>'
+    +'<span class="pill" data-act="editNow">Edit now</span></div>';
+}
+function tabCoords(d){ let h='<div class="row"><span class="lbl">Coordinates</span><span class="hint">price / time, typed in</span></div>';
+  d.pts.forEach((q,i)=>{ h+='<div class="coord"><span class="cn">P'+(i+1)+'</span>'
+    +'<span class="field" style="max-width:96px"><input data-act="cpx" data-arg="'+i+'" value="'+px2price(q.y).toFixed(5)+'"></span>'
+    +'<span class="field"><input data-act="ctx" data-arg="'+i+'" value="'+timeFor(px2bar(q.x))+'" style="font-size:10.5px"></span>'
+    +'<span class="pill" data-act="seek" data-arg="'+i+'">\u2316</span></div>'; });
+  h+='<div class="row"><span class="lbl">Span</span><span class="val">'+Math.abs(px2bar(Math.max(...d.pts.map(q=>q.x)))-px2bar(Math.min(...d.pts.map(q=>q.x))))
+    +' bars \u00B7 '+(Math.abs(px2price(Math.min(...d.pts.map(q=>q.y)))-px2price(Math.max(...d.pts.map(q=>q.y))))/0.0001).toFixed(1)+' pips</span></div>';
+  return h;
+}
+function tabVis(d){ const mask=d.tfs;
+  return '<div class="row"><span class="lbl">Visible on</span><span class="hint">per-object timeframe mask</span>'
+    +'<span class="val">'+(mask?mask.length:TFS.length)+'/'+TFS.length+'</span></div>'
+    +'<div class="vgrid">'+TFS.map(t=>'<b class="'+((!mask||mask.indexOf(t)>=0)?"on":"")+'" data-act="tf" data-arg="'+t+'">'+t+'</b>').join("")+'</div>'
+    +'<div class="row"><span class="pill" data-act="tfAll">All</span><span class="pill" data-act="tfNone">None</span>'
+    +'<span class="pill" data-act="tfHere">Only '+S.tf+'</span></div>'
+    +'<div class="row"><span class="lbl">Chart</span><span class="hint">switch the timeframe in the top bar</span>'
+    +'<span class="val">'+S.tf+'</span></div>';
+}
+function tabLevels(d){ return '<div class="row"><span class="lbl">Levels</span><span class="hint">pips from the anchor</span>'
+  +'<span class="val">'+S.levels.length+'</span></div>'
+  +S.levels.map((l,i)=>'<div class="lv"><input value="'+l.p.toFixed(5)+'" data-act="setLevel" data-arg="'+i+'">'
+    +'<span class="hint" style="width:46px">'+((l.p-1.15)*10000).toFixed(1)+'</span>'
+    +'<div class="switch'+(l.on?" on":"")+'" data-act="tglLevel" data-arg="'+i+'"><i></i></div>'
+    +'<span class="scell xcell" style="height:22px" data-act="delLevel" data-arg="'+i+'">\u2715</span></div>').join("")
+  +'<div class="row"><span class="pill" data-act="addLevel">+ Add level</span></div>';
+}
+function tabTpl(d){ return '<div class="row"><span class="lbl">Name</span>'
+  +'<span class="field"><input id="tplIn" placeholder="my demand box" spellcheck="false"></span>'
+  +'<span class="pill" data-act="saveTpl">Save</span></div>'
+  +S.templates.map((t,i)=>'<div class="tplrow"><span class="swatch" style="width:16px;height:16px;background:'+t.colour
+    +';box-shadow:inset 0 0 0 2px '+edgeTone(t.colour,!!(t.fill&&t.fill!=="none"))+'"></span>'
+    +'<span class="lbl" style="flex:1">'+t.name+'</span><span class="pill" data-act="applyTpl" data-arg="'+i+'">Apply</span>'
+    +'<span class="scell xcell" style="height:22px" data-act="delTpl" data-arg="'+i+'">\u2715</span></div>').join("");
+}
+st("panel").addEventListener("click",e=>{
+  const c=e.target.closest("[data-act]"); if(!c) return;
+  const d=sel(), a=c.dataset.act, g_=c.dataset.arg;
+  if(a==="close"||a==="cancel"||a==="ok"){ S.panelOpen=false; }
+  else if(a==="defaults"&&d){ d.colour="#F0455F"; d.edge=null; d.width=2; d.style="solid"; d.fill="none"; d.op=100; d.font=12; d.align="left"; }
+  else if(a==="tab") S.tab=g_;
+  else if(a==="pick"){ S.pickTarget="fill"; openPop("panel"); return; }
+  else if(a==="pickEdge"){ S.pickTarget="edge"; openPop("panel"); return; }
+  else if(a==="pickText"){ S.pickTarget="text"; openPop("panel"); return; }
+  else if(a==="edgeAuto"&&d) d.edge=null;
+  else if(a==="editNow"&&d){ startInline(d); return; }
+  else if(a==="tf"&&d){ const t=g_;
+    if(!d.tfs) d.tfs=TFS.slice();
+    const i=d.tfs.indexOf(t); if(i>=0) d.tfs.splice(i,1); else d.tfs.push(t); }
+  else if(a==="tfAll"&&d) d.tfs=null;
+  else if(a==="tfNone"&&d) d.tfs=[];
+  else if(a==="tfHere"&&d) d.tfs=[S.tf];
+  else if(a==="seek"&&d){ const i=+g_; const q=d.pts[i];
+    P.min=px2price(q.y)-0.004; P.max=px2price(q.y)+0.004; }
+  else if(a==="addLevel") S.levels.push({p:1.15100,on:true});
+  else if(a==="delLevel") S.levels.splice(+g_,1);
+  else if(a==="tglLevel") S.levels[+g_].on=!S.levels[+g_].on;
+  else if(a==="saveTpl"&&d){ S.templates.push({name:S.tplName||("My "+(S.templates.length+1)),colour:d.colour,edge:d.edge,width:d.width,style:d.style,fill:d.fill}); S.tplName=""; }
+  else if(a==="applyTpl"&&d){ const t=S.templates[+g_]; Object.assign(d,{colour:t.colour,edge:t.edge||null,width:t.width,style:t.style,fill:t.fill}); }
+  else if(a==="delTpl") S.templates.splice(+g_,1);
+  else if(a==="set"&&d){ const [slot,v]=g_.split(":");
+    if(slot==="plate") S.plate=+v;
+    else if(slot==="behind") d.behind=(v==="true");
+    else if(slot==="width"){ d.width=+v; remember(d); }
+    else if(slot==="font") d.font=+v;
+    else if(slot){ d[slot]=v; if(slot!=="align") remember(d); } }
+  if(d) d._g=null;
+  afterDraw();
+});
+st("panel").addEventListener("input",e=>{
+  const t=e.target, d=sel();
+  if(t.id==="hexIn"&&d&&/^#?[0-9a-f]{6}$/i.test(t.value.trim())){
+    d.colour="#"+t.value.trim().replace("#","").toUpperCase(); S.colour=d.colour; addRecent(d.colour); }
+  else if(t.id==="edgeIn"&&d&&/^#?[0-9a-f]{6}$/i.test(t.value.trim())){
+    d.edge="#"+t.value.trim().replace("#","").toUpperCase(); addRecent(d.edge); }
+  else if(t.id==="tcolIn"&&d&&/^#?[0-9a-f]{6}$/i.test(t.value.trim())) d.textColour="#"+t.value.trim().replace("#","").toUpperCase();
+  else if(t.id==="capIn"&&d) d.caption=t.value;
+  else if(t.id==="tplIn") S.tplName=t.value;
+  else if(t.dataset.act==="setLevel") S.levels[+t.dataset.arg].p=parseFloat(t.value)||S.levels[+t.dataset.arg].p;
+  else if(t.dataset.act==="cpx"&&d){ const i=+t.dataset.arg, v=parseFloat(t.value);
+    if(!isNaN(v)) d.pts[i].y=price2px(v); }
+  else if(t.dataset.act==="ctx"&&d){ const i=+t.dataset.arg, m=/^(\d{4})\.(\d{2})\.(\d{2})\s+(\d{2}):(\d{2})$/.exec(t.value);
+    if(m){ const ms=Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5]), b=Math.round((ms-TF_BASE)/(TFM[S.tf]*60000));
+      d.pts[i].x=xForBar(b); } }
+  if(d) d._g=null;
+  render();
+});
+
+/* ═══ 12 · the colour picker + opacity + recents (Part 34/37) ════════ */
+function addRecent(c){ S.recent=[c].concat(S.recent.filter(x=>x!==c)).slice(0,8); }
+function openPop(target){
+  S.palOpen=true;
+  const host=(target==="strip")?st("strip"):st("panel");
+  const r=host.getBoundingClientRect(), s=stage.getBoundingClientRect();
+  S.palAnchor={x:Math.max(150,Math.min(r.left-s.left,Math.max(8,stage.clientWidth-286))),y:r.top-s.top+36};
+  afterDraw();
+}
+/* the board's own target — ONE picker, three colours of one object */
+const TARGET_NAME={fill:"Fill colour",edge:"Border colour",text:"Text colour"};
+const targetName=()=>TARGET_NAME[S.pickTarget]||TARGET_NAME.fill;
+function targetCur(d){
+  if(!d) return (S.pickTarget==="edge")?S.edge:S.colour;
+  if(S.pickTarget==="edge") return edgeOf(d);
+  if(S.pickTarget==="text") return d.textColour||"#F3F6FB";
+  return d.colour;
+}
+function renderPop(){
+  const el=st("pop"), d=sel();
+  el.style.display=S.palOpen?"block":"none";
+  if(!S.palOpen) return;
+  const p=S.palPos?clampPos(el,S.palPos)
+    :{x:Math.max(50,S.palAnchor.x),y:Math.max(8,Math.min(S.palAnchor.y,stage.clientHeight-330))};
+  if(S.palPos) S.palPos=p;
+  el.style.left=p.x+"px"; el.style.top=p.y+"px";
+  el.classList.toggle("floating",!!S.palPos);
+  const dk=st("popDock");
+  if(dk){ dk.className="px"+(S.palDock?"":" on");
+    dk.title=S.palDock?"docked to the bar · drag the board to place it":"floating · click to dock again"; }
+  st("popTitle").textContent=targetName()+" \u00B7 "+(d?TOOLS[d.kind].n:"default");
+  st("popTarget").innerHTML=[["fill","Fill"],["edge","Border"],["text","Text"]]
+    .map(([k,l])=>'<b class="'+(S.pickTarget===k?"on":"")+'" data-target="'+k+'">'+l+'</b>').join("")
+    +(S.pickTarget==="edge"?'<b class="'+(d&&d.edge?"":"on")+'" data-target="auto" title="auto: a distinct tone of the fill">Auto</b>':"");
+  const cur=targetCur(d)||"#000000";
+  st("popGrid").innerHTML=PAL.map(h=>'<i data-c="#'+h+'" style="background:#'+h+'" class="'
+    +(("#"+h).toLowerCase()===cur.toLowerCase()?"on":"")+'"></i>').join("");
+  st("popRecent").innerHTML=S.recent.map(h=>'<i data-c="'+h+'" style="background:'+h+'"></i>').join("");
+  st("opRange").value=(d?(d.op===undefined?100:d.op):S.op);
+  st("opVal").textContent=(d?(d.op===undefined?100:d.op):S.op)+"%";
+  const hx=st("popHex"); if(hx&&document.activeElement!==hx) hx.value=cur.toUpperCase();
+}
+/* ONE pick path for every way into the board: the TARGET says which colour of
+   the object it lands on — the border is settable from anywhere (P-DRAW-52). */
+function applyPick(c,keepOpen){
+  const d=sel(); addRecent(c);
+  if(d){
+    if(S.pickTarget==="edge"){ d.edge=c; remember(d); }
+    else if(S.pickTarget==="text") d.textColour=c;
+    else { d.colour=c; remember(d); }
+    d._g=null;
+  } else if(S.pickTarget==="edge") S.edge=c; else S.colour=c;
+  if(!keepOpen&&!S.palPos) S.palOpen=false;
+  afterDraw();
+}
+st("popGrid").addEventListener("click",e=>{
+  const i=e.target.closest("i"); if(!i) return; applyPick(i.dataset.c); });
+st("popRecent").addEventListener("click",e=>{
+  const i=e.target.closest("i"); if(!i) return; applyPick(i.dataset.c); });
+st("popTarget").addEventListener("click",e=>{
+  const b=e.target.closest("[data-target]"); if(!b) return;
+  const d=sel(), k=b.dataset.target;
+  if(k==="auto"){ if(d) d.edge=null; S.edge=null; } else S.pickTarget=k;
+  afterDraw(); });
+st("popDock").addEventListener("click",e=>{ e.stopPropagation();
+  S.palDock=!S.palDock; if(S.palDock) S.palPos=null; renderPop(); markDirty(); });
+st("popClose").addEventListener("click",e=>{ e.stopPropagation(); S.palOpen=false; S.palPos=null;
+  S.palDock=true; afterDraw(); });
+st("popHex").addEventListener("input",e=>{ const v=e.target.value.trim();
+  if(!/^#?[0-9a-f]{6}$/i.test(v)) return;
+  applyPick("#"+v.replace("#","").toUpperCase(),true); });
+st("opRange").addEventListener("input",e=>{
+  const v=+e.target.value, d=sel();
+  if(d){ d.op=v; d._g=null; } S.op=v;
+  st("opVal").textContent=v+"%"; render(); });
+document.addEventListener("pointerdown",e=>{
+  /* an anchored board closes on an outside click; a board the user has PLACED
+     is his furniture and stays until he closes it */
+  if(S.palOpen&&!S.palPos&&!e.target.closest("#pop")&&!e.target.closest("[data-act='pick']")
+     &&!e.target.closest("[data-act='pickEdge']")&&!e.target.closest("[data-act='pickText']")){
+    S.palOpen=false; afterDraw(); } },true);
+
+/* ═══ 13 · in-place label editing (Part 36) ══════════════════════════ */
+function startInline(d){
+  const q=d.pts[0], el=st("inline"), r=svg.getBoundingClientRect();
+  S.editing=d.id;
+  el.style.display="block"; el.style.left=(q.x)+"px"; el.style.top=(q.y-16)+"px";
+  el.style.width=Math.max(90,Math.min(300,(d.caption||"").length*8+40))+"px";
+  el.value=d.caption||""; el.focus(); el.select();
+  el.onkeydown=ev=>{
+    if(ev.key==="Enter"){ d.caption=el.value; d._g=null; el.style.display="none"; S.editing=null; afterDraw(); }
+    if(ev.key==="Escape"){ el.style.display="none"; S.editing=null; }
+  };
+}
+st("inline").addEventListener("blur",()=>{ const d=sel(); const el=st("inline");
+  if(S.editing&&d&&el.style.display==="block"){ d.caption=el.value; d._g=null; }
+  el.style.display="none"; S.editing=null; afterDraw(); });
+
+/* ═══ 14 · the orb + ring ════════════════════════════════════════════ */
+const RING=[["Trigger",true],["Zones",true],["ATR",false],["TH",true],["HTF",false],
+            ["Tools",false],["Base/Knot",false],["TH3",true],["Leg",false]];
+function renderOrb(){
+  st("orb").style.display=S.ringOpen?"none":"grid";
+  st("ring").style.display=S.ringOpen?"block":"none";
+  if(!S.ringOpen) return;
+  const R=116, cx=24, cy=24;
+  st("ring").innerHTML=RING.map(([l,on],i)=>{ const a=Math.PI*(1+(i+.5)/RING.length*.98)-.04;
+    return '<div class="ritem'+(l==="Tools"?"":(on?" on":""))+'" style="left:'+(cx+Math.cos(a)*R)+'px;bottom:'
+      +(cy-Math.sin(a)*R)+'px" data-ring="'+l+'">'+l+'</div>'; }).join("");
+}
+st("orb").addEventListener("click",()=>{S.ringOpen=true;afterDraw();});
+st("ring").addEventListener("click",e=>{
+  const i=e.target.closest("[data-ring]"); if(!i) return; const l=i.dataset.ring;
+  if(l==="Tools"){ S.railFold=!S.railFold; S.ringOpen=false; }
+  else { const r=RING.find(x=>x[0]===l); r[1]=!r[1]; }
+  afterDraw(); });
+
+/* ═══ 15 · persistence of the whole session (Part 40) ════════════════ */
+const KEY="biotak.tools.preview.v1";
+let saveTimer=null;
+function markDirty(){ S.dirty=true; const el=st("tSave"); if(el) el.classList.add("dirty");
+  clearTimeout(saveTimer); saveTimer=setTimeout(saveSession,450); }
+function snapshot(){ return {v:1,tf:S.tf,theme:S.theme,classic:S.classic,plate:S.plate,
+  colour:S.colour,edge:S.edge,op:S.op,width:S.width,style:S.style,fill:S.fill,recent:S.recent,
+  pins:S.pins,ribW:S.ribW,ribbonOn:S.ribbonOn,cat:S.cat,railFold:S.railFold,railRight:S.railRight,
+  sel:S.sel,panelOpen:S.panelOpen,panelPos:S.panelPos,stripPos:S.stripPos,tab:S.tab,
+  icons:S.icons,palPos:S.palPos,palDock:S.palDock,
+  templates:S.templates,levels:S.levels,
+  objs:S.objs.map(o=>{ const c=Object.assign({},o); delete c._g; return c; })}; }
+function saveSession(){ try{ localStorage.setItem(KEY,JSON.stringify(snapshot()));
+  S.dirty=false; const el=st("tSave"); if(el) el.classList.remove("dirty"); }catch(_){} }
+function loadSession(){ try{ const raw=localStorage.getItem(KEY); if(!raw) return false;
+  const s=JSON.parse(raw); if(!s||s.v!==1) return false;
+  ["tf","theme","classic","plate","colour","edge","op","width","style","fill","recent","pins","ribW",
+   "ribbonOn","cat","railFold","railRight","panelOpen","tab","templates","levels",
+   "icons","palPos","palDock"].forEach(k=>{ if(s[k]!==undefined) S[k]=s[k]; });
+  S.sel=s.sel; S.panelPos=s.panelPos||S.panelPos; S.stripPos=s.stripPos||null;
+  S.objs=(s.objs||[]).map(o=>Object.assign(o,{_g:null}));
+  S.seq=S.objs.reduce((m,o)=>Math.max(m,o.id),0);
+  document.documentElement.className=S.theme+(S.classic?" classic":"");
+  return S.objs.length>0; }catch(_){ return false; } }
+
+/* ═══ 16 · drag helper · top bar · keyboard · refresh ════════════════ */
+/* ONE drag owner for every floating surface. The listeners live on the
+   SURFACE (which a repaint never replaces) and the handle is matched by a
+   descendant selector, so a mid-drag rebuild cannot swallow the gesture —
+   a grip that is recreated every frame loses its own pointermove and the
+   bar stops following the hand, then jumps when it catches up. The move
+   writes left/top and nothing else: no rebuild while the hand is moving. */
+const clampPos=(node,p)=>{ const w=node.offsetWidth||240, h=node.offsetHeight||40;
+  return {x:Math.max(50,Math.min(p.x,stage.clientWidth-w-6)),
+          y:Math.max(40,Math.min(p.y,stage.clientHeight-(h||40)-6))}; };
+function bindSurfaceDrag(node,sel,key,onStart){
+  if(!node||node.__sd) return; node.__sd=1;
+  node.addEventListener("pointerdown",e=>{
+    if(!e.target.closest(sel)||e.target.closest("[data-act]")||e.target.closest("input")) return;
+    e.preventDefault(); e.stopPropagation(); capture(node,e);
+    const x0=e.clientX, y0=e.clientY, o=Object.assign({},S[key]||{x:0,y:0});
+    S.dragKey=key; node.classList.add("dragging"); if(onStart) onStart();
+    const mv=ev=>{ if(S.dragKey!==key) return;
+      const p=clampPos(node,{x:o.x+ev.clientX-x0,y:o.y+ev.clientY-y0});
+      S[key]=p; node.style.left=p.x+"px"; node.style.top=p.y+"px"; markDirty(); };
+    const up=()=>{ S.dragKey=null; node.classList.remove("dragging");
+      node.removeEventListener("pointermove",mv); node.removeEventListener("pointerup",up);
+      node.removeEventListener("pointercancel",up); markDirty(); };
+    node.addEventListener("pointermove",mv); node.addEventListener("pointerup",up);
+    node.addEventListener("pointercancel",up);
+  });
+}
+function renderTF(){
+  st("tfs").innerHTML=TFS.map(t=>'<b class="'+(S.tf===t?"on":"")+'" data-tf="'+t+'">'+t+'</b>').join("");
+}
+st("tfs").addEventListener("click",e=>{ const b=e.target.closest("[data-tf]"); if(!b) return; setTF(b.dataset.tf); });
+function setTF(t){ S.tf=t; reseed(); S.pts=[]; invalidate(); markDirty(); afterDraw(); }
+st("tLayer").addEventListener("click",()=>{ S.layerAbove=!S.layerAbove;
+  S.objs.forEach(d=>{ d.behind=!S.layerAbove; });
+  st("tLayer").textContent="layer: "+(S.layerAbove?"above":"behind"); markDirty(); afterDraw(); });
+st("tTheme").addEventListener("click",()=>{ S.theme=(S.theme==="dark")?"light":"dark";
+  document.documentElement.className=S.theme+(S.classic?" classic":"");
+  st("tTheme").textContent=(S.theme==="dark")?"\u263E theme":"\u2600 theme"; markDirty(); afterDraw(); });
+st("tClassic").addEventListener("click",()=>{ S.classic=!S.classic;
+  document.documentElement.classList.toggle("classic",S.classic);
+  st("tClassic").classList.toggle("on",S.classic); markDirty(); afterDraw(); });
+st("tReset").addEventListener("click",()=>{ try{ localStorage.removeItem(KEY); }catch(_){}
+  location.reload(); });
+st("tIcons").addEventListener("click",()=>{ S.icons=(S.icons==="biotak")?"glyph":"biotak";
+  st("tIcons").textContent="icons: "+S.icons; st("tIcons").classList.toggle("on",S.icons==="biotak");
+  markDirty(); afterDraw(); });
+/* the three floating surfaces: one owner each, bound ONCE (the grip may be
+   rebuilt a hundred times; the surface is not) */
+bindSurfaceDrag(st("strip"),"#strip","stripPos");
+bindSurfaceDrag(st("panel"),"#panelHead","panelPos");
+bindSurfaceDrag(st("pop"),"#popHead","palPos",()=>{ S.palDock=false; const q=st("popDock"); if(q) q.className="px on"; });
+st("popGrip").innerHTML=ico("grip"); st("popDock").innerHTML=ico("pin"); st("popClose").innerHTML=ico("x");
+document.addEventListener("keydown",e=>{
+  if(e.target&&e.target.tagName==="INPUT") return;
+  if(e.key==="Escape"){ if(S.meas)S.meas=null; else if(S.palOpen)S.palOpen=false;
+    else if(S.armed){S.armed=null;S.pts=[];} else if(S.ribPop)S.ribPop=false; else if(S.cat)S.cat=null;
+    else if(S.panelOpen)S.panelOpen=false; else S.sel=null; afterDraw(); }
+  if(e.key==="Delete"&&sel()){ S.objs=S.objs.filter(o=>o.id!==S.sel); S.sel=null; S.stripFor=null; afterDraw(); }
+  if(e.key==="Enter"&&S.pts.length>=2&&S.armed&&TOOLS[S.armed].grow){ S.objs.push(newObj(S.armed,S.pts.slice())); S.pts=[]; S.armed=null; afterDraw(); }
+});
+window.addEventListener("resize",()=>refresh());
+st("hList").addEventListener("click",e=>{ const li=e.target.closest("[data-sel]"); if(!li) return;
+  S.sel=+li.dataset.sel; S.panelOpen=true; afterDraw(); });
+
+const INSTR=()=>{ const t=S.armed?TOOLS[S.armed]:null;
+  if(!t) return "Hover the rail, pick a tool, then draw. Esc cancels.";
+  if(t.erase) return "Drag over a drawing to erase it.";
+  if(t.pts===0) return S.meas?"Measuring. Double-click to exit.":"Move mouse for crosshair. Double-click to start measuring.";
+  if(t.grow) return "Drag freehand. Press Enter to finish.";
+  if(S.pts.length) return "Click the next point for "+t.n+"."+(t.grow?" Double-click to finish.":"");
+  return "Click on chart to draw "+t.n+"."+(t.pts>1?" ("+t.pts+" points)":""); };
+function refresh(){
+  st("panel").style.setProperty("--glassA",(1-S.plate/100).toFixed(2));
+  render(); renderRail(); renderFlyout(); renderRibbon(); bindRibGrip();
+  renderPanel(); renderStrip(); placeStrip(); renderPop(); renderOrb(); renderTF();
+  const d=sel(), t=S.armed?TOOLS[S.armed]:null;
+  st("hTool").textContent=t?t.n:"\u2014";
+  st("hInstr").textContent=INSTR();
+  st("hSel").textContent=d?(TOOLS[d.kind].n+" #"+d.id):"\u2014";
+  st("hTF").textContent=S.tf;
+  st("hLayer").textContent=S.layerAbove?"above":"behind";
+  st("hPlate").textContent=S.plate+"%";
+  st("hCount").textContent=S.objs.length;
+  st("hList").innerHTML=S.objs.map(o=>'<li class="'+(o.id===S.sel?"on":"")+'" data-sel="'+o.id+'">'
+    +TOOLS[o.kind].n+" #"+o.id+(o.tfs?" ["+o.tfs.length+" tf]":"")+"</li>").join("");
+  st("tState").textContent="tool="+(S.armed||"none")+" \u00B7 objects="+S.objs.length+" \u00B7 tf="+S.tf+" \u00B7 plate="+S.plate+"% \u00B7 "+S.theme;
+  st("sbar").innerHTML='<b>'+(t?t.n:"no tool")+'</b><span>'+INSTR()+'</span>'
+    +(S.meas?'<span class="lock">chart scroll locked \u00B7 measuring</span>':"")
+    +'<span>pinned '+S.pins.length+'</span>';
+}
+
+/* ═══ 17 · boot: restore the session, else seed the reference's own
+        example (a Head & Shoulders pattern) so every surface is awake ══ */
+(function boot(){
+  const ok=loadSession();
+  document.documentElement.className=S.theme+(S.classic?" classic":"");
+  st("tTheme").textContent=(S.theme==="dark")?"\u263E theme":"\u2600 theme";
+  st("tRibbon").classList.toggle("on",S.ribbonOn);
+  st("tClassic").classList.toggle("on",S.classic);
+  st("tIcons").textContent="icons: "+S.icons; st("tIcons").classList.toggle("on",S.icons==="biotak");
+  st("tLayer").textContent="layer: "+(S.layerAbove?"above":"behind");
+  reseed();
+  if(!ok){
+    const W=stage.clientWidth,H=stage.clientHeight;
+    S.objs.push({id:++S.seq,kind:"hs",pts:[{x:W*.19,y:H*.33},{x:W*.24,y:H*.55},{x:W*.33,y:H*.22},
+      {x:W*.42,y:H*.55},{x:W*.49,y:H*.33}],colour:"#4C8DFF",op:100,width:2,style:"solid",fill:"none",
+      caption:"Head & Shoulders",font:12,align:"left",textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
+    S.objs.push({id:++S.seq,kind:"rect",pts:[{x:W*.36,y:H*.60},{x:W*.62,y:H*.76}],colour:"#4C8DFF",op:100,
+      width:2,style:"solid",fill:"none",caption:"Consolidation range here",font:12,align:"left",
+      textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
+    S.objs.push({id:++S.seq,kind:"fibo",pts:[{x:W*.60,y:H*.16},{x:W*.86,y:H*.62}],colour:"#F0455F",op:100,
+      width:1,style:"dash",fill:"none",caption:"",font:12,align:"left",textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
+    S.sel=1; S.panelOpen=true; S.cat="lines";
+    S.panelPos={x:Math.max(330,W*.30),y:64};
+  } else S.panelOpen=false;
+  if(!S.objs.length) S.panelOpen=true;
+  addRecent("#F0455F"); addRecent("#4C8DFF");
+  refresh();
+})();
+
+/* ═══ 18 · the test API — the parity battery drives THIS ═════════════ */
+window.__P={
+  S:S,TOOLS:TOOLS,CATS:CATS,TFS:TFS,PAL:PAL,
+  geom:geom,geomOf:geomOf,hitTest:hitTest,measureText:measureText,
+  px2price:px2price,price2px:price2px,px2bar:px2bar,timeFor:timeFor,
+  edgeOf:edgeOf,edgeTone:edgeTone,target:function(k){ S.pickTarget=k; afterDraw(); return S.pickTarget; },
+  obj:obj,sel:sel,arm:armTool,pin:togglePin,setTF:setTF,
+  create:function(kind,pts){ const d=newObj(kind,pts.map(q=>({x:q[0],y:q[1]})));
+    S.objs.push(d); S.sel=d.id; invalidate(); afterDraw(); return d; },
+  move:function(id,i,x,y){ const d=obj(id); d.pts[i]={x:x,y:y}; d._g=null; afterDraw(); return d.pts[i]; },
+  del:function(id){ S.objs=S.objs.filter(o=>o.id!==id); if(S.sel===id)S.sel=null; afterDraw(); },
+  panelTab:function(t){ S.tab=t; S.panelOpen=true; afterDraw(); return S.tab; },
+  click:function(sel_,x,y){ const el=document.querySelector(sel_); if(!el) return false;
+    el.dispatchEvent(new MouseEvent("click",{bubbles:true,clientX:x||0,clientY:y||0})); return true; },
+  save:saveSession,load:loadSession,clear:function(){ try{localStorage.removeItem(KEY);}catch(_){} },
+  snapshot:snapshot,
+  dblclick:function(x,y){ const r=svg.getBoundingClientRect();
+    svg.dispatchEvent(new MouseEvent("dblclick",{bubbles:true,clientX:r.left+x,clientY:r.top+y})); },
+  down:function(x,y){ const r=svg.getBoundingClientRect();
+    svg.dispatchEvent(new PointerEvent("pointerdown",{bubbles:true,clientX:r.left+x,clientY:r.top+y,pointerId:1})); },
+  movePtr:function(x,y){ const r=svg.getBoundingClientRect();
+    svg.dispatchEvent(new PointerEvent("pointermove",{bubbles:true,clientX:r.left+x,clientY:r.top+y,pointerId:1})); },
+  up:function(){ svg.dispatchEvent(new PointerEvent("pointerup",{bubbles:true,pointerId:1})); }
+};
+</script>
+</body>
+</html>
