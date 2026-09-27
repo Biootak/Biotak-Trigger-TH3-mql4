@@ -272,7 +272,6 @@
 #define DSTRIP_UNDO_LV   32    // ... and fibo levels on the held drawing
 #define DSTRIP_HOVER_POP_BASE 1000 // popover colour cells offset from gear cells
 #define DSTRIP_HOVER_REC_BASE 2000 // TV parity: the board's RECENT band cells
-#define DSTRIP_MID_MS    50    // P-DRAW-41: the box mid's drag cadence (was the follow's)
 #define DSTRIP_GRIP_MS   30    // the grip carry's own cadence (BkStripFollow parity)
 //--- P-DRAW-29 (2026-09-24) — the plate skin's own metrics (define-before-use:
 //--- PointInside and the clamps read them far above the painters). The plate's
@@ -366,7 +365,6 @@ static int      s_dsHomeX = -1, s_dsHomeY = -1;
 static int      s_dsCX[DSTRIP_MAX_SLOTS];
 static int      s_dsCW[DSTRIP_MAX_SLOTS];   // badge is measured; icons are CELL
 static int      s_dsBadgeW = 0;
-static uint     s_dsAnchorMs = 0;    // P-DRAW-41: the drag/clamp throttle (was the follow's)
 //--- P-DRAW-08k/08j (open-guard) RETIRED with the hold (DRHOLD-OFF, 2026-09-23):
 //--- the guard existed because the hold fired while the button was still DOWN
 //--- and its release CLICK needed swallowing. Right-click opens ON the release
@@ -1604,7 +1602,8 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
                 " length you drew" + scope;
       case DRAW_SLOT_EXTEND:
          return "Extend right: " + DrawStripSlotText(k, DRAW_SLOT_EXTEND, nm) +
-                " — the far edge travels with each new bar (the \"...\" list has the" +
+                " — the far edge jumps to the newest bar at once, then travels with" +
+                " each new bar (the \"...\" list has the" +
                 " other modes: to first touch, or N bars)" + scope;
       case DRAW_SLOT_FONT:
          return "Text size: " + IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_FONT)) +
@@ -1858,8 +1857,16 @@ bool BoxMidSync(const string box)
    }
    else
    {
-      ObjectMove(0, ch, 0, t0, mp);
-      ObjectMove(0, ch, 1, t1, mp);
+      //--- P-DRAW-64d: the moves are guarded, so an unthrottled stream costs reads
+      //--- and never a repaint it did not earn. A drag event for a box that did not
+      //--- move (a click, a selection) used to re-stamp two anchors and invalidate
+      //--- the line for nothing; now it is four reads and two compares.
+      datetime ct0 = (datetime)ObjectGetInteger(0, ch, OBJPROP_TIME, 0);
+      double cp0 = ObjectGetDouble(0, ch, OBJPROP_PRICE, 0);
+      datetime ct1 = (datetime)ObjectGetInteger(0, ch, OBJPROP_TIME, 1);
+      double cp1 = ObjectGetDouble(0, ch, OBJPROP_PRICE, 1);
+      if(ct0 != t0 || cp0 != mp) ObjectMove(0, ch, 0, t0, mp);
+      if(ct1 != t1 || cp1 != mp) ObjectMove(0, ch, 1, t1, mp);
    }
    //--- and the INK recedes: the master's own colour blended most of the way to the
    //--- chart background, so the level says where it is without competing with the
@@ -1892,6 +1899,21 @@ void BoxMidSyncGroup()
    int n = DrawSelCount();
    if(n <= 0) { BoxMidSync(s_dsObj); return; }
    for(int i = 0; i < n; i++) BoxMidSync(DrawSelAt(i));
+}
+//--- P-DRAW-64c (2026-09-27) — THE FIRST STEP IS THE TAP'S, NOT THE NEXT BAR'S.
+//--- The pump steps a travelling edge only on a new bar (`ext != OFF && newBar`), so a
+//--- box whose edge sat weeks back showed NOTHING for up to a whole bar period after the
+//--- tap — on H1, an hour of a gold button on a static box («دکمه اکستند باکس رو به جلو
+//--- اکستند نمیکنه»). The tap therefore takes the first step itself, and the pump keeps
+//--- it travelling from there. Same fan-out as the mid's: one guarded step per member,
+//--- a no-op where the edge is already at the front or the mode is off.
+void BoxExtendStepGroup()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { BoxExtendStep(s_dsObj); return; }
+   for(int i = 0; i < n; i++) BoxExtendStep(DrawSelAt(i));
 }
 //--- P-DRAW-64a, third cut: there is NO recheck any more. The 50 % used to be a
 //--- remembered LENGTH, so a hand that gave the box a new length had to drop the mark
@@ -5143,7 +5165,8 @@ bool DrawStripTap(const int idx, const string tap)
    if(DrawStripIsToggle(slot))
    {
       DrawStripUndoPush();
-      DrawStripWriteValue(slot, (DrawSlotRead(s_dsObj, slot) > 0.5) ? 0.0 : 1.0);
+      double tv = (DrawSlotRead(s_dsObj, slot) > 0.5) ? 0.0 : 1.0;
+      DrawStripWriteValue(slot, tv);
       // P-DRAW-09b: locking is the one tap that can end the group's usefulness
       // (a locked member cannot be grabbed again by accident), so the strip
       // loses nothing here — it stays, and one more tap frees it.
@@ -5153,9 +5176,13 @@ bool DrawStripTap(const int idx, const string tap)
       //--- description read per member per tap (a tap is not a stream), writes only
       //--- where something really changed.
       BoxMidSyncGroup();   // P-DRAW-21: a fill/lock/back flip restyles the mid
+      //--- P-DRAW-64c: ...and a tap that SWITCHED THE TRAVEL ON takes the first step
+      //--- itself, so the edge moves in this frame instead of on the next bar.
+      if(slot == DRAW_SLOT_EXTEND && tv > 0.5) BoxExtendStepGroup();
       return true;
 
    }
+
    return true;
 }
 //--- chrome: more / gear / pin / del.
@@ -5334,6 +5361,10 @@ bool DrawStripMoreTap(const int row)
    if(kind == DSTRIP_MK_BOXEXT)
    {
       BoxExtCycle(s_dsObj);
+      //--- P-DRAW-64c: the cycle may have armed TOUCH/END/NBARS — the first step is
+      //--- still the tap's, so the edge moves in this frame even when the next bar is
+      //--- an hour away. A cycle that landed on OFF is a no-op here by construction.
+      BoxExtendStep(s_dsObj);
       DrawStripClosePicker();
       DrawStripLayout();
       DrawStripPaint();
@@ -5380,14 +5411,19 @@ bool DrawStripGearRowTap(const int r)
    if(!s_dsOpen || s_dsObj == "") return false;
    if(r < 0 || r >= s_dsGRN) return false;
    int kind = s_dsGRKind[r], arg = s_dsGRArg[r];
-    if(kind == 1)
-    {
-       DrawStripUndoPush();
-       DrawStripWriteValue(arg, (DrawSlotRead(s_dsObj, arg) > 0.5) ? 0.0 : 1.0);
-       DrawStripPaint();
-       BoxMidSyncServed();   // P-DRAW-21: a gear toggle restyles the mid
-       return true;
-    }
+   if(kind == 1)
+   {
+      DrawStripUndoPush();
+      double tv = (DrawSlotRead(s_dsObj, arg) > 0.5) ? 0.0 : 1.0;
+      DrawStripWriteValue(arg, tv);
+      DrawStripPaint();
+      BoxMidSyncServed();   // P-DRAW-21: a gear toggle restyles the mid
+      //--- P-DRAW-64c: the gear's switch takes the first travel step too — same frame,
+      //--- same rule as the quick cell above.
+      if(arg == DRAW_SLOT_EXTEND && tv > 0.5) BoxExtendStepGroup();
+      return true;
+   }
+
    if(kind == 2)
    {
       DrawStripPresetApplyGroup(arg);
@@ -6042,6 +6078,16 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       //--- a frame the terminal coalesces away is still covered by the hand's own stream.
       FillChildStampArm(sparam);
       FillChildSync(sparam);
+      //--- P-DRAW-64d (2026-09-27): THE LEVEL RIDES THE SAME EVENT. The mid line's own
+      //--- sync sat two hundred lines down, BELOW the shut-strip guard — so a box dragged
+      //--- with the strip shut kept its pre-drag level until the pump's 2 s pass (the
+      //--- stuck dotted line in the user's screenshot: «این خط 50 درصد چند فریم عقب زمانی
+      //--- که باکس و جابجا میکنم»). It stands here now, beside the interior, UNTHROTTLED:
+      //--- the moves below are guarded, so a still frame is reads and never a repaint,
+      //--- and the hand's own cadence IS the cadence (the realtime law — a 50 ms cap on
+      //--- a hairline is three frames the user explicitly refused). The pump stays the
+      //--- net for gestures that fire no event at all.
+      BoxMidSync(sparam);
    }
    // P-DRAW-17: the left button's press edge and travel, on EVERY move — the
    // trigger needs them while the strip is CLOSED, the grip carry needs the edge
@@ -6313,29 +6359,18 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    // P-DRAW-41 (2026-09-25) — THIS CHANNEL USED TO FOLLOW. P-DRAW-08c/08e/09d made
    // the drag and the chart change re-anchor the plate onto the object's own anchor
    // (throttled to a live-drag cadence), which is exactly how the strip came to sit
-   // on the drawing it serves: the plate chased the work into the work. The home is
-   // the answer — the plate stays where the user put it. What is left here is the box
-   // mid, which really does move with its object (P-DRAW-23: same event, own
-   // cadence), and the clamp. One throttle still bounds the MID; the interior's own
-   // sync is exempt (addendum 4/5) because its lag is the visible one.
-   if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_CHART_CHANGE)
-   {
-       // P-DRAW-64 addendum 4/5: the interior's own sync is deliberately NOT here.
-       // It is exempt from this throttle (50 ms is ~15 px of a hand and ~100 px of a
-       // flick — exactly the extra edge the user saw beside the frame) and it now
-       // stands at the head of this function, above every guard, so a shut strip
-       // cannot swallow it either.
-       uint now = GetTickCount();
-       if(now - s_dsAnchorMs < DSTRIP_MID_MS) return false;
-       s_dsAnchorMs = now;
-       // P-DRAW-23 (2026-09-24) — REALTIME LAW: the mid rides THIS event, not
-       // the pump. The pump stays the net (closed strip, TF switch); the drag
-       // the hand is holding follows in the same 50 ms frame, so no lag is
-       // ever visible. One description read per throttled drag, no-ops fast.
-       if(id == CHARTEVENT_OBJECT_DRAG && sparam != "") BoxMidSync(sparam);
-      // Nothing open: this channel has no work at all — and no "object gone" line
-      // for a strip that was never there (the mid sync above is a box's own child).
-      if(s_dsObj == "") return false;
+    // on the drawing it serves: the plate chased the work into the work. The home is
+    // the answer — the plate stays where the user put it.
+    if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_CHART_CHANGE)
+    {
+       // P-DRAW-64d: the mid's own ride left this branch for the router's head (it
+       // must follow with the strip SHUT, and this whole channel returns below it),
+       // and the interior's never lived here (addendum 4/5). All this channel still
+       // owes is the window's clamp (compare-only when kept).
+       // Nothing open: this channel has no work at all — and no "object gone" line
+       // for a strip that was never there.
+       if(s_dsObj == "") return false;
+
       if(ObjectFind(0, s_dsObj) < 0)
       { Print("[drawstrip] close: object gone on drag/zoom \"", s_dsObj, "\""); DrawStripClose(); return false; }
       // P-DRAW-41 (2026-09-25): NO RE-ANCHOR, and no re-open either. The plate has a

@@ -3697,6 +3697,80 @@ nothing at rest. **Gate:** main (workspace + installed) + Lite + all seven harne
 `deploy.ps1 -SkipIconRegen` green (325 BMPs identical in both terminals). A re-attach is
 REQUIRED.
 
+## P-DRAW-64c (2026-09-27) — THE FIRST STEP IS THE TAP'S, NOT THE NEXT BAR'S
+
+**The report, verbatim:** «دکمه اکستند باکس رو به جلو اکستند نمیکنه و مشکل از چیه».
+
+**The cause is one `&&` in the pump:** `if(ext != BOXEXT_OFF && newBar) BoxExtendStep(nm)`.
+The travel step runs ONLY on a fresh bar of the indicator's chart, so a box whose far edge
+sat weeks back showed NOTHING for up to a whole bar period after the tap — on H1, an hour
+of a gold button on a static box. The state was always right (the mark, the icon, the
+read); the GEOMETRY waited. Nothing was broken, and that is exactly why it survived this
+long: every reading said "on", only the hand said "nothing moved".
+
+**The fix is the first step, not a faster pump.** The pump is correct as it stands —
+mid-bar a step is a no-op (`te < now` is false once the edge sits at the current bar), so
+running it every 2 s would buy nothing but reads. What was missing is the step the tap
+owes: `BoxExtendStepGroup()` (the mid's own fan-out) now runs in all three places that
+can arm the travel — the quick cell's toggle, the gear row's toggle, and the
+more-popover's cycle — so the edge jumps to the newest bar in the same frame the button
+goes gold, and the pump keeps it travelling from there. One guarded step per member per
+tap (a tap is not a stream), a no-op where the edge is already at the front or the cycle
+landed on OFF. The tooltip now promises what the button does: "jumps to the newest bar
+at once, then travels with each new bar".
+
+**Cost, stated.** Nothing per frame, nothing per move, nothing at rest: the step runs
+once per arming tap, and the pump's own cadence is untouched. **Gate:** main (workspace
++ installed) + Lite + all seven harnesses `Result: 0 errors, 0 warnings`;
+`submenu_geometry_check.js` 1440 PASS; `deploy.ps1 -SkipIconRegen` green (325 BMPs
+identical in both terminals). A re-attach is REQUIRED.
+
+## P-DRAW-64d (2026-09-27) — THE LEVEL RIDES THE SAME EVENT, AND NOTHING RIDES ALONE
+
+**The report, with its own screenshot:** a white box dragged up, its dotted 50 % line
+stuck below it at the old place — «این خط 50 درصد چند فریم عقب زمانی که باکس و جابجا
+میکنم چیکار کنمی ریل تایم بشه و اینکه هزینه نداشته باشه» — and the architecture with it:
+«کلا جز خود باکس بشه به هیچ وجه جدا نشه حتی در حرکت ها و سناریوو ها مختلف و برای بقیه
+چیزها ی دیگه هم همینطور باشه».
+
+**The cause is a guard, not a cadence.** The mid line's sync sat two hundred lines down
+in the router, BELOW `if(!s_dsOpen) return false` — so a box dragged with the strip SHUT
+kept its pre-drag level until the pump's 2 s pass or the release. Open strip: it followed
+(on a 50 ms throttle). Shut strip: it waited. The screenshot is the shut case, and the
+"few frames" the user named is the kindest reading of it.
+
+**The fix is a move, not a speedup.** The sync stands at the head of the router now,
+beside the interior's own witness, above every guard — and UNTHROTTLED: its two
+`ObjectMove` writes are guarded (four reads and two compares save a repaint a still
+frame never earned — a click, a selection), so the hand's own cadence IS the cadence and
+the "no cost" the user asked for is reads, never writes. `DSTRIP_MID_MS` and its static
+are DELETED with the throttle they bounded (the checklist's row 11 loses a cadence, and
+row 15's "at 50 ms" goes with it). The release witness and the pump stay exactly where
+they are: the net for gestures that fire no event at all.
+
+**The honest half of the answer, stated because the user asked for the architecture.**
+In MT4 a line inside a rectangle is a second object, and no code on earth makes the
+terminal move it as one with the box in the terminal's own drag rendering — that half of
+"part of the box" does not exist. What the code CAN make true, and now does for BOTH
+followers alike, is everything around that fact: written in the SAME event that moved
+the box (data-exact, on the hand's own stream), painted in the SAME layer as the box
+(the interior's addendum 7; the level mirrors BACK per sync), owned by ONE writer each
+(the box's mark group for the level, the fill slot for the interior), never served, never
+hit-tested, never learned, created and deleted WITH the box (the mid's own orphan rule,
+the interior's sweep). Drag open or shut, resize, extend step, dialog edit (through
+`OBJECT_CHANGE` where the terminal fires it, through the pump where it fires nothing),
+delete, colour, layer, lock, preset, duplicate-clean, undo-neutral — the level and the
+interior now share the identical scenario matrix, and that shared matrix IS what "the
+same for the rest" means in code.
+
+**Cost, stated.** A still drag frame: ~14 reads, 0 writes, 0 repaints. A moving frame:
+the same reads plus the writes the move earned (two moves, the guarded colour/layer —
+the interior's own dozen beside it). Nothing per move when the hand is still, nothing at
+rest, nothing per bar, nothing per 2 s pass that was not already there. **Gate:** main
+(workspace + installed) + Lite + all seven harnesses `Result: 0 errors, 0 warnings`;
+`submenu_geometry_check.js` 1440 PASS; `deploy.ps1 -SkipIconRegen` green (325 BMPs
+identical in both terminals). A re-attach is REQUIRED.
+
 **The measurement channel that was not needed, and why it is gone.** The first attempt at
 this diagnosis went through the Experts log and hit MT4's own buffering: the file stood at
 84 413 bytes through five minutes of polling while the session's `hold latch` lines kept

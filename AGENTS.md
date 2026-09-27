@@ -6,7 +6,10 @@ Python** in this repo (P-TOOL-04) and there is no room for any.
 The full narrative history — every `P-*` note with its measurements, the
 research results and the tooling that came and went — lives in
 `docs/history.md`. **What follows is the contract**; history.md is where you go
-when you need the WHY behind a rule.
+when you need the WHY behind a rule. The portable half of every lesson —
+environment, realtime, followers, marks, discoverability, measurement, bakes,
+gate — lives in `docs/coding-laws.md`: **read it before writing code**, on this
+project or any other, on this machine or a new one.
 
 ## Tool discipline (read this first — user order, 2026-09-25)
 
