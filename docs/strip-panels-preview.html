@@ -574,6 +574,9 @@ const MEM={};
 const P={min:1.14280,max:1.15820};
 const st=id=>document.getElementById(id), stage=st("stage"), svg=st("draw");
 const C=id=>TOOLS[id];
+/* the roster deliberately holds NO retired kind (see §1), so every caption read
+   goes through a name that survives an object of a kind the roster dropped */
+const TN=k=>TOOLS[k]?TOOLS[k].n:k, TC=k=>TOOLS[k]?TOOLS[k].cat:"\u2014";
 
 /* ═══ 3 · chart geometry + the timeframe clock ═══════════════════════ */
 const px2price=y=>P.max-(y/stage.clientHeight)*(P.max-P.min);
@@ -982,17 +985,17 @@ svg.addEventListener("pointerdown",e=>{
   const t=S.armed?TOOLS[S.armed]:null;
   if(t&&!t.erase){
     if(t.pts===0){ capture(svg,e); return; }
-    if(t.pts===1&&!t.grow){ S.objs.push(newObj(S.armed,[p])); S.armed=null; afterDraw(); return; }
-    if(t.pts===1&&t.grow){ S.objs.push(newObj(S.armed,[p])); S.armed=null; S.drawing=S.objs[S.objs.length-1];
+    if(t.pts===1&&!t.grow){ drop(S.armed,[p]); S.armed=null; afterDraw(); return; }
+    if(t.pts===1&&t.grow){ S.drawing=drop(S.armed,[p]); S.armed=null;
       drag={m:"free",d:S.drawing}; capture(svg,e); afterDraw(); return; }
     S.pts.push(p);
     /* a click-accumulating tool (Path): points until Enter or a double-click,
        and the double-click's OWN second down is not a point (Part 36/38) */
     if(t.grow&&t.pts>=2){
-      if(e.detail>1&&S.pts.length>=3){ S.objs.push(newObj(S.armed,S.pts.slice(0,-1))); S.pts=[]; S.armed=null;
+      if(e.detail>1&&S.pts.length>=3){ drop(S.armed,S.pts.slice(0,-1)); S.pts=[]; S.armed=null;
         S.noDbl=Date.now(); afterDraw(); return; }
       capture(svg,e); afterDraw(); return; }
-    if(S.pts.length>=t.pts){ S.objs.push(newObj(S.armed,S.pts.slice())); S.pts=[]; S.armed=null; afterDraw(); return; }
+    if(S.pts.length>=t.pts){ drop(S.armed,S.pts.slice()); S.pts=[]; S.armed=null; afterDraw(); return; }
     capture(svg,e); afterDraw(); return;
   }
   if(t&&t.erase){ S.sel=null; drag={m:"erase"}; capture(svg,e); return; }
@@ -1032,13 +1035,17 @@ svg.addEventListener("dblclick",e=>{
   if(d&&(d.kind==="path"||TOOLS[d.kind].grow)){ d.pts.push({x:p.x,y:p.y}); d._g=null; markDirty(); afterDraw(); }
 });
 function newObj(kind,pts){
-  const m=MEM[kind]||{};
-  return {id:++S.seq,kind,pts:pts.map(q=>({x:q.x,y:q.y})),
+  const m=MEM[kind]||{}, t=TOOLS[kind];
+  return {id:++S.seq,kind,ic:t?t.ic:"box",pts:pts.map(q=>({x:q.x,y:q.y})),
     colour:m.colour||S.colour,edge:(m.edge===undefined?S.edge:m.edge),op:(m.op===undefined?S.op:m.op),width:m.width||S.width,
     style:m.style||S.style,fill:m.fill||(kind==="rect"||kind==="triangle"?"none":"none"),
     caption:m.caption||S.caption,font:S.font,align:S.align,textColour:S.textColour,
     locked:false,behind:!S.layerAbove,tfs:null};
 }
+/* a fresh drawing BECOMES the selection: the strip and the window both follow
+   the selection, so an unselected one would leave them editing the PREVIOUS
+   object with the strip parked on it (a new strip opens on its own drawing) */
+function drop(kind,pts){ const d=newObj(kind,pts); S.objs.push(d); S.sel=d.id; S.stripFor=null; return d; }
 function afterDraw(){ markDirty(); refresh(); }
 function remember(d){
   MEM[d.kind]={colour:d.colour,edge:d.edge,op:d.op,width:d.width,style:d.style,fill:d.fill,caption:d.caption};
@@ -1140,7 +1147,7 @@ function renderStrip(){
   if(!d){ el.style.display="none"; return; }
   el.style.display="flex";
   el.innerHTML='<div class="scell gripcell" id="stripGrip" title="drag">'+ico("grip")+'</div>'
-    +'<div class="scell" title="'+TOOLS[d.kind].n+'">'+chip(d.ic)+'</div>'
+    +'<div class="scell" title="'+TN(d.kind)+'">'+chip(d.ic)+'</div>'
     +'<div class="scell" data-act="pick" title="Fill colour"><span class="swcell" style="background:'+d.colour+'"></span></div>'
     +'<div class="scell" data-act="pickEdge" title="Border colour'+(d.edge?'':' \u00B7 auto')+'"><span class="swcell" style="background:transparent;box-shadow:inset 0 0 0 3px '+edgeOf(d)+'"></span></div>'
     +'<div class="scell" data-act="width" title="Width '+d.width+'"><div class="bar" style="height:'+d.width*2+'px"></div></div>'
@@ -1203,8 +1210,8 @@ function renderPanel(){
   else if(S.tab==="levels") body=tabLevels(d);
   else body=tabTpl(d);
   el.innerHTML='<div class="ph2" id="panelHead"><div class="pic">'+ico(d?d.ic:"box")+'</div>'
-    +'<div><div class="ptitle">'+(d?TOOLS[d.kind].n:"Settings")+'</div>'
-    +'<div class="psub">'+(d?TOOLS[d.kind].cat+" \u00B7 "+d.kind:"idle")+'</div></div>'
+    +'<div><div class="ptitle">'+(d?TN(d.kind):"Settings")+'</div>'
+    +'<div class="psub">'+(d?TC(d.kind)+" \u00B7 "+d.kind:"idle")+'</div></div>'
     +(d?'<div class="swatch" style="background:'+d.colour+';box-shadow:inset 0 0 0 2px '+edgeOf(d)+'" data-act="pick" title="Fill + border"></div>':"")
     +'<div class="px" data-act="close">'+ico("x")+'</div></div>'
     +'<div class="tabs">'+PANEL_TABS.map(([k,l])=>'<div class="tab'+(S.tab===k?" on":"")+'" data-act="tab" data-arg="'+k+'">'
@@ -1368,7 +1375,7 @@ function renderPop(){
   const dk=st("popDock");
   if(dk){ dk.className="px"+(S.palDock?"":" on");
     dk.title=S.palDock?"docked to the bar · drag the board to place it":"floating · click to dock again"; }
-  st("popTitle").textContent=targetName()+" \u00B7 "+(d?TOOLS[d.kind].n:"default");
+  st("popTitle").textContent=targetName()+" \u00B7 "+(d?TN(d.kind):"default");
   st("popTarget").innerHTML=[["fill","Fill"],["edge","Border"],["text","Text"]]
     .map(([k,l])=>'<b class="'+(S.pickTarget===k?"on":"")+'" data-target="'+k+'">'+l+'</b>').join("")
     +(S.pickTarget==="edge"?'<b class="'+(d&&d.edge?"":"on")+'" data-target="auto" title="auto: a distinct tone of the fill">Auto</b>':"");
@@ -1439,14 +1446,38 @@ st("inline").addEventListener("blur",()=>{ const d=sel(); const el=st("inline");
 /* ═══ 14 · the orb + ring ════════════════════════════════════════════ */
 const RING=[["Trigger",true],["Zones",true],["ATR",false],["TH",true],["HTF",false],
             ["Tools",false],["Base/Knot",false],["TH3",true],["Leg",false]];
+const RING_MAXR=560, ITEM_W=74, ITEM_H=28, RING_CX=-19, RING_CY=24;
+/* the arc runs from left (180 deg) to up (270 deg) INTO the window: the orb
+   sits 22px off the corner, so the centre is pulled 43px left of its own icon
+   or a 74px row's right edge leaves the stage */
+function ringRects(R){ const N=RING.length;
+  return RING.map((_x,i)=>{ const a=Math.PI+Math.PI*.5*((i+.5)/N);
+    return {x:RING_CX+Math.cos(a)*R, b:RING_CY-Math.sin(a)*R}; }); }
+function ringFits(R){
+  const W=stage.clientWidth, H=stage.clientHeight, r=ringRects(R);
+  const inside=r.every(q=>{ const L=W-22+q.x-37, B=22+q.b-14;
+    return L>=4 && L+ITEM_W<=W-4 && B>=4 && B+ITEM_H<=H-4; });
+  const apart=r.every((q,i)=>r.every((s,j)=>j<=i||Math.abs(q.x-s.x)>=ITEM_W||Math.abs(q.b-s.b)>=ITEM_H));
+  return inside&&apart;
+}
 function renderOrb(){
   st("orb").style.display=S.ringOpen?"none":"grid";
   st("ring").style.display=S.ringOpen?"block":"none";
   if(!S.ringOpen) return;
-  const R=116, cx=24, cy=24;
-  st("ring").innerHTML=RING.map(([l,on],i)=>{ const a=Math.PI*(1+(i+.5)/RING.length*.98)-.04;
-    return '<div class="ritem'+(l==="Tools"?"":(on?" on":""))+'" style="left:'+(cx+Math.cos(a)*R)+'px;bottom:'
-      +(cy-Math.sin(a)*R)+'px" data-ring="'+l+'">'+l+'</div>'; }).join("");
+  const N=RING.length, H=stage.clientHeight, da=Math.PI*.5/N;
+  /* the mode is MEASURED, never assumed. The arc has to separate its own rows:
+     at its upmost end two neighbours sit R*da apart HORIZONTALLY, so the radius
+     nine 74px rows need is (ITEM_W+6)/da — 459px. The search starts there and
+     takes the first radius that lands every row inside the stage and off every
+     other row; when none does, the SAME rows stand in one column beside the orb,
+     because a row off the window edge or sitting on its neighbour is dead control
+     (P-DRAW-31/40). Bounded: <= 18 radii x 9 rows, per open and per resize. */
+  let R=0;
+  for(let r=Math.ceil((ITEM_W+6)/da); r<=RING_MAXR; r+=6) if(ringFits(r)){ R=r; break; }
+  const rects=R?ringRects(R):RING.map((_x,i)=>{ const pitch=Math.max(ITEM_H+2,Math.min(ITEM_H+6,(H-40)/N));
+    return {x:-(ITEM_W+18), b:4+i*pitch}; });
+  st("ring").innerHTML=RING.map(([l,on],i)=>'<div class="ritem'+(l==="Tools"?"":(on?" on":""))
+    +'" style="left:'+rects[i].x+'px;bottom:'+rects[i].b+'px" data-ring="'+l+'">'+l+'</div>').join("");
 }
 st("orb").addEventListener("click",()=>{S.ringOpen=true;afterDraw();});
 st("ring").addEventListener("click",e=>{
@@ -1534,11 +1565,11 @@ bindSurfaceDrag(st("pop"),"#popHead","palPos",()=>{ S.palDock=false; const q=st(
 st("popGrip").innerHTML=ico("grip"); st("popDock").innerHTML=ico("pin"); st("popClose").innerHTML=ico("x");
 document.addEventListener("keydown",e=>{
   if(e.target&&e.target.tagName==="INPUT") return;
-  if(e.key==="Escape"){ if(S.meas)S.meas=null; else if(S.palOpen)S.palOpen=false;
+  if(e.key==="Escape"){ if(S.ringOpen)S.ringOpen=false; else if(S.meas)S.meas=null; else if(S.palOpen)S.palOpen=false;
     else if(S.armed){S.armed=null;S.pts=[];} else if(S.ribPop)S.ribPop=false; else if(S.cat)S.cat=null;
     else if(S.panelOpen)S.panelOpen=false; else S.sel=null; afterDraw(); }
   if(e.key==="Delete"&&sel()){ S.objs=S.objs.filter(o=>o.id!==S.sel); S.sel=null; S.stripFor=null; afterDraw(); }
-  if(e.key==="Enter"&&S.pts.length>=2&&S.armed&&TOOLS[S.armed].grow){ S.objs.push(newObj(S.armed,S.pts.slice())); S.pts=[]; S.armed=null; afterDraw(); }
+  if(e.key==="Enter"&&S.pts.length>=2&&S.armed&&TOOLS[S.armed].grow){ drop(S.armed,S.pts.slice()); S.pts=[]; S.armed=null; afterDraw(); }
 });
 window.addEventListener("resize",()=>refresh());
 st("hList").addEventListener("click",e=>{ const li=e.target.closest("[data-sel]"); if(!li) return;
@@ -1558,21 +1589,26 @@ function refresh(){
   const d=sel(), t=S.armed?TOOLS[S.armed]:null;
   st("hTool").textContent=t?t.n:"\u2014";
   st("hInstr").textContent=INSTR();
-  st("hSel").textContent=d?(TOOLS[d.kind].n+" #"+d.id):"\u2014";
+  st("hSel").textContent=d?(TN(d.kind)+" #"+d.id):"\u2014";
   st("hTF").textContent=S.tf;
   st("hLayer").textContent=S.layerAbove?"above":"behind";
   st("hPlate").textContent=S.plate+"%";
   st("hCount").textContent=S.objs.length;
   st("hList").innerHTML=S.objs.map(o=>'<li class="'+(o.id===S.sel?"on":"")+'" data-sel="'+o.id+'">'
-    +TOOLS[o.kind].n+" #"+o.id+(o.tfs?" ["+o.tfs.length+" tf]":"")+"</li>").join("");
+    +TN(o.kind)+" #"+o.id+(o.tfs?" ["+o.tfs.length+" tf]":"")+"</li>").join("");
   st("tState").textContent="tool="+(S.armed||"none")+" \u00B7 objects="+S.objs.length+" \u00B7 tf="+S.tf+" \u00B7 plate="+S.plate+"% \u00B7 "+S.theme;
   st("sbar").innerHTML='<b>'+(t?t.n:"no tool")+'</b><span>'+INSTR()+'</span>'
     +(S.meas?'<span class="lock">chart scroll locked \u00B7 measuring</span>':"")
     +'<span>pinned '+S.pins.length+'</span>';
 }
 
-/* ═══ 17 · boot: restore the session, else seed the reference's own
-        example (a Head & Shoulders pattern) so every surface is awake ══ */
+/* ═══ 17 · boot: restore the session, else seed a three-tool example — a
+        channel, a range and a fib — so every surface is awake. The example
+        used to be a Head & Shoulders pattern, which the roster RETIRED: the
+        seed kept building one, and every caption read of it came back
+        undefined (the panel, the strip and the whole live state died with
+        it). A seed lives in the same vocabulary as the roster, like any
+        other object. ══ */
 (function boot(){
   const ok=loadSession();
   document.documentElement.className=S.theme+(S.classic?" classic":"");
@@ -1584,15 +1620,12 @@ function refresh(){
   reseed();
   if(!ok){
     const W=stage.clientWidth,H=stage.clientHeight;
-    S.objs.push({id:++S.seq,kind:"hs",pts:[{x:W*.19,y:H*.33},{x:W*.24,y:H*.55},{x:W*.33,y:H*.22},
-      {x:W*.42,y:H*.55},{x:W*.49,y:H*.33}],colour:"#4C8DFF",op:100,width:2,style:"solid",fill:"none",
-      caption:"Head & Shoulders",font:12,align:"left",textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
-    S.objs.push({id:++S.seq,kind:"rect",pts:[{x:W*.36,y:H*.60},{x:W*.62,y:H*.76}],colour:"#4C8DFF",op:100,
-      width:2,style:"solid",fill:"none",caption:"Consolidation range here",font:12,align:"left",
-      textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
-    S.objs.push({id:++S.seq,kind:"fibo",pts:[{x:W*.60,y:H*.16},{x:W*.86,y:H*.62}],colour:"#F0455F",op:100,
-      width:1,style:"dash",fill:"none",caption:"",font:12,align:"left",textColour:"#F3F6FB",locked:false,behind:false,tfs:null});
-    S.sel=1; S.panelOpen=true; S.cat="lines";
+    const seed=(kind,pts,colour,caption,width,style)=>{ const d=drop(kind,pts.map(q=>({x:q[0],y:q[1]})));
+      d.colour=colour; d.caption=caption; d.width=width; d.style=style; return d; };
+    seed("channel",[[W*.19,H*.33],[W*.33,H*.22],[W*.49,H*.33]],"#4C8DFF","",2,"solid");
+    seed("rect",[[W*.36,H*.60],[W*.62,H*.76]],"#4C8DFF","Consolidation range here",2,"solid");
+    seed("fibo",[[W*.60,H*.16],[W*.86,H*.62]],"#F0455F","",1,"dash");
+    S.sel=S.objs[0].id; S.panelOpen=true; S.cat="lines";
     S.panelPos={x:Math.max(330,W*.30),y:64};
   } else S.panelOpen=false;
   if(!S.objs.length) S.panelOpen=true;

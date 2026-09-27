@@ -2831,3 +2831,885 @@ The safe-delete guard is what spawns one: bash's `rm`/`rmdir`/`unlink` shims
   dist build target __pycache__` + binaries.
 - Token discipline (also global `AGENTS.md`): no filler, dense tone,
   summarize tool/test output, never dump raw logs.
+
+## P-DRAW-47 (2026-09-26) — the colour board reads like the reference
+
+User: «تمام مثل این بشه» — two screenshots side by side: the live MT4 strip's
+colour popover (`COLOR · Box`, WIP of P-DRAW-46) and the reference board
+(`FILL COLOUR · RECTANGLE`: header + grid + RECENT + HEX + Opacity). Asked
+which surface and which fidelity, the user chose **both boards** and **the full
+reference look with only the rows MT4 can really honour** (the Fill/Border/Text
+tab row is impossible: an MT4 drawing has ONE colour, `OBJPROP_COLOR`, and no
+alpha — a separate fill/border/text colour is not a property MT4 has).
+
+**The strip's popover became four bands on the one pitch** (`DSTRIP_PICK_ROW
+42`): header (the strap's own grip art in a 32px chip + `COLOR · BOX` in the
+reference's face — muted, uppercase, not bold — + the close seat), the 8 x 8
+grid, a labelled `RECENT` band, then the `HEX` field (`OBJ_EDIT`, Enter
+applies through the gear's own `DrawStripHexToColor` + one write path). The
+read-only preview band is gone: the current colour is marked by the RING on its
+own cell. **Measured: 11 bands before and 11 after** — header + preview + the
+9 bands the appended recents forced, versus header + 8 + recents + hex — so the
+plate stays `48 + 42k` (510 px, 328 wide) and no skin was re-baked for the
+strip.
+
+**"The ring" is a bake, not a border.** On a rounded cell the button's own
+border is covered by the glass bake, so `cur ? DSTRIP_CLR_ACCENT : ...` no
+longer showed: the selected cell read as an unselected one. `roundRingSkin()`
+in `tools/gen-th3-icons.js` bakes the reference's `box-shadow: 0 0 0 2px accent`
+INSIDE the same footprint — corner mask in the owning plate tone, a 2px
+`#FFC247` stroke, its soft glow, transparent middle — at both cell sizes:
+`ds_ring32.bmp` / `pal_ring20.bmp`. Manifest 316 -> **320** files.
+
+**The recents moved out of the grid.** They were appended as extra cells of the
+picker (`n = 64 + extras`, 9 bands); the band owns them now, so
+`DrawStripPickCount(DRAW_SLOT_COLOR)` returns the 64 and
+`DrawStripPickSwatchAt`/`DrawStripRecentExtra`/`DrawStripPickPalIndex` were
+reachable only through each other and were DELETED with the change. New tap and
+hover faces: `DrawStripPickTapRecent(i)`, `DSTRIP_HOVER_REC_BASE 2000`.
+
+**The cards' board** got the same three things: the ring on the cell that holds
+the target's colour now (`PalCellFaceRes`), the HEX row on BOTH tabs (one owner,
+`PalDrawHexRow`; an AUTO target shows an empty field instead of a `FFFFFF` that
+claims a colour nobody chose), and the reference's title face. It also grew
+`PAL_HX 30` for its own hex band.
+
+**Then the report («توی استریپ بوردر نیستش همونی که توی پیش نمایش هستش ... کلیک
+میکنم روش تیره میشه و دیده نمیشه») named two more defects, both MEASURED with a
+pixel probe of the shipped art (no Python: one bounded `node -e` read of the
+BGRA buffers):**
+
+1. **The ON toggle had no glyph.** `bk_fill_on` / `bk_back_on` / `bk_lock_on_d`
+   were baked in `BK_DARKINK` [26,18,6] for a SOLID gold plate — but the ON face
+   the strip lays down is `pnl_chip_gold.bmp`, a **translucent wash** (probe:
+   premultiplied mean (33,22,0), 0 % opaque pixels). Dark ink on a dark cell
+   measures NO contrast, which is exactly «تیره میشه و دیده نمیشه». The
+   preview's rule is accent ink on the accent wash
+   (`.scell.on{background:rgba(255,194,71,.16);color:var(--accent)}`), so the
+   three twins now render in the accent amber (`BK_GOLDINK` [255,200,60]) and the
+   padlock was RENAMED `bk_lock_on_d` -> `bk_lock_on_g` (the `_d` meant "dark").
+   Measured after: mean (230,180,54) / (222,174,52) / (172,135,41), 88/96/52 %
+   amber pixels. An ON toggle also wears the accent hairline now
+   (`rim = DSTRIP_CLR_ACCENT`), never the plate tone it had.
+2. **The colour cell had no ring.** The preview's cell is a **24px rounded
+   swatch with its own hairline** (`#strip .swcell`: 24px, radius 6,
+   `inset 0 0 0 1px rgba(255,255,255,.24)`) inside a 32px cell; ours was a flat
+   full-cell square. The colour is now a `DSTRIP_SWATCH 24` button centred in the
+   cell (24px is also B-05's hit floor) wearing `BioSwatchBorder` and the new
+   `ds_swatch24.bmp` bake (`roundCellSkin(24,24,[23,28,37])`), the cell keeps the
+   plate tone so the ring has something to read against, and the swatch is a tap
+   target of its own (`<icon>S`, added to the strip's tap list and its prune).
+`bk_lock_on_d.bmp` was deleted on disk (the generator never deletes, only the
+manifest tells the truth; manifest 320 -> **321** files after the swap of twins
+and the swatch bake).
+
+**A measured defect in the same walk:** `pal_card.bmp` was baked at 293 x 309
+while `PalW()`/`PalH()` had become 201 x 378 with P-DRAW-46 — MT4 crops, so the
+popup's right edge was square and its bottom rows hung on bare chart. The
+generator's `PAL_W/PAL_H` (the documented contract pair) are now **201 x 408**
+and the card was re-baked.
+
+**Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`, `node tools/submenu_geometry_check.js` green.
+Two errors paid on the way and both are laws: `StringToUpper()` takes a
+variable (never a temporary), and a literal `·` is read by the compiler as a
+NUMBER — code 183 must be set at runtime (`StringSetCharacter`) or every
+concatenation warns.
+
+## P-DRAW-48 (2026-09-26) — the board is its OWN card, and the plate that ate it
+
+User, on the reference board again: «پاپ بشه مثل همین دیگه چیکار میکنی». Asked
+what "pop" meant, the user chose **«کارت شناور مستقل شود»** — the colour board
+gets its own rounded plate + shadow, opens beside the strip, is carried by its
+own header, and its pin is a dock/undock switch (OFF = it stays where the hand
+left it). That is the reference's architecture and the strip stays the compact
+quick row it is.
+
+**What the board is now:** family **2** in the one 9-slice painter
+(`PnlDrawS_BBG` bg + its own nine tiles), its own rect `328 x 468` =
+`48 + 42 * 10` (k = 10: the 8 grid bands + RECENT + HEX), a 44 px header that
+rides the skin's own top cap (grip chip + `COLOR · BOX` + pin + close), and it no
+longer contributes a pixel to `s_dsW`/`s_dsH` — the strip's plate stays 48 tall.
+`DrawStripBoardPlace()` puts it under the strip, else above it, else clamps;
+a docked board follows a strip move, a floated one stays.
+
+**Then the report: «جابجا میکنم میپره نباید اینطوری باشه حتی برای تمام پنل های
+دیگه» + «اول که انتخاب میکنم همه چی هستش ولی اینکه درگ میکنم اینطوری میشه»** —
+two screenshots: the board complete on open (header + 8 x 8 grid + the ring on
+the current colour + `RECENT` + the `HEX` field reading `#F8455F`) and the SAME
+board **empty** after a drag. Measured, not guessed: the pasted PNG was read by a
+bounded node reader (`.probe/png_map.js`, no Python) and the region the grid
+lives in answered **distinct = 1 over 24,750 samples** — one colour, `(23,28,37)`,
+for 435 px down the plate; the plate's own rect measured exactly `328 x 468`
+(`x 768..1095`, `y 419..886`) with the chart still black at `x 754..767`, i.e.
+**no tile shadow either**; only the header's glyphs sat on top.
+
+**The cause was ONE line of naming and ONE z.** `DrawStripSkinPiece(fam, i)`
+answered the STRIP's nine names for family 2 (`fam == 1 ? gear : strip`), so the
+board's plate and the strip's plate were the SAME nine objects. The strip's plate
+is 48 tall — `k = 0` — and the `k == 0` branch DELETES the mid pieces (3, 4, 5)
+on every paint; the board's plate (`k = 10`) then RE-CREATED them. Fresh
+objects, and `DrawStripBtn` born them at `Z_STRIP_ICON` — the **cells' own z**.
+Equal z is settled by the painter's order, and the mid band is a filled button
+the size of the whole plate: inside ONE paint the mid button is created before
+the cells (so the cells win and the board looks perfect — «اول که انتخاب میکنم
+همه چی هستش»), but the very next paint re-creates it as the NEWEST equal-z
+object, drawn LAST, over all 64 cells, the RECENT band and the HEX field —
+«اینکه درگ میکنم اینطوری میشه». The board's first P-DRAW-48 cut also left the
+plate's bg under the shared `PnlDrawS_BG`, so the strip's own underlayer was what
+painted at the board's rect.
+
+**Fixed, five places:**
+
+1. `DrawStripBoardSkinName(i)` — family 2's own `PnlDrawS_BBtL…BBbR`; one plate,
+one name, and a repaint can no longer delete or bury another plate's pieces.
+2. **The plate's body rides the plate's z.** `DrawStripBtnZ(…, z)` is the painter
+now, `DrawStripBtn` is the icon-layer forwarder, and the skin's mid band asks for
+`Z_STRIP`. The z is re-asserted every paint through the guarded write, so an
+object born before this law is corrected on the next frame. This is the one that
+covers **every** family: the same equal-z tie sat under the gear panel and the
+strip too — «حتی برای تمام پنل های دیگه».
+3. The plate's bg expression got the family-2 arm (`DrawStripBoardBgName()`);
+family 2 also purges it (`DrawStripSkinPurgeAt`), and `DrawStripClosePicker`
+purges family 2 when a pick leaves the picker — the plate can no longer outlive a
+pick.
+4. `PnlDrawS_PHeadP`/`PHeadPI` joined `DrawStripPopChromePrune`'s list (a close
+left the dock glyph over a gone plate).
+5. **The hover read the board's bands from the STRIP's origin** — the reported
+«موس روی یک رنگ هستش ولی رنگ دیگه رو نشون میده که روی ابجکت»: the pointer sat on
+one cell and a phantom cell of the strip's own row was hit. `DrawStripColorHoverCellAt`
+reads `s_dsBX`/`s_dsBY` now, gated on `s_dsBW/s_dsBH`.
+
+**Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`, `node tools/submenu_geometry_check.js` green.
+**Open, named not fixed:** a docked board whose strip has no room below still
+**flips** to the strip's other side in one frame (the placer's rule); the board
+holds no place of its own until the hand carries it once.
+
+## P-DRAW-48 addendum (2026-09-27) — the opacity bar was painted and nothing else
+
+User, with the board open on `Rectangle 664` (screenshot, EURUSD H1, `Opacity 77%`):
+**«شفافیت که درگ میکنم چارت پشتش تکون میخوره و اینکه روی رنگ کلیک میکنم بسته
+میشه نمیزاره شفافیت تنظیم بکنم، این بستن خودکار هی دوباره باید فعال بکنمش»** —
+three defects in one surface, and the first one was structural: the band's FIVE
+objects, its band top (`s_dsPOpY`), its grab state (`s_dsOpGrab`, `s_dsOpMs`) and
+its own `DSTRIP_TRK_H/KNOB/OP_VW` metrics were all in the tree, but the two
+geometry accessors the paint asks for — `DrawStripOpTrackX()` /
+`DrawStripOpTrackW()` — did not exist anywhere in the repo, and neither did a
+single reader of `s_dsOpGrab`. The previous cut stopped mid-write: **the module
+did not compile** (`undefined function`), so the build the user tested could only
+have been the one before it. Measured after tonight's cut: main + Lite + seven
+harnesses `0 errors, 0 warnings`.
+
+**The four fixes, each in its own owner:**
+
+1. **The bar's geometry is a fact, not a formula at the call site.**
+   `DrawStripOpTrackX()/W()` (the label keeps the RECENT column `DSTRIP_PREC_LW`,
+   the readout its `DSTRIP_OP_VW` seat, the bar is what is left: on the live board
+   `328 - 2*8 - 52 - 38 = 222` px) — the same numbers the paint and the hand read.
+2. **The press that lands on the band is the band's.** `DrawStripOpBarAt` takes the
+   whole `DSTRIP_PICK_ROW 42` px row as the target (an 8 px bed is no touch target,
+   B-05) and EXCLUDES the readout seat, so tapping `NN%` never jumps the slider;
+   `DrawStripOpValueAt` is the exact inverse of the knob's own position over
+   `trackW - DSTRIP_KNOB_W`, so what the hand shows is what the readout says. The
+   press applies the value at once (a tap on a track sets it, the cards' own law)
+   and the held steps follow on `DSTRIP_GRIP_MS`. The write is `DrawSlotOpacitySet`
+   — the ONE owner of the `[OPnn]` tag and of the colour re-blend (DrawToolbar) —
+   and it is guarded (one write per real change), so a drag costs a paint per move
+   and nothing else. Before this, the gesture fell through to the terminal and
+   **panned the chart** under the board: the reported «چارت پشتش تکون میخوره».
+3. **The bar names its own lock.** `ChartViewLockAcquire` at the press edge,
+   `ChartViewLockAssert` on every held step, the ONE ender (`DrawStripGripRelease`)
+   at every release/close, and `s_dsOpGrab` added to `DrawStripViewOwned()` the day
+   it was born (A-09/G-07) — without the term the 250 ms reconcile reads the lock as
+   a leak and hands the scroll back inside the first quarter second, which is the
+   same report the strip's own carry answered with P-DRAW-19.
+4. **A colour pick is MULTI-STAY, and the board's plate is dead space.**
+   P-DRAW-11's "a pick applies and shuts" left the board on every cell tap
+   (`DrawStripPickTap`/`PickTapRecent`), so the bar left with it — the reported
+   «بسته میشه نمیزاره شفافیت تنظیم بکنم». The value applies and the board waits
+   for its ✕ / Esc / the strip's colour cell now, exactly like the levels editor.
+   Second half of the same complaint: the 8 px gap between two cells lands on the
+   board's own plate body, and the plate-tap rule (P-DRAW-11) shut the whole board
+   — a near miss read as a dismissal. `DrawStripIsBoardPlate` (the `PnlDrawS_BB…`
+   family, one letter apart from the strip's `PnlDrawS_BG…`) keeps the strip's and
+   the panel's plates shutting the popover and makes the board's own body inert.
+
+**Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`, `node tools/submenu_geometry_check.js` green.
+`DrawStrip.mqh` **5728 → 5820** lines.
+
+**Open, named not fixed:** a press on the board's PADS (the gaps, the header's
+edges) is still not a carry and not the bar's — a drag from there pans the chart,
+the same shape every surface in this file has outside its own handle. The bar
+owned the reported gesture; widening the pad is a separate decision.
+
+## P-DRAW-48 addendum 2 (2026-09-27) — the tag that could not be read back
+
+User, next report, with the board open and `Opacity 69%` in the screenshot:
+**«من شفافیت هر رنگی رو تغییر میدم فقط سیاه میشه دلیلش چیه»** — and the HEX field
+read `#000000`, and it read `#000000` in the FIRST report's screenshot too (77 %),
+i.e. the drawing was already black before the bar even had a drag.
+
+**One '#'.** `DrawStripColorHex` is the DISPLAY form and it returns `"#RRGGBB"`.
+The tag writers put that string straight into the description — `[CL#FFC247]` —
+while the reader (`DrawSlotColorPure`) built `"#" + StringSubstr(d, at + 3, …)`,
+i.e. it prepended a SECOND '#': `"##FFC247"`, whose length is 8, so
+`DrawStripHexToColor` answered false at its first guard and the read fell back to
+`OBJPROP_COLOR`. The comment above the tag (`[OP70] [CLFFC247]`) and the reader
+disagree with the writer — both were written to the six-digit form.
+
+**Why black, and why ONLY the opacity bar:** the bar re-reads the object's colour
+on EVERY frame it moves (`DrawSlotOpacitySet` → `DrawSlotRead` → the tag, else the
+object) and re-blends it. With the tag unparseable the read answered the object's
+CURRENT pixel, which is the PREVIOUS frame's blend: 30 ms cadence, `100 - v = 31`
+per frame, `0.69^20 ≈ 0.0006` — **any colour is black in well under a second**, and
+the black is then stored back into the tag as the pure, so it stuck. The colour
+PICK is immune because it takes its colour from the picker (never from the
+object) and writes it in one shot — which is exactly the shape the user described:
+picking is fine, touching the opacity blackens the drawing.
+
+**Fixed, three places (DrawToolbar, the tag's one owner):**
+
+1. `DrawDescColorHex` — the written form is six digits, one owner beside the
+display form, so writer and reader cannot drift again (A-12).
+2. `DrawSlotColorPure` reads the '#' as OPTIONAL, so a tag a broken build left as
+   `[CL#FFC247]` still answers its colour: a poisoned chart heals on the next read
+   and rewrites the tag canonically on the next write.
+3. `DrawSlotOpacitySet` writes the tag only from a colour that IS one (`clrNONE`
+   and any negative read are refused, `DrawStripColorHex` had been clamping them
+   to `#000000`), and a drawing with no colour keeps the pixels it has — the
+   `[OPnn]` value is still recorded, there is simply nothing to blend.
+
+**Measured after the fix:** main (workspace + installed) + Lite + all seven
+harnesses `Result: 0 errors, 0 warnings`, `node tools/submenu_geometry_check.js`
+green.
+
+**Not recoverable, said plainly:** a drawing whose tag the broken build had
+already overwritten with the ratcheted value carries that value as its pure (the
+original colour is gone from the tag). One colour pick on that drawing rewrites
+the tag and the opacity bar is normal from then on.
+
+## P-DRAW-64 (2026-09-27) — the second colour: border and fill apart, and the 50% fill
+
+User order: **«توی نوار استریپ رنگ بوردر بشه جدا تنظیم کرد در همه پنل ها اوکی و
+fill همه جدا یک بخش براش اضافه کن. و ۵۰ درصد باکس هم به نوار استریپ اضافه کن
+برای باکس»**. Two asked-for things: a colour cell that is the BORDER's and one
+that is the FILL's (in the strip and in the settings panel), and a box filled at
+half tone.
+
+**The wall, read off the docs first.** MT4 gives a drawing ONE colour:
+`OBJ_RECTANGLE` paints its frame AND its interior with `OBJPROP_COLOR` (the
+docs' own `RectangleCreate` takes a single `InpColor`), and `OBJPROP_BGCOLOR`
+exists only for the screen objects (`OBJ_LABEL`, `OBJ_BUTTON`, `OBJ_EDIT`,
+`OBJ_BITMAP`, `OBJ_BITMAP_LABEL`, `OBJ_RECTANGLE_LABEL`) — already recorded in
+`docs/tool-parity-plan.md` §5. So a second colour is not a property, it is a
+SECOND OBJECT — the `_BX50` pattern the box mid line already proved — plus the one
+real second colour MT4 does have, the level family's `OBJPROP_LEVELCOLOR`.
+
+**The model (one slot, two mechanisms).** `DRAW_SLOT_FILLCLR 10` is appended
+(no index moved) and every kind that really owns a second colour carries it:
+the six LEVEL kinds (`DK_FIBO · DK_FIBOFAN · DK_FIBOCHAN · DK_EXPANSION · DK_GANN
+· DK_PITCHFORK`) write the interior as **the levels' colour**; the five FILLER
+kinds (`DK_RECT · DK_TRIANGLE · DK_ELLIPSE · DK_CHANNEL · DK_FIBOCHAN`) get a
+CHILD object `<drawing>_FL` — the master's own type and anchors verbatim, same
+style/width, filled, in the background, non-selectable, `Z_CHART_ZONE`, and
+`DrawKindOf` answers `DK_NONE` for it so the strip never serves it, the hit test
+never lands on it and no preset learns from it.
+
+**Nothing a user already drew changes pixel.** `[FT…]` absent means the interior
+tone IS the border's, and `[FL…]` absent means the interior's colour IS the
+border's — i.e. exactly the single colour MT4 was painting. A drawing whose
+master still carries `OBJPROP_FILL` from a build before the split reads as
+"interior ON", so the first sync ADOPTS it: the child is made from the master's
+anchors and the master's own fill is cleared (one object per colour). The strip's
+FILL cell reads on when the child exists OR the master's own fill is set, so an
+old drawing's eye does not change.
+
+**The 50% box.** `[FTnn]` is the interior's own tone (100 = the pure colour,
+0 = the chart's background, the same direction as `[OPnn]`, both through
+`BlendColorTowardsBg`), defaulting to the border's tone. One more-popover row,
+`DSTRIP_MK_FILL50` **"Fill 50%"**, turns the interior on and writes `[FT50]`
+through the two existing owners (`DrawSlotWrite(FILL)` + `DrawSlotOpacitySet`),
+is undoable, applies to the whole group, and wears a check when the drawing
+already IS that box. The opacity bar follows the OPEN BOARD's role, so dragging it
+under the FILL board tunes the interior ("Fill tone") and under the border board
+the border ("Opacity").
+
+**Surfaces.** The strip's quick row grew a second colour cell (swatch + droplet,
+showing the interior's colour AT its tone = the pixel the chart will wear); the
+colour board is ONE board with two roles (its header says `FILL`/`BORDER`,
+`s_dsPicker` names the role for the grid, the recents, the hover preview and the
+HEX field); the settings panel's Style tab now has TWO hex fields — `COLOR`
+(`e0`, the border) and `FILL` (`e4`, shown only where the kind owns an interior).
+`DrawStripIsColorSlot` / `DrawStripColorRead` / `DrawStripColorFace` are the three
+questions every surface asks, so no site names one colour slot on its own (A-12).
+
+**The quick cap: 6 → 7, with its number.** At six, the extra cell pushed a seat
+out of the row for ten kinds — a box would have had its fill colour only inside
+the "..." list, and the five level kinds would have lost the LEVELS seat to it.
+The cap is therefore 7, and one cell is **+38 px** of plate (32 + gap). The widest
+case (FIBOCHAN: 7 cells + the 4 chrome cells + the badge) lands at ≈ 590 px,
+against the skin's own ceiling `DSTRIP_SKIN_MAXW 660` — computed from the layout's
+own arithmetic (`8 + 38 + badge + n*38 + 4*38`), not measured on a chart. The module's own order is kept, with ONE exception:
+`DRAW_SLOT_FILLCLR` is served right after `DRAW_SLOT_FILL`, so the pair the user
+asked to split sits together ("filled · in this colour").
+
+**Realtime, and its bound.** The child rides `CHARTEVENT_OBJECT_DRAG` in the same
+event that moves the master (~3 terminal calls per throttled frame, no timer), and
+`BoxExtrasPump` is the net for a closed strip: it sweeps `_FL` children (orphan →
+delete, master's fill off → delete, otherwise re-stamp each 2 s / new bar) and
+re-stamps a master whose fill is on. A steady state costs READS, never writes
+(every setter in `FillChildEnsure` is guarded) and nothing at all is added to the
+mouse stream.
+
+**Left open, on purpose.** A named TEMPLATE still carries the border's colour,
+width, style, fill and ray — not the interior's colour and tone: the preset pack
+is one 33-bit double in the user's `DrawPresets.csv` and the interior would need a
+fifth field (a change to a file real users already own). The KIND memory does
+carry the interior (`s_dkFillClr` + `DrawStyleApplyOnCreate`), so the next box the
+user draws wears the fill colour they last chose; a template that should carry
+both colours is a follow-up with its own file-format decision.
+
+**Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `node tools/submenu_geometry_check.js` green
+(1440 cases).
+
+## P-DRAW-64 addendum (2026-09-27) — the hover that ate the transparency
+
+User, with the board open and `Opacity 35%` on the board:
+**«من این شفافیت تنظیم میکنم موس میره روی بقیه رنگه ناخواسته شفافیت [از دست میره]
+نمیتونم بسته و اعمال بکنم»** — «I tune the transparency, the mouse crosses the
+other colours and the transparency goes away by itself; I can't close and apply.»
+
+**Root cause, measured off the code path (P-DRAW-27's live preview):** the tray's
+cell under the pointer was written onto the DRAWING as a preview — and
+`DrawSlotPreviewColor` wrote it with `ObjectSetInteger(OBJPROP_COLOR, c)`, i.e. the
+PURE colour, NOT the blend the render owner computes. So the object came back to
+FULL strength every time the hand crossed a cell on its way to the ✕ (and the
+leave-restore wrote the pure colour back too, so the tone stayed lost until some
+other write re-blended it). One preview, one property write, outside the one owner
+(A-12) — the whole of the report.
+
+**Fixed by RETIRING the preview, not by repairing it.** The chart preview is gone:
+a hover now lights the CELL's own rim (`DrawStripColorHoverFace`), the CLICK
+applies, and nothing on the chart moves while the pointer travels. That is also
+the cheaper of two equal paths (G-09): the old hover was one write + one
+`ChartRedraw` per hovered cell, the new one is a rim write only on a real cell
+CHANGE. The dead machinery went with it — `DrawSlotPreviewColor`,
+`DrawSlotPreviewFillColor`, `DrawStripColorHoverRestore`, `DrawStripColorHoverBegin`
+and the `s_dsColorHoverN/Name/Color` trio (one index is the whole state now).
+`DrawStripColorHoverValue` stays: the resting rim is still the swatch's own border.
+
+**And the three bugs a user hits next, fixed in the same pass:**
+
+1. **A colour without a fill was invisible.** Choosing the interior's colour or
+dragging its bar while the interior was OFF wrote a tag that nothing drew —
+"nothing happened". An interior edit now turns the interior ON (`DrawStripFillShow`
+/ `DrawStripFillShowGroup`, called from the colour pick, the board's hex, the
+panel's FILL hex and the bar), the same rule `Fill 50%` was already following.
+2. **The ✕ was 22 px** (`DSTRIP_PHEAD_XW`/`DSTRIP_BPIN_XW`), under B-05's 24 px
+floor — the target the user reaches for at the END of a transparency edit was the
+smallest thing on the board (that is the «نمیتونم بسته بکنم» half). Both seats are
+26 px now (the header title loses 8 px of a 328 px board).
+3. **FILL off did not clear an old master's own fill** (a drawing a pre-split build
+left filled): the strip would say Empty while the pixels stayed filled. OFF now
+clears the master's own property as well as dropping the child.
+
+**One more, found while walking the type table:** `DK_CHANNEL` covers three MT4
+types and only ONE of them fills (`OBJ_CHANNEL`). A child of `OBJ_REGRESSION` or
+`OBJ_STDDEVCHANNEL` would have stacked a second outline over the first, so
+`DrawTypeHasFillChild` is the type-level gate: those two keep writing the MASTER's
+own fill property, exactly as they did before the split, and only the five types
+with a real fill get a child. Reachability is unchanged (same cap, same cell).
+
+**Gate (second run):** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`, `build-logs/*.log` with zero `error`/`warning` lines;
+`tools/deploy.ps1 -SkipIconRegen` green.
+
+## P-DRAW-64 addendum 2 (2026-09-27) — the preview comes back, on a gesture
+
+User order: **«با نگهداشتن دکمه روی پالت فعال بشه و با رها کردن اعمال»** — the live
+chart preview may exist, but only while the left button is HELD and dragged across
+the cells, and the RELEASE applies what is under the pointer. Never on a mere
+hover (that was addendum 1's report).
+
+**THE PALETTE SCRUB.** A fifth gesture owner in the strip (`s_dsPalGrab`,
+`DSTRIP_PAL_TAIL_MS 400`, `s_dsPalName[DRAW_SEL_MAX]`):
+
+* **press on a colour cell** → the members are taken (the group, or the held
+  drawing), the view lock is acquired, and the preview starts. Asked AFTER the
+  opacity bar (the bar owns its own row) and BEFORE the carries, so a press on a
+  swatch is never a carry of the board it sits on;
+* **drag** → the hit test runs on the carry's own cadence (`DSTRIP_GRIP_MS`), and a
+  member is re-inked only when the CELL really changed — a 64-drawing group costs
+  64 writes per cell CROSSING and none while the hand rests (G-08/G-09). Off the
+  palette the drawing wears its OWN pixels again (`DrawSlotRenderRestore`): a
+  preview that lingered off the grid would be a colour nobody released on;
+* **release** → the cell under the pointer is APPLIED (`DrawStripPickApply` /
+  `DrawStripPickTapRecent`, undo + recents + the interior's own "a colour is a
+  fill" rule), and a release off the grid is a CANCEL. Either release witness may
+  get there first, so the winner marks the tail and the loser only clears the
+  highlight — ONE physical release arrives on more than one channel (P-UI-113c's
+  lesson), and two applications would be two undo steps for one gesture.
+
+**AND THE PREVIEW WRITES THROUGH THE RENDER OWNER.** `DrawSlotPreviewColor` /
+`DrawSlotPreviewFillColor` are back, but they compute
+`DrawSlotRenderColor`/`DrawSlotRenderFillColor` — the SAME two owners the real
+write uses — so a previewed pixel is identical to the applied one and the tone the
+bar set survives the whole gesture. `DrawSlotRenderRestore` is their reverse: put
+the drawing back to the pixels its own tags say (the cancel, the close, and any
+pixel that drifted).
+
+**Bounds, stated as the rule requires:** the gesture takes the project's one view
+lock and names itself in `DrawStripViewOwned` (A-09/G-07); its writes are bounded
+by the group (`DRAW_SEL_MAX 64` names, taken once per press) times the number of
+cell crossings; the hit test is the board's own laid-out cells (64) plus the
+recents band, on a 30 ms cadence, and never walks the chart.
+
+**Known and deliberate:** with the interior OFF there is no child on the chart, so
+the interior preview has nothing to ink — the fill appears on the RELEASE (which
+turns the interior on, `DrawStripFillShow`). A press mutates nothing, so a
+cancelled scrub leaves the drawing exactly as it was.
+
+**Gate (third run):** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`.
+
+## P-DRAW-64 addendum 3 (2026-09-27) — the interior that stayed behind
+
+User, with a screenshot of an indicator box whose fill had drifted off its frame:
+**«من اینو که جابجا میکنم اون یکی جا میمونه که نباید اینطوری باشه باید ریلتایم و
+بدون هزینه یا نزدیک به صفر باشه و کاربر نفهمه»**.
+
+**Root cause: the drag hook ran for EVERY object, the product's own included.**
+`FillChildSync` was called from the `CHARTEVENT_OBJECT_DRAG` branch, and that branch
+fires for every dragged object on the chart — so a drag of one of the INDICATOR'S
+own boxes (`inpObjectPrefix`) read "the interior is on" (the box's own
+`OBJPROP_FILL`), created a `<box>_FL` child out of it and cleared the master's own
+fill. The box's own tool then moves its anchors on its OWN cadence, and since the
+child only ever synced on the drag event with a 50 ms throttle, the interior fell
+behind and stayed behind when the hand stopped — exactly the screenshot.
+
+**Fixed at the source, one law:** the split belongs to the objects the STRIP serves,
+so `FillChildSync` and `FillChildEnsure` ask `DrawIsIndicatorObject` FIRST (a string
+prefix compare, no terminal call) and refuse the product's own drawings — the
+module's oldest scope law ("the harmonics and the rest of the indicator's objects
+are NOT in scope"), now enforced where the writes happen instead of trusted to the
+caller. `FillIsChild` is refused just as cheaply, so a child can never grow a child.
+The order is the cheapest possible: an indicator object costs ONE compare per
+dragged frame, a user line ~3 calls, and only a user FILLER kind pays the ~12
+guarded reads that keep its interior in step (writes only when something really
+moved, plus the pump's 2 s net for a closed strip).
+
+**And the strays a build of this split already left behind heal themselves:** the
+pump's `_FL` sweep deletes a child whose parent is an indicator object and restores
+that parent's OWN fill (a child only ever existed while that fill was on), so the
+boxes the broken build touched wear their own look again within one 2 s pass or on
+the next new bar — no user action, no leftover object.
+
+**Gate (fourth run):** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `node tools/submenu_geometry_check.js` green;
+`tools/deploy.ps1 -SkipIconRegen` green.
+
+## P-DRAW-64 addendum 4 (2026-09-27) — the edge that came with the drag
+
+User, a second look at the same report: **«من جابجا که میکنم اینطوری میشه … این
+لبها و دور کادرها رو میگم که نبودن ولی گاه ظاهر میشن»** — extra edges that appear
+beside a frame WHILE the hand is moving. Measured off the code path, not guessed:
+the interior's child was re-stamped from the `CHARTEVENT_OBJECT_DRAG` branch but
+BEHIND the 50 ms throttle it shares with the box mid (`DSTRIP_MID_MS`). 50 ms of
+deferral is ~15 px of a normal hand and ~100 px of a flick, so the child fell that
+far behind its master and its own edge showed beside the master's frame — and only
+on a fast drag, which is the "sometimes" in the report.
+
+**Fixed at the ordering, one line:** `FillChildSync` now stands ABOVE that throttle,
+so the interior is re-stamped in every drag frame — a drag frame's own cadence is
+the cadence, and the project's own law says a DEFERRED drag frame IS the lag (MT4
+fires `CHARTEVENT_OBJECT_DRAG` continuously while an object is dragged, the
+measurement `TH3Tool` already carries). The mid keeps its 50 ms: a 4 px dot cannot
+show it, and its number is unchanged. Cost stays bounded and is stated: a user
+FILLER kind pays ~12 guarded reads per dragged frame and writes only when
+something really moved, a line or any non-filler exits on 2 compares, the
+product's own drawings on 1.
+
+**And the child's own frame is now the THINNEST legal one** (`OBJPROP_WIDTH 1`,
+where it used to copy the master's width). Its frame shares its fill's ink, so in
+step it hides under the master's frame either way; the difference is what a
+sub-frame lag can show — a 1 px sliver instead of a lip.
+
+**Gate (fifth run):** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `node tools/submenu_geometry_check.js` 1440 PASS;
+`tools/deploy.ps1 -SkipIconRegen` green (`.ex4` 08:46:38, 321 BMPs identical in
+both terminals).
+
+## P-DRAW-64 addendum 5 (2026-09-27) — the interior was behind a guard
+
+User, screenshot of a box whose interior sat on the pre-gesture rect (a red frame
+175..865 x 183..465 with the dark-red fill only 175..790 x 183..325, the mid
+correctly at the new centre): **«این باکس هنوز همین طوریه اون fill ریل تایم همراه
+جابجا نمیشه باید هزینه نزدیک به صفر باشه و ریل تایم بشه»**.
+
+**Root cause: the witness was on the wrong side of two guards.** The interior's
+sync stood inside the `CHARTEVENT_OBJECT_DRAG` branch, which sits BELOW
+`if(!s_dsOpen) return false;` in `DrawStripOnEvent` — so with the strip shut the
+whole channel was skipped and a dragged box kept its pre-drag interior until the
+pump's 2 s pass. And even with the strip open, a gesture whose LAST drag frame is
+coalesced away leaves the child on the pre-gesture rect, and a resize made in the
+terminal's own properties dialog fires no drag event at all.
+
+**Fixed, three cheap witnesses, no timer:** the interior's sync now stands at the
+HEAD of `DrawStripOnEvent`, above every guard, so the split is the DRAWING's
+business and not the strip's being open; it rides the drag event as before; it also
+rides `CHARTEVENT_OBJECT_CHANGE` (the properties dialog's own channel, which the
+module never listened to); and the RELEASE re-stamps both children — a release ends
+every gesture and `relPressObj` already names the object the hand pressed
+(P-UI-113i), so a coalesced last frame is repaired in the frame the hand lets go.
+The pump's 2 s pass stays the net for a strip that was never open.
+
+**Cost, stated:** 1-2 compares for a line or any non-filler kind per dragged frame,
+~12 guarded reads for a user FILLER kind, and a write only when something really
+moved; the release path is once per gesture (`FillChildSync` + `BoxMidSync` on one
+name). Nothing walks the object list, nothing new is scheduled.
+
+**Gate (sixth run):** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `node tools/submenu_geometry_check.js` 1440 PASS;
+`tools/deploy.ps1 -SkipIconRegen` green (`.ex4` 08:50:51, 321 BMPs identical in
+both terminals). A re-attach of the indicator is REQUIRED for the fix to be live
+(MT4 reads the `.ex4` only at attach time).
+
+## P-DRAW-64a (2026-09-27) — ONE COLOUR SEAT AND THE FILL FAMILY'S TWO EXTRAS
+
+**The order, verbatim, four asks in one screenshot** (the strip's quick row with
+red arrows on the border cell and the droplet cell): «این دوتا باکس که برای یک کار
+هستش میشه باهم ادغام کرد چرای دوتا هستش میشه یکی بشه دیگه» · «اونیکه برای رنگ
+بوردر هستش رو ایکونش نباید وسط رنگی باشه باید دورش رنگ باشه ایکون استریپ کامل درست
+کن» · «یک ایکون برای 50 درصد طول باکس بزار که جوری باشه که کاربری وقتی روشن کرد
+زیاد شلوغ به چشم نیاد» · «و یک ایکون دیگه برای اکستند به راست بزار» — and the
+constraint over all four: «مهمه توی نوار استریپ باشه دم دست که سریع کاراشو بکنه
+کاربر معطل نشه».
+
+**1. ONE SEAT, TWO ROLES.** The border's cell (`DRAW_SLOT_COLOR`) and the
+interior's (`DRAW_SLOT_FILLCLR`) were two cells doing one job, which is one too
+many. They are ONE seat now — `DrawStripMergedColor(k)` drives everything: the
+order skips `DRAW_SLOT_COLOR` for a kind that carries the interior too (so the
+seat keeps index 0 and the row reads colour · width · style · fill · …), the seat
+IS `DRAW_SLOT_FILLCLR` (so `s_dsPicker`, the tone tag and the board's role logic
+were not touched), and its visibility is the OR of the two roles — hiding one role
+in the settings can never drop a control the user asked to see.
+
+**Which role a tap means is decided by WHERE the hand landed**, and by nothing
+else: `DrawStripTap(idx, tap)` receives the object the terminal reported, and the
+centred swatch (`ic+S`) and its skin (`ic+C2`) are the INTERIOR's while the cell's
+own button (`on`) and its 32 px skin (`ic+C`) are the BORDER's. That split is real
+but small (a 32 px seat, a 24 px centre), so a tap that lands on the wrong half
+costs one more tap and not a close-and-retry: the board's own NAME is its role
+switch — `PnlDrawS_PHeadT` flips `s_dsPicker` between the two roles in place, and
+its tip says so.
+
+**2. THE RING.** The complaint was exact: the border's colour sat in the middle of
+the cell as a filled square. The seat's own button now WEARS the border colour and
+the nested `DSTRIP_SWATCH 24` swatch wears the interior's, with `ds_cell32` rounding
+the outer and `ds_swatch24` the inner — so the border colour IS the frame (a 4 px
+band on the live seat) and the middle can never be the border's colour. A kind with
+no interior (line / hline / vline / arrow / text) shows the plate tone in the hole,
+i.e. a ring — which is the same picture the user asked for. The droplet that used
+to tell the two cells apart is gone with the merge (the seat is one cell, so nothing
+needs telling apart); the 24 px centre is B-05's own floor.
+
+**3. HALF LENGTH, and 4. EXTEND RIGHT — both in the row.** `DRAW_SLOT_BOXHALF 11`
+and `DRAW_SLOT_EXTEND 12` (`DRAW_SLOT_N 13`, appended: no existing index moved),
+both plain toggles, both served WITH the fill they belong to, so the family reads
+together: **fill · half · extend**. `DSTRIP_QUICK_CAP` went 7 → 8 — measured worst
+case is DK_RECT at 8 cells + 4 chrome, i.e. `40 + 8 + (badge + 8) + 8*40 + 4*40` =
+**576 px** at the minimum badge and ~616 at the widest, inside `DSTRIP_SKIN_MAXW
+660` and the skin's own 640 + 2×14 baked middle; the merge had already given one
+seat back, so the cap rose by one and the row did not grow.
+
+* **HALF** — 50 % OF THE BOX, NOT OF THE FILL. The first build of this cell halved
+  the INTERIOR (the `_FL` child covered the earlier half of the span); the user
+  corrected it the same day — «من منظورم این نیمه بود نه نیمه fill» — the reading
+  was one object off. The cell now moves the DRAWING's own far anchor: ON remembers
+  the length (`[BXH:<seconds>]`, inside the box's own mark group) and puts the far
+  edge at the middle of it; OFF puts that length back on whatever the near edge is
+  NOW. The payload is a LENGTH and not a time, so a box MOVED while it was halved
+  restores its real length where it stands, and a box drawn right-to-left comes out
+  right because it is the FAR anchor the tap moves, whichever corner it was.
+  The FILL is untouched, and untouched it must stay: a 50 % box is visible with the
+  interior off, on or never, which is why `DrawStripWriteValue` carries no "show the
+  interior" rule for this slot (the fill's colour and its tone bar keep theirs).
+  A HAND-EDITED edge stops being half: `BoxHalfRecheck` (the pump, and the release
+  witness) spends the one description read both callers already pay for and drops
+  the mark when the box's own span is no longer `span / 2` within one bar of
+  seconds — a stale payload would make the next tap jump the edge to a length the
+  user never chose. **A bare `[BXH]` of the first cut is not "half" either**: that
+  build marked the interior with the token alone (the pull was computed at sync
+  time), so `DrawBoxHalfRead` asks the span parser (`> 0`) and a token left by it
+  reads OFF and is dropped by the next group write — two terminal calls, the same
+  two the old reader spent.
+* **EXTEND** — the box's own `[BXE2]` as a switch: ON = the far edge travels with
+  the newest bar, OFF = the drawing stops moving. The more-popover's cycle keeps the
+  modes a switch cannot express (to first touch, 8 / 16 / 32 bars) — one mark, one
+  owner, two faces.
+
+Neither is a LOOK, so neither is learned into the kind's memory (`s_dkValid` is
+never set by them — a fresh drawing must not be born wearing an arrangement the
+user never chose) and neither rides the undo (P-DRAW-21's own rule: an extend moves
+TIME, not the look). Both stand beside FILL in the settings panel's DRAWING section
+as well, one value on two surfaces.
+
+**A module move the slots forced:** the `[BX…]` group's one reader and one writer
+(`BOXEXT_*`, `BoxMarkRead`, `BoxMarkWrite`) moved from `DrawStrip.mqh` down to
+`DrawToolbar.mqh`, because a slot is READ and WRITTEN there and MQL4 is
+define-before-use; the geometry the marks drive (the mid child, the extend step,
+the pump) stayed in the strip, where its callers are. The half flag got its own
+one-token reader/writer (`DrawBoxHalfRead`/`DrawBoxHalfSpan`/`DrawBoxHalfWrite`) so
+`FillChildEnsure` and the slot ask the same parse, and `BoxMarkWrite` now RE-EMITS
+`[BXH]` — the group is rewritten whole from its first ` [BX`, so a flag it did not
+know about would have been dropped by the next mid-line write. (Reading the tag
+order was worth it: `DrawDescTag` PREPENDS its tag, so the `[CL…]` the colour write
+leaves always stands before the group and the `pre` truncation cannot eat it — that
+is why the old writer was safe, and why the half flag had to be re-emitted rather
+than appended.)
+
+**Icons: four new bakes**, 24 px, the family's amber-twin law — `bk_half_off`/`_on`
+(the box outline carrying a 50 % tick; ON is the box stopped AT that tick) and
+`bk_ext_off`/`_on` (the far edge with the arrow
+that travels). The ON art is
+deliberately one quiet shape on the accent wash, because the user asked that a box
+switched on must not read as a busy cell. `icon-manifest.txt`
+321 → **325**, and the four `#resource` lines ride `DrawStrip.mqh`'s own icon block.
+
+**The half cell's art took four cuts, and the second was the SAME mistake as the
+first.** Cut 1 drew the dropped half beside the box as a dashed ghost («the box wears
+its first half»), and the user read a half-FILLED interior — «من منظورم این نیمه بود نه
+نیمه fill». Cut 2 kept the ghost and made the box half *of the cell*, same reading,
+same refusal: «الان fill نصف میکنه نمیخوامش، خوده باکس نصف بشه». The lesson is not
+about the ghost's dashes: **a leftover outline of the missing part is a fill**, however
+faint, because the interior is exactly what a fill draws. Cut 3 deleted the ghost —
+the ON art was the box outline itself at half length plus the 50 % tick — and cut 4 is
+the USER'S OWN SKETCH, which settles the cell for good: a SOLID block with a dashed
+line across its middle («به این صورت میخوام حالا با رنگ ها بهتر یا خودش باشه»). Both
+faces are that one block now (`BK_HALF_SOLID`, aliased by OFF and ON), because the mark
+never needed the state to be legible — the plate's wash and the ink already carry it.
+The 50 % line is a CUT and not a second ink: the block is two solid slabs with the
+midline band left open and the dashes are the block's OWN colour bridging it, so the
+art reads on the dark face and on the gold wash with no colour that can vanish into its
+background, and it stays one shape. `dashPoly` went with the ghost (its only caller);
+`dashSegs` stays, nine other arts use it, the block is what brought it back here.
+
+**The art space is 32, the bake is 24** (`render(outSize, …)` scales `S = 32`), which
+is why a 24-space rectangle lands in the top-left three quarters of the face. Caught by
+looking at the rebaked rasters at 1:1 instead of trusting the numbers, and it is the
+same trap the 24-space fills of `bk_fill_on` have always lived in — read the art space,
+not the bake, when a glyph looks off-centre.
+
+**A kind-level cap can be finer than the type it covers** (found while writing this,
+and fixed in the same owner): `DK_CHANNEL` covers three MT4 types and the
+regression and standard-deviation channels have no interior of their own
+(`DrawTypeHasFillChild`), so the interior's colour would have been a silent no-op
+there — as it already was before this change. `DrawStripSeatAvail` asks that ONE
+question for that ONE kind (every other kind pays one compare and no terminal
+call) and refuses both interior seats, and `DrawStripMergedColor` reads the same
+function, so a channel of those two types keeps its single-colour cell instead of a
+half that would do nothing.
+
+**Cost, stated.** The colour seat is four objects (was three per cell, six for the
+pair) — two buttons and two skins, all guarded, none of them per-tick. The merge
+made the paint SAVE one `DrawStripBtn`+`DrawStripFace`+`DrawStripBtn` triple per
+paint and spend one extra probe pair per NON-colour cell (two `ObjectFind` on the
+repaint path only, so a seat that was a colour one up to this paint leaves no half
+behind). HALF adds one description read per child sync (it sits in the same
+`FillChildEnsure` that already reads the master's anchors) and EXTEND adds nothing:
+its state is read only for its own cell, its tooltip and the settings row.
+
+**Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `node tools/submenu_geometry_check.js` 1440 PASS;
+`tools/deploy.ps1 -SkipIconRegen` green (`.ex4` 09:21:13, 325 BMPs identical in both
+terminals). A re-attach of the indicator is REQUIRED (MT4 reads the `.ex4` only at
+attach time, and the four new bitmaps load only at attach).
+
+**Half-cell art, cuts 3 and 4 (2026-09-27, after the second refusal).** `bk_half_off.bmp`
+and `bk_half_on.bmp` rebaked; nothing else in the build moved
+(`git status` on `Files/Icons` after the regen: the same files as before, the two
+`bk_half_*` rasters the only bytes that differ). Gate re-run in full both times: main
+(workspace + installed) PASS, all seven harnesses `Result: 0 errors, 0 warnings`,
+`submenu_geometry_check.js` 1440 PASS, `deploy.ps1 -SkipIconRegen` green (`.ex4`
+10:2x, 325 BMPs identical in both
+terminals). Re-attach required — again, the
+bitmap loads only at attach.
+
+## P-DRAW-64a fifth cut + P-DRAW-64 addendum 6 (2026-09-27) — THE 50 % IS A LEVEL, AND THE INTERIOR RIDES THE HAND
+
+**Two reports, one build, and the first one kills a payload the second one never needed.**
+
+**1. The 50 % cell was a LENGTH, and the user wants a LEVEL.** «خود باکس رو از وسط طول
+نصف میکنه که نباید باشه / من میخوام فقط 50 درصد مثل فیبو که 50 درصد مشخص میشه مثل
+اون باشه / اون دکمه 50 درصد که زدم اوکی» — the button is right, the BEHAVIOUR is wrong.
+So `DRAW_SLOT_BOXHALF` writes the `[BX50]` MARK and nothing else: the level is
+`BoxMidSync`'s `<box>_BX50` dotted line at the box's own mid PRICE, the same idiom a fib
+uses, drawn by the owner that already owned it, and **no anchor of the drawing moves**.
+The length the hand drew is the length the box keeps.
+
+**What that deletes, and why deleting is the honest half.** The cell used to be the
+state AND the payload: `[BXH:<seconds>]` remembered the length so the second tap could
+put it back, and `BoxHalfRecheck` (pump + release witness) dropped the mark whenever a
+hand gave the box a length that was no longer half — a whole staleness rule that exists
+only because the cell cut the box. A level is true for EVERY box, at every length, in
+every position, so it has no payload and nothing to re-check: `DrawBoxHalfSpan`,
+`DrawBoxHalfRead`, `DrawBoxHalfWrite`, `BoxHalfRecheck` and its two call sites are
+DELETED, not parked. A box drawn by an earlier build still carries a `[BXH:…]`; it means
+nothing now and the next mark write drops it with the rest of the group, so no migration
+is needed. The `[BX50]` bake was not touched — a solid block with a dashed midline is
+literally "this box's 50 %", and the user said the button is fine. Two smaller truths the
+change exposed: the 50 % and the travelling far edge no longer fight over one edge (the
+level is a horizontal line, the extend is a time), so the "one owner" hand-off in the
+extend's write is gone and both can be on together; and the cap loses `DRAW_CAP_BOXHALF`
+on CHANNEL / FIBOCHAN / ELLIPSE / TRIANGLE, because a channel's third anchor and an
+ellipse's are not that mid price and C-04 forbids a control where nothing would happen.
+
+**2. The interior's lag was never a missing witness — it was a coalesced event AND a
+second layer.** «این باکس که جابجا میکنه این fill ازش جا میمکون بعد چند میلی ثانیه بعدش
+جفت میشه», and then the diagnosis itself, with the log refused: «فقط رنگ‌کشی یک فریم عقب‌تر
+است». Three builds had already answered the SHAPE of that report by moving the sync (out
+from under the 50 ms throttle, P-DRAW-64 addendum 4; to the head of the router, above every
+guard, addendum 5) and it still lagged, which is the measurement that says the WITNESS was
+never the problem — `FillChildSync` runs in the very event that moved the master, so the
+data is correct before anything is painted. Two causes were left, and both are now closed:
+
+- **(a) THE EVENT COALESCES.** MT4 merges a run of identical ids, so a dropped
+  `OBJECT_DRAG` frame is a frame the interior did not move in — a hand at 60 Hz watches
+  the box leave its fill behind and sees it catch up when the next frame lands. The move
+  stream does not coalesce (every pixel of travel is its own event) and the press already
+  named the object (`s_dsPressObj`, P-UI-113i), so `FillChildStamp` rides it behind a
+  four-value memo: a still frame costs four reads and one compare, a real move the guarded
+  sync, an idle hand one string compare, and the arming also rides the drag event so a
+  gesture MT4 reports only as `OBJECT_CHANGE` is covered. The release witness stays as the
+  last word.
+- **(b) THE INTERIOR WAS IN THE OTHER LAYER.** This is the one frame the report names, and
+  it was a line of code: the child was created with a hard `OBJPROP_BACK = true` — behind
+  the bars — while the box is in front. MT4 paints the layer the dragged object lives in
+  as the drag moves it, so an interior parked in the other layer is painted by the NEXT
+  pass. No amount of stamping can close that, because the write is already correct when
+  the paint happens. The child now MIRRORS the box's own `OBJPROP_BACK` (one guarded
+  compare per sync, a write only when the box's layer really changed), so box and interior
+  share one paint pass, and the strip's BACK cell became one honest switch for the whole
+  drawing instead of a hidden rule that put the interior somewhere the box was not.
+
+**The one visible consequence, stated rather than buried:** a filled box in the foreground
+now covers the candles inside it, exactly like every filled rectangle MT4 draws, and the
+BACK cell is what puts the interior behind the bars with its box. That trade is the
+price of a frame-exact interior, and it is the user's to see rather than mine to hide.
+
+**3. The 50 % line is a whisper, and a whisper is written once.** «خط وسط باید نازک تر ...
+مینمال باشه که چارت شلوغ نشه», with the architecture asked for by name and the budget
+«هزینه صفر یا نزدیک به صفر». Two lines were making it the loudest thing a quiet box can
+wear, and both were free to remove:
+
+- **THE FRAME MIRRORED THE BOX'S.** `BoxMidSync` wrote `OBJPROP_WIDTH` from the master's
+  own width on every sync, so a 2-3 px box got a 2-3 px dotted rule in the same ink as
+  its border — and paid a read plus a compare to keep it that way. The frame is now
+  written at BIRTH (`OBJPROP_WIDTH 1`, `STYLE_DOT`) and never touched again: the steady
+  state loses a read and a compare, and the line is the thinnest thing MT4 can draw.
+- **THE INK WAS AT FULL STRENGTH.** The level wore the master's colour exactly, so it
+  competed with the border it was supposed to sit quietly inside. It now wears that
+  colour blended `BOX_MID_FADE 55` percent towards the cached chart background — the
+  same owner and the same arithmetic the interior's tone already uses, one cached read
+  and one blend, and the guarded setter means a still frame writes nothing.
+
+**What was deliberately NOT done, and why that is the architecture.** A fib prints its
+level's price on the left; adding it here would be a SECOND object per box, a caption
+owner, and pixels the user just asked to lose. The line also keeps the box's full width,
+because a level that stops short of the edges is a tick, not a level. And the sync keeps
+its 50 ms drag throttle with its one description read per throttled frame: 20 reads a
+second of a short string is not a cost worth a memo, and a memo here would have to be
+invalidated by the mark's writer to stay honest — coupling the geometry to the tag for
+microseconds is the wrong trade.
+
+## P-DRAW-64b (2026-09-27) — THE HEADER NAMES BOTH ROLES, AND THE TOOLS ARE TESTED TOGETHER
+
+**Two asks in one message, with the two screenshots that prove the first.** «این بوردر و
+fill کاربر متوجه نمیشه که درستش کن» over a FILL board and a BORDER board of the same
+box, and then: «کلا همه ابزار ها تست کن و یا از روی کد باگ ها و اختلال های که باهم دارن
+رفع بشه ... چون وقتی باهم کار بکنه باگ ها تازه مشخص میشه».
+
+**1. The header is a switch now, not a caption with a secret.** The board's header read
+one role ("FILL · BOX") and its tap silently toggled to the other — a control that cannot
+be found. It now reads BOTH: `BORDER` and `FILL` as two legible segments, the active one
+in the accent (and bold), each setting its own role outright (`s_dsPicker = …` — never a
+toggle to guess at), plus the kind's own caption. No new layout and no new objects beyond
+the second label: the three ride the band the one caption used, a tap on the active
+segment costs the click family and nothing else, and the close-prune list took the two
+new names (`fx[15..16]`). Kinds with ONE colour role keep the single caption.
+
+**2. The cross-tool pass — every pair the strip's row can make, read, not guessed.** Found
+and fixed, each with its cost:
+
+- **50 % ON killed a travelling edge.** The level's write cleared the extend
+  (`BoxMarkWrite(name, on, BOXEXT_OFF, 0)`) — a leftover of the LENGTH cut, where two
+  owners fought over one edge. Under the level they coexist, so the write now preserves
+  the edge's mode; a box that travels and wears its level does both.
+- **Deleting a box with a level left the line forever.** The pump skipped anything that
+  IS a mid child, and nothing else knew it — a stale dotted line that survived its box.
+  The pass now gives the mid line the interior's own orphan rule (`BoxMidParent` +
+  one probe per 2 s pass, a delete only when the parent is really gone).
+- **A recent tapped on the FILL board changed no pixel.** Grid, hex and tone all called
+  `DrawStripFillShow(Group)` for the FILL role; the recent was the one path that forgot
+  it — a tap that read as "nothing happened" by the project's own definition. One
+  guarded call, a write only when the fill is off.
+- **No border-colour commit re-inked the level.** The 50 % line wears the border's
+  colour (the `BOX_MID_FADE` blend), but grid, recent, hex, tone, preset and group
+  toggles all wrote the box and left the line wearing the OLD blend for up to 2 s.
+  `BoxMidSyncGroup` (the fill's own show's fan-out) now rides those commits: one
+  description read per member, a write only where the ink really changed.
+- **An extending box wore a stale interior.** `BoxExtendStep` moved the edge and
+  re-synced the mid but not the fill — the pump's own sweep runs BEFORE the step in the
+  same pass, so the interior waited for the next one. `FillChildSync` now stands beside
+  the mid sync in the step: one guarded call per step (once a bar), a no-op where no
+  interior lives.
+- **"Learn the look" wrote the arrangements.** `DrawStripLearnCurrent` same-value-wrote
+  BOXHALF and EXTEND — two description reads for a guaranteed no-op. They join the loop's
+  skip list (they are arrangements, not looks); the toggle path's mid sync went the
+  other way, single box to whole group, so a BACK flip re-layers every member wearing
+  its level.
+
+**Read and found CLEAN, so no future reader re-tests them:** the duplicate's "starts
+clean" (mid + extend cleared — a travelling duplicate "runs away on the next bar" is a
+decision, not a bug, while the colour tags ARE inherited); no lock-out (the hold has no
+lock guard, so a locked box still opens its strip to be unlocked); the hit test refuses
+indicator objects AND `DK_NONE` children in BOTH paths (`DrawObjectAt` and
+`DrawSelectedObjectAt`), so the scope the fill-split proved (addendum 3) holds for the
+marks too; presets carry no interior colour (deliberate — the object's own `[FL…]` stays
+the owner); both extras return before `s_dkValid[k] = true` (learned nowhere holds, and
+`DrawStyleApplyOnCreate` never applies them — a fresh box is never born wearing a level
+or a travelling edge); the more-popover's "Mid 50% line" and extend cycle use the same
+group writer (one value, two surfaces; the switch's loss of NBARS:32 is what a switch
+means, not a bug); the gear has no colour grid (the checklist's open item is a different
+debt, untouched); the cards' palette writes product SETTINGS, never drawings (separate
+owners, no interference).
+
+**Cost, stated.** The header switch: two labels' worth of the band's own paint (no layout
+change), PnlTextW twice per board paint, a tap on the active segment costs the click
+family only. The six fixes: one description read per member per colour/preset/toggle
+commit (a commit is not a stream), one probe per 2 s pass for the mid orphan, one
+guarded fill sync per extend step (once a bar). Nothing per frame, nothing per move,
+nothing at rest. **Gate:** main (workspace + installed) + Lite + all seven harnesses
+`Result: 0 errors, 0 warnings`; `submenu_geometry_check.js` 1440 PASS;
+`deploy.ps1 -SkipIconRegen` green (325 BMPs identical in both terminals). A re-attach is
+REQUIRED.
+
+**The measurement channel that was not needed, and why it is gone.** The first attempt at
+this diagnosis went through the Experts log and hit MT4's own buffering: the file stood at
+84 413 bytes through five minutes of polling while the session's `hold latch` lines kept
+coming. The replacement wrote one line per gesture to `MQL4/Files/FILLLOG.csv` with the
+worst lag the interior had shown. The user then named the cause outright and refused the
+log, so the channel came out again — the fix is in the layer, not in a number, and a file
+write per gesture is a cost nobody asked to pay. Both `[half]` and `[fill]` Print traces
+are gone with it; the shipped build writes nothing but its own objects.
+
+**Cost, stated.** The 50 % cell: one description read + one description write per tap,
+zero geometry writes (was up to six), and one recheck read per `[BX…]` box per 2 s pump
+pass (was: one per pass plus one per release). The interior: four reads and one compare
+per move frame under a held button on a filled shape, no writes and no terminal call at
+rest. **Gate:** main (workspace + installed) PASS, all seven harnesses `Result: 0 errors,
+0 warnings`, `submenu_geometry_check.js` 1440 PASS, `deploy.ps1 -SkipIconRegen` green (325
+BMPs identical in both terminals). A re-attach is REQUIRED.

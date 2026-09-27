@@ -122,6 +122,8 @@
 #resource "\\Files\\Icons\\pnl_glass22.bmp"
 #resource "\\Files\\Icons\\pnl_glass38.bmp"
 #resource "\\Files\\Icons\\pnl_glass46.bmp"
+#resource "\\Files\\Icons\\pal_cell20.bmp"
+#resource "\\Files\\Icons\\pal_ring20.bmp"
 #resource "\\Files\\Icons\\pnl_nav.bmp"
 #resource "\\Files\\Icons\\pnl_trackgloss.bmp"
 #resource "\\Files\\Icons\\pal_card.bmp"
@@ -1277,6 +1279,11 @@ color ParseHexColor(const string txt)
 #define PAL_QROWS BIOPICK_ROWS
 #define PAL_QSW   20
 #define PAL_QGAP  3
+//--- TV parity board (2026-09-26): the HEX row's own band. It is drawn on BOTH
+//--- tabs (the reference keeps the exact value beside the grid), which is why
+//--- `PalH()` carries it and why the card bake (`tools/gen-th3-icons.js`, PAL_H)
+//--- must be regenerated with it.
+#define PAL_HX    30
 #define PAL_RSHOW 12            // recents visible inline (no tab switch)
 //--- P-UI-69: the recents strip can be repainted from a LIVE path, because a
 //--- mixer drag shifts the list on every 30 ms tick - so its repaint is
@@ -1302,6 +1309,15 @@ int  g_PalKind = PAL_TRIGGER;      // target being edited
 int  g_PalTgt  = 0;                 // cycle index of g_PalKind
 int  g_PalTab  = 0;                 // 0 palette · 1 mixer · 2 recent
 int  g_PalX = 0, g_PalY = 0;        // popup position
+// TV parity: the title band carries the popup (same press/move/release law as
+// the cards, popup-scoped state). Manual spot is parked on the first proven
+// move and reused while the anchor matches; typing never lives here.
+static bool s_palMoveArmed=false;
+static int  s_palMoveGX=0, s_palMoveGY=0, s_palMoveLX=0, s_palMoveLY=0;
+static bool s_palMoveMoved=false;
+static uint s_palMoveTick=0;
+static bool s_palManual=false;
+static int  s_palMX=0, s_palMY=0, s_palMAnchor=-1;
 int  g_PalAnchorItem = 0;           // panel the popup hangs next to
 int  g_PalMixDrag = 0;              // 0 none · 1 R · 2 G · 3 B · 4 the mixer TR
                                    // · 5 the footer TR (P-UI-131k: one channel —
@@ -1311,7 +1327,7 @@ int  s_PalRecentPainted = -1;       // P-UI-69: the list the recents strip shows
 uint s_PalRecentAt      = 0;        // last recents repaint (drag coalescer)
 
 int PalW() { return PAL_PAD*2 + PAL_QCOLS*PAL_QSW + (PAL_QCOLS-1)*PAL_QGAP; }
-int PalH() { return PAL_HEAD+PAL_PREV+PAL_TABS + 16+PAL_QSW+8 + 16+PAL_QROWS*(PAL_QSW+PAL_QGAP) + PAL_TGT+PAL_FOOT + 4; }
+int PalH() { return PAL_HEAD+PAL_PREV+PAL_TABS + 16+PAL_QSW+8 + 16+PAL_QROWS*(PAL_QSW+PAL_QGAP) + PAL_HX + PAL_TGT+PAL_FOOT + 4; }
 
 //--- P-DRAW-46: one implementation, never a second — `BioPickColor` (include #1)
 //--- owns the user's chart; this is its face for the panels' code.
@@ -1976,6 +1992,68 @@ color PalHoverColorAt(const int region,const int c,const int r)
 //--- a CLICK is the commitment: the previewed value stays and nothing is put back.
 void PalHoverCommit() { s_palHoverCell=-1; s_palHoverKind=-1; }
 
+void PalMoveDisarm()
+{
+   if(!s_palMoveArmed) return;
+   s_palMoveArmed=false; s_palMoveMoved=false;
+   DragReleaseIf(DRAG_PANEL_MOVE);
+   CircUnlockChart();
+}
+void PalMovePark()
+{
+   s_palManual=true; s_palMX=g_PalX; s_palMY=g_PalY; s_palMAnchor=g_PalAnchorItem;
+}
+// Press in the title band (close seat keeps its click) arms the carry.
+bool PalTitleGrab(const int mx,const int my)
+{
+   if(!g_PalOpen || s_palMoveArmed) return false;
+   int w=PalW();
+   if(mx < g_PalX || mx > g_PalX+w || my < g_PalY || my > g_PalY+PAL_HEAD) return false;
+   if(mx >= g_PalX+w-PAL_PAD-20 && my >= g_PalY+3 && my <= g_PalY+21) return false;
+   s_palMoveArmed=true;
+   s_palMoveGX=mx; s_palMoveGY=my; s_palMoveLX=mx; s_palMoveLY=my;
+   s_palMoveMoved=false; s_palMoveTick=0;
+   DragClaim(DRAG_PANEL_MOVE);
+   CircLockChart();
+   return true;
+}
+void PalMoveStep(const int mx,const int my)
+{
+   if(!s_palMoveArmed || !g_PalOpen) return;
+   uint now=GetTickCount();
+   if(s_palMoveTick != 0 && now-s_palMoveTick < (uint)s_PnlMoveFrameMs) return;
+   if(mx == s_palMoveLX && my == s_palMoveLY) return;
+   if(!s_palMoveMoved &&
+      MathAbs(mx-s_palMoveGX) <= PnlDragThreshPx() &&
+      MathAbs(my-s_palMoveGY) <= PnlDragThreshPx())
+   {
+      s_palMoveLX=mx; s_palMoveLY=my;
+      return;
+   }
+   s_palMoveTick=now;
+   int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0); if(cw<=0) cw=1920;
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0); if(ch<=0) ch=1080;
+   int nx=g_PalX+mx-s_palMoveLX, ny=g_PalY+my-s_palMoveLY;
+   int w=PalW(), h=PalH();
+   if(nx<4) nx=4; if(ny<4) ny=4;
+   if(nx>cw-w-4) nx=MathMax(4,cw-w-4);
+   if(ny>ch-h-4) ny=MathMax(4,ch-h-4);
+   s_palMoveLX=mx; s_palMoveLY=my;
+   if(nx==g_PalX && ny==g_PalY) return;
+   g_PalX=nx; g_PalY=ny;
+   if(!s_palMoveMoved) PalMovePark();
+   s_palMoveMoved=true;
+   PalDraw();
+}
+void PalMoveFinish()
+{
+   if(!s_palMoveArmed) return;
+   bool mv=s_palMoveMoved;
+   if(mv) PalMovePark();
+   PalMoveDisarm();
+   if(mv) UISuppressNextClick();
+}
+
 void PalComputePos()
 {
    int cw=(int)ChartGetInteger(0,CHART_WIDTH_IN_PIXELS,0);
@@ -1985,8 +2063,16 @@ void PalComputePos()
    int w=PalW(), h=PalH();
    // Anchor to the OPEN panel (the strip opens the fill palette with anchor
    // item 12 while item 13 is open — stale g_PnlX[12] would park it top-left).
-   int ai = (g_PnlOpen >= 0 ? g_PnlOpen : g_PalAnchorItem);
-   int px=g_PnlX[ai]+PnlPanelW(ai)+8;                    // right of the panel
+    int ai = (g_PnlOpen >= 0 ? g_PnlOpen : g_PalAnchorItem);
+    if(s_palManual && s_palMAnchor == ai)   // hand spot wins while the anchor matches
+    {
+       int mx2=MathMax(4,MathMin(s_palMX,cw-PalW()-4));
+       int my2=MathMax(4,MathMin(s_palMY,ch-PalH()-4));
+       g_PalX=mx2; g_PalY=my2;
+       return;
+    }
+    s_palManual=false;
+    int px=g_PnlX[ai]+PnlPanelW(ai)+8;                    // right of the panel
    if(px+w>cw-4) px=g_PnlX[ai]-w-8;                      // flip left on overflow
    px=MathMax(4,px);
    int py=g_PnlY[ai];
@@ -1997,8 +2083,9 @@ void PalComputePos()
 
 void PalClose()
 {
-   UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
-   PalHoverRestore();   // P-UI-131h: a close while previewing must not leave the colour picked
+    UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
+    PalMoveDisarm();     // the title carry ends with its popup (spot stays parked)
+    PalHoverRestore();   // P-UI-131h: a close while previewing must not leave the colour picked
    if(!g_PalOpen) return;
    SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
@@ -2023,22 +2110,35 @@ int PalRecentsSig()
    return s;
 }
 
+//--- TV parity board: the face one colour CELL wears. The colour the target
+//--- holds now gets the RING bake, every other the flat cell bake — one asset
+//--- each, both baked at PAL_QSW (MT4 crops a bitmap label, never scales it).
+string PalCellFaceRes(const color sw, const color cur)
+{
+   if(cur != clrNONE && sw == cur) return "::Files\\Icons\\pal_ring20.bmp";
+   return "::Files\\Icons\\pal_cell20.bmp";
+}
+
 void PalPaintRecents(const int px,const int contY)
 {
    string p=g_UI.btnPrefix+"Pal_";
+   color cur=PaletteKindColor(g_PalKind);
    int nshow=MathMin(g_PalRecentCount,PAL_RSHOW);
    for(int i=0;i<PAL_RSHOW;i++)
    {
       string n=p+"r"+IntegerToString(i);
-      // prune past the end (the strip can only shrink on a load)
-      if(i>=nshow) { ObjectDelete(0,n); continue; }
+       // prune past the end (the strip can only shrink on a load)
+       if(i>=nshow) { ObjectDelete(0,n); ObjectDelete(0,n+"G"); continue; }
       int sx=px+PAL_PAD+i*(PAL_QSW+PAL_QGAP);
       int sy=contY+18;
       if(i == 0) PalHoverRegionAdd(px+PAL_PAD, sy, PAL_RSHOW, 1, PAL_QSW, PAL_QSW+PAL_QGAP, 0, 1);
-      PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i],
-                   PnlSwatchBorder(g_PalRecent[i],PNL_CLR_FIELD), true);
-      ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-      ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
+       PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i],
+                    PnlSwatchBorder(g_PalRecent[i],PNL_CLR_FIELD), true);
+       ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
+       ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
+       string nr=n+"G";
+       PnlSetBitmap(nr, sx, sy, PAL_QSW, PAL_QSW, PalCellFaceRes(g_PalRecent[i], cur), Z_PANEL_POP_FG);
+       ObjectSetString(0,nr,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
    }
    if(nshow==0)
    {
@@ -2115,6 +2215,37 @@ void PalOpenForItem(const int item)
    PalOpen(item,drow);
 }
 
+//--- TV parity board: THE HEX ROW (P-UI-91's field, drawn and applied once). The
+//--- reference keeps the exact value beside the grid, so BOTH tabs seat it: the
+//--- mixer under its tracks, the palette tab in the band above APPLY TO. An AUTO
+//--- target shows an EMPTY field — FFFFFF would claim a colour nobody chose.
+void PalDrawHexRow(const int px,const int hy)
+{
+   string p=g_UI.btnPrefix+"Pal_";
+   color cur=PaletteKindColor(g_PalKind);
+   int fx=px+PAL_PAD+30;
+   PnlSetLabel(p+"hl", px+PAL_PAD, hy+2, "HEX", PNL_CLR_LABEL, 8);
+   ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   string en=p+"hex";
+   ObjectCreate(0,en,OBJ_EDIT,0,0,0);
+   ObjectSetInteger(0,en,OBJPROP_CORNER,CORNER_LEFT_UPPER);
+   ObjectSetInteger(0,en,OBJPROP_XDISTANCE,fx);
+   ObjectSetInteger(0,en,OBJPROP_YDISTANCE,hy-2);
+   ObjectSetInteger(0,en,OBJPROP_XSIZE,76);
+   ObjectSetInteger(0,en,OBJPROP_YSIZE,18);
+   ObjectSetString(0,en,OBJPROP_TEXT,(cur==clrNONE ? "" : PalHexText(cur)));
+   ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
+   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
+   ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
+   ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
+   ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
+   ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
+   ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_POP_FG);
+   ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
+   PnlSetLabel(p+"hl2", fx+84, hy+2, "ENTER = apply", PNL_CLR_MUTED, 7);
+   ObjectSetInteger(0,p+"hl2",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+}
+
 //--- flush a pending hex edit (called before focus is lost)
 void FlushPalHex()
 {
@@ -2182,28 +2313,9 @@ void PalDrawMixer(const int contY)
     ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 
-   // hex input (OBJ_EDIT — the one text field MT4 supports)
-   int hy=contY+2+4*26+4;
-   PnlSetLabel(p+"hl", px+PAL_PAD, hy+2, "HEX", PNL_CLR_LABEL, 8);
-   ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   string en=p+"hex";
-   ObjectCreate(0,en,OBJ_EDIT,0,0,0);
-   ObjectSetInteger(0,en,OBJPROP_CORNER,CORNER_LEFT_UPPER);
-   ObjectSetInteger(0,en,OBJPROP_XDISTANCE,trackX);
-   ObjectSetInteger(0,en,OBJPROP_YDISTANCE,hy-2);
-   ObjectSetInteger(0,en,OBJPROP_XSIZE,76);
-   ObjectSetInteger(0,en,OBJPROP_YSIZE,18);
-   ObjectSetString(0,en,OBJPROP_TEXT,PalHexText(cur));
-   ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
-   ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
-        ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
-        ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
-        ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
-   ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
-   ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_POP_FG);
-   ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
-   PnlSetLabel(p+"hl2", trackX+84, hy+2, "ENTER = apply", PNL_CLR_MUTED, 7);
-   ObjectSetInteger(0,p+"hl2",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   // TV parity board: the HEX row, seated under the tracks (the palette tab
+   // shows the same row in its own band — one owner, see PalDrawHexRow).
+   PalDrawHexRow(px, contY+2+4*26+4);
 }
 
 void PalDraw()
@@ -2222,9 +2334,18 @@ void PalDraw()
 
    // header (names the LIVE target — the picked color goes there,
    // which may differ from the row that opened the popup via APPLY TO)
-   PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, "PALETTE · "+PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, PNL_PT_PAL);
-   ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial Bold");
-   ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+    // TV parity board: the reference's own title face — muted, letter-uppercase,
+    // never bold (the strip's board wears the same one). The join is code 183
+    // set at runtime (P-LBL-01): a literal `·` is read as a NUMBER and warns on
+    // every concatenation; StringToUpper wants a variable, never a temporary.
+    string pttl=" . ";
+    StringSetCharacter(pttl,1,183);
+    string pttl2="PALETTE "+pttl+" "+PalTgtLabel(g_PalTgt);
+    StringToUpper(pttl2);
+    PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, pttl2, PNL_CLR_MUTED, PNL_PT_PAL);
+    ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial");
+    ObjectSetString(0,p+"ttl",OBJPROP_TOOLTIP,"Drag to move");
+    ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    PnlSetButton(p+"close", px+w-PAL_PAD-20, py+3, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
    ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
    ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PnlPt(PNL_PT_PAL));   // P-UI-30
@@ -2285,17 +2406,26 @@ void PalDraw()
             string n=p+"s"+IntegerToString(qj)+"_"+IntegerToString(qi);
             int sx=px+PAL_PAD+qi*(PAL_QSW+PAL_QGAP);
             int sy=gy0+qj*(PAL_QSW+PAL_QGAP);
-            color sw=PalPickColor(qj,qi);
-            PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw,
-                         PnlSwatchBorder(sw,PNL_CLR_FIELD), true);
-            ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-            ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(sw)+"  ("+PalColorText(sw)+")");
+             color sw=PalPickColor(qj,qi);
+             PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw,
+                          PnlSwatchBorder(sw,PNL_CLR_FIELD), true);
+             ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
+             ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(sw)+"  ("+PalColorText(sw)+")");
+             // TV parity: rounded cell face over the square button (one pair of
+             // assets, worn by both palette grids; clicks route via the trailing G).
+             string ng=n+"G";
+             PnlSetBitmap(ng, sx, sy, PAL_QSW, PAL_QSW, PalCellFaceRes(sw, PaletteKindColor(g_PalKind)), Z_PANEL_POP_FG);
+             ObjectSetString(0,ng,OBJPROP_TOOLTIP, "#"+PalHexText(sw)+"  ("+PalColorText(sw)+")");
          }
    }
    else
    {
       PalDrawMixer(contY);
    }
+
+   // TV parity board: the palette tab's own HEX band (the mixer seats the same
+   // row under its tracks), directly above the APPLY TO row it belongs beside.
+   if(g_PalTab!=1) PalDrawHexRow(px, py+h-PAL_TGT-PAL_FOOT-PAL_HX);
 
    // apply-to target row
    int tgy=py+h-PAL_TGT-PAL_FOOT;
@@ -2626,9 +2756,13 @@ int PalHandleClick(const string name)
    if(id=="t1") { PalHoverRestore(); g_PalTab=1; PalDraw(); return REFRESH_NONE; }
    // (no t2 — RECENT lives inline on the PALETTE tab)
 
-   // a palette cell "s{r}_{c}" — EXACT id (P-UI-74, the P-UI-69 law)
-   int mr,mc;
-   if(PalCellIdParse(id,mr,mc))
+    // a palette cell "s{r}_{c}" — EXACT id (P-UI-74, the P-UI-69 law).
+    // TV parity faces ride the same click: a trailing G names the rounded overlay.
+    string cid=id;
+    int cL=StringLen(cid);
+    if(cL>2 && StringGetCharacter(cid,cL-1)=='G') cid=StringSubstr(cid,0,cL-1);
+    int mr,mc;
+    if(PalCellIdParse(cid,mr,mc))
    {
       PalHoverCommit();   // P-UI-131h: the click is the commitment — nothing is put back
       int flags=PaletteApplyColor(g_PalKind, PalPickColor(mr,mc));
@@ -2636,9 +2770,9 @@ int PalHandleClick(const string name)
       ChartRedraw();
       return flags;
    }
-   // recent swatch "r{i}" — EXACT id ("rempty" is the empty-state hint)
-   int ri;
-   if(PalRecentIdParse(id,ri))
+    // recent swatch "r{i}" — EXACT id ("rempty" is the empty-state hint)
+    int ri;
+    if(PalRecentIdParse(cid,ri))
    {
       PalHoverCommit();   // P-UI-131h
       int flags=PaletteApplyColor(g_PalKind, g_PalRecent[ri]);
@@ -6977,12 +7111,12 @@ void ChartPointerFinalizeOnUps()
    // forgotten release path impossible — the last value always lands.
    UIDragBudgetEnd();
 
-   const bool owned = (g_DragOwner != DRAG_NONE) || g_OrbDragging;
-   if(!owned && g_ChartLockCount <= 1 && g_PnlDragItem < 0 && g_PalMixDrag == 0)
-   {
-      ChartScrollReconcile();
-      return;
-   }
+    const bool owned = (g_DragOwner != DRAG_NONE) || g_OrbDragging;
+    if(!owned && g_ChartLockCount <= 1 && g_PnlDragItem < 0 && g_PalMixDrag == 0 && !s_palMoveArmed)
+    {
+       ChartScrollReconcile();
+       return;
+    }
    // Release EVERYTHING the still-held pointer used to own. Long-press
    // bookkeeping, slider drag, and palette mixer — none should outlive a
    // button-up. g_PnlDragItem must be cleared here or the next MOUSE_MOVE
@@ -7012,12 +7146,13 @@ void ChartPointerFinalizeOnUps()
    s_PnlPollUpArmed = false;   // P-UI-78: and so does the rumour filter
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
-   g_LongPressItem  = -1;
-   g_PnlDragItem    = -1;
-   g_PnlDragRow     = -1;
-   g_PnlMoveItem    = -1;
-   g_PalMixDrag     = 0;
-   ChartScrollReconcile();
+    g_LongPressItem  = -1;
+    g_PnlDragItem    = -1;
+    g_PnlDragRow     = -1;
+    g_PnlMoveItem    = -1;
+    g_PalMixDrag     = 0;
+    if(s_palMoveArmed) PalMoveDisarm();   // spot already parked on the proven move
+    ChartScrollReconcile();
 }
 
 // Commit a pending TEXT edit (TV "Add text" ≈ Ok-on-close): clicking away
@@ -8396,11 +8531,12 @@ void PnlReapStaleGestures(const bool commitMove)
       UIDragBudgetEnd();
       CircUnlockChart();
    }
-   // The move drag goes through its OWN finish — ONE owner for its claim, its
-   // chart lock, its release claim and its ledger line. Never `suppressClick`
-   // here: the click that follows belongs to the NEW press, not to the dead
-   // gesture (arming a claim for it would eat the next genuine click, P-UI-65).
-   if(g_PnlMoveItem >= 0) PnlDragFinish(commitMove, false);
+    // The move drag goes through its OWN finish — ONE owner for its claim, its
+    // chart lock, its release claim and its ledger line. Never `suppressClick`
+    // here: the click that follows belongs to the NEW press, not to the dead
+    // gesture (arming a claim for it would eat the next genuine click, P-UI-65).
+    if(g_PnlMoveItem >= 0) PnlDragFinish(commitMove, false);
+    if(s_palMoveArmed) PalMoveDisarm();   // the palette title carry: same rule
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -8516,14 +8652,21 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       return;
    }
 
-   // ── Drag-to-move: the card is a handle from every pixel (P-UI-127) ──
-   // Live again since P-UI-127, and its sibling latches are the slider
-   // (`g_PnlDragItem`) and the palette mixer (`g_PalMixDrag`). The old
-   // retirement note (kept whole in git and in the banner above the grab) said
-   // `g_PnlMoveItem` was left at -1 by every path so the condition below was
-   // dead by construction, while the
-   // restore is this `false &&` deleted plus the arm site uncommented.
-   if(g_PnlMoveItem >= 0)
+    // ── Drag-to-move: the card is a handle from every pixel (P-UI-127) ──
+    // Live again since P-UI-127, and its sibling latches are the slider
+    // (`g_PnlDragItem`) and the palette mixer (`g_PalMixDrag`). The old
+    // retirement note (kept whole in git and in the banner above the grab) said
+    // `g_PnlMoveItem` was left at -1 by every path so the condition below was
+    // dead by construction, while the
+    // restore is this `false &&` deleted plus the arm site uncommented.
+    if(s_palMoveArmed)   // the palette's own title carry runs before the card's
+    {
+       if(!g_PalOpen) { PalMoveDisarm(); return; }
+       if(!leftDown) { PalMoveFinish(); return; }
+       PalMoveStep(mx, my);
+       return;
+    }
+    if(g_PnlMoveItem >= 0)
    {
       // Panel closed mid-drag (Esc / Done) → abort the move cleanly
       if(g_PnlOpen < 0 || g_PnlOpen != g_PnlMoveItem)
@@ -8667,7 +8810,11 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
       // NOT restored with it: `PnlDragPoll` — measured 197 drags armed by the
       // event channel against 0 by the poll, so the per-tick probe stays out
       // (G-09: the cheaper of two equal paths ships).
-      if(!s_PnlClickChannel && g_PnlDdItem < 0) PnlTryGrabMove(mx,my,false);
+       if(!s_PnlClickChannel && g_PnlDdItem < 0)
+       {
+          if(g_PalOpen && PalTitleGrab(mx,my)) return;   // palette title carries first
+          PnlTryGrabMove(mx,my,false);
+       }
       // P-UI-128: THE BAKED FACES. The footer pair and the NAV pills sit UNDER
       // their own bitmap and the terminal sends them no click, so their action
       // lives here — AFTER the arm, so a drag on a pill still moves the card and
@@ -9643,8 +9790,8 @@ void UIRebuildForMetrics()
    // same objects (the ring/panel builders delete what the drag is holding).
    // The probe keeps running, so the change lands on the first frame after
    // the hand comes off - one event on a display that was just moved.
-   if(g_DragOwner != DRAG_NONE || g_PnlDragItem >= 0 || g_PalMixDrag > 0 ||
-      g_OrbDragging || g_LongPressItem >= 0 || g_BkTextFocus)
+    if(g_DragOwner != DRAG_NONE || g_PnlDragItem >= 0 || g_PalMixDrag > 0 ||
+       g_OrbDragging || g_LongPressItem >= 0 || g_BkTextFocus || s_palMoveArmed)
    {
       CircUIMetricsInvalidate();
       return;

@@ -84,8 +84,13 @@
 #resource "\\Files\\Icons\\bk_copy.bmp"
 #resource "\\Files\\Icons\\bk_undo.bmp"
 #resource "\\Files\\Icons\\bk_fill_on.bmp"
+#resource "\\Files\\Icons\\bk_half_off.bmp"
+#resource "\\Files\\Icons\\bk_half_on.bmp"
+#resource "\\Files\\Icons\\bk_ext_off.bmp"
+#resource "\\Files\\Icons\\bk_ext_on.bmp"
 #resource "\\Files\\Icons\\bk_back_on.bmp"
-#resource "\\Files\\Icons\\bk_lock_on_d.bmp"
+#resource "\\Files\\Icons\\bk_lock_on_g.bmp"
+#resource "\\Files\\Icons\\ds_swatch24.bmp"
 #resource "\\Files\\Icons\\gl_pin_m.bmp"
 #resource "\\Files\\Icons\\gl_pin_gold.bmp"
 #resource "\\Files\\Icons\\gl_plus_m.bmp"
@@ -138,6 +143,8 @@
 //--- colour popover cell) and 28 (the gear's swatch grid) — MT4 CROPS a bitmap
 //--- label, never scales it.
 #resource "\\Files\\Icons\\pnl_glass32.bmp"
+#resource "\\Files\\Icons\\ds_cell32.bmp"
+#resource "\\Files\\Icons\\ds_ring32.bmp"
 #resource "\\Files\\Icons\\pnl_glass28.bmp"
 #resource "\\Files\\Icons\\dsg_btn_ghost.bmp"
 #resource "\\Files\\Icons\\dsg_btn_primary.bmp"
@@ -210,6 +217,7 @@
 //--- preview's minimal-space rule. Nothing wraps any more: overflow value slots
 //--- live in the more-popover, never on a second row.
 #define DSTRIP_CELL      32    // the one row's height, and every icon cell's width
+#define DSTRIP_SWATCH    24    // the colour cell's own swatch (the preview's .swcell: 24px, B-05's floor)
 #define DSTRIP_GAP        4
 #define DSTRIP_PAD        8    // plate padding
 #define DSTRIP_PICK_MAX  72    // popover rows/cells: the picker grid's 64 + recents (P-DRAW-46)
@@ -217,7 +225,7 @@
                                // 48 + 42k law (DSTRIP_SKIN_MID, DrawStripSkinKFor)
 #define DSTRIP_PICK_CELL  32
 #define DSTRIP_PICK_GAP    8
-#define DSTRIP_GRID_MAX  72    // option cells in one grid block (the picker's 64 + recents)
+#define DSTRIP_GRID_MAX  72    // option cells in one gear grid block (the picker's 64 fits)
 #define DSTRIP_GLIST_MAX 16    // list rows in one gear block
 #define DSTRIP_GEAR_W   312
 #define DSTRIP_GEAR_PAD  16
@@ -263,6 +271,7 @@
 #define DSTRIP_UNDO_MAX  32    // single-step undo: members covered
 #define DSTRIP_UNDO_LV   32    // ... and fibo levels on the held drawing
 #define DSTRIP_HOVER_POP_BASE 1000 // popover colour cells offset from gear cells
+#define DSTRIP_HOVER_REC_BASE 2000 // TV parity: the board's RECENT band cells
 #define DSTRIP_MID_MS    50    // P-DRAW-41: the box mid's drag cadence (was the follow's)
 #define DSTRIP_GRIP_MS   30    // the grip carry's own cadence (BkStripFollow parity)
 //--- P-DRAW-29 (2026-09-24) — the plate skin's own metrics (define-before-use:
@@ -299,6 +308,8 @@
 #define DSTRIP_MK_SLOT 6       // arg = overflow value slot (opens its grid)
 #define DSTRIP_MK_BOX50 7      // P-DRAW-21: the box 50% line toggle (rect only)
 #define DSTRIP_MK_BOXEXT 8     // P-DRAW-22: the box extend cycle (rect only)
+#define DSTRIP_MK_FILL50 9     // P-DRAW-64: the interior ON at 50% tone, one tap
+#define DSTRIP_FILL50_TONE 50  // ...the tone that row means
 
 //--- P-DRAW-09c: the strip's palette. These are the settings cards' OWN tokens
 //--- (CARD #1D222C, FIELD #181D27, LINE #222832, LABEL #CBD4E2, MUTED
@@ -374,6 +385,52 @@ static int      s_dsGearMem[DK_COUNT];         // P-DRAW-26: last gear tab per k
 static int      s_dsPN = 0;                      // popover rows on screen now
 static int      s_dsPY[DSTRIP_PICK_MAX];         // row tops (rows are full-width)
 static int      s_dsPHexY = -1;                  // color popover hex band top (-1 = none)
+static int      s_dsPHeadY = -1;                 // color popover header band top (-1 = none)
+static int      s_dsPRecY = -1;                  // color popover recents band top (-1 = none)
+static int      s_dsPOpY = -1;                   // its OPACITY band top (P-DRAW-48)
+static bool     s_dsOpGrab = false;              // the bar's own drag is live
+static uint     s_dsOpMs = 0;                    // its cadence (DSTRIP_GRIP_MS)
+//--- P-DRAW-64 (2026-09-27) — THE PALETTE SCRUB. User order: the live preview may
+//--- come back ONLY while the left button is held and dragged across the cells, and
+//--- the release applies what is under the pointer — never on a mere hover (that
+//--- first cut wrote the PURE colour on the chart and cost the tuned tone). The
+//--- gesture owns the view for its length and names itself in `DrawStripViewOwned`.
+#define DSTRIP_PAL_TAIL_MS 400                  // the twin release channel's window
+static bool     s_dsPalGrab = false;             // a scrub is live
+static int      s_dsPalCell = -1;                // its last previewed cell
+static uint     s_dsPalMs = 0;                   // its hit-test cadence (DSTRIP_GRIP_MS)
+static uint     s_dsPalDoneMs = 0;               // the release that already applied
+static string   s_dsPalName[DRAW_SEL_MAX];       // its members (the group, or the held one)
+static int      s_dsPalN = 0;
+static bool     s_dsHexFocus = false;            // the HEX field is being typed in
+//--- P-DRAW-48 (2026-09-26): THE COLOUR BOARD IS ITS OWN CARD. User order:
+//--- «پاپ بشه مثل همین» — the reference board floats: its own rounded plate with
+//--- the family's shadow, carried by its header, pinned to the plate or left
+//--- where the hand put it. It is a THIRD 9-slice family (2) at its own rect,
+//--- the same architecture the settings panel took in P-DRAW-32 — the strip's
+//--- plate stops growing under it, and the popover bands are measured from the
+//--- BOARD's origin (`s_dsBX/s_dsBY`), never the strip's.
+static int      s_dsBX = 0, s_dsBY = 0, s_dsBW = 0, s_dsBH = 0;   // the board's own rect
+static bool     s_dsBManual = false;             // the hand placed the board: keep that spot
+static bool     s_dsBDock = true;                 // pinned: the placer follows the strip
+static bool     s_dsBGripLive = false;            // its header carries the BOARD
+static int      s_dsBGripDX = 0, s_dsBGripDY = 0;
+static uint     s_dsBGripMs = 0;
+static bool     s_dsBPlateLive = false;           // its plate family is on the chart
+#define DSTRIP_BOARD_HDR 44                      // the header band rides the skin's own top cap
+//--- P-DRAW-64: 26, not 22 — B-05's 24 px floor was the thing a user reaching for
+//--- the ✕ at the end of a transparency edit kept missing («نمیتونم بسته بکنم»).
+#define DSTRIP_PHEAD_XW 26                       // header close button seat
+#define DSTRIP_BPIN_XW   26                      // its pin (dock/undock) seat, one step left
+#define DSTRIP_PREC_LW  52                       // "RECENT" label seat (its own band's left column)
+#define DSTRIP_POP_EDIT_H 22                     // the board's HEX field (OBJ_EDIT) height
+//--- P-DRAW-48: the OPACITY bar's own metrics — the cards' tracks, verbatim
+//--- (BiotakPanels PNL_TRK_H/KNOB), because the preview's `.opwrap` and the panels'
+//--- TRANSPARENCY rows are ONE language and a second set of numbers is a second look.
+#define DSTRIP_TRK_H      8                      // the bed's height
+#define DSTRIP_KNOB_W    10                      // the knob's seat
+#define DSTRIP_KNOB_H    12
+#define DSTRIP_OP_VW     38                      // the readout's seat (the preview's .ov 34px)
 static int      s_dsMoreKind[DSTRIP_PICK_MAX];   // DSTRIP_MK_* per more-row
 static int      s_dsMoreArg[DSTRIP_PICK_MAX];    // preset index / slot id
 static color    s_dsRecent[DSTRIP_RECENT_MAX];   // the trader's recent colours
@@ -398,10 +455,11 @@ static int      s_dsGGKind[DSTRIP_GRID_MAX];     // 0 swatch (colour in GGC) · 
 static int      s_dsGGSlot[DSTRIP_GRID_MAX];
 static int      s_dsGGArg[DSTRIP_GRID_MAX];
 static color    s_dsGGC[DSTRIP_GRID_MAX];
+//--- P-DRAW-64: the highlight is the CELL's (the rim), so there is no preview
+//--- state left to carry — one index is the whole of it. The `s_dsColorHoverN/
+//--- Name/Color` trio went with the retired chart preview (this note is why a
+//--- future reader must not re-add them without re-reading the report above).
 static int      s_dsColorHoverCell = -1;
-static int      s_dsColorHoverN = 0;
-static string   s_dsColorHoverName[DRAW_SEL_MAX];
-static color    s_dsColorHoverColor[DRAW_SEL_MAX];
 static int      s_dsGearTab[5];                  // tab ids shown (count in [0])
 static int      s_dsGearTabX[4], s_dsGearTabW[4];
 static int      s_dsGearHeadY = -1;
@@ -427,8 +485,9 @@ static int      s_dsPlateTIdx = 0;         // P-DRAW-43: the plate's baked trans
 static int      s_dsGearW0 = 0;           // its outer width (content + pads), for the plate
 static int      s_dsGearBlkN = 0;
 static int      s_dsGearBlkY[DSTRIP_GEAR_BLK_MAX];
-static int      s_dsGearEditY[4];                // edit rows (hex/level-add/caption/tpl-name)
-static int      s_dsGearEditCol[4];              // P-DRAW-30: its column
+static int      s_dsGearEditY[5];                // edit rows (border-hex/fill-hex/level-add/
+                                                 // caption/tpl-name — P-DRAW-64 appended 1)
+static int      s_dsGearEditCol[5];              // P-DRAW-30: its column
 static int      s_dsGearFootY = 0;
 static bool     s_dsVis[DK_COUNT][DRAW_SLOT_N];  // Strip tab: per-slot visibility
 static bool     s_dsVisInit = false;
@@ -456,9 +515,16 @@ static uint     s_dsGGripMs = 0;
 void DrawStripGripRelease()
 {
    // P-DRAW-32: either carry owns the lock — one release ends whichever is live.
-   if(s_dsGripLive || s_dsGGripLive) ChartViewLockRelease();   // P-UI-90: one release per acquire
+   // P-DRAW-48: and the BOARD's carry is the third, the opacity bar's own drag the
+   // fourth (four owners, ONE ender — the button-up net, the close and Esc all
+   // come through here).
+   if(s_dsGripLive || s_dsGGripLive || s_dsBGripLive || s_dsOpGrab || s_dsPalGrab)
+      ChartViewLockRelease();   // P-UI-90: one release per acquire
    s_dsGripLive = false;
    s_dsGGripLive = false;
+   s_dsBGripLive = false;
+   s_dsOpGrab = false;
+   s_dsPalGrab = false;
 }
 //--- P-DRAW-31 (2026-09-24) — THE STRIP PUBLISHES ITS PLATE. The cards' placement
 //--- (`PnlComputePosition`) sizes a card with BiotakPanels' arithmetic and cannot
@@ -470,6 +536,33 @@ void DrawStripGripRelease()
 //--- two surfaces are ONE occupancy for every reader (a card must clear both, and
 //--- a fresh strip must clear both), so the rect handed over is their UNION while
 //--- the panel is open. One contract, one writer, no second global to keep in sync.
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-64 (2026-09-27) — TWO COLOUR CELLS, ONE BOARD. User order: «رنگ بوردر
+// بشه جدا تنظیم کرد ... و fill همه جدا. یک بخش براش اضافه کن». The owner module
+// declares `DRAW_SLOT_FILLCLR` (the interior); HERE it is a COLOUR CELL exactly
+// like `DRAW_SLOT_COLOR` — its own swatch, its own board, its own tone — so every
+// surface asks these two questions instead of naming one slot. The identity of the
+// OPEN board stays `s_dsPicker`, which already holds a slot id: "which board" and
+// "which colour it edits" are one variable here, never two.
+// ══════════════════════════════════════════════════════════════════════════
+bool DrawStripIsColorSlot(const int slot)
+{
+   return (slot == DRAW_SLOT_COLOR || slot == DRAW_SLOT_FILLCLR);
+}
+color DrawStripColorRead(const string nm, const int slot)
+{
+   return (color)(int)DrawSlotRead(nm, slot);
+}
+//--- what a colour CELL shows: the border cell stores and shows the pure colour,
+//--- the interior cell shows the pixel the chart will wear (its own tone applied) —
+//--- so the two cells are never two answers to one question.
+color DrawStripColorFace(const string nm, const int slot)
+{
+   color c = DrawStripColorRead(nm, slot);
+   if(slot != DRAW_SLOT_FILLCLR) return c;
+   return DrawSlotRenderFillColor(nm, c);
+}
+
 void DrawStripPublishRect()
 {
    if(!s_dsOpen || s_dsW <= 0 || s_dsH <= 0)
@@ -487,6 +580,15 @@ void DrawStripPublishRect()
       if(s_dsGEY - DSTRIP_SKIN_M < y1) y1 = s_dsGEY - DSTRIP_SKIN_M;
       if(s_dsGEX + s_dsGearW0 + DSTRIP_SKIN_M > x2) x2 = s_dsGEX + s_dsGearW0 + DSTRIP_SKIN_M;
       if(s_dsGEY + s_dsGearH + DSTRIP_SKIN_M > y2) y2 = s_dsGEY + s_dsGearH + DSTRIP_SKIN_M;
+   }
+   //--- P-DRAW-48: the COLOUR BOARD is occupancy too — a card placed by the
+   //--- neighbours must clear it, and a fresh board must clear them.
+   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0)
+   {
+      if(s_dsBX - DSTRIP_SKIN_M < x1) x1 = s_dsBX - DSTRIP_SKIN_M;
+      if(s_dsBY - DSTRIP_SKIN_M < y1) y1 = s_dsBY - DSTRIP_SKIN_M;
+      if(s_dsBX + s_dsBW + DSTRIP_SKIN_M > x2) x2 = s_dsBX + s_dsBW + DSTRIP_SKIN_M;
+      if(s_dsBY + s_dsBH + DSTRIP_SKIN_M > y2) y2 = s_dsBY + s_dsBH + DSTRIP_SKIN_M;
    }
    g_UIStripRX = x1;
    g_UIStripRY = y1;
@@ -580,6 +682,8 @@ static string   s_duName[DSTRIP_UNDO_MAX];
 static color    s_duClr[DSTRIP_UNDO_MAX];
 static int      s_duW[DSTRIP_UNDO_MAX], s_duSt[DSTRIP_UNDO_MAX];
 static int      s_duFill[DSTRIP_UNDO_MAX], s_duRay[DSTRIP_UNDO_MAX];
+static color    s_duFillClr[DSTRIP_UNDO_MAX];    // P-DRAW-64: the interior's colour
+static int      s_duFillOp[DSTRIP_UNDO_MAX];     // and its own tone
 static int      s_duFont[DSTRIP_UNDO_MAX], s_duGlyph[DSTRIP_UNDO_MAX], s_duBack[DSTRIP_UNDO_MAX];
 static int      s_duLvN = 0;
 static double   s_duLvV[DSTRIP_UNDO_LV];
@@ -605,6 +709,23 @@ string DrawStripPickRailName(const int r) { return DrawStripPickName(r) + "R"; }
 //--- tap on the sheen is a tap on the cell (the `+ "C"` chip pattern, one letter up).
 string DrawStripPickGlassName(const int r) { return DrawStripPickName(r) + "G"; }
 string DrawStripGridGlassName(const int g) { return DrawStripGridName(g) + "G"; }
+//--- TV parity board (2026-09-26): the popover's own chrome — grip seat, the
+//--- RECENT band's own cells (the grid is the user's 64 only) and the HEX field.
+string DrawStripPHeadGName() { return "PnlDrawS_PHeadG"; }
+string DrawStripPHeadGChipName() { return "PnlDrawS_PHeadGC"; }
+string DrawStripPHeadGIconName() { return "PnlDrawS_PHeadGI"; }
+string DrawStripPRecName(const int i) { return "PnlDrawS_PR" + IntegerToString(i); }
+string DrawStripPRecGlassName(const int i) { return DrawStripPRecName(i) + "G"; }
+string DrawStripPRecLabelName() { return "PnlDrawS_PRecT"; }
+string DrawStripPHexLbName() { return "PnlDrawS_PHexLb"; }
+string DrawStripPHexEdName() { return "PnlDrawS_PHexEd"; }
+//--- P-DRAW-48: the OPACITY band's own five objects (Lb = its label, T = the bed,
+//--- F = the filled part, K = the knob, V = the `NN%` readout).
+string DrawStripPOpLbName()    { return "PnlDrawS_POpLb"; }
+string DrawStripPOpBedName()   { return "PnlDrawS_POpT"; }
+string DrawStripPOpFillName()  { return "PnlDrawS_POpF"; }
+string DrawStripPOpKnobName()  { return "PnlDrawS_POpK"; }
+string DrawStripPOpValName()   { return "PnlDrawS_POpV"; }
 //--- the gear panel: tabs (GT), grid cells (GG/GGI), list rows (GR/GRI/GRT),
 //--- foot (GF), edits (GE).
 string DrawStripGearTabName(const int t) { return "PnlDrawS_GT" + IntegerToString(t); }
@@ -622,6 +743,7 @@ string DrawStripFootSkinName(const int f) { return DrawStripFootName(f) + "B"; }
 string DrawStripFootLabelName(const int f) { return DrawStripFootName(f) + "T"; }
 string DrawStripEditName(const int e) { return "PnlDrawS_GE" + IntegerToString(e); }
 string DrawStripBgName() { return "PnlDrawS_BG"; }
+string DrawStripBoardBgName() { return "PnlDrawS_BBG"; }   // P-DRAW-48: the board's own plate bg
 //--- P-DRAW-32: the SETTINGS PANEL's own plate — its own family, so the two
 //--- surfaces paint, purge and answer a tap apart (`DrawStripIsBg` matches both).
 string DrawStripGearBgName() { return "PnlDrawS_GBG"; }
@@ -654,7 +776,10 @@ string DrawStripTarget() { return s_dsObj; }
 //--- drift from the lock it explains.
 //--- P-DRAW-32: and the SETTINGS PANEL's own carry takes it too (its header bar is
 //--- its handle), so BOTH latches are named here — one reader, two owners.
-bool   DrawStripViewOwned() { return (s_dsGripLive || s_dsGGripLive); }
+//--- P-DRAW-48: and the OPACITY BAR's own drag — the fourth owner, added the day it
+//--- was born (A-09/G-07), or the reconcile reads its lock as a leak and hands the
+//--- scroll back under the hand inside 250 ms.
+bool   DrawStripViewOwned() { return (s_dsGripLive || s_dsGGripLive || s_dsBGripLive || s_dsOpGrab || s_dsPalGrab); }
 //--- P-DRAW-09b: how many drawings this strip is editing (1 = the held one).
 int    DrawStripGroupCount() { return DrawSelCount(); }
 
@@ -681,6 +806,12 @@ bool DrawStripPointInside(const int mx, const int my)
    if(s_dsGear != 0 && s_dsGearW0 > 0 && s_dsGearH > 0 &&
       mx >= s_dsGEX - m && mx <= s_dsGEX + s_dsGearW0 + m &&
       my >= s_dsGEY - m && my <= s_dsGEY + s_dsGearH + m) return true;
+   //--- P-DRAW-48: the COLOUR BOARD is our surface too — it can float anywhere,
+   //--- including over the chart, and a click on its plate is not a click on the
+   //--- chart (it would dismiss the very strip the board belongs to).
+   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0 &&
+      mx >= s_dsBX - m && mx <= s_dsBX + s_dsBW + m &&
+      my >= s_dsBY - m && my <= s_dsBY + s_dsBH + m) return true;
    return false;
 }
 
@@ -706,7 +837,20 @@ bool DrawStripClickFamily()
 //--- as an MK_SLOT row (P-DRAW-08i's lesson: a slot past the paint ceiling must
 //--- stay reachable). LEVELS is the fibo level-membership editor, last.
 //--- MORE/GEAR/PIN/DELETE are chrome, not slots — painted separately.
-#define DSTRIP_QUICK_CAP 6
+//--- P-DRAW-13's six was the preview's minimal-space rule; P-DRAW-64 raised it to
+//--- SEVEN because the second colour cell the user ordered is a control, not a look
+//--- — at six, a box could have the fill colour only one tap deeper in the "..."
+//--- list while a kind with a level editor lost ITS seat to it. Measured: one cell
+//--- is +38 px of plate (32 + gap), the widest kind (FIBOCHAN, 7 cells + chrome)
+//--- still lands inside the skin's own ceiling (DSTRIP_SKIN_MAXW).
+//--- P-DRAW-64a: EIGHT, and the two seats it buys are the same user's next order —
+//--- the box's HALF and EXTEND cells must sit in this row ("دم دست"), and the merge
+//--- above them (two colour cells -> one seat, the ring and its centre) already
+//--- gave one back. Worst case is DK_RECT: colour, width, style, fill, half, extend,
+//--- lock, back = 8 cells + 4 chrome, i.e. 40 + 8 + (badge + 8) + 8*40 + 4*40 =
+//--- 576 px at the minimum badge and ~616 at its widest — inside DSTRIP_SKIN_MAXW
+//--- 660 and the skin's own 640+2*14 baked middle.
+#define DSTRIP_QUICK_CAP 8
 #define DSTRIP_ACT_MORE 0
 #define DSTRIP_ACT_GEAR 1
 #define DSTRIP_ACT_PIN 2
@@ -727,19 +871,72 @@ bool DrawStripVis(const EDrawKind k, const int slot)
    if(seat < 0 || seat >= DRAW_SLOT_N) return true;
    return s_dsVis[k][seat];
 }
+//--- P-DRAW-64a (2026-09-27) — ONE COLOUR SEAT FOR TWO ROLES. User order: «این
+//--- دوتا باکس که برای یک کار هستش میشه باهم ادغام کرد ... میشه یکی بشه». A kind
+//--- that carries the interior's colour too shows ONE colour cell whose RING is the
+//--- BORDER's colour and whose CENTRE is the interior's (see the paint), so the seat
+//--- is `DRAW_SLOT_FILLCLR` and `DRAW_SLOT_COLOR` is folded into it.
+//--- P-DRAW-64a: and a KIND-level cap can be finer than it looks. DK_CHANNEL covers
+//--- three MT4 types and two of them — the regression and the standard-deviation
+//--- channel — have no interior of their own (`DrawTypeHasFillChild`), so the
+//--- interior's COLOUR would be a silent no-op there: the seat is not shown at all
+//--- (C-04). Asked ONLY for that one kind, so every other kind pays one compare and
+//--- no terminal call; the two reads are the channel's own seat, on a repaint.
+//--- (The box's own 50 % is NOT in this test: it moves the drawing's own anchor, so
+//--- it works on every channel type.)
+bool DrawStripSeatAvail(const EDrawKind k, const int slot)
+{
+   if(!DrawSlotAvailable(k, slot)) return false;
+   if(k != DK_CHANNEL) return true;
+   if(slot != DRAW_SLOT_FILLCLR) return true;
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return true;
+   return DrawTypeHasFillChild(DrawObjectType(s_dsObj));
+}
+bool DrawStripMergedColor(const EDrawKind k)
+{
+   return (DrawStripSeatAvail(k, DRAW_SLOT_FILLCLR) && DrawSlotAvailable(k, DRAW_SLOT_COLOR));
+}
+//--- is a seat on the row? The merged colour seat is one seat for two roles, so it
+//--- takes the WIDER of the two answers — a control the user asked to see is never
+//--- silently dropped by a hide of the other role.
+bool DrawStripSeatVis(const EDrawKind k, const int s, const bool merged)
+{
+   if(merged && s == DRAW_SLOT_FILLCLR)
+      return (DrawStripVis(k, DRAW_SLOT_FILLCLR) || DrawStripVis(k, DRAW_SLOT_COLOR));
+   return DrawStripVis(k, s);
+}
 //--- one ordered pass over everything the quick row COULD show (value slots +
 //--- LEVELS); the quick cap and the overflow split read this, so the two can
 //--- never disagree about order.
 int DrawStripAllSlotAt(const EDrawKind k, const int shown)
 {
+   //--- The order is the module's own (index ascending), with ONE exception: the
+   //--- FILL FAMILY reads together — FILL, then the two extras the user asked to
+   //--- keep at hand (HALF · EXTEND) — so a box reads "filled · half · extends · …".
+   bool merged = DrawStripMergedColor(k);
    int seen = 0;
    for(int s = 0; s < DRAW_SLOT_N; s++)
    {
       if(s == DRAW_SLOT_MORE) continue;   // no dialog to open from here
-      if(!DrawSlotAvailable(k, s)) continue;
-      if(!DrawStripVis(k, s)) continue;
+      if(merged && s == DRAW_SLOT_COLOR) continue;                 // folded into the colour seat
+      if(s == DRAW_SLOT_BOXHALF || s == DRAW_SLOT_EXTEND) continue;  // served beside FILL
+      if(!DrawStripSeatAvail(k, s)) continue;
+      if(!DrawStripSeatVis(k, s, merged)) continue;
       if(seen == shown) return s;
       seen++;
+      if(s == DRAW_SLOT_FILL)
+      {
+         if(DrawStripSeatAvail(k, DRAW_SLOT_BOXHALF) && DrawStripVis(k, DRAW_SLOT_BOXHALF))
+         {
+            if(seen == shown) return DRAW_SLOT_BOXHALF;
+            seen++;
+         }
+         if(DrawSlotAvailable(k, DRAW_SLOT_EXTEND) && DrawStripVis(k, DRAW_SLOT_EXTEND))
+         {
+            if(seen == shown) return DRAW_SLOT_EXTEND;
+            seen++;
+         }
+      }
    }
    if(DrawKindHasLevels(k) && DrawStripVis(k, DSTRIP_SLOT_LEVELS))
    {
@@ -788,7 +985,19 @@ int DrawStripOverflowCount(const EDrawKind k)
 // ══════════════════════════════════════════════════════════════════════════
 string DrawStripIconRes(const int slot, const string nm)
 {
-   if(slot == DRAW_SLOT_COLOR) return "";   // swatch: the face is the colour
+   //--- P-DRAW-64a: the colour seat wears no raster — its face IS the two colours it
+   //--- edits (the border's ring and the interior's centre), which is the answer
+   //--- DRAW_SLOT_COLOR always gave. The droplet that told the two cells apart went
+   //--- with the merge; the seat is one cell now, so nothing needs telling apart.
+   if(DrawStripIsColorSlot(slot)) return "";
+   //--- P-DRAW-64a: the fill family's two extras. OFF is the plate ink, ON the
+   //--- amber twin, so the ON cell stays quiet (one shape on the accent wash).
+   if(slot == DRAW_SLOT_BOXHALF)
+      return ((DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "::Files\\Icons\\bk_half_on.bmp"
+                                                          : "::Files\\Icons\\bk_half_off.bmp");
+   if(slot == DRAW_SLOT_EXTEND)
+      return ((DrawSlotRead(nm, DRAW_SLOT_EXTEND) > 0.5) ? "::Files\\Icons\\bk_ext_on.bmp"
+                                                         : "::Files\\Icons\\bk_ext_off.bmp");
    if(slot == DRAW_SLOT_WIDTH)
    {
       int w = (int)DrawSlotRead(nm, DRAW_SLOT_WIDTH);
@@ -810,8 +1019,13 @@ string DrawStripIconRes(const int slot, const string nm)
    if(slot == DRAW_SLOT_FILL)
       return ((DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5) ? "::Files\\Icons\\bk_fill_on.bmp"
                                                        : "::Files\\Icons\\bk_bucket.bmp");
+   //--- P-DRAW-47: the ON faces are the AMBER twins (`bk_*_on` / `bk_lock_on_g`).
+   //--- Their dark-ink predecessors were drawn for a solid gold plate, while the
+   //--- ON face here is a translucent WASH — measured, the dark art's own mean
+   //--- luminance is ~12 against a wash whose premultiplied mean is (33,22,0), so
+   //--- ON read as NO glyph at all. The preview's rule is accent ink on the wash.
    if(slot == DRAW_SLOT_LOCK)
-      return ((DrawSlotRead(nm, DRAW_SLOT_LOCK) > 0.5) ? "::Files\\Icons\\bk_lock_on_d.bmp"
+      return ((DrawSlotRead(nm, DRAW_SLOT_LOCK) > 0.5) ? "::Files\\Icons\\bk_lock_on_g.bmp"
                                                        : "::Files\\Icons\\bk_lock_off.bmp");
    if(slot == DRAW_SLOT_BACK)
       return ((DrawSlotRead(nm, DRAW_SLOT_BACK) > 0.5) ? "::Files\\Icons\\bk_back_on.bmp"
@@ -855,10 +1069,13 @@ int DrawStripResW(const string res)
    if(StringFind(res, "dsg_btn") >= 0) return 80;
    if(StringFind(res, "pnl_sw_") >= 0) return 52;
    // P-UI-34 (2026-09-25): glass sheen sizes must be known for correct centring.
-   // pnl_glass32 is 32×32 (quick row colour cell + popover cells),
+   // pnl_glass32 is 32×32 (gear faces), ds_cell32 is 32×32 (colour cells),
    // pnl_glass28 is 28×28 (gear swatch grid). Without entries here DrawStripFaceZ
    // gets pw=0 and places the art at the cell's own centre instead of its corner.
    if(StringFind(res, "pnl_glass32") >= 0) return 32;
+   if(StringFind(res, "ds_cell32") >= 0) return 32;
+   if(StringFind(res, "ds_ring32") >= 0) return 32;
+   if(StringFind(res, "ds_swatch24") >= 0) return 24;
    if(StringFind(res, "pnl_glass28") >= 0) return 28;
    if(StringFind(res, "pnl_chip") >= 0) return 26;
    if(StringFind(res, "pnl_rail") >= 0) return 4;
@@ -878,6 +1095,9 @@ int DrawStripResH(const string res)
    if(StringFind(res, "pnl_sw_") >= 0) return 34;
    // P-UI-34 (2026-09-25): glass sheen heights.
    if(StringFind(res, "pnl_glass32") >= 0) return 32;
+   if(StringFind(res, "ds_cell32") >= 0) return 32;
+   if(StringFind(res, "ds_ring32") >= 0) return 32;
+   if(StringFind(res, "ds_swatch24") >= 0) return 24;
    if(StringFind(res, "pnl_glass28") >= 0) return 28;
    if(StringFind(res, "pnl_chip") >= 0) return 26;
    if(StringFind(res, "pnl_rail") >= 0) return 42;
@@ -979,6 +1199,9 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
          color c = (color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR);
          return DrawStripColorLabel(c);
       }
+      case DRAW_SLOT_FILLCLR:
+         return DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) +
+                " " + IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) + "%";
       case DRAW_SLOT_WIDTH:
          return IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_WIDTH)) + "px";
       case DRAW_SLOT_STYLE:
@@ -992,6 +1215,10 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
       }
       case DRAW_SLOT_FILL:
          return (DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5) ? "Filled" : "Empty";
+      case DRAW_SLOT_BOXHALF:
+         return (DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "50% line on" : "No 50% line";
+      case DRAW_SLOT_EXTEND:
+         return (DrawSlotRead(nm, DRAW_SLOT_EXTEND) > 0.5) ? "Extends right" : "Fixed edge";
       case DRAW_SLOT_RAY:
       {
          int r = (int)DrawSlotRead(nm, DRAW_SLOT_RAY);
@@ -1045,11 +1272,10 @@ color DrawStripPickPal(const int i)
    return BioPickAt(i);
 }
 int DrawStripPickPalN() { return BIOPICK_N; }
-int DrawStripPickPalIndex(const color c)
-{
-   for(int i = 0; i < DrawStripPickPalN(); i++) if(DrawStripPickPal(i) == c) return i;
-   return -1;
-}
+//--- TV parity board (2026-09-26): the recents are a BAND of their own now, so the
+//--- grid indexer and the dedupe face that fed it (`DrawStripPickPalIndex`,
+//--- `DrawStripRecentExtra`, `DrawStripPickSwatchAt`) were reachable only through
+//--- each other and went with the change.
 //--- the trader's own recent colours: deduped, newest first, capped.
 void DrawStripRecentPush(const color c)
 {
@@ -1064,45 +1290,23 @@ void DrawStripRecentPush(const color c)
    }
    s_dsRecent[0] = c;
 }
-//--- recent colours NOT already in the palette (the picker's second row).
-int DrawStripRecentExtra(color &out[])
-{
-   int n = 0;
-   for(int i = 0; i < s_dsRecentN && n < DSTRIP_RECENT_MAX; i++)
-      // P-DRAW-46: a recent already ON the grid is not repeated on it.
-      if(DrawStripPickPalIndex(s_dsRecent[i]) < 0)
-      { out[n] = s_dsRecent[i]; n++; }
-   return n;
-}
-
-//--- P-DRAW-39: the POPOVER's own indexer — recents first, then the picker palette.
-color DrawStripPickSwatchAt(color &ex[], const int nex, const int row)
-{
-   if(row >= 0 && row < nex) return ex[row];
-   int p = row - nex;
-   if(p >= 0 && p < DrawStripPickPalN()) return DrawStripPickPal(p);
-   return clrNONE;
-}
 bool DrawStripHasPicker(const int slot)
 {
-   return (slot == DRAW_SLOT_COLOR || slot == DRAW_SLOT_WIDTH ||
+   return (DrawStripIsColorSlot(slot) || slot == DRAW_SLOT_WIDTH ||
            slot == DRAW_SLOT_STYLE || slot == DRAW_SLOT_RAY ||
            slot == DRAW_SLOT_FONT  || slot == DRAW_SLOT_GLYPH ||
            slot == DSTRIP_SLOT_LEVELS);
 }
 bool DrawStripIsToggle(const int slot)
 {
-   return (slot == DRAW_SLOT_FILL || slot == DRAW_SLOT_LOCK || slot == DRAW_SLOT_BACK);
+   return (slot == DRAW_SLOT_FILL || slot == DRAW_SLOT_LOCK || slot == DRAW_SLOT_BACK ||
+           slot == DRAW_SLOT_BOXHALF || slot == DRAW_SLOT_EXTEND);
 }
 //--- how many options this popover shows right now (LEVELS = membership rows).
 int DrawStripPickCount(const EDrawKind k, const int slot)
 {
-   if(slot == DRAW_SLOT_COLOR)
-   {
-      color ex[DSTRIP_RECENT_MAX];
-      int n = DrawStripPickPalN() + DrawStripRecentExtra(ex);
-      return (n > DSTRIP_GRID_MAX ? DSTRIP_GRID_MAX : n);
-   }
+   // TV parity board: the grid is the user's own 64 — the recents have their own band.
+   if(DrawStripIsColorSlot(slot)) return DrawStripPickPalN();
    if(slot == DRAW_SLOT_WIDTH) return 5;
    if(slot == DRAW_SLOT_STYLE) return 5;
    if(slot == DRAW_SLOT_RAY) return 4;
@@ -1114,10 +1318,8 @@ int DrawStripPickCount(const EDrawKind k, const int slot)
 //--- the option's colour (colour picker only; clrNONE elsewhere).
 color DrawStripPickColor(const int slot, const int row)
 {
-   if(slot != DRAW_SLOT_COLOR || row < 0) return clrNONE;
-   color ex[DSTRIP_RECENT_MAX];
-   int n = DrawStripRecentExtra(ex);
-   return DrawStripPickSwatchAt(ex, n, row);
+   if(!DrawStripIsColorSlot(slot) || row < 0 || row >= DrawStripPickPalN()) return clrNONE;
+   return DrawStripPickPal(row);
 }
 //--- the option's caption (colour cells are swatches: no text, tooltip speaks).
 string DrawStripPickText(const EDrawKind k, const int slot, const int row)
@@ -1159,10 +1361,10 @@ string DrawStripPickText(const EDrawKind k, const int slot, const int row)
 //--- is this option the one the drawing wears now (the gold pill)?
 bool DrawStripPickIsCur(const string nm, const EDrawKind k, const int slot, const int row)
 {
-   if(slot == DRAW_SLOT_COLOR)
+   if(DrawStripIsColorSlot(slot))
    {
       color c = DrawStripPickColor(slot, row);
-      return (c != clrNONE && (color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR) == c);
+      return (c != clrNONE && (color)(int)DrawSlotRead(nm, slot) == c);
    }
    if(slot == DRAW_SLOT_WIDTH) return ((int)DrawSlotRead(nm, DRAW_SLOT_WIDTH) == row + 1);
    if(slot == DRAW_SLOT_STYLE) return ((int)DrawSlotRead(nm, DRAW_SLOT_STYLE) == row);
@@ -1185,15 +1387,30 @@ int DrawStripColorHoverCellAt(const int mx, const int my)
 
       }
    }
-   if(s_dsPicker == DRAW_SLOT_COLOR)
+   //--- P-DRAW-48: the colour board's bands are the BOARD's (its own origin), so
+   //--- the hover must read them there — the strip's origin previewed the colour of
+   //--- a phantom cell one row away (reported: the pointer sits on one colour and
+   //--- the drawing takes another).
+   if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0)
    {
+      // TV parity board: the grid's own cells, then the RECENT band's.
       for(int r = 0; r < s_dsPN; r++)
       {
-          int x = s_dsX + DSTRIP_PAD + (r % BIOPICK_COLS) * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
-          int y = s_dsY + s_dsPY[r] + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
+          int x = s_dsBX + DSTRIP_PAD + (r % BIOPICK_COLS) * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
+          int y = s_dsBY + s_dsPY[r] + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
           if(mx >= x && mx <= x + DSTRIP_PICK_CELL && my >= y && my <= y + DSTRIP_PICK_CELL)
 
             return DSTRIP_HOVER_POP_BASE + r;
+      }
+      if(s_dsPRecY >= 0)
+      {
+         int ry = s_dsBY + s_dsPRecY + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
+         for(int i = 0; i < s_dsRecentN; i++)
+         {
+            int rx = s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW + i * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
+            if(mx >= rx && mx <= rx + DSTRIP_PICK_CELL && my >= ry && my <= ry + DSTRIP_PICK_CELL)
+               return DSTRIP_HOVER_REC_BASE + i;
+         }
       }
    }
    return -1;
@@ -1201,11 +1418,18 @@ int DrawStripColorHoverCellAt(const int mx, const int my)
 
 color DrawStripColorHoverValue(const int cell)
 {
+   // TV parity board: the RECENT band is tested FIRST (its base is the higher one).
+   if(cell >= DSTRIP_HOVER_REC_BASE)
+   {
+      int i = cell - DSTRIP_HOVER_REC_BASE;
+      if(!DrawStripIsColorSlot(s_dsPicker) || i < 0 || i >= s_dsRecentN) return clrNONE;
+      return s_dsRecent[i];
+   }
    if(cell >= DSTRIP_HOVER_POP_BASE)
    {
       int r = cell - DSTRIP_HOVER_POP_BASE;
-      if(s_dsPicker != DRAW_SLOT_COLOR || r < 0 || r >= s_dsPN) return clrNONE;
-      return DrawStripPickColor(DRAW_SLOT_COLOR, r);
+      if(!DrawStripIsColorSlot(s_dsPicker) || r < 0 || r >= s_dsPN) return clrNONE;
+      return DrawStripPickColor(s_dsPicker, r);
    }
    if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != 0) return clrNONE;
    return s_dsGGC[cell];
@@ -1215,18 +1439,25 @@ void DrawStripColorHoverFace(const int cell, const bool active)
 {
    string nm;
    bool current = false;
-   if(cell >= DSTRIP_HOVER_POP_BASE)
+   if(cell >= DSTRIP_HOVER_REC_BASE)
+   {
+      int i = cell - DSTRIP_HOVER_REC_BASE;
+      if(!DrawStripIsColorSlot(s_dsPicker) || i < 0 || i >= s_dsRecentN) return;
+      nm = DrawStripPRecName(i);
+      current = (s_dsRecent[i] == DrawStripColorRead(s_dsObj, s_dsPicker));
+   }
+   else if(cell >= DSTRIP_HOVER_POP_BASE)
    {
       int r = cell - DSTRIP_HOVER_POP_BASE;
-      if(s_dsPicker != DRAW_SLOT_COLOR || r < 0 || r >= s_dsPN) return;
+      if(!DrawStripIsColorSlot(s_dsPicker) || r < 0 || r >= s_dsPN) return;
       nm = DrawStripPickName(r);
-      current = DrawStripPickIsCur(s_dsObj, s_dsKind, DRAW_SLOT_COLOR, r);
+      current = DrawStripPickIsCur(s_dsObj, s_dsKind, s_dsPicker, r);
    }
    else
    {
       if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != 0) return;
       nm = DrawStripGridName(cell);
-      current = ((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR) == s_dsGGC[cell]);
+      current = (DrawStripColorRead(s_dsObj, DRAW_SLOT_COLOR) == s_dsGGC[cell]);
    }
    if(ObjectFind(0, nm) < 0) return;
    //--- P-UI-69b: the RESTORED rim is the swatch legibility floor, not a bare
@@ -1239,68 +1470,91 @@ void DrawStripColorHoverFace(const int cell, const bool active)
       ObjectSetInteger(0, nm, OBJPROP_BORDER_COLOR, rim);
 }
 
-bool DrawStripColorHoverRestore()
+//--- P-DRAW-64 — THE SCRUB'S STATE, shared by the press, the drag and both release
+//--- witnesses. Its writes scale with the GROUP, not with the frame: the hit test
+//--- runs on the cadence, but a member is re-inked only when the CELL really
+//--- changed, so a 64-drawing group costs 64 writes per cell crossing and none
+//--- while the hand rests (G-08/G-09).
+bool DrawStripPalHit(const int mx, const int my, int &cell)
 {
-   bool changed = false;
-   for(int i = 0; i < s_dsColorHoverN; i++)
-      changed |= DrawSlotPreviewColor(s_dsColorHoverName[i], s_dsColorHoverColor[i]);
-   s_dsColorHoverCell = -1;
-   s_dsColorHoverN = 0;
-   for(int i = 0; i < DRAW_SEL_MAX; i++) s_dsColorHoverName[i] = "";
-   return changed;
+   cell = -1;
+   if(!s_dsOpen || !DrawStripIsColorSlot(s_dsPicker)) return false;
+   cell = DrawStripColorHoverCellAt(mx, my);
+   if(cell < 0) return false;
+   return (DrawStripColorHoverValue(cell) != clrNONE);
 }
-
-void DrawStripColorHoverClear()
+void DrawStripPalMembers()
 {
-   int old = s_dsColorHoverCell;
-   bool changed = DrawStripColorHoverRestore();
-   if(old >= 0) DrawStripColorHoverFace(old, false);
-   if(changed) ChartRedraw();
-}
-
-bool DrawStripColorHoverBegin(const int cell, const color c)
-{
-   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0 || c == clrNONE) return false;
+   s_dsPalN = 0;
    DrawSelPrune();
    int n = DrawSelCount();
-   if(n <= 0)
+   for(int i = 0; i < n && s_dsPalN < DRAW_SEL_MAX; i++)
+   { s_dsPalName[s_dsPalN] = DrawSelAt(i); s_dsPalN++; }
+   if(s_dsPalN <= 0 && s_dsObj != "")
+   { s_dsPalName[0] = s_dsObj; s_dsPalN = 1; }
+}
+void DrawStripPalPreview(const int cell)
+{
+   color c = DrawStripColorHoverValue(cell);
+   if(c == clrNONE) return;
+   for(int i = 0; i < s_dsPalN; i++)
    {
-      s_dsColorHoverName[0] = s_dsObj;
-      n = 1;
+      if(s_dsPicker == DRAW_SLOT_FILLCLR) DrawSlotPreviewFillColor(s_dsPalName[i], c);
+      else DrawSlotPreviewColor(s_dsPalName[i], c);
    }
-   if(n > DRAW_SEL_MAX) n = DRAW_SEL_MAX;
-   s_dsColorHoverCell = cell;
-   s_dsColorHoverN = n;
-   bool changed = false;
-   for(int i = 0; i < n; i++)
-   {
-      if(i == 0 && DrawSelCount() <= 0) s_dsColorHoverName[i] = s_dsObj;
-      else s_dsColorHoverName[i] = DrawSelAt(i);
-      s_dsColorHoverColor[i] = (color)(int)DrawSlotRead(s_dsColorHoverName[i], DRAW_SLOT_COLOR);
-      changed |= DrawSlotPreviewColor(s_dsColorHoverName[i], c);
-   }
-   return changed;
+   DrawStripColorHoverFace(cell, true);
+   ChartRedraw();
+}
+void DrawStripPalHighlightEnd()
+{
+   if(s_dsPalCell >= 0) DrawStripColorHoverFace(s_dsPalCell, false);
+   s_dsPalCell = -1;
+}
+//--- where the scrub's preview points. `-1` = off the palette (the hand left the
+//--- grid): the drawing wears its OWN pixels again, because a preview that lingered
+//--- off the grid would be a colour the user never released on.
+void DrawStripPalTo(const int cell)
+{
+   if(cell == s_dsPalCell) return;
+   if(s_dsPalCell >= 0) DrawStripColorHoverFace(s_dsPalCell, false);
+   s_dsPalCell = cell;
+   if(cell >= 0) { DrawStripPalPreview(cell); return; }
+   for(int i = 0; i < s_dsPalN; i++) DrawSlotRenderRestore(s_dsPalName[i]);
+   ChartRedraw();
 }
 
+//--- P-DRAW-64 (2026-09-27) — THE HOVER LIGHTS THE CELL, NEVER THE CHART.
+//--- Report: «من این شفافیت تنظیم میکنم موس میره روی بقیه رنگه ناخواسته شفافیت
+//--- [از دست میره]» — the cell under the pointer used to be written onto the
+//--- DRAWING as a live preview (P-DRAW-27). That write went straight to
+//--- `OBJPROP_COLOR`, i.e. the PURE colour OUTSIDE the one render owner, so the tone
+//--- the user had just tuned on the bar fell back to full strength the moment the
+//--- hand crossed a cell on its way to the ✕. A hover is therefore a HIGHLIGHT only
+//--- (`.swcell` rim lighting — what a picker is expected to do, and the cheaper path:
+//--- not one object write per hovered cell, G-09); the chart preview now rides the
+//--- PRESS-DRAG SCRUB above it, which is a deliberate gesture that ENDS in a commit.
 void DrawStripColorHoverAt(const int mx, const int my)
 {
    int cell = DrawStripColorHoverCellAt(mx, my);
    if(cell == s_dsColorHoverCell) return;
    int old = s_dsColorHoverCell;
-   bool changed = DrawStripColorHoverRestore();
+   s_dsColorHoverCell = cell;
    if(old >= 0) DrawStripColorHoverFace(old, false);
-   if(cell < 0)
-   {
-      if(changed) ChartRedraw();
-      return;
-   }
-   color c = DrawStripColorHoverValue(cell);
-   if(c != clrNONE)
-   {
-      changed |= DrawStripColorHoverBegin(cell, c);
-      DrawStripColorHoverFace(cell, true);
-   }
-   if(changed) ChartRedraw();
+   if(cell >= 0) DrawStripColorHoverFace(cell, true);
+   ChartRedraw();   // the BOARD's own rim moved; the drawing was not touched
+}
+
+void DrawStripColorHoverClear()
+{
+   int old = s_dsColorHoverCell;
+   s_dsColorHoverCell = -1;
+   if(old >= 0) DrawStripColorHoverFace(old, false);
+   //--- P-DRAW-64: "nothing is highlighted" means nothing is PREVIEWED either —
+   //--- every close/dismissal path already comes through here, so a scrub that met
+   //--- its own end (✕, Esc, another surface, the strip closing) leaves the drawing
+   //--- wearing the pixels its tags say. The GRAB flag stays: the view lock belongs
+   //--- to the one ender (`DrawStripGripRelease`).
+   DrawStripPalTo(-1);
 }
 
 //--- APPLY one picker row: moved after DrawStripWriteValue (MQL4 is
@@ -1324,8 +1578,12 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
    switch(slot)
    {
       case DRAW_SLOT_COLOR:
-         return "Color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR)) +
+         return "Border color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR)) +
                 " — click to choose" + scope;
+      case DRAW_SLOT_FILLCLR:
+         return "Fill color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) +
+                " at " + IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) +
+                "% (" + DrawStripSlotText(k, DRAW_SLOT_FILL, nm) + ") — click to choose, then drag the bar" + scope;
       case DRAW_SLOT_WIDTH:
          return "Line width: " + IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_WIDTH)) +
                 " px — click to choose" + scope;
@@ -1340,6 +1598,14 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_LOCK:
          return "Lock: " + DrawStripSlotText(k, DRAW_SLOT_LOCK, nm) +
                 " — a locked drawing cannot be moved or edited" + scope;
+      case DRAW_SLOT_BOXHALF:
+         return "50% level: " + DrawStripSlotText(k, DRAW_SLOT_BOXHALF, nm) +
+                " — a line at the box's own middle, like a fib level; the box keeps the" +
+                " length you drew" + scope;
+      case DRAW_SLOT_EXTEND:
+         return "Extend right: " + DrawStripSlotText(k, DRAW_SLOT_EXTEND, nm) +
+                " — the far edge travels with each new bar (the \"...\" list has the" +
+                " other modes: to first touch, or N bars)" + scope;
       case DRAW_SLOT_FONT:
          return "Text size: " + IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_FONT)) +
                 " pt — click to choose" + scope;
@@ -1355,6 +1621,26 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
       return "Levels: " + IntegerToString(DrawLevelCount(nm)) + " on — click to edit membership" +
              " (the held drawing; MT4 draws every level it has)";
    return "";
+}
+//--- P-DRAW-64a: the merged colour seat's two halves, each with its own words —
+//--- MT4 shows whichever layer the hand is over, so the seat explains itself
+//--- without a mode to remember.
+string DrawStripColorRingTip(const string nm, const bool merged)
+{
+   string t = "Border color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR)) +
+              " — click the RING for its palette";
+   if(merged)
+      t += ", or the CENTRE for the fill's colour (" +
+           DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) + " at " +
+           IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) + "%)";
+   return t + DrawStripTipScope();
+}
+string DrawStripColorMidTip(const string nm)
+{
+   return "Fill color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) +
+          " at " + IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) + " — " +
+          ((DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5) ? "Filled" : "Empty") +
+          " — click the CENTRE for its palette, then drag the bar" + DrawStripTipScope();
 }
 //--- chrome tooltips: grip/badge/actions.
 string DrawStripActTip(const int a)
@@ -1376,11 +1662,12 @@ string DrawStripActTip(const int a)
 string DrawStripPickTip(const string nm, const EDrawKind k, const int slot, const int row)
 {
    string scope = DrawStripTipScope();
-   if(slot == DRAW_SLOT_COLOR)
+   if(DrawStripIsColorSlot(slot))
    {
       color c = DrawStripPickColor(slot, row);
       if(c == clrNONE) return "";
-      return "Color: " + DrawStripColorLabel(c) + " — click to apply" + scope;
+      return (slot == DRAW_SLOT_FILLCLR ? "Fill color: " : "Border color: ") +
+             DrawStripColorLabel(c) + " — click to apply" + scope;
    }
    string t = DrawStripPickText(k, slot, row);
    if(t == "") return "";
@@ -1394,6 +1681,8 @@ bool DrawStripSlotOn(const int slot, const string nm)
    if(slot == DRAW_SLOT_FILL) return (DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5);
    if(slot == DRAW_SLOT_LOCK) return (DrawSlotRead(nm, DRAW_SLOT_LOCK) > 0.5);
    if(slot == DRAW_SLOT_BACK) return (DrawSlotRead(nm, DRAW_SLOT_BACK) > 0.5);
+   if(slot == DRAW_SLOT_BOXHALF) return (DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5);
+   if(slot == DRAW_SLOT_EXTEND) return (DrawSlotRead(nm, DRAW_SLOT_EXTEND) > 0.5);
    return false;
 }
 
@@ -1495,59 +1784,19 @@ int DrawStripLevelFind(const string nm, const double v)
 // P-DRAW-21/22 — BOX EXTRAS: the 50% line and the user-driven extend.
 //
 // Two things MT4's rectangle cannot do: draw its own middle, or reach into
-// the future. Both live OUTSIDE the native object, so no slot/cap changes:
+// the future. Both live OUTSIDE the native object:
 //   * the mid line is a child OBJ_TREND `<box>_BX50` (DrawToolbar.mqh owns the
 //     suffix; the classifier answers DK_NONE for it, so it is never served,
 //     never hit-tested, never learned);
-//   * the extend mode lives in the box's own DESCRIPTION as ` [BXE1]`
-//     (to touch), ` [BXE2]` (to the end) or ` [BXE3:N]` (N bars left), the mid
-//     flag as ` [BX50]` — a description survives reattach, TF switch and
-//     terminal restart, and the user's own prefix is preserved verbatim.
+//   * the mark itself (`[BX50]` mid, `[BXE1]`/`[BXE2]`/`[BXE3:N]` far edge,
+//     `[BXH]` half interior — P-DRAW-64a) is the description channel; its reader
+//     and writer moved DOWN to DrawToolbar.mqh with the two SLOTS the user
+//     ordered, so both stand above the slot reader (MQL4 define-before-use).
+// Everything below is the GEOMETRY those marks drive.
 // The pump (BoxExtrasPump, from RefreshKitOnBar) is the only per-tick reader:
 // 2 s throttle, or at once on a new bar — a still chart costs one iTime read.
 // Undo stays look-only: an extend moves TIME, not the look.
 // ══════════════════════════════════════════════════════════════════════════
-#define BOXEXT_OFF   0
-#define BOXEXT_TOUCH 1
-#define BOXEXT_END   2
-#define BOXEXT_NBARS 3
-void BoxMarkRead(const string name, bool &mid, int &ext, int &extN)
-{
-   mid = false; ext = BOXEXT_OFF; extN = 0;
-   if(name == "" || ObjectFind(0, name) < 0) return;
-   string d = ObjectGetString(0, name, OBJPROP_TEXT);
-   if(StringFind(d, "[BX50]") >= 0) mid = true;
-   int at = StringFind(d, "[BXE");
-   if(at < 0) return;
-   string tail = StringSubstr(d, at + 4);
-   if(StringLen(tail) < 1) return;
-   string m = StringSubstr(tail, 0, 1);
-   if(m == "1") ext = BOXEXT_TOUCH;
-   else if(m == "2") ext = BOXEXT_END;
-   else if(m == "3")
-   {
-      ext = BOXEXT_NBARS;
-      int c = StringFind(tail, ":"), e = StringFind(tail, "]");
-      if(c > 0 && e > c) extN = (int)StringToInteger(StringSubstr(tail, c + 1, e - c - 1));
-      if(extN <= 0) ext = BOXEXT_OFF;
-   }
-}
-void BoxMarkWrite(const string name, const bool mid, const int ext, const int extN)
-{
-   if(name == "" || ObjectFind(0, name) < 0) return;
-   string d = ObjectGetString(0, name, OBJPROP_TEXT);
-   int at = StringFind(d, " [BX");
-   string pre = (at >= 0) ? StringSubstr(d, 0, at) : d;
-   if(at < 0 && StringFind(d, "[BX") == 0) pre = "";
-   string want = pre;
-   if(mid) want += ((want == "") ? "" : " ") + "[BX50]";
-   if(ext == BOXEXT_TOUCH) want += ((want == "") ? "" : " ") + "[BXE1]";
-   else if(ext == BOXEXT_END) want += ((want == "") ? "" : " ") + "[BXE2]";
-   else if(ext == BOXEXT_NBARS && extN > 0)
-      want += ((want == "") ? "" : " ") + "[BXE3:" + IntegerToString(extN) + "]";
-   if(want == d) return;
-   ObjectSetString(0, name, OBJPROP_TEXT, want);
-}
 bool BoxAnchors(const string name, datetime &t0, double &p0, datetime &t1, double &p1)
 {
    if(name == "" || ObjectFind(0, name) < 0) return false;
@@ -1565,6 +1814,10 @@ void BoxSetColor(const string nm, const int prop, const color c)
 {
    if((color)(int)ObjectGetInteger(0, nm, prop) != c) ObjectSetInteger(0, nm, prop, c);
 }
+//--- how far the 50 % line's ink steps back towards the chart background, in percent.
+//--- 55 is the number that reads as a guide on both schemes: present enough to aim at,
+//--- quiet enough that a box wearing it is not the loudest thing on the chart.
+#define BOX_MID_FADE 55
 bool BoxMidSync(const string box)
 {
    if(box == "" || ObjectFind(0, box) < 0) return false;
@@ -1592,15 +1845,29 @@ bool BoxMidSync(const string box)
       ObjectSetInteger(0, ch, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, ch, OBJPROP_RAY_LEFT, false);
       ObjectSetInteger(0, ch, OBJPROP_RAY_RIGHT, false);
+      //--- P-DRAW-64a (2026-09-27) — THE LEVEL IS A WHISPER, AND WHISPERS ARE SET ONCE.
+      //--- User order: «خط وسط باید نازک تر ... مینمال باشه که چارت شلوغ نشه». Two lines
+      //--- did that: the width MIRRORED the box's own (a 2-3 px dotted rule in the same
+      //--- ink as the border — the busiest thing a quiet box can wear), and the ink was
+      //--- the master's at FULL strength. Now the frame is written here, at birth, and
+      //--- never read or written again: 1 px (the thinnest MT4 draws) and STYLE_DOT, so
+      //--- the steady state's per-frame cost loses a read AND a compare, and the line is
+      //--- the minimum the terminal can put on the chart.
+      ObjectSetInteger(0, ch, OBJPROP_WIDTH, 1);
+      ObjectSetInteger(0, ch, OBJPROP_STYLE, STYLE_DOT);
    }
    else
    {
       ObjectMove(0, ch, 0, t0, mp);
       ObjectMove(0, ch, 1, t1, mp);
    }
-   BoxSetColor(ch, OBJPROP_COLOR, (color)(int)ObjectGetInteger(0, box, OBJPROP_COLOR));
-   BoxSetInt(ch, OBJPROP_WIDTH, ObjectGetInteger(0, box, OBJPROP_WIDTH));
-   BoxSetInt(ch, OBJPROP_STYLE, STYLE_DOT);
+   //--- and the INK recedes: the master's own colour blended most of the way to the
+   //--- chart background, so the level says where it is without competing with the
+   //--- border. One cached background read, one blend, and the guarded setter means a
+   //--- steady frame is a read and a compare — the write only happens when the box's
+   //--- colour really changed. Same owner, same arithmetic as the interior's tone.
+   color mc = (color)(int)ObjectGetInteger(0, box, OBJPROP_COLOR);
+   BoxSetColor(ch, OBJPROP_COLOR, BlendColorTowardsBG(mc, BOX_MID_FADE, GetCachedChartBgColor()));
    BoxSetInt(ch, OBJPROP_BACK, ObjectGetInteger(0, box, OBJPROP_BACK));
    return true;
 }
@@ -1611,6 +1878,26 @@ void BoxMidDrop(const string box)
    if(ObjectFind(0, ch) >= 0) ObjectDelete(0, ch);
 }
 void BoxMidSyncServed() { if(s_dsKind == DK_RECT && s_dsObj != "") BoxMidSync(s_dsObj); }
+//--- P-DRAW-64a (2026-09-27) — THE LEVEL FOLLOWS THE BORDER'S INK, ON EVERY COMMIT.
+//--- Found in the cross-tool pass: the 50 % line wears the border's colour (blended
+//--- 55 %), but NO border-colour commit re-inked it — grid, recent, hex and tone all
+//--- wrote the box and left the line wearing the OLD blend until the pump's 2 s pass.
+//--- So every border-colour commit asks this, and the group gets the same fan-out the
+//--- fill's own show has (`DrawStripFillShowGroup`). One description read per member,
+//--- a write only when the ink really changed, nothing at rest.
+void BoxMidSyncGroup()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { BoxMidSync(s_dsObj); return; }
+   for(int i = 0; i < n; i++) BoxMidSync(DrawSelAt(i));
+}
+//--- P-DRAW-64a, third cut: there is NO recheck any more. The 50 % used to be a
+//--- remembered LENGTH, so a hand that gave the box a new length had to drop the mark
+//--- (else the next tap restored a length the user never chose). A 50 % LEVEL is a
+//--- line at the box's own mid PRICE: it is TRUE for every box, at every length, in
+//--- every position, so there is no payload to go stale and nothing to re-check.
 //--- the extend cycle the strip row taps: off -> to touch -> to end ->
 //--- 8 -> 16 -> 32 bars -> off. A tap mid-countdown turns it off outright.
 int BoxExtCycle(const string name)
@@ -1668,6 +1955,11 @@ bool BoxExtendStep(const string name)
       }
    }
    if(mid) BoxMidSync(name);
+   //--- P-DRAW-64a (2026-09-27): the step moved the box's own edge, so the interior
+   //--- gets the same frame the level does — otherwise an extending box with a fill
+   //--- wears a stale interior until the pump's next pass. One guarded call per step
+   //--- (once a bar), a no-op where no interior lives.
+   FillChildSync(name);
    return true;
 }
 void BoxExtrasPump()
@@ -1684,8 +1976,56 @@ void BoxExtrasPump()
    for(int i = total - 1; i >= 0; i--)
    {
       string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || BoxIsMidChild(nm) || DrawIsIndicatorObject(nm)) continue;
-      if(ObjectGetInteger(0, nm, OBJPROP_TYPE) != OBJ_RECTANGLE) continue;
+      //--- P-DRAW-64: the interior's children are swept HERE — an orphan (its
+      //--- master deleted) or one whose fill went off is dropped in this pass, and
+      //--- one whose master moved while nothing was open is re-stamped.
+      if(FillIsChild(nm))
+      {
+         string par = FillChildParent(nm);
+         if(par == "" || ObjectFind(0, par) < 0) { ObjectDelete(0, nm); continue; }
+         //--- P-DRAW-64: a child of an INDICATOR object is a STRAY — an earlier build
+         //--- of this split synced any dragged rectangle, the product's own boxes
+         //--- included, which moved such a box's interior into a child and left it
+         //--- behind on the next drag («من اینو که جابجا میکنم اون یکی جا میمونه»).
+         //--- It goes here, and the master's OWN fill comes back with it, because a
+         //--- child only ever existed while that fill was on.
+         if(DrawIsIndicatorObject(par))
+         {
+            ObjectDelete(0, nm);
+            if((int)ObjectGetInteger(0, par, OBJPROP_FILL) == 0)
+               ObjectSetInteger(0, par, OBJPROP_FILL, true);
+            continue;
+         }
+         FillChildSync(par);
+         continue;
+      }
+      if(nm == "" || DrawIsIndicatorObject(nm)) continue;
+      //--- P-DRAW-64a (2026-09-27) — THE MID LINE'S OWN ORPHAN RULE. Deleting a box
+      //--- that wore its 50 % left the `<box>_BX50` dotted line on the chart FOREVER:
+      //--- the pass skipped anything that IS a mid child, and nothing else knew it.
+      //--- So the child answers for its own parent here — one parse and one probe per
+      //--- 2 s pass, a delete only when the parent is really gone (the interior's own
+      //--- sweep is the same rule, one block up).
+      if(BoxIsMidChild(nm))
+      {
+         string par = BoxMidParent(nm);
+         if(par == "" || ObjectFind(0, par) < 0) ObjectDelete(0, nm);
+         continue;
+      }
+      //--- P-DRAW-64: the pass was already paying for ONE type read, so the
+      //--- interior's net rides it: a master whose fill is ON (an old build's
+      //--- drawing, or one the terminal's own dialog switched back on — the split's
+      //--- only silent conflict) and a master that MOVED while nothing was open are
+      //--- both re-stamped here. A drawing with no interior costs one probe find.
+      int ty = (int)ObjectGetInteger(0, nm, OBJPROP_TYPE);
+      if(ty == OBJ_RECTANGLE || ty == OBJ_TRIANGLE || ty == OBJ_ELLIPSE ||
+         ty == OBJ_CHANNEL || ty == OBJ_FIBOCHANNEL)
+      {
+         if(ObjectFind(0, FillChildName(nm)) >= 0 ||
+            (int)ObjectGetInteger(0, nm, OBJPROP_FILL) != 0)
+            FillChildSync(nm);
+      }
+      if(ty != OBJ_RECTANGLE) continue;
       if(StringFind(ObjectGetString(0, nm, OBJPROP_TEXT), "[BX") < 0) continue;
       bool mid = false; int ext = BOXEXT_OFF, n = 0;
       BoxMarkRead(nm, mid, ext, n);
@@ -1699,6 +2039,46 @@ void BoxExtrasPump()
 // overflow slot) and rebuilt by ONE builder the layout, the painter and the
 // router all read — "which row does what" has exactly one answer.
 // ══════════════════════════════════════════════════════════════════════════
+//--- P-DRAW-64 — «۵۰ درصد باکس»: THE ONE TAP that fills an interior at half tone.
+//--- Its state is exact (interior on AND tone 50), so the row wears a check when
+//--- the drawing already is that box; the write itself lives with the tap
+//--- (`DrawStripFill50Apply`, after the undo owner).
+bool DrawStripFill50IsCur()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+   if(DrawSlotRead(s_dsObj, DRAW_SLOT_FILL) < 0.5) return false;
+   return (DrawSlotAlphaGet(s_dsObj, DRAW_SLOT_FILLCLR) == DSTRIP_FILL50_TONE);
+}
+//--- P-DRAW-64 — AN INTERIOR EDIT TURNS THE INTERIOR ON. Choosing the fill's
+//--- colour or dragging its bar is a statement about a fill the user expects to
+//--- see; with the interior OFF the choice is invisible and reads as "nothing
+//--- happened". The same reason `Fill 50%` sets both.
+void DrawStripFillShow(const string nm)
+{
+   if(nm == "" || ObjectFind(0, nm) < 0) return;
+   EDrawKind k = DrawKindOf(nm);
+   if(!DrawSlotAvailable(k, DRAW_SLOT_FILLCLR)) return;
+   if(DrawSlotAvailable(k, DRAW_SLOT_FILL) && DrawSlotRead(nm, DRAW_SLOT_FILL) < 0.5)
+      DrawSlotWrite(nm, DRAW_SLOT_FILL, 1.0);
+}
+//--- the group face of the rule above (the held drawing when there is no group).
+void DrawStripFillShowGroup()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { DrawStripFillShow(s_dsObj); return; }
+   for(int i = 0; i < n; i++) DrawStripFillShow(DrawSelAt(i));
+}
+void DrawStripFill50On(const string nm)
+{
+   if(nm == "" || ObjectFind(0, nm) < 0) return;
+   EDrawKind k = DrawKindOf(nm);
+   if(!DrawSlotAvailable(k, DRAW_SLOT_FILLCLR)) return;
+   if(DrawSlotAvailable(k, DRAW_SLOT_FILL)) DrawSlotWrite(nm, DRAW_SLOT_FILL, 1.0);
+   DrawSlotOpacitySet(nm, DSTRIP_FILL50_TONE, DRAW_SLOT_FILLCLR);
+}
+
 void DrawStripMoreBuild()
 {
    s_dsPN = 0;
@@ -1722,6 +2102,9 @@ void DrawStripMoreBuild()
       if(r < DSTRIP_PICK_MAX) { s_dsMoreKind[r] = DSTRIP_MK_BOX50; s_dsMoreArg[r] = 0; r++; }
       if(r < DSTRIP_PICK_MAX) { s_dsMoreKind[r] = DSTRIP_MK_BOXEXT; s_dsMoreArg[r] = 0; r++; }
    }
+   //--- P-DRAW-64: the half-filled interior, for every kind that HAS one.
+   if(DrawKindHasFillBody(k) && r < DSTRIP_PICK_MAX)
+   { s_dsMoreKind[r] = DSTRIP_MK_FILL50; s_dsMoreArg[r] = 0; r++; }
    // 4. overflow value slots past the 6-cap (CHANNEL/FIBOCHAN levels)
    int no = DrawStripOverflowCount(k);
    for(int j = 0; j < no && r < DSTRIP_PICK_MAX; j++)
@@ -1743,6 +2126,7 @@ string DrawStripMoreText(const int r)
    if(kind == DSTRIP_MK_UNDO) return (s_duValid ? "Undo last look" : "Undo (nothing yet)");
    if(kind == DSTRIP_MK_BOX50) return "Mid 50% line";
    if(kind == DSTRIP_MK_BOXEXT) return BoxExtText(s_dsObj);
+   if(kind == DSTRIP_MK_FILL50) return "Fill 50%";
    if(kind == DSTRIP_MK_SLOT) return DrawStripSlotText(s_dsKind, arg, s_dsObj) + " ...";
    return "";
 }
@@ -1761,6 +2145,9 @@ string DrawStripMoreRes(const int r)
       return (mid ? "::Files\\Icons\\gl_check_m.bmp" : "::Files\\Icons\\bk_levels.bmp");
    }
    if(kind == DSTRIP_MK_BOXEXT) return "::Files\\Icons\\bk_ray1.bmp";
+   if(kind == DSTRIP_MK_FILL50)
+      return (DrawStripFill50IsCur() ? "::Files\\Icons\\gl_check_m.bmp"
+                                     : "::Files\\Icons\\gl_droplet_m.bmp");
    if(kind == DSTRIP_MK_SLOT) return DrawStripIconRes(s_dsMoreArg[r], s_dsObj);
    return "";   // APPLYALL: accent-styled, no icon
 }
@@ -1782,6 +2169,9 @@ string DrawStripMoreTip(const int r)
       return "A 50% line across this box (MT4 rectangles have none) — click to toggle" + scope;
    if(kind == DSTRIP_MK_BOXEXT)
       return "Push the far edge with new bars: to first touch, to the end, or N bars — click to cycle" + scope;
+   if(kind == DSTRIP_MK_FILL50)
+      return "Fill this " + DrawKindName(s_dsKind) + " at 50%: the interior ON, its tone at half" +
+             " — one tap over the fill colour and its bar" + scope;
    if(kind == DSTRIP_MK_SLOT)
       return DrawStripSlotTip(s_dsKind, arg, s_dsObj);
    return "";
@@ -1802,6 +2192,7 @@ bool DrawStripMoreIsCur(const int r)
       BoxMarkRead(s_dsObj, mid, ext, n);
       return (ext != BOXEXT_OFF);
    }
+   if(s_dsMoreKind[r] == DSTRIP_MK_FILL50) return DrawStripFill50IsCur();
    return false;
 }
 
@@ -1902,8 +2293,17 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       // grid is this project's ONE picker (P-DRAW-39) and this tab's 16 was its
       // duplicate — the open item the audit record kept as row 13. HEX stays: an
       // exact value typed by hand exists nowhere else.
-      DrawStripGearSection("HEX", y);
+      //--- P-DRAW-64: TWO COLOUR FIELDS, because the drawing wears two colours
+      //--- now — `e0` is the BORDER's (`[CL…]`) and `e4` the FILL's (`[FL…]`), the
+      //--- same two the strip's own cells own. Typing either is the exact-value
+      //--- path the palette cannot offer.
+      DrawStripGearSection("COLOR", y);
       s_dsGearEditY[0] = y; y += DSTRIP_GEAR_ROW_H;
+      if(DrawSlotAvailable(k, DRAW_SLOT_FILLCLR))
+      {
+         DrawStripGearSection("FILL", y);
+         s_dsGearEditY[4] = y; y += DSTRIP_GEAR_ROW_H;
+      }
       DrawStripGearSection("BORDER", y);
       int mark = s_dsGGN;
       DrawStripGearGridChips(DRAW_SLOT_WIDTH, 5);
@@ -1921,6 +2321,10 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       }
       DrawStripGearSection("DRAWING", y);
       if(DrawSlotAvailable(k, DRAW_SLOT_FILL)) DrawStripGearRow(1, DRAW_SLOT_FILL);
+      //--- P-DRAW-64a: the strip's two new cells are switches of the DRAWING, so
+      //--- they stand beside FILL here too — one value, two surfaces.
+      if(DrawSlotAvailable(k, DRAW_SLOT_BOXHALF)) DrawStripGearRow(1, DRAW_SLOT_BOXHALF);
+      if(DrawSlotAvailable(k, DRAW_SLOT_EXTEND)) DrawStripGearRow(1, DRAW_SLOT_EXTEND);
       DrawStripGearRow(1, DRAW_SLOT_LOCK);
       DrawStripGearRow(1, DRAW_SLOT_BACK);
       DrawStripGearSection("PLATE", y);
@@ -1990,7 +2394,7 @@ void DrawStripGearShiftItems(const int yFrom, const int yTo, const int shift, co
    for(int i = 0; i < s_dsGearSecN; i++)
       if(s_dsGearSecY[i] >= yFrom && s_dsGearSecY[i] < yTo)
       { s_dsGearSecY[i] += shift; s_dsGearSecCol[i] = col; }
-   for(int e = 0; e < 4; e++)
+   for(int e = 0; e < 5; e++)
       if(s_dsGearEditY[e] >= yFrom && s_dsGearEditY[e] < yTo)
       { s_dsGearEditY[e] += shift; s_dsGearEditCol[e] = col; }
 }
@@ -2009,7 +2413,7 @@ void DrawStripGearPlace(const int contentTop, int &contentEnd)
    s_dsGearW = DSTRIP_GEAR_W;
    for(int r = 0; r < s_dsGRN; r++) s_dsGRCol[r] = 0;
    for(int i = 0; i < s_dsGearSecN; i++) s_dsGearSecCol[i] = 0;
-   for(int e = 0; e < 4; e++) s_dsGearEditCol[e] = 0;
+   for(int e = 0; e < 5; e++) s_dsGearEditCol[e] = 0;
    if(contentEnd - contentTop <= DSTRIP_GEAR_WIDE_ROWS * DSTRIP_GEAR_ROW_H) return;
    if(s_dsGearBlkN >= 2)
    {
@@ -2066,7 +2470,7 @@ int DrawStripGearLayout(int y0)
    y += DSTRIP_GEAR_HEAD_H + DSTRIP_GEAR_ROW_H;
    int contentTop = y;
    s_dsGRN = 0; s_dsGGN = 0; s_dsGearSecN = 0; s_dsGearBlkN = 0;
-   s_dsGearEditY[0] = -1; s_dsGearEditY[1] = -1; s_dsGearEditY[2] = -1; s_dsGearEditY[3] = -1;
+   for(int e0 = 0; e0 < 5; e0++) s_dsGearEditY[e0] = -1;
    bool levelEdit = false;
    DrawStripGearContent(y, levelEdit);
    for(int r = 0; r < s_dsGRN; r++) { s_dsGRY[r] = y + r * DSTRIP_GEAR_ROW_H; s_dsGRCol[r] = 0; }
@@ -2130,26 +2534,40 @@ void DrawStripLayout()
     //--- popover block (ONE at a time): colour grid, or full-width list rows.
     s_dsPN = 0;
     s_dsPHexY = -1;
-    if(s_dsPicker == DRAW_SLOT_COLOR)
+    s_dsPHeadY = -1;
+    s_dsPRecY = -1;
+    s_dsPOpY = -1;
+    s_dsBW = 0; s_dsBH = 0;   // P-DRAW-48: the board's rect exists only for a colour board
+    if(DrawStripIsColorSlot(s_dsPicker))   // P-DRAW-64: the BORDER's or the INTERIOR's
     {
-       color ex[DSTRIP_RECENT_MAX];
-       int n = DrawStripPickPalN() + DrawStripRecentExtra(ex);
-       if(n > DSTRIP_GRID_MAX) n = DSTRIP_GRID_MAX;
        // P-DRAW-46: the picker's OWN columns — 8 cells per row (the user's own
-       // chart), one mid band per row (DSTRIP_PICK_ROW), so the plate stays on 48 + 42k.
-       // TV parity: one preview band on top (current swatch + hex, read-only —
-       // typing owns to the gear HEX edit, P-DRAW-13) counts as one more band.
-       s_dsPHexY = y; y += DSTRIP_PICK_ROW;
+       // chart).
+       // TV parity (2026-09-26): the board reads like the reference — a header
+       // band (grip + name + pin + close, and the carry handle), the 8 x 8 grid,
+       // a labelled RECENT band, then the HEX field.
+       // P-DRAW-48: and its bands are measured from the BOARD's origin, because
+       // the board is its own card. The header rides the skin's own 44px top cap
+       // and the remaining ten bands are the middles, so the plate is on the
+       // family's own law: 48 + 42k (k = rows + recents + hex).
+      int n = DrawStripPickPalN();
       int cols = BIOPICK_COLS, cw = DSTRIP_PICK_CELL;
       int gw = cols * cw + (cols - 1) * DSTRIP_PICK_GAP;
       int rows = (n + cols - 1) / cols;
-      for(int r = 0; r < n; r++)
-      {
-         s_dsPY[r] = y + (r / cols) * DSTRIP_PICK_ROW;
-      }
-      y += rows * DSTRIP_PICK_ROW;
-      if(gw + 2 * DSTRIP_PAD > maxW) maxW = gw + 2 * DSTRIP_PAD;
+      s_dsBW = gw + 2 * DSTRIP_PAD;
+      // P-DRAW-48: FOUR bands under the grid — RECENT, HEX and the reference's
+      // own OPACITY bar («نوار شفافیت رو نداره مثل پیش نمایش»), so k = rows + 3.
+      s_dsBH = 48 + DSTRIP_PICK_ROW * (rows + 3);
+      s_dsPHeadY = 0;
+      int by = DSTRIP_BOARD_HDR;
+      for(int r = 0; r < n; r++) s_dsPY[r] = by + (r / cols) * DSTRIP_PICK_ROW;
+      by += rows * DSTRIP_PICK_ROW;
+      s_dsPRecY = by;
+      s_dsPHexY = by + DSTRIP_PICK_ROW;
+      s_dsPOpY  = by + 2 * DSTRIP_PICK_ROW;
       s_dsPN = n;
+      //--- the STRIP stays the compact quick row: the board never widens its
+      //--- plate (P-DRAW-48) and never grows it taller either.
+      DrawStripBoardPlace();
    }
    else if(s_dsPicker != DSTRIP_PICK_NONE)
    {
@@ -2242,9 +2660,66 @@ bool DrawStripPopRowIsCur(const int r)
 //--- P-DRAW-11: shut the popover without touching the strip (a pick, a second
 //--- tap on its cell, a tap on the plate, Esc). Deletes the popover's objects;
 //--- the caller re-layouts and repaints.
+//--- TV parity board: its chrome — the grip band, the RECENT band and the HEX
+//--- field — belongs to the COLOUR popover alone, and the ONE owner of taking it
+//--- down. A slot switch does NOT pass a close (`DrawStripTap` assigns the new
+//--- slot directly), so the paint's list branch prunes it too; without that a
+//--- width/style list would open under the board's leftover header and field.
+bool DrawStripPopChromePrune()
+{
+   bool dirty = false;
+   string fx[17];
+   fx[0] = "PnlDrawS_PHeadT";
+   fx[1] = "PnlDrawS_PHeadX";
+   fx[2] = DrawStripPHeadGName();
+   fx[3] = DrawStripPHeadGChipName();
+   fx[4] = DrawStripPHeadGIconName();
+   fx[5] = DrawStripPRecLabelName();
+   fx[6] = DrawStripPHexLbName();
+   fx[7] = DrawStripPHexEdName();
+   //--- P-DRAW-48: the board's own pin seat + its face — the header's two new
+   //--- children, so a close cannot leave a dock glyph over a gone plate.
+   fx[8] = "PnlDrawS_PHeadP";
+   fx[9] = "PnlDrawS_PHeadPI";
+   //--- and the OPACITY band's own five: its chrome dies with the board's.
+   fx[10] = DrawStripPOpLbName();
+   fx[11] = DrawStripPOpBedName();
+   fx[12] = DrawStripPOpFillName();
+   fx[13] = DrawStripPOpKnobName();
+   fx[14] = DrawStripPOpValName();
+   //--- P-DRAW-64a: the header's two role segments — a close cannot leave a
+   //--- BORDER / FILL caption over a gone plate.
+   fx[15] = "PnlDrawS_PHeadB";
+   fx[16] = "PnlDrawS_PHeadF";
+   for(int i = 0; i < 17; i++)
+      if(ObjectFind(0, fx[i]) >= 0) { ObjectDelete(0, fx[i]); dirty = true; }
+   for(int k = 0; k < DSTRIP_RECENT_MAX; k++)
+   {
+      if(ObjectFind(0, DrawStripPRecName(k)) >= 0)
+      { ObjectDelete(0, DrawStripPRecName(k)); dirty = true; }
+      if(ObjectFind(0, DrawStripPRecGlassName(k)) >= 0)
+      { ObjectDelete(0, DrawStripPRecGlassName(k)); dirty = true; }
+   }
+   s_dsPRecY = -1;
+   s_dsPOpY = -1;
+   s_dsOpGrab = false;
+   s_dsHexFocus = false;
+   //--- P-DRAW-48: and the BOARD's own state — a fresh board is a fresh PLACE
+   //--- (the pin's DOCK choice is the user's preference and survives).
+   s_dsBManual = false;
+   s_dsBW = 0; s_dsBH = 0;
+   s_dsBGripLive = false;
+   return dirty;
+}
 void DrawStripClosePicker()
 {
    DrawStripColorHoverClear();
+   DrawStripPopChromePrune();   // TV parity board: its chrome dies with it
+   //--- P-DRAW-48: the board's plate (family 2) dies with it too. The paint's
+   //--- list branch prunes the family, but a pick/close leaves the picker NONE
+   //--- and no branch runs — so the close is the ONE owner that must take it,
+   //--- gated so a list popover probes nothing it never made.
+   if(s_dsBPlateLive) DrawStripSkinPurgeAt(2);
    if(s_dsPicker == DSTRIP_PICK_NONE && s_dsPN <= 0) return;
    for(int r = 0; r < DSTRIP_PICK_MAX; r++)
    {
@@ -2255,12 +2730,14 @@ void DrawStripClosePicker()
       ObjectDelete(0, DrawStripPickRailName(r));
        ObjectDelete(0, DrawStripPickGlassName(r));   // P-DRAW-33: the glass sheen
     }
-    ObjectDelete(0, "PnlDrawS_PHexSw");
-    ObjectDelete(0, "PnlDrawS_PHexGl");
-    ObjectDelete(0, "PnlDrawS_PHexTx");
     s_dsPicker = DSTRIP_PICK_NONE;
     s_dsPN = 0;
     s_dsPHexY = -1;
+    s_dsPHeadY = -1;
+    s_dsPRecY = -1;
+    s_dsPOpY = -1;
+    s_dsOpGrab = false;
+    s_dsHexFocus = false;
 }
 //--- P-DRAW-13: shut the gear panel (tab switch = shut + open).
 bool DrawStripGearObjectsPurge()
@@ -2328,7 +2805,7 @@ bool DrawStripGearObjectsPurge()
       if(ObjectFind(0, DrawStripFootLabelName(f)) >= 0)
       { ObjectDelete(0, DrawStripFootLabelName(f)); dirty = true; }
    }
-   for(int e = 0; e < 4; e++)
+   for(int e = 0; e < 5; e++)
       if(ObjectFind(0, DrawStripEditName(e)) >= 0)
       { ObjectDelete(0, DrawStripEditName(e)); dirty = true; }
    return dirty;
@@ -2348,11 +2825,11 @@ void DrawStripClose()
    DrawStripColorHoverClear();
    for(int i = 0; i < DSTRIP_MAX_SLOTS; i++)
 
-   {
-       ObjectDelete(0, DrawStripObjName(i));
-       ObjectDelete(0, DrawStripIconName(i));
-       ObjectDelete(0, DrawStripIconName(i) + "C");
-
+   {        ObjectDelete(0, DrawStripObjName(i));
+        ObjectDelete(0, DrawStripIconName(i));
+        ObjectDelete(0, DrawStripIconName(i) + "C");
+        ObjectDelete(0, DrawStripIconName(i) + "S");    // P-DRAW-64a: the colour seat's centre
+        ObjectDelete(0, DrawStripIconName(i) + "C2");   // ...and its swatch skin
    }
    ObjectDelete(0, DrawStripGripName());
    ObjectDelete(0, DrawStripGripIconName());
@@ -2384,9 +2861,11 @@ void DrawStripClose()
     s_dsPicker = DSTRIP_PICK_NONE;   // the popover dies with the strip
     s_dsPN = 0;                      // (the recent colours survive: they are the trader's)
     s_dsPHexY = -1;
-    ObjectDelete(0, "PnlDrawS_PHexSw");
-    ObjectDelete(0, "PnlDrawS_PHexGl");
-    ObjectDelete(0, "PnlDrawS_PHexTx");
+    s_dsPHeadY = -1;
+    s_dsPOpY = -1;
+    s_dsOpGrab = false;
+    s_dsHexFocus = false;
+    DrawStripPopChromePrune();   // TV parity board: its chrome dies with the strip
    //--- P-DRAW-32: the panel's placement belongs to THIS strip session — a fresh
    //--- open lands the panel beside the plate it serves, never where the last
    //--- strip's hand left it (the free space around a new drawing is new space).
@@ -2430,9 +2909,15 @@ bool DrawStripSetStr2(const string nm, const int prop, const int mod, const stri
 // button stays under its skin, Z_PANEL_BASE/Z_PANEL_SKIN parity); bitmaps are
 // faces; labels are left-aligned ink. All guarded, all answering dirty.
 // ══════════════════════════════════════════════════════════════════════════
-bool DrawStripBtn(const string nm, const int x, const int y, const int w, const int h,
-                  const color face, const color ink, const color rim,
-                  const string txt, const string tip)
+//--- P-DRAW-48 (2026-09-26) — THE PLATE'S OWN BODY RIDES THE PLATE'S Z.
+//--- The skin's mid band is a filled button the size of the whole plate and it was
+//--- born at Z_STRIP_ICON — the CELLS' z. Equal z is settled by the creation order,
+//--- so any repaint that re-created the mid band put it over the board's 64 cells,
+//--- its RECENT band and its HEX field (the reported empty board). At Z_STRIP the
+//--- plate can never be drawn over its own contents, whatever the order did.
+bool DrawStripBtnZ(const string nm, const int x, const int y, const int w, const int h,
+                   const color face, const color ink, const color rim,
+                   const string txt, const string tip, const int z)
 {
    bool dirty = false;
    if(ObjectFind(0, nm) < 0)
@@ -2445,7 +2930,7 @@ bool DrawStripBtn(const string nm, const int x, const int y, const int w, const 
       ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, PnlPt(7));
       ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
-      ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_STRIP_ICON);
+      ObjectSetInteger(0, nm, OBJPROP_ZORDER, z);
       // P-UI-34 (2026-09-25): STATE must be false on birth. MT4 on Windows 11
       // flips a button to its OS "pressed" skin (white/grey) whenever STATE is
       // left at default — the panels' own PnlSetButton does the same init.
@@ -2459,6 +2944,9 @@ bool DrawStripBtn(const string nm, const int x, const int y, const int w, const 
    dirty |= DrawStripSetInt(nm, OBJPROP_BGCOLOR, face);
    dirty |= DrawStripSetInt(nm, OBJPROP_COLOR, ink);
    dirty |= DrawStripSetInt(nm, OBJPROP_BORDER_COLOR, rim);
+   // P-DRAW-48: the z is re-asserted every paint — an object born before this law
+   // carries the old one, and a write of the value already there is free.
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, z);
    // P-UI-34: re-assert STATE=false every paint so a click that toggled the
    // button's own state (MT4 toggles STATE on click internally) cannot leave
    // the face white for the next frame.
@@ -2466,6 +2954,13 @@ bool DrawStripBtn(const string nm, const int x, const int y, const int w, const 
    dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, txt);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
    return dirty;
+}
+//--- the ordinary cell: the icon layer, above the plate it sits on.
+bool DrawStripBtn(const string nm, const int x, const int y, const int w, const int h,
+                  const color face, const color ink, const color rim,
+                  const string txt, const string tip)
+{
+   return DrawStripBtnZ(nm, x, y, w, h, face, ink, rim, txt, tip, Z_STRIP_ICON);
 }
 //--- the icon face, centred in its cell (MT4 paints at native size from the
 //--- label's own corner). res == "" deletes the face. Whichever object the
@@ -2549,33 +3044,9 @@ bool DrawStripRect(const string nm, const int x, const int y, const int w, const
    dirty |= DrawStripSetInt(nm, OBJPROP_BGCOLOR, face);
    return dirty;
 }
-//--- "#RRGGBB" of a colour (hex edit row + swatch tooltips).
-string DrawStripColorHex(const color c)
-{
-   int v = (int)c;
-   if(v < 0) v = 0;
-   return StringFormat("#%02X%02X%02X", v % 256, (v / 256) % 256, v / 65536);
-}
-bool DrawStripHexToColor(const string s, color &c)
-{
-   string t = s;
-   StringTrimLeft(t); StringTrimRight(t);
-   if(StringLen(t) != 7 || StringGetCharacter(t, 0) != '#') return false;
-   int v = 0;
-   for(int i = 1; i < 7; i++)
-   {
-      int ch = StringGetCharacter(t, i);
-      int d = -1;
-      if(ch >= '0' && ch <= '9') d = ch - '0';
-      else if(ch >= 'A' && ch <= 'F') d = ch - 'A' + 10;
-      else if(ch >= 'a' && ch <= 'f') d = ch - 'a' + 10;
-      if(d < 0) return false;
-      v = v * 16 + d;
-   }
-   int r = (v >> 16) & 0xFF, g = (v >> 8) & 0xFF, b = v & 0xFF;
-   c = (color)(r + g * 256 + b * 65536);
-   return true;
-}
+//--- "#RRGGBB" of a colour and back moved DOWN to DrawToolbar.mqh (P-DRAW-48):
+//--- the description tags the slot owner writes are the same question, so one
+//--- owner answers both (an A-12 move — not one call site changed).
 
 //--- P-DRAW-13: gear list rows — one owner for text/face/tip/state, read by
 //--- layout (nothing: rows are full-width), paint and router alike.
@@ -2720,6 +3191,47 @@ bool DrawStripEdit(const int e, const int x, const int y, const int w, const str
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
    dirty |= DrawStripSetInt(nm, OBJPROP_YSIZE, DSTRIP_GEAR_EDIT_H);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
+   return dirty;
+}
+//--- TV parity board: the HEX field. It is NOT a gear edit (`DrawStripEdit` adds
+//--- the settings panel's own origin), so it has its own owner and its own name.
+//--- P-DRAW-48: the seed is the LIVE colour now — the field used to be seeded once
+//--- and a grid pick left the old hex on screen («hex ناقص پیاده سازی شده»);
+//--- `s_dsHexFocus` is the one guard: while the user is typing, nothing writes.
+bool DrawStripPopHex(const int x, const int y, const int w, const string seed)
+{
+   string nm = DrawStripPHexEdName();
+   bool dirty = false;
+   if(ObjectFind(0, nm) < 0)
+   {
+      if(!ObjectCreate(0, nm, OBJ_EDIT, 0, 0, 0)) return false;
+      ObjectSetInteger(0, nm, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+      ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, PnlPt(8));
+      ObjectSetString(0, nm, OBJPROP_FONT, "Consolas");
+      ObjectSetInteger(0, nm, OBJPROP_COLOR, DSTRIP_CLR_LABEL);
+      ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, DSTRIP_CLR_FIELD);
+      ObjectSetInteger(0, nm, OBJPROP_BORDER_COLOR, DSTRIP_CLR_FIELD_BD);
+      ObjectSetInteger(0, nm, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, nm, OBJPROP_ALIGN, ALIGN_LEFT);
+      ObjectSetInteger(0, nm, OBJPROP_READONLY, false);
+      ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
+      ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_STRIP_ICON);
+      ObjectSetString(0, nm, OBJPROP_TEXT,
+                      DrawStripColorHex((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR)));
+      dirty = true;
+   }
+   //--- the live seed: a guarded write, so a repaint that changed nothing writes
+   //--- nothing — and the field follows a colour picked on the grid or typed
+   //--- elsewhere. An empty seed (the field holds the focus) never writes.
+   if(seed != "" && ObjectGetString(0, nm, OBJPROP_TEXT) != seed)
+      dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, seed);
+   dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
+   dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, y);
+   dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
+   dirty |= DrawStripSetInt(nm, OBJPROP_YSIZE, DSTRIP_POP_EDIT_H);
+   dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP,
+                            "Type #RRGGBB, Enter applies it" + DrawStripTipScope());
    return dirty;
 }
 string DrawStripFootText(const int f)
@@ -2965,10 +3477,12 @@ bool DrawStripGearPaint()
       dirty |= DrawStripFace(rs, rx + cw - (k == 1 || k == 4 || k == 6 ? 40 : 18), py + 13,
                              (k == 1 || k == 4 || k == 6) ? 40 : 15, 22, state, tip);
    }
-   for(int e = 0; e < 4; e++)
+   for(int e = 0; e < 5; e++)
    {
       string en = DrawStripEditName(e);
       bool want = ((e == 0 && s_dsGear == DSTRIP_GEAR_STYLE) ||
+                   (e == 4 && s_dsGear == DSTRIP_GEAR_STYLE &&
+                    DrawSlotAvailable(s_dsKind, DRAW_SLOT_FILLCLR)) ||
                    (e == 1 && s_dsGear == DSTRIP_GEAR_LEVELS) ||
                    (e == 2 && s_dsGear == DSTRIP_GEAR_MARK && s_dsKind == DK_TEXT) ||
                    (e == 3 && s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed));
@@ -2988,6 +3502,10 @@ bool DrawStripGearPaint()
       else if(e == 3)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], cw, "",
                                 "Template name — Enter saves this look under your name");
+      else if(e == 4)
+         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], cw,
+                                DrawStripColorHex(DrawStripColorRead(s_dsObj, DRAW_SLOT_FILLCLR)),
+                                "Fill color as #RRGGBB — Enter applies it (the interior)");
       else
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], cw,
                                 ObjectGetString(0, s_dsObj, OBJPROP_TEXT),
@@ -3082,6 +3600,29 @@ string DrawStripGearSkinName(const int i)
    }
    return "";
 }
+//--- P-DRAW-48 (2026-09-26) — THE BOARD'S OWN NINE PIECES, and they must be its
+//--- own. `DrawStripSkinPiece` answered the STRIP's names for family 2, so the two
+//--- plates were ONE set of objects: the strip's plate (height 48, k = 0) deletes
+//--- the mid pieces on every paint and the board's plate (k = 10) re-created them
+//--- as the NEWEST objects at Z_STRIP_ICON — i.e. over the board's 64 cells, its
+//--- RECENT band and its HEX field. Measured on the reported chart: the board's
+//--- whole body was ONE colour at 24,750 samples. One plate, one name.
+string DrawStripBoardSkinName(const int i)
+{
+   switch(i)
+   {
+      case 0: return "PnlDrawS_BBtL";
+      case 1: return "PnlDrawS_BBtM";
+      case 2: return "PnlDrawS_BBtR";
+      case 3: return "PnlDrawS_BBmL";
+      case 4: return "PnlDrawS_BBmM";
+      case 5: return "PnlDrawS_BBmR";
+      case 6: return "PnlDrawS_BBbL";
+      case 7: return "PnlDrawS_BBbM";
+      case 8: return "PnlDrawS_BBbR";
+   }
+   return "";
+}
 //--- P-DRAW-43 (2026-09-25) — THE PLATE'S TRANSPARENCY. MT4 crops a bitmap instead
 //--- of blending it and has no runtime image API, so a level is a baked FILE SET
 //--- (`ds_*_t30/60/90.bmp`, same shapes, alpha multiplied) and one row swaps the
@@ -3116,7 +3657,8 @@ color DrawStripPlateFill()
 //--- 0 = the strip's plate · 1 = the settings panel's plate (P-DRAW-32).
 string DrawStripSkinPiece(const int fam, const int i)
 {
-   return (fam == 1 ? DrawStripGearSkinName(i) : DrawStripSkinName(i));
+   return (fam == 1 ? DrawStripGearSkinName(i)
+                    : (fam == 2 ? DrawStripBoardSkinName(i) : DrawStripSkinName(i)));
 }
 //--- the plate is a FAMILY now (9 skin pieces, or the legacy rect): a tap on
 //--- any of them is a tap on the plate (P-DRAW-11's popover rule). P-DRAW-32: the
@@ -3125,10 +3667,18 @@ string DrawStripSkinPiece(const int fam, const int i)
 bool DrawStripIsBg(const string nm)
 {
    return (StringFind(nm, "PnlDrawS_BG") == 0 ||
+           StringFind(nm, "PnlDrawS_BB") == 0 ||   // P-DRAW-48: the board's own plate
            StringFind(nm, "PnlDrawS_GB") == 0 ||
            StringFind(nm, "PnlDrawS_GH") == 0 ||
            StringFind(nm, "PnlDrawS_GS") == 0 ||
            StringFind(nm, "PnlDrawS_GU") == 0);
+}
+//--- P-DRAW-48: which of those plates is the COLOUR BOARD's own (`BB…`, one letter
+//--- apart from the strip's `BG…`). It is the one surface that must not shut the
+//--- popover it belongs to — its body is the space between its own cells.
+bool DrawStripIsBoardPlate(const string nm)
+{
+   return (StringFind(nm, "PnlDrawS_BB") == 0);
 }
 //--- mid bands below the plate's own top zone, from that plate's height
 //--- (-1: this height is off the skin's own 48 + 42k grid).
@@ -3188,9 +3738,11 @@ bool DrawStripSkinPurgeAt(const int fam)
       string nm = DrawStripSkinPiece(fam, i);
       if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); dirty = true; }
    }
-   string bg = (fam == 1 ? DrawStripGearBgName() : DrawStripBgName());
+   string bg = (fam == 1 ? DrawStripGearBgName()
+                         : (fam == 2 ? DrawStripBoardBgName() : DrawStripBgName()));
    if(ObjectFind(0, bg) >= 0) { ObjectDelete(0, bg); dirty = true; }
    if(fam == 1) s_dsGearPlateLive = false;
+   if(fam == 2) s_dsBPlateLive = false;
    return dirty;
 }
 //--- P-DRAW-32: BOTH plates die together — a close (or a hide) owns the whole
@@ -3199,6 +3751,7 @@ bool DrawStripSkinPurge()
 {
    bool dirty = DrawStripSkinPurgeAt(0);
    dirty |= DrawStripSkinPurgeAt(1);
+   dirty |= DrawStripSkinPurgeAt(2);   // P-DRAW-48: the colour board's own plate
    return dirty;
 }
 bool DrawStripGearSkinPurge()
@@ -3231,9 +3784,10 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
    {
       dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 3), sx, midY,
                                 DSTRIP_SKIN_EDGE, midH, DrawStripSkinRes("ds_mid_l"));
-      dirty |= DrawStripBtn(DrawStripSkinPiece(fam, 4), sx + DSTRIP_SKIN_EDGE, midY,
-                            TW - 2 * DSTRIP_SKIN_EDGE, midH,
-                            fill, fill, fill, "", "");
+      // P-DRAW-48: the plate's own body — Z_STRIP, never the cells' layer.
+      dirty |= DrawStripBtnZ(DrawStripSkinPiece(fam, 4), sx + DSTRIP_SKIN_EDGE, midY,
+                             TW - 2 * DSTRIP_SKIN_EDGE, midH,
+                             fill, fill, fill, "", "", Z_STRIP);
       dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 5), sx + TW - DSTRIP_SKIN_EDGE, midY,
                                 DSTRIP_SKIN_EDGE, midH, DrawStripSkinRes("ds_mid_r"));
    }
@@ -3263,7 +3817,11 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
    //--- fills the rounded-corner gap and the shadow margin so the panel looks
    //--- identical on white and black charts.  This replaces the old "delete bg when
    //--- skin fits" path; the bg rect is now the permanent underlayer.
-   string bg = (fam == 1 ? DrawStripGearBgName() : DrawStripBgName());
+   //--- P-DRAW-48: fam 2 (the board) has its OWN underlayer; the strip's
+   //--- `PnlDrawS_BG` was reused by the first cut and moved the strip's own
+   //--- floor under the board — one surface, one name.
+   string bg = (fam == 1 ? DrawStripGearBgName()
+                         : (fam == 2 ? DrawStripBoardBgName() : DrawStripBgName()));
    if(ObjectFind(0, bg) < 0)
    {
       if(!ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0)) return dirty;
@@ -3283,6 +3841,7 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
    dirty |= DrawStripSetInt(bg, OBJPROP_COLOR,     fill);
    dirty |= DrawStripSetInt(bg, OBJPROP_BGCOLOR,   fill);
    if(fam == 1) s_dsGearPlateLive = true;   // P-DRAW-42: the panel's plate is now on the chart
+   if(fam == 2) s_dsBPlateLive = true;      // P-DRAW-48: and the board's
    return dirty;
 }
 //--- the strip's own plate: the caller's rect is the strip's own content box.
@@ -3293,6 +3852,93 @@ bool DrawStripSkinPaint()
 //--- P-DRAW-32: the SETTINGS PANEL's plate, at ITS OWN origin and size.
 //--- P-DRAW-35: DrawStripSkinPaintAt(1,...) now owns DrawStripGearBgName() — both the
 //--- skin-fits underlayer and the fallback flat rect — so there is no duplication here.
+//--- P-DRAW-48: THE BOARD's own plate — its own origin, its own family, so the
+//--- strip stays the compact quick row it is (the reference's architecture).
+bool DrawStripBoardPlate()
+{
+   if(s_dsBW <= 0 || s_dsBH <= 0) return false;
+   return DrawStripSkinPaintAt(2, s_dsBX, s_dsBY, s_dsBW, s_dsBH);
+}
+//--- WHERE THE BOARD OPENS. Docked: under the strip, else above it, else the
+//--- first spot that fits the window (a card off the edge is dead control).
+//--- Float: the hand's own spot, clamped — the pin's OFF state.
+void DrawStripBoardPlace()
+{
+   if(s_dsBW <= 0 || s_dsBH <= 0) return;
+   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
+   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+   int gm = 4 + DSTRIP_SKIN_M;   // P-DRAW-29: the carried skin stays on screen
+   int maxX = cw - s_dsBW - gm, maxY = ch - s_dsBH - gm;
+   if(maxX < gm) maxX = gm;
+   if(maxY < gm) maxY = gm;
+   if(s_dsBManual)
+   {
+      if(s_dsBX < gm) s_dsBX = gm;
+      if(s_dsBY < gm) s_dsBY = gm;
+      if(s_dsBX > maxX) s_dsBX = maxX;
+      if(s_dsBY > maxY) s_dsBY = maxY;
+      return;
+   }
+   int bx = s_dsX, by = s_dsY + s_dsH + 2;
+   if(by > maxY) by = s_dsY - s_dsBH - 2;      // no room below: open above the strip
+   if(by < gm) by = gm;
+   if(by > maxY) by = maxY;
+   if(bx > maxX) bx = maxX;
+   if(bx < gm) bx = gm;
+   s_dsBX = bx; s_dsBY = by;
+}
+
+//--- P-DRAW-48 — THE OPACITY BAR'S OWN GEOMETRY AND ITS OWN GRAB. The paint and
+//--- the hand read ONE answer: the label keeps the RECENT column, the readout its
+//--- own seat, and the bar is what is left between them (the cards' track metrics).
+int DrawStripOpTrackX() { return s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW; }
+int DrawStripOpTrackW()
+{
+   int w = s_dsBW - 2 * DSTRIP_PAD - DSTRIP_PREC_LW - DSTRIP_OP_VW;
+   return (w > 2 * DSTRIP_KNOB_W) ? w : 2 * DSTRIP_KNOB_W;
+}
+//--- the value a pointer x means, over the SAME span the knob rides — the exact
+//--- inverse of the knob's own position, so what the hand sees is what `NN%` says.
+int DrawStripOpValueAt(const int mx)
+{
+   int span = DrawStripOpTrackW() - DSTRIP_KNOB_W;
+   if(span <= 0) return DRAW_OP_MIN;
+   double f = (mx - DrawStripOpTrackX()) / (double)span;
+   if(f < 0.0) f = 0.0;
+   if(f > 1.0) f = 1.0;
+   int v = (int)MathRound(f * 100.0);
+   if(v < DRAW_OP_MIN) v = DRAW_OP_MIN;
+   if(v > 100) v = 100;
+   return v;
+}
+//--- is this press on the bar's own band? The whole 42 px row is the target (an
+//--- 8 px bed is no touch target, B-05) and the readout's seat is EXCLUDED, so
+//--- tapping `NN%` never jumps the slider.
+bool DrawStripOpBarAt(const int mx, const int my)
+{
+   if(!s_dsOpen || !DrawStripIsColorSlot(s_dsPicker)) return false;
+   if(s_dsBW <= 0 || s_dsBH <= 0 || s_dsPOpY < 0) return false;
+   int oy0 = s_dsBY + s_dsPOpY;
+   if(my < oy0 || my > oy0 + DSTRIP_PICK_ROW) return false;
+   int otx = DrawStripOpTrackX(), otw = DrawStripOpTrackW();
+   return (mx >= otx - DSTRIP_PICK_GAP && mx <= otx + otw + DSTRIP_PICK_GAP);
+}
+//--- the bar's write, through the ONE owner (`DrawToolbar`: the `[OPnn]` tag and
+//--- the blend the chart wears). One write per real change, so a held bar costs a
+//--- paint per move and nothing else (G-09: the cheaper of two equal paths).
+bool DrawStripOpDragTo(const int mx)
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+   //--- P-DRAW-64: the bar follows the OPEN BOARD's role — the border's `[OPnn]` or
+   //--- the interior's `[FTnn]`. One bar, one owner, two tags.
+   int slot = DrawStripIsColorSlot(s_dsPicker) ? s_dsPicker : DRAW_SLOT_COLOR;
+   int op = DrawStripOpValueAt(mx);
+   if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShow(s_dsObj);   // P-DRAW-64: tone ⇒ a fill
+   if(op == DrawSlotAlphaGet(s_dsObj, slot)) return false;
+   DrawSlotOpacitySet(s_dsObj, op, slot);
+   if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the tone changed the border's ink
+   return true;
+}
 bool DrawStripGearPlate()
 {
    // DrawStripGearBgName() names the plate's bg object — its lifecycle is inside
@@ -3528,33 +4174,63 @@ void DrawStripPaint()
           if(ObjectFind(0, on) >= 0) { ObjectDelete(0, on); dirty = true; }
           if(ObjectFind(0, ic) >= 0) { ObjectDelete(0, ic); dirty = true; }
           if(ObjectFind(0, ic + "C") >= 0) { ObjectDelete(0, ic + "C"); dirty = true; }
+          if(ObjectFind(0, ic + "S") >= 0) { ObjectDelete(0, ic + "S"); dirty = true; }
+          if(ObjectFind(0, ic + "C2") >= 0) { ObjectDelete(0, ic + "C2"); dirty = true; }
           continue;
-
       }
       int x = s_dsX + s_dsCX[i];
       string res = DrawStripIconRes(slot, s_dsObj);
       string tip = DrawStripSlotTip(s_dsKind, slot, s_dsObj);
+       //--- P-DRAW-64a (2026-09-27) — THE ONE COLOUR SEAT: A RING AROUND A CENTRE.
+       //--- User order: «این دوتا باکس ... میشه یکی بشه» + «اونیکه برای رنگ بوردر
+       //--- هستش رو ایکونش نباید وسط رنگی باشه باید دورش رنگ باشه». So the seat's own
+       //--- button wears the BORDER colour and the nested 24px swatch wears the
+       //--- interior's — the border really is AROUND — and a kind with no interior
+       //--- shows the plate tone in the middle, i.e. a ring with a hole. Each layer
+       //--- names its own role, because the hand lands on one of them (the tip and
+       //--- the tap both read which).
+       if(DrawStripIsColorSlot(slot))
+       {
+          bool merged = (slot == DRAW_SLOT_FILLCLR);
+          int sw = DSTRIP_SWATCH;   // B-05's 24px floor, the centre's own target
+          int swx = x + (DSTRIP_CELL - sw) / 2, swy = rowY + (DSTRIP_CELL - sw) / 2;
+          color bcol = DrawStripColorRead(s_dsObj, DRAW_SLOT_COLOR);
+          color ccol = merged ? DrawStripColorFace(s_dsObj, DRAW_SLOT_FILLCLR)
+                              : DrawStripPlateFill();
+          string rtip = DrawStripColorRingTip(s_dsObj, merged);
+          string ctip = (merged ? DrawStripColorMidTip(s_dsObj) : rtip);
+          dirty |= DrawStripBtn(on, x, rowY, DSTRIP_CELL, DSTRIP_CELL, bcol, DrawStripInkOn(bcol),
+                                (s_dsPicker == DRAW_SLOT_COLOR) ? DSTRIP_CLR_ACCENT
+                                                                : BioSwatchBorder(bcol, BIO_CLR_CARD),
+                                "", rtip);
+          dirty |= DrawStripFace(ic + "C", x, rowY, DSTRIP_CELL, DSTRIP_CELL,
+                                 "::Files\\Icons\\ds_cell32.bmp", rtip);
+          dirty |= DrawStripBtn(ic + "S", swx, swy, sw, sw, ccol, DrawStripInkOn(ccol),
+                                (s_dsPicker == DRAW_SLOT_FILLCLR) ? DSTRIP_CLR_ACCENT
+                                                                  : BioSwatchBorder(ccol, BIO_CLR_CARD),
+                                "", ctip);
+          dirty |= DrawStripFace(ic + "C2", swx, swy, sw, sw, "::Files\\Icons\\ds_swatch24.bmp", ctip);
+          if(ObjectFind(0, ic) >= 0) { ObjectDelete(0, ic); dirty = true; }   // the seat has no glyph
+          continue;
+       }
        color face = DrawStripPlateFill(), ink = DSTRIP_CLR_LABEL, rim = DrawStripPlateFill();
        bool chipOn = false;
-       if(slot == DRAW_SLOT_COLOR)
-       {
-          face = (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR);
-          ink = DrawStripInkOn(face);
-       }
-       else if(DrawStripSlotOn(slot, s_dsObj))
+       if(DrawStripSlotOn(slot, s_dsObj))
           chipOn = true;
        if(DrawStripHasPicker(slot))
           rim = (s_dsPicker == slot) ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_PICK;
+       else if(chipOn)
+          //--- TV parity: an ON toggle wears the accent hairline (the preview's
+          //--- `.scell.on{box-shadow:inset 0 0 0 1px rgba(255,194,71,.34)}`) on
+          //--- top of the accent wash the chip below lays down.
+          rim = DSTRIP_CLR_ACCENT;
        dirty |= DrawStripBtn(on, x, rowY, DSTRIP_CELL, DSTRIP_CELL, face, ink, rim, "", tip);
-       if(slot != DRAW_SLOT_COLOR)
-         dirty |= DrawStripFace(ic + "C", x, rowY, DSTRIP_CELL, DSTRIP_CELL,
-                                chipOn ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
-       else
-         //--- P-DRAW-33: the COLOUR cell is the one surface that was left flat —
-         //--- it now wears the cards' own glass sheen over its swatch (the face
-         //--- object already existed here; it was simply empty).
-         dirty |= DrawStripFace(ic + "C", x, rowY, DSTRIP_CELL, DSTRIP_CELL,
-                                "::Files\\Icons\\pnl_glass32.bmp", tip);
+       dirty |= DrawStripFace(ic + "C", x, rowY, DSTRIP_CELL, DSTRIP_CELL,
+                              chipOn ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
+       //--- a seat that was a COLOUR one up to this paint leaves no half behind:
+       //--- two probes per non-colour cell, on the repaint path only.
+       if(ObjectFind(0, ic + "S") >= 0)  { ObjectDelete(0, ic + "S"); dirty = true; }
+       if(ObjectFind(0, ic + "C2") >= 0) { ObjectDelete(0, ic + "C2"); dirty = true; }
        dirty |= DrawStripFace(ic, x, rowY, DSTRIP_CELL, DSTRIP_CELL, res, tip);
 
    }
@@ -3583,21 +4259,158 @@ void DrawStripPaint()
 
    //--- popover block (ONE at a time).
    int contentW = s_dsW - 2 * DSTRIP_PAD;
-    if(s_dsPicker == DRAW_SLOT_COLOR)
+    if(DrawStripIsColorSlot(s_dsPicker))
     {
-       // TV parity preview band: the current swatch + its hex, read-only.
+       //--- P-DRAW-64: ONE board, TWO roles — `s_dsPicker` is the colour it edits.
+       bool fillBoard = (s_dsPicker == DRAW_SLOT_FILLCLR);
+       color hc = DrawStripColorRead(s_dsObj, s_dsPicker);
+       // P-DRAW-48: THE BOARD IS ITS OWN CARD — one more 9-slice plate, at its own
+       // rect, with the family's baked shadow (= the reference's raised board).
+       dirty |= DrawStripBoardPlate();
+       // TV parity header: the carry grip + the board's own name + pin + close.
+       if(s_dsPHeadY >= 0)
+       {
+          int hy0 = s_dsBY + s_dsPHeadY;
+          int gy = hy0 + (DSTRIP_BOARD_HDR - DSTRIP_CELL) / 2;
+          int gx = s_dsBX + DSTRIP_PAD;
+          int xx = s_dsBX + s_dsBW - DSTRIP_PAD - DSTRIP_PHEAD_XW;
+          int px2 = xx - DSTRIP_BPIN_XW - 2;
+          int xy = hy0 + (DSTRIP_BOARD_HDR - DSTRIP_PHEAD_XW) / 2;
+          string gtip = "Drag this band to move the board";
+          dirty |= DrawStripFace(DrawStripPHeadGChipName(), gx, gy, DSTRIP_CELL, DSTRIP_CELL,
+                                 "::Files\\Icons\\pnl_chip.bmp", gtip);
+          dirty |= DrawStripFace(DrawStripPHeadGIconName(), gx, gy, DSTRIP_CELL, DSTRIP_CELL,
+                                 "::Files\\Icons\\bk_grip.bmp", gtip);
+          // The join is code 183 set at runtime (a literal `·` is read as a
+          // NUMBER and warns on every concatenation) and StringToUpper takes a
+          // variable, never a temporary.
+          string dot=" . ";
+          StringSetCharacter(dot,1,183);
+          string kindT = DrawKindName(s_dsKind);
+          StringToUpper(kindT);
+          //--- P-DRAW-64a, third cut (2026-09-27): THE HEADER NAMES BOTH ROLES.
+          //--- «این بوردر و fill کاربر متوجه نمیشه» — a single caption ("FILL · BOX")
+          //--- whose tap secretly switches the role is a control that cannot be found,
+          //--- so the header is a real segmented pair now: BORDER and FILL both legible,
+          //--- the active one in the accent (and bold), each a tap target that SETS its
+          //--- role outright — never a toggle to guess at. Kinds with ONE colour role
+          //--- keep the single caption. No new layout: three labels ride the same band
+          //--- the one caption used, and the prune list takes the two new names.
+          if(DrawStripMergedColor(s_dsKind) && DrawStripIsColorSlot(s_dsPicker))
+          {
+             string bRole = "BORDER", fRole = "FILL";
+             bool onB = (s_dsPicker == DRAW_SLOT_COLOR);
+             int hx0 = gx + DSTRIP_CELL + 8;
+             dirty |= DrawStripLblPt("PnlDrawS_PHeadB", hx0, hy0 + 15, bRole,
+                                     onB ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_LABEL,
+                                     "Border colour — click to edit it", 9, onB);
+             int hx1 = hx0 + PnlTextW(bRole, 9) + 12;
+             dirty |= DrawStripLblPt("PnlDrawS_PHeadF", hx1, hy0 + 15, fRole,
+                                     onB ? DSTRIP_CLR_LABEL : DSTRIP_CLR_ACCENT,
+                                     "Fill colour — click to edit it", 9, !onB);
+             int hx2 = hx1 + PnlTextW(fRole, 9) + 12;
+             dirty |= DrawStripLblPt("PnlDrawS_PHeadT", hx2, hy0 + 15, dot + " " + kindT,
+                                     DSTRIP_CLR_TITLE, gtip, 9, false);
+          }
+          else
+          {
+             string btl=(fillBoard ? "FILL " : "BORDER ")+dot+" "+kindT;
+             StringToUpper(btl);
+             dirty |= DrawStripLblPt("PnlDrawS_PHeadT", gx + DSTRIP_CELL + 8, hy0 + 15,
+                                     btl, DSTRIP_CLR_TITLE, gtip, 9, false);
+          }
+          // The reference's own pin: DOWN = docked (the board follows the strip),
+          // UP = the hand's spot. One compare per press, no state of its own.
+          dirty |= DrawStripBtn("PnlDrawS_PHeadP", px2, xy, DSTRIP_BPIN_XW, DSTRIP_BPIN_XW,
+                                DrawStripPlateFill(), DSTRIP_CLR_LABEL,
+                                s_dsBDock ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_LINE,
+                                "", s_dsBDock ? "Docked to the strip — click to leave it where you drag it"
+                                             : "Floating — click to dock it to the strip again");
+          dirty |= DrawStripFace("PnlDrawS_PHeadPI", px2, xy, DSTRIP_BPIN_XW, DSTRIP_BPIN_XW,
+                                 s_dsBDock ? "::Files\\Icons\\gl_pin_gold.bmp"
+                                           : "::Files\\Icons\\gl_pin_m.bmp",
+                                 "Dock / undock the board");
+          dirty |= DrawStripBtn("PnlDrawS_PHeadX", xx, xy, DSTRIP_PHEAD_XW, DSTRIP_PHEAD_XW,
+                                DrawStripPlateFill(), DSTRIP_CLR_LABEL, DSTRIP_CLR_LINE,
+                                "x", "Close the color picker");
+       }
+       // TV parity bands: RECENT (the trader's own five) and HEX (an exact typed
+       // value). The read-only preview band the reference does not have is gone —
+       // the current colour is marked by the RING on its own cell instead.
+       if(s_dsPRecY >= 0 && s_dsObj != "")
+       {
+          int ry = s_dsBY + s_dsPRecY + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
+          dirty |= DrawStripLblPt(DrawStripPRecLabelName(), s_dsBX + DSTRIP_PAD, s_dsBY + s_dsPRecY + 11,
+                                  "RECENT", DSTRIP_CLR_TITLE,
+                                  "Your last colours — click to reuse" + DrawStripTipScope(), 8, false);
+          for(int i = 0; i < DSTRIP_RECENT_MAX; i++)
+          {
+             string rn = DrawStripPRecName(i);
+             if(i >= s_dsRecentN)
+             {
+                if(ObjectFind(0, rn) >= 0) { ObjectDelete(0, rn); dirty = true; }
+                if(ObjectFind(0, DrawStripPRecGlassName(i)) >= 0)
+                { ObjectDelete(0, DrawStripPRecGlassName(i)); dirty = true; }
+                continue;
+             }
+             color rc = s_dsRecent[i];
+             bool rcur = (rc == hc);
+             int rpx = s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW + i * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
+             string rtip = "Recent " + DrawStripColorHex(rc) + " — click to apply" + DrawStripTipScope();
+             dirty |= DrawStripBtn(rn, rpx, ry, DSTRIP_PICK_CELL, DSTRIP_PICK_CELL, rc, DrawStripInkOn(rc),
+                                   rcur ? DSTRIP_CLR_ACCENT : BioSwatchBorder(rc, BIO_CLR_CARD), "", rtip);
+             dirty |= DrawStripFace(DrawStripPRecGlassName(i), rpx, ry, DSTRIP_PICK_CELL, DSTRIP_PICK_CELL,
+                                    rcur ? "::Files\\Icons\\ds_ring32.bmp" : "::Files\\Icons\\ds_cell32.bmp", rtip);
+          }
+       }
        if(s_dsPHexY >= 0 && s_dsObj != "")
        {
-          color hc = (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR);
-          int hx = s_dsX + DSTRIP_PAD;
-          int hy = s_dsY + s_dsPHexY + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
-          string htip = "Current color " + DrawStripColorHex(hc) + " — gear HEX types an exact value";
-          dirty |= DrawStripBtn("PnlDrawS_PHexSw", hx, hy, DSTRIP_PICK_CELL, DSTRIP_PICK_CELL, hc,
-                                DrawStripInkOn(hc), BioSwatchBorder(hc, BIO_CLR_CARD), "", htip);
-          dirty |= DrawStripFace("PnlDrawS_PHexGl", hx, hy, DSTRIP_PICK_CELL, DSTRIP_PICK_CELL,
-                                 "::Files\\Icons\\pnl_glass32.bmp", htip);
-          dirty |= DrawStripLblPt("PnlDrawS_PHexTx", hx + DSTRIP_PICK_CELL + 8, hy + 8,
-                                  DrawStripColorHex(hc), DSTRIP_CLR_LABEL, htip, 9, false);
+          int hy0 = s_dsBY + s_dsPHexY;
+          dirty |= DrawStripLblPt(DrawStripPHexLbName(), s_dsBX + DSTRIP_PAD, hy0 + 11,
+                                  "HEX", DSTRIP_CLR_TITLE, "Type #RRGGBB, Enter applies it", 8, false);
+          dirty |= DrawStripPopHex(s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW,
+                                   hy0 + (DSTRIP_PICK_ROW - DSTRIP_POP_EDIT_H) / 2,
+                                   s_dsBW - 2 * DSTRIP_PAD - DSTRIP_PREC_LW,
+                                   s_dsHexFocus ? ""
+                                      : DrawStripColorHex(DrawStripColorRead(s_dsObj, s_dsPicker)));
+       }
+       //--- P-DRAW-48: THE OPACITY BAR — the reference's own row on the cards' track
+       //--- metrics (a bed, the filled part, a knob) with the `NN%` readout in its
+       //--- own seat. The VALUE is the object's (`[OPnn]` on its description —
+       //--- DrawToolbar owns the tag and the blend the chart wears).
+       if(s_dsPOpY >= 0 && s_dsObj != "")
+       {
+          int op  = DrawSlotAlphaGet(s_dsObj, s_dsPicker);
+          int oy0 = s_dsBY + s_dsPOpY;
+          int oy  = oy0 + (DSTRIP_PICK_ROW - DSTRIP_TRK_H) / 2;
+          int otx = DrawStripOpTrackX();
+          int otw = DrawStripOpTrackW();
+          int okx = otx + (int)MathRound(op / 100.0 * (otw - DSTRIP_KNOB_W));
+          string ov = IntegerToString(op) + "%";
+          //--- the label sits in DSTRIP_PREC_LW (52) and the track starts right after
+          //--- it, so the interior's word is the short one ("Fill tone" overflowed).
+          string olb = fillBoard ? "Fill" : "Opacity";
+          dirty |= DrawStripLblPt(DrawStripPOpLbName(), s_dsBX + DSTRIP_PAD, oy0 + 11,
+                                  olb, DSTRIP_CLR_TITLE,
+                                  (fillBoard ? "Fill strength — 50% is the half-filled box"
+                                             : "Opacity of the drawing's colour") +
+                                  " — drag the bar" + DrawStripTipScope(),
+                                  8, false);
+          dirty |= DrawStripRect(DrawStripPOpBedName(), otx, oy, otw, DSTRIP_TRK_H,
+                                 DSTRIP_CLR_LINE, Z_STRIP_ICON);
+          if(okx > otx)
+             dirty |= DrawStripRect(DrawStripPOpFillName(), otx, oy, okx - otx, DSTRIP_TRK_H,
+                                    DSTRIP_CLR_ACCENT, Z_STRIP_ICON);
+          else if(ObjectFind(0, DrawStripPOpFillName()) >= 0)
+          { ObjectDelete(0, DrawStripPOpFillName()); dirty = true; }
+          dirty |= DrawStripBtn(DrawStripPOpKnobName(), okx,
+                                oy0 + (DSTRIP_PICK_ROW - DSTRIP_KNOB_H) / 2,
+                                DSTRIP_KNOB_W, DSTRIP_KNOB_H, DSTRIP_CLR_ACCENT,
+                                DSTRIP_CLR_ACCENT, DSTRIP_CLR_LINE, "",
+                                "Drag to set the opacity");
+          dirty |= DrawStripLblPt(DrawStripPOpValName(),
+                                  s_dsBX + s_dsBW - DSTRIP_PAD - PnlTextW(ov, 8), oy0 + 11,
+                                  ov, DSTRIP_CLR_VALUE, "Opacity " + ov, 8, false);
        }
        for(int r = 0; r < DSTRIP_PICK_MAX; r++)
       {
@@ -3611,22 +4424,29 @@ void DrawStripPaint()
          }
          color pc = DrawStripPickColor(s_dsPicker, r);
          bool cur = DrawStripPickIsCur(s_dsObj, s_dsKind, s_dsPicker, r);
-         int px = s_dsX + DSTRIP_PAD + (r % BIOPICK_COLS) * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
-         int py = s_dsY + s_dsPY[r] + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
+         int px = s_dsBX + DSTRIP_PAD + (r % BIOPICK_COLS) * (DSTRIP_PICK_CELL + DSTRIP_PICK_GAP);
+         int py = s_dsBY + s_dsPY[r] + (DSTRIP_PICK_ROW - DSTRIP_PICK_CELL) / 2;
          string tip = "Color: " + DrawStripColorLabel(pc) + " — click to apply" + DrawStripTipScope();
          //--- P-UI-69b: same floor as the gear grid (the popover body is #171C25,
          //--- the plate #1D222C — the floor's verdict is identical for both).
          dirty |= DrawStripBtn(pn, px, py, DSTRIP_PICK_CELL, DSTRIP_PICK_CELL, pc, DrawStripInkOn(pc),
                                cur ? DSTRIP_CLR_ACCENT : BioSwatchBorder(pc, BIO_CLR_CARD), "", tip);
          //--- P-DRAW-33: every colour surface wears the cards' glass sheen — flat
-         //--- button underneath (the click target), glass frame on top.
+         //--- button underneath (the click target), glass frame on top. The cell
+         //--- the drawing wears now takes the RING bake instead: on a rounded
+         //--- face the button's own border is covered, so the selected cell
+         //--- would otherwise read as an unselected one.
          dirty |= DrawStripFace(DrawStripPickGlassName(r), px, py,
                                 DSTRIP_PICK_CELL, DSTRIP_PICK_CELL,
-                                "::Files\\Icons\\pnl_glass32.bmp", tip);
+                                cur ? "::Files\\Icons\\ds_ring32.bmp" : "::Files\\Icons\\ds_cell32.bmp", tip);
       }
    }
    else if(s_dsPicker != DSTRIP_PICK_NONE)
    {
+      dirty |= DrawStripPopChromePrune();   // a slot switch skips the close (see it)
+      // P-DRAW-48: and the board's own plate goes with it (gated on the family
+      // being live, so a list popover probes nothing it does not own).
+      if(s_dsBPlateLive) dirty |= DrawStripSkinPurgeAt(2);
       for(int r = 0; r < DSTRIP_PICK_MAX; r++)
       {
          string pn = DrawStripPickName(r), pi = DrawStripPickIconName(r),
@@ -3906,6 +4726,9 @@ bool DrawStripOpen(const string name)
 //--- undo FIRST (single-step looks).
 int DrawStripWriteValue(const int slot, const double v)
 {
+   //--- P-DRAW-64a: the box's own 50 % needs no "show the interior" rule — it moves
+   //--- the DRAWING's far anchor, so it is visible with the fill off, on, or never
+   //--- (the user's own correction: «۵۰ درصد باکس فقط میخوام، fill بهکارم نمیاد»).
    DrawSelPrune();
    int n = DrawSelCount();
    if(n <= 0)
@@ -3935,6 +4758,10 @@ void DrawStripUndoLook(const string nm, const int i)
    s_duW[i] = (int)DrawSlotRead(nm, DRAW_SLOT_WIDTH);
    s_duSt[i] = (int)DrawSlotRead(nm, DRAW_SLOT_STYLE);
    s_duFill[i] = (DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5 ? 1 : 0);
+   //--- P-DRAW-64: undo restores the interior too — a 50% fill the user did not
+   //--- want must come back off in ONE step like every other look change.
+   s_duFillClr[i] = (color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR);
+   s_duFillOp[i]  = DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR);
    s_duRay[i] = (int)DrawSlotRead(nm, DRAW_SLOT_RAY);
    s_duFont[i] = (int)DrawSlotRead(nm, DRAW_SLOT_FONT);
    s_duGlyph[i] = (int)DrawSlotRead(nm, DRAW_SLOT_GLYPH);
@@ -4005,6 +4832,11 @@ bool DrawStripUndoPop()
       if(DrawSlotAvailable(DrawKindOf(nm), DRAW_SLOT_GLYPH))
          DrawSlotWrite(nm, DRAW_SLOT_GLYPH, (double)s_duGlyph[i]);
       DrawSlotWrite(nm, DRAW_SLOT_BACK, (double)s_duBack[i]);
+      if(DrawSlotAvailable(DrawKindOf(nm), DRAW_SLOT_FILLCLR))
+      {
+         DrawSlotWrite(nm, DRAW_SLOT_FILLCLR, (double)(int)s_duFillClr[i]);
+         DrawSlotOpacitySet(nm, s_duFillOp[i], DRAW_SLOT_FILLCLR);
+      }
    }
    if(s_duLvN > 0 && s_dsObj != "" && ObjectFind(0, s_dsObj) >= 0 && DrawKindHasLevels(s_dsKind))
    {
@@ -4035,6 +4867,9 @@ bool DrawStripPresetApplyGroup(const int row)
    int gn = DrawSelCount();
    if(gn > 0) { for(int j = 0; j < gn; j++) DrawPresetApply(DrawSelAt(j), row); }
    else DrawPresetApply(s_dsObj, row);
+   //--- P-DRAW-64a: a preset re-inks the border, so a box wearing its level gets the
+   //--- new blend at once — not on the pump's next pass. One guarded call per member.
+   BoxMidSyncGroup();
    s_dsTpl[k] = row;
    return true;
 }
@@ -4048,6 +4883,10 @@ void DrawStripLearnCurrent()
    for(int s = 0; s < DRAW_SLOT_N; s++)
    {
       if(s == DRAW_SLOT_MORE || s == DRAW_SLOT_LOCK || s == DRAW_SLOT_BACK) continue;
+      //--- P-DRAW-64a: the level and the travelling edge are ARRANGEMENTS, not looks —
+      //--- "learn the look" must not touch them, and same-value writes on them would
+      //--- cost two description reads for a guaranteed no-op.
+      if(s == DRAW_SLOT_BOXHALF || s == DRAW_SLOT_EXTEND) continue;
       if(!DrawSlotAvailable(k, s)) continue;
       DrawSlotWrite(s_dsObj, s, DrawSlotRead(s_dsObj, s));
    }
@@ -4061,13 +4900,15 @@ bool DrawStripPickApply(const int slot, const int row)
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
    EDrawKind k = s_dsKind;
    if(k == DK_NONE) return false;
-   if(slot == DRAW_SLOT_COLOR)
+   if(DrawStripIsColorSlot(slot))
    {
       color c = DrawStripPickColor(slot, row);
       if(c == clrNONE) return false;
       DrawStripRecentPush(c);
       DrawStripUndoPush();
-      DrawStripWriteValue(DRAW_SLOT_COLOR, (double)(int)c);
+      if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
+      DrawStripWriteValue(slot, (double)(int)c);
+      if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
       return true;
    }
    if(slot == DRAW_SLOT_WIDTH)
@@ -4273,7 +5114,11 @@ bool DrawStripDuplicate()
 //--- P-DRAW-13 — A TAP OPENS, IT NEVER GUESSES. Quick value cells toggle their
 //--- popover (BaseKnot's dropdown contract); toggles flip at once; chrome
 //--- actions fire at once. No branch here mutates a value off a value cell.
-bool DrawStripTap(const int idx)
+//--- P-DRAW-64a: `tap` names the OBJECT the terminal reported, because the merged
+//--- colour seat carries two roles and the hand's own landing decides which one:
+//--- the centred swatch and its skin are the INTERIOR's, the cell's button and its
+//--- 32px skin the BORDER's.
+bool DrawStripTap(const int idx, const string tap)
 {
    if(!s_dsOpen || s_dsObj == "" || idx < 0 || idx >= DSTRIP_MAX_SLOTS) return false;
    if(idx >= s_dsN) return false;
@@ -4281,6 +5126,11 @@ bool DrawStripTap(const int idx)
    if(k == DK_NONE) { DrawStripClose(); return true; }
    int slot = DrawStripQuickSlotAt(k, idx);
    if(slot < 0) return true;
+   if(slot == DRAW_SLOT_FILLCLR)
+   {
+      string seat = DrawStripIconName(idx);
+      if(tap != seat + "S" && tap != seat + "C2") slot = DRAW_SLOT_COLOR;
+   }
    if(DrawStripHasPicker(slot))
    {
       DrawStripGearClose();
@@ -4296,10 +5146,15 @@ bool DrawStripTap(const int idx)
       DrawStripWriteValue(slot, (DrawSlotRead(s_dsObj, slot) > 0.5) ? 0.0 : 1.0);
       // P-DRAW-09b: locking is the one tap that can end the group's usefulness
       // (a locked member cannot be grabbed again by accident), so the strip
-       // loses nothing here — it stays, and one more tap frees it.
-       DrawStripPaint();
-       BoxMidSyncServed();   // P-DRAW-21: a fill/lock/back flip restyles the mid
-       return true;
+      // loses nothing here — it stays, and one more tap frees it.
+      DrawStripPaint();
+      //--- P-DRAW-64a: the WHOLE group, not just the held box — a BACK flip moves every
+      //--- member's layer, and every member wearing its level needs the new one. One
+      //--- description read per member per tap (a tap is not a stream), writes only
+      //--- where something really changed.
+      BoxMidSyncGroup();   // P-DRAW-21: a fill/lock/back flip restyles the mid
+      return true;
+
    }
    return true;
 }
@@ -4341,18 +5196,58 @@ void DrawStripFireDelete()
    DrawSelPrune();
    int n = DrawSelCount();
    // P-DRAW-21: a box delete takes its mid child (else an orphan trend survives).
-   if(n > 0) { for(int j = 0; j < n; j++) { BoxMidDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j)); } }
-   else if(s_dsObj != "") { BoxMidDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
+   //--- P-DRAW-64: and its interior. A child MT4 never cascades: leaving it behind
+   //--- would be a filled shape with no drawing around it.
+   if(n > 0)
+   {
+      for(int j = 0; j < n; j++)
+      { BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j)); }
+   }
+   else if(s_dsObj != "") { BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    DrawStripClose();
    ChartRedraw();
 }
-//--- P-DRAW-11 — A PICK APPLIES AND SHUTS (levels: multi-stay). The caller passes
-//--- the popover row; the row is validated against the open popover's own count.
+//--- TV parity board: a RECENT cell applies the colour it shows. Same three
+//--- steps as a grid cell (`DrawStripPickApply`'s colour branch, which cannot
+//--- reach these rows any more: they are their own band now) and the board STAYS
+//--- (P-DRAW-48 multi-stay: the opacity bar beside it is the user's next act).
+bool DrawStripPickTapRecent(const int i)
+{
+   if(!s_dsOpen || s_dsObj == "" || !DrawStripIsColorSlot(s_dsPicker)) return false;
+   if(i < 0 || i >= s_dsRecentN) return false;
+   //--- P-DRAW-64: the scrub's release witness (see `DrawStripPalRelease`).
+   if(s_dsPalDoneMs != 0 && GetTickCount() - s_dsPalDoneMs < DSTRIP_PAL_TAIL_MS)
+      return DrawStripClickFamily();
+   if(s_dsPalGrab) { s_dsPalDoneMs = GetTickCount(); DrawStripPalHighlightEnd(); }
+   DrawStripColorHoverClear();
+   color c = s_dsRecent[i];
+   DrawStripRecentPush(c);   // reusing one moves it back to the front
+   DrawStripUndoPush();
+   //--- P-DRAW-64: the recents are the board's own colours too — a recent tapped on
+   //--- the FILL board is a fill, exactly like the grid, the hex and the bar. Was the
+   //--- one path that forgot it: a tap that changed no pixel read as "nothing happened".
+   if(DrawStripIsColorSlot(s_dsPicker) && s_dsPicker == DRAW_SLOT_FILLCLR)
+      DrawStripFillShowGroup();
+   if(DrawStripIsColorSlot(s_dsPicker) && s_dsPicker == DRAW_SLOT_FILLCLR)
+      DrawStripFillShowGroup();
+   DrawStripWriteValue(s_dsPicker, (double)(int)c);
+   if(s_dsPicker == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
+   DrawStripPaint();   // P-DRAW-48 multi-stay: the board waits for ✕ / Esc / its own cell
+   return true;
+}
+//--- P-DRAW-11 — A PICK APPLIES AND SHUTS (levels, and the colour board since
+//--- P-DRAW-48: multi-stay). The caller passes the popover row; the row is
+//--- validated against the open popover's own count.
 bool DrawStripPickTap(const int row)
 {
    if(!s_dsOpen || s_dsObj == "") return false;
    if(s_dsPicker == DSTRIP_PICK_NONE) return false;
-   if(s_dsPicker == DRAW_SLOT_COLOR) DrawStripColorHoverClear();
+   //--- P-DRAW-64: the scrub's release witness, asked FIRST — whichever channel gets
+   //--- here first applies; the second only clears the highlight.
+   if(s_dsPalDoneMs != 0 && GetTickCount() - s_dsPalDoneMs < DSTRIP_PAL_TAIL_MS)
+      return DrawStripClickFamily();
+   if(s_dsPalGrab) { s_dsPalDoneMs = GetTickCount(); DrawStripPalHighlightEnd(); }
+   if(DrawStripIsColorSlot(s_dsPicker)) DrawStripColorHoverClear();
    if(row < 0 || row >= s_dsPN) return false;
    if(s_dsPicker == DSTRIP_MORE) return DrawStripMoreTap(row);
    if(s_dsPicker == DSTRIP_SLOT_LEVELS)
@@ -4365,11 +5260,31 @@ bool DrawStripPickTap(const int row)
       return true;
    }
    DrawStripPickApply(s_dsPicker, row);
+   //--- P-DRAW-48 — THE COLOUR BOARD STAYS. User order: «روی رنگ کلیک میکنم بسته
+   //--- میشه نمیزاره شفافیت تنظیم بکنم» — the board carries the opacity bar, so a
+   //--- pick that shuts it takes the bar away exactly when the next act is tuning
+   //--- it. The value applies; ✕, Esc or the strip's colour cell close the board.
+   if(DrawStripIsColorSlot(s_dsPicker)) { DrawStripPaint(); return true; }
    DrawStripClosePicker();
    DrawStripLayout();
    DrawStripPaint();
    return true;
 }
+//--- P-DRAW-64 — THE 50% FILL's write: the group fan-out, undoable, through the
+//--- one owner of the FILL slot and the one owner of the tone (`DrawStripFill50On`
+//--- above). It lives here because the undo push and the group are defined here.
+bool DrawStripFill50Apply()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+   if(!DrawSlotAvailable(s_dsKind, DRAW_SLOT_FILLCLR)) return false;
+   DrawStripUndoPush();
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { DrawStripFill50On(s_dsObj); return true; }
+   for(int i = 0; i < n; i++) DrawStripFill50On(DrawSelAt(i));
+   return true;
+}
+
 //--- more-popover rows.
 bool DrawStripMoreTap(const int row)
 {
@@ -4423,6 +5338,12 @@ bool DrawStripMoreTap(const int row)
       DrawStripLayout();
       DrawStripPaint();
       return true;
+   }
+   if(kind == DSTRIP_MK_FILL50)
+   {
+      DrawStripFill50Apply();
+      DrawStripPaint();
+      return true;   // the row's own state changed: the popover stays where it is
    }
    if(kind == DSTRIP_MK_UNDO)
    {
@@ -4582,6 +5503,17 @@ bool DrawStripEditEnd(const int e)
       DrawStripWriteValue(DRAW_SLOT_COLOR, (double)(int)c);
       DrawStripPaint();
       return true;
+   }    if(e == 4)
+   {
+      //--- P-DRAW-64: the FILL field — the interior's own colour, typed exactly.
+      color fc;
+      if(!DrawStripHexToColor(txt, fc)) return true;
+      DrawStripRecentPush(fc);
+      DrawStripUndoPush();
+      DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
+      DrawStripWriteValue(DRAW_SLOT_FILLCLR, (double)(int)fc);
+      DrawStripPaint();
+      return true;
    }
    if(e == 1)
    {
@@ -4622,6 +5554,28 @@ bool DrawStripEditEnd(const int e)
       DrawStripPaint();
       return true;
    }
+   return true;
+}
+//--- TV parity board: the HEX field's commit (Enter). The parse and the write are
+//--- the gear's own (`DrawStripHexToColor` + the one write path) — an invalid
+//--- string keeps the typed text for another try, like every other edit here.
+bool DrawStripPopHexEnd()
+{
+   if(!s_dsOpen || s_dsObj == "") return false;
+   string nm = DrawStripPHexEdName();
+   if(ObjectFind(0, nm) < 0) return false;
+   color c;
+   if(!DrawStripHexToColor(ObjectGetString(0, nm, OBJPROP_TEXT), c)) return true;
+   DrawStripRecentPush(c);
+   DrawStripUndoPush();
+   //--- P-DRAW-64: the field belongs to the BOARD it sits on, so it writes the
+   //--- board's own role — typing a hex while the FILL board is open is a fill.
+   int hslot = DrawStripIsColorSlot(s_dsPicker) ? s_dsPicker : DRAW_SLOT_COLOR;
+   if(hslot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
+   DrawStripWriteValue(hslot, (double)(int)c);
+   if(hslot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
+   s_dsHexFocus = false;   // P-DRAW-48: the field is the colour's face again
+   DrawStripPaint();
    return true;
 }
 //--- P-DRAW-13: the grip carry. Screen objects only (SELECTABLE=false), so the
@@ -4665,13 +5619,45 @@ int DrawStripGripWhich(const int mx, const int my)
    int rowY = s_dsY + DSTRIP_PAD;
    if(mx >= s_dsX + DSTRIP_PAD && mx <= s_dsX + DSTRIP_PAD + DSTRIP_CELL &&
       my >= rowY && my <= rowY + DSTRIP_CELL) return 1;
-   if(my >= rowY && my <= rowY + DSTRIP_CELL &&
-      mx >= s_dsX + DSTRIP_PAD + DSTRIP_CELL + DSTRIP_GAP &&
-      mx <= s_dsX + DSTRIP_PAD + DSTRIP_CELL + DSTRIP_GAP + s_dsBadgeW) return 1;
-   return 0;
+    if(my >= rowY && my <= rowY + DSTRIP_CELL &&
+       mx >= s_dsX + DSTRIP_PAD + DSTRIP_CELL + DSTRIP_GAP &&
+       mx <= s_dsX + DSTRIP_PAD + DSTRIP_CELL + DSTRIP_GAP + s_dsBadgeW) return 1;
+    // P-DRAW-48: the BOARD's own header carries the BOARD (its two seats — pin
+    // and close — excluded). It is asked FIRST: the board can sit anywhere,
+    // including over the strip, and a press on ITS header is never the strip's.
+    if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0 && s_dsPHeadY >= 0)
+    {
+       int hy0 = s_dsBY + s_dsPHeadY, hy1 = hy0 + DSTRIP_BOARD_HDR;
+       int xx0 = s_dsBX + s_dsBW - DSTRIP_PAD - 2 * DSTRIP_PHEAD_XW - 2 - 2;
+       if(my >= hy0 && my <= hy1 && mx >= s_dsBX && mx <= s_dsBX + s_dsBW && mx < xx0) return 3;
+    }
+    return 0;
 }
 //--- DrawStripGripRelease lives with the carry's STATE (the file's state block):
 //--- it owns the view lock's release, and `DrawStripClose` must be able to call it.
+//--- P-DRAW-64 — THE SCRUB'S RELEASE. Either witness applies and marks the tail;
+//--- the other one inside the window only clears the highlight, because ONE
+//--- physical release arrives on more than one channel (P-UI-113c's own lesson) and
+//--- two applications would be two undo steps for one gesture. A release off the
+//--- grid is a CANCEL: the pixels go back to what the tags say.
+bool DrawStripPalRelease(const int mx, const int my)
+{
+   bool fresh = (s_dsPalDoneMs != 0 && GetTickCount() - s_dsPalDoneMs < DSTRIP_PAL_TAIL_MS);
+   DrawStripPalHighlightEnd();
+   if(fresh) return true;   // the click channel already applied it
+   int cell = -1;
+   if(!DrawStripPalHit(mx, my, cell))
+   {
+      DrawStripPalTo(-1);   // off the palette: cancel
+      s_dsPalDoneMs = GetTickCount();
+      return true;
+   }
+   if(cell >= DSTRIP_HOVER_REC_BASE) DrawStripPickTapRecent(cell - DSTRIP_HOVER_REC_BASE);
+   else DrawStripPickApply(s_dsPicker, cell - DSTRIP_HOVER_POP_BASE);
+   s_dsPalDoneMs = GetTickCount();
+   return true;
+}
+
 void DrawStripGripMove(const int mx, const int my, const bool left)
 {
    // P-DRAW-17: the press EDGE and the latch are the router head's (it runs on
@@ -4679,6 +5665,33 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    if(!s_dsOpen) { DrawStripGripRelease(); return; }
    if(left && s_dsLeftPress)
    {
+      // P-DRAW-48: THE OPACITY BAR'S OWN PRESS, asked FIRST — the bar lives on the
+      // board, so its press is never a carry and never the chart's. Without this
+      // term the gesture fell through to the terminal and panned the chart under
+      // the board (the report: «شفافیت که درگ میکنم چارت پشتش تکون میخوره»).
+      if(DrawStripOpBarAt(mx, my))
+      {
+         ChartViewLockAcquire();   // P-UI-113d: the bar owns the view while held
+         s_dsOpGrab = true;
+         s_dsOpMs = 0;
+         if(DrawStripOpDragTo(mx)) DrawStripPaint();   // a tap ON the bar sets it
+         return;
+      }
+      //--- P-DRAW-64: THE PALETTE SCRUB — a press on a colour cell previews while
+      //--- the hand drags (the release applies). Asked AFTER the bar (the bar owns
+      //--- its own row) and BEFORE the carries, so a press on a swatch is never a
+      //--- carry of the board it sits on.
+      int palCell = -1;
+      if(DrawStripPalHit(mx, my, palCell))
+      {
+         ChartViewLockAcquire();   // P-UI-113d: the scrub owns the view while held
+         s_dsPalGrab = true;
+         s_dsPalMs = 0;
+         s_dsPalCell = -1;
+         DrawStripPalMembers();
+         DrawStripPalTo(palCell);
+         return;
+      }
       int which = DrawStripGripWhich(mx, my);
       if(which != 0)
       {
@@ -4689,6 +5702,14 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
             s_dsGGripDX = mx - s_dsGEX;
             s_dsGGripDY = my - s_dsGEY;
          }
+         else if(which == 3)
+         {
+            // P-DRAW-48: the board's own header — its offset is off ITS origin,
+            // so the card follows the hand and the strip stays where it was put.
+            s_dsBGripLive = true;
+            s_dsBGripDX = mx - s_dsBX;
+            s_dsBGripDY = my - s_dsBY;
+         }
          else
          {
             s_dsGripLive = true;
@@ -4697,7 +5718,38 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
          }
       }
    }
-   if(!left) { DrawStripGripRelease(); return; }
+   if(!left)
+   {
+      //--- P-DRAW-64: the scrub's own release — it applies (or cancels) FIRST, then
+      //--- the one ender hands the view back (the flag is still its to clear).
+      if(s_dsPalGrab) DrawStripPalRelease(mx, my);
+      DrawStripGripRelease();
+      return;
+   }
+   //--- P-DRAW-48: the bar's own carry — the value follows the hand and the view is
+   //--- asserted every step, so the chart behind the board cannot take the scroll
+   //--- back mid-drag (A-09/G-07). One paint per real change, on the carry's cadence.
+   if(s_dsOpGrab)
+   {
+      ChartViewLockAssert();
+      uint nowOp = GetTickCount();
+      if(nowOp - s_dsOpMs < DSTRIP_GRIP_MS) return;
+      s_dsOpMs = nowOp;
+      if(DrawStripOpDragTo(mx)) DrawStripPaint();
+      return;
+   }
+   //--- P-DRAW-64: the scrub's hold — the hit test on the carry's cadence, the
+   //--- re-ink only when the CELL really changed (see the note on the state block).
+   if(s_dsPalGrab)
+   {
+      ChartViewLockAssert();
+      uint nowPal = GetTickCount();
+      if(nowPal - s_dsPalMs < DSTRIP_GRIP_MS) return;
+      s_dsPalMs = nowPal;
+      int cell = -1;
+      DrawStripPalTo(DrawStripPalHit(mx, my, cell) ? cell : -1);
+      return;
+   }
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
    int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
    int gm = 4 + DSTRIP_SKIN_M;   // P-DRAW-29: the carried skin stays on screen
@@ -4720,6 +5772,26 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
       DrawStripPaint();
       return;
    }
+   //--- P-DRAW-48: THE BOARD's carry (its header), before the strip's.
+   if(s_dsBGripLive)
+   {
+      ChartViewLockAssert();
+      uint nowB = GetTickCount();
+      if(nowB - s_dsBGripMs < DSTRIP_GRIP_MS) return;
+      s_dsBGripMs = nowB;
+      int bx2 = mx - s_dsBGripDX, by2 = my - s_dsBGripDY;
+      if(bx2 < gm) bx2 = gm;
+      if(by2 < gm) by2 = gm;
+      if(bx2 > cw - s_dsBW - gm) bx2 = cw - s_dsBW - gm;
+      if(by2 > ch - s_dsBH - gm) by2 = ch - s_dsBH - gm;
+      if(bx2 == s_dsBX && by2 == s_dsBY) return;
+      s_dsBX = bx2; s_dsBY = by2;
+      // The hand placed it: that spot IS the undocked state (the reference's pin).
+      s_dsBManual = true;
+      s_dsBDock = false;
+      DrawStripPaint();
+      return;
+   }
    if(!s_dsGripLive) return;
    ChartViewLockAssert();   // P-BK-14: a third writer (a panel closing, a template reset) can
                             // flip the props back while the button is still down
@@ -4734,6 +5806,9 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    if(nx == s_dsX && ny == s_dsY) return;
    s_dsX = nx; s_dsY = ny;
    DrawStripHomeSet(s_dsX, s_dsY);   // P-DRAW-41: the hand just moved the home
+   // P-DRAW-48: a DOCKED board follows its strip; a floated one stays where the
+   // hand left it (that is the pin's own meaning).
+   if(DrawStripIsColorSlot(s_dsPicker) && !s_dsBManual) DrawStripBoardPlace();
    DrawStripPaint();
 }
 
@@ -4953,6 +6028,21 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    // one invocation, so this is a local, not state).
    bool relWasDrag = false;
    string relPressObj = "";   // P-UI-113i: this button-up's own press owner
+   //--- P-DRAW-64 addendum 5 (2026-09-27) — THE INTERIOR'S STEP IS NOT THE STRIP'S.
+   //--- This witness stands ABOVE EVERY GUARD below, because the split belongs to
+   //--- the DRAWING: with the strip shut, the old placement sat two hundred lines
+   //--- further down and returned first, so a box dragged then kept its pre-drag
+   //--- interior until the pump's 2 s pass («این باکس هنوز همین طوریه … اون fill
+   //--- ریل تایم همراه جابجا نمیشه»), and the terminal's own properties dialog fires
+   //--- no drag event at all. Cost per witness: 1-2 compares for a line or any other
+   //--- kind, ~12 guarded reads for a user FILLER kind, a write only on a real move.
+   if((id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CHANGE) && sparam != "")
+   {
+      //--- P-DRAW-64 addendum 6: the drag event stamps, and it ARMS the move memo, so
+      //--- a frame the terminal coalesces away is still covered by the hand's own stream.
+      FillChildStampArm(sparam);
+      FillChildSync(sparam);
+   }
    // P-DRAW-17: the left button's press edge and travel, on EVERY move — the
    // trigger needs them while the strip is CLOSED, the grip carry needs the edge
    // while it is OPEN. Computed once here, read by both.
@@ -4986,6 +6076,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
             s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
             DrawHitCacheClear();   // the hit memo is a GESTURE's, never a session's
             s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press
+            FillChildStampArm(s_dsPressObj);   // P-DRAW-64 addendum 6: the hand's own ride
             DrawStripOpenerDisarm();   // P-UI-113c: a NEW press is never the old gesture
             DrawStripHoldSelectionDisarm();  // P-UI-113g: nor may the repair fight it
          }
@@ -4995,6 +6086,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
          int adx = tmx - s_dsPressX; if(adx < 0) adx = -adx;
          int ady = tmy - s_dsPressY; if(ady < 0) ady = -ady;
          if(adx + ady > s_dsTravel) s_dsTravel = adx + ady;
+         //--- P-DRAW-64 addendum 6: under a held button the interior rides the HAND.
+         //--- One compare against the memo's four values; a frame that really moved
+         //--- pays the guarded sync, a still frame costs four reads and nothing else.
+         FillChildStamp(s_dsPressObj);
       }
       else if(s_dsOpenerUntil != 0)
       {
@@ -5038,7 +6133,20 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        // clears it around its own click, and the control the hand is on stops being
        // part of any drawn body at that exact moment.
        if(relPressObj == "") relPressObj = s_dsPressCycleObj;
+       //--- P-DRAW-64 addendum 5 (2026-09-27): THE RELEASE RE-STAMPS THE CHILDREN.
+       //--- A gesture's LAST drag frame can be coalesced away, and a release is the
+       //--- end of every gesture AND names its own object — so this one call is the
+       //--- cheap witness that repairs it in the frame the hand lets go, before the
+       //--- dismissal below can return. Once per gesture, ~12 guarded reads.
+        if(relPressObj != "")
+        {
+           FillChildSync(relPressObj);
+           BoxMidSync(relPressObj);
+        }
+        FillChildStampRelease();   // P-DRAW-64 addendum 6: the hand let go, so the memo rests
+
        s_dsPressObj = "";
+
        s_dsPressTracked = false;
        DrawStripPressCycleClear();   // P-UI-113j: this event IS this press's release
        if(openerSpent)
@@ -5073,7 +6181,11 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // FAMILY (9 skin pieces, or the legacy rect) — any of them is the plate.
       if(DrawStripIsBg(sparam))
       {
-         if(s_dsPicker != DSTRIP_PICK_NONE)
+         //--- P-DRAW-48: the BOARD's own plate is dead space — a near miss between
+         //--- two cells (the 8 px gap) landed on the plate's body and shut the whole
+         //--- board, which is half of the report «روی رنگ کلیک میکنم بسته میشه».
+         //--- Only the STRIP's and the PANEL's plates still shut the popover.
+         if(!DrawStripIsBoardPlate(sparam) && s_dsPicker != DSTRIP_PICK_NONE)
          {
             DrawStripClosePicker();
             DrawStripLayout();
@@ -5085,22 +6197,71 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // and the icon label (its face), because MT4 gives the click to whichever
       // screen object sits highest under the cursor.
       for(int i = 0; i < DSTRIP_MAX_SLOTS; i++)
-      {
-         if(sparam == DrawStripObjName(i) || sparam == DrawStripIconName(i) ||
-            sparam == DrawStripIconName(i) + "C")
-         { DrawStripTap(i); return DrawStripClickFamily(); }
-      }
-      if(sparam == DrawStripGripName() || sparam == DrawStripGripIconName() ||
-         sparam == DrawStripGripIconName() + "C" || sparam == DrawStripBadgeName() ||
-         sparam == DrawStripGearTrackName())
-         return DrawStripClickFamily();   // drag / info / tab bed: no tap
+      {          if(sparam == DrawStripObjName(i) || sparam == DrawStripIconName(i) ||
+             sparam == DrawStripIconName(i) + "C" || sparam == DrawStripIconName(i) + "S" ||
+             sparam == DrawStripIconName(i) + "C2")
+          { DrawStripTap(i, sparam); return DrawStripClickFamily(); }
+      }       if(sparam == DrawStripGripName() || sparam == DrawStripGripIconName() ||
+          sparam == DrawStripGripIconName() + "C" || sparam == DrawStripBadgeName() ||
+          sparam == DrawStripGearTrackName() ||
+          // TV parity board: its grip / name tiles are the carry's, not a control's.
+          sparam == DrawStripPHeadGName() || sparam == DrawStripPHeadGChipName() ||
+          sparam == DrawStripPHeadGIconName() || sparam == DrawStripPRecLabelName() ||
+          sparam == DrawStripPHexLbName())
+          return DrawStripClickFamily();   // drag / info / tab bed: no tap
       for(int a = 0; a < DSTRIP_ACT_N; a++)
       {
          if(sparam == DrawStripActName(a) || sparam == DrawStripActIconName(a) ||
             sparam == DrawStripActIconName(a) + "C")
          { DrawStripActTap(a); return DrawStripClickFamily(); }
       }
-      // popover rows (button, face, label — one tap).
+       // popover header close seat.
+       if(sparam == "PnlDrawS_PHeadX")
+       {
+          DrawStripClosePicker();
+          DrawStripLayout();
+          DrawStripPaint();
+          return DrawStripClickFamily();
+       }
+       // P-DRAW-64a: the board's header NAMES THE ROLES — each segment sets its own
+       // (see the paint), so there is no secret toggle to discover.
+       if(sparam == "PnlDrawS_PHeadB" && DrawStripMergedColor(s_dsKind) &&
+          DrawStripIsColorSlot(s_dsPicker))
+       {
+          if(s_dsPicker == DRAW_SLOT_COLOR) return DrawStripClickFamily();
+          s_dsPicker = DRAW_SLOT_COLOR;
+          DrawStripLayout();
+          DrawStripPaint();
+          return DrawStripClickFamily();
+       }
+       if(sparam == "PnlDrawS_PHeadF" && DrawStripMergedColor(s_dsKind) &&
+          DrawStripIsColorSlot(s_dsPicker))
+       {
+          if(s_dsPicker == DRAW_SLOT_FILLCLR) return DrawStripClickFamily();
+          s_dsPicker = DRAW_SLOT_FILLCLR;
+          DrawStripLayout();
+          DrawStripPaint();
+          return DrawStripClickFamily();
+       }
+       // TV parity board: the RECENT band's cells, and the HEX field (a tap there
+       // is a tap on the field itself — it takes focus for typing, no action).
+       for(int i = 0; i < DSTRIP_RECENT_MAX; i++)
+          if(sparam == DrawStripPRecName(i) || sparam == DrawStripPRecGlassName(i))
+          { DrawStripPickTapRecent(i); return DrawStripClickFamily(); }
+       // P-DRAW-48: a tap on the field takes the focus, and `s_dsHexFocus` is what
+       // stops the live seed from overwriting the hex being typed.
+       if(sparam == DrawStripPHexEdName()) { s_dsHexFocus = true; return DrawStripClickFamily(); }
+       // P-DRAW-48: the board's PIN (the reference's dock/undock).
+       if(sparam == "PnlDrawS_PHeadP" || sparam == "PnlDrawS_PHeadPI")
+       {
+          s_dsBDock = !s_dsBDock;
+          s_dsBManual = !s_dsBDock;      // floating = wherever it stands now
+          if(s_dsBDock) DrawStripBoardPlace();
+          DrawStripLayout();
+          DrawStripPaint();
+          return DrawStripClickFamily();
+       }
+       // popover rows (button, face, label — one tap).
       for(int r = 0; r < DSTRIP_PICK_MAX; r++)
       {
           if(sparam == DrawStripPickName(r) || sparam == DrawStripPickIconName(r) ||
@@ -5128,7 +6289,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
              sparam == DrawStripFootLabelName(f))
           { DrawStripFootTap(f); return DrawStripClickFamily(); }
 
-      for(int e = 0; e < 4; e++)
+      for(int e = 0; e < 5; e++)
          if(sparam == DrawStripEditName(e)) return DrawStripClickFamily();
    }
    // P-DRAW-08f: the drawing was deleted from the TERMINAL's own menu (or by the
@@ -5143,6 +6304,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // Deletes are rare: one probe find is the whole cost. A deleted CHILD
       // needs nothing: the pump re-syncs it while the marker says on.
       if(!BoxIsMidChild(sparam)) BoxMidDrop(sparam);
+      //--- P-DRAW-64: the same for the interior's child (a delete is rare: the
+      //--- probe find is the whole cost). A deleted CHILD needs nothing — the
+      //--- master is still there and the next sync makes it again.
+      if(!FillIsChild(sparam)) FillChildDrop(sparam);
       return false;
    }
    // P-DRAW-41 (2026-09-25) — THIS CHANNEL USED TO FOLLOW. P-DRAW-08c/08e/09d made
@@ -5151,9 +6316,15 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    // on the drawing it serves: the plate chased the work into the work. The home is
    // the answer — the plate stays where the user put it. What is left here is the box
    // mid, which really does move with its object (P-DRAW-23: same event, own
-   // cadence), and the clamp. One throttle still bounds both.
+   // cadence), and the clamp. One throttle still bounds the MID; the interior's own
+   // sync is exempt (addendum 4/5) because its lag is the visible one.
    if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_CHART_CHANGE)
    {
+       // P-DRAW-64 addendum 4/5: the interior's own sync is deliberately NOT here.
+       // It is exempt from this throttle (50 ms is ~15 px of a hand and ~100 px of a
+       // flick — exactly the extra edge the user saw beside the frame) and it now
+       // stands at the head of this function, above every guard, so a shut strip
+       // cannot swallow it either.
        uint now = GetTickCount();
        if(now - s_dsAnchorMs < DSTRIP_MID_MS) return false;
        s_dsAnchorMs = now;
@@ -5206,12 +6377,16 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       return true;
    }
    // P-DRAW-13: gear edits commit on Enter (ENDEDIT).
+   // P-DRAW-48: THE `if` WAS INSIDE THIS COMMENT (the closing `)` and the `if` on one
+   // line), so the block below ran on EVERY event — the hex field's commit fired on
+   // its own click, before the field had ever taken a keystroke.
    if(id == CHARTEVENT_OBJECT_ENDEDIT)
-   {
-      for(int e = 0; e < 4; e++)
-         if(sparam == DrawStripEditName(e)) { DrawStripEditEnd(e); return true; }
-      return false;
-   }
+    {
+       if(sparam == DrawStripPHexEdName()) { DrawStripPopHexEnd(); return true; }
+       for(int e = 0; e < 5; e++)
+          if(sparam == DrawStripEditName(e)) { DrawStripEditEnd(e); return true; }
+       return false;
+    }
     if(id == CHARTEVENT_CLICK)
     {
        DrawStripGripRelease();   // motionless releases emit no MOVE (P-LM-13 net)

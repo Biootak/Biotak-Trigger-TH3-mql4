@@ -55,12 +55,6 @@ function dashSegs(x1, y1, x2, y2, dash, gap, w) {
   }
   return out;
 }
-function dashPoly(points, dash, gap, w) {
-  const out = [];
-  for (let i = 0; i < points.length - 1; i++)
-    out.push(...dashSegs(points[i][0], points[i][1], points[i + 1][0], points[i + 1][1], dash, gap, w));
-  return out;
-}
 
 // ---------------------------------------------------------------- icon art (32x32 space)
 // Semantic icon set — each glyph IS the Ichimoku component it toggles:
@@ -206,6 +200,8 @@ const ART = {
 //   bk_w1..5        : border width glyphs (line + end ticks, thickness 1..5)
 //   bk_lock_off     : OPEN padlock (unlocked)
 //   bk_lock_on      : closed padlock, amber-filled body (locked)
+//   bk_lock_on_g    : closed padlock in ACCENT ink — the ON toggle's own face
+//                     (P-DRAW-47: the ON chip is a wash, so the ink is the accent)
 //   bk_del          : outlined trash can
 //   bk_more         : three horizontal dots (full-settings menu)
 //   bk_chev         : small down-chevron (STYLE/WIDTH ▾ selectors — a text
@@ -1412,11 +1408,15 @@ function ftBtnSkin(accent, primary, width) {
 // the baked light/shadow gives the preview's gloss. Accent-independent
 // (white/black alpha only), so one file serves all six accents.
 // Contract (R-SUBLADDER pattern — change all three together):
-//   PAL_W/H        = PalW()/PalH() in Biotak/BiotakPanels.mqh
+//   PAL_W/H        = PalW()/PalH() in Biotak/BiotakPanels.mqh (201 x 408)
 //   TRACK_GLOSS    = PNL_TRACK_W-2 x PNL_TRK_H
 //   NAV_W/H        = the NAV pill geometry in PnlCreateRow (118x26)
 //   GLASS sizes    = PNL_QSW_W / PNL_QSW_PREV / PNL_CSET_W x row heights
-const PAL_W = 293, PAL_H = 309;
+// P-DRAW-46 resized the board (8 x 8 x PAL_QSW 20) and the TV-parity HEX band
+// added PAL_HX 30: the live numbers are PalW() 201 x PalH() 408, and a bake off
+// them is what MT4 crops the card face from — a stale pair leaves the popup's
+// right edge square and its bottom rows on bare chart.
+const PAL_W = 201, PAL_H = 408;
 const TRACK_GLOSS_W = 278, TRACK_GLOSS_H = 7;
 const NAV_W = 118, NAV_H = 26;
 
@@ -1451,6 +1451,52 @@ function glassSkin(w, h) {
     if (edge > 0) col = over(col, y < cy ? pm([255, 255, 255], 46 * edge)
                                          : pm([0, 0, 0], 58 * edge));
     return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+  });
+  return { w, h, buf };
+}
+
+// TV parity: rounded palette-cell overlay. Corners outside the radius are
+// masked OPAQUE in the owning surface tone (per-surface bake: MT4 crops,
+// never scales, and one tone cannot mask two plates), the ring + sheen ride
+// the edge, the middle stays transparent so the cell colour shows through.
+function roundCellSkin(w, h, bg) {
+  const rad = Math.min(w, h) * 0.28, cx = w / 2, cy = h / 2;
+  const hw = (w - 1) / 2, hh = (h - 1) / 2;
+  const buf = renderFxWH(w, h, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    let col = [0, 0, 0, 0];
+    if (d > -0.5) {
+      const m = clamp01((d + 0.5) / 1.5);   // corner mask, eased over 1.5px
+      if (m > 0) col = over(col, pm(bg, 255 * m));
+    }
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));
+    if (bw > 0) col = over(col, pm([235, 241, 250], 190 * bw));   // light rim
+    const edge = clamp01(1 - Math.abs(d + 0.9) / 1.6);
+    if (edge > 0 && y < cy) col = over(col, pm([255, 255, 255], 38 * edge));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
+  });
+  return { w, h, buf };
+}
+
+// TV parity: the SELECTED cell's ring (preview .grid48 i.on). Same rounded
+// footprint and corner mask as roundCellSkin, so it can replace that face on
+// the one cell the drawing wears now: a 2px accent stroke inside the edge plus
+// its soft glow, middle transparent (the colour still shows through).
+function roundRingSkin(w, h, bg) {
+  const rad = Math.min(w, h) * 0.28, cx = w / 2, cy = h / 2;
+  const hw = (w - 1) / 2, hh = (h - 1) / 2;
+  const buf = renderFxWH(w, h, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    let col = [0, 0, 0, 0];
+    if (d > -0.5) {
+      const m = clamp01((d + 0.5) / 1.5);
+      if (m > 0) col = over(col, pm(bg, 255 * m));
+    }
+    const stroke = clamp01(1 - Math.abs(d + 1.9) / 1.1);
+    if (stroke > 0) col = over(col, pm([255, 194, 71], 235 * stroke));   // #FFC247
+    const glow = clamp01(1 - Math.abs(d + 4.4) / 2.2);
+    if (glow > 0) col = over(col, pm([255, 194, 71], 55 * glow));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
   });
   return { w, h, buf };
 }
@@ -1726,25 +1772,60 @@ files.push(['bk_gear.bmp',     () => render(24, BK_GEAR,     BK_DARK)]);
 files.push(['bk_grip.bmp',     () => render(24, BK_GRIP,     BK_DARK)]);
 files.push(['bk_copy.bmp',     () => render(24, BK_COPY,     BK_DARK)]);
 files.push(['bk_undo.bmp',     () => render(24, BK_UNDO,     BK_DARK)]);
-// P-DRAW-13 — ON-state faces: a light raster on the gold ON face is unreadable,
-// so toggles wear a dark-ink twin while ON (the preview's dark-on-gold rule).
-const BK_DARKINK = [26, 18, 6];   // dark icon ink for gold faces
+// P-DRAW-13 — ON-state faces for the toggles (FILL / LOCK / BACK).
+// P-DRAW-47 (2026-09-26) — THE INK IS THE ACCENT, not dark. These were drawn
+// in `BK_DARKINK` for a SOLID gold plate, but the ON face the strip really lays
+// down is `pnl_chip_gold.bmp`, a TRANSLUCENT gold wash: measured, that art's own
+// mean luminance is ~12 over a wash whose premultiplied mean is (33,22,0), so an
+// ON toggle showed NO glyph at all («کلیک میکنم روش تیره میشه و دیده نمیشه»).
+// The preview's rule is accent ink on the accent wash (`.scell.on{color:accent}`).
+const BK_GOLDINK = [255, 200, 60];   // ON ink: the accent amber on the accent wash
 const BK_FILL_ON = [   // filled rect (twin of the bucket's "on" meaning)
-  { ...rfill(7.5, 10.5, 24.5, 21.5), color: BK_DARKINK },
+  { ...rfill(7.5, 10.5, 24.5, 21.5), color: BK_GOLDINK },
   ...rect(7.5, 10.5, 24.5, 21.5, 2.2),
 ];
-const BK_BACK_ON = [   // layered rects, dark
+const BK_BACK_ON = [   // layered rects
   ...rect(6.5, 6.5, 18.5, 18.5, 2.4),
   ...rect(13.5, 13.5, 25.5, 25.5, 2.4),
 ];
-const BK_LOCK_OND = [   // CLOSED padlock, dark (twin of bk_lock_on for gold faces)
+const BK_LOCK_ON_G = [   // CLOSED padlock (twin of bk_lock_on for the gold-wash face)
   ...rect(9.5, 15.5, 22.5, 24.5, 2.2),
   seg(12.5, 15.5, 12.5, 10.5, 2.2), seg(12.5, 10.5, 19.5, 10.5, 2.2), seg(19.5, 10.5, 19.5, 15.5, 2.2),
   cfill(16, 19.5, 1.9),
 ];
-files.push(['bk_fill_on.bmp',   () => render(24, BK_FILL_ON,   BK_DARKINK)]);
-files.push(['bk_back_on.bmp',   () => render(24, BK_BACK_ON,   BK_DARKINK)]);
-files.push(['bk_lock_on_d.bmp', () => render(24, BK_LOCK_OND,  BK_DARKINK)]);
+// P-DRAW-64a (2026-09-27) — THE FILL FAMILY'S TWO EXTRAS (the strip's own cells).
+// OFF is the plate ink, ON is the amber twin, and each ON art is deliberately
+// QUIET — one shape, no clutter — because a box the user just switched on must
+// not read as a busy cell («وقتی روشن کرد زیاد شلوغ به چشم نیاد»).
+// The HALF cell is the user's own sketch (fourth cut): a solid block with a dashed
+// line across its middle. The 50 % mark is a CUT, not a second ink — two solid slabs
+// with the midline band open, the dashes the block's OWN colour bridging it — so the
+// one art reads on the dark face and on the gold wash alike, and nothing in it can
+// be read as a filled interior (the two cuts before it were refused for exactly that).
+const BK_HALF_SOLID = [   // the 24x12 block (32-space art), split by its open midline band
+  rfill(4.0, 8.0, 28.0, 15.1),
+  rfill(4.0, 16.9, 28.0, 24.0),
+  ...dashSegs(4.0, 16.0, 28.0, 16.0, 3.4, 2.0, 1.6),
+];
+const BK_HALF_OFF = [...BK_HALF_SOLID];
+const BK_HALF_ON = [...BK_HALF_SOLID];
+const BK_EXT_OFF = [   // the far edge, standing still
+  seg(6.5, 8.0, 6.5, 24.0, 2.4),
+  seg(11.0, 16.0, 24.0, 16.0, 2.2),
+  seg(24.0, 16.0, 18.5, 11.0, 2.2), seg(24.0, 16.0, 18.5, 21.0, 2.2),
+];
+const BK_EXT_ON = [   // ... and the edge travelling with the newest bar
+  seg(6.5, 8.0, 6.5, 24.0, 2.4),
+  seg(15.5, 16.0, 27.5, 16.0, 2.2),
+  seg(27.5, 16.0, 22.0, 11.0, 2.2), seg(27.5, 16.0, 22.0, 21.0, 2.2),
+];
+files.push(['bk_half_off.bmp', () => render(24, BK_HALF_OFF, BK_DARK)]);
+files.push(['bk_half_on.bmp',  () => render(24, BK_HALF_ON,  BK_GOLDINK)]);
+files.push(['bk_ext_off.bmp',  () => render(24, BK_EXT_OFF,  BK_DARK)]);
+files.push(['bk_ext_on.bmp',   () => render(24, BK_EXT_ON,   BK_GOLDINK)]);
+files.push(['bk_fill_on.bmp',   () => render(24, BK_FILL_ON,   BK_GOLDINK)]);
+files.push(['bk_back_on.bmp',   () => render(24, BK_BACK_ON,   BK_GOLDINK)]);
+files.push(['bk_lock_on_g.bmp', () => render(24, BK_LOCK_ON_G, BK_GOLDINK)]);
 files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
 // ICON-DIET: badge.bmp (NOBADGES gates every create/show — purges use
 // ObjectDelete and need no file) and knob.bmp (superseded by pnl_knob.bmp)
@@ -1774,6 +1855,15 @@ const panelFiles = [
   // scales it, so a 38px frame on a 28px cell loses its right/bottom edge.
   { name: 'pnl_glass32.bmp',    ...glassSkin(32, 32) },
   { name: 'pnl_glass28.bmp',    ...glassSkin(28, 28) },
+  // TV parity rounded palette cells (opaque corner mask in the owning plate tone).
+  { name: 'ds_cell32.bmp',      ...roundCellSkin(32, 32, [23, 28, 37]) },
+  { name: 'pal_cell20.bmp',     ...roundCellSkin(20, 20, [26, 32, 42]) },
+  // ...and the ring the SELECTED cell wears in their place (same two sizes).
+  { name: 'ds_ring32.bmp',      ...roundRingSkin(32, 32, [23, 28, 37]) },
+  // ...and the STRIP's own 24px swatch (`#strip .swcell` — 24px, radius 6, a
+  // 1px white hairline), the colour cell's face inside its 32px cell.
+  { name: 'ds_swatch24.bmp',    ...roundCellSkin(24, 24, [23, 28, 37]) },
+  { name: 'pal_ring20.bmp',     ...roundRingSkin(20, 20, [26, 32, 42]) },
   { name: 'pnl_nav.bmp',        ...navSkin() },
   { name: 'pal_card.bmp',       ...palCardSkin() },
   // P-DRAW-29 (2026-09-24): the DrawStrip plate skin (9-slice, see above).

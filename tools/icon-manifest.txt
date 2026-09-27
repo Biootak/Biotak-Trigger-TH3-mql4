@@ -7,14 +7,18 @@ bk_copy.bmp
 bk_dds.bmp
 bk_ddw.bmp
 bk_del.bmp
+bk_ext_off.bmp
+bk_ext_on.bmp
 bk_fill_on.bmp
 bk_gear.bmp
 bk_glyph.bmp
 bk_grip.bmp
+bk_half_off.bmp
+bk_half_on.bmp
 bk_levels.bmp
 bk_lock_off.bmp
 bk_lock_on.bmp
-bk_lock_on_d.bmp
+bk_lock_on_g.bmp
 bk_more.bmp
 bk_pencil.bmp
 bk_ray0.bmp
@@ -55,6 +59,7 @@ ds_bot_r.bmp
 ds_bot_r_t30.bmp
 ds_bot_r_t60.bmp
 ds_bot_r_t90.bmp
+ds_cell32.bmp
 ds_mid_l.bmp
 ds_mid_l_t30.bmp
 ds_mid_l_t60.bmp
@@ -63,6 +68,8 @@ ds_mid_r.bmp
 ds_mid_r_t30.bmp
 ds_mid_r_t60.bmp
 ds_mid_r_t90.bmp
+ds_ring32.bmp
+ds_swatch24.bmp
 ds_top_l.bmp
 ds_top_l_t30.bmp
 ds_top_l_t60.bmp
@@ -195,6 +202,8 @@ leg_on.bmp
 orb_bg.bmp
 orb_word.bmp
 pal_card.bmp
+pal_cell20.bmp
+pal_ring20.bmp
 pin_off.bmp
 pin_on.bmp
 pnl_actbg_gold.bmp
