@@ -559,6 +559,25 @@ function circSkin(on) {
     if (b) col = over(col, b);
     return col[3] > 0 ? col : null;
   });
+  return { w: CW, h: CH, buf };
+}
+
+// --- pnl_cardfade.bmp : the narrow card's 26px `.fade` wash as its OWN
+//     transparent overlay, at full card width (PNL_W + 2*PNL_MARGIN).
+// ICON-DIET 2026-09-27. Baking it in cost ten skins (pnl_card1f..10f = 4.71 MB,
+// 34% of the payload) that differed from their plain twins in 26 rows. The wide
+// body already carries the same wash as an overlay (pnl_cardWfade → "cardf"), so
+// this is that mechanism at narrow width, and the same pixels: over(body,
+// pm(CARD_BOT, a)) and MT4 compositing a premultiplied wash of alpha a are one
+// operation. Cost: +1 object, on the 5 PnlCardFade cards only, one card open.
+function cardFadeWash() {
+  const W = PNL_W + 2 * PNL_MARGIN, H = PNL_FADE_H;
+  const buf = renderFxWH(W, H, (x, y) => {
+    const u = clamp01(y / (H - 1));
+    const a = Math.round(235 * u);
+    return a < 0.5 ? null : pm(CARD_BOT, a);
+  });
+  return { w: W, h: H, buf };
 }
 
 // --- orb_bg.bmp : 72x72 bow-medallion, embedded from tools/orb/orb-bow-master.bgra
@@ -638,6 +657,9 @@ const PNL_W = 312;          // card width (content area)
 const PNL_WIDE_WEL = 624;
 const PNL_HEAD_H = 56;
 const PNL_ROW_H = 42;       // TV-dense single-line rows (matches BiotakPanels.mqh)
+// ICON-DIET 2026-09-27: the .fade wash height, as its OWN overlay (see
+// cardFadeWash below). Must equal the MQL's PNL_FADE_H (BiotakPanels.mqh:645).
+const PNL_FADE_H = 26;
 const PNL_FOOT_H = 48;
 const PNL_MARGIN = 14;      // baked-in shadow margin around the card
 const PNL_RAD = 14;         // .card border-radius
@@ -1056,9 +1078,14 @@ const A_GLOW = {
 // preview gives them `color: var(--aInk)`, i.e. a DARK ink on the bright ramp.
 // Emitted as gl_<name>_i_<accent>.bmp. Only these are needed; emitting an ink
 // variant for all 57 glyphs would add 342 files for nothing.
+// ICON-DIET 2026-09-27: 'bolt' out (DEAD_GLYPHS, never had a builder call) and
+// 'template' in. PnlMarkIcon(14) returns "template" — the GENERAL card's mark —
+// and it resolves gl_template_i_gold.bmp, which was constructed at runtime but
+// emitted and declared NOWHERE: that card has been loading no mark at all.
+// A swap, not growth: 13 files in, 13 files out.
 const INK_GLYPHS = [
   'crosshair', 'layers', 'gauge', 'wave', 'candle', 'line', 'pin', 'steps',
-  'sigma', 'box', 'type', 'target', 'bolt', 'check',
+  'sigma', 'box', 'type', 'target', 'template', 'check',
 ];
 
 // Rounded box with optional vertical fill gradient, 1px border and a glow.
@@ -1663,7 +1690,7 @@ const ACCENT_EMIT = EMIT_RETIRED_ACCENTS ? ACCENT_NAMES : ['gold'];
 // P-UI-131: 'alignL' left this set — the GENERAL card's MARGIN LEFT row wears it
 // (a left-aligned stack IS the left margin picture), so the glyph is live art again.
 const DEAD_GLYPHS = new Set(['alignR','bolt','down','grid','hand',
-  'italic','lock','more','palette','search','trash','up','warn']);
+  'italic','lock','magnet','more','palette','search','trash','up','warn']);
 // TH3TOOL-ON (2026-09-19): 'custom' left DEAD_ART — the TH3 ring item loads it
 // again (BiotakMenu's CIR_TH3 resource + CircIconRes base).
 const DEAD_ART = new Set(['ssls','chk','tl','factor','box']);
@@ -1833,7 +1860,11 @@ files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
 files.push(['orb_bg.bmp',   () => orbSkin()]);
-files.push(['orb_word.bmp', () => orbWordFromMaster()]);
+// ICON-DIET 2026-09-27: orb_word.bmp is no longer emitted. ORBWORD-OFF
+// (2026-09-12) commented out CircOrbRes's only word branch, so 20 KB rode
+// along in every .ex4 drawing nothing. The builder (orbWordFromMaster) and its
+// master stay in place; restoring the wordmark is one files.push() plus the
+// #resource in BiotakMenu.mqh.
 
 // settings-panel v2 skins (non-square capable) — تا 12 ردیف برای پنل باکس‌ها
 const panelFiles = [
@@ -1848,13 +1879,12 @@ const panelFiles = [
   { name: 'pnl_glass22.bmp',    ...glassSkin(22, 22) },
   { name: 'pnl_glass46.bmp',    ...glassSkin(46, 22) },
   { name: 'pnl_glass38.bmp',    ...glassSkin(38, 20) },
-  // P-DRAW-33 (2026-09-24): the STRIP's colour surfaces wear the same sheen —
-  // «چرا از رنگ ها شیشه استفاده نشده مثل بقیه». The strip's cells are 32px
-  // (quick row + colour popover) and the gear's swatch grid is 28px, so the
-  // frame is baked at both of those sizes: MT4 CROPS a bitmap label, never
-  // scales it, so a 38px frame on a 28px cell loses its right/bottom edge.
-  { name: 'pnl_glass32.bmp',    ...glassSkin(32, 32) },
-  { name: 'pnl_glass28.bmp',    ...glassSkin(28, 28) },
+  // ICON-DIET 2026-09-27: pnl_glass32 and pnl_glass28 are GONE. P-DRAW-33
+  // baked them for the strip's 32px cells and the gear's 28px swatch grid, but
+  // the gear/picker/recent faces ended up on ds_cell32 / ds_ring32 /
+  // ds_swatch24 instead, and design-checklist 19 then deleted the last
+  // pnl_glass28 caller. MT4 crops a bitmap and never scales it, so the rule
+  // P-DRAW-33 states still holds — ds_* carries it at the sizes actually drawn.
   // TV parity rounded palette cells (opaque corner mask in the owning plate tone).
   { name: 'ds_cell32.bmp',      ...roundCellSkin(32, 32, [23, 28, 37]) },
   { name: 'pal_cell20.bmp',     ...roundCellSkin(20, 20, [26, 32, 42]) },
@@ -1881,31 +1911,27 @@ panelFiles.push(...dsSkinFiles());
 // One card skin per ROW COUNT: BiotakPanels.mqh resolves
 // "::Files\Icons\pnl_card" + cardRows + ".bmp", so the file name IS the row
 // count. Never stretch one skin across counts — the 14px corners and the 1px
-// border distort. Clamp is 3..16 BOTH sides (PNL_CARD_ROWS_MAX): tallest live
-// card is 14-15 display rows, so 16 keeps headroom — 17..20 (the 8 largest
-// files, zero runtime path) are not emitted (ICON-DIET 2026-09-12).
-// P-UI-131: counts 1 and 2 are emitted and the MQL floor is 1 — the GENERAL card
-// took MAX LEVELS off the Step card, whose TH mode is then a lone TAB row, and
-// the Hover Chip card is two rows; each drew a 3-row skin while its own card was
-// shorter. 20 also covers the section BANDS the redesign inserts (a band is
-// itself a 42px row, so a 11-setting card becomes 15 display rows).
-const PNL_CARD_ROWS_MAX = 16;
+// border distort. P-UI-131: counts 1 and 2 are emitted and the MQL floor is 1
+// — the GENERAL card took MAX LEVELS off the Step card, whose TH mode is then
+// a lone TAB row, and the Hover Chip card is two rows.
+// ICON-DIET 2026-09-27: 11..16 (+f) follow 17..20 — 11.4 MB, 800 KB to 1.1 MB EACH
+// for a row count no card can present. The lookup lives ONLY in the !wide branch
+// and PnlIsWide() is rowsCount > PNL_WIDE_MIN_ROWS (10), so the index reaching
+// this clamp can never exceed 10. Must stay equal to the MQL's PNL_CARD_ROWS_MAX.
+const PNL_CARD_ROWS_MAX = 10;
 for (let r = 1; r <= PNL_CARD_ROWS_MAX; r++) {
   panelFiles.push({ name: 'pnl_card' + r + '.bmp',  ...pnlCardSkin(r, false) });
-  // the .fade variant — PnlCardFade() picks it for the scrollable cards
-  panelFiles.push({ name: 'pnl_card' + r + 'f.bmp', ...pnlCardSkin(r, true)  });
+  // ICON-DIET 2026-09-27: the `.fade` variant is RETIRED (pnl_card1f..10f =
+  // 4.71 MB, 34% of the payload, differing from their plain twins in 26 rows).
+  // PnlCardFade() cards now overlay pnl_cardfade.bmp instead — the same
+  // mechanism the wide body already uses for pnl_cardWfade.bmp (cardFadeWash).
 }
-// WIDE-CARDS (2026-09-11): two-column skins. PNL_WIDE_ROWS_MAX must equal the
-// MQL's PNL_WIDE_ROWS_MAX (Biotak/BiotakPanels.mqh) — the MQL clamps pairN to
-// it, so a missing file would draw bare rows.
-// P-UI-131: the GENERAL card needs 14 pair-lines — and needs NOTHING from here,
-// because a wide body is COMPOSED from pnl_cardWtop/mid/bot (P-UI-71b), not looked
-// up. This family is the pre-P-UI-71 era's lookup table and stays at 12.
-const PNL_WIDE_ROWS_MAX = 12;
-for (let r = 1; r <= PNL_WIDE_ROWS_MAX; r++) {
-  panelFiles.push({ name: 'pnl_cardW' + r + '.bmp',  ...pnlCardSkin(r, false, true) });
-  panelFiles.push({ name: 'pnl_cardW' + r + 'f.bmp', ...pnlCardSkin(r, true, true)  });
-}
+// ...so the wash itself, once, at narrow width:
+panelFiles.push({ name: 'pnl_cardfade.bmp', ...cardFadeWash() });
+// WIDE-CARDS: the pnl_cardW{1..12}[f] bake is RETIRED (ICON-DIET 2026-09-27,
+// 25.4 MB — the largest byte win in the repo, and it produced nothing). Since
+// P-UI-71b a wide body is COMPOSED from pnl_cardWtop/mid/bot + the .fade wash,
+// so the MQL never looks a width up by row count. Only those four pieces ship.
 for (let r = 1; r <= SUB_GRID_ROWS_MAX; r++) {
   panelFiles.push({ name: 'sub_panel_r' + r + '.bmp',  ...subPanelSkin(r, false) });
   panelFiles.push({ name: 'sub_panel_r' + r + 'p.bmp', ...subPanelSkin(r, true)  });
@@ -1922,9 +1948,17 @@ for (const a of ACCENT_EMIT) chipFiles.push({ name: 'pnl_chip_' + a + '.bmp', ..
 
 const glyphFiles = [];
 const glyphNames = Object.keys(GLYPHS);
+// ICON-DIET 2026-09-27: 'reset' is muted-only. The panel's Reset footer button is
+// created with primary=false (BiotakPanels.mqh), so PnlGlyphRes only ever takes
+// the false branch for it and asks for gl_reset_m.bmp; gl_reset_gold.bmp was
+// 954 bytes of a face no call site makes. A glyph that has a muted face but no
+// accent face belongs here — the row "one runtime bitmap = one #resource"
+// (P-UI-06) then has nothing to miss.
+const NO_ACCENT_GLYPHS = new Set(['reset']);
 for (const g of glyphNames) {
   if (DEAD_GLYPHS.has(g)) continue;
   glyphFiles.push({ name: 'gl_' + g + '_m.bmp', ...glyphSkin(g, GLYPH_MUTED) });
+  if (NO_ACCENT_GLYPHS.has(g)) continue;
   for (const a of ACCENT_EMIT) glyphFiles.push({ name: 'gl_' + g + '_' + a + '.bmp', ...glyphSkin(g, ACCENTS[a].a1) });
 }
 // --aInk inks for the glyphs that sit ON an accent ramp (.mark, .btn.primary)

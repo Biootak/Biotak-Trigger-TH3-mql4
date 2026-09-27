@@ -46,7 +46,9 @@
 //--- skin + its builder stay in place for a one-line restore (uncomment the
 //--- word branch in CircOrbRes below): tools/orb/make-orb-word.ps1 (master),
 //--- tools/gen-th3-icons.js (embed), Files/Icons/orb_word.bmp (skin).
-#resource "\\Files\\Icons\\orb_word.bmp"
+// ICON-DIET 2026-09-27: the orb_word.bmp #resource itself is gone. ORBWORD-OFF
+// commented out the only call site on 2026-09-12, so 20 KB rode along unused.
+// CircOrbRes now returns orb_bg.bmp unconditionally (see below).
 // P-UI-120: the hover chip's FACE (rounded plate + gold frame + tilted title, the
 // orb's chip only). Baked by tools/orb/make-tip-face.ps1 from the measured palette
 // of the user's own plate into tools/orb/tip-face-master.bgra; the generator embeds
@@ -677,12 +679,12 @@ bool CircPointOnMenu(const int mx, const int my)
 string CircOrbBg()        { return g_UI.btnPrefix + "CircOrbBg"; }
 // ORBSTATE: the orb is the menu's own button, so it reports the menu's state —
 // ORBWORD-OFF (2026-09-12, user decision): open keeps the bow medallion too,
-// the "TRex" wordmark swap is retired (text over the bow read as mud). To
-// restore: uncomment the word branch below (preview .orb / .orbtext).
+// the "TRex" wordmark swap is retired (text over the bow read as mud).
+// ICON-DIET 2026-09-27: the word branch is deleted rather than commented —
+// keeping a dead #resource for it cost 20 KB in every .ex4. Restoring the
+// wordmark is a re-add: make-orb-word.ps1 → the generator → the #resource.
 string CircOrbRes()
 {
-   //return g_UI.menuVisible ? "::Files\\Icons\\orb_word.bmp"
-   //                        : "::Files\\Icons\\orb_bg.bmp";
    return "::Files\\Icons\\orb_bg.bmp";
 }
 // Re-point the orb's bitmap. Called from CreateMenu() so EVERY open/close path

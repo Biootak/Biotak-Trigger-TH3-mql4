@@ -142,10 +142,13 @@
 //--- left flat. Baked at the two sizes the strip actually uses: 32 (quick row +
 //--- colour popover cell) and 28 (the gear's swatch grid) — MT4 CROPS a bitmap
 //--- label, never scales it.
-#resource "\\Files\\Icons\\pnl_glass32.bmp"
+//--- ICON-DIET 2026-09-27: pnl_glass32 and pnl_glass28 are gone. Every face the
+//--- gear, the picker and the recent ring draw is ds_cell32 / ds_ring32 /
+//--- ds_swatch24 (design-checklist 19 deleted the kind-0 swatch branch that was
+//--- the last pnl_glass28 caller). The two size-table entries below went with
+//--- them, so no branch can name a file that no longer exists.
 #resource "\\Files\\Icons\\ds_cell32.bmp"
 #resource "\\Files\\Icons\\ds_ring32.bmp"
-#resource "\\Files\\Icons\\pnl_glass28.bmp"
 #resource "\\Files\\Icons\\dsg_btn_ghost.bmp"
 #resource "\\Files\\Icons\\dsg_btn_primary.bmp"
 #resource "\\Files\\Icons\\pnl_topbar_gold.bmp"
@@ -1066,21 +1069,19 @@ int DrawStripResW(const string res)
    if(StringFind(res, "pnl_mark") >= 0) return 44;
    if(StringFind(res, "dsg_btn") >= 0) return 80;
    if(StringFind(res, "pnl_sw_") >= 0) return 52;
-   // P-UI-34 (2026-09-25): glass sheen sizes must be known for correct centring.
-   // pnl_glass32 is 32×32 (gear faces), ds_cell32 is 32×32 (colour cells),
-   // pnl_glass28 is 28×28 (gear swatch grid). Without entries here DrawStripFaceZ
-   // gets pw=0 and places the art at the cell's own centre instead of its corner.
-   if(StringFind(res, "pnl_glass32") >= 0) return 32;
-   if(StringFind(res, "ds_cell32") >= 0) return 32;
-   if(StringFind(res, "ds_ring32") >= 0) return 32;
-   if(StringFind(res, "ds_swatch24") >= 0) return 24;
-   if(StringFind(res, "pnl_glass28") >= 0) return 28;
-   if(StringFind(res, "pnl_chip") >= 0) return 26;
-   if(StringFind(res, "pnl_rail") >= 0) return 4;
-   if(StringFind(res, "pnl_vchip") >= 0) return 50;
-   if(StringFind(res, "pnl_xbtn") >= 0) return 30;
-   if(StringFind(res, "pnl_subdot") >= 0) return 8;
-   return DrawStripIconPx(res);
+    // P-UI-34 (2026-09-25): sheen sizes must be known for correct centring —
+    // without an entry here DrawStripFaceZ gets pw=0 and places the art at the
+    // cell's own centre instead of its corner. ICON-DIET 2026-09-27: the two
+    // pnl_glass entries left with their bitmaps (see the #resource block).
+    if(StringFind(res, "ds_cell32") >= 0) return 32;
+    if(StringFind(res, "ds_ring32") >= 0) return 32;
+    if(StringFind(res, "ds_swatch24") >= 0) return 24;
+    if(StringFind(res, "pnl_chip") >= 0) return 26;
+    if(StringFind(res, "pnl_rail") >= 0) return 4;
+    if(StringFind(res, "pnl_vchip") >= 0) return 50;
+    if(StringFind(res, "pnl_xbtn") >= 0) return 30;
+    if(StringFind(res, "pnl_subdot") >= 0) return 8;
+    return DrawStripIconPx(res);
 }
 int DrawStripResH(const string res)
 {
@@ -1091,14 +1092,13 @@ int DrawStripResH(const string res)
    if(StringFind(res, "pnl_mark") >= 0) return 44;
    if(StringFind(res, "dsg_btn") >= 0) return 44;
    if(StringFind(res, "pnl_sw_") >= 0) return 34;
-   // P-UI-34 (2026-09-25): glass sheen heights.
-   if(StringFind(res, "pnl_glass32") >= 0) return 32;
-   if(StringFind(res, "ds_cell32") >= 0) return 32;
-   if(StringFind(res, "ds_ring32") >= 0) return 32;
-   if(StringFind(res, "ds_swatch24") >= 0) return 24;
-   if(StringFind(res, "pnl_glass28") >= 0) return 28;
-   if(StringFind(res, "pnl_chip") >= 0) return 26;
-   if(StringFind(res, "pnl_rail") >= 0) return 42;
+    // P-UI-34 (2026-09-25): glass sheen heights. ICON-DIET 2026-09-27: the
+    // pnl_glass pair left with its bitmaps (see the #resource block).
+    if(StringFind(res, "ds_cell32") >= 0) return 32;
+    if(StringFind(res, "ds_ring32") >= 0) return 32;
+    if(StringFind(res, "ds_swatch24") >= 0) return 24;
+    if(StringFind(res, "pnl_chip") >= 0) return 26;
+    if(StringFind(res, "pnl_rail") >= 0) return 42;
    if(StringFind(res, "pnl_vchip") >= 0) return 26;
    if(StringFind(res, "pnl_xbtn") >= 0) return 30;
    if(StringFind(res, "pnl_subdot") >= 0) return 8;
