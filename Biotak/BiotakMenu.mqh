@@ -3576,20 +3576,33 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
    //     nothing when I click them");
    //   * the orb followed the cursor out from under the card ("the panel
    //     detaches and moves to another part").
-   // A long-press armed BEFORE the card opened still finishes (its own block
-   // above), and a live orb drag still runs to its release - only a NEW grab is
-   // refused. Closing the card hands the ring back; nothing is lost.
-   if(g_UIPanelOpen && g_LongPressItem < 0 && !g_OrbDragging) return;
+    // A long-press armed BEFORE the card opened still finishes (its own block
+    // above), and a live orb drag still runs to its release. While a card is
+    // open the RING arms stay refused (P-UI-72: a ring box under the card would
+    // claim DRAG_MENU before the panel sees the press, killing its controls),
+    // but the ORB itself stays draggable from pixels the card + palette do not
+    // cover — read from the published cover rects, the only panel geometry
+    // this earlier include can see. A press ON the card still belongs to it.
+    bool panelModal = (g_UIPanelOpen && g_LongPressItem < 0 && !g_OrbDragging);
+    bool onCard = (panelModal && g_UIPanelRX >= 0 && g_UIPanelRW > 0 &&
+                   mx >= g_UIPanelRX && mx <= g_UIPanelRX + g_UIPanelRW &&
+                   my >= g_UIPanelRY && my <= g_UIPanelRY + g_UIPanelRH);
+    bool onPal = (panelModal && g_UIPPalRX >= 0 && g_UIPPalRW > 0 &&
+                  mx >= g_UIPPalRX && mx <= g_UIPPalRX + g_UIPPalRW &&
+                  my >= g_UIPPalRY && my <= g_UIPPalRY + g_UIPPalRH);
+    if(panelModal && (onCard || onPal)) return;
+    bool orbOnly = (panelModal && !onCard && !onPal);
 
    if(!g_OrbDragging)
    {
       if(!pressStart) return;
       if(!DragCanGrab(DRAG_MENU)) return;
 
-      const int hitIdx = CircItemAt(mx, my);
-      // Items do not exist while the menu is hidden — never arm a long-press
-      // on an invisible ring position (only the orb is interactive then).
-      if(hitIdx >= 0 && g_UI.menuVisible)
+       const int hitIdx = CircItemAt(mx, my);
+       // Items do not exist while the menu is hidden — never arm a long-press
+       // on an invisible ring position (only the orb is interactive then).
+       // While a card is open only the orb grabs (`orbOnly` above).
+       if(hitIdx >= 0 && g_UI.menuVisible && !orbOnly)
       {
          int feat = RingFeature(hitIdx);
          if(feat == CIR_TOOLS) return; // tools toggles submenu on click, no long press
@@ -3602,8 +3615,8 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
          CircLockChart();
          return;
       }
-      const int toolHit = ToolsItemAt(mx, my);
-      if(toolHit >= 0)
+       const int toolHit = ToolsItemAt(mx, my);
+       if(toolHit >= 0 && !orbOnly)
       {
           // Base/Knot arms drawing on CLICK; a hold opens its style card
           // instead (g_LongPressFired guard below skips the arm then).

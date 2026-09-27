@@ -101,11 +101,15 @@
 #resource "\\Files\\Icons\\pnl_glass22.bmp"
 #resource "\\Files\\Icons\\pnl_glass38.bmp"
 #resource "\\Files\\Icons\\pnl_glass46.bmp"
-#resource "\\Files\\Icons\\pal_cell20.bmp"
-#resource "\\Files\\Icons\\pal_ring20.bmp"
+#resource "\\Files\\Icons\\pal_cell26.bmp"
+#resource "\\Files\\Icons\\pal_ring26.bmp"
+#resource "\\Files\\Icons\\pal_cell22.bmp"
+#resource "\\Files\\Icons\\pal_ring22.bmp"
+#resource "\\Files\\Icons\\pal_grip.bmp"
 #resource "\\Files\\Icons\\pnl_nav.bmp"
 #resource "\\Files\\Icons\\pnl_trackgloss.bmp"
-#resource "\\Files\\Icons\\pal_card.bmp"
+#resource "\\Files\\Icons\\pal_card26.bmp"
+#resource "\\Files\\Icons\\pal_card22.bmp"
 
 //--- R-PANELUI2 (2026-09-11): every remaining panel bitmap. The redesign
 //--- draws its chrome from pre-rendered BMPs (MT4 cannot blur, gradient or
@@ -292,6 +296,12 @@
 #define PNL_TRK_Y      29      // P-UI-131d: the caption line above it keeps 11px of
                                // air now (was 27 = 8px) — the MIDDLE of a two-part row
                                // is where air is owed, and 8px read as glued.
+#define PNL_CAP_Y      1       // P-DRAW-48: the caption line of a CAPTION-ABOVE-CONTROL row
+                               // (the same top line PNL_CHIP_Y_SL puts the chip on)
+#define PNL_QSW_Y      19      // ...and its 22px swatch strip. 42 = 1 + 13 + 5 + 22 + 1, so
+                               // 5px of air in the middle is the MAX a 42px row can hold;
+                               // the strip used to sit at 18 (3px, glued) — the one row
+                               // family that never got P-UI-131d's air.
 #define PNL_TRK_H      7       // slider track height
 #define PNL_TRACK_X    (PNL_PAD_X)            // modern full-width track (no steppers)
 #define PNL_TRACK_W    (PNL_WEL-2*PNL_PAD_X)
@@ -1238,39 +1248,56 @@ color ParseHexColor(const string txt)
 //|     HTF candles, custom price or factor. Stays open for live     |
 //|     trials; Done/Esc/click-away closes.                          |
 //+------------------------------------------------------------------+
-#define PAL_SW    16
-#define PAL_GAP   2
-#define PAL_PAD   10
-//--- P-DRAW-46: the grid's shape IS the owner's (8 x 8 = the user's chart), so
-//--- these are aliases — a second pair of numbers here would be a second palette.
-#define PAL_QCOLS BIOPICK_COLS
-#define PAL_QROWS BIOPICK_ROWS
-#define PAL_QSW   20
-#define PAL_QGAP  3
+//==============================================================================
+// P-DRAW-49 (2026-09-27) — THE POPUP, REDRAWN. ITS GEOMETRY IS ONE TABLE HERE
+// AND THE BANDS ARE ONE ORDER, because the old popup had five numbers living at
+// the paint site (`ry+5`, `+8`, `+16`, `PAL_PREV`, `PAL_TGT` from the bottom)
+// and two of them had already drifted out of the card: the footer's TR track
+// started at px+106 and was 100px wide inside a 201px card, so 5px of it and
+// then the value label (px+212) hung on the chart.
+//
+// The order, top to bottom: header · READOUT · tabs · RECENT · the page's grid ·
+// HEX · APPLY TO · footer. The readout is the new band and the reason the popup
+// is worth reopening: the value under the pointer is IN the popup, so the pick
+// never depends on a native tooltip (which also covers the cells, hides the
+// chart, and arrives late).
+//==============================================================================
+#define PAL_W        268      // 16 + 8*26 + 7*4 + 16 — the preview's own #pop width
+#define PAL_PAD      16
+#define PAL_COLS     BIOPICK_COLS
+#define PAL_ROWS     BIOPICK_PAGE_ROWS    // 8 — a PAGE of the 16-family table (P-DRAW-50)
+#define PAL_CELLGAP  4
+#define PAL_CELL_BIG 26      // the shape-A cell
+#define PAL_CELL_SML 22      // the shape-B cell, for a window the big one does not fit
+#define PAL_REC      22      // the recents' cell: the SAME size as a small grid cell
 //--- TV parity board (2026-09-26): the HEX row's own band. It is drawn on BOTH
 //--- tabs (the reference keeps the exact value beside the grid), which is why
 //--- `PalH()` carries it and why the card bake (`tools/gen-th3-icons.js`, PAL_H)
 //--- must be regenerated with it.
-#define PAL_HX    30
-#define PAL_RSHOW 12            // recents visible inline (no tab switch)
+#define PAL_HX    28
+#define PAL_RSHOW 8            // recents visible inline (no tab switch)
+#define PAL_READ  32            // the live readout — P-DRAW-49
+#define PAL_HEAD  28
+#define PAL_TABS  24
+#define PAL_SECL  12            // a section caption's own line
+#define PAL_TGT   26
+#define PAL_FOOT  30
+//--- the footer's own columns: Done · TR · track · value. The TRACK is the only
+//--- flexible one, and it is measured from what is left — which is the whole
+//--- repair: a track with a hard-coded width inside a card that changed width is
+//--- how 11px of popup ended up on the chart.
+#define PAL_FT_DONE 72
+#define PAL_FT_GAP  10
+#define PAL_FT_TRW  18
+#define PAL_FT_VALW 34
 //--- P-UI-69: the recents strip can be repainted from a LIVE path, because a
 //--- mixer drag shifts the list on every 30 ms tick - so its repaint is
 //--- coalesced to this window WHILE a drag is live. A click repaints at once,
 //--- and the mixer's release flushes the tail, so no colour is left unpainted.
 #define PAL_RECENTS_MS 150
-//--- footer mini opacity control (both tabs): Done(64)+gap(10),
-//--- "TR" label + click-to-set track. Geometry shared by PalDraw,
-//--- PalUpdateLive and the PnlHandleClick branch — keep in sync.
-#define PAL_FOP_DX   (64+10)
-#define PAL_FOP_LW   22
-#define PAL_FOP_TW   100
-//--- P-DRAW-46: the family/shade mapping is gone with the Material matrix — the
-//--- user's chart has no families and no shades, so a cell's caption is its hex.
-#define PAL_HEAD  24
-#define PAL_PREV  30
-#define PAL_TABS  24
-#define PAL_TGT   26
-#define PAL_FOOT  26
+//--- P-DRAW-46/50: the grid's shape IS the owner's (8 columns of the user's own
+//--- table), so these are aliases — a second pair of numbers here would be a
+//--- second palette.
 
 bool g_PalOpen = false;
 int  g_PalKind = PAL_TRIGGER;      // target being edited
@@ -1294,8 +1321,48 @@ bool g_PalHexFocus = false;         // hex edit box has keyboard focus
 int  s_PalRecentPainted = -1;       // P-UI-69: the list the recents strip shows
 uint s_PalRecentAt      = 0;        // last recents repaint (drag coalescer)
 
-int PalW() { return PAL_PAD*2 + PAL_QCOLS*PAL_QSW + (PAL_QCOLS-1)*PAL_QGAP; }
-int PalH() { return PAL_HEAD+PAL_PREV+PAL_TABS + 16+PAL_QSW+8 + 16+PAL_QROWS*(PAL_QSW+PAL_QGAP) + PAL_HX + PAL_TGT+PAL_FOOT + 4; }
+int PalW() { return PAL_W; }
+
+//--- P-DRAW-49: THE CELL SIZE IS CHOSEN, NOT ASSUMED. 26px cells are the design
+//--- (30 % bigger than the 20px they replace, so they are easy to hit); 22px is
+//--- the same layout 32px shorter, for a chart window the big one does not fit.
+//--- ONE reader of the window height, so the card can never be taller than the
+//--- window it has to live in — the old popup was a fixed 408 and simply did
+//--- not fit a short chart either.
+int PalCellSize()
+{
+   int ch=(int)ChartGetInteger(0,CHART_HEIGHT_IN_PIXELS,0);
+   if(ch <= 0) ch=1080;
+   return (PalHFor(PAL_CELL_BIG) + 80 <= ch) ? PAL_CELL_BIG : PAL_CELL_SML;
+}
+
+//--- the band arithmetic, ONE order, every offset from py (P-DRAW-49). The
+//--- paint, the live update, the hover regions and the hit tests all read these
+//--- five functions; a sixth copy of a band offset is how the footer left the
+//--- card in the first place.
+int PalHFor(const int cell)
+{
+   int gridH = PAL_ROWS*(cell+PAL_CELLGAP) - PAL_CELLGAP;
+   return PAL_HEAD + PAL_READ + 8 + PAL_TABS      // header, readout, tabs
+        + 10 + PAL_SECL + 5 + PAL_REC             // RECENT caption + cells
+        + 10 + PAL_SECL + 16 + gridH             // the page caption + the grid
+        + 10 + PAL_HX + PAL_TGT + PAL_FOOT;      // HEX, APPLY TO, footer
+}
+int PalH() { return PalHFor(PalCellSize()); }
+
+int PalReadY()  { return PAL_HEAD; }
+int PalTabsY()  { return PalReadY() + PAL_READ + 8; }
+int PalRecCapY(){ return PalTabsY() + PAL_TABS + 10; }
+int PalRecY()   { return PalRecCapY() + PAL_SECL + 5; }
+int PalFamY()   { return PalRecY() + PAL_REC + 10; }
+int PalGridY()  { return PalFamY() + PAL_SECL + 16; }
+int PalGridH(const int cell) { return PAL_ROWS*(cell+PAL_CELLGAP) - PAL_CELLGAP; }
+int PalHxY()    { return PalGridY() + PalGridH(PalCellSize()) + 10; }
+int PalTgtY()   { return PalHxY() + PAL_HX; }
+int PalFootY()  { return PalTgtY() + PAL_TGT; }
+//--- the footer's TR track: the one flexible column, measured from what is left.
+int PalTrX() { return g_PalX + PAL_PAD + PAL_FT_DONE + PAL_FT_GAP + PAL_FT_TRW + PAL_FT_GAP; }
+int PalTrW() { return PAL_W - 2*PAL_PAD - (PAL_FT_DONE + PAL_FT_GAP + PAL_FT_TRW + PAL_FT_GAP + PAL_FT_VALW); }
 
 //--- P-DRAW-46: one implementation, never a second — `BioPickColor` (include #1)
 //--- owns the user's chart; this is its face for the panels' code.
@@ -1307,14 +1374,25 @@ string PalColorText(const color clr)
    return "R"+IntegerToString(r)+" G"+IntegerToString(g)+" B"+IntegerToString(b);
 }
 
+//--- P-DRAW-49: THE HEX IS #RRGGBB, LIKE EVERY OTHER HEX ON EARTH. It was not:
+//--- this walked the packed MQL colour (0x00BBGGRR) from the top, so the caption
+//--- and the field both showed BBGGRR — the screenshot's own proof, a red chip
+//--- captioned "#5F45F0" next to "R240 G69 B95" (those two are each other's
+//--- reverse) — while `ParseHexColor` below parses standard RRGGBB. So the two
+//--- ends of the same field disagreed, and anything pasted from outside the
+//--- popup landed reversed. One owner, one order, and the order is the LOW byte
+//--- first: in MQL the low byte IS the red (C'255,0,0' is 0x0000FF), so i=2..0
+//--- prints the colour backwards and i=0..2 prints what the parser reads.
 string PalHexText(const color clr)
 {
-   string digits="0123456789ABCDEF";
-   int v=(int)clr;
    string hx="";
-   for(int i=5;i>=0;i--)
-      hx += StringSubstr(digits, (v>>(4*i))&15, 1);
+   for(int i=0;i<3;i++) hx += PalHexByte(((int)clr>>(8*i))&0xFF);
    return hx;
+}
+string PalHexByte(const int v)
+{
+   string digits="0123456789ABCDEF";
+   return StringSubstr(digits,(v>>4)&15,1) + StringSubstr(digits,v&15,1);
 }
 
 //--- DISPLAY-row spec machinery lives HERE (not beside the renderer) because
@@ -1954,7 +2032,9 @@ color PalHoverColorAt(const int region,const int c,const int r)
       int i=r*s_palRegion[region].cols+c;
       return (i < g_PalRecentCount) ? g_PalRecent[i] : clrNONE;
    }
-   return PalPickColor(r,c);   // P-DRAW-46: row from y, column from x — the paint's own mapping
+   // P-DRAW-50: row from y, column from x — the paint's own mapping, on the
+   // PAGE the paint showed (the ids and the regions are both page-local).
+   return PalPickColor(BioPickPageRow0()+r, c);
 }
 
 //--- a CLICK is the commitment: the previewed value stays and nothing is put back.
@@ -1975,6 +2055,10 @@ void PalMovePark()
 bool PalTitleGrab(const int mx,const int my)
 {
    if(!g_PalOpen || s_palMoveArmed) return false;
+   //--- one move at a time: a live card move owns DRAG_PANEL_MOVE already, and a
+   //--- knob/mixer/menu gesture owns the pointer — arming a second carry would
+   //--- starve the first and jump it on finish (stale anchor).
+   if(g_PnlMoveItem>=0 || !DragCanGrab(DRAG_PANEL_MOVE)) return false;
    int w=PalW();
    if(mx < g_PalX || mx > g_PalX+w || my < g_PalY || my > g_PalY+PAL_HEAD) return false;
    if(mx >= g_PalX+w-PAL_PAD-20 && my >= g_PalY+3 && my <= g_PalY+21) return false;
@@ -2080,37 +2164,44 @@ int PalRecentsSig()
 
 //--- TV parity board: the face one colour CELL wears. The colour the target
 //--- holds now gets the RING bake, every other the flat cell bake — one asset
-//--- each, both baked at PAL_QSW (MT4 crops a bitmap label, never scales it).
+//--- each, baked at BOTH cell sizes (MT4 crops a bitmap label, never scales it,
+//--- so 22px and 26px are two files and not one scaled).
 string PalCellFaceRes(const color sw, const color cur)
 {
-   if(cur != clrNONE && sw == cur) return "::Files\\Icons\\pal_ring20.bmp";
-   return "::Files\\Icons\\pal_cell20.bmp";
+   string big = "::Files\\Icons\\pal_cell26.bmp";
+   string bigR= "::Files\\Icons\\pal_ring26.bmp";
+   string sml = "::Files\\Icons\\pal_cell22.bmp";
+   string smlR= "::Files\\Icons\\pal_ring22.bmp";
+   bool sel = (cur != clrNONE && sw == cur);
+   if(PalCellSize() >= PAL_CELL_BIG) return sel ? bigR : big;
+   return sel ? smlR : sml;
 }
 
-void PalPaintRecents(const int px,const int contY)
+void PalPaintRecents(const int px,const int syTop)
 {
    string p=g_UI.btnPrefix+"Pal_";
    color cur=PaletteKindColor(g_PalKind);
+   int cell=PAL_REC, pitch=cell+PAL_CELLGAP;
    int nshow=MathMin(g_PalRecentCount,PAL_RSHOW);
    for(int i=0;i<PAL_RSHOW;i++)
    {
       string n=p+"r"+IntegerToString(i);
        // prune past the end (the strip can only shrink on a load)
        if(i>=nshow) { ObjectDelete(0,n); ObjectDelete(0,n+"G"); continue; }
-      int sx=px+PAL_PAD+i*(PAL_QSW+PAL_QGAP);
-      int sy=contY+18;
-      if(i == 0) PalHoverRegionAdd(px+PAL_PAD, sy, PAL_RSHOW, 1, PAL_QSW, PAL_QSW+PAL_QGAP, 0, 1);
-       PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", g_PalRecent[i],
+      int sx=px+PAL_PAD+i*pitch;
+      int sy=syTop;
+      if(i == 0) PalHoverRegionAdd(px+PAL_PAD, sy, PAL_RSHOW, 1, cell, pitch, 0, 1);
+       PnlSetButton(n, sx, sy, cell, cell, "", g_PalRecent[i],
                     PnlSwatchBorder(g_PalRecent[i],PNL_CLR_FIELD), true);
        ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
        ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
        string nr=n+"G";
-       PnlSetBitmap(nr, sx, sy, PAL_QSW, PAL_QSW, PalCellFaceRes(g_PalRecent[i], cur), Z_PANEL_POP_FG);
+       PnlSetBitmap(nr, sx, sy, cell, cell, PalCellFaceRes(g_PalRecent[i], cur), Z_PANEL_POP_FG);
        ObjectSetString(0,nr,OBJPROP_TOOLTIP, "#"+PalHexText(g_PalRecent[i])+"  ("+PalColorText(g_PalRecent[i])+")");
    }
    if(nshow==0)
    {
-      PnlSetLabel(p+"rempty", px+PAL_PAD, contY+20, "Pick any color — it appears here for reuse.", PNL_CLR_MUTED, 8);
+      PnlSetLabel(p+"rempty", px+PAL_PAD, syTop+4, "Pick any color — it appears here for reuse.", PNL_CLR_MUTED, 7);
       ObjectSetInteger(0,p+"rempty",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    }
    else ObjectDelete(0,p+"rempty");
@@ -2127,7 +2218,7 @@ void PalRefreshRecents(const bool force)
    uint now=GetTickCount();
    if(!force && g_PalMixDrag>0 && now-s_PalRecentAt<PAL_RECENTS_MS) return;
    s_PalRecentAt=now;
-   PalPaintRecents(g_PalX, g_PalY+PAL_HEAD+PAL_PREV+PAL_TABS);
+   PalPaintRecents(g_PalX, g_PalY+PalRecY());
 }
 
 //--- open the palette on an explicit kind (cset cells address their own
@@ -2187,20 +2278,22 @@ void PalOpenForItem(const int item)
 //--- reference keeps the exact value beside the grid, so BOTH tabs seat it: the
 //--- mixer under its tracks, the palette tab in the band above APPLY TO. An AUTO
 //--- target shows an EMPTY field — FFFFFF would claim a colour nobody chose.
+//--- P-DRAW-49: the field is 88 wide and its value is #RRGGBB, the order
+//--- `ParseHexColor` reads — the two ends used to disagree (see `PalHexText`).
 void PalDrawHexRow(const int px,const int hy)
 {
    string p=g_UI.btnPrefix+"Pal_";
    color cur=PaletteKindColor(g_PalKind);
    int fx=px+PAL_PAD+30;
-   PnlSetLabel(p+"hl", px+PAL_PAD, hy+2, "HEX", PNL_CLR_LABEL, 8);
+   PnlSetLabel(p+"hl", px+PAL_PAD, hy+6, "HEX", PNL_CLR_LABEL, 7);
    ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    string en=p+"hex";
    ObjectCreate(0,en,OBJ_EDIT,0,0,0);
    ObjectSetInteger(0,en,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,en,OBJPROP_XDISTANCE,fx);
-   ObjectSetInteger(0,en,OBJPROP_YDISTANCE,hy-2);
-   ObjectSetInteger(0,en,OBJPROP_XSIZE,76);
-   ObjectSetInteger(0,en,OBJPROP_YSIZE,18);
+   ObjectSetInteger(0,en,OBJPROP_YDISTANCE,hy+3);
+   ObjectSetInteger(0,en,OBJPROP_XSIZE,88);
+   ObjectSetInteger(0,en,OBJPROP_YSIZE,20);
    ObjectSetString(0,en,OBJPROP_TEXT,(cur==clrNONE ? "" : PalHexText(cur)));
    ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
    ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
@@ -2210,7 +2303,7 @@ void PalDrawHexRow(const int px,const int hy)
    ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
    ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_POP_FG);
    ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);
-   PnlSetLabel(p+"hl2", fx+84, hy+2, "ENTER = apply", PNL_CLR_MUTED, 7);
+   PnlSetLabel(p+"hl2", fx+96, hy+8, "ENTER applies", PNL_CLR_MUTED, 7);
    ObjectSetInteger(0,p+"hl2",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 }
 
@@ -2229,6 +2322,24 @@ void FlushPalHex()
    }
 }
 
+//--- the mixer's four rows, ONE geometry for paint + hit + knob: the rows are
+//--- centred in the band the tabs leave above the HEX row, 30px apart. The hit
+//--- test used to re-derive this as +i*26 from the tabs, so R/G/B/TR grabbed
+//--- each other's channel («اشتباهی درگ میکنه»).
+int PalMixTop()
+{
+   int contY=g_PalY+PalTabsY()+PAL_TABS;
+   int bandH=PAL_HX+10+(PalHxY()-(contY+2));
+   return contY+2+MathMax(0,(bandH-4*30)/2);
+}
+int PalMixRowY(const int i){ return PalMixTop()+i*30; }
+
+//--- P-DRAW-49: the MIXER keeps its four channels (R · G · B · TR) and gains the
+//--- popup's new room: the block is CENTRED in the band between the tabs and the
+//--- HEX row instead of hanging from the tabs with a hole under it, and the HEX
+//--- row is seated on the SAME band the palette tab uses (`PalHxY`) so the two
+//--- tabs share the bottom three bands — the mixer is the same card with a
+//--- different middle, not a different card.
 void PalDrawMixer(const int contY)
 {
    int px=g_PalX;
@@ -2241,9 +2352,13 @@ void PalDrawMixer(const int contY)
    color fill[3]={C'255,99,99',C'102,187,106',C'92,145,255'};
    int trackX=px+PAL_PAD+30;
    int trackW=PalW()-2*PAL_PAD-34;
-   for(int i=0;i<3;i++)
-   {
-      int y=contY+2+i*26;
+    //--- the four rows, centred in the band the tabs leave above the HEX row
+    const int PITCH=30;
+    int top=PalMixTop();
+    for(int i=0;i<3;i++)
+    {
+       int y=PalMixRowY(i);
+
       PnlSetLabel(p+"ml"+IntegerToString(i), px+PAL_PAD, y, cl[i], PNL_CLR_LABEL, PNL_PT_PAL);
       ObjectSetInteger(0,p+"ml"+IntegerToString(i),OBJPROP_ZORDER,Z_PANEL_POP_BG);
       PnlSetRect(p+"mtg"+IntegerToString(i), trackX, y+2, trackW, 8, PNL_CLR_TRACK_BD);
@@ -2265,7 +2380,7 @@ void PalDrawMixer(const int contY)
    // Targets without a transparency setting show it greyed.
    int tr = PaletteKindTransparency(g_PalKind);
    bool trOk = (tr >= 0);
-   int oy = contY+2+3*26;
+    int oy = PalMixRowY(3);
    PnlSetLabel(p+"ml3", px+PAL_PAD, oy, "TR", PNL_CLR_LABEL, PNL_PT_PAL);
    ObjectSetInteger(0,p+"ml3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ObjectSetString(0,p+"ml3",OBJPROP_TOOLTIP,"Transparency — blends the color toward the chart background");
@@ -2281,9 +2396,50 @@ void PalDrawMixer(const int contY)
     ObjectSetInteger(0,p+"mv3",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
    ObjectSetInteger(0,p+"mv3",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 
-   // TV parity board: the HEX row, seated under the tracks (the palette tab
-   // shows the same row in its own band — one owner, see PalDrawHexRow).
-   PalDrawHexRow(px, contY+2+4*26+4);
+   // TV parity board: the HEX row, seated on the band the palette tab uses
+   // (one owner, one seat — see PalDrawHexRow). It used to hang 4px under the
+   // last track, which on the taller card left a hole between them.
+   PalDrawHexRow(px, g_PalY+PalHxY());
+}
+
+//--- P-DRAW-50 caption deleted by user order 2026-09-27: the 8-family
+//--- string overflowed the 268px card — pager + tooltips keep the names.
+
+//--- P-DRAW-49: THE READOUT, ONE OWNER. It answers "what am I about to pick",
+//--- and it takes the HOVERED cell when there is one: the hover state is already
+//--- current by the time any caller gets here (a preview applies the colour, then
+//--- asks for the live paint), so the band costs three compares and no new state.
+//--- An AUTO target has no colour of its own and wears the AUTO face, exactly as
+//--- the row and the cset cells do (P-UI-131h) — clrNONE would paint ink-black
+//--- and claim a colour nobody chose.
+void PalPaintReadout(const color cur)
+{
+   string p=g_UI.btnPrefix+"Pal_";
+   color show=cur;
+   if(s_palHoverCell >= 0)
+   {
+      int cell=s_palHoverCell;
+      int reg=cell/1000, row=(cell-reg*1000)/100, col=cell%100;
+      if(reg>=0 && reg<s_palRegionN)
+      {
+         color h=PalHoverColorAt(reg,col,row);
+         if(h!=clrNONE) show=h;
+      }
+   }
+   color vis=(show==clrNONE)?PNL_CLR_AUTO_CELL:show;
+   int ry=g_PalY+PalReadY();
+   PnlSetRect(p+"cur", g_PalX+PAL_PAD, ry+4, 24, 24, vis);
+   ObjectSetInteger(0,p+"cur",OBJPROP_BORDER_COLOR,PnlSwatchBorder(vis,PNL_CLR_FIELD));
+   ObjectSetInteger(0,p+"cur",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   string hx=(show==clrNONE)?"AUTO":("#"+PalHexText(show));
+   PnlSetLabel(p+"curtx", g_PalX+PAL_PAD+32, ry+8, hx, PNL_CLR_TITLE, PNL_PT_PAL);
+   ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   //--- the RGB line is RIGHT-aligned on the band's own edge, so the two texts
+   //--- can never collide however long the target's name is.
+   string rgt=(show==clrNONE)?"follows the card":PalColorText(show);
+   PnlSetLabel(p+"curtr", g_PalX+PalW()-PAL_PAD, ry+10, rgt, PNL_CLR_MUTED, 7);
+   ObjectSetInteger(0,p+"curtr",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+   ObjectSetInteger(0,p+"curtr",OBJPROP_ZORDER,Z_PANEL_POP_BG);
 }
 
 void PalDraw()
@@ -2298,7 +2454,12 @@ void PalDraw()
 
     // card — RICH-MT4: baked gradient+radius face (preview .pal). Same object
     // name and Z as the old flat rect, so PalClose's prefix wipe is untouched.
-    PnlSetBitmap(p+"card", px, py, w, h, "::Files\\Icons\\pal_card.bmp", Z_PANEL_POP);
+    // P-DRAW-49: TWO bakes, one per cell size — MT4 crops a bitmap label and
+    // never scales it, so a 268x509 face cannot stand in for a 268x477 one.
+    PnlSetBitmap(p+"card", px, py, w, h,
+                 (PalCellSize()>=PAL_CELL_BIG) ? "::Files\\Icons\\pal_card26.bmp"
+                                               : "::Files\\Icons\\pal_card22.bmp",
+                 Z_PANEL_POP);
 
    // header (names the LIVE target — the picked color goes there,
    // which may differ from the row that opened the popup via APPLY TO)
@@ -2310,31 +2471,31 @@ void PalDraw()
     StringSetCharacter(pttl,1,183);
     string pttl2="PALETTE "+pttl+" "+PalTgtLabel(g_PalTgt);
     StringToUpper(pttl2);
-    PnlSetLabel(p+"ttl", px+PAL_PAD, py+6, pttl2, PNL_CLR_MUTED, PNL_PT_PAL);
+    PnlSetLabel(p+"ttl", px+PAL_PAD+14, py+7, pttl2, PNL_CLR_MUTED, PNL_PT_PAL);
     ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial");
     ObjectSetString(0,p+"ttl",OBJPROP_TOOLTIP,"Drag to move");
     ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   PnlSetButton(p+"close", px+w-PAL_PAD-20, py+3, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+   // P-DRAW-49: the carry grip, so the title says "I can be dragged" instead of
+   // only being true. Baked once for the whole popup family (ds_grip is the
+   // strip's; this is the popup's own 12px face).
+   PnlSetBitmap(p+"grip", px+PAL_PAD, py+8, 12, 12, "::Files\\Icons\\pal_grip.bmp", Z_PANEL_POP_BG);
+   ObjectSetString(0,p+"grip",OBJPROP_TOOLTIP,"Drag to move");
+   PnlSetButton(p+"close", px+w-PAL_PAD-20, py+5, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
    ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
    ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PnlPt(PNL_PT_PAL));   // P-UI-30
    ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
 
-   // preview strip
+   // P-DRAW-49: THE READOUT — the new band, and the reason this popup is worth
+   // reopening. It shows the cell under the POINTER (or the mixer's own value
+   // while a channel is being dragged) instead of leaving the pick to a native
+   // tooltip that covers the cells, hides the chart and arrives late. One owner
+   // (`PalPaintReadout`), so the hover, the mixer, the click and the open all
+   // write the same three numbers by the same arithmetic.
    color cur=PaletteKindColor(g_PalKind);
-   // P-UI-131h: an AUTO target (the two edge halves) has no colour of its own, and MT4
-   // paints clrNONE ink-black — the popover's "you picked this" box would claim a colour
-   // nobody chose. Same face and same words the row and the cset cells use.
-   color curVis=(cur==clrNONE)?PNL_CLR_AUTO_CELL:cur;
-   string curTxt=(cur==clrNONE)?"AUTO (derived)":(PalColorText(cur)+"  #"+PalHexText(cur));
-   int py0=py+PAL_HEAD;
-   PnlSetRect(p+"cur", px+PAL_PAD, py0+5, 30, 18, curVis);
-   ObjectSetInteger(0,p+"cur",OBJPROP_BORDER_COLOR,PnlSwatchBorder(curVis,PNL_CLR_FIELD));
-   ObjectSetInteger(0,p+"cur",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   PnlSetLabel(p+"curtx", px+PAL_PAD+36, py0+8, curTxt, PNL_CLR_MUTED, 8);
-   ObjectSetInteger(0,p+"curtx",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   PalPaintReadout(cur);
 
    // tabs (2: PALETTE · MIXER — recents live inline on the PALETTE tab)
-   int ty=py+PAL_HEAD+PAL_PREV;
+   int ty=py+PalTabsY();
    string tabs[2]={"PALETTE","MIXER"};
    int tgap=6;
    int tw2=(w-2*PAL_PAD-tgap)/2;
@@ -2342,7 +2503,7 @@ void PalDraw()
    {
       bool act=(i==g_PalTab);
       string tb=p+"t"+IntegerToString(i);
-      PnlSetButton(tb, px+PAL_PAD+i*(tw2+tgap), ty, tw2, 18, tabs[i],
+      PnlSetButton(tb, px+PAL_PAD+i*(tw2+tgap), ty, tw2, PAL_TABS-6, tabs[i],
                    act?PNL_CLR_SEG_ON:PNL_CLR_SEG_OFF,
                    act?PNL_CLR_SEG_ON:PNL_CLR_SEG_BD, true);
       ObjectSetInteger(0,tb,OBJPROP_COLOR, act?PNL_CLR_ACCENT_TX:PNL_CLR_SEG_TX);
@@ -2353,37 +2514,53 @@ void PalDraw()
 
    if(g_PalTab==0)
    {
-      // RECENT strip (no tab switch needed) + curated compact grid.
-      // Grid cells reuse the "s{r}_{c}" ids mapped into the Material
-      // matrix, so PalHandleClick needs no changes.
-      PnlSetLabel(p+"rttl", px+PAL_PAD, contY+2, "RECENT", PNL_CLR_LABEL, PNL_PT_PALSEC);
+       // P-DRAW-50: the grid is a PAGE of the user's own 128 (8 families of 8).
+       // Family names live in the tooltips + pager only — no caption line.
+      PnlSetLabel(p+"rttl", px+PAL_PAD, py+PalRecCapY(), "RECENT", PNL_CLR_LABEL, PNL_PT_PALSEC);
       ObjectSetInteger(0,p+"rttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       // P-UI-69: the strip is painted by ONE owner, shared with the live
       // refresh path (PalRefreshRecents), so the row on screen cannot disagree
       // with the list the picker just changed.
-      PalPaintRecents(px, contY);
+      PalPaintRecents(px, py+PalRecY());
+       int cell=PalCellSize(), pitch=cell+PAL_CELLGAP;
+       int gy=py+PalFamY();
+       //--- the pager: the only way to the second 64. Two small seats plus
+       //--- the page number LEFT of them, right-anchored so it never leaves the card.
+       int pgx=px+w-PAL_PAD-2*18-4;
+       for(int k=0;k<2;k++)
+       {
+          string pn=p+"pg"+IntegerToString(k);
+          PnlSetButton(pn, pgx+k*20, gy-2, 18, 16, (k==0)?"<":">",
+                       PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+          ObjectSetInteger(0,pn,OBJPROP_COLOR,PNL_CLR_SEG_TX);
+          ObjectSetInteger(0,pn,OBJPROP_FONTSIZE,PnlPt(7));
+          ObjectSetInteger(0,pn,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
+          ObjectSetString(0,pn,OBJPROP_TOOLTIP,(k==0)?"Previous page":"Next page");
+       }
+       PnlSetLabel(p+"pgt", pgx-6, gy+2, IntegerToString(BioPickPage()+1)+"/"+IntegerToString(BIOPICK_PAGES),
+                   PNL_CLR_MUTED, 7);
+       ObjectSetInteger(0,p+"pgt",OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
+       ObjectSetInteger(0,p+"pgt",OBJPROP_ZORDER,Z_PANEL_POP_BG);
       // P-UI-131h: the two blocks of cells the pointer may sweep (see PalHoverRegionAdd).
-      int gy=contY+18+PAL_QSW+8;
-      PnlSetLabel(p+"gttl", px+PAL_PAD, gy, "ALL COLORS", PNL_CLR_LABEL, PNL_PT_PALSEC);
-      ObjectSetInteger(0,p+"gttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-      int gy0=gy+16;
-      PalHoverRegionAdd(px+PAL_PAD, gy0, PAL_QCOLS, PAL_QROWS, PAL_QSW, PAL_QSW+PAL_QGAP, 0, 0);
-      for(int qi=0;qi<PAL_QCOLS;qi++)
-         for(int qj=0;qj<PAL_QROWS;qj++)
+      int gy0=py+PalGridY();
+      int row0=BioPickPageRow0();
+      PalHoverRegionAdd(px+PAL_PAD, gy0, PAL_COLS, PAL_ROWS, cell, pitch, 0, 0);
+      for(int qi=0;qi<PAL_COLS;qi++)
+         for(int qj=0;qj<PAL_ROWS;qj++)
          {
             string n=p+"s"+IntegerToString(qj)+"_"+IntegerToString(qi);
-            int sx=px+PAL_PAD+qi*(PAL_QSW+PAL_QGAP);
-            int sy=gy0+qj*(PAL_QSW+PAL_QGAP);
-             color sw=PalPickColor(qj,qi);
-             PnlSetButton(n, sx, sy, PAL_QSW, PAL_QSW, "", sw,
+            int sx=px+PAL_PAD+qi*pitch;
+            int sy=gy0+qj*pitch;
+             color sw=PalPickColor(row0+qj,qi);
+             PnlSetButton(n, sx, sy, cell, cell, "", sw,
                           PnlSwatchBorder(sw,PNL_CLR_FIELD), true);
              ObjectSetInteger(0,n,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-             ObjectSetString(0,n,OBJPROP_TOOLTIP, "#"+PalHexText(sw)+"  ("+PalColorText(sw)+")");
+             ObjectSetString(0,n,OBJPROP_TOOLTIP, BioPickFamily(row0+qj)+"  ·  #"+PalHexText(sw));
              // TV parity: rounded cell face over the square button (one pair of
              // assets, worn by both palette grids; clicks route via the trailing G).
              string ng=n+"G";
-             PnlSetBitmap(ng, sx, sy, PAL_QSW, PAL_QSW, PalCellFaceRes(sw, PaletteKindColor(g_PalKind)), Z_PANEL_POP_FG);
-             ObjectSetString(0,ng,OBJPROP_TOOLTIP, "#"+PalHexText(sw)+"  ("+PalColorText(sw)+")");
+             PnlSetBitmap(ng, sx, sy, cell, cell, PalCellFaceRes(sw, PaletteKindColor(g_PalKind)), Z_PANEL_POP_FG);
+             ObjectSetString(0,ng,OBJPROP_TOOLTIP, BioPickFamily(row0+qj)+"  ·  #"+PalHexText(sw));
          }
    }
    else
@@ -2393,37 +2570,48 @@ void PalDraw()
 
    // TV parity board: the palette tab's own HEX band (the mixer seats the same
    // row under its tracks), directly above the APPLY TO row it belongs beside.
-   if(g_PalTab!=1) PalDrawHexRow(px, py+h-PAL_TGT-PAL_FOOT-PAL_HX);
+   if(g_PalTab!=1) PalDrawHexRow(px, py+PalHxY());
 
-   // apply-to target row
-   int tgy=py+h-PAL_TGT-PAL_FOOT;
-   PnlSetLabel(p+"tgtl", px+PAL_PAD, tgy+7, "APPLY TO:", PNL_CLR_LABEL, 8);
+   // apply-to target row — with the TARGET'S OWN colour chip, so the row answers
+   // "what am I about to recolour" and not only "what is it called" (P-DRAW-49).
+   int tgy=py+PalTgtY();
+   PnlSetLabel(p+"tgtl", px+PAL_PAD, tgy+8, "APPLY TO", PNL_CLR_MUTED, PNL_PT_PALSEC);
    ObjectSetInteger(0,p+"tgtl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   PnlSetButton(p+"tgt", px+w-PAL_PAD-112, tgy+1, 112, 20, PalTgtLabel(g_PalTgt)+"  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_TITLE);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(8));   // P-UI-30
+   color tgtClr=PaletteKindColor(g_PalKind);
+   color tgtVis=(tgtClr==clrNONE)?PNL_CLR_AUTO_CELL:tgtClr;
+   PnlSetRect(p+"tgtc", px+PAL_PAD+62, tgy+6, 14, 14, tgtVis);
+   ObjectSetInteger(0,p+"tgtc",OBJPROP_BORDER_COLOR,PnlSwatchBorder(tgtVis,PNL_CLR_FIELD));
+   ObjectSetInteger(0,p+"tgtc",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   PnlSetLabel(p+"tgtn", px+PAL_PAD+82, tgy+8, PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 8);
+   ObjectSetInteger(0,p+"tgtn",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+   PnlSetButton(p+"tgt", px+w-PAL_PAD-64, tgy+3, 64, 20, "cycle  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+   ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_SEG_TX);
+   ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(7));   // P-UI-30
    ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
 
-   // footer: Done + mini transparency (both tabs — no MIXER switch needed)
-   int fy=py+h-PAL_FOOT;
-   PnlSetButton(p+"done", px+PAL_PAD, fy+3, 64, 20, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
+   // footer: Done + mini transparency (both tabs — no MIXER switch needed).
+   // P-DRAW-49: the TRACK is measured from the columns left over (PalTrX/PalTrW),
+   // so it can never leave the card — the 201px popup's hard-coded 100px track
+   // started 5px past the edge and pushed its value 11px onto the chart.
+   int fy=py+PalFootY();
+   PnlSetButton(p+"done", px+PAL_PAD, fy+4, PAL_FT_DONE, 22, "Done", PNL_CLR_ACCENT, PNL_CLR_ACCENT, true);
    ObjectSetInteger(0,p+"done",OBJPROP_COLOR,PNL_CLR_DONE_TX);
    ObjectSetInteger(0,p+"done",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    int tr0=PaletteKindTransparency(g_PalKind);
    bool trOk=(tr0>=0);
-   int olx=px+PAL_PAD+PAL_FOP_DX;
-   PnlSetLabel(p+"opl", olx, fy+6, "TR", trOk?PNL_CLR_LABEL:PNL_CLR_DISABLED, 8);
+   int olx=px+PAL_PAD+PAL_FT_DONE+PAL_FT_GAP;
+   PnlSetLabel(p+"opl", olx, fy+9, "TR", trOk?PNL_CLR_LABEL:PNL_CLR_DISABLED, 7);
    ObjectSetInteger(0,p+"opl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ObjectSetString(0,p+"opl",OBJPROP_TOOLTIP,"Transparency of this target (drag or click the track)");
-   int otx=olx+PAL_FOP_LW;
-   PnlSetRect(p+"opg", otx, fy+8, PAL_FOP_TW, 10, PNL_CLR_TRACK_BD);
+   int otx=PalTrX(), otw=PalTrW();
+   PnlSetRect(p+"opg", otx, fy+11, otw, 8, PNL_CLR_TRACK_BD);
    ObjectSetInteger(0,p+"opg",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    color trFill=trOk?PNL_CLR_ACCENT:PNL_CLR_DISABLED;
-   int tfw=trOk?(int)MathRound(ClampInt(tr0,0,100)/100.0*PAL_FOP_TW):0;
-   PnlSetRect(p+"opf", otx, fy+8, tfw, 10, trFill);
+   int tfw=trOk?(int)MathRound(ClampInt(tr0,0,100)/100.0*otw):0;
+   PnlSetRect(p+"opf", otx, fy+11, tfw, 8, trFill);
    ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-   PnlSetLabel(p+"opv", otx+PAL_FOP_TW+6, fy+6, trOk?IntegerToString(ClampInt(tr0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
+   PnlSetLabel(p+"opv", otx+otw+6, fy+9, trOk?IntegerToString(ClampInt(tr0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
    ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    ChartRedraw();
 }
@@ -2464,15 +2652,19 @@ void PalUpdateLive()
    ObjectSetInteger(0,p+"mf3",OBJPROP_XSIZE,MathMax(0,tkx-trackX+10));
    ObjectSetString(0,p+"mv3",OBJPROP_TEXT, trOk ? IntegerToString(tr2)+"%" : "--");
    }
-   // footer mini transparency (both tabs)
+   // footer mini transparency (both tabs) — the track's width is the paint's own
+   // (PalTrW), never a second set of numbers (P-DRAW-49).
    int ftr=PaletteKindTransparency(g_PalKind);
    bool fok=(ftr>=0);
-   int fotx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
    if(ObjectFind(0,p+"opf")>=0)
       ObjectSetInteger(0,p+"opf",OBJPROP_XSIZE,
-                       fok?(int)MathRound(ClampInt(ftr,0,100)/100.0*PAL_FOP_TW):0);
+                       fok?(int)MathRound(ClampInt(ftr,0,100)/100.0*PalTrW()):0);
    if(ObjectFind(0,p+"opv")>=0)
       ObjectSetString(0,p+"opv",OBJPROP_TEXT, fok?IntegerToString(ClampInt(ftr,0,100))+"%":"--");
+   // P-DRAW-49: the readout is part of the live picture — a hovered cell, a mixer
+   // channel and a click all land here, so the band is repainted by the ONE owner
+   // from the same call that moves the knob.
+   PalPaintReadout(PaletteKindColor(g_PalKind));
    int it,row;
    if(PalKindRow(g_PalKind,it,row) && g_PnlOpen==it)
    {
@@ -2520,30 +2712,33 @@ void PalUpdateLive()
 int PaletteMixHit(const int mx,const int my)
 {
    if(!g_PalOpen) return 0;
-   // P-UI-131k: the FOOTER TR track is the SAME channel as the mixer's fourth slider
-   // (`PaletteKindTransparency` / `PaletteApplyTransparency`), so it drags like one —
-   // it used to answer on a discrete click only. Tested BEFORE the tab gate because
-   // the footer belongs to BOTH tabs; its own origin and width are the paint's
-   // (PAL_FOP_DX/LW/TW), never a second set of numbers.
-   if(PaletteKindTransparency(g_PalKind) >= 0)
-   {
-      int fy=g_PalY+PalH()-PAL_FOOT;
-      int fox=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
-      if(mx>=fox-4 && mx<=fox+PAL_FOP_TW+4 && my>=fy+4 && my<=fy+20) return 5;
-   }
-   if(g_PalTab!=1) return 0;
-   int trackX=g_PalX+PAL_PAD+30;
-   int trackW=PalW()-2*PAL_PAD-34;
-   for(int i=0;i<3;i++)
-   {
-      int y=g_PalY+PAL_HEAD+PAL_PREV+PAL_TABS+2+i*26;
-      if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-6 && my<=y+16) return i+1;
-   }
-   if(PaletteKindTransparency(g_PalKind) >= 0)
-   {
-      int y=g_PalY+PAL_HEAD+PAL_PREV+PAL_TABS+2+3*26;
-      if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-6 && my<=y+16) return 4;
-   }
+    // P-UI-131k: the FOOTER TR track is the SAME channel as the mixer's fourth slider
+    // (`PaletteKindTransparency` / `PaletteApplyTransparency`), so it drags like one —
+    // it used to answer on a discrete click only. Tested BEFORE the tab gate because
+    // the footer belongs to BOTH tabs; its own origin and width are the paint's
+    // (PalTrX/PalTrW), never a second set of numbers (P-DRAW-49).
+    if(PaletteKindTransparency(g_PalKind) >= 0)
+    {
+       int fy=g_PalY+PalFootY();
+       int fox=PalTrX(), fow=PalTrW();
+       if(mx>=fox-4 && mx<=fox+fow+4 && my>=fy+6 && my<=fy+22) return 5;
+    }
+     if(g_PalTab!=1) return 0;
+     int trackX=g_PalX+PAL_PAD+30;
+     int trackW=PalW()-2*PAL_PAD-34;
+     //--- same rows the paint lays (`PalMixRowY`); bands tile edge-to-edge, so no
+     //--- dead gap between two channels can swallow the press.
+     for(int i=0;i<3;i++)
+     {
+        int y=PalMixRowY(i);
+        if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-8 && my<=y+22) return i+1;
+     }
+     if(PaletteKindTransparency(g_PalKind) >= 0)
+     {
+        int y=PalMixRowY(3);
+        if(mx>=trackX-4 && mx<=trackX+trackW+4 && my>=y-8 && my<=y+22) return 4;
+
+    }
    return 0;
 }
 
@@ -2553,17 +2748,19 @@ void PaletteMixFromX(const int comp,const int mx)
    // own fraction — the mixer's track geometry would map the pointer to the wrong value.
    if(comp==5)
    {
-      int fox=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
-      double f=(mx-fox)/(double)PAL_FOP_TW;
+      int fox=PalTrX();
+      double f=(mx-fox)/(double)PalTrW();
       f=MathMax(0.0,MathMin(1.0,f));
       int flags=PaletteApplyTransparency(g_PalKind,(int)MathRound(f*100.0));
       PalUpdateLive();
       if(flags!=REFRESH_NONE) RefreshDisplay(flags);
       return;
    }
-   int trackX=g_PalX+PAL_PAD+30;
-   int trackW=PalW()-2*PAL_PAD-34;
-   double frac=(mx-trackX)/(double)trackW;
+    int trackX=g_PalX+PAL_PAD+30;
+    int trackW=PalW()-2*PAL_PAD-34;
+    //--- knob-centre mapping: the knob is 10px wide over (trackW-10), so the value
+    //--- under the pointer's grip is (mx-5), the exact inverse of the paint above.
+    double frac=(mx-trackX-5)/(double)(trackW-10);
    frac=MathMax(0.0,MathMin(1.0,frac));
    if(comp==4)   // transparency channel → percent, not RGB
    {
@@ -2662,7 +2859,9 @@ bool PalCellIdParse(const string id,int &r,int &c)
    }
    r=(int)StringToInteger(StringSubstr(id,1,us-1));
    c=(int)StringToInteger(StringSubstr(id,us+1));
-   return (r >= 0 && r < PAL_QROWS && c >= 0 && c < PAL_QCOLS);
+   // P-DRAW-50: the ids are PAGE-LOCAL (the paint rebuilds on a page flip), so
+   // the bound is the page's row count, not the table's 16.
+   return (r >= 0 && r < PAL_ROWS && c >= 0 && c < PAL_COLS);
 }
 bool PalRecentIdParse(const string id,int &i)
 {
@@ -2719,25 +2918,44 @@ int PalHandleClick(const string name)
       PalDraw();
       return REFRESH_NONE;
    }
-   // P-UI-131h: the tab owns the cells, so a switch first puts back a live preview.
-   if(id=="t0") { PalHoverRestore(); g_PalTab=0; PalDraw(); return REFRESH_NONE; }
-   if(id=="t1") { PalHoverRestore(); g_PalTab=1; PalDraw(); return REFRESH_NONE; }
-   // (no t2 — RECENT lives inline on the PALETTE tab)
+    // P-UI-131h: the tab owns the cells, so a switch first puts back a live preview.
+    if(id=="t0") { PalHoverRestore(); g_PalTab=0; PalDraw(); return REFRESH_NONE; }
+    if(id=="t1") { PalHoverRestore(); g_PalTab=1; PalDraw(); return REFRESH_NONE; }
+    // (no t2 — RECENT lives inline on the PALETTE tab)
+    //--- P-DRAW-50: THE PAGER — the only way to the second 64 of the table. A
+    //--- flip is a full repaint (the ids are page-local), and it restores a live
+    //--- preview first, exactly like a tab switch: leaving the page must not
+    //--- leave ITS colour on the target.
+    if(id=="pg0" || id=="pg1")
+    {
+       PalHoverRestore();
+       int want=BioPickPage() + ((id=="pg0") ? -1 : 1);
+       if(want >= 0 && want < BIOPICK_PAGES)
+       {
+          BioPickPageSet(want);
+          PalDraw();
+       }
+       return REFRESH_NONE;
+    }
 
-    // a palette cell "s{r}_{c}" — EXACT id (P-UI-74, the P-UI-69 law).
-    // TV parity faces ride the same click: a trailing G names the rounded overlay.
-    string cid=id;
-    int cL=StringLen(cid);
-    if(cL>2 && StringGetCharacter(cid,cL-1)=='G') cid=StringSubstr(cid,0,cL-1);
-    int mr,mc;
-    if(PalCellIdParse(cid,mr,mc))
+     // a palette cell "s{r}_{c}" — EXACT id (P-UI-74, the P-UI-69 law).
+     // TV parity faces ride the same click: a trailing G names the rounded overlay.
+     string cid=id;
+     int cL=StringLen(cid);
+     if(cL>2 && StringGetCharacter(cid,cL-1)=='G') cid=StringSubstr(cid,0,cL-1);
+     int mr,mc;
+     if(PalCellIdParse(cid,mr,mc))
    {
       PalHoverCommit();   // P-UI-131h: the click is the commitment — nothing is put back
-      int flags=PaletteApplyColor(g_PalKind, PalPickColor(mr,mc));
+      // P-DRAW-50: the id is page-local, so the table row is this page's first
+      // row plus the id's own — one mapping, the same one the paint and the
+      // hover region use.
+      int flags=PaletteApplyColor(g_PalKind, PalPickColor(BioPickPageRow0()+mr,mc));
       if(g_PalOpen) PalUpdateLive();
       ChartRedraw();
       return flags;
    }
+
     // recent swatch "r{i}" — EXACT id ("rempty" is the empty-state hint)
     int ri;
     if(PalRecentIdParse(cid,ri))
@@ -5999,14 +6217,15 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       // P-UI-68's rule, here for the row's own PREVIEW: an unset colour is a STATE, and
       // MT4 paints clrNONE ink-black — so AUTO wears the glass face the cset cells wear.
       color ccVis = (cc == clrNONE) ? PNL_CLR_AUTO_CELL : cc;
-      PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+2,
-                   PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), Z_PANEL_GLYPH);
-      // P-UI-30: caption above the swatch strip — clipped to the content edge
-      PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+2,
-                  PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
-                  PNL_CLR_LABEL, PNL_PT_LBL_SM);
-      ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
-      int sy = ry + 18;
+       PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+PNL_CAP_Y,
+                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS, PnlGlyphRes(item,PnlRowIcon(item,row),false), Z_PANEL_GLYPH);
+       // P-UI-30: caption above the swatch strip — clipped to the content edge
+       PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+PNL_CAP_Y,
+                   PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
+                   PNL_CLR_LABEL, PNL_PT_LBL_SM);
+       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
+      int sy = ry + PNL_QSW_Y;
+
        PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22, "", ccVis,
                     (g_PalOpen && g_PalKind==kk) ? a1 : PnlSwatchBorder(ccVis,PNL_CLR_CARD), true);
        // RICH-MT4: glass frame over the flat preview block — transparent
@@ -8327,6 +8546,9 @@ bool PnlTryGrabMove(const int mx,const int my,const bool byPoll)
    int rpw = (g_PnlOpen >= 0 ? PnlPanelW(g_PnlOpen) : 0);
    int rph = (g_PnlOpen >= 0 ? PnlPanelH(g_PnlOpen) : 0);
    if(g_PnlMoveItem >= 0) { PnlGrabRefused("M",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
+   //--- the palette's title carry is live: it owns DRAG_PANEL_MOVE, so a second
+   //--- arm here would starve behind it and jump on its finish (stale anchor).
+   if(s_palMoveArmed) { PnlGrabRefused("T",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
    if(g_PnlOpen < 0 || g_PnlOpen == 13) { PnlGrabRefused("X",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
    if(PnlPalettePointInside(mx,my)) { PnlGrabRefused("P",byPoll,mx,my,rpx,rpy,rpw,rph); return false; }
    // P-UI-127 (2026-09-25) — THE SWEEP IS GONE, AND THE HARD REFUSALS ARE TWO.
@@ -9281,8 +9503,9 @@ int PnlHandleClick(const string name,const int mouseX,const int mouseY)
       {
          if(PaletteKindTransparency(g_PalKind)>=0)
          {
-            int otx=g_PalX+PAL_PAD+PAL_FOP_DX+PAL_FOP_LW;
-            int pct=(int)MathRound((mouseX-otx)/(double)PAL_FOP_TW*100.0);
+             int otx=PalTrX();
+             int pct=(int)MathRound((mouseX-otx)/(double)PalTrW()*100.0);
+
             int flags=PaletteApplyTransparency(g_PalKind,ClampInt(pct,0,100));
             PalUpdateLive();
             return flags;
