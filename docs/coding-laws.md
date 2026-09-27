@@ -1,9 +1,14 @@
 # CODING LAWS — read before writing code
 
-Learned 2026-09-27, in the strip's fill/level/extend session (P-DRAW-64a–d, 64b–c).
+Learned 2026-09-27, in the strip's fill/level/extend session (P-DRAW-64a–d, 64b–c)
+and the ICON-DIET session (2026-09-27: 325 → 284 runtime bitmaps, 49.00 → 13.91 MB
+on disk, 42 files with no runtime path).
 Each law is one or two lines. The WHY behind each lives in `docs/history.md`;
 the code keeps the `P-*` ID. Laws marked PORTABLE hold on any machine, any
 terminal, any account; the rest name their scope.
+Sections I and J are machine-independent by construction: they are about
+reachability and measurement, not about paths, shells or hashes, so they survive
+a new computer, a new session and a new account unchanged.
 
 ## A. The machine you run on is not the machine you wrote on (PORTABLE)
 
@@ -141,3 +146,71 @@ terminal, any account; the rest name their scope.
 - H4. The investigation goes to history; the code keeps the ID and the law;
   the contract doc (checklist) moves with every rule change. Comments state
   the WHY and stop (16-line ceiling).
+
+## I. Reachability before deletion (PORTABLE)
+
+- I1. A search that returns zero is not a zero until you have expanded the
+  CONSTRUCTION. Names built by concatenation (`stem + "_" + accent + ".bmp"`,
+  `"card" + n + ".bmp"`) are invisible to a literal search. Before declaring
+  anything unreachable, enumerate its producers: the stem table, the accent
+  list, the index range, the suffix variants. Same failure class as a search
+  tool whose `-l`/`-c` flags answer "0 matches" for strings that exist — a
+  tool's zero is not the world's zero, and both times the fix is to re-ask a
+  different way, not to believe the first answer.
+- I2. A clamp constant is a CLAIM about its producer — trace the claim, never
+  read the number. `MAX 16` read as headroom; the branch that consumed it could
+  only ever see ≤10, because a different predicate routed everything above that
+  to a composed path. Twelve files and 11.4 MB existed to serve an index the
+  producer could not produce. If you cannot name the producer's bound in one
+  sentence, the constant is unverified.
+- I3. Classify before deleting: PRODUCED-EMPTY (the whole family is dead — take
+  all of it or none, one member is meaningless), INDEXED-BY-RUNTIME-VALUE (the
+  number IS a live lookup key — deleting a member breaks the map), or ISOLATED
+  (safe one at a time). Only ISOLATED may be deleted piecemeal.
+- I4. A commented-out restore path still costs real bytes. `orb_word`'s only
+  call site had been commented out for two weeks while its `#resource` stayed
+  live: 20 KB in every `.ex4` for a line nobody runs. Keep the builder and its
+  master; drop the embedded artifact and the declaration. A restore hint must
+  not keep its payload alive.
+- I5. A generator that writes a list but never prunes stale files is half a
+  generator. After regen, disk held 326 files against a 284-line manifest. The
+  gate is BIDIRECTIONAL set equality — every manifest entry has a file AND every
+  file has a manifest entry. One direction is not a check.
+- I6. Fix a defect with a SWAP, never an addition. A mark ink that was resolved
+  at runtime but emitted nowhere was fixed by moving one dead name out of the
+  ink set and the live one in: 13 files in, 13 out. A diet that grows the
+  payload to fix a bug is a bad trade, and a swap stays reviewable as a swap.
+- I7. Assert the COUNT and a sentinel of a destructive list BEFORE running it.
+  A range written `1..16` where `11..16` was meant built a 62-item delete list
+  instead of 42 and would have taken 20 live files with it. One
+  `if($list.Count -ne 42){ exit 1 }` plus "are these 8 known-live files still
+  listed?" is the whole difference between a diet and an outage. A range inside
+  a delete path is a reachability CLAIM (I2) and gets verified like one.
+
+## J. The number you report is the number that is paid (PORTABLE)
+
+- J1. "No quality loss" is a HASH, not a compile. Hash every generated asset
+  before touching it; after, diff the set and require untouched files to be
+  byte-identical (283/283 here). A green build says nothing about pixels.
+- J2. When you delete N bytes, find out what the CONSUMER's byte count did —
+  and when it disagrees with your model, SAY SO. 35 MB of bitmaps left; the
+  shipped binary moved 398 KB, because the packer compressed those gradients
+  ~88:1. Reporting only the flattering on-disk number is a lie of omission.
+  Predict, measure, report both, explain the gap.
+- J3. Comparing a build artifact git does not track means restoring the WHOLE
+  before-state, binaries included, and "restored" needs a count rather than a
+  belief. Stashing `src` but not `assets` produced a failed compile and a
+  meaningless number that looked like a result. Check the before-state's file
+  count before trusting a before/after measurement.
+- J4. `git stash pop` rewrites line endings: content-identical,
+  byte-different. Compare normalized before concluding you lost work, or you
+  will raise a phantom data-loss incident and spend a turn on it.
+- J5. Set algebra over many names is not a file-tool job. Reachability across
+  four states (disk / manifest / declarations / runtime) for hundreds of names
+  cannot be done with read+grep inside a context window; a scripted pass is the
+  sanctioned terminal use. Reading 325 files one at a time is not.
+- J6. Audit the direction your cleanup did NOT. The diet's own ledger surfaced
+  an inverse defect: a name constructed at runtime that was emitted and declared
+  nowhere, so a card had been drawing no mark at all. A byte-counting pass
+  misses the bugs sitting in the same table — reachability has two errors, not
+  one, and the second one is a missing entry rather than an extra one.

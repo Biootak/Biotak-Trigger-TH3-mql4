@@ -3787,3 +3787,131 @@ per move frame under a held button on a filled shape, no writes and no terminal 
 rest. **Gate:** main (workspace + installed) PASS, all seven harnesses `Result: 0 errors,
 0 warnings`, `submenu_geometry_check.js` 1440 PASS, `deploy.ps1 -SkipIconRegen` green (325
 BMPs identical in both terminals). A re-attach is REQUIRED.
+
+---
+
+## P-ICONS-01 (2026-09-27) — THE 71.6 % THAT NOTHING DREW, AND WHY THE BINARY BARELY MOVED
+
+**The order.** It arrived as a complaint about the redesign preview's icons and became a
+size question: «ایکون جدید باید جنرین بشه و قبلی ها حذف بشه که زیاد سنگین نشه», then
+«بدون افت کیفیت ... نهایت فشرده بشدن میخوام انجام بده» — generate the new icons, delete
+the old ones so it does not get heavy, and compress maximally **without quality loss**.
+The last clause is the one that decides every trade below.
+
+### The measurement that started it
+
+`Files/Icons` held **325** BMPs, **49.00 MB**, and `pnl_card<N>` alone was **44.47 MB**
+(90.8 %). A SHA-256 pass over all 325 found **zero** byte-identical duplicates, so dedup
+was not available and the only lever was reachability. Two families dominated:
+
+| family | files | bytes | why nothing reached it |
+|---|---|---|---|
+| `pnl_cardW{1..12}[f]` | 24 | 25.35 MB | since P-UI-71b a wide body is **composed** from `pnl_cardWtop/mid/bot` + the `.fade` wash; the baked per-row-count table is the pre-P-UI-71 lookup, and `PNL_WIDE_ROWS_MAX` was referenced by nothing but a comment |
+| `pnl_card{11..16}[f]` | 12 | 11.41 MB | the baked lookup lives **only** inside `if(!wide)`, and `PnlIsWide()` is `rowsCount > PNL_WIDE_MIN_ROWS` (10) — so the index reaching the clamp can never exceed 10 |
+
+**The trap was the clamp reading as headroom** (law **I2**). `PNL_CARD_ROWS_MAX 16` looks
+like margin; it is a CLAIM about a producer, and the producer's bound is 10. Near-miss
+worth keeping: `pnl_card1f` **is** reachable — the Step card in TH mode is a lone TAB row
+(`BiotakPanels.mqh`, `mode==0` has no `else`), 1 row, and `PnlCardFade(9)` is true. An
+orphan sweep that had not enumerated every band-collapse subset would have taken a live
+file with it. That is why the four smaller groups were also audited: `pnl_glass{28,32}`
+(orphaned by **catalogue 19**, which deleted the last `pnl_glass28` caller — the size-table
+branches that named them had to go too, or the table rots), `orb_word` (ORBWORD-OFF
+commented its only call site on 2026-09-12, the `#resource` stayed), and `gl_magnet_*` /
+`gl_reset_gold` (the Reset footer is created with `primary=false`, so it only ever asks
+for the muted face).
+
+### The fifth state: reachability has two errors, not one
+
+A byte-counting pass only finds EXTRA entries. The same ledger also produced a **missing**
+one: `PnlMarkIcon(14)` returns `"template"`, `PnlGlyphInkRes` composes
+`gl_template_i_gold.bmp` from it, and the generator's `INK_GLYPHS` had no `template` — so
+the **GENERAL card had been loading no `.mark` at all**, and the name was in neither the
+manifest nor any `#resource`. Fixed as a **swap** (law **I6**): `bolt` out (it was in
+`INK_GLYPHS` while sitting in `DEAD_GLYPHS`, so it was never emitted anyway), `template`
+in. Thirteen files in, thirteen out.
+
+### The mistake, and the law it bought
+
+The first manifest prune was built as `(1..16 | ForEach-Object { "pnl_card$_.bmp"; … })`
+where the range should have been `11..16`. It dropped **62** names instead of 42 and would
+have deleted 20 **live** files. Nothing caught it but a count: the list was built, the
+expected total was known, and `if($drop.Count -ne 42){ exit 1 }` refused to run. The
+manifest was restored with `git checkout` and the range corrected — which is the whole
+argument for law **I7**: a range inside a delete path is a reachability claim, and gets
+verified like one. The BMPs on disk were never touched, so nothing was lost.
+
+### Composing the narrow body: measured, and REJECTED
+
+The obvious next step was to give the 20 narrow skins the wide treatment — 4 pieces
+instead of 20, ~9 MB. The per-row marginal cost is 57,120 B and the fixed part 179,574 B,
+so the arithmetic was attractive. It was not done, because the gradient is
+**height-dependent**: `cardGrad(cy / H)` divides by the card's total height. Sampled
+straight out of the shipped rasters at the card centre:
+
+```
+card-local y=112:   pnl_card3  23,28,38   pnl_card6  26,31,41   pnl_card10  27,33,43
+card-local y=196:   pnl_card3  20,24,31   pnl_card6  23,28,36   pnl_card10  25,30,40
+```
+
+One fixed `mid` band sliced from a 10-row card lands **2–5 units dark** on a 3-row card —
+and because the band is uniformly the 10-row card's *bottom* tone, the whole short card
+reads dark and loses its gradient head. The 1- and 2-row cards are common (Hover Chip is
+two, Step in TH mode is one), so the error is largest exactly where it shows. **That is a
+quality loss, not a trade**, and the user's clause forbids it. The wide family has carried
+the same ~2-unit error since P-UI-71b and escapes it only because every wide card is
+10+ rows — recorded as still open, and it costs zero bytes to fix (reconstruct the
+gradient in two edges instead of one flat band).
+
+### What was actually taken: the `.fade` as an overlay
+
+The 10 `pnl_card<n>f` skins were **4.71 MB** — 34 % of what remained — and each differed
+from its plain twin in exactly **26 rows**: a wash sitting directly above the footer. That
+is the same shape the wide body already ships as an overlay (`pnl_cardWfade.bmp` into the
+`cardf` object), so the mechanism was copied rather than invented: one
+`pnl_cardfade.bmp` (340×26, 35,414 B), `cardFadeWash()` beside `pnlCardSkin()`, and the
+narrow branch of `PnlCreate` draws it under the same name the wide branch uses. The pixels
+are identical, not approximated — `over(body, pm(CARD_BOT, a))` and MT4 compositing a
+premultiplied wash of the same alpha are one operation. `PnlSkinHit` needed no change
+(the wash lies inside the card rect, and it never decides) and `PnlDestroy`'s prefix wipe
+already covers `cardf`. **Cost: +1 object, on the 5 `PnlCardFade` cards (0,1,2,6,9) only,
+and only while one is open** — `g_PnlOpen` is a single card.
+
+### The number the user actually pays
+
+`49.00 → 13.91 MB` on disk, then `→ 9.24 MB`. But the shipped `.ex4` moved
+`3,826,082 → 3,344,450 B` — **−481,632 B, −12.6 %** — for **35.09 MB** of source deleted.
+The packer compresses these gradient cards ≈ **88:1**, so the on-disk figure and the
+binary figure disagree by two orders of magnitude. Reporting only the first would have
+been a lie of omission; law **J2** exists because of it. The honest split: the disk and
+repo win is real and large, the binary win is modest, and the runtime cost is **zero**
+objects removed and exactly **one** added.
+
+### The gate, and what it cost to measure
+
+Ten builds, every one `Result: 0 errors, 0 warnings` — main (workspace + installed), Lite,
+and all seven harnesses — plus `submenu_geometry_check.js` green. **Quality loss: zero,
+proven by hash.** 273/273 untouched files byte-identical to the pre-change baseline; the
+2 added files (`gl_template_i_gold.bmp`, `pnl_cardfade.bmp`) named individually.
+
+The before/after `ex4` comparison needed a measurement mistake of its own. The `.ex4` is a
+build artifact git does not track, so the only way to get the "before" number is to
+restore the whole before-state — and the first attempt stashed `Biotak tools` **without**
+`Files`, leaving the source declaring 36 resources whose files were gone. It produced a
+**failed** compile and a number that looked like a result. The fix is law **J3**: verify
+the before-state's file count (325, not 284) before trusting the number. A second trap in
+the same measurement: `git stash pop` rewrites line endings, so four of five files came
+back content-identical and byte-different — comparing raw hashes would have reported a
+phantom data-loss incident (law **J4**).
+
+### What this bought, beyond the bytes
+
+`docs/coding-laws.md` sections **I** (reachability before deletion) and **J** (the number
+you report is the number that is paid) — 13 laws, written to be machine-independent, so a
+new computer, session or account changes nothing about them. `design-checklist.md`
+catalogue **26** (an embedded asset nothing draws) and **27** (a restore hint that keeps
+its payload alive), delivery-gate items **11** and **12**, and Audit log row **23**.
+
+**Not committed.** 52 deletions and 7 modified files are staged in the worktree and fully
+git-recoverable; the law says deletions get their own commit, and the user has not asked
+for one.
