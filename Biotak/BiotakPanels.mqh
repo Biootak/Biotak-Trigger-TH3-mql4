@@ -7164,6 +7164,9 @@ bool ChartLockIntended()
     if(DrawStripViewOwned()) return true;
     // P-TH3-PB-OFF (2026-09-21): TH3BaseViewOwned retired with the stage-5
     // base drag — the base is hand-typed, so no term of it can hold the view.
+    // P-HR-03 (2026-09-28): the Horizontal Ray's arm + dot carry hold the view
+    // from HRayTool (P-DRAW-19: named the day they were born).
+    if(HRayViewOwned()) return true;
     return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
 }
 

@@ -52,6 +52,8 @@
 // Base / Knot Measurement Tool (Lite: no ring menu to arm it, but committed
 // boxes keep their drag/delete/badge behavior via EventHandlers).
 #include "Biotak\BaseKnotTool.mqh"
+// P-HR-01: Horizontal Ray (Lite: nothing arms it, committed rays keep drag/snap/delete).
+#include "Biotak\HRayTool.mqh"
 
 //                                                                    
 // Cache & Object Management Systems

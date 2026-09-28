@@ -279,6 +279,7 @@ int OnInitHandler() {
     // chart (re-attach / TF switch reuses the same chart), so the previous
     // instance's "this name is absent" facts are not trustworthy yet.
     CacheAbsentResetAll();
+    HRayOnInit();   // P-HR-06: adopt chart rays into the registry (idempotent)
 
     // Restore hidden state
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();
@@ -1556,6 +1557,7 @@ void OnDeinitHandler(const int reason) {
     TH3PivotMarkersClear();     // P-TH3-P6: our chart namespace leaves with us (UI half — P-BUILD-01)
 #endif
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
+    HRayOnDeinit(reason);         // P-HR-01: never leave a stuck arm behind
     p49knot = GetTickCount() - p49t; p49t = GetTickCount();
     CustomPriceDragLockOff();   // P-UI-53: same rule for the custom-price drag lock
     // P-UI-90: THE NET, for EVERY deinit reason. Whatever the counters of the
@@ -4219,6 +4221,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // chart-click leak into custom-price/TH3/panels), and committed boxes own
     // their badge/drag/delete events in every state.
     if(BaseKnotOnChartEvent(id, lparam, dparam, sparam)) return;
+    // P-HR-01: the Horizontal Ray owns its arm click and its committed drags.
+    if(HRayOnChartEvent(id, lparam, dparam, sparam)) return;
 
     // P-UI-100b (2026-09-22): THE DETECTOR OF "A FOREIGN OBJECT JUST APPEARED".
     //
@@ -4265,8 +4269,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         int prefixLen = StringLen(indicatorPrefix);
         // P-BK-01: Base/Knot deletes are owned by BaseKnotTool (cascade/heal) —
         // they must not flag a level redraw or pollute the object cache.
+        // P-HR-01: ray deletes are owned by HRayTool the same way (single object).
         if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix &&
-           StringFind(sparam, "_BK_") < 0) {
+           StringFind(sparam, "_BK_") < 0 && StringFind(sparam, "_HRAY_") < 0) {
             CacheRemoveObject(sparam);
             g_redrawTHLevelsNeeded = true;
             // P-PERF-02: a level vanished behind our back — the stored geometry
@@ -5960,6 +5965,7 @@ void RunIncrementalObjectCleanup()
             if(StringLen(objName) >= indicatorPrefixLen && StringSubstr(objName, 0, indicatorPrefixLen) == indicatorPrefix) isOurs = true;
             if(!isOurs) continue;
             if(StringFind(objName, "_BK_") >= 0) continue;   // P-BK-01: never emergency-wipe user drawings
+            if(StringFind(objName, "_HRAY_") >= 0) continue;   // P-HR-05: rays are their own layer, same law
 
             if(StringFind(objName, "TH3_Structure_") == 0) continue;
             if(StringLen(objName) >= currentPrefixLen && StringSubstr(objName, 0, currentPrefixLen) == objectPrefix) continue;

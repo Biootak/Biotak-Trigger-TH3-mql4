@@ -40,6 +40,9 @@
 // (ART.gear == BK_GEAR in tools/gen-th3-icons.js), baked by that one generator.
 #resource "\\Files\\Icons\\gear_off.bmp"
 #resource "\\Files\\Icons\\gear_on.bmp"
+// P-HR-01: the Horizontal Ray cell's face (ART.hray, baked by the generator).
+#resource "\\Files\\Icons\\hray_off.bmp"
+#resource "\\Files\\Icons\\hray_on.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
 //--- ORBWORD-OFF (2026-09-12, user decision — no wordmark on the orb, ever:
 //--- the "TRex" text over the bow read as mud on the chart). The open-state
@@ -127,6 +130,7 @@
 #define CIR_GENERAL         14  // P-UI-131 — General Settings card. Its code IS its panel
                                 // index (FeaturePanel's identity fallback), and 13 is the mini
                                 // STRIP (no rows), so 14 is the first free slot that can own one
+#define CIR_HRAY            15  // P-HR-01 — Horizontal Ray (Tools cell: arm → 1 click places)
 //--- ring layout (main circle — 8 items; Zones first = the main feature)
 // TH3TOOL-ON (2026-09-19): RING_TH3 comes back APPENDED (slot 7), never in the
 // middle — HTF/TOOLS/BASEKNOT keep the numbers they were renumbered to when
@@ -170,10 +174,11 @@
 // TOOL_COUNT is the only number it reads.
 // Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); TOOL_COUNT
 // is the only number the layout reads — it picks its own geometry from it.
-#define TOOL_COUNT 3
+#define TOOL_COUNT 4
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
 #define TOOL_GENERAL          2   // P-UI-131 — the cross-card settings door (a gear)
+#define TOOL_HRAY             3   // P-HR-01 — Horizontal Ray (arm → 1 click places, APPENDED so no slot moves)
 // UIBK-OFF: #define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 
@@ -312,6 +317,7 @@ int ToolFeature(const int toolIdx)
    if(toolIdx == TOOL_PIN)             return CIR_PIN;
    if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
    if(toolIdx == TOOL_GENERAL)         return CIR_GENERAL;   // P-UI-131
+   if(toolIdx == TOOL_HRAY)            return CIR_HRAY;      // P-HR-01
    // UIBK-OFF (P-UI-95): if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;
    // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
    return -1;
@@ -1118,6 +1124,8 @@ bool CircFeatureOn(const int i)
    if(i == CIR_PIN)             return g_customPriceLineCreated;
    // CIR_BASEKNOT is momentary: lit while the draw session is armed.
    if(i == CIR_BASEKNOT)        return BaseKnotSessionActive();
+   // P-HR-01 is momentary too: lit while the ray session is armed.
+   if(i == CIR_HRAY)            return HRaySessionActive();
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
    //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
@@ -1180,6 +1188,7 @@ string CircIconRes(const int i, const bool on)
     else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
     else if(i == CIR_BASEKNOT)   base = "ruler";   // Base / Knot MEASURE = a scale bar with ticks
+    else if(i == CIR_HRAY)       base = "hray";    // P-HR-01 — Horizontal Ray cell
     else if(i == CIR_LEG)        base = "leg";     // Leg Measure — trendline + bracket
     else if(i == CIR_TOOLS)      base = "tools";
     // P-UI-131: the gear — a settings DOOR, so it wears the same art the strip's
@@ -1374,6 +1383,11 @@ string CircTooltipStatus(const int i)
       int n = BaseKnotCount();
       return (n > 0 ? IntegerToString(n) + " set" : "Ready");
    }
+   if(i == CIR_HRAY)   // P-HR-01: the next press arms/cancels, like the measure tool
+   {
+      if(HRaySessionActive()) return "Drawing";
+      return "Ready";
+   }
 #ifndef BUILD_LITE
    if(i == CIR_LEG)
    {
@@ -1412,6 +1426,7 @@ string CircItemTooltip(const int i)
        case CIR_STEP_OVERRIDE:   return "Step Mode · " + CircTooltipStatus(i);
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
       case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i);
+      case CIR_HRAY:            return "Horizontal Ray · " + CircTooltipStatus(i);   // P-HR-01
       case CIR_LEG:             return "Leg Measure · " + CircTooltipStatus(i);
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i);
       // P-UI-131: a DOOR has no state to report, so the tip names the card instead
@@ -3936,8 +3951,29 @@ int CircArmBaseKnot()
    CreateMenu();   // orb only — the ring is gone while menuVisible=false
    SaveUIStates();
    PnlCloseAll();   // a stale strip/card must not survive under the draw session
+   if(HRaySessionActive()) HRayCancel();   // P-HR-06: the ray yields (its lock goes back)
    BaseKnotArm();
    UpdateCircularBadges();
+   ChartRedraw();
+   return REFRESH_NONE;
+}
+
+//+------------------------------------------------------------------+
+//| P-HR-01 — THE HORIZONTAL RAY'S ARM PATH, ONE OWNER.              |
+//| Toggle: press arms, second press cancels. The menu stays OPEN —   |
+//| one chart click is what places the ray, and the lit cell is what  |
+//| cancels it. No recalc — REFRESH_NONE (Arm redraws itself).        |
+//+------------------------------------------------------------------+
+int CircArmHRay()
+{
+   // P-HR-06: one gesture at a time — the ray yields to a live draw session
+   // instead of arming under it (a second light whose clicks never arrive).
+   if(BaseKnotSessionActive()) return REFRESH_NONE;
+#ifndef BUILD_LITE
+   if(LegMeasureSessionActive() || TH3SessionActive()) return REFRESH_NONE;
+#endif
+   if(HRaySessionActive()) HRayCancel();
+   else HRayArm();
    ChartRedraw();
    return REFRESH_NONE;
 }
@@ -4014,6 +4050,7 @@ int HandleButtonClick(const string clickedObject)
    {
       // Orb doubles as the session EXIT while drawing (menu is hidden then).
       if(BaseKnotSessionActive()) { BaseKnotExitToMenu(); return REFRESH_NONE; }
+      if(HRaySessionActive()) { HRayCancel(); return REFRESH_NONE; }   // P-HR-01: orb exits the ray arm
       if(g_OrbWasDragged)
       {
          g_OrbWasDragged = false;
@@ -4145,6 +4182,10 @@ int HandleButtonClick(const string clickedObject)
           UISuppressNextClick();
           PnlOpen(ToolPanel(tidx));
           return REFRESH_NONE;
+       }
+       else if(tfeat == CIR_HRAY)   // P-HR-01: momentary toggle — the cell light is the session
+       {
+          tflags = CircArmHRay();
        }
        else if(tfeat == CIR_BASEKNOT)
        {

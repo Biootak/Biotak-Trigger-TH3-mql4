@@ -152,6 +152,20 @@ bool DrawIsIndicatorObject(const string name)
    if(StringLen(name) < p) return false;
    return (StringSubstr(name, 0, p) == inpObjectPrefix);
 }
+// P-HR-04 (2026-09-28) — THE RAY IS A DRAWING TOO. A Horizontal Ray carries
+// the indicator prefix (so create/delete routing ignores it) but the STRIP
+// serves it like a user trendline: hold-to-open, color/width/style/delete.
+// The `_H` dot is nobody's drawing (handled by HRayTool, never hit, never
+// served) — one suffix, one test, asked by every entry point below.
+// P-HR-06: the marker is prefix-anchored — a USER drawing that merely
+// mentions "_HRAY_" must never inherit ray behaviour.
+bool DrawIsHRay(const string name)
+{
+   if(StringLen(inpObjectPrefix) == 0) return false;
+   if(StringFind(name, inpObjectPrefix + "_HRAY_") != 0) return false;
+   int l = StringLen(name);
+   return !(l > 2 && StringSubstr(name, l - 2) == "_H");
+}
 
 //--- the object's MT4 type, or -1 when it is not on the chart.
 int DrawObjectType(const string name)
@@ -579,7 +593,7 @@ string DrawObjectAt(const int px, const int py)
    for(int i = total - 1; i >= 0; i--)
    {
       string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || DrawIsIndicatorObject(nm)) continue;
+      if(nm == "" || (DrawIsIndicatorObject(nm) && !DrawIsHRay(nm))) continue;   // P-HR-04: rays are served
       if(DrawKindOf(nm) == DK_NONE) continue;
       if(DrawHitObject(nm, px, py)) return nm;
    }
@@ -923,6 +937,7 @@ double DrawSlotRead(const string name, const int slot)
          return (double)r;
       }
       case DRAW_SLOT_LOCK:
+         if(DrawIsHRay(name)) return 0.0;   // P-HR-04: lock is N/A on rays (dot carry instead)
          return ((bool)ObjectGetInteger(0, name, OBJPROP_SELECTABLE)) ? 0.0 : 1.0;
       //--- P-DRAW-09a: the three appended slots, read straight off the object.
       case DRAW_SLOT_FONT:
@@ -1039,6 +1054,12 @@ bool DrawSlotPreviewColor(const string name, const color c)
    if(name == "" || ObjectFind(0, name) < 0) return false;
    EDrawKind k = DrawKindOf(name);
    if(k == DK_NONE || !DrawSlotAvailable(k, DRAW_SLOT_COLOR)) return false;
+   if(DrawIsHRay(name))   // P-HR-04: preview the plain ink the apply will write
+   {
+      if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == c) return false;
+      ObjectSetInteger(0, name, OBJPROP_COLOR, c);
+      return true;
+   }
    color rc = DrawSlotRenderColor(name, c);
    if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == rc) return false;
    ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
@@ -1240,6 +1261,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
       case DRAW_SLOT_COLOR:
       {
          color c = (color)(int)MathRound(v);
+         // P-HR-04: plain ink on the ray — no `[CL` desc (it would paint text on
+         // the line) and no kind learning (a ray must not dye the next trendline).
+         if(DrawIsHRay(name)) { ObjectSetInteger(0, name, OBJPROP_COLOR, c); break; }
          color rc = DrawSlotColorStore(name, c);   // P-DRAW-48: pure on the desc, blend on the chart
          ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
          //--- P-DRAW-64: an interior the user has NOT coloured follows the border,
@@ -1258,7 +1282,7 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          if(w > DRAW_WIDTH_MAX) w = DRAW_WIDTH_MAX;
          ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
          if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
-         s_dkWidth[k] = w;
+         if(!DrawIsHRay(name)) s_dkWidth[k] = w;   // P-HR-04: rays learn nothing
          break;
       }
       case DRAW_SLOT_STYLE:
@@ -1268,7 +1292,7 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          if(st > (int)STYLE_DASHDOTDOT) st = (int)STYLE_DASHDOTDOT;
          ObjectSetInteger(0, name, OBJPROP_STYLE, st);
          if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, st);
-         s_dkStyle[k] = st;
+         if(!DrawIsHRay(name)) s_dkStyle[k] = st;   // P-HR-04: rays learn nothing
          break;
       }
       case DRAW_SLOT_FILL:
@@ -1314,13 +1338,17 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          int r = (int)MathRound(v);
          if(r < 0) r = 0;
          if(r > 3) r = 3;
+         if(DrawIsHRay(name)) r = 1;   // P-HR-04: a ray stays a right-ray — the law, not a choice
          ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, (r & 1) != 0);
          ObjectSetInteger(0, name, OBJPROP_RAY_LEFT,  (r & 2) != 0);
-         s_dkRay[k] = r;
+         if(!DrawIsHRay(name)) s_dkRay[k] = r;   // P-HR-04: rays learn nothing
          break;
       }
       case DRAW_SLOT_LOCK:
       {
+         // P-HR-04: the ray is born unselectable and stays that way — the dot
+         // carry is its lock's replacement, so the cell is a no-op on rays.
+         if(DrawIsHRay(name)) break;
          bool locked = (v > 0.5);
          ObjectSetInteger(0, name, OBJPROP_SELECTABLE, !locked);
          if(locked) ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
@@ -1912,7 +1940,7 @@ void DrawSelPrune()
 int DrawSelSnapshot(const string hold)
 {
    DrawSelClear();
-   if(hold == "" || DrawIsIndicatorObject(hold)) return 0;
+   if(hold == "" || (DrawIsIndicatorObject(hold) && !DrawIsHRay(hold))) return 0;   // P-HR-04
    EDrawKind k = DrawKindOf(hold);
    if(k <= DK_NONE || k >= DK_COUNT) return 0;
    s_dkSel[0] = hold;
@@ -1922,7 +1950,7 @@ int DrawSelSnapshot(const string hold)
    {
       string nm = ObjectName(0, i, -1, -1);
       if(nm == "" || nm == hold) continue;
-      if(DrawIsIndicatorObject(nm)) continue;
+      if(DrawIsIndicatorObject(nm) && !DrawIsHRay(nm)) continue;   // P-HR-04: rays group too
       if(DrawKindOf(nm) != k) continue;
       if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) continue;
       s_dkSel[s_dkSelN] = nm;

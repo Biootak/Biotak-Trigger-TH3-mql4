@@ -53,6 +53,7 @@
 #include "..\Biotak\GlobalVariables.mqh"
 #include "..\Biotak\UtilityFunctions.mqh"
 #include "..\Biotak\BaseKnotTool.mqh"
+#include "..\Biotak\HRayTool.mqh"   // P-HR-01: same layer as the entry's chain (P-BUILD-02)
 #include "..\Biotak\CalculationCache.mqh"
 #include "..\Biotak\ZoneFactory.mqh"
 #include "..\Biotak\ZoneConfig.mqh"       // SUnifiedZoneConfig (ExtendedDrawingFunctions)

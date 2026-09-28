@@ -5228,7 +5228,15 @@ void DrawStripFireDelete()
    if(n > 0)
    {
       for(int j = 0; j < n; j++)
-      { BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j)); }
+      {
+         if(DrawIsHRay(DrawSelAt(j))) { HRayDelete(DrawSelAt(j), "strip bin"); continue; }   // P-HR-04: dot goes with the line
+         BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j));
+      }
+   }
+   else if(s_dsObj != "")
+   {
+      if(DrawIsHRay(s_dsObj)) HRayDelete(s_dsObj, "strip bin");   // P-HR-04
+      else { BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    }
    else if(s_dsObj != "") { BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    DrawStripClose();
@@ -5937,7 +5945,9 @@ bool DrawStripHoldSelect()
 {
    string nm = s_dsObj;
    if(nm == "" || ObjectFind(0, nm) < 0) return false;
-   if(DrawIsIndicatorObject(nm) || DrawKindOf(nm) == DK_NONE) return false;
+   if(DrawKindOf(nm) == DK_NONE) return false;
+   if(DrawIsHRay(nm)) return true;   // P-HR-04: the dot IS the selection ΓÇö nothing to assert
+   if(DrawIsIndicatorObject(nm)) return false;
    if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTABLE)) return false;
    if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return true;
    return ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);
@@ -5980,8 +5990,13 @@ void DrawStripHoldFire()
    s_dsHoldMs = 0; s_dsHoldObj = "";
    if(hit == "" || s_dsOpen) return;
    if(!DrawStripOpenAt(hit, hx, hy)) return;
-   DrawStripHoldSelect();     // P-UI-113f: native anchors/settings survive the hold
-   DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release
+   // P-HR-06: the dot IS the ray's selection ΓÇö no native flag to assert and no
+   // repair poll to arm (that poll would redraw + log on every ray open).
+   if(!DrawIsHRay(hit))
+   {
+      DrawStripHoldSelect();     // P-UI-113f: native anchors/settings survive the hold
+      DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release
+   }
    DrawStripOpenerArm();   // P-UI-113c: the press that opened it owns its own clicks
    Print("[drawstrip] hold opened on \"", hit, "\" selected=",
          (bool)ObjectGetInteger(0, hit, OBJPROP_SELECTED));

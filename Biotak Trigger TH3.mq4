@@ -50,6 +50,8 @@
 // Included here (before EventHandlers/menu) so both Full and Lite compile:
 // Lite has no ring menu but keeps drag/delete/badge handling alive.
 #include "Biotak\BaseKnotTool.mqh"
+// P-HR-01: Horizontal Ray (Tools cell ΓåÆ 1 click places; same layer, same rule).
+#include "Biotak\HRayTool.mqh"
 
 //                                                                    
 // Cache & Object Management Systems
