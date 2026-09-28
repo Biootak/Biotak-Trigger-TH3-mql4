@@ -75,7 +75,6 @@ bool HRayIsHandle(const string nm)
    int l = StringLen(nm);
    return (l > 2 && StringSubstr(nm, l - 2) == "_H");
 }
-string HRayLineOf(const string nm) { return (HRayIsHandle(nm) ? StringSubstr(nm, 0, StringLen(nm) - 2) : nm); }
 int HRayRegFind(const string id)
 {
    for(int i = 0; i < ArraySize(s_hrayIds); i++)
@@ -309,17 +308,22 @@ void HRayDragRestore()
 bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    string pfx = HRayPrefix();
-   // Family cleanup: a member deleted behind our back (object list) takes
-   // its sibling with it — no ghost dots, no naked lines.
+   // A line deleted behind our back takes its dot with it — one way, never back.
    if(id == CHARTEVENT_OBJECT_DELETE && pfx != "" && StringFind(sparam, pfx) == 0)
    {
       if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;   // bulk teardown — nothing to heal
       Print("[HRay] object-delete seen \"", sparam, "\"");
-      string ln = HRayLineOf(sparam);
-      if(ObjectFind(0, ln) < 0) ObjectDelete(0, HRayHandleName(ln));
-      string hn = HRayHandleName(ln);
-      if(ObjectFind(0, hn) < 0) ObjectDelete(0, ln);
-      if(ObjectFind(0, ln) < 0 && ObjectFind(0, hn) < 0)
+      // P-HR-07 (2026-09-28, user: «روی استریپ کلیک میکنم همه پاک میشه»): the
+      // cascade is ONE WAY. The dot is the ray's CHILD, so a deleted LINE takes
+      // its dot with it — but a deleted DOT takes nothing, because the dot dies
+      // on every click that dismisses it (`HRaySelect("")`) and on every new
+      // placement. The old two-way rule read that dismissal as "the ray is gone"
+      // and deleted the line under the hand: one click on a strip cell erased
+      // the ray, and placing a second ray erased the first.
+      if(HRayIsHandle(sparam)) return false;
+      string ln = sparam;
+      ObjectDelete(0, HRayHandleName(ln));
+      if(ObjectFind(0, ln) < 0)
          HRayRegDel(StringSubstr(ln, StringLen(pfx)));
       if(s_hrayDrag != "" && ObjectFind(0, s_hrayDrag) < 0) HRayDragRelease();   // P-HR-06: lock back
       if(s_hraySel != "" && ObjectFind(0, s_hraySel) < 0) s_hraySel = "";
