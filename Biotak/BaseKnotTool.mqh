@@ -771,8 +771,8 @@ static bool        s_bkMagnetLogged = false;       // P-BK-64: one "magnet" line
 #define BK_CH_TP     64    // P-BK-50: bit 6 names TP1 now — the mask is private to this
 #define BK_CH_TP2    512   //           module, so the address is kept; TP2/TP3 take the
 #define BK_CH_TP3    1024  //           next free bits
-#define BK_CH_ENTRY2 8192  // P-BK-89: the 2nd entry's own ray (the other measure)
-#define BK_CH_SL2    16384 //           ... and its stop (one EngSL behind it, like E1's)
+#define BK_CH_ENTRY2 8192  // BKE2-OFF: retired bits — kept so the mask still compiles
+#define BK_CH_SL2    16384 //           ... Sync purges these names instead of drawing them
 #define BK_CH_E2TP1  32768 //           ... and its three plan ticks, measured from entry 2
 #define BK_CH_E2TP2  65536
 #define BK_CH_E2TP3  131072
@@ -819,8 +819,7 @@ string BaseKnotPrefix(const string id)
 string BaseKnotBoxName(const string pfx)   { return pfx + "BOX"; }
 string BaseKnotEntryName(const string pfx) { return pfx + "ENTRY"; }
 string BaseKnotSLName(const string pfx)    { return pfx + "SL"; }
-// P-BK-89: the 2nd entry's own family - the OTHER measure (HuntSL for FTR,
-// EngSL for the longer nodes), each with its own stop and its own TP ticks.
+// BKE2-OFF: the 2nd entry's names — kept so the purge deletes them, never drawn.
 // Underscore-free suffixes: the OBJECT_DELETE heal splits at the LAST
 // underscore, so a suffixed tick must not carry one of its own.
 string BaseKnotEntry2Name(const string pfx) { return pfx + "ENTRY2"; }
@@ -958,7 +957,7 @@ string BaseKnotBoxTooltip(const string id, const datetime t1, const datetime t2,
    string tt = "Base box " + side + " · " + DoubleToString(hPips, 1) + " pips (the STOP: one " + riskTag +
                " behind the entry, INSIDE the box) · BOTH legs sit INSIDE the box" + entryLine +
                (sp.life > 0 ? " · " + IntegerToString(sp.life) + " bars" : "");
-   tt += entryLine2;   // P-BK-89: the 2nd entry's own sentence ("" while its measure is cold)
+    tt += entryLine2;   // BKE2-OFF: always "" now (kept so the signature still compiles)
    tt += "\n" + TimeToString(t1, TIME_DATE|TIME_MINUTES) + " -> " + TimeToString(t2, TIME_DATE|TIME_MINUTES);
    datetime cs1, cs2;                                    // P-BK-84: the class' span — box ∪ base
    BaseKnotClassSpan(sp, t1, t2, cs1, cs2);
@@ -1992,25 +1991,20 @@ string BaseKnotEntryWhy(const int kind, const int entryTF, const bool isHunt,
    else if(kind == BK_NODE_OTR) why = "OTR — longer than the structure time: " + what + " of " + tf;
    else                         why = "no type yet (the box is being sized): " + what + " of " + tf;
    if(kind != BK_NODE_NONE) why += ", the node's own time";   // P-BK-83: the entry never hops
-    if(!isHunt && kind != BK_NODE_FTR && kind != BK_NODE_NONE
-       && BaseKnotHuntPips(entryTF, anchor) <= 0.0)   // P-BK-89: E2 reads EngSL by design, not as a fallback
-      why += " — no HuntSL pushed for " + tf + " yet, so EngSL stands in";
+     if(!isHunt && kind != BK_NODE_FTR && kind != BK_NODE_NONE
+        && BaseKnotHuntPips(entryTF, anchor) <= 0.0)   // BKE2-OFF: E1 fallback note (kept)
+       why += " — no HuntSL pushed for " + tf + " yet, so EngSL stands in";
    why += BaseKnotCapClause(entryTF, isHunt, top, bot, anchor);   // P-BK-52: ... and the ceiling, when it spoke
    return why;
 }
 // ... and the SHORT form of the same fact — the box hover's first line and the note's
 // own hover read THIS sentence, so "how deep" is answered once. P-BK-83: its TF is the
 // ENTRY's own time (the node's class), never the stop's rung.
-// P-BK-89: the SHORT form of the 2nd entry's own fact - same sentence as
-// BaseKnotEntryLine, but naming the 2nd entry, so the two hovers can never
-// describe the same line twice. isHunt is the COMPLEMENT of E1's (E1 EngSL +
-// E2 HuntSL for FTR, mirrored for the longer nodes).
+// BKE2-OFF: 2nd entry retired — kept as the name the purge deletes, never drawn.
 string BaseKnotEntryLine2(const int kind, const int entryTF, const bool isHunt, const int dir,
                           const double top, const double bot, const datetime anchor = 0)
 {
-   return " · the 2nd entry waits ONE " + BaseKnotEntryOffsetTag(isHunt) + " INSIDE the box' " +
-          (dir >= 0 ? "top" : "bottom") + " edge (" +
-          BaseKnotEntryWhy(kind, entryTF, isHunt, top, bot, anchor) + ")";
+   return "";
 }
 string BaseKnotEntryLine(const int kind, const int entryTF, const bool isHunt, const int dir,
                          const double top, const double bot, const datetime anchor = 0)
@@ -2078,45 +2072,21 @@ double BaseKnotLegPick(const double planPips, const double capPips)
 // THE EFFECTIVE PAIR of one node, in pips — the ONE owner the geometry, the R every text
 // prints and both sentences read, so the drawn lines and the printed pips cannot part.
 //+------------------------------------------------------------------+
-//| P-BK-89 - EVERY KNOT HAS TWO ENTRIES.                             |
-//|                                                                  |
-//| E1 is the type's own measure (EngSL for FTR, HuntSL for the       |
-//| longer nodes - untouched below). E2 is the OTHER measure on the   |
-//| SAME entry time: HuntSL for FTR, EngSL for ETR/CTR/OTR. Each      |
-//| entry waits its own penetration INSIDE the side's edge and each   |
-//| stop sits ONE EngSL behind its own entry; the plan's TP1..TP3 are |
-//| measured from each entry exactly as the `#SL/-TP` row measures    |
-//| them. Same pick rule (plan leg capped by the node's own power),   |
-//| same anchor, no new divisor - so the leg-fit gate still reads one |
-//| unit. A 0 penetration is an ABSENCE (that TF's HuntSL was never   |
-//| pushed): E2 is not drawn then, never sized from the box height.   |
+//| BKE2-OFF - THE 2ND ENTRY IS RETIRED (2026-09-28, chart too busy).|
+//| E1 stays the knot's own trade; E2 answers absence (0/"") below.  |
 //+------------------------------------------------------------------+
-// The 2nd entry's own penetration, in PIPS. 0 = its measure was never
-// pushed for that (TF, anchor) - the caller skips the whole 2nd set.
+// BKE2-OFF: 2nd entry retired — the measure answers 0 (absence), never a level.
 double BaseKnotEntry2OffPips(const double top, const double bot, const int kind,
                              const int entryTF, const datetime anchor = 0)
 {
-   if(kind == BK_NODE_FTR || kind == BK_NODE_NONE)
-      return BaseKnotLegPick(BaseKnotHuntPips(entryTF, anchor), BaseKnotNodeHuntPips(top, bot));
-   return BaseKnotLegPick(BaseKnotEngPips(entryTF, anchor), BaseKnotNodeEngPips(top, bot));
+   return 0.0;
 }
-// The 2nd entry's own levels. riskPips is the SHARED stop size (ONE EngSL
-// behind each entry - the hierarchy is the same for both sets), already
-// picked by BaseKnotLegPair's rule. 0,0 = E2 stays off the chart.
+// BKE2-OFF: 2nd entry retired — 0,0 keeps it off the chart.
 void BaseKnotCalcEntry2(const double top, const double bot, const int dir, const int kind,
                         const int entryTF, const double riskPips,
                         double &entry2, double &sl2, const datetime anchor = 0)
 {
-   double pip = BaseKnotPipSize();
-   double off2 = BaseKnotEntry2OffPips(top, bot, kind, entryTF, anchor) * pip;
-   double risk = riskPips * pip;
-   if(off2 <= 0.0 || risk <= 0.0) { entry2 = 0.0; sl2 = 0.0; return; }
-   // A 2nd set identical to the 1st is not a 2nd entry at all: past FTR the
-   // complement (HuntSL) must be pushed, or E2 would redraw E1's own levels.
-   if(kind != BK_NODE_FTR && kind != BK_NODE_NONE && BaseKnotHuntPips(entryTF, anchor) <= 0.0)
-   { entry2 = 0.0; sl2 = 0.0; return; }
-   if(dir >= 0) { entry2 = top - off2; sl2 = entry2 - risk; }
-   else         { entry2 = bot + off2; sl2 = entry2 + risk; }
+   entry2 = 0.0; sl2 = 0.0; return;
 }
 void BaseKnotLegPair(const double top, const double bot, const int kind, const int tfMin,
                      double &offPips, double &riskPips, const datetime anchor = 0)
@@ -2279,20 +2249,8 @@ void BaseKnotTPTickSpan(const datetime t1, const datetime t2, datetime &ts, date
 void BaseKnotTPGlue(const string pfx, const datetime edgeT)
 {
    int n = BaseKnotTPCount();
-   // P-BK-89: set 2 hugs the same edge on its own anchors (same rules as set 1).
-   for(int k2 = 1; k2 <= n; k2++)
-   {
-      string tp2 = BaseKnotTPTick2Name(pfx, k2);
-      if(ObjectFind(0, tp2) < 0) continue;
-      if(ObjectGetInteger(0, tp2, OBJPROP_RAY_RIGHT) != 0) continue;
-      datetime ts2 = edgeT - (datetime)(2 * PeriodSeconds());
-      if((datetime)ObjectGetInteger(0, tp2, OBJPROP_TIME, 0) != ts2 ||
-         (datetime)ObjectGetInteger(0, tp2, OBJPROP_TIME, 1) != edgeT)
-      {
-         ObjectMove(0, tp2, 0, ts2, ObjectGetDouble(0, tp2, OBJPROP_PRICE, 0));
-         ObjectMove(0, tp2, 1, edgeT, ObjectGetDouble(0, tp2, OBJPROP_PRICE, 1));
-      }
-   }
+   // BKE2-OFF: set 2 retired — leftovers are purged by Sync, never glued.
+   for(int k2 = 1; k2 <= n; k2++) ObjectDelete(0, BaseKnotTPTick2Name(pfx, k2));
    for(int k = 1; k <= n; k++)
    {
       string tpNm = BaseKnotTPTickName(pfx, k);
@@ -2332,16 +2290,13 @@ bool BaseKnotTPStale(const string pfx)
       if(ObjectGetInteger(0, tpNm, OBJPROP_STYLE) != BK_TP_TICK_STYLE) return true;
       if(ObjectGetInteger(0, tpNm, OBJPROP_WIDTH) != BK_TP_TICK_WIDTH) return true;
    }
-   // P-BK-89: set 2 goes stale by the same structural drift (a missing tick
-   // is still the OBJECT_DELETE path's business, never rebuilt here).
+   // BKE2-OFF: set 2 retired — any leftover tick counts as stale so Sync purges it.
    for(int k2 = 1; k2 <= n; k2++)
    {
-      string tp2 = BaseKnotTPTick2Name(pfx, k2);
-      if(ObjectFind(0, tp2) < 0) continue;
-      if(ObjectGetInteger(0, tp2, OBJPROP_RAY_RIGHT) != 0) return true;
-      if(ObjectGetInteger(0, tp2, OBJPROP_STYLE) != BK_TP_TICK_STYLE) return true;
-      if(ObjectGetInteger(0, tp2, OBJPROP_WIDTH) != BK_TP_TICK_WIDTH) return true;
+      if(ObjectFind(0, BaseKnotTPTick2Name(pfx, k2)) >= 0) return true;
    }
+   if(ObjectFind(0, BaseKnotEntry2Name(pfx)) >= 0) return true;
+   if(ObjectFind(0, BaseKnotSL2Name(pfx)) >= 0) return true;
    return false;
 }
 void BaseKnotMakeBadge(const string name, const string text, const color bg)   // NOBKDEL: retired — no badge is created anymore (kept for one-line restore)
@@ -3748,13 +3703,7 @@ string BaseKnotNodeLine(BaseKnotNode &nd, const double top, const double bot)
       t += "\n      trade: the side the base was LEFT by — entry ONE " + wTag +
            " INSIDE the edge the exit candle closed past, the stop " + wSrc + " behind it" +
            BaseKnotCapClause(wTF, wHu, top, bot, nd.anchor) + BaseKnotExitLine(nd);
-    // P-BK-89: the 2nd entry rides the same edge on the OTHER measure (E1 EngSL
-    // + E2 HuntSL for FTR, mirrored for the longer nodes) - one line, gated
-    // on its measure being warm, so an undrawn line is never described.
-    double wPlan2 = (wHu ? BaseKnotEngPips(wTF, nd.anchor) : BaseKnotHuntPips(wTF, nd.anchor));
-    if(wPlan2 > 0.0)
-       t += "\n      2nd entry: ONE " + (wHu ? "EngSL" : "HuntSL") + " INSIDE the same edge" +
-            BaseKnotCapClause(wTF, !wHu, top, bot, nd.anchor);
+    // BKE2-OFF: no 2nd-entry line here.
     if(nd.side != 0)
    {
       t += "\n      exit candle " + (nd.side > 0 ? "UP " : "DOWN ") + IntegerToString(nd.barsAgo) + " bars ago";
@@ -4006,27 +3955,11 @@ string BaseKnotTPPlanTip(const int tfMin, const double entry, const int dir, con
       t = "\n     the plan's targets are not warm yet (nothing pushed for " + BaseKnotTFName(tfMin) + ")";
    return t;
 }
-// P-BK-89: the 2nd entry's own target rows - the SAME plan legs measured
-// from entry 2, so each set's ticks can be checked against the plan row.
-// "" while cold (set 1 already says warm/not-warm - no second verdict).
+// BKE2-OFF: 2nd entry retired — "" (set 1 already says warm/not-warm).
 string BaseKnotTPPlanTip2(const int tfMin, const double entry2, const int dir, const double rPips,
                           const datetime anchor = 0)
 {
-   if(entry2 <= 0.0) return "";
-   int n = BaseKnotTPCount();
-   int dg = GetCachedDigits();
-   string t = "";
-   for(int k = 1; k <= n; k++)
-   {
-      double p = BaseKnotPlanTPPips(tfMin, k, anchor);
-      double lv = BaseKnotTPLevel(entry2, dir, tfMin, k, anchor);
-      if(p <= 0.0 || lv <= 0.0) continue;
-      t += "\n     E2-TP" + IntegerToString(k) + " " + DoubleToString(lv, dg) + " (+" +
-           DoubleToString(p, 0) + " pips from the 2nd entry" +
-           (rPips > 0.0 ? " = " + DoubleToString(p + rPips, 0) + " from the 2nd stop, " +
-                          DoubleToString(p / rPips, 1) + "R" : "") + ")";
-   }
-   return t;
+   return "";
 }
 // P-BK-46 — R: THE PIPS EVERY LEG OF THE KNOT'S TRADE IS MEASURED IN. THE PLAN's EngSL of
 // the knot's measure TF, BOUNDED by the node's own power (P-BK-52 — the plan's leg while it
@@ -4478,10 +4411,12 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    double entry = 0, sl = 0;
    BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, 0);
    string riskTag   = BaseKnotRiskTag(liveTF, liveTF, top, bot, 0);   // P-BK-52: named with the number the pick drew
-   double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0);
-   double entry2 = 0, sl2 = 0;   // P-BK-89: the sizing preview shows the 2nd entry too (no type yet = HuntSL)
-   BaseKnotCalcEntry2(top, bot, dir, BK_NODE_NONE, liveTF, hPips, entry2, sl2, 0);
-   int dg = GetCachedDigits();
+    double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0);
+    // BKE2-OFF (2026-09-28): 2nd entry retired — purge any live leftovers.
+    ObjectDelete(0, tag + "ENTRY2");
+    ObjectDelete(0, tag + "SL2");
+    for(int e2k = 1; e2k <= BK_TP_PLAN_MAX; e2k++) ObjectDelete(0, tag + "E2TP" + IntegerToString(e2k));
+    int dg = GetCachedDigits();
    string side = (dir >= 0 ? "BUY" : "SELL");
    // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(0);   // the retired note field
    string tpTip = BaseKnotTPPlanTip(0, entry, dir, hPips, 0);   // P-BK-54: the hover keeps every leg
@@ -4490,26 +4425,16 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                   " edge — " + BaseKnotEntryWhy(BK_NODE_NONE, liveTF, false, top, bot, 0) + ")";
    string stopWhyLive = " (INSIDE the box' " + edgeLive + " edge, ONE " + riskTag + " behind the entry" +
                         BaseKnotStopWhy(liveTF, top, bot, 0) + ")";
-   string e2LiveLine = "";   // P-BK-89: the preview's 2nd-entry sentence ("" while the Hunt row is cold)
-   if(entry2 > 0.0) e2LiveLine = BaseKnotEntryLine2(BK_NODE_NONE, liveTF, true, dir, top, bot, 0);
-   string tradeTipLive = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhyLive +
-                         BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir, top, bot, 0) + e2LiveLine;
-   datetime tLiveFar = te + (te > t1 ? (te - t1) : PeriodSeconds());
-   datetime tLiveTps, tLiveTpe;
-   BaseKnotTPTickSpan(t1, te, tLiveTps, tLiveTpe);
-   BaseKnotMakeRay(tag + "ENTRY", te, tLiveFar, entry, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
-                   "BK " + side + " Entry (sizing): " + DoubleToString(entry, dg) + lvWhy, tfMask, true);
-   BaseKnotMakeRay(tag + "SL", te, tLiveFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
-                   "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + stopWhyLive, tfMask, true);
-   // P-BK-89: the preview's 2nd-entry rays (same look, LIVE_ names, wiped with the set).
-   if(entry2 > 0.0)
-   {
-      string e2WhyLive = " (2nd entry (sizing): ONE HuntSL INSIDE the box' " + edgeLive + " edge)";
-      BaseKnotMakeRay(tag + "ENTRY2", te, tLiveFar, entry2, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
-                      "BK " + side + " Entry 2 (sizing): " + DoubleToString(entry2, dg) + e2WhyLive, tfMask, true);
-      BaseKnotMakeRay(tag + "SL2", te, tLiveFar, sl2, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
-                      "BK " + side + " Stop 2 (sizing): " + DoubleToString(sl2, dg) + stopWhyLive, tfMask, true);
-   }
+    string tradeTipLive = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhyLive +
+                          BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir, top, bot, 0);
+    datetime tLiveFar = te + (te > t1 ? (te - t1) : PeriodSeconds());
+    datetime tLiveTps, tLiveTpe;
+    BaseKnotTPTickSpan(t1, te, tLiveTps, tLiveTpe);
+    BaseKnotMakeRay(tag + "ENTRY", te, tLiveFar, entry, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
+                    "BK " + side + " Entry (sizing): " + DoubleToString(entry, dg) + lvWhy, tfMask, true);
+    BaseKnotMakeRay(tag + "SL", te, tLiveFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
+                    "BK " + side + " Stop (sizing): " + DoubleToString(sl, dg) + stopWhyLive, tfMask, true);
+    // BKE2-OFF: no 2nd-entry rays here (created above only to purge).
    // P-BK-50: the targets are the plan's own legs — one short, THICK tick each at the
    // chart's right edge (never a ray), drawn only for the legs the plan has pushed.
    for(int tk = 1; tk <= BaseKnotTPCount(); tk++)
@@ -4525,23 +4450,8 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
                       " — the plan's own TP" + IntegerToString(tk) + ")", tfMask, false);
    }
-   // P-BK-89: the preview's set-2 ticks, measured from the 2nd entry.
-   if(entry2 > 0.0)
-   {
-      for(int tk2 = 1; tk2 <= BaseKnotTPCount(); tk2++)
-      {
-         double lv2 = BaseKnotTPLevel(entry2, dir, 0, tk2, 0);
-         if(lv2 <= 0.0) continue;
-         double tpP2 = BaseKnotPlanTPPips(0, tk2, 0);
-         BaseKnotMakeRay(tag + "E2TP" + IntegerToString(tk2), tLiveTps, tLiveTpe, lv2, g_bkTargetColor,
-                         BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
-                         "BK " + side + " E2-TP" + IntegerToString(tk2) + " (sizing): " + DoubleToString(lv2, dg) + " (+" +
-                         DoubleToString(tpP2, 0) + " pips from the 2nd entry" +
-                         (hPips > 0.0 ? " = " + DoubleToString(tpP2 + hPips, 0) + " from the 2nd stop, " +
-                                        DoubleToString(tpP2 / hPips, 1) + "R" : "") + ")", tfMask, false);
-      }
-   }
-   BaseKnotSpan spLive;   // P-BK-41: the live label reads the same span record
+    // BKE2-OFF: no set-2 ticks here.
+    BaseKnotSpan spLive;   // P-BK-41: the live label reads the same span record
    BaseKnotLiveBarCount(t1, te, top, bot, spLive);
    // P-BK-29: a box being SIZED pays no STORY read here — the walk of the past market
    // (side, break, second break, state) is what the hot sizing path must not run per mouse
@@ -5204,20 +5114,15 @@ void BaseKnotSync(const string id)
    string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
    bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the ENTRY's own time
-   BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);
-   // P-BK-89: the 2nd entry's own set on the OTHER measure (E1 untouched
-   // above - every pinned call stays byte-identical). e2Hunt mirrors
-   // BaseKnotEntry2OffPips: HuntSL for FTR, EngSL for the longer nodes.
-   double entry2 = 0.0, sl2 = 0.0;
-   BaseKnotCalcEntry2(top, bot, dir, nd.kind, eTF, hPips, entry2, sl2, nd.anchor);
-   bool   hasE2  = (entry2 > 0.0 && sl2 > 0.0);
-   bool   e2Hunt = (nd.kind == BK_NODE_FTR || nd.kind == BK_NODE_NONE);   // mirrors BaseKnotEntry2OffPips
-   string entryLine2 = (hasE2 ? BaseKnotEntryLine2(nd.kind, eTF, e2Hunt, dir, top, bot, nd.anchor) : "");
-   string tpTip2     = (hasE2 ? BaseKnotTPPlanTip2(baseTF, entry2, dir, hPips, nd.anchor) : "");
+    BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);
+    // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.
+    ObjectDelete(0, BaseKnotEntry2Name(pfx));
+    ObjectDelete(0, BaseKnotSL2Name(pfx));
+    for(int e2p = 1; e2p <= BK_TP_PLAN_MAX; e2p++) ObjectDelete(0, BaseKnotTPTick2Name(pfx, e2p));
+    string entryLine2 = "";   // BKE2-OFF: always "" (keeps the tooltip signature compiling)
    // BKTAGTP-OFF (P-BK-54): string tpTag = BaseKnotTPPlanTag(baseTF);   // the retired note field
-   string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor);   // P-BK-54: the hover keeps every leg
-   tpTip += tpTip2;   // P-BK-89: set 2 measured from entry 2 ("" while cold)
-   string side = (dir >= 0 ? "BUY" : "SELL");
+    string tpTip = BaseKnotTPPlanTip(baseTF, entry, dir, hPips, nd.anchor);   // P-BK-54: the hover keeps every leg
+    string side = (dir >= 0 ? "BUY" : "SELL");
    // P-BK-51: the trade's own two sentences, ready-built — how deep the entry waits and
    // what sized the stop. The box hover, the note's hover and the two rays read THESE.
    string edgeName  = (dir >= 0 ? "top" : "bottom");
@@ -5255,20 +5160,8 @@ void BaseKnotSync(const string id)
    BaseKnotMakeRay(BaseKnotSLName(pfx), t2, tFar, sl, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
                    "BK " + side + " Stop: " + DoubleToString(sl, dg) + ", INSIDE the box' " + edgeName +
                    " edge, ONE " + riskTag + " behind the entry" + BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")", tfMask, true);
-   // P-BK-89: the 2nd entry's own rays - same inks, same widths, own names.
-   // A leg the plan has not pushed is NOT drawn (hasE2 already gates that).
-   if(hasE2)
-   {
-      string entryWhy2 = " (2nd entry: ONE " + BaseKnotEntryOffsetTag(e2Hunt) + " INSIDE the box' " + edgeName + " edge, " +
-                         BaseKnotEntryWhy(nd.kind, eTF, e2Hunt, top, bot, nd.anchor) + "; the side is " +
-                         (nd.side != 0 ? "the base's own exit candle" : "the live price") + ")";
-      BaseKnotMakeRay(BaseKnotEntry2Name(pfx), t2, tFar, entry2, g_bkEntryColor, STYLE_SOLID, BK_LEVEL_WIDTH,
-                      "BK " + side + " Entry 2: " + DoubleToString(entry2, dg) + entryWhy2, tfMask, true);
-      BaseKnotMakeRay(BaseKnotSL2Name(pfx), t2, tFar, sl2, g_bkStopColor, STYLE_DASH, BK_LEVEL_WIDTH,
-                      "BK " + side + " Stop 2: " + DoubleToString(sl2, dg) + ", INSIDE the box' " + edgeName +
-                      " edge, ONE " + riskTag + " behind the 2nd entry" + BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")", tfMask, true);
-   }
-   // P-BK-50: the TARGETS are the plan's own legs (TP1..TP3) — one SHORT, THICK tick
+    // BKE2-OFF: no 2nd-entry rays (purged above).
+    // P-BK-50: the TARGETS are the plan's own legs (TP1..TP3) — one SHORT, THICK tick
    // each at the chart's right edge, never a ray and never box-wide (the user's own
    // 2026-09-08 decision, now for three of them). A leg the plan has not pushed is
    // NOT drawn: absence is never turned into a level.
@@ -5285,25 +5178,7 @@ void BaseKnotSync(const string id)
                                      DoubleToString(tpP / hPips, 1) + "R" : "") +
                       " — the plan's own TP" + IntegerToString(tk) + " of " + BaseKnotTFName(baseTF) + ")", tfMask, false);
    }
-   // P-BK-89: the 2nd entry's own TARGETS - the plan's legs measured from
-   // entry 2 (never a ray, same tick look, same absence rule as set 1).
-   if(hasE2)
-   {
-      for(int tk2 = 1; tk2 <= BaseKnotTPCount(); tk2++)
-      {
-         double lv2 = BaseKnotTPLevel(entry2, dir, baseTF, tk2, nd.anchor);
-         if(lv2 <= 0.0) continue;
-         double tpP2 = BaseKnotPlanTPPips(baseTF, tk2, nd.anchor);
-         BaseKnotMakeRay(BaseKnotTPTick2Name(pfx, tk2), tps, tpe, lv2, g_bkTargetColor,
-                         BK_TP_TICK_STYLE, BK_TP_TICK_WIDTH,
-                         "BK " + side + " E2-TP" + IntegerToString(tk2) + ": " + DoubleToString(lv2, dg) + " (+" +
-                         DoubleToString(tpP2, 0) + " pips from the 2nd entry" +
-                         (hPips > 0.0 ? " = " + DoubleToString(tpP2 + hPips, 0) + " from the 2nd stop, " +
-                                        DoubleToString(tpP2 / hPips, 1) + "R" : "") +
-                         " - the plan's own TP" + IntegerToString(tk2) + " of " + BaseKnotTFName(baseTF) + ")", tfMask, false);
-      }
-   }
-   ObjectDelete(0, BaseKnotTPName(pfx));   // BKTPR-OFF: purge a pre-P-BK-50 build's single tick
+    ObjectDelete(0, BaseKnotTPName(pfx));   // BKTPR-OFF: purge a pre-P-BK-50 build's single tick
    ObjectDelete(0, BaseKnotDelName(pfx));   // NOBKDEL 2026-09-06: X badge retired — purge pre-retire badges
    ObjectDelete(0, BaseKnotBuyName(pfx));   // NOBUYSELL: purge pre-2026-09-06 direction badges
    // P-BK-58: WHERE this box' note is drawn is ONE question, asked once (BaseKnotNoteAtCorner):
@@ -5359,13 +5234,14 @@ int BaseKnotChildMaskBuild(const string pfx)
    // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_B) >= 0)            m |= BK_CH_EDGE_B;
    // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_L) >= 0)            m |= BK_CH_EDGE_L;
    // BKEDGE-OFF: if(ObjectFind(0, pfx + BK_EDGE_R) >= 0)            m |= BK_CH_EDGE_R;
-   if(ObjectFind(0, BaseKnotEntryName(pfx)) >= 0)     m |= BK_CH_ENTRY;
-   if(ObjectFind(0, BaseKnotSLName(pfx)) >= 0)        m |= BK_CH_SL;
-   if(ObjectFind(0, BaseKnotEntry2Name(pfx)) >= 0)    m |= BK_CH_ENTRY2;   // P-BK-89: the 2nd set rides the same
-   if(ObjectFind(0, BaseKnotSL2Name(pfx)) >= 0)       m |= BK_CH_SL2;      //   gesture mask, or a drag would tear it
-   if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 1)) >= 0) m |= BK_CH_E2TP1;   // P-BK-89: set-2 ticks take the next
-   if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 2)) >= 0) m |= BK_CH_E2TP2;   //   free bits, like TP2/TP3 did (P-BK-50)
-   if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 3)) >= 0) m |= BK_CH_E2TP3;
+    if(ObjectFind(0, BaseKnotEntryName(pfx)) >= 0)     m |= BK_CH_ENTRY;
+    if(ObjectFind(0, BaseKnotSLName(pfx)) >= 0)        m |= BK_CH_SL;
+    // BKE2-OFF: the 2nd set is retired — no probes (Sync purges leftovers).
+    // BKE2-OFF: if(ObjectFind(0, BaseKnotEntry2Name(pfx)) >= 0)    m |= BK_CH_ENTRY2;
+    // BKE2-OFF: if(ObjectFind(0, BaseKnotSL2Name(pfx)) >= 0)       m |= BK_CH_SL2;
+    // BKE2-OFF: if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 1)) >= 0) m |= BK_CH_E2TP1;
+    // BKE2-OFF: if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 2)) >= 0) m |= BK_CH_E2TP2;
+    // BKE2-OFF: if(ObjectFind(0, BaseKnotTPTick2Name(pfx, 3)) >= 0) m |= BK_CH_E2TP3;
    if(ObjectFind(0, BaseKnotTPTickName(pfx, 1)) >= 0) m |= BK_CH_TP;    // P-BK-50: bit 6 = TP1
    if(ObjectFind(0, BaseKnotTPTickName(pfx, 2)) >= 0) m |= BK_CH_TP2;   //           TP2/TP3 take the
    if(ObjectFind(0, BaseKnotTPTickName(pfx, 3)) >= 0) m |= BK_CH_TP3;   //           next free bits
@@ -5413,17 +5289,9 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    // with, so a drag follows the levels the release Sync will land on and never a live row
    // the box does not draw with.
    datetime an = g_bkBoxes[k].storyT;
-   BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, an);
-   // P-BK-89: the drag carries the 2nd set on the SAME geometry the release
-   // Sync lands on (same anchor, same TFs) - a mid-drag E2 must land where
-   // the release puts it, pixel for pixel.
-   int meTF = BaseKnotMeasureTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin);
-   if(meTF <= 0) meTF = (g_bkBoxes[k].baseTFMin > 0 ? g_bkBoxes[k].baseTFMin : Period());
-   double entry2 = 0, sl2 = 0;
-   BaseKnotCalcEntry2(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind,
-                      BaseKnotEntryTFMin(g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin),
-                      BaseKnotRiskPips(meTF, top, bot, an), entry2, sl2, an);
-   datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
+    BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, an);
+    // BKE2-OFF: no 2nd set on the drag (Sync purges it at release).
+    datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;
    BaseKnotTPTickSpan(t1, t2, tps, tpe);   // TP tick rides the right edge, not the box
    // BKEDGE-OFF (P-BK-74): the border IS the box, so a body drag carries no edge
@@ -5434,10 +5302,9 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_B) != 0) BaseKnotMoveOne(pfx + BK_EDGE_B, t1, bot, t2, bot);
    // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_L) != 0) BaseKnotMoveOne(pfx + BK_EDGE_L, t1, bot, t1, top);
    // BKEDGE-OFF: if((s_bkChildMask & BK_CH_EDGE_R) != 0) BaseKnotMoveOne(pfx + BK_EDGE_R, t2, bot, t2, top);
-   if((s_bkChildMask & BK_CH_ENTRY) != 0)  BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
-   if((s_bkChildMask & BK_CH_SL) != 0)     BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
-   if((s_bkChildMask & BK_CH_ENTRY2) != 0) BaseKnotMoveOne(BaseKnotEntry2Name(pfx), t2, entry2, tFar, entry2);
-   if((s_bkChildMask & BK_CH_SL2) != 0)    BaseKnotMoveOne(BaseKnotSL2Name(pfx), t2, sl2, tFar, sl2);
+    if((s_bkChildMask & BK_CH_ENTRY) != 0)  BaseKnotMoveOne(BaseKnotEntryName(pfx), t2, entry, tFar, entry);
+    if((s_bkChildMask & BK_CH_SL) != 0)     BaseKnotMoveOne(BaseKnotSLName(pfx), t2, sl, tFar, sl);
+    // BKE2-OFF: the 2nd set is never carried mid-drag.
    // P-BK-50: one tick per DRAWN plan leg — the mask bit the gesture's probe found
    // decides, so a leg that was not there at the press is never created mid-drag.
    for(int tk = 1; tk <= BK_TP_PLAN_MAX; tk++)
@@ -5448,16 +5315,8 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
       if(lv <= 0.0) continue;
       BaseKnotMoveOne(BaseKnotTPTickName(pfx, tk), tps, lv, tpe, lv);
    }
-   // P-BK-89: set 2 rides the same drag on entry 2's own levels.
-   for(int tk2 = 1; tk2 <= BK_TP_PLAN_MAX; tk2++)
-   {
-      int bit2 = (tk2 == 1 ? BK_CH_E2TP1 : (tk2 == 2 ? BK_CH_E2TP2 : BK_CH_E2TP3));
-      if((s_bkChildMask & bit2) == 0) continue;
-      double lv2 = BaseKnotTPLevel(entry2, g_bkBoxes[k].dir, g_bkBoxes[k].baseTFMin, tk2, an);
-      if(lv2 <= 0.0) continue;
-      BaseKnotMoveOne(BaseKnotTPTick2Name(pfx, tk2), tps, lv2, tpe, lv2);
-   }
-   // BKDOT-OFF (P-BK-71): the centre cover is retired, so the drag carries nothing here.
+    // BKE2-OFF: set 2 retired — no drag loop.
+    // BKDOT-OFF (P-BK-71): the centre cover is retired, so the drag carries nothing here.
    // BKDOT-OFF: if((s_bkChildMask & BK_CH_DOT) != 0)
    // BKDOT-OFF: {
    // BKDOT-OFF:    int dcx = 0, dcy = 0;
