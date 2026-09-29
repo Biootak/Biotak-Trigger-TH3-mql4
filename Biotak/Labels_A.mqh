@@ -799,6 +799,15 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
     return true;
 }
 
+// P-PERF-53: last painted title-block state. DisplayTRexTitleBlock compares
+// first: a still 2 s pass (same spread, same inks, same seats) costs reads
+// only instead of 27 same-value writes.
+static string s_trxPrefix = "";
+static string s_trxSpText = "";
+static color s_trxTR = clrNONE, s_trxEX = clrNONE, s_trxSP = clrNONE;
+static int s_trxFS = -1, s_trxBS = -1;
+static int s_trxXSp = 0, s_trxYSp = 0, s_trxXTR = 0, s_trxXEx = 0, s_trxYBrand = 0;
+static bool s_trxInit = false;
 bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     string spName  = labelPrefix + "TREX_Spread";
     string capName = labelPrefix + "TREX_Caption";   // RETIRED (P-LBL-06) - purge only
@@ -837,6 +846,19 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     // by the caller): it knows the row pitch, the centring axis and the MEASURED
     // width of `ex` - the piece order here (`sp`, `TR`, `ex`) is the only thing
     // this function still decides.
+    if(s_trxInit && s_trxPrefix == labelPrefix
+       && s_trxSpText == spText
+       && s_trxTR == inpATRTradeTRColor && s_trxEX == inpATRTradeExColor && s_trxSP == inpATRTradeSpreadColor
+       && s_trxFS == L.fontSize && s_trxBS == L.brandSize
+       && s_trxXSp == L.xSp && s_trxYSp == L.ySp
+       && s_trxXTR == L.xTR && s_trxXEx == L.xEx && s_trxYBrand == L.yBrand
+       && ObjectFind(0, spName) >= 0 && ObjectFind(0, trName) >= 0 && ObjectFind(0, exName) >= 0)
+       return true;
+    s_trxInit = true;
+    s_trxPrefix = labelPrefix; s_trxSpText = spText;
+    s_trxTR = inpATRTradeTRColor; s_trxEX = inpATRTradeExColor; s_trxSP = inpATRTradeSpreadColor;
+    s_trxFS = L.fontSize; s_trxBS = L.brandSize;
+    s_trxXSp = L.xSp; s_trxYSp = L.ySp; s_trxXTR = L.xTR; s_trxXEx = L.xEx; s_trxYBrand = L.yBrand;
     // P-UI-70d: every colour of this card is a setting now (the ATR card's CARD
     // COLORS row / the group-13 inputs), so the five literals that used to live
     // here are gone: they are the ONE reason "personalise the TRex SL/TP" was
