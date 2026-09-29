@@ -667,6 +667,16 @@ string PalTgtLabel(const int t)
 //| Apply a picked color to a palette kind → REFRESH_* flags.         |
 //| Every change is also pushed to the recent-colors ring.            |
 //+------------------------------------------------------------------+
+// P-PERF-52: same-value apply changes nothing on the chart. Before this,
+// every hover crossing AND every restore set g_labelsRelayoutNeeded, so the
+// next frame deleted and recreated every label (ClearAllLabels) — the card
+// flashed through each hovered blue and snapped back on leave. Unchanged now
+// costs a compare and REFRESH_NONE; the pixels are already correct.
+int PalCardNoChange(const bool remember,const color clr)
+{
+   if(remember) PushPalRecent(clr);
+   return REFRESH_NONE;
+}
 int PaletteApplyColor(const int kind,const color clr,const bool remember=true)
 {
    switch(kind)
@@ -685,11 +695,11 @@ int PaletteApplyColor(const int kind,const color clr,const bool remember=true)
       // P-UI-70d: the trade card is chart-side, so a pick asks for a LABEL
       // relayout and the discrete-action repaint (REFRESH_ALL) - the card's
       // rows are redrawn by that pass, never by a per-property poke here.
-      case PAL_ATR_TR:        g_atrTradeTRColor = clr;     g_labelsRelayoutNeeded=true; break;
-      case PAL_ATR_EX:        g_atrTradeExColor = clr;     g_labelsRelayoutNeeded=true; break;
-      case PAL_ATR_HUNTER:    g_atrTradeHunterColor = clr; g_labelsRelayoutNeeded=true; break;
-      case PAL_ATR_TRADE:     g_atrTradeRowColor = clr;    g_labelsRelayoutNeeded=true; break;
-      case PAL_ATR_SPREAD:    g_atrTradeSpreadColor = clr; g_labelsRelayoutNeeded=true; break;
+      case PAL_ATR_TR:        if(g_atrTradeTRColor == clr) return PalCardNoChange(remember, clr); g_atrTradeTRColor = clr;     g_labelsRelayoutNeeded=true; break;
+      case PAL_ATR_EX:        if(g_atrTradeExColor == clr) return PalCardNoChange(remember, clr); g_atrTradeExColor = clr;     g_labelsRelayoutNeeded=true; break;
+      case PAL_ATR_HUNTER:    if(g_atrTradeHunterColor == clr) return PalCardNoChange(remember, clr); g_atrTradeHunterColor = clr; g_labelsRelayoutNeeded=true; break;
+      case PAL_ATR_TRADE:     if(g_atrTradeRowColor == clr) return PalCardNoChange(remember, clr); g_atrTradeRowColor = clr;    g_labelsRelayoutNeeded=true; break;
+      case PAL_ATR_SPREAD:    if(g_atrTradeSpreadColor == clr) return PalCardNoChange(remember, clr); g_atrTradeSpreadColor = clr; g_labelsRelayoutNeeded=true; break;
       case PAL_CUSTOM_PRICE:  g_customPriceLevelColor = clr; break;
       case PAL_FACTOR:        g_factorLevelColor = clr; break;
       case PAL_LINE:          g_lineColor = clr; break;
