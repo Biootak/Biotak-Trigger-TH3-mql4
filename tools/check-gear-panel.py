@@ -46,6 +46,35 @@ _s2.loader.exec_module(G)
 FAIL = []
 
 
+def mql_unit_lines(path):
+    """(origin, lineno, text) following #include "..." in place, like the compiler."""
+    out = []
+    seen = set()
+
+    def walk(p):
+        p = os.path.normpath(p)
+        if p in seen:
+            return
+        seen.add(p)
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        base = os.path.dirname(p)
+        for i, ln in enumerate(lines, 1):
+            m = re.match(r'\s*#include\s+"([^"]+)"', ln)
+            if m:
+                cand = os.path.normpath(os.path.join(base, m.group(1).replace("\\", os.sep)))
+                if os.path.exists(cand):
+                    walk(cand)
+                continue
+            out.append((p, i, ln))
+
+    walk(os.path.normpath(path))
+    return out
+
+
 def check(cond, msg):
     if not cond:
         FAIL.append(msg)
@@ -60,11 +89,10 @@ def mql_defines():
     if not os.path.exists(DRAWSTRIP):
         return got
     rx = re.compile(r"#define\s+(DSTRIP_\w+)\s+(\d+)")
-    with open(DRAWSTRIP, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            m = rx.match(line.strip())
-            if m:
-                got[m.group(1)] = int(m.group(2))
+    for _, _, line in mql_unit_lines(DRAWSTRIP):
+        m = rx.match(line.strip())
+        if m:
+            got[m.group(1)] = int(m.group(2))
     return got
 
 
@@ -108,17 +136,16 @@ def narrow_guard(d):
         return None
     rx = re.compile(
         r"contentEnd\s*-\s*contentTop\s*<=\s*\(?\s*([^)*]+?)\s*\)?\s*\*\s*DSTRIP_GEAR_ROW_H")
-    with open(DRAWSTRIP, encoding="utf-8", errors="replace") as fh:
-        for line in fh:
-            m = rx.search(line)
-            if not m:
-                continue
-            expr = m.group(1).strip()
-            for key, val in d.items():
-                expr = re.sub(r"\b%s\b" % key, str(val), expr)
-            if re.fullmatch(r"[\d\s+\-*/()]+", expr):
-                return int(eval(expr))          # digits and operators only
-            return None
+    for _, _, line in mql_unit_lines(DRAWSTRIP):
+        m = rx.search(line)
+        if not m:
+            continue
+        expr = m.group(1).strip()
+        for key, val in d.items():
+            expr = re.sub(r"\b%s\b" % key, str(val), expr)
+        if re.fullmatch(r"[\d\s+\-*/()]+", expr):
+            return int(eval(expr))          # digits and operators only
+        return None
     return None
 
 
@@ -192,23 +219,21 @@ def no_chart_colour():
     one legitimate reader is the box's own mid-ink blend (a chart OBJECT's colour,
     not a panel surface) and is named here rather than skipped blindly.
     """
-    if not os.path.exists(DRAWSTRIP):
-        return 0
-    allowed = {}          # line -> the reason that read is allowed
+    allowed = {}          # file:line -> the reason that read is allowed
     n = 0
-    with open(DRAWSTRIP, encoding="utf-8", errors="replace") as fh:
-        for ln, line in enumerate(fh, 1):
-            s = line.strip()
-            if s.startswith("//") or s.startswith("//---"):
-                continue
-            if "GetCachedChartBgColor" not in s and "CHART_COLOR_BACKGROUND" not in s:
-                continue
-            n += 1
-            if "BlendColorTowardsBG" in s and "BOX_MID_FADE" in s:
-                allowed[ln] = "the box's own mid ink, not a panel surface"
-                continue
-            check(False, "DrawStrip.mqh:%d reads a chart colour into a panel surface: %s"
-                  % (ln, s[:90]))
+    for origin, ln, line in mql_unit_lines(DRAWSTRIP):
+        s = line.strip()
+        if s.startswith("//") or s.startswith("//---"):
+            continue
+        if "GetCachedChartBgColor" not in s and "CHART_COLOR_BACKGROUND" not in s:
+            continue
+        n += 1
+        tag = "%s:%d" % (os.path.basename(origin), ln)
+        if "BlendColorTowardsBG" in s and "BOX_MID_FADE" in s:
+            allowed[tag] = "the box's own mid ink, not a panel surface"
+            continue
+        check(False, "%s reads a chart colour into a panel surface: %s"
+              % (tag, s[:90]))
     return n, len(allowed)
 
 

@@ -7,10 +7,28 @@
 //
 // Run: node tools/skin_metrics_check.js
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
 
 const gen = readFileSync('tools/gen-th3-icons.js', 'utf8');
 const runtimeFile = 'Biotak/DrawStrip.mqh';
-const rt = readFileSync(runtimeFile, 'utf8');
+// The runtime is split (DrawStrip.mqh is a wrapper of DrawStrip_*.mqh), so read
+// the unit the way the compiler sees it: follow #include "..." in place.
+function readUnit(p, seen = new Set()) {
+  const norm = path.normalize(p);
+  if (seen.has(norm)) return '';
+  seen.add(norm);
+  let src;
+  try { src = readFileSync(norm, 'utf8'); } catch { return ''; }
+  const dir = path.dirname(norm);
+  return src.split('\n').map((ln) => {
+    const m = ln.match(/^\s*#include\s+"([^"]+)"/);
+    if (!m) return ln;
+    const cand = path.normalize(path.join(dir, m[1].replace(/\\/g, path.sep)));
+    try { readFileSync(cand, 'utf8'); } catch { return ln; }
+    return readUnit(cand, seen);
+  }).join('\n');
+}
+const rt = readUnit(runtimeFile);
 
 // The generator declares `const DS_M = 14, DS_R = 14;` and derives the rest
 // (`const DS_CAP = DS_M + DS_R;`), so read the whole family and evaluate the sums.

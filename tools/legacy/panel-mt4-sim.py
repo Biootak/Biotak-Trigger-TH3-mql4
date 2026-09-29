@@ -103,7 +103,40 @@ def uri(name):
 # The sources are UTF-8 (the '┬╖' in PnlHeaderSub is 0xC2 0xB7) ΓÇö read them as
 # such or the subtitle split silently finds one segment instead of the real
 # dots-and-captions run.
-SRC_TEXT = open(SRC, encoding="utf-8", errors="replace").read()
+# The panels unit is split (BiotakPanels.mqh is a wrapper of BiotakPanels_*.mqh),
+# so read it the way the compiler sees it: follow #include "..." in place.
+
+
+def mql_unit_lines(path):
+    """(origin, lineno, text) following #include "..." in place, like the compiler."""
+    out = []
+    seen = set()
+
+    def walk(p):
+        p = os.path.normpath(p)
+        if p in seen:
+            return
+        seen.add(p)
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        base = os.path.dirname(p)
+        for i, ln in enumerate(lines, 1):
+            m = re.match(r'\s*#include\s+"([^"]+)"', ln)
+            if m:
+                cand = os.path.normpath(os.path.join(base, m.group(1).replace("\\", os.sep)))
+                if os.path.exists(cand):
+                    walk(cand)
+                continue
+            out.append((p, i, ln))
+
+    walk(os.path.normpath(path))
+    return out
+
+
+SRC_TEXT = "\n".join(t[2] for t in mql_unit_lines(SRC))
 
 
 def strip_line_comments(text):

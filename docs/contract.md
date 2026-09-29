@@ -89,3 +89,4 @@ One file = one owner, `<= 1500` lines (`[System.IO.File]::ReadAllLines`).
 A file over the ceiling never grows: touch it = split it by owner
 (state / names / layout / paint / router), same names, same output,
 orphan sweep included. A new file over the ceiling fails the gate.
+One function over the ceiling stays whole and never grows.

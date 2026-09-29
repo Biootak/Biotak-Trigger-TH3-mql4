@@ -30,13 +30,42 @@ def read(path):
         return fh.readlines()
 
 
+def read_unit(path):
+    """(origin, lineno, text) following #include "..." in place, like the compiler."""
+    out = []
+    seen = set()
+
+    def walk(p):
+        p = os.path.normpath(p)
+        if p in seen:
+            return
+        seen.add(p)
+        try:
+            with open(p, "r", encoding="utf-8", errors="replace") as fh:
+                lines = fh.readlines()
+        except OSError:
+            return
+        base = os.path.dirname(p)
+        for i, ln in enumerate(lines, 1):
+            m = re.match(r'\s*#include\s+"([^"]+)"', ln)
+            if m:
+                cand = os.path.normpath(os.path.join(base, m.group(1).replace("\\", os.sep)))
+                if os.path.exists(cand):
+                    walk(cand)
+                continue
+            out.append((p, i, ln))
+
+    walk(os.path.normpath(path))
+    return out
+
+
 def define(path, name):
-    """The value of `#define NAME ...`, and the line it lives on."""
+    """The value of `#define NAME ...`, and the file:line it lives on."""
     pat = re.compile(r"^\s*#define\s+" + re.escape(name) + r"\s+(.+?)\s*(?://.*)?$")
-    for i, line in enumerate(read(path), 1):
+    for origin, ln, line in read_unit(path):
         m = pat.match(line)
         if m:
-            return m.group(1).strip(), i
+            return m.group(1).strip(), "%s:%d" % (os.path.basename(origin), ln)
     return None, None
 
 
@@ -72,14 +101,12 @@ def expr(path, name, subs=None, depth=6):
 
 
 def find_uses(path, patterns, within=None):
-    """(lineno, text) for every line matching any regex, optionally inside a span."""
+    """(file:line, text) for every line matching any regex."""
     out = []
-    lines = read(path)
-    lo, hi = within or (1, len(lines))
-    for i in range(lo - 1, min(hi, len(lines))):
+    for origin, ln, line in read_unit(path):
         for p in patterns:
-            if re.search(p, lines[i]):
-                out.append((i + 1, lines[i].rstrip()))
+            if re.search(p, line):
+                out.append(("%s:%d" % (os.path.basename(origin), ln), line.rstrip()))
                 break
     return out
 
@@ -150,7 +177,7 @@ def main():
     row_lbl_x_bare = PAD                             # PnlLabelX, no chip
     p = find_uses(STRIP, [r"DSTRIP_GEAR_PAD\s*\+\s*\(\s*res\s*=="])
     for ln, txt in p:
-        print(f"  [??  ] panel label x (with chip)   card={row_lbl_x}  -> see {os.path.basename(STRIP)}:{ln}")
+        print(f"  [??  ] panel label x (with chip)   card={row_lbl_x}  -> see {ln}")
         print(f"          {txt.strip()}")
 
     sw_x_card = expr(CARD, "PNL_WEL") - 2 * PAD     # PNL_SW_X = PNL_WEL-2*PNL_PAD_X-... via defines
