@@ -1046,8 +1046,12 @@ void RedrawAllObjects(bool force_redraw=false)
         }
     } else if (priceBrokeHistoricalRange) {
         // Just trigger a redraw, values are already updated!
+        // P-PERF-54: NO label wipe for a range extension. g_calculatedOnce=false
+        // forced needLabels, i.e. ClearAllLabels + a full label rebuild (countdown
+        // included) on every tick that printed a new extreme — the per-tick label
+        // flash on trending symbols. No label path reads g_highestHigh/Low, so the
+        // wipe rebuilt identical pixels; the levels redraw above still runs.
         g_redrawTHLevelsNeeded = true;
-        g_calculatedOnce = false;
     }
     g_p3MsHistory = GetTickCount() - g_p3MsLastTick;
     g_p3MsLastTick = GetTickCount();
