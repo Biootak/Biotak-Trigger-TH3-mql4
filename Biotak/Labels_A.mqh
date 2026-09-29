@@ -364,12 +364,17 @@ bool LiveCountdownEnabled()
 {
    return (inpShowLiveCountdown && !IsIndicatorHidden());
 }
+// P-PERF-51: per-call dirtiness of the countdown tag. CreateLivePriceCountdown
+// sets it: true when it wrote (or removed) anything, false when a still second
+// compared equal and cost reads only. The 1 Hz caller repaints only on true.
+static bool s_cdDirty = false;
 
 // Paints the tag when its own switch is on, removes it (plus the retired
 // "...ATR_Trade_Current_CloseIn" of older builds) when it is off.
 void RefreshLiveCountdown()
 {
    string nm = LiveCountdownObjName();
+   s_cdDirty = true;   // deletes below are changes; CreateLive clears it when clean
    if(!LiveCountdownEnabled())
    {
       ObjectDelete(0, nm);
@@ -403,6 +408,7 @@ bool LiveCountdownPointInside(const int mx, const int my)
 //+------------------------------------------------------------------+
 bool CreateLivePriceCountdown(const string name)
 {
+   s_cdDirty = true;   // the clean-skip below is the only path that clears it
    // Own switch only — never the ATR block's flags (that is the whole point).
    if(!LiveCountdownEnabled())
    {
@@ -412,9 +418,9 @@ bool CreateLivePriceCountdown(const string name)
    }
 
    double point = GetCachedPoint();
-   if(IsZero(point, EPSILON_PRICE)) return false;
+   if(IsZero(point, EPSILON_PRICE)) { s_cdDirty = false; return false; }
    datetime bt = iTime(Symbol(), Period(), 0);
-   if(bt <= 0) return false;
+   if(bt <= 0) { s_cdDirty = false; return false; }
 
    // The quote the tag rides: the bid/ask mid, so it sits exactly on the level
    // the terminal's own price lines are drawn at. Bar close covers the very
@@ -425,7 +431,7 @@ bool CreateLivePriceCountdown(const string name)
    if(bid > 0.0 && ask > 0.0) price = (bid + ask) / 2.0;
    else if(bid > 0.0)         price = bid;
    else                       price = iClose(Symbol(), Period(), 0);
-   if(price <= 0.0) return false;
+   if(price <= 0.0) { s_cdDirty = false; return false; }
 
    // Bar-0 pixel X (its LEFT edge) + the quote's pixel Y. A chart scrolled
    // away from the live bar has no candle to sit next to, so park the tag
@@ -477,7 +483,7 @@ bool CreateLivePriceCountdown(const string name)
       ObjectDelete(0, name);
    if(ObjectFind(0, name) < 0)
    {
-      if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
+      if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) { s_cdDirty = false; return false; }
       ObjectSetString(0, name, OBJPROP_TEXT, "");   // no default "Label" text
    }
 
@@ -488,6 +494,26 @@ bool CreateLivePriceCountdown(const string name)
    if(chTag <= 0) chTag = 1080;
    int xLeft = MathMax(4, x);
    int yTop = MathMax(2, MathMin(priceY - fsz / 2, chTag - (fsz + 2) - 20));
+
+   // P-PERF-51: compare first. A still second (same quote, same seats, same
+   // ink) costs ~12 reads and zero writes; the caller repaints only on dirty.
+   if(g_cdTagValid && ObjectFind(0, name) >= 0
+      && ObjectGetString(0, name, OBJPROP_FONT) == inpFontName
+      && ObjectGetInteger(0, name, OBJPROP_FONTSIZE) == fsz
+      && ObjectGetInteger(0, name, OBJPROP_CORNER) == CORNER_LEFT_UPPER
+      && ObjectGetInteger(0, name, OBJPROP_ANCHOR) == ANCHOR_LEFT_UPPER
+      && ObjectGetInteger(0, name, OBJPROP_SELECTABLE) == false
+      && ObjectGetInteger(0, name, OBJPROP_HIDDEN) == false
+      && ObjectGetInteger(0, name, OBJPROP_ZORDER) == Z_CHART_LABEL
+      && ObjectGetString(0, name, OBJPROP_TEXT) == text
+      && ObjectGetInteger(0, name, OBJPROP_COLOR) == inpCountdownColor
+      && ObjectGetInteger(0, name, OBJPROP_XDISTANCE) == xLeft
+      && ObjectGetInteger(0, name, OBJPROP_YDISTANCE) == yTop
+      && ObjectGetInteger(0, name, OBJPROP_TIMEFRAMES) == OBJ_ALL_PERIODS)
+   {
+      s_cdDirty = false;
+      return true;
+   }
 
    SetLabelFont(name);
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsz);   // own size over the shared one
@@ -1307,12 +1333,12 @@ void TradePlanLiveTick()
     // the countdown away. One pixel-Y read + a text-set is the cheapest
     // refresh there is, so this does not wake the 2 s trade-block pump
     // (P-PERF-01).
-    if(nowMs - s_lastCdMs >= 1000)
-    {
-        s_lastCdMs = nowMs;
-        RefreshLiveCountdown();
-        ThrottledChartRedraw();
-    }
+   if(nowMs - s_lastCdMs >= 1000)
+   {
+      s_lastCdMs = nowMs;
+      RefreshLiveCountdown();
+      if(s_cdDirty) ThrottledChartRedraw();
+   }
 
     // P-UI-84: the card's OWN master, never the ATR overview (see
     // DisplayATRTradeLabels). `IsIndicatorHidden()` stays — the F-hide must
