@@ -1,0 +1,27 @@
+[
+  {
+    "content": "شناسایی ساختار پروژه و فایل‌های اصلی/حجیم",
+    "status": "in_progress",
+    "id": "todo-0"
+  },
+  {
+    "content": "بررسی الگوهای باگ بحرانی در MQL4 (دسترسی آرایه، تقسیم بر صفر، مدیریت حافظه، حلقه‌ها)",
+    "status": "pending",
+    "id": "todo-1"
+  },
+  {
+    "content": "بازبینی ماژول‌های پرخطر TH3 و هسته (Controller/Math/Pivots/Tool)",
+    "status": "pending",
+    "id": "todo-2"
+  },
+  {
+    "content": "تعیین و اعمال اصلاحات برای باگ‌های بحرانی",
+    "status": "pending",
+    "id": "todo-3"
+  },
+  {
+    "content": "کامپایل/تست برای تأیید اصلاحات",
+    "status": "pending",
+    "id": "todo-4"
+  }
+]

@@ -956,7 +956,6 @@ static bool s_viewPersistCtx    = true;
 static bool s_viewInitDone      = false;
 
 bool ChartViewLockHeld()  { return (s_viewLockCount > 0); }
-int  ChartViewLockCount() { return s_viewLockCount; }
 
 // ONE accessor per family: the literal keeps a single owner, and the
 // REASON_REMOVE purge reaches it by NAME (see CleanupAllGlobalVariables and the

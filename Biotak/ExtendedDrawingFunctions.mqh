@@ -1700,7 +1700,7 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
     ObjectSetInteger(0, highLabelName, OBJPROP_COLOR, inpHighColor);
     ObjectSetInteger(0, highLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, highLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
-    ObjectSetString(0, highLabelName, OBJPROP_FONT, "Arial");
+    ObjectSetString(0, highLabelName, OBJPROP_FONT, BioChromeFont(false));
     ObjectSetString(0, highLabelName, OBJPROP_TEXT,
         StringFormat("  HIGH %s | Range: %.0f pips | F=%.2f | Step: %.1f pips",
             DoubleToString(highPrice, Digits), rangePips, factor, stepPips));
@@ -1716,7 +1716,7 @@ void DrawFactorBoundaryLines(const string objectPrefix, const double highPrice,
     ObjectSetInteger(0, lowLabelName, OBJPROP_COLOR, inpLowColor);
     ObjectSetInteger(0, lowLabelName, OBJPROP_FONTSIZE, 8);
     ObjectSetInteger(0, lowLabelName, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    ObjectSetString(0, lowLabelName, OBJPROP_FONT, "Arial");
+    ObjectSetString(0, lowLabelName, OBJPROP_FONT, BioChromeFont(false));
     ObjectSetString(0, lowLabelName, OBJPROP_TEXT, 
         StringFormat("  LOW %s | Range: %.0f pips | F=%.2f | Step: %.1f pips", 
             DoubleToString(lowPrice, Digits), rangePips, factor, stepPips));

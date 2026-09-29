@@ -87,9 +87,11 @@
 // whole baked family was the pre-P-UI-71 lookup table. Deleting it is the
 // single largest byte win in the repo and costs no runtime path.
 // (PNL_WIDE_ROWS_MAX, the constant that named this range, is gone too.)
-#resource "\\Files\\Icons\\pnl_hairW_gold.bmp"
+//--- P-DRAW-73: `pnl_hairW_gold` and `pnl_topbarW_gold` moved DOWN to DrawStrip.mqh,
+//--- the only module with a runtime path for them (the wide gear head). They were
+//--- declared here, so a wide panel's head art depended on this file being included
+//--- in the same compilation unit (F-03: a workaround is named where it is used).
 #resource "\\Files\\Icons\\pnl_secbandW.bmp"
-#resource "\\Files\\Icons\\pnl_topbarW_gold.bmp"
 
 //--- R-PANELUI2 (2026-09-11): every remaining panel bitmap. The redesign
 //--- draws its chrome from pre-rendered BMPs (MT4 cannot blur, gradient or
@@ -425,7 +427,6 @@ color QuickPalColor(const int i)
 //--- P-DRAW-46 made `BioPal` itself the face of `BioPickColor`'s first row).
 //--- One implementation, never a second.
 double PnlLum(const color c)                        { return BioLum(c); }
-double PnlContrast(const color a,const color b)      { return BioContrast(a,b); }
 color  PnlSwatchBorder(const color fill,const color backdrop) { return BioSwatchBorder(fill,backdrop); }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -741,11 +742,7 @@ string PnlHeaderSub(const int item)
 // Section row counts (WITHOUT the TAB row 0): Style 6 · Text 6 · Setup 7
 // (P-BK-27 added INFO SIZE to Setup) — tallest is 8 rows total, and the card
 // skins are baked for up to card16, so no new asset is needed. Returns the
-// MAX; the real per-tab length is the display spec (PnlSpecRows).
-int BkSecRows()
-{
-   return 7;
-}
+// MAX a skin carries (card16 bake); a tab's real length is the display spec (PnlSpecRows).
 
 //--- display name for a line-style index (panel value text)
 string StyleName(const int idx)
@@ -854,7 +851,7 @@ color PaletteKindColor(const int k)
 //--- P-UI-68: a colour target that is deliberately UNSET (clrNONE) means
 //    "follow something else": WICK COLOR follows the candle's own colour
 //    (clrNONE -> candleClr, exactly like BORDER COLOR -> borderClr has always
-//    meant "the body's colour"). The colour-strip cells painted such a target
+//    meant "the body's color"). The colour-strip cells painted such a target
 //    with clrNONE, which is MT4's value for NONE — so a setting that simply had
 //    no override showed up as an INK-BLACK swatch, i.e. the strip read as a
 //    colour choice nobody made. The cell now shows the AUTO face (a muted
@@ -2151,7 +2148,7 @@ void PalClose()
 //--- P-UI-69: ONE owner for the RECENT strip. It was painted inline inside
 //--- PalDraw() only, so applying a colour that was not already in the list left
 //--- the strip SHOWING A DIFFERENT SET than the picker had just produced - the
-//--- "I picked a colour and nothing in here changed" half of «رنگ ها کار نمی‌کنه».
+//--- "I picked a color and nothing in here changed" half of «رنگ ها کار نمی‌کنه».
 //--- The strip is now a function of the list (colour + legibility border per
 //--- cell), the list is the only thing PushPalRecent mutates, and the paint
 //--- records the list it painted so a repaint can be skipped when nothing moved.
@@ -2295,7 +2292,7 @@ void PalDrawHexRow(const int px,const int hy)
    ObjectSetInteger(0,en,OBJPROP_XSIZE,88);
    ObjectSetInteger(0,en,OBJPROP_YSIZE,20);
    ObjectSetString(0,en,OBJPROP_TEXT,(cur==clrNONE ? "" : PalHexText(cur)));
-   ObjectSetString(0,en,OBJPROP_FONT,"Consolas");
+   ObjectSetString(0,en,OBJPROP_FONT,BIO_FONT_MONO);
    ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
    ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
    ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
@@ -2472,7 +2469,7 @@ void PalDraw()
     string pttl2="PALETTE "+pttl+" "+PalTgtLabel(g_PalTgt);
     StringToUpper(pttl2);
     PnlSetLabel(p+"ttl", px+PAL_PAD+14, py+7, pttl2, PNL_CLR_MUTED, PNL_PT_PAL);
-    ObjectSetString(0,p+"ttl",OBJPROP_FONT,"Arial");
+    ObjectSetString(0,p+"ttl",OBJPROP_FONT,BioChromeFont(false));
     ObjectSetString(0,p+"ttl",OBJPROP_TOOLTIP,"Drag to move");
     ObjectSetInteger(0,p+"ttl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    // P-DRAW-49: the carry grip, so the title says "I can be dragged" instead of
@@ -2573,7 +2570,7 @@ void PalDraw()
    if(g_PalTab!=1) PalDrawHexRow(px, py+PalHxY());
 
    // apply-to target row — with the TARGET'S OWN colour chip, so the row answers
-   // "what am I about to recolour" and not only "what is it called" (P-DRAW-49).
+   // "what am I about to recolor" and not only "what is it called" (P-DRAW-49).
    int tgy=py+PalTgtY();
    PnlSetLabel(p+"tgtl", px+PAL_PAD, tgy+8, "APPLY TO", PNL_CLR_MUTED, PNL_PT_PALSEC);
    ObjectSetInteger(0,p+"tgtl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
@@ -3065,23 +3062,6 @@ void ParsePnlName(const string name,int &item,int &row,string &kind)
 // used to speak in PERIOD_* constants, which on MT4 are the same numbers and on
 // MT5 are not: the badge read "16385" instead of "H1", and LockOptFromPeriod()
 // matched nothing, so the panel always showed the segment as "Cur".
-int LockPeriodFromOpt(const int idx)
-{
-   switch(idx)
-   {
-      case 1:  return 1;       // M1
-      case 2:  return 5;       // M5
-      case 3:  return 15;      // M15
-      case 4:  return 30;      // M30
-      case 5:  return 60;      // H1
-      case 6:  return 240;     // H4
-      case 7:  return 1440;    // D1
-      case 8:  return 10080;   // W1
-      case 9:  return 43200;   // MN1
-   }
-   return 0;   // Cur → locks to the active timeframe
-}
-
 int LockOptFromPeriod(const int p)
 {
    if(p==1)     return 1;
@@ -3712,12 +3692,6 @@ string PnlRowExt(const int item,const int dispRow)
    if(si < 0) return "";
    return g_PnlSpec[si].ext;
 }
-string PnlSecTitle(const int item,const int dispRow)
-{
-   int si = PnlSpecIdx(item,dispRow);
-   if(si < 0) return "";
-   return g_PnlSpec[si].sec;
-}
 int PnlSecCount(const int item,const int dispRow)
 {
    int si = PnlSpecIdx(item,dispRow);
@@ -3810,25 +3784,6 @@ string PnlTitleText(const int item)
    return "Factor";
 }
 
-string PnlSubtitleText(const int item)
-{
-   if(item==1)  return "Mid zones, unified lines & structure";
-   if(item==0)  return "Trigger zone overlay (lines live on Lines)";
-   if(item==2)  return "ATR-based trade-plan labels";
-    if(item==3)  return "Fractal or standard TH labels";
-   if(item==4)  return "The orb's banner: its place & its mode";   // P-UI-126
-   if(item==5)  return "TH3 pattern drawing tool";
-   if(item==6)  return "Higher timeframe candle overlay";
-   if(item==7)  return "One style for ALL lines";
-   if(item==8)  return "Custom price pin (width & color)";   // P-UI-47: magnet retired; BKMAGNET2-OFF keeps it retired
-   if(item==9)  return "Step calculation engine";
-   if(item==11) return "L1-L5 structural zone toggles";
-   if(item==12) return "Style · Text · Setup (TV-like)";
-   if(item==13) return "Quick style · ••• for all";
-   if(item==14) return "Cross-card engine, grid & interface";   // P-UI-131
-   return "Factor step calculation";
-}
-
 //--- Cycle options (P-UI-92): 0=Structure (16x — two fractal steps up, the
 //--- shipped "Auto"), 1=Pattern (4x — one step up), 2..8 = fixed TFs.
 //--- The two DYNAMIC entries are the Factor card's BASIS names, and W1/MN1
@@ -3836,8 +3791,6 @@ string PnlSubtitleText(const int item)
 //--- an intraday chart). The MODE is the engine's state (HTFCandles.mqh) —
 //--- these two functions only translate between an option INDEX and it, so a
 //--- reordering here can never rename a rung.
-int HTFOptionCount() { return 9; }
-
 int HTFOptionFromPeriod(const int p)
 {
    if(g_HTFTfMode == HTF_TF_STRUCTURE) return 0;
@@ -4814,7 +4767,7 @@ void PnlSetLabel(const string n,const int x,const int y,const string txt,const c
    ObjectSetInteger(0,n,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,n,OBJPROP_YDISTANCE,y);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);
-   ObjectSetString(0,n,OBJPROP_FONT,"Arial");
+   ObjectSetString(0,n,OBJPROP_FONT,BioChromeFont(false));
    // P-UI-30: `sz` is a NOMINAL design size (px * 3/4); the terminal renders
    // fonts at ITS dpi, so the point size is re-expressed here once for every
    // caption in the panel.
@@ -4849,7 +4802,7 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_XSIZE,w);
    ObjectSetInteger(0,n,OBJPROP_YSIZE,h);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);
-   ObjectSetString(0,n,OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,n,OBJPROP_FONT,BioChromeFont());
    ObjectSetInteger(0,n,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
    ObjectSetInteger(0,n,OBJPROP_COLOR,PNL_CLR_TITLE);
    ObjectSetInteger(0,n,OBJPROP_BGCOLOR,bg);
@@ -5078,7 +5031,12 @@ void BkDdOpen(const int type)
          PnlSetRect(sN, g_BkDdX + 6, ry + 2, g_BkDdW - 12, BK_DD_ROW_H - 6, BK_CLR_DD_SEL);
          ObjectSetInteger(0, sN, OBJPROP_ZORDER, BK_DD_Z_SEL);
       }
-      PnlSetBitmap(iN, g_BkDdX + 18, ry + 7, 16, 16, icon, BK_DD_Z_ICO);
+      // P-UI-132: the icon seat follows the art. bk_w*/bk_style* are 24px bakes
+      // now (tools/icon-sheet.py: they were the only 16px art in a row whose
+      // every neighbour is 24, i.e. 16px of air against 8). Seat 24 keeps the
+      // centred glyph where it was — old centre x = 18+8 = 26, new 14+12 = 26 —
+      // and inside the 32px row the seat's own centre is ry+16 (was ry+15).
+      PnlSetBitmap(iN, g_BkDdX + 14, ry + 4, PNL_TB_ICON, PNL_TB_ICON, icon, BK_DD_Z_ICO);
       PnlSetLabel(lN, g_BkDdX + 46, ry + 10, label,
                   sel ? BK_CLR_DD_TXHI : BK_CLR_DD_TX, 8);
       ObjectSetInteger(0, lN, OBJPROP_ZORDER, BK_DD_Z_LBL);
@@ -5222,7 +5180,7 @@ void BkMiniStripCreate()
    int wx, wy, ww, wh;
    BkMiniSlot(4, wx, wy, ww, wh);
    PnlSetLabel(BkMiniBtn("TBwlabel"), wx + BK_WTXT_X, wy + 13, "1px", BK_CLR_DD_TX, 8);
-   ObjectSetString(0, BkMiniBtn("TBwlabel"), OBJPROP_FONT, "Arial Bold");
+   ObjectSetString(0, BkMiniBtn("TBwlabel"), OBJPROP_FONT, BioChromeFont());
    ObjectSetString(0, BkMiniBtn("TBwlabel"), OBJPROP_TOOLTIP, BkMiniSlotTip(4));
    ObjectSetString(0, BkMiniBtn("TBchev2"), OBJPROP_TOOLTIP, BkMiniSlotTip(4));
    BkMiniRefresh();
@@ -5715,7 +5673,7 @@ void PnlPaintLabel(const int item,const int row,const int x,const int y,
 {
    string t = (maxW > 0) ? PnlFit(txt,sz,maxW) : txt;
    PnlSetLabel(PnlName(item,row,"L"), x, y, t, PNL_CLR_LABEL, sz);
-   ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,BioChromeFont());
 }
 
 //--- the hotkey keycap (preview .key) — a real bitmap, never a font glyph.
@@ -5740,7 +5698,7 @@ void PnlKeycapAt(const string bmp,const string lbl,const int x,const int y,
    int em = PnlLineH(PNL_PT_KEY);
    PnlSetLabel(lbl, x+PNL_KEYCAP_CANVAS/2+tw/2, y+(PNL_KEYCAP_CANVAS-em)/2,
                k, clr, PNL_PT_KEY);
-   ObjectSetString(0,lbl,OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,lbl,OBJPROP_FONT,BioChromeFont());
    ObjectSetInteger(0,lbl,OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
 }
 
@@ -6052,7 +6010,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                    PNL_SECDOT_VIS+2*PNL_SECDOT_PAD, PNL_SECDOT_VIS+2*PNL_SECDOT_PAD,
                    PnlAccentRes(item,"pnl_secdot"), Z_PANEL_CHIP);
       PnlSetLabel(PnlName(item,row,"SL"), px+PNL_PAD_X+14, ry+14, label, PNL_CLR_MUTED, PNL_PT_SEC);
-      ObjectSetString(0,PnlName(item,row,"SL"),OBJPROP_FONT,"Arial Bold");
+      ObjectSetString(0,PnlName(item,row,"SL"),OBJPROP_FONT,BioChromeFont());
       // colour strip (preview .cstrip) — the NEXT row is the group's colour set
       // P-UI-30: the hairline starts 10px after the caption's REAL advance
       // (preview `.row.sec .sr{margin-left:10px}`) — the old 6px/char guess
@@ -6086,7 +6044,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        PnlSetLabel(PnlName(item,row,"BCNL"),
                    px+cardW-PNL_PAD_X-cw/2-16+PnlTextW(cnt,PNL_PT_SEC)/2,
                    ry+16, cnt, PNL_CLR_MUTED, PNL_PT_SEC);
-      ObjectSetString(0,PnlName(item,row,"BCNL"),OBJPROP_FONT,"Arial Bold");
+      ObjectSetString(0,PnlName(item,row,"BCNL"),OBJPROP_FONT,BioChromeFont());
       ObjectSetInteger(0,PnlName(item,row,"BCNL"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
       // collapse chevron (preview .acc .cv): down = open, right = collapsed
       int bb = PnlBandIndex(item,row);
@@ -6133,7 +6091,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                        "::Files\\Icons\\pnl_glass38.bmp", Z_PANEL_MARK);   // glass sheen
          PnlSetLabel(PnlName(item,row,"CSL"+IntegerToString(i)),
                      cx+PNL_CSET_W/2, ry+6, PnlCsetKey(cl), PNL_CLR_MUTED, PNL_PT_CSET);
-         ObjectSetString(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_FONT,"Arial Bold");
+         ObjectSetString(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_FONT,BioChromeFont());
          ObjectSetInteger(0,PnlName(item,row,"CSL"+IntegerToString(i)),OBJPROP_ANCHOR,ANCHOR_UPPER);
       }
       return;
@@ -6168,7 +6126,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
          ObjectSetString(0,PnlName(item,row,"SW"+IntegerToString(j)),OBJPROP_TOOLTIP,"Flip "+txt);
          PnlSetLabel(PnlName(item,row,"DL"+IntegerToString(j)),
                      cx+PNL_DUAL_SW_W+8, ry+16, txt, PNL_CLR_MUTED, PNL_PT_CAP);
-         ObjectSetString(0,PnlName(item,row,"DL"+IntegerToString(j)),OBJPROP_FONT,"Arial Bold");
+         ObjectSetString(0,PnlName(item,row,"DL"+IntegerToString(j)),OBJPROP_FONT,BioChromeFont());
       }
       PnlPaintChip(item,row,px+PNL_PAD_X,ry+PNL_CHIP_Y,false);
       // left label joins the member shorts ("L1 · L2"), like the preview.
@@ -6223,7 +6181,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
        PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+PNL_CAP_Y,
                    PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
                    PNL_CLR_LABEL, PNL_PT_LBL_SM);
-       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
+       ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,BioChromeFont());
       int sy = ry + PNL_QSW_Y;
 
        PnlSetButton(PnlName(item,row,"CB"), px+PNL_PAD_X, sy, PNL_QSW_PREV, 22, "", ccVis,
@@ -6280,7 +6238,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetLabel(PnlName(item,row,"NAVL"), nx+10, ry+PNL_CTL_Y+4,
                   PnlFit(sub,PNL_PT_NAV,nw-10-22-PNL_ROW_GAP),
                   PNL_CLR_VALUE, PNL_PT_NAV);
-      ObjectSetString(0,PnlName(item,row,"NAVL"),OBJPROP_FONT,"Arial Bold");
+      ObjectSetString(0,PnlName(item,row,"NAVL"),OBJPROP_FONT,BioChromeFont());
       bool isBack = (PnlRowIcon(item,row) == "back");
       PnlSetBitmap(PnlName(item,row,"NAVC"), nx+nw-20, ry+PNL_CTL_Y+4,
                    PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
@@ -6304,7 +6262,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       ObjectSetInteger(0,en,OBJPROP_XSIZE,PNL_WEL-2*PNL_PAD_X);
       ObjectSetInteger(0,en,OBJPROP_YSIZE,22);
       ObjectSetString(0,en,OBJPROP_TEXT,cur);
-      ObjectSetString(0,en,OBJPROP_FONT,"Arial");
+      ObjectSetString(0,en,OBJPROP_FONT,BioChromeFont(false));
       ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
       ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
       ObjectSetInteger(0,en,OBJPROP_BGCOLOR,PNL_CLR_FIELD);
@@ -6323,7 +6281,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+2,
                   PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
                   PNL_CLR_LABEL, PNL_PT_LBL_SM);
-      ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,"Arial Bold");
+      ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,BioChromeFont());
       return;
    }
 
@@ -6396,7 +6354,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
                       PnlGlyphRes(item,PnlRowIcon(item,row),true), Z_PANEL_INK);
          PnlSetLabel(PnlName(item,row,"DDT"), dx+24, dy+8, PnlDdOptText(item,row),
                      PNL_CLR_TITLE, PNL_PT_CTL);
-         ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,"Arial Bold");
+         ObjectSetString(0,PnlName(item,row,"DDT"),OBJPROP_FONT,BioChromeFont());
          PnlSetBitmap(PnlName(item,row,"DDC"), dx+dw-13, dy+11, 10, 10,
                       PnlAccentRes(item,"pnl_chev"), Z_PANEL_GLYPH);
          ObjectSetString(0,PnlName(item,row,"DD"),OBJPROP_TOOLTIP,label);
@@ -6470,7 +6428,7 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       PnlSetLabel(PnlName(item,row,"V"),
                   vx+PNL_VCHIP_W/2+PnlTextW(vt,PNL_PT_VAL)/2, ry+6,
                   vt, PnlAccentA1(acc), PNL_PT_VAL);
-      ObjectSetString(0,PnlName(item,row,"V"),OBJPROP_FONT,"Arial Bold");
+      ObjectSetString(0,PnlName(item,row,"V"),OBJPROP_FONT,BioChromeFont());
       ObjectSetInteger(0,PnlName(item,row,"V"),OBJPROP_ANCHOR,ANCHOR_RIGHT_UPPER);
 
        PnlSetRect(PnlName(item,row,"T"),  trackX, trackY-1, trackW, PNL_TRK_H+2, PNL_CLR_TRACK_BD);
@@ -6550,7 +6508,7 @@ void PnlFooterBtn(const int item,const string tag,const int bx,const int fy,
    PnlSetLabel(nm+"lb", bx+32, fy+17,
                PnlFit(label,PNL_PT_FOOT,bw-32-PNL_BTN_PAD),   // P-UI-30
                primary ? PnlAccentInk(acc) : PNL_CLR_MUTED, PNL_PT_FOOT);
-   ObjectSetString(0,nm+"lb",OBJPROP_FONT,"Arial Bold");
+   ObjectSetString(0,nm+"lb",OBJPROP_FONT,BioChromeFont());
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -6809,7 +6767,7 @@ void PnlCreate(const int item)
     PnlSetLabel(head, htx, py+12,
                 PnlFit(PnlTitleText(item),PNL_PT_TITLE,chipL2-htx-PNL_ROW_GAP),
                 PNL_CLR_TITLE, PNL_PT_TITLE);
-    ObjectSetString(0,head,OBJPROP_FONT,"Arial Bold");
+    ObjectSetString(0,head,OBJPROP_FONT,BioChromeFont());
     // 6pt, not 7: the preview sets .subttl at 8.5px, and at 7pt (9.33px) the
     // two longest subtitles ("MID ZONES · UNIFIED LINES · STRUCTURE",
     // "COUNTDOWN · ATR BLOCK · TRADE PLAN") run past the .ver badge — the
@@ -6881,7 +6839,7 @@ void PnlCreate(const int item)
                                     : "::Files\\Icons\\pnl_subdot_jade.bmp", Z_PANEL_CHIP);
        PnlSetLabel(PnlHead(item,"sub"+IntegerToString(sd)), textX, py+35,
                    cap, PNL_CLR_MUTED, PNL_PT_SUB);
-       ObjectSetString(0,PnlHead(item,"sub"+IntegerToString(sd)),OBJPROP_FONT,"Arial Bold");
+       ObjectSetString(0,PnlHead(item,"sub"+IntegerToString(sd)),OBJPROP_FONT,BioChromeFont());
        nDrawn++;
        if(cap != segs[sd])
           break;                                           // that was the clipped tail
@@ -6890,7 +6848,7 @@ void PnlCreate(const int item)
     if(nDrawn == 0)   // not even one segment fits — the plain caption, no dot
     {
        PnlSetLabel(PnlHead(item,"sub"), htx, py+35, PnlHeaderSub(item), PNL_CLR_MUTED, PNL_PT_SUB);
-       ObjectSetString(0,PnlHead(item,"sub"),OBJPROP_FONT,"Arial Bold");
+       ObjectSetString(0,PnlHead(item,"sub"),OBJPROP_FONT,BioChromeFont());
     }
 
     // .key + .ver — the card hotkey and the accent-soft number badge, sitting
@@ -7162,11 +7120,11 @@ bool ChartLockIntended()
     // the accessor is defined by the time this line compiles (and Lite, which owns
     // no strip, does not include this file at all - P-BUILD-01).
     if(DrawStripViewOwned()) return true;
-    // P-TH3-PB-OFF (2026-09-21): TH3BaseViewOwned retired with the stage-5
-    // base drag — the base is hand-typed, so no term of it can hold the view.
     // P-HR-03 (2026-09-28): the Horizontal Ray's arm + dot carry hold the view
     // from HRayTool (P-DRAW-19: named the day they were born).
     if(HRayViewOwned()) return true;
+    // P-TH3-PB-OFF (2026-09-21): TH3BaseViewOwned retired with the stage-5
+    // base drag — the base is hand-typed, so no term of it can hold the view.
     return (g_DragOwner != DRAG_NONE) || g_OrbDragging || (g_PnlOpen >= 0);
 }
 
@@ -7342,15 +7300,25 @@ void ChartPointerFinalizeOnUps()
    s_PnlMoveByPoll  = false;   // P-UI-77: the channel flag dies with the gesture
    s_PnlMoveOnCtrl  = false;   // P-UI-89: and so does the control-press proof
    s_PnlPollUpArmed = false;   // P-UI-78: and so does the rumour filter
+   //--- a STATIONARY release ends an orb drag here, not in the move handler
+   //--- (no move event carries a motionless button-up). A drag that travelled
+   //--- still owns its spot: save it exactly like the moving release does, or
+   //--- the next reposition restores the stale home and the orb snaps back.
+   bool orbLive = g_OrbDragging;
+   bool orbDragged = (g_OrbDragging && g_OrbWasDragged);
    g_DragOwner      = DRAG_NONE;
    g_OrbDragging    = false;
     g_LongPressItem  = -1;
     g_PnlDragItem    = -1;
     g_PnlDragRow     = -1;
     g_PnlMoveItem    = -1;
-    g_PalMixDrag     = 0;
-    if(s_palMoveArmed) PalMoveDisarm();   // spot already parked on the proven move
-    ChartScrollReconcile();
+     g_PalMixDrag     = 0;
+     if(s_palMoveArmed) PalMoveDisarm();   // spot already parked on the proven move
+     //--- mirror the move-path release: the travelled spot becomes home (saved),
+     //--- the release click is spent, and the frozen layout may re-derive.
+     if(orbDragged) { CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); UISuppressNextClick(); }
+     if(orbLive) SubRelayoutIfNeeded();
+     ChartScrollReconcile();
 }
 
 // Commit a pending TEXT edit (TV "Add text" ≈ Ok-on-close): clicking away
@@ -9392,7 +9360,7 @@ void PnlUpdateRow(const int item,const int row)
             if(ObjectFind(0,seg)<0) { tx2+=tw2+2; continue; }
             bool isAct=PnlSegOn(item,row,i,val);
             ObjectSetInteger(0,seg,OBJPROP_COLOR, isAct ? PNL_CLR_ACCENT : PNL_CLR_SEG_TX);
-            ObjectSetString(0,seg,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+            ObjectSetString(0,seg,OBJPROP_FONT, BioChromeFont(isAct));
             string cii=PnlName(item,row,"CI"+IntegerToString(i));
             if(i<nic2 && ObjectFind(0,cii)>=0)
             {
@@ -9404,7 +9372,7 @@ void PnlUpdateRow(const int item,const int row)
             if(ObjectFind(0,cti)>=0)
             {
                ObjectSetInteger(0,cti,OBJPROP_COLOR, isAct ? PNL_CLR_TITLE : PNL_CLR_SEG_TX);
-               ObjectSetString(0,cti,OBJPROP_FONT, isAct ? "Arial Bold" : "Arial");
+               ObjectSetString(0,cti,OBJPROP_FONT, BioChromeFont(isAct));
             }
             if(isAct)
             {

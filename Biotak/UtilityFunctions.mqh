@@ -11,9 +11,15 @@
 #ifndef UTILITY_FUNCTIONS_MQH
 #define UTILITY_FUNCTIONS_MQH
 
-#import "user32.dll"
-short GetAsyncKeyState(int vKey);
-#import
+// P-UI-73's physical-button probe must never need a DLL, and the tree now has
+// ZERO `#import` statements. Measured 2026-09-27: an `#import "user32.dll"` for
+// one keyboard probe killed the whole indicator's OnInit — "unresolved import
+// function call" / "DLL is not allowed" — wherever the terminal had DLL imports
+// off, and that switch is not ours to ask anyone to flip. Two replacements were
+// tried against THIS compiler first and both are absent from the build:
+// `GetAsyncKeyState` -> error 168, `GetMouseState`/`MOUSE_LEFT` -> 168 + 256.
+// The rule, and why the host's own TERMINAL_KEYSTATE_* is the right answer, are
+// at UILeftButtonDown() below.
 
 // Include ZoneFactory for centralized zone creation
 #include "ZoneFactory.mqh"
@@ -233,15 +239,18 @@ int PnlRawLineH(const int rawPt)
 //   * `UILeftButtonUp()` is TRUE only if BOTH conventions agree the button is
 //     free. A false "up" would tear a LIVE gesture down, so it is never
 //     inferred from one convention.
-// Never read TERMINAL_KEYSTATE_LEFT anywhere else again.
-// ══════════════════════════════════════════════════════════════════════════
+// Never read TERMINAL_KEYSTATE_LEFT anywhere else again. No `#import` for this
+// probe — the file header note says why, and the host's own keystate is the
+// answer, read below exactly as UIMagnetModifierDown reads SHIFT.
 bool UILeftButtonDown()
 {
-   return ((GetAsyncKeyState(1) & 0x8000) != 0);
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
+   return (v < 0) || ((v & 1) != 0);
 }
 bool UILeftButtonUp()
 {
-   return ((GetAsyncKeyState(1) & 0x8000) == 0);
+   long v = TerminalInfoInteger(TERMINAL_KEYSTATE_LEFT);
+   return (v >= 0) && ((v & 1) == 0);
 }
 
 //--- P-BK-61/66: the ONE owner of "is the magnet's MODIFIER held RIGHT NOW?" —
@@ -406,22 +415,6 @@ double GetSymbolPoint() {
     return point;
 }
 
-double GetArrayMax(const double &array[]) {
-    int size=ArraySize(array);
-    if(size<=0) return EMPTY_VALUE;
-    double maxValue=array[0];
-    for(int i=1; i<size; i++) if(array[i]>maxValue) maxValue=array[i];
-    return maxValue;
-}
-
-double GetArrayMin(const double &array[]) {
-    int size=ArraySize(array);
-    if(size<=0) return EMPTY_VALUE;
-    double minValue=array[0];
-    for(int i=1; i<size; i++) if(array[i]<minValue) minValue=array[i];
-    return minValue;
-}
-
 void CheckArraySizes() {
     // OPTIMIZATION: Use smarter initial sizing based on actual needs
     // Cache arrays: size based on number of fractal timeframes + buffer
@@ -454,16 +447,6 @@ double CalculatePipsDistance(const double price1, const double price2) {
 //+------------------------------------------------------------------+
 //| Format tooltip with distance in pips                            |
 //+------------------------------------------------------------------+
-string FormatTooltipWithDistance(const string baseTooltip, const double priceLevel) {
-    double pips = CalculatePipsDistance(priceLevel, g_currentPrice);
-    return baseTooltip + ", Distance: +/- " + DoubleToString(pips, 1) + " pips";
-}
-
-// PERF: Overload accepting pre-computed pips to avoid redundant CalculatePipsDistance
-string FormatTooltipWithDistanceFast(const string baseTooltip, const double precomputedPips) {
-    return baseTooltip + ", Distance: +/- " + DoubleToString(precomputedPips, 1) + " pips";
-}
-
 //+------------------------------------------------------------------+
 //| Get midpoint price based on start point type                    |
 //+------------------------------------------------------------------+
@@ -735,9 +718,6 @@ void UpdateStepModeLabel(bool clearFirst = true) {
 //| Shows both basis and current step mode: "ATR | SS/LS"           |
 //| Duration: inpModeLabelDuration (0=permanent, >0=seconds)        |
 //+------------------------------------------------------------------+
-void UpdateBasisModeLabel(ENUM_CALCULATION_BASIS basis) {
-    /* ATR basis removed - matching MT5 */
-}
 
 //+------------------------------------------------------------------+
 //| Build the factor label text (shared by show + real-time refresh)|

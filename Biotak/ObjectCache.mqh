@@ -725,6 +725,9 @@ int CacheGetSize()
     return g_objectCacheSize;
 }
 
+//--- P-UI-132: NO live caller in any commit — not one product path and not one harness (the
+//--- "only the test harness drives it" line below was never true). The body stays whole
+//--- because it owns the prefix rule (P-PERF-47); a rebuild never needed it.
 void CacheRebuild() {
     CacheClear();
 

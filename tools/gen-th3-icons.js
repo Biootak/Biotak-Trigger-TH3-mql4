@@ -183,6 +183,12 @@ const ART = {
     seg(17, 15.5, 17, 9, 2.1), seg(17, 9, 23.5, 9, 2.1),
     seg(23.5, 9, 19.4, 10.4, 1.8), seg(23.5, 9, 22.1, 13.1, 1.8),
   ],
+  hray: [
+    // hray — horizontal ray: anchor dot left, line running right with arrow tip
+    cfill(6, 16, 2.6),
+    seg(9.5, 16, 25, 16, 2.1),
+    seg(25, 16, 20.8, 13.6, 1.8), seg(25, 16, 20.8, 18.4, 1.8),
+  ],
   factor: [
     // factor — factor override: dial/gauge with needle
     ring(16, 16, 7.2, 2.0),
@@ -573,6 +579,14 @@ function circSkin(on) {
 function cardFadeWash() {
   const W = PNL_W + 2 * PNL_MARGIN, H = PNL_FADE_H;
   const buf = renderFxWH(W, H, (x, y) => {
+    // P-DRAW-47: THE WASH BELONGS TO THE CARD FACE. The overlay is blitted at
+    // px-PNL_MARGIN with the FULL card width (BiotakPanels.mqh, PnlCardFade
+    // block), so an unmasked margin paints a dark bar OUTSIDE both card edges:
+    // measured on the shipped file, x=0 and x=339 read (9,11,14) alpha 127 —
+    // invisible on a dark chart, a black ledge across a light one. The wide
+    // body never had it: its fade is a slice of the body, so it carries the
+    // body's own margin shadow (x=0 alpha 0).
+    if (x < PNL_MARGIN || x >= PNL_MARGIN + PNL_W) return null;
     const u = clamp01(y / (H - 1));
     const a = Math.round(235 * u);
     return a < 0.5 ? null : pm(CARD_BOT, a);
@@ -1010,14 +1024,28 @@ function chipSkin(acc) {
 // RICH-MT4 (2026-09-11): stroke 2.3 on the 32-grid (≈0.93px at 13px). The
 // preview's SVG keeps 1.7 — but its browser AA holds a 0.69px stem while the
 // MT4 blit + chart backdrop eats it, so the MT4 bake runs one weight heavier.
+//
+// P-UI-132 (2026-09-29) — A GLYPH CAN BE CELL-SIZED. GLYPH_VIS (13+2 pad = 15)
+// is the glyph size the HUNDREDS of 22/24/26px panel seats were laid out on, so
+// it stays the default. Three gl_* faces are painted somewhere else entirely: the
+// strip's own chrome cells are 32px, and the sheet (tools/icon-sheet.py) measured
+// pin / layers / textsize at 15px with 17px of air beside a 24px gear and bin —
+// one row, two icon scales, exactly the defect bk_style/bk_w/bk_ray had. Those
+// three names render at 24 instead; their ONLY consumers are DrawStrip.mqh's
+// chrome cells (32) and the board header's pin seat (26), both ≥ 24
+// (`grep -n "gl_pin_m\|gl_layers_m\|gl_textsize_m" Biotak/*.mqh`, non-resource).
+const GLYPH_BIG = new Set(['pin', 'layers', 'textsize']);
+const glyphPx = (name) => (GLYPH_BIG.has(name) ? 24 : GLYPH_VIS);
+
 function glyphSkin(name, color) {
-  const buf = render(GLYPH_VIS, glyphShapes(name, 32, 2.3, color), color);
-  if (GLYPH_PAD === 0) return { w: GLYPH_VIS, h: GLYPH_VIS, buf };
+  const vis = glyphPx(name), pad = GLYPH_PAD, canvas = vis + 2 * pad;
+  const buf = render(vis, glyphShapes(name, 32, 2.3, color), color);
+  if (pad === 0) return { w: vis, h: vis, buf };
   // pad with a transparent frame so the glyph never touches the bitmap edge
-  const S = GLYPH_CANVAS;
+  const S = canvas;
   const out = Buffer.alloc(S * S * 4);
-  for (let y = 0; y < GLYPH_VIS; y++)
-    buf.copy(out, ((y + GLYPH_PAD) * S + GLYPH_PAD) * 4, y * GLYPH_VIS * 4, (y + 1) * GLYPH_VIS * 4);
+  for (let y = 0; y < vis; y++)
+    buf.copy(out, ((y + pad) * S + pad) * 4, y * vis * 4, (y + 1) * vis * 4);
   return { w: S, h: S, buf: out };
 }
 
@@ -1435,15 +1463,19 @@ function ftBtnSkin(accent, primary, width) {
 // the baked light/shadow gives the preview's gloss. Accent-independent
 // (white/black alpha only), so one file serves all six accents.
 // Contract (R-SUBLADDER pattern — change all three together):
-//   PAL_W/H        = PalW()/PalH() in Biotak/BiotakPanels.mqh (201 x 408)
+//   PAL_W/H        = PalW()/PalH() in Biotak/BiotakPanels.mqh
 //   TRACK_GLOSS    = PNL_TRACK_W-2 x PNL_TRK_H
 //   NAV_W/H        = the NAV pill geometry in PnlCreateRow (118x26)
 //   GLASS sizes    = PNL_QSW_W / PNL_QSW_PREV / PNL_CSET_W x row heights
-// P-DRAW-46 resized the board (8 x 8 x PAL_QSW 20) and the TV-parity HEX band
-// added PAL_HX 30: the live numbers are PalW() 201 x PalH() 408, and a bake off
-// them is what MT4 crops the card face from — a stale pair leaves the popup's
-// right edge square and its bottom rows on bare chart.
-const PAL_W = 201, PAL_H = 408;
+// P-DRAW-49 (2026-09-27) resized the board to 268 wide and gave it TWO heights:
+// the palette tab is 26px cells (509) and the 22px fallback is 477, and the
+// popup CHOOSES between them from the chart's height (PalCellSize), so a bake
+// that is off by one row leaves bare chart under the footer or crops the last
+// row of the grid — the numbers below are the live PalHFor() arithmetic:
+//   28 head + 32 readout + 8 + 24 tabs + 10+12+5+22 recents
+//   + 10+12+16+grid + 10 + 28 hex + 26 apply-to + 30 footer
+const PAL_W = 268;
+const PAL_H_BIG = 509, PAL_H_SML = 477;
 const TRACK_GLOSS_W = 278, TRACK_GLOSS_H = 7;
 const NAV_W = 118, NAV_H = 26;
 
@@ -1549,10 +1581,12 @@ function navSkin() {
   return { w: W, h: H, buf };
 }
 
-// --- pal_card.bmp : the palette popup face (preview .pal gradient + radius).
-//     Replaces the flat CARD rect — same object name, same Z, prefix-wiped.
-function palCardSkin() {
-  const W = PAL_W, H = PAL_H, rad = 13;
+// --- pal_card{26,22}.bmp : the palette popup face (preview .pal gradient +
+//     radius). Replaces the flat CARD rect — same object name, same Z,
+//     prefix-wiped. TWO bakes, one per cell size: MT4 crops a bitmap label and
+//     never scales it, so one file cannot stand in for the other (P-DRAW-49).
+function palCardSkin(h) {
+  const W = PAL_W, H = h, rad = 13;
   const cx = W / 2, cy = H / 2;
   const hw = (W - 1) / 2, hh = (H - 1) / 2;
   const buf = renderFxWH(W, H, (x, y) => {
@@ -1567,6 +1601,20 @@ function palCardSkin() {
     return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
   });
   return { w: W, h: H, buf };
+}
+
+// --- pal_grip.bmp : the popup's carry grip (P-DRAW-49). Six muted dots on the
+//     card's own grid, so the title says "I can be dragged" instead of only
+//     being true. 12x12, the strip board's grip chip is a different asset.
+function palGripSkin() {
+  const S = 12;
+  const buf = renderFx(S, (x, y) => {
+    const dx = (x % 6) - 3, dy = (y % 6) - 3;
+    const d = Math.hypot(dx, dy);
+    if (d > 2.1) return null;
+    return pm([0x8C, 0x96, 0xA6], Math.round(255 * clamp01(2.1 - d)));
+  });
+  return { w: S, h: S, buf };
 }
 
 // --- ds_top_l/m/r · ds_mid_l/r · ds_bot_l/m/r : DrawStrip plate skin (P-DRAW-29).
@@ -1593,6 +1641,17 @@ const DS_MIDH = 42 * 24;             // 1008 — 24 mid bands of headroom
 // signed distance to the card boundary, piece-local coords (negative inside).
 // corner=0..3 (TL,TR,BL,BR) uses the infinite quarter-card model; edge=4..5
 // (top/bottom straight edge) and 6..7 (left/right straight edge) the half-plane.
+// P-DRAW-68 (2026-09-27): all FOUR half-planes measured the wrong side of their
+// own edge. Every straight piece is blitted with its content rows/cols starting
+// AT the plate's edge and its 14px shadow margin OUTSIDE, so "inside" is below
+// the top edge, above the bottom, right of the left and left of the right — the
+// shipped forms read the reverse, so each strip painted the BODY tone into the
+// margin (13px of solid #171C25 where the card has a soft drop shadow), put its
+// 1px border one pixel OUTSIDE the content rect, and left the top cap's 44px
+// band transparent (measured: ds_top_m row 15..57 = A0, pnl_card7 at the same
+// fraction = #212834..#1C222D). Net: a hard, shadowless, flat slab beside the
+// cards' glass. The distance is now measured from the edge line towards the
+// interior, which is what the corners' rrSdf always did.
 function dsSdf(x, y, W, H, kind) {
   const big = 1000;
   if (kind <= 3) {
@@ -1601,17 +1660,21 @@ function dsSdf(x, y, W, H, kind) {
     if (kind >= 2) by = H - 1 - by;
     return rrSdf(bx, by, DS_M + big, DS_M + big, big, big, DS_R);
   }
-  if (kind === 4) return y - DS_M;             // top edge
-  if (kind === 5) return (H - 1 - y) - DS_M;   // bottom edge
-  if (kind === 6) return x - DS_M;             // left edge
-  return (W - 1 - x) - DS_M;                   // right edge
+  if (kind === 4) return DS_M - y;             // top edge: content below
+  if (kind === 5) return y - DS_BOTC;          // bottom edge: content above
+  if (kind === 6) return DS_M - x;             // left edge: content right
+  return x - (W - 1 - DS_M);                   // right edge: content left
 }
 
-// body tone at piece-local y for a band (content origin at DS_M).
+// body tone at piece-local y for a band. P-DRAW-68: the content origin is the
+// band's OWN edge, not DS_M — the bottom cap is blitted with its 4 content rows
+// at its top (the margin hangs below), so its distance runs up from y = DS_BOTC
+// and the band lands on CARD_BOT at the card's own bottom row, as the card bake
+// does. The old shared `y - DS_M` read negative across the whole bottom cap, so
+// it never reached CARD_BOT at all.
 function dsBody(band, y) {
-  const cy = y - DS_M;
-  if (band === 0) return lerpColor(CARD_TOP, CARD_MID, clamp01(cy / DS_TOPC));
-  if (band === 2) return lerpColor(CARD_MID, CARD_BOT, clamp01(cy / DS_BOTC));
+  if (band === 0) return lerpColor(CARD_TOP, CARD_MID, clamp01((y - DS_M) / DS_TOPC));
+  if (band === 2) return lerpColor(CARD_MID, CARD_BOT, clamp01((DS_BOTC - y) / DS_BOTC));
   return CARD_MID.slice();
 }
 
@@ -1669,7 +1732,6 @@ function dsSkinFiles() {
   }
   out.push(
     { name: 'dsg_btn_ghost.bmp', ...ftBtnSkin(null, false, 64) },
-    { name: 'dsg_btn_primary.bmp', ...ftBtnSkin('gold', true, 64) },
   );
   return out;
 }
@@ -1785,14 +1847,22 @@ files.push(['s1_handle.bmp', () => render(15, [
 files.push(['bk_bucket.bmp',   () => render(24, BK_BUCKET,   BK_DARK)]);
 files.push(['bk_pencil.bmp',   () => render(24, BK_PENCIL,   BK_DARK)]);
 files.push(['bk_text.bmp',     () => render(24, BK_TEXT,     BK_DARK)]);
-for (let i = 0; i < 5; i++) files.push(['bk_style' + i + '.bmp', () => render(16, BK_STYLES[i], BK_DARK)]);
-for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(16, bkWidthArt(i), BK_DARK)]);
+// P-UI-132 (2026-09-29) — THE THREE STATE FAMILIES ARE CELL-SIZED NOW. Measured
+// by tools/icon-sheet.py: style/width/ray were 16px art in the strip's 32px
+// cells, so they sat with 16px of air around them while every neighbour
+// (bk_more, bk_gear, bk_levels, bk_bucket…) was 24px with 8 — one row, two icon
+// scales, and the three state carriers read as smudges at chart zoom. The art is
+// in the 32-unit space either way (render() rasterises it), so this is the same
+// drawing one size up. The two seats that paint them are the strip's cells and
+// the Base Box MINI dropdown rows (BiotakPanels BkDd), both re-derived for 24.
+for (let i = 0; i < 5; i++) files.push(['bk_style' + i + '.bmp', () => render(24, BK_STYLES[i], BK_DARK)]);
+for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(24, bkWidthArt(i), BK_DARK)]);
 files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
 files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
 files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
 files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
 // P-DRAW-13 (2026-09-23) — DrawStrip V6 faces (see the art above).
-for (let i = 0; i < 4; i++) files.push(['bk_ray' + i + '.bmp', () => render(16, BK_RAYS[i], BK_DARK)]);
+for (let i = 0; i < 4; i++) files.push(['bk_ray' + i + '.bmp', () => render(24, BK_RAYS[i], BK_DARK)]);
 files.push(['bk_glyph.bmp',    () => render(24, BK_GLYPH,    BK_DARK)]);
 files.push(['bk_levels.bmp',   () => render(24, BK_LEVELS,   BK_DARK)]);
 files.push(['bk_gear.bmp',     () => render(24, BK_GEAR,     BK_DARK)]);
@@ -1882,20 +1952,27 @@ const panelFiles = [
   // ICON-DIET 2026-09-27: pnl_glass32 and pnl_glass28 are GONE. P-DRAW-33
   // baked them for the strip's 32px cells and the gear's 28px swatch grid, but
   // the gear/picker/recent faces ended up on ds_cell32 / ds_ring32 /
-  // ds_swatch24 instead, and design-checklist 19 then deleted the last
+  // ds_swatch24 instead, and the icon diet then deleted the last
   // pnl_glass28 caller. MT4 crops a bitmap and never scales it, so the rule
   // P-DRAW-33 states still holds — ds_* carries it at the sizes actually drawn.
   // TV parity rounded palette cells (opaque corner mask in the owning plate tone).
   { name: 'ds_cell32.bmp',      ...roundCellSkin(32, 32, [23, 28, 37]) },
-  { name: 'pal_cell20.bmp',     ...roundCellSkin(20, 20, [26, 32, 42]) },
-  // ...and the ring the SELECTED cell wears in their place (same two sizes).
+  // P-DRAW-49: the popup's cells are 26px (the design) with a 22px fallback for a
+  // window the big one does not fit, and MT4 crops a bitmap and never scales it —
+  // so each size is its own cell AND its own ring (P-DRAW-33's rule, unchanged).
+  { name: 'pal_cell26.bmp',     ...roundCellSkin(26, 26, [26, 32, 42]) },
+  { name: 'pal_cell22.bmp',     ...roundCellSkin(22, 22, [26, 32, 42]) },
+  // ...and the ring the SELECTED cell wears in their place (same sizes).
   { name: 'ds_ring32.bmp',      ...roundRingSkin(32, 32, [23, 28, 37]) },
   // ...and the STRIP's own 24px swatch (`#strip .swcell` — 24px, radius 6, a
   // 1px white hairline), the colour cell's face inside its 32px cell.
   { name: 'ds_swatch24.bmp',    ...roundCellSkin(24, 24, [23, 28, 37]) },
-  { name: 'pal_ring20.bmp',     ...roundRingSkin(20, 20, [26, 32, 42]) },
+  { name: 'pal_ring26.bmp',     ...roundRingSkin(26, 26, [26, 32, 42]) },
+  { name: 'pal_ring22.bmp',     ...roundRingSkin(22, 22, [26, 32, 42]) },
   { name: 'pnl_nav.bmp',        ...navSkin() },
-  { name: 'pal_card.bmp',       ...palCardSkin() },
+  { name: 'pal_card26.bmp',     ...palCardSkin(PAL_H_BIG) },
+  { name: 'pal_card22.bmp',     ...palCardSkin(PAL_H_SML) },
+  { name: 'pal_grip.bmp',       ...palGripSkin() },
   // P-DRAW-29 (2026-09-24): the DrawStrip plate skin (9-slice, see above).
   // The mid-row centre is a plain DSTRIP_CLR_PANEL rect (no file); the two
   // side strips tile it vertically, the middles crop it horizontally.

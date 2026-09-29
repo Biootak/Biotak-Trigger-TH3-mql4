@@ -144,6 +144,7 @@ Thumbs.db
 Biotak Trigger TH3.log
 Biotak.log
 build-logs
+tools/mt4-shots
 
 # AI context hygiene — heavy generated previews, not product code
 # (OpenCode grep/glob use ripgrep and respect .gitignore automatically;

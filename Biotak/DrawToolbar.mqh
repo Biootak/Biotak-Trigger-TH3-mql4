@@ -93,7 +93,7 @@ enum EDrawKind
 //--- P-DRAW-64 (2026-09-27) — THE SECOND COLOUR, ONE PER ROLE. User order: «رنگ
 //--- بوردر بشه جدا تنظیم کرد ... و fill همه جدا. یک بخش براش اضافه کن». MT4 gives
 //--- a drawing ONE colour (the docs' own `RectangleCreate` fills with `InpColor`;
-//--- `OBJPROP_BGCOLOR` is the screen objects' — tool-parity-plan §5), so the split
+//--- `OBJPROP_BGCOLOR` is the screen objects' — see docs/contract.md §2), so the split
 //--- is: the LINE/BORDER stays `DRAW_SLOT_COLOR` and the INTERIOR is this slot.
 //---   * the LEVEL family has a REAL second colour — `OBJPROP_LEVELCOLOR`;
 //---   * the five FILLER kinds have none, so the interior is a CHILD object
@@ -630,7 +630,7 @@ void DrawStyleInit()
    {
       s_dkValid[k] = false;
       s_dkColor[k] = clrNONE;
-      //--- P-DRAW-64: `clrNONE` is the "no colour of its own yet" of the interior —
+      //--- P-DRAW-64: `clrNONE` is the "no color of its own yet" of the interior —
       //--- a zero-initialised `color` is BLACK, which would be a colour the user
       //--- never chose (the P-DRAW-48 lesson, one slot over).
       s_dkFillClr[k] = clrNONE;
@@ -762,7 +762,7 @@ int DrawSlotFillOpacityGet(const string name)
    if(v > 100) v = 100;
    return v;
 }
-//--- "the alpha of THIS colour slot" — the bar the user drags and the render the
+//--- "the alpha of THIS color slot" — the bar the user drags and the render the
 //--- chart wears both ask it, so the two cannot drift.
 int DrawSlotAlphaGet(const string name, const int slot)
 {
@@ -985,8 +985,11 @@ bool FillChildEnsure(const string obj)
    {
       datetime t1 = (datetime)ObjectGetInteger(0, obj, OBJPROP_TIME, 0);
       double   p1 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 0);
+      datetime t2 = (datetime)ObjectGetInteger(0, obj, OBJPROP_TIME, 1);
+      double   p2 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 1);
       if(t1 <= 0) return false;
-      if(!ObjectCreate(0, ch, type, 0, t1, p1)) return false;
+      if(t2 <= 0) { t2 = t1; p2 = p1; }
+      if(!ObjectCreate(0, ch, type, 0, t1, p1, t2, p2)) return false;
       ObjectSetInteger(0, ch, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, ch, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, ch, OBJPROP_FILL, true);
@@ -994,7 +997,7 @@ bool FillChildEnsure(const string obj)
       ObjectSetInteger(0, ch, OBJPROP_RAY_LEFT, false);
       ObjectSetInteger(0, ch, OBJPROP_ZORDER, Z_CHART_ZONE);
       ObjectSetString(0, ch, OBJPROP_TOOLTIP,
-                      "Interior of \"" + obj + "\" — its colour and tone live in the strip");
+                      "Interior of \"" + obj + "\" — its color and tone live in the strip");
    }
    //--- P-DRAW-64 addendum 7 (2026-09-27) — THE INTERIOR IS IN ITS BOX'S OWN LAYER.
    //--- The child was hard-wired `OBJPROP_BACK = true` (behind the bars) while the box
@@ -1162,8 +1165,8 @@ bool FillChildSync(const string obj)
 //--- MT4 reports only as OBJECT_CHANGE is covered as well. One hand at a time, so the memo
 //--- is one slot; it re-arms on the name and rests on the release.
 static string s_fcmName = "";
-static long   s_fcmT0 = 0, s_fcmT1 = 0;
-static double s_fcmP0 = 0.0, s_fcmP1 = 0.0;
+static long   s_fcmT0 = 0, s_fcmT1 = 0, s_fcmT2 = 0;
+static double s_fcmP0 = 0.0, s_fcmP1 = 0.0, s_fcmP2 = 0.0;
 void FillChildStampArm(const string obj)
 {
    s_fcmName = "";
@@ -1173,8 +1176,10 @@ void FillChildStampArm(const string obj)
    s_fcmName = obj;
    s_fcmT0 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 0);
    s_fcmT1 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 1);
+   s_fcmT2 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 2);
    s_fcmP0 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 0);
    s_fcmP1 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 1);
+   s_fcmP2 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 2);
 }
 void FillChildStampRelease() { s_fcmName = ""; }
 bool FillChildStamp(const string obj)
@@ -1183,10 +1188,12 @@ bool FillChildStamp(const string obj)
    if(ObjectFind(0, obj) < 0) { s_fcmName = ""; return false; }
    long t0 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 0);
    long t1 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 1);
+   long t2 = (long)ObjectGetInteger(0, obj, OBJPROP_TIME, 2);
    double p0 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 0);
    double p1 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 1);
-   if(t0 == s_fcmT0 && t1 == s_fcmT1 && p0 == s_fcmP0 && p1 == s_fcmP1) return false;
-   s_fcmT0 = t0; s_fcmT1 = t1; s_fcmP0 = p0; s_fcmP1 = p1;
+   double p2 = ObjectGetDouble(0, obj, OBJPROP_PRICE, 2);
+   if(t0 == s_fcmT0 && t1 == s_fcmT1 && t2 == s_fcmT2 && p0 == s_fcmP0 && p1 == s_fcmP1 && p2 == s_fcmP2) return false;
+   s_fcmT0 = t0; s_fcmT1 = t1; s_fcmT2 = t2; s_fcmP0 = p0; s_fcmP1 = p1; s_fcmP2 = p2;
    return FillChildSync(obj);
 }
 
@@ -1283,6 +1290,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
          if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
          if(!DrawIsHRay(name)) s_dkWidth[k] = w;   // P-HR-04: rays learn nothing
+         //--- P-DRAW-74: a thick pen paints solid, so the pair resolves here - the
+         //--- one owner, asked on the way every chip, preset and undo already takes.
+         DrawStylePairCoerce(name);
          break;
       }
       case DRAW_SLOT_STYLE:
@@ -1290,9 +1300,19 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          int st = (int)MathRound(v);
          if(st < 0) st = 0;
          if(st > (int)STYLE_DASHDOTDOT) st = (int)STYLE_DASHDOTDOT;
+         if(st != (int)STYLE_SOLID)
+         {
+            if((int)ObjectGetInteger(0, name, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
+            {
+               ObjectSetInteger(0, name, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
+               if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, DRAW_WIDTH_MIN);
+            }
+            if(!DrawIsHRay(name)) s_dkWidth[k] = DRAW_WIDTH_MIN;
+         }
          ObjectSetInteger(0, name, OBJPROP_STYLE, st);
          if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, st);
          if(!DrawIsHRay(name)) s_dkStyle[k] = st;   // P-HR-04: rays learn nothing
+         DrawStylePairCoerce(name);                  // P-DRAW-74: a dash is a 1 px pen
          break;
       }
       case DRAW_SLOT_FILL:
@@ -1435,6 +1455,58 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
 //--- Called the moment the terminal reports the creation (see the entry's
 //--- OBJECT_CREATE branch): a drawing the user made is adjusted to their own
 //--- last look before they can even see it in the old style.
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-74 — THE PAIR IS ONE PICTURE. MT4 paints a line wider than 1 px SOLID:
+// the terminal's own reference puts it plainly - a `STYLE_*` line style is used
+// "only if the line width is equal to 0 or 1" (book.mql4.com, *Styles of drawing
+// indicator lines*). So (3, Dash) is not a look, it is a state no terminal can
+// draw, and every owner of a look has to refuse it rather than store it.
+// ONE owner, two rules, and it is asked of an object NOT only when a chip fires
+// but on the strip's own open, because the terminal's properties dialog writes
+// the pair directly and never passes here.
+//   width  > 1  =>  STYLE_SOLID   (a thick pen has no dash pattern)
+//   style  != SOLID  =>  width 1   (a dash is a one-pixel pen)
+// Both writes are guarded (one read, zero writes on a legal pair) and the KIND
+// memory and the level family move with them, so the next drawing of the kind
+// is born wearing what the last one really showed.
+// ══════════════════════════════════════════════════════════════════════════
+bool DrawStylePairCoerce(const string name)
+{
+   if(name == "" || ObjectFind(0, name) < 0) return false;
+   EDrawKind k = DrawKindOf(name);
+   if(k == DK_NONE) return false;
+   int w = (int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
+   int st = (int)ObjectGetInteger(0, name, OBJPROP_STYLE);
+   if(w < DRAW_WIDTH_MIN) w = DRAW_WIDTH_MIN;
+   if(w > DRAW_WIDTH_MAX) w = DRAW_WIDTH_MAX;
+   if(st < 0) st = 0;
+   if(st > (int)STYLE_DASHDOTDOT) st = (int)STYLE_DASHDOTDOT;
+   bool changed = false;
+   if(w > DRAW_WIDTH_MIN)
+   {
+      if(st != (int)STYLE_SOLID)
+      {
+         st = (int)STYLE_SOLID;
+         ObjectSetInteger(0, name, OBJPROP_STYLE, st);
+         if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, st);
+         changed = true;
+      }
+   }
+   else if(st != (int)STYLE_SOLID)
+   {
+      w = DRAW_WIDTH_MIN;
+      ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
+      if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
+      changed = true;
+   }
+   if(!DrawIsHRay(name))
+   {
+      if(s_dkWidth[k] != w) { s_dkWidth[k] = w; changed = changed || true; }
+      if(s_dkStyle[k] != st) { s_dkStyle[k] = st; changed = changed || true; }
+   }
+   return changed;
+}
+
 bool DrawStyleApplyOnCreate(const string name)
 {
    if(name == "" || DrawIsIndicatorObject(name)) return false;
@@ -1456,6 +1528,7 @@ bool DrawStyleApplyOnCreate(const string name)
       ObjectSetInteger(0, name, OBJPROP_STYLE, s_dkStyle[k]);
       if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, s_dkStyle[k]);
    }
+   DrawStylePairCoerce(name);   // P-DRAW-74: the remembered pair is coerced, not trusted
    //--- P-DRAW-64: the interior first (the look it was born with), then the fill
    //--- that shows it — the child is made with the colour already on the drawing.
    if((DrawKindCaps(k) & DRAW_CAP_FILLCLR) != 0 && (int)s_dkFillClr[k] >= 0)
@@ -1628,6 +1701,7 @@ bool DrawPresetCapture(const string name, const string label)
    if(name == "" || ObjectFind(0, name) < 0) return false;
    EDrawKind k = DrawKindOf(name);
    if(k == DK_NONE) return false;
+   DrawStylePairCoerce(name);   // P-DRAW-74: never learn an illegal pair from the terminal dialog
    int slot = -1;
    for(int i = DRAW_PRESET_BUILTIN; i < DRAW_PRESET_MAX; i++)
       if(!s_dkPreset[k][i].used) { slot = i; break; }
@@ -1642,27 +1716,11 @@ bool DrawPresetCapture(const string name, const string label)
    return true;
 }
 
-//--- P-DRAW-03, WHAT MT4 CANNOT DO AT ALL: the same look applied to EVERY
-//--- drawing of the same kind on the chart. MT4's own dialog is strictly one
-//--- object at a time; a trader who changes their mind about how their fibos
-//--- look has to redo each one by hand. ONE walk, one look, and the kinds that
-//--- are not the caller's are untouched.
-int DrawPresetApplyToKind(const string fromName, const int slot)
-{
-   EDrawKind k = DrawKindOf(fromName);
-   if(k == DK_NONE || slot < 0 || slot >= DRAW_PRESET_MAX) return 0;
-   if(!s_dkPreset[k][slot].used) return 0;
-   int done = 0;
-   int total = ObjectsTotal(0, -1, -1);
-   for(int i = total - 1; i >= 0; i--)
-   {
-      string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || DrawIsIndicatorObject(nm)) continue;
-      if(DrawKindOf(nm) != k) continue;
-      if(DrawPresetApply(nm, slot)) done++;
-   }
-   return done;
-}
+//--- P-DRAW-76: `DrawPresetApplyToKind` (a chart-wide walk per apply) is DELETED. P-DRAW-03's
+//--- "one look, every drawing of the kind" is live as `DrawStyleApplyToKind` (the popover's
+//--- APPLY-ALL row), and a preset reaches a whole GROUP through the strip's own selection loop
+//--- (`DrawStripPresetApplyGroup` -> `DrawPresetApply` per member). Two owners of one act was
+//--- the defect, and this one had no caller in any commit.
 
 // ══════════════════════════════════════════════════════════════════════════
 // P-DRAW-04 — THE PERFORMANCE CONTRACT OF THIS MODULE. «کاربر اندیکاتور کند قبول
@@ -1818,11 +1876,25 @@ void DrawPresetsLoad()
    FileClose(h);
 }
 
-//--- the OFF paths and a removed instance must not leave the file behind.
-void DrawPresetsForget()
+//--- P-DRAW-76: ONE slot goes, on the user's own say-so. The BUILT-INS refuse: they are code
+//--- (`DrawPresetsInit` seeds them), and "delete a suggestion" would have to mean "put the
+//--- suggestion back". The file is rewritten in full by the same single writer every capture
+//--- uses (P-DRAW-08b), so the user's numbering survives the hole.
+bool DrawPresetClear(const EDrawKind k, const int slot)
 {
-   FileDelete(DrawPresetPath());
+   if(k <= DK_NONE || k >= DK_COUNT) return false;
+   if(slot < 0 || slot >= DRAW_PRESET_MAX || DrawPresetIsBuiltin(slot)) return false;
+   if(!s_dkPreset[k][slot].used) return false;
+   s_dkPreset[k][slot].used = false;
+   s_dkPreset[k][slot].name = "";
+   DrawPresetsSave();
+   return true;
 }
+//--- P-DRAW-76: `DrawPresetsForget()` (a whole-file `FileDelete`) stood here and is DELETED.
+//--- Its note claimed "the OFF paths and a removed instance must not leave the file behind",
+//--- but the shipped design is the opposite: P-DRAW-05 loads the user's own templates at init
+//--- and they must OUTLIVE the session, so wiring that delete into a teardown would have wiped
+//--- them on an ordinary re-attach. It had no caller in any commit.
 
 //--- P-DRAW-08b: THE ONE CALL A UI SHOULD MAKE when the user says "save this
 //--- look as mine". The capture and the persist are one act — a capture that is
@@ -1908,11 +1980,6 @@ static string s_dkSel[DRAW_SEL_MAX];
 static int    s_dkSelN = 0;
 
 int DrawSelCount() { return s_dkSelN; }
-bool DrawSelHas(const string name)
-{
-   for(int i = 0; i < s_dkSelN; i++) if(s_dkSel[i] == name) return true;
-   return false;
-}
 string DrawSelAt(const int i)
 {
    if(i < 0 || i >= s_dkSelN) return "";

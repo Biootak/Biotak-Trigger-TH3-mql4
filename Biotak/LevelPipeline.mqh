@@ -332,6 +332,36 @@ string GetLabelTextForLevel(const SLevelClassified &level, const int baseMultipl
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-131m: A BAND'S INK IS ONE PAIR, FADED EXACTLY ONCE.         |
+//|                                                                  |
+//| The trigger card's COLOR row could not reach the chart:           |
+//| `GetTriggerRenderColor()` had already blended g_triggerColor with  |
+//| g_triggerTransparency, and CreateZone blended that result AGAIN   |
+//| with the MID ZONE transparency - two owners fading one band. At   |
+//| the measured 43 % the band kept 8 % of the picked colour.        |
+//|                                                                  |
+//| So a band carries a BASE that is never pre-faded plus the opacity |
+//| that owns it: card 0's TRANSPARENCY for a trigger band, the band  |
+//| row on card 1 for a structure one. The EDGE derives from the same |
+//| base, so the trigger card's colour reaches the surface that is    |
+//| actually visible. No reader may hand CreateZone a self-faded      |
+//| colour (P-UI-66's law, applied to the band).                     |
+//+------------------------------------------------------------------+
+color PipelineBandBaseColor(const int step, const bool triggerEnabled, const int baseMultiplier)
+{
+    color zc = GetZoneColorForLevel(step, triggerEnabled, baseMultiplier);
+    if(zc != clrNONE) return zc;     // a structure tier owns this band's ink
+    return g_triggerColor;           // the trigger family's own ink, RAW
+}
+
+int PipelineBandTransparency(const bool isTrigger, const int bandTransparency)
+{
+    if(!isTrigger) return bandTransparency;
+    int t = (int)MathMax(0, MathMin(100, g_triggerTransparency));
+    return t;
+}
+
+//+------------------------------------------------------------------+
 //| STAGE 2: Classify all levels                                     |
 //|                                                                  |
 //| Structure/trigger identity drives ONLY the zones. ALL lines take |
@@ -404,13 +434,9 @@ int ClassifyLevels(
             classified[i].isTrigger = true;
         }
 
-        // Zone color from level (zones keep their family identity)
-        classified[i].zoneColor = GetZoneColorForLevel(step, triggerEnabled, baseMultiplier);
-        if(classified[i].zoneColor == clrNONE) {
-            // Trigger-subdivision zones fall back to the trigger zone color
-            // (NOT the unified line color — zones and lines are independent).
-            classified[i].zoneColor = GetTriggerRenderColor();
-        }
+        // Zone color from level (zones keep their family identity). RAW - the
+        // fade belongs to the row that owns it, and CreateZone does it once.
+        classified[i].zoneColor = PipelineBandBaseColor(step, triggerEnabled, baseMultiplier);
         
         // Populate label text
         classified[i].labelText = GetLabelTextForLevel(classified[i], baseMultiplier);
@@ -905,7 +931,12 @@ void RenderZones(
             request.topPrice = zones[i].renderTop;
             request.bottomPrice = zones[i].renderBottom;
             request.zoneColor = zones[i].zoneColor;
-            request.transparency = zones[i].transparency;
+            // P-UI-131m: the band's OWN opacity, read live next to the border rows
+            // below - a trigger band is faded by card 0's TRANSPARENCY, a structure
+            // band by the band row on card 1. The BASE colour above is unfaded, so
+            // this is the one fade (the double blend it replaces left a trigger band
+            // at 8 % of the picked colour at 43 %).
+            request.transparency = PipelineBandTransparency(zones[i].isTrigger, zones[i].transparency);
             request.filled = zones[i].filled;
             request.outline = zones[i].outline;
             request.borderStyle = inpMidZoneBorderStyle;
@@ -937,8 +968,8 @@ void RenderZones(
 //| A structure switch (master / L1-L5, card 11) changes NO geometry: |
 //| the level SET is switch-invariant (ClassifyLevels always builds   |
 //| every step; the switches only choose zone colours via              |
-//| GetZoneColorForLevel + the GetTriggerRenderColor fallback, exactly |
-//| as ClassifyLevels lines 395-400 do). Re-deriving the whole level  |
+//| PipelineBandBaseColor, exactly as ClassifyLevels does).           |
+//| Re-deriving the whole level                                        |
 //| family to repaint a few hundred zone colours is what made the     |
 //| switch feel dead on a weak PC. So the switch never reaches the    |
 //| render: this walk rewrites the blended colour of every cached     |
@@ -1000,9 +1031,13 @@ int StructureRecolourWalk()
         if(StringFind(nm, "_BK_") >= 0) continue;          // independent layer
         int step = StructureZoneStepFromName(nm);
         if(step <= 0) continue;
-        color zc = GetZoneColorForLevel(step, trigOn, baseMult);
-        if(zc == clrNONE) zc = GetTriggerRenderColor();
-        color want = GetZoneRenderColor(zc, tr);
+        // P-UI-131m: the walk repaints through the SAME two owners the paint path
+        // uses, or a structure switch would write a trigger band a colour the
+        // render never produces (it used to blend the mid-zone transparency into a
+        // base that was already faded).
+        bool isTrig = (GetHighestStructureLevel(step, g_cachedIntervals) <= 0);
+        color zc = PipelineBandBaseColor(step, trigOn, baseMult);
+        color want = GetZoneRenderColor(zc, PipelineBandTransparency(isTrig, tr));
         color have = clrNONE;
         if(!CacheGetColor(nm, have)) continue;   // nothing painted under this name
         if(have == want) continue;
@@ -1511,13 +1546,17 @@ string PipelineGeometryKey(const SModeConfig &config,
     key += "," + IntegerToString((int)config.midpointColor) + "," + IntegerToString((int)config.midpointStyle);
     key += "," + IntegerToString(config.midpointWidth);
     // P-PERF-21b: the ZONE COLOURS are part of what this geometry carries
-    // (ClassifyLevels stores zoneColor per level, read from GetZoneColorForLevel
-    // and GetTriggerRenderColor), yet none of THOSE inputs were in the key: a
-    // structure-tier colour, a tier's show flag, the zones switch or the trigger
-    // colour could change while the key stayed equal and the cached zones would
-    // keep painting the old colour. The staleness was invisible because every
-    // one of those edits also changes levelSig and therefore wipes - but the
-    // cache must not RELY on a different guard to be correct.
+    // (ClassifyLevels stores zoneColor per level, read from PipelineBandBaseColor),
+    // yet none of THOSE inputs were in the key: a structure-tier colour, a tier's
+    // show flag, the zones switch or the trigger colour could change while the key
+    // stayed equal and the cached zones would keep painting the old colour. The
+    // staleness was invisible because every one of those edits also changes
+    // levelSig and therefore wipes - but the cache must not RELY on a different
+    // guard to be correct.
+    // P-UI-131m: the trigger term is the RAW `g_triggerColor` the geometry stores.
+    // It used to be `GetTriggerRenderColor()`, which put the trigger TRANSPARENCY
+    // in the key and so made every step of that slider a full family recompute -
+    // a PAINT input read as geometry, the mistake P-UI-66 removed from the lines.
     key += "|zc" + IntegerToString(inpShowMidZones ? 1 : 0)
               + IntegerToString(inpShowStructure ? 1 : 0)
               + IntegerToString(inpShowStructureL1 ? 1 : 0) + IntegerToString(inpShowStructureL2 ? 1 : 0)
@@ -1526,7 +1565,7 @@ string PipelineGeometryKey(const SModeConfig &config,
               + "," + IntegerToString((int)inpStructureL1Color) + IntegerToString((int)inpStructureL2Color)
               + IntegerToString((int)inpStructureL3Color) + IntegerToString((int)inpStructureL4Color)
               + IntegerToString((int)inpStructureL5Color)
-              + "," + IntegerToString((int)GetTriggerRenderColor());
+              + "," + IntegerToString((int)g_triggerColor);
     key += "|" + IntegerToString(g_customPriceLineDragging ? 1 : 0);
     // P-UI-66 - THE LINE LOOK IS NOT GEOMETRY, SO IT IS NOT A KEY TERM.
     //

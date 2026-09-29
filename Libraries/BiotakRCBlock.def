@@ -1,5 +1,0 @@
-LIBRARY BiotakRCBlock.dll
-
-EXPORTS
-RCBlock_Arm
-RCBlock_Disarm

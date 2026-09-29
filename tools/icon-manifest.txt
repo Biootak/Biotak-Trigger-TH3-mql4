@@ -83,7 +83,6 @@ ds_top_r_t30.bmp
 ds_top_r_t60.bmp
 ds_top_r_t90.bmp
 dsg_btn_ghost.bmp
-dsg_btn_primary.bmp
 gear_off.bmp
 gear_on.bmp
 gl_alignC_gold.bmp
@@ -185,6 +184,8 @@ gl_wick_gold.bmp
 gl_wick_m.bmp
 gl_x_gold.bmp
 gl_x_m.bmp
+hray_off.bmp
+hray_on.bmp
 htf_off.bmp
 htf_on.bmp
 leg_handle_dn.bmp
@@ -198,9 +199,13 @@ leg_handle_up_sel.bmp
 leg_off.bmp
 leg_on.bmp
 orb_bg.bmp
-pal_card.bmp
-pal_cell20.bmp
-pal_ring20.bmp
+pal_card22.bmp
+pal_card26.bmp
+pal_cell22.bmp
+pal_cell26.bmp
+pal_grip.bmp
+pal_ring22.bmp
+pal_ring26.bmp
 pin_off.bmp
 pin_on.bmp
 pnl_actbg_gold.bmp

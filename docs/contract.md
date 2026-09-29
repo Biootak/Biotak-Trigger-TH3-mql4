@@ -82,3 +82,10 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
 6. A change to generated assets hashes the set before and after: untouched files
    byte-identical.
 7. The report names the file, the number and the measurement.
+
+## 7. Size (one file, one owner)
+
+One file = one owner, `<= 1500` lines (`[System.IO.File]::ReadAllLines`).
+A file over the ceiling never grows: touch it = split it by owner
+(state / names / layout / paint / router), same names, same output,
+orphan sweep included. A new file over the ceiling fails the gate.

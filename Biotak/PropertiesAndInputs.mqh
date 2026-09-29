@@ -441,7 +441,7 @@ input ENUM_LOG_LEVEL inpLogLevel = LOG_LEVEL_WARN;   // Minimum log level (TRACE
 // mirrored into runtime copies in RuntimeSettings.mqh, which seeds them from
 // these inputs at attach (RuntimeSettingsInit) — so both the MT4 Inputs dialog
 // and the on-chart panels drive the same settings. Derived render helpers
-// (e.g. GetTriggerRenderColor) also live in RuntimeSettings.mqh.
+// (e.g. GetLineRenderColor) also live in RuntimeSettings.mqh.
 //==============================================================================
 
 #endif // PROPERTIES_AND_INPUTS_MQH

@@ -500,6 +500,22 @@ void HTFRefreshPixelMetrics()
    if(!MathIsValidNumber(s_HTFPxPerBar)) s_HTFPxPerBar = 0.0;
 }
 
+// The shadow's calendar-share fallback, ONE owner. Two paths need it: a span
+// the index map cannot centre on (thinner than two chart bars — beyond loaded
+// history, a fresh TF switch — or non-finite), and a degenerate index round
+// trip. Both used to inline the same six lines; a third copy is how they
+// drift apart again.
+void HTFGeomCalendarShadow(SHTFCandleGeom &g, const datetime ot, const datetime nt,
+                           const int shPct)
+{
+   datetime halfCal = (datetime)((nt - ot) * (double)shPct / 200);
+   if(halfCal < 1) halfCal = 1;
+   g.shadowL = ot + (datetime)((nt - ot) / 2) + halfCal;
+   g.shadowR = ot + (datetime)((nt - ot) / 2) - halfCal;
+   if(g.shadowR < ot) g.shadowR = ot;
+   if(g.shadowL > nt) g.shadowL = nt;
+}
+
 SHTFCandleGeom HTFCandleGeometry(const datetime ot, const datetime nt)
 {
    SHTFCandleGeom g;
@@ -519,9 +535,23 @@ SHTFCandleGeom HTFCandleGeometry(const datetime ot, const datetime nt)
 
    double iL = HTFChartIndexAt(ot);
    double iR = HTFChartIndexAt(nt);
-   if(!MathIsValidNumber(iL) || !MathIsValidNumber(iR)) return g;   // NaN fence
+   if(!MathIsValidNumber(iL) || !MathIsValidNumber(iR))
+   {
+      // No index map at all (broken series): the calendar share still draws a
+      // real box. A zero-width rectangle is INVISIBLE — the old trend wick
+      // never was — so no fence here may leave a point.
+      HTFGeomCalendarShadow(g, ot, nt, shPct);
+      return g;
+   }
    double span = iL - iR;
-   if(span < 2.0) return g;                 // thinner than two chart bars
+   if(span < 2.0)
+   {
+      // Thinner than two chart bars: beyond loaded history (low-TF chart with
+      // an HTF overlay, fresh TF switch) the whole span maps onto one slot and
+      // no centred box exists. Same answer as above — a real box, not a point.
+      HTFGeomCalendarShadow(g, ot, nt, shPct);
+      return g;
+   }
 
    double half = span / 2.0;
    double gap = span * (double)gapPct / 200.0;      // half of the gap, each side
@@ -553,12 +583,7 @@ SHTFCandleGeom HTFCandleGeometry(const datetime ot, const datetime nt)
    {
       // Degenerate round trip / the box fell outside the period: fall back to
       // the calendar share, so a shadow is always drawn.
-      datetime halfCal = (datetime)((nt - ot) * (double)shPct / 200);
-      if(halfCal < 1) halfCal = 1;
-      g.shadowL = ot + (datetime)((nt - ot) / 2) + halfCal;
-      g.shadowR = ot + (datetime)((nt - ot) / 2) - halfCal;
-      if(g.shadowR < ot) g.shadowR = ot;
-      if(g.shadowL > nt) g.shadowL = nt;
+      HTFGeomCalendarShadow(g, ot, nt, shPct);
    }
    if(g.shadowL > nt) g.shadowL = nt;
    if(g.shadowR < ot) g.shadowR = ot;

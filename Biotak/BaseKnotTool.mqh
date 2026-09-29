@@ -1623,7 +1623,7 @@ void BaseKnotHintShow(const string text, const int ttlMs = 0)
    ObjectSetInteger(0, hn, OBJPROP_XDISTANCE, 10);
    ObjectSetInteger(0, hn, OBJPROP_YDISTANCE, 44);
    ObjectSetString(0, hn, OBJPROP_TEXT, text);
-   ObjectSetString(0, hn, OBJPROP_FONT, "Arial");
+   ObjectSetString(0, hn, OBJPROP_FONT, BioChromeFont(false));
    ObjectSetInteger(0, hn, OBJPROP_FONTSIZE, PnlPt(BK_PT_HINT));
    ObjectSetInteger(0, hn, OBJPROP_COLOR, BaseKnotFgForBg());
    ObjectSetInteger(0, hn, OBJPROP_ANCHOR, ANCHOR_LEFT_LOWER);
@@ -2315,7 +2315,7 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
    ObjectSetInteger(0, name, OBJPROP_XSIZE, BK_BADGE_W);
    ObjectSetInteger(0, name, OBJPROP_YSIZE, BK_BADGE_H);
    ObjectSetString(0, name, OBJPROP_TEXT, text);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetString(0, name, OBJPROP_FONT, BioChromeFont());
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(BK_PT_BADGE));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clrWhite);
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, bg);
@@ -4160,7 +4160,7 @@ void BaseKnotNotePlateDraw(const string pn, const int px, const int py, const in
    // write here is the empty bar over the candles (P-BK-86) the day BKTFSCOPE is
    // restored — one line away (BaseKnotTFMask's own note).
    ObjectSetString(0, pn, OBJPROP_TOOLTIP,
-                   "BK note plate (P-BK-86): the chart's own background colour, drawn UNDER the "
+                   "BK note plate (P-BK-86): the chart's own background color, drawn UNDER the "
                    "note so the candles and the level lines can never be read through its ink");
 }
 //--- P-BK-86: a SCREEN object does not follow the chart by itself — the chart-space text it

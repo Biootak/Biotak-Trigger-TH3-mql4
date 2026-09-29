@@ -849,9 +849,9 @@ void LoadUIState()
    g_UI.showHTF     = GlobalVariableCheck(gvHtf)   ? (GlobalVariableGet(gvHtf)   > 0.5) : false;
    if(GlobalVariableCheck(GetGVName("TIPPIN")))
       g_UI.tipPin = (GlobalVariableGet(GetGVName("TIPPIN")) > 0.5);
-   // P-DRAW-43: and the plate's transparency level (absent key = the solid default).
-   if(GlobalVariableCheck(GetGVName("PLATE")))
-      DrawStripPlateTSet((int)GlobalVariableGet(GetGVName("PLATE")));
+   // P-DRAW-89: the plate's transparency setting is retired. Its GV is swept on
+   // attach below so a chart that carried the old key cannot resurrect the look.
+   GlobalVariableDel(GetGVName("PLATE"));
 }
 
 void DeleteLegacyMenuObjects()
@@ -1022,9 +1022,8 @@ void SaveUIStates(const bool flushNow = false)
       { GlobalVariableSet(GVHomeName("STRIP",false), haveHome ? (double)hx : -1.0); uiChanged++; }
    if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 7, haveHome ? (double)hy : -1.0))
       { GlobalVariableSet(GVHomeName("STRIP",true), haveHome ? (double)hy : -1.0); uiChanged++; }
-   // P-DRAW-43: the plate's transparency level, a user setting like the rest.
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 8, (double)DrawStripPlateT()))
-      { GlobalVariableSet(GetGVName("PLATE"), (double)DrawStripPlateT()); uiChanged++; }
+   // P-DRAW-89: the plate's transparency writer is gone with the setting; slot 8
+   // of the shadow set is free again.
    // P-UI-126: the chip's own place and mode — the hand's answers, written only when
    // they really moved (the drag's release and the card's switch are the whole set).
    int thx = 0, thy = 0;
@@ -1229,23 +1228,6 @@ string CircCardIcon(const int item, const bool on)
    else if(item == 11)    base = "step";    // Structure levels (stair levels)
    else if(item == 12)    base = "ruler";   // Base Box card — the same measuring tool as the ring item
    return "::Files\\Icons\\" + base + (on ? "_on.bmp" : "_off.bmp");
-}
-
-string CircTimeframeLabel(const ENUM_TIMEFRAMES tf)
-{
-   switch(tf)
-   {
-      case PERIOD_M1:  return "M1";
-      case PERIOD_M5:  return "M5";
-      case PERIOD_M15: return "M15";
-      case PERIOD_M30: return "M30";
-      case PERIOD_H1:  return "H1";
-      case PERIOD_H4:  return "H4";
-      case PERIOD_D1:  return "D1";
-      case PERIOD_W1:  return "W1";
-      case PERIOD_MN1: return "MN1";
-   }
-   return "";
 }
 
 string CircBadgeText(const int i)
@@ -2632,7 +2614,7 @@ void SubSetLabel(const string name, const int x, const int y, const string txt,
    ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
    ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetString(0, name, OBJPROP_FONT, BioChromeFont());
    // `size` is the NOMINAL (design) pt - PnlPt re-expresses it for this display.
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(size));
    ObjectSetInteger(0, name, OBJPROP_COLOR, clr);
@@ -2688,7 +2670,7 @@ void SubSetPagerBtn(const string name, const int x, const int y, const int w, co
    ObjectSetInteger(0, name, OBJPROP_XSIZE, w);
    ObjectSetInteger(0, name, OBJPROP_YSIZE, h);
    ObjectSetString(0, name, OBJPROP_TEXT, txt);
-   ObjectSetString(0, name, OBJPROP_FONT, "Arial Bold");
+   ObjectSetString(0, name, OBJPROP_FONT, BioChromeFont());
    ObjectSetInteger(0, name, OBJPROP_FONTSIZE, PnlPt(SUB_PT_PAGER));
    ObjectSetInteger(0, name, OBJPROP_COLOR, enabled ? SUB_CLR_ACCENT : SUB_CLR_DOT_OFF);
    ObjectSetInteger(0, name, OBJPROP_BGCOLOR, SUB_CLR_BTN_BG);
@@ -2899,7 +2881,7 @@ void ToolsCreateBadge(const int i)
    ObjectSetString(0, txt, OBJPROP_TEXT, CircBadgeText(feat));
    ObjectSetInteger(0, txt, OBJPROP_COLOR, CLR_CIRC_BADGE_TXT);
    ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, PnlPt(CIRC_PT_BADGE));
-   ObjectSetString(0, txt, OBJPROP_FONT, "Arial Bold");          ObjectSetString(0, txt, OBJPROP_TOOLTIP, "");   // P-UI-119
+   ObjectSetString(0, txt, OBJPROP_FONT, BioChromeFont());          ObjectSetString(0, txt, OBJPROP_TOOLTIP, "");   // P-UI-119
    ObjectSetInteger(0, txt, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, txt, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, txt, OBJPROP_ZORDER, Z_MENU_BADGE_TX);
@@ -2932,16 +2914,6 @@ void CircBadgePos(const int i, int &x, int &y)
    double off = CIRC_BTN_SIZE / 2 + CIRC_BADGE_FLOAT;
    x = (int)MathRound(cx + dx * off - CIRC_BADGE_SIZE / 2.0);
    y = (int)MathRound(cy + dy * off - CIRC_BADGE_SIZE / 2.0);
-}
-
-string CircBadgeTooltip(const int i)
-{
-   string t = CircItemTooltip(i);
-   int nl = StringFind(t, "\n");
-   string name = (nl > 0) ? StringSubstr(t, 0, nl) : t;
-   string val = CircBadgeText(i);
-   if(StringLen(val) > 0) return name + " = " + val + "\nClick: settings";
-   return name + "\nClick: settings";
 }
 
 void CircCreateBadge(const int i)
@@ -2988,7 +2960,7 @@ void CircCreateBadge(const int i)
    ObjectSetString(0, txt, OBJPROP_TEXT, CircBadgeText(feat));
    ObjectSetInteger(0, txt, OBJPROP_COLOR, CLR_CIRC_BADGE_TXT);
    ObjectSetInteger(0, txt, OBJPROP_FONTSIZE, PnlPt(CIRC_PT_BADGE));
-   ObjectSetString(0, txt, OBJPROP_FONT, "Arial Bold");          ObjectSetString(0, txt, OBJPROP_TOOLTIP, "");   // P-UI-119
+   ObjectSetString(0, txt, OBJPROP_FONT, BioChromeFont());          ObjectSetString(0, txt, OBJPROP_TOOLTIP, "");   // P-UI-119
    ObjectSetInteger(0, txt, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, txt, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, txt, OBJPROP_ZORDER, Z_MENU_BADGE_TX);

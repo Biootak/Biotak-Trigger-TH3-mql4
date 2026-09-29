@@ -1868,11 +1868,6 @@ void StoreLabelPosition(const string name, const int xPos, const int yPos) {
     }
 }
 
-int GetStoredXPosition(const string name) {
-    for(int i=0; i<ArraySize(g_labelPositions); i++) if(g_labelPositions[i].name==name) return g_labelPositions[i].xPos;
-    return inpInitialX;
-}
-
 //+------------------------------------------------------------------+
 //| P-UI-42: how wide will MT4 draw this caption?                     |
 //|                                                                  |
@@ -2007,18 +2002,6 @@ int LabelRowMaxWidth(const int startXPos) {
     return (usable > 0) ? usable : 0;    // a known-but-tiny chart still wraps
 }
 
-int GetBottomTitleYOffset(const bool showTargets, const int rowSpacing) {
-    int singleLineHeight = inpFontSize + rowSpacing;
-    return showTargets ? singleLineHeight * 2 : singleLineHeight;
-}
-
-string StringRepeat(string str, int count) {
-    string result = "";
-    for(int i=0; i<count; i++) {
-        result = result + str;
-    }
-    return result;
-}
 
 
 //+------------------------------------------------------------------+

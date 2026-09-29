@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<title>Biotak TH3 — Strip Panels · Refactor Mock</title>
+<style>
+  /* ── the project's own tokens (ConstantsAndEnums.mqh 1000-1020) ── */
+  :root{
+    --panel:#171C25; --card:#1D222C; --card-top:#1E242F; --field:#181D27;
+    --field-bd:#333C4C; --foot:#12161D; --line:#222832;
+    --label:#CBD4E2; --muted:#8C96A6; --ink:#F3F6FB;
+    --a1:#FFC247; --a2:#FF8A00; --aink:#1A1206;
+    --del:#FF8A8A; --pick:#3E485C;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    font-family:Vazirmatn,Tahoma,Arial,sans-serif;
+    background:linear-gradient(180deg,#0d1117 0%,#131722 60%,#0f1320 100%);
+    color:var(--muted); overflow:auto;
+  }
+  /* fake chart behind everything */
+  .chart{position:fixed; inset:0; z-index:0; pointer-events:none;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 48px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.025) 0 1px, transparent 1px 64px),
+      radial-gradient(1200px 500px at 70% 10%, rgba(38,50,70,.55), transparent 70%);
+  }
+  .stage{position:relative; z-index:1; width:1180px; margin:0 auto; padding:26px 20px 60px}
+
+  .note{position:absolute; font-size:11.5px; color:#8fa1bd; line-height:1.7; direction:rtl;
+        background:rgba(13,17,23,.72); border:1px solid #222832; border-radius:8px;
+        padding:6px 10px; max-width:230px; backdrop-filter:blur(2px)}
+  .note b{color:var(--a1); font-weight:700}
+  .note.en{direction:ltr; text-align:left}
+  h1{font-size:14px; color:var(--label); font-weight:700; margin:0 0 2px}
+  .sub{font-size:11px; color:#5c6a80; margin-bottom:18px}
+
+  /* ══ 1) THE QUICK STRIP — one 30px icon row ══ */
+  .strip{position:absolute; left:40px; top:132px; direction:ltr;
+    display:inline-flex; align-items:center; gap:4px; padding:8px;
+    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 55%, var(--foot) 130%);
+    border:1px solid #2C3444; border-radius:12px;
+    box-shadow:0 14px 34px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04) inset;
+  }
+  .grip{width:18px; height:26px; display:grid; place-items:center; color:#4a5568;
+        font:700 12px/1 monospace; letter-spacing:1px; cursor:grab}
+  .badge{display:flex; align-items:center; gap:6px; height:30px; padding:0 10px;
+    background:var(--field); border:1px solid var(--line); border-radius:7px;
+    color:var(--label); font-size:11px; font-weight:700; white-space:nowrap}
+  .badge .dot{width:7px; height:7px; border-radius:2px; background:var(--a1)}
+  .badge small{color:var(--muted); font-weight:400}
+  .sep{width:1px; height:20px; background:var(--line); margin:0 4px}
+  .cell{width:32px; height:30px; border-radius:7px; display:grid; place-items:center;
+    background:var(--field); border:1px solid var(--line);
+    color:var(--label); font-size:13px; cursor:pointer; position:relative}
+  .cell:hover{border-color:var(--field-bd); background:#1c2330}
+  .cell.on{background:linear-gradient(180deg,var(--a1),var(--a2)); color:var(--aink); border-color:#8a6a1e}
+  .cell.pick{border-color:var(--pick); box-shadow:0 0 0 1px var(--pick) inset}
+  .cell.gear-open{border-color:var(--a1); box-shadow:0 0 0 1px rgba(255,194,71,.35) inset}
+  .cell .sw{width:16px; height:16px; border-radius:4px; background:linear-gradient(135deg,var(--a1),#c88a1e);
+            box-shadow:0 0 0 1px rgba(255,255,255,.14) inset}
+  .cell .sw.half{background:linear-gradient(90deg, rgba(255,194,71,.28) 0 50%, transparent 50% 100%)}
+  .cell .ico{font-size:12.5px; line-height:1}
+  .cell.del{color:var(--del)}
+  .cell.more{color:var(--muted); font-weight:700; letter-spacing:1px}
+  .cell.pin{color:var(--a1)}
+
+  /* ══ 2) THE COLOUR BOARD — its own card ══ */
+  .board{position:absolute; left:40px; top:224px; width:344px; direction:ltr;
+    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 45%, var(--foot) 135%);
+    border:1px solid #2C3444; border-radius:12px; overflow:hidden;
+    box-shadow:0 18px 44px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.04) inset;}
+  .bhead{height:44px; display:flex; align-items:center; gap:8px; padding:0 12px;
+         border-bottom:1px solid var(--line)}
+  .bhead .t{color:var(--ink); font-size:11px; font-weight:700; letter-spacing:.6px}
+  .bhead .tag{color:var(--a1); font-size:9px; font-weight:700; background:rgba(255,194,71,.12);
+              border:1px solid rgba(255,194,71,.3); padding:2px 6px; border-radius:4px}
+  .bhead .sp{flex:1}
+  .icoBtn{width:24px; height:24px; border-radius:6px; display:grid; place-items:center;
+          color:var(--muted); background:transparent; border:1px solid transparent; cursor:pointer; font-size:11px}
+  .icoBtn:hover{color:var(--label); border-color:var(--line); background:var(--field)}
+  .icoBtn.gold{color:var(--a1)}
+  .pal{display:grid; grid-template-columns:repeat(8,32px); gap:8px; padding:14px 16px 6px}
+  .p{width:32px; height:32px; border-radius:7px; cursor:pointer; position:relative;
+     box-shadow:0 0 0 1px rgba(255,255,255,.07) inset}
+  .p.sel::after{content:""; position:absolute; inset:-4px; border:2px solid var(--a1); border-radius:9px}
+  .band{display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line)}
+  .band .cap{width:52px; color:var(--muted); font-size:9px; font-weight:700; letter-spacing:.5px}
+  .hex{width:96px; height:22px; background:var(--field); border:1px solid var(--field-bd);
+       border-radius:6px; color:var(--ink); font:11px/20px Consolas,monospace; padding:0 8px; direction:ltr}
+  .track{flex:1; height:8px; border-radius:4px; position:relative; direction:ltr;
+    background:linear-gradient(90deg, rgba(255,194,71,.08), var(--a1));
+    border:1px solid var(--line)}
+  .knob{position:absolute; left:72%; top:-3px; width:10px; height:12px; border-radius:3px;
+        background:var(--label); border:1px solid #0006; box-shadow:0 1px 3px #000a}
+  .ov{width:38px; text-align:right; color:var(--ink); font:11px Consolas,monospace; direction:ltr}
+  .recents{display:flex; gap:8px; align-items:center; padding:8px 16px 14px}
+  .r{width:24px; height:24px; border-radius:6px; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset; cursor:pointer}
+
+  /* ══ 3) THE GEAR PANEL — a 312 card ══ */
+  .gear{position:absolute; left:470px; top:64px; width:312px; direction:ltr;
+    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 40%, var(--foot) 140%);
+    border:1px solid #2C3444; border-radius:12px; overflow:hidden;
+    box-shadow:0 20px 48px rgba(0,0,0,.62), 0 1px 0 rgba(255,255,255,.04) inset;}
+  .ghead{height:56px; padding:12px 14px 0; position:relative}
+  .ghead .t{color:var(--ink); font-size:12px; font-weight:700}
+  .ghead .s{color:var(--muted); font-size:8px; font-weight:700; letter-spacing:.8px; margin-top:9px}
+  .xbtn{position:absolute; right:12px; top:12px; width:26px; height:26px; border-radius:7px;
+        background:var(--field); border:1px solid var(--line); color:var(--label);
+        display:grid; place-items:center; font-size:11px; cursor:pointer}
+  .tabs{height:42px; display:flex; align-items:center; gap:4px; padding:0 12px; border-bottom:1px solid var(--line)}
+  .tab{height:24px; padding:0 12px; border-radius:6px; display:flex; align-items:center;
+       color:var(--muted); font-size:11px; cursor:pointer; position:relative}
+  .tab.act{color:var(--ink); font-weight:700}
+  .tab.act::after{content:""; position:absolute; left:10px; right:10px; bottom:-1px; height:2px;
+                  background:var(--a1); border-radius:1px}
+  .rows{padding:2px 16px 10px}
+  .row{height:42px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .cap{color:var(--label); font-size:11px; font-weight:700}
+  .row .cap small{display:block; color:var(--muted); font-size:8.5px; font-weight:400; margin-top:3px; letter-spacing:.4px}
+  .row .sp{flex:1}
+  .cnt{min-width:24px; height:16px; padding:0 5px; border-radius:8px; background:var(--field);
+       border:1px solid var(--line); color:var(--muted); font:9px/14px Arial; text-align:center}
+  .swt{width:40px; height:22px; border-radius:11px; background:var(--field); border:1px solid var(--field-bd);
+       position:relative; cursor:pointer}
+  .swt::after{content:""; position:absolute; top:2px; left:2px; width:16px; height:16px;
+       border-radius:50%; background:var(--muted)}
+  .swt.on{background:rgba(255,194,71,.18); border-color:var(--a1)}
+  .swt.on::after{left:auto; right:2px; background:linear-gradient(180deg,var(--a1),var(--a2))}
+  .swrow{display:flex; gap:8px; padding:10px 0 4px}
+  .gsw{width:28px; height:28px; border-radius:7px; cursor:pointer; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset}
+  .gsw.sel{outline:2px solid var(--a1); outline-offset:2px}
+  .chips{display:flex; gap:8px; padding:8px 0 4px}
+  .chip{width:48px; height:32px; border-radius:7px; background:var(--field); border:1px solid var(--line);
+        display:grid; place-items:center; color:var(--label); font-size:11px; cursor:pointer}
+  .chip.on{background:linear-gradient(180deg,var(--a1),var(--a2)); color:var(--aink); border-color:#8a6a1e; font-weight:700}
+  .listrow{height:42px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line);
+           color:var(--label); font-size:11px}
+  .listrow .k{width:16px; height:16px; border-radius:4px; border:1px solid var(--field-bd);
+              display:grid; place-items:center; color:var(--a1); font-size:9px}
+  .gfoot{height:48px; display:flex; align-items:center; gap:8px; padding:0 8px; background:var(--foot);
+         border-top:1px solid var(--line)}
+  .gbtn{height:32px; padding:0 16px; border-radius:7px; background:var(--panel);
+        border:1px solid var(--field-bd); color:var(--label); font-size:11px; font-weight:700;
+        display:flex; align-items:center; gap:6px; cursor:pointer}
+  .gbtn:hover{border-color:var(--a1); color:var(--ink)}
+  .gbtn .g{color:var(--muted); font-size:11px}
+  .gfoot .sp{flex:1}
+  .footnote{color:#54607a; font-size:9px}
+
+  /* token strip */
+  .tokens{position:absolute; left:830px; top:64px; width:300px; direction:ltr;
+    display:flex; flex-wrap:wrap; gap:6px}
+  .tk{display:flex; align-items:center; gap:6px; background:rgba(13,17,23,.75); border:1px solid var(--line);
+      border-radius:7px; padding:4px 8px; font:10px Consolas,monospace; color:var(--muted)}
+  .tk i{width:12px; height:12px; border-radius:3px; display:inline-block}
+</style>
+</head>
+<body>
+<div class="chart"></div>
+<div class="stage">
+  <h1>Biotak Trigger TH3 — Strip Panels · طرح جدید (ماک سریع)</h1>
+  <div class="sub">توکن‌ها همان کارت‌های پروژه‌اند — هیچ عدد جدیدی معرفی نشده</div>
+
+  <!-- 1 ═ THE QUICK STRIP -->
+  <div class="strip">
+    <div class="grip">⠿</div>
+    <div class="badge"><span class="dot"></span>Rectangle 1 <small>· 3 pts</small></div>
+    <div class="sep"></div>
+    <div class="cell pick" title="Color — its board is open"><span class="sw"></span></div>
+    <div class="cell"><span class="ico">╱</span></div>
+    <div class="cell on" title="Fill ON"><span class="sw half"></span></div>
+    <div class="cell"><span class="ico">☰</span></div>
+    <div class="cell"><span class="ico">✦</span></div>
+    <div class="cell"><span class="ico">▤</span></div>
+    <div class="sep"></div>
+    <div class="cell more">⋯</div>
+    <div class="cell gear-open"><span class="ico">⚙</span></div>
+    <div class="cell pin"><span class="ico">📌</span></div>
+    <div class="cell del"><span class="ico">🗑</span></div>
+  </div>
+  <div class="note" style="left:40px; top:14px">
+    <b>۱ — استریپ سریع</b><br>یک ردیف آیکونی، سلول ۳۲، گپ ۴.<br>
+    لبه‌ی آبی = «این سلول لیست دارد»،<br>چهره‌ی طلایی = روشن.
+  </div>
+
+  <!-- 2 ═ THE COLOUR BOARD -->
+  <div class="board">
+    <div class="bhead">
+      <span class="t">COLOR</span><span class="tag">BORDER</span>
+      <span class="sp"></span>
+      <div class="icoBtn gold">📌</div>
+      <div class="icoBtn">✕</div>
+    </div>
+    <div class="pal">
+      <div class="p sel" style="background:#FFC247"></div><div class="p" style="background:#FF8A00"></div>
+      <div class="p" style="background:#F0455F"></div><div class="p" style="background:#12B886"></div>
+      <div class="p" style="background:#4C8DFF"></div><div class="p" style="background:#9B5DE5"></div>
+      <div class="p" style="background:#00C2D1"></div><div class="p" style="background:#F3F6FB"></div>
+      <div class="p" style="background:#E5484D"></div><div class="p" style="background:#FF6B35"></div>
+      <div class="p" style="background:#F5A623"></div><div class="p" style="background:#FFE066"></div>
+      <div class="p" style="background:#A3E635"></div><div class="p" style="background:#34D399"></div>
+      <div class="p" style="background:#2DD4BF"></div><div class="p" style="background:#38BDF8"></div>
+      <div class="p" style="background:#3B82F6"></div><div class="p" style="background:#6366F1"></div>
+      <div class="p" style="background:#8B5CF6"></div><div class="p" style="background:#D946EF"></div>
+      <div class="p" style="background:#EC4899"></div><div class="p" style="background:#FB7185"></div>
+      <div class="p" style="background:#94A3B8"></div><div class="p" style="background:#64748B"></div>
+      <div class="p" style="background:#475569"></div><div class="p" style="background:#334155"></div>
+      <div class="p" style="background:#CBD5E1"></div><div class="p" style="background:#78716C"></div>
+      <div class="p" style="background:#A16207"></div><div class="p" style="background:#854D0E"></div>
+      <div class="p" style="background:#14532D"></div><div class="p" style="background:#1E3A8A"></div>
+      <div class="p" style="background:#312E81"></div><div class="p" style="background:#581C87"></div>
+      <div class="p" style="background:#111827"></div><div class="p" style="background:#000000"></div>
+      <div class="p" style="background:#FFAB00"></div><div class="p" style="background:#FFDA6B"></div>
+      <div class="p" style="background:#B45309"></div><div class="p" style="background:#FDE68A"></div>
+    </div>
+    <div class="band">
+      <span class="cap">HEX</span>
+      <div class="hex">#FFC247</div>
+      <span class="cap" style="width:30px">OPAC</span>
+      <div class="track"><div class="knob"></div></div>
+      <span class="ov">72%</span>
+    </div>
+    <div class="band" style="padding-top:0; padding-bottom:0">
+      <span class="cap">RECENT</span>
+      <div class="recents" style="padding:8px 0 14px">
+        <div class="r" style="background:#FFC247"></div><div class="r" style="background:#4C8DFF"></div>
+        <div class="r" style="background:#12B886"></div><div class="r" style="background:#F0455F"></div>
+        <div class="r" style="background:#F3F6FB"></div>
+      </div>
+    </div>
+  </div>
+  <div class="note" style="left:40px; top:736px; max-width:344px">
+    <b>۲ — بورد رنگ، کارت مستقل</b><br>
+    هدر ۴۴ (حمل با درگ + پین)، گرید ۸×۳۲، باند HEX/شفافیت، رینگِ «آخرین‌ها».<br>
+    تگ طلایی نشان می‌دهد این بورد مالِ کدام اسلات است: BORDER یا FILL.
+  </div>
+
+  <!-- 3 ═ THE GEAR PANEL -->
+  <div class="gear">
+    <div class="ghead">
+      <div class="t">Box Settings</div>
+      <div class="s">SERVING 1 DRAWING</div>
+      <div class="xbtn">✕</div>
+    </div>
+    <div class="tabs">
+      <div class="tab act">Paint</div><div class="tab">Style</div>
+      <div class="tab">Look</div><div class="tab">Row</div>
+    </div>
+    <div class="rows">
+      <div class="row">
+        <div class="cap">Color <small>BORDER + FILL, ONE BOARD</small></div>
+        <span class="sp"></span><span class="cnt">2</span>
+        <div class="swt on"></div>
+      </div>
+      <div class="swrow">
+        <div class="gsw sel" style="background:#FFC247"></div>
+        <div class="gsw" style="background:#F0455F"></div>
+        <div class="gsw" style="background:#12B886"></div>
+        <div class="gsw" style="background:#4C8DFF"></div>
+        <div class="gsw" style="background:#9B5DE5"></div>
+        <div class="gsw" style="background:#F3F6FB"></div>
+        <div class="gsw" style="background:#64748B"></div>
+        <div class="gsw" style="background:#000"></div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="cap">Interior <small>TONE AT 50%</small></div>
+        <span class="sp"></span>
+        <div class="hex" style="width:76px">#1D222C</div>
+      </div>
+      <div class="chips">
+        <div class="chip on">50%</div><div class="chip">25%</div><div class="chip">75%</div>
+        <div class="chip">Full</div><div class="chip">Off</div>
+      </div>
+      <div class="row" style="margin-top:6px">
+        <div class="cap">Levels</div><span class="sp"></span><span class="cnt">7</span>
+        <div class="swt on"></div>
+      </div>
+      <div class="listrow"><span class="k">✓</span> 0.0 <span class="sp"></span><span class="cnt">#FFC247</span></div>
+      <div class="listrow"><span class="k">✓</span> 0.236 <span class="sp"></span><span class="cnt">#4C8DFF</span></div>
+      <div class="listrow"><span class="k">✓</span> 0.382 <span class="sp"></span><span class="cnt">#12B886</span></div>
+      <div class="listrow"><span class="k">　</span> 0.5 <span class="sp"></span><span class="cnt">—</span></div>
+    </div>
+    <div class="gfoot">
+      <div class="gbtn"><span class="g">↺</span>Reset</div>
+      <span class="sp"></span>
+      <div class="gbtn">All</div>
+      <div class="gbtn">Copy</div>
+    </div>
+  </div>
+  <div class="note" style="left:820px; top:470px">
+    <b>۳ — پنل تنظیمات، کارت ۳۱۲</b><br>
+    سرِ ۵۶ + تب‌های ۴۲ + ردیف‌های ۴۲ + فوتر ۴۸.<br>
+    زیرخطِ طلایی تبِ فعال؛ فوتر فقط «All / Copy» — خروج از پنل دیگر پررنگ‌ترین چیز کارت نیست.
+  </div>
+
+  <!-- tokens -->
+  <div class="tokens">
+    <div class="tk"><i style="background:#171C25"></i>PANEL 171C25</div>
+    <div class="tk"><i style="background:#1D222C"></i>CARD 1D222C</div>
+    <div class="tk"><i style="background:#181D27"></i>FIELD 181D27</div>
+    <div class="tk"><i style="background:#333C4C"></i>FIELD_BD 333C4C</div>
+    <div class="tk"><i style="background:#12161D"></i>FOOT 12161D</div>
+    <div class="tk"><i style="background:#222832"></i>LINE 222832</div>
+    <div class="tk"><i style="background:#CBD4E2"></i>LABEL CBD4E2</div>
+    <div class="tk"><i style="background:#8C96A6"></i>MUTED 8C96A6</div>
+    <div class="tk"><i style="background:#FFC247"></i>ACCENT FFC247</div>
+    <div class="tk"><i style="background:#FF8A00"></i>ACCENT2 FF8A00</div>
+    <div class="tk"><i style="background:#FF8A8A"></i>DEL_INK FF8A8A</div>
+    <div class="tk"><i style="background:#3E485C"></i>PICK 3E485C</div>
+  </div>
+</div>
+</body>
+</html>

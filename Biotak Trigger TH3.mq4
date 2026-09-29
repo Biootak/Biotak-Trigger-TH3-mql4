@@ -50,7 +50,7 @@
 // Included here (before EventHandlers/menu) so both Full and Lite compile:
 // Lite has no ring menu but keeps drag/delete/badge handling alive.
 #include "Biotak\BaseKnotTool.mqh"
-// P-HR-01: Horizontal Ray (Tools cell ΓåÆ 1 click places; same layer, same rule).
+// P-HR-01: Horizontal Ray (Tools cell → 1 click places; same layer, same rule).
 #include "Biotak\HRayTool.mqh"
 
 //                                                                    
@@ -171,7 +171,9 @@ void OnDeinit(const int reason)
     PnlCloseAll();
     p15Pnl = GetTickCount() - p15t; p15t = GetTickCount();
     // P-DRAW-08: the drawing strip's own objects die with the instance — the
-    // removal path owns them, so no Biotak_DS_* button survives a REASON_REMOVE.
+    // removal path owns them, so no PnlDrawS_* button survives a REASON_REMOVE
+    // (the name was `Biotak_DS_*` in the note that first said this; the objects
+    // have been `PnlDrawS_*` since birth — P-DRAW-73, catalogue 24).
     DrawStripClose();
     DeleteMenu();
     p15Menu = GetTickCount() - p15t; p15t = GetTickCount();

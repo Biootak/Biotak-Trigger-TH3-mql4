@@ -258,6 +258,19 @@ string LabelFontOpts()   // the dropdown's own text, from the same list (one own
    return s;
 }
 
+//--- THE CHROME'S OWN FACES. Every card, panel, menu and strip label draws through these four
+//--- names; the user's chart-label font is a different question (`LabelFontNameAt` above,
+//--- P-UI-131). A literal at a call site was the P-DRAW-68 defect — one row drawn regular read
+//--- as a different product — and 36 of them had grown back after that fix.
+#define BIO_FONT_CHROME       "Arial Bold"   // the shipped weight for labels and captions
+#define BIO_FONT_CHROME_PLAIN "Arial"        // the same face when a control is off/muted
+#define BIO_FONT_MONO         "Consolas"     // hex fields and numeric readouts: digits align
+#define BIO_FONT_BADGE        "Segoe UI"     // the small measurement badges
+string BioChromeFont(const bool bold = true)
+{
+   return (bold ? BIO_FONT_CHROME : BIO_FONT_CHROME_PLAIN);
+}
+
 // Division Safety Constants (GOLD FIX v3)
 #define MIN_SAFE_DIVISIONS 0.001      // Minimum divisions to prevent precision loss
 #define MAX_SAFE_FACTOR 10000.0       // Maximum factor value to prevent overflow
@@ -862,28 +875,94 @@ struct FrequencyHistoryEntry {
 // after its user is `error 256: undeclared identifier` (measured 2026-09-25).
 #define BIO_CLR_BRAND      C'255,171,0'     // #FFAB00 brand amber = cell 0
 #define BIOPICK_COLS 8
-#define BIOPICK_ROWS 8
-#define BIOPICK_N    (BIOPICK_COLS * BIOPICK_ROWS)
+// P-DRAW-50 (2026-09-27): 16 FAMILIES of 8, not 8 rows of 8. The user's chart
+// was the palette (P-DRAW-46) and every one of its 64 cells is still here, in
+// place — the quick row is still family 1 — so nothing a saved look or a
+// persisted OV_ colour can break. What was missing is what "complete" means:
+// the neutral ramps in steps, the pure/primary/vivid families, and a ramp per
+// brand hue. ONE ROW = ONE FAMILY, which is what makes the two-page grid legible
+// (the row under the pointer has a name) and what the pager walks.
+#define BIOPICK_FAMS   16
+#define BIOPICK_ROWS   BIOPICK_FAMS
+#define BIOPICK_N      (BIOPICK_COLS * BIOPICK_ROWS)
+//--- P-DRAW-50: the grid is paged, and the PAGE belongs to the PALETTE (one
+//--- table, one place) — not to a picker. Both pickers read it, so the card
+//--- popup and the strip's board always show the same 64 of the 128.
+#define BIOPICK_PAGE_ROWS 8
+#define BIOPICK_PAGES     (BIOPICK_ROWS / BIOPICK_PAGE_ROWS)
+
+//--- P-DRAW-50: the PAGE, the palette's own view state (MQL4 cannot assign to a
+//--- function's local, so the slot is a file static behind two accessors).
+static int g_bioPickPage = 0;
+int  BioPickPage() { return g_bioPickPage; }
+void BioPickPageSet(const int p)
+{
+   if(p < 0) return;
+   if(p >= BIOPICK_PAGES) return;
+   g_bioPickPage = p;
+}
+
 //--- the user's chart, read left to right then top to bottom; row 1 is the
-//--- quick row. Measured off the chart itself (2026-09-26): every cell a flat
-//--- fill, a 5x5 pixel vote at its centre agreeing 25/25 on all 64.
+//--- quick row. Every cell a flat fill, read off the chart itself.
 color BioPickColor(const int row, const int col)
 {
    static color pal[BIOPICK_N] =
    {
+      // 1 BRAND — the quick row, unchanged (P-DRAW-46's eight)
       BIO_CLR_BRAND,  C'240,69,95',   C'18,184,134',  C'76,141,255',  C'155,93,229',  C'0,194,209',   C'255,138,0',   C'243,246,251',
-      C'140,150,166', C'29,34,44',    C'255,208,138', C'255,163,179', C'141,227,201', C'169,198,255', C'205,180,246', C'140,230,238',
-      C'255,194,71',  C'203,212,226', C'90,101,119',  C'18,22,29',    C'122,82,0',    C'122,31,46',   C'10,90,66',    C'32,64,112',
-      C'74,44,116',   C'0,94,102',    C'255,233,199', C'247,249,252', C'174,184,198', C'42,49,61',    C'201,138,0',   C'179,36,59',
-      C'6,122,92',    C'19,50,94',    C'94,58,153',   C'0,99,107',    C'255,201,163', C'240,242,247', C'154,164,178', C'5,7,10',
-      C'232,237,245', C'61,70,97',    C'0,163,163',   C'180,83,9',    C'124,58,237',  C'219,39,119',  C'21,128,61',   C'14,165,233',
-      C'253,230,138', C'252,165,165', C'167,243,208', C'191,219,254', C'221,214,254', C'103,232,249', C'253,186,116', C'229,231,235',
-      C'17,24,39',    C'55,65,81',    C'107,114,128', C'156,163,175', C'209,213,219', C'110,231,183', C'251,191,36',  C'124,45,18'
+      // 2 VIVID — the pure, fully-saturated end of every hue
+      C'255,59,48',   C'255,149,0',   C'255,195,0',   C'155,229,100', C'50,215,75',   C'0,199,190',   C'10,132,255',  C'94,92,230',
+      // 3 PRIMARY — the material primaries, one step off pure
+      C'229,57,53',   C'224,123,0',   C'199,180,0',   C'124,179,66',  C'67,160,71',   C'0,160,180',   C'30,136,229',  C'57,73,171',
+      // 4 COOL — cyan through violet
+      C'0,184,212',   C'0,172,193',   C'0,145,174',   C'28,109,208',  C'43,80,200',   C'90,63,192',   C'142,59,200',  C'176,58,196',
+      // 5 CRIMSON — reds and roses
+      C'142,31,47',   C'166,27,41',   C'142,36,69',   C'155,27,90',   C'179,36,59',   C'217,45,91',   C'232,85,126',  C'244,163,184',
+      // 6 AMBER — the brand's own ramp, dark to light
+      C'122,82,0',    C'201,138,0',   C'180,83,9',    C'255,171,0',   C'255,194,71',  C'255,208,134', C'255,233,199', C'255,243,220',
+      // 7 GREEN
+      C'10,90,66',    C'6,122,92',    C'18,184,134',  C'21,128,61',   C'110,231,183', C'141,227,201', C'167,243,208', C'217,247,228',
+      // 8 RED
+      C'74,14,27',    C'122,31,46',   C'124,45,18',   C'179,36,59',   C'229,72,77',   C'255,107,107', C'255,201,201', C'252,165,165',
+      // 9 BLUE
+      C'11,37,69',    C'19,50,94',    C'61,70,97',    C'32,64,112',   C'76,141,255',  C'143,182,255', C'191,219,254', C'230,239,255',
+      // 10 CYAN
+      C'0,49,47',     C'0,94,102',    C'0,99,107',    C'0,163,163',   C'14,165,233',  C'103,232,249', C'165,243,252', C'207,250,254',
+      // 11 PURPLE
+      C'36,21,70',    C'74,44,116',   C'94,58,153',   C'124,58,237',  C'155,93,229',  C'205,180,246', C'221,214,254', C'240,231,255',
+      // 12 PINK
+      C'74,16,41',    C'122,31,75',   C'166,27,114',  C'219,39,119',  C'244,114,182', C'255,163,179', C'249,168,212', C'252,231,243',
+      // 13 SLATE — the cool neutrals, dark to light
+      C'5,7,10',      C'17,24,39',    C'29,34,44',    C'42,49,61',    C'55,65,81',    C'107,114,128', C'140,150,166', C'156,163,175',
+      // 14 STONE — the warm neutrals
+      C'18,22,29',    C'28,26,23',    C'46,42,36',    C'90,101,119',  C'107,98,87',   C'140,131,119', C'179,170,156', C'216,210,198',
+      // 15 SURFACE — the chart's own whites and greys
+      C'247,249,252', C'240,242,247', C'232,237,245', C'229,231,235', C'209,213,219', C'203,212,226', C'154,164,178', C'174,184,198',
+      // 16 PASTEL
+      C'140,230,238', C'169,198,255', C'205,180,246', C'255,201,163', C'255,214,231', C'255,227,201', C'253,230,138', C'253,186,116'
    };
    if(row < 0 || row >= BIOPICK_ROWS) return clrNONE;
    if(col < 0 || col >= BIOPICK_COLS) return clrNONE;
    return pal[row*BIOPICK_COLS + col];
 }
+
+//--- P-DRAW-50: the family's NAME — one row is one family, so the grid can say
+//--- which one the pointer is on and the pager can list the page. MQL4 has no
+//--- arrays of string literals in a static, so the names are returned by index.
+string BioPickFamily(const int row)
+{
+   static string names[BIOPICK_FAMS] =
+   {
+      "BRAND", "VIVID", "PRIMARY", "COOL", "CRIMSON", "AMBER", "GREEN", "RED",
+      "BLUE", "CYAN", "PURPLE", "PINK", "SLATE", "STONE", "SURFACE", "PASTEL"
+   };
+   if(row < 0 || row >= BIOPICK_FAMS) return "";
+   return names[row];
+}
+
+//--- the first cell of the page, and its row count — the ONE way a picker asks
+//--- "which 64 of the 128 am I showing" (P-DRAW-50).
+int BioPickPageRow0() { return BioPickPage() * BIOPICK_PAGE_ROWS; }
 color BioPickAt(const int i)
 {
    if(i < 0 || i >= BIOPICK_N) return clrNONE;
@@ -929,6 +1008,14 @@ color BioPal(const int i)
 #define BIO_CLR_CARD       C'29,34,44'      // #1D222C card + plate body
 #define BIO_CLR_FOOT       C'18,22,29'      // #12161D card footer
 #define BIO_CLR_PANEL      C'23,28,37'      // #171C25 strip / popover body
+//--- P-DRAW-67 (2026-09-27) — THE CARD RAMP'S OWN TOP STOP. `pnl_cardN.bmp` bakes
+//--- a three-stop vertical gradient (tools/gen-th3-icons.js: CARD_TOP #1E242F ->
+//--- CARD_MID #171C25 at 52% -> CARD_BOT #12161D), and the two lower stops already
+//--- have names here (BIO_CLR_PANEL / BIO_CLR_FOOT). The light end had none, so a
+//--- drawn surface could not walk the cards' own ramp and settled for one flat
+//--- tone — the report «چرا رنگ پس‌زمینه مثل این شیشه نیست». One owner, one token.
+#define BIO_CLR_CARD_TOP   C'30,36,47'      // #1E242F the card bake's top stop
+#define BIO_CARD_MID_T     0.52             // the bake's own knee (CARD_MID's stop)
 #define BIO_CLR_ACCENT2    C'255,138,0'     // #FF8A00 gold ramp bottom
 #define BIO_CLR_DEEP       C'18,22,33'      // deep navy ink — the ring badge's ink, the
                                             // retired box badge's rim and the TH3 readout
@@ -1033,6 +1120,26 @@ double BioContrast(const color a,const color b)
    double la=BioLum(a), lb=BioLum(b);
    double hi=MathMax(la,lb), lo=MathMin(la,lb);
    return (hi+0.05)/(lo+0.05);
+}
+
+//--- P-DRAW-67: THE CARDS' OWN RAMP, A DRAWABLE SURFACE'S TOO. `t` is 0 at the
+//--- surface's top and 1 at its bottom; the answer is the tone `pnl_cardN.bmp`
+//--- carries at the same fraction of ITS height, so a drawn plate and a baked card
+//--- standing side by side wear the same gradient (H-02: one setting, one look).
+color BioCardTone(const double t)
+{
+   double u = t;
+   if(u < 0.0) u = 0.0;
+   if(u > 1.0) u = 1.0;
+   color a, b;
+   double f;
+   if(u <= BIO_CARD_MID_T) { a = BIO_CLR_CARD_TOP; b = BIO_CLR_PANEL;  f = u / BIO_CARD_MID_T; }
+   else                    { a = BIO_CLR_PANEL;    b = BIO_CLR_FOOT;   f = (u - BIO_CARD_MID_T) / (1.0 - BIO_CARD_MID_T); }
+   int ia = (int)a, ib = (int)b;
+   int r  = (int)MathRound((ia & 0xFF) + (((ib & 0xFF) - (ia & 0xFF)) * f));
+   int g  = (int)MathRound(((ia >> 8) & 0xFF) + ((((ib >> 8) & 0xFF) - ((ia >> 8) & 0xFF)) * f));
+   int bl = (int)MathRound(((ia >> 16) & 0xFF) + ((((ib >> 16) & 0xFF) - ((ia >> 16) & 0xFF)) * f));
+   return (color)(r | (g << 8) | (bl << 16));
 }
 
 //--- the border a swatch of `fill` must carry on `backdrop`. The SELECTION ring

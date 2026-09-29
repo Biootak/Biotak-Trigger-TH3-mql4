@@ -132,8 +132,6 @@ color DefTriggerColor()      { return clrBlack; }
 // P-UI-131j: AUTO — the factory look IS the derivation (follow the Lines colour),
 // so a Reset returns to "never pinned" instead of pinning a colour nobody chose.
 color DefTriggerLabelColor() { return clrNONE; }
-color DefSSLevelColor()      { return clrGoldenrod; }
-color DefLSLevelColor()      { return clrOrange; }
 color DefTH3Color()          { return clrDarkBlue; }
 color DefTH3PipColor()       { return clrDarkBlue; }
 color DefCustomPriceColor()  { return clrDodgerBlue; }
@@ -269,8 +267,6 @@ void UIDragBudgetEnd()
    s_UIDragPend = REFRESH_NONE;
    if(owed != REFRESH_NONE) ApplyRefreshFlags(owed);   // the final value lands
 }
-
-bool UIDragBudgetLive() { return s_UIDragLive; }
 
 //==============================================================================
 // INIT / SAVE / PER-TICK

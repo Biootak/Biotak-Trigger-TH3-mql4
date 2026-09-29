@@ -235,7 +235,7 @@ bool TH3SessionGetPoint(const int index, datetime &t, double &p)
 //|                                                                    |
 //| The weights are the project's own 299/587/114 (the hint bar and     |
 //| `BaseKnotFgForBg` beside it), so the whole indicator judges "light"  |
-//| the same way. `clrNONE` is never touched: it means "no colour", not |
+//| the same way. `clrNONE` is never touched: it means "no color", not |
 //| black - and `clrGray` (luma 128) is left alone, so the dotted BC    |
 //| guideline keeps the quiet grey it was designed with (P-UI-31).      |
 //+------------------------------------------------------------------+

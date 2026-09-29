@@ -1385,59 +1385,12 @@ void RuntimeSettingsSaveOverridesThrottled()
 }
 
 //==============================================================================
-// EFFECTIVE TRIGGER ZONE COLOR — input color blended toward the chart
-// background by the transparency setting. Reads the RUNTIME copies so the
-// panels' color/transparency edits reach the renderer immediately.
-// NOTE: since the unified-LINES split this feeds ONLY the trigger zones;
-// pipeline lines use GetLineRenderColor() below and never follow the T switch.
+// P-UI-131m: THE TRIGGER COLOUR IS A BASE, NOT AN EFFECTIVE COLOUR. The
+// fade is card 0's own TRANSPARENCY row and is applied ONCE, at paint, by
+// the pipeline (`PipelineBandBaseColor` / `PipelineBandTransparency`). The
+// getter that used to live here pre-faded the colour, which is why the card's
+// COLOR row could not reach the chart — deleted with the second blend.
 //==============================================================================
-color GetTriggerRenderColor()
-{
-    static color s_cachedBase = clrNONE;
-    static int s_cachedTransparency = -1;
-    static color s_cachedBackground = clrNONE;
-    static color s_cachedRenderColor = clrNONE;
-
-    int t = (int)MathMax(0, MathMin(100, g_triggerTransparency));
-    // Stronger visual fade for line objects:
-    // 60 -> 84, 50 -> 75, 30 -> 51
-    int tVis = 100 - ((100 - t) * (100 - t)) / 100;
-    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
-
-    if(s_cachedBase == g_triggerColor && s_cachedTransparency == tVis && s_cachedBackground == bg) {
-        return s_cachedRenderColor;
-    }
-
-    s_cachedBase = g_triggerColor;
-    s_cachedTransparency = tVis;
-    s_cachedBackground = bg;
-
-    if(tVis <= 0) {
-        s_cachedRenderColor = g_triggerColor;
-        return s_cachedRenderColor;
-    }
-
-    if(tVis >= 100) {
-        s_cachedRenderColor = bg;
-        return s_cachedRenderColor;
-    }
-
-    int fr = ((int)g_triggerColor) & 0xFF;
-    int fg = (((int)g_triggerColor) >> 8) & 0xFF;
-    int fb = (((int)g_triggerColor) >> 16) & 0xFF;
-
-    int br = ((int)bg) & 0xFF;
-    int bgc = (((int)bg) >> 8) & 0xFF;
-    int bb = (((int)bg) >> 16) & 0xFF;
-
-    int outR = (fr * (100 - tVis) + br * tVis) / 100;
-    int outG = (fg * (100 - tVis) + bgc * tVis) / 100;
-    int outB = (fb * (100 - tVis) + bb * tVis) / 100;
-
-    s_cachedRenderColor = (color)(outR | (outG << 8) | (outB << 16));
-    return s_cachedRenderColor;
-}
-
 //==============================================================================
 // EFFECTIVE UNIFIED LINE COLOR — [08.4] line color blended toward the chart
 // background by the [08.4] line transparency. SINGLE appearance for ALL

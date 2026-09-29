@@ -33,33 +33,11 @@ void InvalidateAllVisibilityCaches()
     InvalidateLinesVisibleCache();
 }
 
-void SetObjectVisibility(const string name, const bool visible)
-{
-    ApplyTfMaskGuarded(name, visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS);
-}
-
-void SetAllTHObjectsVisibility(const bool visible)
-{
-    static bool s_lastAllTHVisible = true;
-    static bool s_allTHInit = false;
-    if(s_allTHInit && s_lastAllTHVisible == visible) return;
-    s_allTHInit = true;
-    s_lastAllTHVisible = visible;
-
-    long timeframes = visible ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    // PERF FIX: Early-exit loop based on occupied count — avoids scanning
-    // all 32768 buckets when only a small number of objects are cached.
-    int visited = 0;
-    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++) {
-        if(g_objectCacheHash[i].occupied) {
-            visited++;
-            if(!CacheSlotIsLive(i)) continue;   // P-UI-62: nothing under this name
-            ObjectSetInteger(0, g_objectCacheHash[i].name, OBJPROP_TIMEFRAMES, timeframes);
-        }
-    }
-    // P-PERF-02: written OUTSIDE the guard → every stored mask is now stale.
-    BumpTfEpoch();
-}
+//--- P-UI-132: `SetObjectVisibility` and `SetAllTHObjectsVisibility` stood here as a SECOND
+//--- owner of "hide/show the family" — the same static dedup (`s_lastAllTHVisible`) that
+//--- `HideAllTHObjectsPass` already owns as `g_hideAllApplied`, and no caller in any commit.
+//--- Two owners of one state is how the F key and a panel row start fighting; the LIVE pair is
+//--- `VisibilityHideAllCached` / `VisibilityShowAllCached` (see EventHandlers).
 
 //+------------------------------------------------------------------+
 //| P-PERF-31: NAME-BASED LINE TEST + CACHE-WALK HIDE/SHOW (weak PCs)|

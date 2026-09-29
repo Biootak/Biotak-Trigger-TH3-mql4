@@ -142,10 +142,22 @@ void ResolveTopologyAdoption()
    g_adoptPreviousTopology = false;
    string n = AdoptionStampName();
    if(!GlobalVariableCheck(n)) return;                  // first attach / old build
-   g_adoptPreviousTopology = ((int)GlobalVariableGet(n) == AdoptionFingerprint());
+   int stored = (int)GlobalVariableGet(n);
+   int live = AdoptionFingerprint();
+   g_adoptPreviousTopology = (stored == live);
    if(g_adoptPreviousTopology)
       _LOG_GATE_I Print("[I][GEN] P-PERF-38d: level topology adopted from the previous "
                         "instance - timeframe switch updates in place (no wipe, no rebuild)");
+   else
+      // P-PERF-38e: a mismatch here IS the "levels deleted and redrawn on every
+      // timeframe switch" report, so it names its own numbers instead of leaving
+      // a wipe with no author. The diverging term is one of: step mode, max
+      // levels, start-point type (custom-price placement that did not restore),
+      // LS-first, harmonic pair. Logged once per instance.
+      _LOG_GATE_W Print("[W][GEN] P-PERF-38e: topology NOT adopted (stored fp=", stored,
+                        " live fp=", live, " mode=", (int)GetCurrentStepMode(),
+                        " maxLv=", inpMaxLevels, " sp=", (int)g_thStartPointType,
+                        " lsFirst=", (inpLSFirst ? 1 : 0), ") - wiping and rebuilding");
 }
 
 //==============================================================================
@@ -258,10 +270,58 @@ int OnInitHandler() {
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
+    //--- P-UI-134 (2026-09-29) — THE TAG ALONE COULD NOT ANSWER "IS THIS CHART
+    //--- RUNNING THE EX4 I JUST BUILT?" `TH3_BUILD_TAG` is a hand-edited string
+    //--- ("T2") and stayed "T2" across every build of 09-29, so a chart still
+    //--- holding an ex4 from hours ago printed the same line as the fresh one —
+    //--- measured: the tab track read -16924895 (0xFEFDBF21, cyan) on a chart
+    //--- whose ex4 predated the P-DRAW-89 tone fix, while the same tree computes
+    //--- 2892316 = RGB(28,34,44). The compile stamp is the fact: the compiler
+    //--- bakes `__DATETIME__` into the ex4, so two builds differ here even when
+    //--- the source is unchanged (`__TIME__` is NOT defined by this MQL4 compiler —
+    //--- error 256, measured; `__DATETIME__` is). Match this line against the
+    //--- ex4's own mtime; if the ex4 is newer, the chart is stale (remove & re-add).
+    //--- P-UI-134b (2026-09-29) — THE LINE MUST NAME THE CODE, NOT ONLY THE CLOCK.
+    //--- `__DATETIME__` answers "when was this compiled", and a compile that reads a
+    //--- STALE `DrawStrip.mqh` answers "now" while shipping old strip code: measured
+    //--- on the 19:02:42 ex4, whose `[BUILD]` line carried the fresh stamp AND whose
+    //--- TABCENSUS printed `bgcolor=-16924895 tone=-16924895`, a value the current
+    //--- `StrapBodyTone` cannot produce (its whole output space is R 18-29, G 22-35,
+    //--- B 29-46). These two numbers are READ OUT OF THE COMPILED FUNCTIONS, at the
+    //--- arguments the tab track itself asks for: in the fixed code
+    //--- `StrapBodyTone(2, 96, 314)` is 2892316 = RGB(28,34,44) and `plateFill` is
+    //--- 2432023; the retired P-DRAW-89 pair answered -16924895 = 0xFEFDBF21 (the
+    //--- chart background) instead. One line, so a stale compile is visible at attach
+    //--- without opening a single panel.
+#ifndef BUILD_LITE
+    // P-BUILD-01: the strip is a Full surface, so the Lite unit has neither the
+    // names nor the functions — the probe lives where the strip does (compile error
+    // 256/168 on the 2026-09-29 Lite build was this line read without the guard).
+    int probeTone = (int)StrapBodyTone(DSTRIP_BODY_TOP, DSTRIP_GEAR_GRID_TOP - DSTRIP_BODY_TOP, 314);
+    int probeFill = (int)DrawStripPlateFill();
+    //--- P-UI-134c: the probe now prints the PARTS, not only the answer. Measured
+    //--- 2026-09-29 19:28: the same build printed `tracktone=-16924895` while this
+    //--- file's arithmetic for `StrapBodyTone(2,96,314)` is 2892316 = RGB(28,34,44),
+    //--- and the compiler's own include trail named this repo's DrawStrip.mqh. So one
+    //--- of the three inputs is not what the source says — the stops, the ramp, or the
+    //--- plate fill — and these five numbers name WHICH one. `rampAt159` is 2892316
+    //--- when the ramp is the cards' own; `cardTop/panel/foot` are 1971742/2432023/
+    //--- 1906194 when the stops are BIO_CLR_CARD_TOP/PANEL/FOOT.
+    int probeMid  = (int)BioCardTone(0.1592);
+    int probeTop  = (int)BIO_CLR_CARD_TOP;
+    int probePan  = (int)BIO_CLR_PANEL;
+    int probeFoot = (int)BIO_CLR_FOOT;
+    int probeCard = (int)BIO_CLR_CARD;
+#endif
 #ifdef BUILD_LITE
-    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " LITE");
+    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " LITE src ",
+          TimeToString(__DATETIME__, TIME_DATE|TIME_SECONDS));
 #else
-    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " FULL");
+    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " FULL src ",
+          TimeToString(__DATETIME__, TIME_DATE|TIME_SECONDS),
+          " tracktone=", probeTone, " plateFill=", probeFill,
+          " rampAt159=", probeMid, " cardTop=", probeTop, " panel=", probePan,
+          " foot=", probeFoot, " card=", probeCard);
 #endif
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);
@@ -2209,8 +2269,6 @@ void ScheduleHeavyFrame(const string why)
    s_coopOwed[COOP_JOB_HEAVY_FRAME] = true;
 }
 
-bool HeavyFramePending() { return g_heavyFramePending; }
-
 string CoopJobName(const int job)
 {
    switch(job)
@@ -3498,8 +3556,6 @@ void HandLinesSelectionNet()
 // (P-UI-45); a motionless release is healed by `CustomPriceDragHealStale`.
 // OFF: resets with the placement (R key) and on REASON_REMOVE.
 //==============================================================================
-bool   Step1DragLive()  { return g_s1DragLive; }
-string Step1DragName()  { return g_s1DragName; }
 static double s_s1GrabPrice = 0.0;   // the handle's price at the claim (the echo stamp's base)
 static bool   s_s1GrabNamed = false;
 static string s_s1GrabName  = "";

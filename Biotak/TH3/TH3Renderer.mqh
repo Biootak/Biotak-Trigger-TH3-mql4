@@ -246,7 +246,7 @@ bool TH3RORowAt(const string nm, const string txt, const ENUM_BASE_CORNER corner
     if(create && ObjectFind(0, nm) < 0)
     {
         if(!ObjectCreate(0, nm, OBJ_LABEL, 0, 0, 0)) return false;
-        ObjectSetString( 0, nm, OBJPROP_FONT,       "Arial Bold");
+        ObjectSetString( 0, nm, OBJPROP_FONT,       BioChromeFont());
         ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
         ObjectSetInteger(0, nm, OBJPROP_HIDDEN,     true);
         ObjectSetInteger(0, nm, OBJPROP_ZORDER,     Z_TH3_RO_TEXT);
@@ -1454,7 +1454,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetString(0, labelName, OBJPROP_TEXT, pointNames[i]);
                 ObjectSetInteger(0, labelName, OBJPROP_COLOR, TH3SessionPointInk());
                 ObjectSetInteger(0, labelName, OBJPROP_FONTSIZE, 10);
-                ObjectSetString(0, labelName, OBJPROP_FONT, "Arial Bold");
+                ObjectSetString(0, labelName, OBJPROP_FONT, BioChromeFont());
                 ObjectSetInteger(0, labelName, OBJPROP_ANCHOR, anchor);
                 ObjectSetInteger(0, labelName, OBJPROP_SELECTABLE, false);
             } else {
@@ -1584,7 +1584,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         if(ObjectFind(0, cdLbl) < 0) {
             if(ObjectCreate(0, cdLbl, OBJ_TEXT, 0, tCD_mid, pCD_mid)) {
                 ObjectSetString( 0, cdLbl, OBJPROP_TEXT,      cdLblText);
-                ObjectSetString( 0, cdLbl, OBJPROP_FONT,      "Arial Bold");
+                ObjectSetString( 0, cdLbl, OBJPROP_FONT,      BioChromeFont());
                 ObjectSetInteger(0, cdLbl, OBJPROP_FONTSIZE,  9);
                 ObjectSetInteger(0, cdLbl, OBJPROP_COLOR,     clrMagenta);
                 ObjectSetInteger(0, cdLbl, OBJPROP_ANCHOR,    ANCHOR_CENTER);
@@ -1918,7 +1918,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetString(0, hitLabel, OBJPROP_TEXT, hitText);
                 ObjectSetInteger(0, hitLabel, OBJPROP_COLOR, TH3InkForChart(clrOrangeRed));
                 ObjectSetInteger(0, hitLabel, OBJPROP_FONTSIZE, 8);
-                ObjectSetString(0, hitLabel, OBJPROP_FONT, "Arial");
+                ObjectSetString(0, hitLabel, OBJPROP_FONT, BioChromeFont(false));
                 ObjectSetInteger(0, hitLabel, OBJPROP_ANCHOR, dirDown ? ANCHOR_UPPER : ANCHOR_LOWER);
                 ObjectSetInteger(0, hitLabel, OBJPROP_SELECTABLE, false);
             }
@@ -2046,7 +2046,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetString(0, mpBadge, OBJPROP_TEXT, mpText);
                 ObjectSetInteger(0, mpBadge, OBJPROP_COLOR, wantInk);
                 ObjectSetInteger(0, mpBadge, OBJPROP_FONTSIZE, 8);
-                ObjectSetString(0, mpBadge, OBJPROP_FONT, "Segoe UI");
+                ObjectSetString(0, mpBadge, OBJPROP_FONT, BIO_FONT_BADGE);
                 ObjectSetInteger(0, mpBadge, OBJPROP_ANCHOR, ANCHOR_LEFT);
                 ObjectSetInteger(0, mpBadge, OBJPROP_SELECTABLE, false);
             }

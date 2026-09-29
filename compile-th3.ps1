@@ -83,7 +83,9 @@ param(
 
     [string]$MetaEditorPath = "",
 
-    [string]$Mql4Dir = ""
+    [string]$Mql4Dir = "",
+
+    [switch]$RestartTerminal
 )
 
 # ============================================================
@@ -611,6 +613,133 @@ function Get-TerminalMql4DirsForProject {
     return $out
 }
 
+function Restart-TradingTerminal {
+    #--- P-BUILD-07: THE DEPLOY LOOP, CLOSED. MT4 runs what it loaded at attach;
+    #--- a fresh ex4 is a file until the terminal restarts or the indicator is
+    #--- removed and re-added. Re-add is manual and per-chart; a restart reloads
+    #--- EVERY chart from the new ex4 in one step. Opt-in only (-RestartTerminal):
+    #--- killing the terminal also stops anything else it hosts, so this never
+    #--- runs unless asked. Each instance is relaunched with its OWN executable
+    #--- path and command line (portable/datapath flags survive), so the same
+    #--- data folder — and the same charts — come back.
+    $procs = Get-WmiObject Win32_Process -Filter "Name='terminal.exe'" -ErrorAction SilentlyContinue
+    if (-not $procs) {
+        Write-Host "  No running terminal.exe found; nothing to restart." -ForegroundColor Yellow
+        return $true
+    }
+    $starts = @()
+    foreach ($p in $procs) {
+        $exe = $p.ExecutablePath
+        if (-not $exe) { continue }
+        $args = ""
+        $cmd = [string]$p.CommandLine
+        if ($cmd) {
+            $q = '"' + $exe + '"'
+            if ($cmd.StartsWith($q)) { $args = $cmd.Substring($q.Length).Trim() }
+            elseif ($cmd.StartsWith($exe)) { $args = $cmd.Substring($exe.Length).Trim() }
+        }
+        $starts += @{ Exe = $exe; Args = $args }
+    }
+    if ($starts.Count -eq 0) {
+        Write-Host "  Terminal processes found but their paths are unreadable; not restarting." -ForegroundColor Red
+        return $false
+    }
+    Write-Host "  Restarting $($starts.Count) terminal process(es) so the new ex4 loads..." -ForegroundColor Yellow
+    foreach ($s in $starts) { Write-Host "    will relaunch: $($s.Exe) $($s.Args)" -ForegroundColor DarkGray }
+    # Graceful first: CloseMainWindow lets MT4 save its profile and charts.
+    foreach ($pr in @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)) {
+        try { $null = $pr.CloseMainWindow() } catch {}
+    }
+    $deadline = (Get-Date).AddSeconds(25)
+    do {
+        Start-Sleep -Milliseconds 500
+        $alive = @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)
+    } while ($alive.Count -gt 0 -and (Get-Date) -lt $deadline)
+    $alive = @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)
+    if ($alive.Count -gt 0) {
+        Write-Host "  Terminal did not close gracefully; forcing..." -ForegroundColor Yellow
+        $alive | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+    }
+    $alive = @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)
+    if ($alive.Count -gt 0) {
+        Write-Host "  [FAIL] terminal.exe is still alive; not relaunching into an unknown state." -ForegroundColor Red
+        return $false
+    }
+    foreach ($s in $starts) {
+        if ($s.Args) { Start-Process -FilePath $s.Exe -ArgumentList $s.Args }
+        else { Start-Process -FilePath $s.Exe }
+    }
+    Write-Host "  Terminal restarted. Charts come back on their own; every indicator reloads from the new ex4." -ForegroundColor Green
+    return $true
+}
+
+function Get-UnitFiles {
+    # Every file one entry pulls in, transitively. A #resource is per COMPILING
+    # UNIT, so "is this raster declared" is a question about the unit, never about
+    # one file.
+    param([string]$EntryAbs)
+    $seen = New-Object System.Collections.Generic.HashSet[string]
+    $out = New-Object System.Collections.Generic.List[string]
+    $queue = New-Object System.Collections.Generic.Queue[string]
+    $queue.Enqueue($EntryAbs)
+    while ($queue.Count -gt 0) {
+        $f = $queue.Dequeue()
+        if (-not $f -or $seen.Contains($f) -or -not (Test-Path -LiteralPath $f -PathType Leaf)) { continue }
+        $seen.Add($f) | Out-Null
+        $out.Add($f)
+        $dir = Split-Path -Parent $f
+        foreach ($line in (Get-Content -LiteralPath $f -ErrorAction SilentlyContinue)) {
+            if ($line -match '^\s*#include\s+"([^"]+)"') {
+                $rel = $Matches[1] -replace '\\', [IO.Path]::DirectorySeparatorChar
+                $abs = Join-Path $dir $rel
+                if (-not (Test-Path -LiteralPath $abs)) { $abs = Join-Path $SCRIPT_ROOT $rel }
+                if (Test-Path -LiteralPath $abs) { $queue.Enqueue($abs) }
+            }
+        }
+    }
+    return $out
+}
+
+function Assert-ResourceTree {
+    # P-BUILD-03 (measured 2026-09-25, 325 errors): MetaEditor resolves
+    # `#resource "\Files\Icons\x.bmp"` against the SOURCE FILE'S OWN TREE. The only
+    # tree that matters is the one beside the file being compiled.
+    #
+    # This REPLACED an `Sync-IconsToTerminal` that copied ~10 MB of icons into
+    # every hosting terminal's MQL4\Files\Icons. That copy was measured INERT (the
+    # junction makes Indicators\BiotakProject resolve back to this repo, so the
+    # resources were read from here all along) and its own comment contradicted
+    # P-BUILD-03. It was write amplification that could not have fixed a missing
+    # icon and could only hide one.
+    $missing = @()
+    $entries = @("Biotak Trigger TH3.mq4", "Biotak Trigger TH3 Lite.mq4")
+    foreach ($t in (Get-ChildItem (Join-Path $SCRIPT_ROOT "tests") -Filter *.mq4 -ErrorAction SilentlyContinue)) {
+        $entries += $t.Name
+    }
+    foreach ($e in $entries) {
+        $entryAbs = Join-Path $SCRIPT_ROOT $e
+        if (-not (Test-Path $entryAbs)) { continue }
+        $dir = Split-Path -Parent $entryAbs
+        $declared = New-Object System.Collections.Generic.HashSet[string]
+        foreach ($f in (Get-UnitFiles -EntryAbs $entryAbs)) {
+            foreach ($line in (Get-Content -LiteralPath $f -ErrorAction SilentlyContinue)) {
+                if ($line -match '^\s*#resource\s+"\\+Files\\+Icons\\+([^"]+)"') { $declared.Add($Matches[1]) | Out-Null }
+            }
+        }
+        foreach ($n in $declared) {
+            $tree = Join-Path (Join-Path (Join-Path $dir "Files") "Icons") $n
+            if (-not (Test-Path -LiteralPath $tree -PathType Leaf)) { $missing += "$e -> $n" }
+        }
+    }
+    if ($missing.Count -gt 0) {
+        Write-Host "  ERROR: $($missing.Count) declared raster(s) not in the compiler's tree:" -ForegroundColor Red
+        foreach ($m in ($missing | Select-Object -First 12)) { Write-Host "    $m" -ForegroundColor Red }
+        return $false
+    }
+    return $true
+}
+
 function Sync-IconsToTerminal {
     param([string]$ResolvedMql4Dir)
 
@@ -678,7 +807,21 @@ function Compile-MQL4 {
 
     $includePath = Get-IncludePath -SourcePath $SourcePath -ScriptRoot $SCRIPT_ROOT -ResolvedMql4Dir $ResolvedMql4Dir
 
-    Sync-IconsToTerminal -ResolvedMql4Dir $ResolvedMql4Dir
+    #--- P-DRAFT-01: the icon TREE is asserted, not copied. `Sync-IconsToTerminal`
+    #--- ran here and pushed ~10 MB of BMPs into every hosting terminal for a
+    #--- resolution MetaEditor does not use (P-BUILD-03: the SOURCE's own tree).
+    if (-not (Assert-ResourceTree)) { return $false }
+
+    #--- the artifact, BEFORE and AFTER. "It compiled" is not a claim anyone can
+    #--- check: a stale ex4 and a fresh one both print Result: 0 errors. The
+    #--- size+mtime pair is what makes the deploy question answerable.
+    $ex4Path = [System.IO.Path]::ChangeExtension($SourcePath, ".ex4")
+    $ex4Before = if (Test-Path -LiteralPath $ex4Path -PathType Leaf) { (Get-Item $ex4Path) } else { $null }
+    if ($ex4Before) {
+        Write-Host ("  ex4 before: {0:N0} bytes  {1}" -f $ex4Before.Length, $ex4Before.LastWriteTime.ToString("HH:mm:ss")) -ForegroundColor DarkGray
+    } else {
+        Write-Host "  ex4 before: (none)" -ForegroundColor DarkGray
+    }
     
     Write-Host "  Source:   $SourcePath" -ForegroundColor Gray
     Write-Host "  Include:  $includePath" -ForegroundColor Gray
@@ -801,12 +944,21 @@ function Compile-MQL4 {
     $elapsed = $stopwatch.Elapsed.TotalSeconds.ToString("F1")
     Write-Host "  Compile time: ${elapsed}s" -ForegroundColor Gray
     
-    # Check for .ex4 output
-    $ex4Path = [System.IO.Path]::ChangeExtension($SourcePath, ".ex4")
-    if (Test-Path $ex4Path) {
-        $ex4Info = Get-Item $ex4Path
-        $size = "{0:N0}" -f $ex4Info.Length
-        Write-Host "  Output: $ex4Path ($size bytes)" -ForegroundColor Green
+    #--- P-DRAFT-01: the artifact, AFTER. A build that prints 0 errors but leaves
+    #--- the ex4 untouched has changed nothing the terminal will ever load, and
+    #--- that is the single hardest failure to see from the outside.
+    $ex4After = if (Test-Path -LiteralPath $ex4Path -PathType Leaf) { Get-Item $ex4Path } else { $null }
+    if (-not $ex4After) {
+        Write-Host "  Output: (none produced)" -ForegroundColor Red
+    }
+    else {
+        $delta = if ($ex4Before) { [long]$ex4After.Length - [long]$ex4Before.Length } else { $ex4After.Length }
+        $sign = if ($delta -ge 0) { "+" } else { "" }
+        Write-Host ("  Output: {0} ({1:N0} bytes, {2} {3}{4:N0})" -f `
+            $ex4Path, $ex4After.Length, $ex4After.LastWriteTime.ToString("HH:mm:ss"), $sign, $delta) -ForegroundColor Green
+        if ($ex4Before -and $ex4After.LastWriteTime -le $ex4Before.LastWriteTime) {
+            Write-Host "  WARNING: ex4 was NOT rewritten - the terminal is still running the previous build" -ForegroundColor Yellow
+        }
     }
     
     Write-Host ""
@@ -909,12 +1061,16 @@ if ($SourceFile -ne "") {
 }
 else {
     # Compile project(s)
-    $projectsToCompile = if ($Project -eq "all") {
-        @("workspace", "installed")
-    } else {
-        @($Project)
-    }
-    
+    #--- P-DRAFT-01: THE "INSTALLED" PASS IS NOT A SECOND BUILD. On this machine
+    #--- MQL4\Indicators\BiotakProject is a JUNCTION back to this repo, so the
+    #--- installed source IS the workspace source and the installed ex4 IS the
+    #--- workspace ex4 — the same file under two names. `-Project all` therefore
+    #--- compiled one file twice per run, doubling the wait to tell you nothing,
+    #--- and its two PASS lines looked like two independent confirmations. The
+    #--- second pass now runs only when the two paths are genuinely DIFFERENT
+    #--- files; otherwise it is reported as the junction it is.
+    $projectsToCompile = if ($Project -eq "all") { @("workspace", "installed") } else { @($Project) }
+
     foreach ($proj in $projectsToCompile) {
         $info = $PROJECTS[$proj]
         if (-not $info.Source) {
@@ -926,6 +1082,17 @@ else {
             continue
         }
 
+        $sameAsWorkspace = ($proj -eq "installed") -and
+                           (Test-Path $WORKSPACE_SOURCE) -and
+                           ((Get-FileHash -LiteralPath $info.Source).Hash -eq
+                            (Get-FileHash -LiteralPath $WORKSPACE_SOURCE).Hash)
+        if ($sameAsWorkspace) {
+            Write-Host "  Skip '$($info.Name)': Indicators\BiotakProject is a junction to this repo," -ForegroundColor DarkGray
+            Write-Host "        so it IS the workspace build. The ex4 above is the one the terminal loads." -ForegroundColor DarkGray
+            $results[$info.Name] = $results["Biotak Trigger TH3 (Workspace)"]
+            continue
+        }
+
         $results[$info.Name] = Compile-MQL4 -Name $info.Name -SourcePath $info.Source -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
     }
 }
@@ -934,7 +1101,7 @@ else {
 Write-Banner "SUMMARY"
 $allSuccess = $true
 foreach ($key in $results.Keys) {
-    $status = if ($results[$key]) { "PASS" } else { "FAIL"; $allSuccess = $false }
+        $status = if ($results[$key]) { "PASS" } else { "FAIL"; $allSuccess = $false }
     $color  = if ($results[$key]) { "Green" } else { "Red" }
     Write-Host "  [$status] $key" -ForegroundColor $color
 }
@@ -954,6 +1121,46 @@ Write-Host ""
 Write-Host "  Logs folder: $PROJECT_LOG_DIR" -ForegroundColor Gray
 Write-Host ""
 
+#--- P-DRAFT-01: THE RESOURCE GATE IS PART OF THE BUILD, not a thing to remember.
+#--- A painted raster the unit never declared is a SILENT no-op at runtime and a
+#--- green compile, which is the exact failure that shipped a panel with no plate
+#--- (2026-09-29). It is the one defect the compiler cannot name, so a build that
+#--- skips this check has not proved the indicator draws.
+$resGate = Join-Path $SCRIPT_ROOT "tools\check-resources.js"
+if (Test-Path $resGate) {
+    Write-Host ""
+    Write-Host "  Resource gate (painted == #resource'd, per compiling unit):" -ForegroundColor Cyan
+    & node $resGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] resource gate" -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] resource gate" -ForegroundColor Green
+    }
+}
+
+#--- P-DRAW-78b: THE PANEL'S GEOMETRY GATE IS PART OF THE BUILD. A tab whose height
+#--- misses the cards' law 56 + n*42 + 48 compiles clean, paints, and silently falls
+#--- out of the one-baked-card branch into the composed W body — a second, wider
+#--- plate beside the cards' own, which is the report this panel produced for days.
+#--- The compiler cannot see it (it is arithmetic, not a symbol), so it is checked
+#--- here or nowhere.
+$gearGate = Join-Path $SCRIPT_ROOT "tools\check-gear-panel.py"
+if ((Test-Path $gearGate) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "  Gear panel gate (every tab on the cards' baked-card law):" -ForegroundColor Cyan
+    & python $gearGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] gear panel gate" -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] gear panel gate" -ForegroundColor Green
+    }
+}
+
+Write-Host ""
 if ($allSuccess) {
     Write-Host "  All compilations PASSED!" -ForegroundColor Green
 } else {
@@ -961,8 +1168,32 @@ if ($allSuccess) {
 }
 Write-Host ""
 
+#--- P-DRAFT-01: THE ONE DEPLOY STEP NO SCRIPT CAN DO, SAID OUT LOUD. MT4 keeps the
+#--- LOADED indicator in memory: a fresh ex4 on disk changes nothing until the chart
+#--- drops the instance and re-attaches, and MQL4 has no programmatic reload
+#--- (P-BUILD-06). So a build that ends here has changed the FILE and nothing else,
+#--- and every "my change did nothing" report since the panel work was this line
+#--- being invisible. It is printed on every successful build so it is never a
+#--- surprise: green build != live behaviour until you re-attach.
+Write-Host "  NEXT: remove and re-add the indicator in MT4." -ForegroundColor Yellow
+Write-Host "        (a fresh ex4 is a FILE; the terminal runs what it loaded at attach)" -ForegroundColor DarkGray
+Write-Host ""
+
 if ($EnableLogCleanup) {
     Cleanup-BuildLogs -LogDir $PROJECT_LOG_DIR -RetentionDays $LogRetentionDays -MaxFiles $MaxBuildLogs -StateFilePath $RUNTIME_STATE_FILE
+}
+
+#--- P-BUILD-07: opt-in deploy. A green build without this flag ends with the
+#--- NEXT line above (manual re-add). With -RestartTerminal, the script closes
+#--- MT4 and reopens it, so every chart reloads from the new ex4 in one step.
+#--- It runs ONLY on full success: a failed build never touches the terminal.
+#--- It runs BEFORE the watch below, so the watch tails the FRESH log and shows
+#--- the new build's own init lines — the proof the deploy landed.
+if ($RestartTerminal -and $allSuccess) {
+    Write-Host ""
+    Write-Host "  Deploy: restarting the terminal..." -ForegroundColor Cyan
+    if (-not (Restart-TradingTerminal)) { $allSuccess = $false }
+    Write-Host ""
 }
 
 if ($WatchRuntimeLogs) {
