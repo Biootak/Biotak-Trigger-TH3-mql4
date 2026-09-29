@@ -844,6 +844,16 @@ void BaseKnotInfoWipe(const string pfx)
    ObjectDelete(0, in);
    ObjectDelete(0, BaseKnotInfoPlateName(in));
 }
+// P-BK-92: the HALF-wipe the visibility rule needs. The ink keeps itself (a LABEL obeys the
+// TF mask), so hiding a note's TF deletes the PLATE only — the pair's own name owner answers
+// it, never a box prefix (the writer holds the note's name, not the box').
+bool BaseKnotNotePlateDrop(const string infoName)
+{
+   string pn = BaseKnotInfoPlateName(infoName);
+   if(ObjectFind(0, pn) < 0) return false;
+   ObjectDelete(0, pn);
+   return true;
+}
 // User TEXT (TV-parity 2026-09-07, Text tab): one OBJ_TEXT child per box,
 // content edited via the full card's edit field. Lives in the chart object
 // itself (no GV — strings don't fit doubles); delete = clear (Sync never
@@ -4125,7 +4135,7 @@ void BaseKnotNotePlatePx(const int sx, const int sy, const string txt,
 //--- is always painted on top of its plate; and both are SCREEN objects, so no chart-space
 //--- art — a candle, a zone edge, a level line — can reach either one again.
 void BaseKnotNotePlateDraw(const string pn, const int px, const int py, const int pw,
-                           const int ph, const long tfMask)
+                           const int ph)
 {
    if(ObjectFind(0, pn) < 0) ObjectCreate(0, pn, OBJ_RECTANGLE_LABEL, 0, 0, 0);
    color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
@@ -4143,7 +4153,12 @@ void BaseKnotNotePlateDraw(const string pn, const int px, const int py, const in
    ObjectSetInteger(0, pn, OBJPROP_SELECTABLE, false);
    ObjectSetInteger(0, pn, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, pn, OBJPROP_ZORDER, Z_BOX_INFO);
-   ObjectSetInteger(0, pn, OBJPROP_TIMEFRAMES, tfMask);
+   // P-BK-92: NO TIMEFRAMES on a plate. OBJPROP_TIMEFRAMES is a LABEL-only property —
+   // an OBJ_RECTANGLE_LABEL keeps showing under any mask (P-TH3-INFO-10 had to delete
+   // its bar for exactly this). So its visibility is EXISTENCE: BaseKnotPlaceBadges
+   // deletes this plate on a hidden TF, BaseKnotNotePlateFollow grows it back. A mask
+   // write here is the empty bar over the candles (P-BK-86) the day BKTFSCOPE is
+   // restored — one line away (BaseKnotTFMask's own note).
    ObjectSetString(0, pn, OBJPROP_TOOLTIP,
                    "BK note plate (P-BK-86): the chart's own background colour, drawn UNDER the "
                    "note so the candles and the level lines can never be read through its ink");
@@ -4184,6 +4199,14 @@ void BaseKnotNotePlateFollow(const string pfx, const datetime t1, const double t
       ObjectSetInteger(0, pn, OBJPROP_YDISTANCE, py);
       ObjectSetInteger(0, pn, OBJPROP_XSIZE, pw);
       ObjectSetInteger(0, pn, OBJPROP_YSIZE, ph);
+   }
+   else
+   {
+      // P-BK-92: the plate lives by EXISTENCE (BaseKnotPlaceBadges deletes it on a hidden
+      // TF), so a visible note grows its bar back here — and the ink is re-created the
+      // younger object, or the fresh plate paints over its own text (P-BK-88).
+      BaseKnotNotePlateDraw(pn, px, py, pw, ph);
+      BaseKnotNoteInkToFront(in);
    }
    ObjectSetInteger(0, in, OBJPROP_XDISTANCE, tx);
    ObjectSetInteger(0, in, OBJPROP_YDISTANCE, ty);
@@ -4362,7 +4385,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
           BaseKnotNotePlatePx(sx, sy, ObjectGetString(0, o, OBJPROP_TEXT), px, py, pw, ph, tx, ty);
           string plateName = BaseKnotInfoPlateName(o);
           bool plateNew = (ObjectFind(0, plateName) < 0);
-          BaseKnotNotePlateDraw(plateName, px, py, pw, ph, tfMask);
+          BaseKnotNotePlateDraw(plateName, px, py, pw, ph);
           // P-BK-88: the plate is the younger object on this first draw, so
           // without this the opaque bar covers its own ink (creation order
           // paints, ZORDER only clicks). Steady state never reaches here.
@@ -4498,11 +4521,11 @@ void BaseKnotPlaceBadges(const string pfx, const datetime t1, const datetime t2,
    string in = BaseKnotInfoName(pfx);
    long mask = (tfVis ? tfMask : OBJ_NO_PERIODS);
    ObjectSetInteger(0, in, OBJPROP_TIMEFRAMES, mask);   // AND the commit mask — never plain ALL
-   // P-BK-86: the plate is half of the readout, so it wears the very same mask — a plate left
-   // behind on a TF the note is hidden on is an empty bar nobody can explain.
-   string pn = BaseKnotInfoPlateName(in);
-   if(ObjectFind(0, pn) >= 0) ObjectSetInteger(0, pn, OBJPROP_TIMEFRAMES, mask);
-   if(!tfVis) return;
+   // P-BK-92: the PLATE asks the same question through a different mechanism. The ink is
+   // an OBJ_LABEL and honours the mask; the plate is an OBJ_RECTANGLE_LABEL and does not
+   // (P-TH3-INFO-10), so a mask on it would leave the bar on a TF the note is hidden on —
+   // the empty bar P-BK-86 exists to prevent. The plate's visibility is EXISTENCE.
+   if(!tfVis) { BaseKnotNotePlateDrop(in); return; }
    // P-BK-86: this is the box-side home's POSITION owner — the note and its plate are screen
    // objects, so the projection (never a time/price write) is what keeps them on the box.
    BaseKnotNotePlateFollow(pfx, t1, top);
@@ -4574,6 +4597,8 @@ void BaseKnotDotCreate(const string name, const color clr, const long tfMask)
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);   // the BOX is the only handle
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_DOT);
+   // BKDOT-OFF (P-BK-92): this mask is a no-op on a RECTANGLE_LABEL — a restore of the
+   // dot must DELETE it on a hidden TF (BaseKnotNotePlateDrop's pattern), never mask it.
    ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);   // a box hidden on this TF carries no marker
    ObjectSetString(0, name, OBJPROP_TOOLTIP,
                    "BK box centre grip (P-BK-59): the box' own border ink, drawn over MetaTrader's " +
@@ -4787,6 +4812,8 @@ void BaseKnotGripCreate(const string name, const color clr, const long tfMask)
    ObjectSetInteger(0, name, OBJPROP_SELECTABLE, true);   // THIS is the drag (P-BK-61)
    ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
    ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_BOX_GRIP);
+   // BKGRIP-OFF (P-BK-92): a no-op on a RECTANGLE_LABEL for the same reason as the dot —
+   // a restore deletes chips on a hidden TF instead of masking them.
    ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, tfMask);
    ObjectSetString(0, name, OBJPROP_TOOLTIP,
                    "Base box corner — drag it to resize the box (Shift held = magnet: the price " +
