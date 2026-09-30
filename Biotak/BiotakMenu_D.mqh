@@ -222,22 +222,19 @@ int HandleButtonClick(const string clickedObject)
    int refreshFlags = REFRESH_NONE;
    if(feat == CIR_TRIGGER)
    {
-      g_triggerLevelsEnabled = wantOn;   // P-UI-93: what the light showed, inverted
       // P-UI-40: the ring repaints ITSELF below (CircUpdateItemState +
       // UpdateCircularBadges), but it cannot repaint an OPEN card — this file is
       // included before the panel's. The same state is the TRIGGER card's SHOW
       // row, so the UI layer is asked as well; the drain is idempotent.
       RequestUISync();
-      string triggerGvarName = "Biotak_TriggerLevels_" + GetCachedChartIdStr();
-      GlobalVariableSet(triggerGvarName, g_triggerLevelsEnabled ? 1.0 : 0.0);
-      // P-PERF-21: this used to raise g_forceClearOnNextDraw, i.e. delete every
-      // level, zone and label on the chart and rebuild the pipeline in four
-      // staged frames - for a switch that provably changes no geometry. Only the
-      // trigger ZONES change, so the repair is a buffers re-render (the frame
-      // signature carries the flag, RenderZones applies it, and the unchanged
-      // line/label writes are already skipped by P-PERF-02).
-      g_redrawTHLevelsNeeded = true;
-      refreshFlags = REFRESH_BUFFERS;
+      // P-PERF-32b: ONE owner for the transition (state, persisted key, the
+      // family's own mask walk, the discrete repaint). This branch, the T hotkey
+      // and the card's SHOW row used to keep three copies of the state write and
+      // let the RENDER produce the pixels - which is why the light felt dead on
+      // a weak PC. The structure switches' technique (P-PERF-32), for the family
+      // whose property is its mask; P-PERF-21 still holds: NO force-clear.
+      SetTriggerLevelsVisible(wantOn);
+      refreshFlags = REFRESH_NONE;   // the owner painted; the ring repaints below
    }
    else if(feat == CIR_ZONES)
    {

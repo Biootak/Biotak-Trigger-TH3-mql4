@@ -62,6 +62,32 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         // P-HR-01: ray deletes are owned by HRayTool the same way (single object).
         if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix &&
            StringFind(sparam, "_BK_") < 0 && StringFind(sparam, "_HRAY_") < 0) {
+            // P-DEL-PROBE (2026-09-30) — OUR OWN MASS DELETE, LEAKING BACK IN.
+            //
+            // A delete of a name in OUR namespace that arrives OUTSIDE the
+            // suppression window is read as a foreign/user delete: it drops the
+            // cache entry, raises a FULL levels redraw and bumps the draw
+            // generation (which also voids every stored tf-mask). So one leaked
+            // event from our own ~70-band trigger wipe costs a whole family
+            // re-render - and a burst of them is churn the user feels as "the
+            // toggle is slow", with the flag set once per event.
+            //
+            // The window is 250 ms from the LAST delete (`g_suppressDeleteEvents
+            // UntilMs`, set by every bulk path), so a terminal that delivers the
+            // queued delete events later than that turns the wipe into a storm.
+            // The probe is the number that says whether that is what happens here:
+            // bounded to one line per second, so a storm cannot flood the log.
+            static int  s_ownDeleteLeaks   = 0;
+            static uint s_ownDeleteLeakMs  = 0;
+            s_ownDeleteLeaks++;
+            uint leakNow = GetTickCount();
+            if(s_ownDeleteLeakMs == 0 || leakNow - s_ownDeleteLeakMs >= 1000)
+            {
+                Print("[P-DEL] own-name delete NOT suppressed: n=", s_ownDeleteLeaks,
+                      " in <=1s, last=", sparam);
+                s_ownDeleteLeakMs = leakNow;
+                s_ownDeleteLeaks  = 0;
+            }
             CacheRemoveObject(sparam);
             g_redrawTHLevelsNeeded = true;
             // P-PERF-02: a level vanished behind our back — the stored geometry
@@ -239,24 +265,35 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //
         if(IsHotkeyPressed(lparam, sparam, inpTriggerLevelsKey))
         {
-            g_triggerLevelsEnabled = !g_triggerLevelsEnabled;
+            // P-PERF-32b: ONE owner for the whole transition. This block used to
+            // keep its own copy of the state, the persisted key and the render
+            // request - the same three lines the ring item and the card's SHOW row
+            // kept - and the pixels were the RENDER's to produce, so the press
+            // waited for a heavy frame («سطوح تریگر دیر خاموش و روشن میشه»). The
+            // owner (SetTriggerLevelsVisible, EventHandlers_Objects) now writes the
+            // family's masks through the render's own writer and repaints on the
+            // spot, exactly as the structure switches have since P-PERF-32.
+            bool tNext = !g_triggerLevelsEnabled;
             RequestUISync();   // P-UI-40: the TRIGGER card's SHOW row + the ring badge
-            string triggerGvarName = "Biotak_TriggerLevels_" + GetCachedChartIdStr();
-            GlobalVariableSet(triggerGvarName, g_triggerLevelsEnabled);
-            if(g_triggerLevelsEnabled) {
-                LOG_I(LOG_CAT_KEYS, "Trigger Zones: ON");
-            } else {
-                LOG_I(LOG_CAT_KEYS, "Trigger Zones: OFF");
-            }
-            // P-PERF-21: NO force-clear. The overlay owns ONE family - the
-            // trigger zones - and RenderZones applies the live flag itself, so
-            // this is a re-render, never a wipe: structure lines, zones and
-            // labels are not deleted and re-materialised, and the geometry cache
-            // (which no longer keys on the flag) answers with the identical
-            // lists instead of recomputing them.
-            g_redrawTHLevelsNeeded = true;
-            if(!g_customPriceLineDragging)
-                RedrawAllObjects(true);
+            LOG_I(LOG_CAT_KEYS, tNext ? "Trigger Zones: ON" : "Trigger Zones: OFF");
+            // P-KEY-PROBE: the press is the FIRST timestamp of the latency pair; the
+            // owner prints `[P-KEY] T applied … ms=` once the pixels are painted, and
+            // the frame that reconciles prints `[P-KEY] T settled … ms=` at its own
+            // end (EventHandlers_Calc). Both lines are ungated on purpose - one line
+            // per key press, and they are the evidence the fix is judged by.
+            g_triggerPressMs      = GetTickCount();
+            g_triggerPressOn      = tNext ? 1 : 0;
+            g_triggerPressHidden  = 0;
+            g_triggerPressReached = 0;
+            Print("[P-KEY] T press on=", g_triggerPressOn, " zones=", 
+                  (tNext ? "show" : "hide"));
+            // P-PERF-21: NO force-clear. The overlay owns ONE family - the trigger
+            // zones - and RenderZones applies the live flag as a mask itself, so
+            // this is a re-render, never a wipe: structure lines, zones and labels
+            // are not deleted and re-materialised, and the geometry cache (which no
+            // longer keys on the flag) answers with the identical lists instead of
+            // recomputing them.
+            SetTriggerLevelsVisible(tNext);
             ThrottledChartRedraw();
             return;
         }

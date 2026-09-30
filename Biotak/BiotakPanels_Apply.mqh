@@ -495,17 +495,15 @@ int PnlApplySet(const int item,const int row,const double v)
          // P-UI-131j: the LABEL's own opacity — the LABEL COLOR row's pair. -1 is the
          // AUTO end the slider reaches at its far left, so the clamp floor is -1.
          else if(row==4)  { g_triggerLabelTransparency=ClampInt((int)MathRound(v),-1,100); flags=REFRESH_BUFFERS; }
-         else             { g_triggerLevelsEnabled=(v>0.5);   // row 3 — SHOW
-                            GlobalVariableSet("Biotak_TriggerLevels_"+GetCachedChartIdStr(),
-                                              g_triggerLevelsEnabled?1.0:0.0);
-                            // P-PERF-21: NO force-clear here either. Flipping the
-                            // trigger overlay changes no geometry, so deleting and
-                            // rebuilding every level/zone/label for it was pure
-                            // churn (and the third copy of this mistake - the ring
-                            // toggle and the T hotkey had it too). A buffers
-                            // re-render is the whole repair.
-                            g_redrawTHLevelsNeeded=true;
-                            flags=REFRESH_BUFFERS; }
+         else             { // row 3 — SHOW. P-PERF-32b: ONE owner paints it - the
+                            // state, the persisted key, the family's own mask walk
+                            // and the discrete repaint (the T hotkey and the ring's
+                            // TRIGGER light call the same owner). This row used to
+                            // return REFRESH_BUFFERS: the pixels were the RENDER's,
+                            // so the press waited for a heavy frame. P-PERF-21 still
+                            // holds: NO force-clear, the overlay owns one family.
+                            SetTriggerLevelsVisible(v>0.5);
+                            flags=REFRESH_NONE; }
          break;
       case 1:   // ZONES & LEVELS — main card. Row 0 = MID ZONES (ring master).
          if(row==0)       { g_showMidZones=(v>0.5);
@@ -746,6 +744,13 @@ int PnlApplySet(const int item,const int row,const double v)
          else if(row==8)  { g_th3PivotBasePips=MathMax(0.0,v); TH3BaseEditorSync(); flags=REFRESH_TH3; }
          break;
        case 6:   // HTF CANDLES
+         // P-HTF-PROBE (2026-09-30, Touch rule 5): "the shadow vanished and the body
+         // has no fill" is a LOOK, and a look only moves when one of the three flags
+         // below moves. The card is the only writer, so ONE change-gated line names
+         // the row and the resolved triple whenever a press really changed
+         // something — a press that changed nothing stays silent.
+         {
+            double htfBefore = PnlCurrent(6, row);
          if(row==0)       { g_UI.showHTF=(v>0.5); flags=REFRESH_HTF; }
          else if(row==1)
          {
@@ -770,6 +775,9 @@ int PnlApplySet(const int item,const int row,const double v)
          // both callers use it.
          else if(row==11) { g_HTFShadowPct=ClampInt((int)MathRound(v),HTF_SHADOW_PCT_MIN,HTF_SHADOW_PCT_MAX); flags=REFRESH_HTF; }
          else             { g_HTFGapPct=ClampInt((int)MathRound(v),HTF_GAP_PCT_MIN,HTF_GAP_PCT_MAX); flags=REFRESH_HTF; }
+         if(htfBefore != v)
+            HTFProbeSettings("apply row=" + IntegerToString(row) + " v=" + DoubleToString(v, 0));
+         }
          break;
       case 7:   // LINES — unified [08.4] appearance. Row 1 SHOW mirrors the
                 // Zones card row 1 (same g_showLines / g_linesVisible pair).

@@ -194,6 +194,21 @@ void VisibilityShowAllLegacyScan(const bool atrShouldShow, const bool showAtrTar
                 }
                 continue;
             }
+            // P-TH-02 (2026-09-30): THE TH LABEL FAMILY IS NOT THIS WALK'S TO UNMASK.
+            //
+            // Every TH object carries a mask that the TH MODE owns: mode 0 = all
+            // three families off, 1 = fractal only, 2 = standard only (see
+            // SetTHLabelsVisibility). Without this line the branches below reach
+            // their blanket `ALL_PERIODS` and re-show a family the user had just
+            // switched off — a second writer of the property the toggle owns
+            // (Touch rule 6), which is half of «لیبل های th خاموش و روشن درست کار
+            // نمیکنه». The ATR family is recognised by the `ATR_` test two lines
+            // down for exactly this reason; the TH family had no such owner test.
+            //
+            // The F path CALLS that owner itself (EventHandlers_Objects,
+            // `SetTHLabelsVisibility(objectPrefix, inpShowTHLabels ? g_thLabelsMode : 0)`),
+            // so skipping here loses nothing and cannot leave a label unmasked.
+            if(StringFind(objName, "LBL_TH_") >= 0) continue;
             bool isTriggerObject = (StringFind(objName, "TriggerTH_Up_") >= 0 ||
                                     StringFind(objName, "TriggerTH_Down_") >= 0);
             if(isTriggerObject && !triggersEnabled)
@@ -297,6 +312,10 @@ int VisibilityShowAllCached(const bool atrShouldShow, const bool showAtrTargets,
             touched++;
             continue;
         }
+        // P-TH-02: the TH label family answers to ITS OWN owner (see the same skip
+        // in VisibilityShowAllLegacyScan above) — this walk's blanket ALL_PERIODS is
+        // what re-showed a family whose mode said OFF.
+        if(StringFind(nm, "LBL_TH_") >= 0) continue;
         bool isTriggerObject = (StringFind(nm, "TriggerTH_Up_") >= 0 ||
                                 StringFind(nm, "TriggerTH_Down_") >= 0);
         if(isTriggerObject && !triggersEnabled)

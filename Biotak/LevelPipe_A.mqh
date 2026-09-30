@@ -796,7 +796,9 @@ void BuildZonesAndLines(
 //| Creates/updates MT5 rectangle objects for each zone.             |
 //| Handles all zone styles: Lines, Filled Box, Empty Box, Hidden.   |
 //+------------------------------------------------------------------+
-void SetPipelineObjectTimeframesIfExists(const string name, const long timeframes)
+// Returns true only when a real mask WRITE reached the chart (P-PERF-32b: the
+// family walks report their cost as a number, and a guarded no-op is not a write).
+bool SetPipelineObjectTimeframesIfExists(const string name, const long timeframes)
 {
     // PERF FIX: Check object cache first to skip ObjectFind MT4 syscall when object is known absent.
     // ObjectFind is a slow kernel call; using CacheObjectExists avoids it for untracked names.
@@ -808,8 +810,7 @@ void SetPipelineObjectTimeframesIfExists(const string name, const long timeframe
     // (hundreds of writes per frame for masks that had not changed).
     bool knownInCache = CacheObjectExists(name);
     if(knownInCache) {
-        ApplyTfMaskGuarded(name, timeframes);
-        return;
+        return ApplyTfMaskGuarded(name, timeframes);
     }
     // P-PERF-07: the ObjectFind fallback is a terminal call, and this function
     // is reached 7x per ZONE plus once per LINE and once per LABEL of every
@@ -818,17 +819,21 @@ void SetPipelineObjectTimeframesIfExists(const string name, const long timeframe
     // for every culled level on every heavy frame (~2.6k probes/frame at
     // inpMaxLevels=144), each scanning a chart holding thousands of objects.
     // A name already proven absent on this chart costs one hash instead.
-    if(CacheIsAbsentKnown(name)) return;
+    if(CacheIsAbsentKnown(name)) return false;
     // Not in cache — check chart directly (only for sub-objects like _Top, _Bottom, _B_*)
     if(ObjectFind(0, name) >= 0) {
         CacheForgetAbsent(name);
-        ApplyTfMaskGuarded(name, timeframes);
-    } else {
-        CacheMarkAbsent(name);
+        return ApplyTfMaskGuarded(name, timeframes);
     }
+    CacheMarkAbsent(name);
+    return false;
 }
 
-void SetPipelineZoneVisibility(const string zoneName, const bool visible)
+// Returns the number of masks that actually reached the chart (0..7).
+// P-PERF-32b: the trigger family's press-time walk (TriggerFamilyWalk) and the
+// render share THIS writer, so the two can never disagree about which objects a
+// zone is made of or which of them L owns.
+int SetPipelineZoneVisibility(const string zoneName, const bool visible)
 {
     // FIX: The L key controls only the zone boundary LINES (_Top/_Bottom).
     // The box object itself (rectangle or empty-box borders) is never
@@ -837,14 +842,16 @@ void SetPipelineZoneVisibility(const string zoneName, const bool visible)
     // zone's visibility did not change (the common case by far).
     long tfAll = (visible && !IsIndicatorHidden()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long tfLine = (visible && !IsIndicatorHidden() && GetCachedLinesVisible()) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
-    SetPipelineObjectTimeframesIfExists(zoneName, tfAll);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_Top", tfLine);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_Bottom", tfLine);
+    int wrote = 0;
+    if(SetPipelineObjectTimeframesIfExists(zoneName, tfAll)) wrote++;
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_Top", tfLine)) wrote++;
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_Bottom", tfLine)) wrote++;
     // Empty-box border segments follow the box itself (F key)
-    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Top", tfAll);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Bottom", tfAll);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Left", tfAll);
-    SetPipelineObjectTimeframesIfExists(zoneName + "_B_Right", tfAll);
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_B_Top", tfAll)) wrote++;
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_B_Bottom", tfAll)) wrote++;
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_B_Left", tfAll)) wrote++;
+    if(SetPipelineObjectTimeframesIfExists(zoneName + "_B_Right", tfAll)) wrote++;
+    return wrote;
 }
 
 void RenderZones(
@@ -923,25 +930,62 @@ void RenderZones(
         // family - is exactly what the card's third pill used to be: the user could
         // see two controls claiming to do the same thing, and they disagreed.
         
-        // Trigger bands when the trigger overlay is off: DELETE, as it always
-        // did - and the reason is worth recording, because "hide it instead" is
-        // the obvious-looking edit.
+        // P-PERF-32b — THE TRIGGER OVERLAY IS A MASK, NOT A DESTRUCTION.
         //
-        // A trigger band and a structure band are the SAME `_Zone_` names with
-        // the same object shape, so nothing outside this list can tell them
-        // apart: hiding one would also commit the F show path
-        // (VisibilityShowAllCached) to repaint it ALL_PERIODS, because the only
-        // input that path has is the FAMILY switch. The band would then blink
-        // back for the frame between the F press and the render that re-hides
-        // it - a new flicker, traded for nothing: after the first delete this
-        // branch costs 7 proved-absent hash lookups per band (P-PERF-07/13),
-        // and the render itself only runs when IsTriggerLevelsEnabled() moved
-        // (it is in frameCore). Hiding would add a repaint risk to the one
-        // switch whose whole job is to make a family visible.
-        if(zones[i].isTrigger && !triggerEnabled) {
-            DeleteManagedZoneObjects(zones[i].name);
-            continue;
+        // This branch used to DELETE the band (and the F-show path's blanket
+        // ALL_PERIODS was the reason it had to: a trigger band and a structure
+        // band are the same `_Zone_` names, so a hidden trigger band would have
+        // been re-shown by an F press - the flicker this delete existed to
+        // prevent).
+        //
+        // What the delete could not survive is the LATENCY: the T toggle, the
+        // ring's TRIGGER light and the card's SHOW row all flipped the switch
+        // and then asked the RENDER for the pixels ("سطح تریگر دیر خاموش و روشن
+        // میشه"), because a deleted band leaves the ON direction nothing to
+        // show without a full family render. The structure switches (card 11,
+        // P-PERF-32) have painted in their own event since they were fixed:
+        // state + a walk over the objects + a discrete repaint.
+        //
+        // So the family is a MASK now, exactly like the mid-zone family
+        // (P-PERF-41) and the unified lines (P-PERF-25): the band stays as a
+        // hidden object and OFF/ON is one guarded mask per object, written by
+        // the SAME `SetPipelineZoneVisibility` the press-time walk calls
+        // (TriggerFamilyWalk, LevelPipe_B). A later render asserts the live
+        // switch here and changes no pixel - and the F-show corner is closed at
+        // the source: `ApplyHideAllState` re-asserts this family through its own
+        // owner, in the same event.
+        //
+        // Cost: while the overlay is OFF the bands exist as masked objects
+        // (MT4 culls a masked object before rasterising) - the same trade
+        // P-PERF-41 made for the zone family, and what P-PERF-04's thin-zone
+        // guard already does with a single band.
+        //
+        // AND HIDDEN, BUT NEVER STALE. The ON press paints from these very
+        // objects (its walk writes masks, not geometry), so a band left at the
+        // previous centre would flash at the old price for a frame - exactly the
+        // class P-VIEW-01/03 refuse. The test is this list's own first guard, read
+        // from the cache (the top price we last WROTE vs the top this geometry
+        // gives): on a match the band is masked and skipped (seven guarded masks,
+        // zero terminal calls); on a miss it falls through to the ONE creator
+        // below, which updates it in place - still masked. That same fall-through
+        // is what MATERIALISES the family while the overlay is off (the first
+        // render after attach creates it), so the first ON press is a mask flip
+        // too, exactly like a structure switch.
+        bool triggerHidden = (zones[i].isTrigger && !triggerEnabled);
+        if(triggerHidden) {
+            SObjectCacheEntry trigEntry;
+            if(CacheGetObject(zones[i].name, trigEntry) &&
+               MathAbs(trigEntry.lastPrice - zones[i].renderTop) <= GetCachedPoint() * 0.1) {
+                SetPipelineZoneVisibility(zones[i].name, false);
+                // P-KEY-PROBE: only while a T press is outstanding (one int read per
+                // band in the steady state would be the cost this project refuses).
+                if(g_triggerPressMs != 0) g_triggerPressHidden++;
+                continue;
+            }
         }
+        // P-KEY-PROBE: the bands this render reaches for the toggle (the show
+        // direction pays these; the hide direction pays the masks above).
+        if(zones[i].isTrigger && g_triggerPressMs != 0) g_triggerPressReached++;
         
         if(zones[i].renderTop <= zones[i].renderBottom) continue;
         
@@ -980,7 +1024,9 @@ void RenderZones(
             request.endTime = 0;
             
             CreateZone(request);
-            SetPipelineZoneVisibility(zones[i].name, true);
+            // P-PERF-32b: a band whose overlay is OFF is created/updated in place
+            // and stays MASKED - the render never shows what the switch turned off.
+            SetPipelineZoneVisibility(zones[i].name, !triggerHidden);
         }
     }
 }

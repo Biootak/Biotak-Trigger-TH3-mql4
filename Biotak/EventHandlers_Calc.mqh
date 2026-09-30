@@ -833,7 +833,29 @@ void RedrawAllObjects(bool force_redraw=false)
 
     // PERF: Coalesce event-burst forced redraws (very small window, keeps behavior intact)
     if(force_redraw) {
-        if(s_lastForcedRedrawMs != 0 && nowMs - s_lastForcedRedrawMs < 20) return;
+        if(s_lastForcedRedrawMs != 0 && nowMs - s_lastForcedRedrawMs < 20)
+        {
+            // P-KEY-01 (2026-09-30) — A DROPPED TOGGLE STILL OWES ITS PAINT, IN THIS EVENT.
+            //
+            // This guard exists to coalesce a BURST of forced calls (a slider drag, a
+            // held key), and it is right about the WORK: the caller raised its flags
+            // before calling, so nothing is lost. What was wrong is the LATENCY - the
+            // return skipped the deferral below as well, so no frame was owed and the
+            // picture waited for the next tick or the 250 ms timer. On a quiet chart
+            // that is a press that appears to do nothing until something else moves:
+            // «سطوح تریگر دیر خاموش و روشن میشه».
+            //
+            // The levels flag is the ONE that is both raised by every toggle that can
+            // land here AND a term of `hasPendingWork` further down - so the pump at
+            // the end of THIS event is guaranteed to find real work and run the same
+            // frame body, on the same raised flags, that the timer would have run
+            // later. Cost: one flag read, two GetTickCount reads, and (only when it
+            // defers) one bool - no pixel changes, and the ledger names this path:
+            // `owed frame (coalesced)`. A burst that carries no flag (a drag) keeps
+            // the old behaviour exactly.
+            if(g_redrawTHLevelsNeeded) ScheduleHeavyFrame("coalesced");
+            return;
+        }
         s_lastForcedRedrawMs = nowMs;
     }
 
@@ -1510,6 +1532,29 @@ void RedrawAllObjects(bool force_redraw=false)
         g_heavyFramePending = false;
         g_heavyFrameWhy     = "";
         s_coopRuns++;
+    }
+
+    // P-KEY-PROBE: THE T TOGGLE'S RECONCILIATION FRAME.
+    //
+    // P-PERF-32b moved the PIXELS to the press's own event (SetTriggerLevelsVisible
+    // prints `[P-KEY] T applied … ms=` the moment the family's masks are written),
+    // so this line reports the OTHER half: the frame that re-asserts the family
+    // afterwards. It must read like a cheap, idempotent pass - `hidden=`/`reached=`
+    // are guarded masks and the bands update in place - and if it does not, the
+    // toggle is again paying a rebuild it does not need. It prints for EVERY
+    // toggled press, not only a slow one: "it feels slow" is answerable against a
+    // number, and a press that settled inside one tick must be able to say so.
+    if(g_triggerPressMs != 0)
+    {
+        // `levels=` and `labels=` are this frame's OWN phase ledger (P-PERF-03),
+        // printed here so the split is one line instead of a second experiment:
+        // if the reconciliation is slow, either the level render owns it (levels=)
+        // or the scheduling/labels do - and the fix is only allowed to target one.
+        Print("[P-KEY] T settled on=", g_triggerPressOn,
+              " ms=", (int)(GetTickCount() - g_triggerPressMs),
+              " levels=", (int)g_p3MsLevels, " labels=", (int)g_p3MsLabels,
+              " hidden=", g_triggerPressHidden, " reached=", g_triggerPressReached);
+        g_triggerPressMs = 0;
     }
     CheckAlerts(objectPrefix, g_currentPrice);
     ThrottledChartRedraw();

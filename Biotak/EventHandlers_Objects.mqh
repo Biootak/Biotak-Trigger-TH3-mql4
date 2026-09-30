@@ -126,6 +126,56 @@ void StructureSwitchBatchEnd()
    StructureSwitchSettle(GetTickCount(), -1, false);
 }
 
+//==============================================================================
+// P-PERF-32b — THE TRIGGER SWITCH PAINTS IN ITS OWN EVENT (one owner).
+//
+// The same shape as SetStructureVisible above, for the family whose feedback
+// used to be the RENDER's: the state, the persisted key, the family's own mask
+// walk (`TriggerFamilyWalk` — the family answers to a mask now, see RenderZones'
+// OFF branch) and the discrete repaint. «سطوح تریگر دیر خاموش و روشن میشه» is
+// exactly what the old shape produced: the press raised `g_redrawTHLevelsNeeded`
+// and the pixels waited for a heavy frame — on a weak PC a visibly dead press.
+//
+// THREE CALLERS, ONE OWNER: the T hotkey, the ring's TRIGGER light and the
+// card's SHOW row (BiotakPanels_Apply, case 0 row 3). They used to keep three
+// copies of the state write; none of them may keep a copy of the walk.
+//
+// `g_redrawTHLevelsNeeded` still goes up, and it is not a leftover: it is what
+// BUILDS the family when the chart carries none yet (a fresh attach starts with
+// the overlay OFF, so the first ON has nothing to un-mask). The frame then
+// re-asserts the same masks through the same writer and changes no pixel —
+// `[P-KEY] T settled … ms=` is that reconciliation, on the record.
+//
+// Cost: one bounded cache walk per press (guarded masks; ZERO writes when the
+// family is already right) + one ChartRedraw, both stated by the applied line.
+//==============================================================================
+void SetTriggerLevelsVisible(const bool on)
+{
+   uint t32b = GetTickCount();
+   g_triggerLevelsEnabled = on;   // P-UI-93: one writer for the restored state
+   GlobalVariableSet("Biotak_TriggerLevels_" + GetCachedChartIdStr(), on ? 1.0 : 0.0);
+   int seen = 0;
+   int written = TriggerFamilyWalk(on, seen);
+   g_redrawTHLevelsNeeded = true;   // P-PERF-21: a re-render, never a clear
+   // P-PERF-32b: `bands=0` on the way ON means the chart carries no band to
+   // un-mask - a family the render has not materialised (a fresh attach, mid zones
+   // were off, a wipe). The walk cannot invent geometry, so the build is OWED here:
+   // without it the press would paint nothing and wait for the next tick or the
+   // 250 ms timer (P-KEY-01's own defect), with it the pump runs the frame in THIS
+   // event. It is the one press that still pays a render, and it can only be the
+   // first one.
+   if(on && seen == 0)
+      ScheduleHeavyFrame("trigger-build");
+   RepaintForDiscreteAction();      // P-PERF-24: the press paints NOW
+   // P-KEY-PROBE — PRESS → PAINTED, the number the latency report is judged by.
+   // `bands=` is the family the walk decided and `masks=` what the chart actually
+   // paid for; `bands=0` says the render still has to build it (the one slow
+   // direction left, and it can only happen once per attach).
+   Print("[P-KEY] T applied on=", (on ? 1 : 0),
+         " ms=", (int)(GetTickCount() - t32b),
+         " bands=", seen, " masks=", written);
+}
+
 // P-PERF-10: named-phase report for the INIT path (attach / TF switch). The
 // tick ledger cannot attribute OnInit's 3.2-4.1 s — it measures a frame, not
 // the init sequence — so the entry passes its two halves and OnInitHandler
@@ -1285,6 +1335,16 @@ int ApplyHideAllState(const bool hide)
         string objectPrefixLocal = GetLevelObjectPrefix();
         SetATRLabelsVisibility(objectPrefixLocal, (g_atrLabelsVisible && inpShowATRLabels));
         SetTHLabelsVisibility(objectPrefixLocal, (inpShowTHLabels ? g_thLabelsMode : 0));
+        // P-PERF-32b: and the TRIGGER family through its OWN owner. The walk above
+        // cannot tell a trigger band from a structure band (the same `_Zone_`
+        // names, and this branch's only zone input is the FAMILY switch), so it
+        // would un-mask a family whose overlay is OFF. Asking the family's own walk
+        // LAST, in this same event, closes that corner for every band the CACHE
+        // knows — including bands outside this frame's culled list, which no render
+        // would re-decide (P-VIEW-01's rule). The delete this replaced used to be
+        // the only thing keeping that corner shut.
+        int trigSeen = 0;
+        TriggerFamilyWalk(g_triggerLevelsEnabled, trigSeen);
     }
     // P-PERF-02: masks written directly above → every stored mask is now
     // stale; the guarded writers must re-assert once on the next frame.

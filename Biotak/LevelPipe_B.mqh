@@ -365,6 +365,61 @@ bool LadderNameIsZoneBand(const string nm)
 }
 
 //+------------------------------------------------------------------+
+//| P-PERF-32b — THE TRIGGER FAMILY'S OWN MASK WALK.                  |
+//|                                                                   |
+//| THE DEFECT IT CLOSES: «سطوح تریگر دیر خاموش و روشن میشه» — the     |
+//| T hotkey, the ring's TRIGGER light and the card's SHOW row all     |
+//| flipped `g_triggerLevelsEnabled` and then asked the RENDER for     |
+//| the pixels, so the picture waited for a whole heavy frame (and the |
+//| render had to rebuild a family the OFF press had deleted). The     |
+//| structure switches (card 11, P-PERF-32) have painted in their own  |
+//| event since they were fixed — state, a walk over the objects that  |
+//| own the property, one discrete repaint — and the frame is never    |
+//| the owner of the feedback. This is that technique for the family   |
+//| whose property IS its mask.                                        |
+//|                                                                   |
+//| ONE OWNER FOR THE PROPERTY: the walk writes through                |
+//| `SetPipelineZoneVisibility` — the render's own writer — so which   |
+//| objects a zone is made of, and which of them L owns, is spelled    |
+//| once. This walk only decides WHICH cached `_Zone_` names are       |
+//| trigger bands: the ladder's own classification                     |
+//| (`GetHighestStructureLevel(step, g_cachedIntervals) <= 0`, the     |
+//| same test ClassifyLevels and StructureRecolourWalk use), read      |
+//| from the name's step (sub-objects included: their band decides).   |
+//|                                                                   |
+//| BOUNDED BY THE CACHE, like every sibling walk: one hash probe per  |
+//| occupied slot, zero ObjectName calls, zero type probes, and a      |
+//| guarded mask write that is FREE when that object is already right. |
+//| `seen` = the trigger bands the walk found (0 says the chart does   |
+//| not carry the family yet, which is the one case that still needs a |
+//| render to build it), return = the masks that really reached the    |
+//| chart. Both numbers are printed by the press that paid for them.   |
+//+------------------------------------------------------------------+
+int TriggerFamilyWalk(const bool on, int &seen)
+{
+    seen = 0;
+    int written = 0;
+    int visited = 0;
+    for(int i = 0; i < CACHE_HASH_BUCKETS && visited < g_objectCacheSize; i++)
+    {
+        if(!g_objectCacheHash[i].occupied) continue;
+        visited++;
+        if(!CacheSlotIsLive(i)) continue;         // P-UI-62: liveness is the permission to touch
+        const string nm = g_objectCacheHash[i].name;
+        if(StringFind(nm, "_Zone_") < 0) continue;         // lines/labels/HTF
+        if(StringFind(nm, "_Zone_Center_") >= 0) continue; // mode colour, not a ladder band
+        if(StringFind(nm, "_BK_") >= 0) continue;          // independent layer (P-BK-01)
+        if(!ZoneNameIsBand(nm)) continue;                   // a sub-object: its band decides
+        int step = StructureZoneStepFromName(nm);
+        if(step <= 0) continue;
+        if(GetHighestStructureLevel(step, g_cachedIntervals) > 0) continue;   // a structure tier
+        seen++;
+        written += SetPipelineZoneVisibility(nm, on);
+    }
+    return written;
+}
+
+//+------------------------------------------------------------------+
 //| P-LEVEL-FOREIGN-02 — EXACTLY THE PRODUCED SET, OR NOTHING.        |
 //|                                                                  |
 //| Reported (after the P-PERF-38d handoff landed): «سطوح که باید   |

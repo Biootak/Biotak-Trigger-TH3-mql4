@@ -1308,6 +1308,28 @@ if (Test-Path $lcGate) {
     }
 }
 
+#--- P-REG-01: THE REGRESSION REGISTER IS PART OF THE BUILD. Every entry is a defect
+#--- that was fixed once and came back through a change made SOMEWHERE ELSE - the TH
+#--- mask that wrote the pre-migration names (`<prefix>TH_*` while every object is
+#--- born `<prefix>LBL_TH_*`), the label clear that went back to a bulk wipe, the T
+#--- toggle that dropped its own owed frame, the HTF row->flag map. All of them were
+#--- GREEN: the compiler only checks that names resolve, and a write to a name the
+#--- chart does not carry is not an error in MT4. So the register is checked here, at
+#--- the name, in every build.
+$regGate = Join-Path $SCRIPT_ROOT "tools\check-regressions.js"
+if (Test-Path $regGate) {
+    Write-Host ""
+    Write-Host "  Regression gate (fixed behaviours still owned + on the record):" -ForegroundColor Cyan
+    & node $regGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] regression gate" -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] regression gate" -ForegroundColor Green
+    }
+}
+
 #--- P-DRAW-78b: THE PANEL'S GEOMETRY GATE IS PART OF THE BUILD. A tab whose height
 #--- misses the cards' law 56 + n*42 + 48 compiles clean, paints, and silently falls
 #--- out of the one-baked-card branch into the composed W body — a second, wider

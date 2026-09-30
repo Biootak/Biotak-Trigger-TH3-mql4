@@ -138,14 +138,39 @@ enum EDrawKind
 // all carry `inpObjectPrefix`; the user's own drawings never do. ONE test,
 // asked by every entry point of this module — the user's order was explicit
 // that the harmonics and the rest of the indicator's objects are NOT in scope.
+//
+// P-DRAW-87 (2026-09-30) — ONE FAMILY WAS NOT UNDER THAT PREFIX, AND THIS TEST
+// WAS THE WHOLE BUG. «شادو رسم میشه بعد چند ثانیه نیست» (the HTF candle's shadow box
+// is drawn and then gone) was NOT a look, a slider or a mask: the overlay's boxes
+// are born `BiotakHTF_<chartid>_*` (HTFCandles' own namespace — `inpObjectPrefix`
+// is "THLevels"), so every entry point below read them as the USER's drawings.
+// The one that shows is the 2 s `BoxExtrasPump` (DrawStrip_Pick): it saw a filled
+// rectangle that was not ours, ran the interior split on it, cleared the master's
+// FILL and created `<name>_FL` filled with `BlendColorTowardsBG(..., background)`
+// — the chart background itself, byte-identical, because a foreign object carries
+// no opacity slot (100 - 0 = 100). The hollow BODIES survived untouched, which is
+// why the report is about the shadow alone: `OBJPROP_FILL` is already 0 on them,
+// so the pump's own `Fill != 0 || child exists` probe never fires.
+//
+// The name cannot be re-declared here (P-UI-68: HTFCandles is the ONE writer of an
+// HTF name), and HTFCandles is included AFTER this file, so the overlay PUBLISHES
+// its root — `g_OverlayNameRoot` (GlobalVariables) — and this is one head-on test
+// of it. The level prefix is tested FIRST because it owns the walk's majority: a
+// name it answers returns without paying for the second compare.
 // ══════════════════════════════════════════════════════════════════════════
 bool DrawIsIndicatorObject(const string name)
 {
    if(name == "") return true;                      // no name, no drawing
+   int n = StringLen(name);
+   if(n == 0) return false;
    int p = StringLen(inpObjectPrefix);
-   if(p <= 0) return false;                         // an empty prefix matches nothing
-   if(StringLen(name) < p) return false;
-   return (StringSubstr(name, 0, p) == inpObjectPrefix);
+   if(p > 0 && n >= p && StringSubstr(name, 0, p) == inpObjectPrefix) return true;
+   //--- P-DRAW-87: the overlay's published namespace. "" until the HTF module
+   //--- publishes it (one write, at its init), and then this answers false for
+   //--- every name exactly as it did before the test existed.
+   int o = StringLen(g_OverlayNameRoot);
+   if(o > 0 && n >= o && StringSubstr(name, 0, o) == g_OverlayNameRoot) return true;
+   return false;
 }
 // P-HR-04 (2026-09-28) — THE RAY IS A DRAWING TOO. A Horizontal Ray carries
 // the indicator prefix (so create/delete routing ignores it) but the STRIP

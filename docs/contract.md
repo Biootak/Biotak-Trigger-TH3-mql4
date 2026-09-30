@@ -70,6 +70,18 @@ every walk is bounded by a stated count. The target is the weakest supported mac
 when two solutions behave the same, the cheaper one ships and its cost is a number
 (`CPU_WARNING_MS 50` / `CPU_CRITICAL_MS 200`, `COOP_WARN_MS 40`).
 
+- **An update changes ONE surface; the register is what keeps the others still.**
+  The change may move the behaviour of the surface that asked for it, and of nothing
+  else: a shared name, mask, flag, walk or layout constant keeps every other reader's
+  behaviour identical, or the change names those readers in its report (Touch rule 1)
+  and the register gains their assertion. A fixed defect's shape is asserted in
+  `tools/check-regressions.js` so the next edit cannot put it back — *e.g.* the trigger
+  overlay, whose press paints through its own owner (`SetTriggerLevelsVisible`: state +
+  key + its own mask walk + the discrete repaint, never the render's pixels), whose
+  render branch is a priced mask (never a delete) and whose F show re-asserts the family
+  through that same walk. Editing any of it is allowed; changing what a DIFFERENT surface
+  sees is not — and the gate is a guard, not a freeze (see §9).
+
 ## 6. Gate (definition of done)
 
 1. `compile-th3.ps1 -Project all` → `Result: 0 errors` (Full), then the same for
@@ -84,6 +96,10 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
 7. The report names the file, the number and the measurement.
 8. `node tools/check-level-continuity.js` passes — a switch is a handoff, and that
    gate is what keeps it one (§8, P-VIEW-06).
+9. `node tools/check-regressions.js` passes — the register of already-fixed defects
+   (§9) is a gate, not a memory: a name that was wrong, a second writer, a dropped
+   frame and a row→flag map are each asserted against the sources, so the next edit
+   that breaks one fails HERE, at the name, before the terminal sees it.
 
 ## 7. Size (one file, one owner)
 
@@ -139,3 +155,40 @@ One function over the ceiling stays whole and never grows.
   (`[P-VIEW] stage=census lines=… absent=… mask=min..max …`) is the arbiter: `absent=0`
   with a uniform mask means every built level is on the chart, so a hole is a DELETION
   or a second writer — never the paint.
+- **A candle wider than the window is pitched to the window.** The HTF overlay
+  (`HTFRefreshSlotMetrics`, `Biotak/HTFCandles_Geom.mqh`) draws a rung whose candle
+  cannot fit the viewport `HTF_SLOT_MIN_CANDLES` (4) times on a slot pitch of
+  `CHART_VISIBLE_BARS / 4` chart bars anchored at bar 0 — the OHLC stays the real HTF
+  series, only the x pitch is schematic. A rung that already fits returns before any
+  read, so its geometry is untouched. Witness: `[P-HTF] slot htf= chart= vis= ratio=
+  slot=` (P-HTF-SLOT).
+
+## 9. An edit predicts its own consequences, and the register is a gate
+
+- **A change is not finished until its dependents are named.** Every name, mask,
+  prefix, `#define`, writer and layout constant you touch has a caller set, and it is
+  reported as `file:line` in the same report. "It compiles" proves only that the names
+  resolve: MT4 answers NOTHING to a write aimed at a name the chart does not carry, so
+  a whole release can mask `<prefix>TH_*` while every TH object is born
+  `<prefix>LBL_TH_*` (P-TH-02), or address a flag a shifted row never writes.
+- **A second writer is the bug.** When a symptom has two live writers, name the second
+  one; the fix removes it or makes ONE owner. The TH mask has one owner
+  (`SetTHLabelsVisibility`), and the relayout writes the same value for the family its
+  own caller is gated on — never a second arithmetic.
+- **A change anywhere must not silently change a fixed behaviour.** The REGISTER:
+  `tools/check-regressions.js` runs in every build and asserts the sites the fixed
+  defects are made of — the TH mask name and its `[P-LBL] TH mask mode= applied=`
+  witness, the label sweep (never a bulk wipe), the T toggle's ONE owner
+  (`SetTriggerLevelsVisible` — state, persisted key, mask walk, discrete repaint), its
+  press-time `[P-KEY] T press` → `T applied ms=` pair, the family walk it paints
+  through, the F-show re-assert, the render's trigger branch being a MASK (never a
+  delete) and its reconciliation `T settled ms=` line, the coalescer that still owes a
+  frame, the HTF family's single writer with its `[P-HTF]` look/cull probes, and the
+  HTF card's row→flag map and captions. A new defect that was real is added to the
+  register WITH its probe line, so the next regression has a number to fail on. The
+  gate is a guard, not a freeze: a change that legitimately reshapes one of these sites
+  updates the register in the same commit and says so in its report — what it may never
+  do is move a site's behaviour while leaving the register asserting the old one.
+- **Predict, then verify.** Before an edit lands, write down which surfaces read what
+  changed and re-check the fixed defects that share it. A symptom with no measurable
+  number is a question for the user, not a guess committed to the tree (Touch rule 5).

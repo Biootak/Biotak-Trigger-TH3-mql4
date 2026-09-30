@@ -99,6 +99,7 @@ Get-ChildItem tests\*.mq4 | ForEach-Object { powershell -NoProfile -ExecutionPol
 node tools/submenu_geometry_check.js
 node tools/check-resources.js
 node tools/check-level-continuity.js
+node tools/check-regressions.js
 python tools/check-gear-panel.py
 ```
 
@@ -153,6 +154,18 @@ What the output now guarantees, and why each line exists:
   touching any `DSTRIP_GEAR_*` height, pad or air. The same gate asserts every
   PAINTED control has a non-empty hit box on every tab — the dead-button class of
   P-DRAW-84, which compiles clean and looks perfect.
+- **`[PASS] regression gate`** — the register of already-fixed defects, asserted
+  against the sources in every build (contract §9): the TH mask's name family
+  (`<prefix>LBL_TH_*`, P-TH-02) with its `[P-LBL] TH mask mode= applied=` witness, the
+  label clear still being a sweep, the T toggle's ONE owner (`SetTriggerLevelsVisible`:
+  mask walk + discrete repaint, never a clear) with its `[P-KEY] T press` → `T applied
+  … ms=` pair, its `TriggerFamilyWalk`, the F-show re-assert, the render's trigger
+  branch being a mask (never a delete) with its `T settled … ms=` reconciliation line,
+  the coalescer still owing a frame, the HTF family's single writer with its `[P-HTF]`
+  look/cull probes, and the HTF card's row→flag map and captions. Every entry was once a green build, because MT4 answers
+  nothing to a write aimed at a name the chart does not carry. `tools/check-regressions.js`
+  is the gate; run it by hand after touching a label mask, a hotkey path, the coalescer
+  or the HTF card.
 - **one build, not two** — `MQL4\Indicators\BiotakProject` is a JUNCTION to this
   repo, so the "installed" source and the workspace source are ONE file and the
   "installed" ex4 is the workspace ex4. `-Project all` compiles it once and says so.

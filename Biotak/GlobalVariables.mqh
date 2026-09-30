@@ -22,6 +22,21 @@ static datetime g_lastHistoricalUpdate = 0;
 static bool g_initialized = false;
 static bool g_calculatedOnce = false;
 static bool g_labelsRelayoutNeeded = false;
+
+// P-KEY-PROBE (2026-09-30, Touch rule 5) — THE TRIGGER PRESS, TIMESTAMPED.
+// «سطوح تریگر دیر خاموش و روشن میشه» is a latency complaint and latency has to be a
+// number in the log or the next edit is a guess. P-PERF-32b made the toggle paint in
+// its own event, so the pair is two lines now: the OWNER prints press→painted
+// (`[P-KEY] T applied … ms=` bands=/masks=) and the frame that RECONCILES the family
+// prints press→frame-end (`[P-KEY] T settled … ms=` hidden=/reached=). The fields
+// below feed the second line only: the render counts the trigger bands whose mask it
+// asserted for the press (hidden) and the bands it reached (reached).
+// Cost: four int writes on a key press, one int read per trigger band while a press
+// is outstanding, one compare at the end of every frame.
+static uint g_triggerPressMs     = 0;   // 0 = no trigger toggle waiting for the frame
+static int  g_triggerPressOn     = 0;
+static int  g_triggerPressHidden = 0;   // bands this render masked OFF for the press
+static int  g_triggerPressReached= 0;   // trigger bands this render reached for it
 static double g_dailyClosePriceForTH = EMPTY_VALUE;
 bool g_redrawTHLevelsNeeded = true;
 bool g_forceClearOnNextDraw = false;
@@ -398,6 +413,20 @@ static int g_UIPPalRX = -1, g_UIPPalRY = -1, g_UIPPalRW = 0, g_UIPPalRH = 0;
 // on one pixel is the user's own complaint («جایی که روی هم نیافتن»); margin
 // included by the publisher; -1 = no strip on the chart.
 static int g_UIStripRX = -1, g_UIStripRY = -1, g_UIStripRW = 0, g_UIStripRH = 0;
+// P-DRAW-87 (2026-09-30): and the OVERLAY's name root, published the same way by the
+// HTF module for the one reader that cannot see it. `DrawIsIndicatorObject`
+// (DrawToolbar, included BEFORE HTFCandles) answers "is this the product's object or
+// the user's drawing?" and the whole draw-strip hangs off it — the press hit test,
+// the interior split, the APPLY-ALL walk, the delete router. The HTF family is born
+// `BiotakHTF_<chartid>_*`, which `inpObjectPrefix` ("THLevels") does not cover, so
+// every one of those paths read it as a USER drawing. Measured 2026-09-30: the 2 s
+// `BoxExtrasPump` moved each shadow's interior into an `<name>_FL` child painted in
+// the chart BACKGROUND and cleared the master's own FILL, which is the report
+// «شادو رسم میشه بعد چند ثانیه نیست» (the pixel was byte-identical to the background).
+// The name itself stays HTFCandles' own (P-UI-68: ONE writer of an HTF name); this
+// variable only PUBLISHES it, exactly like the rects above. "" = no overlay on this
+// chart yet, and then the predicate answers what it answered before this line existed.
+static string g_OverlayNameRoot = "";
 
 // Toggle States (hotkey-controlled)
 // NOTE: g_triggerLevelsEnabled moved to RuntimeSettings.mqh — it is the runtime

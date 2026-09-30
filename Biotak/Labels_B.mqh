@@ -70,11 +70,37 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     CacheForgetTfMasks(uniquePrefix);
 }
 
+// P-TH-02 (2026-09-30) — THE NAME IS THE WRITE.
+//
+// This function masked `<prefix>TH_*`, but every TH object is BORN as
+// `<prefix>LBL_TH_*`: DisplayFractalTHs/DisplayStandardTHs build
+// `labelPrefix = objectPrefix + "LBL_"` and hand THAT to CreateTHLabel, which
+// names the three objects `labelPrefix + "TH_"`, and the title is
+// `labelPrefix + "TH_Title"`. So all ~50 ObjectSetInteger calls below addressed
+// names the chart does not carry, MT4 ignored each one in silence (no error, no
+// log), and the toggle could only ever work through the label sweep — the
+// reported «لیبل های th خاموش و روشن درست کار نمیکنه».
+//
+// The ATR sibling above has always built `objectPrefix + "LBL_"`; this is the
+// same construction. The `applied=` number on the probe line below is the proof:
+// it counts the writes the terminal ACCEPTED (ObjectSetInteger returns false for
+// a name it does not hold), so it read 0 on every press before this fix.
+//
+// ONE OWNER: this function is the authority for the whole TH mask (all three
+// modes, both families, the title and the targets). CreateTHLabel writes the mask
+// for the family whose display is ALREADY gated on `g_thLabelsMode == N`, so the
+// two writers agree by construction in every mode - they must never be given
+// separate arithmetic (Touch rule 7: a second grid is the bug).
 void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
+    string uniquePrefix = objectPrefix + "LBL_";
     bool shouldShow = ((mode != 0) && !IsIndicatorHidden());
     long tf = shouldShow ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
 
-    ObjectSetInteger(0, objectPrefix + "TH_Title", OBJPROP_TIMEFRAMES, tf);
+    int applied = 0;
+    int aimed = 0;
+    string nm = uniquePrefix + "TH_Title";
+    aimed++;
+    if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, tf)) applied++;
 
     bool showFractal = (mode == 1);
     bool showStandard = (mode == 2);
@@ -84,23 +110,41 @@ void SetTHLabelsVisibility(const string objectPrefix, const int mode) {
     int _nFractal = ArraySize(FRACTAL_TIMEFRAMES);
     for(int i = 0; i < _nFractal; i++) {
         string timeframeName = FRACTAL_TIMEFRAMES[i];
-        ObjectSetInteger(0, StringFormat("%sTH_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTF);
-        ObjectSetInteger(0, StringFormat("%sTH_Steps_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTF);
-        ObjectSetInteger(0, StringFormat("%sTH_Targets_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, fractalTargetsTF);
+        nm = StringFormat("%sTH_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, fractalTF)) applied++;
+        nm = StringFormat("%sTH_Steps_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, fractalTF)) applied++;
+        nm = StringFormat("%sTH_Targets_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, fractalTargetsTF)) applied++;
     }
     long standardTF = (shouldShow && showStandard) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     long standardTargetsTF = (shouldShow && showStandard && inpShowTHTargets) ? OBJ_ALL_PERIODS : OBJ_NO_PERIODS;
     int _nStandard = ArraySize(STANDARD_TIMEFRAMES);
     for(int i = 0; i < _nStandard; i++) {
         string timeframeName = STANDARD_TIMEFRAMES[i];
-        ObjectSetInteger(0, StringFormat("%sTH_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTF);
-        ObjectSetInteger(0, StringFormat("%sTH_Steps_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTF);
-        ObjectSetInteger(0, StringFormat("%sTH_Targets_%s", objectPrefix, timeframeName), OBJPROP_TIMEFRAMES, standardTargetsTF);
+        nm = StringFormat("%sTH_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, standardTF)) applied++;
+        nm = StringFormat("%sTH_Steps_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, standardTF)) applied++;
+        nm = StringFormat("%sTH_Targets_%s", uniquePrefix, timeframeName);
+        aimed++;
+        if(ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, standardTargetsTF)) applied++;
     }
 
     // P-PERF-02: masks written outside the guard → drop the stored memory
     // (see SetATRLabelsVisibility).
-    CacheForgetTfMasks(objectPrefix + "TH_");
+    CacheForgetTfMasks(uniquePrefix + "TH_");
+
+    // P-TH-02 probe: one line per toggle, and the two numbers this fix is about —
+    // how many mask writes the terminal accepted, out of how many were aimed.
+    // A toggle with everything already drawn reads applied=aimed (all names
+    // exist); `applied=0` is the pre-fix signature and must never come back.
+    Print("[P-LBL] TH mask mode=", mode, " applied=", applied, " of ", aimed);
 }
 
 //+------------------------------------------------------------------+
