@@ -169,6 +169,19 @@
 
 // Performance & Safety Constants
 #define MAX_SAFE_LEVELS 2000          // Maximum safe number of levels per side
+//--- P-LEVEL-BOUND-03 (2026-09-29) — THE HISTORICAL BOUND DRAWS A FEW RUNGS PAST
+//--- ITSELF. User report on the Monthly chart: «توی ماهانه چرا یکم بیشتر رسم نمیشه
+//--- چندتای بیرون از های و لو تاریخی باشه بهتره دید داریم» — the ladder stopped dead on
+//--- `g_highestHigh` / `g_lowestLow`, so the visible room above the all-time high (and
+//--- below the low) held nothing while the chart had the space to show where the next
+//--- rungs WOULD be. This is a VIEW margin, not a claim about history: the ladder is
+//--- still built from the centre with the same steps and the same names, it just no
+//--- longer stops at the extreme. Bounded twice, so it cannot run away: by the count
+//--- the mode already asked for (`maxLevelsAbove/Below`) and by MAX_SAFE_LEVELS — the
+//--- overdraw can only ever spend rungs the count had left. Cost: at most this many
+//--- extra level objects per side, and only on charts whose bound is closer than the
+//--- count (a chart whose ladder already ends on its count pays nothing).
+#define P_LEVEL_BOUND_OVERDRAW 3
 #define MAX_SAFE_OBJECTS 5000         // Warning threshold for total objects
 #define CRITICAL_OBJECT_LIMIT 50000   // Critical threshold (MT4 limit ~64K)
 #define CPU_WARNING_MS 50             // Warning if OnCalculate takes >50ms
@@ -1096,6 +1109,19 @@ bool BioChartBgIsLight()
 //--- visible swatch, and raising the floor would re-outline half the palette).
 #define BIO_SWATCH_MIN_CONTRAST 1.7
 
+//--- P-BUILD-10 (2026-09-29) — A COLOUR THAT CAME OUT OF STORAGE MUST BE A COLOUR.
+//--- `clrNONE` is -1 and a widened 4-byte stamp can land on any value at all; a
+//--- `color` is UNSIGNED in MQL4, so `c < 0` never fires (warning 65) and a bad
+//--- value passes every `!=` guard. MT4 then paints the object with whatever it
+//--- cannot read — a label drawn in the terminal's own text grey instead of the
+//--- ink the caller asked for (the reported «رنگ آبی TR عوض میشه»). One predicate,
+//--- so "is this paintable?" has one owner and every reader asks the same one.
+bool BioColorIsValid(const color c)
+{
+   int v = (int)c;
+   return (v >= 0 && v <= 0xFFFFFF);
+}
+
 //--- WCAG relative luminance (Rec.709 over linearised channels). MT4 packs a
 //--- colour BGR, so R is the LOW byte — the same extraction PalColorText uses.
 //--- clrNONE (-1) has no channels: reported as white, so a stray value can never
@@ -1135,10 +1161,45 @@ color BioCardTone(const double t)
    double f;
    if(u <= BIO_CARD_MID_T) { a = BIO_CLR_CARD_TOP; b = BIO_CLR_PANEL;  f = u / BIO_CARD_MID_T; }
    else                    { a = BIO_CLR_PANEL;    b = BIO_CLR_FOOT;   f = (u - BIO_CARD_MID_T) / (1.0 - BIO_CARD_MID_T); }
+   //--- P-DRAW-71 (2026-09-29) — THE CHANNELS COME OUT FIRST, IN THEIR OWN
+   //--- STATEMENTS, AND THE INTERPOLATION IS PURE DOUBLE.
+   //---
+   //--- MEASURED, on a fresh build (`[BUILD] TH3 src=445f304f2cbdcbf7 files=398 FULL
+   //--- ... srcfile=445f304f2cbdcbf7 match=yes`, 0 errors / 0 warnings), with the
+   //--- probe that stands in EventHandlers_Init for exactly this question:
+   //---
+   //---   [BUILD] ramp t0=3089438 t26=-2147483648 t52=-2147483648
+   //---                 t76=-2147483648 t100=-2147483648 mid100=52
+   //---
+   //--- `t0=3089438` IS BIO_CLR_CARD_TOP (R30 G36 B47), so the extraction and the
+   //--- packing are right and `BIO_CARD_MID_T` is the source's own 0.52 (`mid100`).
+   //--- Every sample with `f != 0` returns 0x80000000 = INT_MIN — the value an MQL4
+   //--- float->int conversion yields for a double it cannot represent. `t0` survives
+   //--- only because `f = 0.0` makes the whole term constant and the compiler folds it
+   //--- to an integer expression at compile time: the ONE difference between the
+   //--- working sample and the five broken ones is that a `double` factor is present
+   //--- at RUN time.
+   //---
+   //--- The old line mixed the two domains in a single expression — bitwise on an
+   //--- `int` (`ia & 0xFF`) added to a `double` product — and the arithmetic shift of
+   //--- a value the caller expects to be byte-sized is what the code generator got
+   //--- wrong. Nothing here changes the DESIGN: the same stops, the same knee, the
+   //--- same `MathRound` law (half away from zero) and the same byte packing. The
+   //--- channels are simply materialised as `int`s first, each interpolated as a
+   //--- `double`, rounded, and only THEN packed — so no bitwise operator ever sits
+   //--- inside a floating-point expression.
+   //--- Cost: three extra `int` locals and six extra casts, once per painted band
+   //--- (a handful of calls per frame - the ramp is memoised by the callers' read
+   //--- guards, not here).
+   //---
+   //--- The stops and the knee are read back at init (EventHandlers_Init's probe):
+   //--- t=0 must be cardTop, t=0.52 must be panel and t=1 must be foot, byte for byte.
    int ia = (int)a, ib = (int)b;
-   int r  = (int)MathRound((ia & 0xFF) + (((ib & 0xFF) - (ia & 0xFF)) * f));
-   int g  = (int)MathRound(((ia >> 8) & 0xFF) + ((((ib >> 8) & 0xFF) - ((ia >> 8) & 0xFF)) * f));
-   int bl = (int)MathRound(((ia >> 16) & 0xFF) + ((((ib >> 16) & 0xFF) - ((ia >> 16) & 0xFF)) * f));
+   int ar = ia & 0xFF, ag = (ia >> 8) & 0xFF, ab = (ia >> 16) & 0xFF;
+   int br = ib & 0xFF, bg = (ib >> 8) & 0xFF, bb = (ib >> 16) & 0xFF;
+   int r  = (int)MathRound((double)ar + ((double)br - (double)ar) * f);
+   int g  = (int)MathRound((double)ag + ((double)bg - (double)ag) * f);
+   int bl = (int)MathRound((double)ab + ((double)bb - (double)ab) * f);
    return (color)(r | (g << 8) | (bl << 16));
 }
 

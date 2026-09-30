@@ -82,6 +82,8 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
 6. A change to generated assets hashes the set before and after: untouched files
    byte-identical.
 7. The report names the file, the number and the measurement.
+8. `node tools/check-level-continuity.js` passes — a switch is a handoff, and that
+   gate is what keeps it one (§8, P-VIEW-06).
 
 ## 7. Size (one file, one owner)
 
@@ -90,3 +92,50 @@ A file over the ceiling never grows: touch it = split it by owner
 (state / names / layout / paint / router), same names, same output,
 orphan sweep included. A new file over the ceiling fails the gate.
 One function over the ceiling stays whole and never grows.
+
+## 8. The window, the level family, the switch
+
+- **The window owns nothing.** `inViewport` is a FLAG on a built level, never a mask
+  and never a `continue`. Every level the build produced is an object carrying the
+  owner's mask (F / L / `IsIndicatorHidden`) and is painted; MT4 clips the rest. A
+  fence that returns early is a level that can stay missing (P-VIEW-01/03).
+- **A pan is not a rebuild.** The cull window is not an input of the frame signature
+  (`frameCore`) and cannot drop a band. Scrolling costs zero indicator work
+  (P-VIEW-02), which is why the pre-warm is a consequence and not a feature: the band
+  just outside the view is already an object when the user scrolls to it.
+- **The historical bound is a view margin.** `g_highestHigh/Low` stops the ladder
+  `P_LEVEL_BOUND_OVERDRAW` (3) rungs PAST the extreme, never before it; the count stays
+  the mode's own `maxLevelsAbove/Below`, so the margin can only spend rungs the count
+  had left (P-LEVEL-BOUND-03).
+- **Cache layers, in order, and what may invalidate each:** geometry
+  (`PipelineGeometryKey`) → build → render (`applyRefreshFlags`). A user edit rides
+  `g_renderAllNeeded`; a mask flip rides the vis-only path; a still frame compares
+  strings and writes nothing.
+- **A level's NAME is its identity, and one path may delete:** the sweep that compares
+  the family against the list just built (P-LEVEL-FOREIGN-01/02). A timeframe switch is
+  a HANDOFF through that path, never a wipe-and-rebuild.
+- **One unit per chart.** Lite and Full paint the same object names, so two of them on
+  one chart means two writers per name (missing bands, a countdown re-created every
+  second, two owners on the card's inks). The second unit refuses to load and says so
+  (P-ARCH-03).
+- **A switch is a HANDOFF, and nothing outside this family may un-make it.** On a
+  reinit (TF switch, template re-apply, attach) the family already on the chart is
+  ADOPTED and re-priced IN PLACE: no `ClearAllLevels`, no staged rebuild, `stage=0` in
+  the census of the switch frame. The verdict has TWO witnesses and both stay: the
+  teardown's stamp (`SaveTopologyAdoptionStamp`) and the CHART itself
+  (`LevelFamilyObjectsOnChart` — a GlobalVariable that is missing is not a licence to
+  wipe; that missing case was the third report of this defect, P-VIEW-05). The pair
+  `probe=handoff preexist=` / `probe=adopt preexist= adopted=1` is the proof, a plain
+  `Print`, never gated, renamed or removed.
+- **No other surface may delete the family.** `ClearAllLevels` has exactly two callers
+  (the `shouldClearLevels` wipe and the levels-off branch); the reinit wipe stays fenced
+  behind `!g_adoptPreviousTopology`; `g_adoptPreviousTopology` has ONE writer. A panel,
+  label, manager, cache or new feature that adds a delete, an unfenced
+  `g_forceClearOnNextDraw` or a second writer changes this behaviour without editing
+  this file — which is why `node tools/check-level-continuity.js` runs in EVERY build
+  and fails on all six sites (P-VIEW-06). Changed anything anywhere? That gate is the
+  answer, and the runtime pair above is the number.
+- **Measure before you simplify here.** The one-line census
+  (`[P-VIEW] stage=census lines=… absent=… mask=min..max …`) is the arbiter: `absent=0`
+  with a uniform mask means every built level is on the chart, so a hole is a DELETION
+  or a second writer — never the paint.

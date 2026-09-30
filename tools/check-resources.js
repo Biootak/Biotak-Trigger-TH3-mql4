@@ -101,30 +101,39 @@ function audit(entryRel) {
   };
 }
 
-const entries = process.argv.length > 2 ? process.argv.slice(2) : DEFAULT_ENTRIES;
-let failed = false;
+function main() {
+  const entries = process.argv.length > 2 ? process.argv.slice(2) : DEFAULT_ENTRIES;
+  let failed = false;
 
-for (const e of entries) {
-  const r = audit(e);
-  if (r.error) {
-    console.log(`[FAIL] ${e} - ${r.error}`);
-    failed = true;
-    continue;
+  for (const e of entries) {
+    const r = audit(e);
+    if (r.error) {
+      console.log(`[FAIL] ${e} - ${r.error}`);
+      failed = true;
+      continue;
+    }
+    const ok = r.undeclared.length === 0 && r.missingOnDisk.length === 0;
+    console.log(
+      `[${ok ? 'PASS' : 'FAIL'}] ${e} - unit ${r.unitFiles} file(s), ` +
+        `${r.declared} declared, ${r.painted} painted`
+    );
+    for (const [n, f] of r.undeclared) {
+      console.log(`         painted but NOT #resource'd: ${n}   (${f})`);
+    }
+    for (const n of r.missingOnDisk) {
+      console.log(`         #resource'd but NOT on disk:  ${n}`);
+    }
+    if (!ok) failed = true;
   }
-  const ok = r.undeclared.length === 0 && r.missingOnDisk.length === 0;
-  console.log(
-    `[${ok ? 'PASS' : 'FAIL'}] ${e} - unit ${r.unitFiles} file(s), ` +
-      `${r.declared} declared, ${r.painted} painted`
-  );
-  for (const [n, f] of r.undeclared) {
-    console.log(`         painted but NOT #resource'd: ${n}   (${f})`);
-  }
-  for (const n of r.missingOnDisk) {
-    console.log(`         #resource'd but NOT on disk:  ${n}`);
-  }
-  if (!ok) failed = true;
+
+  console.log('');
+  console.log(failed ? 'RESOURCE GATE FAILED' : 'RESOURCE GATE PASSED');
+  process.exit(failed ? 1 : 0);
 }
 
-console.log('');
-console.log(failed ? 'RESOURCE GATE FAILED' : 'RESOURCE GATE PASSED');
-process.exit(failed ? 1 : 0);
+if (require.main === module) main();
+
+// One owner of "what files one compiling unit is". tools/gen-build-hash.js reads
+// the SAME walker, so the hash cannot cover a different set of files than the
+// gate does — a second walker would be a second unit definition.
+module.exports = { unitOf, audit, ROOT, ICONS, DEFAULT_ENTRIES };

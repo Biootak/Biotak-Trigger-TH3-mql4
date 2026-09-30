@@ -135,6 +135,10 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
     string mainObjName = StringFormat("%sATR_%s", objectPrefix, timeframeName);
     string stepsObjName = StringFormat("%sATR_Steps_%s", objectPrefix, timeframeName);
     string targetsObjName = StringFormat("%sATR_Targets_%s", objectPrefix, timeframeName);
+    // P-PERF-38g: these three are this pass's output (the per-TF ATR columns).
+    LblMark(mainObjName);
+    LblMark(stepsObjName);
+    if(inpShowATRTargets) LblMark(targetsObjName);
     if(!inpShowATRTargets && ObjectFind(0, targetsObjName) >= 0) {
         ObjectDelete(0, targetsObjName);
     }
@@ -250,15 +254,115 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
 //+------------------------------------------------------------------+
 //| Clear all labels to prevent ghosting or overlaps                |
 //+------------------------------------------------------------------+
+//+------------------------------------------------------------------+
+//| P-PERF-38g (2026-09-29): ONE PRODUCED-LIST SWEEP FOR THE `LBL_`    |
+//| NAMESPACE — the fix ClearAllLabels' own comment asked for.         |
+//|                                                                    |
+//| The bulk `ObjectsDeleteAll(prefix+"LBL_")` walked the WHOLE chart  |
+//| object list on every label pass, so every label was deleted and    |
+//| re-created on every pass: the 47 ms `clear=` in the relayout       |
+//| ledger, and the blink the user sees on a timeframe switch.         |
+//|                                                                    |
+//| Shape: the pass OPENS a window at the clear site, every label      |
+//| CREATOR records the name it just wrote (`LblMark`), and the window |
+//| CLOSES after the last display call (`LblSweepEnd`). The sweep then  |
+//| deletes exactly the names it wrote LAST pass and did not write now |
+//| — the per-timeframe rows of the previous TF, and nothing else.     |
+//|                                                                    |
+//| Two fences, both deliberate:                              |
+//|  * `LblMark` outside an open window is DROPPED, so a label built   |
+//|    by a path that is not this pass (the level render's pip labels, |
+//|    `CreatePipDistanceLabel`) can never enter either registry, and  |
+//|    is therefore never deleted by this sweep. Those keep their own  |
+//|    owner: the ladder sweep treats `<line>_Label` as produced.      |
+//|  * a nested `LblSweepBegin` (a display function that clears on its |
+//|    own way out) does NOT rotate again and does NOT drop the marks  |
+//|    already made this pass.                                        |
+//+------------------------------------------------------------------+
+string s_lblProducedNow[];
+string s_lblProducedPrev[];
+int    s_lblNowN  = 0;
+int    s_lblPrevN = 0;
+bool   s_lblPassOpen = false;
+// P-PERF-38g: the FIRST pass of an instance has no `prev` to diff against, so a
+// stale per-TF label left by a previous attach (a crash, a chart whose switch
+// never ran an OnDeinit) would survive forever. That one pass keeps the old
+// bulk delete, at the SAME point in the pass it always ran (the window opener,
+// before the displays), so the first frame is byte-identical to before and
+// every later pass is the sweep.
+bool   s_lblFirstPass = true;
+
+void LblMark(const string name) {
+    if(!s_lblPassOpen || StringLen(name) <= 0) return;
+    for(int i = 0; i < s_lblNowN; i++) if(s_lblProducedNow[i] == name) return;
+    int cap = ArraySize(s_lblProducedNow);
+    if(s_lblNowN >= cap) ArrayResize(s_lblProducedNow, s_lblNowN + 16);
+    s_lblProducedNow[s_lblNowN] = name;
+    s_lblNowN++;
+}
+
+void LblSweepBegin(const string objectPrefix) {
+    if(s_lblPassOpen) return;   // nested clear inside the same pass: keep the marks
+    if(s_lblFirstPass) {
+        s_lblFirstPass = false;
+        ObjectsDeleteAll(0, objectPrefix + "LBL_");
+    }
+    s_lblPrevN = s_lblNowN;
+    if(s_lblPrevN > ArraySize(s_lblProducedPrev)) ArrayResize(s_lblProducedPrev, s_lblPrevN);
+    for(int i = 0; i < s_lblPrevN; i++) s_lblProducedPrev[i] = s_lblProducedNow[i];
+    s_lblNowN = 0;
+    s_lblPassOpen = true;
+}
+
+// Deletes the names written LAST pass that this pass did not write. A name that
+// exists on the chart but was never produced by a pass is NOT this sweep's
+// business (see the fence above), and a name this pass produced but that the
+// chart does not hold yet costs one ObjectFind.
+void LblSweepEnd(const string objectPrefix) {
+    if(!s_lblPassOpen) return;
+    s_lblPassOpen = false;
+    string labelPrefix = objectPrefix + "LBL_";
+    int deleted = 0;
+    string deletedNames = "";
+    for(int i = 0; i < s_lblPrevN; i++) {
+        string nm = s_lblProducedPrev[i];
+        if(StringFind(nm, labelPrefix) != 0) continue;
+        bool producedNow = false;
+        for(int j = 0; j < s_lblNowN; j++) {
+            if(s_lblProducedNow[j] == nm) { producedNow = true; break; }
+        }
+        if(producedNow) continue;
+        if(ObjectFind(0, nm) < 0) continue;
+        // P-UI-21: a delete fires CHARTEVENT_OBJECT_DELETE, same suppression as
+        // the clear it replaces, so a label sweep never flags a level redraw.
+        g_suppressDeleteEvents = true;
+        if(ObjectDelete(0, nm)) {
+            deleted++;
+            if(deleted <= 4) deletedNames = deletedNames + " " + nm;
+        }
+        g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
+        g_suppressDeleteEvents = false;
+    }
+    s_lblPrevN = 0;
+    if(deleted > 0) Print("[W][PERF] labels sweep: produced=", s_lblNowN, " deleted=", deleted, " of", deletedNames);
+}
+
 void ClearAllLabels(const string objectPrefix) {
     // P-UI-21: suppress window — every bulk below deletes inpObjectPrefix*
     // names, and unsuppressed each fires CHARTEVENT_OBJECT_DELETE ->
     // CacheRemoveObject + g_redrawTHLevelsNeeded (a label clear must never
     // flag a full level redraw).
     g_suppressDeleteEvents = true;
-    // 1. Delete all labels with the standard LBL_ prefix via native bulk delete
-    string labelPrefix = objectPrefix + "LBL_";
-    ObjectsDeleteAll(0, labelPrefix);
+    // 1. P-PERF-38g: ARM THE SWEEP, DO NOT BULK DELETE.
+    //
+    // Was: `ObjectsDeleteAll(0, objectPrefix + "LBL_")` — a kernel walk of the
+    // whole chart object list on EVERY label pass, which is why every label
+    // blinked (deleted here, re-created by the displays below). The sweep that
+    // replaces it deletes only what the LAST pass produced and THIS pass did
+    // not, so a steady-state pass deletes nothing and a timeframe switch still
+    // loses the previous TF's rows — the exact behaviour the bulk delete was
+    // there for.
+    LblSweepBegin(objectPrefix);
 
     // P-PERF-38f: THE LEGACY NAMESPACES ARE THE MIGRATION'S JOB, AND ITS ALONE.
     //
@@ -310,6 +414,7 @@ void ClearAllLabels(const string objectPrefix) {
 // painted at another (the P-UI-30 trap, inside the card).
 bool CreateATRTradePiece(const string name, const string text, const color textColor,
                          const int fontSize, const int xPos, const int yPos) {
+    LblMark(name);   // P-PERF-38g: produced by this pass, even if every write below is skipped
     if(ObjectFind(0, name) < 0) {
         if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
     }
@@ -408,6 +513,7 @@ bool LiveCountdownPointInside(const int mx, const int my)
 //+------------------------------------------------------------------+
 bool CreateLivePriceCountdown(const string name)
 {
+   LblMark(name);   // P-PERF-38g: produced by this pass, even on the hidden/clean exits below
    s_cdDirty = true;   // the clean-skip below is the only path that clears it
    // Own switch only — never the ATR block's flags (that is the whole point).
    if(!LiveCountdownEnabled())
@@ -775,6 +881,7 @@ bool DisplayTradePlanTopRows(const string labelPrefix, const STradePlan &plan,
 bool CreateTRexPiece(const string name, const string text, const color textColor,
                      const int fontSize, const int xPos, const int yPos,
                      const string fontName = "") {
+    LblMark(name);   // P-PERF-38g: produced by this pass
     if(ObjectFind(0, name) < 0) {
         if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) return false;
     }
@@ -813,6 +920,20 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     string capName = labelPrefix + "TREX_Caption";   // RETIRED (P-LBL-06) - purge only
     string trName  = labelPrefix + "TREX_TR";
     string exName  = labelPrefix + "TREX_EX";
+    // P-PERF-38g: MARKED BEFORE THE P-PERF-53 CLEAN-SKIP BELOW, on purpose.
+    //
+    // The skip is the whole point of P-PERF-53 (a still 2 s pass costs reads),
+    // so it returns TRUE without calling a single CreateTRexPiece — and a mark
+    // placed at the create call would then count those three names as "not
+    // produced this pass" and the sweep would DELETE them, recreate them next
+    // pass, and delete them again: a permanent 3-object flicker at the exact
+    // triple this card owns (measured live: `labels sweep: produced=3
+    // deleted=3` once a second). A clean-skip PASS IS A PASS THAT OWNS THE
+    // NAMES — it decided the objects are already correct. That decision is
+    // where ownership is recorded, never the write.
+    LblMark(spName);
+    LblMark(trName);
+    LblMark(exName);
 
     // P-LBL-06 (2026-09-14, user request: "that Persian text should go"): the
     // green Persian caption row is RETIRED from the chart. The name is still
@@ -919,6 +1040,7 @@ void DisplayATRLabels(const string objectPrefix) {
     int sectionGap = inpSectionGap;
     
     string titleObjName = labelPrefix + "ATR_Title";
+    LblMark(titleObjName);   // P-PERF-38g
     if(ObjectFind(0, titleObjName) < 0) {
         ObjectCreate(0, titleObjName, OBJ_LABEL, 0, 0, 0);
         ObjectSetString(0, titleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text

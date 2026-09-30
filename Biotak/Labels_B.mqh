@@ -122,6 +122,13 @@ bool CreateTHLabel(const string objectPrefix, const string timeframeName, const 
     string mainObjName = objectPrefix + "TH_" + timeframeName;
     string stepsObjName = objectPrefix + "TH_Steps_" + timeframeName;
     string targetsObjName = objectPrefix + "TH_Targets_" + timeframeName;
+    // P-PERF-38g: the TH columns are PER-TIMEFRAME (ladder = GetTimeframeTH()),
+    // so their name set is not stable across a switch — they are the family the
+    // sweep exists for. Marked here, where the names are built, so the mark
+    // survives the guarded writes below.
+    LblMark(mainObjName);
+    LblMark(stepsObjName);
+    LblMark(targetsObjName);
     
     bool mainCreated = false;
     bool stepsCreated = false;
@@ -275,6 +282,7 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
     int sectionGap = inpSectionGap;
 
     string thTitleObjName = labelPrefix + "TH_Title";
+    LblMark(thTitleObjName);   // P-PERF-38g
     if(ObjectFind(0, thTitleObjName) < 0) {
         ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
         ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text
@@ -383,6 +391,7 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
     int sectionGap = inpSectionGap;
 
     string thTitleObjName = labelPrefix + "TH_Title";
+    LblMark(thTitleObjName);   // P-PERF-38g
     if(ObjectFind(0, thTitleObjName) < 0) {
         ObjectCreate(0, thTitleObjName, OBJ_LABEL, 0, 0, 0);
         ObjectSetString(0, thTitleObjName, OBJPROP_TEXT, ""); // Clear default "Label" text

@@ -273,6 +273,11 @@ void RedrawLabelsOnly() {
     p49trade = GetTickCount() - p49t; p49t = GetTickCount();
 
     RefreshLiveCountdown();   // own switch — survives the ATR labels being off
+    // P-PERF-38g: same window, same closer as the tick path (EventHandlers_Calc):
+    // a relayout re-asserts every label it still owns and deletes the rest —
+    // never the whole namespace. The `clear=` in the ledger below now measures
+    // the window opening, not a full-chart ObjectsDeleteAll walk.
+    LblSweepEnd(objectPrefix);
     g_modeLabelYOffset = g_currentLabelYOffset;
     RepositionAllOverlayLabels();
     ThrottledChartRedraw();

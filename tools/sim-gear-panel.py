@@ -215,6 +215,32 @@ def parse_slot_ids():
 SLOT, SLOT_NAME = parse_slot_ids()
 
 
+# ── P-BUILD-08: the version chip's text is the SOURCE HASH, not a typed "T2" ──
+# The chip used to be the sim's own literal `ver = "T2"` while the MQL read
+# TH3_BUILD_TAG — two typed strings that could drift apart and then both lie about
+# which build is on screen. The value is now READ from the generated header the
+# MQL itself compiles (Biotak/BuildHash.mqh), and a missing one is a hard stop: a
+# proof that cannot name the stamp must not draw a plausible one.
+BUILDHASH = os.path.join(ROOT, "Biotak", "BuildHash.mqh")
+
+
+def parse_build_hash():
+    try:
+        text = open(BUILDHASH, encoding="utf-8-sig", errors="replace").read()
+    except OSError:
+        raise SystemExit(
+            "sim-gear-panel: %s is missing - run `node tools/gen-build-hash.js`" % BUILDHASH
+        )
+    vals = dict(re.findall(r'#define\s+(TH3_SRC_\w+)\s+"([^"]*)"', text))
+    for k in ("TH3_SRC_HASH", "TH3_SRC_SHORT"):
+        if k not in vals:
+            raise SystemExit("sim-gear-panel: %s not defined in %s" % (k, BUILDHASH))
+    return vals["TH3_SRC_HASH"], vals["TH3_SRC_SHORT"]
+
+
+SRC_HASH, SRC_SHORT = parse_build_hash()
+
+
 def case_returns(body):
     """{DK_x: "expression"} out of a switch body, FALL-THROUGH LABELS INCLUDED.
 
@@ -664,7 +690,7 @@ def paint(L, notes, tab=TAB_ACTIVE):
           gx + PAD + (MARK_VIS - GLYPH) // 2, hy + MARK_Y + (MARK_VIS - GLYPH) // 2,
           GLYPH, GLYPH, Z_INK)
     htx = gx + PAD + MARK_VIS + 10
-    ver = "T2"
+    ver = SRC_SHORT   # P-BUILD-08: DrawStrip_GearB's `TH3_SRC_SHORT`, parsed not typed
     vw = 10 + mt4.text_w(ver, PT["ver"])
     ver_x = gx + gw - 16 - XBTN - 6 - vw
     c.text(htx, hy + 12, "Box Settings", INK, PT["title"], True, z=Z_TEXT)

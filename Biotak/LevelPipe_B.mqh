@@ -654,21 +654,94 @@ SPipelineResult ExecutePipeline(
     // frames instead of one ~8k-call freeze. buildStage 0 (or anything
     // unexpected) is the full legacy render — steady frames always take it.
     if(buildStage == BUILD_STAGE_LINES) {
-        RenderTriggerLines(lines, result.lineCount, config, true, false);
+        RenderTriggerLines(lines, result.lineCount, config, true, false, vpTop, vpBottom);
     } else if(buildStage == BUILD_STAGE_ZONES) {
-        RenderZones(zones, result.zoneCount, config);
+        RenderZones(zones, result.zoneCount, config, vpTop, vpBottom);
     } else if(buildStage == BUILD_STAGE_LABELS) {
-        RenderTriggerLines(lines, result.lineCount, config, false, true);
+        RenderTriggerLines(lines, result.lineCount, config, false, true, vpTop, vpBottom);
         // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
         CleanupSurplusPipeline(config, maxStep);
     } else {
-        RenderZones(zones, result.zoneCount, config);
-        RenderTriggerLines(lines, result.lineCount, config, true, true);
+        RenderZones(zones, result.zoneCount, config, vpTop, vpBottom);
+        RenderTriggerLines(lines, result.lineCount, config, true, true, vpTop, vpBottom);
 
         // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
         CleanupSurplusPipeline(config, maxStep);
     }
     
+    // ══════════════════════════════════════════════════════════════════════
+    // P-VIEW-04 (2026-09-29) — THE "MIDDLE BAND IS EMPTY" CENSUS, ONE LINE,
+    // ONE NUMBER PER STAGE. Reported by the user with a screenshot (EURUSD M15,
+    // price 1.139): the family was drawn from 1.15185 up to 1.17630 and two rungs
+    // at the bottom (1.11520 / 1.11250), while the whole band between them — nine
+    // rungs on the SAME pitch — was absent. A hole in the MIDDLE cannot be explained
+    // by a count limit at either end, so the loss is somewhere in the chain
+    //   ladder -> classified -> BuildZonesAndLines -> RenderTriggerLines -> object
+    // and this line says WHERE, once, with numbers:
+    //   lines=<built>  nearAbove/nearBelow = the closest built line to the centre on
+    //   each side (a build whose nearest above is 3 pitches away IS the hole, said
+    //   numerically), pitch=maxStep, span=[lo..hi] of the built list, then the two
+    //   object-level answers that separate the two remaining causes:
+    //     absent=<n>  the name is in `lines[]` but NO object holds it   -> deleted/
+    //                 name collision (a sweep, a duplicate logicalStep);
+    //     hidden=<n>  the object exists but its mask is not ALL_PERIODS -> a mask
+    //                 writer owns it (F / L / a per-TF rule).
+    // A still picture prints nothing: the guard is the shape itself, so this costs
+    // one string compare per rebuild and one line of log per SHAPE change.
+    {
+        static string s_lastViewCensus = "";
+        string shape = IntegerToString(result.lineCount) + ":" + IntegerToString(result.zoneCount) + ":" +
+                       DoubleToString(vpTop - vpBottom, GetCachedDigits());
+        if(shape != s_lastViewCensus)
+        {
+            s_lastViewCensus = shape;
+            double lo = 0.0, hi = 0.0;
+            double nearAbove = 0.0, nearBelow = 0.0;
+            int absent = 0;
+            long rawMask = 0, maskMin = 0, maskMax = 0;
+            for(int ci = 0; ci < result.lineCount; ci++)
+            {
+                double p = lines[ci].price;
+                if(lo == 0.0 || p < lo) lo = p;
+                if(p > hi) hi = p;
+                if(p > centerPrice && (nearAbove == 0.0 || p < nearAbove)) nearAbove = p;
+                if(p < centerPrice && (nearBelow == 0.0 || p > nearBelow)) nearBelow = p;
+                if(ObjectFind(0, lines[ci].name) < 0) absent++;
+                else
+                {
+                    // P-VIEW-04b: the mask is compared against OBJ_NO_PERIODS and the
+                    // RAW value is carried out with it. `!= OBJ_ALL_PERIODS` was a
+                    // WRONG test and it said `hidden=288` of 288 lines on a chart that
+                    // visibly paints its levels: MT4 stores "every timeframe" as a
+                    // 32-bit -1, while the constant's own value can be read as
+                    // 0xFFFFFFFF, so a signed-long compare calls every VISIBLE object
+                    // hidden. OBJ_NO_PERIODS is 0 on both sides of that edge.
+                    // P-VIEW-04c: NOT `hidden++`. The census must not depend on
+                    // OBJ_NO_PERIODS vs OBJ_ALL_PERIODS being distinct numbers in this
+                    // compiler: measured `rawMask=-1` on every level of a chart that
+                    // paints them, while the counter built on `== OBJ_NO_PERIODS`
+                    // called all of them hidden — i.e. the two constants share the
+                    // value -1 here and the comparison proves nothing. The FACT is the
+                    // range of the raw masks across the family: `maskMin=maskMax=-1`
+                    // means every level carries the same mask the painter wrote.
+                    long m = (long)ObjectGetInteger(0, lines[ci].name, OBJPROP_TIMEFRAMES);
+                    if(ci == 0) { rawMask = m; maskMin = m; maskMax = m; }
+                    if(m < maskMin) maskMin = m;
+                    if(m > maskMax) maskMax = m;
+                }
+            }
+            Print("[P-VIEW] stage=census lines=", result.lineCount, " zones=", result.zoneCount,
+                  " pitch=", DoubleToString(maxStep, GetCachedDigits()),
+                  " centre=", DoubleToString(centerPrice, GetCachedDigits()),
+                  " nearAbove=", DoubleToString(nearAbove, GetCachedDigits()),
+                  " nearBelow=", DoubleToString(nearBelow, GetCachedDigits()),
+                  " span=", DoubleToString(lo, GetCachedDigits()), "..", DoubleToString(hi, GetCachedDigits()),
+                  " absent=", absent, " mask=", (int)maskMin, "..", (int)maskMax,
+                  " win=", DoubleToString(vpBottom, GetCachedDigits()), "..", DoubleToString(vpTop, GetCachedDigits()),
+                  " stage=", buildStage);
+        }
+    }
+
     result.success = true;
     return result;
 }

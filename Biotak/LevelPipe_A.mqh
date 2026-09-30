@@ -246,6 +246,9 @@ int CalculateLevels(
     while(drawnAbove < safeMaxAbove && iterations < maxIterations) {
         iterations++;
         double price;
+        // P-LEVEL-BOUND-03: the step THIS iteration advances by, so the historical
+        // bound can be extended by whole rungs instead of a price guess.
+        double iterStep = stepSizes[0];
         if(stepMode == LEVEL_STEP_UNIFORM) {
             price = shiftedCenter + (stepSizes[0] * logicalStep);
         } else {
@@ -255,12 +258,15 @@ int CalculateLevels(
             int parity = (logicalStep - 1) % 2;
             int selectedIndex = (parity == 0) ? sequenceIndex : ((sequenceIndex + 1) % stepSizeCount);
             double dist = stepSizes[selectedIndex];
+            iterStep = dist;
             cumAbove += dist;
             price = shiftedCenter + cumAbove;
         }
         
-        // Price boundary check
-        if(boundByHistorical && maxPrice > 0 && price > maxPrice) break;
+        // Price boundary check — P-LEVEL-BOUND-03: the bound is extended by
+        // `P_LEVEL_BOUND_OVERDRAW` whole rungs so the chart shows where the next
+        // levels WOULD be, without touching where the historical extreme is.
+        if(boundByHistorical && maxPrice > 0 && price > maxPrice + P_LEVEL_BOUND_OVERDRAW * iterStep) break;
         
         levels[count].price = price;
         levels[count].logicalStep = logicalStep;
@@ -282,6 +288,7 @@ int CalculateLevels(
     while(drawnBelow < safeMaxBelow && iterations < maxIterations) {
         iterations++;
         double price;
+        double iterStep = stepSizes[0];
         if(stepMode == LEVEL_STEP_UNIFORM) {
             price = shiftedCenter - (stepSizes[0] * logicalStep);
         } else {
@@ -289,12 +296,13 @@ int CalculateLevels(
             int parity = (logicalStep - 1) % 2;
             int selectedIndex = (parity == 0) ? sequenceIndex : ((sequenceIndex + 1) % stepSizeCount);
             double dist = stepSizes[selectedIndex];
+            iterStep = dist;
             cumBelow += dist;
             price = shiftedCenter - cumBelow;
         }
         
-        // Price boundary check
-        if(boundByHistorical && minPrice > 0 && price < minPrice) break;
+        // Price boundary check — P-LEVEL-BOUND-03, same margin as the above side.
+        if(boundByHistorical && minPrice > 0 && price < minPrice - P_LEVEL_BOUND_OVERDRAW * iterStep) break;
         if(price <= 0) break;
         
         levels[count].price = price;
@@ -842,7 +850,9 @@ void SetPipelineZoneVisibility(const string zoneName, const bool visible)
 void RenderZones(
     const SZoneDefinition &zones[],
     const int zoneCount,
-    const SModeConfig &config)
+    const SModeConfig &config,
+    const double vpTop,
+    const double vpBottom)
 {
     // P-PERF-41: THE FAMILY SWITCH IS A MASK, NOT A DESTRUCTION.
     //
@@ -879,10 +889,26 @@ void RenderZones(
     }
 
     for(int i = 0; i < zoneCount; i++) {
-        if(!zones[i].inViewport) {
-            SetPipelineZoneVisibility(zones[i].name, false);
-            continue;
-        }
+        // P-VIEW-01 (2026-09-29) — THE CULL DECIDES PAINT, THE VIEWPORT NEVER OWNS
+        // VISIBILITY. It used to write `SetPipelineZoneVisibility(name,false)` here,
+        // i.e. the window HID the band — and a hidden object is only shown again by
+        // the frame that re-decides it. Measured: the cull window is allowed to lag
+        // the chart by P_P4_VP_HYSTERESIS_PCT 0.20 of the visible range
+        // (ExtDraw_A.mqh 105-125) and the window is a term of the geometry signature
+        // (EventHandlers_Calc.mqh 1329), so a band the price walked up to stayed
+        // HIDDEN until some other input forced a rebuild — the report «سطوح حذف
+        // میشه ولی دیگه نمیاد تا یک تکونی به چارت بدم». Now the band is asserted with
+        // the SAME mask the in-window path asserts (F/L alone own it, read-guarded by
+        // ApplyTfMaskGuarded: zero writes in steady state) and simply not painted this
+        // frame. MT4 draws an object it already holds at its own paint time, so the
+        // band is there BEFORE the user scrolls to it — the only allocation this
+        // costs is MT4's own clipping, not an indicator write.
+        // P-VIEW-03 (2026-09-29): the window no longer skips a band here either —
+        // see the same law and the same MEASURED band (EURUSD M15: 1.11520..1.15185
+        // missing between two drawn groups) at RenderTriggerLines below. A band that
+        // is only \"not painted this frame\" is a band that can stay unpainted forever,
+        // because nothing else re-decides it. The thin-zone guard below stays: it is
+        // re-decided by the same frame that sees the scale change.
 
         if(p4PxPerPrice > 0.0 &&
            (zones[i].renderTop - zones[i].renderBottom) * p4PxPerPrice < P_P4_MIN_ZONE_PX)
@@ -1231,7 +1257,9 @@ void RenderTriggerLines(
     const int lineCount,
     const SModeConfig &config,
     const bool makeLines,
-    const bool makeLabels)
+    const bool makeLabels,
+    const double vpTop,
+    const double vpBottom)
 {    double currentPrice = GetCurrentPriceForLabels();
 
     // P-UI-98f: the step-1 handle is picked by GEOMETRY once per render (the
@@ -1292,21 +1320,68 @@ void RenderTriggerLines(
         // the ONLY place the trigger overlay hides things — the trigger ZONES.
         // (The old Factor hideLineWhenTriggerOnly inversion is retired: every
         //  mode config leaves it false, and line visibility belongs to L alone.)
-        if(!lines[i].inViewport) {
-            // P-PERF-06: a staged family asserts only its own visibility — the
-            // other family was (or will be) culled by its own stage frame.
-            if(makeLines)  SetPipelineObjectTimeframesIfExists(lines[i].name, OBJ_NO_PERIODS);
-            if(makeLabels) SetPipelineObjectTimeframesIfExists(labelName, OBJ_NO_PERIODS);
-            continue;
-        }
+        // P-VIEW-01 (2026-09-29) — THE CULL DECIDES PAINT, THE VIEWPORT NEVER OWNS
+        // VISIBILITY. This branch used to write OBJ_NO_PERIODS on the line AND its
+        // label, i.e. the window HID them, and only the frame that re-evaluated
+        // `inViewport` could bring them back. Measured on this machine: the cull
+        // window is deliberately allowed to lag P_P4_VP_HYSTERESIS_PCT = 0.20 of the
+        // visible range (ExtDraw_A.mqh 105-125) while the geometry signature that
+        // decides whether a render runs AT ALL carries that same window
+        // (EventHandlers_Calc.mqh 1329-1330). So a level the price walked to could sit
+        // hidden through any number of frames — exactly the report «سطوح حذف میشه
+        // ولی دیگه نمیاد تا یک تکونی به چارت بدم» — and every window re-derivation
+        // flipped the mask on hundreds of objects in ONE frame, which is the flicker
+        // that carried the whole chart with it (the card and the countdown are
+        // re-created by the same rebuild).
+        //
+        // The mask is now the OWNER's (F / L / IsIndicatorHidden), asserted exactly as
+        // the in-window path asserts it and read-guarded in ApplyTfMaskGuarded — zero
+        // writes in steady state, one cache read per object — and this branch only
+        // skips the PAINT. The object keeps its price, so when the user scrolls to it
+        // MT4 draws it from its own state at its own paint time: nothing to wait for,
+        // nothing to flip, no cost on this side (that is the "قبل از کاربر" order).
+        long lineTf  = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+        long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+        // P-VIEW-03 (2026-09-29) — THE WINDOW IS NOT AN OWNER OF THE OBJECT, AND A
+        // FRAME THAT SKIPS A PAINT IS A LEVEL THAT CAN STAY MISSING.
+        //
+        // This is where an `if(!inView) { assert mask; continue; }` fence stood (and,
+        // before that, an `if(!inView) SetPipelineObjectTimeframesIfExists(...,
+        // OBJ_NO_PERIODS)`). Both shapes are the same defect with different clothes:
+        // they make the object's EXISTENCE depend on the moment the render happened
+        // to run, and nothing guarantees a later frame re-decides it. MEASURED in the
+        // user's own chart (2026-09-29, EURUSD M15, this build): the family above the
+        // live price was drawn from 1.15185 up to 1.17630 and two rungs at the bottom
+        // (1.11520 / 1.11250) were drawn, while the whole band around the price —
+        // 1.11520..1.15185, nine rungs on the same 41-pip pitch — was simply ABSENT.
+        // A hole in the MIDDLE cannot come from the level list (the ladder is built
+        // outward from the centre and is contiguous, and BuildZonesAndLines culls
+        // nothing — it only FLAGS `inViewport`), so the band existed in `lines[]` and
+        // was skipped here, with no later frame to bring it back after a scale change.
+        //
+        // The law this restores, and it is the same one the class already follows for
+        // zones and labels: THE WINDOW DECIDES NOTHING. Every level the build produced
+        // is asserted with the OWNER's mask (F / L / IsIndicatorHidden, read-guarded in
+        // ApplyTfMaskGuarded) and painted; MT4 clips what is off the chart itself, and
+        // that clipping costs this indicator nothing. "Painted but off-screen" is free;
+        // "not painted and back in view" is a hole.
+        //
+        // Cost, stated: the loop no longer skips, so a level outside the window now
+        // runs the same change-guarded `CreateOrUpdateHLine` the in-window ones run —
+        // a handful of property reads that write NOTHING when the object already holds
+        // those values (P-PERF-51's law), against a full level family (bounded by the
+        // ladder's own count, the same number the level list already carries). And it
+        // removes the reason for a pan to rebuild anything: with no window term in the
+        // frame signature (P-VIEW-02) a scroll now costs zero indicator work AND the
+        // picture is complete, which is the "قبل از کاربر" order the user asked for.
+        //
 
         // Use the individual line color instead of config.triggerColor
         if(makeLines) {
             bool isNew = CreateOrUpdateHLine(lines[i].name, lines[i].price,
                                               lineClr, lineStyle, lineWidth,
                                               lines[i].tooltip);
-            long lineTf = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
-            SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);
+            SetPipelineObjectTimeframesIfExists(lines[i].name, lineTf);   // P-VIEW-01: hoisted, one owner
 
             // Set mode-specific properties on new objects
             if(isNew) {
@@ -1349,8 +1424,7 @@ void RenderTriggerLines(
             CreatePipDistanceLabel(labelName, lines[i].price, pips,
                                    lines[i].isTrigger ? lblClr : lineClr,
                                    lines[i].labelText);
-            long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
-            SetPipelineObjectTimeframesIfExists(labelName, labelTf);
+            SetPipelineObjectTimeframesIfExists(labelName, labelTf);   // P-VIEW-01: hoisted, one owner
         }
     }
 }

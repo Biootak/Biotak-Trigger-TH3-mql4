@@ -135,27 +135,94 @@ void ClearTopologyAdoptionStamp()
 // BEFORE this file (entry lines 93 and 99), where MQL4 has no forward reference
 // for a global.
 
+//==============================================================================
+// P-VIEW-05 (2026-09-30) — THE CHART IS THE WITNESS; THE STAMP IS ONLY A CLAIM.
+//
+// The user's report, third time: «هنوز موقع تعویض تایم فریم سطوح حذف و رسم مجدد داره»
+// — on a timeframe switch the levels are deleted and drawn again from zero. The
+// wipe on that path has ONE author (`shouldClearLevels`), and it can only be true
+// on a freshly reloaded instance for one of two reasons: `g_forceClearOnNextDraw`
+// (raised by the frame when `!g_adoptPreviousTopology`) or a topology-signature
+// difference. Both reduce to the SAME fact: this function said NO.
+//
+// And it can say NO without a word. The old body opened with
+// `if(!GlobalVariableCheck(n)) return;` — a GlobalVariable that is not there (a
+// first attach, a stamp a removing teardown deleted, the terminal's own variable
+// store having been rewritten) returned with `adopt = false` and printed
+// NOTHING, because the warning below is in the OTHER branch. So a timeframe
+// switch could wipe ~900 objects with no line in the log naming it, which is
+// exactly the "who deletes my levels" question this project keeps re-opening.
+//
+// Two changes, both measured by the one line below:
+//
+//   1. THE OBJECTS THEMSELVES ARE THE SECOND WITNESS. "Adopt" means one thing -
+//      do NOT delete the family before re-asserting it - and its safety does not
+//      depend on the inputs matching, because every render sweeps what it did not
+//      produce (`CleanupSurplusPipeline`, `SweepForeignLadderObjects`, the label
+//      sweep). A chart that is still HOLDING the family is therefore proof
+//      enough: a wipe would delete objects that are about to be re-priced in
+//      place, which is precisely the delete+draw the user sees. `preexist > 0`,
+//      read off the chart, is that proof; the input fingerprint is kept as the
+//      second (cheaper) way to reach the same verdict.
+//   2. THE VERDICT IS ALWAYS PRINTED. One line per attach, so the next report is
+//      `preexist=577 adopted=1` or `preexist=0 adopted=0` instead of a wipe with
+//      no author. Cost: ONE chart-object walk per instance, at attach.
+//
+// The handoff side prints its own `probe=handoff` line from the teardown, so the
+// pair "what the chart held when we left" / "what it holds when we come back" is
+// two numbers in one log — which is also the only honest way to answer "does the
+// terminal delete our objects on a period change, or do we".
+//==============================================================================
+int LevelFamilyObjectsOnChart()
+{
+   // ONE walk of the chart's object list, ONCE per instance (attach and, with the
+   // handoff line, once per timeframe switch). The prefix is the timeframe-free
+   // level namespace, so the count is the level family and nothing else.
+   int total = ObjectsTotal(0, -1, -1);
+   if(total <= 0) return 0;
+   string prefix = GetLevelObjectPrefix();
+   if(StringLen(prefix) <= 0) return 0;
+   int found = 0;
+   for(int i = 0; i < total; i++)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(StringLen(nm) <= 0) continue;
+      if(StringFind(nm, prefix) != 0) continue;
+      found++;
+   }
+   return found;
+}
+
 void ResolveTopologyAdoption()
 {
    g_adoptPreviousTopology = false;
    string n = AdoptionStampName();
-   if(!GlobalVariableCheck(n)) return;                  // first attach / old build
-   int stored = (int)GlobalVariableGet(n);
+   bool haveStamp = GlobalVariableCheck(n);
+   int stored = haveStamp ? (int)GlobalVariableGet(n) : 0;
    int live = AdoptionFingerprint();
-   g_adoptPreviousTopology = (stored == live);
-   if(g_adoptPreviousTopology)
-      _LOG_GATE_I Print("[I][GEN] P-PERF-38d: level topology adopted from the previous "
-                        "instance - timeframe switch updates in place (no wipe, no rebuild)");
-   else
-      // P-PERF-38e: a mismatch here IS the "levels deleted and redrawn on every
-      // timeframe switch" report, so it names its own numbers instead of leaving
-      // a wipe with no author. The diverging term is one of: step mode, max
-      // levels, start-point type (custom-price placement that did not restore),
-      // LS-first, harmonic pair. Logged once per instance.
-      _LOG_GATE_W Print("[W][GEN] P-PERF-38e: topology NOT adopted (stored fp=", stored,
+   bool stampOk = (haveStamp && stored == live);
+   // The chart's own answer, independent of every GlobalVariable above.
+   int preexist = LevelFamilyObjectsOnChart();
+   // The chart-truth witness is used for the branch the report is about: the
+   // levels are SHOWN and the indicator is not hidden, so "the family is on the
+   // chart" can only mean "do not delete it". The hidden/levels-off states keep
+   // their previous (stamp-only) verdict: they own their objects through masks and
+   // an explicit clear, and this probe has no business rewriting that path.
+   bool familyHere = (preexist > 0 && inpShowTHLevels && !IsIndicatorHidden());
+   g_adoptPreviousTopology = (stampOk || familyHere);
+   // P-PERF-38e: a stamp that is PRESENT and mismatched still names its terms —
+   // that is a genuine input change (mode, max levels, start point, LS-first,
+   // harmonic pair) and the wipe is the correct answer for it.
+   if(haveStamp && !stampOk)
+      _LOG_GATE_W Print("[W][GEN] P-PERF-38e: topology stamp mismatch (stored fp=", stored,
                         " live fp=", live, " mode=", (int)GetCurrentStepMode(),
                         " maxLv=", inpMaxLevels, " sp=", (int)g_thStartPointType,
-                        " lsFirst=", (inpLSFirst ? 1 : 0), ") - wiping and rebuilding");
+                        " lsFirst=", (inpLSFirst ? 1 : 0), ")");
+   // UNGATED on purpose: this line is the author of the wipe, or the proof there
+   // was none. See the block comment above.
+   Print("[P-VIEW] probe=adopt stamp=", (haveStamp ? 1 : 0), " stored=", stored,
+         " live=", live, " preexist=", preexist, " adopted=", (g_adoptPreviousTopology ? 1 : 0),
+         " total=", ObjectsTotal(0, -1, -1));
 }
 
 //==============================================================================
@@ -259,7 +326,73 @@ int CustomPriceResolveSource(double &priceOut, bool &overrideFlagOut)
     return CPSRC_NONE;
 }
 
+//+------------------------------------------------------------------+
+//| P-ARCH-03 (2026-09-29) — TWO BUILDS, ONE CHART, ONE SET OF NAMES.|
+//|                                                                  |
+//| Lite is Full minus features, NOT a differently named family:     |
+//| both units paint the SAME object names (that is what makes a     |
+//| switch between them keep the chart). Two of them on one chart is  |
+//| therefore two writers per name — one deletes what the other drew, |
+//| the countdown is re-created twice a second, the TRex card's inks  |
+//| have two owners, and a whole price band can stay missing while    |
+//| the other half is drawn correctly. That is exactly the report     |
+//| this session chased: «سطوح حذف میشه ولی دیگه نمیاد» + «ثانیه شمار  |
+//| هی حذف و رسم میشه» + «رنگ آبی TR عوض میشه» + the empty band in   |
+//| the user's screenshot — ALL ONE CAUSE, and the user FOUND it by   |
+//| removing the Lite unit from the chart. MEASURED, from the         |
+//| terminal's own log (EURUSD,M15):                                  |
+//|   23:23:44.792  BiotakProject\Biotak Trigger TH3 Lite  loaded     |
+//|   23:23:44.875  BiotakProject\Biotak Trigger TH3       loaded     |
+//|                                                                  |
+//| The oracle is the CHART's own list, never a global variable and   |
+//| never a marker object: it cannot go stale, it cannot survive a    |
+//| crash, and it is the same list the Navigator shows. A unit that   |
+//| finds a second one REFUSES to initialise, so the chart says so    |
+//| instead of quietly painting a wrong picture.                      |
+//|                                                                  |
+//| Cost: one chart enumeration at init only (no per-frame work).     |
+//+------------------------------------------------------------------+
+bool TH3SiblingUnitOnChart()
+{
+   string mine = "Biotak Trigger TH3";
+   #ifdef BUILD_LITE
+      mine = mine + " Lite";
+   #endif
+   int total = ChartIndicatorsTotal(0, 0);
+   int th3 = 0, other = 0;
+   string names = "";
+   int mineLen = StringLen(mine);
+   for(int i = 0; i < total; i++)
+   {
+      string nm = ChartIndicatorName(0, 0, i);
+      if(nm == "") continue;
+      if(StringFind(nm, "Biotak Trigger TH3") < 0) continue;   // not our family
+      th3++;
+      if(names != "") names += " + ";
+      names += nm;
+      // A DIFFERENT UNIT is a name that does not end with ours. The folder prefix
+      // (`BiotakProject\`) is not part of the identity, the tail is.
+      if(StringLen(nm) < mineLen || StringSubstr(nm, StringLen(nm) - mineLen) != mine) other++;
+   }
+   // `other > 0`: a sibling of the other unit (or the same-name file from another
+   // folder) is attached. `th3 > 1`: two entries that BOTH spell our own name —
+   // that is two attachments of one unit and the same interference.
+   if(other > 0 || th3 > 1)
+   {
+      Print("[E][ARCH] P-ARCH-03: ", th3, " builds of this indicator on ONE chart: ", names,
+            " — they paint the SAME object names, so each one deletes what the other drew "
+            "(missing price bands, a countdown re-created every second, two writers on the "
+            "TRex card's colours). This unit will not load. Remove all but ONE and re-add it.");
+      return true;
+   }
+   return false;
+}
+
 int OnInitHandler() {
+    // P-ARCH-03: the one-chart-one-unit rule lands before ANY observable work — before
+    // the legacy sweep, before the settings seed, before a single object. A refused
+    // unit must not have touched the chart it refuses to share.
+    if(TH3SiblingUnitOnChart()) return INIT_FAILED;
     // P-PERF-38c: the one-time legacy sweep must land before the first render, so
     // a chart drawn by an older build cannot blend two naming schemes.
     MigrateTimeframeNamedObjects();
@@ -268,29 +401,22 @@ int OnInitHandler() {
     // Seed runtime settings from the real MT4 Inputs-dialog values FIRST:
     // every inpX read from here on is the runtime copy (see RuntimeSettings.mqh).
     RuntimeSettingsInit();
-    //--- P-UI-134 (2026-09-29) — THE TAG ALONE COULD NOT ANSWER "IS THIS CHART
-    //--- RUNNING THE EX4 I JUST BUILT?" `TH3_BUILD_TAG` is a hand-edited string
-    //--- ("T2") and stayed "T2" across every build of 09-29, so a chart still
-    //--- holding an ex4 from hours ago printed the same line as the fresh one —
-    //--- measured: the tab track read -16924895 (0xFEFDBF21, cyan) on a chart
-    //--- whose ex4 predated the P-DRAW-89 tone fix, while the same tree computes
-    //--- 2892316 = RGB(28,34,44). The compile stamp is the fact: the compiler
-    //--- bakes `__DATETIME__` into the ex4, so two builds differ here even when
-    //--- the source is unchanged (`__TIME__` is NOT defined by this MQL4 compiler —
-    //--- error 256, measured; `__DATETIME__` is). Match this line against the
-    //--- ex4's own mtime; if the ex4 is newer, the chart is stale (remove & re-add).
-    //--- P-UI-134b (2026-09-29) — THE LINE MUST NAME THE CODE, NOT ONLY THE CLOCK.
-    //--- `__DATETIME__` answers "when was this compiled", and a compile that reads a
-    //--- STALE `DrawStrip.mqh` answers "now" while shipping old strip code: measured
-    //--- on the 19:02:42 ex4, whose `[BUILD]` line carried the fresh stamp AND whose
-    //--- TABCENSUS printed `bgcolor=-16924895 tone=-16924895`, a value the current
-    //--- `StrapBodyTone` cannot produce (its whole output space is R 18-29, G 22-35,
-    //--- B 29-46). These two numbers are READ OUT OF THE COMPILED FUNCTIONS, at the
-    //--- arguments the tab track itself asks for: in the fixed code
-    //--- `StrapBodyTone(2, 96, 314)` is 2892316 = RGB(28,34,44) and `plateFill` is
-    //--- 2432023; the retired P-DRAW-89 pair answered -16924895 = 0xFEFDBF21 (the
-    //--- chart background) instead. One line, so a stale compile is visible at attach
-    //--- without opening a single panel.
+    //--- P-BUILD-08 (2026-09-29, supersedes P-UI-134/134b/134c) — THE LINE IS THE
+    //--- CODE, BEFORE ANY CLOCK OR TAG CAN LIE ABOUT IT.
+    //--- The old tag was a hand-typed word ("T2") that stayed "T2" across every
+    //--- build of 09-29, so a chart holding an hours-old ex4 printed the same line
+    //--- as the fresh one — measured: the tab track read -16924895 (0xFEFDBF21) on
+    //--- an ex4 that predated the P-DRAW-89 tone fix while this tree computes
+    //--- 2892316 = RGB(28,34,44). `TH3_BUILD_TAG` is now `TH3_SRC_HASH`, a SHA-256
+    //--- over the bytes this unit compiles (Biotak/BuildHash.mqh, generated by the
+    //--- build), so the stamp changes when and only when the code does; `srcfile=`
+    //--- prints the hash the last build wrote beside this terminal and `match=NO`
+    //--- is a chart running an older ex4, said out loud instead of inferred.
+    //--- `__DATETIME__` answers "when was this compiled" and is kept as the clock;
+    //--- it cannot answer "which code" — a compile fed a stale DrawStrip.mqh
+    //--- answers "now" (measured on the 19:02:42 ex4, whose TABCENSUS printed a
+    //--- tone the current StrapBodyTone cannot produce: its whole output space is
+    //--- R 18-29, G 22-35, B 29-46).
 #ifndef BUILD_LITE
     // P-BUILD-01: the strip is a Full surface, so the Lite unit has neither the
     // names nor the functions — the probe lives where the strip does (compile error
@@ -310,16 +436,45 @@ int OnInitHandler() {
     int probePan  = (int)BIO_CLR_PANEL;
     int probeFoot = (int)BIO_CLR_FOOT;
     int probeCard = (int)BIO_CLR_CARD;
+    //--- P-BUILD-10: the three INKS the report names, read out of the runtime copies
+    //--- the card and the countdown actually paint with. clrBlue is 255 (0x0000FF) and
+    //--- clrRed is 255<<0... `tr=255` is the shipped bold blue the user asked for; any
+    //--- other number here is the ink the label will wear, said out loud at attach.
+    int probeTR   = (int)g_atrTradeTRColor;
+    int probeEX   = (int)g_atrTradeExColor;
+    int probeCD   = (int)g_countdownColor;
 #endif
 #ifdef BUILD_LITE
-    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " LITE src ",
-          TimeToString(__DATETIME__, TIME_DATE|TIME_SECONDS));
-#else
-    Print("[BUILD] TH3 ", TH3_BUILD_TAG, " FULL src ",
+    Print("[BUILD] TH3 src=", TH3_BUILD_TAG, " files=", TH3_SRC_FILES, " LITE compiled=",
           TimeToString(__DATETIME__, TIME_DATE|TIME_SECONDS),
+          TH3SourceStampTail());
+#else
+    //--- the probe numbers stay: they are READ OUT OF THE COMPILED FUNCTIONS at the
+    //--- arguments the tab track itself asks for, so a compile that shipped stale
+    //--- strip code under a fresh stamp still shows it here —
+    //--- StrapBodyTone(2,96,314)=2892316 = RGB(28,34,44), plateFill=2432023, and
+    //--- the five stop/ramp values name WHICH input drifted.
+    Print("[BUILD] TH3 src=", TH3_BUILD_TAG, " files=", TH3_SRC_FILES, " FULL compiled=",
+          TimeToString(__DATETIME__, TIME_DATE|TIME_SECONDS),
+          TH3SourceStampTail(),
           " tracktone=", probeTone, " plateFill=", probeFill,
           " rampAt159=", probeMid, " cardTop=", probeTop, " panel=", probePan,
-          " foot=", probeFoot, " card=", probeCard);
+          " foot=", probeFoot, " card=", probeCard,
+          " tr=", probeTR, " ex=", probeEX, " cd=", probeCD);
+    //--- P-BUILD-09 (2026-09-29) — THE RAMP, SAMPLED. Measured with the stamp above:
+    //--- `rampAt159=2138660689` = 0x7F795F51 and `tracktone=-16924895` = 0xFEFDBF21
+    //--- both carry a NON-ZERO alpha byte, which `return (color)(r | (g << 8) |
+    //--- (bl << 16))` cannot produce from three byte-sized channels (ConstantsAndEnums
+    //--- 1141). The stops themselves are correct in the same run (cardTop=3089438 =
+    //--- C'30,36,47', panel=2432023 = C'23,28,37', foot=1906194 = C'18,22,29'), so the
+    //--- defect is in the ramp's own arithmetic — and a value nobody measured cannot
+    //--- be fixed. These seven numbers are that measurement: four points ON the stops
+    //--- must come back as the stop itself (t=0 -> cardTop, t=0.52 -> panel,
+    //--- t=1 -> foot) and `mid100` must read 52 (BIO_CARD_MID_T x 100).
+    Print("[BUILD] ramp t0=", (int)BioCardTone(0.0),
+          " t26=", (int)BioCardTone(0.26), " t52=", (int)BioCardTone(0.52),
+          " t76=", (int)BioCardTone(0.76), " t100=", (int)BioCardTone(1.0),
+          " mid100=", (int)(BIO_CARD_MID_T * 100.0));
 #endif
     InitializeGlobalCache();
     LoggerSetLevel(inpLogLevel);

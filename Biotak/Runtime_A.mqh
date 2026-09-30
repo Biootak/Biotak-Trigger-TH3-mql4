@@ -1282,6 +1282,25 @@ void RuntimeSettingsLoadOverrides()
    // [03] live countdown tag — new keys, no legacy layout to upgrade from
    if(GlobalVariableCheck(p + "CD"))  g_showLiveCountdown = (GlobalVariableGet(p + "CD") > 0.5);
    if(GlobalVariableCheck(p + "CDC")) g_countdownColor = (color)(int)GlobalVariableGet(p + "CDC");
+   //--- P-BUILD-10 (2026-09-29) — A STORED COLOUR MUST BE A COLOUR, AND THE CARD'S
+   //--- OWN FACTORY INK IS THE FALLBACK. The five card inks and the countdown colour
+   //--- are read straight out of the GV file with no test: a `color` is UNSIGNED here,
+   //--- so the `(color)(int)...` cast keeps -1 (clrNONE) and every widened junk value
+   //--- as a legitimate-looking number, and MT4 paints a label it cannot read in the
+   //--- terminal's own text grey — measured in the user's own screenshot: the `TR`
+   //--- half of the wordmark went grey-blue while `ex` stayed red, i.e. the ink was
+   //--- not the caller's. The user's order for this surface is explicit (2026-09-29:
+   //--- «رنگ اصلی tr ابی پررنگ باید باشه»), so the rejection lands on the SHIPPED
+   //--- default — clrBlue for `TR` — and never on a blend or the chart's own colour.
+   //--- Scope: exactly the six inks the report touches (the card's five + the
+   //--- countdown); the zone/TH3 colours keep their own paths untouched.
+   //--- Cost: six compares on a path that runs once, at init.
+   if(!BioColorIsValid(g_atrTradeTRColor))     g_atrTradeTRColor = clrBlue;       // the bold blue `TR`
+   if(!BioColorIsValid(g_atrTradeExColor))     g_atrTradeExColor = clrRed;
+   if(!BioColorIsValid(g_atrTradeHunterColor)) g_atrTradeHunterColor = clrRed;
+   if(!BioColorIsValid(g_atrTradeRowColor))    g_atrTradeRowColor = clrBlue;
+   if(!BioColorIsValid(g_atrTradeSpreadColor)) g_atrTradeSpreadColor = clrBlack;
+   if(!BioColorIsValid(g_countdownColor))      g_countdownColor = clrRed;
    if(GlobalVariableCheck(p + "CDS")) g_countdownFontSize = ClampSettingInt((int)GlobalVariableGet(p + "CDS"), 0, 24);
    if(GlobalVariableCheck(p + "CDG")) g_countdownGapPx = ClampSettingInt((int)GlobalVariableGet(p + "CDG"), 0, 40);
    if(GlobalVariableCheck(p + "TH"))  g_showTHLabels = (GlobalVariableGet(p + "TH") > 0.5);

@@ -98,6 +98,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile 
 Get-ChildItem tests\*.mq4 | ForEach-Object { powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile $_.FullName }
 node tools/submenu_geometry_check.js
 node tools/check-resources.js
+node tools/check-level-continuity.js
 python tools/check-gear-panel.py
 ```
 
@@ -136,9 +137,15 @@ What the output now guarantees, and why each line exists:
   object is created, the property written, MT4 paints nothing. It shipped a panel
   with no plate, no foot skin and no glyphs on 2026-09-29, and the compiler named
   nothing. `tools/check-resources.js` is the gate; run it by hand after touching any
-  `::Files\Icons\` string.
-- **`[PASS] gear panel gate`** — the four `Box Settings` tabs are re-rendered
-  offline from the MQL's own literals (`tools/sim-gear-panel.py`) and every tab's
+  `::Files\Icons\` string.- **`[PASS] level continuity gate`** — the six sites that make a timeframe switch a
+  HANDOFF are still the six in the contract (§8, P-VIEW-06): the stamp, the chart
+  witness, the two ungated probe lines, the two declared `ClearAllLevels` callers, the
+  ONE writer of `g_adoptPreviousTopology`, and the fence on the reinit wipe. A change
+  made anywhere ELSE that would make the switch a wipe-and-rebuild again fails the
+  build here, at the name, before the terminal ever sees it. `tools/check-level-continuity.js`
+  is the gate; run it by hand after touching any deinit branch, wipe site or
+  `g_forceClearOnNextDraw` writer.
+- **`[PASS] gear panel gate`** — the four `Box Settings` tabs are re-rendered offline from the MQL's own literals (`tools/sim-gear-panel.py`) and every tab's
   height must land on the cards' law `56 + n*42 + 48` for `n` in 1..10, or the
   plate silently falls out of the one-baked-card branch into the composed W body.
   This gate is what found the 6px double count (`DSTRIP_GEAR_AIR` on top of a

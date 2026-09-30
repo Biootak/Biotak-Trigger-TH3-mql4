@@ -609,9 +609,14 @@ bool DrawStripGearHeadPaint()
     //--- text (10 + the advance at pt 6), a 6px gap before the X (the fixed 46x22
     //--- gold chip stood 30px wider than any number it holds).
     //--- P-DRAW-73: it carries a VERSION. It wore `(int)s_dsKind`, so a rectangle
-    //--- read "11" — a number the user cannot act on or quote (J-02). The build tag
-    //--- is the same string the log prints as [BUILD]: screen and log, one voice.
-    string ver = TH3_BUILD_TAG;
+    //--- read "11" — a number the user cannot act on or quote (J-02).
+    //--- P-BUILD-08: the OLD tag here was a hand-typed word ("T2") that did not
+    //--- change when the code did, so two different ex4s showed the same chip. The
+    //--- chip now shows the SHORT form of the SAME source hash the log prints as
+    //--- [BUILD] src= (Biotak/BuildHash.mqh) — screen and log, one voice, and it
+    //--- moves the moment any compiled byte moves. 8 chars, not 16: the chip is
+    //--- 16px high and stands in a 312px head, and the log carries the full hash.
+    string ver = TH3_SRC_SHORT;
    int vw = 10 + PnlTextW(ver, 6);
    //--- P-DRAW-80: the right column, on the cards' own chain (BiotakPanels
    //--- 6749-6755/6857): ver left = cardW-16-26-6-vw, and the close sits

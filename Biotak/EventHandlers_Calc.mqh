@@ -309,6 +309,15 @@ void OnDeinitHandler(const int reason) {
         // fresh instance's first pass sees an empty stored signature, takes the
         // topology-changed branch, and wipes the family it just kept.
         SaveTopologyAdoptionStamp();
+        // P-VIEW-05: the OTHER side of the handshake, ungated. `preexist` here is
+        // what the chart still holds the instant we leave; the next instance's
+        // `probe=adopt preexist=` is what it holds when we come back. Equal numbers
+        // = the family survived the reload (so any wipe is OURS); 577 -> 0 = the
+        // terminal deleted it during the unload (so no adoption can be right and
+        // the rebuild cost, not the wipe, is the thing to fix). One walk, once per
+        // switch, and it is the number this whole report has been missing.
+        Print("[P-VIEW] probe=handoff reason=", reason, " fp=", AdoptionFingerprint(),
+              " preexist=", LevelFamilyObjectsOnChart(), " total=", ObjectsTotal(0, -1, -1));
         DEBUG_PRINTF2("OnDeinit (reason=", reason, " - level family KEPT for in-place update)");
     }
     else
@@ -1092,6 +1101,36 @@ void RedrawAllObjects(bool force_redraw=false)
         // CRITICAL: Reset stacking offsets and clear old labels for clean layout
         g_currentLabelYOffset = 0;  // Reset top label stacking offset
         g_currentLabelYOffsetBottom = 0;  // Reset bottom label stacking offset
+        // ══════════════════════════════════════════════════════════════════
+        // P-PERF-38e (2026-09-29) — THE LABEL FAMILY, MEASURED, AND WHY THE CLEAR
+        // BELOW IS **KEPT** (this is the note that stops the next reader from
+        // writing the one-line "optimisation" I wrote and reverted in this session).
+        //
+        // MEASURED on a real timeframe switch (H1 -> M15, 23:56:26.726 `uninit
+        // reason 3` -> .742 `initialized`): the LEVEL family no longer blinks — the
+        // census prints `lines=288 zones=289 ... absent=0` 17 ms later, with no
+        // `P-LEVEL-FOREIGN` sweep and no force-clear, because the adoption stamp did
+        // its job. The labels are the visible remainder, and their cost is priced in
+        // the same log: `[W][PERF] labels relayout: clear=47ms atr=0ms th=0ms
+        // trade=0ms tail=0ms` — 100% of the relayout is this one clear.
+        //
+        // So the tempting edit is `if(!g_adoptPreviousTopology) ClearAllLabels(...)`,
+        // and it is WRONG, for one reason that has to be written down: this call is a
+        // BULK DELETE OF THE WHOLE `LBL_` NAMESPACE, and that namespace is not only
+        // the level family's pip labels. The TH columns and the ATR block are
+        // PER-TIMEFRAME (their ladder is `GetTimeframeTH()`), so on a switch their
+        // NEW name set is not a superset of the old one — a skipped clear leaves the
+        // previous timeframe's rows on the chart as GHOSTS that no later frame
+        // re-decides, which is strictly worse than a blink (Touch rule 4: degrade to
+        // the previous look, never to a leftover).
+        //
+        // The fix is therefore a FEATURE, not a line, and it is the same shape the
+        // ladder already has: ONE produced-list sweep for the label namespace — the
+        // pass records every `LBL_` name it wrote, and the sweep deletes exactly the
+        // names it did not (the ladder's `SweepForeignLadderObjects` already treats
+        // `<line>_Label` as produced, so half of that mechanism exists). Only then may
+        // the clear go, and the ledger to prove it is the line above: `clear=` must
+        // fall to 0 ms on a switch while `atr`/`th`/`trade` stay put.
         ClearAllLabels(objectPrefix);
 
         TH3_PROF_START(Labels);
@@ -1108,6 +1147,10 @@ void RedrawAllObjects(bool force_redraw=false)
         // Own layer: repaint AFTER the clear so switching the ATR labels off
         // never removes the countdown (2026-09-11).
         RefreshLiveCountdown();
+        // P-PERF-38g: CLOSE THE PRODUCED-LIST WINDOW. Everything between the
+        // ClearAllLabels above and this line is "this pass's output"; the sweep
+        // deletes only what the previous pass produced and this one did not.
+        LblSweepEnd(objectPrefix);
         TH3_PROF_END(Labels);
 
         if(!g_calculatedOnce && inpShowTHLevels) g_redrawTHLevelsNeeded = true;
@@ -1326,8 +1369,24 @@ void RedrawAllObjects(bool force_redraw=false)
                           // level. A drag that changed F must never read as the same
                           // picture (the P-UI-52 trap with a new seat).
                           DoubleToString(StepOverrideFactor(), 6) + "|" +
-                          DoubleToString(vpTop, s_cachedDigits) + "|" +
-                          DoubleToString(vpBottom, s_cachedDigits) + "|" +
+                          // P-VIEW-02 (2026-09-29) — THE WINDOW IS NOT GEOMETRY, SO A
+                          // PAN IS NOT A REBUILD. `vpTop|vpBottom` stood here and they
+                          // are the cull window, which re-derives whenever the chart's
+                          // visible range moves by P_P4_VP_HYSTERESIS_PCT (ExtDraw_A
+                          // 105-125) — i.e. on a plain scroll or a live scale drift, with
+                          // NO level geometry changing. Measured: one such re-derivation
+                          // is a full family rebuild — ~300 levels re-derived, every line
+                          // and label mask re-asserted, and ClearAllLabels() deleting and
+                          // re-creating EVERY label on the chart, the trade card and the
+                          // countdown included. That is the reported «همه چیز فیلکر میزنه»:
+                          // the levels, the countdown and the TRex card blink together,
+                          // because one window term dragged the whole picture through a
+                          // delete-and-recreate pass. The cull is now decided PER FRAME
+                          // in the render (P-VIEW-01: RenderTriggerLines/RenderZones take
+                          // the window and never let it write a mask), so the picture is a
+                          // pure function of the level geometry again — which is what this
+                          // signature was for. Cost of the fix: two DoubleToString calls
+                          // and two compares gone; steady frames untouched.
                           IntegerToString(IsIndicatorHidden() ? 1 : 0) +
                           IntegerToString(IsTriggerLevelsEnabled() ? 1 : 0) +
                           IntegerToString(g_customPriceLineDragging ? 1 : 0) +

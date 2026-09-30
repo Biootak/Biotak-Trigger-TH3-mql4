@@ -771,6 +771,137 @@ function Sync-IconsToTerminal {
     }
 }
 
+function Update-BuildHash {
+    #--- P-BUILD-08: ONE SOURCE IDENTITY FOR EVERY STAMP THE PANEL AND LOG PRINT.
+    #--- The stamps used to be hand-typed: `TH3_BUILD_TAG "T2"` and
+    #--- `INDICATOR_BUILD_TAG "D4m-native 2026-09-20"`. Neither changes when the
+    #--- code changes, so every build of 2026-09-29 printed the SAME [BUILD] line
+    #--- and a chart running an hours-old ex4 was indistinguishable from a fresh
+    #--- one. tools/gen-build-hash.js writes a SHA-256 over the bytes this unit
+    #--- compiles (entries + transitive includes + embedded rasters) into
+    #--- Biotak\BuildHash.mqh, which the MQL prints. The build cannot emit a stamp
+    #--- it cannot justify, so a failure here stops the build instead of shipping
+    #--- a banner with a stale word in it.
+    $gen = Join-Path $SCRIPT_ROOT "tools\gen-build-hash.js"
+    if (-not (Test-Path $gen)) {
+        Write-Host "  ERROR: tools\gen-build-hash.js not found - no truthful build stamp is possible." -ForegroundColor Red
+        return $null
+    }
+    if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+        Write-Host "  ERROR: node is required to generate Biotak\BuildHash.mqh." -ForegroundColor Red
+        return $null
+    }
+    $line = [string]((& node $gen) | Select-Object -Last 1)
+    if ($LASTEXITCODE -ne 0 -or -not $line) {
+        Write-Host "  ERROR: build-hash generation failed." -ForegroundColor Red
+        return $null
+    }
+    $m = [regex]::Match($line, 'hash=([0-9a-f]+)\s+short=([0-9a-f]+)\s+files=(\d+)')
+    if (-not $m.Success) {
+        Write-Host "  ERROR: unexpected build-hash output: $line" -ForegroundColor Red
+        return $null
+    }
+    $stamp = @{ Hash = $m.Groups[1].Value; Short = $m.Groups[2].Value; Files = $m.Groups[3].Value }
+    Write-Host ("  Build src: {0} ({1} files) -> Biotak\BuildHash.mqh" -f $stamp.Hash, $stamp.Files) -ForegroundColor Cyan
+    return $stamp
+}
+
+function Write-SourceStamp {
+    #--- P-BUILD-08: the ONE file that can CONTRADICT a running ex4.
+    #--- MT4 keeps the loaded indicator in memory, so after a build a chart can
+    #--- still run an older ex4 that prints the SAME banner. This drops the hash
+    #--- the build just produced beside every terminal that hosts this project
+    #--- (MQL4\Files\th3-src.txt, the indicator's own sandbox root); at attach the
+    #--- indicator compares it with the hash compiled INTO it and prints
+    #--- `srcfile=<hash> match=yes|NO`. No clock is written to this file - only the
+    #--- hash - so a build that changed nothing does not rewrite it, and there is
+    #--- no second date in the repo that can drift.
+    param([hashtable]$Stamp, [string]$ResolvedMql4Dir)
+    if (-not $Stamp) { return }
+    $dirs = New-Object System.Collections.Generic.List[string]
+    foreach ($d in @($ResolvedMql4Dir) + (Get-TerminalMql4DirsForProject)) {
+        if ($d -and (Test-Path $d) -and -not $dirs.Contains($d)) { $dirs.Add($d) }
+    }
+    if ($dirs.Count -eq 0) {
+        Write-Host "  Source stamp: no terminal MQL4 dir found; the ex4 will report srcfile=none." -ForegroundColor Yellow
+        return
+    }
+    #--- P-BUILD-08b: THE SHADOW COPY THAT ANSWERS FOR THE WRONG BUILD.
+    #--- MT4 attaches an indicator by NAME, and it searches Indicators\ root
+    #--- before Indicators\BiotakProject. A leftover `Biotak Trigger TH3.ex4` in the
+    #--- root therefore wins, and every chart silently runs THAT file - measured
+    #--- 2026-09-29: a 2,534,402-byte ex4 dated 2026-09-20 sat in
+    #--- Terminal\0727F3F8...\MQL4\Indicators\ while the live logs carried
+    #--- `Custom indicator Biotak Trigger TH3` (root) and `...BiotakProject\Biotak
+    #--- Trigger TH3` (this repo) on different charts of the same terminal. Not a
+    #--- build failure and not a compile error: two files, one name. It is reported
+    #--- here and never deleted by this script.
+    foreach ($mql4 in $dirs) {
+        foreach ($nm in @("Biotak Trigger TH3", "Biotak Trigger TH3 Lite")) {
+            foreach ($ext in @(".ex4", ".mq4")) {
+                $shadow = Join-Path $mql4 "Indicators\$nm$ext"
+                if (Test-Path -LiteralPath $shadow) {
+                    $sh = Get-Item -LiteralPath $shadow
+                    $age = $sh.LastWriteTime.ToString("yyyy-MM-dd HH:mm")
+                    #--- P-BUILD-08c (2026-09-29) — THE SHADOW IS NOW REPLACED, NOT
+                    #--- ONLY REPORTED. Reporting was the wrong verb: the user was
+                    #--- told about this file in the build output for a day and the
+                    #--- chart kept loading it, because "a warning the operator has
+                    #--- to act on" is not a fix. MT4 resolves an indicator by NAME
+                    #--- and searches Indicators\ root BEFORE Indicators\BiotakProject,
+                    #--- so with both files present the root one can win under the
+                    #--- SAME name - measured 2026-09-29: root 2,534,402 bytes dated
+                    #--- 2026-09-20 11:17 beside a fresh 3,45x,xxx-byte build, and
+                    #--- the chart then paints the old code while the log prints the
+                    #--- new banner. The fresh file already sits next to it through
+                    #--- the project junction, so the two are compared byte for byte
+                    #--- and the shadow is overwritten only when they differ. The
+                    #--- SOURCE (.mq4) in the root folder is still never written:
+                    #--- only a compiled ex4 of this project's own name.
+                    $fresh = Join-Path $mql4 "Indicators\BiotakProject\$nm$ext"
+                    if ($ext -eq ".ex4" -and (Test-Path -LiteralPath $fresh)) {
+                        $fr = Get-Item -LiteralPath $fresh
+                        #--- size first (free), then the bytes: two builds of an
+                        #--- unchanged tree differ in size, so the hash is only paid
+                        #--- when the two files look alike.
+                        $same = $false
+                        if ($sh.Length -eq $fr.Length) {
+                            $same = ((Get-FileHash -Algorithm MD5 -LiteralPath $shadow).Hash -eq
+                                     (Get-FileHash -Algorithm MD5 -LiteralPath $fresh).Hash)
+                        }
+                        if (-not $same) {
+                            Copy-Item -LiteralPath $fresh -Destination $shadow -Force
+                            Write-Host ("  Shadow replaced: {0} ({1:N0} bytes, {2}) -> {3:N0} bytes, {4}" -f `
+                                $shadow, $sh.Length, $age, $fr.Length, $fr.LastWriteTime.ToString("HH:mm:ss")) -ForegroundColor Green
+                        }
+                        else {
+                            Write-Host "  Shadow already current: $shadow" -ForegroundColor DarkGray
+                        }
+                    }
+                    else {
+                        Write-Host "  WARNING: shadow copy $shadow ($age) has no fresh counterpart to replace it with." -ForegroundColor Red
+                    }
+                }
+            }
+        }
+    }
+
+    $body = "hash={0} short={1} files={2}" -f $Stamp.Hash, $Stamp.Short, $Stamp.Files
+    foreach ($mql4 in $dirs) {
+        $files = Join-Path $mql4 "Files"
+        if (-not (Test-Path $files)) { New-Item -ItemType Directory -Path $files -Force | Out-Null }
+        $target = Join-Path $files "th3-src.txt"
+        $have = if (Test-Path -LiteralPath $target) { [string](Get-Content -LiteralPath $target -Raw -ErrorAction SilentlyContinue) } else { "" }
+        if ($have.Trim() -ne $body) {
+            Set-Content -LiteralPath $target -Value $body -Encoding ASCII
+            Write-Host "  Source stamp: $target -> $($Stamp.Hash)" -ForegroundColor DarkCyan
+        }
+        else {
+            Write-Host "  Source stamp: $target unchanged ($($Stamp.Hash))" -ForegroundColor DarkGray
+        }
+    }
+}
+
 function Compile-MQL4 {
     param(
         [string]$Name,
@@ -1015,6 +1146,15 @@ if (-not $resolvedCompiler) {
 $resolvedMql4Dir = Resolve-Mql4Directory -CustomPath $Mql4Dir
 $terminalRoot = Resolve-TerminalRoot -ResolvedMql4Dir $resolvedMql4Dir
 
+#--- P-BUILD-08: the source identity is generated BEFORE anything compiles, so the
+#--- ex4 that comes out of this run carries the hash of the tree it was built from.
+$buildStamp = Update-BuildHash
+if (-not $buildStamp) {
+    Write-Host ""
+    Write-Host "  [FAIL] build stamp (every stamp this build would print is a guess)" -ForegroundColor Red
+    exit 1
+}
+
 # Project paths
 $PROJECTS = @{
     "workspace" = @{
@@ -1121,6 +1261,13 @@ Write-Host ""
 Write-Host "  Logs folder: $PROJECT_LOG_DIR" -ForegroundColor Gray
 Write-Host ""
 
+#--- P-BUILD-08: only a build that PASSED may claim its hash beside the terminal,
+#--- because that file means "the ex4 on disk IS this tree". A failed build leaves
+#--- the previous stamp, and the old ex4 keeps reporting match=yes - which is true:
+#--- it is still the last build this script produced.
+if ($allSuccess) { Write-SourceStamp -Stamp $buildStamp -ResolvedMql4Dir $resolvedMql4Dir }
+Write-Host ""
+
 #--- P-DRAFT-01: THE RESOURCE GATE IS PART OF THE BUILD, not a thing to remember.
 #--- A painted raster the unit never declared is a SILENT no-op at runtime and a
 #--- green compile, which is the exact failure that shipped a panel with no plate
@@ -1137,6 +1284,27 @@ if (Test-Path $resGate) {
     }
     else {
         Write-Host "  [PASS] resource gate" -ForegroundColor Green
+    }
+}
+
+#--- P-VIEW-06: THE LEVEL-CONTINUITY GATE IS PART OF THE BUILD. "A timeframe switch
+#--- is a handoff" has been broken three times, and never in the file that states it:
+#--- the prefix named the TF, the teardown deleted the family, and the adoption verdict
+#--- returned with no witness and no log line. Each costume compiled green, because a
+#--- delete that should not be there is a NAME, not a symbol. The check reads the six
+#--- sites the handoff is made of, so a change made anywhere else cannot un-make it
+#--- without failing here.
+$lcGate = Join-Path $SCRIPT_ROOT "tools\check-level-continuity.js"
+if (Test-Path $lcGate) {
+    Write-Host ""
+    Write-Host "  Level continuity gate (a switch is a handoff, not a wipe):" -ForegroundColor Cyan
+    & node $lcGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] level continuity gate" -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] level continuity gate" -ForegroundColor Green
     }
 }
 
