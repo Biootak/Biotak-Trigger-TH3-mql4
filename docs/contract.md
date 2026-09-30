@@ -94,9 +94,15 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
 6. A change to generated assets hashes the set before and after: untouched files
    byte-identical.
 7. The report names the file, the number and the measurement.
-8. `node tools/check-level-continuity.js` passes — a switch is a handoff, and that
+8. `node tools/object_lifecycle_check.js` passes — a name a surface PAINTS must be a
+   name it can DELETE: every object name in `Biotak/**/*.mqh` needs an
+   `ObjectDelete`/`ObjectFind` site, an entry in its own prune list, or a
+   family-specific prefix. A name a panel forgets to take down compiles clean and
+   paints nothing wrong — it simply stays there, over the next tab's plate, and that
+   is the class the gate names by file and line (P-DRAW-84/92).
+9. `node tools/check-level-continuity.js` passes — a switch is a handoff, and that
    gate is what keeps it one (§8, P-VIEW-06).
-9. `node tools/check-regressions.js` passes — the register of already-fixed defects
+10. `node tools/check-regressions.js` passes — the register of already-fixed defects
    (§9) is a gate, not a memory: a name that was wrong, a second writer, a dropped
    frame and a row→flag map are each asserted against the sources, so the next edit
    that breaks one fails HERE, at the name, before the terminal sees it.

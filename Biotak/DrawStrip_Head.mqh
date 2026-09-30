@@ -257,7 +257,15 @@
 //--- strip's own command group already carries a trash cell that asks first
 //--- (DrawSelCount in its tooltip) — so the panel carried a second, unconfirmed
 //--- way to destroy the drawing. One owner per action.
-#define DSTRIP_GEAR_FOOT_N 2
+//--- P-DRAW-90 (2026-09-30) — AND THE THIRD IS `Reset`, not `Del`. The design
+//--- (tools/mock-strip-refactor.html:573, footer) draws three commands:
+//--- `Reset` at the content's left edge (the only one wearing a glyph, the cards'
+//--- own reset ring) and `All`·`Copy` as a pair flush to its right — the mock's
+//--- own `.sp` spacer between them. The code shipped TWO, and gave the RESET ring
+//--- to `All` (DrawStrip_GearB.mqh:1019): a face that lied about its action.
+//--- `Reset` returns THIS drawing to its kind's factory look (the kind's own
+//--- built-in preset 0), which the panel had no way to reach at all.
+#define DSTRIP_GEAR_FOOT_N 3
 //--- P-DRAW-80: the foot button's width is the CARDS' own formula
 //--- (`max(72, 32 + advance + 8)`, BiotakPanels PnlFootBtnW) — the flat 64 that
 //--- stood here is retired, and with it every reader.

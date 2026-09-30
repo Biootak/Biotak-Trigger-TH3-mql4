@@ -1350,6 +1350,27 @@ if ((Test-Path $gearGate) -and (Get-Command python -ErrorAction SilentlyContinue
     }
 }
 
+#--- P-DRAW-92: THE NAME LEDGER IS PART OF THE BUILD. A surface that paints an object
+#--- must be able to DELETE it, and the compiler cannot see the difference: MT4 answers
+#--- NOTHING to a write aimed at a name the chart does not carry, so an object a panel
+#--- forgets to take down just stays there — over the next tab's plate, over the strip,
+#--- over the chart. That is the report this gate exists for, and it found one live
+#--- orphan on its first tree-wide run (the board's two page seats and their caption:
+#--- painted, never pruned). Line and regex reads of Biotak/**/*.mqh, once per build.
+$lifeGate = Join-Path $SCRIPT_ROOT "tools\object_lifecycle_check.js"
+if (Test-Path $lifeGate) {
+    Write-Host ""
+    Write-Host "  Object lifecycle gate (every painted name has a destroy path):" -ForegroundColor Cyan
+    & node $lifeGate
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] object lifecycle gate" -ForegroundColor Red
+        $allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] object lifecycle gate" -ForegroundColor Green
+    }
+}
+
 Write-Host ""
 if ($allSuccess) {
     Write-Host "  All compilations PASSED!" -ForegroundColor Green

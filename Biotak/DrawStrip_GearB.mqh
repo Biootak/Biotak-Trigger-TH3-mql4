@@ -512,14 +512,53 @@ bool DrawStripPopHex(const int x, const int y, const int w, const string seed)
                             "Type #RRGGBB, Enter applies it" + DrawStripTipScope());
    return dirty;
 }
+//--- P-DRAW-90 (2026-09-30) — THE FOOT'S THREE COMMANDS AND ITS OWN GRID.
+//--- The design draws `Reset | All · Copy`; the code shipped `All · Copy` and
+//--- put the reset ring on `All`. Three owners now, one per question: the LABEL
+//--- and its tooltip, the GLYPH (only `Reset` wears one — the mock's own rule;
+//--- `""` makes DrawStripFace DELETES the face, which is the orphan sweep for the
+//--- ring the old `All` wore), and the SEAT (`DrawStripFootX`).
+//--- `DrawStripFootX` is read by the paint (DrawStripGearPaint) AND the hit test
+//--- (DrawStripGearHit): the same arithmetic in two places is a second grid, and
+//--- the old foot proved it — it stood at `px + f*(bw+gap)` twice, once in each.
 string DrawStripFootText(const int f)
 {
-   return (f == 0) ? "All" : "Copy";
+   if(f == 0) return "Reset";
+   return (f == 1) ? "All" : "Copy";
 }
 string DrawStripFootTip(const int f)
 {
-   if(f == 0) return "This look on EVERY " + DrawKindName(s_dsKind) + " (MT4's dialog is one at a time)";
+   if(f == 0) return "This " + DrawKindName(s_dsKind) + " back to its factory look (undoable)";
+   if(f == 1) return "This look on EVERY " + DrawKindName(s_dsKind) + " (MT4's dialog is one at a time)";
    return "Copy this drawing beside itself (selects the copy)";
+}
+string DrawStripFootRes(const int f)
+{
+   return (f == 0) ? "::Files\\Icons\\gl_reset_m.bmp" : "";
+}
+//--- P-DRAW-80: the cards' OWN width formula, `max(72, 32 + advance + 8)`.
+int DrawStripFootBw(const int f)
+{
+   return MathMax(DSTRIP_GEAR_FOOT_BW, 32 + PnlTextW(DrawStripFootText(f), 8) + 8);
+}
+//--- the seat: `f == 0` at the content's left edge, the rest a pair flush to its
+//--- right. `cw` is the foot's own content width — DrawStripGearColW(), the same
+//--- answer on a 312 tab and on a 624 one (280 / 592).
+int DrawStripFootX(const int f, const int px, const int cw)
+{
+   if(f <= 0) return px;
+   int total = 0;
+   for(int i = 1; i < DSTRIP_GEAR_FOOT_N; i++)
+      total += DrawStripFootBw(i) + ((i > 1) ? DSTRIP_GEAR_FOOT_GAP : 0);
+   int x = px + cw - total;
+   for(int i = 1; i < f; i++) x += DrawStripFootBw(i) + DSTRIP_GEAR_FOOT_GAP;
+   return x;
+}
+//--- the label's own seat: a button that wears a glyph keeps the cards' `bx+32`
+//--- label seat, a plain one takes the cards' own 16px pad (the mock's `.gbtn`).
+int DrawStripFootLabelX(const int f, const int fx)
+{
+   return fx + ((DrawStripFootRes(f) == "") ? 16 : 32);
 }
 //--- the gear panel's own paint: tabs, grids, rows, edits, foot.
 string DrawStripGearHeadTitle()
@@ -994,16 +1033,19 @@ bool DrawStripGearPaint()
     //--- panel centred a bare word with no glyph at all, so its foot read as a row
     //--- of captions under a card that has two buttons with icons.
     int fy0 = s_dsGEY + s_dsGearFootY;
+    //--- P-DRAW-90: the foot's own width is the COLUMN's (DrawStripGearColW), the
+    //--- same answer the hit test reads — the local `cw` above is one 312 column's
+    //--- 280 on EVERY tab, which would park the pair 312px short on a 624 one.
+    int fcw = DrawStripGearColW();
     for(int f = 0; f < DSTRIP_GEAR_FOOT_N; f++)
     {
       string fn = DrawStripFootName(f);
       string label = DrawStripFootText(f);
       //--- P-DRAW-80: the cards' OWN width formula (BiotakPanels 6481-6484) —
-      //--- `max(72, 32 + advance + 8)`. This panel used a flat 64, so "All" and
-      //--- "Copy" were both 64 while the cards' are 72 or wider: the foot was
-      //--- narrower than the card it belongs to even with the same left seat.
-      int bw = MathMax(72, 32 + PnlTextW(label, 8) + 8);
-      int fx = px + f * (bw + DSTRIP_GEAR_FOOT_GAP);
+      //--- `max(72, 32 + advance + 8)`, owned by DrawStripFootBw (P-DRAW-90: the
+      //--- hit test spends the same function, never a second arithmetic).
+      int bw = DrawStripFootBw(f);
+      int fx = DrawStripFootX(f, px, fcw);
       int fy = fy0 + 10;
       string tip = DrawStripFootTip(f);
       color ink = DSTRIP_CLR_TITLE;                       // = BIO_CLR_MUTED
@@ -1014,18 +1056,28 @@ bool DrawStripGearPaint()
                              "::Files\\Icons\\pnl_btn_ghost.bmp", tip);
       //--- the card's own glyph seat, 15x15 on Z_PANEL_INK; one glyph per action
       //--- (the cards give Reset a reset ring and Done a check, PnlFooterBtn's
-      //--- `ico` argument, BiotakPanels 6901-6902).
+      //--- `ico` argument, BiotakPanels 6901-6902). P-DRAW-90: `Reset` is the one
+      //--- the design gives a glyph — DrawStripFootRes answers "" for the pair,
+      //--- and DrawStripFaceZ DELETES on "", which is the sweep for the ring the
+      //--- old two-button foot wore on `All`.
+      int lx = DrawStripFootLabelX(f, fx);
       dirty |= DrawStripFace(DrawStripFootGlyphName(f), fx + 12, fy + 6, 15, 15,
-                             (f == 0) ? "::Files\\Icons\\gl_reset_m.bmp"
-                                      : "::Files\\Icons\\gl_check_gold.bmp", tip);
-      dirty |= DrawStripLblIn(DrawStripFootLabelName(f), fx + 32, fy, 28,
-                              PnlFit(label, 8, bw - 32 - 8),
+                             DrawStripFootRes(f), tip);
+      dirty |= DrawStripLblIn(DrawStripFootLabelName(f), lx, fy, 28,
+                              PnlFit(label, 8, fx + bw - 8 - lx),
                               ink, tip, 8, true);
    }
    //--- P-DRAW-78: the retired third button (`Del`) dies here, not in the purge
    //--- above — this loop is the only other writer of the GF family, and without
    //--- a stale branch a chart that wore the 3-button foot keeps a dead Del.
    //--- Bounded: exactly the one retired seat.
+   //--- P-DRAW-90: and it is EMPTY again, by construction — `Del`'s seat 2 is
+   //--- `Copy`'s now (`DSTRIP_GEAR_FOOT_N` is 3), so seats 0..2 are all live and
+   //--- the loop runs zero times. It stays as the family's guard, and its bound
+   //--- still names the highest seat this family has ever owned (3). A chart that
+   //--- wore the old two-button foot needs no sweep either: seat 2 was never
+   //--- written then, and seat 1's stale `gl_check_gold` ring is deleted by the
+   //--- paint itself (DrawStripFootRes -> "" -> DrawStripFaceZ deletes).
    for(int fd = DSTRIP_GEAR_FOOT_N; fd < 3; fd++)
    {
       //--- P-DRAW-84: ...and its GLYPH, which is a member of the same family

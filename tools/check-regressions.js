@@ -681,6 +681,95 @@ function main() {
     }
   }
 
+  // -- 15. P-HTF-TOP: the top of the ladder is a rung, not a hide --------------
+  //
+  // Fixed 2026-09-30 (report «کندل های مثل htf candle دیده نمیشه» on an
+  // EURUSD,Monthly chart): the ladder tops out at MN1, so on a monthly chart the
+  // structure rung snaps to the chart's OWN MN1 — and the old `rung > Period()`
+  // test answered "nothing above, hide", so the overlay painted nothing at all.
+  // One rule, four sites (the resolve, the history pass, the forming candle and
+  // the ensure probe) now read `>=`; a rung strictly BELOW the chart TF still
+  // hides. The geometry's fence moved with it: span 0 — both edges clamped onto
+  // one slot by a history that does not reach them — is the collapse, while a span
+  // below one bar is the chart's own period and takes the shape law.
+  {
+    const joined = htfFiles()
+      .map((f) => codeOf(linesOf(path.join(BIOTAK, f)) || []))
+      .join('\n');
+    const broken = [];
+    if (!/rung >= \(int\)Period\(\)/.test(joined))
+      broken.push("ResolveHTFPeriod must accept the chart's OWN rung (`rung >= (int)Period()`)");
+    for (const stale of ['rung > (int)Period()', 'tf <= Period()', 'tf <= (int)Period()'])
+      if (joined.includes(stale)) broken.push(`a gate still hides the chart's own rung: \`${stale}\``);
+    if (!joined.includes('htf >= chartTf'))
+      broken.push('HTFViewportBarTarget must cap the chart-own-rung case too (`htf >= chartTf`)');
+    if (!joined.includes('span <= 0.0'))
+      broken.push('HTFCandleGeometry must treat only span 0 as the collapse (`span <= 0.0`)');
+    if (joined.includes('span < 2.0'))
+      broken.push('`span < 2.0` sends the chart-own-period candle to the calendar fallback');
+    if (broken.length) {
+      failures.push('P-HTF-TOP: ' + broken.join('; ') + ' (Biotak/HTFCandles_*.mqh)');
+    } else {
+      console.log(
+        "[PASS] P-HTF-TOP the chart's own rung draws (Biotak/HTFCandles_Geom.mqh ResolveHTFPeriod)"
+      );
+    }
+  }
+
+  // -- 16. P-HTF-SYN: the two rungs ABOVE the tallest terminal TF ---------------
+  //
+  // Added 2026-09-30 («کندل های 12 ماه رو میشه برای ساختار و شش ماه میشه پترنش» /
+  // «برای ماهانه و بری ای ویگی میشه 6 ماه ساختارش»). MN1 is the tallest series MT4
+  // builds, so a W1 chart's structure rung (16 weeks) and a MONTHLY chart's (16
+  // months) both snapped DOWN onto MN1 — the overlay drew the chart's own candles.
+  // The ladder gains 6M (259200) and 12M (518400) and NO 3M entry: that is what
+  // makes the UNCHANGED nearest-snap answer 6M for W1-Structure, 12M for
+  // MN-Structure and 6M for MN-Pattern. Neither rung has a terminal series, so the
+  // OHLC is aggregated from MN1 (HTFSynBarOpen/HTFSynOHLC) — and every reader of a
+  // series had to learn that: the history pass, the forming candle, the ready check
+  // and the badge.
+  {
+    const joined = htfFiles()
+      .map((f) => codeOf(linesOf(path.join(BIOTAK, f)) || []))
+      .join('\n');
+    const broken = [];
+    const ladder = '{1, 5, 15, 30, 60, 240, 1440, 10080, 43200, 259200, 518400}';
+    if (!joined.includes(ladder))
+      broken.push(`the TF ladder must carry 6M/12M and no 3M (${ladder})`);
+    for (const name of [
+      '#define HTF_TF_6M  259200',
+      '#define HTF_TF_12M 518400',
+      'HTFTfIsSynthetic(',
+      'HTFSynMonths(',
+      'HTFSynBarOpen(',
+      'HTFSynBarCount(',
+      'HTFSynOHLC(',
+    ])
+      if (!joined.includes(name)) broken.push(`missing \`${name}\``);
+    const pass = htfFind('int DrawHTFCandles()');
+    const passBody = pass ? bodyOf(pass.lines, 'int DrawHTFCandles()') : null;
+    if (!passBody || !passBody.text.includes('HTFSynOHLC(') || !passBody.text.includes('HTFSynBarCount('))
+      broken.push('the history pass must build a synthetic rung from MN1');
+    const form = htfFind('bool UpdateHTFFormingCandle()');
+    const formBody = form ? bodyOf(form.lines, 'bool UpdateHTFFormingCandle()') : null;
+    if (!formBody || !formBody.text.includes('HTFSynOHLC('))
+      broken.push('the live candle of a synthetic rung must aggregate MN1 too');
+    const ens = htfFind('void HTFEnsureDrawn()');
+    const ensBody = ens ? bodyOf(ens.lines, 'void HTFEnsureDrawn()') : null;
+    if (!ensBody || !ensBody.text.includes('HTFSynBarCount('))
+      broken.push('the ready check must ask MN1 for a synthetic rung, not iBars(6M/12M)');
+    const menu = codeOf(linesOf(path.join(BIOTAK, 'BiotakMenu_A.mqh')) || []);
+    if (!menu.includes('periodMinutes / 43200'))
+      broken.push('CircHtfBadgeLabel must name the synthetic rungs in MONTHS (6M/12M)');
+    if (broken.length) {
+      failures.push('P-HTF-SYN: ' + broken.join('; ') + ' (Biotak/HTFCandles_*.mqh)');
+    } else {
+      console.log(
+        '[PASS] P-HTF-SYN ladder 6M/12M present and built from MN1 (Biotak/HTFCandles_Geom.mqh HTFSnapTf)'
+      );
+    }
+  }
+
   console.log('');
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);

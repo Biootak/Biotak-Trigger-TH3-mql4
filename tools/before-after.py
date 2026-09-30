@@ -41,6 +41,7 @@ import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
 
 
 def load(name, path):
@@ -129,7 +130,18 @@ MOCK_VAL, MOCK_CHROME = mock_row_parts()
 MOCK_CELLS = len(MOCK_VAL)
 
 
+# A cell's icon is NAMED BY ITS BAKE. The mock used to spell icons as font
+# characters (`╱ ☰ ✦`) and this reader answered with the character, so the pair
+# under each row read "the design types text, the code blits a 24px bake". The
+# design now carries the shipped bakes itself (`<i class="ic ic-bk_style0">`),
+# and the name it answers with is the BMP in Files/Icons/.
+ICON_CLASS_RE = re.compile(r'class="[^"]*\bic-([A-Za-z0-9_]+)"')
+
+
 def _glyph_of(cell_html):
+    m = ICON_CLASS_RE.search(cell_html)
+    if m:
+        return m.group(1) + ".bmp"
     m = re.search(r'<span class="ico">(.*?)</span>', cell_html, re.S)
     if m:
         return m.group(1).strip()
@@ -156,12 +168,25 @@ def kind_names(k):
 
 
 def kind_table(k):
+    """The rows for one kind.
+
+    The design drew ONE frame — the Box's — so for a kind it never drew, a row
+    answering "8 سلول vs 6" is a verdict about the DESIGN's coverage, not two
+    numbers disagreeing, and the note beside the pair already states both lists.
+    A row belongs here only when both columns state the same thing: the shared
+    layout, and the count for the one frame the design actually drew.
+    """
     _merged, names = kind_names(k)
-    rows = [num_row("سلول‌های مقدار", MOCK_CELLS, len(names)),
-            num_row("سلول‌های دستور (more/gear/pin/del)", len(MOCK_CHROME), S.ACT_N)]
+    rows = []
+    if k == "DK_RECT":                              # the frame the design drew
+        rows.append(num_row("سلول‌های مقدار", MOCK_CELLS, len(names)))
+        rows.append(num_row("سلول‌های دستور (more/gear/pin/del)",
+                            len(MOCK_CHROME), S.ACT_N))
     rows += [r for r in C.STRIP_ROWS if r["label"] in SHARED_LAYOUT_ROWS]
-    rows.append(shape_row("سلول‌های این kind", "معادل ندارد (طرح یک ردیف کشید)",
-                          " · ".join(names)))
+    if k == "DK_RECT":
+        rows.append(shape_row("وجهِ اسلات‌های این kind",
+                              "همان ردیفِ کد (بالا، ردیف §۱)",
+                              " · ".join(names)))
     return rows
 
 
@@ -227,15 +252,41 @@ def section_board():
 # ══════════════════════════════════════════════════════════════════════════
 # §3/§4 — THE SETTINGS PANEL, ALL FOUR TABS, AND FOR A NON-BOX KIND
 # ══════════════════════════════════════════════════════════════════════════
-def tab_table(L):
+def _gbtn_count(sel):
+    """The design's own foot button count, read out of the mock's markup.
+
+    P-DRAW-90: this is the row that was MISSING. The design drew three
+    (`Reset | All · Copy`, mock-strip-refactor.html:573) while the code painted
+    two and gave the reset ring to `All` — and no row on this page said so, so
+    111 of 111 read green over a foot that disagreed. A pair that is never
+    compared is not agreement; it is a pair nobody looked at.
+    """
+    frag = C.MOCK_FRAG.get(sel.lstrip("."), "")
+    i = frag.find('<div class="gfoot">')
+    if i < 0:
+        return 0
+    # ONE foot: the `.gear` fragment runs on into the `.gearW` card (the mock
+    # writes both, and only the second class carries the W), so the count stops
+    # at the next foot or the design would be read twice.
+    j = frag.find('<div class="gfoot">', i + 1)
+    return (frag[i:j] if j >= 0 else frag[i:]).count('class="gbtn"')
+
+
+def tab_table(L, sel=".gear"):
     """The panel numbers both sides state: the mock's CSS on the left, the code
     on the right. Rows the design never stated are NOT rows here — they belong in
-    the pair's facts line, not in a verdict about two numbers disagreeing."""
-    return [num_row("عرض پنل", C.mock_prop(".gear", "width"), L["w"]),
+    the pair's facts line, not in a verdict about two numbers disagreeing.
+
+    `sel` is WHICH drawing is on the left: a 624 tab is the design's two-column
+    card (`.gearW`), not the 312 one — reading the narrow width against a wide
+    tab measured the design's choice of surface, not its agreement with the code.
+    """
+    return [num_row("عرض پنل", C.mock_prop(sel, "width"), L["w"]),
             num_row("ردیف", C.mock_prop(".row", "height"), G.ROW_H),
             num_row("سرِ پنل", C.mock_prop(".ghead", "height"), G.HEAD_H),
             num_row("فوتر", C.mock_prop(".gfoot", "height"), G.FOOT_H),
-            num_row("نوار تب", C.mock_prop(".tabs", "height"), G.ROW_H)]
+            num_row("نوار تب", C.mock_prop(".tabs", "height"), G.ROW_H),
+            num_row("دکمه‌های فوتر", _gbtn_count(sel), G.FOOT_N)]
 
 
 def panel_box(mod, kind, tab, mock_html, rows, title, mock_tag=None, shot_tag=None):
@@ -251,24 +302,29 @@ def panel_box(mod, kind, tab, mock_html, rows, title, mock_tag=None, shot_tag=No
 
 def section_panel():
     out = ["<h1 style='margin-top:24px'>۳ — پنل تنظیمات: هر چهار تب</h1>",
-           "<div class='sub'>ماک یک پنل کشید (تب Paint). سه تب دیگر همان زبان "
-           "بصری را دارند با محتوای خودشان، پس ستون طرح برای آن‌ها می‌گوید طرح "
-           "چیزی نکشیده و عددهای کد را می‌آورد. هر تب، اندازه‌ی پلیت خودش را دارد: "
+           "<div class='sub'>طرح دو پنل کشید: کارت ۳۱۲ (تب‌های تک‌ستونه) و کارت "
+           "۶۲۴ دوستونه (Style / Row). هر تب، اندازه‌ی پلیت خودش را دارد؛ "
            "قانون کارت‌ها ۵۶ + 42n + 48.</div>"]
     for tab in range(4):
         L = G.layout(tab)
-        mock = C.MOCK_FRAG["gear"] if tab == 0 else \
-            ("<div class='nonote'>طرح فقط یک پنل کشید (تب <b>Paint</b>): همان سرِ ۵۶، "
-             "نوار تب ۴۲، ردیف‌های ۴۲ و فوتر ۴۸ — زبان بصری یکی است، محتوا نه.<br>"
-             "این تب از کد: <b style='color:#FFC247'>%d</b> ردیف محتوا، "
-             "ارتفاع <b>%d</b>، پلیت <b>%s</b>.</div>"
-             % (len(L["blocks"]), L["h"], "bake pnl_card%d" % L["card_n"]
-                if L["exact"] else "composed W"))
+        wide = L["w"] > G.GEAR_W          # 624 = the two-column card (fam W)
+        if tab == 0:
+            mock, sel, tag = C.MOCK_FRAG["gear"], ".gear", "طرح (ماک)"
+        elif wide:
+            mock, sel, tag = C.MOCK_FRAG["gearW"], ".gearW", "طرح (ماک) — تب دوستونه"
+        else:
+            mock, sel = None, ".gear"
+            tag = "طرح (ماک) — این تب را نکشید"
+            mock = ("<div class='nonote'>طرح برای این تب یک پنل نکشید: همان سرِ ۵۶، "
+                    "نوار تب ۴۲، ردیف‌های ۴۲ و فوتر ۴۸ — زبان بصری یکی است، محتوا نه.<br>"
+                    "این تب از کد: <b style='color:#FFC247'>%d</b> ردیف محتوا، "
+                    "ارتفاع <b>%d</b>، پلیت <b>%s</b>.</div>"
+                    % (len(L["blocks"]), L["h"], "bake pnl_card%d" % L["card_n"]
+                       if L["exact"] else "composed W"))
         p, L = panel_box(G, "DK_RECT", tab,
-                         mock, tab_table(L),
+                         mock, tab_table(L, sel),
                          "تب %d — %s" % (tab + 1, G.TABS[tab]),
-                         mock_tag="طرح (ماک)" if tab == 0 else
-                         "طرح (ماک) — این تب را نکشید",
+                         mock_tag=tag,
                          shot_tag="panel_%s" % ["paint", "style", "look", "row"][tab])
         out.append(p)
 
@@ -284,6 +340,113 @@ def section_panel():
                       mock_tag="طرح (ماک) — فقط زبان بصری", shot_tag="fibo_paint")
     out.append(p)
     return "\n".join(out)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 0 — THE COVERAGE LEDGER. WHAT HAS NO ROW.
+#
+# The gear foot shipped TWO commands under a row that measured only its height,
+# and this page read 111 of 111 green: a pair that is never compared is not
+# agreement, it is a pair nobody looked at. So the two universes are read out of
+# the sources — never typed here — and each one is checked against what the rows
+# actually reached:
+#
+#   CODE   every object-name family the strip declares (`string DrawStrip*Name(`,
+#          Biotak/DrawStrip_*.mqh). A family no ROLE claims is a control nobody
+#          assigned to a surface; a role whose labels do not exist among the rows
+#          THIS page built is a control with NO metric. Both are named below.
+#   DESIGN every class the shown mock markup uses whose CSS gives it a fill, a
+#          border or a shadow — a wrapper with no paint is not a surface
+#          (`compare-preview.design_surfaces`). One no row ever asked about is a
+#          surface the design drew and nothing here measures.
+#
+# A ROLE is the one hand-written thing here, and it is written where it can be
+# WRONG LOUDLY: add a painter to the MQL and it lands in `unassigned` until it is
+# given a role; rename a row's label and its role drops into `unmeasured`.
+# ══════════════════════════════════════════════════════════════════════════
+NOT_A_NAME = {"Switch", "Level"}   # these two build TEXT, not object names
+
+ROLES = [
+    ("پلیت استریپ (۹-تکه)", ["Bg", "Skin", "Body", "Seam"],
+     ["رادیوس پلیت (بیک ds_*)", "پلیت (بدنه)"]),
+    ("گرب استریپ", ["Grip", "GripIcon"], []),
+    ("نشان", ["Badge"], ["نشان (title)"]),
+    ("سلول‌های مقدار", ["Obj", "Icon"],
+     ["سلول‌های مقدار", "آیکن‌ها (وجهِ اسلات‌ها)", "وجهِ اسلات‌های این kind"]),
+    ("سلول‌های دستور", ["Act", "ActIcon", "Sep"],
+     ["سلول‌های دستور (more/gear/pin/del)", "جداکننده (عرض×ارتفاع)", "سلول حذف"]),
+    ("پاپ‌اور انتخاب", ["Pick", "PickIcon", "PickLabel", "PickChip", "PickRail",
+                        "PickGlass"], []),
+    ("پلیت بورد", ["BoardBg", "BoardSkin"], ["عرض بورد", "ارتفاع بورد"]),
+    ("سرِ بورد", ["PHeadG", "PHeadGChip", "PHeadGIcon"],
+     ["سرِ بورد", "گرب هدر", "هدر"]),
+    ("آخرین‌ها", ["PRec", "PRecGlass", "PRecLabel"], ["سواچ آخرینها"]),
+    ("فیلد HEX", ["PHexLb", "PHexEd"], ["فیلد HEX (عرض×ارتفاع)"]),
+    ("ریل شفافیت", ["POpLb", "POpBed", "POpFill", "POpKnob", "POpVal"],
+     ["ریل شفافیت", "نوب (عرض×ارتفاع)", "رنگ نوب"]),
+    ("پلیت پنل (۹-تکه)", ["GearBg", "GearSkin", "GearSide"],
+     ["عرض پنل", "پلیت پنل"]),
+    ("سرِ پنل + بستن", ["GearHead", "GearClose", "GearCloseSkin", "GearCloseIcon"],
+     ["سرِ پنل"]),
+    ("نوار تب", ["GearTab", "GearTabLine", "GearTrack"], ["نوار تب"]),
+    ("ردیف‌های پنل", ["Row", "RowIcon", "RowLabel", "RowChip", "RowRail",
+                      "RowState", "RowSep"], ["ردیف", "آیکن سرِ ردیف"]),
+    ("گرید چیپ‌ها", ["Grid", "GridIcon", "GridGlass"], ["چیپ"]),
+    ("فیلد ویرایش پنل", ["Edit"], []),
+    ("باندهای بخش", ["GearSection", "GearSectionLine"], ["شمارنده"]),
+    ("فوتر پنل", ["Foot", "FootSkin", "FootGlyph", "FootLabel"],
+     ["دکمه‌ی فوتر", "دکمه‌های فوتر"]),
+]
+
+
+def family_names():
+    """Every object-name family the strip declares, read OUT of the MQL."""
+    out = set()
+    for p in sorted(glob.glob(os.path.join(ROOT, "Biotak", "DrawStrip*.mqh"))):
+        src = open(p, encoding="utf-8", errors="replace").read()
+        for m in re.finditer(r"\bstring\s+DrawStrip(\w+?)Name\s*\(", src):
+            out.add(m.group(1))
+    return out
+
+
+def coverage():
+    """(unassigned families, unmeasured roles, unread design surfaces)."""
+    fam = family_names() - NOT_A_NAME
+    assigned = set()
+    unmeasured = []
+    for role, fams, labels in ROLES:
+        assigned |= set(fams)
+        if not (set(labels) & C.ROW_LABELS):
+            unmeasured.append((role, fams))
+    return sorted(fam - assigned), unmeasured, sorted(C.design_surfaces() - C.MOCK_READS)
+
+
+def section_coverage():
+    un_fam, un_meas, un_read = coverage()
+    rows = []
+    for role, fams in un_meas:
+        rows.append("<li><b>%s</b> <span class='k'>کد</span> — %d خانواده "
+                    "(<code>%s</code>)، هیچ ردیفی روی این صفحه ندارد.</li>"
+                    % (role, len(fams), " · ".join("DrawStrip%sName" % f for f in fams)))
+    for s in un_read:
+        rows.append("<li><b>%s</b> <span class='k'>طرح</span> — ماک این را می‌کشد و "
+                    "هیچ ردیفی از CSS اش نمی‌پرسد.</li>" % s)
+    for f in un_fam:
+        rows.append("<li><b>DrawStrip%sName</b> <span class='k'>تازه</span> — هیچ نقشی "
+                    "در ROLES ندارد؛ قبل از هر چیز به یک نقش بدهش.</li>" % f)
+    n = len(rows)
+    body = ("<ul class='cov'>%s</ul>" % "\n".join(rows)) if n else \
+           ("<div class='cov ok'>هیچ سطح و هیچ کنترلی بی‌ردیف نیست: هر ۶۲ خانواده‌ی نامِ "
+            "کد در نقشی نشسته‌اند و هر نقش یک متریک زنده دارد، و هر سطحِ رنگ‌دارِ طرح "
+            "خوانده شده است.</div>")
+    return "\n".join([
+        "<h1 style='margin-top:24px'>۰ — پوشش: چه چیزی هیچ ردیفی ندارد</h1>",
+        "<div class='sub'>دو جهان از خودِ سورس خوانده می‌شود، نه از این پرونده: "
+        "<b>کد</b> = هر <code>DrawStrip*Name</code> در Biotak/DrawStrip_*.mqh؛ "
+        "<b>طرح</b> = هر کلاسی که مارکاپِ نمایش‌داده‌شدهٔ ماک به کار می‌برد و CSS اش "
+        "به آن رنگ/لبه/سایه می‌دهد. هر کدام که هیچ ردیفی روی این صفحه به آن نرسیده، "
+        "اینجا نام برده می‌شود. فوترِ پنل دقیقاً همین‌جا پنهان شده بود: دو دکمه بود و "
+        "ردیفش فقط ارتفاع را می‌سنجید.</div>", body])
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -320,13 +483,23 @@ td.v1,td.v2{color:#8C96A6;direction:ltr;text-align:left}
 tr.diff td.v2{color:#FFC247}
 tr.diff td.vd{color:#FF8A8A}
 tr.same td.vd{color:#12B886}
+ul.cov{margin:0 0 8px;padding:0 18px 0 0;max-width:1040px}
+ul.cov li{margin:0 0 5px;font-size:11.5px;line-height:1.85;color:#CBD4E2}
+ul.cov li b{color:#FFC247}
+ul.cov li .k{font:9.5px Consolas,monospace;color:#8C96A6;background:#161B26;
+             border:1px solid #222832;border-radius:5px;padding:1px 5px;margin:0 3px}
+ul.cov li code{font:10.5px Consolas,monospace;color:#8C96A6;direction:ltr;
+               unicode-bidi:isolate}
+.cov.ok{max-width:1040px;font-size:11.5px;line-height:1.9;color:#12B886;
+        background:#12161D;border:1px solid #222832;border-radius:8px;padding:9px 12px}
 </style></head><body>
 <h1>قبل ↔ بعد — هر سطحِ استریپ، دو بار، مقیاس ۱:۱</h1>
+%(coverage)s
 <div class="sub">
 ستون <b>طرح</b> خودِ ماک است (tools/mock-strip-refactor.html) — CSS و مارکاپش خوانده
 می‌شود، بازکشیده نمی‌شود. ستون <b>واقعی</b> همان سطح است که نشانگر می‌کشد: عددها از
 Biotak/DrawStrip.mqh و DrawToolbar.mqh (tools/sim-strip-panels.py و sim-gear-panel.py)،
-و هر پیکسلِ آیکن از بیکِ واقعی Files/Icons/.
+و هر پیکسلِ آیکن — در هر دو ستون — از بیکِ واقعی Files/Icons/.
 زیر هر جفت، جدولی از عددهایی که هر طرف خودش می‌گوید: <b>✓</b> یکسان، <b>✗</b> متفاوت.
 هر جایی که طرح آن سطح را نکشیده، ستون طرح نمی‌سازد — می‌گوید نکشیده و عدد کد را می‌آورد.
 </div>
@@ -353,11 +526,18 @@ def main():
     out = sys.argv[1] if len(sys.argv) > 1 and not sys.argv[1].startswith("-") \
         else os.path.join(HERE, "before-after.html")
 
+    # P-DRAW-90: THE SECTIONS COME FIRST, AND THE LEDGER LAST. It reads what they
+    # built — `ROW_LABELS` (the metrics that exist) and `MOCK_READS` (the selectors
+    # they asked about) — so computing it before ``section_panel()`` had run made
+    # the page call the FOOTER and `.gearW` unmeasured: it was reading a half-built
+    # page and reporting gaps of its own making. Measured: 14 items instead of 12.
+    kinds, boards, panels = section_kinds(), section_board(), section_panel()
     page = PAGE % {
         "mock_css": C.clean_css(C.MOCK_CSS),
-        "kinds": section_kinds(),
-        "boards": section_board(),
-        "panels": section_panel(),
+        "coverage": section_coverage(),
+        "kinds": kinds,
+        "boards": boards,
+        "panels": panels,
     }
     open(out, "w", encoding="utf-8").write(page)
 
@@ -371,6 +551,15 @@ def main():
     print("kinds  : %d rows" % len(S.KINDS))
     print("tabs   : %d" % 4)
     print("mock css parse holes: %d" % bad)
+    un_fam, un_meas, un_read = coverage()
+    print("coverage: %d family without a role · %d control with no row · "
+          "%d design surface with no row" % (len(un_fam), len(un_meas), len(un_read)))
+    for role, fams in un_meas:
+        print("  no row (code)  : %s — %s" % (role, ", ".join("DrawStrip%sName" % f for f in fams)))
+    for s in un_read:
+        print("  no row (design): %s" % s)
+    for f in un_fam:
+        print("  UNASSIGNED role: DrawStrip%sName" % f)
     if SHOTS:
         print("terminal shots: %d (%s)" % (len(SHOTS), " ".join(sorted(SHOTS))))
     else:

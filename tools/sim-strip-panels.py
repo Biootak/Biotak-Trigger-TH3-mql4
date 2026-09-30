@@ -260,8 +260,8 @@ DEMO_ACT = ["bk_more.bmp", "bk_gear.bmp", "gl_pin_m.bmp", "bk_del.bmp"]
 #---   half / back   : ON (DrawStripSlotOn) -> ACCENT rim + the gold chip
 #---   ext / lock    : OFF                 -> the plate tone IS the rim (no rim)
 #---   gear          : open                -> ACCENT rim + the gold chip
-#---   pin           : not pinned          -> no rim; the gold face is the
-#---                     PINNED state, so the mock's gold pin has no counterpart
+#---   pin           : not pinned          -> no rim + the muted face, which is
+#---                     the face the mock carries too (gl_pin_m.bmp)
 DEMO_PICK_OPEN = True          # s_dsPicker == DRAW_SLOT_COLOR
 #--- the per-kind rows' two colours (see strip_cells): the drawing's BORDER and
 #--- its INTERIOR, deliberately different so the merged colour cell shows both.

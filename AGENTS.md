@@ -100,6 +100,7 @@ node tools/submenu_geometry_check.js
 node tools/check-resources.js
 node tools/check-level-continuity.js
 node tools/check-regressions.js
+node tools/object_lifecycle_check.js
 python tools/check-gear-panel.py
 ```
 
@@ -154,6 +155,16 @@ What the output now guarantees, and why each line exists:
   touching any `DSTRIP_GEAR_*` height, pad or air. The same gate asserts every
   PAINTED control has a non-empty hit box on every tab — the dead-button class of
   P-DRAW-84, which compiles clean and looks perfect.
+- **`[PASS] object lifecycle gate`** — every object name a surface PAINTS
+  (`Biotak/**/*.mqh`, 125 files) must have a destroy path the same surface reaches:
+  an `ObjectDelete`/`ObjectFind` site for that name, an entry in its own prune LIST,
+  or a family-specific `ObjectsDeleteAll` prefix. `P DRAW-84`'s class is a name
+  painted for a band that was retired; the one found on the gate's first tree-wide
+  run was the colour board's two page seats and their `1/2` caption — painted
+  (DrawStrip_Paint.mqh) and never listed in `DrawStripPopChromePrune`, so they stayed
+  on the strip after the board closed. The gate names the file, the line and the
+  family; `tools/object_lifecycle_check.js` is the gate; run it by hand after
+  touching any painter's name argument or any teardown path.
 - **`[PASS] regression gate`** — the register of already-fixed defects, asserted
   against the sources in every build (contract §9): the TH mask's name family
   (`<prefix>LBL_TH_*`, P-TH-02) with its `[P-LBL] TH mask mode= applied=` witness, the

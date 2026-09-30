@@ -107,6 +107,9 @@ LBL_Y    = 14       # DSTRIP_CARD_LBL_Y
 SEC_CNT_W = 24      # DSTRIP_SEC_CNT_W
 EDIT_H    = 22      # DSTRIP_GEAR_EDIT_H
 FOOT_BW  = 72       # DSTRIP_GEAR_FOOT_BW
+FOOT_N   = 3        # DSTRIP_GEAR_FOOT_N (P-DRAW-90: Reset | All · Copy)
+FOOT_GLYPH_X = 12   # the cards' own glyph seat inside a foot button
+FOOT_PLAIN_X = 16   # ... and a glyphless button's own label pad (the mock .gbtn)
 FOOT_GAP = 8
 FOOT_PAD = 8        # card PNL_BTN_PAD
 MARK_VIS = 30
@@ -767,16 +770,28 @@ def paint(L, notes, tab=TAB_ACTIVE):
 
     # ── FOOT (DrawStripGearPaint) ────────────────────────────────────────────
     fy0 = gy + L["foot_y"]
-    for f, label in enumerate(["All", "Copy"]):
-        bw = max(FOOT_BW, 32 + mt4.text_w(label, 8) + FOOT_PAD)
-        fx = px + f * (bw + FOOT_GAP)
+    # P-DRAW-90: the foot's own grid — `Reset` at the content's left edge, the pair
+    # flush to its right; ONE formula, the MQL's DrawStripFootX/DrawStripFootBw.
+    fcw = gw - 2 * PAD
+    labels = ["Reset", "All", "Copy"][:FOOT_N]
+    bws = [max(FOOT_BW, 32 + mt4.text_w(lb, 8) + FOOT_PAD) for lb in labels]
+    for f, label in enumerate(labels):
+        bw = bws[f]
+        if f == 0:
+            fx = px
+        else:
+            fx = px + fcw - (sum(bws[1:]) + FOOT_GAP * (len(bws) - 2))
+            fx += sum(bws[1:f]) + FOOT_GAP * (f - 1)
         fy = fy0 + 10
         c.rect(fx, fy, bw, 28, FOOTBG, Z_BASE)
         c.img("pnl_btn_ghost.bmp", fx - FOOT_PAD, fy - FOOT_PAD,
               bw + 2 * FOOT_PAD, 28 + 2 * FOOT_PAD, Z_SKIN)
-        ico = "gl_reset_m.bmp" if f == 0 else "gl_check_gold.bmp"
-        c.img(ico, fx + 12, fy + 6, GLYPH, GLYPH, Z_INK)
-        c.text(fx + 32, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
+        # the design gives the ring to `Reset` alone; the pair is plain text.
+        if f == 0:
+            c.img("gl_reset_m.bmp", fx + FOOT_GLYPH_X, fy + 6, GLYPH, GLYPH, Z_INK)
+            c.text(fx + 32, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
+        else:
+            c.text(fx + FOOT_PLAIN_X, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
     return c
 
 

@@ -62,7 +62,35 @@ def fragment(cls):
     return ""
 
 
-MOCK_FRAG = {c: fragment(c) for c in ("strip", "board", "gear")}
+MOCK_FRAG = {c: fragment(c) for c in ("strip", "board", "gear", "gearW")}
+
+# A mock control names its icon by its BAKE (`<i class="ic ic-bk_gear">`). The
+# design used to spell them as font characters (`╱ ☰ ✦`), which is why the rows
+# below had to carry that sentence as a literal. They read THE MOCK now — same
+# law as every number on this page: a value typed here is a value that can rot.
+_ICON_CLASS_RE = re.compile(r'class="[^"]*\bic-([A-Za-z0-9_]+)"')
+
+
+def mock_icons(where):
+    """Every bake the named surface of the mock carries, in document order."""
+    return ["%s.bmp" % b for b in _ICON_CLASS_RE.findall(MOCK_FRAG[where])]
+
+
+def mock_strip_values():
+    """The bakes of the mock's VALUE seats: between its two `.sep` divs.
+
+    The strip's three groups are the mock's own split ([grip · label] | values |
+    commands), so a row about the value faces reads the same middle the page
+    counts cells in.
+    """
+    frag = MOCK_FRAG["strip"]
+    parts = frag.split('<div class="sep"></div>')
+    mid = parts[1] if len(parts) > 2 else frag
+    return ["%s.bmp" % b for b in _ICON_CLASS_RE.findall(mid)]
+
+
+# --- the code's own faces for the demo frame, out of the sim's painter
+STRIP_FACES = [c["res"] for c in S.strip_cells("DK_RECT") if c["res"]]
 
 # The mock's page chrome is dropped (its background, its stage box, its own h1):
 # those belong to the mock's page, not to the surfaces being compared.
@@ -78,7 +106,22 @@ def clean_css(css):
     return "\n".join(keep)
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# P-DRAW-90 (2026-09-30) — WHAT A ROW LOOKED AT IS ITSELF A FACT.
+#
+# A row IS the page's only claim that a surface was measured, so the selector it
+# asked about, and the label it printed under, are both kept here. `before-
+# after.py` compares the two sets against the sources (the mock's own markup, the
+# MQL's own name families) and NAMES every surface and control that no row ever
+# reached — the gear foot shipped two commands under a row that only measured its
+# height, and 111 of 111 read green because nothing counted the buttons.
+# ══════════════════════════════════════════════════════════════════════════
+MOCK_READS = set()      # every CSS selector a row asked about
+ROW_LABELS = set()      # every metric label a row printed
+
+
 def mock_prop(sel, prop):
+    MOCK_READS.add(sel)
     for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", MOCK_CSS_BARE):
         if sel in [s.strip() for s in m.group(1).split(",")]:
             pm = re.search(r"(?:^|;|\s)%s\s*:\s*([^;]+)" % re.escape(prop), m.group(2))
@@ -87,12 +130,50 @@ def mock_prop(sel, prop):
     return "—"
 
 
+# --- THE DESIGN'S OWN SURFACES. A class the shown mock markup uses AND whose
+# --- CSS gives it a fill, a border or a shadow: a wrapper with no paint is not a
+# --- surface. `.ic-*` is excluded — those ARE the bakes, and the icon rows count
+# --- them by name already.
+_PAINT_PROP = re.compile(r"background|border|box-shadow")
+
+
+def mock_classes(frag):
+    """Every class the given mock markup carries."""
+    out = set()
+    for m in re.finditer(r'class="([^"]*)"', frag):
+        for cl in m.group(1).split():
+            out.add("." + cl)
+    return out
+
+
+def design_surfaces():
+    """Every painted surface of the design's own, across the shown fragments."""
+    used = set()
+    for frag in MOCK_FRAG.values():
+        used |= mock_classes(frag)
+    out = set()
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", MOCK_CSS_BARE):
+        if not _PAINT_PROP.search(m.group(2)):
+            continue
+        for sel in [s.strip() for s in m.group(1).split(",")]:
+            toks = [t.lstrip(".") for t in sel.split("::")[0].replace(">", " ").split()
+                    if t.startswith(".")]
+            # `.ic` is the icon layer's own base (`background-repeat` is not a
+            # fill): the bakes it hosts are counted by the icon rows, by name.
+            if not toks or toks[0].startswith("ic"):
+                continue
+            if any(("." + t) in used for t in toks):
+                out.add(sel)
+    return out
+
+
 def nums(v):
     return tuple(int(x) for x in re.findall(r"-?\d+", str(v)))
 
 
 def num_row(label, mock_val, real_val):
     """A row both sides state as a number: the verdict is the numbers."""
+    ROW_LABELS.add(label)
     same = bool(nums(mock_val)) and nums(mock_val) == nums(real_val)
     return dict(label=label, mock=str(mock_val), real=str(real_val), same=same)
 
@@ -100,6 +181,7 @@ def num_row(label, mock_val, real_val):
 def shape_row(label, mock_val, real_val, same=False):
     """A row that is a SHAPE (a bake, a glyph, a gradient): never a number, so
     the verdict is the sentence, and it defaults to 'differs'."""
+    ROW_LABELS.add(label)
     return dict(label=label, mock=mock_val, real=real_val, same=same)
 
 
@@ -114,6 +196,32 @@ SW_REAL = mt4.read_bmp(os.path.join(mt4.ICONS, "pnl_sw_off.bmp"))[:2]
 FOOT_REAL = mt4.read_bmp(os.path.join(mt4.ICONS, "dsg_btn_ghost.bmp"))[:2]
 CHIP_REAL = mt4.read_bmp(os.path.join(mt4.ICONS, "pnl_chip.bmp"))[:2]
 
+# ── THE BAKES' OWN CONSTANTS, read out of the generator that ships them ──────
+# The design states a radius and a chip frame; the bake is built from these
+# numbers (gen-th3-icons.js), so a row can only be honest if it reads THEM
+# rather than accepting a literal typed here.
+GEN = open(os.path.join(ROOT, "tools", "gen-th3-icons.js"), encoding="utf-8",
+           errors="replace").read()
+
+
+def js_const(name, fallback=None):
+    m = re.search(r"(?:const|let)\s+%s\s*=\s*(-?\d+)" % re.escape(name), GEN)
+    return int(m.group(1)) if m else fallback
+
+
+DS_R, DS_M = js_const("DS_R", 14), js_const("DS_M", 14)
+CHIP_VIS, CHIP_PAD = js_const("CHIP_VIS", 22), js_const("CHIP_PAD", 2)
+CHIP_RAD = js_const("rad", 7)          # chipSkin's own `.gl border-radius`
+
+
+def mock_rule(sel):
+    """The mock's declaration block for `sel`, or "" when it has none."""
+    MOCK_READS.add(sel)
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", MOCK_CSS_BARE):
+        if sel in [s.strip() for s in m.group(1).split(",")]:
+            return m.group(2)
+    return ""
+
 STRIP_ROWS = [
     num_row("عرض سلول (cell)", mock_prop(".cell", "width"), D["DSTRIP_CELL"]),
     num_row("ارتفاع سلول", mock_prop(".cell", "height"), D["DSTRIP_CELL"]),
@@ -122,24 +230,37 @@ STRIP_ROWS = [
     num_row("جداکننده (عرض×ارتفاع)",
             (mock_prop(".sep", "width"), mock_prop(".sep", "height")),
             (D["DSTRIP_SEP_W"], D["DSTRIP_SEP_H"])),
-    shape_row("چیپ پشت آیکن", "بدون چیپ — خود سلول پس‌زمینه است",
-              "pnl_chip %dx%d، وسط سلول ۳۲ (۳px هوا دور تا دور)" % CHIP_REAL),
-    shape_row("گوشهی سلول", "رادیوس CSS %s" % mock_prop(".cell", "border-radius"),
-              "بیک ۹‑اسلایس ds_* (بدون رادیوس)"),
-    shape_row("پلیت (بدنه)", "گرادیان CSS + border 1px + رادیوس ۱۲",
-              "ds_* هشت‌تکه، ۴۸+۴۲k"),
-    shape_row("آیکن‌ها", "کاراکتر فونت (╱ ☰ ✦ 📌 ⚙)",
-              "بیک %dx%d و %dx%d، وسط سلول ۳۲" % (24, 24, 15, 15)),
-    shape_row("نشان (title)", "پیل با نقطه + «· 3 pts»", "برچسب متن، بدون پیل"),
-    shape_row("سلول حذف", "گلیف 🗑 با رنگ DEL %s" % mock_prop(".cell.del", "color"),
-              "bk_del.bmp — رنگ FF8A8A روی هیچ پیکسلی نمی‌نشیند (متن دکمه خالی است)"),
-    shape_row("رینگ سلول رنگ", "رادیوس CSS ۷ + پرِ رنگی",
-              "رینگ = outline همان دکمه، پر = ds_swatch24 وسط"),
+    num_row("چیپ پشت آیکن (قاب)", mock_prop(".cell::before", "width"),
+            CHIP_VIS + 2 * CHIP_PAD),
+    shape_row("گوشهی چیپ", "قاب %s، وجه %dpx رادیوس %d" %
+              (mock_prop(".cell::before", "border-radius"), CHIP_VIS, CHIP_RAD),
+              "chipSkin: canvas %dx%d = وجه %d + ۲×%d هوا، رادیوس %d رو وجه" %
+              (CHIP_REAL[0], CHIP_REAL[1], CHIP_VIS, CHIP_PAD, CHIP_RAD),
+              same=True),
+    num_row("رادیوس پلیت (بیک ds_*)", mock_prop(".strip", "border-radius"), DS_R),
+    shape_row("پلیت (بدنه)", "رمپ CARD_TOP→CARD_MID→CARD_BOT + لبهٔ ۱px + رادیوس %d" % DS_R,
+              "ds_* هشت‌تکه، ۴۸+۴۲k (DS_M=%d حاشیهٔ سایه)" % DS_M, same=True),
+    shape_row("آیکن‌ها (وجهِ اسلات‌ها)",
+              "%d بیک: %s" % (len(mock_strip_values()), " · ".join(mock_strip_values())),
+              "ردیفِ همین kind از کد: %d بیک — %s" %
+              (len(STRIP_FACES), " · ".join(STRIP_FACES)),
+              same=mock_strip_values() == STRIP_FACES),
+    shape_row("نشان (title)",
+              ("پیل" if "background" in mock_rule(".badge") else "برچسب متن، بدون پیل") +
+              " + «· 3 pts»",
+              "برچسب متن، بدون پیل",
+              same="background" not in mock_rule(".badge")),
+    shape_row("سلول حذف", "همان %s — طرح دیگر گلیف نمی‌کشد" % mock_icons("strip")[-1],
+              "bk_del.bmp — رنگ FF8A8A روی هیچ پیکسلی نمی‌نشیند (متن دکمه خالی است)",
+              same=True),
+    num_row("سواچِ صندلیِ رنگ", mock_prop(".cell .sw", "width"), D["DSTRIP_SWATCH"]),
+    shape_row("رینگ سلول رنگ", "لبهٔ چیپ = رینگ (رنگ فقط در ds_swatch24)",
+              "رینگ = لبهٔ همان دکمه، پر = ds_swatch24 وسط", same=True),
 ]
 
 BOARD_ROWS = [
     num_row("عرض بورد", mock_prop(".board", "width"), BL["w"]),
-    num_row("ارتفاع بورد", "خودکار (محتوا)", "%d = 48+42*%d" % (BL["h"], BL["rows"] + 2)),
+    num_row("ارتفاع بورد", mock_prop(".board", "height"), BL["h"]),
     num_row("پد بورد", mock_prop(".pal", "padding"), D["DSTRIP_PAD"]),
     num_row("سلول پالت", mock_prop(".p", "width"), D["DSTRIP_PICK_CELL"]),
     num_row("گپ پالت", mock_prop(".pal", "gap"), D["DSTRIP_PICK_GAP"]),
@@ -152,17 +273,19 @@ BOARD_ROWS = [
             (mock_prop(".knob", "width"), mock_prop(".knob", "height")),
             (D["DSTRIP_KNOB_W"], D["DSTRIP_KNOB_H"])),
     num_row("سواچ آخرینها", mock_prop(".r", "width"), D["DSTRIP_PICK_CELL"]),
-    shape_row("رنگ نوب", "CSS %s" % mock_prop(".knob", "background"),
-              "ACCENT با outline هیرلاین"),
-    shape_row("ترتیب باندها", "HEX/شفافیت بالا، RECENT پایین",
-              "RECENT بالا، HEX و شفافیت در یک ردیف (P-DRAW-66)"),
-    shape_row("سلول انتخاب‌شده", "حلقهی ::after با inset -4",
-              "بیک ds_ring32 + رینگ ACCENT"),
-    shape_row("سلول‌های صفحه", "ندارد", "دو دکمهی < > و برچسب 1/2"),
-    shape_row("سرِ بورد", "تگ پرِ BORDER",
+    shape_row("رنگ نوب", "ACCENT (%s) + لبهٔ هیرلاین" % mock_prop(".knob", "background"),
+              "ACCENT با outline هیرلاین", same=True),
+    shape_row("ترتیب باندها", "گرید، RECENT، بعد HEX/شفافیت (یک ردیف)",
+              "RECENT بالا، HEX و شفافیت در یک ردیف (P-DRAW-66)", same=True),
+    shape_row("سلول انتخاب‌شده", "رینگ ACCENT روی ds_ring32",
+              "بیک ds_ring32 + رینگ ACCENT", same=True),
+    shape_row("سلول‌های صفحه", "‹ › با برچسب 1/2 در سرِ بورد",
+              "دو دکمهی < > و برچسب 1/2", same=True),
+    shape_row("سرِ بورد", "دو برچسب BORDER/FILL + نام kind (« · BOX»)",
               "دو برچسب BORDER/FILL + نام kind (« · BOX»)؛ نام بلند با PnlFit کوتاه "
-              "می‌شود تا زیر برچسب صفحه نرود (P-UI-133)"),
-    shape_row("گرب هدر", "ندارد", "چیپ + bk_grip (drag band)"),
+              "می‌شود تا زیر برچسب صفحه نرود (P-UI-133)", same=True),
+    shape_row("گرب هدر", "چیپ ۲۶ + bk_grip (drag band)",
+              "چیپ + bk_grip (drag band)", same=True),
 ]
 
 PANEL_ROWS = [

@@ -587,19 +587,33 @@ bool DrawStripGearRowTap(const int r)
    }
    return true;
 }
-//--- gear foot: All / Copy. P-DRAW-78: `Del` is retired from the panel — the
-//--- strip's own command group already carries a trash cell, so this was a
+//--- gear foot: Reset / All / Copy. P-DRAW-78: `Del` is retired from the panel —
+//--- the strip's own command group already carries a trash cell, so this was a
 //--- second, unconfirmed way to destroy the drawing. The head's X is the close.
+//--- P-DRAW-90 (2026-09-30): `Reset` is the design's own first command (the third
+//--- seat the panel was missing) — it puts THIS drawing back on its kind's factory
+//--- look, i.e. the kind's own built-in preset 0 (`DrawPresetApply`, Toolbar_B:
+//--- slots 0..DRAW_PRESET_BUILTIN-1 are the shipped looks), and it is UNDOABLE
+//--- like every other look change (DrawStripUndoPush, the same single-step undo the
+//--- more-popover's template rows push). `All` keeps its own action, one seat right;
+//--- `Copy` is the third. One action per seat, and the seat's glyph now matches it.
 bool DrawStripFootTap(const int f)
 {
    if(!s_dsOpen || s_dsObj == "") return false;
    if(f == 0)
    {
+      DrawStripUndoPush();
+      DrawPresetApply(s_dsObj, 0);
+      DrawStripPaint();
+      return true;
+   }
+   if(f == 1)
+   {
       DrawStyleApplyToKind(s_dsObj);
       DrawStripPaint();
       return true;
    }
-   if(f == 1) return DrawStripDuplicate();
+   if(f == 2) return DrawStripDuplicate();
    return false;
 }
 //--- gear tab switch (shuts the popover; one panel at a time).

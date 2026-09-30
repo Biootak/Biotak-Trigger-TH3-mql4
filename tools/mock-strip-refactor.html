@@ -6,7 +6,8 @@
 <style>
   /* ── the project's own tokens (ConstantsAndEnums.mqh 1000-1020) ── */
   :root{
-    --panel:#171C25; --card:#1D222C; --card-top:#1E242F; --field:#181D27;
+    --panel:#171C25; --card:#1D222C; --card-top:#1E242F; --card-bot:#12161D;
+    --card-bd:#2C3444; --field:#181D27;
     --field-bd:#333C4C; --foot:#12161D; --line:#222832;
     --label:#CBD4E2; --muted:#8C96A6; --ink:#F3F6FB;
     --a1:#FFC247; --a2:#FF8A00; --aink:#1A1206;
@@ -36,70 +37,96 @@
   h1{font-size:14px; color:var(--label); font-weight:700; margin:0 0 2px}
   .sub{font-size:11px; color:#5c6a80; margin-bottom:18px}
 
-  /* ══ 1) THE QUICK STRIP — one 30px icon row ══ */
-  .strip{position:absolute; left:40px; top:132px; direction:ltr;
-    display:inline-flex; align-items:center; gap:4px; padding:8px;
-    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 55%, var(--foot) 130%);
-    border:1px solid #2C3444; border-radius:12px;
-    box-shadow:0 14px 34px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.04) inset;
+  /* ══ 1) THE QUICK STRIP ══════════════════════════════════════════════
+     عددهای چیدمان از خودِ کد: DSTRIP_CELL=32، GAP=4، PAD=8 → 48 = 8+32+8.
+     پلیت همان بیک ds_* است: حاشیهٔ سایه DS_M=14، رادیوس DS_R=14، لبهٔ #2C3444،
+     رمپ CARD_TOP #1E242F → CARD_MID #171C25 (۵۲٪) → CARD_BOT #12161D.
+     ۵۸۱ عرضِ محتواست که DrawStripLayout برای همین فریم حساب می‌کند؛ ۶۰۹×۷۶
+     پلیت با ۱۴px حاشیهٔ سایهٔ خودش است. */
+  .strip{position:absolute; left:54px; top:146px; direction:ltr;
+    display:flex; align-items:center; gap:4px; padding:8px;
+    width:581px; height:48px;
+    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 52%, var(--card-bot) 100%);
+    border:1px solid var(--card-bd); border-radius:14px;
+    box-shadow:0 5px 13px rgba(6,9,14,.75);
   }
-  .grip{width:18px; height:26px; display:grid; place-items:center; color:#4a5568;
-        font:700 12px/1 monospace; letter-spacing:1px; cursor:grab}
-  .badge{display:flex; align-items:center; gap:6px; height:30px; padding:0 10px;
-    background:var(--field); border:1px solid var(--line); border-radius:7px;
+  /* صندلیِ آیکن ۳۲؛ چیپِ پشتش: قاب ۲۶ (CHIP_VIS 22 + ۲px هوا) با رادیوس ۷ و
+     همان آلفاهای chipSkin — 0.055 پر، 0.10 لبه. وقتی سلول روشن است چیپ طلایی میشود. */
+  .grip{width:32px; height:32px; display:grid; place-items:center; cursor:grab; position:relative}
+  .grip::before,.cell::before{content:""; position:absolute; width:26px; height:26px;
+    border-radius:9px; background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.10)}
+  .cell.on::before,.cell.pick::before,.cell.gear-open::before{
+    background:linear-gradient(180deg, rgba(255,194,71,.42), rgba(255,138,0,.30));
+    border-color:rgba(255,194,71,.55)}
+  /* نامِ دراوینگ: متنِ خودش — نشانِ نشانگر پیل و نقطه ندارد */
+  .badge{display:flex; align-items:center; gap:6px; height:32px; flex:1;
     color:var(--label); font-size:11px; font-weight:700; white-space:nowrap}
-  .badge .dot{width:7px; height:7px; border-radius:2px; background:var(--a1)}
   .badge small{color:var(--muted); font-weight:400}
+  /* جداکننده 1×20؛ هوای هر طرف ۸ = گپ ۴ + مارجین ۴ */
   .sep{width:1px; height:20px; background:var(--line); margin:0 4px}
-  .cell{width:32px; height:30px; border-radius:7px; display:grid; place-items:center;
-    background:var(--field); border:1px solid var(--line);
-    color:var(--label); font-size:13px; cursor:pointer; position:relative}
-  .cell:hover{border-color:var(--field-bd); background:#1c2330}
-  .cell.on{background:linear-gradient(180deg,var(--a1),var(--a2)); color:var(--aink); border-color:#8a6a1e}
-  .cell.pick{border-color:var(--pick); box-shadow:0 0 0 1px var(--pick) inset}
-  .cell.gear-open{border-color:var(--a1); box-shadow:0 0 0 1px rgba(255,194,71,.35) inset}
-  .cell .sw{width:16px; height:16px; border-radius:4px; background:linear-gradient(135deg,var(--a1),#c88a1e);
-            box-shadow:0 0 0 1px rgba(255,255,255,.14) inset}
-  .cell .sw.half{background:linear-gradient(90deg, rgba(255,194,71,.28) 0 50%, transparent 50% 100%)}
-  .cell .ico{font-size:12.5px; line-height:1}
-  .cell.del{color:var(--del)}
-  .cell.more{color:var(--muted); font-weight:700; letter-spacing:1px}
-  .cell.pin{color:var(--a1)}
+  .cell{width:32px; height:32px; display:grid; place-items:center;
+    cursor:pointer; position:relative}
+  .cell:hover::before{border-color:var(--field-bd)}
+  .cell.pick::before,.cell.gear-open::before{border-color:var(--a1)}
+  /* سواچِ صندلیِ رنگ: ds_swatch24 — ۲۴ با رادیوس ۶، وسط همان صندلیِ ۳۲ */
+  .cell .sw{width:24px; height:24px; border-radius:6px; background:linear-gradient(135deg,var(--a1),#c88a1e);
+            box-shadow:0 0 0 1px rgba(255,255,255,.14) inset; position:relative}
+  /* آیکنها بیکِ واقعی‌اند، نه کاراکتر: عنصرشان اندازهٔ خودِ BMP را می‌خواهد. */
+  .ic{display:block; background-repeat:no-repeat; background-position:center;
+      image-rendering:pixelated}
 
-  /* ══ 2) THE COLOUR BOARD — its own card ══ */
-  .board{position:absolute; left:40px; top:224px; width:344px; direction:ltr;
-    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 45%, var(--foot) 135%);
-    border:1px solid #2C3444; border-radius:12px; overflow:hidden;
-    box-shadow:0 18px 44px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.04) inset;}
-  .bhead{height:44px; display:flex; align-items:center; gap:8px; padding:0 12px;
-         border-bottom:1px solid var(--line)}
-  .bhead .t{color:var(--ink); font-size:11px; font-weight:700; letter-spacing:.6px}
-  .bhead .tag{color:var(--a1); font-size:9px; font-weight:700; background:rgba(255,194,71,.12);
-              border:1px solid rgba(255,194,71,.3); padding:2px 6px; border-radius:4px}
+  /* ══ 2) THE COLOUR BOARD — کارتِ مستقلِ خودش (P-DRAW-48) ══════════════
+     عرض ۳۲۸ = ۸×۳۲ + ۷×۸ + ۲×۸ | ارتفاع ۴۶۸ = ۴۸ + ۴۲×۱۰
+     سناریو: هدر ۴۴، گرید ۸×۸ = ۶۴ رنگِ BioPal (پیت ۴۲)، بعد RECENT،
+     بعد HEX و شفافیت در یک ردیف (P-DRAW-66). پلیت همان ds_* است (fam 2). */
+  .board{position:absolute; left:54px; top:250px; width:328px; height:468px; direction:ltr;
+    background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 52%, var(--card-bot) 100%);
+    border:1px solid var(--card-bd); border-radius:14px;
+    box-shadow:0 5px 13px rgba(6,9,14,.75)}
+  /* سرِ بورد: گرب (چیپ + bk_grip)، برچسب BORDER/FILL، نام kind،
+     دکمه‌های صفحه 1/2 ‹ ›، پین، و بستن — دقیقاً همان ترتیبِ DrawStrip */
+  .bhead{height:44px; display:flex; align-items:center; padding:0 8px}
+  .bgrip{width:32px; height:32px; display:grid; place-items:center; position:relative}
+  .bgrip::before{content:""; position:absolute; width:26px; height:26px; border-radius:9px;
+    background:rgba(255,255,255,.055); border:1px solid rgba(255,255,255,.10)}
+  .lbl{color:var(--muted); font-size:11px; font-weight:700; margin-left:12px}
+  .lbl.on{color:var(--a1)}
+  .bkind{color:var(--muted); font-size:11px; font-weight:700}
   .bhead .sp{flex:1}
-  .icoBtn{width:24px; height:24px; border-radius:6px; display:grid; place-items:center;
-          color:var(--muted); background:transparent; border:1px solid transparent; cursor:pointer; font-size:11px}
-  .icoBtn:hover{color:var(--label); border-color:var(--line); background:var(--field)}
-  .icoBtn.gold{color:var(--a1)}
-  .pal{display:grid; grid-template-columns:repeat(8,32px); gap:8px; padding:14px 16px 6px}
-  .p{width:32px; height:32px; border-radius:7px; cursor:pointer; position:relative;
+  .pgd{color:var(--label); font:8px Arial; margin-right:8px}
+  .pg{width:20px; height:20px; display:grid; place-items:center; border:1px solid var(--line);
+      color:var(--label); font:10px Arial}
+  .pg.dim{color:var(--line)}
+  .icoBtn{width:26px; height:26px; display:grid; place-items:center; margin-left:2px}
+  .icoBtn.pin{border:1px solid var(--a1)}
+  .icoBtn.x{border:1px solid var(--line); color:var(--label); font:11px Arial}
+  .pal{display:grid; grid-template-columns:repeat(8,32px); gap:8px; row-gap:10px;
+       height:328px; align-content:start; padding:8px}
+  .p{width:32px; height:32px; border-radius:6px; cursor:pointer; position:relative;
      box-shadow:0 0 0 1px rgba(255,255,255,.07) inset}
-  .p.sel::after{content:""; position:absolute; inset:-4px; border:2px solid var(--a1); border-radius:9px}
-  .band{display:flex; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line)}
+  /* P-DRAW-64: خانهٔ جاری رینگِ ACCENT + بیک ds_ring32 می‌گیرد */
+  .p.sel::after{content:""; position:absolute; inset:0; border:2px solid var(--a1); border-radius:8px}
+  .band{height:42px; display:flex; align-items:center; gap:8px; padding:0 8px}
   .band .cap{width:52px; color:var(--muted); font-size:9px; font-weight:700; letter-spacing:.5px}
   .hex{width:96px; height:22px; background:var(--field); border:1px solid var(--field-bd);
-       border-radius:6px; color:var(--ink); font:11px/20px Consolas,monospace; padding:0 8px; direction:ltr}
-  .track{flex:1; height:8px; border-radius:4px; position:relative; direction:ltr;
-    background:linear-gradient(90deg, rgba(255,194,71,.08), var(--a1));
-    border:1px solid var(--line)}
-  .knob{position:absolute; left:72%; top:-3px; width:10px; height:12px; border-radius:3px;
-        background:var(--label); border:1px solid #0006; box-shadow:0 1px 3px #000a}
+       color:var(--ink); font:11px/20px Consolas,monospace; padding:0 8px; direction:ltr}
+  .track{flex:1; height:8px; position:relative; direction:ltr; background:var(--line)}
+  .track i{position:absolute; left:0; top:0; bottom:0; width:72%; background:var(--a1)}
+  .knob{position:absolute; left:calc(72% - 7px); top:-2px; width:10px; height:12px;
+        background:var(--a1); border:1px solid var(--line)}
   .ov{width:38px; text-align:right; color:var(--ink); font:11px Consolas,monospace; direction:ltr}
-  .recents{display:flex; gap:8px; align-items:center; padding:8px 16px 14px}
-  .r{width:24px; height:24px; border-radius:6px; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset; cursor:pointer}
+  .recents{display:flex; gap:8px; align-items:center}
+  .r{width:32px; height:32px; border-radius:6px; box-shadow:0 0 0 1px rgba(255,255,255,.08) inset;
+     cursor:pointer; position:relative}
+  .r.sel::after{content:""; position:absolute; inset:0; border:2px solid var(--a1); border-radius:8px}
 
   /* ══ 3) THE GEAR PANEL — a 312 card ══ */
-  .gear{position:absolute; left:470px; top:64px; width:312px; direction:ltr;
+  /* تب‌های دوستونه (Style / Row) در کد ۶۲۴ عرض دارند (کارت W) — طرح هم
+     همان را می‌کشد، پس هیچ تبی بی‌طرح نمی‌ماند. */
+  .gearW{left:54px; top:770px; width:624px}
+  .cols2{display:flex}
+  .cols2 .rows{width:312px}
+  .gear,.gearW{position:absolute; left:470px; top:64px; width:312px; direction:ltr;
     background:linear-gradient(180deg, var(--card-top) 0%, var(--panel) 40%, var(--foot) 140%);
     border:1px solid #2C3444; border-radius:12px; overflow:hidden;
     box-shadow:0 20px 48px rgba(0,0,0,.62), 0 1px 0 rgba(255,255,255,.04) inset;}
@@ -138,15 +165,14 @@
   .chip.on{background:linear-gradient(180deg,var(--a1),var(--a2)); color:var(--aink); border-color:#8a6a1e; font-weight:700}
   .listrow{height:42px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--line);
            color:var(--label); font-size:11px}
-  .listrow .k{width:16px; height:16px; border-radius:4px; border:1px solid var(--field-bd);
-              display:grid; place-items:center; color:var(--a1); font-size:9px}
+  /* PNL_CB_SZ=20 — جعبهٔ تیک همان بیکِ محصول است، پس قاب و رنگ خودش را ندارد. */
+  .listrow .k{width:20px; height:20px; display:grid; place-items:center}
   .gfoot{height:48px; display:flex; align-items:center; gap:8px; padding:0 8px; background:var(--foot);
          border-top:1px solid var(--line)}
   .gbtn{height:32px; padding:0 16px; border-radius:7px; background:var(--panel);
         border:1px solid var(--field-bd); color:var(--label); font-size:11px; font-weight:700;
         display:flex; align-items:center; gap:6px; cursor:pointer}
   .gbtn:hover{border-color:var(--a1); color:var(--ink)}
-  .gbtn .g{color:var(--muted); font-size:11px}
   .gfoot .sp{flex:1}
   .footnote{color:#54607a; font-size:9px}
 
@@ -156,6 +182,29 @@
   .tk{display:flex; align-items:center; gap:6px; background:rgba(13,17,23,.75); border:1px solid var(--line);
       border-radius:7px; padding:4px 8px; font:10px Consolas,monospace; color:var(--muted)}
   .tk i{width:12px; height:12px; border-radius:3px; display:inline-block}
+
+  /* ══ آیکن‌ها — بیکِ واقعی Files/Icons/، ۱:۱ ══════════════════════════════
+     MT4 کاراکتر فونت نمی‌کشد؛ BMP می‌چسباند. پس هیچ گلیفی در این طرح نماند:
+     هر سلول همان بیکی را دارد که نشانگر می‌بلعد، با اندازهٔ خودِ BMP
+     (24 / 26 / 30 / 20 که از هدرِ خودِ بیک خوانده شده).
+     بایت‌های زیر همان BMP‌اند، به PNG تا مرورگر ببیندشان. */
+  .ic-bk_grip{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAN0lEQVR42mNgGAWDHvgEhCaAMLHiJBt++sqj/yCMbBgu8cFnAc2DaDQVjaai0VQ0mopGU9GIAQBge5MxQaUCYgAAAABJRU5ErkJggg==)}
+  .ic-bk_w1{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAASElEQVR42mNgGAWjYBRggJ5Js9dHxiYXkKoPpAekl6DCGfNX7U/LKmwg1QKQHpDewWEBzBJSMEzf4LBgaMcBzZPpKBgFIxAAAPVJceUOGYvIAAAAAElFTkSuQmCC)}
+  .ic-bk_style0{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAANUlEQVR42mNgGAWjYBQMIyApLaNgbGrpQA0MMgvD8NNXHv2nJkaxhOYW0DyIRsEoGAVDHAAAfsavJWq4+RYAAAAASUVORK5CYII=)}
+  .ic-bk_bucket{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAq0lEQVR42mNgGAWjgCYgLauwgRxMtAUz5q/av2nXsfunrzz6v3TNjvMgPjYMkgOpAakF8UnyhZqGlgFIs09AaAIuNSA5kBqQWrKCCuSynkmz1+OSB8mB1JAdF0Xl9f0gF/Ly8gmgy4HEQHIgNWRbgC+YKA4eQsFEcfCgBxN6CqI4eGBAUlpGAVuaBxkOCiZs8UMVUN/aOx/kC3ypjOLcTlMLYKlstGAdBbQHAILzqhOVGcw/AAAAAElFTkSuQmCC)}
+  .ic-bk_half_on{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAQklEQVR42mNgGAWjgKrg/wmb/9TAoxYMUgscjPgd9k/T3Q/D/YVK/cj8hhS5Bnx8ZPUgs+hvwWgkjxALRsEoIAsAAH8xbHNx+U15AAAAAElFTkSuQmCC)}
+  .ic-bk_ext_off{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAeklEQVR42mNgGAUjD8yYv2p/WlZhA80sOH3l0X+QJQNqgU9AaIK9k3sAzSzYtOvYfZA6kEU0sUBSWkZh6Zod50FqI2OTC2gSB7y8fAIwS+pbe+eTZQEonEFsXBhmAQgXldf3Dz4LaB5EAxbJNE+mNM9og7uwGwXDDwAAZcDHiXyRTUEAAAAASUVORK5CYII=)}
+  .ic-bk_lock_off{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAApElEQVR42mNgGAWjgKaAl5dPoGfS7PUz5q/ajw2D5EBqyLbA2NTS4fSVR//xYZAaii1IyypsQJcDiQ1uC0BhGxmbXAAypL61dz7IIGQMEgPJgdSQFQ+gCCQU/jAMUkuyBaBUAgsefBikBqSWbAvQkyx60qSaBbD4gIU71S2QlJZR2Hf8ynsQBrGpbgEuQLEFNItkmidTUEpBz1y4MEUF3iigOQAAvm0y7GZ1Cz8AAAAASUVORK5CYII=)}
+  .ic-bk_back_on{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAgklEQVR42mNgGAWDDpxfbHj+/wmb/4Rwf6FSP1kWgDS/32Pxfv803f24MEgNiCbbAkKaRy3A0JzgLZ6AHgfY4omoiMdmAcxQYjBFFpCiZmAtIAaTbQEootAjDxShMENhGBTxZFmADRCjedSC/ehxgCueyLIAFPHEpCxQUT9a4Q0+AAABxWQEoWD7WwAAAABJRU5ErkJggg==)}
+  .ic-bk_more{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAVklEQVR42mNgGAWjYBQMU2Dv5B6QllXYoKahZYAsHhmbXADCyGIgNSC1ID1EGS4pLaNw+sqj/yC8adex+8iGw8SRLQGpgYmD9A68BTQPolEwCkbBEAQAWu5SUeh3PMEAAAAASUVORK5CYII=)}
+  .ic-bk_gear{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAz0lEQVR42mNgGFGgqLy+H4RpYriahpbB6SuP/oMwiE11C4xNLR1gFoDYFBm2dM2O8yDMy8snQMgCkBqYepIsABkEokHBUd/aO3/f8SvvYRaA2CAxkByyWqItgLkKZiAhjO5bkiMVhGfMX7U/LauwAYRBbGQ5siIdFAQwA3wCQhPQ5UFiMHmQWqJdDYpAEIaFOci1uNTDfAJSC9OH0zegDIQtfEFBgssCkBw2PVgzI80toHkQ0SWS6ZZMaZ7RaF5U0Lywo3lxPSAVDs2rzEELAABl3QRQwOJuAAAAAElFTkSuQmCC)}
+  .ic-gl_pin_m{width:26px;height:26px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaCAYAAACpSkzOAAABKElEQVR42mNgGPGAk5NLAIRpYriphV1CQnrR+p5py/4jY5AYSI4qrs8srN2PbgE6Bqkh25cgjc29c94jGwZyvbKalgMIg9jIjgCpJcsymCEgA/AFD0gO5iCQHpLjBOZSZEukZOQN3LyDG0AYxCakniCARTyyC0GGo8cNSAw9BEB6ibYI3XUg18PEqpsn3gdhGB/mM2RfEZ0IYBpAkY7sG5AFMHUwy2C+AqmF6SMqUdDNIroFHV0TA7LrhIRFFQglb5AaspI3chwQkwlhvkGOQ7J8paNvEoBLHUiObN9gK4aQgxA5yMgufnAZVFTVfh452YLYIDF8DiEJIAdNRFzGfJg4iE1M0JIEbJ08C5AtQ7YEJEfVWhbZcGw+pJllNLMEuYRALhFGLgAAdLua6qendlAAAAAASUVORK5CYII=)}
+  .ic-bk_del{width:24px;height:24px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAAAwklEQVR42mNgGAVDBhibWjogY6oaXt/aO//0lUf/kTFIjGoWzJi/aj/I0LSswgYQBrFBYhQbSAomyUKQK0EaSMEgPST7pKi8vp+QwSA1ZAcVscFDkQUgV6ppaBnw8vIJSErLKIAwiA0Sg8UVxRbsO37lfWRsckHPpNnrQRjEBolRzQJYEkWOUGS5UQv2g4oFUPkDCnsQBrFBYlSxYNOuY/dhRQQ6BslRZAEopRDKAyA1ZFsASvPoxTQ6BqkZrcwGNwAAiNqJEk+cNEMAAAAASUVORK5CYII=)}
+  .ic-gl_pin_gold{width:26px;height:26px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABoAAAAaCAYAAACpSkzOAAABKUlEQVR42mNgGPFAgIdFAIRpYniCp3TC+lbD9f8Puf9HxiAxkBxVXL9/kul+dAvQMUgN2b4EaXy/zfk9smEg1zsYCjmAMIiN7AiQWrIsgxkCMgBf8IDkYA4C6SE5TmAuRbbEQIXXoCFRpQGEQWxC6gkCWMQjuxBkOHrcgMTQQwCkl2iL0F0Hcj1M7P4qu/sgDOPDfIbsK6ITAUwDKNKRfQOyAKYOZhnMVyC1MH1EJQq6WUS3oKNrYkB2nYIEpwKh5A1SQ1byRo4DYjIhzDfIcUiWrwJsxQJwqQPJke0bbMUQchAiBxnZxQ8ug87PszqPnGxBbJAYPoeQBJCDZn6lznyYOIhNTNCSBApC5QuQLUO2BCRH1VoW2XBsPqSZZTSzBLmEQC4RRi4AAE2jv97sEgGCAAAAAElFTkSuQmCC)}
+  .ic-pnl_xbtn{width:30px;height:30px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAA/ElEQVR42u2WXwqCQBDG1TWIILHCQJIsIV9KyFN4m+gGep4u020EH8L26y+ipZnbQOzAvO18v53Z2d1RFGlPUxnT7f5gGBmmtTMndsw9qfEYaxGDWGh8RNQ0NjZG1t5Zro8LP0xdP8zd1baZ87WIQSw0oNUIyvTefDrzDjw4c7wgd7xNSw+wgQxa0KzNFAv5zk/tgUWHFjTfZa6iNNdMu4HeHZrQrjxzNAPO5bvyvi47tG8NVzR04qUpOoc+sk7BKIFxDdCRosDQBqMExh3EdRAG5tpgVIGTH4ATCZZgCRYKpnlAyJ5Msk+C7FskGwQoRx+6YY90vCUd6P/azkHuKg4MWkk7AAAAAElFTkSuQmCC)}
+  .ic-gl_reset_m{width:15px;height:15px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAA8AAAAPCAYAAAA71pVKAAAAqklEQVR42mNgGHCgo28SYGphlwBiCwmLKtg6eRa4eQc3gGgQH69mkMLMwtr9/iGx/T3Tlv0vqmo/D+KDaBAfJI5XM0gRNoXKaloOzb1z3uM0AORkkE0gnJBetB5dHmQAyGCCXsAFQF4AhQFWZ2OzERmAXAVShyEBMhFkMlk2g/wC8hPIb9g0EvQzKDRBoYpuAMHQRjYAZEN188T7ID+CaILxjO4FklIY3QEAWBloQPeK6OYAAAAASUVORK5CYII=)}
+  .ic-pnl_cb_on{width:20px;height:20px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAnUlEQVR42mNgGAUwwMXN54APE20QOwe3gaK64X01HYv/+DBIDUgtQQOJMQzZUILeJGSIo1vgf/+QWDgfr/cJGWhi6fL/ydNnYEyxgSDDrl2/9R8EyqubSTcwK68MxWu79x7EMIwkAz9++gzGIEPXbdgCNgxEo7ucaANBBoEMhAFshpEchjBDQWGHK2wpimWSDaR6wqZJ1qN64TD8AQD8Ugx6/QYrPQAAAABJRU5ErkJggg==)}
+  .ic-pnl_cb_off{width:20px;height:20px;background-image:url(data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAAUCAYAAACNiR0NAAAAa0lEQVR42mNgGAUwoKtv5IAPE22QorKawZzF6+9v2nXiPz4MUgNSS9BAkMLt+07/f/T01f837z5ixSA5kBqQWoLeBNkO0kAIgNSA1OL1PsxAkCsIAZCaUQOHsoFUSzZUT9g0yXpULxyGPwAAMv0de+mU8w8AAAAASUVORK5CYII=)}
 </style>
 </head>
 <body>
@@ -166,76 +215,98 @@
 
   <!-- 1 ═ THE QUICK STRIP -->
   <div class="strip">
-    <div class="grip">⠿</div>
-    <div class="badge"><span class="dot"></span>Rectangle 1 <small>· 3 pts</small></div>
+    <div class="grip"><i class="ic ic-bk_grip" title="bk_grip.bmp"></i></div>
+    <div class="badge">Rectangle 1 <small>· 3 pts</small></div>
     <div class="sep"></div>
-    <div class="cell pick" title="Color — its board is open"><span class="sw"></span></div>
-    <div class="cell"><span class="ico">╱</span></div>
-    <div class="cell on" title="Fill ON"><span class="sw half"></span></div>
-    <div class="cell"><span class="ico">☰</span></div>
-    <div class="cell"><span class="ico">✦</span></div>
-    <div class="cell"><span class="ico">▤</span></div>
+    <!-- ردیفِ سریعِ باکس، به همان ترتیبی که DrawStripAllSlotAt راه می‌رود:
+         WIDTH · STYLE · FILL · BOXHALF · EXTEND · LOCK · BACK · رنگ (ادغام‌شده، آخر) -->
+    <div class="cell" title="WIDTH — bk_w1.bmp"><i class="ic ic-bk_w1"></i></div>
+    <div class="cell" title="STYLE — bk_style0.bmp"><i class="ic ic-bk_style0"></i></div>
+    <div class="cell" title="FILL — bk_bucket.bmp (off)"><i class="ic ic-bk_bucket"></i></div>
+    <div class="cell on" title="BOXHALF — bk_half_on.bmp (روشن)"><i class="ic ic-bk_half_on"></i></div>
+    <div class="cell" title="EXTEND — bk_ext_off.bmp (off)"><i class="ic ic-bk_ext_off"></i></div>
+    <div class="cell" title="LOCK — bk_lock_off.bmp (off)"><i class="ic ic-bk_lock_off"></i></div>
+    <div class="cell on" title="BACK — bk_back_on.bmp (روشن)"><i class="ic ic-bk_back_on"></i></div>
+    <div class="cell pick" title="FILLCLR — صندلیِ رنگِ ادغام‌شده (بوردش باز است)"><span class="sw"></span></div>
     <div class="sep"></div>
-    <div class="cell more">⋯</div>
-    <div class="cell gear-open"><span class="ico">⚙</span></div>
-    <div class="cell pin"><span class="ico">📌</span></div>
-    <div class="cell del"><span class="ico">🗑</span></div>
+    <div class="cell more" title="bk_more.bmp"><i class="ic ic-bk_more"></i></div>
+    <div class="cell gear-open" title="bk_gear.bmp"><i class="ic ic-bk_gear"></i></div>
+    <div class="cell pin" title="gl_pin_m.bmp"><i class="ic ic-gl_pin_m"></i></div>
+    <div class="cell del" title="bk_del.bmp"><i class="ic ic-bk_del"></i></div>
   </div>
   <div class="note" style="left:40px; top:14px">
-    <b>۱ — استریپ سریع</b><br>یک ردیف آیکونی، سلول ۳۲، گپ ۴.<br>
-    لبه‌ی آبی = «این سلول لیست دارد»،<br>چهره‌ی طلایی = روشن.
+    <b>۱ — استریپ سریع</b><br>سلول ۳۲، گپ ۴، پد ۸؛ پلیت = بیک ds_* (رادیوس ۱۴).<br>
+    ردیفِ باکس، همان ترتیبِ کد: WIDTH STYLE FILL HALF EXTEND LOCK BACK + رنگ.<br>
+    چیپِ ۲۶ پشت هر آیکن؛ چهرهٔ طلایی = روشن (همان دو سلولِ روشنِ کد).
   </div>
 
   <!-- 2 ═ THE COLOUR BOARD -->
   <div class="board">
     <div class="bhead">
-      <span class="t">COLOR</span><span class="tag">BORDER</span>
+      <div class="bgrip" title="pnl_chip + bk_grip.bmp"><i class="ic ic-bk_grip"></i></div>
+      <span class="lbl on">BORDER</span><span class="lbl">FILL</span>
+      <span class="bkind">· BOX</span>
       <span class="sp"></span>
-      <div class="icoBtn gold">📌</div>
-      <div class="icoBtn">✕</div>
+      <span class="pgd">1/2</span>
+      <span class="pg dim">‹</span><span class="pg">›</span>
+      <div class="icoBtn pin" title="gl_pin_gold.bmp"><i class="ic ic-gl_pin_gold"></i></div>
+      <div class="icoBtn x" title="متنِ x داخل صندلی ۲۶ با لبهٔ LINE">x</div>
     </div>
     <div class="pal">
-      <div class="p sel" style="background:#FFC247"></div><div class="p" style="background:#FF8A00"></div>
-      <div class="p" style="background:#F0455F"></div><div class="p" style="background:#12B886"></div>
-      <div class="p" style="background:#4C8DFF"></div><div class="p" style="background:#9B5DE5"></div>
-      <div class="p" style="background:#00C2D1"></div><div class="p" style="background:#F3F6FB"></div>
-      <div class="p" style="background:#E5484D"></div><div class="p" style="background:#FF6B35"></div>
-      <div class="p" style="background:#F5A623"></div><div class="p" style="background:#FFE066"></div>
-      <div class="p" style="background:#A3E635"></div><div class="p" style="background:#34D399"></div>
-      <div class="p" style="background:#2DD4BF"></div><div class="p" style="background:#38BDF8"></div>
-      <div class="p" style="background:#3B82F6"></div><div class="p" style="background:#6366F1"></div>
-      <div class="p" style="background:#8B5CF6"></div><div class="p" style="background:#D946EF"></div>
-      <div class="p" style="background:#EC4899"></div><div class="p" style="background:#FB7185"></div>
-      <div class="p" style="background:#94A3B8"></div><div class="p" style="background:#64748B"></div>
-      <div class="p" style="background:#475569"></div><div class="p" style="background:#334155"></div>
-      <div class="p" style="background:#CBD5E1"></div><div class="p" style="background:#78716C"></div>
-      <div class="p" style="background:#A16207"></div><div class="p" style="background:#854D0E"></div>
-      <div class="p" style="background:#14532D"></div><div class="p" style="background:#1E3A8A"></div>
-      <div class="p" style="background:#312E81"></div><div class="p" style="background:#581C87"></div>
-      <div class="p" style="background:#111827"></div><div class="p" style="background:#000000"></div>
-      <div class="p" style="background:#FFAB00"></div><div class="p" style="background:#FFDA6B"></div>
-      <div class="p" style="background:#B45309"></div><div class="p" style="background:#FDE68A"></div>
+      <div class="p sel" style="background:#FFAB00"></div><div class="p" style="background:#F0455F"></div>
+      <div class="p" style="background:#12B886"></div><div class="p" style="background:#4C8DFF"></div>
+      <div class="p" style="background:#9B5DE5"></div><div class="p" style="background:#00C2D1"></div>
+      <div class="p" style="background:#FF8A00"></div><div class="p" style="background:#F3F6FB"></div>
+      <div class="p" style="background:#FF3B30"></div><div class="p" style="background:#FF9500"></div>
+      <div class="p" style="background:#FFC300"></div><div class="p" style="background:#9BE564"></div>
+      <div class="p" style="background:#32D74B"></div><div class="p" style="background:#00C7BE"></div>
+      <div class="p" style="background:#0A84FF"></div><div class="p" style="background:#5E5CE6"></div>
+      <div class="p" style="background:#E53935"></div><div class="p" style="background:#E07B00"></div>
+      <div class="p" style="background:#C7B400"></div><div class="p" style="background:#7CB342"></div>
+      <div class="p" style="background:#43A047"></div><div class="p" style="background:#00A0B4"></div>
+      <div class="p" style="background:#1E88E5"></div><div class="p" style="background:#3949AB"></div>
+      <div class="p" style="background:#00B8D4"></div><div class="p" style="background:#00ACC1"></div>
+      <div class="p" style="background:#0091AE"></div><div class="p" style="background:#1C6DD0"></div>
+      <div class="p" style="background:#2B50C8"></div><div class="p" style="background:#5A3FC0"></div>
+      <div class="p" style="background:#8E3BC8"></div><div class="p" style="background:#B03AC4"></div>
+      <div class="p" style="background:#8E1F2F"></div><div class="p" style="background:#A61B29"></div>
+      <div class="p" style="background:#8E2445"></div><div class="p" style="background:#9B1B5A"></div>
+      <div class="p" style="background:#B3243B"></div><div class="p" style="background:#D92D5B"></div>
+      <div class="p" style="background:#E8557E"></div><div class="p" style="background:#F4A3B8"></div>
+      <div class="p" style="background:#7A5200"></div><div class="p" style="background:#C98A00"></div>
+      <div class="p" style="background:#B45309"></div><div class="p" style="background:#FFAB00"></div>
+      <div class="p" style="background:#FFC247"></div><div class="p" style="background:#FFD086"></div>
+      <div class="p" style="background:#FFE9C7"></div><div class="p" style="background:#FFF3DC"></div>
+      <div class="p" style="background:#0A5A42"></div><div class="p" style="background:#067A5C"></div>
+      <div class="p" style="background:#12B886"></div><div class="p" style="background:#15803D"></div>
+      <div class="p" style="background:#6EE7B7"></div><div class="p" style="background:#8DE3C9"></div>
+      <div class="p" style="background:#A7F3D0"></div><div class="p" style="background:#D9F7E4"></div>
+      <div class="p" style="background:#4A0E1B"></div><div class="p" style="background:#7A1F2E"></div>
+      <div class="p" style="background:#7C2D12"></div><div class="p" style="background:#B3243B"></div>
+      <div class="p" style="background:#E5484D"></div><div class="p" style="background:#FF6B6B"></div>
+      <div class="p" style="background:#FFC9C9"></div><div class="p" style="background:#FCA5A5"></div>
+    </div>
+    <!-- RECENT بالا، HEX و شفافیت پایین — همان ترتیبِ paint_board -->
+    <div class="band">
+      <span class="cap">RECENT</span>
+      <div class="recents">
+        <div class="r sel" style="background:#FFAB00"></div><div class="r" style="background:#4C8DFF"></div>
+        <div class="r" style="background:#FFC300"></div><div class="r" style="background:#F0455F"></div>
+        <div class="r" style="background:#F3F6FB"></div>
+      </div>
     </div>
     <div class="band">
       <span class="cap">HEX</span>
-      <div class="hex">#FFC247</div>
-      <span class="cap" style="width:30px">OPAC</span>
-      <div class="track"><div class="knob"></div></div>
+      <div class="hex">#FFAB00</div>
+      <div class="track"><i></i><div class="knob"></div></div>
       <span class="ov">72%</span>
-    </div>
-    <div class="band" style="padding-top:0; padding-bottom:0">
-      <span class="cap">RECENT</span>
-      <div class="recents" style="padding:8px 0 14px">
-        <div class="r" style="background:#FFC247"></div><div class="r" style="background:#4C8DFF"></div>
-        <div class="r" style="background:#12B886"></div><div class="r" style="background:#F0455F"></div>
-        <div class="r" style="background:#F3F6FB"></div>
-      </div>
     </div>
   </div>
   <div class="note" style="left:40px; top:736px; max-width:344px">
     <b>۲ — بورد رنگ، کارت مستقل</b><br>
     هدر ۴۴ (حمل با درگ + پین)، گرید ۸×۳۲، باند HEX/شفافیت، رینگِ «آخرین‌ها».<br>
-    تگ طلایی نشان می‌دهد این بورد مالِ کدام اسلات است: BORDER یا FILL.
+    سرِ بورد: برچسب BORDER/FILL + نام kind، دکمه‌های صفحهٔ 1/2 و پین و بستن.<br>
+    گرید ۸×۸ = ۶۴ رنگِ BioPal؛ P-DRAW-66: RECENT بالا، HEX و شفافیت یک ردیف.
   </div>
 
   <!-- 3 ═ THE GEAR PANEL -->
@@ -243,7 +314,7 @@
     <div class="ghead">
       <div class="t">Box Settings</div>
       <div class="s">SERVING 1 DRAWING</div>
-      <div class="xbtn">✕</div>
+      <div class="xbtn" title="pnl_xbtn.bmp"><i class="ic ic-pnl_xbtn"></i></div>
     </div>
     <div class="tabs">
       <div class="tab act">Paint</div><div class="tab">Style</div>
@@ -278,13 +349,13 @@
         <div class="cap">Levels</div><span class="sp"></span><span class="cnt">7</span>
         <div class="swt on"></div>
       </div>
-      <div class="listrow"><span class="k">✓</span> 0.0 <span class="sp"></span><span class="cnt">#FFC247</span></div>
-      <div class="listrow"><span class="k">✓</span> 0.236 <span class="sp"></span><span class="cnt">#4C8DFF</span></div>
-      <div class="listrow"><span class="k">✓</span> 0.382 <span class="sp"></span><span class="cnt">#12B886</span></div>
-      <div class="listrow"><span class="k">　</span> 0.5 <span class="sp"></span><span class="cnt">—</span></div>
+      <div class="listrow"><i class="k ic ic-pnl_cb_on"></i> 0.0 <span class="sp"></span><span class="cnt">#FFC247</span></div>
+      <div class="listrow"><i class="k ic ic-pnl_cb_on"></i> 0.236 <span class="sp"></span><span class="cnt">#4C8DFF</span></div>
+      <div class="listrow"><i class="k ic ic-pnl_cb_on"></i> 0.382 <span class="sp"></span><span class="cnt">#12B886</span></div>
+      <div class="listrow"><i class="k ic ic-pnl_cb_off"></i> 0.5 <span class="sp"></span><span class="cnt">—</span></div>
     </div>
     <div class="gfoot">
-      <div class="gbtn"><span class="g">↺</span>Reset</div>
+      <div class="gbtn"><i class="ic ic-gl_reset_m"></i>Reset</div>
       <span class="sp"></span>
       <div class="gbtn">All</div>
       <div class="gbtn">Copy</div>
@@ -294,6 +365,60 @@
     <b>۳ — پنل تنظیمات، کارت ۳۱۲</b><br>
     سرِ ۵۶ + تب‌های ۴۲ + ردیف‌های ۴۲ + فوتر ۴۸.<br>
     زیرخطِ طلایی تبِ فعال؛ فوتر فقط «All / Copy» — خروج از پنل دیگر پررنگ‌ترین چیز کارت نیست.
+  </div>
+
+  <!-- 3b ═ THE SAME PANEL ON A WIDE TAB — ۶۲۴، دوستونه (Style / Row) -->
+  <div class="gearW">
+    <div class="ghead">
+      <div class="t">Box Settings</div>
+      <div class="s">SERVING 1 DRAWING</div>
+      <div class="xbtn" title="pnl_xbtn.bmp"><i class="ic ic-pnl_xbtn"></i></div>
+    </div>
+    <div class="tabs">
+      <div class="tab">Paint</div><div class="tab act">Style</div>
+      <div class="tab">Look</div><div class="tab">Row</div>
+    </div>
+    <div class="cols2">
+      <div class="rows">
+        <div class="row"><div class="cap">Line <small>STYLE</small></div>
+          <span class="sp"></span><span class="cnt">2</span><div class="swt on"></div></div>
+        <div class="chips">
+          <div class="chip on">Solid</div><div class="chip">Dash</div>
+          <div class="chip">Dot</div><div class="chip">Ray</div>
+        </div>
+        <div class="row"><div class="cap">Fill <small>INSIDE THE BOX</small></div>
+          <span class="sp"></span><div class="swt on"></div></div>
+        <div class="swrow">
+          <div class="gsw sel" style="background:#FFC247"></div>
+          <div class="gsw" style="background:#F0455F"></div>
+          <div class="gsw" style="background:#12B886"></div>
+          <div class="gsw" style="background:#4C8DFF"></div>
+        </div>
+      </div>
+      <div class="rows">
+        <div class="row"><div class="cap">Half box <small>HORIZONTAL SPLIT</small></div>
+          <span class="sp"></span><div class="swt"></div></div>
+        <div class="row"><div class="cap">Back <small>BEHIND THE CANDLES</small></div>
+          <span class="sp"></span><div class="swt on"></div></div>
+        <div class="row"><div class="cap">Lock <small>NO DRAG</small></div>
+          <span class="sp"></span><div class="swt"></div></div>
+        <div class="gfoot" style="border-top:0">
+          <div class="gbtn"><i class="ic ic-gl_reset_m"></i>Reset</div>
+          <span class="sp"></span>
+          <div class="gbtn">All</div><div class="gbtn">Copy</div>
+        </div>
+      </div>
+    </div>
+    <div class="gfoot">
+      <div class="gbtn"><i class="ic ic-gl_reset_m"></i>Reset</div>
+      <span class="sp"></span>
+      <div class="gbtn">All</div>
+      <div class="gbtn">Copy</div>
+    </div>
+  </div>
+  <div class="note" style="left:700px; top:770px">
+    <b>۳ب — تب دوستونهٔ ۶۲۴</b><br>
+    تب‌های Style و Row در کد دوستونه‌اند (کارت W)؛ تب‌های Paint و Look تک‌ستونه (۳۱۲).
   </div>
 
   <!-- tokens -->

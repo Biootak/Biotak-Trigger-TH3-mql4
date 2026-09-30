@@ -89,16 +89,27 @@ function firstArg(text) {
   return text;
 }
 
+//--- THE NAME HELPERS ARE SHARED, NOT PER FILE. DrawStrip.mqh was split by owner
+//--- (contract §7), so a painter in DrawStrip_GearB.mqh names its object with
+//--- `DrawStripFootName(f)` — DEFINED in DrawStrip_Base.mqh — and a per-file helper
+//--- table answered "unknown call" for every strip family. MEASURED before this
+//--- change: `painted names: 9 (233 not resolvable, skipped)` over 125 files, i.e.
+//--- the gate returned PASS over a surface it had not read. One table, built once
+//--- from the whole tree, read by every file.
+const FILES = walk(`${root}/Biotak`);
+const HELPERS = new Map();
+for (const f of FILES) {
+  const src = stripComments(readFileSync(f, 'utf8'));
+  for (const re of [/string\s+(\w+)\s*\(([^)]*)\)\s*\{\s*return\s+([^;]+);/g,
+                    /string\s+(\w+)\s*\(([^)]*)\)\s*[\r\n]+\s*\{\s*[\r\n]+\s*return\s+([^;]+);/g]) {
+    for (const m of src.matchAll(re)) HELPERS.set(m[1], { params: m[2].split(',').map((s) => s.trim().replace(/^.*\s(\w+)$/, '$1')), ret: m[3].trim() });
+  }
+}
+
 //--- one file's ledger: the resolvable name expressions and where they are used.
 function analyze(file) {
   const src = stripComments(readFileSync(file, 'utf8'));
-
-  // helpers: `string Foo(...) { return <expr>; }`, brace on either line
-  const helpers = new Map();
-  for (const re of [/string\s+(\w+)\s*\(([^)]*)\)\s*\{\s*return\s+([^;]+);/g,
-                    /string\s+(\w+)\s*\(([^)]*)\)\s*[\r\n]+\s*\{\s*[\r\n]+\s*return\s+([^;]+);/g]) {
-    for (const m of src.matchAll(re)) helpers.set(m[1], { params: m[2].split(',').map((s) => s.trim().replace(/^.*\s(\w+)$/, '$1')), ret: m[3].trim() });
-  }
+  const helpers = HELPERS;
   // local assignments: every RHS ever given to the name, unioned (a variable reassigned
   // in a loop is the set of the names it can hold)
   const assigns = new Map();
@@ -107,6 +118,17 @@ function analyze(file) {
     if (!/["(]/.test(rhs)) continue;                 // not a name expression
     if (!assigns.has(m[1])) assigns.set(m[1], []);
     assigns.get(m[1]).push(rhs);
+  }
+
+  //--- indexed arrays: `fx[2] = expr;` — a prune LIST, read as a set of destroy sites
+  //--- (see the ObjectDelete reader below). A local that is assigned per element is a
+  //--- name the tool can follow; the index it is read back through is not.
+  const elements = new Map();
+  for (const m of src.matchAll(/(?:^|[\r\n;{}\s])(\w+)\s*\[[^\]]*\]\s*=\s*([^;]+);/g)) {
+    const rhs = m[2].trim();
+    if (!/["(]/.test(rhs)) continue;
+    if (!elements.has(m[1])) elements.set(m[1], []);
+    elements.get(m[1]).push(rhs);
   }
 
   const resolve = (expr, params = new Set(), depth = 0) => {
@@ -158,11 +180,17 @@ function analyze(file) {
     return { key: head, suffix, lit };
   };
   const site = (m) => { const line = src.slice(0, m.index).split('\n').length; return line; };
+  let defs = 0;
 
   const painted = [], deleted = [];
   for (const [fn, arg] of Object.entries(WRITERS)) {
     for (const m of src.matchAll(new RegExp(`\\b${fn}\\s*\\(([^;]*)`, 'g'))) {
-      const a = (arg === 0) ? firstArg(m[1]) : `${arg}(${firstArg(m[1]).trim()})`;
+      const fa = firstArg(m[1]);
+      const a = (arg === 0) ? fa : `${arg}(${fa === undefined ? '' : fa.trim()})`;
+      //--- a DEFINITION, not a call: `bool DrawStripFaceZ(const string nm, …)`.
+      //--- Counting it as a paint site that "cannot be resolved" is how 233 came to
+      //--- read as a parser limit instead of a missing helper table; it is neither.
+      if (/^\s*(const|string|int|bool|color|double)\b/.test(String(a))) { defs++; continue; }
       const r = resolve(String(a).trim());
       painted.push({ ...r, fn, line: site(m) });
     }
@@ -183,16 +211,28 @@ function analyze(file) {
       if (c === ',' && depth === 1 && comma < 0) comma = i;
     }
     if (comma < 0) continue;
-    deleted.push({ ...resolve(src.slice(comma + 1, i - 1).trim()), line: site(m) });
+    const arg = src.slice(comma + 1, i - 1).trim();
+    //--- AN INDEXED PRUNE LIST IS A DESTROY SITE FOR EVERY NAME IT HOLDS.
+    //--- `DrawStripPopChromePrune` writes `fx[2] = DrawStripPHeadGName(); …` and then
+    //--- loops `ObjectDelete(0, fx[i])`, so the argument here is an INDEX and the
+    //--- families it really takes down are the ELEMENTS. Without this the board's
+    //--- whole chrome read as `unattended (no readable destroy — NOT checked)` and
+    //--- eight painted names were a proof hole the gate called a pass.
+    const idx = arg.match(/^(\w+)\s*\[/);
+    if (idx && elements.has(idx[1])) {
+      for (const e of elements.get(idx[1])) deleted.push({ ...resolve(e), line: site(m) });
+      continue;
+    }
+    deleted.push({ ...resolve(arg), line: site(m) });
   }
   const prefixes = [];
   for (const m of src.matchAll(/ObjectsDeleteAll\s*\(\s*[^,]+,\s*"([^"]+)"/g)) prefixes.push(m[1]);
-  return { file, painted, deleted, prefixes };
+  return { file, painted, deleted, prefixes, defs };
 }
 
 //--- the attach reset: a prefix that is a prefix of EVERY family proves no family's own
 //--- destroy, so it is not counted as coverage.
-const ledger = walk(`${root}/Biotak`).map(analyze);
+const ledger = FILES.map(analyze);
 const allHeads = ledger.flatMap((f) => f.painted.filter((p) => p.key).map((p) => p.lit ?? ''));
 const resetPrefix = (() => {
   const cands = [...new Set(ledger.flatMap((f) => f.prefixes))].filter(Boolean);
@@ -262,7 +302,9 @@ const show = (p) => `${p.file}:${p.line}`;
 console.log('==================================================================');
 console.log('OBJECT LIFECYCLE GATE  (Biotak/**/*.mqh)');
 console.log('==================================================================');
-console.log(`  files: ${ledger.length}  painted names: ${paintN} (${unresolved} not resolvable, skipped)`);
+const defSites = ledger.reduce((n, f) => n + (f.defs ?? 0), 0);
+console.log(`  files: ${ledger.length}  name helpers: ${HELPERS.size}  painted names: ${paintN} ` +
+  `(${unresolved} not resolvable, skipped; ${defSites} definition site(s) ignored)`);
 console.log(`  delete sites: ${delN}  families read: ${fam.size}  unattended: ${unattended.length}`);
 if (unattended.length) {
   const names = unattended.map(([k, F]) => `${k}~${F.lit || '?'}(${F.painted.length})`);

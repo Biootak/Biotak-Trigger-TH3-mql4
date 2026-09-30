@@ -275,7 +275,7 @@ void DrawStripPaint()
               for(int k=0;k<2;k++)
               {
                  bool edge = ((k==0 && BioPickPage()==0) || (k==1 && BioPickPage()==BIOPICK_PAGES-1));
-                 dirty |= DrawStripBtn("PnlDrawS_Page"+IntegerToString(k), pgx+k*20, pgy, 20, 20,
+                 dirty |= DrawStripBtn(DrawStripPageSeatName(k), pgx+k*20, pgy, 20, 20,
                                        DrawStripPlateFill(),
                                        edge ? DSTRIP_CLR_LINE : DSTRIP_CLR_LABEL,
                                        edge ? DSTRIP_CLR_LINE : DSTRIP_CLR_LINE,
@@ -283,7 +283,7 @@ void DrawStripPaint()
                                        (k==0) ? "The palette's first 64 colors"
                                              : "The palette's other 64 colors");
               }
-              dirty |= DrawStripLblIn("PnlDrawS_PageT", pgx-24, hy0, DSTRIP_BOARD_HDR,
+              dirty |= DrawStripLblIn(DrawStripPageLabelName(), pgx-24, hy0, DSTRIP_BOARD_HDR,
                                       IntegerToString(BioPickPage()+1)+"/"+IntegerToString(BIOPICK_PAGES),
                                       DSTRIP_CLR_LABEL,
                                       "Palette page — 16 families of 8", 7, false);

@@ -243,8 +243,9 @@ color BlendWithBackground(const color fg, const double opacity)
 //| P-HTF-01. Ties (nothing is closer) resolve DOWN, so a rung can     |
 //| never jump over its own neighbour: M30 x4 = 120 sits exactly       |
 //| between H1 and H4 → H1, one step up, not H4 (the 8x structure rung)|.
-//| Nothing above MN1 has a candidate, so MN1 itself is returned and   |
-//| the callers' `> Period()` gate does the hiding.                    |
+//| The ladder now reaches ABOVE MN1 (P-HTF-SYN below), so a W1 or MN   |
+//| chart's structure rung lands on 6M/12M instead of on the chart's    |
+//| own candles.                                                        |
 //+------------------------------------------------------------------+
 int HTFSnapTf(const int mins)
 {
@@ -257,11 +258,23 @@ int HTFSnapTf(const int mins)
    // 960-minute rung and got MN1 instead of H4, and the overlay then hid itself
    // behind the `rung > Period()` gate. Written as minutes the ladder means on
    // MT5 exactly what it has always meant on MT4.
-   static int ladder[9] = {1, 5, 15, 30, 60, 240, 1440, 10080, 43200};
+   // P-HTF-SYN (2026-09-30): TWO RUNGS ABOVE THE TALLEST TERMINAL TF. MN1 is the
+   // top series MT4 builds, but the structure rung of a W1 chart is 16 weeks and of
+   // a MONTHLY chart 16 months — and snapping those onto a ladder that ended at MN1
+   // answered MN1 for both, i.e. the overlay drew the chart's OWN candles (measured
+   // on the report: «کندل های 12 ماه رو میشه برای ساختار و شش ماه میشه پترنش» /
+   // «برای ماهانه و بری ای ویگی میشه 6 ماه ساختارش»). 6M (259200) and 12M (518400)
+   // are on the ladder now, and NO 3M entry: that is exactly what makes the
+   // unchanged nearest-snap answer the three rungs the request names —
+   //   W1 chart · Structure 16x = 161280 → 6M   (0.47 vs MN's 1.32)
+   //   MN chart · Structure 16x = 691200 → 12M  (0.29 vs 6M's 0.98)
+   //   MN chart · Pattern    4x = 172800 → 6M   (0.41 vs 12M's 1.10)
+   // Neither has a terminal series: HTFSynBarOpen/HTFSynOHLC build them from MN1.
+   static int ladder[11] = {1, 5, 15, 30, 60, 240, 1440, 10080, 43200, 259200, 518400};
    if(mins <= ladder[0]) return ladder[0];
-   int    best  = ladder[8];
+   int    best  = ladder[10];
    double bestD = 1e18;
-   for(int i = 0; i < 9; i++)
+   for(int i = 0; i < 11; i++)
    {
       double d = MathAbs(MathLog((double)mins / (double)ladder[i]));
       if(d < bestD) { bestD = d; best = ladder[i]; }   // strict < : ties go DOWN
@@ -296,15 +309,25 @@ string HTFTfModeName()
 //+------------------------------------------------------------------+
 //| Effective HTF period: a DYNAMIC rung is recomputed from the       |
 //| chart TF every call (that is what makes a TF switch move it —     |
-//| P-HTF-02), a FIXED one is the user's period, and nothing above the|
-//| chart TF exists so the overlay hides ("").                        |
+//| P-HTF-02), a FIXED one is the user's period, and a rung BELOW the |
+//| chart TF is hidden ("") because its candles ARE the terminal's    |
+//| own bars and the overlay adds nothing to them.                    |
 //+------------------------------------------------------------------+
 int ResolveHTFPeriod()
 {
    if(!HTFTfIsDynamic()) return g_HTFPeriod;
    int rung = HTFResolveRung();
-   if(rung > (int)Period()) return rung;
-   return 0;   // MN1: nothing above → HTF hidden
+   // P-HTF-TOP (2026-09-30): THE CHART'S OWN RUNG IS A RUNG TOO. The ladder tops
+   // out at MN1, so on a MONTHLY chart the structure rung snaps to the chart's own
+   // MN1 — and `rung > Period()` answered "nothing above, hide", which is why the
+   // report «کندل های مثل htf candle دیده نمیشه» on an EURUSD,Monthly chart carried
+   // no overlay at all. At the top of the ladder the structure the user asks for IS
+   // the chart's period (there is no higher calendar rung to hide behind), so the
+   // overlay draws it: real monthly OHLC, the same shape law, over the terminal's
+   // own candles. The gate below is therefore `>=`: a rung EQUAL to the chart TF
+   // draws, a rung strictly below it still hides.
+   if(rung >= (int)Period()) return rung;
+   return 0;   // a rung thinner than the chart bar: nothing to overlay
 }
 
 //+------------------------------------------------------------------+
@@ -312,13 +335,107 @@ int ResolveHTFPeriod()
 //+------------------------------------------------------------------+
 datetime HTFBarCloseTime(const datetime ot, const int tf)
 {
-   if(tf == 43200)   // R-TF-UNIT: MN1 in minutes; `tf` is a minute count
+   // P-HTF-SYN: the month-family rungs close on a CALENDAR boundary — MN1 by one
+   // month, 6M by six, 12M by twelve — so one month-arithmetic answers all three
+   // (and the synthetic buckets are contiguous, which is what lets the draw loop
+   // take a synthetic bar's close straight from here, with no `i-1` bar to read).
+   if(tf >= 43200)   // R-TF-UNIT: minutes; MN1 = 43200
    {
-      int y = TimeYear(ot), m = TimeMonth(ot) + 1;
-      if(m > 12) { m = 1; y++; }
+      int steps = tf / 43200;      // 1 month · 6 months · 12 months
+      if(steps < 1) steps = 1;
+      int y = TimeYear(ot), m = TimeMonth(ot) + steps;
+      while(m > 12) { m -= 12; y++; }
       return StringToTime(StringFormat("%04d.%02d.01 00:00", y, m));
    }
    return ot + tf * 60;   // tf is minutes
+}
+
+//+------------------------------------------------------------------+
+//| P-HTF-SYN (2026-09-30) — THE TWO RUNGS WITH NO TERMINAL SERIES.   |
+//|                                                                  |
+//| 6M and 12M are the structure/pattern rungs of a W1 or MN chart    |
+//| (see the ladder note above). MT4 builds no such series, so this    |
+//| module builds them the cheapest way there is: CALENDAR bucketing   |
+//| over the MN1 series it already has.                                 |
+//|                                                                  |
+//| A bucket is a fixed calendar block, aligned to the year — 6M =      |
+//| Jan-Jun / Jul-Dec, 12M = Jan-Dec — so a bucket's start is month     |
+//| arithmetic (NO series read) and two neighbouring buckets meet        |
+//| exactly (bucket i's close IS bucket i-1's open).                    |
+//|                                                                  |
+//| The OHLC is REAL, aggregated from the bucket's own MN1 months:       |
+//| open = the oldest month present, close = the newest, high/low = its  |
+//| extremes. COST: one iBarShift + four series reads per MONTH in the   |
+//| bucket (a 12M candle ≈ 49 reads) and nothing else — the same family  |
+//| as a real 200-bar pass (~800 reads), bounded by the drawn count the  |
+//| viewport cap already states, and zero on every other rung.           |
+//|                                                                      |
+//| The oldest PARTIAL bucket is never drawn (`HTFSynBarCount` floors),   |
+//| because a bucket whose start is older than the loaded MN1 history     |
+//| would clamp onto the oldest bar — the pile-up the slot pitch exists   |
+//| to avoid.                                                            |
+//+------------------------------------------------------------------+
+#define HTF_TF_6M  259200   // R-TF-UNIT: 6 months in minutes
+#define HTF_TF_12M 518400   // R-TF-UNIT: 12 months in minutes
+
+bool HTFTfIsSynthetic(const int tf) { return (tf == HTF_TF_6M || tf == HTF_TF_12M); }
+
+int HTFSynMonths(const int tf)
+{
+   if(tf == HTF_TF_6M)  return 6;
+   if(tf == HTF_TF_12M) return 12;
+   return 0;   // a real rung: the terminal owns its series
+}
+
+// The bucket's start, `i` buckets back from the one holding the server's now.
+// Pure calendar arithmetic — no series read, so a caller may ask before it has
+// decided to draw (the forming-candle throttle checks this first).
+int HTFSynAbsMonth(const datetime t) { return TimeYear(t) * 12 + (TimeMonth(t) - 1); }
+
+datetime HTFSynBarOpen(const int tf, const int i)
+{
+   int months = HTFSynMonths(tf);
+   if(months <= 0 || i < 0) return 0;
+   datetime now = TimeCurrent();
+   if(now <= 0) return 0;
+   int absB = (HTFSynAbsMonth(now) / months) * months - i * months;
+   if(absB < 0) return 0;
+   int y = absB / 12, m = absB % 12 + 1;
+   return StringToTime(StringFormat("%04d.%02d.01 00:00", y, m));
+}
+
+// How many FULL buckets the loaded MN1 history can supply (the partial oldest one
+// is skipped). This is also the synthetic rung's "is the data ready?" answer.
+int HTFSynBarCount(const int tf)
+{
+   int months = HTFSynMonths(tf);
+   if(months <= 0) return 0;
+   int mn = iBars(_Symbol, 43200);
+   return (mn >= months) ? (mn / months) : 0;
+}
+
+// The bucket's real OHLC, aggregated from its own MN1 months (newer months carry
+// SMALLER indices, so the sweep walks k upward from the bucket's first month).
+bool HTFSynOHLC(const int tf, const datetime ot, double &op, double &hi, double &lo, double &cl)
+{
+   op = 0.0; hi = 0.0; lo = 0.0; cl = 0.0;
+   int months = HTFSynMonths(tf);
+   if(months <= 0 || ot <= 0) return false;
+   int j0 = iBarShift(_Symbol, 43200, ot, false);
+   if(j0 < 0) return false;
+   for(int k = 0; k < months; k++)
+   {
+      int j = j0 - k;
+      if(j < 0) break;
+      double o = iOpen(_Symbol, 43200, j), h = iHigh(_Symbol, 43200, j);
+      double l = iLow(_Symbol, 43200, j),  c = iClose(_Symbol, 43200, j);
+      if(h <= 0 || l <= 0) break;
+      if(op == 0.0) op = o;     // the oldest month present opens the bucket
+      cl = c;                  // the newest present closes it
+      if(hi == 0.0 || h > hi) hi = h;
+      if(lo == 0.0 || l < lo) lo = l;
+   }
+   return (op > 0.0 && hi > 0.0 && lo > 0.0 && cl > 0.0);
 }
 
 //+------------------------------------------------------------------+
@@ -669,17 +786,18 @@ SHTFCandleGeom HTFCandleGeometry(const datetime ot, const datetime nt)
       return g;
    }
    double span = iL - iR;
-   if(span < 2.0)
+   // P-HTF-TOP (2026-09-30): span 0 is the ONLY collapse — both edges clamped onto
+   // one slot by a history that does not reach them (or a broken map) — and the
+   // calendar share is the honest degrade there. A span BELOW one bar is NOT a
+   // collapse: it is the overlay standing on the chart's OWN period (a monthly
+   // overlay on a monthly chart is one slot per candle, and its still-forming
+   // candle is a fraction of one), and the shape law below answers it like every
+   // other candle — the pixel floor is what keeps the shadow visible where a share
+   // of a fraction would vanish. The old `< 2.0` fence read "thinner than two chart
+   // bars" and sent exactly that case to the calendar middle: body edge to edge, no
+   // gap, and a live candle narrower than its neighbours.
+   if(span <= 0.0)
    {
-      // Thinner than two chart bars: beyond loaded history (low-TF chart with
-      // an HTF overlay, fresh TF switch) the whole span maps onto one slot and
-      // no centred box exists. Same answer as above — a real box, not a point.
-      //
-      // P-HTF-SLOT: this is no longer the shape a high rung's candle takes — a
-      // rung wider than the window arrives here with a SLOT-wide span (>= 2 by
-      // construction) and never falls onto the calendar. What still reaches it
-      // is a chart too young to carry even one slot of bars, where the previous
-      // look is the honest degrade.
       HTFGeomCalendarShadow(g, ot, nt, shPct);
       return g;
    }

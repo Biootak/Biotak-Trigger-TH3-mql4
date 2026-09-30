@@ -201,6 +201,16 @@ string DrawStripGridGlassName(const int g) { return DrawStripGridName(g) + "G"; 
 string DrawStripPHeadGName() { return "PnlDrawS_PHeadG"; }
 string DrawStripPHeadGChipName() { return "PnlDrawS_PHeadGC"; }
 string DrawStripPHeadGIconName() { return "PnlDrawS_PHeadGI"; }
+//--- P-DRAW-92 (2026-09-30) — THE BOARD'S PAGE SEATS, NAMED LIKE EVERY OTHER
+//--- BOARD OBJECT. They were spelled inline in the paint (`"PnlDrawS_Page" +
+//--- IntegerToString(k)`), and `DrawStripPopChromePrune` — the ONE owner of taking
+//--- the board's chrome down (DrawStrip_GearA.mqh) — never listed them: close the
+//--- board, or switch a colour slot to a width/style list, and the two `<` `>` seats
+//--- and the "1/2" caption stayed floating over the strip. Found by
+//--- `node tools/object_lifecycle_check.js` once its helper table went tree-wide:
+//--- `DrawStripBtn paints PnlDrawS_Page…"PnlDrawS_Page" — no destroy path`.
+string DrawStripPageSeatName(const int k)  { return "PnlDrawS_Page" + IntegerToString(k); }
+string DrawStripPageLabelName()            { return "PnlDrawS_PageT"; }
 string DrawStripPRecName(const int i) { return "PnlDrawS_PR" + IntegerToString(i); }
 string DrawStripPRecGlassName(const int i) { return DrawStripPRecName(i) + "G"; }
 string DrawStripPRecLabelName() { return "PnlDrawS_PRecT"; }
@@ -428,11 +438,16 @@ bool DrawStripGearHit(const int mx, const int my)
    // aims at the plate it can see, and the ghost is 8px of it on every side.
    const int fpad = 8, fbtnH = 28, ftop = 10;
    int fy0 = gy + s_dsGearFootY;
+   //--- P-DRAW-90: the width AND the seat are the paint's own owners now
+   //--- (DrawStripFootBw / DrawStripFootX), read here, never re-derived: the old
+   //--- `px + f*(bw+gap)` stood in this file and in DrawStripGearPaint at once,
+   //--- and the moment `Reset` moves the pair to the right edge the two would
+   //--- have disagreed on screen. `colW` is the same DrawStripGearColW() the
+   //--- paint passes (280 on a 312 tab, 592 on a 624 one).
    for(int f = 0; f < DSTRIP_GEAR_FOOT_N; f++)
    {
-      string flabel = DrawStripFootText(f);
-      int bw = MathMax(DSTRIP_GEAR_FOOT_BW, 32 + PnlTextW(flabel, 8) + fpad);
-      int fx = px + f * (bw + DSTRIP_GEAR_FOOT_GAP);
+      int bw = DrawStripFootBw(f);
+      int fx = DrawStripFootX(f, px, colW);
       int fy = fy0 + ftop;
       if(mx >= fx - fpad && mx < fx + bw + fpad &&
          my >= fy - fpad && my < fy + fbtnH + fpad)

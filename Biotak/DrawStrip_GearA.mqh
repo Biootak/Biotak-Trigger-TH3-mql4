@@ -507,7 +507,10 @@ void DrawStripGearResizeEdits()
 
 void DrawStripGearPlace(const int contentTop, int &contentEnd)
 {
-   s_dsGearW = DSTRIP_GEAR_W;
+   //--- P-DRAW-91: the reset of `s_dsGearW` MOVED UP to the top of
+   //--- DrawStripGearLayout, before the content pass — this was the second writer
+   //--- of one value, and it was too late for the first reader. The only write
+   //--- left here is the one this pass owns: GROWING the column to 624.
    for(int r = 0; r < s_dsGRN; r++) s_dsGRCol[r] = 0;
    for(int i = 0; i < s_dsGearSecN; i++) s_dsGearSecCol[i] = 0;
    for(int e = 0; e < 5; e++) s_dsGearEditCol[e] = 0;
@@ -586,6 +589,19 @@ int DrawStripGearLayout(int y0)
    s_dsGRN = 0; s_dsGGN = 0; s_dsGearSecN = 0; s_dsGearBlkN = 0;
    for(int e0 = 0; e0 < 5; e0++)
    { s_dsGearEditY[e0] = -1; s_dsGearEditX[e0] = 0; s_dsGearEditW[e0] = 0; }
+   //--- P-DRAW-91 (2026-09-30) — THE COLUMN WIDTH IS THIS TAB'S BEFORE ANYTHING
+   //--- READS IT. User report: on the Paint tab the COLOR and FILL hex fields ran
+   //--- off the card (two dark bars ~312px past the plate's right edge). MEASURED:
+   //--- `DrawStripGearContent` writes `s_dsGearEditW[e] = DrawStripGearColW() - capW`
+   //--- and `DrawStripGearColW()` is `s_dsGearW - 2*PAD` — but the ONLY reset of
+   //--- `s_dsGearW` stood inside `DrawStripGearPlace`, which runs AFTER this call.
+   //--- Open a WIDE tab (Style/Row, 624), switch to Paint, and the content measured
+   //--- itself against the PREVIOUS tab's 592 while the plate asked for 312: field
+   //--- width `592 - capW`, off the card by exactly the 312 that separated the two
+   //--- columns. P-DRAW-82 had already made the field ask `DrawStripGearColW()` —
+   //--- the missing half is that the number must be THIS tab's from the first
+   //--- reader. ONE writer, at the top of the pass, before anything can ask.
+   s_dsGearW = DSTRIP_GEAR_W;
    bool levelEdit = false;
    DrawStripGearContent(y, levelEdit);
    for(int r = 0; r < s_dsGRN; r++) { s_dsGRY[r] = y + r * DSTRIP_GEAR_ROW_H; s_dsGRCol[r] = 0; }
@@ -805,7 +821,14 @@ bool DrawStripPopRowIsCur(const int r)
 bool DrawStripPopChromePrune()
 {
    bool dirty = false;
-   string fx[17];
+   //--- P-DRAW-92: TWENTY, not seventeen. The board's two PAGE SEATS and their
+   //--- "1/2" caption were painted (DrawStrip_Paint.mqh) and never listed here — the
+   //--- one owner that takes this chrome down — so shutting the board (or switching
+   //--- a colour slot to a width/style list) left `<` `>` and `1/2` floating over
+   //--- the strip. Every name the board's header paints is in this list now, and
+   //--- `node tools/object_lifecycle_check.js` is what reads the list against the
+   //--- painters.
+   string fx[20];
    fx[0] = "PnlDrawS_PHeadT";
    fx[1] = "PnlDrawS_PHeadX";
    fx[2] = DrawStripPHeadGName();
@@ -828,7 +851,10 @@ bool DrawStripPopChromePrune()
    //--- BORDER / FILL caption over a gone plate.
    fx[15] = "PnlDrawS_PHeadB";
    fx[16] = "PnlDrawS_PHeadF";
-   for(int i = 0; i < 17; i++)
+   fx[17] = DrawStripPageSeatName(0);
+   fx[18] = DrawStripPageSeatName(1);
+   fx[19] = DrawStripPageLabelName();
+   for(int i = 0; i < 20; i++)
       if(ObjectFind(0, fx[i]) >= 0) { ObjectDelete(0, fx[i]); dirty = true; }
    for(int k = 0; k < DSTRIP_RECENT_MAX; k++)
    {

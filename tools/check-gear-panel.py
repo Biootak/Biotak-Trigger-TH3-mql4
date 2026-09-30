@@ -123,6 +123,22 @@ def card_bakes():
     return sorted(n)
 
 
+def mql_function_body(lines, name):
+    """(start, end) unit-line indices of `name`'s body, bracketed by the closing
+    brace at column 0 — the style every file in Biotak/ uses."""
+    start = None
+    for i, (_o, _l, t) in enumerate(lines):
+        if re.search(r"^\s*(?:void|int|bool|string|double|color)\s+%s\s*\(" % re.escape(name), t):
+            start = i
+            break
+    if start is None:
+        return None
+    for j in range(start + 1, len(lines)):
+        if lines[j][2].startswith("}"):
+            return (start, j)
+    return (start, len(lines) - 1)
+
+
 def narrow_guard(d):
     """THE NARROW/WIDE BOUNDARY, read out of DrawStripGearPlace itself.
 
@@ -198,8 +214,11 @@ def hit_rects(L, tab):
         else:
             rects.append(("row " + (name or ""), colW, ROW_H))
 
-    # the foot
-    for f, label in enumerate(["All", "Copy"]):
+    # the foot — P-DRAW-90: three commands, the design's own `Reset | All · Copy`.
+    # The SEAT is the paint's (DrawStripFootX, 280/592 wide per tab); this mirror
+    # only asserts each one owns a non-empty box, which is what the dead-button
+    # class (P-DRAW-84) needs.
+    for label in ["Reset", "All", "Copy"][:G.FOOT_N]:
         bw = max(FOOT_BW, 32 + mt4.text_w(label, 8) + 8)
         rects.append(("foot " + label, bw + 16, 28 + 16))
     return rects
@@ -292,6 +311,77 @@ def main():
               % (ww[0], G.GEAR_W2 + 28))
     if wn and ww:
         print("  bakes: narrow %dx%d  wide %dx%d" % (wn[0], wn[1], ww[0], ww[1]))
+
+    # 1d. THE COLUMN WIDTH IS THIS TAB'S BEFORE THE CONTENT READS IT (P-DRAW-91).
+    # `DrawStripGearContent` sizes the hex fields from `DrawStripGearColW()` =
+    # `s_dsGearW - 2*PAD`, so `s_dsGearW` must already hold THIS tab's width when it
+    # runs. It was reset only inside `DrawStripGearPlace`, which the layout calls
+    # AFTER the content pass: open Style/Row (624), switch to Paint, and the Paint
+    # tab measured its COLOR/FILL fields against the previous tab's 592 while the
+    # plate asked for 312 — two bars 312px past the card's right edge, reported on a
+    # live terminal 2026-09-30.
+    #
+    # ORDER HERE MEANS EXECUTION, NOT TEXT. The first cut of this assertion compared
+    # two unit-line indices and a deliberately reverted tree PASSED it, because
+    # `DrawStripGearPlace` is DEFINED above `DrawStripGearLayout` — the wording came
+    # first, the call came last. So the source is read as the two FUNCTION BODIES:
+    # inside the layout, the reset must precede the call; inside the place, it must
+    # not appear at all. Measured on the reverted tree: `resets=0` in the layout.
+    lines = list(mql_unit_lines(DRAWSTRIP))
+    lay = mql_function_body(lines, "DrawStripGearLayout")
+    plc = mql_function_body(lines, "DrawStripGearPlace")
+    if lay:
+        ls, le = lay
+        inside = list(enumerate(lines[ls:le], ls))
+        resets = [i for i, (_o, _l, t) in inside
+                  if re.search(r"s_dsGearW\s*=\s*DSTRIP_GEAR_W\s*;", t)]
+        calls = [i for i, (_o, _l, t) in inside
+                 if re.search(r"DrawStripGearContent\s*\(\s*y\s*,", t)]
+        check(len(calls) == 1,
+              "DrawStripGearLayout: %d DrawStripGearContent call(s), expected 1 (P-DRAW-91)"
+              % len(calls))
+        check(len(resets) == 1,
+              "DrawStripGearLayout: `s_dsGearW = DSTRIP_GEAR_W` is written %d time(s) — "
+              "ONE, and BEFORE DrawStripGearContent (P-DRAW-91)" % len(resets))
+        if resets and calls:
+            check(resets[0] < calls[0],
+                  "DrawStripGearLayout: the column reset at unit line %d comes AFTER "
+                  "DrawStripGearContent at %d — the hex fields measure against the "
+                  "PREVIOUS tab's column and run off the card (P-DRAW-91)"
+                  % (resets[0], calls[0]))
+            print("  column width: 1 writer of s_dsGearW=DSTRIP_GEAR_W at unit line %d, "
+                  "before DrawStripGearContent at %d (P-DRAW-91)" % (resets[0], calls[0]))
+    else:
+        print("  column width: DrawStripGearLayout not readable - NOT CHECKED")
+
+    # 1e. THE PLATE'S WIDTH IS THE SAME TAB'S (P-DRAW-91b). `s_dsGearW0` is what the
+    # head, the tab row, the foot, the plate bake and the grip all read — so a value
+    # left over from the PREVIOUS tab draws this tab's chrome at another tab's width
+    # (a 624 head over a 312 body, or the reverse). It may therefore only ever hold 0
+    # (nothing open) or `s_dsGearW` (this pass's own decision), and the assignment must
+    # be the one that immediately follows the layout call.
+    if True:
+        writes = [(_o, _l, t) for _o, _l, t in lines
+                  if re.search(r"s_dsGearW0\s*=", t) and "static" not in t]
+        bad = [w for w in writes if not re.search(r"s_dsGearW0\s*=\s*(0|s_dsGearW)\s*;", w[2])]
+        check(not bad,
+              "s_dsGearW0 takes a value that is neither 0 nor s_dsGearW: %s — the "
+              "panel's chrome would wear another tab's width (P-DRAW-91b)"
+              % ", ".join("%s:%d" % (src, ln) for src, ln, _t in bad))
+        check(len(writes) == 2,
+              "s_dsGearW0 is written %d time(s); expected exactly the pair `= 0` (nothing "
+              "open) and `= s_dsGearW` (this pass) (P-DRAW-91b)" % len(writes))
+        if not bad:
+            print("  plate width: s_dsGearW0 only 0 / s_dsGearW (%d write(s)) - one tab's "
+                  "own answer (P-DRAW-91b)" % len(writes))
+    if plc:
+        ps, pe = plc
+        second = [(_o, _l) for _o, _l, t in lines[ps:pe]
+                  if re.search(r"s_dsGearW\s*=\s*DSTRIP_GEAR_W\s*;", t)]
+        check(not second,
+              "DrawStripGearPlace writes `s_dsGearW = DSTRIP_GEAR_W` again (%s) — the "
+              "second writer of one value, and too late for the first reader "
+              "(P-DRAW-91)" % (", ".join("%s:%d" % s for s in second) or "?"))
 
     # 2. per tab: height lands on the plate law, and every painted face exists
     print("")

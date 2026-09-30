@@ -1284,6 +1284,13 @@ string CircBadgeText(const int i)
 string CircHtfBadgeLabel(const int periodMinutes)
 {
    if(periodMinutes <= 0) return "";
+   // P-HTF-SYN: the two synthetic top rungs (6M/12M, HTFCandles_Geom.mqh) read as
+   // MONTHS. This is the overlay's only human-facing TF label — the ring tooltip
+   // and the badge both come through here — and "360D" is not what the rung is.
+   // MN1's own "30D" is deliberately untouched: this names the rungs the synthetic
+   // ladder added, not the whole ladder.
+   if(periodMinutes >= 259200 && (periodMinutes % 43200) == 0)
+      return IntegerToString(periodMinutes / 43200) + "M";
    if(periodMinutes >= 1440) return IntegerToString(periodMinutes / 1440) + "D";
    if(periodMinutes >= 60)   return IntegerToString(periodMinutes / 60) + "H";
    return IntegerToString(periodMinutes) + "M";

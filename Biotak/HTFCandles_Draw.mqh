@@ -523,9 +523,15 @@ bool UpdateHTFFormingCandle()
 {
    if(!g_UI.showHTF || Bars < 2) return false;
    int tf = ResolveHTFPeriod();
-   if(tf <= 0 || tf <= Period()) return false;
+   // P-HTF-TOP: `>=` — a rung equal to the chart TF draws (the monthly overlay on
+   // a monthly chart IS the structure rung there); only a rung BELOW it is nothing.
+   if(tf <= 0 || tf < (int)Period()) return false;
 
-   datetime ot = iTime(_Symbol, tf, 0);
+   // P-HTF-SYN: a 6M/12M rung has no terminal series, and its bar's open is calendar
+   // arithmetic (free) — so the throttle check below still runs BEFORE any read,
+   // exactly as it does for a real rung's one iTime.
+   bool syn = HTFTfIsSynthetic(tf);
+   datetime ot = syn ? HTFSynBarOpen(tf, 0) : iTime(_Symbol, tf, 0);
    if(ot <= 0) return false;
 
    // P-PERF-02 write budget: a live candle is redrawn at most every
@@ -539,9 +545,19 @@ bool UpdateHTFFormingCandle()
    if(!formNewBar && g_HTFFormWriteMs != 0 && (formNow - g_HTFFormWriteMs) < HTF_FORM_MS)
       return false;
 
-   double op = iOpen(_Symbol, tf, 0), cl = iClose(_Symbol, tf, 0);
-   double hi = iHigh(_Symbol, tf, 0),  lo = iLow(_Symbol, tf, 0);
-   if(hi <= 0 || lo <= 0) return false;
+   double op = 0.0, cl = 0.0, hi = 0.0, lo = 0.0;
+   if(syn)
+   {
+      // The live bucket's OHLC is the aggregate of its own MN1 months (the newest
+      // of which is the current month), so the live candle grows with the bucket.
+      if(!HTFSynOHLC(tf, ot, op, hi, lo, cl)) return false;
+   }
+   else
+   {
+      op = iOpen(_Symbol, tf, 0); cl = iClose(_Symbol, tf, 0);
+      hi = iHigh(_Symbol, tf, 0); lo = iLow(_Symbol, tf, 0);
+      if(hi <= 0 || lo <= 0) return false;
+   }
 
    if(!formNewBar &&
       op == g_HTFLastFormO && hi == g_HTFLastFormH &&
@@ -576,7 +592,9 @@ int HTFViewportBarTarget()
    int want = InpHTFMaxBars;
    int htf = ResolveHTFPeriod();
    int chartTf = (int)Period();
-   if(htf > chartTf && chartTf > 0)
+   // P-HTF-TOP: `>=` — on the chart's own rung the pitch is exactly one bar, so the
+   // viewport cap must still run (ratio 1) instead of falling back to the flat 200.
+   if(htf >= chartTf && chartTf > 0)
    {
       int firstVis = (int)ChartGetInteger(0, CHART_FIRST_VISIBLE_BAR, 0);
       int visBars  = (int)ChartGetInteger(0, CHART_VISIBLE_BARS, 0);
@@ -624,14 +642,18 @@ int DrawHTFCandles()
    static int s_prevCount = 0;
    if(!g_UI.showHTF || Bars < 2) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    int tf = ResolveHTFPeriod();
-   if(tf <= 0 || tf <= Period()) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
+   // P-HTF-TOP: the same `>=` as the forming candle and the ensure probe — one
+   // rule, three sites, so the overlay cannot draw history while hiding the live
+   // candle (or the reverse) on the chart's own rung.
+   if(tf <= 0 || tf < (int)Period()) { DeleteHTFCandles(); s_prevCount = 0; return 0; }
    HTFMidMemoReset();             // one geometry snapshot per pass — see the memo
    HTFRefreshBlendBackground();   // P-PERF-08: one background read for the whole pass
    HTFRefreshPixelMetrics();      // P-UI-68: one zoom read for the whole pass too
    HTFRefreshSlotMetrics(tf);     // P-HTF-SLOT: the pitch both the target and the grid read
-   int total = iBars(_Symbol, tf);
+   bool syn = HTFTfIsSynthetic(tf);   // P-HTF-SYN: 6M/12M are built from MN1
+   int total = syn ? HTFSynBarCount(tf) : iBars(_Symbol, tf);
    if(total <= 0) return -1;
-   datetime ot0 = iTime(_Symbol, tf, 0);
+   datetime ot0 = syn ? HTFSynBarOpen(tf, 0) : iTime(_Symbol, tf, 0);
    if(ot0 <= 0) return -1;
    int count = MathMin(InpHTFMaxBars, total);
 
@@ -672,19 +694,33 @@ int DrawHTFCandles()
 
    for(int i = 0; i < count; i++)
    {
-      datetime ot = iTime(_Symbol, tf, i);
-      datetime nt = (i == 0) ? HTFBarCloseTime(ot, tf) : iTime(_Symbol, tf, i - 1);
+      datetime ot = syn ? HTFSynBarOpen(tf, i) : iTime(_Symbol, tf, i);
+      // A synthetic bar's close IS its bucket's next boundary (the buckets are
+      // contiguous calendar blocks), so there is no `i - 1` bar to read there.
+      datetime nt = (syn || i == 0) ? HTFBarCloseTime(ot, tf) : iTime(_Symbol, tf, i - 1);
       if(ot <= 0 || nt <= ot)
       {
          if(i == 0) return -1;
          continue;
       }
-      double hi = iHigh(_Symbol, tf, i), lo = iLow(_Symbol, tf, i);
-      double op = iOpen(_Symbol, tf, i), cl = iClose(_Symbol, tf, i);
-      if(hi <= 0 || lo <= 0)
+      double hi = 0.0, lo = 0.0, op = 0.0, cl = 0.0;
+      if(syn)
       {
-         if(i == 0) return -1;
-         continue;
+         if(!HTFSynOHLC(tf, ot, op, hi, lo, cl))
+         {
+            if(i == 0) return -1;
+            continue;
+         }
+      }
+      else
+      {
+         hi = iHigh(_Symbol, tf, i); lo = iLow(_Symbol, tf, i);
+         op = iOpen(_Symbol, tf, i); cl = iClose(_Symbol, tf, i);
+         if(hi <= 0 || lo <= 0)
+         {
+            if(i == 0) return -1;
+            continue;
+         }
       }
 
       DrawHTFCandleCore(i, ot, nt, hi, lo, op, cl);
@@ -738,9 +774,10 @@ void HTFEnsureDrawn()
    static int s_lastDrawnTf = -1; // TF of the boxes on chart (-1=none yet, 0=hidden-by-design)
    static datetime s_drawnBar0 = 0; // forming-bar open time as last fully drawn
 
-   // By design there is nothing above the chart TF (MN1 auto, or a manual
-   // TF<=chart): make sure no stale boxes linger, once.
-   if(tf <= (int)Period())   // covers tf==0 (auto on MN1) too
+   // A rung strictly below the chart TF (a manual D1 on a monthly chart, or tf==0
+   // from an empty resolve): make sure no stale boxes linger, once. tf == chart TF
+   // is a REAL rung now (P-HTF-TOP) and draws below.
+   if(tf < (int)Period())
    {
       if(s_lastDrawnTf != 0)
       {
@@ -788,7 +825,12 @@ void HTFEnsureDrawn()
    // Weak-PC guard: HTF history may still be loading after a TF switch.
    // Draw only when data is really ready; otherwise keep the old state so
    // a later tick/timer retries automatically — no toggle needed.
-   if(Bars < 2 || iBars(_Symbol, tf) <= 0 || iTime(_Symbol, tf, 0) <= 0)
+   // P-HTF-SYN aware: a synthetic rung is ready when the MN1 history carries at
+   // least one FULL bucket of it — asking the terminal for a 6M/12M series would
+   // always answer "not ready" and the overlay would never draw at all.
+   int readyBars = HTFTfIsSynthetic(tf) ? HTFSynBarCount(tf) : iBars(_Symbol, tf);
+   if(Bars < 2 || readyBars <= 0 ||
+      (!HTFTfIsSynthetic(tf) && iTime(_Symbol, tf, 0) <= 0))
    {
       s_lastProbe = now;
       return;
