@@ -372,6 +372,15 @@ static bool   g_s1LinesArmed = true;       // the two step-1 handles: armed = dr
 // own teardown and by `HandsetPlacementArm` (a fresh placement is born
 // ARMED-but-HIDDEN), and OUR OWN drag reveals it too - a hand on the line is
 // the loudest way of asking for its handle.
+// P-UI-149/P-UI-151 (2026-10-02): AND BOTH ARE NOW THE LOOK-AWAY'S — user order:
+// «با کلیک دیده بشن و جای دیگه کلیک شد خودکار پنهان بشن» and, for the green one
+// that P-UI-149 had exempted, «این دایریه سبز اینطوری میمونه بد ... وقتی کلیک شد
+// جای دیگه پنهان بشه و وقتی روش کلیک شد دیده بشه». ONE owner answers both
+// latches from the click edge: `HandsetMarkerRevealAt` shows the marker the
+// click landed on (each with its own hit test), and
+// `HandsetRevealDropOnForeignClick` clears BOTH when it landed on neither
+// (EventHandlers_Init). So a click on a marker is its show, and a click on
+// anything else is every marker's hide - one rule, three circles.
 static bool   g_cpHandleShown = false;     // the green circle: painted on request
 static bool   g_s1HandleShown = false;     // the red circles: painted on request
 static string g_cpSetPending = "";         // a single click waiting out the window
@@ -660,6 +669,140 @@ bool TickDeadlinePending(const uint deadlineMs)
 {
    if(deadlineMs == 0) return false;                  // never armed
    return (int)(GetTickCount() - deadlineMs) <= 0;    // wrap-safe
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-142 (2026-10-02) — THE GESTURE ARBITER: WHO OWNS THIS HAND.
+// ══════════════════════════════════════════════════════════════════════════
+//
+// THE FACT, from MetaQuotes' own chart-event list: there are eleven
+// CHARTEVENT_* kinds and NONE of them answers "is a native drawing tool armed".
+// MT4 itself never has to ask — the terminal owns its tools, so its own tools
+// always win and an indicator is simply a guest. A GUEST that implements its own
+// drag (Path, the ray, Base/Knot, TH3, the leg measure) can therefore not tell,
+// at the press, whether it is taking a drawing or WATCHING the start of one —
+// which is the report «از همون نقطه که ترندلاین میکشم، اون یکی هم میاد».
+//
+// THE ONLY VOICE: `CHARTEVENT_OBJECT_DRAG` on an object that is not ours. That is
+// P-UI-130 law 3 (the hold's own rule, «a gesture IN MOTION is never ours») with
+// the scope widened from the hold to EVERY custom drag in the product.
+//
+// THE ARBITER, therefore, is one writer and one question:
+//   `GestureForeignMotion(name)` — the ONE place that sees the terminal's drag.
+//   `GestureGrabBlocked()`       — the ONE question every tool asks before it
+//                                  takes a press, and the answer is "not while
+//                                  the hand is busy with the terminal".
+// A tool that is mid-carry asks it too and, on a foreign motion, puts its own
+// snapshot back: the geometry belongs to the tool, the DECISION is shared.
+//
+// The window is the terminal's own drag HEARTBEAT — MT4 re-reports a native drag
+// about every 400 ms (P-UI-130's measurement), so that is the honest length for
+// "the hand is still busy". Our own objects never emit the event (they are born
+// non-selectable), so a path can never forbid itself.
+//
+// Cost: ONE compare per drag event and ONE subtraction per press. Nothing on a
+// tick, nothing per frame, and no second copy of this rule anywhere in the tree —
+// a tool that re-derives it is a tool that will drift from it.
+//+------------------------------------------------------------------+
+#define GESTURE_HEARTBEAT_MS 400
+static uint g_gestureForeignUntilMs = 0;
+static string g_gestureForeignName = "";
+static uint g_gesturePressMs = 0;
+//--- P-UI-145 (2026-10-02, user: «یک راهکار قطعی که درست کار بکنه، معماری»): THE WHOLE
+//--- ARCHITECTURE IS ONE STAMP AND NOTHING ELSE. MEASURED 21:06, the log named the wall:
+//--- four `press refused: the terminal is still dragging one of ours, why=release` — the lock
+//--- was CLOSED by the terminal's own drag and OPENED by nobody, so after the first native
+//--- stroke every press of ours stayed dead for the session. A sticky bool with no opener IS
+//--- the incomplete architecture, and it is gone: no state is left that can get stuck.
+//--- A foreign drag stamps `now + 400 ms` (the terminal's own drag rate, P-UI-130) and the
+//--- deadline answers for itself until it passes — «خودش باز میشه», no timer, no polling,
+//--- nothing per frame, one subtraction per press. The detection road stays closed on
+//--- purpose (MEASURED: a native stroke reports button=0 on all ~40 of its moves and speaks
+//--- once at its end), and the structural half carries the work: a path's BODY selects and
+//--- never carries, so a line press can start nothing; its DOTS are the only carry, and they
+//--- are painted only for the selected path (PathTool.mqh).
+void GestureForeignMotion(const string name)
+{
+   g_gestureForeignName = name;
+   g_gestureForeignUntilMs = GetTickCount() + GESTURE_HEARTBEAT_MS;
+}
+bool GestureGrabBlocked()
+{
+   return TickDeadlinePending(g_gestureForeignUntilMs);
+}
+string GestureForeignName() { return g_gestureForeignName; }
+//--- P-UI-145 (2026-10-02): THE SCREEN LOCK IS RETIRED, and the log says why. It was to
+//--- close for as long as the terminal's own hand was busy — MEASURED 20:35, a native stroke
+//--- reports button=0 on ALL ~40 of its moves (the census line's `nm` is the button state,
+//--- not a name), so the signal the lock waited for does not exist during the very gesture it
+//--- was built for: four `drag start … why=carry: it was taken` landed back to back and the
+//--- path still walked away (`moved=yes`). The answer is structural, not detectable — a path's
+//--- BODY selects and never carries, so no press can start a carry on a line (PathTool.mqh),
+//--- and its VERTICES answer only while it is selected, so the hand is on a dot. Nothing is
+//--- left for a foreign press to steal. The foreign-drag lock below stays: it is measured, it
+//--- is the terminal's own voice, and it is the backstop for any carry that is live.
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-UI-144 — "WE DECIDE", AS ONE QUESTION.
+// ══════════════════════════════════════════════════════════════════════════
+// Three measurements closed the detection road (no armed-tool flag; the terminal is
+// silent for a whole native stroke and speaks once at its end; its button bit flaps
+// mid-press), so the owner of the hand is DECIDED here instead of guessed at:
+//
+//   A DRAWING THAT IS NOT ALREADY TAKEN CANNOT BE TAKEN. The first press on it
+//   selects it and writes no anchor at all; the second carries it.
+//
+// That is TradingView's own model — a drawing tool is a MODE, and inside a mode the
+// hand belongs to the new drawing — and it needs nothing from MT4, so it holds even
+// on a terminal that says nothing at all. One state, one question, and every custom
+// drag in the product asks it (the path and the ray today; Base/Knot, TH3 and the
+// leg measure join when their press paths are read).
+//
+// Cost per press: one string compare. Nothing per tick, nothing per frame.
+//+------------------------------------------------------------------+
+static string g_gestureTaken = "";
+static string g_gestureTakeWhy = "";
+void GestureTakeNote(const string name) { g_gestureTaken = name; g_gestureTakeWhy = "note:" + name; }
+void GestureTakeRelease()             { g_gestureTaken = "";  g_gestureTakeWhy = "release"; }
+bool GestureTakeAllowed(const string name)
+{
+   if(name == "")                    { g_gestureTakeWhy = "refuse: no name"; return false; }
+   if(GestureGrabBlocked())          { g_gestureTakeWhy = "refuse: terminal is dragging one of ours"; return false; }
+   if(g_gestureTaken == name)        { g_gestureTakeWhy = "carry: it was taken"; return true; }
+   g_gestureTakeWhy = "refuse: taken=\"" + g_gestureTaken + "\" asked=\"" + name + "\"";
+   return false;
+}
+//--- WHY a press was refused, in the caller's own words. MEASURED 2026-10-02 19:20: the
+//--- live journal carried EIGHT consecutive `[Path] press selects … (no carry on the first
+//--- gesture)` on one path id over forty seconds — the take never became effective, so the
+//--- user's own drag could not start, and no line said WHICH refusal it was. The arbiter
+//--- answers that in its own words now, and the caller prints it beside its own witness:
+//--- one string, written on the press edge only (nothing on a tick, nothing per frame).
+string GestureTakeWhy() { return g_gestureTakeWhy; }
+//--- THE CENSUS, beside the arbiter it measures (P-UI-142). «It did not work» is not a
+//--- verdict; the ORDER the terminal speaks is. This answers, for one reproduction, the
+//--- only question no amount of reading can: does a native draw started ON our own
+//--- drawing speak at all, and does it arrive BEFORE or AFTER our first write? It also
+//--- keeps the writer honest — a tool can only be refused by a signal that exists.
+//--- Returns TRUE when the caller should print one line (the caller owns the flushed
+//--- channel: the arbiter is compiled before it). Bounded by design: a press, a move
+//--- while the button is down or the heartbeat is live, a foreign drag, a foreign create.
+bool GestureCensusWanted(const int id, const string sparam)
+{
+   int st = (int)StringToInteger(sparam);
+   bool down = ((st & 1) != 0);
+   //--- Every event passes through here, so the press is stamped HERE (the caller stays
+   //--- flat, and a stamp is state this arbiter already owns).
+   if(down && id == CHARTEVENT_MOUSE_MOVE) g_gesturePressMs = GetTickCount();
+   if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CREATE) return true;
+   if(id != CHARTEVENT_MOUSE_MOVE) return false;
+   //--- P-UI-143: a move that arrives with NO button down is the only shape a native
+   //--- stroke has while the terminal draws it (it does not claim the button), and that
+   //--- asymmetry is the whole basis of the free discriminator — so it is printed too,
+   //--- for as long as a press could still belong to it (three seconds: the longest
+   //--- deliberate stroke a hand makes before the terminal reports anything).
+   return (down || GestureGrabBlocked()
+           || (st == 0 && g_gesturePressMs != 0 && TickDeadlinePending(g_gesturePressMs + 3000)));
 }
 
 #ifndef BUILD_LITE

@@ -1052,22 +1052,25 @@ void ClearCustomPriceSelection()
 //==============================================================================
 void CustomPriceMarkerSync()
 {
-    // P-UI-98m: in SET state the green circle is the only marker
-    // (double-click the row to re-arm), so it shows WITHOUT the 98g reveal
-    // latch; ARMED keeps the latch (a fresh placement is born ARMED-but-HIDDEN,
-    // and an armed-but-unasked line shows nothing).
     // P-UI-98o: the green circle ignores the LINES switch - it marks the
     // custom price placement itself, not the line family, so L hides the
-    // lines and the red circles but never it (hide-all still does).
+    // lines and the red circles but never it (hide-all still does it).
     // P-UI-98p: the line itself is never painted at all - the circle below
     // is the whole face of the placement.
-    // P-UI-98q: and the circle shows whenever the placement is live - ARMED
-    // and SET, with no reveal latch and no LINES switch. A fresh placement
-    // therefore shows its circle the moment custom price turns on, and it
-    // stays through every toggle. The 98g latch survives only as the armed
-    // click-flow state (first click asks, second commits). Hide-all still
-    // hides it.
+    // P-UI-151 (2026-10-02): AND THAT FACE IS NOW THE REVEAL LATCH'S, EXACTLY
+    // LIKE THE RED PAIR'S. User order: «این دایریه سبز اینطوری میمونه بد ...
+    // وقتی کلیک شد جای دیگه پنهان بشه و وقتی روش کلیک شد دیده بشه». P-UI-98q
+    // had the green circle up for as long as the placement lived, so the one
+    // face of an invisible line (P-UI-98p) sat on the chart for ever. The
+    // latch below is the SAME question the red circles answer through
+    // `Step1HandleOwnFace` (P-UI-98g) - "the user asked for this marker" -
+    // so ONE rule now serves every handset circle: a click that lands on a
+    // marker reveals it, a click that lands on neither drops both
+    // (`HandsetRevealDropOnForeignClick`), and a fresh placement is born
+    // revealed because the click that asked for it IS the asking click
+    // (`HandsetPlacementArm`).
     bool show = g_customPriceLineCreated &&
+                g_cpHandleShown &&
                 !IsIndicatorHidden() &&
                 g_thStartPointType == TH_START_POINT_CUSTOM_PRICE;
     if(!show)
@@ -1132,6 +1135,94 @@ void HandsetMarkersRide()
         HandsetHandlePark(S1MarkName(-1), S1_HANDLE_RES);
 }
 
+//==============================================================================
+// P-UI-151 (2026-10-02) — ONE REVEAL ARCHITECTURE FOR EVERY HANDSET CIRCLE.
+//
+// User order: «این دایریه سبز اینطوری میمونه بد ... وقتی کلیک شد جای دیگه پنهان
+// بشه و وقتی روش کلیک شد دیده بشه» and, on the shape of the code itself, «بهترین
+// معماری درست کن دیگه چون که من کدها رو محدودیت هاشو نمیدونم چطوریه».
+//
+// P-UI-149 had answered HALF of it (the red pair's reveal was temporary) by
+// hard-coding the exceptions into the drop owner: a click on a rung-1 row was
+// "the pair's", a click on the custom price row was "the anchor's", and the GREEN
+// latch was neither read nor written. That is two rules pretending to be one, and
+// it is exactly the shape that leaves a "staying" circle behind (the green one,
+// by the user's own report). The question the click edge must answer is ONE
+// question — "did this click land on a handset marker?" — and each marker answers
+// it with its own hit test:
+//
+//   * the custom price row (or the 19 px green circle drawn on it):
+//     `CustomPriceGrabAt`, the drag's own tolerance (P-UI-98q);
+//   * a rung-1 row (or the 15 px red circle drawn on it): `Step1HandleUnderCursor`,
+//     which already refuses a hidden/off ladder and another timeframe's stash.
+//
+//   `HandsetMarkerRevealAt` is that question, and it is the ONLY reveal writer on
+//   this edge; `HandsetRevealDropOnForeignClick` is its sibling and the ONLY drop
+//   writer: a click that lands on no marker gives BOTH reveals back, and a live
+//   hand keeps its circles through the gesture flags. (The other reveal writers
+//   are the ones that already exist off a press: the claim a hand makes on either
+//   line — P-UI-98g — and the armed single-click contract. They stay: a hand on
+//   the line IS the request.)
+//
+//   The PLACEMENT is exempt, and it has to be: while `g_waitingForCustomPriceClick`
+//   is up the user is picking the price, so the click that settles it lands on
+//   empty chart BY DESIGN (the line still sits at the screen's middle, C key /
+//   ring PIN) — dropping the reveal there would hide the circle in the very
+//   gesture that asked for it, and `CreateCustomPriceLine` at the end of that
+//   path would then paint nothing at all.
+//
+// Cost: the click edge only. One completed click in custom-price mode runs at
+// most two hit tests (each one `ChartXYToTimePrice` plus a couple of reads) and
+// writes only when the answer CHANGED — an unrevealed pair costs the two tests
+// and no write, a revealed one that keeps its circle costs the same. The button
+// probe is the project's ONE witness (UILeftButtonUp, P-UI-73), so a CLICK the
+// terminal delivers on the PRESS — the measured twin transport — answers nothing
+// and the real release still decides.
+//==============================================================================
+bool HandsetMarkerRevealAt(const int x, const int y)
+{
+    if(g_customPriceLineCreated && CustomPriceGrabAt(x, y))
+    {
+        if(!g_cpHandleShown)
+        {
+            g_cpHandleShown = true;
+            CustomPriceMarkerSync();
+            ThrottledChartRedraw();
+        }
+        return true;   // the placement's own row: the click belongs to it
+    }
+    string row = "";
+    if(Step1HandleUnderCursor(x, y, row))
+    {
+        if(!g_s1HandleShown)
+        {
+            g_s1HandleShown = true;
+            HandsetMarkersRide();
+            ThrottledChartRedraw();
+        }
+        return true;   // the pair's own row: the click belongs to it
+    }
+    return false;
+}
+
+void HandsetRevealDropOnForeignClick(const int x, const int y)
+{
+    if(g_thStartPointType != TH_START_POINT_CUSTOM_PRICE) return;
+    if(g_waitingForCustomPriceClick) return;          // a placement in progress owns its markers
+    if(g_s1DragLive || g_s1OwnActive || g_customPriceLineDragging) return;   // a live hand keeps its circles
+    if(!UILeftButtonUp()) return;                     // the press's own echo (P-UI-73)
+    // THE CLICK'S OWN QUESTION FIRST. It runs unconditionally on this edge (not
+    // behind a `!shown` guard) because the reveal has to reach a pair that is
+    // NOT up yet: a click delivered only on the release never saw the press
+    // edge, and `shown` is false exactly then. The two hit tests are the price.
+    if(HandsetMarkerRevealAt(x, y)) return;           // a marker's own click: nothing is dropped
+    if(!g_cpHandleShown && !g_s1HandleShown) return;  // nothing revealed: nothing to drop
+    g_cpHandleShown = false;
+    g_s1HandleShown = false;
+    HandsetMarkersRide();   // one ride parks the green dot and both red circles
+    ThrottledChartRedraw();
+}
+
 // P-UI-98e: A FRESH PLACEMENT IS BORN ARMED. The activation (the C key, the ring
 // PIN) deletes the line and creates a new one at the screen's middle; the
 // armed/set state is per PLACEMENT (P-UI-98d), so the new one must wake
@@ -1147,10 +1238,18 @@ void HandsetPlacementArm()
     g_s1SetPending = "";   g_s1SetPendingMs = 0;
     // P-UI-98m: no re-arm candidate survives into a fresh placement.
     g_cpClickArmed = false;   g_cpClickY = 0;
-    // P-UI-98g: a fresh placement is born ARMED but HIDDEN - the circles are the
-    // answer to a click, and nothing has been clicked yet. The tooltip says so.
-    g_cpHandleShown = false;
+    // P-UI-98g: the RED circles are born HIDDEN - a rung-1 row is a painted
+    // line, so the pair is one click away from being asked for, and the
+    // tooltip says so.
     g_s1HandleShown = false;
+    // P-UI-151: THE GREEN CIRCLE IS BORN REVEALED, because the line it marks is
+    // NEVER PAINTED (P-UI-98p) - it is the placement's whole face, and hiding it
+    // here would leave the user staring at a chart with no custom price on it at
+    // all after the very gesture that asked for one. The C key / ring PIN press
+    // IS the asking click (same rule as everywhere else: a marker appears when
+    // the user asks for it), and the first click that lands on neither marker
+    // takes it away (`HandsetRevealDropOnForeignClick`).
+    g_cpHandleShown = true;
 }
 
 // The ONE owner of an armed/set TRANSITION of the custom price line. Guarded

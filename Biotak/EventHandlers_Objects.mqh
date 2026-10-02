@@ -555,14 +555,45 @@ void CustomPriceDragFrame(const bool force)
 {
     s_cpDragFrameOwed = true;                    // owed until this call really paints
     uint nowMs = GetTickCount();
-    if(!force && nowMs - g_lastDragRedrawTime <= DRAG_REDRAW_THROTTLE_MS) return;
-    // P-UI-53: re-assert the view lock on the same budget (read-guarded: three
-    // reads, a write only on drift).
-    CustomPriceDragReassertLock();
-    RedrawAllObjects(true);
-    ThrottledChartRedraw();
-    g_lastDragRedrawTime = nowMs;
-    s_cpDragFrameOwed = false;
+    bool ranFrame = (force || nowMs - g_lastDragRedrawTime > DRAG_REDRAW_THROTTLE_MS);
+    uint t0 = nowMs;
+    if(ranFrame)
+    {
+        // P-UI-53: re-assert the view lock on the same budget (read-guarded: three
+        // reads, a write only on drift).
+        CustomPriceDragReassertLock();
+        RedrawAllObjects(true);
+        ThrottledChartRedraw();
+        g_lastDragRedrawTime = nowMs;
+        s_cpDragFrameOwed = false;
+    }
+#ifndef BUILD_LITE
+    // P-UI-152 (2026-10-02) — THE SHARED DRAG FRAME, PRICED. User order: «هنوز هم
+    // مثل خود خط کاستوم پرایس ریل تایم واقعی نشده ... به دقت بررسی کن». This is
+    // the ONE function both hand-set gestures pace their pixels with, so it is the
+    // only place the two can be compared: `who=` names the channel, `run=0` is a
+    // frame the 50 ms budget refused (the cheap path), `ms=` is what the frame
+    // that DID run cost, and `lv=` is the LEVELS phase of the ledger it filled
+    // (P-PERF-03) — i.e. whether the price is the family re-derivation or the rest
+    // of the frame. One bounded line per 25 ms of a live gesture, on the FLUSHED
+    // channel (AGENTS.md: a witness IS the flushed file; the journal is a buffer,
+    // P-DRAW-126). Read the pair as: the drag's own cadence is the gap between two
+    // lines, and "real time" is that gap being the mouse's own, not the frame's.
+    if(g_s1DragLive || g_customPriceLineDragging)
+    {
+        static uint s_dfWitMs = 0;
+        uint dfNow = GetTickCount();
+        if(dfNow - s_dfWitMs >= 25)
+        {
+            s_dfWitMs = dfNow;
+            DrawStripDiagEmit("[drag] who=" + (g_s1DragLive ? "s1" : "cp") +
+                              " run=" + IntegerToString(ranFrame ? 1 : 0) +
+                              " ms=" + IntegerToString((int)(dfNow - t0)) +
+                              " lv=" + IntegerToString((int)g_p3MsLevels) +
+                              " t=" + IntegerToString((int)dfNow));
+        }
+    }
+#endif
 }
 
 bool CustomPriceDragFrameOwed() { return s_cpDragFrameOwed; }
@@ -806,6 +837,30 @@ void Step1LineDragApply(const string name)
     // the step-1 drag did NOT move the other levels in the moment.
     g_redrawTHLevelsNeeded = true;
     CustomPriceDragFrame(false);   // the shared 50 ms budget; the refused frame is owed
+#ifndef BUILD_LITE
+    const bool paid = !CustomPriceDragFrameOwed();   // this very event's frame, or one owed
+    // P-UI-150: THE DRAG'S OWN WITNESS, on the FLUSHED channel — AGENTS.md: "a witness
+    // IS the flushed file", because MT4's journal is a RAM buffer and a Print answers
+    // «nothing happened» long after the hand moved (P-DRAW-126). One bounded line per
+    // 25 ms of a live gesture, and only when the factor really changed (the dead band
+    // above returns first), so the next report is a number instead of an impression:
+    // the factor the hand drew, the side, WHO owns the movement (our carry or the
+    // terminal's own drag), and whether this event PAID the shared frame or owes it.
+    // "ladder follows the hand" then reads as: a run of these lines with paid=1.
+    {
+        static uint s_s1WitMs = 0;
+        uint s1w = GetTickCount();
+        if(s1w - s_s1WitMs >= 25)
+        {
+            s_s1WitMs = s1w;
+            DrawStripDiagEmit("[s1] drag f=" + DoubleToString(candidate, 5) +
+                              " side=" + (above ? "above" : "below") +
+                              " own=" + IntegerToString(g_s1OwnActive ? 1 : 0) +
+                              " paid=" + IntegerToString(paid ? 1 : 0) +
+                              " owed=" + IntegerToString(CustomPriceDragFrameOwed() ? 1 : 0));
+        }
+    }
+#endif
 }
 
 // P-UI-98e / P-LM-21: THE DRAGGABLE FLAG IS BORROWED, AND RETURNED. The terminal
@@ -912,13 +967,49 @@ void Step1DragSettle()
 // line already runs.
 //==============================================================================
 
-// Is the press ON a rung-1 handle? The render's own stash answers (the two
-// prices and names the face owner already had in hand), so the test never walks
-// the chart. The tolerance is the custom price line's own: the line as DRAWN
+//==============================================================================
+// P-UI-148 (2026-10-02) — THE ROW THE HAND SEES IS THE LINE'S OWN PRICE.
+//
+// Reported: «وقتی هر کدوم از قرمزها رو درگ میکنم ریل تایم سطوح مثل خود خط
+// کاستوم جابجا نمیشه و وقتی درگ رها بشه سطوح میاد». The ladder followed the hand
+// per held event only when OUR carry owned the gesture; every other route (the
+// press edge that was missed, the native-only drag waiting to be adopted) asked
+// `Step1HandleUnderCursor`, and that test measured the cursor against the price
+// the RENDER last stashed. During a drag the render is one THROTTLED frame behind
+// the hand (50 ms, DRAG_REDRAW_THROTTLE_MS) and on a native-only gesture it is the
+// ONLY writer of the stash - so within a frame or two the row test answered about
+// a price the line had already left, the recovery and the adoption both refused,
+// and the gesture lived on the terminal's own sparse reports until the release
+// (which is why the ladder arrived all at once at the end).
+//
+// The fix is a READER: the stash still owns WHICH line is the handle (the whole
+// point of P-UI-98f - never a name tail), but the PRICE the test compares against
+// is the line object's own `OBJPROP_PRICE`, the one value the terminal keeps
+// exact - the same reading P-UI-61 settled the custom price line from. The stash
+// is the fallback for the one case it exists for: a handle whose object is
+// missing (P-UI-98j's net re-creates it; the test must not invent a price).
+//
+// Cost: on the press edge / adoption / recovery only - never a steady frame -
+// two ObjectFind + two ObjectGetDouble, and zero writes. Nothing the render
+// produced changes; the test just stops reading a stale copy of it.
+//==============================================================================
+// The price of the row `name` as the chart really carries it.
+double Step1HandleRowPrice(const string name, const double stash)
+{
+    if(name == "") return 0.0;
+    if(ObjectFind(0, name) < 0) return stash;   // object gone: the stash is all we have
+    double live = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
+    if(!(live > 0.0) || !MathIsValidNumber(live)) return stash;
+    return live;
+}
+
+// Is the press ON a rung-1 handle? The render's own stash answers WHICH line is
+// the handle (the two names the face owner already had in hand), so the test never
+// walks the chart. The tolerance is the custom price line's own: the line as DRAWN
 // plus a few pixels, which is what the terminal itself uses. P-UI-98e: the test
 // does NOT ask the armed state — the CLICK contract reaches a SET handle through
 // it (that is how a double-click re-arms one), while the DRAG's claim below asks
-// `g_s1LinesArmed` itself.
+// `g_s1LinesArmed` itself. P-UI-148: the two PRICES are the lines' own.
 bool Step1HandleUnderCursor(const int x, const int y, string &handleName)
 {
     handleName = "";
@@ -942,16 +1033,20 @@ bool Step1HandleUnderCursor(const int x, const int y, string &handleName)
     int subW = 0; datetime cursorT = 0; double priceAtCursor = 0.0;
     if(!ChartXYToTimePrice(0, x, y, subW, cursorT, priceAtCursor)) return false;
     // the NEAREST armed row wins: a press between the two rung-1 lines must
-    // belong to the one the user sees under the hand
+    // belong to the one the user sees under the hand. P-UI-148: each row's own
+    // price, read from the object, so a hand mid-drag is never measured against
+    // the frame the render has not painted yet.
     double bestDist = tolPrice;
-    if(g_s1MarkAboveName != "" && g_s1MarkAbovePrice > 0.0 &&
-       MathAbs(g_s1MarkAbovePrice - priceAtCursor) <= bestDist)
+    double aboveRow = Step1HandleRowPrice(g_s1MarkAboveName, g_s1MarkAbovePrice);
+    double belowRow = Step1HandleRowPrice(g_s1MarkBelowName, g_s1MarkBelowPrice);
+    if(g_s1MarkAboveName != "" && aboveRow > 0.0 &&
+       MathAbs(aboveRow - priceAtCursor) <= bestDist)
     {
-        bestDist = MathAbs(g_s1MarkAbovePrice - priceAtCursor);
+        bestDist = MathAbs(aboveRow - priceAtCursor);
         handleName = g_s1MarkAboveName;
     }
-    if(g_s1MarkBelowName != "" && g_s1MarkBelowPrice > 0.0 &&
-       MathAbs(g_s1MarkBelowPrice - priceAtCursor) <= bestDist)
+    if(g_s1MarkBelowName != "" && belowRow > 0.0 &&
+       MathAbs(belowRow - priceAtCursor) <= bestDist)
         handleName = g_s1MarkBelowName;
     return (handleName != "");
 }
@@ -1000,8 +1095,12 @@ bool Step1NearerThanCustom(const int x, const int y, const string s1Row)
     double linePrice = ObjectGetDouble(0, g_customPriceHorizontalLineName, OBJPROP_PRICE, 0);
     if(!(linePrice > 0.0) || !MathIsValidNumber(linePrice)) return false;
     double s1Price = 0.0;
-    if(s1Row == g_s1MarkAboveName) s1Price = g_s1MarkAbovePrice;
-    else if(s1Row == g_s1MarkBelowName) s1Price = g_s1MarkBelowPrice;
+    // P-UI-148: the row's OWN price, like every other reader of the pair. A stale
+    // stash in this comparison mis-assigns the gesture (the press aimed at the red
+    // circle takes the green line instead, and the handle then never gets carried);
+    // the objects are the one copy the drag itself keeps current.
+    if(s1Row == g_s1MarkAboveName) s1Price = Step1HandleRowPrice(g_s1MarkAboveName, g_s1MarkAbovePrice);
+    else if(s1Row == g_s1MarkBelowName) s1Price = Step1HandleRowPrice(g_s1MarkBelowName, g_s1MarkBelowPrice);
     else return false;
     if(!(s1Price > 0.0) || !MathIsValidNumber(s1Price)) return false;
     return (MathAbs(s1Price - cursorPrice) + _Point * 0.5 < MathAbs(linePrice - cursorPrice));

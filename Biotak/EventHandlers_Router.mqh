@@ -21,45 +21,42 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // ours, appearing while a hand-set line's gesture is live, is therefore the
     // one proof that the press which started it was a DRAW and not a grab — the
     // question the press edge itself cannot answer («وقتی فیو یا باکس از همون محل
-    // میکشم کاستوم پرایس جابجا میشه»). The policy is CustomPriceForeignDrawSeen;
-    // this branch owns the name test, beside the delete branch's own.
-    //
-    // Cost: ONE event, and events of this kind arrive when the user draws
-    // something — never per tick, never per frame. Our own creates are filtered
-    // out by the prefix, which is also what keeps them from being read as the
-    // user's (the same test the delete branch below needs).
-    if(id == CHARTEVENT_OBJECT_CREATE && sparam != "")
-    {
-        int createPrefixLen = StringLen(inpObjectPrefix);
-        bool createdByUs = (createPrefixLen > 0 && StringLen(sparam) >= createPrefixLen &&
-                            StringSubstr(sparam, 0, createPrefixLen) == inpObjectPrefix);
-        if(!createdByUs)
-        {
-            // P-DRAW-01 (2026-09-22): AND THE USER'S OWN DRAWING IS STYLED THE
-            // MOMENT IT EXISTS. This is the other half of «آخرین تغییرات ذخیره
-            // بشه»: every edit the drawing toolbar makes is remembered per KIND,
-            // and a fresh object of that kind wears the memory here — before the
-            // user can see it in the terminal's own look. A kind the user has
-            // never styled is left exactly as MT4 drew it (the memory answers
-            // "untouched"), and the indicator's own objects never reach this
-            // branch (the prefix test above is the same one the delete branch
-            // below uses).
-            DrawStyleApplyOnCreate(sparam);
-            CustomPriceForeignDrawSeen();
-        }
-    }
-
-    // P-TICKWRAP: the window is asked through its owner, never compared against
-    // GetTickCount() directly — an absolute compare stays true forever after the
-    // 49.7-day counter wrap, and then EVERY delete would be ignored for the rest of
-    // the cycle (see TickDeadlinePending in GlobalVariables).
+//--- P-UI-142: the arbiter's ONE writer + its census — the terminal's own voice is the only
+   //--- signal MT4 has; law, heartbeat, lock and census live at their owner (GlobalVariables.mqh).
+   //--- Lite ships no draw strip, so no flushed channel: the arbiter still WORKS there.
+   {
+      int gl=StringLen(inpObjectPrefix);
+      bool gOurs=(gl>0 && StringLen(sparam)>=gl && StringSubstr(sparam,0,gl)==inpObjectPrefix);
+      if(id == CHARTEVENT_OBJECT_DRAG && !gOurs && sparam != "") GestureForeignMotion(sparam);
+#ifndef BUILD_LITE
+      if(GestureCensusWanted(id, sparam)) { DrawStripDiagEmit("[gest] id="+IntegerToString(id)+" t="+IntegerToString(GetTickCount())+" xy="+IntegerToString((int)lparam)+","+IntegerToString((int)dparam)+" nm=\""+sparam+"\" ours="+IntegerToString(gOurs?1:0)); }
+#endif
+   }
+   if(id == CHARTEVENT_OBJECT_CREATE && sparam != "")
+   {
+       int createPrefixLen = StringLen(inpObjectPrefix);
+       bool createdByUs = (createPrefixLen > 0 && StringLen(sparam) >= createPrefixLen &&
+                           StringSubstr(sparam, 0, createPrefixLen) == inpObjectPrefix);
+       if(!createdByUs)
+       {
+           // P-DRAW-01 (2026-09-22): AND THE USER'S OWN DRAWING IS STYLED THE MOMENT
+           // IT EXISTS — «آخرین تغییرات ذخیره بشه». A fresh object wears the KIND's
+           // memory before the user can see it in the terminal's own look; a kind never
+           // styled is left exactly as MT4 drew it (the memory answers "untouched").
+           DrawStyleApplyOnCreate(sparam);
+           CustomPriceForeignDrawSeen();
+       }
+   }
+// P-TICKWRAP: the window is asked through its owner, never compared against GetTickCount()
+    // directly — an absolute compare stays true forever after the 49.7-day counter wrap, and
+    // then EVERY delete would be ignored for the rest of the cycle (TickDeadlinePending).
     bool suppressDeleteEvent = g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs);
     if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
         string indicatorPrefix = inpObjectPrefix;
         int prefixLen = StringLen(indicatorPrefix);
-        // P-BK-01: Base/Knot deletes are owned by BaseKnotTool (cascade/heal) —
-        // they must not flag a level redraw or pollute the object cache.
-        // P-HR-01: ray deletes are owned by HRayTool the same way (single object).
+        // P-BK-01 / P-HR-01: Base/Knot deletes are owned by BaseKnotTool (cascade/heal) and
+        // ray deletes by HRayTool (single object) — neither may flag a level redraw or
+        // pollute the object cache, so they never reach the sweep below.
         if(prefixLen > 0 && StringLen(sparam) >= prefixLen && StringSubstr(sparam, 0, prefixLen) == indicatorPrefix &&
            StringFind(sparam, "_BK_") < 0 && StringFind(sparam, "_HRAY_") < 0) {
             // P-DEL-PROBE (2026-09-30) — OUR OWN MASS DELETE, LEAKING BACK IN.
@@ -667,6 +664,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     //
     if(id == CHARTEVENT_CLICK) Step1ClickFinalize();
     if(id == CHARTEVENT_CLICK) CustomPriceRearmFinalize();   // P-UI-98m: the still click on a SET line
+    // P-UI-149/P-UI-151: AND A CLICK THAT LANDS ELSEWHERE GIVES THE REVEAL BACK —
+    // every circle's, green included. It runs LAST on this edge on purpose: a click
+    // ON a marker row has already been answered by that marker's own contract above
+    // (reveal, or the SET candidate), and this owner asks the SAME two hit tests — so
+    // the click that reveals can never be the click that hides. The button-up is
+    // asked inside; the press's own twin echo touches nothing.
+    if(id == CHARTEVENT_CLICK) HandsetRevealDropOnForeignClick((int)lparam, (int)dparam);
 
 #ifndef BUILD_LITE
     if(id == CHARTEVENT_MOUSE_MOVE && LegMeasureSessionActive())
@@ -1074,12 +1078,31 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             // the borrow ends the terminal's own loop per P-LM-21); from the
             // next held event both channels drive it. Never while the custom
             // price line owns the gesture (one cursor, one gesture).
+            // P-UI-148 (2026-10-02): AND THE TERMINAL'S OWN HOLD IS A SECOND
+            // OPINION, because the row test alone is not enough on the build this
+            // was reported on («ریل تایم سطوح مثل خود خط کاستوم جابجا نمیشه ...
+            // وقتی درگ رها بشه سطوح میاد»): the terminal moves the line itself and
+            // reports nothing per step, so between two reports the cursor has
+            // already travelled off the row the test last read - the adoption
+            // refused, `g_s1OwnActive` stayed false, `Step1HandleOwnDragMove`
+            // never ran on the held stream, and the step factor (hence the whole
+            // ladder) was only recomputed when the terminal finally spoke, i.e. at
+            // the release. This is the custom price line's own recovery shape
+            // (`terminalGrab`, P-UI-98i's note 2): a SELECTED live handle IS the
+            // terminal saying the press is on it. The claim re-latches the grab at
+            // the CURRENT price, so a stale row cannot make the handle jump. Cost:
+            // one ObjectFind + one read, only while a gesture of ours is live and
+            // our carry has not taken it - never a steady frame.
             else if(g_s1DragLive && !g_s1OwnActive && !g_customPriceLineDragging)
             {
                 string adoptRow = "";
-                if(g_s1DragName != "" &&
-                   Step1HandleUnderCursor((int)lparam, (int)dparam, adoptRow) &&
-                   adoptRow == g_s1DragName)
+                bool onRow = (g_s1DragName != "" &&
+                              Step1HandleUnderCursor((int)lparam, (int)dparam, adoptRow) &&
+                              adoptRow == g_s1DragName);
+                bool terminalHoldsIt = (g_s1DragName != "" &&
+                                        ObjectFind(0, g_s1DragName) >= 0 &&
+                                        (bool)ObjectGetInteger(0, g_s1DragName, OBJPROP_SELECTED));
+                if(g_s1DragName != "" && (onRow || terminalHoldsIt))
                     Step1HandleOwnClaim(g_s1DragName, (int)lparam, (int)dparam);
                 if(g_s1OwnActive)
                     Step1HandleOwnDragMove((int)lparam, (int)dparam);
@@ -1118,7 +1141,22 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 // here too: a SELECTED handle with the cursor really on its row
                 // is claimed past the edge (and the custom line keeps its own
                 // priority - a press on it is never adopted).
-                if(!s1OnRow && !pressEdge && g_s1LinesArmed && !onCustomLine &&
+                //
+                // P-UI-150 (2026-10-02): AND ON THE PRESS EDGE TOO. User order:
+                // «دقیقا مثل خود خط کاستوم پرایس باشه نحوه درگ کردنش». The line's claim
+                // is `(pressEdge && (terminalGrab || pixelHit)) || (terminalGrab &&
+                // atLineNow)`: MT4's own hold counts ON the edge as well as past it,
+                // and that second term is what makes the line's drag survive a build
+                // whose press edge never arrives here (P-BK-03). The handle had it
+                // only past the edge (`!pressEdge`), so on the edge the ONLY route in
+                // was the tolerance test - and a press that the terminal had already
+                // honoured by selecting the rung-1 line was refused, leaving the whole
+                // gesture to the terminal's sparse reports and moving the ladder at the
+                // release instead of under the hand. The cursor must still be really ON
+                // the row (the row is read live now, P-UI-148) and the row must be the
+                // terminal's SELECTED one, so a stale selection can never claim a press
+                // aimed elsewhere - the hazard P-UI-96 measured on the line.
+                if(!s1OnRow && g_s1LinesArmed && !onCustomLine &&
                    !UIPointerOverSurface((int)lparam, (int)dparam))
                 {
                     string selRow = "";

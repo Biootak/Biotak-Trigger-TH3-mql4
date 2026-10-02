@@ -672,7 +672,42 @@ SPipelineResult ExecutePipeline(
         {
             string stepSig = IntegerToString((int)stepMode) + "," + IntegerToString(stepSizeCount);
             for(int ss = 0; ss < stepSizeCount; ss++) stepSig += "," + DoubleToString(stepSizes[ss], 8);
-            if(stepSig != s_lastStepSig)
+            // P-UI-153 (2026-10-02) — A HAND MID-DRAG DOES NOT SWEEP THE PITCH.
+            //
+            // User order: «هنوز هم مثل خود خط کاستوم پرایس ریل تایم واقعی نشده ...
+            // برای اون نقاط قرمز معماری شئ کپی کن». MEASURED FIRST, on the flushed
+            // channel, by pricing the ONE frame owner both hand-set gestures share
+            // (P-UI-152's `[drag]` witness):
+            //   the custom price LINE drag  ->  ms=0..16,  lv=0..16
+            //   the step-1 handle drag      ->  ms=172..203, lv == ms, on EVERY step
+            // So the whole cost of a step-1 step is the LEVELS phase, and this pass
+            // is why: the handle's drag changes the STEP SIZES, `stepSig` therefore
+            // changes on every held event, and this block runs on every one of them.
+            // It then finds the cache's `lastPrice` for the SAME name disagreeing
+            // with the new pitch (the family has just moved) and DELETES those
+            // objects - so the render that follows re-CREATES a whole family per
+            // step (ObjectDelete + ObjectCreate + every property) instead of
+            // re-pricing it in place. The custom price line's drag never trips this
+            // pass: it moves the CENTRE, the step sizes and `stepSig` are untouched,
+            // and its frames are the render alone (16 ms). THAT is the architecture
+            // the user asked to copy, and this is the half of it the handle lacked.
+            //
+            // The pass's own reason to exist is "the ladder ITSELF moved": a
+            // timeframe switch, a mode change, an ATR-scaling regime change - the
+            // moments in which nothing else can name the objects a previous pitch
+            // left behind. A hand on the handle is none of those: the same names are
+            // about to be re-asserted at the new pitch by the render line below, and
+            // whatever the new ladder no longer produces is removed by
+            // `CleanupSurplusPipeline`, which already throttles itself to 250 ms for
+            // a live gesture for exactly this reason.
+            //
+            // So the pass is DEFERRED, never dropped: `s_lastStepSig` is left stale
+            // on purpose while a gesture is live, and the release's own forced frame
+            // (both drag flags are down by then) sweeps ONCE against the final pitch
+            // - the frame that can afford it. This also retires the P-UI-98k hazard
+            // at its source: the pass that could delete the very line under the hand
+            // no longer runs under the hand at all.
+            if(stepSig != s_lastStepSig && !g_s1DragLive && !g_customPriceLineDragging)
             {
                 s_lastStepSig = stepSig;
                 int swept = SweepForeignLevelObjects(config, lines, result.lineCount,
