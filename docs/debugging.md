@@ -243,6 +243,17 @@ terminal's own `CHARTEVENT_OBJECT_DRAG` is the witness (P-BK-19a's owner trait,
 TH3Tool_C's resize measurement). It kills a live latch, clears the cycle, and gates
 the latch + both fire paths for the 400 ms heartbeat its events renew.
 
-DIAG reading for the next session: a drag must print one `hold cancelled: native drag
-obj=…` (or `latch blocked: native drag`) and NO `hold opened` for that gesture; a
-press on a stopped drawing must still reach `hold opened` inside ~500 ms.
+CONFIRMED ON THE LIVE CHART (EURUSD,H1, 2026-10-02, the 01:32:47 build) — the reading
+this file asked for, met line for line:
+
+```
+01:32:50.078  hold latch at 416,286 hit="Trendline 55430" lbtn=0
+01:32:50.189  hold cancelled: native drag obj="Trendline 55430"   <- 111 ms later
+                                                                  <- NO hold opened
+01:32:55.886  hold latch at 648,185 hit="Rectangle 49028"
+01:32:56.578  hold opened on "Rectangle 49028" selected=true     <- 692 ms: still opens
+```
+
+One `hold cancelled` for the drag gesture and no `hold opened` behind it, then the
+next press on a stopped drawing opens in 692 ms: the strip stays down through the
+move, and the hold survives it.
