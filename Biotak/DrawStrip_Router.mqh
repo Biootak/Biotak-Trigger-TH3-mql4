@@ -974,6 +974,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       if(FillIsChild(sparam)) { string fpar = FillChildParent(sparam); if(fpar != "" && ObjectFind(0, fpar) >= 0) FillChildSync(fpar); return false; }
       BoxMidDrop(sparam);
       FillChildDrop(sparam);
+      BoxMarkDrop(sparam);   // P-UI-134: a deleted box's KEY goes with it
       return false;
    }
    // P-DRAW-41 (2026-09-25) — THIS CHANNEL USED TO FOLLOW. P-DRAW-08c/08e/09d made

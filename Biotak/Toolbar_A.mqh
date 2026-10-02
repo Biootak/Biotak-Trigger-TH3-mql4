@@ -852,11 +852,44 @@ color DrawSlotColorStore(const string name, const color pure)
 //--- length existed only to put back what the cell had cut, and the third cut cuts
 //--- nothing, so `DrawBoxHalfSpan/Read/Write` and `BoxHalfRecheck` are GONE rather than
 //--- left as a second way to say "half".
-void BoxMarkRead(const string name, bool &mid, int &ext, int &extN)
+//--- P-UI-134 (2026-10-02) — THE MARKS ARE A KEY, NOT A SUBSTRING. The `[BX…]`
+//--- design put two owners' state INSIDE a string that FOUR other owners rewrite
+//--- (`[CL…]`, `[OP…]`, `[FL…]`, `[FT…]`), so every mark write had to re-serialise a
+//--- string it does not own and then cut its own block out of it. Three attempts failed
+//--- in a row: P-UI-133 fixed the cut point (`" [BX"` matched the space in front of the
+//--- SECOND tag, so `pre` kept `[BX50]`), and the live box then refused BOTH marks to
+//--- clear — `slot=11 … -> 0 read=1` AND `slot=12 … -> 0 read=1` («الان هیچکدوم درست
+//--- کار نمیکنه»). A shared mutable string with four writers is not a serialisation; it
+//--- is a parser racing three other parsers. **The architecture**: one keyed value per
+//--- box in the TERMINAL'S OWN store — the same store `BaseKnotGV` already uses for
+//--- per-box state (Biotak/BaseKnot_Base.mqh:802), so this is the project's existing
+//--- pattern, not a new idea. Nothing is parsed, no block is cut, the mark owner never
+//--- writes `OBJPROP_TEXT` again, and the legacy tags are READ ONCE (migration) and
+//--- then left in place, inert.
+//--- THE VALUE: an MQL4 global carries a double, so the three fields ride ONE integer
+//--- (`fp << 22 | n << 12 | ext << 2 | mid`, exact well past 2^40). `fp` is a 20-bit
+//--- fingerprint of the box's own NAME, so a key belonging to another box can never be
+//--- believed, and a dead key heals to «no marks» instead of wearing someone else's.
+#define BOXMARK_FP_MOD 1048576          // 2^20 — the fingerprint's space
+string BoxMarkKey(const string name)
+{
+   long h = 5381;                      // djb2, truncated: stable across runs
+   for(int i = 0; i < StringLen(name); i++)
+      h = ((h * 33) + (long)StringGetCharacter(name, i)) % BOXMARK_FP_MOD;
+   return "Biotak_BXM_" + IntegerToString((int)h) + "_" + GetCachedChartIdStr();
+}
+int BoxMarkFingerprint(const string name)
+{
+   long h = 5381;
+   for(int i = 0; i < StringLen(name); i++)
+      h = ((h * 33) + (long)StringGetCharacter(name, i)) % BOXMARK_FP_MOD;
+   return (int)h;
+}
+//--- the legacy `[BX…]` format, parsed ONCE and never written again. PARSING a format
+//--- you do not write is safe; WRITING it inside somebody else's string was the hazard.
+void BoxMarkLegacyRead(const string d, bool &mid, int &ext, int &extN)
 {
    mid = false; ext = BOXEXT_OFF; extN = 0;
-   if(name == "" || ObjectFind(0, name) < 0) return;
-   string d = ObjectGetString(0, name, OBJPROP_TEXT);
    if(StringFind(d, "[BX50]") >= 0) mid = true;
    int at = StringFind(d, "[BXE");
    if(at < 0) return;
@@ -873,23 +906,66 @@ void BoxMarkRead(const string name, bool &mid, int &ext, int &extN)
       if(extN <= 0) ext = BOXEXT_OFF;
    }
 }
+void BoxMarkRead(const string name, bool &mid, int &ext, int &extN)
+{
+   mid = false; ext = BOXEXT_OFF; extN = 0;
+   if(name == "" || ObjectFind(0, name) < 0) return;
+   string key = BoxMarkKey(name);
+   //--- the store is the census. One check per read; a present key costs one get, and
+   //--- the fingerprint is verified BEFORE anything is believed (a 20-bit collision, or
+   //--- a key left by an object that no longer exists, both fall through to migration).
+   if(GlobalVariableCheck(key))
+   {
+      long v = (long)GlobalVariableGet(key);
+      int md = (int)(v % 2); v /= 2;
+      int ex = (int)(v % 4); v /= 4;
+      int nn = (int)(v % 4096); v /= 4096;
+      if((int)v == BoxMarkFingerprint(name))
+      {
+         mid = (md != 0);
+         ext = ex;
+         extN = (ex == BOXEXT_NBARS) ? nn : 0;
+         return;
+      }
+   }
+   //--- MIGRATION, once per box and only while the store is empty: adopt the legacy tags
+   //--- and LEAVE THEM in the description. Cutting them would be one more edit of a
+   //--- string four owners share — and inert text costs nothing.
+   string d = ObjectGetString(0, name, OBJPROP_TEXT);
+   if(StringFind(d, "[BX") < 0) return;
+   bool lmid = false; int lext = BOXEXT_OFF, ln = 0;
+   BoxMarkLegacyRead(d, lmid, lext, ln);
+   if(lmid || lext != BOXEXT_OFF) BoxMarkWrite(name, lmid, lext, ln);
+}
 void BoxMarkWrite(const string name, const bool mid, const int ext, const int extN)
 {
    if(name == "" || ObjectFind(0, name) < 0) return;
-   string d = ObjectGetString(0, name, OBJPROP_TEXT);
-   int at = StringFind(d, " [BX");
-   string pre = (at >= 0) ? StringSubstr(d, 0, at) : d;
-   if(at < 0 && StringFind(d, "[BX") == 0) pre = "";
-   string want = pre;
-   if(mid) want += ((want == "") ? "" : " ") + "[BX50]";
-   if(ext == BOXEXT_TOUCH) want += ((want == "") ? "" : " ") + "[BXE1]";
-   else if(ext == BOXEXT_END) want += ((want == "") ? "" : " ") + "[BXE2]";
-   else if(ext == BOXEXT_NBARS && extN > 0)
-      want += ((want == "") ? "" : " ") + "[BXE3:" + IntegerToString(extN) + "]";
-   //--- the 50 % is the `[BX50]` MARK, nothing else: the mid line is a drawing of its
-   //--- own, so this rewrite can never drop it and needs no payload to re-emit.
-   if(want == d) return;
-   ObjectSetString(0, name, OBJPROP_TEXT, want);
+   string key = BoxMarkKey(name);
+   //--- no marks = NO KEY. A box with nothing to remember owns nothing, so a plain
+   //--- rectangle leaves no trace in the terminal's global list.
+   if(!mid && ext == BOXEXT_OFF)
+   {
+      if(GlobalVariableCheck(key)) GlobalVariableDel(key);
+      return;
+   }
+   int ex = (ext == BOXEXT_TOUCH) ? 1 : (ext == BOXEXT_END) ? 2 : (ext == BOXEXT_NBARS) ? 3 : 0;
+   int nn = (ex == 3 && extN > 0 && extN < 4096) ? extN : 0;
+   long v = BoxMarkFingerprint(name);
+   v = v * 4096 + nn;
+   v = v * 4 + ex;
+   v = v * 2 + (mid ? 1 : 0);
+   GlobalVariableSet(key, (double)v);
+}
+//--- the one place a box's key is DESTROYED: every delete path already calls
+//--- `BoxMidDrop`/`FillChildDrop`, and this is their third sibling. MT4 reuses object
+//--- names across sessions («Rectangle 17282» again), so a key that outlived its box
+//--- would hand a fresh box a dead box's marks — the fingerprint cannot catch that
+//--- (same name, same hash), only the delete can.
+void BoxMarkDrop(const string name)
+{
+   if(name == "") return;
+   string key = BoxMarkKey(name);
+   if(GlobalVariableCheck(key)) GlobalVariableDel(key);
 }
 
 //--- read ONE slot off an object. `slot` is the strip's own index.

@@ -792,6 +792,104 @@ void BoxExtendStepGroup()
    if(n <= 0) { BoxExtendStep(s_dsObj); return; }
    for(int i = 0; i < n; i++) BoxExtendStep(DrawSelAt(i));
 }
+//--- P-UI-132 (2026-10-02) — THE EDGE THE MODE TOOK IS THE EDGE IT GIVES BACK.
+//--- User report (one sentence, two defects): «وقتی اکستند کلیک میکنم 50 درصد باکس خاموش
+//--- و روشن نمیشه چرا تداخل داره و اینکه اکستند خاموش میکنم بر نمیگرده به حالت اول».
+//--- MEASURED in the code, not guessed: `DrawSlotWrite`'s EXTEND arm writes `[BXE2]`
+//--- and NOTHING else (Biotak/Toolbar_B.mqh), while the tap's own first step
+//--- (`BoxExtendStepGroup`, P-DRAW-64c) moves the box's LATER anchor onto the forming
+//--- bar. So arming the mode changes the drawing permanently and disarming it only
+//--- stops the travel — the box never comes back, which is the second half of the
+//--- report in one sentence. The first half is the same fact seen from the other
+//--- control: the 50 % is a LEVEL at the box's mid PRICE (`BoxMidSync`), so it does
+//--- not fight the edge over a price — it RIDES the edge to the far end of the chart,
+//--- and two cells that move together read as one cell interfering with the other.
+//--- THE MEMO: two numbers and the side that was later, written once at the arming and
+//--- spent once at the disarming. A ring of eight names in file scope — NOT a
+//--- descriptor tag: the marks block is rewritten by every writer (`BoxMarkWrite`
+//--- re-emits `[BX50]`/`[BXE…]` and would drop anything else), and P-DRAW-64a's third
+//--- cut already removed a remembered payload once. Nothing here runs on the paint or
+//--- the pump path, so a still chart pays zero, and the memo dies with the name rather
+//--- than going stale: a box whose mode was armed before a terminal restart simply
+//--- keeps the edge it travelled to, which is today's behaviour.
+#define BOX_EDGE_MEMO 8
+static string   s_bxeName[BOX_EDGE_MEMO];
+static datetime s_bxeT[BOX_EDGE_MEMO];
+static double   s_bxeP[BOX_EDGE_MEMO];
+static int      s_bxeLi[BOX_EDGE_MEMO];
+
+int BoxEdgeSlot(const string name)
+{
+   for(int i = 0; i < BOX_EDGE_MEMO; i++) if(s_bxeName[i] == name) return i;
+   return -1;
+}
+void BoxEdgeForget(const string name)
+{
+   int i = BoxEdgeSlot(name);
+   if(i < 0) return;
+   s_bxeName[i] = ""; s_bxeT[i] = 0; s_bxeP[i] = 0.0; s_bxeLi[i] = 0;
+}
+bool BoxEdgeRemember(const string name)
+{
+   if(name == "" || ObjectFind(0, name) < 0) return false;
+   if(DrawObjectType(name) != OBJ_RECTANGLE) return false;
+   datetime t0 = 0, t1 = 0; double p0 = 0.0, p1 = 0.0;
+   if(!BoxAnchors(name, t0, p0, t1, p1)) return false;
+   int li = (t1 >= t0) ? 1 : 0;
+   int i = BoxEdgeSlot(name);
+   if(i < 0)
+   {
+      for(int k = 0; k < BOX_EDGE_MEMO; k++) if(s_bxeName[k] == "") { i = k; break; }
+      if(i < 0) { BoxEdgeForget(s_bxeName[0]); i = 0; }   // nine armed boxes: the oldest goes
+   }
+   s_bxeName[i] = name;
+   s_bxeLi[i]   = li;
+   s_bxeT[i]    = (li == 1) ? t1 : t0;
+   s_bxeP[i]    = (li == 1) ? p1 : p0;
+   return true;
+}
+//--- the disarm spends the memo: the edge goes back where the hand put it, and the two
+//--- drawings that follow the box get the SAME frame — the 50 % line and the interior.
+bool BoxEdgeRestore(const string name)
+{
+   int i = BoxEdgeSlot(name);
+   if(i < 0) return false;
+   datetime t = s_bxeT[i];
+   double   p = s_bxeP[i];
+   int      li = s_bxeLi[i];
+   BoxEdgeForget(name);                    // spent first: a throw cannot spend it twice
+   if(name == "" || ObjectFind(0, name) < 0) return false;
+   bool moved = false;
+   //--- MQL4 has no `ObjectSetInteger(..., OBJPROP_PRICE, index, v)` (error 230: the
+   //--- enumerator takes no modifier), so an ANCHOR goes home the one way the terminal
+   //--- accepts: `ObjectMove` with both of its numbers. Two reads decide whether it is
+   //--- needed at all, so a disarm on an untouched edge writes nothing.
+   datetime ct = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, li);
+   double   cp = ObjectGetDouble(0, name, OBJPROP_PRICE, li);
+   if(ct != t || MathAbs(cp - p) > 0.0) { ObjectMove(0, name, li, t, p); moved = true; }
+   if(!moved) return false;
+   BoxMidSync(name);      // the 50 % rides the edge: it must be re-synced on the way back
+   FillChildSync(name);   // ...and so does the interior (P-DRAW-64a: a moved edge, a moved interior)
+   DrawStripDiagEmit("[drawstrip] EDGE restored name=\"" + name + "\" t=" + IntegerToString((int)t) +
+                     " p=" + DoubleToString(p, 5));
+   return true;
+}
+void BoxEdgeRememberGroup()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { BoxEdgeRemember(s_dsObj); return; }
+   for(int i = 0; i < n; i++) BoxEdgeRemember(DrawSelAt(i));
+}
+void BoxEdgeRestoreGroup()
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
+   DrawSelPrune();
+   int n = DrawSelCount();
+   if(n <= 0) { BoxEdgeRestore(s_dsObj); return; }
+   for(int i = 0; i < n; i++) BoxEdgeRestore(DrawSelAt(i));
+}
 //--- P-DRAW-64a, third cut: there is NO recheck any more. The 50 % used to be a
 //--- remembered LENGTH, so a hand that gave the box a new length had to drop the mark
 //--- (else the next tap restored a length the user never chose). A 50 % LEVEL is a
@@ -803,13 +901,26 @@ int BoxExtCycle(const string name)
 {
    bool mid = false; int ext = BOXEXT_OFF, n = 0;
    BoxMarkRead(name, mid, ext, n);
+   int prev = ext;
    if(ext == BOXEXT_OFF) { ext = BOXEXT_TOUCH; n = 0; }
    else if(ext == BOXEXT_TOUCH) { ext = BOXEXT_END; n = 0; }
    else if(ext == BOXEXT_END) { ext = BOXEXT_NBARS; n = 8; }
    else if(ext == BOXEXT_NBARS && n <= 8) n = 16;
    else if(ext == BOXEXT_NBARS && n <= 16) n = 32;
    else { ext = BOXEXT_OFF; n = 0; }
+   //--- P-UI-132 addendum: the cycle's ARMING half is the cell's arming half, so it
+   //--- spends the same memo — measured, not guessed: this row arms the mode and
+   //--- (`BoxExtendStep`, below it) moves the edge on the very same tap, while the
+   //--- disarm half already restored from a memo this half never wrote. So the cycle
+   //--- could stretch a box and never give it back — the report, on one of its two
+   //--- doors. Guarded on the TRANSITION, not on `ext != OFF`: an already-armed box
+   //--- walking its modes must keep the edge the hand drew, or the restore would hand
+   //--- back the position the mode had already travelled to.
+   if(prev == BOXEXT_OFF && ext != BOXEXT_OFF) BoxEdgeRemember(name);
    BoxMarkWrite(name, mid, ext, n);
+   //--- P-UI-132: leaving the ON states by the «…» cycle is a disarm too, so it gives
+   //--- the edge back on the same terms as the strip cell's OFF (one memo, spent once).
+   if(ext == BOXEXT_OFF) BoxEdgeRestore(name);
    return ext;
 }
 string BoxExtText(const string name)
@@ -925,9 +1036,13 @@ void BoxExtrasPump()
             FillChildSync(nm);
       }
       if(ty != OBJ_RECTANGLE) continue;
-      if(StringFind(ObjectGetString(0, nm, OBJPROP_TEXT), "[BX") < 0) continue;
+      //--- P-UI-134: the marks' CENSUS is the store now, not the description. This
+      //--- used to skip every rectangle whose text carried no `[BX` — a test of the
+      //--- retired format that would have hidden every box the migration has not
+      //--- reached yet. One read (which migrates on the way) answers both questions.
       bool mid = false; int ext = BOXEXT_OFF, n = 0;
       BoxMarkRead(nm, mid, ext, n);
+      if(!mid && ext == BOXEXT_OFF) continue;
       if(mid) BoxMidSync(nm);
       if(ext != BOXEXT_OFF && newBar) BoxExtendStep(nm);
    }

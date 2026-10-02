@@ -264,6 +264,29 @@ bool DrawStripTap(const int idx, const string tap)
       DrawStripUndoPush();
       double tv = (DrawSlotRead(s_dsObj, slot) > 0.5) ? 0.0 : 1.0;
       DrawStripWriteValue(slot, tv);
+      //--- DIAG-131 (2026-10-02): the tap names itself, the slot, and the value the
+      //--- OBJECT now holds — and it goes through the FLUSHED channel
+      //--- (`DrawStripDiagEmit`), not `Print`: MEASURED 2026-10-02, the Experts
+      //--- journal stood at 08:47:07 for seven minutes while the user's clicks went
+      //--- into MT4's RAM buffer (P-DRAW-126's own finding), so a witness written
+      //--- with `Print` answers «nothing happened» long after the tap happened. The
+      //--- layers/BACK cell was reported as «کارش درست انجام نمیشه» with nothing to
+      //--- confirm or refute it, so the line carries the ONE fact that settles it:
+      //--- the FILL slot's read-back beside the tapped slot's, plus whether the
+      //--- interior child exists — a tap that moved the layer never touches either.
+      DrawStripDiagEmit("[drawstrip] SLOT slot=" + IntegerToString(slot) +
+                        " name=" + DrawStripSwitchName(s_dsObj, slot) +
+                        " obj=\"" + s_dsObj + "\" -> " + DoubleToString(tv, 0) +
+                        " read=" + DoubleToString(DrawSlotRead(s_dsObj, slot), 0) +
+                        " fill=" + DoubleToString(DrawSlotRead(s_dsObj, DRAW_SLOT_FILL), 0) +
+                        " child=" + IntegerToString(ObjectFind(0, FillChildName(s_dsObj)) >= 0) +
+                        //--- DIAG-133: the DESCRIPTION ITSELF, quoted. P-UI-133 was fixed
+                        //--- against a model of this string and the live box disagreed with
+                        //--- the model (both marks still refused to clear), so the witness
+                        //--- now carries the bytes the surgery runs on. One read, on the tap
+                        //--- path only — the cost that matters is per-frame, and a tap is not
+                        //--- a frame.
+                        " desc=\"" + ObjectGetString(0, s_dsObj, OBJPROP_TEXT) + "\"");
       // P-DRAW-09b: locking is the one tap that can end the group's usefulness
       // (a locked member cannot be grabbed again by accident), so the strip
       // loses nothing here — it stays, and one more tap frees it.
@@ -275,7 +298,28 @@ bool DrawStripTap(const int idx, const string tap)
       BoxMidSyncGroup();   // P-DRAW-21: a fill/lock/back flip restyles the mid
       //--- P-DRAW-64c: ...and a tap that SWITCHED THE TRAVEL ON takes the first step
       //--- itself, so the edge moves in this frame instead of on the next bar.
-      if(slot == DRAW_SLOT_EXTEND && tv > 0.5) BoxExtendStepGroup();
+      //--- P-UI-132 (2026-10-02): and the ORDER is the fix. The edge the hand drew is
+      //--- remembered BEFORE the first step moves it, and the tap that switches the
+      //--- travel OFF gives it back — «اکستند خاموش میکنم بر نمیگرده به حالت اول» is one
+      //--- missing restore, and the 50 % line riding the stretched edge («50 درصد …
+      //--- خاموش و روشن نمیشه چرا تداخل داره») stops riding the moment the edge is
+      //--- given back. Both halves are the same two numbers, so the cost is one memo
+      //--- write at the arming and one at the disarming, and nothing at all per frame.
+      if(slot == DRAW_SLOT_EXTEND)
+      {
+         if(tv > 0.5) { BoxEdgeRememberGroup(); BoxExtendStepGroup(); }
+         else          { BoxEdgeRestoreGroup(); }
+      }
+      //--- P-UI-131 (2026-10-02): P-DRAW-127's own law — «A user action gets one
+      //--- unconditional flush; a paint pass never does» — was carried by the GEAR
+      //--- branch below and missing HERE, on the branch that flips a cell's whole
+      //--- face (the BACK/layers glyph is 15px art in a 26px seat, so its two states
+      //--- also swap art, not only a chip). `DrawStripPaint` flushes only
+      //--- `if(dirty)`, and the measured failure of relying on that (P-DRAW-127) is
+      //--- «the object LIST is right and the PIXELS are one frame behind» — a cell
+      //--- that reports the new state while the chart still shows the old one, which
+      //--- to the user is a tap that did not happen. One flush, here, ends that.
+      ChartRedraw();
       return true;
 
    }
@@ -308,9 +352,9 @@ bool DrawStripActTap(const int a)
        //--- on the chart, and the new paint repaints same-name ones but never
        //--- deletes a stale bed (the blue GTrack that survived three re-adds).
        //--- One bounded pass on open, never on paint.
-       DrawStripGearObjectsPurge();
-       DrawStripLayout();
-       DrawStripPaint();
+      DrawStripGearObjectsPurge();
+      DrawStripLayout();
+      DrawStripPaint();
        //--- P-DRAW-123: the dump, not the bare census — one armed repaint prints the
        //--- `[dsdiag] EXPECT` half of what the terminal is about to answer with.
        DrawStripGearDiagDump();   // P-DRAW-87/112/123: the panel names its objects
@@ -329,8 +373,16 @@ bool DrawStripActTap(const int a)
     }
    if(a == DSTRIP_ACT_PIN)
    {
+      //--- P-UI-131: the pin's ONE line of code, and the one flush P-DRAW-127 asks
+      //--- every user action for — the GEAR branch below has carried it since that
+      //--- measurement, the pin never did. A toggle whose only visible proof is a
+      //--- chip colour and a glyph swap is exactly the case the law names, so the
+      //--- tap now says WHICH way it went (DIAG-131) as well as flushing.
       s_dsPinned = !s_dsPinned;
+      DrawStripDiagEmit("[drawstrip] PIN " + (s_dsPinned ? "pinned" : "unpinned") +
+                        " obj=\"" + s_dsObj + "\"");
       DrawStripPaint();
+      ChartRedraw();
       return true;
    }
    if(a == DSTRIP_ACT_DEL) { DrawStripFireDelete(); return true; }
@@ -350,13 +402,15 @@ void DrawStripFireDelete()
       for(int j = 0; j < n; j++)
       {
          if(DrawIsHRay(DrawSelAt(j))) { HRayDelete(DrawSelAt(j), "strip bin"); continue; }   // P-HR-04: dot goes with the line
+         BoxEdgeForget(DrawSelAt(j));   // P-UI-132: a deleted box spends its edge memo here, not by expiry
+         BoxMarkDrop(DrawSelAt(j));   // P-UI-134: ...and so does its marks KEY
          BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j));
       }
    }
    else if(s_dsObj != "")
    {
       if(DrawIsHRay(s_dsObj)) HRayDelete(s_dsObj, "strip bin");   // P-HR-04
-      else { BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
+      else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    }
    DrawStripClose();
    ChartRedraw();
@@ -481,23 +535,49 @@ bool DrawStripMoreTap(const int row)
    {
       bool mid = false; int ext = BOXEXT_OFF, n = 0;
       BoxMarkRead(s_dsObj, mid, ext, n);
+      //--- DIAG-134: the 50 % row reads the mark, flips it, and answers with the mark
+      //--- AFTER the write plus whether the line object exists — the exact fact that
+      //--- failed three times over («50 درصد … چرا تداخل داره»), now settled by one read.
       BoxMarkWrite(s_dsObj, !mid, ext, n);
       BoxMidSync(s_dsObj);
+      bool am = false; int ae = BOXEXT_OFF, an = 0;
+      BoxMarkRead(s_dsObj, am, ae, an);
+      DrawStripDiagEmit("[drawstrip] BOX50 name=\"" + s_dsObj + "\" " +
+                        (mid ? "on->off" : "off->on") + " read=" +
+                        DoubleToString((am ? 1.0 : 0.0), 0) + " line=" +
+                        IntegerToString(ObjectFind(0, BoxMidName(s_dsObj)) >= 0) +
+                        " ext=" + IntegerToString(ae));
       DrawStripClosePicker();
       DrawStripLayout();
       DrawStripPaint();
+      ChartRedraw();   // P-UI-131: the 50 % is the cell the user watches for its own frame
       return true;
    }
    if(kind == DSTRIP_MK_BOXEXT)
    {
+      //--- DIAG-134 (2026-10-02) — THE OTHER TWO DOORS ANSWER TOO. DIAG-131 witnessed the
+      //--- quick cell, and it is what finally closed the 50 % / EXTEND report — but the
+      //--- cycle and the gear switch were fixed on the SAME DAY with NO witness, which is
+      //--- exactly how a fix can be wrong and still look green. A witness is cheap on a
+      //--- tap (the cost that matters is per-frame) and it is the only thing that makes
+      //--- the NEXT report answerable without a reproduction round-trip. Read BEFORE, so
+      //--- the line names the mode it walked FROM as well as the one it landed on, and
+      //--- the memo slot, so «extend off did not come back» is settled by the memo.
+      bool bmid = false; int bext = BOXEXT_OFF, bn = 0;
+      BoxMarkRead(s_dsObj, bmid, bext, bn);
+      string was = BoxExtText(s_dsObj);
       BoxExtCycle(s_dsObj);
       //--- P-DRAW-64c: the cycle may have armed TOUCH/END/NBARS — the first step is
       //--- still the tap's, so the edge moves in this frame even when the next bar is
       //--- an hour away. A cycle that landed on OFF is a no-op here by construction.
       BoxExtendStep(s_dsObj);
+      DrawStripDiagEmit("[drawstrip] BOXEXT name=\"" + s_dsObj + "\" from=\"" + was +
+                        "\" to=\"" + BoxExtText(s_dsObj) + "\" memo=" +
+                        IntegerToString(BoxEdgeSlot(s_dsObj)));
       DrawStripClosePicker();
       DrawStripLayout();
       DrawStripPaint();
+      ChartRedraw();   // P-UI-131: ...and the edge it just moved is the visible half
       return true;
    }
    if(kind == DSTRIP_MK_FILL50)
@@ -577,7 +657,28 @@ bool DrawStripGearRowTap(const int r)
       BoxMidSyncServed();   // P-DRAW-21: a gear toggle restyles the mid
       //--- P-DRAW-64c: the gear's switch takes the first travel step too — same frame,
       //--- same rule as the quick cell above.
-      if(arg == DRAW_SLOT_EXTEND && tv > 0.5) BoxExtendStepGroup();
+      //--- P-UI-132 addendum: and it is the SAME cell, so it carries the same memo. This
+      //--- row armed the mode and moved the edge with no memo written, and its disarm
+      //--- half had nothing to restore from — the strip row was fixed and the gear row
+      //--- left holding the defect, which is how a fix reads as «sometimes works». One
+      //--- remember, one restore, both group fan-outs (the group here is the whole
+      //--- multi-selection, exactly as above).
+      if(arg == DRAW_SLOT_EXTEND)
+      {
+         if(tv > 0.5) { BoxEdgeRememberGroup(); BoxExtendStepGroup(); }
+         else          { BoxEdgeRestoreGroup(); }
+      }
+      //--- DIAG-134: the gear switch is the same cell as the quick one and it gets the
+      //--- same witness, for the same reason — it is one of the three doors into EXTEND,
+      //--- and it is the door a report names least often while being the one a fix is
+      //--- most likely to have missed. The memo slot is the fact that settles «the box
+      //--- never came back»: armed must leave a memo, a disarm must leave none.
+      if(arg == DRAW_SLOT_EXTEND)
+         DrawStripDiagEmit("[drawstrip] GEAREXT name=\"" + s_dsObj + "\" -> " +
+                           DoubleToString(tv, 0) + " read=" +
+                           DoubleToString(DrawSlotRead(s_dsObj, arg), 0) + " memo=" +
+                           IntegerToString(BoxEdgeSlot(s_dsObj)));
+      ChartRedraw();   // P-UI-131: a user action flushes its own frame
       return true;
    }
 

@@ -420,6 +420,85 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
    strip is shut, kills the latch and clears the cycle; `DrawStripDragLive()` forbids
    the next latch and gates BOTH fire paths (move step + poll) for the 400 ms its own
    events renew. Gate: P-UI-130 (constant, clear, four readers, wiring + placement).
+25. **The raster the CHART paints is not the raster the COMPILER embedded (P-UI-131).**
+   *«این دوتا ایکون چرا اینطوریه» / «کوچیکه نسبت به بقیه»* — the strip's own row, two
+   glyphs a third smaller than their neighbours. MEASURED on both hosting terminals:
+   22 of 280 canvases disagreed with the source tree — `gl_pin/gl_layers/gl_textsize`
+   served **15x15** where the source holds **26x26** (the two glyphs in the report),
+   and `bk_w*/bk_style*/bk_ray*` served **16x16** where the source holds **24x24**, so
+   P-DRAW-106's retirement of the 16 and P-UI-132's re-bake of the three `gl_*`
+   families were correct in the repo and INVISIBLE on the chart.
+   The cause is a channel split, and P-DRAFT-01 had measured only half of it:
+   `#resource "\Files\Icons\x.bmp"` is resolved by MetaEditor against the COMPILING
+   UNIT's own tree (P-BUILD-03), which is exactly why retiring `Sync-IconsToTerminal`
+   measured INERT — but every painter writes `OBJPROP_BMPFILE = "::Files\Icons\x.bmp"`,
+   and `::Files\` is the TERMINAL's `MQL4\Files`, read at PAINT time, per chart. The
+   build embedded the repo's art; the chart drew the terminal's; and the only gate that
+   could have named it (`check-resources.js`, P-DRAW-106) walks the SOURCE tree — the
+   same tree as the compiler. So: the delivery is BACK, bounded by the generator's own
+   `tools/icon-manifest.txt` (P-DRAFT-01 was right that a directory copy is write
+   amplification), `tools/check-icon-deploy.js` compares the two trees on canvas AND
+   bytes for every manifest name in every hosting terminal, and it runs in the build.
+   **A measurement taken on one channel is not a measurement of the other** — the same
+   shape as clause 22's census/after-frame. The same case then cleared the SECOND
+   report, *«این آیکون رنگ fill باکس رو خاموش و روشن میکنه»*, with the flushed witness:
+   `[drawstrip] SLOT slot=9 name=Behind candles obj="Rectangle 16147" -> 1 read=1
+   fill=1 child=1` / `-> 0 read=0 fill=1 child=1` — the seat writes exactly the right
+   slot, and `fill=1` never moves. So the write was never the defect; the SEAT was:
+   BACK wore `gl_layers_m` (grey chevrons, 26 px) when off and `bk_back_on` (amber
+   rects, 24 px) when on — the one control in the row whose two states were two
+   different glyphs on two canvases, while every other toggle wears ONE shape in two
+   inks (P-DRAW-47's amber twins). A press that moved a filled box behind the candles —
+   interior and all — read as a colour switch on a different button. It is now
+   `bk_back_off`/`bk_back_on`, same drawing, same 24 canvas, baked by the generator and
+   drawn by the mock. Gate: P-UI-131 (delivery called, bounded by the manifest, the
+   comparison wired in, both taps flushed, the BACK seat's two inks one shape).
+26. **The edge a mode took is the edge it gives back (P-UI-132).** *«وقتی اکستند کلیک
+   میکنم 50 درصد باکس خاموش و روشن نمیشه چرا تداخل داره و اینکه اکستند خاموش میکنم بر
+   نمیگرده به حالت اول»* — one sentence, ONE missing restore. `DrawSlotWrite`'s EXTEND
+   arm writes `[BXE2]` and nothing else, while the tap's own first step (P-DRAW-64c)
+   moves the box's LATER anchor onto the forming bar: arming the mode changes the drawing
+   permanently, disarming it only stops the travel. The 50 % is a LEVEL at the mid PRICE,
+   so it never fought the edge over a price — it RIDES the edge to the far end of the
+   chart, and two cells that move together read as one cell interfering with the other.
+   So: the edge the hand drew is remembered BEFORE the first step moves it (two numbers
+   and the side that was later), and the disarm puts it back with `ObjectMove` — MQL4 has
+   no indexed `OBJPROP_PRICE` setter (error 230) — then re-syncs the mid line and the
+   interior in the same frame. The memo is file scope, a ring of eight names, spent by
+   the disarm, by the «…» cycle's way back to OFF, and by deletion; **nothing runs on the
+   paint or the pump path, so a still chart pays zero.** It is deliberately NOT a
+   descriptor tag: `BoxMarkWrite` re-emits the whole marks block and would drop it, and
+   P-DRAW-64a's third cut already removed a remembered payload once. Gate: P-UI-132
+   (the four helpers, the ORDER, the mid+interior re-sync, the delete spends it).
+   **Addendum — the rule has THREE doors and the first pass opened one.** EXTEND is
+   reachable three ways: the quick cell (`DrawStripTap`), the gear panel's switch
+   (`DrawStripGearRowTap`, kind 1), and the picker's «…» cycle (`BoxExtCycle`). The
+   first pass wrote the memo in the quick cell only. MEASURED by walking the call graph:
+   the gear row armed the mode and took the first travel step with nothing to restore
+   from, and the cycle ARMED without a memo while its way back to OFF already restored —
+   so on two of three doors a box could still be stretched for good. The rule is
+   therefore stated over the ACTION, not over one call site: **whichever door moves the
+   edge remembers it first, and whichever door disarms gives it back.** `BoxExtCycle`'s
+   remember is guarded on the **OFF→ON transition** — `if(prev == BOXEXT_OFF && ext !=
+   BOXEXT_OFF)` — because a box already armed and walking its modes must keep the edge
+   the hand drew; re-memoing per tap would hand back the position the mode had already
+   travelled to. Both doors now flush their own frame (P-UI-131's law). Gate: P-UI-132
+   (all three doors named, plus the transition guard).
+27. **A marks block is cut at its FIRST tag, never at a space (P-UI-133).** The live
+   witness said it in one line, twelve taps in a row:
+   `[drawstrip] SLOT slot=11 name=50 % line obj="Rectangle 17077" -> 0 read=1` — the tap
+   asks for 0, the object answers 1, and it never changes («۵۰ درصد باکس خاموش و روشن
+   نمیشه چرا تداخل داره»). `BoxMarkWrite` cut the block with `StringFind(d, " [BX")`, and
+   that space only exists BETWEEN marks: on a box wearing both (`[BX50] [BXE3:8]` — the
+   state any single use of EXTEND leaves behind) the first match is the space in front of
+   the SECOND tag, so `pre` came back holding `[BX50]`, the mid was re-emitted from the
+   prefix whatever the flag said, and `if(want == d) return;` made the write a no-op. One
+   use of EXTEND killed the 50 % cell permanently, and because both marks live in one
+   block, the two controls read as one interfering control — the second half of the
+   P-UI-132 report, which is why that fix alone did not close it. The rule is one line:
+   the block begins at the first `[BX`, whatever precedes it, and the single leading space
+   belongs to the cut. Gate: P-UI-133 (no `" [BX"` cut, both shapes kept), proved by
+   mutation — the old line fails it.
 
 ## 7. Size (one file, one owner)
 

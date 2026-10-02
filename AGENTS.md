@@ -35,6 +35,9 @@ build-logs/                   Compile logs (gitignored)
 - Ownership and the MT4 traps: [docs/contract.md](docs/contract.md) §1–§2. Never copy a rule
   up into this file — the contract is the one home.
 - Use file tools for reading/writing. Terminal is only for compile, git, move/delete, tests.
+- **A diagnostic witness goes through `DrawStripDiagEmit` (the flushed file), never
+  `Print`** — MT4 buffers the journal in RAM, so a `Print` witness can sit unread for
+  minutes and reads as «nothing happened». See THE DEBUG LOOP, law 3.
 
 ## Touch rule (a change is a change until its dependents are checked)
 
@@ -195,6 +198,19 @@ Two things are LAW until this project ships, and no session turns either off:
 2. **Read the LAST frame, always.** The diag file carries one WHOLE frame per panel open
    and never truncates, so the FILE is not the unit of comparison — the FRAME is. Both
    readers split frames and default to the last one (`--frames`, `--frame N`).
+3. **A WITNESS IS THE FLUSHED FILE. NEVER `Print`.** MEASURED 2026-10-02: the Experts
+   journal stood at `08:47:07` for **seven minutes** while the user's clicks went into
+   MT4's RAM buffer (P-DRAW-126) — a witness written with `Print` answers
+   «nothing happened» long after the tap happened, and costs the user a reproduction
+   round each time. So when a defect is reported: the witness is emitted with
+   `DrawStripDiagEmit` (per line, `FILE_SHARE_READ`, P-LOG-3), and it is READ with
+   `diag-live.py` — never with `Print` into the journal, never by asking the user to
+   reproduce and check the Experts tab. If a path has no witness and needs one, ADD it
+   through the flushed channel rather than reaching for `Print`; the standing example is
+   DIAG-131 in `DrawStrip_Tap` (slot, value, read-back, the description's own bytes),
+   which is what finally closed the 50 % / EXTEND report after two failed string-surgery
+   attempts. Gate: P-LOG-3 (flushed, shared, per line) and DIAG-131 in
+   `DrawStrip_Tap.mqh`.
 
 ONE command is the whole loop:
 
@@ -291,6 +307,65 @@ THE HOLD'S TWO WINDOWS (P-UI-130, 2026-10-02) — a hold is a press AND a stilln
    «موقعی که باکس جابجا/ری‌سایز میکنم نوار استریپ بالا میاد» was the press that
    STARTS a drag arming the latch and the 500 ms clock firing on a drawing the hand
    was about to move. Gate: P-UI-130.
+
+TWO ICON TREES (P-UI-131, 2026-10-02) — the compiler and the chart read DIFFERENT
+trees, and only one of them is the source:
+
+1. **`#resource` is a COMPILE-time bind; `OBJPROP_BMPFILE` is a PAINT-time read.**
+   MetaEditor resolves `\Files\Icons\x.bmp` against the compiling unit's own tree
+   (P-BUILD-03); the terminal resolves `::Files\Icons\x.bmp` against its own
+   `MQL4\Files`. A green compile and a green resource gate (which walks the SOURCE
+   tree) therefore prove nothing about the pixels.
+2. **MEASURED, both hosting terminals: 22 of 280 canvases drifted.** `gl_pin*`,
+   `gl_layers*`, `gl_textsize*` shipped 15x15 against a source 26x26 — «این دوتا
+   ایکون کوچیکه نسبت به بقیه» is those two glyphs — and `bk_w*`/`bk_style*`/`bk_ray*`
+   shipped 16x16 against 24x24, which is P-DRAW-106's retirement and P-UI-132's re-bake
+   invisible on screen.
+3. **P-DRAFT-01 retired the delivery on a HALF measurement** («the copy was INERT» —
+   true for the ex4, false for the chart). It is back, bounded by
+   `tools/icon-manifest.txt`, hash-compared, and `tools/check-icon-deploy.js` fails
+   the build when the two trees disagree. Both facts are gated (P-UI-131), including
+   the gate's own blindness to a COMMENTED-OUT call (P-DRAW-108's lesson, proved by
+   mutation).
+4. **A user action flushes its own frame, and says what it wrote.** `DrawStripPaint`
+   only redraws `if(dirty)` (P-DRAW-127); the pin and the cell toggles (the BACK/layers
+   glyph) now call `ChartRedraw()` themselves, and their witness goes through
+   `DrawStripDiagEmit` — the FLUSHED channel, not `Print`: MEASURED 2026-10-02, the
+   Experts journal stood still for seven minutes while clicks went into MT4's RAM
+   buffer (P-DRAW-126), so a `Print` witness answers «nothing happened» long after it
+   did. The line carries the tapped slot, the value the OBJECT now holds, and the FILL
+   slot beside it — because «کلیک کردم هیچی نشد» is unprovable without a read-back.
+5. **A toggle is ONE shape in two inks.** BACK wore `gl_layers_m` off (grey chevrons,
+   26) and `bk_back_on` on (amber rects, 24) while every other toggle wore one drawing
+   in two inks. The live witness proved the write exact (`slot=9 … read=1 fill=1
+   child=1` / `-> 0 read=0 fill=1`) — the defect was the seat. `bk_back_off` is the
+   twin; the generator bakes it and the mock draws it.
+6. **The edge a mode took is the edge it gives back (P-UI-132).** «اکستند خاموش میکنم بر
+   نمیگرده به حالت اول» and «50 درصد … چرا تداخل داره» are ONE missing restore: the
+   EXTEND arm wrote `[BXE2]` and the tap's first step (P-DRAW-64c) moved the box's later
+   anchor onto the forming bar, so arming changed the drawing for good. The 50 % is a
+   LEVEL at the mid PRICE — it does not fight the edge, it RIDES it, and two cells
+   moving together read as one interfering cell. **Remember BEFORE the move, restore at
+   the disarm** (`ObjectMove`; MQL4 has no indexed `OBJPROP_PRICE` setter), then re-sync
+   the mid line and the interior in the same frame. File-scope ring of eight names, spent
+   by the disarm, by the «…» cycle's OFF and by deletion — **zero cost per frame**, and
+   NOT a descriptor tag (`BoxMarkWrite` re-emits the whole marks block). Gate: P-UI-132.
+   **Addendum — ALL THREE doors, not one.** EXTEND is armed by the quick cell
+   (`DrawStripTap`), the gear panel's switch (`DrawStripGearRowTap`, kind 1), and the
+   picker's «…» cycle (`BoxExtCycle`). The first pass memo'd only the quick cell: the gear
+   row armed the mode AND moved the edge with no memo, and the cycle ARMED without one
+   while its way back to OFF already restored — so both could still stretch a box for
+   good, which is how a fix reads as «sometimes works». Every door that moves the edge
+   remembers first and restores at the disarm, and `BoxExtCycle`'s remember is guarded on
+   the **OFF→ON transition** (an already-armed box walking its modes must keep the
+   hand-drawn edge). Gate: P-UI-132 (now naming all three doors).
+7. **One marks block, cut at its FIRST tag (P-UI-133).** `[BX50]` and `[BXE…]` share one
+   block, so `BoxMarkWrite` must cut where the block STARTS — `StringFind(d, "[BX")`, plus
+   the leading space when there is one. Cutting on `" [BX"` matched the space in front of
+   the SECOND tag, so `pre` kept `[BX50]` and the 50 % cell could never be cleared:
+   MEASURED, twelve taps in a row, `slot=11 … -> 0 read=1`. One use of EXTEND killed the
+   50 % cell for good. **A string surgery that assumes its own output format is a second
+   format** — and the witness (`-> X read=Y`) is what made it visible instead of arguable.
 
 `compile-th3.ps1` is the ONLY build. Do not hand-roll a metaeditor call, and do not
 add a second script for the same job.

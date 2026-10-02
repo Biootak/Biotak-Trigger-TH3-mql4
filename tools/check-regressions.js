@@ -2332,6 +2332,318 @@ function main() {
     }
   }
 
+  // ── P-UI-131 (2026-10-02) — THE CHART READS A DIFFERENT ICON TREE THAN THE BUILD ──
+  // The user pointed at two icons in the strip's own row and said «این دوتا ایکون چرا
+  // اینطوریه» and «کوچیکه نسبت به بقیه». Measured on the shipped trees, not guessed:
+  // 22 of 280 canvases disagreed. gl_pin/gl_layers/gl_textsize served 15x15 where the
+  // SOURCE holds 26x26 (exactly the two arrows: the pin and the layers glyph), and
+  // bk_w*/bk_style*/bk_ray* served 16x16 where the source holds 24x24 — so P-DRAW-106's
+  // retirement of the 16 and P-UI-132's re-bake of the three gl_* families were correct
+  // in the repo and INVISIBLE on the chart.
+  // The reason is a channel split, and P-DRAFT-01 had already guessed wrong about it:
+  // `#resource \Files\Icons\...` is resolved by MetaEditor against the COMPILING UNIT's
+  // tree (P-BUILD-03), which is why retiring `Sync-IconsToTerminal` measured INERT and
+  // looked like dead weight — but every painter writes
+  // `OBJPROP_BMPFILE = "::Files\Icons\x.bmp"`, and `::Files\` is the TERMINAL's
+  // MQL4\Files, read at PAINT time. The build embedded the repo's art; the chart drew
+  // the terminal's; and `tools/check-resources.js` walks the SOURCE tree, so the one
+  // gate that could have named it was reading the same tree as the compiler.
+  // Three facts to keep: the delivery is CALLED, it is MANIFEST-bounded (P-DRAFT-01 was
+  // right that a directory copy is write amplification), and a gate compares the two
+  // trees so the split can never be silent again.
+  {
+    const broken = [];
+    const ps1 = codeOf(linesOf(BUILD_PS1));
+    const ICON_GATE = path.join(__dirname, 'check-icon-deploy.js');
+    if (!fs.existsSync(ICON_GATE))
+      broken.push('tools/check-icon-deploy.js is gone \u2014 nothing compares the tree the chart reads with the tree the compiler reads (P-UI-131)');
+    else {
+      const g = codeOf(linesOf(ICON_GATE));
+      if (!/icon-manifest\.txt/.test(g))
+        broken.push('the icon deploy gate must walk the generator\u2019s manifest, not the directory \u2014 a wildcard re-opens P-DRAFT-01\u2019s 10 MB copy (P-UI-131)');
+      if (!/MQL4/.test(g) || !/Icons/.test(g))
+        broken.push('the icon deploy gate must read the TERMINAL\u2019s MQL4\\Files\\Icons \u2014 that tree is the one the pixels come from (P-UI-131)');
+    }
+    //--- same lesson again: the gate must be ASSIGNED and INVOKED as live code, so
+    //--- commenting either line out fails here (which is how this gate was proved).
+    if (!/^[ \t]*\$iconGate\s*=\s*Join-Path[^\n]*check-icon-deploy\.js/m.test(ps1) ||
+        !/Invoke-ProjectGate[^\n]*icon deploy gate/.test(ps1))
+      broken.push('compile-th3.ps1 does not RUN the icon deploy gate \u2014 a gate nobody runs is a comment (P-UI-131)');
+    //--- P-DRAW-108's own lesson, one layer down: a rule that only needs the NAME is
+    //--- satisfied by a COMMENT (the mutation that proved this gate commented the call
+    //--- out and still passed). The call must be the line\u2019s first token.
+    if (!/^[ \t]*Sync-IconsToTerminal\s+-ResolvedMql4Dir/m.test(ps1))
+      broken.push('compile-th3.ps1 no longer DELIVERS the icon tree \u2014 the chart keeps drawing whatever the terminal cached (P-UI-131)');
+    if (!/icon-manifest\.txt/.test(ps1))
+      broken.push('the delivery must be bounded by tools/icon-manifest.txt \u2014 P-DRAFT-01 retired a directory copy for a reason that was only half right (P-UI-131)');
+    // the two taps the report names, each with the one flush P-DRAW-127 asks for
+    const tapLines = stripTap || [];
+    const actAt = indexOfLine(tapLines, 'bool DrawStripActTap(');
+    const actLines = actAt >= 0 ? tapLines.slice(actAt) : [];
+    const pinAt = actLines.findIndex((l) => /if\(a == DSTRIP_ACT_PIN\)/.test(l));
+    if (pinAt < 0) broken.push('the pin\u2019s tap branch is gone from bool DrawStripActTap() (P-UI-131)');
+    else if (!/ChartRedraw\(\)/.test(codeOf(actLines.slice(pinAt, pinAt + 14))))
+      broken.push('the pin tap must carry its own ChartRedraw() \u2014 P-DRAW-127: «A user action gets one unconditional flush» (P-UI-131)');
+    const tglAt = indexOfLine(tapLines, 'if(DrawStripIsToggle(slot))');
+    if (tglAt < 0) broken.push('the cell-toggle branch is gone from bool DrawStripTap() (P-UI-131)');
+    else {
+      // the branch ends where the next function begins \u2014 a fixed window would read
+      // the PASS off the branch AFTER this one, which is how a gate learns to lie.
+      const tglEnd = tapLines.findIndex((l, i) => i > tglAt && /bool DrawStripActTap\(/.test(l));
+      const tgl = codeOf(tapLines.slice(tglAt, tglEnd > tglAt ? tglEnd : tglAt + 60));
+      if (!/ChartRedraw\(\)/.test(tgl))
+        broken.push('a cell toggle (the BACK/layers glyph) must carry its own ChartRedraw() \u2014 the paint flushes only if(dirty), and the list can be right while the pixels lag (P-DRAW-127) (P-UI-131)');
+      if (!/DrawSlotRead\(s_dsObj, slot\)/.test(tgl))
+        broken.push('a cell toggle must print its READ-BACK \u2014 «the tap did nothing» is unprovable without it (P-UI-131)');
+    }
+    //--- the second half: the BACK seat is ONE shape in two inks. It wore
+    //--- `gl_layers_m` (grey chevrons, 26) off and `bk_back_on` (amber rects, 24) on,
+    //--- so a tap that moved the drawing behind the candles read as another button —
+    //--- and for a filled box the interior going behind the bars reads as its colour
+    //--- switching off. The live witness proved the WRITE was exact all along
+    //--- (`slot=9 name=Behind candles … read=1 fill=1 child=1` / `-> 0 read=0 fill=1`),
+    //--- so the defect was the seat, not the slot. Three owners, one fact.
+    const backAt = indexOfLine(stripBase || [], 'if(slot == DRAW_SLOT_BACK)');
+    const backBranch = backAt >= 0 ? codeOf((stripBase || []).slice(backAt, backAt + 4)) : '';
+    if (backAt < 0) broken.push('the BACK slot lost its face branch in Biotak/DrawStrip_Base.mqh (P-UI-131)');
+    else {
+      if (/gl_layers/.test(backBranch))
+        broken.push('the BACK seat must not wear a gl_* face \u2014 a toggle is ONE shape in two inks, and gl_* is the family that broke the scale rule (P-UI-131)');
+      if (!/bk_back_off\.bmp/.test(backBranch) || !/bk_back_on\.bmp/.test(backBranch))
+        broken.push('the BACK seat must answer bk_back_off/bk_back_on \u2014 two inks of one drawing (P-UI-131)');
+    }
+    const gen = codeOf(linesOf(path.join(__dirname, 'gen-th3-icons.js')));
+    if (!/bk_back_off\.bmp/.test(gen))
+      broken.push('tools/gen-th3-icons.js no longer bakes bk_back_off.bmp \u2014 the twin is a generated face, not a hand-made file (P-UI-131)');
+    const mock = codeOf(linesOf(path.join(__dirname, 'sim-strip-panels.py')));
+    if (/n == "BACK"[^\n]*gl_layers/.test(mock))
+      broken.push('tools/sim-strip-panels.py still draws a gl_* face for BACK \u2014 a mock that differs from the chart is how a two-glyph control survives review (P-UI-131)');
+    if (broken.length) {
+      failures.push('P-UI-131: ' + broken.join('; ') + ' (compile-th3.ps1 + tools/check-icon-deploy.js + Biotak/DrawStrip_Tap.mqh + Biotak/DrawStrip_Base.mqh)');
+    } else {
+      console.log('[PASS] P-UI-131 the terminal tree is delivered manifest-bounded and compared, the pin/toggle taps flush their own frame, and the BACK seat is one shape in two inks');
+    }
+  }
+
+  // ── P-UI-132 (2026-10-02) — THE EDGE THE MODE TOOK IS THE EDGE IT GIVES BACK ──
+  // User report: «وقتی اکستند کلیک میکنم 50 درصد باکس خاموش و روشن نمیشه چرا تداخل داره
+  // و اینکه اکستند خاموش میکنم بر نمیگرده به حالت اول» — one sentence, two facts about ONE
+  // missing restore. `DrawSlotWrite`'s EXTEND arm writes `[BXE2]` and nothing else
+  // (Biotak/Toolbar_B.mqh), while the tap's own first step (P-DRAW-64c) moves the box's
+  // LATER anchor onto the forming bar: arming the mode changes the drawing permanently and
+  // disarming it only stops the travel. The 50 % is a LEVEL at the mid PRICE, so it does
+  // not fight the edge — it RIDES it to the far end of the chart, and two cells moving
+  // together read as one cell interfering with the other.
+  // The fix is one memo of two numbers per armed box, spent at the disarm, and the ORDER
+  // is the whole fix: remembered BEFORE the first step moves the edge.
+  {
+    const broken = [];
+    const pick = stripPick || [];
+    const tap = stripTap || [];
+    for (const sig of ['bool BoxEdgeRemember(', 'bool BoxEdgeRestore(', 'void BoxEdgeRememberGroup(', 'void BoxEdgeRestoreGroup(']) {
+      if (indexOfLine(pick, sig) < 0)
+        broken.push(`${sig.slice(0, -1)}() is gone from Biotak/DrawStrip_Pick.mqh \u2014 nothing gives the edge back (P-UI-132)`);
+    }
+    const restore = bodyOf(pick, 'bool BoxEdgeRestore(');
+    if (restore) {
+      if (!/BoxMidSync\(/.test(restore.text))
+        broken.push('BoxEdgeRestore() must re-sync the 50 % line \u2014 it rides the edge, so a restored edge would leave the line behind (P-UI-132)');
+      if (!/FillChildSync\(/.test(restore.text))
+        broken.push('BoxEdgeRestore() must re-sync the interior \u2014 P-DRAW-64a\u2019s own rule for a moved edge (P-UI-132)');
+      if (!/ObjectMove\(/.test(restore.text))
+        broken.push('BoxEdgeRestore() must put the anchor home with ObjectMove \u2014 MQL4 has no indexed OBJPROP_PRICE setter (P-UI-132)');
+    }
+    const extAt = indexOfLine(tap, 'if(slot == DRAW_SLOT_EXTEND)');
+    if (extAt < 0) broken.push('the toggle branch lost its EXTEND arm in bool DrawStripTap() (P-UI-132)');
+    else {
+      const arm = codeOf(tap.slice(extAt, extAt + 7));
+      const rem = arm.indexOf('BoxEdgeRememberGroup()');
+      const step = arm.indexOf('BoxExtendStepGroup()');
+      if (rem < 0) broken.push('arming EXTEND must remember the edge \u2014 the first step moves it in the same tap (P-UI-132)');
+      else if (step >= 0 && rem > step)
+        broken.push('BoxEdgeRememberGroup() must come BEFORE BoxExtendStepGroup() \u2014 a memo written after the move remembers the wrong edge (P-UI-132)');
+      if (!/BoxEdgeRestoreGroup\(\)/.test(arm))
+        broken.push('disarming EXTEND must restore the edge \u2014 «extending off does not return to the original state» (P-UI-132)');
+    }
+    const cyc = bodyOf(pick, 'int BoxExtCycle(');
+    if (cyc) {
+      if (!/BoxEdgeRestore\(/.test(cyc.text))
+        broken.push('the \u00ab\u2026\u00bb cycle\u2019s way back to OFF is a disarm too \u2014 it must give the edge back on the same terms (P-UI-132)');
+      //--- P-UI-132 addendum: the cycle's ARMING half. The check above only ever asked
+      //--- about the way BACK, so a cycle that restored from a memo it never wrote
+      //--- passed this register \u2014 the defect, on one of the two doors into EXTEND.
+      if (!/BoxEdgeRemember\(/.test(cyc.text))
+        broken.push('the \u00ab\u2026\u00bb cycle ARMING must remember the edge \u2014 it stretches the box on the same tap (P-UI-132)');
+      else if (!/prev\s*==\s*BOXEXT_OFF\s*&&\s*ext\s*!=\s*BOXEXT_OFF/.test(cyc.text))
+        broken.push('BoxEdgeRemember() in the cycle must be guarded on the OFF\u2192ON TRANSITION \u2014 an armed box walking its modes must keep the hand-drawn edge (P-UI-132)');
+    }
+    //--- P-UI-132 addendum: the gear row is the SAME cell as the quick row, so it
+    //--- carries the same memo. Fixing one door and not the other is how a fix reads
+    //--- as \u00absometimes works\u00bb, so both doors are named here.
+    const gearAt = indexOfLine(tap, 'bool DrawStripGearRowTap(');
+    if (gearAt < 0) broken.push('bool DrawStripGearRowTap() is gone from Biotak/DrawStrip_Tap.mqh (P-UI-132)');
+    else {
+      const gear = codeOf(tap.slice(gearAt, gearAt + 45));
+      if (!/if\(\s*arg\s*==\s*DRAW_SLOT_EXTEND\s*\)/.test(gear))
+        broken.push('the gear row lost its EXTEND arm \u2014 the panel switch would toggle a mode it cannot give back (P-UI-132)');
+      else {
+        if (!/BoxEdgeRememberGroup\(\)/.test(gear))
+          broken.push('the gear row arming EXTEND must remember the edge, like the quick row (P-UI-132)');
+        if (!/BoxEdgeRestoreGroup\(\)/.test(gear))
+          broken.push('the gear row disarming EXTEND must restore the edge, like the quick row (P-UI-132)');
+        const gRem = gear.indexOf('BoxEdgeRememberGroup()');
+        const gStep = gear.indexOf('BoxExtendStepGroup()');
+        if (gRem >= 0 && gStep >= 0 && gRem > gStep)
+          broken.push('BoxEdgeRememberGroup() must come BEFORE BoxExtendStepGroup() in the gear row too (P-UI-132)');
+      }
+    }
+    const del = bodyOf(tap, 'void DrawStripFireDelete(');
+    if (del && !/BoxEdgeForget\(/.test(del.text))
+      broken.push('deleting a box must spend its edge memo \u2014 a dead name must not hold one of the eight slots (P-UI-132)');
+    if (broken.length) {
+      failures.push('P-UI-132: ' + broken.join('; ') + ' (Biotak/DrawStrip_Pick.mqh + Biotak/DrawStrip_Tap.mqh)');
+    } else {
+      console.log('[PASS] P-UI-132 EXTEND gives the far edge back: remembered before the first step, restored at the disarm, with the mid line and the interior re-synced');
+    }
+  }
+
+  // ── P-UI-133 (2026-10-02) — RETIRED BY P-UI-134, AND THE RETIREMENT IS THE GATE ──
+  // The witness: twelve consecutive taps on one box, `[drawstrip] SLOT slot=11 name=50 %
+  // line obj="Rectangle 17077" -> 0 read=1` \u2014 the tap asks for 0, the object answers 1,
+  // forever («50 درصد باکس خاموش و روشن نمیشه چرا تداخل داره»). The cut was
+  // `StringFind(d, " [BX")`, and that space only exists BETWEEN marks: on a box wearing
+  // both (`[BX50] [BXE3:8]` \u2014 the state any use of EXTEND leaves) the first match is the
+  // space before the SECOND tag, `pre` came back as `[BX50]`, the mid was re-emitted from
+  // the prefix whatever the flag said, and `if(want == d) return;` turned every tap into
+  // a no-op. P-UI-133 fixed the cut point \u2014 and the live box then refused BOTH marks to
+  // clear (`slot=11 \u2026 -> 0 read=1` AND `slot=12 \u2026 -> 0 read=1`), which is not a third
+  // cut point but the shape of the thing: two owners' state inside a string FOUR owners
+  // rewrite. So the lesson is retired INTO P-UI-134, and the strongest form of the old
+  // gate is the one that says the surgery is GONE: a register entry that keeps demanding
+  // a fixed cut point is a register entry that would have demanded the fourth attempt.
+  {
+    const broken = [];
+    const tbA = linesOf(path.join(BIOTAK, 'Toolbar_A.mqh'));
+    const whole = codeOf(tbA);
+    if (/StringFind\([^,]+,\s*" \[BX/.test(whole))
+      broken.push('the marks block is cut with " [BX" again \u2014 P-UI-133\u2019s retired cut point (the marks are a key now, P-UI-134)');
+    if (/ObjectSetString\(0,\s*name,\s*OBJPROP_TEXT/.test((bodyOf(tbA, 'void BoxMarkWrite(') || {}).text || ''))
+      broken.push('the mark owner writes OBJPROP_TEXT again \u2014 the string has four owners and this one lost three fights over it (P-UI-133 retired into P-UI-134)');
+    if (broken.length) {
+      failures.push('P-UI-133(retired): ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh)');
+    } else {
+      console.log('[PASS] P-UI-133(retired by P-UI-134) the string surgery is gone: no " [BX" cut, and the mark owner never writes OBJPROP_TEXT');
+    }
+  }
+
+  // ── P-UI-134 (2026-10-02) — THE MARKS ARE A KEY, NOT A SUBSTRING ──
+  // P-UI-133 fixed a symptom of a shape: two owners'' state lived inside `OBJPROP_TEXT`,
+  // a string FOUR owners rewrite (`[CL…]`, `[OP…]`, `[FL…]`, `[FT…]`), so every mark
+  // write re-serialised a string it does not own and cut its own block out of it. After
+  // that fix the live box still refused BOTH marks to clear (`slot=11 … -> 0 read=1` AND
+  // `slot=12 … -> 0 read=1` — «الان هیچکدوم درست کار نمیکنه»), which is what a shared
+  // mutable string with four writers does. The architecture: ONE keyed value per box in
+  // the terminal''s own store (the same store `BaseKnotGV` uses for per-box state), a
+  // fingerprint in the value so a foreign key is never believed, the legacy tags READ ONCE
+  // and left inert, and a delete path that spends the key.
+  {
+    const broken = [];
+    const tbA2 = linesOf(path.join(BIOTAK, 'Toolbar_A.mqh'));
+    const read = bodyOf(tbA2, 'void BoxMarkRead(');
+    const write = bodyOf(tbA2, 'void BoxMarkWrite(');
+    const legacy = bodyOf(tbA2, 'void BoxMarkLegacyRead(');
+    if (!read) broken.push('BoxMarkRead() is gone from Biotak/Toolbar_A.mqh (P-UI-134)');
+    else {
+      if (!/GlobalVariableCheck\(/.test(read.text) || !/GlobalVariableGet\(/.test(read.text))
+        broken.push('BoxMarkRead() must read the STORE first \u2014 the description is not the census any more (P-UI-134)');
+      if (!/BoxMarkFingerprint\(/.test(read.text))
+        broken.push('BoxMarkRead() must VERIFY the fingerprint before believing a key \u2014 a key can outlive its box (P-UI-134)');
+      if (!/BoxMarkLegacyRead\(/.test(read.text))
+        broken.push('BoxMarkRead() must MIGRATE the legacy tags \u2014 boxes drawn before the store keeps their 50 % and their extend (P-UI-134)');
+    }
+    if (!write) broken.push('BoxMarkWrite() is gone from Biotak/Toolbar_A.mqh (P-UI-134)');
+    else {
+      if (/OBJPROP_TEXT/.test(write.text))
+        broken.push('BoxMarkWrite() must NEVER touch OBJPROP_TEXT \u2014 that string has four owners and this one lost three fights over it (P-UI-134)');
+      if (!/GlobalVariableSet\(/.test(write.text))
+        broken.push('BoxMarkWrite() must write the store (P-UI-134)');
+      if (!/GlobalVariableDel\(/.test(write.text))
+        broken.push('a box with no marks must own NO key \u2014 an empty mark is a deleted key, not a zero (P-UI-134)');
+    }
+    if (!legacy) broken.push('BoxMarkLegacyRead() is gone \u2014 the legacy format may be READ once, never written again (P-UI-134)');
+    else if (/ObjectSetString/.test(legacy.text))
+      broken.push('BoxMarkLegacyRead() must be read-only (P-UI-134)');
+    // every path that DESTROYS a box destroys its key with it
+    const drop = bodyOf(stripTap || [], 'void DrawStripFireDelete(');
+    if (drop && !/BoxMarkDrop\(/.test(drop.text))
+      broken.push('the strip\'s bin must spend the box\'s key \u2014 MT4 reuses object names, so a dead key would dress a fresh box (P-UI-134)');
+    const objDel = bodyOf(stripRouter || [], 'bool DrawStripOnEvent(');
+    if (objDel && !/BoxMarkDrop\(/.test(objDel.text))
+      broken.push('a drawing deleted on the chart must spend its key too (P-UI-134)');
+    // the per-object sweep asks the store, not the retired format
+    const sweep = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Pick.mqh')));
+    if (/StringFind\(ObjectGetString\(0, nm, OBJPROP_TEXT\), "\[BX"\)/.test(sweep))
+      broken.push('the per-object sweep still tests the description for `[BX` \u2014 it would skip every box the store already owns (P-UI-134)');
+    if (broken.length) {
+      failures.push('P-UI-134: ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh + DrawStrip_Pick/Tap/Router)');
+    } else {
+      console.log('[PASS] P-UI-134 the box marks live in a keyed store (fingerprint-verified, migrated from the legacy tags, dropped with the box) and OBJPROP_TEXT is never written by the mark owner');
+    }
+  }
+
+  // ── DIAG-134 (2026-10-02) — ALL THREE BOX-EXTRAS DOORS WITNESS, ON THE FLUSHED CHANNEL ──
+  // MEASURED 2026-10-02: the Experts journal stood still for seven minutes while the
+  // user's clicks went into MT4's RAM buffer (P-DRAW-126), so a witness written with
+  // `Print` answers «nothing happened» long after the tap happened \u2014 and each miss cost
+  // a reproduction round-trip. DIAG-131 fixed that for the QUICK CELL and it is what
+  // finally closed the 50 % / EXTEND report. The gear switch and the «…» cycle were
+  // fixed the same day with NO witness at all \u2014 which is precisely how a fix can be
+  // wrong and still look green, and they were in fact wrong until this session closed
+  // them. So the rule is over the ACTION, not over one call site: every door that moves
+  // the edge WITNESSES through the flushed channel, and the witness names the memo slot
+  // (the fact that settles «the box never came back»).
+  {
+    const broken = [];
+    const tap3 = stripTap || [];
+    //--- the quick cell (DIAG-131, kept: it is the door a report names most)
+    const quick = codeOf(tap3);
+    if (!/DrawStripDiagEmit\(\s*"\[drawstrip\] SLOT /.test(quick))
+      broken.push('the quick slot cell lost its SLOT witness \u2014 a tap that changes nothing must still leave a record (DIAG-134)');
+    //--- door 2: the gear panel's switch
+    const gAt = indexOfLine(tap3, 'bool DrawStripGearRowTap(');
+    if (gAt < 0) broken.push('bool DrawStripGearRowTap() is gone \u2014 one of the three EXTEND doors is unaccounted for (DIAG-134)');
+    else {
+      const g = codeOf(tap3.slice(gAt, gAt + 45));
+      if (!/DrawStripDiagEmit\(\s*"\[drawstrip\] GEAREXT /.test(g))
+        broken.push('the gear switch lost its GEAREXT witness \u2014 it is a door into EXTEND and must answer (DIAG-134)');
+      else if (!/BoxEdgeSlot\(/.test(g))
+        broken.push('the GEAREXT witness must print the memo slot \u2014 that number is what settles «the box never came back» (DIAG-134)');
+    }
+    //--- door 3: the picker's «…» cycle
+    const b50 = codeOf(tap3.slice(indexOfLine(tap3, 'if(kind == DSTRIP_MK_BOX50)'), indexOfLine(tap3, 'if(kind == DSTRIP_MK_BOX50)') + 22));
+    if (!/DrawStripDiagEmit\(\s*"\[drawstrip\] BOX50 /.test(b50))
+      broken.push('the 50 % row lost its BOX50 witness \u2014 the cell that failed three times must answer with the mark, not with a re-run (DIAG-134)');
+    else if (!/ObjectFind\(0, BoxMidName\(/.test(b50))
+      broken.push('the BOX50 witness must report whether the mid LINE object exists \u2014 a mark without a line is the exact defect (DIAG-134)');
+    const bx = codeOf(tap3.slice(indexOfLine(tap3, 'if(kind == DSTRIP_MK_BOXEXT)'), indexOfLine(tap3, 'if(kind == DSTRIP_MK_BOXEXT)') + 30));
+    if (!/DrawStripDiagEmit\(\s*"\[drawstrip\] BOXEXT /.test(bx))
+      broken.push('the «…» cycle lost its BOXEXT witness \u2014 it is a door into EXTEND and must answer (DIAG-134)');
+    else {
+      if (!/from=/.test(bx) || !/to=/.test(bx))
+        broken.push('the BOXEXT witness must name the mode it walked FROM and TO \u2014 one end cannot show a no-op (DIAG-134)');
+      if (!/BoxEdgeSlot\(/.test(bx))
+        broken.push('the BOXEXT witness must print the memo slot \u2014 armed leaves one, a disarm leaves none (DIAG-134)');
+    }
+    //--- and the channel itself: a witness must never be routed back through `Print`
+    if (/Print\(\s*"\[drawstrip\] (SLOT|GEAREXT|BOX50|BOXEXT)/.test(quick))
+      broken.push('a box-extras witness went back to `Print` \u2014 MT4 buffers the journal in RAM, so it cannot be read when it is needed (DIAG-134)');
+    if (broken.length) {
+      failures.push('DIAG-134: ' + broken.join('; ') + ' (Biotak/DrawStrip_Tap.mqh)');
+    } else {
+      console.log('[PASS] DIAG-134 all three box-extras doors witness on the flushed channel, each naming the memo slot (Biotak/DrawStrip_Tap.mqh)');
+    }
+  }
+
   console.log('');
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);
