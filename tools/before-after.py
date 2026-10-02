@@ -33,6 +33,7 @@ This supersedes tools/compare-preview.py's page: same idea, every surface, one
 generator (it is imported below, so the mock readers and the tables have ONE
 owner).
 """
+import datetime
 import glob
 import importlib.util
 import os
@@ -67,29 +68,74 @@ num_row, shape_row = C.num_row, C.shape_row
 SHOT_DIR = os.path.join(HERE, "mt4-shots")
 
 
+SHOT_MTIME = {}
+
+
 def sync_shots():
+    """The terminal's own PNGs, by tag — from the build's sweep and from each
+    instance's `<MQL4>\\Files` (the two places they are written)."""
+    cands = []
+    swept = os.path.join(ROOT, "build-logs", "shot")
     base = os.path.join(os.environ.get("APPDATA", ""), "MetaQuotes", "Terminal")
+    for d in [swept] + glob.glob(os.path.join(base, "*", "MQL4", "Files")):
+        cands += glob.glob(os.path.join(d, "StripShot_*.png"))
     found = {}
-    for p in glob.glob(os.path.join(base, "*", "MQL4", "Files", "StripShot_*.png")):
+    for p in cands:
         tag = os.path.basename(p)[len("StripShot_"):-len(".png")]
-        found[tag] = p
+        # the OLDEST copy wins: a swept file's own copy time must not make a
+        # previous build's shot look current.
+        mt = min(os.path.getmtime(p), found.get(tag, (None, 1e18))[1]) \
+            if tag in found else os.path.getmtime(p)
+        found[tag] = (p, mt)
     if found:
         os.makedirs(SHOT_DIR, exist_ok=True)
-        for tag, p in found.items():
+        for tag, (p, _mt) in found.items():
             shutil.copyfile(p, os.path.join(SHOT_DIR, tag + ".png"))
+    SHOT_MTIME.clear()
+    SHOT_MTIME.update({t: mt for t, (_p, mt) in found.items()})
     return {t: ("mt4-shots/%s.png" % t) for t in found}
 
 
+def _newest_source_mtime():
+    """The code the pixels are supposed to show: every `.mqh` the harness compiles,
+    both entries, and the harness itself (the same rule the build's real-pixels gate
+    applies, so the page and the gate cannot disagree about 'current')."""
+    newest = (0, "")
+    for pat in ("Biotak/**/*.mqh", "Biotak/*.mqh", "*.mq4", "tests/Biotak_StripShot_Test.mq4"):
+        for p in glob.glob(os.path.join(ROOT, pat), recursive=True):
+            mt = os.path.getmtime(p)
+            if mt > newest[0]:
+                newest = (mt, os.path.relpath(p, ROOT))
+    return newest
+
+
 SHOTS = sync_shots()
+#--- P-DRAW-119 (2026-10-01): A PREVIOUS BUILD'S PNG IS NOT THIS BUILD'S PROOF.
+#--- MEASURED the day this was added: the tree held 25 states and ZERO of their PNGs,
+#--- so this column had never held reality at all. A shot taken BEFORE the code moved
+#--- is the same mistake one step later — so the column says which build its pixels
+#--- are, and the page never presents a stale one as the current render.
+NEWEST_SOURCE = _newest_source_mtime()
+
+
+def _fmt(ms):
+    return datetime.datetime.fromtimestamp(ms).strftime("%Y-%m-%d %H:%M") if ms else "—"
 
 
 def shot_col(tag, note=""):
     """The MT4 column for one surface tag, or the sentence saying why it is empty."""
     if tag in SHOTS:
+        mt = SHOT_MTIME.get(tag, 0)
+        stale = mt and (mt + 1.0) < NEWEST_SOURCE[0]
+        badge = ("<div class='facts' style='color:#ff8a00'>پیکسل‌ها از کد فعلی نیستند — "
+                 "اسکرین‌شات %s گرفته شده و کد تا %s جلو رفته: دوباره "
+                 "<b>compile-th3.ps1 -Shot -RestartTerminal</b></div>"
+                 % (_fmt(mt), _fmt(NEWEST_SOURCE[0]))) if stale else \
+                ("<div class='facts'>اسکرین‌شات %s — از کد فعلی</div>" % _fmt(mt))
         return ("<div class='col'><div class='tag'>متاتریدر — اسکرین‌شات واقعی</div>"
                 "<img class='shot' src='%s'>"
-                "<div class='facts'>tests/Biotak_StripShot_Test.mq4 → %s</div></div>"
-                % (SHOTS[tag], os.path.basename(SHOTS[tag])))
+                "<div class='facts'>tests/Biotak_StripShot_Test.mq4 → %s</div>%s</div>"
+                % (SHOTS[tag], os.path.basename(SHOTS[tag]), badge))
     return ("<div class='col'><div class='tag'>متاتریدر — اسکرین‌شات واقعی</div>"
             "<div class='nonote'>گرفته نشده: تستر <b>tests/Biotak_StripShot_Test.mq4</b> "
             "را روی چارت بینداز؛ هر حالت یک PNG در <b>MQL4\\Files</b> می‌نویسد و "
@@ -378,7 +424,9 @@ ROLES = [
     ("پاپ‌اور انتخاب", ["Pick", "PickIcon", "PickLabel", "PickChip", "PickRail",
                         "PickGlass"], []),
     ("پلیت بورد", ["BoardBg", "BoardSkin"], ["عرض بورد", "ارتفاع بورد"]),
-    ("سرِ بورد", ["PHeadG", "PHeadGChip", "PHeadGIcon"],
+    # P-DRAW-105: the two PAGE seats and their `1/2` caption ride this band too (the
+    # space the pin and the close do not use) — they were unassigned in this census.
+    ("سرِ بورد", ["PHeadG", "PHeadGChip", "PHeadGIcon", "PageLabel", "PageSeat"],
      ["سرِ بورد", "گرب هدر", "هدر"]),
     ("آخرین‌ها", ["PRec", "PRecGlass", "PRecLabel"], ["سواچ آخرینها"]),
     ("فیلد HEX", ["PHexLb", "PHexEd"], ["فیلد HEX (عرض×ارتفاع)"]),
@@ -388,10 +436,14 @@ ROLES = [
      ["عرض پنل", "پلیت پنل"]),
     ("سرِ پنل + بستن", ["GearHead", "GearClose", "GearCloseSkin", "GearCloseIcon"],
      ["سرِ پنل"]),
-    ("نوار تب", ["GearTab", "GearTabLine", "GearTrack"], ["نوار تب"]),
+    # P-DRAW-117: the TAB ROW is retired (GearTab / GearTabLine / GearTrack are gone
+    # with it), so its role is gone too — the nav is the group ROWS below.
     ("ردیف‌های پنل", ["Row", "RowIcon", "RowLabel", "RowChip", "RowRail",
-                      "RowState", "RowSep"], ["ردیف", "آیکن سرِ ردیف"]),
-    ("گرید چیپ‌ها", ["Grid", "GridIcon", "GridGlass"], ["چیپ"]),
+                      "RowState", "RowSep", "RowDigest"],
+     ["ردیف", "آیکن سرِ ردیف"]),
+    # P-DRAW-118: the colour role rows are GRID cells (preview · the palette's own
+    # row · the `+`), so they share this role's three faces and add none.
+    ("گرید چیپ‌ها", ["Grid", "GridIcon", "GridGlass"], ["چیپ", "سواچ رنگ"]),
     ("فیلد ویرایش پنل", ["Edit"], []),
     ("باندهای بخش", ["GearSection", "GearSectionLine"], ["شمارنده"]),
     ("فوتر پنل", ["Foot", "FootSkin", "FootGlyph", "FootLabel"],

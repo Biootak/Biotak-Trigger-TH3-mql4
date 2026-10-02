@@ -85,13 +85,40 @@ CN = open(CONSTS, encoding="utf-8", errors="replace").read()
 
 
 # ── the geometry: DSTRIP_* straight out of DrawStrip.mqh ────────────────────
+# P-DRAW-116 left five of these as ALIASES of the cards' own table
+# (`#define DSTRIP_SKIN_M PNL_MARGIN`), and this reader only understood plain
+# digits — so it died with `KeyError: 'DSTRIP_SKIN_M'` the day the aliases landed,
+# which took the strip page, the icon sheet and before/after with it. An alias is
+# resolved FROM ITS OWNER (CardMetrics.mqh, the one table BiotakPanels and
+# DrawStrip both read), never re-typed here: a second literal is exactly the
+# defect P-DRAW-116 removed.
+CARD_METRICS = os.path.join(ROOT, "Biotak", "CardMetrics.mqh")
+
+
+def card_defines():
+    try:
+        text = open(CARD_METRICS, encoding="utf-8", errors="replace").read()
+    except OSError:
+        return {}
+    return {m.group(1): int(m.group(2))
+            for m in re.finditer(r"#define\s+((?:PNL|BIO)_\w+)\s+(-?\d+)", text)}
+
+
+CARDS = card_defines()
+
+
 def ds_defines():
-    rx = re.compile(r"#define\s+(DSTRIP_\w+)\s+(-?\d+)")
+    rx = re.compile(r"#define\s+(DSTRIP_\w+)\s+(-?\d+|[A-Za-z_]\w*)")
     out = {}
     for line in DS.split("\n"):
         m = rx.match(line.strip())
-        if m:
-            out[m.group(1)] = int(m.group(2))
+        if not m:
+            continue
+        val = m.group(2)
+        if re.fullmatch(r"-?\d+", val):
+            out[m.group(1)] = int(val)
+        elif val in CARDS:
+            out[m.group(1)] = CARDS[val]
     return out
 
 
@@ -630,8 +657,11 @@ def paint_board():
 # ══════════════════════════════════════════════════════════════════════════
 # LEVEL 3 — THE SETTINGS PANEL. Not re-modelled: sim-gear-panel.py is the
 # proven mirror and check-gear-panel.py gates on it. One mirror per surface.
+# P-DRAW-117 (2026-10-01): the panel is an ACCORDION now — its nav is a column of
+# group ROWS, and the group list is KIND-AWARE (a fibo opens LEVELS, a box does
+# not). The caption below reads the name out of the mirror instead of a second
+# list here: `GEAR_TABS` was one, and it went stale the day the tab row did.
 # ══════════════════════════════════════════════════════════════════════════
-GEAR_TABS = ["Paint", "Style", "Look", "Row"]
 
 
 def gear_for(kind):
@@ -706,12 +736,12 @@ def main():
 
     gl = G.layout(0)
     gc = G.paint(gl, [], 0)
-    g_html = ("<div class='stage'><div class='cap'>3 · SETTINGS PANEL — tab %s</div>"
+    g_html = ("<div class='stage'><div class='cap'>3 · SETTINGS PANEL — %s open</div>"
               "<div class='wrap' style='width:%dpx;height:%dpx'>%s</div>"
               "<div class='facts'>w %d · h %d · cardN %d · exact %s"
-              "  (tools/sim-gear-panel.py, the gate's own mirror)</div></div>") \
-        % (GEAR_TABS[0], gl["w"] + 28, gl["h"] + 28, gc.to_html(),
-           gl["w"], gl["h"], gl["card_n"], gl["exact"])
+              " · groups %s  (tools/sim-gear-panel.py, the gate's own mirror)</div></div>") \
+        % (gl["tab_name"], gl["w"] + 28, gl["h"] + 28, gc.to_html(),
+           gl["w"], gl["h"], gl["card_n"], gl["exact"], ", ".join(G.TABS))
 
     # ══ 4 · EVERY KIND. The strip is kind-aware: DrawKindCaps decides which
     # controls a row carries, so a fibo's row is NOT a box's. One row per kind

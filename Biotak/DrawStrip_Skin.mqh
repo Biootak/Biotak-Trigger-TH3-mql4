@@ -248,20 +248,40 @@ string DrawStripSkinPiece(const int fam, const int i)
 //--- tap on the panel's own surface never reads as a tap on the chart.
 bool DrawStripIsBg(const string nm)
 {
-   //--- P-DRAW-83: THE PANEL'S OWN PLATE IS THE PANEL'S PLATE. `DrawStripGearBgName()`
-   //--- ("PnlDrawS_GBG", the retired underlayer) matched here by the letter B, while
-   //--- the plate this build really paints — "PnlDrawS_Gbake" / "Gtop" / "Gmid*" /
-   //--- "Gbot" — differs by the case of that one letter and matched NOTHING. With the
-   //--- plate back under its controls (see DrawStripGearPlate) that means the panel's
-   //--- own margins, padding and air are pixels no control owns: a press there fell
-   //--- past every branch of the router and out to the CHART, which is the half of
-   //--- P-DRAW-32's rule ("a tap on the panel's own surface never reads as a tap on
-   //--- the chart") the spelling left open. Case-sensitive, and no control name
-   //--- begins `Gb`: GT/GG/GR/GF/GE/GS/GU/GH and the tab bed keep their own owners.
+//--- P-DRAW-83: THE PANEL'S OWN PLATE IS THE PANEL'S PLATE. `DrawStripGearBgName()`
+   // ("PnlDrawS_GBG", the retired underlayer) matched here by the letter B, while
+   // the plate this build really paints — "PnlDrawS_Gbake" / "Gtop" / "Gmid*" /
+   // "Gbot" — differs by the case of that one letter and matched NOTHING. With the
+   // plate back under its controls (see DrawStripGearPlate) that means the panel's
+   // own margins, padding and air are pixels no control owns: a press there fell
+   // past every branch of the router and out to the CHART, which is the half of
+   // P-DRAW-32's rule ("a tap on the panel's own surface never reads as a tap on the
+   // chart") the spelling left open. Case-sensitive, and no control name
+   // begins `Gb`: GT/GG/GR/GF/GE/GS/GU/GH and the tab bed keep their own owners.
+   //--- P-DRAW-114 (2026-10-01) — AND THE SAME SPELLING WAS WRONG FOR THE WIDE PLATE,
+   //--- WHICH IS THE WHOLE BUG ON THE TWO TABS THAT MATTER. The `Gb` term above matches
+   //--- `PnlDrawS_Gb*` — the NARROW bake AND the wide body's own `Gbot` (both are
+   //--- `PnlDrawS_G` + a lowercase `b`), so those two were never the gap. The gap is
+   //--- the other TWO pieces: a tab whose height is off the card set composes its plate
+   //--- out of three instead (DrawStripGearPlate: "PnlDrawS_Gtop" 745,
+   //--- "PnlDrawS_Gmid<0..11>" 752, "PnlDrawS_Gbot" 758), and `Gt` / `Gm` matched
+   //--- nothing at all.
+   //--- MEASURED: Style and Row are the only two tabs that take that branch
+   //--- (`PLATE tab=1/4 ... branch=wide obj=PnlDrawS_Gtop` in every 2026-10-01 log
+   //--- line), so on exactly those two tabs the panel's own body — three opaque
+   //--- tiles, the largest click targets it owns — was not its surface: the press
+   //--- fell past the `DrawStripIsBg` branch (DrawStrip_Router.mqh:732), past every
+   //--- name loop below it, and out to the chart. Paint is unaffected by construction
+   //--- (its plate is `Gbake`), which is why the report reads as a Style/Row fault.
+   //--- `Gt` / `Gm` are safe to claim for the plate and nothing else: the controls are
+   //--- GT (tabs), GG (chips), GR (rows), GF (foot), GE (fields), GS (bands),
+   //--- GU (underline), GH (head) and `GTrack` — a different letter, or UPPERCASE.
    return (StringFind(nm, "PnlDrawS_BG") == 0 ||
-           StringFind(nm, "PnlDrawS_Gb") == 0 ||
+           StringFind(nm, "PnlDrawS_Gb") == 0 ||   // Gbake (narrow) + Gbot (wide)
+           StringFind(nm, "PnlDrawS_Gt") == 0 ||   // P-DRAW-114: the wide plate's top cap
+           StringFind(nm, "PnlDrawS_Gm") == 0 ||   // P-DRAW-114: ...its mid tiles
            StringFind(nm, "PnlDrawS_BB") == 0 ||   // P-DRAW-48: the board's own plate
-           StringFind(nm, "PnlDrawS_GB") == 0 ||
+           StringFind(nm, "PnlDrawS_GB") == 0 ||   // the retired nine-slice family
            StringFind(nm, "PnlDrawS_GH") == 0 ||
            StringFind(nm, "PnlDrawS_GS") == 0 ||
            StringFind(nm, "PnlDrawS_GU") == 0);
@@ -726,6 +746,21 @@ bool DrawStripGearPlate()
       int pairN = cardExact ? cardN : (gh - 104 + 41) / 42;
       if(pairN < 1) pairN = 1;
       if(pairN > DSTRIP_GEAR_BLK_MAX) { DrawStripSkinPurgeAt(1); return false; }
+      //--- P-DRAW-110 (2026-10-01) — THE BODY STARTS AT THE HEAD'S OWN EDGE.
+      //--- The three W bakes are drawn from the SAME origin the bake above uses,
+      //--- `gy - 14` (the plate's own 14px margin), and the top cap is `14 + 70`:
+      //--- its own 14px pad is spent ABOVE the head, so the head band ends at
+      //--- `gy + DSTRIP_GEAR_HEAD_H` (56) and the body must continue THERE. This
+      //--- block started it at `gy + 70` — the cap's HEIGHT, not its edge — so on
+      //--- every WIDE tab (Style, Row: the only two that compose instead of baking)
+      //--- the whole body sat **14px low**: a 14px transparent band under the header
+      //--- (`gy+56 .. gy+70`, where the tab track's bed was the only thing covering
+      //--- it) and the bottom cap ending at `gy + gh + 28` instead of `gy + gh + 14`.
+      //--- The owner is the cards' own composition (BiotakPanels_Build.mqh:727-737:
+      //--- mids at `py + PNL_HEAD_H + li*PNL_ROW_H`, foot cap at `+ pairN*PNL_ROW_H`)
+      //--- and this is the same law on the strip's origin: MEASURED, `pnl_cardWtop`
+      //--- 652x70 with its opaque rows at y10..69, `pnl_cardWmid` 652x42 with y0..41
+      //--- — so `56 + 42*pairN + 62` = `gh + 14`, the plate's own bottom.
       // top cap — pnl_cardWtop.bmp (14+56=70px)
       dirty |= DrawStripSkinBmp("PnlDrawS_Gtop",
                                 gx - 14, gy - 14, gw + 28, 70,
@@ -734,14 +769,14 @@ bool DrawStripGearPlate()
       {
          string mn = "PnlDrawS_Gmid" + IntegerToString(li);
          if(li < pairN)
-            dirty |= DrawStripSkinBmp(mn, gx - 14, gy + 70 + li * 42,
+            dirty |= DrawStripSkinBmp(mn, gx - 14, gy + DSTRIP_GEAR_HEAD_H + li * 42,
                                       gw + 28, 42, "::Files\\Icons\\pnl_cardWmid.bmp",
                                       Z_STRIP);
          else if(ObjectFind(0, mn) >= 0) { ObjectDelete(0, mn); dirty = true; }
       }
       // bot cap — pnl_cardWbot.bmp (48+14=62px)
       dirty |= DrawStripSkinBmp("PnlDrawS_Gbot",
-                                gx - 14, gy + 70 + pairN * 42, gw + 28, 62,
+                                gx - 14, gy + DSTRIP_GEAR_HEAD_H + pairN * 42, gw + 28, 62,
                                 "::Files\\Icons\\pnl_cardWbot.bmp", Z_STRIP);
       if(ObjectFind(0, "PnlDrawS_Gbake") >= 0)
       { ObjectDelete(0, "PnlDrawS_Gbake"); dirty = true; }

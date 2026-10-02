@@ -33,18 +33,33 @@ void DrawStripPaint()
    {
       if(ObjectFind(0, bg) < 0)
       {
-         if(!ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0)) return;
-         ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-         ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, DrawStripPlateFill());
+         //--- P-DRAW-101 (2026-09-30) — A PLATE THAT WILL NOT BUILD IS NOT A REASON
+         //--- TO BUILD NOTHING. This was `if(!ObjectCreate(...)) return;`, and the
+         //--- `return` is the whole painter: one refused object name (the terminal's
+         //--- own object budget, a name already taken by a chart that died dirty)
+         //--- took the grip, the badge, the quick cells, the actions, the colour
+         //--- board, its RECENT band, the HEX field, the opacity bar, the popover,
+         //--- AND the two calls at the bottom that place, plate and paint the gear
+         //--- panel — with `dirty` never reaching ChartRedraw, so the frame before it
+         //--- stayed frozen. Three surfaces to nothing, over one rectangle label.
+         //--- The plate is the one piece that may be missing; everything after it
+         //--- degrades to the previous look, which is what the guarded writes below
+         //--- already are (a write aimed at a name the chart does not carry answers
+         //--- nothing and costs one read).
+         if(ObjectCreate(0, bg, OBJ_RECTANGLE_LABEL, 0, 0, 0))
+         {
+            ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+            ObjectSetInteger(0, bg, OBJPROP_BGCOLOR, DrawStripPlateFill());
 
-         ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
-         ObjectSetInteger(0, bg, OBJPROP_COLOR, DSTRIP_CLR_LINE);
-         ObjectSetInteger(0, bg, OBJPROP_WIDTH, 1);
-         ObjectSetInteger(0, bg, OBJPROP_BACK, false);
-         ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
-         ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
-         ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_STRIP);
-         dirty = true;
+            ObjectSetInteger(0, bg, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+            ObjectSetInteger(0, bg, OBJPROP_COLOR, DSTRIP_CLR_LINE);
+            ObjectSetInteger(0, bg, OBJPROP_WIDTH, 1);
+            ObjectSetInteger(0, bg, OBJPROP_BACK, false);
+            ObjectSetInteger(0, bg, OBJPROP_SELECTABLE, false);
+            ObjectSetInteger(0, bg, OBJPROP_HIDDEN, true);
+            ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_STRIP);
+            dirty = true;
+         }
       }
       dirty |= DrawStripSetInt(bg, OBJPROP_XDISTANCE, s_dsX);
       dirty |= DrawStripSetInt(bg, OBJPROP_YDISTANCE, s_dsY);

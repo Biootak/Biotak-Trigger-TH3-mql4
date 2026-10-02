@@ -128,7 +128,12 @@ int DrawStripPageAt(const int mx,const int my)
    for(int k=0;k<2;k++)
    {
       int xa=x0+k*20;
-      if(mx >= xa && mx <= xa+20) return k;      // 0 = previous page, 1 = next
+      //--- P-DRAW-105: THE SEAT IS HALF-OPEN, LIKE THE PAINT. The painter's own
+      //--- rect is `[pgx+k*20, pgx+k*20+20)` (DrawStrip_Paint, the page seats) and
+      //--- this was `mx <= xa+20`, so the single column `pgx+20` belonged to seat 0
+      //--- and to seat 1 at the same time — a 1px seam where the outer half of the
+      //--- right arrow's own left edge turned the page backwards.
+      if(mx >= xa && mx < xa+20) return k;      // 0 = previous page, 1 = next
    }
    return -1;
 }
@@ -244,11 +249,14 @@ bool DrawStripPickIsCur(const string nm, const EDrawKind k, const int slot, cons
 int DrawStripColorHoverCellAt(const int mx, const int my)
 {
    if(!s_dsOpen) return -1;
-   if(s_dsGear == DSTRIP_GEAR_STYLE)
+   //--- P-DRAW-118 (2026-10-01): the SWATCH cells live in the Color group's quick
+   //--- rows now (they were the retired Paint grid's, the last caller this fence
+   //--- knew). Same seat arrays, one more group allowed to wear them.
+   if(s_dsGear == DSTRIP_GEAR_STYLE || s_dsGear == DSTRIP_GEAR_PAINT)
    {
       for(int g = 0; g < s_dsGGN; g++)
       {
-         if(s_dsGGKind[g] != 0) continue;
+         if(s_dsGGKind[g] != DSTRIP_GRG_SWATCH) continue;
           int x = DrawStripGearX() + s_dsGGX[g], y = s_dsGEY + s_dsGGY[g] + (DSTRIP_GEAR_ROW_H - s_dsGGH[g]) / 2;
           if(mx >= x && mx <= x + s_dsGGW[g] && my >= y && my <= y + s_dsGGH[g]) return g;
 
@@ -298,7 +306,7 @@ color DrawStripColorHoverValue(const int cell)
       if(!DrawStripIsColorSlot(s_dsPicker) || r < 0 || r >= s_dsPN) return clrNONE;
       return DrawStripPickColor(s_dsPicker, r);
    }
-   if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != 0) return clrNONE;
+   if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != DSTRIP_GRG_SWATCH) return clrNONE;
    return s_dsGGC[cell];
 }
 
@@ -322,9 +330,11 @@ void DrawStripColorHoverFace(const int cell, const bool active)
    }
    else
    {
-      if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != 0) return;
+      if(cell < 0 || cell >= s_dsGGN || s_dsGGKind[cell] != DSTRIP_GRG_SWATCH) return;
       nm = DrawStripGridName(cell);
-      current = (DrawStripColorRead(s_dsObj, DRAW_SLOT_COLOR) == s_dsGGC[cell]);
+      //--- P-DRAW-118: the CELL says which role it belongs to — the FILL row's
+      //--- swatches compare against the interior, not against the border.
+      current = (DrawStripColorRead(s_dsObj, s_dsGGSlot[cell]) == s_dsGGC[cell]);
    }
    if(ObjectFind(0, nm) < 0) return;
    //--- P-UI-69b: the RESTORED rim is the swatch legibility floor, not a bare

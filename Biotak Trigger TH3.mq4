@@ -94,6 +94,13 @@
 // both halves can ask it (the strip lives in the panels, the create hook in the
 // event handlers).
 #include "Biotak\DrawToolbar.mqh"
+// P-DRAW-116: the CARD SURFACE'S OWN NUMBER TABLE, as a standalone header. BiotakPanels
+// owns these names and re-includes this itself, so the cards are byte-identical — the
+// only change is that it now sits ABOVE the strip. DrawStrip is include 99 and
+// BiotakPanels is 118, so the strip's settings panel could never reach a `PNL_*` name
+// and could only retype the value (DSTRIP_GEAR_W 312 = PNL_WEL 312, and five more).
+// One table, two readers: from here the panel and the cards CANNOT drift.
+#include "Biotak\CardMetrics.mqh"
 // P-DRAW-08: the floating strip the drawings' hold opens. Full only — it is a
 // screen surface, and Lite owns none (P-BUILD-01).
 #include "Biotak\DrawStrip.mqh"

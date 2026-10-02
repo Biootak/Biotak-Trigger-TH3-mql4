@@ -3,6 +3,23 @@
 #define DRAW_STRIP_TAP_MQH
 
 
+//--- P-DRAW-118 (2026-10-01) — A COLOUR HAS ONE OWNER. The palette cell, the
+//--- panel's quick swatch and the board's HEX field all end in this write: RECENT,
+//--- undo, the fill's own show group, the value, and the level's border sync. One
+//--- place, so a new face for a colour cannot miss a step the old one took.
+bool DrawStripColorCommit(const int slot, const color c)
+{
+   if(!DrawStripIsColorSlot(slot)) return false;
+   if(c == clrNONE) return false;
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+   DrawStripRecentPush(c);
+   DrawStripUndoPush();
+   if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
+   DrawStripWriteValue(slot, (double)(int)c);
+   if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
+   return true;
+}
+
 //--- P-DRAW-11: APPLY one picker row — through the group fan-out (P-DRAW-09b),
 //--- learning the look for the next drawing of the kind (P-DRAW-01c). Placed
 //--- here (after DrawStripWriteValue) because MQL4 is define-before-use.
@@ -12,16 +29,7 @@ bool DrawStripPickApply(const int slot, const int row)
    EDrawKind k = s_dsKind;
    if(k == DK_NONE) return false;
    if(DrawStripIsColorSlot(slot))
-   {
-      color c = DrawStripPickColor(slot, row);
-      if(c == clrNONE) return false;
-      DrawStripRecentPush(c);
-      DrawStripUndoPush();
-      if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
-      DrawStripWriteValue(slot, (double)(int)c);
-      if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
-      return true;
-   }
+      return DrawStripColorCommit(slot, DrawStripPickColor(slot, row));
    if(slot == DRAW_SLOT_WIDTH)
    {
       if(row < 0 || row > 4) return false;
@@ -291,7 +299,9 @@ bool DrawStripActTap(const int a)
     {
        DrawStripClosePicker();
        if(s_dsGear != 0) DrawStripGearClose();
-       else s_dsGear = DSTRIP_GEAR_PAINT;   // P-DRAW-65: the colours open first
+       //--- P-DRAW-65: the colours open first. P-DRAW-117: and a fresh open shows
+       //--- that group's SETTINGS — the panel never opens folded.
+       else { s_dsGear = DSTRIP_GEAR_PAINT; s_dsGearCollapsed = false; }
        //--- P-DRAW-86 (2026-09-29): THE OPEN SWEEPS FIRST. The close-purge kills
        //--- every PnlDrawS_G* — but only if the close ran. A terminal restart, a
        //--- crash, or a build that predates the purge leaves same-prefix objects
@@ -357,8 +367,11 @@ bool DrawStripPickTapRecent(const int i)
    //--- P-DRAW-64: the recents are the board's own colours too — a recent tapped on
    //--- the FILL board is a fill, exactly like the grid, the hex and the bar. Was the
    //--- one path that forgot it: a tap that changed no pixel read as "nothing happened".
-   if(DrawStripIsColorSlot(s_dsPicker) && s_dsPicker == DRAW_SLOT_FILLCLR)
-      DrawStripFillShowGroup();
+   //--- P-DRAW-95 (2026-09-30): ONE SHOW, NOT TWO. The pair below was the same two
+   //--- lines pasted twice (P-DRAW-64's note carried two call sites while the code
+   //--- carried one act): a second writer of the same fact, and every recent tap paid
+   //--- a member walk twice — once per copy, on the group and on each member's own
+   //--- description. One writer, one walk.
    if(DrawStripIsColorSlot(s_dsPicker) && s_dsPicker == DRAW_SLOT_FILLCLR)
       DrawStripFillShowGroup();
    DrawStripWriteValue(s_dsPicker, (double)(int)c);
@@ -498,13 +511,36 @@ bool DrawStripMoreTap(const int row)
    }
    return true;
 }
-//--- gear grid cells (swatches + chips stay in the panel).
+//--- gear grid cells: swatches (P-DRAW-118), the two openers, and the chips.
 bool DrawStripGridTap(const int g)
 {
    if(!s_dsOpen || s_dsObj == "") return false;
    if(g < 0 || g >= s_dsGGN) return false;
    DrawStripColorHoverClear();
-   DrawStripPickApply(s_dsGGSlot[g], s_dsGGArg[g]);   // P-DRAW-44: chips only
+   int gk = s_dsGGKind[g], slot = s_dsGGSlot[g];
+   //--- P-DRAW-118: a swatch APPLIES THE COLOUR IT WEARS — read from `s_dsGGC`, the
+   //--- array the paint wrote (Touch rule 7: a hit test with its own arithmetic is a
+   //--- second grid) — through the colour's one owner.
+   if(gk == DSTRIP_GRG_SWATCH)
+   {
+      if(!DrawStripColorCommit(slot, s_dsGGC[g])) return false;
+      DrawStripPaint();
+      BoxMidSyncServed();   // P-DRAW-21: a grid restyle restyles the mid
+      return true;
+   }
+   //--- the preview block and the `+` are the SAME act: the board on this role. The
+   //--- strip keeps ONE popover at a time (DrawStripTap does exactly this for a
+   //--- quick-row colour cell), so the panel steps aside for the picker it opens.
+   if(gk == DSTRIP_GRG_PREV || gk == DSTRIP_GRG_PLUS)
+   {
+      DrawStripGearClose();
+      if(s_dsPicker == slot) DrawStripClosePicker();
+      else s_dsPicker = slot;
+      DrawStripLayout();
+      DrawStripPaint();
+      return true;
+   }
+   DrawStripPickApply(slot, s_dsGGArg[g]);   // P-DRAW-44: chips
    DrawStripPaint();
    BoxMidSyncServed();   // P-DRAW-21: a grid restyle restyles the mid
    return true;
@@ -515,6 +551,10 @@ bool DrawStripGearRowTap(const int r)
    if(!s_dsOpen || s_dsObj == "") return false;
    if(r < 0 || r >= s_dsGRN) return false;
    int kind = s_dsGRKind[r], arg = s_dsGRArg[r];
+   //--- P-DRAW-117: a group header opens (or folds) its own group. The row probe
+   //--- reaches this the same way it reaches a switch — one hit test, no second grid
+   //--- (P-DRAW-84's own law: the hit test reads the seat arrays the paint wrote).
+   if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupTap(arg);
    if(kind == 1)
    {
       DrawStripUndoPush();
@@ -604,6 +644,13 @@ bool DrawStripFootTap(const int f)
    {
       DrawStripUndoPush();
       DrawPresetApply(s_dsObj, 0);
+      //--- P-DRAW-96 (2026-09-30): `DrawPresetApply` writes DRAW_SLOT_COLOR, so it owes
+      //--- the box's own mid line the new ink — every other colour path in this group
+      //--- carries `BoxMidSyncGroup()`/`BoxMidSyncServed()` for exactly that reason
+      //--- (P-DRAW-64a), and Reset was the one that did not: after a Reset the 50 % line
+      //--- kept the pre-Reset border colour until the pump's next pass. Served, not the
+      //--- group: Reset touched the held drawing only.
+      BoxMidSyncServed();   // P-DRAW-21: the level wears the border
       DrawStripPaint();
       return true;
    }
@@ -616,51 +663,56 @@ bool DrawStripFootTap(const int f)
    if(f == 2) return DrawStripDuplicate();
    return false;
 }
-//--- gear tab switch (shuts the popover; one panel at a time).
-bool DrawStripGearTabTap(const int t)
+//--- P-DRAW-117 (2026-10-01) — THE GROUP HEADER IS THE PANEL'S ONE GESTURE.
+//--- A tap on a group's own row OPENS that group's settings (only one body is built
+//--- at a time, so the group that was open folds); a tap on the group that IS open
+//--- folds its body away and leaves the list — the panel stays open, with its head,
+//--- its other groups and its foot exactly where they were. `s_dsGear` is still "the
+//--- open group" (never 0 while the panel is open), so every reader that asks
+//--- `s_dsGear != 0` keeps its answer, and `s_dsGearCollapsed` is the one new fact.
+bool DrawStripGearGroupTap(const int gid)
 {
    DrawStripColorHoverClear();
    if(!s_dsOpen) return false;
-   if(t < 0 || t >= s_dsGearTab[0]) return false;
+   bool known = false;
+   for(int i = 1; i <= s_dsGearGrp[0]; i++) if(s_dsGearGrp[i] == gid) known = true;
+   if(!known) return false;
    DrawStripClosePicker();
-   int tab = s_dsGearTab[t + 1];
-   if(s_dsGear == tab) DrawStripGearClose();
-   else s_dsGear = tab;
-   // P-DRAW-26: the kind remembers its tab (a shut panel remembers shut).
+   if(s_dsGear == gid) s_dsGearCollapsed = !s_dsGearCollapsed;
+   else { s_dsGear = gid; s_dsGearCollapsed = false; }
+   // P-DRAW-26: the kind remembers its group (a shut panel remembers shut).
    if(s_dsKind > DK_NONE && s_dsKind < DK_COUNT) s_dsGearMem[s_dsKind] = s_dsGear;
    DrawStripLayout();
    DrawStripPaint();
+   //--- P-DRAW-112 (2026-10-01): the census ran ONLY on the panel's OPEN, and a
+   //--- tab switch is not an open — which is why every Style-tab report in the
+   //--- 2026-10-01 log carries `PLATE tab=1` and not one `TABCENSUS` line: the one
+   //--- walk that can name what the terminal actually holds for the tab that
+   //--- misbehaves was never fired on it. Same owner, same bound (one walk per user
+   //--- action, never per paint), and a GROUP OPEN is the same user action.
+   DrawStripGearTabCensus();
    return true;
 }
 //--- gear edits (ENDEDIT): hex colour, level add, caption. Invalid input keeps
-//--- the typed text (paint never re-seeds an existing edit) for another try.
+//--- the typed text for another try (paint re-seeds a field only while it is NOT
+//--- the focus, so an unparsable half-word is never overwritten under the hand).
+//--- P-DRAW-100: AND THE COMMIT RELEASES THE FIELD. `s_dsHexFocus` is the guard the
+//--- Paint tab's live re-seed asks, and only the BOARD's commit released it
+//--- (P-DRAW-48, two lines below) — so one hex typed into the panel's own COLOR
+//--- box armed the guard for the rest of the session and that field never showed a
+//--- colour again. One line, at the one place the field stops being typed in, and
+//--- an invalid parse keeps the focus so the hand's word survives either way.
 bool DrawStripEditEnd(const int e)
 {
    if(!s_dsOpen || s_dsObj == "") return false;
    string nm = DrawStripEditName(e);
    if(ObjectFind(0, nm) < 0) return false;
    string txt = ObjectGetString(0, nm, OBJPROP_TEXT);
-   if(e == 0)
-   {
-      color c;
-      if(!DrawStripHexToColor(txt, c)) return true;
-      DrawStripRecentPush(c);
-      DrawStripUndoPush();
-      DrawStripWriteValue(DRAW_SLOT_COLOR, (double)(int)c);
-      DrawStripPaint();
-      return true;
-   }    if(e == 4)
-   {
-      //--- P-DRAW-64: the FILL field — the interior's own colour, typed exactly.
-      color fc;
-      if(!DrawStripHexToColor(txt, fc)) return true;
-      DrawStripRecentPush(fc);
-      DrawStripUndoPush();
-      DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
-      DrawStripWriteValue(DRAW_SLOT_FILLCLR, (double)(int)fc);
-      DrawStripPaint();
-      return true;
-   }
+   //--- P-DRAW-118 (2026-10-01): e0/e4 (the panel's two hex boxes) are RETIRED —
+   //--- the colour is a swatch now and the exact value is the BOARD's HEX field,
+   //--- whose own commit is `DrawStripPopHexEnd` below (P-DRAW-100's site moved with
+   //--- the field). Their objects are swept by the paint's own `!want` branch, so a
+   //--- chart that carried them keeps nothing.
    if(e == 1)
    {
       string t = txt;
@@ -712,14 +764,12 @@ bool DrawStripPopHexEnd()
    if(ObjectFind(0, nm) < 0) return false;
    color c;
    if(!DrawStripHexToColor(ObjectGetString(0, nm, OBJPROP_TEXT), c)) return true;
-   DrawStripRecentPush(c);
-   DrawStripUndoPush();
    //--- P-DRAW-64: the field belongs to the BOARD it sits on, so it writes the
    //--- board's own role — typing a hex while the FILL board is open is a fill.
+   //--- P-DRAW-118: and it writes it through the COLOUR's own owner, the same one the
+   //--- palette cell and the panel's quick swatch call.
    int hslot = DrawStripIsColorSlot(s_dsPicker) ? s_dsPicker : DRAW_SLOT_COLOR;
-   if(hslot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
-   DrawStripWriteValue(hslot, (double)(int)c);
-   if(hslot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
+   DrawStripColorCommit(hslot, c);
    s_dsHexFocus = false;   // P-DRAW-48: the field is the colour's face again
    DrawStripPaint();
    return true;
@@ -747,6 +797,46 @@ bool DrawStripGearGripAt(const int mx, const int my)
       // close button's corner — the same corner rule, measured off the plate.
       mx >= hx && mx <= hx + s_dsGearW0 - DSTRIP_GEAR_PAD - 26 - DSTRIP_GEAR_PAD) return true;
    return false;
+}
+//--- P-DRAW-113 (2026-10-01) — THE PANEL'S OWN PLATE IS NOT THE CHART, EVEN WHERE NO
+//--- CONTROL IS. `DrawStripGearHit` answers "did a control act", and it answers FALSE
+//--- on the panel's own dead pixels ON PURPOSE: the tab TRACK between two tabs
+//--- (DrawStrip_Base.mqh:399), the 42px cell's own margins, and the plate's own 14px
+//--- skin margin — which P-DRAW-83 already named as "pixels no control owns" without
+//--- ever wiring them to anything.
+//--- The press edge spent the event only on a TRUE (DrawStrip_Router.mqh:578), and the
+//--- release's dismissal branch asks ONLY that flag — so a press on the panel's own
+//--- dead space reached it unsunk and was read as a click on the CHART:
+//--- `DrawStripClose()` → `DrawStripGearClose()` → `ObjectsDeleteAll("PnlDrawS_G")`,
+//--- the whole family gone at once.
+//--- MEASURED, EURUSD,H1 2026-10-01 10:14, Style tab: panel at (766,148) 624x398, and
+//---   PLATE tab=1 ... xy=766,148 with the row's seats at 220/269/318/367 (w 41/45/37/37)
+//---   [drawstrip] dismiss click at 1126,230 travel=0 obj="Rectangle 320"
+//--- 230-148 = 82, inside the tab buttons' band (gy+65..gy+89); 1126-766 = 360, the 8px
+//--- GAP between tab 2 (ends 359) and tab 3 (starts 367) — the track, the one place the
+//--- hit test declines by design. The panel was torn down and came back with its head,
+//--- its tab row and its foot gone: the report «خود تب و دکمه حذف و غیره دیده نمیشه».
+//--- ONE owner, and it reads the panel's own numbers (`s_dsGEX/s_dsGEY/s_dsGearW0/
+//--- s_dsGearH`), the same rect `DrawStripPointInside` and `DrawStripGearHit` already
+//--- read. THE HEAD IS EXCLUDED: `DrawStripGearGripAt` is the panel's carry and needs
+//--- the press left tracked, so the head's own band stays the carry's (P-DRAW-85).
+bool DrawStripGearSurfaceAt(const int mx, const int my)
+{
+   if(!s_dsOpen || s_dsGear == 0) return false;
+   if(s_dsGearW0 <= 0 || s_dsGearH <= 0) return false;
+//--- ONE owner, ONE number. This is the same rect `DrawStripPointInside` answers for
+//--- the panel (DrawStrip_Base.mqh:301-303) and it must carry the SAME margin: that
+//--- function is the one the release's dismissal asks (`DrawStripPointInside`, router
+//--- :988), and this one is the one that decides whether the press was spent. A press
+//--- the release would call a dismissal but the press edge did not spend is exactly the
+//--- `ObjectsDeleteAll("PnlDrawS_G")` this rule exists to stop — so both read
+//--- `DSTRIP_SKIN_M + 2`, not two numbers 2px apart. The 2px is P-DRAW-31's air between
+//--- the two surfaces, not a disagreement about where the panel ends.
+int m = DSTRIP_SKIN_M + 2;   // the panel's own skin margin is plate, not chart
+if(mx < s_dsGEX - m || mx > s_dsGEX + s_dsGearW0 + m) return false;
+if(my < s_dsGEY - m || my > s_dsGEY + s_dsGearH + m) return false;
+if(DrawStripGearGripAt(mx, my)) return false;   // the head is the carry's
+return true;
 }
 //--- WHICH surface is under this press? 0 = neither · 1 = the strip's plate ·
 //--- 2 = the settings panel. ONE reader (the carry), so the two gestures can never

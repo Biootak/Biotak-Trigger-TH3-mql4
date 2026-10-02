@@ -60,6 +60,100 @@ const RE_RESOURCE = /^\s*#resource\s+"\\+Files\\+Icons\\+([^"]+)"/gim;
 // the strings a painter actually writes into OBJPROP_BMPFILE.
 const RE_PAINT = /Files\\+Icons\\+([A-Za-z0-9_.+-]+\.bmp)/g;
 
+// ── P-DRAW-106 — THE SIZE TABLE, AGAINST THE FILES ────────────────────────────
+// `DrawStripFaceZ` centres a raster in its cell with `x + (w - DrawStripResW(res))/2`
+// (Biotak/DrawStrip_GearB.mqh:236), so a raster the table does not carry — or
+// carries at the wrong canvas — is painted OFF ITS CELL, silently: the size is a
+// number inside a chain of string tests, so a green compile names nothing.
+// MEASURED 2026-10-01: `pnl_btn_ghost.bmp` (88x44) had no entry and shipped 44px
+// right and 22px below its own foot button (below the plate, off its label, all
+// three buttons), `bk_w`/`bk_style`/`bk_ray` answered 16 for 24x24 canvases, and
+// `gl_pin*`/`gl_textsize*`/`gl_layers*` answered 15 for 26x26 ones. This walks the
+// table OUT OF THE MQL (no second copy of the numbers) and every raster the
+// DrawStrip files name, and refuses any name whose file size the table does not
+// answer.
+const BIOTAK_DIR = path.join(ROOT, 'Biotak');
+const DRAWSTRIP_TABLE = path.join(BIOTAK_DIR, 'DrawStrip_Base.mqh');
+// rasters PAINTED WITH THEIR OWN RECT: `DrawStripSkinBmp` writes XDISTANCE,
+// YDISTANCE, XSIZE and YSIZE itself (the strip's `ds_*` nine-slice and the panel's
+// `pnl_card*` bakes), so the table never sizes them and owes them no entry.
+const RECT_PAINTED = ['ds_', 'pnl_card'];
+
+// STATEMENTS, not lines: a rule may wrap (`if(StringFind(res, "gl_pin") >= 0 ||`
+// on one line, `... return 26;` on the next). That is legal MQL, so the reader
+// splits on `;` and keeps a buffer open across lines — a line-based reader would
+// attribute the FIRST return to both prefixes and then trust a wrong number.
+// P-DRAW-108 (2026-10-01): AND A COMMENT IS NOT CODE. The reader used to keep the
+// `//` tail of every line, so a statement written AFTER a comment on the same line
+// was read as LIVE while the MQL compiler read it as text — the `pnl_cntchip` W rule
+// sat behind `pnl_secdot`'s own `// P-DRAW-71: ...`, so the table answered
+// `DrawStripIconPx`'s 0 for a 28x20 canvas (its count pill painted 14px right and
+// 10px down of its own rect) and this gate answered 28 and passed it. So the
+// comment is dropped before the statement is read.
+function sizeRules(src) {
+  const out = { W: [], H: [], I: [] };
+  let cur = null;
+  let buf = '';
+  for (const raw of src.split(/\r?\n/)) {
+    const cm = raw.indexOf('//');
+    const line = cm >= 0 ? raw.slice(0, cm) : raw;
+    // the DEFINITION, never the call: `int DrawStripResW(...)` starts a row, and
+    // the `{` of this project's style is on the line below it.
+    if (/^\s*int\s+DrawStripResW\s*\(/.test(line)) { cur = 'W'; buf = ''; continue; }
+    if (/^\s*int\s+DrawStripResH\s*\(/.test(line)) { cur = 'H'; buf = ''; continue; }
+    if (/^\s*int\s+DrawStripIconPx\s*\(/.test(line)) { cur = 'I'; buf = ''; continue; }
+    if (!cur) continue;
+    buf += ' ' + line;
+    while (buf.includes(';')) {
+      const stmt = buf.slice(0, buf.indexOf(';'));
+      buf = buf.slice(buf.indexOf(';') + 1);
+      const pfx = [...stmt.matchAll(/StringFind\(res,\s*"([^"]+)"/g)].map((m) => m[1]);
+      const v = Number((stmt.match(/\breturn\s+(\d+)/) || [])[1]);
+      if (pfx.length && !Number.isNaN(v)) out[cur].push({ pfx, v });
+    }
+  }
+  return out;
+}
+
+// the table's answer for one name: the FIRST rule whose prefix it carries; the
+// `DrawStripIconPx` chain is the fallback, exactly as the MQL reads it.
+function tableSize(rules, name, dim) {
+  for (const r of dim === 'W' ? rules.W : rules.H) {
+    if (r.pfx.some((p) => name.includes(p))) return r.v;
+  }
+  for (const r of rules.I) {
+    if (r.pfx.some((p) => name.includes(p))) return r.v;
+  }
+  return 0;
+}
+
+// BITMAPINFOHEADER: width u32 at 18, height i32 at 22 (negative = top-down).
+function bmpCanvas(file) {
+  const b = fs.readFileSync(file);
+  return { w: b.readUInt32LE(18), h: Math.abs(b.readInt32LE(22)) };
+}
+
+function stripSizeDrift() {
+  const rules = sizeRules(fs.readFileSync(DRAWSTRIP_TABLE, 'utf8'));
+  const names = new Set();
+  for (const f of fs.readdirSync(BIOTAK_DIR)) {
+    if (!/^DrawStrip.*\.mqh$/.test(f)) continue;
+    const s = fs.readFileSync(path.join(BIOTAK_DIR, f), 'utf8');
+    for (const m of s.matchAll(/Files\\+Icons\\+([A-Za-z0-9_.+-]+\.bmp)/g)) names.add(m[1]);
+  }
+  const bad = [];
+  for (const n of names) {
+    if (RECT_PAINTED.some((p) => n.startsWith(p))) continue;
+    const file = path.join(ICONS, n);
+    if (!fs.existsSync(file)) continue;   // the declared/on-disk check owns this
+    const { w, h } = bmpCanvas(file);
+    const tw = tableSize(rules, n, 'W');
+    const th = tableSize(rules, n, 'H');
+    if (tw !== w || th !== h) bad.push({ n, w, h, tw, th });
+  }
+  return { checked: names.size, bad };
+}
+
 function audit(entryRel) {
   const entryAbs = path.join(ROOT, entryRel);
   if (!fs.existsSync(entryAbs)) {
@@ -104,6 +198,20 @@ function audit(entryRel) {
 function main() {
   const entries = process.argv.length > 2 ? process.argv.slice(2) : DEFAULT_ENTRIES;
   let failed = false;
+
+  const drift = stripSizeDrift();
+  if (drift.bad.length === 0) {
+    console.log(
+      `[PASS] raster size table - ${drift.checked} raster(s) the DrawStrip names, ` +
+        `each answered at its file's own canvas`
+    );
+  } else {
+    failed = true;
+    console.log(`[FAIL] raster size table - DrawStripFaceZ would place these off their cell:`);
+    for (const b of drift.bad) {
+      console.log(`         ${b.n}  file ${b.w}x${b.h}  table ${b.tw}x${b.th}`);
+    }
+  }
 
   for (const e of entries) {
     const r = audit(e);

@@ -170,42 +170,73 @@ bool DrawStripMoreIsCur(const int r)
    return false;
 }
 
-//--- P-DRAW-13: the gear panel's layout. Tabs after content width is fixed
-//--- (DSTRIP_GEAR_W); grids wrap inside it, lists are full-width. Returns the
-//--- y below the block (foot included). painters read the same arrays.
-int DrawStripGearTabs()
+//--- P-DRAW-117 (2026-10-01) — THE GROUPS, AND THEY ARE ROWS NOW.
+//--- The five seats are the same five the tab row offered (same ids, same
+//--- conditions, same per-kind memory) — what changed is that a group is a 42px
+//--- ROW of the card's own grid: an icon, its name, and the value it currently
+//--- holds. The list is built once per layout, and the walk, the paint, the hit
+//--- test and the tool all read THIS answer — "which groups does this kind have"
+//--- has exactly one owner, the same way the tab list did.
+int DrawStripGearGroups()
 {
    int n = 0;
-   s_dsGearTab[n + 1] = DSTRIP_GEAR_PAINT; n++;
-   s_dsGearTab[n + 1] = DSTRIP_GEAR_STYLE; n++;
-   if(DrawKindHasLevels(s_dsKind)) { s_dsGearTab[n + 1] = DSTRIP_GEAR_LEVELS; n++; }
-   else if(s_dsKind == DK_TEXT || s_dsKind == DK_ARROW) { s_dsGearTab[n + 1] = DSTRIP_GEAR_MARK; n++; }
-   s_dsGearTab[n + 1] = DSTRIP_GEAR_TPL; n++;
-   s_dsGearTab[n + 1] = DSTRIP_GEAR_STRIP; n++;
-   s_dsGearTab[0] = n;
+   s_dsGearGrp[n + 1] = DSTRIP_GEAR_PAINT; n++;
+   s_dsGearGrp[n + 1] = DSTRIP_GEAR_STYLE; n++;
+   if(DrawKindHasLevels(s_dsKind)) { s_dsGearGrp[n + 1] = DSTRIP_GEAR_LEVELS; n++; }
+   else if(s_dsKind == DK_TEXT || s_dsKind == DK_ARROW) { s_dsGearGrp[n + 1] = DSTRIP_GEAR_MARK; n++; }
+   s_dsGearGrp[n + 1] = DSTRIP_GEAR_TPL; n++;
+   s_dsGearGrp[n + 1] = DSTRIP_GEAR_STRIP; n++;
+   s_dsGearGrp[0] = n;
    if(s_dsGear != 0)
    {
       bool ok = false;
-      for(int i = 1; i <= n; i++) if(s_dsGearTab[i] == s_dsGear) ok = true;
-      if(!ok) s_dsGear = s_dsGearTab[1];
+      for(int i = 1; i <= n; i++) if(s_dsGearGrp[i] == s_dsGear) ok = true;
+      if(!ok) s_dsGear = s_dsGearGrp[1];
    }
    return n;
 }
-string DrawStripGearTabText(const int tab)
+string DrawStripGearGroupText(const int gid)
 {
-   if(tab == DSTRIP_GEAR_PAINT) return "Paint";
-   if(tab == DSTRIP_GEAR_STYLE) return "Style";
-   if(tab == DSTRIP_GEAR_LEVELS) return "Levels";
-   if(tab == DSTRIP_GEAR_MARK) return (s_dsKind == DK_ARROW ? "Mark" : "Text");
-   // P-DRAW-65: the two housekeeping tabs wear their short names — with five tabs
-   // on a 312 plate the long pair was 45px of the 280 content (B-07).
-   if(tab == DSTRIP_GEAR_TPL) return "Look";
-   if(tab == DSTRIP_GEAR_STRIP) return "Row";
+   //--- P-DRAW-117: the two look groups wear the word their content is (the old
+   //--- `Paint`/`Style` named the retired tab row, not the settings under them).
+   if(gid == DSTRIP_GEAR_PAINT) return "Color";
+   if(gid == DSTRIP_GEAR_STYLE) return "Stroke";
+   if(gid == DSTRIP_GEAR_LEVELS) return "Levels";
+   if(gid == DSTRIP_GEAR_MARK) return (s_dsKind == DK_ARROW ? "Mark" : "Text");
+   if(gid == DSTRIP_GEAR_TPL) return "Look";
+   if(gid == DSTRIP_GEAR_STRIP) return "Row";
+   return "";
+}
+string DrawStripGearGroupRes(const int gid)
+{
+   if(gid == DSTRIP_GEAR_PAINT) return "::Files\\Icons\\gl_droplet_m.bmp";
+   if(gid == DSTRIP_GEAR_STYLE) return "::Files\\Icons\\bk_w2.bmp";
+   if(gid == DSTRIP_GEAR_LEVELS) return "::Files\\Icons\\bk_levels.bmp";
+   if(gid == DSTRIP_GEAR_MARK) return "::Files\\Icons\\bk_glyph.bmp";
+   if(gid == DSTRIP_GEAR_TPL) return "::Files\\Icons\\gl_template_m.bmp";
+   if(gid == DSTRIP_GEAR_STRIP) return "::Files\\Icons\\bk_more.bmp";
+   return "";
+}
+string DrawStripGearGroupTip(const int gid)
+{
+   string nm = DrawStripGearGroupText(gid);
+   if(gid == DSTRIP_GEAR_PAINT)
+      return nm + " — the border and the interior; click the group to fold it away";
+   if(gid == DSTRIP_GEAR_STYLE)
+      return nm + " — width, line style, shape and layer; click to open";
+   if(gid == DSTRIP_GEAR_LEVELS)
+      return nm + " — which levels the held drawing shows; click to open";
+   if(gid == DSTRIP_GEAR_MARK)
+      return nm + " — the mark's own face; click to open";
+   if(gid == DSTRIP_GEAR_TPL)
+      return nm + " — the saved looks of this tool; click to open";
+   if(gid == DSTRIP_GEAR_STRIP)
+      return nm + " — which cells the strip's quick row shows; click to open";
    return "";
 }
 bool DrawStripGearGridChips(const int slot, const int count)
 {
-   int cw = DSTRIP_GEAR_W - 2 * DSTRIP_GEAR_PAD;
+   int cw = DrawStripGearCellW();   // P-DRAW-99: the chips sit in ONE column
    int cols = (cw + DSTRIP_GEAR_GRID_GAP) / (DSTRIP_GEAR_CHIP + DSTRIP_GEAR_GRID_GAP);
    if(cols < 1) cols = 1;
    for(int i = 0; i < count; i++)
@@ -224,7 +255,23 @@ bool DrawStripGearGridChips(const int slot, const int count)
 //--- owner returned false and every caller dropped the answer, so a tab that outgrew
 //--- DSTRIP_GLIST_MAX lost rows with no trace — and the plate shrank to match, so the
 //--- panel looked right and was missing settings. Bounded: one static flag, one line.
-bool DrawStripGearRow(const int kind, const int arg)
+//--- P-DRAW-111 (2026-10-01) — A ROW IS PLACED WHERE IT IS DECLARED. The row took no
+//--- `y`: the layout stamped the whole run AFTER the content walk
+//--- (`s_dsGRY[r] = y + r*42`, DrawStripGearLayout), so on a tab that mixes bands and
+//--- rows every row landed BELOW the last band — outside its own band's block range
+//--- (`DrawStripGearSection` registers the block start; `DrawStripGearShiftItems`
+//--- moves an item by the block whose [from,to) CONTAINS its y).
+//--- MEASURED on the Style tab, DK_RECT, narrow y-space (contentTop = 98):
+//--- blocks STROKE@98 · LINE STYLE@182 · SHAPE@266 · LAYER@308, contentEnd = 518.
+//--- The wide pass splits at block 3 (`DrawStripGearPlace`: 84/336, 168/252, 210/210
+//--- — the 210 wins), so every row — including SHAPE's own two, BOXHALF and EXTEND —
+//--- sits in [308,518) and is TRANSLATED into column 1 with LAYER, while SHAPE's
+//--- caption stays alone in column 0. The screenshot is exactly that: a bare SHAPE
+//--- band on the left, and `Extend right` (a SHAPE row) stacked under `LAYER` on the
+//--- right. Only Style mixes the two — Paint, Look, Row, Levels and Mark declare
+//--- their rows after their last band, so for them the stamp and the cursor are the
+//--- same number and the plate does not move a pixel.
+bool DrawStripGearRow(const int kind, const int arg, int &y)
 {
    if(s_dsGRN >= DSTRIP_GLIST_MAX)
    {
@@ -238,7 +285,9 @@ bool DrawStripGearRow(const int kind, const int arg)
       return false;
    }
    s_dsGRKind[s_dsGRN] = kind; s_dsGRArg[s_dsGRN] = arg;
+   s_dsGRY[s_dsGRN] = y;
    s_dsGRN++;
+   y += DSTRIP_GEAR_ROW_H;
    return true;
 }
 //--- stamp row tops for grid cells appended since mark (one block = one call).
@@ -253,6 +302,47 @@ void DrawStripGearGridStamp(const int mark, int &y, const int cols)
       s_dsGGY[g] = y + row * DSTRIP_GEAR_ROW_H;
    }
    y += rows * DSTRIP_GEAR_ROW_H;
+}
+//--- P-DRAW-118 (2026-10-01) — ONE COLOUR ROLE AS THE CARDS' OWN QUICK ROW.
+//--- The row the hand reads is the CARDS' COUNT COLOR strip: the colour this role
+//--- holds NOW, then the palette's first row (`QuickPalColor` = `BioPal` = the
+//--- board's own row 0), then the `+` that opens the board (the HEX field, the 64
+//--- cells, RECENT and opacity). Every cell lands in the SAME grid arrays the paint,
+//--- the hit test and the tool walk (`s_dsGG*` + `s_dsGGC`), so the row has ONE
+//--- owner, and it is placed by the same stamp a chip grid uses — one y for the lot.
+bool DrawStripGearQuickRow(const int slot, int &y)
+{
+   int mark = s_dsGGN;
+   if(s_dsGGN >= DSTRIP_GRID_MAX) return false;
+   {
+      int g = s_dsGGN++;
+      s_dsGGKind[g] = DSTRIP_GRG_PREV;   s_dsGGSlot[g] = slot; s_dsGGArg[g] = -1;
+      s_dsGGW[g]  = DSTRIP_GEAR_SWQ_PREV; s_dsGGH[g] = DSTRIP_GEAR_SWQ_CELL;
+      s_dsGGX[g]  = DSTRIP_GEAR_PAD;      s_dsGGY[g] = -1;
+   }
+   int x = DSTRIP_GEAR_PAD + DSTRIP_GEAR_SWQ_PREV + DSTRIP_GEAR_SWQ_GAP;
+   for(int qi = 0; qi < DSTRIP_GEAR_SWQ_N; qi++)
+   {
+      if(s_dsGGN >= DSTRIP_GRID_MAX) return false;
+      int g = s_dsGGN++;
+      s_dsGGKind[g] = DSTRIP_GRG_SWATCH; s_dsGGSlot[g] = slot; s_dsGGArg[g] = qi;
+      s_dsGGW[g]  = DSTRIP_GEAR_SWQ_CELL; s_dsGGH[g] = DSTRIP_GEAR_SWQ_CELL;
+      s_dsGGC[g]  = QuickPalColor(qi);    // P-DRAW-24: ONE palette
+      s_dsGGX[g]  = x;                    s_dsGGY[g] = -1;
+      x += DSTRIP_GEAR_SWQ_CELL + DSTRIP_GEAR_SWQ_GAP;
+   }
+   if(s_dsGGN >= DSTRIP_GRID_MAX) return false;
+   {
+      int g = s_dsGGN++;
+      s_dsGGKind[g] = DSTRIP_GRG_PLUS;   s_dsGGSlot[g] = slot; s_dsGGArg[g] = -1;
+      s_dsGGW[g]  = DSTRIP_GEAR_SWQ_PLUS; s_dsGGH[g] = DSTRIP_GEAR_SWQ_PLUS;
+      s_dsGGX[g]  = x;                    s_dsGGY[g] = -1;
+   }
+   //--- ONE row: the stamp's own pitch with a column count wider than the run, so
+   //--- every cell of the strip shares this row's y (P-DRAW-111: a row is placed
+   //--- where it is declared, and this one is declared as a single line).
+   DrawStripGearGridStamp(mark, y, DSTRIP_GRID_MAX);
+   return true;
 }
 void DrawStripGearSection(const string text, int &y)
 {
@@ -313,15 +403,56 @@ int DrawStripGearCapW()
 //--- column below is a different fact and keeps its own constant.
 int DrawStripGearColW() { return s_dsGearW - 2 * DSTRIP_GEAR_PAD; }
 
+//--- P-DRAW-99 (2026-09-30) — ONE COLUMN'S OWN CELL, AND IT IS NOT THE BOX.
+//--- `DrawStripGearColW()` above is the tab's WHOLE content box: 280 on a 312 tab,
+//--- 592 on a 624 one. A 624 tab is TWO columns, not one wide column — the wide pass
+//--- walks whole blocks into column 1 at a `DSTRIP_GEAR_COL` (312) pitch, so each
+//--- column is 280 wide with a 32px gutter, and 312 + 280 = 592 closes the box
+//--- exactly. So "how wide is ONE column" is `280` on every tab, and two readers
+//--- were asking the BOX instead and getting two different wrong answers:
+//---   * `DrawStripGearResizeEdits` (this file) re-measured a moved field against
+//---     592, so the Levels tab's `add a level` was an OBJ_EDIT 592 wide starting at
+//---     `px + 312` — its right edge `s_dsGEX+920` against a card that ends at
+//---     `s_dsGEX+624`: 296px of live text field painted over the chart.
+//---   * `DrawStripGearHit` (DrawStrip_Base) probed a list row 592 wide while
+//---     `DrawStripGearPaint` gave that same row a 280 cell, so 312px of bare plate
+//---     to the right of the row acted as the row (a click on nothing toggled a
+//---     switch). P-DRAW-90 had already made the FOOT ask `DrawStripGearColW()` and
+//---     named this exact hazard in the comment above it; the rows were the two
+//---     readers it did not reach.
+//--- ONE owner here, read by the field, the row, the chip column and the hit test.
+//--- The narrow tab's answer is unchanged at 280, so no narrow paint moves a pixel.
+int DrawStripGearCellW() { return DSTRIP_GEAR_W - 2 * DSTRIP_GEAR_PAD; }
+
 //--- P-DRAW-30: THE TAB'S CONTENT, built in the NARROW column's own y-space (the
 //--- one every block metric above was written for). The wide pass below never
 //--- re-derives a block, it TRANSLATES whole blocks into a second column.
 void DrawStripGearContent(int &y, bool &levelEdit)
 {
-   int cw = DSTRIP_GEAR_W - 2 * DSTRIP_GEAR_PAD;
+   int cw = DrawStripGearCellW();   // P-DRAW-99: ONE column's cell, the owner
    EDrawKind k = s_dsKind;
    int chipCols = (cw + DSTRIP_GEAR_GRID_GAP) / (DSTRIP_GEAR_CHIP + DSTRIP_GEAR_GRID_GAP);
-   if(s_dsGear == DSTRIP_GEAR_PAINT)
+   //--- P-DRAW-117 (2026-10-01) — THE PANEL IS AN ACCORDION, AND THE GROUP LIST
+   //--- BRACKETS THE OPEN GROUP. The headers above the open one are laid out, then
+   //--- that group's own settings (the chain below, unchanged), then the headers
+   //--- BELOW it — so the open group's rows stand directly under their own header
+   //--- and every other group is one row away, in reading order.
+   //--- Each header OPENS A BLOCK (`DrawStripGearSection`'s own law, P-DRAW-30): "this
+   //--- group and the content under it" is the unit the wide pass balances, so a
+   //--- header can never be translated away from the settings it names.
+   int ng = DrawStripGearGroups();
+   int navAt = 0;
+   for(int gn = 0; gn < ng; gn++) if(s_dsGearGrp[gn + 1] == s_dsGear) navAt = gn;
+   for(int gb = 0; gb <= navAt; gb++)
+   {
+      if(s_dsGearBlkN < DSTRIP_GEAR_BLK_MAX) s_dsGearBlkY[s_dsGearBlkN++] = y;
+      if(!DrawStripGearRow(DSTRIP_GRK_GROUP, s_dsGearGrp[gb + 1], y)) return;
+   }
+   //--- a FOLDED group is the list alone: the body is asked for the one id no group
+   //--- can have, so every branch below declines without a second fence (Touch rule
+   //--- 4: the list is still painted — this is not an early return).
+   int gOpen = s_dsGearCollapsed ? -1 : s_dsGear;
+   if(gOpen == DSTRIP_GEAR_PAINT)
    {
       // P-DRAW-44 (2026-09-25) — NO COLOUR GRID HERE. User order: «رنگ و تنظیماتِ
       // استریپ روی همان دو مالکِ کارتها سوار شود». The popover's 60-swatch Material
@@ -334,31 +465,25 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       //--- path the palette cannot offer.
       //--- P-DRAW-75: both fields take the ONE measured label seat, so they align on
       //--- the same x without a guessed 96.
-      //--- Card parity: one band groups COLOR/FILL/Interior, like the cards'
-      //--- own ZONES/GEOMETRY bands (dot + count + hairline).
-      DrawStripGearSection("COLORS", y);
-      int capW = DrawStripGearCapW();
-      //--- P-DRAW-82: THE FIELD IS SIZED FROM THE COLUMN, NOT FROM `cw - seat`.
-      //--- `s_dsGearEditW` was `cw - capW` with `cw` hard-coded 280 — the NARROW
-      //--- column's width — so on a WIDE panel (624, two columns) the field ran
-      //--- 16px past the column's right edge and past the card's own pad. The one
-      //--- number that answers "how wide is this column" is `DrawStripGearColW()`
-      //--- (the content box the wide pass resolved), and that is what the field
-      //--- must measure itself against — the same owner the tab row and the foot
-      //--- already ask.
-      int colW = DrawStripGearColW();
-      DrawStripGearCaptionIn("COLOR", capW, y);
-      s_dsGearEditY[0] = y;
-      s_dsGearEditX[0] = capW;
-      s_dsGearEditW[0] = colW - capW;
-      y += DSTRIP_GEAR_ROW_H;
+      //--- P-DRAW-117: THE BAND IS GONE — the group's own header row carries the
+      //--- word "Color" and its hex, so a COLORS band above COLOR/FILL was the same
+      //--- name twice (and 42px of plate for it). A band survives only where it
+      //--- labels settings the group's name does not: the Style group's STROKE /
+      //--- LINE STYLE / SHAPE / LAYER, and the text group's CAPTION / SIZE.
+      //--- P-DRAW-118 (2026-10-01): THE TWO HEX BOXES ARE GONE. The user's order:
+      //--- «این color fill از همین جا بشه رنگها شو تغییر داد ... کد رنگ چیکارش کنم»
+      //--- — and the answer is the cards' own: a colour is a SWATCH. Each role is a
+      //--- band (the cards' caption line) + the quick row under it, and the exact
+      //--- value lives where it always lived for a precise hand: the board's HEX
+      //--- field, behind the row's `+`. Two surfaces, one colour each, and the
+      //--- panel keeps no second face for either (P-DRAW-44's own ruling, one step
+      //--- further: the box was the LAST duplicate the group still carried).
+      DrawStripGearSection("BORDER", y);
+      DrawStripGearQuickRow(DRAW_SLOT_COLOR, y);
       if(DrawSlotAvailable(k, DRAW_SLOT_FILLCLR))
       {
-         DrawStripGearCaptionIn("FILL", capW, y);
-         s_dsGearEditY[4] = y;
-         s_dsGearEditX[4] = capW;
-         s_dsGearEditW[4] = colW - capW;   // P-DRAW-82: the column's own width
-         y += DSTRIP_GEAR_ROW_H;
+         DrawStripGearSection("FILL", y);
+         DrawStripGearQuickRow(DRAW_SLOT_FILLCLR, y);
       }
       // P-DRAW-65: the interior is the FILL's own switch, so it stands on the tab
       // that owns the two colour seats — one value, one home.
@@ -374,9 +499,9 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       //--- reading DRAWING beside it was a second name for one value (LEVEL 90
       //--- no. 20/22) plus a gold dot and a rule around nothing. One name.
       if(DrawSlotAvailable(k, DRAW_SLOT_FILL))
-         DrawStripGearRow(1, DRAW_SLOT_FILL);
+         DrawStripGearRow(1, DRAW_SLOT_FILL, y);
    }
-   else if(s_dsGear == DSTRIP_GEAR_STYLE)
+   else if(gOpen == DSTRIP_GEAR_STYLE)
    {
       DrawStripGearSection("STROKE", y);
       int mark = s_dsGGN;
@@ -396,24 +521,51 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       DrawStripGearSection("SHAPE", y);
       //--- P-DRAW-64a: the strip's two cells are switches of the DRAWING's own
       //--- geometry, so they stand together — one value, two surfaces.
-      if(DrawSlotAvailable(k, DRAW_SLOT_BOXHALF)) DrawStripGearRow(1, DRAW_SLOT_BOXHALF);
-      if(DrawSlotAvailable(k, DRAW_SLOT_EXTEND))      DrawStripGearRow(1, DRAW_SLOT_EXTEND);
+      if(DrawSlotAvailable(k, DRAW_SLOT_BOXHALF)) DrawStripGearRow(1, DRAW_SLOT_BOXHALF, y);
+      if(DrawSlotAvailable(k, DRAW_SLOT_EXTEND))      DrawStripGearRow(1, DRAW_SLOT_EXTEND, y);
       DrawStripGearSection("LAYER", y);
-      DrawStripGearRow(1, DRAW_SLOT_LOCK);
-      DrawStripGearRow(1, DRAW_SLOT_BACK);
+      DrawStripGearRow(1, DRAW_SLOT_LOCK, y);
+      DrawStripGearRow(1, DRAW_SLOT_BACK, y);
    }
-   else if(s_dsGear == DSTRIP_GEAR_LEVELS)
+   else if(gOpen == DSTRIP_GEAR_LEVELS)
    {
-      DrawStripGearSection("LEVELS", y);
       int nl = DrawStripGearLevelCount();
       //--- P-DRAW-73: a refused row STOPS the loop, so what is left is a prefix of the
       //--- list and the owner has already named the loss in the log.
-      for(int i = 0; i < nl; i++) { if(!DrawStripGearRow(4, i)) break; }
-      DrawStripGearRow(5, 0);
-      DrawStripGearRow(5, 1);
+      //--- P-DRAW-104: BUT THE TWO MANAGEMENT ROWS ARE NOT PART OF THAT BUDGET. The
+      //--- loop below ran to `nl` — up to `DSTRIP_GLIST_MAX` (16), because
+      //--- `DrawStripGearLevelCount` caps the LIST at the same 16 the ROW array holds
+      //--- — and the two rows after it (`All levels on` / `No levels`) were then
+      //--- refused by the very same ceiling. So at 9 common + 7 custom levels the two
+      //--- rows that are the ONLY way to clear the level set in one gesture were
+      //--- simply not built, and the only trace was the one-shot log line: the user
+      //--- lost the ability to turn the fibo's levels off and had to delete them one
+      //--- at a time. The list is the elastic half; reserve its two seats here, where
+      //--- the two mandatory rows are known, rather than raise the array for every
+      //--- tab (the other three tabs build at most 12). Nothing is dropped: a level
+      //--- past the reserve is simply not LISTED, and the drawing keeps it.
+      //--- P-DRAW-117: AND THE GROUP LIST'S OWN HEADERS ARE SPENT SEATS. The list
+      //--- rides the same row array as the headers, so `room` reserves what is
+      //--- already standing (the headers above AND below this group) as well as the
+      //--- two management rows — the P-DRAW-104 defect (a row refused by a ceiling
+      //--- nobody re-derived) re-opened in the new shape.
+      int room = DSTRIP_GLIST_MAX - 2 - s_dsGRN;   // the two rows below are not optional
+      if(room < 0) room = 0;
+      for(int i = 0; i < nl && i < room; i++)
+      {
+         //--- P-DRAW-117: a long list opens a block every DSTRIP_GEAR_LVLBLK rows,
+         //--- so the wide pass can split INSIDE the list (P-DRAW-30's own complaint:
+         //--- a 20-level fibo must not grow one tower) while no header moves away
+         //--- from its content — a header only ever opens a block at a row boundary.
+         if((i % DSTRIP_GEAR_LVLBLK) == 0 && s_dsGearBlkN < DSTRIP_GEAR_BLK_MAX)
+            s_dsGearBlkY[s_dsGearBlkN++] = y;
+         if(!DrawStripGearRow(4, i, y)) break;
+      }
+      DrawStripGearRow(5, 0, y);
+      DrawStripGearRow(5, 1, y);
       levelEdit = true;
    }
-   else if(s_dsGear == DSTRIP_GEAR_MARK)
+   else if(gOpen == DSTRIP_GEAR_MARK)
    {
       if(k == DK_TEXT)
       {
@@ -426,31 +578,34 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       }
       else
       {
-         DrawStripGearSection("MARK", y);
          for(int g = 0; g < DrawStripGlyphCount(); g++)
-            if(!DrawStripGearRow(8, DRAW_SLOT_GLYPH * 256 + g)) break;
+            if(!DrawStripGearRow(8, DRAW_SLOT_GLYPH * 256 + g, y)) break;
       }
    }
-   else if(s_dsGear == DSTRIP_GEAR_TPL)
+   else if(gOpen == DSTRIP_GEAR_TPL)
    {
-      DrawStripGearSection("TEMPLATES", y);
       //--- P-DRAW-76: slot ids (see the more-popover's builder) — a hole never shifts the list.
       for(int i = 0; i < DRAW_PRESET_MAX; i++)
-      { if(DrawPresetName(k, i) == "") continue; if(!DrawStripGearRow(2, i)) break; }
-      DrawStripGearRow(3, 0);
-      DrawStripGearRow(7, 0);
+      { if(DrawPresetName(k, i) == "") continue; if(!DrawStripGearRow(2, i, y)) break; }
+      DrawStripGearRow(3, 0, y);
+      DrawStripGearRow(7, 0, y);
    }
-   else if(s_dsGear == DSTRIP_GEAR_STRIP)
+   else if(gOpen == DSTRIP_GEAR_STRIP)
    {
-      DrawStripGearSection("QUICK ROW", y);
       for(int s = 0; s < DRAW_SLOT_N; s++)
       {
          if(s == DRAW_SLOT_MORE) continue;
          if(!DrawSlotAvailable(k, s)) continue;
-         if(!DrawStripGearRow(6, s)) break;
+         if(!DrawStripGearRow(6, s, y)) break;
       }
-      if(DrawKindHasLevels(k)) DrawStripGearRow(6, DRAW_SLOT_MORE);
-      DrawStripGearRow(5, 2);
+      if(DrawKindHasLevels(k)) DrawStripGearRow(6, DRAW_SLOT_MORE, y);
+      DrawStripGearRow(5, 2, y);
+   }
+   //--- P-DRAW-117: the groups BELOW the open one close the accordion.
+   for(int ga = navAt + 1; ga < ng; ga++)
+   {
+      if(s_dsGearBlkN < DSTRIP_GEAR_BLK_MAX) s_dsGearBlkY[s_dsGearBlkN++] = y;
+      if(!DrawStripGearRow(DSTRIP_GRK_GROUP, s_dsGearGrp[ga + 1], y)) return;
    }
 }
 //--- P-DRAW-30: move every item whose y sits inside one block into its column.
@@ -484,15 +639,19 @@ void DrawStripGearShiftItems(const int yFrom, const int yTo, const int shift, co
 //---     stays at the top of the left column. Without this a 20-level fibo would
 //---     still grow one 20-row tower — the very complaint this rule answers.
 //--- P-DRAW-82: A FIELD'S WIDTH IS A DERIVED RECT, SO IT IS RE-DERIVED WHEN THE
-//--- COLUMN CHANGES. `DrawStripGearContent` measured it against the narrow
-//--- column (280) because that is the only width known while the content is still
-//--- being built; the wide pass then moved the same field into a 592px column and
-//--- nothing re-measured it — so on a wide tab every hex field ran 312px past its
-//--- column and off the card. One pass, on the two paths that change the width,
-//--- and only over the five edit slots.
+//--- COLUMN CHANGES. `DrawStripGearContent` measures it against the narrow column
+//--- (280) because that is the only width known while the content is still being
+//--- built; the wide pass then moves the same field into a 592px BOX holding two
+//--- 280 columns. One pass, on the two paths that change the width, and only over
+//--- the five edit slots.
+//--- P-DRAW-99: AND THE PASS MEASURES THE COLUMN, NOT THE BOX. It asked
+//--- `DrawStripGearColW()`, which is the whole 592 content box, so a field the wide
+//--- pass had just moved into column 1 was re-measured to 592 - 0 and hung 296px
+//--- past the card. One owner, `DrawStripGearCellW()` (280 on every tab), and the
+//--- narrow answer is identical.
 void DrawStripGearResizeEdits()
 {
-   int colW = DrawStripGearColW();
+   int colW = DrawStripGearCellW();
    for(int e = 0; e < 5; e++)
       if(s_dsGearEditY[e] >= 0)
       {
@@ -527,9 +686,15 @@ void DrawStripGearPlace(const int contentTop, int &contentEnd)
    //--- (Style, 10 content rows: 4 bands + 2 chip rows + 4 switches) against
    //--- `pnl_cardWtop.bmp 652 70` and a request of `gw + 28 = 340`. Style is reachable
    //--- on every rectangle/line kind, so the user saw a half-card plate.
-   //--- The card set is the law: narrow only while the narrow plate's OWN card exists,
-   //--- i.e. at most `WIDE_ROWS - 1` content rows. Read by this one owner.
-   if(contentEnd - contentTop <= (DSTRIP_GEAR_WIDE_ROWS - 1) * DSTRIP_GEAR_ROW_H) return;
+   //--- The card set is the law: narrow only while the narrow plate's OWN card exists.
+   //--- P-DRAW-117 (2026-10-01): AND THE COUNT IS THE ROWS THEMSELVES NOW. With the
+   //--- tab band retired the body starts at the head (`contentTop` = 56) and the
+   //--- height is `56 + 42R + 48` = `104 + 42R`, i.e. `cardN = R` — so R rows need
+   //--- card R and the ceiling is exactly `DSTRIP_GEAR_WIDE_ROWS` (10) rows, one more
+   //--- than the `WIDE_ROWS - 1` the tab build could fit (it carried the tab row as
+   //--- its extra cell). Read by this one owner; `tools/check-gear-panel.py` reads the
+   //--- expression back out of this line against the bakes on disk.
+   if(contentEnd - contentTop <= DSTRIP_GEAR_WIDE_ROWS * DSTRIP_GEAR_ROW_H) return;
    if(s_dsGearBlkN >= 2)
    {
       int split = -1, bestH = 0;
@@ -572,19 +737,13 @@ int DrawStripGearLayout(int y0)
 {
    int y = y0;
    s_dsGearHeadY = y0;
-   int nt = DrawStripGearTabs();
-   int total = 0;
-   for(int t = 0; t < nt && t < DSTRIP_GEAR_TAB_MAX; t++)
-      total += DSTRIP_TAB_PAD + PnlTextW(DrawStripGearTabText(s_dsGearTab[t + 1]), 8);
-   if(nt > 1) total += (nt - 1) * DSTRIP_TAB_GAP;
-   s_dsGearTabsY = y + DSTRIP_GEAR_HEAD_H;
-   for(int t2 = 0; t2 < nt && t2 < DSTRIP_GEAR_TAB_MAX; t2++)
-   {
-      int tab = s_dsGearTab[t2 + 1];
-      s_dsGearTabW[t2] = DSTRIP_TAB_PAD + PnlTextW(DrawStripGearTabText(tab), 8);
-      s_dsGearTabX[t2] = 0;   // centred below, once the panel's own width is known
-   }
-   y += DSTRIP_GEAR_HEAD_H + DSTRIP_GEAR_ROW_H;
+   DrawStripGearGroups();   // P-DRAW-117: the group list IS the panel's nav now
+   //--- P-DRAW-117 (2026-10-01): THE TAB BAND IS RETIRED, so the panel's first
+   //--- cell is the group list's own first row and the body starts at the head's
+   //--- bottom edge (56) — one 42px row higher than the tab build. The plate's own
+   //--- arithmetic follows: gh = 104 + 42*R with `cardN = R` (DrawStripGearPlate),
+   //--- so the narrow ceiling is R <= DSTRIP_GEAR_WIDE_ROWS rows (DrawStripGearPlace).
+   y += DSTRIP_GEAR_HEAD_H;
    int contentTop = y;
    s_dsGRN = 0; s_dsGGN = 0; s_dsGearSecN = 0; s_dsGearBlkN = 0;
    for(int e0 = 0; e0 < 5; e0++)
@@ -604,8 +763,13 @@ int DrawStripGearLayout(int y0)
    s_dsGearW = DSTRIP_GEAR_W;
    bool levelEdit = false;
    DrawStripGearContent(y, levelEdit);
-   for(int r = 0; r < s_dsGRN; r++) { s_dsGRY[r] = y + r * DSTRIP_GEAR_ROW_H; s_dsGRCol[r] = 0; }
-   y += s_dsGRN * DSTRIP_GEAR_ROW_H;
+   //--- P-DRAW-111: the row run is NO LONGER stamped here. `DrawStripGearRow` took the
+   //--- content cursor by reference and placed each row where it was declared, so this
+   //--- loop would have re-written every y the same way it did before — and that second
+   //--- write is the defect: a mixed tab's rows came back to a contiguous run below the
+   //--- last band, outside the block that owns their header. The column reset stays
+   //--- (DrawStripGearPlace owns the same value and runs on every path).
+   for(int r = 0; r < s_dsGRN; r++) s_dsGRCol[r] = 0;
    if(levelEdit)
    {
       s_dsGearEditY[1] = y;
@@ -618,18 +782,10 @@ int DrawStripGearLayout(int y0)
    }
    int contentEnd = y;
    DrawStripGearPlace(contentTop, contentEnd);
-    // P-DRAW-36: the tab row centres on the width THIS pass just decided — the wide
-    // pass has already run and owns s_dsGearW. `s_dsGearW0` is written by the CALLER
-    // after this function returns, so reading it here answered with the previous
-    // panel's width: 0 on a fresh open, which pinned the row to the left edge.
-    // P-DRAW-74: and on the content box's ONE owner, which the foot asks too.
-    int gcw = DrawStripGearColW();
-   int tx = DSTRIP_GEAR_PAD + MathMax(0, (gcw - total) / 2);
-   for(int t3 = 0; t3 < nt && t3 < DSTRIP_GEAR_TAB_MAX; t3++)
-   {
-      s_dsGearTabX[t3] = tx;
-      tx += s_dsGearTabW[t3] + DSTRIP_TAB_GAP;
-   }
+   //--- P-DRAW-117: the tab row owned this pass's tail (`s_dsGearTabX/W` and the
+   //--- rail it centred on). With the groups as rows there is no rail to seat: the
+   //--- foot is the only thing left to place, and the wide pass has already decided
+   //--- the width every reader of it asks.
    s_dsGearFootY = contentEnd;
    y = contentEnd + DSTRIP_GEAR_FOOT_H;
    //--- P-DRAW-78: the height reads the CARDS' law now (56 + n*42 + 48), not the
@@ -720,7 +876,16 @@ void DrawStripLayout()
       s_dsPN = n;
       //--- the STRIP stays the compact quick row: the board never widens its
       //--- plate (P-DRAW-48) and never grows it taller either.
-      DrawStripBoardPlace();
+      //--- P-DRAW-93 (2026-09-30): AND THE BOARD IS PLACED AT THE END OF THIS PASS,
+      //--- never here. `DrawStripBoardPlace` scores its four candidates against the
+      //--- strip's own rect (`s_dsW`/`s_dsH`) and the panel's (`s_dsGearW0`/`s_dsGearH`)
+      //--- — and this line stood ABOVE the writes that produce them (761-762, 754-759),
+      //--- so it scored against the PREVIOUS pass's plate: open the width list (or the
+      //--- more-popover) and tap the colour seat, and the fresh board was placed 2px
+      //--- under a strip that was 200px taller a frame ago — detached from its plate, or
+      //--- clamped to the window's edge on a small chart. Same order defect as P-DRAW-91
+      //--- (the panel's column width), one pass earlier. The call moved to the layout's
+      //--- tail; `tools/stale_state_check.js` is what reads it.
    }
    else if(s_dsPicker != DSTRIP_PICK_NONE)
    {
@@ -760,6 +925,14 @@ void DrawStripLayout()
    }
    s_dsW = maxW;
    s_dsH = y - DSTRIP_GAP + DSTRIP_PAD;
+   //--- P-DRAW-93: the board's placement is the LAST thing this pass does, so every
+   //--- rect it scores against is THIS frame's: the strip's own (just written above)
+   //--- and the panel's (`s_dsGearW0`/`s_dsGearH`, written just above that). Nothing
+   //--- below depends on `s_dsBX/s_dsBY`, and a colour board is the one case that has
+   //--- a rect to place — the guard is the picker's own seat, exactly like the branch
+   //--- that computed `s_dsBW/s_dsBH`.
+   if(DrawStripIsColorSlot(s_dsPicker))
+      DrawStripBoardPlace();
 }
 //--- popover list-row text, one owner for layout and paint.
 string DrawStripPopRowText(const int r)
@@ -916,16 +1089,28 @@ bool DrawStripGearObjectsPurge()
    bool dirty = false;
    //--- One prefix wipe when the panel owned anything: the plate rebuilds on the
    //--- next paint while the panel is open, and stays gone when it is shut.
-   if(ObjectFind(0, DrawStripGearTabName(0)) >= 0 || ObjectFind(0, DrawStripGearBgName()) >= 0
-      || ObjectFind(0, "PnlDrawS_Gtop") >= 0)
+   //--- P-DRAW-117: the probe is the FAMILY, not one spelling — a chart painted by
+   //--- the tab build carries `GT0..GT4`, the `GTrack` bed and the `GU` underline,
+   //--- and none of the three is painted by this build any more, so the owner that
+   //--- takes the panel down must recognise the OLD names as evidence the family is
+   //--- on the chart (Touch rule 2: the rename ships with the sweep).
+   if(ObjectFind(0, DrawStripRowName(0)) >= 0 || ObjectFind(0, DrawStripGearBgName()) >= 0
+      || ObjectFind(0, "PnlDrawS_Gtop") >= 0 || ObjectFind(0, "PnlDrawS_GT0") >= 0
+      || ObjectFind(0, "PnlDrawS_GTrack") >= 0 || ObjectFind(0, "PnlDrawS_GU") >= 0)
    { ObjectsDeleteAll(0, "PnlDrawS_G", -1, -1); dirty = true; return dirty; }
-   for(int t = 0; t < 5; t++)
-      if(ObjectFind(0, DrawStripGearTabName(t)) >= 0)
-      { ObjectDelete(0, DrawStripGearTabName(t)); dirty = true; }
-   if(ObjectFind(0, DrawStripGearTrackName()) >= 0)
-   { ObjectDelete(0, DrawStripGearTrackName()); dirty = true; }
-   if(ObjectFind(0, DrawStripGearTabLineName()) >= 0)
-   { ObjectDelete(0, DrawStripGearTabLineName()); dirty = true; }
+   //--- the requested-tab-room of a chart that predates the accordion: the group
+   //--- row is a ROW now (`DrawStripRowName`), so these five are orphans by the same
+   //--- ruling as their bed and underline — deleted here so a half-upgraded chart
+   //--- cannot keep a second nav under the new one.
+   for(int t = 0; t < DSTRIP_GEAR_GRP_MAX; t++)
+   {
+      string tn = "PnlDrawS_GT" + IntegerToString(t);
+      if(ObjectFind(0, tn) >= 0) { ObjectDelete(0, tn); dirty = true; }
+   }
+   if(ObjectFind(0, "PnlDrawS_GTrack") >= 0)
+   { ObjectDelete(0, "PnlDrawS_GTrack"); dirty = true; }
+   if(ObjectFind(0, "PnlDrawS_GU") >= 0)
+   { ObjectDelete(0, "PnlDrawS_GU"); dirty = true; }
    string hn = DrawStripGearHeadName("TB"); if(ObjectFind(0, hn) >= 0) { ObjectDelete(0, hn); dirty = true; }
    hn = DrawStripGearHeadName("HR"); if(ObjectFind(0, hn) >= 0) { ObjectDelete(0, hn); dirty = true; }
    hn = DrawStripGearHeadName("MK"); if(ObjectFind(0, hn) >= 0) { ObjectDelete(0, hn); dirty = true; }
@@ -971,6 +1156,10 @@ bool DrawStripGearObjectsPurge()
       { ObjectDelete(0, DrawStripRowStateName(r)); dirty = true; }
       if(ObjectFind(0, DrawStripRowSepName(r)) >= 0)
       { ObjectDelete(0, DrawStripRowSepName(r)); dirty = true; }
+      //--- P-DRAW-117: and the group row's own DIGEST — the value its name does not
+      //--- carry. A member of the row family, so it is deleted by the row's owner.
+      if(ObjectFind(0, DrawStripRowDigestName(r)) >= 0)
+      { ObjectDelete(0, DrawStripRowDigestName(r)); dirty = true; }
    }
     for(int f = 0; f < DSTRIP_GEAR_FOOT_N; f++)
     {

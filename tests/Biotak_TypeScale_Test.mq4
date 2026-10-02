@@ -78,6 +78,9 @@
 #endif
 #include "..\Biotak\ObjectFunctions.mqh"
 #include "..\Biotak\DrawToolbar.mqh"
+// P-DRAW-116: the card surface's own number table, in the SAME seat the entry
+// gives it (between the toolbar and the strip).
+#include "..\Biotak\CardMetrics.mqh"
 #include "..\Biotak\DrawStrip.mqh"
 #include "..\Biotak\ExtendedDrawingFunctions.mqh"
 #include "..\Biotak\ComboEngine.mqh"

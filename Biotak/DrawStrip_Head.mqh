@@ -242,14 +242,29 @@
 #define DSTRIP_PICK_CELL  32
 #define DSTRIP_PICK_GAP    8
 #define DSTRIP_GRID_MAX  72    // option cells in one gear grid block (the picker's 64 fits)
-#define DSTRIP_GLIST_MAX 16    // list rows in one gear block
-#define DSTRIP_GEAR_W   312
-#define DSTRIP_GEAR_PAD  16
-#define DSTRIP_GEAR_HEAD_H 56
-#define DSTRIP_GEAR_ROW_H  42
+#define DSTRIP_GLIST_MAX 24    // list rows in one gear block — P-DRAW-117: the
+                               // GROUP HEADERS ride the same array as the open
+                               // group's rows, so a fibo's 14 levels + both
+                               // management rows + five headers (21) must fit
+//--- P-DRAW-116 (2026-10-01) — THE PANEL'S NUMBERS ARE THE CARDS' NUMBERS. These
+//--- five were the panel's own literals, each equal to the card's own by hand:
+//--- 312 / 16 / 56 / 42 / 48 = PNL_WEL / PNL_PAD_X / PNL_HEAD_H / PNL_ROW_H /
+//--- PNL_FOOT_H. They are now ALIASES of it — same value today (so not one pixel of
+//--- any surface moves), and no longer two tables that can part company the first time
+//--- either side is retuned. The table lives in `CardMetrics.mqh`, which the entry
+//--- includes ABOVE this file; that is the only reason a `PNL_*` name can be read here
+//--- at all (DrawStrip is include 99, BiotakPanels 118).
+//--- DEPENDENTS, named as the Touch rule asks: `DSTRIP_GEAR_W` 10 reads / 5 files ·
+//--- `DSTRIP_GEAR_PAD` 17/5 · `DSTRIP_GEAR_HEAD_H` 11/6 · `DSTRIP_GEAR_ROW_H` 27/6 ·
+//--- `DSTRIP_GEAR_FOOT_H` 4/3 · `DSTRIP_GEAR_LBL_PT` 4/3 · `DSTRIP_SKIN_M` 35/6 —
+//--- every one of them keeps its name and its value; only the number's owner changed.
+#define DSTRIP_GEAR_W   PNL_WEL
+#define DSTRIP_GEAR_PAD  PNL_PAD_X
+#define DSTRIP_GEAR_HEAD_H PNL_HEAD_H
+#define DSTRIP_GEAR_ROW_H  PNL_ROW_H
 #define DSTRIP_GEAR_TB_H   7   // the head's own top bar, at the head's top edge
 #define DSTRIP_GEAR_HR_H   5   // ...and the hair that CLOSES it (P-DRAW-73)
-#define DSTRIP_GEAR_FOOT_H 48   // pnl_card* parity: PNL_FOOT_H=48 (was 42)
+#define DSTRIP_GEAR_FOOT_H PNL_FOOT_H   // P-DRAW-116: the card's own footer (was 42)
 //--- P-DRAW-74 (2026-09-28): the foot carries COMMANDS. Its Close stood beside the
 //--- header's own X and wore the panel's one FILLED block, so the loudest thing on a
 //--- card whose job is to change a drawing was the way out of it (C-03).
@@ -271,22 +286,57 @@
 //--- stood here is retired, and with it every reader.
 #define DSTRIP_GEAR_FOOT_BW 72   // the formula's floor; the measured width wins above it
 #define DSTRIP_GEAR_FOOT_GAP 8
+//--- P-DRAW-107 (2026-10-01): the ring's advance inside a foot button — 15px of art
+//--- plus its gap, i.e. the cards' own `bx+12 -> bx+32` relation (`32 - 12`), kept
+//--- as ONE number. The ring's seat (DrawStripFootGlyphX) and the word's
+//--- (DrawStripFootLabelX) both read it, so the pair cannot drift apart on a plate
+//--- whose width is measured (`DrawStripFootBw`) rather than fixed.
+#define DSTRIP_GEAR_FOOT_GLYPH_ADV 20
 #define DSTRIP_GEAR_GRID_GAP 8
 #define DSTRIP_GEAR_SWATCH 28
 #define DSTRIP_GEAR_CHIP   48   // 5 chips per row in 280px content (5*48 + 4*8 = 272 < 280)
 #define DSTRIP_GEAR_CHIP_H 32
 #define DSTRIP_GEAR_EDIT_H 22   // P-DRAW-66: the board's own field height (DSTRIP_POP_EDIT_H)
-//--- P-DRAW-71 — THE TAB ROW IS THE CARDS' OWN `.tabs`: a 24px control on its own
-//--- 42px row, a 4px micro seam, a 12px caption inset and a 2px accent underline
-//--- under the active tab (BiotakPanels `kind==2` / `IsTabRow`). The segmented pill
-//--- this panel wore — a filled track, a gold chip and a #333C4C rim on every
-//--- unselected tab — was its own invention and read as a row of boxes.
-#define DSTRIP_TAB_H     24
-#define DSTRIP_TAB_GAP   4
-#define DSTRIP_TAB_PAD   12
-#define DSTRIP_TAB_UL    2
+//--- P-DRAW-117 (2026-10-01) — THE PANEL IS AN ACCORDION, AND A GROUP IS A ROW.
+//--- The horizontal tab row (DSTRIP_TAB_H/GAP/PAD/UL and the GTrack bed under it)
+//--- is RETIRED: the groups are first-class 42px ROWS now, each standing on the
+//--- card's own row grid with its icon, its name and the value it currently holds,
+//--- and the open group's settings hang directly under its own header. The retired
+//--- spellings are deleted by the panel's own purge, so a chart painted by the tab
+//--- build cannot leave a `GT*`/`GTrack`/`GU` behind (Touch rule 2).
 #define DSTRIP_SEC_CNT_W 24    // P-DRAW-71: a band's count pill (the cards' .cnt)
 #define DSTRIP_SEC_CNT_H 16    // P-DRAW-73: the bake's own height (cntChipSkin 24x16)
+//--- the group row (DSTRIP_GRK_GROUP) and its own two seats: the value DIGEST is
+//--- right-aligned `DSTRIP_GEAR_DG_PAD` in from the cell, and the label is fitted
+//--- against it with the row's own gap between.
+#define DSTRIP_GRK_GROUP  9    // gear row kind 9 = a group header (opens/collapses)
+#define DSTRIP_GEAR_DG_PAD 12  // the digest's own inset from the cell's right edge
+//--- P-DRAW-118 (2026-10-01) — THE COLOR ROWS ARE THE CARDS' OWN QUICK ROW.
+//--- User order: «این color fill از همین جا بشه رنگها شو تغییر داد ... کد رنگ
+//--- چیکارش کنم ... پنل تنظیمات اصلی ... مثل همون بکنش ... یک جا یک پارچه باشه».
+//--- The panel's two hex BOXES are gone: a colour is chosen by a SWATCH, the way
+//--- the cards' COUNT COLOR row does it — the colour the row holds now, then the
+//--- palette's own first row (`QuickPalColor(i)` = `BioPal(i)` = `BioPickColor(0,i)`,
+//--- the cards' same eight), then a `+` that opens the ONE picker: the strip's
+//--- colour board, which keeps the HEX field, the 64-cell page, RECENT and the
+//--- opacity bar. One place for a colour, and its face is a swatch (P-DRAW-24).
+//--- GEOMETRY, one 42px row of the strip's own 280 cell: 24 + 4 + 8*24 + 7*4 + 4 +
+//--- 22 = 274, from `DSTRIP_GEAR_PAD` (16) → +290, inside the plate's 296. The
+//--- COUNT is the CARDS' own `PNL_QSW_N`, not a second number.
+#define DSTRIP_GEAR_SWQ_N    PNL_QSW_N    // 8 — the cards' own quick count
+#define DSTRIP_GEAR_SWQ_CELL 24           // ds_swatch24's native canvas
+#define DSTRIP_GEAR_SWQ_GAP  4
+#define DSTRIP_GEAR_SWQ_PREV 24           // the block wearing the colour this row owns
+#define DSTRIP_GEAR_SWQ_PLUS 22           // the "+" chip (pnl_chip + gl_plus_m)
+//--- the GRID's own kinds (`s_dsGGKind`). 1 is the chip `DrawStripGearGridChips`
+//--- writes; these three are P-DRAW-118's colour row, and every cell of it rides the
+//--- same seat arrays the paint, the hit test and the tool walk.
+#define DSTRIP_GRG_SWATCH 0   // a colour cell — its colour is in s_dsGGC[g]
+#define DSTRIP_GRG_PREV   2   // the row's own colour, big: tap opens the board
+#define DSTRIP_GRG_PLUS   3   // "+" — the same opener
+#define DSTRIP_GEAR_LVLBLK 5   // P-DRAW-117: a long LEVEL list opens a block every
+                               // 5 rows, so the wide pass can split INSIDE the list
+                               // while no group header ever leaves its own content.
 //--- P-DRAW-32 (2026-09-24) — THE SETTINGS PANEL IS ITS OWN CARD. User order:
 //--- «پنل تنظیمات از استریپ جدا باشه». It used to be the strip's plate GROWING
 //--- tall (one window wearing both), so a settings panel meant the toolbar itself
@@ -295,9 +345,15 @@
 //--- strip stays the compact quick row it is. The arithmetic that makes the nine
 //--- slice reusable is this constant: the plate's height must read `48 + 42k`
 //--- (the skin's own law, P-DRAW-29) and the panel's fixed part is head 56 +
-//--- tabs 42 + foot 42 = 140, so the air below the foot is 34 — not the strip's
-//--- 28 — and 140 + 34 = 174 ≡ 48 (mod 42). Change this and the gear falls back
-//--- to the flat legacy rect (DrawStripSkinK refuses a plate off the grid).
+//--- foot 48 + this air, so the height is `104 + AIR + 42R`. AIR is 0 and the law
+//--- is therefore EXACTLY the cards' own `56 + n*42 + 48` (P-DRAW-78b) — every
+//--- content row lands on a card row and one bake carries the plate. Change this
+//--- and the gear falls back to the flat legacy rect (DrawStripSkinK refuses a
+//--- plate off the grid).
+//--- P-DRAW-117 (2026-10-01): the TAB ROW is retired, so the second addend is the
+//--- head alone — `DSTRIP_GEAR_GRID_TOP` is 56 where it used to be 98. The AIR's
+//--- number did not move; its readers did: one 42px band left the panel, so the
+//--- same content now needs one row fewer and `gh` reads `104 + 42R`.
 //--- RETIRED (2026-09-29, P-DRAW-78b): the air was the make-up gap between a 42px
 //--- foot band and the cards' 48px footer. The foot band is 48 now (DSTRIP_GEAR_FOOT_H,
 //--- whose own ghost face reaches fy0+46 and needs the room), so the card's footer is
@@ -305,20 +361,22 @@
 //--- the cards' law, `cardExact` was false on all four, and the plate fell to the
 //--- composed W body on every tab instead of one baked card. Kept at 0 rather than
 //--- deleted so the retired law stays readable next to the number that replaced it.
-#define DSTRIP_GEAR_AIR 0    // was 6 — the foot band IS the card's 48px footer now
-                             // head 56 + T rows + foot 42 + 6 = 104 + 42*(T-1):
-                             // EXACTLY the cards' own law (56 + n*42 + 48), so the
-                             // foot row plus the air fills the card's 48px footer
-                             // and every content row lands on a card row. The old
-                             // values (34, then 0) put every height off every bake.
+#define DSTRIP_GEAR_AIR 0    // head 56 + 42R + foot 48 + this = 104 + 42R: EXACTLY
+                             // the cards' own law (56 + n*42 + 48). The retired
+                             // values are the record: 34 was the TAB-ERA air
+                             // (140 + 34 = 174 ≡ 48 mod 42, and the tabs are gone),
+                             // 6 was the double count of the cards' footer (78b),
+                             // and either put every group's height off every bake.
 //--- P-DRAW-69: THE FIRST 42px CELL OF EACH SURFACE'S OWN BODY. The cards have ONE
 //--- grid — the row pitch — and the plate's ramp bands ride it, so a row's face IS
 //--- the band under it. The strip's first popover row and the board's first grid row
-//--- both land on the ramp's own start, the panel's on head(56)+tabs(42) = 98.
+//--- both land on the ramp's own start, the panel's on its head (56) — the tab
+//--- band's 42 above it is retired (P-DRAW-117).
 #define DSTRIP_STRIP_GRID_TOP 44
 #define DSTRIP_STRIP_BODY_TOP (DSTRIP_SKIN_TOPT - DSTRIP_SKIN_M)   // 44 — the cap's own content
 #define DSTRIP_BOARD_GRID_TOP 44
-#define DSTRIP_GEAR_GRID_TOP  (DSTRIP_GEAR_HEAD_H + DSTRIP_GEAR_ROW_H)
+#define DSTRIP_GEAR_GRID_TOP  (DSTRIP_GEAR_HEAD_H)   // P-DRAW-117: no tab row — the
+                               // panel's first cell is the group list's own top row
 //--- P-DRAW-70: WHERE A CARD'S BODY STARTS. `pnl_card7.bmp` content row 0 and 1 are
 //--- the rim (#2C3444) and row 2 is the first body row (#1E242F) — measured. A plate
 //--- that wears the card's ramp has to start its own body on the same row, or its
@@ -338,7 +396,7 @@
 //--- pads, the middle 32px is the two pads back to back — so a column's content
 //--- is the very same 280 the narrow layout always used and every existing
 //--- block metric (swatch 28, chip 64, row 42) keeps its arithmetic.
-#define DSTRIP_GEAR_W2   624   // wide content width: DSTRIP_GEAR_W * 2
+#define DSTRIP_GEAR_W2   (2*PNL_WEL)   // P-DRAW-116: TWO cards side by side, so the wide width IS the card width twice
 #define DSTRIP_GEAR_COL  312   // a block's x shift for the right column
 #define DSTRIP_GEAR_WIDE_ROWS 10 // PNL_WIDE_MIN_ROWS parity: > 10 rows goes wide
 #define DSTRIP_GEAR_BLK_MAX 12 // section blocks one tab may open (<= SECTION_MAX + air)
@@ -358,7 +416,7 @@
 //--- `PNL_ROW_GAP 10` / `PNL_PT_LBL 9`, i.e. B-02's floor, named here because
 //--- include 97 cannot read 116.
 #define DSTRIP_ROW_GAP   10
-#define DSTRIP_GEAR_LBL_PT 9
+#define DSTRIP_GEAR_LBL_PT PNL_PT_LBL   // P-DRAW-116: the cards' own row-label point size
 //--- P-DRAW-83: A CAPTION THAT SHARES ITS ROW WITH A CONTROL NAMES ITS CONTROL'S
 //--- SEAT. The caption draws at `DSTRIP_GEAR_PAD + 14` (the cards' own row-label
 //--- x, BiotakPanels 6007's `+16+14`) and the field starts at the seat the caption
@@ -399,7 +457,7 @@
 //--- height is ALWAYS 48+42k, so one top cap (margin + 44) + k mid bands (42)
 //--- + one bottom cap (4 + margin) composes every height; middles crop to every
 //--- width (baked wide, MT4 crops a smaller XSIZE/YSIZE, never stretches).
-#define DSTRIP_SKIN_M      14    // baked shadow margin around the plate
+#define DSTRIP_SKIN_M      PNL_MARGIN  // P-DRAW-116: the card bake's own transparent fringe
 #define DSTRIP_SKIN_CAP    28    // corner cap width (margin + radius)
 #define DSTRIP_SKIN_EDGE   15    // mid-row side strip (margin + 1px border)
 #define DSTRIP_SKIN_TOPT   58    // top cap: margin + 44 (quick row + gap)
@@ -422,7 +480,7 @@
 #define DSTRIP_GEAR_PAINT 5   // P-DRAW-65: the colours + the interior moved OFF Style —
                              // the tab that carried FOUR sections was the one that forced
                              // the 624-wide plate on every kind (B-08/B-10)
-#define DSTRIP_GEAR_TAB_MAX 5  // tab ids one kind may show at once (0 = shut)
+#define DSTRIP_GEAR_GRP_MAX 5  // group ids one kind may show at once (0 = shut)
 //--- more-popover row kinds
 #define DSTRIP_MK_APPLYALL 1
 #define DSTRIP_MK_PRESET 2     // arg = preset index
@@ -598,14 +656,13 @@ static color    s_dsGGC[DSTRIP_GRID_MAX];
 //--- Name/Color` trio went with the retired chart preview (this note is why a
 //--- future reader must not re-add them without re-reading the report above).
 static int      s_dsColorHoverCell = -1;
-static int      s_dsGearTab[DSTRIP_GEAR_TAB_MAX + 1];   // tab ids shown (count in [0])
-//--- P-DRAW-76: the tab geometry is ONE slot per tab the row may show. These two
-//--- arrays were `[4]` while `DSTRIP_GEAR_TAB_MAX` is 5 and the row really does
-//--- open five (Paint · Style · Levels|Mark · Look · Row) — so the fifth tab's
-//--- x/w was written and read one past the end.
-static int      s_dsGearTabX[DSTRIP_GEAR_TAB_MAX], s_dsGearTabW[DSTRIP_GEAR_TAB_MAX];
+static int      s_dsGearGrp[DSTRIP_GEAR_GRP_MAX + 1];   // group ids shown (count in [0])
+//--- P-DRAW-117: `s_dsGear` IS THE OPEN GROUP (never 0 while the panel is open), so
+//--- every reader that asks `s_dsGear != 0` keeps its answer; this flag is the ONE
+//--- new fact — the user collapsed the open group's settings with its own header,
+//--- and the panel is then the group list alone.
+static bool     s_dsGearCollapsed = false;
 static int      s_dsGearHeadY = -1;
-static int      s_dsGearTabsY = 0;
 static int      s_dsGearSecN = 0;
 static int      s_dsGearSecY[DSTRIP_GEAR_SECTION_MAX];
 static int      s_dsGearSecCol[DSTRIP_GEAR_SECTION_MAX];

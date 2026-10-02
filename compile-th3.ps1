@@ -85,7 +85,42 @@ param(
 
     [string]$Mql4Dir = "",
 
-    [switch]$RestartTerminal
+    [switch]$RestartTerminal,
+
+    #--- P-BUILD-09 (2026-10-01) — THE INNER LOOP HAS THREE GATE MODES.
+    #--- MEASURED, the whole gate layer is 1.76s of work (check-resources 269ms,
+    #--- regressions 186, level-continuity 150, object-lifecycle 309, stale-state 313,
+    #--- submenu 101, gear-panel 438) — so the hour a one-line fix takes is the MT4
+    #--- round trip and the writing, not this. What these modes buy is honesty at the
+    #--- cheapskate's price: `scoped` (default) skips a gate only when the bytes it
+    #--- reads AND its own script are identical to the run that PASSED last, and it
+    #--- PRINTS `[SKIP]`, so no report can claim a check it did not run. `full` runs
+    #--- everything (before "done"). `-Fast` is `-Gates off` for the inner loop, and
+    #--- it says so in yellow, because a green `-Fast` build proves the names resolve
+    #--- and nothing else.
+    [ValidateSet("scoped", "full", "off")]
+    [string]$Gates = "scoped",
+
+    [switch]$Fast,
+
+    #--- P-BUILD-09: every tests\*.mq4 in ONE process, so the gate layer runs once
+    #--- instead of once per harness (9 x ~6s of wall clock -> ~4s each + 1 gate run).
+    [switch]$Tests,
+
+    #--- P-BUILD-10 (2026-10-01) — THE REAL RENDER, ONE COMMAND. The harness
+    #--- `tests/Biotak_StripShot_Test.mq4` paints the strip and ALL FOUR `Box
+    #--- Settings` tabs through the real paint path and writes StripShot_<tag>.png
+    #--- plus a per-object census with the TERMINAL's own rects. `-Shot` compiles it,
+    #--- drops the ex4 into the instance's Scripts\, writes MT4's "Configuration at
+    #--- Startup" file and prints the one command to run. With `-RestartTerminal` it
+    #--- also closes MT4, launches it on that config, waits for `[STRIPSHOT] DONE:`,
+    #--- collects the census + PNGs, brings the closed instances back and rebuilds
+    #--- tools/before-after.html (design | sim | the terminal's own pixels).
+    [switch]$Shot,
+    [string]$ShotSymbol = "EURUSD",
+    [string]$ShotPeriod = "H1",
+    [ValidateRange(10, 600)]
+    [int]$ShotTimeoutSec = 120
 )
 
 # ============================================================
@@ -613,20 +648,12 @@ function Get-TerminalMql4DirsForProject {
     return $out
 }
 
-function Restart-TradingTerminal {
-    #--- P-BUILD-07: THE DEPLOY LOOP, CLOSED. MT4 runs what it loaded at attach;
-    #--- a fresh ex4 is a file until the terminal restarts or the indicator is
-    #--- removed and re-added. Re-add is manual and per-chart; a restart reloads
-    #--- EVERY chart from the new ex4 in one step. Opt-in only (-RestartTerminal):
-    #--- killing the terminal also stops anything else it hosts, so this never
-    #--- runs unless asked. Each instance is relaunched with its OWN executable
-    #--- path and command line (portable/datapath flags survive), so the same
-    #--- data folder — and the same charts — come back.
+#--- P-BUILD-10 (2026-10-01) — THE TERMINAL'S OWN HANDS, IN THREE PIECES.
+#--- The deploy restart and the strip shot both need the same three moves (capture
+#--- what is running, stop it, put it back), so they share them: one owner per move,
+#--- read by `Restart-TradingTerminal` and by `Invoke-StripShot` below.
+function Get-TerminalStarts {
     $procs = Get-WmiObject Win32_Process -Filter "Name='terminal.exe'" -ErrorAction SilentlyContinue
-    if (-not $procs) {
-        Write-Host "  No running terminal.exe found; nothing to restart." -ForegroundColor Yellow
-        return $true
-    }
     $starts = @()
     foreach ($p in $procs) {
         $exe = $p.ExecutablePath
@@ -640,12 +667,13 @@ function Restart-TradingTerminal {
         }
         $starts += @{ Exe = $exe; Args = $args }
     }
-    if ($starts.Count -eq 0) {
+    if ($procs -and $starts.Count -eq 0) {
         Write-Host "  Terminal processes found but their paths are unreadable; not restarting." -ForegroundColor Red
-        return $false
     }
-    Write-Host "  Restarting $($starts.Count) terminal process(es) so the new ex4 loads..." -ForegroundColor Yellow
-    foreach ($s in $starts) { Write-Host "    will relaunch: $($s.Exe) $($s.Args)" -ForegroundColor DarkGray }
+    return ,$starts
+}
+
+function Stop-TerminalProcesses {
     # Graceful first: CloseMainWindow lets MT4 save its profile and charts.
     foreach ($pr in @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)) {
         try { $null = $pr.CloseMainWindow() } catch {}
@@ -666,11 +694,207 @@ function Restart-TradingTerminal {
         Write-Host "  [FAIL] terminal.exe is still alive; not relaunching into an unknown state." -ForegroundColor Red
         return $false
     }
-    foreach ($s in $starts) {
+    return $true
+}
+
+function Start-TerminalStarts {
+    param($Starts)
+    foreach ($s in $Starts) {
         if ($s.Args) { Start-Process -FilePath $s.Exe -ArgumentList $s.Args }
         else { Start-Process -FilePath $s.Exe }
     }
+}
+
+function Restart-TradingTerminal {
+    #--- P-BUILD-07: THE DEPLOY LOOP, CLOSED. MT4 runs what it loaded at attach;
+    #--- a fresh ex4 is a file until the terminal restarts or the indicator is
+    #--- removed and re-added. Re-add is manual and per-chart; a restart reloads
+    #--- EVERY chart from the new ex4 in one step. Opt-in only (-RestartTerminal):
+    #--- killing the terminal also stops anything else it hosts, so this never
+    #--- runs unless asked. Each instance is relaunched with its OWN executable
+    #--- path and command line (portable/datapath flags survive), so the same
+    #--- data folder — and the same charts — come back.
+    $procs = @(Get-WmiObject Win32_Process -Filter "Name='terminal.exe'" -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) {
+        Write-Host "  No running terminal.exe found; nothing to restart." -ForegroundColor Yellow
+        return $true
+    }
+    $starts = Get-TerminalStarts
+    if ($starts.Count -eq 0) { return $false }
+    Write-Host "  Restarting $($starts.Count) terminal process(es) so the new ex4 loads..." -ForegroundColor Yellow
+    foreach ($s in $starts) { Write-Host "    will relaunch: $($s.Exe) $($s.Args)" -ForegroundColor DarkGray }
+    if (-not (Stop-TerminalProcesses)) { return $false }
+    Start-TerminalStarts -Starts $starts
     Write-Host "  Terminal restarted. Charts come back on their own; every indicator reloads from the new ex4." -ForegroundColor Green
+    return $true
+}
+
+# ══════════════════════════════════════════════════════════════════════════
+# P-BUILD-10 (2026-10-01) — THE REAL RENDER, ONE COMMAND.
+#
+# `tests/Biotak_StripShot_Test.mq4` paints every state of the strip and ALL FOUR
+# `Box Settings` tabs through the REAL paint path, writes `StripShot_<tag>.png`
+# into `<MQL4>\Files` and prints one `[STRIPSHOT] obj …` line per object with the
+# rect the TERMINAL built. `tools/before-after.py` already puts those beside the
+# design and the sim (tools/mt4-shots -> tools/before-after.html). The only missing
+# piece was the RUN: the harness had to be dragged onto a chart by hand.
+#
+# MT4 answers it in its own words — "Configuration at Startup" (documented at
+# metatrader4.com, Tools): `Script=` in a config file names the script the terminal
+# launches on startup, on the chart its own `Symbol`/`Period` open. That extra chart
+# is NOT saved to the profile, so the live charts come back untouched.
+#
+#   -Shot                     compile the harness, deploy it into the instance's
+#                             Scripts\, write the config, print the one command to
+#                             run. Nothing is closed.
+#   -Shot -RestartTerminal    close MT4, launch it on the shot config, wait for
+#                             `[STRIPSHOT] DONE:`, collect the census + PNGs into
+#                             build-logs\shot\, bring the closed instances back, and
+#                             rebuild the before/after page.
+# ══════════════════════════════════════════════════════════════════════════
+function Set-TerminalShotConfig {
+    param([string]$Path, [string]$Symbol, [string]$Period, [string]$Script)
+    #--- MT4's own `Configuration at Startup` (Tools > Configuration at Startup in
+    #--- the 4 help): flat `Parameter=Value` lines, `;` starts a comment, no sections.
+    #--- `Symbol`/`Period` open ONE EXTRA chart which is NOT saved to the profile, and
+    #--- `Script` is the script's NAME (its path is <data>\MQL4\Scripts\). `ExpertsEnable`
+    #--- is stated here because the Extra chart's script obeys the Experts switch: a
+    #--- user with AutoTrading off would otherwise get a silent no-op and a 120s wait.
+    $ini = @("; P-BUILD-10 - MT4 Configuration at Startup.",
+             "; One extra chart, opened by MT4 for this launch only and never saved to",
+             "; the profile, so the user's charts and indicators come back as they were.",
+             "Symbol=$Symbol",
+             "Period=$Period",
+             "Script=$Script",
+             "ExpertsEnable=true")
+    Set-Content -LiteralPath $Path -Value $ini -Encoding ASCII
+}
+
+function Get-LatestTerminalLog {
+    param([string]$Mql4Dir)
+    $dir = Join-Path $Mql4Dir "Logs"
+    if (-not (Test-Path -LiteralPath $dir)) { return $null }
+    return (Get-ChildItem -LiteralPath $dir -Filter *.log -File -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1)
+}
+
+function Wait-TerminalShotLines {
+    # The harness's own voice, read where MT4 writes it: <MQL4>\Logs\<date>.log,
+    # UTF-16. Only lines AFTER the launch are taken (a previous run's lines are not
+    # this run's answer), and the wait ends on DONE / SKIP / a failed shot.
+    param([string]$Mql4Dir, [int]$TimeoutSec, [string]$LogPath, [int]$SkipLines)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $out = @()
+    $cur = $LogPath
+    $skip = $SkipLines
+    while ((Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 700
+        $latest = Get-LatestTerminalLog -Mql4Dir $Mql4Dir
+        if (-not $latest) { continue }
+        if ($latest.FullName -ne $cur) { $cur = $latest.FullName; $skip = 0 }
+        $all = @(Get-Content -LiteralPath $cur -Encoding Unicode -ErrorAction SilentlyContinue)
+        if ($all.Count -le $skip) { continue }
+        $fresh = @($all[$skip..($all.Count - 1)] | Where-Object { $_.Contains("[STRIPSHOT]") })
+        if ($fresh.Count -gt 0) {
+            $out += $fresh
+            $stop = @($fresh | Where-Object {
+                $_.Contains("DONE:") -or $_.Contains("SKIP") -or $_.Contains("FAILED") })
+            if ($stop.Count -gt 0) { break }
+        }
+        $skip = $all.Count
+    }
+    return ,$out
+}
+
+function Invoke-StripShot {
+    param([string]$Mql4Dir, [string]$Symbol, [string]$Period, [int]$TimeoutSec, [switch]$Launch)
+    $harness = "Biotak_StripShot_Test"
+    $ex4 = Join-Path $SCRIPT_ROOT "tests\$harness.ex4"
+    if (-not (Test-Path -LiteralPath $ex4)) {
+        Write-Host "  [FAIL] $harness.ex4 was not built — the shot needs -Tests (or -Shot alone compiles it)." -ForegroundColor Red
+        return $false
+    }
+    $scripts = Join-Path $Mql4Dir "Scripts"
+    if (-not (Test-Path -LiteralPath $scripts)) { New-Item -ItemType Directory -Path $scripts -Force | Out-Null }
+    Copy-Item -LiteralPath $ex4 -Destination (Join-Path $scripts "$harness.ex4") -Force
+    Write-Host "  harness: $scripts\$harness.ex4" -ForegroundColor DarkGray
+    $configPath = Join-Path $PROJECT_LOG_DIR "th3-shot.ini"
+    Set-TerminalShotConfig -Path $configPath -Symbol $Symbol -Period $Period -Script $harness
+    Write-Host "  config:  $configPath  (Symbol=$Symbol Period=$Period Script=$harness)" -ForegroundColor DarkGray
+
+    if (-not $Launch) {
+        Write-Host ""
+        Write-Host "  NEXT: close MT4, then run:" -ForegroundColor Yellow
+        Write-Host "        terminal.exe /config:`"$configPath`"" -ForegroundColor Yellow
+        Write-Host "        (or re-run this build with -Shot -RestartTerminal and it does it all)" -ForegroundColor DarkGray
+        return $true
+    }
+
+    $procs = @(Get-WmiObject Win32_Process -Filter "Name='terminal.exe'" -ErrorAction SilentlyContinue)
+    if ($procs.Count -eq 0) {
+        Write-Host "  [FAIL] no terminal.exe is running, so there is no instance to launch." -ForegroundColor Red
+        Write-Host "         Start MT4 once, then re-run -Shot -RestartTerminal." -ForegroundColor Yellow
+        return $false
+    }
+    $starts = Get-TerminalStarts
+    if ($starts.Count -eq 0) { return $false }
+    # the instance that carries its own data folder (portable/datapath) is the one
+    # this repo deploys into; otherwise the first one.
+    $shotStart = $starts[0]
+    foreach ($s in $starts) { if ($s.Args -match "portable|datapath") { $shotStart = $s; break } }
+    Write-Host "  shot instance: $($shotStart.Exe) $($shotStart.Args)" -ForegroundColor DarkGray
+    Write-Host "  script must be in THAT instance's Scripts\ — deployed to $scripts" -ForegroundColor DarkGray
+    if (-not (Stop-TerminalProcesses)) { return $false }
+
+    $logBefore = Get-LatestTerminalLog -Mql4Dir $Mql4Dir
+    $skip = 0
+    $logPath = ""
+    if ($logBefore) {
+        $logPath = $logBefore.FullName
+        $skip = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue).Count
+    }
+    $shotArgs = ("$($shotStart.Args) /config:`"$configPath`"").Trim()
+    Start-Process -FilePath $shotStart.Exe -ArgumentList $shotArgs
+    Write-Host "  launched; waiting up to ${TimeoutSec}s for [STRIPSHOT] DONE:..." -ForegroundColor Cyan
+    $lines = @(Wait-TerminalShotLines -Mql4Dir $Mql4Dir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip)
+
+    # the shot instance has done its job: put the user's own terminal back
+    if (-not (Stop-TerminalProcesses)) { return $false }
+    Start-TerminalStarts -Starts $starts
+    Write-Host "  terminal relaunched ($($starts.Count) instance(s))" -ForegroundColor Green
+
+    $shotDir = Join-Path $PROJECT_LOG_DIR "shot"
+    if (-not (Test-Path -LiteralPath $shotDir)) { New-Item -ItemType Directory -Path $shotDir -Force | Out-Null }
+    $census = Join-Path $shotDir "StripShot-census.txt"
+    if ($lines.Count -eq 0) {
+        Write-Host "  [FAIL] no [STRIPSHOT] line appeared in $Mql4Dir\Logs within ${TimeoutSec}s" -ForegroundColor Red
+        Write-Host "         (the script did not run on that instance — check its Experts tab)" -ForegroundColor Yellow
+        return $false
+    }
+    $lines | Set-Content -LiteralPath $census -Encoding UTF8
+    $bad = @($lines | Where-Object { $_.Contains("FAILED") -or $_.Contains("SKIP") })
+    $done = @($lines | Where-Object { $_.Contains("DONE:") })
+    foreach ($l in $bad) { Write-Host "    $l" -ForegroundColor Yellow }
+    foreach ($tag in @("panel_paint", "panel_style", "panel_look", "panel_row")) {
+        $sum = @($lines | Where-Object { $_.Contains(" $tag objs=") })
+        if ($sum.Count -gt 0) { Write-Host "    $($sum[0])" -ForegroundColor DarkGray }
+    }
+    $png = @(Get-ChildItem -LiteralPath (Join-Path $Mql4Dir "Files") -Filter "StripShot_*.png" -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    foreach ($p in $png) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $shotDir $p.Name) -Force }
+    Write-Host "  census: $census  (lines=$($lines.Count))" -ForegroundColor DarkGray
+    Write-Host "  terminal PNGs: $($png.Count) -> $shotDir" -ForegroundColor Green
+    if ($done.Count -eq 0) {
+        Write-Host "  [FAIL] the harness never reached DONE (see $census)" -ForegroundColor Red
+        return $false
+    }
+    #--- A DONE with no file behind it is the P-DRAW-06 class again (an object created,
+    #--- a property written, nothing painted): green line, empty column. The shot's whole
+    #--- job is the pixels, so the pixels are what it is graded on.
+    if ($png.Count -eq 0) {
+        Write-Host "  [FAIL] the harness reached DONE but wrote no StripShot_*.png into $Mql4Dir\Files" -ForegroundColor Red
+        Write-Host "         (ChartScreenShot needs a visible / unminimised chart window)" -ForegroundColor Yellow
+        return $false
+    }
     return $true
 }
 
@@ -1122,6 +1346,122 @@ function Get-InstalledProjectSource {
 $startTime = Get-Date
 $results = @{}
 
+#--- P-BUILD-09: the gate MODE, its cache and its one fingerprint — resolved here,
+#--- before any gate, so a scoped run can say [SKIP] instead of running and hoping.
+$gateMode = if ($Fast) { "off" } else { $Gates }
+$gateCachePath = Join-Path $SCRIPT_ROOT "build-logs\gate-cache.json"
+$gateCacheDirty = $false
+$gateFingerprint = ""
+
+function Get-TreeFingerprint {
+    # EVERY input every gate reads, in ONE hash: the modules, the two entries, the
+    # tools (a gate is part of its own input) and the rasters. Deliberately coarser
+    # than per-gate, because one shared fingerprint cannot miss a file a gate reads
+    # and a per-gate list forgets — the single way a cache like this goes wrong.
+    $files = New-Object System.Collections.Generic.List[System.IO.FileInfo]
+    $biotak = Join-Path $SCRIPT_ROOT "Biotak"
+    if (Test-Path -LiteralPath $biotak) {
+        foreach ($f in Get-ChildItem -LiteralPath $biotak -Recurse -File) {
+            if ($f.Extension -eq ".mqh" -or $f.Extension -eq ".mq4") { $files.Add($f) }
+        }
+    }
+    foreach ($e in @("Biotak Trigger TH3.mq4", "Biotak Trigger TH3 Lite.mq4")) {
+        $p = Join-Path $SCRIPT_ROOT $e
+        if (Test-Path -LiteralPath $p) { $files.Add((Get-Item -LiteralPath $p)) }
+    }
+    $tools = Join-Path $SCRIPT_ROOT "tools"
+    if (Test-Path -LiteralPath $tools) {
+        foreach ($f in Get-ChildItem -LiteralPath $tools -Recurse -File) {
+            if ($f.Extension -eq ".js" -or $f.Extension -eq ".py") { $files.Add($f) }
+        }
+    }
+    $icons = Join-Path $SCRIPT_ROOT "Files\Icons"
+    if (Test-Path -LiteralPath $icons) {
+        foreach ($f in Get-ChildItem -LiteralPath $icons -File) { $files.Add($f) }
+    }
+    $ordered = @($files | Sort-Object FullName)
+    $sha = [System.Security.Cryptography.SHA1]::Create()
+    $ms = New-Object System.IO.MemoryStream
+    foreach ($f in $ordered) {
+        $nb = [System.Text.Encoding]::UTF8.GetBytes($f.FullName)
+        $bb = [System.IO.File]::ReadAllBytes($f.FullName)
+        $ms.Write($nb, 0, $nb.Length)
+        $ms.Write($bb, 0, $bb.Length)
+    }
+    $fp = ([System.BitConverter]::ToString($sha.ComputeHash($ms.ToArray()))).Replace("-", "").Substring(0, 16)
+    $ms.Dispose()
+    $sha.Dispose()
+    Write-Host "  gate fingerprint: $fp over $($ordered.Count) file(s)" -ForegroundColor DarkGray
+    return $fp
+}
+
+function Read-GateCache {
+    $cache = @{}
+    if (-not (Test-Path -LiteralPath $gateCachePath)) { return $cache }
+    try {
+        $raw = Get-Content -LiteralPath $gateCachePath -Raw -ErrorAction Stop
+        if (-not [string]::IsNullOrWhiteSpace($raw)) {
+            foreach ($p in ($raw | ConvertFrom-Json).PSObject.Properties) {
+                $cache[$p.Name] = [string]$p.Value
+            }
+        }
+    }
+    catch { $cache = @{} }
+    return $cache
+}
+
+function Save-GateCache {
+    param($Cache)
+    try {
+        ($Cache | ConvertTo-Json -Compress) | Set-Content -LiteralPath $gateCachePath -Encoding UTF8 -ErrorAction Stop
+    }
+    catch { Write-Host "  WARN: gate cache not written ($($_.Exception.Message))" -ForegroundColor Yellow }
+}
+
+#--- ONE gate, one question: run it, skip it with a reason, or name the mode that
+#--- skipped it. A failure is never cached, so the next run runs it again.
+function Invoke-ProjectGate {
+    param(
+        [string]$Name,
+        [string]$Script,
+        [string]$Runner = "node",
+        $Cache,
+        [string[]]$ExtraArgs = @(),
+        #--- exit 2 is only meaningful for the gate that defines it (P-DRAW-119's
+        #--- NOT CURRENT). Every other gate's exit 2 must stay a FAIL, so this is
+        #--- opt-in per call, not a blanket rule.
+        [switch]$WarnOnExit2
+    )
+    if ($gateMode -eq "off") {
+        Write-Host "  [SKIP] $Name (-Fast: gates not run)" -ForegroundColor DarkGray
+        return
+    }
+    if (-not $gateFingerprint) { $script:gateFingerprint = Get-TreeFingerprint }
+    if ($gateMode -eq "scoped" -and $Cache.ContainsKey($Name) -and $Cache[$Name] -eq $gateFingerprint) {
+        Write-Host "  [SKIP] $Name (inputs unchanged since the last PASS)" -ForegroundColor DarkGray
+        return
+    }
+    & $Runner $Script @ExtraArgs
+    if ($WarnOnExit2 -and $LASTEXITCODE -eq 2) {
+        #--- P-DRAW-119: A GATE THAT RAN AND SAID "NOT CURRENT" IS NOT A PASS.
+        #--- check-shot-freshness.js returns 2 when the terminal's own PNGs are
+        #--- missing or stale. That is not a build failure (the terminal cannot be
+        #--- restarted by the build), but it MUST NOT print [PASS] — a green line
+        #--- here is exactly how a mirror got read as reality for two weeks. It is
+        #--- never cached either: the next run must say it again.
+        Write-Host "  [WARN] $Name (ran; its verdict is NOT CURRENT — the pixels above)" -ForegroundColor Yellow
+    }
+    elseif ($LASTEXITCODE -ne 0) {
+        Write-Host "  [FAIL] $Name" -ForegroundColor Red
+        $script:allSuccess = $false
+    }
+    else {
+        Write-Host "  [PASS] $Name" -ForegroundColor Green
+        $Cache[$Name] = $gateFingerprint
+        $script:gateCacheDirty = $true
+    }
+}
+
 # P-BUILD-06 RETIRED 2026-09-10 (see AGENTS.md): programmatic self-reload is
 # impossible in MQL4 — manual remove & re-add remains the only code-deploy.
 
@@ -1167,8 +1507,16 @@ $PROJECTS = @{
     }
 }
 
-if ($SourceFile -ne "") {
-    # Compile specific file
+#--- P-BUILD-09 (2026-10-01): ONE source-unit compile, for `-SourceFile` AND for
+#--- `-Tests`. The harness sweep used to re-enter this whole script once per file,
+#--- so the gate layer (1.76s measured) ran nine times for nine compiles.
+function Invoke-SourceUnit {
+    param(
+        [string]$SourceFile,
+        [string]$CompilerPath,
+        [string]$ResolvedMql4Dir,
+        [string]$TerminalRoot
+    )
     if (-not [System.IO.Path]::IsPathRooted($SourceFile)) {
         $SourceFile = Join-Path $SCRIPT_ROOT $SourceFile
     }
@@ -1197,7 +1545,13 @@ if ($SourceFile -ne "") {
     }
 
     $name = [System.IO.Path]::GetFileName($SourceFile)
-    $results[$name] = Compile-MQL4 -Name $name -SourcePath $SourceFile -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
+    return Compile-MQL4 -Name $name -SourcePath $SourceFile -CompilerPath $CompilerPath -ResolvedMql4Dir $ResolvedMql4Dir -TerminalRoot $TerminalRoot
+}
+
+if ($SourceFile -ne "") {
+    # Compile specific file
+    $name = [System.IO.Path]::GetFileName($SourceFile)
+    $results[$name] = Invoke-SourceUnit -SourceFile $SourceFile -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
 }
 else {
     # Compile project(s)
@@ -1237,6 +1591,34 @@ else {
     }
 }
 
+if ($Tests) {
+    #--- P-BUILD-09: every harness in ONE process. The gate layer runs once below
+    #--- (and a re-run of this same tree skips what it already passed), instead of
+    #--- nine times for nine files.
+    $testsDir = Join-Path $SCRIPT_ROOT "tests"
+    if (Test-Path -LiteralPath $testsDir) {
+        foreach ($t in @(Get-ChildItem -LiteralPath $testsDir -Filter *.mq4 -File | Sort-Object Name)) {
+            Write-Banner "Test: $($t.Name)"
+            $results["tests\$($t.Name)"] = Invoke-SourceUnit -SourceFile $t.FullName -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
+        }
+    }
+    else {
+        Write-Host "  WARN: no tests\ folder to compile" -ForegroundColor Yellow
+    }
+}
+elseif ($Shot) {
+    # P-BUILD-10: the shot's one unit. `-Tests` already builds it, so this is only
+    # for `-Shot` on its own (and it is the same compiler call either way).
+    Write-Banner "Strip shot: harness"
+    $shotHarness = Join-Path $SCRIPT_ROOT "tests\Biotak_StripShot_Test.mq4"
+    if (Test-Path -LiteralPath $shotHarness) {
+        $results["tests\Biotak_StripShot_Test.mq4"] = Invoke-SourceUnit -SourceFile $shotHarness -CompilerPath $resolvedCompiler -ResolvedMql4Dir $resolvedMql4Dir -TerminalRoot $terminalRoot
+    }
+    else {
+        Write-Host "  WARN: tests\Biotak_StripShot_Test.mq4 is missing" -ForegroundColor Yellow
+    }
+}
+
 # Final summary
 Write-Banner "SUMMARY"
 $allSuccess = $true
@@ -1273,18 +1655,13 @@ Write-Host ""
 #--- green compile, which is the exact failure that shipped a panel with no plate
 #--- (2026-09-29). It is the one defect the compiler cannot name, so a build that
 #--- skips this check has not proved the indicator draws.
+#--- P-BUILD-09: the gate cache, read once before the first gate.
+$gateCache = Read-GateCache
 $resGate = Join-Path $SCRIPT_ROOT "tools\check-resources.js"
 if (Test-Path $resGate) {
     Write-Host ""
     Write-Host "  Resource gate (painted == #resource'd, per compiling unit):" -ForegroundColor Cyan
-    & node $resGate
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  [FAIL] resource gate" -ForegroundColor Red
-        $allSuccess = $false
-    }
-    else {
-        Write-Host "  [PASS] resource gate" -ForegroundColor Green
-    }
+    Invoke-ProjectGate -Name "resource gate" -Script $resGate -Runner "node" -Cache $gateCache
 }
 
 #--- P-VIEW-06: THE LEVEL-CONTINUITY GATE IS PART OF THE BUILD. "A timeframe switch
@@ -1298,14 +1675,7 @@ $lcGate = Join-Path $SCRIPT_ROOT "tools\check-level-continuity.js"
 if (Test-Path $lcGate) {
     Write-Host ""
     Write-Host "  Level continuity gate (a switch is a handoff, not a wipe):" -ForegroundColor Cyan
-    & node $lcGate
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  [FAIL] level continuity gate" -ForegroundColor Red
-        $allSuccess = $false
-    }
-    else {
-        Write-Host "  [PASS] level continuity gate" -ForegroundColor Green
-    }
+    Invoke-ProjectGate -Name "level continuity gate" -Script $lcGate -Runner "node" -Cache $gateCache
 }
 
 #--- P-REG-01: THE REGRESSION REGISTER IS PART OF THE BUILD. Every entry is a defect
@@ -1320,14 +1690,7 @@ $regGate = Join-Path $SCRIPT_ROOT "tools\check-regressions.js"
 if (Test-Path $regGate) {
     Write-Host ""
     Write-Host "  Regression gate (fixed behaviours still owned + on the record):" -ForegroundColor Cyan
-    & node $regGate
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  [FAIL] regression gate" -ForegroundColor Red
-        $allSuccess = $false
-    }
-    else {
-        Write-Host "  [PASS] regression gate" -ForegroundColor Green
-    }
+    Invoke-ProjectGate -Name "regression gate" -Script $regGate -Runner "node" -Cache $gateCache
 }
 
 #--- P-DRAW-78b: THE PANEL'S GEOMETRY GATE IS PART OF THE BUILD. A tab whose height
@@ -1340,14 +1703,23 @@ $gearGate = Join-Path $SCRIPT_ROOT "tools\check-gear-panel.py"
 if ((Test-Path $gearGate) -and (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "  Gear panel gate (every tab on the cards' baked-card law):" -ForegroundColor Cyan
-    & python $gearGate
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  [FAIL] gear panel gate" -ForegroundColor Red
-        $allSuccess = $false
-    }
-    else {
-        Write-Host "  [PASS] gear panel gate" -ForegroundColor Green
-    }
+    Invoke-ProjectGate -Name "gear panel gate" -Script $gearGate -Runner "python" -Cache $gateCache
+}
+
+#--- P-DRAW-93 (2026-09-30): THE ORDER GATE IS PART OF THE BUILD. A per-pass value
+#--- must be WRITTEN before it is READ. `s_dsGearW` was reset inside `DrawStripGearPlace`
+#--- while its first reader ran in the content pass before it (P-DRAW-91: a 592px field
+#--- inside a 312 plate, two dark bars past the card), and the colour board's placement
+#--- scored against the previous pass's strip/panel rect (P-DRAW-93: a board docked under
+#--- a strip that had been 200px taller a frame earlier). Both were GREEN: the compiler
+#--- resolves the name, the geometry gate reads the arithmetic, and both are right — only
+#--- the RUN ORDER of one pass can see it. Line and regex reads of Biotak/DrawStrip_*.mqh,
+#--- once per build.
+$staleGate = Join-Path $SCRIPT_ROOT "tools\stale_state_check.js"
+if (Test-Path $staleGate) {
+    Write-Host ""
+    Write-Host "  Stale state gate (a per-pass value must be written before it is read):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "stale state gate" -Script $staleGate -Runner "node" -Cache $gateCache
 }
 
 #--- P-DRAW-92: THE NAME LEDGER IS PART OF THE BUILD. A surface that paints an object
@@ -1361,13 +1733,67 @@ $lifeGate = Join-Path $SCRIPT_ROOT "tools\object_lifecycle_check.js"
 if (Test-Path $lifeGate) {
     Write-Host ""
     Write-Host "  Object lifecycle gate (every painted name has a destroy path):" -ForegroundColor Cyan
-    & node $lifeGate
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  [FAIL] object lifecycle gate" -ForegroundColor Red
+    Invoke-ProjectGate -Name "object lifecycle gate" -Script $lifeGate -Runner "node" -Cache $gateCache
+}
+
+#--- P-DRAW-119 (2026-10-01): THE MIRROR IS NOT THE EVIDENCE.
+#--- `tools/sim-*.py` rebuild the panel from the same literals the indicator
+#--- compiles, so they are right about the arithmetic and blind about what the blit
+#--- really does — and the third column of `tools/before-after.html` had never been
+#--- filled, so two weeks of "verified" renders were mirrors (P-DRAW-109's own class).
+#--- The gate compares the PNGs the REAL paint path wrote against the newest source
+#--- they are supposed to show: fresh · stale (a previous build's pixels — the exact
+#--- way a mirror gets mistaken for reality) · missing. It is NEVER CACHED (its
+#--- inputs include the PNGs' own mtimes, which the tree fingerprint does not hold),
+#--- so every gate run states what the tree can really show, and a `-Shot` run ends
+#--- strict: a capture that left a stale or partial set fails the build.
+$shotGate = Join-Path $SCRIPT_ROOT "tools\check-shot-freshness.js"
+if (Test-Path $shotGate) {
+    Write-Host ""
+    Write-Host "  Real pixels gate (the terminal's own PNGs vs the code on disk):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "real pixels gate" -Script $shotGate -Runner "node" -Cache @{} -WarnOnExit2
+}
+
+#--- P-BUILD-09: WHAT THIS RUN ACTUALLY PROVED, in one line.
+if ($gateMode -eq "off") {
+    Write-Host ""
+    Write-Host "  GATES SKIPPED (-Fast): this build proves the names resolve, nothing more." -ForegroundColor Yellow
+}
+elseif ($gateCacheDirty) {
+    Save-GateCache -Cache $gateCache
+    Write-Host "  gate cache: this tree's fingerprint recorded for the gates that PASSED" -ForegroundColor DarkGray
+}
+
+#--- P-BUILD-10: THE REAL RENDER, AFTER THE GATES (a broken tree never gets shot).
+$shotRelaunched = $false
+if ($Shot) {
+    Write-Host ""
+    Write-Banner "STRIP SHOT (the terminal's own pixels)"
+    if (-not $resolvedMql4Dir) {
+        Write-Host "  [FAIL] no MQL4 folder resolved — there is nowhere to deploy the harness." -ForegroundColor Red
         $allSuccess = $false
     }
     else {
-        Write-Host "  [PASS] object lifecycle gate" -ForegroundColor Green
+        $shotLaunch = ($RestartTerminal -and $allSuccess)
+        if (-not $shotLaunch) {
+            Write-Host "  prepare only (no -RestartTerminal): MT4 is left alone." -ForegroundColor DarkGray
+        }
+        $shotOk = Invoke-StripShot -Mql4Dir $resolvedMql4Dir -Symbol $ShotSymbol -Period $ShotPeriod -TimeoutSec $ShotTimeoutSec -Launch:$shotLaunch
+        if ($shotLaunch -and $shotOk) { $shotRelaunched = $true }
+        if (-not $shotOk) { $allSuccess = $false }
+        #--- A SHOT RUN THAT LEFT A STALE OR PARTIAL SET IS NOT A SHOT RUN. This is
+        #--- strict on purpose: `-Shot` is the run that claims "here are the real
+        #--- pixels", and a claim that does not match the code on disk is the defect
+        #--- (P-DRAW-119). Without -RestartTerminal nothing was captured, so nothing
+        #--- is claimed — the plain (non-strict) block above already said so.
+        if ($shotLaunch -and $shotOk) {
+            Invoke-ProjectGate -Name "real pixels gate (strict)" -Script $shotGate -Runner "node" -Cache @{} -ExtraArgs @("--strict")
+        }
+        $baPage = Join-Path $SCRIPT_ROOT "tools\before-after.py"
+        if ((Test-Path -LiteralPath $baPage) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+            & python $baPage
+            Write-Host "  page: $(Join-Path $SCRIPT_ROOT 'tools\before-after.html')" -ForegroundColor Green
+        }
     }
 }
 
@@ -1386,8 +1812,21 @@ Write-Host ""
 #--- and every "my change did nothing" report since the panel work was this line
 #--- being invisible. It is printed on every successful build so it is never a
 #--- surprise: green build != live behaviour until you re-attach.
-Write-Host "  NEXT: remove and re-add the indicator in MT4." -ForegroundColor Yellow
-Write-Host "        (a fresh ex4 is a FILE; the terminal runs what it loaded at attach)" -ForegroundColor DarkGray
+#--- P-BUILD-10: in `-Shot` mode this line must name the SHOT's own next step — the
+#--- harness is the deployed unit there, and "re-add the indicator" would be advice
+#--- about a different file than the one the run just built.
+if ($Shot -and $shotRelaunched) {
+    Write-Host "  NEXT: nothing — the shot run restarted the terminal on the new ex4." -ForegroundColor Yellow
+    Write-Host "        render: $(Join-Path $PROJECT_LOG_DIR 'shot')\StripShot_*.png   census: StripShot-census.txt" -ForegroundColor DarkGray
+}
+elseif ($Shot) {
+    Write-Host "  NEXT: the shot harness is deployed and the config is written; run -Shot -RestartTerminal" -ForegroundColor Yellow
+    Write-Host "        (or the terminal.exe /config: line above) to get the terminal's own pixels." -ForegroundColor DarkGray
+}
+else {
+    Write-Host "  NEXT: remove and re-add the indicator in MT4." -ForegroundColor Yellow
+    Write-Host "        (a fresh ex4 is a FILE; the terminal runs what it loaded at attach)" -ForegroundColor DarkGray
+}
 Write-Host ""
 
 if ($EnableLogCleanup) {
@@ -1400,10 +1839,14 @@ if ($EnableLogCleanup) {
 #--- It runs ONLY on full success: a failed build never touches the terminal.
 #--- It runs BEFORE the watch below, so the watch tails the FRESH log and shows
 #--- the new build's own init lines — the proof the deploy landed.
-if ($RestartTerminal -and $allSuccess) {
+if ($RestartTerminal -and $allSuccess -and -not $shotRelaunched) {
     Write-Host ""
     Write-Host "  Deploy: restarting the terminal..." -ForegroundColor Cyan
     if (-not (Restart-TradingTerminal)) { $allSuccess = $false }
+    Write-Host ""
+}
+elseif ($shotRelaunched) {
+    Write-Host "  Deploy: the terminal was restarted by the shot above — every chart (and the new ex4) is live." -ForegroundColor DarkGray
     Write-Host ""
 }
 

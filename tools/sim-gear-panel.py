@@ -101,6 +101,8 @@ HR_H     = 5        # DSTRIP_GEAR_HR_H
 FOOT_H   = 48       # DSTRIP_GEAR_FOOT_H (card PNL_FOOT_H=48)
 AIR      = 0        # DSTRIP_GEAR_AIR (retired 6, see P-DRAW-78b)
 ROW_GAP  = 10       # DSTRIP_ROW_GAP
+CAP_DX   = 14       # DSTRIP_GEAR_CAP_DX: the caption's x inside the cell
+CAP_X    = PAD + CAP_DX   # DSTRIP_GEAR_CAP_X — the one owner of that seat
 LBL_PT   = 9        # DSTRIP_GEAR_LBL_PT
 CHIP_Y   = 10       # DSTRIP_CARD_CHIP_Y
 LBL_Y    = 14       # DSTRIP_CARD_LBL_Y
@@ -108,8 +110,7 @@ SEC_CNT_W = 24      # DSTRIP_SEC_CNT_W
 EDIT_H    = 22      # DSTRIP_GEAR_EDIT_H
 FOOT_BW  = 72       # DSTRIP_GEAR_FOOT_BW
 FOOT_N   = 3        # DSTRIP_GEAR_FOOT_N (P-DRAW-90: Reset | All · Copy)
-FOOT_GLYPH_X = 12   # the cards' own glyph seat inside a foot button
-FOOT_PLAIN_X = 16   # ... and a glyphless button's own label pad (the mock .gbtn)
+FOOT_GLYPH_ADV = 20  # DSTRIP_GEAR_FOOT_GLYPH_ADV: the ring plus its gap (P-DRAW-107)
 FOOT_GAP = 8
 FOOT_PAD = 8        # card PNL_BTN_PAD
 MARK_VIS = 30
@@ -118,11 +119,6 @@ MARK_PAD = 7
 GLYPH    = 15
 XBTN     = 26
 MARK_Y_OFF = 6
-
-TAB_H  = 24
-TAB_PAD = 12
-TAB_GAP = 4
-TAB_UL  = 2
 
 INK    = "rgba(243,246,251,1)"
 MUTED  = "rgba(140,150,166,1)"
@@ -151,6 +147,85 @@ DEMO_KIND_NAME = {"DK_RECT": "Rectangle", "DK_TRIANGLE": "Triangle",
 DEMO_LEVELS = 7          # DrawStripGearLevelCount() on the held fibo
 DEMO_PRESETS = ["Scalp", "Swing"]      # DrawPresetName(k, i) != ""
 DEMO_STATE = {}          # slot -> 0/1 as DrawSlotRead returns it
+#── P-DRAW-117: the demo's OWN look. The FORMAT of each line is the MQL's
+#── (`DrawStripGearHeadSub` / `DrawStripGearGroupDigest`); the VALUES are this
+#── render's demo drawing, which is what a mirror may choose. One owner here, so
+#── the head and the group rows cannot disagree about the drawing they describe.
+DEMO_HEX = "#FFAB00"
+DEMO_WIDTH = 2
+DEMO_STYLE = "Solid"
+DEMO_FILL = 1
+DEMO_TONE = 50
+DEMO_CELLS = 6
+DG_PAD = 12              # DSTRIP_GEAR_DG_PAD: the digest's inset from the cell's edge
+#── P-DRAW-118: the two colours the demo drawing wears (the same pair the head's
+#── look line and the group digests state), and the rim a swatch wears when it is
+#── NOT the current one (`BioSwatchBorder(c, BIO_CLR_CARD)` in the MQL).
+DEMO_RGB = (255, 171, 0)
+DEMO_FILL_RGB = (0, 128, 0)
+SWATCH_BD = "rgba(51,60,76,1)"
+#── P-DRAW-118 (2026-10-01): the COLOUR ROLE ROW — the cards' own quick row. The
+#── strip is preview + the palette's first row + the `+` opener, and its count is
+#── the CARDS' `PNL_QSW_N` (one number for one row of one palette).
+GRG_SWATCH = 0      # DSTRIP_GRG_SWATCH — a colour cell (its colour is in s_dsGGC)
+GRG_PREV   = 2      # DSTRIP_GRG_PREV — the role's own colour block
+GRG_PLUS   = 3      # DSTRIP_GRG_PLUS — the "+" opener
+SWQ_N    = 8        # DSTRIP_GEAR_SWQ_N (== PNL_QSW_N)
+SWQ_CELL = 24       # DSTRIP_GEAR_SWQ_CELL — ds_swatch24's native canvas
+SWQ_GAP  = 4        # DSTRIP_GEAR_SWQ_GAP
+SWQ_PREV = 24       # DSTRIP_GEAR_SWQ_PREV
+SWQ_PLUS = 22       # DSTRIP_GEAR_SWQ_PLUS
+
+
+def bio_pal_row0(n):
+    """The palette's FIRST ROW — `BioPal(i)` == `BioPickColor(0, i)`, the same
+    eight the cards' quick row applies (P-DRAW-24). Parsed, never typed: the table
+    is `ConstantsAndEnums.mqh`'s `BioPickColor`, and a retuned palette must move
+    this render with it."""
+    path = os.path.join(ROOT, "Biotak", "ConstantsAndEnums.mqh")
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        text = fh.read()
+    body = text[text.index("color BioPickColor") :]
+    body = body[: body.index("};")]
+    out = []
+    for m in re.finditer(r"C'(\d+),(\d+),(\d+)'|BIO_CLR_BRAND", body):
+        out.append((255, 171, 0) if not m.group(1)
+                   else (int(m.group(1)), int(m.group(2)), int(m.group(3))))
+    return out[:n]
+
+
+SWATCHES = bio_pal_row0(SWQ_N)
+assert len(SWATCHES) == SWQ_N, "BioPickColor parsed short — the palette row moved"
+
+
+def rgb(c):
+    return "rgb(%d,%d,%d)" % c
+
+
+def demo_look_line():
+    """DrawStripGearHeadSub() for the demo drawing: hex · width · style · tone."""
+    line = DEMO_HEX
+    if 1 <= DEMO_WIDTH <= 5:
+        line += " \u00b7 %dpx" % DEMO_WIDTH
+    line += " \u00b7 " + DEMO_STYLE
+    if DEMO_FILL >= 0.5:
+        line += " \u00b7 %d%%" % DEMO_TONE
+    return line
+
+
+def digest_of(gid):
+    """DrawStripGearGroupDigest()'s own lines, for the demo drawing."""
+    if gid == "DSTRIP_GEAR_PAINT":
+        return DEMO_HEX if DEMO_FILL < 0.5 else (DEMO_HEX + " \u00b7 %d%%" % DEMO_TONE)
+    if gid == "DSTRIP_GEAR_STYLE":
+        return "%dpx \u00b7 %s" % (DEMO_WIDTH, DEMO_STYLE)
+    if gid == "DSTRIP_GEAR_LEVELS":
+        return "%d levels" % DEMO_LEVELS
+    if gid == "DSTRIP_GEAR_MARK":
+        return "10pt" if DEMO_KIND == "DK_TEXT" else "glyph 3"
+    if gid == "DSTRIP_GEAR_TPL":
+        return DEMO_PRESETS[0] if DEMO_PRESETS else "none"
+    return "%d cells" % DEMO_CELLS
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -307,6 +382,23 @@ def _sid(bare):
     return SLOT.get("DRAW_SLOT_" + bare, -1)
 
 
+def slot_of(a):
+    """A row's argument as the slot it names: `DRAW_SLOT_FILL` -> 3, `"4"` -> 4.
+
+    P-DRAW-117: the walker reads a row's kind and its argument out of the source's
+    own call, and the source spells the argument as a SLOT SYMBOL as often as it
+    spells it as a number (`DrawStripGearRow(1, DRAW_SLOT_FILL, y)`). A mirror that
+    only understood digits answered `-1` for every such row and drew a label-less
+    band — which is what the first render of the accordion showed.
+    """
+    if a is None:
+        return -1
+    a = a.strip()
+    if a.isdigit():
+        return int(a)
+    return SLOT.get(a, -1)
+
+
 def parse_switch_names():
     """DrawStripSwitchName -> {slot: label} (the row labels for kind-1 rows)."""
     body = _fn_body(DS, r"string\s+DrawStripSwitchName\s*\([^)]*\)")
@@ -382,17 +474,107 @@ ROW_TEXT = parse_row_text()
 # ════════════════════════════════════════════════════════════════════════════
 # B. THE CONTENT WALKER — DrawStripGearContent's own statements, in order.
 # ════════════════════════════════════════════════════════════════════════════
-TABS = ["Paint", "Style", "Look", "Row"]
-TAB_ACTIVE = 3                        # the screenshot's state (the Row tab)
-TAB_BRANCH = {"Paint": "DSTRIP_GEAR_PAINT", "Style": "DSTRIP_GEAR_STYLE",
-              "Look": "DSTRIP_GEAR_TPL", "Row": "DSTRIP_GEAR_STRIP"}
+# ── P-DRAW-117 (2026-10-01): THE GROUP REGISTRY, PARSED, NOT RETYPED ─────────
+# The panel's nav is a list of ROWS now — `DrawStripGearGroups` fills `s_dsGearGrp`
+# and every reader (the walk, the paint, the hit test, the tool) asks that one
+# owner. This mirror asks it too: the ids in the source's own order, each with the
+# guard the source wraps it in (`DrawKindHasLevels(s_dsKind)` for the levels
+# family, a kind comparison for the marks), evaluated for the demo kind the same
+# way the MQL's own `if` does.
+def parse_kind_has_levels():
+    """The level family, out of the OWNER of the answer — `DrawKindHasLevels` lives
+    in the toolbar's own unit (DrawToolbar.mqh -> Toolbar_A.mqh), which this file
+    already reads as `DT` for exactly this reason: a face read out of the wrong
+    unit is an empty answer, and an empty answer silently offers a box a LEVELS
+    group it can never have.
+    """
+    body = _fn_body(DT, r"bool\s+DrawKindHasLevels\s*\(")
+    return set(re.findall(r"k\s*==\s*(DK_\w+)", body))
+
+
+LEVEL_KINDS = parse_kind_has_levels()
+
+
+def parse_group_registry():
+    """[(id, guard)] in the source's own order; guard in ('levels', 'mark', None).
+
+    The guard sits BEFORE the write (`if(DrawKindHasLevels(s_dsKind)) { s_dsGearGrp…`),
+    so it is read from the same statement the id is: splitting on the assignment
+    alone would drop it and offer a RECT a levels group it can never have.
+    """
+    body = _fn_body(DS, r"int\s+DrawStripGearGroups\s*\(")
+    out = []
+    prev = 0
+    for m in re.finditer(r"s_dsGearGrp\[n \+ 1\] = (DSTRIP_GEAR_\w+); n\+\+;", body):
+        head = body[prev:m.start()]
+        guard = None
+        if "DrawKindHasLevels" in head:
+            guard = "levels"
+        elif "DK_TEXT" in head or "DK_ARROW" in head:
+            guard = "mark"
+        out.append((m.group(1), guard))
+        prev = m.end()
+    return out
+
+
+REGISTRY = parse_group_registry()
+
+
+def group_ids():
+    out = []
+    for gid, guard in REGISTRY:
+        if guard == "levels" and DEMO_KIND not in LEVEL_KINDS:
+            continue
+        if guard == "mark" and DEMO_KIND not in ("DK_TEXT", "DK_ARROW"):
+            continue
+        out.append(gid)
+    return out
+
+
+GROUPS = group_ids()
+
+
+def parse_group_faces(fn):
+    """DrawStripGearGroupText / DrawStripGearGroupRes -> {id: what it returns}.
+
+    The MARK group's answer is a ternary over the kind, so both arms are read and
+    the demo kind picks one — a transcribed name here would be a second table
+    beside the source's own, which is the whole defect this file exists to avoid.
+    """
+    body = _fn_body(DS, r"string\s+%s\s*\(" % fn)
+    out = {}
+    for m in re.finditer(r"if\s*\(\s*gid\s*==\s*(DSTRIP_GEAR_\w+)\s*\)\s*return\s+"
+                         r"\(s_dsKind == DK_ARROW \? \"([^\"]*)\" : \"([^\"]*)\"\)", body):
+        out[m.group(1)] = m.group(2) if DEMO_KIND == "DK_ARROW" else m.group(3)
+    for m in re.finditer(r"if\s*\(\s*gid\s*==\s*(DSTRIP_GEAR_\w+)\s*\)\s*return\s+\"([^\"]*)\"",
+                         body):
+        out[m.group(1)] = m.group(2)
+    return out
+
+
+GROUP_TEXT = parse_group_faces("DrawStripGearGroupText")
+GROUP_RES = {g: r.split("\\\\")[-1] for g, r in parse_group_faces("DrawStripGearGroupRes").items()}
+
+# the demo kind's own list of groups, by name (the source's words, in its order)
+TABS = [GROUP_TEXT[g] for g in GROUPS]
+GROUP_AT = {n: g for n, g in zip(TABS, GROUPS)}
+TAB_ACTIVE = len(TABS) - 1             # the screenshot's state (the last group)
+GLIST_MAX = int((re.search(r"#define\s+DSTRIP_GLIST_MAX\s+(\d+)", DS) or [0, "16"])[1])
+GRK_GROUP = int((re.search(r"#define\s+DSTRIP_GRK_GROUP\s+(\d+)", DS) or [0, "9"])[1])
+LVLBLK = int((re.search(r"#define\s+DSTRIP_GEAR_LVLBLK\s+(\d+)", DS) or [0, "5"])[1])
 
 CONTENT = _fn_body(DS, r"void\s+DrawStripGearContent\s*\(")
 
 
 def _branches():
-    """`if(s_dsGear == X)` … `else if(s_dsGear == Y)` -> {X: body}."""
-    marks = list(re.finditer(r"(?:else\s+)?if\s*\(\s*s_dsGear\s*==\s*(DSTRIP_GEAR_\w+)\s*\)", CONTENT))
+    """`if(gOpen == X)` … `else if(gOpen == Y)` -> {X: body}.
+
+    P-DRAW-117: the accordion asks the open group through `gOpen` (the same value,
+    with `-1` for a folded panel), and this mirror follows the source's own
+    selector rather than a name it carries itself — `s_dsGear` is still accepted so
+    a reader can see which spelling the chain is on.
+    """
+    marks = list(re.finditer(r"(?:else\s+)?if\s*\(\s*(?:gOpen|s_dsGear)\s*==\s*(DSTRIP_GEAR_\w+)\s*\)", CONTENT))
     out = {}
     for i, m in enumerate(marks):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(CONTENT)
@@ -457,13 +639,19 @@ def _apply_guards(text):
             out = out[:m.start()] + " " * (semi + 1 - m.start()) + out[semi + 1:]
 
 
-def _expand_loops(text, unmodelled):
+def _expand_loops(text, unmodelled, headers_before=0):
     """DrawStripGearContent's four `for` shapes -> plain DrawStripGearRow calls.
 
     The loops are BOUND in the source by a count this proof can read: the kind's
     own slot set (`s < DRAW_SLOT_N`), DrawStripGlyphCount(), the held drawing's
     level count (demo) and the preset list (demo). A loop whose bound is not one
     of those is left alone and REPORTED — a proof may not guess a row count.
+
+    P-DRAW-117: the LEVEL list's bound is `i < nl && i < room`, and `room` is
+    `DSTRIP_GLIST_MAX - 2 - s_dsGRN` — the group headers ride the same row array
+    as the letters now, so the seats they spend are read out of the source
+    (`headers_before`) and subtracted here. A proof that ignored them would draw
+    more level rows than the panel can build.
     """
     out = text
     while True:
@@ -471,7 +659,15 @@ def _expand_loops(text, unmodelled):
         if not m:
             return out
         var, cond = m.group(1), m.group(2).strip()
-        ob = out.index("{", m.end())
+        # P-DRAW-117: a loop with a SINGLE-STATEMENT body (`for(…) if(…);`) has no
+        # brace to index — the old `out.index("{", …)` found the FUNCTION's own brace
+        # and swallowed everything to it. Reported, never guessed: the Mark group's
+        # glyph list is that shape, and a kind the demo does not walk must show up as
+        # an UNMODELLED statement, not as a crash or as a silently wrong row count.
+        ob = out.find("{", m.end())
+        if ob < 0 or (0 <= out.find(";", m.end()) < ob):
+            unmodelled.append("for(%s < %s) { one statement }" % (var, cond))
+            return out
         depth, close = 0, len(out)
         for i in range(ob, len(out)):
             if out[i] == "{":
@@ -482,7 +678,10 @@ def _expand_loops(text, unmodelled):
                     close = i
                     break
         body = out[ob + 1:close]
-        rm = re.search(r"DrawStripGearRow\s*\(\s*([^,)]+)\s*,\s*([^)]+)\)", body)
+        # the ARGUMENT, not the argument and the layout cursor: `a` used to swallow
+        # `, y`, so every generated row carried the cursor in its own argument and its
+        # label and its face resolved to -1 (see slot_of).
+        rm = re.search(r"DrawStripGearRow\s*\(\s*([^,)]+)\s*,\s*([^,)]+)", body)
         n, kind, arg = None, None, None
         if rm:
             kind, arg = rm.group(1).strip(), rm.group(2).strip()
@@ -490,8 +689,11 @@ def _expand_loops(text, unmodelled):
                 n = len([s for s in CAPS if s != _sid("MORE")])
             elif "DrawStripGlyphCount" in cond:
                 n = 8                       # DrawStripGlyphCount() == 8
-            elif cond == "nl":
-                n = DEMO_LEVELS
+            elif "nl" in cond:
+                room = GLIST_MAX - 2 - headers_before   # the source's own `room`
+                if room < 0:
+                    room = 0
+                n = min(DEMO_LEVELS, room)
             elif "DRAW_PRESET_MAX" in cond:
                 n = len(DEMO_PRESETS)
         if n is None or kind is None:
@@ -507,10 +709,15 @@ def _expand_loops(text, unmodelled):
         out = out[:m.start()] + " ".join(gen) + out[close + 1:]
 
 
-def walk(tab_name):
-    """DrawStripGearContent for one tab -> [(kind, name, y, extra), …]."""
+def walk(gid, headers_before=0):
+    """DrawStripGearContent's body for ONE group -> [(kind, name, y, extra), …].
+
+    `gid` is a DSTRIP_GEAR_* id and `headers_before` is how many group rows stand
+    above this group's body (they spend seats of the same row array the level list
+    rides — see `_expand_loops`).
+    """
     unmodelled = []
-    branch = _expand_loops(BRANCHES.get(TAB_BRANCH[tab_name], ""), unmodelled)
+    branch = _expand_loops(BRANCHES.get(gid, ""), unmodelled, headers_before)
     body, ung = _apply_guards(branch)
     unmodelled += ung
     blocks, y = [], 0
@@ -519,7 +726,8 @@ def walk(tab_name):
         r'DrawStripGearSection\s*\(\s*"([^"]+)"'
         r'|DrawStripGearCaptionIn\s*\(\s*"([^"]+)"'
         r'|DrawStripGearGridChips\s*\(\s*(DRAW_SLOT_\w+)\s*,\s*([^)]+)\)'
-        r'|DrawStripGearRow\s*\(\s*([^,)]+)\s*,\s*([^)]+)\)'
+        r'|DrawStripGearRow\s*\(\s*([^,)]+)\s*,\s*([^,)]+)'
+        r'|DrawStripGearQuickRow\s*\(\s*(DRAW_SLOT_\w+)\s*,\s*y\s*\)'
         r'|DrawStripGearGridStamp\s*\('
         r'|s_dsGearEditY\s*\[\s*(\d+)\s*\]\s*=\s*y'
         r'|for\s*\(\s*int\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*(nl|DrawPresetName|DrawStripGlyphCount|DRAW_SLOT_N|DRAW_PRESET_MAX)'
@@ -543,6 +751,12 @@ def walk(tab_name):
             if m.group(5).strip().startswith("int i") or m.group(5).strip().isdigit():
                 blocks.append(["row", None, y, (m.group(5).strip(), m.group(6).strip())])
                 y += ROW_H
+        elif tok.startswith("DrawStripGearQuickRow"):
+            # P-DRAW-118: the colour ROLE row — preview + the palette's row + the `+`,
+            # all of them grid cells in the MQL (`DrawStripGearQuickRow` is the only
+            # writer of `s_dsGG*` outside the chip helper), placed as ONE row.
+            blocks.append(["swq", m.group(7), y, None])
+            y += ROW_H
         elif tok.startswith("DrawStripGearGridStamp"):
             if pend_grid:
                 slot, n = pend_grid
@@ -551,10 +765,12 @@ def walk(tab_name):
                 blocks.append(["grid", slot, y, n])
                 y += rows * ROW_H
                 pend_grid = None
-        elif m.group(7) is not None:
+        elif m.group(8) is not None:
+            # the edit seat a caption OWNS (`s_dsGearEditY[0] = y`): its index is the
+            # caption block's own, and the paint draws the field on that row.
             for b in reversed(blocks):
                 if b[0] == "caption" and b[1] is not None and b[3] is None:
-                    b[3] = int(m.group(7))
+                    b[3] = int(m.group(8))
                     break
         elif tok.startswith("y +="):
             y += ROW_H
@@ -563,9 +779,11 @@ def walk(tab_name):
 
 # ════════════════════════════════════════════════════════════════════════════
 def row_label(kind, arg):
+    s = slot_of(arg)
+    if kind == str(GRK_GROUP):
+        return GROUP_TEXT.get(str(arg).strip(), "")
     if kind == "1":
-        return SWITCH_NAME.get(int(arg) if arg.isdigit() else -1,
-                               DEMO_SLOT_TEXT.get(int(arg) if arg.isdigit() else -1, "Interior"))
+        return SWITCH_NAME.get(s, DEMO_SLOT_TEXT.get(s, "Interior"))
     if kind == "3":
         return ROW_TEXT.get(3, "Save current look")
     if kind == "5":
@@ -573,13 +791,18 @@ def row_label(kind, arg):
     if kind == "7":
         return "New %s wears this look" % DEMO_KIND_NAME
     if kind == "6":
-        return DEMO_SLOT_TEXT.get(int(arg) if arg.isdigit() else -1, "")
+        # the more-cell is the LEVELS seat and the MQL names it (DrawStripGearRowText)
+        if str(arg).strip() == "DRAW_SLOT_MORE":
+            return "Levels"
+        return DEMO_SLOT_TEXT.get(s, "")
     return ""
 
 
 def row_res(kind, arg):
+    if kind == str(GRK_GROUP):
+        return GROUP_RES.get(str(arg).strip(), "")
     if kind == "1":
-        s = int(arg) if arg.isdigit() else -1
+        s = slot_of(arg)
         nm = SLOT_NAME.get(s, "")
         if nm in DEMO_ON and DEMO_ON[nm]:
             return ON_RES.get(nm, ICON_RES.get(s, ""))
@@ -589,9 +812,18 @@ def row_res(kind, arg):
 
 # ── the seats audit: the panel's numbers against the cards' own ──────────────
 def cap_w():
-    """DrawStripGearCapW() — the widest of COLOR/FILL plus the row gap."""
+    """DrawStripGearCapW() — the caption's own seat PLUS the widest label PLUS the
+    row gap (its `DSTRIP_GEAR_CAP_X + w + DSTRIP_ROW_GAP`, clamped to the pad).
+
+    The `CAP_X` term was missing, so every caption/field pair this mirror drew was
+    ~30px left of the MQL's own seats and the field's width ~30px wide: MEASURED
+    here, `COLOR` at `pxr` and its field at `pxr + 56` against the source's caption
+    at `+30` and field at `+86` (DrawStripGearCapW / DrawStrip_GearA). The gate's
+    hit-box count could not see it — both shapes are non-empty — which is exactly
+    why the seat is MIRRORED here rather than approximated.
+    """
     w = max(mt4.text_w("COLOR", LBL_PT), mt4.text_w("FILL", LBL_PT))
-    return max(PAD, w + ROW_GAP)
+    return max(PAD, CAP_X + w + ROW_GAP)
 
 
 GEAR_COL = 312               # DSTRIP_GEAR_COL
@@ -602,65 +834,100 @@ CHIP_H = 32                  # DSTRIP_GEAR_CHIP_H
 
 
 def layout(tab=TAB_ACTIVE):
-    """DrawStripGearLayout() + DrawStripGearPlace(): parsed content, and the
-    SAME narrow/wide decision the panel makes (P-DRAW-86).
+    """DrawStripGearLayout() + DrawStripGearPlace(): the ACCORDION, parsed.
 
-    A NARROW plate must fit the baked card set: `cardN = (gh-104)/42` and
-    `pnl_card<n>` stops at 10, so at most `WIDE_ROWS - 1` content rows stay
-    narrow; past that the panel splits into two 312 columns and the plate is
-    624 — the branch `DrawStripGearPlace` takes, and the one that decides
-    whether MT4 draws a baked card or a composed W body.
+    P-DRAW-117. The body is a column of group ROWS — the headers above the open
+    group, that group's own settings, then the headers below it — and:
+      * `content_top` is the head's bottom edge (56): the tab band is retired, so
+        the plate's arithmetic is `gh = 104 + 42R` and `cardN = R`;
+      * a NARROW plate must fit the baked card set (`pnl_card<n>` stops at 10), so
+        at most `WIDE_ROWS` rows stay narrow;
+      * past that the panel is 624 and splits at the boundary between the BLOCKS it
+        built — a group header owns its own settings (the walk registers a block per
+        header) and a long level list opens one every LVLBLK rows, so the split can
+        land inside the list without ever taking a header from its content
+        (`DrawStripGearPlace`'s own rule, and the reason it reads the block map).
+
+    Every height is a DELTA between two blocks' own y — a grid that wraps to two
+    rows is two rows here, the way `DrawStripGearGridStamp` advanced the cursor.
     """
-    tab_name = TABS[tab]
-    W = walk(tab_name)
-    tabs_y = HEAD_H
-    content_top = HEAD_H + ROW_H           # head + the tab row
-    rows = []
-    for kind, name, by, extra in W["blocks"]:
-        if kind == "row" and name is None:
-            k, a = extra
-            name = row_label(k, a)
-            extra = (k, a, row_res(k, a))
+    gid = GROUPS[tab]
+    heads, tails = GROUPS[:tab + 1], GROUPS[tab + 1:]
+    W = walk(gid, tab)
+    content_top = HEAD_H
+    rows, units = [], []
+
+    def unit(kind, name, y, extra):
+        units.append([kind, name, y, extra, 0, 0])
+        return units[-1]
+
+    y = 0
+    blk = []
+    for g in heads:                        # the headers ABOVE the open group
+        blk.append(y)
+        e = unit("row", GROUP_TEXT[g], y, (str(GRK_GROUP), g, GROUP_RES[g]))
+        e[5] = ROW_H                       # a header is one row, like every row
+        y += ROW_H
+    body_start = y
+    cb = W["blocks"]
+    for i, (kind, name, by, extra) in enumerate(cb):
+        nxt = cb[i + 1][2] if i + 1 < len(cb) else W["y"]
+        if kind == "section":
+            blk.append(body_start + by)
+        elif kind == "row" and name is None:
+            kk, aa = extra
+            if kk == "4" and aa.isdigit() and int(aa) % LVLBLK == 0:
+                blk.append(body_start + by)      # the level list's own sub-blocks
+            name = row_label(kk, aa)
+            extra = (kk, aa, row_res(kk, aa))
         elif kind == "grid":
             name, extra = extra, (extra,)
-        rows.append([kind, name, by, extra, 0])
-
-    nrows = len(rows)
-    content_end = nrows * ROW_H
+        elif kind == "swq":
+            # P-DRAW-118: one colour role — the cells are the paint's own, so the row
+            # carries its slot and nothing else.
+            name, extra = extra, (extra,)
+        e = unit(kind, name, body_start + by, extra)
+        e[5] = max(ROW_H, nxt - by)              # the block's own height
+    y = body_start + W["y"]
+    for g in tails:                          # ...and the headers BELOW it
+        blk.append(y)
+        e = unit("row", GROUP_TEXT[g], y, (str(GRK_GROUP), g, GROUP_RES[g]))
+        e[5] = ROW_H
+        y += ROW_H
+    content_end = y
     w = GEAR_W
-    if content_end > (WIDE_ROWS - 1) * ROW_H:
-        blk = [r[2] for r in rows if r[0] in ("section", "caption")]
+    if content_end > WIDE_ROWS * ROW_H:
         split = None
-        if len(blk) >= 2:                  # split on the best BLOCK boundary
-            best = None
-            for by in blk[1:]:
-                h = max(by, content_end - by)
-                if best is None or h < best[1]:
-                    best = (by, h)
-            split = best[0] if best else None
-        elif nrows >= 4:                   # ...else at half the ROW list
-            split = rows[(nrows + 1) // 2][2]
+        best = None
+        for b in blk[1:]:
+            h = max(b, content_end - b)
+            if best is None or h < best[1]:
+                best = (b, h)
+        if best is not None:
+            split = best[0]
         if split is not None:
-            for r in rows:
-                r[4] = 1 if r[2] >= split else 0
-            col0 = [r for r in rows if r[4] == 0]
-            col1 = [r for r in rows if r[4] == 1]
-            # DrawStripGearShiftItems packs each column from contentTop
-            for i, r in enumerate(col0):
-                r[2] = i * ROW_H
-            for i, r in enumerate(col1):
-                r[2] = i * ROW_H
-            content_end = max(len(col0), len(col1)) * ROW_H
+            # DrawStripGearShiftItems: whole blocks move, each column packs from
+            # contentTop, and a block keeps its own internal height while it packs.
+            hi = {u[2]: u[5] for u in units}
+            content_end = 0
+            for col in (0, 1):
+                items = [u for u in units if (u[2] >= split) == (col == 1)]
+                top = 0
+                for b in sorted({u[2] for u in items}):
+                    for u in [x for x in items if x[2] == b]:
+                        u[2], u[4] = top, col
+                    top += hi[b]
+                content_end = max(content_end, top)
             w = GEAR_W2
 
-    blocks = [(k, n, content_top + by, ex, col) for k, n, by, ex, col in rows]
+    rows = [(k, n, content_top + yy, ex, col) for k, n, yy, ex, col, _h in units]
     end = content_top + content_end
     gh = end + FOOT_H + AIR
     card_n = (gh - 104) // 42
     exact = (gh - 104) % 42 == 0 and 1 <= card_n <= 10
-    return dict(tabs_y=tabs_y, top=content_top, end=end, foot_y=end, h=gh, w=w,
-                card_n=card_n, exact=exact, blocks=blocks, wide=(w == GEAR_W2),
-                unmodelled=W["unmodelled"], tab_name=tab_name)
+    return dict(top=content_top, end=end, foot_y=end, h=gh, w=w,
+                card_n=card_n, exact=exact, blocks=rows, wide=(w == GEAR_W2),
+                unmodelled=W["unmodelled"], tab_name=TABS[tab], gid=gid)
 
 
 def paint(L, notes, tab=TAB_ACTIVE):
@@ -676,10 +943,15 @@ def paint(L, notes, tab=TAB_ACTIVE):
     else:
         pair_n = L["card_n"] if L["exact"] else (gh - 104 + 41) // 42
         pair_n = max(1, pair_n)
+        # P-DRAW-110 (2026-10-01): the body starts at the HEAD's own edge, not at the
+        # top cap's height — the cap's 14px pad is spent ABOVE `gy - 14`, so `gy + 70`
+        # put the whole body 14px low on the wide tabs. The cards' own composition is
+        # the owner (BiotakPanels_Build.mqh:727-737, `PNL_HEAD_H`); the MQL now reads
+        # `DSTRIP_GEAR_HEAD_H` the same way.
         c.img("pnl_cardWtop.bmp", gx - 14, gy - 14, gw + 28, 70, Z_CARD)
         for li in range(pair_n):
-            c.img("pnl_cardWmid.bmp", gx - 14, gy + 70 + li * ROW_H, gw + 28, ROW_H, Z_CARD)
-        c.img("pnl_cardWbot.bmp", gx - 14, gy + 70 + pair_n * ROW_H, gw + 28, 62, Z_CARD)
+            c.img("pnl_cardWmid.bmp", gx - 14, gy + HEAD_H + li * ROW_H, gw + 28, ROW_H, Z_CARD)
+        c.img("pnl_cardWbot.bmp", gx - 14, gy + HEAD_H + pair_n * ROW_H, gw + 28, 62, Z_CARD)
         notes.append(("plate", "composed W", gw + 28, gh + 28))
 
     # ── HEADER (DrawStripGearHeadPaint) ───────────────────────────────────────
@@ -696,8 +968,10 @@ def paint(L, notes, tab=TAB_ACTIVE):
     ver = SRC_SHORT   # P-BUILD-08: DrawStrip_GearB's `TH3_SRC_SHORT`, parsed not typed
     vw = 10 + mt4.text_w(ver, PT["ver"])
     ver_x = gx + gw - 16 - XBTN - 6 - vw
-    c.text(htx, hy + 12, "Box Settings", INK, PT["title"], True, z=Z_TEXT)
-    c.text(htx, hy + 35, "SERVING 1 DRAWING", MUTED, PT["sub"], True, z=Z_TEXT)
+    # P-DRAW-117: line 1 is the panel's title and line 2 is the DRAWING's live look
+    # (`DrawStripGearHeadSub`: hex · width · style), not the retired selection count.
+    c.text(htx, hy + 12, DEMO_KIND_NAME + " Settings", INK, PT["title"], True, z=Z_TEXT)
+    c.text(htx, hy + 35, demo_look_line(), MUTED, PT["sub"], True, z=Z_TEXT)
     c.rect(ver_x, hy + 20, vw, 16, VER_BG, Z_BASE)
     c.text(ver_x + vw / 2, hy + 28, ver, ACCENT_C, PT["ver"], True, "lu", Z_TEXT)
     close_x = gx + gw - PAD - XBTN
@@ -706,23 +980,21 @@ def paint(L, notes, tab=TAB_ACTIVE):
     c.img("gl_x_%s.bmp" % ANAME, close_x + (XBTN - GLYPH) // 2,
           hy + 15 + (XBTN - GLYPH) // 2, GLYPH, GLYPH, Z_INK)
 
-    # ── TAB ROW (DrawStripGearPaint) ──────────────────────────────────────────
-    ty = gy + L["tabs_y"] + (ROW_H - TAB_H) // 2
-    total = sum(TAB_PAD + mt4.text_w(t, 8) for t in TABS) + (len(TABS) - 1) * TAB_GAP
-    col_w = gw - 2 * PAD
-    tx = gx + PAD + max(0, (col_w - total) // 2)
-    for i, t in enumerate(TABS):
-        tw = TAB_PAD + mt4.text_w(t, 8)
-        sel = (i == tab)
-        c.rect(tx, ty, tw, TAB_H, CARD_C, Z_BASE)
-        c.text(tx + tw / 2, ty + TAB_H / 2, t, INK if sel else MUTED, 8, sel, "lu", Z_TEXT)
-        if sel:
-            c.rect(tx + 7, ty + TAB_H - 1, tw - 14, TAB_UL, ACCENT_C, Z_INK)
-        tx += tw + TAB_GAP
+    # ── NO TAB ROW — the group rows below ARE the nav (P-DRAW-117) ──────────────────────────────────────────
 
     # ── CONTENT ROWS ─────────────────────────────────────────────────────────
     px = gx + PAD
-    cw = col_w
+    # P-DRAW-109 (2026-10-01): ONE COLUMN'S CELL, NOT THE WHOLE BOX. `col_w`
+    # (592 on a 624 tab) is the TAB TRACK's width; every row, caption, grid and
+    # section inside a column is `DrawStripGearCellW()` — 280 on EVERY tab — and
+    # the MQL's own paint reads it (DrawStrip_GearB.mqh:880), its hit test reads
+    # it (:461), its content pass reads it (DrawStrip_GearA.mqh:342). MEASURED:
+    # with the box, the wide tabs' column-1 switch/chip lands at `pxr + 592 - 40`
+    # = 880 for a plate that ends at 638 — 242px off the card, six ops per wide
+    # tab (pnl_sw_*, pnl_cntchip), and the chip grid packed `(592+8)//56` = 10 per
+    # row where the MQL lays 5. The mirror lied about exactly the two tabs the
+    # user was told to look at.
+    cw = GEAR_W - 2 * PAD
     for kind, name, y, extra, col in L["blocks"]:
         # P-DRAW-30: the wide pass TRANSLATES whole blocks into the right column
         pxr = px + col * GEAR_COL
@@ -735,7 +1007,9 @@ def paint(L, notes, tab=TAB_ACTIVE):
             c.img("pnl_cntchip.bmp", pxr + cw - SEC_CNT_W - 2, ry + 11,
                   SEC_CNT_W + 4, 20, Z_CHIP)
         elif kind == "caption":
-            c.text(pxr, ry + LBL_Y, name, LABEL, LBL_PT, True, z=Z_TEXT)
+            # a caption that shares its row with a field IS the row's label, and it
+            # sits on the same seat the row labels do (`DSTRIP_GEAR_CAP_X`).
+            c.text(pxr + CAP_X, ry + LBL_Y, name, LABEL, LBL_PT, True, z=Z_TEXT)
             e = extra
             ex = pxr + cap_w()
             c.rect(ex, ry + (ROW_H - EDIT_H) // 2, cw - cap_w(), EDIT_H, FIELD, Z_BASE,
@@ -743,6 +1017,26 @@ def paint(L, notes, tab=TAB_ACTIVE):
             if e in (0, 4):
                 c.text(ex + 4, ry + (ROW_H - EDIT_H) // 2 + (EDIT_H - mt4.font_px(8)) // 2,
                        "#FFAB00", LABEL, 8, False, "lu", Z_TEXT)
+        elif kind == "swq":
+            #── P-DRAW-118 (2026-10-01) — THE CARDS' OWN QUICK ROW. The colour this
+            #── role holds now, the palette's own first row (`BioPal` = `BioPickColor
+            #── (0, i)`, parsed out of ConstantsAndEnums), then the `+` that opens the
+            #── board. Every cell is a grid cell in the MQL (DrawStripGearQuickRow),
+            #── so the face is the strip's own `ds_swatch24` at its native 24 — the
+            #── icon diet's own skin for a colour cell (P-DRAW-33).
+            cur = DEMO_RGB if str(name) == "DRAW_SLOT_COLOR" else DEMO_FILL_RGB
+            cx0 = pxr + PAD
+            cy0 = ry + (ROW_H - SWQ_CELL) // 2
+            c.rect(cx0, cy0, SWQ_CELL, SWQ_CELL, rgb(cur), Z_BASE, border=ACCENT_C)
+            c.img("ds_swatch24.bmp", cx0, cy0, SWQ_CELL, SWQ_CELL, Z_SKIN)
+            sx = cx0 + SWQ_PREV + SWQ_GAP
+            for i, sw in enumerate(SWATCHES):
+                wx = sx + i * (SWQ_CELL + SWQ_GAP)
+                c.rect(wx, cy0, SWQ_CELL, SWQ_CELL, rgb(sw), Z_BASE, border=SWATCH_BD)
+                c.img("ds_swatch24.bmp", wx, cy0, SWQ_CELL, SWQ_CELL, Z_SKIN)
+            ax = sx + SWQ_N * (SWQ_CELL + SWQ_GAP)
+            c.rect(ax, cy0, SWQ_PLUS, SWQ_PLUS, FIELD, Z_BASE, border=FIELD_BD)
+            c.text(ax + SWQ_PLUS / 2.0, cy0 + SWQ_PLUS / 2.0, "+", LABEL, 8, True, "lu", Z_TEXT)
         elif kind == "grid":
             # the grid's real cells: DSTRIP_GEAR_CHIP 48 x DSTRIP_GEAR_CHIP_H 32,
             # on the row pitch, the first one carrying the accent (the current value)
@@ -758,7 +1052,29 @@ def paint(L, notes, tab=TAB_ACTIVE):
                        8, True, "lu", Z_TEXT)
         else:
             k, a, res = extra if (extra and len(extra) == 3) else (None, None, "")
-            c.text(pxr + PAD, ry + LBL_Y, name, LABEL, LBL_PT, True, z=Z_TEXT)
+            if k == str(GRK_GROUP):
+                # P-DRAW-117: A GROUP HEADER — the cards' own chip (gold while THIS
+                # group is the open one), the group's icon, its name, and the value it
+                # holds right-aligned inside the cell. No switch: a group is not a
+                # boolean. The seats are the MQL's own (DrawStrip_GearB.mqh:1005-1030).
+                cur = (a == L["gid"])
+                c.img("pnl_chip_gold.bmp" if cur else "pnl_chip.bmp",
+                      pxr + PAD, ry + CHIP_Y, 22, 22, Z_SKIN)
+                if res:
+                    c.img(res, pxr + PAD + 1, ry + CHIP_Y + 1, 20, 20, Z_INK)
+                c.text(pxr + PAD + 30, ry + LBL_Y, name, INK if cur else LABEL, LBL_PT,
+                       True, z=Z_TEXT)
+                dg = digest_of(a)
+                c.text(pxr + cw - DG_PAD - mt4.text_w(dg, 8), ry + LBL_Y, dg,
+                       ACCENT_C if cur else MUTED, 8, True, z=Z_TEXT)
+                if cur:
+                    c.img("pnl_rail_gold.bmp", pxr, ry, 2, ROW_H, Z_SKIN)
+                continue
+            # P-DRAW-117: THE LABEL STARTS WHERE THE CHIP ENDS when the row wears one
+            # — the MQL's own `PAD + (res == "" ? 0 : 22 + 8)` (DrawStrip_GearB). This
+            # mirror drew both at `+PAD`, so every icon row's chip sat ON its word.
+            c.text(pxr + PAD + (30 if res else 0), ry + LBL_Y, name, LABEL, LBL_PT,
+                   True, z=Z_TEXT)
             if res:
                 c.img("pnl_chip.bmp", pxr + PAD, ry + CHIP_Y, 22, 22, Z_SKIN)
                 c.img(res, pxr + PAD + 1, ry + CHIP_Y + 1, 20, 20, Z_INK)
@@ -786,12 +1102,18 @@ def paint(L, notes, tab=TAB_ACTIVE):
         c.rect(fx, fy, bw, 28, FOOTBG, Z_BASE)
         c.img("pnl_btn_ghost.bmp", fx - FOOT_PAD, fy - FOOT_PAD,
               bw + 2 * FOOT_PAD, 28 + 2 * FOOT_PAD, Z_SKIN)
+        # P-DRAW-107: the ink is the CENTRED group — [ring + FOOT_GLYPH_ADV][word] —
+        # the MQL's own DrawStripFootLabelX / DrawStripFootGlyphX. The cards'
+        # left-aligned pair (`+12` / `+16` / `+32`) is retired: on a 72px plate it
+        # left 40px of plate to the right of `All`.
+        adv = 0 if f else FOOT_GLYPH_ADV
+        tx = fx + (bw - adv - mt4.text_w(label, 8)) // 2
         # the design gives the ring to `Reset` alone; the pair is plain text.
         if f == 0:
-            c.img("gl_reset_m.bmp", fx + FOOT_GLYPH_X, fy + 6, GLYPH, GLYPH, Z_INK)
-            c.text(fx + 32, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
+            c.img("gl_reset_m.bmp", tx, fy + 6, GLYPH, GLYPH, Z_INK)
+            c.text(tx + adv, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
         else:
-            c.text(fx + FOOT_PLAIN_X, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
+            c.text(tx, fy + 17, label, MUTED, 8, True, z=Z_TEXT)
     return c
 
 
@@ -825,7 +1147,7 @@ def main():
             "canvas{background:#c8c8e8;display:block;margin:0 auto}",
             "img{position:absolute}i{position:absolute;display:block}span{position:absolute;display:block}",
             "h3{font:13px Arial;color:#333;margin:14px 0 6px}</style></head><body>"]
-    html.append("<h3>Box Settings panel &mdash; tab %d (%s) &mdash; h=%d w=%d cardN=%d exact=%s "
+    html.append("<h3>Box Settings panel &mdash; group %d (%s) &mdash; h=%d w=%d cardN=%d exact=%s "
                 "&mdash; kind %s</h3>"
                 % (tab, L["tab_name"], L["h"], L["w"], L["card_n"], L["exact"], DEMO_KIND))
     html.append(c.to_html())
@@ -841,7 +1163,7 @@ def main():
     with open(out, "w", encoding="utf-8") as fh:
         fh.write("\n".join(html))
 
-    print("tab %d (%s): h=%d w=%d cardN=%d exact=%s -> %s"
+    print("group %d (%s): h=%d w=%d cardN=%d exact=%s -> %s"
           % (tab, L["tab_name"], L["h"], L["w"], L["card_n"], L["exact"], out))
     for kind, what, w, h in notes:
         print("  plate %s  %dx%d" % (what, w, h))

@@ -51,9 +51,9 @@ def surfaces():
     out.append(("colour board", bc))
     for tab in range(4):
         L = G.layout(tab)
-        out.append(("panel · tab %d %s" % (tab + 1, G.TABS[tab]), G.paint(L, [], tab)))
+        out.append(("panel · group %d %s" % (tab + 1, G.TABS[tab]), G.paint(L, [], tab)))
     fb = S.gear_for("DK_FIBO")
-    out.append(("panel · DK_FIBO tab 1", fb.paint(fb.layout(0), [], 0)))
+    out.append(("panel · DK_FIBO · group 1 %s" % fb.TABS[0], fb.paint(fb.layout(0), [], 0)))
     return out
 
 

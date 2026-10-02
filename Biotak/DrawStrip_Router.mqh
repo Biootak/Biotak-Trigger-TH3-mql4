@@ -538,8 +538,20 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
          // re-declaring them here is what let a mid-press flap kill the window.
          if(!DrawStripPressCycleLive())
          {
-            s_dsPressX = tmx; s_dsPressY = tmy; s_dsTravel = 0;
-            s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
+             s_dsPressX = tmx; s_dsPressY = tmy; s_dsTravel = 0;
+             s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
+             //--- P-DRAW-102: A NEW PRESS IS NEVER THE PREVIOUS GESTURE'S RELEASE.
+             //--- `s_dsGearPressSpent` is armed by the panel's coordinate channel
+             //--- below and spent by the release that follows it, and the only other
+             //--- places that clear it are the panel's close and the strip's. A press
+             //--- on a control whose release the terminal never reported as a click
+             //--- (the hand let go outside the chart window) left it armed, and the
+             //--- NEXT click on the chart was spent at 682 as a twin release: the
+             //--- click the user made to dismiss the strip did nothing, and the one
+             //--- after it worked. It is this press's own flag, so a new press edge
+             //--- is where it starts again — set below, on the same block.
+             s_dsGearPressSpent = false;
+
             DrawHitCacheClear();   // the hit memo is a GESTURE's, never a session's
             s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press
             FillChildStampArm(s_dsPressObj);   // P-DRAW-64 addendum 6: the hand's own ride
@@ -563,13 +575,27 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
             // the travel bookkeeping every later branch below this one owns. It
             // only SPENDS the press — the carry, the opener and the hold are
             // disarmed, so the rest of this block finds nothing to do with it.
-            if(s_dsGear != 0 && DrawStripGearHit(tmx, tmy))
+            //
+            //--- P-DRAW-113 (2026-10-01): AND `DrawStripGearSurfaceAt` IS THE OTHER
+            //--- HALF OF THAT SENTENCE. `DrawStripGearHit` declines the panel's own
+            //--- dead pixels — the tab TRACK between two tabs (Base:399), a cell's
+            //--- margins, the plate's own skin margin — and the release below asks
+            //--- ONLY this flag, so a press there read as a click on the chart and
+            //--- `ObjectsDeleteAll("PnlDrawS_G")` took the head, the tab row and the
+            //--- foot with it. MEASURED (H1 10:14:30 `dismiss click at 1126,230`
+            //--- against `PLATE tab=1 ... xy=766,148`: 82px down = inside the tab
+            //--- buttons, 360px across = the 8px gap between tab 2 and tab 3).
+            //--- The panel is a surface of its own, so a press on ANY of its pixels
+            //--- is spent here; its head stays out of it, because that band is the
+            //--- panel's carry and needs the press left tracked (P-DRAW-85).
+            if(s_dsGear != 0 &&
+               (DrawStripGearHit(tmx, tmy) || DrawStripGearSurfaceAt(tmx, tmy)))
             {
-               s_dsPressTracked = false;        // a control acted: not a carry
+               s_dsPressTracked = false;        // the panel had it: not a carry
                DrawStripPressCycleClear();
                DrawStripOpenerDisarm();
                DrawStripHoldSelectionDisarm();
-               s_dsGearPressSpent = true;       // the release knows a control had it
+               s_dsGearPressSpent = true;       // the release knows the panel had it
             }
          }
       }
@@ -676,11 +702,29 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
      //--- the SAME gesture on the other channel: it must be spent here, or the
      //--- "clicked away" branch below reads a press on the panel as a press on the
      //--- chart and shuts the panel the user was working in.
+     //--- P-DRAW-115 (2026-10-01) — AND THE FLAG'S LIFETIME IS THE GESTURE, NOT THE
+     //--- FIRST EVENT THAT SEES IT. `s_dsGearPressSpent = false` stood HERE, and this
+     //--- branch is the one place every release passes: MT4 reports ONE release on TWO
+     //--- channels (`CHARTEVENT_OBJECT_CLICK` and `CHARTEVENT_CLICK`), so the first one
+     //--- consumed the flag and the second found it clear and fell through into the
+     //--- dismissal at 951 — where the release pixel is asked `DrawStripPointInside`.
+     //--- P-DRAW-84's own arming note (553) says the lifetime is the gesture: the flag
+     //--- is armed by the press edge and cleared by the NEXT press edge, by the panel's
+     //--- close (DrawStrip_GearB:83) and by the strip's open (DrawStrip_Paint:702).
+     //--- This line was the fourth writer and the only one that shortened it.
+     //--- WHY IT SHOWS AS «PANEL HALF GONE» AND NOT AS A STUCK TAB: the press edge
+     //--- ALREADY acted (598), and a tab press re-lays-out and re-places the plate —
+     //--- MEASURED in one log second: `PLATE tab=5 ... xy=196,37` then
+     //--- `PLATE tab=1 ... xy=196,18`, and the tab seats move with it
+     //--- (`GT2 356,102` -> `GT2 512,83`). So by the time the second channel arrives,
+     //--- the control under the hand is a different one and the plate under the release
+     //--- pixel may not be the plate at all: `DrawStripClose()` runs, and it is
+     //--- `ObjectsDeleteAll("PnlDrawS_G")` — the head, the tab row and the foot with it.
+     //--- The cards never had this shape: `PnlClickFallback` spends the gesture and the
+     //--- press chain consumes the echo (`s_PnlClickActed`), ONE arbiter for two
+     //--- channels. This flag is that arbiter; it now has the lifetime the cards' has.
      if(s_dsGearPressSpent)
-     {
-        s_dsGearPressSpent = false;
         return DrawStripClickFamily();
-     }
     if(id == CHARTEVENT_OBJECT_CLICK)
     {
        // P-UI-113-OFF (2026-09-23): the closed-state right-click open channel
@@ -727,7 +771,6 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
           { DrawStripTap(i, sparam); return DrawStripClickFamily(); }
       }       if(sparam == DrawStripGripName() || sparam == DrawStripGripIconName() ||
           sparam == DrawStripGripIconName() + "C" || sparam == DrawStripBadgeName() ||
-          sparam == DrawStripGearTrackName() ||
           //--- P-DRAW-83: the head's version chip is chrome on the head's own
           //--- carry (the head's drag is geometric, `DrawStripGripWhich`), never a
           //--- control — and it was not named anywhere, so a press on it fell past
@@ -800,25 +843,13 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
 
          { DrawStripPickTap(r); return DrawStripClickFamily(); }
       }
-      // gear tabs, grid cells, rows, foot. Edits take focus for typing.
-      //--- P-DRAW-83 (2026-09-29) — THE BOUND IS THE ARRAY'S OWN. `t < 4` was written
-      //--- by hand against `DSTRIP_GEAR_TAB_MAX` (5): a kind that shows five tabs
-      //--- (fibo/level, text, arrow — LEVELS/MARK inserts one before the pair) draws
-      //--- five and could only ever answer four, so the LAST tab — "Row", the tab
-      //--- that carries the quick row — stood there dead on exactly those kinds. The
-      //--- arrays below were widened from [4] to [DSTRIP_GEAR_TAB_MAX] for the same
-      //--- reason; the router was missed.
-      //--- The selected tab's own UNDERLINE is the same tab: it is drawn over that
-      //--- tab's bottom 2px and its name matched `DrawStripIsBg` as a PLATE, so a
-      //--- press on it was read as the plate's dead space and the tab under it never
-      //--- answered. Asked here as the tab it belongs to.
-      for(int t = 0; t < DSTRIP_GEAR_TAB_MAX; t++)
-      {
-         bool tabName = (sparam == DrawStripGearTabName(t));
-         bool tabLine = (sparam == DrawStripGearTabLineName() &&
-                         t < s_dsGearTab[0] && s_dsGearTab[t + 1] == s_dsGear);
-         if(tabName || tabLine) { DrawStripGearTabTap(t); return DrawStripClickFamily(); }
-      }
+      // gear grid cells, rows, foot. Edits take focus for typing.
+      //--- P-DRAW-117 (2026-10-01): THE TAB LOOP IS GONE WITH THE TAB ROW. A group
+      //--- header is a ROW (`DSTRIP_GRK_GROUP`), and the row loop below answers it
+      //--- through `DrawStripRowName(r)` — the same seat array the paint writes, which
+      //--- is the coordinate channel's own rule (P-DRAW-84). The retired `GT*` /
+      //--- `GTrack` / `GU` names have no branch here on purpose: no painter in this
+      //--- build produces them, and the panel's own paint and purge sweep them.
       for(int g = 0; g < DSTRIP_GRID_MAX; g++)
          if(sparam == DrawStripGridName(g) || sparam == DrawStripGridIconName(g) ||
             sparam == DrawStripGridGlassName(g))
@@ -922,11 +953,29 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
           if(sparam == DrawStripEditName(e)) { DrawStripEditEnd(e); return true; }
        return false;
     }
-    if(id == CHARTEVENT_CLICK)
-    {
-       DrawStripGripRelease();   // motionless releases emit no MOVE (P-LM-13 net)
-       int rcx = (int)lparam, rcy = (int)dparam;
-       // P-UI-113i: THE RELEASE'S OWN DRAWING IS NEVER AN OUTSIDE CLICK. The press
+     if(id == CHARTEVENT_CLICK)
+     {
+        int rcx = (int)lparam, rcy = (int)dparam;
+        //--- P-DRAW-97 (2026-09-30) — THE SCRUB'S RELEASE, ON THE ONLY CHANNEL THAT
+        //--- CARRIES IT. A press on a swatch starts the preview on the press EDGE
+        //--- (DrawStripGripMove:40-48) and a MOTIONLESS release emits no MOUSE_MOVE
+        //--- — the very fact the line below was written for (P-LM-13) — so the one
+        //--- event that ends the gesture is this one, and it reached only
+        //--- DrawStripGripRelease, which clears `s_dsPalGrab` and nothing else. The
+        //--- drawing therefore kept the PREVIEW's pixels: `DrawSlotPreviewColor`
+        //--- writes `OBJPROP_COLOR` (Toolbar_A) and NOT the pure tag its own
+        //--- property is read from, so the shape wore a colour its tags did not
+        //--- name. Measured consequence of one press-and-lift on a swatch: the swatch
+        //--- stayed rimmed in the accent (`s_dsPalCell` never cleared), the panel's
+        //--- colour cell, the board's HEX field and every `PickIsCur` ring kept
+        //--- showing the OLD colour, and no undo step existed for the change. The
+        //--- move path already had the right order — apply, then the one ender — and
+        //--- `DrawStripPalRelease`'s own `s_dsPalDoneMs` witness makes a second
+        //--- report of the same release a no-op, so this is safe on both channels.
+        if(s_dsPalGrab) DrawStripPalRelease(rcx, rcy);
+        DrawStripGripRelease();   // motionless releases emit no MOVE (P-LM-13 net)
+        // P-UI-113i: THE RELEASE'S OWN DRAWING IS NEVER AN OUTSIDE CLICK. The press
+
        // owner is accepted even if the terminal's control shifts under the hand,
        // and the release pixel gets the same body/control hit test as a still press.
        // Selection is not consulted here: selected and unselected drawings therefore

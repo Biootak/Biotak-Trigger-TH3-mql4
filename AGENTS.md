@@ -95,7 +95,8 @@ it**, and it must be invisible to every other section:
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -Project all
 powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile "$PWD\Biotak Trigger TH3 Lite.mq4"
-Get-ChildItem tests\*.mq4 | ForEach-Object { powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -SourceFile $_.FullName }
+powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -Tests -Project all      # every tests\*.mq4 in ONE run
+powershell -NoProfile -ExecutionPolicy Bypass -File compile-th3.ps1 -Shot -RestartTerminal -Project all   # the strip's REAL pixels, one command
 node tools/submenu_geometry_check.js
 node tools/check-resources.js
 node tools/check-level-continuity.js
@@ -106,6 +107,51 @@ python tools/check-gear-panel.py
 
 `compile-th3.ps1` is the ONLY build. Do not hand-roll a metaeditor call, and do not
 add a second script for the same job.
+
+**The gate layer is cheap; the loop was not.** MEASURED: all six gates together cost
+1.76 s (`check-resources` 269 ms, `check-regressions` 186, `check-level-continuity`
+150, `object_lifecycle_check` 309, `stale_state_check` 313, `submenu_geometry_check`
+101, `check-gear-panel` 438) — so the gates were never what made a fix take an hour;
+the 9 harness calls were (each one re-entered this script and re-ran them all: 54 s of
+wall clock for 9 × ~4 s of metaeditor). Three switches now say what a run did:
+
+- `-Gates scoped` (default) skips a gate only when the bytes it reads — `Biotak/**`,
+  both entries, `tools/*.js|py`, `Files/Icons/*.bmp`, 444 files under one fingerprint —
+  and its own script are identical to the run that PASSED last. It prints
+  `[SKIP] <gate> (inputs unchanged since the last PASS)`, so no report can claim a
+  check it did not run. A failure is never cached.
+- `-Gates full` runs everything (use before reporting "done").
+- `-Fast` is `-Gates off` for the inner loop, and it ends with `GATES SKIPPED (-Fast):
+  this build proves the names resolve, nothing more.` in yellow.
+- `-Tests` compiles every `tests\*.mq4` in this one process (~59 s → 42 s measured),
+  and a second run of an unchanged tree skips every gate.
+
+**`-Shot`: the strip's OWN pixels, not the mirror.** `tools/before-after.html` compares
+the design mock with a render built from the same literals — a MIRROR, and a mirror can
+be wrong about the one thing only the terminal knows: what the blit really does. The
+third column was always meant to be `tests/Biotak_StripShot_Test.mq4`, but getting its
+PNGs meant dragging the harness onto a chart by hand, and that is why the column stayed
+empty and why a fix was "verified" against a render that had the same bug in it
+(P-DRAW-109). One command now closes it:
+
+```
+compile-th3.ps1 -Shot                    # compile + deploy the harness, write build-logs\th3-shot.ini,
+                                         # print the terminal.exe /config: line. MT4 is NOT touched.
+compile-th3.ps1 -Shot -RestartTerminal   # ...and do it: close MT4, launch it on that config, wait for
+                                         # `[STRIPSHOT] DONE:`, sweep build-logs\shot\, relaunch your
+                                         # own instance, rebuild tools/before-after.html with the shots in it.
+compile-th3.ps1 -Shot -ShotSymbol EURUSD -ShotPeriod H1 -ShotTimeoutSec 120   # the chart it opens
+```
+
+MT4's own "Configuration at Startup" is the mechanism (`Symbol`/`Period`/`Script` +
+`ExpertsEnable=true`): the extra chart it opens is NOT saved to the profile, so the
+running charts come back untouched. One render per state — `StripShot_panel_paint.png`,
+`…_style`, `…_look`, `…_row`, `…_board`, `…_fibo_paint` — plus a census line per object
+with the rect the TERMINAL built (`StripShot-census.txt`). **The harness is a script on
+ONE chart:** never run it while a strip is open, and if the instance answers
+`[STRIPSHOT] … SKIP` (under ~40 bars, no strip opened) that is the terminal's reason,
+not a pass. A shot that produced no PNG fails the build — `-Shot` cannot report green on
+an empty column.
 
 **Deploy is a restart, and it is opt-in.** MT4 runs what it loaded at attach; a
 fresh ex4 is a file until the terminal restarts or the indicator is removed and

@@ -12,16 +12,27 @@
 //--- bounded, never on paint) this walks the chart ONCE and prints every object
 //--- whose box touches the tab band, with its type and its stored BGCOLOR. The
 //--- next screenshot of a blue bar arrives WITH its name attached.
+//--- P-DRAW-112 (2026-10-01) — THE CENSUS WALKS THE WHOLE PANEL, AND A LABEL IS
+//--- AN OBJECT WITH A BOX. User report on the Style tab: «تب استایل که میزنم اینطوری
+//--- میشه، خود تب و دکمه حذف و غیره دیده نمیشه» — the head (title, version, close),
+//--- the tab row, the foot and three of the four band CAPTIONS are gone, while the
+//--- chips, the rows, the band dots and the count pills are all there. The census
+//--- above could not have answered it: its band was the TAB ROW only, and its
+//--- `else continue` threw away OBJ_LABEL — the caption labels, the head title, the
+//--- foot words, every one of the missing names. So the band is the panel's own rect
+//--- and a label's own text/colour/z is printed with it. Bounded: one walk per panel
+//--- OPEN (never per paint), the call site is unchanged.
 void DrawStripGearTabCensus()
 {
    if(s_dsGear == 0 || s_dsGearW0 <= 0) return;
    int bx0 = s_dsGEX, bx1 = s_dsGEX + s_dsGearW0;
-   int by0 = s_dsGEY + s_dsGearTabsY, by1 = by0 + DSTRIP_GEAR_ROW_H;
+   int by0 = s_dsGEY, by1 = s_dsGEY + s_dsGearH;   // P-DRAW-112: the WHOLE plate
    int n = ObjectsTotal(0, -1);
    for(int oi = 0; oi < n; oi++)
    {
       string on = ObjectName(0, oi, -1);
       if(on == "") continue;
+      if(StringFind(on, "PnlDrawS_G") != 0) continue;   // P-DRAW-112: this panel only
       int oty = (int)ObjectGetInteger(0, on, OBJPROP_TYPE);
       int ox = (int)ObjectGetInteger(0, on, OBJPROP_XDISTANCE);
       int oy = (int)ObjectGetInteger(0, on, OBJPROP_YDISTANCE);
@@ -36,7 +47,7 @@ void DrawStripGearTabCensus()
          string bf = ObjectGetString(0, on, OBJPROP_BMPFILE, 0);
          ow = DrawStripResW(bf); oh = DrawStripResH(bf);
       }
-      else continue;   // lines, arrows and texts are points, not the bar
+      else if(oty != OBJ_LABEL) continue;   // lines/arrows are points, not the panel
       if(ox + ow < bx0 || ox > bx1 || oy + oh < by0 || oy > by1) continue;
       color bg = (color)ObjectGetInteger(0, on, OBJPROP_BGCOLOR);
       int zz = (int)ObjectGetInteger(0, on, OBJPROP_ZORDER);
@@ -45,15 +56,18 @@ void DrawStripGearTabCensus()
       //--- that can disagree with the four tabs beside it (measured: they read
       //--- 2892317 and it read -16924895 = 0xFEFDBF21). Reading the value back out
       //--- of the object is the fact; recomputing it here would be the guess.
+      //--- P-DRAW-117: the track's tone probe went with the track — the census below
+      //--- already prints every object's own `bgcolor`, and the retired `GTrack` is
+      //--- not a surface this build paints (it is swept, not measured).
       int tone = -1;
-      if(on == DrawStripGearTrackName())
-      {
-         color ct = StrapCellTone(s_dsGearTabsY, DSTRIP_BODY_TOP, DSTRIP_GEAR_GRID_TOP, s_dsGearH);
-         tone = (int)ct;
-      }
+      //--- P-DRAW-112: a label carries its answer in TEXT and COLOR, not in a box.
+      string ink = "-";
+      if(oty == OBJ_LABEL)
+         ink = "\"" + ObjectGetString(0, on, OBJPROP_TEXT) + "\":" +
+               IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_COLOR));
       Print("[drawstrip] TABCENSUS obj=", on, " type=", oty,
             " xywh=", ox, ",", oy, ",", ow, ",", oh,
-            " bgcolor=", (int)bg, " tone=", tone, " z=", zz);
+            " bgcolor=", (int)bg, " tone=", tone, " z=", zz, " ink=", ink);
    }
 }
 
@@ -348,6 +362,9 @@ string DrawStripGearRowText(const int r)
    }
    if(kind == 7) return "New " + DrawKindName(s_dsKind) + " wears this look";
    if(kind == 8) return "G" + IntegerToString(DrawStripGlyphAt(arg % 256));
+   //--- P-DRAW-117: a GROUP HEADER carries its own name — the row's label IS the
+   //--- group's word now, so the panel's nav has no second table to drift from.
+   if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupText(arg);
    return "";
 }
 string DrawStripGearRowRes(const int r)
@@ -369,6 +386,7 @@ string DrawStripGearRowRes(const int r)
       return DrawStripIconRes(arg, s_dsObj);
    }
    if(kind == 8) return "::Files\\Icons\\bk_glyph.bmp";
+   if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupRes(arg);   // P-DRAW-117
    return "";
 }
 string DrawStripGearRowTip(const int r)
@@ -401,6 +419,7 @@ string DrawStripGearRowTip(const int r)
    if(kind == 7) return "Learn the look on the chart as this tool's default (next drawing wears it)";
    if(kind == 8)
       return "Arrow mark: glyph " + IntegerToString(DrawStripGlyphAt(arg % 256)) + " — click to apply" + scope;
+   if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupTip(arg);   // P-DRAW-117
    return "";
 }
 bool DrawStripGearRowIsCur(const int r)
@@ -421,7 +440,70 @@ bool DrawStripGearRowIsCur(const int r)
    }
    if(kind == 8)
       return ((int)DrawSlotRead(s_dsObj, DRAW_SLOT_GLYPH) == DrawStripGlyphAt(arg % 256));
+   //--- P-DRAW-117: a group header is "current" exactly while ITS settings are the
+   //--- ones on screen — the open group, and not folded away.
+   if(kind == DSTRIP_GRK_GROUP) return (arg == s_dsGear && !s_dsGearCollapsed);
    return false;
+}
+//--- P-DRAW-117 (2026-10-01) — THE VALUE THE GROUP HOLDS, ON ITS OWN ROW.
+//--- A folded panel still answers the first question a settings card is asked
+//--- («این شکل الان چی پوشیده؟»): Color states the border's hex and the interior's
+//--- tone, Stroke the width and the line style, Levels how many levels the held
+//--- drawing shows, Look the template in force, Row how many cells the quick row
+//--- carries — and the Mark group its face. ONE owner: read by the row's paint and
+//--- by the row's tooltip, never re-derived at either site.
+//--- Bounded: a handful of slot reads and one text format per group row per paint
+//--- (five rows), and nothing here runs in the mouse or tick stream.
+string DrawStripGearGroupDigest(const int gid)
+{
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return "";
+   if(gid == DSTRIP_GEAR_PAINT)
+   {
+      string hex = DrawStripColorHex((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR));
+      if(!DrawSlotAvailable(s_dsKind, DRAW_SLOT_FILL)) return hex;
+      if(DrawSlotRead(s_dsObj, DRAW_SLOT_FILL) < 0.5) return hex;
+      return hex + " · " + IntegerToString((int)DrawSlotAlphaGet(s_dsObj, DRAW_SLOT_FILLCLR)) + "%";
+   }
+   if(gid == DSTRIP_GEAR_STYLE)
+   {
+      int w = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_WIDTH);
+      string st = DrawStripPickText(s_dsKind, DRAW_SLOT_STYLE, (int)DrawSlotRead(s_dsObj, DRAW_SLOT_STYLE));
+      if(w < 1 || w > 5) return st;
+      if(st == "") return IntegerToString(w) + "px";
+      return IntegerToString(w) + "px · " + st;
+   }
+   if(gid == DSTRIP_GEAR_LEVELS)
+   {
+      int n = DrawStripGearLevelCount();
+      return (n == 1) ? "1 level" : (IntegerToString(n) + " levels");
+   }
+   if(gid == DSTRIP_GEAR_MARK)
+   {
+      if(s_dsKind == DK_TEXT)
+         return IntegerToString((int)DrawSlotRead(s_dsObj, DRAW_SLOT_FONT)) + "pt";
+      return "glyph " + IntegerToString((int)DrawSlotRead(s_dsObj, DRAW_SLOT_GLYPH));
+   }
+   if(gid == DSTRIP_GEAR_TPL)
+   {
+      if(s_dsKind <= DK_NONE || s_dsKind >= DK_COUNT) return "";
+      string nm = DrawPresetName(s_dsKind, s_dsTpl[s_dsKind]);
+      return (nm == "") ? "none" : nm;
+   }
+   //--- the Row group: how many cells the quick row really shows, counted by the
+   //--- SAME conditions its own list is built with (available slots, minus the more
+   //--- seat, plus the levels cell on the kinds that have levels).
+   if(gid != DSTRIP_GEAR_STRIP) return "";   // P-DRAW-117: the fallback is EMPTY —
+                                              // an unknown group states nothing
+   DrawStripVisInit();
+   int on = 0;
+   for(int s = 0; s < DRAW_SLOT_N; s++)
+   {
+      if(s == DRAW_SLOT_MORE) continue;
+      if(!DrawSlotAvailable(s_dsKind, s)) continue;
+      if(DrawStripVis(s_dsKind, s)) on++;
+   }
+   if(DrawKindHasLevels(s_dsKind) && DrawStripVis(s_dsKind, DSTRIP_SLOT_LEVELS)) on++;
+   return IntegerToString(on) + " cells";
 }
 
 //--- action X, ONE owner (Layout's quickW and Paint read the same answer).
@@ -438,7 +520,21 @@ string DrawStripSepName(const int g) { return "PnlDrawS_SEP" + IntegerToString(g
 //--- rewriting the TEXT would fight the user's typing mid-word).
 //--- P-DRAW-32: `y` is the PANEL's own row top — the plate's origin is added
 //--- exactly once, HERE, so the two surfaces' coordinate spaces stay apart.
-bool DrawStripEdit(const int e, const int x, const int y, const int w, const string seed, const string tip)
+//--- P-DRAW-100: ...UNLESS THE CALLER SAYS THE FIELD MAY FOLLOW ITS VALUE. That
+//--- sentence above was the whole of the rule, and for the two colour fields it
+//--- made the field a LIE: `OBJPROP_TEXT` was written once, inside the create, so
+//--- the Paint tab's `COLOR` box showed the hex the drawing wore the first time the
+//--- tab was opened and nothing ever changed it. Press `Reset` in the foot
+//--- (`DrawPresetApply`, DrawStrip_Tap) or pick a colour on the board and the
+//--- drawing changed while the field kept the old hex — the one field whose whole
+//--- job is to state the current value, stating a value the drawing had left. The
+//--- board's own hex field already solved this and its law is copied here verbatim
+//--- (`DrawStripPopHex`, this file): a guarded write that follows the value, and an
+//--- EMPTY seed never writes, so the field the user is typing in is the caller's
+//--- word to keep. `reseed` is that word: the two hex seats pass the value while
+//--- `s_dsHexFocus` is false, the three typed seats pass false and are untouched.
+bool DrawStripEdit(const int e, const int x, const int y, const int w,
+                   const string seed, const string tip, const bool reseed)
 {
    string nm = DrawStripEditName(e);
    bool dirty = false;
@@ -464,6 +560,8 @@ bool DrawStripEdit(const int e, const int x, const int y, const int w, const str
       ObjectSetString(0, nm, OBJPROP_TEXT, seed);
       dirty = true;
    }
+   else if(reseed && seed != "" && ObjectGetString(0, nm, OBJPROP_TEXT) != seed)
+      dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, seed);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, s_dsGEY + y + (DSTRIP_GEAR_ROW_H - DSTRIP_GEAR_EDIT_H) / 2);
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
@@ -554,25 +652,57 @@ int DrawStripFootX(const int f, const int px, const int cw)
    for(int i = 1; i < f; i++) x += DrawStripFootBw(i) + DSTRIP_GEAR_FOOT_GAP;
    return x;
 }
-//--- the label's own seat: a button that wears a glyph keeps the cards' `bx+32`
-//--- label seat, a plain one takes the cards' own 16px pad (the mock's `.gbtn`).
+//--- P-DRAW-107 (2026-10-01) — THE SEAT IS THE CENTRE OF THE BUTTON.
+//--- P-DRAW-80 copied the cards' left-aligned pair (`glyph at bx+12`, `label at
+//--- bx+32`, BiotakPanels 6486-6507) onto this foot. A card's footer button is
+//--- ~100px wide and left-aligned ink reads as a button there; this foot's plate is
+//--- `DSTRIP_GEAR_FOOT_BW` 72 and the same seat parks the word against its LEFT
+//--- edge. MEASURED with the panel's own metrics (`mt4.text_w`, `PnlTextW`): `All`
+//--- is 14px and began at `fx+16` inside a plate whose own fill runs `fx+2 .. fx+70`
+//--- — 14px of plate to its left, 40px to its right; `Copy` (27px) 14/27 and
+//--- `Reset` (29px, after its ring) 12/18. The button's ink is ONE group,
+//--- `[ring 15 + ADV][word]`, so the GROUP is what is centred:
+//--- `x0 = fx + (bw - adv - tw) / 2`, and the ring sits one ADV inside it. `Reset`
+//--- therefore moves 1px, `Copy` 6 and `All` 13, and each word's own gaps come out
+//--- 27/27 (`Reset` 9/10 around its ring+word pair). The width, the advance and the
+//--- advance's own number are each ONE owner.
 int DrawStripFootLabelX(const int f, const int fx)
 {
-   return fx + ((DrawStripFootRes(f) == "") ? 16 : 32);
+   int adv = (DrawStripFootRes(f) == "") ? 0 : DSTRIP_GEAR_FOOT_GLYPH_ADV;
+   return fx + (DrawStripFootBw(f) - adv - PnlTextW(DrawStripFootText(f), 8)) / 2 + adv;
+}
+//--- the ring's own seat: ONE advance left of the word it belongs to, so the pair
+//--- cannot drift apart on a measured plate (P-DRAW-90: `Reset` is the one action
+//--- the design gives a glyph, and an empty `DrawStripFootRes` makes DrawStripFaceZ
+//--- DELETE the seat — the sweep for the ring the old two-button foot wore on `All`).
+int DrawStripFootGlyphX(const int f, const int fx)
+{
+   return DrawStripFootLabelX(f, fx) - DSTRIP_GEAR_FOOT_GLYPH_ADV;
 }
 //--- the gear panel's own paint: tabs, grids, rows, edits, foot.
 string DrawStripGearHeadTitle()
 {
    return DrawKindName(s_dsKind) + " Settings";
 }
-//--- P-DRAW-66: the subtitle says what the title does not — what this panel serves
-//--- and how many of them the strip's group holds ("DRAWING TOOL . LIVE" was the
-//--- title's own word twice).
+//--- P-DRAW-117 (2026-10-01) — THE HEAD STATES THE DRAWING, NOT ITS PAPERWORK.
+//--- The second line carried `SERVING n DRAWINGS` — a count the strip's own badge
+//--- already carries — while the one thing a settings card is opened to see stood
+//--- nowhere on it: what this drawing wears RIGHT NOW. The line is the LIVE look
+//--- now — the border's hex, the width, the line style, and the interior's tone when
+//--- the drawing has one — read through the same slot owners every other surface
+//--- reads, and re-read on every paint (so a board pick, a template, or the foot's
+//--- own Reset moves it in the same frame).
 string DrawStripGearHeadSub()
 {
-   int n = DrawSelCount();
-   if(n < 1) n = 1;
-   return "SERVING " + IntegerToString(n) + (n == 1 ? " DRAWING" : " DRAWINGS");
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return "";
+   string line = DrawStripColorHex((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR));
+   int w = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_WIDTH);
+   if(w >= 1 && w <= 5) line += " · " + IntegerToString(w) + "px";
+   string st = DrawStripPickText(s_dsKind, DRAW_SLOT_STYLE, (int)DrawSlotRead(s_dsObj, DRAW_SLOT_STYLE));
+   if(st != "") line += " · " + st;
+   if(DrawSlotAvailable(s_dsKind, DRAW_SLOT_FILL) && DrawSlotRead(s_dsObj, DRAW_SLOT_FILL) >= 0.5)
+      line += " · " + IntegerToString((int)DrawSlotAlphaGet(s_dsObj, DRAW_SLOT_FILLCLR)) + "%";
+   return line;
 }
 string DrawStripGearMarkRes()
 {
@@ -840,54 +970,24 @@ bool DrawStripGearPaint()
 {
    bool dirty = false;
    int gx = DrawStripGearX();
-   int cw = DSTRIP_GEAR_W - 2 * DSTRIP_GEAR_PAD;   // ONE column's content width
-   //--- P-DRAW-36 (2026-09-25): the tab row spans the PLATE's own width, so a wide
-   //--- panel's row is as wide as the card itself and not 32px short of it.
-   int gw = s_dsGearW0 - 2 * DSTRIP_GEAR_PAD;      // P-DRAW-30: the row the panel wears
+   int cw = DrawStripGearCellW();   // P-DRAW-99: ONE column's cell — the owner
    int px = gx + DSTRIP_GEAR_PAD;
    dirty |= DrawStripGearHeadPaint();
-   //--- P-DRAW-67/69: the bed is the HEAD'S OWN CELL (one grid, one tone, no border)
-   //--- and the row's dead space — a press on it is the carry, never a tap.
-   //--- P-DRAW-71: P-UI-34's segmented pill and its floating 2px bar are retired;
-   //--- the row wears the cards' own `.tabs` now.
-   color trkTone = StrapCellTone(s_dsGearTabsY, DSTRIP_BODY_TOP, DSTRIP_GEAR_GRID_TOP, s_dsGearH);
-    dirty |= DrawStripBtn(DrawStripGearTrackName(), px, s_dsGEY + s_dsGearTabsY, gw, DSTRIP_GEAR_ROW_H,
-                          trkTone, trkTone, trkTone, "",
-                          "Settings section");
-   int nt = s_dsGearTab[0];
-   int ty = s_dsGEY + s_dsGearTabsY + (DSTRIP_GEAR_ROW_H - DSTRIP_TAB_H) / 2;
-   bool ulDrawn = false;
-   for(int t = 0; t < DSTRIP_GEAR_TAB_MAX; t++)
+   //--- P-DRAW-117 (2026-10-01) — THE TAB BAND IS RETIRED, AND THIS IS ITS SWEEP.
+   //--- The track bed, the five tab buttons and the accent underline are objects the
+   //--- TAB build painted and this one does not: a chart that upgrades under the panel
+   //--- would keep a second nav standing under the group rows, and no painter here
+   //--- would ever take them down (a name a previous build wrote is an ORPHAN — Touch
+   //--- rule 2). They die by literal name on every paint: seven ObjectFinds, no write
+   //--- once they are gone, and the family's own prefix wipe covers them on any close
+   //--- or open that follows.
+   if(ObjectFind(0, "PnlDrawS_GTrack") >= 0) { ObjectDelete(0, "PnlDrawS_GTrack"); dirty = true; }
+   if(ObjectFind(0, "PnlDrawS_GU") >= 0) { ObjectDelete(0, "PnlDrawS_GU"); dirty = true; }
+   for(int gt = 0; gt < DSTRIP_GEAR_GRP_MAX; gt++)
    {
-      string tn = DrawStripGearTabName(t);
-      if(t >= nt)
-      {
-         if(ObjectFind(0, tn) >= 0) { ObjectDelete(0, tn); dirty = true; }
-         continue;
-      }
-      int tab = s_dsGearTab[t + 1];
-      bool sel = (tab == s_dsGear);
-      int tx = gx + s_dsGearTabX[t], tw = s_dsGearTabW[t];
-      //--- P-DRAW-71: the cards' own `.tab` — ONE face (BIO_CLR_CARD) in BOTH states
-      //--- and NO rim, so the row reads as a line of words, not a row of boxes; the
-      //--- state is the ink (TITLE bold / MUTED) plus the accent underline below.
-      dirty |= DrawStripBtn(tn, tx, ty, tw, DSTRIP_TAB_H,
-                            DSTRIP_CLR_CARD, sel ? DSTRIP_CLR_VALUE : DSTRIP_CLR_TITLE,
-                            DSTRIP_CLR_CARD,
-                            DrawStripGearTabText(tab),
-                            DrawStripGearTabText(tab) + " settings");
-      dirty |= DrawStripSetInt(tn, OBJPROP_FONTSIZE, PnlPt(8));
-      dirty |= DrawStripSetStr(tn, OBJPROP_FONT, BioChromeFont(sel));
-      if(sel && !ulDrawn)
-      {
-         dirty |= DrawStripRect(DrawStripGearTabLineName(), tx + 7,
-                                ty + DSTRIP_TAB_H - 1, tw - 14, DSTRIP_TAB_UL,
-                                DSTRIP_CLR_ACCENT, Z_STRIP_ICON);
-         ulDrawn = true;
-      }
+      string tn = "PnlDrawS_GT" + IntegerToString(gt);
+      if(ObjectFind(0, tn) >= 0) { ObjectDelete(0, tn); dirty = true; }
    }
-   if(!ulDrawn && ObjectFind(0, DrawStripGearTabLineName()) >= 0)
-   { ObjectDelete(0, DrawStripGearTabLineName()); dirty = true; }
    for(int g = 0; g < DSTRIP_GRID_MAX; g++)
    {
       string gn = DrawStripGridName(g), gi = DrawStripGridIconName(g);
@@ -901,17 +1001,56 @@ bool DrawStripGearPaint()
       }
       int cx = gx + s_dsGGX[g];
       int cy = s_dsGEY + s_dsGGY[g] + (DSTRIP_GEAR_ROW_H - s_dsGGH[g]) / 2;
-      // P-DRAW-44: the grid carries CHIPS only now (border width, line style, ray);
-      // the colour cells were the duplicate of the popover's own grid.
+      //--- P-DRAW-118 (2026-10-01): the grid carries the COLOUR ROLE ROWS too now.
+      //--- A swatch cell's colour IS the cell (`s_dsGGC[g]`, written by the row's own
+      //--- builder), and its skin is the strip's own `ds_swatch24` — the same face
+      //--- the quick row's colour cell wears (P-DRAW-33), because the icon diet
+      //--- removed the cards' glass at these sizes. The PREVIEW and the `+` are the
+      //--- same act (open the board on this role), so one tooltip, one branch.
       {
-         int slot = s_dsGGSlot[g], arg = s_dsGGArg[g];
-         bool cur = DrawStripPickIsCur(s_dsObj, s_dsKind, slot, arg);
-         string txt = PnlFit(DrawStripPickText(s_dsKind, slot, arg), 8, s_dsGGW[g] - 8);
-         string tip = DrawStripPickTip(s_dsObj, s_dsKind, slot, arg);
-         dirty |= DrawStripBtn(gn, cx, cy, s_dsGGW[g], s_dsGGH[g],
-                               cur ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_FIELD,
-                               cur ? DSTRIP_CLR_ACCENTT : DSTRIP_CLR_LABEL,
-                               cur ? DSTRIP_CLR_ACCENT2 : DSTRIP_CLR_FIELD_BD, txt, tip);
+         int slot = s_dsGGSlot[g], arg = s_dsGGArg[g], gk = s_dsGGKind[g];
+         if(gk == DSTRIP_GRG_SWATCH)
+         {
+            color sc = s_dsGGC[g];
+            string stip = "Color: " + DrawStripColorLabel(sc) + " — click to apply" + DrawStripTipScope();
+            dirty |= DrawStripBtn(gn, cx, cy, s_dsGGW[g], s_dsGGH[g], sc, DrawStripInkOn(sc),
+                                  (DrawStripColorRead(s_dsObj, slot) == sc) ? DSTRIP_CLR_ACCENT
+                                                                           : BioSwatchBorder(sc, BIO_CLR_CARD),
+                                  "", stip);
+            dirty |= DrawStripFace(DrawStripGridGlassName(g), cx, cy, s_dsGGW[g], s_dsGGH[g],
+                                   "::Files\\Icons\\ds_swatch24.bmp", stip);
+         }
+         else if(gk == DSTRIP_GRG_PREV || gk == DSTRIP_GRG_PLUS)
+         {
+            string otip = "Open the color picker" + DrawStripTipScope();
+            if(gk == DSTRIP_GRG_PREV)
+            {
+               color oc = DrawStripColorRead(s_dsObj, slot);
+               dirty |= DrawStripBtn(gn, cx, cy, s_dsGGW[g], s_dsGGH[g], oc, DrawStripInkOn(oc),
+                                     BioSwatchBorder(oc, BIO_CLR_CARD), "", otip);
+               dirty |= DrawStripFace(DrawStripGridGlassName(g), cx, cy, s_dsGGW[g], s_dsGGH[g],
+                                      "::Files\\Icons\\ds_swatch24.bmp", otip);
+               if(ObjectFind(0, gi) >= 0) { ObjectDelete(0, gi); dirty = true; }
+            }
+            else
+            {
+               dirty |= DrawStripBtn(gn, cx, cy, s_dsGGW[g], s_dsGGH[g], DSTRIP_CLR_FIELD,
+                                     DSTRIP_CLR_LABEL, DSTRIP_CLR_FIELD_BD, "", otip);
+               dirty |= DrawStripFace(gi, cx, cy, DSTRIP_GEAR_SWQ_PLUS, DSTRIP_GEAR_SWQ_PLUS,
+                                      "::Files\\Icons\\gl_plus_m.bmp", otip);
+            }
+         }
+         else
+         {
+            // P-DRAW-44: a chip — the width / line style / ray options.
+            bool cur = DrawStripPickIsCur(s_dsObj, s_dsKind, slot, arg);
+            string txt = PnlFit(DrawStripPickText(s_dsKind, slot, arg), 8, s_dsGGW[g] - 8);
+            string tip = DrawStripPickTip(s_dsObj, s_dsKind, slot, arg);
+            dirty |= DrawStripBtn(gn, cx, cy, s_dsGGW[g], s_dsGGH[g],
+                                  cur ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_FIELD,
+                                  cur ? DSTRIP_CLR_ACCENTT : DSTRIP_CLR_LABEL,
+                                  cur ? DSTRIP_CLR_ACCENT2 : DSTRIP_CLR_FIELD_BD, txt, tip);
+         }
       }
    }
    dirty |= DrawStripGearSectionsPaint(px, cw);
@@ -929,6 +1068,10 @@ bool DrawStripGearPaint()
          if(ObjectFind(0, rr) >= 0) { ObjectDelete(0, rr); dirty = true; }
          if(ObjectFind(0, rs) >= 0) { ObjectDelete(0, rs); dirty = true; }
          if(ObjectFind(0, rp) >= 0) { ObjectDelete(0, rp); dirty = true; }
+         //--- P-DRAW-117: and the row's DIGEST — a retired row takes its value with
+         //--- it, or a stale hex hangs over the row that replaced it.
+         if(ObjectFind(0, DrawStripRowDigestName(r)) >= 0)
+         { ObjectDelete(0, DrawStripRowDigestName(r)); dirty = true; }
          continue;
       }
       int py = s_dsGEY + s_dsGRY[r];
@@ -947,6 +1090,37 @@ bool DrawStripGearPaint()
       if(ObjectFind(0, rp) >= 0) { ObjectDelete(0, rp); dirty = true; }
       color rowTone = StrapCellTone(s_dsGRY[r], DSTRIP_BODY_TOP, DSTRIP_GEAR_GRID_TOP, s_dsGearH);
       dirty |= DrawStripBtn(rn, rx, py, cw, DSTRIP_GEAR_ROW_H, rowTone, ink, rowTone, "", tip);
+      //--- P-DRAW-117 — A GROUP HEADER: icon, name, and the value it holds.
+      //--- One muscle per face and no switch (a group is not a boolean): the chip is
+      //--- the cards' own, gold while THIS group is the open one, the label is the
+      //--- row's own ink (INK when open, LABEL when closed) and the digest is
+      //--- right-aligned with `DSTRIP_GEAR_DG_PAD` of air to the cell's edge — the
+      //--- label is fitted against it, so the two can never collide at any DPI.
+      if(s_dsGRKind[r] == DSTRIP_GRK_GROUP)
+      {
+         string dg = PnlFit(DrawStripGearGroupDigest(s_dsGRArg[r]), 8, cw / 2);
+         int dw = (dg == "") ? 0 : PnlTextW(dg, 8);
+         dirty |= DrawStripFace(rc, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+                                cur ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", tip);
+         dirty |= DrawStripFace(ri, rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22, res, tip);
+         int gx0 = rx + DSTRIP_GEAR_PAD + 22 + 8;
+         dirty |= DrawStripLblIn(rl, gx0, py, DSTRIP_GEAR_ROW_H,
+                                 PnlFit(txt, 9, cw - (gx0 - rx) - dw - DSTRIP_GEAR_DG_PAD - DSTRIP_ROW_GAP),
+                                 cur ? DSTRIP_CLR_VALUE : DSTRIP_CLR_LABEL, tip, 9, true);
+         if(dw > 0)
+            dirty |= DrawStripLblAt(DrawStripRowDigestName(r), rx + cw - DSTRIP_GEAR_DG_PAD - dw,
+                                    StrapInkY(py, DSTRIP_GEAR_ROW_H, 8), dg,
+                                    cur ? DSTRIP_CLR_ACCENT : DSTRIP_CLR_TITLE, tip, 8, true);
+         else if(ObjectFind(0, DrawStripRowDigestName(r)) >= 0)
+         { ObjectDelete(0, DrawStripRowDigestName(r)); dirty = true; }
+         dirty |= DrawStripFace(rr, rx, py, 2, DSTRIP_GEAR_ROW_H,
+                                cur ? "::Files\\Icons\\pnl_rail_gold.bmp" : "", tip);
+         //--- and the SWITCH seat is not this row's: a stale one from a previous
+         //--- tab (or a previous kind) is taken down here, the same rule the row's
+         //--- own separator follows above.
+         if(ObjectFind(0, rs) >= 0) { ObjectDelete(0, rs); dirty = true; }
+         continue;
+      }
       if(res != "")
       {
          //--- P-DRAW-77: THE CARDS' OWN SEATS, MEASURED, NOT DERIVED. The chip is
@@ -988,10 +1162,11 @@ bool DrawStripGearPaint()
    for(int e = 0; e < 5; e++)
    {
       string en = DrawStripEditName(e);
-      bool want = ((e == 0 && s_dsGear == DSTRIP_GEAR_PAINT) ||
-                   (e == 4 && s_dsGear == DSTRIP_GEAR_PAINT &&
-                    DrawSlotAvailable(s_dsKind, DRAW_SLOT_FILLCLR)) ||
-                   (e == 1 && s_dsGear == DSTRIP_GEAR_LEVELS) ||
+      //--- P-DRAW-118 (2026-10-01): the two COLOUR seats (e0, e4) are RETIRED with
+      //--- the hex boxes they typed into — a colour is a swatch now, and the exact
+      //--- value is the board's HEX field (behind the row's `+`). Their objects die in
+      //--- the `!want` branch below, which is the same sweep every retired field uses.
+      bool want = ((e == 1 && s_dsGear == DSTRIP_GEAR_LEVELS) ||
                    (e == 2 && s_dsGear == DSTRIP_GEAR_MARK && s_dsKind == DK_TEXT) ||
                    (e == 3 && s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed));
       if(!want)
@@ -1008,24 +1183,22 @@ bool DrawStripGearPaint()
       //--- control (PNL_SW_X = PNL_WEL-2*PNL_PAD_X = 280).
       int ex = px + s_dsGearEditCol[e] * DSTRIP_GEAR_COL + s_dsGearEditX[e];
       int ew = (s_dsGearEditW[e] > 0) ? s_dsGearEditW[e] : cw;
-      if(e == 0)
-         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew,
-                                DrawStripColorHex((color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR)),
-                                "Custom color as #RRGGBB — Enter applies it");
-      else if(e == 1)
+      //--- P-DRAW-118 (2026-10-01): the two colour seats are gone with their boxes
+      //--- (see the `want` above); the three that remain are typed VALUES, not
+      //--- readings, so none of them re-seeds itself while a hand is in it.
+      //--- The board's own HEX field still follows the colour it states — that law is
+      //--- `DrawStripPopHex`'s, and it is the one the retired panel boxes copied
+      //--- (P-DRAW-100, whose site moved with the field).
+      if(e == 1)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
-                                "Add a level, e.g. 88.6 — Enter adds it (the held drawing)");
+                                "Add a level, e.g. 88.6 — Enter adds it (the held drawing)", false);
       else if(e == 3)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
-                                "Template name — Enter saves this look under your name");
-      else if(e == 4)
-         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew,
-                                DrawStripColorHex(DrawStripColorRead(s_dsObj, DRAW_SLOT_FILLCLR)),
-                                "Fill color as #RRGGBB — Enter applies it (the interior)");
+                                "Template name — Enter saves this look under your name", false);
       else
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew,
                                 ObjectGetString(0, s_dsObj, OBJPROP_TEXT),
-                                "Caption — Enter applies it");
+                                "Caption — Enter applies it", false);
    }
     //--- P-DRAW-80: THE FOOT IS THE CARDS' FOOT (BiotakPanels 6486-6507, 6901-6903).
     //--- LEFT-ALIGNED at `+16` and `+10` down, each button a 28px ghost with its
@@ -1060,8 +1233,14 @@ bool DrawStripGearPaint()
       //--- the design gives a glyph — DrawStripFootRes answers "" for the pair,
       //--- and DrawStripFaceZ DELETES on "", which is the sweep for the ring the
       //--- old two-button foot wore on `All`.
+      //--- P-DRAW-107: BOTH seats come from the one centred group above — the paint
+      //--- asks for `fgx` and `lx` and derives neither (`gx` is the GEAR PLATE's own
+      //--- left edge in this function — a shadowed name here is a second meaning for
+      //--- one word). `fx + 12` (the cards' own glyph seat) is what stood here, and on
+      //--- a plate this narrow it was the left half of a left-aligned pair.
       int lx = DrawStripFootLabelX(f, fx);
-      dirty |= DrawStripFace(DrawStripFootGlyphName(f), fx + 12, fy + 6, 15, 15,
+      int fgx = DrawStripFootGlyphX(f, fx);
+      dirty |= DrawStripFace(DrawStripFootGlyphName(f), fgx, fy + 6, 15, 15,
                              DrawStripFootRes(f), tip);
       dirty |= DrawStripLblIn(DrawStripFootLabelName(f), lx, fy, 28,
                               PnlFit(label, 8, fx + bw - 8 - lx),

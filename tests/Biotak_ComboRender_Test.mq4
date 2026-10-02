@@ -60,6 +60,9 @@
 // the style memory, the hold hit test and the floating strip. A harness mirrors the
 // entry by hand, so it carries them too.
 #include "..\Biotak\DrawToolbar.mqh"
+// P-DRAW-116: the card surface's own number table, in the SAME seat the entry
+// gives it (between the toolbar and the strip).
+#include "..\Biotak\CardMetrics.mqh"
 #include "..\Biotak\DrawStrip.mqh"
 #include "..\Biotak\ExtendedDrawingFunctions.mqh"
 #include "..\Biotak\ComboEngine.mqh"

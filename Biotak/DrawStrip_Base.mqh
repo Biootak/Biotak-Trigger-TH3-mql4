@@ -225,7 +225,6 @@ string DrawStripPOpKnobName()  { return "PnlDrawS_POpK"; }
 string DrawStripPOpValName()   { return "PnlDrawS_POpV"; }
 //--- the gear panel: tabs (GT), grid cells (GG/GGI), list rows (GR/GRI/GRT),
 //--- foot (GF), edits (GE).
-string DrawStripGearTabName(const int t) { return "PnlDrawS_GT" + IntegerToString(t); }
 string DrawStripGridName(const int g) { return "PnlDrawS_GG" + IntegerToString(g); }
 string DrawStripGridIconName(const int g) { return "PnlDrawS_GG" + IntegerToString(g) + "I"; }
 string DrawStripRowName(const int r) { return "PnlDrawS_GR" + IntegerToString(r); }
@@ -235,6 +234,9 @@ string DrawStripRowChipName(const int r) { return DrawStripRowIconName(r) + "C";
 string DrawStripRowRailName(const int r) { return DrawStripRowName(r) + "R"; }
 string DrawStripRowStateName(const int r) { return DrawStripRowName(r) + "S"; }
 string DrawStripRowSepName(const int r) { return DrawStripRowName(r) + "L"; }
+//--- P-DRAW-117: the group row's VALUE DIGEST — a member of the row family (the
+//--- row's own `D`), because it is drawn in the row's own cell and dies with it.
+string DrawStripRowDigestName(const int r) { return DrawStripRowName(r) + "D"; }
 string DrawStripFootName(const int f) { return "PnlDrawS_GF" + IntegerToString(f); }
 string DrawStripFootSkinName(const int f) { return DrawStripFootName(f) + "B"; }
 string DrawStripFootGlyphName(const int f) { return DrawStripFootName(f) + "G"; }
@@ -245,10 +247,13 @@ string DrawStripBoardBgName() { return "PnlDrawS_BBG"; }   // P-DRAW-48: the boa
 //--- P-DRAW-32: the SETTINGS PANEL's own plate — its own family, so the two
 //--- surfaces paint, purge and answer a tap apart (`DrawStripIsBg` matches both).
 string DrawStripGearBgName() { return "PnlDrawS_GBG"; }
-//--- P-DRAW-29: the tab track — one CARD bed under the tab row so separate
-//--- buttons read as one segmented control (the preview's .segPill).
-string DrawStripGearTrackName() { return "PnlDrawS_GTrack"; }
-string DrawStripGearTabLineName() { return "PnlDrawS_GU"; }
+//--- P-DRAW-117 (2026-10-01) — `DrawStripGearTabName` / `DrawStripGearTabLineName`
+//--- / `DrawStripGearTrackName` are RETIRED with the tab row. The panel's nav is a
+//--- column of group ROWS now, so it rides the row family (`DrawStripRowName`) and
+//--- the three retired spellings survive only where they must: as the ORPHAN SWEEP
+//--- in `DrawStripGearObjectsPurge` (a chart painted by the tab build), which deletes
+//--- them by literal name (GearA). Naming a retired object from a helper here would be
+//--- a name no paint can produce and no reader can need.
 string DrawStripGearHeadName(const string s) { return "PnlDrawS_GH" + s; }
 string DrawStripGearSectionName(const int i) { return "PnlDrawS_GS" + IntegerToString(i); }
 string DrawStripGearSectionLineName(const int i) { return DrawStripGearSectionName(i) + "L"; }
@@ -320,8 +325,8 @@ bool DrawStripPointInside(const int mx, const int my)
 // all input, and the strip opens by a coordinate hit test (DrawStripOpenAt),
 // not by a click on an object. But the gear panel's ROUTER is a NAME router:
 // every branch of the CHARTEVENT_OBJECT_CLICK chain at 7408-7433 compares
-// `sparam` against a control's own object name — DrawStripGearTabName(t),
-// DrawStripRowName(r), DrawStripFootName(f), and so on. MT4 never emits
+// `sparam` against a control's own object name — DrawStripRowName(r),
+// DrawStripFootName(f), the retired DrawStripGearTabName(t), and so on. MT4 never emits
 // OBJECT_CLICK for a non-selectable object, so `sparam` can never BE one of
 // those names: every tab, row, switch, grid chip and foot button was dead on a
 // green compile. The cards work because BiotakPanels has P-UI-74's
@@ -330,10 +335,12 @@ bool DrawStripPointInside(const int mx, const int my)
 // such channel at all.
 //
 // This function IS that channel for the gear panel, and it is deliberately
-// written to read the SAME seat arrays the paint writes (`s_dsGearTabX/W`,
-// `s_dsGRY/Col`, `s_dsGGX/Y/W/H`, `s_dsGearFootY`, `s_dsGearEditX/W/Y`,
+// written to read the SAME seat arrays the paint writes (`s_dsGRY/Col`,
+// `s_dsGGX/Y/W/H`, `s_dsGearFootY`, `s_dsGearEditX/W/Y`,
 // `s_dsGEY`, `s_dsGEX`, `s_dsGearW0`) — never a re-derived number. A hit test
 // with its own arithmetic is a second grid, which is P-DRAW-77's defect again.
+//--- P-DRAW-117: and the group headers ride those same row arrays now — the tab
+//--- row's own band and `s_dsGearTabX/W` seats are retired with it.
 //
 // Order is Z-order, topmost first, because the panel's controls overlap: the
 // head's X sits over the plate, the tab underline over its tab, the grid chips
@@ -357,18 +364,25 @@ bool DrawStripGearHit(const int mx, const int my)
    // seat is the paint's own: `closeX = gx + W0 - PAD - 26`, at `hy + 17`, 26x26
    // (3913-3914) — the 26 is the cards' own XBTN and is written there twice, so it
    // is read here from the same expression rather than a third literal.
+   //--- P-DRAW-103: AND THE HIT IS THE PAINTED SHAPE. This tested a CIRCLE of radius
+   //--- `26/2 + 3` = 16 against a painted 26x26 SQUARE, so the square's own four
+   //--- corners were dead: at the diagonal the circle ends 11.3px from the centre
+   //--- while the corner sits 18.4px out, leaving a 3.7px dead triangle at each
+   //--- corner of the one control that closes the panel. A thumb pad of 3px on every
+   //--- side keeps the seam with the grip (P-DRAW-36 stops the carry 16px short of
+   //--- the corner) untouched: the box now runs `cx0-3 .. cx0+29` and the carry ends
+   //--- at `cx0-16`, so the 13px gap the design asked for is still there and the
+   //--- circle's slack is spent on the corners that were missing.
    if(s_dsGearHeadY >= 0)
    {
       int hy = gy + s_dsGearHeadY;
       if(my >= hy && my < hy + DSTRIP_GEAR_HEAD_H)
       {
-         const int xbtn = 26;
+         const int xbtn = 26, xpad = 3;
          int cx0 = gx + s_dsGearW0 - DSTRIP_GEAR_PAD - xbtn;
          int cy0 = hy + 17;
-         int mxp = mx - (cx0 + xbtn / 2);
-         int myp = my - (cy0 + xbtn / 2);
-         int half = xbtn / 2 + 3;                 // the square plus a 3px thumb pad
-         if(mxp * mxp + myp * myp <= half * half)
+         if(mx >= cx0 - xpad && mx < cx0 + xbtn + xpad &&
+            my >= cy0 - xpad && my < cy0 + xbtn + xpad)
          { DrawStripGearClose(); return true; }
       }
       //--- P-DRAW-85: the head is ALSO the panel's carry. Outside the X, a press
@@ -377,34 +391,49 @@ bool DrawStripGearHit(const int mx, const int my)
       if(DrawStripGearGripAt(mx, my)) return false;   // the grip's own handler acts
    }
 
-   // --- the tab row. The underline (P-DRAW-83) is matched to its tab here too,
-   // so a press on the 2px accent under the selected tab is that tab, not dead
-   // plate — the same rule the name router states at 7411-7412.
-   int ty = gy + s_dsGearTabsY + (DSTRIP_GEAR_ROW_H - DSTRIP_TAB_H) / 2;
-   if(my >= ty && my < ty + DSTRIP_TAB_H)
-   {
-      for(int t = 0; t < s_dsGearTab[0] && t < DSTRIP_GEAR_TAB_MAX; t++)
-      {
-         int tx = gx + s_dsGearTabX[t], tw = s_dsGearTabW[t];
-         if(mx >= tx && mx < tx + tw)
-         { DrawStripGearTabTap(t); return true; }
-      }
-      return false;   // the track between tabs is dead space (P-DRAW-67)
-   }
+   // --- P-DRAW-117: THE GROUP HEADERS ARE NOT ASKED HERE. A group is a ROW now
+   // (`DSTRIP_GRK_GROUP` in `s_dsGRKind`), so it answers through the row probe below
+   // — the same seat array the paint writes, which is P-DRAW-84's own law: one hit
+   // test, no second grid. The retired tab band's probe (a `ty` band over `s_dsGearTabsY`
+   // and the `s_dsGearTabX/W` seats) went with the tab row it measured.
 
    // --- the hex / text fields: a press takes focus for typing, no action
    // (P-DRAW-48). The seat is the SAME `s_dsGearEditX/W/Y` the paint wrote.
+   //--- P-DRAW-94 (2026-09-30): AND THE SAME COLUMN. `s_dsGearEditCol[e]` is what
+   //--- the WIDE pass writes when it moves a field into the right column
+   //--- (DrawStripGearShiftItems, GearA:474) and the paint adds the same
+   //--- `* DSTRIP_GEAR_COL` (GearB:1009). This probe was the ONE reader that did
+   //--- not: on a wide tab (a fibo's Levels, 10+ rows) the "add a level" field was
+   //--- DRAWN at px + 312 + editX and probed at px + editX — so the field could not
+   //--- be focused by clicking it, and a click in the empty left column at that row
+   //--- focused a field 312px away. One term, read from the paint's own expression.
+   //--- P-DRAW-98: AND THE PAINT'S OWN WIDTH, INCLUDING ITS FALLBACK. This probe
+   //--- skipped a field whose `s_dsGearEditW` is 0, and the paint does not skip it:
+   //--- `int ew = (s_dsGearEditW[e] > 0) ? s_dsGearEditW[e] : cw` (GearB) gives it
+   //--- the WHOLE cell. Only the two Paint-tab hex fields ever set a width, so the
+   //--- `add a level` (e1), the `Caption` (e2) and the `Template name` (e3) fields
+   //--- were drawn as full-width text boxes that no click could ever reach — and
+   //--- every painter here is `OBJPROP_SELECTABLE=false`, so the terminal could not
+   //--- reach them either. On the two tabs the gate measures narrow (Look 312, Text
+   //--- 312) that is every field but the two hex ones. The guard is now the paint's
+   //--- own `s_dsGearEditY[e] >= 0` (which is exactly the paint's `want`), and the
+   //--- width is the paint's own expression, term for term.
    for(int e = 0; e < 5; e++)
    {
-      if(s_dsGearEditW[e] <= 0) continue;
-      int ex = px + s_dsGearEditX[e];
+      if(s_dsGearEditY[e] < 0) continue;
+      int ew = (s_dsGearEditW[e] > 0) ? s_dsGearEditW[e] : DrawStripGearCellW();
+      if(ew <= 0) continue;
+      int ex = px + s_dsGearEditCol[e] * DSTRIP_GEAR_COL + s_dsGearEditX[e];
       int ey = gy + s_dsGearEditY[e] + (DSTRIP_GEAR_ROW_H - DSTRIP_GEAR_EDIT_H) / 2;
-      if(mx >= ex && mx < ex + s_dsGearEditW[e] &&
+      if(mx >= ex && mx < ex + ew &&
          my >= ey && my < ey + DSTRIP_GEAR_EDIT_H)
       {
          if(ObjectFind(0, DrawStripEditName(e)) >= 0)
             ObjectSetInteger(0, DrawStripEditName(e), OBJPROP_STATE, true);
-         s_dsHexFocus = (e == 0 || e == 4);   // the two colour fields own the hex
+         //--- P-DRAW-118 (2026-10-01): the panel's two COLOUR fields (e0/e4) are gone
+         //--- with their hex boxes, so no field here arms `s_dsHexFocus` any more —
+         //--- that guard belongs to the BOARD's HEX field alone now (the router arms
+         //--- it on the board's own name and `DrawStripPopHexEnd` releases it).
          return true;
       }
    }
@@ -422,12 +451,21 @@ bool DrawStripGearHit(const int mx, const int my)
    // --- the list rows. A row is a full-width CELL (P-DRAW-69: one tone, one
    // owner), so the whole band answers, not just its chip — the same contract
    // the cards' rows have.
+   //--- P-DRAW-99: THE CELL IS ONE COLUMN, AND THIS PROBE WAS ASKING THE BOX. The
+   //--- paint gives the row `DrawStripGearCellW()` (280) and this asked `colW` =
+   //--- `DrawStripGearColW()` — the tab's whole content box, 592 on a 624 tab. The
+   //--- gate measures Style and Row wide (624, 7 rows each, 10 and 12 blocks), so on
+   //--- both the probe claimed 312px of bare plate to the right of every row in
+   //--- column 0: a click on empty card toggled the switch that row names. The
+   //--- foot below was already moved off `colW` by P-DRAW-90; the row was the
+   //--- reader it did not reach.
+   int rowW = DrawStripGearCellW();
    for(int r = 0; r < s_dsGRN && r < DSTRIP_GLIST_MAX; r++)
    {
       int ry = gy + s_dsGRY[r];
       if(my < ry || my >= ry + DSTRIP_GEAR_ROW_H) continue;
       int rx = px + s_dsGRCol[r] * DSTRIP_GEAR_COL;
-      if(mx < rx || mx >= rx + colW) continue;
+      if(mx < rx || mx >= rx + rowW) continue;
       DrawStripGearRowTap(r);
       return true;
    }
@@ -665,13 +703,20 @@ string DrawStripActRes(const int a)
 //--- MT4 paints a bitmap label at the file's NATIVE size from the label's own
 //--- top-left corner, so centring the art is arithmetic — and the arithmetic
 //--- needs the art's size. The families in this strip are fixed:
-//---   `bk_w*` / `bk_style*` / `bk_ray*` = 16, every other `bk_*` = 24, `gl_*` = 15.
+//---   every `bk_*` = 24, `gl_*` = 15 — and the four 26px `gl_*` glyphs, named
+//---   in the table below.
 //--- (Measured off the shipped files; a new family must be added here, which is
 //--- what keeps a 24 px raster from hanging off a 30 px cell.)
+//--- P-DRAW-106 (2026-10-01): AND THE `bk_w` / `bk_style` / `bk_ray` EXCEPTION IS
+//--- RETIRED. It answered 16 for those three chips, but the shipped rasters are
+//--- 24x24 with the glyph centred in its own canvas (measured on Files/Icons: all
+//--- 32 `bk_*.bmp` the strip names are 24x24; `bk_w1.bmp`'s ink is 16 wide at
+//--- x4..19 of a 24 canvas) — so `x + (cell - 16)/2` placed each chip's art 4px
+//--- right and 4px down of its cell's centre, on the strip's width/style/ray cell
+//--- and on the settings panel's Style chips alike. The FILE is what MT4 draws,
+//--- so the file's canvas is what this table must answer.
 int DrawStripIconPx(const string res)
 {
-   if(StringFind(res, "bk_w") >= 0 || StringFind(res, "bk_style") >= 0 ||
-      StringFind(res, "bk_ray") >= 0) return 16;
    if(StringFind(res, "gl_") >= 0) return 15;
    if(StringFind(res, "bk_") >= 0) return 24;
    return 0;
@@ -695,10 +740,39 @@ int DrawStripResW(const string res)
     if(StringFind(res, "pnl_rail") >= 0) return 4;
     if(StringFind(res, "pnl_vchip") >= 0) return 50;
     if(StringFind(res, "pnl_xbtn") >= 0) return 30;
-    if(StringFind(res, "pnl_secdot") >= 0) return 14;   // P-DRAW-71: the cards' own section dot
-    if(StringFind(res, "pnl_cntchip") >= 0) return 28;  // ... and its count pill (24+2*2)
-    if(StringFind(res, "pnl_subdot") >= 0) return 8;
-    return DrawStripIconPx(res);
+   if(StringFind(res, "pnl_secdot") >= 0) return 14;   // P-DRAW-71: the cards' own section dot
+   //--- P-DRAW-108 (2026-10-01) — AND THIS RULE WAS NEVER COMPILED. It stood on the
+   //--- `secdot` line, AFTER that line's own `//` comment, so the MQL compiler read
+   //--- the whole `if` as comment text: `DrawStripResW("::Files\\Icons\\pnl_cntchip.bmp")`
+   //--- fell through to `DrawStripIconPx`'s 0 for a 28x20 canvas, and the section's
+   //--- count pill — painted by DrawStripFaceZ in a rect `DSTRIP_SEC_CNT_W + 4` wide,
+   //--- DrawStrip_GearB.mqh:842 — landed at `x + 28/2, y + 20/2`: 14px right and 10px
+   //--- down of its own rect, with MT4 cropping the 24px art to what was left of it.
+   //--- The gate missed it for the same reason: tools/check-resources.js split the
+   //--- table on `;` and kept every `//` tail, so a commented-out rule was read as
+   //--- LIVE and answered a right number by accident. A one-line statement is not a
+   //--- one-line change — the rule owns its line now.
+   if(StringFind(res, "pnl_cntchip") >= 0) return 28;  // ... and its count pill (24+2*2)
+   if(StringFind(res, "pnl_subdot") >= 0) return 8;
+   //--- P-DRAW-106 (2026-10-01) — THE FOOT'S OWN GHOST, WHICH THIS TABLE DID NOT
+   //--- CARRY. `pnl_btn_ghost.bmp` is 88x44 (measured on the file) and had no
+   //--- entry, so it fell through to `DrawStripIconPx`'s 0 — and `DrawStripFaceZ`
+   //--- centres a raster in its cell as `x + (w - pw)/2`, which with `pw = 0` is
+   //--- HALF THE CELL. The gear panel's foot asks for the ghost as
+   //--- `(fx - 8, fy - 8, bw + 16, 44)`, i.e. the 72x28 button plus its 8px pad, so
+   //--- the three plates shipped at `fx + 36, fy + 14`: 44px right of the button and
+   //--- 22px below it — off the label each one belongs to, the last one 19px past the
+   //--- card's right edge and all of them under the plate's bottom edge. One missing
+   //--- number, three dead-looking foot buttons, and a green compile says nothing
+   //--- (the size is a number in a chain of string tests, not a symbol).
+   //--- The same audit measured `gl_pin*`, `gl_textsize*` and `gl_layers*`: 26x26
+   //--- canvases inside a `gl_` family this table calls 15, so each of those arts
+   //--- sat 5.5px right and down of its cell (the strip's pin cell and the FONT
+   //--- chip are the two the panel paints).
+   if(StringFind(res, "pnl_btn_ghost") >= 0) return 88;
+   if(StringFind(res, "gl_pin") >= 0 || StringFind(res, "gl_textsize") >= 0 ||
+      StringFind(res, "gl_layers") >= 0) return 26;
+   return DrawStripIconPx(res);
 }
 int DrawStripResH(const string res)
 {
@@ -721,6 +795,9 @@ int DrawStripResH(const string res)
    if(StringFind(res, "pnl_secdot") >= 0) return 14;
    if(StringFind(res, "pnl_cntchip") >= 0) return 20;
    if(StringFind(res, "pnl_subdot") >= 0) return 8;
+   if(StringFind(res, "pnl_btn_ghost") >= 0) return 44;   // P-DRAW-106, see ResW
+   if(StringFind(res, "gl_pin") >= 0 || StringFind(res, "gl_textsize") >= 0 ||
+      StringFind(res, "gl_layers") >= 0) return 26;       // P-DRAW-106, see ResW
    return DrawStripIconPx(res);
 }
 

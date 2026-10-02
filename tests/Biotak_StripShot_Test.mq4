@@ -16,7 +16,8 @@
 //| WHAT IT PROVES, IN ONE RUN:                                       |
 //|   * the row's own rect and cell count per kind                    |
 //|   * the colour board's plate rect (its own card, P-DRAW-48)       |
-//|   * the list popovers (MORE, WIDTH) and the panel's four tabs     |
+//|   * the list popovers (MORE, WIDTH) and the panel's group ROWS    |
+//|     — P-DRAW-117: the accordion's open group AND its folded state |
 //|   * every object's x/y/w/h and BMPFILE — the terminal's answer,    |
 //|     not the source's hope (the same question UIAudit asks, for     |
 //|     the strip's own prefix PnlDrawS_)                             |
@@ -76,6 +77,10 @@
 #endif
 #include "..\Biotak\ObjectFunctions.mqh"
 #include "..\Biotak\DrawToolbar.mqh"
+// P-DRAW-116: the card surface's own number table, in the SAME seat the entry
+// gives it (between the toolbar and the strip), so the strip's panel reaches
+// `PNL_*` here exactly as it does in the indicator.
+#include "..\Biotak\CardMetrics.mqh"
 #include "..\Biotak\DrawStrip.mqh"
 #include "..\Biotak\ExtendedDrawingFunctions.mqh"
 #include "..\Biotak\ComboEngine.mqh"
@@ -133,6 +138,7 @@ void SSDump(const string tag)
          " cells=", s_dsN, " picker=", s_dsPicker, " gear=", s_dsGear,
          " board=", s_dsBX, ",", s_dsBY, " ", s_dsBW, "x", s_dsBH,
          " gearWxH=", s_dsGearW0, "x", s_dsGearH,
+         " grp=", s_dsGearGrp[0], " fold=", s_dsGearCollapsed,
          " rows=", s_dsPN, " kind=", DrawKindName(s_dsKind));
 }
 
@@ -164,10 +170,13 @@ void SSKind(const string tag, const int type, const int anchors)
    ObjectDelete(0, nm);
 }
 
-void SSState(const string tag, const int picker, const int gear)
+//--- `folded` is the accordion's second fact (P-DRAW-117): the same open group
+//--- with its body folded away. Every existing call keeps the old default.
+void SSState(const string tag, const int picker, const int gear, const bool folded = false)
 {
    s_dsPicker = picker;
    s_dsGear = gear;
+   s_dsGearCollapsed = folded;
    DrawStripPaint();
    SSSave(tag);
    SSDump(tag);
@@ -229,6 +238,7 @@ void OnStart()
    SSState("panel_style", DSTRIP_PICK_NONE, DSTRIP_GEAR_STYLE);
    SSState("panel_look",  DSTRIP_PICK_NONE, DSTRIP_GEAR_TPL);
    SSState("panel_row",   DSTRIP_PICK_NONE, DSTRIP_GEAR_STRIP);
+   SSState("panel_fold",  DSTRIP_PICK_NONE, DSTRIP_GEAR_STRIP, true);   // P-DRAW-117
 
    DrawStripClose();
    ObjectDelete(0, rect);
