@@ -444,6 +444,8 @@ color PaletteKindColor(const int k)
       case PAL_BK_SL:          return g_bkStopColor;
       case PAL_BK_TP:          return g_bkTargetColor;
       case PAL_BOX_FILL:       return g_boxFillColor;      case PAL_BK_TEXT:       return g_bkTextColor;
+      case PAL_DRAW_BORDER:   return DrawStripPalTargetColor();
+      case PAL_DRAW_FILL:     return DrawStripPalTargetColor();
       case PAL_ZONE_EDGE_TOP:    return g_zoneEdgeTopColor;      // P-UI-131h
       case PAL_ZONE_EDGE_BOTTOM: return g_zoneEdgeBottomColor;
    }
@@ -474,6 +476,14 @@ color PnlRowColor(const int item,const int row)
    return PaletteKindColor(k);
 }
 
+//--- P-PAL-19e: is this popup editing a DRAWING? The strip's bridge asks it, so the
+//--- palette and its parent cannot disagree about who owns the popup. ONE predicate,
+//--- two sides — the same class of question must never be asked twice.
+bool PalKindIsDrawing(const int k)
+{
+   return (k == PAL_DRAW_BORDER || k == PAL_DRAW_FILL);
+}
+
 //--- number of "Apply to" targets (= PAL_BASE_TARGETS from BiotakKit)
 int PalTgtCount()
 {
@@ -486,7 +496,7 @@ int PalTgtCount()
 //--- clamping to the ring put "TRex Spread" in the header while the page edited a zone
 //--- edge. Declared BEFORE both maps because MQL4 expands macros top-down: a #define
 //--- below its first use is an unknown identifier, not a late binding.
-#define PAL_TGT_NAMES_N 27   // = PAL_BASE_TARGETS (25) + the two AUTO edge halves
+#define PAL_TGT_NAMES_N 29   // = PAL_BASE_TARGETS (25) + the two AUTO edge halves + the strip's two (P-PAL-19)
 
 //--- cycle index t → palette kind
 int PalTgtToKind(const int t)
@@ -495,7 +505,14 @@ int PalTgtToKind(const int t)
    // are 26/27 — kind 25 does not exist, so the tail must be MAPPED, not clamped. Clamping
    // it made the cycler label the page "Edge Top" while it edited kind 24 (TRex Spread).
    int k = ClampInt(t, 0, PAL_TGT_NAMES_N - 1);
-   return (k <= PAL_BASE_TARGETS - 1) ? k : k + 1;
+   if(k <= PAL_BASE_TARGETS - 1) return k;
+   // P-PAL-19: the tail is MAPPED, and it is now four wide: 25/26 name the AUTO
+   // edge halves (kinds 26/27) and 27/28 name the strip's two (kinds 28/29). The
+   // +1 offset is only valid for the first pair, which is why this is a ladder
+   // and not arithmetic — a second `k + 1` would send «Border» to the TRex spread.
+   if(k == 25) return 26;
+   if(k == 26) return 27;
+   return 28 + (k - 27);
 }
 
 //--- palette kind → its cycle index
@@ -516,7 +533,11 @@ string PalTgtLabel(const int t)
          "TRex TR", "TRex ex", "TRex Hunter", "TRex Trade", "TRex Spread",
          // P-UI-131h: named even though they are NOT "apply to" targets — a palette
          // page opened on one of them must say which line it is editing.
-         "Edge Top", "Edge Bottom"
+         "Edge Top", "Edge Bottom",
+         // P-PAL-19: the strip's two — named, not \"apply to\" ring entries (the ring
+         // stops at PAL_BASE_TARGETS), because a page opened on one of them must say
+         // which drawing colour it is editing.
+         "Drawing Border", "Drawing Fill"
       };
    int k = ClampInt(t, 0, PAL_TGT_NAMES_N - 1);
    return names[k];
@@ -571,6 +592,12 @@ int PaletteApplyColor(const int kind,const color clr,const bool remember=true)
       // P-UI-131h: the edge halves are painted by the ZONE BUILD, so the colour rides
       // REFRESH_BUFFERS like every other level colour - the zones are rebuilt from it,
       // and clrNONE (the palette's no-override cell) puts the half back on AUTO.
+      // P-PAL-19: the strip's two. The colour is committed to the DRAWING (through
+      // the strip's own writer, so every dependent — the box marks, the mid line, the
+      // opacity — sees it) and the pick lands in the same RECENT ring every other
+      // kind uses, so the strip and the cards share one history.
+      case PAL_DRAW_BORDER:
+      case PAL_DRAW_FILL:      DrawStripPalTargetApply(clr); PushPalRecent(clr); return REFRESH_BUFFERS;
       case PAL_ZONE_EDGE_TOP:    g_zoneEdgeTopColor = clr;    break;
       case PAL_ZONE_EDGE_BOTTOM: g_zoneEdgeBottomColor = clr; break;
       default:                return REFRESH_NONE;
@@ -629,6 +656,8 @@ int PaletteKindTransparency(const int kind)
       // popover's TR channel and the row are two faces of ONE value (the shape card 0
       // has had for the trigger since the beginning), and -1 (AUTO) shows as its greyed
       // "--" the way every other target without a value does.
+      case PAL_DRAW_BORDER:   return DrawStripPalTargetAlpha();
+      case PAL_DRAW_FILL:     return DrawStripPalTargetAlpha();
       case PAL_ZONE_EDGE_TOP:    return g_zoneEdgeTopTransparency;
       case PAL_ZONE_EDGE_BOTTOM: return g_zoneEdgeBottomTransparency;
       case PAL_HTF_BULL:
@@ -660,6 +689,16 @@ int PaletteApplyTransparency(const int kind, const int tr)
       case PAL_BOX_FILL:
          g_boxFillTransparency = t; BaseKnotRestyleAll();
          return REFRESH_BUFFERS;
+      // P-PAL-19: the strip's two — the popup's TR track writes the DRAWING's own
+      // slot alpha, through the same writer its opacity bar uses.
+      case PAL_DRAW_BORDER:
+      case PAL_DRAW_FILL:
+         if(!DrawStripPalTargetLive()) return REFRESH_NONE;
+         DrawSlotOpacitySet(DrawStripPalTargetObj(), t, DrawStripPalTargetSlot());
+         DrawStripPalRepaintAsk();   // P-PAL-19f: a REQUEST, not a paint — the strip is
+                                     // repainted by the entry's bridge, once, after this
+                                     // route returns (the colour pick above is the same).
+         return REFRESH_NONE;   // the drawing carries it; the indicators do not move
       case PAL_ZONE_EDGE_TOP:    g_zoneEdgeTopTransparency = t;    return REFRESH_BUFFERS;
       case PAL_ZONE_EDGE_BOTTOM: g_zoneEdgeBottomTransparency = t; return REFRESH_BUFFERS;
       case PAL_HTF_BULL:

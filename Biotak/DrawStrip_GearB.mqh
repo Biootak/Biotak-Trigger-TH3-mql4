@@ -200,6 +200,7 @@ void DrawStripClose()
         ObjectDelete(0, DrawStripIconName(i) + "C");
         ObjectDelete(0, DrawStripIconName(i) + "S");    // P-DRAW-64a: the colour seat's centre
         ObjectDelete(0, DrawStripIconName(i) + "C2");   // ...and its swatch skin
+        ObjectDelete(0, DrawStripIconName(i) + "R");    // P-DRAW-64a2: ...and the merged seat's BORDER bar
    }
    ObjectDelete(0, DrawStripGripName());
    ObjectDelete(0, DrawStripGripIconName());
@@ -229,6 +230,7 @@ void DrawStripClose()
    s_dsKind = DK_NONE;
    s_dsN = 0;
    DrawStripPublishRect();   // P-DRAW-31: a closed strip occupies no pixels
+   DrawStripSurfaceClear();  // P-PAL-20: owns no popup pixels either — the ledger dies with its owner
     s_dsPicker = DSTRIP_PICK_NONE;   // the popover dies with the strip
     s_dsPN = 0;                      // (the recent colours survive: they are the trader's)
     s_dsPHexY = -1;
@@ -236,7 +238,7 @@ void DrawStripClose()
     s_dsPOpY = -1;
     s_dsOpGrab = false;
     s_dsHexFocus = false;
-    DrawStripPopChromePrune();   // TV parity board: its chrome dies with the strip
+    //--- P-PAL-21: the board's chrome prune is gone with the board.
    //--- P-DRAW-32: the panel's placement belongs to THIS strip session — a fresh
    //--- open lands the panel beside the plate it serves, never where the last
    //--- strip's hand left it (the free space around a new drawing is new space).

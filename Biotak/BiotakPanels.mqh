@@ -263,6 +263,7 @@
 #include "BiotakPanels_State.mqh"
 #include "BiotakPanels_PalA.mqh"
 #include "BiotakPanels_PalB.mqh"
+#include "BiotakPanels_PalDiag.mqh"   // P-UI-137: the popup's own census (its own file)
 #include "BiotakPanels_Apply.mqh"
 #include "BiotakPanels_Rows.mqh"
 #include "BiotakPanels_Build.mqh"

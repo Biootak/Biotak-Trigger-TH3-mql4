@@ -189,6 +189,11 @@ const ART = {
     seg(9.5, 16, 25, 16, 2.1),
     seg(25, 16, 20.8, 13.6, 1.8), seg(25, 16, 20.8, 18.4, 1.8),
   ],
+  path: [
+    // path — polyline through three vertices with dots
+    seg(5, 23, 12, 11, 2.1), seg(12, 11, 20, 19, 2.1), seg(20, 19, 27, 7, 2.1),
+    cfill(5, 23, 2.2), cfill(12, 11, 2.2), cfill(20, 19, 2.2), cfill(27, 7, 2.2),
+  ],
   factor: [
     // factor — factor override: dial/gauge with needle
     ring(16, 16, 7.2, 2.0),
@@ -989,33 +994,44 @@ function glyphShapes(name, target, strokeW, color) {
   return out;
 }
 
-// 22px chip. acc = null -> the neutral (row off) chip.
+// ══════════════════════════════════════════════════════════════════════
+// P-PAL-11 (2026-10-02) — THE QUICK ROW WEARS THE BOARD'S FACE.
+// The MEASURED reason the strip's own chip was the last old-looking thing on
+// screen: it is a FLAT TONE plus a 1px rim, so its only depth cue is a hard
+// line — the same defect P-PAL-09 measured on the palette's cell, twenty pixels
+// away on the same card. One modern recipe, THREE values, and all three are
+// reachable in a baked face, so `chipSkin` now reads the same constants the
+// board's cells read (see MODERN_* below): a 0.34 squircle, a 13% white
+// hairline instead of a border, and the top inner highlight that fades over the
+// first 45% of the height. The middle stays TRANSPARENT — the chip's middle is
+// the glyph's ground, and an accent chip's own colour is what says «on», so the
+// frame is depth and never a second opinion about the state.
+// The accent chip keeps its exact softA/bdA (RICH-MT4, 2026-09-11: its colour
+// carries it), so «on» is still read from the tint, not from the rim.
+// ══════════════════════════════════════════════════════════════════════
 function chipSkin(acc) {
   const S = CHIP_CANVAS;
   const c = (S - 1) / 2;
   const hw = (CHIP_VIS - 1) / 2;           // half-extent of the visible square
-  const rad = 7;                           // .gl border-radius
-  const rgb = acc ? acc.soft : [255, 255, 255];
-  // RICH-MT4 (2026-09-11): the spec's .045/.08 whites sink below visibility
-  // after the MT4 blit — the neutral bake runs one step brighter. Accent
-  // chips keep their exact softA/bdA (their colour carries them).
-  const bgA = acc ? acc.softA : 14;        // spec rgba(255,255,255,.045) * 255
-  const bdA = acc ? acc.bdA : 26;          // spec rgba(255,255,255,.08) * 255
-
-  const sdf = (x, y) => {
-    const qx = Math.abs(x - c) - (hw - rad);
-    const qy = Math.abs(y - c) - (hw - rad);
-    return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - rad;
-  };
+  const rad = MODERN_RAD * CHIP_VIS;        // the SAME squircle the cells wear
+  const fill = acc ? acc.soft : [255, 255, 255];
+  const fillA = acc ? acc.softA : 14;       // RICH-MT4: the neutral runs one step brighter
+  const hair = acc ? acc.soft : MODERN_HAIR_RGB;
+  const hairA = acc ? acc.bdA : MODERN_HAIR;
 
   const buf = renderFxWH(S, S, (x, y) => {
-    const d = sdf(x, y);
-    if (d > 0.5) return null;
-    const cov = clamp01(0.5 - d);
-    let col = pm(rgb, bgA);
-    const bw = clamp01(0.5 - Math.abs(d + 0.5));   // 1px border hugging the edge
-    if (bw > 0) col = over(col, pm(rgb, bdA * bw));
-    return [col[0] * cov, col[1] * cov, col[2] * cov, col[3] * cov];
+    const d = rrSdf(x, y, c, c, hw, hw, rad);
+    let col = [0, 0, 0, 0];
+    if (d > -0.5) {
+      const m = clamp01((d + 0.5) / 1.5);
+      if (m > 0) col = over(col, pm(fill, fillA * m));
+    }
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));   // a whisper of a rim on the edge
+    if (bw > 0) col = over(col, pm(hair, hairA * bw));
+    const ty = clamp01(1 - y / (CHIP_VIS * MODERN_HIGHL_SPAN));
+    const inner = clamp01(1 - Math.abs(d) / 6);
+    if (ty > 0 && inner > 0) col = over(col, pm([255, 255, 255], MODERN_HIGHL * ty * ty * inner));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
   });
   return { w: S, h: S, buf };
 }
@@ -1537,10 +1553,130 @@ function roundCellSkin(w, h, bg) {
   return { w, h, buf };
 }
 
-// TV parity: the SELECTED cell's ring (preview .grid48 i.on). Same rounded
-// footprint and corner mask as roundCellSkin, so it can replace that face on
-// the one cell the drawing wears now: a 2px accent stroke inside the edge plus
-// its soft glow, middle transparent (the colour still shows through).
+// ══════════════════════════════════════════════════════════════════════
+// THE MODERN RECIPE — THREE VALUES, ONE FAMILY (P-PAL-09, P-PAL-11).
+// They live here, as names, because the failure they exist to prevent is a
+// SILENT FORK: two bakes that each look modern on their own and disagree with
+// each other by a few percent — the board modern, the row beside it not. A
+// surface wears the recipe by READING these, so a change lands on every face
+// at once and the gate can assert the sharing instead of the resemblance.
+// ══════════════════════════════════════════════════════════════════════
+const MODERN_RAD        = 0.34;          // radius as a fraction of the short side
+const MODERN_HAIR       = 34;            // the rim: 13% white (34/255 ≈ .133)
+const MODERN_HAIR_RGB   = [235, 241, 250];
+const MODERN_HIGHL      = 30;            // the top inner highlight's peak
+const MODERN_HIGHL_SPAN = 0.45;          // ...and the fraction of height it fades over
+
+// ══════════════════════════════════════════════════════════════════════
+// P-PAL-09 (2026-10-02) — THE MODERN CELL. «ظاهره مدرن بکن».
+// The measured reason the old cell cannot be modernised by changing a number:
+// it paints a flat tone plus a 1px rim, so its only depth cue is a hard line.
+// The modern look needs depth from THREE VALUES — a low-alpha hairline, a top
+// inner highlight, and a slightly rounder radius — and none of the three is
+// reachable through `OBJ_BUTTON`'s four properties, so they have to be BAKED.
+//   * radius 0.34 of the short side (was 0.28): a squircle, not a rounded rect.
+//   * hairline at 13% white (was 190/255 ≈ 75%): a whisper, not a border.
+//   * a TOP INNER HIGHLIGHT that fades out by 45% of the height — the single
+//     cue that reads as «a surface catching light», and the reason a flat
+//     32px button can look modern at all.
+// The middle stays TRANSPARENT so the swatch's own colour shows through: the
+// frame is depth, never a second opinion about the colour.
+// ══════════════════════════════════════════════════════════════════════
+function modernCellSkin(w, h, bg) {
+  const rad = Math.min(w, h) * MODERN_RAD, cx = w / 2, cy = h / 2;
+  const hw = (w - 1) / 2, hh = (h - 1) / 2;
+  const buf = renderFxWH(w, h, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    let col = [0, 0, 0, 0];
+    if (d > -0.5) {
+      const m = clamp01((d + 0.5) / 1.5);
+      if (m > 0) col = over(col, pm(bg, 255 * m));
+    }
+    // the hairline: a whisper of white right on the edge
+    const bw = clamp01(0.5 - Math.abs(d + 0.5));
+    if (bw > 0) col = over(col, pm(MODERN_HAIR_RGB, MODERN_HAIR * bw));
+    // the top inner highlight — fades over the first 45% of the height
+    const ty = clamp01(1 - y / (h * MODERN_HIGHL_SPAN));
+    const inner = clamp01(1 - Math.abs(d) / 6);
+    if (ty > 0 && inner > 0) col = over(col, pm([255, 255, 255], MODERN_HIGHL * ty * ty * inner));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
+  });
+  return { w, h, buf };
+}
+
+// The SELECTED cell: the same footprint and the same top highlight, with a
+// 2px amber stroke INSIDE the edge and its glow. Same rule as before \u2014 the
+// colour still shows through the middle, because the ring says «chosen», never
+// «this is the colour».
+function modernRingSkin(w, h, bg) {
+  const rad = Math.min(w, h) * MODERN_RAD, cx = w / 2, cy = h / 2;
+  const hw = (w - 1) / 2, hh = (h - 1) / 2;
+  const buf = renderFxWH(w, h, (x, y) => {
+    const d = rrSdf(x, y, cx, cy, hw, hh, rad);
+    let col = [0, 0, 0, 0];
+    const glow = clamp01(1 - Math.abs(d - 1.5) / 4.5);
+    if (glow > 0) col = over(col, pm([255, 194, 71], 70 * glow * glow));
+    const stroke = clamp01(1 - Math.abs(d + 1.0) / 1.6);
+    if (stroke > 0) col = over(col, pm([255, 194, 71], 235 * stroke));
+    const ty = clamp01(1 - y / (h * 0.45));
+    const inner = clamp01(1 - Math.abs(d) / 6);
+    if (ty > 0 && inner > 0) col = over(col, pm([255, 255, 255], 26 * ty * ty * inner));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
+  });
+  return { w, h, buf };
+}
+
+// P-PAL-10 \u2014 THE STUDIO GLYPH: a hue ring, because the button opens the MIXER.
+// A 20px dropper would be a lie about what is behind it; a ring of actual hues
+// is the one mark that means «every colour» at a glance. Built per-pixel (a
+// conic ramp cannot come from this generator's shape DSL), 2px stroke, hollow
+// middle so it reads on both the chip and the plate.
+// P-PAL-13 — THE STUDIO'S KNOB, i.e. «you are here». The preview draws it on the
+// hue rail AND on the SV square: a white disc inside a dark ring with a soft drop
+// shadow, so the mark reads on a bright yellow and on a near-black alike. Without
+// it the studio answers «what colour is this» but never «where am I», and a colour
+// picker with no position is a screenshot, not a control.
+function palKnobSkin(size) {
+  const c = size / 2, r = size * 0.34;
+  const buf = renderFxWH(size, size, (x, y) => {
+    const dx = x - c, dy = y - c;
+    const d = Math.hypot(dx, dy);
+    let col = [0, 0, 0, 0];
+    // the shadow first — it is what lifts the disc off a same-value background
+    const sh = clamp01(1 - Math.hypot(dx, dy - size * 0.08) / (r + size * 0.16));
+    if (sh > 0) col = over(col, pm([0, 0, 0], 110 * sh * sh));
+    const body = clamp01(1 - Math.abs(d - r) / 1.1);            // the dark ring
+    if (body > 0) col = over(col, pm([6, 9, 14], 235 * body));
+    const fill = clamp01(1 - Math.hypot(dx, dy) / (r - 1.2));   // the white disc
+    if (fill > 0) col = over(col, pm([255, 255, 255], 255 * fill));
+    const lip = clamp01(1 - Math.abs(Math.hypot(dx, dy - size * 0.06) - r * 0.62) / (r * 0.4));
+    if (lip > 0) col = over(col, pm([255, 255, 255], 120 * lip * fill));
+    return col[3] > 0 ? [col[0], col[1], col[2], col[3]] : null;
+  });
+  return { w: size, h: size, buf };
+}
+function studioRingSkin(size) {
+  const c = size / 2, r = size * 0.36;
+  const buf = renderFxWH(size, size, (x, y) => {
+    const dx = x - c, dy = y - c;
+    const d = Math.hypot(dx, dy);
+    const w = Math.max(size * 0.115, 1.4);
+    const a = clamp01(1 - Math.abs(d - r) / w);
+    if (a <= 0) return null;
+    let hh = (Math.atan2(dy, dx) * 180 / Math.PI + 450) % 360;
+    const k = hh / 60, i = Math.floor(k) % 6, f = k - Math.floor(k);
+    const q = 1 - f;
+    let rgb;
+    if (i === 0) rgb = [255, 255 * f, 0];
+    else if (i === 1) rgb = [255 * q, 255, 0];
+    else if (i === 2) rgb = [0, 255, 255 * f];
+    else if (i === 3) rgb = [0, 255 * q, 255];
+    else if (i === 4) rgb = [255 * f, 0, 255];
+    else rgb = [255, 0, 255 * q];
+    return [rgb[0] * a, rgb[1] * a, rgb[2] * a, 255 * a];
+  });
+  return { w: size, h: size, buf };
+}
 function roundRingSkin(w, h, bg) {
   const rad = Math.min(w, h) * 0.28, cx = w / 2, cy = h / 2;
   const hw = (w - 1) / 2, hh = (h - 1) / 2;
@@ -1629,8 +1765,21 @@ function palGripSkin() {
 //     CARD_MID->CARD_BOT over the bottom 4px, so every seam lands on CARD_MID
 //     and the composition cannot stripe. Shadow is uniform along each crop axis
 //     by construction (straight-edge model), so caps and middles always agree.
-const DS_M = 14, DS_R = 14;
-const DS_CAP = DS_M + DS_R;          // 28 — corner cap width
+// P-PAL-17 (2026-10-02) — THE COLOUR BOARD WEARS ITS OWN NINE, AT THE MODERN
+// CORNER. `DS_R` is a `let` because the board bakes a rounder, brighter plate than
+// the strip's: the board's cells already wear MODERN_* (P-PAL-11/12), and the last
+// old-looking thing on that surface was the box AROUND them — a 14px corner and a
+// flat #171C25 body under a 41px block of dead plate (the height was snapped up to
+// the next 42px band, which the board no longer needs: its nine pieces are CROPPED).
+// The set is baked at MODERN_PB_R with MODERN_PB_BD / MODERN_PB_HL, so the board's
+// box speaks the same recipe as its cells, and the strip's and the settings panel's
+// nine are byte-identical to what shipped before this (DS_R reset right after).
+const DS_M = 14;
+let   DS_R = 14;
+const MODERN_PB_R  = 16;             // the modern corner radius (px, not a fraction)
+const MODERN_PB_BD = [0x33, 0x3C, 0x4D];   // #333C4D — one step over the strip's #2C3444
+const MODERN_PB_HL = 30;             // the top inner highlight's peak = MODERN_HIGHL
+let   DS_CAP = DS_M + DS_R;          // 28 — corner cap width
 const DS_EDGE = DS_M + 1;            // 15 — mid-row side strip (margin + border)
 const DS_TOPC = 44, DS_MIDC = 42, DS_BOTC = 4;
 const DS_TOPH = DS_M + DS_TOPC;      // 58
@@ -1685,7 +1834,7 @@ function dsBody(band, y) {
 //     body, border, shadow and catchlight all scale by the same factor, so a
 //     transparent plate is the SAME plate with its alpha multiplied — never a
 //     different design. Level 0 keeps the shipped names (no file churn).
-function dsSkinPiece(W, H, band, kind, t = 0) {
+function dsSkinPiece(W, H, band, kind, t = 0, bd = CARD_BD, hl = 19) {
   const ka = 1 - clamp01(t / 100);
   const buf = renderFxWH(W, H, (x, y) => {
     let col = [0, 0, 0, 0];
@@ -1699,11 +1848,11 @@ function dsSkinPiece(W, H, band, kind, t = 0) {
     const d = dsSdf(x, y, W, H, kind);
     if (d < 0.7) {
       if (d > -1.2) {
-        col = over(col, pm(CARD_BD, 255 * ka));                // 1px #2C3444 border
+        col = over(col, pm(bd, 255 * ka));                      // 1px border
       } else {
         col = over(col, pm(dsBody(band, y), 255 * ka));        // obsidian body
         if (band === 0 && (y - DS_M) > -0.5 && (y - DS_M) < 1.0)
-          col = over(col, pm([255, 255, 255], 19 * ka));       // top catchlight
+          col = over(col, pm([255, 255, 255], hl * ka));       // top catchlight
       }
     }
     return col[3] > 0 ? col : null;
@@ -1715,21 +1864,29 @@ function dsSkinPiece(W, H, band, kind, t = 0) {
 const DS_PLATE_T = [0, 30, 60, 90];
 function dsSkinFiles() {
   const set = [
-    ['ds_top_l', DS_CAP,  DS_TOPH, 0, 0],
-    ['ds_top_m', DS_MIDW, DS_TOPH, 0, 4],
-    ['ds_top_r', DS_CAP,  DS_TOPH, 0, 1],
-    ['ds_mid_l', DS_EDGE, DS_MIDH, 1, 6],
-    ['ds_mid_r', DS_EDGE, DS_MIDH, 1, 7],
-    ['ds_bot_l', DS_CAP,  DS_BOTH, 2, 2],
-    ['ds_bot_m', DS_MIDW, DS_BOTH, 2, 5],
-    ['ds_bot_r', DS_CAP,  DS_BOTH, 2, 3],
+    ['top_l', DS_CAP,  DS_TOPH, 0, 0],
+    ['top_m', DS_MIDW, DS_TOPH, 0, 4],
+    ['top_r', DS_CAP,  DS_TOPH, 0, 1],
+    ['mid_l', DS_EDGE, DS_MIDH, 1, 6],
+    ['mid_r', DS_EDGE, DS_MIDH, 1, 7],
+    ['bot_l', DS_CAP,  DS_BOTH, 2, 2],
+    ['bot_m', DS_MIDW, DS_BOTH, 2, 5],
+    ['bot_r', DS_CAP,  DS_BOTH, 2, 3],
   ];
   const out = [];
   for (const t of DS_PLATE_T) {
     const sfx = t === 0 ? '' : '_t' + t;
     for (const [nm, W, H, band, kind] of set)
-      out.push({ name: nm + sfx + '.bmp', ...dsSkinPiece(W, H, band, kind, t) });
+      out.push({ name: 'ds_' + nm + sfx + '.bmp', ...dsSkinPiece(W, H, band, kind, t) });
   }
+  // P-PAL-17: the COLOUR BOARD's own nine — the modern corner, its own hairline
+  // and its own highlight. Level 0 only: the board has no transparency levels
+  // (P-DRAW-89 retired them), so a `_t*` set would be nine dead files per level.
+  DS_R = MODERN_PB_R;
+  DS_CAP = DS_M + DS_R;
+  for (const [nm, W, H, band, kind] of set)
+    out.push({ name: 'ds_pb_' + nm + '.bmp', ...dsSkinPiece(W, H, band, kind, 0, MODERN_PB_BD, MODERN_PB_HL) });
+  DS_R = 14; DS_CAP = DS_M + DS_R;      // back to the shipped geometry for anything baked after this
   out.push(
     { name: 'dsg_btn_ghost.bmp', ...ftBtnSkin(null, false, 64) },
   );
@@ -1932,6 +2089,37 @@ const BK_EXT_ON = [   // ... and the edge travelling with the newest bar
 ];
 files.push(['bk_half_off.bmp', () => render(24, BK_HALF_OFF, BK_DARK)]);
 files.push(['bk_half_on.bmp',  () => render(24, BK_HALF_ON,  BK_GOLDINK)]);
+// P-UI-139/140 (2026-10-02, MEASURED: the tap that was meant for this cell landed on
+// `slot=9 Behind candles` — `[drawstrip] SLOT slot=9 name=Behind candles obj=
+// "THLevels_PATH_…_7" -> 1 read=1` — because a PATH wore the BOX's own art, a solid
+// block cut by a dashed midline, at 24px beside two other block glyphs). A control
+// whose face is the neighbour's face is the C-05/C-08 failure one row over. So the
+// path's answer has its own art: TWO LEGS with a small dot ON each leg's middle —
+// the feature itself, at the same 24 canvas and the same plate/amber twins.
+// P-UI-140: the path's mid-marker ink — the path's OWN colour at draw time (the
+// marker wears the drawing's blended ink by re-pointing the raster's `BGCOLOR`-free
+// twin); the baked default is the path's birth blue so a marker whose path never
+// picked a colour still reads on both chart themes.
+const PATH_MID_INK_RGB = [65, 105, 225];  // royal blue, PATH_COLOR
+const BK_MID_OFF = [  seg(6.5, 22.5, 14.0, 9.0, 2.3), seg(14.0, 9.0, 20.5, 20.0, 2.3),
+  cfill(10.2, 15.7, 2.3), cfill(17.2, 14.5, 2.3),
+];
+const BK_MID_ON = [...BK_MID_OFF];
+files.push(['bk_mid_off.bmp', () => render(24, BK_MID_OFF, BK_DARK)]);
+files.push(['bk_mid_on.bmp',  () => render(24, BK_MID_ON,  BK_GOLDINK)]);
+// P-UI-140 (2026-10-02, MEASURED: `mid PASS … made=6 … sz=0x0 ink=0 z=50 tf=0`).
+// The marker is an OBJ_ELLIPSE and MT4 gives an ellipse its SIZE FROM THE SECOND
+// ANCHOR, not from XSIZE/YSIZE — with 0,0 for the second anchor it measured 0x0 and
+// carried no timeframe, i.e. six objects that exist and draw nothing. A fixed-PIXEL
+// round marker therefore cannot be a time/price shape at all; it is a baked disc on a
+// pixel seat, which is exactly what this product already does for the leg's own mid
+// handle (P-LM-11/P-LM-19: an 11px raster with the white halo, placed by centre).
+// One shape, the halo that makes it read on white AND black charts, 11px — SMALLER
+// than the path's own vertex handles (19px), which is the whole ask.
+files.push(['path_mid_dot.bmp', () => render(11, [
+  Object.assign(ring(16, 16, 12.5, 7), { color: LEG_HALO_RGB }),
+  Object.assign(cfill(16, 16, 9.0),    { color: PATH_MID_INK_RGB }),
+], PATH_MID_INK_RGB)]);
 files.push(['bk_ext_off.bmp',  () => render(24, BK_EXT_OFF,  BK_DARK)]);
 files.push(['bk_ext_on.bmp',   () => render(24, BK_EXT_ON,   BK_GOLDINK)]);
 files.push(['bk_fill_on.bmp',   () => render(24, BK_FILL_ON,   BK_GOLDINK)]);
@@ -1970,23 +2158,31 @@ const panelFiles = [
   // pnl_glass28 caller. MT4 crops a bitmap and never scales it, so the rule
   // P-DRAW-33 states still holds — ds_* carries it at the sizes actually drawn.
   // TV parity rounded palette cells (opaque corner mask in the owning plate tone).
-  { name: 'ds_cell32.bmp',      ...roundCellSkin(32, 32, [23, 28, 37]) },
   // P-DRAW-49: the popup's cells are 26px (the design) with a 22px fallback for a
   // window the big one does not fit, and MT4 crops a bitmap and never scales it —
   // so each size is its own cell AND its own ring (P-DRAW-33's rule, unchanged).
   { name: 'pal_cell26.bmp',     ...roundCellSkin(26, 26, [26, 32, 42]) },
   { name: 'pal_cell22.bmp',     ...roundCellSkin(22, 22, [26, 32, 42]) },
   // ...and the ring the SELECTED cell wears in their place (same sizes).
-  { name: 'ds_ring32.bmp',      ...roundRingSkin(32, 32, [23, 28, 37]) },
   // ...and the STRIP's own 24px swatch (`#strip .swcell` — 24px, radius 6, a
   // 1px white hairline), the colour cell's face inside its 32px cell.
-  { name: 'ds_swatch24.bmp',    ...roundCellSkin(24, 24, [23, 28, 37]) },
   { name: 'pal_ring26.bmp',     ...roundRingSkin(26, 26, [26, 32, 42]) },
   { name: 'pal_ring22.bmp',     ...roundRingSkin(22, 22, [26, 32, 42]) },
   { name: 'pnl_nav.bmp',        ...navSkin() },
   { name: 'pal_card26.bmp',     ...palCardSkin(PAL_H_BIG) },
   { name: 'pal_card22.bmp',     ...palCardSkin(PAL_H_SML) },
   { name: 'pal_grip.bmp',       ...palGripSkin() },
+  // P-PAL-09/10 (2026-10-02): the MODERN faces of the colour board. The old
+  // cell (ds_cell32 / ds_ring32) is RETIRED WITH THESE \u2014 same names would be two
+  // looks for one control, so the new art takes the names and the painter needs
+  // no edit at all. `tools/check-resources.js` answers that each is answered at
+  // its own canvas, and `tools/check-icon-deploy.js` that every hosting terminal
+  // serves these bytes.
+  { name: 'ds_cell32.bmp',      ...modernCellSkin(32, 32, [23, 28, 37]) },
+  { name: 'ds_ring32.bmp',      ...modernRingSkin(32, 32, [23, 28, 37]) },
+  { name: 'ds_swatch24.bmp',    ...modernCellSkin(24, 24, [23, 28, 37]) },
+  { name: 'ds_palstudio.bmp',   ...studioRingSkin(20) },
+  { name: 'ds_palknob.bmp',     ...palKnobSkin(16) },
   // P-DRAW-29 (2026-09-24): the DrawStrip plate skin (9-slice, see above).
   // The mid-row centre is a plain DSTRIP_CLR_PANEL rect (no file); the two
   // side strips tile it vertically, the middles crop it horizontally.

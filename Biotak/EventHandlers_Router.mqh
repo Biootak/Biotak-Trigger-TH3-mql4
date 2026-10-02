@@ -11,8 +11,8 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
     // chart-click leak into custom-price/TH3/panels), and committed boxes own
     // their badge/drag/delete events in every state.
     if(BaseKnotOnChartEvent(id, lparam, dparam, sparam)) return;
-    // P-HR-01: the Horizontal Ray owns its arm click and its committed drags.
-    if(HRayOnChartEvent(id, lparam, dparam, sparam)) return;
+    // P-HR-01 / P-UI-136: the Horizontal Ray and the Path own their arm click and their committed drags.
+    if(HRayOnChartEvent(id, lparam, dparam, sparam) || PathOnChartEvent(id, lparam, dparam, sparam)) return;
 
     // P-UI-100b (2026-09-22): THE DETECTOR OF "A FOREIGN OBJECT JUST APPEARED".
     //

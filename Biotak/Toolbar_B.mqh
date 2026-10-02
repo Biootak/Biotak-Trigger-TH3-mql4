@@ -33,6 +33,24 @@ void DrawSlotOpacitySet(const string name, const int op, const int slot)
    int v = op;
    if(v < DRAW_OP_MIN) v = DRAW_OP_MIN;
    if(v > 100) v = 100;
+   //--- P-UI-137 (2026-10-02, user: "the transparency only applies to ONE of its
+   //--- lines") — THE OPACITY IS THE PATH'S, NOT A SEGMENT'S. This writer aimed at
+   //--- ONE name, so the fade landed on the segment under the hand and the polyline
+   //--- came out half-faded (the measured screenshot: one pale leg among solid ones).
+   //--- And the `[OP…]`/`[CL…]` tags it writes are PAINTED along a trend line, so the
+   //--- path's numbers live in its own store and every sibling is re-inked in ONE
+   //--- pass through the path's single writer. Cost: one blend + n writes, n = the
+   //--- path's segment count, on the slider's own step. No other drawing is touched.
+   if(DrawIsPathSeg(name))
+   {
+      string pid = "";
+      if(!PathIdOfName(name, pid)) return;
+      if(inner) return;              // a polyline has no interior: the Fill role is N/A
+      color pp = clrNONE; int pv = 100;
+      PathInkGet(pid, pp, pv);
+      PathInkApply(pid, pp, v);
+      return;
+   }
    color pure = clrNONE;
    bool havePure = inner ? DrawSlotFillPure(name, pure) : DrawSlotColorPure(name, pure);
    if(!havePure)
@@ -76,6 +94,11 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          // P-HR-04: plain ink on the ray — no `[CL` desc (it would paint text on
          // the line) and no kind learning (a ray must not dye the next trendline).
          if(DrawIsHRay(name)) { ObjectSetInteger(0, name, OBJPROP_COLOR, c); break; }
+         // P-UI-136: a path segment is one drawing of N objects — the plain ink
+         // (no `[CL` desc: it would paint text on the line) on EVERY sibling, at the
+         // path's OWN opacity (P-UI-137: the pick and the TR step share one writer, so
+         // choosing a colour can never drop the fade the user just set).
+         if(DrawIsPathSeg(name)) { string pid = ""; PathIdOfName(name, pid); PathInkApply(pid, c, PathInkOpacityGet(pid)); break; }
          color rc = DrawSlotColorStore(name, c);   // P-DRAW-48: pure on the desc, blend on the chart
          ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
          //--- P-DRAW-64: an interior the user has NOT coloured follows the border,
@@ -92,9 +115,11 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          int w = (int)MathRound(v);
          if(w < DRAW_WIDTH_MIN) w = DRAW_WIDTH_MIN;
          if(w > DRAW_WIDTH_MAX) w = DRAW_WIDTH_MAX;
-         ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
+         // P-UI-136: the path is one drawing — the pen lands on every segment.
+         if(DrawIsPathSeg(name)) PathFamilySet(name, OBJPROP_WIDTH, w);
+         else ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
          if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
-         if(!DrawIsHRay(name)) s_dkWidth[k] = w;   // P-HR-04: rays learn nothing
+         if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkWidth[k] = w;   // P-HR-04/P-UI-136: rays and paths learn nothing
          //--- P-DRAW-74: a thick pen paints solid, so the pair resolves here - the
          //--- one owner, asked on the way every chip, preset and undo already takes.
          DrawStylePairCoerce(name);
@@ -112,11 +137,13 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
                ObjectSetInteger(0, name, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
                if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, DRAW_WIDTH_MIN);
             }
-            if(!DrawIsHRay(name)) s_dkWidth[k] = DRAW_WIDTH_MIN;
+            if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkWidth[k] = DRAW_WIDTH_MIN;
          }
-         ObjectSetInteger(0, name, OBJPROP_STYLE, st);
+         // P-UI-136: the dash lands on every segment of the path.
+         if(DrawIsPathSeg(name)) PathFamilySet(name, OBJPROP_STYLE, st);
+         else ObjectSetInteger(0, name, OBJPROP_STYLE, st);
          if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, st);
-         if(!DrawIsHRay(name)) s_dkStyle[k] = st;   // P-HR-04: rays learn nothing
+         if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkStyle[k] = st;   // P-HR-04/P-UI-136
          DrawStylePairCoerce(name);                  // P-DRAW-74: a dash is a 1 px pen
          break;
       }
@@ -144,6 +171,13 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
       }
       case DRAW_SLOT_FILLCLR:
       {
+         // P-UI-137: A PATH HAS NO INTERIOR. The FILL role's whole vocabulary is the
+         // `[FL…]` desc tag, and on a segment that tag is not metadata — MT4 PAINTS
+         // it as text along the line (the same reason the colour slot takes the plain
+         // ink above). So the write is refused here, not silently turned into a
+         // caption on the chart: a click on the popup's `Fill` chip changes nothing
+         // and draws nothing, which is the truth for a polyline.
+         if(DrawIsPathSeg(name)) break;
          //--- P-DRAW-64: the interior's own colour (`[FL…]`). It is recorded even
          //--- while the interior is OFF, so choosing a colour and switching the fill
          //--- on are two acts in either order.
@@ -164,6 +198,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          if(r < 0) r = 0;
          if(r > 3) r = 3;
          if(DrawIsHRay(name)) r = 1;   // P-HR-04: a ray stays a right-ray — the law, not a choice
+         // P-UI-136: a path's ends are VERTICES, so the ray cell is a no-op on it —
+         // a stretched segment would no longer meet the handle that owns its end.
+         if(DrawIsPathSeg(name)) { PathFamilySet(name, OBJPROP_RAY_RIGHT, false); PathFamilySet(name, OBJPROP_RAY_LEFT, false); break; }
          ObjectSetInteger(0, name, OBJPROP_RAY_RIGHT, (r & 1) != 0);
          ObjectSetInteger(0, name, OBJPROP_RAY_LEFT,  (r & 2) != 0);
          if(!DrawIsHRay(name)) s_dkRay[k] = r;   // P-HR-04: rays learn nothing
@@ -174,6 +211,16 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          // P-HR-04: the ray is born unselectable and stays that way — the dot
          // carry is its lock's replacement, so the cell is a no-op on rays.
          if(DrawIsHRay(name)) break;
+         // P-UI-138: A PATH'S LOCK IS ITS OWN FLAG. `OBJPROP_SELECTABLE` would hand
+         // MT4 an anchor on ONE segment while the handles carry the whole drawing —
+         // two owners for one drawing, and a locked path that still tears in half.
+         // So the cell asks the path, and the path's press branch answers it.
+         if(DrawIsPathSeg(name))
+         {
+            string pid = "";
+            if(PathIdOfName(name, pid)) PathLockSet(pid, (v > 0.5));
+            break;
+         }
          bool locked = (v > 0.5);
          ObjectSetInteger(0, name, OBJPROP_SELECTABLE, !locked);
          if(locked) ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
@@ -227,6 +274,15 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
       //--- party to it («۵۰ درصد باکس فقط میخوام، fill بهکارم نمیاد»).
       case DRAW_SLOT_BOXHALF:
       {
+         //--- P-UI-139: on a PATH the same cell is its 50 % MARKERS — one small
+         //--- circle at each leg's middle, painted by the path's own owner. The
+         //--- rectangle's own answer (the mid PRICE line) is untouched below.
+         if(DrawIsPathSeg(name))
+         {
+            string pid = "";
+            if(PathIdOfName(name, pid)) PathMidSet(pid, (v > 0.5));
+            break;
+         }
          if(DrawObjectType(name) != OBJ_RECTANGLE) return false;
          bool mid = false; int ext = BOXEXT_OFF, exn = 0;
          BoxMarkRead(name, mid, ext, exn);
@@ -304,7 +360,7 @@ bool DrawStylePairCoerce(const string name)
       if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
       changed = true;
    }
-   if(!DrawIsHRay(name))
+   if(!DrawIsHRay(name) && !DrawIsPathSeg(name))
    {
       if(s_dkWidth[k] != w) { s_dkWidth[k] = w; changed = changed || true; }
       if(s_dkStyle[k] != st) { s_dkStyle[k] = st; changed = changed || true; }
@@ -812,7 +868,7 @@ void DrawSelPrune()
 int DrawSelSnapshot(const string hold)
 {
    DrawSelClear();
-   if(hold == "" || (DrawIsIndicatorObject(hold) && !DrawIsHRay(hold))) return 0;   // P-HR-04
+   if(hold == "" || (DrawIsIndicatorObject(hold) && !DrawIsHRay(hold) && !DrawIsPathSeg(hold))) return 0;   // P-HR-04/P-UI-136
    EDrawKind k = DrawKindOf(hold);
    if(k <= DK_NONE || k >= DK_COUNT) return 0;
    s_dkSel[0] = hold;
@@ -822,7 +878,7 @@ int DrawSelSnapshot(const string hold)
    {
       string nm = ObjectName(0, i, -1, -1);
       if(nm == "" || nm == hold) continue;
-      if(DrawIsIndicatorObject(nm) && !DrawIsHRay(nm)) continue;   // P-HR-04: rays group too
+      if(DrawIsIndicatorObject(nm) && !DrawIsHRay(nm) && !DrawIsPathSeg(nm)) continue;   // P-HR-04/P-UI-136: rays and paths group too
       if(DrawKindOf(nm) != k) continue;
       if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) continue;
       s_dkSel[s_dkSelN] = nm;

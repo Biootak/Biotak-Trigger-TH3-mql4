@@ -12,6 +12,7 @@ int HandleButtonClick(const string clickedObject)
       // Orb doubles as the session EXIT while drawing (menu is hidden then).
       if(BaseKnotSessionActive()) { BaseKnotExitToMenu(); return REFRESH_NONE; }
       if(HRaySessionActive()) { HRayCancel(); return REFRESH_NONE; }   // P-HR-01: orb exits the ray arm
+      if(PathSessionActive()) { PathSessionClear(); PathCancel(); return REFRESH_NONE; }
       if(g_OrbWasDragged)
       {
          g_OrbWasDragged = false;
@@ -144,10 +145,14 @@ int HandleButtonClick(const string clickedObject)
           PnlOpen(ToolPanel(tidx));
           return REFRESH_NONE;
        }
-       else if(tfeat == CIR_HRAY)   // P-HR-01: momentary toggle — the cell light is the session
-       {
-          tflags = CircArmHRay();
-       }
+        else if(tfeat == CIR_HRAY)   // P-HR-01: momentary toggle — the cell light is the session
+        {
+           tflags = CircArmHRay();
+        }
+        else if(tfeat == CIR_PATH)
+        {
+           tflags = CircArmPath();
+        }
        else if(tfeat == CIR_BASEKNOT)
        {
           // UIBK-OFF (P-UI-95): the MEASURING tool has its own RING slot now

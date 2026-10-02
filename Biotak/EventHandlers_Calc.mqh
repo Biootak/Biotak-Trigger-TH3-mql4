@@ -125,7 +125,7 @@ void OnDeinitHandler(const int reason) {
     TH3PivotMarkersClear();     // P-TH3-P6: our chart namespace leaves with us (UI half — P-BUILD-01)
 #endif
     BaseKnotOnDeinit(reason);   // P-BK-02: never leave scroll locked / ghost preview behind
-    HRayOnDeinit(reason);         // P-HR-01: never leave a stuck arm behind
+    HRayOnDeinit(reason); PathOnDeinit(reason);   // P-HR-01 / P-UI-136: never leave a stuck arm behind
     p49knot = GetTickCount() - p49t; p49t = GetTickCount();
     CustomPriceDragLockOff();   // P-UI-53: same rule for the custom-price drag lock
     // P-UI-90: THE NET, for EVERY deinit reason. Whatever the counters of the

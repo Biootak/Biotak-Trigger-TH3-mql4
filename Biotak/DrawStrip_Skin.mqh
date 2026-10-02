@@ -98,6 +98,15 @@ string DrawStripSkinRes(const string base)
 {
    return "::Files\\Icons\\" + base + ".bmp";
 }
+//--- P-PAL-17 (2026-10-02) — FAMILY 2 WEARS ITS OWN NINE. The strip and the
+//--- settings panel keep the shipped `ds_*` art (byte-identical to what shipped);
+//--- the colour board reads `ds_pb_*`, baked at the modern corner so the box speaks
+//--- the same recipe as the cells inside it. A per-family base is the whole change:
+//--- nine `DrawStripSkinResFor(fam, …)` calls where nine literals stood.
+string DrawStripSkinResFor(const int fam, const string base)
+{
+   return DrawStripSkinRes((fam == 2) ? ("ds_pb_" + base) : ("ds_" + base));
+}
 //--- the underlayer behind the skin: the panel tone when the plate is solid, the
 //--- chart's own background when it is translucent — which is what keeps P-DRAW-35's
 //--- white-chart fringe fix while letting the chart show through the plate.
@@ -308,6 +317,28 @@ bool DrawStripSkinFitsFor(const int w, const int h)
    return (k >= 0 && w > 0 && w <= DSTRIP_SKIN_MAXW &&
            w + 2 * DSTRIP_SKIN_M - 2 * DSTRIP_SKIN_CAP <= DSTRIP_SKIN_MIDW);
 }
+//--- P-PAL-17: the CAP the board's own bake needs: margin 14 + its modern 16px
+//--- corner, where the strip's nine are margin 14 + 14. ONE owner, and the painter
+//--- asks it for all six cap reads (three widths, three x) — a second literal here
+//--- is a corner blitted 2px off its own cap (P-DRAW-68's class).
+int DrawStripSkinCap(const int fam) { return (fam == 2) ? 30 : DSTRIP_SKIN_CAP; }
+//--- P-PAL-17 (2026-10-02) — THE BOARD'S PLATE IS NOT ON THE 42-BAND GRID. The
+//--- strip and the settings panel are baked strips whose middles are WHOLE 42px
+//--- bands, so their heights must be `48 + k*42` (P-PAL-08's measurement). The
+//--- colour board's height is a SUM of bands that are not multiples of 42, and the
+//--- snap to the next band was the dead black block under HEX the report shows: up
+//--- to 41px of plate carrying nothing. Its nine pieces are CROPPED, not stretched
+//--- (P-DRAW-29 — MT4 crops a smaller XSIZE/YSIZE and never stretches), so the board
+//--- can take its MEASURED height and its plate ends exactly where HEX ends. The
+//--- width law is unchanged: a wider plate would need a wider middle bake.
+//--- ONLY family 2 reads this; the strip's and the panel's own grid is untouched.
+bool DrawStripSkinFitsForFam(const int fam, const int w, const int h)
+{
+   if(fam != 2) return DrawStripSkinFitsFor(w, h);
+   int cap = DrawStripSkinCap(fam);
+   return (h >= DSTRIP_SKIN_TOPT + DSTRIP_SKIN_BOTT && w > 0 && w <= DSTRIP_SKIN_MAXW &&
+           w + 2 * DSTRIP_SKIN_M - 2 * cap <= DSTRIP_SKIN_MIDW);
+}
 int  DrawStripSkinK()     { return DrawStripSkinKFor(s_dsH); }
 bool DrawStripSkinFits()  { return DrawStripSkinFitsFor(s_dsW, s_dsH); }
 //--- one skin bitmap: created once with the rung's face, guarded after (the
@@ -402,31 +433,34 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
                           const int gridTop, const int seamFrom, const int bodyTop)
 {
    bool dirty = false;
-   if(!DrawStripSkinFitsFor(w, h))
+   if(!DrawStripSkinFitsForFam(fam, w, h))
    {
       dirty |= DrawStripSkinPurgeAt(fam);
       s_dsSkinPlateDied = true;   // P-LOG-10: the content outlived its plate — the next paint purges before it paints
       return dirty;
    }
-   int k = DrawStripSkinKFor(h);
+   //--- P-PAL-17: the middle is the MEASURED remainder (k*42 on the other two
+   //--- families, h - top - bottom here), so the plate ends where the content does.
+   int midH = (fam == 2) ? (h - DSTRIP_SKIN_TOPT - DSTRIP_SKIN_BOTT) : DrawStripSkinKFor(h) * DSTRIP_SKIN_MID;
+   int cap = DrawStripSkinCap(fam);
    int sx = x - DSTRIP_SKIN_M, sy = y - DSTRIP_SKIN_M;
    int TW = w + 2 * DSTRIP_SKIN_M;
-   int midW = TW - 2 * DSTRIP_SKIN_CAP;
-   int midY = sy + DSTRIP_SKIN_TOPT, midH = k * DSTRIP_SKIN_MID;
+   int midW = TW - 2 * cap;
+   int midY = sy + DSTRIP_SKIN_TOPT;
    int botY = midY + midH;
    color fill = DrawStripPlateFill();   // P-DRAW-43: solid tone, or the chart's own bg
    dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 0), sx, sy,
-                             DSTRIP_SKIN_CAP, DSTRIP_SKIN_TOPT,
-                             DrawStripSkinRes("ds_top_l"));
-   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 1), sx + DSTRIP_SKIN_CAP, sy,
-                             midW, DSTRIP_SKIN_TOPT, DrawStripSkinRes("ds_top_m"));
-   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 2), sx + TW - DSTRIP_SKIN_CAP, sy,
-                             DSTRIP_SKIN_CAP, DSTRIP_SKIN_TOPT,
-                             DrawStripSkinRes("ds_top_r"));
-   if(k > 0)
+                             cap, DSTRIP_SKIN_TOPT,
+                             DrawStripSkinResFor(fam, "top_l"));
+   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 1), sx + cap, sy,
+                             midW, DSTRIP_SKIN_TOPT, DrawStripSkinResFor(fam, "top_m"));
+   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 2), sx + TW - cap, sy,
+                             cap, DSTRIP_SKIN_TOPT,
+                             DrawStripSkinResFor(fam, "top_r"));
+   if(midH > 0)
    {
       dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 3), sx, midY,
-                                DSTRIP_SKIN_EDGE, midH, DrawStripSkinRes("ds_mid_l"));
+                                DSTRIP_SKIN_EDGE, midH, DrawStripSkinResFor(fam, "mid_l"));
       // P-DRAW-48: the plate's own body — Z_STRIP, never the cells' layer.
       // P-DRAW-67: and it is the cards' RAMP now, band by band (see StrapBodyTone).
       // P-DRAW-69: on the SURFACE's own 42px cell grid, one flat tone per cell plus
@@ -437,7 +471,7 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
                                      TW - 2 * DSTRIP_SKIN_EDGE, bodyBot - bodyTop,
                                      gridTop, seamFrom);
       dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 5), sx + TW - DSTRIP_SKIN_EDGE, midY,
-                                DSTRIP_SKIN_EDGE, midH, DrawStripSkinRes("ds_mid_r"));
+                                DSTRIP_SKIN_EDGE, midH, DrawStripSkinResFor(fam, "mid_r"));
    }
    else
    {
@@ -453,13 +487,46 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
       dirty |= DrawStripBodyPurge(fam);   // P-DRAW-67: a 48px plate has no body
    }
    dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 6), sx, botY,
-                             DSTRIP_SKIN_CAP, DSTRIP_SKIN_BOTT,
-                             DrawStripSkinRes("ds_bot_l"));
-   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 7), sx + DSTRIP_SKIN_CAP, botY,
-                             midW, DSTRIP_SKIN_BOTT, DrawStripSkinRes("ds_bot_m"));
-   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 8), sx + TW - DSTRIP_SKIN_CAP, botY,
-                             DSTRIP_SKIN_CAP, DSTRIP_SKIN_BOTT,
-                             DrawStripSkinRes("ds_bot_r"));
+                             cap, DSTRIP_SKIN_BOTT,
+                             DrawStripSkinResFor(fam, "bot_l"));
+   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 7), sx + cap, botY,
+                             midW, DSTRIP_SKIN_BOTT, DrawStripSkinResFor(fam, "bot_m"));
+   dirty |= DrawStripSkinBmp(DrawStripSkinPiece(fam, 8), sx + TW - cap, botY,
+                             cap, DSTRIP_SKIN_BOTT,
+                             DrawStripSkinResFor(fam, "bot_r"));
+   //--- P-PAL-17b (2026-10-02) — THE PLATE'S OWN NINE, AS THE TERMINATOR HOLDS IT.
+   //--- The MEASURED report: the board's content ends where HEX ends (BH=556, the
+   //--- flushed witness agrees) and the CARD carries ~75px more below it. The plate
+   //--- is nine OBJ_BITMAP_LABELs and the model above says where each one lands — so
+   //--- either the model is wrong or the objects are, and only the OBJECTS can say.
+   //--- ONE line, once per open, through the flushed channel, naming every piece's
+   //--- own x/y/size and the bmp the terminal resolved: XSIZE/YSIZE only CROP, so a
+   //--- piece whose canvas is taller than its size shows more rows than the painter
+   //--- believes, and nothing on the chart can say so but this read.
+   if(fam == 2)
+   {
+      static bool said = false;
+      if(!said)
+      {
+         said = true;
+         string s = "[drawstrip] PLATE fam=2 rect=" + IntegerToString(x) + "," + IntegerToString(y)
+                    + "," + IntegerToString(w) + "x" + IntegerToString(h)
+                    + " midH=" + IntegerToString(midH) + " botY=" + IntegerToString(botY)
+                    + " cap=" + IntegerToString(cap);
+         for(int i = 0; i < 9; i++)
+         {
+            string pn = DrawStripSkinPiece(fam, i);
+            s += " | " + pn + "=";
+            if(ObjectFind(0, pn) < 0) s += "GONE";
+            else s += IntegerToString(ObjectGetInteger(0, pn, OBJPROP_XDISTANCE)) + ","
+                    + IntegerToString(ObjectGetInteger(0, pn, OBJPROP_YDISTANCE)) + ","
+                    + IntegerToString(ObjectGetInteger(0, pn, OBJPROP_XSIZE)) + "x"
+                    + IntegerToString(ObjectGetInteger(0, pn, OBJPROP_YSIZE))
+                    + ",z" + IntegerToString(ObjectGetInteger(0, pn, OBJPROP_ZORDER));
+         }
+         DrawStripDiagEmit(s);
+      }
+   }
    //--- P-DRAW-35 (2026-09-25): OBJ_BITMAP_LABEL does NOT honour alpha on a white
    //--- chart — every transparent pixel in the skin BMP reads as white.  A solid
    //--- RECTANGLE_LABEL behind the skin (same content rect, no border, Z_STRIP-1)
@@ -542,74 +609,11 @@ int DrawStripRectOverlap(const int ax, const int ay, const int aw, const int ah,
    return (int)a;
 }
 
-//--- P-DRAW-48: THE BOARD's own plate — its own origin, its own family, so the
-//--- strip stays the compact quick row it is (the reference's architecture).
-bool DrawStripBoardPlate()
-{
-   if(s_dsBW <= 0 || s_dsBH <= 0) return false;
-   return DrawStripSkinPaintAt(2, s_dsBX, s_dsBY, s_dsBW, s_dsBH,
-                               DSTRIP_BOARD_GRID_TOP, DSTRIP_BOARD_GRID_TOP, DSTRIP_BODY_TOP);
-}
-//--- WHERE THE BOARD OPENS. Docked: beside the strip, SCORED against the two surfaces
-//--- it must not touch (the settings panel and the drawing it serves), so the colour
-//--- board can no longer land on the panel that was opened under the strip.
-//--- Float: the hand's own spot, clamped — the pin's OFF state.
-void DrawStripBoardPlace()
-{
-   if(s_dsBW <= 0 || s_dsBH <= 0) return;
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
-   int gm = 4 + DSTRIP_SKIN_M;   // P-DRAW-29: the carried skin stays on screen
-   int maxX = cw - s_dsBW - gm, maxY = ch - s_dsBH - gm;
-   if(maxX < gm) maxX = gm;
-   if(maxY < gm) maxY = gm;
-   if(s_dsBManual)
-   {
-      if(s_dsBX < gm) s_dsBX = gm;
-      if(s_dsBY < gm) s_dsBY = gm;
-      if(s_dsBX > maxX) s_dsBX = maxX;
-      if(s_dsBY > maxY) s_dsBY = maxY;
-      return;
-   }
-   //--- P-DRAW-73: H-05 made real for the board. It docked at ONE spot (under the
-   //--- strip) and knew neither the panel nor the drawing, so a panel placed below the
-   //--- strip and one tap on the colour seat put a 468px board straight through it.
-   //--- Four sides scored with the panel's own weights (the drawing x1000, a surface
-   //--- x20), each that needs no clamping, the reading order when none fits. Bounded:
-   //--- 4 candidates x 3 rects, once per open — never in a paint (G-12).
-   int dx1 = 0, dy1 = 0, dx2 = 0, dy2 = 0;
-   bool haveDraw = DrawStripDrawingBox(s_dsObj, dx1, dy1, dx2, dy2);
-   const int W = s_dsBW, H = s_dsBH;
-   int px[4], py[4];
-   px[0] = s_dsX;                     py[0] = s_dsY + s_dsH + 2;              // below
-   px[1] = s_dsX;                     py[1] = s_dsY - H - 2;                  // above
-   px[2] = s_dsX + s_dsW + 2;         py[2] = s_dsY;                          // right
-   px[3] = s_dsX - W - 2;             py[3] = s_dsY;                          // left
-   int best = -1; long bestScore = 0;
-   for(int c = 0; c < 4; c++)
-   {
-      if(px[c] < gm || py[c] < gm || px[c] > maxX || py[c] > maxY) continue;
-      const int oDraw  = haveDraw ? DrawStripRectOverlap(px[c], py[c], W, H, dx1, dy1, dx2 - dx1, dy2 - dy1) : 0;
-      const int oPanel = (s_dsGear != 0 && s_dsGearW0 > 0 && s_dsGearH > 0)
-                         ? DrawStripRectOverlap(px[c], py[c], W, H, s_dsGEX, s_dsGEY, s_dsGearW0, s_dsGearH) : 0;
-      const int oPlate = DrawStripRectOverlap(px[c], py[c], W, H, s_dsX, s_dsY, s_dsW, s_dsH);
-      const long score = -((long)oDraw * 1000 + (long)oPanel * 20 + (long)oPlate * 20);
-      if(best < 0 || score > bestScore) { best = c; bestScore = score; }
-   }
-   if(best < 0) best = 0;   // nothing fits whole: the reading order, clamped below
-   int bx = px[best], by = py[best];
-   if(bx > maxX) bx = maxX;
-   if(by > maxY) by = maxY;
-   if(bx < gm) bx = gm;
-   if(by < gm) by = gm;
-   s_dsBX = bx; s_dsBY = by;
-}
 
 //--- P-DRAW-48 — THE OPACITY BAR'S OWN GEOMETRY AND ITS OWN GRAB. The paint and
 //--- the hand read ONE answer: the label keeps the RECENT column, the readout its
 //--- own seat, and the bar is what is left between them (the cards' track metrics).
 int DrawStripHexX() { return s_dsBX + DSTRIP_PAD + DSTRIP_PREC_LW; }
-int DrawStripHexW() { return DSTRIP_HEX_W; }
 //--- P-DRAW-66: the track starts after the FIELD now (the band is shared), so the
 //--- hand's drag begins on the bar and a press on the field can never move it.
 int DrawStripOpTrackX() { return DrawStripHexX() + DSTRIP_HEX_W + DSTRIP_PAD; }
@@ -631,34 +635,6 @@ int DrawStripOpValueAt(const int mx)
    if(v < DRAW_OP_MIN) v = DRAW_OP_MIN;
    if(v > 100) v = 100;
    return v;
-}
-//--- is this press on the bar's own band? The whole 42 px row is the target (an
-//--- 8 px bed is no touch target, B-05) and the readout's seat is EXCLUDED, so
-//--- tapping `NN%` never jumps the slider.
-bool DrawStripOpBarAt(const int mx, const int my)
-{
-   if(!s_dsOpen || !DrawStripIsColorSlot(s_dsPicker)) return false;
-   if(s_dsBW <= 0 || s_dsBH <= 0 || s_dsPOpY < 0) return false;
-   int oy0 = s_dsBY + s_dsPOpY;
-   if(my < oy0 || my > oy0 + DSTRIP_PICK_ROW) return false;
-   int otx = DrawStripOpTrackX(), otw = DrawStripOpTrackW();
-   return (mx >= otx - DSTRIP_PICK_GAP && mx <= otx + otw + DSTRIP_PICK_GAP);
-}
-//--- the bar's write, through the ONE owner (`DrawToolbar`: the `[OPnn]` tag and
-//--- the blend the chart wears). One write per real change, so a held bar costs a
-//--- paint per move and nothing else (G-09: the cheaper of two equal paths).
-bool DrawStripOpDragTo(const int mx)
-{
-   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
-   //--- P-DRAW-64: the bar follows the OPEN BOARD's role — the border's `[OPnn]` or
-   //--- the interior's `[FTnn]`. One bar, one owner, two tags.
-   int slot = DrawStripIsColorSlot(s_dsPicker) ? s_dsPicker : DRAW_SLOT_COLOR;
-   int op = DrawStripOpValueAt(mx);
-   if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShow(s_dsObj);   // P-DRAW-64: tone ⇒ a fill
-   if(op == DrawSlotAlphaGet(s_dsObj, slot)) return false;
-   DrawSlotOpacitySet(s_dsObj, op, slot);
-   if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the tone changed the border's ink
-   return true;
 }
 //--- P-DRAW-75 (2026-09-28) — THE PLATE IS A DERIVED HEIGHT, SO IT IS ALSO A
 //--- DERIVED RECT. Everything family 1 paints sits inside `s_dsGearW0 x s_dsGearH`,

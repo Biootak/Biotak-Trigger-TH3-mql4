@@ -144,6 +144,79 @@ MUTATIONS = [
         "replace": "   if(true) return;",
         "expect": "P-DRAW-125",
     },
+
+    #--- P-PAL-20 — THE SURFACE LEDGER IS CONSULTED BY THE PIXEL ORACLE. Dropping the
+    #--- clause is the exact measured defect: the strip owns a floating popup (the
+    #--- cards' palette), a colour pick is a release on TWO channels, the palette
+    #--- serves it first, and `DrawStripPointInside` then reads the release pixel as
+    #--- bare chart and calls `DrawStripClose()` — «یک رنگ انتخاب می‌کنم کل استریپ بسته می‌شه».
+    #--- The compiler cannot see it (a missing call), and no existing gate looked.
+    {
+        "id": "P-PAL-20",
+        "gate": "regression",
+        "rule": "the surface oracle consults the ledger, so a release on a popup the strip owns is not a click on the chart",
+        "what": "DrawStripPointInside stops asking DrawStripSurfaceAt (the exact defect)",
+        "file": STRIP_BASE,
+        "find": "   if(DrawStripSurfaceAt(mx, my)) return true;",
+        "replace": "   // MUTATION: the ledger is not consulted",
+        "expect": "P-PAL-20",
+    },
+    #--- P-PAL-20b — AND THE BRIDGE IS THE SINGLE WRITER. Without it the ledger is
+    #--- never fed: `g_PalX/PalW()` live in the panels, which the strip cannot see.
+    {
+        "id": "P-PAL-20b",
+        "gate": "regression",
+        "rule": "the entry's bridge republishes the ledger whole, every event",
+        "what": "the bridge stops publishing the popup rect into the strip's ledger",
+        "file": "Biotak Trigger TH3.mq4",
+        "find": "     DrawStripSurfacePublish(g_PalX, g_PalY, PalW(), PalH());",
+        "replace": "     // MUTATION: nobody publishes the popup rect",
+        "expect": "P-PAL-20",
+    },
+    #--- P-DRAW-64a2 — THE BORDER BAR IS ANSWERED BY NAME. The merged seat paints two
+    #--- bars; the name router is the whole hit test (the tap asks the OBJECT MT4
+    #--- reported, never a coordinate). Drop `"R"` and the border's half paints and
+    #--- never opens anything — the exact state the 4px ring left behind.
+    {
+        "id": "P-DRAW-64a2",
+        "gate": "regression",
+        "rule": "the name router answers the merged seat's border bar",
+        "what": "the quick-row name loop stops answering the border bar's object",
+        "file": "Biotak/DrawStrip_Router.mqh",
+        "find": " || sparam == DrawStripIconName(i) + \"R\")",
+        "replace": " )   // MUTATION: the border bar is not a control",
+        "expect": "P-DRAW-64a2",
+    },
+    #--- P-DRAW-64a2b — THE CHIP ASKS THE STRIP FOR THE SLOT. Without it the popup
+    #--- holds the kind and the strip keeps the OLD slot, so picking a border colour
+    #--- writes the interior's tag: a swap the user cannot see until the next repaint.
+    {
+        "id": "P-DRAW-64a2b",
+        "gate": "regression",
+        "rule": "a role chip asks the strip which slot it means (the popup owns the kind, the strip owns the slot)",
+        "what": "the role chip changes the popup's kind but never the strip's slot",
+        "file": "Biotak/BiotakPanels_PalB.mqh",
+        "find": "      DrawStripPalRoleSet(wantBorder ? 0 : 1);",
+        "replace": "      // MUTATION: the slot is never moved with the kind",
+        "expect": "P-DRAW-64a2",
+    },
+    #--- P-DRAW-64a2c — THE INK LIVES ABOVE ITS OWN BUTTON. Measured on the live
+    #--- popup: both chips and both names were written at Z_PANEL_POP_BG (1601) while
+    #--- their button sits at Z_PANEL_POP_CTL (1602), so the control covered its own
+    #--- words — «APPLY TO» with two empty boxes. The constant's own comment already
+    #--- said it (_FG = \«knobs/ink\»); this mutation puts the numbers back where the
+    #--- report found them.
+    {
+        "id": "P-DRAW-64a2c",
+        "gate": "regression",
+        "rule": "a chip's own ink is painted above its button",
+        "what": "the role chip's name goes back under its own button (the measured empty boxes)",
+        "file": "Biotak/BiotakPanels_PalB.mqh",
+        "find": "         ObjectSetInteger(0,p+sfx+\"t\",OBJPROP_ZORDER,Z_PANEL_POP_FG);",
+        "replace": "         ObjectSetInteger(0,p+sfx+\"t\",OBJPROP_ZORDER,Z_PANEL_POP_BG);",
+        "expect": "P-DRAW-64a2",
+    },
+
 ]
 
 #--- the register's own entries, so "no mutation yet" is a NUMBER and not a feeling.

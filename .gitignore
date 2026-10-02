@@ -185,3 +185,17 @@ tests/Files
 .venv/
 venv/
 target/
+
+# P-GIT-01 (2026-10-02) — SESSION SCRATCH IS NEVER REPO CONTENT. The mirrors, the
+# one-off sims and the debug probes a work session leaves behind are how a 91-file
+# commit happens: nobody reads them again and they drown the diff that matters.
+# Everything here is regenerable (`tools/gen-th3-icons.js` for the icons,
+# `tools/sim-*.py` for the mirrors) or belongs to one afternoon's question.
+__pycache__/
+*.pyc
+/tmp-*.html
+/tmp-*.js
+/tmp-*.png
+/tools/tmp-*
+/tools/_dbg-*
+/-                     # a stray file named "-" (a bad `cmd > -` redirect's output)

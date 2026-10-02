@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Biotak — colour board, modern</title>
+<style>
+  :root{
+    --bg:#0E1116; --plate:#171C25; --card:#1D222C; --raise:#232936;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+    --ink:#E6EAF0; --ink2:#9AA5B5; --ink3:#6B7686;
+    --accent:#FFC247; --accent-dim:rgba(255,194,71,.16);
+    --r:16px; --r-sm:9px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:radial-gradient(1200px 700px at 50% -10%,#1a212c 0%,var(--bg) 60%);
+    color:var(--ink);font:14px/1.45 ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
+    min-height:100vh;padding:40px 24px;display:flex;gap:44px;justify-content:center;align-items:flex-start;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{display:flex;gap:40px;flex-wrap:wrap;justify-content:center}
+
+  /* ── the board ───────────────────────────────────────────── */
+  .board{
+    width:352px;background:linear-gradient(180deg,#1F2531 0%,var(--card) 42%);
+    border:1px solid var(--line);border-radius:var(--r);
+    box-shadow:0 24px 60px -18px rgba(0,0,0,.75),0 2px 0 rgba(255,255,255,.04) inset;
+    overflow:hidden;
+  }
+  /* header */
+  .hd{display:flex;align-items:center;gap:10px;padding:13px 14px;border-bottom:1px solid var(--line);
+      background:linear-gradient(180deg,rgba(255,255,255,.045),transparent)}
+  .grip{width:14px;height:14px;opacity:.4;flex:none;
+        background-image:radial-gradient(circle,currentColor 1px,transparent 1.2px);
+        background-size:5px 5px;color:var(--ink3)}
+  .seg{display:flex;background:rgba(0,0,0,.28);border-radius:8px;padding:3px;gap:2px}
+  .seg span{font-size:11px;font-weight:600;letter-spacing:.06em;padding:5px 11px;border-radius:6px;color:var(--ink3)}
+  .seg span.on{background:var(--accent-dim);color:var(--accent)}
+  .dot{width:3px;height:3px;border-radius:50%;background:var(--ink3);opacity:.5}
+  .sp{flex:1}
+  .ico{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);display:grid;place-items:center;
+       color:var(--ink2);background:rgba(255,255,255,.03);font-size:12px}
+  .ico.on{background:var(--accent-dim);border-color:rgba(255,194,71,.4);color:var(--accent)}
+
+  /* families */
+  .body{padding:14px 14px 4px}
+  .fam{margin-bottom:13px}
+  .fam h4{font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3);
+          text-transform:uppercase;margin-bottom:7px;display:flex;align-items:center;gap:8px}
+  .fam h4:after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+  .grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+  .sw{aspect-ratio:1;border-radius:var(--r-sm);box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 1px 2px rgba(0,0,0,.4)}
+  .sw.sel{box-shadow:0 0 0 2px var(--accent),0 0 14px -2px rgba(255,194,71,.6),inset 0 1px 0 rgba(255,255,255,.25)}
+
+  /* studio */
+  .studio{margin:4px 0 14px;padding:12px;border-radius:12px;background:rgba(0,0,0,.22);border:1px solid var(--line)}
+  .rail{height:10px;border-radius:5px;margin-bottom:10px;position:relative;
+        background:linear-gradient(90deg,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)}
+  .rail i{position:absolute;top:50%;width:14px;height:14px;border-radius:50%;background:#fff;
+          transform:translate(-50%,-50%);box-shadow:0 0 0 2px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.6)}
+  .svrow{display:flex;gap:12px;align-items:center}
+  .sv{width:132px;height:104px;border-radius:9px;position:relative;
+      background:linear-gradient(to top,#000,transparent),linear-gradient(to right,#fff,transparent);
+      background-color:#e11}
+  .sv i{position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;
+        box-shadow:0 0 0 2px rgba(0,0,0,.5),0 2px 6px rgba(0,0,0,.55);transform:translate(-50%,-50%)}
+  .prev{flex:1}
+  .chip{height:72px;border-radius:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 2px 6px rgba(0,0,0,.4)}
+  .hexprev{margin-top:8px;font:600 12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink2);
+           letter-spacing:.04em}
+
+  /* recent + hex */
+  .rec{display:flex;align-items:center;gap:10px;padding:11px 0;border-top:1px solid var(--line)}
+  .rec h5{font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3);width:52px;text-transform:uppercase}
+  .pill{width:26px;height:26px;border-radius:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.4)}
+  .empty{font-size:11px;color:var(--ink3);opacity:.7;font-style:italic}
+
+  .foot{display:flex;align-items:center;gap:10px;padding:12px 14px 14px;border-top:1px solid var(--line)}
+  .flab{font-size:9.5px;font-weight:700;letter-spacing:.13em;color:var(--ink3);text-transform:uppercase}
+  .field{flex:0 0 96px;height:26px;border-radius:7px;border:1px solid var(--line2);background:rgba(0,0,0,.3);
+         display:flex;align-items:center;padding:0 9px;font:600 12px ui-monospace,Menlo,monospace;color:var(--ink)}
+  .track{flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.1);position:relative}
+  .track i{position:absolute;inset:0 60% 0 0;border-radius:3px;
+           background:linear-gradient(90deg,#c98a1e,var(--accent))}
+  .track b{position:absolute;top:50%;right:60%;width:12px;height:12px;border-radius:50%;background:#fff;
+           transform:translate(50%,-50%);box-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .pct{width:38px;text-align:right;font:600 11px ui-monospace,Menlo,monospace;color:var(--ink2)}
+
+  /* ── notes column ────────────────────────────────────────── */
+  .notes{width:330px;padding-top:6px}
+  .notes h1{font-size:19px;font-weight:650;letter-spacing:-.01em;margin-bottom:8px}
+  .notes p{color:var(--ink2);font-size:13px;margin-bottom:18px}
+  .notes ul{list-style:none}
+  .notes li{position:relative;padding-left:22px;margin-bottom:11px;font-size:13px;color:var(--ink2)}
+  .notes li b{color:var(--ink);font-weight:600}
+  .notes li:before{content:"";position:absolute;left:4px;top:7px;width:6px;height:6px;border-radius:50%;
+                    background:var(--accent);opacity:.85}
+  .tag{display:inline-block;font:600 10px/1 ui-monospace,Menlo,monospace;letter-spacing:.06em;
+       padding:5px 8px;border-radius:6px;background:rgba(255,194,71,.13);color:var(--accent);margin-bottom:14px}
+</style></head>
+<body>
+<div class="wrap">
+
+  <div class="board">
+    <div class="hd">
+      <div class="grip"></div>
+      <div class="seg"><span class="on">BORDER</span><span>FILL</span></div>
+      <div class="dot"></div>
+      <div class="sp"></div>
+      <div class="ico on">◐</div>
+      <div class="ico">⌖</div>
+      <div class="ico">✕</div>
+    </div>
+
+    <div class="body">
+      <div class="fam"><h4>Neutral</h4><div class="grid" id="g0"></div></div>
+      <div class="fam"><h4>Red</h4><div class="grid" id="g1"></div></div>
+      <div class="fam"><h4>Orange</h4><div class="grid" id="g2"></div></div>
+      <div class="fam"><h4>Amber</h4><div class="grid" id="g3"></div></div>
+      <div class="fam"><h4>Green</h4><div class="grid" id="g4"></div></div>
+    </div>
+
+    <div class="studio">
+      <div class="rail"><i style="left:32%"></i></div>
+      <div class="svrow">
+        <div class="sv" style="background-color:#2563eb"><i style="left:62%;top:38%"></i></div>
+        <div class="prev">
+          <div class="chip" style="background:#105408"></div>
+          <div class="hexprev">#105408</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rec">
+      <h5>Recent</h5>
+      <div class="pill" style="background:#105408"></div>
+      <div class="pill" style="background:#1D222C;border:1px dashed var(--line2)"></div>
+      <div class="pill" style="background:#1D222C;border:1px dashed var(--line2)"></div>
+      <div class="pill" style="background:#1D222C;border:1px dashed var(--line2)"></div>
+      <div class="pill" style="background:#1D222C;border:1px dashed var(--line2)"></div>
+    </div>
+
+    <div class="foot">
+      <div class="flab">Hex</div>
+      <div class="field">#008000</div>
+      <div class="track"><i></i><b></b></div>
+      <div class="pct">100%</div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <div class="tag">P-PAL-07 · DRAFT FOR APPROVAL</div>
+    <h1>مدرن، بدون بازطراحی دوباره</h1>
+    <p>Same owner, same measured bands — a different face. Nothing here needs a second redesign later.</p>
+    <ul>
+      <li><b>Families are words.</b> NEUTRAL · RED · ORANGE · AMBER · GREEN are captions with a hairline, not a hunt through 64 anonymous squares.</li>
+      <li><b>Quiet depth.</b> 1px hairlines, a 16px radius, one soft shadow, an inset top highlight on every swatch — depth from three values, not from borders.</li>
+      <li><b>The studio is a mode, not a fixture.</b> Closed it costs nothing; open it gives a hue rail, an SV square and a live preview with its own hex.</li>
+      <li><b>Recent has a state.</b> Empty slots are visibly empty rather than blank — the band the old build painted and could not fill.</li>
+      <li><b>One accent.</b> Amber is reserved for «you are here»: the selected swatch, the active tab, the slider fill. Nothing else competes.</li>
+      <li><b>Height is still measured.</b> Adding the studio grew the board by exactly its own height — no constant to re-derive.</li>
+    </ul>
+  </div>
+
+</div>
+<script>
+const FAMS=[
+ ["g0",["#ffffff","#f0f3f7","#d6dbe3","#aeb6c4","#8892a4","#636d80","#3c4557","#252b38","#0f1420"]],
+ ["g1",["#ffcdd2","#ff9aa0","#ff6b72","#f0454f","#d62b36","#b01d28","#8a1220","#5e0a14"]],
+ ["g2",["#ffe0bf","#ffc98a","#ffae52","#f79320","#db7605","#b85c00","#944500","#6b3000"]],
+ ["g3",["#fff3bf","#ffe28a","#ffd24d","#f5b921","#d89b0b","#b07c00","#855c00","#5c3f00"]],
+ ["g4",["#d3fbe2","#a6edc4","#6fdc9f","#41c77a","#22a85c","#128848","#0a6835","#064b26"]],
+];
+FAMS.forEach(([id,cols])=>{
+  const el=document.getElementById(id);
+  cols.forEach((c,i)=>{
+    const d=document.createElement('div');
+    d.className='sw'+(c==='#41c77a'?' sel':'');
+    d.style.background=c; d.title=c;
+    el.appendChild(d);
+  });
+});
+</script>
+</body></html>

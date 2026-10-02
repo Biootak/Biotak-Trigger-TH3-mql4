@@ -186,6 +186,18 @@ bool DrawIsHRay(const string name)
    int l = StringLen(name);
    return !(l > 2 && StringSubstr(name, l - 2) == "_H");
 }
+// P-UI-136: THE PATH IS A DRAWING TOO — the strip serves a path segment exactly
+// as it serves a ray (colour/width/style, hold-to-open, bin delete). The test is
+// the path's OWN id parser (`PathIdOfName`), so a handle (`_H<n>`, whose tail is
+// not digits) is never served and a user line that merely mentions "_PATH_" is
+// never mistaken for one.
+bool DrawIsPathSeg(const string name)
+{
+   if(StringLen(inpObjectPrefix) == 0) return false;
+   if(StringFind(name, inpObjectPrefix + PATH_TAG) != 0) return false;
+   string id;
+   return PathIdOfName(name, id);
+}
 
 //--- the object's MT4 type, or -1 when it is not on the chart.
 int DrawObjectType(const string name)
@@ -613,7 +625,7 @@ string DrawObjectAt(const int px, const int py)
    for(int i = total - 1; i >= 0; i--)
    {
       string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || (DrawIsIndicatorObject(nm) && !DrawIsHRay(nm))) continue;   // P-HR-04: rays are served
+      if(nm == "" || (DrawIsIndicatorObject(nm) && !DrawIsHRay(nm) && !DrawIsPathSeg(nm))) continue;   // P-HR-04/P-UI-136: rays and paths are served
       if(DrawKindOf(nm) == DK_NONE) continue;
       if(DrawHitObject(nm, px, py)) return nm;
    }
@@ -761,6 +773,13 @@ int DrawSlotOpacityGet(const string name)
 {
    if(name == "" || ObjectFind(0, name) < 0) return DRAW_OP_DEF;
    if(DrawKindOf(name) == DK_TEXT) return DRAW_OP_DEF;
+   //--- P-UI-137: a path keeps its alpha in its OWN store, never in a `[OP…]` tag
+   //--- (MT4 paints a desc along a trend line), so the read asks the path first.
+   if(DrawIsPathSeg(name))
+   {
+      string pid = "";
+      if(PathIdOfName(name, pid)) return PathInkOpacityGet(pid);
+   }
    int v = DrawDescTagValue(ObjectGetString(0, name, OBJPROP_TEXT), "[OP", DRAW_OP_DEF);
    if(v < DRAW_OP_MIN) v = DRAW_OP_MIN;
    if(v > 100) v = 100;
@@ -980,6 +999,15 @@ double DrawSlotRead(const string name, const int slot)
       {
          // P-DRAW-48: what the user CHOSE is the description's `[CL…]`; the
          // object's own colour is that colour blended at its opacity.
+         // P-UI-137: a path has no description — its PURE lives in the path's own
+         // store, so the HEX field and the readout show the colour the user picked,
+         // not the blend the chart wears.
+         if(DrawIsPathSeg(name))
+         {
+            string pid = "";
+            color pp = clrNONE; int pv = 100;
+            if(PathIdOfName(name, pid) && PathInkGet(pid, pp, pv)) return (double)(int)pp;
+         }
          color pure;
          if(DrawSlotColorPure(name, pure)) return (double)(int)pure;
          if(lvl) return (double)(int)ObjectGetInteger(0, name, OBJPROP_LEVELCOLOR, 0);
@@ -1015,6 +1043,13 @@ double DrawSlotRead(const string name, const int slot)
       //--- P-DRAW-64a: the box's own 50 % LEVEL, read off its mark group.
       case DRAW_SLOT_BOXHALF:
       {
+         // P-UI-139: a path answers this cell from its OWN switch (the midpoint
+         // markers); the rectangle answers it from the box's keyed marks store.
+         if(DrawIsPathSeg(name))
+         {
+            string pid = "";
+            if(PathIdOfName(name, pid)) return PathMidGet(pid) ? 1.0 : 0.0;
+         }
          bool mid = false; int ext = BOXEXT_OFF, exn = 0;
          BoxMarkRead(name, mid, ext, exn);
          return (mid ? 1.0 : 0.0);
@@ -1033,7 +1068,15 @@ double DrawSlotRead(const string name, const int slot)
          return (double)r;
       }
       case DRAW_SLOT_LOCK:
-         if(DrawIsHRay(name)) return 0.0;   // P-HR-04: lock is N/A on rays (dot carry instead)
+         if(DrawIsHRay(name)) return 0.0;   // P-HR-04: the ray's lock is N/A (the dot carry replaces it)
+      // P-UI-138: a PATH's lock is its OWN flag (Toolbar_B's write arms it, the press
+      // branch asks it) — the read must answer the same owner or the cell could never
+      // show the state the writer just set.
+      if(DrawIsPathSeg(name))
+      {
+         string pid = "";
+         if(PathIdOfName(name, pid)) return PathLockGet(pid) ? 1.0 : 0.0;
+      }
          return ((bool)ObjectGetInteger(0, name, OBJPROP_SELECTABLE)) ? 0.0 : 1.0;
       //--- P-DRAW-09a: the three appended slots, read straight off the object.
       case DRAW_SLOT_FONT:
@@ -1157,6 +1200,19 @@ bool DrawSlotPreviewColor(const string name, const color c)
    {
       if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == c) return false;
       ObjectSetInteger(0, name, OBJPROP_COLOR, c);
+      return true;
+   }
+   // P-UI-136: the path previews on every segment — a preview that showed one
+   // segment tinted would promise a write the apply fans out over the family — at
+   // the path's own opacity (P-UI-137), or the hover would drop the user's fade.
+   if(DrawIsPathSeg(name))
+   {
+      string pid = ""; PathIdOfName(name, pid);
+      int pv = 0; color pp = clrNONE;
+      PathInkGet(pid, pp, pv);
+      color want = BlendColorTowardsBG(c, 100 - pv, GetCachedChartBgColor());
+      if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == want) return false;
+      PathInkApply(pid, c, pv);
       return true;
    }
    color rc = DrawSlotRenderColor(name, c);

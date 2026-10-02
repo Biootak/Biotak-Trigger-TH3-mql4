@@ -54,6 +54,7 @@
 #include "Biotak\BaseKnotTool.mqh"
 // P-HR-01: Horizontal Ray (Lite: nothing arms it, committed rays keep drag/snap/delete).
 #include "Biotak\HRayTool.mqh"
+#include "Biotak\PathTool.mqh"
 
 //                                                                    
 // Cache & Object Management Systems

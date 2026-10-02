@@ -1087,8 +1087,21 @@ int CircArmBaseKnot()
    SaveUIStates();
    PnlCloseAll();   // a stale strip/card must not survive under the draw session
    if(HRaySessionActive()) HRayCancel();   // P-HR-06: the ray yields (its lock goes back)
+   if(PathSessionActive()) { PathSessionClear(); PathCancel(); }
    BaseKnotArm();
    UpdateCircularBadges();
+   ChartRedraw();
+   return REFRESH_NONE;
+}
+
+int CircArmPath()
+{
+   if(BaseKnotSessionActive()) return REFRESH_NONE;
+#ifndef BUILD_LITE
+   if(LegMeasureSessionActive() || TH3SessionActive()) return REFRESH_NONE;
+#endif
+   if(PathSessionActive()) { PathSessionClear(); PathCancel(); }
+   else PathArm();
    ChartRedraw();
    return REFRESH_NONE;
 }

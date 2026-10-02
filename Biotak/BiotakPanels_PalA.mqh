@@ -1019,14 +1019,35 @@ void PalComputePos()
    int w=PalW(), h=PalH();
    // Anchor to the OPEN panel (the strip opens the fill palette with anchor
    // item 12 while item 13 is open — stale g_PnlX[12] would park it top-left).
-    int ai = (g_PnlOpen >= 0 ? g_PnlOpen : g_PalAnchorItem);
-    if(s_palManual && s_palMAnchor == ai)   // hand spot wins while the anchor matches
+   int ai = (g_PnlOpen >= 0 ? g_PnlOpen : g_PalAnchorItem);
+   if(g_PalKind == PAL_DRAW_BORDER || g_PalKind == PAL_DRAW_FILL)
+      ai = -1;   // P-PAL-19: a drawing has no card row; the strip's spot is the anchor
+   if(s_palManual && s_palMAnchor == ai)   // hand spot wins while the anchor matches
     {
        int mx2=MathMax(4,MathMin(s_palMX,cw-PalW()-4));
        int my2=MathMax(4,MathMin(s_palMY,ch-PalH()-4));
        g_PalX=mx2; g_PalY=my2;
        return;
     }
+   //--- P-PAL-19b (2026-10-02) — A DRAWING HAS NO CARD ROW, AND INDEXING ONE IS A
+   //--- CRASH, NOT A BAD POSITION. `g_PnlX`/`g_PnlY` are `static int[…]` arrays, so
+   //--- `g_PnlX[-1]` is an out-of-range read: MEASURED, the first bridge build died
+   //--- on the tap («پالت باز نمیشه کرش میکنه») with the indicator gone from the
+   //--- chart. The anchor for a drawing is therefore NEVER an index — it is the
+   //--- STRIP's own rect, read through the accessors the bridge added, and the
+   //--- hand's spot still wins when it matches. ONE owner for the placement: the
+   //--- caller sets the KIND, this decides where.
+   if(ai < 0)
+   {
+      int sw = DrawStripPlateW();
+      int dx = (sw > 0) ? DrawStripPlateX() + sw + 8 : MathMax(4, cw - w - 24);
+      if(dx + w > cw - 4) dx = MathMax(4, (sw > 0 ? DrawStripPlateX() : cw - w - 24) - w - 8);
+      int dy = (sw > 0) ? DrawStripPlateY() : MathMax(4, (ch - h) / 2);
+      int maxDy = ch - h - 16;
+      if(dy > maxDy) dy = MathMax(4, maxDy);
+      g_PalX = MathMax(4, dx); g_PalY = dy;
+      return;
+   }
     s_palManual=false;
     int px=g_PnlX[ai]+PnlPanelW(ai)+8;                    // right of the panel
    if(px+w>cw-4) px=g_PnlX[ai]-w-8;                      // flip left on overflow
@@ -1037,6 +1058,15 @@ void PalComputePos()
    g_PalX=px; g_PalY=py;
 }
 
+//--- P-UI-137 (2026-10-02) — THE CENSUS EPOCH. One popup census per OPEN, never per
+//--- repaint (MEASURED: on every pass the popup walked the chart and wrote ~55
+//--- flushed lines, and PalDraw runs on every chip / tab / pager click — the popup
+//--- became visibly slow). Paint order and ink are identical in every pass, so one
+//--- answer per open is the whole answer. The flag lives HERE because PalA is
+//--- compiled before PalB, where the census reads it.
+static bool s_palDiagDone = false;
+void PalDiagEpoch() { s_palDiagDone = false; }
+
 void PalClose()
 {
     UIDragBudgetEnd();   // P-UI-33: a mixer gesture cannot outlive its palette (idempotent)
@@ -1045,6 +1075,7 @@ void PalClose()
    if(!g_PalOpen) return;
    SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
+   PalDiagEpoch();   // P-UI-137: the next open is a new census
    g_PalOpen=false; g_PalMixDrag=0; g_PalHexFocus=false;
    // P-UI-98r: palette gone - republish (invalidates) and uncover now.
    PnlPublishCover();
@@ -1127,6 +1158,24 @@ void PalRefreshRecents(const bool force)
 
 //--- open the palette on an explicit kind (cset cells address their own
 //--- target; the anchor item only positions the popup)
+//--- P-PAL-19 (2026-10-02) — OPEN ON A DRAWING. The strip has no board of its own any
+//--- more, so its colour tap lands here: the same popup every card opens, the same
+//--- recents, the same mixer, the same hex field. `slot` is DRAW_SLOT_COLOR or
+//--- DRAW_SLOT_FILLCLR — the strip's OWN vocabulary, read through its two accessors,
+//--- so the panels never name a drawing slot directly. The anchor is the STRIP's own
+//--- plate: a drawing is not a card, so `g_PnlX[]` has no row for it, and a stale
+//--- index parked the popup top-left (P-UI-98r's own finding, one surface over).
+void PalOpenDraw(const int stripX,const int stripY,const int stripW)
+{
+   //--- P-PAL-19: the placement is NOT this function's business — `PalComputePos`
+   //--- owns it and reads the strip's own rect (P-PAL-19b). Passing the rect here and
+   //--- re-solving it would be a second grid, which is the class this whole move
+   //--- deletes; the three parameters stay because the bridge already has them, and
+   //--- they are the fallback a future caller may need. One owner, one answer.
+   PalOpenKind(-1, (DrawStripPalTargetSlot() == DRAW_SLOT_FILLCLR) ? PAL_DRAW_FILL
+                                                                   : PAL_DRAW_BORDER);
+}
+
 void PalOpenKind(const int anchorItem,const int kind)
 {
    PalClose();
@@ -1202,8 +1251,15 @@ void PalDrawHexRow(const int px,const int hy)
    ObjectSetString(0,en,OBJPROP_FONT,BIO_FONT_MONO);
    ObjectSetInteger(0,en,OBJPROP_FONTSIZE,PnlPt(PNL_PT_CTL));   // P-UI-30
    ObjectSetInteger(0,en,OBJPROP_COLOR,PNL_CLR_TITLE);
-   ObjectSetInteger(0,en,OBJPROP_BGCOLOR,C'255,255,255');
-   ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_LINE);
+   //--- P-UI-137 (2026-10-02, user: the HEX field's value is not visible): the ink is
+   //--- PNL_CLR_TITLE = #F3F6FB, near-WHITE. This row was the ONE OBJ_EDIT in the
+   //--- product born on a pure-white face (`C'255,255,255'`), so the value was
+   //--- near-white ink on white — invisible for every target, not just a drawing.
+   //--- Every other field in the product wears PNL_CLR_FIELD (#181D27) under the
+   //--- same light ink (BiotakPanels_Build:288, DrawStrip_GearB:718); this one does
+   //--- too now. One ink, one face, every field.
+   ObjectSetInteger(0,en,OBJPROP_BGCOLOR,PNL_CLR_FIELD);
+   ObjectSetInteger(0,en,OBJPROP_BORDER_COLOR,PNL_CLR_FIELD_BD);
    ObjectSetInteger(0,en,OBJPROP_ALIGN,ALIGN_CENTER);
    ObjectSetInteger(0,en,OBJPROP_ZORDER,Z_PANEL_POP_FG);
    ObjectSetInteger(0,en,OBJPROP_HIDDEN,true);

@@ -264,10 +264,36 @@ def no_chart_colour():
     palette and no painter here.
 
     So the gate asserts the SURFACE PANEL code reads no chart colour at all. The
-    one legitimate reader is the box's own mid-ink blend (a chart OBJECT's colour,
-    not a panel surface) and is named here rather than skipped blindly.
+    legitimate readers are named here rather than skipped blindly, and each one
+    has to SAY what it is for, because «I am a diagnostic» is exactly what a
+    second surface would claim:
+      * the box's own mid-ink blend (a chart OBJECT's colour, not a surface);
+      * DIAG-136's `BoxInkWitness`, whose whole finding IS «this ink equals the
+        chart background, so the border cannot be seen» — a comparison value
+        emitted to a witness, never assigned to a painter.
     """
     allowed = {}          # file:line -> the reason that read is allowed
+    #--- ONE pass to collect the witness's own BODY, so the allowance below asks
+    #--- «is this line inside BoxInkWitness?» instead of re-reading the whole unit
+    #--- per line. The region opens on the DEFINITION and not on any mention of
+    #--- the name — a call site `BoxInkWitness(nm);` would otherwise open a region
+    #--- that no brace ever closes, and the next real surface read would walk in
+    #--- wearing the witness's name (measured: that is exactly what M2 did).
+    witness_lines = set()
+    depth, inside, opened = 0, False, False
+    for origin, ln, line in mql_unit_lines(DRAWSTRIP):
+        s = line.strip()
+        if not inside:
+            if s.startswith("//") or not re.match(r"^\w[^;=]*\bBoxInkWitness\s*\(", s):
+                continue
+            if s.endswith(";"):                      # a CALL, not the definition
+                continue
+            inside, opened, depth = True, False, 0
+        witness_lines.add((os.path.basename(origin), ln))
+        depth += line.count("{") - line.count("}")
+        opened = opened or ("{" in line)
+        if opened and depth <= 0:                    # its body closed
+            inside = False
     n = 0
     for origin, ln, line in mql_unit_lines(DRAWSTRIP):
         s = line.strip()
@@ -279,6 +305,10 @@ def no_chart_colour():
         tag = "%s:%d" % (os.path.basename(origin), ln)
         if "BlendColorTowardsBG" in s and "BOX_MID_FADE" in s:
             allowed[tag] = "the box's own mid ink, not a panel surface"
+            continue
+        if (os.path.basename(origin), ln) in witness_lines:
+            allowed[tag] = ("DIAG-136 BoxInkWitness: the value it compares against, "
+                            "read for the witness and never painted")
             continue
         check(False, "%s reads a chart colour into a panel surface: %s"
               % (tag, s[:90]))

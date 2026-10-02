@@ -87,6 +87,17 @@ param(
 
     [switch]$RestartTerminal,
 
+    #--- P-BUILD-11 (2026-10-02) — REMEMBERED DEPLOY. The user order: «ریسارت هم
+    #--- بشه ترمینال دیگه موقع کامپایل خودکار که هر سری نگم» — the restart stopped
+    #--- being a thing to ask for on every build. P-BUILD-07 made it opt-in for a
+    #--- real reason (killing the terminal stops whatever else it hosts), and that
+    #--- reason is why this is a REMEMBERED choice and not an unconditional kill:
+    #--- `-Restart` turns it on for good, `-NoRestart` off for good, and the flag
+    #--- file is what carries it, so neither answer has to be typed again. The
+    #--- first build that does neither falls back to the old opt-in behaviour.
+    [switch]$Restart,
+    [switch]$NoRestart,
+
     #--- P-BUILD-09 (2026-10-01) — THE INNER LOOP HAS THREE GATE MODES.
     #--- MEASURED, the whole gate layer is 1.76s of work (check-resources 269ms,
     #--- regressions 186, level-continuity 150, object-lifecycle 309, stale-state 313,
@@ -133,6 +144,10 @@ $DEFAULT_METAEDITOR  = Join-Path $DEFAULT_MT4_INSTALL "metaeditor.exe"
 $APPDATA_TERMINAL_ROOT = Join-Path $env:APPDATA "MetaQuotes\Terminal"
 $PROJECT_LOG_DIR = Join-Path $SCRIPT_ROOT "build-logs"
 $RUNTIME_STATE_FILE = Join-Path $PROJECT_LOG_DIR ".runtime-log-state.json"
+#--- P-BUILD-11: the remembered deploy choice. A one-word file next to the other
+#--- build state, because «should this build restart MT4?» is build state and not
+#--- a preference that belongs in a document nobody re-reads.
+$RESTART_PREF_FILE = Join-Path $PROJECT_LOG_DIR ".restart-pref"
 $WORKSPACE_SOURCE = Join-Path $SCRIPT_ROOT "Biotak Trigger TH3.mq4"
 
 # ============================================================
@@ -1912,6 +1927,12 @@ if (Test-Path $regGate) {
 #--- plate beside the cards' own, which is the report this panel produced for days.
 #--- The compiler cannot see it (it is arithmetic, not a symbol), so it is checked
 #--- here or nowhere.
+#--- P-PAL-21 (2026-10-02) — THE COLOUR BOARD GATE LEFT WITH THE BOARD. The packing,
+#--- the page table and the 14-family catalogue were facts about the strip's own
+#--- colour board (`tools/pal-table-proof.py`, P-PAL-16/17/18). The board is gone — a
+#--- colour cell opens the CARDS' palette, which has its own catalogue and its own
+#--- byte order — so the gate had nothing left to read and was removed with it.
+
 $gearGate = Join-Path $SCRIPT_ROOT "tools\check-gear-panel.py"
 if ((Test-Path $gearGate) -and (Get-Command python -ErrorAction SilentlyContinue)) {
     Write-Host ""
@@ -2046,13 +2067,34 @@ if ($EnableLogCleanup) {
     Cleanup-BuildLogs -LogDir $PROJECT_LOG_DIR -RetentionDays $LogRetentionDays -MaxFiles $MaxBuildLogs -StateFilePath $RUNTIME_STATE_FILE
 }
 
+#--- P-BUILD-11: RESOLVE THE REMEMBERED DEPLOY, then act on it. The switch the
+#--- user passed WINS and is written down; with neither switch the remembered
+#--- answer is used. Written before the restart so a build that dies mid-restart
+#--- has still recorded the choice the user just made.
+$restartDeploy = $RestartTerminal.IsPresent
+if ($NoRestart -and $Restart) {
+    Write-Host "  Both -Restart and -NoRestart given; -NoRestart wins." -ForegroundColor Yellow
+}
+if ($NoRestart) { $restartDeploy = $false }
+elseif ($Restart) { $restartDeploy = $true }
+elseif (Test-Path -LiteralPath $RESTART_PREF_FILE) {
+    $pref = (Get-Content -LiteralPath $RESTART_PREF_FILE -Raw -ErrorAction SilentlyContinue)
+    $restartDeploy = ($pref -match '^\s*(1|on|true|yes)')
+    Write-Host "  Deploy: remembered preference = $(if($restartDeploy){'restart'}else{'manual re-add'}) (build-logs\.restart-pref)" -ForegroundColor DarkGray
+}
+if ($NoRestart -or $Restart) {
+    Set-Content -LiteralPath $RESTART_PREF_FILE -Encoding ASCII -Value $(if ($restartDeploy) { "on" } else { "off" })
+    Write-Host "  Deploy: preference remembered = $(if($restartDeploy){'RESTART the terminal after every build'}else{'leave the terminal alone'})." -ForegroundColor Cyan
+    Write-Host "           (flip it any time with -NoRestart / -Restart)" -ForegroundColor DarkGray
+}
+
 #--- P-BUILD-07: opt-in deploy. A green build without this flag ends with the
 #--- NEXT line above (manual re-add). With -RestartTerminal, the script closes
 #--- MT4 and reopens it, so every chart reloads from the new ex4 in one step.
 #--- It runs ONLY on full success: a failed build never touches the terminal.
 #--- It runs BEFORE the watch below, so the watch tails the FRESH log and shows
 #--- the new build's own init lines — the proof the deploy landed.
-if ($RestartTerminal -and $allSuccess -and -not $shotRelaunched) {
+if ($restartDeploy -and $allSuccess -and -not $shotRelaunched) {
     Write-Host ""
     Write-Host "  Deploy: restarting the terminal..." -ForegroundColor Cyan
     if (-not (Restart-TradingTerminal)) { $allSuccess = $false }

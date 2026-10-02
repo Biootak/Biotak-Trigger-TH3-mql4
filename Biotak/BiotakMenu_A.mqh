@@ -40,6 +40,8 @@
 // P-HR-01: the Horizontal Ray cell's face (ART.hray, baked by the generator).
 #resource "\\Files\\Icons\\hray_off.bmp"
 #resource "\\Files\\Icons\\hray_on.bmp"
+#resource "\\Files\\Icons\\path_off.bmp"
+#resource "\\Files\\Icons\\path_on.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
 //--- ORBWORD-OFF (2026-09-12, user decision — no wordmark on the orb, ever:
 //--- the "TRex" text over the bow read as mud on the chart). The open-state
@@ -128,6 +130,7 @@
                                 // index (FeaturePanel's identity fallback), and 13 is the mini
                                 // STRIP (no rows), so 14 is the first free slot that can own one
 #define CIR_HRAY            15  // P-HR-01 — Horizontal Ray (Tools cell: arm → 1 click places)
+#define CIR_PATH            16  // Path tool (Tools cell: arm → click per vertex, dbl-click commits)
 //--- ring layout (main circle — 8 items; Zones first = the main feature)
 // TH3TOOL-ON (2026-09-19): RING_TH3 comes back APPENDED (slot 7), never in the
 // middle — HTF/TOOLS/BASEKNOT keep the numbers they were renumbered to when
@@ -171,11 +174,12 @@
 // TOOL_COUNT is the only number it reads.
 // Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); TOOL_COUNT
 // is the only number the layout reads — it picks its own geometry from it.
-#define TOOL_COUNT 4
+#define TOOL_COUNT 5
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
 #define TOOL_GENERAL          2   // P-UI-131 — the cross-card settings door (a gear)
 #define TOOL_HRAY             3   // P-HR-01 — Horizontal Ray (arm → 1 click places, APPENDED so no slot moves)
+#define TOOL_PATH             4   // Path tool (arm → vertex clicks, double-click commits, APPENDED)
 // UIBK-OFF: #define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 
@@ -315,6 +319,7 @@ int ToolFeature(const int toolIdx)
    if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
    if(toolIdx == TOOL_GENERAL)         return CIR_GENERAL;   // P-UI-131
    if(toolIdx == TOOL_HRAY)            return CIR_HRAY;      // P-HR-01
+   if(toolIdx == TOOL_PATH)            return CIR_PATH;      // Path tool
    // UIBK-OFF (P-UI-95): if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;
    // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
    return -1;
@@ -1122,6 +1127,7 @@ bool CircFeatureOn(const int i)
    if(i == CIR_BASEKNOT)        return BaseKnotSessionActive();
    // P-HR-01 is momentary too: lit while the ray session is armed.
    if(i == CIR_HRAY)            return HRaySessionActive();
+   if(i == CIR_PATH)            return PathSessionActive();
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
    //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
@@ -1185,6 +1191,7 @@ string CircIconRes(const int i, const bool on)
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
     else if(i == CIR_BASEKNOT)   base = "ruler";   // Base / Knot MEASURE = a scale bar with ticks
     else if(i == CIR_HRAY)       base = "hray";    // P-HR-01 — Horizontal Ray cell
+    else if(i == CIR_PATH)       base = "path";    // Path tool cell
     else if(i == CIR_LEG)        base = "leg";     // Leg Measure — trendline + bracket
     else if(i == CIR_TOOLS)      base = "tools";
     // P-UI-131: the gear — a settings DOOR, so it wears the same art the strip's
@@ -1369,11 +1376,16 @@ string CircTooltipStatus(const int i)
       int n = BaseKnotCount();
       return (n > 0 ? IntegerToString(n) + " set" : "Ready");
    }
-   if(i == CIR_HRAY)   // P-HR-01: the next press arms/cancels, like the measure tool
-   {
-      if(HRaySessionActive()) return "Drawing";
-      return "Ready";
-   }
+    if(i == CIR_HRAY)   // P-HR-01: the next press arms/cancels, like the measure tool
+    {
+       if(HRaySessionActive()) return "Drawing";
+       return "Ready";
+    }
+    if(i == CIR_PATH)
+    {
+       if(PathSessionActive()) return "Drawing";
+       return "Ready";
+    }
 #ifndef BUILD_LITE
    if(i == CIR_LEG)
    {
@@ -1413,6 +1425,7 @@ string CircItemTooltip(const int i)
       // FACTORBTN-OFF: case CIR_FACTOR_OVERRIDE: return "Factor Override · ...";
       case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i);
       case CIR_HRAY:            return "Horizontal Ray · " + CircTooltipStatus(i);   // P-HR-01
+      case CIR_PATH:            return "Path · " + CircTooltipStatus(i);
       case CIR_LEG:             return "Leg Measure · " + CircTooltipStatus(i);
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i);
       // P-UI-131: a DOOR has no state to report, so the tip names the card instead

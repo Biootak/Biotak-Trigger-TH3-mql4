@@ -12,7 +12,8 @@ bool DrawStripColorCommit(const int slot, const color c)
    if(!DrawStripIsColorSlot(slot)) return false;
    if(c == clrNONE) return false;
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
-   DrawStripRecentPush(c);
+   //--- P-PAL-21: the strip's own RECENT ring went with its board (nothing paints
+   //--- it any more); the cards' palette keeps the history this product shares.
    DrawStripUndoPush();
    if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
    DrawStripWriteValue(slot, (double)(int)c);
@@ -250,6 +251,19 @@ bool DrawStripTap(const int idx, const string tap)
       string seat = DrawStripIconName(idx);
       if(tap != seat + "S" && tap != seat + "C2") slot = DRAW_SLOT_COLOR;
    }
+   //--- P-PAL-19 (2026-10-02) — A COLOUR CELL DOES NOT OPEN A BOARD. The strip used
+   //--- to paint its own palette here (a second one, with its own catalogue, recents
+   //--- and hex field) while every card opened `PalOpenKind`. It does not any more:
+   //--- the tap leaves a REQUEST and the entry's bridge opens the cards' palette on
+   //--- this drawing, so there is ONE palette in the product. The board code and its
+   //--- objects go with the next step of the migration; until then the request is the
+   //--- only thing this branch does, which is why it is the FIRST branch — a colour
+   //--- slot must never reach the `HasPicker` grid below.
+   if(DrawStripIsColorSlot(slot))
+   {
+      DrawStripPalAsk(slot);
+      return true;
+   }
    if(DrawStripHasPicker(slot))
    {
       DrawStripGearClose();
@@ -402,6 +416,10 @@ void DrawStripFireDelete()
       for(int j = 0; j < n; j++)
       {
          if(DrawIsHRay(DrawSelAt(j))) { HRayDelete(DrawSelAt(j), "strip bin"); continue; }   // P-HR-04: dot goes with the line
+         // P-UI-136: a segment in the bin takes its WHOLE path with it — one drawing,
+         // one sweep. `continue` because the generic branch would delete the segment
+         // alone and leave the rest of the polyline on the chart.
+         if(DrawIsPathSeg(DrawSelAt(j))) { string tmpId = ""; if(PathIdOfName(DrawSelAt(j), tmpId)) PathDelete(tmpId, "strip bin"); continue; }
          BoxEdgeForget(DrawSelAt(j));   // P-UI-132: a deleted box spends its edge memo here, not by expiry
          BoxMarkDrop(DrawSelAt(j));   // P-UI-134: ...and so does its marks KEY
          BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j));
@@ -410,41 +428,12 @@ void DrawStripFireDelete()
    else if(s_dsObj != "")
    {
       if(DrawIsHRay(s_dsObj)) HRayDelete(s_dsObj, "strip bin");   // P-HR-04
+      // P-UI-136: and the single held object is a segment — the whole path goes.
+      else if(DrawIsPathSeg(s_dsObj)) { string tmpId = ""; if(PathIdOfName(s_dsObj, tmpId)) PathDelete(tmpId, "strip bin"); }
       else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    }
    DrawStripClose();
    ChartRedraw();
-}
-//--- TV parity board: a RECENT cell applies the colour it shows. Same three
-//--- steps as a grid cell (`DrawStripPickApply`'s colour branch, which cannot
-//--- reach these rows any more: they are their own band now) and the board STAYS
-//--- (P-DRAW-48 multi-stay: the opacity bar beside it is the user's next act).
-bool DrawStripPickTapRecent(const int i)
-{
-   if(!s_dsOpen || s_dsObj == "" || !DrawStripIsColorSlot(s_dsPicker)) return false;
-   if(i < 0 || i >= s_dsRecentN) return false;
-   //--- P-DRAW-64: the scrub's release witness (see `DrawStripPalRelease`).
-   if(s_dsPalDoneMs != 0 && GetTickCount() - s_dsPalDoneMs < DSTRIP_PAL_TAIL_MS)
-      return DrawStripClickFamily();
-   if(s_dsPalGrab) { s_dsPalDoneMs = GetTickCount(); DrawStripPalHighlightEnd(); }
-   DrawStripColorHoverClear();
-   color c = s_dsRecent[i];
-   DrawStripRecentPush(c);   // reusing one moves it back to the front
-   DrawStripUndoPush();
-   //--- P-DRAW-64: the recents are the board's own colours too — a recent tapped on
-   //--- the FILL board is a fill, exactly like the grid, the hex and the bar. Was the
-   //--- one path that forgot it: a tap that changed no pixel read as "nothing happened".
-   //--- P-DRAW-95 (2026-09-30): ONE SHOW, NOT TWO. The pair below was the same two
-   //--- lines pasted twice (P-DRAW-64's note carried two call sites while the code
-   //--- carried one act): a second writer of the same fact, and every recent tap paid
-   //--- a member walk twice — once per copy, on the group and on each member's own
-   //--- description. One writer, one walk.
-   if(DrawStripIsColorSlot(s_dsPicker) && s_dsPicker == DRAW_SLOT_FILLCLR)
-      DrawStripFillShowGroup();
-   DrawStripWriteValue(s_dsPicker, (double)(int)c);
-   if(s_dsPicker == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
-   DrawStripPaint();   // P-DRAW-48 multi-stay: the board waits for ✕ / Esc / its own cell
-   return true;
 }
 //--- P-DRAW-11 — A PICK APPLIES AND SHUTS (levels, and the colour board since
 //--- P-DRAW-48: multi-stay). The caller passes the popover row; the row is
@@ -621,12 +610,19 @@ bool DrawStripGridTap(const int g)
       BoxMidSyncServed();   // P-DRAW-21: a grid restyle restyles the mid
       return true;
    }
-   //--- the preview block and the `+` are the SAME act: the board on this role. The
-   //--- strip keeps ONE popover at a time (DrawStripTap does exactly this for a
-   //--- quick-row colour cell), so the panel steps aside for the picker it opens.
+   //--- the preview block and the `+` are the SAME act: the palette on this role. The
+   //--- strip keeps ONE picker at a time (DrawStripTap does exactly this for a
+   //--- quick-row colour cell), so the panel steps aside for the popup it opens — and
+   //--- P-PAL-19: for a COLOUR role that popup is the CARDS' palette, through the same
+   //--- request/bridge as the quick cell. Two doors, one act, one palette.
    if(gk == DSTRIP_GRG_PREV || gk == DSTRIP_GRG_PLUS)
    {
       DrawStripGearClose();
+      if(DrawStripIsColorSlot(slot))
+      {
+         DrawStripPalAsk(slot);
+         return true;
+      }
       if(s_dsPicker == slot) DrawStripClosePicker();
       else s_dsPicker = slot;
       DrawStripLayout();
@@ -871,26 +867,6 @@ bool DrawStripEditEnd(const int e)
    }
    return true;
 }
-//--- TV parity board: the HEX field's commit (Enter). The parse and the write are
-//--- the gear's own (`DrawStripHexToColor` + the one write path) — an invalid
-//--- string keeps the typed text for another try, like every other edit here.
-bool DrawStripPopHexEnd()
-{
-   if(!s_dsOpen || s_dsObj == "") return false;
-   string nm = DrawStripPHexEdName();
-   if(ObjectFind(0, nm) < 0) return false;
-   color c;
-   if(!DrawStripHexToColor(ObjectGetString(0, nm, OBJPROP_TEXT), c)) return true;
-   //--- P-DRAW-64: the field belongs to the BOARD it sits on, so it writes the
-   //--- board's own role — typing a hex while the FILL board is open is a fill.
-   //--- P-DRAW-118: and it writes it through the COLOUR's own owner, the same one the
-   //--- palette cell and the panel's quick swatch call.
-   int hslot = DrawStripIsColorSlot(s_dsPicker) ? s_dsPicker : DRAW_SLOT_COLOR;
-   DrawStripColorCommit(hslot, c);
-   s_dsHexFocus = false;   // P-DRAW-48: the field is the colour's face again
-   DrawStripPaint();
-   return true;
-}
 //--- P-DRAW-13: the grip carry. Screen objects only (SELECTABLE=false), so the
 //--- terminal never drags the plate for us and P-LM-11's race cannot happen — but
 //--- the view lock IS needed now (P-UI-113d): the chart BEHIND the plate pans on
@@ -978,29 +954,5 @@ int DrawStripGripWhich(const int mx, const int my)
        if(my >= hy0 && my <= hy1 && mx >= s_dsBX && mx <= s_dsBX + s_dsBW && mx < xx0) return 3;
     }
     return 0;
-}
-//--- DrawStripGripRelease lives with the carry's STATE (the file's state block):
-//--- it owns the view lock's release, and `DrawStripClose` must be able to call it.
-//--- P-DRAW-64 — THE SCRUB'S RELEASE. Either witness applies and marks the tail;
-//--- the other one inside the window only clears the highlight, because ONE
-//--- physical release arrives on more than one channel (P-UI-113c's own lesson) and
-//--- two applications would be two undo steps for one gesture. A release off the
-//--- grid is a CANCEL: the pixels go back to what the tags say.
-bool DrawStripPalRelease(const int mx, const int my)
-{
-   bool fresh = (s_dsPalDoneMs != 0 && GetTickCount() - s_dsPalDoneMs < DSTRIP_PAL_TAIL_MS);
-   DrawStripPalHighlightEnd();
-   if(fresh) return true;   // the click channel already applied it
-   int cell = -1;
-   if(!DrawStripPalHit(mx, my, cell))
-   {
-      DrawStripPalTo(-1);   // off the palette: cancel
-      s_dsPalDoneMs = GetTickCount();
-      return true;
-   }
-   if(cell >= DSTRIP_HOVER_REC_BASE) DrawStripPickTapRecent(cell - DSTRIP_HOVER_REC_BASE);
-   else DrawStripPickApply(s_dsPicker, cell - DSTRIP_HOVER_POP_BASE);
-   s_dsPalDoneMs = GetTickCount();
-   return true;
 }
 #endif // DRAW_STRIP_TAP_MQH

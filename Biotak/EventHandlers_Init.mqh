@@ -492,7 +492,7 @@ int OnInitHandler() {
     // chart (re-attach / TF switch reuses the same chart), so the previous
     // instance's "this name is absent" facts are not trustworthy yet.
     CacheAbsentResetAll();
-    HRayOnInit();   // P-HR-06: adopt chart rays into the registry (idempotent)
+    HRayOnInit(); PathOnInit();   // P-HR-06 / P-UI-136: adopt the chart's drawings into the registry (idempotent)
 
     // Restore hidden state
     string gvar_name = "Biotak_isHidden_" + GetCachedChartIdStr();

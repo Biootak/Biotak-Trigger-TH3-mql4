@@ -521,7 +521,7 @@ void DrawStripGearContent(int &y, bool &levelEdit)
       DrawStripGearSection("SHAPE", y);
       //--- P-DRAW-64a: the strip's two cells are switches of the DRAWING's own
       //--- geometry, so they stand together — one value, two surfaces.
-      if(DrawSlotAvailable(k, DRAW_SLOT_BOXHALF)) DrawStripGearRow(1, DRAW_SLOT_BOXHALF, y);
+      if(DrawStripSeatAvail(k, DRAW_SLOT_BOXHALF)) DrawStripGearRow(1, DRAW_SLOT_BOXHALF, y);
       if(DrawSlotAvailable(k, DRAW_SLOT_EXTEND))      DrawStripGearRow(1, DRAW_SLOT_EXTEND, y);
       DrawStripGearSection("LAYER", y);
       DrawStripGearRow(1, DRAW_SLOT_LOCK, y);
@@ -842,52 +842,16 @@ void DrawStripLayout()
     s_dsPHexY = -1;
     s_dsPHeadY = -1;
     s_dsPRecY = -1;
-    s_dsPOpY = -1;
-    s_dsBW = 0; s_dsBH = 0;   // P-DRAW-48: the board's rect exists only for a colour board
-    if(DrawStripIsColorSlot(s_dsPicker))   // P-DRAW-64: the BORDER's or the INTERIOR's
-    {
-       // P-DRAW-46: the picker's OWN columns — 8 cells per row (the user's own
-       // chart).
-       // TV parity (2026-09-26): the board reads like the reference — a header
-       // band (grip + name + pin + close, and the carry handle), the 8 x 8 grid,
-       // a labelled RECENT band, then the HEX field.
-       // P-DRAW-48: and its bands are measured from the BOARD's origin, because
-       // the board is its own card. The header rides the skin's own 44px top cap
-       // and the remaining ten bands are the middles, so the plate is on the
-       // family's own law: 48 + 42k (k = rows + recents + hex).
-      int n = DrawStripPickPalN();
-      int cols = BIOPICK_COLS, cw = DSTRIP_PICK_CELL;
-      int gw = cols * cw + (cols - 1) * DSTRIP_PICK_GAP;
-      int rows = (n + cols - 1) / cols;
-      s_dsBW = gw + 2 * DSTRIP_PAD;
-      // P-DRAW-48: FOUR bands under the grid — RECENT, HEX and the reference's
-      // own OPACITY bar («نوار شفافیت رو نداره مثل پیش نمایش»), so k = rows + 3.
-      s_dsBH = 48 + DSTRIP_PICK_ROW * (rows + 2);
-      s_dsPHeadY = 0;
-      int by = DSTRIP_BOARD_HDR;
-      for(int r = 0; r < n; r++) s_dsPY[r] = by + (r / cols) * DSTRIP_PICK_ROW;
-      by += rows * DSTRIP_PICK_ROW;
-      s_dsPRecY = by;
-      //--- P-DRAW-66: HEX and the OPACITY bar share ONE band — the board is
-      //--- 48 + 42 * (rows + 2) = 468 tall instead of 510, and the two things a
-      //--- colour is judged by (its exact value and its tone) sit side by side.
-      s_dsPHexY = by + DSTRIP_PICK_ROW;
-      s_dsPOpY  = s_dsPHexY;
-      s_dsPN = n;
-      //--- the STRIP stays the compact quick row: the board never widens its
-      //--- plate (P-DRAW-48) and never grows it taller either.
-      //--- P-DRAW-93 (2026-09-30): AND THE BOARD IS PLACED AT THE END OF THIS PASS,
-      //--- never here. `DrawStripBoardPlace` scores its four candidates against the
-      //--- strip's own rect (`s_dsW`/`s_dsH`) and the panel's (`s_dsGearW0`/`s_dsGearH`)
-      //--- — and this line stood ABOVE the writes that produce them (761-762, 754-759),
-      //--- so it scored against the PREVIOUS pass's plate: open the width list (or the
-      //--- more-popover) and tap the colour seat, and the fresh board was placed 2px
-      //--- under a strip that was 200px taller a frame ago — detached from its plate, or
-      //--- clamped to the window's edge on a small chart. Same order defect as P-DRAW-91
-      //--- (the panel's column width), one pass earlier. The call moved to the layout's
-      //--- tail; `tools/stale_state_check.js` is what reads it.
-   }
-   else if(s_dsPicker != DSTRIP_PICK_NONE)
+    s_dsPOpY = -1;s_dsBW = 0; s_dsBH = 0;   // P-DRAW-48: the board's rect exists only for a colour board
+   //--- P-PAL-21 (2026-10-02) — THERE IS NO COLOUR BOARD LEFT. `s_dsPicker` cannot
+   //--- hold a colour seat since P-PAL-19: a tap on the colour cell asks the CARDS'
+   //--- palette (`DrawStripPalAsk`) and nothing writes a colour seat back. So the
+   //--- whole `DrawStripIsColorSlot(s_dsPicker)` branch — the grid, the RECENT band,
+   //--- the HEX field, the opacity bar, the page seats and the studio — was a layout
+   //--- for a plate that no longer exists, and its plate was measured by
+   //--- `DrawStripPalLayout` in a file that this build no longer has. The list rows
+   //--- below are the picker that is still real (width, style, level, MORE).
+   if(s_dsPicker != DSTRIP_PICK_NONE)
    {
       if(s_dsPicker == DSTRIP_MORE) DrawStripMoreBuild();
       int need = 0;
@@ -925,14 +889,8 @@ void DrawStripLayout()
    }
    s_dsW = maxW;
    s_dsH = y - DSTRIP_GAP + DSTRIP_PAD;
-   //--- P-DRAW-93: the board's placement is the LAST thing this pass does, so every
-   //--- rect it scores against is THIS frame's: the strip's own (just written above)
-   //--- and the panel's (`s_dsGearW0`/`s_dsGearH`, written just above that). Nothing
-   //--- below depends on `s_dsBX/s_dsBY`, and a colour board is the one case that has
-   //--- a rect to place — the guard is the picker's own seat, exactly like the branch
-   //--- that computed `s_dsBW/s_dsBH`.
-   if(DrawStripIsColorSlot(s_dsPicker))
-      DrawStripBoardPlace();
+   //--- P-PAL-21: the board's placement pass went with the board (a colour seat is
+   //--- never the picker now), so the layout ends at the strip's own rect.
 }
 //--- popover list-row text, one owner for layout and paint.
 string DrawStripPopRowText(const int r)
@@ -983,74 +941,11 @@ bool DrawStripPopRowIsCur(const int r)
    return DrawStripPickIsCur(s_dsObj, s_dsKind, s_dsPicker, r);
 }
 
-//--- P-DRAW-11: shut the popover without touching the strip (a pick, a second
-//--- tap on its cell, a tap on the plate, Esc). Deletes the popover's objects;
-//--- the caller re-layouts and repaints.
-//--- TV parity board: its chrome — the grip band, the RECENT band and the HEX
-//--- field — belongs to the COLOUR popover alone, and the ONE owner of taking it
-//--- down. A slot switch does NOT pass a close (`DrawStripTap` assigns the new
-//--- slot directly), so the paint's list branch prunes it too; without that a
-//--- width/style list would open under the board's leftover header and field.
-bool DrawStripPopChromePrune()
-{
-   bool dirty = false;
-   //--- P-DRAW-92: TWENTY, not seventeen. The board's two PAGE SEATS and their
-   //--- "1/2" caption were painted (DrawStrip_Paint.mqh) and never listed here — the
-   //--- one owner that takes this chrome down — so shutting the board (or switching
-   //--- a colour slot to a width/style list) left `<` `>` and `1/2` floating over
-   //--- the strip. Every name the board's header paints is in this list now, and
-   //--- `node tools/object_lifecycle_check.js` is what reads the list against the
-   //--- painters.
-   string fx[20];
-   fx[0] = "PnlDrawS_PHeadT";
-   fx[1] = "PnlDrawS_PHeadX";
-   fx[2] = DrawStripPHeadGName();
-   fx[3] = DrawStripPHeadGChipName();
-   fx[4] = DrawStripPHeadGIconName();
-   fx[5] = DrawStripPRecLabelName();
-   fx[6] = DrawStripPHexLbName();
-   fx[7] = DrawStripPHexEdName();
-   //--- P-DRAW-48: the board's own pin seat + its face — the header's two new
-   //--- children, so a close cannot leave a dock glyph over a gone plate.
-   fx[8] = "PnlDrawS_PHeadP";
-   fx[9] = "PnlDrawS_PHeadPI";
-   //--- and the OPACITY band's own five: its chrome dies with the board's.
-   fx[10] = DrawStripPOpLbName();
-   fx[11] = DrawStripPOpBedName();
-   fx[12] = DrawStripPOpFillName();
-   fx[13] = DrawStripPOpKnobName();
-   fx[14] = DrawStripPOpValName();
-   //--- P-DRAW-64a: the header's two role segments — a close cannot leave a
-   //--- BORDER / FILL caption over a gone plate.
-   fx[15] = "PnlDrawS_PHeadB";
-   fx[16] = "PnlDrawS_PHeadF";
-   fx[17] = DrawStripPageSeatName(0);
-   fx[18] = DrawStripPageSeatName(1);
-   fx[19] = DrawStripPageLabelName();
-   for(int i = 0; i < 20; i++)
-      if(ObjectFind(0, fx[i]) >= 0) { ObjectDelete(0, fx[i]); dirty = true; }
-   for(int k = 0; k < DSTRIP_RECENT_MAX; k++)
-   {
-      if(ObjectFind(0, DrawStripPRecName(k)) >= 0)
-      { ObjectDelete(0, DrawStripPRecName(k)); dirty = true; }
-      if(ObjectFind(0, DrawStripPRecGlassName(k)) >= 0)
-      { ObjectDelete(0, DrawStripPRecGlassName(k)); dirty = true; }
-   }
-   s_dsPRecY = -1;
-   s_dsPOpY = -1;
-   s_dsOpGrab = false;
-   s_dsHexFocus = false;
-   //--- P-DRAW-48: and the BOARD's own state — a fresh board is a fresh PLACE
-   //--- (the pin's DOCK choice is the user's preference and survives).
-   s_dsBManual = false;
-   s_dsBW = 0; s_dsBH = 0;
-   s_dsBGripLive = false;
-   return dirty;
-}
 void DrawStripClosePicker()
 {
    DrawStripColorHoverClear();
-   DrawStripPopChromePrune();   // TV parity board: its chrome dies with it
+   //--- P-PAL-21: the board's chrome prune went with the board (nothing painted it
+   //--- any more); `DrawStripSkinPurgeAt(2)` below is what still has a plate to take.
    //--- P-DRAW-75 (2026-09-28): the board's plate (family 2) dies with it, and the
    //--- gate is the PLATE, not a flag — a list popover probes nothing it never made,
    //--- and a plate a path left behind can no longer outlive the state that painted

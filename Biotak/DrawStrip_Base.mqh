@@ -45,6 +45,13 @@ void DrawStripDiagEmit(const string line)
    FileWrite(dh, line);
    FileFlush(dh);
 }
+#else
+// P-UI-136 (2026-10-02): the symbol stays DEFINED when the switch is 0, because
+// a drawing tool that witnesses its gestures (PathWitness, PathTool.mqh — the
+// channel is borrowed by name, this file owns the handle) must not turn the
+// whole unit's build into "function not defined" when the census is switched
+// off. The fallback is the journal, never silence (AGENTS law 3).
+void DrawStripDiagEmit(const string line) { Print(line); }
 #endif
 
 #ifdef DSTRIP_DIAG
@@ -284,6 +291,161 @@ color DrawStripColorFace(const string nm, const int slot)
    return DrawSlotRenderFillColor(nm, c);
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// P-PAL-19 (2026-10-02) — THE STRIP ASKS THE CARDS' PALETTE. It has no colour
+// board of its own any more: every other surface in this product edits a
+// colour through ONE popup (BiotakPanels_PalA/PalB), and the strip was the last
+// surface that painted a second one — the two then drifted (the board's own
+// catalogue, its own recents, its own hex field), and every defect in it was a
+// defect the cards' palette never had.
+// The include order decides the shape: DrawStrip is include 99, the panels are
+// 124, and MQL4 needs a definition BEFORE its use — so the strip cannot call
+// `PalOpenKind` itself. It leaves a REQUEST (below); the entry's bridge line,
+// which sees both, performs the open. One bridge, one direction, no prototype.
+// ══════════════════════════════════════════════════════════════════════════
+static string s_dsPalObj = "";        // the drawing the popup is editing
+static int    s_dsPalSlot = DSTRIP_PICK_NONE;
+static int    s_dsPalAskSlot = DSTRIP_PICK_NONE;   // the pending open, one click wide
+static bool   s_dsPalRepaint = false;      // a pick owes the strip ONE frame (P-PAL-19f)
+
+void DrawStripPalAsk(const int slot)
+{
+   if(!s_dsOpen || s_dsObj == "") return;
+   DrawStripGearClose();
+   s_dsPalObj  = s_dsObj;
+   s_dsPalSlot = slot;
+   s_dsPalAskSlot = slot;
+}
+int    DrawStripPalAsked()   { if(s_dsPalAskSlot == DSTRIP_PICK_NONE) return -1;
+                               int a = s_dsPalAskSlot; s_dsPalAskSlot = DSTRIP_PICK_NONE; return a; }
+string DrawStripPalTargetObj()  { return s_dsPalObj; }
+//--- P-PAL-19: the strip's own rect, for the one caller that places the popup beside
+//--- it (the entry's bridge). Three lines, because a bridge that cannot say WHERE the
+//--- strip is would park the palette in a corner — P-UI-98r's own finding, one surface
+//--- over — and a popup in a corner reads as «the palette is broken».
+int    DrawStripPlateX() { return s_dsOpen ? s_dsX : 0; }
+int    DrawStripPlateY() { return s_dsOpen ? s_dsY : 0; }
+int    DrawStripPlateW() { return s_dsOpen ? s_dsW : 0; }
+//--- P-PAL-19e: is the strip still on screen? The bridge asks it so the palette
+//--- CLOSES WITH ITS PARENT: a popup over a closed strip is a floater nobody owns,
+//--- and it is exactly what «همراه والدش بسته بشه» is. Read here, asked once, in the
+//--- only place that can see both sides.
+bool   DrawStripPalParentLive() { return s_dsOpen && s_dsObj != ""; }
+//--- and the flag the bridge spends: ONE frame, spent once, after the popup's route.
+bool   DrawStripPalRepaintTake() { bool b = s_dsPalRepaint; s_dsPalRepaint = false; return b; }
+int    DrawStripPalTargetSlot() { return s_dsPalSlot; }
+bool   DrawStripPalTargetLive() { return (s_dsPalObj != "" && DrawStripIsColorSlot(s_dsPalSlot)); }
+//--- the three the panels' State table asks, each ONE line and each the strip's own
+//--- writer — so a pick lands on the drawing exactly the way a card row's own cell
+//--- lands on its value, and every dependent (box marks, mid line, opacity) sees it.
+color DrawStripPalTargetColor()
+{
+   if(!DrawStripPalTargetLive()) return clrNONE;
+   return DrawStripColorRead(s_dsPalObj, s_dsPalSlot);
+}
+int DrawStripPalTargetApply(const color c)
+{
+   if(!DrawStripPalTargetLive()) return 0;
+   DrawStripColorCommit(s_dsPalSlot, c);
+   DrawStripRecentPush(c);
+   //--- P-PAL-19d (2026-10-02) — THE SECOND PICK IS A SEPARATE CASE, and the report
+   //--- is «یک بار که یک رنگی رو انتخاب میکنم بقیه رنگ‌ها اعمال نمیشه». The MODEL
+   //--- says the target is a static that outlives the pick, so the second click
+   //--- should take the same three lines as the first — and the screen says it does
+   //--- not. Nothing here is guessed: the line below is the WITNESS, through the
+   //--- flushed channel (never `Print` — P-LOG-3), and it carries the three numbers
+   //--- that decide the case: is the target still live, which slot, and what the
+   //--- drawing READS BACK after the commit. `applied=` and `read=` disagreeing is
+   //--- the commit; both 0 with `live=1` is the click that never arrived.
+   int got = (int)DrawSlotRead(s_dsPalObj, s_dsPalSlot);   // double -> int, explicit (the project's own cast)
+   DrawStripDiagEmit("[drawstrip] PALAPPLY live=" + IntegerToString((int)DrawStripPalTargetLive())
+                    + " obj=\"" + s_dsPalObj + "\" slot=" + IntegerToString(s_dsPalSlot)
+                    + " picked=" + DrawStripColorHex(c)
+                    + " read=" + DrawStripColorHex((color)got));
+   //--- P-PAL-19f (2026-10-02) — NO REPAINT FROM INSIDE THE POPUP'S OWN ROUTE. The
+   //--- first bridge build called `DrawStripPaint()` here, and the report was
+   //--- «یک رنگ انتخاب می‌کنم کل استریپ بسته می‌شه»: the strip repainted in the MIDDLE
+   //--- of the palette's click, while the palette still owned the event, so the strip
+   //--- rebuilt itself from a half-served gesture and the one who closed was the frame
+   //--- it was not driving. The apply OWNS A FLAG; the BRIDGE spends it, once, after
+   //--- the popup's route has returned — the same discipline the entry already uses
+   //--- for «a user action settles the frame it owed, in the same event» (P-PERF-34).
+   s_dsPalRepaint = true;
+   return 1;
+}
+int DrawStripPalTargetAlpha()
+{
+   if(!DrawStripPalTargetLive()) return -1;
+   return DrawSlotAlphaGet(s_dsPalObj, s_dsPalSlot);
+}
+//--- P-DRAW-64a2 (2026-10-02) — WHICH SLOT, IN THE STRIP'S OWN WORDS. The popup's two
+//--- role chips hold the KIND (`PAL_DRAW_BORDER` / `PAL_DRAW_FILL`, the panels' ladder);
+//--- the SLOT is `DRAW_SLOT_COLOR` / `DRAW_SLOT_FILLCLR`, which is this module's
+//--- vocabulary and nobody else's. So the chip asks here and the answer is a slot —
+//--- the popup never translates a colour role into a slot index by arithmetic, which is
+//--- how a border pick would end up writing the interior's tag.
+void DrawStripPalRoleSet(const int role)
+{
+   if(s_dsPalObj == "" || s_dsPalSlot == DSTRIP_PICK_NONE) return;
+   int want = (role == 0) ? DRAW_SLOT_COLOR : DRAW_SLOT_FILLCLR;
+   if(!DrawSlotAvailable(DrawKindOf(s_dsPalObj), want)) return;
+   s_dsPalSlot = want;
+}
+//--- P-PAL-20 — THE REPAINT IS A REQUEST THE BRIDGE SPENDS, and this is the ASK, so a
+//--- caller outside the strip never calls `DrawStripPaint()` itself (that is a paint
+//--- from inside somebody else's route — P-PAL-19f's own lesson). One flag, one spender.
+void DrawStripPalRepaintAsk() { s_dsPalRepaint = true; }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P-PAL-20 (2026-10-02) — THE SURFACE LEDGER. THE DISMISSAL HAD NO NAME FOR THE POPUP.
+//
+// The report was «یک رنگ انتخاب می‌کنم کل استریپ بسته می‌شه», and the path is one line
+// long. A colour pick is a release on TWO channels: `HandleUIChartEvent` serves the
+// palette's swatch first (it runs before the strip in OnChartEvent), then the strip's
+// router asks `DrawStripPointInside` about the release PIXEL — the pixel is on the
+// popup, not on the strip — reads false, and calls `DrawStripClose()` (Router:1113).
+// The colour did apply; the strip was eaten by the frame that did it.
+//
+// WHY IT IS A LEDGER AND NOT ONE MORE CLAUSE: `DrawStripPointInside` already grew one
+// clause per popup — the gear panel (P-DRAW-32), the colour board (P-DRAW-48) — and the
+// colour board is gone (P-PAL-19): its popup now lives in the panels, in a module the
+// strip cannot see and must not know. So the clause list did not get long, it got
+// WRONG, and the next popup would have broken it the same way. The strip's real rule
+// was never «the plate and two special cases»: it is «a pixel on ANY surface the strip
+// owns is not a click on the chart». One registry answers that, it grows without a
+// branch, and it is fed by the ONE place that can see both sides (the entry's bridge).
+//
+// The entries are republished WHOLE every event by that single writer, so the ledger
+// can never hold a rectangle of a popup that is already gone — the failure mode of a
+// list written once and patched at each open.
+// ═══════════════════════════════════════════════════════════════════════════
+#define DSTRIP_SURF_MAX 4                 // two popups today; four is the ceiling, not a plan
+static int s_dsSurfN = 0;
+static int s_dsSurfX[DSTRIP_SURF_MAX], s_dsSurfY[DSTRIP_SURF_MAX];
+static int s_dsSurfW[DSTRIP_SURF_MAX], s_dsSurfH[DSTRIP_SURF_MAX];
+
+//--- the one writer's reset: called by the bridge on EVERY event, before it republishes.
+void DrawStripSurfaceClear() { s_dsSurfN = 0; }
+//--- append one owned surface. A zero-sized rect is not a surface (P-DRAW-32's own
+//--- `s_dsGearW0 > 0` test): publishing a collapsed popup would claim nothing and
+//--- would still cost the ledger a slot.
+void DrawStripSurfacePublish(const int x, const int y, const int w, const int h)
+{
+   if(s_dsSurfN >= DSTRIP_SURF_MAX) return;
+   if(w <= 0 || h <= 0) return;
+   s_dsSurfX[s_dsSurfN] = x; s_dsSurfY[s_dsSurfN] = y;
+   s_dsSurfW[s_dsSurfN] = w; s_dsSurfH[s_dsSurfN] = h;
+   s_dsSurfN++;
+}
+bool DrawStripSurfaceAt(const int mx, const int my)
+{
+   int m = DSTRIP_SKIN_M + 2;   // the skin's fringe is plate, not chart (P-DRAW-29)
+   for(int i = 0; i < s_dsSurfN; i++)
+      if(mx >= s_dsSurfX[i] - m && mx <= s_dsSurfX[i] + s_dsSurfW[i] + m &&
+         my >= s_dsSurfY[i] - m && my <= s_dsSurfY[i] + s_dsSurfH[i] + m) return true;
+   return false;
+}
+
 void DrawStripPublishRect()
 {
    if(!s_dsOpen || s_dsW <= 0 || s_dsH <= 0)
@@ -454,7 +616,7 @@ string DrawStripPHeadGChipName() { return "PnlDrawS_PHeadGC"; }
 string DrawStripPHeadGIconName() { return "PnlDrawS_PHeadGI"; }
 //--- P-DRAW-92 (2026-09-30) — THE BOARD'S PAGE SEATS, NAMED LIKE EVERY OTHER
 //--- BOARD OBJECT. They were spelled inline in the paint (`"PnlDrawS_Page" +
-//--- IntegerToString(k)`), and `DrawStripPopChromePrune` — the ONE owner of taking
+//--- IntegerToString(k)`) — P-PAL-21: the board's chrome prune went with the board.
 //--- the board's chrome down (DrawStrip_GearA.mqh) — never listed them: close the
 //--- board, or switch a colour slot to a width/style list, and the two `<` `>` seats
 //--- and the "1/2" caption stayed floating over the strip. Found by
@@ -465,6 +627,9 @@ string DrawStripPageLabelName()            { return "PnlDrawS_PageT"; }
 string DrawStripPRecName(const int i) { return "PnlDrawS_PR" + IntegerToString(i); }
 string DrawStripPRecGlassName(const int i) { return DrawStripPRecName(i) + "G"; }
 string DrawStripPRecLabelName() { return "PnlDrawS_PRecT"; }
+//--- P-PAL-14: the well an EMPTY recent slot wears. A seat of its own, because the
+//--- slot is a state the trader can see, not an absence.
+string DrawStripPRecEmptyName(const int i) { return DrawStripPRecName(i) + "E"; }
 string DrawStripPHexLbName() { return "PnlDrawS_PHexLb"; }
 string DrawStripPHexEdName() { return "PnlDrawS_PHexEd"; }
 //--- P-DRAW-48: the OPACITY band's own five objects (Lb = its label, T = the bed,
@@ -589,6 +754,10 @@ bool DrawStripPointInside(const int mx, const int my)
    if(DrawStripIsColorSlot(s_dsPicker) && s_dsBW > 0 && s_dsBH > 0 &&
       mx >= s_dsBX - m && mx <= s_dsBX + s_dsBW + m &&
       my >= s_dsBY - m && my <= s_dsBY + s_dsBH + m) return true;
+   //--- P-PAL-20: AND WHATEVER ELSE THIS STRIP OWNS — the popups the entry's bridge
+   //--- republished this event (the cards' palette, opened by a colour cell). Same
+   //--- law as the two clauses above, one registry instead of one branch per popup.
+   if(DrawStripSurfaceAt(mx, my)) return true;
    return false;
 }
 
@@ -817,6 +986,18 @@ bool DrawStripVis(const EDrawKind k, const int slot)
 //--- it works on every channel type.)
 bool DrawStripSeatAvail(const EDrawKind k, const int slot)
 {
+   //--- P-UI-139: THE 50 % CELL IS THE PATH'S TOO — a polyline's own answer to it is
+   //--- a small circle at each leg's middle. It CANNOT be a KIND rule: a kind rule
+   //--- would hand the cell to every plain trendline, and a control nothing answers
+   //--- is the one thing this strip refuses (C-04). So the answer is asked of the
+   //--- HELD OBJECT, the same way the channel's fill child is asked below — and it is
+   //--- asked BEFORE the caps gate, because DK_LINE's caps carry no 50 % bit (the
+   //--- rectangle has its own, and this seat is now shared by two owners).
+   if(k == DK_LINE && slot == DRAW_SLOT_BOXHALF)
+   {
+      if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+      return DrawIsPathSeg(s_dsObj);
+   }
    if(!DrawSlotAvailable(k, slot)) return false;
    if(k != DK_CHANNEL) return true;
    if(slot != DRAW_SLOT_FILLCLR) return true;
@@ -845,17 +1026,25 @@ int DrawStripAllSlotAt(const EDrawKind k, const int shown)
    //--- FILL FAMILY reads together — FILL, then the two extras the user asked to
    //--- keep at hand (HALF · EXTEND) — so a box reads "filled · half · extends · …".
    bool merged = DrawStripMergedColor(k);
+   //--- P-UI-139: THE 50 % CELL IS A QUICK-ROW CELL FOR A PATH. It is normally held
+   //--- back from the walk and re-inserted right after FILL, because a box's fill and
+   //--- its two extras read as one family ("filled · half · extends"). A PATH has no
+   //--- fill, so that insertion point never arrives and the cell would exist in the
+   //--- gear panel and in the writer while being INVISIBLE on the row the user is
+   //--- looking at. So for a path the walk keeps the slot at its own index instead:
+   //--- after colour/width/style/ray/lock/back, which is where a switch belongs.
+   bool pathHalf = (k == DK_LINE && DrawStripSeatAvail(k, DRAW_SLOT_BOXHALF));
    int seen = 0;
    for(int s = 0; s < DRAW_SLOT_N; s++)
    {
       if(s == DRAW_SLOT_MORE) continue;   // no dialog to open from here
       if(merged && s == DRAW_SLOT_COLOR) continue;                 // folded into the colour seat
-      if(s == DRAW_SLOT_BOXHALF || s == DRAW_SLOT_EXTEND) continue;  // served beside FILL
+      if((s == DRAW_SLOT_BOXHALF || s == DRAW_SLOT_EXTEND) && !pathHalf) continue;  // served beside FILL
       if(!DrawStripSeatAvail(k, s)) continue;
       if(!DrawStripSeatVis(k, s, merged)) continue;
       if(seen == shown) return s;
       seen++;
-      if(s == DRAW_SLOT_FILL)
+      if(s == DRAW_SLOT_FILL && !pathHalf)
       {
          if(DrawStripSeatAvail(k, DRAW_SLOT_BOXHALF) && DrawStripVis(k, DRAW_SLOT_BOXHALF))
          {
@@ -924,8 +1113,18 @@ string DrawStripIconRes(const int slot, const string nm)
    //--- P-DRAW-64a: the fill family's two extras. OFF is the plate ink, ON the
    //--- amber twin, so the ON cell stays quiet (one shape on the accent wash).
    if(slot == DRAW_SLOT_BOXHALF)
+   {
+      // P-UI-139/140 (2026-10-02, MEASURED: a tap meant for this cell landed on
+      // `slot=9 Behind candles`, because a PATH wore the BOX's block art beside two
+      // other block glyphs). The path answers with its OWN face — two legs with a
+      // dot on each middle — so no hand has to guess which of three block icons is
+      // the marker. One raster pair, the same 24 canvas, the same amber twin.
+      if(DrawIsPathSeg(nm))
+         return ((DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "::Files\\Icons\\bk_mid_on.bmp"
+                                                             : "::Files\\Icons\\bk_mid_off.bmp");
       return ((DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "::Files\\Icons\\bk_half_on.bmp"
                                                           : "::Files\\Icons\\bk_half_off.bmp");
+   }
    if(slot == DRAW_SLOT_EXTEND)
       return ((DrawSlotRead(nm, DRAW_SLOT_EXTEND) > 0.5) ? "::Files\\Icons\\bk_ext_on.bmp"
                                                          : "::Files\\Icons\\bk_ext_off.bmp");

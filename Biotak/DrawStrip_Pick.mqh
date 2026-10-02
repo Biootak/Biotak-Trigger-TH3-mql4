@@ -37,6 +37,11 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
          // "Empty" was the OFF-state wearing the label's own seat (C-05/C-08).
          return (DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5) ? "Interior on" : "Interior off";
       case DRAW_SLOT_BOXHALF:
+         // P-UI-139: the cell's WORDS follow the drawing that answers it — a path
+         // shows markers, not a line, and a row that names the wrong feature is the
+         // C-05/C-08 failure the FILL row above already answers.
+         if(DrawIsPathSeg(nm))
+            return (DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "50% dots on" : "50% dots off";
          return (DrawSlotRead(nm, DRAW_SLOT_BOXHALF) > 0.5) ? "50 % line on" : "50 % line off";
       case DRAW_SLOT_EXTEND:
          return (DrawSlotRead(nm, DRAW_SLOT_EXTEND) > 0.5) ? "Extend right on" : "Extend right off";
@@ -73,7 +78,9 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
 string DrawStripSwitchName(const string nm, const int slot)
 {
    if(slot == DRAW_SLOT_FILL)    return "Interior";
-   if(slot == DRAW_SLOT_BOXHALF) return "50 % line";
+   // P-UI-139: the 50 % seat names what the HELD drawing makes of it — markers on a
+   // path, the mid line on a rectangle.
+   if(slot == DRAW_SLOT_BOXHALF) return (DrawIsPathSeg(nm) ? "50% markers" : "50 % line");
    if(slot == DRAW_SLOT_EXTEND)  return "Extend right";
    if(slot == DRAW_SLOT_LOCK)    return "Lock";
    if(slot == DRAW_SLOT_BACK)    return "Behind candles";
@@ -99,51 +106,12 @@ int DrawStripFontAt(const int i)
 int DrawStripFontCount() { return 6; }
 int DrawStripGlyphCount() { return 8; }
 
-//--- P-DRAW-46 (2026-09-26) — THE BOARD SHOWS THE USER'S OWN PALETTE. This face
-//--- reads `BioPickAt` in ConstantsAndEnums.mqh (include #1, so both include 97
-//--- and 116 can reach it — A-12), and it is the ONE palette face the strip needs:
-//--- `DrawStripPal`/`DrawStripPalCount` (BioPal's own 16-colour grid went with
-//--- P-DRAW-44) were reachable only through each other, so they went too.
-//--- P-DRAW-50: the table is 16 families of 8 and the board shows ONE PAGE of it
-//--- — the page is the palette's own state (`BioPickPage`), so this board and the
-//--- cards' popup always show the same 64 of the 128, and `s_dsPN`/`DSTRIP_PICK_MAX`
-//--- keep fitting 64 exactly as before (a flat 128 would have overflowed the
-//--- popover's 72-cell cap and silently lost the second half).
-color DrawStripPickPal(const int i)
-{
-   int n=BIOPICK_PAGE_ROWS*BIOPICK_COLS;
-   if(i < 0 || i >= n) return clrSteelBlue;
-   return BioPickColor(BioPickPageRow0() + i / BIOPICK_COLS, i % BIOPICK_COLS);
-}
-int DrawStripPickPalN() { return BIOPICK_PAGE_ROWS * BIOPICK_COLS; }
-//--- P-DRAW-50: the board's PAGE SEATS, in its header (the space the pin and the
-//--- close do not use). -1 = not on one. Asked before the palette scrub, so a
-//--- press on a seat is never a scrub of a cell that is not there.
-int DrawStripPageAt(const int mx,const int my)
-{
-   if(!DrawStripIsColorSlot(s_dsPicker) || s_dsBW <= 0 || s_dsBH <= 0 || s_dsPHeadY < 0) return -1;
-   int hy0=s_dsBY+s_dsPHeadY, hy1=hy0+DSTRIP_BOARD_HDR;
-   if(my < hy0 || my > hy1) return -1;
-   int x0=s_dsBX+s_dsBW-DSTRIP_PAD-DSTRIP_BPIN_XW-2-10-2*20;
-   for(int k=0;k<2;k++)
-   {
-      int xa=x0+k*20;
-      //--- P-DRAW-105: THE SEAT IS HALF-OPEN, LIKE THE PAINT. The painter's own
-      //--- rect is `[pgx+k*20, pgx+k*20+20)` (DrawStrip_Paint, the page seats) and
-      //--- this was `mx <= xa+20`, so the single column `pgx+20` belonged to seat 0
-      //--- and to seat 1 at the same time — a 1px seam where the outer half of the
-      //--- right arrow's own left edge turned the page backwards.
-      if(mx >= xa && mx < xa+20) return k;      // 0 = previous page, 1 = next
-   }
-   return -1;
-}
-void DrawStripPageStep(const int k)
-{
-   int want=BioPickPage() + ((k==0) ? -1 : 1);
-   if(want < 0 || want >= BIOPICK_PAGES) return;
-   BioPickPageSet(want);
-   DrawStripPaint();   // the board's cells are page-local: a flip is a repaint
-}
+//--- P-PAL-21 (2026-10-02) — THE HEADER'S RIGHT CLUSTER IS GONE WITH THE BOARD. The
+//--- page arrows, the «1/2» and the studio's ring were seats on a plate that no
+//--- longer exists (a colour cell now opens the CARDS' palette, P-PAL-19), so the
+//--- three macros that owned their geometry — and the four accessors that placed
+//--- them — went with the board. `DrawStripPickGlyphCount` and the list rows below
+//--- are the picker that is still real.
 //--- TV parity board (2026-09-26): the recents are a BAND of their own now, so the
 //--- grid indexer and the dedupe face that fed it (`DrawStripPickPalIndex`,
 //--- `DrawStripRecentExtra`, `DrawStripPickSwatchAt`) were reachable only through
@@ -177,8 +145,8 @@ bool DrawStripIsToggle(const int slot)
 //--- how many options this popover shows right now (LEVELS = membership rows).
 int DrawStripPickCount(const EDrawKind k, const int slot)
 {
-   // TV parity board: the grid is the user's own 64 — the recents have their own band.
-   if(DrawStripIsColorSlot(slot)) return DrawStripPickPalN();
+   //--- P-PAL-21: a colour seat has NO rows here any more — the list picker is the
+   //--- one that is left, and a colour seat's editor is the CARDS' popup.
    if(slot == DRAW_SLOT_WIDTH) return 5;
    if(slot == DRAW_SLOT_STYLE) return 5;
    if(slot == DRAW_SLOT_RAY) return 4;
@@ -187,11 +155,11 @@ int DrawStripPickCount(const EDrawKind k, const int slot)
    if(slot == DSTRIP_SLOT_LEVELS) return DrawStripGearLevelCount();
    return 0;
 }
-//--- the option's colour (colour picker only; clrNONE elsewhere).
+//--- the option's colour (the list rows carry no colour; clrNONE throughout —
+//--- P-PAL-21 took the colour grid with the board).
 color DrawStripPickColor(const int slot, const int row)
 {
-   if(!DrawStripIsColorSlot(slot) || row < 0 || row >= DrawStripPickPalN()) return clrNONE;
-   return DrawStripPickPal(row);
+   return clrNONE;
 }
 //--- the option's caption (colour cells are swatches: no text, tooltip speaks).
 string DrawStripPickText(const EDrawKind k, const int slot, const int row)
@@ -347,29 +315,6 @@ void DrawStripColorHoverFace(const int cell, const bool active)
       ObjectSetInteger(0, nm, OBJPROP_BORDER_COLOR, rim);
 }
 
-//--- P-DRAW-64 — THE SCRUB'S STATE, shared by the press, the drag and both release
-//--- witnesses. Its writes scale with the GROUP, not with the frame: the hit test
-//--- runs on the cadence, but a member is re-inked only when the CELL really
-//--- changed, so a 64-drawing group costs 64 writes per cell crossing and none
-//--- while the hand rests (G-08/G-09).
-bool DrawStripPalHit(const int mx, const int my, int &cell)
-{
-   cell = -1;
-   if(!s_dsOpen || !DrawStripIsColorSlot(s_dsPicker)) return false;
-   cell = DrawStripColorHoverCellAt(mx, my);
-   if(cell < 0) return false;
-   return (DrawStripColorHoverValue(cell) != clrNONE);
-}
-void DrawStripPalMembers()
-{
-   s_dsPalN = 0;
-   DrawSelPrune();
-   int n = DrawSelCount();
-   for(int i = 0; i < n && s_dsPalN < DRAW_SEL_MAX; i++)
-   { s_dsPalName[s_dsPalN] = DrawSelAt(i); s_dsPalN++; }
-   if(s_dsPalN <= 0 && s_dsObj != "")
-   { s_dsPalName[0] = s_dsObj; s_dsPalN = 1; }
-}
 void DrawStripPalPreview(const int cell)
 {
    color c = DrawStripColorHoverValue(cell);
@@ -476,6 +421,13 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
          return "Lock: " + DrawStripSlotText(k, DRAW_SLOT_LOCK, nm) +
                 " — a locked drawing cannot be moved or edited" + scope;
       case DRAW_SLOT_BOXHALF:
+         // P-UI-139: the same cell, two answers — a rectangle draws a line at its own
+         // middle, a PATH a small circle at each leg's middle. A tooltip that names
+         // the other's feature is the C-05/C-08 lie in a longer coat.
+         if(DrawIsPathSeg(nm))
+            return "50% markers: " + DrawStripSlotText(k, DRAW_SLOT_BOXHALF, nm) +
+                   " — a small circle at the middle of every leg; the path keeps the" +
+                   " shape you drew" + scope;
          return "50% level: " + DrawStripSlotText(k, DRAW_SLOT_BOXHALF, nm) +
                 " — a line at the box's own middle, like a fib level; the box keeps the" +
                 " length you drew" + scope;
@@ -506,9 +458,9 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
 string DrawStripColorRingTip(const string nm, const bool merged)
 {
    string t = "Border color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_COLOR)) +
-              " — click the RING for its palette";
+              " — click the TOP bar for its palette";
    if(merged)
-      t += ", or the CENTRE for the fill's color (" +
+      t += ", or the BOTTOM bar for the fill's color (" +
            DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) + " at " +
            IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) + "%)";
    return t + DrawStripTipScope();
@@ -518,7 +470,7 @@ string DrawStripColorMidTip(const string nm)
    return "Fill color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_FILLCLR)) +
           " at " + IntegerToString(DrawSlotAlphaGet(nm, DRAW_SLOT_FILLCLR)) + " — " +
           ((DrawSlotRead(nm, DRAW_SLOT_FILL) > 0.5) ? "Filled" : "Empty") +
-          " — click the CENTRE for its palette, then drag the bar" + DrawStripTipScope();
+          " — click the BOTTOM bar for its palette, then drag the TR track" + DrawStripTipScope();
 }
 //--- chrome tooltips: grip/badge/actions.
 string DrawStripActTip(const int a)
@@ -656,6 +608,48 @@ int DrawStripLevelFind(const string nm, const double v)
    for(int i = 0; i < n; i++)
       if(MathAbs(DrawLevelValue(nm, i) - v) < 0.000001) return i;
    return -1;
+}
+
+//--- DIAG-136 (2026-10-02) — DOES THE BOX WEAR THE INK IT OWNS?
+//--- Two different failures answer to one complaint, so they get two witnesses. The
+//--- 2 s pass already walks every rectangle, so this is where a chart-side fact can be
+//--- cheap: it is called ONLY for a rectangle the product itself coloured (a `[CL…]`
+//--- tag), which is one `StringFind` for everybody else and nothing at all.
+//--- THE QUESTION, in the order that settles it: (1) the pure colour the box owns, read
+//--- off its own tag; (2) what the chart must wear at that opacity, via the ONE blend
+//--- owner (`DrawSlotRenderColor`) — so this witness can never disagree with what the
+//--- colour write would have produced; (3) what it ACTUALLY wears.
+//--- VERDICT, and each arm is a DIFFERENT bug:
+//---   MISMATCH — the object wears something no write produced (a stale repaint, a
+//---            foreign writer, a terminal reset): the eyes are on an ink nobody chose.
+//---   INVISIBLE — the ink equals the chart background: the border is drawn and cannot
+//---            be seen. This is «اصلا رنگ نمیکره» in its literal form, and it is the one
+//---            arm a screenshot alone cannot distinguish from «no box».
+//--- SILENT WHEN HEALTHY, which is the point: a chart with fifty correct boxes writes
+//--- nothing, so the line that IS there is the whole finding.
+void BoxInkWitness(const string nm)
+{
+   static string lastSig = "";
+   if(nm == "" || ObjectFind(0, nm) < 0) return;
+   color pure = clrNONE;
+   if(!DrawSlotColorPure(nm, pure)) return;          // not ours — one StringFind
+   color want = DrawSlotRenderColor(nm, pure);
+   int have = (int)ObjectGetInteger(0, nm, OBJPROP_COLOR);
+   color bg = GetCachedChartBgColor();
+   bool invisible = (MathAbs(have - (int)bg) <= 2);
+   bool mismatch = (MathAbs(have - (int)want) > 2);
+   if(!invisible && !mismatch) return;
+   string sig = nm + "|" + IntegerToString(have) + "|" + IntegerToString((int)want) +
+                "|" + IntegerToString((int)bg);
+   if(sig == lastSig) return;                         // one line per DISTINCT state
+   lastSig = sig;
+   DrawStripDiagEmit("[drawstrip] BOXCLEAR name=\"" + nm + "\" " +
+                     (invisible ? "INVISIBLE" : "MISMATCH") +
+                     " have=" + IntegerToString(have) +
+                     " want=" + IntegerToString((int)want) +
+                     " pure=" + IntegerToString((int)pure) +
+                     " bg=" + IntegerToString((int)bg) +
+                     " opacity=" + IntegerToString(DrawSlotOpacityGet(nm)));
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1042,6 +1036,20 @@ void BoxExtrasPump()
       //--- reached yet. One read (which migrates on the way) answers both questions.
       bool mid = false; int ext = BOXEXT_OFF, n = 0;
       BoxMarkRead(nm, mid, ext, n);
+      //--- DIAG-136 (2026-10-02) — THE CHART-SIDE HALF OF THE SAME COMPLAINT.
+      //--- «باکس اصلا رنگ نمیکره» named the BOX, not the panel, and the panel detector
+      //--- (DIAG-135) would have stayed silent on it. Same rare-on-demand shape, so the
+      //--- same answer: the pass that ALREADY walks every rectangle every 2 s now asks
+      //--- the one question that settles it — does the ink the chart wears equal the ink
+      //--- the box's own stored colour says it must wear, and is it any closer to the
+      //--- chart background than the colour itself? A border that has blended all the way
+      //--- into the background is not «a different colour», it is NO colour — and that is
+      //--- the exact shape of «اصلا رنگ نمیکنه».
+      //--- GATED ON THE PRODUCT'S OWN TAG: a rectangle with no `[CL…]` was never
+      //--- coloured by us and is not ours to judge, so an ordinary hand-drawn box costs
+      //--- one `StringFind` and nothing else. One line per DISTINCT signature, as
+      //--- DIAG-135, for the same reason — a rare bug must not flood the file.
+      BoxInkWitness(nm);
       if(!mid && ext == BOXEXT_OFF) continue;
       if(mid) BoxMidSync(nm);
       if(ext != BOXEXT_OFF && newBar) BoxExtendStep(nm);

@@ -62,6 +62,16 @@
 #resource "\\Files\\Icons\\bk_fill_on.bmp"
 #resource "\\Files\\Icons\\bk_half_off.bmp"
 #resource "\\Files\\Icons\\bk_half_on.bmp"
+// P-UI-139/140: the PATH's own 50 % face (two legs, a dot on each middle) — declared
+// here beside the box's pair, because a raster a unit PAINTS must be `#resource`d in
+// that same unit (a missing declaration is a silent runtime no-op).
+#resource "\\Files\\Icons\\bk_mid_off.bmp"
+#resource "\\Files\\Icons\\bk_mid_on.bmp"
+//--- P-UI-140: `path_mid_dot.bmp` is declared BESIDE ITS PAINTER (PathTool.mqh), not
+//--- here: a `#resource` is a COMPILE-time bind of the unit that PAINTS the raster
+//--- (P-UI-131's two-tree law), and the path's marker is painted by the path — which
+//--- is in BOTH builds, while this file is not. Declaring it here left Lite painting a
+//--- raster it never declared.
 #resource "\\Files\\Icons\\bk_ext_off.bmp"
 #resource "\\Files\\Icons\\bk_ext_on.bmp"
 #resource "\\Files\\Icons\\bk_back_on.bmp"
@@ -83,6 +93,15 @@
 #resource "\\Files\\Icons\\ds_bot_l.bmp"
 #resource "\\Files\\Icons\\ds_bot_m.bmp"
 #resource "\\Files\\Icons\\ds_bot_r.bmp"
+//--- P-PAL-17 (2026-10-02) - THE COLOUR BOARD'S OWN NINE, `ds_pb_*`, baked at the modern corner so the box around the palette speaks the same recipe as the cells inside it. Declared beside the set it replaces for family 2 ONLY; the strip's and the settings panel's plate keep the shipped `ds_*` art, byte for byte. Level 0 only: the board has no transparency levels (P-DRAW-89).
+#resource "\\Files\\Icons\\ds_pb_top_l.bmp"
+#resource "\\Files\\Icons\\ds_pb_top_m.bmp"
+#resource "\\Files\\Icons\\ds_pb_top_r.bmp"
+#resource "\\Files\\Icons\\ds_pb_mid_l.bmp"
+#resource "\\Files\\Icons\\ds_pb_mid_r.bmp"
+#resource "\\Files\\Icons\\ds_pb_bot_l.bmp"
+#resource "\\Files\\Icons\\ds_pb_bot_m.bmp"
+#resource "\\Files\\Icons\\ds_pb_bot_r.bmp"
 //--- P-DRAW-43 (2026-09-25) — THE PLATE'S TRANSPARENCY LEVELS, baked (MT4 has no
 //--- runtime image API, so a % plate is a file set, not a slider): the same eight
 //--- pieces at 30/60/90 %, the levels `DSTRIP_PLATE_T` behind the gear's own row.
@@ -569,6 +588,12 @@ static int      s_dsBadgeW = 0;
 static int      s_dsBadgeX = 0;
 static int      s_dsSepX[2];
 static int      s_dsActX[DSTRIP_ACT_N];
+//--- DIAG-135 (2026-10-02) — THE ROW-BLANK SIGNATURE. The paint checks its own
+//--- invariant (a reserved cell that painted nothing) and writes ONE line per DISTINCT
+//--- state; this string is what makes «one line per state» true, so a panel that stays
+//--- sick writes once instead of on every repaint, and a panel that recovers re-arms.
+//--- File scope for the same reason the z-ladder is: it must outlive the paint call.
+static string   dsWitnessSig = "";
 //--- P-DRAW-08k/08j (open-guard) RETIRED with the hold (DRHOLD-OFF, 2026-09-23):
 //--- the guard existed because the hold fired while the button was still DOWN
 //--- and its release CLICK needed swallowing. Right-click opens ON the release

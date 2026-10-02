@@ -137,18 +137,81 @@ void PalDraw()
    int tgy=py+PalTgtY();
    PnlSetLabel(p+"tgtl", px+PAL_PAD, tgy+8, "APPLY TO", PNL_CLR_MUTED, PNL_PT_PALSEC);
    ObjectSetInteger(0,p+"tgtl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   color tgtClr=PaletteKindColor(g_PalKind);
-   color tgtVis=(tgtClr==clrNONE)?PNL_CLR_AUTO_CELL:tgtClr;
-   PnlSetRect(p+"tgtc", px+PAL_PAD+62, tgy+6, 14, 14, tgtVis);
-   ObjectSetInteger(0,p+"tgtc",OBJPROP_BORDER_COLOR,PnlSwatchBorder(tgtVis,PNL_CLR_FIELD));
-   ObjectSetInteger(0,p+"tgtc",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   PnlSetLabel(p+"tgtn", px+PAL_PAD+82, tgy+8, PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 8);
-   ObjectSetInteger(0,p+"tgtn",OBJPROP_ZORDER,Z_PANEL_POP_BG);
-   PnlSetButton(p+"tgt", px+w-PAL_PAD-64, tgy+3, 64, 20, "cycle  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_SEG_TX);
-   ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(7));   // P-UI-30
-   ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
-   ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
+   //--- P-DRAW-64a2 (2026-10-02) — A DRAWING HAS TWO COLOURS, SO IT GETS TWO CHIPS.
+   // The strip merged the border and the interior into ONE seat (P-DRAW-64a), so the
+   // popup has to un-merge it: `cycle >>` walks ALL 29 product targets and a drawing's
+   // own two are the LAST two rungs, so «از کجا رنگ بوردر رو عوض کنم» had no answer
+   // here either. Two NAMED chips instead — each wearing its own colour — and the
+   // click asks the STRIP which SLOT it means (below): the slot↔role vocabulary is
+   // the strip's, the kind is the panels', and neither guesses the other's word.
+   bool drawTgt = PalKindIsDrawing(g_PalKind);
+   if(drawTgt)
+   {
+      int tw = (w - 2*PAL_PAD - 56 - 6) / 2;
+      for(int r = 0; r < 2; r++)
+      {
+         bool isB = (r == 0);
+         string sfx = isB ? "tgtB" : "tgtF";
+         int bx = px + PAL_PAD + 56 + r*(tw+6);
+         int knd = isB ? PAL_DRAW_BORDER : PAL_DRAW_FILL;
+         color c = PaletteKindColor(knd);
+         color vis = (c==clrNONE) ? PNL_CLR_AUTO_CELL : c;
+         bool on = (g_PalKind == knd);
+         //--- P-UI-137 (2026-10-02, user: the two APPLY-TO chips paint with NO WORDS):
+         //--- MT4 PAINTS IN CREATION ORDER and a z-order write never raises anything
+         //--- (P-LOG-10's measured law). `PalDraw` opens by wiping the whole `Pal_`
+         //--- family, so the paint ORDER here IS the creation order — and the chip
+         //--- and its name were born BEFORE their own button, so the button's face
+         //--- covered both. That is why the `Z_PANEL_POP_FG` write (P-DRAW-64a2)
+         //--- never fixed it: it ordered the CLICKS, not the paint.
+         //--- THE HOST FIRST, THEN ITS INK — the plate law, applied to a button.
+         PnlSetButton(p+sfx, bx, tgy+3, tw, 20, "", PNL_CLR_SEG_OFF, on ? PNL_CLR_ACCENT : PNL_CLR_SEG_BD, true);
+         ObjectSetInteger(0,p+sfx,OBJPROP_ZORDER,Z_PANEL_POP_CTL);
+         ObjectSetString(0,p+sfx,OBJPROP_TOOLTIP,
+            isB ? "The drawing's BORDER — click, then pick a colour here"
+                : "The drawing's FILL — click, then pick a colour here");
+         PnlSetRect(p+sfx+"c", bx+5, tgy+7, 10, 10, vis);
+         ObjectSetInteger(0,p+sfx+"c",OBJPROP_BORDER_COLOR,PnlSwatchBorder(vis,PNL_CLR_FIELD));
+         //--- Z_PANEL_POP_FG, NOT _BG: the chip and the name sit INSIDE their own
+         //--- button, and the button is on _CTL — at _BG they sat UNDER it in the
+         //--- CLICK order too. The paint order above is what makes them VISIBLE;
+         //--- this rung is what makes them hittable-inert and last-drawn.
+         ObjectSetInteger(0,p+sfx+"c",OBJPROP_ZORDER,Z_PANEL_POP_FG);
+         PnlSetLabel(p+sfx+"t", bx+19, tgy+8, isB ? "Border" : "Fill", PNL_CLR_TITLE, 8);
+         ObjectSetInteger(0,p+sfx+"t",OBJPROP_ZORDER,Z_PANEL_POP_FG);
+      }
+      //--- and the single-target row leaves NOTHING behind (P-DRAW-14): the cycle
+      //--- button and its name are not painted while a drawing is open.
+      for(int q = 0; q < 3; q++)
+      {
+         string gn = (q==0) ? p+"tgt" : (q==1) ? p+"tgtc" : p+"tgtn";
+         if(ObjectFind(0,gn) >= 0) ObjectDelete(0,gn);
+      }
+   }
+   else
+   {
+      color tgtClr=PaletteKindColor(g_PalKind);
+      color tgtVis=(tgtClr==clrNONE)?PNL_CLR_AUTO_CELL:tgtClr;
+      PnlSetRect(p+"tgtc", px+PAL_PAD+62, tgy+6, 14, 14, tgtVis);
+      ObjectSetInteger(0,p+"tgtc",OBJPROP_BORDER_COLOR,PnlSwatchBorder(tgtVis,PNL_CLR_FIELD));
+      ObjectSetInteger(0,p+"tgtc",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+      PnlSetLabel(p+"tgtn", px+PAL_PAD+82, tgy+8, PalTgtLabel(g_PalTgt), PNL_CLR_TITLE, 8);
+      ObjectSetInteger(0,p+"tgtn",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+      PnlSetButton(p+"tgt", px+w-PAL_PAD-64, tgy+3, 64, 20, "cycle  >>", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
+      ObjectSetInteger(0,p+"tgt",OBJPROP_COLOR,PNL_CLR_SEG_TX);
+      ObjectSetInteger(0,p+"tgt",OBJPROP_FONTSIZE,PnlPt(7));   // P-UI-30
+      ObjectSetInteger(0,p+"tgt",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
+      ObjectSetString(0,p+"tgt",OBJPROP_TOOLTIP,"Which target gets the picked color — cycles all color targets (Trigger, Lines, HTF, ...)");
+      for(int q = 0; q < 2; q++)
+      {
+         string sfx = (q==0) ? "tgtB" : "tgtF";
+         for(int k2 = 0; k2 < 3; k2++)
+         {
+            string gn = (k2==0) ? p+sfx : (k2==1) ? p+sfx+"c" : p+sfx+"t";
+            if(ObjectFind(0,gn) >= 0) ObjectDelete(0,gn);
+         }
+      }
+   }
 
    // footer: Done + mini transparency (both tabs — no MIXER switch needed).
    // P-DRAW-49: the TRACK is measured from the columns left over (PalTrX/PalTrW),
@@ -173,6 +236,13 @@ void PalDraw()
    ObjectSetInteger(0,p+"opf",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
    PnlSetLabel(p+"opv", otx+otw+6, fy+9, trOk?IntegerToString(ClampInt(tr0,0,100))+"%":"--", PNL_CLR_VALUE, 8);
    ObjectSetInteger(0,p+"opv",OBJPROP_ZORDER,Z_PANEL_POP_BG);
+//--- P-UI-137: the popup witnesses its own captions ONCE PER OPEN — the census and
+//--- its epoch flag live in their own owners (`BiotakPanels_PalDiag.mqh` for the
+//--- census, PalA for `PalDiagEpoch`), because a witness is an owner and PalB was one
+//--- line over the 1500 ceiling with it inlined.
+#ifndef BUILD_LITE
+   PalDiagCensus(px, py, w, h);
+#endif
    ChartRedraw();
 }
 
@@ -465,6 +535,20 @@ int PalHandleClick(const string name)
    if(id=="hex")
    {
       g_PalHexFocus=true;
+      return REFRESH_NONE;
+   }
+   //--- P-DRAW-64a2 — THE TWO ROLE CHIPS. The popup holds the KIND, the strip holds the
+   //--- SLOT, and a click that changed one without the other would paint the fill's
+   //--- slot with the border's colour — so the strip is asked, in its own vocabulary,
+   //--- and it answers with the slot the rest of this module already reads.
+   if(id=="tgtB" || id=="tgtF")
+   {
+      bool wantBorder = (id=="tgtB");
+      PalHoverRestore();   // leaving a role must not leave ITS colour behind
+      DrawStripPalRoleSet(wantBorder ? 0 : 1);
+      g_PalKind = wantBorder ? PAL_DRAW_BORDER : PAL_DRAW_FILL;
+      g_PalTgt  = PalTgtIndexOfKind(g_PalKind);
+      PalDraw();
       return REFRESH_NONE;
    }
    if(id=="tgt")

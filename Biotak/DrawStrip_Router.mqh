@@ -10,43 +10,13 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    if(!s_dsOpen) { DrawStripGripRelease(); return; }
    if(left && s_dsLeftPress)
    {
-      // P-DRAW-48: THE OPACITY BAR'S OWN PRESS, asked FIRST — the bar lives on the
-      // board, so its press is never a carry and never the chart's. Without this
-      // term the gesture fell through to the terminal and panned the chart under
-      // the board (the report: «شفافیت که درگ میکنم چارت پشتش تکون میخوره»).
-      if(DrawStripOpBarAt(mx, my))
-      {
-      //--- P-UI-113d: the bar owns the view while held
-         ChartViewLockAcquire();   // P-UI-113d: the bar owns the view while held
-         s_dsOpGrab = true;
-         s_dsOpMs = 0;
-         if(DrawStripOpDragTo(mx)) DrawStripPaint();   // a tap ON the bar sets it
-         return;
-      }
-      //--- P-DRAW-50: the PAGE SEATS come before the scrub — a seat is a
-      //--- one-shot step, not a colour cell, and a scrub started on one would
-      //--- read the cell under it and paint a colour nobody pressed.
-      int pgk=DrawStripPageAt(mx,my);
-      if(pgk >= 0)
-      {
-         DrawStripPageStep(pgk);
-         return;
-      }
-      //--- P-DRAW-64: THE PALETTE SCRUB — a press on a colour cell previews while
-      //--- the hand drags (the release applies). Asked AFTER the bar (the bar owns
-      //--- its own row) and BEFORE the carries, so a press on a swatch is never a
-      //--- carry of the board it sits on.
-      int palCell = -1;
-      if(DrawStripPalHit(mx, my, palCell))
-      {
-         ChartViewLockAcquire();   // P-UI-113d: the scrub owns the view while held
-         s_dsPalGrab = true;
-         s_dsPalMs = 0;
-         s_dsPalCell = -1;
-         DrawStripPalMembers();
-         DrawStripPalTo(palCell);
-         return;
-      }
+      //--- P-PAL-21 (2026-10-02) — WHAT USED TO BE ASKED FIRST IS GONE. This press
+      //--- edge owned the board: the opacity bar, the HSV studio, the two page
+      //--- arrows and the palette scrub — five hit tests, each claiming the press
+      //--- before the carries could see it, for a plate the strip no longer paints
+      //--- (a colour cell opens the CARDS' palette, P-PAL-19). What remains is the
+      //--- strip's own grip and the settings panel's, and they are the only two
+      //--- things a press on this surface can be.
       int which = DrawStripGripWhich(mx, my);
       if(which != 0)
       {
@@ -56,14 +26,6 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
             s_dsGGripLive = true;
             s_dsGGripDX = mx - s_dsGEX;
             s_dsGGripDY = my - s_dsGEY;
-         }
-         else if(which == 3)
-         {
-            // P-DRAW-48: the board's own header — its offset is off ITS origin,
-            // so the card follows the hand and the strip stays where it was put.
-            s_dsBGripLive = true;
-            s_dsBGripDX = mx - s_dsBX;
-            s_dsBGripDY = my - s_dsBY;
          }
          else
          {
@@ -75,34 +37,7 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    }
    if(!left)
    {
-      //--- P-DRAW-64: the scrub's own release — it applies (or cancels) FIRST, then
-      //--- the one ender hands the view back (the flag is still its to clear).
-      if(s_dsPalGrab) DrawStripPalRelease(mx, my);
       DrawStripGripRelease();
-      return;
-   }
-   //--- P-DRAW-48: the bar's own carry — the value follows the hand and the view is
-   //--- asserted every step, so the chart behind the board cannot take the scroll
-   //--- back mid-drag (A-09/G-07). One paint per real change, on the carry's cadence.
-   if(s_dsOpGrab)
-   {
-      ChartViewLockAssert();
-      uint nowOp = GetTickCount();
-      if(nowOp - s_dsOpMs < DSTRIP_GRIP_MS) return;
-      s_dsOpMs = nowOp;
-      if(DrawStripOpDragTo(mx)) DrawStripPaint();
-      return;
-   }
-   //--- P-DRAW-64: the scrub's hold — the hit test on the carry's cadence, the
-   //--- re-ink only when the CELL really changed (see the note on the state block).
-   if(s_dsPalGrab)
-   {
-      ChartViewLockAssert();
-      uint nowPal = GetTickCount();
-      if(nowPal - s_dsPalMs < DSTRIP_GRIP_MS) return;
-      s_dsPalMs = nowPal;
-      int cell = -1;
-      DrawStripPalTo(DrawStripPalHit(mx, my, cell) ? cell : -1);
       return;
    }
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
@@ -127,26 +62,6 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
       DrawStripPaint();
       return;
    }
-   //--- P-DRAW-48: THE BOARD's carry (its header), before the strip's.
-   if(s_dsBGripLive)
-   {
-      ChartViewLockAssert();
-      uint nowB = GetTickCount();
-      if(nowB - s_dsBGripMs < DSTRIP_GRIP_MS) return;
-      s_dsBGripMs = nowB;
-      int bx2 = mx - s_dsBGripDX, by2 = my - s_dsBGripDY;
-      if(bx2 < gm) bx2 = gm;
-      if(by2 < gm) by2 = gm;
-      if(bx2 > cw - s_dsBW - gm) bx2 = cw - s_dsBW - gm;
-      if(by2 > ch - s_dsBH - gm) by2 = ch - s_dsBH - gm;
-      if(bx2 == s_dsBX && by2 == s_dsBY) return;
-      s_dsBX = bx2; s_dsBY = by2;
-      // The hand placed it: that spot IS the undocked state (the reference's pin).
-      s_dsBManual = true;
-      s_dsBDock = false;
-      DrawStripPaint();
-      return;
-   }
    if(!s_dsGripLive) return;
    ChartViewLockAssert();   // P-BK-14: a third writer (a panel closing, a template reset) can
                             // flip the props back while the button is still down
@@ -161,9 +76,6 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    if(nx == s_dsX && ny == s_dsY) return;
    s_dsX = nx; s_dsY = ny;
    DrawStripHomeSet(s_dsX, s_dsY);   // P-DRAW-41: the hand just moved the home
-   // P-DRAW-48: a DOCKED board follows its strip; a floated one stays where the
-   // hand left it (that is the pin's own meaning).
-   if(DrawStripIsColorSlot(s_dsPicker) && !s_dsBManual) DrawStripBoardPlace();
    DrawStripPaint();
 }
 
@@ -353,6 +265,7 @@ bool DrawStripHoldSelect()
    if(nm == "" || ObjectFind(0, nm) < 0) return false;
    if(DrawKindOf(nm) == DK_NONE) return false;
    if(DrawIsHRay(nm)) return true;   // P-HR-04: the dot IS the selection — nothing to assert
+   if(DrawIsPathSeg(nm)) return true;   // P-UI-136: the handles are the path's selection
    if(DrawIsIndicatorObject(nm)) return false;
    if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTABLE)) return false;
    if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) return true;
@@ -398,7 +311,7 @@ void DrawStripHoldFire()
    if(!DrawStripOpenAt(hit, hx, hy)) return;
    // P-HR-06: the dot IS the ray's selection — no native flag to assert and no
    // repair poll to arm (that poll would redraw + log on every ray open).
-   if(!DrawIsHRay(hit))
+   if(!DrawIsHRay(hit) && !DrawIsPathSeg(hit))
    {
       DrawStripHoldSelect();     // P-UI-113f: native anchors/settings survive the hold
       DrawStripHoldSelectArm();  // P-UI-113g: prove it again after MT4 commits the release
@@ -856,20 +769,15 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       for(int i = 0; i < DSTRIP_MAX_SLOTS; i++)
       {          if(sparam == DrawStripObjName(i) || sparam == DrawStripIconName(i) ||
              sparam == DrawStripIconName(i) + "C" || sparam == DrawStripIconName(i) + "S" ||
-             sparam == DrawStripIconName(i) + "C2")
+             sparam == DrawStripIconName(i) + "C2" || sparam == DrawStripIconName(i) + "R")  // P-DRAW-64a2: the BORDER bar
           { DrawStripTap(i, sparam); return DrawStripClickFamily(); }
       }       if(sparam == DrawStripGripName() || sparam == DrawStripGripIconName() ||
-          sparam == DrawStripGripIconName() + "C" || sparam == DrawStripBadgeName() ||
-          //--- P-DRAW-83: the head's version chip is chrome on the head's own
-          //--- carry (the head's drag is geometric, `DrawStripGripWhich`), never a
-          //--- control — and it was not named anywhere, so a press on it fell past
-          //--- every branch and out to the CHART. One more no-op, like the mark and
-          //--- the title beside it.
-          sparam == DrawStripGearHeadName("VB") ||
-          // TV parity board: its grip / name tiles are the carry's, not a control's.
-          sparam == DrawStripPHeadGName() || sparam == DrawStripPHeadGChipName() ||
-          sparam == DrawStripPHeadGIconName() || sparam == DrawStripPRecLabelName() ||
-          sparam == DrawStripPHexLbName())
+          sparam == DrawStripGripIconName() + "C" || sparam == DrawStripBadgeName() ||//--- P-DRAW-83: the head's version chip is chrome on the head's own
+      //--- carry (the head's drag is geometric, `DrawStripGripWhich`), never a
+      //--- control — and it was not named anywhere, so a press on it fell past
+      //--- every branch and out to the CHART. One more no-op, like the mark and
+      //--- the title beside it.
+          sparam == DrawStripGearHeadName("VB"))
           return DrawStripClickFamily();   // drag / info / tab bed: no tap
       for(int a = 0; a < DSTRIP_ACT_N; a++)
       {
@@ -885,44 +793,14 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
           DrawStripPaint();
           return DrawStripClickFamily();
        }
-       // P-DRAW-64a: the board's header NAMES THE ROLES — each segment sets its own
-       // (see the paint), so there is no secret toggle to discover.
-       if(sparam == "PnlDrawS_PHeadB" && DrawStripMergedColor(s_dsKind) &&
-          DrawStripIsColorSlot(s_dsPicker))
-       {
-          if(s_dsPicker == DRAW_SLOT_COLOR) return DrawStripClickFamily();
-          s_dsPicker = DRAW_SLOT_COLOR;
-          DrawStripLayout();
-          DrawStripPaint();
-          return DrawStripClickFamily();
-       }
-       if(sparam == "PnlDrawS_PHeadF" && DrawStripMergedColor(s_dsKind) &&
-          DrawStripIsColorSlot(s_dsPicker))
-       {
-          if(s_dsPicker == DRAW_SLOT_FILLCLR) return DrawStripClickFamily();
-          s_dsPicker = DRAW_SLOT_FILLCLR;
-          DrawStripLayout();
-          DrawStripPaint();
-          return DrawStripClickFamily();
-       }
-       // TV parity board: the RECENT band's cells, and the HEX field (a tap there
-       // is a tap on the field itself — it takes focus for typing, no action).
-       for(int i = 0; i < DSTRIP_RECENT_MAX; i++)
-          if(sparam == DrawStripPRecName(i) || sparam == DrawStripPRecGlassName(i))
-          { DrawStripPickTapRecent(i); return DrawStripClickFamily(); }
-       // P-DRAW-48: a tap on the field takes the focus, and `s_dsHexFocus` is what
-       // stops the live seed from overwriting the hex being typed.
-       if(sparam == DrawStripPHexEdName()) { s_dsHexFocus = true; return DrawStripClickFamily(); }
-       // P-DRAW-48: the board's PIN (the reference's dock/undock).
-       if(sparam == "PnlDrawS_PHeadP" || sparam == "PnlDrawS_PHeadPI")
-       {
-          s_dsBDock = !s_dsBDock;
-          s_dsBManual = !s_dsBDock;      // floating = wherever it stands now
-          if(s_dsBDock) DrawStripBoardPlace();
-          DrawStripLayout();
-          DrawStripPaint();
-          return DrawStripClickFamily();
-       }
+       //--- P-PAL-21 (2026-10-02) — THE BOARD'S OWN CONTROLS ARE GONE WITH THE BOARD.
+       //--- Its header named the two roles, its band held the RECENT cells, it had a
+       //--- HEX field to focus and a pin to dock it to the strip. Every one of those
+       //--- was a branch that could only fire while a colour seat was the picker, and
+       //--- a colour seat cannot be the picker since P-PAL-19 (the quick row's colour
+       //--- cell asks the CARDS' palette instead). The role switch now lives where the
+       //--- role is: the two bars on the cell, and the popup's two named chips
+       //--- (P-DRAW-64a2).
        // popover rows (button, face, label — one tap).
       for(int r = 0; r < DSTRIP_PICK_MAX; r++)
       {
@@ -1033,12 +911,12 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       return true;
    }
    // P-DRAW-13: gear edits commit on Enter (ENDEDIT).
-   // P-DRAW-48: THE `if` WAS INSIDE THIS COMMENT (the closing `)` and the `if` on one
-   // line), so the block below ran on EVERY event — the hex field's commit fired on
-   // its own click, before the field had ever taken a keystroke.
+   //--- P-PAL-21: the board's HEX field went with the board, so `DrawStripPopHexEnd`
+   //--- is gone — and the note that follows it (P-DRAW-48) stays, because it is the
+   //--- reason this branch is a branch and not a bare line: the gear's five edit
+   //--- fields are ENDEDIT's only owners here.
    if(id == CHARTEVENT_OBJECT_ENDEDIT)
     {
-       if(sparam == DrawStripPHexEdName()) { DrawStripPopHexEnd(); return true; }
        for(int e = 0; e < 5; e++)
           if(sparam == DrawStripEditName(e)) { DrawStripEditEnd(e); return true; }
        return false;
@@ -1056,13 +934,11 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
         //--- writes `OBJPROP_COLOR` (Toolbar_A) and NOT the pure tag its own
         //--- property is read from, so the shape wore a colour its tags did not
         //--- name. Measured consequence of one press-and-lift on a swatch: the swatch
-        //--- stayed rimmed in the accent (`s_dsPalCell` never cleared), the panel's
-        //--- colour cell, the board's HEX field and every `PickIsCur` ring kept
-        //--- showing the OLD colour, and no undo step existed for the change. The
-        //--- move path already had the right order — apply, then the one ender — and
-        //--- `DrawStripPalRelease`'s own `s_dsPalDoneMs` witness makes a second
-        //--- report of the same release a no-op, so this is safe on both channels.
-        if(s_dsPalGrab) DrawStripPalRelease(rcx, rcy);
+        //--- stayed rimmed in the accent, the colour cell and every `PickIsCur` ring
+        //--- kept showing the OLD colour, and no undo step existed for the change.
+        //--- P-PAL-21: the scrub's own release (`DrawStripPalRelease`) went with the
+        //--- board — the one scrub left is the grip carry, which `DrawStripGripRelease`
+        //--- is, and which is asked on the line below as it always was.
         DrawStripGripRelease();   // motionless releases emit no MOVE (P-LM-13 net)
         // P-UI-113i: THE RELEASE'S OWN DRAWING IS NEVER AN OUTSIDE CLICK. The press
 
@@ -1080,6 +956,13 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // on a drawing, the strip appears, the hand drifts two digits, let go — and
       // the toolbar they were reaching for is gone.
       if(relWasDrag) return false;
+      //--- P-PAL-20 — THE WITNESS, BECAUSE WORKING IS SILENT. This dismissal used to
+      //--- be the death of a colour pick («یک رنگ انتخاب می‌کنم کل استریپ بسته می‌شه»):
+      //--- the popup the strip itself opened is not the plate, so `PointInside` read
+      //--- false on the release pixel over it. Now the ledger answers, and a release
+      //--- it catches says so ONCE, through the flushed channel (never `Print` —
+      //--- P-LOG-3): `kept=` is the proof the strip survived its own popup.
+      int ownedPop = (int)DrawStripSurfaceAt(rcx, rcy);
       if(!DrawStripPointInside(rcx, rcy))
       {
          // DIAG-113 (temporary): one line per dismissal so the log names the
@@ -1088,6 +971,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
                " obj=\"", s_dsObj, "\"");
          DrawStripClose();
       }
+      else if(ownedPop == 1)
+         DrawStripDiagEmit("[drawstrip] SURFHIT release kept the strip at " + IntegerToString(rcx)
+                          + "," + IntegerToString(rcy) + " ledger=" + IntegerToString(s_dsSurfN)
+                          + " obj=\"" + s_dsObj + "\"");
    }
    return false;
 }

@@ -20,6 +20,8 @@ bk_levels.bmp
 bk_lock_off.bmp
 bk_lock_on.bmp
 bk_lock_on_g.bmp
+bk_mid_off.bmp
+bk_mid_on.bmp
 bk_more.bmp
 bk_pencil.bmp
 bk_ray0.bmp
@@ -69,6 +71,16 @@ ds_mid_r.bmp
 ds_mid_r_t30.bmp
 ds_mid_r_t60.bmp
 ds_mid_r_t90.bmp
+ds_palknob.bmp
+ds_palstudio.bmp
+ds_pb_bot_l.bmp
+ds_pb_bot_m.bmp
+ds_pb_bot_r.bmp
+ds_pb_mid_l.bmp
+ds_pb_mid_r.bmp
+ds_pb_top_l.bmp
+ds_pb_top_m.bmp
+ds_pb_top_r.bmp
 ds_ring32.bmp
 ds_swatch24.bmp
 ds_top_l.bmp
@@ -207,6 +219,9 @@ pal_cell26.bmp
 pal_grip.bmp
 pal_ring22.bmp
 pal_ring26.bmp
+path_mid_dot.bmp
+path_off.bmp
+path_on.bmp
 pin_off.bmp
 pin_on.bmp
 pnl_actbg_gold.bmp

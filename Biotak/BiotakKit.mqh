@@ -125,7 +125,21 @@ static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,fal
 // sense on, and a bulk pick here would only turn AUTO off everywhere.
 #define PAL_ZONE_EDGE_TOP    26   // MID ZONE edge upper line (the LIT half)
 #define PAL_ZONE_EDGE_BOTTOM 27   // MID ZONE edge lower line (the SHADED half)
-#define PAL_BASE_TARGETS 25
+//--- P-PAL-19 (2026-10-02) — THE STRIP'S OWN TWO TARGETS. The strip no longer has a
+//--- colour board of its own: it opens THIS palette (the one every card already
+//--- uses) on the drawing it serves, and these two kinds are how the popup says
+//--- which. They are APPENDED, never inserted — a kind index is persisted in the
+//--- panel's own state and in the recent/target rings, so renumbering one would
+//--- repaint old targets with new meanings.
+#define PAL_DRAW_BORDER   28  // the strip's drawing BORDER colour
+#define PAL_DRAW_FILL     29  // …and its FILL
+//--- P-PAL-19c: the RING now reaches the strip's two, so «cycle >>» walks
+//--- Edge Top / Edge Bottom / Drawing Border / Drawing Fill at its end. The name
+//--- table (PAL_TGT_NAMES_N 29) already maps that tail; the ring's stop was still
+//--- 25, which made a page opened on a drawing unreachable BY cycling — the user
+//--- asked for border and fill to be separate, and a target you cannot cycle to is
+//--- not separate, it is missing.
+#define PAL_BASE_TARGETS 29
 
 //--- factory default colors (Reset actions)
 color DefTriggerColor()      { return clrBlack; }

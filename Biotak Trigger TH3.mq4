@@ -52,6 +52,7 @@
 #include "Biotak\BaseKnotTool.mqh"
 // P-HR-01: Horizontal Ray (Tools cell → 1 click places; same layer, same rule).
 #include "Biotak\HRayTool.mqh"
+#include "Biotak\PathTool.mqh"
 
 //                                                                    
 // Cache & Object Management Systems
@@ -296,6 +297,36 @@ void OnChartEvent(const int id,
   // P-DRAW-08: the drawing strip's own buttons and its dismiss clicks. Its own
   // owner, its own objects — it shares no state with the panels.
   DrawStripOnEvent(id,lparam,dparam,sparam);
+  // P-PAL-19 (2026-10-02) — THE ONE BRIDGE. DrawStrip is include 99 and the panels
+  // are 124, and MQL4 needs a definition before its use, so the strip cannot call
+  // `PalOpenDraw` itself: it leaves a REQUEST (DrawStripPalAsk) and this line — the
+  // first place in the program that sees BOTH sides — performs the open. One
+  // direction, one place, no forward declaration, and the strip has no knowledge of
+  // the palette's existence beyond this handshake.
+  int palAsk = DrawStripPalAsked();
+  if(palAsk >= 0) PalOpenDraw(DrawStripPlateX(), DrawStripPlateY(), DrawStripPlateW());
+  // P-PAL-20 (2026-10-02) — THE LEDGER, REWRITTEN WHOLE, EVERY EVENT, AND WRITTEN
+  // LAST. This is the same bridge's second direction and it exists for one reason: a
+  // colour pick is a release on TWO channels, `HandleUIChartEvent` serves the palette
+  // first (above), and then the strip asks `DrawStripPointInside` about the release
+  // PIXEL — a pixel on the popup, not on the plate — read false and closed the whole
+  // strip (DrawStrip_Router:1113). The strip owns that popup, so its pixels are its
+  // pixels. The strip cannot see `g_PalX/PalW()`; these lines are the only place that
+  // can, and LAST is the whole discipline: the ledger answers for the chart as the
+  // event LEFT it, so a popup closed above is already out of it.
+  //
+  // P-PAL-19f — AND THE REPAINT IS SPENT HERE, ONCE, AFTER the popup's route. The
+  // apply owns a flag and nobody repaints from inside a gesture it does not own
+  // (P-PERF-34's law, the same sentence the owed-frame comment below is built on).
+  if(DrawStripPalRepaintTake()) { DrawStripPaint(); ChartRedraw(); }
+  // P-PAL-19e — AND THE PALETTE CLOSES WITH ITS PARENT. A colour popup opened by
+  // the STRIP belongs to the strip: when the strip goes (close, kind switch, deinit)
+  // the popup must go with it, or it stays on the chart as a floater nobody owns
+  // («همراه والدش بسته بشه»). One direction, same bridge.
+  if(!DrawStripPalParentLive() && PalKindIsDrawing(g_PalKind)) PalClose();
+  DrawStripSurfaceClear();
+  if(g_PalOpen && PalKindIsDrawing(g_PalKind) && DrawStripPalTargetLive())
+     DrawStripSurfacePublish(g_PalX, g_PalY, PalW(), PalH());
   uint p4b = GetTickCount() - p4t;
   g_inChartEvent = false;  // P-PERF-40: A USER ACTION SETTLES THE FRAME IT OWED — IN THE SAME EVENT.
   //

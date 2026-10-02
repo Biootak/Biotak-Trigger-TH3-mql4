@@ -1228,10 +1228,12 @@ function main() {
     const at = bodyOf(stripPick, 'int DrawStripPageAt(');
     if (!at) broken.push('DrawStripPageAt() is gone from Biotak/DrawStrip_Pick.mqh');
     else {
-      if (/mx >= xa && mx <= xa\s*\+\s*20/.test(at.text))
+      if (/mx >= xa && mx <= xa\s*\+\s*DSTRIP_HD_PGW/.test(at.text))
         broken.push('the page seat is closed again; it must be half-open like the rect it paints');
-      if (!/mx >= xa && mx < xa\s*\+\s*20/.test(at.text))
-        broken.push('the page seat must test `mx < xa + 20`');
+      //--- P-PAL-16: the width is the SEAT's own macro now (one owner for the header
+      //--- cluster), so the law is the half-open test, not the literal 20.
+      if (!/mx >= xa && mx < xa\s*\+\s*DSTRIP_HD_PGW/.test(at.text))
+        broken.push('the page seat must test `mx < xa + DSTRIP_HD_PGW`');
     }
     if (broken.length) {
       failures.push('P-DRAW-105: ' + broken.join('; ') + ' (Biotak/DrawStrip_Pick.mqh DrawStripPageAt)');
@@ -1793,6 +1795,51 @@ function main() {
       failures.push('P-DRAW-120: ' + broken.join('; ') + ' (Biotak Trigger TH3.mq4 OnInit + Biotak/DrawStrip_Gear*.mqh)');
     } else {
       console.log('[PASS] P-DRAW-120 an attach sweeps the previous instance\u2019s strip family, and every painted layer is re-asserted (Biotak Trigger TH3.mq4 OnInit)');
+    }
+  }
+
+  // -- 37b. P-DRAW-64a2: THE MERGED COLOUR SEAT HAS TWO FAIR TARGETS ---------------
+  // P-DRAW-64a merged the border and the interior into ONE quick-row seat (ring =
+  // border, 24px centre = fill) — and the ring is a 1px outline, so the border's whole
+  // hit band was 32-24 = 4px («از کجا رنگ بوردر رو عوض کنم» had no visible answer;
+  // the popup's `cycle >>` walks all 29 product targets and a drawing's own two are the
+  // LAST rungs). The seat now paints TWO bars, each wearing its own colour and each
+  // half the cell, and the popup un-merges the same two roles as two named chips.
+  // Four mechanical laws: both bars painted, the name router answers the border's name,
+  // the border's object has a destroy path, and the chip asks the STRIP for the slot.
+  {
+    const broken = [];
+    const paintB = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
+    const routerB = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    const gearBB = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearB.mqh')) || []);
+    const palB = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_PalB.mqh')) || []);
+    const baseB = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Base.mqh')) || []);
+    if (!/DrawStripBtn\(ic \+ "R",/.test(paintB) || !/DrawStripBtn\(ic \+ "S", bx, bby/.test(paintB))
+      broken.push('the merged colour seat must paint BOTH bars — `ic+"R"` (border) and `ic+"S"` (fill), or one role has no target at all');
+    if (!/DrawStripIconName\(i\) \+ "R"/.test(routerB))
+      broken.push('the name router does not answer the BORDER bar\'s object — the bar paints but never opens a palette');
+    if (!/ObjectDelete\(0, DrawStripIconName\(i\) \+ "R"\)/.test(gearBB))
+      broken.push('the border bar has no destroy path — a closed strip would leave its colour on the chart (P-DRAW-14)');
+    if (!/id=="tgtB" \|\| id=="tgtF"/.test(palB))
+      broken.push('the popup has no role chips — a drawing keeps the 29-target `cycle >>`, and its own two roles are the last rungs');
+    if (!/DrawStripPalRoleSet\(wantBorder \? 0 : 1\)/.test(palB))
+      broken.push('a role chip must ask the STRIP which SLOT it means — the popup holds the kind, the strip holds the slot');
+    const roleSet = bodyOf(linesOf(path.join(BIOTAK, 'DrawStrip_Base.mqh')) || [], 'void DrawStripPalRoleSet(');
+    if (!roleSet || !roleSet.text.includes('DRAW_SLOT_COLOR') || !roleSet.text.includes('DRAW_SLOT_FILLCLR'))
+      broken.push('DrawStripPalRoleSet must name BOTH slot words — arithmetic here is how a border pick paints the interior');
+    if (!/DrawStripPalRoleSet\(/.test(baseB))
+      broken.push('DrawStripPalRoleSet is gone from the strip — the chip has no owner for the slot↔role vocabulary');
+    //--- the ink ON a control must be painted ABOVE it. Measured: both chips and both
+    //--- names were written at Z_PANEL_POP_BG (1601) while their own button sits at
+    //--- Z_PANEL_POP_CTL (1602), so the button covered its own words — the report was
+    //--- an «APPLY TO» row with two empty boxes and nothing readable in either.
+    for (const [tail, what] of [['sfx+"c"', 'the colour chip'], ['sfx+"t"', 'the role name']])
+      if (!palB.includes('ObjectSetInteger(0,p+' + tail + ',OBJPROP_ZORDER,Z_PANEL_POP_FG);'))
+        broken.push(`${what} must be painted at Z_PANEL_POP_FG — under its own button (CTL) it is invisible, which is how two chips shipped with no words`);
+    if (broken.length) {
+      failures.push('P-DRAW-64a2: ' + broken.join('; ') + ' (DrawStrip_Paint/Router/GearB/Base + BiotakPanels_PalB)');
+    } else {
+      console.log('[PASS] P-DRAW-64a2 the merged colour seat is two fair bars (border over fill), the name router answers both, the border bar dies with the strip, and the popup names the same two roles as chips that ask the strip for the slot');
     }
   }
 
@@ -2643,6 +2690,112 @@ function main() {
       console.log('[PASS] DIAG-134 all three box-extras doors witness on the flushed channel, each naming the memo slot (Biotak/DrawStrip_Tap.mqh)');
     }
   }
+
+  // ── DIAG-135 (2026-10-02) — THE INTERMITTENT IS INSTRUMENTED, NOT WAITED FOR ──
+  // User report: «بعضی وقتان … باکس اصلا رنگ نمیکره … گاهی به ندرت پیش میاد», and then,
+  // asked to reproduce it: «الان من هر کاری میکنم اون حالت پیش نمیاد». That pair is an
+  // intermittent, and an intermittent cannot be debugged by reproduction — it can only be
+  // CAUGHT. MEASURED on the screenshot that came with it: three cells whose interior
+  // measured exactly the plate colour (nothing drawn at all) and 148 px of empty row
+  // after them, with the icons deployed and carrying ink (both measured, so neither).
+  // So the paint checks its OWN invariant and writes the evidence the moment it is false
+  // \u2014 months later, from a report nobody thought to mention. Three attempts at this
+  // class already cost a day each (the `[BX\u2026]` cuts), every one of them a guess from a
+  // model while the live box disagreed.
+  {
+    const broken = [];
+    const head = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Head.mqh')) || []);
+    const paint = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
+    if (!/dsWitnessSig/.test(head))
+      broken.push('the ROWBLANK signature latch is gone from Biotak/DrawStrip_Head.mqh \u2014 one line per state is what keeps the witness from becoming a flood (DIAG-135)');
+    // both halves of the row: the screenshot's black square was an ACTION cell, so a
+    // quick-row-only check would have called that panel healthy.
+    if (!/QUICKCELL/.test(paint) || !/ACTCELL/.test(paint))
+      broken.push('the blank-cell check must cover BOTH the quick row and the chrome actions \u2014 measured, the 148 px gap held an action cell (DIAG-135)');
+    if (!/ObjectFind\(0, ic\)/.test(paint))
+      broken.push('a raster seat must be PROBED, not assumed \u2014 «DrawStripFace returned true» is not «the glyph is on the chart» (DIAG-135)');
+    if (!/DrawStripDiagEmit\(\s*"\[drawstrip\] ROWBLANK/.test(paint))
+      broken.push('the blank-cell witness lost its line \u2014 nothing else records the rare state (DIAG-135)');
+    else {
+      if (!/if\(\s*sig\s*!=\s*dsWitnessSig\s*\)/.test(paint))
+        broken.push('the ROWBLANK emit must be guarded by the signature compare \u2014 an unguarded one floods the file on every repaint (DIAG-135)');
+      if (!/else if\(dsWitnessSig\s*!=\s*""\)/.test(paint))
+        broken.push('a recovered panel must RE-ARM the latch \u2014 without it the line is written once and never again, which is the same as having no witness (DIAG-135)');
+      if (!/dsBadPainted/.test(paint))
+        broken.push('the ROWBLANK line must carry the painted count \u2014 the empty row IS a count disagreement (DIAG-135)');
+    }
+    if (/Print\(\s*"\[drawstrip\] ROWBLANK/.test(paint))
+      broken.push('the ROWBLANK witness went back to `Print` \u2014 MT4 buffers the journal in RAM, so a rare bug is exactly the one that must not wait for a flush (DIAG-135)');
+    if (broken.length) {
+      failures.push('DIAG-135: ' + broken.join('; ') + ' (Biotak/DrawStrip_Paint.mqh + DrawStrip_Head.mqh)');
+    } else {
+      console.log('[PASS] DIAG-135 the rare blank-cell state is instrumented: the paint checks its own invariant on both halves of the row and writes one flushed line per distinct state');
+    }
+  }
+
+  // ── P-PAL (2026-10-02) — WHAT SURVIVED THE BOARD, AND WHY ──
+  // The strip's own colour board is GONE (P-PAL-21): DrawStrip_Pal.mqh,
+  // DrawStrip_PalCat.mqh and DrawStrip_PalPaint.mqh, its 14-family catalogue, its
+  // page table, its RECENT band, its HEX field, its opacity bar and its HSV studio
+  // were deleted with their call sites, because a colour cell now opens the
+  // CARDS' palette (P-PAL-19) — the ONE colour editor this product has. Every rule
+  // this block used to hold (the byte order, the page break, the plate height, the
+  // modern face, the captions, the knobs, the empty RECENT well) described a
+  // surface that no longer exists, so it went with it; `tools/pal-table-proof.py`
+  // and its two mutations went with it too. What remains is the rule the board's
+  // death made urgent: the strip OWNS the popup it opens, so a click on that
+  // popup is not a click on the chart.
+  {
+    const broken = [];
+    // ── P-PAL-20: THE SURFACE LEDGER AND THE SINGLE DISMISSAL EXIT. The colour board
+    //   is gone (P-PAL-19) and its popup now lives in the panels, so `DrawStripPointInside`
+    //   — the one function that answers «is this pixel OUR surface» — had no clause for
+    //   it. A colour pick is a release on TWO channels: the palette serves it first, then
+    //   the strip asks about the release pixel, reads false and `DrawStripClose()` runs
+    //   («یک رنگ انتخاب می‌کنم کل استریپ بسته می‌شه»). Four laws, all mechanical:
+    //   (a) the oracle consults the ledger, (b) the ledger has an owner + publish + clear,
+    //   (c) ONE writer republishes it whole every event (the entry's bridge), and
+    //   (d) nobody outside the strip calls `DrawStripPaint()` — the repaint is a REQUEST
+    //       the bridge spends (P-PAL-19f).
+    {
+      const baseP = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Base.mqh')) || []);
+      const routerP = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+      const inFn = (() => { const m = baseP.match(/bool DrawStripPointInside\([^)]*\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
+      if (!inFn) broken.push('`DrawStripPointInside` is gone or unreadable \u2014 it is the one function that answers «is this pixel ours» (P-PAL-20)');
+      else if (!/DrawStripSurfaceAt\(/.test(inFn))
+        broken.push('the surface oracle does not consult the LEDGER \u2014 a release on a popup the strip owns reads as a click on the chart and closes the strip (P-PAL-20)');
+      for (const sig of ['void DrawStripSurfaceClear()', 'void DrawStripSurfacePublish(', 'bool DrawStripSurfaceAt('])
+        if (!baseP.includes(sig)) broken.push(`the ledger has no \`${sig.replace(/\(.*/, '()')}\` \u2014 the registry the oracle asks does not exist (P-PAL-20)`);
+      const entry = codeOf(linesOf(path.join(ROOT, 'Biotak Trigger TH3.mq4')) || []);
+      const bAt = entry.indexOf('DrawStripSurfaceClear();');
+      const pAt = entry.indexOf('DrawStripSurfacePublish(');
+      if (bAt < 0 || pAt < 0)
+        broken.push('the BRIDGE does not publish the ledger \u2014 the strip cannot see `g_PalX/PalW()`, so the entry is the only writer and skipping it arms nothing (P-PAL-20)');
+      else if (bAt > pAt)
+        broken.push('the bridge must CLEAR the ledger before it republishes \u2014 one writer, whole truth, every event (P-PAL-20)');
+      if (!/DrawStripSurfacePublish\(g_PalX, g_PalY, PalW\(\), PalH\(\)\)/.test(entry))
+        broken.push('the bridge must publish the PALETTE\'s own rect \u2014 a ledger fed any other rect guards nothing (P-PAL-20)');
+      if (!/if\(DrawStripPalRepaintTake\(\)\)/.test(entry))
+        broken.push('nobody SPENDS the repaint flag \u2014 the apply sets it and the strip never learns the colour landed (P-PAL-19f/P-PAL-20)');
+      if (!/DrawStripSurfaceAt\(rcx, rcy\)/.test(routerP))
+        broken.push('the dismissal branch has no SURFHIT witness \u2014 working is silent, so the ledger cannot be proven from the log (P-PAL-20)');
+      // (d) the repaint is a REQUEST: a paint called from inside somebody else\'s route
+      // is the P-PAL-19f defect, and the panels are the only caller that can do it.
+      for (const f of fs.readdirSync(BIOTAK).filter((n) => /^Biotak.*\.mqh$/.test(n))) {
+        const t = codeOf(linesOf(path.join(BIOTAK, f)) || []);
+        if (/DrawStripPaint\(\)/.test(t))
+          broken.push(`${f} calls DrawStripPaint() from outside the strip \u2014 a repaint is a REQUEST the bridge spends (P-PAL-19f/P-PAL-20)`);
+      }
+      if (!/DrawStripSurfaceClear\(\)/.test(codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearB.mqh')) || [])))
+        broken.push('a closed strip still owns its popup pixels — the ledger must die with its owner (P-PAL-20)');
+    }
+    if (broken.length) {
+      failures.push('P-PAL: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh + Router/GearB + the entry bridge)');
+    } else {
+      console.log("[PASS] P-PAL the strip owns its popups: one surface ledger (P-PAL-20) that the pixel oracle consults and the entry's bridge rewrites whole every event, one repaint REQUEST the bridge spends, and no panel painting the strip from inside its own route. The strip has NO colour board of its own (P-PAL-21) — the cards' palette is the only colour editor");
+    }
+  }
+
 
   console.log('');
   if (failures.length) {
