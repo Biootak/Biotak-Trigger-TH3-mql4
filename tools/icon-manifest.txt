@@ -1,5 +1,6 @@
 atr_off.bmp
 atr_on.bmp
+bk_back_off.bmp
 bk_back_on.bmp
 bk_bucket.bmp
 bk_chev.bmp

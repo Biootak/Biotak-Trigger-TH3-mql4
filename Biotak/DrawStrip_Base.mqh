@@ -958,9 +958,16 @@ string DrawStripIconRes(const int slot, const string nm)
    if(slot == DRAW_SLOT_LOCK)
       return ((DrawSlotRead(nm, DRAW_SLOT_LOCK) > 0.5) ? "::Files\\Icons\\bk_lock_on_g.bmp"
                                                        : "::Files\\Icons\\bk_lock_off.bmp");
+   //--- P-UI-131 (2026-10-02): the BACK seat wears ONE shape in two inks, like every
+   //--- other toggle in this row. It used to answer `gl_layers_m` when off (grey
+   //--- chevrons, 26 px) and `bk_back_on` when on (amber overlapping rects, 24 px) —
+   //--- two glyphs and two canvases for one control, which is why the live tap
+   //--- («رنگ fill باکس رو خاموش و روشن میکنه») read as the wrong button even though
+   //--- the witness proves the write was exact. `bk_back_off` is its own art in the
+   //--- plate ink, baked by the generator beside `bk_back_on` (see gen-th3-icons.js).
    if(slot == DRAW_SLOT_BACK)
       return ((DrawSlotRead(nm, DRAW_SLOT_BACK) > 0.5) ? "::Files\\Icons\\bk_back_on.bmp"
-                                                       : "::Files\\Icons\\gl_layers_m.bmp");
+                                                       : "::Files\\Icons\\bk_back_off.bmp");
    if(slot == DRAW_SLOT_FONT) return "::Files\\Icons\\gl_textsize_m.bmp";
    if(slot == DRAW_SLOT_GLYPH) return "::Files\\Icons\\bk_glyph.bmp";
    if(slot == DSTRIP_SLOT_LEVELS) return "::Files\\Icons\\bk_levels.bmp";

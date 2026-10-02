@@ -36,6 +36,10 @@
 #resource "\\Files\\Icons\\bk_bucket.bmp"
 #resource "\\Files\\Icons\\bk_lock_on.bmp"
 #resource "\\Files\\Icons\\bk_lock_off.bmp"
+//--- P-UI-131: the BACK seat's OFF twin. Declared beside its ON face so the strip's
+//--- one control wears ONE shape in two inks (a #resource a painter names without a
+//--- declaration is a SILENT no-op at paint time — tools/check-resources.js).
+#resource "\\Files\\Icons\\bk_back_off.bmp"
 #resource "\\Files\\Icons\\bk_del.bmp"
 #resource "\\Files\\Icons\\gl_layers_m.bmp"
 #resource "\\Files\\Icons\\gl_template_m.bmp"

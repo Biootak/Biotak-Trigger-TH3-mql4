@@ -1885,6 +1885,20 @@ const BK_BACK_ON = [   // layered rects
   ...rect(6.5, 6.5, 18.5, 18.5, 2.4),
   ...rect(13.5, 13.5, 25.5, 25.5, 2.4),
 ];
+//--- P-UI-131 (2026-10-02): THE BACK SEAT'S OFF FACE IS A TWIN OF ITS ON FACE, not a
+//--- different glyph. MEASURED on the live witness (`[drawstrip] SLOT slot=9
+//--- name=Behind candles obj="Rectangle 16147" -> 1 read=1 fill=1 child=1`, then
+//--- `-> 0 read=0 fill=1 child=1`): the tap writes exactly the right slot and
+//--- `fill=1` never moves, so «این آیکون رنگ fill باکس رو خاموش و روشن میکنه» was the
+//--- SEAT, not the write — and the seat was the reason. Every other toggle wears ONE
+//--- shape in two inks (`bk_lock_off`/`bk_lock_on_g`, `bk_ext_off`/`bk_ext_on`,
+//--- `bk_half_off`/`bk_half_on`, `bk_bucket`/`bk_fill_on` — P-DRAW-47's amber twins),
+//--- but BACK wore `gl_layers_m` (grey chevrons, 26px) when off and `bk_back_on`
+//--- (amber overlapping rects, 24px) when on: two shapes, two canvases, one control.
+//--- So a press that moved the drawing BEHIND the candles read as a different button
+//--- being pressed, and for a filled box the interior going behind the bars reads as
+//--- its colour switching off. Same drawing, same 24 canvas, the plate ink.
+files.push(['bk_back_off.bmp',  () => render(24, BK_BACK_ON,   BK_DARK)]);
 const BK_LOCK_ON_G = [   // CLOSED padlock (twin of bk_lock_on for the gold-wash face)
   ...rect(9.5, 15.5, 22.5, 24.5, 2.2),
   seg(12.5, 15.5, 12.5, 10.5, 2.2), seg(12.5, 10.5, 19.5, 10.5, 2.2), seg(19.5, 10.5, 19.5, 15.5, 2.2),

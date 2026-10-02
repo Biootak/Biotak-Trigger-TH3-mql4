@@ -414,7 +414,12 @@ def slot_face(kind, slot, on=None):
     if n == "BOXHALF":return "bk_half_on.bmp" if on else "bk_half_off.bmp"
     if n == "EXTEND": return "bk_ext_on.bmp" if on else "bk_ext_off.bmp"
     if n == "LOCK":   return "bk_lock_on_g.bmp" if on else "bk_lock_off.bmp"
-    if n == "BACK":   return "bk_back_on.bmp" if on else "gl_layers_m.bmp"
+    #--- P-UI-131: the BACK seat is ONE shape in two inks, like every other toggle in
+    #--- the row (`bk_lock_off`/`bk_lock_on_g`, `bk_ext_off`/`bk_ext_on`). The mock used
+    #--- to draw a grey chevron face (`gl_layers_m`, 26 px) against the terminal's amber
+    #--- one (`bk_back_on`, 24 px) — a mock that differs from the chart is how a
+    #--- two-glyph control survived review: the preview agreed with itself.
+    if n == "BACK":   return "bk_back_on.bmp" if on else "bk_back_off.bmp"
     if n == "FONT":   return "gl_textsize_m.bmp"
     if n == "GLYPH":  return "bk_glyph.bmp"
     return ""

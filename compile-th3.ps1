@@ -1144,13 +1144,31 @@ function Assert-ResourceTree {
 function Sync-IconsToTerminal {
     param([string]$ResolvedMql4Dir)
 
-    # MetaEditor resolves "#resource \Files\Icons\..." against the TERMINAL's
-    # MQL4\Files folder, not this workspace. A project may be reachable from
-    # several MT4 terminals (e.g. Indicators\BiotakProject is a symlink back
-    # to this repo), so sync into EVERY terminal that hosts this project -
-    # otherwise a stale copy silently embeds old icons on the next compile.
+    #--- P-UI-131 (2026-10-02) — THIS FUNCTION IS BACK, AND P-DRAFT-01 WAS HALF
+    #--- RIGHT. The copy it retired was measured INERT for the COMPILE, and that
+    #--- part stands: MetaEditor resolves `#resource \Files\Icons\...` against the
+    #--- compiling unit's own tree (P-BUILD-03), so the junction made the copy a
+    #--- no-op for the ex4. It said nothing about the OTHER reader. Every painter
+    #--- writes `OBJPROP_BMPFILE = "::Files\Icons\x.bmp"`, and `::Files\` is the
+    #--- TERMINAL's `MQL4\Files` — loaded at PAINT time, per chart. So the build
+    #--- embedded the repo's art and the chart drew the terminal's, and nothing in
+    #--- the build compared the two: `tools/check-resources.js` walks the SOURCE
+    #--- tree, which is why it passed while the screen was wrong.
+    #--- MEASURED 2026-10-02 against both hosting terminals: 22 of 280 canvases
+    #--- disagreed. gl_pin/gl_layers/gl_textsize shipped 15x15 where the source
+    #--- holds 26x26 — the pin and the layers glyph drew a third smaller than every
+    #--- neighbour in their own row, which is what the user pointed at — and
+    #--- bk_w*/bk_style*/bk_ray* shipped 16x16 where the source holds 24x24, so
+    #--- P-DRAW-106's retirement of the 16 was on the chart's side too.
+    #--- BOUNDED: the generator's own manifest (`tools/icon-manifest.txt`) is the
+    #--- runtime-reachable set, so this moves 280 named files and only those whose
+    #--- BYTES differ — not a directory copy, and not a wildcard.
     $src = Join-Path $SCRIPT_ROOT "Files\Icons"
+    $manifestPath = Join-Path $SCRIPT_ROOT "tools\icon-manifest.txt"
     if (-not (Test-Path $src)) { return }
+    if (-not (Test-Path $manifestPath)) { return }
+    $names = @(Get-Content -LiteralPath $manifestPath | ForEach-Object { $_.Trim() } | Where-Object { $_ -and (Test-Path -LiteralPath (Join-Path $src $_) -PathType Leaf) })
+    if ($names.Count -eq 0) { return }
 
     $dirs = New-Object System.Collections.Generic.List[string]
     foreach ($d in @($ResolvedMql4Dir) + (Get-TerminalMql4DirsForProject)) {
@@ -1161,14 +1179,15 @@ function Sync-IconsToTerminal {
         $dst = Join-Path $mql4 "Files\Icons"
         if (-not (Test-Path $dst)) { New-Item -ItemType Directory -Path $dst -Force | Out-Null }
         $copied = 0
-        Get-ChildItem -Path $src -Filter "*.bmp" | ForEach-Object {
-            $target = Join-Path $dst $_.Name
-            if (-not (Test-Path $target) -or (Get-FileHash $_.FullName).Hash -ne (Get-FileHash $target).Hash) {
-                Copy-Item -LiteralPath $_.FullName -Destination $target -Force
+        foreach ($n in $names) {
+            $from = Join-Path $src $n
+            $to = Join-Path $dst $n
+            if (-not (Test-Path $to) -or (Get-FileHash $from).Hash -ne (Get-FileHash $to).Hash) {
+                Copy-Item -LiteralPath $from -Destination $to -Force
                 $copied++
             }
         }
-        if ($copied -gt 0) { Write-Host "  Icon sync: copied $copied updated BMP(s) to $dst" -ForegroundColor DarkCyan }
+        if ($copied -gt 0) { Write-Host "  Icon deploy: $copied of $($names.Count) raster(s) delivered to $dst" -ForegroundColor DarkCyan }
     }
 }
 
@@ -1339,10 +1358,14 @@ function Compile-MQL4 {
 
     $includePath = Get-IncludePath -SourcePath $SourcePath -ScriptRoot $SCRIPT_ROOT -ResolvedMql4Dir $ResolvedMql4Dir
 
-    #--- P-DRAFT-01: the icon TREE is asserted, not copied. `Sync-IconsToTerminal`
-    #--- ran here and pushed ~10 MB of BMPs into every hosting terminal for a
-    #--- resolution MetaEditor does not use (P-BUILD-03: the SOURCE's own tree).
+    #--- P-DRAFT-01: the icon TREE is asserted, not copied — for the COMPILE.
+    #--- P-UI-131: and asserted AND delivered, because the chart reads a different
+    #--- tree than the compiler (`Sync-IconsToTerminal`, the half of P-DRAFT-01 that
+    #--- was retired on a compile-time measurement). The delivery is manifest-bounded
+    #--- and hash-compared; `tools/check-icon-deploy.js` is the gate that proves the
+    #--- two trees agree, and it runs below in every full-gate build.
     if (-not (Assert-ResourceTree)) { return $false }
+    Sync-IconsToTerminal -ResolvedMql4Dir $ResolvedMql4Dir
 
     #--- the artifact, BEFORE and AFTER. "It compiled" is not a claim anyone can
     #--- check: a stale ex4 and a fresh one both print Result: 0 errors. The
@@ -1839,6 +1862,19 @@ if (Test-Path $resGate) {
     Write-Host ""
     Write-Host "  Resource gate (painted == #resource'd, per compiling unit):" -ForegroundColor Cyan
     Invoke-ProjectGate -Name "resource gate" -Script $resGate -Runner "node" -Cache $gateCache
+}
+
+#--- P-UI-131: AND THE RASTER THE CHART PAINTS IS THE ONE THE SOURCE HOLDS. The
+#--- resource gate above reads the SOURCE tree, which is also the tree MetaEditor
+#--- embeds — so it can be green while `OBJPROP_BMPFILE`'s `::Files\` path, read by
+#--- the TERMINAL at paint time, still serves the previous bake. That is not a
+#--- compile-time detail: it drew the pin and the layers glyph at 15px beside 24px
+#--- neighbours, and no error existed anywhere to name it.
+$iconGate = Join-Path $SCRIPT_ROOT "tools\check-icon-deploy.js"
+if (Test-Path $iconGate) {
+    Write-Host ""
+    Write-Host "  Icon deploy gate (every hosting terminal serves the source tree's rasters):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "icon deploy gate" -Script $iconGate -Runner "node" -Cache $gateCache
 }
 
 #--- P-VIEW-06: THE LEVEL-CONTINUITY GATE IS PART OF THE BUILD. "A timeframe switch
