@@ -675,6 +675,21 @@ void PnlCreate(const int item)
    int pairN=PnlPairRows(item);
    int cardW=PnlCardW(item);
    bool wide=PnlIsWide(item);
+   // ── P-LOG-10 (2026-10-02): MT4 paints in creation order — a tile born LATE
+   //    covers everything born before it (ZORDER rules clicks alone). Cards 9 and
+   //    12 rebuild their spec while open (PnlEnsureSpec), so a pair count that
+   //    GROWS re-births its `cardm*` bands above rows born earlier, and a SHRINK
+   //    strands orphan bands nobody deletes. On any geometry change, purge this
+   //    card's OWN family once; the rest of this function re-creates every object
+   //    plate-first, in birth order.
+   static bool s_PnlGeoSeen[PNL_COUNT];
+   static int  s_PnlGeoRows[PNL_COUNT];
+   static bool s_PnlGeoWide[PNL_COUNT];
+   if(s_PnlGeoSeen[item] && (s_PnlGeoWide[item] != wide || s_PnlGeoRows[item] != rowsCount))
+      ObjectsDeleteAll(0, g_UI.btnPrefix + "Pnl" + IntegerToString(item) + "_", -1, -1);
+   s_PnlGeoSeen[item] = true;
+   s_PnlGeoWide[item] = wide;
+   s_PnlGeoRows[item] = rowsCount;
    int ph=PNL_HEAD_H+pairN*PNL_ROW_H+PNL_FOOT_H;
 
    int px, py;

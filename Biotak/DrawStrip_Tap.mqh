@@ -311,7 +311,20 @@ bool DrawStripActTap(const int a)
        DrawStripGearObjectsPurge();
        DrawStripLayout();
        DrawStripPaint();
-       DrawStripGearTabCensus();   // P-DRAW-87: the tab band names its objects
+       //--- P-DRAW-123: the dump, not the bare census — one armed repaint prints the
+       //--- `[dsdiag] EXPECT` half of what the terminal is about to answer with.
+       DrawStripGearDiagDump();   // P-DRAW-87/112/123: the panel names its objects
+       //--- P-DRAW-127 (2026-10-01) — A PANEL OPEN FLUSHES ITS OWN FRAME.
+       //--- MEASURED on the 22:10/22:13 frames of
+       //--- `biotak_diag_EURUSD_134342075006101685.txt`: the WIDE (624px) open declared
+       //--- all 91 objects correct and unoccluded while the SCREEN showed its left
+       //--- column empty — the object LIST was right and the PIXELS were one frame
+       //--- behind. `DrawStripPaint` flushes with `if(dirty) ChartRedraw()` (its own
+       //--- line), and the dump's repaint above (P-DRAW-125a) DISCARDS its return, so a
+       //--- panel whose geometry moved without any write reporting dirty kept the
+       //--- previous frame — and a second click "fixed" it because that one did write.
+       //--- A user action gets one unconditional flush; a paint pass never does.
+       ChartRedraw();
        return true;
     }
    if(a == DSTRIP_ACT_PIN)
@@ -690,7 +703,10 @@ bool DrawStripGearGroupTap(const int gid)
    //--- walk that can name what the terminal actually holds for the tab that
    //--- misbehaves was never fired on it. Same owner, same bound (one walk per user
    //--- action, never per paint), and a GROUP OPEN is the same user action.
-   DrawStripGearTabCensus();
+   //--- P-DRAW-123: and the walk now carries the paint's OWN declaration beside it
+   //--- (`[dsdiag] EXPECT` + TABCENSUS of one state), which is what `tools/diag-diff.py`
+   //--- diffs to name the objects the terminal did not honour.
+   DrawStripGearDiagDump();
    return true;
 }
 //--- gear edits (ENDEDIT): hex colour, level add, caption. Invalid input keeps

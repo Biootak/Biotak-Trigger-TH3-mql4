@@ -930,6 +930,66 @@ def layout(tab=TAB_ACTIVE):
                 unmodelled=W["unmodelled"], tab_name=TABS[tab], gid=gid)
 
 
+# == THE BAND'S OWN COUNT (P-DRAW-121), mirrored ==============================
+def count_rule_excludes_nav():
+    """Does `DrawStripGearSectionCount` skip a GROUP HEADER? READ, never assumed.
+
+    The mirror must follow the RULE the MQL writes, so this flag is parsed out of the
+    function's own body: a tree that has the filter and a tree that lost it give
+    DIFFERENT numbers from `section_count` below — which is what makes a regression
+    fail `check-gear-panel.py` instead of quietly repainting a wrong pill.
+    """
+    body = _fn_body(DS, r"int\s+DrawStripGearSectionCount\s*\(")
+    return bool(re.search(r"s_dsGRKind\s*\[\s*r\s*\]\s*!=\s*DSTRIP_GRK_GROUP", body))
+
+
+def section_count(L, i, filters=None):
+    """`DrawStripGearSectionCount(i)` over THIS layout's own blocks -> (n, nav).
+
+    A setting ROW counts once; a GROUP HEADER counts only while the rule fails to
+    exclude it — and its NAME comes back whether or not it was counted, so a failure
+    can say which rows leaked. A chip grid counts one per row it wraps to (the MQL
+    counts distinct `(y, col)` cells), a quick row counts one (its stamp writes one y),
+    and a caption counts zero: `DrawStripGearCaptionIn` registers an `s_dsGearSec*`
+    entry beside its own control and never an `s_dsGR` row (P-DRAW-66).
+    """
+    if filters is None:
+        filters = count_rule_excludes_nav()
+    secs = [b for b in L["blocks"] if b[0] == "section"]
+    col, y0 = secs[i][4], secs[i][2]
+    y1 = 0x7FFFFFFF
+    for later in secs[i + 1:]:
+        if later[4] == col and y0 < later[2] < y1:
+            y1 = later[2]
+    per_row = max(1, (GEAR_W - 2 * PAD + GRID_GAP) // (CHIP_W + GRID_GAP))
+    n, nav = 0, []
+    for b in L["blocks"]:
+        if b[0] == "section" or b[4] != col:
+            continue
+        if b[0] == "row":
+            if not (y0 <= b[2] < y1):
+                continue
+            if b[3] and str(b[3][0]) == str(GRK_GROUP):
+                nav.append(str(b[1]))
+                if not filters:
+                    n += 1
+            else:
+                n += 1
+        elif b[0] in ("grid", "swq"):
+            cells = int(b[1]) if b[0] == "grid" and str(b[1]).isdigit() else 1
+            rws = max(1, (cells + per_row - 1) // per_row) if b[0] == "grid" else 1
+            for k in range(rws):
+                if y0 <= b[2] + k * ROW_H < y1:
+                    n += 1
+    return n, nav
+
+
+def band_counts(L, filters=None):
+    """Every band of one tab: [(label, column, count, nav_names), ...]."""
+    secs = [b for b in L["blocks"] if b[0] == "section"]
+    return [(b[1], b[4]) + section_count(L, i, filters) for i, b in enumerate(secs)]
+
+
 def paint(L, notes, tab=TAB_ACTIVE):
     c = Canvas()
     c.origin(0, 0)

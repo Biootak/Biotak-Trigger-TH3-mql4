@@ -68,6 +68,9 @@ const STRIP_BASE = path.join(BIOTAK, 'DrawStrip_Base.mqh');
 const STRIP_HEAD = path.join(BIOTAK, 'DrawStrip_Head.mqh');
 const STRIP_SKIN = path.join(BIOTAK, 'DrawStrip_Skin.mqh');
 const GEAR_GATE = path.join(__dirname, 'check-gear-panel.py');
+// P-DRAW-127: STRIP_TAP (declared above) is the ONE path that OPENS the panel, and
+// therefore the one place a user action can guarantee the screen shows the panel it
+// just asked for — `DrawStripPaint` only redraws `if(dirty)`.
 // P-DRAW-118: the card surface's own number table — the panel's quick row reads
 // PNL_QSW_N and PNL_WEL from it, so the register resolves those names where the
 // compiler does (the entry includes it ABOVE the strip, P-DRAW-116).
@@ -76,8 +79,30 @@ const STRIP_TAP = path.join(BIOTAK, 'DrawStrip_Tap.mqh');
 const STRIP_ROUTER = path.join(BIOTAK, 'DrawStrip_Router.mqh');
 const RES_GATE = path.join(__dirname, 'check-resources.js');
 const STRIP_PAINT = path.join(BIOTAK, 'DrawStrip_Paint.mqh');
+const PANELS_BUILD = path.join(BIOTAK, 'BiotakPanels_Build.mqh');
 const STRIP_PICK = path.join(BIOTAK, 'DrawStrip_Pick.mqh');
 const BUILD_PS1 = path.join(ROOT, 'compile-th3.ps1');
+// P-DRAW-121: the band's own COUNT. The pill's rule lives in DrawStrip_GearB and is
+// mirrored (with its flag READ out of the source) in `sim-gear-panel.band_counts`, so
+// the register can assert both halves: the rule excludes nav, and the gate says so.
+const GEAR_SIM = path.join(__dirname, 'sim-gear-panel.py');
+// P-DRAW-122: the layer law's ONE owner — the gate that walks every painter in the
+// tree, so the set of sites is derived and never listed here.
+const LIFECYCLE_GATE = path.join(__dirname, 'object_lifecycle_check.js');
+// P-DRAW-119: the REAL pixels. The harness is the only thing that writes a PNG of
+// the actual paint path, and `check-shot-freshness.js` is the only thing that says
+// whether the PNGs on this machine are that code's.
+const SHOT_HARNESS = path.join(ROOT, 'tests', 'Biotak_StripShot_Test.mq4');
+const SHOT_GATE = path.join(__dirname, 'check-shot-freshness.js');
+const BEFORE_AFTER = path.join(__dirname, 'before-after.py');
+// P-LOG-2: the diag channel's other half. The flushed frame is written per attach,
+// so a frame left by a previous session is indistinguishable from a live one; the
+// reader is the surface that must rank, flag and prune it.
+const DIAG_LIVE = path.join(__dirname, 'diag-live.py');
+// P-LOG-3: the frame boundary. One diag file carries whole frames, one per panel
+// open, so a reader that diffs the FILE pairs the first open's intent with the last
+// open's reality.
+const DIAG_DIFF = path.join(__dirname, 'diag-diff.py');
 
 const failures = [];
 
@@ -1635,6 +1660,675 @@ function main() {
       failures.push('P-DRAW-118: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearA.mqh DrawStripGearQuickRow + DrawStrip_GearB.mqh/_Tap.mqh/_Pick.mqh)');
     } else {
       console.log('[PASS] P-DRAW-118 each colour role is one quick row of swatches, applied through one owner (Biotak/DrawStrip_GearA.mqh DrawStripGearQuickRow)');
+    }
+  }
+
+  // -- 36. P-DRAW-119: THE MIRROR IS NOT THE EVIDENCE --------------------------
+  // MEASURED 2026-10-01: 25 states in the harness, ZERO of their PNGs anywhere on
+  // the machine, and two weeks of reports that called a `tools/sim-*.py` render
+  // "verified". A mirror is rebuilt from the same literals the compiler reads, so it
+  // is right about the arithmetic and blind about what the blit does (that is
+  // P-DRAW-109 exactly). This entry keeps the three ways the truth can go missing:
+  // the gate is uncached in the build, the build cannot print PASS while the gate
+  // says NOT CURRENT, and a -Shot run is strict.
+  {
+    const broken = [];
+    const gate119 = linesOf(SHOT_GATE) ? fs.readFileSync(SHOT_GATE, 'utf8') : null;
+    if (!gate119) {
+      broken.push('tools/check-shot-freshness.js is gone \u2014 nothing compares the terminal\u2019s PNGs with the code');
+    } else {
+      // (a) wanted = the HARNESS's own list, so a new state cannot be unshot.
+      if (!/SS\(\?:State\|Kind\)/.test(gate119) || !/HARNESS/.test(gate119))
+        broken.push('the gate must parse the state list OUT of tests/Biotak_StripShot_Test.mq4 (a hand-kept list goes stale in silence)');
+      // (b) the three verdicts, and the OLDEST copy winning.
+      for (const w of ['fresh', 'stale', 'missing'])
+        if (!gate119.includes(w)) broken.push(`the gate no longer reports \u201c${w}\u201d`);
+      if (!/Math\.min\(prev\.mtime, mt\)/.test(gate119))
+        broken.push('the OLDEST copy of a PNG must win: a swept copy carrying its own copy-time makes a previous build\u2019s shot look fresh');
+      if (!/--strict/.test(gate119) || !/process\.exit\(strict \? 1 : 2\)/.test(gate119))
+        broken.push('NOT CURRENT must be its own exit code (2), and --strict must exit 1 \u2014 a plain run that exits 0 is how a green line got read as \u201cseen\u201d');
+    }
+
+    // (c) the build: uncached, warn-not-PASS, and strict after a successful -Shot.
+    const ps = linesOf(BUILD_PS1) ? fs.readFileSync(BUILD_PS1, 'utf8') : '';
+    if (!/real pixels gate/.test(ps))
+      broken.push('compile-th3.ps1 no longer runs the real-pixels gate');
+    if (!/Invoke-ProjectGate -Name "real pixels gate"[\s\S]{0,120}-Cache @\{\}/.test(ps))
+      broken.push('the real-pixels gate must run with an EMPTY cache: its input is the PNGs\u2019 own mtimes, which the tree fingerprint does not hold');
+    if (!/Invoke-ProjectGate -Name "real pixels gate \(strict\)"[\s\S]{0,200}--strict/.test(ps))
+      broken.push('a -Shot run must end strict: a capture that left a stale or partial set is a failed build, not a full-looking column');
+    if (!/-WarnOnExit2/.test(ps) || !/\$WarnOnExit2 -and \$LASTEXITCODE -eq 2/.test(ps))
+      broken.push('exit 2 \u2192 [WARN] must be opt-in per call (-WarnOnExit2): otherwise any gate\u2019s exit 2 stops failing the build');
+    for (const g of ['resource gate', 'regression gate', 'gear panel gate', 'object lifecycle gate'])
+      if (new RegExp(`-Name "${g}"[^\n]*-WarnOnExit2`).test(ps))
+        broken.push(`the ${g} now treats exit 2 as a warning \u2014 only the real-pixels gate defines that code`);
+    if (!/if \(\$shotLaunch -and \$shotOk\) \{[\s\S]{0,200}?-Name "real pixels gate \(strict\)"/.test(ps))
+      broken.push('the strict run must sit behind \u201cthe shot actually captured something\u201d, else a prepare-only -Shot fails the build');
+
+    // (d) the page: it must say WHICH build its pixels are, and read both places.
+    const ba = linesOf(BEFORE_AFTER) ? fs.readFileSync(BEFORE_AFTER, 'utf8') : '';
+    if (!ba) broken.push('tools/before-after.py is gone \u2014 the third column has no owner');
+    else {
+      if (!/def _newest_source_mtime/.test(ba) || !/NEWEST_SOURCE/.test(ba))
+        broken.push('before-after.py no longer compares a shot against the code it shows');
+      if (!/SHOT_MTIME/.test(ba))
+        broken.push('before-after.py dropped the per-tag shot time, so the page cannot flag a previous build\u2019s pixels');
+      if (!/build-logs", "shot"\)/.test(ba) || !/Terminal/.test(ba))
+        broken.push('the page must read the PNGs from both places the terminal writes them (build-logs/shot and <MQL4>\\Files)');
+      if (!/^import datetime/m.test(ba) || !/datetime\.datetime\.fromtimestamp/.test(ba))
+        broken.push('_fmt() calls datetime without importing it \u2014 the page dies on the first stale shot');
+    }
+
+    // (e) the harness: the list must still be a list, and the zero-width panel_fold
+    //     state (the accordion\u2019s own pixel) must still be shot.
+    const harn = linesOf(SHOT_HARNESS) ? fs.readFileSync(SHOT_HARNESS, 'utf8') : '';
+    const tags = [...harn.matchAll(/SS(?:State|Kind)\s*\(\s*"([A-Za-z0-9_]+)"/g)].map((m) => m[1]);
+    if (new Set(tags).size < 10)
+      broken.push(`tests/Biotak_StripShot_Test.mq4 asks for ${new Set(tags).size} state(s): the gate would call an empty column \u201ccurrent\u201d`);
+    if (!tags.includes('panel_fold'))
+      broken.push('the panel_fold state is gone: the accordion\u2019s folded body (P-DRAW-117) would have no pixel again');
+
+    if (broken.length) {
+      failures.push('P-DRAW-119: ' + broken.join('; ') + ' (tools/check-shot-freshness.js + compile-th3.ps1 + tools/before-after.py)');
+    } else {
+      console.log('[PASS] P-DRAW-119 the mirror is not the evidence: the terminal\u2019s own PNGs are gated, uncached, and strict on -Shot (tools/check-shot-freshness.js)');
+    }
+  }
+
+  // -- 37. P-DRAW-120: an attach owns a chart that carries no panel on it ---------
+  //
+  // Reported 2026-10-01 («روی stroke که کلیک می‌کنم متن‌ها و غیره این‌طوری ناقص هستش»)
+  // with a shot of the open Stroke panel: the left column, the head and the foot bare
+  // plate, the right column's rows, chips and switches painted. The terminal held EVERY
+  // object of that tab at its own seat with its own ink —
+  //   [drawstrip] TABCENSUS obj=PnlDrawS_GR2T type=23 xywh=1461,149,0,0 bgcolor=0
+  //               z=1442 ink="50 % line":14865611
+  // — and the same log's LAST `[drawstrip]` line is 14:37:08, while the instance the
+  // 15:18 shot answers to attached at 15:10:39 with `s_dsOpen = false`, `s_dsGear = 0`:
+  // it painted nothing, and with the strip closed no tap branch answered the panel on
+  // screen. Two owners exist to make that state impossible, and neither was wired:
+  //   * `DrawStripSweepStale()` (P-DRAW-85, "no orphan survives a reattach") documents
+  //     its ONE call as "from the entry's OnInit beside the teardown's own
+  //     `DrawStripClose()`" and had NO call site at all — the definition, and nothing
+  //     else, was all `git grep SweepStale` found in the whole tree;
+  //   * `DrawStripOrphanSweep()` (P-DRAW-42) is called from `DrawStripPaint()` BELOW
+  //     its `!s_dsOpen` gate, so the session that needs it most — a reload with nothing
+  //     open — never reaches it.
+  // The reattach is then decided by `ObjectFind(0, nm) < 0` alone, and the painters were
+  // not equal about it: `DrawStripBtnZ` re-asserts OBJPROP_ZORDER/STATE every paint
+  // (P-DRAW-48) while `DrawStripFaceZ`/`DrawStripLblAt` wrote ZORDER/BACK only inside
+  // their birth block — an object that keeps an older rung reads correct in the census
+  // and paints under the plate (equal z is settled by creation order).
+  {
+    const ENTRY = path.join(ROOT, 'Biotak Trigger TH3.mq4');
+    const entry = linesOf(ENTRY);
+    const broken = [];
+    const onInit = entry ? bodyOf(entry, 'int OnInit()') : null;
+    if (!onInit || !onInit.text.includes('DrawStripSweepStale();'))
+      broken.push("the entry's OnInit must sweep the previous instance's strip family (DrawStripSweepStale)");
+    const sweep = bodyOf(gearA, 'void DrawStripSweepStale()');
+    if (!sweep || !sweep.text.includes('ObjectsDeleteAll(0, "PnlDrawS_", -1, -1)'))
+      broken.push('DrawStripSweepStale() must be the one prefix scan over `PnlDrawS_` (Biotak/DrawStrip_GearA.mqh)');
+    const paint = bodyOf(stripPaint, 'void DrawStripPaint()');
+    if (!paint) broken.push('DrawStripPaint() is gone from Biotak/DrawStrip_Paint.mqh');
+    else {
+      const sweepAt = paint.text.indexOf('DrawStripOrphanSweep();');
+      const gateAt = paint.text.indexOf('if(!s_dsOpen || s_dsObj == "") return;');
+      if (sweepAt < 0) broken.push('the orphan sweep left the painter (P-DRAW-42)');
+      else if (gateAt >= 0 && sweepAt > gateAt)
+        broken.push('the orphan sweep is behind the `!s_dsOpen` gate again: a reload with nothing open never reaches it');
+    }
+    const face = bodyOf(gearB, 'bool DrawStripFaceZ(');
+    if (!face || !face.text.includes('DrawStripSetInt(nm, OBJPROP_ZORDER, z)') ||
+        !face.text.includes('DrawStripSetInt(nm, OBJPROP_BACK, false)'))
+      broken.push('a face must re-assert its own layer every paint, not only at birth (DrawStripFaceZ)');
+    const lbl = bodyOf(gearB, 'bool DrawStripLblAt(');
+    if (!lbl || !lbl.text.includes('DrawStripSetInt(nm, OBJPROP_ZORDER, Z_STRIP_OVER)'))
+      broken.push('a caption must re-assert its own layer every paint (DrawStripLblAt)');
+    const cens = bodyOf(gearB, 'void DrawStripGearTabCensus()');
+    for (const field of ['back=', 'fnt=', 'tf=', 'bmp='])
+      if (!cens || !cens.text.includes(field))
+        broken.push(`the census must print \`${field}\`: the four properties that decide whether MT4 draws the object at all`);
+    if (broken.length) {
+      failures.push('P-DRAW-120: ' + broken.join('; ') + ' (Biotak Trigger TH3.mq4 OnInit + Biotak/DrawStrip_Gear*.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-120 an attach sweeps the previous instance\u2019s strip family, and every painted layer is re-asserted (Biotak Trigger TH3.mq4 OnInit)');
+    }
+  }
+
+  // -- 38. P-DRAW-121: a band's pill counts MEMBERS, and nav is not a member -------
+  //
+  // Reported 2026-10-01 («روی stroke که کلیک می‌کنم متن‌ها و غیره این‌طوری ناقص هستش»)
+  // with the shot of the open Stroke tab: the SHAPE band's `.cnt` read 2 while LAYER
+  // read 4 — for a band that owns TWO rows (`Lock`, `Behind candles`). The row loop of
+  // `DrawStripGearSectionCount` filtered by column and y and by nothing else, while the
+  // accordion's group headers ride the SAME `s_dsGR*` array in the SAME column
+  // (P-DRAW-117): on a wide tab the headers BELOW the open group pack into the last
+  // band's range, so `Look` and `Row` were counted as settings. Measured offline, no
+  // terminal: the same rule read the Colour tab's FILL band as 5 for its own two, and a
+  // fibo's `Levels` header leaked into LAYER (5 for 2).
+  //
+  // This was not a green-and-wrong gate — it was NO gate: `check-gear-panel.py`
+  // rendered the pill and never asserted the digit, so the number could only be SEEN,
+  // which is why the report arrived as a screenshot. THREE owners now, and this entry
+  // keeps the other two from being quietly dropped: the RULE must exclude the kind, the
+  // MIRROR must own the count (one table, read out of the source), and the GEAR GATE
+  // must assert it — so deleting either assertion fails HERE, in the build.
+  {
+    const gearB = linesOf(GEAR_B) || [];
+    const broken = [];
+    const count = bodyOf(gearB, 'int DrawStripGearSectionCount(');
+    if (!count)
+      broken.push('DrawStripGearSectionCount() is gone from Biotak/DrawStrip_GearB.mqh');
+    else if (!/s_dsGRKind\[r\]\s*!=\s*DSTRIP_GRK_GROUP/.test(count.text))
+      broken.push('the row loop must exclude `DSTRIP_GRK_GROUP` (`s_dsGRKind[r] != DSTRIP_GRK_GROUP && ...`): a group header is NAV, not a member');
+    const sim = linesOf(GEAR_SIM) ? fs.readFileSync(GEAR_SIM, 'utf8') : '';
+    for (const fn of ['def count_rule_excludes_nav()', 'def band_counts('])
+      if (!sim.includes(fn))
+        broken.push(`tools/sim-gear-panel.py must own the count (\`${fn}\`): the gate reads the rule from the source, never from a second table`);
+    const gearGate = linesOf(GEAR_GATE) ? fs.readFileSync(GEAR_GATE, 'utf8') : '';
+    if (!gearGate.includes('count_rule_excludes_nav()') || !gearGate.includes('band_counts'))
+      broken.push('tools/check-gear-panel.py must assert the rule AND the numbers (P-DRAW-121): a pill no gate measures can only be seen on the chart');
+    if (broken.length) {
+      failures.push('P-DRAW-121: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh + tools/sim-gear-panel.py + tools/check-gear-panel.py)');
+    } else {
+      console.log('[PASS] P-DRAW-121 a band\u2019s pill counts members only, and the rule has an owner in the mirror and in the gate (Biotak/DrawStrip_GearB.mqh)');
+    }
+  }
+
+  // -- 39. P-DRAW-122: a painted layer is re-asserted EVERY pass, tree-wide --------
+  //
+  // P-DRAW-120 stated the law and healed the SITES a shot convicted (the buttons
+  // already complied; the face and the label were made to) — and left five, because the
+  // heal went to the sites and not to the rule: `DrawStripRect`, the gear's edit field,
+  // the board's hex field, the skin's underlayer and the strip's flat plate each wrote
+  // OBJPROP_ZORDER/BACK inside their `ObjectFind < 0` birth block and never again.
+  // Equal z is settled by CREATION ORDER, so an object that survives a reattach keeps
+  // the rung it was born with: the census reads it at its right seat with its right ink
+  // while it paints UNDER the plate — the 2026-10-01 «متن‌ها ناقص است» report as a PAINT
+  // ORDER rather than as a missing object. A sixth site lived outside the strip, in the
+  // TH3 pattern renderer: an ABCD point is MOVED on every pass and had its rung written
+  // once. MEASURED before the fix: 10 painters re-assert, 5 write the layer only at
+  // birth; after: 12 and 0.
+  //
+  // So the LAW has one owner (`object_lifecycle_check.js` derives it from every painter
+  // in Biotak/**, one regex pass in the walk it already makes — the next painter is
+  // covered the day it is written) and this entry keeps that owner from being emptied:
+  // the five healed sites must still carry the re-assert, and the gate must still carry
+  // the rule rather than a list of five names.
+  {
+    const broken = [];
+    for (const [file, sig, name] of [
+      [GEAR_B, 'bool DrawStripRect(', 'DrawStripRect'],
+      [GEAR_B, 'bool DrawStripEdit(', 'DrawStripEdit'],
+      [GEAR_B, 'bool DrawStripPopHex(', 'DrawStripPopHex'],
+      [STRIP_SKIN, 'bool DrawStripSkinPaintAt(', 'DrawStripSkinPaintAt'],
+      [STRIP_PAINT, 'void DrawStripPaint(', 'DrawStripPaint'],
+    ]) {
+      const fn = bodyOf(linesOf(file) || [], sig);
+      if (!fn) { broken.push(`${name} is gone from ${path.basename(file)}`); continue; }
+      // the birth block writes the layer with a raw ObjectSetInteger, so a DrawStripSetInt
+      // layer write in this body can only be the every-pass re-assert.
+      if (!/DrawStripSetInt\s*\(\s*\w+\s*,\s*OBJPROP_ZORDER/.test(fn.text))
+        broken.push(`${name} must re-assert its layer every pass (P-DRAW-122): a surviving object keeps its old rung and paints under the plate`);
+    }
+    const gate = linesOf(LIFECYCLE_GATE) ? fs.readFileSync(LIFECYCLE_GATE, 'utf8') : '';
+    for (const needle of ['only at birth', 'P-DRAW-122'])
+      if (!gate.includes(needle))
+        broken.push(`tools/object_lifecycle_check.js must carry the law (\`${needle}\`): a rule asserted at five names is a to-do list, not a gate`);
+    if (broken.length) {
+      failures.push('P-DRAW-122: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh + DrawStrip_Paint.mqh + DrawStrip_Skin.mqh + tools/object_lifecycle_check.js)');
+    } else {
+      console.log('[PASS] P-DRAW-122 every painter re-asserts its layer each pass, and the law is derived tree-wide (tools/object_lifecycle_check.js)');
+    }
+  }
+
+  // -- 40. P-DRAW-124: a face no branch of THIS paint claims is deleted -------------
+  //
+  // The 2026-10-01 report («روی stroke که کلیک می‌کنم متن‌ها این‌طوری ناقص هست» /
+  // «این هنوز درست نشده») survived four fixes because the terminal's own log was never
+  // read as the FACT it is: the census at 18:42:35 holds every hidden object at its right
+  // seat, its right text, its right rung — and holds the intruders too. Nine `GG0G..GG8G`
+  // glass faces stood at y=186 (the PAINT tab's own swatch row) while this tab's chips
+  // sit at 224/308, all at z=1442 — the LABELS' rung — over the band sharing that row;
+  // and `GR2D/GR3D/GR4D` still carried the retired `3px · Solid` at the PAINT tab's
+  // digest seats. Both are the SAME defect: a cell/row that changed ROLE kept the FACES
+  // of its old role, because only the branches that PAINT a face ever deleted one.
+  //
+  // The law is P-DRAW-42's own (no orphan survives a paint) applied to the two shared
+  // arrays: the chip branch deletes the glass + the glyph face, and the path that is not
+  // a group deletes the digest. Locked here as needles in the painter — a rule asserted
+  // at the two sites and nowhere else is a to-do list.
+  {
+    const broken = [];
+    const fn = bodyOf(linesOf(GEAR_B) || [], 'bool DrawStripGearPaint(');
+    if (!fn) {
+      broken.push('DrawStripGearPaint is gone from ' + path.basename(GEAR_B));
+    } else {
+      if (!/ObjectDelete\s*\(\s*0\s*,\s*DrawStripGridGlassName\s*\(\s*g\s*\)\s*\)/.test(fn.text))
+        broken.push('the chip branch must delete the swatch glass it does not paint (P-DRAW-124): the previous tab\u2019s face stays at its old seat, on the labels\u2019 rung');
+      if (!/ObjectDelete\s*\(\s*0\s*,\s*DrawStripRowDigestName\s*\(\s*r\s*\)\s*\)/.test(fn.text))
+        broken.push('a row that is not a group must delete its digest (P-DRAW-124): a header\u2019s retired value hangs over the row that replaced it');
+    }
+    const census = bodyOf(linesOf(GEAR_B) || [], 'void DrawStripGearTabCensus(');
+    if (!census) {
+      broken.push('DrawStripGearTabCensus is gone from ' + path.basename(GEAR_B));
+    } else {
+      if (census.text.includes('"PnlDrawS_G"'))
+        broken.push('the census must not scope itself to the gear\u2019s own prefix (P-DRAW-124): the family that can hide this panel\u2019s ink is the one the prefix throws away');
+      if (!/idx="/.test(census.text) && !/idx="\s*,/.test(census.text) && !census.text.includes('TABCENSUS idx='))
+        broken.push('the census must print the terminal\u2019s own list index (P-DRAW-124): equal z is settled by list order, so z alone can never name the object that wins');
+    }
+    if (broken.length) {
+      failures.push('P-DRAW-124: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-124 a cell that changed role takes its old faces with it, and the census names the tie it cannot see in z (Biotak/DrawStrip_GearB.mqh)');
+    }
+  }
+
+  // -- 41. P-DRAW-125: the diagnostic never moves a pixel the product would not ---
+  //
+  // Two facts, both measured on the terminal's own 2026-10-01 log (the live Experts
+  // journal, not a mirror):
+  //   * `DrawStripGearDiagDump` is called from `DrawStripActTap` on the GEAR button,
+  //     and that path runs on the CLOSE too — `DrawStripGearClose()` sets `s_dsGear=0`
+  //     and the call follows. The unguarded `DrawStripGearPaint()` then ran with
+  //     `s_dsGRN = s_dsGGN = s_dsGearSecN = 0`: it deleted every grid, section and row
+  //     object of the panel and — because the head and the foot paint unconditionally
+  //     — left the HEAD and the FOOT of a closed panel standing on the chart at the
+  //     stale origin. The log carries that frame whole: `[dsdiag] EXPECT` for
+  //     `GHTB..GHXI` and `GF0..GF2T`, twenty objects, head then foot, nothing between.
+  //   * every writer asked "create or rewrite?" from `ObjectFind(0, nm) < 0` alone, so
+  //     a name already on the chart was reused with whatever TYPE the older build gave
+  //     it — an object that answers the name and paints nothing (DrawStripSweepStale's
+  //     own note). `DrawStripForeign` is the reader of "is this mine?": the object's
+  //     own type against the painter's, with the create kept IN the writer so the
+  //     lifecycle gate still sees one block.
+  {
+    const broken = [];
+    const dump = bodyOf(gearB, 'void DrawStripGearDiagDump(');
+    if (!dump) broken.push('DrawStripGearDiagDump is gone from ' + path.basename(GEAR_B));
+    else if (!/s_dsGear\s*!=\s*0/.test(dump.text) || !/s_dsGearH\s*>\s*0/.test(dump.text))
+      broken.push('the dump must repaint ONLY an open, laid-out panel (P-DRAW-125): unguarded it paints a shut panel\u2019s head and foot at the stale origin and deletes the body');
+    const foreign = bodyOf(stripBase, 'void DrawStripForeign(');
+    if (!foreign) broken.push('DrawStripForeign is gone from ' + path.basename(STRIP_BASE));
+    else {
+      if (!/\(int\)ObjectGetInteger\s*\(\s*0\s*,\s*nm\s*,\s*OBJPROP_TYPE\s*\)\s*==\s*type/.test(foreign.text))
+        broken.push('the reclaim must COMPARE the object\u2019s own TYPE against the painter\u2019s (P-DRAW-125): `ObjectFind >= 0` alone reuses whatever type the older build left');
+      if (!foreign.text.includes('ObjectDelete'))
+        broken.push('a foreign name must be DELETED so the writer rebuilds it (P-DRAW-125)');
+    }
+    const writers = [
+      ['bool DrawStripBtnZ(', 'OBJ_BUTTON', 'DrawStripForeign(nm, OBJ_BUTTON)'],
+      ['bool DrawStripFaceZ(', 'OBJ_BITMAP_LABEL', 'DrawStripForeign(nm, OBJ_BITMAP_LABEL)'],
+      ['bool DrawStripLblAt(', 'OBJ_LABEL', 'DrawStripForeign(nm, OBJ_LABEL)'],
+      ['bool DrawStripRect(', 'OBJ_RECTANGLE_LABEL', 'DrawStripForeign(nm, OBJ_RECTANGLE_LABEL)'],
+    ];
+    for (const [def, type, call] of writers) {
+      const w = bodyOf(gearB, def);
+      if (!w) { broken.push(def + ' is gone from ' + path.basename(GEAR_B)); continue; }
+      if (!w.text.includes(call))
+        broken.push(def + ' must reclaim a foreign name before it writes (P-DRAW-125): ' + call);
+      if (!w.text.includes('ObjectCreate(0, nm, ' + type))
+        broken.push(def + ' must keep its own ObjectCreate(' + type + ') (P-DRAW-125): the lifecycle gate reads birth and layer from one block');
+    }
+    if (broken.length) {
+      failures.push('P-DRAW-125: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh + Biotak/DrawStrip_Base.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-125 the diagnostic repaints only an open panel, and every writer reclaims a name of another type (Biotak/DrawStrip_GearB.mqh + DrawStrip_Base.mqh)');
+    }
+  }
+
+  // ── P-LOG-2 (2026-10-01) — A DIAG FRAME BELONGS TO ONE ATTACH ──────────────
+  // The flushed frame is truncated only when a NEW attach writes its FIRST line, so
+  // between a restart and the first panel open the PREVIOUS session's
+  // `biotak_diag_<SYMBOL>.txt` is still on disk and, by mtime, still outranks every
+  // other source — a stale frame that reads exactly like a live one. Both halves must
+  // say the same thing: newest wins, the rest go. The BUILD deletes every
+  // `biotak_diag_*.txt` while terminal.exe is STOPPED (no handle can hold the file
+  // open), and the READER ranks by mtime, calls an old frame STALE, and prunes.
+  {
+    const broken = [];
+    const psLines = linesOf(BUILD_PS1) || [];
+    const ps = psLines.length ? fs.readFileSync(BUILD_PS1, 'utf8') : '';
+    const clear = bodyOf(psLines, 'function Clear-StaleDiagFiles');
+    if (!clear) {
+      broken.push('Clear-StaleDiagFiles is gone from compile-th3.ps1 — nothing deletes the previous session\u2019s diag frame');
+    } else {
+      if (!clear.text.includes('biotak_diag_*.txt'))
+        broken.push('Clear-StaleDiagFiles must target `biotak_diag_*.txt` (that is the frame it owns)');
+      if (!/Remove-Item/.test(clear.text))
+        broken.push('Clear-StaleDiagFiles must REMOVE the stale frames, not just find them (P-LOG-2)');
+    }
+    const restart = bodyOf(psLines, 'function Restart-TradingTerminal');
+    const shot = bodyOf(psLines, 'function Invoke-StripShot');
+    for (const [name, body] of [['Restart-TradingTerminal', restart], ['Invoke-StripShot', shot]]) {
+      if (!body) { broken.push(name + ' is gone from compile-th3.ps1'); continue; }
+      const stop = body.text.indexOf('Stop-TerminalProcesses');
+      const call = body.text.indexOf('Clear-StaleDiagFiles');
+      if (call < 0)
+        broken.push(name + ' must delete the stale diag frames after Stop-TerminalProcesses (P-LOG-2): otherwise the previous session\u2019s frame is still there, still newest by mtime');
+      else if (stop >= 0 && call < stop)
+        broken.push(name + ' must call Clear-StaleDiagFiles AFTER the terminal is stopped — deleting a frame the terminal holds open silently fails on Windows');
+    }
+    const live = linesOf(DIAG_LIVE) ? fs.readFileSync(DIAG_LIVE, 'utf8') : null;
+    if (!live) {
+      broken.push('tools/diag-live.py is gone — the flushed channel\u2019s only reader');
+    } else {
+      if (!live.includes('--prune') || !/def prune_stale\(/.test(live))
+        broken.push('tools/diag-live.py must offer --prune / prune_stale (P-LOG-2): the reader is the half that deletes what it does not read');
+      if (!/STALE/.test(live))
+        broken.push('tools/diag-live.py must call an old diag frame STALE — a frame that reads like a live one must never be presented as one');
+      if (!/os\.remove/.test(live) || !/OSError/.test(live))
+        broken.push('pruning must remove files and report the ones a terminal still holds open (os.remove / OSError), never silently skip them');
+    }
+    if (broken.length) {
+      failures.push('P-LOG-2: ' + broken.join('; ') + ' (compile-th3.ps1 + tools/diag-live.py)');
+    } else {
+      console.log('[PASS] P-LOG-2 a diag frame belongs to one attach: the build deletes stale frames while the terminal is stopped, and the reader prunes plus flags STALE (compile-th3.ps1 + tools/diag-live.py)');
+    }
+  }
+
+  // ── P-LOG-3 (2026-10-01) — A FLUSH IS NOT ENOUGH IF THE HANDLE IS EXCLUSIVE ──
+  // MEASURED 2026-10-01 21:52:50: `biotak_diag_EURUSD.txt` WAS written and flushed
+  // (62,965 bytes) while every reader failed on it — Python `open()` raised
+  // PermissionError 13, `cp`/`head` said "Device or resource busy", `Get-Content`
+  // said "being used by another process". A `FileOpen` grants no share by default, so
+  // the flushed bytes were current and unreachable at once. The channel's own reader
+  // must be able to open the handle the terminal holds, and `FileFlush` must stay:
+  // the share flag makes the file reachable, the flush makes it current.
+  {
+    const broken = [];
+    const emit = bodyOf(linesOf(STRIP_BASE) || [], 'void DrawStripDiagEmit(');
+    if (!emit) {
+      broken.push('DrawStripDiagEmit is gone from ' + path.basename(STRIP_BASE) + ' — the diag channel\u2019s only writer');
+    } else {
+      if (!emit.text.includes('FILE_SHARE_READ'))
+        broken.push('DrawStripDiagEmit must open its file with FILE_SHARE_READ (P-LOG-3): without it the terminal holds the handle exclusively and NO reader can open the flushed bytes (measured: PermissionError 13 / \u201cDevice or resource busy\u201d)');
+      if (!emit.text.includes('FileFlush'))
+        broken.push('DrawStripDiagEmit must still FileFlush per line (P-DRAW-126): the share flag makes the file reachable, the flush makes it CURRENT');
+      if (!emit.text.includes('biotak_diag_'))
+        broken.push('DrawStripDiagEmit no longer writes a `biotak_diag_*` frame — the name tools/diag-live.py reads');
+      if (!emit.text.includes('ChartID()'))
+        broken.push('the diag FILE must be per CHART, not per symbol (P-LOG-3b): `Symbol()` names two charts of one pair the same, so each instance opens its OWN handle to ONE path and writes it from its own position — MEASURED 2026-10-01 21:52..21:58: size frozen at 62,965 bytes while two charts emitted whole frames, and both frames the bytes held were the M1 chart\u2019s while the screen showed H1');
+    }
+    if (broken.length) {
+      failures.push('P-LOG-3: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh DrawStripDiagEmit)');
+    } else {
+      console.log('[PASS] P-LOG-3 the diag channel is reachable AND current: its handle shares reads and every line is flushed (Biotak/DrawStrip_Base.mqh DrawStripDiagEmit)');
+    }
+  }
+
+  // ── P-LOG-4 (2026-10-01) — THE UNIT A READER MAY DIFF IS A FRAME ─────────────
+  // The writer appends a WHOLE frame per panel open and never truncates, so a file
+  // holding two opens carries two declarations and two censuses. Diffing them as one
+  // document pairs the FIRST open's intent with the LAST open's reality. MEASURED
+  // 2026-10-01 21:58 (`biotak_diag_EURUSD.txt`, two opens): the mixed read reported
+  // `DIVERGED: 53 of 187` — SEAT 38, TEXT 15 — and the LAST frame alone reported
+  // `declared 91 / held 139, PASS, 0 divergences`. Same bytes, one frame boundary.
+  {
+    const broken = [];
+    const live = linesOf(DIAG_LIVE) ? fs.readFileSync(DIAG_LIVE, 'utf8') : null;
+    const ddiff = linesOf(DIAG_DIFF) ? fs.readFileSync(DIAG_DIFF, 'utf8') : null;
+    for (const [name, src] of [['diag-live.py', live], ['diag-diff.py', ddiff]]) {
+      if (src === null) { broken.push('tools/' + name + ' is gone'); continue; }
+      if (!/def split_frames\(/.test(src))
+        broken.push('tools/' + name + ' must split frames (P-LOG-4): a whole-file read pairs the FIRST open\u2019s declaration with the LAST open\u2019s census and invents divergences');
+    }
+    if (live !== null && !/len\(frames\) - 1\) if want == 0/.test(live))
+      broken.push('tools/diag-live.py must default to the LAST frame (P-LOG-4): the last frame is the state the screen is showing');
+    if (ddiff !== null) {
+      if (!/idx = len\(frames\) - 1 if want is None/.test(ddiff))
+        broken.push('tools/diag-diff.py must default to the LAST frame (P-LOG-4): the last frame is the state the screen is showing');
+      if (!/--frames/.test(ddiff) || !/--frame/.test(ddiff))
+        broken.push('tools/diag-diff.py must let the frame be chosen explicitly (--frames / --frame N)');
+    }
+    if (broken.length) {
+      failures.push('P-LOG-4: ' + broken.join('; ') + ' (tools/diag-live.py + tools/diag-diff.py)');
+    } else {
+      console.log('[PASS] P-LOG-4 both readers split frames and default to the LAST one, so a declaration is never paired with another open\u2019s census (tools/diag-live.py + tools/diag-diff.py)');
+    }
+  }
+
+  // ── P-LOG-5 (2026-10-01) — EVERY CAPTION IS IN THE INK COLUMN ─────────────
+  // MEASURED 2026-10-01 22:10 (`biotak_diag_EURUSD_134342075006101685.txt`): the
+  // panel passed the diff 91/91, and the ONE class that diff never tested was a
+  // BUTTON's own text — the census wrote `ink` for OBJ_LABEL only. The swatch row's
+  // captions (`1px`..`5px`, `Solid`..`D-Dot`) are BUTTON TEXT, so the report «بعضی
+  // ردیف‌ها متن نداره» could not be decided from the log: a lost caption and a healthy
+  // face both read `ink=-`. The reader answers both roles now, and so does the diff.
+  {
+    const broken = [];
+    const ink = bodyOf(linesOf(STRIP_BASE) || [], 'string DrawStripCensusInk(');
+    if (!ink) {
+      broken.push('DrawStripCensusInk is gone from ' + path.basename(STRIP_BASE) + ' — the census\u2019s ink column lost its owner');
+    } else if (!/oty != OBJ_LABEL && oty != OBJ_BUTTON/.test(ink.text)) {
+      broken.push('the ink column must answer LABELS and BUTTONS (P-LOG-5): a button\u2019s caption is the swatch row\u2019s text, and a label-only column makes a lost caption read exactly like a healthy face');
+    }
+    const census = bodyOf(linesOf(GEAR_B) || [], 'void DrawStripGearTabCensus(');
+    if (!census) broken.push('DrawStripGearTabCensus is gone from ' + path.basename(GEAR_B));
+    else if (!census.text.includes('DrawStripCensusInk(on, oty)'))
+      broken.push('the census must take its ink from DrawStripCensusInk (P-LOG-5), not recompute it inline');
+    const ddiff = linesOf(DIAG_DIFF) ? fs.readFileSync(DIAG_DIFF, 'utf8') : null;
+    if (ddiff === null) broken.push('tools/diag-diff.py is gone');
+    else if (!/e\["role"\] in \("lbl", "btn"\)/.test(ddiff))
+      broken.push('tools/diag-diff.py must compare a BUTTON\u2019s caption too (P-LOG-5): the census prints it now, and a TEXT verdict that only fires for labels still cannot see the row the user named');
+    if (broken.length) {
+      failures.push('P-LOG-5: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh + Biotak/DrawStrip_GearB.mqh + tools/diag-diff.py)');
+    } else {
+      console.log('[PASS] P-LOG-5 every caption is in the ink column: a button answers with its text the way a label does, and the diff tests both (Biotak/DrawStrip_Base.mqh + DrawStrip_GearB.mqh + tools/diag-diff.py)');
+    }
+  }
+
+  // ── P-DRAW-127 (2026-10-01) — A PANEL OPEN FLUSHES ITS OWN FRAME ──────────
+  // MEASURED on the 22:10/22:13 frames: the WIDE (624px) open declared all 91
+  // objects correct and unoccluded while the SCREEN showed its left column empty.
+  // The object LIST was right and the PIXELS were one frame behind: `DrawStripPaint`
+  // flushes with `if(dirty) ChartRedraw()`, and `DrawStripGearDiagDump` repaints the
+  // body LAST (P-DRAW-125a) while DISCARDS its return — so a panel whose geometry
+  // moved without any write reporting dirty kept the previous frame, and a second
+  // click "fixed" it because that one did write. A user action gets one flush.
+  {
+    const broken = [];
+    const tap = bodyOf(linesOf(STRIP_TAP) || [], 'bool DrawStripActTap(');
+    if (!tap) {
+      broken.push('DrawStripActTap is gone from ' + path.basename(STRIP_TAP));
+    } else {
+      const dump = tap.text.indexOf('DrawStripGearDiagDump()');
+      const flush = tap.text.lastIndexOf('ChartRedraw()');
+      if (dump < 0)
+        broken.push('the GEAR branch must still end with DrawStripGearDiagDump() (P-DRAW-123)');
+      else if (flush < 0 || flush < dump)
+        broken.push('the GEAR branch must FLUSH after the dump (P-DRAW-127): DrawStripPaint only redraws `if(dirty)`, and the dump\u2019s own repaint discards its return, so an open whose geometry moved keeps the previous frame on screen');
+    }
+    // P-LOG-6: the walk must test the object's OWN box. The plate's box came from the
+    // resource table, read 0 for a name that table does not carry, collapsed to a
+    // point 14px outside the panel rect and was skipped — so the largest object the
+    // panel owns was the one object the census could never print.
+    const box = bodyOf(linesOf(STRIP_BASE) || [], 'int DrawStripCensusSize(');
+    if (!box) {
+      broken.push('DrawStripCensusSize is gone from ' + path.basename(STRIP_BASE) + ' — the census\u2019s size reader lost its owner (P-LOG-6)');
+    } else {
+      if (!/OBJPROP_XSIZE/.test(box.text) || !/OBJPROP_YSIZE/.test(box.text))
+        broken.push('the census must read the object\u2019s OWN XSIZE/YSIZE first (P-LOG-6): a bitmap label sized from its resource table reads 0 for a name that table does not carry (`pnl_cardW*`), and the panel\u2019s plate lives 14px outside the panel rect');
+      if (!/DrawStripResW/.test(box.text))
+        broken.push('the resource table must stay as the FALLBACK (P-LOG-6): a face that carries no size of its own still answers from its raster');
+    }
+    if (!bodyOf(linesOf(STRIP_BASE) || [], 'bool DrawStripCensusInPanel('))
+      broken.push('DrawStripCensusInPanel is gone from ' + path.basename(STRIP_BASE) + ' (P-LOG-6)');
+    const cen6 = bodyOf(linesOf(GEAR_B) || [], 'void DrawStripGearTabCensus(');
+    if (cen6 && !cen6.text.includes('DrawStripCensusInPanel('))
+      broken.push('DrawStripGearTabCensus must filter through DrawStripCensusInPanel (P-LOG-6), not inline a box the plate can fail');
+    if (broken.length) {
+      failures.push('P-DRAW-127: ' + broken.join('; ') + ' (Biotak/DrawStrip_Tap.mqh DrawStripActTap + Biotak/DrawStrip_Base.mqh + DrawStrip_GearB.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-127 a panel open flushes its own frame: the GEAR branch redraws after the dump, not only when a write reported dirty (Biotak/DrawStrip_Tap.mqh)');
+    }
+  }
+
+  // ── P-LOG-7 (2026-10-01) — THE CENSUS WALKS THE WHOLE CHART, NOT A PREFIX ──
+  // MEASURED on the wide gear frame the report's screenshot belongs to: 40 declared
+  // left-column objects hold correct xywh/z/back/win/corner while the screen shows a
+  // bare plate under them, and every net the census had worn could NOT name a cover
+  // that is not this family (`PnlDrawS_`) or not one of the four types it knows. A
+  // cover that hides this panel's ink is by definition not this panel's, so the net
+  // is the whole chart bounded by the panel rect, and the two columns that decide
+  // WHERE an object draws when xywh is not the whole answer (`win`, `corner`) are
+  // printed with every line. The reader answers "who is on top", not a layout guess.
+  {
+    const broken = [];
+    const cen = bodyOf(linesOf(GEAR_B) || [], 'void DrawStripGearTabCensus(');
+    if (!cen) {
+      broken.push('DrawStripGearTabCensus is gone from ' + path.basename(GEAR_B));
+    } else {
+      if (/StringFind\(on, "PnlDrawS_"\) != 0/.test(cen.text))
+        broken.push('the census still filters by the family prefix (P-LOG-7): a cover that hides this panel\u2019s ink is by definition not named `PnlDrawS_*`, so the net must be the whole chart inside the panel rect');
+      if (!cen.text.includes('CENSUS rect='))
+        broken.push('the census must print its own rect + the chart\u2019s pixel size (P-LOG-7): a corner-bound `x_distance` is unreadable without the width it is measured from');
+      if (!/" win="/.test(cen.text) || !/" corner="/.test(cen.text))
+        broken.push('every census line must carry win= and corner= (P-LOG-7): an object in another subwindow or bound to another corner draws somewhere its xywh does not say');
+      if (!/DrawStripCensusSize\(on, oty, 0\)/.test(cen.text))
+        broken.push('a foreign TYPE must be walked too (P-LOG-7): the old gate `continue`d on every type but label, so a covering rectangle/track object was invisible to the one walk that could name it');
+    }
+    const dd = linesOf(DIAG_DIFF) || [];
+    const ddText = dd.join('\n');
+    if (!/CORNER/.test(ddText))
+      broken.push('diag-diff.py must carry a CORNER verdict (P-LOG-7): a non-zero corner moves the draw site without moving xywh, and the diff must name it instead of passing');
+    if (!/win=\(\?P<win>/.test(ddText) && !/win=\(\?P<win>/i.test(ddText))
+      broken.push('diag-diff.py must parse the census\u2019s win=/corner= tail (P-LOG-7): a greedy ink group would swallow them and fail every TEXT compare');
+    if (broken.length) {
+      failures.push('P-LOG-7: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh DrawStripGearTabCensus + tools/diag-diff.py)');
+    } else {
+      console.log('[PASS] P-LOG-7 the census walks the whole chart inside the panel rect and prints win/corner with every line (Biotak/DrawStrip_GearB.mqh)');
+    }
+  }
+
+  // ── P-LOG-8 (2026-10-01) — THE AFTER-FRAME: THE SNAPSHOT IS NOT THE SCREEN ──
+  // MEASURED on the wide gear frame the report's screenshot belongs to: 91/91 PASS
+  // (seat, layer, text, back, win, corner), the whole-chart walk named NO cover, and
+  // the screen STILL showed the panel's left column bare after a click. A census is a
+  // snapshot taken at dump time; the screenshot is later. Any writer that deletes,
+  // moves or re-rungs a name AFTER the dump is invisible to every snapshot — so the
+  // dump stores what the census saw and the NEXT paint pass walks that same name list
+  // and prints only the delta. `AFTER done … gone=0 moved=0 new=0` is then the witness
+  // that the model is still the screen's state, which is the moment the hunt stops
+  // reading the object list and starts reading MT4's own draw rules.
+  {
+    const broken = [];
+    const base = linesOf(STRIP_BASE) ? linesOf(STRIP_BASE).join('\n') : '';
+    if (!/void DrawStripDiagAfterRun\(/.test(base))
+      broken.push('DrawStripDiagAfterRun is gone from ' + path.basename(STRIP_BASE) + ' — the AFTER-frame lost its walker (P-LOG-8)');
+    if (!/DSTRIP_DIAG_SNAP/.test(base) || !/bool DrawStripDiagSnapAdd\(/.test(base))
+      broken.push('the census\u2019s snapshot store is gone from ' + path.basename(STRIP_BASE) + ' (P-LOG-8)');
+    if (!/AFTER GONE obj=/.test(base) || !/AFTER MOVED obj=/.test(base) || !/AFTER NEW obj=/.test(base) || !/AFTER done /.test(base))
+      broken.push('the AFTER walk must print all three deltas by name (GONE / MOVED / NEW) plus its done line (P-LOG-8)');
+    const gearB = linesOf(GEAR_B) ? linesOf(GEAR_B).join('\n') : '';
+    if (!/s_dsDiagAfter = 1;/.test(gearB))
+      broken.push('the dump must arm the AFTER walk (P-LOG-8): a snapshot without a later re-walk cannot see a writer that follows it');
+    if (!/DrawStripDiagSnapAdd\(on, ox, oy, ow, oh, zz/.test(gearB))
+      broken.push('every census line must feed the snapshot (P-LOG-8), or the delta compares a list the census never saw');
+    const paint = bodyOf(linesOf(STRIP_PAINT) || [], 'void DrawStripPaint(');
+    if (!paint) {
+      broken.push('DrawStripPaint is gone from ' + path.basename(STRIP_PAINT));
+    } else {
+      const hook = paint.text.indexOf('DrawStripDiagAfterRun()');
+      const gate = paint.text.indexOf('if(!s_dsOpen');
+      if (hook < 0)
+        broken.push('DrawStripPaint must fire the AFTER walk (P-LOG-8): the next pass after the dump is the first chance to see a later writer');
+      else if (gate >= 0 && gate < hook)
+        broken.push('the AFTER hook must sit ABOVE the open gate (P-LOG-8): a panel that closed right after the dump still owes its delta');
+    }
+    if (broken.length) {
+      failures.push('P-LOG-8: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh + DrawStrip_GearB.mqh + DrawStrip_Paint.mqh)');
+    } else {
+      console.log('[PASS] P-LOG-8 the dump snapshots its census and the next paint pass re-walks it, printing only GONE/MOVED/NEW (Biotak/DrawStrip_Base.mqh)');
+    }
+  }
+  // ── P-LOG-10 (2026-10-02) — PAINT ORDER IS CREATION ORDER; ZORDER RULES CLICKS ──
+  // The wide gear panel's left column: census 91/91, no cover, clicks still fired,
+  // yet nothing painted — the wide tiles were BORN after the narrow-phase content
+  // and MT4 paints by birth order. The law: a plate is born BEFORE its content, and
+  // any plate that can be REBORN (branch flip, !fits purge, geometry change) purges
+  // the family at the rebirth so everything re-lands plate-first.
+  {
+    const broken = [];
+    const skin = linesOf(STRIP_SKIN) ? linesOf(STRIP_SKIN).join('\n') : '';
+    const paint = linesOf(STRIP_PAINT) ? linesOf(STRIP_PAINT).join('\n') : '';
+    const pbuild = linesOf(PANELS_BUILD) ? linesOf(PANELS_BUILD).join('\n') : '';
+    if (!/s_dsPlatePairN/.test(skin))
+      broken.push('DrawStripGearPlate lost its pairN flip guard — the wide tiles can be reborn over their content (P-LOG-10)');
+    if ((skin.match(/DrawStripGearObjectsPurge\(\)/g) || []).length < 2)
+      broken.push('DrawStripGearPlate must purge the family on BOTH plate rebirths (wide entry + bake return) (P-LOG-10)');
+    if (!/s_dsSkinPlateDied = true/.test(skin))
+      broken.push('DrawStripSkinPaintAt lost the !fits rebirth flag — a strip/board plate purged by size can be reborn over its content (P-LOG-10)');
+    const paintLines = linesOf(STRIP_PAINT) || [];
+    const plateAt = indexOfLine(paintLines, 'dirty |= DrawStripSkinPaint();');
+    const gp = indexOfLine(paintLines, 'dirty |= DrawStripGearPlate();');
+    const gr = indexOfLine(paintLines, 'dirty |= DrawStripGearPaint();');
+    if (plateAt < 0 || gp < 0 || gr < 0 || !(plateAt < gp && gp < gr))
+      broken.push('DrawStripPaint must keep every PLATE call before its content call (SkinPaint -> GearPlate -> GearPaint) (P-LOG-10)');
+    if (!/s_dsSkinPlateDied/.test(paint) || !/ObjectsDeleteAll\(0, "PnlDrawS_", -1, -1\)/.test(paint))
+      broken.push('DrawStripPaint lost the top-of-pass purge that answers a dead plate (P-LOG-10)');
+    if (!/s_PnlGeoSeen\[item\]/.test(pbuild) || !/ObjectsDeleteAll\(0, g_UI\.btnPrefix \+ "Pnl"/.test(pbuild))
+      broken.push('PnlCreate lost its geometry-flip purge — cards 9/12 rebuild spec while open and a grown pairN re-births cardm bands over their rows (P-LOG-10)');
+    if (broken.length) {
+      failures.push('P-LOG-10: ' + broken.join('; ') + ' (Biotak/DrawStrip_Skin.mqh + DrawStrip_Paint.mqh + BiotakPanels_Build.mqh)');
+    } else {
+      console.log('[PASS] P-LOG-10 paint order is creation order: every reborn plate purges its family first (gear pairN guard, !fits flag + top-of-pass purge, card geometry flip)');
+    }
+  }
+
+  // ── P-UI-130 (2026-10-02) — THE HOLD'S TWO WINDOWS: ITS PRESS, AND ITS DRAG ──
+  // Measured on the live chart (EURUSD,M1 00:12:57-00:13:01): ONE latch on a box the
+  // hand then DRAGGED armed the press cycle for its whole 10 s life — the OPENER
+  // window's own budget — and refused FIVE real presses in a row, only one of them
+  // 4.4 s later (00:13:01.481) after the box had moved out from under the finger.
+  // That is «هولد بعضی وقتها باز نمیشه», and it is one constant: a press that can
+  // still become a hold fires at 500 ms, so the cycle's job (refusing the flap that
+  // re-times that clock, P-UI-115c) needs milliseconds, not ten seconds.
+  // The other half is the user's own sentence — «موقعی که باکس جابجا میکنم یا
+  // ری‌ساز میکنم نوار استریپ بالا میاد و مزاحم میشه»: the press that STARTS a drag
+  // is a press on the drawing, so it armed the latch like a hold; CHARTEVENT_OBJECT_DRAG
+  // is the terminal saying it is moving that drawing (P-BK-19a's owner witness,
+  // TH3Tool_C's band lock), so it kills the latch and forbids the next one for the
+  // 400 ms heartbeat its own events renew. Gate: the constant, the clear, the four
+  // readers and the wiring.
+  {
+    const broken = [];
+    const base = codeOf(stripBase || []);
+    const rx = codeOf(stripRouter || []);
+    if (!/#define DSTRIP_PRESS_CYCLE_MS\s+\d+/.test(base))
+      broken.push('DrawStrip_Base.mqh lost DSTRIP_PRESS_CYCLE_MS — the press cycle is bound to the opener window again (P-UI-130)');
+    const cycAt = indexOfLine(stripBase || [], 'void DrawStripPressCycleSet(');
+    const cyc = cycAt >= 0 ? codeOf((stripBase || []).slice(cycAt, cycAt + 3)) : '';
+    if (!/DSTRIP_PRESS_CYCLE_MS/.test(cyc) || /DSTRIP_OPEN_PRESS_MAX_MS/.test(cyc))
+      broken.push('DrawStripPressCycleSet() must live on DSTRIP_PRESS_CYCLE_MS, never on the opener window\u2019s cap (P-UI-130)');
+    const forget = bodyOf(stripRouter || [], 'void DrawStripHoldForget(');
+    if (!forget || !/s_dsHoldMs = 0/.test(forget.text))
+      broken.push('DrawStripHoldForget() must clear the CLOCK with the object — a dropped latch read as live kept the cycle armed past its own release (P-UI-130)');
+    const wit = bodyOf(stripRouter || [], 'void DrawStripDragWitness(');
+    if (!wit) broken.push('DrawStripDragWitness() is gone from Biotak/DrawStrip_Router.mqh (P-UI-130)');
+    else if (!/s_dsHoldMs = 0/.test(wit.text) || !/DrawStripPressCycleClear\(\)/.test(wit.text))
+      broken.push('the drag witness must KILL the latch and CLEAR the cycle — a press that moved a drawing is never a hold (P-UI-130)');
+    if (!/bool DrawStripDragLive\(\)/.test(rx))
+      broken.push('DrawStripDragLive() is gone from Biotak/DrawStrip_Router.mqh (P-UI-130)');
+    for (const sig of ['void DrawStripHoldLatch(', 'void DrawStripHoldStep(', 'void DrawStripHoldPollAt(']) {
+      const body = bodyOf(stripRouter || [], sig);
+      if (!body || !/DrawStripDragLive\(\)/.test(body.text))
+        broken.push(`${sig.slice(5, -1)} lost its native-drag gate — the strip can come up mid-drag again (P-UI-130)`);
+    }
+    const onEvent = bodyOf(stripRouter || [], 'bool DrawStripOnEvent(');
+    if (!onEvent || !/DrawStripDragWitness\(sparam\)/.test(onEvent.text))
+      broken.push('DrawStripOnEvent() lost the OBJECT_DRAG witness call — nothing stamps the drag heartbeat (P-UI-130)');
+    else if (onEvent.text.indexOf('DrawStripDragWitness(sparam)') > onEvent.text.indexOf('if(id == CHARTEVENT_MOUSE_MOVE)'))
+      broken.push('the drag witness must stand ABOVE the mouse-move block, where every event passes (P-DRAW-64\u2019s own placement rule) (P-UI-130)');
+    const poll = bodyOf(stripRouter || [], 'void DrawStripHoldPollAt(');
+    if (!poll || !/DSTRIP_HOLD_TTL\)[^\n]*DrawStripHoldClear\(\);[^\n]*DrawStripPressCycleClear\(\)/.test(poll.text))
+      broken.push('the poll\u2019s TTL backstop must end the cycle with the hold — one fact, one clear (P-UI-130)');
+    if (broken.length) {
+      failures.push('P-UI-130: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh + DrawStrip_Router.mqh)');
+    } else {
+      console.log('[PASS] P-UI-130 the hold\u2019s cycle dies with its press and a native drag kills + forbids it (press cycle 2 s, drag heartbeat gates the latch/step/poll)');
     }
   }
 

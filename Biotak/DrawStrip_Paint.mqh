@@ -8,8 +8,17 @@
 //--- for a repaint only when something really moved (P-DRAW-09d).
 void DrawStripPaint()
 {
-   if(!s_dsOpen || s_dsObj == "") return;
+   if(s_dsDiagAfter == 1) DrawStripDiagAfterRun();   // P-LOG-8: the next pass re-walks the dump's own name list
+   //--- P-DRAW-120 (2026-10-01): this line was BELOW the gate, so P-DRAW-42's own
+   //--- promise ("NO ORPHAN SURVIVES A REATTACH ... one sweep, once per session, at
+   //--- the first paint") only held for a session whose FIRST paint happened with the
+   //--- strip open — the one case that never needs it. A chart reloaded with nothing
+   //--- open (every byte of this unit's state resets while `PnlDrawS_*` stays) painted
+   //--- nothing, swept nothing, and left the previous instance's family on screen as
+   //--- the half-drawn panel of the 2026-10-01 report. The sweep is one flag read after
+   //--- the first call and belongs to the paint that runs at all, closed or open.
    DrawStripOrphanSweep();
+   if(!s_dsOpen || s_dsObj == "") return;
    if(s_dsKind == DK_NONE || ObjectFind(0, s_dsObj) < 0)
    { Print("[drawstrip] close: paint found no object obj=\"", s_dsObj, "\" kind=", (int)s_dsKind); DrawStripClose(); return; }
    // P-DRAW-08c: the strip is the indicator's surface, so the indicator's own
@@ -23,6 +32,17 @@ void DrawStripPaint()
    { Print("[drawstrip] close: drawing masked off this timeframe obj=\"", s_dsObj, "\""); DrawStripClose(); return; }
    s_dsN = DrawStripQuickCount(s_dsKind);
    bool dirty = false;
+
+   //--- P-LOG-10 (2026-10-02): THE REBIRTH ANSWER. A 9-slice plate the !fits purge
+   //--- took down while its content lived is answered HERE — at the very top of the
+   //--- next pass, before ANY painter runs — with one purge of the whole UI family.
+   //--- Every painter below re-creates what it owns from the state it already holds,
+   //--- plate-first, so nothing can be born over content again.
+   if(s_dsSkinPlateDied)
+   {
+      s_dsSkinPlateDied = false;
+      ObjectsDeleteAll(0, "PnlDrawS_", -1, -1);
+   }
 
    //--- the plate: the cards' own skin when it fits (P-DRAW-29), the legacy
    //--- flat rect when the layout cannot be skinned — created once, guarded
@@ -61,6 +81,13 @@ void DrawStripPaint()
             dirty = true;
          }
       }
+      //--- P-DRAW-122 (2026-10-01): the flat plate's rung and back flag are re-asserted
+      //--- every paint, beside the geometry above. The rect is created once and guarded
+      //--- after, so a plate that survives a reattach kept the rung of the OLD instance
+      //--- while every painter on top was born again — the strip's own body under its
+      //--- own plate. Compare-guarded; a still frame writes nothing.
+      dirty |= DrawStripSetInt(bg, OBJPROP_ZORDER, Z_STRIP);
+      dirty |= DrawStripSetInt(bg, OBJPROP_BACK, false);
       dirty |= DrawStripSetInt(bg, OBJPROP_XDISTANCE, s_dsX);
       dirty |= DrawStripSetInt(bg, OBJPROP_YDISTANCE, s_dsY);
       dirty |= DrawStripSetInt(bg, OBJPROP_XSIZE, s_dsW);

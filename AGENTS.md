@@ -103,7 +103,194 @@ node tools/check-level-continuity.js
 node tools/check-regressions.js
 node tools/object_lifecycle_check.js
 python tools/check-gear-panel.py
+python tools/debug-doctor.py --env                     # the loop's own instruments
+python tools/debug-doctor.py --symptom count           # one symptom -> one core gap
+python tools/mutation_gate.py                          # every rule's inverse must FAIL a gate
+python tools/mutation_gate.py --list                   # mutations + register entries lacking one
 ```
+
+**A rule is gated only if its INVERSE fails a gate (contract §6.14).**
+Before reporting a rule as locked, run `python tools/mutation_gate.py`: it puts the fixed
+defect back by literal string, requires the owning gate to fail with its own message
+(`KILLED`), and fails on `SURVIVED` (not gated) or `STALE` (the anchor moved). It
+mutates the tree for ~0.3 s per mutation and verifies every touched file's sha256 is
+back to its pre-run value, so run it when nobody else is editing — and never add it to
+the build.
+
+**Debug: name the stage BEFORE reading code (contract §6.13).**
+`python tools/debug-doctor.py --symptom <word>` narrows a symptom to `file:line` in one
+run: it probes the six stages (literals → layout → count rule → paint ops → birth-only
+layers → real pixels), deletes the ones that agree, and prints the first divergent one
+as CORE GAP. A stage with no probe for your symptom is the finding — that is where the
+fault reaches the terminal unseen. `--list` prints the symptom routing table.
+
+**The terminal's own Experts log is the S6 oracle, and it is already on disk** — read
+`%APPDATA%\MetaQuotes\Terminal\<id>\MQL4\Logs\<yyyymmdd>.log` (the folder being written
+NOW) before asking for another run. With `DSTRIP_DIAG` at 1 (`Biotak/DrawStrip_Head.mqh`)
+the panel declares every object it paints and the census answers beside it;
+`python tools/diag-diff.py <log>` names each divergence (MISSING / TYPE / NO INK / LAYER /
+TEXT / SEAT). **A probe may never move a pixel the product would not** (P-DRAW-125): the
+dump repaints only an open, laid-out panel, and every writer reclaims a name whose TYPE
+is not its own (`DrawStripForeign`). `--sample` self-tests the verdicts.
+
+**But the Experts log is a CACHE, not a channel (P-DRAW-126).** MEASURED 2026-10-01
+20:15:20: the live terminal's window showed a full `20:03:44` frame while its
+`MQL4\Logs\20261001.log` still ended at `20:01:38.319` and had not grown in fourteen
+minutes — MT4 buffers the journal in RAM. So the diag channel writes its own file and
+flushes it per line: `<data folder>\MQL4\Files\biotak_diag_<SYMBOL>.txt`
+(`DrawStripDiagEmit`, `DrawStrip_Base.mqh`, opened with `FILE_SHARE_READ` — P-LOG-3:
+without the share flag the terminal holds the handle exclusively and the flushed bytes
+are unreadable; measured 2026-10-01 21:52:50: 62,965 bytes flushed, `PermissionError`
+for every reader). Read that FIRST:
+`python tools/diag-live.py` (newest flushed file, `--all` lists every source),
+then `python tools/diag-diff.py <file>`. **Never pick the data folder by the mtime of
+the `MQL4` directory** — a folder stamp moves when a file is added beside it, not when a
+log is appended — `compile-th3.ps1` does it by the newest `.log` (`Get-LiveTerminalDirs`).
+
+**And a diag frame belongs to ONE attach, so old frames are DELETED (P-LOG-2).** The
+flushed frame is truncated only when a NEW attach writes its FIRST line, so between a
+restart and the first panel open the PREVIOUS session's file is still on disk and still
+the newest by mtime. `compile-th3.ps1` deletes every `biotak_diag_*.txt` while
+`terminal.exe` is stopped (`Clear-StaleDiagFiles`, inside `Restart-TradingTerminal` and
+`Invoke-StripShot`); `python tools/diag-live.py --prune` does it from the reader side and
+prints `STALE` for a frame that is old or that predates a newer journal.
+
+**A flush is not a read, and a diag file carries many frames (P-LOG-3).** MEASURED
+2026-10-01 21:52: the frame was written and flushed and every reader still failed on
+it (`PermissionError 13`, "Device or resource busy") — a plain `FileOpen` grants no
+share, so `DrawStripDiagEmit` opens with `FILE_SHARE_READ`. And the name is per CHART
+(`biotak_diag_<SYMBOL>_<CHARTID>.txt`): two charts of one symbol each opened their own
+handle to one path and overwrote each other (size frozen at 62,965 bytes while frames
+were emitted). Finally, the unit a reader may diff is a FRAME — the writer appends a
+whole frame per panel open and never truncates, so `tools/diag-live.py` and
+`tools/diag-diff.py` both split frames and default to the LAST one (`--frames`,
+`--frame N`); mixing them reported `DIVERGED: 53 of 187` where the last frame alone
+reports `PASS`. The writer half is gated as P-LOG-3, the reader half as P-LOG-4.
+
+**Every caption is in the ink column (P-LOG-5).** The census wrote `ink` for `OBJ_LABEL`
+only, so a BUTTON's own text was unverifiable — and the swatch row's captions
+(`1px`..`5px`, `Solid`..`D-Dot`) are button text. MEASURED 2026-10-01 22:10: the panel
+passed the diff 91/91 with that blind spot intact, so a lost caption and a healthy face
+both read `ink=-` and «بعضی ردیف‌ها متن نداره» could not be decided from the log.
+`DrawStripCensusInk` (`DrawStrip_Base.mqh`) now answers a button the way it answers a
+label, and `diag-diff` tests role `btn` as well as `lbl`.
+
+**A panel open flushes its own frame (P-DRAW-127).** MEASURED 2026-10-01 22:10/22:13: the
+WIDE (624px) open declared all 91 objects correct, at their seats, with no intruder and
+no occluder — and the screen showed the left column EMPTY. The object LIST was right and
+the PIXELS were one frame behind: `DrawStripPaint` flushes with `if(dirty) ChartRedraw()`,
+and `DrawStripGearDiagDump` repaints the body LAST (P-DRAW-125a) while discarding its
+return. The GEAR branch of `DrawStripActTap` — the one path that opens the panel — now
+ends with an unconditional `ChartRedraw()`. When the log says the model is complete and
+the screen says otherwise, the next question is which frame the terminal drew, not which
+object is missing.
+
+## THE DEBUG LOOP — debug mode stays ON until development ends
+
+Two things are LAW until this project ships, and no session turns either off:
+
+1. **`DSTRIP_DIAG` is 1** (`Biotak/DrawStrip_Head.mqh`). The panel declares every object
+   it paints and the census answers beside it, on every open and every group switch.
+   Commented out = silent, and a silent build is a build nobody can diagnose.
+2. **Read the LAST frame, always.** The diag file carries one WHOLE frame per panel open
+   and never truncates, so the FILE is not the unit of comparison — the FRAME is. Both
+   readers split frames and default to the last one (`--frames`, `--frame N`).
+
+ONE command is the whole loop:
+
+```bash
+python tools/diag-live.py --diff      # newest file, LAST frame, its own diff verdict
+python tools/diag-live.py --all       # every source, newest first (flush outranks experts)
+python tools/diag-live.py --prune     # delete stale frames (run after a restart)
+```
+
+Then, in this order — and do not skip to step 3:
+
+1. **The verdict names the bug.** Every `MISSING / TYPE / NO INK / LAYER / TEXT / SEAT`
+   line carries the object's own name and the two numbers that disagree. Fix THAT name.
+2. **PASS but the screen disagrees? The object model is not the screen.** The model
+   cannot witness three things, so check them by hand: the PLATE (painted by
+   `DrawStripGearPlate`, admitted to the census by P-LOG-6 — if it does not appear, that
+   is itself the finding), object ORDER at equal `z` (`idx=`), and the frame the terminal
+   actually DREW (P-DRAW-127).
+3. **Only then ask for another capture — and NAME the state.** The frame count plus the
+   panel's own width and section titles say which state it was (the wide 624px accordion
+   and the narrow 312px one are different frames, not different moments).
+
+   P-LOG-7 (2026-10-01): the census now walks the WHOLE chart inside the panel rect — no
+   name prefix, no type gate — and prints `win=`/`corner=` with every line plus one
+   `[drawstrip] CENSUS rect=… chart=WxH` header. MEASURED on the wide frame whose
+   screenshot the report carries: 40 declared left-column objects hold correct
+   xywh/z/back AND win=0 corner=0 while the screen shows a bare plate under them. When a
+   frame reads that clean and the pixels still disagree, the model is exhausted: ask for
+   a fresh `-Shot` of the SAME state, do not re-read the old one (the panel had been
+   dragged since — `gx` 1087 → 846 — so the screenshot and the frame were two states).
+   A face's SEAT is contained OR centred: a raster may be smaller than its cell (the
+   paint insets the art) or larger (`pnl_sw_off.bmp` 52x34 around a 40x22 seat).
+
+   P-LOG-8 (2026-10-01): the census is a SNAPSHOT and the screenshot is LATER. The dump
+   now stores what the census saw and the NEXT `DrawStripPaint` pass re-walks that name
+   list and prints only the delta — `AFTER GONE obj=` / `AFTER MOVED obj= was=… now=…` /
+   `AFTER NEW obj=` / `AFTER done snap=… gone=… moved=… new=… chartObjs=…`. Read the
+   `done` line FIRST: `gone=0 moved=0 new=0` says the object list is STILL the screen's
+   state, and the hunt must move off the object list (to MT4's own draw rules) instead
+   of re-reading it. MEASURED 23:09: 91/91 PASS, whole-chart walk found no cover (one
+   foreign `BiotakMenuV2_*_CircTipArt` on rung 1302, UNDER the plate), and the left
+   column was still bare — that frame is the case the AFTER block was built for.
+   P-LOG-9 (2026-10-02, retired): with the object model fully acquitted, four probe
+   labels asked MT4's own draw rule — P1 (content rung) + P2 (rung 1600) at the left
+   seat, P3 at the right, plus a fresh-name P4 and a same-pixel touch test. The user's
+   screenshot showed ALL FOUR while the left column stayed bare, and the touch raised
+   nothing: CREATE is the only raise. Verdict + law = P-LOG-10 below and contract §6
+   item 23; the labels are gone.
+   P-LOG-10 (2026-10-02): MT4 paints in CREATION order; `OBJPROP_ZORDER` rules clicks
+   alone (P-DRAW-83's «paint order hid them, and click order gave every pixel»). The
+   wide tiles were born after the narrow-phase content, so everything born before them
+   painted under the card while every click still landed. The law lives where the plate
+   is born (`DrawStripGearPlate`): when the plate is about to (re)appear while family
+   content predates it — entering the composed branch, a changed `pairN`, or returning
+   to the bake — `DrawStripGearObjectsPurge()` runs once, tiles land first, and the
+   `DrawStripGearPaint()` that follows recreates every control above them. MEASURED
+   00:07 frame + the user's screenshot: both columns draw, the × and head are back,
+   `AFTER done gone=0 moved=0 new=0`.
+4. **A restart deletes the old frames** (`Clear-StaleDiagFiles`); the first frame after
+   ensures the only frames on disk are this session's. The observer never has to wonder
+   whether it is reading yesterday's panel.
+
+THE SURFACE LAWS — every new plate/panel obeys these (P-LOG-10, 2026-10-02):
+
+1. MT4 paints in CREATION order. `OBJPROP_ZORDER` rules CLICKS alone, and a write —
+   even a move — never raises an object. Only CREATE re-orders paint.
+2. A plate is born BEFORE the content it hosts, in the same paint pass.
+3. A plate that can be REBORN (branch flip, !fits purge, spec/geometry change) purges
+   its family at the rebirth. The three owners: `DrawStripGearPlate` (`s_dsPlatePairN`),
+   `DrawStripSkinPaintAt` → `s_dsSkinPlateDied` answered at the top of `DrawStripPaint`,
+   and `PnlCreate` (geometry flip for the dynamic cards 9/12). Copy an owner; do not
+   invent a fourth way. Gate: P-LOG-10.
+4. Close/attach purges take plate AND content together — one family, one sweep.
+5. Pixels disagreeing with a PASSing census mean a draw rule is wrong: probe the
+   screen (fresh-named labels, P-LOG-9 style); never re-read the object list.
+
+THE HOLD'S TWO WINDOWS (P-UI-130, 2026-10-02) — a hold is a press AND a stillness:
+
+1. **A gesture's flags die with the gesture.** The press cycle's life is the PRESS's
+   (`DSTRIP_PRESS_CYCLE_MS`, 2 s) — never the opener window's cap. MEASURED: one latch
+   on a box the hand then DRAGGED refused FIVE real presses in a row over 4.4 s
+   (`press refused: cycle live`, EURUSD,M1 00:12:57.036 → 00:13:01.481; the next latch
+   only at 00:14:41 after the user gave up) — «هولد بعضی وقتها باز نمیشه» IS that
+   window, and no line of the log named the owner until DIAG-116 printed it.
+2. **A latch the position test has already DROPPED is not a live gesture.**
+   `DrawStripHoldForget()` clears the CLOCK with the object, so the release witness
+   clears the cycle instead of stamping a window on a latch nobody owns (the stale
+   `s_dsHoldMs` is what outlived a release that DID arrive).
+3. **A drawing IN MOTION is never held.** `CHARTEVENT_OBJECT_DRAG` is the terminal's
+   own voice (P-BK-19a's owner witness, TH3Tool_C's band lock): it KILLS a live latch
+   and FORBIDS the next one for its 400 ms heartbeat — renewed by every drag event
+   while the object moves. This is what the shortened press cycle trades its flap
+   protection for: a PRESS is guarded by the press, a GESTURE IN MOTION by the motion.
+   «موقعی که باکس جابجا/ری‌سایز میکنم نوار استریپ بالا میاد» was the press that
+   STARTS a drag arming the latch and the 500 ms clock firing on a drawing the hand
+   was about to move. Gate: P-UI-130.
 
 `compile-th3.ps1` is the ONLY build. Do not hand-roll a metaeditor call, and do not
 add a second script for the same job.
@@ -152,6 +339,16 @@ ONE chart:** never run it while a strip is open, and if the instance answers
 `[STRIPSHOT] … SKIP` (under ~40 bars, no strip opened) that is the terminal's reason,
 not a pass. A shot that produced no PNG fails the build — `-Shot` cannot report green on
 an empty column.
+
+**The mirror is not the evidence (P-DRAW-119).** `tools/check-shot-freshness.js` runs in
+every gate run, uncached, and prints `fresh N · stale N · missing N` per state the
+harness asks for: `[PASS] real pixels gate` only when every PNG is at least as new as
+the newest source it shows, `[WARN] real pixels gate (ran; its verdict is NOT CURRENT)`
+otherwise — never `[PASS]`, so a green line can no longer be read as "seen". A
+`-Shot -RestartTerminal` run ends with the same gate `--strict`, and a stale or partial
+capture FAILS the build (`[FAIL] real pixels gate (strict)`). MEASURED 2026-10-01, the day
+it was added: `fresh 0 · stale 0 · missing 25`. `tools/before-after.html` prints the same
+verdict on the shot itself (which build's pixels, and how old).
 
 **Deploy is a restart, and it is opt-in.** MT4 runs what it loaded at attach; a
 fresh ex4 is a file until the terminal restarts or the indicator is removed and
@@ -223,6 +420,11 @@ What the output now guarantees, and why each line exists:
   nothing to a write aimed at a name the chart does not carry. `tools/check-regressions.js`
   is the gate; run it by hand after touching a label mask, a hotkey path, the coalescer
   or the HTF card.
+- **`[PASS] real pixels gate` / `[WARN] real pixels gate`** — the only pixels a report
+  may call "what is on the screen": the PNGs `tests/Biotak_StripShot_Test.mq4` writes by
+  the REAL paint path, compared state by state with the newest source they show. Run it
+  by hand after touching any paint path — `node tools/check-shot-freshness.js` (add
+  `--strict` to exit non-zero instead of reporting `NOT CURRENT`).
 - **one build, not two** — `MQL4\Indicators\BiotakProject` is a JUNCTION to this
   repo, so the "installed" source and the workspace source are ONE file and the
   "installed" ex4 is the workspace ex4. `-Project all` compiles it once and says so.

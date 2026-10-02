@@ -201,6 +201,51 @@ static bool   s_dsHoldDown = false;
 //--- the real one, and `DrawStripHoldLatch` refuses to re-time a press it already
 //--- named at the same point.
 static uint   s_dsHoldOffMs = 0;   // tick a release was SEEN at (0 = none)
+//--- P-UI-130 (2026-10-02) — A DRAWING THE TERMINAL IS MOVING IS NEVER HELD.
+//--- The user's second report, in one sentence: «موقعی که باکس جابجا میکنم یا
+//--- ریساز میکنم نوار استریپ بالا میاد و مزاحم میشه». The press that STARTS a drag
+//--- is a press on the drawing, so it arms the latch exactly like a hold does, and
+//--- the 500 ms clock knows nothing about where the hand is going: the strip came
+//--- up ON the drawing the user was about to move — and (P-UI-113f) left it
+//--- natively selected while the anchors were being aimed at.
+//---
+//--- The witness is the terminal's OWN voice and this module already listens to
+//--- it: CHARTEVENT_OBJECT_DRAG is fired for the user's gesture only (P-DRAW-64's
+//--- interior rides it), it is the SAME trait P-BK-19a made the base box's owner
+//--- (`BK_DRAG_OWNER_MS`: «a native drag announces itself with CHARTEVENT_OBJECT_DRAG
+//--- this soon after the press»), and TH3Tool_C's band lock measured the resize
+//--- half of it («MT4 fires CHARTEVENT_OBJECT_DRAG continuously while the user
+//--- resizes the committed band»). So: the drag KILLS a live latch outright and
+//--- FORBIDS the next one for as long as its own heartbeat keeps speaking.
+//---
+//--- The window is a HEARTBEAT, not a guess — the same shape as the band lock's
+//--- `s_bandDragMs`. Events keep arriving while the object moves, so the window
+//--- renews itself for exactly as long as the hand is moving the drawing, and
+//--- past it the hand is at rest again (400 ms of silence = the drag is over).
+//--- This is the protection the shortened press cycle (DSTRIP_PRESS_CYCLE_MS)
+//--- traded away, and it is the honest swap: a PRESS is guarded by the press, a
+//--- GESTURE IN MOTION by the motion.
+#define DSTRIP_DRAG_HOLD_OFF_MS 400   // the drag heartbeat's own silence window
+static uint   s_dsDragMs  = 0;         // last OBJECT_DRAG seen (the terminal's voice)
+static string s_dsDragObj = "";        // the object it named
+bool DrawStripDragLive()
+{ return (s_dsDragMs != 0 && GetTickCount() - s_dsDragMs < DSTRIP_DRAG_HOLD_OFF_MS); }
+//--- Called from the router's own OBJECT_DRAG branch, ABOVE every guard below (a
+//--- drag with the strip OPEN still stamps: the strip may have to know the hand is
+//--- on a drawing under it). Killing a latch costs two compares when none is live;
+//--- the cycle goes with it because a press that has MOVED a drawing can never
+//--- become a hold — the same law P-UI-113d wrote for the release (`relWasDrag`),
+//--- applied at the moment the fact is measured instead of at the end of the press.
+void DrawStripDragWitness(const string nm)
+{
+   s_dsDragMs  = GetTickCount();
+   s_dsDragObj = nm;
+   if(s_dsOpen) return;                       // an open strip owns no hold
+   if(s_dsHoldMs == 0 && s_dsHoldObj == "") return;
+   Print("[drawstrip] hold cancelled: native drag obj=\"", nm, "\"");
+   s_dsHoldMs = 0; s_dsHoldObj = ""; s_dsHoldOffMs = 0;
+   DrawStripPressCycleClear();   // proved a drag: this press may never become a hold
+}
 //--- P-UI-113c (2026-09-23) — THE OPENING PRESS OWNS ITS OWN CLICK-FAMILY EVENTS.
 //--- Reported: «چرا با رها کردن هولد استریپ هم بسته میشه». The hold fires while the
 //--- button is STILL DOWN, so the release that ends it lands on the drawing = the
@@ -218,6 +263,15 @@ static uint   s_dsHoldOffMs = 0;   // tick a release was SEEN at (0 = none)
 void DrawStripHoldLatch(const int mx, const int my)
 {
    uint now = GetTickCount();
+   //--- P-UI-130: THE TERMINAL IS MOVING A DRAWING — the hand is not holding. FIRST
+   //--- because it is one compare, and first because every fence BELOW has already
+   //--- stamped a clock by the time it returns: a refusal here never leaves a live
+   //--- latch for the poll to fire on (the trap `DrawStripHoldForget` used to keep).
+   if(DrawStripDragLive())
+   {
+      if(!s_dsOpen) Print("[drawstrip] latch blocked: native drag obj=\"", s_dsDragObj, "\"");
+      return;
+   }
    string named = DrawObjectAtCached(mx, my);   // the one hit test this latch pays for
    //--- P-UI-115c — A FLAP IS NOT A NEW PRESS (P-UI-113j's own law: a press we
    //--- already NAMED is not a new gesture). Same drawing, same press point, a live
@@ -264,7 +318,14 @@ void DrawStripHoldLatch(const int mx, const int my)
    Print("[drawstrip] hold latch at ", mx, ",", my, " hit=\"", s_dsHoldObj,
          "\" lbtn=", (UILeftButtonDown() ? 1 : 0));
 }
-void DrawStripHoldForget() { s_dsHoldObj = ""; }
+//--- P-UI-130: A DROPPED LATCH IS NOT A GESTURE. This was ONE store (`s_dsHoldObj =
+//--- ""`) and left the CLOCK running, so `DrawStripHoldGestureLive()` read a latch the
+//--- position test had already dropped as LIVE at the release — and the release then
+//--- stamped a window instead of clearing the press cycle, which is how a refusal
+//--- outlived a release that DID arrive. The clock is the latch's own; when the
+//--- latch is forgotten the clock goes with it. `s_dsHoldDown` deliberately stays:
+//--- the hand may still be down, and the poll's zero-move latch must not re-arm on it.
+void DrawStripHoldForget() { s_dsHoldMs = 0; s_dsHoldObj = ""; }
 void DrawStripHoldClear() { s_dsHoldMs = 0; s_dsHoldObj = ""; s_dsHoldDown = false; s_dsHoldOffMs = 0; }
 //--- P-UI-115c: is a latch live and young enough that a click-family event may only
 //--- be a release SEEN, never its PROOF? (The window in the poll decides.)
@@ -378,6 +439,16 @@ void DrawStripHoldStep(const int mx, const int my, const bool leftDown, const bo
    //--- (the note above the branch states exactly that), and the TTL bounds what
    //--- neither channel reports. Cost: the up frame is two compares and no write.
    if(s_dsHoldMs == 0 || s_dsHoldObj == "") return;
+   //--- P-UI-130: THE TERMINAL'S OWN DRAG ENDS THE HOLD. A press that has MOVED the
+   //--- drawing is a drag however few pixels it travelled, and the strip may not come
+   //--- up mid-gesture over the thing the user is moving. (The witness has almost
+   //--- always killed the latch before this line can see it — it stands as the
+   //--- second reader of the same fact, so the fire can never outrun the drag.)
+   if(DrawStripDragLive())
+   {
+      if(!s_dsOpen) Print("[drawstrip] hold dropped: native drag obj=\"", s_dsDragObj, "\"");
+      DrawStripHoldForget(); return;
+   }
    //--- P-UI-115c: inside the release's window a SEEN release may be the flap, so the
    //--- move path may not FIRE it — and it is not the move path's to end either (the
    //--- poll resolves the real one). One unsigned read on a live latch.
@@ -430,8 +501,22 @@ void DrawStripHoldPollAt(const int mx, const int my, const bool leftDown)
       if(now - s_dsHoldOffMs <= DSTRIP_OPEN_TAIL_MS) return;
       DrawStripHoldClear(); DrawStripPressCycleClear(); return;
    }
-   if(now - s_dsHoldMs > DSTRIP_HOLD_TTL) { DrawStripHoldClear(); return; }
+   //--- P-UI-130: AND THE CYCLE GOES WITH IT. This branch is the "the press is over"
+   //--- backstop, and it used to end the HOLD only — leaving the press cycle to run
+   //--- down its own cap and refuse every press inside it, with no latch left alive
+   //--- for any reader to explain why (the log's refusals all name an object that no
+   //--- live latch owns). One fact, one clear.
+   if(now - s_dsHoldMs > DSTRIP_HOLD_TTL) { DrawStripHoldClear(); DrawStripPressCycleClear(); return; }
    if(s_dsHoldObj == "" || s_dsOpen) return;
+   //--- P-UI-130: and the POLL is the path that fires a hold the move stream never
+   //--- saw (a motionless press emits no MOUSE_MOVE, P-LM-13) — which is exactly the
+   //--- path a drag could not otherwise close: with the finger still and the object
+   //--- under it, every other witness is quiet. The heartbeat is not.
+   if(DrawStripDragLive())
+   {
+      if(!s_dsOpen) Print("[drawstrip] hold dropped: native drag obj=\"", s_dsDragObj, "\"");
+      DrawStripHoldForget(); return;
+   }
    if(now - s_dsHoldMs < DSTRIP_HOLD_MS) return;
    if(MathAbs(mx - s_dsHoldX) > DSTRIP_HOLD_MOVE || MathAbs(my - s_dsHoldY) > DSTRIP_HOLD_MOVE)
    { DrawStripHoldForget(); return; }
@@ -487,6 +572,10 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    //--- kind, ~12 guarded reads for a user FILLER kind, a write only on a real move.
    if((id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CHANGE) && sparam != "")
    {
+      //--- P-UI-130: THE DRAWING IS MOVING, SO NOTHING MAY BE HELD ON IT. Only the
+      //--- DRAG channel is the hand (OBJECT_CHANGE is the properties dialog: a still
+      //--- hand, no gesture in flight to end).
+      if(id == CHARTEVENT_OBJECT_DRAG) DrawStripDragWitness(sparam);
       //--- P-DRAW-64 addendum 6: the drag event stamps, and it ARMS the move memo, so
       //--- a frame the terminal coalesces away is still covered by the hand's own stream.
       FillChildStampArm(sparam);

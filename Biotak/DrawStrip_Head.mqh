@@ -306,6 +306,15 @@
 //--- build cannot leave a `GT*`/`GTrack`/`GU` behind (Touch rule 2).
 #define DSTRIP_SEC_CNT_W 24    // P-DRAW-71: a band's count pill (the cards' .cnt)
 #define DSTRIP_SEC_CNT_H 16    // P-DRAW-73: the bake's own height (cntChipSkin 24x16)
+//--- P-DRAW-123 (2026-10-01) — THE PANEL'S OWN DIAG SWITCH, and the reason it exists:
+//--- a paint defect that only the TERMINAL can show had no machine-readable output, so
+//--- every report ended as a screenshot read by eye. With this 1, a panel OPEN or a group
+//--- switch prints one `[dsdiag] EXPECT` line per painted panel object (name, role, seat,
+//--- layer, text) immediately followed by the `[drawstrip] TABCENSUS` reality walk of the
+//--- SAME state, and `python tools/diag-diff.py <log>` names the objects that differ.
+//--- commented out = silent (the call sites compile away). Never per paint: armed by
+//--- `DrawStripGearDiagDump()` on a user action, the same bound the census always had.
+#define DSTRIP_DIAG 1
 //--- the group row (DSTRIP_GRK_GROUP) and its own two seats: the value DIGEST is
 //--- right-aligned `DSTRIP_GEAR_DG_PAD` in from the cell, and the label is fitted
 //--- against it with the row's own gap between.

@@ -526,6 +526,58 @@ def main():
                   % (kind_name, name, len(hits), npaint))
             print("       %d controls, all with a hit box" % len(hits))
 
+    # 2b. A BAND'S COUNT COUNTS MEMBERS, NEVER NAV (P-DRAW-121).
+    #
+    # Reported 2026-10-01 with a shot of the open Stroke tab: the SHAPE band's pill
+    # read 2 (right) while LAYER read 4 for a band that owns TWO rows — because the
+    # accordion's own headers ride the SAME row array in the SAME column (P-DRAW-117)
+    # and on a wide tab the headers BELOW the open group pack into the last band's
+    # range. `DrawStripGearSectionCount`'s row loop carried no kind filter, so `Look`
+    # and `Row` were counted as members; the same rule gave the Colour tab's FILL band
+    # 5 for its own two. No gate could see it: this one rendered the pill and never
+    # asserted the digit, so the number was only ever SEEN.
+    #
+    # TWO assertions, because either one alone can hold while the pill is wrong:
+    #   * the RULE must exclude `DSTRIP_GRK_GROUP` (read out of the source's own text), and
+    #   * the NUMBERS must agree with the members-only count — which catches a nav row
+    #     reaching a band's range by any other route.
+    # Both go through the mirror's ONE count owner (`band_counts`), which parses the
+    # rule's flag from DrawStripGearSectionCount's body: remove the filter and the two
+    # numbers split, so this fails HERE, in the build, and not on the chart.
+    for kind_name, M in MODELS:
+        check(M.count_rule_excludes_nav(),
+              "P-DRAW-121 %s: DrawStripGearSectionCount's row loop does not exclude "
+              "DSTRIP_GRK_GROUP — a band's pill counts the accordion's own headers as "
+              "settings (Biotak/DrawStrip_GearB.mqh)" % kind_name)
+        bands = 0
+        for t, tab in enumerate(M.TABS):
+            L = M.layout(t)
+            # the rule AS WRITTEN against the rule with nav forced out: naming the rows
+            # that leaked is the point — a difference of one is still a wrong pill.
+            for (label, col, n_rule, nav), (_l, _c, n_only, _n) in zip(M.band_counts(L),
+                                                                      M.band_counts(L, True)):
+                bands += 1
+                check(n_rule == n_only,
+                      "P-DRAW-121 %s/%s col%d: band `%s` reads %d but owns %d — the gap "
+                      "is %d nav row(s) (%s): a group header is not a member"
+                      % (kind_name, tab, col, label, n_rule, n_only, n_rule - n_only,
+                         ", ".join(nav)))
+        # AND THE DETECTOR MUST BE ABLE TO FIRE. A nav reader that returns nothing makes
+        # `n_rule == n_only` true for the WRONG reason and the assertion above proves
+        # nothing — a probe that can never fire is decoration. So the mirror must SEE
+        # group headers inside band ranges on this group list (the accordion's trailing
+        # headers always do), and `python tools/mutation_gate.py` mutates exactly this
+        # reader to prove the assertion is load-bearing.
+        navseen = sum(len(nav) for t2 in range(len(M.TABS))
+                      for _l, _c, _n, nav in M.band_counts(M.layout(t2)))
+        check(navseen >= 1,
+              "P-DRAW-121 %s: the mirror's nav reader found no group header in ANY band "
+              "range — the detector is blind, so the count assertion above proves nothing"
+              % kind_name)
+        print("  bands: %d pill(s) over %d group(s) of kind %s — members only "
+              "(%d nav row(s) seen and excluded, P-DRAW-121)"
+              % (bands, len(M.TABS), kind_name, navseen))
+
     # 3. seats against the card owner
     print("")
     for label, a, b in G.audit(G.layout(0)):

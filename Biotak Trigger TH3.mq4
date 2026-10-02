@@ -134,6 +134,28 @@ int OnInit()
     // P-PERF-10: this entry measures BOTH halves of the init budget (the
     // indicator handler and the UI kit) so the report can name which one owns
     // the attach/timeframe-switch stall instead of reporting one opaque total.
+    // P-DRAW-120 (2026-10-01) — AN ATTACH OWNS A CHART THAT CARRIES NO PANEL.
+    // P-DRAW-85 wrote `DrawStripSweepStale()` for exactly this ("no orphan survives a
+    // reattach") and documented its ONE call as "from the entry's OnInit beside the
+    // teardown's own `DrawStripClose()`" — but `git grep SweepStale HEAD` finds the
+    // definition and NO call site: the sweep was never wired, so the promise the rule
+    // makes has never been delivered. What that costs was measured on 2026-10-01
+    // (EURUSD,M5, report «روی stroke که کلیک می‌کنم متن‌ها این‌طوری ناقص هست»): the
+    // terminal holds every object of the open Stroke tab at its own seat with its own
+    // ink (`TABCENSUS GR2T "50 % line":14865611 z=1442`, `GS0T "STROKE"` in
+    // `MQL4\Logs\20261001.log`), while the screen paints 31 of those 104 objects — and
+    // the last gear paint in that log is 14:37:08, before the 15:10:39 reload whose
+    // statics (`s_dsOpen=false`, `s_dsGear=0`) answer nothing. A family the previous
+    // instance left is REUSED (`DrawStripSkinBmp`/`DrawStripFaceZ`/`DrawStripLblAt`
+    // decide "create or rewrite?" from `ObjectFind(0,nm) < 0` alone), so one half keeps
+    // the older build's own layer and the other half never gets a second writer at all.
+    // This is the destroy an attach can prove: at OnInit this instance has painted
+    // nothing, so every `PnlDrawS_*` object on the chart is someone else's. One prefix
+    // scan per ATTACH, never per frame.
+#ifndef BUILD_LITE
+    DrawStripSweepStale();
+#endif
+
     uint p4i = GetTickCount();
     int result = OnInitHandler();
     uint p4ind = GetTickCount() - p4i;

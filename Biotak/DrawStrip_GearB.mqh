@@ -22,17 +22,60 @@
 //--- foot words, every one of the missing names. So the band is the panel's own rect
 //--- and a label's own text/colour/z is printed with it. Bounded: one walk per panel
 //--- OPEN (never per paint), the call site is unchanged.
+//--- P-DRAW-123 (2026-10-01) — WHAT THE PAINT DID, BESIDE WHAT THE TERMINAL HOLDS.
+//--- The report («این هنوز درست نشده», a shot of the open Stroke tab with the SHAPE
+//--- and LAYER captions plus `Behind candles`/`Look`/`Row` painted while both other
+//--- band captions, the `50 % line`/`Extend right`/`Lock` names, every chip and the
+//--- whole left column were bare) could only be closed by EYE, and that is the cost
+//--- this closes: the census answers "what does the chart hold", and it answered it
+//--- CORRECTLY for every object the screen did not show in the P-DRAW-120 case. What
+//--- was missing is the OTHER half — what the paint INTENDED — in a form a machine can
+//--- diff. So while `s_dsDiagArm` is set, the four writers every panel object goes
+//--- through (label, face, rect, button) each print one `[dsdiag] EXPECT` line with the
+//--- object's own name, role, seat, layer and text, at the moment they place it.
+//--- This is the paint's OWN numbers — not a second table recomputed here — so a
+//--- divergence is always the terminal's doing.
+#ifdef DSTRIP_DIAG
+bool s_dsDiagArm = false;   // P-DRAW-123: the dump's own one-paint latch
+#endif
+void DrawStripDiagExpect(const string nm, const string role, const int x, const int y,
+                         const int w, const int h, const int z, const string txt)
+{
+   #ifdef DSTRIP_DIAG
+   if(!s_dsDiagArm) return;
+   //--- P-DRAW-126: same line, but through the flushed channel, so the reader
+   //--- never has to wait for the terminal's own buffer (see DrawStripDiagEmit).
+   DrawStripDiagEmit("[dsdiag] EXPECT obj=" + nm + " role=" + role +
+                     " xywh=" + IntegerToString(x) + "," + IntegerToString(y) + "," +
+                     IntegerToString(w) + "," + IntegerToString(h) +
+                     " z=" + IntegerToString(z) + " txt=\"" + txt + "\"");
+   #endif
+}
+
 void DrawStripGearTabCensus()
 {
    if(s_dsGear == 0 || s_dsGearW0 <= 0) return;
    int bx0 = s_dsGEX, bx1 = s_dsGEX + s_dsGearW0;
    int by0 = s_dsGEY, by1 = s_dsGEY + s_dsGearH;   // P-DRAW-112: the WHOLE plate
+   DrawStripDiagEmit("[drawstrip] CENSUS rect=" + IntegerToString(bx0) + "," + IntegerToString(by0) + "," + IntegerToString(s_dsGearW0) + "," + IntegerToString(s_dsGearH) + " chart=" + IntegerToString((int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS)) + "x" + IntegerToString((int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS)));   // P-LOG-7: the frame a corner-bound reader needs
+   DrawStripDiagSnapRect(bx0, by0, bx1, by1);   // P-LOG-8: the AFTER walk bounds its NEW scan by it
    int n = ObjectsTotal(0, -1);
    for(int oi = 0; oi < n; oi++)
    {
       string on = ObjectName(0, oi, -1);
       if(on == "") continue;
-      if(StringFind(on, "PnlDrawS_G") != 0) continue;   // P-DRAW-112: this panel only
+      //--- P-DRAW-124 (2026-10-01) — THE CENSUS WALKS THE STRIP'S WHOLE FAMILY, NOT
+      //--- THE GEAR'S OWN NAMES. P-DRAW-112 scoped it to `PnlDrawS_G*` — "this panel
+      //--- only" — and that scope is the one blind spot the live hunt needed: the
+      //--- objects that can HIDE this panel's ink are exactly the ones the prefix
+      //--- threw away. MEASURED (2026-10-01 18:42:35, the report «این هنوز درست نشده»):
+      //--- the chart carried `PnlDrawS_GT0..GT3` / `GTrack` (the RETIRED tab family,
+      //--- P-DRAW-117) and `PnlDrawS_GE0/GE4` (the retired fields) — none of them
+      //--- this build's, none of them in a census that could answer "who is on top".
+      //--- P-LOG-7 (2026-10-01) — NO NAME FILTER AT ALL. P-DRAW-124 widened the net to
+      //--- `PnlDrawS_`, which still drops every object that is NOT this family — and a
+      //--- cover that hides this panel's ink is, by definition, not this panel's; the
+      //--- box test below still bounds the walk to the panel's own rect.
       int oty = (int)ObjectGetInteger(0, on, OBJPROP_TYPE);
       int ox = (int)ObjectGetInteger(0, on, OBJPROP_XDISTANCE);
       int oy = (int)ObjectGetInteger(0, on, OBJPROP_YDISTANCE);
@@ -43,12 +86,13 @@ void DrawStripGearTabCensus()
          oh = (int)ObjectGetInteger(0, on, OBJPROP_YSIZE);
       }
       else if(oty == OBJ_BITMAP_LABEL)
-      {
-         string bf = ObjectGetString(0, on, OBJPROP_BMPFILE, 0);
-         ow = DrawStripResW(bf); oh = DrawStripResH(bf);
+      {   //--- P-LOG-6: the OBJECT's own size; the resource table read 0 for the plate.
+         ow = DrawStripCensusSize(on, oty, 0); oh = DrawStripCensusSize(on, oty, 1);
       }
-      else if(oty != OBJ_LABEL) continue;   // lines/arrows are points, not the panel
-      if(ox + ow < bx0 || ox > bx1 || oy + oh < by0 || oy > by1) continue;
+      else DrawStripCensusAnyBox(on, oty, ox, oy, ow, oh);   // P-LOG-7/8c: a foreign TYPE too — and a chart object's box is its TIME/PRICE anchors
+      //--- P-LOG-6: the box the walk tests is the object's OWN box (see
+      //--- DrawStripCensusInPanel) — the plate starts 14px outside this rect.
+      if(!DrawStripCensusInPanel(on, oty, ox, oy, bx0, by0, bx1, by1)) continue;
       color bg = (color)ObjectGetInteger(0, on, OBJPROP_BGCOLOR);
       int zz = (int)ObjectGetInteger(0, on, OBJPROP_ZORDER);
       //--- P-DRAW-89: the TRACK's tone, printed. It is the one surface on the tab
@@ -60,15 +104,78 @@ void DrawStripGearTabCensus()
       //--- already prints every object's own `bgcolor`, and the retired `GTrack` is
       //--- not a surface this build paints (it is swept, not measured).
       int tone = -1;
-      //--- P-DRAW-112: a label carries its answer in TEXT and COLOR, not in a box.
-      string ink = "-";
-      if(oty == OBJ_LABEL)
-         ink = "\"" + ObjectGetString(0, on, OBJPROP_TEXT) + "\":" +
-               IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_COLOR));
-      Print("[drawstrip] TABCENSUS obj=", on, " type=", oty,
-            " xywh=", ox, ",", oy, ",", ow, ",", oh,
-            " bgcolor=", (int)bg, " tone=", tone, " z=", zz, " ink=", ink);
+      //--- P-DRAW-112 + P-LOG-5: a caption carries its answer in TEXT and COLOR,
+      //--- not in a box — and a BUTTON is captioned too (see DrawStripCensusInk).
+      string ink = DrawStripCensusInk(on, oty);
+      //--- P-DRAW-120: THE FOUR PROPERTIES THAT DECIDE WHETHER MT4 DRAWS IT AT ALL.
+      //--- The census carried xywh + bgcolor + z + the label's ink, and the 2026-10-01
+      //--- 15:18 report could not be closed with those: every missing object read
+      //--- CORRECT here while the screen showed a bare plate (see DrawStripFaceZ).
+      //--- `back` is the layer MT4 draws it in (a background object hides under the
+      //--- plate), `fnt` a label's point size (0 draws nothing), `tf` its period mask
+      //--- (a LABEL-only property per the contract — OBJ_NO_PERIODS draws nothing) and
+      //--- `bmp` the face a bitmap label actually resolved, which is the one thing a
+      //--- hot reload can break under a name that still exists. Four reads per object,
+      //--- on the panel's OPEN only.
+      string bmpf = "";
+      if(oty == OBJ_BITMAP_LABEL)
+         bmpf = ObjectGetString(0, on, OBJPROP_BMPFILE, 0);
+      //--- P-DRAW-124: AND THE ONE NUMBER THE TERMINAL DECIDES ITSELF. Two objects on
+      //--- the SAME rung are drawn in the terminal's OWN list order — the index this
+      //--- walk is already standing on (`oi`), i.e. the order MT4 holds them in. The
+      //--- z decides first, the index decides a tie, so `z` alone can never say which
+      //--- of two equal-rung objects the screen shows: BOTH the intruder and the ink
+      //--- read the same rung and the same seat, and only the index separates them.
+      //--- MEASURED on the 15:18 and 18:42 reports: every hidden object's z/back/fnt
+      //--- read CORRECT — the tie is the whole story, and it was the one column the
+      //--- census did not carry. `tf` reads 0 for every object of this family, shown
+      //--- or not, so a reader must NOT translate it into OBJ_NO_PERIODS. P-DRAW-126:
+      DrawStripDiagEmit("[drawstrip] TABCENSUS idx=" + IntegerToString(oi) + " obj=" + on +
+            " type=" + IntegerToString(oty) + " xywh=" + IntegerToString(ox) + "," +
+            IntegerToString(oy) + "," + IntegerToString(ow) + "," + IntegerToString(oh) +
+            " bgcolor=" + IntegerToString((int)bg) + " tone=" + IntegerToString(tone) +
+            " z=" + IntegerToString(zz) +
+            " back=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_BACK)) +
+            " fnt=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_FONTSIZE)) +
+            " tf=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_TIMEFRAMES)) +
+            " bmp=\"" + bmpf + "\" ink=" + ink +
+            " win=" + IntegerToString(ObjectFind(0, on)) +            " corner=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_CORNER)) + " font=\"" + ObjectGetString(0, on, OBJPROP_FONT) + "\" anch=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_ANCHOR)) +
+            " xof=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_XOFFSET)) + " yof=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_YOFFSET)) + " bord=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_BORDER_COLOR)));
+   // P-LOG-7
+      DrawStripDiagSnapAdd(on, ox, oy, ow, oh, zz, (int)ObjectGetInteger(0, on, OBJPROP_BACK));   // P-LOG-8
    }
+}
+//--- P-DRAW-123: THE DUMP — the paint declares, then the chart answers. Arm, repaint
+//--- (the panel's own painter, so the declaration and the census describe ONE state),
+//--- disarm, then walk. Called from the two user actions that change the state (panel
+//--- open, group open/switch) — the census's own bound — and with the `DSTRIP_DIAG`
+//--- line commented out it is the census alone, so the switch turns off without
+//--- touching a call site (`#ifdef`: the tree's own idiom — `#if <expr>` is not MQL4).
+void DrawStripGearDiagDump()
+{
+   #ifdef DSTRIP_DIAG
+   //--- P-DRAW-125 (2026-10-01) — THE DUMP REPAINTS ONLY WHAT IS OPEN.
+   //--- MEASURED (2026-10-01 19:25:07.379): this function is called from
+   //--- `DrawStripActTap` on the GEAR button, and that path runs on the CLOSE too —
+   //--- `DrawStripGearClose()` sets `s_dsGear = 0` and this call follows. The
+   //--- unguarded `DrawStripGearPaint()` below then ran with `s_dsGRN = s_dsGGN =
+   //--- s_dsGearSecN = 0` (the layout cannot have built a shut panel): it DELETED
+   //--- every grid, section and row object of the panel — and, because the head and
+   //--- the foot are painted unconditionally, it left the HEAD and the FOOT of a
+   //--- closed panel standing on the chart, drawn from the stale origin. The log
+   //--- carries that frame in full: `[dsdiag] EXPECT` for `GHTB..GHXI` and
+   //--- `GF0..GF2T` — twenty objects, head then foot, nothing between them.
+   //--- The diagnostic must never move a pixel the product would not: one guard on
+   //--- the panel's own open fact, and a shut dump is the census alone (which
+   //--- returns by itself when `s_dsGear == 0`).
+   if(s_dsGear != 0 && s_dsGearH > 0)
+   {
+      s_dsDiagArm = true; s_dsDiagAfter = 1;   // P-LOG-8: the NEXT paint pass re-walks this name list
+      DrawStripGearPaint();
+      s_dsDiagArm = false;
+   }
+   #endif
+   DrawStripGearTabCensus();
 }
 
 void DrawStripGearClose()
@@ -184,6 +291,7 @@ bool DrawStripBtnZ(const string nm, const int x, const int y, const int w, const
                    const string txt, const string tip, const int z)
 {
    bool dirty = false;
+   DrawStripForeign(nm, OBJ_BUTTON);   // P-DRAW-125: a name of another type is not mine
    if(ObjectFind(0, nm) < 0)
    {
       if(!ObjectCreate(0, nm, OBJ_BUTTON, 0, 0, 0)) return false;
@@ -217,6 +325,7 @@ bool DrawStripBtnZ(const string nm, const int x, const int y, const int w, const
    dirty |= DrawStripSetInt(nm, OBJPROP_STATE, false);
    dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, txt);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
+   DrawStripDiagExpect(nm, "btn", x, y, w, h, z, txt);
    return dirty;
 }
 //--- the ordinary cell: the icon layer, above the plate it sits on.
@@ -237,6 +346,8 @@ bool DrawStripFaceZ(const string nm, const int x, const int y, const int w, cons
       if(ObjectFind(0, nm) >= 0) { ObjectDelete(0, nm); return true; }
       return false;
    }
+   DrawStripForeign(nm, OBJ_BITMAP_LABEL);   // P-DRAW-125: the type, not the name
+   int made = 0;
    if(ObjectFind(0, nm) < 0)
    {
       if(!ObjectCreate(0, nm, OBJ_BITMAP_LABEL, 0, 0, 0)) return false;
@@ -245,13 +356,32 @@ bool DrawStripFaceZ(const string nm, const int x, const int y, const int w, cons
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, nm, OBJPROP_BACK, false);
       ObjectSetInteger(0, nm, OBJPROP_ZORDER, z);
+      made = 1;
    }
-   bool dirty = false;
+   bool dirty = (made > 0);   // P-DRAW-125: a birth IS a change, whatever the defaults read
+   //--- P-DRAW-120 (2026-10-01) — THE TWO PROPERTIES THAT DECIDE WHETHER MT4 DRAWS
+   //--- THIS FACE ARE RE-ASSERTED EVERY PAINT, NOT ONLY AT BIRTH.
+   //--- MEASURED on the 2026-10-01 15:18 shot (EURUSD,M5, src 729d3b567d3dd197): the
+   //--- terminal held every object of the open Stroke tab at its right seat with the
+   //--- right ink — TABCENSUS read `GR2T "50 % line":14865611 z=1442`, `GS0T
+   //--- "STROKE"`, the chip/icon faces, the head, the foot — while the SCREEN showed
+   //--- 31 of those 104 (tools/tmp-measure-shot.py), the whole left column, the head
+   //--- and the foot bare plate. The
+   //--- one difference the painters had between those 21 and the rest: `DrawStripBtnZ`
+   //--- re-asserts `OBJPROP_ZORDER` every paint (P-DRAW-48's own law, GearB:213) and
+   //--- the FACE and LABEL painters only ever wrote it inside their `ObjectFind < 0`
+   //--- block — so a face or a label born under an older rung keeps that rung for the
+   //--- life of the object, and equal z is settled by CREATION ORDER (P-DRAW-48), which
+   //--- no later build can reach. Same heal, same owner: the write is compare-guarded,
+   //--- so a still frame still costs two reads per face and touches nothing.
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, z);
+   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
    int pw = DrawStripResW(res), ph = DrawStripResH(res);
    dirty |= DrawStripSetStr(nm, OBJPROP_BMPFILE, res);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x + (w - pw) / 2);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, y + (h - ph) / 2);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
+   DrawStripDiagExpect(nm, "bmp", x, y, w, h, z, res);
    return dirty;
 }
 bool DrawStripFace(const string nm, const int x, const int y, const int w, const int h,
@@ -284,15 +414,37 @@ int StrapInkY2(const int bandTop, const int bandH, const int ptA, const int ptB)
 bool DrawStripLblAt(const string nm, const int x, const int inkTop, const string txt,
                     const color ink, const string tip, const int pt, const bool bold)
 {
+   //--- P-DRAW-124/125 — A LABEL THAT IS NEVER BORN LEAVES NO TRACE, and a label born
+   //--- of ANOTHER TYPE paints nothing either. One reader answers both: the type check.
+   DrawStripForeign(nm, OBJ_LABEL);
+   int made = 0;
    if(ObjectFind(0, nm) < 0)
    {
-      if(!ObjectCreate(0, nm, OBJ_LABEL, 0, 0, 0)) return false;
+      if(!ObjectCreate(0, nm, OBJ_LABEL, 0, 0, 0))
+      {
+         //--- P-DRAW-124: name the one silent path in the label's own birth, once a
+         //--- session, with the terminal's error (P-DRAW-73's one-shot idiom).
+         static bool saidLblBirth = false;
+         if(!saidLblBirth)
+         {
+            saidLblBirth = true;
+            Print("[drawstrip] label birth failed obj=", nm, " err=", GetLastError());
+         }
+         return false;
+      }
       ObjectSetInteger(0, nm, OBJPROP_CORNER, CORNER_LEFT_UPPER);
       ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, nm, OBJPROP_ZORDER, Z_STRIP_OVER);
+      made = 1;
    }
-   bool dirty = false;
+   bool dirty = (made > 0);   // P-DRAW-125: a birth IS a change
+   //--- P-DRAW-120: the same heal for the ink. A label born under an older rung (or
+   //--- behind the plate after the wide pass moved its row into the second column)
+   //--- kept that rung forever, and its TEXT/COLOUR/ZORDER reads in TABCENSUS stayed
+   //--- correct while the screen never painted it. Two compare-guarded writes.
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, Z_STRIP_OVER);
+   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, inkTop);
    dirty |= DrawStripSetInt(nm, OBJPROP_COLOR, ink);
@@ -300,6 +452,7 @@ bool DrawStripLblAt(const string nm, const int x, const int inkTop, const string
    dirty |= DrawStripSetStr(nm, OBJPROP_FONT, BioChromeFont(bold));
    dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, txt);
    dirty |= DrawStripSetStr(nm, OBJPROP_TOOLTIP, tip);
+   DrawStripDiagExpect(nm, "lbl", x, inkTop, 0, 0, Z_STRIP_OVER, txt);
    return dirty;
 }
 //--- the everyday face: a line centred in the band it belongs to.
@@ -312,6 +465,8 @@ bool DrawStripLblIn(const string nm, const int x, const int bandTop, const int b
 bool DrawStripRect(const string nm, const int x, const int y, const int w, const int h,
                    const color face, const int z)
 {
+   DrawStripForeign(nm, OBJ_RECTANGLE_LABEL);   // P-DRAW-125: the type, not the name
+   int made = 0;
    if(ObjectFind(0, nm) < 0)
    {
       if(!ObjectCreate(0, nm, OBJ_RECTANGLE_LABEL, 0, 0, 0)) return false;
@@ -322,13 +477,24 @@ bool DrawStripRect(const string nm, const int x, const int y, const int w, const
       ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
       ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
       ObjectSetInteger(0, nm, OBJPROP_ZORDER, z);
+      made = 1;
    }
-   bool dirty = false;
+   bool dirty = (made > 0);   // P-DRAW-125: a birth IS a change
+   //--- P-DRAW-122 (2026-10-01) — THE LAYER IS RE-ASSERTED EVERY PAINT, NOT ONLY AT
+   //--- BIRTH. P-DRAW-120 stated the law and healed the two painters the 15:18 shot
+   //--- convicted (face, label); the rule is the RULE, so it now covers the rest of
+   //--- the family: equal z is settled by CREATION ORDER, so an object that survives a
+   //--- reattach keeps the rung it was born with, and a rect the census reads at the
+   //--- right seat with the right ink paints UNDER the plate. Compare-guarded (the
+   //--- shared write path), so a still frame costs two reads and writes nothing.
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, z);
+   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, y);
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
    dirty |= DrawStripSetInt(nm, OBJPROP_YSIZE, h);
    dirty |= DrawStripSetInt(nm, OBJPROP_BGCOLOR, face);
+   DrawStripDiagExpect(nm, "rect", x, y, w, h, z, "");
    return dirty;
 }
 //--- "#RRGGBB" of a colour and back moved DOWN to DrawToolbar.mqh (P-DRAW-48):
@@ -562,6 +728,10 @@ bool DrawStripEdit(const int e, const int x, const int y, const int w,
    }
    else if(reseed && seed != "" && ObjectGetString(0, nm, OBJPROP_TEXT) != seed)
       dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, seed);
+   //--- P-DRAW-122: the layer, every paint — a field that survives a reattach with an
+   //--- older rung paints under the plate, and the ROW'S OWN WORD is what goes missing.
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, Z_STRIP_ICON);
+   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, s_dsGEY + y + (DSTRIP_GEAR_ROW_H - DSTRIP_GEAR_EDIT_H) / 2);
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
@@ -602,6 +772,10 @@ bool DrawStripPopHex(const int x, const int y, const int w, const string seed)
    //--- elsewhere. An empty seed (the field holds the focus) never writes.
    if(seed != "" && ObjectGetString(0, nm, OBJPROP_TEXT) != seed)
       dirty |= DrawStripSetStr(nm, OBJPROP_TEXT, seed);
+   //--- P-DRAW-122: the layer, every paint (same heal as the panel's fields and rects:
+   //--- a bare HEX box on the board is this field painting under the plate).
+   dirty |= DrawStripSetInt(nm, OBJPROP_ZORDER, Z_STRIP_ICON);
+   dirty |= DrawStripSetInt(nm, OBJPROP_BACK, false);
    dirty |= DrawStripSetInt(nm, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(nm, OBJPROP_YDISTANCE, y);
    dirty |= DrawStripSetInt(nm, OBJPROP_XSIZE, w);
@@ -826,6 +1000,17 @@ bool DrawStripGearHeadPaint()
 //--- whose y sits inside this band's range and in the band's own column counts
 //--- once. The wide pass translates a whole block into its column, so the column
 //--- filter is what keeps the count honest on a two-column panel.
+//--- P-DRAW-121 (2026-10-01) — AND A GROUP HEADER IS NOT A MEMBER. The accordion's
+//--- own nav rides the SAME row array (`s_dsGR*`, P-DRAW-117) in the SAME column, so
+//--- on a wide tab the headers BELOW the open group pack into the last band's range
+//--- and this loop counted them as settings: reported from the terminal as the Stroke
+//--- tab's LAYER pill reading 4 (`Behind candles` + `Look` + `Row` for a band that
+//--- owns TWO rows, Lock and Behind candles), and the same rule gave the Colour tab's
+//--- FILL band 5 for its two members. Reproduced offline by
+//--- `python tools/debug-doctor.py --symptom count` (S3), whose delta IS the defect:
+//--- the pill counted NAV. `s_dsGRKind` is the row's own kind and the group row is
+//--- `DSTRIP_GRK_GROUP`, so the row loop skips it and nothing else moves — the grid
+//--- loop below was never affected (a header writes no `s_dsGG` cell).
 int DrawStripGearSectionCount(const int i)
 {
    if(i < 0 || i >= s_dsGearSecN) return 0;
@@ -835,7 +1020,8 @@ int DrawStripGearSectionCount(const int i)
          y1 = s_dsGearSecY[j];
    int n = 0;
    for(int r = 0; r < s_dsGRN; r++)
-      if(s_dsGRCol[r] == col && s_dsGRY[r] >= y0 && s_dsGRY[r] < y1) n++;
+      if(s_dsGRKind[r] != DSTRIP_GRK_GROUP &&
+         s_dsGRCol[r] == col && s_dsGRY[r] >= y0 && s_dsGRY[r] < y1) n++;
    for(int g = 0; g < s_dsGGN; g++)
    {
       if(s_dsGGY[g] < y0 || s_dsGGY[g] >= y1) continue;
@@ -1042,6 +1228,24 @@ bool DrawStripGearPaint()
          }
          else
          {
+            //--- P-DRAW-124 (2026-10-01) — A CELL THAT CHANGED ROLE TAKES ITS OLD
+            //--- ROLE'S FACES WITH IT. The swatch and the chip ride the SAME grid
+            //--- arrays, so one index is a colour cell on the Paint tab and a
+            //--- width/style chip on the Style one — and only the FACES differ: the
+            //--- swatch branch paints the glass (`ds_swatch24`) plus the glyph face
+            //--- `gi`, and the chip branch below paints NEITHER and deleted neither,
+            //--- so the previous tab's faces stayed standing at their old seat.
+            //--- MEASURED live (2026-10-01 18:42:35, the report «این هنوز درست نشده»):
+            //--- `GG0G..GG8G`, NINE 24x24 glass faces at y=186 — the PAINT tab's own
+            //--- swatch row — while this tab's ten chips sit at y=224 and y=308, all
+            //--- of them at z=1442, the LABELS' rung, over the band that shares that
+            //--- row (the `STROKE` caption is at y=193). A face no branch of this
+            //--- paint claims is exactly what P-DRAW-42 forbids: two probes here,
+            //--- every paint, and the survivors go in the same frame the cell is
+            //--- drawn as a chip (the PREV branch below already did this for `gi`).
+            if(ObjectFind(0, DrawStripGridGlassName(g)) >= 0)
+            { ObjectDelete(0, DrawStripGridGlassName(g)); dirty = true; }
+            if(ObjectFind(0, gi) >= 0) { ObjectDelete(0, gi); dirty = true; }
             // P-DRAW-44: a chip — the width / line style / ray options.
             bool cur = DrawStripPickIsCur(s_dsObj, s_dsKind, slot, arg);
             string txt = PnlFit(DrawStripPickText(s_dsKind, slot, arg), 8, s_dsGGW[g] - 8);
@@ -1121,6 +1325,17 @@ bool DrawStripGearPaint()
          if(ObjectFind(0, rs) >= 0) { ObjectDelete(0, rs); dirty = true; }
          continue;
       }
+      //--- P-DRAW-124: AND THE DIGEST IS THE GROUP'S OWN FACE. A row that was a
+      //--- group header on the previous tab and is a switch on this one kept its
+      //--- digest OBJECT: the group branch gives an empty digest the delete, the
+      //--- switch branch below never asked the question at all. MEASURED live
+      //--- (2026-10-01 18:42:35): `GR2D`/`GR3D`/`GR4D` still read `"3px · Solid"`
+      //--- at (1310,360)/(1348,402)/(1334,444) — the PAINT tab's own digest seats
+      //--- — at z=1442, the labels' rung, over whatever now shares that seat. The
+      //--- row's value is the group's; a switch states its own state and nothing
+      //--- else. One probe, on the path that is not a group.
+      if(ObjectFind(0, DrawStripRowDigestName(r)) >= 0)
+      { ObjectDelete(0, DrawStripRowDigestName(r)); dirty = true; }
       if(res != "")
       {
          //--- P-DRAW-77: THE CARDS' OWN SEATS, MEASURED, NOT DERIVED. The chip is

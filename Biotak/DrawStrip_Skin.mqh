@@ -391,11 +391,23 @@ bool DrawStripGearSkinPurge()
 //--- P-DRAW-32: ONE 9-slice painter, TWO plates. `fam` picks the family (the strip
 //--- or the settings panel); the rect is the caller's, so the panel's plate can no
 //--- longer be the strip's plate growing.
+//--- P-LOG-10 (2026-10-02): raised when a 9-slice plate (strip fam 0, board fam 2)
+//--- is purged by !DrawStripSkinFitsFor while its content survives. DrawStripPaint
+//--- answers it at the TOP of the next pass — one purge before ANY painter runs —
+//--- because a plate born after its content covers it (creation order is paint
+//--- order; ZORDER rules clicks alone; a same-pixel write raises nothing).
+bool s_dsSkinPlateDied = false;
+
 bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, const int h,
                           const int gridTop, const int seamFrom, const int bodyTop)
 {
    bool dirty = false;
-   if(!DrawStripSkinFitsFor(w, h)) { dirty |= DrawStripSkinPurgeAt(fam); return dirty; }
+   if(!DrawStripSkinFitsFor(w, h))
+   {
+      dirty |= DrawStripSkinPurgeAt(fam);
+      s_dsSkinPlateDied = true;   // P-LOG-10: the content outlived its plate — the next paint purges before it paints
+      return dirty;
+   }
    int k = DrawStripSkinKFor(h);
    int sx = x - DSTRIP_SKIN_M, sy = y - DSTRIP_SKIN_M;
    int TW = w + 2 * DSTRIP_SKIN_M;
@@ -471,6 +483,13 @@ bool DrawStripSkinPaintAt(const int fam, const int x, const int y, const int w, 
       ObjectSetInteger(0, bg, OBJPROP_ZORDER,      Z_STRIP_BG);
       dirty = true;
    }
+   //--- P-DRAW-122 (2026-10-01): THE UNDERLAYER'S RUNG IS RE-ASSERTED EVERY PAINT.
+   //--- This is the one object every OTHER pixel of the strip is drawn over, so a
+   //--- stale rung here is the whole surface: after a reattach the skin pieces are
+   //--- born again at their own z while this rect keeps an older one, and the plate
+   //--- swallows them. Compare-guarded; a still frame writes nothing.
+   dirty |= DrawStripSetInt(bg, OBJPROP_ZORDER,      Z_STRIP_BG);
+   dirty |= DrawStripSetInt(bg, OBJPROP_BACK,        false);
    dirty |= DrawStripSetInt(bg, OBJPROP_XDISTANCE, x);
    dirty |= DrawStripSetInt(bg, OBJPROP_YDISTANCE, y);
    dirty |= DrawStripSetInt(bg, OBJPROP_XSIZE,     w);
@@ -711,6 +730,20 @@ bool DrawStripGearPlate()
    int cardN = (gh - 104) / 42;
    bool cardExact = ((gh - 104) % 42 == 0 && cardN >= 1 && cardN <= 10);
    bool narrow = (gw == DSTRIP_GEAR_W);
+   //--- P-LOG-10 (2026-10-01) — THE PLATE MUST BE YOUNGER THAN NOTHING. MT4 paints
+   //--- in creation order; OBJPROP_ZORDER rules CLICKS alone (P-DRAW-83 already met
+   //--- this: «paint order hid them, and click order gave every pixel»). MEASURED
+   //--- 23:48 frame + the user's own screen: the x button MOVED narrow->wide
+   //--- (1178->1490), the census reads it sane at the wide seat, and it still shows
+   //--- nothing — a write never raises a painted object. The wide tiles are CREATED
+   //--- (re-created for every new pairN) after the content of earlier paints, so
+   //--- everything born before them — the left column, the head, the x — paints
+   //--- under the card while every click still lands (z 1441/1442 > 1440). The only
+   //--- raise MT4 honours is CREATE: when the plate is about to (re)appear while
+   //--- family content predates it, purge the family once — the tiles land first,
+   //--- the DrawStripGearPaint() that follows in the same paint recreates every
+   //--- control above them, and the order stays correct until the plate reshapes.
+   static int s_dsPlatePairN = -1;   // -1 = the last paint was the bake (or the panel was shut)
 
    //--- P-DRAW-78: THE SQUARE UNDERLAYER IS THE SECOND BOX. The cards bake their
    //--- own radius, border and shadow into `pnl_card*` and carry NO rect behind
@@ -722,6 +755,11 @@ bool DrawStripGearPlate()
 
    if(narrow && cardExact)
    {
+      //--- P-LOG-10: returning from a wide phase, the content was recreated ABOVE
+      //   where a fresh bake would land — purge once so the bake is born first.
+      if(s_dsPlatePairN >= 0 && ObjectFind(0, "PnlDrawS_Gbake") < 0)
+         dirty |= DrawStripGearObjectsPurge();
+      s_dsPlatePairN = -1;
       //--- ONE baked card, both corners rounded, zero composition. The bake
       //--- carries the 14px margin itself (cardW+28 x ph+28, PnlCreate's seats).
       dirty |= DrawStripSkinBmp("PnlDrawS_Gbake", gx - 14, gy - 14, gw + 28, gh + 28,
@@ -746,6 +784,11 @@ bool DrawStripGearPlate()
       int pairN = cardExact ? cardN : (gh - 104 + 41) / 42;
       if(pairN < 1) pairN = 1;
       if(pairN > DSTRIP_GEAR_BLK_MAX) { DrawStripSkinPurgeAt(1); return false; }
+      //--- P-LOG-10: entering the composed branch, or a body that changed height —
+      //   any tile born now would cover every control born before it. Purge once;
+      //   the tiles land first and GearPaint recreates the whole content above.
+      if(s_dsPlatePairN != pairN)
+         dirty |= DrawStripGearObjectsPurge();
       //--- P-DRAW-110 (2026-10-01) — THE BODY STARTS AT THE HEAD'S OWN EDGE.
       //--- The three W bakes are drawn from the SAME origin the bake above uses,
       //--- `gy - 14` (the plate's own 14px margin), and the top cap is `14 + 70`:
@@ -780,6 +823,7 @@ bool DrawStripGearPlate()
                                 "::Files\\Icons\\pnl_cardWbot.bmp", Z_STRIP);
       if(ObjectFind(0, "PnlDrawS_Gbake") >= 0)
       { ObjectDelete(0, "PnlDrawS_Gbake"); dirty = true; }
+      s_dsPlatePairN = pairN;   // P-LOG-10: this body's tiles are now the family's elders
    }
    //--- the retired `ds_*` nine-slice for this family goes with it, every paint.
    for(int op = 0; op <= 8; op++)

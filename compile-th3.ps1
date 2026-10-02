@@ -358,6 +358,49 @@ function Get-LatestLogFile {
         Select-Object -First 1
 }
 
+# P-LOG-1 (2026-10-01) — SNAPSHOT THE TERMINAL THAT IS WRITING, NOT THE ONE WITH THE
+# FRESHEST FOLDER. MEASURED: `Resolve-Mql4Dir` picks its MQL4 dir by the mtime of the
+# MQL4 DIRECTORY (a folder stamp moves when a file is added beside it, not when a log
+# is appended) and it returned `0727F3F8...` — a terminal whose newest log was
+# `20260920.log`. The running terminal (`A1660DA4...`, one process up since 15:10:36)
+# was writing `20261001.log` the whole time, so every snapshot the build attached was
+# eleven days stale. The live source is decided the only way that cannot guess: scan
+# every terminal and take the one whose newest `.log` (Experts OR Journal) is newest.
+function Get-LiveTerminalDirs {
+    if (-not (Test-Path -LiteralPath $APPDATA_TERMINAL_ROOT -PathType Container)) {
+        return $null
+    }
+
+    $best = $null
+    $bestStamp = [datetime]::MinValue
+    foreach ($terminalDir in (Get-ChildItem -Path $APPDATA_TERMINAL_ROOT -Directory -ErrorAction SilentlyContinue)) {
+        $mql4Dir = Join-Path $terminalDir.FullName "MQL4"
+        if (-not (Test-Path -LiteralPath $mql4Dir -PathType Container)) {
+            continue
+        }
+
+        $stamp = [datetime]::MinValue
+        foreach ($dir in @((Join-Path $mql4Dir "Logs"), (Join-Path $terminalDir.FullName "logs"))) {
+            if (-not (Test-Path -LiteralPath $dir -PathType Container)) {
+                continue
+            }
+            $newest = Get-ChildItem -LiteralPath $dir -File -Filter "*.log" -ErrorAction SilentlyContinue |
+                Sort-Object LastWriteTime -Descending |
+                Select-Object -First 1
+            if ($newest -and $newest.LastWriteTime -gt $stamp) {
+                $stamp = $newest.LastWriteTime
+            }
+        }
+
+        if ($stamp -gt $bestStamp) {
+            $bestStamp = $stamp
+            $best = [pscustomobject]@{ Mql4Dir = $mql4Dir; TerminalRoot = $terminalDir.FullName; Stamp = $stamp }
+        }
+    }
+
+    return $best
+}
+
 function Append-RuntimeLogs {
     param(
         [string]$CompileLogPath,
@@ -369,13 +412,23 @@ function Append-RuntimeLogs {
         [hashtable]$State
     )
 
+    # P-LOG-1: the live terminal FIRST; the resolved/derived dir is only a fallback
+    # for the case where no terminal has any log file at all.
+    $live = Get-LiveTerminalDirs
+
     $expertsDir = ""
-    if ($ResolvedMql4Dir) {
+    if ($live) {
+        $expertsDir = Join-Path $live.Mql4Dir "Logs"
+    }
+    elseif ($ResolvedMql4Dir) {
         $expertsDir = Join-Path $ResolvedMql4Dir "Logs"
     }
 
     $journalDir = ""
-    if ($TerminalRoot) {
+    if ($live) {
+        $journalDir = Join-Path $live.TerminalRoot "logs"
+    }
+    elseif ($TerminalRoot) {
         $journalDir = Join-Path $TerminalRoot "logs"
     }
 
@@ -567,13 +620,23 @@ function Watch-RuntimeLogs {
         [int]$PollMs
     )
 
+    # P-LOG-1: the live terminal FIRST; the resolved/derived dir is only a fallback
+    # for the case where no terminal has any log file at all.
+    $live = Get-LiveTerminalDirs
+
     $expertsDir = ""
-    if ($ResolvedMql4Dir) {
+    if ($live) {
+        $expertsDir = Join-Path $live.Mql4Dir "Logs"
+    }
+    elseif ($ResolvedMql4Dir) {
         $expertsDir = Join-Path $ResolvedMql4Dir "Logs"
     }
 
     $journalDir = ""
-    if ($TerminalRoot) {
+    if ($live) {
+        $journalDir = Join-Path $live.TerminalRoot "logs"
+    }
+    elseif ($TerminalRoot) {
         $journalDir = Join-Path $TerminalRoot "logs"
     }
 
@@ -634,6 +697,53 @@ function Watch-RuntimeLogs {
     Write-Host "  Watch mode completed." -ForegroundColor Green
 }
 
+#--- P-BUILD-11 (2026-10-01) — WHICH DATA FOLDER DOES **THIS** terminal.exe USE?
+#--- MEASURED, the day the shot first ran: `Resolve-Mql4Directory` picked the folder
+#--- with the newest MQL4 mtime — `0727F3F88B5F0FE006962B330B91FF37`, the RoboForex
+#--- install — while the only RUNNING instance was AMarkets, whose data folder is
+#--- `A1660DA4CB596E740BE3B3233E577E1B`. The harness was deployed into 0727F3F8,
+#--- `Script=` then named a script that instance did not have, and the run sat 120s
+#--- for a `[STRIPSHOT]` line that could not come: 0 PNGs, and the same wrong
+#--- folder again for the log and the pixel sweep. The data-folder NAME is an opaque
+#--- hash, so nothing guesses it: MT4 writes `<data>\origin.txt` holding the install
+#--- folder it belongs to, and that line is the answer.
+function Resolve-Mql4DirForExe {
+    param([string]$Exe)
+    if (-not $Exe) { return $null }
+    $folder = Split-Path -Parent $Exe
+    if (-not $folder) { return $null }
+    $root = Join-Path $env:APPDATA "MetaQuotes\Terminal"
+    if (-not (Test-Path -LiteralPath $root)) { return $null }
+    foreach ($d in (Get-ChildItem -Path $root -Directory -ErrorAction SilentlyContinue)) {
+        $origin = Join-Path $d.FullName "origin.txt"
+        if (-not (Test-Path -LiteralPath $origin)) { continue }
+        # origin.txt is UTF-16LE (with a BOM) on every install seen here, but a
+        # UTF-8 one must not crash the run: read it as text either way.
+        $line = $null
+        try { $line = @(Get-Content -LiteralPath $origin -Encoding Unicode -ErrorAction Stop)[0] } catch {}
+        if (-not $line) { try { $line = @(Get-Content -LiteralPath $origin -ErrorAction Stop)[0] } catch {} }
+        if (-not $line) { continue }
+        $line = ([string]$line).Trim().TrimEnd('\')
+        if ($line -ieq $folder.TrimEnd('\')) {
+            $mql4 = Join-Path $d.FullName "MQL4"
+            if (Test-Path -LiteralPath $mql4) { return $mql4 }
+        }
+    }
+    return $null
+}
+
+#--- The instance the shot must deploy into: the one carrying its own data folder
+#--- (portable / datapath) first, otherwise the first running one — paired with the
+#--- MQL4 that ITS origin.txt names.
+function Get-ShotInstance {
+    $starts = Get-TerminalStarts
+    if ($starts.Count -eq 0) { return $null }
+    $pick = $starts[0]
+    foreach ($s in $starts) { if ($s.Args -match "portable|datapath") { $pick = $s; break } }
+    $dir = Resolve-Mql4DirForExe -Exe $pick.Exe
+    return @{ Exe = $pick.Exe; Args = $pick.Args; Mql4Dir = $dir }
+}
+
 function Get-TerminalMql4DirsForProject {
     # Every MT4 terminal whose MQL4\Indicators exposes this repo (BiotakProject
     # is a symlink back to $SCRIPT_ROOT on this machine). Each such terminal has
@@ -646,6 +756,43 @@ function Get-TerminalMql4DirsForProject {
         if (Test-Path (Join-Path $mql4 "Indicators\BiotakProject")) { $out += $mql4 }
     }
     return $out
+}
+
+# P-LOG-2 (2026-10-01) — A DIAG FRAME BELONGS TO ONE ATTACH, SO OLD FRAMES ARE
+# DELETED, NOT LEFT BEHIND TO BE READ. The flushed diag file
+# (`<data folder>\MQL4\Files\biotak_diag_<SYMBOL>.txt`) is truncated only when a NEW
+# attach emits its FIRST line — so between a restart and the first panel open the
+# PREVIOUS session's frame is still on disk and, by mtime, can still outrank everything
+# else a reader looks at (measured 2026-10-01 21:35: after the restart the terminal's
+# own log was fresh but the diag file was simply absent — the next restart would have
+# found the last one still sitting there). This runs while terminal.exe is STOPPED, so
+# no handle can hold the file open, and the only frame that can appear afterwards is
+# THIS session's. It is the build half of `tools/diag-live.py --prune`; the reader is
+# the other half, and both say the same thing: newest wins, the rest go.
+function Clear-StaleDiagFiles {
+    if (-not (Test-Path -LiteralPath $APPDATA_TERMINAL_ROOT -PathType Container)) {
+        return 0
+    }
+
+    $removed = 0
+    $dirs = @()
+    foreach ($terminalDir in (Get-ChildItem -Path $APPDATA_TERMINAL_ROOT -Directory -ErrorAction SilentlyContinue)) {
+        $dirs += (Join-Path $terminalDir.FullName "MQL4\Files")
+        $dirs += (Join-Path $terminalDir.FullName "tester\files")
+    }
+
+    foreach ($dir in $dirs) {
+        if (-not (Test-Path -LiteralPath $dir -PathType Container)) { continue }
+        foreach ($f in (Get-ChildItem -LiteralPath $dir -File -Filter "biotak_diag_*.txt" -ErrorAction SilentlyContinue)) {
+            Remove-Item -LiteralPath $f.FullName -Force -ErrorAction SilentlyContinue
+            $removed++
+        }
+    }
+
+    if ($removed -gt 0) {
+        Write-Host "  Diag cleanup: removed $removed stale biotak_diag_*.txt frame(s); the next panel open writes a fresh one." -ForegroundColor Gray
+    }
+    return $removed
 }
 
 #--- P-BUILD-10 (2026-10-01) — THE TERMINAL'S OWN HANDS, IN THREE PIECES.
@@ -724,6 +871,9 @@ function Restart-TradingTerminal {
     Write-Host "  Restarting $($starts.Count) terminal process(es) so the new ex4 loads..." -ForegroundColor Yellow
     foreach ($s in $starts) { Write-Host "    will relaunch: $($s.Exe) $($s.Args)" -ForegroundColor DarkGray }
     if (-not (Stop-TerminalProcesses)) { return $false }
+    #--- P-LOG-2: the terminal is stopped, so the previous session's diag frame can and
+    #--- MUST go — otherwise a reader cannot tell this session's frame from that one.
+    Clear-StaleDiagFiles | Out-Null
     Start-TerminalStarts -Starts $starts
     Write-Host "  Terminal restarted. Charts come back on their own; every indicator reloads from the new ex4." -ForegroundColor Green
     return $true
@@ -814,7 +964,23 @@ function Invoke-StripShot {
         Write-Host "  [FAIL] $harness.ex4 was not built — the shot needs -Tests (or -Shot alone compiles it)." -ForegroundColor Red
         return $false
     }
-    $scripts = Join-Path $Mql4Dir "Scripts"
+    #--- P-BUILD-11: deploy into the data folder of the instance that will RUN the
+    #--- script, not into "the MQL4 folder this build happened to resolve". They are
+    #--- different installs on this machine, and the wrong one is a 120s silence.
+    $shotInstance = Get-ShotInstance
+    $deployDir = $Mql4Dir
+    if ($shotInstance) {
+        if ($shotInstance.Mql4Dir) {
+            $deployDir = $shotInstance.Mql4Dir
+        }
+        else {
+            Write-Host "  [WARN] no <data>\origin.txt names the install of $($shotInstance.Exe); using $Mql4Dir" -ForegroundColor Yellow
+        }
+    }
+    if ($deployDir -ine $Mql4Dir) {
+        Write-Host "  target instance: $($shotInstance.Exe) -> $deployDir" -ForegroundColor DarkGray
+    }
+    $scripts = Join-Path $deployDir "Scripts"
     if (-not (Test-Path -LiteralPath $scripts)) { New-Item -ItemType Directory -Path $scripts -Force | Out-Null }
     Copy-Item -LiteralPath $ex4 -Destination (Join-Path $scripts "$harness.ex4") -Force
     Write-Host "  harness: $scripts\$harness.ex4" -ForegroundColor DarkGray
@@ -839,14 +1005,18 @@ function Invoke-StripShot {
     $starts = Get-TerminalStarts
     if ($starts.Count -eq 0) { return $false }
     # the instance that carries its own data folder (portable/datapath) is the one
-    # this repo deploys into; otherwise the first one.
-    $shotStart = $starts[0]
-    foreach ($s in $starts) { if ($s.Args -match "portable|datapath") { $shotStart = $s; break } }
+    # this repo deploys into; otherwise the first one. Its Exe/Args and its MQL4 come
+    # from ONE owner (Get-ShotInstance) so the deploy, the log and the PNG sweep can
+    # never name two different installs (P-BUILD-11).
+    $shotStart = $shotInstance
     Write-Host "  shot instance: $($shotStart.Exe) $($shotStart.Args)" -ForegroundColor DarkGray
     Write-Host "  script must be in THAT instance's Scripts\ — deployed to $scripts" -ForegroundColor DarkGray
+    $shotLaunchedAt = Get-Date
     if (-not (Stop-TerminalProcesses)) { return $false }
+    #--- P-LOG-2: same rule for the shot instance — its diag frame is per-attach too.
+    Clear-StaleDiagFiles | Out-Null
 
-    $logBefore = Get-LatestTerminalLog -Mql4Dir $Mql4Dir
+    $logBefore = Get-LatestTerminalLog -Mql4Dir $deployDir
     $skip = 0
     $logPath = ""
     if ($logBefore) {
@@ -856,7 +1026,7 @@ function Invoke-StripShot {
     $shotArgs = ("$($shotStart.Args) /config:`"$configPath`"").Trim()
     Start-Process -FilePath $shotStart.Exe -ArgumentList $shotArgs
     Write-Host "  launched; waiting up to ${TimeoutSec}s for [STRIPSHOT] DONE:..." -ForegroundColor Cyan
-    $lines = @(Wait-TerminalShotLines -Mql4Dir $Mql4Dir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip)
+    $lines = @(Wait-TerminalShotLines -Mql4Dir $deployDir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip)
 
     # the shot instance has done its job: put the user's own terminal back
     if (-not (Stop-TerminalProcesses)) { return $false }
@@ -867,7 +1037,7 @@ function Invoke-StripShot {
     if (-not (Test-Path -LiteralPath $shotDir)) { New-Item -ItemType Directory -Path $shotDir -Force | Out-Null }
     $census = Join-Path $shotDir "StripShot-census.txt"
     if ($lines.Count -eq 0) {
-        Write-Host "  [FAIL] no [STRIPSHOT] line appeared in $Mql4Dir\Logs within ${TimeoutSec}s" -ForegroundColor Red
+        Write-Host "  [FAIL] no [STRIPSHOT] line appeared in $deployDir\Logs within ${TimeoutSec}s" -ForegroundColor Red
         Write-Host "         (the script did not run on that instance — check its Experts tab)" -ForegroundColor Yellow
         return $false
     }
@@ -879,7 +1049,14 @@ function Invoke-StripShot {
         $sum = @($lines | Where-Object { $_.Contains(" $tag objs=") })
         if ($sum.Count -gt 0) { Write-Host "    $($sum[0])" -ForegroundColor DarkGray }
     }
-    $png = @(Get-ChildItem -LiteralPath (Join-Path $Mql4Dir "Files") -Filter "StripShot_*.png" -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    $png = @(Get-ChildItem -LiteralPath (Join-Path $deployDir "Files") -Filter "StripShot_*.png" -File -ErrorAction SilentlyContinue | Sort-Object Name)
+    #--- MEASURED the day this was written: a previous run's PNGs would otherwise be
+    #--- swept up as this run's (the harness overwrites them, but a state it SKIPped
+    #--- leaves the old file). Only files the terminal wrote AFTER the launch count.
+    $png = @($png | Where-Object { $shotLaunchedAt -and $_.LastWriteTime -ge $shotLaunchedAt })
+    if ($png.Count -eq 0) {
+        Write-Host "  [FAIL] no StripShot_*.png written into $deployDir\Files since this run started" -ForegroundColor Red
+    }
     foreach ($p in $png) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $shotDir $p.Name) -Force }
     Write-Host "  census: $census  (lines=$($lines.Count))" -ForegroundColor DarkGray
     Write-Host "  terminal PNGs: $($png.Count) -> $shotDir" -ForegroundColor Green

@@ -298,6 +298,73 @@ for (const [key, F] of fam) {
 }
 const unattended = [...fam.entries()].filter(([, F]) => F.deleted.size === 0);
 
+//--- P-DRAW-122 (2026-10-01): THE SECOND LAW — A PAINTED LAYER IS RE-ASSERTED EVERY
+//--- PASS. A painter that CREATES an object and writes its layer (`OBJPROP_ZORDER`,
+//--- `OBJPROP_BACK`) inside its `ObjectFind(0, nm) < 0` birth block must re-assert that
+//--- layer outside it. P-DRAW-120 stated the law and healed the three painters a shot
+//--- convicted (the buttons already complied; the face and the label were made to), and
+//--- left five, because the heal was applied to the SITES, not to the RULE: the rect,
+//--- the gear edit field, the board's hex field, the skin's underlayer and the strip's
+//--- flat plate. Equal z is settled by CREATION ORDER, so an object that survives a
+//--- reattach keeps the rung it was born with — the census reads it at its seat with
+//--- its ink while it paints UNDER the plate, which is the report («متن‌ها ناقص است»,
+//--- 2026-10-01) as a paint order and not as a missing object. A sixth site lived in
+//--- the TH3 pattern renderer (an ABCD point: MOVED every pass, its rung written once).
+//--- THE SET IS DERIVED, never listed: the check is per painter, in every file, so the
+//--- next one is covered the day it is written — which is the difference between a law
+//--- and a to-do list. COST: one regex pass over the tree per build, in the pass this
+//--- gate already makes.
+function functionsOf(src) {
+  const out = [];
+  const rx = /(?:^|[\r\n])[ \t]*(?:bool|void|int|string|double|long|color)\s+(\w+)\s*\(/g;
+  let m;
+  while ((m = rx.exec(src))) {
+    const ob = src.indexOf('{', m.index);
+    if (ob < 0) { rx.lastIndex = m.index + m[0].length; continue; }
+    let depth = 0, end = -1;
+    for (let i = ob; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) { rx.lastIndex = m.index + m[0].length; continue; }
+    out.push({
+      name: m[1],
+      line: 1 + (src.slice(0, m.index).match(/\n/g) || []).length,
+      body: src.slice(ob + 1, end),
+    });
+    rx.lastIndex = end;
+  }
+  return out;
+}
+const layerOk = [];
+const layerOnlyBirth = [];
+for (const file of FILES) {
+  const src = stripComments(readFileSync(file, 'utf8'));
+  for (const fn of functionsOf(src)) {
+    if (!fn.body.includes('ObjectCreate')) continue;
+    const guard = /if\s*\(\s*ObjectFind\s*\(\s*0\s*,\s*(\w+)\s*\)\s*<\s*0\s*\)/.exec(fn.body);
+    if (!guard) continue;
+    const nm = guard[1];
+    const ob = fn.body.indexOf('{', guard.index);
+    if (ob < 0) continue;
+    let depth = 0, end = -1;
+    for (let i = ob; i < fn.body.length; i++) {
+      if (fn.body[i] === '{') depth++;
+      else if (fn.body[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) continue;
+    // TIGHT, so the gate cannot cry wolf: the SAME object must be created in that block
+    // and ITS layer written there (a painter can own several objects and several guards).
+    const birth = fn.body.slice(ob, end + 1);
+    if (!new RegExp(`ObjectCreate\\s*\\(\\s*0\\s*,\\s*${nm}\\s*,`).test(birth)) continue;
+    if (!new RegExp(`ObjectSetInteger\\s*\\(\\s*0\\s*,\\s*${nm}\\s*,\\s*OBJPROP_(ZORDER|BACK)`).test(birth)) continue;
+    const tail = fn.body.slice(end + 1);
+    const re = new RegExp(`(DrawStripSetInt|ObjectSetInteger)\\s*\\(\\s*(0\\s*,\\s*)?${nm}\\s*,\\s*OBJPROP_(ZORDER|BACK)`);
+    if (re.test(tail)) layerOk.push(`${fn.name} (${file}:${fn.line})`);
+    else layerOnlyBirth.push({ file, line: fn.line, fn: fn.name, name: nm });
+  }
+}
+
 const show = (p) => `${p.file}:${p.line}`;
 console.log('==================================================================');
 console.log('OBJECT LIFECYCLE GATE  (Biotak/**/*.mqh)');
@@ -314,6 +381,16 @@ const prefixes = [...new Set(ledger.flatMap((f) => f.prefixes))];
 console.log(`  family prefixes: ${prefixes.join(' ') || '(none)'}` +
   (bulk.size ? `   (bulk, not coverage: ${[...bulk].join(' ')})` : ''));
 if (resetPrefix.length) console.log(`  attach reset ignored as coverage: ${resetPrefix.join(' ')}`);
+console.log(`  layers: ${layerOk.length} painter(s) re-assert OBJPROP_ZORDER/BACK every pass, ` +
+  `${layerOnlyBirth.length} write the layer only at birth (P-DRAW-122)`);
+if (layerOnlyBirth.length) {
+  console.log('');
+  for (const p of layerOnlyBirth)
+    console.log(`  [FAIL] ${show(p)}  ${p.fn} writes OBJPROP_ZORDER/BACK for \`${p.name}\` only inside its birth block — a surviving object keeps its old rung and paints under the plate (P-DRAW-122)`);
+  console.log('');
+  console.log(`FAIL: ${layerOnlyBirth.length} painter(s) do not re-assert their layer.`);
+  process.exit(1);
+}
 if (missing.length) {
   console.log('');
   for (const p of missing.slice(0, 40))
@@ -324,4 +401,5 @@ if (missing.length) {
   process.exit(1);
 }
 console.log('');
-console.log(`PASS — every painted name in ${ledger.length} file(s) has a destroy path.`);
+console.log(`PASS — every painted name in ${ledger.length} file(s) has a destroy path, and ` +
+  `every layered painter re-asserts its rung (${layerOk.length} of them, P-DRAW-122).`);

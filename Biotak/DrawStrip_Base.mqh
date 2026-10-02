@@ -2,6 +2,240 @@
 #ifndef DRAW_STRIP_BASE_MQH
 #define DRAW_STRIP_BASE_MQH
 
+//--- P-DRAW-126 (2026-10-01) — THE DIAG CHANNEL DOES NOT WAIT FOR THE TERMINAL.
+//--- MEASURED (2026-10-01 20:15:20): the live terminal (`AMarkets - MetaTrader 4`,
+//--- data folder `A1660DA4...`, one process up since 15:10:36) showed a full
+//--- `20:03:44` frame in its Experts window while `MQL4\Logs\20261001.log` still
+//--- ended at `20:01:38.319` — a probe for `20:03:44` counted ZERO, and the file
+//--- had not grown in fourteen minutes. MT4 buffers its own journal in RAM and
+//--- flushes on its own schedule, so a reader that opens only that file is always
+//--- behind the tab it is meant to witness. The diag channel therefore mirrors
+//--- every line into a file it owns and flushes per line: `FileFlush` is the one
+//--- write whose arrival does not depend on the terminal's buffer.
+//--- `tools/diag-live.py` reads THIS file (`<data folder>\MQL4\Files\`); the
+//--- Experts log is never the oracle, only a fallback.
+//--- P-LOG-3 (2026-10-01) — AND A FLUSH IS NOT ENOUGH IF THE HANDLE IS EXCLUSIVE.
+//--- MEASURED 2026-10-01 21:52:50: the file WAS written and flushed
+//--- (`biotak_diag_EURUSD.txt`, 62,965 bytes, mtime 21:52:50) — and every reader
+//--- failed on it anyway: `open(path,'rb')` -> PermissionError 13, `cp`/`head` ->
+//--- "Device or resource busy", `Get-Content` -> "being used by another process".
+//--- A plain `FileOpen` in the terminal grants no share, so the bytes were current
+//--- and unreachable at the same time: the channel could not be read by the very tool
+//--- built to read it. `FILE_SHARE_READ` is the flag that lets another process open
+//--- the handle the terminal holds (the stock `MQL4\Scripts\PeriodConverter.mq4`
+//--- uses it), so each flushed line is now readable the moment it is written.
+//--- P-LOG-3b (2026-10-01) — AND THE FILE IS PER CHART, NOT PER SYMBOL. MEASURED
+//--- 21:52..21:58 with the panel open on EURUSD,M1 AND EURUSD,H1: `Symbol()` names
+//--- both charts the same, so each instance opened its OWN handle to ONE path and
+//--- wrote it from its own position. The file stopped growing (62,965 bytes at
+//--- 21:52:50 and again at 21:58:51) while two charts were emitting whole frames,
+//--- and the two frames the bytes actually held were both the M1 chart's (221 and
+//--- 230 lines, matching the journal's EURUSD,M1 at 21:52:49/21:52:50) — the H1
+//--- frames the screen was showing were nowhere in it. `ChartID()` is what
+//--- separates two charts of one symbol, so the name carries it.
+#ifdef DSTRIP_DIAG
+void DrawStripDiagEmit(const string line)
+{
+   Print(line);
+   static int dh = INVALID_HANDLE;
+   if(dh == INVALID_HANDLE)
+      dh = FileOpen("biotak_diag_" + Symbol() + "_" + IntegerToString(ChartID()) + ".txt",
+                    FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_SHARE_READ);
+   if(dh == INVALID_HANDLE) return;
+   FileWrite(dh, line);
+   FileFlush(dh);
+}
+#endif
+
+#ifdef DSTRIP_DIAG
+//--- P-LOG-8 (2026-10-01) — THE AFTER-FRAME. The census is a snapshot taken at dump
+//--- time; the SCREEN is later. The wide gear frame of the 2026-10-01 report read
+//--- 91/91 PASS (seat, layer, text, back, win, corner) while the screenshot showed the
+//--- panel's left column bare, and the whole-chart walk (P-LOG-7) named no cover at
+//--- all — so the only question the model cannot answer is WHETHER THE STATE IT SAW
+//--- IS STILL THE STATE ON THE CHART when the user screenshots it. A later writer that
+//--- deletes, moves or re-rungs a name after the dump is invisible to every snapshot.
+//--- So the dump stores what the census saw, and the NEXT paint pass walks that same
+//--- name list again and prints only the DELTA: GONE (a later purge), MOVED (a later
+//--- writer), NEW (a later cover inside the panel rect), and a `done` line that says
+//--- the model survived unchanged when nothing moved. One flag, one pass, no cost.
+#define DSTRIP_DIAG_SNAP 384
+int    s_dsDiagAfter = 0;                     // 0 idle · 1 armed by the dump · 2 fired
+int    s_dsSnapN = 0;
+int    s_dsSnapRect[4];                       // bx0, by0, bx1, by1 at snapshot time
+string s_dsSnapNm[DSTRIP_DIAG_SNAP];
+int    s_dsSnapX[DSTRIP_DIAG_SNAP], s_dsSnapY[DSTRIP_DIAG_SNAP];
+int    s_dsSnapW[DSTRIP_DIAG_SNAP], s_dsSnapH[DSTRIP_DIAG_SNAP];
+int    s_dsSnapZ[DSTRIP_DIAG_SNAP], s_dsSnapB[DSTRIP_DIAG_SNAP];
+
+void DrawStripDiagSnapRect(const int bx0, const int by0, const int bx1, const int by1)
+{
+   //--- P-LOG-8b: ONE census, ONE snapshot. The store must never carry a previous
+   //--- frame's names: MEASURED on the first live AFTER (23:29:10) — the store held
+   //--- 200 names (the narrow frame's 98 still in it) and the delta reported 50
+   //--- MOVED / 36 GONE that were only the narrow→wide layout switch
+   //--- (`GS0C was=1357,146 now=1357,188`), burying the signal this block exists for.
+   s_dsSnapN = 0;
+   s_dsSnapRect[0] = bx0; s_dsSnapRect[1] = by0; s_dsSnapRect[2] = bx1; s_dsSnapRect[3] = by1;
+}
+
+bool DrawStripDiagSnapAdd(const string nm, const int x, const int y, const int w, const int h,
+                          const int z, const int back)
+{
+   if(s_dsSnapN >= DSTRIP_DIAG_SNAP || ObjectFind(0, nm) < 0) return false;
+   s_dsSnapNm[s_dsSnapN] = nm;
+   s_dsSnapX[s_dsSnapN] = x; s_dsSnapY[s_dsSnapN] = y;
+   s_dsSnapW[s_dsSnapN] = w; s_dsSnapH[s_dsSnapN] = h;
+   s_dsSnapZ[s_dsSnapN] = z; s_dsSnapB[s_dsSnapN] = back;
+   s_dsSnapN++;
+   return true;
+}
+
+int DrawStripDiagSnapIdx(const string nm)
+{
+   for(int i = 0; i < s_dsSnapN; i++) if(s_dsSnapNm[i] == nm) return i;
+   return -1;
+}
+
+//--- P-LOG-8c (2026-10-01) — A CHART OBJECT'S SCREEN BOX IS NOT ITS XDISTANCE.
+//--- `OBJ_RECTANGLE` / `OBJ_TREND` / zones answer `OBJPROP_XDISTANCE` with 0 (that
+//--- property belongs to SCREEN objects), so the census's box test read `0,0` for
+//--- them and the panel-rect test threw every one away — the one family that CAN
+//--- cover this panel (a TH3 zone / BaseKnot box drawn in the foreground) was still
+//--- invisible to the walk that exists to name a cover. Their real box is their
+//--- TIME/PRICE anchors through `ChartTimePriceToXY`. Labels keep their anchor.
+bool DrawStripCensusAnyBox(const string nm, const int oty,
+                           int &ox, int &oy, int &ow, int &oh)
+{
+   if(oty == OBJ_LABEL || oty == OBJ_TEXT) return true;
+   ow = DrawStripCensusSize(nm, oty, 0);
+   oh = DrawStripCensusSize(nm, oty, 1);
+   if(ow > 0 || oh > 0) return true;
+   datetime t1 = (datetime)ObjectGetInteger(0, nm, OBJPROP_TIME, 0);
+   double   p1 = ObjectGetDouble(0, nm, OBJPROP_PRICE, 0);
+   datetime t2 = (datetime)ObjectGetInteger(0, nm, OBJPROP_TIME, 1);
+   double   p2 = ObjectGetDouble(0, nm, OBJPROP_PRICE, 1);
+   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   if(t1 == 0 || !ChartTimePriceToXY(0, 0, t1, p1, x1, y1)) return false;
+   if(t2 == 0 || !ChartTimePriceToXY(0, 0, t2, p2, x2, y2)) { ox = x1; oy = y1; ow = 0; oh = 0; return true; }
+   ox = (x1 < x2 ? x1 : x2); oy = (y1 < y2 ? y1 : y2);
+   ow = (x2 > x1 ? x2 - x1 : x1 - x2);
+   oh = (y2 > y1 ? y2 - y1 : y1 - y2);
+   return true;
+}
+
+void DrawStripDiagAfterRun()
+{
+   s_dsDiagAfter = 2;
+   int gone = 0, moved = 0;
+   for(int i = 0; i < s_dsSnapN; i++)
+   {
+      string nm = s_dsSnapNm[i];
+      if(ObjectFind(0, nm) < 0)
+      {
+         DrawStripDiagEmit("[drawstrip] AFTER GONE obj=" + nm);
+         gone++;
+         continue;
+      }
+      int x = (int)ObjectGetInteger(0, nm, OBJPROP_XDISTANCE);
+      int y = (int)ObjectGetInteger(0, nm, OBJPROP_YDISTANCE);
+      int z = (int)ObjectGetInteger(0, nm, OBJPROP_ZORDER);
+      int bk = (int)ObjectGetInteger(0, nm, OBJPROP_BACK);
+      if(x != s_dsSnapX[i] || y != s_dsSnapY[i] || z != s_dsSnapZ[i] || bk != s_dsSnapB[i])
+      {
+         DrawStripDiagEmit("[drawstrip] AFTER MOVED obj=" + nm +
+                           " was=" + IntegerToString(s_dsSnapX[i]) + "," + IntegerToString(s_dsSnapY[i]) +
+                           ",z" + IntegerToString(s_dsSnapZ[i]) + ",b" + IntegerToString(s_dsSnapB[i]) +
+                           " now=" + IntegerToString(x) + "," + IntegerToString(y) +
+                           ",z" + IntegerToString(z) + ",b" + IntegerToString(bk));
+         moved++;
+      }
+   }
+   int fresh = 0;
+   int n = ObjectsTotal(0, -1);
+   for(int oi = 0; oi < n; oi++)
+   {
+      string on = ObjectName(0, oi, -1);
+      if(on == "" || DrawStripDiagSnapIdx(on) >= 0) continue;
+      int oty = (int)ObjectGetInteger(0, on, OBJPROP_TYPE);
+      int ox = (int)ObjectGetInteger(0, on, OBJPROP_XDISTANCE);
+      int oy = (int)ObjectGetInteger(0, on, OBJPROP_YDISTANCE);
+      if(ox + 8 < s_dsSnapRect[0] || ox > s_dsSnapRect[2] ||
+         oy + 8 < s_dsSnapRect[1] || oy > s_dsSnapRect[3]) continue;
+      DrawStripDiagEmit("[drawstrip] AFTER NEW obj=" + on + " type=" + IntegerToString(oty) +
+                        " xy=" + IntegerToString(ox) + "," + IntegerToString(oy) +
+                        " z=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_ZORDER)) +
+                        " back=" + IntegerToString((int)ObjectGetInteger(0, on, OBJPROP_BACK)));
+      fresh++;
+   }
+   DrawStripDiagEmit("[drawstrip] AFTER done snap=" + IntegerToString(s_dsSnapN) +
+                     " gone=" + IntegerToString(gone) + " moved=" + IntegerToString(moved) +
+                     " new=" + IntegerToString(fresh) + " chartObjs=" + IntegerToString(n));
+}
+
+//--- P-LOG-9 (RETIRED 2026-10-02) — the probe labels asked MT4's own draw rule and
+//--- the screen answered: P1 (content rung) and P2 (rung 1600) at the LEFT seat and
+//--- P3 at the right all showed while the left column stayed bare until P-LOG-10, and
+//--- the touch test's same-pixel write raised nothing — CREATE is the only raise.
+//--- The labels are gone; the law and its record live in DrawStrip_GearPlate (P-LOG-10)
+//--- and in contract §6 item 23.
+#endif
+
+//--- P-LOG-5 (2026-10-01) — THE CENSUS'S INK COLUMN BELONGS TO EVERY CAPTIONED
+//--- OBJECT, NOT TO LABELS ONLY. MEASURED 2026-10-01 22:10
+//--- (`biotak_diag_EURUSD_134342075006101685.txt`): the panel passed the diff 91/91
+//--- while the ONE class the diff never tested was a button's own text — the census
+//--- wrote `ink` for `OBJ_LABEL` only. The swatch row's captions (`1px`..`5px`,
+//--- `Solid`..`D-Dot`) are BUTTON TEXT, so the report «بعضی ردیف‌ها متن نداره» could
+//--- not be decided from the log at all: a LOST caption and a healthy face both read
+//--- `ink=-`, and `diag-diff` reads that same column. A button answers OBJPROP_TEXT
+//--- exactly as a label does, so the column carries both now. The helper lives HERE,
+//--- not in `DrawStrip_GearB.mqh`, which stands at 1497 of the 1500-line ceiling
+//--- (P-SIZE-1500).
+string DrawStripCensusInk(const string nm, const int oty)
+{
+   if(oty != OBJ_LABEL && oty != OBJ_BUTTON) return "-";
+   return "\"" + ObjectGetString(0, nm, OBJPROP_TEXT) + "\":" +
+          IntegerToString((int)ObjectGetInteger(0, nm, OBJPROP_COLOR));
+}
+
+//--- P-LOG-6 (2026-10-01) — THE CENSUS'S BOX TEST IS THE OBJECT'S OWN BOX.
+//--- MEASURED 2026-10-01 22:17 (`biotak_diag_EURUSD_134342075006101685.txt`): the
+//--- panel's PLATE is painted on every open (`DrawStripGearPlate` -> `DrawStripSkinBmp`
+//--- "PnlDrawS_Gbake" / `Gtop` / `Gmid*` / `Gbot`) and it appeared in NOT ONE of the
+//--- 187 census lines. The walk took a bitmap label's box from `DrawStripResW/H` of its
+//--- RESOURCE, and a name that table does not carry reads 0 — so the plate's box
+//--- collapsed to a POINT at `gx-14, gy-14`, its own 14px margin, outside the panel
+//--- rect on both axes, and every tile was skipped. The largest object the panel owns
+//--- — and the ONE that can hide every control if its rung is wrong, which Skin.mqh's
+//--- own P-DRAW-72 note records as a real past failure ("the bake sat ABOVE the tabs,
+//--- the hex fields, the Interior switch and the foot") — was the one object the census
+//--- could never print. So a diagnostic can answer "who is on top" only for the
+//--- objects it is willing to look at. The object answers XSIZE/YSIZE itself (every
+//--- writer here sets them); the resource table stays as the fallback for a face that
+//--- carries none. Lives HERE, not in DrawStrip_GearB.mqh (1495 of the 1500-line
+//--- ceiling, P-SIZE-1500) — and Skin.mqh's `DrawStripIsBg` is included AFTER GearB,
+//--- so the census cannot ask it either.
+int DrawStripCensusSize(const string nm, const int oty, const int axis)
+{
+   if(oty == OBJ_BUTTON || oty == OBJ_RECTANGLE_LABEL || oty == OBJ_EDIT ||
+      oty == OBJ_BITMAP_LABEL)
+   {
+      int v = (int)ObjectGetInteger(0, nm, (axis == 0) ? OBJPROP_XSIZE : OBJPROP_YSIZE);
+      if(v > 0) return v;
+   }
+   string bf = ObjectGetString(0, nm, OBJPROP_BMPFILE, 0);
+   return (axis == 0) ? DrawStripResW(bf) : DrawStripResH(bf);
+}
+
+bool DrawStripCensusInPanel(const string nm, const int oty,
+                            const int ox, const int oy,
+                            const int bx0, const int by0, const int bx1, const int by1)
+{
+   int ow = DrawStripCensusSize(nm, oty, 0), oh = DrawStripCensusSize(nm, oty, 1);
+   return !(ox + ow < bx0 || ox > bx1 || oy + oh < by0 || oy > by1);
+}
+
 void DrawStripGripRelease()
 {
    // P-DRAW-32: either carry owns the lock — one release ends whichever is live.
@@ -152,8 +386,25 @@ static bool     s_dsPressTracked = false;   // P-UI-113d: a press EDGE was seen 
 static bool     s_dsPressCycle = false;  // the latch named THIS press cycle
 static string   s_dsPressCycleObj = "";  // the drawing its press pixel landed on ("" = chart)
 static uint     s_dsPressCycleMs = 0;    // the cycle's life bound: the press cap below
+//--- P-UI-130 (2026-10-02) — THE CYCLE'S LIFE IS THE PRESS'S, NOT THE OPENER'S.
+//--- P-UI-115 armed this cycle and left its life bound at `DSTRIP_OPEN_PRESS_MAX_MS`
+//--- — the OPENER WINDOW's own budget, ten seconds — and the live chart says what
+//--- a ten-second refusal window costs. One latch on a box the hand was about to
+//--- DRAG walked out from under the finger, the drag's release never arrived on
+//--- the click channel, and the cycle went on to refuse FIVE real presses in a row
+//--- (EURUSD,M1 00:12:57.036 latch -> :57.473 refused -> :57.931, :58.451,
+//--- :58.939, 00:13:00.370, 00:13:01.481 all refused -> the user gave up until
+//--- 00:14:41). That is «هولد بعضی وقتها باز نمیشه» exactly, and no line of the
+//--- log named the owner until DIAG-116 printed `press refused: cycle live`.
+//--- The cycle has ONE job — keep a FLAP from re-timing a press it already named
+//--- (P-UI-115c) — and the flaps it was measured against are milliseconds apart
+//--- (179/252/488 ms). 2 s covers every press that can still become a hold (a hold
+//--- fires at 500 ms) and can never outlive its press far enough to eat the next
+//--- one. A gesture already IN MOTION is guarded by its own witness instead: the
+//--- router's drag heartbeat (P-UI-130 in DrawStrip_Router.mqh).
+#define DSTRIP_PRESS_CYCLE_MS 2000
 void DrawStripPressCycleSet(const string nm)
-{ s_dsPressCycle = true; s_dsPressCycleObj = nm; s_dsPressCycleMs = GetTickCount() + DSTRIP_OPEN_PRESS_MAX_MS; }
+{ s_dsPressCycle = true; s_dsPressCycleObj = nm; s_dsPressCycleMs = GetTickCount() + DSTRIP_PRESS_CYCLE_MS; }
 void DrawStripPressCycleClear() { s_dsPressCycle = false; s_dsPressCycleObj = ""; s_dsPressCycleMs = 0; }
 bool DrawStripPressCycleLive()
 { return (s_dsPressCycle && TickDeadlinePending(s_dsPressCycleMs)); }
@@ -257,6 +508,32 @@ string DrawStripGearBgName() { return "PnlDrawS_GBG"; }
 string DrawStripGearHeadName(const string s) { return "PnlDrawS_GH" + s; }
 string DrawStripGearSectionName(const int i) { return "PnlDrawS_GS" + IntegerToString(i); }
 string DrawStripGearSectionLineName(const int i) { return DrawStripGearSectionName(i) + "L"; }
+//--- P-DRAW-125 (2026-10-01) — "CREATE OR REWRITE?" MUST ASK THE TYPE, NOT THE NAME.
+//--- Every writer decided that question from `ObjectFind(0, nm) < 0` alone, and the
+//--- tree's own record names the consequence (DrawStripSweepStale, GearA): "a name
+//--- that is already there IS reused — with whatever TYPE the older build created it,
+//--- and MT4 draws a button's text onto a bitmap label by writing properties nobody
+//--- reads: an object that exists, answers ObjectFind, and paints NOTHING." The
+//--- prefix wipe at attach cannot reach a name a MID-SESSION path left mis-typed (a
+//--- cell that changed role, a family half rebuilt, an orphan of the retired tab
+//--- build), so the reader lives here, where every writer can reach it: the object's
+//--- OWN type against the type the painter needs. A foreign name is dropped, and the
+//--- writer's own create — kept IN the writer, so the lifecycle gate still sees the
+//--- birth and the layer write in one block — rebuilds it. Bounded: one extra type
+//--- read per object per paint, and a reclaim happens at most once per name.
+void DrawStripForeign(const string nm, const int type)
+{
+   if(ObjectFind(0, nm) < 0) return;
+   if((int)ObjectGetInteger(0, nm, OBJPROP_TYPE) == type) return;
+   static bool saidType = false;
+   if(!saidType)
+   {
+      saidType = true;
+      Print("[drawstrip] object of another type reclaimed obj=", nm,
+            " type=", (int)ObjectGetInteger(0, nm, OBJPROP_TYPE), " want=", type);
+   }
+   ObjectDelete(0, nm);
+}
 string DrawStripGearCloseName() { return DrawStripGearHeadName("X"); }
 string DrawStripGearCloseSkinName() { return DrawStripGearCloseName() + "B"; }
 string DrawStripGearCloseIconName() { return DrawStripGearCloseName() + "I"; }

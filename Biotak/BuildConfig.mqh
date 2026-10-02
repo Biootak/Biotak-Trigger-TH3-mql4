@@ -25,7 +25,7 @@
 //                                                                   
 //           DEBUG                          :
 //                                                                   
-//#define DEBUG_BUILD
+#define DEBUG_BUILD   // P-LOG-3: TEMPORARY — enabled 2026-10-01 for the gear-panel hunt; comment out to return to PRODUCTION
 
 //                                                                   
 

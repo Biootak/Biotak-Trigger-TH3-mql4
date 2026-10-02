@@ -438,6 +438,20 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             Print("==================== Updated existing point ", pointNames[i]);
             #endif
         }
+        // P-DRAW-122 (2026-10-01) — A PAINTED LAYER IS RE-ASSERTED EVERY PASS. This
+        // point's rung was written inside its birth block only, while the branch above
+        // MOVES an object that already exists: an arrow that survived a reattach (or a
+        // pattern redrawn onto objects the terminal still held) kept the rung of the
+        // instance that born it, and `Z_CHART_TOOL` is exactly "over the level lines,
+        // under every label" — lose it and the point paints under the lines it marks.
+        // Same law as the strip's own painters (DrawStrip_GearB/Paint/Skin); compare-
+        // guarded, so a still frame writes nothing.
+        if((long)ObjectGetInteger(0, pointName, OBJPROP_ZORDER) != Z_CHART_TOOL ||
+           (long)ObjectGetInteger(0, pointName, OBJPROP_BACK) != 0)
+        {
+            ObjectSetInteger(0, pointName, OBJPROP_BACK, false);
+            ObjectSetInteger(0, pointName, OBJPROP_ZORDER, Z_CHART_TOOL);
+        }
         
         // Smart label positioning relative to candle High/Low
         //                   High/Low    

@@ -649,8 +649,11 @@ double GetStepSizeForBasisTypeFromTH(const double basePrice, const double multip
     }
     
     #ifdef ENABLE_DEBUG_LOGS
-    Print("  GetStepSizeForBasisType: TF=", timeframe, ", Mult=", multiplier, 
-          ", TH%=", DoubleToString(thPercentage, 4), ", Step=", DoubleToString(stepSize, Digits));
+    // P-LOG-3: this debug-only line named `timeframe`, which lives in the CALLER
+    // (`GetStepSizeForBasisType`); this function takes `thPercentage` instead, so the
+    // line never compiled — the error only surfaced the day DEBUG_BUILD was enabled.
+    Print("  GetStepSizeForBasisTypeFromTH: TH%=", DoubleToString(thPercentage, 4),
+          ", Mult=", multiplier, ", Step=", DoubleToString(stepSize, Digits));
     #endif
     
     return stepSize;
