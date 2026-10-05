@@ -207,7 +207,6 @@ void OnTimer()
     CoopOwe(COOP_JOB_LABEL_EXPIRY);
     CoopOwe(COOP_JOB_STATUS_TEXT);
     CoopPump();
-    UpdateFreeMark();   // P-FREE-03: corner witness rebirth (timer covers tick-less charts)
 
     // P-UI-100 (2026-09-22): the selection net of the two hand-set lines — the
     // custom price line and the step-1 pair exist in this entry too, so the law

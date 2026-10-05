@@ -705,50 +705,6 @@ void UpdateStepModeLabel(bool clearFirst = true) {
 }
 
 //+------------------------------------------------------------------+
-//| P-FREE-03: the legend witness — symbol above, FREE below it.        |
-//| A scammer sells with screenshots of THIS chart, so the mark sits|
-//| right under the indicator names (top-left): line 1 the symbol + |
-//| missing every call (undeletable in-session: hidden from the      |
-//| object list, non-selectable, reborn next pump); style is birth-  |
-//| only, text compare-guarded — a still chart costs two finds plus |
-//| two compares. Ignores hide-all BY DESIGN (a hidden mark witnesses|
-//| nothing). Dies only with the indicator (OnDeinitHandler). ASCII  |
-//| only: a non-Latin glyph needs a font with coverage (P-LBL-02).    |
-//+------------------------------------------------------------------+
-void FreeMarkLine(const string nm, const string txt, const int y)
-{
-    if(ObjectFind(0, nm) < 0)
-    {
-        if(!ObjectCreate(0, nm, OBJ_LABEL, 0, 0, 0)) return;
-        ObjectSetString(0, nm, OBJPROP_TEXT, "");
-        ObjectSetString(0, nm, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, nm, OBJPROP_FONTSIZE, 8);
-        ObjectSetInteger(0, nm, OBJPROP_COLOR, BIO_CLR_MUTED);
-        ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
-    }
-    // P-DRAW-122: seat + layer re-assert every pass, not only at birth — so a
-    // stale build's seat never survives an update and a surviving object keeps
-    // its rung. BACK=false is the watermark half: foreground chrome-order.
-    ObjectSetInteger(0, nm, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-    ObjectSetInteger(0, nm, OBJPROP_ANCHOR, ANCHOR_LEFT_UPPER);
-    ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, 8);
-    ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, y);
-    ObjectSetInteger(0, nm, OBJPROP_BACK, false);
-    if(ObjectGetString(0, nm, OBJPROP_TEXT) != txt)
-        ObjectSetString(0, nm, OBJPROP_TEXT, txt);
-}
-void UpdateFreeMark()
-{
-#ifdef BUILD_LITE
-    FreeMarkLine(g_freeSymName, Symbol() + " | Biotak TH3 Lite v" + INDICATOR_VERSION, 22);
-#else
-    FreeMarkLine(g_freeSymName, Symbol() + " | Biotak TH3 v" + INDICATOR_VERSION, 22);
-#endif
-    FreeMarkLine(g_freeMarkName, "FREE | @biotak", 38);
-}
-
-//+------------------------------------------------------------------+
 //| Update calculation basis label on chart (configurable duration) |
 //| Uses Label object matching step mode label style                |
 //| Shows both basis and current step mode: "ATR | SS/LS"           |

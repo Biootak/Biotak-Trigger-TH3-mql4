@@ -80,11 +80,6 @@ void DeleteAllIndicatorObjects(bool deepCleanup = false) {
         ObjectsDeleteAll(0, inpObjectPrefix + "SharedPattern_");
     }
 
-    // P-FREE-03: fixed names match no namespace — delete explicitly. Reached only
-    // from throw-away paths (REMOVE/PARAMS), never from the switch handoff above.
-    ObjectDelete(0, g_freeSymName);
-    ObjectDelete(0, g_freeMarkName);
-
     g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
     g_suppressDeleteEvents = false;
     // Every cached entry now names a deleted object: drop them so the next

@@ -510,10 +510,6 @@ static bool g_viewRestorePending = false;
 static string g_viewAnchorLineName = "Biotak_ViewAnchor_Line";
 static string g_lockStatusLabelName = "Biotak_LockStatus_Label";
 static string g_stepModeLabelName = "Biotak_StepMode_Label";
-// P-FREE-03: the legend witness — fixed names (per-chart object space, like every
-// corner label above); reborn by the pump, deleted only with the indicator.
-static string g_freeSymName = "Biotak_FreeSym_Label";
-static string g_freeMarkName = "Biotak_FreeMark_Label";
 
 // Combo calc breakdown text for the step-mode label. Filled by
 // RefreshComboLabelExtraInfo() in ComboEngine.mqh (included AFTER the

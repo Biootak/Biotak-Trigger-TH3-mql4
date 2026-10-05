@@ -3459,28 +3459,6 @@ function main() {
     }
   }
 
-  {
-    // P-FREE-01 — the legend witness. No popup (retired: a post-purchase scold
-    // helps nobody); the chart itself self-declares: the short name carries the
-    // symbol + FREE, and two reborn labels sit under the indicator names.
-    const broken = [];
-    const ehinit = codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Init.mqh')) || []);
-    if (!/INDICATOR_SHORTNAME.*FREE @biotak/.test(ehinit))
-      broken.push('the chart legend lost its FREE mark — demos no longer self-declare');
-    const utila = codeOf(linesOf(path.join(BIOTAK, 'Util_A.mqh')) || []);
-    if (!/void UpdateFreeMark\(\)/.test(utila) || !/ObjectFind\(0, nm\) < 0/.test(utila))
-      broken.push('the legend witness lost its recreate-if-missing — a delete survives');
-    if (!/OBJPROP_HIDDEN, true/.test(utila) || !/OBJPROP_SELECTABLE, false/.test(utila))
-      broken.push('the legend witness is reachable — it can be grabbed from the object list');
-    if (!/g_freeSymName|g_freeMarkName/.test(codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Tail.mqh')) || [])))
-      broken.push('the legend witness lost its teardown delete — it orphans on remove');
-    if (broken.length) {
-      failures.push('P-FREE-01: ' + broken.join('; ') + ' (Biotak/EventHandlers_Init.mqh + Biotak/Util_A.mqh + Biotak/EventHandlers_Tail.mqh)');
-    } else {
-      console.log('[PASS] P-FREE-01 the chart self-declares FREE under its own names');
-    }
-  }
-
   console.log('');
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);

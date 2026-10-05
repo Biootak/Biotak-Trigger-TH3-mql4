@@ -420,7 +420,6 @@ void OnTimer()
     CoopOwe(COOP_JOB_LABEL_EXPIRY);
     CoopOwe(COOP_JOB_STATUS_TEXT);
     CoopPump();
-    UpdateFreeMark();   // P-FREE-03: corner witness rebirth (timer covers tick-less charts)
 
     // --- UI kit: HTF forming candle + new-bar redraw + chart-lock watchdog ---
     // (P-UI-40's UISyncDrain rides inside RefreshKitOnBar — one drain owner.)
