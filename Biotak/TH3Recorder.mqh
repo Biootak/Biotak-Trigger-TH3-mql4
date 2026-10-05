@@ -186,7 +186,35 @@ void TH3_ExportCurrentSample(const string patternName = "")
    //--- and the shot is one redraw away, with no Sleep either — a still chart
    //--- needs no settle, and the settle was the whole cost of the old path.
    ChartRedraw();
-   bool okShot = WindowScreenShot(shotPath, 1920, 1080);
+
+   //--- P-TH3-REC-04 (2026-10-05) — THE SHOT IS 1:1 WITH THE CHART, NOT A
+   //--- STRETCH. The call passed a FIXED 1920x1080 while the chart is a
+   //--- different size, and `WindowScreenShot` scales whatever it is given
+   //--- into those numbers: the capture came out upscaled and soft, the caption
+   //--- unreadable, and the exact price of a rung not legible off the picture —
+   //--- which defeats the whole point of a dataset whose numbers have to be
+   //--- checked against the pixels.
+   //---
+   //--- MEASURED on the user's own chart (2026-10-05, Samples 001/002): the
+   //--- 1920x1080 PNGs held a plot area with the border at y=2 and y=1056 and
+   //--- the caption plate 1018px tall — text rows of 9-12px, i.e. stretched
+   //--- pixels, not rendered ones.
+   //---
+   //--- A HONEST LIMIT (the docs, docs.mql4.com/chart_operations/
+   //--- windowscreenshot): the signature is
+   //---   WindowScreenShot(filename, size_x, size_y, start_bar, scale, mode)
+   //--- and it captures the CHART AREA ONLY — the toolbar, the Market Watch
+   //--- and the desktop are outside what MQL4 can hand back. A true full-desktop
+   //--- grab is not available from inside an indicator. What this now gives is
+   //--- the widest TRUE capture: every bar, every rung and the caption at one
+   //--- screen pixel per image pixel, sharp. `start_bar=0` pins the shot to the
+   //--- bars currently on screen instead of the end-of-chart default, so the
+   //--- frame the trader framed is the frame that is written.
+   int shotW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int shotH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(shotW <= 0) shotW = 1920;   // never hand the API a zero width
+   if(shotH <= 0) shotH = 1080;
+   bool okShot = WindowScreenShot(shotPath, shotW, shotH, 0);
 
    int fh = FileOpen(logPath, FILE_WRITE | FILE_TXT | FILE_ANSI);
    bool okTxt = (fh != INVALID_HANDLE);
@@ -232,6 +260,10 @@ void TH3_ExportCurrentSample(const string patternName = "")
       FileWrite(fh, "  Error_Margin_Pips: " + DoubleToString(errPips, 1));
       FileWrite(fh, "  Against: " + sampleId + " Step_3_Target");
       FileWrite(fh, "SCREENSHOT: " + shotPath);
+      //--- P-TH3-REC-04: the capture's own size, so a reader never has to guess
+      //--- whether the PNG is 1:1 with the screen or a rescale of it.
+      FileWrite(fh, "SCREENSHOT_SIZE: " + IntegerToString(shotW) + "x" + IntegerToString(shotH));
+      FileWrite(fh, "SCREENSHOT_AREA: chart_only (MQL4 WindowScreenShot cannot reach the toolbar or desktop)");
       FileClose(fh);
       fh = INVALID_HANDLE;
    }
