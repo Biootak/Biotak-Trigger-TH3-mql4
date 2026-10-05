@@ -79,6 +79,11 @@ void DeleteAllIndicatorObjects(bool deepCleanup = false) {
         ObjectsDeleteAll(0, inpObjectPrefix + "TH_");
         ObjectsDeleteAll(0, inpObjectPrefix + "SharedPattern_");
     }
+    // Retired P-FREE witness pair (removed 2026-10-05): fixed names match no
+    // namespace, so the wipe above never saw them — delete explicitly once, here,
+    // so a remove-and-re-add deploy (the only deploy) leaves no orphan behind.
+    ObjectDelete(0, "Biotak_FreeSym_Label");
+    ObjectDelete(0, "Biotak_FreeMark_Label");
 
     g_suppressDeleteEventsUntilMs = GetTickCount() + 250;
     g_suppressDeleteEvents = false;
