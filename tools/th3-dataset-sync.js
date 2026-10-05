@@ -145,6 +145,7 @@ function main() {
   }
 
   let copied = 0, skipped = 0, bytes = 0, saved = 0;
+  const failed = [];
   for (const src of sources) {
     for (const { from, ext } of ARTIFACTS) {
       const dir = from === '.' ? src : path.join(src, from);
@@ -166,9 +167,27 @@ function main() {
           skipped++;
           continue;
         }
-        const chosen = newest(target, s);
-        fs.mkdirSync(path.dirname(chosen), { recursive: true });
-        fs.copyFileSync(chosen, target);
+        // P-TH3-REC-08: the DESTINATION's directory, always. The obvious
+        // `mkdirSync(path.dirname(chosen))` was the wrong one: when the
+        // project copy does not exist yet, `chosen` is the SOURCE (the
+        // terminal's file), so it created the terminal's directory — which
+        // exists — and then copyFileSync died with ENOENT on the destination.
+        // A first run into a clean tree therefore crashed instead of
+        // creating the tree, which is the one run that must always work.
+        fs.mkdirSync(path.dirname(target), { recursive: true });
+        // P-TH3-REC-08: ONE FILE'S FAILURE IS NOT THE RUN'S FAILURE. A single
+        // unreadable or locked file used to throw out of the whole loop and
+        // leave the rest of the dataset uncopied, so one bad sample cost all
+        // of them. It is now counted, named, and the run continues — a
+        // partial sync that says what it missed beats a crash that says
+        // nothing.
+        try {
+          const chosen = newest(target, s);
+          fs.copyFileSync(chosen, target);
+        } catch (err) {
+          failed.push(`${name}: ${err.code || err.message}`);
+          continue;
+        }
         copied++;
         //--- P-TH3-REC-07: shrink the shot, but only ever LOSSLESSLY. The
         //--- compression runs on the PROJECT copy, never on MT4's own file.
@@ -213,6 +232,12 @@ function main() {
   if (pct > 5) {
     console.warn(`  WARNING: dataset is over 5% of the ceiling — archive the ` +
                 `oldest samples before adding more.`);
+  }
+  if (failed.length) {
+    for (const f of failed) console.error(`  FAILED ${f}`);
+    console.error(`th3-dataset-sync: ${failed.length} file(s) could not be ` +
+                  `copied; the rest are in place.`);
+    return 1;
   }
   return 0;
 }
