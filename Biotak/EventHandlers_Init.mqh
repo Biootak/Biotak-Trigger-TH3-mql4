@@ -893,14 +893,13 @@ int OnInitHandler() {
     g_pInitMsAtr = GetTickCount() - pInitTick;   // P-PERF-10 (ATR cache init + warmup)
 
     PrintBuildInfo();
-    FreewareNoticeMaybe();   // P-FREE-01: the one buyer-facing witness, both entries
     // P-FREE-02: the chart legend IS the demo. A scammer sells with screenshots of
     // this chart, so the short name carries the free status where no popup reaches:
     // pre-purchase eyes, not post-purchase regret. No object, no paint, no layout.
 #ifdef BUILD_LITE
-    IndicatorSetString(INDICATOR_SHORTNAME, "Biotak Trigger TH3 Lite v" + INDICATOR_VERSION + " (FREEWARE @biotak)");
+    IndicatorSetString(INDICATOR_SHORTNAME, Symbol() + " | Biotak TH3 Lite v" + INDICATOR_VERSION + " | FREE @biotak");
 #else
-    IndicatorSetString(INDICATOR_SHORTNAME, "Biotak Trigger TH3 v" + INDICATOR_VERSION + " (FREEWARE @biotak)");
+    IndicatorSetString(INDICATOR_SHORTNAME, Symbol() + " | Biotak TH3 v" + INDICATOR_VERSION + " | FREE @biotak");
 #endif
 
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.

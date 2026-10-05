@@ -6,7 +6,7 @@
 #property version "3.12"
 #property strict
 #property indicator_chart_window
-#property description "Biotak Trigger TH3 v3.12 - Freeware. Resale prohibited."
+#property description "Biotak Trigger TH3 v3.12 - Freeware, not for sale."
 
 #include "ConstantsAndEnums.mqh"
 
@@ -434,7 +434,6 @@ input string S22 = "[19] ADVANCED / HISTORY & LOG";
 input ENUM_TIMEFRAMES inpHistoricalTimeframe = PERIOD_MN1;
 input int inpHistoricalPeriods = 0;
 input ENUM_LOG_LEVEL inpLogLevel = LOG_LEVEL_WARN;   // Minimum log level (TRACE=all, OFF=none)
-input bool inpShowFreewareNotice = true;   // P-FREE-01: daily "this is FREE" popup (silent in tester)
 
 //==============================================================================
 // This module ONLY declares the user-facing `input` parameters.
