@@ -711,7 +711,20 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // CURRENT bar — the bands now ride under the lines where price goes.
     // (The fibo lines share these times; their RAY_RIGHT makes the end
     // anchor irrelevant to them, so their look does not move.)
-    datetime endTime = iTime(NULL, 0, 0) + (100 * PeriodSeconds());
+    // P-TH3-ZONE-05: the anchor is a CONSTANT, not «now + 100 bars». Sliding
+    // it on every tick made each pass rewrite both anchors of every zone for a
+    // picture that is visually identical — the band only appears to move when
+    // a new bar closes, and 100 bars ahead of D already covers the trade. It
+    // is derived from D (which only changes when the user drags a point) so a
+    // still chart costs nothing here.
+    datetime endTime = tD + (100 * PeriodSeconds());
+    // P-TH3-ZONE-04: the style family the zones on the chart were BORN in. A
+    // -1 first pass means «nothing on the chart yet», so the first frame builds
+    // without a sweep; after that the sweep runs only when the user changes the
+    // style, which is the ONLY event that must re-order paint (P-LOG-10: MT4
+    // paints in creation order, so a style flip needs a re-birth, a step change
+    // does not).
+    static int s_zoneStyleFamily = -1;
     
     // GOLD VERSION: Use configurable zone height from input parameter
     // Convert from percentage (1-100) to decimal (0.01-1.0)
@@ -733,6 +746,9 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // percentage of the step, both halves come from one number, and the label
     // states the height it draws.
     double zoneHalfWidth = baseUnit * zoneHeightPercent * 0.5;
+    // P-TH3-ZONE-04: how many zone objects this pass BUILT. The census below
+    // prints it, so a report can tell «drawn once» from «rebuilt every tick».
+    int zoneBornThisPass = 0;
     
     for(int i = 0; i < 4; i++) {
         string lineName = mainObjName + "_Target_" + IntegerToString(i+1);
@@ -792,17 +808,32 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         if(inpTH3ZoneStyle == TH3_ZONE_BOX_EMPTY) {
             // EMPTY BOX: hollow outline drawn as border segments. Works on
             // every MT4 build - OBJ_RECTANGLE with FILL=false is unreliable.
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
-            
+            // P-TH3-ZONE-04 (2026-10-05) — CREATE ONCE, THEN ONLY MOVE. The old
+            // branch deleted all three borders and rebuilt them on EVERY pass:
+            // three deletes + three creates per rung per frame, for a picture
+            // that only ever changes when the step moves. That cost is why the
+            // zone «رسم میشه ولی بعد حذف میشه» — MT4 paints in CREATION order
+            // (P-LOG-10), so a border re-born every frame lands UNDER the line
+            // family and the frame that survives is the last one's. The sweep
+            // below now runs only on a STYLE CHANGE, which is the one event
+            // that must re-order paint.
             string topBorder = zoneBoxName + "_B_Top";
             string bottomBorder = zoneBoxName + "_B_Bottom";
             string leftBorder = zoneBoxName + "_B_Left";
-            
+
+            if(s_zoneStyleFamily != (int)inpTH3ZoneStyle) {
+                if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
+                if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
+                if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
+                if(ObjectFind(0, topBorder) >= 0) ObjectDelete(0, topBorder);
+                if(ObjectFind(0, bottomBorder) >= 0) ObjectDelete(0, bottomBorder);
+                if(ObjectFind(0, leftBorder) >= 0) ObjectDelete(0, leftBorder);
+            }
+
             // Top border (extends right, matching the filled box)
             if(ObjectFind(0, topBorder) < 0) {
                 ObjectCreate(0, topBorder, OBJ_TREND, 0, startTime, upperZone, endTime, upperZone);
+                zoneBornThisPass++;
                 ObjectSetInteger(0, topBorder, OBJPROP_COLOR, zoneColor);
                 ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
                 ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
@@ -816,10 +847,11 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetInteger(0, topBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
                 ObjectSetInteger(0, topBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
             }
-            
+
             // Bottom border (extends right, matching the filled box)
             if(ObjectFind(0, bottomBorder) < 0) {
                 ObjectCreate(0, bottomBorder, OBJ_TREND, 0, startTime, lowerZone, endTime, lowerZone);
+                zoneBornThisPass++;
                 ObjectSetInteger(0, bottomBorder, OBJPROP_COLOR, zoneColor);
                 ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
                 ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
@@ -833,10 +865,11 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 ObjectSetInteger(0, bottomBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
                 ObjectSetInteger(0, bottomBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
             }
-            
+
             // Left border (vertical - closes the outline)
             if(ObjectFind(0, leftBorder) < 0) {
                 ObjectCreate(0, leftBorder, OBJ_TREND, 0, startTime, lowerZone, startTime, upperZone);
+                zoneBornThisPass++;
                 ObjectSetInteger(0, leftBorder, OBJPROP_COLOR, zoneColor);
                 ObjectSetInteger(0, leftBorder, OBJPROP_STYLE, inpTH3ZoneBorderStyle);
                 ObjectSetInteger(0, leftBorder, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
@@ -853,13 +886,21 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         }
         else {
             // BOX_FILLED: single filled rectangle zone
-            if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
-            if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
-            if(ObjectFind(0, zoneBoxName + "_B_Top") >= 0) ObjectDelete(0, zoneBoxName + "_B_Top");
-            if(ObjectFind(0, zoneBoxName + "_B_Bottom") >= 0) ObjectDelete(0, zoneBoxName + "_B_Bottom");
-            if(ObjectFind(0, zoneBoxName + "_B_Left") >= 0) ObjectDelete(0, zoneBoxName + "_B_Left");
-            
+            // P-TH3-ZONE-04: same law as the branch above — the deletes run on a
+            // STYLE change only, never per frame.
+            string topBorder = zoneBoxName + "_B_Top";
+            string bottomBorder = zoneBoxName + "_B_Bottom";
+            string leftBorder = zoneBoxName + "_B_Left";
+            if(s_zoneStyleFamily != (int)inpTH3ZoneStyle) {
+                if(ObjectFind(0, zoneUpperName) >= 0) ObjectDelete(0, zoneUpperName);
+                if(ObjectFind(0, zoneLowerName) >= 0) ObjectDelete(0, zoneLowerName);
+                if(ObjectFind(0, topBorder) >= 0) ObjectDelete(0, topBorder);
+                if(ObjectFind(0, bottomBorder) >= 0) ObjectDelete(0, bottomBorder);
+                if(ObjectFind(0, leftBorder) >= 0) ObjectDelete(0, leftBorder);
+            }
+
             if(ObjectFind(0, zoneBoxName) < 0) {
+                zoneBornThisPass++;
                 if(ObjectCreate(0, zoneBoxName, OBJ_RECTANGLE, 0, startTime, lowerZone, endTime, upperZone)) {
                     ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
                     ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
@@ -877,6 +918,9 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             }
         }
     }
+    // P-TH3-ZONE-04: the family is now BORN, so the next pass skips the sweep
+    // and pays only the moves. One write per pass, not six.
+    s_zoneStyleFamily = (int)inpTH3ZoneStyle;
     
     // P-TH3-DISC: the even rungs' ink — dotted gray, no zones. Same family
     // discipline as the targets (create once, move after; masked with the
@@ -913,8 +957,12 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // next occurrence must name setting-vs-code itself: how many of the four
     // zone boxes stand, and the three inputs that render them. Draw-paced
     // (never per tick), so the cost is one line per user gesture.
+    // P-TH3-ZONE-04: `born` is the new column, and it is the one that settles
+    // «drawn then deleted» — a pass that BUILDS reports born=4, a pass that only
+    // re-seats them reports born=0 with bornTotal=4. The two are the same
+    // picture; only the cost differs, and now the log says which one ran.
     {
-        int zoneStand = 0;
+        int zoneStand = 0, zoneBorn = 0;
         string zoneSeen = "";
         for(int zi = 1; zi <= 4; zi++)
         {
@@ -930,7 +978,18 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 (int)ObjectGetInteger(0, znm, OBJPROP_TIMEFRAMES),
                 (int)ObjectGetInteger(0, znm, OBJPROP_COLOR));
         }
-        Print("TH3: zones stand=", zoneStand, "/4 style=", (int)inpTH3ZoneStyle,
+        // the borders of the EMPTY family are the same family, counted the same way
+        for(int zi = 1; zi <= 4; zi++)
+        {
+            string znm = mainObjName + "_Zone_" + IntegerToString(zi) + "_B_Top";
+            if(ObjectFind(0, znm) < 0) continue;
+            zoneStand++;
+            zoneBorn++;
+        }
+        Print("TH3: zones stand=", zoneStand, "/4 borders=", zoneBorn,
+              " bornThisPass=", zoneBornThisPass,
+              " style=", (int)inpTH3ZoneStyle,
+              " sweep=", (s_zoneStyleFamily == (int)inpTH3ZoneStyle ? "no" : "YES"),
               " tr=", inpTH3ZoneTransparency, " h%=", DoubleToString(inpTH3ZoneHeightPercent, 1),
               zoneSeen);
     }
