@@ -3474,6 +3474,8 @@ function main() {
       broken.push('the notice lost its popup');
     if (!/PrintBuildInfo\(\);\s*FreewareNoticeMaybe\(\);/.test(ehinit))
       broken.push('the notice is no longer called from the shared init path');
+    if (!/INDICATOR_SHORTNAME.*FREEWARE @biotak/.test(ehinit))
+      broken.push('the chart legend lost its FREEWARE mark — demos no longer self-declare');
     if (broken.length) {
       failures.push('P-FREE-01: ' + broken.join('; ') + ' (Biotak/BuildConfig.mqh + Biotak/EventHandlers_Init.mqh)');
     } else {

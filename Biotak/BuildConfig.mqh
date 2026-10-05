@@ -216,10 +216,10 @@ void FreewareNoticeMaybe()
     string key = "Biotak_FreeNotice_Day";
     if(GlobalVariableCheck(key) && (int)GlobalVariableGet(key) == stamp) return;
     GlobalVariableSet(key, (double)stamp);
-    MessageBox("Biotak Trigger TH3 v" + INDICATOR_VERSION + " is FREEWARE.\r\n" +
-               "If you PAID for this copy, you were scammed — ask for a refund.\r\n" +
-               "Official channel: @biotak\r\n" +
-               "این اندیکاتور رایگان است. اگر برایش پول داده‌اید، پولتان را پس بگیرید.",
+    MessageBox("Biotak Trigger TH3 v" + INDICATOR_VERSION + " is FREEWARE (official channel: @biotak).\r\n" +
+               "Paid copies are counterfeit - report the seller to @biotak.\r\n" +
+               "این اندیکاتور رایگان است (مرجع رسمی: biotak@).\r\n" +
+               "نسخه پولی تقلبی است - فروشنده را گزارش دهید.",
                "Biotak Trigger TH3 - FREEWARE", MB_OK | MB_ICONINFORMATION);
 }
 
