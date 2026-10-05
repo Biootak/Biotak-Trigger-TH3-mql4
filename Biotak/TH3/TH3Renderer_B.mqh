@@ -897,6 +897,10 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 if(ObjectFind(0, topBorder) >= 0) ObjectDelete(0, topBorder);
                 if(ObjectFind(0, bottomBorder) >= 0) ObjectDelete(0, bottomBorder);
                 if(ObjectFind(0, leftBorder) >= 0) ObjectDelete(0, leftBorder);
+                // P-TH3-ZONE-06: the band is re-born with the fix so a chart that
+                // already carries a BACK=true rectangle picks up the new layer
+                // on the very next draw. One delete, once, not a per-frame loop.
+                if(ObjectFind(0, zoneBoxName) >= 0) ObjectDelete(0, zoneBoxName);
             }
 
             if(ObjectFind(0, zoneBoxName) < 0) {
@@ -908,13 +912,23 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                     ObjectSetInteger(0, zoneBoxName, OBJPROP_WIDTH, inpTH3ZoneBorderWidth);
                     ObjectSetInteger(0, zoneBoxName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
                     ObjectSetInteger(0, zoneBoxName, OBJPROP_SELECTABLE, false);
-                    ObjectSetInteger(0, zoneBoxName, OBJPROP_BACK, true);
+                    // P-TH3-ZONE-06 (2026-10-05) — THE FILLED BAND MUST BE ON THE
+                    // GRAPH. This wrote OBJPROP_BACK=true on a FILLED rectangle,
+                    // which in MT4 paints it BEHIND the candles: the object stood
+                    // 4/4 in every census and the user saw nothing — the
+                    // «انگار رسم نمیشه». A filled band is the one surface here
+                    // that must sit IN FRONT of price (the EMPTY family keeps
+                    // BACK=true: it is a hairline outline and must not cover
+                    // candles). This is a create-time property, so an existing
+                    // band is re-born once by the sweep below to pick it up.
+                    ObjectSetInteger(0, zoneBoxName, OBJPROP_BACK, false);
                 }
             } else {
                 ObjectMove(0, zoneBoxName, 0, startTime, lowerZone);
                 ObjectMove(0, zoneBoxName, 1, endTime, upperZone);
                 ObjectSetInteger(0, zoneBoxName, OBJPROP_COLOR, zoneColor);
                 ObjectSetInteger(0, zoneBoxName, OBJPROP_FILL, true);
+                ObjectSetInteger(0, zoneBoxName, OBJPROP_BACK, false);
             }
         }
     }
@@ -970,13 +984,17 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
             if(ObjectFind(0, znm) < 0) continue;
             zoneStand++;
             // existence is not paint: mask, box and ink decide the pixels.
-            zoneSeen += StringFormat(" [%d t0=%s t1=%s p0=%s p1=%s tf=%d cl=%d]",
+            // P-TH3-ZONE-06: `bk=` carries the LAYER, because «exists but unseen»
+            // was exactly the class of bug here — a BACK=true filled rectangle
+            // reads 4/4 in every field above and paints behind the candles.
+            zoneSeen += StringFormat(" [%d t0=%s t1=%s p0=%s p1=%s tf=%d cl=%d bk=%d]",
                 zi, TimeToString((datetime)ObjectGetInteger(0, znm, OBJPROP_TIME, 0)),
                 TimeToString((datetime)ObjectGetInteger(0, znm, OBJPROP_TIME, 1)),
                 DoubleToString(ObjectGetDouble(0, znm, OBJPROP_PRICE, 0), Digits),
                 DoubleToString(ObjectGetDouble(0, znm, OBJPROP_PRICE, 1), Digits),
                 (int)ObjectGetInteger(0, znm, OBJPROP_TIMEFRAMES),
-                (int)ObjectGetInteger(0, znm, OBJPROP_COLOR));
+                (int)ObjectGetInteger(0, znm, OBJPROP_COLOR),
+                (int)ObjectGetInteger(0, znm, OBJPROP_BACK));
         }
         // the borders of the EMPTY family are the same family, counted the same way
         for(int zi = 1; zi <= 4; zi++)
