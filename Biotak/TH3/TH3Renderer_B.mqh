@@ -661,7 +661,13 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
 
     // Draw TH3-style targets (Step1, Step3, Step5, Step7) from D (P-TH3-D4)
     string targetNames[4] = {"Step1", "Step3", "Step5", "Step7"};
-    color targetColors[4] = {clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrGold};
+    // P-TH3-STEP-16 (§3): the ODD rungs carry the spec's own inks — Step 1 plain
+    // (dodger blue), Step 3 the primary target in ORANGE, Step 5 the macro
+    // milestone in GREEN, Step 7 the exhaustion level in BROWN. Brown replaces
+    // the old gold: gold and lime green are both near-invisible on white paper
+    // (P-UI-97's reason for TH3InkForChart), so an exhaustion level nobody can
+    // see is not a level. Every hue still goes through TH3InkForChart below.
+    color targetColors[4] = {clrDodgerBlue, clrOrangeRed, clrLimeGreen, clrBrown};
     double targetLevels[4];
     
     // P-TH3-D4 (2026-09-20) — THE LADDER PROJECTS FROM THE PLACED D.

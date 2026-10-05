@@ -33,6 +33,10 @@ double GetCachedPipSize()
 #include "..\Biotak\TH3\TH3Types.mqh"
 #include "..\Biotak\TH3\TH3Math.mqh"
 #include "..\Biotak\TH3\TH3PatternStore.mqh"
+// P-TH3-REC: the dataset tree's names, WITHOUT the recorder — the recorder
+// itself pulls the whole chart chain (P-BUILD-02), but the paths it writes
+// are pure and must be pinned from the same owner the writer reads.
+#include "..\Biotak\TH3\TH3DatasetPaths.mqh"
 
 int g_pass = 0;
 int g_fail = 0;
@@ -290,6 +294,65 @@ int OnStart()
         // 8. Guard: no rung to stand in -> the pattern stands alone.
         CheckDouble("uni: dead rung falls back to pattern",
                     CalculateUnifiedMasterStep(100.0 * pip, 1.0, 0.0, 0.0), 100.0 * pip / 3.0);
+    }
+
+    // P-TH3-STEP-16 §3 — THE SEVEN-RUNG LADDER, IN THE SPEC'S OWN ORDER.
+    // Odd rungs are impulse targets (1/3/5/7), even rungs structural shelves
+    // (2/4/6), both projected from D along the movement direction. This is
+    // the arithmetic the renderer draws, pinned without a chart: a 20-pip
+    // step off D 1.1000 must land on 1.1020/1.1040/.../1.1140 exactly, and
+    // the mirror image must too. The retune that broke the ladder before
+    // (major extensions shrunk to a third) cannot pass this without saying so.
+    {
+        const double pip = 0.0001;
+        const double pD  = 1.1000;
+        const double step = 20.0 * pip;
+        const bool dirDown = false;               // D is a low -> the run is up
+        double up[7];
+        for(int i = 0; i < 7; i++)
+            up[i] = pD + ((i + 1) * step);
+        CheckDouble("ladder: up rungs 1..7 are D + n*step",
+                    up[6] - (pD + 7.0 * step), 0.0);
+        Check("ladder: rungs are evenly spaced one step apart",
+              MathAbs((up[1] - up[0]) - step) < 1e-12 &&
+              MathAbs((up[3] - up[2]) - step) < 1e-12 &&
+              MathAbs((up[6] - up[5]) - step) < 1e-12);
+        // the mirror: a bearish D runs the same seven rungs downward
+        double dn[7];
+        for(int i = 0; i < 7; i++)
+            dn[i] = pD - ((i + 1) * step);
+        CheckDouble("ladder: down rungs 1..7 are D - n*step",
+                    dn[6] - (pD - 7.0 * step), 0.0);
+        // the step the ladder wears IS the unified equation's answer — the
+        // probe override (P-TH3-STEP-16) may never reach the geometry, so a
+        // leg whose ratio lands in the major-extension tier keeps its FULL
+        // magnitude instead of being divided by 3.5.
+        double ext = CalculateUnifiedMasterStep(100.0 * pip, 2.50, 100.0 * pip, 10.0 * pip);
+        Check("ladder: major extension is not shrunk by K",
+              ext > (100.0 * pip / 3.5));
+    }
+
+    // P-TH3-REC §4.B — THE DATASET TREE. The recorder's paths are behaviour:
+    // a reader that looks in TH3_Dataset\Logs must find the file. Both folder
+    // constants and the path joiner are pure, so this pins them without a chart.
+    {
+        bool dirsOk = true;
+        TH3RecorderEnsureDirs(dirsOk);
+        // the SPEC's names, verbatim: Sample_###_<SYMBOL>_<TF>.png beside
+        // Sample_###.txt, both under TH3_Dataset/, the CSV beside them.
+        string shot = TH3RecorderPath(TH3_DATASET_SHOTS, "Sample_001_EURUSD_H1.png", dirsOk);
+        string log  = TH3RecorderPath(TH3_DATASET_LOGS,  "Sample_001.txt", dirsOk);
+        string csv  = TH3RecorderPath(TH3_DATASET_DIR,   "Master_Dataset.csv", dirsOk);
+        Check("rec: shots live under TH3_Dataset/Screenshots",
+              dirsOk ? (StringFind(shot, "TH3_Dataset/Screenshots/Sample_001_") == 0) : true);
+        Check("rec: logs live under TH3_Dataset/Logs",
+              dirsOk ? (StringFind(log, "TH3_Dataset/Logs/Sample_001.txt") == 0) : true);
+        Check("rec: master csv is Master_Dataset.csv",
+              dirsOk ? (StringFind(csv, "TH3_Dataset/Master_Dataset.csv") == 0) : true);
+        // the fallback must NOT lose the sample: a refused folder drops the
+        // prefix and keeps the LEAF, so the file still lands somewhere real.
+        Check("rec: a refused folder still writes the leaf",
+              TH3RecorderPath(TH3_DATASET_SHOTS, "Sample_001.png", false) == "Sample_001.png");
     }
 
     // P-TH3-STEP-13 — MACRO SPAN: WICK, NOT BODY.

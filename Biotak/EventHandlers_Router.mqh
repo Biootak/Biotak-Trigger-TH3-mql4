@@ -409,11 +409,13 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //
         // M key   Snapshot the active pattern for the AI dataset (P-TH3-REC:
         // key handling lives HERE with B/V/P — one owner for hotkeys).
+        // 'S' and 'R' are spoken for, so this key is 'M' (77) for Memory/Master.
         //
 #ifndef BUILD_LITE
         if((int)lparam == 77)   // 'M' — export sample: PNG + TXT + Master-CSV row
         {
-            TH3_ExportCurrentSample();
+            Print("[TH3 RECORDER] Key 'M' pressed. Capturing sample & exporting AI dataset...");
+            TH3_ExportCurrentSample(g_activeABCDPattern);
             ThrottledChartRedraw();
             return;
         }
