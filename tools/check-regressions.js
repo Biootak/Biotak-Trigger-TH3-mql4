@@ -3404,6 +3404,61 @@ function main() {
     }
   }
 
+  {
+    // P-PRICE-01 — PRICE_WEIGHTED (6) is a case, not the default. The input exposes
+    // the whole ENUM_APPLIED_PRICE, and without this case Weighted served Close as
+    // the TH base price, repricing every TH level off the wrong base.
+    const broken = [];
+    const hist = codeOf(linesOf(path.join(BIOTAK, 'HistoricalDataFunctions.mqh')) || []);
+    if (!/case 6:/.test(hist))
+      broken.push('GetPriceForPreviousDay lost case 6 — PRICE_WEIGHTED falls into default and serves Close');
+    if (!/cachedPrices\[2\]\+cachedPrices\[3\]\+cachedPrices\[0\]\+cachedPrices\[0\]/.test(hist))
+      broken.push('the Weighted base is no longer (H+L+C+C)/4 off the cached day');
+    if (broken.length) {
+      failures.push('P-PRICE-01: ' + broken.join('; ') + ' (Biotak/HistoricalDataFunctions.mqh)');
+    } else {
+      console.log('[PASS] P-PRICE-01 Weighted is priced (H+L+C+C)/4, never Close by default-fallthrough');
+    }
+  }
+
+  {
+    // P-PAL-22 — the palette tail round-trips over the kind-25 gap. Kind 25 does not
+    // exist (0-24 contiguous, then 26/27 edges, 28/29 strip). The ToKind guard must be
+    // the last contiguous kind, and IndexOfKind its inverse ladder; identity mapping
+    // parks the cycler on a dead kind and captions one slot down.
+    const broken = [];
+    const st = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_State.mqh')) || []);
+    if (!/if\(k <= PAL_ATR_SPREAD\) return k;/.test(st))
+      broken.push('PalTgtToKind guard is not the last contiguous kind — the tail falls back to identity');
+    if (!/if\(k == 25\) return 26;/.test(st) || !/return 28 \+ \(k - 27\);/.test(st))
+      broken.push('PalTgtToKind tail ladder is gone — slots 25-28 no longer map over the gap');
+    if (!/if\(k == 26\) return 25;/.test(st) || !/if\(k == 28\) return 27;/.test(st))
+      broken.push('PalTgtIndexOfKind inverse ladder is gone — captions read one slot down');
+    if (broken.length) {
+      failures.push('P-PAL-22: ' + broken.join('; ') + ' (Biotak/BiotakPanels_State.mqh)');
+    } else {
+      console.log('[PASS] P-PAL-22 palette tail round-trips: 26↔25, 27↔26, 28↔27, 29↔28');
+    }
+  }
+
+  {
+    // P-TH3-PT — the ABCD floor never reads a zero point. Raw Point is 0 until the
+    // contract loads (P-UI-57b): a zero floor accepts a degenerate AB and plants D
+    // off noise. The file stays compilable standalone (the TH3 harness includes
+    // only this chain), so the fallback derives from Digits, which is fixed.
+    const broken = [];
+    const th3math = codeOf(linesOf(path.join(BIOTAK, 'TH3/TH3Math.mqh')) || []);
+    if (!/th3pt = MathPow\(10, -Digits\)/.test(th3math))
+      broken.push('CalculateABCDPointD lost its Digits fallback — a zero Point accepts a degenerate AB again');
+    if (/double minDistance = Point \* ABCD_MIN_DISTANCE_POINTS;/.test(th3math))
+      broken.push('CalculateABCDPointD floors on raw Point again — degenerate AB passes while the contract loads');
+    if (broken.length) {
+      failures.push('P-TH3-PT: ' + broken.join('; ') + ' (Biotak/TH3/TH3Math.mqh)');
+    } else {
+      console.log('[PASS] P-TH3-PT ABCD floor never reads a zero point');
+    }
+  }
+
   console.log('');
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);

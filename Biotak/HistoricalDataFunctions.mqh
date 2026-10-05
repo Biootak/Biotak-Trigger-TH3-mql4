@@ -179,6 +179,10 @@ double GetPriceForPreviousDay(ENUM_APPLIED_PRICE priceType) {
         case 3: return cachedPrices[3]; // Low
         case 4: return cachedPrices[4]; // Median
         case 5: return cachedPrices[5]; // Typical
+        // P-PRICE-01: PRICE_WEIGHTED is 6, and the input exposes the whole enum
+        // (inpTHPriceType). Without this case it fell into default and served
+        // Close as the TH base price — every TH level priced off the wrong base.
+        case 6: return (cachedPrices[2]+cachedPrices[3]+cachedPrices[0]+cachedPrices[0])/4.0; // Weighted
         case 0: default: return cachedPrices[0]; // Close
     }
     return EMPTY_VALUE;

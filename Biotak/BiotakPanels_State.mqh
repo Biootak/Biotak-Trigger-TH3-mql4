@@ -504,8 +504,12 @@ int PalTgtToKind(const int t)
    // P-UI-131h: the NAME table's tail (25/26) names the two AUTO edge halves, whose kinds
    // are 26/27 — kind 25 does not exist, so the tail must be MAPPED, not clamped. Clamping
    // it made the cycler label the page "Edge Top" while it edited kind 24 (TRex Spread).
+   // P-PAL-22: P-PAL-19c widened the ring to 29, but the guard below still read
+   // PAL_BASE_TARGETS - 1 (= 28) and swallowed the tail back into identity: slot 25
+   // carried nonexistent kind 25 (dead apply) and 26/27/28 edited one role down.
+   // The guard is the last CONTIGUOUS kind (24); the tail maps over the gap.
    int k = ClampInt(t, 0, PAL_TGT_NAMES_N - 1);
-   if(k <= PAL_BASE_TARGETS - 1) return k;
+   if(k <= PAL_ATR_SPREAD) return k;
    // P-PAL-19: the tail is MAPPED, and it is now four wide: 25/26 name the AUTO
    // edge halves (kinds 26/27) and 27/28 name the strip's two (kinds 28/29). The
    // +1 offset is only valid for the first pair, which is why this is a ladder
@@ -518,7 +522,14 @@ int PalTgtToKind(const int t)
 //--- palette kind → its cycle index
 int PalTgtIndexOfKind(const int k)
 {
-   return ClampInt(k, 0, PAL_TGT_NAMES_N - 1);
+   // P-PAL-22: the inverse of the ladder above. Clamping sent kind 26/27/28 one
+   // slot down (wrong caption) and kind 29 onto 28. Round-trip: 26↔25, 27↔26,
+   // 28↔27, 29↔28; base kinds are identity.
+   if(k <= PAL_ATR_SPREAD) return ClampInt(k, 0, PAL_TGT_NAMES_N - 1);
+   if(k == 26) return 25;
+   if(k == 27) return 26;
+   if(k == 28) return 27;
+   return 28;
 }
 
 string PalTgtLabel(const int t)

@@ -686,7 +686,15 @@ bool CalculateABCDPointD(datetime tA, double pA, datetime tB, double pB,
     if(!(tA < tB && tB < tC)) return false;
 
     double AB_Distance = MathAbs(pB - pA);
-    double minDistance = Point * ABCD_MIN_DISTANCE_POINTS;
+    // P-TH3-PT: never floor on a zero point. Raw Point is 0 until the contract
+    // loads (P-UI-57b), and a zero floor accepts a degenerate AB — and this file
+    // must stay compilable standalone (tests\Biotak_TH3_Test.mqh includes only
+    // this chain, so GetCachedPoint() is NOT in scope here). Digits IS fixed, so
+    // the fallback derives the point from it; WaveAnalysis.mqh:188 filters on
+    // GetCachedPoint() for the same distance where that owner is in scope.
+    double th3pt = Point;
+    if(!(th3pt > 0.0) || !MathIsValidNumber(th3pt)) th3pt = MathPow(10, -Digits);
+    double minDistance = th3pt * ABCD_MIN_DISTANCE_POINTS;
     if(AB_Distance < minDistance) return false;
 
     bool isBullish = (pB > pA);
