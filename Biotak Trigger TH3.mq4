@@ -400,6 +400,13 @@ void OnTimer()
 {
     // P-UI-113-OFF (2026-09-23): no fast window — every tick is housekeeping.
 
+    // P-TH3-REC-04 (2026-10-05): age out the recorder's one-second receipt. The
+    // label is painted inside the M press and the DELETE is owed here, because
+    // MT4 paints when the event handler returns — a Sleep in the press froze the
+    // terminal for a second and showed nothing. One comparison per 250 ms, and
+    // the first line of the function so a still chart settles the label.
+    TH3RecorderFlashTick();
+
     // P-PERF-16: the 250 ms safety refresh behind the cached UI metrics. Resizing
     // the chart also fires a chart-change event (which invalidates immediately);
     // this line covers a missed notification and costs two terminal reads per

@@ -46,17 +46,43 @@
 //| still leaves nothing behind and a second press cannot stack two. |
 //|                                                                   |
 //| It is created AFTER the screenshot, so the PNG holds the chart   |
-//| and not the receipt. One object, one create, one delete: the      |
-//| whole cost of the answer.                                         |
+//| and not the receipt.                                              |
+//|                                                                   |
+//| P-TH3-REC-04 (2026-10-05) — NO SLEEP. The first version slept a   |
+//| second after painting the label, and it showed NOTHING: MT4 paints |
+//| when the event handler RETURNS, so a Sleep inside OnChartEvent    |
+//| froze the whole terminal with the label still unpainted, and the   |
+//| delete on the far side of the Sleep removed it before it ever      |
+//| reached the screen. The trader saw a one-second freeze — which is  |
+//| exactly the «چیزی نمیاد، فقط فریز» report. The label is created,   |
+//| the handler returns (so it paints), and the DELETE is owed to      |
+//| OnTimer, which the project already runs every 250 ms (P-PERF-16).  |
+//| Nothing blocks; the label lives exactly one second of wall clock.  |
 //+------------------------------------------------------------------+
 #define TH3_REC_FLASH_MS  1000
 #define TH3_REC_FLASH_XML  "Biotak_TH3_RecorderFlash"
-#define TH3_REC_FLASH_T    "TH3RecorderFlash"
+
+//--- the deadline is the terminal's own clock, not a frame count: a
+//--- tick-less chart still ages the label out through OnTimer.
+static datetime g_th3FlashDue = 0;
 
 void TH3RecorderFlashClear()
 {
+   g_th3FlashDue = 0;
    if(ObjectFind(0, TH3_REC_FLASH_XML) >= 0) ObjectDelete(0, TH3_REC_FLASH_XML);
    ChartRedraw();
+}
+
+//+------------------------------------------------------------------+
+//| The 250 ms OnTimer beat that ages the label out. One comparison   |
+//| per tick of wall clock; the object exists for exactly the second  |
+//| the trader asked for and not a millisecond of the next press.     |
+//+------------------------------------------------------------------+
+void TH3RecorderFlashTick()
+{
+   if(g_th3FlashDue == 0) return;          // nothing owed: the common case, one compare
+   if(TimeCurrent() < g_th3FlashDue) return;
+   TH3RecorderFlashClear();
 }
 
 void TH3RecorderFlash(const string msg)
@@ -64,7 +90,24 @@ void TH3RecorderFlash(const string msg)
    int w = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
    int h = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
    if(w <= 0 || h <= 0) { w = 1024; h = 768; }   // never divide by nothing
-   int tw = 420, th = 44;
+
+   //--- P-TH3-REC-05 (2026-10-05) — THE SEAT IS MEASURED, NOT GUESSED. A
+   //--- fixed 420px box for a message whose length is now a few characters put
+   //--- the text off-centre («از هر طرف»): the LABEL centres the TEXT on its
+   //--- anchor, so a too-wide box moves the text off the chart's middle by
+   //--- half the slack. So the box is sized FROM the string (7 px per char at
+   //--- the 13px face, plus the padding OBJ_LABEL's border adds) and the anchor
+   //--- is then placed at the exact middle of what is left.
+   //--- P-TH3-REC-05: a mono face, because the box width is DERIVED from the
+   //--- string length. A proportional face makes that arithmetic a guess, and
+   //--- a guess is exactly what put the text off the middle before. The face is
+   //--- the product's own (BioChromeFont) so the receipt matches every other
+   //--- caption on the chart.
+   int fontSize = 13;
+   int tw = (StringLen(msg) * 7) + 30;      // 7 px/char + padding + the 3px border
+   if(tw < 110) tw = 110;                    // never a sliver
+   if(tw > w - 20) tw = w - 20;               // never wider than the chart
+   int th = fontSize + 18;
 
    //--- re-press: clear the previous one FIRST, so a fast second press never
    //--- stacks two labels and the old text never survives into the new second.
@@ -73,10 +116,12 @@ void TH3RecorderFlash(const string msg)
    if(ObjectCreate(0, TH3_REC_FLASH_XML, OBJ_LABEL, 0, 0, 0))
    {
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_CORNER, 0);          // absolute
+      //--- the middle of the CHART, on both axes, from the box's own size
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_XDISTANCE, (w - tw) / 2);
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_YDISTANCE, (h - th) / 2);
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_ANCHOR, ANCHOR_CENTER);
-      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_FONTSIZE, 13);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_FONTSIZE, fontSize);
+      ObjectSetString(0, TH3_REC_FLASH_XML, OBJPROP_FONT, BioChromeFont(false));
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_COLOR, clrWhite);
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_BGCOLOR, clrBlack);
       ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_BORDER_TYPE, BORDER_FLAT);
@@ -88,12 +133,9 @@ void TH3RecorderFlash(const string msg)
    }
    ChartRedraw();
 
-   //--- the ONE second. `Sleep` here is the whole point: the terminal is single
-   //--- threaded and nothing else can run, so the label is guaranteed its full
-   //--- second on screen — a frame-counted loop could be starved by a tick.
-   Sleep(TH3_REC_FLASH_MS);
-
-   TH3RecorderFlashClear();
+   //--- the one second is OWED to OnTimer, not slept here. Returning now is
+   //--- what lets MT4 paint the label at all (see the header).
+   g_th3FlashDue = TimeCurrent() + 1;
 }
 
 //+------------------------------------------------------------------+
@@ -295,7 +337,14 @@ void TH3_ExportCurrentSample(const string patternName = "")
       //--- the counter advances only on a COMPLETE export, so a retry cannot
       //--- reuse a number whose PNG or row is already on disk
       GlobalVariableSet(gvName, idx);
-      string msg = StringFormat("[TH3 RECORDER] Sample #%03d Saved | Log & Screenshot Exported Successfully!", idx);
+      //--- P-TH3-REC-05: the ON-SCREEN receipt is short and LATIN, and the long
+      //--- form stays in the journal and the TXT. Two reasons for the alphabet:
+      //--- MT4 does not render Persian reliably on OBJ_LABEL (no on-chart label
+      //--- in this whole product carries Persian — every one is Latin), and a
+      //--- receipt a trader cannot read is no receipt. A receipt is read in a
+      //--- glance, not parsed, and every character here is one the box has to
+      //--- be sized around (see TH3RecorderFlash).
+      string msg = StringFormat("SAVED  #%03d", idx);
       //--- P-TH3-REC-03: the proof is ON the screen, for ONE second, in the
       //--- MIDDLE. `Comment()` writes into the corner, where the eye is not and
       //--- where the next capture overwrites it — a press with no visible answer
@@ -308,8 +357,10 @@ void TH3_ExportCurrentSample(const string patternName = "")
    else
    {
       if(fh != INVALID_HANDLE) FileClose(fh);
-      string bad = StringFormat("[TH3 RECORDER] Sample #%03d FAILED (shot=%s txt=%s csv=%s) — nothing advanced.",
-                                idx, (okShot ? "ok" : "no"), (okTxt ? "ok" : "no"), (okCsv ? "ok" : "no"));
+      string bad = StringFormat("FAILED #%03d  png:%s txt:%s csv:%s",
+                                idx, (okShot ? "ok" : "X"), (okTxt ? "ok" : "X"), (okCsv ? "ok" : "X"));
+      Print("[TH3 RECORDER] Sample #", idx, " FAILED (shot=", okShot, " txt=", okTxt,
+            " csv=", okCsv, ") — nothing advanced.");
       //--- P-TH3-REC-03: the FAILURE gets the same one second. A silent miss is
       //--- the exact case the user cannot diagnose — the press looked identical
       //--- to the working one. The counter is deliberately NOT advanced.
