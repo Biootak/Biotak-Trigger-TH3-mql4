@@ -315,12 +315,15 @@ const fmt = (v, n = 1) => (v === null || v === undefined || v === '') ? '—' : 
 // on BOTH sides of the write.
 const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"]/g,
   (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-// P-TH3-DB: the page can be opened from disk OR served from the repo root, and
-// the two need different prefixes for the same picture. Rather than guess, the
-// img tag carries BOTH candidates and falls back on the first 404 — a broken
-// thumbnail would read as "the sample has no picture", which is a lie.
-const PREFIXES = location.pathname.indexOf('/TH3_Dataset/') >= 0
-  ? ['Samples/', 'TH3_Dataset/Samples/'] : ['TH3_Dataset/Samples/', 'Samples/'];
+// P-TH3-DB: a relative URL resolves against the PAGE'S OWN directory, and the
+// page always sits in the dataset folder - so Samples/<folder>/<png> is right
+// whether the file is opened from disk or served from any root. An earlier
+// version guessed a prefix from location.pathname and got it backwards on a
+// dataset-rooted server (404 on the first candidate for every image, then the
+// fallback saved it): one wasted request per sample, and a page that looks
+// broken to anything reading the network log. The guess is gone; the second
+// candidate stays only for a page copied up to the repo root.
+const PREFIXES = ['Samples/', 'TH3_Dataset/Samples/'];
 const INLINE = DATA.inline === true;
 const imgTag = (rel) => {
   if (!rel) return '';
@@ -572,9 +575,13 @@ document.addEventListener('click', (e) => {
     openViewer(e.target.src);
   } else if ($('lb').classList.contains('on') && !e.target.closest('.lbimg')) {
     closeViewer();
-  } else if (e.target.classList && e.target.classList.contains('card')) {
-    const id = (e.target.closest('.card').querySelector('[data-open]') || {}).dataset;
-    if (id && id.open) openDetail(id.open);          // click anywhere on the card
+  } else {
+    // LAST in the chain, and it must use closest(): a click lands on the .meta
+    // grid or a <td>, never on the <article> itself, so classList.contains
+    // never fired and «روی نمونه زدم» silently did nothing except on the button.
+    const card = e.target.closest && e.target.closest('.card');
+    const id = card && card.querySelector('[data-open]');
+    if (id) openDetail(id.dataset.open);
   }
 });
 

@@ -432,11 +432,21 @@ function rebuildIndex(dest, state) {
   return rows.length;
 }
 
-function dirBytes(dir) {
+// P-TH3-DB: the budget counts the DATASET, not the page built from it.
+// dashboard.html and dashboard.inline.html live in this folder, the inline one
+// embeds every PNG (1.0 MB for 20 samples, ~6 MB at the 100-sample cap) — and
+// both are generated and gitignored. Counting them made the number jump 0.73 ->
+// 1.78 MB with no sample recorded, which is exactly how a budget line stops
+// being evidence. They are named, not pattern-matched, so a new generated file
+// has to be listed here deliberately.
+const GENERATED = new Set(['dashboard.html', 'dashboard.inline.html']);
+
+function dirBytes(dir, top) {
   let total = 0;
   for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (top && GENERATED.has(f.name)) continue;
     const p = path.join(dir, f.name);
-    total += f.isDirectory() ? dirBytes(p) : fs.statSync(p).size;
+    total += f.isDirectory() ? dirBytes(p, false) : fs.statSync(p).size;
   }
   return total;
 }
@@ -481,7 +491,7 @@ function main() {
   }
 
   const indexed = rebuildIndex(dest, state);
-  const total = dirBytes(dest);
+  const total = dirBytes(dest, true);
   const pct = (total / (1024 * 1024 * 1024)) * 100;
   const folders = fs.existsSync(path.join(dest, 'Samples'))
     ? fs.readdirSync(path.join(dest, 'Samples')).length : 0;
