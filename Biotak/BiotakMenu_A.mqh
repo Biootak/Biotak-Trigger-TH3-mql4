@@ -102,7 +102,13 @@
 #define CIRC_HIDE_POS   -500
 #define CIRC_EDGE_TRIGGER 90
 #define CIRC_MIN_RADIUS  40
-#define ORB_DRAG_THRESHOLD 3  // px of movement before a press counts as a drag
+//--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the
+//--- hand really drag?» and «has the orb moved far enough to be worth saving?» — so a short
+//--- but deliberate drag moved nothing and stored nothing, and the next repaint put the orb
+//--- back exactly where it was («بعضی وقتا بریمیگرده سرجای قبلیش»). One pixel IS a move; the
+//--- gate that actually protects a plain click is the press/release pair in BiotakMenu_C.mqh
+//--- (a click fires no move at all), and the click-eater has its own flag.
+#define ORB_DRAG_THRESHOLD 1  // px of movement before a press counts as a drag
 
 //--- feature indices (panel + state keys — stable, never reorder)
 //    Slot 0/1 = ZONES & LEVELS — the PRIMARY feature of this indicator.
@@ -331,6 +337,7 @@ static bool g_ToolsOpen = false;
 //--- real-time orb drag state (CHARTEVENT_MOUSE_MOVE engine)
 static bool g_OrbDragging   = false;
 static bool g_OrbWasDragged = false;   // suppresses the click that fires after a drag
+static bool g_OrbMoved      = false;   // P-UI-147: the hand REALLY moved the orb (release's own fact)
 static bool g_OrbMovedThisEvent = false;
 static int  g_OrbGrabDX = 0, g_OrbGrabDY = 0;
 static int  g_OrbPressX = 0, g_OrbPressY = 0;

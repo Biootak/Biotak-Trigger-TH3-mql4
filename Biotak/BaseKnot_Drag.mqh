@@ -1183,30 +1183,40 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          {
             string shit = BaseKnotBoxAt(sct, scp);   // exact INSIDE test first — it never lies
             if(shit == "") shit = BaseKnotBoxAtPx((int)lparam, (int)dparam);   // P-BK-24: the drawn BORDER is a target too
-            if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
-            {
-               string shbox = BaseKnotBoxName(BaseKnotPrefix(shit));
-               if(ObjectFind(0, shbox) >= 0)
-               {
-                  s_bkDragId = shit;
-                  s_bkDragT0 = sct; s_bkDragP0 = scp;
-                  s_bkDragX0 = (int)lparam; s_bkDragY0 = (int)dparam;
-                   s_bkDragBT1 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 0);
-                   s_bkDragBT2 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 1);
-                    s_bkDragBP1 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 0);
-                    s_bkDragBP2 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 1);
-                    s_bkFolT1 = s_bkDragBT1; s_bkFolT2 = s_bkDragBT2;
-                    s_bkFolP1 = s_bkDragBP1; s_bkFolP2 = s_bkDragBP2;
-                     // P-BK-72: the press-time grab role is LIVE — its consumer is NOT the
-                     // retired cursor fallback (BKCURSOR-OFF stays dead) but the release's
-                     // size heal below: a press on a corner/edge marker is a native RESIZE
-                     // (the docs' own rule — anchors change the size), and the heal must
-                     // only ever fire for a BODY move. BaseKnotGrabRole stays the measurer.
-                     s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
-                    s_bkSnapTrusted = true;   // P-BK-25: OUR press latched it — the baseline predates any terminal move
-                    Print("[BK] drag latch box=", shit);   // diag: press found a box — follow armed
+if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
+             {
+                string shbox = BaseKnotBoxName(BaseKnotPrefix(shit));
+                //--- P-UI-144 (2026-10-02): THE HAND IS OURS TO GIVE — the same question
+                //--- the path and the ray ask (the arbiter owns it, GlobalVariables.mqh):
+                //--- a drawing that is not already TAKEN cannot be taken. This press latches
+                //--- a drag of the WHOLE geometry ladder (both anchors + every chip + the
+                //--- follow), so taking it on the first touch is exactly what made «از همون
+                //--- نقطه که یه چیزی میکشم، اینم میاد» possible. The first press now only
+                //--- TAKES the box (and selects it); the second one carries it. Three
+                //--- measurements closed the detection road, so this is DECIDED, not
+                //--- guessed — and it holds even on a terminal that says nothing at all.
+                if(!GestureTakeAllowed(shbox)) { GestureTakeNote(shbox); BaseKnotSelectBox(shit); Print("[BK] press TAKES the box (no carry) box=", shbox); }
+                else if(ObjectFind(0, shbox) >= 0)
+                {
+                   s_bkDragId = shit;
+                   s_bkDragT0 = sct; s_bkDragP0 = scp;
+                   s_bkDragX0 = (int)lparam; s_bkDragY0 = (int)dparam;
+                    s_bkDragBT1 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 0);
+                    s_bkDragBT2 = (datetime)ObjectGetInteger(0, shbox, OBJPROP_TIME, 1);
+                     s_bkDragBP1 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 0);
+                     s_bkDragBP2 = ObjectGetDouble(0, shbox, OBJPROP_PRICE, 1);
+                     s_bkFolT1 = s_bkDragBT1; s_bkFolT2 = s_bkDragBT2;
+                     s_bkFolP1 = s_bkDragBP1; s_bkFolP2 = s_bkDragBP2;
+                      // P-BK-72: the press-time grab role is LIVE — its consumer is NOT the
+                      // retired cursor fallback (BKCURSOR-OFF stays dead) but the release's
+                      // size heal below: a press on a corner/edge marker is a native RESIZE
+                      // (the docs' own rule — anchors change the size), and the heal must
+                      // only ever fire for a BODY move. BaseKnotGrabRole stays the measurer.
+                      s_bkGrabSel = BaseKnotGrabRole(shbox, s_bkDragX0, s_bkDragY0);
+                     s_bkSnapTrusted = true;   // P-BK-25: OUR press latched it — the baseline predates any terminal move
+                     Print("[BK] drag latch box=", shit, " why=", GestureTakeWhy());   // diag: press found a box — follow armed (P-UI-144: the carry's own half of the proof)
                 }
-            }
+             }
          }
       }
       else if(sfalling)

@@ -88,8 +88,13 @@ string DrawStripMoreText(const int r)
    int kind = s_dsMoreKind[r], arg = s_dsMoreArg[r];
    if(kind == DSTRIP_MK_APPLYALL)
    {
-      int n = DrawSelCount();
-      return "Apply to all " + DrawKindName(s_dsKind) + (n > 1 ? " (x" + IntegerToString(n) + ")" : "");
+      //--- P-DRAW-09b retired (2026-10-03): the count in this label used to be the
+      //--- SELECTION's size, so it promised «all 2 selected» while the act underneath
+      //--- reached every drawing of the kind. It now counts the drawings this row will
+      //--- really touch — the walk `DrawStyleApplyToKind` performs — so the number and
+      //--- the act are the same fact.
+      int n = DrawStyleKindCount(s_dsObj);
+      return "Apply to all " + DrawKindName(s_dsKind) + (n > 0 ? " (x" + IntegerToString(n) + ")" : "");
    }
    if(kind == DSTRIP_MK_PRESET) return DrawPresetName(s_dsKind, arg);
    if(kind == DSTRIP_MK_SAVE) return "Save current look";
@@ -343,6 +348,57 @@ bool DrawStripGearQuickRow(const int slot, int &y)
    //--- where it is declared, and this one is declared as a single line).
    DrawStripGearGridStamp(mark, y, DSTRIP_GRID_MAX);
    return true;
+}
+//--- P-LVL-COLOR — ONE LEVEL'S SWATCH, PAINTED. The chip shows the ink that
+//--- level wears while it is on the chart, else what adding it would wear (the
+//--- slot's color). Same 22x22 seat and same `ri`/`rc` names as the icon it
+//--- replaces (no new object, no new destroy path); the hit test's swatch rect
+//--- is this seat. Lives here, not in GearB: that file stands at the 1500
+//--- ceiling and never grows (contract §7).
+bool DrawStripGearLevelSwatch(const int r, const int rx, const int py, bool &dd)
+{
+   //--- false = not a level row: the caller's own branch paints it. true eats
+   //--- the branch (the icon it would paint is what covered the swatch), and the
+   //--- faces' own dirt rides `dd` — a handled-but-clean row reports clean.
+   if(s_dsGRKind[r] != 4 || !DrawKindHasLevels(s_dsKind)) return false;
+   bool cur = DrawStripGearRowIsCur(r);
+   string tip = DrawStripGearRowTip(r);
+   double lv = DrawStripGearLevelAt(s_dsGRArg[r]);
+   int li = (MathIsValidNumber(lv) ? DrawStripLevelFind(s_dsObj, lv) : -1);
+   color lc = (li >= 0 ? (color)(int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, li)
+                       : (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR));
+   string ltip = tip + " · swatch sets this level's color";
+   dd |= DrawStripFace(DrawStripRowChipName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+                       cur ? "::Files\\Icons\\pnl_chip_gold.bmp" : "::Files\\Icons\\pnl_chip.bmp", ltip);
+   dd |= DrawStripBtn(DrawStripRowIconName(r), rx + DSTRIP_GEAR_PAD, py + DSTRIP_CARD_CHIP_Y, 22, 22,
+                      lc, DrawStripInkOn(lc), BioSwatchBorder(lc, BIO_CLR_CARD), "", ltip);
+   return true;
+}
+//--- P-LVL-TEXT — ONE LEVEL'S WORDS. Value plus the level's own note ("50 · TP1").
+//--- A note that only repeats the value (MT4's own default) is not shown twice.
+//--- Lives here, not in GearB: that file stands at the 1500 ceiling (contract §7).
+string DrawStripGearLevelText(const int arg)
+{
+   double v = DrawStripGearLevelAt(arg);
+   if(!MathIsValidNumber(v)) return "";
+   string t = DrawStripLevelName(v);
+   int li = DrawStripLevelFind(s_dsObj, v);
+   if(li >= 0)
+   {
+      string d = ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, li);
+      StringTrimLeft(d); StringTrimRight(d);
+      //--- a default text that IS the value ("0.5", "50") is not shown twice:
+      //--- numeric-only notes compare by worth, real words always show.
+      bool num = (d != "");
+      for(int ci = 0; num && ci < StringLen(d); ci++)
+      {
+         ushort ch = StringGetCharacter(d, ci);
+         if((ch < '0' || ch > '9') && ch != '.' && ch != '-' && ch != '+') num = false;
+      }
+      if(num && DrawStripLevelNorm(StringToDouble(d)) == DrawStripLevelNorm(v)) d = "";
+      if(d != "" && d != t) t += " · " + d;
+   }
+   return t;
 }
 void DrawStripGearSection(const string text, int &y)
 {
@@ -770,11 +826,18 @@ int DrawStripGearLayout(int y0)
    //--- last band, outside the block that owns their header. The column reset stays
    //--- (DrawStripGearPlace owns the same value and runs on every path).
    for(int r = 0; r < s_dsGRN; r++) s_dsGRCol[r] = 0;
-   if(levelEdit)
-   {
-      s_dsGearEditY[1] = y;
-      y += DSTRIP_GEAR_ROW_H;
-   }
+    if(levelEdit)
+    {
+       s_dsGearEditY[1] = y;
+       y += DSTRIP_GEAR_ROW_H;
+    }
+    //--- P-LVL-TEXT: the armed note field rides below the add field — one full
+    //--- row on the plate law, so the tab keeps its height contract.
+    if(s_dsGear == DSTRIP_GEAR_LEVELS && DrawStripLvlDescWant())
+    {
+       s_dsGearEditY[4] = y;
+       y += DSTRIP_GEAR_ROW_H;
+    }
    if(s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed)
    {
       s_dsGearEditY[3] = y;
@@ -909,7 +972,14 @@ string DrawStripPopRowRes(const int r)
    if(s_dsPicker == DRAW_SLOT_WIDTH)
       return "::Files\\Icons\\bk_w" + IntegerToString(r + 1) + ".bmp";
    if(s_dsPicker == DRAW_SLOT_STYLE)
-      return "::Files\\Icons\\bk_style" + IntegerToString(r) + ".bmp";
+   {
+      // P-LOOK: no baked glyphs for looks — each wears its native icon.
+      int rr = r;
+      if(rr == FIBPEN_STYLE_NEON) rr = 1;
+      else if(rr == FIBPEN_STYLE_CAPS || rr == FIBPEN_STYLE_WASH) rr = 0;
+      if(rr < 0 || rr > 4) return "";
+      return "::Files\\Icons\\bk_style" + IntegerToString(rr) + ".bmp";
+   }
    if(s_dsPicker == DRAW_SLOT_RAY)
       return "::Files\\Icons\\bk_ray" + IntegerToString(r) + ".bmp";
    if(s_dsPicker == DRAW_SLOT_FONT) return "::Files\\Icons\\gl_textsize_m.bmp";

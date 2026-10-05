@@ -188,6 +188,7 @@ void DrawStripGearClose()
    s_dsGearPressSpent = false;   // P-DRAW-84: the purge is where a panel's press ends
    s_dsGearPlaced = false; s_dsGearPlacedObj = "";   // P-DRAW-88: next open scores anew
    s_dsTplNameArmed = false;
+   s_dsLvlDescArmed = false;   // P-LVL-TEXT: a note edit dies with the panel
 }
 
 void DrawStripClose()
@@ -512,11 +513,7 @@ string DrawStripGearRowText(const int r)
    if(kind == 1) return DrawStripSwitchName(s_dsObj, arg);
    if(kind == 2) return DrawPresetName(s_dsKind, arg);
    if(kind == 3) return "Save current look";
-   if(kind == 4)
-   {
-      double v = DrawStripGearLevelAt(arg);
-      return (MathIsValidNumber(v) ? DrawStripLevelName(v) : "");
-   }
+   if(kind == 4) return DrawStripGearLevelText(arg);
    if(kind == 5)
    {
       if(arg == 0) return "All levels on";
@@ -574,7 +571,7 @@ string DrawStripGearRowTip(const int r)
       double v = DrawStripGearLevelAt(arg);
       if(!MathIsValidNumber(v)) return "";
       bool on = (DrawStripLevelFind(s_dsObj, v) >= 0);
-      return DrawStripLevelName(v) + (on ? " is on — click to remove" : " — click to add") +
+      return DrawStripLevelName(v) + (on ? " is on — switch removes, label notes, swatch colors" : " — click to add") +
              " (the held drawing; stays open for the next one)";
    }
    if(kind == 5)
@@ -1338,7 +1335,7 @@ bool DrawStripGearPaint()
       //--- else. One probe, on the path that is not a group.
       if(ObjectFind(0, DrawStripRowDigestName(r)) >= 0)
       { ObjectDelete(0, DrawStripRowDigestName(r)); dirty = true; }
-      if(res != "")
+      if(res != "" && !DrawStripGearLevelSwatch(r, rx, py, dirty))
       {
          //--- P-DRAW-77: THE CARDS' OWN SEATS, MEASURED, NOT DERIVED. The chip is
          //--- `px+PNL_PAD_X, ry+PNL_CHIP_Y` and the label `PnlLabelX()` = PAD_X +
@@ -1385,7 +1382,8 @@ bool DrawStripGearPaint()
       //--- the `!want` branch below, which is the same sweep every retired field uses.
       bool want = ((e == 1 && s_dsGear == DSTRIP_GEAR_LEVELS) ||
                    (e == 2 && s_dsGear == DSTRIP_GEAR_MARK && s_dsKind == DK_TEXT) ||
-                   (e == 3 && s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed));
+                   (e == 3 && s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed) ||
+                   (e == 4 && s_dsGear == DSTRIP_GEAR_LEVELS && DrawStripLvlDescWant()));
       if(!want)
       {
          if(ObjectFind(0, en) >= 0) { ObjectDelete(0, en); dirty = true; }
@@ -1412,6 +1410,8 @@ bool DrawStripGearPaint()
       else if(e == 3)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
                                 "Template name — Enter saves this look under your name", false);
+      else if(e == 4)
+         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, s_dsLvlDescIdx), "Level note — Enter writes it on this level", false);
       else
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew,
                                 ObjectGetString(0, s_dsObj, OBJPROP_TEXT),

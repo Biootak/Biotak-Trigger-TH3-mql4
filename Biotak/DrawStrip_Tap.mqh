@@ -31,16 +31,26 @@ bool DrawStripPickApply(const int slot, const int row)
    if(k == DK_NONE) return false;
    if(DrawStripIsColorSlot(slot))
       return DrawStripColorCommit(slot, DrawStripPickColor(slot, row));
-   if(slot == DRAW_SLOT_WIDTH)
+   if(slot == DRAW_SLOT_WIDTH || slot == DRAW_SLOT_BODYWIDTH)
    {
       if(row < 0 || row > 4) return false;
       DrawStripUndoPush();
-      DrawStripWriteValue(DRAW_SLOT_WIDTH, (double)(row + 1));
+      DrawStripWriteValue(slot, (double)(row + 1));
+      return true;
+   }
+   //--- P-DRAW-BODY-UI: native five only — never a look tag, never the levels.
+   if(slot == DRAW_SLOT_BODYSTYLE)
+   {
+      if(row < 0 || row > 4) return false;
+      DrawStripUndoPush();
+      DrawStripWriteValue(DRAW_SLOT_BODYSTYLE, (double)row);
       return true;
    }
    if(slot == DRAW_SLOT_STYLE)
    {
-      if(row < 0 || row > 4) return false;
+      // P-LOOK: the count lives in DrawStripPickCount — a second bound here is
+      // how the fibo's own rows 5/6/7 arrived dead (painted, never applied).
+      if(row < 0 || row >= DrawStripPickCount(k, slot)) return false;
       DrawStripUndoPush();
       DrawStripWriteValue(DRAW_SLOT_STYLE, (double)row);
       return true;
@@ -72,7 +82,7 @@ bool DrawStripPickApply(const int slot, const int row)
 // ══════════════════════════════════════════════════════════════════════════
 // P-DRAW-13 — LEVEL MEMBERSHIP WRITES (held drawing only) + DUPLICATE.
 // ══════════════════════════════════════════════════════════════════════════
-bool DrawStripLevelsRewrite(double &vals[], color &clrs[], int &wds[], int &sts[], const int n)
+bool DrawStripLevelsRewrite(double &vals[], color &clrs[], int &wds[], int &sts[], string &txts[], const int n)
 {
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
    if(!DrawKindHasLevels(s_dsKind)) return false;
@@ -84,52 +94,64 @@ bool DrawStripLevelsRewrite(double &vals[], color &clrs[], int &wds[], int &sts[
       ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, i, clrs[i]);
       ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELWIDTH, i, wds[i]);
       ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELSTYLE, i, sts[i]);
+      //--- P-LVL-TEXT: texts ride index-aligned with values — a rewrite that
+      //--- moved values but not texts would glue notes onto the wrong levels.
+      ObjectSetString(0, s_dsObj, OBJPROP_LEVELTEXT, i, txts[i]);
    }
+   FibPenTagDrop(s_dsObj);   // P-DRAW-74b: rewritten truth spends the memory
+   FibPenSync(s_dsObj, false);   // P-DRAW-74b: rewritten truth converges here
    return true;
 }
-void DrawStripLevelsCollect(double &vals[], color &clrs[], int &wds[], int &sts[], int &n)
+void DrawStripLevelsCollect(double &vals[], color &clrs[], int &wds[], int &sts[], string &txts[], int &n)
 {
    n = 0;
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return;
    int cur = DrawLevelCount(s_dsObj);
    for(int i = 0; i < cur && n < 32; i++)
    {
-      double v = DrawLevelValue(s_dsObj, i);
+      //--- P-LVL-SCALE: the funnel migrates old percent-stored sets (23.6) to
+      //--- ratios (0.236) on the next rewrite — every toggle/add/set-all heals.
+      double v = DrawStripLevelNorm(DrawLevelValue(s_dsObj, i));
       if(!MathIsValidNumber(v)) continue;
       vals[n] = v;
       clrs[n] = (color)(int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, i);
-      wds[n] = (int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELWIDTH, i);
+      wds[n] = FibPenLogicalWidth(s_dsObj, i);   // P-DRAW-74b: collect the remembered width, not the thinned one
       sts[n] = (int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELSTYLE, i);
+      txts[n] = ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, i);
       n++;
    }
 }
 //--- toggle one membership value (multi-stay: the editor does NOT close).
 bool DrawStripLevelsToggle(const double v)
 {
-   if(!MathIsValidNumber(v)) return false;
+   //--- P-LVL-SCALE: the value rides normalized (ratio) — collected rows already
+   //--- are, so a percent-typed 88.6 meets the stored 0.886 instead of doubling it.
+   double nv = DrawStripLevelNorm(v);
+   if(!MathIsValidNumber(nv)) return false;
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
    DrawStripUndoPush();
-   double vals[32]; color clrs[32]; int wds[32]; int sts[32]; int n = 0;
-   DrawStripLevelsCollect(vals, clrs, wds, sts, n);
+   double vals[32]; color clrs[32]; int wds[32]; int sts[32]; string txts[32]; int n = 0;
+   DrawStripLevelsCollect(vals, clrs, wds, sts, txts, n);
    int at = -1;
    for(int i = 0; i < n; i++)
-      if(MathAbs(vals[i] - v) < 0.000001) { at = i; break; }
+      if(MathAbs(vals[i] - nv) < 0.000001) { at = i; break; }
    if(at >= 0)
    {
       for(int j = at; j < n - 1; j++)
-      { vals[j] = vals[j + 1]; clrs[j] = clrs[j + 1]; wds[j] = wds[j + 1]; sts[j] = sts[j + 1]; }
+      { vals[j] = vals[j + 1]; clrs[j] = clrs[j + 1]; wds[j] = wds[j + 1]; sts[j] = sts[j + 1]; txts[j] = txts[j + 1]; }
       n--;
    }
    else
    {
       if(n >= 32) return false;
-      vals[n] = v;
+      vals[n] = nv;
       clrs[n] = (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR);
       wds[n] = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_WIDTH);
       sts[n] = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_STYLE);
+      txts[n] = "";
       n++;
    }
-   return DrawStripLevelsRewrite(vals, clrs, wds, sts, n);
+   return DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
 }
 //--- All / None for the common nine.
 bool DrawStripLevelsSetAll(const bool on)
@@ -139,22 +161,30 @@ bool DrawStripLevelsSetAll(const bool on)
    DrawStripUndoPush();
    if(!on)
    {
-      double vals[32]; color clrs[32]; int wds[32]; int sts[32];
+      double vals[32]; color clrs[32]; int wds[32]; int sts[32]; string txts[32];
       int n = 0;
-      return DrawStripLevelsRewrite(vals, clrs, wds, sts, n);
+      return DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
    }
-   double vals2[32]; color clrs2[32]; int wds2[32]; int sts2[32];
-   int n2 = 0;
+   //--- P-LVL-KEEP: "All levels on" is a UNION — the hand's customs (0.3, 88.6)
+   //--- keep their own rows and colors; only the missing commons are appended in
+   //--- the slot's look. The old shape rewrote the nine commons alone and silently
+   //--- dropped every custom the user had added.
+   double vals[32]; color clrs[32]; int wds[32]; int sts[32]; string txts[32]; int n = 0;
+   DrawStripLevelsCollect(vals, clrs, wds, sts, txts, n);
    color c = (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR);
    int w = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_WIDTH);
    int st = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_STYLE);
-   for(int i = 0; i < DrawStripLevelCommonCount(); i++)
+   for(int i = 0; i < DrawStripLevelCommonCount() && n < 32; i++)
    {
-      vals2[n2] = DrawStripLevelCommon(i);
-      clrs2[n2] = c; wds2[n2] = w; sts2[n2] = st;
-      n2++;
+      double cv = DrawStripLevelCommon(i);
+      bool has = false;
+      for(int j = 0; j < n; j++)
+         if(MathAbs(vals[j] - cv) < 0.000001) { has = true; break; }
+      if(has) continue;
+      vals[n] = cv; clrs[n] = c; wds[n] = w; sts[n] = st; txts[n] = "";
+      n++;
    }
-   return DrawStripLevelsRewrite(vals2, clrs2, wds2, sts2, n2);
+   return DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
 }
 //--- DUPLICATE: a true clone beside itself (anchors + look + levels), the copy
 //--- selected and served. Time anchors step one chart bar so the two do not sit
@@ -211,8 +241,8 @@ bool DrawStripDuplicate()
    if(DrawKindOf(nm) == DK_RECT) BoxMarkWrite(nm, false, BOXEXT_OFF, 0);
    if(DrawKindHasLevels(s_dsKind))
    {
-      double vals[32]; color clrs[32]; int wds[32]; int sts[32]; int n = 0;
-      DrawStripLevelsCollect(vals, clrs, wds, sts, n);
+      double vals[32]; color clrs[32]; int wds[32]; int sts[32]; string txts[32]; int n = 0;
+      DrawStripLevelsCollect(vals, clrs, wds, sts, txts, n);
       ObjectSetInteger(0, nm, OBJPROP_LEVELS, n);
       for(int l = 0; l < n; l++)
       {
@@ -220,9 +250,11 @@ bool DrawStripDuplicate()
          ObjectSetInteger(0, nm, OBJPROP_LEVELCOLOR, l, clrs[l]);
          ObjectSetInteger(0, nm, OBJPROP_LEVELWIDTH, l, wds[l]);
          ObjectSetInteger(0, nm, OBJPROP_LEVELSTYLE, l, sts[l]);
-         ObjectSetString(0, nm, OBJPROP_LEVELTEXT, l,
-                         ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, l));
+         //--- P-LVL-TEXT: the collected note rides its own value (source indices
+         //--- shift past invalid rows, so re-reading by index would mis-glue them).
+         ObjectSetString(0, nm, OBJPROP_LEVELTEXT, l, txts[l]);
       }
+      FibPenSync(nm, false);   // P-DRAW-74b: the copy converges beside the copy
    }
    s_duCopy = nm;
    ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);
@@ -422,6 +454,7 @@ void DrawStripFireDelete()
          if(DrawIsPathSeg(DrawSelAt(j))) { string tmpId = ""; if(PathIdOfName(DrawSelAt(j), tmpId)) PathDelete(tmpId, "strip bin"); continue; }
          BoxEdgeForget(DrawSelAt(j));   // P-UI-132: a deleted box spends its edge memo here, not by expiry
          BoxMarkDrop(DrawSelAt(j));   // P-UI-134: ...and so does its marks KEY
+         FibPenSync(DrawSelAt(j), true);   // P-DRAW-74b: strays and the tag die with the object
          BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j));
       }
    }
@@ -430,7 +463,7 @@ void DrawStripFireDelete()
       if(DrawIsHRay(s_dsObj)) HRayDelete(s_dsObj, "strip bin");   // P-HR-04
       // P-UI-136: and the single held object is a segment — the whole path goes.
       else if(DrawIsPathSeg(s_dsObj)) { string tmpId = ""; if(PathIdOfName(s_dsObj, tmpId)) PathDelete(tmpId, "strip bin"); }
-      else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
+      else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); FibPenSync(s_dsObj, true); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    }
    DrawStripClose();
    ChartRedraw();
@@ -460,6 +493,22 @@ bool DrawStripPickTap(const int row)
       return true;
    }
    DrawStripPickApply(s_dsPicker, row);
+   // DIAG-137 (2026-10-03) — EVERY tap leaves its number: slot, row, object and
+   // the read-back. A control that paints but never writes («هرچی ضخیم تر
+   // انتخاب میکنم تاثییری نداره») is otherwise indistinguishable from a paint
+   // that ignores the write. The tap IS the event, so there is no dirty-only.
+   if(s_dsPicker != DSTRIP_MORE && s_dsPicker != DSTRIP_SLOT_LEVELS)
+   {
+      // DIAG-138 (2026-10-03) — the tag ITSELF joins the line: lk/gi parsed value
+      // beside haslk/raw search tells a failed drop (haslk=1) from a misread.
+      string ptxt = ObjectGetString(0, s_dsObj, OBJPROP_TEXT);
+      int plk = FibPenLookGet(s_dsObj);
+      DrawStripDiagEmit("[drawstrip] PICK slot=" + IntegerToString(s_dsPicker) +
+                        " row=" + IntegerToString(row) + " obj=\"" + s_dsObj +
+                        "\" read=" + DoubleToString(DrawSlotRead(s_dsObj, s_dsPicker), 0) +
+                        " lk=" + IntegerToString(plk) +
+                        " haslk=" + (StringFind(ptxt, FIBPEN_LK) >= 0 ? "1" : "0"));
+   }
    //--- P-DRAW-48 — THE COLOUR BOARD STAYS. User order: «روی رنگ کلیک میکنم بسته
    //--- میشه نمیزاره شفافیت تنظیم بکنم» — the board carries the opacity bar, so a
    //--- pick that shuts it takes the bar away exactly when the next act is tuning
@@ -702,6 +751,7 @@ bool DrawStripGearRowTap(const int r)
       DrawStripPaint();
       return true;
    }
+   return true;
    if(kind == 5)
    {
       if(arg == 2)
@@ -735,6 +785,61 @@ bool DrawStripGearRowTap(const int r)
       DrawStripPaint();
       return true;
    }
+   return true;
+}
+//--- P-LVL-COLOR — ONE LEVEL'S SWATCH. The row's chip shows the ink that level
+//--- wears; tapping it opens the cards palette on that STORED level (same popup
+//--- as every color cell, P-PAL-19). A row whose level is not on the chart has
+//--- no ink to edit, so its swatch is the same act as the row: add it.
+bool DrawStripGearLevelColorTap(const int r)
+{
+   if(!s_dsOpen || s_dsObj == "") return false;
+   if(r < 0 || r >= s_dsGRN) return false;
+   if(s_dsGRKind[r] != 4) return DrawStripGearRowTap(r);
+   if(!DrawKindHasLevels(s_dsKind)) return false;
+   double v = DrawStripGearLevelAt(s_dsGRArg[r]);
+   if(!MathIsValidNumber(v)) return false;
+   int idx = DrawStripLevelFind(s_dsObj, v);
+   if(idx < 0)
+   {
+      DrawStripLevelsToggle(v);
+      DrawStripLayout();
+      DrawStripPaint();
+      return true;
+   }
+   DrawStripDiagEmit("[drawstrip] LVLCOLOR obj=\"" + s_dsObj + "\" level=" +
+                     IntegerToString(idx) + " v=" + DrawStripLevelName(v));
+   DrawStripPalAskLevel(DRAW_SLOT_COLOR, idx);
+   return true;
+}
+//--- P-LVL-TEXT — ONE LEVEL'S LABEL ZONE. Arms the e4 note field on that STORED
+//--- level, seeded with what it wears; a re-arm on another row drops the field
+//--- so it is reborn with the new seed instead of keeping the old row's word.
+//--- A row whose level is not on the chart has nothing to note: same as toggle.
+bool DrawStripGearLevelDescTap(const int r)
+{
+   if(!s_dsOpen || s_dsObj == "") return false;
+   if(r < 0 || r >= s_dsGRN || s_dsGRKind[r] != 4) return DrawStripGearRowTap(r);
+   if(!DrawKindHasLevels(s_dsKind)) return false;
+   double v = DrawStripGearLevelAt(s_dsGRArg[r]);
+   if(!MathIsValidNumber(v)) return false;
+   int idx = DrawStripLevelFind(s_dsObj, v);
+   if(idx < 0)
+   {
+      DrawStripLevelsToggle(v);
+      DrawStripLayout();
+      DrawStripPaint();
+      return true;
+   }
+   if(s_dsLvlDescArmed && (s_dsLvlDescObj != s_dsObj || s_dsLvlDescIdx != idx))
+      ObjectDelete(0, DrawStripEditName(4));
+   s_dsLvlDescArmed = true; s_dsLvlDescObj = s_dsObj; s_dsLvlDescIdx = idx;
+   DrawStripDiagEmit("[drawstrip] LVLDESC obj=\"" + s_dsObj + "\" level=" +
+                     IntegerToString(idx) + " v=" + DrawStripLevelName(v));
+   DrawStripLayout();
+   DrawStripPaint();
+   if(ObjectFind(0, DrawStripEditName(4)) >= 0)
+      ObjectSetInteger(0, DrawStripEditName(4), OBJPROP_STATE, true);
    return true;
 }
 //--- gear foot: Reset / All / Copy. P-DRAW-78: `Del` is retired from the panel —
@@ -830,21 +935,41 @@ bool DrawStripEditEnd(const int e)
    {
       string t = txt;
       StringTrimLeft(t); StringTrimRight(t);
-      double v = StringToDouble(t);
-      if(!MathIsValidNumber(v) || v < -100.0 || v > 500.0) return true;
+      //--- P-LVL-SCALE: typed percent rides /100 ("88.6" -> 0.886); a typed ratio
+      //--- rides as-is ("0.5" -> 0.5). Guard is the ratio band now, not percent.
+      double v = DrawStripLevelNorm(StringToDouble(t));
+      if(!MathIsValidNumber(v) || v < -10.0 || v > 10.0) return true;
       if(DrawStripLevelFind(s_dsObj, v) >= 0) return true;
       DrawStripUndoPush();
-      double vals[32]; color clrs[32]; int wds[32]; int sts[32]; int n = 0;
-      DrawStripLevelsCollect(vals, clrs, wds, sts, n);
+      double vals[32]; color clrs[32]; int wds[32]; int sts[32]; string txts[32]; int n = 0;
+      DrawStripLevelsCollect(vals, clrs, wds, sts, txts, n);
       if(n >= 32) return true;
       vals[n] = v;
       clrs[n] = (color)(int)DrawSlotRead(s_dsObj, DRAW_SLOT_COLOR);
       wds[n] = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_WIDTH);
       sts[n] = (int)DrawSlotRead(s_dsObj, DRAW_SLOT_STYLE);
+      txts[n] = "";
       n++;
-      DrawStripLevelsRewrite(vals, clrs, wds, sts, n);
+      DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
       DrawStripLayout();
       DrawStripPaint();
+      return true;
+   }
+   //--- P-LVL-TEXT: the armed note commits onto its stored level (Enter). Empty
+   //--- clears the note back to the value alone. Undoable like every look write.
+   if(e == 4 && s_dsGear == DSTRIP_GEAR_LEVELS && DrawStripLvlDescWant())
+   {
+      string nt = txt;
+      StringTrimLeft(nt); StringTrimRight(nt);
+      if(StringLen(nt) > 63) nt = StringSubstr(nt, 0, 63);   // contract §2: object text truncates at 63
+      DrawStripUndoPush();
+      ObjectSetString(0, s_dsObj, OBJPROP_LEVELTEXT, s_dsLvlDescIdx, nt);
+      s_dsLvlDescArmed = false;
+      DrawStripDiagEmit("[drawstrip] LVLTEXT obj=\"" + s_dsObj + "\" level=" +
+                        IntegerToString(s_dsLvlDescIdx) + " text=\"" + nt + "\"");
+      DrawStripLayout();
+      DrawStripPaint();
+      ChartRedraw();   // P-UI-131: the line the user watches re-inks in its own frame
       return true;
    }
    if(e == 2 && DrawKindOf(s_dsObj) == DK_TEXT)

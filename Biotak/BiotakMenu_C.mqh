@@ -786,6 +786,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       if(mx < ox || mx > ox + CIRC_ORB_SIZE || my < oy || my > oy + CIRC_ORB_SIZE) return;
       g_OrbDragging = true;
       g_OrbWasDragged = false;
+      g_OrbMoved = false;   // P-UI-147: a fresh press owes the release its own answer
       g_OrbGrabDX = g_UI.menuX - mx;
       g_OrbGrabDY = g_UI.menuY - my;
       g_OrbPressX = mx;
@@ -806,7 +807,12 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       CircUnlockChart();
       // P-UI-131e: the RELEASE is the hand's answer, so the HOME is what may be saved
       // from here on — the live pair is clamped and must never become the stored one.
-      if(g_OrbWasDragged) { CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); }
+      // P-UI-147: it reads `g_OrbMoved`, the flag ONLY the release clears — so a trailing
+      // click that ate `g_OrbWasDragged` can no longer cost the user their drag.
+      if(g_OrbMoved)
+      {
+         CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); g_OrbMoved = false;
+      }
       // The mode was FROZEN for the whole drag (rebuilding geometry under the
       // hand would flicker). The release is where it is allowed to change, so
       // re-derive it now: dragging out of a corner may turn the arc into a
@@ -817,8 +823,20 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
 
    if(MathAbs(mx - g_OrbPressX) > ORB_DRAG_THRESHOLD ||
       MathAbs(my - g_OrbPressY) > ORB_DRAG_THRESHOLD)
-      g_OrbWasDragged = true;
-   if(!g_OrbWasDragged) return;
+   {
+      //--- P-UI-147 (2026-10-02, user: «چرا این منوی اصلی رو که درگ میکنم بعضی وقتا
+      //--- بریمیگرده سرجای قبلیش»): TWO FACTS WERE ONE FLAG, and each reader wanted a
+      //--- different half. `g_OrbWasDragged` used to mean «the hand really moved the orb»
+      //--- AND «the click that follows a drag must be eaten» — so BiotakMenu_D.mqh:16, which
+      //--- CLEARS it when the trailing click arrives, could clear it BEFORE the release read
+      //--- it, and the home was never saved: the next repaint put the orb back exactly where
+      //--- it was. That is the «بعضی وقتا». The movement keeps its own flag, which only the
+      //--- release may clear, and the click-eater keeps its own — two facts, two owners, and
+      //--- nothing that reads the other.
+      g_OrbMoved = true;
+      g_OrbWasDragged = true;   // the click-eater's own flag (unchanged meaning)
+   }
+   if(!g_OrbMoved) return;
    CircReassertLock();   // LEARNING §5: the orb owns the view until release
 
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);

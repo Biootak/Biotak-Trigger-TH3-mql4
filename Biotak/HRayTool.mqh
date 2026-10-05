@@ -53,6 +53,7 @@ bool HRayViewOwned() { return (s_hrayArmed || s_hrayDrag != ""); }
 void HRayArm()
 {
    if(s_hrayArmed) return;
+   GestureTakeRelease();   // P-UI-144: a NEW drawing is never gated by the last one
    s_hrayArmed = true; ChartViewLockAcquire(); ChartRedraw();
 }
 void HRayCancel()
@@ -309,6 +310,19 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
 {
    string pfx = HRayPrefix();
    // A line deleted behind our back takes its dot with it — one way, never back.
+   if(id == CHARTEVENT_OBJECT_DRAG)
+   {
+      // P-UI-142: THE TERMINAL'S OWN MOTION IS NOT OURS. A drag on a FOREIGN object
+      // means the hand is busy with MT4's own drawing tool — «از همون نقطه که یه
+      // چیزی میکشم، اینم میاد» — so the shared arbiter (GlobalVariables.mqh) is told
+      // by the router, and the ray's own two lines: a live carry goes back where the
+      // press found it, and the next grab is the arbiter's to refuse. One window for
+      // the whole product; no tool re-derives it.
+      string gpfx = HRayPrefix();
+      if(gpfx != "" && StringFind(sparam, gpfx) == 0) return false;
+      if(s_hrayDrag != "") { HRayDragRestore(); HRayDragEnd(); }
+      return false;
+   }
    if(id == CHARTEVENT_OBJECT_DELETE && pfx != "" && StringFind(sparam, pfx) == 0)
    {
       if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;   // bulk teardown — nothing to heal
@@ -350,9 +364,20 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
       bool rightDown = ((st & 2) != 0);
       bool pressed = (leftDown && !s_hrayLeft);
       s_hrayLeft = leftDown;   // ... updated on EVERY event (a still click emits none)
-      if(s_hrayDrag != "")   // a drag is live: this event is ours
+      // P-UI-145: there is no lock state in this file — the arbiter's single stamp is the whole law.
+      if(s_hrayDrag != "")
       {
          if(rightDown)   // right-click puts the ray back where the press found it
+         {
+            HRayDragRestore();
+            HRayDragEnd();
+            return true;
+         }
+         //--- P-UI-143 (2026-10-02, MEASURED): a move with the button bit CLEAR while
+         //--- we hold the ray is the TERMINAL drawing its own thing (it does not claim
+         //--- the button for its own tools), and its only other word comes once, at the
+         //--- very end — so this is the one place the ray can be put back in flight.
+         if(!leftDown && (int)StringToInteger(sparam) == 0)
          {
             HRayDragRestore();
             HRayDragEnd();
@@ -382,12 +407,30 @@ bool HRayOnChartEvent(const int id, const long &lparam, const double &dparam, co
          // P-UI-92: a press on a UI surface (strip, card) belongs to the UI —
          // grabbing a ray from under the strip would answer two owners at once.
          if(UIPointerOverSurface((int)lparam, (int)dparam)) return false;
+         // P-UI-142: ...and so does a hand that is busy with the TERMINAL's own tool
+         // (the shared arbiter's question) or with another one of OUR armed sessions
+         // (P-HR-06's one gesture at a time). A press in either window is not ours.
+         if(GestureGrabBlocked()) return false;
+         if(BaseKnotSessionActive() || PathSessionActive()) return false;
          string ln = "";
          if(HRayPressHit((int)lparam, (int)dparam, ln))
          {
-            s_hrayPressX = (int)lparam; s_hrayPressY = (int)dparam;
-            HRayDragStart(ln);   // select + carry in one press
-            return true;
+            // P-UI-144: THE HAND IS OURS TO GIVE — the same question the path asks (the arbiter
+            // owns it, GlobalVariables.mqh): a drawing that is not already TAKEN cannot
+            // be taken, so the first press selects and writes no anchor. Three
+            // measurements closed the detection road (no "native tool armed" flag; the
+            // terminal is silent for a whole native stroke and speaks once at its end;
+            // its button bit flaps mid-press), so the owner is decided, not detected.
+            if(!GestureTakeAllowed(ln))
+            {
+               s_hrayPressX = (int)lparam; s_hrayPressY = (int)dparam;
+               HRaySelect(ln); HRayHandleFollow(ln); GestureTakeNote(ln);
+               return true;
+            }
+            s_hrayPressX = (int)lparam; s_hrayPressY = (int)dparam;   // the carry's own origin
+HRayDragStart(ln);   // select + carry in one press
+             Print("[HRay] carry ", ln, " why=", GestureTakeWhy());   // P-UI-144: the carry's own half of the proof
+             return true;
          }
       }
       if(s_hraySel != "") HRayHandleFollow(s_hraySel);   // pan stream (guarded: still = reads)

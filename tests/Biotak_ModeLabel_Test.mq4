@@ -38,6 +38,7 @@
 // real box/plan path, so it must be in the chain exactly like the entry's.
 #include "..\Biotak\BaseKnotTool.mqh"
 #include "..\Biotak\HRayTool.mqh"   // P-HR-01: same layer as the entry's chain (P-BUILD-02)
+#include "..\Biotak\PathTool.mqh"   // P-UI-136: same layer — HRayTool's own press test asks PathSessionActive()
 #include "..\Biotak\CalculationCache.mqh"
 #include "..\Biotak\ZoneFactory.mqh"
 #include "..\Biotak\ZoneConfig.mqh"       // SUnifiedZoneConfig (ExtendedDrawingFunctions)

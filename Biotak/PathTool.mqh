@@ -29,7 +29,9 @@
 // (DrawStrip_Base.mqh), and it is BORROWED by name here: the path opens no
 // second file and writes no second format.
 #ifndef BUILD_LITE
-void DrawStripDiagEmit(const string line);   // defined later in this unit (DrawStrip_Base.mqh)
+// P-WARN-46 (2026-10-04): the prototype that stood here was the build's last warning 46
+// in this file. A prototype is the IMPORT MQL4 needs for an #import-ed library, not for a
+// body later in the same unit - MQL4 resolves that on its own (see the note in Toolbar_A).
 void PathWitness(const string line) { DrawStripDiagEmit("[Path] " + line); }
 #else
 // Lite ships no draw strip, so it ships no diag channel — MQL4 rejects a
@@ -55,11 +57,8 @@ static datetime s_pathSnapT1[];
 static double s_pathSnapP1[];
 static string s_pathIds[];                 // registry of committed path ids
 static string s_pathSel      = "";        // the SELECTED path (the dot's owner)
-static string s_pathClick     = "";        // idle dbl-click-delete witness (the DOT's)
-static uint   s_pathClickMs   = 0;
-static int    s_pathClickX    = 0;
-static int    s_pathClickY    = 0;
-static uint   s_pathEndMs     = 0;
+static string s_pathClick     = "";        // P-UI-146: nothing arms a delete on the chart any more
+static uint   s_pathEndMs     = 0;         // the last carry that MOVED (its trailing click reads it)
 static datetime s_pathAnchorT = 0;         // last committed vertex (session live)
 static double s_pathAnchorP   = 0.0;
 static int    s_pathSegCount  = 0;         // committed segments of the live session
@@ -67,12 +66,33 @@ static string s_pathSessionId = "";        // live session's id
 static uint   s_pathLastVerMs = 0;         // last committed-vertex click stamp
 static int    s_pathLastVerX  = 0;
 static int    s_pathLastVerY  = 0;
+static uint   s_pathNoGrabMs  = 0;       // P-UI-142: the terminal's own motion forbids our grab
+static bool   s_pathPrimed    = false;   // ...and the carry writes NOTHING until it knows
+static datetime s_pathPrimT   = 0;       // the gesture is ours (the first move is buffered)
+static double s_pathPrimP     = 0.0;
+// P-UI-142: is OUR grab allowed to start at all? The terminal's own motion is
+// answered by the SHARED arbiter (GlobalVariables.mqh — the project-wide owner, so
+// the ray, Base/Knot, TH3 and the leg measure ask the same question and cannot drift
+// from this copy). What is left is the OTHER half of P-HR-06's «one gesture at a
+// time»: another session of ours that is ARMED owns the press. Cost: one deadline
+// read and, in Full, up to three bools — per PRESS, never per tick.
+bool PathGrabBlocked()
+{
+   if(GestureGrabBlocked()) return true;
+   if(BaseKnotSessionActive() || HRaySessionActive()) return true;
+#ifndef BUILD_LITE
+   if(TH3SessionActive() || LegMeasureSessionActive()) return true;
+#endif
+   return false;
+}
 
 bool PathSessionActive() { return s_pathArmed; }
 bool PathViewOwned() { return (s_pathArmed || s_pathDrag != ""); }
 void PathArm()
 {
    if(s_pathArmed) return;
+   GestureTakeRelease();   // P-UI-144: a NEW drawing is never gated by the last one — the
+                           // arbiter's ONE question is per drawing, so arming clears it
    s_pathArmed = true; ChartViewLockAcquire(); ChartRedraw();
 }
 void PathCancel()
@@ -107,23 +127,12 @@ void PathRegAdd(const string id)
    ArrayResize(s_pathIds, n + 1);
    s_pathIds[n] = id;
 }
-void PathRegDel(const string id)
-{
-   int n = ArraySize(s_pathIds);
-   for(int i = 0; i < n; i++)
-      if(s_pathIds[i] == id)
-      {
-         for(int j = i; j < n - 1; j++) s_pathIds[j] = s_pathIds[j + 1];
-         ArrayResize(s_pathIds, n - 1);
-         return;
-      }
-}
 // P-UI-136 — THE VERTEX HANDLES. HRay parity, one shape: the drawing carries the
 // handle, the handle owns the delete, and the drawing's own pixels mean only
 // "take me" (HRayHandleName/HRayIsHandle/HRaySelect). A path wears one handle per
 // VERTEX (n segments = n+1 points, the free end included), so a press on a
-// handle edits that point and a press on a segment carries the whole path — the
-// `H` in the name keeps `PathIdOfName` from reading a handle as a SEGMENT (its
+// handle edits that point — and a press on a segment only SELECTS (P-UI-145).
+// The `H` in the name keeps `PathIdOfName` from reading a handle as a SEGMENT (its
 // tail is not digits), so the orphan walk and the delete watcher skip it without
 // a second test.
 string PathHandleName(const string id, const int k) { return PathPrefix() + id + "_H" + IntegerToString(k); }
@@ -137,12 +146,35 @@ bool PathIsHandle(const string nm)
       if(StringGetChar(rest, i) == 95) ulast = i;
    return (ulast > 0 && ulast + 1 < StringLen(rest) && StringGetChar(rest, ulast + 1) == 72);   // 'H'
 }
-// The handles go with the path, always as one family (P-LOG-10 law 4).
+// The handles go with the path, always as one family (P-LOG-10 law 4). It sits ABOVE
+// PathRegDel on purpose: P-UI-146 makes the registrar the one sweep, and MQL4 has no
+// prototype that is not a warning (warning 46), so the order carries the dependency.
 void PathHandlesDrop(const string id)
 {
    int m = PathSegCount(id);
    for(int k = 0; k <= m; k++) ObjectDelete(0, PathHandleName(id, k));
 }
+void PathRegDel(const string id)
+{
+   //--- P-UI-146 (2026-10-02, user: «ابزار path که حذف میشه وابتگی‌هاهم حذف بشه» — the
+   //--- screenshot showed five blue dots and no lines): the sweep lives HERE, in the one
+   //--- function that means «this path no longer exists», so no route can forget it. Three
+   //--- routes ended a path and only two took the dots with them: PathDelete dropped the
+   //--- handles of whatever was SELECTED (PathSelect("")), not of the path it was deleting,
+   //--- and the cascade at the OBJECT_DELETE watcher deregistered with no sweep at all. A
+   //--- child outliving its parent is the orphan class this closes.
+   PathHandlesDrop(id);
+   if(s_pathSel == id) s_pathSel = "";
+   int n = ArraySize(s_pathIds);
+   for(int i = 0; i < n; i++)
+      if(s_pathIds[i] == id)
+      {
+         for(int j = i; j < n - 1; j++) s_pathIds[j] = s_pathIds[j + 1];
+         ArrayResize(s_pathIds, n - 1);
+         return;
+      }
+}
+// The handles go with the path, always as one family (P-LOG-10 law 4).
 void PathSelect(const string id)
 {
    if(s_pathSel != "" && s_pathSel != id) PathHandlesDrop(s_pathSel);
@@ -274,7 +306,6 @@ int PathPointToSegPx(const int mx, const int my, const datetime t1, const double
 }
 bool PathPressHit(const int mx, const int my, string &id)
 {
-   id = "";
    int best = 0x7fff;
    for(int i = 0; i < ArraySize(s_pathIds); i++)
    {
@@ -335,7 +366,25 @@ void PathAdoptOrphans()
       string nm = ObjectName(0, i, 0, -1);
       if(StringFind(nm, pfx) != 0) continue;
       string id;
-      if(!PathIdOfName(nm, id)) continue;
+      if(!PathIdOfName(nm, id))
+      {
+         //--- P-UI-146 (2026-10-02, user: «ابزار path که حذف میشه وابتگی‌هاهم حذف بشه» —
+         //--- the screenshot was five blue dots and no lines): a VERTEX DOT whose path has no
+         //--- segments left is an orphan. Two older builds wrote them: their delete routes
+         //--- swept only the selection, not the path being deleted, and this walk could never
+         //--- see them again because `PathIdOfName` rightly refuses to read a handle as a
+         //--- segment. So the sweep lives here, where the family is already being walked, and
+         //--- it costs one string scan per prefixed object ONCE per attach.
+         if(PathIsHandle(nm))
+         {
+            string rest = StringSubstr(nm, StringLen(pfx));
+            int us = -1;
+            for(int c = 0; c < StringLen(rest); c++)
+               if(StringGetChar(rest, c) == 95) us = c;
+            if(us > 0 && PathSegCount(StringSubstr(rest, 0, us)) == 0) ObjectDelete(0, nm);
+         }
+         continue;
+      }
       PathRegAdd(id);
       PathNormalise(id);
    }
@@ -472,6 +521,11 @@ void PathLockSet(const string id, const bool on)
 #define PATH_MID_HALF 5     // the disc's CENTRE offset on its 11px canvas (P-LM-19's rule:
                             // the canvas is 11px, so half = outSize/2, not the grab radius)
 #define PATH_MID_RES  "::Files\\Icons\\path_mid_dot.bmp"
+//--- P-UI-142: the terminal's own drag HEARTBEAT — the window a foreign motion keeps
+//--- the path's hands off for. P-UI-130 already measured it: MT4 re-reports a native
+//--- drag about every 400 ms, and that heartbeat is the only honest length for "the
+//--- hand is busy with the terminal's own drawing".
+#define PATH_NO_GRAB_MS 400
 string PathMidName(const string id, const int k) { return PathPrefix() + id + "_M" + IntegerToString(k); }
 void PathMidDrop(const string id)
 {
@@ -596,8 +650,7 @@ void PathFollowAll()
       string id = s_pathIds[i];
       if(PathSegCount(id) == 0)
       {
-         PathHandlesDrop(id);   // its handles die with it
-         PathRegDel(id);
+         PathRegDel(id);   // P-UI-146: the sweep is inside — its handles die with it
       }
    }
 }
@@ -690,18 +743,10 @@ void PathSnapAdd(const string nm, const int ix)
    s_pathSnapT1[k] = (datetime)ObjectGetInteger(0, nm, OBJPROP_TIME, 1);
    s_pathSnapP1[k] = ObjectGetDouble(0, nm, OBJPROP_PRICE, 1);
 }
-void PathDragStart(const string id)
-{
-   s_pathDrag = id;
-   s_pathMoved = false;
-   PathSelect(id);          // select + carry in one press (HRayDragStart's rule)
-   PathHandleFollow(id);
-   ArrayResize(s_pathSnapNames, 0);
-   int n = PathSegCount(id);
-   for(int i = 0; i < n; i++) PathSnapAdd(PathSegName(id, i), 2);
-   ChartViewLockAcquire();
-   PathWitness("drag start id=" + id + " whole=1 at " + IntegerToString(s_pathPressX) + "," + IntegerToString(s_pathPressY));
-}
+// P-UI-145: the whole-path carry is RETIRED with the body press that used to start it
+// (a body press selects and nothing more). Its snap store is still the one a vertex carry
+// uses — PathVertDragStart below — so the geometry half of this code lives on; only the
+// entry point is gone, and the whole-path DRAG was never reachable from the strip.
 // P-UI-136: A HANDLE DRAG EDITS ONE POINT. Vertex k lives in segment k's anchor 0
 // (and in segment k-1's point 1 when it is a shared vertex) — so the snap store
 // holds one segment at the ends and two in the middle, and nothing else on the
@@ -710,6 +755,7 @@ void PathVertDragStart(const string id, const int k)
 {
    s_pathDrag = id;
    s_pathMoved = false;
+   s_pathPrimed = false;    // P-UI-142: same rule for a single-point edit
    PathSelect(id);
    PathHandleFollow(id);
    ArrayResize(s_pathSnapNames, 0);
@@ -751,12 +797,41 @@ void PathDragEnd()
    if(s_pathDrag == "") return;
    PathWitness("drag end id=" + s_pathDrag + " moved=" + (s_pathMoved ? "yes" : "no"));
    if(s_pathMoved) s_pathEndMs = GetTickCount();
+   s_pathPrimed = false;
    PathDragRelease();
    ChartRedraw();
 }
 bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
    string pfx = PathPrefix();
+   //--- P-UI-142 (2026-10-02, user: "from that same point I want to draw a trend line
+   //--- and THIS one moves too") — THE TERMINAL'S OWN MOTION IS NOT OURS. A press that
+   //--- lands on a path is ambiguous: it may be the hand taking the path, or the hand
+   //--- STARTING a native drawing (a trend line, a ray, a fib) from that very pixel. The
+   //--- indicator cannot ask which — but MT4 answers the second one a moment later, in
+   //--- its own voice: `CHARTEVENT_OBJECT_DRAG` on an object that is NOT ours. That is
+   //--- P-UI-130 law 3 applied one level up (the hold's own rule: a gesture IN MOTION is
+   //--- never ours), so a foreign drag (a) puts a live carry back exactly where the
+   //--- press found it, and (b) FORBIDS the next grab for the heartbeat that follows
+   //--- (400 ms, the terminal's own drag rate) so the path cannot be re-grabbed out
+   //--- from under the stroke still in progress. Two comparisons per drag event and one
+   //--- deadline read per press; our own segments never emit this event (they are born
+   //--- non-selectable), so the path cannot forbid itself.
+   if(id == CHARTEVENT_OBJECT_DRAG)
+   {
+      if(pfx != "" && StringFind(sparam, pfx) == 0) return false;   // our own geometry is never dragged
+      //--- P-UI-142: the terminal's voice, answered by the SHARED arbiter (its one
+      //--- writer is the router) — and the path's own two lines: a live carry goes
+      //--- back exactly where the press found it, and the next grab is the arbiter's
+      //--- to refuse. Geometry is ours; the DECISION is the project's.
+      if(s_pathDrag != "")
+      {
+         PathWitness("foreign drag \"" + sparam + "\" put the path back");
+         PathDragRestore();
+         PathDragEnd();
+      }
+      return false;
+   }
    if(id == CHARTEVENT_OBJECT_DELETE && pfx != "" && StringFind(sparam, pfx) == 0)
    {
       if(g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs)) return false;
@@ -798,9 +873,25 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
       bool rightDown = ((st & 2) != 0);
       bool pressed = (leftDown && !s_pathLeft);
       s_pathLeft = leftDown;
+      //--- P-UI-145: there is no lock state in this file. The arbiter owns ONE stamp that expires
+      //--- by itself (GlobalVariables.mqh), and the structural half is right here: a press on
+      //--- the BODY selects and never carries, so a native stroke's press can start nothing;
+      //--- the DOTS are the only carry in this tool, and they are painted only for the
+      //--- selected path (PathHandleAt), so a visible dot means the hand chose this drawing.
       if(s_pathDrag != "")
       {
          if(rightDown) { PathDragRestore(); PathDragEnd(); return true; }
+         //--- P-UI-143 (2026-10-02, MEASURED AND RETIRED IN THE SAME BREATH): a rule was
+         //--- written here that read the button bit as «whose hand is this» — it looked
+         //--- proven, and it was not. The census shows the bit FLAPPING mid-press, at one
+         //--- and the same pixel: `nm="1"` then `nm="0"` then `nm="1"`, the cursor never
+         //--- moving. That is the terminal's own object machinery reporting its button
+         //--- state unreliably (P-LM-13 measured it years ago on the leg carry), so the
+         //--- bit is NOT an owner — and a rule built on it killed our OWN carry. What the
+         //--- same run measured is the finding that matters: MT4 is silent for the whole
+         //--- of a native stroke and speaks ONCE at its end, so nothing can be decided
+         //--- in flight. The owner has to be the terminal itself — which means the
+         //--- segments become SELECTABLE and its anchors move the geometry (P-UI-144).
          if(!leftDown) { PathDragEnd(); return true; }
          ChartViewLockAssert();
          int sw = 0; datetime ct = 0; double cp = 0;
@@ -809,7 +900,21 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
             if(!s_pathMoved &&
                (MathAbs((int)lparam - s_pathPressX) > 2 || MathAbs((int)dparam - s_pathPressY) > 2))
                s_pathMoved = true;
-            if(s_pathMoved) PathDragApply(ct, cp);
+            //--- P-UI-142: THE FIRST MOVE IS BUFFERED, NEVER WRITTEN. A press on a path
+            //--- pixel cannot be told apart from the START of a native drawing, and the
+            //--- terminal's own answer (OBJECT_DRAG on a foreign object) arrives with
+            //--- that first move. Holding the first sample back means a native stroke
+            //--- kills the carry BEFORE this drawing has written a single anchor — the
+            //--- path never moves at all, not even for one frame. A real carry pays one
+            //--- move of latency (~16 ms) and nothing else. Cost: two scalars.
+            if(!s_pathMoved) { s_pathPrimed = false; return true; }
+            if(!s_pathPrimed)
+            {
+               s_pathPrimed = true;
+               s_pathPrimT = ct; s_pathPrimP = cp;
+               return true;
+            }
+            PathDragApply(ct, cp);
          }
          return true;
       }
@@ -821,9 +926,22 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
             PathPreviewMove(ct, cp);
          return false;
       }
-      if(pressed && pfx != "")
+      //--- P-UI-144 (2026-10-02): THE HAND IS OURS TO GIVE. Three measurements closed the
+//--- detection road (no "native tool armed" flag; the terminal is silent for the whole
+//--- of a native stroke and speaks once at its end; its button bit flaps mid-press), so
+//--- the owner is DECIDED by one shared question instead of guessed at: a drawing that
+//--- is not already TAKEN cannot be taken. The press that takes it for the first time
+//--- SELECTS it and writes no anchor, so a trend line started on a path point leaves the
+//--- path exactly where it was. The question lives in the arbiter (GlobalVariables.mqh)
+//--- so this file and the ray cannot drift into two different rules.
+if(pressed && pfx != "")
       {
          if(UIPointerOverSurface((int)lparam, (int)dparam)) return false;
+         //--- P-UI-145: THE ORDER IS THE RULE. The DOT is asked FIRST and it carries on one
+         //--- press; the foreign-drag lock is asked after it, so a terminal that is still
+         //--- finishing its own stroke cannot eat the one gesture a visible handle owes the
+         //--- user (that ordering is why a painted dot could not be dragged: the lock was
+         //--- asked first and the 400 ms window after every native stroke swallowed it).
          int sw = 0; datetime ct = 0; double cp = 0;
          bool tp = ChartXYToTimePrice(0, (int)lparam, (int)dparam, sw, ct, cp);
          s_pathPressX = (int)lparam; s_pathPressY = (int)dparam;
@@ -833,19 +951,58 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
          string hid = ""; int hk = -1;
          if(PathDotHit((int)lparam, (int)dparam, hid, hk))
          {
-            if(!PathLockGet(hid)) PathVertDragStart(hid, hk);
+            // P-UI-144: THE LOCK AND THE TAKE ARE TWO QUESTIONS. Folding them into one
+            // branch let a press on a LOCKED path write the take, so the locked path was
+            // silently "given" to the next gesture and never answered with its own witness.
+            if(PathLockGet(hid))
+            {
+               PathWitness("press refused: locked id=" + hid);
+               return true;
+            }
+            //--- P-UI-145 (2026-10-02, user: «نقاطشو نمیشه جابجا کرد، باید ترکیبی بشه»):
+            //--- THE DOT IS THE HANDLE, and a handle needs no second gesture. The dot is
+            //--- painted ONLY for the selected path (PathHandleAt: an unselected chart wears
+            //--- no circles), so a visible dot already means the hand chose this drawing —
+            //--- the take gate that guarded the BODY is not repeated here, because the one
+            //--- press a native tool makes on a line can never reach this branch: a line
+            //--- press selects and stops (below), and only a DOT carries.
+            PathVertDragStart(hid, hk);
+            PathWitness("carry the dot of id=" + hid + " v=" + IntegerToString(hk) + " why=" + GestureTakeWhy());
             return true;
+         }
+         //--- …and only now the lock, which is the terminal's own voice and guards the BODY:
+         //--- a foreign drag that is still finishing must not start a new grab either.
+         if(PathGrabBlocked())
+         {
+            PathWitness("press refused: the terminal is still dragging one of ours, why=" + GestureTakeWhy());
+            return false;
          }
          string pid = "";
          if(PathPressHit((int)lparam, (int)dparam, pid))
          {
-            // P-UI-138: a LOCKED path takes the press and does nothing — no carry, no
-            // selection, no handles. The click is still consumed, so nothing behind it
-            // (the chart, another tool) answers a press the strip has already claimed.
-            if(!PathLockGet(pid)) PathDragStart(pid);
-            else PathWitness("press refused: locked id=" + pid);
+            //--- P-UI-145 (2026-10-02, user: «فقط رأس‌ها، بدنه آزاد»): THE BODY IS FREE.
+            //--- A press on a segment SELECTS and nothing else — it never latches a carry.
+            //--- This is the structural answer, not a detection: MEASURED, a native stroke
+            //--- reports button=0 on all ~40 of its moves and speaks once at its end, so NO
+            //--- press-time question can tell it from a carry of ours, and every lock built
+            //--- on that question left the drawing free to walk away (four `drag start … why=carry:
+            //--- it was taken` in a row, then `moved=yes`). A body that cannot carry cannot be
+            //--- carried away by anything: the chart is free for the terminal's own tools.
+            //--- A path is moved by its VERTICES (the branch above), which answer only while
+            //--- the path is selected — so the hand is on a dot, not on a line.
+            if(PathLockGet(pid)) { PathWitness("press refused: locked id=" + pid); return true; }
+            PathWitness("press on the BODY of id=" + pid + " — select only, never a carry");
+            PathSelect(pid); PathHandleFollow(pid); GestureTakeNote(pid);
             return true;
          }
+         //--- P-UI-145: THE PRESS THAT FOUND NEITHER A DOT NOR A BODY is the one silence a
+         //--- hit test must never keep: the log used to read «select … select …» and a user
+         //--- pressing a visible dot learned nothing from it. It names the selection, the
+         //--- dots it owns and the lock, on the press edge only.
+         PathWitness("press found neither dot nor body: sel=" + s_pathSel
+                     + " dots=" + IntegerToString(PathSegCount(s_pathSel))
+                     + " at " + IntegerToString((int)lparam) + "," + IntegerToString((int)dparam)
+                     + " why=" + GestureTakeWhy());
       }
       return false;
    }
@@ -894,25 +1051,24 @@ bool PathOnChartEvent(const int id, const long &lparam, const double &dparam, co
       string did = ""; int hk = -1;
       if(pfx != "" && PathDotHit((int)lparam, (int)dparam, did, hk))
       {
-         uint now = GetTickCount();
-         if(s_pathEndMs != 0 && now - s_pathEndMs <= PATH_DBL_MS)
-         {                       // the release click trailing a MOVED carry: select-only (P-HR-06)
-            s_pathEndMs = 0; s_pathClick = "";
-            PathSelect(did); PathHandleFollow(did);
-            return true;
-         }
-         if(s_pathClick == did && now - s_pathClickMs <= PATH_DBL_MS &&
-            MathAbs((int)lparam - s_pathClickX) <= PATH_DBL_PX &&
-            MathAbs((int)dparam - s_pathClickY) <= PATH_DBL_PX)
-         {
-            s_pathClick = "";
-            PathDelete(did, "handle double-click");
-            return true;
-         }
+         //--- P-UI-142: a release that trails the terminal's own motion selects and
+         //--- arms NOTHING — the hand was busy drawing something else, and a witness
+         //--- armed here is the second half of a delete the user never asked for.
+         if(PathGrabBlocked()) return true;
+         //--- P-UI-146 (2026-10-02, user: «بعضی وقتا خودکار ابزار path حذف میشه چرا»): THE
+         //--- DOUBLE-CLICK DELETE IS RETIRED. It was the only route that could delete a path
+         //--- with no intent behind it, and the terminal's own button bit FLAPS at a still
+         //--- pixel — MEASURED by the census (`nm="1"` → `"0"` → `"1"`, cursor fixed, ~100 ms
+         //--- apart), all of it inside PATH_DBL_MS=400 and PATH_DBL_PX=6 of the first click.
+         //--- So ONE press could arm and fire the delete and the path vanished «خودکار», with
+         //--- no line in the log to explain it. No timing rule separates the two: a real
+         //--- double-click is also two still presses. So the delete is not a gesture here at
+         //--- all — the strip's bin is its one owner (`why=strip bin`, DrawStrip_Tap.mqh),
+         //--- which is the only place a deletion is a CHOICE rather than an accident.
          PathSelect(did); PathHandleFollow(did);
-         PathWitness("handle click id=" + did + " v=" + IntegerToString(hk));
-         s_pathClick = did; s_pathClickMs = now;
-         s_pathClickX = (int)lparam; s_pathClickY = (int)dparam;
+         PathWitness("handle click id=" + did + " v=" + IntegerToString(hk)
+                     + " — select only; delete lives in the strip's bin");
+         s_pathClick = "";   // P-UI-146: nothing arms a delete on the chart any more
          return true;
       }
       // A segment release: the press already selected and started the carry, or a

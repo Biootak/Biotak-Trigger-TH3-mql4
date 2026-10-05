@@ -417,6 +417,8 @@ void BaseKnotDragLockOff()
 void BaseKnotArm()
 {
    BaseKnotLazyInit();
+   GestureTakeRelease();   // P-UI-144: a NEW box is never gated by the last one — the
+                           // arbiter's ONE question is per drawing, so arming clears it
    g_bkState   = BK_ARMED;
    g_bkArmedMs = GetTickCount();
    g_bkLeftPrev = true;   // the arming press is still down — never take its release as click 1

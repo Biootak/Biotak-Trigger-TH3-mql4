@@ -55,6 +55,7 @@
 #include "..\Biotak\UtilityFunctions.mqh"
 #include "..\Biotak\BaseKnotTool.mqh"
 #include "..\Biotak\HRayTool.mqh"
+#include "..\Biotak\PathTool.mqh"
 #include "..\Biotak\CalculationCache.mqh"
 #include "..\Biotak\ZoneFactory.mqh"
 #include "..\Biotak\ZoneConfig.mqh"
@@ -170,6 +171,41 @@ void SSKind(const string tag, const int type, const int anchors)
    ObjectDelete(0, nm);
 }
 
+//--- P-LOOK — one fibo's look through the REAL write path, strip shut: the
+//--- fibo itself is the subject, so the PNG shows what the hand would see.
+//--- `st` is the STYLE slot value: 0-4 native, 5/6/7 Neon/Caps/Wash.
+void SSFiboDump(const string tag, const string fibo)
+{
+   int nl = (int)ObjectGetInteger(0, fibo, OBJPROP_LEVELS);
+   Print("[STRIPSHOT] ", tag, " fibo levels=", nl,
+         " w0=", ObjectGetInteger(0, fibo, OBJPROP_LEVELWIDTH, 0),
+         " s0=", ObjectGetInteger(0, fibo, OBJPROP_LEVELSTYLE, 0));
+   int total = ObjectsTotal(0, -1, -1), n = 0;
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(nm != fibo && StringFind(nm, fibo + "_FS") != 0) continue;
+      Print("[STRIPSHOT] obj ", nm,
+            " type=", ObjectGetInteger(0, nm, OBJPROP_TYPE),
+            " w=", ObjectGetInteger(0, nm, OBJPROP_WIDTH),
+            " st=", ObjectGetInteger(0, nm, OBJPROP_STYLE),
+            " clr=", ObjectGetInteger(0, nm, OBJPROP_COLOR),
+            " p0=", ObjectGetDouble(0, nm, OBJPROP_PRICE, 0),
+            " p1=", ObjectGetDouble(0, nm, OBJPROP_PRICE, 1));
+      n++;
+   }
+   Print("[STRIPSHOT] ", tag, " family=", n);
+}
+void SSFiboLook(const string tag, const int w, const int st)
+{
+   string nm = "StripShotFiboLook";
+   DrawSlotWrite(nm, DRAW_SLOT_COLOR, (double)(int)clrRed);
+   DrawSlotWrite(nm, DRAW_SLOT_WIDTH, (double)w);
+   DrawSlotWrite(nm, DRAW_SLOT_STYLE, (double)st);
+   SSSave(tag);
+   SSFiboDump(tag, nm);
+}
+
 //--- `folded` is the accordion's second fact (P-DRAW-117): the same open group
 //--- with its body folded away. Every existing call keeps the old default.
 void SSState(const string tag, const int picker, const int gear, const bool folded = false)
@@ -205,6 +241,18 @@ string SSMake(const string name, const int type, const int barA, const int barB)
 //+------------------------------------------------------------------+
 void OnStart()
 {
+   // P-BUILD-12 (2026-10-03) — A STARTUP SCRIPT MUST NOT JUDGE AN EMPTY CHART.
+   // At launch the extra chart's history is still downloading: Bars reads short
+   // for the first seconds, so an instant SKIP judges the download, not the
+   // paint. Wait (pump the queue) up to two minutes; SKIP only a chart that
+   // stays short. A SKIP still writes no PNG and fails --strict, as before.
+   int wait = 0;
+   while(Bars < 40 && wait < 120)
+   {
+      Sleep(1000);
+      RefreshRates();
+      wait++;
+   }
    int bars = Bars;
    if(bars < 40)
    {
@@ -278,7 +326,27 @@ void OnStart()
       ObjectDelete(0, fib);
    }
 
-   // ── cleanup ──
+    // ── P-LOOK — the fibo's own looks, one fibo re-worn five times: every
+    // ── switch tears down the previous look's family through the same sync
+    // ── the hand's taps ride, so a stranded child fails HERE, in the census.
+    string fl = "StripShotFiboLook";
+    if(ObjectFind(0, fl) >= 0) ObjectDelete(0, fl);
+    if(!ObjectCreate(0, fl, OBJ_FIBO, 0, Time[25], High[25], Time[5], Low[5]))
+       Print("[STRIPSHOT] fibo look fibo: ObjectCreate failed err=", GetLastError());
+    else
+    {
+       ObjectSetInteger(0, fl, OBJPROP_SELECTABLE, true);
+       ObjectSetInteger(0, fl, OBJPROP_BACK, false);
+       SSFiboLook("fibo_dash3",  3, ILS_DASH);
+       SSFiboLook("fibo_solid5", 5, ILS_SOLID);
+       SSFiboLook("fibo_neon3",  3, 4 + FIBPEN_LOOK_NEON);
+       SSFiboLook("fibo_caps3",  3, 4 + FIBPEN_LOOK_CAPS);
+       SSFiboLook("fibo_wash2",  2, 4 + FIBPEN_LOOK_WASH);
+       FibPenSync(fl, true);
+       ObjectDelete(0, fl);
+    }
+
+    // ── cleanup ──
    DrawStripClose();
    ChartRedraw();
    Print("[STRIPSHOT] DONE: ", g_shot, " screenshot(s) -> <MQL4>\\Files\\StripShot_*.png");

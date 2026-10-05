@@ -627,7 +627,7 @@ static bool     s_dsPalGrab = false;             // a scrub is live
 static int      s_dsPalCell = -1;                // its last previewed cell
 static uint     s_dsPalMs = 0;                   // its hit-test cadence (DSTRIP_GRIP_MS)
 static uint     s_dsPalDoneMs = 0;               // the release that already applied
-static string   s_dsPalName[DRAW_SEL_MAX];       // its members (the group, or the held one)
+static string   s_dsPalName[DRAW_SEL_MAX];       // its target: the SERVED drawing (P-DRAW-09b retired)
 static int      s_dsPalN = 0;
 static bool     s_dsHexFocus = false;            // the HEX field is being typed in
 //--- P-DRAW-48 (2026-09-26): THE COLOUR BOARD IS ITS OWN CARD. User order:

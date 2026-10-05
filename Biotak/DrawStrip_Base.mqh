@@ -275,7 +275,10 @@ void DrawStripGripRelease()
 // ══════════════════════════════════════════════════════════════════════════
 bool DrawStripIsColorSlot(const int slot)
 {
-   return (slot == DRAW_SLOT_COLOR || slot == DRAW_SLOT_FILLCLR);
+   //--- P-DRAW-BODY-UI: the handle's own colour rides the same palette bridge,
+   //--- so it is a colour cell too (same seats, no layout change).
+   return (slot == DRAW_SLOT_COLOR || slot == DRAW_SLOT_FILLCLR ||
+           slot == DRAW_SLOT_BODYCOLOR);
 }
 color DrawStripColorRead(const string nm, const int slot)
 {
@@ -307,6 +310,10 @@ static string s_dsPalObj = "";        // the drawing the popup is editing
 static int    s_dsPalSlot = DSTRIP_PICK_NONE;
 static int    s_dsPalAskSlot = DSTRIP_PICK_NONE;   // the pending open, one click wide
 static bool   s_dsPalRepaint = false;      // a pick owes the strip ONE frame (P-PAL-19f)
+//--- P-LVL-COLOR (2026-10-04) — ONE LEVEL'S OWN COLOR. -1 = the slot's (whole
+//--- drawing); >=0 = the stored level index on s_dsPalObj. The popup is the same
+//--- cards palette (one palette, P-PAL-19); only the target is narrower.
+static int    s_dsPalLevel = -1;
 
 void DrawStripPalAsk(const int slot)
 {
@@ -315,7 +322,19 @@ void DrawStripPalAsk(const int slot)
    s_dsPalObj  = s_dsObj;
    s_dsPalSlot = slot;
    s_dsPalAskSlot = slot;
+   s_dsPalLevel = -1;
 }
+//--- a level row's swatch asks through here: same palette, one stored level.
+void DrawStripPalAskLevel(const int slot, const int level)
+{
+   if(!s_dsOpen || s_dsObj == "") return;
+   DrawStripGearClose();
+   s_dsPalObj  = s_dsObj;
+   s_dsPalSlot = slot;
+   s_dsPalAskSlot = slot;
+   s_dsPalLevel = level;
+}
+bool DrawStripPalTargetIsLevel() { return (s_dsPalLevel >= 0); }
 int    DrawStripPalAsked()   { if(s_dsPalAskSlot == DSTRIP_PICK_NONE) return -1;
                                int a = s_dsPalAskSlot; s_dsPalAskSlot = DSTRIP_PICK_NONE; return a; }
 string DrawStripPalTargetObj()  { return s_dsPalObj; }
@@ -341,11 +360,37 @@ bool   DrawStripPalTargetLive() { return (s_dsPalObj != "" && DrawStripIsColorSl
 color DrawStripPalTargetColor()
 {
    if(!DrawStripPalTargetLive()) return clrNONE;
+   //--- P-LVL-COLOR: a level target reads its own stored ink, never the slot's.
+   if(s_dsPalLevel >= 0)
+   {
+      if(ObjectFind(0, s_dsPalObj) < 0) return clrNONE;
+      if(s_dsPalLevel >= DrawLevelCount(s_dsPalObj)) return clrNONE;
+      return (color)(int)ObjectGetInteger(0, s_dsPalObj, OBJPROP_LEVELCOLOR, s_dsPalLevel);
+   }
    return DrawStripColorRead(s_dsPalObj, s_dsPalSlot);
 }
 int DrawStripPalTargetApply(const color c)
 {
    if(!DrawStripPalTargetLive()) return 0;
+   //--- P-LVL-COLOR: one stored level re-inks (undoable — the level set snapshot
+   //--- carries per-level colors), the pen's children follow in the same frame.
+   if(s_dsPalLevel >= 0)
+   {
+      if(ObjectFind(0, s_dsPalObj) < 0) return 0;
+      if(s_dsPalLevel >= DrawLevelCount(s_dsPalObj)) return 0;
+      if((int)c < 0) return 0;
+      DrawStripUndoPush();
+      ObjectSetInteger(0, s_dsPalObj, OBJPROP_LEVELCOLOR, s_dsPalLevel, c);
+      FibPenSync(s_dsPalObj, false);
+      DrawStripRecentPush(c);
+      int gotL = (int)ObjectGetInteger(0, s_dsPalObj, OBJPROP_LEVELCOLOR, s_dsPalLevel);
+      DrawStripDiagEmit("[drawstrip] PALAPPLY live=1 obj=\"" + s_dsPalObj + "\" slot=" +
+                        IntegerToString(s_dsPalSlot) + " level=" + IntegerToString(s_dsPalLevel) +
+                        " picked=" + DrawStripColorHex(c) +
+                        " read=" + DrawStripColorHex((color)gotL));
+      s_dsPalRepaint = true;
+      return 1;
+   }
    DrawStripColorCommit(s_dsPalSlot, c);
    DrawStripRecentPush(c);
    //--- P-PAL-19d (2026-10-02) — THE SECOND PICK IS A SEPARATE CASE, and the report
@@ -376,6 +421,8 @@ int DrawStripPalTargetApply(const color c)
 int DrawStripPalTargetAlpha()
 {
    if(!DrawStripPalTargetLive()) return -1;
+   //--- P-LVL-COLOR: one level has no tone of its own (-1 = no TR track).
+   if(s_dsPalLevel >= 0) return -1;
    return DrawSlotAlphaGet(s_dsPalObj, s_dsPalSlot);
 }
 //--- P-DRAW-64a2 (2026-10-02) — WHICH SLOT, IN THE STRIP'S OWN WORDS. The popup's two
@@ -387,6 +434,11 @@ int DrawStripPalTargetAlpha()
 void DrawStripPalRoleSet(const int role)
 {
    if(s_dsPalObj == "" || s_dsPalSlot == DSTRIP_PICK_NONE) return;
+   //--- P-DRAW-BODY-UI: a handle colour has no second role — the BORDER/FILL
+   //--- chips must not retarget it onto the levels while the popup is open.
+   if(s_dsPalSlot == DRAW_SLOT_BODYCOLOR) return;
+   //--- P-LVL-COLOR: one level is one target — the role chips keep it.
+   if(s_dsPalLevel >= 0) return;
    int want = (role == 0) ? DRAW_SLOT_COLOR : DRAW_SLOT_FILLCLR;
    if(!DrawSlotAvailable(DrawKindOf(s_dsPalObj), want)) return;
    s_dsPalSlot = want;
@@ -585,10 +637,26 @@ static int      s_duFill[DSTRIP_UNDO_MAX], s_duRay[DSTRIP_UNDO_MAX];
 static color    s_duFillClr[DSTRIP_UNDO_MAX];    // P-DRAW-64: the interior's colour
 static int      s_duFillOp[DSTRIP_UNDO_MAX];     // and its own tone
 static int      s_duFont[DSTRIP_UNDO_MAX], s_duGlyph[DSTRIP_UNDO_MAX], s_duBack[DSTRIP_UNDO_MAX];
+static color    s_duBodyClr[DSTRIP_UNDO_MAX];   // P-DRAW-BODY-UI: undo restores the handle too
+static int      s_duBodyW[DSTRIP_UNDO_MAX], s_duBodySt[DSTRIP_UNDO_MAX];
 static int      s_duLvN = 0;
 static double   s_duLvV[DSTRIP_UNDO_LV];
 static color    s_duLvC[DSTRIP_UNDO_LV];
 static int      s_duLvW[DSTRIP_UNDO_LV], s_duLvS[DSTRIP_UNDO_LV];
+static string   s_duLvT[DSTRIP_UNDO_LV];   // P-LVL-TEXT: one level's own note
+//--- P-LVL-TEXT (2026-10-04) — ONE LEVEL'S NOTE, ARMED. The label zone of a level
+//--- row arms the e4 field on that STORED level; Enter commits LEVELTEXT.
+//--- Disarmed by the commit and by GearClose (strip close rides it).
+static bool     s_dsLvlDescArmed = false;
+static string   s_dsLvlDescObj = "";
+static int      s_dsLvlDescIdx = -1;
+bool DrawStripLvlDescWant()
+{
+   if(!s_dsLvlDescArmed || s_dsLvlDescObj == "" || s_dsLvlDescObj != s_dsObj) return false;
+   if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
+   if(s_dsLvlDescIdx < 0 || s_dsLvlDescIdx >= DrawLevelCount(s_dsObj)) return false;
+   return true;
+}
 static string   s_duCopy = "";
 
 string DrawStripObjName(const int i)  { return "PnlDrawS_" + IntegerToString(i); }
@@ -912,6 +980,22 @@ bool DrawStripGearHit(const int mx, const int my)
       if(my < ry || my >= ry + DSTRIP_GEAR_ROW_H) continue;
       int rx = px + s_dsGRCol[r] * DSTRIP_GEAR_COL;
       if(mx < rx || mx >= rx + rowW) continue;
+      //--- P-LVL-COLOR: the level row's swatch (the paint's own chip seat below)
+      //--- opens the palette on that stored level; the rest of the row toggles.
+      //--- Same seat arrays the paint writes (s_dsGRY/s_dsGRCol) plus the paint's
+      //--- own chip constants — no second grid.
+      //--- P-LVL-TEXT: the LABEL zone arms the note field; the switch zone and
+      //--- the row's padding keep the legacy toggle.
+      if(s_dsGRKind[r] == 4)
+      {
+         int sx = rx + DSTRIP_GEAR_PAD, sy = ry + DSTRIP_CARD_CHIP_Y;
+         if(mx >= sx && mx < sx + 22 && my >= sy && my < sy + 22)
+         { DrawStripGearLevelColorTap(r); return true; }
+         int lx = rx + DSTRIP_GEAR_PAD + 22 + 8;
+         int wx = rx + rowW - 40;
+         if(mx >= lx && mx < wx)
+         { DrawStripGearLevelDescTap(r); return true; }
+      }
       DrawStripGearRowTap(r);
       return true;
    }
@@ -1137,8 +1221,26 @@ string DrawStripIconRes(const int slot, const string nm)
    if(slot == DRAW_SLOT_STYLE)
    {
       int st = (int)DrawSlotRead(nm, DRAW_SLOT_STYLE);
+      if(st < 0) st = 0;
+      // P-LOOK: a look wears its native icon (no baked glyphs for looks).
+      else if(st > 4) st = FibPenLookNative(st - 4);
       if(st < 0 || st > 4) st = 0;
       return "::Files\\Icons\\bk_style" + IntegerToString(st) + ".bmp";
+   }
+   //--- P-DRAW-BODY-UI: the handle's own width/style reuse the level family's
+   //--- rasters (same seats, no new art) — read off the body's own slots, so the
+   //--- two width cells can never show each other's value.
+   if(slot == DRAW_SLOT_BODYWIDTH)
+   {
+      int bw = (int)DrawSlotRead(nm, DRAW_SLOT_BODYWIDTH);
+      if(bw < DRAW_WIDTH_MIN || bw > DRAW_WIDTH_MAX) bw = DRAW_WIDTH_MIN;
+      return "::Files\\Icons\\bk_w" + IntegerToString(bw) + ".bmp";
+   }
+   if(slot == DRAW_SLOT_BODYSTYLE)
+   {
+      int bs = (int)DrawSlotRead(nm, DRAW_SLOT_BODYSTYLE);
+      if(bs < 0 || bs > 4) bs = 0;
+      return "::Files\\Icons\\bk_style" + IntegerToString(bs) + ".bmp";
    }
    if(slot == DRAW_SLOT_RAY)
    {

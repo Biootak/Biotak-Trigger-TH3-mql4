@@ -99,17 +99,31 @@ bool LegMeasureEditMouse(const int mx, const int my, const string buttons)
     if(g_legSess.active)    return false;
     if(ChartViewLockHeld()) return false;
 
-    if(pressed)
-    {
-        string base; int mode;
-        if(!LegMeasureHitTest(mx, my, base, mode))
-            return false;                    // the press belongs to the chart
-        // the press is ours: snapshot what the press found, take the view, and
-        // bring the readout along for the ride
-        string ln = base + "_Line";
+if(pressed)
+     {
+         string base; int mode;
+         if(!LegMeasureHitTest(mx, my, base, mode))
+             return false;                    // the press belongs to the chart
+         //--- P-UI-144 (2026-10-02): THE HAND IS OURS TO GIVE — the same question the
+         //--- path, the ray and the box ask (the arbiter owns it, GlobalVariables.mqh):
+         //--- a drawing that is not already TAKEN cannot be taken. The leg carries its
+         //--- endpoints AND its three handles, and taking it on the first touch is what
+         //--- let a stroke of the terminal's own tool walk away with it. The first press
+         //--- TAKES the leg (its plate and handles light up, no anchor moves); the second
+         //--- carries it. DECIDED, not detected — three measurements closed that road.
+         if(!GestureTakeAllowed(base))
+         {
+            GestureTakeNote(base);
+            LegMeasurePlateShow(base);
+            return true;
+         }
+         // the press is ours: snapshot what the press found, take the view, and
+         // bring the readout along for the ride
+         string ln = base + "_Line";
         s_legDragBase  = base;
         s_legDragMode  = mode;
         s_legDragMoved = false;
+        Print("[LM] carry base=", base, " mode=", IntegerToString(mode), " why=", GestureTakeWhy());   // P-UI-144: the carry's own half of the proof
         s_legSnapT1 = (datetime)ObjectGetInteger(0, ln, OBJPROP_TIME, 0);
         s_legSnapP1 = ObjectGetDouble(0, ln, OBJPROP_PRICE, 0);
         s_legSnapT2 = (datetime)ObjectGetInteger(0, ln, OBJPROP_TIME, 1);
@@ -265,8 +279,9 @@ void LegMeasureToggle()
         s_legLastLeft    = false;
         LegPreviewClear();        // P-LM-10: the dashes and the preview head together
         ChartViewLockRelease();   // P-UI-90: release the shared scroll/ctx lock
-    } else {
-        g_legSess.active = true;
+} else {
+         GestureTakeRelease();   // P-UI-144: a NEW leg is never gated by the last one
+         g_legSess.active = true;
         g_legSess.step   = 0;
         s_legLastLeft    = false;
         // P-TH3-PB-UI: one gesture at a time — the leg takes the clicks.

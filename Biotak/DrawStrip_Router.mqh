@@ -475,6 +475,9 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    // one invocation, so this is a local, not state).
    bool relWasDrag = false;
    string relPressObj = "";   // P-UI-113i: this button-up's own press owner
+   static uint s_drN = 0;      // DIAG-140: drag events in the open window
+   static uint s_drMs = 0;     // ...window start (ms)
+   static string s_drObj = ""; // ...owner under the hand
    //--- P-DRAW-64 addendum 5 (2026-09-27) — THE INTERIOR'S STEP IS NOT THE STRIP'S.
    //--- This witness stands ABOVE EVERY GUARD below, because the split belongs to
    //--- the DRAWING: with the strip shut, the old placement sat two hundred lines
@@ -503,6 +506,31 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       //--- a hairline is three frames the user explicitly refused). The pump stays the
       //--- net for gestures that fire no event at all.
       BoxMidSync(sparam);
+      FibPenSync(sparam, false);   // P-DRAW-74b: the pair rides the same event (reads on a still frame)
+      // P-DRAGF: arm the chase — the drag event names the hand's object, the moves
+      // do the following (FibPen.mqh). Drag-rate cost: kind + existence reads.
+      if(id == CHARTEVENT_OBJECT_DRAG) FibPenDragArm(sparam);
+      // P-DRAW-74b-f (2026-10-03) — A DRAG FLUSHES ITS OWN FRAME. The terminal
+      // blits the dragged master live and repaints followers on its own cadence,
+      // so a resized fibo's stack trailed one frame behind for the whole gesture
+      // («موقع ریسایز کردن فریمش عقب میمونه»). P-DRAW-127's law, same shape as the
+      // GEAR branch: a user action gets one flush, a paint pass never does.
+      ChartRedraw();
+      // DIAG-140 (2026-10-03) — THE DRAG RATE, MEASURED NOT GUESSED. A lag report
+      // during a gesture is either an event queue the handler cannot drain or
+      // paint the terminal defers — events per second tell which. One line per
+      // gesture-second; still frames are silent.
+      if(id == CHARTEVENT_OBJECT_DRAG)
+      {
+         uint nowMs = GetTickCount();
+         if(s_drObj != sparam || nowMs - s_drMs >= 1000)
+         {
+            if(s_drN > 0 && s_drObj != "")
+               DrawStripDiagEmit("[drawstrip] DRAGSTAT obj=\"" + s_drObj + "\" n=" + IntegerToString(s_drN));
+            s_drObj = sparam; s_drN = 0; s_drMs = nowMs;
+         }
+         s_drN++;
+      }
    }
    // P-DRAW-17: the left button's press edge and travel, on EVERY move — the
    // trigger needs them while the strip is CLOSED, the grip carry needs the edge
@@ -621,6 +649,20 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       }
        DrawStripHoldStep(tmx, tmy, tleft, s_dsLeftPress);   // P-UI-113: left-hold opens
        if(!tleft) DrawStripColorHoverAt(tmx, tmy);
+       //--- P-DRAGF2 (2026-10-04) — THE CHASE IS THE DRAWING'S, NOT THE STRIP'S. The
+       //--- follow used to sit BELOW the shut-strip guard (the second MOUSE_MOVE branch,
+       //--- with the grip carry), so with the strip shut a dragged fibo's stack moved
+       //--- ONLY on the terminal's own drag events — measured DRAGSTAT 0.6-1.6 s apart —
+       //--- the same shape P-DRAW-64d fixed for the box's mid line one seat down
+       //--- («این خط 50 درصد چند فریم عقب زمانی که باکس و جابجا میکنم»). A drawing's
+       //--- followers belong to the drawing: the chase stands here, above every guard,
+       //--- beside the press edge that already owns the button. Cost with nothing armed:
+       //--- two compares.
+       // P-DRAGF: the chase rides the hand's own stream — drag events arrive ~1-2/s
+       // (measured DRAGSTAT) while moves arrive ~60-100/s. Button-held only;
+       // anything else disarms instead of following.
+       if(tleft) FibPenDragFollow((int)lparam, (int)dparam);
+       else FibPenDragDisarm();
     }
 
     // P-DRAW-17: THE OPEN PATH RUNS BEFORE THE GUARD — the guard below says the strip
@@ -672,11 +714,14 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        //--- end of every gesture AND names its own object — so this one call is the
        //--- cheap witness that repairs it in the frame the hand lets go, before the
        //--- dismissal below can return. Once per gesture, ~12 guarded reads.
-        if(relPressObj != "")
-        {
-           FillChildSync(relPressObj);
-           BoxMidSync(relPressObj);
-        }
+         if(relPressObj != "")
+         {
+            FillChildSync(relPressObj);
+            BoxMidSync(relPressObj);
+            FibPenSync(relPressObj, false);   // P-DRAW-74b: the release re-states the pair too
+            FibPenDragDisarm();   // P-DRAGF: the gesture is over, the chase stands down
+            ChartRedraw();   // P-DRAW-74b-f: the release flushes the re-stamp
+         }
         FillChildStampRelease();   // P-DRAW-64 addendum 6: the hand let go, so the memo rests
 
        s_dsPressObj = "";
@@ -850,9 +895,29 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // A deleted CHILD is its parent's business: drop the child, heal parent.
       if(BoxIsMidChild(sparam)) { string par = BoxMidParent(sparam); if(par != "" && ObjectFind(0, par) >= 0) BoxMidSync(par); return false; }
       if(FillIsChild(sparam)) { string fpar = FillChildParent(sparam); if(fpar != "" && ObjectFind(0, fpar) >= 0) FillChildSync(fpar); return false; }
+      //--- P-DEL-ALL (2026-10-03) — EVERYTHING A DRAWING OWNS DIES WITH IT. The
+      //--- bin paths already drop each family; a NATIVE delete (Delete key, object
+      //--- list) fires this event instead and must do the same, or strays stay on
+      //--- the chart over the next drawing. Every drop below is name-keyed and a
+      //--- no-op when absent; the indicator's own objects never carry FibPen
+      //--- children (the sync refuses them outright), and rays/paths are healed
+      //--- by their own tools (P-HR-01, PathTool:833) — never a second owner here.
+      bool casc = false;
+      if(!DrawIsIndicatorObject(sparam))
+      {
+         if(FibPenStraysDrop(sparam)) casc = true;
+         if(FibPenTagDrop(sparam)) casc = true;
+         if(FibPenLookDrop(sparam)) casc = true;
+      }
+      BoxEdgeForget(sparam);
       BoxMidDrop(sparam);
-      FillChildDrop(sparam);
+      if(FillChildDrop(sparam)) casc = true;
       BoxMarkDrop(sparam);   // P-UI-134: a deleted box's KEY goes with it
+      if(casc) DrawStripDiagEmit("[drawstrip] CASCADE obj=\"" + sparam + "\"");
+      //--- P-DEL-NOW: a native delete drops the family in THIS event, so it owns
+      //--- this frame too — without it the strays leave the object list at once
+      //--- but their pixels wait for the next tick/pass («وابستگی دیر حذف میشه»).
+      if(casc) ChartRedraw();
       return false;
    }
    // P-DRAW-41 (2026-09-25) — THIS CHANNEL USED TO FOLLOW. P-DRAW-08c/08e/09d made
@@ -877,6 +942,9 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // leaves the plate; the strip is already the right picture at the right spot.
       // All this channel still owes is the window's clamp (compare-only when kept).
       DrawStripHomeClamp();
+      // P-DRAW-74b-f: a zoom re-measures pixel offsets (scroll is reads-only, the
+      // moves compare equal). Served object only — no walks on the scroll path.
+      if(id == CHARTEVENT_CHART_CHANGE) FibPenSync(s_dsObj, false);
       return false;
    }
    // P-DRAW-13: the grip carry rides the terminal's own move stream (left = bit 0,
@@ -885,6 +953,9 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    {
       int st = (int)StringToInteger(sparam);
       DrawStripGripMove((int)lparam, (int)dparam, ((st & 1) != 0));
+      // P-DRAGF2: the chase itself moved to the UNGUARDED move branch above — a
+      // drawing's followers are not the strip's to carry. This branch keeps the grip
+      // carry, which IS the strip's own gesture.
       return false;
    }
     // P-DRAW-13: Esc dismisses inside-out (gear, then popover, then strip — even

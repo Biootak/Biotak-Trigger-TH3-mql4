@@ -24,6 +24,11 @@
 //+------------------------------------------------------------------+
 #property copyright "Biotak"
 #property strict
+// P-WARN-87 (2026-10-04): this is the one harness in tests/ that is an INDICATOR (it has
+// OnInit/OnCalculate), so it was the one that earned `warning 87: no indicator window
+// property is defined` — the audit reads the CHART's objects, so the window it wants is
+// the chart's own, said out loud.
+#property indicator_chart_window
 
 #include "..\Biotak\BuildConfig.mqh"
 #include "..\Biotak\MathConstants.mqh"
@@ -42,6 +47,7 @@
 #include "..\Biotak\UtilityFunctions.mqh"
 #include "..\Biotak\BaseKnotTool.mqh"
 #include "..\Biotak\HRayTool.mqh"
+#include "..\Biotak\PathTool.mqh"   // P-UI-136: same layer — HRayTool's own press test asks PathSessionActive()
 #include "..\Biotak\CalculationCache.mqh"
 #include "..\Biotak\ZoneFactory.mqh"
 #include "..\Biotak\ZoneConfig.mqh"
@@ -223,7 +229,15 @@ int OnInit()
    //--- the one thing no number can replace: what the surface LOOKS like.
    //--- Written where the agent can read it, so the next round needs no human.
    string shot = "UIAudit_" + IntegerToString(ChartID()) + ".png";
-   if(ChartScreenShot(shot, 0, 0, 0, 0))
+   // P-WARN-180 (2026-10-04): the two arguments were SWAPPED here (`ChartScreenShot(shot, 0, ...)`),
+   // so the call fed a FILENAME to the chart-id parameter and 0 to the filename — warning 180/181
+   // were the only trace, and the audit's screenshot never existed. Same spelling as the shot
+   // harness (Biotak_StripShot_Test.mq4 SSSave): id 0 = this chart, the chart's own pixel size.
+   int shotW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int shotH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(shotW <= 0) shotW = 1600;
+   if(shotH <= 0) shotH = 900;
+   if(ChartScreenShot(0, shot, shotW, shotH, 0))
       Print("[UIAUDIT] screenshot written: <MQL4>\\Files\\", shot);
    else
       Print("[UIAUDIT] screenshot FAILED (GetLastError=", GetLastError(), ")");

@@ -694,6 +694,9 @@ int PaletteApplyTransparency(const int kind, const int tr)
       case PAL_DRAW_BORDER:
       case PAL_DRAW_FILL:
          if(!DrawStripPalTargetLive()) return REFRESH_NONE;
+         //--- P-LVL-COLOR: one level has no tone of its own — the TR track is
+         //--- hidden for it (PalTargetAlpha answers -1), so a drag here is a no-op.
+         if(DrawStripPalTargetIsLevel()) return REFRESH_NONE;
          DrawSlotOpacitySet(DrawStripPalTargetObj(), t, DrawStripPalTargetSlot());
          DrawStripPalRepaintAsk();   // P-PAL-19f: a REQUEST, not a paint — the strip is
                                      // repainted by the entry's bridge, once, after this

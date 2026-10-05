@@ -15,7 +15,11 @@ int HandleButtonClick(const string clickedObject)
       if(PathSessionActive()) { PathSessionClear(); PathCancel(); return REFRESH_NONE; }
       if(g_OrbWasDragged)
       {
-         g_OrbWasDragged = false;
+         g_OrbWasDragged = false;   // P-UI-147: this flag is the CLICK-EATER's alone. It used
+         //--- to also carry «the hand really moved the orb», and clearing it here could land
+         //--- before the release read it — the orb's home was then never saved and the next
+         //--- repaint put it back where it was. The movement has its own flag (g_OrbMoved),
+         //--- which only the release clears.
          return REFRESH_NONE;
       }
       // Hierarchy: orb -> ring -> sub-menu. While the sub-menu is open the ring is

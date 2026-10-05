@@ -84,7 +84,6 @@ enum EDrawKind
 //--- APPENDED, so no existing slot index moved (the strip speaks these numbers).
 #define DRAW_SLOT_BOXHALF 11
 #define DRAW_SLOT_EXTEND  12
-#define DRAW_SLOT_N        13
 //--- P-DRAW-64 (2026-09-27) — THE SECOND COLOUR, ONE PER ROLE. User order: «رنگ
 //--- بوردر بشه جدا تنظیم کرد ... و fill همه جدا. یک بخش براش اضافه کن». MT4 gives
 //--- a drawing ONE colour (the docs' own `RectangleCreate` fills with `InpColor`;
@@ -95,6 +94,20 @@ enum EDrawKind
 //---     (`<drawing>_FL`, the `_BX50` pattern) wearing the interior's own colour.
 //--- APPENDED, so no existing slot index moved (the strip speaks these numbers).
 #define DRAW_SLOT_FILLCLR 10
+
+//--- P-DRAW-BODY (2026-10-04) — THE BODY IS A LINE OF ITS OWN. «این خط هم جدا باشه
+//--- تنظیمات و رنگ و استایل و غیره در تنظیمات و تداخل نداشته باشه باهم». A level drawing
+//--- is TWO pictures: the line MT4 draws between the anchors (the BODY) and the LEVEL
+//--- family the pen styles — and the strip's own colour/width/style cells were writing
+//--- BOTH halves at once, so restyling a level restyled the body and vice versa. These
+//--- three seats are the body's: they write `OBJPROP_COLOR/WIDTH/STYLE` and NOTHING else
+//--- — no `DrawLevelsSet*`, no look tag, no kind memory (the levels' memory is theirs).
+//--- The three cells above them are, for a level kind, the LEVELS' alone.
+//--- APPENDED, so no existing slot index moved (the strip speaks these numbers).
+#define DRAW_SLOT_BODYCOLOR 13
+#define DRAW_SLOT_BODYWIDTH 14
+#define DRAW_SLOT_BODYSTYLE 15
+#define DRAW_SLOT_N          16
 
 //--- THE CAPABILITIES, one bit per slot. A kind's mask IS its toolbar.
 #define DRAW_CAP_COLOR   (1 << DRAW_SLOT_COLOR)
@@ -110,6 +123,10 @@ enum EDrawKind
 #define DRAW_CAP_FILLCLR (1 << DRAW_SLOT_FILLCLR)   // P-DRAW-64: the interior's colour
 #define DRAW_CAP_BOXHALF  (1 << DRAW_SLOT_BOXHALF)  // P-DRAW-64a: the box at 50% of its length
 #define DRAW_CAP_EXTEND   (1 << DRAW_SLOT_EXTEND)   // P-DRAW-64a: the far edge travels
+#define DRAW_CAP_BODYCOLOR (1 << DRAW_SLOT_BODYCOLOR) // P-DRAW-BODY: the line between the anchors
+#define DRAW_CAP_BODYWIDTH (1 << DRAW_SLOT_BODYWIDTH)
+#define DRAW_CAP_BODYSTYLE (1 << DRAW_SLOT_BODYSTYLE)
+#define DRAW_CAP_BODY      (DRAW_CAP_BODYCOLOR | DRAW_CAP_BODYWIDTH | DRAW_CAP_BODYSTYLE)
 //--- every drawing tool the user has: the four common controls + the two that
 //--- every MT4 object really carries (LOCK, BACK) + the terminal's own dialog
 //--- hint. Kinds add FILL / RAY / FONT / GLYPH on top (see the table).
@@ -123,6 +140,12 @@ enum EDrawKind
 //--- the style memory's bounds, mirrored from the panel's own rows.
 #define DRAW_WIDTH_MIN   1
 #define DRAW_WIDTH_MAX   5
+//--- P-LOOK: the fibo's own looks ride the STYLE slot as 5/6/7 — one vocabulary
+//--- for the slot's readers (here), its writer (Toolbar_B) and its painter
+//--- (FibPen paints them from the [LKn] tag, ids 1..3, its own defines).
+#define FIBPEN_STYLE_NEON  5   // dash + light core (needs width 3+ for the tube)
+#define FIBPEN_STYLE_CAPS  6   // solid + end blocks
+#define FIBPEN_STYLE_WASH  7   // solid + halo under each level
 //--- P-DRAW-09a: the two bounded properties the new slots cycle. FONT is the
 //--- caption's own point size (MT4 draws OBJ_TEXT at it unchanged), GLYPH the
 //--- Wingdings code of a mark.
@@ -207,6 +230,15 @@ int DrawObjectType(const string name)
    return (int)ObjectGetInteger(0, name, OBJPROP_TYPE);
 }
 
+// P-DRAW-74b — THE FIBO'S OWN STACKED PEN lives in Biotak/FibPen.mqh (split
+// 2026-10-03: this file stood at 1498 of the 1500-line ceiling).
+// P-WARN-46 (2026-10-04): the six prototypes that stood here went with the build's
+// last 6 `warning 46: no #import declaration` lines. They were written for a
+// top-down rule MQL4 does not enforce for FUNCTIONS: `UIPointerOverSurface` has
+// been called from EventHandlers_Router with its only body in the later-included
+// BiotakPanels_Hit.mqh since P-UI-92c, with no prototype anywhere, and the build
+// has been green throughout. A prototype is still owed for #import-ed libraries -
+// which is exactly the warning this file no longer earns.
 // ══════════════════════════════════════════════════════════════════════════
 // P-DRAW-21 — THE BOX'S OWN CHILDREN. A box 50% line is a helper the terminal
 // cannot draw (OBJ_RECTANGLE has no mid line), so it lives as a separate
@@ -275,6 +307,8 @@ EDrawKind DrawKindOf(const string name)
 {
    if(BoxIsMidChild(name)) return DK_NONE;    // P-DRAW-21: a box helper is served never
    if(FillIsChild(name))   return DK_NONE;    // P-DRAW-64: nor an interior's child
+   if(FibPenIsChild(name)) return DK_NONE;    // P-DRAW-74b: nor the fibo's stacked pen
+   if(FibPenFamIsChild(name)) return DK_NONE;   // P-LOOK: nor a look's caps or wash
    int t = DrawObjectType(name);
    if(t < 0) return DK_NONE;
    switch(t)
@@ -323,12 +357,14 @@ int DrawKindCaps(const EDrawKind k)
       //--- not that price, so a control there would be a promise nothing keeps (C-04:
       //--- no control where nothing would happen).
       case DK_CHANNEL:   return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR;
+      //--- P-DRAW-BODY: the six kinds that draw a body AND a level family now carry the
+      //--- body's own three seats beside the levels' three — two pictures, two sets.
       case DK_FIBO:
-      case DK_FIBOFAN:   return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR;
-      case DK_FIBOCHAN:  return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR;
-      case DK_EXPANSION: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR;
-      case DK_GANN:      return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR;
-      case DK_PITCHFORK: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR;
+      case DK_FIBOFAN:   return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
+      case DK_FIBOCHAN:  return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
+      case DK_EXPANSION: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
+      case DK_GANN:      return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
+      case DK_PITCHFORK: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
       case DK_RECT:      return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR |
                                 DRAW_CAP_BOXHALF | DRAW_CAP_EXTEND;
       case DK_TRIANGLE:
@@ -418,16 +454,20 @@ void DrawLevelsSetColor(const string name, const color c)
 {
    int n = DrawLevelCount(name);
    for(int k = 0; k < n; k++) ObjectSetInteger(0, name, OBJPROP_LEVELCOLOR, k, c);
+   FibPenSync(name, false);   // P-DRAW-74b: children wear the level's ink
 }
 void DrawLevelsSetWidth(const string name, const int w)
 {
    int n = DrawLevelCount(name);
    for(int k = 0; k < n; k++) ObjectSetInteger(0, name, OBJPROP_LEVELWIDTH, k, w);
+   FibPenTagDrop(name);   // P-DRAW-74b: truth is explicit again — a remembered width would lie
+   FibPenSync(name, false);   // P-DRAW-74b: the pen the terminal cannot draw steps down here
 }
 void DrawLevelsSetStyle(const string name, const int st)
 {
    int n = DrawLevelCount(name);
    for(int k = 0; k < n; k++) ObjectSetInteger(0, name, OBJPROP_LEVELSTYLE, k, st);
+   FibPenSync(name, false);   // P-DRAW-74b
 }
 
 bool DrawHitLevels(const string name, const int px, const int py)
@@ -655,6 +695,15 @@ static int   s_dkRay[DK_COUNT];      // 0 none · 1 right · 2 left · 3 both
 static int   s_dkFont[DK_COUNT];     // OBJ_TEXT caption size (points)
 static int   s_dkGlyph[DK_COUNT];    // OBJ_ARROW Wingdings code
 static bool  s_dkBack[DK_COUNT];     // draw as background
+//--- P-DRAW-INK (2026-10-04) — THE ONE INK EVERY KIND SHARES. The nine slots above
+//--- answer "what did THIS kind last wear"; this one answers the question the hand's
+//--- own report asks («چرا رنگش پیش‌فرض که میکشم سفید هستش؟ آخرین تغییرات آبی بود») —
+//--- which colour did the LAST pick paint, whichever kind it painted. A kind that
+//--- has no colour of its own takes it at birth (a first-ever fibo wears the blue
+//--- the last trendline was), and the same file carries it across an attach. It is a
+//--- FALLBACK, never a write over a kind's own colour: the memory of P-DRAW-48/75
+//--- is asked first, this answers only when that memory is empty.
+static color s_dkAnyClr = clrNONE;
 
 void DrawStyleInit()
 {
@@ -674,6 +723,9 @@ void DrawStyleInit()
       s_dkGlyph[k] = 0;
       s_dkBack[k]  = false;
    }
+   //--- P-DRAW-INK: an empty memory has no last ink either — the file's own row puts
+   //--- it back (DrawPresetsLoad), so the reset must not leave yesterday's blue behind.
+   s_dkAnyClr = clrNONE;
 }
 
 //--- "#RRGGBB" of a colour, and back. Moved DOWN from DrawStrip by P-DRAW-48
@@ -1014,10 +1066,18 @@ double DrawSlotRead(const string name, const int slot)
          return (double)(int)ObjectGetInteger(0, name, OBJPROP_COLOR);
       }
       case DRAW_SLOT_WIDTH:
-         if(lvl) return (double)(int)ObjectGetInteger(0, name, OBJPROP_LEVELWIDTH, 0);
+         // P-DRAW-74b: a demoted level reads 1 — the LOGICAL width is the tag's.
+         if(lvl) return (double)FibPenLogicalWidth(name, 0);
          return (double)(int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
       case DRAW_SLOT_STYLE:
-         if(lvl) return (double)(int)ObjectGetInteger(0, name, OBJPROP_LEVELSTYLE, 0);
+         // P-LOOK: a look answers 5/6/7; the terminal holds its native 0-4.
+         // FibPenLookGet answers 0 outside 1..3, so a positive answer IS the look.
+         if(lvl)
+         {
+            int lk = FibPenLookGet(name);
+            if(lk > 0) return (double)(4 + lk);
+            return (double)(int)ObjectGetInteger(0, name, OBJPROP_LEVELSTYLE, 0);
+         }
          return (double)(int)ObjectGetInteger(0, name, OBJPROP_STYLE);
       case DRAW_SLOT_FILL:
       {
@@ -1087,6 +1147,23 @@ double DrawSlotRead(const string name, const int slot)
       }
       case DRAW_SLOT_GLYPH: return (double)(int)ObjectGetInteger(0, name, OBJPROP_ARROWCODE);
       case DRAW_SLOT_BACK:  return ((int)ObjectGetInteger(0, name, OBJPROP_BACK) != 0) ? 1.0 : 0.0;
+      //--- P-DRAW-BODY: the body reads the object's OWN pair — the same three lines the
+      //--- body's three seats write, so the cell can never show the levels' value.
+      case DRAW_SLOT_BODYCOLOR: return (double)(color)(int)ObjectGetInteger(0, name, OBJPROP_COLOR);
+      case DRAW_SLOT_BODYWIDTH:
+      {
+         int bw = (int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
+         if(bw < DRAW_WIDTH_MIN) bw = DRAW_WIDTH_MIN;
+         if(bw > DRAW_WIDTH_MAX) bw = DRAW_WIDTH_MAX;
+         return (double)bw;
+      }
+      case DRAW_SLOT_BODYSTYLE:
+      {
+         int bs = (int)ObjectGetInteger(0, name, OBJPROP_STYLE);
+         if(bs < 0) bs = 0;
+         if(bs > (int)STYLE_DASHDOTDOT) bs = (int)STYLE_DASHDOTDOT;
+         return (double)bs;
+      }
       default: return 0.0;
    }
 }
@@ -1219,6 +1296,7 @@ bool DrawSlotPreviewColor(const string name, const color c)
    if((color)ObjectGetInteger(0, name, OBJPROP_COLOR) == rc) return false;
    ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
    if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, rc);
+   FibPenSync(name, false);   // P-DRAW-74b: the preview reaches the stack too
    return true;
 }
 bool DrawSlotPreviewFillColor(const string name, const color c)
@@ -1238,6 +1316,7 @@ bool DrawSlotPreviewFillColor(const string name, const color c)
    if(!DrawKindHasLevels(k) || DrawLevelCount(name) <= 0) return false;
    if((color)ObjectGetInteger(0, name, OBJPROP_LEVELCOLOR, 0) == rc) return false;
    DrawLevelsSetColor(name, rc);
+   FibPenSync(name, false);   // P-DRAW-74b: the preview reaches the stack too
    return true;
 }
 //--- the pixels the tags say, and only those: the preview's undo. One owner, so a
@@ -1277,6 +1356,10 @@ bool DrawSlotRenderRestore(const string name)
          }
       }
    }
+   // P-DRAW-74b: restored levels re-ink the stack — a hover that previewed and
+   // left would otherwise strand the children in the preview ink. Only a real
+   // restore can strand ink, so a no-op restore syncs nothing.
+   if(changed) FibPenSync(name, false);
    return changed;
 }
 

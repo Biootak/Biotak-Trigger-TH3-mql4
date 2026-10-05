@@ -9,6 +9,7 @@
 #define DRAW_TOOLBAR_MQH
 
 #include "Toolbar_A.mqh"
+#include "FibPen.mqh"
 #include "Toolbar_B.mqh"
 
 #endif // DRAW_TOOLBAR_MQH

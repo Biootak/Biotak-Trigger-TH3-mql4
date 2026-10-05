@@ -26,6 +26,9 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_STYLE:
       {
          int st = (int)DrawSlotRead(nm, DRAW_SLOT_STYLE);
+         if(st == FIBPEN_STYLE_NEON) return "Neon";
+         if(st == FIBPEN_STYLE_CAPS) return "Caps";
+         if(st == FIBPEN_STYLE_WASH) return "Wash";
          if(st == STYLE_DASH) return "Dash";
          if(st == STYLE_DOT) return "Dot";
          if(st == STYLE_DASHDOT) return "D-Dash";
@@ -65,6 +68,21 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_BACK:
          // the slot IS `OBJPROP_BACK`, so the word follows the slot, not the wish
          return (DrawSlotRead(nm, DRAW_SLOT_BACK) > 0.5) ? "Layer: behind" : "Layer: front";
+      //--- P-DRAW-BODY-UI: the handle's words carry the "Handle" name, so the two
+      //--- width cells (and the two style cells) never read as one value twice.
+      case DRAW_SLOT_BODYCOLOR:
+         return DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_BODYCOLOR));
+      case DRAW_SLOT_BODYWIDTH:
+         return "Handle " + IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_BODYWIDTH)) + "px";
+      case DRAW_SLOT_BODYSTYLE:
+      {
+         int bs = (int)DrawSlotRead(nm, DRAW_SLOT_BODYSTYLE);
+         if(bs == STYLE_DASH) return "Handle Dash";
+         if(bs == STYLE_DOT) return "Handle Dot";
+         if(bs == STYLE_DASHDOT) return "Handle D-Dash";
+         if(bs == STYLE_DASHDOTDOT) return "Handle D-Dot";
+         return "Handle Solid";
+      }
       default: return "";
    }
 }
@@ -132,9 +150,12 @@ void DrawStripRecentPush(const color c)
 }
 bool DrawStripHasPicker(const int slot)
 {
+   //--- P-DRAW-BODY-UI: BODYCOLOR rides the palette via IsColorSlot; the handle's
+   //--- width/style open the same list picker as the levels' pair.
    return (DrawStripIsColorSlot(slot) || slot == DRAW_SLOT_WIDTH ||
            slot == DRAW_SLOT_STYLE || slot == DRAW_SLOT_RAY ||
            slot == DRAW_SLOT_FONT  || slot == DRAW_SLOT_GLYPH ||
+           slot == DRAW_SLOT_BODYWIDTH || slot == DRAW_SLOT_BODYSTYLE ||
            slot == DSTRIP_SLOT_LEVELS);
 }
 bool DrawStripIsToggle(const int slot)
@@ -147,8 +168,12 @@ int DrawStripPickCount(const EDrawKind k, const int slot)
 {
    //--- P-PAL-21: a colour seat has NO rows here any more — the list picker is the
    //--- one that is left, and a colour seat's editor is the CARDS' popup.
-   if(slot == DRAW_SLOT_WIDTH) return 5;
-   if(slot == DRAW_SLOT_STYLE) return 5;
+   if(slot == DRAW_SLOT_WIDTH || slot == DRAW_SLOT_BODYWIDTH) return 5;
+   // P-LOOK: the fibo's own looks ride the STYLE slot as 5/6/7 — same writer,
+   // same highlight, same undo; other kinds keep the native five.
+   //--- P-DRAW-BODY-UI: the handle's style is the native five only (no looks).
+   if(slot == DRAW_SLOT_BODYSTYLE) return 5;
+   if(slot == DRAW_SLOT_STYLE) return ((k == DK_FIBO || k == DK_FIBOFAN) ? 8 : 5);
    if(slot == DRAW_SLOT_RAY) return 4;
    if(slot == DRAW_SLOT_FONT) return DrawStripFontCount();
    if(slot == DRAW_SLOT_GLYPH) return DrawStripGlyphCount();
@@ -164,10 +189,20 @@ color DrawStripPickColor(const int slot, const int row)
 //--- the option's caption (colour cells are swatches: no text, tooltip speaks).
 string DrawStripPickText(const EDrawKind k, const int slot, const int row)
 {
-   if(slot == DRAW_SLOT_WIDTH)
+   if(slot == DRAW_SLOT_WIDTH || slot == DRAW_SLOT_BODYWIDTH)
    {
       if(row < 0 || row > 4) return "";
       return IntegerToString(row + 1) + "px";
+   }
+   //--- P-DRAW-BODY-UI: native five only — a handle never wears a look.
+   if(slot == DRAW_SLOT_BODYSTYLE)
+   {
+      if(row == 1) return "Dash";
+      if(row == 2) return "Dot";
+      if(row == 3) return "D-Dash";
+      if(row == 4) return "D-Dot";
+      if(row == 0) return "Solid";
+      return "";
    }
    if(slot == DRAW_SLOT_STYLE)
    {
@@ -175,6 +210,9 @@ string DrawStripPickText(const EDrawKind k, const int slot, const int row)
       if(row == 2) return "Dot";
       if(row == 3) return "D-Dash";
       if(row == 4) return "D-Dot";
+      if(row == FIBPEN_STYLE_NEON && (k == DK_FIBO || k == DK_FIBOFAN)) return "Neon";
+      if(row == FIBPEN_STYLE_CAPS && (k == DK_FIBO || k == DK_FIBOFAN)) return "Caps";
+      if(row == FIBPEN_STYLE_WASH && (k == DK_FIBO || k == DK_FIBOFAN)) return "Wash";
       if(row == 0) return "Solid";
       return "";
    }
@@ -207,6 +245,8 @@ bool DrawStripPickIsCur(const string nm, const EDrawKind k, const int slot, cons
       return (c != clrNONE && (color)(int)DrawSlotRead(nm, slot) == c);
    }
    if(slot == DRAW_SLOT_WIDTH) return ((int)DrawSlotRead(nm, DRAW_SLOT_WIDTH) == row + 1);
+   if(slot == DRAW_SLOT_BODYWIDTH) return ((int)DrawSlotRead(nm, DRAW_SLOT_BODYWIDTH) == row + 1);
+   if(slot == DRAW_SLOT_BODYSTYLE) return ((int)DrawSlotRead(nm, DRAW_SLOT_BODYSTYLE) == row);
    if(slot == DRAW_SLOT_STYLE) return ((int)DrawSlotRead(nm, DRAW_SLOT_STYLE) == row);
    if(slot == DRAW_SLOT_RAY)   return ((int)DrawSlotRead(nm, DRAW_SLOT_RAY) == row);
    if(slot == DRAW_SLOT_FONT)  return ((int)DrawSlotRead(nm, DRAW_SLOT_FONT) == DrawStripFontAt(row));
@@ -383,12 +423,13 @@ void DrawStripColorHoverClear()
 //--- define-before-use), see below. The contract lives here: through the group
 //--- fan-out (P-DRAW-09b), learning the look for the next drawing (P-DRAW-01c).
 
-//--- P-DRAW-09b: the tip says WHICH drawings the tap will change — the one thing
-//--- a multi-drawing toolbar must never leave to guesswork.
+//--- P-DRAW-09b (retired 2026-10-03): the scope line is GONE, and it is always
+//--- empty — `DrawSelCount()` is 1 by construction now (the served drawing), so the
+//--- suffix could never print «applies to all 2 selected». Kept as one function with
+//--- one answer so every tip that appends it stays honest: a tap changes the drawing
+//--- the strip is on, and only that one.
 string DrawStripTipScope()
 {
-   int n = DrawSelCount();
-   if(n > 1) return "  ·  applies to all " + IntegerToString(n) + " selected";
    return "";
 }
 
@@ -445,6 +486,15 @@ string DrawStripSlotTip(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_BACK:
          return "Behind the candles: " + DrawStripSlotText(k, DRAW_SLOT_BACK, nm) +
                 " — click to toggle" + scope;
+      case DRAW_SLOT_BODYCOLOR:
+         return "Handle color: " + DrawStripColorLabel((color)(int)DrawSlotRead(nm, DRAW_SLOT_BODYCOLOR)) +
+                " — click to choose" + scope;
+      case DRAW_SLOT_BODYWIDTH:
+         return "Handle width: " + IntegerToString((int)DrawSlotRead(nm, DRAW_SLOT_BODYWIDTH)) +
+                " px — click to choose" + scope;
+      case DRAW_SLOT_BODYSTYLE:
+         return "Handle style: " + DrawStripSlotText(k, DRAW_SLOT_BODYSTYLE, nm) +
+                " — click to choose" + scope;
       default: break;
    }
    if(slot == DSTRIP_SLOT_LEVELS)
@@ -481,8 +531,8 @@ string DrawStripActTip(const int a)
                                               : "Pin: keep the strip while editing");
    if(a == DSTRIP_ACT_DEL)
    {
-      int n = DrawSelCount();
-      if(n > 1) return "Delete these " + IntegerToString(n) + " drawings (not undoable)";
+      //--- P-DRAW-09b retired (2026-10-03): the bin is this drawing's bin. The strip
+      //--- serves one object, so the «these N drawings» wording could never be true.
       return "Delete this drawing (not undoable)";
    }
    return "";
@@ -516,24 +566,37 @@ bool DrawStripSlotOn(const int slot, const string nm)
    return false;
 }
 
-//--- P-DRAW-09c: the badge text. ONE owner of what the strip says it is serving,
-//--- so the group count can never be printed from one place and applied in another.
+//--- P-DRAW-09c: the badge text. ONE owner of what the strip says it is serving.
+//--- P-DRAW-09b retired (2026-10-03): the `xN` count is GONE — the strip serves ONE
+//--- drawing, so a count on the badge would be a number the strip could never honour.
 string DrawStripTitle()
 {
    if(s_dsObj == "") return "";
-   string t = DrawKindName(s_dsKind);
-   int n = DrawSelCount();
-   if(n > 1) t += "  x" + IntegerToString(n);
-   return t;
+   return DrawKindName(s_dsKind);
 }
 
 //--- P-DRAW-13: the LEVELS union both the popover and the gear tab read — the
 //--- nine common values plus the drawing's own customs, capped. ONE builder so
+//--- P-LVL-SCALE (2026-10-04) — MT4 STORES RATIOS, THE PANEL SHOWS PERCENT.
+//--- `OBJPROP_LEVELVALUE` is a ratio (MQL5 book journal: 0.236, 0.618, 1.0;
+//--- measured on-chart: customs 0.3/0.7/1.0 land at 30/70/100%). The old common
+//--- list stored 23.6 (=2360%, off-chart) and the add field's own example
+//--- ("88.6") stored 8860% — «این سطح درست اضافه نمیشه». ONE normalizer: a value
+//--- at percent scale (|v|>=10, the two-digit labels the panel itself shows)
+//--- rides /100; a ratio rides as-is. Old percent-stored sets migrate through
+//--- `DrawStripLevelsCollect`, the one funnel into every rewrite.
+double DrawStripLevelNorm(const double v)
+{
+   if(!MathIsValidNumber(v)) return v;
+   if(MathAbs(v) >= 10.0) return v / 100.0;
+   return v;
+}
 //--- the two editors can never disagree about row i.
 bool DrawStripLevelIsCommon(const double v)
 {
+   double nv = DrawStripLevelNorm(v);
    for(int j = 0; j < DrawStripLevelCommonCount(); j++)
-      if(MathAbs(DrawStripLevelCommon(j) - v) < 0.000001) return true;
+      if(MathAbs(DrawStripLevelCommon(j) - nv) < 0.000001) return true;
    return false;
 }
 int DrawStripGearLevelCount()
@@ -544,12 +607,12 @@ int DrawStripGearLevelCount()
    int cur = DrawLevelCount(s_dsObj);
    for(int i = 0; i < cur && n < DSTRIP_GLIST_MAX; i++)
    {
-      double v = DrawLevelValue(s_dsObj, i);
+      double v = DrawStripLevelNorm(DrawLevelValue(s_dsObj, i));
       if(!MathIsValidNumber(v)) continue;
       if(DrawStripLevelIsCommon(v)) continue;
       bool dup = false;
       for(int j = 0; j < i; j++)
-         if(MathAbs(DrawLevelValue(s_dsObj, j) - v) < 0.000001) { dup = true; break; }
+         if(MathAbs(DrawStripLevelNorm(DrawLevelValue(s_dsObj, j)) - v) < 0.000001) { dup = true; break; }
       if(!dup) n++;
    }
    if(n > DSTRIP_GLIST_MAX) n = DSTRIP_GLIST_MAX;
@@ -564,12 +627,12 @@ double DrawStripGearLevelAt(const int row)
    int cur = DrawLevelCount(s_dsObj);
    for(int i = 0; i < cur; i++)
    {
-      double v = DrawLevelValue(s_dsObj, i);
+      double v = DrawStripLevelNorm(DrawLevelValue(s_dsObj, i));
       if(!MathIsValidNumber(v)) continue;
       if(DrawStripLevelIsCommon(v)) continue;
       bool dup = false;
       for(int j = 0; j < i; j++)
-         if(MathAbs(DrawLevelValue(s_dsObj, j) - v) < 0.000001) { dup = true; break; }
+         if(MathAbs(DrawStripLevelNorm(DrawLevelValue(s_dsObj, j)) - v) < 0.000001) { dup = true; break; }
       if(dup) continue;
       if(seen == row) return v;
       seen++;
@@ -587,26 +650,39 @@ double DrawStripGearLevelAt(const int row)
 // ══════════════════════════════════════════════════════════════════════════
 double DrawStripLevelCommon(const int i)
 {
+   //--- P-LVL-SCALE: stored ratios (MT4 truth), shown percent (panel labels).
    switch(i)
    {
       case 0: return 0.0;
-      case 1: return 23.6;
-      case 2: return 38.2;
-      case 3: return 50.0;
-      case 4: return 61.8;
-      case 5: return 78.6;
-      case 6: return 100.0;
-      case 7: return 127.2;
-      default: return 161.8;
+      case 1: return 0.236;
+      case 2: return 0.382;
+      case 3: return 0.5;
+      case 4: return 0.618;
+      case 5: return 0.786;
+      case 6: return 1.0;
+      case 7: return 1.272;
+      default: return 1.618;
    }
 }
 int DrawStripLevelCommonCount() { return 9; }
-string DrawStripLevelName(const double v) { return DoubleToString(v, 1); }
+string DrawStripLevelName(const double v)
+{
+   //--- P-LVL-SCALE: the label is percent ("23.6"), the value a ratio (0.236).
+   if(!MathIsValidNumber(v)) return "";
+   double nv = DrawStripLevelNorm(v);
+   string s = DoubleToString(nv * 100.0, 1);
+   if(StringLen(s) > 2 && StringSubstr(s, StringLen(s) - 2) == ".0")
+      s = StringSubstr(s, 0, StringLen(s) - 2);
+   return s;
+}
 int DrawStripLevelFind(const string nm, const double v)
 {
+   //--- P-LVL-SCALE: compare normalized — an old percent-stored set (23.6) still
+   //--- answers its row (0.236) instead of duplicating beside it.
+   double nv = DrawStripLevelNorm(v);
    int n = DrawLevelCount(nm);
    for(int i = 0; i < n; i++)
-      if(MathAbs(DrawLevelValue(nm, i) - v) < 0.000001) return i;
+      if(MathAbs(DrawStripLevelNorm(DrawLevelValue(nm, i)) - nv) < 0.000001) return i;
    return -1;
 }
 
@@ -966,6 +1042,20 @@ bool BoxExtendStep(const string name)
    FillChildSync(name);
    return true;
 }
+//--- P-ORPHAN-ALL (2026-10-04) — EVERY REMNANT ANSWERS FOR ITSELF, AND SAYS SO.
+//--- The pass below carries the repo's three orphan rules (the interior's child, the
+//--- box's 50 % line, the fibo pen's rows); «این بقایش چرا حذف نمیشه» was one of them
+//--- MISSING rather than one of them wrong (measured 2026-10-04: two deleted fibos had
+//--- left 36 `_FSD` rows on the hand's chart — `Fibo 54705` and `Fibo 58985` were gone
+//--- from the chart file while their whole pen was still in it). What no rule had was
+//--- a WITNESS: a cleanup was invisible, so it could only be believed. One line per
+//--- drop, through the ONE deleter — drops are rare, the pass is not, and a stray that
+//--- dies now names itself and its missing master in the diag file.
+void DrawOrphanDrop(const string nm, const string par)
+{
+   ObjectDelete(0, nm);
+   DrawStripDiagEmit("[drawstrip] ORPHAN drop=\"" + nm + "\" par=\"" + par + "\"");
+}
 void BoxExtrasPump()
 {
    static uint s_bxMs = 0;
@@ -986,7 +1076,7 @@ void BoxExtrasPump()
       if(FillIsChild(nm))
       {
          string par = FillChildParent(nm);
-         if(par == "" || ObjectFind(0, par) < 0) { ObjectDelete(0, nm); continue; }
+         if(par == "" || ObjectFind(0, par) < 0) { DrawOrphanDrop(nm, par); continue; }   // P-ORPHAN-ALL
          //--- P-DRAW-64: a child of an INDICATOR object is a STRAY — an earlier build
          //--- of this split synced any dragged rectangle, the product's own boxes
          //--- included, which moved such a box's interior into a child and left it
@@ -995,7 +1085,7 @@ void BoxExtrasPump()
          //--- child only ever existed while that fill was on.
          if(DrawIsIndicatorObject(par))
          {
-            ObjectDelete(0, nm);
+            DrawOrphanDrop(nm, par);   // P-ORPHAN-ALL: a child of an indicator is a stray too
             if((int)ObjectGetInteger(0, par, OBJPROP_FILL) == 0)
                ObjectSetInteger(0, par, OBJPROP_FILL, true);
             continue;
@@ -1013,7 +1103,17 @@ void BoxExtrasPump()
       if(BoxIsMidChild(nm))
       {
          string par = BoxMidParent(nm);
-         if(par == "" || ObjectFind(0, par) < 0) ObjectDelete(0, nm);
+         if(par == "" || ObjectFind(0, par) < 0) DrawOrphanDrop(nm, par);   // P-ORPHAN-ALL
+         continue;
+      }
+      //--- P-LOOK-RAY2: the pen's children answer for their own parent too (the same
+      //--- orphan rule, one family over). A fibo deleted while the indicator was off
+      //--- leaves `_FSD/_FSC/_FSW` bands whose master is gone - a styled line drawn on
+      //--- nothing is exactly what "strays" means here, and nothing else knew them.
+      if(FibPenIsChild(nm) || FibPenFamIsChild(nm))
+      {
+         string par = FibPenChildParent(nm);
+         if(par == "" || ObjectFind(0, par) < 0) DrawOrphanDrop(nm, par);   // P-ORPHAN-ALL
          continue;
       }
       //--- P-DRAW-64: the pass was already paying for ONE type read, so the
@@ -1029,6 +1129,13 @@ void BoxExtrasPump()
             (int)ObjectGetInteger(0, nm, OBJPROP_FILL) != 0)
             FillChildSync(nm);
       }
+      //--- P-LOOK-RAY2 (2026-10-04) - THE PEN'S NET RIDES THE PASS THAT ALREADY PAYS
+      //--- THE TYPE READ. The pen had only event paths, so a master the terminal landed
+      //--- after the last event kept a stale pen forever (measured: the pen ran x=59..721
+      //--- against level lines at x=681..1079 - "the styles are not applied on the right
+      //--- side"). `FibPenHeal` is one memo compare while the pen matches the master it
+      //--- was built from, and the sync only on a mismatch.
+      if(ty == OBJ_FIBO || ty == OBJ_FIBOFAN) FibPenHeal(nm);
       if(ty != OBJ_RECTANGLE) continue;
       //--- P-UI-134: the marks' CENSUS is the store now, not the description. This
       //--- used to skip every rectangle whose text carried no `[BX` — a test of the

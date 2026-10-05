@@ -184,11 +184,19 @@ void DrawStripPaint()
          int swx = x + (DSTRIP_CELL - sw) / 2, swy = rowY + (DSTRIP_CELL - sw) / 2;
          int bw = DSTRIP_CELL - 4, bh = (DSTRIP_CELL - 6) / 2;   // 28 x 13, 6px between
          int bx = x + 2, bty = rowY + 1, bby = rowY + 1 + bh + 6;
-         color bcol = DrawStripColorRead(s_dsObj, DRAW_SLOT_COLOR);
+         //--- P-DRAW-BODY-UI: a single-role seat wears ITS OWN slot — the
+         //--- handle's cell reads the handle, never the levels.
+         bool isBody = (slot == DRAW_SLOT_BODYCOLOR);
+         color bcol = DrawStripColorRead(s_dsObj, isBody ? DRAW_SLOT_BODYCOLOR : DRAW_SLOT_COLOR);
          color ccol = DrawStripColorFace(s_dsObj, DRAW_SLOT_FILLCLR);
          string rtip = DrawStripColorRingTip(s_dsObj, merged);
          string ctip = (merged ? DrawStripColorMidTip(s_dsObj) : rtip);
-         bool bOpen = (s_dsPicker == DRAW_SLOT_COLOR);
+         if(isBody)
+         {
+            rtip = DrawStripSlotTip(s_dsKind, DRAW_SLOT_BODYCOLOR, s_dsObj);
+            ctip = rtip;
+         }
+         bool bOpen = (s_dsPicker == (isBody ? DRAW_SLOT_BODYCOLOR : DRAW_SLOT_COLOR));
          if(merged)
          {
             //--- the cell, then TWO marks: the top bar is the BORDER's and the bottom
@@ -643,6 +651,7 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    if(s_dsY > ch - s_dsH - 4) s_dsY = ch - s_dsH - 4;
    DrawStripHomeSet(s_dsX, s_dsY);   // P-DRAW-41: what was placed (or clamped) IS the home
    if(k == DK_RECT) BoxMidSync(name);   // P-DRAW-21: the drag/zoom ride moves the mid too
+   FibPenSync(name, false);   // P-DRAW-74b: an open re-converges the pair with the drawing
    DrawStripPaint();
    return true;
 }
@@ -654,11 +663,13 @@ bool DrawStripOpen(const string name)
    return DrawStripOpenAt(name, -1, -1);
 }
 
-//--- P-DRAW-09b: ONE write for a value, delivered to the WHOLE group. The
-//--- learning half lives in `DrawSlotWrite` (P-DRAW-01c), so every member and the
-//--- kind's memory move together — and the group is pruned first, because a
-//--- member another gesture deleted is not a name to write. Every caller pushes
-//--- undo FIRST (single-step looks).
+//--- P-DRAW-09b (retired 2026-10-03): ONE write for a value, delivered to the
+//--- SERVED DRAWING. The loop is kept because every reader of `DrawSelCount` keeps
+//--- its exact signature, and the store now holds one name (see `DrawSelSnapshot`) —
+//--- so this iterates a list of ONE. The automatic fan-out that made a colour tap
+//--- on one fibo land on the other is gone from every write path that came through
+//--- here. The learning half lives in `DrawSlotWrite` (P-DRAW-01c).
+//--- Every caller pushes undo FIRST (single-step looks).
 int DrawStripWriteValue(const int slot, const double v)
 {
    //--- P-DRAW-64a: the box's own 50 % needs no "show the interior" rule — it moves
@@ -678,6 +689,16 @@ int DrawStripWriteValue(const int slot, const double v)
       if(nm == "" || ObjectFind(0, nm) < 0) continue;
       if(DrawSlotWrite(nm, slot, v)) done++;
    }
+   // DIAG-141 (2026-10-03) — THE GROUP LEAVES ITS NUMBER. One tap fanning out
+   // to several drawings («رنگ یکی را عوض میکنم روی دیگری هم اعمال میشه») is
+   // otherwise indistinguishable from a second writer. Discrete taps only.
+   // P-DRAW-09b retired the same day: `n > 1` is now IMPOSSIBLE (`DrawSelSnapshot`
+   // holds one name), so the line can no longer fire — which is the point. It stays
+   // as the witness that proves it: a fan-out reaching a second drawing would have
+   // to be a second WRITER, and that writer would have to go through here to be seen.
+   if(n > 1)
+      DrawStripDiagEmit("[drawstrip] GROUP n=" + IntegerToString(n) +
+                        " slot=" + IntegerToString(slot) + " obj=\"" + s_dsObj + "\"");
    return done;
 }
 
@@ -701,6 +722,13 @@ void DrawStripUndoLook(const string nm, const int i)
    s_duFont[i] = (int)DrawSlotRead(nm, DRAW_SLOT_FONT);
    s_duGlyph[i] = (int)DrawSlotRead(nm, DRAW_SLOT_GLYPH);
    s_duBack[i] = (DrawSlotRead(nm, DRAW_SLOT_BACK) > 0.5 ? 1 : 0);
+   //--- P-DRAW-BODY-UI: the handle rides the same single-step undo (same seats).
+   if(DrawSlotAvailable(DrawKindOf(nm), DRAW_SLOT_BODYCOLOR))
+   {
+      s_duBodyClr[i] = (color)(int)DrawSlotRead(nm, DRAW_SLOT_BODYCOLOR);
+      s_duBodyW[i] = (int)DrawSlotRead(nm, DRAW_SLOT_BODYWIDTH);
+      s_duBodySt[i] = (int)DrawSlotRead(nm, DRAW_SLOT_BODYSTYLE);
+   }
 }
 void DrawStripUndoPush()
 {
@@ -728,9 +756,10 @@ void DrawStripUndoPush()
       int nl = DrawLevelCount(s_dsObj);
       for(int l = 0; l < nl && s_duLvN < DSTRIP_UNDO_LV; l++)
       {
+         s_duLvT[s_duLvN] = ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, l);   // P-LVL-TEXT
          s_duLvV[s_duLvN] = DrawLevelValue(s_dsObj, l);
          s_duLvC[s_duLvN] = (color)(int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, l);
-         s_duLvW[s_duLvN] = (int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELWIDTH, l);
+         s_duLvW[s_duLvN] = FibPenLogicalWidth(s_dsObj, l);   // P-DRAW-74b: snapshot the remembered width
          s_duLvS[s_duLvN] = (int)ObjectGetInteger(0, s_dsObj, OBJPROP_LEVELSTYLE, l);
          s_duLvN++;
       }
@@ -772,9 +801,16 @@ bool DrawStripUndoPop()
          DrawSlotWrite(nm, DRAW_SLOT_FILLCLR, (double)(int)s_duFillClr[i]);
          DrawSlotOpacitySet(nm, s_duFillOp[i], DRAW_SLOT_FILLCLR);
       }
+      if(DrawSlotAvailable(DrawKindOf(nm), DRAW_SLOT_BODYCOLOR))
+      {
+         DrawSlotWrite(nm, DRAW_SLOT_BODYCOLOR, (double)(int)s_duBodyClr[i]);
+         DrawSlotWrite(nm, DRAW_SLOT_BODYWIDTH, (double)s_duBodyW[i]);
+         DrawSlotWrite(nm, DRAW_SLOT_BODYSTYLE, (double)s_duBodySt[i]);
+      }
    }
    if(s_duLvN > 0 && s_dsObj != "" && ObjectFind(0, s_dsObj) >= 0 && DrawKindHasLevels(s_dsKind))
    {
+      FibPenTagDrop(s_dsObj);   // P-DRAW-74b: restored truth spends the memory
       ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELS, s_duLvN);
       for(int l = 0; l < s_duLvN; l++)
       {
@@ -782,7 +818,9 @@ bool DrawStripUndoPop()
          ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELCOLOR, l, s_duLvC[l]);
          ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELWIDTH, l, s_duLvW[l]);
          ObjectSetInteger(0, s_dsObj, OBJPROP_LEVELSTYLE, l, s_duLvS[l]);
+         ObjectSetString(0, s_dsObj, OBJPROP_LEVELTEXT, l, s_duLvT[l]);   // P-LVL-TEXT
       }
+      FibPenSync(s_dsObj, false);   // P-DRAW-74b: the undo restores truth, the pair follows it
    }
    s_duValid = false;
    DrawStripPaint();
