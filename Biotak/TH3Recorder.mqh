@@ -31,6 +31,72 @@
 //| view is what the PNG holds.                                      |
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
+//| P-TH3-REC-03 — THE ONE-SECOND PROOF, IN THE MIDDLE.              |
+//| A capture with no visible answer reads as a capture that did     |
+//| nothing, so the press paints one centred label and clears it.    |
+//| `Comment()` was the wrong instrument twice over: it writes in the |
+//| corner (where the eye is not) and it PERSISTS, so the next       |
+//| capture would overwrite a message that had already done its job. |
+//|                                                                   |
+//| ONE OBJECT, one second, then it is deleted. OBJ_LABEL with       |
+//| CORNER=0 (centre) and an absolute XY seat is how a label is       |
+//| centred in MT4 — ANCHOR alone moves the text, not the box, and a |
+//| centred box is what «وسط صفحه» means. The delete is UNCONDITIONAL |
+//| (the same call on success and on failure), so a failed export    |
+//| still leaves nothing behind and a second press cannot stack two. |
+//|                                                                   |
+//| It is created AFTER the screenshot, so the PNG holds the chart   |
+//| and not the receipt. One object, one create, one delete: the      |
+//| whole cost of the answer.                                         |
+//+------------------------------------------------------------------+
+#define TH3_REC_FLASH_MS  1000
+#define TH3_REC_FLASH_XML  "Biotak_TH3_RecorderFlash"
+#define TH3_REC_FLASH_T    "TH3RecorderFlash"
+
+void TH3RecorderFlashClear()
+{
+   if(ObjectFind(0, TH3_REC_FLASH_XML) >= 0) ObjectDelete(0, TH3_REC_FLASH_XML);
+   ChartRedraw();
+}
+
+void TH3RecorderFlash(const string msg)
+{
+   int w = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   int h = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(w <= 0 || h <= 0) { w = 1024; h = 768; }   // never divide by nothing
+   int tw = 420, th = 44;
+
+   //--- re-press: clear the previous one FIRST, so a fast second press never
+   //--- stacks two labels and the old text never survives into the new second.
+   if(ObjectFind(0, TH3_REC_FLASH_XML) >= 0) ObjectDelete(0, TH3_REC_FLASH_XML);
+
+   if(ObjectCreate(0, TH3_REC_FLASH_XML, OBJ_LABEL, 0, 0, 0))
+   {
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_CORNER, 0);          // absolute
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_XDISTANCE, (w - tw) / 2);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_YDISTANCE, (h - th) / 2);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_ANCHOR, ANCHOR_CENTER);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_FONTSIZE, 13);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_COLOR, clrWhite);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_BGCOLOR, clrBlack);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_WIDTH, 3);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_BACK, false);       // on the graph
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_SELECTABLE, false);
+      ObjectSetInteger(0, TH3_REC_FLASH_XML, OBJPROP_HIDDEN, true);
+      ObjectSetString(0, TH3_REC_FLASH_XML, OBJPROP_TEXT, msg);
+   }
+   ChartRedraw();
+
+   //--- the ONE second. `Sleep` here is the whole point: the terminal is single
+   //--- threaded and nothing else can run, so the label is guaranteed its full
+   //--- second on screen — a frame-counted loop could be starved by a tick.
+   Sleep(TH3_REC_FLASH_MS);
+
+   TH3RecorderFlashClear();
+}
+
+//+------------------------------------------------------------------+
 //| P-TH3-REC — the capture. One press, one sample.                  |
 //| `patternName` is the ACTIVE pattern's name (the spec's call site  |
 //| passes g_activeABCDPattern); an empty argument means "whatever is |
@@ -110,13 +176,16 @@ void TH3_ExportCurrentSample(const string patternName = "")
    string logPath   = TH3RecorderPath(TH3_DATASET_LOGS,  logName,  dirsOk);
    string csvPath   = TH3RecorderPath(TH3_DATASET_DIR,   "Master_Dataset.csv", dirsOk);
 
-   //--- center the chart on Point D and the forward reaction
-   int sh = iBarShift(NULL, 0, pat.D.time);
-   int pos = sh - 30;
-   if(pos < 0 || sh < 0) pos = 0;
-   ChartNavigate(0, CHART_END, pos);
+   //--- P-TH3-REC-02 (2026-10-05) — THE VIEW IS NOT OURS TO MOVE. The spec
+   //--- said «center the chart on D», and this did: a ChartNavigate to 30 bars
+   //--- before D plus a 0.5 s settle, so the capture showed a view the trader
+   //--- never asked for — and on a chart whose D sits far back in history it
+   //--- scrolled the whole screen to the left («دکمه m میزنم میره اول چارت»).
+   //--- The trader has already framed the structure by hand; the capture's job
+   //--- is to RECORD that frame, not to re-frame it. So the view is left alone
+   //--- and the shot is one redraw away, with no Sleep either — a still chart
+   //--- needs no settle, and the settle was the whole cost of the old path.
    ChartRedraw();
-   Sleep(500);
    bool okShot = WindowScreenShot(shotPath, 1920, 1080);
 
    int fh = FileOpen(logPath, FILE_WRITE | FILE_TXT | FILE_ANSI);
@@ -195,15 +264,28 @@ void TH3_ExportCurrentSample(const string patternName = "")
       //--- reuse a number whose PNG or row is already on disk
       GlobalVariableSet(gvName, idx);
       string msg = StringFormat("[TH3 RECORDER] Sample #%03d Saved | Log & Screenshot Exported Successfully!", idx);
-      Comment(msg);
+      //--- P-TH3-REC-03: the proof is ON the screen, for ONE second, in the
+      //--- MIDDLE. `Comment()` writes into the corner, where the eye is not and
+      //--- where the next capture overwrites it — a press with no visible answer
+      //--- reads as a press that did nothing. A centred label that clears itself
+      //--- says «گرفته شد» without becoming furniture. Created after the shot,
+      //--- so it never lands in the PNG.
+      TH3RecorderFlash(msg);
       Print(msg);
    }
    else
    {
       if(fh != INVALID_HANDLE) FileClose(fh);
-      Print("[TH3 RECORDER] export failed (shot=", okShot, " txt=", okTxt, " csv=", okCsv,
-            ") — counter kept, nothing advanced.");
+      string bad = StringFormat("[TH3 RECORDER] Sample #%03d FAILED (shot=%s txt=%s csv=%s) — nothing advanced.",
+                                idx, (okShot ? "ok" : "no"), (okTxt ? "ok" : "no"), (okCsv ? "ok" : "no"));
+      //--- P-TH3-REC-03: the FAILURE gets the same one second. A silent miss is
+      //--- the exact case the user cannot diagnose — the press looked identical
+      //--- to the working one. The counter is deliberately NOT advanced.
+      TH3RecorderFlash(bad);
+      Print(bad);
    }
+   //--- P-TH3-REC-03: the flash is gone either way, and this redraw is what
+   //--- removes the last frame of it, so no label survives the press.
    ThrottledChartRedraw();
 }
 
