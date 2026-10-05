@@ -197,7 +197,30 @@ void PrintBuildInfo()
     #else
     Print("     PRODUCTION BUILD - Optimized for performance");
     #endif
+    Print("   FREEWARE - resale prohibited. Official channel: @biotak");
     Print("====================");
+}
+
+//+------------------------------------------------------------------+
+//| P-FREE-01: the buyer-facing witness. A license file only binds   |
+//| honest sellers; a buyer who paid learns it late. So the product  |
+//| says it itself, once a day, outside testers: this copy is FREE, |
+//| and any paid copy is counterfeit. One GV key (no accumulation),  |
+//| gated by inpShowFreewareNotice, silent in tester/optimization.   |
+//+------------------------------------------------------------------+
+void FreewareNoticeMaybe()
+{
+    if(!inpShowFreewareNotice) return;
+    if(IsTesting() || IsOptimization()) return;
+    int stamp = Year() * 1000 + DayOfYear();
+    string key = "Biotak_FreeNotice_Day";
+    if(GlobalVariableCheck(key) && (int)GlobalVariableGet(key) == stamp) return;
+    GlobalVariableSet(key, (double)stamp);
+    MessageBox("Biotak Trigger TH3 v" + INDICATOR_VERSION + " is FREEWARE.\r\n" +
+               "If you PAID for this copy, you were scammed — ask for a refund.\r\n" +
+               "Official channel: @biotak\r\n" +
+               "این اندیکاتور رایگان است. اگر برایش پول داده‌اید، پولتان را پس بگیرید.",
+               "Biotak Trigger TH3 - FREEWARE", MB_OK | MB_ICONINFORMATION);
 }
 
 //+------------------------------------------------------------------+

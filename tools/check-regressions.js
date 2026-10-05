@@ -3459,6 +3459,28 @@ function main() {
     }
   }
 
+  {
+    // P-FREE-01 — the buyer-facing witness. A license binds honest sellers only;
+    // the product itself says it is FREE once a day: one GV key, tester-silent,
+    // behind inpShowFreewareNotice, called from the one init path both entries share.
+    const broken = [];
+    const bcfg = codeOf(linesOf(path.join(BIOTAK, 'BuildConfig.mqh')) || []);
+    const ehinit = codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Init.mqh')) || []);
+    if (!/void FreewareNoticeMaybe\(\)/.test(bcfg))
+      broken.push('FreewareNoticeMaybe is gone from Biotak/BuildConfig.mqh');
+    if (!/IsTesting\(\) \|\| IsOptimization\(\)/.test(bcfg))
+      broken.push('the notice is no longer tester-silent');
+    if (!/MessageBox\(/.test(bcfg))
+      broken.push('the notice lost its popup');
+    if (!/PrintBuildInfo\(\);\s*FreewareNoticeMaybe\(\);/.test(ehinit))
+      broken.push('the notice is no longer called from the shared init path');
+    if (broken.length) {
+      failures.push('P-FREE-01: ' + broken.join('; ') + ' (Biotak/BuildConfig.mqh + Biotak/EventHandlers_Init.mqh)');
+    } else {
+      console.log('[PASS] P-FREE-01 the product says it is FREE once a day');
+    }
+  }
+
   console.log('');
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);

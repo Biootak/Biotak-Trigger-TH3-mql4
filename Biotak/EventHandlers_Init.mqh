@@ -893,6 +893,7 @@ int OnInitHandler() {
     g_pInitMsAtr = GetTickCount() - pInitTick;   // P-PERF-10 (ATR cache init + warmup)
 
     PrintBuildInfo();
+    FreewareNoticeMaybe();   // P-FREE-01: the one buyer-facing witness, both entries
 
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
 #ifndef BUILD_LITE
