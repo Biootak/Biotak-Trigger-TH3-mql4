@@ -1,12 +1,12 @@
 ﻿  //+------------------------------------------------------------------+
 //|                                      Biotak Trigger TH3 Lite.mq4 |
 //+------------------------------------------------------------------+
-#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
-#property version   "3.10"
+#property version   "3.12"
 #property strict
 #property indicator_chart_window
-#property description "Version 3.10 - LITE: Features like Profiler and Freq Optimizer removed"
+#property description "Biotak Trigger TH3 Lite v3.12 - Freeware. Resale prohibited. Official channel: @biotak"
 
 //                                                                    
 // LITE MODE ACTIVATION

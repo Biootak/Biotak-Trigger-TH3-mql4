@@ -1,13 +1,13 @@
   //+------------------------------------------------------------------+
 //|                                           Biotak Trigger TH3.mq4 |
 //+------------------------------------------------------------------+
-#property copyright "  Formula by Professor Saeed Khakestar, Indicator by Biotak."
+#property copyright "Formula by Professor Saeed Khakestar, Indicator by Biotak."
 #property link      "@biotak"
-#property version   "3.11"
+#property version   "3.12"
 #property strict
 #property indicator_chart_window
-#property description "Version 3.10 - GOLD: Post-Audit - All Critical Issues Fixed"
-#property description "Race conditions fixed | Memory leaks eliminated | Buffer overflow prevented"
+#property description "Biotak Trigger TH3 v3.12 - Freeware. Resale prohibited. Official channel: @biotak"
+#property description "Trigger/TH/TH3 levels, HTF candles, hand drawings. Free to use, not for sale."
 
 //                                                                    
 // BUILD CONFIG - Must be first include!

@@ -121,7 +121,7 @@
 //+------------------------------------------------------------------+
 //| Version info                                                     |
 //+------------------------------------------------------------------+
-#define INDICATOR_VERSION "3.10"
+#define INDICATOR_VERSION "3.12"
 
 //--- P-BUILD-08: THE BUILD IDENTITY IS THE SOURCE, NOT A HAND-TYPED TAG.
 //--- `INDICATOR_BUILD_TAG "D4m-native 2026-09-20"` and `__DATE__` were the two
