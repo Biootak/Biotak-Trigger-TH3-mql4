@@ -12,13 +12,13 @@
 //|                                                                   |
 //| same tree -> same hash ; any edit -> a different hash              |
 //|                                                                   |
-//| files=423 hash=2d9d4eb9bdc2c032
+//| files=423 hash=3bff5a5df6594b99
 //+------------------------------------------------------------------+
 #ifndef TH3_BUILD_HASH_MQH
 #define TH3_BUILD_HASH_MQH
 
-#define TH3_SRC_HASH   "2d9d4eb9bdc2c032"   // full identity, printed in the log
-#define TH3_SRC_SHORT  "2d9d4eb9"           // the 8-char stamp the panel chip shows
+#define TH3_SRC_HASH   "3bff5a5df6594b99"   // full identity, printed in the log
+#define TH3_SRC_SHORT  "3bff5a5d"           // the 8-char stamp the panel chip shows
 #define TH3_SRC_FILES  423                // files covered by the hash
 
 #endif // TH3_BUILD_HASH_MQH

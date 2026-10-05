@@ -14,8 +14,10 @@
 //| structure from an invented one, so the trader anchors the pattern |
 //| and the mother pivot BY HAND and this captures the sample for     |
 //| off-terminal formula validation: a PNG plus a full diagnostic TXT |
-//| under MQL4\Files\TH3_Dataset\{Screenshots,Logs}, and one row in   |
-//| the master CSV beside them.                                       |
+//| INSIDE ITS OWN FOLDER under                                       |
+//| MQL4\Files\TH3_Dataset\Samples\<date>-<clock>_<SYM>_<TF>_S<NNN>,   |
+//| one row in that folder sample.csv, and one row in the global    |
+//| TH3_Dataset\Dataset.csv beside them (P-TH3-DB).        |
 //|                                                                  |
 //| THE TREE (spec §4.B.1) is owned by TH3/TH3DatasetPaths.mqh,     |
 //| which the harness includes too — one home for the folder names,  |
@@ -239,12 +241,79 @@ void TH3_ExportCurrentSample(const string patternName = "")
 
    bool dirsOk = false;
    TH3RecorderEnsureDirs(dirsOk);
+   datetime capAt = TimeCurrent();               // the press, not the D bar
    string sampleId = StringFormat("Sample_%03d", idx);
-   string shotName  = StringFormat("Sample_%03d_%s_%s.png", idx, Symbol(), TH3TfName(Period()));
-   string logName   = sampleId + ".txt";
-   string shotPath  = TH3RecorderPath(TH3_DATASET_SHOTS, shotName, dirsOk);
-   string logPath   = TH3RecorderPath(TH3_DATASET_LOGS,  logName,  dirsOk);
-   string csvPath   = TH3RecorderPath(TH3_DATASET_DIR,   "Master_Dataset.csv", dirsOk);
+   string tfName   = TH3TfName(Period());
+   string shotName = StringFormat("Sample_%03d_%s_%s.png", idx, Symbol(), tfName);
+   string logName  = sampleId + ".txt";
+
+   //--- P-TH3-DB (2026-10-05) - ONE FOLDER PER SAMPLE. The flat pair forced
+   //--- a reader to join Sample_015.txt with Sample_015_EURUSD_M5.png by NAME
+   //--- and then read its numbers out of prose; a sample nobody can take in
+   //--- one glance is a sample nobody reviews. The folder is named from facts
+   //--- the sample already carries - capture stamp, symbol, timeframe, counter
+   //--- and pattern - so the tree sorts by time with no database at all, and
+   //--- the name itself is the key a tool parses.
+   string folderName = TH3SampleFolderName(capAt, Symbol(), tfName, idx, patName);
+   string sampleDir  = TH3_DATASET_SAMPLES + "/" + folderName;
+   bool sampleOk     = dirsOk && (FolderCreate(sampleDir) >= 0);
+   string shotPath, logPath, rowPath;
+   if(sampleOk)
+   {
+      shotPath = sampleDir + "/" + shotName;
+      logPath  = sampleDir + "/" + logName;
+      rowPath  = sampleDir + "/sample.csv";
+   }
+   else
+   {
+      //--- a refused folder is NOT a lost sample: the flat pair still holds
+      //--- the same three files, and the TXT says which mode wrote it.
+      shotPath = TH3RecorderPath(TH3_DATASET_SHOTS, shotName, dirsOk);
+      logPath  = TH3RecorderPath(TH3_DATASET_LOGS,  logName,  dirsOk);
+      rowPath  = TH3RecorderPath(TH3_DATASET_LOGS,  sampleId + ".csv", dirsOk);
+   }
+   string csvPath = TH3RecorderPath(TH3_DATASET_DIR, TH3_DATASET_DB_NAME, dirsOk);
+
+   //--- P-TH3-DB - THE ROW, BUILT ONCE AND WRITTEN TWICE. The sample's own
+   //--- CSV travels with its folder; the global Dataset.csv is the one file a
+   //--- reader can sort, filter and pivot without opening twenty folders. Both
+   //--- come from THIS array and from the header TH3DatasetHeader() owns, so
+   //--- the two copies cannot drift the way two hand-written headers do.
+   string row[];
+   ArrayResize(row, TH3_DATASET_COLS);
+   row[0]  = sampleId;
+   row[1]  = TH3SampleDate(capAt);
+   row[2]  = TH3SampleClock(capAt);
+   row[3]  = TH3SampleStamp(capAt);
+   row[4]  = Symbol();
+   row[5]  = tfName;
+   row[6]  = TH3TfName(ownerTF);
+   row[7]  = TH3CsvField(patName);
+   row[8]  = dirDown ? "down" : "up";
+   row[9]  = TimeToString(pat.D.time);
+   row[10] = DoubleToString(pat.D.price, Digits);
+   row[11] = IntegerToString(Digits);
+   row[12] = DoubleToString(pip, Digits);
+   row[13] = DoubleToString(motherIn / pip, 1);
+   row[14] = DoubleToString(legAB / pip, 1);
+   row[15] = DoubleToString(legBC / pip, 1);
+   row[16] = DoubleToString(legCD / pip, 1);
+   row[17] = DoubleToString(ratioBC_AB, 3);
+   row[18] = DoubleToString(ratioCD_BC, 3);
+   row[19] = DoubleToString(kFactor, 3);
+   row[20] = DoubleToString(stepMother / pip, 1);
+   row[21] = DoubleToString(stepPattern / pip, 1);
+   row[22] = DoubleToString(baseUnit / pip, 1);
+   row[23] = DoubleToString(lv[0], Digits);
+   row[24] = DoubleToString(lv[2], Digits);
+   row[25] = DoubleToString(lv[4], Digits);
+   row[26] = DoubleToString(lv[6], Digits);
+   row[27] = hasTurn ? DoubleToString(turnPx, Digits) : "";
+   row[28] = hasTurn ? DoubleToString(errPips, 1) : "";
+   row[29] = hasTurn ? IntegerToString(hp.deepestRungs) : "0";
+   row[30] = sampleOk ? folderName : "";
+   row[31] = logName;
+   row[32] = shotName;
 
    //--- P-TH3-REC-02 (2026-10-05) — THE VIEW IS NOT OURS TO MOVE. The spec
    //--- said «center the chart on D», and this did: a ChartNavigate to 30 bars
@@ -293,9 +362,13 @@ void TH3_ExportCurrentSample(const string patternName = "")
       FileWrite(fh, "SAMPLE_ID: " + sampleId);
       FileWrite(fh, "SYMBOL: " + Symbol());
       FileWrite(fh, "TIMEFRAME: " + TH3TfName(Period()));
+      FileWrite(fh, "CAPTURE_TIME: " + TimeToString(capAt));
+      FileWrite(fh, "CAPTURE_STAMP: " + TH3SampleStamp(capAt));
       FileWrite(fh, "DATETIME_D: " + TimeToString(pat.D.time));
       FileWrite(fh, "PATTERN: " + patName);
-      FileWrite(fh, "DATASET_PATH_MODE: " + (dirsOk ? "TH3_Dataset/" : "flat (FolderCreate refused)"));
+      FileWrite(fh, "SAMPLE_FOLDER: " + (sampleOk ? folderName : "(none - flat fallback)"));
+      FileWrite(fh, "DATASET_PATH_MODE: " + (sampleOk ? "TH3_Dataset/Samples/<folder>/"
+                                                     : "flat (FolderCreate refused)"));
       FileWrite(fh, "OWNER_TF: " + TH3TfName(ownerTF));
       FileWrite(fh, "COORDINATES:");
       FileWrite(fh, "  Point_A: {Price: " + DoubleToString(pat.A.price, Digits) + ", Time: " + TimeToString(pat.A.time) + "}");
@@ -338,35 +411,43 @@ void TH3_ExportCurrentSample(const string patternName = "")
       //--- the repo without knowing the sync tool. The terminal CANNOT write
       //--- there itself (FileOpen is sandboxed) — this is the pointer, not a
       //--- claim that it landed.
-      FileWrite(fh, "PROJECT_COPY: " + TH3RecorderProjectDir() + "/Screenshots/" + shotName);
-      FileWrite(fh, "PROJECT_COPY_LOG: " + TH3RecorderProjectDir() + "/Logs/" + logName);
+      FileWrite(fh, "PROJECT_COPY: " + TH3RecorderProjectDir() + "/Samples/" + folderName + "/" + shotName);
+      FileWrite(fh, "PROJECT_COPY_LOG: " + TH3RecorderProjectDir() + "/Samples/" + folderName + "/" + logName);
+      FileWrite(fh, "PROJECT_COPY_ROW: " + TH3RecorderProjectDir() + "/Samples/" + folderName + "/sample.csv");
+      FileWrite(fh, "PROJECT_COPY_DB: " + TH3RecorderProjectDir() + "/" + TH3_DATASET_DB_NAME);
       FileClose(fh);
       fh = INVALID_HANDLE;
    }
 
-   //--- the master CSV: header on the empty file, then ONE appended row
+   //--- the sample's own CSV: the header plus exactly one row, inside its folder
+   bool okRow = false;
+   int rh = FileOpen(rowPath, FILE_WRITE | FILE_CSV | FILE_ANSI, ',');
+   if(rh != INVALID_HANDLE)
+   {
+      string hdr[];
+      TH3DatasetHeader(hdr);
+      FileWriteArray(rh, hdr);
+      FileWriteArray(rh, row);
+      FileClose(rh);
+      rh = INVALID_HANDLE;
+      okRow = true;
+   }
+
+   //--- the global DB: the header on the empty file, then ONE appended row
    bool okCsv = false;
    int ch = FileOpen(csvPath, FILE_READ | FILE_WRITE | FILE_CSV | FILE_ANSI, ',');
    if(ch != INVALID_HANDLE)
    {
-      if(FileSize(ch) == 0)
-         FileWrite(ch, "Sample_ID", "Symbol", "TF", "DateTime_D", "Mother_Pips",
-                   "LegAB", "LegBC", "LegCD", "Ratio", "K", "Step_Pips",
-                   "L3_Target", "Actual_Turn", "Error_Pips", "Screenshot_Path");
+      string hdr[];
+      TH3DatasetHeader(hdr);
+      if(FileSize(ch) == 0) FileWriteArray(ch, hdr);
       FileSeek(ch, 0, SEEK_END);
-      FileWrite(ch, sampleId, Symbol(), TH3TfName(Period()),
-                TimeToString(pat.D.time),
-                DoubleToString(motherIn / pip, 1),
-                DoubleToString(legAB / pip, 1), DoubleToString(legBC / pip, 1),
-                DoubleToString(legCD / pip, 1), DoubleToString(ratioCD_BC, 3),
-                DoubleToString(kFactor, 3), DoubleToString(baseUnit / pip, 1),
-                DoubleToString(lv[2], Digits),
-                (hasTurn ? DoubleToString(turnPx, Digits) : "none"),
-                DoubleToString(errPips, 1), shotPath);
+      FileWriteArray(ch, row);
       FileClose(ch);
+      ch = INVALID_HANDLE;
       okCsv = true;
    }
-   if(okShot && okTxt && okCsv)
+   if(okShot && okTxt && okRow && okCsv)
    {
       //--- the counter advances only on a COMPLETE export, so a retry cannot
       //--- reuse a number whose PNG or row is already on disk
@@ -391,10 +472,11 @@ void TH3_ExportCurrentSample(const string patternName = "")
    else
    {
       if(fh != INVALID_HANDLE) FileClose(fh);
-      string bad = StringFormat("FAILED #%03d  png:%s txt:%s csv:%s",
-                                idx, (okShot ? "ok" : "X"), (okTxt ? "ok" : "X"), (okCsv ? "ok" : "X"));
+      string bad = StringFormat("FAILED #%03d  png:%s txt:%s row:%s db:%s",
+                                idx, (okShot ? "ok" : "X"), (okTxt ? "ok" : "X"),
+                                (okRow ? "ok" : "X"), (okCsv ? "ok" : "X"));
       Print("[TH3 RECORDER] Sample #", idx, " FAILED (shot=", okShot, " txt=", okTxt,
-            " csv=", okCsv, ") — nothing advanced.");
+            " row=", okRow, " db=", okCsv, ") — nothing advanced.");
       //--- P-TH3-REC-03: the FAILURE gets the same one second. A silent miss is
       //--- the exact case the user cannot diagnose — the press looked identical
       //--- to the working one. The counter is deliberately NOT advanced.

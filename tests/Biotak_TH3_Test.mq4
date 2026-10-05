@@ -332,25 +332,48 @@ int OnStart()
               ext > (100.0 * pip / 3.5));
     }
 
-    // P-TH3-REC §4.B — THE DATASET TREE. The recorder's paths are behaviour:
-    // a reader that looks in TH3_Dataset\Logs must find the file. Both folder
-    // constants and the path joiner are pure, so this pins them without a chart.
+    // P-TH3-DB — THE DATASET TREE AND THE DATABASE. The recorder's
+    // paths are behaviour: a reader who opens TH3_Dataset\Samples must find
+    // the sample the folder name promises. The folder name, the path joiner and
+    // the column list are all pure, so all of it is pinned here without a chart.
     {
-        bool dirsOk = true;
-        TH3RecorderEnsureDirs(dirsOk);
-        // the SPEC's names, verbatim: Sample_###_<SYMBOL>_<TF>.png beside
-        // Sample_###.txt, both under TH3_Dataset/, the CSV beside them.
-        string shot = TH3RecorderPath(TH3_DATASET_SHOTS, "Sample_001_EURUSD_H1.png", dirsOk);
-        string log  = TH3RecorderPath(TH3_DATASET_LOGS,  "Sample_001.txt", dirsOk);
-        string csv  = TH3RecorderPath(TH3_DATASET_DIR,   "Master_Dataset.csv", dirsOk);
-        Check("rec: shots live under TH3_Dataset/Screenshots",
-              dirsOk ? (StringFind(shot, "TH3_Dataset/Screenshots/Sample_001_") == 0) : true);
-        Check("rec: logs live under TH3_Dataset/Logs",
-              dirsOk ? (StringFind(log, "TH3_Dataset/Logs/Sample_001.txt") == 0) : true);
-        Check("rec: master csv is Master_Dataset.csv",
-              dirsOk ? (StringFind(csv, "TH3_Dataset/Master_Dataset.csv") == 0) : true);
-        // the fallback must NOT lose the sample: a refused folder drops the
-        // prefix and keeps the LEAF, so the file still lands somewhere real.
+        // P-TH3-DB - ONE FOLDER PER SAMPLE, ONE COLUMN LIST. The folder NAME
+        // and the header are behaviour, not comments: a reader, the sync tool
+        // and this harness all key off them, so they are pinned here. Every
+        // function below is pure - no chart, no file, no terminal.
+        datetime when = StringToTime("2026.10.05 17:43");
+        string folder = TH3SampleFolderName(when, "EURUSD", "M5", 15, "ABCD_Pattern_7040265");
+        Check("db: the folder opens with the capture stamp",
+              StringFind(folder, "20261005-1743_") == 0);
+        Check("db: the folder carries symbol, timeframe and the counter",
+              StringFind(folder, "_EURUSD_M5_S015_ABCD_Pattern_704") > 0);
+        Check("db: the sample folder is TH3_Dataset/Samples/<name>",
+              TH3SampleFolder(when, "EURUSD", "M5", 15, "") ==
+              "TH3_Dataset/Samples/20261005-1743_EURUSD_M5_S015");
+        // a name that reaches disk has to be a legal name, or the sample is lost
+        Check("db: illegal filename characters are replaced",
+              TH3SafeName("XAU/USD:M15*", 32) == "XAU_USD_M15_");
+        Check("db: a long name is capped so the path stays short",
+              StringLen(TH3SafeName("012345678901234567890123456789", 12)) == 12);
+        // the global Dataset.csv and every per-sample sample.csv share ONE header
+        string hdr[];
+        TH3DatasetHeader(hdr);
+        Check("db: the header owns exactly TH3_DATASET_COLS columns",
+              ArraySize(hdr) == TH3_DATASET_COLS);
+        Check("db: the row is keyed by sample and capture date",
+              hdr[0] == "Sample_ID" && hdr[1] == "Capture_Date" && hdr[3] == "Capture_Stamp");
+        Check("db: a reader groups by symbol and timeframe",
+              hdr[4] == "Symbol" && hdr[5] == "TF" && hdr[6] == "Owner_TF");
+        Check("db: the row carries the formula's answer and the market's",
+              hdr[22] == "Step_Pips" && hdr[27] == "Actual_Turn" && hdr[28] == "Error_Pips");
+        Check("db: the row points at the folder its own files live in",
+              hdr[30] == "Folder" && hdr[31] == "Log_File" && hdr[32] == "Screenshot");
+        // one stray comma would shift every later column of the row
+        Check("db: a comma cannot enter a CSV field",
+              TH3CsvField("ABCD, invented") == "ABCD  invented");
+        // the global index, and the fallback that must NOT lose a sample
+        Check("rec: the global DB is Dataset.csv under the tree",
+              TH3RecorderPath(TH3_DATASET_DIR, TH3_DATASET_DB_NAME, true) == "TH3_Dataset/Dataset.csv");
         Check("rec: a refused folder still writes the leaf",
               TH3RecorderPath(TH3_DATASET_SHOTS, "Sample_001.png", false) == "Sample_001.png");
     }

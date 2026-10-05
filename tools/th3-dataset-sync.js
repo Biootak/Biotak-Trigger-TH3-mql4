@@ -3,6 +3,22 @@
 // terminal's data folder and into the repo, where they are reviewable,
 // diffable, and survive a reinstall.
 //
+// P-TH3-DB (2026-10-05) — ONE FOLDER PER SAMPLE, AND THE INDEX IS BUILT HERE.
+// The recorder already writes each sample into its own folder
+// (TH3_Dataset/Samples/<date>-<clock>_<SYM>_<TF>_S<NNN>_<pattern>/ holding the
+// TXT, the PNG and a one-row sample.csv), so this tool's job is now threefold:
+//
+//   1. copy each sample FOLDER across (per file, newest wins, one failure does
+//      not stop the run);
+//   2. MIGRATE the flat layout the first twenty samples were recorded in
+//      (Screenshots/ + Logs/ + Master_Dataset.csv) into that same folder shape,
+//      reading the numbers back out of the TXT so nothing is lost — the old TXT
+//      carried every field the new row has except the capture stamp, which comes
+//      from the file's own mtime;
+//   3. REBUILD the repo's global index Samples/TH3_Dataset/Dataset.csv from the
+//      per-sample sample.csv rows, so the database and the folders cannot
+//      disagree: the folders are the truth, the index is a view of them.
+//
 // WHY THIS IS A SCRIPT AND NOT INDICATOR CODE (P-TH3-REC-06, and the reason
 // is in the MQL4 docs, docs.mql4.com/common/webrequest): an MQL4 program
 // cannot write outside its own data folder. `FileOpen` is sandboxed to
@@ -13,10 +29,12 @@
 // 4060 "Function is not allowed for call" from an indicator, because
 // indicators share one thread across every chart of a symbol.)
 //
-// It COPIES, it never moves and never deletes: MT4's copy is the running
-// system's own record and is left exactly as the terminal wrote it.
+// It COPIES, it never deletes inside the terminal: MT4's own files are the
+// running system's record and are left exactly as the terminal wrote them.
+// Inside the REPO the legacy flat files are moved into their folders, because
+// two layouts for one dataset is one dataset nobody can count.
 //
-//   node tools/th3-dataset-sync.js            # copy anything new, report
+//   node tools/th3-dataset-sync.js            # copy, migrate, rebuild the index
 //   node tools/th3-dataset-sync.js --list     # what is there, no writes
 //   node tools/th3-dataset-sync.js --dest D   # write somewhere else
 //
@@ -58,11 +76,16 @@ const PROFILE = process.env.USERPROFILE || process.env.HOME || '';
 const TERMINALS = path.join(
   PROFILE, 'AppData', 'Roaming', 'MetaQuotes', 'Terminal');
 
-const ARTIFACTS = [
-  { from: 'Screenshots', ext: ['.png'] },
-  { from: 'Logs', ext: ['.txt'] },
-  { from: '.', ext: ['.csv'] },          // Master_Dataset.csv at the root
-];
+// P-TH3-DB: the global index, and the shape every sample folder obeys. Both
+// names are the recorder's (Biotak/TH3/TH3DatasetPaths.mqh) — the header below
+// is the SAME list TH3DatasetHeader() writes, and `checkHeader` says so out
+// loud instead of quietly producing a database with shifted columns.
+const COLS = ['Sample_ID', 'Capture_Date', 'Capture_Clock', 'Capture_Stamp', 'Symbol',
+  'TF', 'Owner_TF', 'Pattern', 'Direction', 'D_Time', 'D_Price', 'Digits', 'Pip_Size',
+  'Mother_Pips', 'Leg_AB', 'Leg_BC', 'Leg_CD', 'Ratio_BC_AB', 'Ratio_CD_BC', 'K',
+  'Step_Mother', 'Step_Pattern', 'Step_Pips', 'Target_1', 'Target_3', 'Target_5',
+  'Target_7', 'Actual_Turn', 'Error_Pips', 'Rungs_Hit', 'Folder', 'Log_File',
+  'Screenshot'];
 
 //+------------------------------------------------------------------+
 //| P-TH3-REC-07 — PALETTE COMPRESSION, PROVEN LOSSLESS OR REFUSED.    |
@@ -123,10 +146,299 @@ function listTerminals() {
 }
 
 function newest(a, b) {
-  // when two terminals hold the same sample name, the newer file wins
+  // when two terminals hold the same sample file, the newer file wins
   if (!fs.existsSync(a)) return b;
   if (!fs.existsSync(b)) return a;
   return fs.statSync(a).mtimeMs >= fs.statSync(b).mtimeMs ? a : b;
+}
+
+function safeName(raw, max) {
+  let s = String(raw == null ? '' : raw).replace(/[^\w-]/g, '_');
+  return max > 0 ? s.slice(0, max) : s;
+}
+
+function stampFrom(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-` +
+         `${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+function dateFrom(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+}
+
+function clockFrom(ms) {
+  const d = new Date(ms);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/** Split a recorder CSV line. Safe because the recorder refuses commas in a
+ *  field (TH3CsvField), so a quoted-field parser would be a second dialect. */
+function splitCsv(line) {
+  return line.replace(/\r$/, '').split(',');
+}
+
+/** Every number the legacy TXT carries, as a flat lookup. */
+function parseTxt(txt) {
+  const out = {};
+  for (const line of txt.split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*):\s*(.+?)\s*$/);
+    if (m) out[m[1]] = m[2];
+  }
+  return out;
+}
+
+/** `Point_C: {Price: 1.15876, Time: ...}` -> the number after the label. */
+function afterColon(text, label) {
+  const i = text.indexOf(label);
+  if (i < 0) return '';
+  const rest = text.slice(i + label.length);
+  const m = rest.match(/-?\d+(\.\d+)?/);
+  return m ? m[0] : '';
+}
+
+/** The legacy flat TXT -> the 33-column row the new recorder writes. */
+function legacyRow(txt, id, folder, logName, shotName, ms) {
+  const k = parseTxt(txt);
+  const dPrice = afterColon(k.Point_D || '', 'Price:');
+  const cPrice = afterColon(k.Point_C || '', 'Price:');
+  const digits = (dPrice.split('.')[1] || '').length;
+  // MQL4's own rule (GetCachedPipSize): odd digits -> 10^-(d-1), even -> 10^-d
+  const pip = digits ? Math.pow(10, -(digits % 2 ? digits - 1 : digits)) : 0;
+  const low = k.Actual_Reversal_Low && k.Actual_Reversal_Low !== 'none'
+    ? k.Actual_Reversal_Low : '';
+  const high = k.Actual_Reversal_High && k.Actual_Reversal_High !== 'none'
+    ? k.Actual_Reversal_High : '';
+  const row = {};
+  row.Sample_ID = k.SAMPLE_ID || id;
+  row.Capture_Date = dateFrom(ms);
+  row.Capture_Clock = clockFrom(ms);
+  row.Capture_Stamp = stampFrom(ms);
+  row.Symbol = k.SYMBOL || '';
+  row.TF = k.TIMEFRAME || '';
+  row.Owner_TF = k.OWNER_TF || '';
+  row.Pattern = k.PATTERN || '';
+  row.Direction = (cPrice && dPrice && parseFloat(dPrice) > parseFloat(cPrice)) ? 'down' : 'up';
+  row.D_Time = k.DATETIME_D || '';
+  row.D_Price = dPrice;
+  row.Digits = String(digits);
+  row.Pip_Size = pip ? String(pip) : '';
+  row.Mother_Pips = k.Size_Pips || '';
+  row.Leg_AB = k.Leg_AB_Pips || '';
+  row.Leg_BC = k.Leg_BC_Pips || '';
+  row.Leg_CD = k.Leg_CD_Pips || '';
+  row.Ratio_BC_AB = k.Ratio_BC_AB || '';
+  row.Ratio_CD_BC = k.Ratio_CD_BC || '';
+  row.K = k.K_Factor || '';
+  row.Step_Mother = k.Step_Mother || '';
+  row.Step_Pattern = k.Step_Pattern || '';
+  row.Step_Pips = k.Final_Step_BaseUnit || '';
+  row.Target_1 = k.Step_1 || '';
+  row.Target_3 = k.Step_3_Target || '';
+  row.Target_5 = k.Step_5_Target || '';
+  row.Target_7 = k.Step_7_Target || '';
+  row.Actual_Turn = low || high;
+  row.Error_Pips = (row.Actual_Turn ? k.Error_Margin_Pips : '') || '';
+  row.Rungs_Hit = '';                 // the legacy recorder never stored it
+  row.Folder = folder;
+  row.Log_File = logName;
+  row.Screenshot = shotName;
+  return row;
+}
+
+function rowToCsv(row) {
+  return COLS.map((c) => {
+    const v = row[c] == null ? '' : String(row[c]);
+    return /[",\n]/.test(v) ? v.replace(/"/g, "'").replace(/,/g, ' ') : v;
+  }).join(',');
+}
+
+/** The recorder's own header must match COLS, or every column is shifted. */
+function checkHeader(dir, where) {
+  const csv = path.join(dir, 'Dataset.csv');
+  if (!fs.existsSync(csv)) return true;
+  const header = fs.readFileSync(csv, 'utf8').split(/\r?\n/)[0];
+  const got = splitCsv(header);
+  const same = got.length === COLS.length && got.every((c, i) => c === COLS[i]);
+  if (!same) {
+    console.error(`  WARNING ${where}: Dataset.csv header does not match the ` +
+      `tool's column list (${got.length} vs ${COLS.length} columns) — the MQL4 ` +
+      `header and this tool have drifted apart.`);
+  }
+  return same;
+}
+
+/**
+ * Copy one file, newest wins, and never let one file kill the run.
+ * Returns 'copied' | 'skipped', or throws for the caller to record.
+ */
+function copyOne(s, target) {
+  if (fs.existsSync(target) &&
+      fs.statSync(target).mtimeMs >= fs.statSync(s).mtimeMs) return 'skipped';
+  fs.mkdirSync(path.dirname(target), { recursive: true });   // the DESTINATION's
+  const chosen = newest(target, s);
+  fs.copyFileSync(chosen, target);
+  if (chosen === target) fs.utimesSync(target, fs.statSync(s).atime, fs.statSync(s).mtime);
+  return 'copied';
+}
+
+/** The recorder's own layout: TH3_Dataset/Samples/<folder>/{txt,png,csv}. */
+function syncFolders(src, dest, state, listOnly) {
+  const srcSamples = path.join(src, 'Samples');
+  if (!fs.existsSync(srcSamples)) return;
+  for (const folder of fs.readdirSync(srcSamples)) {
+    const dir = path.join(srcSamples, folder);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    for (const name of fs.readdirSync(dir)) {
+      const s = path.join(dir, name);
+      if (!fs.statSync(s).isFile()) continue;
+      const target = path.join(dest, 'Samples', folder, name);
+      if (listOnly) {
+        state.listed.push(target + (fs.existsSync(target) ? '  [have]' : '  [new]'));
+        continue;
+      }
+      try {
+        if (copyOne(s, target) === 'copied') {
+          state.copied++;
+          if (name.toLowerCase().endsWith('.png')) {
+            const before = fs.statSync(target).size;
+            const after = compressLossless(target);
+            if (after < before) state.saved += before - after;
+            state.bytes += after;
+          } else {
+            state.bytes += fs.statSync(target).size;
+          }
+        } else {
+          state.skipped++;
+        }
+      } catch (err) {
+        state.failed.push(`${folder}/${name}: ${err.code || err.message}`);
+      }
+    }
+  }
+}
+
+/** Retire the flat copies once the folder holds them: two layouts for one
+ *  dataset is one dataset nobody can count (and here it was stored TWICE —
+ *  0.71 MB of flat PNGs left beside the 0.71 MB of folders). */
+function dropFlat(txtPath, shotPath, dirs) {
+  if (fs.existsSync(txtPath)) fs.unlinkSync(txtPath);
+  if (shotPath && fs.existsSync(shotPath)) fs.unlinkSync(shotPath);
+  for (const dir of dirs) {
+    if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+  }
+}
+
+/**
+ * The FIRST layout: Logs/Sample_NNN.txt + Screenshots/Sample_NNN_*.png. Every
+ * sample already recorded this way is rebuilt into its own folder, with the row
+ * read back out of the TXT, and the flat copies are left where they are when
+ * `move` is false (the terminal) or removed from the repo when it is true.
+ */
+function migrateLegacy(root, dest, state, listOnly, move) {
+  const logDir = path.join(root, 'Logs');
+  const shotDir = path.join(root, 'Screenshots');
+  if (!fs.existsSync(logDir)) return;
+  for (const name of fs.readdirSync(logDir)) {
+    if (!name.toLowerCase().endsWith('.txt')) continue;
+    const id = name.replace(/\.txt$/i, '');
+    const txtPath = path.join(logDir, name);
+    const txt = fs.readFileSync(txtPath, 'utf8');
+    const k = parseTxt(txt);
+    const ms = fs.statSync(txtPath).mtimeMs;
+    const folder = `${stampFrom(ms)}_${safeName(k.SYMBOL, 12)}_` +
+      `${safeName(k.TIMEFRAME, 6)}_${id.replace('Sample_', 'S')}_${safeName(k.PATTERN, 20)}`;
+    const shotName = fs.existsSync(shotDir)
+      ? (fs.readdirSync(shotDir).find((f) => f.startsWith(id + '_') && f.endsWith('.png')) || '')
+      : '';
+    const targetDir = path.join(dest, 'Samples', folder);
+    if (listOnly) {
+      state.listed.push(targetDir + (fs.existsSync(targetDir) ? '  [have]' : '  [new]'));
+      continue;
+    }
+    if (fs.existsSync(path.join(targetDir, name)) && fs.existsSync(path.join(targetDir, 'sample.csv'))) {
+      // already migrated by an earlier run (or by the terminal pass a moment
+      // ago): count it, and inside the repo still retire the flat original.
+      if (move) {
+        dropFlat(txtPath, shotName ? path.join(shotDir, shotName) : '', [logDir, shotDir]);
+        state.migrated++;
+      } else {
+        state.skipped++;
+      }
+      continue;
+    }
+    try {
+      fs.mkdirSync(targetDir, { recursive: true });
+      fs.copyFileSync(txtPath, path.join(targetDir, name));
+      if (shotName) {
+        const shot = path.join(targetDir, shotName);
+        fs.copyFileSync(path.join(shotDir, shotName), shot);
+        const before = fs.statSync(shot).size;
+        const after = compressLossless(shot);
+        if (after < before) state.saved += before - after;
+      }
+      const row = legacyRow(txt, id, folder, name, shotName, ms);
+      fs.writeFileSync(path.join(targetDir, 'sample.csv'),
+        COLS.join(',') + '\n' + rowToCsv(row) + '\n');
+      state.migrated++;
+      state.bytes += fs.statSync(path.join(targetDir, name)).size;
+      if (move) dropFlat(txtPath, shotName ? path.join(shotDir, shotName) : '', [logDir, shotDir]);
+    } catch (err) {
+      state.failed.push(`${id}: ${err.code || err.message}`);
+    }
+  }
+}
+
+/** The index is a VIEW of the folders, rebuilt from their own sample.csv. */
+function rebuildIndex(dest, state) {
+  const samplesDir = path.join(dest, 'Samples');
+  if (!fs.existsSync(samplesDir)) return 0;
+  const rows = [];
+  const dupes = new Map();
+  for (const folder of fs.readdirSync(samplesDir).sort()) {
+    const csv = path.join(samplesDir, folder, 'sample.csv');
+    if (!fs.existsSync(csv)) {
+      state.failed.push(`${folder}: no sample.csv — the index would lose it`);
+      continue;
+    }
+    const cells = splitCsv(fs.readFileSync(csv, 'utf8').split(/\r?\n/)[1] || '');
+    if (cells.length !== COLS.length) {
+      state.failed.push(`${folder}: sample.csv has ${cells.length} columns, expected ${COLS.length}`);
+      continue;
+    }
+    const row = {};
+    COLS.forEach((c, i) => { row[c] = cells[i]; });
+    row.Folder = row.Folder || folder;            // an older row without it
+    const prev = dupes.get(row.Sample_ID);
+    if (prev && prev.folder !== folder) {
+      // the same sample captured twice: the newer capture stamp is the truth
+      if ((row.Capture_Stamp || '') < (prev.row.Capture_Stamp || '')) continue;
+      rows.splice(rows.indexOf(prev.row), 1);
+      state.dupes++;
+    }
+    dupes.set(row.Sample_ID, { folder, row });
+    rows.push(row);
+  }
+  rows.sort((a, b) => (a.Capture_Stamp + a.Sample_ID).localeCompare(b.Capture_Stamp + b.Sample_ID));
+  const out = path.join(dest, 'Dataset.csv');
+  const body = [COLS.join(',')].concat(rows.map(rowToCsv)).join('\n') + '\n';
+  const old = fs.existsSync(out) ? fs.readFileSync(out, 'utf8') : '';
+  if (old !== body) fs.writeFileSync(out, body);
+  else state.indexUnchanged = true;
+  return rows.length;
+}
+
+function dirBytes(dir) {
+  let total = 0;
+  for (const f of fs.readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, f.name);
+    total += f.isDirectory() ? dirBytes(p) : fs.statSync(p).size;
+  }
+  return total;
 }
 
 function main() {
@@ -144,99 +456,57 @@ function main() {
     return 1;
   }
 
-  let copied = 0, skipped = 0, bytes = 0, saved = 0;
-  const failed = [];
+  const state = { copied: 0, skipped: 0, bytes: 0, saved: 0, migrated: 0,
+    dupes: 0, failed: [], listed: [], indexUnchanged: false };
+
   for (const src of sources) {
-    for (const { from, ext } of ARTIFACTS) {
-      const dir = from === '.' ? src : path.join(src, from);
-      if (!fs.existsSync(dir)) continue;
-      for (const name of fs.readdirSync(dir)) {
-        if (!ext.some((e) => name.toLowerCase().endsWith(e))) continue;
-        const s = path.join(dir, name);
-        if (!fs.statSync(s).isFile()) continue;
-
-        const target = path.join(dest, from === '.' ? '' : from, name);
-        if (listOnly) {
-          console.log('  ' + path.relative(ROOT, s) +
-                      (fs.existsSync(target) ? '  [have]' : '  [new]'));
-          continue;
-        }
-        // --- never clobber a newer project copy
-        if (fs.existsSync(target) &&
-            fs.statSync(target).mtimeMs >= fs.statSync(s).mtimeMs) {
-          skipped++;
-          continue;
-        }
-        // P-TH3-REC-08: the DESTINATION's directory, always. The obvious
-        // `mkdirSync(path.dirname(chosen))` was the wrong one: when the
-        // project copy does not exist yet, `chosen` is the SOURCE (the
-        // terminal's file), so it created the terminal's directory — which
-        // exists — and then copyFileSync died with ENOENT on the destination.
-        // A first run into a clean tree therefore crashed instead of
-        // creating the tree, which is the one run that must always work.
-        fs.mkdirSync(path.dirname(target), { recursive: true });
-        // P-TH3-REC-08: ONE FILE'S FAILURE IS NOT THE RUN'S FAILURE. A single
-        // unreadable or locked file used to throw out of the whole loop and
-        // leave the rest of the dataset uncopied, so one bad sample cost all
-        // of them. It is now counted, named, and the run continues — a
-        // partial sync that says what it missed beats a crash that says
-        // nothing.
-        try {
-          const chosen = newest(target, s);
-          fs.copyFileSync(chosen, target);
-        } catch (err) {
-          failed.push(`${name}: ${err.code || err.message}`);
-          continue;
-        }
-        copied++;
-        //--- P-TH3-REC-07: shrink the shot, but only ever LOSSLESSLY. The
-        //--- compression runs on the PROJECT copy, never on MT4's own file.
-        let after = fs.statSync(target).size;
-        if (name.toLowerCase().endsWith('.png')) {
-          const before = after;
-          after = compressLossless(target);
-          if (after < before) saved += before - after;
-        }
-        bytes += after;
-      }
-    }
+    checkHeader(src, path.basename(path.dirname(path.dirname(path.dirname(src)))));
+    syncFolders(src, dest, state, listOnly);
+    // the terminal keeps its own files: copy-and-migrate, never move there
+    migrateLegacy(src, dest, state, listOnly, false);
+  }
+  // the repo's own legacy flat files ARE moved, so one dataset has one layout
+  migrateLegacy(dest, dest, state, listOnly, true);
+  if (listOnly) {
+    for (const l of state.listed) console.log('  ' + path.relative(ROOT, l));
+    return 0;
   }
 
-  if (listOnly) return 0;
-  const shotDir = path.join(dest, 'Screenshots');
-  const logDir = path.join(dest, 'Logs');
-  const shots = fs.existsSync(shotDir) ? fs.readdirSync(shotDir).length : 0;
-  const logs = fs.existsSync(logDir) ? fs.readdirSync(logDir).length : 0;
-
-  //--- the budget line (P-TH3-REC-06). The recorder caps at 100 samples, so
-  //--- this is the size the dataset is DESIGNED to reach, not a guess.
-  let total = 0;
-  for (const dir of [shotDir, logDir, dest]) {
-    if (!fs.existsSync(dir)) continue;
-    for (const f of fs.readdirSync(dir)) {
-      const p = path.join(dir, f);
-      if (fs.statSync(p).isFile()) total += fs.statSync(p).size;
-    }
+  const legacyCsv = path.join(dest, 'Master_Dataset.csv');
+  let legacyFolded = 0;
+  if (fs.existsSync(legacyCsv)) {
+    const lines = fs.readFileSync(legacyCsv, 'utf8').split(/\r?\n/).filter(Boolean);
+    legacyFolded = Math.max(0, lines.length - 1);
+    fs.unlinkSync(legacyCsv);         // its rows live on in the TXT -> sample.csv
   }
+
+  const indexed = rebuildIndex(dest, state);
+  const total = dirBytes(dest);
   const pct = (total / (1024 * 1024 * 1024)) * 100;
-  console.log(`th3-dataset-sync: copied ${copied}, skipped ${skipped} (up to date)`);
-  console.log(`  ${path.relative(ROOT, dest)}  ${shots} shots, ${logs} logs, ` +
-              `${(bytes / 1024).toFixed(0)} KB written`);
-  if (saved > 0) {
-    console.log(`  lossless palette compression saved ${(saved / 1024).toFixed(0)} KB` +
-                ` (verified pixel-identical; a lossy re-encode is refused)`);
+  const folders = fs.existsSync(path.join(dest, 'Samples'))
+    ? fs.readdirSync(path.join(dest, 'Samples')).length : 0;
+
+  console.log(`th3-dataset-sync: copied ${state.copied}, skipped ${state.skipped} (up to date), ` +
+    `migrated ${state.migrated} legacy sample(s)`);
+  console.log(`  ${path.relative(ROOT, dest)}  ${folders} sample folder(s), ` +
+    `${indexed} row(s) in Dataset.csv, ${(state.bytes / 1024).toFixed(0)} KB written`);
+  if (legacyFolded) console.log(`  Master_Dataset.csv folded into the folders (${legacyFolded} row(s)) and removed`);
+  if (state.dupes) console.log(`  ${state.dupes} duplicate Sample_ID(s): the newer capture won`);
+  if (state.saved > 0) {
+    console.log(`  lossless palette compression saved ${(state.saved / 1024).toFixed(0)} KB` +
+      ` (verified pixel-identical; a lossy re-encode is refused)`);
   }
+  if (state.indexUnchanged) console.log('  Dataset.csv already matched the folders — not rewritten');
   console.log(`  dataset total ${(total / 1024 / 1024).toFixed(2)} MB = ` +
-              `${pct.toFixed(2)}% of GitHub's 1 GB recommended ceiling ` +
-              `(cap is 100 samples)`);
+    `${pct.toFixed(2)}% of GitHub's 1 GB recommended ceiling (cap is 100 samples)`);
   if (pct > 5) {
     console.warn(`  WARNING: dataset is over 5% of the ceiling — archive the ` +
-                `oldest samples before adding more.`);
+      `oldest samples before adding more.`);
   }
-  if (failed.length) {
-    for (const f of failed) console.error(`  FAILED ${f}`);
-    console.error(`th3-dataset-sync: ${failed.length} file(s) could not be ` +
-                  `copied; the rest are in place.`);
+  if (state.failed.length) {
+    for (const f of state.failed) console.error(`  FAILED ${f}`);
+    console.error(`th3-dataset-sync: ${state.failed.length} file(s) could not be ` +
+      `copied; the rest are in place.`);
     return 1;
   }
   return 0;

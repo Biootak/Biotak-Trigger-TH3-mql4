@@ -185,6 +185,14 @@ tests/Files
 # have to stay together or a sample is half a sample. Nothing here is ignored;
 # `node tools/th3-dataset-sync.js` pulls new captures in from the terminal.
 
+# P-TH3-DB: the dashboard is a VIEW of Dataset.csv + the sample folders, rebuilt
+# by one command (`node tools/th3-dataset-dashboard.js`), and the inline copy
+# embeds every PNG as a data URI (1 MB for 20 samples, ~6 MB at the recorder's
+# 100-sample cap). Tracking a generated megabyte on every capture is exactly the
+# history bloat the samples themselves avoid; the inputs are tracked.
+Samples/TH3_Dataset/dashboard.html
+Samples/TH3_Dataset/dashboard.inline.html
+
 # Agent scratch: session memory and temp probes. Never repo content.
 .workbuddy-ai/
 .claude/

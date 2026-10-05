@@ -20,6 +20,8 @@ Biotak/                       All product logic (*.mqh, include-guarded, include
 Files/Icons/                  Runtime BMPs, embedded via #resource
 tests/                        Harnesses, compiled by the gate
 tools/                        Deploy, icon gen, submenu check
+Samples/TH3_Dataset/          The labelled samples: one folder each,
+                              Dataset.csv the index, docs/th3-dataset.md the contract
 build-logs/                   Compile logs (gitignored)
 ```
 
@@ -110,6 +112,8 @@ python tools/debug-doctor.py --env                     # the loop's own instrume
 python tools/debug-doctor.py --symptom count           # one symptom -> one core gap
 python tools/mutation_gate.py                          # every rule's inverse must FAIL a gate
 python tools/mutation_gate.py --list                   # mutations + register entries lacking one
+node tools/th3-dataset-sync.js                        # labelled samples -> the repo, index rebuilt
+node tools/th3-dataset-dashboard.js                  # the dataset as one reviewable page
 ```
 
 **A rule is gated only if its INVERSE fails a gate (contract §6.14).**
