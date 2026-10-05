@@ -88,7 +88,17 @@ function num(v) {
 
 //--- the dataset, joined with the verdicts and pointed at its own files
 function load(inline) {
-  if (!fs.existsSync(DB)) return null;
+  // P-TH3-DB: no Dataset.csv yet is the state of a dataset nobody has recorded
+  // into — the first morning on a clean set. It used to be an exit-1 error,
+  // which reads as "the tool is broken" when the truth is "there is nothing yet".
+  // The page still opens, and it says what to press.
+  if (!fs.existsSync(DB)) {
+    return {
+      generated: nowStamp(), samples: [], journal: [],
+      empty: 'هنوز هیچ نمونه‌ای ثبت نشده — در MT4 یک الگو بکش و کلید M را بزن، ' +
+        'بعد این فرمان را اجرا کن: node tools/th3-dataset-sync.js',
+    };
+  }
   const rows = readCsv(DB);
   const reviews = new Map(readCsv(REVIEWS).map((r) => [r.Sample_ID, r]));
   const samples = rows.map((r) => {
@@ -139,9 +149,13 @@ function load(inline) {
     }
     return { generated: nowStamp(), samples, inlineBytes: bytes, journal: null };
   }
+  const empty = samples.length ? '' :
+    'دیتاست خالی است — Dataset.csv فقط هدر دارد. در MT4 یک الگو بکش، B را بزن ' +
+    '(مادر)، بعد M؛ سپس: node tools/th3-dataset-sync.js';
   return {
     generated: nowStamp(),
     samples,
+    empty,
     journal: fs.existsSync(JOURNAL)
       ? fs.readFileSync(JOURNAL, 'utf8').split(/\r?\n/).filter(Boolean).slice(-40)
       : [],
@@ -200,6 +214,8 @@ pre{white-space:pre-wrap;font:12px/1.5 Consolas,monospace;color:var(--dim);max-h
 .hint{color:var(--dim);font-size:12px;padding:0 24px 10px}
 .card .meta{cursor:pointer}
 .more{font-size:11px;color:var(--dim);background:none;border:1px dashed var(--line)}
+.del{font-size:11px;color:var(--inv);background:none;border:1px solid transparent}
+.del:hover{border-color:var(--inv);color:var(--inv)}
 .more:hover{color:var(--accent);border-color:var(--accent)}
 .mdl{position:fixed;inset:0;background:#000c;display:none;align-items:flex-start;justify-content:center;
      z-index:8;overflow:auto;padding:24px}
@@ -257,8 +273,10 @@ function buildPage(data) {
   </select>
   <input id="errMax" type="number" step="0.5" placeholder="خطای بیشتر از" style="width:110px">
   <button id="reset">پاک کردن فیلترها</button>
+  <button id="wipe" style="color:var(--inv);border-color:var(--inv)" title="حذف همه نمونه‌ها از ریپو و ترمینال">پاک کردن کل دیتاست</button>
   <span class="hint" id="count"></span>
 </div>
+<div class="hint" id="empty" ${data.empty ? '' : 'style="display:none"'}>${esc(data.empty || '')}</div>
 <div class="hint">هر نمونه یک کارت است: تصویر، اعداد فرمول، بازار واقعی، و حکم شما.
 برای ثبت حکم از دکمه‌های زیر استفاده کنید (فرمان در حافظه کپی می‌شود، در ترمینال اجرا کنید).</div>
 <main>
@@ -334,6 +352,9 @@ const imgTag = (rel) => {
 };
 const linkHref = (rel) => (rel ? (rel.startsWith('data:') ? rel : PREFIXES[0] + rel) : '#');
 
+function clearCmd(what) {
+  return 'node tools/th3-dataset-sync.js clear ' + what;
+}
 function reviewCmd(id, verdict, note) {
   return 'node tools/th3-dataset-dashboard.js review ' + id + ' ' + verdict +
     ' "' + (note || '') + '"';
@@ -385,7 +406,7 @@ function kpis(list) {
 const GROUPS = [
   ['چه کسی و کِی', ['Sample_ID', 'Capture_Date', 'Capture_Clock', 'Capture_Stamp',
     'Symbol', 'TF', 'Owner_TF', 'Pattern', 'Direction']],
-  ['ساختار', ['D_Time', 'D_Price', 'Digits', 'Pip_Size', 'Mother_Pips',
+  ['ساختار', ['D_Time', 'D_Price', 'Digits', 'Pip_Size', 'Mother_Pips', 'Rung_Pips',
     'Leg_AB', 'Leg_BC', 'Leg_CD', 'Ratio_BC_AB', 'Ratio_CD_BC', 'K']],
   ['فرمول', ['Step_Mother', 'Step_Pattern', 'Step_Pips',
     'Target_1', 'Target_3', 'Target_5', 'Target_7']],
@@ -397,6 +418,7 @@ const LABELS = {
   Capture_Stamp: 'مهر زمانی', Symbol: 'نماد', TF: 'تایم‌فریم', Owner_TF: 'تایم‌فریم مالک',
   Pattern: 'الگو', Direction: 'جهت', D_Time: 'زمان D', D_Price: 'قیمت D',
   Digits: 'ارقام', Pip_Size: 'اندازه پیپ', Mother_Pips: 'مادر (پیپ)',
+  Rung_Pips: 'رانگ تایم‌فریم (پیپ)',
   Leg_AB: 'پای AB', Leg_BC: 'پای BC', Leg_CD: 'پای CD',
   Ratio_BC_AB: 'نسبت BC/AB', Ratio_CD_BC: 'نسبت CD/BC', K: 'ضریب K',
   Step_Mother: 'گام مادر', Step_Pattern: 'گام الگو', Step_Pips: 'گام نهایی (پیپ)',
@@ -430,7 +452,9 @@ function openDetail(id) {
   const btn = (v, label, note) => '<button data-cmd="' +
     esc(reviewCmd(id, v, note)).replace(/"/g, '&quot;') + '">' + label + '</button>';
   $('mdlFoot').innerHTML = btn('real', 'واقعی ✓') + btn('invented', 'ساختگی ✗') +
-    btn('unclear', 'نامشخص ?');
+    btn('unclear', 'نامشخص ?') +
+    '<button data-cmd="' + esc(clearCmd('--id ' + id + ' --yes')).replace(/"/g, '&quot;') +
+    '" style="color:var(--inv);border-color:var(--inv)">حذف این نمونه</button>';
   $('mdlTxt').textContent = s.Txt || '(لاگی در پوشه نیست)';
   $('mdl').classList.add('on');
 }
@@ -475,6 +499,13 @@ function card(s) {
     (s.LogPath ? '<a href="' + linkHref(s.LogPath) + '" target="_blank"><button>لاگ TXT</button></a>' : '') +
     review('real', 'واقعی ✓') + review('invented', 'ساختگی ✗') + review('unclear', 'نامشخص ?') +
     '<button class="more" data-open="' + s.Sample_ID + '">جزئیات کامل</button>' +
+    // «حذف» is a COMMAND, not a click: a page opened from disk cannot delete, and a
+    // button that silently pretends to is worse than no button. It copies the exact
+    // command instead — and the command deletes in the TERMINAL too, or the next
+    // sync would bring the sample straight back.
+    '<button class="del" data-cmd="' +
+    esc(clearCmd('--id ' + s.Sample_ID + ' --yes')).replace(/"/g, '&quot;') +
+    '" title="این فرمان نمونه را از ریپو و از ترمینال حذف می‌کند">حذف نمونه</button>' +
     '</div></article>';
 }
 
@@ -506,6 +537,7 @@ function render() {
     return String(av).localeCompare(String(bv)) * dir;
   });
   $('count').textContent = list.length + ' از ' + S.length + ' نمونه';
+  if (DATA.empty) $('empty').style.display = list.length ? 'none' : '';
   $('cards').innerHTML = list.length ? list.map(card).join('')
     : '<p class="hint">هیچ نمونه‌ای با این فیلترها پیدا نشد.</p>';
   kpis(list);
@@ -554,6 +586,16 @@ fillSelect('tf', [...new Set(S.map((s) => s.TF))].filter(Boolean).sort());
 ['q', 'sym', 'tf', 'verdict', 'sort', 'errMax'].forEach((id) => {
   $(id).addEventListener('input', render);
   $(id).addEventListener('change', render);
+});
+// The wipe is the most destructive thing on this page, so it asks once and
+// then hands over the command. A page that cannot write to disk has no business
+// being one keystroke from an empty dataset.
+$('wipe').addEventListener('click', () => {
+  const cmd = clearCmd('--all --yes');
+  if (!confirm('همه نمونه‌ها از ریپو و از پوشه داده ترمینال حذف می‌شوند.\n' +
+    'این کار برگشت‌پذیر نیست مگر با: git checkout 726bcc3 -- Samples/TH3_Dataset\n\n' +
+    'فرمان آماده شد؛ در ترمینال اجرا کنید.')) return;
+  copy(cmd, $('wipe'));
 });
 $('reset').addEventListener('click', () => {
   ['q', 'sym', 'tf', 'verdict', 'sort', 'errMax'].forEach((id) => { $(id).value = id === 'sort' ? 'Capture_Stamp' : ''; });

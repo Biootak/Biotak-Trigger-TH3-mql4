@@ -114,6 +114,8 @@ python tools/mutation_gate.py                          # every rule's inverse mu
 python tools/mutation_gate.py --list                   # mutations + register entries lacking one
 node tools/th3-dataset-sync.js                        # labelled samples -> the repo, index rebuilt
 node tools/th3-dataset-dashboard.js                  # the dataset as one reviewable page
+node tools/th3-dataset-sync.js --watch --notify    # every M press: sync, rebuild, tell me
+node tools/th3-tune-k.js                            # search K on the samples judged real
 ```
 
 **A rule is gated only if its INVERSE fails a gate (contract §6.14).**

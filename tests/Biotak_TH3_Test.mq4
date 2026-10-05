@@ -368,6 +368,10 @@ int OnStart()
               hdr[22] == "Step_Pips" && hdr[27] == "Actual_Turn" && hdr[28] == "Error_Pips");
         Check("db: the row points at the folder its own files live in",
               hdr[30] == "Folder" && hdr[31] == "Log_File" && hdr[32] == "Screenshot");
+        // the TF rung gates the macro-span rule, so the row must carry it: a
+        // dataset that omits an input cannot tune the formula that uses it
+        Check("db: the row carries the TF rung the formula divides by",
+              hdr[33] == "Rung_Pips");
         // one stray comma would shift every later column of the row
         Check("db: a comma cannot enter a CSV field",
               TH3CsvField("ABCD, invented") == "ABCD  invented");

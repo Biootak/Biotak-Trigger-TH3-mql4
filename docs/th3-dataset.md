@@ -41,7 +41,11 @@ folder and into the global index, so the two cannot drift.
 |---|---|
 | who/when | `Sample_ID`, `Capture_Date`, `Capture_Clock`, `Capture_Stamp`, `Symbol`, `TF`, `Owner_TF`, `Pattern`, `Direction` |
 | the structure | `D_Time`, `D_Price`, `Digits`, `Pip_Size`, `Mother_Pips`, `Leg_AB`, `Leg_BC`, `Leg_CD`, `Ratio_BC_AB`, `Ratio_CD_BC`, `K` |
-| the formula | `Step_Mother`, `Step_Pattern`, `Step_Pips`, `Target_1`, `Target_3`, `Target_5`, `Target_7` |
+
+`Rung_Pips` (the TF rung) is an **input** of the formula — it decides whether the
+mother is a macro span — so a dataset meant to tune that formula has to carry it.
+It is the 34th and last column, appended so every earlier index stays where it was.
+| the formula | `Step_Mother`, `Step_Pattern`, `Step_Pips`, `Target_1`, `Target_3`, `Target_5`, `Target_7`, `Rung_Pips` |
 | the market | `Actual_Turn`, `Error_Pips`, `Rungs_Hit` |
 | the files | `Folder`, `Log_File`, `Screenshot` |
 
@@ -55,12 +59,41 @@ data, one current row per `Sample_ID`, and the journal keeps the history.
 node tools/th3-dataset-sync.js          # copy folders out of the terminal,
                                         # migrate any legacy flat samples,
                                         # rebuild Dataset.csv from the folders
+node tools/th3-dataset-sync.js capture  # ONE PASS: sync + rebuild the page +
+                                        # a desktop message (add --notify)
+node tools/th3-dataset-sync.js --watch  # stay up; every M press is pulled in,
+                                        # the page rebuilt, --notify to hear it
+node tools/th3-dataset-sync.js clear --id Sample_015 --yes    # delete ONE
+node tools/th3-dataset-sync.js clear --symbol EURUSD --yes    # a whole symbol
+node tools/th3-dataset-sync.js clear --all --yes              # the whole set
 node tools/th3-dataset-dashboard.js                    # build dashboard.html
 node tools/th3-dataset-dashboard.js --inline           # one file, images inside
 node tools/th3-dataset-dashboard.js review Sample_015 real    "clean AB=CD"
 node tools/th3-dataset-dashboard.js review Sample_016 invented "no real turn"
 node tools/th3-dataset-dashboard.js journal "K 3.5 looks high on XAU M15"
+node tools/th3-tune-k.js                # search K on the REAL samples
 ```
+
+### Deleting
+
+`clear` is a **dry run unless `--yes`**: without it, it prints every path it would
+remove and exits. It deletes in **both** places — the repo folder AND the terminal's
+`MQL4\Files\TH3_Dataset\Samples` — because a repo-only delete comes straight back
+on the next sync. The dashboard's «حذف نمونه» and «پاک کردن کل دیتاست» buttons copy
+that exact command (a page opened from disk cannot delete, and a button that
+pretends to is worse than none). The sample counter is a chart-scoped
+`GlobalVariable`, so the next capture is `Sample_001` on a **fresh** chart.
+
+### Tuning K
+
+`th3-tune-k.js` ports the shipped formula (`TH3Pivots_B.mqh:405-430`) and searches
+K over the samples you marked **real**, scoring each candidate by the recorder's
+own measure — the distance from the actual turn to the **third** rung, in pips. It
+reports the current tiers scored the same way, the best K, the best K per ratio
+band (the shape `TH3UnifiedK` should have), and it refuses to look clever: it warns
+when the winner sits on the search boundary, when rows have no `Rung_Pips` (the
+mother is then recovered from `step²·K/legCD`), and when many rows are really one
+structure — the exact trap the first twenty samples fell into.
 
 `review` writes the verdict, appends a timestamped line to `journal.md`, and
 rebuilds the page. The dashboard's verdict buttons copy the exact command to the

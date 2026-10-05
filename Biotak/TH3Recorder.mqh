@@ -314,6 +314,9 @@ void TH3_ExportCurrentSample(const string patternName = "")
    row[30] = sampleOk ? folderName : "";
    row[31] = logName;
    row[32] = shotName;
+   //--- the rung is an INPUT (it gates the macro-span rule), so it belongs in the
+   //--- row: a formula tuned without it is tuned on a guess.
+   row[33] = DoubleToString(rung / pip, 1);
 
    //--- P-TH3-REC-02 (2026-10-05) — THE VIEW IS NOT OURS TO MOVE. The spec
    //--- said «center the chart on D», and this did: a ChartNavigate to 30 bars

@@ -173,7 +173,7 @@ string TH3CsvField(const string raw)
 //| what the formula answered, what the market did, where the files  |
 //| are.                                                             |
 //+------------------------------------------------------------------+
-#define TH3_DATASET_COLS 33
+#define TH3_DATASET_COLS 34
 
 void TH3DatasetHeader(string &cols[])
 {
@@ -211,6 +211,12 @@ void TH3DatasetHeader(string &cols[])
    cols[30] = "Folder";
    cols[31] = "Log_File";
    cols[32] = "Screenshot";
+   // P-TH3-DB: the TF rung (TH3PatternStepRungTF) is an INPUT of the formula —
+   // it decides whether the mother is a macro span — and the dataset that exists
+   // to tune the formula has to carry it, or a tuner can only guess. Appended
+   // last so every column index already pinned and every tool that reads by
+   // position stays exactly where it was.
+   cols[33] = "Rung_Pips";
 }
 
 #endif // TH3_DATASET_PATHS_MQH
