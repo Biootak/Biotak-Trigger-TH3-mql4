@@ -65,55 +65,24 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     double pip0 = GetCachedPipSize();   // local: the seed/lock blocks sit above pipSize's decl
     if(pip0 <= 0) pip0 = Point;
 
-    // P-TH3-STEP-12 (2026-09-21) — MULTI-FACTOR SYNTHESIS: Step = f(Mother, ABCD, TH).
-    // The seed is never an isolated pick (not legCD/K alone, not a bare rung):
-    // the collision leg over its K (pattern momentum), the six-condition mother
-    // node's measured size at D (macro structure, 0 when no mother answers) and
-    // the owner TF's rung (fractal volatility) enter ONE pure function
-    // (CalculateMultiFactorStep, TH3Pivots.mqh). K selection stays in TH3ClosedK
-    // (closedK above); the mother size is the detector's own node reading
-    // (TH3NodeStepAt) — a factor now, no longer the lock's Path 1.
-    TH3PivotSix mpSynth;
-    ZeroMemory(mpSynth);
-    double motherSize = 0.0;
-    double synthTolBase = (closedOK && closedStep > 0) ? closedStep : seedRung;
-    if(synthTolBase > 0)
-        // P-TH3-STEP-12b: the SAME terms the mother-zone drawing below uses
-        // (anchor A, closed-step ruler, a proven flip, the A-origin leg) — one
-        // matcher, so a mother the chart draws is a mother this measures.
-        motherSize = TH3NodeStepAt(tD, pD, dirDown, 1.5 * synthTolBase, mpSynth,
-                                   tA, (closedOK ? closedStep : 0.0), true, pA);
-    double synthK = (closedOK && closedK > 0) ? closedK : 0.0;
-    double synthStep = CalculateMultiFactorStep(CD_Distance, AB_Distance, synthK,
-                                                motherSize, seedRung);
-    // P-TH3-STEP-13 (unified formula): the MACRO leg is the SPAN, not the
-    // node thickness. motherSize above is |price-keyPrice| (one candle / 1xATR:
-    // <= ~15 dollars on gold M15/H1/H4 — it can never carry an 11-day 1020-pip
-    // run). The tradable macro run is |D - wick| / 3 (XAUUSD M15 1020/3 = 340,
-    // == 560/1.666 = 336.1 pattern leg). Thickness stays the intraday factor
-    // and the `piv=` caption; the span owns the macro verdict below.
-    double macroSpanStep = TH3MacroSpanStep(pD, mpSynth);
-    // P-TH3-STEP-12b: a MACRO mother (>= 3 rungs) is the market's own geometry.
-    // One step is its run / 3, so step 3 sits on its far edge — and it OWNS the
-    // ladder: the hand-typed base and the walk-up shift are opinions about a
-    // geometry the mother already measured. Averaging them into it is what made
-    // the caption report a synthesis the ladder was not wearing (the user's
-    // «۸۸.۹ پیپ در محاسبات ولی ۲۷۶.۶ پیپ روی چارت» — the 276.6 was the
-    // hand-typed base winning the lock, not the formula being rescaled).
-    // P-TH3-STEP-13: the 3-rung gate reads the SPAN (wick), never the node.
-    bool synthMacro = (macroSpanStep > 0 && seedRung > 0
-                       && macroSpanStep >= seedRung);
-    if(synthMacro) synthStep = macroSpanStep;
+    // P-TH3-STEP-16 (2026-10-05) — THE UNIFIED EQUATION. One formula, no
+    // branches: the B-marked mother (mandatory anchor) and the ABCD leg
+    // resonate geometrically (CalculateUnifiedMasterStep, TH3Pivots_B.mqh).
+    // TH3ClosedK above stays as the lock's diagnostic reference only — the
+    // decider ladder is TH3UnifiedK inside the function.
+    double motherSize = TH3ManualBaseStep(inpTH3PivotBasePips, pip0);
+    double uniRatio = (closedOK ? closedRatio : 0.0);
+    if(!closedOK && BC_Distance > 0 && CD_Distance > 0)
+        uniRatio = CD_Distance / BC_Distance;
+    double uniK = TH3UnifiedK(uniRatio);
     double baseUnit = 0;
     string seedHow = "";
-    if(synthStep > 0) {
-        baseUnit = synthStep;
-        seedHow = StringFormat("multi K=%.1f pat=%.1f piv=%.1f th=%.1f%s", synthK,
+    double uniStep = CalculateUnifiedMasterStep(CD_Distance, uniRatio, motherSize, seedRung);
+    if(uniStep > 0) {
+        baseUnit = uniStep;
+        seedHow = StringFormat("uni K=%.1f pat=%.1f mom=%.1f th=%.1f%s", uniK,
                                CD_Distance / pip0, motherSize / pip0, seedRung / pip0,
                                (ownerTF != Period() ? " up" : ""));
-        // P-TH3-STEP-13: a macro span the chart can check (wick, k=3).
-        if(synthMacro)
-            seedHow += StringFormat(" | span=%.1f/3", macroSpanStep * 3.0 / pip0);
     } else if(seedRung > 0) {
         baseUnit = seedRung;
         seedHow = (ownerTF != Period()
@@ -143,7 +112,7 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // is a circle that fires LOCKED by construction. ABCD-anchored Path 1 vs
     // synthesis Path 2 lets TH3LockedStep arbitrate two INDEPENDENT answers.
     // The caption words it as `ret <q>`.
-    double pbRaw = TH3ManualBaseStep(inpTH3PivotBasePips, pip0);
+    double pbRaw = motherSize;  // same hand thickness the synthesis above consumes
     double pbStep = pbRaw;
     string retHow = "";
     if(pbRaw > 0)
@@ -157,55 +126,25 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         }
     }
 
-    // P-TH3-LOCK (2026-09-19) — THE LOCKED STEP: TWO INDEPENDENT PATHS CROSS.
-    // The user's master formula: the step is not trusted from one source.
-    //   Path 1 (geometry): the pivot's NODE thickness — the hand-typed base
-    //   (P-TH3-PB-MAN), stated in pips in the TH3 TOOL card.
-    //   Path 2 (arithmetic): the MULTI-FACTOR synthesis above (pattern +
-    //   mother + TH), never a lone leg again (P-TH3-STEP-12).
-    // The arithmetic lives in ONE pure owner (TH3LockedStep, TH3Pivots.mqh) so
-    // the decision the ladder wears can be pinned without a chart; this call is
-    // the ONLY thing the draw path knows about it.
+    // P-TH3-STEP-16: the lock is now a SECOND OPINION, never the decider.
+    // The unified step above stands; this verdict (does the hand base agree
+    // with it?) is logged in TH3LOG and captioned, never applied.
     bool stepLocked = false;   // the verdict is carried by `lockHow`'s own word
     string lockHow = "";
-    double lockedUnit = baseUnit;
-    // P-TH3-STEP-12b: the macro mother's own step IS the verdict. The lock's
-    // Path 1 (the hand-typed base) and its walk-up shift are both stand-ins for
-    // a geometry the mother measured directly; letting either replace the
-    // synthesis is what put a 276.6-pip ladder on a chart whose caption read
-    // 88.9. Only when NO macro mother answers does the base keep its
-    // P-TH3-PB-MAN role (a hand-typed number is still an instruction — but an
-    // instruction about a step the market has not stated).
-    if(synthMacro && synthStep > 0) {
-        lockHow = "MACRO mother owns the step";
-        stepLocked = true;   // baseUnit is already synthStep (line above)
-    } else if(TH3LockedStep(lockedUnit, lockHow, stepLocked,
-                     (synthStep > 0 ? synthStep : 0.0), pbStep, 0.0,
-                     ownerTF, Period(), pip0)) {
-        baseUnit = lockedUnit;
-    }
+    double lockedUnit = 0.0;
+    TH3LockedStep(lockedUnit, lockHow, stepLocked,
+                  baseUnit, pbStep, 0.0,
+                  ownerTF, Period(), pip0);
     if(lockHow != "") seedHow += " | " + lockHow;
     if(retHow != "") seedHow += " | " + retHow;
 
-    // Reaction proof from Point D:
+    // Reaction proof from Point D — DIAGNOSTIC ONLY (P-TH3-STEP-16). The
+    // reaction no longer moves the ladder; the unified step stands. The vote
+    // is still measured, printed and logged (TH3LOG proof/deep) so the chart
+    // says whether the market confirmed the equation's answer.
     TH3HitProof hitProof;
     bool hitOK = TH3HitPivotMeasure(tD, pD, dirDown, baseUnit,
                                     hitProof, (closedOK ? closedStep : 0.0));
-    // THE LIVE READING, stated. The user hunts the FUTURE with this number,
-    // so the chart must always say what the number is AND what it is made
-    // of: the chart's own rung (nothing reacted yet) or the step the market
-    // voted for with its own reaction.
-    // P-TH3-STEP-07 (2026-09-19) — THE REACTION MOVES THE LADDER, PIVOT OR NOT.
-    // The course's update rule (PDF p. 2) recalibrates the rungs once price has
-    // REACTED to them, and the reaction IS the proof: step = |C - tip| / 3, k = 3
-    // fixed (P-TH3-STEP-03/04d). This block used to move the ladder only when a
-    // six-condition pivot sat ON the tip — a match the survey itself measures at
-    // ~9% of tips — so on a real chart the steps never moved at all: every level
-    // stayed at ATR x 1/3/5/7 forever, which is the user's own demand, «گام
-    // حرکتی باید روی همین استپ ها باشه». Now any closed reaction that reached
-    // TH3_STEP_MIN_LEG_RUNGS (2.40 rungs — the floor, P-TH3-STEP-04e) hands the
-    // ladder the market's own step; the pivot match only WORDS the verdict
-    // (which TF owns the tip, how many crossings, how far off the rung it is).
     // P-TH3-STEP-04e: when no reaction has voted, the label says how far the
     // reaction DID reach, against the floor — the difference between "nothing
     // reacted" and "the walk never ran" was invisible before this number.
@@ -219,7 +158,8 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
        && MathAbs(hitProof.step - closedStep) / closedStep > TH3_HIT_MAX_STEP_ERR)
         hitOK = false;
     if(hitOK) {
-        baseUnit = hitProof.step;   // the market-updated rung (p. 2)
+        // P-TH3-STEP-16: NO overwrite — the unified step stands; the vote below
+        // is corroboration (diagnostic), never the decider.
         hitOwnerTF = (hitProof.hasPivot ? TH3TfName(hitProof.pivTF) : "");
         stepHow = hitProof.hasPivot
                 ? StringFormat("T3@%s err %.1f%% x%d", hitOwnerTF,
@@ -315,8 +255,8 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
                 (closedOK ? closedStep / pip0 : 0.0),
                 (closedOK ? closedK : 0.0), seedRung / pip0,
                 TH3TfName(ownerTF), logQ, pbStep / pip0,
-                (synthStep > 0 ? synthStep / pip0 : 0.0),
-                (synthMacro ? 1 : 0), (stepLocked ? 1 : 0),
+                (baseUnit / pip0),
+                0, (stepLocked ? 1 : 0),
                 baseUnit / pip0, (hitOK ? 1 : 0), hitProof.deepestRungs);
             Print(logLine);
             TH3LogFileAppend(logLine);
@@ -745,10 +685,27 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     for(int i = 0; i < 4; i++) {
         targetPips[i] = MathAbs(baseUnit * (i*2 + 1)) / pipSize;
     }
+
+    // P-TH3-DISC: the EVEN rungs (2/4/6) ride WITH the ladder, another ink.
+    double midLevels[3];
+    double midPips[3];
+    ArrayInitialize(midLevels, 0.0);
+    ArrayInitialize(midPips, 0.0);
+    for(int mi = 0; mi < 3; mi++) {
+        int mStep = 2 * (mi + 1);
+        midLevels[mi] = isBullish ? pD + (mStep * baseUnit) : pD - (mStep * baseUnit);
+        midPips[mi] = MathAbs(baseUnit * mStep) / pipSize;
+    }
     
     datetime startTime = tD;   // P-TH3-D4: the ladder starts at the placed D
-    int barShift = iBarShift(NULL, 0, startTime);
-    datetime endTime = iTime(NULL, 0, MathMax(0, barShift - 100));
+    // P-TH3-ZONE-03 (2026-10-05) — THE BANDS TRADE FORWARD. The boxes ended
+    // 100 bars BEHIND D (history side) while the lines ray right into the
+    // trade: every zone stood 4/4 in the census yet none painted beside its
+    // line. Rectangles cannot ray, so the end anchors 100 bars past the
+    // CURRENT bar — the bands now ride under the lines where price goes.
+    // (The fibo lines share these times; their RAY_RIGHT makes the end
+    // anchor irrelevant to them, so their look does not move.)
+    datetime endTime = iTime(NULL, 0, 0) + (100 * PeriodSeconds());
     
     // GOLD VERSION: Use configurable zone height from input parameter
     // Convert from percentage (1-100) to decimal (0.01-1.0)
@@ -915,9 +872,65 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         }
     }
     
-    // P-TH3-STEP-03: the proof, ON the chart — the dotted D→tip line and a
-    // one-line verdict at the tip: which rung, whose pivot, which TF, how many
-    // crossings. A proof you cannot see is a proof you cannot check.
+    // P-TH3-DISC: the even rungs' ink — dotted gray, no zones. Same family
+    // discipline as the targets (create once, move after; masked with the
+    // ladder in TH3LadderSetVisible, matched in TH3IsLadderName).
+    for(int mi = 0; mi < 3; mi++) {
+        int mStep = 2 * (mi + 1);
+        string midName = mainObjName + "_Mid_" + IntegerToString(mStep);
+        string midText = StringFormat("Step%d (%.1f)", mStep, midPips[mi]);
+        if(ObjectFind(0, midName) < 0) {
+            if(ObjectCreate(0, midName, OBJ_FIBO, 0, startTime, midLevels[mi], endTime, midLevels[mi])) {
+                ObjectSetInteger(0, midName, OBJPROP_COLOR, TH3InkForChart(clrGray));
+                ObjectSetInteger(0, midName, OBJPROP_LEVELCOLOR, TH3InkForChart(clrGray));
+                ObjectSetInteger(0, midName, OBJPROP_WIDTH, 1);
+                ObjectSetInteger(0, midName, OBJPROP_LEVELWIDTH, 1);
+                ObjectSetInteger(0, midName, OBJPROP_STYLE, STYLE_DOT);
+                ObjectSetInteger(0, midName, OBJPROP_LEVELSTYLE, STYLE_DOT);
+                ObjectSetInteger(0, midName, OBJPROP_RAY_RIGHT, inpABCDExtendCD);
+                ObjectSetInteger(0, midName, OBJPROP_SELECTABLE, false);
+                ObjectSetInteger(0, midName, OBJPROP_LEVELS, 1);
+                ObjectSetDouble(0, midName, OBJPROP_LEVELVALUE, 0, 0.0);
+                if(inpTH3LabelPosition != TH3_LABEL_HIDDEN)
+                    ObjectSetString(0, midName, OBJPROP_LEVELTEXT, 0, midText);
+            }
+        } else {
+            ObjectMove(0, midName, 0, startTime, midLevels[mi]);
+            ObjectMove(0, midName, 1, endTime, midLevels[mi]);
+            if(inpTH3LabelPosition != TH3_LABEL_HIDDEN)
+                ObjectSetString(0, midName, OBJPROP_LEVELTEXT, 0, midText);
+        }
+    }
+
+    // P-TH3-ZONE-02 (2026-10-05) — ZONE CENSUS, ONE LINE PER DRAW. The lines
+    // paint while the bands read missing, and both come from one loop — so the
+    // next occurrence must name setting-vs-code itself: how many of the four
+    // zone boxes stand, and the three inputs that render them. Draw-paced
+    // (never per tick), so the cost is one line per user gesture.
+    {
+        int zoneStand = 0;
+        string zoneSeen = "";
+        for(int zi = 1; zi <= 4; zi++)
+        {
+            string znm = mainObjName + "_Zone_" + IntegerToString(zi);
+            if(ObjectFind(0, znm) < 0) continue;
+            zoneStand++;
+            // existence is not paint: mask, box and ink decide the pixels.
+            zoneSeen += StringFormat(" [%d t0=%s t1=%s p0=%s p1=%s tf=%d cl=%d]",
+                zi, TimeToString((datetime)ObjectGetInteger(0, znm, OBJPROP_TIME, 0)),
+                TimeToString((datetime)ObjectGetInteger(0, znm, OBJPROP_TIME, 1)),
+                DoubleToString(ObjectGetDouble(0, znm, OBJPROP_PRICE, 0), Digits),
+                DoubleToString(ObjectGetDouble(0, znm, OBJPROP_PRICE, 1), Digits),
+                (int)ObjectGetInteger(0, znm, OBJPROP_TIMEFRAMES),
+                (int)ObjectGetInteger(0, znm, OBJPROP_COLOR));
+        }
+        Print("TH3: zones stand=", zoneStand, "/4 style=", (int)inpTH3ZoneStyle,
+              " tr=", inpTH3ZoneTransparency, " h%=", DoubleToString(inpTH3ZoneHeightPercent, 1),
+              zoneSeen);
+    }
+
+    // P-TH3-STEP-03: the proof objects (retired by P-TH3-DISC below — the
+    // step lines already say where L3 sits; the measure, logs and TH3LOG stay).
     // P-TH3-D4: the interval starts at the placed D (tD,pD), not C.
     // P-TH3-STEP-06/07 (2026-09-19) — THE VERDICT ONLY SPEAKS WHEN IT HAS ONE.
     // The interval and the verdict describe the step the ladder now wears, so
@@ -926,63 +939,12 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     // and the two objects are DELETED, so a stale interval from a previous
     // render cannot stay parked on the chart, and a verdict can never carry the
     // empty timeframe name an unclaimed tip used to print ("T3 <-  grid").
-    bool proofShown = hitOK;
-    if(proofShown) {
-        string hitLine = mainObjName + "_HitLine";
-        if(ObjectFind(0, hitLine) < 0) {
-            if(ObjectCreate(0, hitLine, OBJ_TREND, 0, tD, pD, hitProof.tipTime, hitProof.tipPrice)) {
-                ObjectSetInteger(0, hitLine, OBJPROP_COLOR, TH3InkForChart(clrGray));
-                ObjectSetInteger(0, hitLine, OBJPROP_STYLE, STYLE_DOT);
-                ObjectSetInteger(0, hitLine, OBJPROP_RAY_RIGHT, false);
-                ObjectSetInteger(0, hitLine, OBJPROP_SELECTABLE, false);
-                ObjectSetInteger(0, hitLine, OBJPROP_BACK, true);
-            }
-        } else {
-            ObjectMove(0, hitLine, 0, tD, pD);
-            ObjectMove(0, hitLine, 1, hitProof.tipTime, hitProof.tipPrice);
-        }
-        string hitLabel = mainObjName + "_HitLabel";
-        // P-TH3-STEP-07: the verdict keeps its OWNER only when there is one — the
-        // step itself now comes from the reaction, so a tip no grid claims states
-        // that reading (with its ratio to the rung) instead of an empty name.
-        // P-TH3-STEP-11: the verdict stands OFF the tip, not ON it. Anchored at
-        // the bare tip price it sat inside the rung's own zone band (the tip
-        // proved the step, so it is always near a band) — orange text on the
-        // orange band. It keeps its anchor side and moves one half-band plus a
-        // small margin past the tip, so band, tip and verdict read as three
-        // separate things.
-        string hitText = hitProof.hasPivot
-            ? StringFormat("T%d <- %s %s x%d (%.1f%%)",
-                           hitProof.k, hitOwnerTF,
-                           (hitProof.pivIsHigh ? "H" : "L"),
-                           hitProof.touches,
-                           hitProof.rungErr * 100.0)
-            : (hitOwnerTF != ""
-               ? StringFormat("T%d <- %s grid", hitProof.k, hitOwnerTF)
-               : StringFormat("T%d reaction x%.2f", hitProof.k,
-                              hitProof.step / hitProof.rung));
-        double verdictOff = zoneHalfWidth + 5.0 * pipSize;
-        double verdictPrice = hitProof.tipPrice + (dirDown ? verdictOff : -verdictOff);
-        if(ObjectFind(0, hitLabel) < 0) {
-            if(ObjectCreate(0, hitLabel, OBJ_TEXT, 0, hitProof.tipTime, verdictPrice)) {
-                ObjectSetString(0, hitLabel, OBJPROP_TEXT, hitText);
-                ObjectSetInteger(0, hitLabel, OBJPROP_COLOR, TH3InkForChart(clrOrangeRed));
-                ObjectSetInteger(0, hitLabel, OBJPROP_FONTSIZE, 8);
-                ObjectSetString(0, hitLabel, OBJPROP_FONT, BioChromeFont(false));
-                ObjectSetInteger(0, hitLabel, OBJPROP_ANCHOR, dirDown ? ANCHOR_UPPER : ANCHOR_LOWER);
-                ObjectSetInteger(0, hitLabel, OBJPROP_SELECTABLE, false);
-            }
-        } else {
-            ObjectMove(0, hitLabel, 0, hitProof.tipTime, verdictPrice);
-            ObjectSetString(0, hitLabel, OBJPROP_TEXT, hitText);
-        }
-    } else {
-        // no proof this render: retire the interval and the verdict (P-TH3-STEP-06)
-        string hitLine = mainObjName + "_HitLine";
-        if(ObjectFind(0, hitLine) >= 0) ObjectDelete(0, hitLine);
-        string hitLabel = mainObjName + "_HitLabel";
-        if(ObjectFind(0, hitLabel) >= 0) ObjectDelete(0, hitLabel);
-    }
+    // P-TH3-DISC: the proof interval and verdict are OFF the chart — the step
+    // lines already say where L3 sits. The measure, the log lines and TH3LOG
+    // stay (the formula still wears the proved step); only the two objects
+    // go. Old charts drop them on next redraw.
+    ObjectDelete(0, mainObjName + "_HitLine");
+    ObjectDelete(0, mainObjName + "_HitLabel");
 
     // P-TH3-P6e + P-TH3-D4 — MOTHER PIVOT AT D, ON THE CHART.
     // The matcher (TH3Pivots.mqh) answers which six-condition pivot the
@@ -1206,58 +1168,9 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
         if(ObjectFind(0, mpOrg) >= 0) ObjectDelete(0, mpOrg);
     }
 
-    // P-TH3-D4g — THE CD-LEG PIVOT, ON THE CHART. Step 2 of the user's walk:
-    // the C->D leg's own time window [tC..tD] names its pivot — the chart-TF
-    // six-condition pivot inside that window nearest to D's price. A circle
-    // marker on the pivot bar, one log line at creation, and an LP token in
-    // the caption. Window uses min/max so unordered clicks still read.
-    string legState = "LP:none";
-    string legPiv = mainObjName + "_LegPiv";
-    {
-        datetime wLo = (tC < tD ? tC : tD);
-        datetime wHi = (tC < tD ? tD : tC);
-        TH3PivotSix legC[], legS[];
-        ArrayResize(legC, TH3_P6_MAX_PIVOTS);
-        ArrayResize(legS, TH3_P6_MAX_PIVOTS);
-        int legNc = 0, legNs = 0, legSTF = 0;
-        bool legOK = false;
-        if(TH3PivotsRead(legC, legS, legNc, legNs, legSTF, tD))
-        {
-            double legBest = 1e9;
-            int legIdx = -1;
-            for(int li = 0; li < legNc; li++)
-            {
-                if(!legC[li].valid) continue;
-                if(legC[li].time < wLo || legC[li].time > wHi) continue;
-                double ld = MathAbs(legC[li].price - pD);
-                if(ld < legBest) { legBest = ld; legIdx = li; }
-            }
-            if(legIdx >= 0)
-            {
-                legOK = true;
-                legState = StringFormat("LP:%s %s %.1fp", TH3TfName(legC[legIdx].tf),
-                                        (legC[legIdx].isHigh ? "H" : "L"),
-                                        legBest / pipSize);
-                if(ObjectFind(0, legPiv) < 0) {
-                    if(ObjectCreate(0, legPiv, OBJ_ARROW, 0, legC[legIdx].time, legC[legIdx].price)) {
-                        ObjectSetInteger(0, legPiv, OBJPROP_ARROWCODE, 159);
-                        ObjectSetInteger(0, legPiv, OBJPROP_WIDTH, 3);
-                        ObjectSetInteger(0, legPiv, OBJPROP_COLOR, TH3InkForChart(clrMagenta));
-                        ObjectSetInteger(0, legPiv, OBJPROP_SELECTABLE, false);
-                        ObjectSetInteger(0, legPiv, OBJPROP_BACK, false);
-                    }
-                    Print("TH3: CD-leg pivot ", TH3TfName(legC[legIdx].tf),
-                          (legC[legIdx].isHigh ? " H" : " L"), " ",
-                          TimeToString(legC[legIdx].time), " @ ",
-                          DoubleToString(legC[legIdx].price, Digits), " (",
-                          DoubleToString(legBest / pipSize, 1), "p from D)");
-                } else {
-                    ObjectMove(0, legPiv, 0, legC[legIdx].time, legC[legIdx].price);
-                }
-            }
-        }
-        if(!legOK && ObjectFind(0, legPiv) >= 0) ObjectDelete(0, legPiv);
-    }
+    // P-TH3-DISC: the CD-leg pivot marker is retired with the auto markers —
+    // display-only, never in the formula. Old charts drop it on next redraw.
+    ObjectDelete(0, mainObjName + "_LegPiv");
 
     // P-TH3-LOCK — THE STATE MACHINE, ON THE LABEL (the user formula's §4).
     // The gate is measured FROM THE LINES, not from the tip: L3 touched ->
@@ -1303,29 +1216,72 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     //   AB=CD | H1 | CD 18 bars          <- what this pattern IS
     //   AB 504p | BC 765p | CD 1200p     <- what its legs MEASURE
     //   Step 255.0p | K 3.0 | M0(0.4)    <- the LIVE number, on the accent row
+    //   (+ P-TH3-DISC discovery rows: prices, harmonic, mother, calc, lock,
+    //   ladder prices — nine rows until the formula locks)
     //
     // The rows are joined with "\n": the family owner wraps WITHIN a row (MT4's
     // 63-character cliff is per object) but never across two of them, so the shape
     // survives a long pattern name. Every number here is one the ladder above has
-    // already computed — the caption adds no arithmetic of its own.
+    // already computed, or division-only off it — the caption adds no reader.
     string cdTfName = TH3TfName(ownerTF);
     double stepPips = baseUnit / pipSize;
-    string rowIdentity = StringFormat("AB=CD | %s | CD %d bars", cdTfName, cdBars);
-    string rowLegs     = StringFormat("AB %.0fp | BC %.0fp | CD %.0fp",
+    // P-TH3-DISC (2026-10-05) — DISCOVERY ROWS, TEMPORARY. While the master
+    // step formula is being found the caption carries every number the
+    // synthesis consumes: prices, ratios, mother, rung, calc stages, ladder
+    // prices, mid steps, proof state. Ten short rows (each under the 63-char cliff, so
+    // no row ever wraps); the plate measures off the rows as-is. Words are
+    // spelled out (no cryptic codes) so an outside reader with no project
+    // access can still parse the box. When the formula locks this shrinks
+    // back and this tag dies with it. Division-only off numbers computed
+    // above — no new reader, no new writer.
+    string rowIdentity = StringFormat("AB=CD %s CD %d bars %s",
+                                      cdTfName, cdBars, (dirDown ? "down" : "up"));
+    string rowLegs     = StringFormat("legs AB %.0fp | BC %.0fp | CD %.0fp",
                                       pips_AB, pips_BC, CD_Distance / pipSize);
+    string rowPrices    = StringFormat("A %s B %s C %s D %s",
+                                      DoubleToString(pA, Digits),
+                                      DoubleToString(pB, Digits),
+                                      DoubleToString(pC, Digits),
+                                      DoubleToString(pD, Digits));
+    double bcabRatio = (AB_Distance > 0) ? BC_Distance / AB_Distance : 0.0;
+    string rowHarmonic = StringFormat("BC/AB %.2f | CD/BC %.2f | K %.1f | fibdev %.2f",
+                                      bcabRatio,
+                                      uniRatio,
+                                      uniK,
+                                      (uniRatio > 0 ? CalculateFibonacciDeviation(uniRatio) : 0.0));
+    string rowMother = "Mother: none";
+    if(pbRaw > 0)
+        rowMother = StringFormat("Mother hand %.1fp", pbRaw / pipSize);
+    string rowCalc  = StringFormat("pattern %.1fp rung %.1fp uni %.1fp",
+                                   (CD_Distance / uniK) / pipSize,
+                                   seedRung / pipSize,
+                                   baseUnit / pipSize);
+    string rowLock  = StringFormat("base %.1fp %s final %.1fp %s",
+                                   pbStep / pipSize,
+                                   (stepLocked ? "LOCKED" : "UNLOCKED"),
+                                   stepPips,
+                                   (hitOK ? "proved" : "seed"));
+    string rowLadder = StringFormat("Targets T1 %s T3 %s T5 %s T7 %s",
+                                    DoubleToString(targetLevels[0], Digits),
+                                    DoubleToString(targetLevels[1], Digits),
+                                    DoubleToString(targetLevels[2], Digits),
+                                    DoubleToString(targetLevels[3], Digits));
+    string rowMid = StringFormat("Mid T2 %s T4 %s T6 %s",
+                                 DoubleToString(midLevels[0], Digits),
+                                 DoubleToString(midLevels[1], Digits),
+                                 DoubleToString(midLevels[2], Digits));
     string rowLive;
     if(atrBasis) {
+        rowLive = StringFormat("Step %.1fp", stepPips);
         if(mlMotherSize > 0) {
             mlRatio = baseUnit / mlMotherSize;
-            rowLive = StringFormat("Step %.1fp | 1/3M %.2f", stepPips, mlRatio);
-        } else {
-            rowLive = StringFormat("Step %.1fp", stepPips);
+            rowLive += StringFormat(" | momleg %.2f", mlRatio);
         }
-        if(closedOK) rowLive += StringFormat(" | K %.1f", closedK);
     } else {
         rowLive = StringFormat("Step %.1f%% | freq", frequency);
     }
-    if(StringLen(mileState) > 0) rowLive += " | " + mileState;
+    if(StringLen(mileState) > 0) rowLive += " | gate " + mileState;
+    rowLive += (hitOK ? " | proved" : " | seed");
 
     // P-TH3-INFO-14: ONE visible caption, ONE Y — the slot pitch is retired (its
     // note lives in the geometry block above with the arithmetic). Only the active
@@ -1335,8 +1291,10 @@ void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, do
     bool isActive = (g_activeABCDPattern == mainObjName);
     int rowY    = inpABCDInfoYDistance;
     int infoLines = TH3InfoFamilyDraw(mainObjName,
-                                      rowIdentity + "\n" + rowLegs + "\n" + rowLive,
-                                      isActive, rowY);
+                                       rowIdentity + "\n" + rowLegs + "\n" + rowPrices + "\n" +
+                                       rowHarmonic + "\n" + rowMother + "\n" + rowCalc + "\n" +
+                                       rowLock + "\n" + rowLadder + "\n" + rowMid + "\n" + rowLive,
+                                       isActive, rowY);
     // P-TH3-INFO-13: a redraw that TOUCHED the active family re-arms its
     // visit — a re-step, a point drag or a settings press restarts the few
     // seconds the caption lives, exactly like re-showing the leg plate.

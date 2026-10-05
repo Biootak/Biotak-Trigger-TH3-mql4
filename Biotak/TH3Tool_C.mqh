@@ -1444,5 +1444,4 @@ void ToggleTH3Tool(const bool fromRingItem = false) {
 }
 
 
-
 #endif // TH3_TOOL_C_MQH

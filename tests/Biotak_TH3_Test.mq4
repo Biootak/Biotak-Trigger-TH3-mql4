@@ -253,37 +253,43 @@ int OnStart()
         Check("ret8: R<=0 refuses", !TH3RetraceBestStep(0.0, 90.0 * pip, 90.0 * pip, bS, bQ, bI));
     }
 
-    // P-TH3-STEP-12 (2026-09-21) — MULTI-FACTOR SYNTHESIS PINS.
-    // Step = f(Mother, ABCD, TH), numbers only (pip = 0.0001, whole pips).
-    // Fixture: legCD = 100 pips, K = 2.5 -> step_pattern = 40 pips.
+    // P-TH3-STEP-16 (2026-10-05) — UNIFIED EQUATION PINS.
+    // sqrt(mother * pattern), numbers only (pip = 0.0001).
     {
         const double pip = 0.0001;
-        double legCD = 100.0 * pip, legAB = 40.0 * pip;
-        // 1. No K -> the rung answers (never a guess from half an input).
-        CheckDouble("multi: k<=0 falls back to TH",
-                    CalculateMultiFactorStep(legCD, legAB, 0.0, 36.0 * pip, 10.0 * pip), 10.0 * pip);
-        // 2. Macro mother (36 >= 3x10): pivot 36/3=12 — P-TH3-STEP-12b: the
-        //    course's k=3 on the mother's own run, UNBLENDED, so step 3 lands
-        //    on the mother's far edge (the old 65/35 dilution stopped ~20% short).
-        CheckDouble("multi: macro mother is mother/3",
-                    CalculateMultiFactorStep(legCD, legAB, 2.5, 36.0 * pip, 10.0 * pip), 12.0 * pip);
-        // 3. Standard intraday (20 < 3x10, 20 < 2.5x10 -> knot/1): sqrt(40*20).
-        Check("multi: intraday knot is geometric",
-              MathAbs(CalculateMultiFactorStep(legCD, legAB, 2.5, 20.0 * pip, 10.0 * pip)
-                      - MathSqrt(800.0) * pip) < 1e-9);
-        // 4. Intraday with a 2.5x+ shelf (27 -> 27/3=9): sqrt(40*9).
-        Check("multi: intraday shelf divides by 3",
-              MathAbs(CalculateMultiFactorStep(legCD, legAB, 2.5, 27.0 * pip, 10.0 * pip)
-                      - MathSqrt(360.0) * pip) < 1e-9);
-        // 5. No mother: pattern blends with TH, 60/40 -> 40*0.6 + 10*0.4 = 28.
-        CheckDouble("multi: no mother blends pattern+TH",
-                    CalculateMultiFactorStep(legCD, legAB, 2.5, 0.0, 10.0 * pip), 28.0 * pip);
-        // 6. No rung either: the pattern stands alone.
-        CheckDouble("multi: pattern alone without TH",
-                    CalculateMultiFactorStep(legCD, legAB, 2.5, 0.0, 0.0), 40.0 * pip);
+        // 1. The K ladder, one owner: 0.85/1.20/1.80 tiers, major = 1.0.
+        CheckDouble("uni: K 0.80 -> 2.5", TH3UnifiedK(0.80), 2.5);
+        CheckDouble("uni: K 0.85 -> 2.5", TH3UnifiedK(0.85), 2.5);
+        CheckDouble("uni: K 1.00 -> 3.0", TH3UnifiedK(1.00), 3.0);
+        CheckDouble("uni: K 1.20 -> 3.0", TH3UnifiedK(1.20), 3.0);
+        CheckDouble("uni: K 1.50 -> 3.5", TH3UnifiedK(1.50), 3.5);
+        CheckDouble("uni: K 1.80 -> 3.5", TH3UnifiedK(1.80), 3.5);
+        CheckDouble("uni: K 2.50 -> 1.0", TH3UnifiedK(2.50), 1.0);
+        // 2. Macro mother (36 >= 2.5x10): 36/3=12, pattern 100/3: sqrt(400)=20.
+        CheckDouble("uni: macro mother sqrt(12*33.3)=20",
+                    CalculateUnifiedMasterStep(100.0 * pip, 1.0, 36.0 * pip, 10.0 * pip), 20.0 * pip);
+        // 3. Knot mother (20 < 2.5x10): sqrt(20*33.3).
+        Check("uni: knot mother geometric",
+              MathAbs(CalculateUnifiedMasterStep(100.0 * pip, 1.0, 20.0 * pip, 10.0 * pip)
+                      - MathSqrt(20.0 * 100.0 / 3.0) * pip) < 1e-9);
+        // 4. EURUSD,H1 measured (CD 51, mother 50.4, K 1.0): sqrt(50.4*51).
+        Check("uni: CD rides the mother rung",
+              MathAbs(CalculateUnifiedMasterStep(51.0 * pip, 3.37, 50.4 * pip, 37.4 * pip)
+                      - MathSqrt(50.4 * 51.0) * pip) < 1e-9);
+        // 5. No mother: the rung stands in: sqrt(10*33.3).
+        Check("uni: absent mother falls back to rung",
+              MathAbs(CalculateUnifiedMasterStep(100.0 * pip, 1.0, 0.0, 10.0 * pip)
+                      - MathSqrt(10.0 * 100.0 / 3.0) * pip) < 1e-9);
+        // 6. Major extension (ratio 2.0 -> K 1.0): the leg itself: sqrt(10*56).
+        Check("uni: major extension leg is the unit",
+              MathAbs(CalculateUnifiedMasterStep(56.0 * pip, 2.0, 30.0 * pip, 10.0 * pip)
+                      - MathSqrt(10.0 * 56.0) * pip) < 1e-9);
         // 7. Nothing at all answers 0 (the caller keeps its own fallback).
-        Check("multi: empty inputs answer 0",
-              CalculateMultiFactorStep(0.0, 0.0, 0.0, 0.0, 0.0) == 0.0);
+        Check("uni: empty inputs answer 0",
+              CalculateUnifiedMasterStep(0.0, 0.0, 0.0, 0.0) == 0.0);
+        // 8. Guard: no rung to stand in -> the pattern stands alone.
+        CheckDouble("uni: dead rung falls back to pattern",
+                    CalculateUnifiedMasterStep(100.0 * pip, 1.0, 0.0, 0.0), 100.0 * pip / 3.0);
     }
 
     // P-TH3-STEP-13 — MACRO SPAN: WICK, NOT BODY.

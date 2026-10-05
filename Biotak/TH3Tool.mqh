@@ -10,6 +10,7 @@
 #include "TH3Tool_B.mqh"
 #include "TH3Tool_C.mqh"
 #include "TH3Tool_D.mqh"
+#include "TH3Recorder.mqh"
 
 #endif // TH3_TOOL_MQH
 

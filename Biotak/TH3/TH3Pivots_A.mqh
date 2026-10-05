@@ -346,7 +346,13 @@ int TH3SixPivotsScanTF(const int tf, TH3PivotSix &out[], const int maxOut,
                     }
                     if(ok)
                     {
-                        int covIdx = TH3P6FindCover(tf, extIdx, extP, true, master, i, extIdx + 1);
+                        // P-TH3-P6g (2026-10-05) — THE WINDOW WAS INVERTED. Shifts
+                        // grow into the past, so bars NEWER than the extreme are
+                        // (extIdx-1 .. i); the old (i, extIdx+1) never entered the
+                        // loop, the cover read -1 forever, and no TF ever
+                        // declared a pivot (measured: pivscan found=0 on
+                        // 400 H1 bars while the chart wore visible swings).
+                        int covIdx = TH3P6FindCover(tf, extIdx, extP, true, master, extIdx - 1, i);
                         if(covIdx >= 0 && TH3P6CloseThird(tf, covIdx, true) && count < maxOut)
                         {
                             double kp = TH3P6KeyPrice(tf, extIdx, extP, true, master);
@@ -389,7 +395,8 @@ int TH3SixPivotsScanTF(const int tf, TH3PivotSix &out[], const int maxOut,
                     }
                     if(ok)
                     {
-                        int covIdx = TH3P6FindCover(tf, extIdx, extP, false, master, i, extIdx + 1);
+                        // P-TH3-P6g: same inverted window as the high side above.
+                        int covIdx = TH3P6FindCover(tf, extIdx, extP, false, master, extIdx - 1, i);
                         if(covIdx >= 0 && TH3P6CloseThird(tf, covIdx, false) && count < maxOut)
                         {
                             double kp = TH3P6KeyPrice(tf, extIdx, extP, false, master);

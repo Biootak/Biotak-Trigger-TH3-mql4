@@ -4,7 +4,16 @@
 
 void TH3PivotMarkersUpdate()
 {
-    if(!inpTH3AutoPivots) { TH3PivotMarkersClear(); return; }
+    // P-TH3-DISC: markers OFF — the hand-marked base is the only mother.
+    // (inpTH3AutoPivots still owns the click snap in TH3Tool_C.)
+    // One shot per attach: the namespace stays empty (nothing recreates it),
+    // so the tick path below pays zero — no scan, no clear loop, no redraw.
+    // P-ZERO (2026-10-05): this runs on EVERY tick; a still chart must cost
+    // reads only (contract §5), never a 5 s teardown of 100+ objects.
+    static bool s_p6Retired = false;
+    if(s_p6Retired) return;
+    s_p6Retired = true;
+    { TH3PivotMarkersClear(); return; }
 
     // throttle: once per new chart bar, or every 5 s at most
     static datetime s_lastBar = 0;

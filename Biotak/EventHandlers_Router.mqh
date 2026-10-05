@@ -406,6 +406,19 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         }
 #endif
 
+        //
+        // M key   Snapshot the active pattern for the AI dataset (P-TH3-REC:
+        // key handling lives HERE with B/V/P — one owner for hotkeys).
+        //
+#ifndef BUILD_LITE
+        if((int)lparam == 77)   // 'M' — export sample: PNG + TXT + Master-CSV row
+        {
+            TH3_ExportCurrentSample();
+            ThrottledChartRedraw();
+            return;
+        }
+#endif
+
         // E key   Cycle Step Mode (TH → SS-LS → Combo → Factor → TH).
         // Single mode: E writes the base directly — same value the Tools
         // ring item and the panel STEP MODE row write. GetCurrentStepMode()

@@ -817,22 +817,70 @@ function Clear-StaleDiagFiles {
 function Get-TerminalStarts {
     $procs = Get-WmiObject Win32_Process -Filter "Name='terminal.exe'" -ErrorAction SilentlyContinue
     $starts = @()
+    $seen = @{}
     foreach ($p in $procs) {
         $exe = $p.ExecutablePath
+        $cmd = [string]$p.CommandLine
+        #--- P-BUILD-11b (2026-10-05) — WMI BLANKS BOTH FIELDS ON THIS MACHINE.
+        #--- MEASURED: terminal.exe alive (PID 13868) while ExecutablePath and
+        #--- CommandLine both read empty, so every build armed for restart fell
+        #--- through to "paths are unreadable" and the user re-added by hand.
+        #--- Fallbacks, same answer in order: the process itself, then CIM.
+        #--- A blank command line relaunches bare (no portable/datapath flags).
+        if (-not $exe) {
+            try { $exe = (Get-Process -Id $p.ProcessId -ErrorAction Stop).Path } catch { $exe = $null }
+        }
+        if (-not $exe -or -not $cmd) {
+            try {
+                $cim = Get-CimInstance Win32_Process -Filter ("ProcessId=" + $p.ProcessId) -ErrorAction Stop
+                if (-not $cmd) { $cmd = [string]$cim.CommandLine }
+                if (-not $exe) { $exe = $cim.ExecutablePath }
+            } catch {}
+        }
+        #--- Last resort: match the install by the window title. All three APIs
+        #--- blank the path on this machine while the title still names the
+        #--- broker, so the broker token in the install dir picks the exe.
+        if (-not $exe) {
+            try { $title = (Get-Process -Id $p.ProcessId -ErrorAction Stop).MainWindowTitle } catch { $title = "" }
+            $exe = Find-TerminalExeForTitle $title
+        }
         if (-not $exe) { continue }
         $args = ""
-        $cmd = [string]$p.CommandLine
         if ($cmd) {
             $q = '"' + $exe + '"'
             if ($cmd.StartsWith($q)) { $args = $cmd.Substring($q.Length).Trim() }
             elseif ($cmd.StartsWith($exe)) { $args = $cmd.Substring($exe.Length).Trim() }
         }
+        $key = $exe.ToLower() + "`n" + $args
+        if ($seen.ContainsKey($key)) { continue }
+        $seen[$key] = $true
         $starts += @{ Exe = $exe; Args = $args }
     }
     if ($procs -and $starts.Count -eq 0) {
         Write-Host "  Terminal processes found but their paths are unreadable; not restarting." -ForegroundColor Red
     }
     return ,$starts
+}
+
+function Find-TerminalExeForTitle {
+    param([string]$Title)
+    if (-not $Title) { return $null }
+    $cands = @()
+    foreach ($root in @("C:\Program Files", "C:\Program Files (x86)")) {
+        if (Test-Path -LiteralPath $root) {
+            $cands += @(Get-ChildItem -LiteralPath $root -Filter "terminal.exe" -Recurse -ErrorAction SilentlyContinue)
+        }
+    }
+    if ($cands.Count -eq 1) { return $cands[0].FullName }
+    foreach ($c in $cands) {
+        $dir = Split-Path (Split-Path $c.FullName -Parent) -Leaf
+        foreach ($tok in ($dir -split '[^A-Za-z0-9]+')) {
+            if ($tok.Length -ge 4 -and $tok -notmatch '^(MetaTrader|Terminal|MetaQuotes)$' -and $Title -like ("*" + $tok + "*")) {
+                return $c.FullName
+            }
+        }
+    }
+    return $null
 }
 
 function Stop-TerminalProcesses {
@@ -853,7 +901,13 @@ function Stop-TerminalProcesses {
     }
     $alive = @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue)
     if ($alive.Count -gt 0) {
+        #--- P-BUILD-11c (2026-10-05) — MEASURED: same user, same session, yet
+        #--- taskkill answers "Access is denied" and WMI/CIM blank the path —
+        #--- the terminal runs elevated while this shell does not. Say the fix,
+        #--- not just the failure: one manual non-elevated launch, then auto.
         Write-Host "  [FAIL] terminal.exe is still alive; not relaunching into an unknown state." -ForegroundColor Red
+        Write-Host "  This shell may not stop it (Access is denied): it runs elevated." -ForegroundColor Yellow
+        Write-Host "  Fix once: close MT4, reopen it WITHOUT 'Run as administrator' — every later build then restarts it alone." -ForegroundColor Yellow
         return $false
     }
     return $true
@@ -862,8 +916,9 @@ function Stop-TerminalProcesses {
 function Start-TerminalStarts {
     param($Starts)
     foreach ($s in $Starts) {
-        if ($s.Args) { Start-Process -FilePath $s.Exe -ArgumentList $s.Args }
-        else { Start-Process -FilePath $s.Exe }
+        $wd = Split-Path $s.Exe -Parent
+        if ($s.Args) { Start-Process -FilePath $s.Exe -ArgumentList $s.Args -WorkingDirectory $wd }
+        else { Start-Process -FilePath $s.Exe -WorkingDirectory $wd }
     }
 }
 

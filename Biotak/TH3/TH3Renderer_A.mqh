@@ -305,7 +305,8 @@ bool TH3RORowAt(const string nm, const string txt, const ENUM_BASE_CORNER corner
 //| family from leaking a line into the next pattern's caption.         |
 //+------------------------------------------------------------------+
 #define TH3_INFO_TEXT_MAX  63   // MT4's own cap on OBJPROP_TEXT
-#define TH3_INFO_MAX_LINES 6    // room for three rows, each of which may wrap
+#define TH3_INFO_MAX_LINES 10   // P-TH3-DISC: ten discovery rows, each under the
+                                // cap so no row ever wraps (was 6; back with the caption)
 #define TH3_INFO_ROWS      3    // P-TH3-INFO-04: the readout's layout is its rows
 #define TH3_INFO_SLOT_GAP  8    // RETIRED (P-TH3-INFO-14, 2026-09-25): the px between two
                                 // captions' plates in the stack. Kept for a one-line restore
@@ -387,17 +388,18 @@ bool TH3IsInfoLabelName(const string objName)
 //| owns its q winner and its lock). The ladder is the ACTIVE         |
 //| pattern's answer the way the caption already is (P-TH3-P6d) and   |
 //| the mother badge already is (one badge per chart): other patterns |
-//| keep their ABCD ink and their caption slot, but no targets, no    |
-//| zones, no proof. Chart objects obey TIMEFRAMES (the P-TH3-INFO-10  |
+//| keep their ABCD ink and their caption slot, but no targets, no   |
+//| proof (P-TH3-DISC: zones stay ON for every pattern — the user's    |
+//| order). Chart objects obey TIMEFRAMES (the P-TH3-INFO-10            |
 //| exception is screen plates only), so masks hide them; guarded     |
 //| writes only (perf law). Suffix-tested like the info test above.   |
 //+------------------------------------------------------------------+
 bool TH3IsLadderName(const string objName)
 {
+    // P-TH3-DISC: zones are NOT ladder-masked — they stay on every TF, active
+    // or not (the user's order). Lines and mids still follow the caption.
     if(StringFind(objName, "_Target_") >= 0) return true;
-    if(StringFind(objName, "_ZoneUpper_") >= 0) return true;
-    if(StringFind(objName, "_ZoneLower_") >= 0) return true;
-    if(StringFind(objName, "_Zone_") >= 0) return true;
+    if(StringFind(objName, "_Mid_") >= 0) return true;
     if(StringFind(objName, "_HitLine") >= 0) return true;
     if(StringFind(objName, "_HitLabel") >= 0) return true;
     return false;
@@ -417,13 +419,10 @@ void TH3LadderSetVisible(const string base, const bool visible)
     {
         string s = IntegerToString(i);
         TH3LadderMaskOne(base + "_Target_" + s, wantTF);
-        TH3LadderMaskOne(base + "_ZoneUpper_" + s, wantTF);
-        TH3LadderMaskOne(base + "_ZoneLower_" + s, wantTF);
-        TH3LadderMaskOne(base + "_Zone_" + s, wantTF);
-        TH3LadderMaskOne(base + "_Zone_" + s + "_B_Top", wantTF);
-        TH3LadderMaskOne(base + "_Zone_" + s + "_B_Bottom", wantTF);
-        TH3LadderMaskOne(base + "_Zone_" + s + "_B_Left", wantTF);
     }
+    TH3LadderMaskOne(base + "_Mid_2", wantTF);
+    TH3LadderMaskOne(base + "_Mid_4", wantTF);
+    TH3LadderMaskOne(base + "_Mid_6", wantTF);
     TH3LadderMaskOne(base + "_HitLine", wantTF);
     TH3LadderMaskOne(base + "_HitLabel", wantTF);
 }

@@ -310,8 +310,7 @@ double TH3BasePipsFromPrices(const double p1, const double p2, const double pipS
 //| than the step (2x, 3x, 5x). q = R / S, so each state implies one  |
 //| candidate step S = R / q. The winner is the candidate nearest     |
 //| BOTH the ABCD step (refStep = |CD|/K, pattern momentum, 60%) AND  |
-//| the owner TF's rung (thRung: fractal volatility, 40%) — the same  |
-//| 60/40 blend CalculateMultiFactorStep uses below. The rung arrives |
+//| the owner TF's rung (thRung: fractal volatility, 40%). The rung arrives |
 //| from the caller (seedRung = TH(ownerTF)), so this stays numbers-  |
 //| in/number-out: Lite-safe (P-BUILD-01), harness-safe (P-BUILD-02). |
 //| Pinned `ret8:` in Biotak_TH3_Test.mq4.                            |
@@ -396,67 +395,39 @@ bool TH3RetraceBestStep(const double retracePrice, const double refStep,
 }
 
 //+------------------------------------------------------------------+
-//| فرمول چندعاملی محاسبه گام بر پایه پیوند پیوت مادر + پترن ABCD + TH|
-//| P-TH3-STEP-12 (2026-09-21) — Step = f(Mother Pivot, ABCD, TH).     |
-//| The step is never an isolated pick (not legCD/K alone, not a bare |
-//| TH, not a raw pivot distance): the collision leg over its K (the  |
-//| pattern's momentum), the detected mother node's size at D (macro  |
-//| structure) and the owner TF's rung (fractal volatility) enter ONE  |
-//| pure function. K selection itself stays in TH3ClosedK (the table's |
-//| one owner) — the caller hands k_factor in; legAB rides along as    |
-//| the K table's own ratio leg. motherPivotSize is the six-condition  |
-//| mother's measured node |price-keyPrice| at D (TH3NodeStepAt), 0    |
-//| when no mother answers. Pure domain: numbers in, one number out.  |
+//| P-TH3-STEP-16 (2026-10-05) — THE UNIFIED EQUATION. One formula, no  |
+//| branches: the hand-marked mother (B, mandatory anchor) and the ABCD  |
+//| leg resonate geometrically. Replaces the fragmented synthesis       |
+//| (CalculateMultiFactorStep + macro override + lock + proof override, |
+//| retired this same commit with their pins). Pure domain: numbers in, |
+//| one number out.                                                      |
 //+------------------------------------------------------------------+
-double CalculateMultiFactorStep(const double legCD, const double legAB, const double k_factor,
-                                const double motherPivotSize, const double thRung)
+double TH3UnifiedK(const double ratio)
 {
-   if(k_factor <= 0) return thRung;
+   if(ratio <= 0.85)      return 2.5;
+   if(ratio <= 1.20)      return 3.0;
+   if(ratio <= 1.80)      return 3.5;
+   return 1.0;   // major extension: the leg itself is the unit
+}
 
-   // ۱. مؤلفه هندسی الگو
-   double step_pattern = legCD / k_factor;
+double CalculateUnifiedMasterStep(const double legCD, const double ratio,
+                                  const double motherPivotInput, const double thRung)
+{
+   // 1. Mother Pivot Component (Mandatory Anchor)
+   // If input is macro span (>= 2.5 * thRung), divide by 3; otherwise it is knot size:
+   double step_mother = (motherPivotInput >= 2.5 * thRung) ? (motherPivotInput / 3.0) : motherPivotInput;
+   if(step_mother <= 0) step_mother = thRung; // fallback guard only
 
-   // ۲. مؤلفه پیوت مادر
-   double step_pivot = 0.0;
-   if(motherPivotSize > 0)
-   {
-      // اگر بازه ماژور بین دو پیوت است تقسیم بر 3، اگر ضخامت گره است تقسیم بر 1
-      step_pivot = (motherPivotSize >= 2.5 * thRung) ? (motherPivotSize / 3.0) : motherPivotSize;
-   }
+   // 2. ABCD Pattern Component
+   double k = TH3UnifiedK(ratio);
 
-   // ۳. پیوند و هم‌افزایی ریاضی (تک‌عاملی نبودن گام):
-   if(step_pivot > 0 && step_pattern > 0)
-   {
-      // در ساختارهای ماژور (که پیوت مادر وزن اصلی را دارد):
-      if(motherPivotSize >= 3.0 * thRung)
-      {
-         // P-TH3-STEP-12b (2026-09-21) — THE MACRO MOTHER IS NOT BLENDED.
-         // The course's own k = 3 on the mother's run: one step is the
-         // mother's height / 3, so step 3 lands EXACTLY on the mother's far
-         // edge. The old 65/35 weight dilated it (0.65 * mother/3 + 0.35 *
-         // pattern) and step 3 stopped short of the pivot the eye was on —
-         // the user's «گام ۳ باید روی کف پیوت مادر بنشیند» measured as a
-         // ~20% shortfall. The pattern component stays in the caption as
-         // corroboration (`pat=`), never inside the arithmetic: a blend of a
-         // measurement with a reading is neither.
-         return step_pivot;
-      }
-      else
-      {
-         // در ساختارهای اینترادی استاندارد:
-         // میانگین هندسی/وزنی هماهنگ‌کننده پترن و پیوت مادر
-         double intradayStep = MathSqrt(step_pattern * step_pivot);
-         return intradayStep;
-      }
-   }
+   double step_pattern = legCD / k;
 
-   // ۴. حالت پیش‌فرض (در صورت نبود پیوت مادر، الگو با TH تلفیق می‌شود)
-   if(step_pattern > 0 && thRung > 0)
-   {
-      return (step_pattern * 0.60) + (thRung * 0.40);
-   }
+   // 3. THE UNIFIED GEOMETRIC RESONANCE (one single formula for ALL charts):
+   double finalStep = MathSqrt(step_mother * step_pattern);
+   if(finalStep <= 0.0) finalStep = (step_pattern > 0) ? step_pattern : thRung;
 
-   return (step_pattern > 0) ? step_pattern : thRung;
+   return finalStep;
 }
 
 //+------------------------------------------------------------------+

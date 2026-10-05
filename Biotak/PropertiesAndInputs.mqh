@@ -363,7 +363,7 @@ input int inpTH3ZoneBorderWidth = 1;
 // P-TH3-P6e (2026-09-19) — MOTHER-PIVOT OVERLAY SWITCH. OFF = the chart
 // shows only the pattern + ladder (clean chart); ON = the active pattern
 // also wears its matched mother pivot (two dotted bounds + one badge).
-input bool inpShowMotherPivotZone = true;   // Show the matched mother pivot on the active pattern
+input bool inpShowMotherPivotZone = false;   // P-TH3-DISC: detector zone OFF — the B-marked base is the only mother
 #endif
 
 // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF — the [15] AB=CD group is
@@ -407,7 +407,7 @@ input string inpStepModeKey = "E";
 // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
 #ifndef BUILD_LITE
 input string inpTH3ToolKey = "V";
-input bool   inpTH3AutoPivots = true;   // P-TH3-P6: auto-find the course's six-condition pivots (PDF pp. 6-7) on the chart TF and one fractal step up; marks them on the chart and snaps the draw-session clicks onto them
+input bool   inpTH3AutoPivots = true;   // P-TH3-P6: auto-find the course's six-condition pivots (PDF pp. 6-7) on the chart TF and one fractal step up; P-TH3-DISC: marks are OFF (Renderer_C), this now owns the draw-session click snap only
 #endif
 input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
