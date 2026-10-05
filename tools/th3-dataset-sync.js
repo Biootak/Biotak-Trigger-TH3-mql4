@@ -27,6 +27,25 @@
 // is 22 MB today. Above the budget the tool still copies — the trader decides —
 // but it says the number out loud.
 //
+// P-TH3-REC-07: the shots are COMPRESSED, and the way that works is measured,
+// not assumed. Three candidates were tried on a real capture
+// (Sample_020, 1816x828, 56.9 KB):
+//
+//   re-deflate the PNG (levels 9/6/3)  -> 68.9 / 70.1 / 73.5 KB  = BIGGER
+//   WebP q95/90/85/80                  -> 123/103/89/79 KB      = BIGGER, and
+//                                        max per-pixel deviation 159-169, i.e.
+//                                        lossy AND larger
+//   indexed PNG, adaptive 256-colour  -> 34.4 KB, max deviation 0
+//
+// The reason is in the picture: the capture holds EXACTLY 256 distinct colours
+// (a flat-shaded chart), which is what deflate already squeezes well — so
+// lossy codecs pay for their own transforms on top and lose. The one lever
+// that wins is an indexed palette, and at 256 colours it is LOSSLESS: the
+// round-trip measured a maximum per-pixel deviation of ZERO, so a rung price
+// read off the compressed image is the same rung price. Anything that DID
+// change pixels is refused below, because these images are the evidence the
+// formula is read against.
+//
 // Exit 0 on a clean run, 1 on any failure, so a build can gate on it.
 
 'use strict';
@@ -44,6 +63,57 @@ const ARTIFACTS = [
   { from: 'Logs', ext: ['.txt'] },
   { from: '.', ext: ['.csv'] },          // Master_Dataset.csv at the root
 ];
+
+//+------------------------------------------------------------------+
+//| P-TH3-REC-07 — PALETTE COMPRESSION, PROVEN LOSSLESS OR REFUSED.    |
+//|                                                                     |
+//| The encoder is optional on purpose: without Pillow the shots are       |
+//| copied as-is and the run still succeeds, because a missing optimiser  |
+//| must never cost us a sample. WITH it, a shot is re-encoded as an       |
+//| indexed PNG and then VERIFIED: the tool compares the re-encoded pixels |
+//| against the original and throws the compressed file away if a single  |
+//| pixel moved. So "compressed without loss" is a checked claim, not a    |
+//| hope — which matters, because these images are the evidence the step   |
+//| formula is read against and a shifted pixel is a shifted answer.      |
+//+------------------------------------------------------------------+
+const COMPRESS_SCRIPT = `
+import sys
+from PIL import Image
+import numpy as np, os
+src, dst = sys.argv[1], sys.argv[2]
+im = Image.open(src).convert('RGB')
+a0 = np.array(im).astype(int)
+im.convert('P', palette=Image.ADAPTIVE, colors=256).save(dst, 'PNG', optimize=True)
+a1 = np.array(Image.open(dst).convert('RGB')).astype(int)
+d = int(np.abs(a1 - a0).max())
+print(('OK' if d == 0 else 'LOSSY') + ' ' + str(os.path.getsize(dst)))
+`;
+
+/**
+ * Re-encode `target` to an indexed PNG in place, but only if the round trip is
+ * bit-identical. Returns the new byte size, or the original size when the
+ * re-encode was refused (any pixel moved, no win, or no encoder available).
+ */
+function compressLossless(target) {
+  const original = fs.statSync(target).size;
+  const tmp = target + '.c.png';
+  const py = process.env.PYTHON || 'python';
+  let out;
+  try {
+    out = require('child_process').execFileSync(
+      py, ['-c', COMPRESS_SCRIPT, target, tmp], { encoding: 'utf8' }).trim();
+  } catch (_) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* nothing to clean */ }
+    return original;                 // no Pillow: ship the original
+  }
+  const [verdict, size] = out.split(' ');
+  if (verdict !== 'OK' || original <= Number(size)) {
+    try { fs.unlinkSync(tmp); } catch (_) { /* nothing to clean */ }
+    return original;                 // lossy, or no win: keep the original
+  }
+  fs.renameSync(tmp, target);
+  return Number(size);
+}
 
 function listTerminals() {
   if (!fs.existsSync(TERMINALS)) return [];
@@ -74,7 +144,7 @@ function main() {
     return 1;
   }
 
-  let copied = 0, skipped = 0, bytes = 0;
+  let copied = 0, skipped = 0, bytes = 0, saved = 0;
   for (const src of sources) {
     for (const { from, ext } of ARTIFACTS) {
       const dir = from === '.' ? src : path.join(src, from);
@@ -100,7 +170,15 @@ function main() {
         fs.mkdirSync(path.dirname(chosen), { recursive: true });
         fs.copyFileSync(chosen, target);
         copied++;
-        bytes += fs.statSync(target).size;
+        //--- P-TH3-REC-07: shrink the shot, but only ever LOSSLESSLY. The
+        //--- compression runs on the PROJECT copy, never on MT4's own file.
+        let after = fs.statSync(target).size;
+        if (name.toLowerCase().endsWith('.png')) {
+          const before = after;
+          after = compressLossless(target);
+          if (after < before) saved += before - after;
+        }
+        bytes += after;
       }
     }
   }
@@ -125,6 +203,10 @@ function main() {
   console.log(`th3-dataset-sync: copied ${copied}, skipped ${skipped} (up to date)`);
   console.log(`  ${path.relative(ROOT, dest)}  ${shots} shots, ${logs} logs, ` +
               `${(bytes / 1024).toFixed(0)} KB written`);
+  if (saved > 0) {
+    console.log(`  lossless palette compression saved ${(saved / 1024).toFixed(0)} KB` +
+                ` (verified pixel-identical; a lossy re-encode is refused)`);
+  }
   console.log(`  dataset total ${(total / 1024 / 1024).toFixed(2)} MB = ` +
               `${pct.toFixed(2)}% of GitHub's 1 GB recommended ceiling ` +
               `(cap is 100 samples)`);
