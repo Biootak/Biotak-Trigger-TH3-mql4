@@ -31,6 +31,34 @@
 //| view is what the PNG holds.                                      |
 //+------------------------------------------------------------------+
 //+------------------------------------------------------------------+
+//| P-TH3-REC-06 (2026-10-05) — THE MIRROR: SAMPLES REACH THE REPO.  |
+//|                                                                   |
+//| The samples were only ever in `MQL4\Files\TH3_Dataset`, which is   |
+//| inside the TERMINAL's data folder. Nothing outside the machine    |
+//| could see them, and deleting that folder (a reinstall, a "clean   |
+//| up my MT4 data" step) destroys the whole labelled set — the one   |
+//| asset the formula is being tuned AGAINST. So every artifact is    |
+//| ALSO written into the PROJECT, where it is reviewable, diffable   |
+//| and survives the terminal.                                        |
+//|                                                                   |
+//| MT4 CANNOT DO THIS ITSELF: `FileOpen` is sandboxed to the data    |
+//| folder, so the project path is not writable from inside the       |
+//| terminal. The copy is therefore the USER'S side: a one-line      |
+//| `node tools/th3-dataset-sync.js` (or the tray) moves the same     |
+//| files across. This function only REPORTS where to find them and   |
+//| writes the pointer the sync reads — it never pretends to have     |
+//| copied anything it could not.                                    |
+//+------------------------------------------------------------------+
+#define TH3_PROJECT_SAMPLES  "Samples/TH3_Dataset"
+
+// Where the project copy must land, stated in the log and in every TXT so
+// the sync and any reviewer read the SAME string. One home for the path.
+string TH3RecorderProjectDir()
+{
+   return TH3_PROJECT_SAMPLES;
+}
+
+//+------------------------------------------------------------------+
 //| P-TH3-REC-03 — THE ONE-SECOND PROOF, IN THE MIDDLE.              |
 //| A capture with no visible answer reads as a capture that did     |
 //| nothing, so the press paints one centred label and clears it.    |
@@ -306,6 +334,12 @@ void TH3_ExportCurrentSample(const string patternName = "")
       //--- whether the PNG is 1:1 with the screen or a rescale of it.
       FileWrite(fh, "SCREENSHOT_SIZE: " + IntegerToString(shotW) + "x" + IntegerToString(shotH));
       FileWrite(fh, "SCREENSHOT_AREA: chart_only (MQL4 WindowScreenShot cannot reach the toolbar or desktop)");
+      //--- P-TH3-REC-06: the project copy's name, so the file is findable from
+      //--- the repo without knowing the sync tool. The terminal CANNOT write
+      //--- there itself (FileOpen is sandboxed) — this is the pointer, not a
+      //--- claim that it landed.
+      FileWrite(fh, "PROJECT_COPY: " + TH3RecorderProjectDir() + "/Screenshots/" + shotName);
+      FileWrite(fh, "PROJECT_COPY_LOG: " + TH3RecorderProjectDir() + "/Logs/" + logName);
       FileClose(fh);
       fh = INVALID_HANDLE;
    }

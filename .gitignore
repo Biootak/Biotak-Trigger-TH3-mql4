@@ -176,6 +176,15 @@ pivot_wall_*.png
 # modules compile green from the repo root). It is a LINK, never repo content.
 tests/Files
 
+# P-TH3-REC-06: the labelled samples ARE repo content — the PNG is not an
+# attachment, it is the evidence: a rung price is only a claim until it is read
+# off the picture beside the candles. MEASURED 2026-10-05: 56 KB per shot, so
+# the recorder's full 100-sample cap costs 5.5 MB against GitHub's 1 GB
+# recommended ceiling, on a repo that is 22 MB today (<0.5% of the budget). The
+# text (Logs\*.txt + the master CSV) rides with it — the numbers and the pixels
+# have to stay together or a sample is half a sample. Nothing here is ignored;
+# `node tools/th3-dataset-sync.js` pulls new captures in from the terminal.
+
 # Agent scratch: session memory and temp probes. Never repo content.
 .workbuddy-ai/
 .claude/
