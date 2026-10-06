@@ -1110,7 +1110,11 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==15) { kind=4; label="EX COLOR"; }
       else if(row==16) { kind=4; label="HUNTER COLOR"; }
       else if(row==17) { kind=4; label="TRADE COLOR"; }
-      else             { kind=4; label="SPREAD COLOR"; }
+      else if(row==18) { kind=4; label="SPREAD COLOR"; }
+      // P-LEGATR: APPENDED (row 19), so rows 0..18 keep their addresses and the
+      // persisted OV_ keys keep their meaning. The trailing branch answers the
+      // card's TOP address (see P-TH-01's TH PERCENT above).
+      else             { kind=1; label="LEG ATR"; }
    }
    else if(item==3)   // TH LABELS
    {

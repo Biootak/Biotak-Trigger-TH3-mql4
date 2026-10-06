@@ -155,6 +155,78 @@ int TradePlanRound(const double x) { return (int)MathRound(x); }
 // keeps saying so (BaseKnotEntryWhy / BaseKnotRiskTag).
 double TradePlanRound1(const double x) { return MathRound(x * 10.0) / 10.0; }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// P-LEGATR — THE LEG READ: the composite BEFORE the compression run.
+// The professor's ATR defect: the live composite averages the trailing CP bars,
+// so inside a CP it reads the CP's own sleep instead of the leg's power. The
+// as-of composite (CalculateWeightedATRAt, ATR_A.mqh:1223) already reads any bar;
+// the only missing piece is WHICH bar: the first expansion bar behind the
+// trailing compression run (the "negative shift" by hand: shift = CP length).
+// The run test is range-only (High-Low < liveRef/2) — a DETECTOR, never the
+// measure (the measure stays the Trex composite, P-ATR-02, one ruler).
+// THE SCAN SKIPS THE BASE BAR (starts at shift 2): the breakout bar itself is
+// the leg's first bar — «حرکت بعد از سی پی یک لگ هستش» — so its stops ride the
+// pre-squeeze power, not the depressed live the squeeze leaves behind. Inside
+// an ongoing squeeze both starts agree (the base bar joins the run).
+// COST: zero when OFF (one bool). When ON: ≤ LEGATR_MAX_SCAN × 2 series reads
+// per TF, once per TF-bar (bar-count cache below); a still frame is reads only.
+// No CP found (trending / cold history) = 0 = the live read, byte-identical.
+// ─────────────────────────────────────────────────────────────────────────────
+#define LEGATR_MAX_SCAN 48   // bars walked back, closed bars only (shift >= 2, base skipped)
+static int      s_legAtrBars[TRADEPLAN_LADDER_SIZE];
+static datetime s_legAtrAnchor[TRADEPLAN_LADDER_SIZE];
+static bool     s_legAtrKnown[TRADEPLAN_LADDER_SIZE];
+static int      s_legAtrRun[TRADEPLAN_LADDER_SIZE];   // trailing compression-run length of the last scan
+
+datetime TradePlanLegAnchorRaw(const int tfMinutes)
+{
+   int idx = TradePlanLadderIndex(tfMinutes);
+   if(idx < 0 || idx >= TRADEPLAN_LADDER_SIZE) idx = 0;
+   ENUM_TIMEFRAMES tf = CompatTF(TradePlanLadderMinutes(idx));
+   int nb = iBars(Symbol(), tf);
+   if(nb <= 10) return 0;
+   if(s_legAtrKnown[idx] && s_legAtrBars[idx] == nb) return s_legAtrAnchor[idx];
+   datetime ans = 0;
+   int smallN = 0;
+   double ref = CalculateWeightedATR(tf);   // the ATR layer's own per-TF-bar cache
+   if(ref > 0.0)
+   {
+      double small = ref * 0.5;
+      // Start at shift 2: shift 1 is the base bar the ref window is read at —
+      // testing it would mute the anchor on the breakout bar itself (P-LEGATR).
+      for(int s = 2; s <= LEGATR_MAX_SCAN + 1; s++)
+      {
+         if(s >= nb) break;
+         double h = iHigh(Symbol(), tf, s);
+         double l = iLow(Symbol(), tf, s);
+         if(h <= 0.0 || l <= 0.0 || h < l) break;   // history hole: live fallback
+         if(h - l < small) { smallN++; continue; }
+         if(smallN > 0) ans = iTime(Symbol(), tf, s);   // first big bar behind the run
+         break;
+      }
+   }
+   s_legAtrBars[idx] = nb; s_legAtrAnchor[idx] = ans; s_legAtrKnown[idx] = true;
+   s_legAtrRun[idx] = smallN;
+   return ans;
+}
+
+// The gated read the plan uses. OFF = 0 = the live read, zero series reads.
+// Raw (above) is the detector alone — the X-dump witness reads it so an
+// "ON changes nothing" report names its anchor instead of guessing.
+datetime TradePlanLegAnchor(const int tfMinutes)
+{
+   if(!inpUseLegATR) return 0;   // OFF: zero reads, the live path below is untouched
+   return TradePlanLegAnchorRaw(tfMinutes);
+}
+
+// Trailing compression-run length of the last scan (X-dump witness only).
+int TradePlanLegRunBars(const int tfMinutes)
+{
+   int idx = TradePlanLadderIndex(tfMinutes);
+   if(idx < 0 || idx >= TRADEPLAN_LADDER_SIZE) return 0;
+   return s_legAtrRun[idx];
+}
+
 // Composite ATR of a specific TF in symbol pips. Returns 0 when not ready.
 // Calls CalculateWeightedATR (ATRCalculations.mqh) — the Trex SMA composite
 // (weights 1/1/2/3/5/8 over periods 5/10/21/66/132/264, W1/MN overrides;
@@ -173,7 +245,11 @@ double TradePlanStripPips(const int tfMinutes, const datetime anchor = 0)
    // the input validators, zero cost on valid data (two compares, no syscalls).
    if(!MathIsValidNumber(pip) || IsZero(pip, EPSILON_PRICE)) return 0.0;
    ENUM_TIMEFRAMES tf = CompatTF(tfMinutes);
-   double atr = (anchor > 0 ? CalculateWeightedATRAt(tf, anchor) : CalculateWeightedATR(tf));
+   // P-LEGATR: an explicit anchor (knot as-of reads) always wins. A live read
+   // with the switch ON resolves to the leg anchor; OFF or no CP found = live.
+   datetime eff = anchor;
+   if(eff <= 0 && inpUseLegATR) eff = TradePlanLegAnchor(tfMinutes);
+   double atr = (eff > 0 ? CalculateWeightedATRAt(tf, eff) : CalculateWeightedATR(tf));
    if(!MathIsValidNumber(atr) || atr <= 0.0 || atr == EMPTY_VALUE) return 0.0;
    return atr / pip;
 }
@@ -381,6 +457,12 @@ bool TradePlanComputeLive(const int chartMinutes, STradePlan &p, const datetime 
    datetime bar0 = iTime(Symbol(), Period(), 0);
    string key = Symbol() + "|" + IntegerToString(Period()) + "|" + TimeToString(bar0) +
                 "|" + IntegerToString((long)anchor);
+   // P-LEGATR: the frozen slow legs were read at the leg anchors, so the anchors
+   // join the key — otherwise a CP that grows inside one chart bar would be
+   // served yesterday's frozen legs. OFF adds nothing (key byte-identical).
+   if(anchor <= 0 && inpUseLegATR)
+      key += "|" + IntegerToString((long)TradePlanLegAnchor(p.chartMin))
+           + "|" + IntegerToString((long)TradePlanLegAnchor(p.strMin));
    if(key == s_tpFzKey && s_tpFzKey != "")
    {
       // Restore frozen slow legs; keep live Eng/Hunter from fresh Compute.

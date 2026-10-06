@@ -475,6 +475,10 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(2, PNL_K_LEGACY, 7, 1, "crosshair", "H");
       PnlSpecAdd(2, PNL_K_LEGACY, 8, 1, "flag", "P");
       PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, "ruler");
+      // P-LEGATR: the plan's ATR source, APPENDED in its own band (14→16 display
+      // rows, still wide). Address 19 renders here and nowhere else.
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "PLAN ATR", 1);
+      PnlSpecAdd(2, PNL_K_LEGACY, 19, 1, "gauge");
       // P-UI-70d: the trade card's personalisation band. The four rows below
       // write the SAME settings the group-13 dialog inputs write (ROW GAP ->
       // P-UI-131: the whole TRADE CARD band moved to the GENERAL card (ROW GAP,

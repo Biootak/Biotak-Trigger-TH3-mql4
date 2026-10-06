@@ -416,6 +416,7 @@ input string inpResetKey = "Q";
 input string inpLogDumpKey = "X";           // On-demand log dump ([TRADEPLAN]+[SNAP]+[ATRLEGS]+[PROF*]) — no background auto-logging
 input string inpCountdownKey = "D";         // Toggle the bar-close countdown tag (independent of the ATR labels key)
 input bool inpUseAltTradeFormulas = false;  // EXPERIMENTAL (user 2026-09-10): chart-TF formulas SL=TR*1.66666, Eng=TR/4.266666, Hunt=TR/1.66666 — default OFF keeps the verified ladder
+input bool inpUseLegATR = false;          // P-LEGATR: plan reads the pre-CP leg ATR (as-of composite at the compression run's start) — default OFF is the live read, byte-identical
 // Eng divisor is HARD-CODED (TRADEPLAN_ENG_DIVISOR 4.266666 in TradePlanFormulas.mqh) —
 // user decision 2026-09-10 (R-ENGONE): not an Input, one formula only.
 

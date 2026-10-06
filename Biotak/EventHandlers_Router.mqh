@@ -597,6 +597,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         if(IsHotkeyPressed(lparam, sparam, inpLogDumpKey))
         {
             TradePlanDumpNow();
+            TradePlanLegAtrDump();   // P-LEGATR witness (own file: Labels_A never grows, §7)
             return;
         }
 

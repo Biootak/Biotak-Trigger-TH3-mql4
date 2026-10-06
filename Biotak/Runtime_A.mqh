@@ -121,6 +121,10 @@ static int g_atrLabelRowGap = 10;                                // [03] inpATRT
 static int g_atrTradeFontSize = 0;                               // [03] inpATRTradeLabelFontSize (0 = follow inpFontSize)
 static int g_trexStampGapRows = 0;                               // [13] inpTrexStampGapRows
 static int g_tradeMarginBottom = 8;                              // [13] inpLabelsMarginBottom (the card's floor)
+// P-LEGATR: the plan's ATR source. OFF = the live composite (shipped numbers);
+// ON = the pre-CP leg composite (TradePlanLegAnchor's as-of read). Panel switch
+// on the ATR LABELS card, persisted as OV_ALG, FF_ address appended (never renumbered).
+static bool g_useLegATR = false;                                 // inpUseLegATR
 // P-UI-131 — the LABEL GRID's own two knobs, promoted from "Inputs only" to live
 // settings so the GENERAL SETTINGS card can drive them. Each has ONE reader family
 // (the label layout), so the dialog input and the panel row are the same value.
@@ -311,8 +315,9 @@ enum FactorySetting
     FF_MARGIN_LEFT,       // inpLabelsMarginLeft (P-UI-131)
     FF_COLUMN_GAP,        // inpLabelColumnGap (P-UI-131)
     FF_SECTION_GAP,       // inpSectionGap (P-UI-131)
-    FF_MAX_LABEL_W,       // inpMaxLabelWidth (P-UI-131)
-    FF_COUNT
+     FF_MAX_LABEL_W,       // inpMaxLabelWidth (P-UI-131)
+     FF_USE_LEG_ATR,       // inpUseLegATR (P-LEGATR — appended: FF_ addresses never renumber)
+     FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
 
@@ -383,7 +388,8 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_MARGIN_LEFT]         = inpLabelsMarginLeft;
    g_factoryDefaults[FF_COLUMN_GAP]          = inpLabelColumnGap;
    g_factoryDefaults[FF_SECTION_GAP]         = inpSectionGap;
-   g_factoryDefaults[FF_MAX_LABEL_W]         = inpMaxLabelWidth;
+    g_factoryDefaults[FF_MAX_LABEL_W]         = inpMaxLabelWidth;
+    g_factoryDefaults[FF_USE_LEG_ATR]         = inpUseLegATR;   // P-LEGATR (seeded HERE, above the #defines, like every mirror)
 #ifndef BUILD_LITE
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
@@ -474,6 +480,7 @@ void RuntimeSettingsInit()
    g_showATRTradeSLLabels = inpShowATRTradeSLLabels;
    g_showATRTradeTPLabels = inpShowATRTradeTPLabels;
    g_atrLabelRowGap = inpATRTradeLabelRowGap;
+   g_useLegATR = inpUseLegATR;   // P-LEGATR (seeded HERE, above the #defines — below it this is a no-op self-assign)
    g_showLiveCountdown = inpShowLiveCountdown;
    g_countdownColor = inpCountdownColor;
    g_countdownFontSize = inpCountdownFontSize;
@@ -658,6 +665,7 @@ void RuntimeSettingsInit()
 #define inpShowATRTradeSLLabels g_showATRTradeSLLabels
 #define inpShowATRTradeTPLabels g_showATRTradeTPLabels
 #define inpATRTradeLabelRowGap g_atrLabelRowGap
+#define inpUseLegATR g_useLegATR   // P-LEGATR
 #define inpATRTradeLabelFontSize g_atrTradeFontSize
 #define inpTrexStampGapRows g_trexStampGapRows
 #define inpLabelsMarginBottom g_tradeMarginBottom
@@ -1144,6 +1152,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "LCG", g_labelColumnGap);
    RSSetNext(p + "LSG", g_sectionGap);
    RSSetNext(p + "LMW", g_maxLabelWidth);
+   RSSetNext(p + "ALG", g_useLegATR ? 1 : 0);   // P-LEGATR (appended LAST: the shadow is positional, older slots never move)
    RSShadowCommit();
 }
 
@@ -1355,6 +1364,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "LCG")) g_labelColumnGap = ClampSettingInt((int)GlobalVariableGet(p + "LCG"), 0, 200);
    if(GlobalVariableCheck(p + "LSG")) g_sectionGap = ClampSettingInt((int)GlobalVariableGet(p + "LSG"), 0, 200);
    if(GlobalVariableCheck(p + "LMW")) g_maxLabelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LMW"), 50, 600);
+   if(GlobalVariableCheck(p + "ALG")) g_useLegATR = (GlobalVariableGet(p + "ALG") > 0.5);   // P-LEGATR (absent key = OFF, the shipped look)
    // P-PERF-27b: what was just read is what we would write back, so record it as
    // "already on disk" and stop the teardown from re-writing it.
    RuntimeSettingsPrimeOverrideShadow();
