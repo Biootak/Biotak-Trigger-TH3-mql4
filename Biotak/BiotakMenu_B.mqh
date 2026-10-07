@@ -310,6 +310,8 @@ void CircTipModeChanged()
 
 //--- P-UI-126: the orb's own move path calls this (one bool) so a pinned banner that
 //--- rides "above the orb" is re-placed by the next tick, not per move event.
+//--- P-UI-140: and the re-derivation of a PLACE on a new window calls it too — a
+//--- home that moved must be re-placed by the tick, exactly like a moved orb.
 static bool s_TipDirty = false;
 void CircTipPinnedTouch() { s_TipDirty = true; }
 
@@ -328,6 +330,10 @@ void CircTipPinnedTouch() { s_TipDirty = true; }
 static bool s_TipDrag = false;
 static bool s_TipMoved = false;   // a real move (>= 1 px) eats the release's click echo
 static int  s_TipGrabDX = 0, s_TipGrabDY = 0;
+//--- P-UI-140: the hand owns the chip's place for the whole drag, so the 250 ms
+//--- re-derivation must stand off exactly as it does for the orb (one accessor, so
+//--- the refresh never reads a static it does not own).
+bool CircTipDragging() { return s_TipDrag; }
 
 bool CircTipGrabStart(const int mx, const int my)
 {

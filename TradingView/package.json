@@ -1,0 +1,23 @@
+{
+  "name": "biotak-th3-tradingview",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Biotak Trigger TH3 for TradingView - modular Pine Script v6, assembled, gated, and parity-checked against the MQL4 build.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node tools/build.js",
+    "dev": "node tools/watch.js",
+    "parity": "node tools/check-parity.js",
+    "check": "node tools/fixtures-derive.js --check && node tools/check-mql4-consts.js && node tools/check-structure.js && node tools/check-pine-limits.js && node tools/pine-validate.js",
+    "gate": "npm run build && npm run check && npm run parity",
+    "gate:full": "npm run gate && node tools/check-parity.js --selftest"
+  },
+  "devDependencies": {
+    "pinescript-v6-validator": "^0.4.3",
+    "pinets": "^0.11.0",
+    "pinets-cli": "^0.1.15"
+  }
+}

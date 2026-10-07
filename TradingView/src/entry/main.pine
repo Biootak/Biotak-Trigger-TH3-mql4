@@ -1,0 +1,9 @@
+//@module entry.main
+//@owner the Full entry - THIN. It declares, it includes, it holds no logic.
+//@entry main
+//@output BiotakTriggerTH3.pine
+//@declare
+//@version=6
+indicator("Biotak Trigger TH3", "Biotak TH3", overlay=true, max_lines_count={TH3_MAX_LINES}, max_labels_count={TH3_MAX_LABELS}, max_boxes_count={TH3_MAX_BOXES}, max_bars_back={TH3_MAX_BARS_BACK})
+//@declend
+//@includes 10_const.pine, 20_settings.pine, 30_math.pine, 40_levels.pine, 50_draw.pine, 60_panel.pine

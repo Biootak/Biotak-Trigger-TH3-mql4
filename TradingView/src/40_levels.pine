@@ -1,0 +1,194 @@
+//@module 40_levels
+//@owner the ladder state a surface reads: the marked corners, the step, the direction, the rungs
+//@includes 10_const.pine, 20_settings.pine, 30_math.pine
+
+//| THE ANCHOR IS THE MARKED PATTERN, NOT A DETECTED ONE.
+//|
+//| This is the MQL4 path and it was the whole point of the tool: the user MARKS the
+//| four corners on the chart (`TH3BaseMarkClick` - "the click below places pivots",
+//| TH3Tool_C.mqh:1198-1216) and `DrawABCDPattern` projects the ladder from the last
+//| three of them (TH3Renderer_B.mqh:60-90, `TH3ClosedStepFromLegs(pB, pC, pD, ...)`).
+//| The six-condition scan is NOT the anchor: in MT4 it only corroborates a tip and
+//| paints markers (`TH3Renderer_C.mqh:5-82`).
+//|
+//| Pine has no chart-click event at all, so the gesture becomes four INTERACTIVE
+//| input pairs: `input.time` + `input.price` sharing one `inline` key with
+//| `confirm=true`, which TradingView answers with one click on the chart per corner.
+//| A corner is a PAIR. The bar of C and D is what the owner-timeframe walk-up reads
+//| (`TH3ClosedBars(tC, tD)`).
+//|
+//| ABSENCE IS NOT A GUESS: a corner missing its price or its time is no corner, the
+//| model is not built, and `th3SrcName` says which half is missing.
+//|
+//| The mapping below is the recorder's own (Biotak/TH3Recorder.mqh:198-218):
+//|   legBC = |C-B|   legCD = |D-C|   ratio = legCD / legBC
+//|   step  = CalculateUnifiedMasterStep(legCD, ratio, motherIn, rung)
+//|   dir   = D > C ? -1 : +1        (the ladder is projected AGAINST the close)
+//|   anchor= D                      (rungs 1..TH3_LADDER_N, odd rungs are the targets)
+
+//| THE REACTION WALK (TH3HitPivotMeasure, TH3Pivots_A.mqh:1077-1115). A local extreme
+//| inside a +/-TH3_VOTE_TIP_WIN window, measured from D, stopping at the first one
+//| that clears TH3_STEP_MIN_LEG_RUNGS of the STEP THE LADDER DRAWS (baseUnit, never
+//| the raw rung). It walks every closed bar between D and now, so its only bound is
+//| the history the chart can read: the caller refuses, with a name, a D beyond it.
+//| Returns the deepest reach in steps and the distance of the tip that cleared the
+//| floor (0 when none did).
+th3ReactionRungs(float refP, int refBar, bool wantHigh, float step) =>
+    deepest = 0.0
+    hitDist = 0.0
+    if step > 0 and refP > 0
+        i = refBar + TH3_VOTE_EDGE
+        while i <= bar_index - TH3_VOTE_EDGE
+            h0 = high[bar_index - i]
+            l0 = low[bar_index - i]
+            ext = 0.0
+            if h0 > 0 and l0 > 0
+                tip = true
+                k = i - TH3_VOTE_TIP_WIN
+                while tip and k <= i + TH3_VOTE_TIP_WIN
+                    if k != i
+                        nk = wantHigh ? high[bar_index - k] : low[bar_index - k]
+                        if nk <= 0 or (wantHigh ? nk >= h0 : nk <= l0)
+                            tip := false
+                    k += 1
+                if tip
+                    ext := wantHigh ? h0 : l0
+            if ext > 0
+                d = math.abs(refP - ext)
+                if d > deepest
+                    deepest := d
+                if d >= TH3_STEP_MIN_LEG_RUNGS * step
+                    hitDist := d
+                    break
+            i += 1
+    [step > 0 ? deepest / step : 0.0, hitDist]
+
+TH3_GRP_MARK = "TH3 - Marked pattern"
+TH3_SET_A_TIME = input.time(0, "A time", inline="A", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_A_PRICE = input.price(0.0, "A price", inline="A", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_B_TIME = input.time(0, "B time", inline="B", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_B_PRICE = input.price(0.0, "B price", inline="B", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_C_TIME = input.time(0, "C time", inline="C", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_C_PRICE = input.price(0.0, "C price", inline="C", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_D_TIME = input.time(0, "D time", inline="D", group=TH3_GRP_MARK, confirm=true)
+TH3_SET_D_PRICE = input.price(0.0, "D price", inline="D", group=TH3_GRP_MARK, confirm=true)
+
+var float th3AnchorPrice = na
+var float th3AnchorStep = na
+var int th3AnchorDir = 0
+var int th3AnchorTime = 0
+var float th3AnchorRatio = na
+var bool th3AnchorLocked = false
+var string th3AnchorHow = "none"
+var string th3AnchorRungHow = "none"
+var string th3AnchorVoteHow = "none"
+var string th3AnchorOwner = "none"
+
+th3A = TH3_SET_A_PRICE
+th3B = TH3_SET_B_PRICE
+th3C = TH3_SET_C_PRICE
+th3D = TH3_SET_D_PRICE
+
+th3MarkGap(string name, float p, int t) =>
+    p > 0 and t > 0 ? "" : p > 0 ? name + " time" : t > 0 ? name + " price" : name
+
+th3MarkJoin(string acc, string add) =>
+    add == "" ? acc : acc == "" ? add : acc + ", " + add
+
+th3MarkGaps = th3MarkJoin(th3MarkJoin(th3MarkJoin(th3MarkGap("A", th3A, TH3_SET_A_TIME), th3MarkGap("B", th3B, TH3_SET_B_TIME)), th3MarkGap("C", th3C, TH3_SET_C_TIME)), th3MarkGap("D", th3D, TH3_SET_D_TIME))
+th3MarkAny = th3A > 0 or th3B > 0 or th3C > 0 or th3D > 0 or TH3_SET_A_TIME > 0 or TH3_SET_B_TIME > 0 or TH3_SET_C_TIME > 0 or TH3_SET_D_TIME > 0
+th3Marked = th3MarkGaps == ""
+th3SrcName = th3Marked ? "marked" : th3MarkAny ? "incomplete: " + th3MarkGaps : "no marks"
+
+th3Pip = th3PipSize()
+
+th3LegAB = th3Marked ? math.abs(th3B - th3A) : 0.0
+th3LegBC = th3Marked ? math.abs(th3C - th3B) : 0.0
+th3LegCD = th3Marked ? math.abs(th3D - th3C) : 0.0
+th3GeomOK = th3Marked and th3LegBC > 0 and th3LegCD > 0
+th3RatioV = th3GeomOK ? th3Ratio(th3LegBC, th3LegCD) : 0.0
+
+th3MotherBase = TH3_SET_BASE_PIPS * th3Pip
+
+var int th3BarC = na
+var int th3BarD = na
+if TH3_SET_C_TIME > 0 and time <= TH3_SET_C_TIME
+    th3BarC := bar_index
+if TH3_SET_D_TIME > 0 and time <= TH3_SET_D_TIME
+    th3BarD := bar_index
+
+th3DBar = th3Marked ? th3BarD : na
+th3CdBars = th3Marked and not na(th3BarC) and not na(th3BarD) ? math.abs(th3BarD - th3BarC) : -1
+
+th3ChartTf = th3ChartTfMin()
+th3OwnerMin = th3OwnerTFMinutes(th3ChartTf, th3CdBars)
+th3OwnerUp = th3OwnerMin != th3ChartTf
+
+th3SlotTf(int m) =>
+    m <= th3ChartTf ? timeframe.period : m == TH3_TF_W1 ? "1W" : m == TH3_TF_D1 ? "1D" : m == TH3_TF_MN ? "1M" : str.tostring(m)
+
+th3ReqM5 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_M5), close[1], lookahead=barmerge.lookahead_on)
+th3ReqM15 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_M15), close[1], lookahead=barmerge.lookahead_on)
+th3ReqH1 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_H1), close[1], lookahead=barmerge.lookahead_on)
+th3ReqH4 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_H4), close[1], lookahead=barmerge.lookahead_on)
+th3ReqD1 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_D1), close[1], lookahead=barmerge.lookahead_on)
+th3ReqW1 = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_W1), close[1], lookahead=barmerge.lookahead_on)
+th3ReqMN = request.security(syminfo.tickerid, th3SlotTf(TH3_TF_MN), close[1], lookahead=barmerge.lookahead_on)
+
+th3OwnerClose1 = th3OwnerMin <= th3ChartTf ? close[1] : th3OwnerMin == TH3_TF_M5 ? th3ReqM5 : th3OwnerMin == TH3_TF_M15 ? th3ReqM15 : th3OwnerMin == TH3_TF_H1 ? th3ReqH1 : th3OwnerMin == TH3_TF_H4 ? th3ReqH4 : th3OwnerMin == TH3_TF_D1 ? th3ReqD1 : th3OwnerMin == TH3_TF_W1 ? th3ReqW1 : th3OwnerMin == TH3_TF_MN ? th3ReqMN : na
+
+th3ChartPct = th3RungPctForTFMin(th3ChartTf)
+th3ChartRung = th3RungFromClose(close[1], th3ChartPct)
+th3OwnerPct = th3RungPctForTFMin(th3OwnerMin)
+th3OwnerRung = th3RungFromClose(nz(th3OwnerClose1), th3OwnerPct)
+th3OwnerRungOK = th3OwnerRung > 0
+th3RungUseMin = th3OwnerRungOK ? th3OwnerMin : th3ChartTf
+th3RungPctV = th3OwnerRungOK ? th3OwnerPct : th3ChartPct
+th3RungDerived = th3OwnerRungOK ? th3OwnerRung : th3ChartRung
+th3Rung = TH3_SET_RUNG_PIPS > 0 ? TH3_SET_RUNG_PIPS * th3Pip : th3RungDerived
+th3RungHow = TH3_SET_RUNG_PIPS > 0 ? "override" : th3RungPctV > 0 ? th3TfName(th3RungUseMin) + " " + str.tostring(th3RungPctV, "#.####") + "% of close[1]" + (th3OwnerRungOK or not th3OwnerUp ? "" : " (chart)") : "none"
+
+th3FreqPct = th3FrequencyPct(TH3_SET_FREQ_PCT)
+th3Derived = th3GeomOK ? th3MasterStep(th3LegCD, th3RatioV, th3MotherBase, th3Rung) : 0.0
+th3StepFinal = th3SeedStep(th3Derived, th3Rung, th3LegCD, th3LegAB, th3FreqPct)
+
+th3ClosedStepV = th3GeomOK ? th3ClosedStep(th3LegCD, th3RatioV) : 0.0
+[th3RetStep, th3RetQ, th3RetIdx] = if th3MotherBase > 0
+    th3RetraceBestStep(th3MotherBase, th3ClosedStepV, th3Rung)
+else
+    [0.0, 0.0, -1]
+th3LockBase = th3RetStep > 0 ? th3RetStep : th3MotherBase
+th3RetHow = th3RetStep > 0 ? "ret " + th3RetraceQName(th3RetIdx) : ""
+
+[th3LockedRaw, th3HowRaw] = th3LockVerdict(th3StepFinal, th3LockBase, TH3_SET_OK_RATIO)
+[th3LockedV, th3HowShift] = th3LockShift(th3LockedRaw, th3HowRaw, th3StepFinal, th3LockBase, th3OwnerUp, th3ChartRung, th3Pip, th3TfName(th3ChartTf))
+th3HowV = th3HowShift + (th3RetHow == "" ? "" : " | " + th3RetHow)
+
+th3DAge = na(th3DBar) ? -1 : bar_index - th3DBar
+th3VoteReach = th3DAge - TH3_VOTE_EDGE + TH3_VOTE_TIP_WIN
+th3VoteState = not th3GeomOK or th3StepFinal <= 0 ? 1 : na(th3DBar) ? 2 : th3VoteReach > TH3_MAX_BARS_BACK ? 3 : th3DAge < 2 * TH3_VOTE_EDGE ? 4 : 0
+th3VoteWantHigh = th3D <= th3C
+
+[th3DeepestRungs, th3VoteDist] = if barstate.islast and th3VoteState == 0
+    th3ReactionRungs(th3D, th3DBar, th3VoteWantHigh, th3StepFinal)
+else
+    [0.0, 0.0]
+[th3VoteKOk, th3VoteK, th3VoteKStep] = th3HitKPick(th3VoteDist, th3ClosedStepV)
+th3VoteOK = th3VoteState == 0 and th3VoteDist > 0 and th3VoteKOk
+th3VoteHow = th3VoteState == 1 ? "unknown (no model)" : th3VoteState == 2 ? "unknown (D not on chart)" : th3VoteState == 3 ? "unknown (D " + str.tostring(th3DAge) + " bars back, limit " + str.tostring(TH3_MAX_BARS_BACK) + ")" : th3VoteState == 4 ? "waiting (D " + str.tostring(th3DAge) + " bar(s) old)" : str.tostring(th3DeepestRungs, "#.##") + "/" + str.tostring(TH3_STEP_MIN_LEG_RUNGS, "#.##") + " rungs" + (th3VoteOK ? " VOTES k=" + str.tostring(th3VoteK) : th3VoteDist > 0 ? " floor reached, step refused" : " below floor")
+
+th3ModelChanged = th3GeomOK and (na(th3AnchorPrice) or th3AnchorTime != TH3_SET_D_TIME or th3AnchorStep != th3StepFinal or th3AnchorDir != (th3D > th3C ? -1 : 1) or th3AnchorRungHow != th3RungHow or th3AnchorHow != th3HowV)
+
+if th3ModelChanged
+    th3AnchorPrice := th3D
+    th3AnchorTime := TH3_SET_D_TIME
+    th3AnchorStep := th3StepFinal
+    th3AnchorDir := th3D > th3C ? -1 : 1
+    th3AnchorRatio := th3RatioV
+    th3AnchorLocked := th3LockedV
+    th3AnchorHow := th3HowV
+    th3AnchorRungHow := th3RungHow
+    th3AnchorOwner := th3TfName(th3OwnerMin)
+
+if barstate.islast
+    th3AnchorVoteHow := th3VoteHow

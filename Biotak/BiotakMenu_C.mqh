@@ -2,6 +2,40 @@
 #ifndef BIOTAK_MENU_C_MQH
 #define BIOTAK_MENU_C_MQH
 
+//+------------------------------------------------------------------+
+//| P-PERF-55 — THE RING IS APPLIED WHEN IT CHANGES, NOT WHEN THE     |
+//| CHART NOTICES SOMETHING.                                          |
+//|                                                                   |
+//| `CHARTEVENT_CHART_CHANGE` is not "the window resized": MT4 fires  |
+//| it on scroll, zoom and every scale change too, so with            |
+//| auto-scroll on it lands many times a second. The branch that       |
+//| answers it called `UpdateCircularMenuPosition()` — and that call   |
+//| re-applied the WHOLE ring through `CircApplyMenuPosition()`, whose |
+//| write set with the ring up is 1 orb + RING_COUNT(9) items x (2     |
+//| `ObjectFind` + 4 `ObjectSetInteger`) + the badge seats + the tools |
+//| row and its header/pager = roughly 60-100 terminal calls, every    |
+//| one of them re-writing a number that had not changed.             |
+//|                                                                   |
+//| `CircLayout(i,x,y)` is a PURE function of (i, menuX, menuY, cw,    |
+//| ch) — `CircFitRadius` beside it already caches on the same four —  |
+//| so the applied position is a derivation of exactly those four plus |
+//| the metrics it read them against, plus what is on screen. When all |
+//| of those are the value the LAST apply already wrote, the write set |
+//| is identical and the call is pure cost. Nothing below the guard    |
+//| can be owed by a chart-change alone: `CircCreateItem`/`CircCreate- |
+//| Orb` position themselves at birth, the sub-panel keeps its OWN     |
+//| shape key (`SubRelayoutIfNeeded`, which still runs), and           |
+//| `SaveUIStates` is compare-guarded on the very values the key holds.|
+//|                                                                   |
+//| The CHROME GENERATION is in the key so this can never skip a       |
+//| rebuild: a newly created object was never placed by the apply the  |
+//| key remembers, so `CreateMenu`/`DeleteRing` bump the counter and   |
+//| the next call always passes. Cost of a miss: two integer reads,    |
+//| two compares and three bool reads. Cost of a hit: those, and the   |
+//| work above is not done.                                            |
+//+------------------------------------------------------------------+
+static int s_circChromeGen = 0;   // bumped by every rebuild of the ring/orb family
+
 void ToolsCreateBadge(const int i)
 {
    int badgeX, badgeY;
@@ -306,6 +340,8 @@ void CreateMenu()
    UIReleaseClaimReset();
    CircCreateOrb();
    CircRefreshOrbSkin();   // ORBSTATE: bow when closed, TRex when open
+   // P-PERF-55: the family is (re)born here - the apply guard must pass next time.
+   s_circChromeGen++;
    if(!g_UI.menuVisible) return;
    for(int i = 0; i < RING_COUNT; i++)
       CircCreateItem(i);
@@ -417,6 +453,7 @@ void SubRelayoutIfNeeded()
 //--- wants nothing else — so it is a function, not a loop written twice.
 void DeleteRing()
 {
+   s_circChromeGen++;   // P-PERF-55: the family is gone - a later apply must not be skipped
    for(int i = 0; i < RING_COUNT; i++)
    {
       ObjectDelete(0, CircIcon(i));
@@ -552,6 +589,30 @@ void UpdateCircularMenuPosition()
    g_UI.menuX = ClampInt(g_UI.menuX, bnX, bxX);
    g_UI.menuY = ClampInt(g_UI.menuY, bnY, bxY);
 
+   // P-PERF-55 — THE GUARD. Everything below writes what (menuX, menuY, cw, ch, what is
+   // on screen, the chrome generation) already decides, so when those are still the value
+   // the last apply wrote, the write set is IDENTICAL and every terminal call below is
+   // pure cost. This function's only caller is the CHART_CHANGE branch, and MT4 fires
+   // that on scroll and zoom - not only on a resize - so on a scrolling chart the ring
+   // was being re-written many times a second, ~60-100 calls each time.
+   // The clamp above still runs on every call: it is arithmetic on the live pair and it
+   // is what keeps `g_UI` honest, which is upstream of the guard, not downstream of it.
+   const int chromeFlags = (g_UI.menuVisible ? 1 : 0) | (g_ToolsOpen ? 2 : 0);
+   static int s_ucmX = -2147483647, s_ucmY = -2147483647;
+   static int s_ucmCw = 0, s_ucmCh = 0, s_ucmFlags = -1, s_ucmGen = -1;
+   if(g_UI.menuX == s_ucmX && g_UI.menuY == s_ucmY && cw == s_ucmCw && ch == s_ucmCh &&
+      chromeFlags == s_ucmFlags && s_circChromeGen == s_ucmGen)
+   {
+      // The sub-panel keeps its OWN shape key and a settings change can re-shape it with
+      // no move at all, so its own check is never skipped — it is three compares and a
+      // return when nothing changed, and a rebuild when something did.
+      SubRelayoutIfNeeded();
+      return;
+   }
+   s_ucmX = g_UI.menuX;  s_ucmY = g_UI.menuY;
+   s_ucmCw = cw;         s_ucmCh = ch;
+   s_ucmFlags = chromeFlags; s_ucmGen = s_circChromeGen;
+
    CircApplyMenuPosition();
    // A resize / TF switch can change the sub-menu's SHAPE (the arc may no longer
    // fit, or fewer rows may fit and the panel must page). Rebuild only when the
@@ -559,6 +620,49 @@ void UpdateCircularMenuPosition()
    SubRelayoutIfNeeded();
    CircTipPinnedTouch();   // P-UI-126: a pinned banner "above the orb" follows by tick, not per move
    SaveUIStates();
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-140 (2026-10-05) — THE PASS THAT KEEPS A PLACE A PLACE.      |
+//| Report: «این دوتا موقع ریستارت ترمینال از جاش تکون میخوره» — the  |
+//| orb and the chip moved on restart. A home is stored as a FRACTION |
+//| of the chart box (BiotakMenu_A), so when the BOX itself changes —  |
+//| a restart that lays the window out again, a resize, maximize /    |
+//| restore, another monitor's DPI, another symbol — the pixels must  |
+//| be RE-DERIVED from that fraction against the NEW metrics. Before   |
+//| this they were the same absolute numbers painted into a different  |
+//| box and then clamped into it, which is the drift.                  |
+//|                                                                   |
+//| The HOME is what is updated, never the live pair: P-UI-131e made   |
+//| the pair a DERIVATION of the home, and a refresh that wrote the    |
+//| pair would be the ratchet that block removed. The repaint then     |
+//| rides the two owners that already exist for a moved orb and for a  |
+//| pinned chip — no third paint path is born here.                    |
+//|                                                                   |
+//| Guards: a live drag owns its surface until release. Cost: two      |
+//| terminal reads per quarter second, and nothing else until the box  |
+//| really is a different box (the common case is two compares).       |
+//| Called from the CHART_CHANGE branch (immediately, so a resize      |
+//| lands on the same frame) and from the 250 ms OnTimer pass (the     |
+//| safety net for a missed notification, exactly P-PERF-16's shape).  |
+//+------------------------------------------------------------------+
+void CircHomesRefresh()
+{
+   int cw = 0, ch = 0; HomeChartSize(cw, ch);
+   static int s_cw = 0, s_ch = 0;
+   if(cw == s_cw && ch == s_ch) return;
+   s_cw = cw; s_ch = ch;
+   int x = 0, y = 0;
+   if(!g_OrbDragging && GVHomeFracRead("ORB", x, y))
+   {
+      CircOrbHomeSet(x, y);                              // the home is the truth
+      if(g_UI.menuVisible) UpdateCircularMenuPosition();  // ...and the pair follows it
+   }
+   if(!CircTipDragging() && GVHomeFracRead("CHIP", x, y))
+   {
+      CircTipHomeSet(x, y);
+      CircTipPinnedTouch();   // the banner re-places itself on the next tick
+   }
 }
 
 static bool g_PnlForegroundWasOn = false;
@@ -638,6 +742,25 @@ void CircAbortRingGesture()
 // ══════════════════════════════════════════════════════════════════════════
 void CircReapStaleRingClaims()
 {
+   // P-UI-141 (2026-10-06, user: «منوی اصلی وقتی ریستارت میشه سر جاش
+   // قبلیش نیست»): A DANGLING TRAVELLED DRAG IS AN UNRECORDED ANSWER, NOT
+   // GARBAGE. MEASURED in gvariables.dat: the stored home said bottom-left
+   // (0.0424,0.9493) while the orb painted mid-left — the pair had travelled
+   // and neither the release nor anything after it recorded the home, so the
+   // restart faithfully restored the stale one. The release is not guaranteed
+   // (a button-up the terminal never delivers, a release another surface eats):
+   // then the pair sits travelled, the home sits stale, and the NEXT press —
+   // this one — used to clear the flags and lock the divergence in. So a press
+   // that finds travelled flags commits the pair FIRST, through the same two
+   // calls every release path uses (no new writer), and only then does the
+   // old reap below run. A press with no travel behind it changes nothing (the
+   // save dedupes through its own shadow: zero writes). Cost: two compares on
+   // a press that already reaps; the steady state pays nothing.
+   if(g_OrbMoved || g_OrbWasDragged)
+   {
+      CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates();
+      g_OrbMoved = false;   // consumed (WasDragged stays the click-eater's own)
+   }
    if(g_LongPressItem < 0 && !g_OrbDragging && g_DragOwner != DRAG_MENU) return;
    _LOG_GATE_W Print("[W][UI] P-UI-90: reaped a stale ring claim on a new press "
                      "(orb=", (g_OrbDragging ? 1 : 0), " hold=", g_LongPressItem, ")");

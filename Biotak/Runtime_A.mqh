@@ -86,14 +86,12 @@ static bool g_showStructureL3 = true;                            // [09.2] inpSh
 static bool g_showStructureL4 = true;                            // [09.2] inpShowStructureL4
 static bool g_showStructureL5 = true;                            // [09.2] inpShowStructureL5
 static bool g_showMidpointLine = true;                           // [03] inpShowMidpointLine
-static bool g_showMidZones = false;                              // [07.1] inpShowMidZones.
-                                                                 // P-UI-119: the level families
-                                                                 // start OFF (user order).
+static bool g_showMidZones = true;                               // [07.1] inpShowMidZones (P-UI-143: card look as shipped)
 static ENUM_ZONE_STYLE g_midZoneStyle = ZONE_STYLE_BOX_FILLED;   // [07.1] inpMidZoneStyle
-static int g_midZoneTransparency = 50;                           // [07.2] inpMidZoneTransparency
+static int g_midZoneTransparency = 66;                           // [07.2] inpMidZoneTransparency (P-UI-143)
 static double g_midZoneHeightPercent = 33.0;                     // [07.2] inpMidZoneHeightPercent
 static ENUM_LINE_STYLE g_midZoneBorderStyle = STYLE_SOLID;       // [07.2] inpMidZoneBorderStyle
-static int g_midZoneBorderWidth = 1;                             // [07.2] inpMidZoneBorderWidth
+static int g_midZoneBorderWidth = 5;                             // [07.2] inpMidZoneBorderWidth (P-UI-143)
 // P-UI-63: the EDGE's transparency, the band's sibling. `g_midZoneTransparency` owns the
 // BAND (the filled rectangle); this one owns the edge the BORDER / BORDER WIDTH rows
 // style, so the two can be set apart - the reported «شفافیت خط و زون جدا از هم باشد».
@@ -106,7 +104,7 @@ static int g_midZoneBorderTransparency = 50;                     // [07.2] inpMi
 static color g_zoneEdgeTopColor = clrNONE;
 static color g_zoneEdgeBottomColor = clrNONE;
 static int   g_zoneEdgeTopTransparency = -1;
-static int   g_zoneEdgeBottomTransparency = -1;
+static int   g_zoneEdgeBottomTransparency = 1;   // P-UI-143: card look as shipped (was AUTO)
 static bool g_showPipDistanceLabels = true;                      // [03] inpShowPipDistanceLabels
 static bool g_showATRLabels = false;                             // [03] inpShowATRLabels
 static bool g_showATRTargets = true;                             // [03] inpShowATRTargets
@@ -1153,6 +1151,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "LSG", g_sectionGap);
    RSSetNext(p + "LMW", g_maxLabelWidth);
    RSSetNext(p + "ALG", g_useLegATR ? 1 : 0);   // P-LEGATR (appended LAST: the shadow is positional, older slots never move)
+   RSSetNext(p + "TSH", g_triggerLevelsEnabled ? 1 : 0);   // P-UI-142: the T toggle rides the OV_ mirror home (was RAM + per-chart key only)
    RSShadowCommit();
 }
 
@@ -1365,6 +1364,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "LSG")) g_sectionGap = ClampSettingInt((int)GlobalVariableGet(p + "LSG"), 0, 200);
    if(GlobalVariableCheck(p + "LMW")) g_maxLabelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LMW"), 50, 600);
    if(GlobalVariableCheck(p + "ALG")) g_useLegATR = (GlobalVariableGet(p + "ALG") > 0.5);   // P-LEGATR (absent key = OFF, the shipped look)
+   if(GlobalVariableCheck(p + "TSH")) g_triggerLevelsEnabled = (GlobalVariableGet(p + "TSH") > 0.5);   // P-UI-142: the T toggle's durable layer (per-chart key wins at restore)
    // P-PERF-27b: what was just read is what we would write back, so record it as
    // "already on disk" and stop the teardown from re-writing it.
    RuntimeSettingsPrimeOverrideShadow();

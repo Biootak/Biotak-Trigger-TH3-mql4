@@ -1,0 +1,144 @@
+//@module 50_draw
+//@owner the pattern and ladder surface: every object it paints, and the sweep that takes it down
+//@includes 10_const.pine, 20_settings.pine, 30_math.pine, 40_levels.pine
+
+//| Object lifecycle is a gate here, not a habit (contract 6.8): a name a surface
+//| PAINTS must be a name it can take DOWN. `th3LadderPurge` and `th3PatternPurge`
+//| are those owners, one per family, and each runs before its family is rebuilt.
+//|
+//| Two laws carried over from the MQL4 build:
+//|   - a still frame costs zero writes: a rebuild is guarded on the model having
+//|     MOVED, a bar that only advanced moves the right edge with setters, and a
+//|     tick that changes nothing touches no object.
+//|   - an OFF switch takes the surface down. Turning the ladder off purges it; it
+//|     is never left painted and merely hidden. An incomplete pattern paints nothing.
+
+TH3_GRP_PATTERN = "TH3 - Pattern"
+TH3_SET_DRAW_PATTERN = input.bool(true, "Draw AB / BC / CD", group=TH3_GRP_PATTERN)
+TH3_SET_SHOW_CORNERS = input.bool(true, "Corner labels A / B / C / D", group=TH3_GRP_PATTERN)
+TH3_SET_PATTERN_INK = input.color(color.blue, "Pattern ink (AB, CD, corners)", group=TH3_GRP_PATTERN)
+TH3_SET_DRAW_ZONE = input.bool(true, "Zone on the target rungs", group=TH3_GRP_PATTERN)
+TH3_SET_ZONE_PCT = input.float(33.0, "Zone height (% of step)", minval=1.0, maxval=100.0, step=1.0, group=TH3_GRP_PATTERN)
+TH3_SET_ZONE_TRANSP = input.int(50, "Zone transparency", minval=0, maxval=100, group=TH3_GRP_PATTERN)
+
+var array<line> th3LeadLines = array.new<line>()
+var array<label> th3LeadLabels = array.new<label>()
+var array<box> th3LeadBoxes = array.new<box>()
+var array<line> th3PatLines = array.new<line>()
+var array<label> th3PatLabels = array.new<label>()
+var float th3DrawnAnchor = na
+var float th3DrawnStep = na
+var int th3DrawnDir = 0
+var int th3DrawnRungs = 0
+var int th3DrawnRight = 0
+var bool th3DrawnAny = false
+var string th3PatKey = ""
+
+th3LadderPurge() =>
+    n = array.size(th3LeadLines)
+    if n > 0
+        for i = 0 to n - 1
+            line.delete(array.get(th3LeadLines, i))
+        array.clear(th3LeadLines)
+    m = array.size(th3LeadLabels)
+    if m > 0
+        for j = 0 to m - 1
+            label.delete(array.get(th3LeadLabels, j))
+        array.clear(th3LeadLabels)
+    b = array.size(th3LeadBoxes)
+    if b > 0
+        for k = 0 to b - 1
+            box.delete(array.get(th3LeadBoxes, k))
+        array.clear(th3LeadBoxes)
+
+th3PatternPurge() =>
+    n = array.size(th3PatLines)
+    if n > 0
+        for i = 0 to n - 1
+            line.delete(array.get(th3PatLines, i))
+        array.clear(th3PatLines)
+    m = array.size(th3PatLabels)
+    if m > 0
+        for j = 0 to m - 1
+            label.delete(array.get(th3PatLabels, j))
+        array.clear(th3PatLabels)
+
+th3TargetInk(int rung) =>
+    rung == 1 ? color.rgb(30, 144, 255) : rung == 3 ? color.rgb(255, 69, 0) : rung == 5 ? color.rgb(50, 205, 50) : color.rgb(165, 42, 42)
+
+th3EdgeBars = 12
+th3RightTime = time + timeframe.in_seconds() * 1000 * th3EdgeBars
+th3DrawNow = barstate.islast or barstate.islastconfirmedhistory
+
+th3TimesOK = TH3_SET_A_TIME > 0 and TH3_SET_B_TIME > 0 and TH3_SET_C_TIME > 0 and TH3_SET_D_TIME > 0
+th3PatternWanted = TH3_SET_DRAW_PATTERN and th3Marked and th3TimesOK
+th3SurfaceWanted = TH3_SET_DRAW_LADDER and th3GeomOK and th3TimesOK and not na(th3AnchorPrice) and th3AnchorStep > 0 and th3AnchorTime > 0
+th3SurfaceMoved = na(th3DrawnAnchor) or th3DrawnAnchor != th3AnchorPrice or th3DrawnStep != th3AnchorStep or th3DrawnDir != th3AnchorDir or th3DrawnRungs != TH3_SET_RUNGS
+
+if th3DrawNow
+    th3PatKeyNow = th3PatternWanted ? str.tostring(TH3_SET_A_TIME) + "|" + str.tostring(th3A) + "|" + str.tostring(TH3_SET_B_TIME) + "|" + str.tostring(th3B) + "|" + str.tostring(TH3_SET_C_TIME) + "|" + str.tostring(th3C) + "|" + str.tostring(TH3_SET_D_TIME) + "|" + str.tostring(th3D) : ""
+    if th3PatKeyNow != th3PatKey
+        th3PatternPurge()
+        if th3PatternWanted
+            th3PatAB = line.new(TH3_SET_A_TIME, th3A, TH3_SET_B_TIME, th3B, xloc=xloc.bar_time, color=TH3_SET_PATTERN_INK, width=1, style=line.style_solid)
+            array.push(th3PatLines, th3PatAB)
+            th3PatBC = line.new(TH3_SET_B_TIME, th3B, TH3_SET_C_TIME, th3C, xloc=xloc.bar_time, color=TH3_CLR_MID, width=1, style=line.style_dotted)
+            array.push(th3PatLines, th3PatBC)
+            th3PatCD = line.new(TH3_SET_C_TIME, th3C, TH3_SET_D_TIME, th3D, xloc=xloc.bar_time, color=TH3_SET_PATTERN_INK, width=1, style=line.style_solid)
+            array.push(th3PatLines, th3PatCD)
+            if TH3_SET_SHOW_CORNERS
+                th3LbA = label.new(TH3_SET_A_TIME, th3A, "A", xloc=xloc.bar_time, style=th3A > th3B ? label.style_label_down : label.style_label_up, color=color.new(color.gray, 100), textcolor=TH3_SET_PATTERN_INK, size=size.normal)
+                array.push(th3PatLabels, th3LbA)
+                th3LbB = label.new(TH3_SET_B_TIME, th3B, "B", xloc=xloc.bar_time, style=th3B > th3A ? label.style_label_down : label.style_label_up, color=color.new(color.gray, 100), textcolor=TH3_SET_PATTERN_INK, size=size.normal)
+                array.push(th3PatLabels, th3LbB)
+                th3LbC = label.new(TH3_SET_C_TIME, th3C, "C", xloc=xloc.bar_time, style=th3C > th3B ? label.style_label_down : label.style_label_up, color=color.new(color.gray, 100), textcolor=TH3_SET_PATTERN_INK, size=size.normal)
+                array.push(th3PatLabels, th3LbC)
+                th3LbD = label.new(TH3_SET_D_TIME, th3D, "D", xloc=xloc.bar_time, style=th3D > th3C ? label.style_label_down : label.style_label_up, color=color.new(color.gray, 100), textcolor=TH3_SET_PATTERN_INK, size=size.normal)
+                array.push(th3PatLabels, th3LbD)
+        th3PatKey := th3PatKeyNow
+
+if th3DrawNow and th3SurfaceWanted and th3SurfaceMoved
+    th3LadderPurge()
+    th3HalfBand = th3AnchorStep * (TH3_SET_ZONE_PCT / 100.0) * 0.5
+    for r = 1 to TH3_SET_RUNGS
+        th3RungPx = th3RungPrice(th3AnchorPrice, th3AnchorStep, th3AnchorDir, r)
+        th3IsTarget = r % 2 == 1
+        th3Ink = th3IsTarget ? th3TargetInk(r) : TH3_SET_SHELF_INK
+        if th3IsTarget and TH3_SET_DRAW_ZONE
+            th3Zone = box.new(th3AnchorTime, th3RungPx + th3HalfBand, th3RightTime, th3RungPx - th3HalfBand, xloc=xloc.bar_time, border_color=na, bgcolor=color.new(th3Ink, TH3_SET_ZONE_TRANSP))
+            array.push(th3LeadBoxes, th3Zone)
+        th3Ln = line.new(th3AnchorTime, th3RungPx, th3RightTime, th3RungPx, xloc=xloc.bar_time, color=th3Ink, width=th3IsTarget ? 2 : 1, style=th3IsTarget ? line.style_solid : line.style_dotted)
+        array.push(th3LeadLines, th3Ln)
+        th3PipTxt = th3Pip > 0 ? "  " + str.tostring(math.abs(th3RungPx - th3AnchorPrice) / th3Pip, "#.#") + "p" : ""
+        th3Lb = label.new(th3RightTime, th3RungPx, "L" + str.tostring(r) + "  " + str.tostring(th3RungPx, "#.#####") + th3PipTxt, xloc=xloc.bar_time, style=label.style_label_left, color=color.new(color.gray, 100), textcolor=th3Ink, size=size.small)
+        array.push(th3LeadLabels, th3Lb)
+    th3DrawnAnchor := th3AnchorPrice
+    th3DrawnStep := th3AnchorStep
+    th3DrawnDir := th3AnchorDir
+    th3DrawnRungs := TH3_SET_RUNGS
+    th3DrawnRight := th3RightTime
+    th3DrawnAny := true
+
+if th3DrawNow and th3SurfaceWanted and th3DrawnAny and th3DrawnRight != th3RightTime
+    th3NLn = array.size(th3LeadLines)
+    if th3NLn > 0
+        for i = 0 to th3NLn - 1
+            line.set_x2(array.get(th3LeadLines, i), th3RightTime)
+    th3NLb = array.size(th3LeadLabels)
+    if th3NLb > 0
+        for j = 0 to th3NLb - 1
+            label.set_x(array.get(th3LeadLabels, j), th3RightTime)
+    th3NBx = array.size(th3LeadBoxes)
+    if th3NBx > 0
+        for k = 0 to th3NBx - 1
+            box.set_right(array.get(th3LeadBoxes, k), th3RightTime)
+    th3DrawnRight := th3RightTime
+
+if th3DrawNow and not th3SurfaceWanted and th3DrawnAny
+    th3LadderPurge()
+    th3DrawnAnchor := na
+    th3DrawnStep := na
+    th3DrawnDir := 0
+    th3DrawnRungs := 0
+    th3DrawnRight := 0
+    th3DrawnAny := false

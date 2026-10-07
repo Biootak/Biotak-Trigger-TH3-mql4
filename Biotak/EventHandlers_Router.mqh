@@ -90,12 +90,31 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
                 s_ownDeleteLeaks  = 0;
             }
             CacheRemoveObject(sparam);
-            g_redrawTHLevelsNeeded = true;
-            // P-PERF-02: a level vanished behind our back — the stored geometry
-            // signature no longer describes the chart, so the next frame must
-            // rebuild for real (this is the self-heal the per-object ObjectFind
-            // used to provide on every frame).
-            MarkDrawGeneration();
+            // P-DEL-COALESCE (2026-10-05): the wipe that CAUSED this burst already
+            // owes its recovery, and P-DEL-PROBE above names the mechanism — a
+            // terminal may deliver a ~70-band wipe's queued delete events for longer
+            // than the 250 ms window (the comment above says so in so many words:
+            // "a burst of them is churn the user feels as 'the toggle is slow'"),
+            // and every one that lands outside the window used to re-arm the FULL
+            // ~900-object staged rebuild (GlobalVariables.mqh:549) AND bump the
+            // draw generation, which voids the object cache's absent-proofs and
+            // makes the next frame re-probe every family for real
+            // (ObjectCache.mqh:428). The first leak of a burst already owns the
+            // recovery; the rest of the SAME wipe must not buy another one. A
+            // rebuild that is already OWED covers every name this event could
+            // name, and one that lands after that rebuild ran is a NEW burst and
+            // re-arms exactly as before. The flag is cleared only by the rebuild
+            // itself (EventHandlers_Calc:1490/:1505), so "flag already set" means
+            // precisely "the recovery is pending and has not run".
+            if(!g_redrawTHLevelsNeeded)
+            {
+               g_redrawTHLevelsNeeded = true;
+               // P-PERF-02: a level vanished behind our back — the stored geometry
+               // signature no longer describes the chart, so the next frame must
+               // rebuild for real (this is the self-heal the per-object ObjectFind
+               // used to provide on every frame).
+               MarkDrawGeneration();
+            }
         }
     }
     // P-UI-98j: EVEN A SUPPRESSED DELETE IS VERIFIED FOR THE STEP-1 PAIR. Our
@@ -598,6 +617,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         {
             TradePlanDumpNow();
             TradePlanLegAtrDump();   // P-LEGATR witness (own file: Labels_A never grows, §7)
+#ifndef BUILD_LITE
+            CircHomeWitness();       // orb home witness (pair/home/box/stored) — menu side only (P-BUILD-01)
+#endif
             return;
         }
 
@@ -646,6 +668,9 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             GlobalVariableSet(lockFlagName, g_timeframeLocked);
             string lockPeriodName = "Biotak_LockTFPeriod_" + lockChartIdStr;
             GlobalVariableSet(lockPeriodName, g_lockedPeriod);
+            // P-UI-142: symbol twins (chart ids are per-session; the twin is the restart layer)
+            GlobalVariableSet("Biotak_LockTFSym_" + GetCachedSymbol(), g_timeframeLocked);
+            GlobalVariableSet("Biotak_LockTFPeriodSym_" + GetCachedSymbol(), g_lockedPeriod);
             g_forceClearOnNextDraw = true;
             g_calculatedOnce = false;
             g_redrawTHLevelsNeeded = true;

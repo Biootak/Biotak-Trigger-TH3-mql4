@@ -1,0 +1,4 @@
+node_modules/
+build/
+tests/_probe/
+*.log

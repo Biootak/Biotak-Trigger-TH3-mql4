@@ -1,0 +1,112 @@
+//--- P-LOOK-RAY2 (2026-10-04) - THE PEN COVERS THE LINE, WHEREVER THE LINE IS.
+//---
+//--- P-LOOK-RAY armed every child with BOTH rays ("a level is full width"), because the
+//--- fibo it was measured on drew its levels edge to edge. That is a property of the
+//--- MASTER, not a law of the pen: MT4's fibo owns a "levels ray" of its own
+//--- (`levels_ray` in the chart's own file) and the strip's RAY cell writes exactly it
+//--- (`OBJPROP_RAY_LEFT/RIGHT` on the fibo - Toolbar_B's DRAW_SLOT_RAY). Turn it off and
+//--- MT4 draws the level lines ONLY between the two anchors. MEASURED on the hand's
+//--- chart, 2026-10-04 (EURUSD M1): `Fibo 54705` carries `levels_ray=0`, its own level
+//--- lines span x=681..1079 (one 1px dash-dot-dot row per level, exactly its anchors) -
+//--- while the pen's four rows still ran x=59..721, i.e. the pen hung in empty space on
+//--- the left and stopped 40px short of the line's right end, which is the report
+//--- ("the styles are not applied on the right side; they must apply wherever it is").
+//--- Two objects, two ray regimes, one drawing: the pen is the line's pen only while the
+//--- two agree.
+//---
+//--- So the pen MIRRORS the master: one read of the fibo's own level-ray pair, written to
+//--- every child of the family (dash rows, neon core, wash halo) at birth and healed on
+//--- every sync. Levels edge to edge -> the pen is edge to edge (P-LOOK-RAY's intent,
+//--- kept); levels between the anchors -> the pen is exactly between the anchors. The
+//--- style can no longer cover a span the line does not have.
+void FibPenRayPair(const string fibo, bool &rl, bool &rr)
+{
+   rl = false; rr = false;
+   if(fibo == "" || ObjectFind(0, fibo) < 0) return;
+   rl = ((int)ObjectGetInteger(0, fibo, OBJPROP_RAY_LEFT) != 0);
+   rr = ((int)ObjectGetInteger(0, fibo, OBJPROP_RAY_RIGHT) != 0);
+}
+int FibPenRayBits(const string fibo)
+{
+   bool rl = false, rr = false;
+   FibPenRayPair(fibo, rl, rr);
+   return (rl ? 2 : 0) | (rr ? 1 : 0);
+}
+//--- the pen's own existence test: any of the three families it builds.
+bool FibPenHasPen(const string fibo)
+{
+   if(fibo == "") return false;
+   if(ObjectFind(0, FibPenName(fibo, 0, 0)) >= 0) return true;
+   if(ObjectFind(0, FibPenCapName(fibo, 0)) >= 0) return true;
+   if(ObjectFind(0, FibPenWashName(fibo, 0)) >= 0) return true;
+   return false;
+}
+//--- P-LOOK-RAY2 - THE PEN'S OWN NET. Every other follower in this repo has one seat that
+//--- needs no event (the box's interior and its 50 % line ride the 2 s chart-side pass,
+//--- P-DRAW-64 / addendum 5). The pen had only EVENT paths - open, route, tap, undo,
+//--- release, OBJECT_DRAG/CHANGE - so when the terminal landed the master's final anchors
+//--- AFTER the last of those events, nothing ever re-anchored the children: the stale pen
+//--- measured above was hours old, not a frame (its right anchor still named the anchor
+//--- the fibo had one drag earlier). The 2 s pass (`DrawStrip_Pick` - it already pays one
+//--- type read per object) now asks each fibo THE question: "is the pen still the one your
+//--- master would build?" - one probe, four anchor reads, one ray read and one memo
+//--- compare while healthy; only a MISMATCH pays the sync (which re-anchors the rows,
+//--- mirrors the rays and re-memoizes). A still chart pays reads and writes nothing.
+#define FIBPEN_NET_SLOTS 8
+static string s_fpNetName[FIBPEN_NET_SLOTS];
+static long   s_fpNetT0[FIBPEN_NET_SLOTS], s_fpNetT1[FIBPEN_NET_SLOTS];
+static double s_fpNetP0[FIBPEN_NET_SLOTS], s_fpNetP1[FIBPEN_NET_SLOTS];
+static int    s_fpNetRay[FIBPEN_NET_SLOTS], s_fpNetPen[FIBPEN_NET_SLOTS];
+static int    s_fpNetNext = 0;
+int FibPenNetFind(const string fibo)
+{
+   if(fibo == "") return -1;
+   for(int i = 0; i < FIBPEN_NET_SLOTS; i++)
+      if(s_fpNetName[i] == fibo) return i;
+   return -1;
+}
+void FibPenNetWrite(const string fibo, const long t0, const long t1, const double p0, const double p1,
+                    const int ray, const bool pen)
+{
+   int at = FibPenNetFind(fibo);
+   if(at < 0)
+   {
+      at = s_fpNetNext;
+      s_fpNetNext = (s_fpNetNext + 1) % FIBPEN_NET_SLOTS;
+      s_fpNetName[at] = fibo;
+   }
+   s_fpNetT0[at] = t0; s_fpNetT1[at] = t1;
+   s_fpNetP0[at] = p0; s_fpNetP1[at] = p1;
+   s_fpNetRay[at] = ray;
+   s_fpNetPen[at] = (pen ? 1 : 0);
+}
+bool FibPenHeal(const string fibo)
+{
+   if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
+   EDrawKind k = DrawKindOf(fibo);
+   if(k != DK_FIBO && k != DK_FIBOFAN) return false;
+   long   t0 = (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 0);
+   long   t1 = (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 1);
+   double p0 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 0);
+   double p1 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 1);
+   int    ray = FibPenRayBits(fibo);
+   bool   pen = FibPenHasPen(fibo);
+   int    at  = FibPenNetFind(fibo);
+   if(at >= 0 && s_fpNetT0[at] == t0 && s_fpNetT1[at] == t1 && s_fpNetP0[at] == p0 &&
+      s_fpNetP1[at] == p1 && s_fpNetRay[at] == ray && s_fpNetPen[at] == (pen ? 1 : 0))
+      return false;   // the pen is what the master's last sync built: reads only
+   return FibPenSync(fibo, false);
+}
+//--- the pen's children answer for their own parent (the sweep's orphan rule, the same
+//--- shape the interior's and the 50 % line's already have): a reload while a fibo was
+//--- deleted must not leave a styled band hanging on nothing.
+string FibPenChildParent(const string name)
+{
+   int cut = -1;
+   for(int i = 0; i + 3 < StringLen(name); i++)
+      if(StringGetCharacter(name, i) == '_' &&
+         StringGetCharacter(name, i + 1) == 'F' &&
+         StringGetCharacter(name, i + 2) == 'S') cut = i;
+   if(cut <= 0) return "";
+   return StringSubstr(name, 0, cut);
+}

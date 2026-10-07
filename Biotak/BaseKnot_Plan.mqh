@@ -1073,6 +1073,7 @@ void BaseKnotSync(const string id)
       dir = ndDir;
       g_bkBoxes[k].dir = dir;
       GlobalVariableSet(BaseKnotGV(id), (double)dir);
+      GlobalVariableSet(BaseKnotGVTwin(id), (double)dir);   // P-UI-142: restart layer
    }
    // P-BK-46/50/51 — R IS EngSL OF THE STOP'S OWN TF (P-BK-83: the TYPE'S own time — the rung
    // the node's length matched), and the box' own height only while the pump has no EngSL for

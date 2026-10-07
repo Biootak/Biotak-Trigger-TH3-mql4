@@ -605,6 +605,14 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
    if(ch<=0) ch=1080;
    int pw = PnlPanelW(item);
 
+   if(g_PnlPinSpot)
+   {
+      g_PnlPinSpot = false;
+      px = (int)MathMax(4, MathMin(cw - pw - 8, g_PnlX[item]));
+      py = (int)MathMax(4, MathMin(ch - ph - PNL_BOTTOM_SAFE, g_PnlY[item]));
+      return;
+   }
+
    // P-UI-91: the two rects every spot must clear — the ring/orb box, and the
    // band the VISIBLE price action occupies (measured once per open; `false`
    // when the chart is too young to measure, and then this card behaves exactly

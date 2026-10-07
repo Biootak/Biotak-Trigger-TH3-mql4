@@ -84,6 +84,7 @@ string GetGVName(string key) { return g_UI.gvPrefix + key; }
 static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
 static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false,false};
+static bool g_PnlPinSpot = false;
 
 //==============================================================================
 // PALETTE COLOR KINDS — one kind per colorable setting of THIS indicator.
@@ -289,9 +290,12 @@ void InitializeUISupport()
 {
    RuntimeSettingsLoadOverrides();
    SyncTHFlagsFromMode();   // OV-loaded flags must match the restored g_thLabelsMode
+   RestoreDiscreteToggles();   // P-UI-142: chart key, else the OV_-seeded mirror (restart-durable; the early dialog-fallback block stays for Lite)
    LoadPalRecent();
 
    // panel drag positions (persisted per chart)
+   int kcw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(kcw <= 0) kcw = 1920;
+   int kch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(kch <= 0) kch = 1080;
    for(int i = 0; i < PNL_COUNT; i++)
    {
       string vn = GetGVName("PNLP" + IntegerToString(i));
@@ -300,6 +304,9 @@ void InitializeUISupport()
          double packed = GlobalVariableGet(vn);
          g_PnlX[i] = (int)(packed / 10000.0);
          g_PnlY[i] = (int)MathMod(packed, 10000.0);
+         // P-UI-142: a smaller window must not strand the manual spot off-screen.
+         if(g_PnlX[i] < 0) g_PnlX[i] = 0; if(g_PnlX[i] > kcw) g_PnlX[i] = kcw;
+         if(g_PnlY[i] < 0) g_PnlY[i] = 0; if(g_PnlY[i] > kch) g_PnlY[i] = kch;
          g_PnlManualPos[i] = true;
       }
    }

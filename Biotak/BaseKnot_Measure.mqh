@@ -83,6 +83,7 @@ bool BaseKnotRefreshDirection(const string id, const double ref)
    if(want == g_bkBoxes[k].dir) return false;
    g_bkBoxes[k].dir = want;
    GlobalVariableSet(BaseKnotGV(id), (double)want);
+   GlobalVariableSet(BaseKnotGVTwin(id), (double)want);   // P-UI-142: restart layer
    return true;
 }
 
@@ -127,6 +128,7 @@ void BaseKnotRegister(const string id, const int dir, const int tfMin)
    g_bkBoxes[n].storyT = 0;                  // P-BK-41/49: no story candle published yet
    g_bkBoxes[n].exitT  = 0;                  // P-BK-81: no exit candle published yet
    GlobalVariableSet(BaseKnotGV(id), (double)g_bkBoxes[n].dir);
+   GlobalVariableSet(BaseKnotGVTwin(id), (double)g_bkBoxes[n].dir);   // P-UI-142: restart layer
 }
 void BaseKnotUnregister(const string id)
 {
@@ -135,6 +137,7 @@ void BaseKnotUnregister(const string id)
    for(int i = k; i < ArraySize(g_bkBoxes) - 1; i++) g_bkBoxes[i] = g_bkBoxes[i + 1];
    ArrayResize(g_bkBoxes, ArraySize(g_bkBoxes) - 1);
    GlobalVariableDel(BaseKnotGV(id));
+   GlobalVariableDel(BaseKnotGVTwin(id));   // P-UI-142: the twin dies with the box too
 }
 // Lock — a locked box is unselectable so it can never be dragged (hold still
 // opens the mini strip, so it can always be unlocked). The flag rides the BOX
@@ -182,6 +185,8 @@ void BaseKnotLazyInit()
        int dir = 1;
        if(GlobalVariableCheck(BaseKnotGV(id)))
           dir = ((int)GlobalVariableGet(BaseKnotGV(id)) < 0 ? -1 : 1);
+       else if(GlobalVariableCheck(BaseKnotGVTwin(id)))   // P-UI-142: restart layer (chart ids are per-session)
+          dir = ((int)GlobalVariableGet(BaseKnotGVTwin(id)) < 0 ? -1 : 1);
        else
        {
           // No frozen value (pre-GV box or a wiped GV): resolve positionally

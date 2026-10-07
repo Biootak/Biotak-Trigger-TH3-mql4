@@ -134,6 +134,12 @@ void OnDeinit(const int reason)
 {
     uint p4d = GetTickCount();
     OnDeinitHandler(reason);
+    // P-UI-142: Lite owns no surfaces, but it shares the GV table (boxes,
+    // custom price, recorder) — save its overrides and flush, like the Full
+    // teardown does. Shadow-guarded: zero writes when nothing moved; the flush
+    // commits only what is owed.
+    RuntimeSettingsSaveOverrides();
+    GVFlushCommit();
     P4ReportSlow("OnDeinit reason=" + IntegerToString(reason),
                  GetTickCount() - p4d, P_P4_INIT_WARN_MS);
 }

@@ -136,8 +136,9 @@ double PnlDefValSet(const int item,const int row)
               // P-UI-131h: the sentinel shape card 0 uses for its COLOR rows, and -1 =
               // AUTO for the two opacities — the factory look IS the derivation, so
               // Reset returns to the soft, surface-anchored edge and to nothing pinned.
-              if(row==14 || row==15) return 3;   // COLOR rows → palette sentinel
-              if(row==16 || row==17) return -1;  // AUTO
+               if(row==14 || row==15) return 3;   // COLOR rows → palette sentinel
+               if(row==16) return -1;  // TOP OPACITY AUTO
+               if(row==17) return 1;   // P-UI-143: BOTTOM OPACITY card look as shipped
               if(row==8) return (FactoryDefault(FF_LS_FIRST)>0.5)?1.0:0.0;
               if(row==9) return (FactoryDefault(FF_SHOW_MIDPOINT)>0.5)?1.0:0.0;
               return 0;                        // rows 10-11 = NAV rows

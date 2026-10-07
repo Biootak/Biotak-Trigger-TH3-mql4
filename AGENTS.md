@@ -17,9 +17,13 @@ Biotak/                       All product logic (*.mqh, include-guarded, include
   EventHandlers.mqh           The composed chain both entries call
   RuntimeSettings.mqh         Single owner of panel-editable settings
   GlobalVariables.mqh         Indicator-wide state
+  BiotakHomes.mqh             Where the three placeable surfaces stand (P-UI-140,
+                              docs/th3-ui-placement.md) — included ABOVE BiotakMenu_A
 Files/Icons/                  Runtime BMPs, embedded via #resource
 tests/                        Harnesses, compiled by the gate
 tools/                        Deploy, icon gen, submenu check
+docs/                         contract.md (the rules), th3-dataset.md, th3-master-formula.md,
+                              th3-ui-placement.md, th3-perf-audit.md
 Samples/TH3_Dataset/          The labelled samples: one folder each,
                               Dataset.csv the index, docs/th3-dataset.md the contract
 build-logs/                   Compile logs (gitignored)

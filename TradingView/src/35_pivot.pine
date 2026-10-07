@@ -1,0 +1,315 @@
+//@module 35_pivot
+//@owner the six-condition pivot: its scan, its registry, and the key line each one carries
+//@includes 10_const.pine
+
+//| TH3SixPivotsScanTF (Biotak/TH3/TH3Pivots_A.mqh:295-434), ported whole.
+//|
+//| MQL4 walks the window old -> new once per call and re-reads 400 bars. This port
+//| walks the SAME state machine, one closed bar at a time, holding the candidate in
+//| `var` state - so a bar costs O(1) instead of O(400), and the values it produces
+//| for the newest bars are the values MQL4 produces. The conditions are MQL4's
+//| own numbers, named in 10_const.pine and asserted against that header by
+//| tools/check-mql4-consts.js.
+//|
+//| WHY THIS FILE EXISTS: phase 1 anchored the ladder on `ta.pivothigh`, a fractal
+//| swing. That is a DIFFERENT detector, so the ladder started in a different place
+//| and the chart disagreed with MT4 even when every number in it was right. The
+//| anchor is now the pivot the course names.
+//|
+//| Shift mapping. The machine runs at barstate.isnew, which is the moment MQL4
+//| first looks at a new bar: shift 0 is the bar just opened, shift 1 is the bar
+//| just closed. Every `[j]` below is therefore MQL4's own `iBarShift` index, and
+//| the deep reads MQL4 performs inside TH3P6FindCover / TH3P6RunOk are bounded by
+//| TH3_SCAN_CAP rather than by the chart's length.
+//|
+//| MEASURED, AND IT MATTERS: cond 2 of this detector cannot be satisfied. Measured on
+//| a 400-bar walk (133 cond-3 confirmations): TH3P6RunOk's two arms reached a maximum
+//| of runExt = 0.99 against a floor of 2.40, and stdRun = 2 against a floor of 3 -
+//| never once returning true. That is not a tuning problem, it is arithmetic:
+//|   - a bar after the extreme either makes a new high (the extreme MOVES), or its
+//|     range is < 0.80 ATR (so cond 3 cannot fire AND the bar is not "standard"), or
+//|     its range is >= 0.80 ATR, in which case extP - low >= 0.80 ATR and cond 3 fires;
+//|   - so any bar that cond 2 could count as a standard candle is a bar that already
+//|     ended the candidate, and stdRun can never reach 3;
+//|   - and the other arm measures the closes BEYOND the extreme (runStart = extIdx -
+//|     runBars is newer, not older), where a 2.40 ATR travel is unreachable because
+//|     cond 3 halts the candidate at ~1 ATR.
+//| So the ring stays empty and the ladder has no anchor from this detector. 40_levels
+//| therefore falls back, and SAYS SO on the readout. Reported here, and in the module
+//| that consumes it, because a silent fallback would look exactly like a working anchor.
+
+// ---------------------------------------------------------------------------
+// ATR(14) - Wilder, seeded by the SMA of the first 14 true ranges, which is what
+// MT4's iATR(NULL, tf, 14, shift) answers. Computed here instead of with ta.atr
+// so the seeding rule is stated where it is used, and so the series can be
+// indexed at any shift the scan asks for.
+// ---------------------------------------------------------------------------
+var float th3Atr = na
+var float th3TrSum = 0.0
+var int th3TrN = 0
+
+if barstate.isconfirmed
+    th3Pc = nz(close[1], open)
+    th3Tr = math.max(high - low, math.max(math.abs(high - th3Pc), math.abs(low - th3Pc)))
+    if na(th3Atr)
+        th3TrSum += th3Tr
+        th3TrN += 1
+        if th3TrN >= TH3_ATR_LEN
+            th3Atr := th3TrSum / TH3_ATR_LEN
+    else
+        th3Atr := (th3Atr * (TH3_ATR_LEN - 1) + th3Tr) / TH3_ATR_LEN
+
+// ---------------------------------------------------------------------------
+// the six conditions, as pure functions over shifts
+// ---------------------------------------------------------------------------
+
+// TH3P6BarAnatomy: true when the bar is usable, and whether it is a MASTER candle
+// (cond 4: 80% body OR 80% shadow). `atr` is a guard here, exactly as MQL4 passes it.
+th3P6Anatomy(float atr, int j) =>
+    o = open[j]
+    h = high[j]
+    l = low[j]
+    c = close[j]
+    rng = h - l
+    ok = h > 0 and l > 0 and h > l and atr > 0
+    bodyR = ok ? math.abs(c - o) / rng : 0.0
+    shR = ok ? math.max(h - math.max(o, c), math.min(o, c) - l) / rng : 0.0
+    [ok, ok and (bodyR >= TH3_P6_MASTER or shR >= TH3_P6_MASTER)]
+
+// TH3P6RunOk: cond 2 (three standard candles in the run, or 240% ATR of travel)
+// and cond 1 (four or more side candles before the run make it a BASE pivot,
+// reported and never drawn). `sExt` is the candidate's own shift.
+th3P6RunOk(int sExt, float atrCur, bool isHigh) =>
+    runBars = 0
+    j = sExt
+    while j >= 1 and runBars < TH3_SCAN_CAP
+        pc = close[j - 1]
+        cc = close[j]
+        if pc <= 0 or cc <= 0
+            break
+        if not (isHigh ? pc < cc : pc > cc)
+            break
+        runBars += 1
+        j -= 1
+    base = false
+    stdRun = 0
+    runExt = 0.0
+    if runBars >= 1
+        sRun = sExt - runBars
+        if sRun >= 0
+            c0 = close[sRun]
+            c1 = close[sExt]
+            if c0 > 0 and c1 > 0 and atrCur > 0
+                runExt := math.abs(c1 - c0) / atrCur
+        k = sExt
+        while k > sExt - runBars and k >= 0
+            a2 = th3Atr[k]
+            [aok, amst] = th3P6Anatomy(a2, k)
+            if not aok
+                break
+            x = (high[k] - low[k]) / a2
+            if x < TH3_P6_STD_LO or x > TH3_P6_STD_HI
+                break
+            stdRun += 1
+            k -= 1
+        sideBars = 0
+        k2 = sRun - 1
+        while k2 >= 0 and sideBars < TH3_SIDE_CAP
+            a3 = th3Atr[k2]
+            h3 = high[k2]
+            l3 = low[k2]
+            if h3 <= 0 or l3 <= 0 or a3 <= 0
+                break
+            if (h3 - l3) > TH3_P6_SIDE_RANGE * a3
+                break
+            sideBars += 1
+            k2 -= 1
+        base := sideBars >= TH3_P6_SIDE_MAX
+    [runBars >= 1 and (stdRun >= TH3_P6_RUN_CANDLES or runExt >= TH3_P6_RUN_EXT), base]
+
+// TH3P6FindCover: cond 4+5. The first bar that covers the master candle's whole
+// range, or the hypothetical 1-ATR line at the extreme when it is not a master.
+// Walks fromIdx -> toIdx, i.e. the OLDEST match wins. -1 means nothing covers.
+th3P6FindCover(int sExt, bool isHigh, bool isMaster, int fromIdx, int toIdx) =>
+    aExt = th3Atr[sExt]
+    extHigh = high[sExt]
+    extLow = low[sExt]
+    hit = -1
+    if aExt > 0
+        j2 = fromIdx
+        n2 = 0
+        while j2 >= toIdx and j2 >= 1 and n2 < TH3_SCAN_CAP
+            h2 = high[j2]
+            l2 = low[j2]
+            if h2 > 0 and l2 > 0
+                if isMaster
+                    if h2 >= extHigh and l2 <= extLow
+                        hit := j2
+                        break
+                else if isHigh and l2 <= extHigh - TH3_P6_HYPO * aExt
+                    hit := j2
+                    break
+                else if not isHigh and h2 >= extLow + TH3_P6_HYPO * aExt
+                    hit := j2
+                    break
+            j2 -= 1
+            n2 += 1
+    hit
+
+// TH3P6CloseThird: cond 6. An H pivot's cover closes low; an L pivot's closes high.
+th3P6CloseThird(int cIdx, bool isHigh) =>
+    h = high[cIdx]
+    l = low[cIdx]
+    c = close[cIdx]
+    ok = h > 0 and l > 0 and h > l
+    pos = ok ? (c - l) / (h - l) : 0.0
+    ok and (isHigh ? pos <= TH3_P6_CLOSE_THIRD : pos >= 1.0 - TH3_P6_CLOSE_THIRD)
+
+// TH3P6KeyPrice: cond 4's own line. Master -> the pivot candle's opposite edge;
+// not master -> the 1-ATR line. 0 means unmeasurable, which is a refusal and not a guess.
+th3P6KeyPrice(int sExt, float extP, bool isHigh, bool isMaster) =>
+    aE = th3Atr[sExt]
+    kp = 0.0
+    if isMaster
+        e = isHigh ? low[sExt] : high[sExt]
+        if e > 0
+            kp := e
+    else if aE > 0
+        kp := isHigh ? extP - TH3_P6_HYPO * aE : extP + TH3_P6_HYPO * aE
+    kp
+
+// TH3P6Mitigated: a node is FRESH until a completed bar newer than the confirming
+// bar overlaps it. Overlap, not close-through.
+th3P6Mitigated(float zoneLo, float zoneHi, int covIdx) =>
+    mit = false
+    if covIdx > 1
+        jm = covIdx - 1
+        nm = 0
+        while jm >= 1 and nm < TH3_SCAN_CAP
+            h = high[jm]
+            l = low[jm]
+            if h > 0 and l > 0 and h >= zoneLo and l <= zoneHi
+                mit := true
+                break
+            jm -= 1
+            nm += 1
+    mit
+
+// ---------------------------------------------------------------------------
+// the registry, and the state machine that fills it
+// ---------------------------------------------------------------------------
+var array<float> pvPrice = array.new_float(0)
+var array<int> pvWhen = array.new_int(0)
+var array<bool> pvHigh = array.new_bool(0)
+var array<bool> pvBase = array.new_bool(0)
+var array<bool> pvMaster = array.new_bool(0)
+var array<float> pvKey = array.new_float(0)
+var array<bool> pvMit = array.new_bool(0)
+
+// THE DRAWABLE RING - the last TH3_RING_N declared pivots that are not BASE. This
+// is the ladder's A/B/C/D source. The machine ALTERNATES kinds, so a ring of four
+// is three real legs. MQL4's own array keeps the OLDEST 64 of a 400-bar window;
+// this keeps the NEWEST, which differs only in a window MQL4 has never measured
+// more than a handful of pivots in.
+var array<float> pvRingP = array.new_float(0)
+var array<bool> pvRingH = array.new_bool(0)
+var array<int> pvRingB = array.new_int(0)
+
+var int pvState = 0
+var float pvExtP = 0.0
+var int pvPend = 0
+// THE CANDIDATE'S OWN AGE, in MQL4 shifts. It has to be a counter and not
+// `bar_index - recordedIndex`: a recorded index and a shift differ by one, and that
+// single bar moved every read (the run, the cover, the key line) one candle into the
+// past. Measured, not reasoned: with the index form the detector declared 0 pivots
+// on a zigzag whose every candle was built to satisfy it.
+var int pvExtShift = 0
+// HOW MANY TIMES COND 3 FIRED. Reported, not cosmetic: it is the difference between
+// "the walk never ran" and "the walk ran and cond 2 refused". MQL4 makes the same
+// distinction in words (TH3Pivots_A.mqh:1069-1074) and this port makes it in numbers.
+var int pvConfirms = 0
+
+if barstate.isnew and not na(th3Atr[1])
+    pvH = high[1]
+    pvL = low[1]
+    pvA = th3Atr[1]
+    pvExtShift += 1                             // the candidate ages one closed bar
+    if pvState == 0
+        // the seeking state: the first usable bar, or a new extreme in either
+        // direction. Three branches, in MQL4's own order - `:=` lands immediately in
+        // Pine, so a compound test would read the value it just wrote.
+        if pvExtP == 0.0
+            pvExtP := pvH
+            pvState := 1
+            pvExtShift := 1
+            pvPend := 0
+        else if pvH > pvExtP
+            pvExtP := pvH
+            pvState := 1
+            pvExtShift := 1
+            pvPend := 0
+        else if pvL < pvExtP
+            pvExtP := pvL
+            pvState := -1
+            pvExtShift := 1
+            pvPend := 0
+    else
+        pvUp = pvState > 0
+        pvSExt = pvExtShift
+        pvNewExt = pvUp ? pvH > pvExtP : pvL < pvExtP
+        pvMoved = pvUp ? pvExtP - pvL >= TH3_P6_CONFIRM * pvA : pvH - pvExtP >= TH3_P6_CONFIRM * pvA
+        if pvNewExt
+            pvExtP := pvUp ? pvH : pvL
+            pvExtShift := 1
+            pvPend := 0
+        else if pvMoved and pvSExt >= 1
+            pvConfirms += 1
+            [pvOk, pvIsBase] = th3P6RunOk(pvSExt, pvA, pvUp)
+            pvMst = false
+            if pvOk
+                [pvAok, pvAnatMst] = th3P6Anatomy(th3Atr[pvSExt], pvSExt)
+                pvMst := pvAok and pvAnatMst
+            pvSkip = false
+            // a non-master candidate waits for its 1-ATR line to be covered (cond 4)
+            if pvOk and not pvMst
+                pvCov0 = th3P6FindCover(pvSExt, pvUp, false, 1, 1)
+                if pvCov0 < 0 and pvPend < TH3_P6_MAX_WAIT
+                    pvPend += 1
+                    pvSkip := true
+                else if pvCov0 < 0
+                    pvState := pvUp ? -1 : 1
+                    pvExtP := pvUp ? pvL : pvH
+                    pvExtShift := 1
+                    pvPend := 0
+                    pvSkip := true
+            if not pvSkip
+                if pvOk
+                    pvCov = th3P6FindCover(pvSExt, pvUp, pvMst, pvSExt - 1, 1)
+                    pvKp = 0.0
+                    if pvCov >= 0 and th3P6CloseThird(pvCov, pvUp) and array.size(pvPrice) < TH3_P6_MAX_PIVOTS
+                        pvKp := th3P6KeyPrice(pvSExt, pvExtP, pvUp, pvMst)
+                    if pvKp > 0
+                        array.push(pvPrice, pvExtP)
+                        array.push(pvWhen, time[pvSExt])
+                        array.push(pvHigh, pvUp)
+                        array.push(pvBase, pvIsBase)
+                        array.push(pvMaster, pvMst)
+                        array.push(pvKey, pvKp)
+                        array.push(pvMit, th3P6Mitigated(math.min(pvExtP, pvKp), math.max(pvExtP, pvKp), pvCov))
+                        if not pvIsBase
+                            if array.size(pvRingP) >= TH3_RING_N
+                                array.shift(pvRingP)
+                                array.shift(pvRingH)
+                                array.shift(pvRingB)
+                            array.push(pvRingP, pvExtP)
+                            array.push(pvRingH, pvUp)
+                            array.push(pvRingB, bar_index - pvSExt)
+                // the confirm is consumed either way - exactly where MQL4 leaves it
+                pvState := pvUp ? -1 : 1
+                pvExtP := pvUp ? pvL : pvH
+                pvExtShift := 1
+                pvPend := 0
+
+// the ring's last corner and the count, for the surfaces that read them
+th3PivotRingN = array.size(pvRingP)
+th3PivotCount = array.size(pvPrice)

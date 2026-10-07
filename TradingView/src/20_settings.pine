@@ -1,0 +1,29 @@
+//@module 20_settings
+//@owner the settings MORE THAN ONE surface reads (mirrors RuntimeSettings.mqh)
+//@includes 10_const.pine
+
+//| Pine has no chart-click events, so the MQL4 BuildConfig panel becomes inputs.
+//|
+//| One rule, and it is the stronger one: **the surface that READS a setting owns
+//| it**. A `input.*` call sits at the top of the module that consumes it, so a
+//| build that drops a surface drops its inputs with it and no orphan input can
+//| ever ship. THIS file holds only the values two surfaces share.
+//| tools/check-structure.js asserts that every `TH3_SET_*` is read by something.
+
+TH3_GRP_STEP = "TH3 - Step"
+TH3_GRP_LEVELS = "TH3 - Levels"
+
+// P-TH3-PB-MAN: the hand-typed base wins over the derived step. 0 = derive only.
+TH3_SET_BASE_PIPS = input.float(0.0, "Base step (pips) - 0 derives it", minval=0.0, step=0.1, group=TH3_GRP_STEP)
+// The owner rung is DERIVED by default - the professor's table read against the last
+// completed bar's close (TH3PatternStepRungTF). 0 = derive. A non-zero value is a hand
+// override and the readout says which one answered; it is NOT the default, because a
+// fixed rung makes the macro-span gate a different rule on every timeframe.
+TH3_SET_RUNG_PIPS = input.float(0.0, "Owner rung override (pips) - 0 = derive", minval=0.0, step=0.1, group=TH3_GRP_STEP)
+// GetCurrentTH3Frequency(): the seed chain's last fallback, only inside its own bounds.
+TH3_SET_FREQ_PCT = input.float(TH3_FREQ_PCT_DEFAULT, "Frequency fallback (%)", minval=0.1, maxval=120.0, step=0.125, group=TH3_GRP_STEP)
+TH3_SET_OK_RATIO = input.float(TH3_HIT_MAX_STEP_ERR, "Lock band (+/- of the base)", minval=0.0, maxval=1.0, step=0.01, group=TH3_GRP_STEP)
+
+TH3_SET_DRAW_LADDER = input.bool(true, "Draw the ladder", group=TH3_GRP_LEVELS)
+TH3_SET_RUNGS = input.int(7, "Rungs to draw", minval=1, maxval=TH3_LADDER_N, group=TH3_GRP_LEVELS)
+TH3_SET_SHELF_INK = input.color(TH3_CLR_MID, "Shelf ink (even rungs)", group=TH3_GRP_LEVELS)

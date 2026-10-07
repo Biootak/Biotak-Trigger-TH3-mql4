@@ -1,0 +1,152 @@
+//@module 10_const
+//@owner every literal the product reads: the K table, the macro divisor, the ladder, the ink
+
+//| One owner, never a second copy (contract 1). A literal repeated anywhere else
+//| in src/ is the defect, not a convenience - tools/check-structure.js fails on it.
+//| Names pair line for line with the MQL4 owners so a reader can diff the two builds:
+//|   Biotak/TH3/TH3Pivots_A.mqh  TH3_CL_K_*
+//|   Biotak/TH3/TH3Pivots_B.mqh  TH3UnifiedK, CalculateUnifiedMasterStep
+
+// ---- the K table - the LIVE judge (P-TH3-STEP-16) --------------------
+TH3_K_SYM = 2.5
+TH3_K_DEEP = 3.0
+TH3_K_EXT = 3.5
+TH3_K_MACRO = 1.0
+TH3_K_RATIO_SYM = 0.85
+TH3_K_RATIO_DEEP = 1.20
+TH3_K_RATIO_EXT = 1.80
+
+// ---- the legacy closed table (TH3ClosedK) - the old TH3LOG lock ------
+TH3_CL_K_SYM = 2.5
+TH3_CL_K_DEEP = 3.0
+TH3_CL_K_EXT = 3.5
+TH3_CL_K_MACRO = 1.666
+TH3_CL_K_FLOOR = 0.75
+
+// ---- the mother's macro threshold, as a multiple of the owner rung ---
+TH3_MOTHER_MACRO_MULT = 2.5
+TH3_MOTHER_DIVISOR = 3.0
+
+// ---- THE PROFESSOR'S TABLE - the owner rung's percentage ladder ------------
+//| MODIFIED_FRACTAL_PERCENTAGES (ConstantsAndEnums.mqh:316-326), indexed by the
+//| CHART's own fractal rung (GetBaseFractalTimeframeForCurrent, FractalTimeframes.mqh:5-16).
+//| The rung is NOT a constant: TH3PatternStepRungTF reads
+//|   THAbilityPrice(tf, iTime(tf,1)) = close(tf, 1) * pct / 100
+//| for the OWNER timeframe (TH3ClosedOwnerTF), falling back to the chart's own rung.
+//| The table is never edited; a TF it does not name answers 0.0 - absence, never a guess.
+TH3_RUNG_PCT_M1 = 0.0208
+TH3_RUNG_PCT_M4 = 0.0417
+TH3_RUNG_PCT_M16 = 0.0833
+TH3_RUNG_PCT_H1 = 0.1666
+TH3_RUNG_PCT_H4 = 0.3333
+TH3_RUNG_PCT_D1 = 0.6666
+TH3_RUNG_PCT_W1 = 2.6664
+TH3_RUNG_PCT_MN = 5.3328
+
+TH3_TF_M1 = 1
+TH3_TF_M5 = 5
+TH3_TF_M15 = 15
+TH3_TF_M30 = 30
+TH3_TF_H1 = 60
+TH3_TF_H4 = 240
+TH3_TF_D1 = 1440
+TH3_TF_W1 = 10080
+TH3_TF_MN = 43200
+TH3_OWNER_GATE_BARS = 7
+TH3_OWNER_WALK_MAX = 6
+
+// ---- the seed chain's last fallback --------------------------------------
+//| GetCurrentTH3Frequency() (TH3Tool_A.mqh:378-388): inpTH3BaseStepPercent, else 28.125.
+TH3_FREQ_PCT_DEFAULT = 28.125
+
+// ---- the lock's own band -------------------------------------------------
+//| TH3_HIT_MAX_STEP_ERR (TH3Pivots_A.mqh:40): how far the hand base may sit from the
+//| derived step and still be called LOCKED. A copyright-free choice, not a course number.
+TH3_HIT_MAX_STEP_ERR = 0.25
+TH3_HIT_K_NEAR = 3
+TH3_HIT_K_FAR = 5
+TH3_THB_LS = 1.75
+TH3_LOCK_SHIFT_MULT = 2.0
+
+TH3_RETRACE_N = 8
+TH3_RET_Q0 = 1.0 / 3.0
+TH3_RET_Q1 = 2.0 / 3.0
+TH3_RET_Q2 = 1.0
+TH3_RET_Q3 = 4.0 / 3.0
+TH3_RET_Q4 = 5.0 / 3.0
+TH3_RET_Q5 = 2.0
+TH3_RET_Q6 = 3.0
+TH3_RET_Q7 = 5.0
+TH3_RET_W_REF = 0.6
+TH3_RET_W_RUNG = 0.4
+TH3_RET_TIE = 0.000000000001
+TH3_RET_SCORE_MAX = 1000000000.0
+
+// ---- THE SIX CONDITIONS - the pivot detector (TH3Pivots_A.mqh:12-22) ------
+//| The course's own gates (PDF p. 6-7). Every number here is MQL4's, character for
+//| character, and tools/check-mql4-consts.js parses that header and fails the build
+//| when the two disagree - so these are not "close to" the MT4 build, they ARE it.
+//| TH3_P6_STD_HI and TH3_K_RATIO_DEEP are both 1.20 on purpose: two different
+//| questions (what a standard candle is, which K band a ratio falls in) may share a
+//| number; they may not share a NAME.
+TH3_P6_SIDE_RANGE = 0.60      // a candle at/below this ATR share is "side"
+TH3_P6_SIDE_MAX = 4           // cond 1: >= 4 side candles -> BASE pivot
+TH3_P6_RUN_CANDLES = 3        // cond 2: three standard candles in a run
+TH3_P6_RUN_EXT = 2.40         // cond 2: or 240% ATR of travel
+TH3_P6_STD_LO = 0.80          // the "standard" candle band, per ATR
+TH3_P6_STD_HI = 1.20
+TH3_P6_CONFIRM = 0.80         // cond 3: the reversal dial, per ATR
+TH3_P6_MASTER = 0.80          // cond 4: 80% body OR 80% shadow
+TH3_P6_HYPO = 1.00            // cond 4: the hypothetical 1-ATR line
+TH3_P6_CLOSE_THIRD = 1.0 / 3.0   // cond 6: close in the final third
+TH3_P6_MAX_WAIT = 20          // bars a non-master candidate may stay pending
+// The registry's own size - in MQL4's own header at the same value.
+TH3_P6_MAX_PIVOTS = 64
+// THE VOTE'S OWN FLOOR (TH3Pivots_A.mqh:34). A reaction only votes the step once
+// it has travelled 2.40 rungs, i.e. once the step it implies (dist/3) reaches 0.80
+// of the rung. Below that it still REPORTS how far it got (deepestRungs) - a
+// refusal that carries a number, not a silence.
+TH3_STEP_MIN_LEG_RUNGS = 2.40
+
+// ---- the port's own scaffolding, deliberately NOT in the TH3_P6_ namespace ---
+//| Anything named TH3_P6_* is a condition the course states, and
+//| tools/check-mql4-consts.js refuses a TH3_P6_ name this port invented. These two
+//| are bounds this port chose, so they are named as the port's.
+TH3_RING_N = 4
+// ATR(14), Wilder, seeded by the SMA of the first 14 true ranges - MT4's own iATR.
+TH3_ATR_LEN = 14
+// MQL4 re-reads the whole 400-bar window on every call; this port walks the same
+// state machine forward and so reads only what a pending candidate spans. The cap
+// turns an unbounded chart walk into a named limit. A choice, marked, not a course
+// number.
+TH3_SCAN_CAP = 120
+// The tip walk's own half-window (Â±2 bars, TH3Pivots_A.mqh:1087-1112) and the
+// registry size the port keeps.
+TH3_VOTE_TIP_WIN = 2
+TH3_VOTE_EDGE = 3
+TH3_SIDE_CAP = 8
+
+// ---- the pip size's own table (GetCachedPipSize, PerformanceOptimizations.mqh:168-215) --
+//| MT4: ten points on a 3-, 5- or 1-digit symbol; one point on a 4-digit one; and on a
+//| 2-digit symbol ten points for the METALS and one otherwise. Point is syminfo.mintick.
+TH3_PIP_POINT_MULT = 10.0
+
+// ---- the ladder, measured FROM D in steps ----------------------------
+//| TH3Recorder.mqh:215-218 projects SEVEN rungs (lv[0..6] = 1..7 steps), so the
+//| ladder's own length is a bound the settings may not exceed. Odd rungs are impulse
+//| targets (1/3/5/7) - the four the dataset records as Target_1/3/5/7 - and even rungs
+//| are structural shelves (2/4/6). The error the dataset scores is the distance to the
+//| THIRD rung (lv[2], TH3Recorder.mqh:228); that law is owned by tools/check-parity.js,
+//| which is where the dataset columns are read, so it is not restated here.
+TH3_LADDER_N = 7
+
+// ---- the surface caps TradingView enforces at attach -----------------
+TH3_MAX_LINES = 500
+TH3_MAX_LABELS = 500
+TH3_MAX_BOXES = 500
+TH3_MAX_BARS_BACK = 3000
+
+// ---- ink -------------------------------------------------------------
+TH3_CLR_UP = color.teal
+TH3_CLR_DOWN = color.red
+TH3_CLR_MID = color.new(color.gray, 40)

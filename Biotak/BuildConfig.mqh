@@ -25,7 +25,16 @@
 //                                                                   
 //           DEBUG                          :
 //                                                                   
-#define DEBUG_BUILD   // P-LOG-3: TEMPORARY — enabled 2026-10-01 for the gear-panel hunt; comment out to return to PRODUCTION
+// P-LOG-3 closed 2026-10-05: the gear-panel hunt that opened this flag is over (the
+// gear panel gate is green and the strip is gated tree-wide), and leaving it on shipped
+// a DEBUG ex4: `ENABLE_DEBUG_LOGS` compiles in 302 gated blocks and 356 debug-print
+// call sites, several of them on the per-pass and per-teardown paths (OnDeinit, the
+// redraw decision, the cleanup walk). MT4's Print() is a file write with a flush, so on
+// the weakest machine this is pure cost for a log nobody reads in production. The
+// `[W][PERF]`/`[W][UI]` lines do NOT ride this flag (`Logger.mqh:381`: the WARN gate is
+// always active), so every measurement this project relies on survives the flip.
+// Re-enable for a hunt, never for a release.
+//#define DEBUG_BUILD
 
 //                                                                   
 

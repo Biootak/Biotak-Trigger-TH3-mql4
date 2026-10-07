@@ -1,0 +1,9 @@
+//@module entry.lite
+//@owner the Lite entry - THIN, and the proof that the resolver really decides the set
+//@entry lite
+//@output BiotakTriggerTH3_Lite.pine
+//@declare
+//@version=6
+indicator("Biotak Trigger TH3 Lite", "Biotak TH3 Lite", overlay=true, max_lines_count={TH3_MAX_LINES}, max_labels_count={TH3_MAX_LABELS}, max_boxes_count={TH3_MAX_BOXES}, max_bars_back={TH3_MAX_BARS_BACK})
+//@declend
+//@includes 10_const.pine, 20_settings.pine, 30_math.pine, 40_levels.pine, 50_draw.pine

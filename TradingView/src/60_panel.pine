@@ -1,0 +1,73 @@
+//@module 60_panel
+//@owner the readout table: its cells, and the key that says when it must be rewritten
+//@includes 10_const.pine, 20_settings.pine, 30_math.pine, 35_pivot.pine, 40_levels.pine
+
+//| A table is where the MQL4 panels go: Pine has NO chart-click event at all, so
+//| every control the MQL4 build puts in a card lives in `input.*` here and the
+//| table is a pure readout. That is a platform limit, not a choice - do not try to
+//| make a table cell answer a click; nothing in Pine ever will.
+//|
+//| A changed input restarts the script, so the table is born again at the position
+//| the input names; `table.set_position` would only repeat what the restart does.
+//|
+//| ABSENCE IS NOT A VALUE: a field the model cannot answer reads "-", never the
+//| number a zero would give (K of ratio 0, a DOWN direction nobody chose).
+
+// This surface owns the settings it reads (see 20_settings.pine). The Lite entry
+// does not include this file, so these three inputs are not in the Lite build at all.
+TH3_GRP_SURFACE = "TH3 - Surface"
+TH3_SET_SHOW_PANEL = input.bool(true, "Show the readout", group=TH3_GRP_SURFACE)
+TH3_SET_PANEL_POS = input.string("top_right", "Readout position", options=["top_right", "top_left", "bottom_right", "bottom_left"], group=TH3_GRP_SURFACE)
+TH3_SET_PANEL_SMALL = input.bool(false, "Compact text", group=TH3_GRP_SURFACE)
+
+th3PanelPos(string name) =>
+    name == "top_left" ? position.top_left : name == "bottom_right" ? position.bottom_right : name == "bottom_left" ? position.bottom_left : position.top_right
+
+var table th3Panel = table.new(th3PanelPos(TH3_SET_PANEL_POS), 2, 13, border_width=1, frame_width=1, frame_color=color.new(color.gray, 50))
+var string th3PanelKey = ""
+var bool th3PanelShown = false
+
+th3TxtSize = TH3_SET_PANEL_SMALL ? size.small : size.normal
+
+th3PanelRow(int row, string name, string value, color ink) =>
+    table.cell(th3Panel, 0, row, name, text_color=color.gray, text_size=th3TxtSize)
+    table.cell(th3Panel, 1, row, value, text_color=ink, text_size=th3TxtSize)
+
+if barstate.islast and TH3_SET_SHOW_PANEL
+    th3Live = th3GeomOK and not na(th3AnchorPrice) and th3AnchorDir != 0
+    th3TimesSet = TH3_SET_A_TIME > 0 and TH3_SET_B_TIME > 0 and TH3_SET_C_TIME > 0 and TH3_SET_D_TIME > 0
+    th3ClosedV = th3Live ? th3ClosedStep(th3LegCD, th3RatioV) : 0.0
+    th3PvStep = th3Live ? str.tostring(th3AnchorStep, "#.#####") : "-"
+    th3PvRatio = th3Live ? str.tostring(th3AnchorRatio, "#.###") : "-"
+    th3PvK = th3Live ? str.tostring(th3K(th3AnchorRatio), "#.###") : "-"
+    th3PvDir = th3Live ? (th3AnchorDir > 0 ? "UP" : "DOWN") : "-"
+    th3PvAnchor = th3Live ? str.tostring(th3AnchorPrice, "#.#####") : "-"
+    th3PvLock = th3Live ? th3AnchorHow : "-"
+    th3PvClosed = th3Live ? (th3ClosedV > 0 ? str.tostring(th3ClosedV, "#.#####") : "below floor") : "-"
+    th3PvFreq = str.tostring(th3FreqPct, "#.###") + "%"
+    th3PvRung = th3Rung > 0 ? str.tostring(th3Rung, "#.#####") + " (" + th3RungHow + ")" : "-"
+    th3PvSrc = th3SrcName + (th3Marked and not th3TimesSet ? " / no times" : "") + " (" + str.tostring(th3PivotCount) + ")"
+    th3PvVote = th3Live ? th3AnchorVoteHow : "-"
+    th3PanelKeyNow = str.tostring(TH3_SET_PANEL_SMALL) + "|" + th3PvStep + "|" + th3PvRatio + "|" + th3PvK + "|" + th3PvDir + "|" + th3PvAnchor + "|" + th3PvLock + "|" + str.tostring(th3AnchorLocked) + "|" + th3PvClosed + "|" + th3PvFreq + "|" + timeframe.period + "|" + str.tostring(TH3_SET_RUNGS) + "|" + th3PvRung + "|" + th3PvSrc + "|" + th3PvVote + "|" + str.tostring(th3VoteOK)
+    if th3PanelKeyNow != th3PanelKey
+        th3PanelKey := th3PanelKeyNow
+        table.clear(th3Panel, 0, 0, 1, 12)
+        th3PanelShown := true
+        th3PanelRow(0, "Step*", th3PvStep, th3Live ? TH3_CLR_UP : color.gray)
+        th3PanelRow(1, "Ratio", th3PvRatio, th3Live ? TH3_CLR_UP : color.gray)
+        th3PanelRow(2, "K", th3PvK, th3Live ? TH3_CLR_UP : color.gray)
+        th3PanelRow(3, "Dir", th3PvDir, not th3Live ? color.gray : th3AnchorDir > 0 ? TH3_CLR_UP : TH3_CLR_DOWN)
+        th3PanelRow(4, "Anchor", th3PvAnchor, th3Live ? TH3_CLR_UP : color.gray)
+        th3PanelRow(5, "Lock", th3PvLock, not th3Live ? color.gray : th3AnchorLocked ? TH3_CLR_UP : TH3_CLR_DOWN)
+        th3PanelRow(6, "Closed", th3PvClosed, not th3Live ? color.gray : th3ClosedV > 0 ? TH3_CLR_UP : TH3_CLR_DOWN)
+        th3PanelRow(7, "Freq", th3PvFreq, TH3_CLR_UP)
+        th3PanelRow(8, "TF", timeframe.period, TH3_CLR_UP)
+        th3PanelRow(9, "Rungs", str.tostring(TH3_SET_RUNGS), TH3_CLR_UP)
+        th3PanelRow(10, "Rung", th3PvRung, th3Rung > 0 ? TH3_CLR_UP : TH3_CLR_DOWN)
+        th3PanelRow(11, "Anchor src", th3PvSrc, th3Marked and th3TimesSet ? TH3_CLR_UP : TH3_CLR_DOWN)
+        th3PanelRow(12, "Reaction", th3PvVote, not th3Live ? color.gray : th3VoteOK ? TH3_CLR_UP : TH3_CLR_DOWN)
+
+if barstate.islast and not TH3_SET_SHOW_PANEL and th3PanelShown
+    table.clear(th3Panel, 0, 0, 1, 12)
+    th3PanelShown := false
+    th3PanelKey := ""

@@ -243,8 +243,9 @@ void ResolveTopologyAdoption()
 //==============================================================================
 string CustomPriceGVName()         { return "Biotak_CustomPrice_" + GetCachedChartIdStr(); }
 string CustomPriceOverrideGVName() { return "Biotak_CustomPriceOverride_" + GetCachedChartIdStr(); }
-// The PREVIOUS scheme's keys (symbol-scoped). Read once, ONLY to adopt a price an
-// older build left behind; never written again (only purged on REASON_REMOVE).
+// The PREVIOUS scheme's keys (symbol-scoped). P-UI-142: they double as the live
+// symbol twin now (chart ids are per-session), adopted by the migrate below on
+// fresh ids; still purged on REASON_REMOVE.
 string CustomPriceLegacyGVName()         { return "Biotak_CustomPrice_" + GetCachedSymbol(); }
 string CustomPriceLegacyOverrideGVName() { return "Biotak_CustomPriceOverride_" + GetCachedSymbol(); }
 
@@ -275,11 +276,15 @@ void CustomPriceMigrateLegacyKeys()
 }
 
 // ONE writer for "the user placed / moved the line on THIS chart".
+// P-UI-142: the symbol twin rides along (chart ids are per-session: the twin is
+// what a restart restores from; the migrate below adopts it on fresh ids).
 void CustomPricePersistPlacement(const double price)
 {
     if(!(price > 0.0) || !MathIsValidNumber(price)) return;
     GlobalVariableSet(CustomPriceGVName(), price);
     GlobalVariableSet(CustomPriceOverrideGVName(), 1.0);
+    GlobalVariableSet(CustomPriceLegacyGVName(), price);
+    GlobalVariableSet(CustomPriceLegacyOverrideGVName(), 1.0);
 }
 
 // ONE writer for "this chart has no placement of its own" (the OFF paths).
@@ -287,6 +292,8 @@ void CustomPriceForgetPlacement()
 {
     GlobalVariableDel(CustomPriceGVName());
     GlobalVariableSet(CustomPriceOverrideGVName(), 0.0);
+    GlobalVariableDel(CustomPriceLegacyGVName());
+    GlobalVariableSet(CustomPriceLegacyOverrideGVName(), 0.0);
 }
 
 // The resolver's result. Ints, not an enum: both call sites are ABOVE this block
@@ -390,6 +397,43 @@ bool TH3SiblingUnitOnChart()
       return true;
    }
    return false;
+}
+
+// P-UI-142 — LATE discrete restore (Full only, from InitializeUISupport AFTER the
+// OV_ overrides are loaded). The early block above restores chart-key-else-dialog
+// (Lite keeps it: no kit there); this one restores chart-key-else-OV_-mirror, so a
+// toggle the panel wrote survives the restart instead of disagreeing with its own
+// row. Same keys, same single-owner apply paths — only the fallback got durable.
+void RestoreDiscreteToggles()
+{
+   string cid = GetCachedChartIdStr();
+   g_triggerLevelsEnabled = RestoreBoolGlobalVar("Biotak_TriggerLevels_" + cid, g_triggerLevelsEnabled);
+   g_linesVisible = RestoreBoolGlobalVar("Biotak_LinesVisible_" + cid, g_showLines);
+   g_atrLabelsVisible = RestoreBoolGlobalVar("Biotak_ATRLabels_" + cid, g_showATRLabels);
+   string thk = "Biotak_THLabels_" + cid;
+   if(GlobalVariableCheck(thk))
+   {
+      double gv = GlobalVariableGet(thk);
+      bool ok = (MathAbs(gv - 0.0) < EPSILON_GENERAL || MathAbs(gv - 1.0) < EPSILON_GENERAL ||
+                 MathAbs(gv - 2.0) < EPSILON_GENERAL || MathAbs(gv - 3.0) < EPSILON_GENERAL);
+      if(ok)
+      {
+         g_thLabelsMode = (int)gv;
+         if(g_thLabelsMode == 3) g_thLabelsMode = 2;   // legacy BOTH -> STANDARD
+      }
+      else
+      {
+         GlobalVariableSet(thk, 0.0);
+         g_thLabelsMode = 0;
+         g_thLabelsVisible = false;
+      }
+   }
+   else
+   {
+      g_thLabelsMode = THModeFromFlags();
+      if(g_showTHLabels && g_thLabelsMode == 0) g_thLabelsMode = 2;
+   }
+   SyncTHFlagsFromMode();
 }
 
 int OnInitHandler() {
@@ -755,20 +799,28 @@ int OnInitHandler() {
     g_pInitMsBase = GetTickCount() - pInitTick;   // P-PERF-10
     pInitTick = GetTickCount();
 
-    // Restore timeframe lock state
+    // Restore timeframe lock state (chart key, else the symbol twin: chart ids are
+    // per-session, so a restart restores the symbol's lock — P-UI-142).
     string lockFlagName = "Biotak_LockTF_" + chartIdStr;
     if(GlobalVariableCheck(lockFlagName)) {
         g_timeframeLocked = (bool)GlobalVariableGet(lockFlagName);
+    } else {
+        string lockFlagSym = "Biotak_LockTFSym_" + GetCachedSymbol();
+        if(GlobalVariableCheck(lockFlagSym)) g_timeframeLocked = (bool)GlobalVariableGet(lockFlagSym);
     }
     string lockPeriodName = "Biotak_LockTFPeriod_" + chartIdStr;
     if(GlobalVariableCheck(lockPeriodName)) {
         // R-TF-UNIT: this value outlives the process that wrote it. An MT5 build
         // from before the unit fix persisted an ENUM_TIMEFRAMES constant here
         // (16385 for H1), which would restore as a lock on a timeframe that does
-        // not exist - the badge reading "16385" and every `tf == Period()` test
-        // failing. CompatMinutes() normalises whatever is on disk to minutes, so
-        // the upgrade is invisible to the user.
+        // not exist - the badge reading "16385" instead of "H1", and LockOptFromPeriod()
+        // matched nothing, so the panel always showed the segment as "Cur".
+        // (comment kept: the CompatMinutes normalise below is the upgrade path)
         g_lockedPeriod = CompatMinutes((int)GlobalVariableGet(lockPeriodName));
+    } else {
+        string lockPeriodSym = "Biotak_LockTFPeriodSym_" + GetCachedSymbol();
+        if(GlobalVariableCheck(lockPeriodSym))
+            g_lockedPeriod = CompatMinutes((int)GlobalVariableGet(lockPeriodSym));
     }
 
     // VIEWLOCK-OFF: view-lock restore retired —

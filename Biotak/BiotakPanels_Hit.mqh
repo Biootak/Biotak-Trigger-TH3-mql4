@@ -102,7 +102,9 @@ void PnlRebuildKeepSpot(const int item)
    int sx=g_PnlX[item], sy=g_PnlY[item];
    bool wm=g_PnlManualPos[item];
    g_PnlManualPos[item]=true; g_PnlX[item]=sx; g_PnlY[item]=sy;
+   g_PnlPinSpot=true;
    PnlOpen(item);
+   g_PnlPinSpot=false;
    g_PnlManualPos[item]=wm;
 }
 
@@ -237,7 +239,7 @@ int PnlApplyOption(const int item,const int row,const int idx)
 {
    int flags=PnlApply(item,row,(double)idx);
    PnlDdClose();      // popover gone before the rebuild (destroy also covers)
-   PnlOpen(item);     // full rebuild — reshape-safe like TAB switches
+   PnlRebuildKeepSpot(item);   // same card rebuilt on the spot, never re-anchored
    return flags;
 }
 

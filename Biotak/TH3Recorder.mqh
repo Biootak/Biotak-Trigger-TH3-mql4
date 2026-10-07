@@ -227,11 +227,20 @@ void TH3_ExportCurrentSample(const string patternName = "")
    double turnPx = hasTurn ? hp.tipPrice : 0.0;
    double errPips = hasTurn ? MathAbs(turnPx - lv[2]) / pip : 0.0;
 
-   //--- the index. The GLOBAL is the counter's only home, so two charts of
-   //--- one symbol never share a number.
-   string gvName = "Biotak_TH3Sample_" + GetCachedChartIdStr();
+   //--- the index. P-UI-142: per-SYMBOL, not per-chart — chart ids are
+   //--- per-session, so a per-chart counter restarted at 1 after every restart
+   //--- (and two charts of one symbol shared numbers). The chart key is adopted
+   //--- once, then deleted; the symbol owns the count from here on.
+   string gvName = "Biotak_TH3Sample_" + GetCachedSymbol();
    int idx = 0;
    if(GlobalVariableCheck(gvName)) idx = (int)GlobalVariableGet(gvName);
+   string gvLegacy = "Biotak_TH3Sample_" + GetCachedChartIdStr();
+   if(GlobalVariableCheck(gvLegacy))
+   {
+      int oldIdx = (int)GlobalVariableGet(gvLegacy);
+      if(oldIdx > idx) idx = oldIdx;
+      GlobalVariableDel(gvLegacy);
+   }
    idx++;
    if(idx > TH3_RECORDER_MAX)
    {

@@ -803,6 +803,12 @@ string BaseKnotGV(const string id)
 {
    return "Biotak_BK_" + id + "_" + GetCachedChartIdStr();
 }
+// P-UI-142: the symbol twin (box ids ride the object names, so they outlive
+// chart ids across restarts; the twin never matches the Biotak_BK_ sweep).
+string BaseKnotGVTwin(const string id)
+{
+   return "Biotak_BKS_" + GetCachedSymbol() + "_" + id;
+}
 //+------------------------------------------------------------------+
 //| P-BK-26 — DROP THE TERMINAL'S SELECTION OF A BOX, ONCE, GUARDED.  |
 //|                                                                  |

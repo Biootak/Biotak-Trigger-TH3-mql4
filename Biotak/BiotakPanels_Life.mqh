@@ -239,6 +239,11 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
       // cached UI metrics here so the first reader after this event re-reads the
       // size once, instead of every hit test re-reading it.
       CircUIMetricsInvalidate();
+      // P-UI-140: and the two STORED places re-derive themselves from their fractions
+      // BEFORE anything paints them, so a resize / maximize / restore / DPI change
+      // lands on this frame instead of waiting for the 250 ms safety pass. This is
+      // the scenario the report names first; the timer line covers a missed event.
+      CircHomesRefresh();
       if(g_UI.menuVisible) UpdateCircularMenuPosition();
       // P-UI-93: and the event a DPI change is most likely to arrive on (a window
       // dragged to another monitor is resized by the terminal first). The probe is
@@ -327,6 +332,40 @@ void SaveBiotakKit()
    SaveUISupport();
 }
 
+// P-UI-142: snapshot the open surfaces at teardown START (Full entry calls this
+// BEFORE PnlCloseAll/DeleteMenu clear the flags they would otherwise persist as
+// closed). Plain Sets: teardown-time only, the teardown flush makes them durable.
+// Lite owns no surfaces and never calls this (its unit has no panels/menu).
+void SnapshotOpenSurfaces()
+{
+   GlobalVariableSet(GetGVName("PNLOPN"), (double)(g_PnlOpen == 13 ? -1 : g_PnlOpen));   // mini strip is box-bound: never reopened blind
+   GlobalVariableSet(GetGVName("TOOLS"), g_ToolsOpen ? 1.0 : 0.0);
+}
+
+// P-UI-142: reopen what the snapshot saw open — once, on the first tick after a
+// FRESH attach (terminal restart / re-add). A timeframe switch closes panels by
+// design: the switch stamp is fresh then, so this stays out of its way. Item 13
+// (box-bound mini strip) is never reopened blind; an already-open card wins.
+void PnlRestoreSaved()
+{
+   static bool done = false;
+   if(done) return;
+   done = true;
+   if(g_PnlOpen >= 0) return;
+   string vn = GetGVName("PNLOPN");
+   if(!GlobalVariableCheck(vn)) return;
+   int want = (int)GlobalVariableGet(vn);
+   if(want < 0 || want >= PNL_COUNT || want == 13) return;
+   string stamp = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
+   datetime nowT = TimeCurrent();
+   if(nowT > 0 && GlobalVariableCheck(stamp))
+   {
+      datetime lastSw = (datetime)GlobalVariableGet(stamp);
+      if(lastSw > 0 && (nowT - lastSw) <= 20) return;   // a switch just closed these: stay closed
+   }
+   PnlOpen(want);
+}
+
 //--- per-tick / per-bar UI refresh (HTF forming candle + menu badge sync)
 //--- P-UI-75a: THE DRAG'S POLLED SHADOW — the tick/timer half of the grab.
 //|     A press that never moved emits NO CHARTEVENT_MOUSE_MOVE (the P-BK-03
@@ -394,6 +433,7 @@ void PnlDragPoll()
 void RefreshKitOnBar()
 {
    // Called from OnCalculate AND OnTimer — i.e. on every tick twice.
+   PnlRestoreSaved();   // P-UI-142: once — reopens the teardown snapshot's panel, if any
    // RefreshUIPerTick() already self-throttles (500ms + change guards), so
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();

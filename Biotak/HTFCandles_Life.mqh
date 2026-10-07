@@ -8,6 +8,19 @@
 #ifndef HTF_CANDLES_LIFE_MQH
 #define HTF_CANDLES_LIFE_MQH
 
+// P-UI-142: "does this key family exist here" — the restart layer picks the
+// chart prefix when it has any key, else the symbol twin, else inputs.
+bool HTFHasKeys(const string pfx)
+{
+   string sfx[15];
+   sfx[0]="TfMode"; sfx[1]="IsAuto"; sfx[2]="Period"; sfx[3]="BullColor"; sfx[4]="BearColor";
+   sfx[5]="WickColor"; sfx[6]="BorderColor"; sfx[7]="Opacity"; sfx[8]="ShowWicks"; sfx[9]="WickWidth";
+   sfx[10]="GapPct"; sfx[11]="ShadowPct"; sfx[12]="BorderWidth"; sfx[13]="BoxMode"; sfx[14]="ShowBody";
+   for(int i = 0; i < 15; i++)
+      if(GlobalVariableCheck(pfx + sfx[i])) return true;
+   return false;
+}
+
 //+------------------------------------------------------------------+
 //| Initialize HTF Candles                                           |
 //+------------------------------------------------------------------+
@@ -37,6 +50,11 @@ void InitializeHTFCandles()
 
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
+   // P-UI-142: restart layer — chart ids are per-session, so when this window has
+   // no keys of its own the symbol twin (written beside every chart write below)
+   // answers instead of the inputs. Chart keys always win when present.
+   string twinPfx = "Biotak_HTFSym_" + GetCachedSymbol() + "_";
+   if(!HTFHasKeys(prefix) && HTFHasKeys(twinPfx)) prefix = twinPfx;
 
    // P-UI-92: the MODE is the restored state (0 Structure · 1 Pattern · 2
    // fixed). A chart saved by a build that only knew the bool reads through
@@ -111,39 +129,42 @@ void SaveHTFCandlesSettings()
    int htfChanged = 0;
    string chartIdStr = GetCachedChartIdStr();
    string prefix = "Biotak_HTF_" + chartIdStr + "_";
+   // P-UI-142: the symbol twin rides every chart write (same guard: same value),
+   // so a restart restores it when the chart id is new. Teardown-only writes.
+   string twin = "Biotak_HTFSym_" + Symbol() + "_";
    // P-UI-92: "TfMode" is the state; "IsAuto" is still written (1 = either
    // dynamic rung) so ONE downgrade to a previous build keeps its own
    // Auto/Manual meaning instead of reading Structure as a manual period.
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 0, (double)g_HTFTfMode))
-      { GlobalVariableSet(prefix + "TfMode",      (double)g_HTFTfMode); htfChanged++; }
+      { GlobalVariableSet(prefix + "TfMode",      (double)g_HTFTfMode); GlobalVariableSet(twin + "TfMode", (double)g_HTFTfMode); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 1, HTFTfIsDynamic() ? 1.0 : 0.0))
-      { GlobalVariableSet(prefix + "IsAuto",      HTFTfIsDynamic() ? 1.0 : 0.0); htfChanged++; }
+      { GlobalVariableSet(prefix + "IsAuto",      HTFTfIsDynamic() ? 1.0 : 0.0); GlobalVariableSet(twin + "IsAuto", HTFTfIsDynamic() ? 1.0 : 0.0); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 2, (double)g_HTFPeriod))
-      { GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod); htfChanged++; }
+      { GlobalVariableSet(prefix + "Period",      (double)g_HTFPeriod); GlobalVariableSet(twin + "Period", (double)g_HTFPeriod); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 3, (double)g_HTFBullColor))
-      { GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor); htfChanged++; }
+      { GlobalVariableSet(prefix + "BullColor",   (double)g_HTFBullColor); GlobalVariableSet(twin + "BullColor", (double)g_HTFBullColor); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 4, (double)g_HTFBearColor))
-      { GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor); htfChanged++; }
+      { GlobalVariableSet(prefix + "BearColor",   (double)g_HTFBearColor); GlobalVariableSet(twin + "BearColor", (double)g_HTFBearColor); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 5, (double)g_HTFWickColor))
-      { GlobalVariableSet(prefix + "WickColor",   (double)g_HTFWickColor); htfChanged++; }
+      { GlobalVariableSet(prefix + "WickColor",   (double)g_HTFWickColor); GlobalVariableSet(twin + "WickColor", (double)g_HTFWickColor); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 6, (double)g_HTFBorderColor))
-      { GlobalVariableSet(prefix + "BorderColor", (double)g_HTFBorderColor); htfChanged++; }
+      { GlobalVariableSet(prefix + "BorderColor", (double)g_HTFBorderColor); GlobalVariableSet(twin + "BorderColor", (double)g_HTFBorderColor); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 7, (double)g_HTFOpacity))
-      { GlobalVariableSet(prefix + "Opacity",     (double)g_HTFOpacity); htfChanged++; }
+      { GlobalVariableSet(prefix + "Opacity",     (double)g_HTFOpacity); GlobalVariableSet(twin + "Opacity", (double)g_HTFOpacity); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 8, g_HTFShowWicks ? 1.0 : 0.0))
-      { GlobalVariableSet(prefix + "ShowWicks",   g_HTFShowWicks ? 1.0 : 0.0); htfChanged++; }
+      { GlobalVariableSet(prefix + "ShowWicks",   g_HTFShowWicks ? 1.0 : 0.0); GlobalVariableSet(twin + "ShowWicks", g_HTFShowWicks ? 1.0 : 0.0); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 9, (double)g_HTFWickWidth))
-      { GlobalVariableSet(prefix + "WickWidth",   (double)g_HTFWickWidth); htfChanged++; }
+      { GlobalVariableSet(prefix + "WickWidth",   (double)g_HTFWickWidth); GlobalVariableSet(twin + "WickWidth", (double)g_HTFWickWidth); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 10, (double)g_HTFGapPct))
-      { GlobalVariableSet(prefix + "GapPct",      (double)g_HTFGapPct); htfChanged++; }
+      { GlobalVariableSet(prefix + "GapPct",      (double)g_HTFGapPct); GlobalVariableSet(twin + "GapPct", (double)g_HTFGapPct); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 11, (double)g_HTFShadowPct))
-      { GlobalVariableSet(prefix + "ShadowPct",   (double)g_HTFShadowPct); htfChanged++; }
+      { GlobalVariableSet(prefix + "ShadowPct",   (double)g_HTFShadowPct); GlobalVariableSet(twin + "ShadowPct", (double)g_HTFShadowPct); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 12, (double)g_HTFBorderWidth))
-      { GlobalVariableSet(prefix + "BorderWidth", (double)g_HTFBorderWidth); htfChanged++; }
+      { GlobalVariableSet(prefix + "BorderWidth", (double)g_HTFBorderWidth); GlobalVariableSet(twin + "BorderWidth", (double)g_HTFBorderWidth); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 13, (double)g_HTFBoxMode))
-      { GlobalVariableSet(prefix + "BoxMode",     (double)g_HTFBoxMode); htfChanged++; }
+      { GlobalVariableSet(prefix + "BoxMode",     (double)g_HTFBoxMode); GlobalVariableSet(twin + "BoxMode", (double)g_HTFBoxMode); htfChanged++; }
    if(GVSlotChanged(s_htfEpoch, s_htfKnown, s_htfShadow, 14, g_HTFShowBody ? 1.0 : 0.0))
-      { GlobalVariableSet(prefix + "ShowBody",    g_HTFShowBody ? 1.0 : 0.0); htfChanged++; }
+      { GlobalVariableSet(prefix + "ShowBody",    g_HTFShowBody ? 1.0 : 0.0); GlobalVariableSet(twin + "ShowBody", g_HTFShowBody ? 1.0 : 0.0); htfChanged++; }
    GVLedgerReport(GV_BLOCK_HTF, htfChanged, HTF_SAVE_SLOTS);
    if(htfChanged == 0) return;
    GVFlushRequest();   // P-PERF-44 (2): ASK; the teardown's one commit pays for it
@@ -180,6 +201,23 @@ void CleanupHTFCandlesGVs()
    GlobalVariableDel(prefix + "BorderWidth");
    GlobalVariableDel(prefix + "BoxMode");
    GlobalVariableDel(prefix + "ShowBody");
+   // P-UI-142: the symbol twins die with the uninstall too.
+   string twin = "Biotak_HTFSym_" + Symbol() + "_";
+   GlobalVariableDel(twin + "TfMode");
+   GlobalVariableDel(twin + "IsAuto");
+   GlobalVariableDel(twin + "Period");
+   GlobalVariableDel(twin + "BullColor");
+   GlobalVariableDel(twin + "BearColor");
+   GlobalVariableDel(twin + "WickColor");
+   GlobalVariableDel(twin + "BorderColor");
+   GlobalVariableDel(twin + "Opacity");
+   GlobalVariableDel(twin + "ShowWicks");
+   GlobalVariableDel(twin + "WickWidth");
+   GlobalVariableDel(twin + "GapPct");
+   GlobalVariableDel(twin + "ShadowPct");
+   GlobalVariableDel(twin + "BorderWidth");
+   GlobalVariableDel(twin + "BoxMode");
+   GlobalVariableDel(twin + "ShowBody");
 }
 
 #endif // HTF_CANDLES_LIFE_MQH

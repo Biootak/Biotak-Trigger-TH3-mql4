@@ -1,0 +1,230 @@
+//@module 30_math
+//@owner the master step and the ladder - PURE numbers, no chart access
+//@includes 10_const.pine
+
+//| P-TH3-STEP-16 - THE UNIFIED EQUATION. One formula, no branches.
+//|   step_mother  = base >= 2.5 * rung ? base / 3 : base
+//|   k            = the band the leg ratio falls in
+//|   step_pattern = legCD / k
+//|   Step*        = sqrt(step_mother * step_pattern)
+//|   ladder       = D +/- {1, 3, 5, 7} * Step*
+//|
+//| Pair: Biotak/TH3/TH3Pivots_B.mqh (TH3UnifiedK, CalculateUnifiedMasterStep).
+//| This file is on the parity path: tests/fixtures/step-fixtures.json pins every
+//| branch of it and tools/check-parity.js runs THIS source through PineTS, not a
+//| second implementation. A JS twin of these numbers would be a second owner.
+//|
+//| Units: every input and output is in ONE unit - pips or price, the caller's
+//| choice. Nothing here mixes them.
+
+//| The K band for a leg ratio - the LIVE judge.
+th3K(float ratio) =>
+    ratio <= TH3_K_RATIO_SYM ? TH3_K_SYM : ratio <= TH3_K_RATIO_DEEP ? TH3_K_DEEP : ratio <= TH3_K_RATIO_EXT ? TH3_K_EXT : TH3_K_MACRO
+
+//| The legacy closed K (TH3ClosedK). 0.0 means NO answer below the floor -
+//| a shallower wiggle must not mint a step.
+th3KClosed(float ratio) =>
+    ratio < TH3_CL_K_FLOOR ? 0.0 : ratio <= TH3_K_RATIO_SYM ? TH3_CL_K_SYM : ratio <= TH3_K_RATIO_DEEP ? TH3_CL_K_DEEP : ratio <= TH3_K_RATIO_EXT ? TH3_CL_K_EXT : TH3_CL_K_MACRO
+
+//| The leg ratio the K table reads. TH3Recorder.mqh:199 is the witness:
+//|   ratioCD_BC = legCD / legBC     (the CLOSING leg over the leg before it)
+//| and it is THAT ratio which reaches TH3UnifiedK. A caller holding A/B/C/D
+//| must hand this function B and D - P-TH3-INFO-05 lives here too.
+th3Ratio(float priorLeg, float lastLeg) =>
+    priorLeg > 0 ? lastLeg / priorLeg : 0.0
+
+//| The mother component. Two owners rather than one, because the dataset records
+//| Step_Mother and Step_Pattern as their own columns and the parity run has to be
+//| able to read them out of THIS source instead of a JS rewrite of it.
+th3StepMother(float motherBase, float thRung) =>
+    sm = motherBase >= TH3_MOTHER_MACRO_MULT * thRung ? motherBase / TH3_MOTHER_DIVISOR : motherBase
+    sm <= 0 ? thRung : sm
+
+//| The pattern component: the closing leg over its K.
+th3StepPattern(float legCD, float ratio) =>
+    legCD / th3K(ratio)
+
+//| CalculateUnifiedMasterStep - the resonance of the two, one square root.
+th3MasterStep(float legCD, float ratio, float motherBase, float thRung) =>
+    sm = th3StepMother(motherBase, thRung)
+    sp = th3StepPattern(legCD, ratio)
+    finalStep = math.sqrt(sm * sp)
+    finalStep <= 0 ? (sp > 0 ? sp : thRung) : finalStep
+
+//| The closed step: the pattern alone, no mother. Invalid below the K floor.
+th3ClosedStep(float legCD, float ratio) =>
+    k = th3KClosed(ratio)
+    k > 0 ? legCD / k : 0.0
+
+//| THE CHART'S TIMEFRAME IN MINUTES. Pine v6 spells the daily/weekly/monthly chart
+//| "1D"/"1W"/"1M" in timeframe.period, so the mapping reads the flags and the
+//| multiplier, never the string. Seconds and tick charts answer 0 (no rung).
+th3ChartTfMin() =>
+    timeframe.isseconds or timeframe.isticks ? 0 : timeframe.ismonthly ? TH3_TF_MN * timeframe.multiplier : timeframe.isweekly ? TH3_TF_W1 * timeframe.multiplier : timeframe.isdaily ? TH3_TF_D1 * timeframe.multiplier : timeframe.multiplier
+
+//| GetBaseFractalTimeframeForCurrent() / THRungNameForTFMin() on minutes:
+//| M1 -> M1, M5 -> M4, M15/M30 -> M16, H1 -> H1+M4, H4 -> H4+M16, D1 -> H17+M4,
+//| W1 -> D11+H9+M4, MN1 -> D45+H12+M16. A TF the table does not name answers 0.0.
+th3RungPctForTFMin(int tfMin) =>
+    tfMin == TH3_TF_M1 ? TH3_RUNG_PCT_M1 : tfMin == TH3_TF_M5 ? TH3_RUNG_PCT_M4 : tfMin == TH3_TF_M15 or tfMin == TH3_TF_M30 ? TH3_RUNG_PCT_M16 : tfMin == TH3_TF_H1 ? TH3_RUNG_PCT_H1 : tfMin == TH3_TF_H4 ? TH3_RUNG_PCT_H4 : tfMin == TH3_TF_D1 ? TH3_RUNG_PCT_D1 : tfMin == TH3_TF_W1 ? TH3_RUNG_PCT_W1 : tfMin == TH3_TF_MN ? TH3_RUNG_PCT_MN : 0.0
+
+th3RungPct() =>
+    th3RungPctForTFMin(th3ChartTfMin())
+
+//| TH3FractalStepTF(tf, +1): the next chain member above, the chain top when none.
+th3ChainUp(int tf) =>
+    tf >= TH3_TF_W1 ? TH3_TF_MN : tf >= TH3_TF_D1 ? TH3_TF_W1 : tf >= TH3_TF_H4 ? TH3_TF_D1 : tf >= TH3_TF_H1 ? TH3_TF_H4 : tf >= TH3_TF_M15 ? TH3_TF_H1 : tf >= TH3_TF_M5 ? TH3_TF_M15 : tf >= TH3_TF_M1 ? TH3_TF_M5 : TH3_TF_M1
+
+//| TH3ClosedOwnerTFEx: a span of at most TH3_OWNER_GATE_BARS bars (or an unmeasurable
+//| one, -1) keeps the chart's TF; a longer one climbs the chain, converting the bar
+//| count by the minute ratio and rounding, at most TH3_OWNER_WALK_MAX times.
+th3OwnerTFMinutes(int tfMin, int cdBars) =>
+    owner = tfMin
+    bars = cdBars
+    if cdBars > TH3_OWNER_GATE_BARS and tfMin > 0
+        for w = 1 to TH3_OWNER_WALK_MAX
+            up = th3ChainUp(owner)
+            if up == owner
+                break
+            bars := math.round(bars * owner / up)
+            owner := up
+            if bars <= TH3_OWNER_GATE_BARS
+                break
+    owner
+
+//| TH3TfName: the readout's own spelling of a chain member.
+th3TfName(int tf) =>
+    tf == TH3_TF_M1 ? "M1" : tf == TH3_TF_M5 ? "M5" : tf == TH3_TF_M15 ? "M15" : tf == TH3_TF_M30 ? "M30" : tf == TH3_TF_H1 ? "H1" : tf == TH3_TF_H4 ? "H4" : tf == TH3_TF_D1 ? "D1" : tf == TH3_TF_W1 ? "W1" : tf == TH3_TF_MN ? "MN" : str.tostring(tf)
+
+//| TH3HitKPick: k is READ off the closed step, not assumed. A tie keeps the near k;
+//| a winner farther than TH3_HIT_MAX_STEP_ERR from refStep is NO vote.
+th3HitKPick(float dist, float refStep) =>
+    ok = false
+    k = TH3_HIT_K_NEAR
+    stepOut = 0.0
+    if dist > 0
+        s3 = dist / TH3_HIT_K_NEAR
+        s5 = dist / TH3_HIT_K_FAR
+        if refStep <= 0
+            stepOut := s3
+            ok := stepOut > 0
+        else
+            if math.abs(s5 - refStep) < math.abs(s3 - refStep)
+                k := TH3_HIT_K_FAR
+                stepOut := s5
+            else
+                stepOut := s3
+            ok := stepOut > 0 and math.abs(stepOut - refStep) / refStep <= TH3_HIT_MAX_STEP_ERR
+    [ok, k, stepOut]
+
+//| ONE RETRACE, EIGHT STATES (TH3RetraceQ / QName / Candidate / BestStep).
+th3RetraceQ(int idx) =>
+    idx == 0 ? TH3_RET_Q0 : idx == 1 ? TH3_RET_Q1 : idx == 2 ? TH3_RET_Q2 : idx == 3 ? TH3_RET_Q3 : idx == 4 ? TH3_RET_Q4 : idx == 5 ? TH3_RET_Q5 : idx == 6 ? TH3_RET_Q6 : idx == 7 ? TH3_RET_Q7 : 0.0
+
+th3RetraceQName(int idx) =>
+    idx == 0 ? "1/3" : idx == 1 ? "2/3" : idx == 2 ? "1" : idx == 3 ? "4/3" : idx == 4 ? "5/3" : idx == 5 ? "2" : idx == 6 ? "3" : idx == 7 ? "5" : "?"
+
+th3RetraceCandidate(float retracePrice, int idx) =>
+    q = th3RetraceQ(idx)
+    retracePrice <= 0 or q <= 0 ? 0.0 : retracePrice / q
+
+th3RetraceBestStep(float retracePrice, float refStep, float thRung) =>
+    bestStep = 0.0
+    bestQ = 0.0
+    bestIdx = -1
+    hasRef = refStep > 0
+    hasTH = thRung > 0
+    if retracePrice > 0
+        if not hasRef and not hasTH
+            bestStep := retracePrice
+            bestQ := TH3_RET_Q2
+            bestIdx := 2
+        else
+            bestScore = TH3_RET_SCORE_MAX
+            bestCentral = TH3_RET_SCORE_MAX
+            for i = 0 to TH3_RETRACE_N - 1
+                q = th3RetraceQ(i)
+                s = th3RetraceCandidate(retracePrice, i)
+                if s > 0
+                    eP = hasRef ? math.abs(s - refStep) / refStep : 0.0
+                    eT = hasTH ? math.abs(s - thRung) / thRung : 0.0
+                    score = hasRef and hasTH ? TH3_RET_W_REF * eP + TH3_RET_W_RUNG * eT : hasRef ? eP : eT
+                    central = math.abs(q - TH3_RET_Q2)
+                    if score < bestScore - TH3_RET_TIE or (math.abs(score - bestScore) <= TH3_RET_TIE and central < bestCentral)
+                        bestScore := score
+                        bestCentral := central
+                        bestStep := s
+                        bestQ := q
+                        bestIdx := i
+    [bestStep, bestQ, bestIdx]
+
+//| TH3PatternStepRungTF - the fractal-volatility rung, NOT a constant:
+//|   THAbilityPrice(tf, iTime(tf,1)) = iClose(tf, 1) * pct / 100
+//| and when that answers nothing the non-calculation branch reads ATR(14) at shift 1.
+//| `priceAt1` is the last COMPLETED bar's close, which is the bar MQL4 reads.
+th3RungFromClose(float priceAt1, float pct) =>
+    pct > 0 and priceAt1 > 0 ? priceAt1 * pct / 100.0 : 0.0
+
+//| One rung in price, rung 1..TH3_LADDER_N. `dir` is the movement direction:
+//| TH3Recorder.mqh:217 reads it as `(pat.D.price > pat.C.price)` - when the
+//| closing leg went DOWN the ladder is projected BELOW D. The caller passes -1.
+th3RungPrice(float anchor, float step, int dir, int rung) =>
+    anchor + dir * rung * step
+
+//| The odd rungs are the impulse targets; the dataset records these four.
+th3TargetRung(int n) =>
+    n * 2 - 1
+
+//| GetCachedPipSize, the WHOLE table (PerformanceOptimizations.mqh:168-215): ten
+//| points on a 3-, 5- or 1-digit symbol; one point on a 4-digit one; and on a
+//| 2-digit symbol ten points for the METALS (XAU/GOLD/XAG/SILVER) and one otherwise.
+//| An earlier version of this returned mintick on a metal, which is ten times small.
+th3PipSize() =>
+    p = syminfo.mintick
+    d = p > 0 ? math.round(-math.log10(p)) : 0
+    metal = str.contains(syminfo.ticker, "XAU") or str.contains(syminfo.ticker, "GOLD") or str.contains(syminfo.ticker, "XAG") or str.contains(syminfo.ticker, "SILVER")
+    p <= 0 ? 0.0 : d == 2 ? (metal ? p * TH3_PIP_POINT_MULT : p) : d == 4 ? p : d == 1 or d == 3 or d == 5 ? p * TH3_PIP_POINT_MULT : p
+
+//| THE SEED CHAIN (TH3Renderer_B.mqh:80-90), in its own order:
+//|   uniStep > 0 -> the unified step
+//|   else rung > 0 -> the rung
+//|   else the closing leg (or AB) x frequency/100
+//| The lock is NOT in this chain: it is a caption (see th3LockVerdict below).
+th3SeedStep(float uniStep, float thRung, float legCD, float legAB, float freqPct) =>
+    uniStep > 0 ? uniStep : thRung > 0 ? thRung : (legCD > 0 ? legCD : legAB) * (freqPct / 100.0)
+
+//| GetCurrentTH3Frequency (TH3Tool_A.mqh:378-388): the input, but only inside its own
+//| bounds; anything else falls back to 28.125. Absence never becomes a guess.
+th3FrequencyPct(float raw) =>
+    raw > 0.0 and raw <= 120.0 ? raw : TH3_FREQ_PCT_DEFAULT
+
+//| THE LOCK VERDICT - a SECOND OPINION, never the decider.
+//| P-TH3-STEP-16 (TH3Renderer_B.mqh:130-137): the caller passes `lockedUnit`, and
+//| DISCARDS it - `baseUnit` was already fixed by the unified step above. What it
+//| keeps is the caption. So this returns the WORDS and never a step: an earlier
+//| version of this function averaged base and derived and thereby applied the
+//| verdict, which is a different product, not a port.
+th3LockVerdict(float derived, float base, float okRatio) =>
+    locked = false
+    how = ""
+    if derived > 0 and base > 0
+        dev = math.abs(base - derived) / derived
+        if dev <= okRatio
+            locked := true
+            how := "LOCKED base node=" + str.tostring(base, "#.#####") + " pattern=" + str.tostring(derived, "#.#####")
+        else
+            how := "UNLOCKED base node=" + str.tostring(base, "#.#####") + " vs " + str.tostring(derived, "#.#####")
+    else if derived > 0
+        how := "UNLOCKED-1P (no node)"
+    else if base > 0
+        how := "base drawn (no closed step)"
+    [locked, how]
+
+//| TH3LockedStep's walk-up law (TH3Pivots_B.mqh:504-513): a climbed owner with NO hand
+//| base shifts to 2 x LS of the chart's own rung and cannot be LOCKED. Caption only.
+th3LockShift(bool locked, string how, float derived, float base, bool ownerUp, float chartRung, float pip, string chartTf) =>
+    lsLower = chartRung * TH3_THB_LS
+    shift = derived > 0 and base <= 0 and ownerUp and lsLower > 0
+    shiftPx = TH3_LOCK_SHIFT_MULT * lsLower
+    shownShift = pip > 0 ? shiftPx / pip : shiftPx
+    [shift ? false : locked, shift ? how + " -> SHIFT 2xLS(" + chartTf + ")=" + str.tostring(shownShift, "#.#") : how]

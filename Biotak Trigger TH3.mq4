@@ -198,6 +198,7 @@ void OnDeinit(const int reason)
     // Reported only when the total blows the budget, like every other ledger.
     uint p15t = p4d;
     uint p15Pnl, p15Menu, p15Htf, p15Save, p15Cleanup, p15Handler;
+    SnapshotOpenSurfaces();   // P-UI-142: record open panel/tools BEFORE the closes below clear them
     PnlCloseAll();
     p15Pnl = GetTickCount() - p15t; p15t = GetTickCount();
     // P-DRAW-08: the drawing strip's own objects die with the instance — the
@@ -412,6 +413,15 @@ void OnTimer()
     // this line covers a missed notification and costs two terminal reads per
     // quarter second instead of two per hit-test item.
     CircUIMetricsInvalidate();
+
+    // P-UI-140: and the orb's and the chip's PLACES are re-derived from their
+    // fractions on the same pass, so a window that comes back a different size
+    // (a terminal restart is the report) puts both surfaces in the same relative
+    // spot instead of clamping them somewhere else. Two compares when nothing
+    // changed; the work runs only when the box really is a different box. The
+    // CHART_CHANGE branch calls the same function first, so this line is the
+    // safety net behind a missed notification — the exact shape of the line above.
+    CircHomesRefresh();
 
     // FIX: If indicator is not yet fully initialized (e.g. waiting for history),
     // retry drawing periodically even without new ticks.
