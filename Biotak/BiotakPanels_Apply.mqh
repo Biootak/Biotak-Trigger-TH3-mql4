@@ -760,7 +760,7 @@ int PnlApplySet(const int item,const int row,const double v)
          // something — a press that changed nothing stays silent.
          {
             double htfBefore = PnlCurrent(6, row);
-          if(row==0)       { SetHTFVisible(v>0.5); flags=REFRESH_HTF; }
+          if(row==0)       { SetHTFVisible(v>0.5); flags=REFRESH_NONE; }   // P-HTF-KEY: owner masked + painted
          else if(row==1)
          {
             // P-UI-92: option 0/1 are the DYNAMIC rungs (they follow the

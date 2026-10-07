@@ -439,7 +439,6 @@ void RefreshKitOnBar()
    RefreshUIPerTick();
    BkHoldPoll();   // stationary-press hold needs key-state polling (no event exists for it)
    CpHoldPoll();   // P-UI-101: the custom price line's own hold, same zero-move backup
-   DrawStripHoldPollAt(g_LastUIX, g_LastUIY, UILeftButtonDown());   // P-UI-113: drawings' left-hold
    DrawStripHoldSelectPoll();   // P-UI-113g: restore native selection after MT4's release
    BoxExtrasPump();             // P-DRAW-21/22: box mid follow + extend steps (2s/new-bar throttled)
    // P-UI-127: the card drag's polled shadow stays out, on its own measurement

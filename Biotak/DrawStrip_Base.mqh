@@ -544,9 +544,16 @@ void DrawStripPublishRect()
 #define DSTRIP_OPEN_PRESS_MAX_MS 10000   // the longest a press may claim its own clicks
 static uint s_dsOpenerUntil = 0;         // 0 = disarmed; else the press's own deadline
 static uint s_dsOpenerTailUntil = 0;     // the twin-event tail (after the release witness)
-void DrawStripOpenerArm()    { s_dsOpenerUntil = GetTickCount() + DSTRIP_OPEN_PRESS_MAX_MS; s_dsOpenerTailUntil = 0; }
-void DrawStripOpenerDisarm() { s_dsOpenerUntil = 0; s_dsOpenerTailUntil = 0; }
-bool DrawStripOpenerClickSpent() { return (TickDeadlinePending(s_dsOpenerUntil) || TickDeadlinePending(s_dsOpenerTailUntil)); }
+static int  s_dsOpenerN = 0;             // twin events left to spend (one release = two channels)
+void DrawStripOpenerArm()    { s_dsOpenerUntil = GetTickCount() + DSTRIP_OPEN_PRESS_MAX_MS; s_dsOpenerTailUntil = 0; s_dsOpenerN = 2; }
+void DrawStripOpenerDisarm() { s_dsOpenerUntil = 0; s_dsOpenerTailUntil = 0; s_dsOpenerN = 0; }
+bool DrawStripOpenerClickSpent()
+{
+   if(!TickDeadlinePending(s_dsOpenerUntil) && !TickDeadlinePending(s_dsOpenerTailUntil)) { s_dsOpenerN = 0; return false; }
+   if(s_dsOpenerN <= 0) return false;
+   s_dsOpenerN--;
+   return true;
+}
 //--- P-UI-113g (2026-09-24): SELECTION IS REPAIRED AFTER MT4'S CLICK, NOT INSIDE
 //--- THE CLICK CALLBACK. P-UI-113f selected the hold target both at the fire and
 //--- on the release event, but MT4 commits the terminal's own press/release
@@ -612,9 +619,9 @@ static uint     s_dsPressCycleMs = 0;    // the cycle's life bound: the press ca
 //--- log named the owner until DIAG-116 printed `press refused: cycle live`.
 //--- The cycle has ONE job — keep a FLAP from re-timing a press it already named
 //--- (P-UI-115c) — and the flaps it was measured against are milliseconds apart
-//--- (179/252/488 ms). 2 s covers every press that can still become a hold (a hold
-//--- fires at 500 ms) and can never outlive its press far enough to eat the next
-//--- one. A gesture already IN MOTION is guarded by its own witness instead: the
+//--- (179/252/488 ms). 2 s covers every press that can still matter and can never
+//--- outlive its press far enough to eat the next one (every release ends it).
+//--- A gesture already IN MOTION is guarded by its own witness instead: the
 //--- router's drag heartbeat (P-UI-130 in DrawStrip_Router.mqh).
 #define DSTRIP_PRESS_CYCLE_MS 2000
 void DrawStripPressCycleSet(const string nm)

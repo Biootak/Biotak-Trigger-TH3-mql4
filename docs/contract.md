@@ -391,35 +391,35 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
    recreates every control above them. MEASURED 00:07 frame + the user's screenshot:
    both columns draw, the head and × are back, `AFTER done gone=0 moved=0 new=0`.
 
-24. **The hold's flags die with its gesture; a drawing in motion is never held
-   (P-UI-130).** Two user reports, one mechanism.
-   *«هولد بعضی وقتها درست کار نمیکنه و باز نمیشه»* — MEASURED (EURUSD,M1
-   00:12:57.036→00:13:01.481, one box): one latch (`hold latch at 697,226
-   hit="Rectangle 49028"`) armed the press cycle, the box walked out from under the
-   finger 513 ms later (the hand was DRAGGING it, `hold dropped: hit changed …
-   now=""`), the drag's release never arrived on the click channel — and the cycle
-   went on refusing FIVE real presses in a row (`press refused: cycle live obj=…` at
-   :57.931, :58.451, :58.939, 00:13:00.370, 00:13:01.481), with the next latch only at
-   00:14:41. The cycle's life was `DSTRIP_OPEN_PRESS_MAX_MS` — the OPENER WINDOW's own
-   ten seconds — while its one job (refusing the flap that re-times the 500 ms clock,
-   P-UI-115c) needs milliseconds: the flaps it was measured against are 179/252/488 ms
-   apart. So the cycle now lives on its own constant (`DSTRIP_PRESS_CYCLE_MS`, 2 s),
-   `DrawStripHoldForget()` clears the clock with the object (a dropped latch must not
-   read as a live gesture at the release — the stale clock is what sent the release
-   down the window path and kept the cycle armed), and the poll's TTL backstop ends
-   the cycle with the hold (one fact, one clear).
-   *«موقعی که باکس جابجا میکنم یا ری‌ساز میکنم نوار استریپ بالا میاد و مزاحم میشه»* —
-   the press that STARTS a drag is a press on the drawing, so it armed the latch
-   exactly like a hold, and the 500 ms clock knew nothing about where the hand was
-   going: the strip came up on the drawing the user was about to move (and, P-UI-113f,
-   left it natively selected while the anchors were being aimed at). The witness is the
-   terminal's own: `CHARTEVENT_OBJECT_DRAG` is fired for the user's gesture only — the
-   trait P-BK-19a made the base box's owner (`BK_DRAG_OWNER_MS`) and TH3Tool_C's band
-   lock measured for the resize half («MT4 fires CHARTEVENT_OBJECT_DRAG continuously
-   while the user resizes»). `DrawStripDragWitness` stamps a heartbeat and, while the
-   strip is shut, kills the latch and clears the cycle; `DrawStripDragLive()` forbids
-   the next latch and gates BOTH fire paths (move step + poll) for the 400 ms its own
-   events renew. Gate: P-UI-130 (constant, clear, four readers, wiring + placement).
+24. **A press names, a release toggles, a drawing in motion never toggles
+    (P-UI-130).** Two user reports, one mechanism — and the 500 ms hold they
+    replaced (click-toggle 2026-10-07: «هولد بردار، کلیک که کرد و سلکت شد نوار
+    فعال بشه», «سلکت و دیسلکت با یک کلیک، نه دابل‌کلیک»).
+    *«هولد بعضی وقتها درست کار نمیکنه و باز نمیشه»* — MEASURED (EURUSD,M1
+    00:12:57.036→00:13:01.481, one box): one latch (`hold latch at 697,226
+    hit="Rectangle 49028"`) armed the press cycle, the box walked out from under the
+    finger 513 ms later (the hand was DRAGGING it, `hold dropped: hit changed …
+    now=""`), the drag's release never arrived on the click channel — and the cycle
+    went on refusing FIVE real presses in a row (`press refused: cycle live obj=…` at
+    :57.931, :58.451, :58.939, 00:13:00.370, 00:13:01.481), with the next latch only at
+    00:14:41. The cycle's life was `DSTRIP_OPEN_PRESS_MAX_MS` — the OPENER WINDOW's own
+    ten seconds — while its one job needs milliseconds: the flaps it was measured
+    against are 179/252/488 ms apart. So the cycle lives on its own constant
+    (`DSTRIP_PRESS_CYCLE_MS`, 2 s), every release ends its press (no pending fire
+    exists to protect), and a single click on a drawing toggles the strip —
+    decided by strip state, never by selection state (MT4 mutates selection
+    around the click event). The opener window spends the release's twin;
+    `DSTRIP_HOLD_MS`, the step, the poll and the fire are gone and must not
+    come back with them.
+    *«موقعی که باکس جابجا میکنم یا ری‌ساز میکنم نوار استریپ بالا میاد و مزاحم میشه»* —
+    the press that STARTS a drag is a press on the drawing, and a drag-release
+    must never toggle: the travel veto (`DSTRIP_CLICK_SLOP`) and the terminal's own
+    voice decide — `CHARTEVENT_OBJECT_DRAG` is fired for the user's gesture only
+    (P-BK-19a, TH3Tool_C's band lock: «MT4 fires CHARTEVENT_OBJECT_DRAG continuously
+    while the user resizes»). `DrawStripDragWitness` stamps a heartbeat and clears
+    the press naming; `DrawStripDragLive()` vetoes the toggle for the 400 ms its own
+    events renew. Gate: P-UI-130 (constant, veto in latch + toggle, wiring,
+    and the absence of the timer).
 25. **The raster the CHART paints is not the raster the COMPILER embedded (P-UI-131).**
    *«این دوتا ایکون چرا اینطوریه» / «کوچیکه نسبت به بقیه»* — the strip's own row, two
    glyphs a third smaller than their neighbours. MEASURED on both hosting terminals:

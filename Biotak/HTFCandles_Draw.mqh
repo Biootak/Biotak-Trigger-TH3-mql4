@@ -159,6 +159,16 @@ void HTFCullUntrack(const string name)
 
 void HTFCullForget(const string name) { HTFCullUntrack(name); }
 
+// P-HTF-KEY — ONE composer for an HTF box's mask. The toggle, the F mute and
+// the panel cover share one visibility bit each; every writer (toggle walk,
+// cull cover/release) asks here, so no path can resurrect a box another put
+// away (paint and hit-test agree because nothing else writes the mask).
+long HTFBoxMask(const bool covered)
+{
+    if(!g_UI.showHTF || IsIndicatorHidden()) return OBJ_NO_PERIODS;
+    return covered ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
+}
+
 // P-HTF-PROBE (2026-09-30): the cull is the ONE place in this module that can hide
 // an already-drawn box WITHOUT deleting it (`OBJ_TIMEFRAMES = OBJ_NO_PERIODS` on the
 // names a published card rect covers), and a hidden box looks exactly like "the
@@ -227,11 +237,9 @@ void HTFDeleteIndices(const int from, const int to)
 // cache probes per box, a terminal write only for a box that FLIPS state.
 void HTFCardCullRefresh()
 {
-   if(!g_UIPanelOpen || !g_UI.showHTF || g_HTFDrawnCount <= 0 || StringLen(g_HTFPrefix) == 0)
-   {
-      HTFCullRelease();
-      return;
-   }
+   if(StringLen(g_HTFPrefix) == 0 || g_HTFDrawnCount <= 0) { HTFCullRelease(); return; }
+   if(!g_UIPanelOpen) { HTFCullRelease(); return; }   // no cover possible: tracked set is stale
+   if(!g_UI.showHTF) return;   // toggle masks own the boxes; registry stays for ON
    datetime t1A = 0, t2A = 0, t1B = 0, t2B = 0;
    double pHiA = 0.0, pLoA = 0.0, pHiB = 0.0, pLoB = 0.0;
    bool winA = HTFCullRectWindow(g_UIPanelRX, g_UIPanelRY, g_UIPanelRW, g_UIPanelRH,
@@ -266,13 +274,12 @@ void HTFCardCullRefresh()
          bool tracked = HTFCullHas(nm[k]);
          if(cover && !tracked)
          {
-            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, HTFBoxMask(true));
             HTFCullTrack(nm[k]);
          }
          else if(!cover && tracked)
          {
-            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES,
-                             IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS);
+            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, HTFBoxMask(false));
             HTFCullUntrack(nm[k]);
          }
       }
@@ -284,9 +291,8 @@ void HTFCardCullRefresh()
 void HTFCullRelease()
 {
    if(s_htfCulledN <= 0) return;
-   long back = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
    for(int i = 0; i < s_htfCulledN; i++)
-      ObjectSetInteger(0, s_htfCulled[i], OBJPROP_TIMEFRAMES, back);
+      ObjectSetInteger(0, s_htfCulled[i], OBJPROP_TIMEFRAMES, HTFBoxMask(false));
    ArrayResize(s_htfCulled, 0);
    s_htfCulledN = 0;
    HTFProbeCull();   // P-HTF-PROBE: the mask count is back to 0
@@ -845,6 +851,32 @@ void HTFEnsureDrawn()
    // redraw — a full HTF draw usually lands on the same tick as the level
    // pipeline paint, so they coalesce into one. Same pixels, ≤100 ms later.
    ThrottledChartRedraw();
+}
+
+// P-HTF-KEY — the toggle walk: masking, not deleting. OFF hides the family in
+// place (guarded flips only); ON unmasks it — instant both ways, no history
+// re-read, rapid-press safe. First ON with no family builds once, like before.
+void HTFApplyVisibleMasks()
+{
+   if(StringLen(g_HTFPrefix) == 0) return;
+   if(g_UI.showHTF && !HTFAnyBoxesExist()) { RefreshHTFCandles(); return; }
+   for(int i = 0; i < g_HTFDrawnCount; i++)
+   {
+      string id = IntegerToString(i);
+      string nm[5];
+      nm[0] = g_HTFPrefix + id;
+      nm[1] = g_HTFPrefix + id + "_F";
+      nm[2] = g_HTFPrefix + id + "_B";
+      nm[3] = g_HTFPrefix + "WU" + id;
+      nm[4] = g_HTFPrefix + "WL" + id;
+      for(int k = 0; k < 5; k++)
+      {
+         if(ObjectFind(0, nm[k]) < 0) continue;
+         long want = HTFBoxMask(HTFCullHas(nm[k]));
+         if((long)ObjectGetInteger(0, nm[k], OBJPROP_TIMEFRAMES) != want)
+            ObjectSetInteger(0, nm[k], OBJPROP_TIMEFRAMES, want);
+      }
+   }
 }
 
 #endif // HTF_CANDLES_DRAW_MQH

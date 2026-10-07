@@ -297,26 +297,18 @@ THE SURFACE LAWS — every new plate/panel obeys these (P-LOG-10, 2026-10-02):
 5. Pixels disagreeing with a PASSing census mean a draw rule is wrong: probe the
    screen (fresh-named labels, P-LOG-9 style); never re-read the object list.
 
-THE HOLD'S TWO WINDOWS (P-UI-130, 2026-10-02) — a hold is a press AND a stillness:
+THE CLICK TOGGLE (P-UI-130, click-toggle 2026-10-07) — the 500 ms hold is gone;
+a single click selects+opens, a single click deselects+closes, no double-click:
 
-1. **A gesture's flags die with the gesture.** The press cycle's life is the PRESS's
-   (`DSTRIP_PRESS_CYCLE_MS`, 2 s) — never the opener window's cap. MEASURED: one latch
-   on a box the hand then DRAGGED refused FIVE real presses in a row over 4.4 s
-   (`press refused: cycle live`, EURUSD,M1 00:12:57.036 → 00:13:01.481; the next latch
-   only at 00:14:41 after the user gave up) — «هولد بعضی وقتها باز نمیشه» IS that
-   window, and no line of the log named the owner until DIAG-116 printed it.
-2. **A latch the position test has already DROPPED is not a live gesture.**
-   `DrawStripHoldForget()` clears the CLOCK with the object, so the release witness
-   clears the cycle instead of stamping a window on a latch nobody owns (the stale
-   `s_dsHoldMs` is what outlived a release that DID arrive).
-3. **A drawing IN MOTION is never held.** `CHARTEVENT_OBJECT_DRAG` is the terminal's
-   own voice (P-BK-19a's owner witness, TH3Tool_C's band lock): it KILLS a live latch
-   and FORBIDS the next one for its 400 ms heartbeat — renewed by every drag event
-   while the object moves. This is what the shortened press cycle trades its flap
-   protection for: a PRESS is guarded by the press, a GESTURE IN MOTION by the motion.
-   «موقعی که باکس جابجا/ری‌سایز میکنم نوار استریپ بالا میاد» was the press that
-   STARTS a drag arming the latch and the 500 ms clock firing on a drawing the hand
-   was about to move. Gate: P-UI-130.
+1. **A press names, a release toggles.** Decided by strip state, never by
+   selection state. The opener window spends the release's twin (counted: one
+   release = two channels); a new press edge disarms it.
+2. **A drag-release never toggles.** Travel veto (`DSTRIP_CLICK_SLOP`) plus the
+   drag heartbeat below. A modal card owns its clicks.
+3. **A drawing IN MOTION is never toggled.** `CHARTEVENT_OBJECT_DRAG` is the terminal's
+   own voice (P-BK-19a's owner witness, TH3Tool_C's band lock): it clears the press
+   naming and vetoes the toggle for its 400 ms heartbeat — renewed by every drag event
+   while the object moves. Gate: P-UI-130.
 
 TWO ICON TREES (P-UI-131, 2026-10-02) — the compiler and the chart read DIFFERENT
 trees, and only one of them is the source:

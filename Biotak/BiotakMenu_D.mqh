@@ -3,13 +3,18 @@
 #define BIOTAK_MENU_D_MQH
 
 // P-HTF-KEY — ONE owner for the HTF overlay switch: the R hotkey, the ring's
-// HTF light and the card's ENABLED row. State + persisted key; the pixels stay
-// the render's (REFRESH_HTF). Callers own their repaint (ring: refreshFlags,
-// hotkey: discrete repaint, card row: its own flags).
+// HTF light and the card's ENABLED row. State + persisted key + mask walk
+// (instant both ways, no delete/rebuild); first ON builds via the walk.
+// Callers own nothing more (P-PERF-24 paints in the owner).
 void SetHTFVisible(const bool on)
 {
+   uint t0 = GetTickCount();
    g_UI.showHTF = on;
    GlobalVariableSet(GetGVName("HTF_EN"), on ? 1.0 : 0.0);
+   HTFApplyVisibleMasks();
+   RepaintForDiscreteAction();      // P-PERF-24: the press paints NOW
+   Print("[HTF] set on=", (on ? 1 : 0), " drawn=", g_HTFDrawnCount,
+         " ms=", (int)(GetTickCount() - t0));
 }
 
 //+------------------------------------------------------------------+
@@ -340,7 +345,7 @@ int HandleButtonClick(const string clickedObject)
       // switches; this one was missed because `g_UI.showHTF` was not on the
       // gate's displayed-state list (it is now).
       RequestUISync();   // P-UI-40b: the HTF card's SHOW row displays this flag
-      refreshFlags = REFRESH_HTF;
+      refreshFlags = REFRESH_NONE;   // P-HTF-KEY: the owner masked + painted; a refresh flag would rebuild the family it just kept
    }
    else if(feat == CIR_BASEKNOT)
    {

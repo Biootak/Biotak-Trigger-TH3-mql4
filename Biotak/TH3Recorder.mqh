@@ -211,8 +211,8 @@ void TH3_ExportCurrentSample(const string patternName = "")
       baseUnit = (rung > 0) ? rung
                  : ((legCD > 0 ? legCD : MathAbs(pat.B.price - pat.A.price)) * (GetCurrentTH3Frequency() / 100.0));
    //--- the ladder, projected from D along the movement direction
-   bool dirDown = (pat.D.price > pat.C.price);
-   double lv[7];
+    bool dirDown = (pat.D.price > pat.C.price);
+    double lv[7]; ArrayInitialize(lv, 0.0);   // the loop below fills all 7; the init only stills warning 60
    for(int li = 0; li < 7; li++)
       lv[li] = dirDown ? pat.D.price - ((li + 1) * baseUnit)
                        : pat.D.price + ((li + 1) * baseUnit);
@@ -265,7 +265,7 @@ void TH3_ExportCurrentSample(const string patternName = "")
    //--- the name itself is the key a tool parses.
    string folderName = TH3SampleFolderName(capAt, Symbol(), tfName, idx, patName);
    string sampleDir  = TH3_DATASET_SAMPLES + "/" + folderName;
-   bool sampleOk     = dirsOk && (FolderCreate(sampleDir) >= 0);
+    bool sampleOk     = dirsOk && FolderCreate(sampleDir);   // bool answer: no dead `>= 0` test (warning 65)
    string shotPath, logPath, rowPath;
    if(sampleOk)
    {
@@ -319,7 +319,7 @@ void TH3_ExportCurrentSample(const string patternName = "")
    row[26] = DoubleToString(lv[6], Digits);
    row[27] = hasTurn ? DoubleToString(turnPx, Digits) : "";
    row[28] = hasTurn ? DoubleToString(errPips, 1) : "";
-   row[29] = hasTurn ? IntegerToString(hp.deepestRungs) : "0";
+    row[29] = hasTurn ? IntegerToString((int)hp.deepestRungs) : "0";   // explicit truncation, as before (warning 43)
    row[30] = sampleOk ? folderName : "";
    row[31] = logName;
    row[32] = shotName;

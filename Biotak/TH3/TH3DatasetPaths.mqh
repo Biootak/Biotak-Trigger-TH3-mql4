@@ -52,11 +52,15 @@
 //+------------------------------------------------------------------+
 void TH3RecorderEnsureDirs(bool &dirsOk)
 {
+   // FolderCreate answers bool (true = created OR already there): a `< 0`
+   // test on it is dead (warning 65) and `!FolderCreate` would call an
+   // existing tree a failure and reroute everything flat. Unconditional —
+   // exactly what the old code always did.
+   FolderCreate(TH3_DATASET_SAMPLES);
+   FolderCreate(TH3_DATASET_SHOTS);
+   FolderCreate(TH3_DATASET_LOGS);
+   FolderCreate(TH3_DATASET_DIR);
    dirsOk = true;
-   if(FolderCreate(TH3_DATASET_SAMPLES) < 0) dirsOk = false;
-   if(dirsOk && FolderCreate(TH3_DATASET_SHOTS) < 0) dirsOk = false;
-   if(dirsOk && FolderCreate(TH3_DATASET_LOGS)  < 0) dirsOk = false;
-   if(dirsOk && FolderCreate(TH3_DATASET_DIR) < 0) dirsOk = false;
 }
 
 //+------------------------------------------------------------------+
@@ -86,7 +90,7 @@ string TH3SafeName(const string raw, const int maxLen)
       ushort c = StringGetCharacter(s, i);
       bool keep = ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
                    (c >= 'a' && c <= 'z') || c == '_' || c == '-');
-      if(!keep) s = StringSetCharacter(s, i, '_');
+      if(!keep) StringSetCharacter(s, i, '_');   // in place: it returns success, not the string
    }
    if(maxLen > 0 && StringLen(s) > maxLen) s = StringSubstr(s, 0, maxLen);
    return s;
@@ -153,11 +157,11 @@ string TH3SampleFolder(const datetime when, const string sym, const string tf,
 //+------------------------------------------------------------------+
 string TH3CsvField(const string raw)
 {
-   string s = raw;                    // StringReplace takes its input by reference
-   s = StringReplace(s, ",", " ");
-   s = StringReplace(s, "\n", " ");
-   s = StringReplace(s, "\r", " ");
-   s = StringReplace(s, "\"", "'");
+   string s = raw;                    // StringReplace edits in place and returns the COUNT, not the string
+   StringReplace(s, ",", " ");
+   StringReplace(s, "\n", " ");
+   StringReplace(s, "\r", " ");
+   StringReplace(s, "\"", "'");
    return s;
 }
 

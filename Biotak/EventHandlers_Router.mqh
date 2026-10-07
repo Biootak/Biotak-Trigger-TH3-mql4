@@ -9,7 +9,7 @@
 void OnChartEventHandler(const int id, const long &lparam, const double &dparam, const string &sparam)
 {
     // P-UI-114 (2026-09-23): right-click era deleted — terminal menu untouched,
-    // strip opens on a LEFT hold (DrawStripHoldStep/PollAt in DrawStrip.mqh).
+    // strip toggles on a single click of a drawing (DrawStripClickToggle in DrawStrip.mqh).
 
     // Base / Knot tool FIRST: while armed it owns every mouse gesture (no
     // chart-click leak into custom-price/TH3/panels), and committed boxes own
@@ -324,13 +324,10 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
         //
         if(IsHotkeyPressed(lparam, sparam, inpHTFKey))
         {
-            // P-HTF-KEY: the owner holds state + key; the pixels stay the
-            // render's (REFRESH_HTF is returned by the ring press, here the
-            // discrete repaint paints now, like the L hotkey).
+            // P-HTF-KEY: the owner holds state + key + mask walk + paint.
             SetHTFVisible(!g_UI.showHTF);
             RequestUISync();   // P-UI-40b: the HTF card's row 0 displays this flag
             LOG_I(LOG_CAT_LINES, "HTF " + (g_UI.showHTF ? "VISIBLE" : "HIDDEN"));
-            RepaintForDiscreteAction();
             return;
         }
 #endif

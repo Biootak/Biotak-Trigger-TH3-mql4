@@ -2362,21 +2362,24 @@ function main() {
     }
   }
 
-  // ── P-UI-130 (2026-10-02) — THE HOLD'S TWO WINDOWS: ITS PRESS, AND ITS DRAG ──
+  // ── P-UI-130 (2026-10-02, click-toggle 2026-10-07) — A PRESS NAMES, A RELEASE
+  // TOGGLES, A DRAG NEVER TOGGLES ──
   // Measured on the live chart (EURUSD,M1 00:12:57-00:13:01): ONE latch on a box the
   // hand then DRAGGED armed the press cycle for its whole 10 s life — the OPENER
   // window's own budget — and refused FIVE real presses in a row, only one of them
   // 4.4 s later (00:13:01.481) after the box had moved out from under the finger.
-  // That is «هولد بعضی وقتها باز نمیشه», and it is one constant: a press that can
-  // still become a hold fires at 500 ms, so the cycle's job (refusing the flap that
-  // re-times that clock, P-UI-115c) needs milliseconds, not ten seconds.
+  // That is «هولد بعضی وقتها باز نمیشه», and it is one constant: the cycle lives
+  // on DSTRIP_PRESS_CYCLE_MS (2 s), never on the opener window's cap (P-UI-130).
   // The other half is the user's own sentence — «موقعی که باکس جابجا میکنم یا
-  // ری‌ساز میکنم نوار استریپ بالا میاد و مزاحم میشه»: the press that STARTS a drag
-  // is a press on the drawing, so it armed the latch like a hold; CHARTEVENT_OBJECT_DRAG
+  // ری‌ساز میکنم نوار استریپ بالا میاد و مزاحم میشه»: CHARTEVENT_OBJECT_DRAG
   // is the terminal saying it is moving that drawing (P-BK-19a's owner witness,
-  // TH3Tool_C's band lock), so it kills the latch and forbids the next one for the
-  // 400 ms heartbeat its own events renew. Gate: the constant, the clear, the four
-  // readers and the wiring.
+  // TH3Tool_C's band lock), so it stamps a heartbeat that kills the press naming
+  // and vetoes the toggle for the 400 ms its own events renew. The 500 ms hold
+  // timer is gone (single-click toggles now): what must never come back with it
+  // is a release opening anything — a release only ever toggles, and only with
+  // no travel and no live drag heartbeat behind it.
+  // Gate: the constant, the veto in both fire paths, the wiring, and the
+  // absence of the timer.
   {
     const broken = [];
     const base = codeOf(stripBase || []);
@@ -2387,32 +2390,30 @@ function main() {
     const cyc = cycAt >= 0 ? codeOf((stripBase || []).slice(cycAt, cycAt + 3)) : '';
     if (!/DSTRIP_PRESS_CYCLE_MS/.test(cyc) || /DSTRIP_OPEN_PRESS_MAX_MS/.test(cyc))
       broken.push('DrawStripPressCycleSet() must live on DSTRIP_PRESS_CYCLE_MS, never on the opener window\u2019s cap (P-UI-130)');
-    const forget = bodyOf(stripRouter || [], 'void DrawStripHoldForget(');
-    if (!forget || !/s_dsHoldMs = 0/.test(forget.text))
-      broken.push('DrawStripHoldForget() must clear the CLOCK with the object — a dropped latch read as live kept the cycle armed past its own release (P-UI-130)');
     const wit = bodyOf(stripRouter || [], 'void DrawStripDragWitness(');
     if (!wit) broken.push('DrawStripDragWitness() is gone from Biotak/DrawStrip_Router.mqh (P-UI-130)');
-    else if (!/s_dsHoldMs = 0/.test(wit.text) || !/DrawStripPressCycleClear\(\)/.test(wit.text))
-      broken.push('the drag witness must KILL the latch and CLEAR the cycle — a press that moved a drawing is never a hold (P-UI-130)');
+    else if (!/DrawStripPressCycleClear\(\)/.test(wit.text))
+      broken.push('the drag witness must CLEAR the cycle — a press that moved a drawing is never a tap (P-UI-130)');
     if (!/bool DrawStripDragLive\(\)/.test(rx))
       broken.push('DrawStripDragLive() is gone from Biotak/DrawStrip_Router.mqh (P-UI-130)');
-    for (const sig of ['void DrawStripHoldLatch(', 'void DrawStripHoldStep(', 'void DrawStripHoldPollAt(']) {
+    for (const sig of ['void DrawStripHoldLatch(', 'bool DrawStripClickToggle(']) {
       const body = bodyOf(stripRouter || [], sig);
       if (!body || !/DrawStripDragLive\(\)/.test(body.text))
         broken.push(`${sig.slice(5, -1)} lost its native-drag gate — the strip can come up mid-drag again (P-UI-130)`);
+    }
+    for (const gone of ['DSTRIP_HOLD_MS', 'void DrawStripHoldStep(', 'void DrawStripHoldPollAt(', 'void DrawStripHoldFire(']) {
+      if (rx.includes(gone))
+        broken.push(`${gone} is back in Biotak/DrawStrip_Router.mqh — the hold timer is gone, a release only toggles (P-UI-130)`);
     }
     const onEvent = bodyOf(stripRouter || [], 'bool DrawStripOnEvent(');
     if (!onEvent || !/DrawStripDragWitness\(sparam\)/.test(onEvent.text))
       broken.push('DrawStripOnEvent() lost the OBJECT_DRAG witness call — nothing stamps the drag heartbeat (P-UI-130)');
     else if (onEvent.text.indexOf('DrawStripDragWitness(sparam)') > onEvent.text.indexOf('if(id == CHARTEVENT_MOUSE_MOVE)'))
       broken.push('the drag witness must stand ABOVE the mouse-move block, where every event passes (P-DRAW-64\u2019s own placement rule) (P-UI-130)');
-    const poll = bodyOf(stripRouter || [], 'void DrawStripHoldPollAt(');
-    if (!poll || !/DSTRIP_HOLD_TTL\)[^\n]*DrawStripHoldClear\(\);[^\n]*DrawStripPressCycleClear\(\)/.test(poll.text))
-      broken.push('the poll\u2019s TTL backstop must end the cycle with the hold — one fact, one clear (P-UI-130)');
     if (broken.length) {
       failures.push('P-UI-130: ' + broken.join('; ') + ' (Biotak/DrawStrip_Base.mqh + DrawStrip_Router.mqh)');
     } else {
-      console.log('[PASS] P-UI-130 the hold\u2019s cycle dies with its press and a native drag kills + forbids it (press cycle 2 s, drag heartbeat gates the latch/step/poll)');
+      console.log('[PASS] P-UI-130 click toggles and a native drag vetoes it (press cycle 2 s, drag heartbeat gates latch + toggle, no hold timer)');
     }
   }
 

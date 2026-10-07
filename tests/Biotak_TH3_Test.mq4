@@ -305,24 +305,24 @@ int OnStart()
     // (major extensions shrunk to a third) cannot pass this without saying so.
     {
         const double pip = 0.0001;
-        const double pD  = 1.1000;
+        const double ladD = 1.1000;   // own name: the outer ABCD point D (pD) must stay visible
         const double step = 20.0 * pip;
         const bool dirDown = false;               // D is a low -> the run is up
-        double up[7];
+        double up[7]; ArrayInitialize(up, 0.0);
         for(int i = 0; i < 7; i++)
-            up[i] = pD + ((i + 1) * step);
+            up[i] = ladD + ((i + 1) * step);
         CheckDouble("ladder: up rungs 1..7 are D + n*step",
-                    up[6] - (pD + 7.0 * step), 0.0);
+                    up[6] - (ladD + 7.0 * step), 0.0);
         Check("ladder: rungs are evenly spaced one step apart",
               MathAbs((up[1] - up[0]) - step) < 1e-12 &&
               MathAbs((up[3] - up[2]) - step) < 1e-12 &&
               MathAbs((up[6] - up[5]) - step) < 1e-12);
         // the mirror: a bearish D runs the same seven rungs downward
-        double dn[7];
+        double dn[7]; ArrayInitialize(dn, 0.0);
         for(int i = 0; i < 7; i++)
-            dn[i] = pD - ((i + 1) * step);
+            dn[i] = ladD - ((i + 1) * step);
         CheckDouble("ladder: down rungs 1..7 are D - n*step",
-                    dn[6] - (pD - 7.0 * step), 0.0);
+                    dn[6] - (ladD - 7.0 * step), 0.0);
         // the step the ladder wears IS the unified equation's answer — the
         // probe override (P-TH3-STEP-16) may never reach the geometry, so a
         // leg whose ratio lands in the major-extension tier keeps its FULL
