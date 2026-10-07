@@ -343,8 +343,11 @@ void CreateMenu()
    // P-PERF-55: the family is (re)born here - the apply guard must pass next time.
    s_circChromeGen++;
    if(!g_UI.menuVisible) return;
-   for(int i = 0; i < RING_COUNT; i++)
-      CircCreateItem(i);
+   // The ring stays hidden while the Tools submenu is open (CreateToolsMenu
+   // deleted it, CircItemAt refuses it) — rebuilding it here painted both.
+   if(!g_ToolsOpen)
+      for(int i = 0; i < RING_COUNT; i++)
+         CircCreateItem(i);
    if(g_ToolsOpen)
       for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
 }

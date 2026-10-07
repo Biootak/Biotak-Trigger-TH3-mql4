@@ -59,6 +59,8 @@ const OBJ = path.join(BIOTAK, 'EventHandlers_Objects.mqh');
 const PIPE_A = path.join(BIOTAK, 'LevelPipe_A.mqh');
 const PIPE_B = path.join(BIOTAK, 'LevelPipe_B.mqh');
 const MENU_D = path.join(BIOTAK, 'BiotakMenu_D.mqh');
+const MENU_C = path.join(BIOTAK, 'BiotakMenu_C.mqh');
+const MENU_A = path.join(BIOTAK, 'BiotakMenu_A.mqh');
 // P-DRAW-93/94/95/96 (2026-09-30): the strip panel's own four. The layout ORDER
 // (`DrawStrip_GearA`), the gear hit test's seat (`DrawStrip_Base`), the recent tap's
 // one writer and the foot Reset's owed mid re-ink (`DrawStrip_Tap`).
@@ -2025,7 +2027,39 @@ function main() {
     if (broken.length) {
       failures.push('P-DRAW-125: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearB.mqh + Biotak/DrawStrip_Base.mqh)');
     } else {
-      console.log('[PASS] P-DRAW-125 the diagnostic repaints only an open panel, and every writer reclaims a name of another type (Biotak/DrawStrip_GearB.mqh + DrawStrip_Base.mqh)');
+      console.log('[PASS] P-DRAW-125 the diagnostic repaints only an open panel, and every writer reclaims a name of another type (Biotak/DrawStrip_GearB.mqh + Biotak/DrawStrip_Base.mqh)');
+    }
+  }
+
+  // -- 42. P-MENU-01: no ring behind an open Tools submenu ----------------------
+  //
+  // Opening the Tools submenu deletes every main-ring item (CreateToolsMenu) and
+  // the hit test refuses the ring while it is open (CircItemAt) — but two
+  // rebuild paths recreated the ring on top of the submenu: CreateMenu and the
+  // ToggleMenuVisibility show branch painted ring AND submenu together (the
+  // 2026-10-07 screenshot). Both must gate their ring loop on !g_ToolsOpen;
+  // the one legal resurrection stays DeleteToolsMenu's restore branch.
+  {
+    const broken = [];
+    const menuCLines = linesOf(MENU_C) || [];
+    const menuALines = linesOf(MENU_A) || [];
+    const menuDLines = linesOf(MENU_D) || [];
+    const create = bodyOf(menuCLines, 'void CreateMenu(');
+    if (!create) broken.push('CreateMenu is gone from ' + path.basename(MENU_C));
+    else if (!create.text.includes('CircCreateItem(i)') || !/!\s*g_ToolsOpen/.test(create.text))
+      broken.push('CreateMenu must build the ring ONLY when the Tools submenu is shut (P-MENU-01): an open submenu plus a rebuilt ring painted both');
+    const toggle = bodyOf(menuDLines, 'void ToggleMenuVisibility(');
+    if (!toggle) broken.push('ToggleMenuVisibility is gone from ' + path.basename(MENU_D));
+    else if (!toggle.text.includes('CircCreateItem(i)') || !/!\s*g_ToolsOpen/.test(toggle.text))
+      broken.push('ToggleMenuVisibility show must build the ring ONLY when the Tools submenu is shut (P-MENU-01)');
+    const hit = bodyOf(menuALines, 'int CircItemAt(');
+    if (!hit) broken.push('CircItemAt is gone from ' + path.basename(MENU_A));
+    else if (!hit.text.includes('g_ToolsOpen') || !hit.text.includes('return -1'))
+      broken.push('CircItemAt must keep refusing the ring while the Tools submenu is open (P-MENU-01): paint and hit-test must agree');
+    if (broken.length) {
+      failures.push('P-MENU-01: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh + Biotak/BiotakMenu_D.mqh + Biotak/BiotakMenu_A.mqh)');
+    } else {
+      console.log('[PASS] P-MENU-01 no ring behind an open Tools submenu (Biotak/BiotakMenu_C.mqh + Biotak/BiotakMenu_D.mqh + Biotak/BiotakMenu_A.mqh)');
     }
   }
 

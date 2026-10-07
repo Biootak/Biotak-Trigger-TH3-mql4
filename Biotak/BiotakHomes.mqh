@@ -111,6 +111,16 @@ void HomeChartSize(int &cw, int &ch)
    ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
    if(cw <= 0) cw = 1920;  if(ch <= 0) ch = 1080;   // the fallback every reader keeps
 }
+//--- the WRITER's size: no fallback. A fraction divided by a window that is not
+//--- the one the pixels came from is the poisoned store (measured CHIP_FX=1.1075
+//--- above) — and at teardown the terminal can report 0 for a window it is
+//--- destroying. A writer that cannot measure the box stores nothing.
+bool HomeChartSizeRaw(int &cw, int &ch)
+{
+   cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   return (cw > 0 && ch > 0);
+}
 bool GVHomeFracKnown(const string id)
 {
    return GlobalVariableCheck(GVHomeFracName(id,false)) && GlobalVariableCheck(GVHomeFracName(id,true));
@@ -122,8 +132,6 @@ double HomeFracOf(const int v, const int span)
    if(span <= 0) return 0.5;
    return (double)v / (double)span;
 }
-double HomeFracX(const int x) { int cw = 0, ch = 0; HomeChartSize(cw, ch); return HomeFracOf(x, cw); }
-double HomeFracY(const int y) { int cw = 0, ch = 0; HomeChartSize(cw, ch); return HomeFracOf(y, ch); }
 //--- ONE clamp, used by the reader below and by `GVHomeSaveFrac`. A live drag is already
 //--- inside the window, so the write side only bites the one case that can be outside it:
 //--- `SaveUIStates` re-deriving a pair whose window has since shrunk. A store holding a
@@ -165,8 +173,11 @@ bool GVHomeFracRead(const string id, int &x, int &y)
 void GVHomeSaveFrac(const string id, const int x, const int y)
 {
    if(x < 0 || y < 0) return;
-   GlobalVariableSet(GVHomeFracName(id,false), HomeFracClamp(HomeFracX(x)));
-   GlobalVariableSet(GVHomeFracName(id,true),  HomeFracClamp(HomeFracY(y)));
+   int rcw = 0, rch = 0;
+   if(!HomeChartSizeRaw(rcw, rch)) return;   // unknown denominator: store nothing,
+                                            // and keep the pixel keys (no data loss)
+   GlobalVariableSet(GVHomeFracName(id,false), HomeFracClamp(HomeFracOf(x, rcw)));
+   GlobalVariableSet(GVHomeFracName(id,true), HomeFracClamp(HomeFracOf(y, rch)));
    //--- the pixel keys are dead on arrival: a reader that adopts a window-sized
    //--- number as a place is the bug this block exists to end.
    GlobalVariableDel(GVHomeName(id,false)); GlobalVariableDel(GVHomeName(id,true));

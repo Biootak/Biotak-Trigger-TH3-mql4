@@ -53,6 +53,37 @@ SModeConfig BuildModeConfig(const string objectPrefix, const string modeName)
 }
 
 //+------------------------------------------------------------------+
+//| ASYMMETRIC REACH: split the budget toward the live price. Centred /  |
+//| invalid live reads an even split; total never exceeds the budget.    |
+//+------------------------------------------------------------------+
+void LevelSplitCounts(const int Nin, int &above, int &below)
+{
+    int N = Nin;
+    if(N > MAX_SAFE_LEVELS) N = MAX_SAFE_LEVELS;
+    if(N < 1) N = 1;
+    int total = MathMin(N * 2, LVL_TOTAL_BUDGET);
+    above = N; below = N;
+    if(total < N * 2) { above = total / 2; below = total - above; }
+    double center = GetMidpointPrice(g_thStartPointType);
+    double step = NaturalFirstStep() * StepOverrideFactor();
+    double bid = MarketInfo(GetCachedSymbol(), MODE_BID);
+    double ask = MarketInfo(GetCachedSymbol(), MODE_ASK);
+    double live = (bid > 0.0 && ask > 0.0) ? (bid + ask) * 0.5 : bid;
+    if(!(MathIsValidNumber(center) && center > 0.0 && MathIsValidNumber(step) && step > 0.0 && live > 0.0)) return;
+    int offLvls = (int)MathCeil(MathAbs(live - center) / step);
+    if(offLvls <= LVL_SPLIT_MARGIN) return;
+    int minCtx = MathMax(1, total / LVL_SPLIT_CTXDIV);
+    if(total < minCtx * 2) return;
+    int toward = MathMin(N + offLvls, total - minCtx);
+    if(live >= center) { above = toward; below = total - toward; }
+    else               { below = toward; above = total - toward; }
+    if(above < 1) above = 1;
+    if(below < 1) below = 1;
+    static int s_wA = -1, s_wB = -1;
+    if(above != s_wA || below != s_wB) { s_wA = above; s_wB = below; Print("[LVL] split N=", N, " above=", above, " below=", below); }
+}
+
+//+------------------------------------------------------------------+
 //| P-PERF-18: the identity of a built geometry.                     |
 //|                                                                  |
 //| Every input the three pure stages read is folded in, so a change  |

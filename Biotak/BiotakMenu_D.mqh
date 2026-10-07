@@ -2,6 +2,16 @@
 #ifndef BIOTAK_MENU_D_MQH
 #define BIOTAK_MENU_D_MQH
 
+// P-HTF-KEY — ONE owner for the HTF overlay switch: the R hotkey, the ring's
+// HTF light and the card's ENABLED row. State + persisted key; the pixels stay
+// the render's (REFRESH_HTF). Callers own their repaint (ring: refreshFlags,
+// hotkey: discrete repaint, card row: its own flags).
+void SetHTFVisible(const bool on)
+{
+   g_UI.showHTF = on;
+   GlobalVariableSet(GetGVName("HTF_EN"), on ? 1.0 : 0.0);
+}
+
 //+------------------------------------------------------------------+
 //| Handle Button Click Events                                       |
 //+------------------------------------------------------------------+
@@ -318,9 +328,9 @@ int HandleButtonClick(const string clickedObject)
       // TH3 TOOL card's row 0.
       refreshFlags = CircArmTH3Draw();
    }
-   else if(feat == CIR_HTF)
-   {
-      g_UI.showHTF = !g_UI.showHTF;
+    else if(feat == CIR_HTF)
+    {
+       SetHTFVisible(!g_UI.showHTF);
       // P-UI-40b (2026-09-13): the HTF card's row 0 displays THIS flag, and this
       // file is included BEFORE the panel's - so the ring cannot repaint that card
       // itself. The ring repairs its own light/status on the next tick
@@ -390,7 +400,9 @@ void ToggleMenuVisibility()
    UIReleaseClaimReset();
    if(willShow)
    {
-      for(int i = 0; i < RING_COUNT; i++) CircCreateItem(i);
+      // Same rule as CreateMenu: no ring behind an open Tools submenu.
+      if(!g_ToolsOpen)
+         for(int i = 0; i < RING_COUNT; i++) CircCreateItem(i);
       if(g_ToolsOpen)
          for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
    }

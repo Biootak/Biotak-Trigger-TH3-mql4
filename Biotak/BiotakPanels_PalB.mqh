@@ -1233,7 +1233,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
                        // own settings inline below + MAX LEVELS last.
     {
        if(row==0) { kind=2; label="STEP MODE"; opts="TH|SS-LS|Combo|Factor"; minV=0; maxV=3; }
-       else if(row==PnlStepMaxLevelsRow()) { label="MAX LEVELS"; minV=1; maxV=500; }
+       else if(row==PnlStepMaxLevelsRow()) { label="MAX LEVELS"; minV=1; maxV=MAX_SAFE_LEVELS; }
        else PnlStepSectionRowDef(row-1, kind, label, minV, maxV, step, unit, opts);
     }
    else if(item==11)  // STRUCTURE — sub-card opened from the Zones & Levels card
@@ -1287,7 +1287,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    else if(item==14)  // P-UI-131 — GENERAL SETTINGS (cross-card). Every bound here is
    {                  // the SAME number the loader clamps with, so a saved value is
                       // one this control can reproduce.
-      if(row==0)       { label="MAX LEVELS"; minV=1; maxV=500; }
+      if(row==0)       { label="MAX LEVELS"; minV=1; maxV=MAX_SAFE_LEVELS; }
       else if(row==1)  { label="LABEL SIZE"; minV=4; maxV=24; unit="pt"; }
       else if(row==2)  { label="ROW GAP"; minV=0; maxV=TREX_CARD_MAX_ROW_GAP; unit="px"; }
       else if(row==3)  { kind=2; label="FONT"; opts=LabelFontOpts(); minV=0; maxV=LABEL_FONT_N-1; }

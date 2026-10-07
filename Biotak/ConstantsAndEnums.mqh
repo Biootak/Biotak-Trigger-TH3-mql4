@@ -169,6 +169,12 @@
 
 // Performance & Safety Constants
 #define MAX_SAFE_LEVELS 2000          // Maximum safe number of levels per side
+//--- ASYMMETRIC REACH: the 2N budget is split toward the live price instead of
+//--- N/N, so a runaway price is covered at the SAME object count. Inside
+//--- LVL_SPLIT_MARGIN levels of the centre the split is exactly N/N.
+#define LVL_SPLIT_MARGIN 8              // deadband in levels around the centre
+#define LVL_SPLIT_CTXDIV 8              // the far side keeps at least max(1, total/8)
+#define LVL_TOTAL_BUDGET 400            // above+below never exceeds this: repaint is priced per object
 //--- P-LEVEL-BOUND-03 (2026-09-29) — THE HISTORICAL BOUND DRAWS A FEW RUNGS PAST
 //--- ITSELF. User report on the Monthly chart: «توی ماهانه چرا یکم بیشتر رسم نمیشه
 //--- چندتای بیرون از های و لو تاریخی باشه بهتره دید داریم» — the ladder stopped dead on

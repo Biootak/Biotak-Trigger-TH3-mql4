@@ -407,6 +407,9 @@ input string inpStepModeKey = "E";
 input string inpTH3ToolKey = "V";
 input bool   inpTH3AutoPivots = true;   // P-TH3-P6: auto-find the course's six-condition pivots (PDF pp. 6-7) on the chart TF and one fractal step up; P-TH3-DISC: marks are OFF (Renderer_C), this now owns the draw-session click snap only
 #endif
+#ifndef BUILD_LITE
+input string inpHTFKey = "R";            // Toggle HTF Candles overlay on/off (left-hand cluster)
+#endif
 input string inpATRLabelsKey = "A";        // Toggle ATR labels on/off
 input string inpTHLabelsKey = "S";          // Toggle TH labels on/off
 input string inpShowStatusKey = "W";        // Show current mode status

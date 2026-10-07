@@ -149,6 +149,7 @@ string PnlCardKey(const int item)
 {
    if(item==0) return "T";
    if(item==7) return "L";
+   if(item==6) return "R";
    return "";
 }
 

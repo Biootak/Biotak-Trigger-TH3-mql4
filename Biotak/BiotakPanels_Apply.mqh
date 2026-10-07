@@ -760,7 +760,7 @@ int PnlApplySet(const int item,const int row,const double v)
          // something — a press that changed nothing stays silent.
          {
             double htfBefore = PnlCurrent(6, row);
-         if(row==0)       { g_UI.showHTF=(v>0.5); flags=REFRESH_HTF; }
+          if(row==0)       { SetHTFVisible(v>0.5); flags=REFRESH_HTF; }
          else if(row==1)
          {
             // P-UI-92: option 0/1 are the DYNAMIC rungs (they follow the
@@ -819,7 +819,7 @@ int PnlApplySet(const int item,const int row,const double v)
          }
          else if(row==PnlStepMaxLevelsRow())
          {
-            g_maxLevels=ClampInt((int)MathRound(v),1,500);
+            g_maxLevels=ClampInt((int)MathRound(v),1,MAX_SAFE_LEVELS);
             g_redrawTHLevelsNeeded=true; flags=REFRESH_RECALC;
          }
          else

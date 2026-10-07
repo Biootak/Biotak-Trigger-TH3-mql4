@@ -476,16 +476,11 @@ void ClearAllLevels(const string objectPrefix, bool clearZones = true)
     InvalidateObjectCountCache();
 }
 
-//| Get adaptive level counts (matching MT5: simple single inpMaxLevels) |
+//| Get adaptive level counts: the split leans toward the live price.     |
 //+------------------------------------------------------------------+
 void GetAdaptiveLevelCounts(int &maxAbove, int &maxBelow)
 {
-    maxAbove = inpMaxLevels;
-    maxBelow = inpMaxLevels;
-    if(maxAbove > MAX_SAFE_LEVELS) maxAbove = MAX_SAFE_LEVELS;
-    if(maxBelow > MAX_SAFE_LEVELS) maxBelow = MAX_SAFE_LEVELS;
-    if(maxAbove < 1) maxAbove = 1;
-    if(maxBelow < 1) maxBelow = 1;
+    LevelSplitCounts(inpMaxLevels, maxAbove, maxBelow);
 }
 //| Calculate common values used across all step modes              |
 //| TH-based only (ATR basis removed, matching MT5)                |
@@ -525,12 +520,14 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
     string currentTF = GetFractalTimeframeForCurrent();
     double currentScalingFactor = GetCurrentScalingFactor();
 
+    // The split leans with live, so the cache keys on the computed split.
+    int chkA = 0, chkB = 0; GetAdaptiveLevelCounts(chkA, chkB);
     if(dailyClosePrice == s_lastDailyClose &&
        currentTF == s_lastTF &&
        g_thStartPointType == s_lastStartPointType &&
        (g_thStartPointType != TH_START_POINT_CUSTOM_PRICE || g_customTHStartPrice == s_lastCustomPrice) &&
-       inpMaxLevels == s_lastMaxAbove &&
-       inpMaxLevels == s_lastMaxBelow &&
+       chkA == s_lastMaxAbove &&
+       chkB == s_lastMaxBelow &&
        MathAbs(currentScalingFactor - s_lastScalingFactor) < EPSILON_GENERAL &&
        MathAbs(g_highestHigh - s_lastHighestHigh) < EPSILON_PRICE &&
        MathAbs(g_lowestLow - s_lastLowestLow) < EPSILON_PRICE &&
@@ -613,8 +610,8 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
     s_lastTF = currentTF;
     s_lastStartPointType = g_thStartPointType;
     s_lastCustomPrice = g_customTHStartPrice;
-    s_lastMaxAbove = inpMaxLevels;
-    s_lastMaxBelow = inpMaxLevels;
+    s_lastMaxAbove = data.maxLevelsAbove;
+    s_lastMaxBelow = data.maxLevelsBelow;
     s_lastScalingFactor = currentScalingFactor;
     s_lastHighestHigh = g_highestHigh;
     s_lastLowestLow = g_lowestLow;
@@ -1359,7 +1356,9 @@ void RedrawAllObjects(bool force_redraw=false)
         }
         // P-PERF-25: the mask term is kept OUT of the core so a line-visibility
         // flip is provably a visibility-only change.
-        frameCore = levelSig + levelLookSig + "|" +
+        // Split in frameCore (never levelSig: a drift must re-render, not wipe).
+        int spA = 0, spB = 0; GetAdaptiveLevelCounts(spA, spB);
+        frameCore = levelSig + levelLookSig + "|" + IntegerToString(spA) + "," + IntegerToString(spB) + "|" +
                           IntegerToString(g_drawGeneration) + "|" +
                           DoubleToString(g_dailyClosePriceForTH, s_cachedDigits) + "|" +
                           // P-UI-52: THE ACTIVE START POINT IS GEOMETRY, NOT JUST ITS TYPE.

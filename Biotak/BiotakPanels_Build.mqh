@@ -572,8 +572,10 @@ int PnlKeyMasterSet(const int item)
    // toggles:
    //   card 0  (T) -> 3 SHOW       == the T hotkey, g_triggerLevelsEnabled
    //   card 7  (L) -> 1 SHOW       == the L hotkey, g_linesVisible
+   //   card 6  (R) -> 0 ENABLED    == the R hotkey, g_UI.showHTF
    if(item == 0) return 3;
    if(item == 7) return 1;
+   if(item == 6) return 0;
    return -1;   // a .key with no master stays a hint: nothing to press
 }
 

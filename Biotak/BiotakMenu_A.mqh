@@ -953,10 +953,14 @@ void SaveUIStates(const bool flushNow = false)
    //--- still per-key (P-PERF-44), it just compares fractions now. ONE size read for
    //--- the two axes and the chip's pair below — the compare and the write must agree,
    //--- and a second read could in principle land on a different box.
-   int hcw = 0, hch = 0; HomeChartSize(hcw, hch);
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 3, haveOrbHome ? HomeFracOf(ohx, hcw) : -1.0))
+   //--- A teardown can report 0 for a window it is destroying: with no measured box
+   //--- the home slots are skipped whole (no compare, no save), so a fallback
+   //--- denominator can never overwrite the hand's fraction.
+   int hcw = 0, hch = 0;
+   const bool haveBox = HomeChartSizeRaw(hcw, hch);
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 3, haveOrbHome ? HomeFracOf(ohx, hcw) : -1.0))
       { if(haveOrbHome) GVHomeSaveFrac("ORB", ohx, ohy); uiChanged++; }
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 4, haveOrbHome ? HomeFracOf(ohy, hch) : -1.0))
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 4, haveOrbHome ? HomeFracOf(ohy, hch) : -1.0))
       { if(haveOrbHome) GVHomeSaveFrac("ORB", ohx, ohy); uiChanged++; }
    if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 5, g_UI.showHTF ? 1.0 : 0.0))
       { GlobalVariableSet(GetGVName("HTF_EN"), g_UI.showHTF ? 1.0 : 0.0); uiChanged++; }
@@ -969,9 +973,9 @@ void SaveUIStates(const bool flushNow = false)
    // the orb, still open for the strip). Same guarded slots, fractions now.
    int hx = 0, hy = 0;
    const bool haveHome = DrawStripHomeGet(hx, hy);
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 6, haveHome ? HomeFracOf(hx, hcw) : -1.0))
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 6, haveHome ? HomeFracOf(hx, hcw) : -1.0))
       { if(haveHome) GVHomeSaveFrac("STRIP", hx, hy); uiChanged++; }
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 7, haveHome ? HomeFracOf(hy, hch) : -1.0))
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 7, haveHome ? HomeFracOf(hy, hch) : -1.0))
       { if(haveHome) GVHomeSaveFrac("STRIP", hx, hy); uiChanged++; }
    // P-DRAW-89: the plate's transparency writer is gone with the setting; slot 8
    // of the shadow set is free again.
@@ -979,9 +983,9 @@ void SaveUIStates(const bool flushNow = false)
    // they really moved (the drag's release and the card's switch are the whole set).
    int thx = 0, thy = 0;
    const bool haveTipHome = CircTipHomeGet(thx, thy);
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 9, haveTipHome ? HomeFracOf(thx, hcw) : -1.0))
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 9, haveTipHome ? HomeFracOf(thx, hcw) : -1.0))
       { if(haveTipHome) GVHomeSaveFrac("CHIP", thx, thy); uiChanged++; }
-   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 10, haveTipHome ? HomeFracOf(thy, hch) : -1.0))
+   if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 10, haveTipHome ? HomeFracOf(thy, hch) : -1.0))
       { if(haveTipHome) GVHomeSaveFrac("CHIP", thx, thy); uiChanged++; }
    if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 11, g_UI.tipPin ? 1.0 : 0.0))
       { GlobalVariableSet(GetGVName("TIPPIN"), g_UI.tipPin ? 1.0 : 0.0); uiChanged++; }

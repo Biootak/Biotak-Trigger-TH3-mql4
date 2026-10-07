@@ -1170,7 +1170,7 @@ void RuntimeSettingsLoadOverrides()
 {
    if(StringLen(g_settingsGVPrefix) == 0) return;
    string p = g_settingsGVPrefix + "OV_";
-   if(GlobalVariableCheck(p + "ML"))  g_maxLevels = ClampSettingInt((int)GlobalVariableGet(p + "ML"), 1, 500);
+   if(GlobalVariableCheck(p + "ML"))  g_maxLevels = ClampSettingInt((int)GlobalVariableGet(p + "ML"), 1, MAX_SAFE_LEVELS);
    if(GlobalVariableCheck(p + "TW"))  g_triggerWidth = ClampSettingInt((int)GlobalVariableGet(p + "TW"), 1, 5);
    if(GlobalVariableCheck(p + "TS"))  g_triggerStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "TS"), 0, 4);
    if(GlobalVariableCheck(p + "TC"))  g_triggerColor = (color)(int)GlobalVariableGet(p + "TC");

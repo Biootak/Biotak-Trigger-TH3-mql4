@@ -318,6 +318,23 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
             return;
         }
 
+#ifndef BUILD_LITE
+        //
+        // R key   Toggle HTF Candles overlay (left-hand cluster)
+        //
+        if(IsHotkeyPressed(lparam, sparam, inpHTFKey))
+        {
+            // P-HTF-KEY: the owner holds state + key; the pixels stay the
+            // render's (REFRESH_HTF is returned by the ring press, here the
+            // discrete repaint paints now, like the L hotkey).
+            SetHTFVisible(!g_UI.showHTF);
+            RequestUISync();   // P-UI-40b: the HTF card's row 0 displays this flag
+            LOG_I(LOG_CAT_LINES, "HTF " + (g_UI.showHTF ? "VISIBLE" : "HIDDEN"));
+            RepaintForDiscreteAction();
+            return;
+        }
+#endif
+
         //  
         // A key   Toggle ATR Labels
         //  
