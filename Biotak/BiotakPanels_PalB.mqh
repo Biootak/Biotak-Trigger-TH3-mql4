@@ -1116,41 +1116,32 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       // card's TOP address (see P-TH-01's TH PERCENT above).
       else             { kind=1; label="LEG ATR"; }
    }
-   else if(item==3)   // TH LABELS
-   {
-      if(row==0)       { kind=1; label="TH LABELS"; }
-      else if(row==1)  { kind=1; label="FRACTAL THs"; }
-      else if(row==2)  { kind=1; label="STANDARD THs"; }
-      else if(row==3)  { kind=1; label="TH TARGETS"; }
-      else if(row==4)  { label="MARGIN BOTTOM"; minV=10; maxV=200; }
-      // P-TH-01: the research knob, as the block's trailing fallthrough. That
-      // placement is not cosmetic: `tools/panel-mt4-sim.py` derives the
-      // fallthrough's row number as "how many row branches preceded it"
-      // (`parse_set_def`), so it MUST be the LAST branch in the block or the
-      // simulator reads MARGIN BOTTOM's row as this one and silently drops a
-      // row from the proof. MARGIN BOTTOM therefore gets an EXPLICIT branch of
-      // its own above — which the wiring audit also needs, because it treats
-      // the trailing statement as answering only the card's TOP address.
-      //
-      // (Never write a COMPLETE row-branch test in this comment: `row_arms` in
-      // panel-wiring-audit.py scans the raw text for the whole `if(`+`row`+`==`
-      // shape, so a branch spelled here becomes a phantom arm with no caption
-      // and the audit reports a blank control. This cost one red run already.)
-      //
-      // min 0 = OFF (the professor's table); `TH_PERCENT_OVERRIDE_MAX` is the
-      // slider's own end stop AND the load clamp — one number, so the slider
-      // can always reproduce what it saved. step 1 (not 0.01) is deliberate:
-      // `PnlValueFromX` maps ~230 px of travel onto the range, so a 0.01 grid
-      // would print values no drag can ever land on and 75 — the user's own
-      // example — would be unreachable.
-      else             { label="TH PERCENT"; minV=0; maxV=TH_PERCENT_OVERRIDE_MAX; step=1; unit="%"; }
-   }   // P-UI-126: HOVER CHIP — ONE row, one question. The chip's PLACE is the hand's own
-   // (a drag), so it is not a setting; what IS a setting is when the chip is up:
-   // hover-only («با موس», the shipped default) or always («همیشه فعال باشه»).
-   else if(item==4)
-   {
-      if(row==0)       { kind=1; label="ALWAYS SHOWN"; }
-   }
+    else if(item==3)   // TH LABELS
+    {
+       if(row==0)       { kind=1; label="TH LABELS"; }
+       else if(row==1)  { kind=1; label="FRACTAL THs"; }
+       else if(row==2)  { kind=1; label="STANDARD THs"; }
+       else if(row==3)  { kind=1; label="TH TARGETS"; }
+       else if(row==4)  { label="MARGIN BOTTOM"; minV=10; maxV=200; }
+       // P-TH-01: the research knob, EXPLICIT at address five (it used to be the
+       // trailing fallthrough). min 0 = OFF (the professor's table);
+       // `TH_PERCENT_OVERRIDE_MAX` is the slider's own end stop AND the load
+       // clamp — one number, so the slider can always reproduce what it saved.
+       // step 1 (not 0.01) is deliberate: `PnlValueFromX` maps ~230 px of travel
+       // onto the range, so a 0.01 grid would print values no drag can ever land
+       // on and 75 — the user's own example — would be unreachable.
+       else if(row==5)  { label="TH PERCENT"; minV=0; maxV=TH_PERCENT_OVERRIDE_MAX; step=1; unit="%"; }
+       // P-TH-VOLNORM: the price-only scale switch, as the block's trailing
+       // fallthrough (the simulator counts preceding branches, so the appended
+       // setting takes the trailing slot and every address above keeps its
+       // number). Switch defaults (kind=1, 0/100): ON/OFF. OFF = classic TH.
+       //
+       // (Never write a COMPLETE row-branch test in this comment: `row_arms` in
+       // panel-wiring-audit.py scans the raw text for the whole `if(`+`row`+`==`
+       // shape, so a branch spelled here becomes a phantom arm with no caption
+       // and the audit reports a blank control. This cost one red run already.)
+       else             { kind=1; label="VOL NORM"; }
+    }
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     // P-TH3-PB-MAN (2026-09-21): BASE PIPS is the trailing fallthrough, like
     // P-TH-01's TH PERCENT on card 3 — `tools/panel-mt4-sim.py` derives the
@@ -1218,17 +1209,22 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    }
    // item==7 retired Tools/Misc rows are gone (were duplicates of CustomPrice,
    // Zones & the STRUCTURE card) — the slot now hosts the LINES card above.
-   else if(item==8)   // CUSTOM PRICE PIN — the pin only (pip-distance labels
-                      // live on the ATR LABELS card)
-   {
-      if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
-      else if(row==1)  { kind=4; label="COLOR"; }
-      // BKMAGNET2-OFF (2026-09-15): rows kept for the address space only —
-      // no display row renders them (P-UI-47's convention); the engine that
-      // read them is commented in `BaseKnotTool.mqh`.
-      else if(row==2)  { kind=1; label="MAGNET"; }
-      else             { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
-   }
+    else if(item==8)   // CUSTOM PRICE PIN — the pin only (pip-distance labels
+                       // live on the ATR LABELS card)
+    {
+       if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
+       else if(row==1)  { kind=4; label="COLOR"; }
+       // BKMAGNET2-OFF (2026-09-15): rows kept for the address space only —
+       // no display row renders them (P-UI-47's convention); the engine that
+       // read them is commented in `BaseKnotTool.mqh`.
+       else if(row==2)  { kind=1; label="MAGNET"; }
+       else if(row==3)  { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
+       // P-UI-154: the START POINT as the block's trailing fallthrough (four
+       // preceding branches, so the simulator reads row four). kind=2 options
+       // run in enum order (ConstantsAndEnums.mqh:370): the press lands 0..4
+       // and the apply writes the same number back — no index table to drift.
+       else             { kind=2; label="START POINT"; opts="Midpoint|High|Low|Custom|Prev Close"; minV=0; maxV=4; }
+    }
     else if(item==9)   // STEP MODE — mode segments + the SELECTED mode's
                        // own settings inline below + MAX LEVELS last.
     {

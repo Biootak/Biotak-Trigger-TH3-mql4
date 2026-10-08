@@ -547,6 +547,21 @@ static uint s_dsOpenerTailUntil = 0;     // the twin-event tail (after the relea
 static int  s_dsOpenerN = 0;             // twin events left to spend (one release = two channels)
 void DrawStripOpenerArm()    { s_dsOpenerUntil = GetTickCount() + DSTRIP_OPEN_PRESS_MAX_MS; s_dsOpenerTailUntil = 0; s_dsOpenerN = 2; }
 void DrawStripOpenerDisarm() { s_dsOpenerUntil = 0; s_dsOpenerTailUntil = 0; s_dsOpenerN = 0; }
+//--- P-UI-155 (2026-10-08) — THE FALLBACK'S OWN TWIN FLAG. A chart-first open
+//--- (hollow interior) may be followed by the same release's object channel;
+//--- that twin must be spent, never closed. Time-bounded (twin channels arrive
+//--- milliseconds apart), never token-counted: a stale token budget ate genuine
+//--- clicks for ten seconds. Armed only by the fallback open below; the spent
+//--- check clears it, and the deadline clears itself.
+static bool s_dsTwinOwed = false;
+static uint s_dsTwinUntil = 0;
+void DrawStripTwinArm() { s_dsTwinOwed = true; s_dsTwinUntil = GetTickCount() + DSTRIP_OPEN_TAIL_MS; }
+bool DrawStripTwinSpent()
+{
+   if(!s_dsTwinOwed || !TickDeadlinePending(s_dsTwinUntil)) { s_dsTwinOwed = false; return false; }
+   s_dsTwinOwed = false;
+   return true;
+}
 bool DrawStripOpenerClickSpent()
 {
    if(!TickDeadlinePending(s_dsOpenerUntil) && !TickDeadlinePending(s_dsOpenerTailUntil)) { s_dsOpenerN = 0; return false; }
@@ -592,9 +607,13 @@ static int      s_dsPressX = 0, s_dsPressY = 0;
 static string   s_dsPressObj = "";       // P-UI-113i: the drawing named by that press
 static int      s_dsTravel = 0;          // furthest the LEFT hand got while held
 static bool     s_dsPressTracked = false;   // P-UI-113d: a press EDGE was seen for this
-                                            // cycle, so `s_dsTravel` is this gesture's
-                                            // (a zero-move press leaves no edge: the
-                                            // release then reads as a click, never a drag)
+                                             // cycle, so `s_dsTravel` is this gesture's
+                                             // (a zero-move press leaves no edge: the
+                                             // release then reads as a click, never a drag)
+static uint     s_dsPressEdgeMs = 0;         // P-UI-155: when that edge ran (0 = none yet).
+                                             // A travel veto without a fresh edge is a
+                                             // PREVIOUS gesture's travel against a still
+                                             // press — it may only refuse, never allow.
 //--- P-UI-113j (2026-09-25) — THE PRESS NAMES ITS OWN DRAWING. `s_dsPressObj`
 //--- above exists only when the MOVE STREAM carried the press edge: a still press
 //--- carries none (P-LM-13). The release then fell back to a live hit test, and

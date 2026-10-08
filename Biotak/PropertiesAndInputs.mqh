@@ -73,6 +73,9 @@ input bool inpShowMidpointLine = true;
 input bool inpShowTimeframeInLabels = true;
 input bool inpShowFractalTHs = false;
 input bool inpShowStandardTHs = false;
+// P-TH-VOLNORM (2026-10-08): TH label columns scaled by the price's own
+// relative range (THVolNorm.mqh). OFF = the professor's table, byte-identical.
+input bool inpTHVolNorm = false;                // Scale TH labels to the pair's own volatility (OFF = classic TH)
 input bool inpShowATRLabels = false;              // Show ATR Labels
 input bool inpShowATRTargets = true;             // Show ATR Targets
 input bool inpShowATRTradeLabels = true;         // Master switch for ATR trade labels

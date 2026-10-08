@@ -2,6 +2,12 @@
 #ifndef LABELS_B_MQH
 #define LABELS_B_MQH
 
+// P-TH-VOLNORM — this file's own dependency, declared here (the same shape
+// as Labels_A.mqh's TradePlanFormulas include: the TH columns read the
+// price-only scale from THVolNorm.mqh, and the guard makes it a no-op where
+// the module is already in).
+#include "THVolNorm.mqh"
+
 void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     string uniquePrefix = objectPrefix + "LBL_";
     string allTimeframes[] = {"M1", "M5", "M15", "H1", "H4", "D1", "W1", "MN1"};
@@ -361,6 +367,11 @@ void DisplayFractalTHs(const string objectPrefix, const double dailyPriceForTH, 
         // could not tell whether the knob did anything.
         double percentage = FractalPercentScaled(i);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
+        // P-TH-VOLNORM-COL: this column's OWN rung TF scales it (the block no
+        // longer reads the chart TF, so a switch cannot move these numbers).
+        // OFF = 1.0: the line below is skipped, byte-identical to before.
+        double vCol = THVolNormColumnV(inpTHVolNorm, THVolNormTFForFractalRung(i), percentage);
+        if(vCol != 1.0) thPoints *= vCol;
         // P-UI-52: pips through the ONE owner (`GetCachedPipSize()`), never the
         // hard-coded `point * 10`: on a 2-digit index/crypto symbol a pip is one
         // point, so the old constant printed every figure in this column 10x
@@ -457,6 +468,10 @@ void DisplayStandardTHs(const string objectPrefix, const double dailyPriceForTH,
         string timeframeName = STANDARD_TIMEFRAMES[i];
         double percentage = CalculateStandardPercentage(STANDARD_MINUTES[i]);
         double thPoints = CalculateTHPoints(dailyPriceForTH, digits, percentage);
+        // P-TH-VOLNORM-COL: same rule as the fractal block (this family's own
+        // minutes ARE standard TFs, so no rung map is needed here).
+        double vColStd = THVolNormColumnV(inpTHVolNorm, STANDARD_MINUTES[i], percentage);
+        if(vColStd != 1.0) thPoints *= vColStd;
         // P-UI-52: same owner as the fractal column above - see the note there.
         double pipNow = GetCachedPipSize();
         double thPips10 = (pipNow > 0) ? thPoints * GetCachedPoint() / pipNow : thPoints / 10.0;

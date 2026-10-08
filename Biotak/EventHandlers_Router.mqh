@@ -557,6 +557,7 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
 #endif
             g_customPriceKeyboardOverride = false;
             g_thStartPointType = inpTHStartPointType;
+            g_startPointOverride = -1;   // panel START POINT row: Q restores the dialog seed
             g_customTHStartPrice = inpCustomTHStartPrice;
             string chartIdStr = GetCachedChartIdStr();
             string symbolName = GetCachedSymbol();

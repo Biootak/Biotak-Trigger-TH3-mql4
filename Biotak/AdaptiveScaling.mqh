@@ -66,8 +66,9 @@ double GetEMAAlpha(const int period) {
 //| @return true if scaling factor was updated                       |
 //+------------------------------------------------------------------+
 bool UpdateATRScalingFactor(const double basePrice, const int digits) {
-    // FIXED mode: no scaling needed
-    if(inpAdaptiveMode == ADAPTIVE_FIXED) {
+    // FIXED mode: no scaling needed. VOL NORM on: the price-only V replaces
+    // the ATR jump — both target ATR, so both would double-count it.
+    if(inpAdaptiveMode == ADAPTIVE_FIXED || inpTHVolNorm) {
         g_smoothedScalingFactor = 1.0;
         g_atrScalingFactor = 1.0;
         return false;
@@ -243,8 +244,8 @@ int GetFractalShift() {
 //| @return Adapted step size matching real market volatility        |
 //+------------------------------------------------------------------+
 double GetAdaptedStepSize(const double originalStepSize) {
-    // FIXED mode: return unchanged
-    if(inpAdaptiveMode == ADAPTIVE_FIXED) {
+    // FIXED mode: return unchanged. VOL NORM on: same bypass (see above).
+    if(inpAdaptiveMode == ADAPTIVE_FIXED || inpTHVolNorm) {
         return originalStepSize;
     }
     

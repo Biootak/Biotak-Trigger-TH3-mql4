@@ -270,6 +270,12 @@ bool DrawStripClickToggle(const string nm, const bool wasDrag)
     {
         if(nm == s_dsObj)
         {
+            // P-UI-155: twin of this gesture's own fallback open (the chart
+            // channel arrived first on a hollow interior) — spent here, never
+            // closed. Time-bounded (twin channels arrive milliseconds apart),
+            // never token-counted: a stale token budget ate genuine clicks for
+            // ten seconds. A genuine second click after the deadline closes.
+            if(DrawStripTwinSpent()) return DrawStripClickFamily();
             if((bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED))
                 ObjectSetInteger(0, nm, OBJPROP_SELECTED, false);   // single-click deselect
             Print("[drawstrip] click closed on \"", nm, "\"");
@@ -420,6 +426,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
           if(!DrawStripPressCycleLive())
           {
              s_dsPressX = tmx; s_dsPressY = tmy; s_dsTravel = 0;
+             s_dsPressEdgeMs = GetTickCount();   // P-UI-155: freshness stamp for the travel veto
              s_dsPressTracked = true;   // P-UI-113d: this cycle's travel is a fact we own
              //--- P-DRAW-102: A NEW PRESS IS NEVER THE PREVIOUS GESTURE'S RELEASE.
              //--- `s_dsGearPressSpent` is armed by the panel's coordinate channel
@@ -590,8 +597,46 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        DrawStripHoldSelectionDisarm();  // P-UI-113g: a later click owns selection now
        s_dsLeftPrev = false;   // (every release emits one: the boxes' own law, BkHoldOnBoxUp)
     }
+    // P-UI-155 (2026-10-08) — A CLICK INSIDE A HOLLOW DRAWING NAMES NOTHING AT
+    // RELEASE. MT4 hit-tests only the drawn border, so a release inside a
+    // rectangle arrives as a chart click while the PRESS already named it (our
+    // hit test owns the interior, P-DRAW-08g) — measured: five named presses
+    // on one rectangle, zero opens, while the trendline beside it opened every
+    // time. Decide by EITHER channel: the release pixel re-resolves live, else
+    // the press cycle answers (fresh, 2 s TTL). The travel veto reads only a
+    // FRESH edge: a zero-move press runs no edge, so stale travel from a
+    // previous drag must not refuse it (it may still refuse nothing else —
+    // a drag always moves, so its edge is fresh by definition). Every other
+    // veto still applies inside DrawStripClickToggle. The open arms the twin
+    // flag, so whichever channel arrives second is spent instead of closing.
+    if(id == CHARTEVENT_CLICK && !s_dsOpen)
+    {
+       DrawHitCacheClear();   // the release pixel deserves a live answer, not the press memo
+       int rx = (int)lparam, ry = (int)dparam;
+       string relHit = DrawObjectAtCached(rx, ry);
+       string cyc = (DrawStripPressCycleLive() ? s_dsPressCycleObj : "");
+       string nm = (relHit != "" ? relHit : cyc);
+       bool edgeFresh = (s_dsPressEdgeMs != 0 && (int)(GetTickCount() - s_dsPressEdgeMs) < DSTRIP_PRESS_CYCLE_MS);
+       bool travelOk = !edgeFresh || !(s_dsPressTracked && s_dsTravel > DSTRIP_CLICK_SLOP);
+       // DIAG-156 (temporary): name the refusing stage for hollow-interior clicks.
+       if(nm != "") Print("[drawstrip] interior-click relHit=\"", relHit, "\" cyc=\"", cyc,
+             "\" edgeFresh=", (edgeFresh ? 1 : 0), " travel=", s_dsTravel,
+             " draglive=", (DrawStripDragLive() ? 1 : 0),
+             " modal=", (g_PnlOpen >= 0 ? 1 : 0));
+       if(nm != "" && ObjectFind(0, nm) >= 0 && DrawKindOf(nm) != DK_NONE && travelOk)
+       {
+          if(DrawStripClickToggle(nm, false)) { DrawStripTwinArm(); return true; }
+       }
+       return false;
+    }
     if(id == CHARTEVENT_CLICK && !s_dsOpen) return false;
-   if(!s_dsOpen) return false;
+    // P-DEL-NOWb: a delete is not a click — the shut-strip gate above exists so
+    // a release cannot open anything, but it also buried the OBJECT_DELETE
+    // branch below: with the strip shut (the normal state) no native delete
+    // ever cascaded, and every fill fell through to the 2 s orphan sweep
+    // («fill دیرتر پاک میشه», measured: ORPHAN drops for Rectangle _FL while
+    // no CASCADE line preceded them). Deletes skip the gate, clicks keep it.
+    if(!s_dsOpen && id != CHARTEVENT_OBJECT_DELETE) return false;
      //--- P-DRAW-84: the gear panel's press already acted (7337). This release is
      //--- the SAME gesture on the other channel: it must be spent here, or the
      //--- "clicked away" branch below reads a press on the panel as a press on the
@@ -760,11 +805,17 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       BoxMidDrop(sparam);
       if(FillChildDrop(sparam)) casc = true;
       BoxMarkDrop(sparam);   // P-UI-134: a deleted box's KEY goes with it
+      // P-DEL-NOWb: one flush for every HAND delete, family or not. Our own
+      // bulk paths arm the suppression window (their repaint is owned
+      // elsewhere); an unsuppressed delete is the user's hand, and under a
+      // thousand objects the terminal's own repaint lags a tick behind.
+      bool userDel = !g_suppressDeleteEvents && !TickDeadlinePending(g_suppressDeleteEventsUntilMs);
       if(casc) DrawStripDiagEmit("[drawstrip] CASCADE obj=\"" + sparam + "\"");
+      if(!casc && userDel) DrawStripDiagEmit("[drawstrip] DELFLUSH obj=\"" + sparam + "\"");
       //--- P-DEL-NOW: a native delete drops the family in THIS event, so it owns
       //--- this frame too — without it the strays leave the object list at once
       //--- but their pixels wait for the next tick/pass («وابستگی دیر حذف میشه»).
-      if(casc) ChartRedraw();
+      if(casc || userDel) ChartRedraw();
       return false;
    }
    // P-DRAW-41 (2026-09-25) — THIS CHANNEL USED TO FOLLOW. P-DRAW-08c/08e/09d made

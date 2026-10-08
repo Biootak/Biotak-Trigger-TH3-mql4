@@ -168,6 +168,7 @@ double PnlDefValSet(const int item,const int row)
               if(row==3) return (FactoryDefault(FF_TH_TARGETS)>0.5)?1.0:0.0;
               if(row==4) return 40;                    // default margin bottom
               if(row==5) return FactoryDefault(FF_TH_PERCENT);   // P-TH-01 — 0 = professor's table
+              if(row==6) return 0.0;                    // P-TH-VOLNORM — OFF = classic TH
               return 40;                               // default margin bottom
        // VIEWLOCK-OFF: case 4: return 0.0;   // view lock off by default
        // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
@@ -207,11 +208,12 @@ double PnlDefValSet(const int item,const int row)
               if(row==4) return FactoryDefault(FF_LINE_TRANSPARENCY);
               return 3;   // row 5 = COLOR row → palette sentinel
       case 8: if(row==0) return FactoryDefault(FF_CUSTOM_WIDTH);
-              // P-UI-101: row 2 is the LOCK now (the magnet's retired row). Its
-              // factory default is "unlocked" — a fresh placement is free.
-              if(row==2) return 0.0;
-              if(row==3) return FactoryDefault(FF_MAGNET_SENS);
-              return 3;   // COLOR row → palette sentinel
+               // P-UI-101: row 2 is the LOCK now (the magnet's retired row). Its
+               // factory default is "unlocked" — a fresh placement is free.
+               if(row==2) return 0.0;
+               if(row==3) return FactoryDefault(FF_MAGNET_SENS);
+               if(row==4) return (int)inpTHStartPointType;   // P-UI-154: factory = the dialog seed
+               return 3;   // COLOR row → palette sentinel
       case 9: if(row==0) return (int)FactoryDefault(FF_STEP_CALC_MODE);
               if(row==PnlStepMaxLevelsRow()) return FactoryDefault(FF_MAX_LEVELS);
               return PnlStepSectionDefVal(row-1);
@@ -385,6 +387,7 @@ double PnlCurrentSet(const int item,const int row)
               // statement as answering only the card's TOP address (setting 5).
               if(row==4) return g_thLabelsMarginBottom;
               if(row==5) return g_thPercentOverride;   // P-TH-01 (0 = OFF)
+              if(row==6) return g_thVolNorm?1.0:0.0;   // P-TH-VOLNORM (not a visibility family: no mute term)
               return g_thLabelsMarginBottom;
        case 4: if(row==0) return g_UI.tipPin?1.0:0.0;   // P-UI-126: ALWAYS SHOWN
                return 0.0;
@@ -413,8 +416,9 @@ double PnlCurrentSet(const int item,const int row)
               if(row==4) return g_lineTransparency;
               return 0;   // row 5 = COLOR row (palette only)
       case 8: if(row==0) return g_customPriceLevelWidth;
-              if(row==2) return g_customPriceLocked ? 1.0 : 0.0;   // P-UI-101
-              return g_magnetSensitivityPips;
+               if(row==2) return g_customPriceLocked ? 1.0 : 0.0;   // P-UI-101
+               if(row==4) return (int)g_thStartPointType;   // P-UI-154: live type (override/placement/dialog)
+               return g_magnetSensitivityPips;
       case 9: if(row==0) return (int)g_stepCalculationMode;
               if(row==PnlStepMaxLevelsRow()) return g_maxLevels;
               return PnlStepSectionCurrent(row-1);
@@ -727,6 +731,23 @@ int PnlApplySet(const int item,const int row,const double v)
                g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
             }
          }
+         // P-TH-VOLNORM: the price-only scale switch. Writes ONE flag; the
+         // label pass re-resolves V through THVolNormLabelV, so OFF restores
+         // the classic numbers with no other state to unwind. Guarded by
+         // `!=` like the knob above: a no-op press costs nothing.
+         else if(row==6)
+         {
+            bool nvOn = (v>0.5);
+            if(nvOn != g_thVolNorm)
+            {
+               g_thVolNorm = nvOn;
+               if(nvOn) g_fractalShift = 0;   // the jump stands down: rung back to base (OFF resumes via updates)
+               else UpdateATRScalingFactor(g_dailyClosePriceForTH, GetCachedDigits());   // snap the jump back in THIS press, not a frame later
+               InvalidateTimeframeDependentCaches();   // the rung resolution moved under the pct cache
+               RuntimeSettingsSaveOverridesThrottled();   // OV_TVN
+               g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
+            }
+         }
          else             { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
          break;
        case 4:   // P-UI-126 — HOVER CHIP: the mode, and nothing else. The chip is a
@@ -799,11 +820,42 @@ int PnlApplySet(const int item,const int row,const double v)
          break;
       case 8:   // CUSTOM PRICE PIN — the pin only
          if(row==0)       { g_customPriceLevelWidth=ClampInt((int)MathRound(v),1,5); flags=REFRESH_BUFFERS; }
-         // P-UI-101: row 2 is the LOCK — the one control the hold-on-line gesture
-         // exists for. It goes through the ONE owner, which is also where the
-         // lock is ENFORCED (a locked line never arms) and persisted.
-         else if(row==2)  { CustomPriceLineOwnLock(v > 0.5); flags=REFRESH_BUFFERS; }
-         else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
+          // P-UI-101: row 2 is the LOCK — the one control the hold-on-line gesture
+          // exists for. It goes through the ONE owner, which is also where the
+          // lock is ENFORCED (a locked line never arms) and persisted.
+          else if(row==2)  { CustomPriceLineOwnLock(v > 0.5); flags=REFRESH_BUFFERS; }
+          // P-UI-154: START POINT. A bare write would die on the next frame:
+          // the per-frame resolver re-derives the type from placement/seed
+          // (EventHandlers_Calc.mqh:1205), so the row takes any placement down
+          // first (like Q) and records an override the resolver honors. No
+          // mirror/FF_/OV_: session-live like its ten sibling writers, and the
+          // dialog seed stays the durable value. Custom arms click-to-place
+          // (the PIN button's shape); the other four switch the anchor.
+          else if(row==4)
+          {
+             ENUM_TH_START_POINT_TYPE nvSp = (ENUM_TH_START_POINT_TYPE)ClampInt((int)MathRound(v), 0, 4);
+             if((int)nvSp != (int)g_thStartPointType || nvSp == TH_START_POINT_CUSTOM_PRICE)
+             {
+                if(nvSp == TH_START_POINT_CUSTOM_PRICE)
+                {
+                   g_startPointOverride = -1;
+                   g_waitingForCustomPriceClick = true;
+                   g_customPriceKeyboardOverride = true;
+                   ObjectDelete(0, g_customPriceHorizontalLineName);
+                   g_customPriceLineCreated = false;
+                }
+                else
+                {
+                   CustomPriceForgetPlacement();
+                   g_startPointOverride = (int)nvSp;
+                   g_thStartPointType = nvSp;
+                }
+                RequestUISync();
+                g_forceClearOnNextDraw = true; g_redrawTHLevelsNeeded = true;
+                g_labelsRelayoutNeeded = true; flags = REFRESH_ALL;
+             }
+          }
+          else             { g_magnetSensitivityPips=ClampInt((int)MathRound(v),0,100); RuntimeSettingsSaveOverridesThrottled(); }
          break;
       case 9:   // STEP MODE — mode segments + the SELECTED mode's own
                 // settings inline below + MAX LEVELS last. Section rows

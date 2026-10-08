@@ -276,7 +276,7 @@ void BaseKnotEngPump()
       // is read against (BaseKnotAbilityGet at the same anchor).
       // P-BK-92: THE RUNG'S OWN TH CARRIES THE MOVEMENT ABILITY (P-BK-75's ATR
       // rule below, reversed per user: type + step read TH, plan stays ATR).
-      ab[i] = THAbilityPrice(mins[i], anchors[i]);
+       ab[i] = THAbilityPriceNorm(inpTHVolNorm, mins[i], anchors[i]);
    }
    BaseKnotEngPush(mins, anchors, pips, hunts, tp1, tp2, tp3, n);
    // P-BK-92: P-BK-75's block below now hands TH per TF (reversed per user).
@@ -323,7 +323,7 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
        // TH is below BaseKnotTool (THCalculations, P-BK-92, was ATR), so Lite —
        // which has no RefreshOnBar — hands the same TH points in from its tick pump.
        // P-BK-46: and the same pump hands the knots' EngSL risk in (BaseKnotEngPump).
-       if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotStepPush(THAbilityPrice(Period(), 0)); BaseKnotEngPump(); BaseKnotSyncBadges(); TradePlanLiveTick(); }
+        if(bkNow - s_bkLitePumpMs >= 500) { s_bkLitePumpMs = bkNow; BaseKnotStepPush(THAbilityPriceNorm(inpTHVolNorm, Period(), 0)); BaseKnotEngPump(); BaseKnotSyncBadges(); TradePlanLiveTick(); }
     }
 #endif
 

@@ -257,6 +257,7 @@ void HandsetHandleAt(const string hn, const double price, const string bmp)
 static bool g_customPriceLineCreated = false;
 static double g_customTHStartPrice = 0.0;
 static ENUM_TH_START_POINT_TYPE g_thStartPointType = TH_START_POINT_PREVIOUS_CLOSE;
+static int g_startPointOverride = -1;   // panel START POINT row: -1 = none (dialog+placement rules), else 0..4
 static uint g_lastClickTickCount = 0;
 static bool g_customPriceLineDragging = false;
 // P-UI-45: "this gesture touched the custom price line" (a native drag, or a plain

@@ -519,6 +519,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 
     string currentTF = GetFractalTimeframeForCurrent();
     double currentScalingFactor = GetCurrentScalingFactor();
+    double volV = THVolNormColumnV(inpTHVolNorm, THVolNormTFForFractalRung(FractalRungIndex(GetFractalTimeframeForCurrent())), GetTimeframeTH());   // P-TH-VOLNORM-TICK: live V, 1.0 when OFF
 
     // The split leans with live, so the cache keys on the computed split.
     int chkA = 0, chkB = 0; GetAdaptiveLevelCounts(chkA, chkB);
@@ -526,10 +527,10 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
        currentTF == s_lastTF &&
        g_thStartPointType == s_lastStartPointType &&
        (g_thStartPointType != TH_START_POINT_CUSTOM_PRICE || g_customTHStartPrice == s_lastCustomPrice) &&
-       chkA == s_lastMaxAbove &&
-       chkB == s_lastMaxBelow &&
-       MathAbs(currentScalingFactor - s_lastScalingFactor) < EPSILON_GENERAL &&
-       MathAbs(g_highestHigh - s_lastHighestHigh) < EPSILON_PRICE &&
+        chkA == s_lastMaxAbove &&
+        chkB == s_lastMaxBelow &&
+        MathAbs(currentScalingFactor - s_lastScalingFactor) < EPSILON_GENERAL && !THVolNormLevelChanged(volV) &&
+        MathAbs(g_highestHigh - s_lastHighestHigh) < EPSILON_PRICE &&
        MathAbs(g_lowestLow - s_lastLowestLow) < EPSILON_PRICE &&
        s_lastDailyClose != 0) {
         data = s_cachedData;
@@ -545,7 +546,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 
     // Apply ATR Adaptive Scaling to TH value
     // This preserves the fractal 2x ratio since the same factor scales all levels uniformly
-    data.thValue = GetAdaptedStepSize(data.thValue);
+    data.thValue = GetAdaptedStepSize(data.thValue) * (volV == 1.0 ? 1.0 : volV);   // P-TH-VOLNORM-TICK: OFF = no-op
 
     CalculateFractalValues(data.thValue, data.structureValue, data.patternValue, data.triggerValue);
 
@@ -1202,7 +1203,7 @@ void RedrawAllObjects(bool force_redraw=false)
         bool   srcOverride = false;
         int    srcKind = CustomPriceResolveSource(srcPrice, srcOverride);
         if(srcKind == CPSRC_NONE) {
-            g_thStartPointType = inpTHStartPointType;
+            g_thStartPointType = (g_startPointOverride >= 0 && g_startPointOverride <= 4) ? (ENUM_TH_START_POINT_TYPE)g_startPointOverride : inpTHStartPointType;   // panel START POINT wins; -1 = dialog seed
             g_customTHStartPrice = 0.0;
         } else {
             bool priceMoved = (MathAbs(g_customTHStartPrice - srcPrice) > s_cachedPoint * 0.1);

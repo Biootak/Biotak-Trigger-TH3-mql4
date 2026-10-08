@@ -155,6 +155,7 @@ static int g_countdownGapPx = 6;                                 // [03] inpCoun
 static bool g_showTHLabels = false;                              // [03] inpShowTHLabels
 static bool g_showFractalTHs = false;                            // [03] inpShowFractalTHs
 static bool g_showStandardTHs = false;                           // [03] inpShowStandardTHs
+static bool g_thVolNorm = false;                                 // [03] inpTHVolNorm (P-TH-VOLNORM)
 static bool g_showTHTargets = true;                              // [03] inpShowTHTargets
 // [01] P-TH-01 — the TH percentage for THIS chart's rung (0 = the professor's
 // table). The ladder itself is NOT stored here: `FractalPercentScale` derives the
@@ -315,6 +316,7 @@ enum FactorySetting
     FF_SECTION_GAP,       // inpSectionGap (P-UI-131)
      FF_MAX_LABEL_W,       // inpMaxLabelWidth (P-UI-131)
      FF_USE_LEG_ATR,       // inpUseLegATR (P-LEGATR — appended: FF_ addresses never renumber)
+     FF_TH_VOLNORM,        // inpTHVolNorm (P-TH-VOLNORM — appended: FF_ addresses never renumber)
      FF_COUNT
 };
 static double g_factoryDefaults[FF_COUNT];
@@ -388,6 +390,7 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_SECTION_GAP]         = inpSectionGap;
     g_factoryDefaults[FF_MAX_LABEL_W]         = inpMaxLabelWidth;
     g_factoryDefaults[FF_USE_LEG_ATR]         = inpUseLegATR;   // P-LEGATR (seeded HERE, above the #defines, like every mirror)
+    g_factoryDefaults[FF_TH_VOLNORM]          = inpTHVolNorm;   // P-TH-VOLNORM (OFF = classic TH)
 #ifndef BUILD_LITE
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     g_factoryDefaults[FF_ENABLE_TH3]          = inpEnableTH3Tool;
@@ -479,6 +482,7 @@ void RuntimeSettingsInit()
    g_showATRTradeTPLabels = inpShowATRTradeTPLabels;
    g_atrLabelRowGap = inpATRTradeLabelRowGap;
    g_useLegATR = inpUseLegATR;   // P-LEGATR (seeded HERE, above the #defines — below it this is a no-op self-assign)
+   g_thVolNorm = inpTHVolNorm;   // P-TH-VOLNORM (seeded HERE, above the #defines)
    g_showLiveCountdown = inpShowLiveCountdown;
    g_countdownColor = inpCountdownColor;
    g_countdownFontSize = inpCountdownFontSize;
@@ -695,6 +699,7 @@ string LabelFontName()
 #define inpShowTHLabels g_showTHLabels
 #define inpShowFractalTHs g_showFractalTHs
 #define inpShowStandardTHs g_showStandardTHs
+#define inpTHVolNorm g_thVolNorm   // P-TH-VOLNORM
 #define inpShowTHTargets g_showTHTargets
 #define inpTHLabelsMarginBottom g_thLabelsMarginBottom
 #define inpTHPercentOverride g_thPercentOverride
@@ -1152,6 +1157,7 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "LMW", g_maxLabelWidth);
    RSSetNext(p + "ALG", g_useLegATR ? 1 : 0);   // P-LEGATR (appended LAST: the shadow is positional, older slots never move)
    RSSetNext(p + "TSH", g_triggerLevelsEnabled ? 1 : 0);   // P-UI-142: the T toggle rides the OV_ mirror home (was RAM + per-chart key only)
+   RSSetNext(p + "TVN", g_thVolNorm ? 1 : 0);   // P-TH-VOLNORM (appended LAST: the shadow is positional, older slots never move)
    RSShadowCommit();
 }
 
@@ -1365,6 +1371,7 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "LMW")) g_maxLabelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LMW"), 50, 600);
    if(GlobalVariableCheck(p + "ALG")) g_useLegATR = (GlobalVariableGet(p + "ALG") > 0.5);   // P-LEGATR (absent key = OFF, the shipped look)
    if(GlobalVariableCheck(p + "TSH")) g_triggerLevelsEnabled = (GlobalVariableGet(p + "TSH") > 0.5);   // P-UI-142: the T toggle's durable layer (per-chart key wins at restore)
+   if(GlobalVariableCheck(p + "TVN")) g_thVolNorm = (GlobalVariableGet(p + "TVN") > 0.5);   // P-TH-VOLNORM (absent key = OFF, the shipped look)
    // P-PERF-27b: what was just read is what we would write back, so record it as
    // "already on disk" and stop the teardown from re-writing it.
    RuntimeSettingsPrimeOverrideShadow();

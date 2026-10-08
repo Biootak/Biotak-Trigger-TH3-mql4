@@ -493,25 +493,27 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "CARD COLORS", 1);
       PnlSpecAdd(2, PNL_K_CSET, 14, 5);
    }
-   else if(item == 3)   // TH LABELS (ember) — 6 addresses / 8 display rows
-                        // (P-UI-131: MARGIN BOTTOM renders on the GENERAL card)
-   {
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TH SOURCES", 3);
-      PnlSpecAdd(3, PNL_K_LEGACY, 0, 1, "wave");
-      PnlSpecAdd(3, PNL_K_LEGACY, 1, 1, "steps");
-      PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
-      PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
-      // P-TH-01: TH PERCENT lives here, not in a band of its own, on purpose:
-      // the card is 8 display rows and `PNL_WIDE_MIN_ROWS` is 10, so a ninth
-      // row keeps it NARROW. A tenth would flip the whole card to the
-      // two-column layout — a redesign, not a research knob.
-      // P-UI-131: MARGIN BOTTOM (address 4) moved to the GENERAL card's grid — it
-      // is a label-grid floor, not a TH-source setting — so this band is one row
-      // and the card is EIGHT display rows (a ninth would flip it to two columns).
-      PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
-      PnlSpecAdd(3, PNL_K_LEGACY, 5, 1, "sigma");
-   }
+    else if(item == 3)   // TH LABELS (ember) — 7 addresses / 9 display rows
+                         // (P-UI-131: MARGIN BOTTOM renders on the GENERAL card)
+    {
+       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TH SOURCES", 3);
+       PnlSpecAdd(3, PNL_K_LEGACY, 0, 1, "wave");
+       PnlSpecAdd(3, PNL_K_LEGACY, 1, 1, "steps");
+       PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
+       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
+       PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
+       // P-TH-01: TH PERCENT lives here, not in a band of its own, on purpose:
+       // the card is 9 display rows and `PNL_WIDE_MIN_ROWS` is 10, so the LAYOUT
+       // band's second row keeps it NARROW. A tenth would flip the whole card
+       // to the two-column layout — a redesign, not a research knob.
+       // P-UI-131: MARGIN BOTTOM (address 4) moved to the GENERAL card's grid — it
+       // is a label-grid floor, not a TH-source setting — so this band holds the
+       // knob plus the VOL NORM switch (P-TH-VOLNORM, address 6, APPENDED: no
+       // address moves and the persisted OV_ keys keep their meaning).
+       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 2);
+       PnlSpecAdd(3, PNL_K_LEGACY, 5, 1, "sigma");
+       PnlSpecAdd(3, PNL_K_LEGACY, 6, 1, "wave");
+    }
     // TH3TOOL-ON (2026-09-19): the TH3 card is back. Its 8 settings keep their
     // addresses (g_PnlRows[5] was left dormant at 8), so a persisted OV/GV from
     // before the retirement still loads into the row it was written for.
@@ -588,10 +590,15 @@ void PnlSpecBuild(const int item)
       // the lock — so it is the first row, above the look settings. It has no
       // glyph chip on purpose: the padlock art belongs to the box strip
       // (bk_lock_*.bmp), and a row may carry none (PnlPaintChip returns early).
-      PnlSpecAdd(8, PNL_K_SW, 2, 1, "");
-      PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
-      PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
-      PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
+       PnlSpecAdd(8, PNL_K_SW, 2, 1, "");
+       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "PIN", 2);
+       PnlSpecAdd(8, PNL_K_LEGACY, 0, 1, "weight");
+       PnlSpecAdd(8, PNL_K_LEGACY, 1, 1, "droplet");
+       // P-UI-154: the anchor's START POINT (dialog-only until now) rides here,
+       // address 4 APPENDED so 0..3 keep their numbers and the OV_ keys keep
+       // their meaning. A fifth address, still far below PNL_WIDE_MIN_ROWS.
+       PnlSpecAdd(8, PNL_K_SEC, -1, 0, "", "", "ANCHOR", 1);
+       PnlSpecAdd(8, PNL_K_LEGACY, 4, 1, "wave");
       // BKMAGNET2-OFF (2026-09-15, user decision): the MAGNET band and its two
       // rows are hidden again — the engine is commented, so the rows have no
       // reader by construction (P-UI-47's shape). Setting 3 stays persisted and

@@ -2415,6 +2415,14 @@ function main() {
     } else {
       console.log('[PASS] P-UI-130 click toggles and a native drag vetoes it (press cycle 2 s, drag heartbeat gates latch + toggle, no hold timer)');
     }
+    // P-UI-155 hollow-interior clicks open through either channel, and the
+    // twin channel can no longer close what the first opened.
+    if (!/string nm = \(relHit/.test(codeOf(stripRouter || [])))
+      failures.push('P-UI-155: the chart-click fallback is gone — a release inside a hollow drawing names nothing, so rectangles never open while trendlines do (Biotak/DrawStrip_Router.mqh)');
+    else if (!/DrawStripTwinArm\(\); return true/.test(codeOf(stripRouter || [])))
+      failures.push('P-UI-155: the fallback open arms no twin — whichever channel arrives second closes what the first opened (Biotak/DrawStrip_Router.mqh)');
+    else
+      console.log('[PASS] P-UI-155 hollow-interior clicks open through either channel, and the twin channel cannot close what the first opened');
   }
 
   // ── P-UI-131 (2026-10-02) — THE CHART READS A DIFFERENT ICON TREE THAN THE BUILD ──
@@ -2971,6 +2979,10 @@ function main() {
       broken.push('a native delete strands the fibo family — every dependent dies with its object (P-DRAW-74b)');
     if (!/CASCADE obj=/.test(tbr))
       broken.push('a cascade leaves no number — the delete path witnesses what it dropped (P-DRAW-74b)');
+    if (!/if\(!s_dsOpen && id != CHARTEVENT_OBJECT_DELETE\) return false;/.test(tbr))
+      broken.push('a shut strip eats native deletes — the OBJECT_DELETE branch below the shut-strip gate never runs, so every fill falls to the 2 s orphan sweep (P-DEL-NOWb)');
+    if (!/DELFLUSH obj=/.test(tbr))
+      broken.push('a familyless hand delete leaves no number and no flush — pixels wait a tick under load (P-DEL-NOWb)');
     if (!/FibPenDragArm\(sparam\)/.test(tbr) || !/void FibPenDragFollow/.test(fib))
       broken.push('the chase is unwired — a fibo drag must arm it, the hand stream must run it (P-DRAW-74b)');
     if (!/FibPenDragFollow\(\(int\)lparam, \(int\)dparam\)/.test(tbr))

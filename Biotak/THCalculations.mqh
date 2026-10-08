@@ -137,6 +137,22 @@ double THAbilityPrice(const int tfMin, const datetime anchor)
    return price * pct / 100.0;
 }
 
+//+------------------------------------------------------------------+
+//| P-TH-VOLNORM-TICK: the rung ability above, wearing the SAME live |
+//| V as the label columns (span+pct of its OWN rung). OFF answers   |
+//| the raw ability: the three push sites keep byte-identical input. |
+//+------------------------------------------------------------------+
+double THAbilityPriceNorm(const bool enabled, const int tfMin, const datetime anchor)
+{
+   double ab = THAbilityPrice(tfMin, anchor);
+   if(!enabled || !(ab > 0.0)) return ab;
+   int idx = FractalRungIndex(THRungNameForTFMin(tfMin));
+   if(idx < 0) return ab;
+   double v = THVolNormColumnV(enabled, THVolNormTFForFractalRung(idx), FractalPercentScaled(idx));
+   if(v != 1.0) ab *= v;
+   return ab;
+}
+
 double GetTimeframeTH() {
     return CalculateTimeframeTH(GetFractalTimeframeForCurrent());
 }

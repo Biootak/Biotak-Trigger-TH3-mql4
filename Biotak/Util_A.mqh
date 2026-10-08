@@ -563,6 +563,8 @@ double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
     double thValue = CalculateTH(basePrice, digits, timeframePercentage);
     if(thValue <= 0) return 0.0;
     thValue = GetAdaptedStepSize(thValue);
+    double uvV = THVolNormColumnV(inpTHVolNorm, THVolNormTFForFractalRung(FractalRungIndex(GetBaseFractalTimeframeForCurrent())), GetBaseTimeframeTH());   // P-TH-VOLNORM-TICK: readout wears what the ladder wears
+    if(uvV != 1.0) thValue *= uvV;
 
     switch(mode)
     {
