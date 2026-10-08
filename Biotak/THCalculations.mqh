@@ -103,7 +103,7 @@ double CalculateTHPoints(const double price, const int digits, const double perc
 //| The knot's type and step used to read ATR; they read the rung's   |
 //| own TH points now: (anchor-bar close x rung %) / 100. The rung    |
 //| table mirrors GetBaseFractalTimeframeForCurrent, the % is the     |
-//| knob-aware FractalPercentScaled (knob OFF = professor's table).   |
+//| FractalPercentScaled (the professor's table — the knob is gone). |
 //| Anchor-stable by construction (same bar -> same number).          |
 //| 0 = absence (unknown rung, cold series) - never a guess.          |
 //+------------------------------------------------------------------+
@@ -138,8 +138,8 @@ double THAbilityPrice(const int tfMin, const datetime anchor)
 }
 
 //+------------------------------------------------------------------+
-//| P-TH-VOLNORM-TICK: the rung ability above, wearing the SAME live |
-//| V as the label columns (span+pct of its OWN rung). OFF answers   |
+//| P-TH-VOLNORM-TICK: the rung ability above, wearing the SAME block |
+//| V as the drawn ladder (span+pct of its OWN rung). OFF answers   |
 //| the raw ability: the three push sites keep byte-identical input. |
 //+------------------------------------------------------------------+
 double THAbilityPriceNorm(const bool enabled, const int tfMin, const datetime anchor)
@@ -148,7 +148,7 @@ double THAbilityPriceNorm(const bool enabled, const int tfMin, const datetime an
    if(!enabled || !(ab > 0.0)) return ab;
    int idx = FractalRungIndex(THRungNameForTFMin(tfMin));
    if(idx < 0) return ab;
-   double v = THVolNormColumnV(enabled, THVolNormTFForFractalRung(idx), FractalPercentScaled(idx));
+   double v = THVolNormDrawnV(enabled, THVolNormTFForFractalRung(idx), FractalPercentScaled(idx));
    if(v != 1.0) ab *= v;
    return ab;
 }

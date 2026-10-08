@@ -502,16 +502,7 @@ void PnlSpecBuild(const int item)
        PnlSpecAdd(3, PNL_K_LEGACY, 2, 1, "wave");
        PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "TARGETS", 1);
        PnlSpecAdd(3, PNL_K_LEGACY, 3, 1, "target");
-       // P-TH-01: TH PERCENT lives here, not in a band of its own, on purpose:
-       // the card is 9 display rows and `PNL_WIDE_MIN_ROWS` is 10, so the LAYOUT
-       // band's second row keeps it NARROW. A tenth would flip the whole card
-       // to the two-column layout — a redesign, not a research knob.
-       // P-UI-131: MARGIN BOTTOM (address 4) moved to the GENERAL card's grid — it
-       // is a label-grid floor, not a TH-source setting — so this band holds the
-       // knob plus the VOL NORM switch (P-TH-VOLNORM, address 6, APPENDED: no
-       // address moves and the persisted OV_ keys keep their meaning).
-       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 2);
-       PnlSpecAdd(3, PNL_K_LEGACY, 5, 1, "sigma");
+       PnlSpecAdd(3, PNL_K_SEC, -1, 0, "", "", "LAYOUT", 1);
        PnlSpecAdd(3, PNL_K_LEGACY, 6, 1, "wave");
     }
     // TH3TOOL-ON (2026-09-19): the TH3 card is back. Its 8 settings keep their

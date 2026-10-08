@@ -157,11 +157,6 @@ static bool g_showFractalTHs = false;                            // [03] inpShow
 static bool g_showStandardTHs = false;                           // [03] inpShowStandardTHs
 static bool g_thVolNorm = false;                                 // [03] inpTHVolNorm (P-TH-VOLNORM)
 static bool g_showTHTargets = true;                              // [03] inpShowTHTargets
-// [01] P-TH-01 — the TH percentage for THIS chart's rung (0 = the professor's
-// table). The ladder itself is NOT stored here: `FractalPercentScale` derives the
-// ratio from this one number, so a panel edit and the engine can never hold two
-// different ladders. See the Input's own note in PropertiesAndInputs.mqh.
-static double g_thPercentOverride = 0.0;                         // [01] inpTHPercentOverride
 static int g_thLabelsMarginBottom = 40;                          // [13] inpTHLabelsMarginBottom
 static bool g_enableTH3Tool = true;                              // [14] inpEnableTH3Tool
 static ENUM_TH3_DRAWING_MODE g_th3DrawingMode = TH3_MODE_ABCD;  // [14] inpTH3DrawingMode
@@ -305,7 +300,7 @@ enum FactorySetting
    FF_BK_ALIGN,          // inpBKAlign
    FF_BK_VALIGN,         // inpBKVAlign
     FF_BK_INFO_SIZE,      // inpBKInfoFontSize (P-BK-27 — appended: FF_ addresses never renumber)
-    FF_TH_PERCENT,        // inpTHPercentOverride (P-TH-01 — appended for the same reason)
+     FF_TH_PERCENT,        // RETIRED (P-TH-01 removed 2026-10-08: knob gone, scale is 1.0) — slot kept: FF_ addresses never renumber
     FF_TH3_PIVOT_BASE,    // inpTH3PivotBasePips (P-TH3-PB-MAN — appended for the same reason)
     FF_LABEL_SIZE,        // inpFontSize (P-UI-131 — appended: FF_ addresses never renumber)
     FF_LABEL_ROW_GAP,     // inpLabelRowGap (P-UI-131)
@@ -380,7 +375,6 @@ void RuntimeSettingsInit()
    g_factoryDefaults[FF_TH_STANDARD]         = inpShowStandardTHs;
    g_factoryDefaults[FF_TH_TARGETS]          = inpShowTHTargets;
    g_factoryDefaults[FF_TH_MARGIN_BOTTOM]    = inpTHLabelsMarginBottom;
-   g_factoryDefaults[FF_TH_PERCENT]          = inpTHPercentOverride;   // P-TH-01
    g_factoryDefaults[FF_LABEL_SIZE]          = inpFontSize;            // P-UI-131
    g_factoryDefaults[FF_LABEL_ROW_GAP]       = inpLabelRowGap;         // P-UI-131
    g_factoryDefaults[FF_LABEL_FONT]          = LabelFontIdxOf(inpFontName);
@@ -574,11 +568,6 @@ void RuntimeSettingsInit()
    g_sectionGap = inpSectionGap;
    g_maxLabelWidth = inpMaxLabelWidth;
 
-   // P-TH-01: the TH-percentage knob. MUST be seeded HERE, above the #define
-   // block — below it `inpTHPercentOverride` already IS the mirror and this
-   // line would be a no-op self-assign (this file's own header warning).
-   g_thPercentOverride = inpTHPercentOverride;
-
 #ifndef BUILD_LITE
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     // [14] TH3 TOOL
@@ -702,7 +691,6 @@ string LabelFontName()
 #define inpTHVolNorm g_thVolNorm   // P-TH-VOLNORM
 #define inpShowTHTargets g_showTHTargets
 #define inpTHLabelsMarginBottom g_thLabelsMarginBottom
-#define inpTHPercentOverride g_thPercentOverride
 #define inpEnableTH3Tool g_enableTH3Tool
 #define inpTH3DrawingMode g_th3DrawingMode
 #define inpTH3BaseStepPercent g_th3BaseStepPercent
@@ -753,18 +741,16 @@ int ClampSettingInt(const int v, const int lo, const int hi)
    return v;
 }
 
-// P-TH-01: the double sibling of the above. `inpTHPercentOverride` is the
-// only double setting the panel can edit, so this exists for exactly one
-// caller pair — the persisted-override load and nothing else. The bound is
-// named once (`TH_PERCENT_OVERRIDE_MAX`, ConstantsAndEnums.mqh) because the
+// ClampSettingDbl: the double sibling of the above. One caller left (PBP,
+// the pivot-base override): the bound is named at the caller because the
 // panel's slider reads the same number: a slider whose max is past the
 // engine's clamp stops responding at the end of its travel.
 double ClampSettingDbl(const double v, const double lo, const double hi)
 {
    // P-UI-57: NaN passes every range test, so a non-finite value fell through
-   // both gates and was returned as-is (a NaN TH-percent / pivot-base override
-   // persisted and reloaded). Non-finite clamps to the floor: for every caller
-   // (TPC, PBP) the floor is 0.0 = OFF, the safe default.
+   // both gates and was returned as-is (a NaN pivot-base override
+   // persisted and reloaded). Non-finite clamps to the floor: for the caller
+   // (PBP) the floor is 0.0 = OFF, the safe default.
    if(!MathIsValidNumber(v)) return lo;
    if(v < lo) return lo;
    if(v > hi) return hi;
@@ -1115,7 +1101,6 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "TS2", g_showStandardTHs ? 1 : 0);
    RSSetNext(p + "TG",  g_showTHTargets ? 1 : 0);
    RSSetNext(p + "TB",  g_thLabelsMarginBottom);
-   RSSetNext(p + "TPC", g_thPercentOverride);   // P-TH-01 — 0 = professor's table
    RSSetNext(p + "E3",  g_enableTH3Tool ? 1 : 0);
    RSSetNext(p + "D3",  g_th3DrawingMode);
    RSSetNext(p + "B3",  g_th3BaseStepPercent);
@@ -1322,10 +1307,9 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "TS2")) g_showStandardTHs = (GlobalVariableGet(p + "TS2") > 0.5);
    if(GlobalVariableCheck(p + "TG"))  g_showTHTargets = (GlobalVariableGet(p + "TG") > 0.5);
    if(GlobalVariableCheck(p + "TB"))  g_thLabelsMarginBottom = ClampSettingInt((int)GlobalVariableGet(p + "TB"), 10, 200);
-   // P-TH-01: `ClampSettingDbl` is the same bound the panel slider and the
-   // engine read (0 = OFF, 200 = the slider's own end stop) — a GV written by
-   // an older build cannot ask for a ladder the slider cannot reproduce.
-   if(GlobalVariableCheck(p + "TPC")) g_thPercentOverride = ClampSettingDbl(GlobalVariableGet(p + "TPC"), 0.0, TH_PERCENT_OVERRIDE_MAX);
+   // P-TH-01 retired 2026-10-08: the knob is gone, so its old spelling is
+   // swept instead of read — an orphan `TPC` must not outlive the setting.
+   if(GlobalVariableCheck(p + "TPC")) GlobalVariableDel(p + "TPC");
    if(GlobalVariableCheck(p + "E3"))  g_enableTH3Tool = (GlobalVariableGet(p + "E3") > 0.5);
    if(GlobalVariableCheck(p + "D3"))  g_th3DrawingMode = (ENUM_TH3_DRAWING_MODE)ClampSettingInt((int)GlobalVariableGet(p + "D3"), 0, 1);
    if(GlobalVariableCheck(p + "B3"))  g_th3BaseStepPercent = MathMax(0.5, GlobalVariableGet(p + "B3"));

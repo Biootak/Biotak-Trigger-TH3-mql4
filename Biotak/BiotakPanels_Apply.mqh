@@ -167,8 +167,7 @@ double PnlDefValSet(const int item,const int row)
               if(row==2) return (FactoryDefault(FF_TH_STANDARD)>0.5)?1.0:0.0;
               if(row==3) return (FactoryDefault(FF_TH_TARGETS)>0.5)?1.0:0.0;
               if(row==4) return 40;                    // default margin bottom
-              if(row==5) return FactoryDefault(FF_TH_PERCENT);   // P-TH-01 — 0 = professor's table
-              if(row==6) return 0.0;                    // P-TH-VOLNORM — OFF = classic TH
+              if(row==6) return 0.0;                    // P-TH-VOLNORM — OFF = classic TH (address 5 retired with the knob)
               return 40;                               // default margin bottom
        // VIEWLOCK-OFF: case 4: return 0.0;   // view lock off by default
        // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
@@ -382,12 +381,11 @@ double PnlCurrentSet(const int item,const int row)
               if(row==1) return g_showFractalTHs?1.0:0.0;
               if(row==2) return g_showStandardTHs?1.0:0.0;
               if(row==3) return g_showTHTargets?1.0:0.0;
-              // P-TH-01: row 4 is spelled out rather than left to the trailing
+              // Row 4 is spelled out rather than left to the trailing
               // `return` below, because the wiring audit reads the trailing
-              // statement as answering only the card's TOP address (setting 5).
+              // statement as answering only the card's TOP address.
               if(row==4) return g_thLabelsMarginBottom;
-              if(row==5) return g_thPercentOverride;   // P-TH-01 (0 = OFF)
-              if(row==6) return g_thVolNorm?1.0:0.0;   // P-TH-VOLNORM (not a visibility family: no mute term)
+              if(row==6) return g_thVolNorm?1.0:0.0;   // P-TH-VOLNORM (address 5 retired with the knob)
               return g_thLabelsMarginBottom;
        case 4: if(row==0) return g_UI.tipPin?1.0:0.0;   // P-UI-126: ALWAYS SHOWN
                return 0.0;
@@ -698,43 +696,10 @@ int PnlApplySet(const int item,const int row,const double v)
          // trailing `else` below, because the wiring audit reads the trailing
          // statement as answering only the card's TOP address (setting 5).
          else if(row==4)  { g_thLabelsMarginBottom=ClampInt((int)MathRound(v),10,200); g_labelsRelayoutNeeded=true; flags=REFRESH_ALL; }
-         // P-TH-01 (2026-09-18) — THE TH PERCENTAGE, LIVE.
-         //
-         // User: «این درصد محاسبات هم th هم بشه تنظیم کرد برای تحقیقات لازم
-         // دارمش» + «پنل، زنده», with the limit «بقیه دست نمیخوره روابطه به
-         // جایی 66 دیگه چیزها میاد».
-         //
-         // The row writes ONE number, `g_thPercentOverride`, and NOTHING else:
-         // every derived value (the drawn TH step, Pattern, Trigger, the label
-         // strip) re-resolves through `FractalPercentScale()` on the next pass,
-         // so the ladder's internal relationships cannot be broken by an edit
-         // here. 0 = OFF = the professor's table, unchanged.
-         //
-         // THE CACHE IS THE TRAP. `CalculateTimeframeTH` stores the percentage
-         // it resolved, so a knob change that did not invalidate the cache
-         // would keep drawing the OLD ladder until some unrelated event (a TF
-         // switch, a re-attach) happened to clear it — the classic "the slider
-         // moves and nothing changes". `InvalidateTimeframeDependentCaches()`
-         // is the existing owner of exactly that invalidation.
-         //
-         // The write is guarded by `!=` so a drag that lands on the value it
-         // already holds returns REFRESH_NONE and costs nothing: a live gesture
-         // sends a batch per frame, and repainting a 43200-bar chart for a
-         // no-op frame is the one way this row could make the panel feel slow.
-         else if(row==5)
-         {
-            double nv = ClampSettingDbl(v, 0.0, TH_PERCENT_OVERRIDE_MAX);
-            if(nv != g_thPercentOverride)
-            {
-               g_thPercentOverride = nv;
-               InvalidateTimeframeDependentCaches();
-               g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;
-            }
-         }
          // P-TH-VOLNORM: the price-only scale switch. Writes ONE flag; the
          // label pass re-resolves V through THVolNormLabelV, so OFF restores
          // the classic numbers with no other state to unwind. Guarded by
-         // `!=` like the knob above: a no-op press costs nothing.
+         // `!=`: a no-op press costs nothing.
          else if(row==6)
          {
             bool nvOn = (v>0.5);
@@ -742,7 +707,11 @@ int PnlApplySet(const int item,const int row,const double v)
             {
                g_thVolNorm = nvOn;
                if(nvOn) g_fractalShift = 0;   // the jump stands down: rung back to base (OFF resumes via updates)
-               else UpdateATRScalingFactor(g_dailyClosePriceForTH, GetCachedDigits());   // snap the jump back in THIS press, not a frame later
+               else UpdateATRScalingFactor(g_dailyClosePriceForTH, GetCachedDigits(), true);   // forced: snap the jump back in THIS press, not at the background gate
+               // Toggle witness (ungated: a press is rare): what the hand asked,
+               // and what the jump stood at after it.
+               Print("[P-LBL] TH volnorm toggle ", (nvOn ? "ON" : "OFF"),
+                     " shift=", g_fractalShift);
                InvalidateTimeframeDependentCaches();   // the rung resolution moved under the pct cache
                RuntimeSettingsSaveOverridesThrottled();   // OV_TVN
                g_labelsRelayoutNeeded=true; flags=REFRESH_ALL;

@@ -1111,9 +1111,8 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==16) { kind=4; label="HUNTER COLOR"; }
       else if(row==17) { kind=4; label="TRADE COLOR"; }
       else if(row==18) { kind=4; label="SPREAD COLOR"; }
-      // P-LEGATR: APPENDED (row 19), so rows 0..18 keep their addresses and the
-      // persisted OV_ keys keep their meaning. The trailing branch answers the
-      // card's TOP address (see P-TH-01's TH PERCENT above).
+       // P-LEGATR: APPENDED (row 19), so rows 0..18 keep their addresses and the
+       // persisted OV_ keys keep their meaning.
       else             { kind=1; label="LEG ATR"; }
    }
     else if(item==3)   // TH LABELS
@@ -1122,16 +1121,8 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
        else if(row==1)  { kind=1; label="FRACTAL THs"; }
        else if(row==2)  { kind=1; label="STANDARD THs"; }
        else if(row==3)  { kind=1; label="TH TARGETS"; }
-       else if(row==4)  { label="MARGIN BOTTOM"; minV=10; maxV=200; }
-       // P-TH-01: the research knob, EXPLICIT at address five (it used to be the
-       // trailing fallthrough). min 0 = OFF (the professor's table);
-       // `TH_PERCENT_OVERRIDE_MAX` is the slider's own end stop AND the load
-       // clamp — one number, so the slider can always reproduce what it saved.
-       // step 1 (not 0.01) is deliberate: `PnlValueFromX` maps ~230 px of travel
-       // onto the range, so a 0.01 grid would print values no drag can ever land
-       // on and 75 — the user's own example — would be unreachable.
-       else if(row==5)  { label="TH PERCENT"; minV=0; maxV=TH_PERCENT_OVERRIDE_MAX; step=1; unit="%"; }
-       // P-TH-VOLNORM: the price-only scale switch, as the block's trailing
+        else if(row==4)  { label="MARGIN BOTTOM"; minV=10; maxV=200; }
+        // P-TH-VOLNORM: the price-only scale switch, as the block's trailing
        // fallthrough (the simulator counts preceding branches, so the appended
        // setting takes the trailing slot and every address above keeps its
        // number). Switch defaults (kind=1, 0/100): ON/OFF. OFF = classic TH.
@@ -1144,7 +1135,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
     }
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     // P-TH3-PB-MAN (2026-09-21): BASE PIPS is the trailing fallthrough, like
-    // P-TH-01's TH PERCENT on card 3 — `tools/panel-mt4-sim.py` derives the
+    // VOL NORM on card 3 — `tools/panel-mt4-sim.py` derives the
     // fallthrough's row as "how many row branches preceded it", so it MUST be
     // the LAST branch or the simulator drops a row from the proof. SHOW LABELS
     // therefore gets its own EXPLICIT branch above (the wiring audit also

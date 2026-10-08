@@ -16,23 +16,11 @@ string GetBaseFractalTimeframeForCurrent() {
 }
 
 //==============================================================================
-// P-TH-01 (2026-09-18) — THE TH PERCENTAGE KNOB. The calculation percentage must be
-// adjustable for research, live from the panel, and the REST must not be touched
-// («بقیه دست نمیخوره روابطه به جایی 66 دیگه چیزها میاد»).
-// WHERE: there is no single "TH percentage" — `MODIFIED_FRACTAL_PERCENTAGES`
-// (ConstantsAndEnums) is a nine-rung table read by the chart's own TF
-// (`GetBaseFractalTimeframeForCurrent`; on D1 that rung is H17+M4 = 66.66%), and
-// `CalculateTHPoints` does `(price * percentage) / 100.0`.
-// WHAT THE KNOB IS: ONE ratio applied to EVERY rung, so 66.66 -> 75 on D1 makes the
-// ladder 2.34/4.69/9.38/18.75/37.5/75/150/300/600 and every x2 relationship survives
-// (Pattern one rung down stays half, Trigger still a quarter) — moving ONE rung would
-// have been a different, silently broken feature.
+// P-TH-01 RETIRED 2026-10-08 with the knob: the percentage is the nine-rung
+// table below, read by the chart's own TF — no ratio, no override.
 // NOT SCALED, deliberately: AdaptiveScaling's JUMP_AGGRESSIVE walk and
 // FrequencyOptimizer's reference scores read the RAW table as a measuring stick, not
 // the drawn ladder (TH3Math's copy is retired with TH3TOOL-OFF).
-// NOT A BUG: the knob also scales the theoreticalTH AdaptiveScaling divides the ATR by,
-// so the displayed ATR/TH ratio moves with it (the TRUE ratio) — but not
-// `g_fractalShift` on the default path. 0 = OFF = the professor's table, byte for byte.
 //==============================================================================
 
 //--- the professor's table, RAW. The ONE reader of the array, so a future
@@ -55,21 +43,16 @@ int FractalRungIndex(const string timeframe)
     return -1;
 }
 
-//--- the knob as ONE ratio. 1.0 = OFF (the professor's table untouched).
+//--- retired with the knob (P-TH-01, 2026-10-08): the ratio is 1.0, always.
+//--- Kept as the ONE reader below so no caller changes: restore = return the
+//--- override math, never rewrite the callers.
 double FractalPercentScale()
 {
-    // P-UI-57: NaN <= 0.0 is false, so a non-finite override fell through and
-    // poisoned every rung. Finite gate first; 0 = OFF (professor's table).
-    if(!MathIsValidNumber(g_thPercentOverride) || g_thPercentOverride <= 0.0) return 1.0;
-    int baseIdx = FractalRungIndex(GetBaseFractalTimeframeForCurrent());
-    if(baseIdx < 0) return 1.0;
-    double base = FractalPercentRaw(baseIdx);
-    if(base <= 0.0) return 1.0;
-    return g_thPercentOverride / base;
+    return 1.0;
 }
 
-//--- the professor's table x the knob's ratio: the ONE reader every
-//--- DRAWING and LABEL path must use (THCalculations, FractalTimeframes'
+//--- the professor's table x the retired ratio (always 1.0): the ONE reader
+//--- every DRAWING and LABEL path must use (THCalculations, FractalTimeframes'
 //--- own two resolvers, LabelFunctions' TH strip).
 double FractalPercentScaled(const int index)
 {
@@ -167,9 +150,9 @@ double GetLowerTimeframeTH(const string currentTimeframe, int offset) {
               ", TF: " + currentTimeframe, ", Offset: " + IntegerToString(offset));
         return EMPTY_VALUE;
     }
-    // P-TH-01: SCALED — this is Pattern/Trigger, the two rungs the user's
-    // «روابطه به جایی» rule is about. `FractalPercentScaled` keeps them at
-    // exactly half and a quarter of the Structure step whatever the knob says.
+    // Pattern/Trigger: the two rungs the half/quarter rule is about.
+    // `FractalPercentScaled` keeps them at exactly half and a quarter of
+    // the Structure step (the retired knob kept it so too, at any ratio).
     double result = FractalPercentScaled(targetIndex);
     if(result <= 0.0) {
         DEBUG_PRINTF("GetLowerTimeframeTH - Warning: Zero or negative percentage at index ", targetIndex);
@@ -189,11 +172,8 @@ double GetTriggerTH() {
 }
 
 // Get percentage for a specific timeframe (matching MotiveWave implementation)
-// P-TH-01: SCALED — this is the canonical rung -> percentage resolver. The
-// value it returns is what `CalculateTHPoints` turns into the drawn TH, so the
-// knob reaches the chart through here and through THCalculations' own copy of
-// the same lookup (which has a cache; a knob change invalidates it, see
-// `PnlApplySet` case 3).
+// The canonical rung -> percentage resolver. The value it returns is what
+// `CalculateTHPoints` turns into the drawn TH.
 double GetTimeframePercentage(const string timeframe) {
     int arraySize = ArraySize(FRACTAL_TIMEFRAMES);
     for(int i = 0; i < arraySize; i++) {

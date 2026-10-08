@@ -63,9 +63,10 @@ double GetEMAAlpha(const int period) {
 //|                                                                  |
 //| @param basePrice    Daily close price used for TH calculation   |
 //| @param digits       Symbol digits (precision)                   |
+//| @param force       Bypass the 5 s gate (a hand press means NOW) |
 //| @return true if scaling factor was updated                       |
 //+------------------------------------------------------------------+
-bool UpdateATRScalingFactor(const double basePrice, const int digits) {
+bool UpdateATRScalingFactor(const double basePrice, const int digits, const bool force = false) {
     // FIXED mode: no scaling needed. VOL NORM on: the price-only V replaces
     // the ATR jump — both target ATR, so both would double-count it.
     if(inpAdaptiveMode == ADAPTIVE_FIXED || inpTHVolNorm) {
@@ -76,10 +77,12 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits) {
     
     // Update frequency gate: allow updates every 5 seconds instead of every bar
     // This makes the indicator much more responsive to intraday volatility spikes.
+    // A hand press (force) skips the gate: multi-tap ON/OFF must snap the jump
+    // back in THIS press, not whenever the background next passes the gate.
     // PERF: Use GetTickCount() (ms) instead of TimeCurrent() (syscall) for this gate
     static uint s_lastScalingUpdateMs = 0;
     uint nowMs = GetTickCount();
-    if(g_scalingInitialized && (nowMs - s_lastScalingUpdateMs) < 5000) {
+    if(!force && g_scalingInitialized && (nowMs - s_lastScalingUpdateMs) < 5000) {
         return false;
     }
     s_lastScalingUpdateMs = nowMs;

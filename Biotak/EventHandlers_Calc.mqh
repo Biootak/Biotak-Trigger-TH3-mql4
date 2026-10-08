@@ -519,7 +519,7 @@ bool CalculateCommonStepData(const double dailyClosePrice, SCommonStepData &data
 
     string currentTF = GetFractalTimeframeForCurrent();
     double currentScalingFactor = GetCurrentScalingFactor();
-    double volV = THVolNormColumnV(inpTHVolNorm, THVolNormTFForFractalRung(FractalRungIndex(GetFractalTimeframeForCurrent())), GetTimeframeTH());   // P-TH-VOLNORM-TICK: live V, 1.0 when OFF
+    double volV = THVolNormDrawnV(inpTHVolNorm, THVolNormTFForFractalRung(FractalRungIndex(GetFractalTimeframeForCurrent())), GetTimeframeTH());   // P-TH-VOLNORM-TICK: block-adopted V, 1.0 when OFF
 
     // The split leans with live, so the cache keys on the computed split.
     int chkA = 0, chkB = 0; GetAdaptiveLevelCounts(chkA, chkB);
