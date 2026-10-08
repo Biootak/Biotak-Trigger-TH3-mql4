@@ -329,7 +329,7 @@ string PnlHeaderSub(const int item)
    if(item==3)  return "FRACTAL · STANDARD · TARGETS";
    if(item==6)  return "HIGHER TIMEFRAME OVERLAY";
    if(item==7)  return "ONE STYLE FOR ALL LINES";
-   if(item==8)  return "PIN · WIDTH + COLOR";   // P-UI-47: MAGNET retired (BKMAGNET-OFF); BKMAGNET2-OFF keeps it retired
+   if(item==8)  return "LOCK · PIN · WIDTH + COLOR";   // P-UI-101: row 2 is the LOCK (magnet retired)
    if(item==9)  return "ENGINE · SECTION SWAPS WITH MODE";
    if(item==10) return "AUTO / MANUAL STEP ENGINE";
    if(item==11) return "L1 - L5 ZONE TOGGLES";

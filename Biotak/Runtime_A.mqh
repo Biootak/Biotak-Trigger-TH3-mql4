@@ -89,7 +89,7 @@ static bool g_showMidpointLine = true;                           // [03] inpShow
 static bool g_showMidZones = true;                               // [07.1] inpShowMidZones (P-UI-143: card look as shipped)
 static ENUM_ZONE_STYLE g_midZoneStyle = ZONE_STYLE_BOX_FILLED;   // [07.1] inpMidZoneStyle
 static int g_midZoneTransparency = 66;                           // [07.2] inpMidZoneTransparency (P-UI-143)
-static double g_midZoneHeightPercent = 33.0;                     // [07.2] inpMidZoneHeightPercent
+static double g_midZoneHeightPercent = 50.0;                     // [07.2] inpMidZoneHeightPercent
 static ENUM_LINE_STYLE g_midZoneBorderStyle = STYLE_SOLID;       // [07.2] inpMidZoneBorderStyle
 static int g_midZoneBorderWidth = 5;                             // [07.2] inpMidZoneBorderWidth (P-UI-143)
 // P-UI-63: the EDGE's transparency, the band's sibling. `g_midZoneTransparency` owns the

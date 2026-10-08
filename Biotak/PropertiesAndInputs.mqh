@@ -155,7 +155,7 @@ input ENUM_ZONE_STYLE inpMidZoneStyle = ZONE_STYLE_BOX_FILLED;
 input group "07.2) ZONES - VISUAL DENSITY"
 input string S10b = "[07.2] ZONES / VISUAL DENSITY";
 input int inpMidZoneTransparency = 66;   // P-UI-143: card look as shipped
-input double inpMidZoneHeightPercent = 33.0;
+input double inpMidZoneHeightPercent = 50.0;
 input ENUM_LINE_STYLE inpMidZoneBorderStyle = STYLE_SOLID; // Box border line style (Solid/Dash/Dot/...)
 input int inpMidZoneBorderWidth = 5;                       // P-UI-143: card look as shipped (1-5)
 // P-UI-63: the EDGE's own transparency, independent of inpMidZoneTransparency (which

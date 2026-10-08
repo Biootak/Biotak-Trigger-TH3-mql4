@@ -1214,10 +1214,10 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
     {
        if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
        else if(row==1)  { kind=4; label="COLOR"; }
-       // BKMAGNET2-OFF (2026-09-15): rows kept for the address space only —
-       // no display row renders them (P-UI-47's convention); the engine that
-       // read them is commented in `BaseKnotTool.mqh`.
-       else if(row==2)  { kind=1; label="MAGNET"; }
+       // P-UI-101 (2026-09-22): row 2 is the LOCK now (the magnet's retired row).
+       // Row 3 stays for the address space only — no display row renders it
+       // (P-UI-47's convention); the engine that read it is commented.
+       else if(row==2)  { kind=1; label="LOCK"; }
        else if(row==3)  { label="MAGNET SENS"; minV=0; maxV=100; unit="p"; }
        // P-UI-154: the START POINT as the block's trailing fallthrough (four
        // preceding branches, so the simulator reads row four). kind=2 options
