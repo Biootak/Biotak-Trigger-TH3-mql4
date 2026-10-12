@@ -669,7 +669,7 @@ int PnlPanelH(const int item)
 }
 int PnlPanelW(const int item)
 {
-   if(item == 13) return PNL_TB_W;   // TV strip is 380px, not a 312 card
+   if(item == 13) return PNL_TB_W;   // the TV strip is its own width, not a 312 card
    return PnlCardW(item);
 }
 

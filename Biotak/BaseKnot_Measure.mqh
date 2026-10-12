@@ -72,6 +72,9 @@ bool BaseKnotRefreshDirection(const string id, const double ref)
    double p1 = ObjectGetDouble(0, box, OBJPROP_PRICE, 0);
    double p2 = ObjectGetDouble(0, box, OBJPROP_PRICE, 1);
    if(p1 <= 0 || p2 <= 0) return false;
+   // P-BK-111: the user's own call is not the price's to undo — `dirLock` is set and
+   // cleared ONLY by the direction cell (BaseKnot_Direction.mqh), never by the market.
+   if(g_bkBoxes[k].dirLock != 0) return false;
    // P-BK-46: A KNOT WHOSE BREAK'S STORY NAMES A SIDE IS NOT THE PRICE'S TO FLIP. The
    // story's answer (BaseKnotNodeDir) is published by Sync, so the live-price follow
    // below speaks only for a base with no break measured yet (P-BK-13's own case).
@@ -90,12 +93,6 @@ bool BaseKnotRefreshDirection(const string id, const double ref)
 //+------------------------------------------------------------------+
 //| Registry helpers                                                  |
 //+------------------------------------------------------------------+
-int BaseKnotFind(const string id)
-{
-   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
-      if(g_bkBoxes[i].id == id) return i;
-   return -1;
-}
 //--- BKDOT-OFF/BKGRIP-OFF/BKPOINT-OFF (P-BK-71) — THE RETIRED POINT TAILS: ONE table,
 //--- TWO readers (the once-per-attach sweep in BaseKnotLazyInit and the deselect wipe in
 //--- BaseKnotSelectionMarkersWipe). Every selectable square this module EVER drew is named
@@ -111,13 +108,51 @@ string BaseKnotRetiredPointName(const int i)
    if(i < 0 || i >= BK_RETIRED_POINTS) return "";
    return tails[i];
 }
+//+------------------------------------------------------------------+
+//| P-BK-110 (2026-10-09, user: «این نوار اطلاعات وقتی جایی دیگه کلیک  |
+//| کردم بره سریع اوکی منتظر اتمام تایمر نباشه») — A CLICK AWAY FROM  |
+//| THE BOX ENDS THE GRACE NOW.                                         |
+//|                                                                  |
+//| The grace is a TIMER the user never asked for: he draws a box,     |
+//| reads the note, looks somewhere else — and the note sat on his      |
+//| screen for the rest of its 4 s because nobody told it he was done.  |
+//| So a click that lands on EMPTY CHART (not a box, not its border,    |
+//| not its note, not a UI surface, no gesture in flight) ends the      |
+//| readout in that same gesture.                                      |
+//|                                                                  |
+//| IT IS ONE MARK, NOT A SECOND VISIBILITY OWNER: `BaseKnotInfoVisible`|
+//| still decides — the mark only moves the grace's deadline to now, and|
+//| the note goes on the very next pump (≤500 ms) through the SAME     |
+//| writer that already hides it (BaseKnotDrag's re-glue pass).         |
+//|                                                                  |
+// IT IS PER-NOTE, NEVER A LATCH: `BaseKnotInfoRearm` re-arms it AND restarts the
+// window - a bare un-dismiss would hand back a grace whose clock had already run
+// out, and the note would blink and vanish (the look-again affordance would be a
+// lie). It is called where a box arrives (BaseKnotRegister) and where the user
+// asks to see a committed box again (click-to-recall, drag-release).
+//+------------------------------------------------------------------+
+static bool s_bkInfoDismissed = false;
+void BaseKnotInfoDismiss() { s_bkInfoDismissed = true; }
+// `id` = the box whose window opens again; "" opens it chart-wide (a box that is
+// arriving has no window yet - BaseKnotRegister writes the clock itself below).
+void BaseKnotInfoRearm(const string id = "")
+{
+   s_bkInfoDismissed = false;
+   if(id == "") return;
+   int k = BaseKnotFind(id);
+   if(k >= 0) g_bkBoxes[k].commitMs = GetTickCount();
+}
 void BaseKnotRegister(const string id, const int dir, const int tfMin)
 {
    if(BaseKnotFind(id) >= 0) return;
+   BaseKnotInfoRearm();   // P-BK-110: a NEW box's note gets its full read window again
    int n = ArraySize(g_bkBoxes);
    ArrayResize(g_bkBoxes, n + 1);
    g_bkBoxes[n].id    = id;
    g_bkBoxes[n].dir   = (dir < 0 ? -1 : 1);
+   // P-BK-111: a FRESH box is the price's to answer. `BaseKnotLazyInit` restores a stored
+   // call below for an INHERITED box, the same way it restores the side from its GV pair.
+   g_bkBoxes[n].dirLock = 0;
    g_bkBoxes[n].tfMin = tfMin;
    g_bkBoxes[n].commitMs = GetTickCount();   // fresh commit → Auto INFO grace starts now
    g_bkBoxes[n].locked = false;              // fresh boxes are always unlocked
@@ -138,6 +173,7 @@ void BaseKnotUnregister(const string id)
    ArrayResize(g_bkBoxes, ArraySize(g_bkBoxes) - 1);
    GlobalVariableDel(BaseKnotGV(id));
    GlobalVariableDel(BaseKnotGVTwin(id));   // P-UI-142: the twin dies with the box too
+   GlobalVariableDel(BaseKnotDirLockGV(id));   // P-BK-111: the call dies with the box it was made on
 }
 // Lock — a locked box is unselectable so it can never be dragged (hold still
 // opens the mini strip, so it can always be unlocked). The flag rides the BOX
@@ -196,13 +232,19 @@ void BaseKnotLazyInit()
           double iB = ObjectGetDouble(0, nm, OBJPROP_PRICE, 1);
           dir = BaseKnotResolveDirection(MathMax(iA, iB), MathMin(iA, iB));
        }
-       BaseKnotRegister(id, dir, BaseKnotIdTF(id));
-      int q = BaseKnotFind(id);
-      if(q >= 0)
-      {
-         g_bkBoxes[q].commitMs = 0;   // inherited box — long ago, no Auto grace flash
-         g_bkBoxes[q].locked = (ObjectGetInteger(0, nm, OBJPROP_SELECTABLE) == 0);   // lock rides the handle itself — no GV, survives TF-switch/restart
-      }
+        BaseKnotRegister(id, dir, BaseKnotIdTF(id));
+       int q = BaseKnotFind(id);
+       if(q >= 0)
+       {
+          g_bkBoxes[q].commitMs = 0;   // inherited box — long ago, no Auto grace flash
+          g_bkBoxes[q].locked = (ObjectGetInteger(0, nm, OBJPROP_SELECTABLE) == 0);   // lock rides the handle itself — no GV, survives TF-switch/restart
+          // P-BK-111: and the user's own direction call is restored with it. A call that died
+          // on every restart would be worse than no button: the box would come back reading
+          // the price's side while the user believed he had chosen. ABSENT key = never chosen
+          // (the common case), so this is one read on an inherited box only.
+          if(GlobalVariableCheck(BaseKnotDirLockGV(id)))
+             g_bkBoxes[q].dirLock = ((int)GlobalVariableGet(BaseKnotDirLockGV(id)) < 0 ? -1 : 1);
+       }
    }
    // P-BK-71 MIGRATION — A TRENDLINE CARRIER BECOMES THE BOX, ONCE PER ATTACH.
    // A chart saved by a P-BK-67/68/69 build carries the OBJ_TREND carrier; the carrier IS
@@ -581,8 +623,8 @@ void BaseKnotDrawPreviewRect(const string tag, const datetime t1, const double p
 //|     entry's own time, and each is the only place its answer exists. |
 //| Both numbers are PUSHED IN (EngSL / HuntSL per TF — trade-plan math|
 //| sits ABOVE this module, the P-BK-46/50 ask / push pair), and a TF  |
-//| the table cannot answer is NO LONGER the box' whole height: the     |
-//| node's OWN power caps it (P-BK-52, BaseKnotLegPair) — the ABSENCE  |
+//| the table cannot answer now falls back to the box' own height:     |
+//| the pushed leg IS the number (BKCAP-OFF 2026-10-09) — the ABSENCE  |
 //| never a guess. P-BK-50's geometry (entry ONE R OUTSIDE the edge,   |
 //| the stop ON that edge) is SUPERSEDED IN PLACE by the two lines     |
 //| below — the pair it replaced is kept verbatim under BKGEOM-OFF, one |
@@ -633,7 +675,7 @@ int BaseKnotMeasureTFMin(const int kind, const int tfMin)
 // `tfMin` at the call sites because the two readings must never be confused: a leg measured on
 // the other one is a silent mispricing, and this name is what the geometry, the texts and the
 // gate all ask. SAFE BY CONSTRUCTION: both legs stay inside the box whatever this answers —
-// P-BK-52 caps each at the NODE's own power (off + risk <= 55/64 x H).
+// BKCAP-OFF (2026-10-09): that ceiling is RETIRED — the pushed EngSL/HuntSL is used as it is, so a deep leg may run past the box' far edge.
 int BaseKnotEntryTFMin(const int kind, const int tfMin)
 {
    if(kind == BK_NODE_NONE && tfMin <= 0) return Period();   // the sizing preview: this chart's TF
@@ -682,7 +724,7 @@ string BaseKnotEntryWhy(const int kind, const int entryTF, const bool isHunt,
      if(!isHunt && kind != BK_NODE_FTR && kind != BK_NODE_NONE
         && BaseKnotHuntPips(entryTF, anchor) <= 0.0)   // BKE2-OFF: E1 fallback note (kept)
        why += " — no HuntSL pushed for " + tf + " yet, so EngSL stands in";
-   why += BaseKnotCapClause(entryTF, isHunt, top, bot, anchor);   // P-BK-52: ... and the ceiling, when it spoke
+   why += BaseKnotCapClause(entryTF, isHunt, top, bot, anchor);   // BKCAP-OFF: the ceiling never speaks — CapClause answers "" since 2026-10-09
    return why;
 }
 // ... and the SHORT form of the same fact — the box hover's first line and the note's
@@ -701,7 +743,11 @@ string BaseKnotEntryLine(const int kind, const int entryTF, const bool isHunt, c
           (dir >= 0 ? "top" : "bottom") + " edge (" +
           BaseKnotEntryWhy(kind, entryTF, isHunt, top, bot, anchor) + ")";
 }
-// P-BK-52 (2026-09-16) — THE NODE'S OWN POWER IS THE CEILING OF BOTH LEGS.
+// BKCAP-OFF (2026-10-09, user: «اینو کنار بزار محاسباتشو و از همون engsl, hunsl که هستش استفاده بکنه»)
+// — THE NODE'S OWN POWER CEILING IS RETIRED (was P-BK-52). THE BLOCK BELOW IS KEPT FOR THE
+// RESTORE: every reader still asks BaseKnotLegCapped, which now answers FALSE, so the pushed
+// leg (EngSL / HuntSL per TF, per anchor) IS the number everywhere — and a leg the pump never
+// pushed falls back to the box' own height, named by every text (no node math in between).
 // WHY: P-BK-46/51 push the plan's EngSL / HuntSL in, and a plan leg can be DEEPER than the
 // node it is drawn in — a 9-pip node measured with EngSL(M15) = 17 pips put the entry 8 pips
 // BEYOND the box' opposite edge while the hover still said «ONE EngSL INSIDE the box' top
@@ -746,15 +792,15 @@ double BaseKnotNodeHuntPips(const double top, const double bot)
    double h = (top - bot) / pip;
    return (h > 0.0 ? BK_NODE_HUNT_NUM * h / BK_NODE_HUNT_DEN : 0.0);
 }
-// THE RULE, in one place — the plan's leg when it is no deeper than the node's own power, the
-// node's own power when it is. 0 = BOTH absent (the caller falls back, and NAMES it).
+// BKCAP-OFF (2026-10-09) — THE CEILING RULE IS RETIRED: LegPick below IS the pushed leg,
+// and nothing pushed falls back to the box' own height (the caller NAMES it). RESTORE: drop `return false;`.
 bool BaseKnotLegCapped(const double planPips, const double capPips)
 {
-   return (capPips > 0.0 && (planPips <= 0.0 || planPips > capPips));
+   return false;   // BKCAP-OFF 2026-10-09: the ceiling is retired — the pushed EngSL/HuntSL is the number. RESTORE: return (capPips > 0.0 && (planPips <= 0.0 || planPips > capPips));
 }
 double BaseKnotLegPick(const double planPips, const double capPips)
 {
-   if(BaseKnotLegCapped(planPips, capPips)) return capPips;
+   if(BaseKnotLegCapped(planPips, capPips)) return capPips;   // BKCAP-OFF: never true now — the plan's own leg is the answer
    return (planPips > 0.0 ? planPips : 0.0);
 }
 // THE EFFECTIVE PAIR of one node, in pips — the ONE owner the geometry, the R every text
@@ -790,8 +836,8 @@ void BaseKnotLegPair(const double top, const double bot, const int kind, const i
    double capE  = BaseKnotNodeEngPips(top, bot);
    double planO = BaseKnotEntryOffsetPips(kind, etf, anchor);
    double planR = BaseKnotEngPips(stf, anchor);
-   offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);
-   riskPips = BaseKnotLegPick(planR, capE);
+   offPips  = BaseKnotLegPick(planO, hunt ? BaseKnotNodeHuntPips(top, bot) : capE);   // BKCAP-OFF: the pick is the pushed leg itself now (LegCapped answers false)
+   riskPips = BaseKnotLegPick(planR, capE);   // BKCAP-OFF: same — the stop's pushed EngSL, uncapped
    double h = BaseKnotToPips(top - bot);
    if(offPips  <= 0.0) offPips  = (h > 0.0 ? h : 0.0);   // neither source answered — the box'
    if(riskPips <= 0.0) riskPips = (h > 0.0 ? h : 0.0);   //   own height, named by the texts
@@ -804,7 +850,7 @@ void BaseKnotLegPair(const double top, const double bot, const int kind, const i
 // proof belongs where there is room to read it.
 // WHAT: TWO names for ONE fact, both decided by the ONE flag the pick was made with
 // (`isHunt` — BaseKnotLegPair's own):
-//   * BaseKnotCapTag — the SHORT name ("node EngSL" / "node HuntSL"): what the chart-side
+//   * BaseKnotCapTag — the SHORT name ("node EngSL" / "node HuntSL") — BKCAP-OFF: never printed now — it used to be what the chart-side
 //     note prints and what every `riskTag` inside a hover's parentheses prints;
 //   * BaseKnotCapWhy — the SAME source spelled out WITH the arithmetic that sized it
 //     ("the node's own EngSL (its height / 4.2667)"): the hovers' own clauses only.
@@ -823,40 +869,47 @@ string BaseKnotCapWhy(const bool isHunt)
    return (isHunt ? "the node's own HuntSL (its height x 5/8)"
                   : "the node's own EngSL (its height / 4.2667)");
 }
-// ... and the ONE clause every entry sentence appends when the ceiling really spoke (an empty
-// string while the plan's leg still fits): the box hover, the note's hover and the entry ray
+// ... and the clause every entry sentence appends — BKCAP-OFF 2026-10-09: ALWAYS "", because
+// the ceiling never speaks. The box hover, the note's hover and the entry ray still call it and
 // share these exact words — the PROOF form (P-BK-53), because a hover has the room for it.
 string BaseKnotCapClause(const int measureTF, const bool isHunt, const double top, const double bot,
                          const datetime anchor = 0)
 {
    double plan = (isHunt ? BaseKnotHuntPips(measureTF, anchor) : BaseKnotEngPips(measureTF, anchor));
    double cap  = (isHunt ? BaseKnotNodeHuntPips(top, bot) : BaseKnotNodeEngPips(top, bot));
-   if(!BaseKnotLegCapped(plan, cap)) return "";
+   if(!BaseKnotLegCapped(plan, cap)) return "";   // BKCAP-OFF: always "" now — the "CAPPED by …" clause is retired
    return " — CAPPED by " + BaseKnotCapWhy(isHunt) + " = " + DoubleToString(cap, 1) + " pips";
 }
 // ... and the stop's own sentence, shared by the hover and the note, so the two texts can
 // never name two different sources for the one R they draw. P-BK-53: it answers WHICH source
-// spoke and WHY in plain words (the plan's leg against the node's own), never in code words
+// spoke and WHY in plain words (the pushed plan's leg, or the box' own height), never in code words
 // («power stands in» said nothing a user could check).
 string BaseKnotStopWhy(const int measureTF, const double top, const double bot, const datetime anchor = 0)
 {
    double plan = BaseKnotEngPips(measureTF, anchor);
    double cap  = BaseKnotNodeEngPips(top, bot);
-   if(BaseKnotLegCapped(plan, cap))
+   if(BaseKnotLegCapped(plan, cap))   // BKCAP-OFF: never true now — the ceiling branch is retired
       return (BaseKnotRiskIsEng(measureTF, anchor)
               ? " — the plan's EngSL of " + BaseKnotTFName(measureTF) + " (" + DoubleToString(plan, 1) +
                 " pips) is deeper than the node, so " + BaseKnotCapWhy(false) + " stands in"
               : " — the pump has no EngSL for " + BaseKnotTFName(measureTF) +
                 " yet, so " + BaseKnotCapWhy(false) + " stands in");
    if(plan > 0.0) return "";
-   return " — neither the plan nor the node could size it, so the box' own height stands in";
+   return " — no EngSL pushed for " + BaseKnotTFName(measureTF) + " yet, so the box' own height stands in";
 }
+// P-BK-93 (2026-10-09, user: «اینو کنار بزار محاسباتشو و از همون engsl, huntsl که هستش
+// استفاده بکنه») — THE TWO LEGS COME OUT BESIDE THE LEVELS THEY PRODUCED. The note now
+// prints BOTH of them (P-BK-104: the stop's EngSL AND the entry's HuntSL) and its hover spells
+// the arithmetic that produced the drawn lines, so a caller asking a SECOND owner for "how many
+// pips" could only ever disagree with the lines this function draws. Zero extra reads: `offP` and
+// `riskP` were already computed here — they are published, not recomputed. 0 = the ABSENCE (no
+// pushed leg), the rule every text already names.
 void BaseKnotCalcLevels(const double top, const double bot, const int dir,
                         const int kind, const int tfMin, double &entry, double &sl,
-                        const datetime anchor = 0)
+                        double &offPips, double &riskPips, const datetime anchor = 0)
 {
-   double pip  = BaseKnotPipSize();
-   // P-BK-52: the pair comes from ONE owner — the plan's legs, bounded by the node's own
+    double pip  = BaseKnotPipSize();
+   // P-BK-52: the pair comes from ONE owner — the plan's legs as the pump pushed them (BKCAP-OFF), not the node's own
    // power — so the lines drawn here and the R every hover prints cannot part.
    // BKATRLEG-OFF (P-BK-51/52): the retired pair that used the plan's leg UNBOUNDED — a leg
    // deeper than the node put the entry past the box' far edge, and a TF the pump had not
@@ -865,10 +918,12 @@ void BaseKnotCalcLevels(const double top, const double bot, const int dir,
    // BKATRLEG-OFF: int    mtf  = BaseKnotMeasureTFMin(kind, tfMin);
    // BKATRLEG-OFF: double off  = BaseKnotEntryOffsetPips(kind, mtf) * pip;   // P-BK-51: the entry waits this deep
    // BKATRLEG-OFF: double risk = BaseKnotEngPips(mtf) * pip;                 // ... and the stop is ONE EngSL behind it
-   double offP = 0.0, riskP = 0.0;
-   BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP, anchor);   // P-BK-79: the pair is read at the box' own anchor
-   double off  = offP  * pip;   // the entry waits this deep INSIDE the side's own edge
-   double risk = riskP * pip;   // ... and the stop is ONE EngSL behind it
+    double offP = 0.0, riskP = 0.0;
+    BaseKnotLegPair(top, bot, kind, tfMin, offP, riskP, anchor);   // P-BK-79: the pair is read at the box' own anchor
+   offPips  = offP;     // P-BK-93: the ENTRY's own leg, published beside the levels below
+   riskPips = riskP;    // ... and the STOP's — the very number the note prints as its risk
+    double off  = offP  * pip;   // the entry waits this deep INSIDE the side's own edge
+    double risk = riskP * pip;   // ... and the stop is ONE EngSL behind it
    // BKGEOM-OFF (P-BK-50): the retired "ONE R OUTSIDE the edge, stop ON that edge" pair —
    // restore by uncommenting these four lines and DROPPING the two below (the R it reads
    // carries the P-BK-52 ceiling, so restoring it restores that geometry, not the old sizes).
@@ -1014,10 +1069,13 @@ void BaseKnotMakeBadge(const string name, const string text, const color bg)   /
 // is the one that has to be off, because the note then lives in ONE place only (the family's
 // row, BaseKnotNoteAtCorner). Both callers of this probe already delete a note they are told
 // not to show, so the rung needs no second switch anywhere.
+// P-BK-110: `s_bkInfoDismissed` below (with the registry) is the ONE click-away answer — the
+// grace still decides here; that mark only moves its deadline to now.
 bool BaseKnotInfoVisible(const string id)
 {
    if(BaseKnotNoteInCorner()) return false;   // P-BK-58: the note's home is the family's column
-   if(g_bkShowInfo == 1) return true;
+   if(g_bkShowInfo == 1) return true;         // P-BK-110: pinned on = the user wants it up
+   if(s_bkInfoDismissed) return false;        // P-BK-110: the click that walked away ended it
    int k = BaseKnotFind(id);
    if(k < 0) return true;
    return ((int)(GetTickCount() - g_bkBoxes[k].commitMs) < (int)BK_INFO_GRACE_MS);

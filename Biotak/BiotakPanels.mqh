@@ -50,6 +50,7 @@
 #resource "\\Files\\Icons\\bk_lock_off.bmp"
 #resource "\\Files\\Icons\\bk_lock_on.bmp"
 #resource "\\Files\\Icons\\bk_del.bmp"
+#resource "\\Files\\Icons\\bk_dirflip.bmp"   // P-BK-111: the direction cell's up/down glyph
 #resource "\\Files\\Icons\\bk_more.bmp"
 #resource "\\Files\\Icons\\bk_chev.bmp"
 #resource "\\Files\\Icons\\bk_dds.bmp"

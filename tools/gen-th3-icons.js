@@ -289,6 +289,15 @@ const BK_CHEV = [   // down-chevron for the STYLE/WIDTH ▾ selector buttons
   seg(8.0, 12.5, 16.0, 20.0, 4.2),
   seg(16.0, 20.0, 24.0, 12.5, 4.2),
 ];
+// P-BK-111 (2026-10-09) - DIRECTION FLIP: a vertical TWO-HEADED arrow. It is the
+// one shape that says «this bit can go both ways» with no caption: a single head
+// reads as «go up» (a fixed side), which is the opposite of what the cell does.
+// It sits on the strip's own 24px grid like every other bk_* glyph.
+const BK_DIRFLIP = [   // up/down double arrow - the side is the user's to turn
+  seg(16, 5.5, 16, 22.5, 2.6),                        // shaft
+  seg(10.5, 11.0, 16, 5.5, 2.6), seg(16, 5.5, 21.5, 11.0, 2.6),   // up head
+  seg(10.5, 17.0, 16, 22.5, 2.6), seg(16, 22.5, 21.5, 17.0, 2.6), // down head
+];
 // P-DRAW-13 (2026-09-23) — DrawStrip V6 icon set: the strip is icon-only, so
 // every value/toggle/action needs a face. State-carrying families vary per
 // value (ray0..3 like w/style); pure glyphs are one raster and the gold face
@@ -2017,6 +2026,7 @@ for (let i = 1; i <= 5; i++) files.push(['bk_w' + i + '.bmp', () => render(24, b
 files.push(['bk_lock_off.bmp', () => render(24, BK_LOCK_OFF, BK_DARK)]);
 files.push(['bk_lock_on.bmp',  () => render(24, BK_LOCK_ON,  BK_DARK)]);
 files.push(['bk_del.bmp',      () => render(24, BK_DEL,      BK_DARK)]);
+files.push(['bk_dirflip.bmp',  () => render(24, BK_DIRFLIP,  BK_DARK)]);   // P-BK-111: the direction cell
 files.push(['bk_more.bmp',     () => render(24, BK_MORE,     BK_DARK)]);
 // P-DRAW-13 (2026-09-23) — DrawStrip V6 faces (see the art above).
 for (let i = 0; i < 4; i++) files.push(['bk_ray' + i + '.bmp', () => render(24, BK_RAYS[i], BK_DARK)]);

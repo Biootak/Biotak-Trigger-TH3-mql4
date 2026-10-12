@@ -207,12 +207,19 @@ void BaseKnotNoteInkToFront(const string o)
    ObjectSetInteger(0, o, OBJPROP_TIMEFRAMES, keepMask);
    ObjectSetString(0, o, OBJPROP_TOOLTIP, keepTip);
 }
-// Chart-anchored "[<side> · <riskTag> <risk> | <box height> | N bars · <class> <type>]"
+// Chart-anchored "[<side> · <riskTag> <risk> | <entryTag> | <box height> | N bars · <class> <type>]"
 // label at the box' top-left corner (P-BK-57: the second number, bare — BaseKnotHeightTag).
 // P-BK-46: the first number is the TRADE'S RISK (R) and `riskTag` NAMES WHERE IT
 // CAME FROM — "EngSL" of the knot's own TF (or the node's own when it capped the plan,
 // P-BK-52/53), or "box height" while neither answered. A size without its source is a
 // number nobody can check.
+// P-BK-104 (2026-10-09, user: «اینو کنار بزار محاسباتشو و از همون engsl, huntsl که هستش
+// استفاده بکنه»): AND THE ENTRY'S OWN LEG RIDES BESIDE IT (`entryTag` — HuntSL for an
+// ETR/CTR/OTR node, EngSL when nothing was pushed for its time), because the note was read as
+// "the box's numbers" while naming only one of the two legs its levels are drawn with. It is
+// built by BaseKnotEntryTag from the leg BaseKnotCalcLevels PRODUCED (P-BK-93) and stays EMPTY
+// when it is the same leg the first field already names (P-BK-57's own law: never the same size
+// twice), so a box being SIZED — one EngSL for both legs — is unchanged on its face.
 // P-BK-54 (2026-09-16, user: «تی پی رو … در اطلاعات نشون نده … EngSL 17.9 همین بنویسه
 // فقط اینطوری خلاصه‌ه») — THE NOTE CARRIES NO TARGETS AND NO UNIT WORD. WHY: the note is
 // read AT A GLANCE on a live chart, and the plan's TP1..TP3 field made it a sentence:
@@ -237,6 +244,7 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
                        const string side, BaseKnotSpan &sp,
                        BaseKnotNode &nd, const long tfMask, const string riskTag,
                        const string tradeTip,   // P-BK-51: the stop's sentence + the entry's own
+                       const string entryTag,    // P-BK-104: the ENTRY's own leg, named and sized
                        const bool atCorner = false)   // P-BK-58: the family's row instead of the box
 {
    // P-BK-58: ONE object at a time. The placement is a PARAMETER (decided by
@@ -275,8 +283,8 @@ void BaseKnotWriteInfo(const string in, const datetime t1, const datetime t2,
    // BKTAGTP-OFF (P-BK-54): the retired plan-target field sat here — restore it by
    // putting `+ tpTag` back after the risk (and taking BaseKnotTPPlanTag from BKTAGTP-OFF
    // in BaseKnotSync / BaseKnotSyncLive, which still build `tpTip` for the hover).
-   ObjectSetString(0, o, OBJPROP_TEXT,
-                   "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, ws1, ws2, top, bot) + BaseKnotNodeTag(nd) + "]");   // P-BK-46/40/41: the risk and its source, then the box' own height (P-BK-57), then the class — P-BK-84: off the BASE'S OWN span (∪ the box'), so neither a narrow box nor the chart TF can move it. P-BK-81: the four pattern names are gone — `side` (BUY/SELL) IS the direction now
+    ObjectSetString(0, o, OBJPROP_TEXT,
+                    "[" + side + " · " + riskTag + " " + DoubleToString(hPips, 1) + entryTag + BaseKnotHeightTag(top, bot, riskTag) + barsPart + BaseKnotBaseTag(still, ws1, ws2, top, bot)                    + BaseKnotNodeTag(nd) + BaseKnotATRTag(nd) + "]");   // P-BK-109: the type's own ATR and the bar it was read at   // P-BK-46/40/41: the risk and its source, then the ENTRY's own leg (P-BK-104 — the second leg the levels are drawn with), then the box' own height (P-BK-57), then the class — P-BK-84: off the BASE'S OWN span (∪ the box'), so neither a narrow box nor the chart TF can move it. P-BK-81: the four pattern names are gone — `side` (BUY/SELL) IS the direction now
    ObjectSetString(0, o, OBJPROP_FONT, inpFontName);   // P-BK-56: the label family's own font
    ObjectSetInteger(0, o, OBJPROP_FONTSIZE, BKInfoFontPt());   // P-BK-27/56
    ObjectSetInteger(0, o, OBJPROP_COLOR, BaseKnotFgForBg());
@@ -382,11 +390,15 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    // P-BK-79: AND WITH NO STORY YET THERE IS NO ANCHOR — every read below asks for the LIVE
    // row (anchor 0), which is exactly the row BaseKnotEngNeeds always pushes first for this
    // chart's TF. The committed Sync re-reads all of them at the box' own `storyT`.
-   int    liveTF = Period();
-   double entry = 0, sl = 0;
-   BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, 0);
-   string riskTag   = BaseKnotRiskTag(liveTF, liveTF, top, bot, 0);   // P-BK-52: named with the number the pick drew
-    double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0);
+    int    liveTF = Period();
+    double entry = 0, sl = 0;
+     double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs, published beside the levels
+     BaseKnotCalcLevels(top, bot, dir, BK_NODE_NONE, liveTF, entry, sl, offPips, riskPips, 0);
+    string riskTag   = BaseKnotRiskTag(liveTF, liveTF, top, bot, 0);   // P-BK-52: named with the number the pick drew
+     double hPips  = BaseKnotRiskPips(liveTF, top, bot, 0);
+     // P-BK-104: the sizing preview is the FTR case — ONE EngSL sizes BOTH legs on the SAME TF,
+     // so BaseKnotEntryTag answers "" and the face keeps the shape it has always had.
+     string entryTag = BaseKnotEntryTag(false, offPips, liveTF, liveTF, riskTag);
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge any live leftovers.
     ObjectDelete(0, tag + "ENTRY2");
     ObjectDelete(0, tag + "SL2");
@@ -400,8 +412,9 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
                   " edge — " + BaseKnotEntryWhy(BK_NODE_NONE, liveTF, false, top, bot, 0) + ")";
    string stopWhyLive = " (INSIDE the box' " + edgeLive + " edge, ONE " + riskTag + " behind the entry" +
                         BaseKnotStopWhy(liveTF, top, bot, 0) + ")";
-    string tradeTipLive = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhyLive +
-                          BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir, top, bot, 0);
+     string tradeTipLive = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhyLive +
+                           BaseKnotEntryLine(BK_NODE_NONE, liveTF, false, dir, top, bot, 0) +
+                           BaseKnotCalcTip(dir, top, bot, entry, sl, offPips, false, hPips, riskTag);   // P-BK-93: the same arithmetic the committed box prints
     datetime tLiveFar = te + (te > t1 ? (te - t1) : PeriodSeconds());
     datetime tLiveTps, tLiveTpe;
     BaseKnotTPTickSpan(t1, te, tLiveTps, tLiveTpe);
@@ -445,7 +458,7 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    ndLive.kind = BK_NODE_NONE; ndLive.rungs = -1; ndLive.nodeTF = 0; ndLive.baseTF = 0;
    ndLive.side = 0; ndLive.barsAgo = 0; ndLive.rebreaks = 0;
    ndLive.returned = false; ndLive.crossed = false;
-   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0; ndLive.storyTF = 0;
+   ndLive.baseStep = 0.0; ndLive.breakStep = 0.0; ndLive.retStep = 0.0; ndLive.stepTH = 0.0; ndLive.storyTF = 0;
    ndLive.state = 0; ndLive.depBars = 0; ndLive.depStep = 0.0;
    ndLive.revisits = 0; ndLive.lastSide = 0; ndLive.lifeBars = 0;
    ndLive.ctxAlign = 0; ndLive.sideLevel = 0;
@@ -459,8 +472,8 @@ void BaseKnotSyncLive(const datetime t2raw, const double p2raw)
    ndLive.nodeTF = liveClass;   // P-BK-78: the TF the type was read against, published for the hover
    ndLive.baseTF = liveClass;
    bool liveCorner = BaseKnotNoteAtCorner("");   // P-BK-58: while the user SIZES, the row is the answer
-   BaseKnotWriteInfo(tag + "INFO", t1, te, top, bot, hPips, tpTip, side,
-                     spLive, ndLive, tfMask, riskTag, tradeTipLive, liveCorner);   // P-BK-55: the type rides in `ndLive`
+    BaseKnotWriteInfo(tag + "INFO", t1, te, top, bot, hPips, tpTip, side,
+                      spLive, ndLive, tfMask, riskTag, tradeTipLive, entryTag, liveCorner);   // P-BK-55: the type rides in `ndLive`
 }
 // INFO text is chart-anchored and only TF-gated (no pixel button —
 // NOBKDEL 2026-09-06: the X delete badge is retired, boxes delete via
@@ -969,14 +982,24 @@ bool BaseKnotDeselectOnChartClick(const int mx, const int my)
                                          // not a click, and the "outside" test below is
                                          // measured against a live native drag otherwise
    if(UIPointerOverSurface(mx, my)) return false;               // P-UI-92: the UI is over the box
+   bool onBox = false;
    int sw = 0; datetime ct = 0; double cp = 0;
    if(ChartXYToTimePrice(0, mx, my, sw, ct, cp) && sw == 0 && ct > 0 && cp > 0)
    {
-      if(BaseKnotBoxAt(ct, cp) != "") return false;     // inside a box: its own press
-      if(BaseKnotBoxAtPx(mx, my) != "") return false;   // ...or on its drawn border (P-BK-24)
+      // THE TESTS BELOW ARE THE WHOLE "SOMEWHERE ELSE" ANSWER — P-BK-110 spends THIS hit
+      // test to end the note's grace, never a second one that could disagree with this one
+      // about where "else" is. The bounds are inclusive, so a click ON a box, on its border
+      // or on its note is that box' own press and can never be a dismissal.
+      if(BaseKnotBoxAt(ct, cp) != "") onBox = true;     // inside a box: its own press
+      else if(BaseKnotBoxAtPx(mx, my) != "") onBox = true;   // ...or on its drawn border (P-BK-24)
    }
+   if(onBox) return false;
+   // P-BK-110: the click walked away from every box — the note's grace ends NOW, in this
+   // same gesture, instead of at the timer's edge. Per-note, not a latch: the next commit
+   // re-arms it (BaseKnotRegister).
+   BaseKnotInfoDismiss();
    string sel = BaseKnotSelectedBoxId();
-   if(sel == "") return false;   // nothing of ours is selected — the common case
+   if(sel == "") return false;   // nothing of ours is selected — only the dismissal happened
    BaseKnotDropSelection(sel);   // P-BK-26's ONE owner: read-guarded, one write
    BaseKnotSelectionMarkersWipe(sel);
    return true;
@@ -1068,7 +1091,18 @@ void BaseKnotSync(const string id)
    // flip a knot whose trade is already named by what price DID.
    int ndDir = BaseKnotNodeDir(nd);
    g_bkBoxes[k].nodeSide = ndDir;     // P-BK-47: published for the same reason (the follow reads it)
-   if(ndDir != 0 && ndDir != dir)
+   //--- P-BK-111 (2026-10-09) — THE STORY DOES NOT OVERWRITE THE USER'S OWN CALL. This is
+   //--- the SECOND writer of `dir`, and the first gate (the price follow,
+   //--- `BaseKnotRefreshDirection`) could not have caught it: the tap flips and then calls
+   //--- `BaseKnotSync` to rebuild the family, so the very rebuild the flip needs was the
+   //--- thing that took the side back, IN THE SAME EVENT. MEASURED on the flushed witness
+   //--- after six clicks: `was=BUY now=SELL lock=-1 read=BUY gv=-1` — the write was exact
+   //--- and the read-back said the box had never moved. A cell that answers and paints the
+   //--- old side is a cell that does not work, and no compile can see it.
+   //--- NOTE WHAT IS NOT GATED: `nodeSide` above still publishes the story's own answer,
+   //--- because it is a fact about the BREAK, not a claim about what the user trades, and
+   //--- the pump's gates read it. Only the side the box is drawn with yields.
+   if(ndDir != 0 && ndDir != dir && g_bkBoxes[k].dirLock == 0)
    {
       dir = ndDir;
       g_bkBoxes[k].dir = dir;
@@ -1088,13 +1122,16 @@ void BaseKnotSync(const string id)
    // story ended on), the very key the pump pushed its rows with, so the drawn legs and the
    // printed pips come off ONE row and a box whose base ended on an older bar keeps the numbers
    // that bar's market gave it instead of today's drifted TH.
-   int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);   // P-BK-83: the STOP's own time
-   if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
-   int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);     // ... and the ENTRY's own time
-   string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
-   double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
-   bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the ENTRY's own time
-    BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, nd.anchor);
+    int    mTF       = BaseKnotMeasureTFMin(nd.kind, baseTF);   // P-BK-83: the STOP's own time
+    if(mTF <= 0) mTF = (baseTF > 0 ? baseTF : Period());
+    int    eTF       = BaseKnotEntryTFMin(nd.kind, baseTF);     // ... and the ENTRY's own time
+    string riskTag   = BaseKnotRiskTag(mTF, baseTF, top, bot, nd.anchor);   // P-BK-52: named with the number the pick drew
+    double hPips  = BaseKnotRiskPips(mTF, top, bot, nd.anchor);
+    bool   offIsHunt = BaseKnotOffsetIsHunt(nd.kind, eTF, nd.anchor);   // P-BK-51/83: which measure the TYPE asks for, read on the ENTRY's own time
+    double offPips = 0.0, riskPips = 0.0;   // P-BK-93: the two legs BaseKnotCalcLevels PRODUCED — published beside the levels, so the note and its hover name the very numbers the lines were drawn with (never a second read)
+     BaseKnotCalcLevels(top, bot, dir, nd.kind, baseTF, entry, sl, offPips, riskPips, nd.anchor);
+     // P-BK-104: the ENTRY's own leg, named and sized, ready for the note's face.
+     string entryTag = BaseKnotEntryTag(offIsHunt, offPips, eTF, mTF, riskTag);
     // BKE2-OFF (2026-09-28): 2nd entry retired — purge leftovers from older builds.
     ObjectDelete(0, BaseKnotEntry2Name(pfx));
     ObjectDelete(0, BaseKnotSL2Name(pfx));
@@ -1109,7 +1146,8 @@ void BaseKnotSync(const string id)
    string entryLine = BaseKnotEntryLine(nd.kind, eTF, offIsHunt, dir, top, bot, nd.anchor);
    string stopWhy   = " (ONE " + riskTag + " behind the entry, INSIDE the box' " + edgeName + " edge" +
                       BaseKnotStopWhy(mTF, top, bot, nd.anchor) + ")";
-   string tradeTip  = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhy + entryLine + entryLine2;
+    string tradeTip  = "risk " + DoubleToString(hPips, 1) + " pips (" + riskTag + ") = the stop" + stopWhy + entryLine + entryLine2 +
+                       BaseKnotCalcTip(dir, top, bot, entry, sl, offPips, offIsHunt, hPips, riskTag);   // P-BK-93: the arithmetic, off the legs the lines were drawn with
    string tip = BaseKnotBoxTooltip(id, t1, t2, top, bot, side, hPips, tpTip, sp,
                                    riskTag, BaseKnotNodeLine(nd, top, bot), entryLine, entryLine2);
    ObjectSetString(0, box, OBJPROP_TOOLTIP, tip);
@@ -1168,8 +1206,8 @@ void BaseKnotSync(const string id)
    bool atCorner = BaseKnotNoteAtCorner(id);
    if(atCorner || BaseKnotInfoVisible(id))
    {
-      BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
-                        sp, nd, tfMask, riskTag, tradeTip, atCorner);
+       BaseKnotWriteInfo(BaseKnotInfoName(pfx), t1, t2, top, bot, hPips, tpTip, side,
+                         sp, nd, tfMask, riskTag, tradeTip, entryTag, atCorner);
       if(!atCorner) BaseKnotPlaceBadges(pfx, t1, t2, top, tfMin, tfMask);
    }
    else
@@ -1268,8 +1306,9 @@ void BaseKnotMoveChildren(const string id, datetime t1, const double p1,
    // P-BK-79: and the SAME ANCHOR — the box' own `storyT`, the key the pump pushed its rows
    // with, so a drag follows the levels the release Sync will land on and never a live row
    // the box does not draw with.
-   datetime an = g_bkBoxes[k].storyT;
-    BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, an);
+    datetime an = g_bkBoxes[k].storyT;
+    double offPips = 0.0, riskPips = 0.0;   // P-BK-93: published by the geometry, unused here — the lean mover moves LEVELS only (the note's numbers are the release Sync's own)
+     BaseKnotCalcLevels(top, bot, g_bkBoxes[k].dir, g_bkBoxes[k].nodeKind, g_bkBoxes[k].baseTFMin, entry, sl, offPips, riskPips, an);
     // BKE2-OFF: no 2nd set on the drag (Sync purges it at release).
     datetime tFar = t2 + (t2 > t1 ? (t2 - t1) : PeriodSeconds());
    datetime tps, tpe;

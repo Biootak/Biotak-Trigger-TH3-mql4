@@ -56,6 +56,9 @@ const VIS = path.join(BIOTAK, 'VisibilityManager.mqh');
 const APPLY = path.join(BIOTAK, 'BiotakPanels_Apply.mqh');
 const PAL_B = path.join(BIOTAK, 'BiotakPanels_PalB.mqh');
 const OBJ = path.join(BIOTAK, 'EventHandlers_Objects.mqh');
+const NODES = path.join(BIOTAK, 'BaseKnot_Nodes.mqh');
+const BK_BASE = path.join(BIOTAK, 'BaseKnot_Base.mqh');
+const PLAN = path.join(BIOTAK, 'BaseKnot_Plan.mqh');
 const PIPE_A = path.join(BIOTAK, 'LevelPipe_A.mqh');
 const PIPE_B = path.join(BIOTAK, 'LevelPipe_B.mqh');
 const MENU_D = path.join(BIOTAK, 'BiotakMenu_D.mqh');
@@ -77,6 +80,14 @@ const GEAR_GATE = path.join(__dirname, 'check-gear-panel.py');
 // PNL_QSW_N and PNL_WEL from it, so the register resolves those names where the
 // compiler does (the entry includes it ABOVE the strip, P-DRAW-116).
 const CARD_METRICS = path.join(BIOTAK, 'CardMetrics.mqh');
+// P-BK-111: the direction cell's four readers — the strip's own slot table (rows + hit),
+// the domain owner, and the icon generator whose baked backdrop must grow with the row.
+const PANELS_ROWS = path.join(BIOTAK, 'BiotakPanels_Rows.mqh');
+const PANELS_HIT = path.join(BIOTAK, 'BiotakPanels_Hit.mqh');
+const BK_DIRECTION = path.join(BIOTAK, 'BaseKnot_Direction.mqh');
+const BK_MEASURE = path.join(BIOTAK, 'BaseKnot_Measure.mqh');
+const BK_WITNESS = path.join(BIOTAK, 'BaseKnot_Witness.mqh');
+const ICON_GEN = path.join(__dirname, 'gen-th3-icons.js');
 const STRIP_TAP = path.join(BIOTAK, 'DrawStrip_Tap.mqh');
 const STRIP_ROUTER = path.join(BIOTAK, 'DrawStrip_Router.mqh');
 const RES_GATE = path.join(__dirname, 'check-resources.js');
@@ -231,6 +242,11 @@ function main() {
   const apply = linesOf(APPLY);
   const palB = linesOf(PAL_B);
   const obj = linesOf(OBJ);
+  // P-BK-105 (2026-10-09): the base note's own unit — the node read, its hover, and the
+  // sizing preview's zero block in the plan file.
+  const nodes = linesOf(NODES);
+  const bkBase = linesOf(BK_BASE);
+  const plan = linesOf(PLAN);
   const pipeA = linesOf(PIPE_A);
   const pipeB = linesOf(PIPE_B);
   const menuD = linesOf(MENU_D);
@@ -254,6 +270,8 @@ function main() {
     ['DrawStrip_Router.mqh', stripRouter], ['DrawStrip_Paint.mqh', stripPaint],
     ['DrawStrip_Pick.mqh', stripPick],
     ['BiotakMenu_D.mqh', menuD],
+    ['BaseKnot_Nodes.mqh', nodes], ['BaseKnot_Plan.mqh', plan],
+    ['BaseKnot_Base.mqh', bkBase],
     ['DrawStrip_GearA.mqh', gearA], ['DrawStrip_GearB.mqh', gearB],
     ['DrawStrip_Base.mqh', stripBase], ['DrawStrip_Tap.mqh', stripTap],
     ['DrawStrip_Head.mqh', stripHead], ['DrawStrip_Skin.mqh', stripSkin],
@@ -3507,6 +3525,258 @@ function main() {
   }
 
   console.log('');
+  // ── P-BK-105 (2026-10-09) — A CLOSED KNOT'S STEP IS THE KNOT'S OWN, NOT TODAY'S ──
+  // Report: «atr با مربوط به همون گذشته باشه که گره هستش … برای لایو حساب شده، بدرد اونجا
+  // نمیخوره». P-BK-92 moved the TYPE onto the rung's own TH at the box' own anchor and
+  // P-BK-79 moved the risk with it, so the STEP was the ONE number a closed knot still
+  // divided by the LIVE chart-TF TH the pump pushes at anchor 0 (`s_bkStepTH`): a base
+  // that closed forty bars ago had its own height, its break and its return measured in
+  // TODAY'S step. The inverse that must fail here: any of the three divisors in
+  // `BaseKnotNodeRead` reading `s_bkStepTH` again, or the hover quoting a step the node
+  // record never carried (which is how it read the live one).
+  {
+    const broken = [];
+    const nodesLines = nodes || [];
+    const nodesCode = codeOf(nodesLines);
+    const read = bodyOf(nodesLines, 'void BaseKnotNodeRead(');
+    if (!read) {
+      broken.push('BaseKnotNodeRead is gone from Biotak/BaseKnot_Nodes.mqh');
+    } else {
+      // The READER's name is not the law (P-BK-106 split the ability table into two
+      // columns and gave the step its own reader): what must hold is that the step is
+      // read from a row keyed on (nodeTimeMin, anchor) into nd.stepTH.
+      if (!/\(\s*nodeTimeMin\s*,\s*nd\.anchor\s*,\s*nd\.stepTH\s*\);/.test(read.text))
+        broken.push('BaseKnotNodeRead must read its step off the (nodeTimeMin, anchor) row the pump already pushed (P-BK-105) — the SAME key the type was decided against, so the step costs nothing the type did not already cost and can never be another bar');
+      for (const div of ['nd.baseStep = (top - bot) / nd.stepTH;',
+                         'nd.breakStep = maxBreak / nd.stepTH;',
+                         'nd.retStep   = maxRet   / nd.stepTH;']) {
+        if (!read.text.includes(div))
+          broken.push('the divisor in ' + div.split('=')[0].trim() + ' no longer divides by nd.stepTH — a closed knot sizes its own story with today\'s price again (P-BK-105)');
+      }
+      if (/\/\s*s_bkStepTH/.test(read.text))
+        broken.push('a divisor inside BaseKnotNodeRead reads s_bkStepTH again — that is the LIVE chart-TF TH at anchor 0 (P-BK-105)');
+      if (!/nd\.stepTH = 0\.0;/.test(read.text))
+        broken.push('BaseKnotNodeRead no longer zeroes nd.stepTH — a local BaseKnotNode is not zeroed by MQL4, so a hover could quote an undefined step (P-BK-105)');
+    }
+    if (!/double stepTH;/.test(codeOf(bkBase || [])))
+      broken.push('the node record no longer publishes the step it divided by (P-BK-105): the hover would quote a number nothing carries, or read the live one again');
+    const hover = bodyOf(nodesLines, 'string BaseKnotNodeLine(');
+    if (!hover) broken.push('BaseKnotNodeLine is gone from Biotak/BaseKnot_Nodes.mqh');
+    else {
+      if (!/step \(TH " \+ BaseKnotTFName\(nd\.nodeTF\) \+ ", at the box' own bar\) = " \+/.test(hover.text))
+        broken.push("the hover no longer names the node's OWN TF beside its step (P-BK-105): a size without the bar it was read on is a number nobody can check");
+      if (!/else if\(s_bkStepTH > 0\)/.test(hover.text))
+        broken.push('the sizing preview lost its LIVE row (P-BK-105): a box being drawn has no story yet, and its step is the pump\'s live chart-TF row by design');
+    }
+    const planCode = codeOf(plan || []);
+    if (!/ndLive\.stepTH = 0\.0;/.test(planCode))
+      broken.push('BaseKnotSyncLive no longer zeroes ndLive.stepTH — the preview\'s local record is not zeroed by MQL4, so its hover could quote an undefined step (P-BK-105)');
+    if (broken.length) {
+      failures.push('P-BK-105: ' + broken.join('; ') + ' (Biotak/BaseKnot_Nodes.mqh + Biotak/BaseKnot_Plan.mqh)');
+    } else {
+      console.log('[PASS] P-BK-105 a closed knot\'s step is its own: read off the (node, anchor) row the type was decided against, published on the record, and named with the TF it was measured on (Biotak/BaseKnot_Nodes.mqh)');
+    }
+  }
+
+  console.log('');
+  // ── P-BK-111 (2026-10-09) — THE SIDE IS THE USER'S TO TURN, AND THE PRICE MAY NOT TAKE IT BACK ──
+  // Report: «یک چیزی باشه که کاربر خواست جهت سل و بای گره عوض بکن چ.ن بعضی گره به صورت مارکر
+  // هستش که مثل سل هستش ولی در جهت بای وقتی که ایگنور شد میشه استفاده کرد ازش» — then, on
+  // seeing the strip: «روی نوار استریپ بزاری بهتره». The side is read from the market or from
+  // the break's story, so the control has to live on the BOX and not in a settings card; and
+  // the follow runs every 500 ms, so a bare click would be undone in half a second.
+  //
+  // FOUR THINGS MUST HOLD, and each has an inverse that failed a green build once:
+  //   1. THE FOLLOW IS GATED. `BaseKnotRefreshDirection` returns on a non-zero `dirLock`.
+  //      Without it the cell answers «done», the note redraws the same side, and the next
+  //      pump puts it back — a control that compiles, paints, hits, and changes nothing.
+  //   2. THE CELL IS A REAL SEAT IN THE STRIP'S OWN TABLE: name, rect, icon and tooltip all
+  //      answer for slot 5, and BK_TB_N counts it. A cell added to the press route without
+  //      the count is a hit test with nothing to paint.
+  //   3. THE BACKDROP GROWS WITH THE ROW. `bkStripSkin()`'s W and `PNL_TB_W` are one seat
+  //      (a backdrop that did not grow leaves the last cell standing off its own card), and
+  //      both are read HERE rather than believed: the strip's last slot's right edge must
+  //      land inside the width the code declares and inside the width the generator bakes.
+  //   4. THE FLIP IS WITNESSED ON THE FLUSHED CHANNEL WITH A READ-BACK. The flip cannot emit
+  //      from its own layer (it compiles before DrawStrip), so it records and the pumped
+  //      witness reports `was`/`now`/`lock`/`read`/`gv`. A `Print` here reads as «nothing
+  //      happened» (P-DRAW-126) and a witness without a read-back cannot tell a write from
+  //      a lie.
+  {
+    const broken = [];
+    const measure = linesOf(BK_MEASURE) || [];
+    const dirLines = linesOf(BK_DIRECTION) || [];
+    const rowsLines = linesOf(PANELS_ROWS) || [];
+    const hitLines = linesOf(PANELS_HIT) || [];
+    const witLines = linesOf(BK_WITNESS) || [];
+    const metrics = codeOf(linesOf(CARD_METRICS) || []);
+
+    // 1 — EVERY WRITER OF THE SIDE YIELDS TO THE USER'S CALL, and there are exactly two
+    //     of them, both of which shipped broken once:
+    //       a. THE PRICE FOLLOW (`BaseKnotRefreshDirection`), which runs every 500 ms.
+    //       b. THE BREAK'S STORY (inside `BaseKnotSync`, P-BK-46), which runs on the very
+    //          `BaseKnotSync` the flip itself calls to rebuild the family — so the rebuild
+    //          the cell NEEDS was what took the side back, in the same event. Gating only
+    //       (a) is the mistake this entry exists for: MEASURED on the flushed witness after
+    //       six clicks, `was=BUY now=SELL lock=-1 read=BUY gv=-1`. The write was exact and
+    //       the box never moved.
+    //     The law is derived, not listed: every `.dir =` outside the registry's own
+    //     birth (`BaseKnotRegister` / `BaseKnotLazyInit`) must sit in a dirLock-guarded
+    //     branch, and the flip action is the only place allowed to SET the lock.
+    const follow = bodyOf(measure, 'bool BaseKnotRefreshDirection(');
+    if (!follow) {
+      broken.push('BaseKnotRefreshDirection is gone from Biotak/BaseKnot_Measure.mqh');
+    } else if (!/dirLock\s*!=\s*0\)\s*return false/.test(follow.text)) {
+      broken.push('BaseKnotRefreshDirection no longer returns on a locked side (P-BK-111): the follow reads the price every 500 ms and would undo the user\'s click, so the cell would answer «done» and paint the same side');
+    }
+    const sync = bodyOf(plan || [], 'void BaseKnotSync(');
+    if (!sync) {
+      broken.push('BaseKnotSync is gone from Biotak/BaseKnot_Plan.mqh');
+    } else {
+      const story = /ndDir\s*!=\s*0\s*&&\s*ndDir\s*!=\s*dir[^;]*;/.exec(sync.text);
+      if (!story)
+        broken.push('the story\'s side write is gone from BaseKnotSync (P-BK-111) - check that it is still the only thing that publishes a break\'s own answer');
+      else if (!/dirLock\s*==\s*0/.test(story[0]))
+        broken.push('the BREAK\'S STORY no longer yields to the user\'s call (P-BK-111): Sync runs on the very BaseKnotSync the flip calls to rebuild the box, so the rebuild the cell needs would take the side straight back - the write is exact and the box never moves, which is the defect the flushed witness read back as `now=SELL read=BUY`');
+      if (!/nodeSide\s*=\s*ndDir/.test(sync.text))
+        broken.push('BaseKnotSync no longer publishes nodeSide (P-BK-111): the story is a fact about the BREAK and the pump\'s gates read it - only the drawn side yields, never the story\'s own answer');
+    }
+    // derived, not listed: no third writer may appear behind the gate
+    for (const [f, lines] of [['BaseKnot_Measure.mqh', measure], ['BaseKnot_Plan.mqh', plan], ['BaseKnot_Direction.mqh', dirLines]]) {
+      const code = codeOf(lines || []);
+      const writes = (code.match(/g_bkBoxes\[[^\]]+\]\.dir\s*=[^=]/g) || []).length;
+      if (f === 'BaseKnot_Measure.mqh' && writes > 2)
+        broken.push(`Biotak/${f} writes the side ${writes} times (P-BK-111): the birth (Register/LazyInit) and the price follow are two - a third writer is a second place the market can undo the user's call`);
+      if (f === 'BaseKnot_Plan.mqh' && writes > 1)
+        broken.push(`Biotak/${f} writes the side ${writes} times (P-BK-111): the story's own write is one - a second writer here is a third path around the lock`);
+    }
+    const lockSetters = (codeOf(dirLines).match(/g_bkBoxes\[[^\]]+\]\.dirLock\s*=[^=]/g) || []).length;
+    if (lockSetters < 1)
+      broken.push('nothing sets dirLock any more (P-BK-111): the cell would have no state to keep, and the two follow gates would be dead code');
+
+    // 2 — the cell is a real seat in the DRAW-STRIP's command group, which is where a
+    //     side belongs: the quick slots are the served drawing's own properties
+    //     (DRAW_SLOT_*, read and written on the object), and a side is not a property of
+    //     any drawing. So the four tables that make a seat real must all answer for it —
+    //     the id, the raster, the caption and the tap — and the count must include it,
+    //     because the layout derives the seats from DSTRIP_ACT_N.
+    const dirCode = codeOf(rowsLines);
+    const headLines = linesOf(STRIP_HEAD) || [];
+    const baseS = linesOf(STRIP_BASE) || [];
+    const pickS = linesOf(STRIP_PICK) || [];
+    const tapS = linesOf(STRIP_TAP) || [];
+    const headCode = codeOf(headLines);
+    if (!/#define DSTRIP_ACT_DIR\s+\d+/.test(headCode))
+      broken.push('the draw-strip has no DSTRIP_ACT_DIR (P-BK-111): the cell would paint nothing and no tap would reach it - a command with no seat is a comment');
+    // EVERY seat must be inside the count, and no two may share a number. Checking only
+    // the direction seat was not enough, and the mutation gate proved it: shrinking N by
+    // one leaves DSTRIP_ACT_DIR (3) still inside the count and pushes the NEXT seat out -
+    // so the check passed while the bin lost its own seat. The law is the whole id set.
+    const seats = {};
+    for (const m of headCode.matchAll(/#define DSTRIP_ACT_([A-Z]+)\s+(\d+)/g)) seats[m[1]] = Number(m[2]);
+    const actN = seats.N;
+    if (actN === undefined)
+      broken.push('DSTRIP_ACT_N is gone from Biotak/DrawStrip_Head.mqh (P-BK-111): the layout sizes its seat array by the count, so the row has no width without it');
+    else {
+      const names = Object.keys(seats).filter(k => k !== 'N');
+      for (const k of names) {
+        if (seats[k] < 0 || seats[k] >= actN)
+          broken.push(`the ${k} seat is ${seats[k]} and DSTRIP_ACT_N is ${actN} (P-BK-111): a seat outside the count is never reserved by the layout, never hit-tested and never swept - the strip would paint a row with a hole in it`);
+      }
+      const seen = {};
+      for (const k of names) {
+        if (seen[seats[k]] !== undefined)
+          broken.push(`${k} and ${seen[seats[k]]} are both seat ${seats[k]} (P-BK-111): two commands on one object name, so one tap answers for the other`);
+        seen[seats[k]] = k;
+      }
+      if (names.length !== actN)
+        broken.push(`${names.length} seat(s) are declared and DSTRIP_ACT_N is ${actN} (P-BK-111): the count and the ids are two numbers for one group, and only one of them reserves a row`);
+    }
+    const actRes = bodyOf(baseS, 'string DrawStripActRes(');
+    if (!actRes || !/bk_dirflip\.bmp/.test(actRes.text))
+      broken.push('DrawStripActRes no longer answers a raster for the direction seat (P-BK-111): an empty string paints NO face, and the icon gate reads the same table so it cannot see the loss');
+    const actTip = bodyOf(pickS, 'string DrawStripActTip(');
+    if (!actTip) {
+      broken.push('DrawStripActTip is gone (P-BK-111)');
+    } else {
+      if (!/DSTRIP_ACT_DIR/.test(actTip.text))
+        broken.push('the direction seat has no caption (P-BK-111): the cell would be a mute icon, and the three-state cycle is exactly what a caption has to explain');
+      if (!/BaseKnotDirBoxFor/.test(actTip.text))
+        broken.push('the caption no longer asks whether the served drawing is a Base Box (P-BK-111): it would promise a side change on a fib, where nothing would happen');
+      if (!/let the price/.test(actTip.text))
+        broken.push('the caption no longer states how the box goes BACK to the market (P-BK-111): «flip» alone leaves the user guessing that a second click restores it');
+    }
+    const actTap = bodyOf(tapS, 'bool DrawStripActTap(');
+    if (!actTap) {
+      broken.push('DrawStripActTap is gone (P-BK-111)');
+    } else {
+      if (!/BaseKnotFlipDirection/.test(actTap.text))
+        broken.push('the direction tap no longer reaches BaseKnotFlipDirection (P-BK-111): the cell would paint, hover and do nothing');
+      if (!/BaseKnotSync/.test(actTap.text))
+        broken.push('the direction tap no longer rebuilds the box (P-BK-111): the side is a published fact (marker, note caption, family colours), so a flip with no repaint is a flip nobody can see');
+      if (!/BaseKnotDirBoxFor/.test(actTap.text))
+        broken.push('the direction tap no longer checks what the strip serves (P-BK-111): a press on a fib would reach the knot layer with no box to answer for');
+    }
+    // AND THE MINI-STRIP MUST NOT HAVE GROWN A SECOND CELL FOR IT. Two strips carrying
+    // the same action is two places to learn and two chances to disagree about which box
+    // is meant; the user named ONE surface, and the register is where that stays one.
+    if (/#define BK_TB_N\s+9\b/.test(dirCode) || /"TBdir"/.test(dirCode))
+      broken.push('the Base Box mini-strip carries a second direction cell (P-BK-111): the control lives on ONE surface - the draw-strip the hand is already holding');
+    if (/BaseKnotFlipDirection/.test(codeOf(linesOf(PANELS_HIT) || [])))
+      broken.push('the Base Box mini-strip press route still reaches BaseKnotFlipDirection (P-BK-111): a second press site is a second place that can flip a side');
+    // the bake must agree with the card the mini-strip actually has - read off the disk,
+    // because the generator's literal and the raster are two files (see the bake check).
+    const bake = path.join(ROOT, 'Files', 'Icons', 'bk_strip.bmp');
+    const margin = /#define PNL_MARGIN\s+(\d+)/.exec(metrics);
+    const tbW = /#define PNL_TB_W\s+(\d+)/.exec(metrics);
+    try {
+      const w = fs.readFileSync(bake).readInt32LE(18);
+      if (tbW && margin) {
+        const want = Number(tbW[1]) + 2 * Number(margin[1]);
+        if (w !== want)
+          broken.push(`bk_strip.bmp on disk is ${w}px wide and the card needs ${want}px (PNL_TB_W ${tbW[1]} + 2x PNL_MARGIN ${margin[1]}) - a width was changed and the backdrop was never re-baked: run \`node tools/gen-th3-icons.js\`. The generator's literal and the raster are two files, and only one of them is what the terminal draws`);
+      }
+    } catch (e) {
+      broken.push('Files/Icons/bk_strip.bmp could not be read - the strip backdrop must be measured, not assumed');
+    }
+
+    // 4 — the witness is flushed, pumped, and carries a read-back.
+    const dw = bodyOf(witLines, 'void BaseKnotDirWitness(');
+    if (!dw) {
+      broken.push('BaseKnotDirWitness is gone from Biotak/BaseKnot_Witness.mqh (P-BK-111): the flip would answer nothing at all');
+    } else {
+      if (!/DrawStripDiagEmit/.test(dw.text))
+        broken.push('the flip\'s witness no longer goes through DrawStripDiagEmit (P-BK-111): a Print witness sits in MT4\'s RAM buffer and reads as «nothing happened» (P-DRAW-126)');
+      if (!/\[P-BK-111\]/.test(dw.text))
+        broken.push('the flip\'s witness lost its [P-BK-111] tag (P-BK-111): a flushed line nobody can grep is not a witness');
+      for (const f of ['was=', 'now=', 'lock=', 'read=', 'gv=']) {
+        if (dw.text.indexOf(f) < 0)
+          broken.push(`the flip's witness no longer prints ${f} (P-BK-111): «کلیک کردم هیچی نشد» is unprovable without the read-back`);
+      }
+      // THE READ-BACK MUST READ THE BOX, NOT THE WRITE. Printing the field's name is not
+      // enough: a witness that prints `now` — the value the flip just computed — is a
+      // transcript of the intention, and it would print «SELL» for a side the follow undid
+      // 400 ms later. This is the P-DRAW-125a lesson (a writer discarding its own return)
+      // applied to a witness.
+      if (!/" read=" \+ \(k < 0 \? "gone" : \(g_bkBoxes\[k\]\.dir/.test(dw.text))
+        broken.push('the flip\'s witness prints the WRITE instead of reading the BOX back (P-BK-111): it would report the side the flip intended, and stay green while the follow undid it - a witness with no eyes is a transcript');
+    }
+    const dirBody = codeOf(dirLines);
+    if (!/BaseKnotDirFlipNote\(/.test(dirBody))
+      broken.push('the flip no longer records for the witness (P-BK-111): the read-back would have nothing to report');
+    if (!/GlobalVariableSet\(BaseKnotGVTwin\(id\)/.test(dirBody))
+      broken.push('the flip no longer writes the side\'s TWIN GV (P-BK-111): the user\'s own call would not survive the restart that the side itself survives');
+    if (!/BaseKnotDirBoxFor/.test(dirBody))
+      broken.push('the served object\'s box is no longer resolvable (P-BK-111): the draw-strip serves an object by NAME, and without this the cell cannot tell a Base Box from a fib');
+    if (!/BaseKnotDirWitness\(\)/.test(codeOf(linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh')) || [])))
+      broken.push('the pump no longer calls BaseKnotDirWitness (P-BK-111): the flip would record into a ring nobody reads - a witness channel with no reader is silence');
+    if (broken.length) {
+      failures.push('P-BK-111: ' + broken.join('; ') + ' (Biotak/BaseKnot_Direction.mqh + BaseKnot_Measure.mqh + DrawStrip_Head/Base/Pick/Tap.mqh + BiotakPanels_Rows/Hit.mqh + CardMetrics.mqh + tools/gen-th3-icons.js)');
+    } else {
+      console.log('[PASS] P-BK-111 the side is the user\'s to turn: the follow yields to the lock, the draw-strip\'s command group carries the cell (raster + caption + tap + count, one surface only), and the flip is witnessed flushed with a read-back');
+    }
+  }
+
   if (failures.length) {
     for (const f of failures) console.log(`[FAIL] ${f}`);
     console.log('');

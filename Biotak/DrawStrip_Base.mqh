@@ -1307,6 +1307,12 @@ string DrawStripActRes(const int a)
    if(a == DSTRIP_ACT_GEAR) return "::Files\\Icons\\bk_gear.bmp";
    if(a == DSTRIP_ACT_PIN)
       return (s_dsPinned ? "::Files\\Icons\\gl_pin_gold.bmp" : "::Files\\Icons\\gl_pin_m.bmp");
+   //--- P-BK-111: ONE glyph, and it is a TWO-HEADED arrow. The cell has three states, not
+   //--- two, so the usual pair of faces would be wrong twice: a single-headed up arrow
+   //--- reads as «this box is a BUY», which is a claim the strip cannot make (the side
+   //--- belongs to the knot layer, and the user may have overridden it). A shape that can
+   //--- go both ways is the only honest face for a cell whose job is to change the side.
+   if(a == DSTRIP_ACT_DIR) return "::Files\\Icons\\bk_dirflip.bmp";
    if(a == DSTRIP_ACT_DEL) return "::Files\\Icons\\bk_del.bmp";
    return "";
 }

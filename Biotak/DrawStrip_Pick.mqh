@@ -529,6 +529,17 @@ string DrawStripActTip(const int a)
    if(a == DSTRIP_ACT_GEAR) return "Full settings: style, levels, template, strip";
    if(a == DSTRIP_ACT_PIN) return (s_dsPinned ? "Pinned: outside click won't dismiss — click to unpin"
                                               : "Pin: keep the strip while editing");
+   //--- P-BK-111: THE CAPTION STATES BOTH HALVES OF THE CYCLE, because a caption that
+   //--- only says «flip» leaves the user guessing how to hand the box back to the market
+   //--- — and the answer (click again) IS the third state. On a drawing that is not a
+   //--- Base Box it says exactly that, instead of promising a change it cannot make.
+   if(a == DSTRIP_ACT_DIR)
+   {
+      string id = BaseKnotDirBoxFor(s_dsObj);
+      if(id == "") return "Direction: flips a BASE BOX's side — this drawing is not one";
+      if(BaseKnotDirLocked(id)) return "Back to automatic: let the price pick this box's side (it is " + BaseKnotDirWord(id) + ")";
+      return "Trade this box the other way — it is " + BaseKnotDirWord(id) + ", click again to let the price decide";
+   }
    if(a == DSTRIP_ACT_DEL)
    {
       //--- P-DRAW-09b retired (2026-10-03): the bin is this drawing's bin. The strip

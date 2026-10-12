@@ -966,17 +966,19 @@ bool BaseKnotOnChartEvent(const int id, const long &lparam, const double &dparam
          }
          if(kind == "BUY") { ObjectDelete(0, sparam); return true; }   // NOBUYSELL leftover
          if(kind == "") return true;   // PREVIEW/HINT tails — swallow, no action
-         // Click-to-recall: a tap on a committed box re-opens its INFO grace,
-         // so the badge comes back for BK_INFO_GRACE_MS — the "look again"
-         // path, with the info exactly ON the box (never at the bottom).
-         // One Sync per click (clicks are rare; drags already Sync on release).
-         int kr = BaseKnotFind(bid);
-         if(kr >= 0)
-         {
-            g_bkBoxes[kr].commitMs = GetTickCount();
-            BaseKnotSync(bid);
-            ChartRedraw();
-         }
+          // Click-to-recall: a tap on a committed box re-opens its INFO grace,
+          // so the badge comes back for BK_INFO_GRACE_MS — the "look again"
+          // path, with the info exactly ON the box (never at the bottom).
+          // One Sync per click (clicks are rare; drags already Sync on release).
+          int kr = BaseKnotFind(bid);
+          if(kr >= 0)
+          {
+             BaseKnotInfoRearm(bid);   // P-BK-110: "look again" IS the ask — it outranks a
+                                    // click-away, and the window restarts with it
+             g_bkBoxes[kr].commitMs = GetTickCount();   // the same clock, written by the one owner
+             BaseKnotSync(bid);
+             ChartRedraw();
+          }
          return true;   // clicks on box/lines/info text die here — never reach menus
       }
    }
@@ -1277,8 +1279,12 @@ if(shit != "" && BaseKnotFind(shit) >= 0 && !BaseKnotLocked(shit))
                   // is a NATIVE corner/edge resize: the press-time role says it was never
                   // a body move, so the heal would spring the user's own resize back).
                   if(bkGripWas == 0 && s_bkGrabSel == BK_GRAB_ALL) BaseKnotBodySizeHeal(s_bkDragId);
-                 BaseKnotRefreshDirection(s_bkDragId, relRef);
-                BaseKnotSync(s_bkDragId);
+                  BaseKnotRefreshDirection(s_bkDragId, relRef);
+                  // P-BK-110: RELEASING A DRAG IS "LOOK AGAIN" — the user just moved this
+                  // box and is looking at it, so the note comes back even after a click-away
+                  // ended the last one's window (the same ask the click-to-recall path makes).
+                  BaseKnotInfoRearm(s_bkDragId);
+                 BaseKnotSync(s_bkDragId);
                 painted = true;
              }
             if(painted) ChartRedraw();

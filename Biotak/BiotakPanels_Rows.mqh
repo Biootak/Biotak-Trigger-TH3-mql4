@@ -45,8 +45,8 @@ string BkMiniSlotName(const int idx)
       case 2: return "TBtext";     // T → Text tab of card 12
       case 3: return "TBstyle";    // STYLE ▾ dropdown
       case 4: return "TBwidth";    // WIDTH Npx ▾ dropdown
-      case 5: return "TBlock";     // padlock (held box)
-      case 6: return "TBdel";      // trash (held box)
+      case 5:  return "TBlock";     // padlock (held box)
+      case 6:  return "TBdel";      // trash (held box)
       default: return "TBmore";    // ••• → full Base Box card 12
    }
 }

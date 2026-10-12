@@ -235,8 +235,10 @@ void BaseKnotEngPump()
    double   tp1[BK_ENG_ROW_MAX];
    double   tp2[BK_ENG_ROW_MAX];
    double   tp3[BK_ENG_ROW_MAX];
-   double   ab[BK_ENG_ROW_MAX];      // P-BK-92: that TF's TH points in PRICE units
-   ArrayInitialize(ab, 0.0);      // explicit: the push below reads it for every `mins`
+    double   ab[BK_ENG_ROW_MAX];      // P-BK-106: that TF's ATR in PRICE units (the type's measure)
+    double   st[BK_ENG_ROW_MAX];      // P-BK-106: that TF's TH in PRICE units (the step's own number)
+    ArrayInitialize(ab, 0.0);      // explicit: the push below reads them for every `mins`
+    ArrayInitialize(st, 0.0);
    int n = BaseKnotEngNeeds(mins, anchors);
    for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
    {
@@ -247,13 +249,13 @@ void BaseKnotEngPump()
       // its story ended on — so the ATRs, the EngSL, the Hunter leg and the three targets
       // are the ones THAT bar's market gave, not today's drifted ones («با گذشت زمان ممکن
       // 40 بشه یا 10 بشه»). 0 stays the live row the sizing preview asks for.
-      STradePlan plan;
-      if(!TradePlanCompute(mins[i], plan, anchors[i]))
-      {
-         pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
-         ab[i]   = 0.0;
-         continue;
-      }
+       STradePlan plan;
+       if(!TradePlanCompute(mins[i], plan, anchors[i]))
+       {
+          pips[i] = 0.0; hunts[i] = 0.0; tp1[i] = 0.0; tp2[i] = 0.0; tp3[i] = 0.0;
+          ab[i]   = 0.0; st[i] = 0.0;
+          continue;
+       }
       // P-TRADEPLAN-DEC (2026-09-16): the pushed risk is the CARD'S OWN NUMBER —
       // `plan.eng`, one decimal — not a second rounding of `engTrue`, so the box and the
       // `Eng.SL` row it is checked against cannot drift apart. A sub-pip size survives
@@ -266,32 +268,39 @@ void BaseKnotEngPump()
       tp1[i]  = (plan.tp1 > 0 ? (double)plan.tp1 : 0.0);
       tp2[i]  = (plan.tp2 > 0 ? (double)plan.tp2 : 0.0);
       tp3[i]  = (plan.tp3 > 0 ? (double)plan.tp3 : 0.0);
-      // P-BK-75: AND THE SAME PLAN CARRIES THE MOVEMENT ABILITY. `plan.ownPips` is
-      // THIS TF's composite ATR (TradePlanStripPips -> CalculateWeightedATR, the very
-      // number the strip and the trade block read), so the knot's type is decided by
-      // the SAME ATR the rest of the chart is drawn with — not a second reading that
-      // could drift from it. Pips -> price here, because the knot's box is in prices.
-      // P-BK-79: at THIS ROW'S anchor, so `plan.ownPips` is the anchored composite — the
-      // same number the row's own EngSL was divided out of, and the number the box' type
-      // is read against (BaseKnotAbilityGet at the same anchor).
-      // P-BK-92: THE RUNG'S OWN TH CARRIES THE MOVEMENT ABILITY (P-BK-75's ATR
-      // rule below, reversed per user: type + step read TH, plan stays ATR).
-       ab[i] = THAbilityPriceNorm(inpTHVolNorm, mins[i], anchors[i]);
+       // P-BK-106 — THE TYPE'S OWN MEASURE IS BACK ON ATR (P-BK-92's TH reversal retired).
+       // `plan.ownPips` is THIS TF's composite ATR at THIS ROW'S anchor (TradePlanStripPips ->
+       // CalculateWeightedATR, the 5/10/21/66/132/264 blend the strip and the trade plan read),
+       // so the type is decided by the same ATR the rest of the chart is drawn with, read on the
+       // bar its own base ended («atr با مربوط به همون گذشته باشه که گره هستش … برای لایو حساب
+       // شده، بدرد اونجا نمیخوره», P-BK-79/105). TH had no volatility in it at all (`price * pct /
+       // 100`), so a calm pair and a violent one at the same price were typed by the same number.
+       // UNIT: ownPips is in PIPS and the ability table is in PRICE units — the conversion is
+       // HERE and nowhere else, through the pip size's one owner.
+       ab[i] = (plan.ownPips > 0.0 ? plan.ownPips * BaseKnotPipSize() : 0.0);
+       // P-BK-106: the STEP keeps the rung's own TH (P-BK-105). Same anchor, same row, a SECOND
+       // column — so this edit changes the type's measure and leaves every step number as it was.
+       st[i] = THAbilityPriceNorm(inpTHVolNorm, mins[i], anchors[i]);
    }
    BaseKnotEngPush(mins, anchors, pips, hunts, tp1, tp2, tp3, n);
-   // P-BK-92: P-BK-75's block below now hands TH per TF (reversed per user).
-   // P-BK-75 — THE NODE'S TYPE IS ITS HEIGHT AGAINST THE MOVEMENT ABILITIES OF ITS OWN
-   // TF (user: «به جای th از atr استفاده بشه»), so the pump hands ONE number per TF in —
-   // that TF's ATR — exactly as it already hands EngSL in: one row per TF the boxes
-   // asked for, off the SAME `mins` list, so the ask and the answer cannot disagree
-   // about which TFs a box draws with. The RATIOS (0.25 / 0.50 / 1.00) live in the
-   // tool's own table, never here: a second place that halved an ATR would be a second
-   // owner of the rule. A TF whose ATR is not warm pushes 0, which BaseKnotAbilityGet
-   // reads as an ABSENCE: the type stays BK_NODE_NONE and the tooltip says so.
-   // P-BK-79: one row per (TF, anchor) — the same list, the same keys.
-   BaseKnotAbilityReset();
-   for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
-      BaseKnotAbilityPush(mins[i], anchors[i], ab[i]);
+    // P-BK-92: P-BK-75's block below now hands TH per TF (reversed per user).
+    // P-BK-75 — THE NODE'S TYPE IS ITS HEIGHT AGAINST THE MOVEMENT ABILITIES OF ITS OWN
+    // TF (user: «به جای th از atr استفاده بشه»), so the pump hands ONE number per TF in —
+    // that TF's ATR — exactly as it already hands EngSL in: one row per TF the boxes
+    // asked for, off the SAME `mins` list, so the ask and the answer cannot disagree
+    // about which TFs a box draws with. The RATIOS (0.25 / 0.50 / 1.00) live in the
+    // tool's own table, never here: a second place that halved an ATR would be a second
+    // owner of the rule. A TF whose ATR is not warm pushes 0, which BaseKnotAbilityGet
+    // reads as an ABSENCE: the type stays BK_NODE_NONE and the tooltip says so.
+    // P-BK-79: one row per (TF, anchor) — the same list, the same keys.
+    // P-BK-106: ONE row per box is asked for now (the class), not three — the type's two
+    // upper bands are that rung's ATR scaled by the ladder's √-law (BaseKnotAbilityGet),
+    // so no rung above is read and none is asked for. The STEP's TH rides the same row.
+     BaseKnotAbilityReset();
+    for(int i = 0; i < n && i < BK_ENG_ROW_MAX; i++)
+       BaseKnotAbilityPush(mins[i], anchors[i], ab[i], st[i]);
+    BaseKnotTypeWitness();
+    BaseKnotDirWitness();   // P-BK-111: the flip's record, reported on the flushed channel
 }
 
 int OnCalculateHandler(const int rates_total, const int prev_calculated, const datetime &time[], const double &open[], const double &high[], const double &low[], const double &close[], const long &tick_volume[], const long &volume[], const int &spread[]) {

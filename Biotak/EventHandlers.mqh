@@ -11,6 +11,7 @@
 #include "EventHandlers_CustomPrice.mqh"      // the custom price line (was the tail of Init)
 #include "EventHandlers_Init.mqh"
 #include "EventHandlers_Calc.mqh"
+#include "BaseKnot_Witness.mqh"   // P-BK-107: the knot's own read, witnessed (needs DrawStripDiagEmit, so it sits here — above its only caller)
 #include "EventHandlers_Objects.mqh"
 #include "EventHandlers_Router_Gesture.mqh"   // the line's drag stream (was Router's middle)
 #include "EventHandlers_Router.mqh"

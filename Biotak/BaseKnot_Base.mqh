@@ -118,11 +118,11 @@
 #define BK_NODE_RUNG_ETR  1   // (retired) the PATTERN time — one rung above the node's TF
 #define BK_NODE_RUNG_CTR  2   // (retired) the STRUCTURE time — two rungs above the node's TF
                               // ... 3 or more rungs up was OTR (past the structure time)
-#define BK_NODE_NONE   0   // nothing claimed (no height / that TF's TH not warm yet)
-#define BK_NODE_FTR    1   // as long as the TRIGGER ability (TH)
-#define BK_NODE_ETR    2   // as long as the PATTERN ability (TH)
-#define BK_NODE_CTR    3   // as long as the STRUCTURE ability (TH)
-#define BK_NODE_OTR    4   // LONGER than the structure ability (TH)
+#define BK_NODE_NONE   0   // nothing claimed (no height / that TF's ATR not warm yet)
+#define BK_NODE_FTR    1   // as long as the TRIGGER band (the node's own time's ATR)
+#define BK_NODE_ETR    2   // as long as the PATTERN band (that ATR x the next rung's scale)
+#define BK_NODE_CTR    3   // as long as the STRUCTURE band (scaled one rung further)
+#define BK_NODE_OTR    4   // LONGER than the structure band
 //--- P-BK-38: the BREAK's story — the side, never the type any more — is read on the
 //--- BASE'S OWN TF's candles (below), so this window is a count of THAT TF's bars,
 //--- never of the chart's: 1500 D1 bars are the same years on every chart.
@@ -193,6 +193,15 @@ struct BaseKnotBox
 {
    string id;      // "<commitTFmin>_<tick>[rNNN]" (legacy: bare tick)
    int    dir;     // +1 Buy / -1 Sell — decided at commit, then follows the live price (P-BK-13)
+   //--- P-BK-111 (2026-10-09, user: «یک دکمه ریز باشه وقتی مثلا یک گوشه باکس موس رفت روش ظاهر
+   //--- بشه برای جهت باکس» + «بعضی گره به صورت مارکر هستش که مثل سل هستش ولی در جهت بای
+   //--- وقتی که ایگنور شد میشه استفاده کرد ازش»): `dirLock` is the USER'S CALL, and it is
+   //--- the one thing the price may not answer. 0 = the live price decides (P-BK-13's own
+   //--- rule), +1/-1 = the user flipped it through the button and the price is not allowed to
+   //--- flip it back. It exists because the follow runs every 500 ms: without this bit a
+   //--- manual choice survived half a second and was gone, so the button would be a lie.
+   //--- Persisted beside the side so a restart keeps the call the user made (P-UI-142).
+   int    dirLock; // 0 = auto (the price follows) · +1/-1 = the user chose it
    int    tfMin;   // chart Period() minutes at commit (0 = legacy = all TFs)
    uint   commitMs; // GetTickCount at commit — drives the Auto INFO grace (0 = long ago)
    bool   locked;  // mini LOCK row — locked boxes are unselectable (no drag)
@@ -290,6 +299,15 @@ struct BaseKnotNode
    double baseStep;   // the base's own height, in movement steps
    double breakStep;  // how far the break' close went past the edge, in steps
    double retStep;    // the deepest close back inside the base, in steps (0 = never returned)
+   //--- P-BK-105 (2026-10-09) — THE STEP ITSELF, published beside the numbers it divided.
+   //--- THE USER: «atr با مربوط به همون گذشته باشه که گره هستش … برای لایو حساب شده، بدرد
+   //--- اونجا نمیخوره». The type was already anchored (P-BK-92) and the risk with it
+   //--- (P-BK-79), so the step was the ONE number a closed knot still took from today's
+   //--- price: the pump pushed the LIVE chart-TF TH at anchor 0 and the node read divided
+   //--- by it. Now it is the node's OWN TH at the node's OWN anchor — the SAME row the type
+   //--- was decided against — and the hover prints the TF it was read on beside it, so the
+   //--- step can never be a different bar than the type above it. 0 = absence (reported).
+   double stepTH;
    bool   returned;   // a close came back INSIDE the base after that first break
    bool   crossed;    // P-BK-35: the return's closes ran past the FAR edge — the far-side
                       //          story's own test is a LEVEL of the box, never a step count
@@ -301,16 +319,20 @@ struct BaseKnotNode
    int    depBars;    // the DEPARTURE's length in candles («طول حرکت»): the leg that left
                       // the base, counted until price came back inside (or until now)
    double depStep;    // ... and that leg's reach past the edge, in movement steps (TH)
-   //--- P-BK-75/78: the box' HEIGHT (the length the user's rule compares) and the THREE
-   //--- MOVEMENT ABILITIES of the node's own TIME it was compared against - the THs of
-   //--- that rung, of the rung one step above it (the pattern time) and of the rung two
-   //--- above (the structure time), in price units; 0 = the pump never pushed that row, or
-   //--- pushed it while the TH was not warm. Published on the record so the tooltip can
-   //--- spell the comparison without a second read.
-   double   height;   // top - bot — «طول گره» is «ارتفاع باکس»
-   double   abTrig;   // the node's own time's TH - the trigger ability
-   double   abPat;    // the pattern time's TH - one rung above
-   double   abStr;    // the structure time's TH - two rungs above
+    //--- P-BK-75/106: the box' HEIGHT (the length the user's rule compares) and the THREE
+    //--- BANDS it was compared against: the node's own time's ATR (READ, at the box' own
+    //--- anchor) and the two rungs above it (DERIVED — that ATR scaled by the ladder's own
+    //--- √-law, BaseKnotRungScale), in price units. 0 = the pump never pushed that row, or
+    //--- pushed it while the ATR was not warm. Published on the record so the tooltip can
+    //--- spell the comparison without a second read.
+    //--- P-BK-92 (2026-10-09, retired by P-BK-106): the three bands were the rungs' own TH.
+    //--- TH is a fixed percentage of price (`price * pct / 100`), so a calm pair and a violent
+    //--- one at the same price were typed by the SAME number — the user's own call was that
+    //--- «به جای th باید از atr استفاده بشه».
+    double   height;   // top - bot — «طول گره» is «ارتفاع باکس»
+    double   abTrig;   // the node's own time's ATR - the trigger band (the ONE measured number)
+    double   abPat;    // the pattern time's band - ATR x the ladder's own scale
+    double   abStr;    // the structure time's band - the pattern band scaled again
    //--- P-BK-79: THE BAR ALL OF THE ABOVE WAS READ AT — the box' own story end (`storyT`),
    //--- or 0 for the live sizing preview, which has no base yet and asks for the live row.
    //--- Published for the same reason the abilities are: the tooltip prints the bands off
@@ -324,6 +346,17 @@ struct BaseKnotNode
    int    sideLevel;  // BK_SIDE_* — which rung of the bias ladder answered
 };
 static BaseKnotBox g_bkBoxes[];
+// P-BK-111 (2026-10-09): THE REGISTRY'S OWN FINDER LIVES WITH THE REGISTRY. It used
+// to sit in the Measure layer, below every other owner of g_bkBoxes - which meant the
+// direction owner (BaseKnot_Direction.mqh) could not ask "which row is this box?" without
+// being moved under a layer it has no business living in. One line of arithmetic, and it
+// belongs to the array it walks.
+int BaseKnotFind(const string id)
+{
+   for(int i = 0; i < ArraySize(g_bkBoxes); i++)
+      if(g_bkBoxes[i].id == id) return i;
+   return -1;
+}
 static int         g_bkState      = BK_IDLE;
 static datetime    g_bkT1         = 0;
 static double      g_bkP1         = 0.0;

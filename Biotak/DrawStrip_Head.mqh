@@ -482,8 +482,16 @@
 #define DSTRIP_ACT_MORE 0
 #define DSTRIP_ACT_GEAR 1
 #define DSTRIP_ACT_PIN 2
-#define DSTRIP_ACT_DEL 3
-#define DSTRIP_ACT_N 4
+//--- P-BK-111 (2026-10-09) — THE SIDE IS THE USER'S TO TURN. It sits in the COMMAND
+//--- group, not the quick-slot group, and that placement is the decision: the quick slots
+//--- are the served drawing's own PROPERTIES (DRAW_SLOT_*, read and written on the object
+//--- itself, kind-dependent), and a side is not a property of any drawing — it is a call
+//--- on one Base Box, owned by the knot layer. So the cell is a fixed command like gear /
+//--- bin, it widens the row by one seat (the layout derives the seats from DSTRIP_ACT_N),
+//--- and on a drawing that is not a Base Box it paints, says so, and does nothing.
+#define DSTRIP_ACT_DIR 3
+#define DSTRIP_ACT_DEL 4
+#define DSTRIP_ACT_N 5
 //--- P-DRAW-29 (2026-09-24) — the plate skin's own metrics (define-before-use:
 //--- PointInside and the clamps read them far above the painters). The plate's
 //--- height is ALWAYS 48+42k, so one top cap (margin + 44) + k mid bands (42)

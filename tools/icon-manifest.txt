@@ -8,6 +8,7 @@ bk_copy.bmp
 bk_dds.bmp
 bk_ddw.bmp
 bk_del.bmp
+bk_dirflip.bmp
 bk_ext_off.bmp
 bk_ext_on.bmp
 bk_fill_on.bmp

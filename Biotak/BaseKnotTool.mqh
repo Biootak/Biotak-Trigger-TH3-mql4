@@ -83,8 +83,8 @@
 //|    ONE owner). The ENTRY does not hop — the user confirmed that read |
 //|    («ورودش که درسته»): BaseKnotEntryTFMin is the node's own time.    |
 //|    The label prints the stop's TF beside the name (`EngSL M5`)       |
-//|    whenever it differs from the class, and nothing moves outside the |
-//|    box: P-BK-52's 55/64 bound caps each leg by the node's own power. |
+//|    whenever it differs from the class — and a deep leg may leave the |
+//|    box: pushed EngSL/HuntSL as-is — no node-power cap (BKCAP-OFF). |
 //|  * Direction is decided at commit, then FOLLOWS the live price — a    |
 //|    box below it = demand = Buy (the entry sits INSIDE the top edge — |
 //|    see the P-BK-51 bullet above for the measure and the stop); a      |
@@ -109,14 +109,21 @@
 //|  * BKMAGNET-OFF: NO magnet — click = corner, exactly like MT4's own |
 //|    rectangle (snapping pulled corners to candle shadows).          |
 //|  * Info label ("the base note"): chart-anchored, a GLANCE —           |
-//|    "[<side> · <EngSL|node EngSL> 17.9 | 26.4 | N bars · M15 base ·    |
-//|    FTR]" — the risk and the NAME of its source (P-BK-46/53), then    |
+//|    "[<side> · <EngSL|box height> 17.9 | HuntSL 24.3 | 26.4 | N bars · |
+//|    M15 base · FTR]" — the risk and the NAME of its source (P-BK-46/53), |
+//|    then the ENTRY's OWN leg beside it (P-BK-104, 2026-10-09: «اینو کنار|
+//|    بزار محاسباتشو و از همون engsl, huntsl که هستش استفاده بکنه» — the |
+//|    HuntSL that places the entry for ETR/CTR/OTR, or the EngSL of the  |
+//|    node's own time when no HuntSL was pushed; it stays empty while it |
+//|    is the SAME leg the first field already names), then               |
 //|    the box' OWN HEIGHT in pips, bare (P-BK-57 — its hover names it,   |
-//|    and it stays out when the risk IS that height), never a unit      |
-//|    word and never a target list; the plan's legs are the TICKS on    |
+//|    and it stays out when the risk IS that height), never a unit       |
+//|    word and never a target list; the plan's legs are the TICKS on     |
 //|    the chart (P-BK-50) and every leg's level/pips/R live in the box   |
-//|    hover. The old "… 17.9 Pips | TP 12/25/51 …" field is retired in   |
-//|    place (BKTAGTP-OFF, P-BK-54). P-BK-28 names the base's SIZE CLASS |
+//|    hover — where the ARITHMETIC rides too (P-BK-93: entry = the edge  |
+//|    ∓ ONE leg, stop = the entry ∓ ONE EngSL, off the very two legs the |
+//|    lines were drawn with). The old "… 17.9 Pips | TP 12/25/51 …" field|
+//|    is retired in place (BKTAGTP-OFF, P-BK-54). P-BK-28 names the base's SIZE CLASS   |
 //|    (3 candles = a base, 9..12 = the 3 candles of the TF above; one    |
 //|    or two candles = structure) and P-BK-47 names the NODE TYPE from |
 //|    the SAME ladder: how many rungs the class stands above the TF the |
@@ -222,8 +229,10 @@
 #define BASE_KNOT_TOOL_MQH
 
 #include "BaseKnot_Base.mqh"
+#include "BaseKnot_Direction.mqh"   // P-BK-111: the user's own call on the side (the follow asks it)
 #include "BaseKnot_Measure.mqh"
 #include "BaseKnot_Nodes.mqh"
+#include "BaseKnot_Note.mqh"   // P-BK-104/109: the note's own text fields (their one writer is below)
 #include "BaseKnot_Plan.mqh"
 #include "BaseKnot_Drag.mqh"
 

@@ -431,6 +431,26 @@ bool DrawStripActTap(const int a)
       ChartRedraw();
       return true;
    }
+   if(a == DSTRIP_ACT_DIR)
+   {
+      //--- P-BK-111: THE CELL IS A CALL ON THE KNOT LAYER, so the call and the rebuild
+      //--- are the same branch: the side is a published fact (the marker, the note's
+      //--- caption, the family's colours), so a flip that does not repaint is a flip the
+      //--- user cannot see. `BaseKnotSync` is the family's own owner for that reason.
+      DrawStripClosePicker();
+      string id = BaseKnotDirBoxFor(s_dsObj);
+      if(id != "" && BaseKnotFlipDirection(id))
+      {
+         BaseKnotSync(id);
+         DrawStripLayout();
+         DrawStripPaint();
+         ChartRedraw();   // P-DRAW-127: a user action flushes its own frame
+      }
+      //--- NOT A BASE BOX: the cell consumed the click and changed nothing, on purpose.
+      //--- A refused action must not fall through to a neighbour's tap, and it must not
+      //--- repaint either - there is nothing new on the chart to show.
+      return true;
+   }
    if(a == DSTRIP_ACT_DEL) { DrawStripFireDelete(); return true; }
    return true;
 }
