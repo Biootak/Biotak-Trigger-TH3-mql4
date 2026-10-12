@@ -307,24 +307,23 @@ void InitializeUISupport()
       string opk = GetGVName("PNLP"  + IntegerToString(i));   // old symbol-prefixed pixel
       if(GlobalVariableCheck(cfk))
       {
-         // canonical: re-derive pixels against the current window
-         double packed = GlobalVariableGet(cfk);
-         double fx = HomeFracClamp(packed / 10000.0);
-         double fy = HomeFracClamp(MathMod(packed, 10000.0));
+         // canonical: unpack integer-scaled fractions, re-derive pixels
+         double fx = 0, fy = 0;
+         PnlFracUnpack(GlobalVariableGet(cfk), fx, fy);
          g_PnlX[i] = (int)MathRound(fx * kcw);
          g_PnlY[i] = (int)MathRound(fy * kch);
          g_PnlManualPos[i] = true;
       }
       else if(GlobalVariableCheck(ofk))
       {
-         // 140p symbol-prefixed fraction: migrate once to canonical, delete old
+         // 140p symbol-prefixed fraction (old float encoding): migrate to canonical
          double packed = GlobalVariableGet(ofk);
          double fx = HomeFracClamp(packed / 10000.0);
          double fy = HomeFracClamp(MathMod(packed, 10000.0));
          g_PnlX[i] = (int)MathRound(fx * kcw);
          g_PnlY[i] = (int)MathRound(fy * kch);
          g_PnlManualPos[i] = true;
-         GlobalVariableSet(cfk, packed);   // promote to canonical
+         GlobalVariableSet(cfk, PnlFracPack(fx, fy));   // re-encode correctly
          GlobalVariableDel(ofk);
       }
       else if(GlobalVariableCheck(opk))
@@ -339,7 +338,7 @@ void InitializeUISupport()
          g_PnlManualPos[i] = true;
          double fx = HomeFracClamp(HomeFracOf(px, kcw));
          double fy = HomeFracClamp(HomeFracOf(py, kch));
-         GlobalVariableSet(cfk, fx * 10000.0 + fy);
+         GlobalVariableSet(cfk, PnlFracPack(fx, fy));
          GlobalVariableDel(opk);
       }
    }

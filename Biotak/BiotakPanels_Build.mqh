@@ -1019,6 +1019,22 @@ void PnlDestroy(const int item)
 // P-UI-140q: symbol-free key for panel fraction — same pattern as GVHomeFracName.
 // A panel dragged on EURUSD must appear at the same relative place on GBPUSD.
 string PnlFracKey(const int item) { return "BIOMENU_PNL_" + IntegerToString(item) + "_F"; }
+// Pack two 0..1 fractions into one double: both scaled to 0..9999 integers.
+// packed = fx_int * 10000 + fy_int  (fx_int and fy_int each 0..9999)
+// This keeps the encoding invertible for any fx,fy in [0,1].
+double PnlFracPack(const double fx, const double fy)
+{
+   int fxi = (int)MathRound(HomeFracClamp(fx) * 9999.0);
+   int fyi = (int)MathRound(HomeFracClamp(fy) * 9999.0);
+   return (double)(fxi * 10000 + fyi);
+}
+void PnlFracUnpack(const double packed, double &fx, double &fy)
+{
+   int fxi = (int)(packed / 10000.0);
+   int fyi = (int)MathMod(packed, 10000.0);
+   fx = HomeFracClamp(fxi / 9999.0);
+   fy = HomeFracClamp(fyi / 9999.0);
+}
 
 void PnlCommitMove(const int item)
 {
@@ -1030,7 +1046,7 @@ void PnlCommitMove(const int item)
    {
       double fx = HomeFracClamp(HomeFracOf(g_PnlX[item], rcw));
       double fy = HomeFracClamp(HomeFracOf(g_PnlY[item], rch));
-      GlobalVariableSet(PnlFracKey(item), fx * 10000.0 + fy);
+      GlobalVariableSet(PnlFracKey(item), PnlFracPack(fx, fy));
       // retire both old keys (symbol-prefixed fraction and pixel)
       GlobalVariableDel(GetGVName("PNLPF" + IntegerToString(item)));
       GlobalVariableDel(GetGVName("PNLP"  + IntegerToString(item)));
