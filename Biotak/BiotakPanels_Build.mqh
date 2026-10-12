@@ -1019,8 +1019,24 @@ void PnlDestroy(const int item)
 void PnlCommitMove(const int item)
 {
    g_PnlManualPos[item] = true;
-   GlobalVariableSet(GetGVName("PNLP" + IntegerToString(item)),
-                     g_PnlX[item] * 10000.0 + g_PnlY[item]);
+   // P-UI-140p: store as FRACTIONS (like orb/chip/strip) so the position survives
+   // restarts, resizes and monitor changes. The pixel key (PNLP{i}) is deleted so
+   // the reader cannot fall back to the stale absolute value.
+   int rcw = 0, rch = 0;
+   if(HomeChartSizeRaw(rcw, rch))
+   {
+      string fk = GetGVName("PNLPF" + IntegerToString(item));
+      double fx = HomeFracClamp(HomeFracOf(g_PnlX[item], rcw));
+      double fy = HomeFracClamp(HomeFracOf(g_PnlY[item], rch));
+      GlobalVariableSet(fk, fx * 10000.0 + fy);
+      GlobalVariableDel(GetGVName("PNLP" + IntegerToString(item)));   // retire pixel key
+   }
+   else
+   {
+      // window size unknown at teardown — keep the pixel key as fallback
+      GlobalVariableSet(GetGVName("PNLP" + IntegerToString(item)),
+                        g_PnlX[item] * 10000.0 + g_PnlY[item]);
+   }
 }
 
 //--- P-UI-75b: the drag's own frame window. File scope (and declared HERE,

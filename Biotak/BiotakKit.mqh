@@ -293,21 +293,39 @@ void InitializeUISupport()
    RestoreDiscreteToggles();   // P-UI-142: chart key, else the OV_-seeded mirror (restart-durable; the early dialog-fallback block stays for Lite)
    LoadPalRecent();
 
-   // panel drag positions (persisted per chart)
-   int kcw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(kcw <= 0) kcw = 1920;
-   int kch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(kch <= 0) kch = 1080;
+   // P-UI-140p: panel drag positions — fractions first (PNLPF{i}), pixel key as
+   // migration path (PNLP{i}). A fraction is re-derived against the LIVE window so
+   // the panel comes back to the same relative place after a resize or restart.
+   int kcw = 0, kch = 0; HomeChartSize(kcw, kch);
    for(int i = 0; i < PNL_COUNT; i++)
    {
-      string vn = GetGVName("PNLP" + IntegerToString(i));
-      if(GlobalVariableCheck(vn))
+      string fk = GetGVName("PNLPF" + IntegerToString(i));
+      string pk = GetGVName("PNLP"  + IntegerToString(i));
+      if(GlobalVariableCheck(fk))
       {
-         double packed = GlobalVariableGet(vn);
-         g_PnlX[i] = (int)(packed / 10000.0);
-         g_PnlY[i] = (int)MathMod(packed, 10000.0);
-         // P-UI-142: a smaller window must not strand the manual spot off-screen.
-         if(g_PnlX[i] < 0) g_PnlX[i] = 0; if(g_PnlX[i] > kcw) g_PnlX[i] = kcw;
-         if(g_PnlY[i] < 0) g_PnlY[i] = 0; if(g_PnlY[i] > kch) g_PnlY[i] = kch;
+         // fractional key: re-derive pixels against the current window
+         double packed = GlobalVariableGet(fk);
+         double fx = HomeFracClamp(packed / 10000.0);
+         double fy = HomeFracClamp(MathMod(packed, 10000.0));
+         g_PnlX[i] = (int)MathRound(fx * kcw);
+         g_PnlY[i] = (int)MathRound(fy * kch);
          g_PnlManualPos[i] = true;
+      }
+      else if(GlobalVariableCheck(pk))
+      {
+         // legacy pixel key: migrate once into a fraction and delete the pixel key
+         double packed = GlobalVariableGet(pk);
+         int px = (int)(packed / 10000.0);
+         int py = (int)MathMod(packed, 10000.0);
+         if(px < 0) px = 0; if(px > kcw) px = kcw;
+         if(py < 0) py = 0; if(py > kch) py = kch;
+         g_PnlX[i] = px; g_PnlY[i] = py;
+         g_PnlManualPos[i] = true;
+         // migrate: write fraction, delete pixel key
+         double fx = HomeFracClamp(HomeFracOf(px, kcw));
+         double fy = HomeFracClamp(HomeFracOf(py, kch));
+         GlobalVariableSet(fk, fx * 10000.0 + fy);
+         GlobalVariableDel(pk);
       }
    }
 }
