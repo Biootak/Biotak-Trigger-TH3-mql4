@@ -67,6 +67,7 @@ void SetATRLabelsVisibility(const string objectPrefix, const bool visible) {
     ObjectDelete(0, uniquePrefix + "TREX_Caption");
     ObjectSetInteger(0, uniquePrefix + "TREX_TR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_EX", OBJPROP_TIMEFRAMES, tradeTF);
+    ObjectSetInteger(0, uniquePrefix + "TREX_ATR", OBJPROP_TIMEFRAMES, tradeTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_Hunter", OBJPROP_TIMEFRAMES, slTF);
     ObjectSetInteger(0, uniquePrefix + "TREX_StrBond", OBJPROP_TIMEFRAMES, slTF);
 

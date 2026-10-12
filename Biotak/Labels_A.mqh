@@ -702,6 +702,7 @@ struct STrexCardLayout {
    int yTrade, yHunter, yBrand;   // bottom distances (-1 = that row is not drawn)
    int xTrade, xHunter, xBrand;   // distances from the chart's RIGHT edge
    int xEx, xTR, xSp, ySp;        // the `TR|ex` pair + its spread superscript
+   int xATR, yATR, atrSize;       // ATR superscript above the `TR` half + its font size
    int fontSize, brandSize;       // the two measured point sizes
    int cardW;                     // the width every drawn row is centred on
    int rows;                      // blank rows actually granted (after clamps)
@@ -794,8 +795,11 @@ void TRexTradeCardLayout(const STradePlan &plan, STrexCardLayout &L)
    L.xBrand  = rightEdge + (cardW - wBrand) / 2;
    L.xEx     = L.xBrand;                 // the pair's right end is the row's edge
    L.xTR     = L.xEx + wEx;              // measured: exactly 0 px of overlap
-   L.xSp     = L.xEx + 6;                // spread rides over the `ex`
+   L.xSp     = L.xTR + wTR + 4;        // spread moves to the left of `TR`
    L.ySp     = L.yBrand + brandEm - 4;   // ... just under the brand's cap line
+   L.atrSize = fs + 2;                  // ATR superscript: 2 pt above the row font, below brandSize
+   L.xATR    = L.xEx + 6;              // ATR rides over the `ex` (where spread used to be)
+   L.yATR    = L.ySp;                    // same cap-line height as the spread
    // P-BK-58 — and the BASE NOTE's row is stacked on TOP of the brand: the row's slot is pushed
    // in here, while the card's own top row is known, so the shared column keeps ONE order (the
    // note, then the brand, then the two trade rows) whatever the switches do.
@@ -911,15 +915,18 @@ bool CreateTRexPiece(const string name, const string text, const color textColor
 // only instead of 27 same-value writes.
 static string s_trxPrefix = "";
 static string s_trxSpText = "";
+static string s_trxATRText = "";
 static color s_trxTR = clrNONE, s_trxEX = clrNONE, s_trxSP = clrNONE;
 static int s_trxFS = -1, s_trxBS = -1;
 static int s_trxXSp = 0, s_trxYSp = 0, s_trxXTR = 0, s_trxXEx = 0, s_trxYBrand = 0;
+static int s_trxXATR = 0, s_trxYATR = 0, s_trxATRSize = -1;
 static bool s_trxInit = false;
 bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     string spName  = labelPrefix + "TREX_Spread";
     string capName = labelPrefix + "TREX_Caption";   // RETIRED (P-LBL-06) - purge only
     string trName  = labelPrefix + "TREX_TR";
     string exName  = labelPrefix + "TREX_EX";
+    string atrName = labelPrefix + "TREX_ATR";
     // P-PERF-38g: MARKED BEFORE THE P-PERF-53 CLEAN-SKIP BELOW, on purpose.
     //
     // The skip is the whole point of P-PERF-53 (a still 2 s pass costs reads),
@@ -934,6 +941,7 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     LblMark(spName);
     LblMark(trName);
     LblMark(exName);
+    LblMark(atrName);
 
     // P-LBL-06 (2026-09-14, user request: "that Persian text should go"): the
     // green Persian caption row is RETIRED from the chart. The name is still
@@ -951,6 +959,7 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
         ObjectSetInteger(0, spName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, trName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         ObjectSetInteger(0, exName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+        ObjectSetInteger(0, atrName, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
         return true;
     }
 
@@ -963,23 +972,34 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
         if(ask > 0 && bid > 0 && ask >= bid)
             spText = DoubleToString((ask - bid) / pip, 1);
     }
+    // ATR superscript above `TR`: current-TF weighted ATR in pips, 1 decimal.
+    string atrText = "--";
+    double atrPip = GetCachedPipSize();
+    if(!IsZero(atrPip, EPSILON_PRICE)) {
+        double atrVal = GetATRForTimeframe(Period());
+        if(atrVal > 0 && atrVal != EMPTY_VALUE)
+            atrText = DoubleToString(NormalizeDouble(atrVal / atrPip, 1), 1);
+    }
     // Every position below comes from the ONE card owner (computed once per pass
     // by the caller): it knows the row pitch, the centring axis and the MEASURED
     // width of `ex` - the piece order here (`sp`, `TR`, `ex`) is the only thing
     // this function still decides.
     if(s_trxInit && s_trxPrefix == labelPrefix
-       && s_trxSpText == spText
+       && s_trxSpText == spText && s_trxATRText == atrText
        && s_trxTR == inpATRTradeTRColor && s_trxEX == inpATRTradeExColor && s_trxSP == inpATRTradeSpreadColor
        && s_trxFS == L.fontSize && s_trxBS == L.brandSize
        && s_trxXSp == L.xSp && s_trxYSp == L.ySp
        && s_trxXTR == L.xTR && s_trxXEx == L.xEx && s_trxYBrand == L.yBrand
-       && ObjectFind(0, spName) >= 0 && ObjectFind(0, trName) >= 0 && ObjectFind(0, exName) >= 0)
+       && s_trxXATR == L.xATR && s_trxYATR == L.yATR && s_trxATRSize == L.atrSize
+       && ObjectFind(0, spName) >= 0 && ObjectFind(0, trName) >= 0 && ObjectFind(0, exName) >= 0
+       && ObjectFind(0, atrName) >= 0)
        return true;
     s_trxInit = true;
-    s_trxPrefix = labelPrefix; s_trxSpText = spText;
+    s_trxPrefix = labelPrefix; s_trxSpText = spText; s_trxATRText = atrText;
     s_trxTR = inpATRTradeTRColor; s_trxEX = inpATRTradeExColor; s_trxSP = inpATRTradeSpreadColor;
     s_trxFS = L.fontSize; s_trxBS = L.brandSize;
     s_trxXSp = L.xSp; s_trxYSp = L.ySp; s_trxXTR = L.xTR; s_trxXEx = L.xEx; s_trxYBrand = L.yBrand;
+    s_trxXATR = L.xATR; s_trxYATR = L.yATR; s_trxATRSize = L.atrSize;
     // P-UI-70d: every colour of this card is a setting now (the ATR card's CARD
     // COLORS row / the group-13 inputs), so the five literals that used to live
     // here are gone: they are the ONE reason "personalise the TRex SL/TP" was
@@ -988,11 +1008,12 @@ bool DisplayTRexTitleBlock(const string labelPrefix, const STrexCardLayout &L) {
     // (PaletteApplyColor sets g_labelsRelayoutNeeded).
     if(!CreateTRexPiece(spName, spText, inpATRTradeSpreadColor, L.fontSize, L.xSp, L.ySp)) return false;
     // The caption piece (and its one-shot Tahoma/P-LBL-02 diagnostic) is gone
-    // with the row: non-ASCII chart text must still be built from ushort codes,
+    // with the row: non-ASCII charter text must still be built from ushort codes,
     // but nothing on the chart needs an Arabic-capable family any more - every
     // remaining piece is pure ASCII and rides the default indicator font.
     if(!CreateTRexPiece(trName, "TR", inpATRTradeTRColor, L.brandSize, L.xTR, L.yBrand)) return false;
     if(!CreateTRexPiece(exName, "ex", inpATRTradeExColor, L.brandSize, L.xEx, L.yBrand)) return false;
+    if(!CreateTRexPiece(atrName, atrText, inpATRTradeSpreadColor, L.atrSize, L.xATR, L.yATR)) return false;
     return true;
 }
 
@@ -1129,6 +1150,7 @@ void DisplayATRTradeLabels(const string objectPrefix) {
         ObjectDelete(0, labelPrefix + "TREX_Caption");
         ObjectDelete(0, labelPrefix + "TREX_TR");
         ObjectDelete(0, labelPrefix + "TREX_EX");
+        ObjectDelete(0, labelPrefix + "TREX_ATR");
         ObjectDelete(0, labelPrefix + "TREX_Hunter");
         ObjectDelete(0, labelPrefix + "TREX_StrBond");
         return;

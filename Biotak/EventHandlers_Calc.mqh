@@ -252,6 +252,7 @@ void OnDeinitHandler(const int reason) {
         ObjectDelete(0, lblPfx + "TREX_Caption");
         ObjectDelete(0, lblPfx + "TREX_TR");
         ObjectDelete(0, lblPfx + "TREX_EX");
+        ObjectDelete(0, lblPfx + "TREX_ATR");
 
         // Delete TH labels
         ObjectDelete(0, inpObjectPrefix + "TH_Title");
