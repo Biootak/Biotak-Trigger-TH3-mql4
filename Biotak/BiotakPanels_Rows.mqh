@@ -641,17 +641,13 @@ void PnlComputePosition(const int item,const int ph,int &px,int &py)
    // fresh open uses: the card keeps its place only while the place is good.
    if(g_PnlManualPos[item])
    {
-      int manX = (int)MathMax(4, MathMin(cw - pw - 8, g_PnlX[item]));
-      int manY = (int)MathMax(4, MathMin(ch - ph - PNL_BOTTOM_SAFE, g_PnlY[item]));
-      bool parkMenuHit = !(manX + pw <= mbx - PNL_PAD_X ||
-                           manX >= mbx + mbw + PNL_PAD_X ||
-                           manY + ph <= mby - PNL_PAD_X ||
-                           manY >= mby + mbh + PNL_PAD_X);
-      // P-DRAW-31: a park on the strip's plate is as dirty as a park on the candles.
-      bool parkStripHit = (hasStrip && PnlRectHits(manX, manY, pw, ph, srX, srY, srW, srH,
-                                                   PNL_PAD_X));
-      int parkOv = (hasBand ? PnlIntervalOverlap(manY, ph, cdTop, cdBot) : 0);
-      if(!parkMenuHit && !parkStripHit && parkOv == 0) { px = manX; py = manY; return; }
+      // P-UI-140r: a hand-placed panel comes back where the hand left it.
+      // Only clamp to screen edges — never run the overlap search on a manual
+      // spot, because the user CHOSE that position and must be able to keep it
+      // even when the menu or the candle band shifted after a restart.
+      px = (int)MathMax(4, MathMin(cw - pw - 8, g_PnlX[item]));
+      py = (int)MathMax(4, MathMin(ch - ph - PNL_BOTTOM_SAFE, g_PnlY[item]));
+      return;
    }
 
    int candX[4], candY[4];
