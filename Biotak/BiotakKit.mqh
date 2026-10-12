@@ -293,39 +293,54 @@ void InitializeUISupport()
    RestoreDiscreteToggles();   // P-UI-142: chart key, else the OV_-seeded mirror (restart-durable; the early dialog-fallback block stays for Lite)
    LoadPalRecent();
 
-   // P-UI-140p: panel drag positions — fractions first (PNLPF{i}), pixel key as
-   // migration path (PNLP{i}). A fraction is re-derived against the LIVE window so
-   // the panel comes back to the same relative place after a resize or restart.
+   // P-UI-140p/q: panel drag positions.
+   // Read priority: (1) symbol-free fraction BIOMENU_PNL_{i}_F  [canonical]
+   //                (2) symbol-prefixed fraction PNLPF{i}        [140p legacy, migrate]
+   //                (3) symbol-prefixed pixel    PNLP{i}         [pre-140p legacy, migrate]
+   // A fraction is re-derived against the LIVE window so the panel comes back to the
+   // same relative place after a restart, resize, monitor change or symbol switch.
    int kcw = 0, kch = 0; HomeChartSize(kcw, kch);
    for(int i = 0; i < PNL_COUNT; i++)
    {
-      string fk = GetGVName("PNLPF" + IntegerToString(i));
-      string pk = GetGVName("PNLP"  + IntegerToString(i));
-      if(GlobalVariableCheck(fk))
+      string cfk = PnlFracKey(i);                              // canonical symbol-free
+      string ofk = GetGVName("PNLPF" + IntegerToString(i));   // old symbol-prefixed frac
+      string opk = GetGVName("PNLP"  + IntegerToString(i));   // old symbol-prefixed pixel
+      if(GlobalVariableCheck(cfk))
       {
-         // fractional key: re-derive pixels against the current window
-         double packed = GlobalVariableGet(fk);
+         // canonical: re-derive pixels against the current window
+         double packed = GlobalVariableGet(cfk);
          double fx = HomeFracClamp(packed / 10000.0);
          double fy = HomeFracClamp(MathMod(packed, 10000.0));
          g_PnlX[i] = (int)MathRound(fx * kcw);
          g_PnlY[i] = (int)MathRound(fy * kch);
          g_PnlManualPos[i] = true;
       }
-      else if(GlobalVariableCheck(pk))
+      else if(GlobalVariableCheck(ofk))
       {
-         // legacy pixel key: migrate once into a fraction and delete the pixel key
-         double packed = GlobalVariableGet(pk);
+         // 140p symbol-prefixed fraction: migrate once to canonical, delete old
+         double packed = GlobalVariableGet(ofk);
+         double fx = HomeFracClamp(packed / 10000.0);
+         double fy = HomeFracClamp(MathMod(packed, 10000.0));
+         g_PnlX[i] = (int)MathRound(fx * kcw);
+         g_PnlY[i] = (int)MathRound(fy * kch);
+         g_PnlManualPos[i] = true;
+         GlobalVariableSet(cfk, packed);   // promote to canonical
+         GlobalVariableDel(ofk);
+      }
+      else if(GlobalVariableCheck(opk))
+      {
+         // pre-140p pixel key: migrate once to canonical fraction, delete old
+         double packed = GlobalVariableGet(opk);
          int px = (int)(packed / 10000.0);
          int py = (int)MathMod(packed, 10000.0);
          if(px < 0) px = 0; if(px > kcw) px = kcw;
          if(py < 0) py = 0; if(py > kch) py = kch;
          g_PnlX[i] = px; g_PnlY[i] = py;
          g_PnlManualPos[i] = true;
-         // migrate: write fraction, delete pixel key
          double fx = HomeFracClamp(HomeFracOf(px, kcw));
          double fy = HomeFracClamp(HomeFracOf(py, kch));
-         GlobalVariableSet(fk, fx * 10000.0 + fy);
-         GlobalVariableDel(pk);
+         GlobalVariableSet(cfk, fx * 10000.0 + fy);
+         GlobalVariableDel(opk);
       }
    }
 }

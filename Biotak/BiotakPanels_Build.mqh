@@ -1016,24 +1016,28 @@ void PnlDestroy(const int item)
 //| Drag-to-move release — lock the spot in for future opens and     |
 //| persist it (defined early so the pointer finalizer can call it). |
 //+------------------------------------------------------------------+
+// P-UI-140q: symbol-free key for panel fraction — same pattern as GVHomeFracName.
+// A panel dragged on EURUSD must appear at the same relative place on GBPUSD.
+string PnlFracKey(const int item) { return "BIOMENU_PNL_" + IntegerToString(item) + "_F"; }
+
 void PnlCommitMove(const int item)
 {
    g_PnlManualPos[item] = true;
-   // P-UI-140p: store as FRACTIONS (like orb/chip/strip) so the position survives
-   // restarts, resizes and monitor changes. The pixel key (PNLP{i}) is deleted so
-   // the reader cannot fall back to the stale absolute value.
+   // P-UI-140p/q: store as symbol-free FRACTION so the position survives restarts,
+   // resizes, monitor changes AND symbol switches. Old keyed keys are deleted.
    int rcw = 0, rch = 0;
    if(HomeChartSizeRaw(rcw, rch))
    {
-      string fk = GetGVName("PNLPF" + IntegerToString(item));
       double fx = HomeFracClamp(HomeFracOf(g_PnlX[item], rcw));
       double fy = HomeFracClamp(HomeFracOf(g_PnlY[item], rch));
-      GlobalVariableSet(fk, fx * 10000.0 + fy);
-      GlobalVariableDel(GetGVName("PNLP" + IntegerToString(item)));   // retire pixel key
+      GlobalVariableSet(PnlFracKey(item), fx * 10000.0 + fy);
+      // retire both old keys (symbol-prefixed fraction and pixel)
+      GlobalVariableDel(GetGVName("PNLPF" + IntegerToString(item)));
+      GlobalVariableDel(GetGVName("PNLP"  + IntegerToString(item)));
    }
    else
    {
-      // window size unknown at teardown — keep the pixel key as fallback
+      // window size unknown — keep pixel key as fallback (will migrate on next load)
       GlobalVariableSet(GetGVName("PNLP" + IntegerToString(item)),
                         g_PnlX[item] * 10000.0 + g_PnlY[item]);
    }
