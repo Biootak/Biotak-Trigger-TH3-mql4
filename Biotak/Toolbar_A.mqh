@@ -181,6 +181,14 @@ enum EDrawKind
 // of it. The level prefix is tested FIRST because it owns the walk's majority: a
 // name it answers returns without paying for the second compare.
 // ══════════════════════════════════════════════════════════════════════════
+bool DrawIsHTFObject(const string name)
+{
+   if(name == "") return false;
+   int o = StringLen(g_OverlayNameRoot);
+   if(o > 0 && StringFind(name, g_OverlayNameRoot) == 0) return true;
+   return (StringFind(name, "BiotakHTF_") == 0);
+}
+
 bool DrawIsIndicatorObject(const string name)
 {
    if(name == "") return true;                      // no name, no drawing
@@ -193,6 +201,7 @@ bool DrawIsIndicatorObject(const string name)
    //--- every name exactly as it did before the test existed.
    int o = StringLen(g_OverlayNameRoot);
    if(o > 0 && n >= o && StringSubstr(name, 0, o) == g_OverlayNameRoot) return true;
+   if(DrawIsHTFObject(name)) return true;
    return false;
 }
 // P-HR-04 (2026-09-28) — THE RAY IS A DRAWING TOO. A Horizontal Ray carries
@@ -305,6 +314,7 @@ bool DrawTypeHasFillChild(const int type)
 // ══════════════════════════════════════════════════════════════════════════
 EDrawKind DrawKindOf(const string name)
 {
+   if(DrawIsHTFObject(name)) return DK_NONE;  // HTF candles are indicator overlays, never user drawings
    if(BoxIsMidChild(name)) return DK_NONE;    // P-DRAW-21: a box helper is served never
    if(FillIsChild(name))   return DK_NONE;    // P-DRAW-64: nor an interior's child
    if(FibPenIsChild(name)) return DK_NONE;    // P-DRAW-74b: nor the fibo's stacked pen

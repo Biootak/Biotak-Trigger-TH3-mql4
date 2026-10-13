@@ -50,12 +50,20 @@ void OnChartEventHandler(const int id, const long &lparam, const double &dparam,
            DrawStyleApplyOnCreate(sparam);
            CustomPriceForeignDrawSeen();
        }
+       //--- P-DRAW-128 (2026-10-13): every drawing's colour is witnessed from birth —
+       //--- styled (we know what it was just given) or the terminal's own (a kind we
+       //--- never styled). Without this the first native change after a reload could
+       //--- not be told apart from a move-drop, and the copy would wear the old colour.
+       DrawInkMemoPrime(sparam);
    }
 // P-TICKWRAP: the window is asked through its owner, never compared against GetTickCount()
     // directly — an absolute compare stays true forever after the 49.7-day counter wrap, and
     // then EVERY delete would be ignored for the rest of the cycle (TickDeadlinePending).
     bool suppressDeleteEvent = g_suppressDeleteEvents || TickDeadlinePending(g_suppressDeleteEventsUntilMs);
     if(id == CHARTEVENT_OBJECT_DELETE && !suppressDeleteEvent) {
+        //--- P-DRAW-128 (2026-10-13): a deleted drawing's witness goes with it, so the
+        //--- memo cannot answer for a name that no longer exists.
+        DrawInkMemoForget(sparam);
         string indicatorPrefix = inpObjectPrefix;
         int prefixLen = StringLen(indicatorPrefix);
         // P-BK-01 / P-HR-01: Base/Knot deletes are owned by BaseKnotTool (cascade/heal) and

@@ -437,6 +437,29 @@ void CoopPump()
       {
          owed = true;
          s_coopOwedMs[job] = GetTickCount();
+         // P-PERF-45c (2026-10-13): THE FLAG IS SET TOO, NOT ONLY THE CLOCK.
+         //
+         // MEASURED defect this closes: the live journal carried
+         //   [W][PERF] coop job=heavy-frame waited=-16ms ran=16ms stillOwed=0
+         //   ... waited=-31ms ran=31ms  ·  waited=-32ms ran=47ms  ·  waited=-47ms ran=47ms
+         // A NEGATIVE wait is impossible by construction (`waited = t0 - owedMs`
+         // with `t0 >= owedMs`), so the number was not a latency - it was a lie,
+         // and a diagnostic that lies reads as "no defect" (the loop's own law).
+         //
+         // The cause: this branch set the CLOCK but left `s_coopOwed[job]` FALSE.
+         // The frame it then runs re-arms itself (RedrawAllObjects' own
+         // `ScheduleHeavyFrame`, the coalesce and chart-event guards), and that
+         // re-arm only takes the clock when the flag is FALSE - so it overwrote
+         // `s_coopOwedMs[job]` with a tick LATER than this iteration's `t0`, and
+         // `t0 - owedMs` wrapped. Setting the flag keeps the invariant
+         // `owed == true => the clock belongs to the ask that started this run`,
+         // so the re-arm is a no-op and `waited` is the honest latency again.
+         //
+         // It also fixes the state itself: with the flag false, a frame that
+         // re-armed was indistinguishable from one that had not, and the
+         // `s_coopFrameStarved` counter at the slice check below could not see
+         // the progress-maker it was counting.
+         s_coopOwed[job] = true;
       }
       if(!owed) continue;
 

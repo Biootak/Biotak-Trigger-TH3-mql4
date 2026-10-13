@@ -378,6 +378,77 @@ bool ProducedLadderName(const string nm, const string &produced[], const int pro
     return false;
 }
 
+//+------------------------------------------------------------------+
+//| P-PERF-55 (2026-10-13) — THE SWEEP'S MEMBERSHIP TEST IS A SET.    |
+//|                                                                   |
+//| The note above calls `produced[]` "small (tens of entries)". That |
+//| is the assumption, and the LIVE CHART contradicts it: `produced`  |
+//| is sized `lineCount * 2 + zoneCount` (the caller below), and the  |
+//| same session measured lineCount=450 / zoneCount=289 — i.e. ~1,189 |
+//| names — while the walk visits every chart object (~1,200). So the |
+//| frame paid ~1.4M string compares, all of it inside ONE sweep:     |
+//|                                                                   |
+//|   [P-LEVEL-FOREIGN-02: deleted 450 ladder object(s)]              |
+//|   [W][PERF] coop job=heavy-frame ran=125ms                        |
+//|   [E][GEN] [CRIT] CRITICAL CPU: OnCalculate took 453ms!           |
+//|            [base=0 atr=0 hist=0 levels=453 ...]                   |
+//|                                                                   |
+//| The fix is the SHAPE of the question, not its answer: build the   |
+//| set once (O(pc)) and answer each name with one FNV-1a probe. The  |
+//| predicate is unchanged — a name is doomed iff it is NOT one this  |
+//| build produced — so the output is byte-identical and the caller   |
+//| set is untouched (`ProducedLadderName` above stays, as the exact  |
+//| fallback for a table that cannot hold the list).                  |
+//|                                                                   |
+//| COST, stated: was one linear scan per family name, up to          |
+//| pc × familyObjects ≈ 1.4M compares on the measured chart; now     |
+//| pc inserts + one probe per family name (≈ 1,189 + 1,200 probes)   |
+//| plus one 4096-slot clear. A list too big for the table (pc × 2 >  |
+//| LADDER_SET_SIZE) falls back to the old scan rather than growing.  |
+//+------------------------------------------------------------------+
+#define LADDER_SET_SIZE 4096
+static string s_ladderSetNm[LADDER_SET_SIZE];
+static bool   s_ladderSetOn[LADDER_SET_SIZE];
+
+uint LadderSetHash(const string s)
+{
+    uint h = 2166136261;                     // FNV-1a, 32-bit, uint only (no ULL: the build rejects it)
+    const int n = StringLen(s);
+    for(int i = 0; i < n; i++)
+        h = (h ^ (uint)StringGetCharacter(s, i)) * 16777619;
+    return h;
+}
+
+// Returns false when the list does not fit the table — the caller then keeps the
+// exact linear scan, so a very deep ladder is slower, never wrong.
+bool LadderSetBuild(const string &produced[], const int pc)
+{
+    for(int i = 0; i < LADDER_SET_SIZE; i++) { s_ladderSetOn[i] = false; s_ladderSetNm[i] = ""; }
+    if(pc <= 0 || pc * 2 > LADDER_SET_SIZE) return false;
+    for(int i = 0; i < pc; i++)
+    {
+        const uint h = LadderSetHash(produced[i]);
+        for(int probe = 0; probe < LADDER_SET_SIZE; probe++)
+        {
+            const int at = (int)((h + (uint)probe) % (uint)LADDER_SET_SIZE);
+            if(!s_ladderSetOn[at]) { s_ladderSetOn[at] = true; s_ladderSetNm[at] = produced[i]; break; }
+        }
+    }
+    return true;
+}
+
+bool LadderSetHas(const string nm)
+{
+    const uint h = LadderSetHash(nm);
+    for(int probe = 0; probe < LADDER_SET_SIZE; probe++)
+    {
+        const int at = (int)((h + (uint)probe) % (uint)LADDER_SET_SIZE);
+        if(!s_ladderSetOn[at]) return false;   // an empty slot ends the probe chain
+        if(s_ladderSetNm[at] == nm) return true;
+    }
+    return false;
+}
+
 // Only a name that looks like OUR family is judged. `_BK_` is the user's
 // Base/Knot layer (P-BK-01: it has no expiry whichever build made it).
 bool LadderFamilyName(const string nm, const string fam)
@@ -517,6 +588,12 @@ int SweepForeignLadderObjects(const SModeConfig &config,
     string doomed[];
     int nd = 0;
 
+    // P-PERF-55: the membership question is asked once per family name below, so
+    // the list is turned into a SET here — one O(pc) build, one probe per name.
+    // `false` = the list is too big for the table: every test below then uses the
+    // original exact scan, so the verdict cannot change with the shape.
+    const bool producedSet = LadderSetBuild(produced, pc);
+
     for(int i = total - 1; i >= 0; i--)
     {
         const string nm = ObjectName(0, i, -1, -1);
@@ -524,14 +601,14 @@ int SweepForeignLadderObjects(const SModeConfig &config,
 
         if(LadderNameIsZoneBand(nm))
         {
-            if(ProducedLadderName(nm, produced, pc)) continue;
+            if(producedSet ? LadderSetHas(nm) : ProducedLadderName(nm, produced, pc)) continue;
             ArrayResize(doomed, nd + 1);
             doomed[nd++] = nm;
             continue;
         }
         if(StringFind(nm, "_Zone_") >= 0) continue;   // a border sub-object: its band decides
 
-        if(ProducedLadderName(nm, produced, pc)) continue;
+        if(producedSet ? LadderSetHas(nm) : ProducedLadderName(nm, produced, pc)) continue;
         ArrayResize(doomed, nd + 1);
         doomed[nd++] = nm;
     }

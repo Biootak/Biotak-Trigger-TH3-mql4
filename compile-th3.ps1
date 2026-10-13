@@ -48,7 +48,7 @@
 #>
 
 param(
-    [ValidateSet("workspace", "installed", "all")]
+    [ValidateSet("workspace", "installed", "lite", "all")]
     [string]$Project = "workspace",
     
     [string]$SourceFile = "",
@@ -161,6 +161,63 @@ function Write-Banner {
     Write-Host $line -ForegroundColor Cyan
     Write-Host "  $Text" -ForegroundColor Cyan
     Write-Host $line -ForegroundColor Cyan
+}
+
+#--- P-BUILD-14 (2026-10-13): A CASE-DUPLICATE ENV KILLS Start-Process, AND THE
+#--- COMPILER IS NEVER LAUNCHED.
+#
+# Windows environment blocks are case-INSENSITIVE, but a POSIX-ish parent can export
+# the SAME variable under two spellings — Git Bash / MSYS do, and so does the agent
+# runtime this project is built from (MEASURED 2026-10-13, the running process env):
+#     [HTTP_PROXY]  = http://127.0.0.1:4187
+#     [http_proxy]  = http://127.0.0.1:4187
+#     [HTTPS_PROXY] = http://127.0.0.1:4187
+#     [https_proxy] = http://127.0.0.1:4187
+# `Start-Process` rebuilds the child environment into a case-insensitive dictionary,
+# so it THROWS before spawning anything:
+#     "Item has already been added. Key in dictionary: 'http_proxy'"
+# metaeditor.exe is never started, every ex4 stays STALE, and the only trace is one
+# cmdlet error at the TOP of the transcript — measured 18:31 on 2026-10-13: four
+# source files edited, `-Project all` run, BOTH ex4 timestamps unchanged (Full still
+# 18:23:47, Lite still 18:16:21) while the gate layer below still printed its PASS
+# lines. A build that reports gates while compiling nothing is the exact "a claim
+# that is never checked" defect this file exists to prevent.
+#
+# Collapse each case-group to ONE canonical spelling (the UPPERCASE form when one is
+# present) and keep its VALUE, so a legitimate proxy setting still reaches the child.
+# Returns the number of duplicate spellings removed, which is printed once below.
+function Remove-CaseDuplicateEnv {
+    $pairs = @()
+    foreach ($item in ([System.Environment]::GetEnvironmentVariables().GetEnumerator())) {
+        $pairs += [pscustomobject]@{ Name = [string]$item.Key; Value = [string]$item.Value }
+    }
+    $groups = @{}
+    foreach ($p in $pairs) {
+        $lower = $p.Name.ToLowerInvariant()
+        if (-not $groups.ContainsKey($lower)) { $groups[$lower] = New-Object System.Collections.ArrayList }
+        [void]$groups[$lower].Add($p)
+    }
+    $removed = 0
+    foreach ($lower in @($groups.Keys)) {
+        $group = @($groups[$lower])
+        if ($group.Count -le 1) { continue }
+        $keep = $group | Where-Object { $_.Name -ceq $_.Name.ToUpperInvariant() } | Select-Object -First 1
+        if (-not $keep) { $keep = $group[0] }
+        $keepName = $keep.Name
+        $keepValue = $keep.Value
+        foreach ($g in $group) { [System.Environment]::SetEnvironmentVariable($g.Name, $null, 'Process') }
+        [System.Environment]::SetEnvironmentVariable($keepName, $keepValue, 'Process')
+        $removed += ($group.Count - 1)
+    }
+    return $removed
+}
+
+#--- P-BUILD-14: normalize ONCE, before any Start-Process in this script (the
+#--- compiler at :1481, the terminal launch, and the strip-shot harness all inherit
+#--- this process's environment).
+$script:EnvDeduped = Remove-CaseDuplicateEnv
+if ($script:EnvDeduped -gt 0) {
+    Write-Host "  Env normalized: $($script:EnvDeduped) case-duplicate variable(s) collapsed (P-BUILD-14)" -ForegroundColor DarkCyan
 }
 
 function Resolve-MetaEditorPath {
@@ -1797,6 +1854,25 @@ $PROJECTS = @{
         Name   = "Biotak Trigger TH3 (Installed)"
         Source = Get-InstalledProjectSource -ResolvedMql4Dir $resolvedMql4Dir
     }
+    #--- P-BUILD-13 (2026-10-13): THE LITE ENTRY WAS IN NO PROJECT AT ALL.
+    #
+    # `-Project all` is THE documented build (AGENTS.md, contract §6) and it printed
+    # "All compilations PASSED!" while `Biotak Trigger TH3 Lite.mq4` was never
+    # compiled: the table above held only the two FULL entries (and the second is the
+    # same file through the junction), so a change to a shared `.mqh` shipped a STALE
+    # Lite ex4 behind a green summary — the exact "a claim that is never checked"
+    # defect P-BUILD-12 fixed one layer down.
+    #
+    # MEASURED 2026-10-13 (four source files edited at ~18:05):
+    #   18:13  -Project all  -> Full ex4 rewritten 18:13:24, Lite ex4 still 13:52:19
+    #   18:16  -SourceFile "...Lite.mq4" -> Lite ex4 18:16:21 (0 errors, 0 warnings)
+    #   18:23  -Project all  -> Full ex4 rewritten 18:23:47, Lite ex4 still 18:16:21
+    # Lite compiles clean; it simply was never asked to. It is a project now, so
+    # `-Project all` covers BOTH products and the summary means what it says.
+    "lite" = @{
+        Name   = "Biotak Trigger TH3 Lite"
+        Source = Join-Path $SCRIPT_ROOT "Biotak Trigger TH3 Lite.mq4"
+    }
 }
 
 #--- P-BUILD-09 (2026-10-01): ONE source-unit compile, for `-SourceFile` AND for
@@ -1855,7 +1931,25 @@ else {
     #--- and its two PASS lines looked like two independent confirmations. The
     #--- second pass now runs only when the two paths are genuinely DIFFERENT
     #--- files; otherwise it is reported as the junction it is.
-    $projectsToCompile = if ($Project -eq "all") { @("workspace", "installed") } else { @($Project) }
+    #--- P-BUILD-13 (2026-10-13): `all` MUST be the SAME SET as $PROJECTS' keys, or
+    #--- the summary lies. Adding the "lite" entry above is not enough on its own —
+    #--- this literal was the second half of the same defect: with only
+    #--- ("workspace","installed") here, a green "All compilations PASSED!" still
+    #--- never asked Lite to compile.
+    #---
+    #--- The order is DETERMINISTIC and not sorted: `workspace` runs first because the
+    #--- "installed" junction-skip below copies workspace's result, and `lite` is its
+    #--- own product. The completeness assertion turns any future table entry that is
+    #--- not listed here into a RED build instead of a silent orphan.
+    $ALL_PROJECT_ORDER = @("workspace", "installed", "lite")
+    $projectsToCompile = if ($Project -eq "all") { $ALL_PROJECT_ORDER } else { @($Project) }
+    if ($Project -eq "all") {
+        $uncovered = @($PROJECTS.Keys | Where-Object { $ALL_PROJECT_ORDER -notcontains $_ })
+        if ($uncovered.Count -gt 0) {
+            Write-Host "  [FAIL] -Project all does not cover: $($uncovered -join ', ') (P-BUILD-13)" -ForegroundColor Red
+            exit 1
+        }
+    }
 
     foreach ($proj in $projectsToCompile) {
         $info = $PROJECTS[$proj]

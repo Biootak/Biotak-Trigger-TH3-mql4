@@ -2,6 +2,118 @@
 #ifndef TOOLBAR_B_MQH
 #define TOOLBAR_B_MQH
 
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-128 (2026-10-13) — THE NATIVE SURFACE'S COLOUR IS A COLOUR TOO.
+//
+// The strip's chips, the popup and the HEX field all learn through
+// `DrawSlotWrite` — the one owner of the kind memory. The terminal's OWN
+// surfaces (the properties dialog, the floating trend-line toolbar) write
+// OBJPROP_COLOR directly and arrive as CHARTEVENT_OBJECT_CHANGE, so the
+// memory never heard about them: a drawing recoloured there and then copied
+// (the terminal's own Ctrl+drag duplicate) came back wearing the OLD colour
+// — «برمیگرده به رنگ خودش مثلا اگر از جای غیره به جز نوار استرینگ تغییر بکنه».
+//
+// The one question a raw OBJECT_CHANGE cannot answer is WHETHER THE COLOUR
+// MOVED: a drop after a drag fires the same event with the colour untouched,
+// and learning there would teach the kind a factory colour the hand never
+// picked. So each drawing's colour as the TERMINAL holds it is witnessed in
+// one bounded memo — primed at attach and at the object's own create,
+// re-noted by every writer that sets OBJPROP_COLOR (so our own writes read
+// back as "nothing moved"), forgotten on delete. A level kind is never
+// witnessed at all: its colours belong to the LEVEL family (P-DRAW-BODY), not
+// to the object's own seat. Cost on a still frame: zero.
+// Cost per native change: one property read and one scan of at most
+// DRAW_INK_MEMO_MAX names. The write rides the memory's own owner
+// (`DrawPresetsSave`) — there is never a second persistence path.
+// ══════════════════════════════════════════════════════════════════════════
+#define DRAW_INK_MEMO_MAX 48
+static string s_inkMemoNm[DRAW_INK_MEMO_MAX];
+static color  s_inkMemoClr[DRAW_INK_MEMO_MAX];
+static int    s_inkMemoNext = 0;   // round-robin seat once every slot is full
+
+//--- the colour the TERMINAL holds for a drawing the strip would serve —
+//--- clrNONE for a stranger, a ray, a path, a level kind, or a kind with no
+//--- colour seat of its own.
+color DrawInkWitnessRead(const string name, EDrawKind &kout)
+{
+   kout = DK_NONE;
+   if(name == "" || ObjectFind(0, name) < 0) return clrNONE;
+   if(DrawIsIndicatorObject(name)) return clrNONE;
+   EDrawKind k = DrawKindOf(name);
+   if(k == DK_NONE) return clrNONE;
+   if(DrawIsHRay(name) || DrawIsPathSeg(name)) return clrNONE;    // P-HR-04/P-UI-136: learn nothing
+   if((DrawKindCaps(k) & DRAW_CAP_COLOR) == 0) return clrNONE;
+   //--- P-DRAW-BODY + P-DRAW-128: a level kind carries DRAW_CAP_COLOR through
+   //--- DRAW_CAP_COMMON, but ITS colours live in the LEVEL family
+   //--- (`OBJPROP_LEVELCOLOR`) — reading the object's own `OBJPROP_COLOR` there
+   //--- answers a property the object does not have, so such a drawing is never
+   //--- witnessed and never learned from. Its `kout` stays DK_NONE.
+   if(DrawKindHasLevels(k)) return clrNONE;
+   kout = k;
+   return (color)(int)ObjectGetInteger(0, name, OBJPROP_COLOR);
+}
+
+//--- note what the chart now wears (the blend, not the pick the user made).
+void DrawInkMemoNote(const string name, const color c)
+{
+   if(name == "" || (int)c < 0) return;
+   for(int i = 0; i < DRAW_INK_MEMO_MAX; i++)
+      if(s_inkMemoNm[i] == name) { s_inkMemoClr[i] = c; return; }
+   for(int i = 0; i < DRAW_INK_MEMO_MAX; i++)
+      if(s_inkMemoNm[i] == "")
+      {
+         s_inkMemoNm[i] = name; s_inkMemoClr[i] = c; return;
+      }
+   s_inkMemoNm[s_inkMemoNext] = name; s_inkMemoClr[s_inkMemoNext] = c;
+   s_inkMemoNext = (s_inkMemoNext + 1) % DRAW_INK_MEMO_MAX;
+}
+
+void DrawInkMemoForget(const string name)
+{
+   if(name == "") return;
+   for(int i = 0; i < DRAW_INK_MEMO_MAX; i++)
+      if(s_inkMemoNm[i] == name) { s_inkMemoNm[i] = ""; s_inkMemoClr[i] = clrNONE; }
+}
+
+//--- did the COLOUR move since we last saw this drawing? A first sight is a
+//--- witness, not a change — the attach walk and the create prime make first
+//--- sights rare — but it is noted, so the NEXT change on it is still seen.
+bool DrawInkMemoDelta(const string name, const color c)
+{
+   for(int i = 0; i < DRAW_INK_MEMO_MAX; i++)
+      if(s_inkMemoNm[i] == name)
+      {
+         if(s_inkMemoClr[i] == c) return false;
+         s_inkMemoClr[i] = c;
+         return true;
+      }
+   DrawInkMemoNote(name, c);
+   return false;
+}
+
+//--- one drawing, witnessed now (used at attach and at its own create).
+void DrawInkMemoPrime(const string name)
+{
+   EDrawKind k;
+   color c = DrawInkWitnessRead(name, k);
+   if((int)c < 0) return;
+   DrawInkMemoNote(name, c);
+}
+
+//--- once per attach, right after the memory tables load: every drawing already
+//--- on the chart is witnessed, so the first native change after a reload is
+//--- recognised as a change (the reload is exactly when the user tests this).
+void DrawInkMemoInit()
+{
+   int total = ObjectsTotal(0, -1, -1);
+   for(int i = 0; i < total; i++)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(nm == "") continue;
+      DrawInkMemoPrime(nm);
+   }
+}
+
 //--- write ONE slot onto an object, and LEARN it into the kind's memory. The
 //--- two halves are one call on purpose: an edit the user made is an edit the
 //--- next drawing of that kind must wear, and splitting them would let one of
@@ -73,7 +185,12 @@ void DrawSlotOpacitySet(const string name, const int op, const int slot)
       else DrawLevelsSetColor(name, DrawSlotRenderFillColor(name, pure));
       return;
    }
-   ObjectSetInteger(0, name, OBJPROP_COLOR, DrawSlotRenderColor(name, pure));
+   color worn = DrawSlotRenderColor(name, pure);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, worn);
+   //--- P-DRAW-128: the blend we just set IS the witness the native learner reads
+   //--- back — without this note the opacity step's own OBJECT_CHANGE would look
+   //--- like the hand re-inking the drawing and would be learned as a fresh pick.
+   DrawInkMemoNote(name, worn);
    if(DrawKindHasLevels(k))
    {
       color ip;
@@ -81,7 +198,11 @@ void DrawSlotOpacitySet(const string name, const int op, const int slot)
                                                           : DrawSlotRenderColor(name, pure));
    }
 }
-bool DrawSlotWrite(const string name, const int slot, const double v)
+//--- P-DRAW-130 (2026-10-13): `remember=false` is a HOVER PREVIEW — the drawing
+//--- still wears the value live (P-UI-131k's requirement), but the kind's memory
+//--- learns nothing and no disk write is paid for a colour the hand only passed
+//--- over. Every other caller is a real pick and keeps the default.
+bool DrawSlotWrite(const string name, const int slot, const double v, const bool remember=true)
 {
    if(name == "" || ObjectFind(0, name) < 0) return false;
    EDrawKind k = DrawKindOf(name);
@@ -103,18 +224,28 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          //--- P-DRAW-BODY: for a LEVEL kind this cell is the LEVELS' — the body has its own
          //--- seat (`DRAW_SLOT_BODYCOLOR`) and the two may never write each other's half.
          if(!DrawKindHasLevels(k)) ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
+         //--- P-DRAW-128: the writer that owns the value owns its witness — the blend
+         //--- it just put on the chart is noted, so the OBJECT_CHANGE our own write
+         //--- fires reads back to the native learner as "nothing moved" (a level kind
+         //--- owns no colour seat on the object — the witness refuses it, look above).
+         if(!DrawKindHasLevels(k)) DrawInkMemoNote(name, rc);
          //--- P-DRAW-64: an interior the user has NOT coloured follows the border,
          //--- so a border write re-inks it too — the child, or the levels.
          color ip;
          if(DrawKindHasLevels(k))
             DrawLevelsSetColor(name, DrawSlotFillPure(name, ip) ? DrawSlotRenderFillColor(name, ip) : rc);
          if(DrawKindHasFillBody(k)) FillChildSync(name);
-         s_dkColor[k] = c;
-         //--- P-DRAW-INK (2026-10-04): the ONE ink every kind shares is noted HERE,
-         //--- where every pick arrives. The kind's own memory records what IT wore; this
-         //--- records the last colour the HAND chose anywhere, so a kind with no colour
-         //--- of its own can wear it at birth.
-         if((int)c >= 0) s_dkAnyClr = c;
+         //--- P-DRAW-130: a preview writes the drawing and learns nothing; only the
+         //--- hand's own pick teaches the kind what it last wore.
+         if(remember)
+         {
+            s_dkColor[k] = c;
+            //--- P-DRAW-INK (2026-10-04): the ONE ink every kind shares is noted HERE,
+            //--- where every pick arrives. The kind's own memory records what IT wore; this
+            //--- records the last colour the HAND chose anywhere, so a kind with no colour
+            //--- of its own can wear it at birth.
+            if((int)c >= 0) s_dkAnyClr = c;
+         }
          break;
       }
       case DRAW_SLOT_WIDTH:
@@ -259,7 +390,7 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
          dd = DrawDescTag(dd, "[FL", DrawDescColorHex(ic));
          if(dd != ObjectGetString(0, name, OBJPROP_TEXT))
             ObjectSetString(0, name, OBJPROP_TEXT, dd);
-         s_dkFillClr[k] = ic;
+         if(remember) s_dkFillClr[k] = ic;   // P-DRAW-130: a preview's fill is not a remembered fill
          if(DrawKindHasFillBody(k)) FillChildSync(name);
          if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, DrawSlotRenderFillColor(name, ic));
          break;
@@ -380,11 +511,16 @@ bool DrawSlotWrite(const string name, const int slot, const double v)
       }
       default: return false;
    }
-   s_dkValid[k] = true;
-   //--- P-DRAW-09c (2026-10-04): the ONE slot writer persists what it just learned —
-   //--- «همیشه آخرین تغییرات روی ابجکت پیش‌فرض بشه» is true only if the last change
-   //--- survives the session. One write per user act; a still frame never reaches here.
-   DrawPresetsSave();
+   //--- P-DRAW-130: a preview marks nothing and pays no disk write; the hand's own
+   //--- pick does both, exactly as it did before the preview existed.
+   if(remember)
+   {
+      s_dkValid[k] = true;
+      //--- P-DRAW-09c (2026-10-04): the ONE slot writer persists what it just learned —
+      //--- «همیشه آخرین تغییرات روی ابجکت پیش‌فرض بشه» is true only if the last change
+      //--- survives the session. One write per user act; a still frame never reaches here.
+      DrawPresetsSave();
+   }
    return true;
 }
 
@@ -917,6 +1053,33 @@ void DrawPresetsLoad()
       s_dkPreset[k][i].name = (nm == "" ? ("My " + IntegerToString(i - DRAW_PRESET_BUILTIN + 1)) : nm);
    }
    FileClose(h);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// P-DRAW-128 — THE NATIVE SURFACE'S PICK IS A PICK TOO.
+// Called from the CHARTEVENT_OBJECT_CHANGE branch (DrawStrip_Router.mqh's sync
+// block), which is where the terminal reports its own dialog and toolbar: the
+// hand recoloured a drawing OUTSIDE every surface we own. The witness above
+// says whether the COLOUR is what moved (a move-drop fires the same event and
+// must teach nothing); the memory below is asked compare-first, so a colour
+// the kind already wears — or the ink it merely BORROWED at birth (P-DRAW-INK)
+// — is not news. What survives is one write through the memory's own owner.
+// Cost on a still frame: zero (no event, no call). Cost per native change: one
+// property read, one bounded scan, and — only when the colour truly moved —
+// the same single file write every other pick already pays.
+// ══════════════════════════════════════════════════════════════════════════
+void DrawInkLearnNative(const string name)
+{
+   EDrawKind k;
+   color c = DrawInkWitnessRead(name, k);
+   if((int)c < 0) return;                    // a stranger, a ray, a path, a level kind, or a colour nobody can hold
+   if(!DrawInkMemoDelta(name, c)) return;    // nothing moved: our own write, or a drop
+   if(c == s_dkColor[k]) return;             // the kind already wears it
+   if((int)s_dkColor[k] < 0 && c == s_dkAnyClr) return;   // a borrowed ink is not this kind's own
+   s_dkColor[k] = c;
+   s_dkAnyClr   = c;
+   s_dkValid[k] = true;
+   DrawPresetsSave();
 }
 
 //--- P-DRAW-76: ONE slot goes, on the user's own say-so. The BUILT-INS refuse: they are code

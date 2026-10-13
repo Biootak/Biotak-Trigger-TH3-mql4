@@ -598,6 +598,7 @@ void DrawStripPlaceFresh(const string name, const int mx, const int my, int &x, 
 bool DrawStripOpenAt(const string name, const int mx, const int my)
 {
    if(name == "" || ObjectFind(0, name) < 0) return false;
+   if(DrawIsHTFObject(name)) return false;   // HTF candles never open the strip
    EDrawKind k = DrawKindOf(name);
    if(k == DK_NONE) return false;
    // P-DRAW-41 (2026-09-25): the SAME object again is a re-state, not a move — the
@@ -703,7 +704,10 @@ bool DrawStripOpen(const string name)
 //--- on one fibo land on the other is gone from every write path that came through
 //--- here. The learning half lives in `DrawSlotWrite` (P-DRAW-01c).
 //--- Every caller pushes undo FIRST (single-step looks).
-int DrawStripWriteValue(const int slot, const double v)
+//--- P-DRAW-130 (2026-10-13): `remember=false` (a hover preview) rides through to
+//--- the slot writer, which then writes the drawing and learns nothing. Every other
+//--- caller is a real pick and keeps the default.
+int DrawStripWriteValue(const int slot, const double v, const bool remember=true)
 {
    //--- P-DRAW-64a: the box's own 50 % needs no "show the interior" rule — it moves
    //--- the DRAWING's far anchor, so it is visible with the fill off, on, or never
@@ -713,14 +717,14 @@ int DrawStripWriteValue(const int slot, const double v)
    if(n <= 0)
    {
       if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return 0;
-      return (DrawSlotWrite(s_dsObj, slot, v) ? 1 : 0);
+      return (DrawSlotWrite(s_dsObj, slot, v, remember) ? 1 : 0);
    }
    int done = 0;
    for(int i = 0; i < n; i++)
    {
       string nm = DrawSelAt(i);
       if(nm == "" || ObjectFind(0, nm) < 0) continue;
-      if(DrawSlotWrite(nm, slot, v)) done++;
+      if(DrawSlotWrite(nm, slot, v, remember)) done++;
    }
    // DIAG-141 (2026-10-03) — THE GROUP LEAVES ITS NUMBER. One tap fanning out
    // to several drawings («رنگ یکی را عوض میکنم روی دیگری هم اعمال میشه») is

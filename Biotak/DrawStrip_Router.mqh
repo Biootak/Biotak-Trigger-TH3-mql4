@@ -262,6 +262,7 @@ void DrawStripHoldSelectPoll()
 bool DrawStripClickToggle(const string nm, const bool wasDrag)
 {
     if(nm == "" || ObjectFind(0, nm) < 0) return false;
+    if(DrawIsHTFObject(nm)) return false;   // HTF candles never toggle or open the strip
     if(wasDrag) return false;               // P-UI-113d: a drag-release never toggles
     if(DrawStripDragLive()) return false;   // P-UI-130: the terminal is still moving it
     if(g_PnlOpen >= 0) return false;        // modal card/mini owns clicks
@@ -365,6 +366,15 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       //--- net for gestures that fire no event at all.
       BoxMidSync(sparam);
       FibPenSync(sparam, false);   // P-DRAW-74b: the pair rides the same event (reads on a still frame)
+      //--- P-DRAW-128 (2026-10-13) — AND THE NATIVE SURFACE'S COLOUR IS LEARNED.
+      //--- The terminal's own properties dialog and floating toolbar write
+      //--- OBJPROP_COLOR directly and land HERE as OBJECT_CHANGE — the one channel
+      //--- that reports a colour the hand picked outside every surface we own
+      //--- («اگر از جای غیره به جز نوار استرینگ تغییر بکنه»). The learner is
+      //--- compare-first and event-path only (a move-drop teaches nothing), so a
+      //--- still frame pays zero. OBJECT_DRAG is skipped on purpose: a drag cannot
+      //--- change a colour, and skipping it keeps the per-move gesture cost as it was.
+      if(id == CHARTEVENT_OBJECT_CHANGE) DrawInkLearnNative(sparam);
       // P-DRAGF: arm the chase — the drag event names the hand's object, the moves
       // do the following (FibPen.mqh). Drag-rate cost: kind + existence reads.
       if(id == CHARTEVENT_OBJECT_DRAG) FibPenDragArm(sparam);

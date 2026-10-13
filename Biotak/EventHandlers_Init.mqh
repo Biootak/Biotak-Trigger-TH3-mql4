@@ -991,6 +991,11 @@ int OnInitHandler() {
     DrawStyleInit();
     DrawPresetsInit();
     DrawPresetsLoad();   // P-DRAW-05: the user's own templates survive the session
+    //--- P-DRAW-128 (2026-10-13): every drawing already on the chart is witnessed
+    //--- once, here, so the FIRST native colour change after a reload is recognised
+    //--- as a change rather than mistaken for a move-drop. One bounded walk at attach
+    //--- (the event path stays compare-first and pays nothing on a still frame).
+    DrawInkMemoInit();
 
     return INIT_SUCCEEDED;
 }

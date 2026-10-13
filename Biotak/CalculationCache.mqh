@@ -188,7 +188,17 @@ void InvalidateTimeframeCache() {
     g_timeframeCache.percentage = 0.0;
     g_timeframeCache.periodSeconds = -1;
     g_timeframeCache.lastUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] Timeframe Cache Invalidated");
+    // P-LOG-02b (2026-10-13): the P-LOG-02 fix above was applied to TWO of the
+    // EIGHT invalidators and the other SIX were left at ERROR. `_LOG_GATE_E` is
+    // `g_runtimeLogLevel <= LOG_LEVEL_ERROR` (Logger.mqh:382) and the production
+    // level is INFO, so `2 <= 4` is ALWAYS true - these six printed at ERROR
+    // forever. MEASURED on the live journal: 130 `[E][SYNC]` lines in one day,
+    // FIVE per timeframe switch (this file's own invalidators fire in a chain:
+    // InvalidateTimeframeDependentCaches calls four of them and then says so
+    // itself). That is the exact "fake errors bury a real one" defect P-LOG-02
+    // was written to remove - a half-applied fix is the same defect, one level
+    // up. Every invalidator in this file is now INFO, like its two siblings.
+    _LOG_GATE_I Print("[I][SYNC] Timeframe Cache Invalidated");
 }
 
 int GetCachedPeriodSeconds(int period) {
@@ -209,7 +219,7 @@ void InvalidatePeriodSecondsCache() {
     g_calcCachedPeriod = -1;
     g_cachedPeriodSeconds = -1;
     g_cachedPeriodSecondsUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] PeriodSeconds Cache Invalidated");
+    _LOG_GATE_I Print("[I][SYNC] PeriodSeconds Cache Invalidated");
 }
 
 bool GetCachedZoneGeometry(double topPrice, double bottomPrice, 
@@ -260,7 +270,7 @@ void InvalidateGeometryCache() {
     g_geometryCache.startTime = 0;
     g_geometryCache.endTime = 0;
     g_geometryCache.lastUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] Geometry Cache Invalidated");
+    _LOG_GATE_I Print("[I][SYNC] Geometry Cache Invalidated");
 }
 
 double GetCachedExtensionMultiplier(int period, int periodSeconds) {
@@ -293,7 +303,7 @@ void InvalidateExtensionMultiplierCache() {
     g_extensionMultiplierCache.periodSeconds = -1;
     g_extensionMultiplierCache.multiplier = 0.0;
     g_extensionMultiplierCache.lastUpdate = 0;
-    _LOG_GATE_E Print("[E][SYNC] Extension Multiplier Cache Invalidated");
+    _LOG_GATE_I Print("[I][SYNC] Extension Multiplier Cache Invalidated");
 }
 
 void InvalidateTimeframeDependentCaches() {
@@ -303,13 +313,13 @@ void InvalidateTimeframeDependentCaches() {
     InvalidatePeriodSecondsCache();
     InvalidateGeometryCache();
     InvalidateExtensionMultiplierCache();
-    _LOG_GATE_E Print("[E][SYNC] Timeframe-Dependent Caches Invalidated");
+    _LOG_GATE_I Print("[I][SYNC] Timeframe-Dependent Caches Invalidated");
 }
 
 void InvalidateSettingsDependentCaches() {
     InvalidateFactorCache();
     InvalidateGeometryCache();
-    _LOG_GATE_E Print("[E][SYNC] Settings-Dependent Caches Invalidated");
+    _LOG_GATE_I Print("[I][SYNC] Settings-Dependent Caches Invalidated");
 }
 
 string GetCacheStatusSummary() {

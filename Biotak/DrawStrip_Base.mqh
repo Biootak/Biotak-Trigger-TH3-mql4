@@ -369,7 +369,10 @@ color DrawStripPalTargetColor()
    }
    return DrawStripColorRead(s_dsPalObj, s_dsPalSlot);
 }
-int DrawStripPalTargetApply(const color c)
+//--- P-DRAW-129/130 (2026-10-13): THE RING TAKES A PICK, NOT A PREVIEW — and the flag
+//--- rides into the writer, because a preview must not learn the kind's memory either
+//--- (the object still wears the colour live: P-UI-131k, untouched here).
+int DrawStripPalTargetApply(const color c, const bool remember=true)
 {
    if(!DrawStripPalTargetLive()) return 0;
    //--- P-LVL-COLOR: one stored level re-inks (undoable — the level set snapshot
@@ -382,7 +385,7 @@ int DrawStripPalTargetApply(const color c)
       DrawStripUndoPush();
       ObjectSetInteger(0, s_dsPalObj, OBJPROP_LEVELCOLOR, s_dsPalLevel, c);
       FibPenSync(s_dsPalObj, false);
-      DrawStripRecentPush(c);
+      if(remember) DrawStripRecentPush(c);
       int gotL = (int)ObjectGetInteger(0, s_dsPalObj, OBJPROP_LEVELCOLOR, s_dsPalLevel);
       DrawStripDiagEmit("[drawstrip] PALAPPLY live=1 obj=\"" + s_dsPalObj + "\" slot=" +
                         IntegerToString(s_dsPalSlot) + " level=" + IntegerToString(s_dsPalLevel) +
@@ -391,8 +394,8 @@ int DrawStripPalTargetApply(const color c)
       s_dsPalRepaint = true;
       return 1;
    }
-   DrawStripColorCommit(s_dsPalSlot, c);
-   DrawStripRecentPush(c);
+   DrawStripColorCommit(s_dsPalSlot, c, remember);
+   if(remember) DrawStripRecentPush(c);
    //--- P-PAL-19d (2026-10-02) — THE SECOND PICK IS A SEPARATE CASE, and the report
    //--- is «یک بار که یک رنگی رو انتخاب میکنم بقیه رنگ‌ها اعمال نمیشه». The MODEL
    //--- says the target is a static that outlives the pick, so the second click

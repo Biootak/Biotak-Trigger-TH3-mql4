@@ -7,7 +7,13 @@
 //--- panel's quick swatch and the board's HEX field all end in this write: RECENT,
 //--- undo, the fill's own show group, the value, and the level's border sync. One
 //--- place, so a new face for a colour cannot miss a step the old one took.
-bool DrawStripColorCommit(const int slot, const color c)
+//--- P-DRAW-130 (2026-10-13): `remember=false` is a HOVER PREVIEW (the popup's
+//--- PalHoverPreview applies this way). The drawing still wears the colour live —
+//--- that is the point of a preview — but the look must not be LEARNED as the
+//--- kind's last change, or the next drawing of the kind is born wearing a colour
+//--- the hand only passed over (and every crossing persisted it to disk). A click
+//--- keeps the default; only the preview asks for the write-without-learn half.
+bool DrawStripColorCommit(const int slot, const color c, const bool remember=true)
 {
    if(!DrawStripIsColorSlot(slot)) return false;
    if(c == clrNONE) return false;
@@ -16,7 +22,7 @@ bool DrawStripColorCommit(const int slot, const color c)
    //--- it any more); the cards' palette keeps the history this product shares.
    DrawStripUndoPush();
    if(slot == DRAW_SLOT_FILLCLR) DrawStripFillShowGroup();   // P-DRAW-64: a colour is a fill
-   DrawStripWriteValue(slot, (double)(int)c);
+   DrawStripWriteValue(slot, (double)(int)c, remember);
    if(slot == DRAW_SLOT_COLOR) BoxMidSyncGroup();   // P-DRAW-64a: the level wears the border
    return true;
 }

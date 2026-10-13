@@ -1334,6 +1334,225 @@ MUTATIONS = [
         "replace": "   if(!HomeChartSize(rcw, rch)) return;   // MUTATION: a fallback denominator",
         "expect": "the writer invents a denominator",
     },
+    #--- P-LOG-02b (2026-10-13): the half-applied P-LOG-02 left SIX invalidators at
+    #--- ERROR. MEASURED on the live journal: 130 `[E][SYNC]` lines in a day, five per
+    #--- timeframe switch. One site back at ERROR must fail the whole-file rule.
+    {
+        "id": "P-LOG-02b",
+        "gate": "regression",
+        "rule": "every cache invalidator is a lifecycle event, not an error",
+        "what": "an invalidation is back at ERROR - it prints at production level and buries a real error",
+        "file": "Biotak/CalculationCache.mqh",
+        "find": '    _LOG_GATE_I Print("[I][SYNC] Geometry Cache Invalidated");',
+        "replace": '    _LOG_GATE_E Print("[E][SYNC] Geometry Cache Invalidated");   // MUTATION: back at ERROR',
+        "expect": "an invalidation is back at ERROR",
+    },
+    #--- P-PERF-45c (2026-10-13): the by-definition branch stamped the CLOCK and left
+    #--- the FLAG false, so the frame's own re-arm overwrote the clock and the ledger
+    #--- printed `waited=-16ms` (impossible by construction). Deleting the flag line is
+    #--- the defect itself.
+    {
+        "id": "P-PERF-45c",
+        "gate": "regression",
+        "rule": "the by-definition frame owes its flag as well as its clock",
+        "what": "the branch stamps the clock without setting the flag - `waited` goes negative and the ledger lies",
+        "file": "Biotak/EventHandlers_Tail.mqh",
+        "find": "         s_coopOwed[job] = true;\n",
+        "replace": "",
+        "expect": "WITHOUT setting the flag",
+    },
+    #--- P-BE-05 (2026-10-13): `GetOrCreateSymbolState` carried an unreachable SECOND
+    #--- copy of its creation block below `return newIndex;` - a second counter bump and
+    #--- its own return. MQL4 never warns on unreachable statements.
+    {
+        "id": "P-BE-05",
+        "gate": "regression",
+        "rule": "one path creates, initialises and counts the symbol state",
+        "what": "the unreachable duplicate creation block after the return is back",
+        "file": "Biotak/BasePrice_A.mqh",
+        "find": "    return newIndex;\n    // P-BE-05",
+        "replace": "    return newIndex;\n    g_symbolStateCount++;   // MUTATION: the dead block is back\n    // P-BE-05",
+        "expect": "is back below the return",
+    },
+    #--- P-PERF-55a (2026-10-13): the sweep's membership test was a LINEAR scan of a
+    #--- ~1,189-name list, once per family object on a ~1,200-object chart. One of the
+    #--- two tests back on the scan must fail the rule.
+    {
+        "id": "P-PERF-55a",
+        "gate": "regression",
+        "rule": "the foreign-ladder sweep answers membership with a set",
+        "what": "one of the sweep's membership tests is a linear scan again",
+        "file": "Biotak/LevelPipe_B.mqh",
+        "find": "        if(LadderNameIsZoneBand(nm))\n        {\n            if(producedSet ? LadderSetHas(nm) : ProducedLadderName(nm, produced, pc)) continue;",
+        "replace": "        if(LadderNameIsZoneBand(nm))\n        {\n            if(ProducedLadderName(nm, produced, pc)) continue;   // MUTATION: the scan is back",
+        "expect": "membership tests use the set",
+    },
+    #--- P-PERF-55b (2026-10-13): the set must REFUSE a list it cannot hold, or an
+    #--- oversized ladder is answered by a half-filled table and a produced name reads
+    #--- as "not produced" - i.e. the chart deletes its own ladder.
+    {
+        "id": "P-PERF-55b",
+        "gate": "regression",
+        "rule": "the set refuses a list it cannot hold",
+        "what": "the set answers an oversized list from a half-filled table",
+        "file": "Biotak/LevelPipe_B.mqh",
+        "find": "    if(pc <= 0 || pc * 2 > LADDER_SET_SIZE) return false;",
+        "replace": "    if(pc <= 0) return false;   // MUTATION: a half-filled table answers",
+        "expect": "no longer refuses a list it cannot hold",
+    },
+    #--- P-BUILD-13 (2026-10-13): `-Project all` printed «All compilations PASSED!»
+    #--- while `Biotak Trigger TH3 Lite.mq4` was compiled by NO project at all — the
+    #--- summary shipped a STALE Lite ex4. Each of the two halves of the fix, plus the
+    #--- orphan guard, must be able to fail the rule.
+    {
+        "id": "P-BUILD-13a",
+        "gate": "regression",
+        "rule": "`-Project all` names the Lite product",
+        "what": "the `all` set drops `lite` again (the measured 18:23 defect)",
+        "file": "compile-th3.ps1",
+        "find": '$ALL_PROJECT_ORDER = @("workspace", "installed", "lite")',
+        "replace": '$ALL_PROJECT_ORDER = @("workspace", "installed")   # MUTATION: Lite orphaned',
+        "expect": "P-BUILD-13",
+    },
+    {
+        "id": "P-BUILD-13b",
+        "gate": "regression",
+        "rule": "the `lite` project points at the Lite source",
+        "what": "the Lite table entry is pointed at the Full source",
+        "file": "compile-th3.ps1",
+        "find": '        Source = Join-Path $SCRIPT_ROOT "Biotak Trigger TH3 Lite.mq4"',
+        "replace": '        Source = Join-Path $SCRIPT_ROOT "Biotak Trigger TH3.mq4"   # MUTATION: the Full source',
+        "expect": "P-BUILD-13",
+    },
+    {
+        "id": "P-BUILD-13c",
+        "gate": "regression",
+        "rule": "a table entry missing from `all` fails the build",
+        "what": "the completeness assertion is demoted to a harmless note",
+        "file": "compile-th3.ps1",
+        "find": "does not cover: $($uncovered -join ', ')",
+        "replace": "uncovered projects: $($uncovered -join ', ')",
+        "expect": "P-BUILD-13",
+    },
+    #--- P-BUILD-14 (2026-10-13): a case-duplicate env key (http_proxy + HTTP_PROXY,
+    #--- Git Bash / MSYS and this agent runtime) made Start-Process throw BEFORE
+    #--- metaeditor.exe launched — both ex4 stayed stale while the gates still passed.
+    #--- The normalizer must read the env, re-add the surviving spelling, and RUN
+    #--- before the first Start-Process; each link must be able to fail the rule.
+    {
+        "id": "P-BUILD-14a",
+        "gate": "regression",
+        "rule": "the env normalizer is actually called",
+        "what": "the normalizer is defined but never invoked",
+        "file": "compile-th3.ps1",
+        "find": "$script:EnvDeduped = Remove-CaseDuplicateEnv",
+        "replace": "$script:EnvDeduped = 0   # MUTATION: defined but never called",
+        "expect": "P-BUILD-14",
+    },
+    {
+        "id": "P-BUILD-14b",
+        "gate": "regression",
+        "rule": "the env normalizer reads the process environment",
+        "what": "the normalizer no longer enumerates the environment",
+        "file": "compile-th3.ps1",
+        "find": "foreach ($item in ([System.Environment]::GetEnvironmentVariables().GetEnumerator())) {",
+        "replace": "foreach ($item in (@())) {   # MUTATION: nothing to read",
+        "expect": "P-BUILD-14",
+    },
+    {
+        "id": "P-BUILD-14c",
+        "gate": "regression",
+        "rule": "the env normalizer re-adds the surviving spelling",
+        "what": "the canonical spelling is never re-added (the value would be lost)",
+        "file": "compile-th3.ps1",
+        "find": "[System.Environment]::SetEnvironmentVariable($keepName, $keepValue, 'Process')",
+        "replace": "# MUTATION: the surviving spelling is dropped",
+        "expect": "P-BUILD-14",
+    },
+    #--- P-DRAW-128/129/130 (2026-10-13) — A HOVER PREVIEW IS NOT A CHOICE, AND THE
+    #--- NATIVE SURFACE'S PICK IS A PICK. The palette's DRAWING pages pushed to
+    #--- RECENT and learned the kind's memory on every hover crossing («موس روش
+    #--- میبیم عوض میشه یک شیء دیگه جاش میاد»), and a colour set in MT4's OWN
+    #--- dialog/toolbar never reached the memory at all, so the terminal's Ctrl+drag
+    #--- copy came back wearing the old colour («برمیگرده به رنگ خودش»). `remember`
+    #--- now rides from the apply down to the slot owner's learn half; the native
+    #--- colour arrives as OBJECT_CHANGE behind a move-vs-colour witness and is
+    #--- taught through the memory's ONE owner. Each link must be able to fail.
+    {
+        "id": "P-DRAW-128",
+        "gate": "regression",
+        "rule": "a DRAWING pick reaches RECENT and the kind memory only on the hand's own apply",
+        "what": "the palette's DRAW branch ignores remember again (hover reorders RECENT and learns)",
+        "file": "Biotak/BiotakPanels_State.mqh",
+        "find": "case PAL_DRAW_FILL:      DrawStripPalTargetApply(clr, remember); if(remember) PushPalRecent(clr); return REFRESH_BUFFERS;",
+        "replace": "case PAL_DRAW_FILL:      DrawStripPalTargetApply(clr); PushPalRecent(clr); return REFRESH_BUFFERS; // MUTATION: remember ignored",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128b",
+        "gate": "regression",
+        "rule": "the strip's own ring moves on a commit, not on a preview",
+        "what": "the bridge's recents push is ungated",
+        "file": "Biotak/DrawStrip_Base.mqh",
+        "find": "   DrawStripColorCommit(s_dsPalSlot, c, remember);\n   if(remember) DrawStripRecentPush(c);",
+        "replace": "   DrawStripColorCommit(s_dsPalSlot, c, remember);\n   DrawStripRecentPush(c);   // MUTATION: the ring moves on hover",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128c",
+        "gate": "regression",
+        "rule": "the slot owner learns the kind colour on a pick only",
+        "what": "DrawSlotWrite learns even when remember=false (a preview teaches the kind)",
+        "file": "Biotak/Toolbar_B.mqh",
+        "find": "         if(remember)\r\n         {\r\n            s_dkColor[k] = c;\r\n"
+                "            //--- P-DRAW-INK (2026-10-04): the ONE ink every kind shares is noted HERE,\r\n"
+                "            //--- where every pick arrives. The kind's own memory records what IT wore; this\r\n"
+                "            //--- records the last colour the HAND chose anywhere, so a kind with no colour\r\n"
+                "            //--- of its own can wear it at birth.\r\n"
+                "            if((int)c >= 0) s_dkAnyClr = c;\r\n         }",
+        "replace": "         s_dkColor[k] = c;\r\n         if((int)c >= 0) s_dkAnyClr = c;   // MUTATION: a preview learns",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128d",
+        "gate": "regression",
+        "rule": "the native surface's colour change reaches the kind memory",
+        "what": "the OBJECT_CHANGE branch never calls the learner",
+        "file": "Biotak/DrawStrip_Router.mqh",
+        "find": "      if(id == CHARTEVENT_OBJECT_CHANGE) DrawInkLearnNative(sparam);",
+        "replace": "      // MUTATION: the native surface's pick is never learned",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128e",
+        "gate": "regression",
+        "rule": "the learner needs its witness to tell a colour edit from a move-drop",
+        "what": "the witness is dropped — a drop would teach the kind a factory colour",
+        "file": "Biotak/Toolbar_B.mqh",
+        "find": "   if(!DrawInkMemoDelta(name, c)) return;    // nothing moved: our own write, or a drop",
+        "replace": "   // MUTATION: no move-vs-colour witness",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128f",
+        "gate": "regression",
+        "rule": "a borrowed ink is never frozen as a kind's own colour",
+        "what": "the borrowed-ink guard is removed",
+        "file": "Biotak/Toolbar_B.mqh",
+        "find": "   if((int)s_dkColor[k] < 0 && c == s_dkAnyClr) return;   // a borrowed ink is not this kind's own",
+        "replace": "   // MUTATION: the borrowed ink is frozen as the kind's own",
+        "expect": "P-DRAW-128/129/130",
+    },
+    {
+        "id": "P-DRAW-128g",
+        "gate": "regression",
+        "rule": "the witness refuses a level kind — its colours are the LEVEL family's (P-DRAW-BODY)",
+        "what": "the level-kind guard is dropped, so a fibo's meaningless OBJPROP_COLOR is learned as a pick",
+        "file": "Biotak/Toolbar_B.mqh",
+        "find": "   if(DrawKindHasLevels(k)) return clrNONE;",
+        "replace": "   // MUTATION: the witness reads a property a level kind does not own",
+        "expect": "P-DRAW-128/129/130",
+    },
 ]
 
 #--- the register's own entries, so "no mutation yet" is a NUMBER and not a feeling.

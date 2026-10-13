@@ -95,6 +95,11 @@ const STRIP_PAINT = path.join(BIOTAK, 'DrawStrip_Paint.mqh');
 const PANELS_BUILD = path.join(BIOTAK, 'BiotakPanels_Build.mqh');
 const STRIP_PICK = path.join(BIOTAK, 'DrawStrip_Pick.mqh');
 const PAL_A = path.join(BIOTAK, 'BiotakPanels_PalA.mqh');
+// P-DRAW-128/129/130 (2026-10-13): the palette's apply table, the slot writer's
+// owner file, and the attach init where the witness walk is primed.
+const PAL_STATE = path.join(BIOTAK, 'BiotakPanels_State.mqh');
+const TOOLBAR_B = path.join(BIOTAK, 'Toolbar_B.mqh');
+const EV_INIT = path.join(BIOTAK, 'EventHandlers_Init.mqh');
 const BUILD_PS1 = path.join(ROOT, 'compile-th3.ps1');
 // P-DRAW-121: the band's own COUNT. The pill's rule lives in DrawStrip_GearB and is
 // mirrored (with its flag READ out of the source) in `sim-gear-panel.band_counts`, so
@@ -4450,6 +4455,305 @@ function main() {
       failures.push('P-UI-158: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh + BiotakMenu_A/B/C.mqh + DrawStrip_Paint/Router.mqh + BiotakPanels_Build.mqh)');
     } else {
       console.log('[PASS] P-UI-158 only the hand moves a home: the automatic door refuses every write without a claim, the claim is made at each real answer (both orb paths, the chip drag, the strip drag, the strip\'s first placement, the migration), `SaveUIStates` spends what it did not honour, and every surface is seeded from its fraction so the first paint lands in the right place');
+    }
+  }
+
+  // ── P-LOG-02b (2026-10-13) — EVERY INVALIDATOR IS A LIFECYCLE EVENT ──
+  // P-LOG-02 (this file's sibling note, CalculationCache.mqh:105) fixed TWO of the
+  // eight invalidators and left SIX at `_LOG_GATE_E`. ERROR is never gated
+  // (`Logger.mqh:382`, `g_runtimeLogLevel <= LOG_LEVEL_ERROR`, and the production
+  // level is INFO, so `2 <= 4` is always true). MEASURED on the live journal:
+  // 130 `[E][SYNC]` lines in one day, FIVE per timeframe switch — the exact
+  // "fake errors bury a real one" defect P-LOG-02 exists to remove. This entry
+  // locks the whole file, not the two sites that happened to get fixed.
+  {
+    const broken = [];
+    const cc = fs.readFileSync(path.join(ROOT, 'Biotak', 'CalculationCache.mqh'), 'utf8');
+    const INVALIDATORS = [
+      'TH Cache Invalidated', 'Factor Cache Invalidated', 'Timeframe Cache Invalidated',
+      'PeriodSeconds Cache Invalidated', 'Geometry Cache Invalidated',
+      'Extension Multiplier Cache Invalidated', 'Timeframe-Dependent Caches Invalidated',
+      'Settings-Dependent Caches Invalidated',
+    ];
+    if (/_LOG_GATE_E\s+Print\("\[E\]\[SYNC\]/.test(cc))
+      broken.push('an invalidation is back at ERROR — ERROR is never gated, so it prints at production log level and buries a real error in Experts (P-LOG-02b)');
+    for (const msg of INVALIDATORS) {
+      if (cc.indexOf(`_LOG_GATE_I Print("[I][SYNC] ${msg}")`) < 0)
+        broken.push(`"${msg}" is not on the INFO gate — a half-applied P-LOG-02 is the same defect one level up (P-LOG-02b)`);
+    }
+    if (broken.length) {
+      failures.push('P-LOG-02b: ' + broken.join('; ') + ' (Biotak/CalculationCache.mqh)');
+    } else {
+      console.log('[PASS] P-LOG-02b all 8 cache invalidators are INFO, not ERROR: the two P-LOG-02 fixed are no longer alone, so a timeframe switch cannot print five fake [E] lines');
+    }
+  }
+
+  // ── P-PERF-45c (2026-10-13) — THE BY-DEFINITION BRANCH SETS THE FLAG TOO ──
+  // MEASURED: `[W][PERF] coop job=heavy-frame waited=-16ms ran=16ms` (also -31, -32,
+  // -47). A negative wait is impossible (`waited = t0 - owedMs`, `t0 >= owedMs`), so
+  // the ledger was lying. The branch set the CLOCK but left `s_coopOwed[job]` FALSE,
+  // so the frame it runs re-armed itself and overwrote the clock with a LATER tick.
+  {
+    const broken = [];
+    const tail = fs.readFileSync(path.join(ROOT, 'Biotak', 'EventHandlers_Tail.mqh'), 'utf8');
+    const at = tail.indexOf('if(job == COOP_JOB_HEAVY_FRAME && !owed &&');
+    if (at < 0) {
+      broken.push('the frame-is-the-progress-maker branch is gone — the pump can no longer owe the rebuild by definition (P-PERF-45c)');
+    } else {
+      const body = tail.slice(at, at + 3000);
+      const flagAt = body.indexOf('s_coopOwed[job] = true;');
+      const clockAt = body.indexOf('s_coopOwedMs[job] = GetTickCount();');
+      if (clockAt < 0)
+        broken.push('the branch no longer stamps the owed clock — the wait it reports has no origin (P-PERF-45c)');
+      if (flagAt < 0 || (clockAt >= 0 && flagAt < clockAt))
+        broken.push('the branch stamps the clock WITHOUT setting the flag again — a self-re-arming frame then overwrites the clock and `waited` goes negative, i.e. the ledger lies (P-PERF-45c)');
+    }
+    if (broken.length) {
+      failures.push('P-PERF-45c: ' + broken.join('; ') + ' (Biotak/EventHandlers_Tail.mqh CoopPump)');
+    } else {
+      console.log('[PASS] P-PERF-45c the by-definition frame sets its owed flag with its clock: the re-arm cannot overwrite the ask, so `waited` can no longer go negative and the starvation counter sees the progress-maker');
+    }
+  }
+
+  // ── P-BE-05 (2026-10-13) — THE DEAD SECOND COPY STAYS DELETED ──
+  // `GetOrCreateSymbolState` carried a SECOND, unreachable copy of its own creation
+  // block BELOW `return newIndex;` (a second `g_symbolStateCount++` and its own
+  // `return`). MQL4 does not warn on unreachable statements, so a green compile said
+  // nothing — the same reason P-BE-03's dead trio survived two builds.
+  {
+    const broken = [];
+    const bp = fs.readFileSync(path.join(ROOT, 'Biotak', 'BasePrice_A.mqh'), 'utf8');
+    const at = bp.indexOf('return newIndex;');
+    if (at < 0) {
+      broken.push('the bounds-checked creation path is gone from BasePrice_A.mqh (P-BE-05)');
+    } else {
+      const end = bp.indexOf('\n}', at);
+      const tailBody = end < 0 ? '' : bp.slice(at, end);
+      // COMMENT-STRIPPED: the tombstone comment above the deleted block NAMES the
+      // very tokens this check looks for, so a prose mention would read as a
+      // resurrected copy (the P-PERF-40c lesson: a needle must not match a
+      // declaration or a note about the thing).
+      const code = tailBody.split('\n').map(stripComment).join('\n');
+      if (/g_symbolStateCount\s*\+\+/.test(code))
+        broken.push('a second `g_symbolStateCount++` is back below the return — the unreachable duplicate creation block is a copy the next reader will follow (P-BE-05)');
+      if (/ArrayResize\s*\(\s*g_symbolStates\s*,/.test(code))
+        broken.push('the unreachable second `ArrayResize(g_symbolStates, ...)` is back — the dead copy of the creation block returned (P-BE-05)');
+    }
+    if (broken.length) {
+      failures.push('P-BE-05: ' + broken.join('; ') + ' (Biotak/BasePrice_A.mqh GetOrCreateSymbolState)');
+    } else {
+      console.log('[PASS] P-BE-05 the unreachable second creation block after `return newIndex` stays deleted: one path creates, initialises and counts the symbol state');
+    }
+  }
+
+  // ── P-PERF-55 (2026-10-13) — THE FOREIGN SWEEP ASKS ITS QUESTION OF A SET ──
+  // The sweep's own note called `produced[]` "tens of entries"; the live chart made it
+  // `lineCount*2 + zoneCount` (450 lines + 289 zones ≈ 1,189 names) and the walk visits
+  // every chart object, so one frame paid ~1.4M string compares. The same frame carries
+  //   [P-LEVEL-FOREIGN-02: deleted 450 ladder object(s)]
+  //   [W][PERF] coop job=heavy-frame ran=125ms
+  //   [E][GEN] [CRIT] CRITICAL CPU: OnCalculate took 453ms! [levels=453]
+  // This entry locks BOTH halves: the set is used, AND the exact linear scan stays as
+  // the fallback — a shape change must never become a verdict change.
+  {
+    const broken = [];
+    const lpb = fs.readFileSync(path.join(ROOT, 'Biotak', 'LevelPipe_B.mqh'), 'utf8');
+    if (!/#define\s+LADDER_SET_SIZE\s+\d+/.test(lpb))
+      broken.push('the sweep\'s membership set is gone — the O(n\u00b2) scan is back on a 1,189-name list (P-PERF-55)');
+    if (lpb.indexOf('const bool producedSet = LadderSetBuild(produced, pc);') < 0)
+      broken.push('the set is no longer built once before the walk (P-PERF-55)');
+    const uses = (lpb.match(/producedSet \? LadderSetHas\(nm\) : ProducedLadderName\(nm, produced, pc\)/g) || []).length;
+    if (uses < 2)
+      broken.push(`only ${uses} of the sweep's 2 membership tests use the set — the rest pay the full scan (P-PERF-55)`);
+    if (lpb.indexOf('bool ProducedLadderName(const string nm, const string &produced[], const int producedCount)') < 0)
+      broken.push('the exact linear scan is gone — the set is now the ONLY answer, so a list too big for the table would silently become "nothing was produced" (P-PERF-55)');
+    if (lpb.indexOf('pc * 2 > LADDER_SET_SIZE) return false;') < 0)
+      broken.push('the set no longer refuses a list it cannot hold — an oversized ladder would be answered by a half-filled table (P-PERF-55)');
+    if (broken.length) {
+      failures.push('P-PERF-55: ' + broken.join('; ') + ' (Biotak/LevelPipe_B.mqh ProducedLadderName + the foreign-ladder sweep)');
+    } else {
+      console.log('[PASS] P-PERF-55 the foreign-ladder sweep answers membership with a hash set (one probe per name, built once) and keeps the exact linear scan as the fallback, so the verdict cannot change with the shape');
+    }
+  }
+
+  // ── P-BUILD-13 (2026-10-13) — `-Project all` COMPILES BOTH PRODUCTS ──
+  // MEASURED 2026-10-13 (four source files edited at ~18:05):
+  //   18:13  -Project all              -> Full ex4 18:13:24, Lite ex4 still 13:52:19
+  //   18:16  -SourceFile "...Lite.mq4" -> Lite ex4 18:16:21 (0 errors, 0 warnings)
+  //   18:23  -Project all              -> Full ex4 18:23:47, Lite ex4 still 18:16:21
+  // `-Project all` is THE documented build and it printed «All compilations PASSED!»
+  // while `Biotak Trigger TH3 Lite.mq4` was in NO project at all: the `$PROJECTS`
+  // table held only the two FULL entries (and the second is the same file through the
+  // junction), so a change to a shared `.mqh` shipped a STALE Lite ex4 behind a green
+  // summary. The fix has TWO halves and BOTH are locked here: the `"lite"` entry
+  // exists, AND the `all` set actually names it (the literal `@("workspace",
+  // "installed")` was the second half — a table entry nobody compiles is still a lie).
+  {
+    const broken = [];
+    const ps = fs.readFileSync(path.join(ROOT, 'compile-th3.ps1'), 'utf8');
+    if (!/\[ValidateSet\([^)]*"lite"[^)]*\)\]/.test(ps))
+      broken.push('`lite` is not an accepted -Project value — the product exists but cannot be named (P-BUILD-13)');
+    const liteEntry = /"lite"\s*=\s*@\{([\s\S]*?)\n\s*\}/.exec(ps);
+    if (!liteEntry)
+      broken.push('the `"lite"` entry is gone from the $PROJECTS table — `-Project all` no longer knows Lite is a product (P-BUILD-13)');
+    else if (liteEntry[1].indexOf('Biotak Trigger TH3 Lite.mq4') < 0)
+      broken.push('the `"lite"` entry does not point at `Biotak Trigger TH3 Lite.mq4` (P-BUILD-13)');
+    const order = /\$ALL_PROJECT_ORDER\s*=\s*@\(([^)]*)\)/.exec(ps);
+    if (!order)
+      broken.push('the `all` set is gone — re-checked by hand is how Lite got orphaned the first time (P-BUILD-13)');
+    else if (!/"lite"/.test(order[1]))
+      broken.push('`all` no longer includes `lite` — a green «All compilations PASSED!» would ship a stale Lite ex4 again (P-BUILD-13)');
+    if (ps.indexOf('does not cover:') < 0)
+      broken.push('the completeness assertion is gone — a future table entry could be silently orphaned from `all` (P-BUILD-13)');
+    if (broken.length) {
+      failures.push('P-BUILD-13: ' + broken.join('; ') + ' (compile-th3.ps1 $PROJECTS + $ALL_PROJECT_ORDER)');
+    } else {
+      console.log('[PASS] P-BUILD-13 `-Project all` covers both products: Lite is a table entry, `all` names it, and a table entry missing from `all` fails the build instead of shipping stale');
+    }
+  }
+
+  // ── P-BUILD-14 (2026-10-13) — A CASE-DUPLICATE ENV KILLS Start-Process ──
+  // MEASURED 2026-10-13 18:31: the running process env carried the SAME variable under
+  // two spellings (Git Bash / MSYS and this agent runtime both do):
+  //   [HTTP_PROXY]=http://127.0.0.1:4187  [http_proxy]=http://127.0.0.1:4187
+  //   [HTTPS_PROXY]=…                     [https_proxy]=…
+  // Windows env blocks are case-INSENSITIVE, so `Start-Process` threw
+  //   "Item has already been added. Key in dictionary: 'http_proxy'"
+  // BEFORE spawning metaeditor.exe: four source files edited, `-Project all` run, and
+  // BOTH ex4 timestamps unchanged (Full 18:23:47, Lite 18:16:21) while the gate layer
+  // still printed its PASS lines. A build that reports gates while compiling nothing
+  // is the defect this file exists to catch. The lock: the normalization exists AND
+  // runs BEFORE the first Start-Process in the file.
+  {
+    const broken = [];
+    const ps = fs.readFileSync(path.join(ROOT, 'compile-th3.ps1'), 'utf8');
+    const fnAt = ps.indexOf('function Remove-CaseDuplicateEnv');
+    if (fnAt < 0) {
+      broken.push('the case-duplicate env normalization is gone — Start-Process throws again and the compiler is never launched (P-BUILD-14)');
+    } else {
+      if (ps.indexOf('[System.Environment]::GetEnvironmentVariables()', fnAt) < 0)
+        broken.push('the normalizer no longer reads the process environment (P-BUILD-14)');
+      if (ps.indexOf("SetEnvironmentVariable($keepName, $keepValue, 'Process')", fnAt) < 0)
+        broken.push('the normalizer no longer re-adds the surviving spelling — it would delete BOTH copies and lose the value (P-BUILD-14)');
+      const callAt = ps.indexOf('$script:EnvDeduped = Remove-CaseDuplicateEnv');
+      if (callAt < 0) {
+        broken.push('the normalizer is DEFINED but never CALLED — a fix that does not run is a comment (P-BUILD-14)');
+      } else {
+        //--- anchor on the real cmdlet invocation, NOT the word: this very block's
+        //--- prose says "Start-Process" several times, and a mention is not a call.
+        const firstSpawn = ps.indexOf('Start-Process -FilePath');
+        if (firstSpawn >= 0 && callAt > firstSpawn)
+          broken.push('the normalizer runs AFTER the first Start-Process — the compiler still dies on a case-duplicate env (P-BUILD-14)');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-BUILD-14: ' + broken.join('; ') + ' (compile-th3.ps1 Remove-CaseDuplicateEnv)');
+    } else {
+      console.log('[PASS] P-BUILD-14 the build collapses case-duplicate env keys before any Start-Process, so a POSIX-ish parent cannot stop the compiler from launching');
+    }
+  }
+
+  // -- 47. P-DRAW-128/129/130: a hover preview is not a choice, and the native
+  //        surface's pick is a pick --------------------------------------------
+  // MEASURED 2026-10-13 on the live build (EURUSD): the palette's DRAWING pages
+  // re-ordered the RECENT strip under the pointer («موس روش میبیم عوض میشه یک
+  // چیزی دیگه جاش میاد»), every hover crossing taught the kind's memory a colour
+  // the hand only passed over, and a copy of a drawing recoloured through MT4's
+  // OWN dialog/toolbar came back wearing the old colour («برمیگرده به رنگ خودش
+  // مثلا اگر از جای غیره به جز نوار استرینگ تغییر بکنه»). Three laws, one shape:
+  // `remember` is the popup's own word for "the hand chose this", and it now rides
+  // from the palette's apply all the way down to the slot writer's learn-and-
+  // persist half; the native colour arrives as OBJECT_CHANGE and is taught
+  // through the memory's ONE owner, behind a witness that can tell a colour edit
+  // from a move-drop.
+  {
+    const broken = [];
+    // (a) the palette's apply: the DRAW branch was the one kind that ignored remember.
+    // `case PAL_DRAW_BORDER` labels TWO branches in this file — the kind's colour
+    // READER (`PaletteKindColor`) and the APPLY (`PaletteApplyColor`) — so the branch
+    // under test is anchored on the apply call itself, never on the first label match.
+    const stateCode = linesOf(PAL_STATE) ? codeOf(linesOf(PAL_STATE)) : null;
+    if (!stateCode) broken.push('Biotak/BiotakPanels_State.mqh is gone');
+    else {
+      const at = stateCode.indexOf('DrawStripPalTargetApply(');
+      const branch = at >= 0 ? stateCode.slice(at, at + 160) : '';
+      if (!/DrawStripPalTargetApply\(clr, remember\)/.test(branch))
+        broken.push('PaletteApplyColor applies a DRAWING pick without passing remember down — the preview still learns the kind memory');
+      if (!/if\(remember\) PushPalRecent\(clr\);/.test(branch))
+        broken.push('the DRAW branch pushes to RECENT unconditionally again — a hover preview is not a choice (P-UI-131h)');
+    }
+    // (b) the bridge gates the strip's own ring and threads the flag. `bodyOf` hands
+    // back the BODY; the `const bool remember` lives on the signature line (`at`).
+    const baseBody = bodyOf(linesOf(STRIP_BASE), 'int DrawStripPalTargetApply(');
+    if (!baseBody) broken.push('DrawStripPalTargetApply() is gone from Biotak/DrawStrip_Base.mqh');
+    else {
+      const baseLines = linesOf(STRIP_BASE) || [];
+      if (!/const bool remember/.test(baseLines[baseBody.at] || ''))
+        broken.push('DrawStripPalTargetApply no longer takes remember — a preview re-orders the strip\u2019s own ring');
+      const bare = baseBody.text.replace(/if\(remember\) DrawStripRecentPush\(c\);/g, '');
+      const pushes = (bare.match(/DrawStripRecentPush\(c\)/g) || []).length;
+      if (pushes > 0)
+        broken.push(`${pushes} ungated DrawStripRecentPush call(s) in the bridge — the ring moves under the hand`);
+    }
+    // (c)+(d) the two writers between the bridge and the slot owner thread it on.
+    const tapBody = bodyOf(linesOf(STRIP_TAP), 'bool DrawStripColorCommit(');
+    if (!tapBody || !/DrawStripWriteValue\(slot, \(double\)\(int\)c, remember\)/.test(tapBody.text))
+      broken.push('DrawStripColorCommit no longer threads remember into DrawStripWriteValue');
+    const writeBody = bodyOf(linesOf(STRIP_PAINT), 'int DrawStripWriteValue(');
+    if (!writeBody || !/DrawSlotWrite\(\w+, slot, v, remember\)/.test(writeBody.text))
+      broken.push('DrawStripWriteValue no longer threads remember into DrawSlotWrite');
+    // (e) the slot owner: a preview writes the drawing and learns nothing.
+    const slotBody = bodyOf(linesOf(TOOLBAR_B), 'bool DrawSlotWrite(');
+    if (!slotBody) broken.push('DrawSlotWrite() is gone — the kind memory has no writer');
+    else {
+      if (!/if\(remember\)\s*\{\s*s_dkColor\[k\] = c;/.test(slotBody.text))
+        broken.push('DrawSlotWrite learns the kind colour on a preview (remember=false) — the next drawing is born wearing a hovered colour');
+      if (!/s_dkAnyClr = c;/.test(slotBody.text))
+        broken.push('the shared ink (P-DRAW-INK) is no longer noted where every pick arrives');
+      if (!/if\(remember\) s_dkFillClr\[k\] = ic;/.test(slotBody.text))
+        broken.push('a preview learns the interior colour');
+      if (!/if\(remember\)\s*\{\s*s_dkValid\[k\] = true;/.test(slotBody.text))
+        broken.push('a preview marks the kind as styled and persists to disk on every hover crossing');
+    }
+    // (f) the native surface's pick: OBJECT_CHANGE teaches through the one owner.
+    const routerCode = linesOf(STRIP_ROUTER) ? codeOf(linesOf(STRIP_ROUTER)) : null;
+    if (!routerCode) broken.push('Biotak/DrawStrip_Router.mqh is gone');
+    else if (!/if\(id == CHARTEVENT_OBJECT_CHANGE\) DrawInkLearnNative\(sparam\);/.test(routerCode))
+      broken.push('the OBJECT_CHANGE branch never calls DrawInkLearnNative — a colour set in MT4\u2019s own dialog/toolbar is still invisible to the kind memory');
+    const learnBody = bodyOf(linesOf(TOOLBAR_B), 'void DrawInkLearnNative(');
+    if (!learnBody) broken.push('DrawInkLearnNative() is gone — the native surface\u2019s pick has no learner');
+    else {
+      if (!/DrawInkMemoDelta\(name, c\)/.test(learnBody.text))
+        broken.push('the learner has no move-vs-colour witness — a drop would teach the kind a factory colour');
+      if (!/\(int\)s_dkColor\[k\] < 0 && c == s_dkAnyClr/.test(learnBody.text))
+        broken.push('the learner would freeze a BORROWED ink as the kind\u2019s own colour (P-DRAW-INK)');
+      if (!/DrawPresetsSave\(\);/.test(learnBody.text))
+        broken.push('the native pick persists through a second path — the memory has two owners');
+      // (f2) the witness refuses a level kind: a level drawing's colours live in the
+      // LEVEL family (`OBJPROP_LEVELCOLOR`), so the object's own `OBJPROP_COLOR` there
+      // answers a property it does not hold (P-DRAW-BODY).
+      const witBody = bodyOf(linesOf(TOOLBAR_B), 'color DrawInkWitnessRead(');
+      if (!witBody) broken.push('DrawInkWitnessRead() is gone — the learner has nothing to compare against');
+      else if (!/if\(DrawKindHasLevels\(k\)\) return clrNONE;/.test(witBody.text))
+        broken.push('the witness reads a level kind\u2019s OBJPROP_COLOR — a property that object does not own, so a factory zero would be learned as a pick (P-DRAW-BODY)');
+    }
+    // (g) the witness is primed from birth and forgotten at death.
+    const evRouter = linesOf(ROUTER) ? codeOf(linesOf(ROUTER)) : null;
+    if (!evRouter) broken.push('Biotak/EventHandlers_Router.mqh is gone');
+    else {
+      if (!/DrawInkMemoPrime\(sparam\);/.test(evRouter))
+        broken.push('a new drawing is never witnessed — its first native change reads as a move-drop and is missed');
+      if (!/DrawInkMemoForget\(sparam\);/.test(evRouter))
+        broken.push('a deleted drawing keeps its witness — the memo answers for names that no longer exist');
+    }
+    const evInit = linesOf(EV_INIT) ? codeOf(linesOf(EV_INIT)) : null;
+    if (!evInit) broken.push('Biotak/EventHandlers_Init.mqh is gone');
+    else if (!/DrawInkMemoInit\(\);/.test(evInit))
+      broken.push('the attach-time witness walk is gone — the first native change after a reload is missed');
+    if (broken.length) {
+      failures.push('P-DRAW-128/129/130: ' + broken.join('; ') + ' (Biotak/BiotakPanels_State.mqh PaletteApplyColor + Biotak/DrawStrip_Base.mqh DrawStripPalTargetApply + Biotak/Toolbar_B.mqh DrawSlotWrite/DrawInkLearnNative)');
+    } else {
+      console.log('[PASS] P-DRAW-128/129/130 a hover preview writes the drawing and learns nothing (remember threads down to the slot owner), and a colour set in MT4\u2019s own surfaces teaches the kind memory through its one owner');
     }
   }
 

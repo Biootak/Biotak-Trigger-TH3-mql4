@@ -1118,7 +1118,7 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==18) { kind=4; label="SPREAD COLOR"; }
        // P-LEGATR: APPENDED (row 19), so rows 0..18 keep their addresses and the
        // persisted OV_ keys keep their meaning.
-      else             { kind=1; label="LEG ATR"; }
+      else             { kind=1; label="PRE-CP ATR"; }
    }
     else if(item==3)   // TH LABELS
     {

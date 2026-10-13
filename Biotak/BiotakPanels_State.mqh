@@ -608,8 +608,16 @@ int PaletteApplyColor(const int kind,const color clr,const bool remember=true)
       // the strip's own writer, so every dependent — the box marks, the mid line, the
       // opacity — sees it) and the pick lands in the same RECENT ring every other
       // kind uses, so the strip and the cards share one history.
+      // P-DRAW-129 (2026-10-13): AND THE RING TAKES A PICK, NOT A PREVIEW. This was
+      // the one branch that ignored `remember`, so every hover crossing on these two
+      // pages (PalHoverPreview applies with remember=false, BiotakPanels_PalB.mqh:466)
+      // pushed the hovered swatch to slot 0 and re-painted the row under the pointer:
+      // «موس روش میبیم عوض میشه یک چیزی دیگه جاش میاد». The `remember` rides down into
+      // the strip's writer too (P-DRAW-130: a preview must not learn the kind's
+      // memory either), and the ring fills on the click's own apply only — the same
+      // law line 619 gives every other kind.
       case PAL_DRAW_BORDER:
-      case PAL_DRAW_FILL:      DrawStripPalTargetApply(clr); PushPalRecent(clr); return REFRESH_BUFFERS;
+      case PAL_DRAW_FILL:      DrawStripPalTargetApply(clr, remember); if(remember) PushPalRecent(clr); return REFRESH_BUFFERS;
       case PAL_ZONE_EDGE_TOP:    g_zoneEdgeTopColor = clr;    break;
       case PAL_ZONE_EDGE_BOTTOM: g_zoneEdgeBottomColor = clr; break;
       default:                return REFRESH_NONE;

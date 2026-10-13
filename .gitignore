@@ -215,4 +215,9 @@ __pycache__/
 /tmp-*.png
 /tools/tmp-*
 /tools/_dbg-*
+# P-GIT-01b (2026-10-13) — the Python scratch cache, same law as the above:
+# `Python/_cache/last_welcome.txt` is REGENERATED on every Python run, so
+# tracking it would leave the tree permanently dirty — the exact "گیت خالی"
+# the user asked for. Untracked + ignored, never committed.
+Python/_cache/
 /-                     # a stray file named "-" (a bad `cmd > -` redirect's output)

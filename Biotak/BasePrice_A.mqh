@@ -230,21 +230,16 @@ int GetSymbolStateIndex()
     
     Print("  Created new state for symbol: ", currentSymbol, " (Index: ", newIndex, ")");
     return newIndex;
-    ArrayResize(g_symbolStates, g_symbolStateCount + 1);
-    g_symbolStates[g_symbolStateCount].symbol = currentSymbol;
-    g_symbolStates[g_symbolStateCount].basePriceCached = EMPTY_VALUE;
-    g_symbolStates[g_symbolStateCount].lastProcessedBlockTimestamp = 0;  // Used for log deduplication
-    g_symbolStates[g_symbolStateCount].referenceM1Power = 0.0;
-    ArrayResize(g_symbolStates[g_symbolStateCount].basePriceHistory, 0);
-    g_symbolStates[g_symbolStateCount].historyCount = 0;
-    g_symbolStates[g_symbolStateCount].lastHistoryDay = -1;
-    g_symbolStates[g_symbolStateCount].lastHistoryYear = -1;
-    g_symbolStates[g_symbolStateCount].systemInitialized = false;
-    
-    DEBUG_PRINTF("Created new state for symbol: ", currentSymbol);
-    
-    g_symbolStateCount++;
-    return g_symbolStateCount - 1;
+    // P-BE-05 (2026-10-13): THE BLOCK THAT USED TO SIT HERE WAS UNREACHABLE.
+    // It was a SECOND copy of the state creation above (`ArrayResize` +
+    // `g_symbolStates[g_symbolStateCount] = ...` + a second `g_symbolStateCount++`
+    // + `return g_symbolStateCount - 1`), left below the `return newIndex` by the
+    // refactor that added the bounds-checked path above it. MQL4 does not warn on
+    // unreachable statements, so a green compile said nothing about it - the same
+    // reason P-BE-03's dead trio survived. Deleting it changes no behaviour: the
+    // live path (lines 209-232) already created, initialised AND counted the state.
+    // It is removed because a second copy of a creation block is the shape a
+    // later reader copies from - and the copy is the one that increments twice.
 }
 
 //+------------------------------------------------------------------+
