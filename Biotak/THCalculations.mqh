@@ -197,38 +197,34 @@ double CalculateTimeframeTH(const string timeframe) {
 }
 
 //+------------------------------------------------------------------+
-//| New calculation functions for extended step modes                |
+//| P-BE-03 (2026-10-13) - THREE DEAD FUNCTIONS DELETED.             |
+//|                                                                  |
+//| `CalculateShortStep`, `CalculateLongStep` and                    |
+//| `CalculateSharedPatternStep` were defined here and called from   |
+//| nowhere. A full-tree search for each name returns only this      |
+//| file: the two definitions and the Print inside the third. They   |
+//| compiled clean because MQL does not warn on an unused non-static |
+//| function, so nothing ever said so.                               |
+//|                                                                  |
+//| They were not harmless leftovers. `CalculateShortStep` returned  |
+//| `thValue * SS_MULTIPLIER`, but the LIVE SS_LS_STEP path          |
+//| (`Util_A.mqh`, `case SS_LS_STEP`) wrote `structureValue * 1.5`   |
+//| inline - two owners for one factor, and the one carrying the     |
+//| owner's NAME was the one nobody called.                          |
+//|                                                                  |
+//| `CalculateSharedPatternStep` was worse: it returns               |
+//| `(2 * currentStructure) - currentPattern` under a name that      |
+//| promises a *step*. The live pattern step is owned by             |
+//| `TH3PatternStepRungTF` (`TH3/TH3Pivots_B.mqh:23`). A reader who  |
+//| trusted the name would have wired the wrong formula.             |
+//|                                                                  |
+//| This project's own rule: a half that compiles and is dead        |
+//| is a defect (`tools/check-regressions.js:2890`, `:3692`), so the |
+//| cluster is gone. The constants it named - `SS_MULTIPLIER` (1.5), |
+//| `LS_MULTIPLIER` (2.0), `ATR_FACTOR_M` (3.0) - keep their single  |
+//| owner in `MathConstants.mqh`, and the live consumers read them   |
+//| from there.                                                      |
 //+------------------------------------------------------------------+
-
-// [OK] FIXED: Removed duplicate constant definitions
-// Constants are now in MathConstants.mqh:
-// - SS_MULTIPLIER (1.5)
-// - LS_MULTIPLIER (2.0)
-// - ATR_FACTOR_M (3.0)
-
-double CalculateShortStep(const double thValue) {
-    return thValue * SS_MULTIPLIER;
-}
-
-double CalculateLongStep(const double thValue) {
-    return thValue * LS_MULTIPLIER;
-}
-
-// Reconstructed CalculateSharedPatternStep
-double CalculateSharedPatternStep(const double currentStructure, const double currentPattern,
-                                 const double higherPatternStructure, const double higherPatternPattern) {
-    #ifdef ENABLE_DEBUG_LOGS
-    Print("CalculateSharedPatternStep: currentS=", currentStructure, 
-          ", currentP=", currentPattern, ", higherS=", higherPatternStructure, 
-          ", higherP=", higherPatternPattern);
-    #endif
-    
-    // Return current SS only as fallback
-    if(currentStructure > 0 && currentPattern > 0) {
-        return (2 * currentStructure) - currentPattern;  // SS formula
-    }
-    return 0.0;
-}
 
 //+------------------------------------------------------------------+
 //| Calculate Factor Step Size                                        |

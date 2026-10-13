@@ -242,6 +242,29 @@
 // bound keeps a mistyped value from parking the card in the middle of the
 // screen, and the chart-height clamp in the owner is the second bound.
 #define TREX_CARD_MAX_MARGIN_BOTTOM 200
+// P-UI-147 (2026-10-13) — THE BRAND ROW'S OWN AIR. Live user order, pointing at
+// the middle band of the card: «این وسطش خلی چسبیده یکم از هم فاصله بگیره».
+// Measured on the chart: the spread superscript sat 4 px from `TR` and the ATR
+// superscript rode 6 px INSIDE the `ex` label's box, so the spread, the ATR and
+// the wordmark read as one glued cluster. The wordmark itself (`TR` + `ex`,
+// 0 px by P-LBL-07/08's own measurement) is a WORD and keeps its zero — what
+// gets air is the two superscripts on the wordmark's side, and the spread↔ATR
+// pair separates by the same change. Named so the audit reads the air, like
+// every other gap in this file.
+#define TREX_BRAND_GAP_SPREAD 10   // air between the spread superscript and `TR`
+#define TREX_BRAND_GAP_ATR     8   // air between the ATR superscript and the wordmark's right edge
+
+// P-UI-148 (2026-10-13) — AND THE SAME BAND'S VERTICAL AIR. Live user, pointing at
+// the red line he drew over the numbers: «اونجای که خط قرمز کشیدم نگاه کن از بالا به
+// trex چسبیده» — the superscript line is glued to the wordmark FROM ABOVE.
+// MEASURED at the default size (inpFontSize 8 -> brandSize 14, atrSize 10, 96 DPI,
+// PnlRawLineH = pt*DPI/72): the superscript's box is 13 px tall and its lower
+// anchor sat at `yBrand + brandEm - 4` — 4 px INSIDE the wordmark's own 19 px box,
+// so the numbers rode the `TRex` cap. This is the vertical twin of the two gaps
+// above: named, positive, and read by BOTH other readers of the card's top — the
+// height budget (`TRexTradeCardLayout`) and the base note's slot
+// (`LabelPushBaseNoteSlot`) — so a note parks above the numbers, not on them.
+#define TREX_BRAND_GAP_SUPER_TOP 5   // air between the superscript line and the wordmark's top
 
 // P-UI-131 — THE LABEL FAMILY'S FONT IS AN INDEX AT LAST. `inpFontName` is a
 // STRING while every settings control is an INDEXED one (a dropdown), so the

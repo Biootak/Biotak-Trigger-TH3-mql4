@@ -579,7 +579,12 @@ double GetCurrentModePrimaryStepPrice(ENUM_STEP_CALCULATION_MODE mode)
         {
             double structureValue, patternValue, triggerValue;
             CalculateFractalValues(thValue, structureValue, patternValue, triggerValue);
-            return structureValue * 1.5; // SS_MULTIPLIER = 1.5
+            // P-BE-04 (2026-10-13): the factor was the literal `1.5`, carrying the
+            // owner's NAME only in a trailing comment. `SS_MULTIPLIER` is the one
+            // owner (MathConstants.mqh:7) and the entry includes that header at its
+            // own line 18, above this file — so a retune of the factor reaches the
+            // live SS_LS_STEP path instead of stopping at a dead one (P-BE-03).
+            return structureValue * SS_MULTIPLIER;
         }
 
         case COMBO_STEP:

@@ -75,6 +75,7 @@ void DrawStripGripMove(const int mx, const int my, const bool left)
    if(ny > ch - s_dsH - gm) ny = ch - s_dsH - gm;
    if(nx == s_dsX && ny == s_dsY) return;
    s_dsX = nx; s_dsY = ny;
+   GVHomeAnswerNew("STRIP");         // P-UI-158: the hand just moved it — re-claimed per move
    DrawStripHomeSet(s_dsX, s_dsY);   // P-DRAW-41: the hand just moved the home
    DrawStripPaint();
 }

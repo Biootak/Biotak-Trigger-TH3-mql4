@@ -918,7 +918,7 @@ bool DrawStripGearHit(const int mx, const int my)
       int hy = gy + s_dsGearHeadY;
       if(my >= hy && my < hy + DSTRIP_GEAR_HEAD_H)
       {
-         const int xbtn = 26, xpad = 3;
+         const int xbtn = DSTRIP_GEAR_XW, xpad = 3;
          int cx0 = gx + s_dsGearW0 - DSTRIP_GEAR_PAD - xbtn;
          int cy0 = hy + 17;
          if(mx >= cx0 - xpad && mx < cx0 + xbtn + xpad &&

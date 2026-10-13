@@ -61,7 +61,39 @@ top-down; every reader of a home lives below the cut).
 
 ## Not yet covered
 
-The strip's own home (`DrawStripHomeSet`, `Biotak/DrawStrip_Paint.mqh`) is still stored in
-pixels and, worse, still saves a **clamped** value back as the home
-(`DrawStripOpenAt`, `DrawStripHomeClamp`). It is the same defect class and the next
-surface owed this contract.
+**Nothing — all four surfaces now wear this contract.** What was open when this page
+was written, and when each half landed:
+
+* **The strip's home was stored in pixels and saved a clamped value back as the home**
+  (`DrawStripOpenAt`, `DrawStripHomeClamp`). Fixed 2026-10-13 (P-UI-144/146): the home
+  is written ONLY by a fresh placement or by the hand's drag release, the live pair is
+  clamped for the paint and never re-stored, so a window that comes back smaller cannot
+  ratchet the place inward. `docs` law: *the value that paints (clamped) is never the
+  value stored* — contract §4.
+* **A chart id in the object name made every previous session a ghost.**
+  `BiotakMenuV2_<ChartID>_*` is session-scoped, and MT4 saves chart objects into the
+  chart's own profile and restores them at their ABSOLUTE pixels — so a restart or a
+  chart reopen put the previous session's orb/panel/controls back on the chart at stale
+  places, beside the fresh family the home painted. Measured: `chart03.chr` carried
+  `BiotakMenuV2_134342075006101685_CircOrbBg` at x=70,y=79 (P-UI-144). One prefix walk
+  per attach — `BiotakMenuGhostSweep()` in `Biotak/BiotakHomes.mqh`, called from
+  `InitializeUIStates` — removes every foreign spelling; the same shape
+  `DrawStripSweepStale` took for the chart-id-free strip family.
+* **A shaky press dragged a control off its seat.** Every card/palette control is born
+  selectable for the name router, and the terminal grabs a selectable object on the
+  press that lands on it (P-UI-48). Fixed 2026-10-13 (P-UI-145): a seat registry filled
+  by the one button factory, kept in lockstep by the one mover, spent by the terminal's
+  own `CHARTEVENT_OBJECT_DRAG` — the control is put back and its selection dropped in
+  the same event.
+* **The strip's open state was never restored** (the panels had a snapshot/restore since
+  P-UI-142; the strip shut at every attach). Fixed 2026-10-13 (P-UI-146): five keys per
+  symbol+period — open · the served drawing's hash pair · the gear tab · its collapse ·
+  the pin — written at teardown start, restored once on the first tick after a fresh
+  attach under `PnlRestoreSaved`'s own gate. The pickers, the colour board and the
+  palette popup are deliberately NOT in the record: they are popups of a surface, not
+  surfaces.
+
+What stays derived and is not a stored place: the ring's shape (arc / train / grid,
+re-derived from the live geometry every pass), the cards' width (row-count derived),
+and the strip's width (per-kind derived). A resize therefore re-derives a shape and
+keeps a place — which is the whole separation this page asks for.

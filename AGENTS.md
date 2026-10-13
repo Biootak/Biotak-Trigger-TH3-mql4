@@ -111,6 +111,8 @@ node tools/check-resources.js
 node tools/check-level-continuity.js
 node tools/check-regressions.js
 node tools/object_lifecycle_check.js
+node tools/skin_metrics_check.js
+python tools/ui_parity_audit.py
 python tools/check-gear-panel.py
 python tools/debug-doctor.py --env                     # the loop's own instruments
 python tools/debug-doctor.py --symptom count           # one symptom -> one core gap

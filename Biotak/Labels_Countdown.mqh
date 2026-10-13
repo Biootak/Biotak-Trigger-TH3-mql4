@@ -1,0 +1,226 @@
+//+------------------------------------------------------------------+
+//| Labels_Countdown.mqh - the live price + close-in countdown tag   |
+//| (split owner, contract 7).                                       |
+//|                                                                  |
+//| Labels_A.mqh sits at its grandfathered baseline and never grows, |
+//| so the countdown surface lives here: the close-in text, its own  |
+//| object name, the switch, the hit test and the painter. It is its |
+//| own LAYER (own switch, colour, size and gap; a name free of      |
+//| "ATR_" so the periodic janitor never eats it) - an owner, not a  |
+//| helper of the card.                                              |
+//|                                                                  |
+//| Include AFTER Labels_A.mqh (InitATRChartLabel / LblMark /        |
+//| SetLabelFont are its helpers there). Wired in LabelFunctions.mqh.|
+//+------------------------------------------------------------------+
+#ifndef LABELS_COUNTDOWN_MQH
+#define LABELS_COUNTDOWN_MQH
+
+// Countdown to the current chart bar close. Default = the long corner form
+// ("Close in : 22d 12h 32m 13s"); compact = the live-candle tag form with no
+// prefix and no spaces ("22d12h32m13s"). Units below the leading non-zero one
+// are skipped either way (H1 shows "17m 51s" / "17m51s").
+string TradePlanCloseInText(const bool compact = false)
+{
+   datetime bt = iTime(Symbol(), Period(), 0);
+   if(bt <= 0) return compact ? "--" : "Close in : --";
+   long left = (long)(bt + PeriodSeconds() - TimeCurrent());
+   if(left < 0) left = 0;
+   long d = left / 86400; left -= d * 86400;
+   long h = left / 3600;  left -= h * 3600;
+   long m = left / 60;
+   long s = left - m * 60;
+   string sep = compact ? "" : " ";
+   string t = "";
+   if(d > 0) t = t + IntegerToString(d) + "d" + sep;
+   if(d > 0 || h > 0) t = t + IntegerToString(h) + "h" + sep;
+   if(d > 0 || h > 0 || m > 0) t = t + IntegerToString(m) + "m" + sep;
+   t = t + IntegerToString(s) + "s";
+   return compact ? t : ("Close in : " + t);
+}
+
+//+------------------------------------------------------------------+
+//| Live countdown tag — its OWN layer (2026-09-11, user request):     |
+//| own switch (inpShowLiveCountdown), own color/size/gap, and a name  |
+//| deliberately free of "ATR_" so the periodic object janitor (which  |
+//| hides every "ATR_" object while the ATR block is off) never eats   |
+//| it. Turn the ATR labels off and the countdown stays.               |
+//+------------------------------------------------------------------+
+string LiveCountdownObjName()
+{
+   return GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_NAME;
+}
+
+bool LiveCountdownEnabled()
+{
+   return (inpShowLiveCountdown && !IsIndicatorHidden());
+}
+// P-PERF-51: per-call dirtiness of the countdown tag. CreateLivePriceCountdown
+// sets it: true when it wrote (or removed) anything, false when a still second
+// compared equal and cost reads only. The 1 Hz caller repaints only on true.
+static bool s_cdDirty = false;
+
+// Paints the tag when its own switch is on, removes it (plus the retired
+// "...ATR_Trade_Current_CloseIn" of older builds) when it is off.
+void RefreshLiveCountdown()
+{
+   string nm = LiveCountdownObjName();
+   s_cdDirty = true;   // deletes below are changes; CreateLive clears it when clean
+   if(!LiveCountdownEnabled())
+   {
+      ObjectDelete(0, nm);
+      ObjectDelete(0, GetLevelObjectPrefix() + "LBL_" + LIVE_COUNTDOWN_LEGACY_NAME);
+      g_cdTagValid = false;
+      return;
+   }
+   CreateLivePriceCountdown(nm);
+}
+
+// Chart click router: is this point on the tag's last painted rect?
+bool LiveCountdownPointInside(const int mx, const int my)
+{
+   if(!g_cdTagValid || !LiveCountdownEnabled()) return false;
+   int h = (g_cdTagH > 0) ? g_cdTagH : (inpFontSize + 4);
+   return (mx >= g_cdTagX - 2 && mx <= g_cdTagX + g_cdTagW + 2 &&
+           my >= g_cdTagY - 2 && my <= g_cdTagY + h + 2);
+}
+
+//+------------------------------------------------------------------+
+//| Bar-close countdown tag beside the LIVE CANDLE, at the LIVE PRICE.|
+//| Both axes are derived in pixels every refresh: Y from               |
+//| ChartTimePriceToXY(quote) (quote = bid/ask mid) so the text sits on |
+//| the level the terminal's price lines are drawn at, X from the live |
+//| bar's right edge + a few px, so the tag hugs the candle and moves   |
+//| with it as the price runs. When the right side runs out of room it  |
+//| flips to the candle's left instead of sliding under the price       |
+//| scale. Cost per call = 2-3 ChartTimePriceToXY + a handful of         |
+//| property sets, cheap enough for the 1 Hz path in TradePlanLiveTick  |
+//| (P-PERF-01) and for the scroll/zoom hook.                           |
+//+------------------------------------------------------------------+
+bool CreateLivePriceCountdown(const string name)
+{
+   LblMark(name);   // P-PERF-38g: produced by this pass, even on the hidden/clean exits below
+   s_cdDirty = true;   // the clean-skip below is the only path that clears it
+   // Own switch only — never the ATR block's flags (that is the whole point).
+   if(!LiveCountdownEnabled())
+   {
+      ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      g_cdTagValid = false;
+      return false;
+   }
+
+   double point = GetCachedPoint();
+   if(IsZero(point, EPSILON_PRICE)) { s_cdDirty = false; return false; }
+   datetime bt = iTime(Symbol(), Period(), 0);
+   if(bt <= 0) { s_cdDirty = false; return false; }
+
+   // The quote the tag rides: the bid/ask mid, so it sits exactly on the level
+   // the terminal's own price lines are drawn at. Bar close covers the very
+   // first ticks of a chart, before a quote exists.
+   double bid = MarketInfo(GetCachedSymbol(), MODE_BID);
+   double ask = MarketInfo(GetCachedSymbol(), MODE_ASK);
+   double price = 0.0;
+   if(bid > 0.0 && ask > 0.0) price = (bid + ask) / 2.0;
+   else if(bid > 0.0)         price = bid;
+   else                       price = iClose(Symbol(), Period(), 0);
+   if(price <= 0.0) { s_cdDirty = false; return false; }
+
+   // Bar-0 pixel X (its LEFT edge) + the quote's pixel Y. A chart scrolled
+   // away from the live bar has no candle to sit next to, so park the tag
+   // rather than draw it at a made-up level — the next refresh brings it back.
+   int barX = 0, priceY = 0;
+   if(!ChartTimePriceToXY(0, 0, bt, price, barX, priceY)) barX = -1;
+   if(barX < 0 || priceY < 0)
+   {
+      if(ObjectFind(0, name) >= 0)
+         ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      g_cdTagValid = false;   // no stale rect for the click hit-test
+      return false;
+   }
+
+   // Bar width in pixels comes from the previous bar's X, so the gap scales
+   // with the zoom instead of being a fixed guess.
+   int prevX = 0, prevY = 0;
+   int barPx = 8;   // safe default for a chart that cannot resolve bar 1
+   if(ChartTimePriceToXY(0, 0, bt - PeriodSeconds(), price, prevX, prevY) && barX > prevX)
+      barPx = barX - prevX;
+
+   string text = TradePlanCloseInText(true);
+   // Own size (0 = follow the shared label size) — resolved BEFORE measuring:
+   // the width estimate is cached for inpFontSize, so scale it to the
+   // RENDERED size (P-UI-26/F17), or the edge-flip and click rect drift.
+   int fsz = (inpCountdownFontSize > 0) ? inpCountdownFontSize : inpFontSize;
+   if(fsz <= 0) fsz = 8;
+   int tagW = (int)(CalculateTextWidth(text) * fsz / MathMax(1, inpFontSize));
+   // Hand-clamped on purpose: ClampInt() lives in BiotakKit.mqh, which this
+   // file (included earlier) cannot see in the Lite build (P-ARCH-02).
+   int gap = inpCountdownGapPx;                     // "یک کم فاصله"
+   if(gap < 0) gap = 0;
+   if(gap > 40) gap = 40;
+   int x    = barX + barPx + gap;                   // just off the candle's right
+   int cw   = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
+   // The right margin the corner labels already live in is the boundary the tag
+   // may not cross (beyond it sits the price scale).
+   int rightLimit = (cw > 0) ? (cw - MathMax(8, inpLabelsMarginLeft)) : 0;
+   if(cw > 0 && x + tagW > rightLimit)
+   {
+      x = barX - tagW - gap;                      // no room right → hug its left
+      if(x < 4) x = 4;
+   }
+
+   // Earlier builds drew this same name in the corner and on the candle as an
+   // OBJ_TEXT; a same-name ObjectCreate of another type does not replace the
+   // old object, so retire it first.
+   if(ObjectFind(0, name) >= 0 && ObjectType(name) != OBJ_LABEL)
+      ObjectDelete(0, name);
+   if(ObjectFind(0, name) < 0)
+   {
+      if(!ObjectCreate(0, name, OBJ_LABEL, 0, 0, 0)) { s_cdDirty = false; return false; }
+      ObjectSetString(0, name, OBJPROP_TEXT, "");   // no default "Label" text
+   }
+
+   // Own color. Center the row on the quote level (Y is measured from the
+   // top edge here); clamp the bottom too so the tag never sinks under the
+   // date scale when price hugs the chart's lower edge (P-UI-26/L4).
+   int chTag = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
+   if(chTag <= 0) chTag = 1080;
+   int xLeft = MathMax(4, x);
+   int yTop = MathMax(2, MathMin(priceY - fsz / 2, chTag - (fsz + 2) - 20));
+
+   // P-PERF-51: compare first. A still second (same quote, same seats, same
+   // ink) costs ~12 reads and zero writes; the caller repaints only on dirty.
+   if(g_cdTagValid && ObjectFind(0, name) >= 0
+      && ObjectGetString(0, name, OBJPROP_FONT) == inpFontName
+      && ObjectGetInteger(0, name, OBJPROP_FONTSIZE) == fsz
+      && ObjectGetInteger(0, name, OBJPROP_CORNER) == CORNER_LEFT_UPPER
+      && ObjectGetInteger(0, name, OBJPROP_ANCHOR) == ANCHOR_LEFT_UPPER
+      && ObjectGetInteger(0, name, OBJPROP_SELECTABLE) == false
+      && ObjectGetInteger(0, name, OBJPROP_HIDDEN) == false
+      && ObjectGetInteger(0, name, OBJPROP_ZORDER) == Z_CHART_LABEL
+      && ObjectGetString(0, name, OBJPROP_TEXT) == text
+      && ObjectGetInteger(0, name, OBJPROP_COLOR) == inpCountdownColor
+      && ObjectGetInteger(0, name, OBJPROP_XDISTANCE) == xLeft
+      && ObjectGetInteger(0, name, OBJPROP_YDISTANCE) == yTop
+      && ObjectGetInteger(0, name, OBJPROP_TIMEFRAMES) == OBJ_ALL_PERIODS)
+   {
+      s_cdDirty = false;
+      return true;
+   }
+
+   SetLabelFont(name);
+   ObjectSetInteger(0, name, OBJPROP_FONTSIZE, fsz);   // own size over the shared one
+   InitATRChartLabel(name, CORNER_LEFT_UPPER, ANCHOR_LEFT_UPPER);
+   ObjectSetString(0, name, OBJPROP_TEXT, text);
+   ObjectSetInteger(0, name, OBJPROP_COLOR, inpCountdownColor);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, xLeft);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, yTop);
+   ObjectSetInteger(0, name, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+
+   // Remember the painted rect: the chart click router hit-tests it to open the
+   // settings card. The object itself stays UNSELECTABLE so it can never be
+   // grabbed/dragged by accident.
+   g_cdTagX = xLeft; g_cdTagY = yTop; g_cdTagW = tagW; g_cdTagH = fsz + 2;
+   g_cdTagValid = true;
+   return true;
+}
+
+#endif // LABELS_COUNTDOWN_MQH

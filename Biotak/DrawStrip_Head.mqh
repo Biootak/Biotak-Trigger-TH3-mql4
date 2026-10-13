@@ -283,6 +283,18 @@
 //--- every one of them keeps its name and its value; only the number's owner changed.
 #define DSTRIP_GEAR_W   PNL_WEL
 #define DSTRIP_GEAR_PAD  PNL_PAD_X
+//--- P-UI-153 (2026-10-13) - THE GEAR CLOSE SEAT, ONE OWNER. The 26 was written
+//--- three times: the paint (`DrawStrip_GearB.mqh`), the hit test (`DrawStrip_Base
+//--- .mqh`, as `const int xbtn = 26`) and the carry's own stop (`DrawStrip_Tap
+//--- .mqh`, `... - 26 - DSTRIP_GEAR_PAD`). The cards' `.x` is `PNL_XBTN_VIS` (26)
+//--- and the parity gate already asserts the two agree (`tools/ui_parity_audit.py`,
+//--- the "close button" seat) - but it compares the VALUE, so three literals could
+//--- drift to three different values and the gate would only notice afterwards.
+//--- `PNL_XBTN_VIS` is NOT readable here: it lives in `BiotakPanels_State.mqh`
+//--- (include 118), below DrawStrip (include 99) - the same include-order reason
+//--- `DSTRIP_GEAR_PAD` reads `PNL_PAD_X` from `CardMetrics.mqh` and not from there.
+//--- So the strip keeps its own NAME for its own seat, and one name reads once.
+#define DSTRIP_GEAR_XW  26   // = PNL_XBTN_VIS, the cards' own .x
 #define DSTRIP_GEAR_HEAD_H PNL_HEAD_H
 #define DSTRIP_GEAR_ROW_H  PNL_ROW_H
 #define DSTRIP_GEAR_TB_H   7   // the head's own top bar, at the head's top edge
@@ -776,4 +788,62 @@ static uint     s_dsGGripMs = 0;
 //--- drift — and it lives in this block because `DrawStripClose`, defined below,
 //--- must hand the view back (MQL4 reads a bare `void f();` prototype as an
 //--- import, so owners are DEFINED before their first use here, never declared).
+
+//+------------------------------------------------------------------+
+//| P-UI-146 (2026-10-13) — THE SERVED DRAWING'S IDENTITY, AS A       |
+//| NUMBER. A GlobalVariable is a double, so the strip's target name  |
+//| (a user drawing, e.g. "Trendline 4471") has to ride the state     |
+//| record as a HASH PAIR. Two 32-bit FNV mixes of the same string —  |
+//| one 1a (xor then multiply) and one plain FNV-1 (multiply then    |
+//| xor) — EACH FINISHED BY AN AVALANCHE, and the low 26 bits of      |
+//| each packed into one double (52 bits, exact in a 53-bit           |
+//| mantissa). The restore walks the chart's object list once and     |
+//| matches on the pair, and a name that matches is still verified    |
+//| with `DrawKindOf` before anything opens.                          |
+//|                                                                  |
+//| MEASURED, on 26,374 MT4-style + Persian names: the raw FNV low    |
+//| bits are a closed chain (each step's low k bits depend only on    |
+//| the previous low k bits), and the two hashes then collide TOGETHER|
+//| — 36 colliding pairs, the same pairs for both. With the avalanche |
+//| below (xorshift + the FNV prime, twice — no constant above 2^31,  |
+//| because the MetaEditor build rejects ULL suffixes and 64-bit hex, |
+//| measured 11 errors) the pair distinguishes all 26,374.            |
+//+------------------------------------------------------------------+
+uint DSNameHash1a(const string s)          // FNV-1a: xor, then multiply
+{
+   uint h = 0;
+   const int n = StringLen(s);
+   for(int i = 0; i < n; i++)
+      h = (h ^ (uint)StringGetCharacter(s, i)) * 16777619;   // FNV-32 prime (fits an int)
+   h ^= h >> 15;  h = h * 16777619;        // the avalanche — see the measurement above
+   h ^= h >> 13;  h = h * 16777619;
+   h ^= h >> 16;
+   return h;
+}
+uint DSNameHash1(const string s)           // FNV-1: multiply, then xor
+{
+   uint h = 0;
+   const int n = StringLen(s);
+   for(int i = 0; i < n; i++)
+      h = (h * 16777619) ^ (uint)StringGetCharacter(s, i);
+   h ^= h >> 15;  h = h * 16777619;
+   h ^= h >> 13;  h = h * 16777619;
+   h ^= h >> 16;
+   return h;
+}
+//--- pack: hash1a's low 26 bits in the high half, hash1's in the low. Always >= 0.
+double DSNamePack(const string s)
+{
+   const uint a = DSNameHash1a(s);
+   const uint b = DSNameHash1(s);
+   const long hi = (long)(a % 67108864);          // 2^26
+   const long lo = (long)(b % 67108864);
+   return (double)(hi * 67108864 + lo);           // < 2^52: exact in a double
+}
+bool DSNameMatches(const double packed, const string s)
+{
+   if(packed < 0.0) return false;
+   return (DSNamePack(s) == packed);
+}
+
 #endif // DRAW_STRIP_HEAD_MQH

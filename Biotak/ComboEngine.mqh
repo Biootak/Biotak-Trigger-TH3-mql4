@@ -435,15 +435,28 @@ string BuildComboCalcSummaryText()
 //| one struct build + one int hash and drops the rebuild to "when an   |
 //| input moved" (in practice twice per 30-minute base-price block).    |
 //+------------------------------------------------------------------+
-int ComboSpecSignature(const SComboSpec &spec)
+//--- P-BE-01 (2026-10-13) — THE SIGNATURE IS EXACT, NOT A 32-BIT FOLD.
+//--- This used to return an `int` built as `sig = sig*31 + x` over up to
+//--- MAX_COMBO_COMPONENTS x 3 fields, seeded with `operation*1000003 +
+//--- compCount*7919` (~3.0e6 for operation 3). A signed 32-bit int wraps after
+//--- about five multiplies, and MQL4 wraps SILENTLY, so the seed and the later
+//--- fields can cancel: two DIFFERENT specs land on the same number,
+//--- `RefreshComboLabelExtraInfo` takes its early return, and the combo
+//--- breakdown label keeps serving the PREVIOUS spec's string. That is the one
+//--- thing this guard must never do — its whole contract is "same inputs ->
+//--- same string", which only holds if the key is injective.
+//---
+//--- The fields are joined as TEXT instead: exact for every spec, no collisions
+//--- by construction. Cost is <=36 IntegerToString calls on a value the guard
+//--- already avoids rebuilding (the pre-P-PERF-09 path rebuilt the whole summary
+//--- ~100x/s), so the trade the guard makes is still the right one.
+string ComboSpecSignature(const SComboSpec &spec)
 {
-    int sig = (int)spec.operation * 1000003 + spec.compCount * 7919;
+    string sig = IntegerToString((int)spec.operation) + ":" + IntegerToString(spec.compCount);
     for(int i = 0; i < spec.compCount && i < MAX_COMBO_COMPONENTS; i++)
-    {
-        sig = sig * 31 + (int)spec.comps[i].tf;
-        sig = sig * 31 + (int)spec.comps[i].step;
-        sig = sig * 31 + (int)MathRound(spec.comps[i].weight * 1000.0);
-    }
+        sig = sig + "|" + IntegerToString((int)spec.comps[i].tf)
+                  + "," + IntegerToString((int)spec.comps[i].step)
+                  + "," + IntegerToString((int)MathRound(spec.comps[i].weight * 1000.0));
     return sig;
 }
 
@@ -458,7 +471,7 @@ void RefreshComboLabelExtraInfo()
 {
     static int    s_lastMode = -1;
     static double s_lastBase = -1.0;
-    static int    s_lastSig  = 0;
+    static string s_lastSig  = "";   // P-BE-01: the key is TEXT now (an int folded silently)
 
     int mode = (int)GetCurrentStepMode();
     if(mode != (int)COMBO_STEP)
@@ -468,18 +481,18 @@ void RefreshComboLabelExtraInfo()
         if(g_comboLabelExtraInfo != "")
         {
             g_comboLabelExtraInfo = "";
-            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = 0;
+            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = "";
         }
         else if(s_lastMode != mode)
         {
-            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = 0;
+            s_lastMode = mode; s_lastBase = -1.0; s_lastSig = "";
         }
         return;
     }
 
     double basePrice = (g_dailyClosePriceForTH > 0) ? g_dailyClosePriceForTH : Bid;
     SComboSpec spec = GetActiveComboSpec();
-    int sig = ComboSpecSignature(spec);
+    string sig = ComboSpecSignature(spec);
     if(mode == s_lastMode && basePrice == s_lastBase && sig == s_lastSig)
         return;   // identical inputs -> identical string, nothing to rebuild
 

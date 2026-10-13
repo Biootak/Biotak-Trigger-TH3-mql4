@@ -40,8 +40,13 @@ void PalDraw()
    // strip's; this is the popup's own 12px face).
    PnlSetBitmap(p+"grip", px+PAL_PAD, py+8, 12, 12, "::Files\\Icons\\pal_grip.bmp", Z_PANEL_POP_BG);
    ObjectSetString(0,p+"grip",OBJPROP_TOOLTIP,"Drag to move");
-   PnlSetButton(p+"close", px+w-PAL_PAD-20, py+5, 20, 18, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);
-   ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
+   // P-UI-150 (2026-10-13): the seat comes from the ONE owner `PalCloseSeat`
+   // (PalA), the same one the title carry reads to exclude the button. Painted here
+   // as `px+w-PAL_PAD-20, py+5, 20, 18` and tested there as `py+3..py+21`, the two
+   // spellings disagreed by 2 px and the button's own bottom edge armed a drag.
+   int cseX = 0, cseY = 0, cseW = 0, cseH = 0;
+   PalCloseSeat(px, py, w, cseX, cseY, cseW, cseH);
+   PnlSetButton(p+"close", cseX, cseY, cseW, cseH, "x", PNL_CLR_SEG_OFF, PNL_CLR_SEG_BD, true);   ObjectSetInteger(0,p+"close",OBJPROP_COLOR,PNL_CLR_MUTED);
    ObjectSetInteger(0,p+"close",OBJPROP_FONTSIZE,PnlPt(PNL_PT_PAL));   // P-UI-30
    ObjectSetInteger(0,p+"close",OBJPROP_ZORDER,Z_PANEL_POP_CTL);
 
@@ -265,8 +270,8 @@ void PalUpdateLive()
       int cv=(int)cur;
       int comps[3];
       comps[0]=cv%256; comps[1]=(cv/256)%256; comps[2]=cv/65536;
-      int trackX=g_PalX+PAL_PAD+30;
-      int trackW=PalW()-2*PAL_PAD-34;
+      int trackX=PalMixTrackX();
+      int trackW=PalMixTrackW();
       for(int i=0;i<3;i++)
       {
          int kx=trackX+(int)MathRound(comps[i]/255.0*(trackW-10));
@@ -354,8 +359,8 @@ int PaletteMixHit(const int mx,const int my)
        if(mx>=fox-4 && mx<=fox+fow+4 && my>=fy+6 && my<=fy+22) return 5;
     }
      if(g_PalTab!=1) return 0;
-     int trackX=g_PalX+PAL_PAD+30;
-     int trackW=PalW()-2*PAL_PAD-34;
+     int trackX=PalMixTrackX();
+     int trackW=PalMixTrackW();
      //--- same rows the paint lays (`PalMixRowY`); bands tile edge-to-edge, so no
      //--- dead gap between two channels can swallow the press.
      for(int i=0;i<3;i++)
@@ -386,8 +391,8 @@ void PaletteMixFromX(const int comp,const int mx)
       if(flags!=REFRESH_NONE) RefreshDisplay(flags);
       return;
    }
-    int trackX=g_PalX+PAL_PAD+30;
-    int trackW=PalW()-2*PAL_PAD-34;
+    int trackX=PalMixTrackX();
+    int trackW=PalMixTrackW();
     //--- knob-centre mapping: the knob is 10px wide over (trackW-10), so the value
     //--- under the pointer's grip is (mx-5), the exact inverse of the paint above.
     double frac=(mx-trackX-5)/(double)(trackW-10);
@@ -1132,6 +1137,23 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
        // shape, so a branch spelled here becomes a phantom arm with no caption
        // and the audit reports a blank control. This cost one red run already.)
        else             { kind=1; label="VOL NORM"; }
+    }
+    // P-UI-154 (2026-10-13) — THE HOVER CHIP'S ROW HAD NO DEFINITION.
+    // MEASURED: this function carries a branch for every card EXCEPT 4, so the
+    // chip's one row fell through to the opening defaults set at the top of it —
+    // `kind=0` (PNL_K_SL, a slider) and `label=""`. The card the user opens to
+    // configure the chip therefore showed a NAMELESS 0..100 SLIDER where its
+    // single ON/OFF switch belongs («چرا تنظیماتش ناقص هستش»). OFF = «با موس»
+    // (the hover tip, the shipped default), ON = «همیشه فعال» (the banner kept up
+    // at its place). Every OTHER path already knew the setting: `PnlCurrent`
+    // (case 4) reads it, `PnlApply` (case 4) writes it and calls
+    // `CircTipModeChanged`, and `PnlDefValSet` falls through to `return 0` —
+    // which IS that default. Only this descriptor was missing, which is exactly
+    // why nothing else noticed. kind=1 (PNL_K_SW) is the switch the apply path
+    // implements; the icon stays the spec's own "tag" (BiotakPanels_PalA).
+    else if(item==4)   // HOVER CHIP — the chip's MODE (the card's only setting)
+    {
+       if(row==0)       { kind=1; label="ALWAYS SHOWN"; }
     }
     // TH3TOOL-ON (2026-09-19): restored from TH3TOOL-OFF.
     // P-TH3-PB-MAN (2026-09-21): BASE PIPS is the trailing fallthrough, like

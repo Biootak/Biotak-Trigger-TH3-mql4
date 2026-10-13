@@ -625,9 +625,9 @@ void BuildZonesAndLines(
         } else if(belowCount > 0) {
             neighborDist = midLevel.price - s_belowLevels[0].price;
         }
-        // Edge case fix: no neighbors - use 100 points as fallback height
-        if(neighborDist <= 0) {
-            neighborDist = GetCachedPoint() * 100;
+        if(neighborDist <= 0) {   // P-BE-02: the point size is 0 until the contract data loads
+            double p = GetCachedPoint();
+            neighborDist = p > 0 ? p * 100 : midLevel.price * 0.001;   // ...so the product was 0 -> an invisible zone
         }
         double zoneStepSize = (fixedZoneStepSize > 0) ? fixedZoneStepSize : neighborDist;
         // P-UI-58/59: `neighborDist` IS the nearer of the two neighbour intervals,

@@ -50,13 +50,28 @@ int HandleButtonClick(const string clickedObject)
    // --- Tools sub-menu panel: pager first, then dead space ---
    if(g_ToolsOpen)
    {
-      if(clickedObject == SubPagerPrev() || clickedObject == SubPagerNext())
+      // P-UI-151: the chevrons are OBJ_BUTTONs born SELECTABLE=false, so MT4
+      // may never emit OBJECT_CLICK for them (P-DRAW-84). Keep the name route,
+      // but when it did not match, ask the coordinates — the same door the
+      // cards use (P-UI-74). `SubPagerAt` reads `SubPagerGeom`, the one owner
+      // the paint already uses, so this is not a second grid.
+      string pagerName = clickedObject;
+      if(pagerName != SubPagerPrev() && pagerName != SubPagerNext())
+      {
+         int pdir = 0;
+         if(SubPagerAt(g_LastUIX, g_LastUIY, pdir))
+            pagerName = (pdir > 0) ? SubPagerNext() : SubPagerPrev();
+      }
+      if(pagerName == SubPagerPrev() || pagerName == SubPagerNext())
       {
          // MT4 LATCHES an OBJ_BUTTON after a click (STATE stays true → the
-         // chevron looks stuck down). Clear it on every pager click.
-         ObjectSetInteger(0, clickedObject, OBJPROP_STATE, false);
+         // chevron looks stuck down). Clear it on every pager click — but only
+         // if the object exists: the coordinate door can name a chevron that
+         // this page's chrome did not create.
+         if(ObjectFind(0, pagerName) >= 0)
+            ObjectSetInteger(0, pagerName, OBJPROP_STATE, false);
          int pages = SubPageCount();
-         int np = g_ToolsPage + ((clickedObject == SubPagerNext()) ? 1 : -1);
+         int np = g_ToolsPage + ((pagerName == SubPagerNext()) ? 1 : -1);
           if(np >= 0 && np < pages)
           {
              g_ToolsPage = np;

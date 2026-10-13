@@ -945,7 +945,29 @@ function Restart-TradingTerminal {
     #--- MUST go — otherwise a reader cannot tell this session's frame from that one.
     Clear-StaleDiagFiles | Out-Null
     Start-TerminalStarts -Starts $starts
-    Write-Host "  Terminal restarted. Charts come back on their own; every indicator reloads from the new ex4." -ForegroundColor Green
+    #--- P-BUILD-12 (2026-10-13) — A RELAUNCH IS A CLAIM, SO IT IS CHECKED.
+    #--- MEASURED 2026-10-13: this line printed «Terminal restarted» while the
+    #--- journal held «stopped» at 15:22:17.888 and NO «started» after it, and
+    #--- `Get-Process terminal` found nothing — yet the build exited 0, the next
+    #--- build found no terminal to restart, and every chart kept the PREVIOUS
+    #--- ex4 while the report said the deploy had landed. `Start-Process` on a GUI
+    #--- app returns as soon as the process object exists, so «we asked» was never
+    #--- «it runs». The caller already treats $false as a failed build, so the
+    #--- honest answer is one that CAN be wrong: go and look for the process.
+    $want = $starts.Count
+    $up = 0
+    $deadline = (Get-Date).AddSeconds(20)
+    do {
+        Start-Sleep -Milliseconds 500
+        $up = @(Get-Process -Name "terminal" -ErrorAction SilentlyContinue).Count
+    } while ($up -lt $want -and (Get-Date) -lt $deadline)
+    if ($up -lt $want) {
+        Write-Host "  [FAIL] the relaunch did not come up: asked for $want, found $up after 20 s." -ForegroundColor Red
+        Write-Host "  MT4 runs what it loaded at attach, so every chart still holds the PREVIOUS ex4." -ForegroundColor Yellow
+        Write-Host "  Open MT4 once by hand; the next build then restarts it alone." -ForegroundColor Yellow
+        return $false
+    }
+    Write-Host "  Terminal restarted ($up process(es) up). Charts come back on their own; every indicator reloads from the new ex4." -ForegroundColor Green
     return $true
 }
 
@@ -2023,6 +2045,39 @@ if (Test-Path $lifeGate) {
     Write-Host ""
     Write-Host "  Object lifecycle gate (every painted name has a destroy path):" -ForegroundColor Cyan
     Invoke-ProjectGate -Name "object lifecycle gate" -Script $lifeGate -Runner "node" -Cache $gateCache
+}
+
+#--- P-UI-149 (2026-10-13): THE SKIN GATE IS PART OF THE BUILD. The 9-slice's middle
+#--- band is BAKED at one width (`tools/gen-th3-icons.js`) and CROPPED at another
+#--- (`Biotak/DrawStrip_Head.mqh`): two files, two numbers, and the compiler cannot see
+#--- them disagree — a plate wider than the bake silently draws a stretched or blank
+#--- band. The gate existed and was left OUT of this list, so it ran nowhere, and its own
+#--- reader had gone stale in the meantime (a `const`-only scan against a `let`
+#--- declaration, a digits-only scan against an alias). It reported two defects that did
+#--- not exist — and would have reported NOTHING if the bake and the crop had really
+#--- drifted. A gate nobody runs is a rule nobody keeps: wired here or nowhere.
+$skinGate = Join-Path $SCRIPT_ROOT "tools\skin_metrics_check.js"
+if (Test-Path $skinGate) {
+    Write-Host ""
+    Write-Host "  Skin metrics gate (the plate bake and the crop are one number):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "skin metrics gate" -Script $skinGate -Runner "node" -Cache $gateCache
+}
+
+#--- P-UI-149 (2026-10-13): THE PARITY GATE IS PART OF THE BUILD. The settings panel and
+#--- the reference cards are two surfaces built from two sets of literals, and "does the
+#--- panel look like the card" was being answered by a screenshot the user had to take and
+#--- describe. Every chrome seat is a number on both sides, so it is settled offline. The
+#--- gate existed and was never wired, and its panel reader could not follow the strip's
+#--- own aliases (`#define DSTRIP_GEAR_HEAD_H PNL_HEAD_H` — the alias is deliberate,
+#--- P-DRAW-116, and `PNL_*` lives in CardMetrics.mqh, which is NOT in the strip's include
+#--- chain), so five seats were compared as `None`. An UNMEASURED seat prints exactly like
+#--- an agreeing one: that is the P-DRAW-120 failure this build keeps paying for. Wired
+#--- here or nowhere.
+$parityGate = Join-Path $SCRIPT_ROOT "tools\ui_parity_audit.py"
+if ((Test-Path $parityGate) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+    Write-Host ""
+    Write-Host "  UI parity gate (panel chrome vs card chrome, seat by seat):" -ForegroundColor Cyan
+    Invoke-ProjectGate -Name "ui parity gate" -Script $parityGate -Runner "python" -Cache $gateCache
 }
 
 #--- P-DRAW-119 (2026-10-01): THE MIRROR IS NOT THE EVIDENCE.

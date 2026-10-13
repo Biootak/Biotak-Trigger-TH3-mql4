@@ -211,6 +211,19 @@ void HandleUIChartEvent(const int id, const long &lparam, const double &dparam, 
          if(nowF - s_BkFollowMs >= 30) { s_BkFollowMs = nowF; BkStripFollow(); }
       }
       int flags = PnlHandleDrag(sparam, g_LastUIX);
+      // P-UI-145 (2026-10-13): OUR OWN CONTROL, NATIVELY DRAGGED. The terminal
+      // grabs a selectable object on the press that lands on it (P-UI-48's own
+      // measurement, BaseKnot_Base.mqh:848), and every card/palette control is
+      // born selectable for the name router — so a hand that travels 3–10 px
+      // over a swatch, a tab or the × native-drags THAT BUTTON off its seat.
+      // The seat is written back and the selection dropped in the same event
+      // the terminal reports the drag, so the displacement never lands. Spared
+      // by name: the mixer knobs (`mknb`) ARE the drag. A live card carry has
+      // already written the absolute seat through the batch above (and taught
+      // the registry the same number), so the two writers agree by
+      // construction rather than by hope.
+      if(StringFind(sparam, g_UI.btnPrefix) == 0 && StringFind(sparam, "mknb") < 0)
+         PnlSeatRevert(sparam);
       if(flags != REFRESH_NONE) ApplyRefreshFlags(flags);
       return;
    }
@@ -340,6 +353,24 @@ void SnapshotOpenSurfaces()
 {
    GlobalVariableSet(GetGVName("PNLOPN"), (double)(g_PnlOpen == 13 ? -1 : g_PnlOpen));   // mini strip is box-bound: never reopened blind
    GlobalVariableSet(GetGVName("TOOLS"), g_ToolsOpen ? 1.0 : 0.0);
+   // P-UI-146 (2026-10-13): AND THE DRAW STRIP'S OWN STATE — the strip is the one
+   // surface the panels' restore (PNLOPN) never covered: it shut at every attach
+   // and nothing brought it back, so «پنل رو باز میذارم، ری‌استارت، نمیاد سرجاش».
+   // Five keys, per symbol+period (two charts of one symbol share the record, the
+   // same granularity PNLOPN has), written here where the live statics are still
+   // intact — DrawStripClose runs after this line and clears them:
+   //   O open · N the served drawing's hash pair (a GV is a double; DSNamePack,
+   //        DrawStrip_Head.mqh, is the ONE encoding) · G the gear tab · C its
+   //        collapse · P the pin.
+   // The pickers, the board and the palette popups are deliberately NOT in the
+   // record: they are transient popups of a surface, not surfaces — a popup
+   // reopened blind would float over a strip nobody asked for.
+   const string sfx = "DS" + IntegerToString(Period());
+   GlobalVariableSet(GetGVName(sfx + "O"), s_dsOpen ? 1.0 : 0.0);
+   GlobalVariableSet(GetGVName(sfx + "N"), DSNamePack(s_dsObj));
+   GlobalVariableSet(GetGVName(sfx + "G"), (double)(s_dsGear > 0 ? s_dsGear : 0));
+   GlobalVariableSet(GetGVName(sfx + "C"), s_dsGearCollapsed ? 1.0 : 0.0);
+   GlobalVariableSet(GetGVName(sfx + "P"), s_dsPinned ? 1.0 : 0.0);
 }
 
 // P-UI-142: reopen what the snapshot saw open — once, on the first tick after a
@@ -364,6 +395,75 @@ void PnlRestoreSaved()
       if(lastSw > 0 && (nowT - lastSw) <= 20) return;   // a switch just closed these: stay closed
    }
    PnlOpen(want);
+}
+
+//--- P-UI-146 (2026-10-13) — THE STRIP COMES BACK THE WAY IT WAS LEFT.
+//--- The strip's open state is the snapshot `SnapshotOpenSurfaces` writes at
+//--- teardown START (O/N/G/C/P), and this is its restore — once, on the first
+//--- tick after a FRESH attach, under exactly the gate `PnlRestoreSaved` uses
+//--- (an already-open strip wins; a fresh timeframe switch stays closed, because
+//--- the stamp above proves the teardown that just ran was a switch).
+//---
+//--- The served drawing is identified by its hash pair: the name rides the
+//--- record as a double (`DSNamePack`), the chart is walked ONCE to find the
+//--- name that packs to the same pair, and a match is still verified with
+//--- `DrawKindOf` before anything opens — a drawing the user deleted, renamed
+//--- or never had simply leaves the strip shut, which is the only correct
+//--- answer for a target that is no longer there.
+//---
+//--- What comes back: the strip at its home (`DrawStripOpen` wears it), the gear
+//--- tab that was open with its collapse, and the pin. What deliberately does
+//--- NOT: the pickers, the colour board and the palette popup — transient
+//--- popups of the surface, reopened by a tap, not by a layout.
+void DrawStripStateRestore()
+{
+   static bool done = false;
+   if(done) return;
+   done = true;
+   if(s_dsOpen) return;                       // a click already opened one — it wins
+   const string sfx = "DS" + IntegerToString(Period());
+   string kO = GetGVName(sfx + "O");
+   if(!GlobalVariableCheck(kO)) return;
+   if(GlobalVariableGet(kO) < 0.5) return;    // it was left shut: nothing to bring back
+   string stamp = "Biotak_LastTFSwitch_" + GetCachedChartIdStr();
+   datetime nowT = TimeCurrent();
+   if(nowT > 0 && GlobalVariableCheck(stamp))
+   {
+      datetime lastSw = (datetime)GlobalVariableGet(stamp);
+      if(lastSw > 0 && (nowT - lastSw) <= 20) return;   // a switch just closed it: stay closed
+   }
+   string kN = GetGVName(sfx + "N");
+   if(!GlobalVariableCheck(kN)) return;
+   const double want = GlobalVariableGet(kN);
+   if(want < 0.0) return;
+   string target = "";
+   const int total = ObjectsTotal(0, -1, -1);
+   for(int i = 0; i < total; i++)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(nm == "") continue;
+      if(!DSNameMatches(want, nm)) continue;
+      if(ObjectFind(0, nm) < 0) continue;
+      if(DrawKindOf(nm) == DK_NONE) continue;   // not a drawing this strip serves
+      target = nm;
+      break;
+   }
+   if(target == "") return;                    // the drawing is gone or renamed: stay shut
+   if(!DrawStripOpen(target)) return;
+   int g = 0;
+   string kG = GetGVName(sfx + "G");
+   if(GlobalVariableCheck(kG)) g = (int)GlobalVariableGet(kG);
+   bool col = false;
+   string kC = GetGVName(sfx + "C");
+   if(GlobalVariableCheck(kC)) col = (GlobalVariableGet(kC) > 0.5);
+   bool pin = false;
+   string kP = GetGVName(sfx + "P");
+   if(GlobalVariableCheck(kP)) pin = (GlobalVariableGet(kP) > 0.5);
+   s_dsPinned = pin;
+   if(g > 0)
+      DrawStripGearRestoreTab(g, col);   // the strip's OWN door: a repaint is a
+                                         // REQUEST the strip spends (P-PAL-19f),
+                                         // so the caller never paints its surface
 }
 
 //--- per-tick / per-bar UI refresh (HTF forming candle + menu badge sync)
@@ -434,6 +534,7 @@ void RefreshKitOnBar()
 {
    // Called from OnCalculate AND OnTimer — i.e. on every tick twice.
    PnlRestoreSaved();   // P-UI-142: once — reopens the teardown snapshot's panel, if any
+   DrawStripStateRestore();   // P-UI-146: once — the strip, its gear tab and its pin, same gate
    // RefreshUIPerTick() already self-throttles (500ms + change guards), so
    // this is a straight pass-through; kept as a seam for future bar-only work.
    RefreshUIPerTick();

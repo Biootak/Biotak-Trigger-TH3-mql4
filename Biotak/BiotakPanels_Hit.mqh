@@ -499,11 +499,22 @@ void PnlClampSpot(const int item, const int dx, const int dy, int &ndx, int &ndy
 void PnlMoveOne(const int i,const int nx,const int ny)
 {
    if(nx != s_PnlMoveOx)
+   {
       ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_XDISTANCE,
                        s_PnlMoveX0[i] + (nx - s_PnlMoveOx));
+      // P-UI-145: the seat registry rides the batch — the seat a native-drag
+      // revert would write back is the one THIS gesture just moved the object
+      // to, so the two can never disagree about where the control is.
+      PnlSeatRemember(s_PnlMoveNm[i], s_PnlMoveX0[i] + (nx - s_PnlMoveOx),
+                      s_PnlMoveY0[i] + (ny - s_PnlMoveOy));
+   }
    if(ny != s_PnlMoveOy)
+   {
       ObjectSetInteger(0, s_PnlMoveNm[i], OBJPROP_YDISTANCE,
                        s_PnlMoveY0[i] + (ny - s_PnlMoveOy));
+      PnlSeatRemember(s_PnlMoveNm[i], s_PnlMoveX0[i] + (nx - s_PnlMoveOx),
+                      s_PnlMoveY0[i] + (ny - s_PnlMoveOy));
+   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════

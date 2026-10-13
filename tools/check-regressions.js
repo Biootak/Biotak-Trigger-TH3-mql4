@@ -755,7 +755,6 @@ function main() {
   // licence: raising one is how a ceiling stops existing.
   {
     const SIZE_BASELINE = {
-      'Labels_A.mqh': 1598,
       'EventHandlers_Calc.mqh': 1563,
       'LevelPipe_A.mqh': 1557,
     };
@@ -2860,6 +2859,44 @@ function main() {
     }
   }
 
+  // -- 14c. P-SIZE-SPLIT-LBL (2026-10-13): the LABEL hub's own half ------------------
+  //
+  // P-UI-148 (the TRex brand band's vertical air) needed a few lines in Labels_A.mqh,
+  // and that file sat exactly at its grandfathered baseline (1598) — contract §7 says a
+  // file over the ceiling never grows, so the split is the answer, not the prose cut:
+  // the LIVE PRICE + CLOSE-IN COUNTDOWN owner moved out to Biotak/Labels_Countdown.mqh
+  // (the same cut Labels_LegAtr.mqh took before it). Asserted the way the EventHandlers
+  // pair is, because a half can be present, compile, and be DEAD: the hub includes it,
+  // the hub still includes its owner, the owner still CALLS into it, and the owner is
+  // back UNDER the ceiling — which is the only reason the split exists. Its baseline
+  // entry is gone with it (a stale grandfather is a note that no longer matches).
+  {
+    const broken = [];
+    const hub = linesOf(path.join(BIOTAK, 'LabelFunctions.mqh'));
+    const half = linesOf(path.join(BIOTAK, 'Labels_Countdown.mqh'));
+    const owner = linesOf(path.join(BIOTAK, 'Labels_A.mqh'));
+    if (!half) broken.push('Biotak/Labels_Countdown.mqh is missing \u2014 a half the ceiling cut out left the unit');
+    if (!owner) broken.push('Biotak/Labels_A.mqh is missing \u2014 the split lost a side');
+    if (!hub) broken.push('Biotak/LabelFunctions.mqh is missing (the label unit has no hub)');
+    else {
+      const iHalf = indexOfLine(hub, '#include "Labels_Countdown.mqh"');
+      const iOwner = indexOfLine(hub, '#include "Labels_A.mqh"');
+      if (iHalf < 0) broken.push('the label hub does not include its own half Labels_Countdown.mqh \u2014 the unit is incomplete');
+      else if (iOwner < 0) broken.push('the label hub does not include Labels_A.mqh');
+      else if (iHalf < iOwner)
+        broken.push('Labels_Countdown.mqh must be included AFTER Labels_A.mqh: its helpers (InitATRChartLabel / LblMark / SetLabelFont) are defined there');
+    }
+    if (owner && !/RefreshLiveCountdown\s*\(/.test(codeOf(owner)))
+      broken.push('Labels_A.mqh no longer calls into Labels_Countdown.mqh \u2014 the half was orphaned (a half that compiles and is dead)');
+    if (owner && owner.length > 1500)
+      broken.push(`Labels_A.mqh is ${owner.length} lines again \u2014 the half did not give it room (contract §7)`);
+    if (broken.length) {
+      failures.push('P-SIZE-SPLIT-LBL: ' + broken.join('; ') + ' (Biotak/Labels_A.mqh + Labels_Countdown.mqh + LabelFunctions.mqh)');
+    } else {
+      console.log('[PASS] P-SIZE-SPLIT-LBL the label hub carries its half: Labels_Countdown.mqh is a member, included after Labels_A, called by it, and Labels_A is back under the ceiling');
+    }
+  }
+
   // ── P-DRAW-74b (2026-10-03) — A THICK DASH IS DRAWN, NOT WISHED ──
   // MT4 draws STYLE_* only at width 1, so a thick + non-solid fibo level is a
   // state no terminal can draw («استایل ها فقط روی 1px اعمال میشه»). The pen
@@ -3774,6 +3811,645 @@ function main() {
       failures.push('P-BK-111: ' + broken.join('; ') + ' (Biotak/BaseKnot_Direction.mqh + BaseKnot_Measure.mqh + DrawStrip_Head/Base/Pick/Tap.mqh + BiotakPanels_Rows/Hit.mqh + CardMetrics.mqh + tools/gen-th3-icons.js)');
     } else {
       console.log('[PASS] P-BK-111 the side is the user\'s to turn: the follow yields to the lock, the draw-strip\'s command group carries the cell (raster + caption + tap + count, one surface only), and the flip is witnessed flushed with a read-back');
+    }
+  }
+
+  // ── P-UI-144 (2026-10-13) — THE GHOST SWEEP: NO SURFACE COMES BACK TWICE ──
+  // «پنل‌ها، لوگو و منوها بعد از ری‌استارت ترمینال یا بستن و باز کردن پنجره از جاش
+  // تکون میخوره، روی هم میافته». MEASURED, not guessed: the live terminal's
+  // `profiles/default/chart03.chr` (DXY H4, written 2026-10-12 15:58:11) holds
+  // `object_name=BiotakMenuV2_134342075006101685_CircOrbBg` at x_distance=70
+  // y_distance=79 — a chart id from a session that no longer exists. Every
+  // object this family paints carries `BiotakMenuV2_<ChartID>` and a chart id is
+  // per session, so MT4's own profile restore puts the previous session's names
+  // back on the chart at their stale ABSOLUTE pixels, where no purge of the live
+  // prefix can reach them: the surface stands in a different relative place
+  // (the «از جاش تکون میخوره»), beside the fresh one the home paints (the «روی
+  // هم افتاده»), and it re-saves itself on every close. ONE prefix walk per
+  // attach — the exact shape `DrawStripSweepStale` took for the strip family,
+  // which never carried a chart id and is therefore immune. Asserted: the owner
+  // exists, it covers BOTH spellings the family ever painted, and
+  // `InitializeUIStates` — the one init path every attach, TF switch and re-add
+  // goes through — actually CALLS it (P-DRAW-120's lesson: an owner without a
+  // caller is a rule nobody delivers).
+  {
+    const broken = [];
+    const homes = codeOf(linesOf(path.join(BIOTAK, 'BiotakHomes.mqh')) || []);
+    if (!/void BiotakMenuGhostSweep\(\)/.test(homes))
+      broken.push('BiotakMenuGhostSweep() is gone from Biotak/BiotakHomes.mqh — a foreign-chart-id ghost has no owner again (P-UI-144)');
+    else {
+      if (!/ObjectsDeleteAll\(0, "BiotakMenuV2_"/.test(homes))
+        broken.push('the sweep lost the V2 spelling — every live object name starts with it (P-UI-144)');
+      if (!/ObjectsDeleteAll\(0, "BiotakMenu_"/.test(homes))
+        broken.push('the sweep lost the V1 spelling — an older build\u2019s ghost survives the sweep again (P-UI-144)');
+    }
+    const init = bodyOf(linesOf(MENU_A) || [], 'void InitializeUIStates()');
+    if (!init || !/BiotakMenuGhostSweep\(\);/.test(init.text))
+      broken.push('InitializeUIStates() does not CALL the sweep — the owner exists and nobody runs it, the exact P-DRAW-120 failure (P-UI-144)');
+    if (broken.length) {
+      failures.push('P-UI-144: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh + BiotakMenu_A.mqh InitializeUIStates)');
+    } else {
+      console.log('[PASS] P-UI-144 the ghost sweep exists, covers both name spellings, and is called from the one init path every attach runs (Biotak/BiotakHomes.mqh + BiotakMenu_A.mqh)');
+    }
+  }
+
+  // ── P-UI-145 (2026-10-13) — NO UI CONTROL MAY BE DRAGGED OFF ITS SEAT ──
+  // «ممکن است به‌اشتباه درگ شده … روی هم افتاده». The project's own measured law
+  // (P-UI-48 / P-BK-15, BaseKnot_Base.mqh:848) says `OBJPROP_SELECTABLE` IS the
+  // drag: MT4 grabs a selectable object on the press that lands on it, and a
+  // selected object rides every later drag (the hijack). Every card and palette
+  // control is born selectable for the name router, so a hand that travels 3–10
+  // px — below the card's own PNL_DRAG_CTRL_PX proof — native-drags the BUTTON
+  // itself, and the displaced control then rides the chart profile into the next
+  // session as a ghost at its dragged absolute pixels. The seat registry is the
+  // answer: filled by the ONE factory (`PnlSetButton`), kept in lockstep by the
+  // one mover (`PnlMoveOne`), spent by the terminal's own OBJECT_DRAG channel,
+  // and forgotten per family at teardown. Asserted: the registry, the remember
+  // at the paint, the revert at the drag (scoped to our family, sparing the
+  // mixer knobs that ARE the drag), the lockstep, and the forget.
+  {
+    const broken = [];
+    const apply = codeOf(linesOf(APPLY) || []);
+    const life = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh')) || []);
+    const build = codeOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Build.mqh')) || []);
+    if (!/void PnlSeatRemember\(/.test(apply))
+      broken.push('the seat registry is gone from Biotak/BiotakPanels_Apply.mqh — a natively dragged control has no memory to return to (P-UI-145)');
+    if (!/bool PnlSeatRevert\(/.test(apply))
+      broken.push('PnlSeatRevert() is gone — the revert write has no owner (P-UI-145)');
+    const btn = bodyOf(linesOf(APPLY) || [], 'void PnlSetButton(');
+    if (!btn || !/PnlSeatRemember\(n, x, y\);/.test(btn.text))
+      broken.push('PnlSetButton() no longer remembers the seat it writes — a registry filled anywhere else is a second grid (P-UI-145)');
+    if (!/PnlSeatRevert\(sparam\)/.test(life))
+      broken.push('the OBJECT_DRAG branch does not revert our own control — MT4 grabs a selectable object on the press and the button stays crooked (P-UI-145)');
+    if (!/StringFind\(sparam, g_UI\.btnPrefix\) == 0/.test(life))
+      broken.push('the revert is not scoped to our family — it would fight the mixer knobs and the hand-set lines (P-UI-145)');
+    if (!/StringFind\(sparam, "mknb"\) < 0/.test(life))
+      broken.push('the mixer knobs are not spared — the palette\u2019s own drag would be reverted (P-UI-145)');
+    const move = bodyOf(linesOf(path.join(BIOTAK, 'BiotakPanels_Hit.mqh')) || [], 'void PnlMoveOne(');
+    if (!move || !/PnlSeatRemember\(/.test(move.text))
+      broken.push('PnlMoveOne() does not keep the registry in lockstep — a card carry would re-seat a revert to the pre-drag place (P-UI-145)');
+    if (!/PnlSeatForget\(head\)/.test(build))
+      broken.push('PnlDestroy() does not forget the card\u2019s seats — the registry fills with dead names and stops reverting the live ones (P-UI-145)');
+    if (broken.length) {
+      failures.push('P-UI-145: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Apply.mqh PnlSetButton + Hit.mqh PnlMoveOne + Build.mqh PnlDestroy + Life.mqh OBJECT_DRAG)');
+    } else {
+      console.log('[PASS] P-UI-145 a natively dragged control is reverted to the seat the paint itself wrote, the registry rides the carry, and the knobs keep their drag (Biotak/BiotakPanels_Apply.mqh + Life.mqh)');
+    }
+  }
+
+  // ── P-UI-146 (2026-10-13) — THE STRIP COMES BACK THE WAY IT WAS LEFT ──
+  // «وضعیت باز/بسته بودن همه پنجره‌ها و پنل‌ها در هر اجرای مجدد دقیقاً بازیابی
+  // شده». The panels had a snapshot/restore since P-UI-142 and the strip — the
+  // one surface the panels' restore never covered — shut at every attach with
+  // nothing bringing it back. Five keys per symbol+period (O open · N the served
+  // drawing's hash pair · G the gear tab · C its collapse · P the pin), written
+  // at teardown START where the live statics are still intact, restored ONCE on
+  // the first tick after a FRESH attach under PnlRestoreSaved's own gate. The
+  // name rides as a double (a GV is a double) through ONE encoding in the
+  // strip's own state file, and a match is verified with DrawKindOf before
+  // anything opens. The gear tab is re-opened through the strip's OWN door —
+  // a repaint from outside the strip is a REQUEST the bridge spends
+  // (P-PAL-19f/P-PAL-20). And the ratchet half: the home is the hand's place, so
+  // the clamp may never write back into it (the P-UI-131e law said in fractions,
+  // docs/th3-ui-placement.md's "not yet covered" for the strip).
+  {
+    const broken = [];
+    const lifeLines = linesOf(path.join(BIOTAK, 'BiotakPanels_Life.mqh')) || [];
+    const life = codeOf(lifeLines);
+    const head = codeOf(linesOf(STRIP_HEAD) || []);
+    const tap = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    const snap = bodyOf(lifeLines, 'void SnapshotOpenSurfaces()');
+    if (!snap || !/DSNamePack\(s_dsObj\)/.test(snap.text))
+      broken.push('SnapshotOpenSurfaces() no longer records the strip\u2019s served drawing — the identity rides the record as a hash pair (P-UI-146)');
+    for (const k of ['sfx + "O"', 'sfx + "G"', 'sfx + "C"', 'sfx + "P"'])
+      if (!snap || snap.text.indexOf('GetGVName(' + k + ')') < 0)
+        broken.push(`the strip state lost its ${k} key (P-UI-146)`);
+    if (!/void DrawStripStateRestore\(\)/.test(life))
+      broken.push('DrawStripStateRestore() is gone — the strip reopens nothing (P-UI-146)');
+    const kit = bodyOf(lifeLines, 'void RefreshKitOnBar()');
+    if (!kit || !/DrawStripStateRestore\(\);/.test(kit.text))
+      broken.push('RefreshKitOnBar() does not call the restore — an owner without a caller is a rule nobody delivers (P-UI-146)');
+    const rest = bodyOf(lifeLines, 'void DrawStripStateRestore()');
+    if (!rest || !/DSNameMatches\(want, nm\)/.test(rest.text))
+      broken.push('the restore does not MATCH the served drawing by its hash pair — a target the user deleted would be guessed (P-UI-146)');
+    else if (!/DrawKindOf\(nm\) == DK_NONE/.test(rest.text))
+      broken.push('the restore does not verify the match with DrawKindOf — a hash hit alone is not a drawing (P-UI-146)');
+    if (!/void DrawStripGearRestoreTab\(/.test(tap))
+      broken.push('DrawStripGearRestoreTab() is gone from Biotak/DrawStrip_Tap.mqh — the gear tab would be repainted from outside the strip (P-PAL-19f/P-UI-146)');
+    if (!/double DSNamePack\(/.test(head) || !/bool DSNameMatches\(/.test(head))
+      broken.push('the identity encoding is gone from Biotak/DrawStrip_Head.mqh — the strip\u2019s state has no single spelling (P-UI-146)');
+    const clamp = bodyOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || [], 'void DrawStripHomeClamp()');
+    if (!clamp || /s_dsHomeX = nx/.test(clamp.text))
+      broken.push('DrawStripHomeClamp() writes the clamped pair back into the home — the P-UI-131e ratchet is back for the strip (P-UI-146)');
+    const open = bodyOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || [], 'bool DrawStripOpenAt(');
+    // P-UI-157 strengthened this from "only on the fresh placement" to "only on the fresh
+    // placement AND only from a measured window" — so the check counts the writes as well
+    // as pinning their guard: a second, unguarded `DrawStripHomeSet` is the regression the
+    // old exact-text test could not see.
+    const homeSets = open ? (open.text.match(/DrawStripHomeSet\s*\(/g) || []).length : 0;
+    if (!open || homeSets !== 1 ||
+        !/if\(dsFreshHome\s*&&\s*dsBox\)\s*\{[^}]*DrawStripHomeSet\(s_dsX, s_dsY\);/.test(open.text))
+      broken.push('DrawStripOpenAt() must set the home EXACTLY ONCE, only on the fresh placement and only from a measured window — a clamped open rewrites the hand\u2019s place (P-UI-146/P-UI-157)');
+    if (broken.length) {
+      failures.push('P-UI-146: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Life.mqh SnapshotOpenSurfaces + DrawStrip_Head/Tap/Paint.mqh)');
+    } else {
+      console.log('[PASS] P-UI-146 the strip\u2019s open state, served drawing, gear tab and pin are recorded at teardown and restored once on a fresh attach, and the home never stores the clamp');
+    }
+  }
+
+  // ── P-UI-145c (2026-10-13) — A DEAD FAMILY HANDS ITS SLOT BACK ──
+  // P-UI-145 gave every card and palette control a seat registry so a native drag
+  // is undone in the same event. It bounded the registry with `PNL_SEAT_MAX` and
+  // its comment justified the ceiling with a CONCURRENT count ("one card + one
+  // palette cannot reach 192") — but the counter only ever grew: `PnlSeatForget`
+  // blanked the NAME and kept the entry, and its only caller was the CARD teardown,
+  // so the palette never released anything either. The bound was therefore on the
+  // number of DISTINCT NAMES ever painted in one indicator lifetime, and one card
+  // with 24 rows teaches more than a hundred of them. Two cards reached 192 and from
+  // then on `PnlSeatRemember` returned early for EVERY later control: the protection
+  // died silently, in a fix whose whole point was to stop a silent displacement.
+  {
+    const broken = [];
+    const applyLines = linesOf(APPLY) || [];
+    const apply = codeOf(applyLines);
+    const forget = bodyOf(applyLines, 'void PnlSeatForget(const string prefix)');
+    if (!forget) {
+      broken.push('PnlSeatForget() is gone — a dead family never releases its slots (P-UI-145c)');
+    } else {
+      if (!/s_pnlSeatN = w;/.test(forget.text))
+        broken.push('PnlSeatForget() no longer DECREMENTS the counter — the ceiling bounds every name ever painted instead of the live controls, and the registry dies silently (P-UI-145c)');
+      if (!/s_pnlSeatNm\[w\] = s_pnlSeatNm\[i\];/.test(forget.text))
+        broken.push('PnlSeatForget() blanks the name instead of compacting the tail — the slot is kept forever (P-UI-145c)');
+    }
+    if (!/s_pnlSeatFullSaid/.test(apply))
+      broken.push('the FULL registry is silent again — a control past the ceiling loses its revert with nothing said (P-UI-145c)');
+    const palClose = bodyOf(linesOf(PAL_A) || [], 'void PalClose()');
+    if (!palClose || !/PnlSeatForget\(g_UI\.btnPrefix\+"Pal_"\);/.test(palClose.text))
+      broken.push('PalClose() does not release the popup\u2019s seats — every open left its ~44 entries permanently dead in the registry (P-UI-145c)');
+    if (broken.length) {
+      failures.push('P-UI-145c: ' + broken.join('; ') + ' (Biotak/BiotakPanels_Apply.mqh PnlSeatForget + PalA.mqh PalClose)');
+    } else {
+      console.log('[PASS] P-UI-145c a dead family hands its slots back: the registry is bounded by the LIVE controls, not by every name ever painted, and a FULL one says so');
+    }
+  }
+
+  // ── P-UI-149 (2026-10-13) — A GATE NOBODY RUNS IS A RULE NOBODY KEEPS ──
+  // `tools/skin_metrics_check.js` and `tools/ui_parity_audit.py` were both written,
+  // both correct in intent, and both absent from `compile-th3.ps1` AND from
+  // AGENTS.md's build list — so neither ran in any build and nothing noticed that
+  // both had gone blind in the meantime:
+  //   * the skin gate scanned the generator with a `const`-only regex while
+  //     `DS_CAP` had become a `let`, and read the runtime with a digits-only regex
+  //     while `DSTRIP_SKIN_M` had become the alias `PNL_MARGIN`. It reported two
+  //     defects that did not exist, and would have reported nothing if the bake and
+  //     the crop had really drifted.
+  //   * the parity gate resolved the panel side through `DrawStrip.mqh` alone, but
+  //     the strip's chrome is deliberately an ALIAS of the cards' constants
+  //     (P-DRAW-116) and `PNL_*` lives in `CardMetrics.mqh`, which is not in that
+  //     include chain — so five seats came back `None`, and an unmeasured seat prints
+  //     exactly like an agreeing one (the P-DRAW-120 class).
+  // Both are wired now, and this entry keeps them wired AND keeps their readers able
+  // to see their own constants: a gate that cannot read its input is not a gate.
+  {
+    const broken = [];
+    const ps1 = linesOf(BUILD_PS1);
+    if (!ps1) {
+      broken.push('compile-th3.ps1 is missing (the build is the only entry point)');
+    } else {
+      for (const tool of ['skin_metrics_check.js', 'ui_parity_audit.py'])
+        if (indexOfLine(ps1, tool) < 0)
+          broken.push(`the build does not run \`${tool}\` — re-add it to compile-th3.ps1 (or delete this entry and say so in the report) (P-UI-149)`);
+    }
+    const agentsTxt = fs.existsSync(path.join(ROOT, 'AGENTS.md')) ? fs.readFileSync(path.join(ROOT, 'AGENTS.md'), 'utf8') : '';
+    for (const tool of ['skin_metrics_check.js', 'ui_parity_audit.py'])
+      if (agentsTxt.indexOf(tool) < 0)
+        broken.push(`AGENTS.md's build list does not name \`${tool}\` (P-UI-149)`);
+
+    const skinTxt = fs.readFileSync(path.join(ROOT, 'tools', 'skin_metrics_check.js'), 'utf8');
+    if (!/\(\?:const\|let\)/.test(skinTxt))
+      broken.push('the skin gate scans the generator for `const` only — a `let` declaration (DS_CAP) is invisible to it and the corner cap goes ungated (P-UI-149)');
+    if (!/\[\^\\r\\n\]\+/.test(skinTxt))
+      broken.push('the skin gate\u2019s #define reader has a `$` anchor again — every file here is CRLF, JS `.` matches neither `\\n` nor `\\r`, and `$` will not match before a trailing `\\r`, so the reader comes back EMPTY and the gate reports a defect that does not exist (P-UI-149)');
+
+    const parityTxt = fs.readFileSync(path.join(ROOT, 'tools', 'ui_parity_audit.py'), 'utf8');
+    if (!/define\(CARD, name\)/.test(parityTxt) || !/define\(CARD, ident\)/.test(parityTxt))
+      broken.push('the parity gate cannot resolve the strip\u2019s aliases — `DSTRIP_GEAR_*` IS `PNL_*` (P-DRAW-116) and its home `CardMetrics.mqh` is not in the strip\u2019s include chain, so the panel side reads `None` and the seat is never compared (P-UI-149)');
+
+    if (broken.length) {
+      failures.push('P-UI-149: ' + broken.join('; ') + ' (compile-th3.ps1 + AGENTS.md + tools/skin_metrics_check.js + tools/ui_parity_audit.py)');
+    } else {
+      console.log('[PASS] P-UI-149 the skin and parity gates are run by every build, and both can read their own constants (a `let` in the generator, a CRLF line, an alias into the cards\u2019 unit)');
+    }
+  }
+
+  // ── P-BE-03 / P-BE-04 (2026-10-13) — DEAD CODE IS A DEFECT, AND ONE FACTOR HAS
+  // ── ONE OWNER ──
+  // `CalculateShortStep`, `CalculateLongStep` and `CalculateSharedPatternStep` were
+  // defined in `THCalculations.mqh` and called from nowhere in the whole tree. They
+  // compiled clean, because MQL does not warn on an unused non-static function.
+  //   * `CalculateShortStep` returned `thValue * SS_MULTIPLIER` while the LIVE
+  //     SS_LS_STEP path in `Util_A.mqh` wrote `structureValue * 1.5` inline — two
+  //     owners for one factor, and the one carrying the owner's NAME was the one
+  //     nobody called.
+  //   * `CalculateSharedPatternStep` returned `(2 * SS) - P` under a name that
+  //     promises a *step*; the live pattern step is `TH3PatternStepRungTF`. A reader
+  //     who trusted the name would have wired the wrong formula.
+  // This project already treats "compiles and is dead" as a defect (the two halves
+  // checked at :2890 and the `dirLock` rule at :3692), so the trio is gone and the
+  // live SS factor reads the constant. P-UI-153's own `DSTRIP_GEAR_PAD` check below
+  // exists because a spliced edit can DELETE a define and still look right.
+  {
+    const broken = [];
+    const thCalc = fs.readFileSync(path.join(ROOT, 'Biotak', 'THCalculations.mqh'), 'utf8');
+    for (const dead of ['CalculateShortStep', 'CalculateLongStep', 'CalculateSharedPatternStep'])
+      if (thCalc.indexOf('double ' + dead) >= 0)
+        broken.push(`\`${dead}\` is back in THCalculations.mqh — it has no caller in the tree, and \`CalculateSharedPatternStep\` promises a *step* while returning a pattern value (P-BE-03)`);
+
+    const utilA = fs.readFileSync(path.join(ROOT, 'Biotak', 'Util_A.mqh'), 'utf8');
+    if (utilA.indexOf('structureValue * SS_MULTIPLIER') < 0)
+      broken.push('Util_A.mqh\u2019s SS_LS_STEP no longer reads `SS_MULTIPLIER` — the live factor lost its owner in MathConstants.mqh (P-BE-04)');
+    if (utilA.indexOf('structureValue * 1.5') >= 0)
+      broken.push('Util_A.mqh\u2019s SS_LS_STEP is the bare literal `1.5` again — two owners for one factor, and a retune stops at one of them (P-BE-04)');
+
+    if (broken.length) {
+      failures.push('P-BE-03/P-BE-04: ' + broken.join('; ') + ' (Biotak/THCalculations.mqh + Biotak/Util_A.mqh)');
+    } else {
+      console.log('[PASS] P-BE-03/P-BE-04 the dead trio stays deleted, and the live SS factor reads its one owner (SS_MULTIPLIER, not a bare 1.5)');
+    }
+  }
+
+  // ── P-UI-152 (2026-10-13) — THE MIXER'S TRACK, ONE OWNER ──
+  // `trackX = g_PalX + PAL_PAD + 30` / `trackW = PalW() - 2*PAL_PAD - 34` was written
+  // out FOUR times — the paint, the live knob move and both mixer readers — while the
+  // footer's track right above it already had `PalTrX()`/`PalTrW()` and a P-DRAW-49
+  // note saying why. Two owners that agree today are one retune away from a press
+  // landing on a track the paint no longer draws.
+  {
+    const broken = [];
+    const palA = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakPanels_PalA.mqh'), 'utf8');
+    const palB = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakPanels_PalB.mqh'), 'utf8');
+    if (!/int PalMixTrackX\(\)/.test(palA) || !/int PalMixTrackW\(\)/.test(palA))
+      broken.push('the mixer track has no owner — `PalMixTrackX()`/`PalMixTrackW()` are gone from BiotakPanels_PalA.mqh (P-UI-152)');
+    const both = palA + palB;
+    // Comments are stripped first: the P-UI-152 note QUOTES the old expression on
+    // purpose, and a quoted literal is not a second owner. What must not come back is
+    // the number next to PAL_PAD in CODE — however the receiver is spelled. The first
+    // version of this check looked for `g_PalX+PAL_PAD+30` alone, and a mutation that
+    // wrote `px+PAL_PAD+30` slipped past it: the rule died on the reader count while
+    // the literal it exists to forbid was sitting right there (the P-DRAW-120 class).
+    const codeOnly = both.split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
+    const lits = codeOnly.match(/PAL_PAD\s*[+\-]\s*(?:30|34)\b/g) || [];
+    if (lits.length)
+      broken.push(`the mixer track is a literal again (${lits.length}: ${lits.join(', ')}) — the paint and its four readers must read ONE owner (P-UI-152)`);
+    const reads = both.split('PalMixTrackX()').length - 1;
+    if (reads < 5)
+      broken.push(`only ${reads} reader(s) of \`PalMixTrackX()\` — the paint plus the three live readers is 5 (definition + 4 sites) (P-UI-152)`);
+
+    if (broken.length) {
+      failures.push('P-UI-152: ' + broken.join('; ') + ' (Biotak/BiotakPanels_PalA.mqh PalMixTrackX/W + BiotakPanels_PalB.mqh)');
+    } else {
+      console.log('[PASS] P-UI-152 the mixer track has one owner: the paint and all four readers call PalMixTrackX()/PalMixTrackW(), and no literal copy of the old expression is left');
+    }
+  }
+
+  // ── P-UI-153 (2026-10-13) — THE GEAR CLOSE SEAT, ONE OWNER ──
+  // The 26 was written three times — the paint (`DrawStrip_GearB.mqh`), the hit test
+  // (`DrawStrip_Base.mqh`) and the carry's own stop (`DrawStrip_Tap.mqh`). The parity
+  // gate already asserted the VALUE matched the cards' `PNL_XBTN_VIS`, but a
+  // value-to-literal comparison can only report drift after it has happened; the seat
+  // now compares name-to-name. The `DSTRIP_GEAR_PAD` check is deliberate: a spliced
+  // edit that replaces the anchor line instead of inserting after it DELETES the
+  // define, the "side pad" seat then reads `None`, and that is exactly how this rule
+  // was caught while it was being written.
+  {
+    const broken = [];
+    const headTxt = fs.readFileSync(path.join(ROOT, 'Biotak', 'DrawStrip_Head.mqh'), 'utf8');
+    const gearB = fs.readFileSync(path.join(ROOT, 'Biotak', 'DrawStrip_GearB.mqh'), 'utf8');
+    const baseTxt = fs.readFileSync(path.join(ROOT, 'Biotak', 'DrawStrip_Base.mqh'), 'utf8');
+    const tapTxt = fs.readFileSync(path.join(ROOT, 'Biotak', 'DrawStrip_Tap.mqh'), 'utf8');
+    if (!/#define\s+DSTRIP_GEAR_XW\s+26/.test(headTxt))
+      broken.push('the gear close seat has no name — `#define DSTRIP_GEAR_XW 26` is gone from DrawStrip_Head.mqh (P-UI-153)');
+    if (!/#define\s+DSTRIP_GEAR_PAD\s/.test(headTxt))
+      broken.push('DrawStrip_Head.mqh lost `#define DSTRIP_GEAR_PAD` — the parity gate\u2019s "side pad" seat reads it and every column depends on it (P-UI-153)');
+    if (gearB.indexOf('- DSTRIP_GEAR_PAD - 26;') >= 0 ||
+        baseTxt.indexOf('const int xbtn = 26') >= 0 ||
+        tapTxt.indexOf('- DSTRIP_GEAR_PAD - 26 - DSTRIP_GEAR_PAD') >= 0)
+      broken.push('a gear-close site writes the bare `26` again — the paint, the hit test and the carry must all read the one name (P-UI-153)');
+    const parityTxt2 = fs.readFileSync(path.join(ROOT, 'tools', 'ui_parity_audit.py'), 'utf8');
+    if (parityTxt2.indexOf('"DSTRIP_GEAR_XW"') < 0)
+      broken.push('the parity gate compares the close seat as a literal again — a number against a name can only report drift after it has happened (P-UI-153)');
+
+    if (broken.length) {
+      failures.push('P-UI-153: ' + broken.join('; ') + ' (DrawStrip_Head/GearB/Base/Tap + tools/ui_parity_audit.py)');
+    } else {
+      console.log('[PASS] P-UI-153 the gear close seat has one owner: paint, hit test and carry read `DSTRIP_GEAR_XW`, and the parity gate compares that name against the cards\u2019 `PNL_XBTN_VIS`');
+    }
+  }
+
+  // ── P-PERF-40 (2026-10-13) — THE CENSUS'S BOUND IS ON EVENTS, NEVER ON RATE ──
+  // MEASURED on the live journal: one day held 22,281 lines and 17,547 of them (79%)
+  // were `[gest]`, at up to 160 lines in ONE SECOND and 634 in ten. The census's own
+  // note claimed it was «bounded by design» — but that bound is on WHICH events pass,
+  // never on HOW MANY per second, so a single press re-armed three seconds of one
+  // flushed line per mouse-move. Each line is a `Print()` (journal write) PLUS a
+  // `FileWrite` + `FileFlush` on the per-chart diag file, on the chart thread, during
+  // the user's own gesture — the exact cost P-LOG-3 already ruled on in
+  // `BuildConfig.mqh:28-36`.
+  // The census keeps its standing rule (`DSTRIP_DIAG` stays 1, contract.md:321) and
+  // gains a RATE bound. This entry locks BOTH halves: the bound exists, and it sits
+  // BELOW the drag/create edge, because a coalesced discriminator cannot answer the
+  // order question it was built for.
+  {
+    const broken = [];
+    const gv = fs.readFileSync(path.join(ROOT, 'Biotak', 'GlobalVariables.mqh'), 'utf8');
+    if (!/#define\s+GEST_CENSUS_MIN_MS\s+\d+/.test(gv))
+      broken.push('the gesture census has no rate bound — `GEST_CENSUS_MIN_MS` is gone, so one press re-arms three seconds of one flushed line per mouse-move (P-PERF-40)');
+    const edgeAt = gv.indexOf('if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CREATE) return true;');
+    const rateAt = gv.indexOf('>= GEST_CENSUS_MIN_MS');
+    if (edgeAt < 0)
+      broken.push('the census no longer answers the terminal\u2019s own drag/create unconditionally — that IS the P-UI-142 discriminator, and a rate bound must never swallow it (P-PERF-40)');
+    else if (rateAt < 0)
+      broken.push('the census\u2019s rate bound is gone from the move path — every mouse-move inside the window prints again (P-PERF-40)');
+    else if (rateAt < edgeAt)
+      broken.push('the census\u2019s rate bound moved ABOVE the drag/create edge — the discriminator is coalesced, so "before or after our first write" can no longer be read off the frame (P-PERF-40)');
+    // The needle carries its own comment on purpose: `g_gestCensusDown = false;` alone
+    // also matches the DECLARATION (`static bool g_gestCensusDown = false;`), so the
+    // first version of this check passed with the refusal branch deleted — a mutation
+    // that removes the clearing survived a rule that exists to keep it (P-PERF-40c).
+    if (gv.indexOf('g_gestCensusDown = false;   // a refusal ends the stroke') < 0)
+      broken.push('the census\u2019s edge detector is never cleared by a refusal — a stale `true` swallows the next press, and the press edge is the one line the order question needs (P-PERF-40)');
+
+    if (broken.length) {
+      failures.push('P-PERF-40: ' + broken.join('; ') + ' (Biotak/GlobalVariables.mqh GestureCensusWanted)');
+    } else {
+      console.log('[PASS] P-PERF-40 the gesture census keeps its edges and gains a rate bound: drag/create and the press always print, the repeated moves inside a live window coalesce to 10 Hz');
+    }
+  }
+
+  // -- 43. P-BUILD-12: a relaunch is a claim, so it is checked ----------------
+  // ── P-BUILD-12 (2026-10-13) — A RELAUNCH IS A CLAIM, SO IT IS CHECKED ──
+  // MEASURED 2026-10-13: `compile-th3.ps1 -Project all -Restart` printed
+  // «Terminal restarted» while the terminal's own journal held «stopped» at
+  // 15:22:17.888 and NO «started» after it, and `Get-Process terminal` found
+  // nothing — yet the build exited 0. The next build then found no terminal to
+  // restart, and every chart kept the PREVIOUS ex4 while the report claimed the
+  // deploy had landed. `Start-Process` on a GUI app returns as soon as the
+  // process object exists, so «we asked» was never «it runs». The caller already
+  // turns $false into a failed build (`if (-not (Restart-TradingTerminal))`), so
+  // the fix is one honest look at the process table. This entry locks BOTH: the
+  // look exists, and the green line sits BELOW it.
+  {
+    const broken = [];
+    const ps = fs.readFileSync(path.join(ROOT, 'compile-th3.ps1'), 'utf8');
+    const fnAt = ps.indexOf('function Restart-TradingTerminal');
+    if (fnAt < 0) {
+      broken.push('the restart deploy is gone from compile-th3.ps1 (P-BUILD-12)');
+    } else {
+      const checkAt = ps.indexOf('if ($up -lt $want)', fnAt);
+      const okAt = ps.indexOf('Terminal restarted (', fnAt);
+      if (checkAt < 0)
+        broken.push('the relaunch is never verified — `Restart-TradingTerminal` prints «Terminal restarted» without looking for the process, so a launch that never came up still exits 0 and the charts keep the previous ex4 (P-BUILD-12)');
+      else if (okAt < 0)
+        broken.push('the restart deploy no longer reports success at all (P-BUILD-12)');
+      else if (okAt < checkAt)
+        broken.push('the green «Terminal restarted» line moved back ABOVE the process check — the claim is printed before it can be wrong (P-BUILD-12)');
+      if (ps.indexOf('[FAIL] the relaunch did not come up') < 0)
+        broken.push('a failed relaunch no longer says so — a silent failure is what let a stale ex4 pass for a landed deploy (P-BUILD-12)');
+    }
+    if (broken.length) {
+      failures.push('P-BUILD-12: ' + broken.join('; ') + ' (compile-th3.ps1 Restart-TradingTerminal)');
+    } else {
+      console.log('[PASS] P-BUILD-12 the deploy checks its own claim: `Restart-TradingTerminal` looks for the relaunched process and fails the build if it never came up');
+    }
+  }
+
+  // -- 44. P-UI-154: every card has a row definition in PnlSetDef --------------
+  // ── P-UI-154 (2026-10-13) — EVERY CARD HAS A ROW DEFINITION ──
+  // MEASURED: `PnlSetDef` carried a branch for every card EXCEPT 4 (Hover Chip), so
+  // the chip's one row fell through to the opening defaults set at the top of that
+  // function — `kind=0` (PNL_K_SL, a slider) and `label=""`. The card the user opens
+  // to configure the chip therefore showed a NAMELESS 0..100 SLIDER where its single
+  // ON/OFF switch belongs. Nothing else could notice: every OTHER path was already
+  // right (`PnlCurrent` case 4 reads it, `PnlApply` case 4 writes it and calls
+  // `CircTipModeChanged`, `PnlDefValSet` falls through to `return 0` — which IS the
+  // shipped default), and in MQL an absent descriptor is not an error at all: it is
+  // a row that renders as whatever the defaults happen to be.
+  // The card count is READ from its owner (`PNL_COUNT`), never restated here.
+  {
+    const broken = [];
+    const kit = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakKit.mqh'), 'utf8');
+    const cnt = /#define\s+PNL_COUNT\s+(\d+)/.exec(kit);
+    const palB = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakPanels_PalB.mqh'), 'utf8');
+    const fnAt = palB.indexOf('void PnlSetDef(');
+    if (!cnt)
+      broken.push('`#define PNL_COUNT` is gone from BiotakKit.mqh — the card count has no owner (P-UI-154)');
+    else if (fnAt < 0)
+      broken.push('`PnlSetDef` is gone from BiotakPanels_PalB.mqh — no card has a row definition any more (P-UI-154)');
+    else {
+      const body = palB.slice(fnAt, palB.indexOf('\n}', fnAt));
+      // comments are stripped: a branch SPELLED in prose is not a branch, and the
+      // project has already paid for that lesson once (see the note above item==3).
+      const codeOnly = body.split('\n').map(l => l.replace(/\/\/.*$/, '')).join('\n');
+      const have = new Set();
+      const re = /item\s*==\s*(\d+)/g;
+      let m;
+      while ((m = re.exec(codeOnly)) !== null) have.add(Number(m[1]));
+      const n = Number(cnt[1]);
+      const missing = [];
+      for (let i = 0; i < n; i++) if (!have.has(i)) missing.push(i);
+      if (missing.length)
+        broken.push('card(s) ' + missing.join(', ') + ' have no branch in `PnlSetDef` — their rows fall through to that function\u2019s opening defaults (`kind=0` slider, `label=""`), so the card renders a nameless slider instead of its own control (P-UI-154)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-154: ' + broken.join('; ') + ' (Biotak/BiotakPanels_PalB.mqh PnlSetDef)');
+    } else {
+      console.log('[PASS] P-UI-154 every card has its own row definition: `PnlSetDef` answers for all ' + cnt[1] + ' cards, so no card renders on the opening defaults');
+    }
+  }
+
+  // -- 45. P-UI-156: a home reader refuses an unmeasured box -------------------
+  // ── P-UI-156 (2026-10-13) — A READER WITH NO BOX DERIVES NOTHING ──
+  // The reader used to fall back to 1920x1080 whenever the terminal reported 0 for the
+  // chart box — which it does at attach and during a CHART_CHANGE. That fallback is a
+  // denominator the pixels did not come from, so the pair it produced was not a place;
+  // it was the same place said with the wrong divisor. `CircHomesRefresh` handed that
+  // pair to the in-memory HOME and the next `SaveUIStates` persisted it against the REAL
+  // box. The writer has always refused this (`HomeChartSizeRaw`); the reader had no such
+  // rule, and THAT ASYMMETRY was the ratchet. MEASURED and still in the store:
+  // `BIOMENU_HOME_STRIP_FX` = 1.000000 exactly (a saturated out-of-box value), with
+  // `CHIP_FX = 1.1075` and `ORB_FY = 1.613` recorded on 2026-10-05.
+  {
+    const broken = [];
+    const homes = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakHomes.mqh'), 'utf8');
+    const readAt = homes.indexOf('bool GVHomeFracRead(');
+    const saveAt = homes.indexOf('void GVHomeSaveFrac(');
+    if (readAt < 0) {
+      broken.push('`GVHomeFracRead` is gone from BiotakHomes.mqh (P-UI-156)');
+    } else {
+      const readBody = homes.slice(readAt, homes.indexOf('\n}', readAt));
+      if (readBody.indexOf('HomeChartSizeRaw(cw, ch)') < 0)
+        broken.push('the reader invents a denominator again — `GVHomeFracRead` derives pixels from a box it never measured, so a read at attach hands the WRITER a pair from the wrong window and the store ratchets (P-UI-156)');
+      if (/HomeChartSize\s*\(/.test(readBody))
+        broken.push('the reader falls back to the 1920x1080 box again — that fallback IS the poisoned denominator (P-UI-156)');
+    }
+    if (saveAt < 0) {
+      broken.push('`GVHomeSaveFrac` is gone from BiotakHomes.mqh (P-UI-156)');
+    } else {
+      // P-UI-158 split the writer in three: the automatic door (`GVHomeSaveFrac`) now only
+      // decides WHETHER to write, and `GVHomeWriteFrac` is the one place that does. The
+      // out-of-box rule lives there, with the denominator rule it belongs to.
+      const writeAt = homes.indexOf('void GVHomeWriteFrac(');
+      if (writeAt < 0) {
+        broken.push('`GVHomeWriteFrac` is gone — it is the ONE place a fraction is written, so the denominator rules can no longer be forgotten at a call site (P-UI-156)');
+      } else {
+        const writeBody = homes.slice(writeAt, homes.indexOf('\n}', writeAt));
+        if (writeBody.indexOf('if(x > rcw || y > rch) return;') < 0)
+          broken.push('a place outside the box is written again — the clamp saturates it into the store, which is how `STRIP_FX` became a permanent 1.0 (P-UI-156)');
+        if (writeBody.indexOf('HomeChartSizeRaw(rcw, rch)') < 0)
+          broken.push('the writer invents a denominator again — a fraction divided by a box the pixels did not come from (P-UI-156)');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-156: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh GVHomeFracRead + GVHomeWriteFrac)');
+    } else {
+      console.log('[PASS] P-UI-156 a place is only read against a box that was measured: the reader refuses an unknown denominator and the one writer refuses a pair outside the box, so neither end can ratchet the other');
+    }
+  }
+
+  // -- 46. P-UI-158: only the hand moves a home (the ring's method) -------------
+  // ── P-UI-158 (2026-10-13) — ONLY THE HAND MOVES A HOME ──
+  // The user asked for the RING's method («پنل رینگ از چه روشی استفاده کرده مثل همون بشه»).
+  // The ring stores no place of its own: `CircMoveItem` derives every item from the orb on
+  // every paint, so it cannot drift. The one place it does store is the ORB's, and that is
+  // written in exactly one situation — the hand's own release. The chip had the other
+  // shape: a stored fraction AND an automatic re-derivation that wrote it back, so a
+  // derivation made in one window and saved in another REWROTE the fraction — MEASURED as
+  // CHIP_FX 0.942731 -> 0.618392 across one close/open, a 589 px jump. P-UI-156/157 closed
+  // the two doors that could feed it a wrong denominator; they did not remove the door.
+  // The rule now: the AUTOMATIC path may not write a home at all. A home changes only when
+  // a NEW ANSWER produced it, claimed with `GVHomeAnswerNew(id)` at the release, the
+  // strip's first measured placement, or the legacy migration. A derived pair PAINTS and
+  // is never STORED — exactly the ring's property.
+  {
+    const broken = [];
+    const homes = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakHomes.mqh'), 'utf8');
+    for (const fn of ['void GVHomeAnswerNew(', 'bool GVHomeAnswerAny(', 'void GVHomeAnswerClear(', 'bool GVHomeFracSeed(']) {
+      if (homes.indexOf(fn) < 0)
+        broken.push(`\`${fn.slice(0, -1)}\` is gone from BiotakHomes.mqh — the claim that authorises a home write no longer exists, so nothing distinguishes the hand's answer from a derivation (P-UI-158)`);
+    }
+    // The dead mechanism must not come back: a remembered derivation box is a second piece
+    // of state that has to stay in step with the writer, and P-UI-158 removed it entirely.
+    for (const dead of ['GVHomeDerivedIn', 'GVHomeBoxIs', 'GVHomeDeclareBox']) {
+      const hit = fs.readdirSync(path.join(ROOT, 'Biotak'))
+        .filter((f) => f.endsWith('.mqh'))
+        .find((f) => fs.readFileSync(path.join(ROOT, 'Biotak', f), 'utf8').indexOf(dead) >= 0);
+      if (hit)
+        broken.push(`\`${dead}\` is back (${hit}) — the derivation-box record P-UI-158 deleted; a home is authorised by a CLAIM, not by remembering which window a read happened in (P-UI-158)`);
+    }
+    const saveAt = homes.indexOf('void GVHomeSaveFrac(');
+    if (saveAt < 0) {
+      broken.push('`GVHomeSaveFrac` is gone from BiotakHomes.mqh (P-UI-158)');
+    } else {
+      const saveBody = homes.slice(saveAt, homes.indexOf('\n}', saveAt));
+      if (saveBody.indexOf('GVHomeAnswerTake(id)') < 0)
+        broken.push('the automatic door writes without a claim again — `SaveUIStates` re-derives all three homes on every attach and teardown, so a derivation in one window gets saved against another and the fraction creeps (P-UI-158)');
+      if (saveBody.indexOf('GVHomeWriteFrac(id, x, y)') < 0)
+        broken.push('the automatic door no longer goes through `GVHomeWriteFrac`, so the denominator and out-of-box rules can be skipped (P-UI-158)');
+      if (saveBody.indexOf('GlobalVariableSet') >= 0)
+        broken.push('the automatic door writes the fraction itself again instead of delegating — the rules would then live in two places (P-UI-158)');
+    }
+    const handAt = homes.indexOf('void GVHomeSaveFracHand(');
+    if (handAt < 0) {
+      broken.push('`GVHomeSaveFracHand` is gone — the hand, the strip first measurement and the migration have no door of their own (P-UI-158)');
+    } else {
+      const handBody = homes.slice(handAt, homes.indexOf('\n}', handAt));
+      if (handBody.indexOf('GVHomeAnswerNew(id)') < 0 || handBody.indexOf('GVHomeWriteFrac(id, x, y)') < 0)
+        broken.push('the hand\'s door no longer makes its own claim, so a release would be refused like a derivation (P-UI-158)');
+    }
+    // `SaveUIStates` must still ask for all three (the shadow ledger owns the flush) and
+    // must SPEND a claim it did not honour, or a stale claim authorises a later automatic
+    // save to store a derived pair.
+    const menuA = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakMenu_A.mqh'), 'utf8');
+    const saveUIAt = menuA.indexOf('void SaveUIStates(');
+    if (saveUIAt < 0) {
+      broken.push('`SaveUIStates` is gone from BiotakMenu_A.mqh (P-UI-158)');
+    } else {
+      const saveUI = menuA.slice(saveUIAt, menuA.indexOf('\n}', saveUIAt));
+      for (const id of ['ORB', 'STRIP', 'CHIP']) {
+        if (saveUI.indexOf(`GVHomeSaveFrac("${id}", `) < 0)
+          broken.push(`\`SaveUIStates\` no longer asks for ${id} — the hand's answer for it would never be published (P-UI-158)`);
+      }
+      if (!/if\(haveBox\)\s*GVHomeAnswerClear\s*\(\s*\)\s*;/.test(saveUI))
+        broken.push('`SaveUIStates` no longer spends an unhonoured claim (or no longer guards it on `haveBox`) — a stale claim then authorises the NEXT automatic save to store a derived pair, which is the creep (P-UI-158)');
+    }
+    // Every claim site, counted per file: losing one silently refuses that surface's answer.
+    const claimSites = [
+      ['Biotak/BiotakMenu_C.mqh', 'ORB', 2, 'the orb reap and the orb drag release'],
+      ['Biotak/BiotakPanels_Build.mqh', 'ORB', 1, 'the stationary orb release'],
+      ['Biotak/DrawStrip_Router.mqh', 'STRIP', 1, 'the strip drag'],
+      ['Biotak/BiotakMenu_B.mqh', 'CHIP', 1, 'the chip drag'],
+    ];
+    for (const [rel, id, want, label] of claimSites) {
+      const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+      const got = (src.match(new RegExp(`GVHomeAnswerNew\\s*\\(\\s*"${id}"\\s*\\)`, 'g')) || []).length;
+      if (got < want)
+        broken.push(`${label} no longer claims its answer (${got} of ${want} \`GVHomeAnswerNew("${id}")\`) — the store would refuse the hand's own move (${rel}) (P-UI-158)`);
+    }
+    // The strip's fresh placement is a new answer like a release is, and it writes at once.
+    const stripPaint = fs.readFileSync(path.join(ROOT, 'Biotak', 'DrawStrip_Paint.mqh'), 'utf8');
+    if (!/if\(dsFreshHome\s*&&\s*dsBox\)/.test(stripPaint))
+      broken.push('the strip writes a fresh home without a measured box again — a fresh placement measured in the 1920x1080 fallback stored as a fraction of the real window (P-UI-158)');
+    if (stripPaint.indexOf('GVHomeSaveFracHand("STRIP"') < 0)
+      broken.push('the strip\'s first placement no longer writes through the hand\'s door, so its home would never be published (P-UI-158)');
+    // The chip drag measures the LIVE window and claims; a home clamped against a stale box
+    // is a place the plate is not in.
+    const menuB = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakMenu_B.mqh'), 'utf8');
+    const dragAt = menuB.indexOf('void CircTipDragTo(');
+    if (dragAt < 0) {
+      broken.push('`CircTipDragTo` is gone from BiotakMenu_B.mqh (P-UI-158)');
+    } else {
+      const dragBody = menuB.slice(dragAt, menuB.indexOf('\n}', dragAt));
+      if (dragBody.indexOf('HomeChartSizeRaw(cw, ch)') < 0)
+        broken.push('the chip drag measures the cached metrics again — a home clamped against a stale box is a place the plate is not in (P-UI-158)');
+      if (dragBody.indexOf('GVHomeAnswerNew("CHIP")') < 0)
+        broken.push('the chip drag no longer claims its answer, so the release\'s save is refused (P-UI-158)');
+    }
+    // The seed: all three surfaces get one, so the FIRST paint lands in the right spot and
+    // there is no visible jump for the 250 ms refresh to correct.
+    const loadAt = menuA.indexOf('void LoadUIPlaces(');
+    if (loadAt < 0) {
+      broken.push('`LoadUIPlaces` is gone from BiotakMenu_A.mqh (P-UI-158)');
+    } else {
+      const loadBody = menuA.slice(loadAt, menuA.indexOf('\n}', loadAt));
+      for (const id of ['ORB', 'STRIP', 'CHIP']) {
+        if (loadBody.indexOf(`GVHomeFracSeed("${id}"`) < 0)
+          broken.push(`${id} has no fraction seed — at attach the terminal reports no box, so it paints at its DEFAULT and the first 250 ms pass jumps it to its real home (P-UI-158)`);
+      }
+    }
+    // The one refresh pass: its gate must be the reader's own measure, and the orb must
+    // follow its home even with the ring shut (P-UI-157, kept).
+    const menuC = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakMenu_C.mqh'), 'utf8');
+    const refreshAt = menuC.indexOf('void CircHomesRefresh(');
+    if (refreshAt < 0) {
+      broken.push('`CircHomesRefresh` is gone from BiotakMenu_C.mqh (P-UI-158)');
+    } else {
+      const refreshBody = menuC.slice(refreshAt, menuC.indexOf('\n}', refreshAt));
+      if (refreshBody.indexOf('HomeChartSizeRaw(cw, ch)') < 0)
+        broken.push('the refresh gate reads a substituted box again — it records a box the reader refuses, so the early return can fire forever and the home is never applied (P-UI-158)');
+      if (/HomeChartSize\s*\(/.test(refreshBody))
+        broken.push('the refresh gate falls back to 1920x1080 again — the gate and the reader must ask the same question (P-UI-158)');
+      if (!/UpdateCircularMenuPosition\s*\(\s*\)\s*;/.test(refreshBody))
+        broken.push('the orb no longer follows its home — the refresh only repaints the ring, so with the ring shut the orb keeps the seed (P-UI-158)');
+      if (/if\s*\(\s*g_UI\.menuVisible\s*\)\s*UpdateCircularMenuPosition/.test(refreshBody))
+        broken.push('the orb repaint is gated on the ring again — the normal state is a shut ring, and that is exactly when the orb must still move (P-UI-158)');
+      // And the refresh must NOT write: it is a derivation, and P-UI-158 lets only a claim through.
+      if (refreshBody.indexOf('GVHomeSaveFrac') >= 0)
+        broken.push('the refresh saves a home again — it is a DERIVATION, and a derivation must paint without ever reaching the store (P-UI-158)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-158: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh + BiotakMenu_A/B/C.mqh + DrawStrip_Paint/Router.mqh + BiotakPanels_Build.mqh)');
+    } else {
+      console.log('[PASS] P-UI-158 only the hand moves a home: the automatic door refuses every write without a claim, the claim is made at each real answer (both orb paths, the chip drag, the strip drag, the strip\'s first placement, the migration), `SaveUIStates` spends what it did not honour, and every surface is seeded from its fraction so the first paint lands in the right place');
     }
   }
 

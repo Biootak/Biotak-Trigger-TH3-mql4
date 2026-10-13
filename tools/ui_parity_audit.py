@@ -70,11 +70,27 @@ def define(path, name):
 
 
 def expr(path, name, subs=None, depth=6):
-    """Resolve a #define chain to an int (or None). `subs` overrides names."""
+    """Resolve a #define chain to an int (or None). `subs` overrides names.
+
+    P-UI-149 (2026-10-13) — THE ALIAS'S OWN HOME IS THE CARD UNIT. The strip's own
+    chrome is written as an ALIAS of the cards' constants on purpose (P-DRAW-116):
+    `DrawStrip_Head.mqh` carries `#define DSTRIP_GEAR_ROW_H  PNL_ROW_H`,
+    `..._HEAD_H  PNL_HEAD_H`, `..._PAD  PNL_PAD_X`, `..._FOOT_H  PNL_FOOT_H`,
+    `..._LBL_PT  PNL_PT_LBL` — and every `PNL_*` lives in `CardMetrics.mqh`, which
+    reaches the strip only through `BiotakPanels_State.mqh`, i.e. NOT through
+    `DrawStrip.mqh` (whose includes are the `DrawStrip_*.mqh` family alone). So the
+    panel side resolved to `None` and five seats were reported as DIFF when they were
+    simply never read — the two surfaces really are one number. Resolving an unknown
+    identifier in the card unit is the honest fix: it is the alias's declared home.
+    """
     subs = subs or {}
     if name in subs:
         return subs[name]
     val, _ = define(path, name)
+    origin = path
+    if val is None and path != CARD:
+        val, _ = define(CARD, name)
+        origin = CARD
     if val is None:
         return None
     val = val.split("//")[0].strip()
@@ -89,9 +105,11 @@ def expr(path, name, subs=None, depth=6):
     for ident in set(re.findall(r"[A-Za-z_][A-Za-z0-9_]*", val)):
         if ident.isdigit():
             continue
-        sub_val, _ = define(path, ident)
+        sub_val, _ = define(origin, ident)
+        if sub_val is None and origin != CARD:
+            sub_val, _ = define(CARD, ident)   # P-UI-149: the alias's own home
         if sub_val is not None:
-            r = expr(path, ident, env, depth - 1)
+            r = expr(origin, ident, env, depth - 1)
             if r is not None:
                 env[ident] = r
     try:
@@ -143,14 +161,27 @@ SEATS = [
     ("chip vis",              "PNL_CHIP_VIS",               "22",                     "row glyph"),
     ("chip top in row",       "PNL_CHIP_Y",                 "DSTRIP_CARD_CHIP_Y",     "glyph seat"),
     ("label top in row",      "PNL_LBL_Y",                  "DSTRIP_CARD_LBL_Y",      "label seat"),
-    ("close button",          "PNL_XBTN_VIS",               "26",                     "header .x"),
+    # P-UI-153 (2026-10-13): the panel side was the bare literal "26", so this seat
+    # compared a NUMBER against a NAME and could only ever report drift after it had
+    # happened. It now reads `DSTRIP_GEAR_XW` — the strip's one owner for the gear
+    # panel's close seat, declared in DrawStrip_Head.mqh and read by the paint, the
+    # hit test and the carry — so the comparison is name-to-name and a rename that
+    # breaks the alias fails here instead of on a chart.
+    ("close button",          "PNL_XBTN_VIS",               "DSTRIP_GEAR_XW",         "header .x"),
     ("mark visible",          "PNL_MARK_VIS",               "30",                     ".mark disc"),
     ("mark y",                "PNL_MARK_Y",                 "13",                     ".mark seat"),
     ("mark pad",              "PNL_MARK_PAD",               "7",                      ".mark glow"),
     ("glyph canvas",          "PNL_GLYPH_CANVAS",           "15",                     "mark/close glyph"),
     ("foot button w floor",   "PNL_BTN_W",                  "DSTRIP_GEAR_FOOT_BW",    "footer button"),
     ("foot button pad",       "PNL_BTN_PAD",                "8",                      "footer skin pad"),
-    ("tab row height",        "PNL_ROW_H",                  "DSTRIP_GEAR_ROW_H",      "the tab row itself"),
+    # P-UI-149 (2026-10-13) — THE DUPLICATE ROW IS GONE. A "tab row height" entry sat
+    # here as `("PNL_ROW_H", "DSTRIP_GEAR_ROW_H")` — the SAME pair as "row pitch" three
+    # rows up — so one comparison was counted twice and every report read "6 seat(s)
+    # differ" when five seats had been asked. It was also stale in name: the horizontal
+    # tab row is RETIRED (P-DRAW-117, DrawStrip_Head.mqh:324 — the groups are 42px rows
+    # on the cards' own grid now, and `DSTRIP_TAB_H` no longer exists), so there is no
+    # separate tab-row height left to compare. Re-adding a seat means adding a pair that
+    # is genuinely not in this table.
 ]
 
 

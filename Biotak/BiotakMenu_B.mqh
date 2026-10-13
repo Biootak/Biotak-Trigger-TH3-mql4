@@ -349,14 +349,20 @@ bool CircTipGrabStart(const int mx, const int my)
 void CircTipDragTo(const int mx, const int my)
 {
    if(!s_TipDrag) return;
-   int cw, ch;
-   CircUIMetrics(cw, ch);
+   //--- P-UI-158: the hand's own place is measured against the LIVE window, not the
+   //--- cached metrics — the cache is a paint-time optimisation, and a HOME clamped
+   //--- against a stale box is a place the plate is not in. One raw read per real pointer
+   //--- move, and the claim below is what lets the release's save reach the store: this
+   //--- IS the hand, and P-UI-158 accepts no other writer of a home.
+   int cw = 0, ch = 0;
+   if(!HomeChartSizeRaw(cw, ch)) return;   // no window: nothing to measure, nothing to store
    const int hw = CIRC_TIP_FACE_W / 2, hh = CIRC_TIP_FACE_H / 2;
    int cx = ClampInt(mx + s_TipGrabDX, CIRC_TIP_EDGE + hw, MathMax(CIRC_TIP_EDGE + hw, cw - CIRC_TIP_EDGE - hw));
    int cy = ClampInt(my + s_TipGrabDY, CIRC_TIP_EDGE + hh, MathMax(CIRC_TIP_EDGE + hh, ch - CIRC_TIP_EDGE - hh));
    int hx = 0, hy = 0;
    if(CircTipHomeGet(hx, hy) && hx == cx && hy == cy) return;   // same spot: no write at all
    CircTipHomeSet(cx, cy);
+   GVHomeAnswerNew("CHIP");   // P-UI-158: a real move is the hand's answer, re-claimed per move
    int x = 0, y = 0, w = 0, h = 0;
    CircTipHomeBox(cw, ch, x, y, w, h);
    if(x == s_TipBoxX && y == s_TipBoxY) return;
@@ -1232,6 +1238,43 @@ void SubPagerGeom(const int px, const int py, const int pw, const int ph,
    by    = py + ph - SUB_GRID_PGR + (SUB_GRID_PGR - bh) / 2;
    prevX = px + SUB_GRID_PAD;
    nextX = px + pw - SUB_GRID_PAD - bw;
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-151 (2026-10-13) — THE PAGER'S COORDINATE DOOR.              |
+//|                                                                  |
+//| The chevrons are OBJ_BUTTONs born `OBJPROP_SELECTABLE = false`    |
+//| (SubSetPagerBtn, `OBJPROP_SELECTABLE, false`), and this project's |
+//| own MEASURED law says what that costs: «MT4 never emits           |
+//| OBJECT_CLICK for a non-selectable object» — it is why the gear    |
+//| panel had to grow `DrawStripGearHit` after every tab, row, switch |
+//| and foot button shipped dead on a green compile (P-DRAW-84,       |
+//| DrawStrip_Base.mqh:859), and why the cards work at all (they give |
+//| coordinates first refusal through `PnlClickFallback`, P-UI-74).   |
+//|                                                                  |
+//| The pager had ONLY the name route, and its own note two functions |
+//| up records that the hit test it promised — `SubPagerAt` — «was     |
+//| never written: no commit contains it». So the one control on this |
+//| surface with no coordinate door was the one control whose door the |
+//| name route may not be able to open.                              |
+//|                                                                  |
+//| This IS that reader, and it reads `SubPagerGeom` — the ONE owner  |
+//| `SubChromeCreate` draws from and `SubChromeMove` translates — so  |
+//| it can never become a second grid (P-DRAW-77's law). `dir` is     |
+//| -1 (prev) / +1 (next) / 0 (neither).                             |
+//+------------------------------------------------------------------+
+bool SubPagerAt(const int mx, const int my, int &dir)
+{
+   dir = 0;
+   if(!g_ToolsOpen || !SubIsPanelMode()) return false;
+   int px = 0, py = 0, pw = 0, ph = 0;
+   SubPanelRect(px, py, pw, ph);
+   int by = 0, bh = 0, bw = 0, prevX = 0, nextX = 0;
+   SubPagerGeom(px, py, pw, ph, by, bh, bw, prevX, nextX);
+   if(my < by || my > by + bh) return false;
+   if(mx >= prevX && mx <= prevX + bw) { dir = -1; return true; }
+   if(mx >= nextX && mx <= nextX + bw) { dir = +1; return true; }
+   return false;
 }
 
 // P-UI-34: the readout captions' own x - MEASURED, never guessed. `5 * StringLen(s)` was

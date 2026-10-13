@@ -982,6 +982,125 @@ int PnlResetItem(const int item)
 }
 
 //+------------------------------------------------------------------+
+//| P-UI-145 (2026-10-13) — THE SEAT REGISTRY: NO UI CONTROL MAY BE    |
+//| DRAGGED OFF ITS SEAT.                                             |
+//|                                                                  |
+//| Every card and palette control is born `OBJPROP_SELECTABLE=true`  |
+//| (PnlSetButton below — the name router needs OBJECT_CLICK), and    |
+//| the project's own measured law says what that costs (P-UI-48 /    |
+//| P-BK-15, BaseKnot_Base.mqh:848): «MT4 grabs a selectable object    |
+//| exactly once, on the press that lands on it» — a press that then  |
+//| travels native-drags the OBJECT, and a selected object is moved   |
+//| by every later drag anywhere on the chart (the hijack). A shaky   |
+//| hand (3–10 px, below the card's own PNL_DRAG_CTRL_PX proof)       |
+//| therefore displaces a swatch / cell / tab / × off its seat, and   |
+//| the displaced button is then saved into the chart profile at its  |
+//| absolute pixels and restored as a ghost after the next restart —  |
+//| the user's «ممکن است به‌اشتباه درگ شده … روی هم افتاده».          |
+//|                                                                  |
+//| The answer is ONE registry filled by the ONE factory that paints  |
+//| buttons (never a second arithmetic — contract item 7): the seat   |
+//| an object was painted at is remembered AS IT IS WRITTEN, and a    |
+//| native drag of one of our own controls writes the seat back and   |
+//| drops the selection, so the displacement is undone in the same    |
+//| event the terminal reports it. The intentional drags are spared   |
+//| by name (the mixer knobs) and by state (a live card/palette       |
+//| gesture re-seats its own family each batch through PnlMoveOne,    |
+//| which keeps the registry in lockstep).                            |
+//+------------------------------------------------------------------+
+#define PNL_SEAT_MAX 192
+static string s_pnlSeatNm[PNL_SEAT_MAX];
+static int    s_pnlSeatX[PNL_SEAT_MAX];
+static int    s_pnlSeatY[PNL_SEAT_MAX];
+static int    s_pnlSeatN = 0;
+static bool   s_pnlSeatFullSaid = false;   // P-UI-145c: the FULL state is said ONCE, never per paint
+//--- called by every painter that writes a control's seat (the factory below,
+//--- and PnlMoveOne when the card carries its family). One entry per name;
+//--- a re-paint re-teaches the same seat.
+void PnlSeatRemember(const string n,const int x,const int y)
+{
+   if(n == "") return;
+   for(int i = 0; i < s_pnlSeatN; i++)
+      if(s_pnlSeatNm[i] == n) { s_pnlSeatX[i] = x; s_pnlSeatY[i] = y; return; }
+   if(s_pnlSeatN >= PNL_SEAT_MAX)
+   {
+      // P-UI-145c (2026-10-13): a FULL registry is a real state, and it used to be a
+      // silent one — the guard returned and every later control lost its revert with
+      // nothing said. The slots are handed back by `PnlSeatForget` now, so reaching
+      // 192 LIVE names is the only way here; say so ONCE and stay bounded.
+      if(!s_pnlSeatFullSaid)
+      {
+         s_pnlSeatFullSaid = true;
+         Print("[P-UI-145] seat registry FULL at ", PNL_SEAT_MAX,
+               " live control(s) — a natively dragged control past this point is not reverted");
+      }
+      return;
+   }
+   s_pnlSeatNm[s_pnlSeatN] = n; s_pnlSeatX[s_pnlSeatN] = x; s_pnlSeatY[s_pnlSeatN] = y;
+   s_pnlSeatN++;
+}
+//--- ONE owner for the "put it back" write. Returns false for a name the
+//--- registry does not know (or a deleted object) — the caller then leaves the
+//--- drag to the owners that meant it (the mixer, the hand lines, a box).
+bool PnlSeatRevert(const string n)
+{
+   if(ObjectFind(0, n) < 0) return false;
+   for(int i = 0; i < s_pnlSeatN; i++)
+   {
+      if(s_pnlSeatNm[i] != n) continue;
+      if((int)ObjectGetInteger(0, n, OBJPROP_XDISTANCE) != s_pnlSeatX[i])
+         ObjectSetInteger(0, n, OBJPROP_XDISTANCE, s_pnlSeatX[i]);
+      if((int)ObjectGetInteger(0, n, OBJPROP_YDISTANCE) != s_pnlSeatY[i])
+         ObjectSetInteger(0, n, OBJPROP_YDISTANCE, s_pnlSeatY[i]);
+      // the selection is the HIJACK: a selected object rides every later drag
+      if((bool)ObjectGetInteger(0, n, OBJPROP_SELECTED))
+         ObjectSetInteger(0, n, OBJPROP_SELECTED, false);
+      return true;
+   }
+   return false;
+}
+//--- a family is gone (its card closed, the palette shut): its seats are
+//--- meaningless and must not fill the registry — a name a future card reuses
+//--- must be taught by its OWN paint, never answered by a dead entry.
+//---
+//--- P-UI-145c (2026-10-13) — AND THE SLOT IS HANDED BACK. This used to blank the
+//--- NAME and keep the entry, while the counter above only ever grew: the ceiling
+//--- `PNL_SEAT_MAX` was therefore a bound on the number of DISTINCT NAMES ever
+//--- painted in one indicator lifetime, not on the number of LIVE controls. A card
+//--- with 24 rows teaches more than a hundred names on its own, so two cards were
+//--- enough to reach 192 and from then on `PnlSeatRemember` returned early for
+//--- EVERY later card and palette — the P-UI-145 revert died silently, and the
+//--- comment on the ceiling ("one card + one palette cannot reach 192") was
+//--- counting a quantity the registry never measured.
+//---
+//--- MEASURED by reading the writers, not by guessing: `s_pnlSeatN++` above is the
+//--- ONLY writer of the counter and `PnlSeatForget` was its only would-be releaser,
+//--- so nothing ever decremented it. Every reader matches by NAME and none reads
+//--- the index, so the tail is compacted down over the dropped entries and the
+//--- slots become reusable. Cost: one pass over <=192 entries per family teardown,
+//--- i.e. per USER ACTION, never per paint.
+void PnlSeatForget(const string prefix)
+{
+   const int len = StringLen(prefix);
+   if(len == 0) return;
+   int w = 0;
+   for(int i = 0; i < s_pnlSeatN; i++)
+   {
+      if(StringFind(s_pnlSeatNm[i], prefix) == 0) continue;   // this family's — dropped
+      if(w != i)
+      {
+         s_pnlSeatNm[w] = s_pnlSeatNm[i];
+         s_pnlSeatX[w]  = s_pnlSeatX[i];
+         s_pnlSeatY[w]  = s_pnlSeatY[i];
+      }
+      w++;
+   }
+   for(int i = w; i < s_pnlSeatN; i++) s_pnlSeatNm[i] = "";   // no dead name past the new end
+   s_pnlSeatN = w;
+   s_pnlSeatFullSaid = false;   // the pool has room again — a later FULL is a new fact
+}
+
+//+------------------------------------------------------------------+
 //| Object factories                                                  |
 //+------------------------------------------------------------------+
 void PnlSetLabel(const string n,const int x,const int y,const string txt,const color clr,const int sz)
@@ -1023,6 +1142,9 @@ void PnlSetButton(const string n,const int x,const int y,const int w,const int h
    ObjectSetInteger(0,n,OBJPROP_CORNER,CORNER_LEFT_UPPER);
    ObjectSetInteger(0,n,OBJPROP_XDISTANCE,x);
    ObjectSetInteger(0,n,OBJPROP_YDISTANCE,y);
+   // P-UI-145: the seat is remembered AS IT IS WRITTEN — the registry a native
+   // drag is reverted against is this paint's own output, never a second grid.
+   PnlSeatRemember(n, x, y);
    ObjectSetInteger(0,n,OBJPROP_XSIZE,w);
    ObjectSetInteger(0,n,OBJPROP_YSIZE,h);
    ObjectSetString(0,n,OBJPROP_TEXT,txt);

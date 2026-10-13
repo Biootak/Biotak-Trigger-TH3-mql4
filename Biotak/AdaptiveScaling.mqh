@@ -217,7 +217,14 @@ bool UpdateATRScalingFactor(const double basePrice, const int digits, const bool
         if(g_fractalShift > 5) g_fractalShift = 5;
         
         if(g_fractalShift != oldShift) {
-             _LOG_GATE_I Print("[I][ADAPT] Fractal Shift changed: ", oldShift, " -> ", g_fractalShift, " (ATR: ", DoubleToString(weightedATR / GetCachedPoint(), 1), " pips)");
+             // P-BE-02 (2026-10-13): the sibling line above guards this identical
+             // division with `(pipSize > 0)`; this one did not. `GetCachedPoint()`
+             // returns 0 while the symbol's contract data is not loaded — the
+             // weekend / fresh-symbol-switch state PerformanceOptimizations
+             // documents — so the log read `inf` exactly when the shift moved on a
+             // chart nobody could trade. A witness that prints inf is not a witness.
+             double ptForLog = GetCachedPoint();
+             _LOG_GATE_I Print("[I][ADAPT] Fractal Shift changed: ", oldShift, " -> ", g_fractalShift, " (ATR: ", DoubleToString(ptForLog > 0 ? weightedATR / ptForLog : 0, 1), " pips)");
              return true; // Shift changed, need redraw
         }
     } else {

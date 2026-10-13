@@ -844,6 +844,496 @@ MUTATIONS = [
         "replace": '      case 5:  return "TBdir";      // MUTATION: a second direction cell on the mini-strip\n      case 6:  return "TBlock";     // padlock (held box)',
         "expect": "P-BK-111",
     },
+
+    #--- P-UI-144 (2026-10-13) — THE GHOST SWEEP IS CALLED. Measured defect:
+    #--- profiles/default/chart03.chr carried `BiotakMenuV2_134342075006101685_CircOrbBg`
+    #--- at x=70,y=79 — a previous session's name restored at stale absolute pixels.
+    #--- The definition alone is prose; the init path must run it (P-DRAW-120's law).
+    {
+        "id": "P-UI-144",
+        "gate": "regression",
+        "rule": "an attach sweeps every foreign chart-id spelling of the menu/panel family",
+        "what": "InitializeUIStates stops calling the sweep - the owner exists and nobody runs it",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   BiotakMenuGhostSweep();",
+        "replace": "   // MUTATION: the sweep is never called",
+        "expect": "does not CALL the sweep",
+    },
+    #--- ...and it must cover the V2 spelling - the only one a live build writes.
+    {
+        "id": "P-UI-144b",
+        "gate": "regression",
+        "rule": "the sweep covers both spellings the family ever painted",
+        "what": "the V2 walk is removed - a half sweep that leaves every live name's ghosts behind",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": '   ObjectsDeleteAll(0, "BiotakMenuV2_", -1, -1);   // V2 (the char after "BiotakMenu" is \'V\')',
+        "replace": "   // MUTATION: the V2 walk removed",
+        "expect": "the sweep lost the V2 spelling",
+    },
+    #--- P-UI-145 (2026-10-13) — THE SEAT IS REMEMBERED BY THE PAINT. Measured
+    #--- defect: a selectable control is native-dragged by the terminal on the press
+    #--- that lands on it (P-UI-48), so a shaky hand leaves the button off its seat -
+    #--- and the displaced button then rides the chart profile into the next session.
+    {
+        "id": "P-UI-145",
+        "gate": "regression",
+        "rule": "the seat a control is painted at is remembered by the paint itself",
+        "what": "PnlSetButton stops remembering the seat - the registry would be a second grid",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "   PnlSeatRemember(n, x, y);",
+        "replace": "   // MUTATION: the seat is not remembered",
+        "expect": "PnlSetButton() no longer remembers the seat",
+    },
+    #--- ...and the revert must actually run on the terminal's own drag channel.
+    {
+        "id": "P-UI-145b",
+        "gate": "regression",
+        "rule": "a native drag of our own control is reverted in the same event",
+        "what": "the OBJECT_DRAG branch stops reverting - the button stays where MT4 dragged it",
+        "file": "Biotak/BiotakPanels_Life.mqh",
+        "find": "         PnlSeatRevert(sparam);",
+        "replace": "         // MUTATION: no revert",
+        "expect": "the OBJECT_DRAG branch does not revert our own control",
+    },
+    #--- P-UI-146 (2026-10-13) — THE HOME NEVER STORES THE CLAMP. The exact defect
+    #--- docs/th3-ui-placement.md still owed the strip: a shrunk window moved the
+    #--- stored place inward for good (the P-UI-131e ratchet, said in fractions).
+    {
+        "id": "P-UI-146",
+        "gate": "regression",
+        "rule": "the home is the hand's place; the live pair is clamped, never stored",
+        "what": "DrawStripHomeClamp writes the clamped pair back into the home again",
+        "file": "Biotak/DrawStrip_Paint.mqh",
+        "find": "   s_dsX = nx; s_dsY = ny;                  // the live pair follows; the home does not",
+        "replace": "   s_dsHomeX = nx; s_dsHomeY = ny;\r\n   s_dsX = nx; s_dsY = ny;",
+        "expect": "writes the clamped pair back into the home",
+    },
+    #--- ...and the restore must have its caller (an owner nobody calls is prose).
+    {
+        "id": "P-UI-146b",
+        "gate": "regression",
+        "rule": "the strip's saved state is restored once on a fresh attach",
+        "what": "RefreshKitOnBar stops calling the restore - the strip reopens nothing",
+        "file": "Biotak/BiotakPanels_Life.mqh",
+        "find": "   DrawStripStateRestore();",
+        "replace": "   // MUTATION: the restore is never called",
+        "expect": "RefreshKitOnBar() does not call the restore",
+    },
+
+    #--- P-SIZE-SPLIT-LBL (2026-10-13) — A HALF THE CEILING CUT OUT IS A MEMBER.
+    #--- P-UI-148 needed a few lines in Labels_A.mqh, which sat at its grandfathered
+    #--- baseline, so the countdown owner moved to Biotak/Labels_Countdown.mqh
+    #--- (contract §7). The half can be present, compile and be DEAD — the hub must
+    #--- include it, and the owner must still call into it.
+    {
+        "id": "P-SIZE-SPLIT-LBL",
+        "gate": "regression",
+        "rule": "a half the ceiling cut out is a MEMBER of the unit, and it is called",
+        "what": "the label hub stops including its own half - Labels_Countdown.mqh is in nobody's unit",
+        "file": "Biotak/LabelFunctions.mqh",
+        "find": '#include "Labels_Countdown.mqh"   // P-UI-148: the countdown owner (after Labels_A: its helpers\' home)\n',
+        "replace": "// MUTATION: the half is not included\n",
+        "expect": "does not include its own half",
+    },
+
+    #--- P-UI-145c (2026-10-13) — A DEAD FAMILY HANDS ITS SLOT BACK. P-UI-145's seat
+    #--- registry was bounded by `PNL_SEAT_MAX` and its counter only ever GREW:
+    #--- `PnlSeatForget` blanked the name and kept the entry, so the ceiling bounded
+    #--- every name ever PAINTED rather than the live controls. One 24-row card teaches
+    #--- more than a hundred names, so two cards reached 192 and from then on every
+    #--- later card and palette lost its revert with nothing said.
+    {
+        "id": "P-UI-145c",
+        "gate": "regression",
+        "rule": "a dead family hands its seats back to the registry",
+        "what": "PnlSeatForget keeps the slot - the counter only grows and the registry dies silently",
+        "file": "Biotak/BiotakPanels_Apply.mqh",
+        "find": "   s_pnlSeatN = w;",
+        "replace": "   // MUTATION: the counter keeps the dead slot",
+        "expect": "no longer DECREMENTS the counter",
+    },
+    #--- ...and the popup must release its OWN, or the card teardown is the only
+    #--- releaser in the tree and every palette open leaves ~44 entries dead forever.
+    {
+        "id": "P-UI-145d",
+        "gate": "regression",
+        "rule": "the palette releases the seats its own popup taught",
+        "what": "PalClose stops forgetting the popup's seats - every open leaves them dead forever",
+        "file": "Biotak/BiotakPanels_PalA.mqh",
+        "find": '   PnlSeatForget(g_UI.btnPrefix+"Pal_");',
+        "replace": "   // MUTATION: the popup keeps its seats",
+        "expect": "PalClose() does not release the popup",
+    },
+    #--- P-UI-149 (2026-10-13) — A GATE NOBODY RUNS IS A RULE NOBODY KEEPS. Both tools
+    #--- existed, both were correct in intent, and neither was in the build - so both
+    #--- had gone blind unnoticed and their failures read as product defects.
+    {
+        "id": "P-UI-149",
+        "gate": "regression",
+        "rule": "the skin and parity gates are run by every build",
+        "what": "the build stops running the skin metrics gate - a rule nobody runs",
+        "file": "compile-th3.ps1",
+        "find": '$skinGate = Join-Path $SCRIPT_ROOT "tools\\skin_metrics_check.js"',
+        "replace": "# MUTATION: the skin gate is not run",
+        "expect": "the build does not run",
+    },
+    #--- ...and a gate that cannot READ its input is not a gate: the parity audit
+    #--- resolved the strip's deliberate aliases (`DSTRIP_GEAR_* = PNL_*`, P-DRAW-116)
+    #--- nowhere, so five seats compared as `None` and an unmeasured seat prints
+    #--- exactly like an agreeing one (the P-DRAW-120 class).
+    {
+        "id": "P-UI-149b",
+        "gate": "regression",
+        "rule": "the parity gate can resolve the strip's aliases into the cards' unit",
+        "what": "the card fallback goes - five seats compare as None and print as agreeing",
+        "file": "tools/ui_parity_audit.py",
+        "find": "        val, _ = define(CARD, name)",
+        "replace": "        val, _ = None, None   # MUTATION: the alias is not resolved",
+        "expect": "cannot resolve the strip",
+    },
+    #--- P-BE-03 (2026-10-13) — DEAD CODE IS A DEFECT. `CalculateShortStep` had no
+    #--- caller anywhere in the tree, and it carried the NAME of the SS factor while
+    #--- the live path wrote the literal. Re-adding it must make the regression entry
+    #--- say so; if it does not, the "no dead code" rule is a comment, not a gate.
+    {
+        "id": "P-BE-03",
+        "gate": "regression",
+        "rule": "the dead step functions stay deleted",
+        "what": "`CalculateShortStep` is re-added — dead code is back and nothing notices",
+        "file": "Biotak/THCalculations.mqh",
+        "find": "double CalculateTH(const double price, const int digits, const double percentage) {",
+        "replace": "double CalculateShortStep(const double thValue) { return thValue * SS_MULTIPLIER; }\ndouble CalculateTH(const double price, const int digits, const double percentage) {",
+        "expect": "is back in THCalculations.mqh",
+    },
+    #--- P-BE-04 — ONE FACTOR, ONE OWNER. The live SS_LS_STEP path wrote `1.5` inline
+    #--- while `SS_MULTIPLIER` (MathConstants.mqh) owned the number, so a retune
+    #--- reached nothing. Putting the literal back must fail the gate.
+    {
+        "id": "P-BE-04",
+        "gate": "regression",
+        "rule": "the live SS factor reads its one owner",
+        "what": "SS_LS_STEP goes back to a bare `1.5` — two owners for one factor",
+        "file": "Biotak/Util_A.mqh",
+        "find": "return structureValue * SS_MULTIPLIER;",
+        "replace": "return structureValue * 1.5;   # MUTATION: the factor loses its owner",
+        "expect": "no longer reads",
+    },
+    #--- P-UI-152 (2026-10-13) — THE MIXER'S TRACK, ONE OWNER. Four sites spelled the
+    #--- same track out by hand. Sending ONE of them back to the literal must fail the
+    #--- gate: it both re-adds a second owner and drops a reader below the four the
+    #--- paint needs.
+    {
+        "id": "P-UI-152",
+        "gate": "regression",
+        "rule": "the mixer track has one owner",
+        "what": "the mixer paint re-derives its own track — the press and the bed part company",
+        "file": "Biotak/BiotakPanels_PalA.mqh",
+        "find": "   int trackX=PalMixTrackX();",
+        "replace": "   int trackX=px+PAL_PAD+30;   // MUTATION: a second owner",
+        "expect": "is a literal again",
+    },
+    #--- P-UI-153 (2026-10-13) — THE GEAR CLOSE SEAT, ONE OWNER. Three sites wrote the
+    #--- bare 26. Sending the hit test back to the literal must fail the gate.
+    {
+        "id": "P-UI-153",
+        "gate": "regression",
+        "rule": "the gear close seat has one owner",
+        "what": "the gear hit test writes the bare 26 again — paint and probe can part company",
+        "file": "Biotak/DrawStrip_Base.mqh",
+        "find": "         const int xbtn = DSTRIP_GEAR_XW, xpad = 3;",
+        "replace": "         const int xbtn = 26, xpad = 3;   // MUTATION: a third literal",
+        "expect": "writes the bare",
+    },
+    #--- ...and the parity gate must compare NAME against NAME. A literal on the panel
+    #--- side can only report drift after it has happened, so the row is the rule.
+    {
+        "id": "P-UI-153b",
+        "gate": "regression",
+        "rule": "the parity gate compares the close seat name-to-name",
+        "what": "the close-seat row goes back to the literal \"26\" — a number against a name",
+        "file": "tools/ui_parity_audit.py",
+        "find": '"PNL_XBTN_VIS",               "DSTRIP_GEAR_XW",',
+        "replace": '"PNL_XBTN_VIS",               "26",',
+        "expect": "compares the close seat as a literal",
+    },
+    #--- ...and the define the whole seat hangs off must survive the splice that added
+    #--- this rule: the first version of the P-UI-153 edit REPLACED the
+    #--- `#define DSTRIP_GEAR_PAD` anchor instead of inserting after it, so the "side
+    #--- pad" seat silently became `None`. Renaming it must fail the gate.
+    {
+        "id": "P-UI-153c",
+        "gate": "regression",
+        "rule": "DSTRIP_GEAR_PAD survives",
+        "what": "`#define DSTRIP_GEAR_PAD` is renamed away — the parity gate's side-pad seat reads None",
+        "file": "Biotak/DrawStrip_Head.mqh",
+        "find": "#define DSTRIP_GEAR_PAD  PNL_PAD_X",
+        "replace": "#define DSTRIP_GEAR_PADX PNL_PAD_X   // MUTATION: the anchor was eaten",
+        "expect": "lost `#define DSTRIP_GEAR_PAD`",
+    },
+    #--- P-PERF-40 (2026-10-13) — THE CENSUS'S BOUND IS ON EVENTS, NEVER ON RATE.
+    #--- MEASURED: 17,547 `[gest]` lines in one day (79% of the journal), 160 in one
+    #--- second. One press re-armed three seconds of one flushed write per mouse-move.
+    #--- Dropping the bound must fail the gate.
+    {
+        "id": "P-PERF-40",
+        "gate": "regression",
+        "rule": "the gesture census is rate-bounded",
+        "what": "the rate bound is removed - every mouse-move inside the window prints a flushed line again",
+        "file": "Biotak/GlobalVariables.mqh",
+        "find": "   if(pressEdge || (now - g_gestCensusMs) >= GEST_CENSUS_MIN_MS)",
+        "replace": "   if(pressEdge || true)   // MUTATION: the census is unbounded again",
+        "expect": "rate bound is gone",
+    },
+    #--- ...and the bound must sit BELOW the discriminator: the terminal's own drag/create
+    #--- IS the P-UI-142 answer, and a coalesced discriminator cannot answer it.
+    {
+        "id": "P-PERF-40b",
+        "gate": "regression",
+        "rule": "the drag/create edge is answered before any rate is considered",
+        "what": "the drag/create edge is coalesced too - the order question loses its witness",
+        "file": "Biotak/GlobalVariables.mqh",
+        "find": "   if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CREATE) return true;",
+        "replace": "   if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CREATE) return (GetTickCount() - g_gestCensusMs) >= GEST_CENSUS_MIN_MS;   // MUTATION: the edge is coalesced",
+        "expect": "no longer answers the terminal",
+    },
+    #--- ...and the edge detector must be cleared by a refusal, or a stale `true` swallows
+    #--- the next press - the one line the order question actually needs.
+    {
+        "id": "P-PERF-40c",
+        "gate": "regression",
+        "rule": "the census's edge detector is cleared by a refusal",
+        "what": "the edge detector is never cleared - the next press is not an edge any more",
+        "file": "Biotak/GlobalVariables.mqh",
+        "find": "      g_gestCensusDown = false;   // a refusal ends the stroke, so the next press is an edge",
+        "replace": "      // MUTATION: the edge detector is never cleared",
+        "expect": "edge detector is never cleared",
+    },
+    #--- P-BUILD-12 (2026-10-13) - the deploy must check its own claim. MEASURED:
+    #--- the build printed «Terminal restarted» while the journal held «stopped»
+    #--- and no «started», and no terminal.exe existed - yet it exited 0.
+    {
+        "id": "P-BUILD-12",
+        "gate": "regression",
+        "rule": "the deploy looks for the relaunched process",
+        "what": "the relaunch is never verified - a launch that never came up still exits 0",
+        "file": "compile-th3.ps1",
+        "find": "    if ($up -lt $want) {",
+        "replace": "    if ($false) {   # MUTATION: the relaunch is never verified",
+        "expect": "relaunch is never verified",
+    },
+    #--- ...and the failure must SAY it failed: a silent one is what let a stale ex4
+    #--- pass for a landed deploy while every chart kept the previous binary.
+    {
+        "id": "P-BUILD-12b",
+        "gate": "regression",
+        "rule": "a failed relaunch names itself",
+        "what": "the failed relaunch no longer says so - the honest line is gone",
+        "file": "compile-th3.ps1",
+        "find": "  [FAIL] the relaunch did not come up",
+        "replace": "  [FAIL] relaunch problem",
+        "expect": "no longer says so",
+    },
+    #--- P-UI-154 (2026-10-13) - the Hover Chip card rendered on the OPENING DEFAULTS
+    #--- because `PnlSetDef` had a branch for every card except 4. MEASURED: the card
+    #--- showed a nameless 0..100 slider where its one ON/OFF switch belongs.
+    {
+        "id": "P-UI-154",
+        "gate": "regression",
+        "rule": "every card has a branch in PnlSetDef",
+        "what": "the Hover Chip card loses its row definition - it renders on the opening defaults again",
+        "file": "Biotak/BiotakPanels_PalB.mqh",
+        "find": "else if(item==4)   // HOVER CHIP",
+        "replace": "else if(item==40)   // MUTATION: the chip's card has no definition",
+        "expect": "have no branch in `PnlSetDef`",
+    },
+    #--- P-UI-156 (2026-10-13) - A READER WITH NO BOX DERIVES NOTHING. The reader used to
+    #--- fall back to 1920x1080 when the terminal reported 0 for the chart box (which it
+    #--- does at attach and during CHART_CHANGE). That fallback is a denominator the pixels
+    #--- did not come from; the pair it produced was handed to the in-memory HOME and then
+    #--- persisted against the REAL box. MEASURED and still in the store:
+    #--- `BIOMENU_HOME_STRIP_FX` = 1.000000 exactly.
+    {
+        "id": "P-UI-156a",
+        "gate": "regression",
+        "rule": "the home reader refuses an unmeasured box",
+        "what": "the reader invents a denominator again - it derives pixels from a box it never measured",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   if(!HomeChartSizeRaw(cw, ch)) { x = -1; y = -1; return false; }",
+        "replace": "   if(!HomeChartSize(cw, ch)) { x = -1; y = -1; return false; }   // MUTATION: the poisoned denominator is back",
+        "expect": "invents a denominator",
+    },
+    #--- ...and the WRITER must refuse a pair outside the box: the clamp used to saturate
+    #--- it into the store, which is how `STRIP_FX` became a permanent 1.0.
+    {
+        "id": "P-UI-156b",
+        "gate": "regression",
+        "rule": "the home writer refuses a pair outside the box",
+        "what": "a place outside the box is stored again - the clamp saturates it into the store",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   if(x > rcw || y > rch) return;",
+        "replace": "   if(false) return;   // MUTATION: an out-of-box pair is written again",
+        "expect": "a place outside the box is written again",
+    },
+    #--- P-UI-158 (2026-10-13) - ONLY THE HAND MOVES A HOME. The user asked for the RING's
+    #--- method («پنل رینگ از چه روشی استفاده کرده مثل همون بشه»): the ring stores no place
+    #--- of its own, so it cannot drift. The chip stored a fraction AND re-derived it on
+    #--- every attach, so a derivation in one window was saved against another and the
+    #--- fraction crept (MEASURED: CHIP_FX 0.942731 -> 0.618392, a 589 px jump). The
+    #--- automatic door must refuse every write that no NEW ANSWER produced.
+    {
+        "id": "P-UI-158a",
+        "gate": "regression",
+        "rule": "the automatic door writes a home only for a pending answer",
+        "what": "the automatic door writes without a claim - a derivation in one window is saved against another",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   if(!GVHomeAnswerTake(id)) return;",
+        "replace": "   // MUTATION: the automatic door writes without a claim",
+        "expect": "writes without a claim",
+    },
+    #--- ...and the HAND's door must make its own claim, or the user's own release would be
+    #--- refused exactly like a derivation is.
+    {
+        "id": "P-UI-158b",
+        "gate": "regression",
+        "rule": "the hand's door claims the answer it publishes",
+        "what": "the hand's door stops claiming - a release, a first placement and a migration are all refused",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   GVHomeAnswerNew(id);\r\n   GVHomeWriteFrac(id, x, y);",
+        "replace": "   GVHomeWriteFrac(id, x, y);   // MUTATION: the hand's door makes no claim",
+        "expect": "no longer makes its own claim",
+    },
+    #--- ...and a claim that reached no write must be SPENT, or it authorises a LATER save
+    #--- (a resize, a TF switch, the teardown) to store a derived pair - the creep again.
+    {
+        "id": "P-UI-158c",
+        "gate": "regression",
+        "rule": "SaveUIStates spends a claim it did not honour",
+        "what": "an unhonoured claim is left standing - the next automatic save stores a derived pair",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   if(haveBox) GVHomeAnswerClear();",
+        "replace": "   ;   // MUTATION: an unhonoured claim is left standing",
+        "expect": "no longer spends an unhonoured claim",
+    },
+    #--- ...and the CHIP's own drag must claim, or the store would refuse the hand's move.
+    {
+        "id": "P-UI-158d",
+        "gate": "regression",
+        "rule": "the chip drag claims the answer it publishes",
+        "what": "the chip drag stops claiming - the store refuses the hand's own move",
+        "file": "Biotak/BiotakMenu_B.mqh",
+        "find": "   GVHomeAnswerNew(\"CHIP\");",
+        "replace": "   // MUTATION: the chip drag claims nothing",
+        "expect": "no longer claims its answer",
+    },
+    #--- ...and so must BOTH of the orb's hand paths: the drag release and the stale-claim
+    #--- reap that commits a travelled pair. Losing either silently refuses that answer.
+    {
+        "id": "P-UI-158e",
+        "gate": "regression",
+        "rule": "the orb's release claims the answer it publishes",
+        "what": "the orb release stops claiming - the store refuses the hand's own move",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "         GVHomeAnswerNew(\"ORB\");",
+        "replace": "         // MUTATION: the orb release claims nothing",
+        "expect": "no longer claims its answer",
+    },
+    #--- ...and every surface must be SEEDED from its fraction, or at attach (when the
+    #--- terminal reports no box) it paints at its DEFAULT and the first 250 ms pass jumps
+    #--- it - the chip was the one surface the orb's seed missed.
+    {
+        "id": "P-UI-158f",
+        "gate": "regression",
+        "rule": "every surface is seeded from its own fraction at load",
+        "what": "the chip has no fraction seed - it paints at the chart's middle and the refresh jumps it",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   if(!GVHomeLoadFrac(\"CHIP\", \"TIP\", tx, ty)) GVHomeFracSeed(\"CHIP\", tx, ty);",
+        "replace": "   GVHomeLoadFrac(\"CHIP\", \"TIP\", tx, ty);   // MUTATION: no seed for the chip",
+        "expect": "has no fraction seed",
+    },
+    #--- ...and the strip's FRESH placement is a new answer like a release is: it must write
+    #--- through the hand's door, and only from a measured window.
+    {
+        "id": "P-UI-158g",
+        "gate": "regression",
+        "rule": "the strip's first placement writes through the hand's door",
+        "what": "the strip writes a fresh home without a measured box - the live ratchet",
+        "file": "Biotak/DrawStrip_Paint.mqh",
+        "find": "   if(dsFreshHome && dsBox) { DrawStripHomeSet(s_dsX, s_dsY); GVHomeSaveFracHand(\"STRIP\", s_dsX, s_dsY); }",
+        "replace": "   if(dsFreshHome) { DrawStripHomeSet(s_dsX, s_dsY); }   // MUTATION: no measured box, no hand door",
+        "expect": "writes a fresh home without a measured box",
+    },
+    #--- ...and the strip's drag must claim, or its own move is refused.
+    {
+        "id": "P-UI-158h",
+        "gate": "regression",
+        "rule": "the strip drag claims the answer it publishes",
+        "what": "the strip drag stops claiming - the store refuses the hand's own move",
+        "file": "Biotak/DrawStrip_Router.mqh",
+        "find": "   GVHomeAnswerNew(\"STRIP\");",
+        "replace": "   // MUTATION: the strip drag claims nothing",
+        "expect": "no longer claims its answer",
+    },
+    #--- ...and the one refresh pass must NOT write: it is a DERIVATION, and a derivation
+    #--- paints without ever reaching the store. This is the mutation that reproduces the
+    #--- user's own bug in one line.
+    {
+        "id": "P-UI-158i",
+        "gate": "regression",
+        "rule": "the refresh derives and never stores",
+        "what": "the refresh saves a home again - a derivation in one window is stored against another",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      CircOrbHomeSet(x, y);            // the home is the truth",
+        "replace": "      CircOrbHomeSet(x, y); GVHomeSaveFrac(\"ORB\", x, y);   // MUTATION: a derivation reaches the store",
+        "expect": "the refresh saves a home again",
+    },
+    #--- ...and the deleted derivation-box record must not come back: a second piece of
+    #--- state that has to stay in step with the writer is what P-UI-158 removed.
+    {
+        "id": "P-UI-158j",
+        "gate": "regression",
+        "rule": "the derivation-box record stays deleted",
+        "what": "the deleted derivation-box record is reintroduced",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "void GVHomeWriteFrac(const string id, const int x, const int y)\r\n{",
+        "replace": "void GVHomeWriteFrac(const string id, const int x, const int y)\r\n{\r\n   GVHomeDeclareBox();   // MUTATION: the derivation-box record is back",
+        "expect": "is back",
+    },
+    #--- ...and the refresh gate must ask the READER's own question. `HomeChartSize`
+    #--- substitutes 1920x1080 for a box the reader REFUSES, so the gate could consume a
+    #--- change it never acted on and the home was then never applied that session.
+    {
+        "id": "P-UI-158k",
+        "gate": "regression",
+        "rule": "the refresh gate is the reader's own measure",
+        "what": "the refresh gate reads a substituted box again - it records what the reader refuses",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "   if(!HomeChartSizeRaw(cw, ch)) return;",
+        "replace": "   HomeChartSize(cw, ch);   // MUTATION: the gate asks a different question",
+        "expect": "the refresh gate",
+    },
+    #--- ...and the orb must follow its home with the ring SHUT, which is the normal state.
+    {
+        "id": "P-UI-158l",
+        "gate": "regression",
+        "rule": "the orb follows its home whether the ring is open or not",
+        "what": "the orb repaint is gated on the ring again - with the ring shut the orb keeps the seed",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      UpdateCircularMenuPosition();\n   }\n   if(!CircTipDragging()",
+        "replace": "      if(g_UI.menuVisible) UpdateCircularMenuPosition();\n   }\n   if(!CircTipDragging()",
+        "expect": "the orb repaint is gated on the ring again",
+    },
+    #--- ...and the ONE writer must not invent a denominator either: the reader's rule is
+    #--- only half of it (P-UI-156a is the other half).
+    {
+        "id": "P-UI-158m",
+        "gate": "regression",
+        "rule": "the home writer refuses an unmeasured box",
+        "what": "the writer invents a denominator again - a fraction divided by a box the pixels did not come from",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   if(!HomeChartSizeRaw(rcw, rch)) return;   // unknown denominator: store nothing,",
+        "replace": "   if(!HomeChartSize(rcw, rch)) return;   // MUTATION: a fallback denominator",
+        "expect": "the writer invents a denominator",
+    },
 ]
 
 #--- the register's own entries, so "no mutation yet" is a NUMBER and not a feeling.

@@ -227,6 +227,37 @@ uint s_PalRecentAt      = 0;        // last recents repaint (drag coalescer)
 
 int PalW() { return PAL_W; }
 
+//+------------------------------------------------------------------+
+//| P-UI-150 (2026-10-13) — ONE OWNER FOR THE POPUP'S CLOSE SEAT.     |
+//|                                                                  |
+//| MEASURED, both spellings read off the source: the close button is |
+//| PAINTED at `px+w-PAL_PAD-20, py+5, 20, 18` (PalB.mqh, the         |
+//| `PnlSetButton(p+"close", ...)` line), so its own box is            |
+//| x ∈ [px+w-36, px+w-16], y ∈ [py+5, py+23]. The title carry        |
+//| EXCLUDED a hand-written band instead — `mx >= px+w-PAL_PAD-20 &&   |
+//| my >= py+3 && my <= py+21` (PalTitleGrab) — which ends 2 px SHORT  |
+//| of the button it is meant to protect. A press in `py+21 < my <=    |
+//| py+23`, i.e. on the close button's own bottom two pixels, was not  |
+//| excluded, so it ARMED THE CARRY: the popup moved instead of        |
+//| closing, and the press read as "the × does nothing".              |
+//|                                                                  |
+//| A hit test with its own arithmetic is a second grid (P-DRAW-84's  |
+//| law, and P-DRAW-77's defect before it). This is the ONE seat: the  |
+//| paint writes it and the grab test reads it, so the two can never   |
+//| disagree again.                                                   |
+//+------------------------------------------------------------------+
+#define PAL_CLOSE_W 20
+#define PAL_CLOSE_H 18
+#define PAL_CLOSE_DY 5
+void PalCloseSeat(const int px, const int py, const int w,
+                  int &cx, int &cy, int &cw, int &ch)
+{
+   cw = PAL_CLOSE_W;
+   ch = PAL_CLOSE_H;
+   cx = px + w - PAL_PAD - PAL_CLOSE_W;
+   cy = py + PAL_CLOSE_DY;
+}
+
 //--- P-DRAW-49: THE CELL SIZE IS CHOSEN, NOT ASSUMED. 26px cells are the design
 //--- (30 % bigger than the 20px they replace, so they are easy to hit); 22px is
 //--- the same layout 32px shorter, for a chart window the big one does not fit.
@@ -267,6 +298,25 @@ int PalFootY()  { return PalTgtY() + PAL_TGT; }
 //--- the footer's TR track: the one flexible column, measured from what is left.
 int PalTrX() { return g_PalX + PAL_PAD + PAL_FT_DONE + PAL_FT_GAP + PAL_FT_TRW + PAL_FT_GAP; }
 int PalTrW() { return PAL_W - 2*PAL_PAD - (PAL_FT_DONE + PAL_FT_GAP + PAL_FT_TRW + PAL_FT_GAP + PAL_FT_VALW); }
+
+//--- P-UI-152 (2026-10-13) — THE MIXER'S OWN TRACK, ONE OWNER.
+//--- `trackX = g_PalX + PAL_PAD + 30` / `trackW = PalW() - 2*PAL_PAD - 34` was
+//--- written out FOUR times: the paint (`PalDrawMixer`), the live knob move
+//--- (`PalUpdateLive`), the hit test (`PaletteMixHit`) and the value-from-X
+//--- reader (`PaletteMixFromX`). The footer's track two lines up already had
+//--- its single owner and a P-DRAW-49 note saying why — the mixer, which is the
+//--- one with FOUR readers, did not. Two owners that agree today are one retune
+//--- away from a press landing on a track the paint no longer draws, and the
+//--- knob would move while the bed under it did not.
+//--- The 30 turned out to be a THIRD site's number too: `PalDrawHexRow` seats the
+//--- HEX field at `px + PAL_PAD + 30`. So it is not the mixer's column, it is the
+//--- PALETTE's label column — `R`/`G`/`B`/`TR` on the mixer, `HEX` on the hex row —
+//--- and it is named for that. The 4 is the mixer track's own air before the
+//--- right-aligned value. `PalMixRowY` already owns the ROWS the same way.
+#define PAL_LBLW       30
+#define PAL_MIX_ENDGAP  4
+int PalMixTrackX() { return g_PalX + PAL_PAD + PAL_LBLW; }
+int PalMixTrackW() { return PalW() - 2*PAL_PAD - PAL_LBLW - PAL_MIX_ENDGAP; }
 
 //--- P-DRAW-46: one implementation, never a second — `BioPickColor` (include #1)
 //--- owns the user's chart; this is its face for the panels' code.
@@ -967,7 +1017,12 @@ bool PalTitleGrab(const int mx,const int my)
    if(g_PnlMoveItem>=0 || !DragCanGrab(DRAG_PANEL_MOVE)) return false;
    int w=PalW();
    if(mx < g_PalX || mx > g_PalX+w || my < g_PalY || my > g_PalY+PAL_HEAD) return false;
-   if(mx >= g_PalX+w-PAL_PAD-20 && my >= g_PalY+3 && my <= g_PalY+21) return false;
+   // P-UI-150 (2026-10-13): the close seat is READ, never re-derived. This used to be
+   // `my >= g_PalY+3 && my <= g_PalY+21` while the button paints py+5..py+23, so the
+   // button's own bottom 2 px armed the carry instead of closing the popup.
+   int ccx = 0, ccy = 0, ccw = 0, cch = 0;
+   PalCloseSeat(g_PalX, g_PalY, w, ccx, ccy, ccw, cch);
+   if(mx >= ccx && mx <= ccx + ccw && my >= ccy && my <= ccy + cch) return false;
    s_palMoveArmed=true;
    s_palMoveGX=mx; s_palMoveGY=my; s_palMoveLX=mx; s_palMoveLY=my;
    s_palMoveMoved=false; s_palMoveTick=0;
@@ -1077,6 +1132,13 @@ void PalClose()
    if(!g_PalOpen) return;
    SavePalRecentDurable();   // P-PERF-44: flush the throttled mixer drag tail (own transaction)
    ObjectsDeleteAll(0, g_UI.btnPrefix+"Pal_", 0, -1);
+   // P-UI-145c (2026-10-13): AND THE SEATS THIS POPUP TAUGHT GO WITH IT. The cards
+   // had their `PnlSeatForget` at `PnlDestroy`, the palette had NONE — so every
+   // popup open left ~44 permanently dead entries in the registry (its own seats
+   // were never handed back), and those entries are exactly what pushed the
+   // 192-slot pool full. Same owner law as the wipe above: the family that died
+   // releases its slots, so a later card or popup is taught by its OWN paint.
+   PnlSeatForget(g_UI.btnPrefix+"Pal_");
    PalDiagEpoch();   // P-UI-137: the next open is a new census
    g_PalOpen=false; g_PalMixDrag=0; g_PalHexFocus=false;
    // P-UI-98r: palette gone - republish (invalidates) and uncover now.
@@ -1239,7 +1301,7 @@ void PalDrawHexRow(const int px,const int hy)
 {
    string p=g_UI.btnPrefix+"Pal_";
    color cur=PaletteKindColor(g_PalKind);
-   int fx=px+PAL_PAD+30;
+   int fx=px+PAL_PAD+PAL_LBLW;   // P-UI-152: the palette's label column, not a fourth literal
    PnlSetLabel(p+"hl", px+PAL_PAD, hy+6, "HEX", PNL_CLR_LABEL, 7);
    ObjectSetInteger(0,p+"hl",OBJPROP_ZORDER,Z_PANEL_POP_BG);
    string en=p+"hex";
@@ -1312,8 +1374,8 @@ void PalDrawMixer(const int contY)
    comps[0]=cv%256; comps[1]=(cv/256)%256; comps[2]=cv/65536;
    string cl[3]={"R","G","B"};
    color fill[3]={C'255,99,99',C'102,187,106',C'92,145,255'};
-   int trackX=px+PAL_PAD+30;
-   int trackW=PalW()-2*PAL_PAD-34;
+   int trackX=PalMixTrackX();
+   int trackW=PalMixTrackW();
     //--- the four rows, centred in the band the tabs leave above the HEX row
     const int PITCH=30;
     int top=PalMixTop();

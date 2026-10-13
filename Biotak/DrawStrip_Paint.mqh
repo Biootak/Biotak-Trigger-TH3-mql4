@@ -495,6 +495,18 @@ void DrawStripHomeSet(const int x, const int y)
 //--- A shrunk window must never strand the home off-screen (E-05: no dead zone).
 //--- While the strip is open this is ALL a zoom or a scroll still owes the plate:
 //--- window arithmetic, zero projections, and a paint only if it really moved.
+//---
+//--- P-UI-144 (2026-10-13): AND THE HOME ITSELF IS NO LONGER TOUCHED HERE. This
+//--- clamp used to write the clamped pair back into the home («what was placed
+//--- (or clamped) IS the home», below), which is the P-UI-131e ratchet said in
+//--- fractions: a window that came back smaller moved the STORED place inward,
+//--- and the plate never returned to the hand's spot when the window grew back
+//--- again — the same defect class the orb and the chip were fixed for in
+//--- P-UI-140, and the one docs/th3-ui-placement.md still owes the strip. The
+//--- home is the hand's place (a fresh placement or a drag release); the LIVE
+//--- pair is its derivation and is clamped here so the plate always paints
+//--- inside the window. Contract §4: the value that paints (clamped) is never
+//--- the value stored.
 void DrawStripHomeClamp()
 {
    if(!s_dsOpen || s_dsHomeX < 0) return;
@@ -505,10 +517,8 @@ void DrawStripHomeClamp()
    if(ny > ch - s_dsH - 4) ny = ch - s_dsH - 4;
    if(nx < 4) nx = 4;
    if(ny < 4) ny = 4;
-   if(nx == s_dsHomeX && ny == s_dsHomeY) return;
-   s_dsHomeX = nx; s_dsHomeY = ny;
-   if(nx == s_dsX && ny == s_dsY) return;
-   s_dsX = nx; s_dsY = ny;
+   if(nx == s_dsX && ny == s_dsY) return;   // the plate is already where the clamp wants it
+   s_dsX = nx; s_dsY = ny;                  // the live pair follows; the home does not
    DrawStripLayout();
    DrawStripPaint();
 }
@@ -638,18 +648,41 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    s_dsPinned = keepPin;
    s_dsN = DrawStripQuickCount(k);
    DrawStripLayout();
-   int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0); if(cw <= 0) cw = 1920;
-   int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0); if(ch <= 0) ch = 1080;
+   //--- P-UI-157 (2026-10-13): the placement is measured in the LIVE window, and a
+   //--- FRESH home is written only from a window that was really measured. The
+   //--- 1920x1080 substitution below is kept for PAINTING — a frame must paint — but it
+   //--- is never a denominator: a home measured in that window is a fraction of a box
+   //--- the pixels did not come from, which is the creep P-UI-140/P-UI-142 ended for
+   //--- the orb and the chip. This is the strip's half of the same law, and it was the
+   //--- one still live: `gvariables.dat` moved STRIP_FX 0.296806 -> 0.606828 -> 0.504956
+   //--- across two attach cycles on 2026-10-13 while the orb's and the chip's X
+   //--- recovered (their reader was fixed in P-UI-156; the strip had no reader).
+   int cw = 0, ch = 0;
+   const bool dsBox = HomeChartSizeRaw(cw, ch);
+   if(!dsBox) { cw = 1920; ch = 1080; }   // paint-time only — never a stored denominator
    // P-DRAW-41 (2026-09-25): the HOME is the placement, and the first open on a
    // chart is the only one without one — it measures the drawing through the
    // P-DRAW-20 placer once (the drawing's own corner, never the cursor under the
    // hand) and that answer becomes the home for every open after it.
-   if(!DrawStripHomeGet(s_dsX, s_dsY)) DrawStripPlaceFresh(name, mx, my, s_dsX, s_dsY);
+   // P-UI-144 (2026-10-13): and the home is written ONLY here, on that fresh
+   // placement. The clamps below keep the plate inside the window, but a clamped
+   // pair saved back as the home is the P-UI-131e ratchet in fractions — one
+   // small window then moves the stored place for good and the plate never comes
+   // back to the hand's spot. The orb and the chip follow the same law since
+   // P-UI-140 (docs/th3-ui-placement.md); this is that contract kept for the strip.
+   const bool dsFreshHome = !DrawStripHomeGet(s_dsX, s_dsY);
+   if(dsFreshHome) DrawStripPlaceFresh(name, mx, my, s_dsX, s_dsY);
    if(s_dsX < 4) s_dsX = 4;
    if(s_dsY < 4) s_dsY = 4;
    if(s_dsX > cw - s_dsW - 4) s_dsX = cw - s_dsW - 4;
    if(s_dsY > ch - s_dsH - 4) s_dsY = ch - s_dsH - 4;
-   DrawStripHomeSet(s_dsX, s_dsY);   // P-DRAW-41: what was placed (or clamped) IS the home
+   //--- P-DRAW-41 + P-UI-157/158: what a FRESH placement measured IS the home — but only
+   //--- when the window it measured in is the one the fraction will be divided by. With no
+   //--- measured box the plate still paints here; it just keeps no home, so the first open
+   //--- that CAN measure one is the one that stores it. The write is the HAND's door: a
+   //--- first measurement is a new answer like a release is, and P-UI-158 lets nothing else
+   //--- through — which is why a later re-open (a derivation) can never move it.
+   if(dsFreshHome && dsBox) { DrawStripHomeSet(s_dsX, s_dsY); GVHomeSaveFracHand("STRIP", s_dsX, s_dsY); }
    if(k == DK_RECT) BoxMidSync(name);   // P-DRAW-21: the drag/zoom ride moves the mid too
    FibPenSync(name, false);   // P-DRAW-74b: an open re-converges the pair with the drawing
    DrawStripPaint();

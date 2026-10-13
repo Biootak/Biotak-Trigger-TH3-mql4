@@ -931,6 +931,22 @@ bool DrawStripGearGroupTap(const int gid)
    DrawStripGearDiagDump();
    return true;
 }
+//--- P-UI-146 (2026-10-13) — THE RESTORE'S ONE DOOR. The saved gear tab is
+//--- re-opened by the SAME sequence a group tap runs (set the group, keep or
+//--- drop its collapse, layout, paint, dump) — defined HERE, in the strip's own
+//--- tap owner, because a repaint from outside the strip is a REQUEST the
+//--- bridge spends (P-PAL-19f/P-PAL-20): the restore asks the strip to restore
+//--- itself, it never paints someone else's surface. Called once, on the first
+//--- tick after a fresh attach, by `DrawStripStateRestore` (BiotakPanels_Life).
+void DrawStripGearRestoreTab(const int gid, const bool collapsed)
+{
+   if(!s_dsOpen || gid <= 0) return;
+   s_dsGear = gid;
+   s_dsGearCollapsed = collapsed;
+   DrawStripLayout();
+   DrawStripPaint();
+   DrawStripGearDiagDump();
+}
 //--- gear edits (ENDEDIT): hex colour, level add, caption. Invalid input keeps
 //--- the typed text for another try (paint re-seeds a field only while it is NOT
 //--- the focus, so an unparsable half-word is never overwritten under the hand).
@@ -1033,7 +1049,7 @@ bool DrawStripGearGripAt(const int mx, const int my)
       my <= s_dsGEY + s_dsGearHeadY + DSTRIP_GEAR_HEAD_H &&
       // P-DRAW-36: the handle spans the head's own width (s_dsGearW0) minus the
       // close button's corner — the same corner rule, measured off the plate.
-      mx >= hx && mx <= hx + s_dsGearW0 - DSTRIP_GEAR_PAD - 26 - DSTRIP_GEAR_PAD) return true;
+      mx >= hx && mx <= hx + s_dsGearW0 - DSTRIP_GEAR_PAD - DSTRIP_GEAR_XW - DSTRIP_GEAR_PAD) return true;
    return false;
 }
 //--- P-DRAW-113 (2026-10-01) — THE PANEL'S OWN PLATE IS NOT THE CHART, EVEN WHERE NO

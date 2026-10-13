@@ -985,7 +985,7 @@ bool DrawStripGearHeadPaint()
    dirty |= DrawStripSetInt(DrawStripGearHeadName("VB"), OBJPROP_FONTSIZE, PnlPt(6));
    if(ObjectFind(0, DrawStripGearHeadName("VT")) >= 0)      // the retired label
    { ObjectDelete(0, DrawStripGearHeadName("VT")); dirty = true; }
-   int closeX = gx + s_dsGearW0 - DSTRIP_GEAR_PAD - 26;
+   int closeX = gx + s_dsGearW0 - DSTRIP_GEAR_PAD - DSTRIP_GEAR_XW;
    dirty |= DrawStripBtn(DrawStripGearCloseName(), closeX, hy + 17, 26, 26,
                          DSTRIP_CLR_FOOT, DSTRIP_CLR_FOOT, DSTRIP_CLR_LINE, "", "Close settings");
    dirty |= DrawStripFace(DrawStripGearCloseSkinName(), closeX, hy + 17, 26, 26,

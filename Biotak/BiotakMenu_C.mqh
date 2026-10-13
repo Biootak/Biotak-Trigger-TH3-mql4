@@ -651,15 +651,34 @@ void UpdateCircularMenuPosition()
 //+------------------------------------------------------------------+
 void CircHomesRefresh()
 {
-   int cw = 0, ch = 0; HomeChartSize(cw, ch);
+   //--- P-UI-157 (2026-10-13) — THE GATE MUST BE THE READER'S OWN MEASURE.
+   //--- This is the ONE pass that turns a stored fraction back into a place, and its
+   //--- change gate read a DIFFERENT number than its own reader did: `HomeChartSize`
+   //--- substitutes 1920x1080 for a box the terminal reports as 0 (which it does at
+   //--- attach and during a CHART_CHANGE), while `GVHomeFracRead` asks
+   //--- `HomeChartSizeRaw` and REFUSES that same box. So the gate could record a box the
+   //--- read then refused — and once the recorded pair equalled a later real box, the
+   //--- early return fired for the rest of the session and the home was NEVER applied.
+   //--- The orb then kept whatever `LoadUIPlaces` had seeded (the chart CENTRE, because
+   //--- that same unmeasurable box sent it to `CircDefaultMenuPos`) — the report's
+   //--- «جایی دیگه باز میشه», and non-deterministic because it depended only on the
+   //--- order of the first two timer ticks.
+   //--- Asking the SAME question twice is the fix: no measurable box, no derivation AND
+   //--- nothing remembered, so the first real box always counts as a change.
+   int cw = 0, ch = 0;
+   if(!HomeChartSizeRaw(cw, ch)) return;
    static int s_cw = 0, s_ch = 0;
    if(cw == s_cw && ch == s_ch) return;
    s_cw = cw; s_ch = ch;
    int x = 0, y = 0;
    if(!g_OrbDragging && GVHomeFracRead("ORB", x, y))
    {
-      CircOrbHomeSet(x, y);                              // the home is the truth
-      if(g_UI.menuVisible) UpdateCircularMenuPosition();  // ...and the pair follows it
+      CircOrbHomeSet(x, y);            // the home is the truth
+      //--- P-UI-157: and the ORB follows it. This used to run only `if(g_UI.menuVisible)`,
+      //--- so with the ring SHUT — the normal state — the home was updated in memory and
+      //--- the orb object was left wherever the seed put it. `UpdateCircularMenuPosition`
+      //--- moves the orb itself unconditionally and walks the ring only when it is open.
+      UpdateCircularMenuPosition();
    }
    if(!CircTipDragging() && GVHomeFracRead("CHIP", x, y))
    {
@@ -761,6 +780,7 @@ void CircReapStaleRingClaims()
    // a press that already reaps; the steady state pays nothing.
    if(g_OrbMoved || g_OrbWasDragged)
    {
+      GVHomeAnswerNew("ORB");   // P-UI-158: the hand's own answer — the one write the store takes
       CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates();
       g_OrbMoved = false;   // consumed (WasDragged stays the click-eater's own)
    }
@@ -937,6 +957,7 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       // click that ate `g_OrbWasDragged` can no longer cost the user their drag.
       if(g_OrbMoved)
       {
+         GVHomeAnswerNew("ORB");   // P-UI-158: the release is the hand's answer
          CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); g_OrbMoved = false;
       }
       // The mode was FROZEN for the whole drag (rebuilding geometry under the

@@ -788,6 +788,30 @@ string GestureTakeWhy() { return g_gestureTakeWhy; }
 //--- Returns TRUE when the caller should print one line (the caller owns the flushed
 //--- channel: the arbiter is compiled before it). Bounded by design: a press, a move
 //--- while the button is down or the heartbeat is live, a foreign drag, a foreign create.
+//--- P-PERF-40 (2026-10-13) — THE CENSUS'S BOUND IS ON EVENTS, NEVER ON RATE.
+//--- MEASURED on the live journal, 2026-10-13: one day held 22,281 lines and 17,547 of
+//--- them (79%) were `[gest]` — at up to 160 lines in ONE SECOND and 634 in ten. The
+//--- note above says «bounded by design: a press, a move while the button is down or the
+//--- heartbeat is live, a foreign drag, a foreign create», and that bound is on WHICH
+//--- events pass, not on HOW MANY per second. A press therefore arms a window in which
+//--- EVERY mouse-move of the next three seconds prints — and each of those lines is not
+//--- cheap: `DrawStripDiagEmit` is a `Print()` (a journal write) PLUS a `FileWrite` +
+//--- `FileFlush` on the per-chart diag file (`DrawStrip_Base.mqh:37`), on the chart
+//--- thread, during the user's own gesture.
+//--- This project already ruled on exactly that cost (BuildConfig.mqh:28-36, P-LOG-3:
+//--- «MT4's Print() is a file write with a flush, so on the weakest machine this is pure
+//--- cost for a log nobody reads in production»), and round 1's own diag frame was
+//--- unreadable for the same reason («176 of 186 lines are [gest]»). So the census keeps
+//--- its standing rule — `DSTRIP_DIAG` stays 1 (contract.md:321) — and gains a RATE
+//--- bound instead.
+//--- The census answers an ORDER question: does a native draw speak at all, and does it
+//--- arrive BEFORE or AFTER our first write? Every EDGE still prints unconditionally — a
+//--- foreign drag, a foreign create, and the press — and so does the first move after a
+//--- gap. Only the repeated moves inside a live window are coalesced, to 10 Hz.
+#define GEST_CENSUS_MIN_MS 100
+static uint g_gestCensusMs = 0;
+static bool g_gestCensusDown = false;
+
 bool GestureCensusWanted(const int id, const string sparam)
 {
    int st = (int)StringToInteger(sparam);
@@ -795,6 +819,9 @@ bool GestureCensusWanted(const int id, const string sparam)
    //--- Every event passes through here, so the press is stamped HERE (the caller stays
    //--- flat, and a stamp is state this arbiter already owns).
    if(down && id == CHARTEVENT_MOUSE_MOVE) g_gesturePressMs = GetTickCount();
+   //--- EDGES ARE NEVER COALESCED. A foreign drag or create IS the P-UI-142 discriminator,
+   //--- and the order it arrives in is the whole measurement — so it is answered before
+   //--- any rate is considered.
    if(id == CHARTEVENT_OBJECT_DRAG || id == CHARTEVENT_OBJECT_CREATE) return true;
    if(id != CHARTEVENT_MOUSE_MOVE) return false;
    //--- P-UI-143: a move that arrives with NO button down is the only shape a native
@@ -802,8 +829,27 @@ bool GestureCensusWanted(const int id, const string sparam)
    //--- asymmetry is the whole basis of the free discriminator — so it is printed too,
    //--- for as long as a press could still belong to it (three seconds: the longest
    //--- deliberate stroke a hand makes before the terminal reports anything).
-   return (down || GestureGrabBlocked()
-           || (st == 0 && g_gesturePressMs != 0 && TickDeadlinePending(g_gesturePressMs + 3000)));
+   bool wanted = (down || GestureGrabBlocked()
+                  || (st == 0 && g_gesturePressMs != 0 && TickDeadlinePending(g_gesturePressMs + 3000)));
+   if(!wanted)
+   {
+      g_gestCensusDown = false;   // a refusal ends the stroke, so the next press is an edge
+      return false;
+   }
+   //--- P-PERF-40: the press edge and the first move after a gap always print; the
+   //--- repeated moves inside the window are coalesced. `g_gestCensusDown` is the edge
+   //--- detector, and every refusal above clears it, so a stale `true` can never swallow
+   //--- the next press. `g_gestCensusMs` is only advanced when a line IS printed, which
+   //--- is what makes "the first move after a gap" fall out for free.
+   uint now = GetTickCount();
+   bool pressEdge = (down && !g_gestCensusDown);
+   g_gestCensusDown = down;
+   if(pressEdge || (now - g_gestCensusMs) >= GEST_CENSUS_MIN_MS)
+   {
+      g_gestCensusMs = now;
+      return true;
+   }
+   return false;
 }
 
 #ifndef BUILD_LITE

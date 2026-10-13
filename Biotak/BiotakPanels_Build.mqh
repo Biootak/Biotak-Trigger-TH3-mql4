@@ -972,6 +972,10 @@ void PnlDestroy(const int item)
    // drawer share ONE spelling (the gate asserts it). Cost is ONE terminal scan
    // per card teardown instead of ~450 ObjectDelete calls.
    ObjectsDeleteAll(0, head, -1, -1);
+   // P-UI-145: the seats this card taught the registry die with it, so the
+   // registry cannot fill with dead names and a future card's paint is the only
+   // teacher of its own seats.
+   PnlSeatForget(head);
    // P-PERF-47: AND THAT ONE WIPE IS THE WHOLE TEARDOWN.
    //
    // This function used to follow the wipe with a SECOND full-chart prefix scan
@@ -1391,7 +1395,7 @@ void ChartPointerFinalizeOnUps()
      if(s_palMoveArmed) PalMoveDisarm();   // spot already parked on the proven move
      //--- mirror the move-path release: the travelled spot becomes home (saved),
      //--- the release click is spent, and the frozen layout may re-derive.
-     if(orbDragged) { CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); UISuppressNextClick(); }
+     if(orbDragged) { GVHomeAnswerNew("ORB"); CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); UISuppressNextClick(); }
      if(orbLive) SubRelayoutIfNeeded();
      ChartScrollReconcile();
 }

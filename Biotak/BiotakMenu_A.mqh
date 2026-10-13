@@ -766,6 +766,20 @@ void LoadUIPlaces()
    //--- fractional home needs no such test, because (0.5,0.5) IS every centre.
    if(haveOrbHome && !orbHadFrac && ohx == defX && ohy == defY) haveOrbHome = false;
    if(haveOrbHome) CircOrbHomeSet(ohx, ohy);     // the home outlives the SESSION, not the reset
+   //--- P-UI-157/158 — A HOME THE WINDOW IS TOO YOUNG TO RESOLVE IS STILL A PLACE, and
+   //--- `GVHomeFracSeed` (BiotakHomes) is its ONE owner for all three surfaces.
+   //--- `GVHomeLoadFrac` refuses to derive pixels without a measured box (P-UI-156) and at
+   //--- `OnInit` the terminal routinely reports 0 — so a stored fraction came back as «no
+   //--- home» and the surface was seeded at a DEFAULT: the orb and the chip at the chart's
+   //--- CENTRE. The first 250 ms pass then corrected it, which is the visible JUMP the
+   //--- report describes, and whether it happened at all depended on which timer tick
+   //--- first saw a real box. The seed is the same place said RELATIVELY, so the FIRST
+   //--- paint already lands in the right spot and the refresh has nothing left to correct.
+   //--- A SEED, never a home: `CircOrbHomeSet`/`CircTipHomeSet` are deliberately NOT called
+   //--- with it, and the store refuses every automatic write (P-UI-158) — so a pair
+   //--- measured in the fallback window can never be persisted.
+   if(!haveOrbHome && orbHadFrac && GVHomeFracSeed("ORB", ohx, ohy))
+      haveOrbHome = true;      // "there are pixels to paint", NOT "there is a home"
    g_UI.menuX = haveOrbHome ? ohx : defX;
    g_UI.menuY = haveOrbHome ? ohy : defY;
    //--- P-DRAW-41: THE STRIP'S HOME — the plate comes back where it was left, instead of
@@ -773,12 +787,17 @@ void LoadUIPlaces()
    //--- the user's own work). Absent key = no home: the first open measures one.
    //--- P-UI-142: fractional like the orb and the chip (pixel keys migrate once, on read).
    int hx = -1, hy = -1;
-   GVHomeLoadFrac("STRIP", "HOME", hx, hy);
+   if(!GVHomeLoadFrac("STRIP", "HOME", hx, hy)) GVHomeFracSeed("STRIP", hx, hy);
    DrawStripHomeSet(hx, hy);
    //--- P-UI-126: the chip's own place. An absent pair means the hand has never placed it —
    //--- a state, not a reset: a fresh chart starts in hover mode with no place of its own.
+   //--- P-UI-158: and it takes the SAME seed as the orb. The chip was the one surface the
+   //--- orb's P-UI-157 seed missed, so at every attach it painted at the chart's middle and
+   //--- the first 250 ms pass jumped it to its real home — the report's «هنوز جابجا میشه»,
+   //--- seen on the chip alone because the orb had already been seeded.
    int tx = -1, ty = -1;
-   if(GVHomeLoadFrac("CHIP", "TIP", tx, ty)) CircTipHomeSet(tx, ty);
+   if(!GVHomeLoadFrac("CHIP", "TIP", tx, ty)) GVHomeFracSeed("CHIP", tx, ty);
+   CircTipHomeSet(tx, ty);
 }
 
 void LoadUIState()
@@ -885,6 +904,16 @@ void InitializeUIStates()
    // while g_ToolsOpen resets to false, leaving an orphan panel that no longer
    // answers anything. One sweep, once per init.
    ObjectsDeleteAll(0, g_UI.btnPrefix + "Sub");
+   // P-UI-144: THE GHOST SWEEP — the same orphan class one level up: objects this
+   // family painted in a PREVIOUS session carry that session's chart id in their
+   // name (measured: `BiotakMenuV2_134342075006101685_CircOrbBg` sitting in
+   // `profiles/default/chart03.chr` at x=70,y=79). MT4 restores them at their
+   // stale absolute pixels on every restart/reopen, and no purge below can see
+   // them because each one only knows the LIVE prefix. Our own family was
+   // already deleted by the paired teardown (or never existed), so one prefix
+   // walk here removes exactly the foreign spellings. Same shape, same owner
+   // law as `DrawStripSweepStale` beside it in the entry's OnInit.
+   BiotakMenuGhostSweep();
 
    bool versionOk = false;
    if(GlobalVariableCheck(GetGVName("VER")))
@@ -987,6 +1016,15 @@ void SaveUIStates(const bool flushNow = false)
       { if(haveTipHome) GVHomeSaveFrac("CHIP", thx, thy); uiChanged++; }
    if(haveBox && GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 10, haveTipHome ? HomeFracOf(thy, hch) : -1.0))
       { if(haveTipHome) GVHomeSaveFrac("CHIP", thx, thy); uiChanged++; }
+   //--- P-UI-158 — THE CLAIM IS SPENT ONLY WHERE IT COULD HAVE BEEN HONOURED. Every home
+   //--- slot above asks `GVHomeSaveFrac`, and that door writes ONLY for a pending answer
+   //--- (P-UI-158); a claim that reached no write is spent here, so it can never authorise
+   //--- a LATER save — a resize, a TF switch, the teardown — to store a DERIVED pair. That
+   //--- is precisely the creep this block ends. Guarded by `haveBox`, because a pass with
+   //--- no measurable window never reached the slots at all: a hand's drag made while the
+   //--- terminal reports no box must survive to the first save that CAN measure one, or the
+   //--- user's own answer would be dropped instead of stored.
+   if(haveBox) GVHomeAnswerClear();
    if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 11, g_UI.tipPin ? 1.0 : 0.0))
       { GlobalVariableSet(GetGVName("TIPPIN"), g_UI.tipPin ? 1.0 : 0.0); uiChanged++; }
    // P-PERF-44 (3): report BEFORE the early return. A skip count that survives a
