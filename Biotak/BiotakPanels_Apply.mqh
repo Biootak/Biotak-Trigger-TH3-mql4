@@ -252,11 +252,41 @@ double PnlDefValSet(const int item,const int row)
                if(row==9)  return PnlDefValSet(2, 13);   // CARD MARGIN
                if(row==10) return PnlDefValSet(3, 4);    // TH MARGIN
                if(row==11) return PnlDefValSet(2, 10);   // TRADE ROW GAP
-               if(row==12) return PnlDefValSet(2, 11);   // TRADE SIZE
-               if(row==13) return PnlDefValSet(2, 12);   // STAMP GAP
-               return 0;                        // row 14 = NAV (a door resets nothing)
-  }
-  return 0;
+                if(row==12) return PnlDefValSet(2, 11);   // TRADE SIZE
+                if(row==13) return PnlDefValSet(2, 12);   // STAMP GAP
+                return 0;                        // row 14 = NAV (a door resets nothing)
+      // P-SESS: the overview's factory look and the editor's per-slot factory
+      // preset. No FF_ addresses: these globals seed in Runtime_A, so the reset
+      // returns the same numbers those seeds carry (one owner each — literal
+      // here, and the literal is asserted against the seed by the P-SESS gate).
+      case 15: if(row==0) return 0.0;                 // master OFF, as shipped
+               if(row==1) return 5;                   // g_sessHistDays seed
+               if(row==2) return 1;                   // g_sessFutDays seed
+               if(row==3) return 1.0;                 // H/L LINES on
+               if(row==4) return 1.0;                 // LINE LABELS on
+               if(row==5) return 1.0;                 // RANGE TEXT on
+               if(row==6) return 0.0;                 // PRIOR DAY off
+               if(row==7) return 1.0;                 // OVERLAP on
+               if(row==8) return 1.0;                 // COUNTDOWN on
+               if(row==9) return 0.0;                 // ALERTS off
+               return 0;                              // row 10 = NAV
+      case 16: {                                      // the selected slot's factory preset
+               SessSlot fdef; SessSlotFactory(g_sessSlotsEdit, fdef);
+               if(row==0) return (double)g_sessSlotsEdit;      // the pick itself
+               if(row==1) return (double)g_sessSlotsEdit;      // preset name mirrors it
+               if(row==2) return (double)fdef.zone;
+               if(row==3) return (double)(fdef.customMin / 60);
+               if(row==4) return (double)(fdef.startMin / 60);
+               if(row==5) return (double)(fdef.startMin % 60);
+               if(row==6) return (double)(fdef.endMin / 60);
+               if(row==7) return (double)(fdef.endMin % 60);
+               if(row==8) return (double)fdef.days;
+               if(row==9) return (double)fdef.col;
+               if(row==10) return (double)fdef.style;
+               if(row==11) return fdef.enabled ? 1.0 : 0.0;
+               return 0; }                            // row 12 = NAV
+   }
+   return 0;
 }
 
 //+------------------------------------------------------------------+
@@ -308,6 +338,11 @@ bool PnlSettingIsMuteGated(const int item,const int row)
    if(item==3)  return (row==0);              // TH LABELS (the family's master)
    if(item==7)  return (row==1);              // SHOW LINES (same switch, other card)
    if(item==11) return (row>=1 && row<=6);    // SHOW STRUCTURE + L1..L5
+   // P-SESS: the Sessions master is its family's top and its painter spells
+   // `g_sessMaster && !IsIndicatorHidden()` (SessionsTick) — the switch gates,
+   // every family row below it (lines/labels/range/prior/overlap/countdown) is
+   // a PIECE of that one picture and stays ungated.
+   if(item==15) return (row==0);
    return false;
 }
 
@@ -458,11 +493,41 @@ double PnlCurrentSet(const int item,const int row)
                if(row==9)  return PnlCurrentSet(2, 13);   // CARD MARGIN
                if(row==10) return PnlCurrentSet(3, 4);    // TH MARGIN
                if(row==11) return PnlCurrentSet(2, 10);   // TRADE ROW GAP
-               if(row==12) return PnlCurrentSet(2, 11);   // TRADE SIZE
-               if(row==13) return PnlCurrentSet(2, 12);   // STAMP GAP
-               return 0;                        // row 14 = NAV
-  }
-  return 0;
+                if(row==12) return PnlCurrentSet(2, 11);   // TRADE SIZE
+                if(row==13) return PnlCurrentSet(2, 12);   // STAMP GAP
+                return 0;                        // row 14 = NAV
+       // P-SESS: the overview reads the g_sess* mirrors the renderer itself
+       // reads (one owner — the switch and the picture cannot disagree), and
+       // the editor reads the SELECTED slot's decode. The slot pick is view
+       // state (g_sessSlotsEdit), never persisted.
+       case 15: if(row==0) return PnlMuteGatedValue(g_sessMaster);
+                if(row==1) return g_sessHistDays;
+                if(row==2) return g_sessFutDays;
+                if(row==3) return g_sessHlLines ? 1.0 : 0.0;
+                if(row==4) return g_sessHlLabels ? 1.0 : 0.0;
+                if(row==5) return g_sessRangeText ? 1.0 : 0.0;
+                if(row==6) return g_sessPrior ? 1.0 : 0.0;
+                if(row==7) return g_sessOverlap ? 1.0 : 0.0;
+                if(row==8) return g_sessCountdown ? 1.0 : 0.0;
+                if(row==9) return g_sessAlerts ? 1.0 : 0.0;
+                return 0;                        // row 10 = NAV
+       case 16: {                                // decode the selected slot once
+                SessSlot cs; SessSlotGet(g_sessSlotsEdit, cs);
+                if(row==0) return (double)g_sessSlotsEdit;
+                if(row==1) return (double)g_sessSlotsEdit;   // preset name mirrors the pick
+                if(row==2) return (double)cs.zone;
+                if(row==3) return (double)(cs.customMin / 60);
+                if(row==4) return (double)(cs.startMin / 60);
+                if(row==5) return (double)(cs.startMin % 60);
+                if(row==6) return (double)(cs.endMin / 60);
+                if(row==7) return (double)(cs.endMin % 60);
+                if(row==8) return (double)cs.days;
+                if(row==9) return (double)cs.col;
+                if(row==10) return (double)cs.style;
+                if(row==11) return cs.enabled ? 1.0 : 0.0;
+                return 0; }                      // row 12 = NAV
+   }
+   return 0;
 }
 
 // (THModeFromFlags / SyncTHFlagsFromMode live in GlobalVariables.mqh — the
@@ -919,8 +984,51 @@ int PnlApplySet(const int item,const int row,const double v)
          else if(row==11) { return PnlApplySet(2, 10, v); }   // TRADE ROW GAP
          else if(row==12) { return PnlApplySet(2, 11, v); }   // TRADE SIZE
          else if(row==13) { return PnlApplySet(2, 12, v); }   // STAMP GAP
-         break;   // row 14 = NAV (PnlApplySet returns before the switch for kind 5)
-   }
+          break;   // row 14 = NAV (PnlApplySet returns before the switch for kind 5)
+       case 15:  // P-SESS — SESSIONS. Every row here is a g_sess* mirror the
+                 // renderer's own pump reads; the picture is NOT the chart
+                 // render's (SessionsTick owns it, wipes and repaints from the
+                 // mirrors), so the flags stay REFRESH_NONE and the write is
+                 // answered by one tick + the OV_ block. The master (row 0) is
+                 // mute-gated: while F is held the generic path above already
+                 // released the mute and this line stores the family ON.
+          if(row==0)       { g_sessMaster = (v>0.5); }
+          else if(row==1)  { g_sessHistDays = ClampSettingInt((int)MathRound(v),0,SESS_HIST_MAX); }
+          else if(row==2)  { g_sessFutDays  = ClampSettingInt((int)MathRound(v),0,SESS_FUT_MAX); }
+          else if(row==3)  { g_sessHlLines  = (v>0.5); }
+          else if(row==4)  { g_sessHlLabels = (v>0.5); }
+          else if(row==5)  { g_sessRangeText= (v>0.5); }
+          else if(row==6)  { g_sessPrior    = (v>0.5); }
+          else if(row==7)  { g_sessOverlap  = (v>0.5); }
+          else if(row==8)  { g_sessCountdown= (v>0.5); }
+          else if(row==9)  { g_sessAlerts   = (v>0.5); }
+          RuntimeSettingsSaveOverridesThrottled();   // OV_SSON/SSHD/.../SSAL
+          SessionsTick();                            // paint now, not next tick
+          break;
+       case 16: { // P-SESS — SESSION EDITOR. One slot at a time: decode, change
+                  // the ONE field the row owns, encode. Row 0 is not a slot field
+                  // at all — it is the editor's pick (view state), and the pick
+                  // is answered by the caller's rebuild, not by this store.
+          SessSlot cs; SessSlotGet(g_sessSlotsEdit, cs);
+          if(row==0)       { g_sessSlotsEdit = ClampInt((int)MathRound(v),0,SESS_SLOTS-1); }
+          else if(row==1)  { SessSlotFactory(ClampInt((int)MathRound(v),0,SESS_SLOTS-1), cs); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==2)  { cs.zone = ClampInt((int)MathRound(v),0,SZ_CUSTOM); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==3)  { cs.customMin = ClampSettingInt((int)MathRound(v)*60,SESS_CUSTOM_OFF_LO,SESS_CUSTOM_OFF_HI); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==4)  { cs.startMin = ClampInt((int)MathRound(v),0,23)*60 + (cs.startMin%60); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==5)  { cs.startMin = (cs.startMin/60)*60 + ClampInt((int)MathRound(v),0,55); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==6)  { cs.endMin   = ClampInt((int)MathRound(v),0,23)*60 + (cs.endMin%60); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==7)  { cs.endMin   = (cs.endMin/60)*60 + ClampInt((int)MathRound(v),0,55); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==8)  { cs.days = ((int)MathRound(v)) & 127; SessSlotSet(g_sessSlotsEdit, cs); }   // 7 bits, weekend included (the codec packs 0x7F)
+          else if(row==9)  { cs.col = ClampInt((int)MathRound(v),0,7); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==10) { cs.style = ClampInt((int)MathRound(v),0,2); SessSlotSet(g_sessSlotsEdit, cs); }
+          else if(row==11) { cs.enabled = (v>0.5); SessSlotSet(g_sessSlotsEdit, cs); }
+          if(row!=0)                                 // the pick changed nothing painted
+          {
+             RuntimeSettingsSaveOverridesThrottled();   // OV_SS<n>
+             SessionsTick();
+          }
+          break; }
+    }
    if(flags!=REFRESH_NONE)
    {
       UpdateCircularItemStates();

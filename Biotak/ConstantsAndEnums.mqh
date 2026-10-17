@@ -131,6 +131,9 @@
 #define Z_MENU_BADGE    1012    // item badge bodies + captions
 #define Z_MENU_BADGE_TX 1013    // badge ink
 #define Z_MENU_PAGER    1014    // grid pager
+#define Z_MENU_STAR     1015    // P-UI-161: the membership star — a distinct rung ABOVE
+                                // the badge (never a tie broken by birth order), so the
+                                // star's 16px corner box always owns its own click
 #define Z_MENU_ORB      1200    // the TRex orb (was 2000 — ABOVE the card)
 #define Z_MENU_TIP_BG   1300    // hover tip body
 #define Z_MENU_TIP      1302    // hover tip caption/header
@@ -591,7 +594,7 @@ enum ENUM_COMBO_OPERATION {
 //|                                                                  |
 //| TWO INDEPENDENT MODES - Simplified and user-friendly             |
 //|                                                                  |
-//| PRESET: Quick select from the 8 ready-to-use combinations        |
+//| PRESET: Quick select from the 9 ready-to-use combinations        |
 //|   Uses: inpComboPreset                                           |
 //|                                                                  |
 //| ADVANCED: Manual control - two components (TF + Step each) and   |
@@ -615,17 +618,18 @@ enum ENUM_COMBO_TIMEFRAME_TYPE {
 };
 
 //+------------------------------------------------------------------+
-//| Step Size Type (TH, SS, LS, 4/3 ratio)                            |
+//| Step Size Type (TH, SS, LS, 4/3, 5/3 ratio)                         |
 //+------------------------------------------------------------------+
 enum ENUM_COMBO_STEP_TYPE {
     COMBO_STEP_TH = 0,          // TH: Base step (1.0  )
     COMBO_STEP_SS = 1,          // SS: Short step (1.5  )
     COMBO_STEP_LS = 2,          // LS: Long step (2.0  )
-    COMBO_STEP_RATIO_4_3 = 3    // 4/3 ratio: TH * 1.333333...
+    COMBO_STEP_RATIO_4_3 = 3,   // 4/3 ratio: TH * 1.333333...
+    COMBO_STEP_RATIO_5_3 = 4    // 5/3 ratio: TH * 1.666666...
 };
 
 //+------------------------------------------------------------------+
-//| Preset Combinations - practical daily-use set (8 presets)        |
+//| Preset Combinations - practical daily-use set (9 presets)        |
 //|                                                                  |
 //| DESIGN PRINCIPLE: keep only the commonly used combinations;      |
 //| anything else can be built with Advanced Mode.                  |
@@ -638,7 +642,8 @@ enum ENUM_COMBO_PRESET {
     COMBO_PRESET_AGGRESSIVE = 4,        // min(Trigger, Sub)
     COMBO_PRESET_TREND_FILTER = 5,      // Structure - Sub
     COMBO_PRESET_SS = 6,                 // Pattern / SS = same spacing as Short Step mode
-    COMBO_PRESET_RATIO_4_3 = 7           // Pattern / (TH * 4/3) = TH * 1.333333...
+    COMBO_PRESET_RATIO_4_3 = 7,          // Pattern / (TH * 4/3) = TH * 1.333333...
+    COMBO_PRESET_RATIO_5_3 = 8           // Pattern / (TH * 5/3) = TH * 1.666666...
 };
 
 // TH3 Label Position

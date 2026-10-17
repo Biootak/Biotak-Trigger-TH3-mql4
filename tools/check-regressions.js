@@ -64,6 +64,14 @@ const PIPE_B = path.join(BIOTAK, 'LevelPipe_B.mqh');
 const MENU_D = path.join(BIOTAK, 'BiotakMenu_D.mqh');
 const MENU_C = path.join(BIOTAK, 'BiotakMenu_C.mqh');
 const MENU_A = path.join(BIOTAK, 'BiotakMenu_A.mqh');
+const MENU_B = path.join(BIOTAK, 'BiotakMenu_B.mqh');
+const MENU_RING = path.join(BIOTAK, 'BiotakMenu_Ring.mqh');
+// P-UI-163: the per-tick refresh's home — the ring's existence probe must be
+// CALLED there (a declared healer that nobody runs is the retired-defect class).
+const KIT = path.join(BIOTAK, 'BiotakKit.mqh');
+// P-UI-161: the Z ladder's home — the star's own rung is declared beside the
+// badge's, and the rung ORDER is the click rule (highest ZORDER under the cursor).
+const CONSTANTS = path.join(BIOTAK, 'ConstantsAndEnums.mqh');
 // P-DRAW-93/94/95/96 (2026-09-30): the strip panel's own four. The layout ORDER
 // (`DrawStrip_GearA`), the gear hit test's seat (`DrawStrip_Base`), the recent tap's
 // one writer and the foot Reset's owed mid re-ink (`DrawStrip_Tap`).
@@ -101,6 +109,11 @@ const PAL_STATE = path.join(BIOTAK, 'BiotakPanels_State.mqh');
 const TOOLBAR_B = path.join(BIOTAK, 'Toolbar_B.mqh');
 const EV_INIT = path.join(BIOTAK, 'EventHandlers_Init.mqh');
 const BUILD_PS1 = path.join(ROOT, 'compile-th3.ps1');
+// P-LM-25 (2026-10-16): the leg-measure readout's two tenants — the tool half that
+// reads the composite (TH3Tool_C) and the drag's release (TH3Tool_B, the commit
+// path that must witness). The rule: the ATR is read AT THE LEG'S OWN BAR.
+const TH3TOOL_C = path.join(BIOTAK, 'TH3Tool_C.mqh');
+const TH3TOOL_B = path.join(BIOTAK, 'TH3Tool_B.mqh');
 // P-DRAW-121: the band's own COUNT. The pill's rule lives in DrawStrip_GearB and is
 // mirrored (with its flag READ out of the source) in `sim-gear-panel.band_counts`, so
 // the register can assert both halves: the rule excludes nav, and the gate says so.
@@ -4754,6 +4767,674 @@ function main() {
       failures.push('P-DRAW-128/129/130: ' + broken.join('; ') + ' (Biotak/BiotakPanels_State.mqh PaletteApplyColor + Biotak/DrawStrip_Base.mqh DrawStripPalTargetApply + Biotak/Toolbar_B.mqh DrawSlotWrite/DrawInkLearnNative)');
     } else {
       console.log('[PASS] P-DRAW-128/129/130 a hover preview writes the drawing and learns nothing (remember threads down to the slot owner), and a colour set in MT4\u2019s own surfaces teaches the kind memory through its one owner');
+    }
+  }
+
+  // -- 48. P-LM-25: the leg's ATR is read AT THE LEG'S OWN BAR -----------------
+  // MEASURED 2026-10-16: a leg drawn over history (Oct 16 12:00–12:53) printed
+  // TODAY's live ATR — H1 143 / H4 327 / D1 999, the live strip row to the digit
+  // — because `LegAtr14` called `CalculateWeightedATR` (the chart's NOW). The
+  // user: «این لگ ها که اندازه میزنم باید محاسبات atr همون زمان باشه یعنی لایو
+  // گذشته». The fix routes every read through the as-of sibling
+  // `CalculateWeightedATRAt` (P-BK-79) at `LegReadAnchor`'s bar (the LATER of the
+  // two anchors — BaseKnot's storyT rule), so a finished leg freezes the numbers
+  // it was measured with, and the commit paths flush a `[P-LM-25]` witness
+  // carrying the anchor they read at — the probe line: only the file shows WHICH
+  // bar a reported number came from.
+  {
+    const broken = [];
+    const toolC = linesOf(TH3TOOL_C);
+    if (!toolC) broken.push('Biotak/TH3Tool_C.mqh is gone');
+    else {
+      const toolCcode = codeOf(toolC);
+      // (a) the read itself: as-of, never live.
+      const atrBody = bodyOf(toolC, 'double LegAtr14(');
+      if (!atrBody) broken.push('LegAtr14() is gone — the readout has no reader');
+      else {
+        if (!/CalculateWeightedATRAt\(CompatTF\(tf\), anchor\)/.test(atrBody.text))
+          broken.push('LegAtr14 reads the LIVE composite again — a historical leg prints today\u2019s ATR (the reported defect)');
+        if (/CalculateWeightedATR\(/.test(atrBody.text))
+          broken.push('LegAtr14\u2019s body carries a live CalculateWeightedATR( call beside the as-of one');
+      }
+      // (b) the anchor rule: ONE owner, and it is "the later time".
+      const anchorBody = bodyOf(toolC, 'datetime LegReadAnchor(');
+      if (!anchorBody || !/\(t1 > t2\) \? t1 : t2/.test(anchorBody.text))
+        broken.push('LegReadAnchor is gone or is no longer the later-time rule — the readout and its witness can disagree about the anchor');
+      // (c) the owner walk reads at the same bar.
+      const ownerBody = bodyOf(toolC, 'int TH3LegOwnerTF(');
+      if (!ownerBody) broken.push('TH3LegOwnerTF() is gone — the owner TF has no walk');
+      else {
+        if (!/const datetime anchor/.test(toolC[ownerBody.at] || ''))
+          broken.push('TH3LegOwnerTF no longer takes the anchor — the owner walk judges the leg with the live ATR');
+        if (!/LegAtr14\(tf, anchor\)/.test(ownerBody.text))
+          broken.push('the owner walk calls LegAtr14 without the anchor');
+      }
+      // (d) the readout: the anchor is derived ONCE and every read carries it.
+      const readBody = bodyOf(toolC, 'void LegMeasureReadout(');
+      if (!readBody) broken.push('LegMeasureReadout() is gone — the readout has no owner');
+      else {
+        if (!/LegReadAnchor\(t1, t2\)/.test(readBody.text))
+          broken.push('LegMeasureReadout no longer derives its anchor from LegReadAnchor');
+        if (!/TH3LegOwnerTF\(legSize, anchor, trusted\)/.test(readBody.text))
+          broken.push('LegMeasureReadout calls the owner walk without the anchor');
+        const bareAtr = readBody.text.match(/LegAtr14\([^,()]+\)/g);
+        if (bareAtr)
+          broken.push(bareAtr.length + ' bare LegAtr14(...) read(s) in the readout — a live ATR beside the as-of ones');
+      }
+      // (e) the whole tool half: no live composite read remains anywhere.
+      const liveSites = (toolCcode.match(/CalculateWeightedATR\(/g) || []).length;
+      if (liveSites > 0)
+        broken.push(liveSites + ' live CalculateWeightedATR( call(s) in TH3Tool_C — the leg tool reads the chart\u2019s NOW again');
+      // (f) the witness: defined here, on the flushed channel, and it asks the
+      // SAME anchor owner the readout asked (a witness with its own arithmetic
+      // is a second grid).
+      const wit = bodyOf(toolC, 'void LegReadWitness(');
+      if (!wit) broken.push('LegReadWitness() is gone — a reported number has no anchor witness (the probe line is lost)');
+      else {
+        if (!/DrawStripDiagEmit\(/.test(wit.text))
+          broken.push('the witness does not use DrawStripDiagEmit — a Print witness waits in MT4\u2019s RAM buffer (P-DRAW-126)');
+        if (!/\[P-LM-25\]/.test(wit.text) || !/anchor=/.test(wit.text))
+          broken.push('the witness line no longer carries [P-LM-25] and anchor=');
+        if (!/LegReadAnchor\(t1, t2\)/.test(wit.text))
+          broken.push('the witness computes its own anchor — a second grid (the readout and the file can disagree)');
+      }
+    }
+    // (g) both COMMIT paths witness: a fresh draw and a drag's release. The
+    // per-move pass must NOT (a flushed line per move is a file write in the
+    // mouse stream, contract §5).
+    const drawBody = toolC ? bodyOf(toolC, 'string LegMeasureDraw(') : null;
+    if (!drawBody || !/LegReadWitness\("draw", t1, t2, legTxt, ownerTF, trusted\)/.test(drawBody.text))
+      broken.push('a fresh draw never witnesses its anchor ([P-LM-25] \u201cdraw\u201d)');
+    const toolB = linesOf(TH3TOOL_B);
+    if (!toolB) broken.push('Biotak/TH3Tool_B.mqh is gone');
+    else {
+      const endBody = bodyOf(toolB, 'void LegMeasureDragEnd(');
+      if (!endBody || !/LegReadWitness\("drag", t1, t2, txt, otf, trusted\)/.test(endBody.text))
+        broken.push('the drag\u2019s release commits without the [P-LM-25] witness — the committed anchors are unwitnessed');
+    }
+    if (broken.length) {
+      failures.push('P-LM-25: ' + broken.join('; ') + ' (Biotak/TH3Tool_C.mqh LegAtr14/LegReadAnchor/TH3LegOwnerTF/LegMeasureReadout/LegReadWitness + Biotak/TH3Tool_B.mqh LegMeasureDragEnd)');
+    } else {
+      console.log('[PASS] P-LM-25 every leg ATR is read at LegReadAnchor\u2019s bar through CalculateWeightedATRAt (never the live composite), and both commit paths flush the [P-LM-25] anchor witness');
+    }
+  }
+
+  // -- 49. P-UI-160b (2026-10-16): the F mute takes the DRAWING families too ---
+  // The report: «دکمه f که فقط زون ها رو خاموش و روشن میکنه پیس همه رو باید خاموش
+  // بکنه». MEASURED on the live chart: F darkened the level families and left the
+  // leg meter, the ABCD family, the rays and the paths standing — the cache walk
+  // cannot see them (they are not in the object cache) and their writers are
+  // action-driven, so every one of them needed a seat on the mute. This entry
+  // locks the SEATS, not the shape of the code: the hide half runs once per
+  // transition in the pass (with the four armed-session doors cancelling), the
+  // show half in one function beside it (P-SIZE-1500 sent it out of Objects),
+  // each family answers through its own owner (mask what a mask can reach, park
+  // what it cannot — the pattern/leg-meter owners live in TH3Tool_Mute.mqh), the
+  // riders carry the hidden term so no channel can re-show what the mute took,
+  // and every arming/grab door refuses while hidden. The witness
+  // ([P-UI-160b] drawings hide=… pat/lm/hr/pa) is the flushed proof both halves
+  // ran — a Print witness waits in MT4's RAM buffer (P-DRAW-126).
+  {
+    const broken = [];
+    const mute = linesOf(path.join(BIOTAK, 'TH3Tool_Mute.mqh'));
+    if (!mute) broken.push('Biotak/TH3Tool_Mute.mqh is gone — the pattern/leg-meter mute owners left the unit');
+    else {
+      const patternsHide = bodyOf(mute, 'int TH3PatternsHideAll(');
+      if (!patternsHide || !/TH3LadderSetVisible\(.*false/.test(patternsHide.text) || !/TH3InfoFamilySetVisible\(.*false/.test(patternsHide.text))
+        broken.push('TH3PatternsHideAll no longer masks the ladders and the info families');
+      const patternsShow = bodyOf(mute, 'int TH3PatternsShowAll(');
+      if (!patternsShow || !/TH3LadderSetVisible\([^;]*==\s*g_activeABCDPattern/.test(patternsShow.text))
+        broken.push('TH3PatternsShowAll lost the one-lit ladder rule (base == g_activeABCDPattern, P-TH3-P6f)');
+      const legsHide = bodyOf(mute, 'int LegMeasureHideAll(');
+      if (!legsHide || !/LegMeasureHandles\(/.test(legsHide.text) || !/LegMeasurePlateHide\(/.test(legsHide.text))
+        broken.push('LegMeasureHideAll no longer parks the icons and drops the plate');
+      const legsShow = bodyOf(mute, 'int LegMeasureShowAll(');
+      if (!legsShow || !/LegMeasureRideChart\(/.test(legsShow.text))
+        broken.push('LegMeasureShowAll no longer re-places the icons through the ride');
+    }
+    const cp = linesOf(path.join(BIOTAK, 'EventHandlers_CustomPrice.mqh'));
+    if (!cp) broken.push('Biotak/EventHandlers_CustomPrice.mqh is gone — the hide pass and the show half have no owner');
+    else {
+      const hideBody = bodyOf(cp, 'void HideAllTHObjectsPass(');
+      if (!hideBody) broken.push('HideAllTHObjectsPass is gone — the mute has no hide pass');
+      else {
+        for (const call of ['TH3PatternsHideAll()', 'LegMeasureHideAll()', 'HRayHideAll()', 'PathHideAll()'])
+          if (!hideBody.text.includes(call))
+            broken.push(`the hide pass lost ${call} — that family stays lit under the mute (the reported defect)`);
+        for (const term of ['TH3BaseMarkArmed()', 'LegMeasureSessionActive()', 'HRaySessionActive()', 'PathSessionActive()'])
+          if (!hideBody.text.includes(term))
+            broken.push(`the hide pass stopped cancelling an armed session (${term}) — a click under the mute would draw`);
+        if (!hideBody.text.includes('[P-UI-160b] drawings hide=1'))
+          broken.push('the hide half lost its flushed witness — the mute is unprovable without it');
+      }
+      const showBody = bodyOf(cp, 'void ShowAllDrawingFamilies(');
+      if (!showBody) broken.push('ShowAllDrawingFamilies is gone — F-show would leave the drawings dark');
+      else {
+        for (const call of ['TH3PatternsShowAll()', 'LegMeasureShowAll()', 'HRayShowAll()', 'PathShowAll()'])
+          if (!showBody.text.includes(call))
+            broken.push(`the show half lost ${call}`);
+        if (!showBody.text.includes('[P-UI-160b] drawings hide=0'))
+          broken.push('the show half lost its flushed witness');
+      }
+    }
+    const ob = linesOf(path.join(BIOTAK, 'EventHandlers_Objects.mqh'));
+    if (!ob) broken.push('Biotak/EventHandlers_Objects.mqh is gone');
+    else {
+      const applyBody = bodyOf(ob, 'int ApplyHideAllState(');
+      if (!applyBody || !applyBody.text.includes('ShowAllDrawingFamilies();'))
+        broken.push('the show branch stopped calling ShowAllDrawingFamilies() — F-show leaves the drawings dark');
+    }
+    // The riders carry the hidden term; every arming/grab door refuses while hidden.
+    const RIDER_SEATS = [
+      ['TH3Tool_B.mqh', 'void LegMeasureHandles('],
+      ['TH3Tool_B.mqh', 'void LegMeasureInk('],
+      ['TH3Tool_B.mqh', 'bool LegMeasureHitTest('],
+      ['TH3Tool_C.mqh', 'void LegMeasureToggle('],
+      ['TH3Tool_C.mqh', 'void TH3BaseMarkToggle('],
+      ['TH3Tool_A.mqh', 'void RepositionABCDInfoLabels('],
+      ['HRayTool.mqh', 'void HRayArm('],
+      ['HRayTool.mqh', 'void HRayHandleFollow('],
+      ['HRayTool.mqh', 'bool HRayPressHit('],
+      ['HRayTool.mqh', 'bool HRayDotHit('],
+      ['PathTool.mqh', 'void PathArm('],
+      ['PathTool.mqh', 'void PathHandleAt('],
+      ['PathTool.mqh', 'bool PathPressHit('],
+      ['PathTool.mqh', 'bool PathDotHit('],
+      ['PathTool.mqh', 'void PathMidApply('],
+      ['TH3/TH3Renderer_A.mqh', 'void TH3InfoCaptionHeal('],
+      ['TH3/TH3Renderer_B.mqh', 'void DrawABCDPattern('],
+      ['TH3/TH3Renderer_C.mqh', 'void TH3HitPivotForward('],
+      ['TH3/TH3Controller.mqh', 'void TH3SessionStart('],
+    ];
+    for (const [rel, def] of RIDER_SEATS) {
+      const src = linesOf(path.join(BIOTAK, rel));
+      if (!src) { broken.push(`Biotak/${rel} is gone`); continue; }
+      const body = bodyOf(src, def);
+      if (!body) { broken.push(`${rel}: ${def} is gone — a seat the mute answers through`); continue; }
+      if (!body.text.includes('IsIndicatorHidden()'))
+        broken.push(`${rel}: ${def.slice(5)} no longer reads IsIndicatorHidden — the mute can be bypassed`);
+    }
+    if (broken.length) {
+      failures.push('P-UI-160b: ' + broken.join('; ') + ' (Biotak/EventHandlers_CustomPrice.mqh + Biotak/TH3Tool_Mute.mqh + the drawing tools)');
+    } else {
+      console.log('[PASS] P-UI-160b the F mute takes the drawing families: both halves of the transition run (hide once, show through one owner), the four armed-session doors cancel, every rider carries the hidden term, and every arming/grab door refuses while hidden');
+    }
+  }
+
+  // -- 50. P-TH-VOLNORM-COMBO (2026-10-16): the combo components wear V ----
+  // The report: «این نرمال سازی مثل بقیه موده در مود کامبو کار نمیکنه سطوح
+  // درست نیست نگاه کن بقیه مودها رو و درستش کن». MEASURED in the sources: the
+  // TH/SS-LS ladders wear the block V (EventHandlers_Calc.mqh:550) and every TH
+  // label column wears its own rung's V (Labels_B.mqh:374/474), but the combo
+  // engine read the RAW table (ComputeComboComponentStep -> GetStepSizeForBasis*
+  // -> GetTimeframeTHForPeriod), so combo levels sat ~2x off the normalized
+  // ones. This entry locks the ONE owner (ComputeComboComponentStep) and the
+  // rule the component's V pair follows: the rung whose pct IS the component's
+  // pct (the same pair identity the label columns use — no second rung map),
+  // an extrapolated pct falling back to the nearest rung in log-span (4^k), and
+  // OFF answering 1.0 before any read (byte-identical numbers).
+  {
+    const broken = [];
+    const ce = linesOf(path.join(BIOTAK, 'ComboEngine.mqh'));
+    if (!ce) broken.push('Biotak/ComboEngine.mqh is gone — the combo step engine has no owner');
+    else {
+      const src = codeOf(ce);
+      if (!src.includes('#include "THVolNorm.mqh"'))
+        broken.push('ComboEngine stopped including THVolNorm.mqh — the V owner leaves the unit');
+      const volNorm = bodyOf(ce, 'double ComboComponentVolNorm(');
+      if (!volNorm) broken.push('ComboComponentVolNorm is gone — a combo component cannot wear its rung\'s V');
+      else {
+        if (!volNorm.text.includes('if(!inpTHVolNorm || !(pct > 0.0)) return 1.0;'))
+          broken.push('ComboComponentVolNorm lost its OFF/first guard — OFF must answer 1.0 before any read');
+        if (!/MathAbs\(rp - pct\)/.test(volNorm.text) || !volNorm.text.includes('FractalPercentScaled(r)'))
+          broken.push('ComboComponentVolNorm no longer matches the rung by the pct the step used (a second rung map would drift)');
+        if (!volNorm.text.includes('THVolNormTFForFractalRung(idx)') || !volNorm.text.includes('THVolNormDrawnV(inpTHVolNorm'))
+          broken.push('ComboComponentVolNorm stopped reading the pair through THVolNormTFForFractalRung + THVolNormDrawnV (the label columns\' own identity)');
+      }
+      const comp = bodyOf(ce, 'double ComputeComboComponentStep(');
+      if (!comp) broken.push('ComputeComboComponentStep is gone');
+      else {
+        if (!comp.text.includes('ComboComponentVolNorm(thPercent)'))
+          broken.push('the extrapolated path lost its V — sub-minute/continuous combo levels are raw again (the reported defect)');
+        if (!comp.text.includes('ComboComponentVolNorm(GetTimeframeTHForPeriod(timeframe))'))
+          broken.push('the standard path lost its V — combo levels are raw again (the reported defect)');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-TH-VOLNORM-COMBO: ' + broken.join('; ') + ' (Biotak/ComboEngine.mqh)');
+    } else {
+      console.log('[PASS] P-TH-VOLNORM-COMBO the combo components wear the normalization: every component multiplies its own rung\'s V (the rung its pct IS, the label columns\' own pair identity; extrapolated pcts take the nearest 4^k rung), and OFF answers 1.0 before any read');
+    }
+  }
+
+  // -- 51. P-UI-161 (2026-10-17): the main ring grows by SHRINKING, and the
+  // -- membership STAR is its only door ----------------------------------------
+  // The user's model, verbatim: «خودش رینگ اصلی رو بچینه و کم و زیاد بکنه و هرچی
+  // خواست اضافه بکنه و هرچی بود به بخش تولز اونایی که نمیخوادش» + «توی همون تولز که
+  // هستش یک علامت ستاره باشه که بهتر و سریع تره». The Tools menu shows the WHOLE
+  // catalog and every cell wears a star (top-right, Z_MENU_STAR a rung ABOVE the
+  // badge — MT4 delivers a click to the highest ZORDER under the cursor, so the
+  // 16px box must own its own rung or the badge answers instead); the ring shows
+  // the starred subset in catalog order with the CIR_TOOLS door LAST (the only
+  // place a star exists must never be unreachable). Growth: S(n) holds the shipped
+  // 44 through nine seats (byte-identical), tapers 43→32 and floors at 30, the
+  // radius follows the chord law, the fit cap still rules, and excess stays in
+  // Tools with its star ON. What a green compile cannot see, and this entry
+  // locks: the mask's persistence slot (12, ledger 13), the orphan sweep (a name
+  // a PREVIOUS larger mask wrote must not survive the star that removed its
+  // seat), the star's create/move/delete seats, the click route sitting BEFORE
+  // the long-press latch, the ONE feature switch (RingFeatureClick), the seat-set
+  // freeze + CircRelayoutIfNeeded on the release/chart-change, and the FLUSHED
+  // witness (a Print witness waits in MT4's RAM buffer, P-DRAW-126).
+  {
+    const broken = [];
+    // -- the Z rung: distinct and ABOVE the badge ------------------------------
+    const constants = linesOf(CONSTANTS);
+    if (!constants) broken.push('Biotak/ConstantsAndEnums.mqh is gone — the Z ladder has no home');
+    else {
+      const constCode = codeOf(constants);
+      const starZ = Number((constCode.match(/#define\s+Z_MENU_STAR\s+(\d+)/) || [])[1]);
+      const badgeZ = Number((constCode.match(/#define\s+Z_MENU_BADGE\s+(\d+)/) || [])[1]);
+      if (!starZ) broken.push('Z_MENU_STAR is gone — the star has no rung of its own');
+      else if (!badgeZ || !(starZ > badgeZ))
+        broken.push(`Z_MENU_STAR (${starZ}) is not above Z_MENU_BADGE (${badgeZ || '?'}) — a badge and a star fight over the corner, and the badge wins the click`);
+    }
+    // -- the mask: one owner (BiotakMenu_Ring.mqh), one slot, one ledger total -
+    const menuRing = linesOf(MENU_RING);
+    if (!menuRing) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the mask has no owner');
+    else {
+      const ringCode = codeOf(menuRing);
+      if (!/#define\s+CIRC_STAR_DEFAULT\s+0xFF80\b/.test(ringCode))
+        broken.push('CIRC_STAR_DEFAULT is gone or moved — a missing key no longer restores the shipped 9-feature ring (sessions appended at bit 15, P-SESS)');
+      if (!/#define\s+CAT_SESSIONS\s+15\b/.test(ringCode) || !/#define\s+CAT_COUNT\s+16\b/.test(ringCode))
+        broken.push('the sessions catalog cell (CAT_SESSIONS 15, CAT_COUNT 16) left BiotakMenu_Ring.mqh — the ring can never seat it while the Tools menu still shows it');
+      if (!/if\(toolIdx == CAT_SESSIONS\)\s+return CIR_SESSIONS;/.test(ringCode))
+        broken.push('ToolFeature stopped mapping CAT_SESSIONS -> CIR_SESSIONS — the Tools cell opens nothing');
+      const setBody = bodyOf(menuRing, 'bool CircStarSet(');
+      if (!setBody || !setBody.text.includes('g_CircStarMask |=') || !setBody.text.includes('g_CircStarMask &='))
+        broken.push('CircStarSet lost a half — the mask\'s only writer cannot flip both ways');
+      const ringCount = bodyOf(menuRing, 'int RingCount()');
+      if (!ringCount || !ringCount.text.includes('CircStarCount() + 1'))
+        broken.push('RingCount no longer counts stars + the door — the door can fall off the ring');
+      const ringFeat = bodyOf(menuRing, 'int RingFeature(');
+      if (!ringFeat || !ringFeat.text.includes('RingCount() - 1') || !ringFeat.text.includes('CIR_TOOLS'))
+        broken.push('RingFeature lost the door-last law — an unstarred door is a menu with no way back to the stars');
+      const btnN = bodyOf(menuRing, 'int CircBtnSizeForN(');
+      if (!btnN || !btnN.text.includes('return CIRC_BTN_SIZE') || !btnN.text.includes('return CIRC_BTN_MIN'))
+        broken.push('CircBtnSizeForN lost the shipped 44 or the 30 floor — the growth law is not the one that was measured');
+      const live = bodyOf(menuRing, 'int CircPlacedCountLive()');
+      if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRadiusForN(k) <= fit') || !live.text.includes('return 9'))
+        broken.push('CircPlacedCountLive lost the fit walk — the ring can stack past the fit or drop the shipped nine');
+    }
+    // -- the persistence: slot 12 + the ledger at 13, owned by BiotakMenu_A ----
+    const menuA = linesOf(MENU_A);
+    if (!menuA) broken.push('Biotak/BiotakMenu_A.mqh is gone — SaveUIStates has no home');
+    else {
+      const saveBody = bodyOf(menuA, 'void SaveUIStates(');
+      if (!saveBody) broken.push('SaveUIStates is gone');
+      else {
+        if (!saveBody.text.includes('GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 12, (double)g_CircStarMask)'))
+          broken.push('the STAR slot (12) left SaveUIStates — every restart forgets the user\'s ring');
+        if (!saveBody.text.includes('GetGVName("STAR")'))
+          broken.push('the STAR key left SaveUIStates');
+        if (!saveBody.text.includes('GVLedgerReport(GV_BLOCK_UI, uiChanged, 13)'))
+          broken.push('the ledger total no longer counts the STAR slot — the ledger under-reports the block');
+      }
+      const loadBody = bodyOf(menuA, 'void LoadUIState()');
+      if (!loadBody || !loadBody.text.includes('GlobalVariableGet(GetGVName("STAR"))'))
+        broken.push('LoadUIState stopped reading the STAR key — the persisted ring never comes back');
+    }
+    // -- the built-seat freeze: the frozen half, its readers, the star park ----
+    const menuB = linesOf(MENU_B);
+    if (!menuB) broken.push('Biotak/BiotakMenu_B.mqh is gone — the built-seat freeze has no owner');
+    else {
+      const placed = bodyOf(menuB, 'int CircPlacedCount()');
+      if (!placed || !placed.text.includes('g_OrbDragging') || !placed.text.includes('s_circBuiltSeats'))
+        broken.push('CircPlacedCount lost the mid-drag freeze — geometry rebuilds under the hand (the SubMode rule)');
+      const btn = bodyOf(menuB, 'int CircBtnSize()');
+      if (!btn || !btn.text.includes('CircBtnSizeForN(CircPlacedCount())'))
+        broken.push('CircBtnSize no longer reads the placed count — the paint and the hit test can disagree about the side');
+      const layout = bodyOf(menuB, 'void CircLayout(');
+      if (!layout || !layout.text.includes('CircPlacedCount()') || !layout.text.includes('CircBtnSize()'))
+        broken.push('CircLayout went back to a constant side — every seat sits on the old grid while the ring shrank');
+      const park = bodyOf(menuB, 'void SubParkItem(');
+      if (!park || !park.text.includes('ToolsMoveStar('))
+        broken.push('SubParkItem no longer parks the star — a starred off-page cell leaves its star floating over the page');
+    }
+    // -- the star's lifecycle + the ring's sweep + the relayout doors ----------
+    const menuC = linesOf(MENU_C);
+    if (!menuC) broken.push('Biotak/BiotakMenu_C.mqh is gone — the star has no painter');
+    else {
+      const createStar = bodyOf(menuC, 'void ToolsCreateStar(');
+      if (!createStar || !createStar.text.includes('star_on.bmp') || !createStar.text.includes('star_off.bmp') ||
+          !createStar.text.includes('OBJPROP_ZORDER, Z_MENU_STAR'))
+        broken.push('ToolsCreateStar lost its ink or its rung — the star paints wrong or loses its click');
+      const createItem = bodyOf(menuC, 'void ToolsCreateItem(');
+      if (!createItem || !createItem.text.includes('ToolsCreateStar('))
+        broken.push('ToolsCreateItem stopped creating the star — the membership mark never appears');
+      const moveItem = bodyOf(menuC, 'void ToolsMoveItem(');
+      if (!moveItem || !moveItem.text.includes('ToolsMoveStar('))
+        broken.push('ToolsMoveItem stopped moving the star — the mark stays at the old seat while its cell moves');
+      const delTools = bodyOf(menuC, 'void DeleteToolsMenu(');
+      if (!delTools) broken.push('DeleteToolsMenu is gone');
+      else {
+        if (!delTools.text.includes('ObjectDelete(0, ToolsStar(t))'))
+          broken.push('the Tools sweep stopped deleting ToolsStar — the star survives its cell (an orphan paints beside the ring)');
+        if (!delTools.text.includes('CircPlacedCount()') || !delTools.text.includes('CircCreateItem(i)') ||
+            !delTools.text.includes('CircNoteBuilt()'))
+          broken.push('DeleteToolsMenu\'s restore no longer rebuilds the ring from the mask — a star toggled in Tools never reaches the ring');
+      }
+      const subRebuild = bodyOf(menuC, 'void SubRebuild()');
+      if (!subRebuild || !subRebuild.text.includes('ObjectDelete(0, ToolsStar(t))'))
+        broken.push('SubRebuild\'s sweep stopped deleting ToolsStar — a page reshape leaves a stale star');
+      const delRing = bodyOf(menuC, 'void DeleteRing()');
+      if (!delRing || !delRing.text.includes('RING_MAX_SEATS'))
+        broken.push('DeleteRing went back to the live count — a name a previous larger mask wrote survives the star that removed its seat');
+      const relayout = bodyOf(menuC, 'void CircRelayoutIfNeeded()');
+      if (!relayout || !relayout.text.includes('g_OrbDragging') || !relayout.text.includes('CircPlacedCountLive()') ||
+          !relayout.text.includes('DeleteRing()'))
+        broken.push('CircRelayoutIfNeeded lost its guard or its rebuild — the seat set never answers a resize or a release');
+      const cCode = codeOf(menuC);
+      if ((cCode.match(/CircRelayoutIfNeeded\(\);/g) || []).length < 2)
+        broken.push('CircRelayoutIfNeeded has fewer than two call sites in the menu unit — the release and the chart-change path are the doors it must answer');
+      const buildLines = linesOf(PANELS_BUILD);
+      if (!buildLines || !codeOf(buildLines).includes('CircRelayoutIfNeeded();'))
+        broken.push('the stationary-release finalizer lost CircRelayoutIfNeeded — a release with no movement never re-derives the seat set');
+      const starToggle = bodyOf(menuC, 'void CircStarToggle(');
+      if (!starToggle) broken.push('CircStarToggle is gone — the star has no writer');
+      else {
+        if (!starToggle.text.includes('CircStarSet(') || !starToggle.text.includes('SaveUIStates()'))
+          broken.push('CircStarToggle no longer flips+persists — a star click that forgets is the reported defect');
+        if (!starToggle.text.includes('DrawStripDiagEmit(') || !starToggle.text.includes('[P-UI-161]'))
+          broken.push('CircStarToggle lost its FLUSHED witness (DrawStripDiagEmit, P-LOG-3) — a Print witness waits in MT4\'s RAM buffer (P-DRAW-126)');
+      }
+    }
+    // -- the click route + the ONE feature switch ------------------------------
+    const menuD = linesOf(MENU_D);
+    if (!menuD) broken.push('Biotak/BiotakMenu_D.mqh is gone — the star has no route');
+    else {
+      const click = bodyOf(menuD, 'int HandleButtonClick(');
+      if (!click) broken.push('HandleButtonClick is gone');
+      else {
+        const starAt = click.text.indexOf('ToolsStar');
+        const latchAt = click.text.indexOf('g_LongPressFired');
+        if (starAt < 0 || !click.text.includes('CircStarToggle(tidx)'))
+          broken.push('the Tools section lost the star branch — a star click falls through to the cell (a long-press latch or a feature toggle)');
+        else if (latchAt >= 0 && starAt > latchAt)
+          broken.push('the star branch sits AFTER the long-press latch — a stale latch eats the star click (the badge\'s own lesson)');
+        if (!click.text.includes('RingFeatureClick(tfeat)'))
+          broken.push('the Tools feature cells stopped routing to RingFeatureClick — a second switch copy is how the two surfaces drift');
+        if (!click.text.includes('RingFeatureClick(feat)'))
+          broken.push('the ring stopped routing to RingFeatureClick');
+      }
+      const feat = bodyOf(menuD, 'int RingFeatureClick(');
+      if (!feat) broken.push('RingFeatureClick is gone — the feature switch has no ONE owner');
+      else {
+        if (!feat.text.includes('ReleaseIndicatorMute()'))
+          broken.push('RingFeatureClick lost the mute preamble — a press under the mute cannot show the family again (P-UI-93)');
+        if (feat.text.includes('CircUpdateItemState(') || feat.text.includes('ToolsUpdateItemState('))
+          broken.push('RingFeatureClick grew a tail — the caller owns the ring\'s and the Tools\' own update, and both running is the drift this split retired');
+      }
+    }
+    // -- the icon generator bakes both inks ------------------------------------
+    const iconGen = linesOf(ICON_GEN);
+    if (!iconGen) broken.push('tools/gen-th3-icons.js is gone — the star art has no baker');
+    else {
+      const g = codeOf(iconGen);
+      if (!g.includes('star_off') || !g.includes('star_on'))
+        broken.push('the icon generator lost star_off/star_on — a rebuild of the tree silently drops the star art (P-UI-131)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-161: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/B/C/D.mqh + BiotakMenu_Ring.mqh + ConstantsAndEnums.mqh + tools/gen-th3-icons.js)');
+    } else {
+      console.log('[PASS] P-UI-161 the ring grows by shrinking: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the taper floors at 30 with the fit walk and the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
+    }
+  }
+
+  // -- 52. P-SESS (2026-10-17): the Sessions menu cell -------------------------
+  // The sessions family ships cards 15/16 (held by the panel gates); THIS is the
+  // menu half: the ring/Tools cell must exist, carry the master switch it shares
+  // with the card, wear the clock, and route through the same ONE feature switch
+  // every other family uses. What a green compile cannot see and this entry
+  // locks: the identity fallback (CIR_SESSIONS=19 is ABOVE the card-number
+  // space, so FeaturePanel MUST answer 15 or the press opens no card), the light
+  // (g_sessMaster, mute-folded like the other family lights), the icon base +
+  // its #resource pair (an undeclared raster is a silent runtime no-op,
+  // P-UI-131), the click branch (state + persisted key + the render tick —
+  // exactly ONE copy, the drift this project keeps paying for), and the Tools
+  // route (the cell runs RingFeatureClick, never a second switch).
+  {
+    const broken = [];
+    const sessA = linesOf(MENU_A);
+    if (!sessA) broken.push('Biotak/BiotakMenu_A.mqh is gone — the sessions cell has no face');
+    else {
+      const aCode = codeOf(sessA);
+      if (!/#define\s+CIR_SESSIONS\s+19\b/.test(aCode))
+        broken.push('CIR_SESSIONS left BiotakMenu_A.mqh — the ring has no identity for the Sessions cell');
+      if (!/#resource\s+"\\\\Files\\\\Icons\\\\sessions_off\.bmp"/.test(aCode) ||
+          !/#resource\s+"\\\\Files\\\\Icons\\\\sessions_on\.bmp"/.test(aCode))
+        broken.push('the sessions_off/on #resource pair left BiotakMenu_A.mqh — the terminal paints nothing (a silent no-op, P-UI-131)');
+      const sessFp = bodyOf(sessA, 'int FeaturePanel(');
+      if (!sessFp || !sessFp.text.includes('if(feat == CIR_SESSIONS)') || !sessFp.text.includes('return 15;'))
+        broken.push('FeaturePanel stopped answering CIR_SESSIONS -> 15 — the identity fallback returns 19 and the press opens no card');
+      const sessOn = bodyOf(sessA, 'bool CircFeatureOn(');
+      if (!sessOn || !sessOn.text.includes('g_sessMaster'))
+        broken.push('CircFeatureOn no longer reads g_sessMaster — the light and the switch can disagree');
+      const sessLit = bodyOf(sessA, 'bool CircFeatureLit(');
+      if (!sessLit || !sessLit.text.includes('CIR_SESSIONS'))
+        broken.push('CircFeatureLit no longer folds the mute for CIR_SESSIONS — a muted sessions family stays dark after the showing press (P-UI-93)');
+      const sessRes = bodyOf(sessA, 'string CircIconRes(');
+      if (!sessRes || !sessRes.text.includes('CIR_SESSIONS') || !sessRes.text.includes('"sessions"'))
+        broken.push('CircIconRes lost the sessions base — the cell wears the fallback glyph');
+      const sessSt = bodyOf(sessA, 'string CircTooltipStatus(');
+      if (!sessSt || !sessSt.text.includes('CIR_SESSIONS'))
+        broken.push('CircTooltipStatus lost the sessions state fragment — the chip cannot say what the NEXT press does');
+    }
+    const sessD = linesOf(MENU_D);
+    if (!sessD) broken.push('Biotak/BiotakMenu_D.mqh is gone — the sessions click has no route');
+    else {
+      const dCode = codeOf(sessD);
+      if (!/tfeat == CIR_SESSIONS/.test(dCode))
+        broken.push('the Tools feature ladder stopped passing CIR_SESSIONS — the catalog cell falls through to nothing');
+      const sessFeat = bodyOf(sessD, 'int RingFeatureClick(');
+      if (!sessFeat) broken.push('RingFeatureClick is gone — the feature switch has no ONE owner');
+      else {
+        if (!sessFeat.text.includes('feat == CIR_SESSIONS') || !sessFeat.text.includes('g_sessMaster = wantOn'))
+          broken.push('RingFeatureClick lost the sessions branch — the press cannot flip the master');
+        if ((sessFeat.text.match(/g_sessMaster\s*=/g) || []).length !== 1)
+          broken.push('g_sessMaster is written more than once in RingFeatureClick — the master must have ONE writer');
+        if (!sessFeat.text.includes('RuntimeSettingsSaveOverridesThrottled()') || !sessFeat.text.includes('SessionsTick()'))
+          broken.push('the sessions branch lost its persisted key or its render tick — the master flips in RAM only');
+        if (!sessFeat.text.includes('familyToggle'))
+          broken.push('the sessions branch left the familyToggle fold — a muted press cannot show the family again (P-UI-93)');
+      }
+    }
+    const sessGen = linesOf(ICON_GEN);
+    if (!sessGen) broken.push('tools/gen-th3-icons.js is gone — the sessions art has no baker');
+    else if (!codeOf(sessGen).includes('sessions:'))
+      broken.push('the icon generator lost ART.sessions — a rebuild of the tree silently drops the clock (P-UI-131)');
+    if (broken.length) {
+      failures.push('P-SESS: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/D.mqh + BiotakMenu_Ring.mqh + tools/gen-th3-icons.js)');
+    } else {
+      console.log('[PASS] P-SESS the Sessions cell is wired end to end: identity 19 with FeaturePanel -> 15 (never the identity fallback), the light is g_sessMaster (mute-folded), the clock icon base with its #resource pair, ONE writer per fact in RingFeatureClick (state + OV_SSON + SessionsTick), and the Tools cell runs the same switch');
+    }
+  }
+
+  // -- 53. P-UI-162 (2026-10-17): the ring's art is the BOX's size --------------
+  // The user's report: «چرا اینطوری میشه این ایکون ها دیگه دایره نیست» — after
+  // P-UI-161's taper entered the teens (13 seats -> S=32), every disc read as a
+  // rounded SQUARE with a flat right edge. Measured cause: MT4 blits an
+  // OBJ_BITMAP_LABEL's BMP 1:1 from the object's top-left and CLIPS it at
+  // XSIZE/YSIZE — it never scales — while circ_off/on.bmp stayed a 52px canvas
+  // in the taper's s+2*CIRC_BG_MARGIN box: at 13 seats the box is 40px, so the
+  // disc's right and bottom arcs were cut (the face's right edge measured
+  // constant at the box boundary, x=208, for 17 rows). This entry locks the one
+  // law that closes it: for EVERY side CircBtnSizeForN can return, a
+  // circ_*_<s>.bmp exists and measures exactly s + 2*CIRC_BG_MARGIN (canvas ==
+  // box), CircBgRes resolves the painter's skin (no painter names a canvas), and
+  // the GLYPH keeps ONE size on every path — create, update and move all seat
+  // the 28px glyph canvas in a 28px box (the tapered CircIconSize() box clipped
+  // the pin's tip at 10+ seats and healed only by CircUpdateItemState's default).
+  {
+    const broken = [];
+    const ICONS = path.join(ROOT, 'Files', 'Icons');
+    const bmpWH = (p) => {
+      try {
+        const b = fs.readFileSync(p);
+        return [b.readUInt32LE(18), b.readUInt32LE(22)];
+      } catch {
+        return null;
+      }
+    };
+    // -- one list: the taper's sides and the art that must exist for them ------
+    const ringLines = linesOf(MENU_RING);
+    let sides = [];
+    if (!ringLines) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the taper and its art resolver have no home');
+    else {
+      const btnBody = bodyOf(ringLines, 'int CircBtnSizeForN(');
+      const menuALinesForMin = linesOf(MENU_A);
+      const minDef = Number((codeOf(menuALinesForMin || []).match(/#define\s+CIRC_BTN_MIN\s+(\d+)/) || [])[1]);
+      if (!btnBody) broken.push('CircBtnSizeForN is gone — the taper has no owner');
+      else {
+        const numeric = (btnBody.text.match(/return\s+\d+;/g) || []).map((m) => Number(m.match(/\d+/)[0]));
+        sides = [...new Set([...numeric, minDef])].filter((v) => Number.isFinite(v) && v > 0 && v < 44);
+        if (!sides.length) broken.push('CircBtnSizeForN no longer returns any numeric taper side below 44 — the art set cannot be derived from the one list');
+      }
+      // the canvases: one baked pair per side, at exactly s + 2*CIRC_BG_MARGIN
+      for (const s of sides) {
+        const w = s + 8;
+        for (const ink of ['on', 'off']) {
+          const wh = bmpWH(path.join(ICONS, `circ_${ink}_${s}.bmp`));
+          if (!wh) broken.push(`Files/Icons/circ_${ink}_${s}.bmp is missing — a ${s}px seat would clip the shipped 52px canvas again (the reported defect)`);
+          else if (wh[0] !== w || wh[1] !== w)
+            broken.push(`Files/Icons/circ_${ink}_${s}.bmp measures ${wh[0]}x${wh[1]}, not ${w}x${w} (side + 2*CIRC_BG_MARGIN) — canvas != box is the clip that shipped round tiles as cut squares`);
+        }
+      }
+      const shipped = bmpWH(path.join(ICONS, 'circ_on.bmp'));
+      if (!shipped || shipped[0] !== 52 || shipped[1] !== 52)
+        broken.push(`Files/Icons/circ_on.bmp measures ${shipped ? shipped[0] + 'x' + shipped[1] : 'nothing'}, not 52x52 — the nine-seat look must stay the byte-identical shipped canvas`);
+      // the resolver: a literal for every side, the 44 pair as the fallback
+      const resBody = bodyOf(ringLines, 'string CircBgRes(');
+      if (!resBody) broken.push('CircBgRes is gone — the painter has no per-side art resolver');
+      else {
+        for (const s of sides) {
+          if (!resBody.text.includes(`circ_on_${s}.bmp`) || !resBody.text.includes(`circ_off_${s}.bmp`))
+            broken.push(`CircBgRes cannot hand out the ${s}px pair — that seat falls back to a canvas its box cuts`);
+        }
+        if (!resBody.text.includes('circ_on.bmp') || !resBody.text.includes('circ_off.bmp'))
+          broken.push('CircBgRes lost the shipped 44 pair — the fallback canvas has no declaration left');
+      }
+    }
+    // -- the #resource pairs (an undeclared raster is a silent no-op, P-UI-131) -
+    const menuALines = linesOf(MENU_A);
+    if (!menuALines) broken.push('Biotak/BiotakMenu_A.mqh is gone — the art has no #resource');
+    else {
+      const aCode = codeOf(menuALines);
+      for (const s of sides) {
+        for (const ink of ['on', 'off']) {
+          if (!aCode.includes(`#resource "\\\\Files\\\\Icons\\\\circ_${ink}_${s}.bmp"`))
+            broken.push(`the circ_${ink}_${s} #resource left BiotakMenu_A.mqh — the terminal paints nothing (a silent no-op, P-UI-131)`);
+        }
+      }
+    }
+    // -- the painters read the resolver; the glyph keeps ONE size ---------------
+    const menuC = linesOf(MENU_C);
+    if (!menuC) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
+    else {
+      const create = bodyOf(menuC, 'void CircCreateItem(');
+      if (!create || !create.text.includes('CircBgRes(on)'))
+        broken.push('CircCreateItem stopped resolving its skin through CircBgRes — a fixed canvas name is the reported defect');
+      else if (!create.text.includes('CircConfigureIcon(icon, feat, on, x, y)'))
+        broken.push('CircCreateItem no longer seats the glyph at CIRC_ICON_SIZE (no size argument)');
+      const update = bodyOf(menuC, 'void CircUpdateItemState(');
+      if (!update || !update.text.includes('CircBgRes(on)'))
+        broken.push('CircUpdateItemState stopped resolving its skin through CircBgRes — an update re-writes a wrong canvas onto a correct box');
+      const move = bodyOf(menuC, 'void CircMoveItem(');
+      if (!move || !move.text.includes('CIRC_ICON_SIZE / 2'))
+        broken.push('CircMoveItem stopped seating the glyph by CIRC_ICON_SIZE/2 — a drag shifts the glyph off its disc');
+      if (codeOf(menuC).includes('CircIconSize'))
+        broken.push('CircIconSize is back — a tapered glyph box clips the 28px glyph canvas (create/update/move must all agree on CIRC_ICON_SIZE)');
+    }
+    const menuB = linesOf(MENU_B);
+    if (!menuB) broken.push('Biotak/BiotakMenu_B.mqh is gone');
+    else if (codeOf(menuB).includes('CircIconSize'))
+      broken.push('CircIconSize is back in BiotakMenu_B.mqh — the glyph box must not taper with the disc');
+    // -- the baker still bakes the whole family --------------------------------
+    const iconGen = linesOf(ICON_GEN);
+    if (!iconGen) broken.push('tools/gen-th3-icons.js is gone — the ring art has no baker');
+    else {
+      const g = codeOf(iconGen);
+      if (!g.includes('function circSkin(on, s = 44)'))
+        broken.push('circSkin lost its side parameter — every bake is the 44 canvas again (a taper seat clips)');
+      for (const s of sides) {
+        if (!g.includes(`circSkin(false, ${s})`) || !g.includes(`circSkin(true, ${s})`))
+          broken.push(`the generator stopped baking the ${s}px pair — a rebuild of the tree silently drops it (P-UI-131)`);
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-162: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/B/C.mqh + BiotakMenu_Ring.mqh + tools/gen-th3-icons.js)');
+    } else {
+      console.log('[PASS] P-UI-162 the ring\'s art is the box\'s size: every taper side owns a circ_*_<s>.bmp baked at s+8 (canvas == box, no clip), CircBgRes hands it out with the 44 fallback, the glyph is CIRC_ICON_SIZE (28) on create/update/move alike, and the generator still bakes the family');
+    }
+  }
+
+  // -- 54. P-UI-163 (2026-10-17): a missing glyph is repaired, never skipped ----
+  // The user's report: the frame captured at 12:05:39 after remove & re-add showed
+  // ring seats with their glass discs ON the chart and NO glyph inside, and the
+  // state survived until a chart change rebuilt the ring from scratch. Measured
+  // cause: every ring path agreed that a MISSING icon is invisible —
+  // CircCreateItem's icon was delete+recreate in ONE tick (the bg path was already
+  // create-if-missing) and returned silently when the re-create failed mid-burst;
+  // CircUpdateItemState configured the icon only `if(ObjectFind >= 0)`, i.e. only
+  // when it EXISTS; the P-UI-161 sync's hash fingerprints the DESIRED state, never
+  // the chart; CircRelayoutIfNeeded compares seat COUNTS. Nothing wrote a missing
+  // icon back, so only a full rebuild healed it. This entry locks the law: the
+  // icon is created-if-missing on every writer (never deleted), a failed create
+  // says so through the flushed channel, and CircHealRingStep() probes ONE seat
+  // per tick (round-robin) so any hole is rebuilt within CircPlacedCount() ticks —
+  // 2 ObjectFind per tick, 0 writes while the ring is whole (the tip's own
+  // P-PERF-17 shape).
+  {
+    const broken = [];
+    const menuC54 = linesOf(MENU_C);
+    if (!menuC54) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
+    else {
+      const create54 = bodyOf(menuC54, 'void CircCreateItem(');
+      if (!create54) broken.push('CircCreateItem is gone — the ring has no creator');
+      else {
+        if (!create54.text.includes('[P-UI-163] icon create FAILED'))
+          broken.push('CircCreateItem lost its failed-create witness — a silent hole is unprovable again');
+        if (create54.text.includes('ObjectDelete(0, icon)'))
+          broken.push('CircCreateItem deletes its icon again — same-tick delete+recreate is the measured hole class');
+      }
+      const tcreate54 = bodyOf(menuC54, 'void ToolsCreateItem(');
+      if (!tcreate54) broken.push('ToolsCreateItem is gone — the tools cells have no creator');
+      else if (!tcreate54.text.includes('[P-UI-163] tools icon create FAILED'))
+        broken.push('ToolsCreateItem lost the same create-if-missing law — the second live writer of the defect class');
+      const update54 = bodyOf(menuC54, 'void CircUpdateItemState(');
+      if (!update54) broken.push('CircUpdateItemState is gone — the sync pass has no per-seat owner');
+      else if (!update54.text.includes('[P-UI-163] icon heal seat='))
+        broken.push('CircUpdateItemState skips a missing glyph again — the one state that needed the pass is the one it ignores');
+      const menuD54 = linesOf(MENU_D);
+      const heal54 = menuD54 ? bodyOf(menuD54, 'void CircHealRingStep(') : null;
+      if (!heal54) broken.push('CircHealRingStep is gone — a hole no state change announces has no healer');
+      else {
+        if (!heal54.text.includes('CircCreateItem(i)'))
+          broken.push('CircHealRingStep stopped rebuilding the holed seat');
+        if (!heal54.text.includes('[P-UI-163] ring heal seat='))
+          broken.push('CircHealRingStep lost its flush witness — a heal nobody can count');
+        if (!heal54.text.includes('g_ToolsOpen') || !heal54.text.includes('g_OrbDragging') || !heal54.text.includes('menuVisible'))
+          broken.push('CircHealRingStep lost a guard — healing fights the tools menu (which owns no ring) or a live drag');
+      }
+    }
+    const kit54 = linesOf(KIT);
+    if (!kit54) broken.push('Biotak/BiotakKit.mqh is gone — the per-tick refresh has no home');
+    else if (!codeOf(kit54).includes('CircHealRingStep();'))
+      broken.push('the per-tick refresh stopped calling CircHealRingStep() — the probe is declared but never runs');
+    if (broken.length) {
+      failures.push('P-UI-163: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C/D.mqh + BiotakKit.mqh)');
+    } else {
+      console.log('[PASS] P-UI-163 a missing glyph is repaired, never skipped: the icon is created-if-missing on the ring and the tools cells, a failed create heals through CircUpdateItemState/CircHealRingStep with flushed witnesses, and the per-tick probe runs (2 ObjectFind/tick, 0 writes while whole)');
     }
   }
 

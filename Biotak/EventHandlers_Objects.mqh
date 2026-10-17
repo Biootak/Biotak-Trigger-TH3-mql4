@@ -1453,6 +1453,7 @@ int ApplyHideAllState(const bool hide)
         // the only thing keeping that corner shut.
         int trigSeen = 0;
         TriggerFamilyWalk(g_triggerLevelsEnabled, trigSeen);
+        ShowAllDrawingFamilies();   // P-UI-160b: the show half (CustomPrice owns both ends)
     }
     // P-PERF-02: masks written directly above → every stored mask is now
     // stale; the guarded writers must re-assert once on the next frame.

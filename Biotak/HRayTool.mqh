@@ -53,6 +53,7 @@ bool HRayViewOwned() { return (s_hrayArmed || s_hrayDrag != ""); }
 void HRayArm()
 {
    if(s_hrayArmed) return;
+   if(IsIndicatorHidden()) return;   // P-UI-160b: the F mute owns the chart — no new ray under it
    GestureTakeRelease();   // P-UI-144: a NEW drawing is never gated by the last one
    s_hrayArmed = true; ChartViewLockAcquire(); ChartRedraw();
 }
@@ -115,6 +116,16 @@ void HRayHandleFollow(const string line)
 {
    string hn = HRayHandleName(line);
    if(line != s_hraySel || ObjectFind(0, line) < 0) { ObjectDelete(0, hn); return; }
+   // P-UI-160b (2026-10-16): the F mute parks the dot. It is a BITMAP_LABEL —
+   // no TF mask reaches it (the P-UI-98d fact) — so the pan stream, the
+   // chart-change follower and the hide pass all land HERE, and this one
+   // branch keeps every channel from re-placing it while hidden. Show
+   // re-follows through this same seat.
+   if(IsIndicatorHidden())
+   {
+      HandsetHandleAtXY(hn, HANDSET_HANDLE_PARK, HANDSET_HANDLE_PARK, CP_HANDLE_HALF, CP_HANDLE_RES);
+      return;
+   }
    datetime t1 = (datetime)ObjectGetInteger(0, line, OBJPROP_TIME, 0);
    double   p1 = ObjectGetDouble(0, line, OBJPROP_PRICE, 0);
    int x = 0, y = 0;
@@ -164,6 +175,42 @@ void HRayFollowAll()
       }
    }
 }
+
+// ── P-UI-160b (2026-10-16) — THE RAY FAMILY ANSWERS THE F MUTE ───────
+// The line is chart-space (mask), the dot is a BITMAP_LABEL (park) — the two
+// shapes the whole mute is made of. Once per transition; the riders
+// (HRayHandleFollow) carry the hidden term, so nothing re-places the dot
+// while hidden and the show path re-follows it through the same seat.
+int HRayHideAll()
+{
+   int n = 0;
+   for(int i = 0; i < ArraySize(s_hrayIds); i++)
+   {
+      string ln = HRayLineName(s_hrayIds[i]);
+      if(ObjectFind(0, ln) < 0) continue;
+      if((int)ObjectGetInteger(0, ln, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+         ObjectSetInteger(0, ln, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+      n++;
+   }
+   if(s_hraySel != "") HRayHandleFollow(s_hraySel);   // parks through its hidden branch
+   return n;
+}
+
+int HRayShowAll()
+{
+   int n = 0;
+   for(int i = 0; i < ArraySize(s_hrayIds); i++)
+   {
+      string ln = HRayLineName(s_hrayIds[i]);
+      if(ObjectFind(0, ln) < 0) continue;
+      if((int)ObjectGetInteger(0, ln, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
+         ObjectSetInteger(0, ln, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+      n++;
+   }
+   HRayFollowAll();   // re-place the selected ray's dot
+   return n;
+}
+
 // One price, one ray: t2 only gives the ray its rightward direction. The
 // line is born NON-selectable — no native grips, so no angle, ever.
 void HRayPlace(const datetime t, const double price)
@@ -228,6 +275,7 @@ void HRayDelete(const string line, const string why)
 bool HRayPressHit(const int mx, const int my, string &line)
 {
    line = "";
+   if(IsIndicatorHidden()) return false;   // P-UI-160b: no grabbing a hidden ray
    int best = 0x7fff;
    int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
    for(int i = 0; i < ArraySize(s_hrayIds); i++)
@@ -247,6 +295,7 @@ bool HRayPressHit(const int mx, const int my, string &line)
 bool HRayDotHit(const int mx, const int my, string &line)
 {
    line = "";
+   if(IsIndicatorHidden()) return false;   // P-UI-160b: no grabbing a hidden ray's dot
    if(s_hraySel == "" || ObjectFind(0, s_hraySel) < 0) return false;
    int x = 0, y = 0;
    if(!ChartTimePriceToXY(0, 0, (datetime)ObjectGetInteger(0, s_hraySel, OBJPROP_TIME, 0),

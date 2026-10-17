@@ -76,14 +76,15 @@ static UIState g_UI;
 
 string GetGVName(string key) { return g_UI.gvPrefix + key; }
 
-//--- settings-panel geometry (drag-to-move persistence; panel slots 0..14,
-//     1 = the main Zones & Levels card; 12 = Base Box card; 14 = General Settings).
+//--- settings-panel geometry (drag-to-move persistence; panel slots 0..16,
+//     1 = the main Zones & Levels card; 12 = Base Box card; 14 = General Settings,
+//     15 = Sessions, 16 = Session Editor).
 //     PNL_COUNT lives here (Kit is included before Panels) so every loop
 //     and slot array in both files stays in sync from one define.
-#define PNL_COUNT 15
-static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false,false};
+#define PNL_COUNT 17
+static int  g_PnlX[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static int  g_PnlY[PNL_COUNT] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+static bool g_PnlManualPos[PNL_COUNT] = {false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false};
 static bool g_PnlPinSpot = false;
 
 //==============================================================================
@@ -353,7 +354,7 @@ void SaveUISupport()
 //--- per-tick UI refresh: live update of the forming HTF candle (cheap)
 //     + throttled menu sync so hotkey toggles (T/L/A/S keys) and any state
 //     change made outside the menu are reflected in the icons/badges.
-// PERF: the icon sync lives in BiotakMenu.mqh (needs RING_COUNT) and is
+// PERF: the icon sync lives in BiotakMenu.mqh (needs the ring's seats) and is
 // change-guarded there — re-pushing OBJPROP_BMPFILE forces MT4 to re-decode
 // each bitmap, so it must only run when a feature actually flipped.
 void RefreshUIPerTick()
@@ -364,6 +365,7 @@ void RefreshUIPerTick()
    UpdateHTFFormingCandle();
    HTFEnsureDrawn();   // self-healing full HTF draw after TF switch / missing data (O(1) steady state)
    CircTipTick();   // armed hover tooltip (dwell-gated, ungated cheap checks)
+   CircHealRingStep();   // P-UI-163: one seat's existence probe per tick (2 ObjectFind, 0 writes while whole)
 
    static uint s_LastMenuSync = 0;
    uint now = GetTickCount();

@@ -497,9 +497,9 @@ bool CircTipAnchor(const int feat, int &ax, int &ay)
    if(feat == -1) { ax = g_UI.menuX; ay = g_UI.menuY; return true; }
    if(g_UI.menuVisible)
    {
-      for(int i = 0; i < RING_COUNT; i++)
+      for(int i = 0; i < CircPlacedCount(); i++)
          if(RingFeature(i) == feat) { CircLayout(i, ax, ay); return true; }
-      for(int t = 0; t < TOOL_COUNT; t++)
+      for(int t = 0; t < CAT_COUNT; t++)
          if(ToolFeature(t) == feat) { ToolsLayout(t, ax, ay); return true; }
    }
    return false;
@@ -585,10 +585,11 @@ void CircTipRefresh()
 //| once per ring item, ToolsItemAt() asks SubPlaceItem() once per    |
 //| tile, and CircPointOnMenu() asks both. Each of those read          |
 //| CHART_WIDTH_IN_PIXELS + CHART_HEIGHT_IN_PIXELS straight from the   |
-//| terminal, and CircLayout() also called CircFitRadius(), which      |
-//| walks every ring item doing sin/cos - so ONE hit test cost 16-40   |
-//| terminal reads and O(RING_COUNT^2) trigonometry just to answer     |
-//| "which button is under the cursor?". Every cursor move repeats it. |
+//| terminal, and CircLayout() also walked the ring doing sin/cos       |
+//| (CircFitRadius then; P-UI-161's CircFitLimit caches it now) - so    |
+//| ONE hit test cost 16-40 terminal reads and O(seats^2) trigonometry  |
+//| just to answer "which button is under the cursor?". Every cursor    |
+//| move repeats it.                                                    |
 //|                                                                  |
 //| The size cannot change inside a hit test, so the metrics are read  |
 //| once and invalidated on the events that can change them (chart-    |
@@ -615,35 +616,24 @@ void CircUIMetrics(int &cw, int &ch)
    if(ch <= 0) ch = 1080;
 }
 
-double CircFitRadius(const int cw, const int ch, const int ox, const int oy)
+//+------------------------------------------------------------------+
+//--- The button side the ring is DRAWN at. P-UI-162: the GLYPH does not follow
+//--- the taper — its canvas is 28 and MT4 clips, never scales — so the glyph's
+//--- box is CIRC_ICON_SIZE on create, update and move alike.
+//--- P-UI-161: the seat set the ring was BUILT with. The count is FROZEN while the
+//--- orb is dragged — the same rule SubMode() obeys (geometry must not rebuild under
+//--- the hand) — and CircRelayoutIfNeeded() rebuilds once the release re-derives it.
+static int s_circBuiltSeats = -1;
+
+int CircPlacedCount()
 {
-   // P-PERF-16: pure function of its four arguments and compile-time constants,
-   // asked once per ring item per hit test. The fit does not depend on the item,
-   // so it is computed once per (cw,ch,ox,oy) and remembered.
-   static int    s_fitCw = 0, s_fitCh = 0, s_fitOx = 0, s_fitOy = 0;
-   static double s_fitR = 0.0;
-   if(s_fitR > 0.0 && cw == s_fitCw && ch == s_fitCh && ox == s_fitOx && oy == s_fitOy)
-      return s_fitR;
-
-   double r = CIRC_RADIUS;
-   for(int i = 0; i < RING_COUNT; i++)
-   {
-      double deg = (-90.0 + 360.0 * i / RING_COUNT) * M_PI / 180.0;
-      double c = MathCos(deg);
-      double s = MathSin(deg);
-      double lim = 1e18;
-      if(c > 1e-6)        lim = MathMin(lim, (cw - CIRC_PAD - ox - CIRC_ITEM_REACH) / c);
-      else if(c < -1e-6)  lim = MathMin(lim, (ox - CIRC_PAD - CIRC_ITEM_REACH) / (-c));
-      if(s > 1e-6)        lim = MathMin(lim, (ch - CIRC_PAD - oy - CIRC_ITEM_REACH) / s);
-      else if(s < -1e-6)  lim = MathMin(lim, (oy - CIRC_PAD - CIRC_ITEM_REACH) / (-s));
-      if(lim < 1e17) r = MathMin(r, lim);
-   }
-   if(r < CIRC_MIN_RADIUS) r = CIRC_MIN_RADIUS;
-   if(r > CIRC_RADIUS) r = CIRC_RADIUS;
-
-   s_fitCw = cw; s_fitCh = ch; s_fitOx = ox; s_fitOy = oy; s_fitR = r;
-   return r;
+   if(g_OrbDragging && s_circBuiltSeats >= 0) return s_circBuiltSeats;   // frozen mid-drag
+   return CircPlacedCountLive();
 }
+
+void CircNoteBuilt() { s_circBuiltSeats = CircPlacedCountLive(); }   // called with the drag OFF
+
+int CircBtnSize()  { return CircBtnSizeForN(CircPlacedCount()); }
 
 void CircLayout(const int i, int &x, int &y)
 {
@@ -657,40 +647,43 @@ void CircLayout(const int i, int &x, int &y)
    bool nearTop    = (oy <= CIRC_EDGE_TRIGGER);
    bool nearBottom = (oy >= ch - CIRC_EDGE_TRIGGER);
 
+   int n = CircPlacedCount();   // P-UI-161: the ring's own seat count
+   int s = CircBtnSize();       // ...and the side it is drawn at
+
    if(nearLeft || nearRight || nearTop || nearBottom)
    {
-      int step = CIRC_BTN_SIZE + CIRC_GAP;
-      int trainLen = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP + (RING_COUNT - 1) * step;
+      int step = s + CIRC_GAP;
+      int trainLen = CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + (n - 1) * step;
       // P-UI-26: clamp the rail's CROSS axis so buttons never draw half
       // off-chart. One uniform shift for the whole train — never a per-item
       // clamp (that stacks the train, P-UI-13) and never a radius shrink
       // (R-SUBLADDER). The orb itself stays where the user put it.
-      int half = CIRC_BTN_SIZE / 2 + CIRC_PAD;
+      int half = s / 2 + CIRC_PAD;
       if(nearLeft || nearRight)
       {
          x = MathMax(half, MathMin(cw - half, ox));
-         int upRoom   = oy - CIRC_PAD - CIRC_BTN_SIZE / 2;
-         int downRoom = ch - CIRC_PAD - oy - CIRC_BTN_SIZE / 2;
+         int upRoom   = oy - CIRC_PAD - s / 2;
+         int downRoom = ch - CIRC_PAD - oy - s / 2;
          int dir = (upRoom >= downRoom) ? -1 : 1;
          if(dir == -1 && upRoom < trainLen && downRoom >= trainLen) dir = 1;
          else if(dir == 1 && downRoom < trainLen && upRoom >= trainLen) dir = -1;
-         y = oy + dir * (CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP + i * step);
+         y = oy + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
       }
       else
       {
          y = MathMax(half, MathMin(ch - half, oy));
-         int leftRoom  = ox - CIRC_PAD - CIRC_BTN_SIZE / 2;
-         int rightRoom = cw - CIRC_PAD - ox - CIRC_BTN_SIZE / 2;
+         int leftRoom  = ox - CIRC_PAD - s / 2;
+         int rightRoom = cw - CIRC_PAD - ox - s / 2;
          int dir = (leftRoom >= rightRoom) ? -1 : 1;
          if(dir == -1 && leftRoom < trainLen && rightRoom >= trainLen) dir = 1;
          else if(dir == 1 && rightRoom < trainLen && leftRoom >= trainLen) dir = -1;
-         x = ox + dir * (CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP + i * step);
+         x = ox + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
       }
    }
    else
    {
-      double r = CircFitRadius(cw, ch, ox, oy);
-      double deg = (-90.0 + 360.0 * i / RING_COUNT) * M_PI / 180.0;
+      double r = CircRadius();
+      double deg = (-90.0 + 360.0 * i / n) * M_PI / 180.0;
       x = ox + (int)MathRound(r * MathCos(deg));
       y = oy + (int)MathRound(r * MathSin(deg));
    }
@@ -749,16 +742,16 @@ double SubChordRadius(const int n, const double sweepDeg)
 }
 
 // Radius that keeps every FAN button inside the padded chart rect (the same
-// ray-vs-bounds walk CircFitRadius() does for the ring). Capped at TOOL_RADIUS;
+// ray-vs-bounds walk CircFitLimit() does for the ring). Capped at TOOL_RADIUS;
 // the caller compares the result against SubChordRadius() to decide whether the
 // fan is usable at all at this position.
 double SubFanFitRadius(const int ox, const int oy, const int cw, const int ch)
 {
    double r = TOOL_RADIUS;
    double reach = CIRC_PAD + CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
-   double step = (TOOL_COUNT > 1) ? TOOL_SPREAD / (TOOL_COUNT - 1) : 0.0;
+   double step = (CAT_COUNT > 1) ? TOOL_SPREAD / (CAT_COUNT - 1) : 0.0;
    double start = 210.0 - TOOL_SPREAD / 2.0;      // 210 deg = the Tools axis
-   for(int k = 0; k < TOOL_COUNT; k++)
+   for(int k = 0; k < CAT_COUNT; k++)
    {
       double deg = (start + k * step) * M_PI / 180.0;
       double c = MathCos(deg);
@@ -846,25 +839,25 @@ int SubMode()
 
    int cw, ch, ox, oy;
    SubChartRect(cw, ch, ox, oy);
-   int key = TOOL_COUNT * 1000003 + cw * 1009 + ch * 101 + ox * 7 + oy;
+   int key = CAT_COUNT * 1000003 + cw * 1009 + ch * 101 + ox * 7 + oy;
    if(s_SubMode >= 0 && key == s_SubModeKey) return s_SubMode;
 
    int mode = SUB_MODE_GRID;                    // the grid is the universal fallback
    int ux = 0, uy = 0;
    bool railFits = false;
-   if(TOOL_COUNT <= SUB_FAN_MAX)
+   if(CAT_COUNT <= SUB_FAN_MAX)
    {
-      if(SubRailAxis(TOOL_COUNT, ox, oy, cw, ch, ux, uy, railFits))
+      if(SubRailAxis(CAT_COUNT, ox, oy, cw, ch, ux, uy, railFits))
          mode = railFits ? SUB_MODE_RAIL : SUB_MODE_GRID;
-      else if(SubFanFitRadius(ox, oy, cw, ch) >= SubChordRadius(TOOL_COUNT, TOOL_SPREAD))
+      else if(SubFanFitRadius(ox, oy, cw, ch) >= SubChordRadius(CAT_COUNT, TOOL_SPREAD))
          mode = SUB_MODE_FAN;
       else
          mode = SUB_MODE_GRID;                 // the arc cannot hold the invariant
    }
-   else if(TOOL_COUNT <= SUB_RING_MAX)
+   else if(CAT_COUNT <= SUB_RING_MAX)
       mode = SubRingFits(ox, oy, cw, ch) ? SUB_MODE_RING : SUB_MODE_GRID;
    else
-      mode = (TOOL_COUNT > SubPageSize()) ? SUB_MODE_GRID_PAGED : SUB_MODE_GRID;
+      mode = (CAT_COUNT > SubPageSize()) ? SUB_MODE_GRID_PAGED : SUB_MODE_GRID;
 
    s_SubMode    = mode;
    s_SubModeKey = key;
@@ -882,7 +875,7 @@ int SubPageCount()
 {
    if(!SubIsPaged()) return 1;
    int ps = SubPageSize();
-   return (TOOL_COUNT + ps - 1) / ps;
+   return (CAT_COUNT + ps - 1) / ps;
 }
 // Only the items on the current page are real; the rest park off-screen.
 bool SubItemOnPage(const int i)
@@ -894,9 +887,9 @@ int SubVisibleRows()
 {
    int n;
    if(!SubIsPaged())
-      n = TOOL_COUNT;
+      n = CAT_COUNT;
    else
-      n = TOOL_COUNT - g_ToolsPage * SubPageSize();
+      n = CAT_COUNT - g_ToolsPage * SubPageSize();
    int rows = (n + SUB_GRID_COLS - 1) / SUB_GRID_COLS;
    int cap  = SubPageRowsCap();
    if(rows < 1)   return 1;
@@ -982,7 +975,7 @@ void SubPlaceItem(const int i, int &x, int &y)
    {
       int ux = 0, uy = 0;
       bool fits = false;
-      SubRailAxis(TOOL_COUNT, ox, oy, cw, ch, ux, uy, fits);
+      SubRailAxis(CAT_COUNT, ox, oy, cw, ch, ux, uy, fits);
       int dist = CIRC_ORB_SIZE / 2 + CIRC_BTN_SIZE / 2 + CIRC_GAP
                  + i * (CIRC_BTN_SIZE + CIRC_GAP);
       x = ox + ux * dist;
@@ -995,15 +988,15 @@ void SubPlaceItem(const int i, int &x, int &y)
    {
       r = SUB_RING_RADIUS;
       startDeg = -90.0;
-      stepDeg  = 360.0 / TOOL_COUNT;
+      stepDeg  = 360.0 / CAT_COUNT;
    }
    else
    {
       r = MathMin(TOOL_RADIUS, SubFanFitRadius(ox, oy, cw, ch));
-      double floorR = SubChordRadius(TOOL_COUNT, TOOL_SPREAD);
+      double floorR = SubChordRadius(CAT_COUNT, TOOL_SPREAD);
       if(r < floorR) r = floorR;               // never below the collision floor
       startDeg = 210.0 - TOOL_SPREAD / 2.0;
-      stepDeg  = (TOOL_COUNT > 1) ? TOOL_SPREAD / (TOOL_COUNT - 1) : 0.0;
+      stepDeg  = (CAT_COUNT > 1) ? TOOL_SPREAD / (CAT_COUNT - 1) : 0.0;
    }
    double deg = (startDeg + i * stepDeg) * M_PI / 180.0;
    x = ox + (int)MathRound(r * MathCos(deg));
@@ -1040,7 +1033,7 @@ int ToolsItemAt(const int mx, const int my)
    // dead strip between cells and no overlap that would make a click ambiguous).
    int hitHalf = SubIsPanelMode() ? SUB_GRID_PITCH / 2
                                   : CIRC_BTN_SIZE / 2 + CIRC_BG_MARGIN;
-   for(int i = 0; i < TOOL_COUNT; i++)
+   for(int i = 0; i < CAT_COUNT; i++)
    {
       if(!SubItemOnPage(i)) continue;    // parked items must never answer a click
       int ix, iy;
@@ -1098,6 +1091,9 @@ void SubParkItem(const int i)
       ObjectSetInteger(0, ToolsIcon(i), OBJPROP_YDISTANCE, CIRC_HIDE_POS);
    }
    ToolsShowBadge(i, false);
+   // P-UI-161: the star parks with its cell — ToolsMoveStar's own guard hides it
+   // off-page, so one call covers both callers of this function (page flip + drag).
+   ToolsMoveStar(i);
 }
 
 //+------------------------------------------------------------------+
@@ -1333,7 +1329,7 @@ void SubChromeCreate()
    int pages = SubPageCount();
    string cnt = SubIsPaged()
                 ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
-                : IntegerToString(TOOL_COUNT);
+                : IntegerToString(CAT_COUNT);
    SubSetLabel(SubPanelCnt(), SubReadoutX(px, pw, cnt), py + 8,
                cnt, SUB_CLR_ACCENT, SUB_PT_READOUT, Z_MENU_BADGE);
 
@@ -1402,7 +1398,7 @@ void SubChromeMove()
    {
       string cnt = SubIsPaged()
                    ? (IntegerToString(g_ToolsPage + 1) + "/" + IntegerToString(pages))
-                   : IntegerToString(TOOL_COUNT);
+                   : IntegerToString(CAT_COUNT);
       ObjectSetInteger(0, SubPanelCnt(), OBJPROP_XDISTANCE, SubReadoutX(px, pw, cnt));
       ObjectSetInteger(0, SubPanelCnt(), OBJPROP_YDISTANCE, py + 8);
    }

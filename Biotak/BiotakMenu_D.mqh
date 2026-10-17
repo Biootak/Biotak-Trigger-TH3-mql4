@@ -2,6 +2,30 @@
 #ifndef BIOTAK_MENU_D_MQH
 #define BIOTAK_MENU_D_MQH
 
+//--- P-UI-163: the ring's own existence probe — ONE seat per tick, round-robin.
+//--- MEASURED 2026-10-17 (the 12:05:39 frame): a seat whose icon create failed
+//--- mid-burst kept its bg and lost its glyph for the rest of the attach — and NO
+//--- writer re-created a missing icon (every path gated on ObjectFind>=0; the
+//--- P-UI-161 sync's hash sees the DESIRED state, not the chart;
+//--- CircRelayoutIfNeeded compares counts). Cost on a still frame: 2 ObjectFind
+//--- per tick, 0 writes; the ring is swept in CircPlacedCount() ticks and a hole
+//--- is rebuilt the tick it is seen (the tip's own one-probe-per-tick shape,
+//--- P-PERF-17). P-SIZE-1500 sent it here from BiotakMenu_C (its owner file).
+void CircHealRingStep()
+{
+   if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;
+   int n = CircPlacedCount();
+   if(n <= 0) return;
+   static int s_healSeat = 0;
+   if(s_healSeat >= n) s_healSeat = 0;
+   int i = s_healSeat++;
+   if(ObjectFind(0, CircBg(i)) < 0 || ObjectFind(0, CircIcon(i)) < 0)
+   {
+      CircCreateItem(i);
+      DrawStripDiagEmit(StringFormat("[P-UI-163] ring heal seat=%d", i));
+   }
+}
+
 // P-HTF-KEY — ONE owner for the HTF overlay switch: the R hotkey, the ring's
 // HTF light and the card's ENABLED row. State + persisted key + mask walk
 // (instant both ways, no delete/rebuild); first ON builds via the walk.
@@ -102,6 +126,15 @@ int HandleButtonClick(const string clickedObject)
          PnlOpen(ToolPanel(tidx));
          return REFRESH_NONE;
       }
+      // P-UI-161: the membership star — a TOGGLE and nothing else. It sits before
+      // the long-press latch (like the badge): the star is its own control, and a
+      // stale latch from a previous gesture must not eat its click. No suppression
+      // either — nothing else acts on this release (the ring toggles' own rule).
+      if(StringFind(clickedObject, g_UI.btnPrefix + "ToolsStar") == 0)
+      {
+         CircStarToggle(tidx);
+         return REFRESH_NONE;
+      }
       if(g_LongPressFired)
       {
          g_LongPressFired = false;
@@ -187,15 +220,56 @@ int HandleButtonClick(const string clickedObject)
         {
            tflags = CircArmPath();
         }
+        else if(tfeat == CIR_SCALE)   // P-UI-159 — MT4's own scale-fix as one cell
+        {
+           // ONE live writer of the chart's scale-fix bit (the retired View Lock's
+           // writes are dormant, VIEWLOCK-OFF): read → flip → READ BACK, and the
+           // witness goes through the FLUSHED channel (P-DRAW-126) carrying the
+           // value the CHART holds, not the one we asked for. No recalc — the
+           // cell light below reads the same bit (CircFeatureOn).
+           bool wasFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
+           bool retOk    = ChartSetInteger(0, CHART_SCALEFIX, !wasFixed);
+           bool nowFixed = (ChartGetInteger(0, CHART_SCALEFIX) != 0);
+           DrawStripDiagEmit("[P-UI-159] scale was=" + IntegerToString(wasFixed ? 1 : 0) +
+                             " now=" + IntegerToString(nowFixed ? 1 : 0) +
+                             " ret=" + IntegerToString(retOk ? 1 : 0));
+           ChartRedraw();   // P-DRAW-127: the click owns its frame
+        }
+        else if(tfeat == CIR_HIDE)   // P-UI-160 — the F mute, one surface over
+        {
+           // The cell IS the F key: the same ONE owner (`ApplyHideAllState`,
+           // EventHandlers_Objects), the same target-state rule (read the mute's
+           // own reader and invert, never a delta), and the same follow-ups the
+           // Router's F branch runs (RequestUISync for the panels' family rows,
+           // then the forced paint). The witness carries what the READER holds
+           // after the write, through the FLUSHED channel (P-DRAW-126).
+           bool wasHidden = IsIndicatorHidden();
+           int  hideRet   = ApplyHideAllState(!wasHidden);
+           bool nowHidden = IsIndicatorHidden();
+           DrawStripDiagEmit("[P-UI-160] hide was=" + IntegerToString(wasHidden ? 1 : 0) +
+                             " now=" + IntegerToString(nowHidden ? 1 : 0) +
+                             " ret=" + IntegerToString(hideRet));
+           RequestUISync();               // P-UI-93: the panel's family rows display this mute
+           RepaintForDiscreteAction();    // P-PERF-24: the press paints NOW
+        }
        else if(tfeat == CIR_BASEKNOT)
        {
           // UIBK-OFF (P-UI-95): the MEASURING tool has its own RING slot now
           // (RING_BASEKNOT) and this cell is retired in place. It can no longer be
           // reached (ToolFeature no longer maps TOOL_BASEKNOT), and the arm path it
           // ran is `CircArmBaseKnot`'s own — restore the cell by counting
-          // TOOL_BASEKNOT back into TOOL_COUNT and uncommenting these two lines.
+          // TOOL_BASEKNOT back into the catalog count and uncommenting these two lines.
           // UIBK-OFF: ToolsUpdateItemState(tidx);
           // UIBK-OFF: return CircArmBaseKnot();
+       }
+       // P-UI-161: the 9 ring features are catalog cells too — a click on one in
+       // the Tools menu runs the SAME switch the ring runs. ONE owner
+       // (`RingFeatureClick`), so the two surfaces can never drift.
+       else if(tfeat == CIR_ZONES || tfeat == CIR_TRIGGER || tfeat == CIR_ATR ||
+               tfeat == CIR_TH    || tfeat == CIR_HTF     || tfeat == CIR_TH3 ||
+               tfeat == CIR_LEG   || tfeat == CIR_SESSIONS)   // P-SESS
+       {
+          tflags = RingFeatureClick(tfeat);
        }
       // FACTORBTN-OFF:
       //else if(tfeat == CIR_FACTOR_OVERRIDE)
@@ -243,6 +317,28 @@ int HandleButtonClick(const string clickedObject)
       return REFRESH_NONE;
    }
 
+   // P-UI-161: the feature's own switch is ONE owner (`RingFeatureClick`) — the
+   // same body the Tools menu's feature cells run, so the two surfaces can never
+   // drift. The ring's own tail stays here (the Tools tail is ToolsUpdateItemState's).
+   int refreshFlags = RingFeatureClick(feat);
+   CircUpdateItemState(idx);
+   UpdateCircularBadges();
+   SaveUIStates();
+   return refreshFlags;
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-161 — ONE OWNER for a ring feature's press.                  |
+//|                                                                  |
+//| The ring seat and the Tools cell are the SAME control one        |
+//| surface over (the 8 features are catalog cells too), so both     |
+//| routes run THIS body — a switch written twice is the drift this  |
+//| project keeps paying for. The caller owns the tail: the ring's   |
+//| (CircUpdateItemState) and the Tools menu's (ToolsUpdateItemState)|
+//| — this function touches neither.                                  |
+//+------------------------------------------------------------------+
+int RingFeatureClick(const int feat)
+{
    // P-UI-93 — THE PRESS ANSWERS WHAT THE LIGHT SHOWED.
    //
    // While the chart is muted the four family lights read OFF (CircFeatureOn
@@ -253,7 +349,8 @@ int HandleButtonClick(const string clickedObject)
    // The mute is NOT a switch (P-PERF-41 stays intact: each light still owns one
    // switch), it is the whole-indicator master every family already shares.
    bool familyToggle = (feat == CIR_TRIGGER || feat == CIR_ZONES ||
-                        feat == CIR_ATR     || feat == CIR_TH);
+                        feat == CIR_ATR     || feat == CIR_TH ||
+                        feat == CIR_SESSIONS);   // P-SESS
    bool mutedPress   = (familyToggle && IsIndicatorHidden());
    bool wantOn       = (familyToggle && !mutedPress) ? !CircFeatureOn(feat) : mutedPress;
    if(mutedPress) ReleaseIndicatorMute();
@@ -362,6 +459,19 @@ int HandleButtonClick(const string clickedObject)
       RequestUISync();   // P-UI-40b: the HTF card's SHOW row displays this flag
       refreshFlags = REFRESH_NONE;   // P-HTF-KEY: the owner masked + painted; a refresh flag would rebuild the family it just kept
    }
+   else if(feat == CIR_SESSIONS)   // P-SESS
+   {
+      // A FAMILY SWITCH, like ZONES: one switch, and only its own. The renderer
+      // masks by g_sessMaster, so this is a state write + a persisted key + the
+      // tick that owns the pixels - no delete, no rebuild, the old frames sweep
+      // on the OFF edge. Refresh flags stay NONE: the master's own wing repaints
+      // its turn, and a builder flag would rebuild the family the switch kept.
+      g_sessMaster = wantOn;        // P-UI-93: what the light showed, inverted
+      RuntimeSettingsSaveOverridesThrottled();   // OV_SSON
+      SessionsTick();
+      RequestUISync();   // an open Sessions card's master row shows this switch
+      refreshFlags = REFRESH_NONE;
+   }
    else if(feat == CIR_BASEKNOT)
    {
       // P-UI-95: the MEASURING tool. It carries NO on/off state of its own — the light
@@ -380,9 +490,6 @@ int HandleButtonClick(const string clickedObject)
    }
 #endif
 
-   CircUpdateItemState(idx);
-   UpdateCircularBadges();
-   SaveUIStates();
    return refreshFlags;
 }
 
@@ -421,10 +528,12 @@ void ToggleMenuVisibility()
    if(willShow)
    {
       // Same rule as CreateMenu: no ring behind an open Tools submenu.
+      // P-UI-161: the ring's seats are the PLACED ones (the star mask decides),
+      // the Tools menu's are the whole catalog.
       if(!g_ToolsOpen)
-         for(int i = 0; i < RING_COUNT; i++) CircCreateItem(i);
+         for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);
       if(g_ToolsOpen)
-         for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
+         for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
    }
    else
    {

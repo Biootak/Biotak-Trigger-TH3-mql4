@@ -734,6 +734,20 @@ void LegMeasureHandles(const string base, const datetime t1, const double p1,
                      : (sel ? LEG_HANDLE_DN_SEL_RES     : LEG_HANDLE_DN_RES);
     string bmpM = up ? (sel ? LEG_HANDLE_UP_MID_SEL_RES : LEG_HANDLE_UP_MID_RES)
                      : (sel ? LEG_HANDLE_DN_MID_SEL_RES : LEG_HANDLE_DN_MID_RES);
+    // P-UI-160b (2026-10-16): the F mute parks the family's three icons. They
+    // are screen-pixel BITMAP_LABELs — no TF mask reaches them (the P-UI-98d
+    // fact the handset handles already answer) — so a hidden chart must PARK
+    // them off-window, exactly like the CP marker and the S1 pair. This is the
+    // family's ONE placement seat: the ride, the follower, the ink and the hide
+    // pass all come through here, so no channel can leave a ring visible while
+    // the mute is on.
+    if(IsIndicatorHidden())
+    {
+        LegHandleAtXY(base + "_H1", LEG_HANDLE_PARK, LEG_HANDLE_PARK, LEG_HANDLE_HALF, bmpH);
+        LegHandleAtXY(base + "_H2", LEG_HANDLE_PARK, LEG_HANDLE_PARK, LEG_HANDLE_HALF, bmpH);
+        LegHandleAtXY(base + "_Mid", LEG_HANDLE_PARK, LEG_HANDLE_PARK, LEG_HANDLE_MID_HALF, bmpM);
+        return;
+    }
     LegHandleAt(base + "_H1", t1, p1, LEG_HANDLE_HALF, bmpH);
     LegHandleAt(base + "_H2", t2, p2, LEG_HANDLE_HALF, bmpH);
     int sx, sy, tx, ty;
@@ -764,6 +778,22 @@ void LegMeasureInk(const string base, const datetime t1, const double p1,
                    const datetime t2, const double p2, const color ink, const bool create)
 {
     string ln = base + "_Line";
+    // P-UI-160b (2026-10-16): while the F mute is on, this family's line wears
+    // the TIMEFRAMES mask (chart-space — the zones' own mechanism) and its icons
+    // park. The create branch below is unreachable under the mute (the toggle and
+    // the hit test refuse), but this answers every OTHER caller — a ride, a
+    // selection repaint, a drag that was live when F landed — so no channel can
+    // re-show a line the mute took.
+    if(IsIndicatorHidden())
+    {
+        if(ObjectFind(0, ln) >= 0)
+        {
+            if((int)ObjectGetInteger(0, ln, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+                ObjectSetInteger(0, ln, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+            LegMeasureHandles(base, t1, p1, t2, p2, ink);   // its own hidden branch parks
+        }
+        return;
+    }
     if(create && ObjectFind(0, ln) < 0)
     {
         if(ObjectCreate(0, ln, OBJ_TREND, 0, t1, p1, t2, p2))
@@ -1180,6 +1210,8 @@ void LegMeasureFollowAll()
     }
 }
 
+// P-UI-160b: LegMeasureHideAll/ShowAll live in TH3Tool_Mute.mqh (P-SIZE-1500 split).
+
 // ── P-LM-11 — THE DRAG IS OURS: ONE OWNER, ONE PASS, ZERO LAG ────────
 // The report this replaces P-LM-10's answer to: «الان خط جابجا میشه ولی اون
 // دایره دیرتر میچسبه». P-LM-10 followed a NATIVE drag from three channels, and
@@ -1259,6 +1291,11 @@ void LegMeasureSelShadowForget(const string base)
 bool LegMeasureHitTest(const int mx, const int my, string &base, int &mode)
 {
     base = ""; mode = 0;
+    // P-UI-160b (2026-10-16): a press on a hidden chart never grabs a drawing.
+    // ObjectFind still finds a masked line, so without this the family would
+    // answer a drag from under the F mute. The press path (LegMeasureEditMouse)
+    // routes through this ONE seat, so the gate covers it whole.
+    if(IsIndicatorHidden()) return false;
     int best = 0x7fff;
     for(int i = 0; i < g_legCount; i++)
     {
@@ -1359,10 +1396,12 @@ void LegMeasureDragApply(const datetime curT, const double curP)
                     ? LEG_BULL_INK : LEG_BEAR_INK;
     LegMeasureInk(base, nt1, np1, nt2, np2, dragInk, false);
 
-    // the readout rides the drag LIVE — the numbers move with the hand. The ATR
-    // composite is TTL-cached per TF (P-LM-19: the same owner the labels read, so
-    // a bar that did not move is not re-read), and the visit's clock re-arms so a
-    // long drag cannot expire the plate under the user's finger.
+    // the readout rides the drag LIVE — the numbers move with the hand. The ATRs
+    // are read AS-OF the tip's bar (P-LM-25: the leg's own time, the labels' own
+    // composite — inside one bar every held move is an `iBarShift` plus a 48-row
+    // cache scan per TF, and only crossing a bar pays a composite), and the
+    // visit's clock re-arms so a long drag cannot expire the plate under the
+    // user's finger.
     int idx = LegMeasureIndex(base);
     if(idx >= 0 && g_legPlateUp[idx])
     {
@@ -1444,6 +1483,7 @@ void LegMeasureDragEnd()
     double   p2 = ObjectGetDouble(0, ln, OBJPROP_PRICE, 1);
     string txt[]; color acc; int otf; bool trusted;
     LegMeasureReadout(t1, p1, t2, p2, txt, acc, otf, trusted);
+    LegReadWitness("drag", t1, t2, txt, otf, trusted);   // P-LM-25: the committed anchors
     if(trusted) LegMeasureTrack(base, txt, acc);
     LegMeasurePlateShow(base);         // the visit re-arms on the FINAL numbers
 }

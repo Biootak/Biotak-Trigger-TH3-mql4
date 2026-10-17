@@ -5,9 +5,15 @@ EXP = {
     'BiotakMenu_A.mqh': 'CRLF',
     'BiotakMenu_B.mqh': 'LF',
     'BiotakMenu_C.mqh': 'LF',
+    'BiotakMenu_Ring.mqh': 'LF',
     'BiotakPanels_Build.mqh': 'CRLF',
     'DrawStrip_Paint.mqh': 'CRLF',
     'DrawStrip_Router.mqh': 'CRLF',
+    'Sessions_Time.mqh': 'LF',
+    'Sessions_Model.mqh': 'LF',
+    'Sessions_Draw.mqh': 'LF',
+    'BiotakPanels_PalSpec.mqh': 'LF',
+    'BiotakPanels_DynDef.mqh': 'LF',
 }
 bad = 0
 for f, e in EXP.items():

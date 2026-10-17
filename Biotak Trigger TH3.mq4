@@ -114,6 +114,12 @@
 #include "Biotak\LabelFunctions.mqh"
 #include "Biotak\AlertFunctions.mqh"
 #include "Biotak\HistoricalDataFunctions.mqh"
+// P-SESS: the sessions engine + model + renderer. Ahead of EventHandlers — the
+// coop pump (EventHandlers_Tail) calls SessionsTick, and MQL4 needs the
+// definition before its use. Shared module rules: no UI reads (P-BUILD-01).
+#include "Biotak\Sessions_Time.mqh"
+#include "Biotak\Sessions_Model.mqh"
+#include "Biotak\Sessions_Draw.mqh"
 #include "Biotak\EventHandlers.mqh"
 
 //                                                                    

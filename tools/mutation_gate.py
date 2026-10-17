@@ -608,15 +608,16 @@ MUTATIONS = [
     },
     #--- P-DRAW-09c-c — THE WRITER PERSISTS WHAT IT LEARNED. One write per user
     #--- act, from the same tail that sets `s_dkValid[k]`: a look learned and not
-    #--- saved is the exact sentence the entry is about.
+    #--- saved is the exact sentence the entry is about. (The anchor moved under
+    #--- P-DRAW-130's `if(remember)` block — the write is the same write.)
     {
         "id": "P-DRAW-09c-c",
         "gate": "regression",
         "rule": "the ONE slot writer persists the look it just learned",
         "what": "learning stops saving (the look is remembered until the next attach and no further)",
         "file": "Biotak/Toolbar_B.mqh",
-        "find": "   DrawPresetsSave();\r\n   return true;\r\n}\r\n\r\n//--- THE STYLE THE USER LAST USED FOR THIS KIND",
-        "replace": "   return true;\r\n}\r\n\r\n//--- THE STYLE THE USER LAST USED FOR THIS KIND",
+        "find": "      DrawPresetsSave();\r\n   }\r\n   return true;\r\n}\r\n\r\n//--- THE STYLE THE USER LAST USED FOR THIS KIND",
+        "replace": "      // MUTATION: learning stops saving (the reported defect)\r\n   }\r\n   return true;\r\n}\r\n\r\n//--- THE STYLE THE USER LAST USED FOR THIS KIND",
         "expect": "P-DRAW-09c",
     },
     #--- P-DRAW-INK-a — THE FILE CAN TELL A COLOUR FROM NO COLOUR. `clrNONE` is -1 and
@@ -1552,6 +1553,223 @@ MUTATIONS = [
         "find": "   if(DrawKindHasLevels(k)) return clrNONE;",
         "replace": "   // MUTATION: the witness reads a property a level kind does not own",
         "expect": "P-DRAW-128/129/130",
+    },
+    #--- P-LM-25 (2026-10-16) — THE LEG'S OWN TIME, NOT THE CHART'S NOW. A leg
+    #--- drawn over history printed TODAY's live ATR (MEASURED: H1 143 / H4 327 /
+    #--- D1 999, the live strip row to the digit) because `LegAtr14` read
+    #--- `CalculateWeightedATR`. The inverse puts the live read back: §48 must
+    #--- fail naming P-LM-25.
+    {
+        "id": "P-LM-25",
+        "gate": "regression",
+        "rule": "every leg-measure ATR is read AT the leg's own bar (the later anchor), never the chart's live composite",
+        "what": "LegAtr14 reads the live composite again — a historical leg prints today's ATR",
+        "file": "Biotak/TH3Tool_C.mqh",
+        "find": "    double a = CalculateWeightedATRAt(CompatTF(tf), anchor);",
+        "replace": "    double a = CalculateWeightedATR(CompatTF(tf));   // MUTATION: live again (the reported defect)",
+        "expect": "P-LM-25",
+    },
+    #--- P-UI-160b (2026-10-16) — THE F MUTE TAKES THE DRAWING FAMILIES TOO.
+    #--- MEASURED: F darkened the level families and left the leg meter, the ABCD
+    #--- family, the rays and the paths standing («دکمه f که فقط زون ها رو خاموش و
+    #--- روشن میکنه پیس همه رو باید خاموش بکنه»). The inverse drops one family from
+    #--- the hide pass: §49 must fail naming P-UI-160b.
+    {
+        "id": "P-UI-160b",
+        "gate": "regression",
+        "rule": "the F mute takes the drawing families too (hide pass + show half + every rider carries the hidden term)",
+        "what": "the hide pass stops hiding the rays — F leaves them standing again (the reported defect)",
+        "file": "Biotak/EventHandlers_CustomPrice.mqh",
+        "find": "    drawHr = HRayHideAll();",
+        "replace": "    drawHr = 0;   // MUTATION: the rays escape the mute again (the reported defect)",
+        "expect": "P-UI-160b",
+    },
+    #--- P-TH-VOLNORM-COMBO (2026-10-16) — THE COMBO COMPONENTS WEAR V.
+    #--- MEASURED in the sources: TH/SS-LS ladders wear the block V and every TH
+    #--- label column wears its rung's V, but the combo engine read the RAW table
+    #--- («این نرمال سازی مثل بقیه موده در مود کامبو کار نمیکنه سطوح درست نیست»).
+    #--- The inverse drops the V from the standard path — §50 must fail naming
+    #--- P-TH-VOLNORM-COMBO.
+    {
+        "id": "P-TH-VOLNORM-COMBO",
+        "gate": "regression",
+        "rule": "the combo components wear the normalization (the rung whose pct the component used, OFF = 1.0)",
+        "what": "the standard path multiplies by 1.0 — combo levels read the raw table again (the reported defect)",
+        "file": "Biotak/ComboEngine.mqh",
+        "find": "           ComboComponentVolNorm(GetTimeframeTHForPeriod(timeframe));   // P-TH-VOLNORM-COMBO",
+        "replace": "           1.0;   // MUTATION: the standard path reads the raw table again (the reported defect)",
+        "expect": "P-TH-VOLNORM-COMBO",
+    },
+    #--- P-UI-161 (2026-10-17) — THE RING'S MEMBERSHIP, ITS DOOR, ITS WITNESS.
+    #--- The star is the only door to the eight features, the Tools door is always
+    #--- the LAST seat, and the toggle's verdict goes out through the FLUSHED
+    #--- channel. Each inverse must fail §51 naming P-UI-161.
+    {
+        "id": "P-UI-161a",
+        "gate": "regression",
+        "rule": "the Tools door is always the ring's LAST seat (an unstarred door is a menu with no way back)",
+        "what": "RingFeature answers the door's index with -1 — the door falls off the ring",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   if(ringIdx == RingCount() - 1) return CIR_TOOLS;   // the door, always last",
+        "replace": "   if(ringIdx == RingCount() - 1) return -1;   // MUTATION: the door is not last",
+        "expect": "P-UI-161",
+    },
+    {
+        "id": "P-UI-161b",
+        "gate": "regression",
+        "rule": "the star toggle's verdict goes through the FLUSHED channel (DrawStripDiagEmit, P-LOG-3)",
+        "what": "the toggle's witness is a Print — it waits in MT4's RAM buffer and answers «nothing happened» (P-DRAW-126)",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "   DrawStripDiagEmit(StringFormat(\"[P-UI-161] star cat=%d on=%d mask=0x%X ringN=%d\",",
+        "replace": "   Print(StringFormat(\"[P-UI-161] star cat=%d on=%d mask=0x%X ringN=%d\",",
+        "expect": "P-UI-161",
+    },
+    {
+        "id": "P-UI-161c",
+        "gate": "regression",
+        "rule": "the shipped default mask restores the 9-feature ring (sessions appended at bit 15)",
+        "what": "CIRC_STAR_DEFAULT drops back to 0x7F80 — a first run forgets the sessions cell",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "#define CIRC_STAR_DEFAULT 0xFF80",
+        "replace": "#define CIRC_STAR_DEFAULT 0x7F80",
+        "expect": "CIRC_STAR_DEFAULT",
+    },
+    #--- P-SESS (2026-10-17) — THE SESSIONS CELL. CIR_SESSIONS (19) sits ABOVE the
+    #--- card-number space, so the identity fallback cannot answer it: FeaturePanel
+    #--- MUST map it to card 15, the press MUST flip g_sessMaster once and persist
+    #--- it through the throttled saver before the render tick, and the cell MUST
+    #--- wear the baked clock. Each inverse fails §52 naming P-SESS.
+    {
+        "id": "P-SESS-a",
+        "gate": "regression",
+        "rule": "FeaturePanel maps CIR_SESSIONS to card 15 (the identity fallback answers 19, which is no card)",
+        "what": "the sessions case answers its own code — the press opens nothing",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "   if(feat == CIR_SESSIONS)      return 15;   // Sessions Zones card (P-SESS)",
+        "replace": "   if(feat == CIR_SESSIONS)      return 19;   // MUTATION: the identity fallback",
+        "expect": "P-SESS",
+    },
+    {
+        "id": "P-SESS-b",
+        "gate": "regression",
+        "rule": "ONE writer per fact: the sessions press flips g_sessMaster, persists OV_SSON and ticks the renderer",
+        "what": "the branch stops persisting — the master flips in RAM only",
+        "file": "Biotak/BiotakMenu_D.mqh",
+        "find": "      RuntimeSettingsSaveOverridesThrottled();   // OV_SSON\r\n      SessionsTick();",
+        "replace": "      SessionsTick();",
+        "expect": "P-SESS",
+    },
+    {
+        "id": "P-SESS-c",
+        "gate": "regression",
+        "rule": "the sessions cell wears the baked clock (ART.sessions -> sessions_on/off.bmp)",
+        "what": "CircIconRes loses the sessions base — the cell wears the fallback glyph",
+        "file": "Biotak/BiotakMenu_A.mqh",
+        "find": "      else if(i == CIR_SESSIONS)   base = \"sessions\"; // P-SESS — Sessions Zones cell (clock)",
+        "replace": "      else if(i == CIR_SESSIONS)   base = \"htf\"; // MUTATION",
+        "expect": "P-SESS",
+    },
+    #--- P-UI-162 (2026-10-17) — THE RING'S ART IS THE BOX'S SIZE. MT4 blits a
+    #--- bitmap 1:1 from the object's top-left and clips at XSIZE x YSIZE, so the
+    #--- taper's smaller box cut the shipped 52px canvas (round tiles shipped as
+    #--- cut squares). The painter must resolve per-side art through CircBgRes,
+    #--- the resolver must know every side, and the glyph must keep ONE size.
+    #--- Each inverse must fail 53 naming P-UI-162.
+    {
+        "id": "P-UI-162a",
+        "gate": "regression",
+        "rule": "the ring painter resolves its skin through CircBgRes (canvas == box on every taper side)",
+        "what": "CircCreateItem names the 52px canvas directly again — the 40px box cuts the disc (the reported defect)",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "   string bgRes = CircBgRes(on);   // P-UI-162: the canvas is the taper's own box size (s + 2*margin)",
+        "replace": "   string bgRes = on ? \"::Files\\\\Icons\\\\circ_on.bmp\" : \"::Files\\\\Icons\\\\circ_off.bmp\";   // MUTATION: the 52px canvas in a 40px box",
+        "expect": "P-UI-162",
+    },
+    {
+        "id": "P-UI-162b",
+        "gate": "regression",
+        "rule": "CircBgRes knows every side CircBtnSizeForN can return",
+        "what": "the 32px case hands out the 44px canvas — the 40px box cuts the disc again",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "circ_on_32.bmp",
+        "replace": "circ_on.bmp",
+        "expect": "P-UI-162",
+    },
+    {
+        "id": "P-UI-162c",
+        "gate": "regression",
+        "rule": "the glyph keeps ONE size on create (CIRC_ICON_SIZE, no tapered box)",
+        "what": "CircCreateItem seats the glyph in a CircIconSize() box — the 28px canvas is clipped at 10+ seats",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "   CircConfigureIcon(icon, feat, on, x, y);   // P-UI-162: the glyph's box is its own 28px canvas (no taper)",
+        "replace": "   CircConfigureIcon(icon, feat, on, x, y, CircIconSize());   // MUTATION: tapered glyph box",
+        "expect": "P-UI-162",
+    },
+    {
+        "id": "P-UI-162d",
+        "gate": "regression",
+        "rule": "the glyph keeps ONE size on the move path (CIRC_ICON_SIZE/2)",
+        "what": "CircMoveItem seats the glyph by CircIconSize()/2 — a drag shifts it off the disc",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      ObjectSetInteger(0, CircIcon(i), OBJPROP_XDISTANCE, x - CIRC_ICON_SIZE / 2);",
+        "replace": "      ObjectSetInteger(0, CircIcon(i), OBJPROP_XDISTANCE, x - CircIconSize() / 2);   // MUTATION",
+        "expect": "P-UI-162",
+    },
+    {
+        "id": "P-UI-162e",
+        "gate": "regression",
+        "rule": "the baker bakes one pair per taper side (circSkin(on, s))",
+        "what": "circSkin loses its side parameter — every bake is the 44 canvas, every taper seat clips",
+        "file": "tools/gen-th3-icons.js",
+        "find": "function circSkin(on, s = 44) {",
+        "replace": "function circSkin(on) {   // MUTATION: the side parameter is gone",
+        "expect": "P-UI-162",
+    },
+    #--- P-UI-163 (2026-10-17) — A MISSING GLYPH IS REPAIRED, NEVER SKIPPED. The
+    #--- (1707) frame kept four ring seats' discs with NO glyphs until a chart
+    #--- change rebuilt the ring: the icon path was delete+recreate in one tick
+    #--- with a silent early return, and every sync gated on ObjectFind>=0
+    #--- (exists-only), so nothing ever wrote the missing icon back. Each inverse
+    #--- must fail 54 naming P-UI-163.
+    {
+        "id": "P-UI-163a",
+        "gate": "regression",
+        "rule": "the ring's icon is created-if-missing — never delete+recreate in one tick",
+        "what": "CircCreateItem re-creates its glyph every call again (delete+recreate) and drops the failed-create witness",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "   string icon = CircIcon(i);\n   if(ObjectFind(0, icon) < 0)\n   {\n      if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) { DrawStripDiagEmit(StringFormat(\"[P-UI-163] icon create FAILED seat=%d feat=%d\", i, feat)); return; }\n   }",
+        "replace": "   string icon = CircIcon(i);\n   if(ObjectFind(0, icon) >= 0)\n      ObjectDelete(0, icon);\n   if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) return;   // MUTATION: the same-tick delete+recreate class",
+        "expect": "P-UI-163",
+    },
+    {
+        "id": "P-UI-163b",
+        "gate": "regression",
+        "rule": "the per-tick refresh probes one seat and heals a hole",
+        "what": "the CircHealRingStep() call leaves RefreshUIPerTick — holes wait for the next full rebuild again",
+        "file": "Biotak/BiotakKit.mqh",
+        "find": "   CircHealRingStep();   // P-UI-163: one seat's existence probe per tick (2 ObjectFind, 0 writes while whole)",
+        "replace": "   // MUTATION: no per-tick heal probe",
+        "expect": "P-UI-163",
+    },
+    {
+        "id": "P-UI-163c",
+        "gate": "regression",
+        "rule": "the sync pass heals a missing glyph (it used to be the one state it skipped)",
+        "what": "CircUpdateItemState drops the missing-icon heal — the pass is exists-only again",
+        "file": "Biotak/BiotakMenu_C.mqh",
+        "find": "      DrawStripDiagEmit(StringFormat(\"[P-UI-163] icon heal seat=%d feat=%d\", i, feat));",
+        "replace": "      // MUTATION: the sync skips a missing glyph again",
+        "expect": "P-UI-163",
+    },
+    {
+        "id": "P-UI-163d",
+        "gate": "regression",
+        "rule": "the heal stands down while the tools menu owns the screen (it deletes the ring by design)",
+        "what": "CircHealRingStep loses the g_ToolsOpen guard — the probe would rebuild the ring under the open tools menu",
+        "file": "Biotak/BiotakMenu_D.mqh",
+        "find": "   if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;\r\n   int n = CircPlacedCount();\r\n   if(n <= 0) return;\r\n   static int s_healSeat = 0;",
+        "replace": "   if(!g_UI.menuVisible || g_OrbDragging) return;   // MUTATION: tools-open guard gone\r\n   int n = CircPlacedCount();\r\n   if(n <= 0) return;\r\n   static int s_healSeat = 0;",
+        "expect": "P-UI-163",
     },
 ]
 

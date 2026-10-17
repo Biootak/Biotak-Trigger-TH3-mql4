@@ -263,7 +263,9 @@
 
 #include "BiotakPanels_State.mqh"
 #include "BiotakPanels_PalA.mqh"
+#include "BiotakPanels_PalSpec.mqh"   // P-SIZE-1500: the spec/band/kind-row owner (split out of PalA)
 #include "BiotakPanels_PalB.mqh"
+#include "BiotakPanels_DynDef.mqh"    // P-SIZE-1500: the dynamic cards' row mints (split out of PalB)
 #include "BiotakPanels_PalDiag.mqh"   // P-UI-137: the popup's own census (its own file)
 #include "BiotakPanels_Apply.mqh"
 #include "BiotakPanels_Rows.mqh"

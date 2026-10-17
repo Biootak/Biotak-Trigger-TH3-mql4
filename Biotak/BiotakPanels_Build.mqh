@@ -118,6 +118,59 @@ void PnlCreateRow(const int item,const int row,const int px,const int py)
       return;
    }
 
+   // ── CHIPS (P-SESS, kind 10): the session editor's two grids — 7 day cells
+   //    (tap flips that weekday's mask bit) or 8 ink swatches (tap picks the
+   //    slot's colour), drawn right-aligned in the row's own column. The
+   //    caption rides the TOP line (the COL row's pattern) because eight 30px
+   //    cells leave the 280px content column no room for a left label; the
+   //    cell geometry comes from PnlChipsGeom — the same owner the hit test
+   //    and the refresher read, so paint and hand can never disagree.
+   if(kind == PNL_K_CHIPS)
+   {
+      if(opts == "days" || opts == "color")
+      {
+         int x0,cy,cw,cH,cg,cN;
+         PnlChipsGeom(item,row,x0,cy,cw,cH,cg,cN);
+         double cv = PnlCurrent(item,row);
+         int cvI  = (int)MathRound(cv);
+         PnlSetBitmap(PnlName(item,row,"GL"), px+PNL_PAD_X-1, ry+PNL_CAP_Y,
+                      PNL_GLYPH_CANVAS, PNL_GLYPH_CANVAS,
+                      PnlGlyphRes(item,PnlRowIcon(item,row),false), Z_PANEL_GLYPH);
+         PnlSetLabel(PnlName(item,row,"L"), px+PNL_PAD_X+PNL_GLYPH_VIS+7, ry+PNL_CAP_Y,
+                     PnlFit(label,PNL_PT_LBL_SM,PNL_WEL-2*PNL_PAD_X-PNL_GLYPH_VIS-7),
+                     PNL_CLR_LABEL, PNL_PT_LBL_SM);
+         ObjectSetString(0,PnlName(item,row,"L"),OBJPROP_FONT,BioChromeFont());
+         for(int i=0;i<cN;i++)
+         {
+            int cx = x0 + i*(cw+cg);
+            string nm = PnlName(item,row,"SC"+IntegerToString(i));
+            if(opts == "days")
+            {
+               bool on = ((cvI >> i) & 1) != 0;
+               PnlSetRect(nm, cx, cy, cw, cH, on ? PNL_CLR_ACCENT : PNL_CLR_SEG_OFF);
+               ObjectSetInteger(0,nm,OBJPROP_BORDER_COLOR, on ? a1 : PNL_CLR_SEG_BD);
+               ObjectSetString(0,nm,OBJPROP_TOOLTIP,"Toggle "+PnlDayLong(i));
+               PnlSetLabel(PnlName(item,row,"SCL"+IntegerToString(i)),
+                           cx+cw/2, cy+5, PnlDayShort(i),
+                           on ? PNL_CLR_CARD : PNL_CLR_SEG_TX, PNL_PT_CSET);
+               ObjectSetString(0,PnlName(item,row,"SCL"+IntegerToString(i)),OBJPROP_FONT,BioChromeFont());
+               ObjectSetInteger(0,PnlName(item,row,"SCL"+IntegerToString(i)),OBJPROP_ANCHOR,ANCHOR_UPPER);
+            }
+            else
+            {
+               color sc = SessColorOf(i);
+               bool sel = (cvI == i);
+               PnlSetRect(nm, cx, cy, cw, cH, sc);
+               ObjectSetInteger(0,nm,OBJPROP_BORDER_COLOR, sel ? a1 : PnlSwatchBorder(sc,PNL_CLR_CARD));
+               ObjectSetString(0,nm,OBJPROP_TOOLTIP,
+                               SessColorName(i) + (sel ? " (current)" : " — click to use"));
+               ObjectDelete(0,PnlName(item,row,"SCL"+IntegerToString(i)));   // swatches carry no letter
+            }
+         }
+      }
+      return;
+   }
+
    // ── DUAL — two switches in one 42px row (preview .dual)
    if(kind == PNL_K_DUAL)
    {
@@ -1395,9 +1448,13 @@ void ChartPointerFinalizeOnUps()
      if(s_palMoveArmed) PalMoveDisarm();   // spot already parked on the proven move
      //--- mirror the move-path release: the travelled spot becomes home (saved),
      //--- the release click is spent, and the frozen layout may re-derive.
-     if(orbDragged) { GVHomeAnswerNew("ORB"); CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); UISuppressNextClick(); }
-     if(orbLive) SubRelayoutIfNeeded();
-     ChartScrollReconcile();
+      if(orbDragged) { GVHomeAnswerNew("ORB"); CircOrbHomeSet(g_UI.menuX, g_UI.menuY); SaveUIStates(); UISuppressNextClick(); }
+      if(orbLive) SubRelayoutIfNeeded();
+      // P-UI-161: the ring's SEAT COUNT was frozen for the whole drag too — the
+      // stationary release is the second place it may change (the moving release
+      // is BiotakMenu_C's), so it re-derives on the same edge the sub-menu does.
+      if(orbLive) CircRelayoutIfNeeded();
+      ChartScrollReconcile();
 }
 
 // Commit a pending TEXT edit (TV "Add text" ≈ Ok-on-close): clicking away

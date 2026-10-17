@@ -64,6 +64,11 @@ void TH3HoverGuardReset()
 //+------------------------------------------------------------------+
 void TH3SessionStart(const bool swallowGesture = false)
 {
+    // P-UI-160b (2026-10-16): the F mute owns the chart — a session armed
+    // under it would draw objects the mute just swept, at a mask the create
+    // path would give them (OBJ_ALL_PERIODS). V and the ring's TH3 cell come
+    // through here.
+    if(IsIndicatorHidden()) return;
     g_th3Session.state = TH3_SESSION_PLACING;
     g_th3Session.pointCount = 0;
     g_th3Session.lastClickTime = (swallowGesture ? GetTickCount() : 0);

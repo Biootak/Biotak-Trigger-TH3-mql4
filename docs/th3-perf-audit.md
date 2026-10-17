@@ -42,15 +42,15 @@ re-applied the whole ring through `CircApplyMenuPosition()`. One such apply, dri
 | element | terminal calls per apply |
 | --- | --- |
 | orb bg | 1 `ObjectFind` + 2 `ObjectSetInteger` |
-| each of `RING_COUNT` = 9 items | 2 `ObjectFind` + 4 `ObjectSetInteger` |
+| each ring seat (9 then; P-UI-161 makes it dynamic) | 2 `ObjectFind` + 4 `ObjectSetInteger` |
 | badges, per lit feature | 2 `ObjectFind` + 4 `ObjectSetInteger` |
-| tools row when open | `SubChromeMove` + `TOOL_COUNT` = 5 × `ToolsMoveItem` |
+| tools row when open | `SubChromeMove` + the cells (5 then) × `ToolsMoveItem` |
 
 → **roughly 60–100 terminal calls, every one re-writing a number that had not changed.**
 
-`CircLayout(i,x,y)` is a **pure function of `(i, menuX, menuY, cw, ch)`** — `CircFitRadius`
-beside it already caches on the same four — so that write set is a derivation of exactly
-those four plus what is on screen.
+`CircLayout(i,x,y)` is a **pure function of `(i, menuX, menuY, cw, ch)`** — `CircFitLimit`
+beside it already caches on the same four (then `CircFitRadius`) — so that write set is a
+derivation of exactly those four plus what is on screen.
 
 **Fixed (P-PERF-55)**: a guard in `UpdateCircularMenuPosition()` returns before the apply
 when `(menuX, menuY, cw, ch, menuVisible, g_ToolsOpen, chrome generation)` are still the

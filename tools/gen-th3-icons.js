@@ -9,7 +9,7 @@
 //   dots=TH dotted levels, box=(dead) timeframe-lock padlock, custom=TH3 tool,
 //   ruler=Base / Knot measurement (replaced the padlock on the ring),
 //   htf=HTF candles, pin=price pin, step=step-mode stairs,
-//   factor=factor gauge, tools=tools menu.
+//   factor=factor gauge, tools=tools menu, eye=hide/show all.
 // Run: node tools/gen-th3-icons.js   (regenerates every BMP in Files/Icons)
 // Full deploy (regenerate + compile + sync to every MT4 terminal + verify):
 //   powershell -NoProfile -ExecutionPolicy Bypass -File tools/deploy.ps1
@@ -193,6 +193,43 @@ const ART = {
     // path — polyline through three vertices with dots
     seg(5, 23, 12, 11, 2.1), seg(12, 11, 20, 19, 2.1), seg(20, 19, 27, 7, 2.1),
     cfill(5, 23, 2.2), cfill(12, 11, 2.2), cfill(20, 19, 2.2), cfill(27, 7, 2.2),
+  ],
+  scale: [
+    // scale — CHART SCALE (P-UI-159): MT4's own scale-fix mode as one click.
+    // The PRICE AXIS itself: a vertical bar with a head at each end (the axis
+    // is draggable once fixed) and graduation ticks on its right — the third
+    // vertical family in the fan next to ruler's diagonal lozenge and step's
+    // stairs, so every cell stays a different silhouette.
+    seg(16, 6.5, 16, 21.5, 2.0),
+    seg(16, 6.5, 12.8, 9.7, 1.7), seg(16, 6.5, 19.2, 9.7, 1.7),
+    seg(16, 21.5, 12.8, 18.3, 1.7), seg(16, 21.5, 19.2, 18.3, 1.7),
+    seg(16, 10.5, 22.5, 10.5, 1.6),
+    seg(16, 14, 20.5, 14, 1.6),
+    seg(16, 17.5, 22.5, 17.5, 1.6),
+  ],
+  eye: [
+    // eye — HIDE / SHOW ALL (P-UI-160): the F-key master mute as one Tools cell.
+    // An open eye — a lid lens bowed around iris + pupil. ONE shape in two inks,
+    // like every toggle (P-UI-131 item 5): silver OFF = objects visible, amber
+    // ON = the mute is on. No other cell wears this silhouette at 28px.
+    seg(3.6, 16, 8.6, 10.9, 1.9), seg(8.6, 10.9, 16, 8.0, 1.9),
+    seg(16, 8.0, 23.4, 10.9, 1.9), seg(23.4, 10.9, 28.4, 16, 1.9),
+    seg(3.6, 16, 8.6, 21.1, 1.9), seg(8.6, 21.1, 16, 24.0, 1.9),
+    seg(16, 24.0, 23.4, 21.1, 1.9), seg(23.4, 21.1, 28.4, 16, 1.9),
+    ring(16, 16, 4.9, 1.8),
+    cfill(16, 16, 2.0),
+  ],
+  sessions: [
+    // sessions — P-SESS (2026-10-17): the Sessions Zones ring/Tools cell.
+    // A clock face — the world clock the feature draws on: session boxes and
+    // their countdown ride the chart's own clock, and card 15's strip mark is
+    // the same clock idea. ONE shape in two inks, like every toggle: silver
+    // OFF = sessions hidden, amber ON = the master switch is on. No other cell
+    // wears a ring with two hands at 28px (eye's ring is concentric iris).
+    ring(16, 16, 10.0, 2.0),
+    seg(16, 16, 16, 9.2, 1.9),       // minute hand, straight up
+    seg(16, 16, 20.9, 19.3, 1.9),    // hour hand, toward 4 o'clock
+    cfill(16, 16, 1.7),              // hub
   ],
   factor: [
     // factor — factor override: dial/gauge with needle
@@ -548,12 +585,18 @@ function rrSdf(x, y, cx, cy, hw, hh, rad) {
   return Math.hypot(ox, oy) + Math.min(Math.max(qx, qy), 0) - rad;
 }
 
-// --- circ_off.bmp / circ_on.bmp : 52x52, 44px item circle centered (4px margin)
+// --- circ_off.bmp / circ_on.bmp (44) + circ_off_<s>.bmp / circ_on_<s>.bmp
+// (43/39/35/32/30): the ring item's circle — canvas = BUTTON SIDE + 4px glow
+// margin on every side. P-UI-162: MT4 blits a bitmap-label's BMP 1:1 from the
+// object's top-left and CLIPS it at XSIZE/YSIZE (never scales), so canvas != box
+// is a CUT disc — the shipped 52px canvas inside the taper's smaller box read as
+// rounded squares (2026-10-17). The files.push block below bakes one pair per
+// side CircBtnSizeForN can return.
 // Dark-glass skin (matches the orb): near-opaque slate core reads on BOTH
 // white and dark charts. off  = slate glass + light rim + top sheen + shadow
 //                               on  = same base + amber tint + amber border/glow
-function circSkin(on) {
-  const S = 52, c = 26, r = 22;
+function circSkin(on, s = 44) {
+  const S = s + 8, c = S / 2, r = s / 2;
   return renderFx(S, (x, y) => {
     let col = [0, 0, 0, 0];
     const s = halo(x, y, c, c, r, 3.5, 89, [0, 0, 0], 3);        // drop shadow
@@ -2141,7 +2184,39 @@ files.push(['bk_chev.bmp',     () => render(16, BK_CHEV,     BK_DARK)]);
 // have zero runtime paths, so they are not emitted.
 files.push(['circ_off.bmp', () => circSkin(false)]);
 files.push(['circ_on.bmp',  () => circSkin(true)]);
+// P-UI-162: one baked pair per taper side (box s+8 == canvas s+8). The pair
+// above IS the nine-seat look (byte-identical); these cover 10..13+ seats.
+files.push(['circ_off_43.bmp', () => circSkin(false, 43)]);
+files.push(['circ_on_43.bmp',  () => circSkin(true, 43)]);
+files.push(['circ_off_39.bmp', () => circSkin(false, 39)]);
+files.push(['circ_on_39.bmp',  () => circSkin(true, 39)]);
+files.push(['circ_off_35.bmp', () => circSkin(false, 35)]);
+files.push(['circ_on_35.bmp',  () => circSkin(true, 35)]);
+files.push(['circ_off_32.bmp', () => circSkin(false, 32)]);
+files.push(['circ_on_32.bmp',  () => circSkin(true, 32)]);
+files.push(['circ_off_30.bmp', () => circSkin(false, 30)]);
+files.push(['circ_on_30.bmp',  () => circSkin(true, 30)]);
 files.push(['orb_bg.bmp',   () => orbSkin()]);
+// P-UI-161 — THE RING-MEMBERSHIP STAR (the Tools cells' top-right mark). The
+// badge's own disc language: a near-full deep-navy plate (BADGE_RING) so the
+// mark reads on white AND black charts, carrying a 5-point star — silver when
+// the item is NOT in the main ring, amber when it is. Same 16px canvas as the
+// badge (CIRC_STAR_SIZE == CIRC_BADGE_SIZE 16), so it seats on the cell corner.
+const STAR_PTS = (() => {
+  const pts = [], cx = 16, cy = 16, R = 11.0, r = R * 0.382;
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + i * Math.PI / 5;
+    const rad = (i % 2 === 0) ? R : r;
+    pts.push([cx + rad * Math.cos(a), cy + rad * Math.sin(a)]);
+  }
+  return pts;
+})();
+const STAR_ART = [
+  Object.assign(cfill(16, 16, 14.5), { color: BADGE_RING }),
+  { t: 'POLY', pts: STAR_PTS },
+];
+files.push(['star_off.bmp', () => render(16, STAR_ART, OFF)]);
+files.push(['star_on.bmp',  () => render(16, STAR_ART, ON)]);
 // ICON-DIET 2026-09-27: orb_word.bmp is no longer emitted. ORBWORD-OFF
 // (2026-09-12) commented out CircOrbRes's only word branch, so 20 KB rode
 // along in every .ex4 drawing nothing. The builder (orbWordFromMaster) and its

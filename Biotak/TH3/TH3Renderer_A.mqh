@@ -855,6 +855,13 @@ void TH3InfoFamilyDropActive()
 void TH3InfoCaptionHeal()
 {
     if(g_activeABCDPattern == "") return;
+    // P-UI-160b (2026-10-16): the F mute owns the caption's state too. The
+    // mute's own shapes (rows masked, plate dropped) are EXACTLY what the
+    // healthy check below reads as "damaged", so an ungated heal would
+    // re-light the family within 250 ms of the hide. The visit clock
+    // survives the mute; on show the sweep resumes and enforces it (an
+    // expiry is a drop, a redraw re-arms).
+    if(IsIndicatorHidden()) return;
     string base = g_activeABCDPattern;
     // P-TH3-INFO-13 (2026-09-22): the caption is a TIMED VISITOR first. The
     // user's order: «لیبل مود ها و لیبل abcd باید بعد چند ثانیه حذف بشن

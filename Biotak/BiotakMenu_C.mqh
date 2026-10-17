@@ -11,20 +11,21 @@
 //| auto-scroll on it lands many times a second. The branch that       |
 //| answers it called `UpdateCircularMenuPosition()` — and that call   |
 //| re-applied the WHOLE ring through `CircApplyMenuPosition()`, whose |
-//| write set with the ring up is 1 orb + RING_COUNT(9) items x (2     |
+//| write set with the ring up is 1 orb + the seats (9 then) x (2      |
 //| `ObjectFind` + 4 `ObjectSetInteger`) + the badge seats + the tools |
 //| row and its header/pager = roughly 60-100 terminal calls, every    |
 //| one of them re-writing a number that had not changed.             |
 //|                                                                   |
 //| `CircLayout(i,x,y)` is a PURE function of (i, menuX, menuY, cw,    |
-//| ch) — `CircFitRadius` beside it already caches on the same four —  |
-//| so the applied position is a derivation of exactly those four plus |
-//| the metrics it read them against, plus what is on screen. When all |
-//| of those are the value the LAST apply already wrote, the write set |
-//| is identical and the call is pure cost. Nothing below the guard    |
-//| can be owed by a chart-change alone: `CircCreateItem`/`CircCreate- |
-//| Orb` position themselves at birth, the sub-panel keeps its OWN     |
-//| shape key (`SubRelayoutIfNeeded`, which still runs), and           |
+//| ch) — `CircFitLimit` beside it already caches on the same four     |
+//| (then `CircFitRadius`) — so the applied position is a derivation of |
+//| exactly those four plus the metrics it read them against, plus what |
+//| is on screen. When all of those are the value the LAST apply        |
+//| already wrote, the write set is identical and the call is pure cost.|
+//| Nothing below the guard can be owed by a chart-change alone:       |
+//| `CircCreateItem`/`CircCreateOrb` position themselves at birth, the |
+//| sub-panel keeps its OWN shape key (`SubRelayoutIfNeeded`, which    |
+//| still runs), and                                                   |
 //| `SaveUIStates` is compare-guarded on the very values the key holds.|
 //|                                                                   |
 //| The CHROME GENERATION is in the key so this can never skip a       |
@@ -108,7 +109,7 @@ void CircBadgePos(const int i, int &x, int &y)
    CircLayout(i, cx, cy);
    double dx, dy;
    CircBadgeDir(i, dx, dy);
-   double off = CIRC_BTN_SIZE / 2 + CIRC_BADGE_FLOAT;
+   double off = CircBtnSize() / 2 + CIRC_BADGE_FLOAT;   // P-UI-161: follows the ring's own side
    x = (int)MathRound(cx + dx * off - CIRC_BADGE_SIZE / 2.0);
    y = (int)MathRound(cy + dy * off - CIRC_BADGE_SIZE / 2.0);
 }
@@ -167,8 +168,9 @@ void CircCreateItem(const int i)
 {
    int x, y;
    CircLayout(i, x, y);
-   int bx = x - CIRC_BTN_SIZE / 2;
-   int by = y - CIRC_BTN_SIZE / 2;
+   int s  = CircBtnSize();     // P-UI-161: the ring's own side — shrinks as the seat count grows
+   int bx = x - s / 2;
+   int by = y - s / 2;
    int feat = RingFeature(i);
    bool on = CircFeatureLit(feat);
 
@@ -177,12 +179,12 @@ void CircCreateItem(const int i)
    {
       if(!ObjectCreate(0, bg, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
    }
-   string bgRes = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
+   string bgRes = CircBgRes(on);   // P-UI-162: the canvas is the taper's own box size (s + 2*margin)
    ObjectSetInteger(0, bg, OBJPROP_CORNER, CORNER_LEFT_UPPER);
    ObjectSetInteger(0, bg, OBJPROP_XDISTANCE, bx - CIRC_BG_MARGIN);
    ObjectSetInteger(0, bg, OBJPROP_YDISTANCE, by - CIRC_BG_MARGIN);
-   ObjectSetInteger(0, bg, OBJPROP_XSIZE, CIRC_BG_SIZE);
-   ObjectSetInteger(0, bg, OBJPROP_YSIZE, CIRC_BG_SIZE);
+   ObjectSetInteger(0, bg, OBJPROP_XSIZE, s + 2 * CIRC_BG_MARGIN);
+   ObjectSetInteger(0, bg, OBJPROP_YSIZE, s + 2 * CIRC_BG_MARGIN);
    ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, bgRes);
    ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, bgRes);
    ObjectSetString(0, bg, OBJPROP_TOOLTIP, "");   // P-UI-119
@@ -192,13 +194,13 @@ void CircCreateItem(const int i)
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
    ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_ITEM);
 
+   // P-UI-163: create-if-missing, NEVER delete+recreate in one tick — MEASURED 2026-10-17 (the 12:05:39 frame): a same-tick re-create that failed kept the bg and no glyph, and NO writer healed a MISSING icon (every path gates on ObjectFind>=0). Output-identical: the configure below rewrites all, and a BMPFILE re-set re-decodes (the P-UI-161 sync's own law).
    string icon = CircIcon(i);
-   if(ObjectFind(0, icon) >= 0)
-      ObjectDelete(0, icon);
-   if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
-   CircConfigureIcon(icon, feat, on,
-      bx + CIRC_BTN_SIZE / 2,
-      by + CIRC_BTN_SIZE / 2);
+   if(ObjectFind(0, icon) < 0)
+   {
+      if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) { DrawStripDiagEmit(StringFormat("[P-UI-163] icon create FAILED seat=%d feat=%d", i, feat)); return; }
+   }
+   CircConfigureIcon(icon, feat, on, x, y);   // P-UI-162: the glyph's box is its own 28px canvas (no taper)
 
    if(CircHasBadge(feat))
    {
@@ -237,10 +239,12 @@ void ToolsCreateItem(const int toolIdx)
    ObjectSetInteger(0, bg, OBJPROP_BACK, false);
    ObjectSetInteger(0, bg, OBJPROP_ZORDER, Z_MENU_ITEM);
 
+   // P-UI-163: the same create-if-missing law as CircCreateItem's icon (one class, two live writers — see the measured note there).
    string icon = ToolsIcon(toolIdx);
-   if(ObjectFind(0, icon) >= 0)
-      ObjectDelete(0, icon);
-   if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
+   if(ObjectFind(0, icon) < 0)
+   {
+      if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) { DrawStripDiagEmit(StringFormat("[P-UI-163] tools icon create FAILED cell=%d feat=%d", toolIdx, feat)); return; }
+   }
    CircConfigureIcon(icon, feat, on, x, y);
 
    // Settings badge (click → open the item's panel). Created only when the
@@ -250,6 +254,10 @@ void ToolsCreateItem(const int toolIdx)
       ToolsCreateBadge(toolIdx);
       if(!CircFeatureLit(feat)) ToolsShowBadge(toolIdx, false);
    }
+
+   // P-UI-161: the membership star — born AFTER the badge, on its own Z rung
+   // (Z_MENU_STAR), so the corner mark is the object the click lands on.
+   ToolsCreateStar(toolIdx);
 }
 
 void ToolsShowBadge(const int i, const bool show)
@@ -346,16 +354,19 @@ void CreateMenu()
    // The ring stays hidden while the Tools submenu is open (CreateToolsMenu
    // deleted it, CircItemAt refuses it) — rebuilding it here painted both.
    if(!g_ToolsOpen)
-      for(int i = 0; i < RING_COUNT; i++)
+   {
+      for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: seats = stars that fit + the door
          CircCreateItem(i);
+      CircNoteBuilt();                             // the set CircRelayoutIfNeeded compares against
+   }
    if(g_ToolsOpen)
-      for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
+      for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
 }
 
 void CreateToolsMenu()
 {
    if(!g_UI.menuVisible) return;
-   if(TOOL_COUNT <= 0) return;                  // nothing to show — stay closed
+   if(CAT_COUNT <= 0) return;                   // nothing to show — stay closed
    g_ToolsOpen = true;
    g_ToolsPage = 0;                             // always open on the first page
    SubInvalidateLayout();                       // fresh geometry for this open
@@ -363,13 +374,15 @@ void CreateToolsMenu()
    // on screen the chosen geometry provably cannot overlap anything — any
    // position, any edge. The fan (r=112) and the full ring (r=100) genuinely
    // cannot coexist with the main ring at r=64: 44px buttons + their glow overlap.
-   for(int i = 0; i < RING_COUNT; i++)
+   // P-UI-161: the sweep is RING_MAX_SEATS, not the live count — a star toggled
+   // while the Tools menu is open must not leave the previous set's tail behind.
+   for(int i = 0; i < RING_MAX_SEATS; i++)
    {
       ObjectDelete(0, CircIcon(i));
       ObjectDelete(0, CircBg(i));
    }
    SubChromeCreate();                           // panel backdrop + header + pager
-   for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
+   for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
    ChartRedraw();
 }
 
@@ -377,29 +390,35 @@ void CreateToolsMenu()
 // wiped the ring, and recreating it here would leak objects onto the chart.
 void DeleteToolsMenu(const bool restoreRing = true)
 {
-   for(int t = 0; t < TOOL_COUNT; t++)
+   for(int t = 0; t < CAT_COUNT; t++)
    {
       ObjectDelete(0, ToolsBg(t));
       ObjectDelete(0, ToolsIcon(t));
       ObjectDelete(0, ToolsBadgeBg(t));
       ObjectDelete(0, ToolsBadgeTxt(t));
+      ObjectDelete(0, ToolsStar(t));   // P-UI-161: the membership mark dies with its cell
    }
    SubChromeDelete();                           // panel + header + pager + dots
    g_ToolsOpen = false;
    g_ToolsPage = 0;                             // next open starts on page 1 again
    SubInvalidateLayout();
-   if(restoreRing && g_UI.menuVisible)             // bring the ring back
-      for(int i = 0; i < RING_COUNT; i++) CircCreateItem(i);
+   if(restoreRing && g_UI.menuVisible)          // bring the ring back
+   {
+      // P-UI-161: the ring is rebuilt from the mask the stars just wrote — a star
+      // toggled while the Tools menu was open lands HERE, in the same click.
+      for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);
+      CircNoteBuilt();
+   }
    ChartRedraw();
 }
 
 // Re-place every cell + refresh the pager for the CURRENT page (a page flip).
-// Cheap: TOOL_COUNT object moves and no bitmap re-decode — the panel BMP depends
+// Cheap: CAT_COUNT object moves and no bitmap re-decode — the panel BMP depends
 // on the row count, and a flip never changes that.
 void SubApplyPage()
 {
    if(!g_ToolsOpen) return;
-   for(int t = 0; t < TOOL_COUNT; t++) ToolsMoveItem(t);
+   for(int t = 0; t < CAT_COUNT; t++) ToolsMoveItem(t);
    SubChromeCreate();
 }
 
@@ -410,19 +429,20 @@ void SubRebuild()
 {
    if(!g_ToolsOpen) return;
    SubChromeDelete();
-   for(int t = 0; t < TOOL_COUNT; t++)
+   for(int t = 0; t < CAT_COUNT; t++)
    {
       ObjectDelete(0, ToolsBg(t));
       ObjectDelete(0, ToolsIcon(t));
       ObjectDelete(0, ToolsBadgeBg(t));
       ObjectDelete(0, ToolsBadgeTxt(t));
+      ObjectDelete(0, ToolsStar(t));   // P-UI-161
    }
    // A shorter chart pages MORE, so the current page may no longer exist.
    int pages = SubPageCount();
    if(g_ToolsPage > pages - 1) g_ToolsPage = pages - 1;
    if(g_ToolsPage < 0)          g_ToolsPage = 0;
    SubChromeCreate();
-   for(int t = 0; t < TOOL_COUNT; t++) ToolsCreateItem(t);
+   for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
    ChartRedraw();
 }
 
@@ -451,13 +471,30 @@ void SubRelayoutIfNeeded()
    SubRebuild();
 }
 
+//--- P-UI-161: the RING's own shape fingerprint — the seat set. A star toggled
+//--- while the Tools menu is open lands on DeleteToolsMenu's own rebuild; but a
+//--- chart resize or an orb drag can change how many starred seats FIT, and that
+//--- flip is answered here (the release + the chart-change path), never mid-drag:
+//--- while dragging, CircPlacedCount() returns the BUILT count, so the compare
+//--- below sees "same" and the hand keeps its geometry (the SubMode() rule).
+void CircRelayoutIfNeeded()
+{
+   if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;
+   if(s_circBuiltSeats == CircPlacedCountLive()) return;   // same set — the move already ran
+   DeleteRing();
+   CreateMenu();          // rebuilds orb + the new seat set and re-notes the fingerprint
+   ChartRedraw();
+}
+
 //--- P-UI-129 (2026-09-25): the RING family alone, ONE owner. `DeleteMenu`
 //--- (every teardown) and the orb TOGGLE both want exactly this, and the toggle
 //--- wants nothing else — so it is a function, not a loop written twice.
 void DeleteRing()
 {
    s_circChromeGen++;   // P-PERF-55: the family is gone - a later apply must not be skipped
-   for(int i = 0; i < RING_COUNT; i++)
+   // P-UI-161: the sweep is RING_MAX_SEATS, not the live count — a name a previous
+   // (larger) mask wrote must not survive the star that removed its seat.
+   for(int i = 0; i < RING_MAX_SEATS; i++)
    {
       ObjectDelete(0, CircIcon(i));
       ObjectDelete(0, CircBg(i));
@@ -484,10 +521,12 @@ void CircMoveItem(const int i)
 {
    int x, y;
    CircLayout(i, x, y);
-   int bx = x - CIRC_BTN_SIZE / 2;
-   int by = y - CIRC_BTN_SIZE / 2;
+   int s  = CircBtnSize();     // P-UI-161: matches CircCreateItem's own side
+   int bx = x - s / 2;
+   int by = y - s / 2;
    if(ObjectFind(0, CircIcon(i)) >= 0)
    {
+      // P-UI-162: the glyph is CIRC_ICON_SIZE (28) on every path — a drag must not shift it
       ObjectSetInteger(0, CircIcon(i), OBJPROP_XDISTANCE, x - CIRC_ICON_SIZE / 2);
       ObjectSetInteger(0, CircIcon(i), OBJPROP_YDISTANCE, y - CIRC_ICON_SIZE / 2);
    }
@@ -495,6 +534,8 @@ void CircMoveItem(const int i)
    {
       ObjectSetInteger(0, CircBg(i), OBJPROP_XDISTANCE, bx - CIRC_BG_MARGIN);
       ObjectSetInteger(0, CircBg(i), OBJPROP_YDISTANCE, by - CIRC_BG_MARGIN);
+      ObjectSetInteger(0, CircBg(i), OBJPROP_XSIZE, s + 2 * CIRC_BG_MARGIN);
+      ObjectSetInteger(0, CircBg(i), OBJPROP_YSIZE, s + 2 * CIRC_BG_MARGIN);
    }
    int feat = RingFeature(i);
    if(CircHasBadge(feat)) CircMoveBadge(i);
@@ -546,6 +587,8 @@ void ToolsMoveItem(const int t)
    int featT = ToolFeature(t);
    if(CircHasBadge(featT) && ObjectFind(0, ToolsBadgeBg(t)) >= 0)
       ToolsShowBadge(t, CircFeatureOn(featT));
+   // P-UI-161: the star follows its cell (and parks itself when off-page)
+   ToolsMoveStar(t);
 }
 
 void CircApplyMenuPosition()
@@ -560,12 +603,12 @@ void CircApplyMenuPosition()
 
    if(g_UI.menuVisible)
    {
-      for(int i = 0; i < RING_COUNT; i++)
+      for(int i = 0; i < CircPlacedCount(); i++)   // P-UI-161: exactly the built set (frozen mid-drag)
          CircMoveItem(i);
       if(g_ToolsOpen)
       {
          SubChromeMove();   // panel + header + pager translate with the orb
-         for(int t = 0; t < TOOL_COUNT; t++) ToolsMoveItem(t);
+         for(int t = 0; t < CAT_COUNT; t++) ToolsMoveItem(t);
       }
    }
 }
@@ -621,6 +664,11 @@ void UpdateCircularMenuPosition()
    // fit, or fewer rows may fit and the panel must page). Rebuild only when the
    // shape actually changed — a plain move already ran above.
    SubRelayoutIfNeeded();
+   // P-UI-161: and the RING's seat set is a function of the SAME box — a resize can
+   // change how many starred seats fit. Answered HERE, on the apply path only (the
+   // skip path's key covers every input CircPlacedCountLive reads, so a change that
+   // reaches this line is the only one that can move the count).
+   CircRelayoutIfNeeded();
    CircTipPinnedTouch();   // P-UI-126: a pinned banner "above the orb" follows by tick, not per move
    SaveUIStates();
 }
@@ -963,8 +1011,10 @@ void CircHandleMouseMove(const int mx, const int my, const bool leftDown,
       // The mode was FROZEN for the whole drag (rebuilding geometry under the
       // hand would flicker). The release is where it is allowed to change, so
       // re-derive it now: dragging out of a corner may turn the arc into a
-      // train, or a train into the grid panel.
+      // train, or a train into the grid panel. P-UI-161: the ring's SEAT COUNT
+      // was frozen the same way — the release is where it may change too.
       SubRelayoutIfNeeded();
+      CircRelayoutIfNeeded();
       return;
    }
 
@@ -1035,16 +1085,18 @@ void CircUpdateItemState(const int i)
    bool on = CircFeatureLit(feat);
 
    string icon = CircIcon(i);
-   if(ObjectFind(0, icon) >= 0)
+   int ix, iy;
+   CircLayout(i, ix, iy);
+   if(ObjectFind(0, icon) < 0)   // P-UI-163: the ONE state this pass used to skip — heal it, flushed (the sync's hash sees the desired state, not the chart)
    {
-      int ix, iy;
-      CircLayout(i, ix, iy);
-      CircConfigureIcon(icon, feat, on, ix, iy);
+      if(!ObjectCreate(0, icon, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
+      DrawStripDiagEmit(StringFormat("[P-UI-163] icon heal seat=%d feat=%d", i, feat));
    }
+   CircConfigureIcon(icon, feat, on, ix, iy);
    string bg = CircBg(i);
    if(ObjectFind(0, bg) >= 0)
    {
-      string res = on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";
+      string res = CircBgRes(on);   // P-UI-162: per-side canvas — box == canvas on this path too
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 0, res);
       ObjectSetString(0, bg, OBJPROP_BMPFILE, 1, res);
       ObjectSetString(0, bg, OBJPROP_TOOLTIP, "");   // P-UI-119   // bg ring keeps a live tooltip too
@@ -1110,15 +1162,15 @@ void CircShowBadge(const int i, const bool show)
 
 void UpdateCircularItemStates()
 {
-   for(int i = 0; i < RING_COUNT; i++)
+   for(int i = 0; i < CircPlacedCount(); i++)
       CircUpdateItemState(i);
    if(g_ToolsOpen)
-      for(int t = 0; t < TOOL_COUNT; t++) ToolsUpdateItemState(t);
+      for(int t = 0; t < CAT_COUNT; t++) ToolsUpdateItemState(t);
 }
 
 void UpdateCircularBadges()
 {
-   for(int i = 0; i < RING_COUNT; i++)
+   for(int i = 0; i < CircPlacedCount(); i++)
    {
       int feat = RingFeature(i);
       if(!CircHasBadge(feat)) continue;
@@ -1147,9 +1199,11 @@ void UpdateMenuSyncIfChanged()
 
    // FNV-1a fingerprint of ring + tools on/off state AND badge TEXT, so
    // value-only changes (E/S hotkeys, factor override, TH mode) refresh the
-   // badges — not just on/off flips.
+   // badges — not just on/off flips. P-UI-161: the star MASK is in the hash too,
+   // so a membership change repaints even when no feature state moved.
    ulong h = 1469598103934665603;
-   for(int i = 0; i < RING_COUNT; i++)
+   h = (h ^ (ulong)g_CircStarMask) * 1099511628211;
+   for(int i = 0; i < CircPlacedCount(); i++)
    {
       int feat = RingFeature(i);
       ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
@@ -1158,7 +1212,7 @@ void UpdateMenuSyncIfChanged()
       for(int c = 0; c < StringLen(t); c++)
          h = (h ^ StringGetCharacter(t, c)) * 1099511628211;
    }
-   for(int t = 0; t < TOOL_COUNT; t++)
+   for(int t = 0; t < CAT_COUNT; t++)
    {
       int feat = ToolFeature(t);
       ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
@@ -1197,7 +1251,10 @@ int ToolsIndexFromName(const string name)
    string pfx;
    // NOTE: check "ToolsBadgeTxt" BEFORE "ToolsBadge" — the plain-prefix match
    // would otherwise swallow the text object and mis-parse its index.
+   // P-UI-161: "ToolsStar" is its own prefix (no other family starts with it).
    pfx = g_UI.btnPrefix + "ToolsBadgeTxt";
+   if(StringFind(name, pfx) == 0) return (int)StringToInteger(StringSubstr(name, StringLen(pfx)));
+   pfx = g_UI.btnPrefix + "ToolsStar";
    if(StringFind(name, pfx) == 0) return (int)StringToInteger(StringSubstr(name, StringLen(pfx)));
    pfx = g_UI.btnPrefix + "ToolsBg";
    if(StringFind(name, pfx) == 0) return (int)StringToInteger(StringSubstr(name, StringLen(pfx)));
@@ -1206,6 +1263,92 @@ int ToolsIndexFromName(const string name)
    pfx = g_UI.btnPrefix + "ToolsBadge";
    if(StringFind(name, pfx) == 0) return (int)StringToInteger(StringSubstr(name, StringLen(pfx)));
    return -1;
+}
+
+//+------------------------------------------------------------------+
+//| P-UI-161 — THE MEMBERSHIP STAR, one object per Tools cell.       |
+//|                                                                  |
+//| The user's own mechanism («توی همون تولز که هستش یک علامت ستاره   |
+//| باشه که بهتر و سریع تره»): every cell of the Tools menu wears a   |
+//| star at its top-right corner — amber when the item is IN the main |
+//| ring, silver when it is not. A click on the star toggles the bit; |
+//| the state and the ring are the SAME fact, so the witness below     |
+//| carries the read-back the report needs (a click that "did       |
+//| nothing" is unprovable without it — DIAG-131's law).              |
+//|                                                                  |
+//| Seat: the star box is 16px inside the cell's own visible half     |
+//| (the grid tile is SUB_CELL_VIS wide, the disc fan/ring 44) — so   |
+//| it reads as a corner mark of the icon, not a second control.      |
+//| Z: it is born AFTER the badge (Z_MENU_STAR above Z_MENU_BADGE),   |
+//| so a badge and a star can never fight over the corner.            |
+//+------------------------------------------------------------------+
+string ToolsStar(const int i) { return g_UI.btnPrefix + "ToolsStar" + IntegerToString(i); }
+
+void ToolsStarPos(const int i, int &x, int &y)
+{
+   int cx, cy;
+   ToolsLayout(i, cx, cy);
+   int half = SubIsPanelMode() ? SUB_CELL_VIS / 2 : CircBtnSizeForN(CAT_COUNT) / 2;
+   x = cx + half - CIRC_STAR_SIZE - 1;
+   y = cy - half + 1;
+}
+
+void ToolsCreateStar(const int i)
+{
+   int x, y;
+   ToolsStarPos(i, x, y);
+   string name = ToolsStar(i);
+   if(ObjectFind(0, name) < 0)
+      if(!ObjectCreate(0, name, OBJ_BITMAP_LABEL, 0, 0, 0)) return;
+   string res = CircCatStarred(i) ? "::Files\\Icons\\star_on.bmp" : "::Files\\Icons\\star_off.bmp";
+   ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, CIRC_STAR_SIZE);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, CIRC_STAR_SIZE);
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 0, res);
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 1, res);
+   ObjectSetString(0, name, OBJPROP_TOOLTIP, "");   // P-UI-119
+   ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, name, OBJPROP_SELECTED, false);
+   ObjectSetInteger(0, name, OBJPROP_HIDDEN, true);
+   ObjectSetInteger(0, name, OBJPROP_BACK, false);
+   ObjectSetInteger(0, name, OBJPROP_ZORDER, Z_MENU_STAR);
+}
+
+void ToolsUpdateStar(const int i)
+{
+   string name = ToolsStar(i);
+   if(ObjectFind(0, name) < 0) return;
+   string res = CircCatStarred(i) ? "::Files\\Icons\\star_on.bmp" : "::Files\\Icons\\star_off.bmp";
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 0, res);
+   ObjectSetString(0, name, OBJPROP_BMPFILE, 1, res);
+}
+
+void ToolsMoveStar(const int i)
+{
+   string name = ToolsStar(i);
+   if(ObjectFind(0, name) < 0) return;
+   if(!SubItemOnPage(i)) { ObjectSetInteger(0, name, OBJPROP_XDISTANCE, CIRC_HIDE_POS);
+                           ObjectSetInteger(0, name, OBJPROP_YDISTANCE, CIRC_HIDE_POS); return; }
+   int x, y;
+   ToolsStarPos(i, x, y);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y);
+}
+
+//--- The star's ONE writer: flip the bit, repaint the mark, persist, witness.
+//--- The ring follows on its own (DeleteToolsMenu's restore rebuilds it from the
+//--- mask the moment the Tools menu closes), so nothing else needs telling.
+void CircStarToggle(const int cat)
+{
+   bool on = !CircCatStarred(cat);
+   CircStarSet(cat, on);
+   ToolsUpdateStar(cat);
+   SaveUIStates();
+   DrawStripDiagEmit(StringFormat("[P-UI-161] star cat=%d on=%d mask=0x%X ringN=%d",
+                                  cat, (on ? 1 : 0), (int)g_CircStarMask, RingCount()));
+   ChartRedraw();
 }
 
 //+------------------------------------------------------------------+

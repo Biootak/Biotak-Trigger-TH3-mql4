@@ -196,6 +196,13 @@ int GetABCDInfoSafeYDistance()
 //+------------------------------------------------------------------+
 void RepositionABCDInfoLabels()
 {
+    // P-UI-160b (2026-10-16): while the F mute is on, the verify below would
+    // read the mute's own state (rows masked, plate dropped) as damage and
+    // re-light the active caption — this pass is reachable while hidden
+    // (RedrawLabelsOnly from the L/G/... key branches), so it must refuse.
+    // The show path needs no call from here: the frame path runs this very
+    // function with the mute off, and Verify's own heal lights the family.
+    if(IsIndicatorHidden()) return;
     // P-TH3-INFO-09: the VERIFY and the ORPHAN SWEEP are not the tool card's
     // privilege. A caption the tool drew (or a build mix left behind) must heal
     // even with the card switched off — with the early return below the passes
@@ -228,6 +235,8 @@ void RepositionABCDInfoLabels()
     // above, and only this pass can see it.
     TH3InfoOrphanPlateSweep();
 }
+
+// P-UI-160b: TH3PatternsHideAll/ShowAll live in TH3Tool_Mute.mqh (P-SIZE-1500 split).
 
 //+------------------------------------------------------------------+
 //| Get Cached Daily ATR (Performance Optimization)                 |

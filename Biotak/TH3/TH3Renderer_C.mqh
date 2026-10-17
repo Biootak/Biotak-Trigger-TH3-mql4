@@ -107,6 +107,11 @@ void TH3PivotMarkersUpdate()
 // carries the full A/B/C/D model.
 void TH3HitPivotForward()
 {
+    // P-UI-160b (2026-10-16): no ladder work under the F mute — and the shadow
+    // (s_lastPat/s_lastStep/s_lastTip) must not advance while hidden, or the
+    // first tick after show would read the proof as "already carried" and the
+    // ladder would never come back on a chart that only moved during the mute.
+    if(IsIndicatorHidden()) return;
     if(g_activeABCDPattern == "") return;
     TH3Pattern pat;
     if(!TH3PatternStoreGet(g_activeABCDPattern, pat)) return;

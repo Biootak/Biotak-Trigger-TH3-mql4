@@ -203,6 +203,35 @@ static ENUM_COMBO_TIMEFRAME_TYPE g_comboComp2TF = COMBO_TF_TRIGGER;    // [05] i
 static ENUM_COMBO_STEP_TYPE g_comboComp2Step = COMBO_STEP_TH;     // [05] inpComboComp2Step
 
 //==============================================================================
+// [15] SESSIONS (P-SESS) — the session-box layer's mirrors.
+//
+// A slot is ONE packed double (codec in Sessions_Model.mqh): the terminal's
+// GlobalVariable table is doubles-only, and 18 new keys (10 display knobs +
+// 8 slots) is the whole persistence budget. A==0 decodes to the factory
+// preset, so a chart that never touched a slot carries the preset with no
+// init pass and no migration stamp.
+//
+// The bounds live HERE, with the settings: the loader's clamp and the
+// editor slider read the same numbers (contract: a value the control can
+// reproduce is the only value that may be saved).
+//==============================================================================
+#define SESS_SLOTS      8
+#define SESS_HIST_MAX   40     // boxes: 0..40 zone days back
+#define SESS_FUT_MAX    5      // ghosts: 0..5 upcoming sessions
+static bool   g_sessMaster = false;      // [15] master (ring cell + card 15 row 0)
+static int    g_sessHistDays = 5;        // [15] days that get a box
+static int    g_sessFutDays = 1;         // [15] upcoming-session ghosts
+static bool   g_sessHlLines = true;      // [15] H/L lines on the live/last window
+static bool   g_sessHlLabels = true;     // [15] their price labels
+static bool   g_sessRangeText = true;    // [15] range caption (pips)
+static bool   g_sessPrior = false;       // [15] prior session H/L (dashed)
+static bool   g_sessOverlap = true;      // [15] overlap rectangles (today)
+static bool   g_sessCountdown = true;    // [15] next-boundary countdown text
+static bool   g_sessAlerts = false;      // [15] open/close alerts
+static int    g_sessSlotsEdit = 0;       // [15] editor's picked slot (view only)
+static double g_sessSlot[SESS_SLOTS];    // [15] packed slot configs (0 = factory preset)
+
+//==============================================================================
 // FACTORY DEFAULTS — the raw Inputs-dialog values as attached, captured in
 // RuntimeSettingsInit BEFORE the #define block below rewrites every inpX into
 // its runtime copy. Reset actions (panel Reset button via PnlDefVal, and the
@@ -1143,6 +1172,20 @@ void RuntimeSettingsSaveOverrides()
    RSSetNext(p + "ALG", g_useLegATR ? 1 : 0);   // P-LEGATR (appended LAST: the shadow is positional, older slots never move)
    RSSetNext(p + "TSH", g_triggerLevelsEnabled ? 1 : 0);   // P-UI-142: the T toggle rides the OV_ mirror home (was RAM + per-chart key only)
    RSSetNext(p + "TVN", g_thVolNorm ? 1 : 0);   // P-TH-VOLNORM (appended LAST: the shadow is positional, older slots never move)
+   // P-SESS (appended LAST: the shadow is positional, older slots never move).
+   // The slots go last of all: one packed double each (codec in Sessions_Model).
+   RSSetNext(p + "SSON", g_sessMaster ? 1 : 0);
+   RSSetNext(p + "SSHD", g_sessHistDays);
+   RSSetNext(p + "SSFD", g_sessFutDays);
+   RSSetNext(p + "SSHL", g_sessHlLines ? 1 : 0);
+   RSSetNext(p + "SSLL", g_sessHlLabels ? 1 : 0);
+   RSSetNext(p + "SSRT", g_sessRangeText ? 1 : 0);
+   RSSetNext(p + "SSPL", g_sessPrior ? 1 : 0);
+   RSSetNext(p + "SSOL", g_sessOverlap ? 1 : 0);
+   RSSetNext(p + "SSCD", g_sessCountdown ? 1 : 0);
+   RSSetNext(p + "SSAL", g_sessAlerts ? 1 : 0);
+   for(int ss = 0; ss < SESS_SLOTS; ss++)
+      RSSetNext(p + "SS" + IntegerToString(ss), g_sessSlot[ss]);
    RSShadowCommit();
 }
 
@@ -1336,13 +1379,13 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "FY"))  g_factorLevelStyle = (ENUM_LINE_STYLE)ClampSettingInt((int)GlobalVariableGet(p + "FY"), 0, 4);
    if(GlobalVariableCheck(p + "FW"))  g_factorLevelWidth = ClampSettingInt((int)GlobalVariableGet(p + "FW"), 1, 5);
    if(GlobalVariableCheck(p + "CM"))  g_comboMode = (ENUM_COMBO_MODE)ClampSettingInt((int)GlobalVariableGet(p + "CM"), 0, 1);
-   if(GlobalVariableCheck(p + "CP"))  g_comboPreset = (ENUM_COMBO_PRESET)ClampSettingInt((int)GlobalVariableGet(p + "CP"), 0, 7);
-   if(GlobalVariableCheck(p + "C1T")) g_comboComp1TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1T"), 0, 3);
-   if(GlobalVariableCheck(p + "C1S")) g_comboComp1Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1S"), 0, 3);
+    if(GlobalVariableCheck(p + "CP"))  g_comboPreset = (ENUM_COMBO_PRESET)ClampSettingInt((int)GlobalVariableGet(p + "CP"), 0, 8);
+    if(GlobalVariableCheck(p + "C1T")) g_comboComp1TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1T"), 0, 3);
+    if(GlobalVariableCheck(p + "C1S")) g_comboComp1Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C1S"), 0, 4);
    if(GlobalVariableCheck(p + "CO1")) g_comboOp1 = (ENUM_COMBO_OPERATION)ClampSettingInt((int)GlobalVariableGet(p + "CO1"), 0, 6);
    if(GlobalVariableCheck(p + "C2E")) g_comboComp2Enabled = (GlobalVariableGet(p + "C2E") > 0.5);
    if(GlobalVariableCheck(p + "C2T")) g_comboComp2TF = (ENUM_COMBO_TIMEFRAME_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2T"), 0, 3);
-   if(GlobalVariableCheck(p + "C2S")) g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2S"), 0, 3);
+    if(GlobalVariableCheck(p + "C2S")) g_comboComp2Step = (ENUM_COMBO_STEP_TYPE)ClampSettingInt((int)GlobalVariableGet(p + "C2S"), 0, 4);
    // P-UI-131: the label grid's own two knobs. Each bound is the SAME number the
    // panel row's slider reads, so a saved value is one the control can reproduce.
    if(GlobalVariableCheck(p + "LFS")) g_labelFontSize = ClampSettingInt((int)GlobalVariableGet(p + "LFS"), 4, 24);
@@ -1355,8 +1398,23 @@ void RuntimeSettingsLoadOverrides()
    if(GlobalVariableCheck(p + "LMW")) g_maxLabelWidth = ClampSettingInt((int)GlobalVariableGet(p + "LMW"), 50, 600);
    if(GlobalVariableCheck(p + "ALG")) g_useLegATR = (GlobalVariableGet(p + "ALG") > 0.5);   // P-LEGATR (absent key = OFF, the shipped look)
    if(GlobalVariableCheck(p + "TSH")) g_triggerLevelsEnabled = (GlobalVariableGet(p + "TSH") > 0.5);   // P-UI-142: the T toggle's durable layer (per-chart key wins at restore)
-   if(GlobalVariableCheck(p + "TVN")) g_thVolNorm = (GlobalVariableGet(p + "TVN") > 0.5);   // P-TH-VOLNORM (absent key = OFF, the shipped look)
-   // P-PERF-27b: what was just read is what we would write back, so record it as
+    if(GlobalVariableCheck(p + "TVN")) g_thVolNorm = (GlobalVariableGet(p + "TVN") > 0.5);   // P-TH-VOLNORM (absent key = OFF, the shipped look)
+    // P-SESS — read beside the save block; an absent key IS the shipped
+    // default (master off: an untouched chart shows nothing new).
+    if(GlobalVariableCheck(p + "SSON")) g_sessMaster = (GlobalVariableGet(p + "SSON") > 0.5);
+    if(GlobalVariableCheck(p + "SSHD")) g_sessHistDays = ClampSettingInt((int)GlobalVariableGet(p + "SSHD"), 0, SESS_HIST_MAX);
+    if(GlobalVariableCheck(p + "SSFD")) g_sessFutDays  = ClampSettingInt((int)GlobalVariableGet(p + "SSFD"), 0, SESS_FUT_MAX);
+    if(GlobalVariableCheck(p + "SSHL")) g_sessHlLines  = (GlobalVariableGet(p + "SSHL") > 0.5);
+    if(GlobalVariableCheck(p + "SSLL")) g_sessHlLabels = (GlobalVariableGet(p + "SSLL") > 0.5);
+    if(GlobalVariableCheck(p + "SSRT")) g_sessRangeText = (GlobalVariableGet(p + "SSRT") > 0.5);
+    if(GlobalVariableCheck(p + "SSPL")) g_sessPrior    = (GlobalVariableGet(p + "SSPL") > 0.5);
+    if(GlobalVariableCheck(p + "SSOL")) g_sessOverlap  = (GlobalVariableGet(p + "SSOL") > 0.5);
+    if(GlobalVariableCheck(p + "SSCD")) g_sessCountdown = (GlobalVariableGet(p + "SSCD") > 0.5);
+    if(GlobalVariableCheck(p + "SSAL")) g_sessAlerts   = (GlobalVariableGet(p + "SSAL") > 0.5);
+    for(int ss = 0; ss < SESS_SLOTS; ss++)
+       if(GlobalVariableCheck(p + "SS" + IntegerToString(ss)))
+          g_sessSlot[ss] = GlobalVariableGet(p + "SS" + IntegerToString(ss));
+    // P-PERF-27b: what was just read is what we would write back, so record it as
    // "already on disk" and stop the teardown from re-writing it.
    RuntimeSettingsPrimeOverrideShadow();
 }

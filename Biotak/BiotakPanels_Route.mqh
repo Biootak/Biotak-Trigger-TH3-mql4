@@ -317,6 +317,19 @@ void PnlHandleMouseMove(const int mx,const int my,const bool leftDown,const bool
          if(flags!=REFRESH_NONE) RefreshDisplay(flags);
          return;
       }
+      // chips cell → the session editor's day / colour grid (P-SESS kind 10).
+      // The value a tap writes comes from PnlChipsNextValue — the ONE owner of
+      // the two tables' tap semantics — never from arithmetic copied here.
+      int chi,chr,chc;
+      if(PnlChipsHit(mx,my,chi,chr,chc))
+      {
+         double nv=PnlChipsNextValue(chi,chr,chc);
+         int flags=PnlApply(chi,chr,nv);
+         PnlUpdateRow(chi,chr);
+         UIPressAct("chip");   // P-UI-74: one gesture, one owner (both channels)
+         if(flags!=REFRESH_NONE) RefreshDisplay(flags);
+         return;
+      }
       // "+" quick-add cell → open the full picker for the row's target
       int qai,qar;
       if(PnlColorAddHit(mx,my,qai,qar))
@@ -526,6 +539,34 @@ void PnlUpdateRow(const int item,const int row)
             string res=on ? PnlAccentRes(item,"pnl_dsw_on") : "::Files\\Icons\\pnl_dsw_off.bmp";
             ObjectSetString(0,swn,OBJPROP_BMPFILE,0,res);
             ObjectSetString(0,swn,OBJPROP_BMPFILE,1,res);
+         }
+      }
+      return;
+   }
+   if(kind==PNL_K_CHIPS)   // P-SESS: reswap every cell's face + border (and a day
+   {                       // letter's ink) — the same two-table switch the painter
+      int cc=PnlChipsCount(item,row);   // and the tap read, so no third copy exists
+      int nv=(int)MathRound(val);
+      color a1=PnlAccentA1(PnlCardAccent(item));
+      for(int i=0;i<cc;i++)
+      {
+         string cn=PnlName(item,row,"SC"+IntegerToString(i));
+         if(ObjectFind(0,cn)<0) continue;
+         if(opts=="days")
+         {
+            bool on=((nv>>i)&1)!=0;
+            ObjectSetInteger(0,cn,OBJPROP_BGCOLOR, on ? PNL_CLR_ACCENT : PNL_CLR_SEG_OFF);
+            ObjectSetInteger(0,cn,OBJPROP_BORDER_COLOR, on ? a1 : PNL_CLR_SEG_BD);
+            string ln=PnlName(item,row,"SCL"+IntegerToString(i));
+            if(ObjectFind(0,ln)>=0)
+               ObjectSetInteger(0,ln,OBJPROP_COLOR, on ? PNL_CLR_CARD : PNL_CLR_SEG_TX);
+         }
+         else
+         {
+            color sc=SessColorOf(i);
+            ObjectSetInteger(0,cn,OBJPROP_BGCOLOR, sc);
+            ObjectSetInteger(0,cn,OBJPROP_BORDER_COLOR,
+                             (nv==i) ? a1 : PnlSwatchBorder(sc,PNL_CLR_CARD));
          }
       }
       return;

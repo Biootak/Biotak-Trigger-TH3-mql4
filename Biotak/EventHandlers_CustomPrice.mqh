@@ -813,7 +813,37 @@ void HideAllTHObjectsPass()
     HandsetHandlePark(g_cpMarkerName, CP_HANDLE_RES);
     HandsetHandlePark(S1MarkName(1), S1_HANDLE_RES);
     HandsetHandlePark(S1MarkName(-1), S1_HANDLE_RES);
-    // NOTE: ABCD pattern objects are NOT hidden by F key
+    // P-UI-160b (2026-10-16) — THE DRAWING FAMILIES RIDE THE SAME MUTE.
+    // The report: «دکمه f که فقط زون ها رو خاموش و روشن میکنه پیس همه رو باید
+    // خاموش بکنه». The cache walk above hides the level families; the drawing
+    // families never had a seat there (they are not in the object cache and
+    // their writers are action-driven), so F left them standing. Each family
+    // answers through its OWN owner — mask what a mask can reach, park what it
+    // cannot — and its riders carry the same hidden term, so no channel can
+    // re-show what the mute took (the P-PERF-02 law: hide is a STATE, once per
+    // transition). The TH3 family and the leg meter are guarded the same way
+    // the session cancel above is (Lite does not manage them).
+#ifndef BUILD_LITE
+    int drawPat = 0, drawLm = 0;
+    if(TH3BaseMarkArmed()) TH3BaseMarkCancel("hide all");
+    drawPat = TH3PatternsHideAll();
+    if(LegMeasureSessionActive()) LegMeasureToggle();
+    drawLm = LegMeasureHideAll();
+    if((int)ObjectGetInteger(0, TH3_BASE_EDITOR, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+        ObjectSetInteger(0, TH3_BASE_EDITOR, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS);
+#endif
+    int drawHr = 0, drawPa = 0;
+    if(HRaySessionActive()) HRayCancel();
+    drawHr = HRayHideAll();
+    if(PathSessionActive()) { PathSessionClear(); PathCancel(); }
+    drawPa = PathHideAll();
+#ifndef BUILD_LITE
+    // P-UI-160b: the flush's own half of the proof (P-LOG-3's channel).
+    DrawStripDiagEmit("[P-UI-160b] drawings hide=1 pat=" + IntegerToString(drawPat) +
+                      " lm=" + IntegerToString(drawLm) +
+                      " hr=" + IntegerToString(drawHr) +
+                      " pa=" + IntegerToString(drawPa));
+#endif
 }
 
 // Returns true when this call performed the (once per transition) pass.
@@ -825,5 +855,31 @@ bool HideAllTHObjects()
     // Written outside the visibility guard → invalidate every stored mask.
     BumpTfEpoch();
     return true;
+}
+
+// P-UI-160b (2026-10-16) — the SHOW half of the drawing families' mute answer.
+// Same owner as the hide half above (this file owns both ends of the F
+// transition), and P-SIZE-1500 is why it is a function here instead of the show
+// branch's own block: the Objects hub called it inline and crossed the ceiling.
+// Each family comes back through its own owner — the patterns re-assert their
+// ladders (one lit, P-TH3-P6f), the legs re-place their icons through the ride,
+// the rays/paths through their followers, the base band takes its mask off.
+void ShowAllDrawingFamilies()
+{
+#ifndef BUILD_LITE
+    int drawPat = TH3PatternsShowAll();
+    int drawLm = LegMeasureShowAll();
+    if((int)ObjectGetInteger(0, TH3_BASE_EDITOR, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
+        ObjectSetInteger(0, TH3_BASE_EDITOR, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS);
+#endif
+    int drawHr = HRayShowAll();
+    int drawPa = PathShowAll();
+#ifndef BUILD_LITE
+    // P-UI-160b: the flush's own half of the proof (P-LOG-3's channel).
+    DrawStripDiagEmit("[P-UI-160b] drawings hide=0 pat=" + IntegerToString(drawPat) +
+                      " lm=" + IntegerToString(drawLm) +
+                      " hr=" + IntegerToString(drawHr) +
+                      " pa=" + IntegerToString(drawPa));
+#endif
 }
 #endif // EVENT_HANDLERS_CUSTOMPRICE_MQH

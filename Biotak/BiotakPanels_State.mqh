@@ -207,6 +207,12 @@ bool PnlCardFade(const int item)
 #define PNL_CSET_W       38      // .ccell i
 #define PNL_CSET_H       20
 #define PNL_CSET_GAP     6
+// P-SESS (kind 10): the session chips — smaller cells than CSET (seven day
+// boxes or eight swatches fit the 280px content column right-aligned, beside
+// no caption: the caption sits ABOVE them like CSET's, so the numbers live here).
+#define PNL_SCHIP_W      30      // .chip i
+#define PNL_SCHIP_H      20
+#define PNL_SCHIP_GAP    4
 #define PNL_SEC_CNT_W    24      // .row.sec .cnt pill
 //--- tallest NARROW card skin the generator bakes (tools/gen-th3-icons.js
 //--- PNL_CARD_ROWS_MAX). Narrow cards are those below PNL_WIDE_MIN_ROWS rows,
@@ -237,6 +243,12 @@ bool PnlCardFade(const int item)
 #define PNL_K_SEC    7    // SECTION BAND — itself a 42px row (hit maths intact)
 #define PNL_K_CSET   8    // N colours in ONE 42px row (preview .cset)
 #define PNL_K_DUAL   9    // two switches in one 42px row (preview .dual)
+// P-SESS (cards 15/16): a row of small value CELLS — one per choice, tapped
+// directly (no popup). The payload (`opts` of the setting) says which table
+// the taps write: "days" = the 7-bit weekday mask (tap = XOR its bit),
+// "color" = the 8-swatch session ink (tap = pick, one lit). One kind, two
+// tables — the session editor's two grid rows.
+#define PNL_K_CHIPS  10
 #define PNL_K_LEGACY (-1) // "whatever the setting's own def says"
 
 //--- P-UI-67: the SS/LS sequence-order caption. ONE string, because the row is
@@ -284,7 +296,13 @@ bool PnlCardFade(const int item)
 // because MAX LEVELS left only card 9's DISPLAY (its address keeps its branch),
 // and [2]/[3] keep their numbers the same way while TRADE CARD and MARGIN BOTTOM
 // left THEIR displays. The moved rows never took a setting with them.
-int g_PnlRows[PNL_COUNT] = {5,18,11,6,1,8,11,6,4,2,7,7,1,7,15};
+// P-SESS: [15] the Sessions card (11 addresses: master · two day sliders · seven
+// switches · the editor NAV) and [16] the Session Editor (13 addresses: the slot
+// pick · preset · timezone · offset · HH/MM pairs · days mask · colour · style ·
+// active · the overview NAV). Both are WIDE (> PNL_WIDE_MIN_ROWS 10), so their
+// bodies compose — the OVERVIEW card pairs its sliders and switches, and the
+// editor pairs each HH/MM slider with its sibling.
+int g_PnlRows[PNL_COUNT] = {5,18,11,6,1,8,11,6,4,2,7,7,1,7,15,11,13};
 
 // g_PnlRows[12] is the BASE (TAB row only) — PnlRowsCount(12) returns
 // 1 + the open tab's section rows (6 each tab), the same dynamic pattern
@@ -313,6 +331,10 @@ string PnlMarkIcon(const int item)
    // P-UI-131: a frame with a header — the card is the cross-card surface, and
    // "steps"/"layers" already mark the Step and Zones cards.
    if(item==14) return "template";
+   // P-SESS: the session clock (15) and its editor (16) — one clock face and one
+   // stopwatch, so the pair reads as "what · when".
+   if(item==15) return "clock";
+   if(item==16) return "timer";
    if(item==12)                       // Base Box — the mark follows the tab
    {
       if(g_BkTab==1) return "type";
@@ -334,6 +356,9 @@ string PnlHeaderSub(const int item)
    if(item==10) return "AUTO / MANUAL STEP ENGINE";
    if(item==11) return "L1 - L5 ZONE TOGGLES";
    if(item==14) return "ENGINE · LABEL GRID · TRADE CARD · INTERFACE";   // P-UI-131
+   // P-SESS: what each card's rows answer, in the one line the header carries.
+   if(item==15) return "WORLD CLOCK · BOXES · COUNTDOWN · ALERTS";
+   if(item==16) return "SLOT · HOURS · DAYS · COLOR";
    if(item==12)                       // Base Box — the subtitle follows the tab
    {
       if(g_BkTab==1) return "TEXT TAB · OBJ_EDIT FIELD";

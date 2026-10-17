@@ -5,6 +5,11 @@
 void DrawABCDPattern(string mainObjName, datetime tA, double pA, datetime tB, double pB,
                      datetime tC, double pC, datetime tD = 0, double pD = 0)
 {
+    // P-UI-160b (2026-10-16): the F mute is the ONE master. A draw while hidden
+    // would create objects with the default OBJ_ALL_PERIODS mask and repaint the
+    // family the mute swept. The store is untouched (it is the source of truth),
+    // so the show path re-renders from it.
+    if(IsIndicatorHidden()) return;
     #ifdef ENABLE_DEBUG_LOGS
     Print("==================== DrawABCDPattern called | Name: ", mainObjName);
     Print("   A: ", TimeToString(tA), " @ ", DoubleToString(pA, Digits));

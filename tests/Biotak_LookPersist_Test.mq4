@@ -125,6 +125,11 @@
 #include "..\Biotak\AlertFunctions.mqh"
 
 #include "..\Biotak\HistoricalDataFunctions.mqh"
+// P-SESS: sessions renderer — mirrors the entry's seat (before EventHandlers,
+// whose coop pump calls SessionsTick).
+#include "..\Biotak\Sessions_Time.mqh"
+#include "..\Biotak\Sessions_Model.mqh"
+#include "..\Biotak\Sessions_Draw.mqh"
 
 #include "..\Biotak\EventHandlers.mqh"
 

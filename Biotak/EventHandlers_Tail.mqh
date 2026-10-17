@@ -477,6 +477,10 @@ void CoopPump()
          case COOP_JOB_STATUS_TEXT:
             RefreshVisibleStatusLabels();
             RefreshComboLabelExtraInfo();
+            // P-SESS: the sessions family's one tick (engine query + chart
+            // objects only; no UI reads, so Lite runs it too). Idle ticks
+            // compare a hash and one high/low per open session - no writes.
+            SessionsTick();
             s_coopOwed[job] = false;
             break;
          case COOP_JOB_HEAVY_FRAME:

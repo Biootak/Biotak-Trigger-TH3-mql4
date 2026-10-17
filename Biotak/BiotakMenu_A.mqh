@@ -43,6 +43,18 @@
 #resource "\\Files\\Icons\\hray_on.bmp"
 #resource "\\Files\\Icons\\path_off.bmp"
 #resource "\\Files\\Icons\\path_on.bmp"
+// P-UI-159: the Chart Scale cell's face (ART.scale, baked by the generator).
+#resource "\\Files\\Icons\\scale_off.bmp"
+#resource "\\Files\\Icons\\scale_on.bmp"
+// P-UI-160: the Hide / Show All cell's face (ART.eye, baked by the generator).
+#resource "\\Files\\Icons\\eye_off.bmp"
+#resource "\\Files\\Icons\\eye_on.bmp"
+// P-SESS: the Sessions cell's face (ART.sessions — a clock, baked by the generator).
+#resource "\\Files\\Icons\\sessions_off.bmp"
+#resource "\\Files\\Icons\\sessions_on.bmp"
+// P-UI-161: the ring-membership STAR on every Tools cell (ART star disc, 16px).
+#resource "\\Files\\Icons\\star_off.bmp"
+#resource "\\Files\\Icons\\star_on.bmp"
 #resource "\\Files\\Icons\\orb_bg.bmp"
 //--- ORBWORD-OFF (2026-09-12, user decision — no wordmark on the orb, ever:
 //--- the "TRex" text over the bow read as mud on the chart). The open-state
@@ -61,6 +73,19 @@
 // 90 CW, 90 CCW) - the arc's opening must face the orb on every side it can open on.
 #resource "\\Files\\Icons\\circ_off.bmp"
 #resource "\\Files\\Icons\\circ_on.bmp"
+// P-UI-162: the taper's own canvases — box (s + 2*CIRC_BG_MARGIN) == canvas on
+// every side the ring can be drawn at (43/39/35/32/30; 44 above), so MT4's
+// top-left clip rule never cuts the disc (the «دیگه دایره نیست» report).
+#resource "\\Files\\Icons\\circ_off_43.bmp"
+#resource "\\Files\\Icons\\circ_on_43.bmp"
+#resource "\\Files\\Icons\\circ_off_39.bmp"
+#resource "\\Files\\Icons\\circ_on_39.bmp"
+#resource "\\Files\\Icons\\circ_off_35.bmp"
+#resource "\\Files\\Icons\\circ_on_35.bmp"
+#resource "\\Files\\Icons\\circ_off_32.bmp"
+#resource "\\Files\\Icons\\circ_on_32.bmp"
+#resource "\\Files\\Icons\\circ_off_30.bmp"
+#resource "\\Files\\Icons\\circ_on_30.bmp"
 // R-SUBLADDER (2026-09-11): Tools grid panel + its cells. cell_*.bmp is the
 // rounded-square tile (46px canvas == the 46px pitch); sub_panel_r<N>[p].bmp is
 // the panel backdrop, one per visible row count 1..4 ('p' = with pager strip).
@@ -103,6 +128,17 @@
 #define CIRC_HIDE_POS   -500
 #define CIRC_EDGE_TRIGGER 90
 #define CIRC_MIN_RADIUS  40
+//--- P-UI-161 — THE RING GROWS BY SHRINKING, NEVER BY DROPPING THE CIRCLE.
+//--- The button side S(n) holds 44 while the ring fits nine seats (the shipped
+//--- look, byte-identical), tapers to the 30px floor through the teens, and the
+//--- radius follows the chord law (S+CIRC_GAP)/(2·sin(π/n)) — capped by
+//--- CircFitLimit, never below CIRC_MIN_RADIUS. Starred items the capped circle
+//--- cannot seat stay in the Tools menu (their star stays on): excess degrades to
+//--- the previous surface, never to a stack (P-UI-13).
+#define CIRC_BTN_MIN     30
+//--- the membership STAR on every Tools cell — same canvas as the badge, so the
+//--- corner seat below is one number (star_off/star_on.bmp, baked by the generator).
+#define CIRC_STAR_SIZE   16
 //--- P-UI-147 (2026-10-02): 1 px, not 3. This gate used to answer TWO questions — «did the
 //--- hand really drag?» and «has the orb moved far enough to be worth saving?» — so a short
 //--- but deliberate drag moved nothing and stored nothing, and the next repaint put the orb
@@ -138,64 +174,51 @@
                                 // STRIP (no rows), so 14 is the first free slot that can own one
 #define CIR_HRAY            15  // P-HR-01 — Horizontal Ray (Tools cell: arm → 1 click places)
 #define CIR_PATH            16  // Path tool (Tools cell: arm → click per vertex, dbl-click commits)
-//--- ring layout (main circle — 8 items; Zones first = the main feature)
-// TH3TOOL-ON (2026-09-19): RING_TH3 comes back APPENDED (slot 7), never in the
-// middle — HTF/TOOLS/BASEKNOT keep the numbers they were renumbered to when
-// TH3TOOL-OFF removed it, and every persisted state key keeps its meaning.
-// VIEWLOCK-OFF: RING_VLOCK slot retired (was 4) — HTF/TOOLS shifted down again.
-// P-UI-95 (2026-09-16, user: «ایتم اندازه گیری بیس رو بیار توی منوی اصلی»): THE
-// MEASURING TOOL IS A MAIN-RING ITEM. It was TOOL_BASEKNOT — the third cell of the
-// Tools sub-menu, behind one more click than the features it measures those levels
-// for. It is APPENDED (`RING_BASEKNOT`), so no existing slot moves and every
-// persisted state key keeps its meaning.
-// The item needs NO new machinery: it has no on/off state of its own (the light is
-// `BaseKnotSessionActive`, the same query every momentary item uses), a PRESS arms
-// the draw session through the ONE arm path (`CircArmBaseKnot`) and a HOLD opens the
-// Base Box card (`FeaturePanel`) — both of which the Tools cell already ran.
-// Seven items need r >= (44 + 6) / 2 / sin(180/7) = 57.6 px to keep their pitch; the
-// shipped CIRC_RADIUS is 64, so the default look clears it with 6.4 px to spare — and
-// a menu dragged near an edge collapses to the rail at CIRC_EDGE_TRIGGER anyway.
-// RING_LEG appended as slot 8 — no existing slot moves.
-// Nine items: min-r = (44+6)/2 / sin(π/9) = 73.1 px → CIRC_RADIUS raised to 80.
-#define RING_COUNT 9
-#define CIRC_ITEM_COUNT RING_COUNT  // alias for legacy code
-#define RING_ZONES    0
-#define RING_TRIGGER  1
-#define RING_ATR      2
-#define RING_TH       3
-// VIEWLOCK-OFF: #define RING_VLOCK    4
-#define RING_HTF      4
-#define RING_TOOLS    5
-#define RING_BASEKNOT 6   // P-UI-95: the MEASURING tool — click arms, hold = Base Box card
-#define RING_TH3      7   // TH3TOOL-ON (2026-09-19): the TH3 tool / frequency — APPENDED, so no slot moves
-#define RING_LEG      8   // Leg Measure — APPENDED, so no existing slot moves
+#define CIR_SCALE           17  // P-UI-159 — Chart Scale (Tools cell: click toggles MT4's own
+                                // scale-fix; no card, the chart's bit IS the state)
+#define CIR_HIDE            18  // P-UI-160 — Hide / Show All (Tools cell: click runs the F
+                                // mute's own owner; no card, the mute IS the state)
+#define CIR_SESSIONS        19  // P-SESS — Sessions Zones (ring cell + card 15): the master
+                                // switch lives in g_sessMaster; the card holds zones, days
+                                // and the countdown
 
 //--- Tools sub-menu (sub-menu under Tools) — SCALABLE LADDER
 // FACTORBTN-OFF: Factor button retired (was 2) — its settings live inline in
 // the Step Mode card now.
 // UIBK-OFF (P-UI-95): Base/Knot was the cell at 2 (click = draw, hold = Base Box
 // style card); the MEASURING tool is a MAIN-RING item now (RING_BASEKNOT), so the
-// ladder is back to two cells. Restore it by counting 3 back into TOOL_COUNT and
-// uncommenting the three sites marked UIBK-OFF (the define, ToolFeature's line and
-// the click branch in HandleButtonClick) — the layout needs no change, because
-// TOOL_COUNT is the only number it reads.
-// Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); TOOL_COUNT
-// is the only number the layout reads — it picks its own geometry from it.
-#define TOOL_COUNT 5
+// ladder is back to two cells. Restore it by counting 3 back into the catalog count
+// and uncommenting the three sites marked UIBK-OFF (the define, ToolFeature's line
+// and the click branch in HandleButtonClick) — the layout needs no change, because
+// the catalog count is the only number it reads.
+// Add new tools here AND to ToolFeature()/ToolPanel()/CircIconRes(); the catalog
+// COUNT (CAT_COUNT) is the only number the layout reads — it picks its own
+// geometry from it. P-UI-161: the Tools menu now shows the WHOLE catalog (7 tools
+// at 0..6 + 8 features appended at 7..14), so the grid/paging maths scales to 15
+// cells; the TOOL_* indices below are the cells' stable identities, never a count.
 #define TOOL_PIN              0
 #define TOOL_STEP_OVERRIDE    1
 #define TOOL_GENERAL          2   // P-UI-131 — the cross-card settings door (a gear)
 #define TOOL_HRAY             3   // P-HR-01 — Horizontal Ray (arm → 1 click places, APPENDED so no slot moves)
 #define TOOL_PATH             4   // Path tool (arm → vertex clicks, double-click commits, APPENDED)
+#define TOOL_SCALE            5   // P-UI-159 — Chart Scale (one click = MT4's scale-fix, APPENDED)
+#define TOOL_HIDE             6   // P-UI-160 — Hide / Show All (one click = the F mute's own owner, APPENDED)
 // UIBK-OFF: #define TOOL_BASEKNOT         2
 // FACTORBTN-OFF: #define TOOL_FACTOR_OVERRIDE  2
 
-// R-SUBLADDER (2026-09-11): the sub-menu picks its geometry from TOOL_COUNT so
-// that adding a tool can never make two buttons collide. The 6 main-ring items
-// are HIDDEN while the sub-menu is open (CreateToolsMenu), so the orb is the
-// only other thing on screen — the arc maths is measured from the MENU CENTRE,
-// never from the Tools button, so the button can never push an item into a ring
-// item. Proven by tools/submenu_geometry_check.js (720 cases: 4 chart sizes x
+//--- P-SIZE-1500 (2026-10-17): the ring's catalog, its membership mask and
+//--- its growth law live in BiotakMenu_Ring.mqh (one owner: the ring's
+//--- identity and geometry). Included HERE — below the TOOL_*/CIR_*/CIRC_*
+//--- identities it reads, above every reader (the menu halves below, the
+//--- panels after the hub).
+#include "BiotakMenu_Ring.mqh"
+
+// R-SUBLADDER (2026-09-11): the sub-menu picks its geometry from the catalog
+// count (CAT_COUNT) so that adding a tool can never make two buttons collide.
+// The ring items are HIDDEN while the sub-menu is open (CreateToolsMenu), so the
+// orb is the only other thing on screen — the arc maths is measured from the MENU
+// CENTRE, never from the Tools button, so the button can never push an item into a
+// ring item. Proven by tools/submenu_geometry_check.js (720 cases: 4 chart sizes x
 // 9 menu positions x counts 1..20 — no collision, no orb overlap, nothing
 // off-chart).
 //   count 1..6  -> FAN   180 deg arc, r = min(112, fit), floor = chord radius
@@ -295,43 +318,16 @@ int FeaturePanel(const int feat)
    if(feat == CIR_STEP_OVERRIDE) return 9;    // Step Mode override card
    // FACTORBTN-OFF: if(feat == CIR_FACTOR_OVERRIDE) return 10; // Factor override card
    if(feat == CIR_BASEKNOT)      return 12;   // Base Box style card (a press still arms drawing)
+   // P-SESS: CIR_SESSIONS (19) is above the card-number space (0..17), so the
+   // identity fallback below cannot answer it — the Sessions card is 15.
+   if(feat == CIR_SESSIONS)      return 15;   // Sessions Zones card (P-SESS)
    return feat;                               // every other feature's card IS its code
 }
 
 int RingPanel(const int ringIdx)  { return FeaturePanel(RingFeature(ringIdx)); }
 int ToolPanel(const int toolIdx)  { return FeaturePanel(ToolFeature(toolIdx)); }
 
-//--- Ring / Tools mapping helpers (feature indices are stable panel keys)
-int RingFeature(const int ringIdx)
-{
-   switch(ringIdx)
-   {
-      case RING_ZONES:   return CIR_ZONES;
-      case RING_TRIGGER: return CIR_TRIGGER;
-      case RING_ATR:     return CIR_ATR;
-      case RING_TH:      return CIR_TH;
-       // VIEWLOCK-OFF: case RING_VLOCK: return CIR_VLOCK;
-       case RING_TH3: return CIR_TH3;   // TH3TOOL-ON (2026-09-19)
-       case RING_HTF:     return CIR_HTF;
-      case RING_TOOLS:   return CIR_TOOLS;
-      case RING_BASEKNOT: return CIR_BASEKNOT;   // P-UI-95: the measure tool's own ring slot
-      case RING_LEG:      return CIR_LEG;         // Leg Measure — APPENDED
-   }
-   return -1;
-}
-
-int ToolFeature(const int toolIdx)
-{
-   if(toolIdx == TOOL_PIN)             return CIR_PIN;
-   if(toolIdx == TOOL_STEP_OVERRIDE)   return CIR_STEP_OVERRIDE;
-   if(toolIdx == TOOL_GENERAL)         return CIR_GENERAL;   // P-UI-131
-   if(toolIdx == TOOL_HRAY)            return CIR_HRAY;      // P-HR-01
-   if(toolIdx == TOOL_PATH)            return CIR_PATH;      // Path tool
-   // UIBK-OFF (P-UI-95): if(toolIdx == TOOL_BASEKNOT) return CIR_BASEKNOT;
-   // FACTORBTN-OFF: if(toolIdx == TOOL_FACTOR_OVERRIDE) return CIR_FACTOR_OVERRIDE;
-   return -1;
-}
-
+//+------------------------------------------------------------------+
 // Tools half-circle state (transient, not persisted)
 static bool g_ToolsOpen = false;
 
@@ -628,14 +624,18 @@ void UILongPressLatchClear()
 int CircItemAt(const int mx, const int my)
 {
    if(g_ToolsOpen) return -1;   // the ring is hidden while the Tools fan is open
-   for(int i = 0; i < RING_COUNT; i++)
+   // P-UI-161: the seat count and the button size are the BUILT ones (frozen
+   // mid-drag) — the hit test must read the same grid the paint wrote.
+   const int n = CircPlacedCount();
+   const int bs = CircBtnSize();
+   for(int i = 0; i < n; i++)
    {
       int ix, iy;
       CircLayout(i, ix, iy);
-      int bx = ix - CIRC_BTN_SIZE / 2;
-      int by = iy - CIRC_BTN_SIZE / 2;
-      if(mx >= bx - CIRC_BG_MARGIN && mx <= bx + CIRC_BTN_SIZE + CIRC_BG_MARGIN &&
-         my >= by - CIRC_BG_MARGIN && my <= by + CIRC_BTN_SIZE + CIRC_BG_MARGIN)
+      int bx = ix - bs / 2;
+      int by = iy - bs / 2;
+      if(mx >= bx - CIRC_BG_MARGIN && mx <= bx + bs + CIRC_BG_MARGIN &&
+         my >= by - CIRC_BG_MARGIN && my <= by + bs + CIRC_BG_MARGIN)
          return i;
    }
    return -1;
@@ -811,6 +811,11 @@ void LoadUIState()
    g_ToolsOpen = GlobalVariableCheck(gvTools) ? (GlobalVariableGet(gvTools) > 0.5) : false;   // P-UI-142: menu creation rebuilds the chrome from this
    if(GlobalVariableCheck(GetGVName("TIPPIN")))
       g_UI.tipPin = (GlobalVariableGet(GetGVName("TIPPIN")) > 0.5);
+   // P-UI-161: the membership mask. A chart whose key is missing keeps the
+   // shipped default (`CIRC_STAR_DEFAULT`) — no version bump, because the default
+   // IS the answer for a first run (the shipped ring order).
+   if(GlobalVariableCheck(GetGVName("STAR")))
+      g_CircStarMask = (uint)GlobalVariableGet(GetGVName("STAR"));
    // P-DRAW-89: the plate's transparency setting is retired. Its GV is swept on
    // attach below so a chart that carried the old key cannot resurrect the look.
    GlobalVariableDel(GetGVName("PLATE"));
@@ -819,14 +824,17 @@ void LoadUIState()
 void DeleteLegacyMenuObjects()
 {
    string legacy = "BiotakMenu_" + IntegerToString(ChartID()) + "_";
-   for(int i = 0; i < RING_COUNT; i++)
+   // P-UI-161: RING_MAX_SEATS / CAT_COUNT — a legacy build's own counts are covered
+   // (its ring was 9 and its tools 7), and a name the mask can never write again is
+   // still swept here rather than left to rot on the chart.
+   for(int i = 0; i < RING_MAX_SEATS; i++)
    {
       ObjectDelete(0, legacy + "CircIcon" + IntegerToString(i));
       ObjectDelete(0, legacy + "CircBg" + IntegerToString(i));
       ObjectDelete(0, legacy + "CircBadge" + IntegerToString(i));
       ObjectDelete(0, legacy + "CircBadgeTxt" + IntegerToString(i));
    }
-   for(int t = 0; t < TOOL_COUNT; t++)
+   for(int t = 0; t < CAT_COUNT; t++)
    {
       ObjectDelete(0, legacy + "ToolsBg" + IntegerToString(t));
       ObjectDelete(0, legacy + "ToolsIcon" + IntegerToString(t));
@@ -1027,9 +1035,13 @@ void SaveUIStates(const bool flushNow = false)
    if(haveBox) GVHomeAnswerClear();
    if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 11, g_UI.tipPin ? 1.0 : 0.0))
       { GlobalVariableSet(GetGVName("TIPPIN"), g_UI.tipPin ? 1.0 : 0.0); uiChanged++; }
+   // P-UI-161: the membership star mask — the ring's membership IS this number, so
+   // it is saved with the same per-key guard as the rest (one write per real flip).
+   if(GVSlotChanged(s_uiEpoch, s_uiKnown, s_uiShadow, 12, (double)g_CircStarMask))
+      { GlobalVariableSet(GetGVName("STAR"), (double)g_CircStarMask); uiChanged++; }
    // P-PERF-44 (3): report BEFORE the early return. A skip count that survives a
    // no-op pass would describe a teardown that already happened.
-   GVLedgerReport(GV_BLOCK_UI, uiChanged, 12);
+   GVLedgerReport(GV_BLOCK_UI, uiChanged, 13);
    // Nothing changed: no writes. No flush either - there is nothing new to make
    // durable, and the keys themselves stay in the terminal's table regardless
    // (GlobalVariablesFlush only forces the DISK copy, which the terminal also
@@ -1142,11 +1154,20 @@ bool CircFeatureOn(const int i)
 #endif
    if(i == CIR_HTF)             return g_UI.showHTF;
    if(i == CIR_PIN)             return g_customPriceLineCreated;
+   // P-SESS: the master switch every sessions writer reads. A family toggle like
+   // CIR_ZONES, so its light and its click share this one answer.
+   if(i == CIR_SESSIONS)        return g_sessMaster;
    // CIR_BASEKNOT is momentary: lit while the draw session is armed.
    if(i == CIR_BASEKNOT)        return BaseKnotSessionActive();
    // P-HR-01 is momentary too: lit while the ray session is armed.
    if(i == CIR_HRAY)            return HRaySessionActive();
    if(i == CIR_PATH)            return PathSessionActive();
+   // P-UI-159: the light IS the chart's own property — MT4's Properties dialog
+   // and this cell write/read the same bit, so they can never disagree.
+   if(i == CIR_SCALE)           return (ChartGetInteger(0, CHART_SCALEFIX) != 0);
+   // P-UI-160: the light IS the mute's own reader (P-UI-93's ONE reader) — the
+   // same question the F key's target-state inversion asks.
+   if(i == CIR_HIDE)            return IsIndicatorHidden();
    // STEPOVERRIDE-OFF: single Step Mode — the Tools step button is a plain
    // cycle button (no on/off state); the mode itself is shown by the chart label.
    //if(i == CIR_STEP_OVERRIDE)   return (g_stepModeOverride != -1);
@@ -1161,7 +1182,7 @@ bool CircFeatureOn(const int i)
 bool CircFeatureLit(const int i)
 {
    if(!CircFeatureOn(i)) return false;
-   if(i == CIR_ZONES || i == CIR_TRIGGER || i == CIR_ATR || i == CIR_TH)
+   if(i == CIR_ZONES || i == CIR_TRIGGER || i == CIR_ATR || i == CIR_TH || i == CIR_SESSIONS)
       return !IsIndicatorHidden();
    return true;
 }
@@ -1177,13 +1198,14 @@ bool CircHasBadge(const int i)
    // return (i != CIR_TOOLS);   // every main-ring feature shows a badge; Tools opens its sub-menu
 }
 
-void CircConfigureIcon(const string name, const int i, const bool on, const int x, const int y)
+void CircConfigureIcon(const string name, const int i, const bool on, const int x, const int y,
+                       const int size = CIRC_ICON_SIZE)
 {
    ObjectSetInteger(0, name, OBJPROP_CORNER, CORNER_LEFT_UPPER);
-   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x - CIRC_ICON_SIZE / 2);
-   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y - CIRC_ICON_SIZE / 2);
-   ObjectSetInteger(0, name, OBJPROP_XSIZE, CIRC_ICON_SIZE);
-   ObjectSetInteger(0, name, OBJPROP_YSIZE, CIRC_ICON_SIZE);
+   ObjectSetInteger(0, name, OBJPROP_XDISTANCE, x - size / 2);
+   ObjectSetInteger(0, name, OBJPROP_YDISTANCE, y - size / 2);
+   ObjectSetInteger(0, name, OBJPROP_XSIZE, size);
+   ObjectSetInteger(0, name, OBJPROP_YSIZE, size);
    string res = CircIconRes(i, on);
    ObjectSetString(0, name, OBJPROP_BMPFILE, 0, res);
    ObjectSetString(0, name, OBJPROP_BMPFILE, 1, res);
@@ -1209,8 +1231,11 @@ string CircIconRes(const int i, const bool on)
     else if(i == CIR_STEP_OVERRIDE)   base = "step";    // Step mode override icon
     // FACTORBTN-OFF: else if(i == CIR_FACTOR_OVERRIDE) base = "factor";  // Factor slider icon
     else if(i == CIR_BASEKNOT)   base = "ruler";   // Base / Knot MEASURE = a scale bar with ticks
-    else if(i == CIR_HRAY)       base = "hray";    // P-HR-01 — Horizontal Ray cell
-    else if(i == CIR_PATH)       base = "path";    // Path tool cell
+     else if(i == CIR_HRAY)       base = "hray";    // P-HR-01 — Horizontal Ray cell
+     else if(i == CIR_PATH)       base = "path";    // Path tool cell
+      else if(i == CIR_SCALE)      base = "scale";   // P-UI-159 — Chart Scale cell
+      else if(i == CIR_HIDE)       base = "eye";     // P-UI-160 — Hide / Show All cell
+      else if(i == CIR_SESSIONS)   base = "sessions"; // P-SESS — Sessions Zones cell (clock)
     else if(i == CIR_LEG)        base = "leg";     // Leg Measure — trendline + bracket
     else if(i == CIR_TOOLS)      base = "tools";
     // P-UI-131: the gear — a settings DOOR, so it wears the same art the strip's
@@ -1405,6 +1430,15 @@ string CircTooltipStatus(const int i)
        if(PathSessionActive()) return "Drawing";
        return "Ready";
     }
+    if(i == CIR_SCALE)   // P-UI-159: the chart's own bit, not an indicator state
+    {
+       return (ChartGetInteger(0, CHART_SCALEFIX) != 0) ? "Fixed" : "Auto";
+    }
+   if(i == CIR_HIDE)    // P-UI-160: the mute's own reader answers — what the NEXT press shows
+   {
+      return IsIndicatorHidden() ? "Hidden" : "Visible";
+   }
+   if(i == CIR_SESSIONS)          return g_sessMaster ? "ON" : "OFF";   // P-SESS
 #ifndef BUILD_LITE
    if(i == CIR_LEG)
    {
@@ -1445,6 +1479,9 @@ string CircItemTooltip(const int i)
       case CIR_BASEKNOT:        return "Base / Knot Measure · " + CircTooltipStatus(i);
       case CIR_HRAY:            return "Horizontal Ray · " + CircTooltipStatus(i);   // P-HR-01
       case CIR_PATH:            return "Path · " + CircTooltipStatus(i);
+      case CIR_SCALE:           return "Chart Scale · " + CircTooltipStatus(i);   // P-UI-159
+      case CIR_HIDE:            return "Hide / Show All (F) · " + CircTooltipStatus(i);   // P-UI-160
+      case CIR_SESSIONS:        return "Sessions · " + CircTooltipStatus(i);   // P-SESS
       case CIR_LEG:             return "Leg Measure · " + CircTooltipStatus(i);
       case CIR_TOOLS:           return "Biotak Tools · " + CircTooltipStatus(i);
       // P-UI-131: a DOOR has no state to report, so the tip names the card instead

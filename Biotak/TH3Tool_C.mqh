@@ -280,6 +280,10 @@ void LegMeasureToggle()
         LegPreviewClear();        // P-LM-10: the dashes and the preview head together
         ChartViewLockRelease();   // P-UI-90: release the shared scroll/ctx lock
 } else {
+         // P-UI-160b (2026-10-16): the F mute owns the chart — no NEW draw under
+         // it. (An ACTIVE session never reaches here: the hide pass cancels it
+         // in the same event that sets the state.)
+         if(IsIndicatorHidden()) return;
          GestureTakeRelease();   // P-UI-144: a NEW leg is never gated by the last one
          g_legSess.active = true;
         g_legSess.step   = 0;
@@ -353,19 +357,34 @@ bool LegMeasureOnObjectDelete(const string objName)
 // Two rulers in one tool is how a leg reads 268% of "ATR" in the box while the
 // label on the same chart reports a different ATR for the same TF.
 //
-// COST — the LEAST the question allows. `CalculateWeightedATR` already owns its
-// own multi-TF TTL cache (bar-count break + trigger-duration TTL, ATRCalculations),
-// and the trade-plan labels ALREADY pay for H1/H4/D1 reads on their own change-gated
-// schedule. A leg now reads the SAME cached numbers, so on a chart whose labels are
-// current the readout is a struct fetch per TF and not one Wilder pass. The
-// per-leg memo table this function used to keep is gone: it was a second cache in
-// front of the first, and the first is already keyed by "did this TF's bar move".
-// A TF whose history is not loaded yet answers 0, which `LegMeasureReadout` treats
-// as "not a reading" (`trusted`), and the next pass tries again.
-double LegAtr14(const int tf)
+// ── P-LM-25 (2026-10-16) — THE LEG'S OWN TIME, NOT THE CHART'S NOW ────
+// The user: «این لگ ها که اندازه میزنم باید محاسبات atr همون زمان باشه یعنی لایو
+// گذشته» — the box for a HISTORICAL leg printed TODAY's ATR (MEASURED: H1 143 /
+// H4 327 / D1 999 equalled the live strip row while the leg sat at 12:00–12:53,
+// and the reference box at 00:51 printed 137/309/962). Every read below now names
+// the bar it is read at: the anchor is the LATER of the leg's two times (the bar
+// its story ended on — BaseKnot's own storyT rule, P-BK-79), so a finished leg
+// freezes the numbers it was measured with and a live drag reads the bar its tip
+// is on. `LegReadAnchor` is the ONE owner of that rule — the readout and its
+// witness both ask it, so box and witness can never disagree about the anchor.
+//
+// COST — the LEAST the question allows. The read goes through the AS-OF sibling
+// `CalculateWeightedATRAt` (P-BK-79, ATR_A.mqh): one full composite per (TF, bar)
+// ever asked, and every repeat is an `iBarShift` plus a 48-row cache scan — the
+// live path is untouched (its 10-row TTL cache is deliberately NOT fed anchors).
+// A drag pays a composite only when the hand crosses a bar — one per TF the
+// readout asks (the three reference TFs plus each owner-walk step); a still frame
+// pays the scan alone. A TF whose history does not reach the anchor answers 0,
+// which `LegMeasureReadout` treats as "not a reading" (`trusted`), and the next
+// pass tries again.
+datetime LegReadAnchor(const datetime t1, const datetime t2)
 {
-    double a = CalculateWeightedATR(CompatTF(tf));
-    if(a <= 0.0 || a == EMPTY_VALUE) return 0.0;   // no history for this TF: not a reading
+    return (t1 > t2) ? t1 : t2;    // the bar the leg's story ended on
+}
+double LegAtr14(const int tf, const datetime anchor)
+{
+    double a = CalculateWeightedATRAt(CompatTF(tf), anchor);
+    if(a <= 0.0 || a == EMPTY_VALUE) return 0.0;   // no history at this TF/bar: not a reading
     return a;
 }
 
@@ -380,7 +399,7 @@ double LegAtr14(const int tf)
 #define TH3_LEG_TF_LO   2.40
 #define TH3_LEG_TF_HI   3.60
 #define TH3_LEG_TF_MID  3.00
-int TH3LegOwnerTF(const double legSize, bool &trusted)
+int TH3LegOwnerTF(const double legSize, const datetime anchor, bool &trusted)
 {
     int start = Period();
     if(start <= 0) start = 60;
@@ -391,7 +410,7 @@ int TH3LegOwnerTF(const double legSize, bool &trusted)
     int bestTF = start; double bestErr = -1.0;
     for(int w = 0; w < 8; w++)
     {
-        double a = LegAtr14(tf);          // P-LM-19: the labels' own composite
+        double a = LegAtr14(tf, anchor);  // P-LM-25: the labels' composite, at the leg's bar
         if(a <= 0) { trusted = false; break; }
         double r = legSize / a;
         double err = MathAbs(r - TH3_LEG_TF_MID);
@@ -422,9 +441,9 @@ int TH3LegOwnerTF(const double legSize, bool &trusted)
 // Line 3's Leg is the course's own verdict: in the normal case it reads
 // 240%..360% (P-LM-22), checkable against line 1's columns — the TF whose
 // column sits in that band is the TF line 3 names.
-// P-LM-19: every ATR here is the SAME composite the trade-plan labels read
-// (`CalculateWeightedATR` via `LegAtr14`) — one ruler for the box and the strip,
-// and the readout costs a cached fetch per TF instead of its own Wilder pass.
+// P-LM-19/P-LM-25: every ATR here is the SAME composite the trade-plan labels
+// read, now read AT THE LEG'S OWN BAR (`CalculateWeightedATRAt` via `LegAtr14`):
+// one ruler AND one anchor for the box and the labels' own leg read.
 // `trusted` says whether EVERY ATR it used was real: a readout built on a guessed
 // 1.0 is a lie, and the migration (which runs at attach, when history may not be
 // loaded yet) refuses to write one.
@@ -436,6 +455,8 @@ void LegMeasureReadout(const datetime t1, const double p1,
     if(pip <= 0) pip = Point;
     double legSize = MathAbs(p2 - p1);
     trusted = true;
+    // P-LM-25: the bar the leg's story ended on — every ATR below is read THERE.
+    datetime anchor = LegReadAnchor(t1, t2);
 
     // the three reference TFs (H1=60, H4=240, D1=1440) whatever the CHART's TF
     // is: these three columns ARE the box's layout
@@ -444,7 +465,7 @@ void LegMeasureReadout(const datetime t1, const double p1,
     double pctRef[3];  pctRef[0]=0;  pctRef[1]=0;   pctRef[2]=0;
     double pipRef[3];  pipRef[0]=0;  pipRef[1]=0;   pipRef[2]=0;
     for(int i = 0; i < 3; i++) {
-        double a = LegAtr14(refTFs[i]);       // P-LM-07: memoised per TF per its own bar
+        double a = LegAtr14(refTFs[i], anchor);  // P-LM-25: as-of (anchor cache)
         if(a > 0) atrRef[i] = a;
         else      trusted  = false;          // no history for this TF: not a reading
         pctRef[i] = legSize / atrRef[i] * 100.0;
@@ -455,8 +476,8 @@ void LegMeasureReadout(const datetime t1, const double p1,
     // rule (TH3ClosedOwnerTF's bar count — the closed step's grid gate,
     // P-TH3-STEP-08/10) could badge a slow small leg D1 while line 1 read it
     // at 140% of H4; the box contradicted itself in its own three lines.
-    ownerTF = TH3LegOwnerTF(legSize, trusted);
-    double atrOwner = LegAtr14(ownerTF);      // P-LM-07
+    ownerTF = TH3LegOwnerTF(legSize, anchor, trusted);
+    double atrOwner = LegAtr14(ownerTF, anchor);   // P-LM-25: same bar as line 1
     if(atrOwner <= 0) { atrOwner = 1; trusted = false; }
 
     // P-LM-17: the ink is the leg's OWN DIRECTION, automatically — the price at
@@ -482,6 +503,25 @@ void LegMeasureReadout(const datetime t1, const double p1,
                           (int)MathRound(legSize / atrOwner * 100.0));
 }
 
+// ── P-LM-25 — THE WITNESS OF THE AS-OF READ (commit paths only) ─────────
+// The number a user reports as wrong must be readable from the FLUSHED diag file
+// beside the bar it was read at: the box can show the numbers, only this line
+// shows the ANCHOR they came from. Called on the two COMMIT paths (a fresh draw,
+// a drag's release) and nowhere else — the drag's per-move pass calls the readout
+// on every held move, and a flushed line per move would put a file write in the
+// mouse stream (contract §5). The channel is `DrawStripDiagEmit` (DrawStrip_Base,
+// flushed + share-read, P-LOG-3); every unit that carries TH3Tool also carries
+// DrawStrip later in the same file, which MQL4 resolves by name (P-WARN-46).
+void LegReadWitness(const string src, const datetime t1, const datetime t2,
+                    string &txt[], const int ownerTF, const bool trusted)
+{
+    DrawStripDiagEmit(StringFormat("[P-LM-25] %s anchor=%s owner=%s trusted=%d | %s | %s | %s",
+                                   src,
+                                   TimeToString(LegReadAnchor(t1, t2), TIME_DATE | TIME_MINUTES),
+                                   TH3TfName(ownerTF), (trusted ? 1 : 0),
+                                   txt[0], txt[1], txt[2]));
+}
+
 // Draw the finished trendline + info box for one leg measurement.
 // ts   = unique timestamp string for object names
 // Returns the object base name ("LM_<ts>")
@@ -502,6 +542,7 @@ string LegMeasureDraw(datetime t1, double p1, datetime t2, double p2)
     int    ownerTF = 0;
     bool   trusted = true;      // a live chart has the history: the box is printed as read
     LegMeasureReadout(t1, p1, t2, p2, legTxt, lnCol, ownerTF, trusted);
+    LegReadWitness("draw", t1, t2, legTxt, ownerTF, trusted);   // P-LM-25: the anchor, flushed
 
     // ── the leg's ink: line + start dot + the head that points ALONG it (P-LM-05) ──
     LegMeasureInk(base, t1, p1, t2, p2, lnCol, true);
@@ -748,6 +789,7 @@ void TH3BaseMarkViewRelease()
 void TH3BaseMarkToggle()
 {
     if(s_th3BaseMarkArmed) { TH3BaseMarkCancel("toggle"); return; }
+    if(IsIndicatorHidden()) return;   // P-UI-160b: the F mute owns the chart — no base mark under it
     if(TH3SessionActive() || LegMeasureSessionActive()) return;   // clicks are owned; B waits its turn
     s_th3BaseMarkArmed = true;
     s_th3BaseMarkHas1  = false;

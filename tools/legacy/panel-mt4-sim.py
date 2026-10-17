@@ -180,6 +180,28 @@ def parse_defines(text):
     return out
 
 
+def parse_enum_values(text):
+    """`enum NAME { A = 0, B, C = 5 };` -> {A: 0, B: 1, C: 5}.
+
+    A VALUE range may name an enum member instead of its number (P-UI-70d
+    applied to the sessions TIMEZONE row, whose max IS `SZ_CUSTOM`), and the
+    member is the value the MQL compiles - so read it from the enum, never
+    copy the digit. Only plain integer members are read; anything else is
+    skipped and surfaces at the eval, on purpose."""
+    out = {}
+    for m in re.finditer(r"enum\s+\w+\s*\{([^}]*)\}", strip_line_comments(text)):
+        nxt = 0
+        for part in m.group(1).split(","):
+            mm = re.match(r"\s*(\w+)\s*(?:=\s*(-?\d+))?\s*$", part)
+            if not mm:
+                continue
+            if mm.group(2) is not None:
+                nxt = int(mm.group(2))
+            out[mm.group(1)] = nxt
+            nxt += 1
+    return out
+
+
 D = parse_defines(SRC_TEXT)
 
 
@@ -318,6 +340,20 @@ def range_consts():
     shared = os.path.join(ROOT, "Biotak", "ConstantsAndEnums.mqh")
     if os.path.exists(shared):
         g.update(parse_defines(open(shared, encoding="utf-8", errors="replace").read()))
+    # ...and the SESSIONS feature's bounds (P-UI-70d applied to cards 15/16):
+    # the sessions sliders range over the engine's own maximum (`SESS_HIST_MAX`
+    # / `SESS_FUT_MAX`), the custom-zone offset extremes (SESS_CUSTOM_OFF_LO/_HI)
+    # and the zone enum's last member (`SZ_CUSTOM` = the TIMEZONE dropdown's
+    # max). They live with the feature - Runtime_A, the DST engine and the
+    # Sessions model - so read them from there. Read, never copied: a slider
+    # range and its clamp stay one value.
+    for shared in (os.path.join(ROOT, "Biotak", "Runtime_A.mqh"),
+                   os.path.join(ROOT, "Biotak", "Sessions_Time.mqh"),
+                   os.path.join(ROOT, "Biotak", "Sessions_Model.mqh")):
+        if os.path.exists(shared):
+            txt = open(shared, encoding="utf-8", errors="replace").read()
+            g.update(parse_defines(txt))
+            g.update(parse_enum_values(txt))
     return g
 
 

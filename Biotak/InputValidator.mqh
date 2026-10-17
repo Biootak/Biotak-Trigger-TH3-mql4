@@ -447,10 +447,10 @@ bool ValidateComboModeConfiguration() {
         return false;
     }
     // Validate inpComboPreset is in valid range
-    if(inpComboPreset < COMBO_PRESET_BALANCED_MEDIUM || inpComboPreset > COMBO_PRESET_RATIO_4_3) {
+    if(inpComboPreset < COMBO_PRESET_BALANCED_MEDIUM || inpComboPreset > COMBO_PRESET_RATIO_5_3) {
         Print("  ERROR: Invalid inpComboPreset=", (int)inpComboPreset,
                           " (valid range: ", (int)COMBO_PRESET_BALANCED_MEDIUM, "..",
-                          (int)COMBO_PRESET_RATIO_4_3, ")");
+                          (int)COMBO_PRESET_RATIO_5_3, ")");
         return false;
     }
 

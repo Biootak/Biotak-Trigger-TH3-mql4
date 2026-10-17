@@ -484,14 +484,18 @@ void PnlComputeMenuBounds(int &bx, int &by, int &bw, int &bh)
 
    if(g_UI.menuVisible)
    {
-      for(int i = 0; i < CIRC_ITEM_COUNT; i++)
+      // P-UI-161: the seat count and the button size are the BUILT ones — the
+      // safe-zone rect must cover the same grid the paint wrote, not the old 44px 9.
+      const int n  = CircPlacedCount();
+      const int bs = CircBtnSize();
+      for(int i = 0; i < n; i++)
       {
          int ix, iy;
          CircLayout(i, ix, iy);
-         mx = MathMin(mx, ix - CIRC_BTN_SIZE/2);
-         my = MathMin(my, iy - CIRC_BTN_SIZE/2);
-         Mx = MathMax(Mx, ix + CIRC_BTN_SIZE/2);
-         My = MathMax(My, iy + CIRC_BTN_SIZE/2);
+         mx = MathMin(mx, ix - bs/2);
+         my = MathMin(my, iy - bs/2);
+         Mx = MathMax(Mx, ix + bs/2);
+         My = MathMax(My, iy + bs/2);
       }
    }
    bx = mx; by = my;
@@ -1053,6 +1057,99 @@ bool PnlCsetHit(const int mx,const int my,int &item,int &row,int &setRow)
          if(mx >= cx-3 && mx <= cx+PNL_CSET_W+3 && my >= ry+13 && my <= ry+41)
          {
             item=it; row=r; setRow=PnlMemberRow(it,r,i);
+            return true;
+         }
+      }
+   }
+   return false;
+}
+
+//--- CHIPS (P-SESS, kind 10): the session editor's two grids. `opts` names the
+//--- table the taps write — "days" = the 7-bit weekday mask (one cell per day,
+//--- tap = XOR its bit), "color" = the 8 session inks (tap = pick, one lit).
+//--- The count IS the table's height; the geometry is ONE owner, read by the
+//--- painter, this hit test and the row refresher, so a cell can never move
+//--- under a hand that still points at it.
+int PnlChipsCount(const int item,const int row)
+{
+   int rk=0; string rl="",ru="",ro=""; int rMin=0,rMax=0; double rst=1;
+   PnlRowDef(item,row,rk,rl,rMin,rMax,rst,ru,ro);
+   if(ro == "days")  return 7;
+   if(ro == "color") return 8;
+   return 0;
+}
+//--- x0/cy = the FIRST cell's top-left; x0 right-aligns the strip inside the
+//--- row's own column (the DUAL cells' side), cy is the row's content rung.
+void PnlChipsGeom(const int item,const int row,int &x0,int &cy,int &cw,int &ch,
+                  int &gap,int &n)
+{
+   cw=PNL_SCHIP_W; ch=PNL_SCHIP_H; gap=PNL_SCHIP_GAP; n=PnlChipsCount(item,row);
+   int total=n*cw+(n-1)*gap;
+   x0=PnlRowBaseX(item,row)+PNL_WEL-PNL_PAD_X-total;
+   cy=g_PnlY[item]+PNL_HEAD_H+PnlRowLine(item,row)*PNL_ROW_H;
+}
+//--- the value a tap on `cell` writes. The ONE owner of the two tables' tap
+//--- semantics (the press chain reads this, never its own copy).
+double PnlChipsNextValue(const int item,const int row,const int cell)
+{
+   int n=PnlChipsCount(item,row);
+   double cv=PnlCurrent(item,row);
+   if(cell < 0 || cell >= n) return cv;
+   int rk=0; string rl="",ru="",ro=""; int rMin=0,rMax=0; double rst=1;
+   PnlRowDef(item,row,rk,rl,rMin,rMax,rst,ru,ro);
+   if(ro == "days") return (double)(((int)MathRound(cv)) ^ (1 << cell));
+   return (double)cell;   // "color": the tap IS the pick
+}
+//--- the three-letter day captions the day cells wear (Mon = bit 0, the
+//--- engine's own SessMaskBitOfDow order). Two tables so every reader spells
+//--- a day the same way.
+string PnlDayShort(const int i)
+{
+   switch(i % 7)
+   {
+      case 0: return "Mo";
+      case 1: return "Tu";
+      case 2: return "We";
+      case 3: return "Th";
+      case 4: return "Fr";
+      case 5: return "Sa";
+   }
+   return "Su";
+}
+string PnlDayLong(const int i)
+{
+   switch(i % 7)
+   {
+      case 0: return "Monday";
+      case 1: return "Tuesday";
+      case 2: return "Wednesday";
+      case 3: return "Thursday";
+      case 4: return "Friday";
+      case 5: return "Saturday";
+   }
+   return "Sunday";
+}
+//--- chips cell under the cursor -> (item, display row, cell)
+bool PnlChipsHit(const int mx,const int my,int &item,int &row,int &cell)
+{
+   item=-1; row=-1; cell=-1;
+   if(g_PnlOpen < 0) return false;
+   int it = g_PnlOpen;
+   if(!PnlSpecCard(it)) return false;
+   int n  = PnlRowsCount(it);
+   for(int r=0;r<n;r++)
+   {
+      if(PnlRowKind(it,r) != PNL_K_CHIPS) continue;
+      int cc = PnlChipsCount(it,r);
+      if(cc <= 0) continue;
+      int x0,cy,cw,cH,cg,cn;
+      PnlChipsGeom(it,r,x0,cy,cw,cH,cg,cn);
+      for(int i=0;i<cc;i++)
+      {
+         int cx = x0 + i*(cw+cg);
+         if(mx >= cx-3 && mx <= cx+cw+3 && my >= cy-3 && my <= cy+cH+3)
+         {
+            item=it; row=r; cell=i;
             return true;
          }
       }
