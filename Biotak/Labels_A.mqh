@@ -22,7 +22,10 @@ bool DrawMainLevels(const string prefix) {
     // Skip drawing High/Low lines when Custom Price mode is active
     // In Custom Price mode, user defines their own reference point
     if(g_thStartPointType == TH_START_POINT_CUSTOM_PRICE) {
-        // Delete existing High/Low lines if they exist
+        // Delete existing High/Low lines if they exist. P-LBL-12 (2026-10-17):
+        // the two `_PipsLabel` purges stay although nothing creates them any
+        // more - a chart that ran an older build still carries the objects, and
+        // this is one of the sweeps that clears them.
         ObjectDelete(0, prefix + "High");
         ObjectDelete(0, prefix + "High_PipsLabel");
         ObjectDelete(0, prefix + "Low");
@@ -48,10 +51,9 @@ bool DrawMainLevels(const string prefix) {
         highTooltip = s_cachedHighTooltip;
     }
     if(!CreateTHLineObject(prefix+"High",g_highestHigh,inpHighColor,inpHighStyle,inpHighWidth,highTooltip, inpTHLineObjectType, false)) return false;
-    if(inpShowPipDistanceLabels) {
-        double pipsToHigh = CalculatePipsDistance(g_highestHigh, g_currentPrice);
-        CreatePipDistanceLabel(prefix+"High_PipsLabel", g_highestHigh, pipsToHigh, inpHighColor);
-    }
+    // P-LBL-12 (2026-10-17): the High line's pip-distance label block stood
+    // here (`inpShowPipDistanceLabels` -> CreatePipDistanceLabel). The labels
+    // are retired; nothing replaces it - the line is the whole surface.
     
     // Low line
     string lowTooltip;
@@ -65,10 +67,8 @@ bool DrawMainLevels(const string prefix) {
         lowTooltip = s_cachedLowTooltip;
     }
     if(!CreateTHLineObject(prefix+"Low",g_lowestLow,inpLowColor,inpLowStyle,inpLowWidth,lowTooltip, inpTHLineObjectType, false)) return false;
-    if(inpShowPipDistanceLabels) {
-        double pipsToLow = CalculatePipsDistance(g_lowestLow, g_currentPrice);
-        CreatePipDistanceLabel(prefix+"Low_PipsLabel", g_lowestLow, pipsToLow, inpLowColor);
-    }
+    // P-LBL-12 (2026-10-17): the Low line's pip-distance label block stood
+    // here, twin of the High one above - retired with it.
     return true;
 }
 
@@ -271,10 +271,11 @@ bool CreateATRLabelSimple(const string objectPrefix, const string timeframeName,
 //|                                                                    |
 //| Two fences, both deliberate:                              |
 //|  * `LblMark` outside an open window is DROPPED, so a label built   |
-//|    by a path that is not this pass (the level render's pip labels, |
-//|    `CreatePipDistanceLabel`) can never enter either registry, and  |
-//|    is therefore never deleted by this sweep. Those keep their own  |
-//|    owner: the ladder sweep treats `<line>_Label` as produced.      |
+//|    by a path that is not this pass can never enter either registry,|
+//|    and is therefore never deleted by this sweep. The fence's own   |
+//|    example used to be the level render's pip labels              |
+//|    (`CreatePipDistanceLabel`, retired by P-LBL-12, 2026-10-17) —  |
+//|    the guarantee is what mattered and it is unchanged.            |
 //|  * a nested `LblSweepBegin` (a display function that clears on its |
 //|    own way out) does NOT rotate again and does NOT drop the marks  |
 //|    already made this pass.                                        |

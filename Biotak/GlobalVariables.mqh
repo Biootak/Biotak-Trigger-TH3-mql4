@@ -136,7 +136,7 @@ bool UIPointerOverSurface(const int mx,const int my)
 static bool g_waitingForCustomPriceClick = false;
 static string g_customPriceHorizontalLineName = "CustomPriceHorizontalLine";
 // P-UI-98d: the line's ONE small marker — a green dot at the chart's right edge
-// (time 0, the same anchoring the pip labels use) that shows the line is ARMED.
+// (time 0 — the anchoring the retired pip labels also used) that shows the line is ARMED.
 static string g_cpMarkerName = "CustomPriceHorizontalLine_Mark";
 // P-UI-98: the step-1 handles' markers — red, one per armed rung-1 line. The
 // names carry "_Above_"/"_Below_" so the L-switch visibility walk covers them
@@ -546,11 +546,12 @@ void MarkDrawGeneration()
     if(g_drawGeneration <= 0) g_drawGeneration = 1;   // overflow guard
 }
 
-// P-PERF-06 STAGED REBUILD: a post-wipe level build materialises ~900 chart
-// objects (289 zones + 288 lines + 288 pip labels at inpMaxLevels=144). Doing
-// it in ONE frame freezes a weak PC for seconds on every attach, TF switch
+// P-PERF-06 STAGED REBUILD: a post-wipe level build materialises ~600 chart
+// objects (289 zones + 288 lines at inpMaxLevels=144; a third family of pip
+// labels sat in the count before P-LBL-12 retired them). Doing it in ONE
+// frame freezes a weak PC for seconds on every attach, TF switch
 // and topology toggle. While g_buildStage != 0 the wipe is rebuilt one family
-// per frame (1=lines, 2=zones, 3=pip labels, 4=labels block): every gate
+// per frame (1=lines, 2=zones, 4=the labels block): every gate
 // treats a staging frame as pending work, the geometry signature is stored
 // only when the last stage lands, and heavy neighbours (HTF history bulk)
 // wait for stage 0. The 250 ms timer pumps RedrawAllObjects while staging so
@@ -559,7 +560,10 @@ void MarkDrawGeneration()
 // (P-ARCH-02: an earlier-included module can never see a later one).
 #define BUILD_STAGE_LINES  1
 #define BUILD_STAGE_ZONES  2
-#define BUILD_STAGE_LABELS 3
+// P-LBL-12 (2026-10-17): BUILD_STAGE_LABELS stood here (3, the pip-label
+// family frame). The labels are retired and the advance/paint rungs that used
+// the value are gone — the number is skipped, not reused, so every remaining
+// stage keeps its name.
 #define BUILD_STAGE_BLOCK  4
 static int g_buildStage = 0;
 // Viewport snapshot taken on the stage-1 frame: stages 2-4 cull against the

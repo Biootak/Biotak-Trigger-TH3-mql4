@@ -39,18 +39,22 @@ void PnlSpecBuild(const int item)
 {
    g_PnlSpecStart[item] = item * PNL_SPEC_MAX;
    g_PnlSpecCount[item] = 0;
-   if(item == 0)   // TRIGGER ZONES (cyan) — 5 settings / 7 display rows
+   if(item == 0)   // TRIGGER ZONES (cyan) — 3 settings / 5 display rows
    {
-      // P-UI-131j: the card's SECOND surface gets its pair. TRANSPARENCY + COLOR own the
-      // trigger ZONE; LABEL COLOR + LABEL OPACITY own the pip label on the trigger
-      // family's levels. The opacity is APPENDED (address 4) so addresses 0..3 and every
-      // persisted OV_ key keep their meaning; it RENDERS beside the colour row because
-      // the spec order — not the address — is what the user sees.
-      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "ZONE APPEARANCE", 4);
+      // P-UI-131j gave the card's SECOND surface its pair: TRANSPARENCY + COLOR own the
+      // trigger ZONE; LABEL COLOR + LABEL OPACITY owned the pip label on the trigger
+      // family's levels (addresses 2 and 4, APPENDED past 0..3 so every persisted OV_
+      // key kept its meaning). P-LBL-12 (2026-10-17): the pip labels are retired, so
+      // those two rows left the spec; the addresses and keys stay (MIDPOINT precedent).
+      PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "ZONE APPEARANCE", 2);
       PnlSpecAdd(0, PNL_K_LEGACY, 0, 1, "contrast");
       PnlSpecAdd(0, PNL_K_LEGACY, 1, 1, "droplet");
-      PnlSpecAdd(0, PNL_K_LEGACY, 2, 1, "tag");
-      PnlSpecAdd(0, PNL_K_LEGACY, 4, 1, "contrast");   // LABEL OPACITY (-1 = AUTO)
+      // P-LBL-12 (2026-10-17): addresses 2 (LABEL COLOR) and 4 (LABEL OPACITY)
+      // are OFF THE CARD - they existed only to paint the trigger lines'
+      // pip-distance labels (P-UI-131j), and there are no labels any more.
+      // Both addresses, their palette targets, their read/apply branches and
+      // their persisted keys all stay (MIDPOINT precedent, P-UI-47): nothing
+      // renumbers and an old OV/GV still lands where it was written.
       PnlSpecAdd(0, PNL_K_SEC, -1, 0, "", "", "VISIBILITY", 1);
       PnlSpecAdd(0, PNL_K_LEGACY, 3, 1, "eye");   // hotkey T lives in the header badge only
    }
@@ -109,9 +113,10 @@ void PnlSpecBuild(const int item)
       // same way P-UI-126 added the row above.
       PnlSpecAdd(1, PNL_K_LEGACY, 13, 1, "info", "", "", 0, "GENERAL");
    }
-   else if(item == 2)   // ATR LABELS (gold) — 14 display rows, 19 addresses: 10..13
-                        // (the trade card's grid) render on the GENERAL card now
-                        // (P-UI-131) while their addresses stay here.
+   else if(item == 2)   // ATR LABELS (gold) — the countdown tag, the label
+                        // switches, the plan ATR and the card colours: addresses
+                        // 10..13 (the trade card's grid) render on the GENERAL
+                        // card now (P-UI-131) while their addresses stay here.
    {
       PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "COUNTDOWN", 4);
       PnlSpecAdd(2, PNL_K_LEGACY, 0, 1, "timer", "C");
@@ -120,11 +125,14 @@ void PnlSpecBuild(const int item)
       PnlSpecAdd(2, PNL_K_LEGACY, 3, 1, "gap");
       PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "ATR BLOCK", 2);
       PnlSpecAdd(2, PNL_K_DUAL, 4, 2, "gauge");   // ATR LABELS · ATR TARGETS in one row (15→14 rows)
-      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "TRADE PLAN ROWS", 4);
+      PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "TRADE PLAN ROWS", 3);
       PnlSpecAdd(2, PNL_K_LEGACY, 6, 1, "tag", "T");
       PnlSpecAdd(2, PNL_K_LEGACY, 7, 1, "crosshair", "H");
       PnlSpecAdd(2, PNL_K_LEGACY, 8, 1, "flag", "P");
-      PnlSpecAdd(2, PNL_K_LEGACY, 9, 1, "ruler");
+      // P-LBL-12 (2026-10-17): address 9 ("H/L PIP LABELS", the ruler row) is
+      // OFF THE CARD - the setting's only consumer, the pip-distance labels,
+      // is retired. The address, its input, its `PD` key and its descriptor/
+      // read/apply branches all stay (MIDPOINT precedent, P-UI-47).
       // P-LEGATR: the plan's ATR source, APPENDED in its own band (14→16 display
       // rows, still wide). Address 19 renders here and nowhere else.
       PnlSpecAdd(2, PNL_K_SEC, -1, 0, "", "", "PLAN ATR", 1);

@@ -84,7 +84,8 @@ What each leaked event bought, before this pass:
 
 * `g_redrawTHLevelsNeeded = true` — a FULL family render. That render is **~900 chart
   objects** (289 zones + 288 lines + 288 pip labels at `inpMaxLevels=144`,
-  `GlobalVariables.mqh:549`) and the ledger once billed one at
+  `GlobalVariables.mqh:549`; the census predates P-LBL-12, 2026-10-17, which
+  retired the pip labels - the live figure is ~600) and the ledger once billed one at
   `[CRIT] OnCalculate took 3563ms! [levels=31 labels=313 overlay=62 rest=3157]`
   (`EventHandlers_Calc.mqh:1485`).
 * `MarkDrawGeneration()` — voids the object cache's absent-proofs

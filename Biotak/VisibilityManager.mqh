@@ -57,8 +57,9 @@ void InvalidateAllVisibilityCaches()
 //| CacheUpdateLabel), so the toggle walks occupied slots only,       |
 //| bounded by g_objectCacheSize, with ZERO ObjectName calls. The     |
 //| line filter is name-based (LevelPipeline naming: lines are        |
-//| <mode>_Above_/_Below_/_Midpoint_, zones carry _Zone_, pip labels  |
-//| append _Label) — zero OBJPROP_TYPE probes for decided families.   |
+//| <mode>_Above_/_Below_/_Midpoint_, zones carry _Zone_, label       |
+//| chrome appends _Label — pip labels retired by P-LBL-12, the       |
+//| strip's own *_Label names keep the rule live) — zero OBJPROP_TYPE |
 //| Anything the names cannot decide (Factor_High/Low, HTF wicks, ATR |
 //| trade lines) falls back to exactly ONE type probe: the old        |
 //| behavior, preserved bit-for-bit. exclusions are spelled out here  |

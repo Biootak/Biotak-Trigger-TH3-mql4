@@ -106,8 +106,8 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
             // 4200, docs.mql4.com/objects/objectcreate), and this site is the
             // one creation path in the level/label families that decides
             // existence from the CACHE rather than from the chart (ZoneRenderer,
-            // ZoneFactory, CreateLevelLine, CreatePipDistanceLabel and the rest
-            // all probe ObjectFind first, so they were already safe).
+            // ZoneFactory, CreateLevelLine and the rest all probe ObjectFind
+            // first, so they were already safe).
             //
             // That was invisible until P-PERF-38b/38d made the level family
             // SURVIVE a timeframe switch: the reloaded instance's cache starts
@@ -181,119 +181,11 @@ bool CreateTHLineObject(const string name, const double price, const color lineC
     return true;
 }
 
-bool CreatePipDistanceLabel(const string name, const double price, const double pips, const color textColor, const string levelInfo = "") {
-    if(!inpShowPipDistanceLabels) return true;
-    
-    //                                                                
-    // CRITICAL FIX #1: Check object count BEFORE creation
-    //                                                                
-    if(!CanCreateObject()) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("  CreatePipDistanceLabel: Object limit reached, cannot create '", name, "'");
-        #endif
-        return false;
-    }
-    
-    //                                                                
-    // CRITICAL FIX #2: Validate inputs
-    //                                                                
-    if(StringLen(name) == 0) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("  CreatePipDistanceLabel: Empty label name");
-        #endif
-        return false;
-    }
-    
-    if(!IsValidPrice(price)) {
-        #ifdef ENABLE_DEBUG_LOGS
-        Print("  CreatePipDistanceLabel: Invalid price (", price, ")");
-        #endif
-        return false;
-    }
-
-    // Format: "M1 +3 | 45.2 pips" or just "45.2 pips" if no levelInfo
-    string labelText;
-    if(StringLen(levelInfo) > 0) {
-        labelText = StringFormat("%s | %.1f", levelInfo, pips);
-    } else {
-        labelText = StringFormat("%.1f pips", pips);
-    }
-
-    // P-LBL-10: the pip label is READABLE and owns its own row. It used to sit
-    // exactly on its line at the right edge with ANCHOR_LEFT — half of it under
-    // the price axis (a clipped fragment like "3.6") and the rest mashed with
-    // any same-price text (the TH3 step fibo texts live on the same rows at the
-    // same edge). It now ends at the edge (ANCHOR_RIGHT) and floats one text
-    // row above its line, lifted by a pixel-aware amount so the row holds at
-    // every zoom. Same color as its line (P-UI-66), same text.
-    // One text row, in price, at the current zoom (static cache: the scale only
-    // moves on scroll/zoom, not per frame — the 3 reads below validate it).
-    static int    s_h = -1;
-    static double s_hi = 0.0, s_lo = 0.0, s_lift = 0.0;
-    int hNow = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS, 0);
-    double hiNow = ChartGetDouble(0, CHART_PRICE_MAX);
-    double loNow = ChartGetDouble(0, CHART_PRICE_MIN);
-    if(hNow != s_h || hiNow != s_hi || loNow != s_lo || s_lift <= 0.0) {
-        s_h = hNow; s_hi = hiNow; s_lo = loNow; s_lift = 0.0;
-        if(hNow > 0 && hiNow > loNow && loNow > 0) {
-            double rowPx = (double)inpFontSize + 6.0;
-            s_lift = rowPx * (hiNow - loNow) / (double)hNow;
-        }
-    }
-    double labelPrice = price + s_lift;
-
-    string cachedText;
-    color cachedColor;
-    bool hasCachedLabel = CacheGetLabel(name, cachedText, cachedColor);
-    bool objectExists = false;
-    if(hasCachedLabel) {
-        objectExists = (ObjectFind(0, name) >= 0);
-        if(!objectExists) {
-            CacheRemoveObject(name);
-            hasCachedLabel = false;
-        }
-    } else {
-        objectExists = (ObjectFind(0, name) >= 0);
-    }
-
-    if(!objectExists) {
-        if(!ObjectCreate(0, name, OBJ_TEXT, 0, 0, labelPrice)) {
-            #ifdef ENABLE_DEBUG_LOGS
-            int error = GetLastError();
-            Print("  CreatePipDistanceLabel: Failed to create '", name, "', error=", error);
-            #endif
-            return false;
-        }
-        ObjectSetString(0, name, OBJPROP_TEXT, labelText);
-        ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-        ObjectSetString(0, name, OBJPROP_FONT, inpFontName);
-        ObjectSetInteger(0, name, OBJPROP_FONTSIZE, inpFontSize);
-        ObjectSetInteger(0, name, OBJPROP_ANCHOR, ANCHOR_RIGHT);
-        ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-        ObjectSetInteger(0, name, OBJPROP_BACK, false);
-    } else {
-        if(!hasCachedLabel || cachedText != labelText)
-            ObjectSetString(0, name, OBJPROP_TEXT, labelText);
-        if(!hasCachedLabel || cachedColor != textColor)
-            ObjectSetInteger(0, name, OBJPROP_COLOR, textColor);
-        // P-TH3-INFO-09: the BACK flag is re-owned in the refresh path — a
-        // stale label left with BACK=true paints behind the chart art and
-        // reads as "the label does not show".
-        if((bool)ObjectGetInteger(0, name, OBJPROP_BACK))
-            ObjectSetInteger(0, name, OBJPROP_BACK, false);
-        // P-PERF-02: the pip-distance label follows a level that is stable for
-        // minutes, but this write used to land on EVERY heavy frame. Compare
-        // against the cached price first (a label's price IS cached).
-        double havePrice = 0.0;
-        if(!CacheGetPrice(name, havePrice) || MathAbs(havePrice - labelPrice) > GetCachedPoint() * 0.1)
-            ObjectSetDouble(0, name, OBJPROP_PRICE, labelPrice);
-    }
-
-    CacheUpdateLabel(name, labelText, textColor);
-    CacheSetPrice(name, labelPrice);
-    ApplyVisibilityStateIfUnchangedSkip(name, false);
-
-    return true;
-}
+// P-LBL-12 (2026-10-17): CreatePipDistanceLabel stood here - the per-level
+// pip-distance label writer ("%s | %.1f" / "%.1f pips", ANCHOR_RIGHT, one
+// text row above its line) with the pass-scoped row lift it shared. The
+// labels are retired, so the creator went whole; no caller remains. Legacy
+// `*_Label` objects on an upgraded chart are deleted by the one handoff
+// sweep (LevelPipe_B, P-LEVEL-FOREIGN-02).
 
 #endif // OBJECT_FUNCTIONS_MQH

@@ -64,6 +64,8 @@ static int g_bkVAlign = 1;                                     // [08.5] inpBKVA
 // whatever the row said. AUTO (`clrNONE` / `-1`) is the shipped picture — the label
 // wears its own line's live look (P-UI-66) — so an untouched chart is pixel-identical
 // and a pinned value is the trigger family's own.
+// P-LBL-12 (2026-10-17): the labels are retired and the two rows are off the card;
+// both values stay persisted and inert (MIDPOINT precedent).
 static color g_triggerLabelColor = clrNONE;                      // [09.3] inpTriggerLabelColor (clrNONE = AUTO)
 static int g_triggerLabelTransparency = -1;                      // P-UI-131j (-1 = AUTO: follow the Lines TR)
 static int g_triggerTransparency = 50;                           // [09.3] inpTriggerTransparency

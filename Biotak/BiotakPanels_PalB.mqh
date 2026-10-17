@@ -807,8 +807,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       else if(row==17) { label="BOTTOM OPACITY"; unit="%"; minV=-1; maxV=100; }
       else             { kind=5; label="LINES"; opts="7"; }              // NAV → unified lines card
    }
-   else if(item==2)   // ATR LABELS — the chart-labels card (incl. High/Low
-                      // pip-distance labels; they are display labels, not pin)
+   else if(item==2)   // ATR LABELS — the chart-labels card (High/Low
+                      // pip-distance labels were retired by P-LBL-12; this
+                      // card keeps the countdown, ATR and trade-plan labels)
    {
       // Rows 0-3 = the countdown tag's OWN settings (independent of the ATR
       // block — turning the ATR labels off keeps the countdown).
@@ -826,6 +827,10 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
       // (`inpShowPipDistanceLabels`, read by LabelFunctions AND LevelPipeline),
       // which no two-word caption in a corner card can convey. Renamed to say
       // WHERE those labels live; the setting address is untouched.
+      // P-LBL-12 (2026-10-17): the pip labels themselves are retired, so this
+      // row is off the card (see the spec table). The branch stays as the
+      // address stub - `row_arms` counts branches, not displays, and a
+      // renumbered fallthrough below would misland the proof (P-TH3-PB-MAN).
       else if(row==9)  { kind=1; label="H/L PIP LABELS"; }
       // ROW-GAP-OFF is OVER (P-UI-70c): the row was retired because its runtime
       // copy `g_atrLabelRowGap` was dead, and the trade card has consumed that
@@ -956,8 +961,9 @@ void PnlSetDef(const int item,const int row,int &kind,string &label,
    }
    // item==7 retired Tools/Misc rows are gone (were duplicates of CustomPrice,
    // Zones & the STRUCTURE card) — the slot now hosts the LINES card above.
-    else if(item==8)   // CUSTOM PRICE PIN — the pin only (pip-distance labels
-                       // live on the ATR LABELS card)
+    else if(item==8)   // CUSTOM PRICE PIN — the pin only (the pip-distance
+                       // labels that used to live on the ATR LABELS card are
+                       // retired, P-LBL-12)
     {
        if(row==0)       { label="WIDTH"; minV=1; maxV=5; }
        else if(row==1)  { kind=4; label="COLOR"; }

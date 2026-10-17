@@ -1148,10 +1148,10 @@ void RedrawAllObjects(bool force_redraw=false)
         // The fix is therefore a FEATURE, not a line, and it is the same shape the
         // ladder already has: ONE produced-list sweep for the label namespace — the
         // pass records every `LBL_` name it wrote, and the sweep deletes exactly the
-        // names it did not (the ladder's `SweepForeignLadderObjects` already treats
-        // `<line>_Label` as produced, so half of that mechanism exists). Only then may
-        // the clear go, and the ledger to prove it is the line above: `clear=` must
-        // fall to 0 ms on a switch while `atr`/`th`/`trade` stay put.
+        // names it did not (the ladder's `SweepForeignLadderObjects` treats
+        // `<line>_Label` as produced - since P-LBL-12 retired the pip labels,
+        // that sweep was their one-time net). Only then may the clear go, and
+        // the ledger: `clear=` must fall to 0 ms on a switch while `atr`/`th`/`trade` stay put.
         ClearAllLabels(objectPrefix);
 
         TH3_PROF_START(Labels);
@@ -1412,8 +1412,8 @@ void RedrawAllObjects(bool force_redraw=false)
                           // and two compares gone; steady frames untouched.
                           IntegerToString(IsIndicatorHidden() ? 1 : 0) +
                           IntegerToString(IsTriggerLevelsEnabled() ? 1 : 0) +
-                          IntegerToString(g_customPriceLineDragging ? 1 : 0) +
-                          IntegerToString(inpShowPipDistanceLabels ? 1 : 0);
+                          IntegerToString(g_customPriceLineDragging ? 1 : 0);
+                          // P-LBL-12 (2026-10-17): term left with its consumer, row off card.
         frameSig = frameCore + "|" + IntegerToString(g_linesVisible ? 1 : 0);
         bool geometryChanged = (frameSig != s_lastFrameSig);
         // P-PERF-06: staging frames always build — each one owns its family.
@@ -1454,11 +1454,10 @@ void RedrawAllObjects(bool force_redraw=false)
             // P-PERF-06: the signature seals ONLY a complete render. A staged
             // frame stores nothing; the BLOCK stage seals it after the labels.
             if(g_buildStage == 0) { s_lastFrameSig = frameSig; s_lastFrameCore = frameCore; g_renderAllNeeded = false; }
-            // Advance the rebuild; the LABELS stage only arms the labels block
-            // below (it is stage 4 of the same sequence).
+            // Advance the rebuild; P-LBL-12 retired the old stage 3 (pip labels),
+            // so ZONES arms the labels block on its BLOCK hand-off (stage 4).
             if(g_buildStage == BUILD_STAGE_LINES)            g_buildStage = BUILD_STAGE_ZONES;
-            else if(g_buildStage == BUILD_STAGE_ZONES)       g_buildStage = BUILD_STAGE_LABELS;
-            else if(g_buildStage == BUILD_STAGE_LABELS) { g_buildStage = BUILD_STAGE_BLOCK; g_labelsRelayoutNeeded = true; }
+            else if(g_buildStage == BUILD_STAGE_ZONES) { g_buildStage = BUILD_STAGE_BLOCK; g_labelsRelayoutNeeded = true; }
         }
         else if(visOnly)
         {

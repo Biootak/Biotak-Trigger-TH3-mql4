@@ -292,17 +292,19 @@ int SweepForeignLevelObjects(const SModeConfig &config,
        // frame; only the dragged one (here: the below handle) vanishes.
        bool s1SkipSweep = (g_s1DragLive && g_s1DragName != "" &&
                            lines[i].name == g_s1DragName);
-       // The line and its pip-distance label share one price and one owner.
-       for(int pass = 0; pass < 2; pass++)
-       {
-          if(s1SkipSweep) continue;
-          string nm = (pass == 0) ? lines[i].name : (lines[i].name + "_Label");
-         SObjectCacheEntry e;
-         if(!CacheGetObject(nm, e)) continue;   // cold cache: nothing to compare
-         if(!e.exists) continue;                // dead slot: no object under this name
-         if(MathAbs(e.lastPrice - lines[i].price) <= tol) continue;   // ours
-         if(DeleteIndicatorObjectManaged(nm, true)) removed++;
-      }
+        // P-LBL-12 (2026-10-17): this pass used to probe the line's
+        // pip-distance label too (pass 0/1 over `<name>` and `<name>_Label`).
+        // The labels are retired and nothing produces the name, so the second
+        // probe could only ever miss; the sweep is line-only now.
+        {
+           if(s1SkipSweep) continue;
+           string nm = lines[i].name;
+          SObjectCacheEntry e;
+          if(!CacheGetObject(nm, e)) continue;   // cold cache: nothing to compare
+          if(!e.exists) continue;                // dead slot: no object under this name
+          if(MathAbs(e.lastPrice - lines[i].price) <= tol) continue;   // ours
+          if(DeleteIndicatorObjectManaged(nm, true)) removed++;
+       }
    }
 
    for(int i = 0; i < zoneCount; i++)
@@ -570,16 +572,17 @@ int SweepForeignLadderObjects(const SModeConfig &config,
     if(!(vpTop > vpBottom) || vpBottom <= 0) return 0;   // unusable window: no judgement
     if(lineCount <= 0) return 0;                        // nothing produced: nothing to say
 
-    // What this build owns, by NAME (labels included: a line and its pip label
-    // are one decision, and RenderTriggerLines writes both).
+    // What this build owns, by NAME. P-LBL-12 (2026-10-17): the pip-distance
+    // labels used to be part of this set ("a line and its label are one
+    // decision"). They are retired, so the `<line>_Label` names are NOT
+    // produced - which is exactly what arms this sweep as the upgrade net:
+    // the one handoff walk deletes every legacy label object a previous
+    // build left on the chart, alongside the ladder names it always swept.
     string produced[];
     int pc = 0;
-    ArrayResize(produced, lineCount * 2 + zoneCount);
+    ArrayResize(produced, lineCount + zoneCount);
     for(int l = 0; l < lineCount; l++)
-    {
         produced[pc++] = lines[l].name;
-        produced[pc++] = lines[l].name + "_Label";
-    }
     for(int z = 0; z < zoneCount; z++)
         produced[pc++] = zones[z].name;
 
@@ -848,20 +851,24 @@ SPipelineResult ExecutePipeline(
     // Stage 5: Render and cleanup.
     // P-PERF-06 STAGED RENDER: the math above (Calculate/Classify/Build) is
     // pure CPU (~ms) and re-runs every stage; only ONE object family is
-    // materialised per frame, so a post-wipe build lands as four ~2k-call
+    // materialised per frame, so a post-wipe build lands as a few ~2k-call
     // frames instead of one ~8k-call freeze. buildStage 0 (or anything
     // unexpected) is the full legacy render — steady frames always take it.
+    // P-LBL-12 (2026-10-17): there were FOUR rungs (1=lines, 2=zones, 3=pip
+    // labels, 4=labels block). The pip labels are retired, so stage 3 is gone;
+    // the surplus cleanup it used to carry (a full family re-assert had just
+    // run in that frame) now rides the ZONES rung, which is the last family
+    // frame before the labels block seals the rebuild.
     if(buildStage == BUILD_STAGE_LINES) {
-        RenderTriggerLines(lines, result.lineCount, config, true, false, vpTop, vpBottom);
+        RenderTriggerLines(lines, result.lineCount, config, true, vpTop, vpBottom);
     } else if(buildStage == BUILD_STAGE_ZONES) {
         RenderZones(zones, result.zoneCount, config, vpTop, vpBottom);
-    } else if(buildStage == BUILD_STAGE_LABELS) {
-        RenderTriggerLines(lines, result.lineCount, config, false, true, vpTop, vpBottom);
+
         // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
         CleanupSurplusPipeline(config, maxStep);
     } else {
         RenderZones(zones, result.zoneCount, config, vpTop, vpBottom);
-        RenderTriggerLines(lines, result.lineCount, config, true, true, vpTop, vpBottom);
+        RenderTriggerLines(lines, result.lineCount, config, true, vpTop, vpBottom);
 
         // PERF: maxStep already known from CalculateLevels output (no extra O(n) scan needed)
         CleanupSurplusPipeline(config, maxStep);

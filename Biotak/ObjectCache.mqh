@@ -384,7 +384,8 @@ bool CacheObjectExists(const string name) {
 //| SetPipelineObjectTimeframesIfExists() guards a mask WRITE, but     |
 //| its fallback for a name the main cache does not know is a bare     |
 //| ObjectFind(). Every CULLED level pays that probe on EVERY heavy    |
-//| frame — 1 for its line, 1 for its pip label, and 7 for its zone    |
+//| frame — 1 for its line, 1 for its pip label (a probe the retired  |
+//| pip labels no longer feed, P-LBL-12), and 7 for its zone           |
 //| (SetPipelineZoneVisibility probes base/_Top/_Bottom/_B_Top/        |
 //| _B_Bottom/_B_Left/_B_Right). A culled level was never created, so   |
 //| it can never enter the main cache, so the probe can never be        |

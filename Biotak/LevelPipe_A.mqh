@@ -54,7 +54,6 @@ struct SLevelClassified {
     ENUM_LINE_STYLE levelStyle;
     int    levelWidth;
     color  zoneColor;       // Color for zone touching this level
-    string labelText;
 };
 
 //+------------------------------------------------------------------+
@@ -99,9 +98,6 @@ struct STriggerLine {
     int    lineWidth;
     string tooltip;
     color  clr;
-    string labelText;
-    bool   isTrigger;       // P-UI-131j: this line's LEVEL is a trigger subdivision,
-                            // so its pip label wears the TRIGGER LABEL surface
     bool   inViewport;      // false = skip render
     bool   isMidpoint;
     bool   setBack;         // OBJPROP_BACK value (mode-specific)
@@ -321,21 +317,11 @@ int CalculateLevels(
     return count;
 }
 
-//+------------------------------------------------------------------+
-//| HELPER: Get descriptive label text for a level                   |
-//+------------------------------------------------------------------+
-string GetLabelTextForLevel(const SLevelClassified &level, const int baseMultiplier) {
-    if(level.isMidpoint) return "Midpoint";
-    
-    string direction = (level.direction > 0) ? "+" : "-";
-    
-    if(level.structureLevel > 0) {
-        return StringFormat("L%d %s%d", level.structureLevel, direction, level.logicalStep);
-    }
-    
-    // For trigger subdivisions, show distance in base multiplier units if possible
-    return StringFormat("%s%d", direction, level.logicalStep);
-}
+// P-LBL-12 (2026-10-17): GetLabelTextForLevel stood here. It derived the
+// per-level text ("L1 +3" / "+3", "Midpoint") for the pip-distance labels
+// only, and the labels themselves are retired — nothing reads the text now,
+// so the whole derivation is gone rather than left computing into a dead
+// field on every build.
 
 //+------------------------------------------------------------------+
 //| P-UI-131m: A BAND'S INK IS ONE PAIR, FADED EXACTLY ONCE.         |
@@ -399,7 +385,6 @@ int ClassifyLevels(
         classified[i].levelStyle = config.fallbackStyle;
         classified[i].levelWidth = config.fallbackWidth;
         classified[i].zoneColor = clrNONE;
-        classified[i].labelText = "";
         
         int step = rawLevels[i].logicalStep;
         
@@ -415,7 +400,6 @@ int ClassifyLevels(
                 classified[i].levelStyle = config.midpointStyle;
                 classified[i].levelWidth = config.midpointWidth;
             }
-            classified[i].labelText = GetLabelTextForLevel(classified[i], baseMultiplier);
             continue;
         }
         
@@ -443,9 +427,6 @@ int ClassifyLevels(
         // Zone color from level (zones keep their family identity). RAW - the
         // fade belongs to the row that owns it, and CreateZone does it once.
         classified[i].zoneColor = PipelineBandBaseColor(step, triggerEnabled, baseMultiplier);
-        
-        // Populate label text
-        classified[i].labelText = GetLabelTextForLevel(classified[i], baseMultiplier);
     }
     
     return rawCount;
@@ -679,8 +660,6 @@ void BuildZonesAndLines(
         lines[lIdx].lineStyle = s_aboveLevels[i].levelStyle;
         lines[lIdx].lineWidth = s_aboveLevels[i].levelWidth;
         lines[lIdx].clr = s_aboveLevels[i].levelColor;
-        lines[lIdx].labelText = s_aboveLevels[i].labelText;
-        lines[lIdx].isTrigger = s_aboveLevels[i].isTrigger;   // P-UI-131j
         lines[lIdx].tooltip = "Midpoint +" + IntegerToString(s_aboveLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -742,8 +721,6 @@ void BuildZonesAndLines(
         lines[lIdx].lineStyle = s_belowLevels[i].levelStyle;
         lines[lIdx].lineWidth = s_belowLevels[i].levelWidth;
         lines[lIdx].clr = s_belowLevels[i].levelColor;
-        lines[lIdx].labelText = s_belowLevels[i].labelText;
-        lines[lIdx].isTrigger = s_belowLevels[i].isTrigger;   // P-UI-131j
         lines[lIdx].tooltip = "Midpoint -" + IntegerToString(s_belowLevels[i].logicalStep) + 
             " (" + DoubleToString(lineMidPrice, GetCachedDigits()) + ")";
         lines[lIdx].isMidpoint = false;
@@ -1132,9 +1109,10 @@ int StructureRecolourWalk()
 //| own drag moves them), they sit at a z-order above the zone fills  |
 //| (a zone rectangle under the cursor would otherwise eat the grab — |
 //| the reported «الان step اول قابل درگ کردن نیستش»), and ONE small  |
-//| red dot at the chart's right edge (time 0 — the pip labels' own   |
-//| anchoring, so it follows the market with no per-bar write) marks  |
-//| them. The user's marker order: «خط کاستوم پرایس ... نشانه سبز و   |
+//| red dot at the chart's right edge (time 0 — the anchoring the pip  |
+//| labels used before their retirement, so it follows the market with |
+//| no per-bar write) marks them. The user's marker order:             |
+//| «خط کاستوم پرایس ... نشانه سبز و                                   |
 //| step اول ... نشانه قرمز ... یک نشانه باشه که خیلی مزاحم هم نباشه» |
 //| and «وقتی لاین ها رو خاموش میکنم نشان ها هم نباشه» — the dot      |
 //| wears the line family's mask, so the L switch owns it with the    |
@@ -1272,42 +1250,21 @@ void Step1HandlePick(const STriggerLine &lines[], const int lineCount,
     }
 }
 
-//+------------------------------------------------------------------+
-//| P-UI-131j - THE TRIGGER LABEL'S OWN COLOUR + OPACITY.            |
-//|                                                                  |
-//| The trigger card has carried a LABEL COLOR row since the first   |
-//| card layout and nothing ever read it: the pip label took the     |
-//| unified line colour. The row is now live, with an opacity beside |
-//| it (the LABEL OPACITY row), and BOTH ends of both are AUTO -     |
-//| which is the shipped picture, so an untouched chart cannot move. |
-//|                                                                  |
-//| Lives here, not in RuntimeSettings (which owns the two mirrors), |
-//| because the generic blender `GetZoneRenderColor` is defined in   |
-//| ZoneFactory, a LATER file than RuntimeSettings - same include      |
-//| order that made the two effective-colour getters there duplicate |
-//| the blend inline. Cost: the AUTO/AUTO call is one cached         |
-//| getter, and a pinned one blends once per render pass.            |
-//+------------------------------------------------------------------+
-color GetTriggerLabelRenderColor()
-{
-    if(g_triggerLabelColor == clrNONE && g_triggerLabelTransparency < 0)
-        return GetLineRenderColor();   // AUTO/AUTO = P-UI-66's shipped look
-    color base = (g_triggerLabelColor == clrNONE) ? g_lineColor : g_triggerLabelColor;
-    int   tr   = (g_triggerLabelTransparency >= 0) ? g_triggerLabelTransparency
-                                                   : g_lineTransparency;
-    return GetZoneRenderColor(base, tr);
-}
+// P-LBL-12 (2026-10-17): P-UI-131j's `GetTriggerLabelRenderColor` stood here
+// - the AUTO-aware blend feeding the trigger lines' pip labels. The labels
+// are retired, so the getter had no reader; `g_triggerLabelColor` and
+// `g_triggerLabelTransparency` stay persisted and inert, exactly like the
+// MIDPOINT setting before them (P-UI-47), and their card rows are off the
+// display (see BiotakPanels PnlSpec).
 
 void RenderTriggerLines(
     const STriggerLine &lines[],
     const int lineCount,
     const SModeConfig &config,
     const bool makeLines,
-    const bool makeLabels,
     const double vpTop,
     const double vpBottom)
-{    double currentPrice = GetCurrentPriceForLabels();
-
+{
     // P-UI-98f: the step-1 handle is picked by GEOMETRY once per render (the
     // line one step from the custom price on each side - see Step1HandlePick),
     // so the face owner below is reached by the same pair the click and drag
@@ -1330,9 +1287,6 @@ void RenderTriggerLines(
     // (`CreateOrUpdateHLine` compares colour/style/width before it writes), so a
     // steady frame still costs zero terminal calls for an unchanged look.
     color           lineClr   = GetLineRenderColor();
-    // P-UI-131j: read once per pass - the trigger label's own surface. In the shipped
-    // AUTO state this is the line colour again (one cached getter, three compares).
-    color           lblClr    = GetTriggerLabelRenderColor();
     ENUM_LINE_STYLE lineStyle = inpLineStyle;
     int             lineWidth = inpLineWidth;
 
@@ -1345,8 +1299,6 @@ void RenderTriggerLines(
 
     for(int i = 0; i < lineCount; i++)
     {
-        string labelName = lines[i].name + "_Label";
-
         AlertCacheAdd(lines[i].name, lines[i].price, lines[i].logicalStep,
                       lines[i].direction > 0);
 
@@ -1387,7 +1339,6 @@ void RenderTriggerLines(
         // MT4 draws it from its own state at its own paint time: nothing to wait for,
         // nothing to flip, no cost on this side (that is the "قبل از کاربر" order).
         long lineTf  = (IsIndicatorHidden() || !g_linesVisible) ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
-        long labelTf = IsIndicatorHidden() ? OBJ_NO_PERIODS : OBJ_ALL_PERIODS;
         // P-VIEW-03 (2026-09-29) — THE WINDOW IS NOT AN OWNER OF THE OBJECT, AND A
         // FRAME THAT SKIPS A PAINT IS A LEVEL THAT CAN STAY MISSING.
         //
@@ -1447,40 +1398,25 @@ void RenderTriggerLines(
                                    lineTf, lines[i].tooltip);
         }
 
-        // Render Pip Distance Label
-        if(makeLabels && inpShowPipDistanceLabels) {
-            // P-UI-52: the pip has ONE owner - `GetCachedPipSize()`, which reads the
-            // symbol's own digits (metals 2-digit -> 10 points, JPY 3-digit -> 10,
-            // FX 4/5-digit -> 10, and everything else -> 1 POINT). `point * 10` was a
-            // hard-coded assumption that quietly disagrees with that owner on a
-            // 2-digit index or crypto symbol, where one pip is one point: the label
-            // then read 10x smaller than every other pip figure the indicator shows
-            // for the same symbol (ATR scaling, combo, the Base/Knot box). One cached
-            // getter replaces the constant, so the cost is unchanged - the guard keeps
-            // the old value as the fallback, never a division by a zero pip.
-            double pipNow = GetCachedPipSize();
-            double pips = (pipNow > 0) ? MathAbs(lines[i].price - currentPrice) / pipNow
-                                       : MathAbs(lines[i].price - currentPrice) / GetCachedPoint() / 10.0;
-            // P-UI-66: the pip label wears the same live look as its line -
-            // `lines[i].clr` is the BUILD's copy, so a colour edit would have
-            // gone stale on the label in exactly the frames the line was fixed
-            // up in (`CreatePipDistanceLabel` is change-guarded too).
-            // P-UI-131j: ... unless the level is the TRIGGER's, whose label is a
-            // surface of its own (`lblClr` == `lineClr` while both its ends are AUTO).
-            CreatePipDistanceLabel(labelName, lines[i].price, pips,
-                                   lines[i].isTrigger ? lblClr : lineClr,
-                                   lines[i].labelText);
-            SetPipelineObjectTimeframesIfExists(labelName, labelTf);   // P-VIEW-01: hoisted, one owner
-        }
+        // P-LBL-12 (2026-10-17): THE PIP-DISTANCE LABEL BLOCK STOOD HERE.
+        //
+        // The user's screenshot pointed at the "+7 | 4161.4" texts and the
+        // order was to remove them («این پیپ لیبل ها رو کامل حذف کن») - they
+        // were an extra surface per level, and the feature cost one object
+        // per rung plus its own row-lift machinery. Both feeders are gone:
+        // this level-family block (CreatePipDistanceLabel, deleted from
+        // ObjectFunctions) and the High/Low pair's blocks (Labels_A).
+        // The build no longer derives per-level label text either (see
+        // GetLabelTextForLevel's seat). And the names are out of the ladder
+        // sweep's produced set, so the ONE handoff sweep
+        // (P-LEVEL-FOREIGN-02) deletes every legacy `<line>_Label` object a
+        // previous build left on the chart - the upgrade cleans itself, once.
     }
 }
 
-//+------------------------------------------------------------------+
-//| HELPER: Get current price for distance labels                    |
-//+------------------------------------------------------------------+
-double GetCurrentPriceForLabels() {
-    return (g_currentPrice > 0) ? g_currentPrice : Bid;
-}
+// P-LBL-12 (2026-10-17): GetCurrentPriceForLabels stood here — it priced the
+// pip-distance labels' distance to the live price. With the labels retired
+// it had no reader.
 
 //+------------------------------------------------------------------+
 //| STAGE 5c: Cleanup surplus objects from previous render           |

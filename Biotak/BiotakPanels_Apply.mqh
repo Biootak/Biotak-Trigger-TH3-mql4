@@ -324,7 +324,9 @@ double PnlDefValSet(const int item,const int row)
 //|   COUNTDOWN        → LiveCountdownEnabled()                          |
 //|   ATR LABELS       → SetATRLabelsVisibility (`shouldShow`)           |
 //|   TRADE LABELS     → SetATRLabelsVisibility (`cardOn`, P-UI-84)      |
-//|   H/L PIP LABELS   → LevelPipeline:1102                              |
+//|   H/L PIP LABELS   → retired (P-LBL-12): the address keeps its read  |
+//|                      branch and its mute term for shape stability,    |
+//|                      but no display row reaches it                    |
 //|   TH LABELS        → SetTHLabelsVisibility (`shouldShow`)            |
 //|   STRUCTURE L1-L5  → LevelPipeline:802 (`visible && !hidden`)        |
 //+------------------------------------------------------------------+
@@ -398,8 +400,9 @@ double PnlCurrentSet(const int item,const int row)
               if(row==6) return PnlMuteGatedValue(g_showATRTradeLabels);
               if(row==7) return g_showATRTradeSLLabels?1.0:0.0;
               if(row==8) return g_showATRTradeTPLabels?1.0:0.0;
-              // H/L pip labels are their own family (LevelPipeline:1102 writes the
-              // mask with the mute as one of its two terms), so this row answers it.
+              // H/L pip labels are retired (P-LBL-12, 2026-10-17) and their
+              // display row is off the card; this read branch stays as the
+              // address stub, reading the persisted-and-inert setting.
               if(row==9) return PnlMuteGatedValue(g_showPipDistanceLabels);
               if(row==10) return g_atrLabelRowGap;
               if(row==11) return g_atrTradeFontSize;
