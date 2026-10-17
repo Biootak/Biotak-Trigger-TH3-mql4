@@ -57,8 +57,11 @@ one act spelled two ways · a dead `Z_*` rung · a comment that cites a function
 Reattach · TF switch · terminal restart · template re-apply: every surface survives all
 four. Panel-editable settings live in `RuntimeSettings.mqh` and nowhere else;
 indicator-wide state in `GlobalVariables.mqh`; what must ride an object lives in its
-`DESCRIPTION`. A placed surface's home key carries no chart and no symbol; the value that
-paints (clamped) is never the value stored; a remove SAVES like any teardown.
+`DESCRIPTION`. A placed surface's home key carries its SYMBOL but never a chart id (an id
+is per session — a chart-scoped key would lose the place on every restart, P-UI-131e); the
+value that paints (clamped) is never the value stored; a remove SAVES like any teardown.
+P-UI-165: the pre-165 chart-free home keys are read-only migration sources — no writer
+writes or deletes them.
 Never advertise a state that did not happen — delete the mark, do not dim it.
 
 ## 5. Performance

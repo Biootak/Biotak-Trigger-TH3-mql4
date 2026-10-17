@@ -1,5 +1,7 @@
 """Read MT4's profiles/gvariables.dat (stride 80: name ASCII in bytes 0..64,
-little-endian double at 64..72) and print the BIOMENU_HOME_* / BIOMENU_UI keys."""
+little-endian double at 64..72) and print the home / panel / ui keys (any
+symbol prefix: BIOMENU_<SYM>_HOME_*, BIOMENU_<SYM>_PNL_* and the pre-165
+spellings, plus the BIOMENU_UI/TIP/MEN/STRIP keys)."""
 import struct, sys
 
 PATH = sys.argv[1] if len(sys.argv) > 1 else \
@@ -18,10 +20,10 @@ for i in range(n):
     val = struct.unpack_from('<d', b, off + 64)[0]
     rows.append((name, val))
 
-want = ('BIOMENU_HOME_', 'BIOMENU_UI_', 'BIOMENU_TIP', 'BIOMENU_MEN', 'BIOMENU_STRIP')
+want = ('_HOME_', '_PNL_', 'BIOMENU_UI_', 'BIOMENU_TIP', 'BIOMENU_MEN', 'BIOMENU_STRIP')
 print('file   :', PATH)
 print('bytes  :', len(b), ' entries:', len(rows))
 print('--- homes / ui ---')
 for name, val in rows:
-    if name.startswith(want):
+    if any(w in name for w in want):
         print('  %-34s %r' % (name, val))

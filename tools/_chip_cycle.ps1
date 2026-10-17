@@ -68,7 +68,7 @@ function Snap([string]$tag) {
 }
 function DumpStore([string]$tag) {
     Say ("--- store @ {0} (mtime {1}) ---" -f $tag, (Get-Item $STORE).LastWriteTime.ToString('HH:mm:ss'))
-    $out = & $PY $GVR $STORE 2>&1 | Select-String 'BIOMENU_HOME_(CHIP|ORB|STRIP)_(FX|FY)'
+    $out = & $PY $GVR $STORE 2>&1 | Select-String 'HOME_(CHIP|ORB|STRIP)_(FX|FY)'
     foreach ($l in $out) { Say ("    " + $l.ToString().Trim()) }
 }
 function GracefulClose {

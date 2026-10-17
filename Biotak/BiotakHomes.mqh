@@ -38,23 +38,42 @@ void CircDefaultMenuPos(int &x, int &y)
    y = ch / 2;
 }
 
-//--- P-UI-131e — A HOME THAT OUTLIVES THE CHART AND THE SYMBOL. User order: «در هر چارت
-//--- در هر شرایط همون جا باشه، بدون هزینه». A placed surface is the HAND's preference,
-//--- not a fact of one window: the keys still carried ChartID(), and a CLAMP was saved
-//--- back into the live pair (so one narrow chart ratcheted the place for good). A home
-//--- lives under a key with no chart and no symbol in it; the value that paints is never
-//--- the value stored; cost is one read at load and one write when the hand really moves.
-string GVHomeName(const string id,const bool y) { return "BIOMENU_HOME_" + id + (y ? "Y" : "X"); }
+//--- P-UI-131e — A HOME THAT OUTLIVES THE CHART. User order: «در هر چارت در هر شرایط
+//--- همون جا باشه، بدون هزینه». A placed surface is the HAND's preference, not a fact
+//--- of one window: the keys still carried ChartID(), and a CLAMP was saved back into
+//--- the live pair (so one narrow chart ratcheted the place for good). A home lives
+//--- under a key with no chart id in it; the value that paints is never the value
+//--- stored; cost is one read at load and one write when the hand really moves.
+//---
+//--- P-UI-165 (2026-10-17) — THE PLACE BELONGS TO THE PAIR. User report: several
+//--- indicators on different pairs «تداخل نداشته باشیم باهم و همین باعث میشه این
+//--- مشکلات پیش بیاد» — 131e's chart-free key made ONE pair's hand land EVERY other
+//--- pair (an orb parked near an edge came back near the edge everywhere, and
+//--- P-UI-164's squeezed ring followed it). The SYMBOL is now in the key; the CHART
+//--- ID still may not be (it is per SESSION — a home would be lost on every restart,
+//--- the very defect 131e fixed). The pre-165 spellings below are READ-ONLY
+//--- migration sources: `GVHomeLoadFrac` snapshots the shared pair into the pair's
+//--- own key once, in a measured window, and no writer ever writes or deletes the
+//--- shared keys — every other pair still needs them until it migrates.
+string GVHomeName(const string id,const bool y) { return "BIOMENU_" + _Symbol + "_HOME_" + id + (y ? "Y" : "X"); }
+string GVHomeNameShared(const string id,const bool y) { return "BIOMENU_HOME_" + id + (y ? "Y" : "X"); }
 
-//--- one home, three readers (the orb, the strip, the chip): the chart-free pair first,
-//--- then the pre-131e per-chart pair it replaced, so the upgrade keeps the place the
-//--- hand already chose instead of re-seeding the default. Absent both = no home.
+//--- one home, three readers (the orb, the strip, the chip): the pair's OWN pixel pair
+//--- first, then the pre-165 shared pair, then the pre-131e per-chart pair it replaced,
+//--- so the upgrade keeps the place the hand already chose instead of re-seeding the
+//--- default. Absent all three = no home.
 bool GVHomeLoad(const string id,const string legacyInfix,int &x,int &y)
 {
    string nx = GVHomeName(id,false), ny = GVHomeName(id,true);
    if(GlobalVariableCheck(nx) && GlobalVariableCheck(ny))
    {
       x = (int)GlobalVariableGet(nx); y = (int)GlobalVariableGet(ny);
+      if(x >= 0 && y >= 0) return true;
+   }
+   string sx = GVHomeNameShared(id,false), sy = GVHomeNameShared(id,true);   // P-UI-165 legacy
+   if(GlobalVariableCheck(sx) && GlobalVariableCheck(sy))
+   {
+      x = (int)GlobalVariableGet(sx); y = (int)GlobalVariableGet(sy);
       if(x >= 0 && y >= 0) return true;
    }
    string lx = GetGVName(legacyInfix + "X"), ly = GetGVName(legacyInfix + "Y");
@@ -104,7 +123,8 @@ void CircTipHomeSet(const int x, const int y) { s_TipHomeX = x; s_TipHomeY = y; 
 //| P-UI-131e again) and a pixel home is migrated once, in the window   |
 //| it is read in. Long form: docs/th3-ui-placement.md                  |
 //+------------------------------------------------------------------+
-string GVHomeFracName(const string id,const bool y) { return "BIOMENU_HOME_" + id + (y ? "_FY" : "_FX"); }
+string GVHomeFracName(const string id,const bool y) { return "BIOMENU_" + _Symbol + "_HOME_" + id + (y ? "_FY" : "_FX"); }
+string GVHomeFracNameShared(const string id,const bool y) { return "BIOMENU_HOME_" + id + (y ? "_FY" : "_FX"); }
 void HomeChartSize(int &cw, int &ch)
 {
    cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS, 0);
@@ -176,9 +196,27 @@ bool HomeChartSizeRaw(int &cw, int &ch)
 //| pair therefore PAINTS and is never STORED — exactly the ring's      |
 //| property: derive freely, store only the hand's answer.              |
 //+------------------------------------------------------------------+
+//--- P-UI-165: true for the pair's OWN pair of keys OR the pre-165 shared pair, so a
+//--- store written by the old build still answers on the first attach after the upgrade
+//--- (and the snapshot in `GVHomeLoadFrac` can run).
 bool GVHomeFracKnown(const string id)
 {
+   return (GlobalVariableCheck(GVHomeFracName(id,false)) || GlobalVariableCheck(GVHomeFracNameShared(id,false)))
+       && (GlobalVariableCheck(GVHomeFracName(id,true))  || GlobalVariableCheck(GVHomeFracNameShared(id,true)));
+}
+//--- P-UI-165: the pair's OWN keys only — false while only the shared pair exists, and
+//--- exactly that pair is the migration's trigger.
+bool GVHomeFracKnownOwn(const string id)
+{
    return GlobalVariableCheck(GVHomeFracName(id,false)) && GlobalVariableCheck(GVHomeFracName(id,true));
+}
+//--- P-UI-165: the value, from the pair's own key, else the pre-165 shared one (0.0 when
+//--- neither exists). READ-ONLY — the one write is `GVHomeLoadFrac`'s snapshot door.
+double GVHomeFracGet(const string id,const bool y)
+{
+   string own = GVHomeFracName(id,y);
+   if(GlobalVariableCheck(own)) return GlobalVariableGet(own);
+   return GlobalVariableGet(GVHomeFracNameShared(id,y));
 }
 //--- P-UI-158 — THE CLAIM. One flag per surface, because an answer is about a SURFACE,
 //--- not a moment. It is set where a place is really decided (a release, a first
@@ -267,8 +305,11 @@ bool GVHomeFracRead(const string id, int &x, int &y)
    //--- P-UI-158: nothing about this read is remembered. What it produces is a
    //--- DERIVATION, and the store refuses to accept one — only a claim may write — so
    //--- there is no second piece of state that has to stay in step with the writer.
-   const double fx = HomeFracClamp(GlobalVariableGet(GVHomeFracName(id,false)));
-   const double fy = HomeFracClamp(GlobalVariableGet(GVHomeFracName(id,true)));
+   //--- P-UI-165: the value may come from the shared pre-165 key — still a pure
+   //--- DERIVATION (the snapshot write lives in `GVHomeLoadFrac`), so the "nothing
+   //--- about this read is remembered" law above is untouched.
+   const double fx = HomeFracClamp(GVHomeFracGet(id,false));
+   const double fy = HomeFracClamp(GVHomeFracGet(id,true));
    x = (int)MathRound(fx * cw);
    y = (int)MathRound(fy * ch);
    return true;
@@ -293,7 +334,8 @@ void GVHomeWriteFrac(const string id, const int x, const int y)
    GlobalVariableSet(GVHomeFracName(id,false), HomeFracClamp(HomeFracOf(x, rcw)));
    GlobalVariableSet(GVHomeFracName(id,true), HomeFracClamp(HomeFracOf(y, rch)));
    //--- the pixel keys are dead on arrival: a reader that adopts a window-sized
-   //--- number as a place is the bug this block exists to end.
+   //--- number as a place is the bug this block exists to end. P-UI-165: only the
+   //--- pair's OWN dead keys are swept — the shared pair is another pair's place.
    GlobalVariableDel(GVHomeName(id,false)); GlobalVariableDel(GVHomeName(id,true));
 }
 //--- P-UI-158 — THE AUTOMATIC DOOR, the one `SaveUIStates` uses. It writes ONLY when a
@@ -319,7 +361,15 @@ void GVHomeSaveFracHand(const string id, const int x, const int y)
 }
 bool GVHomeLoadFrac(const string id, const string legacyInfix, int &x, int &y)
 {
-   if(GVHomeFracRead(id, x, y)) return true;
+   if(GVHomeFracRead(id, x, y))
+   {
+      //--- P-UI-165: a place derived from the SHARED pre-165 key is snapshotted into
+      //--- the pair's own key once, here in the measured reading window (the write
+      //--- itself refuses an unmeasured box). The shared key is never touched — it
+      //--- belongs to every pair that has not migrated yet.
+      if(!GVHomeFracKnownOwn(id)) GVHomeSaveFracHand(id, x, y);
+      return true;
+   }
    int px = 0, py = 0;
    if(!GVHomeLoad(id, legacyInfix, px, py)) { x = -1; y = -1; return false; }
    //--- P-UI-157: a migration is a WRITE, so it refuses to run at all without a
@@ -358,8 +408,8 @@ bool GVHomeFracSeed(const string id, int &x, int &y)
 {
    if(!GVHomeFracKnown(id)) return false;
    int scw = 0, sch = 0; HomeChartSize(scw, sch);
-   x = (int)MathRound(HomeFracClamp(GlobalVariableGet(GVHomeFracName(id,false))) * scw);
-   y = (int)MathRound(HomeFracClamp(GlobalVariableGet(GVHomeFracName(id,true))) * sch);
+   x = (int)MathRound(HomeFracClamp(GVHomeFracGet(id,false)) * scw);
+   y = (int)MathRound(HomeFracClamp(GVHomeFracGet(id,true)) * sch);
    return true;
 }
 

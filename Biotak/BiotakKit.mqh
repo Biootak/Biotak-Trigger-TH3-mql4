@@ -287,6 +287,10 @@ void UIDragBudgetEnd()
 //==============================================================================
 // INIT / SAVE / PER-TICK
 //==============================================================================
+// P-UI-165: the pre-165 chart-free fraction — a READ-ONLY migration source. It is
+// never written and never deleted: every other pair still reads it until its own
+// first attach migrates it (a pair that never attached again keeps working).
+string PnlFracKeyShared(const int item) { return "BIOMENU_PNL_" + IntegerToString(item) + "_F"; }
 void InitializeUISupport()
 {
    RuntimeSettingsLoadOverrides();
@@ -294,16 +298,18 @@ void InitializeUISupport()
    RestoreDiscreteToggles();   // P-UI-142: chart key, else the OV_-seeded mirror (restart-durable; the early dialog-fallback block stays for Lite)
    LoadPalRecent();
 
-   // P-UI-140p/q: panel drag positions.
-   // Read priority: (1) symbol-free fraction BIOMENU_PNL_{i}_F  [canonical]
-   //                (2) symbol-prefixed fraction PNLPF{i}        [140p legacy, migrate]
-   //                (3) symbol-prefixed pixel    PNLP{i}         [pre-140p legacy, migrate]
+   // P-UI-140p/q/165: panel drag positions.
+   // Read priority: (1) pair-scoped fraction BIOMENU_{SYM}_PNL_{i}_F [canonical]
+   //                (2) chart-free fraction BIOMENU_PNL_{i}_F        [140q legacy, migrate]
+   //                (3) symbol-prefixed fraction PNLPF{i}           [140p legacy, migrate]
+   //                (4) symbol-prefixed pixel    PNLP{i}            [pre-140p legacy, migrate]
    // A fraction is re-derived against the LIVE window so the panel comes back to the
    // same relative place after a restart, resize, monitor change or symbol switch.
    int kcw = 0, kch = 0; HomeChartSize(kcw, kch);
    for(int i = 0; i < PNL_COUNT; i++)
    {
-      string cfk = PnlFracKey(i);                              // canonical symbol-free
+      string cfk = PnlFracKey(i);                              // canonical, pair-scoped
+      string sfk = PnlFracKeyShared(i);                        // P-UI-165 legacy, read-only
       string ofk = GetGVName("PNLPF" + IntegerToString(i));   // old symbol-prefixed frac
       string opk = GetGVName("PNLP"  + IntegerToString(i));   // old symbol-prefixed pixel
       if(GlobalVariableCheck(cfk))
@@ -314,6 +320,18 @@ void InitializeUISupport()
          g_PnlX[i] = (int)MathRound(fx * kcw);
          g_PnlY[i] = (int)MathRound(fy * kch);
          g_PnlManualPos[i] = true;
+      }
+      else if(GlobalVariableCheck(sfk))
+      {
+         // P-UI-165: the pre-165 chart-free fraction — adopt the place and snapshot it
+         // into the pair's own key. The shared key is NEVER written or deleted: every
+         // other pair still reads it until it migrates (its own first attach).
+         double fx = 0, fy = 0;
+         PnlFracUnpack(GlobalVariableGet(sfk), fx, fy);
+         g_PnlX[i] = (int)MathRound(fx * kcw);
+         g_PnlY[i] = (int)MathRound(fy * kch);
+         g_PnlManualPos[i] = true;
+         GlobalVariableSet(cfk, PnlFracPack(fx, fy));
       }
       else if(GlobalVariableCheck(ofk))
       {

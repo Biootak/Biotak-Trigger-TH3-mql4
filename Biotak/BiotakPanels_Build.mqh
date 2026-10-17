@@ -1073,9 +1073,9 @@ void PnlDestroy(const int item)
 //| Drag-to-move release — lock the spot in for future opens and     |
 //| persist it (defined early so the pointer finalizer can call it). |
 //+------------------------------------------------------------------+
-// P-UI-140q: symbol-free key for panel fraction — same pattern as GVHomeFracName.
-// A panel dragged on EURUSD must appear at the same relative place on GBPUSD.
-string PnlFracKey(const int item) { return "BIOMENU_PNL_" + IntegerToString(item) + "_F"; }
+// P-UI-140q/P-UI-165: the panel's own place — SYMBOL in, CHART ID never (per session).
+// Pre-165 shared spelling is the read-only migration source in `InitializeUISupport`.
+string PnlFracKey(const int item) { return "BIOMENU_" + _Symbol + "_PNL_" + IntegerToString(item) + "_F"; }
 // Pack two 0..1 fractions into one double: both scaled to 0..9999 integers.
 // packed = fx_int * 10000 + fy_int  (fx_int and fy_int each 0..9999)
 // This keeps the encoding invertible for any fx,fy in [0,1].
@@ -1096,8 +1096,8 @@ void PnlFracUnpack(const double packed, double &fx, double &fy)
 void PnlCommitMove(const int item)
 {
    g_PnlManualPos[item] = true;
-   // P-UI-140p/q: store as symbol-free FRACTION so the position survives restarts,
-   // resizes, monitor changes AND symbol switches. Old keyed keys are deleted.
+   // P-UI-140p/q/165: store as a FRACTION (pair-scoped) so the position survives
+   // restarts and resizes; another pair keeps its own place. Old keyed keys are gone.
    int rcw = 0, rch = 0;
    if(HomeChartSizeRaw(rcw, rch))
    {

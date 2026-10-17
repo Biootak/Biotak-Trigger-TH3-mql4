@@ -1,6 +1,6 @@
 # Placement — a place is a FRACTION of this window, never a pixel
 
-The contract behind `P-UI-131e` / `P-UI-140`. Read this before touching
+The contract behind `P-UI-131e` / `P-UI-140` / `P-UI-165`. Read this before touching
 `Biotak/BiotakHomes.mqh`, the `CHART_CHANGE` branch, or the `OnTimer` pass.
 
 ## The report
@@ -30,12 +30,19 @@ DPI, another symbol or another chart:
 
 | form | owner | key |
 | --- | --- | --- |
-| the STORED place | `BIOMENU_HOME_<id>_FX` / `_FY`, a fraction of the chart box | chart-free, symbol-free |
+| the STORED place | `BIOMENU_<SYM>_HOME_<id>_FX` / `_FY`, a fraction of the chart box | chart-free, PAIR-scoped (P-UI-165); the pre-165 `BIOMENU_HOME_<id>_*` key is a read-only migration source |
 | the PAINTED place | re-derived from the fraction against the **live** metrics | never stored |
 
 `(0.5, 0.5)` is the centre of every window, which retires the old centre heuristic. A
 surface let go of in a corner comes back in the corner; one let go of in the middle comes
 back in the middle.
+
+* **One pair's hand never moves another pair's surface** (P-UI-165): the key carries
+  `_Symbol` (`PnlFracKey` for the panels, `GVHomeName`/`GVHomeFracName` for the three
+  surfaces), because several instances on different pairs are several minds. `P-UI-131e`'s
+  chart-free key made one pair's place land on ALL of them. `GVHomeLoadFrac()` snapshots
+  the shared pre-165 pair into the pair's own key once, in a measured window, and no
+  writer ever writes or deletes the shared keys — every other pair still needs them.
 
 * **Read**: `GVHomeLoadFrac()` — fractions first; a legacy pixel pair is migrated **once**,
   in the window it is read in, and the pixel keys are deleted in the same breath.

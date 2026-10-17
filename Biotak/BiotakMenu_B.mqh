@@ -642,41 +642,29 @@ void CircLayout(const int i, int &x, int &y)
    int ox = g_UI.menuX;
    int oy = g_UI.menuY;
 
-   bool nearLeft   = (ox <= CIRC_EDGE_TRIGGER);
-   bool nearRight  = (ox >= cw - CIRC_EDGE_TRIGGER);
-   bool nearTop    = (oy <= CIRC_EDGE_TRIGGER);
-   bool nearBottom = (oy >= ch - CIRC_EDGE_TRIGGER);
-
    int n = CircPlacedCount();   // P-UI-161: the ring's own seat count
    int s = CircBtnSize();       // ...and the side it is drawn at
 
-   if(nearLeft || nearRight || nearTop || nearBottom)
+   // P-UI-164: the ONE shape decision — CircPlacedCountLive reads this same
+   // call, so the painted layout and the capacity can never be two grids.
+   bool vertical;
+   int dir;
+   if(CircRailShape(vertical, dir))
    {
       int step = s + CIRC_GAP;
-      int trainLen = CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + (n - 1) * step;
       // P-UI-26: clamp the rail's CROSS axis so buttons never draw half
       // off-chart. One uniform shift for the whole train — never a per-item
       // clamp (that stacks the train, P-UI-13) and never a radius shrink
       // (R-SUBLADDER). The orb itself stays where the user put it.
       int half = s / 2 + CIRC_PAD;
-      if(nearLeft || nearRight)
+      if(vertical)
       {
          x = MathMax(half, MathMin(cw - half, ox));
-         int upRoom   = oy - CIRC_PAD - s / 2;
-         int downRoom = ch - CIRC_PAD - oy - s / 2;
-         int dir = (upRoom >= downRoom) ? -1 : 1;
-         if(dir == -1 && upRoom < trainLen && downRoom >= trainLen) dir = 1;
-         else if(dir == 1 && downRoom < trainLen && upRoom >= trainLen) dir = -1;
          y = oy + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
       }
       else
       {
          y = MathMax(half, MathMin(ch - half, oy));
-         int leftRoom  = ox - CIRC_PAD - s / 2;
-         int rightRoom = cw - CIRC_PAD - ox - s / 2;
-         int dir = (leftRoom >= rightRoom) ? -1 : 1;
-         if(dir == -1 && leftRoom < trainLen && rightRoom >= trainLen) dir = 1;
-         else if(dir == 1 && rightRoom < trainLen && leftRoom >= trainLen) dir = -1;
          x = ox + dir * (CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + i * step);
       }
    }

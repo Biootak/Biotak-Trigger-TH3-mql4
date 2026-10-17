@@ -1064,8 +1064,8 @@ void CircHomeWitness()
    bool hasHome = CircOrbHomeGet(hx, hy);
    int cw = 0, ch = 0; HomeChartSize(cw, ch);
    double fx = -1.0, fy = -1.0;
-   if(GlobalVariableCheck(GVHomeFracName("ORB", false))) fx = GlobalVariableGet(GVHomeFracName("ORB", false));
-   if(GlobalVariableCheck(GVHomeFracName("ORB", true))) fy = GlobalVariableGet(GVHomeFracName("ORB", true));
+   // P-UI-165: own-else-shared, so the witness names the source the orb derives from
+   if(GVHomeFracKnown("ORB")) { fx = GVHomeFracGet("ORB", false); fy = GVHomeFracGet("ORB", true); }
    string home = "none";
    if(hasHome) home = "(" + IntegerToString(hx) + "," + IntegerToString(hy) + ")";
    string s = "[MENUPOS] pair=(" + IntegerToString(g_UI.menuX) + "," + IntegerToString(g_UI.menuY) + ")"

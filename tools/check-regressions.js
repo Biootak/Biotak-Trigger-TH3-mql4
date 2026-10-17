@@ -5057,14 +5057,14 @@ function main() {
       if (!ringCount || !ringCount.text.includes('CircStarCount() + 1'))
         broken.push('RingCount no longer counts stars + the door — the door can fall off the ring');
       const ringFeat = bodyOf(menuRing, 'int RingFeature(');
-      if (!ringFeat || !ringFeat.text.includes('RingCount() - 1') || !ringFeat.text.includes('CIR_TOOLS'))
-        broken.push('RingFeature lost the door-last law — an unstarred door is a menu with no way back to the stars');
+      if (!ringFeat || !ringFeat.text.includes('CircPlacedCount() - 1') || !ringFeat.text.includes('CIR_TOOLS'))
+        broken.push('RingFeature lost the door-last law — the door rides the LAST PLACED seat (P-UI-164); off the placed set it is a menu with no way back to the stars');
       const btnN = bodyOf(menuRing, 'int CircBtnSizeForN(');
       if (!btnN || !btnN.text.includes('return CIRC_BTN_SIZE') || !btnN.text.includes('return CIRC_BTN_MIN'))
         broken.push('CircBtnSizeForN lost the shipped 44 or the 30 floor — the growth law is not the one that was measured');
       const live = bodyOf(menuRing, 'int CircPlacedCountLive()');
-      if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRadiusForN(k) <= fit') || !live.text.includes('return 9'))
-        broken.push('CircPlacedCountLive lost the fit walk — the ring can stack past the fit or drop the shipped nine');
+      if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRadiusForN(k) <= fit') || !live.text.includes('CircRailShape('))
+        broken.push('CircPlacedCountLive lost the fit walk or the shape decision — the ring can stack past the fit, or a fitting train is rebuilt as nine (P-UI-164)');
     }
     // -- the persistence: slot 12 + the ledger at 13, owned by BiotakMenu_A ----
     const menuA = linesOf(MENU_A);
@@ -5435,6 +5435,125 @@ function main() {
       failures.push('P-UI-163: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C/D.mqh + BiotakKit.mqh)');
     } else {
       console.log('[PASS] P-UI-163 a missing glyph is repaired, never skipped: the icon is created-if-missing on the ring and the tools cells, a failed create heals through CircUpdateItemState/CircHealRingStep with flushed witnesses, and the per-tick probe runs (2 ObjectFind/tick, 0 writes while whole)');
+    }
+  }
+
+  // -- 55. P-UI-164 (2026-10-17): the capacity is the DRAWN layout's own -------
+  // The user's report («من اینو جابجا و رها میکنم بقیه ایتم ها چرا گم میشن و
+  // نیستش»): a 13-seat ring dragged to a chart edge and released came back as 9
+  // seats — the tail stars AND the Tools door. MEASURED in
+  // biotak_diag_EURUSD_134362571361933137.txt: the DELFLUSH sweep carries 13
+  // seats (0..12) and a re-create that follows writes 9 (0..8). Cause: the
+  // capacity answered CircFitLimit's ray-vs-bounds — a RING's question — while
+  // the DRAWN layout at an edge is the TRAIN, whose room is the edge's free run.
+  // This entry locks the one law that closes it: ONE shape decision
+  // (CircRailShape) read by the capacity AND the paint, the train's own fit walk
+  // (CircRailCapacity — every candidate at ITS OWN side, the door-alone floor),
+  // the chord gate (the ring is drawn only where CircRingFits proves no P-UI-13
+  // stack: never a capped circle below its chord), and the door riding the LAST
+  // PLACED seat so it can never fall off with the tail.
+  {
+    const broken = [];
+    const menuRing = linesOf(MENU_RING);
+    if (!menuRing) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the shape law has no owner');
+    else {
+      const shape = bodyOf(menuRing, 'bool CircRailShape(');
+      if (!shape || !shape.text.includes('CircRingFits()') || !shape.text.includes('CIRC_EDGE_TRIGGER'))
+        broken.push('CircRailShape is gone or no longer rides the near-edge trigger with the ring-fit gate — the paint and the capacity can disagree again');
+      const ringFits = bodyOf(menuRing, 'bool CircRingFits()');
+      if (!ringFits || !ringFits.text.includes('CircChordRadiusForN(n)') || !ringFits.text.includes('CircChordRadiusForN(9)'))
+        broken.push('CircRingFits lost the chord gate — the squeeze band draws a capped circle BELOW its chord (44px seats 32px apart, the P-UI-13 stack)');
+      const cap = bodyOf(menuRing, 'int CircRailCapacity(');
+      if (!cap || !cap.text.includes('CircBtnSizeForN(k)') || !cap.text.includes('CIRC_PAD') || !cap.text.includes('return 1'))
+        broken.push('CircRailCapacity lost its own-side walk or its door-alone floor — a seat measured at a side it is not drawn at, or a door that can vanish with the tail');
+      const live = bodyOf(menuRing, 'int CircPlacedCountLive()');
+      if (!live || !live.text.includes('CircRailShape(') || !live.text.includes('CircRailCapacity('))
+        broken.push('CircPlacedCountLive stopped asking the DRAWN layout — the release rebuilds a fitting train as nine seats and the tail (door included) vanishes (the reported defect)');
+      const ringFeat = bodyOf(menuRing, 'int RingFeature(');
+      if (!ringFeat || !ringFeat.text.includes('CircPlacedCount() - 1') || !ringFeat.text.includes('CIR_TOOLS'))
+        broken.push('RingFeature stopped seating the door on the LAST PLACED seat — the door is unreachable wherever the cap seats fewer than the mask');
+    }
+    const menuB = linesOf(MENU_B);
+    if (!menuB) broken.push('Biotak/BiotakMenu_B.mqh is gone — the paint has no home');
+    else {
+      const layout = bodyOf(menuB, 'void CircLayout(');
+      if (!layout || !layout.text.includes('CircRailShape(vertical, dir)'))
+        broken.push('CircLayout does not ask CircRailShape — the painted layout and the capacity are two grids again');
+      else if (layout.text.includes('nearLeft || nearRight || nearTop || nearBottom'))
+        broken.push('CircLayout grew its own near-edge branch back — a second shape decision is a second grid');
+    }
+    if (broken.length) {
+      failures.push('P-UI-164: ' + broken.join('; ') + ' (Biotak/BiotakMenu_Ring.mqh + BiotakMenu_B.mqh)');
+    } else {
+      console.log('[PASS] P-UI-164 the capacity is the drawn layout\'s own: ONE shape decision (CircRailShape) is read by the capacity and the paint alike, the train seats at its own side (CircRailCapacity, door-alone floor), the ring draws only where CircRingFits proves the chord (P-UI-13), and the door rides the LAST PLACED seat');
+    }
+  }
+
+  // -- 56. P-UI-165 (2026-10-17): the place belongs to the PAIR ---------------
+  // User report: several instances on different pairs «تداخل نداشته باشیم باهم و
+  // همین باعث میشه این مشکلات پیش بیاد». P-UI-131e's chart-free home key made ONE
+  // pair's hand land EVERY other pair at its next attach/refresh — an orb parked
+  // near an edge came back near the edge everywhere, and P-UI-164's squeezed ring
+  // (or vanished tail) followed it. The keys now carry the SYMBOL; the CHART ID
+  // still may not (it is per SESSION — a home would be lost on every restart, the
+  // defect 131e fixed). The pre-165 spellings are READ-ONLY migration sources:
+  // GVHomeLoadFrac snapshots the shared pair into the pair's own key once, in a
+  // measured window, InitializeUISupport does the same for the panel cards, and no
+  // writer ever writes or deletes the shared keys — every other pair still needs
+  // them until it migrates.
+  {
+    const broken = [];
+    const homes165 = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakHomes.mqh'), 'utf8');
+    const declLine = (fn) => { const at = homes165.indexOf(fn); return at < 0 ? null : homes165.slice(at, homes165.indexOf('\n', at)); };
+    const fnBody = (fn) => { const at = homes165.indexOf(fn); return at < 0 ? null : homes165.slice(at, homes165.indexOf('\n}', at)); };
+    const fkey = declLine('string GVHomeFracName(');
+    const pkey = declLine('string GVHomeName(');
+    if (!fkey || fkey.indexOf('_Symbol + "_HOME_"') < 0)
+      broken.push('`GVHomeFracName` carries no symbol again — a place chosen on EURUSD lands on GBPUSD, and the squeeze the user reports follows it (P-UI-165)');
+    if (!pkey || pkey.indexOf('_Symbol + "_HOME_"') < 0)
+      broken.push('`GVHomeName` carries no symbol again — the pixel fallback is shared by every pair (P-UI-165)');
+    if ((fkey && fkey.indexOf('ChartID') >= 0) || (pkey && pkey.indexOf('ChartID') >= 0))
+      broken.push('a home key carries a chart id — an id is per SESSION, so the place would be lost on every restart (P-UI-131e, P-UI-165)');
+    const fshared = declLine('string GVHomeFracNameShared(');
+    const pshared = declLine('string GVHomeNameShared(');
+    if (!fshared || fshared.indexOf('_Symbol') >= 0 || fshared.indexOf('"BIOMENU_HOME_" + id') < 0)
+      broken.push('`GVHomeFracNameShared` — the pre-165 read-only spelling — is gone or off `BIOMENU_HOME_<id>`, so an upgrade cannot find the place the hand already chose (P-UI-165)');
+    if (!pshared || pshared.indexOf('_Symbol') >= 0 || pshared.indexOf('"BIOMENU_HOME_" + id') < 0)
+      broken.push('`GVHomeNameShared` — the pre-165 read-only spelling — is gone or moved (P-UI-165)');
+    const kn = fnBody('bool GVHomeFracKnown(');
+    if (!kn || kn.indexOf('GVHomeFracNameShared(id,false)') < 0 || kn.indexOf('GVHomeFracNameShared(id,true)') < 0)
+      broken.push('`GVHomeFracKnown` lost the shared fallback — a pre-165 store answers «no home» and every surface drops to its default on the upgrade (P-UI-165)');
+    const rd = fnBody('bool GVHomeFracRead(');
+    if (!rd || rd.indexOf('GVHomeFracGet(id,false)') < 0 || rd.indexOf('GVHomeFracGet(id,true)') < 0)
+      broken.push('the reader no longer asks `GVHomeFracGet` — the pre-165 value can never be seen or migrated (P-UI-165)');
+    const wf = fnBody('void GVHomeWriteFrac(');
+    if (!wf || wf.indexOf('Shared') >= 0)
+      broken.push('the ONE writer touches the shared pre-165 keys — writing them moves every other pair, deleting them strands it (P-UI-165)');
+    const lf = fnBody('bool GVHomeLoadFrac(');
+    if (!lf || lf.indexOf('GVHomeFracKnownOwn(id)') < 0 || lf.indexOf('GVHomeSaveFracHand(id, x, y)') < 0)
+      broken.push('`GVHomeLoadFrac` no longer snapshots the shared pair into the pair\'s own key — every pair reads the shared one forever, and the next hand move on ANY pair would move them all (P-UI-165)');
+    const panels165 = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakPanels_Build.mqh'), 'utf8');
+    const pkAt = panels165.indexOf('string PnlFracKey(');
+    const pk = pkAt < 0 ? null : panels165.slice(pkAt, panels165.indexOf('\n', pkAt));
+    if (!pk || pk.indexOf('_Symbol + "_PNL_"') < 0)
+      broken.push('`PnlFracKey` carries no symbol again — a panel dragged on one pair lands on every pair (P-UI-165)');
+    if (pk && pk.indexOf('ChartID') >= 0)
+      broken.push('the panel key carries a chart id — per session; the place would be lost on every restart (P-UI-131e, P-UI-165)');
+    const kit165 = fs.readFileSync(path.join(ROOT, 'Biotak', 'BiotakKit.mqh'), 'utf8');
+    const initAt = kit165.indexOf('void InitializeUISupport(');
+    const init = initAt < 0 ? null : kit165.slice(initAt, kit165.indexOf('\n}', initAt));
+    if (!init || init.indexOf('PnlFracKeyShared(') < 0)
+      broken.push('`InitializeUISupport` no longer reads the pre-165 shared panel key — every panel starts at its default after the upgrade (P-UI-165)');
+    else {
+      if (init.indexOf('GlobalVariableDel(sfk)') >= 0)
+        broken.push('the migration DELETES the shared panel key — every other pair still needs it until it migrates (P-UI-165)');
+      if (init.indexOf('GlobalVariableSet(cfk, PnlFracPack(fx, fy));') < 0)
+        broken.push('the migration no longer snapshots the shared panel place into the pair\'s own key (P-UI-165)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-165: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh GVHomeName/GVHomeFracName + BiotakKit.mqh InitializeUISupport + BiotakPanels_Build.mqh PnlFracKey)');
+    } else {
+      console.log('[PASS] P-UI-165 the place belongs to the pair: the home and panel keys carry the SYMBOL (never a chart id), the pre-165 spellings are read-only migration sources, the load snapshots them once in a measured window, and no writer touches the shared keys');
     }
   }
 

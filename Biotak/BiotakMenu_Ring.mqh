@@ -3,8 +3,9 @@
 // 1565 lines and contract 7 says a file over the 1500-line ceiling never
 // grows (P-SIZE-1500): touch it = split it by owner. This IS that owner -
 // the catalog (every item the ring can hold, in ONE order), the membership
-// mask behind the Tools stars, and the growth law (the taper, the chord
-// radius, the fit walk). Included from BiotakMenu_A.mqh BELOW the
+// mask behind the Tools stars, the growth law (the taper, the chord
+// radius, the fit walk) and the shape law (P-UI-164: the capacity is the
+// DRAWN layout's own). Included from BiotakMenu_A.mqh BELOW the
 // TOOL_*/CIR_*/CIRC_* identities it reads and ABOVE every reader (the menu
 // halves, the panels). Zero renames: every name here carried the same name
 // before the split.
@@ -128,13 +129,15 @@ int ToolFeature(const int toolIdx)
 }
 
 //--- Ring seats: the requested count (stars + the door) and the feature at a
-//--- seat. The door is the LAST seat by law — see the block above.
+//--- seat. The door is the LAST PLACED seat by law (P-UI-164: when the cap
+//--- seats fewer than the mask, the excess stars drop — the door never does).
 int RingCount() { return CircStarCount() + 1; }
 
 int RingFeature(const int ringIdx)
 {
    if(ringIdx < 0 || ringIdx >= RingCount()) return -1;
-   if(ringIdx == RingCount() - 1) return CIR_TOOLS;   // the door, always last
+   if(ringIdx >= CircPlacedCount()) return -1;              // P-UI-164: a seat the layout does not draw
+   if(ringIdx == CircPlacedCount() - 1) return CIR_TOOLS;   // the door, always last
    return ToolFeature(CircStarCatAtSeat(ringIdx));
 }
 
@@ -182,12 +185,24 @@ string CircBgRes(const bool on)
    return on ? "::Files\\Icons\\circ_on.bmp" : "::Files\\Icons\\circ_off.bmp";   // 44 — the shipped nine-seat canvas
 }
 
-double CircRadiusForN(const int n)
+//--- P-UI-164: the CHORD radius — the true no-overlap minimum of n seats on
+//--- the full circle, (S+CIRC_GAP)/(2·sin(π/n)): the SubChordRadius invariant
+//--- applied to a CLOSED sweep. For n > 9 it IS CircRadiusForN's answer; for
+//--- n <= 9 it is the number the shape gate must test, because CircRadiusForN
+//--- answers the shipped 80 there (the byte-identical look) and 80 is not what
+//--- "no overlap" means at the squeeze.
+double CircChordRadiusForN(const int n)
 {
-   if(n <= 9) return CIRC_RADIUS;      // 80 — the shipped look, byte-identical
+   if(n < 2) return 0.0;               // one seat can never collide
    double s = MathSin(M_PI / n);
    if(s < 1e-9) return CIRC_RADIUS;
    return (CircBtnSizeForN(n) + CIRC_GAP) / (2.0 * s);
+}
+
+double CircRadiusForN(const int n)
+{
+   if(n <= 9) return CIRC_RADIUS;      // 80 — the shipped look, byte-identical
+   return CircChordRadiusForN(n);      // ONE chord formula in this file
 }
 
 //--- The uncapped fit walk (the same ray-vs-bounds as the retired CircFitRadius,
@@ -227,12 +242,88 @@ double CircFitLimit()
    return r;
 }
 
-//--- How many seats the capped circle really shows. Nine or fewer: all of them
-//--- (the 44px look is never dropped). More: the largest count whose chord
-//--- radius still fits; when even nine cannot (the squeeze zone the old ring
-//--- already had at a tight spot), nine — the excess stays in the Tools menu.
+//| P-UI-164 (2026-10-17) — THE CAPACITY IS THE DRAWN LAYOUT'S OWN.    |
+//|                                                                   |
+//| MEASURED (biotak_diag_EURUSD_134362571361933137.txt): a 13-seat    |
+//| ring dragged to the left edge and released came back as NINE seats |
+//| — the DELFLUSH sweep carries 13 names and the re-create writes 9 — |
+//| so the tail stars AND the Tools door vanished («بقیه ایتم ها چرا    |
+//| گم میشن و نیستش»). The capacity answered CircFitLimit's ray-vs-   |
+//| bounds — a RING's question — while the DRAWN layout near an edge   |
+//| is the TRAIN, whose room is the free run of the edge. CircRailShape|
+//| is the ONE shape decision — the capacity, the paint (CircLayout)   |
+//| and the hit test all read THIS call; a second copy of the branch   |
+//| is a second grid.                                                  |
+//+------------------------------------------------------------------+
+bool CircRingFits()
+{
+   double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
+   int n = RingCount();
+   if(n <= 9) return CircChordRadiusForN(n) <= fit;
+   for(int k = n; k > 9; k--)
+      if(CircRadiusForN(k) <= fit) return true;
+   return CircChordRadiusForN(9) <= fit;
+}
+
+// The ONE shape decision: true = the seats ride the TRAIN (vertical on a
+// left/right edge, else horizontal), dir = ±1 along that axis; false = the
+// ring — answered only where CircRingFits() proves the chord fits (P-UI-13:
+// never a stack, never a capped circle below its chord). Axis: the near edge
+// first (the shipped priority — left/right before top/bottom), else the
+// nearest edge (the 90..131px squeeze band whose squeezed ring would overlap).
+// dir: the side of the axis with more room — s-free, because both rooms
+// subtract s/2, so the comparison is 2*oy vs ch / 2*ox vs cw (the old argmax).
+bool CircRailShape(bool &vertical, int &dir)
+{
+   int cw, ch;
+   CircUIMetrics(cw, ch);       // P-PERF-16: cached metrics, no terminal read
+   int ox = g_UI.menuX;
+   int oy = g_UI.menuY;
+   bool nearLeft   = (ox <= CIRC_EDGE_TRIGGER);
+   bool nearRight  = (ox >= cw - CIRC_EDGE_TRIGGER);
+   bool nearTop    = (oy <= CIRC_EDGE_TRIGGER);
+   bool nearBottom = (oy >= ch - CIRC_EDGE_TRIGGER);
+   if(!nearLeft && !nearRight && !nearTop && !nearBottom && CircRingFits())
+      return false;             // the ring really fits — the shipped circle
+   if(nearLeft || nearRight) vertical = true;
+   else if(nearTop || nearBottom) vertical = false;
+   else vertical = (MathMin(ox, cw - ox) <= MathMin(oy, ch - oy));
+   dir = vertical ? ((oy >= ch - oy) ? -1 : 1) : ((ox >= cw - ox) ? -1 : 1);
+   return true;
+}
+
+// The train's own fit walk: the longest count whose run at ITS OWN side seats
+// the last seat's far edge inside the padded bound — the same numbers
+// CircLayout paints with (room = dist - CIRC_PAD - s/2, len = ORB/2 + s/2 +
+// GAP + (k-1)*(s+GAP)). 1 (the door alone) is the floor: degrade to the
+// previous surface, never to nothing and never to a stack (P-UI-13).
+int CircRailCapacity(const int n, const bool vertical, const int dir)
+{
+   int cw, ch;
+   CircUIMetrics(cw, ch);
+   int ox = g_UI.menuX;
+   int oy = g_UI.menuY;
+   for(int k = n; k >= 2; k--)
+   {
+      int s    = CircBtnSizeForN(k);   // each candidate at ITS OWN side — the paint's own number
+      int room = (dir < 0) ? (vertical ? oy : ox) - CIRC_PAD - s / 2
+                           : (vertical ? ch - oy : cw - ox) - CIRC_PAD - s / 2;
+      int len  = CIRC_ORB_SIZE / 2 + s / 2 + CIRC_GAP + (k - 1) * (s + CIRC_GAP);
+      if(len <= room) return k;
+   }
+   return 1;   // the door alone — a degrade to the previous surface, never to nothing (P-UI-13)
+}
+
+//--- How many seats the DRAWN layout really shows. P-UI-164: the shape decides
+//--- first — on the train the walk is CircRailCapacity (the edge's free run),
+//--- on the ring it is the P-UI-161 walk (nine or fewer: all of them; more: the
+//--- largest count whose chord radius still fits; when even nine cannot, nine —
+//--- the excess stays in the Tools menu with its star ON).
 //--- (CircPlacedCountLive is the unfrozen half; the FROZEN half,
 //--- CircPlacedCount, stays with the built-seat state in BiotakMenu_B.)
+//--- P-PERF-16: cached on (seat count, cw, ch, ox, oy) — the release, the
+//--- paint's per-item CircLayout and the chart-change path all ask it, none
+//--- re-walks.
 
 double CircRadius()
 {
@@ -245,12 +336,36 @@ double CircRadius()
 
 int CircPlacedCountLive()
 {
-   int n = RingCount();
-   if(n <= 9) return n;
-   double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
-   for(int k = n; k > 9; k--)
-      if(CircRadiusForN(k) <= fit) return k;
-   return 9;
+   static int s_liveN = 0, s_liveCw = 0, s_liveCh = 0, s_liveOx = 0, s_liveOy = 0;
+   static int s_liveR = 0;
+   int cw, ch;
+   CircUIMetrics(cw, ch);
+   int ox = g_UI.menuX;
+   int oy = g_UI.menuY;
+   int n  = RingCount();
+   if(s_liveR > 0 && n == s_liveN && cw == s_liveCw && ch == s_liveCh &&
+      ox == s_liveOx && oy == s_liveOy)
+      return s_liveR;
+
+   bool vertical;
+   int  dir;
+   if(CircRailShape(vertical, dir))
+   {
+      s_liveR = CircRailCapacity(n, vertical, dir);
+   }
+   else if(n <= 9)
+   {
+      s_liveR = n;                     // nine or fewer: all of them (the 44px look is never dropped)
+   }
+   else
+   {
+      double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
+      s_liveR = 9;                     // the floor; the excess stays in the Tools menu
+      for(int k = n; k > 9; k--)
+         if(CircRadiusForN(k) <= fit) { s_liveR = k; break; }
+   }
+   s_liveN = n; s_liveCw = cw; s_liveCh = ch; s_liveOx = ox; s_liveOy = oy;
+   return s_liveR;
 }
 
 #endif

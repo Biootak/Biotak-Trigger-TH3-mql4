@@ -1610,8 +1610,8 @@ MUTATIONS = [
         "rule": "the Tools door is always the ring's LAST seat (an unstarred door is a menu with no way back)",
         "what": "RingFeature answers the door's index with -1 — the door falls off the ring",
         "file": "Biotak/BiotakMenu_Ring.mqh",
-        "find": "   if(ringIdx == RingCount() - 1) return CIR_TOOLS;   // the door, always last",
-        "replace": "   if(ringIdx == RingCount() - 1) return -1;   // MUTATION: the door is not last",
+        "find": "   if(ringIdx == CircPlacedCount() - 1) return CIR_TOOLS;   // the door, always last",
+        "replace": "   if(ringIdx == CircPlacedCount() - 1) return -1;   // MUTATION: the door is not last",
         "expect": "P-UI-161",
     },
     {
@@ -1633,6 +1633,112 @@ MUTATIONS = [
         "find": "#define CIRC_STAR_DEFAULT 0xFF80",
         "replace": "#define CIRC_STAR_DEFAULT 0x7F80",
         "expect": "CIRC_STAR_DEFAULT",
+    },
+    #--- P-UI-164 (2026-10-17) — THE CAPACITY IS THE DRAWN LAYOUT'S OWN. A ring
+    #--- dragged to an edge and released came back short (13 built, 9 rebuilt —
+    #--- the tail AND the door) because the capacity answered the RING's
+    #--- ray-vs-bounds while the drawn layout there is the TRAIN, whose room is
+    #--- the free run of the edge. ONE shape decision (CircRailShape) must be
+    #--- read by the capacity and the paint alike, the train seats at its own
+    #--- side, the ring is drawn only where the chord proves it fits, and the
+    #--- door rides the LAST PLACED seat. Each inverse must fail §55 naming
+    #--- P-UI-164.
+    {
+        "id": "P-UI-164a",
+        "gate": "regression",
+        "rule": "the capacity asks the DRAWN shape (CircRailShape) before it counts",
+        "what": "CircPlacedCountLive answers the ring's fit walk on the train too — the release rebuilds a fitting 13-seat train as 9 and the tail (door included) vanishes (the reported defect)",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   if(CircRailShape(vertical, dir))\n   {\n      s_liveR = CircRailCapacity(n, vertical, dir);\n   }",
+        "replace": "   if(false)   // MUTATION: the capacity answers the ring's fit walk where the train draws\n   {\n      s_liveR = CircRailCapacity(n, vertical, dir);\n   }",
+        "expect": "P-UI-164",
+    },
+    {
+        "id": "P-UI-164b",
+        "gate": "regression",
+        "rule": "the PAINT reads the same shape decision as the capacity (CircLayout asks CircRailShape)",
+        "what": "CircLayout decides the branch on its own again — the painted train and the measured capacity are two grids",
+        "file": "Biotak/BiotakMenu_B.mqh",
+        "find": "   if(CircRailShape(vertical, dir))",
+        "replace": "   if(false)   // MUTATION: the paint decides the branch on its own again",
+        "expect": "P-UI-164",
+    },
+    {
+        "id": "P-UI-164c",
+        "gate": "regression",
+        "rule": "the door rides the LAST PLACED seat (CircPlacedCount() - 1)",
+        "what": "the door is seated at RingCount() - 1 again — it falls off the ring whenever the cap seats fewer than the mask",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   if(ringIdx == CircPlacedCount() - 1) return CIR_TOOLS;   // the door, always last",
+        "replace": "   if(ringIdx == RingCount() - 1) return CIR_TOOLS;   // MUTATION: the door only when every star fits",
+        "expect": "P-UI-164",
+    },
+    {
+        "id": "P-UI-164d",
+        "gate": "regression",
+        "rule": "the ring is drawn only where the chord fits (CircRingFits tests the chord, not the shipped 80)",
+        "what": "the ring-fit fallback tests CircRadiusForN(9) (the shipped 80) — the squeeze band draws a capped circle below its chord again (the P-UI-13 stack)",
+        "file": "Biotak/BiotakMenu_Ring.mqh",
+        "find": "   return CircChordRadiusForN(9) <= fit;",
+        "replace": "   return CircRadiusForN(9) <= fit;   // MUTATION: the shipped 80, not the chord",
+        "expect": "P-UI-164",
+    },
+    #--- P-UI-165 (2026-10-17) — THE PLACE BELONGS TO THE PAIR. P-UI-131e's
+    #--- chart-free key made one pair's hand land every other pair (the orb
+    #--- near an edge everywhere, P-UI-164's squeeze following it). The keys
+    #--- now carry the SYMBOL (never the chart id, which is per session) and
+    #--- the pre-165 spellings are READ-ONLY migration sources: the load
+    #--- snapshots them once in a measured window and no writer touches them.
+    #--- Each inverse must fail §56 naming P-UI-165.
+    {
+        "id": "P-UI-165a",
+        "gate": "regression",
+        "rule": "the home's fraction key carries the SYMBOL (one pair's hand never moves another pair's surface)",
+        "what": "GVHomeFracName drops the symbol — the chart-free key is back and every pair lands on one place (the reported defect)",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": 'string GVHomeFracName(const string id,const bool y) { return "BIOMENU_" + _Symbol + "_HOME_" + id + (y ? "_FY" : "_FX"); }',
+        "replace": 'string GVHomeFracName(const string id,const bool y) { return "BIOMENU_HOME_" + id + (y ? "_FY" : "_FX"); }   // MUTATION: chart-free again',
+        "expect": "P-UI-165",
+    },
+    {
+        "id": "P-UI-165b",
+        "gate": "regression",
+        "rule": "the panel's fraction key carries the SYMBOL",
+        "what": "PnlFracKey drops the symbol — a panel dragged on EURUSD lands every other pair (the P-UI-140q behaviour back)",
+        "file": "Biotak/BiotakPanels_Build.mqh",
+        "find": 'string PnlFracKey(const int item) { return "BIOMENU_" + _Symbol + "_PNL_" + IntegerToString(item) + "_F"; }',
+        "replace": 'string PnlFracKey(const int item) { return "BIOMENU_PNL_" + IntegerToString(item) + "_F"; }   // MUTATION: symbol-free again',
+        "expect": "P-UI-165",
+    },
+    {
+        "id": "P-UI-165c",
+        "gate": "regression",
+        "rule": "the shared pre-165 pair is snapshotted into the pair's own key ONCE (the migration)",
+        "what": "the snapshot is gone — every pair reads the shared key forever and the next hand move on ANY pair moves them all",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "      if(!GVHomeFracKnownOwn(id)) GVHomeSaveFracHand(id, x, y);",
+        "replace": "      // MUTATION: no snapshot — the pair reads the shared key forever",
+        "expect": "P-UI-165",
+    },
+    {
+        "id": "P-UI-165d",
+        "gate": "regression",
+        "rule": "a pre-165 store still answers (GVHomeFracKnown accepts the shared pair)",
+        "what": "the shared fallback is gone — a pre-165 store answers «no home» and every surface drops to its default on the upgrade",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": " || GlobalVariableCheck(GVHomeFracNameShared(id,false)))",
+        "replace": "   // MUTATION: the shared store is invisible",
+        "expect": "P-UI-165",
+    },
+    {
+        "id": "P-UI-165e",
+        "gate": "regression",
+        "rule": "no writer ever writes or deletes the shared pre-165 keys",
+        "what": "the writer sweeps the SHARED pixel keys — deleting them strands every pair that has not migrated yet",
+        "file": "Biotak/BiotakHomes.mqh",
+        "find": "   GlobalVariableDel(GVHomeName(id,false)); GlobalVariableDel(GVHomeName(id,true));",
+        "replace": "   GlobalVariableDel(GVHomeNameShared(id,false)); GlobalVariableDel(GVHomeNameShared(id,true));   // MUTATION: sweeps the shared pair",
+        "expect": "P-UI-165",
     },
     #--- P-SESS (2026-10-17) — THE SESSIONS CELL. CIR_SESSIONS (19) sits ABOVE the
     #--- card-number space, so the identity fallback cannot answer it: FeaturePanel
