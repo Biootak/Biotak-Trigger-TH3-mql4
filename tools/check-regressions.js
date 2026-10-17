@@ -66,6 +66,8 @@ const MENU_C = path.join(BIOTAK, 'BiotakMenu_C.mqh');
 const MENU_A = path.join(BIOTAK, 'BiotakMenu_A.mqh');
 const MENU_B = path.join(BIOTAK, 'BiotakMenu_B.mqh');
 const MENU_RING = path.join(BIOTAK, 'BiotakMenu_Ring.mqh');
+const SESS_DRAW = path.join(BIOTAK, 'Sessions_Draw.mqh');
+const SESS_MODEL = path.join(BIOTAK, 'Sessions_Model.mqh');
 // P-UI-163: the per-tick refresh's home — the ring's existence probe must be
 // CALLED there (a declared healer that nobody runs is the retired-defect class).
 const KIT = path.join(BIOTAK, 'BiotakKit.mqh');
@@ -5044,8 +5046,8 @@ function main() {
     if (!menuRing) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the mask has no owner');
     else {
       const ringCode = codeOf(menuRing);
-      if (!/#define\s+CIRC_STAR_DEFAULT\s+0xFF80\b/.test(ringCode))
-        broken.push('CIRC_STAR_DEFAULT is gone or moved — a missing key no longer restores the shipped 9-feature ring (sessions appended at bit 15, P-SESS)');
+      if (!/#define\s+CIRC_STAR_DEFAULT\s+\(0xFF80\s*\|\s*CIRC_STAR_STAMP\)/.test(ringCode))
+        broken.push('CIRC_STAR_DEFAULT is gone or moved — a missing key no longer restores the shipped 9-feature ring with its handoff stamp (bits 7..15 | stamp, P-SESS)');
       if (!/#define\s+CAT_SESSIONS\s+15\b/.test(ringCode) || !/#define\s+CAT_COUNT\s+16\b/.test(ringCode))
         broken.push('the sessions catalog cell (CAT_SESSIONS 15, CAT_COUNT 16) left BiotakMenu_Ring.mqh — the ring can never seat it while the Tools menu still shows it');
       if (!/if\(toolIdx == CAT_SESSIONS\)\s+return CIR_SESSIONS;/.test(ringCode))
@@ -5081,8 +5083,8 @@ function main() {
           broken.push('the ledger total no longer counts the STAR slot — the ledger under-reports the block');
       }
       const loadBody = bodyOf(menuA, 'void LoadUIState()');
-      if (!loadBody || !loadBody.text.includes('GlobalVariableGet(GetGVName("STAR"))'))
-        broken.push('LoadUIState stopped reading the STAR key — the persisted ring never comes back');
+      if (!loadBody || !loadBody.text.includes('CircStarLoad(GetGVName("STAR"))'))
+        broken.push('LoadUIState stopped reading the STAR key through CircStarLoad — the persisted ring never comes back (P-SESS-04)');
     }
     // -- the built-seat freeze: the frozen half, its readers, the star park ----
     const menuB = linesOf(MENU_B);
@@ -5249,14 +5251,85 @@ function main() {
           broken.push('the sessions branch left the familyToggle fold — a muted press cannot show the family again (P-UI-93)');
       }
     }
+    const sessRing = linesOf(MENU_RING);
+    if (!sessRing) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the saved-mask handoff has no home');
+    else {
+      const rCode = codeOf(sessRing);
+      if (!/#define\s+CIRC_STAR_STAMP\s+0x10000\b/.test(rCode))
+        broken.push('CIRC_STAR_STAMP is gone — an unstamped pre-SESSIONS mask and an explicit unstar become the same number');
+      const sessLoad = bodyOf(sessRing, 'uint CircStarLoad(');
+      if (!sessLoad) broken.push('CircStarLoad is gone — the saved mask has no ONE handoff writer');
+      else {
+        if (!sessLoad.text.includes('v |= (uint)(0x8000 | CIRC_STAR_STAMP)'))
+          broken.push('the handoff stopped starring bit 15 — an upgraded chart keeps a clockless ring (the report this entry was born from)');
+        if (!sessLoad.text.includes('GlobalVariableSet(key, (double)v)'))
+          broken.push('the handoff stopped writing its stamp — every attach re-migrates');
+        if (!sessLoad.text.includes('DrawStripDiagEmit'))
+          broken.push('the handoff lost its flushed witness — a repeat migration is unprovable (P-DRAW-126)');
+      }
+    }
+    if (sessA) {
+      const aLoad = bodyOf(sessA, 'void LoadUIState(');
+      if (!aLoad || !aLoad.text.includes('CircStarLoad(GetGVName("STAR"))'))
+        broken.push('LoadUIState stopped calling CircStarLoad — the saved mask is read raw again (P-SESS-04)');
+    }
     const sessGen = linesOf(ICON_GEN);
     if (!sessGen) broken.push('tools/gen-th3-icons.js is gone — the sessions art has no baker');
     else if (!codeOf(sessGen).includes('sessions:'))
       broken.push('the icon generator lost ART.sessions — a rebuild of the tree silently drops the clock (P-UI-131)');
+    // -- the box body is build-proof (P-SESS-05, 2026-10-17) --------------------
+    // MEASURED on the reporting chart: every session box shipped as a SOLID
+    // saturated slab — a rectangle renders filled whatever FILL says on some
+    // MT4 builds, the same law ZoneFactory.mqh:143 pays with border segments.
+    // MEASURED AGAIN 16:31 after the deploy: the FILLED path (BGCOLOR = the
+    // 14% tint, FILL written true) still shipped as a solid slab — this build
+    // fills a rectangle with its COLOR; BGCOLOR and FILL are both unconsumed.
+    // So the renderer routes by kind — HOLLOW = the four edge segments (the
+    // only body that cannot slab), FILLED = the one rectangle with its fill
+    // CLAIMED (FILL written true) — and the FACTORY ships HOLLOW: the calm
+    // look may only ride the edges.
+    const sessDraw = linesOf(SESS_DRAW);
+    if (!sessDraw) broken.push('Biotak/Sessions_Draw.mqh is gone — the session boxes have no renderer');
+    else {
+      const dCode = codeOf(sessDraw);
+      if (!['ET', 'EB', 'EL', 'ER'].every(t => dCode.includes('nm + "' + t + '"')))
+        broken.push('the hollow box left its four edge segments — the rectangle renders as a solid slab again (the report this entry was born from, ZoneFactory.mqh:143)');
+      if (!/ObjectSetInteger\(0, nm, OBJPROP_FILL, true\)/.test(dCode))
+        broken.push('the filled box stopped claiming its fill — OBJPROP_FILL is written true, never assumed (P-SESS-05)');
+    }
+    const sessModel = linesOf(SESS_MODEL);
+    if (!sessModel) broken.push('Biotak/Sessions_Model.mqh is gone — the session factory has no home');
+    else if (!/s\.style\s*=\s*SESS_STYLE_OUTLINE;/.test(codeOf(sessModel)))
+      broken.push('the factory session box left OUTLINE — FILLED slabs a fresh chart on the reporting build (ZoneFactory.mqh:143): the busy chart this entry was born from');
+
+    // -- the LIVE session is bold, the past ones fade (P-SESS-06, 2026-10-17) -----
+    // The user's ask: «سشن که لایو درش هستشم فرق بکنه استایل و غیره که بولد بشه و
+    // قدیمها جوری متمایز باشه». ONE ink rule over the started windows: the LIVE
+    // one keeps the base ink at width 2, every PAST one fades to SESS_PAST_ALPHA at
+    // width 1, and the live window's H/L lines take the same width. The ghost rung
+    // (dotted, 62) stays the weaker one below past. The muted palette (steel/gold/
+    // sage) rides SessColorOf alone — indices never move, no persisted bit stirs.
+    if (sessDraw) {
+      const p6 = codeOf(sessDraw);
+      if (!/bool\s+wLive\s*=\s*\(SessWindowState\(wins\[w\], now\) == SESS_WS_LIVE\);/.test(p6))
+        broken.push('the box loop lost its live test — past and live windows paint alike again (the report this entry was born from)');
+      if (!/color\s+ink\s*=\s*wLive\s*\?\s*base\s*:\s*SessBlend\(base,\s*SESS_PAST_ALPHA\);/.test(p6))
+        broken.push('the box ink lost the live/past split — past windows keep the base ink (P-SESS-06)');
+      if (!/int\s+bW\s*=\s*wLive\s*\?\s*2\s*:\s*1;/.test(p6))
+        broken.push('the box width lost the live/past split — the session you are in is no longer bold (P-SESS-06)');
+      if (!/SessZoneTag\(s\.zone\), ink, SESS_PT_LBL/.test(p6))
+        broken.push('the box tag left the live/past ink — the label keeps full ink on faded past boxes (P-SESS-06)');
+      if (!/bool\s+wLinLive\s*=\s*\(wins\[wLin\]\.kk == 0 && SessWindowState\(wins\[wLin\], now\) == SESS_WS_LIVE\);/.test(p6))
+        broken.push('the live-window test vanished from the H/L block — the live cache and the bold width lost their ONE owner (P-SESS-06)');
+      if (!/int\s+lw\s*=\s*wLinLive\s*\?\s*2\s*:\s*1;/.test(p6))
+        broken.push("the live window's H/L lines lost their bold width (P-SESS-06)");
+      if (!/#define\s+SESS_PAST_ALPHA\s+45\b/.test(p6))
+        broken.push('SESS_PAST_ALPHA left Sessions_Draw.mqh — the past fade has no owner constant (P-SESS-06)');
+    }
     if (broken.length) {
-      failures.push('P-SESS: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/D.mqh + BiotakMenu_Ring.mqh + tools/gen-th3-icons.js)');
+      failures.push('P-SESS: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/D.mqh + BiotakMenu_Ring.mqh + Biotak/Sessions_Model.mqh + Biotak/Sessions_Draw.mqh + tools/gen-th3-icons.js)');
     } else {
-      console.log('[PASS] P-SESS the Sessions cell is wired end to end: identity 19 with FeaturePanel -> 15 (never the identity fallback), the light is g_sessMaster (mute-folded), the clock icon base with its #resource pair, ONE writer per fact in RingFeatureClick (state + OV_SSON + SessionsTick), and the Tools cell runs the same switch');
+      console.log('[PASS] P-SESS the Sessions cell is wired end to end: identity 19 with FeaturePanel -> 15 (never the identity fallback), the light is g_sessMaster (mute-folded), the clock icon base with its #resource pair, ONE writer per fact in RingFeatureClick (state + OV_SSON + SessionsTick), the Tools cell runs the same switch, and the factory box ships hollow (OUTLINE — the only body that cannot slab); the LIVE window is bold (box w2 + its H/L, base ink) while every PAST window fades (SESS_PAST_ALPHA) — ghosts stay the weaker rung');
     }
   }
 
@@ -5415,6 +5488,32 @@ function main() {
       if (!update54) broken.push('CircUpdateItemState is gone — the sync pass has no per-seat owner');
       else if (!update54.text.includes('[P-UI-163] icon heal seat='))
         broken.push('CircUpdateItemState skips a missing glyph again — the one state that needed the pass is the one it ignores');
+      // -- P-UI-163c (MEASURED 2026-10-17, the 17:07 frame): while the Tools fan
+      // was open a state change ran the sync loop, CircUpdateItemState re-created
+      // every swept icon WITHOUT its bg (13 × icon heal), and the chart showed the
+      // bare-glyph ring the user photographed. The loop lacked the g_ToolsOpen
+      // guard every other ring writer carries; the open sweep took icon+bg but left
+      // the badge family; and a seat/cell tip could outlive its surface.
+      const states54 = bodyOf(menuC54, 'void UpdateCircularItemStates(');
+      if (!states54) broken.push('UpdateCircularItemStates is gone — the sync pass has no owner');
+      else {
+        if (!states54.text.includes('if(!g_ToolsOpen)'))
+          broken.push('UpdateCircularItemStates paints the ring while the Tools fan owns the screen again — the 17:07 bare-glyph resurrection');
+        if (!states54.text.includes('ToolsUpdateItemState(t)'))
+          broken.push('UpdateCircularItemStates stopped serving the open fan\'s cells');
+      }
+      const open54 = bodyOf(menuC54, 'void CreateToolsMenu(');
+      if (!open54) broken.push('CreateToolsMenu is gone — the Tools fan has no opener');
+      else {
+        if (!open54.text.includes('CircBadgeBg(i)') || !open54.text.includes('CircBadgeTxt(i)'))
+          broken.push('the open sweep left the badge family behind — bare badge art over the chart');
+        if (!open54.text.includes('CircTipDisarm()'))
+          broken.push('a seat tip survives the ring it describes — the open edge must disarm');
+      }
+      const close54 = bodyOf(menuC54, 'void DeleteToolsMenu(');
+      if (!close54) broken.push('DeleteToolsMenu is gone — the Tools fan has no closer');
+      else if (!close54.text.includes('CircTipDisarm()'))
+        broken.push('the close edge leaves a cell tip describing a deleted cell — the twin-edge disarm is gone');
       const menuD54 = linesOf(MENU_D);
       const heal54 = menuD54 ? bodyOf(menuD54, 'void CircHealRingStep(') : null;
       if (!heal54) broken.push('CircHealRingStep is gone — a hole no state change announces has no healer');
@@ -5425,6 +5524,10 @@ function main() {
           broken.push('CircHealRingStep lost its flush witness — a heal nobody can count');
         if (!heal54.text.includes('g_ToolsOpen') || !heal54.text.includes('g_OrbDragging') || !heal54.text.includes('menuVisible'))
           broken.push('CircHealRingStep lost a guard — healing fights the tools menu (which owns no ring) or a live drag');
+        if (!heal54.text.includes('ToolsCreateItem(t)') || !heal54.text.includes('[P-UI-163] tools heal cell='))
+          broken.push('CircHealRingStep stopped serving the fan\'s cells — a cell\'s failed create is a permanent hole again');
+        if (!heal54.text.includes('CircBadgeBg(i)'))
+          broken.push('the ring probe no longer sees a badge hole — half the seat family went blind');
       }
     }
     const kit54 = linesOf(KIT);
@@ -5434,7 +5537,7 @@ function main() {
     if (broken.length) {
       failures.push('P-UI-163: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C/D.mqh + BiotakKit.mqh)');
     } else {
-      console.log('[PASS] P-UI-163 a missing glyph is repaired, never skipped: the icon is created-if-missing on the ring and the tools cells, a failed create heals through CircUpdateItemState/CircHealRingStep with flushed witnesses, and the per-tick probe runs (2 ObjectFind/tick, 0 writes while whole)');
+      console.log('[PASS] P-UI-163 a missing glyph is repaired, never skipped: the icon is created-if-missing on the ring and the tools cells, a failed create heals through CircUpdateItemState/CircHealRingStep with flushed witnesses, and the per-tick probe runs (2 ObjectFind/tick, 0 writes while whole). P-UI-163c: the sync stands down while the fan is open, the open sweep takes the whole seat family (badge included), both tip edges disarm, and the per-tick probe serves the fan\'s cells meanwhile');
     }
   }
 

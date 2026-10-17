@@ -40,6 +40,7 @@
 #define SESS_PT_LBL      7     // box tags + ghosts
 #define SESS_PT_PRICE    7     // H/L + range + countdown
 #define SESS_FILL_ALPHA  86    // % of the fill ink given up to the background
+#define SESS_PAST_ALPHA  45    // past windows: ink given up — the live box keeps it (P-SESS-06)
 #define SESS_GHOST_ALPHA 62
 #define SESS_PRIOR_ALPHA 55
 #define SESS_MID_ALPHA   45
@@ -89,13 +90,52 @@ color SessBlend(const color base, const int alphaPct)
    return (color)(r | (g << 8) | (b << 16));
 }
 
+//+------------------------------------------------------------------+
+//| ONE box door, TWO build-proof bodies (P-SESS-05).                 |
+//|                                                                  |
+//| A rectangle cannot be trusted to stay hollow: some MT4 builds     |
+//| paint it filled whatever FILL says — ZoneFactory.mqh:143 already  |
+//| pays this exact law (EMPTY boxes there are four border segments), |
+//| and MEASURED on the reporting chart every session box shipped as  |
+//| a solid saturated slab for it. So HOLLOW here is four border      |
+//| SEGMENTS — guaranteed hollow on every build — and only the        |
+//| FILLED style is a real rectangle, with its fill CLAIMED (FILL     |
+//| written true, an explicit BGCOLOR), never assumed.                |
+//+------------------------------------------------------------------+
+void SessEdge(const string nm, const datetime t1, const double p1, const datetime t2, const double p2,
+              const color clr, const int width, const ENUM_LINE_STYLE style, const string tip)
+{
+   if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_TREND, 0, t1, p1, t2, p2);
+   ObjectSetInteger(0, nm, OBJPROP_RAY, false);
+   ObjectSetInteger(0, nm, OBJPROP_RAY_LEFT, false);
+   ObjectSetInteger(0, nm, OBJPROP_RAY_RIGHT, false);
+   ObjectSetInteger(0, nm, OBJPROP_COLOR, clr);
+   ObjectSetInteger(0, nm, OBJPROP_WIDTH, width);
+   ObjectSetInteger(0, nm, OBJPROP_STYLE, style);
+   ObjectSetInteger(0, nm, OBJPROP_BACK, true);   // the body sits behind the candles
+   ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+   ObjectSetInteger(0, nm, OBJPROP_HIDDEN, true);
+   ObjectSetString(0, nm, OBJPROP_TOOLTIP, tip);
+   ObjectMove(0, nm, 0, t1, p1);
+   ObjectMove(0, nm, 1, t2, p2);
+}
+
 void SessRect(const string nm, const datetime t1, const double p1, const datetime t2, const double p2,
               const color borderC, const color fillC, const int width, const ENUM_LINE_STYLE style,
               const string tip)
 {
+   if(fillC == clrNONE)
+   {
+      SessEdge(nm + "ET", t1, p1, t2, p1, borderC, width, style, tip);
+      SessEdge(nm + "EB", t1, p2, t2, p2, borderC, width, style, tip);
+      SessEdge(nm + "EL", t1, p1, t1, p2, borderC, width, style, tip);
+      SessEdge(nm + "ER", t2, p1, t2, p2, borderC, width, style, tip);
+      return;
+   }
    if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE, 0, t1, p1, t2, p2);
    ObjectSetInteger(0, nm, OBJPROP_COLOR, borderC);
    ObjectSetInteger(0, nm, OBJPROP_BGCOLOR, fillC);
+   ObjectSetInteger(0, nm, OBJPROP_FILL, true);   // a fill is written, never assumed
    ObjectSetInteger(0, nm, OBJPROP_WIDTH, width);
    ObjectSetInteger(0, nm, OBJPROP_STYLE, style);
    ObjectSetInteger(0, nm, OBJPROP_BACK, true);
@@ -269,9 +309,12 @@ void SessPaintAll(const datetime now, const int bkr)
          bandSet[sl] = true; bandHi[sl] = wins[w].hi; bandLo[sl] = wins[w].lo;
          string tip = SessWindowTip(s, wins[w].sU, wins[w].hi, wins[w].lo, true);
          string nmB = SessWindowName(sl, wins[w].stamp, "B");
+         bool wLive = (SessWindowState(wins[w], now) == SESS_WS_LIVE);   // P-SESS-06
+         color ink = wLive ? base : SessBlend(base, SESS_PAST_ALPHA);    // live keeps the ink, past fades
+         int bW = wLive ? 2 : 1;                                         // the live box is bold
          color fillC = (s.style == SESS_STYLE_FILLED) ? SessBlend(base, SESS_FILL_ALPHA) : clrNONE;
-         SessRect(nmB, wins[w].sU, wins[w].hi, wins[w].eU, wins[w].lo, base, fillC, 1, STYLE_SOLID, tip);
-         SessText(nmB + "L", wins[w].sU, wins[w].hi, SessZoneTag(s.zone), base, SESS_PT_LBL,
+         SessRect(nmB, wins[w].sU, wins[w].hi, wins[w].eU, wins[w].lo, ink, fillC, bW, STYLE_SOLID, tip);
+         SessText(nmB + "L", wins[w].sU, wins[w].hi, SessZoneTag(s.zone), ink, SESS_PT_LBL,
                   ANCHOR_LEFT_UPPER, tip);
          if(s.style == SESS_STYLE_MID && wins[w].kk == 0)
          {
@@ -296,9 +339,10 @@ void SessPaintAll(const datetime now, const int bkr)
       }
       if(wLin >= 0)
       {
+         bool wLinLive = (wins[wLin].kk == 0 && SessWindowState(wins[wLin], now) == SESS_WS_LIVE);   // P-SESS-06
          //--- the live cache belongs to the WINDOW, not to the H/L lines:
          //--- the box extends per tick even when the lines are off
-         if(wins[wLin].kk == 0 && SessWindowState(wins[wLin], now) == SESS_WS_LIVE)
+         if(wLinLive)
          {
             s_sessLiveValid[sl] = true;
             s_sessLiveStamp[sl] = wins[wLin].stamp;
@@ -310,10 +354,11 @@ void SessPaintAll(const datetime now, const int bkr)
          string tipL = SessWindowTip(s, wins[wLin].sU, wins[wLin].hi, wins[wLin].lo, true);
          if(g_sessHlLines)
          {
+            int lw = wLinLive ? 2 : 1;   // P-SESS-06: the live window's H/L is bold with its box
             string nmHI = SessWindowName(sl, wins[wLin].stamp, "HI");
-            SessLine(nmHI,      wins[wLin].sU, wins[wLin].hi, wins[wLin].eU, wins[wLin].hi, base, 1, STYLE_SOLID, tipL);
+            SessLine(nmHI,      wins[wLin].sU, wins[wLin].hi, wins[wLin].eU, wins[wLin].hi, base, lw, STYLE_SOLID, tipL);
             SessLine(SessWindowName(sl, wins[wLin].stamp, "LO"),
-                     wins[wLin].sU, wins[wLin].lo, wins[wLin].eU, wins[wLin].lo, base, 1, STYLE_SOLID, tipL);
+                     wins[wLin].sU, wins[wLin].lo, wins[wLin].eU, wins[wLin].lo, base, lw, STYLE_SOLID, tipL);
          }
          if(g_sessHlLabels)
          {
@@ -429,8 +474,25 @@ void SessLiveRepaint(const int sl)
    SessSlotGet(sl, s);
    color base = SessColorOf(s.col);
    string nmB = SessWindowName(sl, s_sessLiveStamp[sl], "B");
-   ObjectMove(0, nmB, 0, s_sessLiveS[sl], s_sessLiveHi[sl]);
-   ObjectMove(0, nmB, 1, s_sessLiveE[sl], s_sessLiveLo[sl]);
+   //--- the body follows its OWN kind (P-SESS-05): 2 moves for the filled
+   //--- rectangle, 8 for the hollow four-edge frame — and only when the
+   //--- session really printed a new extreme (the caller's compare)
+   if(s.style == SESS_STYLE_FILLED)
+   {
+      ObjectMove(0, nmB, 0, s_sessLiveS[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, nmB, 1, s_sessLiveE[sl], s_sessLiveLo[sl]);
+   }
+   else
+   {
+      ObjectMove(0, nmB + "ET", 0, s_sessLiveS[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, nmB + "ET", 1, s_sessLiveE[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, nmB + "EB", 0, s_sessLiveS[sl], s_sessLiveLo[sl]);
+      ObjectMove(0, nmB + "EB", 1, s_sessLiveE[sl], s_sessLiveLo[sl]);
+      ObjectMove(0, nmB + "EL", 0, s_sessLiveS[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, nmB + "EL", 1, s_sessLiveS[sl], s_sessLiveLo[sl]);
+      ObjectMove(0, nmB + "ER", 0, s_sessLiveE[sl], s_sessLiveHi[sl]);
+      ObjectMove(0, nmB + "ER", 1, s_sessLiveE[sl], s_sessLiveLo[sl]);
+   }
    if(g_sessHlLines)
    {
       string nmHI = SessWindowName(sl, s_sessLiveStamp[sl], "HI");

@@ -36,17 +36,19 @@
 //--- 8 curated session inks (mid-tone, legible over dark and light charts).
 //--- The editor's colour chips are 3-bit indices into THIS table, so the
 //--- look can be retuned without moving a persisted bit.
+//--- P-SESS-06 (2026-10-17): the MUTED table — steel blue / muted gold / sage
+//--- ship as the trio; the live/past ink split lives in Sessions_Draw.mqh.
 color SessColorOf(const int idx)
 {
    switch(idx)
    {
-      case 0: return C'64,132,255';    // blue
-      case 1: return C'255,159,64';    // amber
-      case 2: return C'102,187,106';   // green
-      case 3: return C'186,104,200';   // violet
-      case 4: return C'255,112,67';    // coral
-      case 5: return C'38,198,218';    // cyan
-      case 6: return C'236,64,122';    // magenta
+      case 0: return C'70,120,190';    // blue — steel (P-SESS-06 muted table)
+      case 1: return C'196,138,64';    // amber — muted gold
+      case 2: return C'88,166,128';    // green — sage
+      case 3: return C'150,112,190';   // violet
+      case 4: return C'212,106,92';    // coral
+      case 5: return C'62,178,198';    // cyan
+      case 6: return C'198,90,140';    // magenta
       case 7: return C'120,144,156';   // grey-blue
    }
    return clrSilver;
@@ -105,7 +107,7 @@ void SessSlotFactory(const int idx, SessSlot &s)
 {
    s.zone = SZ_AUTO_SERVER; s.customMin = 0;
    s.startMin = 480; s.endMin = 1020; s.days = SESS_DAYS_WEEKDAYS;
-   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;
+   s.style = SESS_STYLE_OUTLINE; s.col = 0; s.enabled = false;   // P-SESS-05: hollow ships — some builds slab a rectangle whatever FILL/BGCOLOR say (ZoneFactory.mqh:143)
    switch(idx)
    {
       case 0: s.zone = SZ_TOKYO;     s.startMin = 540; s.endMin = 1080; s.col = 0; s.enabled = true;  break;

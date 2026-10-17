@@ -38,7 +38,11 @@
 #define CAT_SESSIONS   15            // P-SESS — Sessions Zones (card 15)
 //--- the shipped membership: the 9 features are IN the ring, the 7 tools live in
 //--- the Tools menu only. Bits are CAT_* indices; 0xFF80 = bits 7..15.
-#define CIRC_STAR_DEFAULT 0xFF80
+//--- P-SESS-04: bit 16 is the HANDOFF STAMP, not a membership bit (a cat is
+//--- 0..15) — every post-SESSIONS save carries it, so an UNSTAMPED key was
+//--- written before the clock existed and CircStarLoad stars SESSIONS once.
+#define CIRC_STAR_STAMP   0x10000
+#define CIRC_STAR_DEFAULT (0xFF80 | CIRC_STAR_STAMP)
 
 // P-UI-161 (2026-10-17) — THE STAR IS THE MEMBERSHIP, THE CATALOG IS  |
 // THE ONE ORDER, AND THE DOOR IS ALWAYS LAST.                         |
@@ -55,11 +59,13 @@
 // unreachable. ONE mask, ONE order, ONE door rule: the ring, the      |
 // star ink and the persisted key all read THIS block.                 |
 //                                                                     |
-// The mask is 16 bits (CAT_COUNT), persisted as the "STAR" UI slot.   |
-// A missing key = CIRC_STAR_DEFAULT (the 9 features, bits 7..15) —   |
-// the shipped look, so an upgrade changes nothing until the user      |
-// moves a star (a saved 0x7F80 mask keeps sessions unstarred until    |
-// the user stars it — the old bits mean what they always meant).      |
+// The mask is 16 bits + the handoff stamp (CAT_COUNT + P-SESS-04), persisted
+// as the "STAR" UI slot. A missing key = CIRC_STAR_DEFAULT (the 9 features,
+// bits 7..15 + the stamp) — the shipped look. A SAVED unstamped mask was
+// written before the Sessions cell existed: CircStarLoad stars SESSIONS into
+// it ONCE, stamped, and the user's own bits are untouched (an ADD, never a
+// reset). A STAMPED mask is the user's own membership, bit 15 clear included:
+// an unstar is respected forever — the handoff can never fire twice.
 //+------------------------------------------------------------------+
 static uint g_CircStarMask = CIRC_STAR_DEFAULT;
 
@@ -78,6 +84,28 @@ bool CircStarSet(const int cat, const bool on)
    if(on) g_CircStarMask |=  (1 << cat);
    else   g_CircStarMask &= ~(1 << cat);
    return was;
+}
+
+// P-SESS-04 (2026-10-17) — THE SAVED-MASK HANDOFF. MEASURED on the reporting
+// chart: the stored key read 31737 (0x7BF9) — a mask saved BEFORE the Sessions
+// cell existed, so bit 15 was clear and the ring showed no clock («سشن ها …
+// چیزی نمیبینم»). The handoff stars SESSIONS into an UNSTAMPED mask once
+// (the user's own bits untouched — an ADD, never a reset), writes its own
+// stamp so it fires once, not every load, and witnesses itself through the
+// FLUSHED channel (a Print witness waits in MT4's RAM, P-DRAW-126).
+uint CircStarLoad(const string key)
+{
+   if(!GlobalVariableCheck(key)) return CIRC_STAR_DEFAULT;
+   uint v = (uint)GlobalVariableGet(key);
+   if((v & CIRC_STAR_STAMP) == 0)
+   {
+      uint was = v;
+      v |= (uint)(0x8000 | CIRC_STAR_STAMP);
+      GlobalVariableSet(key, (double)v);
+      DrawStripDiagEmit(StringFormat("[P-SESS-04] star handoff key=%s was=0x%X now=0x%X",
+                                     key, (int)was, (int)v));
+   }
+   return v;
 }
 
 int CircStarCount()

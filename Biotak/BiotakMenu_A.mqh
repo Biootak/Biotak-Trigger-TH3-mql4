@@ -811,11 +811,10 @@ void LoadUIState()
    g_ToolsOpen = GlobalVariableCheck(gvTools) ? (GlobalVariableGet(gvTools) > 0.5) : false;   // P-UI-142: menu creation rebuilds the chrome from this
    if(GlobalVariableCheck(GetGVName("TIPPIN")))
       g_UI.tipPin = (GlobalVariableGet(GetGVName("TIPPIN")) > 0.5);
-   // P-UI-161: the membership mask. A chart whose key is missing keeps the
-   // shipped default (`CIRC_STAR_DEFAULT`) — no version bump, because the default
-   // IS the answer for a first run (the shipped ring order).
-   if(GlobalVariableCheck(GetGVName("STAR")))
-      g_CircStarMask = (uint)GlobalVariableGet(GetGVName("STAR"));
+    // P-UI-161: the membership mask. CircStarLoad answers every case: a missing
+    // key = the shipped default, and an unstamped (pre-SESSIONS) key gets the
+    // clock starred once — the handoff's ONE writer lives in BiotakMenu_Ring.
+    g_CircStarMask = CircStarLoad(GetGVName("STAR"));
    // P-DRAW-89: the plate's transparency setting is retired. Its GV is swept on
    // attach below so a chart that carried the old key cannot resurrect the look.
    GlobalVariableDel(GetGVName("PLATE"));

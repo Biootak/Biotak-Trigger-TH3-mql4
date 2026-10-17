@@ -11,19 +11,94 @@
 //--- per tick, 0 writes; the ring is swept in CircPlacedCount() ticks and a hole
 //--- is rebuilt the tick it is seen (the tip's own one-probe-per-tick shape,
 //--- P-PERF-17). P-SIZE-1500 sent it here from BiotakMenu_C (its owner file).
+//--- P-UI-163c: while the fan is open the ring does not exist on purpose, so the
+//--- probe serves the CELLS then — one per tick, the same hole class (a failed
+//--- cell create was a permanent hole too: no writer re-created it). The whole
+//--- seat family is probed: bg+icon always, badge when the feature has one, and
+//--- the ring seat's badge likewise. Still ~2-4 ObjectFind/tick, 0 writes whole.
+//--- Parked cells are skipped: a hole off-page is invisible by definition and
+//--- heals the tick it is back on its page.
 void CircHealRingStep()
 {
-   if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;
+   if(!g_UI.menuVisible || g_OrbDragging) return;
+   if(g_ToolsOpen)
+   {
+      if(CAT_COUNT <= 0) return;
+      static int s_healCell = 0;
+      if(s_healCell >= CAT_COUNT) s_healCell = 0;
+      int t = s_healCell++;
+      if(!SubItemOnPage(t)) return;
+      bool bHole = (ObjectFind(0, ToolsBg(t)) < 0 || ObjectFind(0, ToolsIcon(t)) < 0 ||
+                    ObjectFind(0, ToolsStar(t)) < 0);
+      if(!bHole && CircHasBadge(ToolFeature(t)))
+         bHole = (ObjectFind(0, ToolsBadgeBg(t)) < 0 || ObjectFind(0, ToolsBadgeTxt(t)) < 0);
+      if(bHole)
+      {
+         ToolsCreateItem(t);   // the whole cell family; on-page by the gate above
+         DrawStripDiagEmit(StringFormat("[P-UI-163] tools heal cell=%d", t));
+      }
+      return;
+   }
    int n = CircPlacedCount();
    if(n <= 0) return;
    static int s_healSeat = 0;
    if(s_healSeat >= n) s_healSeat = 0;
    int i = s_healSeat++;
-   if(ObjectFind(0, CircBg(i)) < 0 || ObjectFind(0, CircIcon(i)) < 0)
+   bool bHole = (ObjectFind(0, CircBg(i)) < 0 || ObjectFind(0, CircIcon(i)) < 0);
+   if(!bHole && CircHasBadge(RingFeature(i)))
+      bHole = (ObjectFind(0, CircBadgeBg(i)) < 0 || ObjectFind(0, CircBadgeTxt(i)) < 0);
+   if(bHole)
    {
       CircCreateItem(i);
       DrawStripDiagEmit(StringFormat("[P-UI-163] ring heal seat=%d", i));
    }
+}
+
+// P-SIZE-1500 (2026-10-17): moved here from BiotakMenu_C, verbatim — its only
+// caller (BiotakKit's per-tick pass) loads after this file, and C sat 22 lines
+// over the ceiling. The law is unchanged: only a state edge runs the heavy pass.
+//+------------------------------------------------------------------+
+//| PERF: change-guarded periodic icon sync.                          |
+//| Re-setting OBJPROP_BMPFILE makes MT4 re-decode the bitmap, so the |
+//| old every-500ms unconditional pass churned the chart thread even  |
+//| when nothing changed. We fingerprint the on/off state of all ring |
+//| icons and only run the heavy pass when it actually differs.       |
+//+------------------------------------------------------------------+
+void UpdateMenuSyncIfChanged()
+{
+   static ulong s_LastStateHash = 0;
+
+   // FNV-1a fingerprint of ring + tools on/off state AND badge TEXT, so
+   // value-only changes (E/S hotkeys, factor override, TH mode) refresh the
+   // badges — not just on/off flips. P-UI-161: the star MASK is in the hash too,
+   // so a membership change repaints even when no feature state moved.
+   ulong h = 1469598103934665603;
+   h = (h ^ (ulong)g_CircStarMask) * 1099511628211;
+   for(int i = 0; i < CircPlacedCount(); i++)
+   {
+      int feat = RingFeature(i);
+      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
+      h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
+      string t = CircBadgeText(feat);
+      for(int c = 0; c < StringLen(t); c++)
+         h = (h ^ StringGetCharacter(t, c)) * 1099511628211;
+   }
+   for(int t = 0; t < CAT_COUNT; t++)
+   {
+      int feat = ToolFeature(t);
+      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
+      h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
+      string bt = CircBadgeText(feat);
+      for(int c = 0; c < StringLen(bt); c++)
+         h = (h ^ StringGetCharacter(bt, c)) * 1099511628211;
+   }
+   if(h == s_LastStateHash) return;   // nothing visible changed -> no churn
+   s_LastStateHash = h;
+
+   if(g_UI.menuVisible)
+      UpdateCircularItemStates();
+   UpdateCircularBadges();
+   CircTipRefresh();   // hovered tooltip follows the new state
 }
 
 // P-HTF-KEY — ONE owner for the HTF overlay switch: the R hotkey, the ring's

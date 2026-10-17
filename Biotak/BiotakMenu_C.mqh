@@ -370,6 +370,10 @@ void CreateToolsMenu()
    g_ToolsOpen = true;
    g_ToolsPage = 0;                             // always open on the first page
    SubInvalidateLayout();                       // fresh geometry for this open
+   // P-UI-163c: the ring is deleted below, so a shown seat tip (and a pending arm)
+   // must not outlive the seat it describes. The pinned orb banner is not a seat
+   // tip and survives (CircTipDisarm's own rule, P-UI-126).
+   CircTipDisarm();
    // SUB-MENU: hide EVERY main-ring item first (the orb stays). With nothing else
    // on screen the chosen geometry provably cannot overlap anything — any
    // position, any edge. The fan (r=112) and the full ring (r=100) genuinely
@@ -378,8 +382,15 @@ void CreateToolsMenu()
    // while the Tools menu is open must not leave the previous set's tail behind.
    for(int i = 0; i < RING_MAX_SEATS; i++)
    {
+      // P-UI-163c: the WHOLE seat family, the way DeleteRing's own sweep names it —
+      // the badge objects (alive while the feature is on) are part of the seat, so
+      // leaving them behind was the same bare-artifact class one layer down. The
+      // restore path is already complete: DeleteToolsMenu's CircCreateItem(i) walks
+      // CircCreateBadge (P-UI-163's own create-if-missing).
       ObjectDelete(0, CircIcon(i));
       ObjectDelete(0, CircBg(i));
+      ObjectDelete(0, CircBadgeBg(i));
+      ObjectDelete(0, CircBadgeTxt(i));
    }
    SubChromeCreate();                           // panel backdrop + header + pager
    for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
@@ -402,6 +413,8 @@ void DeleteToolsMenu(const bool restoreRing = true)
    g_ToolsOpen = false;
    g_ToolsPage = 0;                             // next open starts on page 1 again
    SubInvalidateLayout();
+   // P-UI-163c: the twin edge, a cell tip cannot describe a deleted cell.
+   CircTipDisarm();
    if(restoreRing && g_UI.menuVisible)          // bring the ring back
    {
       // P-UI-161: the ring is rebuilt from the mask the stars just wrote — a star
@@ -1162,8 +1175,17 @@ void CircShowBadge(const int i, const bool show)
 
 void UpdateCircularItemStates()
 {
-   for(int i = 0; i < CircPlacedCount(); i++)
-      CircUpdateItemState(i);
+   // P-UI-163c (MEASURED 2026-10-17, the 17:07 frame): the ring is HIDDEN while the
+   // Tools fan is open (CreateToolsMenu's own sweep) — so this pass must not rebuild
+   // it. A state change while open used to run the loop below, CircUpdateItemState
+   // re-created every missing icon (13 × `[P-UI-163] icon heal`) while the bg stayed
+   // deleted — the bare-glyph ring in the user's screenshot. Every other ring writer
+   // carries the guard (CreateMenu C:356, CircRelayoutIfNeeded C:482,
+   // ToggleMenuVisibility D:533, CircHealRingStep D:16); this loop was the odd one
+   // out. Cost: one bool test.
+   if(!g_ToolsOpen)
+      for(int i = 0; i < CircPlacedCount(); i++)
+         CircUpdateItemState(i);
    if(g_ToolsOpen)
       for(int t = 0; t < CAT_COUNT; t++) ToolsUpdateItemState(t);
 }
@@ -1186,49 +1208,8 @@ void UpdateCircularBadges()
    }
 }
 
-//+------------------------------------------------------------------+
-//| PERF: change-guarded periodic icon sync.                          |
-//| Re-setting OBJPROP_BMPFILE makes MT4 re-decode the bitmap, so the |
-//| old every-500ms unconditional pass churned the chart thread even  |
-//| when nothing changed. We fingerprint the on/off state of all ring |
-//| icons and only run the heavy pass when it actually differs.       |
-//+------------------------------------------------------------------+
-void UpdateMenuSyncIfChanged()
-{
-   static ulong s_LastStateHash = 0;
-
-   // FNV-1a fingerprint of ring + tools on/off state AND badge TEXT, so
-   // value-only changes (E/S hotkeys, factor override, TH mode) refresh the
-   // badges — not just on/off flips. P-UI-161: the star MASK is in the hash too,
-   // so a membership change repaints even when no feature state moved.
-   ulong h = 1469598103934665603;
-   h = (h ^ (ulong)g_CircStarMask) * 1099511628211;
-   for(int i = 0; i < CircPlacedCount(); i++)
-   {
-      int feat = RingFeature(i);
-      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
-      h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
-      string t = CircBadgeText(feat);
-      for(int c = 0; c < StringLen(t); c++)
-         h = (h ^ StringGetCharacter(t, c)) * 1099511628211;
-   }
-   for(int t = 0; t < CAT_COUNT; t++)
-   {
-      int feat = ToolFeature(t);
-      ulong v = (ulong)(CircFeatureLit(feat) ? 1 : 0);
-      h = (h ^ (v + 0x9E3779B97F4A7C15 * (ulong)(feat + 1))) * 1099511628211;
-      string bt = CircBadgeText(feat);
-      for(int c = 0; c < StringLen(bt); c++)
-         h = (h ^ StringGetCharacter(bt, c)) * 1099511628211;
-   }
-   if(h == s_LastStateHash) return;   // nothing visible changed -> no churn
-   s_LastStateHash = h;
-
-   if(g_UI.menuVisible)
-      UpdateCircularItemStates();
-   UpdateCircularBadges();
-   CircTipRefresh();   // hovered tooltip follows the new state
-}
+// P-SIZE-1500 (2026-10-17): UpdateMenuSyncIfChanged moved to BiotakMenu_D.mqh —
+// its only caller (BiotakKit's per-tick pass) loads after both files.
 
 int CircIndexFromName(const string name)
 {
