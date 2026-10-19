@@ -106,6 +106,14 @@ bool DrawStripLevelsRewrite(double &vals[], color &clrs[], int &wds[], int &sts[
    }
    FibPenTagDrop(s_dsObj);   // P-DRAW-74b: rewritten truth spends the memory
    FibPenSync(s_dsObj, false);   // P-DRAW-74b: rewritten truth converges here
+   //--- DIAG-139 (2026-10-18) — THE ONE FUNNEL EVERY MEMBERSHIP EDIT PASSES. The gear
+   //--- panel's typist commits with NO tap at all (DrawStripEditEnd, e1), so the ADD
+   //--- half of «لول دلخواه اضافه نمیشه» has no gesture to witness: the set it wrote is
+   //--- the only proof it ran, and it rides here for the remove half too (P-LOG-3).
+   string lvset = "";
+   for(int w = 0; w < n; w++) lvset += (w > 0 ? "|" : "") + DrawStripLevelName(vals[w]);
+   DrawStripDiagEmit("[drawstrip] LVLSET obj=\"" + s_dsObj + "\" n=" + IntegerToString(n) +
+                     " vals=" + lvset);
    return true;
 }
 void DrawStripLevelsCollect(double &vals[], color &clrs[], int &wds[], int &sts[], string &txts[], int &n)
@@ -157,7 +165,14 @@ bool DrawStripLevelsToggle(const double v)
       txts[n] = "";
       n++;
    }
-   return DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
+   bool lvlOk = DrawStripLevelsRewrite(vals, clrs, wds, sts, txts, n);
+   //--- P-DRAW-135: the toggle is the user's «کم و زیاد» gesture and it had NO witness
+   //--- on the flushed channel — «کم و زیاد نمیشه» was unprovable. Value, action,
+   //--- count and read-back ride one line (P-LOG-3).
+   DrawStripDiagEmit("[drawstrip] LVLTOG obj=\"" + s_dsObj + "\" v=" + DrawStripLevelName(nv) +
+                     " act=" + (at >= 0 ? "del" : "add") + " n=" + IntegerToString(n) +
+                     " ok=" + (lvlOk ? "1" : "0"));
+   return lvlOk;
 }
 //--- All / None for the common nine.
 bool DrawStripLevelsSetAll(const bool on)
@@ -223,7 +238,13 @@ bool DrawStripDuplicate()
       if(p > 0.0) ObjectSetDouble(0, nm, OBJPROP_PRICE, a, p);
    }
    ObjectSetInteger(0, nm, OBJPROP_COLOR, ObjectGetInteger(0, s_dsObj, OBJPROP_COLOR));
-   ObjectSetInteger(0, nm, OBJPROP_WIDTH, ObjectGetInteger(0, s_dsObj, OBJPROP_WIDTH));
+   //--- P-DRAW-74c: on a line the master's raw width is the DEMOTED 1 once stacked -
+   //--- the copy takes the LOGICAL width (asked of the stack) and the sync below
+   //--- re-forms the rows, or a 3 px line would clone as a 1 px dash.
+   int duW = (int)ObjectGetInteger(0, s_dsObj, OBJPROP_WIDTH);
+   if(duW <= DRAW_WIDTH_MIN && ObjectFind(0, PenStackName(s_dsObj, 0)) >= 0)
+      duW = PenStackLogicalWidth(s_dsObj);
+   ObjectSetInteger(0, nm, OBJPROP_WIDTH, duW);
    ObjectSetInteger(0, nm, OBJPROP_STYLE, ObjectGetInteger(0, s_dsObj, OBJPROP_STYLE));
    ObjectSetInteger(0, nm, OBJPROP_FILL, ObjectGetInteger(0, s_dsObj, OBJPROP_FILL));
    ObjectSetInteger(0, nm, OBJPROP_RAY_RIGHT, ObjectGetInteger(0, s_dsObj, OBJPROP_RAY_RIGHT));
@@ -262,6 +283,10 @@ bool DrawStripDuplicate()
       }
       FibPenSync(nm, false);   // P-DRAW-74b: the copy converges beside the copy
    }
+   //--- P-DRAW-74c: a copied line re-forms its rows beside itself in the same pass,
+   //--- so the clone never shows one frame as a bare 1 px dash before the open's
+   //--- converge reaches it. Refuses non-pen kinds itself.
+   PenStackSync(nm, false);
    s_duCopy = nm;
    ObjectSetInteger(0, nm, OBJPROP_SELECTED, true);
    DrawStripOpen(nm);
@@ -481,6 +506,7 @@ void DrawStripFireDelete()
          BoxEdgeForget(DrawSelAt(j));   // P-UI-132: a deleted box spends its edge memo here, not by expiry
          BoxMarkDrop(DrawSelAt(j));   // P-UI-134: ...and so does its marks KEY
          FibPenSync(DrawSelAt(j), true);   // P-DRAW-74b: strays and the tag die with the object
+      PenStackSync(DrawSelAt(j), true);   // P-DRAW-74c: the rows die with the line
          BoxMidDrop(DrawSelAt(j)); FillChildDrop(DrawSelAt(j)); ObjectDelete(0, DrawSelAt(j));
       }
    }
@@ -489,7 +515,7 @@ void DrawStripFireDelete()
       if(DrawIsHRay(s_dsObj)) HRayDelete(s_dsObj, "strip bin");   // P-HR-04
       // P-UI-136: and the single held object is a segment — the whole path goes.
       else if(DrawIsPathSeg(s_dsObj)) { string tmpId = ""; if(PathIdOfName(s_dsObj, tmpId)) PathDelete(tmpId, "strip bin"); }
-      else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); FibPenSync(s_dsObj, true); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
+      else { BoxEdgeForget(s_dsObj); BoxMarkDrop(s_dsObj); FibPenSync(s_dsObj, true); PenStackSync(s_dsObj, true); BoxMidDrop(s_dsObj); FillChildDrop(s_dsObj); ObjectDelete(0, s_dsObj); }
    }
    DrawStripClose();
    ChartRedraw();
@@ -512,6 +538,14 @@ bool DrawStripPickTap(const int row)
    if(s_dsPicker == DSTRIP_SLOT_LEVELS)
    {
       double v = DrawStripGearLevelAt(row);
+      //--- DIAG-139 (2026-10-18) — A LEVEL ROW HAD NO WITNESS OF ITS OWN. «لول دلخواه
+      //--- اضافه/حذف نمیشه» cannot be told from a tap that never reached the row, and
+      //--- the silent `return false` below drew no line either. The arrival, the
+      //--- popover's own row count and the value the row read back ride ONE flushed
+      //--- line (P-LOG-3: DrawStripDiagEmit, never Print).
+      DrawStripDiagEmit("[drawstrip] LVLPICK obj=\"" + s_dsObj + "\" row=" + IntegerToString(row) +
+                        " pn=" + IntegerToString(s_dsPN) + " v=" +
+                        (MathIsValidNumber(v) ? DrawStripLevelName(v) : "EMPTY"));
       if(!MathIsValidNumber(v)) return false;
       DrawStripLevelsToggle(v);
       DrawStripLayout();
@@ -576,10 +610,25 @@ bool DrawStripMoreTap(const int row)
    }
    if(kind == DSTRIP_MK_PRESET)
    {
-      DrawStripPresetApplyGroup(arg);
+      DrawStripTplApplyGroup(arg);
       DrawStripClosePicker();
       DrawStripLayout();
       DrawStripPaint();
+      return true;
+   }
+   if(kind == DSTRIP_MK_TPLNAV)
+   {
+      //--- P-DRAW-132: the rack REPEATS — the page after the last is the first, so
+      //--- one row walks every template without a second control. The popover stays
+      //--- open on the new page (the layout rebuilds its rows, GearA's builder).
+      int n = DrawTplCount(s_dsKind);
+      int pages = (n <= 0 ? 1 : (n + DRAW_TPL_PAGE - 1) / DRAW_TPL_PAGE);
+      s_dsTplPage[s_dsKind] = (s_dsTplPage[s_dsKind] + 1) % pages;
+      DrawStripLayout();
+      DrawStripPaint();
+      ChartRedraw();   // P-UI-131: a user action flushes its own frame
+      DrawStripDiagEmit("[drawstrip] TPLNAV obj=\"" + s_dsObj + "\" page=" +
+                        IntegerToString(s_dsTplPage[s_dsKind] + 1) + "/" + IntegerToString(pages));
       return true;
    }
    if(kind == DSTRIP_MK_SAVE)
@@ -592,6 +641,7 @@ bool DrawStripMoreTap(const int row)
       if(s_dsKind > DK_NONE && s_dsKind < DK_COUNT) s_dsGearMem[s_dsKind] = s_dsGear;
       DrawStripLayout();
       DrawStripPaint();
+      DrawStripTplNameFocus();   // P-DRAW-131: the field opens FOCUSED — type the name, Enter
       return true;
    }
    if(kind == DSTRIP_MK_DUPE) return DrawStripDuplicate();
@@ -666,6 +716,24 @@ bool DrawStripMoreTap(const int row)
       DrawStripPaint();
       return true;
    }
+   return true;
+}
+//--- P-DRAW-134 (2026-10-18) — the template row's ✕, the delete door the user
+//--- ordered visible («شیبف کلکی بردار بجاش یک دکمه حذف برای هر کدوم بزار»). The
+//--- delete itself is the ONE body (`DrawStripTplRowDelete`, DrawStrip_Paint.mqh);
+//--- this door adds the two facts a list mutation owes its popover: the rows moved
+//--- up, so the layout REBUILDS the seats (the page, the count, every row below)
+//--- and the paint shows it in the same frame. The popover STAYS OPEN — deleting
+//--- the next one is the gesture the user just learned, not a re-open.
+bool DrawStripPickTapDel(const int row)
+{
+   if(!s_dsOpen || s_dsObj == "") return false;
+   if(s_dsPicker != DSTRIP_MORE || row < 0 || row >= s_dsPN) return false;
+   if(s_dsMoreKind[row] != DSTRIP_MK_PRESET) return false;
+   if(!DrawStripTplRowDelete(s_dsMoreArg[row])) return false;
+   DrawStripLayout();
+   DrawStripPaint();
+   ChartRedraw();   // P-UI-131: a user action flushes its own frame
    return true;
 }
 //--- gear grid cells: swatches (P-DRAW-118), the two openers, and the chips.
@@ -755,7 +823,7 @@ bool DrawStripGearRowTap(const int r)
 
    if(kind == 2)
    {
-      DrawStripPresetApplyGroup(arg);
+      DrawStripTplApplyGroup(arg);
       DrawStripPaint();
       return true;
    }
@@ -766,6 +834,21 @@ bool DrawStripGearRowTap(const int r)
       s_dsTplNameArmed = true;
       DrawStripLayout();
       DrawStripPaint();
+      DrawStripTplNameFocus();   // P-DRAW-131: the second door focuses the field the same way
+      return true;
+   }
+   if(kind == 9)
+   {
+      //--- P-DRAW-132: the Look tab's page walk — the same repeat-the-list turn the
+      //--- more-popover's nav row takes, on the tab's own row list.
+      int n = DrawTplCount(s_dsKind);
+      int pages = (n <= 0 ? 1 : (n + DRAW_TPL_PAGE - 1) / DRAW_TPL_PAGE);
+      s_dsTplPage[s_dsKind] = (s_dsTplPage[s_dsKind] + 1) % pages;
+      DrawStripLayout();
+      DrawStripPaint();
+      ChartRedraw();   // P-UI-131: a user action flushes its own frame
+      DrawStripDiagEmit("[drawstrip] TPLNAV obj=\"" + s_dsObj + "\" page=" +
+                        IntegerToString(s_dsTplPage[s_dsKind] + 1) + "/" + IntegerToString(pages));
       return true;
    }
    if(kind == 4)
@@ -777,7 +860,12 @@ bool DrawStripGearRowTap(const int r)
       DrawStripPaint();
       return true;
    }
-   return true;
+   //--- P-DRAW-133 (2026-10-18): a stray `return true;` stood HERE and made every rung
+   //--- below it unreachable — kinds 5/6/7/8 (the level-set rows, the slot-visibility
+   //--- rows, the default-learn row, the glyph rows) compiled, painted and hit-tested
+   //--- perfectly and answered nothing: a painted control is not a working one
+   //--- (P-DRAW-84's law, one panel over). Gone — every kind the builders emit has a
+   //--- live branch from here down.
    if(kind == 5)
    {
       if(arg == 2)
@@ -872,9 +960,9 @@ bool DrawStripGearLevelDescTap(const int r)
 //--- the strip's own command group already carries a trash cell, so this was a
 //--- second, unconfirmed way to destroy the drawing. The head's X is the close.
 //--- P-DRAW-90 (2026-09-30): `Reset` is the design's own first command (the third
-//--- seat the panel was missing) — it puts THIS drawing back on its kind's factory
-//--- look, i.e. the kind's own built-in preset 0 (`DrawPresetApply`, Toolbar_B:
-//--- slots 0..DRAW_PRESET_BUILTIN-1 are the shipped looks), and it is UNDOABLE
+//--- seat the panel was missing) — it puts THIS drawing back on its kind's first
+//--- template, row 0 (`DrawTplApply`; P-DRAW-132: the rack is seeded on a first run,
+//--- so row 0 exists for every kind the user has not emptied), and it is UNDOABLE
 //--- like every other look change (DrawStripUndoPush, the same single-step undo the
 //--- more-popover's template rows push). `All` keeps its own action, one seat right;
 //--- `Copy` is the third. One action per seat, and the seat's glyph now matches it.
@@ -884,8 +972,8 @@ bool DrawStripFootTap(const int f)
    if(f == 0)
    {
       DrawStripUndoPush();
-      DrawPresetApply(s_dsObj, 0);
-      //--- P-DRAW-96 (2026-09-30): `DrawPresetApply` writes DRAW_SLOT_COLOR, so it owes
+      DrawTplApply(s_dsObj, 0);
+      //--- P-DRAW-96 (2026-09-30): `DrawTplApply` writes DRAW_SLOT_COLOR, so it owes
       //--- the box's own mid line the new ink — every other colour path in this group
       //--- carries `BoxMidSyncGroup()`/`BoxMidSyncServed()` for exactly that reason
       //--- (P-DRAW-64a), and Reset was the one that did not: after a Reset the 50 % line
@@ -919,6 +1007,10 @@ bool DrawStripGearGroupTap(const int gid)
    for(int i = 1; i <= s_dsGearGrp[0]; i++) if(s_dsGearGrp[i] == gid) known = true;
    if(!known) return false;
    DrawStripClosePicker();
+   //--- P-DRAW-131: a header tap FOLDS or SWITCHES the body away, and the armed
+   //--- name field dies with it — so the pending save commits HERE, before the
+   //--- group changes, while the field still holds the user's own word.
+   DrawStripTplCommit("group");
    if(s_dsGear == gid) s_dsGearCollapsed = !s_dsGearCollapsed;
    else { s_dsGear = gid; s_dsGearCollapsed = false; }
    // P-DRAW-26: the kind remembers its group (a shut panel remembers shut).
@@ -1021,13 +1113,12 @@ bool DrawStripEditEnd(const int e)
       return true;
    }
    // P-DRAW-25: the armed save commits under the typed name (empty keeps the
-   // "My N" fallback inside DrawPresetCapture). The file write is the commit.
+   // "My N" fallback inside DrawTplSaveAs). The file write is the commit.
+   // P-DRAW-131: Enter is ONE door into the same commit every exit uses — one
+   // owner for the write, so «clicked away» and Enter cannot drift apart.
    if(e == 3 && s_dsGear == DSTRIP_GEAR_TPL && s_dsTplNameArmed)
    {
-      string t = txt;
-      StringTrimLeft(t); StringTrimRight(t);
-      DrawPresetCaptureAndSave(s_dsObj, t);
-      s_dsTplNameArmed = false;
+      DrawStripTplCommit("enter");
       DrawStripLayout();
       DrawStripPaint();
       return true;

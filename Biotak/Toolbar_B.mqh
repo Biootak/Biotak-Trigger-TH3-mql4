@@ -24,7 +24,7 @@
 // to the object's own seat. Cost on a still frame: zero.
 // Cost per native change: one property read and one scan of at most
 // DRAW_INK_MEMO_MAX names. The write rides the memory's own owner
-// (`DrawPresetsSave`) — there is never a second persistence path.
+// (`DrawTplSave`) — there is never a second persistence path.
 // ══════════════════════════════════════════════════════════════════════════
 #define DRAW_INK_MEMO_MAX 48
 static string s_inkMemoNm[DRAW_INK_MEMO_MAX];
@@ -235,6 +235,8 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          if(DrawKindHasLevels(k))
             DrawLevelsSetColor(name, DrawSlotFillPure(name, ip) ? DrawSlotRenderFillColor(name, ip) : rc);
          if(DrawKindHasFillBody(k)) FillChildSync(name);
+         //--- P-DRAW-74c: and a line's rows wear the same ink - one write reaches the stack.
+         PenStackSync(name, false);
          //--- P-DRAW-130: a preview writes the drawing and learns nothing; only the
          //--- hand's own pick teaches the kind what it last wore.
          if(remember)
@@ -253,6 +255,12 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          int w = (int)MathRound(v);
          if(w < DRAW_WIDTH_MIN) w = DRAW_WIDTH_MIN;
          if(w > DRAW_WIDTH_MAX) w = DRAW_WIDTH_MAX;
+         //--- P-DRAW-74c (2026-10-17): the pick IS the logical width; the stack is only
+         //--- the visible half. A pick of 1 is the one write the stack cannot express on
+         //--- its own (children outrank a width-1 read - the fibo's accepted ambiguity),
+         //--- so it is resolved HERE, where the user's intent is known: the rows die
+         //--- first and the sync then keeps the plain 1 px.
+         bool penKind = PenStackServes(name);
          // P-UI-136: the path is one drawing — the pen lands on every segment.
          if(DrawIsPathSeg(name)) PathFamilySet(name, OBJPROP_WIDTH, w);
          else if(!DrawKindHasLevels(k)) ObjectSetInteger(0, name, OBJPROP_WIDTH, w);
@@ -260,6 +268,11 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          //--- (`DRAW_SLOT_BODYWIDTH`), so neither choice restyles the other.
          if(DrawKindHasLevels(k)) DrawLevelsSetWidth(name, w);
          if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkWidth[k] = w;   // P-HR-04/P-UI-136: rays and paths learn nothing
+         if(penKind)
+         {
+            if(w <= DRAW_WIDTH_MIN) PenStackStraysDrop(name);
+            PenStackSync(name, false);
+         }
          //--- P-DRAW-74: a thick pen paints solid, so the pair resolves here - the
          //--- one owner, asked on the way every chip, preset and undo already takes.
          DrawStylePairCoerce(name);
@@ -275,10 +288,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          //--- ONE writer that translates the pick: the tag first, then the native style
          //--- the look really draws with.
          int lk = 0;
-         if(st > (int)STYLE_DASHDOTDOT && DrawKindHasLevels(k))
+         if(st > (int)STYLE_DASHDOTDOT && FibPenServesName(name))
          {
-            int cand = st - (int)STYLE_DASHDOTDOT;   // 5 -> 1, 6 -> 2, 7 -> 3
-            if(cand >= FIBPEN_LOOK_NEON && cand <= FIBPEN_LOOK_WASH) lk = cand;
+            lk = DrawLookFromSlot(st);   // P-UNIFY-4: 5 -> 1, 6 -> 2, 7 -> 3; 8 and above -> 0
             if(lk > 0) FibPenLookSet(name, lk);
          }
          if(st < 0) st = 0;
@@ -289,7 +301,13 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          else if(DrawKindHasLevels(k)) FibPenLookDrop(name);
          if(st != (int)STYLE_SOLID)
          {
-            if((int)ObjectGetInteger(0, name, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
+            //--- P-DRAW-74c (2026-10-17) — AND THE FOLD IS THE FIBO'S LAW TOO: on a pen
+            //--- kind the OBJECT's own width is the LOGICAL memory until the first
+            //--- demotion, so folding it here - one write before the style lands and two
+            //--- before the sync reads - erases the thickness the pick means to apply.
+            //--- The sync below writes the visible 1 itself.
+            bool penKind = FibPenServesName(name) || PenStackServes(name);   // P-UNIFY-3: the pen's own four; the other level kinds fall back to the native fold
+            if(!penKind && (int)ObjectGetInteger(0, name, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
                ObjectSetInteger(0, name, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
             //--- P-DRAW-74b (2026-10-04) — ON A PEN KIND THE WIDTH LIVES IN THE STACK.
             //--- While no stack exists, the LEVEL widths ARE the logical width
@@ -299,7 +317,6 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
             //--- pen then read 1, built nothing and the level came out a plain 1 px dash,
             //--- i.e. «استایل‌ها روی ضخامت‌های بزرگ اعمال نمی‌شد». Only the OBJECT's own
             //--- width is folded for these kinds; their levels are the pen's business.
-            bool penKind = (k == DK_FIBO || k == DK_FIBOFAN);
             if(!penKind) DrawLevelsSetWidth(name, DRAW_WIDTH_MIN);
             //--- ...and the kind's remembered WIDTH is the LOGICAL one on a pen kind, so
             //--- a dash pick must not fold it to 1 either (the next fibo would be born
@@ -313,7 +330,15 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
          //--- seat, and the pair law (a dash is a one-pixel pen) is asked there, not here.
          else if(!DrawKindHasLevels(k)) ObjectSetInteger(0, name, OBJPROP_STYLE, st);
          if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, st);
-         if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkStyle[k] = st;   // P-HR-04/P-UI-136
+         //--- P-UNIFY-4b: the KIND's memory keeps the LOOK's slot, not its native
+         //--- half - otherwise the next drawing of this kind is born with the right
+         //--- dash and no `[LKn]` tag (Caps/Wash silently gone).
+         int memSt = (lk > 0 ? DrawLookToSlot(lk) : st);
+         if(!DrawIsHRay(name) && !DrawIsPathSeg(name)) s_dkStyle[k] = memSt;   // P-HR-04/P-UI-136
+         //--- P-DRAW-74c: a line's rows wear the master's pattern - demote the undrawable
+         //--- pair and re-dress the stack in ONE pass (a solid pick above the rows already
+         //--- dissolved them back into the master's width). Refuses non-pen kinds itself.
+         PenStackSync(name, false);
          DrawStylePairCoerce(name);                  // P-DRAW-74: a dash is a 1 px pen
          break;
       }
@@ -367,6 +392,13 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
                   ObjectSetInteger(0, name, OBJPROP_FILL, false);
                FillChildDrop(name);
             }
+            //--- P-PEN-ALL: THE INTERIOR IS A LATER PIXEL THAN THE OUTLINE'S ROWS. MT4
+            //--- paints in CREATION order (P-LOG-10), so a fill child that appeared after
+            //--- a shape's pen rows covers the half of the thickness that lies inside the
+            //--- outline. The sync re-states the pen in this same frame; it sees the
+            //--- transition in its own net and rebuilds the rows above the interior. One
+            //--- transition, then silence — a still frame pays two memo reads.
+            PenStackSync(name, false);
             break;
          }
          ObjectSetInteger(0, name, OBJPROP_FILL, f);
@@ -392,6 +424,10 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
             ObjectSetString(0, name, OBJPROP_TEXT, dd);
          if(remember) s_dkFillClr[k] = ic;   // P-DRAW-130: a preview's fill is not a remembered fill
          if(DrawKindHasFillBody(k)) FillChildSync(name);
+         //--- P-PEN-ALL: the interior's own colour is a pick like the FILL switch, and
+         //--- on a shape it can bring the fill child into being (FillChildSync ensures
+         //--- it) — so the pen is re-stated in the same frame, above the new pixel.
+         PenStackSync(name, false);
          if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, DrawSlotRenderFillColor(name, ic));
          break;
       }
@@ -519,7 +555,9 @@ bool DrawSlotWrite(const string name, const int slot, const double v, const bool
       //--- P-DRAW-09c (2026-10-04): the ONE slot writer persists what it just learned —
       //--- «همیشه آخرین تغییرات روی ابجکت پیش‌فرض بشه» is true only if the last change
       //--- survives the session. One write per user act; a still frame never reaches here.
-      DrawPresetsSave();
+      //--- P-DRAW-132: EXCEPT while an apply holds the pen — a template apply writes the
+      //--- whole look (5..9 slots) and pays the file write ONCE, after its last slot.
+      if(s_dkTplHold <= 0) DrawTplSave();
    }
    return true;
 }
@@ -557,7 +595,15 @@ bool DrawStylePairCoerce(const string name)
    //--- `FibPenSync` owns the visible pair for these kinds — a styled level is drawn at
    //--- width 1 with the thickness carried by the stack — so the pair is legal by
    //--- construction and this coercion has nothing true to say about it.
-   if(k == DK_FIBO || k == DK_FIBOFAN) return false;
+   if(FibPenServesName(name)) return false;   // P-UNIFY-3: the pen's own four — its sync owns the visible pair; the other level kinds fall back to the native fold
+   //--- P-DRAW-74c (2026-10-17) — A LINE PEN KIND IS NOT THIS FUNCTION'S OBJECT EITHER,
+   //--- the same law one family over. Its LOGICAL width lives on the master (before the
+   //--- first demotion) or in the rows (after it), and this function can only see - or
+   //--- produce - the demoted 1. The fold it would write erases the memory one write
+   //--- before `PenStackSync` reads it: the dash would come out a plain 1 px and the
+   //--- thickness would vanish - P-DRAW-74b's defect, one family over. The sync owns
+   //--- the visible pair for these kinds; the pair is legal by construction.
+   if(PenStackServes(name)) return false;
    int w = (int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
    int st = (int)ObjectGetInteger(0, name, OBJPROP_STYLE);
    if(w < DRAW_WIDTH_MIN) w = DRAW_WIDTH_MIN;
@@ -621,10 +667,23 @@ bool DrawStyleApplyOnCreate(const string name)
    }
    if((DrawKindCaps(k) & DRAW_CAP_STYLE) != 0)
    {
-      ObjectSetInteger(0, name, OBJPROP_STYLE, s_dkStyle[k]);
-      if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, s_dkStyle[k]);
+      //--- P-UNIFY-4b: the memory is a SLOT (5/6/7 = a look). Translate ONCE, here:
+      //--- the terminal gets the look's native half and its `[LKn]` tag goes back on
+      //--- the drawing, so the next attach or a fresh drawing keeps Neon/Caps/Wash.
+      int memSt = s_dkStyle[k];
+      int mlk = (memSt > (int)STYLE_DASHDOTDOT ? DrawLookFromSlot(memSt) : 0);
+      int native = (mlk > 0 ? FibPenLookNative(mlk) : memSt);
+      if(native < 0 || native > (int)STYLE_DASHDOTDOT) native = (int)STYLE_SOLID;
+      ObjectSetInteger(0, name, OBJPROP_STYLE, native);
+      if(DrawKindHasLevels(k)) DrawLevelsSetStyle(name, native);
+      if(mlk > 0 && FibPenServesName(name)) { FibPenLookSet(name, mlk); FibPenSync(name, false); }
+      else if(DrawKindHasLevels(k)) FibPenLookDrop(name);
    }
    DrawStylePairCoerce(name);   // P-DRAW-74: the remembered pair is coerced, not trusted
+   //--- P-DRAW-74c: a fresh line born with a remembered THICK + DASH pair is stacked
+   //--- here, at birth - otherwise it would flash a solid thick line until the next
+   //--- heal pass. The sync reads the remembered width off the master and demotes it.
+   PenStackSync(name, false);
    //--- P-DRAW-64: the interior first (the look it was born with), then the fill
    //--- that shows it — the child is made with the colour already on the drawing.
    if((DrawKindCaps(k) & DRAW_CAP_FILLCLR) != 0 && (int)s_dkFillClr[k] >= 0)
@@ -647,191 +706,6 @@ bool DrawStyleApplyOnCreate(const string name)
    return true;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// P-DRAW-02 — THE PRESET LAYER: «چند نوع فیبو که هر بار لازم نباشه از نو تنظیم
-// بکنه». Built-in suggestions AND the user's own, per drawing KIND.
-//
-// WHY A PRESET IS NOT A SETTING. A setting is one value the user changes; a
-// preset is a WHOLE LOOK — colour, width, style, fill, ray — that a trader
-// thinks of as one thing ("my demand box", "the fibo I trade with"). MT4 has no
-// such concept at all: its own dialog can only save the CURRENT object's look as
-// the default for the NEXT one, one object type at a time, and it cannot name
-// it, cannot keep several, and cannot share it between two types of drawing.
-// That gap is exactly what this layer fills, and it is the reason the strip can
-// stay TINY: the presets are the power, the strip is the reach.
-//
-// THE MODEL. Every kind owns `DRAW_PRESET_MAX` slots. Slots 0..n are the
-// BUILT-IN suggestions (fixed, seeded by `DrawPresetsInit`); the rest are the
-// user's own (`DrawPresetCapture` writes the object's CURRENT look into a slot,
-// which is how "save this as my box" is spelled without a text field). Applying
-// a preset writes the whole look in one call and LEARNS it, so the next drawing
-// of that kind wears it too — the same "last change saved" rule as P-DRAW-01,
-// one level up.
-//
-// WHY THE PRESETS ARE PER KIND AND NOT GLOBAL. A fibo's level family and a
-// rectangle's fill are different animals; a shared list would offer a rectangle
-// a look it cannot wear. Per kind, every offered preset is always applicable —
-// the strip can therefore show them all without a single disabled row.
-// ══════════════════════════════════════════════════════════════════════════
-#define DRAW_PRESET_MAX  6      // 3 built-in suggestions + 3 the user owns
-#define DRAW_PRESET_BUILTIN 3   // slots 0..2 are the suggestions
-//--- P-DRAW-09c (2026-10-04) — THE LOOK OUTLIVES THE SESSION. «همیشه آخرین تغییرات
-//--- روی ابجکت پیش‌فرض بشه و هر سری نیاز نباشه تنظیم بکن» — the kind memory already
-//--- made the last look the default of the NEXT drawing of that kind; what it did not
-//--- do was survive an attach, so the first fibo of every session was born factory
-//--- fresh. The nine values pack into TWO exact doubles and ride the presets' own file
-//--- in this reserved slot, which is OUTSIDE every preset band on purpose (so the
-//--- band's own guard can never eat the row).
-#define DRAW_LASTLOOK_SLOT 255
-//--- P-DRAW-INK (2026-10-04) — THE ONE INK EVERY KIND SHARES. The kind's own colour
-//--- answers «what did THIS kind last wear»; this answers the question the hand's own
-//--- report asks («چرا رنگش پیش‌فرض که میکشم سفید هستش؟ آخرین تغییرات آبی بود»): which
-//--- colour the LAST pick painted, whichever kind it painted. A kind that has no
-//--- colour of its own takes it at birth (a first-ever fibo wears the blue the last
-//--- trendline was). Its own reserved row, one below the look's.
-#define DRAW_LASTINK_SLOT  254
-
-struct DrawPreset
-{
-   bool   used;
-   string name;
-   color  clr;
-   int    width;
-   int    style;
-   bool   fill;
-   int    ray;
-};
-
-static DrawPreset s_dkPreset[DK_COUNT][DRAW_PRESET_MAX];
-
-void DrawPresetSet(const EDrawKind k, const int slot, const string nm,
-                   const color c, const int w, const int st, const bool fl, const int ry)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return;
-   if(slot < 0 || slot >= DRAW_PRESET_MAX) return;
-   s_dkPreset[k][slot].used  = true;
-   s_dkPreset[k][slot].name  = nm;
-   s_dkPreset[k][slot].clr   = c;
-   s_dkPreset[k][slot].width = w;
-   s_dkPreset[k][slot].style = st;
-   s_dkPreset[k][slot].fill  = fl;
-   s_dkPreset[k][slot].ray   = ry;
-}
-
-//--- THE SUGGESTIONS. Three per kind family, chosen to be the three looks a
-//--- trader actually reaches for: the plain one, the loud one, and the quiet one.
-//--- Nothing here is a preference of the indicator's — they are SEEDS the user
-//--- overwrites in one long press (see the strip's TEMPLATE slot).
-void DrawPresetsInit()
-{
-   for(int k = 0; k < DK_COUNT; k++)
-      for(int i = 0; i < DRAW_PRESET_MAX; i++)
-      {
-         s_dkPreset[k][i].used  = false;
-         s_dkPreset[k][i].name  = "";
-         s_dkPreset[k][i].clr   = clrNONE;
-         s_dkPreset[k][i].width = 1;
-         s_dkPreset[k][i].style = (int)STYLE_SOLID;
-         s_dkPreset[k][i].fill  = false;
-         s_dkPreset[k][i].ray   = 0;
-      }
-   //--- lines and rays: the workhorses
-   DrawPresetSet(DK_LINE, 0, "Trend",   clrDodgerBlue, 1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_LINE, 1, "Ray",     clrOrangeRed,  1, (int)STYLE_SOLID,     false, 1);
-   DrawPresetSet(DK_LINE, 2, "Quiet",   clrGray,       1, (int)STYLE_DOT,       false, 0);
-   //--- the horizontal/vertical levels: two looks, one for marking, one for reading
-   DrawPresetSet(DK_HLINE, 0, "Level",  clrGold,       2, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_HLINE, 1, "Marker", clrRed,        1, (int)STYLE_DASH,      false, 0);
-   DrawPresetSet(DK_HLINE, 2, "Quiet",  clrSilver,     1, (int)STYLE_DOT,       false, 0);
-   DrawPresetSet(DK_VLINE, 0, "Session",clrGold,       1, (int)STYLE_DASH,      false, 0);
-   DrawPresetSet(DK_VLINE, 1, "Marker", clrRed,        1, (int)STYLE_SOLID,     false, 0);
-   //--- the fibo family: the levels ARE the object, so the presets carry the
-   //--- LEVEL look (colour/style/width) that MT4 makes the user set level by level
-   DrawPresetSet(DK_FIBO, 0, "Classic", clrGold,       1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_FIBO, 1, "Zones",   clrOrange,     1, (int)STYLE_DASH,      false, 0);
-   DrawPresetSet(DK_FIBO, 2, "Quiet",   clrDimGray,    1, (int)STYLE_DOT,       false, 0);
-   DrawPresetSet(DK_FIBOFAN, 0, "Classic", clrGold,    1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_FIBOFAN, 1, "Zones",   clrOrange,  1, (int)STYLE_DASH,      false, 0);
-   DrawPresetSet(DK_FIBOCHAN, 0, "Classic", clrGold,   1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_FIBOCHAN, 1, "Filled",  clrGold,   1, (int)STYLE_SOLID,     true,  0);
-   DrawPresetSet(DK_EXPANSION, 0, "Classic", clrGold,  1, (int)STYLE_SOLID,     false, 0);
-   //--- the boxes: the user's own example («چند باکس پرکاربرد»)
-   DrawPresetSet(DK_RECT, 0, "Box",     clrDodgerBlue, 1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_RECT, 1, "Zone",    clrTeal,       1, (int)STYLE_DASH,      true,  0);
-   DrawPresetSet(DK_RECT, 2, "Demand",  clrCrimson,    1, (int)STYLE_SOLID,     true,  0);
-   DrawPresetSet(DK_TRIANGLE, 0, "Wedge", clrDodgerBlue, 1, (int)STYLE_SOLID,   true,  0);
-   DrawPresetSet(DK_TRIANGLE, 1, "Quiet", clrGray,     1, (int)STYLE_DASH,      false, 0);
-   DrawPresetSet(DK_ELLIPSE, 0, "Cycle", clrDodgerBlue, 1, (int)STYLE_SOLID,    false, 0);
-   DrawPresetSet(DK_CHANNEL, 0, "Channel", clrDodgerBlue, 1, (int)STYLE_SOLID,  false, 0);
-   DrawPresetSet(DK_CHANNEL, 1, "Quiet",   clrGray,     1, (int)STYLE_DASH,     false, 0);
-   DrawPresetSet(DK_GANN, 0, "Gann",    clrGold,       1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_PITCHFORK, 0, "Fork", clrDodgerBlue, 1, (int)STYLE_SOLID,   false, 0);
-   DrawPresetSet(DK_ARROW, 0, "Mark",   clrRed,        1, (int)STYLE_SOLID,     false, 0);
-   DrawPresetSet(DK_TEXT, 0, "Note",    clrWhite,      1, (int)STYLE_SOLID,     false, 0);
-}
-
-//--- the number of slots that are actually FILLED for a kind (built-ins first,
-//--- then the user's own) — what the strip's TEMPLATE list shows, and nothing else.
-int DrawPresetCount(const EDrawKind k)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return 0;
-   int n = 0;
-   for(int i = 0; i < DRAW_PRESET_MAX; i++) if(s_dkPreset[k][i].used) n++;
-   return n;
-}
-string DrawPresetName(const EDrawKind k, const int slot)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return "";
-   if(slot < 0 || slot >= DRAW_PRESET_MAX) return "";
-   return s_dkPreset[k][slot].used ? s_dkPreset[k][slot].name : "";
-}
-bool DrawPresetIsBuiltin(const int slot) { return (slot >= 0 && slot < DRAW_PRESET_BUILTIN); }
-
-//--- ONE TAP: the whole look, onto the object AND into the kind's memory.
-bool DrawPresetApply(const string name, const int slot)
-{
-   if(name == "" || ObjectFind(0, name) < 0) return false;
-   EDrawKind k = DrawKindOf(name);
-   if(k == DK_NONE || slot < 0 || slot >= DRAW_PRESET_MAX) return false;
-   if(!s_dkPreset[k][slot].used) return false;
-   DrawSlotWrite(name, DRAW_SLOT_COLOR, (double)(int)s_dkPreset[k][slot].clr);
-   DrawSlotWrite(name, DRAW_SLOT_WIDTH, (double)s_dkPreset[k][slot].width);
-   DrawSlotWrite(name, DRAW_SLOT_STYLE, (double)s_dkPreset[k][slot].style);
-   if(DrawSlotAvailable(k, DRAW_SLOT_FILL))
-      DrawSlotWrite(name, DRAW_SLOT_FILL, s_dkPreset[k][slot].fill ? 1.0 : 0.0);
-   if(DrawSlotAvailable(k, DRAW_SLOT_RAY))
-      DrawSlotWrite(name, DRAW_SLOT_RAY, (double)s_dkPreset[k][slot].ray);
-   return true;
-}
-
-//--- «save this as my own»: the object's CURRENT look into the next free slot
-//--- (or the given one). The NAME is the caller's business — the strip hands it
-//--- the object's own label, so a saved preset is never an anonymous number.
-bool DrawPresetCapture(const string name, const string label)
-{
-   if(name == "" || ObjectFind(0, name) < 0) return false;
-   EDrawKind k = DrawKindOf(name);
-   if(k == DK_NONE) return false;
-   DrawStylePairCoerce(name);   // P-DRAW-74: never learn an illegal pair from the terminal dialog
-   int slot = -1;
-   for(int i = DRAW_PRESET_BUILTIN; i < DRAW_PRESET_MAX; i++)
-      if(!s_dkPreset[k][i].used) { slot = i; break; }
-   if(slot < 0) slot = DRAW_PRESET_MAX - 1;   // full: the newest user slot is overwritten
-   DrawPresetSet(k, slot,
-                 (label == "" ? ("My " + IntegerToString(slot - DRAW_PRESET_BUILTIN + 1)) : label),
-                 (color)(int)DrawSlotRead(name, DRAW_SLOT_COLOR),
-                 (int)DrawSlotRead(name, DRAW_SLOT_WIDTH),
-                 (int)DrawSlotRead(name, DRAW_SLOT_STYLE),
-                 (DrawSlotRead(name, DRAW_SLOT_FILL) > 0.5),
-                 (int)DrawSlotRead(name, DRAW_SLOT_RAY));
-   return true;
-}
-
-//--- P-DRAW-76: `DrawPresetApplyToKind` (a chart-wide walk per apply) is DELETED. P-DRAW-03's
-//--- "one look, every drawing of the kind" is live as `DrawStyleApplyToKind` (the popover's
-//--- APPLY-ALL row), and a preset reaches a whole GROUP through the strip's own selection loop
-//--- (`DrawStripPresetApplyGroup` -> `DrawPresetApply` per member). Two owners of one act was
-//--- the defect, and this one had no caller in any commit.
 
 // ══════════════════════════════════════════════════════════════════════════
 // P-DRAW-04 — THE PERFORMANCE CONTRACT OF THIS MODULE. «کاربر اندیکاتور کند قبول
@@ -856,7 +730,7 @@ bool DrawPresetCapture(const string name, const string label)
 //     every entry point starts with a bool read (is there anything to do?).
 //
 // THE MOUSE STREAM IS NEVER WALKED. `DrawSlotRead/Write` touch ONE named object
-// (3-4 terminal calls); `DrawPresetApply` touches one object; the create hook
+// (3-4 terminal calls); `DrawTplApply` touches one object; the create hook
 // runs once per object the user draws. A per-move repaint of the strip is the
 // renderer's own business and re-reads the slots of the ONE held object — never
 // the chart.
@@ -891,169 +765,75 @@ void DrawHitCacheClear()
    s_dkAtMs = 0;
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// P-DRAW-07 — THE PRESETS LIVE IN A FILE, BECAUSE A NAME IS NOT A NUMBER.
-//
-// P-DRAW-05 stored one slot per GlobalVariable and hit the terminal's own wall:
-// a GV holds a DOUBLE, so the user's label («My Box», «Supply 4H») had nowhere
-// to go and every user slot came back as "My 1". That is the shape of limit this
-// project refuses to ship: a template the user cannot NAME is a template they
-// cannot find — exactly the ceiling MT4's own dialog has, where a look can only
-// be "the last one" and never "my demand box".
-//
-// So the store is a FILE. MQL4's file API carries strings, and the project
-// already keeps persistent state in files (the base-price history), so this is
-// the codebase's own language, not a new one:
-//
-//   MQL4/Files/Biotak/DrawPresets.csv      (ONE file, GLOBAL, not per chart)
-//   kind ; slot ; name ; packed-look
-//
-// WHY ONE GLOBAL FILE AND NOT ONE PER CHART: a template is the USER's look, not
-// the chart's — «چند نوع فیبو که هر بار لازم نباشه از نو تنظیم بکنه» is a
-// statement about the trader, and the same fibo look belongs on every chart they
-// open. The chart id stays out of the name for that reason.
-//
-// The look itself is still ONE number (colour 24 bits · width 3 · style 3 ·
-// fill 1 · ray 2 = 33 bits, exact in a double, unpacked through `long`), so a
-// line is four fields and the whole file is a few hundred bytes.
-//
-// WRITES ARE RARE AND GUARDED: a save happens when a slot is captured or
-// changed, never per frame, and `DrawPresetsSave` compares the slot it would
-// write against the one it already has on disk only through its caller's own
-// change detection (`DrawPresetCapture` / the strip's edit) — the file is
-// rewritten in full, which for 8 slots × 17 kinds is trivial and keeps ONE
-// writer instead of an append log to reconcile.
-// ══════════════════════════════════════════════════════════════════════════
-#define DRAW_PRESET_DIR  "Biotak"
-#define DRAW_PRESET_FILE "Biotak\\DrawPresets.csv"
-
-string DrawPresetPath() { return DRAW_PRESET_FILE; }
-
-double DrawPresetPack(const DrawPreset &p)
+//--- P-DRAGF3d (2026-10-17) — THE PEN'S THIRD ANSWER: THE SELECTED LEVEL FAMILY'S
+//--- FULL SHAPE, THE DIAGONAL INCLUDED. MEASURED (the 20:51 frame,
+//--- biotak_diag_EURUSD_134362571361933137: FIBPENPRE view=on 25 against FIBPENARM 22 —
+//--- 4 of the 25 real drags armed only at the release door, the user's own
+//--- «بعضی وقتا که سریع»): a fast flick grabs the fibo by a line the press pick never
+//--- measures. The press naming spans the LEVEL LINES (DrawHitLevels, t1..t2 at each
+//--- level's own price) and the anchor handles (DrawHitSelectedHandle), but the
+//--- anchor-to-anchor DIAGONAL — with the object's own RAY_LEFT/RIGHT, the part of a
+//--- fibo a hand is on most — is tested by neither, so the press named nothing, the
+//--- P-DRAGF3c trip never fired, and the stack stood frozen until the release door.
+//--- The terminal's own pick DOES grab there, and a grab is a selection: this asks
+//--- THAT, fenced by the cursor still resting on the full grabbable shape. The fence
+//--- is exact because a pan holds a selected fibo at the cursor's own paper offset —
+//--- cursor on the shape at the first traveled move is a terminal DRAG, cursor off it
+//--- can only be a pan. One walk per press (the trip's own memo spends it, miss or
+//--- hit); the cost note above stands — this is press-edge work merely DECIDED at the
+//--- first traveled move.
+bool DrawFiboFullHit(const string name, const int px, const int py)
 {
-   long v = (long)(int)p.clr;
-   v += ((long)p.width << 24);
-   v += ((long)p.style << 27);
-   v += ((long)(p.fill ? 1 : 0) << 30);
-   v += ((long)p.ray << 31);
-   return (double)v;
-}
-void DrawPresetUnpack(const double raw, DrawPreset &p)
-{
-   long v = (long)raw;
-   p.clr   = (color)(int)(v & 0xFFFFFF);
-   p.width = (int)((v >> 24) & 0x7);
-   p.style = (int)((v >> 27) & 0x7);
-   p.fill  = (((v >> 30) & 0x1) != 0);
-   p.ray   = (int)((v >> 31) & 0x3);
-   p.used  = true;
-}
-
-//--- the whole store, one line per slot, the user's NAME included. The built-ins
-//--- are NOT written: they are code, and freezing today's suggestions into a file
-//--- would make tomorrow's build ship yesterday's defaults.
-//--- P-DRAW-09c (2026-10-04) — THE LAST LOOK, PACKED EXACTLY. Two doubles carry the
-//--- nine values of one kind's memory: word A holds the border's pair (colour 24 bits,
-//--- width 3, style 3, fill 1, ray 2) plus the three appended looks (font 7, glyph 8,
-//--- back 1) and a PRESENCE BIT at 33; word B holds the interior's colour (24 bits)
-//--- and its own presence bit at 24. Nothing is ever a guess: `clrNONE` is -1 and
-//--- `-1 & 0xFFFFFF` is WHITE, so the presence bit is what tells "no colour of its own"
-//--- from a colour nobody chose (P-DRAW-75's rule, one file over).
-double DrawStylePackA(const int k)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return 0.0;
-   long v = (long)((int)s_dkColor[k] & 0xFFFFFF);
-   v += ((long)(s_dkWidth[k] & 0x7) << 24);
-   v += ((long)(s_dkStyle[k] & 0x7) << 27);
-   v += ((long)((s_dkFill[k] ? 1 : 0)) << 30);
-   v += ((long)(s_dkRay[k] & 0x3) << 31);
-   v += ((long)(((int)s_dkColor[k] >= 0) ? 1 : 0) << 33);
-   v += ((long)(s_dkFont[k] & 0x7F) << 34);
-   v += ((long)(s_dkGlyph[k] & 0xFF) << 41);
-   v += ((long)((s_dkBack[k] ? 1 : 0)) << 49);
-   return (double)v;
-}
-double DrawStylePackB(const int k)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return 0.0;
-   long v = (long)((int)s_dkFillClr[k] & 0xFFFFFF);
-   v += ((long)(((int)s_dkFillClr[k] >= 0) ? 1 : 0) << 24);
-   return (double)v;
-}
-//--- THE UNPACK — the other half of the SAME contract. Word B is 25 bits by design, so
-//--- its own mask (`0x1FFFFFF`) is what keeps the presence bit and the colour in one
-//--- read; word A's fields are read with the shifts its pack wrote, and a colour is
-//--- returned only when the presence bit says there was one.
-void DrawStyleUnpack(const int k, const double rawA, const double rawB)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return;
-   long a = (long)rawA;
-   s_dkColor[k] = (((((a >> 33) & 0x1) != 0)) ? (color)(int)(a & 0xFFFFFF) : clrNONE);
-   s_dkWidth[k] = (int)((a >> 24) & 0x7);
-   s_dkStyle[k] = (int)((a >> 27) & 0x7);
-   s_dkFill[k]  = (((a >> 30) & 0x1) != 0);
-   s_dkRay[k]   = (int)((a >> 31) & 0x3);
-   s_dkFont[k]  = (int)((a >> 34) & 0x7F);
-   s_dkGlyph[k] = (int)((a >> 41) & 0xFF);
-   s_dkBack[k]  = (((a >> 49) & 0x1) != 0);
-   long b = (long)rawB;
-   b &= 0x1FFFFFF;   // word B is 25 bits: 24 of colour + its own presence bit
-   s_dkFillClr[k] = ((((b >> 24) & 0x1) != 0) ? (color)(int)(b & 0xFFFFFF) : clrNONE);
-   s_dkValid[k] = true;
-}
-
-void DrawPresetsSave()
-{
-   int h = FileOpen(DrawPresetPath(), FILE_WRITE | FILE_CSV | FILE_ANSI, ';');
-   if(h == INVALID_HANDLE) return;
-   for(int k = 1; k < DK_COUNT; k++)
+   if(DrawHitSelectedHandle(name, px, py)) return true;   // the visible anchor controls
+   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+   if(!DrawAnchorXY(name, 0, x1, y1) || !DrawAnchorXY(name, 1, x2, y2)) return false;
+   bool oA = ((int)ObjectGetInteger(0, name, OBJPROP_RAY_LEFT) != 0);
+   bool oB = ((int)ObjectGetInteger(0, name, OBJPROP_RAY_RIGHT) != 0);
+   if(DrawSegDist(px, py, x1, y1, x2, y2, oA, oB) <= (double)DRAW_HIT_PX) return true;   // the diagonal
+   // the level lines, measured the way the terminal DRAWS them — P-LOOK-ANCHOR's law on
+   // a plain fibo, and P-UNIFY-3's per-kind geometry on the fan, the channel and the
+   // expansion (two ends, the kind's own) — extended by the same ray pair, so a fibo
+   // that runs edge to edge is grabbed along its whole run.
+   int n = DrawLevelCount(name);
+   if(n <= 0) return false;
+   datetime t1 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 0);
+   datetime t2 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 1);
+   double   p1 = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
+   double   p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
+   if(t1 <= 0 || !(p1 > 0.0) || !(p2 > 0.0)) return false;
+   EDrawKind k = DrawKindOf(name);
+   bool three = (k == DK_FIBOCHAN || k == DK_EXPANSION);
+   datetime t3 = three ? (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 2) : 0;
+   double   p3 = three ? ObjectGetDouble(0, name, OBJPROP_PRICE, 2) : 0.0;
+   if(three && (t3 <= 0 || !(p3 > 0.0))) return false;
+   int xa = 0, ya = 0, xb = 0, yb = 0;
+   for(int k2 = 0; k2 < n; k2++)
    {
-      for(int i = DRAW_PRESET_BUILTIN; i < DRAW_PRESET_MAX; i++)
-      {
-         if(!s_dkPreset[k][i].used) continue;
-         FileWrite(h, (int)k, i, s_dkPreset[k][i].name,
-                   DoubleToString(DrawPresetPack(s_dkPreset[k][i]), 0));
-      }
-      //--- P-DRAW-09c: the kind's LAST LOOK rides the same file, in the reserved slot
-      //--- (outside every preset band). A kind the user never styled writes nothing, so
-      //--- the load can leave it factory-fresh (the test's own «nobody styled» case).
-      if(!s_dkValid[k]) continue;
-      FileWrite(h, (int)k, DRAW_LASTLOOK_SLOT,
-                DoubleToString(DrawStylePackB(k), 0), DoubleToString(DrawStylePackA(k), 0));
+      double v = DrawLevelValue(name, k2);
+      if(!MathIsValidNumber(v)) continue;
+      double la = DrawLevelPriceAt(k, v, t1, p1, t2, p2, t3, p3, t1);
+      double lb = DrawLevelPriceAt(k, v, t1, p1, t2, p2, t3, p3, t2);
+      if(!(la > 0.0) || !(lb > 0.0)) continue;
+      if(!ChartTimePriceToXY(0, 0, t1, la, xa, ya)) continue;
+      if(!ChartTimePriceToXY(0, 0, t2, lb, xb, yb)) continue;
+      if(DrawSegDist(px, py, xa, ya, xb, yb, oA, oB) <= (double)DRAW_HIT_PX) return true;
    }
-   //--- P-DRAW-INK: and the ONE ink every kind shares has its own row. It is not a
-   //--- kind's look, so it does not ride a kind's slot: a single reserved row answers
-   //--- the next attach's first drawing.
-   if((int)s_dkAnyClr >= 0)
-      FileWrite(h, 1, DRAW_LASTINK_SLOT, IntegerToString((int)s_dkAnyClr), "0");
-   FileClose(h);
+   return false;
+}
+string DrawSelectedFiboAt(const int px, const int py)
+{
+   int total = ObjectsTotal(0, -1, -1);
+   for(int i = total - 1; i >= 0; i--)
+   {
+      string nm = ObjectName(0, i, -1, -1);
+      if(nm == "" || DrawIsIndicatorObject(nm)) continue;
+      if(!FibPenServesName(nm)) continue;   // P-UNIFY-3: the pen's own four — a pitchfork and an arc have no chase
+      if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) continue;
+      if(DrawFiboFullHit(nm, px, py)) return nm;
+   }
+   return "";
 }
 
-//--- called once per attach, right after the suggestions are seeded: a slot the
-//--- user saved wins over the empty one it is restored into, NAME and all.
-void DrawPresetsLoad()
-{
-   int h = FileOpen(DrawPresetPath(), FILE_READ | FILE_CSV | FILE_ANSI, ';');
-   if(h == INVALID_HANDLE) return;
-   while(!FileIsEnding(h))
-   {
-      int k = (int)StringToInteger(FileReadString(h));
-      int i = (int)StringToInteger(FileReadString(h));
-      string nm = FileReadString(h);
-      string pk = FileReadString(h);
-      if(FileIsEnding(h) && pk == "") break;
-      //--- P-DRAW-09c / P-DRAW-INK: the two reserved rows are answered BEFORE the preset
-      //--- bands reject them — 255 and 254 are outside every band ON PURPOSE, so a guard
-      //--- read first would eat the very rows these features write.
-      if(i == DRAW_LASTLOOK_SLOT) { DrawStyleUnpack(k, StringToDouble(pk), StringToDouble(nm)); continue; }
-      if(i == DRAW_LASTINK_SLOT) { int ink = (int)StringToInteger(nm); if(ink >= 0) s_dkAnyClr = (color)ink; continue; }
-      if(k <= DK_NONE || k >= DK_COUNT) continue;
-      if(i < DRAW_PRESET_BUILTIN || i >= DRAW_PRESET_MAX) continue;
-      DrawPresetUnpack(StringToDouble(pk), s_dkPreset[k][i]);
-      s_dkPreset[k][i].name = (nm == "" ? ("My " + IntegerToString(i - DRAW_PRESET_BUILTIN + 1)) : nm);
-   }
-   FileClose(h);
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // P-DRAW-128 — THE NATIVE SURFACE'S PICK IS A PICK TOO.
@@ -1079,41 +859,16 @@ void DrawInkLearnNative(const string name)
    s_dkColor[k] = c;
    s_dkAnyClr   = c;
    s_dkValid[k] = true;
-   DrawPresetsSave();
+   DrawTplSave();
 }
 
-//--- P-DRAW-76: ONE slot goes, on the user's own say-so. The BUILT-INS refuse: they are code
-//--- (`DrawPresetsInit` seeds them), and "delete a suggestion" would have to mean "put the
-//--- suggestion back". The file is rewritten in full by the same single writer every capture
-//--- uses (P-DRAW-08b), so the user's numbering survives the hole.
-bool DrawPresetClear(const EDrawKind k, const int slot)
-{
-   if(k <= DK_NONE || k >= DK_COUNT) return false;
-   if(slot < 0 || slot >= DRAW_PRESET_MAX || DrawPresetIsBuiltin(slot)) return false;
-   if(!s_dkPreset[k][slot].used) return false;
-   s_dkPreset[k][slot].used = false;
-   s_dkPreset[k][slot].name = "";
-   DrawPresetsSave();
-   return true;
-}
-//--- P-DRAW-76: `DrawPresetsForget()` (a whole-file `FileDelete`) stood here and is DELETED.
-//--- Its note claimed "the OFF paths and a removed instance must not leave the file behind",
-//--- but the shipped design is the opposite: P-DRAW-05 loads the user's own templates at init
-//--- and they must OUTLIVE the session, so wiring that delete into a teardown would have wiped
-//--- them on an ordinary re-attach. It had no caller in any commit.
-
-//--- P-DRAW-08b: THE ONE CALL A UI SHOULD MAKE when the user says "save this
-//--- look as mine". The capture and the persist are one act — a capture that is
-//--- not written is a template the user loses on the next attach, which is the
-//--- failure mode P-DRAW-05 was retired for. It lives HERE (after both halves)
-//--- because MQL4 has no forward declarations, and the strip calls this, never
-//--- the two separately.
-bool DrawPresetCaptureAndSave(const string name, const string label)
-{
-   if(!DrawPresetCapture(name, label)) return false;
-   DrawPresetsSave();
-   return true;
-}
+//--- P-DRAW-132: `DrawPresetClear` (P-DRAW-76) and `DrawPresetCaptureAndSave`
+//--- (P-DRAW-08b) stood here. The named store above owns both now — `DrawTplDelete`
+//--- (a compaction, so no hole survives a removal) and `DrawTplSaveAs` (one act:
+//--- capture + persist) — and the built-in refusal died with the concept itself:
+//--- every row of the rack is the user's, seeds included.
+//--- The P-DRAW-76 note for `DrawPresetsForget()` (a whole-file `FileDelete`) is
+//--- kept: the file must OUTLIVE the session, so no teardown may delete it.
 
 //--- P-DRAW-08f: "ALL" MEANS **THIS** LOOK, not "the preset the strip happens to
 //--- be cycling". The cycle index is the strip's own state and the user cannot see
@@ -1273,6 +1028,8 @@ string DrawKindName(const EDrawKind k)
       case DK_ELLIPSE:   return "Ellipse";
       case DK_ARROW:     return "Arrow";
       case DK_TEXT:      return "Text";
+      case DK_TANGLE:    return "Trend by Angle";   // P-UNIFY-2
+      case DK_CYCLES:    return "Cycles";           // P-UNIFY-2
       default:           return "Drawing";
    }
 }

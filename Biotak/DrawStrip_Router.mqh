@@ -337,6 +337,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
    static uint s_drN = 0;      // DIAG-140: drag events in the open window
    static uint s_drMs = 0;     // ...window start (ms)
    static string s_drObj = ""; // ...owner under the hand
+   static string s_dsArmTried = "";   // P-DRAGF3c: the press this gesture already tried to arm
    //--- P-DRAW-64 addendum 5 (2026-09-27) — THE INTERIOR'S STEP IS NOT THE STRIP'S.
    //--- This witness stands ABOVE EVERY GUARD below, because the split belongs to
    //--- the DRAWING: with the strip shut, the old placement sat two hundred lines
@@ -366,6 +367,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       //--- net for gestures that fire no event at all.
       BoxMidSync(sparam);
       FibPenSync(sparam, false);   // P-DRAW-74b: the pair rides the same event (reads on a still frame)
+      PenStackSync(sparam, false);   // P-DRAW-74c: and the line's rows ride it too
       //--- P-DRAW-128 (2026-10-13) — AND THE NATIVE SURFACE'S COLOUR IS LEARNED.
       //--- The terminal's own properties dialog and floating toolbar write
       //--- OBJPROP_COLOR directly and land HERE as OBJECT_CHANGE — the one channel
@@ -377,7 +379,12 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       if(id == CHARTEVENT_OBJECT_CHANGE) DrawInkLearnNative(sparam);
       // P-DRAGF: arm the chase — the drag event names the hand's object, the moves
       // do the following (FibPen.mqh). Drag-rate cost: kind + existence reads.
-      if(id == CHARTEVENT_OBJECT_DRAG) FibPenDragArm(sparam);
+      if(id == CHARTEVENT_OBJECT_DRAG)
+      {
+         FibPenDragArm(sparam);
+         PenStackDragArm(sparam);   // P-DRAW-74c: the same hand names both pens
+         BoxPreviewArm(sparam);   // P-DRAGF4: and the box family's interior goes native
+      }
       // P-DRAW-74b-f (2026-10-03) — A DRAG FLUSHES ITS OWN FRAME. The terminal
       // blits the dragged master live and repaints followers on its own cadence,
       // so a resized fibo's stack trailed one frame behind for the whole gesture
@@ -453,6 +460,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
 
             DrawHitCacheClear();   // the hit memo is a GESTURE's, never a session's
             s_dsPressObj = DrawObjectAtCached(tmx, tmy);  // P-UI-113i: own the press
+            s_dsArmTried = "";   // P-DRAGF3c: a new press earns its own arm attempt
             FillChildStampArm(s_dsPressObj);   // P-DRAW-64 addendum 6: the hand's own ride
              DrawStripOpenerDisarm();   // P-UI-113c: a NEW press is never the old gesture
              DrawStripHoldSelectionDisarm();  // P-UI-113g: nor may the repair fight it
@@ -528,11 +536,71 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        //--- followers belong to the drawing: the chase stands here, above every guard,
        //--- beside the press edge that already owns the button. Cost with nothing armed:
        //--- two compares.
-       // P-DRAGF: the chase rides the hand's own stream — drag events arrive ~1-2/s
-       // (measured DRAGSTAT) while moves arrive ~60-100/s. Button-held only;
-       // anything else disarms instead of following.
-       if(tleft) FibPenDragFollow((int)lparam, (int)dparam);
-       else FibPenDragDisarm();
+        // P-DRAGF: the chase rides the hand's own stream — drag events arrive ~1-2/s
+        // (measured DRAGSTAT) while moves arrive ~60-100/s. Button-held only;
+        // anything else disarms instead of following.
+        //--- P-DRAGF3c (2026-10-17) - THE FIRST TRAVELED MOVE ARMS WHAT THE TERMINAL
+        //--- NAMES TOO LATE. MEASURED (the 20:17 flick, biotak_diag_EURUSD_1343625713):
+        //--- OBJECT_DRAG (id=2) arrived in the SAME TICK as the release, so the preview
+        //--- lived ~10 ms per gesture - `FIBPENPRE view=on lv=1 hid=8` -> `view=off`
+        //--- beside `FIBPENMOV moved=14`. Through the motion the stack stood FROZEN at
+        //--- the old seat and snapped at the release. The press ALREADY named its
+        //--- drawing (s_dsPressObj, P-UI-113i) and the travel is ALREADY measured
+        //--- (s_dsTravel, the click-toggle's own veto) - so the gesture's true start is
+        //--- the first move past DSTRIP_CLICK_SLOP: a hold never arms (no travel), a
+        //--- click never arms, a drag arms on its first real move and the stack is
+        //--- hidden from the first frame of motion. The memo is per press (reset on
+        //--- both edges), so the attempt costs one DragArm call; later moves clear the
+        //--- name check and hit DragArm's own same-name early return.
+        //--- P-DRAGF3d (2026-10-17) — THE PRESS THAT NAMED NOTHING CAN STILL BE THE
+        //--- PEN'S. MEASURED (the 20:51 frame, biotak_diag_EURUSD_134362571361933137:
+        //--- FIBPENPRE view=on 25 against FIBPENARM 22 — 4 of the 25 real drags armed
+        //--- only at the release door, the user's own «بعضی وقتا که سریع»): a fast flick
+        //--- grabs the fibo by its DIAGONAL or a ray-extended line, which the press
+        //--- naming measures nowhere (level spans and anchor handles only), so
+        //--- s_dsPressObj stays empty and the trip never fires. The terminal's own pick
+        //--- DOES grab there, and a grab is a selection — DrawSelectedFiboAt asks THAT,
+        //--- fenced by the cursor still resting on the full grabbable shape. ONE walk
+        //--- per press: the memo is spent on a miss too ("@" — no name and no answer),
+        //--- so the pan case pays it once, never per move.
+         string armAsk = s_dsPressObj;
+         if(tleft && armAsk == "" && s_dsArmTried == "" && s_dsTravel > DSTRIP_CLICK_SLOP)
+         {
+            armAsk = DrawSelectedFiboAt(tmx, tmy);
+            //--- P-DRAGF4: and the box/line the terminal's own pick grabbed (a selected
+            //--- object under the cursor, still grabbable there) — one walk per press,
+            //--- spent on a miss like the fibo's.
+            if(armAsk == "") armAsk = DrawSelectedObjectAt(tmx, tmy);
+            if(armAsk == "") s_dsArmTried = "@";   // the probe is spent: no name, no re-walk
+         }
+         if(tleft && armAsk != "" && armAsk != s_dsArmTried && s_dsTravel > DSTRIP_CLICK_SLOP)
+         {
+            s_dsArmTried = armAsk;
+            FibPenDragArm(armAsk);
+            PenStackDragArm(armAsk);   // P-DRAW-74c: the same trip names the line pen
+            BoxPreviewArm(armAsk);   // P-DRAGF4: and hands the box's interior to the terminal
+            if(s_fibDragObj != "")
+               DrawStripDiagEmit("[drawstrip] FIBPENARM obj=\"" + s_fibDragObj + "\" travel=" +
+                                 IntegerToString(s_dsTravel));
+            if(s_psDragObj != "")
+               DrawStripDiagEmit("[drawstrip] PENSTACKARM obj=\"" + s_psDragObj + "\" travel=" +
+                                 IntegerToString(s_dsTravel));
+         }
+         if(tleft) FibPenDragFollow((int)lparam, (int)dparam);
+         if(tleft) PenStackDragFollow((int)lparam, (int)dparam);   // P-DRAW-74c: the rows ride the hand too
+         else
+         {
+            // P-DRAGF3: the button-up move is the SECOND release door - the hand can let
+            // go with no click event naming an object (released off-chart, plate switch).
+            // A preview still armed here must converge NOW (un-hide + re-demote), and this
+            // move pays the flush for it because no other channel will.
+            if(FibPenPreviewEnd()) ChartRedraw();
+            if(PenStackPreviewEnd()) ChartRedraw();
+            if(BoxPreviewEnd()) ChartRedraw();   // P-DRAGF4: the interior returns on the final seat
+            FibPenDragDisarm();
+            PenStackDragDisarm();
+            s_dsArmTried = "";   // P-DRAGF3c: the next press earns a fresh arm attempt
+         }
     }
 
     // P-DRAW-17: THE OPEN PATH RUNS BEFORE THE GUARD — the guard below says the strip
@@ -580,14 +648,26 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        //--- end of every gesture AND names its own object — so this one call is the
        //--- cheap witness that repairs it in the frame the hand lets go, before the
        //--- dismissal below can return. Once per gesture, ~12 guarded reads.
+         // P-DRAGF3: EVERY release ends a preview - named or not. The button-up move
+         // may never arrive (the two release channels are one click and one object
+         // click, and neither is a press), and an armed preview left behind would hold
+         // the body native with its stack hidden until the next gesture's arm. The
+         // named block's own ChartRedraw below flushes this call's un-hide too; the
+         // unnamed path (press cycle already cleared) flushes on this verdict.
+         bool fbPrev = FibPenPreviewEnd();
+         if(PenStackPreviewEnd()) fbPrev = true;   // P-DRAW-74c: the same law, the line pen
+         if(BoxPreviewEnd()) fbPrev = true;   // P-DRAGF4: and the box's interior goes back
          if(relPressObj != "")
          {
             FillChildSync(relPressObj);
             BoxMidSync(relPressObj);
             FibPenSync(relPressObj, false);   // P-DRAW-74b: the release re-states the pair too
+            PenStackSync(relPressObj, false);   // P-DRAW-74c: ...and the line's rows on the final seat
             FibPenDragDisarm();   // P-DRAGF: the gesture is over, the chase stands down
+            PenStackDragDisarm();
             ChartRedraw();   // P-DRAW-74b-f: the release flushes the re-stamp
          }
+         else if(fbPrev) ChartRedraw();   // P-DRAGF3: the unnamed release flushes its own un-hide
         FillChildStampRelease();   // P-DRAW-64 addendum 6: the hand let go, so the memo rests
 
        s_dsPressObj = "";
@@ -699,6 +779,11 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // FAMILY (9 skin pieces, or the legacy rect) — any of them is the plate.
       if(DrawStripIsBg(sparam))
       {
+         //--- DIAG-139 (2026-10-18): THE PLATE EATS THE POPOVER. A tap that misses a row
+         //--- by a pixel lands here and SHUTS the picker instead of toggling a level —
+         //--- «لول دلخواه حذف نمیشه» and a list that closes under the hand are this line.
+         DrawStripDiagEmit("[drawstrip] POPPLATE obj=\"" + sparam + "\" picker=" +
+                           IntegerToString(s_dsPicker));
          //--- P-DRAW-48: the BOARD's own plate is dead space — a near miss between
          //--- two cells (the 8 px gap) landed on the plate's body and shut the whole
          //--- board, which is half of the report «روی رنگ کلیک میکنم بسته میشه».
@@ -749,6 +834,14 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
        //--- cell asks the CARDS' palette instead). The role switch now lives where the
        //--- role is: the two bars on the cell, and the popup's two named chips
        //--- (P-DRAW-64a2).
+       //--- P-DRAW-134: THE TEMPLATE ROW'S OWN ✕, ASKED BEFORE THE ROW LOOP — the ✕
+       //--- button is the topmost control under its own pixels (the foot-glyph lesson,
+       //--- P-DRAW-83): the click the user aims at the ✕ must not fall through to the
+       //--- row's apply. Its glyph face rides the same branch — whichever of the two
+       //--- the terminal reports.
+      for(int rd = 0; rd < DSTRIP_PICK_MAX; rd++)
+         if(sparam == DrawStripPickDelName(rd) || sparam == DrawStripPickDelFaceName(rd))
+         { DrawStripPickTapDel(rd); return DrawStripClickFamily(); }
        // popover rows (button, face, label — one tap).
       for(int r = 0; r < DSTRIP_PICK_MAX; r++)
       {
@@ -756,7 +849,15 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
              sparam == DrawStripPickLabelName(r) || sparam == DrawStripPickChipName(r) ||
              sparam == DrawStripPickRailName(r) || sparam == DrawStripPickGlassName(r))
 
-         { DrawStripPickTap(r); return DrawStripClickFamily(); }
+          {
+             //--- DIAG-139 (2026-10-18): NAME THE ROW THE TAP REACHED, before the picker
+             //--- reads it — a missing line is the click that never arrived (P-DRAW-84's
+             //--- class), which is what a "dead" row looks like from the journal.
+             DrawStripDiagEmit("[drawstrip] ROWTAP picker=" + IntegerToString(s_dsPicker) +
+                               " row=" + IntegerToString(r) + " nm=\"" + sparam + "\"");
+             DrawStripPickTap(r);
+             return DrawStripClickFamily();
+          }
       }
       // gear grid cells, rows, foot. Edits take focus for typing.
       //--- P-DRAW-117 (2026-10-01): THE TAB LOOP IS GONE WITH THE TAB ROW. A group
@@ -784,6 +885,17 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
            if(sparam == DrawStripFootName(f) || sparam == DrawStripFootSkinName(f) ||
               sparam == DrawStripFootGlyphName(f) || sparam == DrawStripFootLabelName(f))
           { DrawStripFootTap(f); return DrawStripClickFamily(); }
+       //--- P-DRAW-131b: the armed name row's Save — the fourth door into the ONE
+       //--- commit. A button fires OBJECT_CLICK natively; the coordinate walk (Base)
+       //--- answers the ghost margins — both end in the same owner.
+       if(sparam == DrawStripTplSaveName() || sparam == DrawStripTplSaveName() + "B" ||
+          sparam == DrawStripTplSaveName() + "G" || sparam == DrawStripTplSaveName() + "T")
+       {
+          DrawStripTplCommit("save");
+          DrawStripLayout();
+          DrawStripPaint();
+          return DrawStripClickFamily();
+       }
 
       for(int e = 0; e < 5; e++)
          if(sparam == DrawStripEditName(e)) return DrawStripClickFamily();
@@ -811,6 +923,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
          if(FibPenStraysDrop(sparam)) casc = true;
          if(FibPenTagDrop(sparam)) casc = true;
          if(FibPenLookDrop(sparam)) casc = true;
+         if(PenStackStraysDrop(sparam)) casc = true;   // P-DRAW-74c: the rows die with the line
       }
       BoxEdgeForget(sparam);
       BoxMidDrop(sparam);
@@ -854,6 +967,7 @@ bool DrawStripOnEvent(const int id, const long &lparam, const double &dparam, co
       // P-DRAW-74b-f: a zoom re-measures pixel offsets (scroll is reads-only, the
       // moves compare equal). Served object only — no walks on the scroll path.
       if(id == CHARTEVENT_CHART_CHANGE) FibPenSync(s_dsObj, false);
+      if(id == CHARTEVENT_CHART_CHANGE) PenStackSync(s_dsObj, false);   // P-DRAW-74c: the rows' ring re-measures with it
       return false;
    }
    // P-DRAW-13: the grip carry rides the terminal's own move stream (left = bit 0,

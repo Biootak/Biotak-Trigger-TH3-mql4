@@ -1722,8 +1722,8 @@ function main() {
       broken.push('tools/check-shot-freshness.js is gone \u2014 nothing compares the terminal\u2019s PNGs with the code');
     } else {
       // (a) wanted = the HARNESS's own list, so a new state cannot be unshot.
-      if (!/SS\(\?:State\|Kind\)/.test(gate119) || !/HARNESS/.test(gate119))
-        broken.push('the gate must parse the state list OUT of tests/Biotak_StripShot_Test.mq4 (a hand-kept list goes stale in silence)');
+      if (!/SS\(\?:State\|Kind\|FiboLook\|Pen\)/.test(gate119) || !/HARNESS/.test(gate119))
+        broken.push('the gate must parse the state list OUT of tests/Biotak_StripShot_Test.mq4 — every ask, the look and pen states included (a hand-kept or partial list goes stale in silence)');
       // (b) the three verdicts, and the OLDEST copy winning.
       for (const w of ['fresh', 'stale', 'missing'])
         if (!gate119.includes(w)) broken.push(`the gate no longer reports \u201c${w}\u201d`);
@@ -1748,6 +1748,18 @@ function main() {
         broken.push(`the ${g} now treats exit 2 as a warning \u2014 only the real-pixels gate defines that code`);
     if (!/if \(\$shotLaunch -and \$shotOk\) \{[\s\S]{0,200}?-Name "real pixels gate \(strict\)"/.test(ps))
       broken.push('the strict run must sit behind \u201cthe shot actually captured something\u201d, else a prepare-only -Shot fails the build');
+    // (f) THE LAUNCH'S OWN WIRING (addendum 2026-10-18 — the -Shot run that would have
+    //     shown the 3D look had NEVER run). MEASURED: MT4 reads the ini as a BARE
+    //     argument (its own help example is `terminal.exe config\start.ini`). The
+    //     colon-suffixed switch of MT5 is silently IGNORED: the profile opened, no
+    //     extra chart, no script, and the run died in 120 s of silence. Gate it with
+    //     the fix, and mutate it - a rule needs its inverse to fail somewhere.
+    if (/\/config:/.test(ps))
+      broken.push('the shot launch passes the ini with a colon switch \u2014 MT4 reads a BARE path argument, and the prefixed form is MT5 spelling that MT4 ignores in silence (profile opens, no chart, no script, 120 s wait)');
+    if (!/\$shotArgs = \("\$\(\$shotStart\.Args\) `"\$configPath`""\)\.Trim\(\)/.test(ps))
+      broken.push('the shot launch no longer hands the ini to the terminal as a bare argument \u2014 the working form is `terminal.exe "<path-to-ini>"`');
+    if (!/Write-Host "        terminal\.exe `"\$configPath`""/.test(ps))
+      broken.push('the printed NEXT line no longer shows the bare-argument launch \u2014 a user who runs the printed command by hand would get the silent profile launch');
 
     // (d) the page: it must say WHICH build its pixels are, and read both places.
     const ba = linesOf(BEFORE_AFTER) ? fs.readFileSync(BEFORE_AFTER, 'utf8') : '';
@@ -1766,7 +1778,7 @@ function main() {
     // (e) the harness: the list must still be a list, and the zero-width panel_fold
     //     state (the accordion\u2019s own pixel) must still be shot.
     const harn = linesOf(SHOT_HARNESS) ? fs.readFileSync(SHOT_HARNESS, 'utf8') : '';
-    const tags = [...harn.matchAll(/SS(?:State|Kind)\s*\(\s*"([A-Za-z0-9_]+)"/g)].map((m) => m[1]);
+    const tags = [...harn.matchAll(/SS(?:State|Kind|FiboLook)\s*\(\s*"([A-Za-z0-9_]+)"/g)].map((m) => m[1]);
     if (new Set(tags).size < 10)
       broken.push(`tests/Biotak_StripShot_Test.mq4 asks for ${new Set(tags).size} state(s): the gate would call an empty column \u201ccurrent\u201d`);
     if (!tags.includes('panel_fold'))
@@ -3007,6 +3019,48 @@ function main() {
       broken.push('the span is only ever RAISED — a row whose span differs never takes it back (P-LOOK-RAY2)');
     if (/ObjectSetInteger\(0, nm2, OBJPROP_RAY_(LEFT|RIGHT), true\)/.test(fib))
       broken.push('a hardcoded TRUE ray is back on the stack — the pen covers a span the line does not have (P-LOOK-RAY2)');
+    // P-LOOK-ANCHOR (2026-10-18) — MT4 PUTS 0 % AT THE SECOND ANCHOR. MEASURED on the
+    // shot chart (StripShot_fibo_3d3.png, AMarkets A1660; anchors p0=1.12135, p1=1.12298):
+    // the band wearing the «0.0» label sits at PRICE,1 (y=445) and «423.6» at
+    // PRICE,1 + (PRICE,0 - PRICE,1) * 4.236 = 1.11605 (y=633) — the label text and the
+    // pixels agree within 1 px on all nine bands, so the terminal's law is
+    // `lv = PRICE,1 + (PRICE,0 - PRICE,1) * v`. The old `p1 + (p2 - p1) * v` wore the
+    // mirror twin R(1 - v): every child sat under the wrong level (the «3D واقعی نیست»
+    // report — its orphan dashes measured at y=305/376/420) and the press naming
+    // (DrawHitLevels) and drag arm (DrawFiboFullHit) measured lines MT4 never draws.
+    // Six sites stated the law by hand. P-UNIFY-3 (2026-10-19) moved five of them behind
+    // ONE owner — Toolbar_A's `DrawLevelPriceAt` (the terminal's horizontal law is its
+    // fallback; a Channel/Fan/Expansion carry laws of their own there) — and the chase
+    // keeps its one inline statement (the drag stream is the hot path). The gate asks the
+    // owner AND every seat that spends it.
+    {
+      const tbaA = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+      const tbbA = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+      //--- P-SIZE-1500's split (2026-10-19): the two hit tests left Toolbar_A for
+      //--- Toolbar_Hit.mqh, so the law is asked of the file that now owns the pick.
+      const tbhA = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_Hit.mqh')) || []);
+      const broken = [];
+      if (!/return pb \+ \(pa - pb\) \* v;/.test(tbaA))
+        broken.push('the one geometry owner lost the terminal\'s horizontal law — 0 % at the second anchor (P-LOOK-ANCHOR)');
+      if (!/lvA = DrawLevelPriceAt\(k, v, ta, p1, tb, p2, t3, p3, ts0\)/.test(fib) ||
+          !/lvB = DrawLevelPriceAt\(k, v, ta, p1, tb, p2, t3, p3, ts1\)/.test(fib))
+        broken.push('the sync rows wear the mirror twin — every child sits at R(1 - v) (P-LOOK-ANCHOR)');
+      if (!/lva = pb \+ \(pa - pb\) \* v;/.test(fib))
+        broken.push('the chase wears the mirror twin — a dragged family lands under another level (P-LOOK-ANCHOR)');
+      if (!/lpA = DrawLevelPriceAt\(k, vv4,/.test(fib) || !/lpB = DrawLevelPriceAt\(k, vv4,/.test(fib))
+        broken.push('the caps wear the mirror twin (P-LOOK-ANCHOR)');
+      if (!/hpA = lva\[l5\] \+ 2\.0 \* px;/.test(fib) || !/hpB = lvb\[l5\] \+ 2\.0 \* px;/.test(fib))
+        broken.push('the wash halo wears the mirror twin (P-LOOK-ANCHOR)');
+      if (!/la = DrawLevelPriceAt\(k, v, t1, p1, t2, p2, t3, p3, t1\)/.test(tbhA))
+        broken.push('the press naming measures lines MT4 never draws (P-LOOK-ANCHOR)');
+      if (!/la = DrawLevelPriceAt\(k, v, t1, p1, t2, p2, t3, p3, t1\)/.test(tbbA))
+        broken.push('the drag arm\'s full hit measures lines MT4 never draws (P-LOOK-ANCHOR)');
+      if (broken.length) {
+        failures.push('P-LOOK-ANCHOR: ' + broken.join('; ') + ' (Biotak/FibPen.mqh + Toolbar_Hit.mqh + Toolbar_B.mqh)');
+      } else {
+        console.log('[PASS] P-LOOK-ANCHOR every level mapping states the terminal\'s law — 0 % at the second anchor, label-verified to 1 px');
+      }
+    }
     // ── P-DRAW-BODY (2026-10-04) — THE BODY IS A LINE OF ITS OWN ──
   // «این خط هم جدا باشه تنظیمات و رنگ و استایل و غیره در تنظیمات و تداخل نداشته باشه باهم».
   // A level drawing is TWO pictures — the line MT4 draws between the anchors and the LEVEL
@@ -3064,7 +3118,17 @@ function main() {
       broken.push('moves never chase — the follow belongs on the mouse stream, not the drag event (P-DRAW-74b)');
     if (!/FibPenSync\(sparam, false\);[\s\S]{0,400}?ChartRedraw\(\);/.test(tbr))
       broken.push('the drag branch never flushes — the terminal blits the dragged master live and followers trail a frame (P-DRAW-74b)');
-    if (!/FibPenSync\(relPressObj, false\);[\s\S]{0,200}?ChartRedraw\(\);/.test(tbr))
+    // P-DRAGF3 (2026-10-17): the release flush is asked INSIDE the release block, not
+    // by a sliding window. The button-up door's `else if(fbPrev) ChartRedraw();` sits
+    // just past the block's own `}`, so the old window matched IT and kept mutation
+    // P-DRAW-74b-g alive with the release's own flush removed (measured: SURVIVED).
+    // `tbr` is codeOf-stripped, so the check holds the block's CODE and cannot look
+    // for its tag comment. One flush, one owner: the re-stamp flush is this block's.
+    const rtrL = linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || [];
+    const rpIf = indexOfLine(rtrL, 'if(relPressObj != "")');
+    const rpBlk = rpIf >= 0 ? blockAfter(rtrL, rpIf) : null;
+    const rpBody = rpBlk ? codeOf(rtrL.slice(rpBlk.from, rpBlk.to + 1)) : '';
+    if (!/ChartRedraw\(\);/.test(rpBody))
       broken.push('the release never flushes — a coalesced last drag frame settles in data but not on screen (P-DRAW-74b)');
     if (!/if\(id == CHARTEVENT_CHART_CHANGE\) FibPenSync\(s_dsObj, false\);/.test(tbr))
       broken.push('a zoom never re-syncs the served fibo — pixel offsets go stale until the next touch (P-DRAW-74b)');
@@ -3095,7 +3159,7 @@ function main() {
     // styled thick fibo back to STYLE_SOLID on every strip open (`DrawStrip_Paint`), which
     // killed the stack. One seat each, and each must stay closed: a pen kind's levels are
     // the pen's business, and its own pair is only a memory.
-    if (!/bool penKind = \(k == DK_FIBO \|\| k == DK_FIBOFAN\);/.test(tbb))
+    if (!/bool penKind = FibPenServesName\(name\) \|\| PenStackServes\(name\);/.test(tbb))
       broken.push('the STYLE slot no longer knows a pen kind — its level widths get folded before the pen can read them (P-DRAW-74b)');
     if (!/if\(!penKind\)[\s\S]{0,30}?DrawLevelsSetWidth\(name, DRAW_WIDTH_MIN\);/.test(tbb))
       broken.push('the STYLE slot folds the level widths on a pen kind — the logical width dies one write early, so a thick styled fibo comes out a plain 1 px dash (P-DRAW-74b)');
@@ -3104,12 +3168,55 @@ function main() {
     const coerceFn = (() => { const m = tbb.match(/bool DrawStylePairCoerce\([^)]*\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
     if (!coerceFn)
       broken.push('`DrawStylePairCoerce` is gone or unreadable — it is the seat that resets a thick styled fibo (P-DRAW-74b)');
-    else if (!/if\(k == DK_FIBO \|\| k == DK_FIBOFAN\) return false;/.test(coerceFn))
+    else if (!/if\(FibPenServesName\(name\)\) return false;/.test(coerceFn))
       broken.push('DrawStylePairCoerce reads a pen kind again — the strip open forces a thick styled fibo back to solid and the stack dies (P-DRAW-74b)');
-    if (!/FibPenCapName/.test(fib) || !/FibPenWashName/.test(fib) || !/FibPenFamIsChild/.test(fib))
-      broken.push('a look family is unnamed or unowned — caps and wash need names, sweeps and the DK_NONE test (P-DRAW-74b)');
-    if (!/\? 8 : 5/.test(pk))
-      broken.push('the fibo never sees its looks — the STYLE popover owes it 8 rows, other kinds five (P-DRAW-74b)');
+    if (!/FibPenCapName/.test(fib) || !/FibPenWashName/.test(fib) || !/FibPenShwName/.test(fib) || !/FibPenFamIsChild/.test(fib))
+      broken.push('a look family is unnamed or unowned — caps, wash and shadow need names, sweeps and the DK_NONE test (P-DRAW-74b)');
+    if (!/return \(\(int\)STYLE_DASHDOTDOT \+ 1 \+ \(DrawStripPenLook\(k\) \? DrawLookCount\(\) : 0\)\);/.test(pk))
+      broken.push('the fibo never sees its looks — the STYLE popover owes it 8 rows (the three looks included), other kinds five (P-DRAW-74b)');
+    // P-LOOK-3D RETIRED (2026-10-18) — «3D کلا حذف کن» (user order). The fourth look,
+    // its `[LK4]` tag and its `_FSH` shadow are gone end to end: no define, no ninth
+    // cell, no caption, no icon seat, no build fence, no harness state. What STAYS is
+    // the sweep (the sync's spend pass, the delete hub, HasPen and the early-out probe) —
+    // a chart from an older build degrades to the previous look, never to a dangling
+    // shadow. Every assert below fails the moment any seat comes back.
+    {
+      const tbaA = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+      const gSrc = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
+      const lkSrc = codeOf(linesOf(path.join(BIOTAK, 'DrawLooks.mqh')) || []);
+      const prSrc = codeOf(linesOf(path.join(BIOTAK, 'DrawKindProfile.mqh')) || []);
+      const harn3d = linesOf(SHOT_HARNESS) ? fs.readFileSync(SHOT_HARNESS, 'utf8') : '';
+      const broken3 = [];
+      if (/FIBPEN_LOOK_3D|FIBPEN_STYLE_3D|DRAW_LOOK_3D/.test(fib + tbb + tbaA + pk + gSrc + lkSrc + prSrc))
+        broken3.push('the 3D look is back — a define, a fence or a cell carries it again');
+      if (!/lk > FIBPEN_LOOK_WASH\) return 0;/.test(fib))
+        broken3.push('the tag reader lost its WASH fence — a `[LK4]` from a legacy chart is read as a live look');
+      if (!/lk > FIBPEN_LOOK_WASH\) return;/.test(fib))
+        broken3.push('LookSet lost its WASH fence — 4 would write a tag for a look that does not exist');
+      //--- P-UNIFY-4: the cap moved to the one translator. The STYLE writer asks it,
+      //--- and its fence is `DrawLookValid` (WASH is the last id), so slot 8 is dead.
+      if (!/DrawLookFromSlot\(st\)/.test(tbb) || !/lk >= DRAW_LOOK_NEON && lk <= DRAW_LOOK_WASH/.test(lkSrc))
+        broken3.push('the STYLE writer lost its WASH cap — the eighth cell is pickable and dead');
+      if (!/FibPenShwName\(fibo, l6\)/.test(fib) || !/ObjectDelete\(0, snm\);/.test(fib))
+        broken3.push('the retirement sweep is gone — a legacy `_FSH` shadow stays on the chart forever');
+      if (/bool shwOk/.test(fib))
+        broken3.push('the 3D build fence is back — the sync can paint a shadow the look no longer offers');
+      if (/fibo_3d3/.test(harn3d))
+        broken3.push('the 3D shot state is back — a retired look asks for real pixels again');
+      if (!/FibPenShwName\(fibo, dl\)/.test(fib))
+        broken3.push('the delete sweep forgot the shadow family — a deleted fibo leaves `_FSH` strays on the chart');
+      if (!/fc != 'C' && fc != 'W' && fc != 'H'/.test(fib))
+        broken3.push('the fam test refuses `_FSH` — a shadow stray is served, hit and learned as a drawing of its own');
+      const fibHas = (() => { const m = fib.match(/bool FibPenHasPen\([^)]*\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
+      if (!/FibPenShwName\(fibo, 0\)\) >= 0\) return true;/.test(fibHas))
+        broken3.push('the pen\'s existence test is blind to the shadow family — a legacy 3D fibo\'s shadow is never swept');
+      if (!/FibPenWashName\(fibo, 0\)\) < 0 &&[\s\S]{0,80}?FibPenShwName\(fibo, 0\)\) < 0\) return false;/.test(fib))
+        broken3.push('the look-only early-out skips the shadow probe — a look-4 fibo whose levels were deleted keeps its `_FSH` strays forever');
+      if (broken3.length)
+        failures.push('P-LOOK-3D retired: ' + broken3.join('; ') + ' (Biotak/FibPen.mqh + Toolbar_A/B + DrawStrip_Pick/GearA + shot harness)');
+      else
+        console.log('[PASS] P-LOOK-3D retired end to end — no define, no cell, no caption, no birth; `_FSH` is swept, never painted');
+    }
     if (!/DrawStripPickCount\(k, slot\)/.test(tpt))
       broken.push('a picker row is gated by a second bound — rows the popover paints must pass the popover\'s own count (P-DRAW-74b)');
     if (!/PICK slot=/.test(tpt))
@@ -3119,12 +3226,12 @@ function main() {
     // event paths, so a master the terminal landed after the last event kept a stale pen
     // FOREVER: the very scene above, still stale hours later. The pass that already pays
     // one type read per object now asks each fibo — and the orphan rule rides it too.
-    if (!/if\(ty == OBJ_FIBO \|\| ty == OBJ_FIBOFAN\) FibPenHeal\(nm\);/.test(pk))
+    if (!/if\(FibPenServesType\(ty\)\) FibPenHeal\(nm\);/.test(pk))
       broken.push('the pen has no net — a master the terminal moves with no event keeps a stale pen until the next touch (P-LOOK-RAY2)');
     if (!/bool FibPenHeal\([^)]*\)\s*\{[\s\S]{0,900}?FibPenNetFind\(fibo\)/.test(fib) ||
         !/bool FibPenHeal\([^)]*\)\s*\{[\s\S]{0,1400}?return FibPenSync\(fibo, false\);/.test(fib))
       broken.push('`FibPenHeal` stopped comparing the master against the memo before it syncs — the net becomes an unconditional sync (P-LOOK-RAY2)');
-    if (!/FibPenNetWrite\(fibo, \(long\)ta, \(long\)tb, p1, p2, FibPenRayBits\(fibo\), FibPenHasPen\(fibo\)\);/.test(fib))
+    if (!/FibPenNetWrite\(fibo, \(long\)ta, \(long\)tb, three \? \(long\)t3 : 0,/.test(fib))
       broken.push('the sync never writes the memo — every 2 s pass would re-run the whole sync per fibo (P-LOOK-RAY2)');
     if (!/FibPenIsChild\(nm\) \|\| FibPenFamIsChild\(nm\)/.test(pk) || !/string FibPenChildParent\(/.test(fib))
       broken.push('the pen\'s children have no parent oracle — a band whose fibo is gone survives a reattach (P-LOOK-RAY2)');
@@ -3317,14 +3424,15 @@ function main() {
   {
     const broken = [];
     const tbbLines = linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || [];
-    const tbb = codeOf(tbbLines);
-    if (!/define DRAW_LASTLOOK_SLOT/.test(tbb))
+    const tplLines = linesOf(path.join(BIOTAK, 'Toolbar_Tpl.mqh')) || [];
+    const tpl = codeOf(tplLines);
+    if (!/define DRAW_LASTLOOK_SLOT/.test(tpl))
       broken.push('the reserved last-look slot is gone — the save and the load would read each other\u2019s rows');
-    const packA = bodyOf(tbbLines, 'double DrawStylePackA(');
-    const packB = bodyOf(tbbLines, 'double DrawStylePackB(');
-    const unpack = bodyOf(tbbLines, 'void DrawStyleUnpack(');
+    const packA = bodyOf(tplLines, 'double DrawStylePackA(');
+    const packB = bodyOf(tplLines, 'double DrawStylePackB(');
+    const unpack = bodyOf(tplLines, 'void DrawStyleUnpack(');
     if (!packA || !packB || !unpack) {
-      broken.push('the last-look pack/unpack pair is gone from Biotak/Toolbar_B.mqh — the look has no way to disk');
+      broken.push('the last-look pack/unpack pair is gone from Biotak/Toolbar_Tpl.mqh — the look has no way to disk');
     } else {
       const shifts = (t, re) => (t.match(re) || []).map((s) => parseInt(s.match(/\d+/)[0], 10));
       const aS = shifts(packA.text, /<< \d+/g);
@@ -3351,15 +3459,15 @@ function main() {
       )
         broken.push('the colour masks are gone — clrNONE (-1) would be stored as 0xFFFFFFFF and come back as a colour nobody chose (P-DRAW-75\u2019s rule, one file over)');
     }
-    const save = bodyOf(tbbLines, 'void DrawPresetsSave()');
-    if (!save) broken.push('DrawPresetsSave() is gone: the file has no writer');
+    const save = bodyOf(tplLines, 'void DrawTplSave()');
+    if (!save) broken.push('DrawTplSave() is gone: the file has no writer');
     else if (!/DRAW_LASTLOOK_SLOT/.test(save.text))
       broken.push('the save never writes a last-look row — the look is learned and then lost at the next attach');
-    const load = bodyOf(tbbLines, 'void DrawPresetsLoad()');
-    if (!load) broken.push('DrawPresetsLoad() is gone: the file has no reader');
+    const load = bodyOf(tplLines, 'void DrawTplLoad()');
+    if (!load) broken.push('DrawTplLoad() is gone: the file has no reader');
     else {
       const at = load.text.indexOf('i == DRAW_LASTLOOK_SLOT');
-      const band = load.text.indexOf('i < DRAW_PRESET_BUILTIN');
+      const band = load.text.indexOf('i < 0 || i >= DRAW_TPL_MAX');
       if (at < 0) broken.push('the load never restores the reserved last-look slot');
       else if (band >= 0 && at > band)
         broken.push('the last-look row must be read BEFORE the preset bands reject it — slot 255 is outside every preset band on purpose');
@@ -3368,12 +3476,12 @@ function main() {
     }
     const write = bodyOf(tbbLines, 'bool DrawSlotWrite(');
     if (!write) broken.push('DrawSlotWrite() is gone from Biotak/Toolbar_B.mqh — the kind memory has no writer');
-    else if (!/s_dkValid\[k\] = true;[\s\S]{0,400}?DrawPresetsSave\(\);/.test(write.text))
+    else if (!/s_dkValid\[k\] = true;[\s\S]{0,400}?DrawTplSave\(\);/.test(write.text))
       broken.push('the ONE slot writer must persist what it learned — the last change is the default only if it survives the session');
     if (broken.length) {
-      failures.push('P-DRAW-09c: ' + broken.join('; ') + ' (Biotak/Toolbar_B.mqh: the last look rides the presets\u2019 file, one writer, one reserved slot)');
+      failures.push('P-DRAW-09c: ' + broken.join('; ') + ' (Biotak/Toolbar_Tpl.mqh: the last look rides the template file, one writer, one reserved slot)');
     } else {
-      console.log('[PASS] P-DRAW-09c the last look is the default across attaches: one reserved slot in the presets\u2019 own file, written by the same single writer, and the pack and the unpack agree on every bit');
+      console.log('[PASS] P-DRAW-09c the last look is the default across attaches: one reserved slot in the templates\u2019 own file, written by the same single writer, and the pack and the unpack agree on every bit');
     }
   }
 
@@ -3397,26 +3505,27 @@ function main() {
   {
     const broken = [];
     const tbbLines = linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || [];
-    const tbb = codeOf(tbbLines);
-    const packA = bodyOf(tbbLines, 'double DrawStylePackA(');
-    const unpack = bodyOf(tbbLines, 'void DrawStyleUnpack(');
+    const tplLines = linesOf(path.join(BIOTAK, 'Toolbar_Tpl.mqh')) || [];
+    const tpl = codeOf(tplLines);
+    const packA = bodyOf(tplLines, 'double DrawStylePackA(');
+    const unpack = bodyOf(tplLines, 'void DrawStyleUnpack(');
     if (!packA || !unpack) {
-      broken.push('the look pack/unpack pair is gone from Biotak/Toolbar_B.mqh — a colour and a missing colour could not be told apart at all');
+      broken.push('the look pack/unpack pair is gone from Biotak/Toolbar_Tpl.mqh — a colour and a missing colour could not be told apart at all');
     } else {
       if (!/<< 33/.test(packA.text))
         broken.push('“no colour of its own” is masked as white again — the presence bit (33) left the pack, and `-1 & 0xFFFFFF` is 0xFFFFFF');
       if (!/>> 33/.test(unpack.text) || !/clrNONE/.test(unpack.text))
         broken.push('the unpack ignores the presence bit and reads the masked field as a colour — a kind that never had one comes back WHITE');
     }
-    if (!/define DRAW_LASTINK_SLOT/.test(tbb))
+    if (!/define DRAW_LASTINK_SLOT/.test(tpl))
       broken.push('the reserved last-ink slot is gone — the ink cannot survive an attach');
-    const save = bodyOf(tbbLines, 'void DrawPresetsSave()');
+    const save = bodyOf(tplLines, 'void DrawTplSave()');
     if (save && !/DRAW_LASTINK_SLOT/.test(save.text))
       broken.push('the save never writes the last ink — the next attach starts on the terminal default again');
-    const load = bodyOf(tbbLines, 'void DrawPresetsLoad()');
+    const load = bodyOf(tplLines, 'void DrawTplLoad()');
     if (load) {
       const at = load.text.indexOf('i == DRAW_LASTINK_SLOT');
-      const band = load.text.indexOf('i < DRAW_PRESET_BUILTIN');
+      const band = load.text.indexOf('i < 0 || i >= DRAW_TPL_MAX');
       if (at < 0) broken.push('the load never restores the last ink');
       else if (band >= 0 && at > band)
         broken.push('the last-ink row is read BELOW the preset bands — slot 254 is outside every band on purpose, so that guard eats the row');
@@ -3425,7 +3534,7 @@ function main() {
     if (write && !/s_dkAnyClr = c;/.test(write.text))
       broken.push('the one colour writer stopped noting the last ink — the fallback would answer with a stale colour forever');
     if (broken.length) {
-      failures.push('P-DRAW-INK: ' + broken.join('; ') + ' (Biotak/Toolbar_B.mqh: one presence bit in A, one reserved row, one ink for the kinds that never had a colour)');
+      failures.push('P-DRAW-INK: ' + broken.join('; ') + ' (Biotak/Toolbar_Tpl.mqh + Toolbar_B.mqh: one presence bit in A, one reserved row, one ink for the kinds that never had a colour)');
     } else {
       console.log('[PASS] P-DRAW-INK the last colour the hand picks is the one a fresh drawing wears: the presence bit keeps clrNONE out of the file, and the shared ink is noted, saved and restored');
     }
@@ -3439,7 +3548,7 @@ function main() {
   // P-LOOK-RAY2; the interior’s and the 50 % line’s had one each. What none of the three
   // had was a WITNESS, so a cleanup was invisible and could only be believed. Three laws
   // now hold for every companion family the drawing tool builds — the interior’s child,
-  // the box’s 50 % line, the fibo pen’s rows:
+  // the box’s 50 % line, the fibo pen’s rows, the line pen’s rows (`_PSKq`, P-DRAW-74c):
   //   (a) the pass that already walks every object every 2 s answers “is your master
   //       still here?” for each of them, through ONE deleter;
   //   (b) that deleter names the drop (and its missing master) on the flushed diag
@@ -3459,12 +3568,19 @@ function main() {
         ['FillIsChild', 'the interior’s child (`FillIsChild`/`FillChildParent`)'],
         ['BoxIsMidChild', 'the box’s 50 % line (`BoxIsMidChild`/`BoxMidParent`)'],
         ['FibPenIsChild', 'the fibo pen’s rows (`FibPenIsChild`/`FibPenFamIsChild`/`FibPenChildParent`)'],
+        ['PenStackIsChild', 'the line pen’s rows (`PenStackIsChild`/`PenStackChildParent`)'],
       ];
-      for (const [test, what] of families) {
+      // P-ORPHAN-ALL-a (2026-10-17): the seat is the family's OWN rule — from its marker
+      // to the NEXT family's marker. The old fixed 900-char window also held the next
+      // family's `DrawOrphanDrop`, so replacing this rule's call with a silent
+      // `ObjectDelete` still matched and the mutation SURVIVED (measured, full run).
+      for (let f = 0; f < families.length; f++) {
+        const [test, what] = families[f];
         const at = pump.text.indexOf(test);
         if (at < 0) { broken.push(`the orphan rule for ${what} left the pass`); continue; }
-        const seat = pump.text.slice(at, at + 900);
-        if (!/ObjectFind\(0, par\) < 0\)/.test(seat) || !/DrawOrphanDrop\(nm, par\)/.test(seat))
+        const next = f + 1 < families.length ? pump.text.indexOf(families[f + 1][0], at + test.length) : -1;
+        const seat = pump.text.slice(at, next >= 0 ? next : at + 900);
+        if (!/ObjectFind\(0, par\) < 0\)/.test(seat) || !/DrawOrphanDrop\(nm, par\)/.test(seat) || /ObjectDelete\(/.test(seat))
           broken.push(`the orphan rule for ${what} no longer deletes through DrawOrphanDrop — the companion of a deleted master survives the pass`);
       }
     }
@@ -3472,15 +3588,15 @@ function main() {
     else if (!/ObjectDelete\(0, nm\)/.test(drop.text) || !/DrawStripDiagEmit\(/.test(drop.text) || !/ORPHAN/.test(drop.text))
       broken.push('DrawOrphanDrop() no longer deletes AND names the drop — the cleanup is invisible again');
     const tbr = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
-    if (!/FibPenStraysDrop\(sparam\)/.test(tbr) || !/BoxMidDrop\(sparam\)/.test(tbr) || !/FillChildDrop\(sparam\)/.test(tbr))
+    if (!/FibPenStraysDrop\(sparam\)/.test(tbr) || !/BoxMidDrop\(sparam\)/.test(tbr) || !/FillChildDrop\(sparam\)/.test(tbr) || !/PenStackStraysDrop\(sparam\)/.test(tbr))
       broken.push('the terminal’s own delete branch stopped dropping the deleted drawing’s families — a native delete leaves them on the chart');
     const tap = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
-    if (!/FibPenSync\(DrawSelAt\(j\), true\)/.test(tap) || !/FibPenSync\(s_dsObj, true\)/.test(tap))
-      broken.push('the strip’s bin stopped dropping the fibo pen — the rows outlive the drawing they were built for');
+    if (!/FibPenSync\(DrawSelAt\(j\), true\)/.test(tap) || !/FibPenSync\(s_dsObj, true\)/.test(tap) || !/PenStackSync\(DrawSelAt\(j\), true\)/.test(tap) || !/PenStackSync\(s_dsObj, true\)/.test(tap))
+      broken.push('the strip’s bin stopped dropping the drawing’s pens — the rows outlive the drawing they were built for');
     if (broken.length) {
-      failures.push('P-ORPHAN-ALL: ' + broken.join('; ') + ' (Biotak/DrawStrip_Pick.mqh + DrawStrip_Router.mqh + DrawStrip_Tap.mqh)');
+      failures.push('P-ORPHAN-ALL: ' + broken.join('; ') + ' (Biotak/DrawStrip_Pick.mqh + Biotak/DrawStrip_Router.mqh + Biotak/DrawStrip_Tap.mqh)');
     } else {
-      console.log('[PASS] P-ORPHAN-ALL no remnant outlives its master: all three companion families answer for themselves on the 2 s pass through one deleter that witnesses every drop, and both delete routes drop them in the event itself');
+      console.log('[PASS] P-ORPHAN-ALL no remnant outlives its master: all four companion families answer for themselves on the 2 s pass through one deleter that witnesses every drop, and both delete routes drop them in the event itself');
     }
   }
 
@@ -3749,6 +3865,26 @@ function main() {
       if (names.length !== actN)
         broken.push(`${names.length} seat(s) are declared and DSTRIP_ACT_N is ${actN} (P-BK-111): the count and the ids are two numbers for one group, and only one of them reserves a row`);
     }
+    // 3 - AND THE MIRROR ANSWERS THE SAME COUNT. MEASURED 2026-10-18: the direction
+    //     seat raised DSTRIP_ACT_N to 5 while tools/sim-strip-panels.py kept four act
+    //     faces, so before-after.py died with an IndexError (sim-strip-panels.py:539)
+    //     in the page rebuild at the END of every -Shot run - a green capture reported
+    //     as a failed build. The mock indexes its faces by seat: its list is a second
+    //     count for the same row, and it is gated like one.
+    const simStrip = path.join(ROOT, 'tools', 'sim-strip-panels.py');
+    const simSrc = linesOf(simStrip) ? fs.readFileSync(simStrip, 'utf8') : '';
+    if (!simSrc)
+      broken.push('tools/sim-strip-panels.py is gone (P-BK-111): the before/after page has no middle column');
+    else if (typeof actN === 'number') {
+      const actList = /DEMO_ACT = \[([^\]]*)\]/.exec(simSrc);
+      const onList = /DEMO_ACT_ON = \[([^\]]*)\]/.exec(simSrc);
+      const nAct = actList ? (actList[1].match(/\.bmp/g) || []).length : -1;
+      const nOn = onList ? (onList[1].match(/\b(?:True|False)\b/g) || []).length : -1;
+      if (nAct !== actN)
+        broken.push(`tools/sim-strip-panels.py's DEMO_ACT holds ${nAct < 0 ? 'no list' : nAct + ' face(s)'} against DSTRIP_ACT_N=${actN} (P-BK-111): the mock indexes its faces by seat, so before-after.py dies with an IndexError at the end of every -Shot run`);
+      if (nOn !== actN)
+        broken.push(`tools/sim-strip-panels.py's DEMO_ACT_ON holds ${nOn < 0 ? 'no list' : nOn + ' flag(s)'} against DSTRIP_ACT_N=${actN} (P-BK-111): the demo state is per seat too`);
+    }
     const actRes = bodyOf(baseS, 'string DrawStripActRes(');
     if (!actRes || !/bk_dirflip\.bmp/.test(actRes.text))
       broken.push('DrawStripActRes no longer answers a raster for the direction seat (P-BK-111): an empty string paints NO face, and the icon gate reads the same table so it cannot see the loss');
@@ -3870,6 +4006,36 @@ function main() {
       failures.push('P-UI-144: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh + BiotakMenu_A.mqh InitializeUIStates)');
     } else {
       console.log('[PASS] P-UI-144 the ghost sweep exists, covers both name spellings, and is called from the one init path every attach runs (Biotak/BiotakHomes.mqh + BiotakMenu_A.mqh)');
+    }
+  }
+  // ── P-UI-142b (2026-10-18) — THE TOOLS CHROME DOES NOT SURVIVE AN ATTACH ──
+  // «گاهی اوقات ... با اینکه منو اصلی بسته هستش» + the screenshot: a light tools
+  // column (sub_panel_r<N>.bmp + one page of cells) standing WITH the orb while no
+  // ring is drawn anywhere. That is the P-UI-142 snapshot doing its job too well: a
+  // restart landing while the Tools page was open re-created the chrome at the next
+  // init, and by law the ring stays suppressed behind an open Tools submenu — so
+  // the user reads the menu as closed while the page floats. The MEN snapshot keeps
+  // restoring the ring; the tools page is a momentary view opened from the ring's
+  // door, and it starts shut at EVERY attach. Asserted: LoadUIState shuts it with a
+  // LITERAL false (never a snapshot read) and the suppressed restore is witnessed
+  // on the flushed channel (P-LOG-3), so the next report of the column is decidable
+  // from the diag alone. The inverse mutation must fail THIS gate
+  // (tools/mutation_gate.py, P-UI-142b).
+  {
+    const broken = [];
+    const load = bodyOf(linesOf(MENU_A) || [], 'void LoadUIState()');
+    if (!load)
+      broken.push('LoadUIState() is gone from Biotak/BiotakMenu_A.mqh (P-UI-142b)');
+    else {
+      if (!/g_ToolsOpen\s*=\s*false;/.test(load.text))
+        broken.push('LoadUIState no longer shuts the tools chrome with a literal false — an attach can paint the page under a closed menu (P-UI-142b)');
+      if (!load.text.includes('[P-UI-142] tools chrome starts shut'))
+        broken.push('the suppressed-restore witness is gone from LoadUIState — a floating tools page is unprovable from the diag (P-UI-142b)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-142b: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh LoadUIState)');
+    } else {
+      console.log('[PASS] P-UI-142b the tools chrome starts shut at every attach (a literal, never the snapshot), and the suppressed restore is witnessed on the flushed channel');
     }
   }
 
@@ -4561,6 +4727,54 @@ function main() {
     }
   }
 
+  // ── P-PERF-53 (2026-10-19) — THE COST HAS A PHASE; THE PHASE HAS A CAUSE ──
+  // MEASURED 2026-10-19: 49 CPU warnings in one day of logs, and every single one read
+  //   [base=0 atr=0 hist=0 levels=94..125 labels=0 overlay=0 pre=0 post=0 rest=0]
+  // The phase ledger (P-PERF-03/49) had done its job: the WHOLE frame was the level
+  // family render. What it could not say is why that frame ran at all - and a 94 ms
+  // render every couple of seconds is either the price of a real edit or a rebuild
+  // nothing asked for, two different fixes. The reader's only route was to guess
+  // between the 38 writers of `g_redrawTHLevelsNeeded` alone. So the ledger now carries
+  // the arming flag beside the price: one string built on the frames that pass the
+  // gates, no chart write, no pixel moved.
+  {
+    const broken53 = [];
+    const gv53 = linesOf(path.join(ROOT, 'Biotak', 'GlobalVariables.mqh'))
+      ? fs.readFileSync(path.join(ROOT, 'Biotak', 'GlobalVariables.mqh'), 'utf8') : '';
+    const ec53 = linesOf(path.join(ROOT, 'Biotak', 'EventHandlers_Calc.mqh'))
+      ? fs.readFileSync(path.join(ROOT, 'Biotak', 'EventHandlers_Calc.mqh'), 'utf8') : '';
+    const eo53 = linesOf(path.join(ROOT, 'Biotak', 'EventHandlers_Objects.mqh'))
+      ? fs.readFileSync(path.join(ROOT, 'Biotak', 'EventHandlers_Objects.mqh'), 'utf8') : '';
+    if (!gv53.includes('static int g_p3ArmMask = 0;'))
+      broken53.push('the ledger has no arming-flag mask - the next 94 ms frame names its phase and not its cause (P-PERF-53)');
+    if (!gv53.includes('string PerfArmWhy(const int m)'))
+      broken53.push('the mask has no owner that turns it back into names - a number nobody decodes is not a witness (P-PERF-53)');
+    const namedWhy = (gv53.match(/s \+= "/g) || []).length;
+    if (namedWhy < 9)
+      broken53.push(`only ${namedWhy} of the frame's arming flags have a name - the reader is back to guessing which of them ran (P-PERF-53)`);
+    for (const f of ['force', 'labels', 'th', 'histRange', 'base', 'stage', 'heavy', 'renderAll', 'clear']) {
+      if (!gv53.includes(`s += "${f} "`))
+        broken53.push(`the flag ${f} is no longer named - a frame it armed reports a shorter cause than it had (P-PERF-53)`);
+    }
+    if (!gv53.includes('if(s == "") s = "sig";'))
+      broken53.push('a frame armed only by the geometry signature reports an empty cause - "sig" is the one cause with no writer to point at (P-PERF-53)');
+    if (!ec53.includes('g_p3ArmMask = (force_redraw?1:0)'))
+      broken53.push('the frame does not capture its arming flags - the mask is read after the frame consumed them (P-PERF-53)');
+    for (const bit of ['(g_redrawTHLevelsNeeded?4:0)', '(historicalRefreshDue?8:0)', '(basePriceBoundary?16:0)',
+                       '(g_buildStage!=0?32:0)', '(g_heavyFramePending?64:0)', '(g_renderAllNeeded?128:0)',
+                       '(g_forceClearOnNextDraw?256:0)']) {
+      if (!ec53.includes(bit))
+        broken53.push(`the mask dropped ${bit} - that flag's frames will report a cause shorter than the truth (P-PERF-53)`);
+    }
+    if (!eo53.includes('" why=" + PerfArmWhy(g_p3ArmMask) + "]"'))
+      broken53.push('the CPU warning does not print the arming flags - the line that proves the cost still cannot name what asked for it (P-PERF-53)');
+    if (broken53.length) {
+      failures.push('P-PERF-53: ' + broken53.join('; ') + ' (Biotak/GlobalVariables.mqh + EventHandlers_Calc.mqh + EventHandlers_Objects.mqh)');
+    } else {
+      console.log('[PASS] P-PERF-53 the CPU ledger names its cause: the arming flags are collected on every frame that passes the gates and printed beside the phase that spent the time');
+    }
+  }
+
   // ── P-PERF-55 (2026-10-13) — THE FOREIGN SWEEP ASKS ITS QUESTION OF A SET ──
   // The sweep's own note called `produced[]` "tens of entries"; the live chart made it
   // `lineCount*2 + zoneCount` (450 lines + 289 zones ≈ 1,189 names) and the walk visits
@@ -4742,7 +4956,7 @@ function main() {
         broken.push('the learner has no move-vs-colour witness — a drop would teach the kind a factory colour');
       if (!/\(int\)s_dkColor\[k\] < 0 && c == s_dkAnyClr/.test(learnBody.text))
         broken.push('the learner would freeze a BORROWED ink as the kind\u2019s own colour (P-DRAW-INK)');
-      if (!/DrawPresetsSave\(\);/.test(learnBody.text))
+      if (!/DrawTplSave\(\);/.test(learnBody.text))
         broken.push('the native pick persists through a second path — the memory has two owners');
       // (f2) the witness refuses a level kind: a level drawing's colours live in the
       // LEVEL family (`OBJPROP_LEVELCOLOR`), so the object's own `OBJPROP_COLOR` there
@@ -5019,9 +5233,10 @@ function main() {
   // 16px box must own its own rung or the badge answers instead); the ring shows
   // the starred subset in catalog order with the CIR_TOOLS door LAST (the only
   // place a star exists must never be unreachable). Growth: S(n) holds the shipped
-  // 44 through nine seats (byte-identical), tapers 43→32 and floors at 30, the
-  // radius follows the chord law, the fit cap still rules, and excess stays in
-  // Tools with its star ON. What a green compile cannot see, and this entry
+  // 44 through nine seats (byte-identical), tapers 43→35 and floors at 35 (P-UI-166
+  // raised the floor from 30), seats twelve at most, the radius follows the chord
+  // law, the fit cap still rules, and excess stays in Tools with its star ON. What
+  // a green compile cannot see, and this entry
   // locks: the mask's persistence slot (12, ledger 13), the orphan sweep (a name
   // a PREVIOUS larger mask wrote must not survive the star that removed its
   // seat), the star's create/move/delete seats, the click route sitting BEFORE
@@ -5063,7 +5278,7 @@ function main() {
         broken.push('RingFeature lost the door-last law — the door rides the LAST PLACED seat (P-UI-164); off the placed set it is a menu with no way back to the stars');
       const btnN = bodyOf(menuRing, 'int CircBtnSizeForN(');
       if (!btnN || !btnN.text.includes('return CIRC_BTN_SIZE') || !btnN.text.includes('return CIRC_BTN_MIN'))
-        broken.push('CircBtnSizeForN lost the shipped 44 or the 30 floor — the growth law is not the one that was measured');
+        broken.push('CircBtnSizeForN lost the shipped 44 or the 35 floor — the growth law is not the one that was measured');
       const live = bodyOf(menuRing, 'int CircPlacedCountLive()');
       if (!live || !live.text.includes('RingCount()') || !live.text.includes('CircRadiusForN(k) <= fit') || !live.text.includes('CircRailShape('))
         broken.push('CircPlacedCountLive lost the fit walk or the shape decision — the ring can stack past the fit, or a fitting train is rebuilt as nine (P-UI-164)');
@@ -5189,7 +5404,7 @@ function main() {
     if (broken.length) {
       failures.push('P-UI-161: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A/B/C/D.mqh + BiotakMenu_Ring.mqh + ConstantsAndEnums.mqh + tools/gen-th3-icons.js)');
     } else {
-      console.log('[PASS] P-UI-161 the ring grows by shrinking: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the taper floors at 30 with the fit walk and the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
+      console.log('[PASS] P-UI-161 the ring grows by shrinking: the membership star is the only door (Z_MENU_STAR above the badge, its click before the latch), the mask persists in slot 12 with the ledger at 13, the taper floors at 35 and the ring seats twelve at most (P-UI-166) with the fit walk and the mid-drag freeze, the orphan sweep is RING_MAX_SEATS, the star is created/moved/deleted with its cell, and the ONE feature switch (RingFeatureClick) is shared by the ring and the Tools cells');
     }
   }
 
@@ -5497,7 +5712,10 @@ function main() {
       const states54 = bodyOf(menuC54, 'void UpdateCircularItemStates(');
       if (!states54) broken.push('UpdateCircularItemStates is gone — the sync pass has no owner');
       else {
-        if (!states54.text.includes('if(!g_ToolsOpen)'))
+        // P-UI-167 owns the CLOSED half of the same test (section 64); the fan half is
+        // asserted without the `if(` prefix so adding a guard in front cannot silence
+        // this assertion — the inverse that removes the fan test still fails HERE.
+        if (!states54.text.includes('!g_ToolsOpen'))
           broken.push('UpdateCircularItemStates paints the ring while the Tools fan owns the screen again — the 17:07 bare-glyph resurrection');
         if (!states54.text.includes('ToolsUpdateItemState(t)'))
           broken.push('UpdateCircularItemStates stopped serving the open fan\'s cells');
@@ -5657,6 +5875,1206 @@ function main() {
       failures.push('P-UI-165: ' + broken.join('; ') + ' (Biotak/BiotakHomes.mqh GVHomeName/GVHomeFracName + BiotakKit.mqh InitializeUISupport + BiotakPanels_Build.mqh PnlFracKey)');
     } else {
       console.log('[PASS] P-UI-165 the place belongs to the pair: the home and panel keys carry the SYMBOL (never a chart id), the pre-165 spellings are read-only migration sources, the load snapshots them once in a measured window, and no writer touches the shared keys');
+    }
+  }
+
+  // -- 57. P-UI-166 (2026-10-17): twelve seats at most, 35px at least -----------
+  // The user's report («ایکون ها یک ذره کوچیک شدن اگر تعداد ایتم ها زیاد بشه باز
+  // خیلی کوچیک میشن»): every star past the ninth shrank the WHOLE circle —
+  // 43→39→35→32→30 — so a full catalog seated sixteen 30px discs beside a 28px
+  // glyph and the ring read as a debris field while a drag to an edge could seat
+  // a longer tail on the train. The law this entry locks: the ladder now ENDS on
+  // the 35 floor (CIRC_BTN_MIN is the one owner of it) and the surface seats at
+  // most CIRC_SEAT_CAP (12, door included) — in the ring AND on the train — with
+  // the excess staying in the Tools menu, its star ON (P-UI-13's degrade, now at
+  // the cap boundary instead of the fit boundary).
+  {
+    const broken = [];
+    const menuALines166 = linesOf(MENU_A);
+    const minDef166 = Number((codeOf(menuALines166 || []).match(/#define\s+CIRC_BTN_MIN\s+(\d+)/) || [])[1]);
+    if (!(minDef166 >= 35))
+      broken.push(`CIRC_BTN_MIN is ${minDef166 || '?'} — a side below 35 reads as a glyph in a frame, not an icon`);
+    const ringLines166 = linesOf(MENU_RING);
+    if (!ringLines166) broken.push('Biotak/BiotakMenu_Ring.mqh is gone — the seat cap has no owner');
+    else {
+      const ringCode166 = codeOf(ringLines166);
+      const capDef166 = Number((ringCode166.match(/#define\s+CIRC_SEAT_CAP\s+(\d+)/) || [])[1]);
+      if (capDef166 !== 12)
+        broken.push(`CIRC_SEAT_CAP is ${capDef166 || 'missing'}, not 12 — the count the user measured is not the count that ships`);
+      const btn166 = bodyOf(ringLines166, 'int CircBtnSizeForN(');
+      if (!btn166) broken.push('CircBtnSizeForN is gone — the taper has no owner');
+      else {
+        const numeric166 = (btn166.text.match(/return\s+\d+;/g) || []).map((m) => Number(m.match(/\d+/)[0]));
+        const low166 = numeric166.filter((v) => v < 35);
+        if (low166.length)
+          broken.push(`CircBtnSizeForN still returns ${low166.join(', ')} — a side below the 35 floor shrinks the ring again`);
+        if (!btn166.text.includes('return CIRC_BTN_MIN'))
+          broken.push('CircBtnSizeForN no longer ends on CIRC_BTN_MIN — the floor has a second owner');
+      }
+      const fits166 = bodyOf(ringLines166, 'bool CircRingFits()');
+      if (!fits166 || !fits166.text.includes('MathMin(RingCount(), CIRC_SEAT_CAP)'))
+        broken.push('CircRingFits lost the seat cap — the shape gate tests counts the ring will never draw');
+      const live166 = bodyOf(ringLines166, 'int CircPlacedCountLive()');
+      if (!live166) broken.push('CircPlacedCountLive is gone — the capacity has no owner');
+      else {
+        if (!live166.text.includes('int top = MathMin(n, CIRC_SEAT_CAP)'))
+          broken.push('the ring\'s fit walk lost the seat cap — a fuller mask re-seats the tiny circle (the reported defect)');
+        if (!live166.text.includes('CircRailCapacity(MathMin(n, CIRC_SEAT_CAP)'))
+          broken.push('the train walk stopped honouring the cap — a drag to an edge seats a thirteenth tail the ring would not');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-UI-166: ' + broken.join('; ') + ' (Biotak/BiotakMenu_A.mqh CIRC_BTN_MIN + BiotakMenu_Ring.mqh CIRC_SEAT_CAP/CircBtnSizeForN/CircRingFits/CircPlacedCountLive)');
+    } else {
+      console.log('[PASS] P-UI-166 twelve seats at most, 35px at least: the taper\'s ladder ends on the 35 floor, the ring and the train both cap at CIRC_SEAT_CAP, and the excess stays in the Tools menu with its star ON (P-UI-13)');
+    }
+  }
+
+  // -- 58. P-DRAGF3 (2026-10-17): the gesture belongs to the terminal ----------------
+  // Report: a patterned thick fibo still reads one frame behind during a drag. The
+  // numbers were already in hand (P-DRAGF2): OBJECT_DRAG fires ~1-2/s while the
+  // hand's moves arrive ~60-100/s, and the demoted master's children are re-seated
+  // by US on every move — painted a frame AFTER the terminal's own blit of the
+  // master, which is structural: a follower can never be in the frame it follows.
+  // The law: WHILE A GESTURE IS IN FLIGHT the unit stands down and the terminal's
+  // native blit carries the body. At the arm (the gesture's first drag event) every
+  // stacked level goes back to its logical width (MT4 draws SOLID at width>1 — the
+  // law this unit exists around) and the stack (rows, caps, wash) hides once;
+  // Follow/Sync/Heal are gated by `s_fibPreview`; at the release ONE FibPenSync
+  // converges (un-hide + re-demote + re-seat + re-memoize), through the click door
+  // AND the button-up door, both idempotent. PenStack is BORN with the same preview
+  // (its integration may not ship the chase without it).
+  {
+    const broken = [];
+    const fib = codeOf(linesOf(path.join(BIOTAK, 'FibPen.mqh')) || []);
+    if (!/void FibPenPreviewArm\(\)/.test(fib) || !/bool FibPenPreviewEnd\(\)/.test(fib))
+      broken.push('the preview pair is gone — a patterned thick fibo has no way to hand the body back (P-DRAGF3)');
+    if (!/void FibPenDragArm\([^)]*\)\s*\{[\s\S]{0,600}?FibPenPreviewEnd\(\);/.test(fib))
+      broken.push('the arm no longer ends a stale preview — a missed release holds the old body native with its stack hidden (P-DRAGF3)');
+    if (!/void FibPenDragArm\([^)]*\)\s*\{[\s\S]{0,1500}?FibPenPreviewArm\(\);/.test(fib))
+      broken.push('the arm no longer opens the preview — the gesture falls back to the chase, which IS the frame behind (P-DRAGF3)');
+    // P-DRAGF3a (2026-10-17): A LOOK'S CHILDREN EXIST WITH NO STACK. CAPS and WASH ride
+    // a SOLID level (`want` is 0), so the stack-gated loop never saw them and the halo
+    // chased the hand one frame behind — the defect this preview exists to end, one look
+    // over. The arm asks the look tag before any width fence, no level skips its
+    // caps/wash, and the arm's own gate counts hidden look children (nH) beside demoted
+    // levels (nW) — or the END never runs to un-hide what the arm hid.
+    if (fib.includes('if(refLog <= DRAW_WIDTH_MIN) return;'))
+      broken.push('the arm refuses a look-only fibo on width again — CAPS/WASH children exist with no stack and their halo is back to the chase (P-DRAGF3a)');
+    if (!fib.includes('if(nW <= 0 && nH <= 0) return;'))
+      broken.push('the arm gate counts only demoted levels — a look-only fibo would hide its children and never flip the flag, and the END never runs to un-hide them (P-DRAGF3a)');
+    if (fib.includes('if(c <= 0) continue;'))
+      broken.push('a level with no stack skips its caps/wash again — the look children are re-seated per move by the chase, one frame behind (P-DRAGF3a)');
+    // P-LOOK-3D retired (2026-10-18): the shadow's arm/end/chase seats went with the look
+    // — their inverse asserts are gone, and the retirement gate (P-LOOK-3D, below) now
+    // fails if any of them comes back. The hand-back asserts above stay caps/wash-only.
+    if (!/bool FibPenPreviewEnd\(\)\s*\{[\s\S]{0,700}?s_fibPreview = false;[\s\S]{0,4000}?FibPenSync\(fibo, false\);/.test(fib))
+      broken.push('the end no longer clears the flag before its own sync — the convergence call would read its own gate and write nothing (P-DRAGF3)');
+    if (!/void FibPenDragFollow\([^)]*\)\s*\{[\s\S]{0,300}?if\(s_fibPreview\) return;/.test(fib))
+      broken.push('the chase is not gated by the preview — every move re-seats the stack the preview just handed back (P-DRAGF3)');
+    if (!/bool FibPenSync\([^)]*\)\s*\{[\s\S]{0,700}?if\(s_fibPreview && !dropAll && fibo == s_fibPreviewObj\) return false;/.test(fib))
+      broken.push('the sync is not gated by the preview (or dropAll was gated with it) — mid-gesture syncs re-demote the body, and gating dropAll would strand a deleted fibo\'s children (P-DRAGF3)');
+    if (!/bool FibPenHeal\([^)]*\)\s*\{[\s\S]{0,400}?if\(s_fibPreview && fibo == s_fibPreviewObj\) return false;/.test(fib))
+      broken.push('the 2 s heal is not gated — its memo mismatch snaps the body back mid-gesture (P-DRAGF3)');
+    if (!/FIBPENPRE view=on/.test(fib) || !/FIBPENPRE view=off/.test(fib))
+      broken.push('the preview writes no flushed witness — «sometimes works» is unprovable without one (P-DRAGF3)');
+    const rtr = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    const iEnd = rtr.indexOf('bool fbPrev = FibPenPreviewEnd();');
+    const iSync = rtr.indexOf('FibPenSync(relPressObj, false);');
+    if (iEnd < 0 || iSync < 0 || iEnd > iSync)
+      broken.push('the release no longer ends the preview before it re-states the pair — the un-hide would land in a later frame than the sync it must accompany (P-DRAGF3)');
+    if (!/if\(FibPenPreviewEnd\(\)\) ChartRedraw\(\);/.test(rtr))
+      broken.push('the button-up door is gone — a release off-chart leaves the preview armed until the next gesture (P-DRAGF3)');
+    if (!/else if\(fbPrev\) ChartRedraw\(\);/.test(rtr))
+      broken.push('an unnamed release no longer flushes its own un-hide — the body stays native with hidden children until an unrelated repaint (P-DRAGF3)');
+    // P-DRAGF3c (2026-10-17): THE FIRST TRAVELED MOVE ARMS WHAT THE TERMINAL NAMES TOO
+    // LATE. MEASURED (the user's 20:17 flick, biotak_diag_EURUSD_134362571361933137):
+    // id=2 arrived in the SAME TICK as the release at three gestures in a row
+    // (t=45431750 / 45434156 / 45435718), the preview lived ~10 ms per gesture
+    // (view=on -> view=off) and the stack stood frozen through the motion. The press
+    // names (s_dsPressObj), the travel vetoes (DSTRIP_CLICK_SLOP — a hold or a click
+    // never arms), the memo is per press (reset on BOTH edges), and the trip must
+    // stand BEFORE the chase call it feeds.
+    const iTrip = rtr.indexOf('FibPenDragArm(armAsk);');
+    const iFollow = rtr.indexOf('if(tleft) FibPenDragFollow(');
+    if (!/static string s_dsArmTried = "";/.test(rtr))
+      broken.push('the press-move arm has no per-press memo — every traveled move would re-ask the arm (P-DRAGF3c)');
+    if (iTrip < 0 || iFollow < 0 || iTrip > iFollow)
+      broken.push('the first traveled move no longer arms before the chase — a flick\'s terminal drag event arrives at the release, so the stack stays frozen through the whole motion (P-DRAGF3c)');
+    if (!/s_dsTravel > DSTRIP_CLICK_SLOP/.test(rtr))
+      broken.push('the arm trip lost its travel veto — a plain hold or click would blank the stack (P-DRAGF3c)');
+    if (!/FIBPENARM obj=/.test(rtr))
+      broken.push('the press-move arm writes no flushed witness — «preview never armed» is unarguable at the next capture (P-DRAGF3c)');
+    if ((rtr.match(/s_dsArmTried = "";/g) || []).length < 2)
+      broken.push('the arm memo is not reset on both press and release edges — one gesture would spend the next one\'s arm (P-DRAGF3c)');
+    // P-DRAGF3d (2026-10-17): THE PRESS THAT NAMED NOTHING CAN STILL BE THE PEN'S.
+    // MEASURED (the 20:51 frame, biotak_diag_EURUSD_134362571361933137): FIBPENPRE
+    // view=on 25 against FIBPENARM 22 — 4 of the 25 real drags armed only at the
+    // release door (the user's own «بعضی وقتا که سریع»): a fast flick grabs the fibo
+    // by its DIAGONAL, which DrawHitLevels never measures, so the press named nothing
+    // and the trip never fired. The trip asks the terminal's SELECTED fibo through a
+    // geometry fence; the fence itself lives in Toolbar_B and measures the full
+    // grabbable shape (anchor handles, the ray-paired diagonal, ray-extended levels).
+    // The probe is spent on a miss too, so a pan pays one walk per press, not per move.
+    const tbb = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+    if (!/string DrawSelectedFiboAt\(/.test(tbb) || !/bool DrawFiboFullHit\(/.test(tbb))
+      broken.push('the pen\'s third pick is gone — a diagonal grab names nothing and the flick falls back to the release door (P-DRAGF3d)');
+    if (!/ObjectGetInteger\(0, name, OBJPROP_RAY_LEFT\)/.test(tbb) ||
+        !/DrawSegDist\(px, py, x1, y1, x2, y2, oA, oB\)/.test(tbb))
+      broken.push('the third pick no longer measures the diagonal with the object\'s own rays — only the press-named body would arm (P-DRAGF3d)');
+    if (!/string armAsk = s_dsPressObj;/.test(rtr) || !/armAsk = DrawSelectedFiboAt\(tmx, tmy\);/.test(rtr))
+      broken.push('the trip no longer asks the terminal\'s selection when the press named nothing — the fast flick loses its arm (P-DRAGF3d)');
+    if (!/if\(armAsk == ""\) s_dsArmTried = "@";/.test(rtr))
+      broken.push('the unnamed-press probe is never spent on a miss — a pan re-walks the chart on every move (P-DRAGF3d)');
+    const psk = codeOf(linesOf(path.join(BIOTAK, 'PenStack.mqh')) || []);
+    if (!/void PenStackPreviewArm\(/.test(psk) || !/bool PenStackPreviewEnd\(\)/.test(psk))
+      broken.push('the stacked pen is not born with the preview law — its integration would ship the same frame behind (P-DRAGF3)');
+    if (!/void PenStackDragArm\([^)]*\)\s*\{[\s\S]{0,900}?PenStackPreviewArm\(name\);/.test(psk) ||
+        !/void PenStackDragFollow\([^)]*\)\s*\{[\s\S]{0,300}?if\(s_psPreview\) return;/.test(psk) ||
+        !/if\(s_psPreview && !dropAll && name == s_psPreviewObj\) return false;/.test(psk) ||
+        !/if\(s_psPreview && name == s_psPreviewObj\) return false;/.test(psk))
+      broken.push('the stacked pen\'s gates are incomplete — its arm must open the preview and Sync, Heal and Follow must all stand down while it owns the gesture (P-DRAGF3)');
+    if (broken.length) {
+      failures.push('P-DRAGF3: ' + broken.join('; ') + ' (Biotak/FibPen.mqh + Biotak/DrawStrip_Router.mqh + Biotak/PenStack.mqh + Biotak/Toolbar_B.mqh)');
+    } else {
+      console.log('[PASS] P-DRAGF3 the gesture belongs to the terminal: the arm hands the body back (logical widths + one hide), Follow/Sync/Heal stand down, the witness is flushed, both release doors converge with ONE sync, a look-only fibo hands its caps/wash back too (P-DRAGF3a), and an unnamed press asks the terminal\'s selected fibo through its full shape (P-DRAGF3d)');
+    }
+  }
+
+  // ── P-DRAW-74c (2026-10-17) — THE LINE PEN, WIRED ──
+  // The module (PenStack.mqh) was born beside the fibo's pen, gated by P-DRAGF3, and
+  // WIRED NOWHERE — zero callers, so a thick dashed HLINE/VLine/trendline stayed a
+  // demoted 1 px line at best and every reader lied about its width. The wiring is
+  // the rule: the width cell reads 1 + rows, a row is never served (DrawKindOf), the
+  // slot writers converge the stack in the SAME pass they write the master (or the
+  // remembered thickness dies one write early — the fibo's own P-DRAW-74b defect),
+  // the open/release/zoom/delete paths re-state or drop the rows, the 2 s heal is
+  // the net, and the duplicate takes the LOGICAL width, not the demoted 1.
+  {
+    const broken = [];
+    const ps = codeOf(linesOf(path.join(BIOTAK, 'PenStack.mqh')) || []);
+    const tba = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+    const tbb = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+    const tbr = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    const pk = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Pick.mqh')) || []);
+    const tpt = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    const pnt = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
+    const dtb = codeOf(linesOf(path.join(BIOTAK, 'DrawToolbar.mqh')) || []);
+    if (!/#include "PenStack\.mqh"/.test(dtb))
+      broken.push('the module is not included — every call below resolves to nothing and the terminal paints the demoted 1 (P-DRAW-74c)');
+    if (!/if\(PenStackIsChild\(name\)\) return DK_NONE;/.test(tba))
+      broken.push('a stacked row is served again — DrawKindOf must answer DK_NONE for it, or hits, presets and the strip learn the rows (P-DRAW-74c)');
+    if (!/ObjectFind\(0, PenStackName\(name, 0\)\) >= 0\)/.test(tba) || !/return \(double\)PenStackLogicalWidth\(name\);/.test(tba))
+      broken.push('the width cell reads the demoted 1 — the logical width is 1 + children (P-DRAW-74c)');
+    if (!/if\(PenStackServes\(name\)\) return false;/.test(tbb))
+      broken.push('DrawStylePairCoerce reads a line pen again — the strip open forces a stacked line back to a 1 px pen and the rows die (P-DRAW-74c)');
+    if (!/\|\| PenStackServes\(name\);/.test(tbb))
+      broken.push('the STYLE/FOLD path no longer knows the line pen — its own width gets folded to 1 before the sync can read it, so a thick dashed line comes out a plain 1 px dash (P-DRAW-74c)');
+    if (!/if\(!penKind && \(int\)ObjectGetInteger\(0, name, OBJPROP_WIDTH\) != DRAW_WIDTH_MIN\)/.test(tbb))
+      broken.push('the STYLE slot folds the object width on a pen kind — the logical memory dies one write early (P-DRAW-74c)');
+    if (!/if\(penKind\)\s*\{[\s\S]{0,150}?if\(w <= DRAW_WIDTH_MIN\) PenStackStraysDrop\(name\);/.test(tbb))
+      broken.push('a width-1 pick cannot come back — the rows outrank the read, so they must die where the hand\'s intent is known (P-DRAW-74c)');
+    if (!/case DRAW_SLOT_COLOR:[\s\S]{0,1400}?if\(DrawKindHasFillBody\(k\)\) FillChildSync\(name\);[\s\S]{0,120}?PenStackSync\(name, false\);/.test(tbb))
+      broken.push('the COLOUR slot no longer converges the stack — a recoloured line keeps its old-ink rows (P-DRAW-74c)');
+    if (!/s_dkStyle\[k\] = memSt;[\s\S]{0,80}?PenStackSync\(name, false\);[\s\S]{0,60}?DrawStylePairCoerce\(name\);/.test(tbb))
+      broken.push('the STYLE slot no longer converges the stack — a dashed line keeps solid rows (P-DRAW-74c)');
+    if (!/FibPenSync\(name, false\);[\s\S]{0,100}?PenStackSync\(name, false\);/.test(pnt))
+      broken.push('an open never re-converges the rows — the stack trails the drawing until the next touch (P-DRAW-74c)');
+    if (!/PenStackSync\(sparam, false\);/.test(tbr))
+      broken.push('the drag/change event never reaches the rows — a dragged line\'s stack trails the hand\'s own event (P-DRAW-74c)');
+    if (!/void PenStackDragFollow/.test(ps) || !/PenStackDragArm\(sparam\);/.test(tbr))
+      broken.push('the chase is unwired — a line drag must arm it, the hand stream must run it (P-DRAW-74c)');
+    if (!/PenStackDragArm\(armAsk\);/.test(tbr))
+      broken.push('the move-stream trip never arms the line pen — a fast flick freezes the rows through the whole motion (P-DRAW-74c)');
+    if (!/if\(tleft\) PenStackDragFollow\(\(int\)lparam, \(int\)dparam\);/.test(tbr))
+      broken.push('moves never chase — the follow belongs on the mouse stream, not the drag event (P-DRAW-74c)');
+    if (!/if\(PenStackPreviewEnd\(\)\) ChartRedraw\(\);/.test(tbr))
+      broken.push('the button-up door never ends the line preview (P-DRAW-74c)');
+    if (!/if\(PenStackPreviewEnd\(\)\) fbPrev = true;/.test(tbr))
+      broken.push('the click door never ends the line preview — the rows stay hidden until an unrelated repaint (P-DRAW-74c)');
+    if (!/PenStackSync\(relPressObj, false\);/.test(tbr))
+      broken.push('the release never re-states the rows on the final seat (P-DRAW-74c)');
+    if ((tbr.match(/PenStackDragDisarm\(\);/g) || []).length < 2)
+      broken.push('a release door forgot its disarm — the next gesture inherits a stale chase (P-DRAW-74c)');
+    if (!/if\(PenStackStraysDrop\(sparam\)\) casc = true;/.test(tbr))
+      broken.push('a native delete strands the rows — every dependent dies with its object (P-DRAW-74c)');
+    if (!/if\(id == CHARTEVENT_CHART_CHANGE\) PenStackSync\(s_dsObj, false\);/.test(tbr))
+      broken.push('a zoom never re-syncs the served line — the pixel ring goes stale until the next touch (P-DRAW-74c)');
+    // P-PEN-ALL (2026-10-19): the walk's type list MOVED into the pen. It was a second
+    // owner of "which kinds the pen serves" — the module's Serves() and this literal had
+    // to be edited together, and the shape kinds were about to make that literal wrong.
+    // The walk now asks `PenStackServesType(ty)`; a list back in the walk fails here.
+    if (/if\(ty == OBJ_HLINE[\s\S]{0,80}?PenStackHeal\(nm\);/.test(pk))
+      broken.push('the 2 s walk holds its own list of pen types again — the served set has ONE owner, `PenStackServesType` (P-PEN-ALL)');
+    if (!/if\(PenStackServesType\(ty\)\) PenStackHeal\(nm\);/.test(pk) || !/bool PenStackServesType\(const int ty\)/.test(ps))
+      broken.push('the pen has no net — a master the terminal moves with no event keeps a stale pen until the next touch (P-DRAW-74c)');
+    if (!/if\(PenStackIsChild\(nm\)\)/.test(pk) || !/string PenStackChildParent\(/.test(ps))
+      broken.push('the rows have no parent oracle — a row whose master is gone survives a reattach (P-DRAW-74c)');
+    if (!/PenStackLogicalWidth\(s_dsObj\)/.test(tpt))
+      broken.push('a duplicate copies the demoted 1 — the clone of a 3 px line shrinks to a dash (P-DRAW-74c)');
+    if (!/PenStackSync\(nm, false\);/.test(tpt) || !/PenStackSync\(s_dsObj, true\);/.test(tpt) || !/PenStackSync\(DrawSelAt\(j\), true\);/.test(tpt))
+      broken.push('the tap paths never reach the rows — the copy must re-form beside itself and both delete doors must drop the family (P-DRAW-74c)');
+    if ((tba.match(/PenStackSync\(name, false\);/g) || []).length < 3)
+      broken.push('a hover preview leaves the rows behind — previewed ink must reach the children it cannot see (P-DRAW-74c)');
+    if (!/ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);[\s\S]{0,400}?DrawStylePairCoerce\(name\);[\s\S]{0,120}?PenStackSync\(name, false\);/.test(tbb))
+      broken.push('a line is born un-stacked — a remembered thick + dash pair flashes solid at birth until the 2 s heal (P-DRAW-74c)');
+    if (broken.length) {
+      failures.push('P-DRAW-74c: ' + broken.join('; ') + ' (Biotak/PenStack.mqh + Toolbar_A.mqh + Toolbar_B.mqh + DrawStrip_Router.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-74c the line pen is wired: width reads 1 + rows, a row is never served, every writer converges the stack in its own pass, all three doors release it, deletes drop the family and the 2 s heal is the net');
+    }
+  }
+
+  // ── P-PEN-ALL (2026-10-19) - THE SHAPE PEN: THE FIBO'S OWN FIX, ONE ANCHOR SET OVER ──
+  // The line pen served the three kinds whose drawing is ONE line. Every other kind the
+  // strip styles stayed on the native fold at (pattern, width > 1): MT4 draws STYLE_* only
+  // at width 1 (P-DRAW-74's measured law), so a thick dashed rectangle came out a solid
+  // thick outline and the report «استایل ها در ضخامت های بالا درست کار نمیکنه» had one
+  // family left. The fix is the same pen pointed at the shapes: a copy of the master with
+  // EVERY anchor shifted by the same pixel vector is the same shape moved, so the master is
+  // demoted to the pattern at width 1 and `logical-1` rows carry the thickness.
+  // This section gates the WIRING, not the law:
+  //   * the served set has ONE owner (`PenStackShapeKind`, asked by `PenStackServes` and by
+  //     the 2 s walk through `PenStackServesType`) - never a second list;
+  //   * a row is born the master's own TYPE (a rect row is a RECT; an OBJ_TREND row would
+  //     draw a diagonal line the master never had);
+  //   * a row carries NO interior (the fill is the fill child's pixel, P-DRAW-64);
+  //   * the three-point shapes keep their third anchor in the seat AND in the net, or a
+  //     moved corner leaves every row stale;
+  //   * a fill child appearing after the rows rebuilds them ABOVE it (MT4 paints in
+  //     CREATION order, P-LOG-10 - otherwise the thickness survives on the outer half only).
+  {
+    const brokenPA = [];
+    const psp = codeOf(linesOf(path.join(BIOTAK, 'PenStack.mqh')) || []);
+    const tbbp = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+    const pkp = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Pick.mqh')) || []);
+    if (!/bool PenStackShapeKind\(const EDrawKind k\)\s*\{[\s\S]{0,260}?DK_RECT[\s\S]{0,80}?DK_ELLIPSE[\s\S]{0,80}?DK_TRIANGLE[\s\S]{0,80}?DK_CHANNEL[\s\S]{0,80}?DK_GANN/.test(psp))
+      brokenPA.push('the shape set has no owner - the five whole-object kinds must be named in ONE function or every reader invents its own list (P-PEN-ALL)');
+    //--- P-PEN-ALL: the served set's LINE half, in one owner (P-UNIFY-2 added the
+    //--- trend-by-angle to it, and a literal list here would have to be edited twice).
+    //--- P-UNIFY-4: both halves are the PROFILE's answer now. The shape test in
+    //--- PenStack stays the seat that spends it, but the rows it may serve are the
+    //--- profile's `DKPEN_OBJECT` block, asked through the same owner as the walk.
+    const profPA = codeOf(linesOf(path.join(BIOTAK, 'DrawKindProfile.mqh')) || []);
+    if (!/bool PenStackServes\(const string name\)[\s\S]{0,300}?return \(DrawKindPenFamily\(DrawKindOf\(name\)\) == DKPEN_OBJECT\);/.test(psp) ||
+        !/case DK_CHANNEL:[\s\S]{0,400}?p\.pen = DKPEN_OBJECT;/.test(profPA))
+      brokenPA.push('the shapes are out of the pen again - a thick dashed rect/triangle/ellipse/channel/gann keeps the solid native fold (P-PEN-ALL)');
+    if (!/bool PenStackServesType\(const int ty\)[\s\S]{0,200}?return \(DrawTypePenFamily\(ty\) == DKPEN_OBJECT\);/.test(psp))
+      brokenPA.push('the TYPE half of the served set is gone - the 2 s walk must ask the pen, not hold a list (P-PEN-ALL)');
+    if (!/ObjectCreate\(0, nm, ty, 0, t0, p0, t1c, p1c, t2c, p2c\)/.test(psp) || !/ObjectCreate\(0, nm, ty, 0, t0, p0, t1c, p1c\)/.test(psp))
+      brokenPA.push('a shape row is not born the masters own type - a rectangle would be drawn as a diagonal line (P-PEN-ALL)');
+    if (!/bool PenStackShapeSeat\(const string m, const string nm, const int nA,/.test(psp) || !/for\(int a = 0; a < nA; a\+\+\)/.test(psp))
+      brokenPA.push('a shape row does not carry EVERY anchor - a triangle/channel row is seated on two corners and opens up (P-PEN-ALL)');
+    if (!/if\(shape\) ObjectSetInteger\(0, nm2, OBJPROP_FILL, false\);/.test(psp))
+      brokenPA.push('a shape row can wear an interior - it would cover the very thickness it was born to draw (P-PEN-ALL)');
+    if (!/if\(shape\)\s*\{\s*if\(PenStackShapeSeat\(name, nm2, nA, off, px, secPx\)\) nMov\+\+;\s*\}/.test(psp))
+      brokenPA.push('the sync never seats a shape row - the rows are built once and never follow their master (P-PEN-ALL)');
+    if (!/int nA = shape \? PenStackAnchorCount\(ty\) : 0;/.test(psp) || !/return \(ty == OBJ_TRIANGLE \|\| ty == OBJ_CHANNEL\) \? 3 : 2;/.test(psp))
+      brokenPA.push('the anchor count is guessed instead of read off the TYPE - an equidistant channel is three points, a regression two (P-PEN-ALL)');
+    if (!/s_psNetT2\[at\] == t3 && s_psNetP2\[at\] == p3 && s_psNetFill\[at\] == fl/.test(psp))
+      brokenPA.push('the net ignores the third anchor or the interior - a moved corner or a new fill child keeps stale rows (P-PEN-ALL)');
+    if (!/PenStackNetWrite\(name, \(long\)t1, \(long\)t2, p1, p2, t3, p3, log, st, want, back, ray, fillNow\);/.test(psp))
+      brokenPA.push('the sync records a state the heal cannot rebuild from - the memo and the compare must name the same fields (P-PEN-ALL)');
+    if (!/if\(!dropAll && shape && fillNow == 1 && fillWas == 0 && cur > 0\)[\s\S]{0,120}?PenStackStraysDrop\(name\);/.test(psp))
+      brokenPA.push('a fill child appearing after the rows never rebuilds them - the thickness dies on the inner half of every edge (P-PEN-ALL)');
+    if (!/bool PenStackNetForget\(const string m\)/.test(psp))
+      brokenPA.push('the net cannot be spent - a state changed underneath the memo is never re-examined (P-PEN-ALL)');
+    if (!/if\(PenStackLineKind\(k\) \|\| shape\)/.test(psp))
+      brokenPA.push('a shape rows ray pair is not mirrored - a gann line runs on and its row stops at the anchor (P-PEN-ALL)');
+    if (!/if\(PenStackShapeKind\(\(EDrawKind\)s_psKind\)\)/.test(psp) || !/if\(PenStackShapeSeat\(m, nmq, nAs, FibPenOffPx\(logs, q\), pxs, secs\)\) nMovS\+\+;/.test(psp))
+      brokenPA.push('the chase never carries a shape - a dragged rect leaves its rows behind (P-PEN-ALL)');
+    //--- the code, not the comment: `codeOf` strips comments, so an assertion that
+    //--- anchors on a comment line can never match (it is a check that always fails).
+    if (!/FillChildDrop\(name\);[\s\S]{0,200}?PenStackSync\(name, false\);[\s\S]{0,60}?break;/.test(tbbp))
+      brokenPA.push('the FILL switch does not re-state the pen in its own frame - the interior is born over the rows and they only return at the next 2 s pass (P-PEN-ALL)');
+    if (!/if\(remember\) s_dkFillClr\[k\] = ic;[\s\S]{0,220}?FillChildSync\(name\);[\s\S]{0,140}?PenStackSync\(name, false\);/.test(tbbp))
+      brokenPA.push('the interior colour does not re-state the pen - the fill child it ensures is a later pixel than the rows (P-PEN-ALL)');
+    if (!/if\(PenStackServesType\(ty\)\) PenStackHeal\(nm\);/.test(pkp))
+      brokenPA.push('the 2 s walk never heals a shape - a rect the terminal moved keeps its rows on the old seat (P-PEN-ALL)');
+    if (brokenPA.length) {
+      failures.push('P-PEN-ALL: ' + brokenPA.join('; ') + ' (Biotak/PenStack.mqh + Toolbar_B.mqh + DrawStrip_Pick.mqh)');
+    } else {
+      console.log('[PASS] P-PEN-ALL the shape pen is wired: one owner for the served set, a row is born the master\'s own type with every anchor and no interior, the three-point third anchor rides the seat and the net, a fresh fill child rebuilds the rows above it and the chase carries a dragged shape');
+    }
+  }
+
+  // ── P-UNIFY-2 (2026-10-19) - THE TWO KINDS THAT HAD NO KIND ──
+  // `OBJ_TRENDBYANGLE` and `OBJ_CYCLES` are MT4's own toolbar tools and the strip spoke
+  // NEITHER: `DrawKindOf` fell to DK_NONE, so a pick on one opened the strip with zero
+  // cells and the drawing answered nothing — the "invisible" end of the same report the
+  // FIBO's cells came from («همه جا یکپارچه»). This section gates every door that must
+  // name a kind, because a kind is not one edit: the enum, the type->kind map, the
+  // capability table (the cells), the display name, the HIT TEST (the drawn shape is
+  // what the hand can click) and the pen's two families (the line family for the
+  // by-angle line, the shape family for a cycles fan).
+  //   * The enum values are APPENDED before DK_COUNT: every index a build before this
+  //     one wrote (template rows, remembered looks) keeps its number.
+  //   * No RAY seat is minted for either kind: a cell is only added where a write is
+  //     proven to draw (C-04 / P-DRAW-145), and the type's ray support is unmeasured.
+  {
+    const brokenU2 = [];
+    const tba2 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+    const tbb2 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+    const ps2 = codeOf(linesOf(path.join(BIOTAK, 'PenStack.mqh')) || []);
+    //--- the pick owner: P-SIZE-1500 moved the two hit tests out of Toolbar_A while
+    //--- this rule was being written, so the door is asked of the file that owns it.
+    const th2 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_Hit.mqh')) || []);
+    if (!/DK_TEXT,[\s\S]{0,900}?DK_TANGLE,[\s\S]{0,400}?DK_CYCLES,[\s\S]{0,80}?DK_COUNT/.test(tba2))
+      brokenU2.push('the two kinds are not appended before DK_COUNT - an inserted value renumbers every remembered look');
+    for (const [ty, kd] of [['OBJ_TRENDBYANGLE', 'DK_TANGLE'], ['OBJ_CYCLES', 'DK_CYCLES']]) {
+      if (!new RegExp('case ' + ty + ':\\s*return ' + kd + ';').test(tba2))
+        brokenU2.push(ty + ' maps to no kind again - the strip opens on nothing for that drawing');
+    }
+    if (!/case DK_TANGLE:\s*\r?\n\s*case DK_CYCLES:\s*return DRAW_CAP_COMMON;/.test(tba2))
+      brokenU2.push('the two kinds lost their six cells - the strip is a name with no controls');
+    if (!/case DK_TANGLE:\s*return "Trend by Angle";/.test(tbb2) || !/case DK_CYCLES:\s*return "Cycles";/.test(tbb2))
+      brokenU2.push('a kind without its own name falls to "Drawing" in every panel, template and tooltip');
+    if (!/case DK_LINE:\s*\r?\n\s*case DK_TANGLE:/.test(th2))
+      brokenU2.push('a trend-by-angle answers no pick - it draws one segment and the hand can click it');
+    if (!/case DK_CYCLES:/.test(th2) || !/if\(!ChartXYToTimePrice\(0, px, py, sub, tc, pc\)\) return false;/.test(th2) ||
+        !/ChartTimePriceToXY\(0, 0, \(datetime\)\(\(long\)ta \+ \(d \+ ci\) \* per\), pa, vx, vy\)/.test(th2))
+      brokenU2.push('a cycles object is picked by a chart-wide sweep or by nothing - its verticals stand at t1 + k*P and the pick must ask the terminal where THOSE are');
+    if (!/bool PenStackLineKind\(const EDrawKind k\)[\s\S]{0,120}?k == DK_TANGLE/.test(ps2) ||
+        !/if\(want > 0 && PenStackLineKind\(k\)\) step = PenStackLineStep\(t1, p1, t2, p2\);/.test(ps2))
+      brokenU2.push('the by-angle line is served by the pen but never gets its perpendicular step - its rows land ON the master and paint nothing');
+    //--- P-UNIFY-4: the two types live in the PROFILE now (`DK_CYCLES` in the
+    //--- shape block, `DrawTypePenFamily` asking it), not in a second list here.
+    const prof2 = codeOf(linesOf(path.join(BIOTAK, 'DrawKindProfile.mqh')) || []);
+    if (!/DK_GANN \|\| k == DK_CYCLES/.test(ps2) ||
+        !/case DK_CYCLES:[\s\S]{0,80}?p\.pen = DKPEN_OBJECT;/.test(prof2) ||
+        !/return DrawKindPenFamily\(DrawKindOfType\(t\)\);/.test(prof2))
+      brokenU2.push('the two types are missing from a pen family - served on the write, stale on the next frame (the 2 s walk asks PenStackServesType)');
+    //--- P-SIZE-1500 forced Toolbar_A (1526 lines) to give the pick owner its own file.
+    //--- A half is a MEMBER of the unit, included above the file that calls into it, and
+    //--- it must be CALLED - an orphaned half compiles and is dead (14b's rule, one
+    //--- ceiling later). Without this, the pick both new kinds answer could vanish.
+    const hubLines = linesOf(path.join(BIOTAK, 'DrawToolbar.mqh'));
+    const hitLines = linesOf(path.join(BIOTAK, 'Toolbar_Hit.mqh'));
+    const tbbLines = linesOf(path.join(BIOTAK, 'Toolbar_B.mqh'));
+    if (!hitLines) brokenU2.push('Toolbar_Hit.mqh is missing - the pick the two kinds answer is not in the build');
+    if (!hubLines) brokenU2.push('Biotak/DrawToolbar.mqh is missing (the toolbar unit has no hub)');
+    else {
+      const iHit = indexOfLine(hubLines, '#include "Toolbar_Hit.mqh"');
+      const iOwner = indexOfLine(hubLines, '#include "Toolbar_A.mqh"');
+      const iCaller = indexOfLine(hubLines, '#include "Toolbar_B.mqh"');
+      if (iHit < 0) brokenU2.push('the hub does not include Toolbar_Hit.mqh - the unit is incomplete');
+      else if (iOwner < 0 || iCaller < 0 || iHit < iOwner || iHit > iCaller)
+        brokenU2.push('Toolbar_Hit.mqh must be included between Toolbar_A.mqh (what it reads) and Toolbar_B.mqh (which calls it): MQL4 resolves a call top-down');
+    }
+    if (tbbLines && !/DrawObjectAt\(px, py\)/.test(codeOf(tbbLines)))
+      brokenU2.push('nothing calls into Toolbar_Hit.mqh - the half was orphaned (it compiles and is dead)');
+    if (brokenU2.length) {
+      failures.push('P-UNIFY-2: ' + brokenU2.join('; ') + ' (Biotak/Toolbar_A.mqh + Toolbar_B.mqh + PenStack.mqh)');
+    } else {
+      console.log('[PASS] P-UNIFY-2 the two kinds with no kind are served end to end: appended enum seats, both type maps, six cells each, their own names, a pick that answers the DRAWN shape (segment / t1+k*P verticals) and both pen families');
+    }
+  }
+
+  // ── P-SHOT-1 (2026-10-19) - THE SHOT'S DONE VERDICT IS A FLUSHED FILE, NOT A JOURNAL LINE ──
+  // MEASURED 2026-10-19 09:55: `-Shot -RestartTerminal` wrote all 30 PNGs and still ended
+  // `[FAIL] the harness never reached DONE` — that verdict was read out of the Experts
+  // journal, which MT4 buffers in RAM (P-DRAW-126, MEASURED at seven minutes). A reader
+  // that can only see the buffered channel cannot tell "not finished" from "not flushed",
+  // and the honest verdict ("the pixels are here") became the one verdict it could not
+  // report. The harness now writes `<MQL4>\Files\StripShot.done` through the terminal's own
+  // file API on EVERY exit door (DONE and each SKIP), the build deletes a stale marker
+  // before the launch (P-LOG-2's rule, one channel over), the wait checks the marker FIRST,
+  // and the verdict reads it. The journal stays as the human-readable record.
+  {
+    const brokenS1 = [];
+    const hz = codeOf(linesOf(path.join(ROOT, 'tests', 'Biotak_StripShot_Test.mq4')) || []);
+    const ps1 = linesOf(BUILD_PS1) ? fs.readFileSync(BUILD_PS1, 'utf8') : '';
+    if (!ps1) brokenS1.push('compile-th3.ps1 is missing (the build is the only entry point)');
+    if (!/void SSMarker\(const string verdict\)/.test(hz))
+      brokenS1.push('the harness has no flushed DONE marker - the capture can only be judged through the RAM-buffered journal (P-SHOT-1)');
+    if (!/int h = FileOpen\(f, FILE_WRITE \| FILE_TXT \| FILE_ANSI\);/.test(hz) ||
+        !/FileFlush\(h\);[\s\S]{0,60}?FileClose\(h\);/.test(hz))
+      brokenS1.push('the marker is left to the terminal\'s buffer - a write without flush+close is the same unseen channel one layer down (P-SHOT-1)');
+    if (!/SSMarker\("DONE"\);/.test(hz))
+      brokenS1.push('the harness never marks a finished run - the build would wait out its whole timeout on a complete capture (P-SHOT-1)');
+    if (!/SSMarker\("START"\);/.test(hz))
+      brokenS1.push('the harness leaves no START door - a reader cannot tell "still working" from "never ran" during the two-minute bar wait (P-SHOT-1)');
+    if ((hz.match(/SSMarker\("SKIP/g) || []).length < 4)
+      brokenS1.push('a SKIP door leaves no marker - the build cannot tell "the harness refused this chart" from "the harness never ran" (P-SHOT-1)');
+    if (!/\$marker = Join-Path \(Join-Path \$deployDir "Files"\) "StripShot\.done"/.test(ps1))
+      brokenS1.push('the build does not look for the marker where the harness writes it (<MQL4>\\Files) (P-SHOT-1)');
+    if (!/if \(Test-Path -LiteralPath \$marker\) \{ Remove-Item -LiteralPath \$marker -Force/.test(ps1))
+      brokenS1.push('a stale marker from an earlier run survives into the next one - an old file would answer for a new run (P-SHOT-1)');
+    if (!/-SkipLines \$skip -Marker \$marker/.test(ps1) ||
+        !/\$mtxt\.StartsWith\("DONE"\) -or \$mtxt\.StartsWith\("SKIP"\)/.test(ps1))
+      brokenS1.push('the wait never reads the marker, or it ends on the START line alone - START says "working", only DONE/SKIP say "finished" (P-SHOT-1)');
+    if (!/\$markerText -notmatch '\^DONE'/.test(ps1))
+      brokenS1.push('the verdict ignores the marker - a complete capture whose journal lagged reads as "never reached DONE" (P-SHOT-1)');
+    //--- MEASURED 2026-10-19 11:03: the harness waits up to 120 s for bars and 32 states
+    //--- take ~85 s, so a 120 s budget cut a COMPLETE capture off at its last state
+    //--- (StripShot_pen.png was never written and the build reported "never reached
+    //--- DONE"). The wait must outlast the harness's own bar wait with room to shoot.
+    {
+      const tm = ps1.match(/\$ShotTimeoutSec = (\d+)/);
+      if (!tm || Number(tm[1]) < 240)
+        brokenS1.push('the shot timeout cannot outlast the harness\'s own 120 s bar wait plus the states - a 120 s budget ends a complete capture early (P-SHOT-1)');
+    }
+    if (brokenS1.length) {
+      failures.push('P-SHOT-1: ' + brokenS1.join('; ') + ' (compile-th3.ps1 + tests/Biotak_StripShot_Test.mq4)');
+    } else {
+      console.log('[PASS] P-SHOT-1 the shot\'s DONE verdict is a flushed file: the harness marks every exit door (write+flush+close), the build deletes a stale marker before the launch, the wait polls it first and the verdict reads it');
+    }
+  }
+
+  // ── P-SHOT-2 (2026-10-19) — A GENERATED FILE IS NOT A WITNESS FOR THE PIXELS ──
+  // MEASURED 2026-10-19 11:10:37: Biotak/BuildHash.mqh — the stamp tools/gen-build-hash.js
+  // rewrites on EVERY compile — was the newest .mqh on disk, so all 33 PNGs captured at
+  // 11:08:09 read as `fresh 0 · stale 33 · missing 0` although no source changed between the
+  // shot and that build. -Shot's strict leg had just gone green on those same pixels, and the
+  // next ordinary build turned them red — a red produced by the build's own artifact, so the
+  // reader would answer "the code moved" where nothing had. The walk now reads the head of the
+  // file that would win and skips one that declares itself GENERATED (the property, not the
+  // name, so renaming the generator cannot slip past it), and gen-build-hash keeps emitting
+  // that declaration — which is the whole reason the skip can be trusted.
+  {
+    const brokenS2 = [];
+    const frzTxt = linesOf(path.join(ROOT, 'tools', 'check-shot-freshness.js'))
+      ? fs.readFileSync(path.join(ROOT, 'tools', 'check-shot-freshness.js'), 'utf8') : '';
+    const genTxt = linesOf(path.join(ROOT, 'tools', 'gen-build-hash.js'))
+      ? fs.readFileSync(path.join(ROOT, 'tools', 'gen-build-hash.js'), 'utf8') : '';
+    const bhTxt = linesOf(path.join(ROOT, 'Biotak', 'BuildHash.mqh'))
+      ? fs.readFileSync(path.join(ROOT, 'Biotak', 'BuildHash.mqh'), 'utf8') : '';
+    if (!frzTxt) brokenS2.push('tools/check-shot-freshness.js is missing (the only reader of the real pixels)');
+    if (!/if \(head\.indexOf\('GENERATED FILE'\) >= 0\) \{/.test(frzTxt))
+      brokenS2.push('the walk counts a generated file as a source - the build rewrites its own stamp on every run, so every capture reads stale the moment anything is built again (P-SHOT-2)');
+    if (!/if \(st\.mtimeMs <= best\.mtime\) return;/.test(frzTxt) ||
+        !/const n = fs\.readSync\(fd, buf, 0, 512, 0\);/.test(frzTxt))
+      brokenS2.push('the head is not read for the would-be winner only - every .mqh pays an open on every gate run where one would do (P-SHOT-2)');
+    if (!/GENERATED FILE\. DO NOT EDIT\./.test(genTxt))
+      brokenS2.push('tools/gen-build-hash.js no longer declares its output GENERATED - the skip answers to a declaration the generator stopped writing (P-SHOT-2)');
+    if (!/GENERATED FILE\. DO NOT EDIT\./.test(bhTxt))
+      brokenS2.push('Biotak/BuildHash.mqh does not declare itself GENERATED - the skip trusts a header the file does not carry (P-SHOT-2)');
+    if (brokenS2.length) {
+      failures.push('P-SHOT-2: ' + brokenS2.join('; ') + ' (tools/check-shot-freshness.js + tools/gen-build-hash.js)');
+    } else {
+      console.log('[PASS] P-SHOT-2 a generated stamp is not a witness: the real-pixels gate reads the head of the file that would win (1 open, never 460) and skips one that declares itself GENERATED, and the generator still emits that declaration');
+    }
+  }
+
+  // ── P-DRAGF4 (2026-10-17) — THE BOX'S INTERIOR RIDES THE TERMINAL, LIKE THE PEN ──
+  // The interior (`_FL` child) and the 50 % mid (`_BX50`) are followers re-seated by
+  // US from the event stream, so they are always one frame behind the terminal's own
+  // native blit of the dragged master — the fibo's lag law, one family over. P-DRAGF4
+  // is the same answer: during the gesture the master takes the interior BACK
+  // (`OBJPROP_FILL` + `BGCOLOR` = the child's own rendered ink) and both followers
+  // hide; the two syncs stand down under `BoxPreviewOwns`; at the release ONE pass
+  // re-seats them on the final seat. The arm rides both the drag event and the
+  // first traveled move (P-DRAGF3c's lesson), and the doors end it.
+  {
+    const broken = [];
+    const tba = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+    const bp = codeOf(linesOf(path.join(BIOTAK, 'BoxPreview.mqh')) || []);
+    const pk = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Pick.mqh')) || []);
+    const tbr = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    const dtb = codeOf(linesOf(path.join(BIOTAK, 'DrawToolbar.mqh')) || []);
+    if (!/#include "BoxPreview\.mqh"/.test(dtb))
+      broken.push('the module is not included — every arm/end call resolves to nothing and the child lag survives (P-DRAGF4)');
+    if (!/bool BoxPreviewOwns\(/.test(bp) || !/bool BoxPreviewEnd\(/.test(bp) || !/void BoxPreviewArm\(/.test(bp))
+      broken.push('the preview has no owner functions (P-DRAGF4)');
+    if (!/if\(BoxPreviewOwns\(obj\)\) return false;/.test(tba))
+      broken.push('the interior\'s hand-sync does not stand down during the preview — two writers re-seat one child (P-DRAGF4)');
+    if (!/if\(BoxPreviewOwns\(box\)\) return false;/.test(pk))
+      broken.push('the mid\'s sync does not stand down during the preview — it would fight the hidden mid (P-DRAGF4)');
+    if (!/if\(obj == "" \|\| !DrawTypeHasFillChild\(DrawObjectType\(obj\)\)\) return;/.test(bp))
+      broken.push('the arm lost its family fence — a stranger\'s object gets a fill it never had (P-DRAGF4)');
+    if (!/ObjectSetInteger\(0, obj, OBJPROP_FILL, true\);/.test(bp))
+      broken.push('the interior is never handed to the terminal — the child lag survives (P-DRAGF4)');
+    if (!/OBJPROP_BGCOLOR, \(color\)ObjectGetInteger\(0, fil, OBJPROP_COLOR\)/.test(bp))
+      broken.push('the native fill guesses its ink — it must wear the child\'s own rendered colour (P-DRAGF4)');
+    if (!/ObjectSetInteger\(0, fil, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS\);/.test(bp))
+      broken.push('the child is not hidden during the gesture — two interiors paint at once (P-DRAGF4)');
+    if (!/ObjectSetInteger\(0, fil, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS\);/.test(bp))
+      broken.push('the child never comes back (P-DRAGF4)');
+    if (!/FillChildSync\(master\);/.test(bp) || !/BoxMidSync\(master\);/.test(bp))
+      broken.push('the end never re-seats the followers on the final seat (P-DRAGF4)');
+    if (!/BOXPRE view=on/.test(bp) || !/BOXPRE view=off/.test(bp))
+      broken.push('the preview leaves no flushed witness — «یک فریم عقب» is unprovable without its numbers (P-DRAGF4)');
+    if (!/BoxPreviewArm\(sparam\);/.test(tbr) || !/BoxPreviewArm\(armAsk\);/.test(tbr))
+      broken.push('nothing arms the preview on the drag event or the move-stream trip — a fast flick keeps the lag (P-DRAGF4)');
+    if (!/if\(BoxPreviewEnd\(\)\) ChartRedraw\(\);/.test(tbr))
+      broken.push('the button-up door never ends the box preview (P-DRAGF4)');
+    if (!/if\(BoxPreviewEnd\(\)\) fbPrev = true;/.test(tbr))
+      broken.push('the click door never ends the box preview (P-DRAGF4)');
+    if (!/if\(armAsk == ""\) armAsk = DrawSelectedObjectAt\(tmx, tmy\);/.test(tbr))
+      broken.push('the trip never asks the terminal\'s own selection for a box/line — the press that named nothing loses the arm (P-DRAGF4)');
+    if (broken.length) {
+      failures.push('P-DRAGF4: ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh + DrawStrip_Pick.mqh + DrawStrip_Router.mqh)');
+    } else {
+      console.log('[PASS] P-DRAGF4 the box\'s interior rides the terminal: the arm hands it back natively in the child\'s own ink, both followers hide, Sync stands down, the release re-seats them in one pass, and both doors end it');
+    }
+  }
+
+  // -- 59. P-DRAW-131 (2026-10-18): the save's name field is FOCUSED the moment
+  //        either door arms it, and the pending save COMMITS through one owner on
+  //        every exit. «این نحوه ذخیره تمپلت‌ها به نظر مشکل داره» — walked from the
+  //        user's side, the two Save doors (the more popover's "Save current look",
+  //        the Look tab's Save row) armed an edit field that (a) was born UNFOCUSED —
+  //        nothing wrote OBJPROP_STATE for `PnlDrawS_GE3`, while the level-note field
+  //        has shipped that write since P-LVL-TEXT — and (b) had exactly ONE commit
+  //        door, ENDEDIT (Enter): MT4 drops an OBJ_EDIT's focus without firing
+  //        ENDEDIT when the user clicks away, so tap-Save → type → tap-anything
+  //        wrote NOTHING, silently. The rule: the field opens FOCUSED at both doors,
+  //        and every door the field can leave by routes the pending save through ONE
+  //        commit (`DrawStripTplCommit`: ENDEDIT "enter", the panel close "close" —
+  //        the widest door, every close funnels through DrawStripGearClose — and the
+  //        group tap "group"), whose file write is the command and whose typed name
+  //        is a detail. Both halves witness on the flushed channel (TPLARM after the
+  //        focus write, TPLSAVE with its door). The welded
+  //        `s_dsTplNameArmed = false;` had to leave DrawStripGearClose with it — one
+  //        owner, or two writers (contract §9).
+  //        P-DRAW-131b (the same day, the second report «مینویسم ولی چیزی برا سیو
+  //        نداره که»): the focus half worked and the row still offered NOTHING TO
+  //        PRESS — Enter committed invisibly and the exits looked like exits. The
+  //        armed row now carries its own Save button (the foot's anatomy at the
+  //        row's control seat, its owners in GearA beside the commit), its seat
+  //        owned ONCE (DrawStripTplSaveW, read by the paint and the hit test), its
+  //        commit the SAME DrawStripTplCommit ("save"), and its family swept at the
+  //        arm's one end (DrawStripTplSaveSweep: the commit and the gear purge).
+  {
+    const broken = [];
+    const ga = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
+    const gbLines = linesOf(path.join(BIOTAK, 'DrawStrip_GearB.mqh')) || [];
+    const ta = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    const bs = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Base.mqh')) || []);
+    const rd = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    if (!/void DrawStripTplNameFocus\(\)/.test(ga))
+      broken.push('the focus half is gone from GearA — the armed field is born unfocused (P-DRAW-131)');
+    if (!/ObjectSetInteger\(0, nm, OBJPROP_STATE, true\);/.test(ga))
+      broken.push('the focus half never writes OBJPROP_STATE on the field — the user must find and click it before Enter means anything (P-DRAW-131)');
+    if (!/\[drawstrip\] TPLARM /.test(ga))
+      broken.push('the focus write has no flushed witness — «تایپ کردم نرفت» is unanswerable without it (P-DRAW-131)');
+    if (!/bool DrawStripTplCommit\(const string why\)/.test(ga))
+      broken.push('the commit has no one owner in GearA (P-DRAW-131)');
+    if (!/s_dsTplNameArmed = false;[\s\S]{0,200}?DrawTplSaveAs\(s_dsObj, t\)/.test(ga))
+      broken.push('the commit no longer clears the armed flag before its one file write (P-DRAW-131)');
+    if (!/\[drawstrip\] TPLSAVE /.test(ga) || !/why=/.test(ga))
+      broken.push('the commit writes without its flushed witness or without naming its door (P-DRAW-131)');
+    if ((ta.match(/DrawStripTplNameFocus\(\);/g) || []).length < 2)
+      broken.push('a save door arms its field unfocused — both doors (the more popover and the Look tab row) must focus it (P-DRAW-131)');
+    if (!/DrawStripTplCommit\("enter"\);/.test(ta))
+      broken.push('Enter no longer routes through the one commit — the write has two owners again (P-DRAW-131)');
+    if (/DrawTplSaveAs\(/.test(ta))
+      broken.push('a direct DrawTplSaveAs call is back in Tap — the commit must be the ONE caller (P-DRAW-131)');
+    if (!/DrawStripTplCommit\("group"\);/.test(ta))
+      broken.push('a group tap drops the armed field without committing it — the save evaporates on a fold/switch (P-DRAW-131)');
+    const gcloseIdx = indexOfLine(gbLines, 'void DrawStripGearClose()');
+    if (gcloseIdx < 0) {
+      broken.push('DrawStripGearClose is gone (P-DRAW-131)');
+    } else {
+      const cIdx = indexOfLine(gbLines, 'DrawStripTplCommit("close");', gcloseIdx);
+      const pIdx = indexOfLine(gbLines, 'DrawStripGearObjectsPurge();', gcloseIdx);
+      if (cIdx < 0)
+        broken.push('the close door no longer commits a pending save — every close (head X, gear/more toggles, Esc, object switch) drops it silently (P-DRAW-131)');
+      else if (pIdx >= 0 && cIdx > pIdx)
+        broken.push('the close door commits AFTER the purge — the field and its text are already gone (P-DRAW-131)');
+      const b = blockAfter(gbLines, gcloseIdx);
+      if (b && /s_dsTplNameArmed = false;/.test(codeOf(gbLines.slice(b.from, b.to + 1))))
+        broken.push('DrawStripGearClose clears s_dsTplNameArmed again — the commit is its one owner (P-DRAW-131)');
+    }
+    // P-DRAW-131b (2026-10-18): «مینویسم ولی چیزی برا سیو نداره که» — the armed row's
+    // OWN Save. Enter worked and was invisible; the exits worked and looked like exits.
+    // The button is the fourth door into the same commit, its seat owned once, and it
+    // dies with the arm (the commit's own sweep + the gear purge).
+    if (!/int DrawStripTplSaveW\(\)/.test(ga))
+      broken.push('the armed row\'s Save control lost its seat owner — the paint and the hit test would each guess a width (P-DRAW-131)');
+    if (!/int DrawStripTplSavePaint\(/.test(ga))
+      broken.push('the armed row\'s Save control has no painter — the row offers nothing to press again (P-DRAW-131)');
+    if (!/ew - sw - DSTRIP_ROW_GAP/.test(codeOf(gbLines)) || !/DrawStripTplSavePaint\(ex \+ ew - sw,/.test(codeOf(gbLines)))
+      broken.push('the armed row no longer seats the Save control inside its own row — the field and the button would overlap (P-DRAW-131)');
+    if (!/DrawStripTplSaveHit\(e, mx, ex, ew\)/.test(bs))
+      broken.push('the armed row\'s Save control lost its commit door — the button the user presses does nothing (P-DRAW-131)');
+    if (!/int sw = DrawStripTplSaveW\(\);[\s\S]{0,220}?DrawStripTplCommit\("save"\);/.test(ga))
+      broken.push('the Save hit test no longer reads the paint\'s own seat owner — a second grid (P-DRAW-131)');
+    if (!/DrawStripTplSaveName\(\)[\s\S]{0,120}?DrawStripTplCommit\("save"\);/.test(rd))
+      broken.push('the Save button\'s native click has no router branch — a press on the button itself reaches nothing (P-DRAW-131)');
+    const svCalls = (ga.match(/DrawStripTplSaveSweep\(\)/g) || []).length;
+    if (svCalls < 3 || !/ObjectDelete\(0, sb \+ "T"\)/.test(ga))
+      broken.push('the Save control outlives its row — the sweep must be defined and run at both of the arm\'s ends (the commit and the gear purge) (P-DRAW-131)');
+    if (broken.length) {
+      failures.push('P-DRAW-131: ' + broken.join('; ') + ' (Biotak/DrawStrip_GearA.mqh + DrawStrip_GearB.mqh + DrawStrip_Tap.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-131 the save\'s name field is focused the moment either door arms it, and the pending save commits through ONE owner on every exit (Enter, the panel close, the group tap) with flushed TPLARM/TPLSAVE witnesses');
+    }
+  }
+
+  // -- 60. P-DRAW-132 (2026-10-18): NAMED TEMPLATES PER TOOL, ONE RACK, ONE FILE ----
+  // «میخوام تمپلت های مختلف رو سیو کنم و به راحیت هر کدوم خواستم فعال کنم بشه» — the
+  // TradingView shape. What P-DRAW-02 shipped was a fixed six-slot rack: three
+  // built-ins the user could never rename or remove, three anonymous user slots, and
+  // a full rack that silently overwrote the oldest row. The rewrite is a NAMED rack
+  // per kind (`DrawTpl`…, Toolbar_Tpl.mqh — split out of Toolbar_B by P-SIZE-1500),
+  // persisted in ONE five-column file with rows 255/254 reserved (P-DRAW-09c /
+  // P-DRAW-INK), reached from the strip through the paginated more popover and Look
+  // tab. Six laws, each the walk of the report: put REPLACES by name (case-
+  // insensitive) and REFUSES a full rack; delete COMPACTS; an apply is ONE file pass
+  // (`s_dkTplHold`); an empty label gets "My N"; boot is seed-once-but-file-rules,
+  // with P-DRAW-02's file migrated and retired exactly once; and the old architecture
+  // does not linger — no old preset API name survives in either file's code.
+  {
+    const broken = [];
+    const tplLines = linesOf(path.join(BIOTAK, 'Toolbar_Tpl.mqh')) || [];
+    const tpl = codeOf(tplLines);
+    const tbb = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_B.mqh')) || []);
+    if (!tplLines.length) broken.push('Biotak/Toolbar_Tpl.mqh is gone — the rack has no owner file');
+    if (!/define DRAW_TPL_MAX 12/.test(tpl) || !/define DRAW_TPL_PAGE 6/.test(tpl))
+      broken.push('the rack\u2019s bounds left the file (DRAW_TPL_MAX 12 / DRAW_TPL_PAGE 6)');
+    const put = bodyOf(tplLines, 'int DrawTplPut(');
+    if (!put) broken.push('DrawTplPut() is gone — the rack has no writer');
+    else {
+      if (!/if\(DrawTplCount\(k\) >= DRAW_TPL_MAX\) return 0;/.test(put.text))
+        broken.push('a full rack overwrites the oldest template again instead of refusing with 0');
+      if (!/int at = DrawTplIndex\(k, nm\);/.test(put.text))
+        broken.push('the put stopped asking by name — a re-save cannot replace');
+    }
+    const idx = bodyOf(tplLines, 'int DrawTplIndex(');
+    if (!idx || !/StringCompare\(s_dkTpl\[k\]\[i\]\.name, nm, false\) == 0/.test(idx.text))
+      broken.push('the name lookup is case-sensitive again — "My Box" and "my box" are one template to the user');
+    const del = bodyOf(tplLines, 'bool DrawTplDelete(');
+    if (!del) broken.push('DrawTplDelete() is gone — a template can never leave');
+    else {
+      if (!/for\(int i = slot; i < n - 1; i\+\+\)/.test(del.text))
+        broken.push('the compaction walk is gone — the rows after a hole no longer move down');
+      if (!/s_dkTpl\[k\]\[i\]\.used  = s_dkTpl\[k\]\[i \+ 1\]\.used;/.test(del.text))
+        broken.push('the delete stopped compacting — a hole survives a removal and every row index past it lies');
+      if (!/s_dkTpl\[k\]\[n - 1\]\.used  = false;/.test(del.text))
+        broken.push('the delete stopped clearing the tail row');
+      if (!/DrawTplSave\(\);/.test(del.text))
+        broken.push('the delete never writes the file — the template comes back at the attach');
+    }
+    const app = bodyOf(tplLines, 'bool DrawTplApply(');
+    if (!app) broken.push('DrawTplApply() is gone — a template cannot reach a drawing');
+    else {
+      if (!/s_dkTplHold\+\+;/.test(app.text) || !/s_dkTplHold--;/.test(app.text))
+        broken.push('the apply\u2019s batch hold is gone — one template pays one full-file pass per slot');
+      const iFc = app.text.indexOf('DRAW_SLOT_FILLCLR');
+      const iF = app.text.indexOf('DRAW_SLOT_FILL,');
+      if (iFc < 0 || iF < 0 || iFc > iF)
+        broken.push('the interior colour is written AFTER the fill again — a fill routed to a child is born with the previous interior (P-DRAW-64)');
+      if (!/if\(\(int\)L\.clr >= 0\)/.test(app.text))
+        broken.push('the apply writes a colour the template never carried — clrNONE comes back as white');
+    }
+    if (!/if\(s_dkTplHold <= 0\) DrawTplSave\(\);/.test(tbb))
+      broken.push('DrawSlotWrite forgot the hold — an apply pays a file write per slot again');
+    const sa = bodyOf(tplLines, 'int DrawTplSaveAs(');
+    if (!sa) broken.push('DrawTplSaveAs() is gone — the Save doors have no owner');
+    else {
+      if (!/if\(nm == ""\) nm = "My " \+ IntegerToString\(DrawTplCount\(k\) \+ 1\);/.test(sa.text))
+        broken.push('an empty label survives as an unnamed template — a row the user cannot find');
+      if (!/if\(res > 0\) DrawTplSave\(\);/.test(sa.text))
+        broken.push('capture and persist stopped being one act — a saved template dies at the attach (P-DRAW-08b)');
+    }
+    const boot = bodyOf(tplLines, 'void DrawTplBoot()');
+    if (!boot) broken.push('DrawTplBoot() is gone — nothing seeds or migrates the rack');
+    else {
+      if (!/if\(FileIsExist\(DRAW_TPL_FILE\)\)/.test(boot.text))
+        broken.push('the boot no longer lets the FILE rule — a deleted seed comes back every attach');
+      if (!/DrawTplSeed\(\);/.test(boot.text) || !/if\(FileIsExist\(DRAW_TPL_LEGACY\)\) DrawTplMigrate\(\);/.test(boot.text))
+        broken.push('the first-run seed or the P-DRAW-02 migration left the boot');
+      if (!/if\(FileIsExist\(DRAW_TPL_LEGACY\)\) FileDelete\(DRAW_TPL_LEGACY\);/.test(boot.text))
+        broken.push('the legacy file is never retired — a later boot would migrate it again and fight the new file');
+    }
+    const legacyApi = /DrawPreset(Apply|CaptureAndSave|sSave|sLoad|Count|Name|IsBuiltin|Set|Clear|sInit|Path|Pack|Unpack)\s*\(/;
+    if (legacyApi.test(tpl) || legacyApi.test(tbb))
+      broken.push('an old preset API name is back in code — two racks, one question (the P-DRAW-132 rewrite deletes the old architecture)');
+    const tap = codeOf(linesOf(STRIP_TAP) || []);
+    if (!/if\(kind == DSTRIP_MK_PRESET\)[\s\S]{0,220}?DrawStripTplApplyGroup\(arg\)/.test(tap))
+      broken.push('the more popover\u2019s template row stopped applying through the group owner');
+    if (!/if\(kind == DSTRIP_MK_TPLNAV\)/.test(tap) ||
+        (tap.match(/s_dsTplPage\[s_dsKind\] = \(s_dsTplPage\[s_dsKind\] \+ 1\) % pages;/g) || []).length < 2)
+      broken.push('the paged list lost a door: the more popover\u2019s nav row or the Look tab\u2019s (both turn the page with a wrap)');
+    if (!/if\(kind == 9\)/.test(tap))
+      broken.push('the Look tab\u2019s nav row (kind 9) has no branch — the second page is unreachable');
+    const gearA = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
+    if (!/string DrawStripTplNavText\(const EDrawKind k\)/.test(gearA) || !/DrawStripGearRow\(9, 0, y\);/.test(gearA))
+      broken.push('the nav row\u2019s text or the TPL tab\u2019s own nav row left GearA — a page the user cannot turn');
+    const paint = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
+    //--- P-DRAW-134: the delete door MOVED — the row's ✕ is its one door now and the
+    //--- group owner is APPLY alone — so the assert follows the owner: the delete
+    //--- body, its one DrawTplDelete call and the flushed TPLDEL witness all live
+    //--- there (and the SHIFT read is asserted ABSENT by the P-DRAW-134 block below).
+    if (!/bool DrawStripTplApplyGroup\(const int row\)/.test(paint) ||
+        !/bool DrawStripTplRowDelete\(const int row\)/.test(paint) ||
+        !/DrawTplDelete\(k, row\)/.test(paint) || !/\[drawstrip\] TPLDEL /.test(paint))
+      broken.push('the group owner\u2019s apply door, the row-delete body or its TPLDEL witness left DrawStrip_Paint');
+    if (broken.length) {
+      failures.push('P-DRAW-132: ' + broken.join('; ') + ' (Biotak/Toolbar_Tpl.mqh + Toolbar_B.mqh + DrawStrip_Tap/GearA/Paint.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-132 named templates per tool: one rack per kind (12, six a page), replace-by-name, refuse-when-full, compact deletes, ONE file pass per apply, paged lists, and the one-time seed/migration');
+    }
+  }
+
+  // -- 61. P-DRAW-133 (2026-10-18): NO DEAD RUNG IN THE GEAR ROUTER ----------------
+  // MEASURED in the P-DRAW-132 walk: DrawStripGearRowTap carried a stray `return true;`
+  // between its kind-4 and kind-5 rungs, so kinds 5/6/7/8 — the level-set rows, the
+  // slot-visibility rows, the learn-current row and the glyph rows — compiled, painted
+  // and hit-tested perfectly and answered nothing. A painted control is not a working
+  // one (P-DRAW-84). The inverse is the exact line, back where it stood.
+  {
+    const broken = [];
+    const tap = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    if (!/}\s*if\(kind == 5\)/.test(tap))
+      broken.push('a statement stands between the kind-4 and the kind-5 rung again — every rung below it is unreachable (P-DRAW-133)');
+    for (const k of [6, 7, 8])
+      if (!new RegExp('if\\(kind == ' + k + '\\)').test(tap))
+        broken.push('the kind-' + k + ' rung is gone — a painted row answers nothing');
+    if (broken.length) {
+      failures.push('P-DRAW-133: ' + broken.join('; ') + ' (Biotak/DrawStrip_Tap.mqh DrawStripGearRowTap)');
+    } else {
+      console.log('[PASS] P-DRAW-133 every gear row kind reaches a live rung: no stray return between the level-set row and the slot-visibility, learn-current and glyph rungs');
+    }
+  }
+
+  // -- 62. P-DRAW-134 (2026-10-18): DELETE IS A BUTTON, NOT A MODIFIER --------------
+  // User order: «شیبف کلکی بردار بجاش یک دکمه حذف برای هر کدوم بزار» — the SHIFT+click
+  // delete door on template rows is retired and every row carries its own ✕: a named
+  // button + its gold glyph, painted on the row's own roster entry, answered by its
+  // own router branch (BEFORE the row loop — the foot-glyph lesson, P-DRAW-83),
+  // deleting through the ONE body `DrawStripTplRowDelete`. The inverse is each of
+  // those facts undone: the modifier returns, the × is never painted, the branch or
+  // the call is inert, the seat moves, the tooltip promises the dead door, or a
+  // sweep forgets the family.
+  {
+    const broken = [];
+    const paint = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Paint.mqh')) || []);
+    const router = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Router.mqh')) || []);
+    const tap = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    const gearA = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearA.mqh')) || []);
+    const gearB = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_GearB.mqh')) || []);
+    if (!/string DrawStripPickDelName\(const int r\)/.test(gearA) ||
+        !/string DrawStripPickDelFaceName\(const int r\)/.test(gearA))
+      broken.push('the row \u2715\u2019s two seat owners left GearA — the button or its glyph face has no name again');
+    if (!/bool isTpl = \(s_dsPicker == DSTRIP_MORE && s_dsMoreKind\[r\] == DSTRIP_MK_PRESET\)/.test(paint))
+      broken.push('the paint no longer asks the row roster before wearing a \u2715 — a control on a row that is not a template');
+    if (!/int dx = px \+ contentW - DSTRIP_PICK_DEL_W;/.test(paint))
+      broken.push('the \u2715\u2019s seat left the row\u2019s far end — the paint and the hit no longer share the roster\u2019s arithmetic');
+    if (!/dirty \|= DrawStripBtnZ\(pd, dx, dy, DSTRIP_PICK_DEL_W, DSTRIP_PICK_DEL_W,/.test(paint) ||
+        !/gl_x_gold\.bmp", tipd\)/.test(paint))
+      broken.push('the \u2715 button or its gold glyph stopped being painted on the template rows');
+    if (!/isTpl \? DSTRIP_PICK_DEL_W : 0/.test(paint))
+      broken.push('the row label no longer reserves the \u2715\u2019s seat — text runs under the delete button again');
+    if (!/sparam == DrawStripPickDelName\(rd\) \|\| sparam == DrawStripPickDelFaceName\(rd\)/.test(router) ||
+        !/DrawStripPickTapDel\(rd\); return DrawStripClickFamily\(\);/.test(router))
+      broken.push('the \u2715\u2019s own router branch is gone — the click the user aims at the \u2715 falls through to the row\u2019s apply');
+    if (!/bool DrawStripPickTapDel\(const int row\)/.test(tap) ||
+        !/DrawStripTplRowDelete\(s_dsMoreArg\[row\]\)/.test(tap))
+      broken.push('the \u2715\u2019s tap door is gone or stopped calling the ONE delete body — a painted control that acts at nothing');
+    if (/UIMagnetModifierDown\(\)/.test(paint))
+      broken.push('the SHIFT delete returned to the template rows — the user ordered delete to be a visible BUTTON (the row\u2019s \u2715), never a modifier');
+    if (/Shift\+click deletes it/.test(gearA))
+      broken.push('the row tooltip promises the retired Shift+click again — a hint for a door that is not there');
+    if (!/string pd = DrawStripPickDelName\(r\)/.test(paint) || !/ObjectDelete\(0, pd\)/.test(paint))
+      broken.push('the open popover\u2019s row sweep forgot the \u2715 family — what the paint painted for a dead row stays on the plate');
+    let sv = 0;
+    for (const src of [paint, gearA, gearB])
+      sv += (src.match(/ObjectDelete\(0, DrawStripPickDelName\(r\)\)/g) || []).length;
+    if (sv < 3)
+      broken.push('a purge site forgot the \u2715 family (' + sv + ' of 3 named sweeps left) — the button outlives the popover it served');
+    if (broken.length) {
+      failures.push('P-DRAW-134: ' + broken.join('; ') + ' (Biotak/DrawStrip_Paint/Router/Tap/GearA/GearB.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-134 every template row deletes through its own \u2715: named button + glyph, roster-gated, the seat shared with the hit, its own router branch, the ONE delete body, no SHIFT door, tooltips follow, and the family swept at all three purge sites');
+    }
+  }
+
+  // -- 63. P-DRAW-135 (2026-10-18): THE TEMPLATE CARRIES THE LEVELS -----------------
+  // User order: «وقتی تمپلت ذخیره میشه باید با همه چیزش ذخیره بشه دیگه ... با سایر
+  // ارزها ... باید درست باشه». For the level family the LEVELS ARE THE DRAWING, and
+  // the nine-value look never carried them — a saved fibo stamped a default fibo onto
+  // every chart, on every pair. The level set now rides its own reserved row (index
+  // 100+slot, the encoded string in the `name` column = `value:colour:width:style:text`
+  // records joined by '|'), answered BEFORE the band guard, moved by a delete, written
+  // by the ONE saver and restored by the ONE applier, with the toggle's own flushed
+  // LVLTOG witness. The inverse is each of those facts undone.
+  {
+    const broken = [];
+    const tplLines = linesOf(path.join(BIOTAK, 'Toolbar_Tpl.mqh')) || [];
+    const tpl = codeOf(tplLines);
+    if (!/define DRAW_TPL_LVL_ROW 100/.test(tpl))
+      broken.push('the level row\u2019s reserved index left Toolbar_Tpl — the level set has no seat clear of the template band (0..11) and the 255/254 rows');
+    if (!/string lvl;/.test(tpl))
+      broken.push('struct DrawTpl lost its `lvl` member — a template can never carry a level set again');
+    const put = bodyOf(tplLines, 'int DrawTplPut(');
+    if (!put || !/int DrawTplPut\(const EDrawKind k, const string nm, const DrawLook &L, const string lvls = ""\)/.test(tpl))
+      broken.push('DrawTplPut() no longer takes the encoded level set — the saver has nowhere to hand it');
+    else if (!/s_dkTpl\[k\]\[at\]\.lvl   = lvls;/.test(put.text))
+      broken.push('the put stopped recording the level set — a re-save cannot replace what it does not write');
+    const sa = bodyOf(tplLines, 'int DrawTplSaveAs(');
+    if (!sa || !/DrawTplLevelsOf\(name\)/.test(sa.text) || !/DrawTplPut\(k, nm, L, lv\)/.test(sa.text))
+      broken.push('the save stopped capturing the level family\u2019s own truth — «با همه چیزش ذخیره بشه» regressed to the nine values alone');
+    const app = bodyOf(tplLines, 'bool DrawTplApply(');
+    if (!app || !/DrawTplLevelsTo\(name, s_dkTpl\[k\]\[slot\]\.lvl\)/.test(app.text))
+      broken.push('the apply stopped restoring the level set — an applied fibo template comes back default-leveled');
+    const sv = bodyOf(tplLines, 'void DrawTplSave()');
+    if (!sv || !/FileWrite\(h, \(int\)k, DRAW_TPL_LVL_ROW \+ i, s_dkTpl\[k\]\[i\]\.lvl, "0", "0"\);/.test(sv.text))
+      broken.push('the file writer dropped the level rows — the set dies at the next attach while the rack looks saved');
+    const ld = bodyOf(tplLines, 'void DrawTplLoad()');
+    if (!ld) broken.push('DrawTplLoad() is gone');
+    else {
+      const iLvl = ld.text.indexOf('DRAW_TPL_LVL_ROW');
+      const iBand = ld.text.indexOf('i < 0 || i >= DRAW_TPL_MAX');
+      if (iLvl < 0 || !/s_dkTpl\[k\]\[i - DRAW_TPL_LVL_ROW\]\.lvl = nm;/.test(ld.text))
+        broken.push('the loader never reads the level rows — a saved level set comes back empty');
+      else if (iBand >= 0 && iLvl > iBand)
+        broken.push('the level-row read stands AFTER the template band guard — the guard eats the rows this feature writes (P-UI-133\u2019s lesson)');
+    }
+    const del = bodyOf(tplLines, 'bool DrawTplDelete(');
+    if (!del || !/s_dkTpl\[k\]\[i\]\.lvl   = s_dkTpl\[k\]\[i \+ 1\]\.lvl;/.test(del.text))
+      broken.push('a delete stopped moving the level set with its row — the wrong fibo wears the hole\u2019s levels');
+    const boot = bodyOf(tplLines, 'void DrawTplBoot()');
+    if (!boot || !/s_dkTpl\[k\]\[i\]\.lvl   = "";/.test(boot.text))
+      broken.push('the boot wipe leaves the level set behind — a dead template\u2019s fibo can seed the next save');
+    const enc = bodyOf(tplLines, 'string DrawTplLevelsOf(');
+    if (!enc) broken.push('DrawTplLevelsOf() is gone — nothing captures a level set');
+    else {
+      if (!/StringReplace\(t, ";", ","\);/.test(enc.text))
+        broken.push('the encoder stopped trading \u2018;\u2019 — one typed note splits the CSV line and corrupts the whole rack file');
+      if (!/StringReplace\(t, "\\|", "\/"\);/.test(enc.text))
+        broken.push('the encoder stopped trading \u2018|\u2019 — a note eats the record walk and the levels after it are lost');
+    }
+    const dec = bodyOf(tplLines, 'bool DrawTplLevelsTo(');
+    if (!dec || !/ObjectSetInteger\(0, name, OBJPROP_LEVELS, n\);/.test(dec.text) ||
+        !/FibPenTagDrop\(name\);/.test(dec.text) || !/FibPenSync\(name, false\);/.test(dec.text))
+      broken.push('the decoder stopped writing the level rows or forgot the pen pair (P-DRAW-74b) — the restored fibo diverges from the truth');
+    const tap = codeOf(linesOf(path.join(BIOTAK, 'DrawStrip_Tap.mqh')) || []);
+    if (!/\[drawstrip\] LVLTOG /.test(tap) || !/act=" \+ \(at >= 0 \? "del" : "add"\)/.test(tap) ||
+        !/ok=" \+ \(lvlOk \? "1" : "0"\)/.test(tap))
+      broken.push('the level toggle lost its LVLTOG witness — «کم و زیاد نمیشه» is unprovable again');
+    if (broken.length) {
+      failures.push('P-DRAW-135: ' + broken.join('; ') + ' (Biotak/Toolbar_Tpl.mqh + DrawStrip_Tap.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-135 the template carries the level set: reserved row, band-guard-safe load, put/save/delete/boot all move it, the encoder trades both separators, the apply restores through the pen pair, and the toggle witnesses on the flushed channel');
+    }
+  }
+
+  // -- 64. P-UI-167 (2026-10-19): the seat family is born only while the ring is BUILT
+  // Report: «گاهی اوقات چرا اینطوری میشه با اینکه منو اصلی بسته هستش … اینکون ایتم‌ها
+  // دیده میشه بدون بک گراند ولی منو بسته هستش». MEASURED in the flushed frame
+  // (biotak_diag_USDJPY_134362571361933145.txt, 230,095 bytes): three bursts of
+  // `[P-UI-163] icon heal seat=0..11`, each right after a chart press — the drain ran
+  // `UpdateCircularItemStates` while the menu was CLOSED, `CircUpdateItemState`
+  // re-created all twelve GLYPHS, and the disc family (CircBg) — deleted by
+  // DeleteRing/ToggleMenuVisibility — had no writer on that path at all. The ring's
+  // every other builder reads the pair menuVisible+!g_ToolsOpen; this loop read only
+  // the fan half (P-UI-163c's own fix), so the closed state grew a column of bare
+  // icons beside the orb. The loop must read the same pair — one bool read, and it
+  // replaces a 12-seat glyph burst per drain (cost: zero writes while the ring is
+  // down). The inverse is the guard's menuVisible half removed.
+  {
+    const broken = [];
+    const menuC67 = linesOf(MENU_C);
+    if (!menuC67) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
+    else {
+      const states67 = bodyOf(menuC67, 'void UpdateCircularItemStates(');
+      if (!states67) broken.push('UpdateCircularItemStates is gone — the sync pass has no owner');
+      else if (!states67.text.includes('g_UI.menuVisible && !g_ToolsOpen'))
+        broken.push('the sync pass rebuilds the ring while the menu is CLOSED again — CircUpdateItemState re-creates the twelve glyphs with no disc under them (the bare-icon column of the reported frame)');
+    }
+    if (broken.length) {
+      failures.push('P-UI-167: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh)');
+    } else {
+      console.log('[PASS] P-UI-167 the seat family is born only while the ring is BUILT: the state sync reads menuVisible AND the fan before it walks a seat, so a closed menu cannot grow bare icons (cost: one bool read, zero writes while the ring is down)');
+    }
+  }
+
+  // -- 65. P-UI-168 (2026-10-19): THE RING'S VISIBILITY EDGE NAMES ITS WRITER
+  // MEASURED in the flushed frame of 09:03 (biotak_diag_USDJPY_134362571361933145.txt,
+  // 340,704 bytes): 4.5 whole-family sweeps — 108 `CircIcon` delete lines, icon+bg
+  // together, ZERO `[P-UI-163] icon heal` (P-UI-167 held) — and nothing in the log
+  // could name the writer: `ToggleMenuVisibility`'s close, `CircRelayoutIfNeeded`'s
+  // rebuild and `CreateToolsMenu`'s fan open all delete the SAME twenty-four names.
+  // While the bare-icon column was being chased, a reader could not tell "the ring
+  // was closed" from "the ring was rebuilt" from "the fan merely opened" — the
+  // object list is the same in all three. Each of the four owners now emits ONE
+  // flushed line on its own edge, carrying the pair the relayout compares
+  // (built vs live seats) or the restore flag; a still frame enters none of them.
+  // The inverse is any one of the four emits removed.
+  {
+    const broken = [];
+    const menuD68 = linesOf(MENU_D);
+    const menuC68 = linesOf(MENU_C);
+    if (!menuD68) broken.push('Biotak/BiotakMenu_D.mqh is gone — the ring has no visibility owner');
+    if (!menuC68) broken.push('Biotak/BiotakMenu_C.mqh is gone — the ring has no painter');
+    const flatOf = (lines68, needle) => {
+      if (!lines68) return '';
+      const fn = bodyOf(lines68, needle);
+      return fn ? fn.text.replace(/\s+/g, ' ') : '';
+    };
+    const toggle68 = flatOf(menuD68, 'void ToggleMenuVisibility()');
+    if (!toggle68)
+      broken.push('ToggleMenuVisibility is gone — the orb\'s click has no owner');
+    else {
+      if (!toggle68.includes('"[P-UI-168] ring vis=%d tools=%d placed=%d built=%d"'))
+        broken.push('the visibility edge lost its witness — a whole-family sweep in the frame can no longer be attributed to the close (P-UI-168)');
+      if (!toggle68.includes('(g_UI.menuVisible ? 1 : 0)') || !toggle68.includes('(g_ToolsOpen ? 1 : 0)'))
+        broken.push('the edge line no longer carries the pair the ring\'s every builder reads (menuVisible + the fan) — the reported state cannot be re-read from the frame');
+      if (!toggle68.includes('CircPlacedCountLive(), s_circBuiltSeats)'))
+        broken.push('the edge line dropped the relayout\'s own compare operands — a rebuild reads as a bare state change again');
+    }
+    const relayout68 = flatOf(menuC68, 'void CircRelayoutIfNeeded()');
+    if (!relayout68)
+      broken.push('CircRelayoutIfNeeded is gone — a seat-set flip has no rebuild owner');
+    else if (!relayout68.includes('"[P-UI-168] ring relayout built=%d live=%d"'))
+      broken.push('the rebuild edge lost its witness — the second writer of the same 24-name sweep is silent again (P-UI-168)');
+    const fanOpen68 = flatOf(menuC68, 'void CreateToolsMenu()');
+    if (!fanOpen68)
+      broken.push('CreateToolsMenu is gone — the fan has no open edge');
+    else if (!fanOpen68.includes('"[P-UI-168] fan open=1 cells=%d placed=%d"'))
+      broken.push('the fan\'s open edge lost its witness — its own ring sweep reads as the ring being closed (P-UI-168)');
+    const fanClose68 = flatOf(menuC68, 'void DeleteToolsMenu(');
+    if (!fanClose68)
+      broken.push('DeleteToolsMenu is gone — the fan has no close edge');
+    else {
+      if (!fanClose68.includes('"[P-UI-168] fan open=0 restore=%d placed=%d built=%d"'))
+        broken.push('the fan\'s close edge lost its witness — a tear-down and a ring restore are the same delete burst again (P-UI-168)');
+      if (!fanClose68.includes('(restoreRing ? 1 : 0)'))
+        broken.push('the fan\'s close line no longer says whether the ring was meant to come back');
+    }
+    if (broken.length) {
+      failures.push('P-UI-168: ' + broken.join('; ') + ' (Biotak/BiotakMenu_C.mqh + BiotakMenu_D.mqh)');
+    } else {
+      console.log('[PASS] P-UI-168 the seat sweep has four named owners: the visibility edge, the relayout rebuild and the fan\'s open/close each emit one flushed line with their own operands (cost: one line per user edge, zero on a still frame)');
+    }
+  }
+
+  // -- 66. P-PERF-45e (2026-10-19): THE COOP WAIT IS MEASURED IN TIMER PERIODS
+  // MEASURED: 325 `[W][PERF] coop job=` lines in two days, 319 of them one shape —
+  // `waited=234..282ms ran=0ms stillOwed=0` (200 status-text + 125 label-expiry) —
+  // against SIX whose `ran` was real. The arms sit right before `CoopPump()` in the
+  // same tick, so a full-period wait is the pump's own deferral: the slice check at
+  // its foot breaks on the ~15.6 ms GetTickCount granule (`COOP_BUDGET_MS 12`), and
+  // the leftover job waits for the next 250 ms timer tick. 40 ms therefore warned
+  // on the design and buried the six lines that mattered. The threshold must stay
+  // ABOVE the timer period it is read against — this entry derives it, so retuning
+  // the timer without retuning the warn fails here instead of in the journal.
+  // The inverse is the wait half back on COOP_WARN_MS.
+  {
+    const broken = [];
+    const init66 = linesOf(path.join(BIOTAK, 'EventHandlers_Init.mqh'));
+    const tail66 = linesOf(path.join(BIOTAK, 'EventHandlers_Tail.mqh'));
+    let periodMs = -1;
+    if (!init66) broken.push('EventHandlers_Init.mqh is gone — the timer has no owner');
+    else {
+      for (const ln of init66) {
+        const m = /EventSetMillisecondTimer\((\d+)\)/.exec(ln);
+        if (m) { periodMs = Number(m[1]); break; }
+      }
+      if (periodMs < 0) broken.push('the millisecond timer is no longer started — OnTimer never runs and the coop pump is dead (P-PERF-45e)');
+    }
+    if (!tail66) broken.push('EventHandlers_Tail.mqh is gone — the coop pump has no owner');
+    else {
+      // The threshold is owned beside the slice it is read against (`COOP_BUDGET_MS`,
+      // same constant block), so the pump's two numbers stay in one file (§7).
+      let waitWarn = -1;
+      for (const ln of tail66) {
+        const m = /#define\s+COOP_WAIT_WARN_MS\s+(\d+)/.exec(ln);
+        if (m) { waitWarn = Number(m[1]); break; }
+      }
+      if (waitWarn < 0)
+        broken.push('COOP_WAIT_WARN_MS is gone — the wait half is back on the 40 ms frame threshold, so one normal deferral prints a warning again (319 of 325 measured lines)');
+      else if (periodMs > 0 && waitWarn < 2 * periodMs)
+        broken.push(`the wait threshold (${waitWarn} ms) is under two timer periods (2 x ${periodMs} ms) — a job skipped ONCE prints again, which is the noise this rule removes (P-PERF-45e)`);
+      const cond = tail66.find((ln) => ln.includes('waited >=') && ln.includes('spent >='));
+      if (!cond) broken.push('the coop ledger condition is gone — a starved job and a slow frame are no longer reported (P-PERF-45e)');
+      else {
+        if (!cond.includes('waited >= COOP_WAIT_WARN_MS'))
+          broken.push('the wait half is not read against the timer-period threshold — one deferral warns again (P-PERF-45e)');
+        if (!cond.includes('spent >= COOP_WARN_MS'))
+          broken.push('the `spent` half was raised too — the six real lines (`heavy-frame ran=125ms`) are now silent (P-PERF-45e)');
+      }
+    }
+    if (broken.length) {
+      failures.push('P-PERF-45e: ' + broken.join('; ') + ' (Biotak/EventHandlers_Tail.mqh + EventHandlers_Init.mqh)');
+    } else {
+      console.log('[PASS] P-PERF-45e the coop wait warns in timer periods, not milliseconds: the threshold is at least two 250 ms ticks, so one deferral is silent and the `spent` half still names a real stall');
+    }
+  }
+
+  // ── 67. P-DRAW-145 (2026-10-19) — A STRIP CELL EXISTS ONLY WHERE ITS WRITE CAN DRAW ──
+  // The capability table is not decoration: a set bit IS a cell, and a cell is a promise
+  // that the hand's tap changes a pixel. Three rows broke the promise at once.
+  //   * A Gann was listed as a LEVEL kind, so its colour/width/style cells wrote
+  //     `DrawLevelsSet*` — a loop over OBJPROP_LEVELS rows — while a Gann carries no
+  //     line-levels at all. MetaQuotes' own object pages say it plainly: OBJ_PITCHFORK
+  //     and OBJ_EXPANSION "can specify the number of line-levels, their values and
+  //     color"; OBJ_GANNLINE offers angle, scale and ray and says nothing of levels.
+  //     Zero rows means zero writes, and the READ (which already asks
+  //     `DrawLevelCount(name) > 0`) answered the OBJECT — a cell showing a value it
+  //     could not change. The pair that did work was the BODY's: two cells, one act.
+  //   * A Text's width and style, and an Arrow's style, are the second face of the same
+  //     defect. OBJ_TEXT's own page lists font, size, colour, angle, anchor, back —
+  //     the terminal draws no line width and no dash for it, and none for an arrow.
+  // Every read, every write and every live preview routes through `DrawKindHasLevels`,
+  // so the whole family flips together here — that is why the gate sits on this table.
+  {
+    const tba145 = codeOf(linesOf(path.join(BIOTAK, 'Toolbar_A.mqh')) || []);
+    const broken = [];
+    const lvlFn = (() => { const m = tba145.match(/bool DrawKindHasLevels\(const EDrawKind k\)\s*\{[\s\S]*?\n\}/); return m ? m[0] : ''; })();
+    if (!lvlFn) {
+      broken.push('the level family has no owner — every level write is a guess again (P-DRAW-145)');
+    } else {
+      if (/\bDK_GANN\b/.test(lvlFn))
+        broken.push('a Gann is a level kind again — its colour/width/style cells loop OBJPROP_LEVELS, a Gann sets it to 0, so the hand taps three cells that write nothing');
+      for (const k of ['DK_FIBO', 'DK_FIBOFAN', 'DK_FIBOCHAN', 'DK_EXPANSION', 'DK_PITCHFORK'])
+        if (!lvlFn.includes(k))
+          broken.push(`${k} left the level family — its own levels and the pen that styles them are orphaned (P-DRAW-145)`);
+    }
+    const capsOf = (kind) => {
+      const m = new RegExp(`case ${kind}:\\s*return ([^;]+);`).exec(tba145);
+      return m ? m[1].trim() : '';
+    };
+    const gannCaps = capsOf('DK_GANN');
+    if (!gannCaps) {
+      broken.push('the Gann row left the capability table (P-DRAW-145)');
+    } else {
+      if (/DRAW_CAP_FILLCLR|DRAW_CAP_BODY/.test(gannCaps))
+        broken.push('the Gann row offers a second colour or a body again — both are the same object property the colour/width/style cells already own, so one act wears two cells (P-DRAW-145)');
+      if (!/DRAW_CAP_COMMON/.test(gannCaps))
+        broken.push('the Gann row lost the common cells — a Gann does wear colour, width, style, lock, back and the terminal dialog (P-DRAW-145)');
+    }
+    const arrowCaps = capsOf('DK_ARROW');
+    const textCaps = capsOf('DK_TEXT');
+    if (!arrowCaps || !textCaps) {
+      broken.push('the arrow or the text row left the capability table (P-DRAW-145)');
+    } else {
+      if (!/~DRAW_CAP_STYLE/.test(arrowCaps))
+        broken.push('an arrow offers a line style again — the terminal draws an arrow code and a size, never a dash, so that cell paints nothing (P-DRAW-145)');
+      if (!/~\(\s*DRAW_CAP_WIDTH\s*\|\s*DRAW_CAP_STYLE\s*\)/.test(textCaps))
+        broken.push('a text offers a width or a style again — OBJ_TEXT wears a font and a size, and neither cell can change a pixel (P-DRAW-145)');
+      if (!/DRAW_CAP_FONT/.test(textCaps) || !/DRAW_CAP_GLYPH/.test(arrowCaps))
+        broken.push('the text\'s font or the arrow\'s glyph cell went with the dead ones — those two are the controls the kind really wears (P-DRAW-145)');
+    }
+    if (broken.length) {
+      failures.push('P-DRAW-145: ' + broken.join('; ') + ' (Biotak/Toolbar_A.mqh)');
+    } else {
+      console.log('[PASS] P-DRAW-145 every strip cell answers a property its own object draws: the five level kinds carry levels, a Gann is a plain object strip, and neither a Text nor an Arrow offers a width or a dash the terminal cannot paint');
+    }
+  }
+
+  // -- 68. P-UNIFY-3 (2026-10-19) -- THE PEN'S OWN FOUR, ONE OWNER, AND THE KIND'S OWN GEOMETRY --
+  // MEASURED from the code: `FibPenSync` - the ONE function that builds the level pen (the
+  // parallel copies) and the three looks (Neon core, Caps, Wash) - refused every kind but
+  // DK_FIBO/DK_FIBOFAN on its own first line, while the STYLE slot's gate two files over
+  // already asked `DrawKindHasLevels(k)` (Toolbar_B.mqh:291/302). One act, two owners, two
+  // answers: the writer accepted a look for a Fibo Channel and the pen refused to draw it,
+  // and the picker mirrored the refusal with 5 style rows instead of 8. Serving every level
+  // kind blindly was not the answer either: the pen seated every child with ONE law
+  // (`p2 + (p1 - p2) * v`) while MT4 draws a Channel's levels as PARALLELS of the base
+  // through the third anchor, a Fan's as RAYS and an Expansion's as horizontals off the
+  // THIRD - a child on a channel was a line the object never draws. One owner of the served
+  // set now (`FibPenServesType`: exactly the four kinds whose level geometry is known;
+  // pitchfork, arc and time zones refused until measured), asked by the pen, the drag
+  // preview, the heal, the style fold, the pair coercion, the STYLE writer and the picker's
+  // rows alike; and one owner of the geometry (`DrawLevelPriceAt`), asked by the sync rows,
+  // the caps, the wash and both hit tests.
+  {
+    const brokenU3 = [];
+    const srcU3 = (p) => linesOf(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), 'utf8') : '';
+    const fp3 = srcU3('Biotak/FibPen.mqh');
+    const tb3 = srcU3('Biotak/Toolbar_B.mqh');
+    const pk3 = srcU3('Biotak/DrawStrip_Pick.mqh');
+    const ta3 = srcU3('Biotak/Toolbar_A.mqh');
+    const th3 = srcU3('Biotak/Toolbar_Hit.mqh');
+    const pairRe = /k\s*(?:!=|==)\s*DK_FIBO\b/;
+    //--- the served set, stated once — P-UNIFY-4 moved it to the profile's pen row;
+    //--- the pen still asks it, and the four refusals stay in `DrawTypePenFamily`.
+    const pr3 = srcU3('Biotak/DrawKindProfile.mqh');
+    if (!/bool FibPenServesType\(const int ty\)[\s\S]{0,200}?return \(DrawTypePenFamily\(ty\) == DKPEN_LEVEL\);/.test(fp3) ||
+        !/case DK_FIBO:[\s\S]{0,120}?case DK_FIBOFAN:[\s\S]{0,120}?case DK_FIBOCHAN:[\s\S]{0,120}?case DK_EXPANSION:[\s\S]{0,80}?p\.pen = DKPEN_LEVEL;/.test(pr3) ||
+        !/if\(t == OBJ_FIBOTIMES \|\| t == OBJ_FIBOARC\) return DKPEN_NONE;/.test(pr3) ||
+        !/if\(t == OBJ_STDDEVCHANNEL \|\| t == OBJ_REGRESSION\) return DKPEN_NONE;/.test(pr3))
+      brokenU3.push('the served set is gone or widened - the pen may state only the four kinds whose level geometry is known (P-UNIFY-3)');
+    if (!/bool FibPenServesName\(const string name\)[\s\S]{0,200}?return FibPenServesType\(DrawObjectType\(name\)\);/.test(fp3))
+      brokenU3.push('the name oracle left the type oracle - two owners for one family again (P-UNIFY-3)');
+    if ((fp3.match(/FibPenServesType\(/g) || []).length < 5)
+      brokenU3.push('a pen seat stopped asking the served set - the name oracle, the preview, the sync and the heal share one question (P-UNIFY-3)');
+    if (!fp3.includes('if(!FibPenServesType(DrawObjectType(name))) return;'))
+      brokenU3.push('the drag preview is kind-guarded again - a dragged served kind keeps a pen the gesture cannot carry (P-UNIFY-3)');
+    if (!fp3.includes('if(!FibPenServesType(DrawObjectType(fibo))) return false;'))
+      brokenU3.push('the sync is kind-guarded again - the pen refuses a kind it can draw (P-UNIFY-3)');
+    if (!fp3.includes('if(!FibPenServesType(ty)) return false;'))
+      brokenU3.push('the heal is kind-guarded again (P-UNIFY-3)');
+    if (!pk3.includes('if(FibPenServesType(ty)) FibPenHeal(nm);'))
+      brokenU3.push('the 2 s net is kind-guarded again - a channel the terminal moves with no event keeps a stale pen (P-UNIFY-3)');
+    //--- the look rows, the writer and the fold ask the same owner
+    if (!/bool DrawStripPenLook\(const EDrawKind k\)[\s\S]{0,250}?DrawTypeLookMask\(DrawObjectType\(s_dsObj\)\) != 0/.test(pk3))
+      brokenU3.push('the picker stopped asking the pen\'s own owner (P-UNIFY-3)');
+    if (!pk3.includes('return ((int)STYLE_DASHDOTDOT + 1 + (DrawStripPenLook(k) ? DrawLookCount() : 0));'))
+      brokenU3.push('the style list hides the looks for the served kinds again - the pen can draw them and the strip cannot ask (P-UNIFY-3)');
+    if (!pk3.includes('string lkName = DrawLookName(DrawLookFromSlot(row));') ||
+        !pk3.includes('if(lkName != "" && DrawStripPenLook(k)) return lkName;'))
+      brokenU3.push('a look caption lost its gate - a row the writer accepts reads unnamed (P-UNIFY-3)');
+    if (!tb3.includes('if(st > (int)STYLE_DASHDOTDOT && FibPenServesName(name))'))
+      brokenU3.push('the STYLE writer accepts a look on a kind the pen refuses - an invisible tag again (P-UNIFY-3)');
+    if (!tb3.includes('bool penKind = FibPenServesName(name) || PenStackServes(name);'))
+      brokenU3.push('the style fold is kind-guarded again - a dash pick on a served kind erases the thickness one write before the pen reads it (P-UNIFY-3)');
+    if (!tb3.includes('if(FibPenServesName(name)) return false;'))
+      brokenU3.push('the pair coercion refuses the wrong family - a served kind\'s memory dies, or a pitchfork\'s dash never folds (P-UNIFY-3)');
+    if (!tb3.includes('if(!FibPenServesName(nm)) continue;'))
+      brokenU3.push('the drag arm scans a kind test again (P-UNIFY-3)');
+    if (pairRe.test(fp3 + tb3 + pk3))
+      brokenU3.push('a two-kind gate is back - the fibo pair spelled where the served set belongs (P-UNIFY-3)');
+    //--- the geometry is the kind's own - one owner, asked at every seat
+    if (!/double DrawLevelPriceAt\(/.test(ta3))
+      brokenU3.push('the geometry owner is gone (P-UNIFY-3)');
+    if (!/if\(k == DK_FIBOFAN\)/.test(ta3) || !/if\(k == DK_FIBOCHAN\)/.test(ta3) || !/if\(k == DK_EXPANSION\)/.test(ta3))
+      brokenU3.push('a kind left the geometry owner - its levels would wear another kind\'s law (P-UNIFY-3)');
+    if (!/return pb \+ \(pa - pb\) \* v;/.test(ta3))
+      brokenU3.push('the geometry owner lost the terminal\'s horizontal law - 0 % at the second anchor (P-UNIFY-3)');
+    if (!fp3.includes('lvA = DrawLevelPriceAt(k, v, ta, p1, tb, p2, t3, p3, ts0);') ||
+        !fp3.includes('lvB = DrawLevelPriceAt(k, v, ta, p1, tb, p2, t3, p3, ts1);'))
+      brokenU3.push('the sync rows no longer ask the kind\'s own geometry - a served kind\'s children sit on lines it never draws (P-UNIFY-3)');
+    if (!fp3.includes('lpA = DrawLevelPriceAt(k, vv4, ta, p1, tb, p2, t3, p3, tc);') ||
+        !fp3.includes('lpB = DrawLevelPriceAt(k, vv4, ta, p1, tb, p2, t3, p3, tb);'))
+      brokenU3.push('the caps no longer follow the level\'s slope (P-UNIFY-3)');
+    if (!fp3.includes('hpA = lva[l5] + 2.0 * px;') || !fp3.includes('hpB = lvb[l5] + 2.0 * px;'))
+      brokenU3.push('the wash halo no longer rides the level\'s own ends (P-UNIFY-3)');
+    if (!th3.includes('double la = DrawLevelPriceAt(k, v, t1, p1, t2, p2, t3, p3, t1);') ||
+        !th3.includes('double lb = DrawLevelPriceAt(k, v, t1, p1, t2, p2, t3, p3, t2);'))
+      brokenU3.push('the press naming measures another law again - a served kind\'s real lines cannot be named (P-UNIFY-3)');
+    if (!tb3.includes('double la = DrawLevelPriceAt(k, v, t1, p1, t2, p2, t3, p3, t1);'))
+      brokenU3.push('the drag arm\'s full hit measures another law again (P-UNIFY-3)');
+    if (!/FibPenNetWrite\(fibo, \(long\)ta, \(long\)tb, three \? \(long\)t3 : 0,/.test(fp3))
+      brokenU3.push('the net forgot the third anchor - a moved channel keeps a stale pen (P-UNIFY-3)');
+    if (brokenU3.length) {
+      failures.push('P-UNIFY-3: ' + brokenU3.join('; ') + ' (Biotak/FibPen.mqh + Toolbar_A/B/Hit + DrawStrip_Pick.mqh)');
+    } else {
+      console.log('[PASS] P-UNIFY-3 the pen serves the four kinds whose level geometry it states: one owner of the served set (FibPenServesType/Name - pen, preview, heal, fold, coercion, STYLE writer, picker rows) and one owner of the geometry (DrawLevelPriceAt - sync, caps, wash, both hit tests)');
+    }
+  }
+
+  // -- 69. P-UNIFY-4b (2026-10-19) -- THE KIND'S MEMORY KEEPS THE LOOK'S SLOT --
+  // MEASURED: the STYLE writer translated 5/6/7 into the look's NATIVE half and saved
+  // THAT in `s_dkStyle[k]`, so the next drawing of the kind was born with the right
+  // dash and no `[LKn]` tag - Caps and Wash (native SOLID) came back a plain solid
+  // line, Neon came back a dash with no thickness. The memory is a SLOT now: the
+  // writer saves what the hand picked, and birth translates it ONCE (tag first,
+  // native second), the same two writes the pick itself makes.
+  {
+    const brokenU4 = [];
+    const srcU4 = (p) => linesOf(path.join(ROOT, p)) ? fs.readFileSync(path.join(ROOT, p), 'utf8') : '';
+    const tb4 = srcU4('Biotak/Toolbar_B.mqh');
+    const tpl4 = srcU4('Biotak/Toolbar_Tpl.mqh');
+    if (!/int memSt = \(lk > 0 \? DrawLookToSlot\(lk\) : st\);/.test(tb4) ||
+        !/if\(!DrawIsHRay\(name\) && !DrawIsPathSeg\(name\)\) s_dkStyle\[k\] = memSt;/.test(tb4))
+      brokenU4.push('the writer saves the native half again - the next drawing of the kind loses Neon/Caps/Wash (P-UNIFY-4b)');
+    if (!/int memSt = s_dkStyle\[k\];[\s\S]{0,160}?int mlk = \(memSt > \(int\)STYLE_DASHDOTDOT \? DrawLookFromSlot\(memSt\) : 0\);/.test(tb4) ||
+        !/if\(mlk > 0 && FibPenServesName\(name\)\) \{ FibPenLookSet\(name, mlk\); FibPenSync\(name, false\); \}/.test(tb4))
+      brokenU4.push('birth never re-applies the tag - a remembered look dies on the first new drawing (P-UNIFY-4b)');
+    if (!/int native = \(mlk > 0 \? FibPenLookNative\(mlk\) : memSt\);/.test(tb4) ||
+        !/ObjectSetInteger\(0, name, OBJPROP_STYLE, native\);/.test(tb4) ||
+        !/if\(DrawKindHasLevels\(k\)\) DrawLevelsSetStyle\(name, native\);/.test(tb4))
+      brokenU4.push('birth writes the slot itself to the terminal - OBJPROP_STYLE and a level set take 0..4, not 5..7 (P-UNIFY-4b)');
+    if (!/\(s_dkStyle\[k\] & 0x7\) << 27/.test(tpl4) || !/s_dkStyle\[k\] = \(int\)\(\(a >> 27\) & 0x7\);/.test(tpl4))
+      brokenU4.push('the last-look word lost its three style bits - a look cannot survive an attach (P-UNIFY-4b)');
+    if (brokenU4.length) {
+      failures.push('P-UNIFY-4b: ' + brokenU4.join('; ') + ' (Biotak/Toolbar_B.mqh + Toolbar_Tpl.mqh)');
+    } else {
+      console.log('[PASS] P-UNIFY-4b the kind memory keeps the look: the writer saves the SLOT, birth translates it once (tag first, native second) and the last-look word still carries all three bits');
     }
   }
 

@@ -145,8 +145,16 @@ DEMO_KIND_NAME = {"DK_RECT": "Rectangle", "DK_TRIANGLE": "Triangle",
                   "DK_TEXT": "Text", "DK_ARROW": "Arrow"}.get(DEMO_KIND, "Rectangle")
 # the values the demo drawing wears (one state, named, so the render is stable)
 DEMO_LEVELS = 7          # DrawStripGearLevelCount() on the held fibo
-DEMO_PRESETS = ["Scalp", "Swing"]      # DrawPresetName(k, i) != ""
+# P-DRAW-132: the demo rack holds EIGHT names on purpose — more than one page, so the
+# render carries the page WINDOW and the `Templates n/m ...` nav row the whole rewrite
+# exists for. The names are the demo's own choice (DrawTplName is not a constant — a
+# mirror must pick a state); the COUNT law is read from the source, as everywhere here.
+DEMO_PRESETS = ["Scalp", "Swing", "News", "Tight", "Wide", "Range", "ET", "Break"]
+DEMO_TPL_PAGE = 0        # the page the demo stands on: s_dsTplPage[k] = 0 (the first)
 DEMO_STATE = {}          # slot -> 0/1 as DrawSlotRead returns it
+# P-DRAW-132: DRAW_TPL_PAGE out of its one owner — Toolbar_Tpl.mqh, reached through
+# DrawToolbar.mqh as DT_TEXT (the same unit read for DrawKindHasLevels).
+TPL_PAGE = int((re.search(r"#define\s+DRAW_TPL_PAGE\s+(\d+)", DT_TEXT) or [0, "6"])[1])
 #── P-DRAW-117: the demo's OWN look. The FORMAT of each line is the MQL's
 #── (`DrawStripGearHeadSub` / `DrawStripGearGroupDigest`); the VALUES are this
 #── render's demo drawing, which is what a mirror may choose. One owner here, so
@@ -471,6 +479,33 @@ def parse_row_text():
 ROW_TEXT = parse_row_text()
 
 
+def parse_tpl_nav():
+    """DrawStripTplNavText's own words -> (lead, sep, tail).
+
+    P-DRAW-132: the MQL owns the wording AND both numbers (the page on, the page
+    count); this mirror substitutes only the DEMO's numbers, so a reworded caption
+    moves the render with it.
+    """
+    body = _fn_body(DS, r"string\s+DrawStripTplNavText\s*\(")
+    parts = re.findall(r'"([^"]*)"', body)
+    while len(parts) < 3:
+        parts.append("")
+    return parts[0], parts[1], parts[2]
+
+
+TPL_NAV = parse_tpl_nav()
+
+
+def tpl_pages():
+    """The demo rack's page count — the MQL's own rule over the demo's own list."""
+    return max(1, (len(DEMO_PRESETS) + TPL_PAGE - 1) // TPL_PAGE)
+
+
+def tpl_nav_text():
+    """The nav row's caption for the demo state (DrawStripTplNavText's words)."""
+    return "%s%d%s%d%s" % (TPL_NAV[0], DEMO_TPL_PAGE + 1, TPL_NAV[1], tpl_pages(), TPL_NAV[2])
+
+
 # ════════════════════════════════════════════════════════════════════════════
 # B. THE CONTENT WALKER — DrawStripGearContent's own statements, in order.
 # ════════════════════════════════════════════════════════════════════════════
@@ -616,12 +651,16 @@ def _apply_guards(text):
     Two forms exist in the source: a braced block (`if(...) { ... }`) and the
     single following statement (`if(...) DrawStripGearRow(...);`). Both are
     handled, and a guard on a slot the kind OWNS keeps its body verbatim.
+
+    P-DRAW-132: the rack's nav row stands behind `if(tpages > 1)` — a count this
+    mirror CAN evaluate (its own demo list against the source's DRAW_TPL_PAGE), so
+    that guard is answered too, never assumed away.
     """
     out, unknown = text, []
     while True:
         m = re.search(r"if\s*\(\s*(!?)DrawSlotAvailable\s*\(\s*\w+\s*,\s*DRAW_SLOT_(\w+)\s*\)\s*\)", out)
         if not m:
-            return out, unknown
+            break
         want = (_sid(m.group(2)) in CAPS)
         if m.group(1) == "!":
             want = not want
@@ -637,47 +676,85 @@ def _apply_guards(text):
             out = _blank_block(out, m.start())
         else:
             out = out[:m.start()] + " " * (semi + 1 - m.start()) + out[semi + 1:]
+    while True:
+        m = re.search(r"if\s*\(\s*tpages\s*>\s*1\s*\)", out)
+        if not m:
+            return out, unknown
+        if tpl_pages() > 1:
+            out = out[:m.start()] + out[m.end():]
+            continue
+        brace = out.find("{", m.end())
+        semi = out.find(";", m.end())
+        if brace >= 0 and (semi < 0 or brace < semi):
+            out = _blank_block(out, m.start())
+        else:
+            out = out[:m.start()] + " " * (semi + 1 - m.start()) + out[semi + 1:]
 
 
 def _expand_loops(text, unmodelled, headers_before=0):
-    """DrawStripGearContent's four `for` shapes -> plain DrawStripGearRow calls.
+    """DrawStripGearContent's `for` shapes -> plain DrawStripGearRow calls.
 
     The loops are BOUND in the source by a count this proof can read: the kind's
     own slot set (`s < DRAW_SLOT_N`), DrawStripGlyphCount(), the held drawing's
-    level count (demo) and the preset list (demo). A loop whose bound is not one
-    of those is left alone and REPORTED — a proof may not guess a row count.
+    level count (demo) and the template rack's page window (`i < tn && i < tfrom +
+    DRAW_TPL_PAGE`, P-DRAW-132). A loop whose bound is not one of those is left
+    alone and REPORTED — a proof may not guess a row count.
 
     P-DRAW-117: the LEVEL list's bound is `i < nl && i < room`, and `room` is
     `DSTRIP_GLIST_MAX - 2 - s_dsGRN` — the group headers ride the same row array
     as the letters now, so the seats they spend are read out of the source
     (`headers_before`) and subtracted here. A proof that ignored them would draw
     more level rows than the panel can build.
+
+    P-DRAW-132: the rack's window loop STARTS at `tfrom` (`s_dsTplPage[k] *
+    DRAW_TPL_PAGE`) instead of 0, so the search understands that init as well;
+    any OTHER start is left where it stands, exactly as a foreign loop was before
+    the rewrite. The demo stands on page 1 (`tfrom` = 0), so its window is the
+    first DRAW_TPL_PAGE of the demo's own eight — and a tree that retunes the
+    define moves this render with it, because the bound is parsed, never typed.
     """
-    out = text
+    pos = 0
     while True:
-        m = re.search(r"for\s*\(\s*int\s+(\w+)\s*=\s*0\s*;\s*\1\s*<\s*([^;]+);", out)
+        m = re.search(r"for\s*\(\s*int\s+(\w+)\s*=\s*([^;]+)\s*;\s*\1\s*<\s*([^;]+);",
+                      text[pos:])
         if not m:
-            return out
-        var, cond = m.group(1), m.group(2).strip()
+            return text
+        start, end = pos + m.start(), pos + m.end()
+        var, init, cond = m.group(1), m.group(2).strip(), m.group(3).strip()
+        # a loop whose START this proof does not model stays where it stands (it was
+        # invisible before the rewrite too); the walk reports its statements if they
+        # matter, and the search continues after it.
+        if init != "0" and "DRAW_TPL_PAGE" not in cond:
+            pos = end
+            continue
         # P-DRAW-117: a loop with a SINGLE-STATEMENT body (`for(…) if(…);`) has no
-        # brace to index — the old `out.index("{", …)` found the FUNCTION's own brace
+        # brace to index — the old `text.index("{", …)` found the FUNCTION's own brace
         # and swallowed everything to it. Reported, never guessed: the Mark group's
         # glyph list is that shape, and a kind the demo does not walk must show up as
         # an UNMODELLED statement, not as a crash or as a silently wrong row count.
-        ob = out.find("{", m.end())
-        if ob < 0 or (0 <= out.find(";", m.end()) < ob):
+        # P-DRAW-132: the one exception is the rack's window loop, whose own body IS
+        # this shape (`if(!DrawStripGearRow(2, i, y)) break;`); a bound this proof
+        # models is read the same way from a single statement.
+        ob = text.find("{", end)
+        semi = text.find(";", end)
+        single = ob < 0 or (0 <= semi < ob)
+        if single and "DRAW_TPL_PAGE" not in cond:
             unmodelled.append("for(%s < %s) { one statement }" % (var, cond))
-            return out
-        depth, close = 0, len(out)
-        for i in range(ob, len(out)):
-            if out[i] == "{":
-                depth += 1
-            elif out[i] == "}":
-                depth -= 1
-                if depth == 0:
-                    close = i
-                    break
-        body = out[ob + 1:close]
+            return text
+        if single:
+            body = text[end:semi] if semi >= 0 else ""
+            close = semi
+        else:
+            depth, close = 0, len(text)
+            for i in range(ob, len(text)):
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                    if depth == 0:
+                        close = i
+                        break
+            body = text[ob + 1:close]
         # the ARGUMENT, not the argument and the layout cursor: `a` used to swallow
         # `, y`, so every generated row carried the cursor in its own argument and its
         # label and its face resolved to -1 (see slot_of).
@@ -694,11 +771,14 @@ def _expand_loops(text, unmodelled, headers_before=0):
                 if room < 0:
                     room = 0
                 n = min(DEMO_LEVELS, room)
-            elif "DRAW_PRESET_MAX" in cond:
-                n = len(DEMO_PRESETS)
+            elif "DRAW_TPL_PAGE" in cond:
+                # the rack's page window, from the DEMO's own page: the source's
+                # `tfrom` is `s_dsTplPage[k] * DRAW_TPL_PAGE`, 0 on the demo page
+                tfrom = DEMO_TPL_PAGE * TPL_PAGE
+                n = max(0, min(len(DEMO_PRESETS), tfrom + TPL_PAGE) - tfrom)
         if n is None or kind is None:
             unmodelled.append("for(%s < %s) { … }" % (var, cond))
-            return out
+            return text
         gen = []
         for k in range(n):
             a = arg.replace(var + ")", str(k) + ")")
@@ -706,7 +786,8 @@ def _expand_loops(text, unmodelled, headers_before=0):
             if a.strip() in ("s", "i", "g"):
                 a = str(k)
             gen.append("DrawStripGearRow(%s, %s);" % (kind, a))
-        out = out[:m.start()] + " ".join(gen) + out[close + 1:]
+        text = text[:start] + " ".join(gen) + text[close + 1:]
+        pos = start + len(" ".join(gen))
 
 
 def walk(gid, headers_before=0):
@@ -730,7 +811,7 @@ def walk(gid, headers_before=0):
         r'|DrawStripGearQuickRow\s*\(\s*(DRAW_SLOT_\w+)\s*,\s*y\s*\)'
         r'|DrawStripGearGridStamp\s*\('
         r'|s_dsGearEditY\s*\[\s*(\d+)\s*\]\s*=\s*y'
-        r'|for\s*\(\s*int\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*(nl|DrawPresetName|DrawStripGlyphCount|DRAW_SLOT_N|DRAW_PRESET_MAX)'
+        r'|for\s*\(\s*int\s+\w+\s*=\s*0\s*;\s*\w+\s*<\s*(nl|DrawStripGlyphCount|DRAW_SLOT_N|DRAW_TPL_PAGE)'
         r'|y\s*\+=\s*DSTRIP_GEAR_ROW_H\s*;', re.S)
     pend_grid = None
     in_loop = None
@@ -784,12 +865,18 @@ def row_label(kind, arg):
         return GROUP_TEXT.get(str(arg).strip(), "")
     if kind == "1":
         return SWITCH_NAME.get(s, DEMO_SLOT_TEXT.get(s, "Interior"))
+    if kind == "2":
+        # P-DRAW-132: the rack's own row — the demo's name for the row's index
+        return DEMO_PRESETS[s] if 0 <= s < len(DEMO_PRESETS) else ""
     if kind == "3":
-        return ROW_TEXT.get(3, "Save current look")
+        return ROW_TEXT.get(3, "Save as template ...")
     if kind == "5":
         return ROW_TEXT.get("L5_%s" % arg, ROW_TEXT["L5_else"])
     if kind == "7":
         return "New %s wears this look" % DEMO_KIND_NAME
+    if kind == "9":
+        # the page-nav row's caption — DrawStripTplNavText, its words parsed
+        return tpl_nav_text()
     if kind == "6":
         # the more-cell is the LEVELS seat and the MQL names it (DrawStripGearRowText)
         if str(arg).strip() == "DRAW_SLOT_MORE":

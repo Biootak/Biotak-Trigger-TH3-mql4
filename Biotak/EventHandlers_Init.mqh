@@ -986,11 +986,10 @@ int OnInitHandler() {
     ResolveTopologyAdoption();
 
     // P-DRAW-01/02 (2026-09-22): the drawing toolbar's own two tables — the
-    // per-kind style memory and the preset slots (the built-in suggestions the
-    // user overwrites). Seeded once per instance, before any drawing can exist.
+    // per-kind style memory and the template rack. P-DRAW-132: the rack boots from
+    // its FILE (seed on first run, migrate P-DRAW-02's file when one is found).
     DrawStyleInit();
-    DrawPresetsInit();
-    DrawPresetsLoad();   // P-DRAW-05: the user's own templates survive the session
+    DrawTplBoot();   // P-DRAW-05 kept: the user's own templates survive the session
     //--- P-DRAW-128 (2026-10-13): every drawing already on the chart is witnessed
     //--- once, here, so the FIRST native colour change after a reload is recognised
     //--- as a change rather than mistaken for a move-drop. One bounded walk at attach

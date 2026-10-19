@@ -131,7 +131,7 @@ param(
     [string]$ShotSymbol = "EURUSD",
     [string]$ShotPeriod = "H1",
     [ValidateRange(10, 600)]
-    [int]$ShotTimeoutSec = 120
+    [int]$ShotTimeoutSec = 300
 )
 
 # ============================================================
@@ -1059,6 +1059,10 @@ function Set-TerminalShotConfig {
     #--- `Script` is the script's NAME (its path is <data>\MQL4\Scripts\). `ExpertsEnable`
     #--- is stated here because the Extra chart's script obeys the Experts switch: a
     #--- user with AutoTrading off would otherwise get a silent no-op and a 120s wait.
+    #--- MEASURED 2026-10-18: MT4 takes this ini as a BARE command-line argument (the
+    #--- help's own example: `terminal.exe config\start.ini`). The colon-suffixed
+    #--- `/config` switch of MT5 is SILENTLY IGNORED here — the profile opens, no
+    #--- extra chart, no script, and the run dies in 120s of silence. Gate: P-DRAW-119.
     $ini = @("; P-BUILD-10 - MT4 Configuration at Startup.",
              "; One extra chart, opened by MT4 for this launch only and never saved to",
              "; the profile, so the user's charts and indicators come back as they were.",
@@ -1081,13 +1085,27 @@ function Wait-TerminalShotLines {
     # The harness's own voice, read where MT4 writes it: <MQL4>\Logs\<date>.log,
     # UTF-16. Only lines AFTER the launch are taken (a previous run's lines are not
     # this run's answer), and the wait ends on DONE / SKIP / a failed shot.
-    param([string]$Mql4Dir, [int]$TimeoutSec, [string]$LogPath, [int]$SkipLines)
+    param([string]$Mql4Dir, [int]$TimeoutSec, [string]$LogPath, [int]$SkipLines, [string]$Marker = "")
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $out = @()
     $cur = $LogPath
     $skip = $SkipLines
     while ((Get-Date) -lt $deadline) {
         Start-Sleep -Milliseconds 700
+        #--- P-SHOT-1 (2026-10-19): THE MARKER IS THE ORACLE, THE JOURNAL IS THE RECORD.
+        #--- The journal is RAM-buffered (P-DRAW-126), so it can sit minutes behind a
+        #--- finished run; the harness writes `<MQL4>\Files\StripShot.done` through the
+        #--- terminal's own file API when it is done. This door is checked FIRST, so a
+        #--- complete capture can never be reported as "never reached DONE" again.
+        #--- MEASURED 2026-10-19 11:03: the harness writes START the moment it begins
+        #--- (the bar wait can hold it for two minutes), so the wait ends on a DONE or
+        #--- SKIP line only — START alone says "still working", never "finished".
+        if ($Marker -and (Test-Path -LiteralPath $Marker)) {
+            $mtxt = ""
+            try { $mtxt = (Get-Content -LiteralPath $Marker -Raw -ErrorAction SilentlyContinue) } catch { }
+            if ($mtxt) { $mtxt = $mtxt.Trim() }
+            if ($mtxt.StartsWith("DONE") -or $mtxt.StartsWith("SKIP")) { break }
+        }
         $latest = Get-LatestTerminalLog -Mql4Dir $Mql4Dir
         if (-not $latest) { continue }
         if ($latest.FullName -ne $cur) { $cur = $latest.FullName; $skip = 0 }
@@ -1140,7 +1158,7 @@ function Invoke-StripShot {
     if (-not $Launch) {
         Write-Host ""
         Write-Host "  NEXT: close MT4, then run:" -ForegroundColor Yellow
-        Write-Host "        terminal.exe /config:`"$configPath`"" -ForegroundColor Yellow
+        Write-Host "        terminal.exe `"$configPath`"" -ForegroundColor Yellow
         Write-Host "        (or re-run this build with -Shot -RestartTerminal and it does it all)" -ForegroundColor DarkGray
         return $true
     }
@@ -1172,10 +1190,14 @@ function Invoke-StripShot {
         $logPath = $logBefore.FullName
         $skip = @(Get-Content -LiteralPath $logPath -Encoding Unicode -ErrorAction SilentlyContinue).Count
     }
-    $shotArgs = ("$($shotStart.Args) /config:`"$configPath`"").Trim()
+    $shotArgs = ("$($shotStart.Args) `"$configPath`"").Trim()
+    #--- P-SHOT-1: a stale marker from an earlier run may never answer for this one —
+    #--- the same rule the diag frames carry (P-LOG-2), one channel over.
+    $marker = Join-Path (Join-Path $deployDir "Files") "StripShot.done"
+    if (Test-Path -LiteralPath $marker) { Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue }
     Start-Process -FilePath $shotStart.Exe -ArgumentList $shotArgs
-    Write-Host "  launched; waiting up to ${TimeoutSec}s for [STRIPSHOT] DONE:..." -ForegroundColor Cyan
-    $lines = @(Wait-TerminalShotLines -Mql4Dir $deployDir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip)
+    Write-Host "  launched; waiting up to ${TimeoutSec}s for StripShot.done (the flushed marker)..." -ForegroundColor Cyan
+    $lines = @(Wait-TerminalShotLines -Mql4Dir $deployDir -TimeoutSec $TimeoutSec -LogPath $logPath -SkipLines $skip -Marker $marker)
 
     # the shot instance has done its job: put the user's own terminal back
     if (-not (Stop-TerminalProcesses)) { return $false }
@@ -1185,14 +1207,25 @@ function Invoke-StripShot {
     $shotDir = Join-Path $PROJECT_LOG_DIR "shot"
     if (-not (Test-Path -LiteralPath $shotDir)) { New-Item -ItemType Directory -Path $shotDir -Force | Out-Null }
     $census = Join-Path $shotDir "StripShot-census.txt"
-    if ($lines.Count -eq 0) {
-        Write-Host "  [FAIL] no [STRIPSHOT] line appeared in $deployDir\Logs within ${TimeoutSec}s" -ForegroundColor Red
+    #--- P-SHOT-1 (2026-10-19): THE MARKER ANSWERS "DID IT FINISH", the journal lines
+    #--- are kept as the record. MEASURED 2026-10-19 09:55: the run wrote all 30 PNGs and
+    #--- still reported `[FAIL] the harness never reached DONE` because that verdict was
+    #--- read out of the RAM-buffered journal (P-DRAW-126). A reader that can only see
+    #--- the buffered channel cannot tell "not finished" from "not flushed".
+    $markerText = ""
+    if (Test-Path -LiteralPath $marker) {
+        $markerText = (Get-Content -LiteralPath $marker -Raw -ErrorAction SilentlyContinue)
+        if ($markerText) { $markerText = $markerText.Trim() }
+    }
+    if ($lines.Count -eq 0 -and -not $markerText) {
+        Write-Host "  [FAIL] neither the marker ($marker) nor a [STRIPSHOT] journal line appeared within ${TimeoutSec}s" -ForegroundColor Red
         Write-Host "         (the script did not run on that instance — check its Experts tab)" -ForegroundColor Yellow
         return $false
     }
     $lines | Set-Content -LiteralPath $census -Encoding UTF8
     $bad = @($lines | Where-Object { $_.Contains("FAILED") -or $_.Contains("SKIP") })
     $done = @($lines | Where-Object { $_.Contains("DONE:") })
+    if ($markerText) { Write-Host "  marker:  $markerText" -ForegroundColor DarkGray }
     foreach ($l in $bad) { Write-Host "    $l" -ForegroundColor Yellow }
     foreach ($tag in @("panel_paint", "panel_style", "panel_look", "panel_row")) {
         $sum = @($lines | Where-Object { $_.Contains(" $tag objs=") })
@@ -1209,8 +1242,8 @@ function Invoke-StripShot {
     foreach ($p in $png) { Copy-Item -LiteralPath $p.FullName -Destination (Join-Path $shotDir $p.Name) -Force }
     Write-Host "  census: $census  (lines=$($lines.Count))" -ForegroundColor DarkGray
     Write-Host "  terminal PNGs: $($png.Count) -> $shotDir" -ForegroundColor Green
-    if ($done.Count -eq 0) {
-        Write-Host "  [FAIL] the harness never reached DONE (see $census)" -ForegroundColor Red
+    if ($done.Count -eq 0 -and $markerText -notmatch '^DONE') {
+        Write-Host "  [FAIL] the harness never reached DONE (no 'DONE' marker at $marker; see $census)" -ForegroundColor Red
         return $false
     }
     #--- A DONE with no file behind it is the P-DRAW-06 class again (an object created,
@@ -2259,7 +2292,7 @@ if ($Shot -and $shotRelaunched) {
 }
 elseif ($Shot) {
     Write-Host "  NEXT: the shot harness is deployed and the config is written; run -Shot -RestartTerminal" -ForegroundColor Yellow
-    Write-Host "        (or the terminal.exe /config: line above) to get the terminal's own pixels." -ForegroundColor DarkGray
+    Write-Host "        (or the terminal.exe `"build-logs\th3-shot.ini`" line above) to get the terminal's own pixels." -ForegroundColor DarkGray
 }
 else {
     Write-Host "  NEXT: remove and re-add the indicator in MT4." -ForegroundColor Yellow

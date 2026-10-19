@@ -43,6 +43,14 @@ enum EDrawKind
    DK_ELLIPSE,      // OBJ_ELLIPSE
    DK_ARROW,        // OBJ_ARROW (one anchor, a glyph)
    DK_TEXT,         // OBJ_TEXT (one anchor, a caption)
+   //--- P-UNIFY-2 (2026-10-19): THE TWO KINDS THE TOOLBAR OFFERS AND THE STRIP NEVER
+   //--- SPOKE. `OBJ_TRENDBYANGLE` and `OBJ_CYCLES` had no kind at all, so a pick on
+   //--- either answered DK_NONE — the strip opened on NOTHING (0 cells, 0 rows) and the
+   //--- hand that clicked its own drawing got no answer. Appended at the END so every
+   //--- index a build before this one wrote (template rows, remembered looks, the
+   //--- per-kind array seat) keeps its number: this is an ADD, never a renumber.
+   DK_TANGLE,       // OBJ_TRENDBYANGLE (two anchors, a line at a fixed angle)
+   DK_CYCLES,       // OBJ_CYCLES (two anchors, a fan of verticals by that period)
    DK_COUNT
 };
 
@@ -140,12 +148,8 @@ enum EDrawKind
 //--- the style memory's bounds, mirrored from the panel's own rows.
 #define DRAW_WIDTH_MIN   1
 #define DRAW_WIDTH_MAX   5
-//--- P-LOOK: the fibo's own looks ride the STYLE slot as 5/6/7 — one vocabulary
-//--- for the slot's readers (here), its writer (Toolbar_B) and its painter
-//--- (FibPen paints them from the [LKn] tag, ids 1..3, its own defines).
-#define FIBPEN_STYLE_NEON  5   // dash + light core (needs width 3+ for the tube)
-#define FIBPEN_STYLE_CAPS  6   // solid + end blocks
-#define FIBPEN_STYLE_WASH  7   // solid + halo under each level
+//--- P-UNIFY-4: the look ids and their slot law live in DrawKindProfile.mqh +
+//--- DrawLooks.mqh. Seat 8 («3D») stays retired (P-LOOK-3D): never renumber, never reuse.
 //--- P-DRAW-09a: the two bounded properties the new slots cycle. FONT is the
 //--- caption's own point size (MT4 draws OBJ_TEXT at it unchanged), GLYPH the
 //--- Wingdings code of a mark.
@@ -312,15 +316,10 @@ bool DrawTypeHasFillChild(const int type)
 // edge and back), so the kind is decided by the flags, not by the type alone —
 // that is also what makes the RAY slot meaningful for those objects only.
 // ══════════════════════════════════════════════════════════════════════════
-EDrawKind DrawKindOf(const string name)
+//--- P-UNIFY-4: the TYPE map is its own function, so the profile's pen/look
+//--- queries ask the same switch the classifier does - one owner, never a second list.
+EDrawKind DrawKindOfType(const int t)
 {
-   if(DrawIsHTFObject(name)) return DK_NONE;  // HTF candles are indicator overlays, never user drawings
-   if(BoxIsMidChild(name)) return DK_NONE;    // P-DRAW-21: a box helper is served never
-   if(FillIsChild(name))   return DK_NONE;    // P-DRAW-64: nor an interior's child
-   if(FibPenIsChild(name)) return DK_NONE;    // P-DRAW-74b: nor the fibo's stacked pen
-   if(FibPenFamIsChild(name)) return DK_NONE;   // P-LOOK: nor a look's caps or wash
-   int t = DrawObjectType(name);
-   if(t < 0) return DK_NONE;
    switch(t)
    {
       case OBJ_TREND:          return DK_LINE;
@@ -344,8 +343,22 @@ EDrawKind DrawKindOf(const string name)
       case OBJ_ELLIPSE:        return DK_ELLIPSE;
       case OBJ_ARROW:          return DK_ARROW;
       case OBJ_TEXT:           return DK_TEXT;
+      case OBJ_TRENDBYANGLE:   return DK_TANGLE;   // P-UNIFY-2
+      case OBJ_CYCLES:         return DK_CYCLES;   // P-UNIFY-2
       default:                 return DK_NONE;
    }
+}
+EDrawKind DrawKindOf(const string name)
+{
+   if(DrawIsHTFObject(name)) return DK_NONE;  // HTF candles are indicator overlays, never user drawings
+   if(BoxIsMidChild(name)) return DK_NONE;    // P-DRAW-21: a box helper is served never
+   if(FillIsChild(name))   return DK_NONE;    // P-DRAW-64: nor an interior's child
+   if(FibPenIsChild(name)) return DK_NONE;    // P-DRAW-74b: nor the fibo's stacked pen
+   if(FibPenFamIsChild(name)) return DK_NONE;   // P-LOOK: nor a look's caps or wash
+   if(PenStackIsChild(name)) return DK_NONE;   // P-DRAW-74c: nor the line pen's rows - served, hit and learned never
+   int t = DrawObjectType(name);
+   if(t < 0) return DK_NONE;
+   return DrawKindOfType(t);
 }
 
 // THE TABLE. A kind's mask is its whole toolbar — the strip reads nothing else.
@@ -367,13 +380,18 @@ int DrawKindCaps(const EDrawKind k)
       //--- not that price, so a control there would be a promise nothing keeps (C-04:
       //--- no control where nothing would happen).
       case DK_CHANNEL:   return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR;
-      //--- P-DRAW-BODY: the six kinds that draw a body AND a level family now carry the
+      //--- P-DRAW-BODY: the kinds that draw a body AND a level family now carry the
       //--- body's own three seats beside the levels' three — two pictures, two sets.
       case DK_FIBO:
       case DK_FIBOFAN:   return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
       case DK_FIBOCHAN:  return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
       case DK_EXPANSION: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
-      case DK_GANN:      return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
+      //--- P-DRAW-145: a Gann is NOT a level kind (see DrawKindHasLevels). Its BODY seats
+      //--- and its second colour were the SAME three object properties the colour / width
+      //--- / style cells already own — two cells for one act, and the pair that "worked"
+      //--- was the body's, because the level path wrote nothing. A Gann is a plain object
+      //--- strip, so the three cells finally write the object they read.
+      case DK_GANN:      return DRAW_CAP_COMMON;
       case DK_PITCHFORK: return DRAW_CAP_COMMON | DRAW_CAP_FILLCLR | DRAW_CAP_BODY;
       case DK_RECT:      return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR |
                                 DRAW_CAP_BOXHALF | DRAW_CAP_EXTEND;
@@ -381,8 +399,22 @@ int DrawKindCaps(const EDrawKind k)
       case DK_ELLIPSE:   return DRAW_CAP_COMMON | DRAW_CAP_FILL | DRAW_CAP_FILLCLR;
       // P-DRAW-09a: the two kinds whose OWN dialogs are the worst of the family —
       // a text's size and an arrow's code number — get their control in the strip.
-      case DK_ARROW:     return DRAW_CAP_COMMON | DRAW_CAP_GLYPH;
-      case DK_TEXT:      return DRAW_CAP_COMMON | DRAW_CAP_FONT;
+      // P-DRAW-145b: and only the cells their type can DRAW. MetaQuotes' own OBJ_TEXT
+      // page lists font, size, colour, angle, anchor, back, hidden — no width and no
+      // line style — and an arrow's dialog offers its code and its size, never a dash.
+      // A cell that writes those properties paints nothing (C-04), so the two kinds
+      // mask them out instead of promising an act nothing performs. The FONT and GLYPH
+      // cells are what these kinds really wear and they stay.
+      case DK_ARROW:     return (DRAW_CAP_COMMON & ~DRAW_CAP_STYLE) | DRAW_CAP_GLYPH;
+      case DK_TEXT:      return (DRAW_CAP_COMMON & ~(DRAW_CAP_WIDTH | DRAW_CAP_STYLE)) | DRAW_CAP_FONT;
+      //--- P-UNIFY-2 (2026-10-19): the two kinds that had NO kind. Both are plain
+      //--- objects — MetaQuotes' own "Trend Line by Angle" and "Cycles" dialogs offer
+      //--- colour, width, line style, back and the object list, and those are the six
+      //--- cells below. NO RAY seat: a cell is only added where a write is proven to
+      //--- draw (C-04, P-DRAW-145's law), and this type's ray support has not been
+      //--- measured — the six cells that are offered are the six that answer.
+      case DK_TANGLE:
+      case DK_CYCLES:    return DRAW_CAP_COMMON;
       default:           return 0;
    }
 }
@@ -393,11 +425,20 @@ bool DrawSlotAvailable(const EDrawKind k, const int slot)
    return ((DrawKindCaps(k) & (1 << slot)) != 0);
 }
 
-//--- the level family: every kind whose look lives on per-LEVEL colours.
+//--- the level family: every kind whose object really CARRIES line-levels, so its look
+//--- lives on per-LEVEL colours. P-DRAW-145: the three Gann objects are NOT on this list.
+//--- MEASURED against MetaQuotes' own object pages (2026-10-19): OBJ_PITCHFORK and
+//--- OBJ_EXPANSION both say "you can specify the number of line-levels, their values and
+//--- color"; OBJ_GANNLINE says nothing of the kind (angle, scale, ray), and GANN FAN/GRID
+//--- are the same two-anchor family. So a Gann's OBJPROP_LEVELS is 0, and every
+//--- `DrawLevelsSet*` aimed at it was a loop over ZERO rows: the strip's colour, width
+//--- and style cells wrote nothing while their read answered the object — a cell that
+//--- showed a value it could not change. A kind wrongly listed here is the whole defect;
+//--- the write half already asks this one question, so the answer must be the truth.
 bool DrawKindHasLevels(const EDrawKind k)
 {
    return (k == DK_FIBO || k == DK_FIBOFAN || k == DK_FIBOCHAN ||
-           k == DK_EXPANSION || k == DK_GANN || k == DK_PITCHFORK);
+           k == DK_EXPANSION || k == DK_PITCHFORK);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -442,9 +483,10 @@ double DrawSegDist(const int px, const int py,
    return MathSqrt((px - cx) * (px - cx) + (py - cy) * (py - cy));
 }
 
-//--- the level prices of a level family, straight off the object: level k is
-//--- drawn at `p1 + (p2 - p1) * value_k`. Counted through OBJPROP_LEVELS so a
-//--- fibo with a trimmed level set is measured as it is DRAWN.
+//--- the level prices of a level family, straight off the object — the TERMINAL's own
+//--- law (P-LOOK-ANCHOR, measured 2026-10-18, label-verified to 1 px): level k is drawn
+//--- at `p2 + (p1 - p2) * value_k`, 0 % at the SECOND anchor. Counted through
+//--- OBJPROP_LEVELS so a fibo with a trimmed level set is measured as it is DRAWN.
 int DrawLevelCount(const string name)
 {
    int n = (int)ObjectGetInteger(0, name, OBJPROP_LEVELS);
@@ -455,6 +497,44 @@ int DrawLevelCount(const string name)
 double DrawLevelValue(const string name, const int k)
 {
    return ObjectGetDouble(0, name, OBJPROP_LEVELVALUE, k);
+}
+
+//--- P-UNIFY-3 (2026-10-19) — THE LEVEL FAMILY'S GEOMETRY IS THE KIND'S, NOT THE FIBO'S.
+//--- MEASURED against MetaQuotes' own object pages: a plain Fibo draws HORIZONTAL rows
+//--- between its two anchors (P-LOOK-ANCHOR), a Fibo Fan draws RAYS from the first
+//--- anchor to the second's own vertical, a Fibo Channel's levels are PARALLELS of the
+//--- base through the first pair at `v` times the third anchor's channel width, and an
+//--- Expansion projects HORIZONTAL levels from the THIRD anchor plus `v` waves of the
+//--- first pair. One law, asked by the pen and both hit tests — a horizontal row on a
+//--- channel is a line the object never draws.
+double DrawLevelPriceAt(const EDrawKind k, const double v,
+                        const datetime ta, const double pa,
+                        const datetime tb, const double pb,
+                        const datetime t3, const double p3,
+                        const datetime at)
+{
+   if(k == DK_FIBOFAN)
+   {
+      //--- the fan: one end at the first anchor, the other on the level's own price
+      //--- over the second anchor's vertical.
+      double pe = pb + (pa - pb) * v;
+      if(tb == ta) return pa;
+      return pa + (pe - pa) * ((double)((long)at - (long)ta) / (double)((long)tb - (long)ta));
+   }
+   if(k == DK_FIBOCHAN)
+   {
+      //--- the channel: base(t) through the first pair, width W = p3 - base(t3),
+      //--- level = base(t) + v * W — a parallel, never a horizontal.
+      if(tb == ta || t3 <= 0 || !(p3 > 0.0)) return pa + v * (p3 - pa);
+      double span = (double)((long)tb - (long)ta);
+      double f  = (double)((long)at - (long)ta) / span;
+      double f3 = (double)((long)t3 - (long)ta) / span;
+      double w  = p3 - (pa + (pb - pa) * f3);
+      return (pa + (pb - pa) * f) + v * w;
+   }
+   if(k == DK_EXPANSION)
+      return p3 + (pb - pa) * v;   //--- the third anchor plus the first wave
+   return pb + (pa - pb) * v;      //--- DK_FIBO/FIBOTIMES and the families this law already served
 }
 
 //--- THE LEVEL FAMILY'S LOOK IS PER LEVEL in MT4: each level carries its own
@@ -480,207 +560,6 @@ void DrawLevelsSetStyle(const string name, const int st)
    FibPenSync(name, false);   // P-DRAW-74b
 }
 
-bool DrawHitLevels(const string name, const int px, const int py)
-{
-   int n = DrawLevelCount(name);
-   if(n <= 0) return false;
-   datetime t1 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 0);
-   datetime t2 = (datetime)ObjectGetInteger(0, name, OBJPROP_TIME, 1);
-   double   p1 = ObjectGetDouble(0, name, OBJPROP_PRICE, 0);
-   double   p2 = ObjectGetDouble(0, name, OBJPROP_PRICE, 1);
-   if(t1 <= 0 || !(p1 > 0.0) || !(p2 > 0.0)) return false;
-   // the level lines of a plain fibo run from t1 to t2 at their own price; the
-   // fan's run from the FIRST anchor's time to the second's, so the x span is
-   // the same pair for both and only the y differs — measured from the object.
-   int xa = 0, ya = 0, xb = 0, yb = 0;
-   for(int k = 0; k < n; k++)
-   {
-      double v = DrawLevelValue(name, k);
-      if(!MathIsValidNumber(v)) continue;
-      double lv = p1 + (p2 - p1) * v;
-      if(!(lv > 0.0)) continue;
-      if(!ChartTimePriceToXY(0, 0, t1, lv, xa, ya)) continue;
-      if(!ChartTimePriceToXY(0, 0, t2, lv, xb, yb)) continue;
-      if(DrawSegDist(px, py, xa, ya, xb, yb, false, false) <= (double)DRAW_HIT_PX)
-         return true;
-   }
-   return false;
-}
-
-bool DrawHitObject(const string name, const int px, const int py)
-{
-   EDrawKind k = DrawKindOf(name);
-   if(k == DK_NONE) return false;
-   int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-   int tol = DRAW_HIT_PX;
-
-   switch(k)
-   {
-      case DK_HLINE:
-      {
-         if(!DrawAnchorXY(name, 0, x1, y1)) return false;
-         return (MathAbs(py - y1) <= tol);
-      }
-      case DK_VLINE:
-      {
-         if(!DrawAnchorXY(name, 0, x1, y1)) return false;
-         return (MathAbs(px - x1) <= tol);
-      }
-      case DK_ARROW:
-      case DK_TEXT:
-      {
-         if(!DrawAnchorXY(name, 0, x1, y1)) return false;
-         // the glyph's own box: 10 px around the anchor reads as "on it"
-         return (MathAbs(px - x1) <= 10 && MathAbs(py - y1) <= 10);
-      }
-      case DK_LINE:
-      {
-         if(!DrawAnchorXY(name, 0, x1, y1)) return false;
-         if(!DrawAnchorXY(name, 1, x2, y2)) return false;
-         bool oA = ((int)ObjectGetInteger(0, name, OBJPROP_RAY_LEFT) != 0);
-         bool oB = ((int)ObjectGetInteger(0, name, OBJPROP_RAY_RIGHT) != 0);
-         return (DrawSegDist(px, py, x1, y1, x2, y2, oA, oB) <= (double)tol);
-      }
-      case DK_CHANNEL:
-      case DK_FIBOCHAN:
-      case DK_GANN:
-      case DK_PITCHFORK:
-      {
-         // the multi-line families: the FIRST two anchors name the span, and the
-         // rails are the LEVELS (channels, fibo channels, gann fans, pitchforks
-         // all draw them that way). Both are measured, so such an object is
-         // grabbed by any line it draws — the way it is drawn.
-         if(DrawAnchorXY(name, 0, x1, y1) && DrawAnchorXY(name, 1, x2, y2) &&
-            DrawSegDist(px, py, x1, y1, x2, y2, false, false) <= (double)tol)
-            return true;
-         return DrawHitLevels(name, px, py);
-      }
-      case DK_RECT:
-      case DK_TRIANGLE:
-      case DK_ELLIPSE:
-      {
-         if(!DrawAnchorXY(name, 0, x1, y1)) return false;
-         if(!DrawAnchorXY(name, 1, x2, y2)) return false;
-         int xa = MathMin(x1, x2), xb = MathMax(x1, x2);
-         int ya = MathMin(y1, y2), yb = MathMax(y1, y2);
-         bool filled = ((int)ObjectGetInteger(0, name, OBJPROP_FILL) != 0);
-         if(filled && px >= xa - tol && px <= xb + tol && py >= ya - tol && py <= yb + tol)
-            return true;
-         // P-DRAW-08g (the user's own report): A BOX IS HELD FROM THE INSIDE.
-         // The border-only test below is MT4's own pick, and it is why «نگه میدارم
-         // چیزی بالا نمیاد» — a hollow rectangle, triangle or ellipse is grabbed
-         // in the middle by every trader alive, and the hold found nothing there.
-         // The inside is therefore part of the shape this module serves, and the
-         // border test stays for the drawing that is only an outline on screen
-         // (the fill flag decides which is honest).
-         if(px >= xa && px <= xb && py >= ya && py <= yb) return true;
-         // the BORDER: the four edges, each a segment
-         if(DrawSegDist(px, py, xa, ya, xb, ya, false, false) <= (double)tol) return true;
-         if(DrawSegDist(px, py, xb, ya, xb, yb, false, false) <= (double)tol) return true;
-         if(DrawSegDist(px, py, xb, yb, xa, yb, false, false) <= (double)tol) return true;
-         if(DrawSegDist(px, py, xa, yb, xa, ya, false, false) <= (double)tol) return true;
-         return false;
-      }
-      case DK_FIBO:
-      case DK_FIBOFAN:
-      case DK_EXPANSION:
-         return DrawHitLevels(name, px, py);
-      default:
-         return false;
-   }
-}
-
-//--- P-UI-113h (2026-09-24): THE TERMINAL'S SELECTED HANDLES BELONG TO THE DRAWING.
-//--- MT4 paints a rectangle/ellipse with nine controls when selected - four corners,
-//--- four side midpoints and the centre - while OBJPROP_TIME/PRICE expose only the
-//--- two diagonal construction anchors. Testing only 0..1 therefore recognises two
-//--- of the visible controls and misses the very points the hand is on. The
-//--- multi-point families have a third construction anchor; one-point families do
-//--- not. This is a click-TARGET fact, never a drag: it is read only after
-//--- DrawHitObject says the cursor is not already on the drawn shape.
-bool DrawHitSelectedHandle(const string name, const int px, const int py)
-{
-   EDrawKind k = DrawKindOf(name);
-   if(k == DK_RECT || k == DK_ELLIPSE)
-   {
-      int x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-      if(!DrawAnchorXY(name, 0, x1, y1) || !DrawAnchorXY(name, 1, x2, y2)) return false;
-      int xa = MathMin(x1, x2), xb = MathMax(x1, x2);
-      int ya = MathMin(y1, y2), yb = MathMax(y1, y2);
-      int mx = (xa + xb) / 2, my = (ya + yb) / 2;
-      int hx[9], hy[9];
-      hx[0] = xa;  hy[0] = ya;   // corners
-      hx[1] = xb;  hy[1] = ya;
-      hx[2] = xb;  hy[2] = yb;
-      hx[3] = xa;  hy[3] = yb;
-      hx[4] = mx;  hy[4] = ya;   // side midpoints
-      hx[5] = mx;  hy[5] = yb;
-      hx[6] = xa;  hy[6] = my;
-      hx[7] = xb;  hy[7] = my;
-      hx[8] = mx;  hy[8] = my;   // centre control
-      for(int i = 0; i < 9; i++)
-         if(MathAbs(px - hx[i]) <= DRAW_SELECTED_HANDLE_PX &&
-            MathAbs(py - hy[i]) <= DRAW_SELECTED_HANDLE_PX) return true;
-      return false;
-   }
-
-   int count = 3;   // channel / pitchfork and the other three-anchor families
-   if(k == DK_HLINE || k == DK_VLINE || k == DK_ARROW || k == DK_TEXT) count = 1;
-   for(int i = 0; i < count; i++)
-   {
-      int x = 0, y = 0;
-      if(!DrawAnchorXY(name, i, x, y)) continue;
-      if(MathAbs(px - x) <= DRAW_SELECTED_HANDLE_PX &&
-         MathAbs(py - y) <= DRAW_SELECTED_HANDLE_PX) return true;
-   }
-   return false;
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// THE TWO ANSWERS TO "WHICH DRAWING IS UNDER THE CURSOR?".
-//
-// `DrawSelectedObjectAt` is the terminal's OWN answer: MT4 selects the object
-// it grabs on the press. It is asked first, but only after the cursor is proven
-// to be on that selected object's drawn shape or one of its visible controls -
-// selection alone is not a cursor hit.
-//
-// `DrawObjectAt` is the measured answer, for the builds and the moments the
-// terminal's selection does not arrive (P-UI-49c's own lesson: the pick-up is
-// not something to depend on alone). It walks the chart from the NEWEST object
-// backwards — the last created is the one on top of the pile in practice — and
-// returns the first shape the cursor is really on.
-//
-// Both refuse the indicator's own objects: the harmonics, the levels, the
-// boxes and the panels have their own owners (the user's order).
-// ══════════════════════════════════════════════════════════════════════════
-string DrawSelectedObjectAt(const int px, const int py)
-{
-   int total = ObjectsTotal(0, -1, -1);
-   for(int i = total - 1; i >= 0; i--)
-   {
-      string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || DrawIsIndicatorObject(nm)) continue;
-      if(DrawKindOf(nm) == DK_NONE) continue;
-      if(!(bool)ObjectGetInteger(0, nm, OBJPROP_SELECTED)) continue;
-      if(DrawHitObject(nm, px, py) || DrawHitSelectedHandle(nm, px, py)) return nm;
-   }
-   return "";
-}
-
-string DrawObjectAt(const int px, const int py)
-{
-   string sel = DrawSelectedObjectAt(px, py);
-   if(sel != "") return sel;
-   int total = ObjectsTotal(0, -1, -1);
-   for(int i = total - 1; i >= 0; i--)
-   {
-      string nm = ObjectName(0, i, -1, -1);
-      if(nm == "" || (DrawIsIndicatorObject(nm) && !DrawIsHRay(nm) && !DrawIsPathSeg(nm))) continue;   // P-HR-04/P-UI-136: rays and paths are served
-      if(DrawKindOf(nm) == DK_NONE) continue;
-      if(DrawHitObject(nm, px, py)) return nm;
-   }
-   return "";
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // THE STYLE MEMORY — «آخرین تغییرات ذخیره بشه».
@@ -734,7 +613,8 @@ void DrawStyleInit()
       s_dkBack[k]  = false;
    }
    //--- P-DRAW-INK: an empty memory has no last ink either — the file's own row puts
-   //--- it back (DrawPresetsLoad), so the reset must not leave yesterday's blue behind.
+   //--- it back (DrawTplLoad via DrawTplBoot), so the reset must not leave yesterday's
+   //--- blue behind.
    s_dkAnyClr = clrNONE;
 }
 
@@ -1078,14 +958,22 @@ double DrawSlotRead(const string name, const int slot)
       case DRAW_SLOT_WIDTH:
          // P-DRAW-74b: a demoted level reads 1 — the LOGICAL width is the tag's.
          if(lvl) return (double)FibPenLogicalWidth(name, 0);
-         return (double)(int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
+         // P-DRAW-74c: and a demoted LINE master reads 1 too — its children ARE the
+         // memory. The child-0 probe alone decides (children exist only for this pen),
+         // so a plain drawing pays one find and one read, never the whole classifier.
+         {
+            int pw = (int)ObjectGetInteger(0, name, OBJPROP_WIDTH);
+            if(pw <= DRAW_WIDTH_MIN && ObjectFind(0, PenStackName(name, 0)) >= 0)
+               return (double)PenStackLogicalWidth(name);
+            return (double)pw;
+         }
       case DRAW_SLOT_STYLE:
-         // P-LOOK: a look answers 5/6/7; the terminal holds its native 0-4.
-         // FibPenLookGet answers 0 outside 1..3, so a positive answer IS the look.
+         // P-UNIFY-4: a look answers its slot through the one translator; the
+         // terminal holds its native 0-4 and FibPenLookGet answers 0 outside the registry.
          if(lvl)
          {
             int lk = FibPenLookGet(name);
-            if(lk > 0) return (double)(4 + lk);
+            if(lk > 0) return (double)DrawLookToSlot(lk);
             return (double)(int)ObjectGetInteger(0, name, OBJPROP_LEVELSTYLE, 0);
          }
          return (double)(int)ObjectGetInteger(0, name, OBJPROP_STYLE);
@@ -1307,6 +1195,7 @@ bool DrawSlotPreviewColor(const string name, const color c)
    ObjectSetInteger(0, name, OBJPROP_COLOR, rc);
    if(DrawKindHasLevels(k)) DrawLevelsSetColor(name, rc);
    FibPenSync(name, false);   // P-DRAW-74b: the preview reaches the stack too
+   PenStackSync(name, false);   // P-DRAW-74c: and a line's rows ride the hover too
    return true;
 }
 bool DrawSlotPreviewFillColor(const string name, const color c)
@@ -1327,6 +1216,7 @@ bool DrawSlotPreviewFillColor(const string name, const color c)
    if((color)ObjectGetInteger(0, name, OBJPROP_LEVELCOLOR, 0) == rc) return false;
    DrawLevelsSetColor(name, rc);
    FibPenSync(name, false);   // P-DRAW-74b: the preview reaches the stack too
+   PenStackSync(name, false);   // P-DRAW-74c: a line's rows are its ink - re-ink them
    return true;
 }
 //--- the pixels the tags say, and only those: the preview's undo. One owner, so a
@@ -1370,6 +1260,7 @@ bool DrawSlotRenderRestore(const string name)
    // left would otherwise strand the children in the preview ink. Only a real
    // restore can strand ink, so a no-op restore syncs nothing.
    if(changed) FibPenSync(name, false);
+   if(changed) PenStackSync(name, false);   // P-DRAW-74c: same law, the line's rows
    return changed;
 }
 
@@ -1387,6 +1278,7 @@ bool FillChildSync(const string obj)
 {
    if(obj == "" || FillIsChild(obj)) return false;
    if(DrawIsIndicatorObject(obj)) return false;   // the product's own: not ours to split
+   if(BoxPreviewOwns(obj)) return false;   // P-DRAGF4: mid-gesture the master wears the interior natively
    if(ObjectFind(0, obj) < 0) return false;
    if(!DrawTypeHasFillChild(DrawObjectType(obj))) return false;   // cheapest out
    if(!DrawKindHasFillBody(DrawKindOf(obj))) return false;

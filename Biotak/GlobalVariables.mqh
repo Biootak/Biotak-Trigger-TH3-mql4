@@ -625,6 +625,33 @@ static uint g_p3MsLabels = 0;    // ATR/TH label block
 static uint g_p3MsPre = 0;      // P-PERF-49b: OnCalculate BEFORE RedrawAllObjects (incl. the TF-switch wipe)
 static uint g_p3MsPost = 0;     // P-PERF-49b: OnCalculate AFTER it (ChartRedraw + object-count check)
 static uint g_p3MsOverlay = 0;   // DrawMainLevels + overlay reposition
+// P-PERF-53 (2026-10-19) - THE COST HAS A PHASE; THE PHASE HAS A CAUSE.
+// MEASURED: 49 CPU warnings in one day of logs, every one of them
+// `[base=0 atr=0 hist=0 levels=94..125 labels=0 overlay=0 pre=0 post=0 rest=0]` - the
+// whole frame inside the level family render, and not one field saying WHY that frame
+// ran at all. A 94 ms render every couple of seconds is either the price of a real edit
+// or a rebuild nothing asked for, and those are two different fixes: the reader had to
+// guess between the 38 writers of `g_redrawTHLevelsNeeded` alone. The flags are ORed
+// into one mask on the frame that owns them - no string work on the hot path - and
+// decoded only when a frame overruns, so the price and its cause share one line.
+static int g_p3ArmMask = 0;
+
+//--- The mask as names. Runs only on a frame that already overran CPU_WARNING_MS.
+string PerfArmWhy(const int m)
+{
+   string s = "";
+   if((m & 1) != 0)   s += "force ";
+   if((m & 2) != 0)   s += "labels ";
+   if((m & 4) != 0)   s += "th ";
+   if((m & 8) != 0)   s += "histRange ";
+   if((m & 16) != 0)  s += "base ";
+   if((m & 32) != 0)  s += "stage ";
+   if((m & 64) != 0)  s += "heavy ";
+   if((m & 128) != 0) s += "renderAll ";
+   if((m & 256) != 0) s += "clear ";
+   if(s == "") s = "sig";        // only the geometry signature moved
+   return s;
+}
 static uint g_p3MsLastTick = 0;  // frame-local scratch
 
 // P-PERF-10: the same treatment for the INIT path. The live log shows OnInit at

@@ -27,16 +27,22 @@
 //--- moved its owner — realtime, never a frame behind (contract §5). The look
 //--- is a [LKn] tag beside the native pair the terminal holds; a native write
 //--- from the MT4 dialog drops the stale tag instead of wearing two truths.
-#define FIBPEN_LOOK_NEON   1   // dash + light core (needs width 3+ for the tube)
-#define FIBPEN_LOOK_CAPS   2   // solid + end blocks
-#define FIBPEN_LOOK_WASH   3   // solid + halo under each level
-#define FIBPEN_LK          "[LK"
+#define FIBPEN_LOOK_NEON   DRAW_LOOK_NEON   // P-UNIFY-4: the ids live in DrawKindProfile.mqh
+#define FIBPEN_LOOK_CAPS   DRAW_LOOK_CAPS
+#define FIBPEN_LOOK_WASH   DRAW_LOOK_WASH
+//--- P-LOOK-3D RETIRED (2026-10-18, «3D کلا حذف کن»). The fourth look is gone: no
+//--- [LK4] is ever read or written, no `_FSH` shadow is ever born. The family NAME
+//--- and its sweeps stay (the sync's spend pass, the delete hub, HasPen and the
+//--- early-out probe), so a chart from an older build degrades to the previous
+//--- look — never to a dangling shadow.
+#define FIBPEN_LK          DRAW_LOOK_TAG   // P-UNIFY-4: one tag for every look family
 #define FIBPEN_CAP_SFX     "_FSC"
 #define FIBPEN_WSH_SFX     "_FSW"
+#define FIBPEN_SHW_SFX     "_FSH"
 int FibPenLookNative(const int lk)
 {
-   if(lk == FIBPEN_LOOK_NEON) return (int)STYLE_DASH;
-   return (int)STYLE_SOLID;
+   int native = DrawLookNative(lk);
+   return (native >= 0 ? native : (int)STYLE_SOLID);   // the retired 8 keeps the old solid fallback
 }
 int FibPenLookGet(const string fibo)
 {
@@ -67,8 +73,29 @@ bool FibPenLookDrop(const string fibo)
    ObjectSetString(0, fibo, OBJPROP_TEXT, nd);
    return true;
 }
+//--- P-UNIFY-3 (2026-10-19) — WHO THE PEN SERVES. The LEVEL family is wider than the
+//--- pen: a Pitchfork's own levels are drawn by MT4 on both teeth and its rails ARE
+//--- the level family (PenStack.mqh:74), so the pen cannot state them without a
+//--- measurement; a Fibo Arc is a circle and a Fibo Time Zones' levels are VERTICAL.
+//--- What the pen can state is exactly the four kinds whose level geometry is known
+//--- (`DrawLevelPriceAt`): the fibo, the fan, the channel and the expansion. The
+//--- picker's three look rows ask THIS, never the cells' wider test, so a row can
+//--- never be offered where the writer refuses to draw (C-04).
+bool FibPenServesType(const int ty)
+{
+   return (DrawTypePenFamily(ty) == DKPEN_LEVEL);
+}
+bool FibPenServesName(const string name)
+{
+   if(name == "" || ObjectFind(0, name) < 0) return false;
+   return FibPenServesType(DrawObjectType(name));
+}
 string FibPenCapName(const string f, const int dl) { return f + FIBPEN_CAP_SFX + IntegerToString(dl); }
 string FibPenWashName(const string f, const int dl) { return f + FIBPEN_WSH_SFX + IntegerToString(dl); }
+string FibPenShwName(const string f, const int dl) { return f + FIBPEN_SHW_SFX + IntegerToString(dl); }
+//--- P-LOOK-3D retired: the `_FSH` name above is spent only by sweeps now (the
+//--- sync's spend pass, the delete hub, HasPen and the early-out probe) — nothing
+//--- ever creates one, so a legacy shadow dies on the first sync and never returns.
 //--- P-DRAGF (2026-10-03) — THE HAND'S OWN CADENCE. Measured DRAGSTAT: the
 //--- terminal fires ~1-2 OBJECT_DRAG/s while the mouse moves ~60-100/s and the
 //--- dragged master is blitted per move — followers parked on the drag event
@@ -136,15 +163,135 @@ void FibPenDragArm(const string name)
    //--- disarm — opens a chase; the gesture's own end is FibPenDragDisarm (button up).
    if(name != "" && name == s_fibDragObj) return;
    s_fibDragObj = "";
+   FibPenPreviewEnd();   // P-DRAGF3: a missed release must not hold the previous body hostage
    FibPenChaseReset();   // a new gesture asks its own questions: no snapshot survives it
    if(name == "" || ObjectFind(0, name) < 0) return;
    if(DrawIsIndicatorObject(name)) return;
-   if(DrawKindOf(name) != DK_FIBO && DrawKindOf(name) != DK_FIBOFAN) return;
+   if(!FibPenServesType(DrawObjectType(name))) return;   // P-UNIFY-3: the four kinds whose levels the pen can state
    s_fibDragObj = name;
+   FibPenPreviewArm();   // P-DRAGF3: a patterned thick fibo drags NATIVELY - see the block below
 }
 void FibPenDragDisarm()
 {
    if(s_fibDragObj != "") { s_fibDragObj = ""; FibPenChaseReset(); }
+}
+//--- P-DRAGF3 (2026-10-17) - THE GESTURE BELONGS TO THE TERMINAL.
+//--- MEASURED (P-DRAGF/P-DRAGF2, the numbers this file already carries): the terminal
+//--- fires OBJECT_DRAG ~1-2/s (DRAGSTAT) while the hand's own moves arrive ~60-100/s,
+//--- and a patterned thick fibo is a DEMOTED master (width 1) plus moved children per
+//--- level - children WE re-seat on every move, in a frame painted AFTER the frame the
+//--- terminal already blitted. The trail is structural: a follower cannot be painted in
+//--- the frame it follows. So the PREVIEW hands the body BACK: at the arm (the gesture's
+//--- first drag event) every stacked level's width goes back to the logical number -
+//--- which MT4 draws SOLID at width>1, the very law this file exists around - and the
+//--- stack (rows, caps, wash) is hidden ONCE. Through the whole gesture this unit then
+//--- writes NOTHING (the three gates below), the terminal's own native blit carries the
+//--- body, and there is no frame to be behind. At the release the preview ends, the
+//--- children come back, and ONE FibPenSync re-demotes + re-seats + re-memoizes in the
+//--- release's own flushed frame (DrawStrip_Router, the click door; the button-up move
+//--- is the second door - a hand can let go with no click event naming an object).
+//--- Cost per gesture: one LEVELWIDTH write per stacked level + one hide per child at
+//--- the arm, one un-hide + one sync at the release - against the chase's per-move
+//--- re-seats at up to 100 moves/s. The visible trade, stated: while the hand moves a
+//--- patterned thick fibo previews as a SOLID thick one and the pattern returns at the
+//--- release. MT4 cannot draw the pattern thick - the glass is solid anyway.
+//--- P-DRAGF3a (2026-10-17): the same hand-back covers a LOOK whose children stand with
+//--- NO stack (CAPS/WASH ride a solid level, `want` is 0) - their halo was re-seated by
+//--- the chase one frame behind while the arm refused them on width alone.
+static bool   s_fibPreview    = false;   // P-DRAGF3: the preview owns the gesture
+static string s_fibPreviewObj = "";
+
+void FibPenPreviewArm()
+{
+   if(s_fibPreview) return;
+   string fibo = s_fibDragObj;
+   if(fibo == "" || ObjectFind(0, fibo) < 0) return;
+   int nl = DrawLevelCount(fibo);
+   int nw = (nl > FIBPEN_MAX_LEVELS) ? FIBPEN_MAX_LEVELS : nl;
+   if(nw <= 0) return;
+   int refLog = FibPenLogicalWidth(fibo, 0);   // the sync's OWN reference (level 0)
+   //--- P-DRAGF3a (2026-10-17) — A LOOK'S CHILDREN EXIST WITH NO STACK AT ALL. CAPS and
+   //--- WASH ride a SOLID level (`want` is 0 for them), so `refLog` stays the logical
+   //--- width while their children stand — the old `refLog <= DRAW_WIDTH_MIN` fence and
+   //--- the `nW <= 0` gate both refused exactly those looks, and the halo went back to
+   //--- the chase: the one-frame lag this preview exists to end, one look over. The look
+   //--- tag answers for one read; only a THIN, LOOK-LESS fibo has nothing to hand back.
+   if(FibPenLookGet(fibo) == 0 && refLog <= DRAW_WIDTH_MIN) return;
+   int nW = 0, nH = 0;
+   for(int l = 0; l < nw; l++)
+   {
+      int c = FibPenChildCount(fibo, l);
+      if(c > 0)   // a stacked level: the width goes back and the rows hide with it
+      {
+         if((int)ObjectGetInteger(0, fibo, OBJPROP_LEVELWIDTH, l) != refLog)
+         { ObjectSetInteger(0, fibo, OBJPROP_LEVELWIDTH, l, refLog); nW++; }
+         for(int q = 0; q < c; q++)
+         {
+            string nm = FibPenName(fibo, l, q);
+            if(ObjectFind(0, nm) < 0) continue;
+            if((int)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+            { ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); nH++; }
+         }
+      }
+      //--- caps and wash are the LOOK's own children, hidden whether or not
+      //--- the level stacked — the chase re-seats them on every move like any row
+      //--- (P-DRAGF3a).
+      string cn = FibPenCapName(fibo, l);
+      if(ObjectFind(0, cn) >= 0 && (int)ObjectGetInteger(0, cn, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+      { ObjectSetInteger(0, cn, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); nH++; }
+      string wn = FibPenWashName(fibo, l);
+      if(ObjectFind(0, wn) >= 0 && (int)ObjectGetInteger(0, wn, OBJPROP_TIMEFRAMES) != OBJ_NO_PERIODS)
+      { ObjectSetInteger(0, wn, OBJPROP_TIMEFRAMES, OBJ_NO_PERIODS); nH++; }
+   }
+   if(nW <= 0 && nH <= 0) return;   // nothing demoted and no look child: no preview, no flag
+   s_fibPreview = true;
+   s_fibPreviewObj = fibo;
+   // The flush is the caller's: this arm runs inside the drag branch whose own tail
+   // already ends in ChartRedraw() (P-DRAW-74b-f, DrawStrip_Router).
+   DrawStripDiagEmit("[drawstrip] FIBPENPRE view=on fibo=\"" + fibo + "\" lv=" + IntegerToString(nW) +
+                     " hid=" + IntegerToString(nH) + " w=" + IntegerToString(refLog));
+}
+
+bool FibPenPreviewEnd()
+{
+   if(!s_fibPreview) return false;
+   string fibo = s_fibPreviewObj;
+   s_fibPreview = false;   // cleared FIRST: the sync below must not read its own gate
+   s_fibPreviewObj = "";
+   if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
+   int nl = DrawLevelCount(fibo);
+   int nw = (nl > FIBPEN_MAX_LEVELS) ? FIBPEN_MAX_LEVELS : nl;
+   int nU = 0;
+   for(int l = 0; l < nw; l++)
+   {
+      int c = FibPenChildCount(fibo, l);
+      if(c > 0)   // the rows the arm hid
+      {
+         for(int q = 0; q < c; q++)
+         {
+            string nm = FibPenName(fibo, l, q);
+            if(ObjectFind(0, nm) < 0) continue;
+            if((int)ObjectGetInteger(0, nm, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
+            { ObjectSetInteger(0, nm, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS); nU++; }
+         }
+      }
+      //--- P-DRAGF3a: and the look's own children, which the arm hid with no stack too —
+      //--- an un-hide that skipped them would leave the halo invisible on every period.
+      string cn = FibPenCapName(fibo, l);
+      if(ObjectFind(0, cn) >= 0 && (int)ObjectGetInteger(0, cn, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
+      { ObjectSetInteger(0, cn, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS); nU++; }
+      string wn = FibPenWashName(fibo, l);
+      if(ObjectFind(0, wn) >= 0 && (int)ObjectGetInteger(0, wn, OBJPROP_TIMEFRAMES) != OBJ_ALL_PERIODS)
+      { ObjectSetInteger(0, wn, OBJPROP_TIMEFRAMES, OBJ_ALL_PERIODS); nU++; }
+   }
+   // ONE convergence, same frame: the full-width master demotes back to 1 (the sync's
+   // own guarded write), the children are re-seated at the landed anchors, the net's
+   // memo re-learns the master. The caller owns the flush (the release path already
+   // redraws; the button-up door flushes on this call's verdict).
+   bool dirty = FibPenSync(fibo, false);
+   DrawStripDiagEmit("[drawstrip] FIBPENPRE view=off fibo=\"" + fibo + "\" unhid=" + IntegerToString(nU) +
+                     " sync=" + IntegerToString(dirty ? 1 : 0));
+   return (nU > 0 || dirty);
 }
 //--- P-WARN-46 (2026-10-04): the three forward declarations that stood here went with
 //--- the build's `warning 46` lines. MQL4 resolves a function defined LATER in the unit
@@ -154,9 +301,15 @@ void FibPenDragDisarm()
 //--- later-included file - with no prototype since P-UI-92c).
 void FibPenDragFollow(const int mx, const int my)
 {
+   if(s_fibPreview) return;   // P-DRAGF3: the preview owns the gesture - zero writes per move
    if(s_fibDragObj == "") return;
    string fibo = s_fibDragObj;
    if(ObjectFind(0, fibo) < 0) { FibPenChaseReset(); s_fibDragObj = ""; return; }
+   //--- P-UNIFY-3: the chase's law below is the HORIZONTAL fibo's. The slanted kinds
+   //--- (fan, channel, expansion) hand their body to the terminal at the first drag
+   //--- event (`FibPenPreviewArm`) and re-seat through the sync, so the only shape the
+   //--- chase must express is still the two-anchor fibo.
+   if(DrawObjectType(fibo) != OBJ_FIBO) return;
    datetime ct = 0; double cp = 0.0;
    int px_ = mx, py_ = my;   // ChartXYToTimePrice takes refs: never pass consts
    if(!ChartXYToTimePrice(0, 0, px_, py_, ct, cp)) return;
@@ -244,10 +397,11 @@ void FibPenDragFollow(const int mx, const int my)
       string c0 = FibPenName(fibo, l, 0);
       string cpnm = FibPenCapName(fibo, l);
       string wsnm = FibPenWashName(fibo, l);
-      if(ObjectFind(0, c0) < 0 && ObjectFind(0, cpnm) < 0 && ObjectFind(0, wsnm) < 0) continue;
+      if(ObjectFind(0, c0) < 0 && ObjectFind(0, cpnm) < 0 &&
+         ObjectFind(0, wsnm) < 0) continue;
       double v = ObjectGetDouble(0, fibo, OBJPROP_LEVELVALUE, l);
       if(!MathIsValidNumber(v)) continue;
-      double lva = pa + (pb - pa) * v;
+      double lva = pb + (pa - pb) * v;   // P-LOOK-ANCHOR: 0 % at the SECOND anchor (the terminal's law)
       if(!(lva > 0.0)) continue;
       int logical = FibPenLogicalWidth(fibo, l);
       for(int q = 0; q < logical && q <= DRAW_WIDTH_MAX; q++)
@@ -269,15 +423,15 @@ void FibPenDragFollow(const int mx, const int my)
           if(ObjectGetDouble(0, cpnm, OBJPROP_PRICE, 1) != lva)
           { ObjectMove(0, cpnm, 1, tb, lva); nMov++; }
        }
-       if(ObjectFind(0, wsnm) >= 0)
-       {
-          double hp = lva + 2.0 * px;
-          if(ObjectGetDouble(0, wsnm, OBJPROP_PRICE, 0) != hp)
-          { ObjectMove(0, wsnm, 0, ts0, hp); nMov++; }
-          if(ObjectGetDouble(0, wsnm, OBJPROP_PRICE, 1) != hp)
-          { ObjectMove(0, wsnm, 1, ts1, hp); nMov++; }
-       }
-   }
+        if(ObjectFind(0, wsnm) >= 0)
+        {
+           double hp = lva + 2.0 * px;
+           if(ObjectGetDouble(0, wsnm, OBJPROP_PRICE, 0) != hp)
+           { ObjectMove(0, wsnm, 0, ts0, hp); nMov++; }
+           if(ObjectGetDouble(0, wsnm, OBJPROP_PRICE, 1) != hp)
+           { ObjectMove(0, wsnm, 1, ts1, hp); nMov++; }
+        }
+     }
    //--- (4) THE FRAME THE CHASE MOVED IS THE FRAME IT PAINTS. The DRAG channel flushes
    //--- its own frame (P-DRAW-74b-f); the MOVE channel is this one's only painter, and
    //--- without a flush the children wait for the terminal's own next repaint — the
@@ -301,7 +455,7 @@ void FibPenDragFollow(const int mx, const int my)
       }
    }
 }
-//--- the second family test: caps and wash strays are served never, like the stack's.
+//--- the second family test: caps, wash and shadow strays are served never, like the stack's.
 bool FibPenFamIsChild(const string name)
 {
    int pos = 0;
@@ -314,7 +468,7 @@ bool FibPenFamIsChild(const string name)
       if(ok)
       {
          ushort fc = StringGetCharacter(rest, 0);
-         if(fc != 'C' && fc != 'W') ok = false;
+         if(fc != 'C' && fc != 'W' && fc != 'H') ok = false;
          else
          {
             for(int i = 1; i < StringLen(rest); i++)
@@ -513,13 +667,15 @@ int FibPenRayBits(const string fibo)
    FibPenRayPair(fibo, rl, rr);
    return (rl ? 2 : 0) | (rr ? 1 : 0);
 }
-//--- the pen's own existence test: any of the three families it builds.
+//--- the pen's own existence test: any of the families it builds — the retired
+//--- `_FSH` still counts, or a legacy 3D shadow would never reach its own sweep.
 bool FibPenHasPen(const string fibo)
 {
    if(fibo == "") return false;
    if(ObjectFind(0, FibPenName(fibo, 0, 0)) >= 0) return true;
    if(ObjectFind(0, FibPenCapName(fibo, 0)) >= 0) return true;
    if(ObjectFind(0, FibPenWashName(fibo, 0)) >= 0) return true;
+   if(ObjectFind(0, FibPenShwName(fibo, 0)) >= 0) return true;
    return false;
 }
 //--- P-LOOK-RAY2 - THE PEN'S OWN NET. Every other follower in this repo has one seat that
@@ -535,8 +691,8 @@ bool FibPenHasPen(const string fibo)
 //--- mirrors the rays and re-memoizes). A still chart pays reads and writes nothing.
 #define FIBPEN_NET_SLOTS 8
 static string s_fpNetName[FIBPEN_NET_SLOTS];
-static long   s_fpNetT0[FIBPEN_NET_SLOTS], s_fpNetT1[FIBPEN_NET_SLOTS];
-static double s_fpNetP0[FIBPEN_NET_SLOTS], s_fpNetP1[FIBPEN_NET_SLOTS];
+static long   s_fpNetT0[FIBPEN_NET_SLOTS], s_fpNetT1[FIBPEN_NET_SLOTS], s_fpNetT2[FIBPEN_NET_SLOTS];
+static double s_fpNetP0[FIBPEN_NET_SLOTS], s_fpNetP1[FIBPEN_NET_SLOTS], s_fpNetP2[FIBPEN_NET_SLOTS];
 static int    s_fpNetRay[FIBPEN_NET_SLOTS], s_fpNetPen[FIBPEN_NET_SLOTS];
 static int    s_fpNetNext = 0;
 int FibPenNetFind(const string fibo)
@@ -546,7 +702,11 @@ int FibPenNetFind(const string fibo)
       if(s_fpNetName[i] == fibo) return i;
    return -1;
 }
-void FibPenNetWrite(const string fibo, const long t0, const long t1, const double p0, const double p1,
+//--- P-UNIFY-3: the memo carries the THIRD anchor too — a channel's width anchor or an
+//--- expansion's third point is geometry the rows hang on, so a move of it alone must
+//--- read as a mismatch (0/0 on the two-anchor kinds keeps one compare shape).
+void FibPenNetWrite(const string fibo, const long t0, const long t1, const long t2,
+                    const double p0, const double p1, const double p2,
                     const int ray, const bool pen)
 {
    int at = FibPenNetFind(fibo);
@@ -556,25 +716,30 @@ void FibPenNetWrite(const string fibo, const long t0, const long t1, const doubl
       s_fpNetNext = (s_fpNetNext + 1) % FIBPEN_NET_SLOTS;
       s_fpNetName[at] = fibo;
    }
-   s_fpNetT0[at] = t0; s_fpNetT1[at] = t1;
-   s_fpNetP0[at] = p0; s_fpNetP1[at] = p1;
+   s_fpNetT0[at] = t0; s_fpNetT1[at] = t1; s_fpNetT2[at] = t2;
+   s_fpNetP0[at] = p0; s_fpNetP1[at] = p1; s_fpNetP2[at] = p2;
    s_fpNetRay[at] = ray;
    s_fpNetPen[at] = (pen ? 1 : 0);
 }
 bool FibPenHeal(const string fibo)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
-   EDrawKind k = DrawKindOf(fibo);
-   if(k != DK_FIBO && k != DK_FIBOFAN) return false;
+   if(s_fibPreview && fibo == s_fibPreviewObj) return false;   // P-DRAGF3: the preview owns the gesture
+   int ty = DrawObjectType(fibo);
+   if(!FibPenServesType(ty)) return false;   // P-UNIFY-3: the heal, the pen's own four
    long   t0 = (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 0);
    long   t1 = (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 1);
    double p0 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 0);
    double p1 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 1);
+   bool three = (ty == OBJ_FIBOCHANNEL || ty == OBJ_EXPANSION);
+   long   t2 = three ? (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 2) : 0;
+   double p2 = three ? ObjectGetDouble(0, fibo, OBJPROP_PRICE, 2) : 0.0;
    int    ray = FibPenRayBits(fibo);
    bool   pen = FibPenHasPen(fibo);
    int    at  = FibPenNetFind(fibo);
-   if(at >= 0 && s_fpNetT0[at] == t0 && s_fpNetT1[at] == t1 && s_fpNetP0[at] == p0 &&
-      s_fpNetP1[at] == p1 && s_fpNetRay[at] == ray && s_fpNetPen[at] == (pen ? 1 : 0))
+   if(at >= 0 && s_fpNetT0[at] == t0 && s_fpNetT1[at] == t1 && s_fpNetT2[at] == t2 &&
+      s_fpNetP0[at] == p0 && s_fpNetP1[at] == p1 && s_fpNetP2[at] == p2 &&
+      s_fpNetRay[at] == ray && s_fpNetPen[at] == (pen ? 1 : 0))
       return false;   // the pen is what the master's last sync built: reads only
    return FibPenSync(fibo, false);
 }
@@ -621,6 +786,8 @@ bool FibPenStraysDrop(const string fibo)
       if(ObjectFind(0, cn) >= 0) { ObjectDelete(0, cn); dd = true; }
       string wn = FibPenWashName(fibo, dl);
       if(ObjectFind(0, wn) >= 0) { ObjectDelete(0, wn); dd = true; }
+      string sn = FibPenShwName(fibo, dl);   // P-LOOK-3D: the fourth family sweeps with the rest
+      if(ObjectFind(0, sn) >= 0) { ObjectDelete(0, sn); dd = true; }
    }
    return dd;
 }
@@ -632,8 +799,9 @@ bool FibPenSync(const string fibo, const bool dropAll)
 {
    if(fibo == "" || ObjectFind(0, fibo) < 0) return false;
    if(DrawIsIndicatorObject(fibo)) return false;   // the indicator's own levels are never served
+   if(s_fibPreview && !dropAll && fibo == s_fibPreviewObj) return false;   // P-DRAGF3: gated while the preview owns the gesture; dropAll (delete) is never gated
    EDrawKind k = DrawKindOf(fibo);
-   if(k != DK_FIBO && k != DK_FIBOFAN) return false;   // the family this fix serves
+   if(!FibPenServesType(DrawObjectType(fibo))) return false;   // P-UNIFY-3: the pen's four kinds — the kind carries the geometry
    bool dirty = FibPenTagDrop(fibo);   // transition: spend a v2 [FWn], never written again
    int nDem = 0, nNew = 0, nDrop = 0, nUni = 0;   // the flushed witness counts below
    int nMov = 0;   // DIAG-139: child moves this call (the drag question below)
@@ -653,16 +821,21 @@ bool FibPenSync(const string fibo, const bool dropAll)
       // the previous look's children, and only this sweep can name them all.
       if(!dropAll && ObjectFind(0, FibPenName(fibo, 0, 0)) < 0 &&
          ObjectFind(0, FibPenCapName(fibo, 0)) < 0 &&
-         ObjectFind(0, FibPenWashName(fibo, 0)) < 0) return false;
+         ObjectFind(0, FibPenWashName(fibo, 0)) < 0 &&
+         ObjectFind(0, FibPenShwName(fibo, 0)) < 0) return false;
       bool dd = FibPenStraysDrop(fibo);
       if(dd || dirty)
          DrawStripDiagEmit("[drawstrip] FIBPEN fibo=\"" + fibo + "\" dropall=1 look=" + IntegerToString(lk));
       //--- P-LOOK-RAY2: the net's memo follows the truth - no pen stands here now, so the
       //--- next pass asks the master (and only a master that asks for one is served).
+      //--- P-UNIFY-3: the third anchor rides the memo too (0/0 on the two-anchor kinds).
+      bool three = (k == DK_FIBOCHAN || k == DK_EXPANSION);
       FibPenNetWrite(fibo, (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 0),
                      (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 1),
+                     three ? (long)ObjectGetInteger(0, fibo, OBJPROP_TIME, 2) : 0,
                      ObjectGetDouble(0, fibo, OBJPROP_PRICE, 0),
                      ObjectGetDouble(0, fibo, OBJPROP_PRICE, 1),
+                     three ? ObjectGetDouble(0, fibo, OBJPROP_PRICE, 2) : 0.0,
                      FibPenRayBits(fibo), false);
       return (dd || dirty);
    }
@@ -683,7 +856,25 @@ bool FibPenSync(const string fibo, const bool dropAll)
     datetime ts1 = (ta < tb ? tb : ta);   // ...early to late, whatever order the hand drew
    double p1 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 0);
    double p2 = ObjectGetDouble(0, fibo, OBJPROP_PRICE, 1);
-   bool anchorsOk = (ta > 0 && tb > 0 && p1 > 0.0 && p2 > 0.0);
+   //--- P-UNIFY-3: the channel and the expansion carry a THIRD anchor, and their level
+   //--- geometry hangs on it (the channel's width, the expansion's base). Missing it is
+   //--- as fatal as a missing pair, so it is part of the same fence.
+   bool three = (k == DK_FIBOCHAN || k == DK_EXPANSION);
+   datetime t3 = three ? (datetime)ObjectGetInteger(0, fibo, OBJPROP_TIME, 2) : 0;
+   double   p3 = three ? ObjectGetDouble(0, fibo, OBJPROP_PRICE, 2) : 0.0;
+   bool anchorsOk = (ta > 0 && tb > 0 && p1 > 0.0 && p2 > 0.0 &&
+                     (!three || (t3 > 0 && p3 > 0.0)));
+   //--- P-LOOK-ANCHOR (2026-10-18) — MT4 PUTS 0 % AT THE SECOND ANCHOR. MEASURED on the
+   //--- shot chart (StripShot_fibo_3d3.png, AMarkets A1660): the band carrying the «0.0»
+   //--- label sits at PRICE,1 (y=445) and «423.6» at PRICE,1 + (PRICE,0 - PRICE,1) * 4.236
+   //--- = 1.11605 (y=633) — label text and pixels agree within 1 px across all nine bands,
+   //--- and the FSH family dump sits exactly where its own prices say. So the terminal's
+   //--- law is lv = PRICE,1 + (PRICE,0 - PRICE,1) * v, and the old p1 + (p2 - p1) * v wore
+   //--- the mirror twin R(1 - v): every child (stack rows, caps, wash) sat under the
+   //--- wrong level — the «3D واقعی نیست» report, whose 3D shadow measured at 305/376/420
+   //--- (since retired) — and both hit tests (DrawHitLevels, DrawFiboFullHit) measured
+   //--- lines MT4 never draws. Every mapping site states THIS law: this head, the chase,
+   //--- caps, wash, and the two hit tests. Gate: P-LOOK-ANCHOR.
    //--- P-LOOK-RAY2: the pen mirrors the master's own level rays (one read per sync).
    bool penRL = false, penRR = false;
    FibPenRayPair(fibo, penRL, penRR);
@@ -696,6 +887,7 @@ bool FibPenSync(const string fibo, const bool dropAll)
    datetime t1a[FIBPEN_MAX_LEVELS] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
    datetime t2a[FIBPEN_MAX_LEVELS] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
    double lva[FIBPEN_MAX_LEVELS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   double lvb[FIBPEN_MAX_LEVELS] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
    for(int l = 0; l < nw; l++)
    {
       int curW = (int)ObjectGetInteger(0, fibo, OBJPROP_LEVELWIDTH, l);
@@ -709,14 +901,17 @@ bool FibPenSync(const string fibo, const bool dropAll)
          curSt = refSt;
       }
       bool rowOk = false;
-      double lv = 0.0;
+      double lvA = 0.0, lvB = 0.0;
       if(anchorsOk)
       {
          double v = ObjectGetDouble(0, fibo, OBJPROP_LEVELVALUE, l);
          if(MathIsValidNumber(v))
          {
-            lv = p1 + (p2 - p1) * v;
-            if(lv > 0.0) rowOk = true;
+            //--- P-UNIFY-3: the two ends are the KIND's geometry (DrawLevelPriceAt).
+            //--- DK_FIBO answers the same constant price at both — P-LOOK-ANCHOR's law.
+            lvA = DrawLevelPriceAt(k, v, ta, p1, tb, p2, t3, p3, ts0);
+            lvB = DrawLevelPriceAt(k, v, ta, p1, tb, p2, t3, p3, ts1);
+            if(lvA > 0.0 && lvB > 0.0) rowOk = true;
          }
       }
       int want = 0, vis = curW;
@@ -737,7 +932,8 @@ bool FibPenSync(const string fibo, const bool dropAll)
        colA[l] = (color)(int)ObjectGetInteger(0, fibo, OBJPROP_LEVELCOLOR, l);
        t1a[l] = ts0;
        t2a[l] = ts1;
-       lva[l] = lv;
+       lva[l] = lvA;
+       lvb[l] = lvB;
    }
    //--- levels past the stack cap converge the same way (thin dash), never stack.
    for(int lx = nw; lx < nl; lx++)
@@ -763,11 +959,14 @@ bool FibPenSync(const string fibo, const bool dropAll)
       for(int q2 = 0; q2 < wantN[l2]; q2++)
       {
          string nm2 = FibPenName(fibo, l2, q2);
-         double rowP = lva[l2] + FibPenOffPx(logW[l2], q2) * px;
+         //--- P-UNIFY-3: the offset is vertical in PRICE, so each end rides its own
+         //--- level price — identical on a horizontal fibo, parallel on the slanted kinds.
+         double rowPa = lva[l2] + FibPenOffPx(logW[l2], q2) * px;
+         double rowPb = lvb[l2] + FibPenOffPx(logW[l2], q2) * px;
          if(ObjectFind(0, nm2) < 0)
          {
             if(!pxOk) continue;
-            if(!ObjectCreate(0, nm2, OBJ_TREND, 0, t1a[l2], rowP, t2a[l2], rowP)) continue;
+            if(!ObjectCreate(0, nm2, OBJ_TREND, 0, t1a[l2], rowPa, t2a[l2], rowPb)) continue;
             ObjectSetInteger(0, nm2, OBJPROP_SELECTABLE, false);
             ObjectSetInteger(0, nm2, OBJPROP_HIDDEN, true);
             // P-LOOK-RAY2: the pen is as wide as the LINE, not wider. The fibo's own
@@ -781,11 +980,11 @@ bool FibPenSync(const string fibo, const bool dropAll)
          if(pxOk)
          {
             if((datetime)ObjectGetInteger(0, nm2, OBJPROP_TIME, 0) != t1a[l2] ||
-               ObjectGetDouble(0, nm2, OBJPROP_PRICE, 0) != rowP)
-               { ObjectMove(0, nm2, 0, t1a[l2], rowP); nMov++; }
+               ObjectGetDouble(0, nm2, OBJPROP_PRICE, 0) != rowPa)
+               { ObjectMove(0, nm2, 0, t1a[l2], rowPa); nMov++; }
             if((datetime)ObjectGetInteger(0, nm2, OBJPROP_TIME, 1) != t2a[l2] ||
-               ObjectGetDouble(0, nm2, OBJPROP_PRICE, 1) != rowP)
-               { ObjectMove(0, nm2, 1, t2a[l2], rowP); nMov++; }
+               ObjectGetDouble(0, nm2, OBJPROP_PRICE, 1) != rowPb)
+               { ObjectMove(0, nm2, 1, t2a[l2], rowPb); nMov++; }
          }
          if((int)ObjectGetInteger(0, nm2, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
             ObjectSetInteger(0, nm2, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
@@ -814,7 +1013,7 @@ bool FibPenSync(const string fibo, const bool dropAll)
       color lite = BlendColorTowardsBG(colA[l3], 50, clrWhite);
       if(ObjectFind(0, cnm) < 0)
       {
-            if(!ObjectCreate(0, cnm, OBJ_TREND, 0, t1a[l3], lva[l3], t2a[l3], lva[l3])) continue;
+            if(!ObjectCreate(0, cnm, OBJ_TREND, 0, t1a[l3], lva[l3], t2a[l3], lvb[l3])) continue;
             ObjectSetInteger(0, cnm, OBJPROP_SELECTABLE, false);
             ObjectSetInteger(0, cnm, OBJPROP_HIDDEN, true);
             ObjectSetInteger(0, cnm, OBJPROP_RAY_LEFT, penRL);   // P-LOOK-RAY2: the tube rides the line's own span
@@ -825,8 +1024,8 @@ bool FibPenSync(const string fibo, const bool dropAll)
             ObjectGetDouble(0, cnm, OBJPROP_PRICE, 0) != lva[l3])
             { ObjectMove(0, cnm, 0, t1a[l3], lva[l3]); nMov++; }
       if((datetime)ObjectGetInteger(0, cnm, OBJPROP_TIME, 1) != t2a[l3] ||
-            ObjectGetDouble(0, cnm, OBJPROP_PRICE, 1) != lva[l3])
-            { ObjectMove(0, cnm, 1, t2a[l3], lva[l3]); nMov++; }
+            ObjectGetDouble(0, cnm, OBJPROP_PRICE, 1) != lvb[l3])
+            { ObjectMove(0, cnm, 1, t2a[l3], lvb[l3]); nMov++; }
       if((int)ObjectGetInteger(0, cnm, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
          ObjectSetInteger(0, cnm, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
       if((int)ObjectGetInteger(0, cnm, OBJPROP_STYLE) != (int)STYLE_SOLID)
@@ -842,10 +1041,14 @@ bool FibPenSync(const string fibo, const bool dropAll)
       coreN[l3] = true;
    }
    //--- P-LOOK — CAPS: one solid end block per level over the span's last eighth.
+   //--- P-UNIFY-3: the block follows the LEVEL's own slope — its two ends ask the same
+   //--- geometry the rows did (identical prices on a horizontal fibo).
    for(int l4 = 0; l4 < nw; l4++)
    {
       string pnm = FibPenCapName(fibo, l4);
-      double lp4 = 0.0;
+      datetime tc = tb - (tb - ta) / 8;
+      if(!(tc > ta)) tc = ta;
+      double lpA = 0.0, lpB = 0.0;
       bool capOk = (lk == FIBPEN_LOOK_CAPS && anchorsOk);
       if(capOk)
       {
@@ -853,8 +1056,9 @@ bool FibPenSync(const string fibo, const bool dropAll)
          if(!MathIsValidNumber(vv4)) capOk = false;
          else
          {
-            lp4 = p1 + (p2 - p1) * vv4;
-            if(!(lp4 > 0.0)) capOk = false;
+            lpA = DrawLevelPriceAt(k, vv4, ta, p1, tb, p2, t3, p3, tc);
+            lpB = DrawLevelPriceAt(k, vv4, ta, p1, tb, p2, t3, p3, tb);
+            if(!(lpA > 0.0) || !(lpB > 0.0)) capOk = false;
          }
       }
       if(!capOk)
@@ -862,14 +1066,12 @@ bool FibPenSync(const string fibo, const bool dropAll)
          if(ObjectFind(0, pnm) >= 0) { ObjectDelete(0, pnm); dirty = true; nDrop++; }
          continue;
       }
-      datetime tc = tb - (tb - ta) / 8;
-      if(!(tc > ta)) tc = ta;
       int cw = logW[l4];
       if(cw < DRAW_WIDTH_MIN) cw = DRAW_WIDTH_MIN;
       if(cw > DRAW_WIDTH_MAX) cw = DRAW_WIDTH_MAX;
       if(ObjectFind(0, pnm) < 0)
       {
-         if(!ObjectCreate(0, pnm, OBJ_TREND, 0, tc, lp4, tb, lp4)) continue;
+         if(!ObjectCreate(0, pnm, OBJ_TREND, 0, tc, lpA, tb, lpB)) continue;
          ObjectSetInteger(0, pnm, OBJPROP_SELECTABLE, false);
          ObjectSetInteger(0, pnm, OBJPROP_HIDDEN, true);
          ObjectSetInteger(0, pnm, OBJPROP_RAY_LEFT, false);
@@ -877,11 +1079,11 @@ bool FibPenSync(const string fibo, const bool dropAll)
          dirty = true; nNew++;
       }
       if((datetime)ObjectGetInteger(0, pnm, OBJPROP_TIME, 0) != tc ||
-            ObjectGetDouble(0, pnm, OBJPROP_PRICE, 0) != lp4)
-            { ObjectMove(0, pnm, 0, tc, lp4); nMov++; }
+            ObjectGetDouble(0, pnm, OBJPROP_PRICE, 0) != lpA)
+            { ObjectMove(0, pnm, 0, tc, lpA); nMov++; }
       if((datetime)ObjectGetInteger(0, pnm, OBJPROP_TIME, 1) != tb ||
-            ObjectGetDouble(0, pnm, OBJPROP_PRICE, 1) != lp4)
-            { ObjectMove(0, pnm, 1, tb, lp4); nMov++; }
+            ObjectGetDouble(0, pnm, OBJPROP_PRICE, 1) != lpB)
+            { ObjectMove(0, pnm, 1, tb, lpB); nMov++; }
       if((int)ObjectGetInteger(0, pnm, OBJPROP_WIDTH) != cw)
          ObjectSetInteger(0, pnm, OBJPROP_WIDTH, cw);
       if((int)ObjectGetInteger(0, pnm, OBJPROP_STYLE) != (int)STYLE_SOLID)
@@ -892,22 +1094,20 @@ bool FibPenSync(const string fibo, const bool dropAll)
          ObjectSetInteger(0, pnm, OBJPROP_BACK, backLayer);
    }
    //--- P-LOOK — WASH: one dotted halo hugging each level, sunk behind the bars.
+   //--- P-UNIFY-3: the halo rides the LEVEL's own slope, two pixels beside it — the
+   //--- rows' geometry, read from the arrays the loop above already measured.
    for(int l5 = 0; l5 < nw; l5++)
    {
       string wnm = FibPenWashName(fibo, l5);
-      double hp = 0.0;
+      double hpA = 0.0, hpB = 0.0;
       color haze = clrNONE;
-      bool washOk = (lk == FIBPEN_LOOK_WASH && pxOk && anchorsOk);
+      bool washOk = (lk == FIBPEN_LOOK_WASH && pxOk && anchorsOk &&
+                     lva[l5] > 0.0 && lvb[l5] > 0.0);
       if(washOk)
       {
-         double vv5 = ObjectGetDouble(0, fibo, OBJPROP_LEVELVALUE, l5);
-         if(!MathIsValidNumber(vv5)) washOk = false;
-         else
-         {
-            double lp5 = p1 + (p2 - p1) * vv5;
-            if(!(lp5 > 0.0)) washOk = false;
-            else { hp = lp5 + 2.0 * px; haze = BlendColorTowardsBG(colA[l5], 65, wbg); }
-         }
+         hpA = lva[l5] + 2.0 * px;
+         hpB = lvb[l5] + 2.0 * px;
+         haze = BlendColorTowardsBG(colA[l5], 65, wbg);
       }
       if(!washOk)
       {
@@ -916,7 +1116,7 @@ bool FibPenSync(const string fibo, const bool dropAll)
       }
        if(ObjectFind(0, wnm) < 0)
        {
-             if(!ObjectCreate(0, wnm, OBJ_TREND, 0, ts0, hp, ts1, hp)) continue;
+             if(!ObjectCreate(0, wnm, OBJ_TREND, 0, ts0, hpA, ts1, hpB)) continue;
             ObjectSetInteger(0, wnm, OBJPROP_SELECTABLE, false);
             ObjectSetInteger(0, wnm, OBJPROP_HIDDEN, true);
             ObjectSetInteger(0, wnm, OBJPROP_RAY_LEFT, penRL);   // P-LOOK-RAY2: the halo hugs the level's own span
@@ -924,11 +1124,11 @@ bool FibPenSync(const string fibo, const bool dropAll)
          dirty = true; nNew++;
       }
        if((datetime)ObjectGetInteger(0, wnm, OBJPROP_TIME, 0) != ts0 ||
-             ObjectGetDouble(0, wnm, OBJPROP_PRICE, 0) != hp)
-             { ObjectMove(0, wnm, 0, ts0, hp); nMov++; }
+             ObjectGetDouble(0, wnm, OBJPROP_PRICE, 0) != hpA)
+             { ObjectMove(0, wnm, 0, ts0, hpA); nMov++; }
        if((datetime)ObjectGetInteger(0, wnm, OBJPROP_TIME, 1) != ts1 ||
-             ObjectGetDouble(0, wnm, OBJPROP_PRICE, 1) != hp)
-             { ObjectMove(0, wnm, 1, ts1, hp); nMov++; }
+             ObjectGetDouble(0, wnm, OBJPROP_PRICE, 1) != hpB)
+             { ObjectMove(0, wnm, 1, ts1, hpB); nMov++; }
       if((int)ObjectGetInteger(0, wnm, OBJPROP_WIDTH) != DRAW_WIDTH_MIN)
          ObjectSetInteger(0, wnm, OBJPROP_WIDTH, DRAW_WIDTH_MIN);
       if((int)ObjectGetInteger(0, wnm, OBJPROP_STYLE) != (int)STYLE_DOT)
@@ -939,9 +1139,20 @@ bool FibPenSync(const string fibo, const bool dropAll)
          ObjectSetInteger(0, wnm, OBJPROP_BACK, true);
       if(((int)ObjectGetInteger(0, wnm, OBJPROP_RAY_LEFT) != 0) != penRL)
          ObjectSetInteger(0, wnm, OBJPROP_RAY_LEFT, penRL);
-      if(((int)ObjectGetInteger(0, wnm, OBJPROP_RAY_RIGHT) != 0) != penRR)
-         ObjectSetInteger(0, wnm, OBJPROP_RAY_RIGHT, penRR);
+       if(((int)ObjectGetInteger(0, wnm, OBJPROP_RAY_RIGHT) != 0) != penRR)
+          ObjectSetInteger(0, wnm, OBJPROP_RAY_RIGHT, penRR);
    }
+    //--- P-LOOK-3D RETIRED (2026-10-18, «3D کلا حذف کن») — the shadow is never born
+    //--- again. The `_FSH` family this unit still knows (the name, HasPen, the
+    //--- early-out probe, the delete hub's sweep) is spent HERE: the first sync after
+    //--- a reload deletes whatever an older build left, so a 3D fibo degrades to the
+    //--- previous look — never to a dangling shadow. Present-only: still frames pay
+    //--- one probe per level and write nothing.
+    for(int l6 = 0; l6 < nw; l6++)
+    {
+       string snm = FibPenShwName(fibo, l6);
+       if(ObjectFind(0, snm) >= 0) { ObjectDelete(0, snm); dirty = true; nDrop++; }
+    }
    for(int dl2 = 0; dl2 < FIBPEN_MAX_LEVELS; dl2++)
    {
       int from = (!need[dl2] ? 0 : wantN[dl2] + (coreN[dl2] ? 1 : 0));
@@ -981,7 +1192,9 @@ bool FibPenSync(const string fibo, const bool dropAll)
    }
    //--- P-LOOK-RAY2: the pen just built IS the pen this master asks for - the net's
    //--- memo records the master it was built from, so the next 2 s pass is one compare.
-   FibPenNetWrite(fibo, (long)ta, (long)tb, p1, p2, FibPenRayBits(fibo), FibPenHasPen(fibo));
+   //--- P-UNIFY-3: the third anchor is part of the master (0/0 on the two-anchor kinds).
+   FibPenNetWrite(fibo, (long)ta, (long)tb, three ? (long)t3 : 0,
+                  p1, p2, three ? p3 : 0.0, FibPenRayBits(fibo), FibPenHasPen(fibo));
    return dirty;
 }
 #endif // FIBPEN_MQH

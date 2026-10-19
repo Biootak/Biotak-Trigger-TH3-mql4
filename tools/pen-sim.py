@@ -12,9 +12,10 @@ chase geometry — are extracted FROM THE SOURCE (not copied from it) and run ov
 whole matrix here, where every branch is reached on purpose.
 
 THE CONTRACT. `mutation_gate.py` must be able to break the source and watch this file
-die. That only holds if the numbers below come from `Biotak/FibPen.mqh` and
-`Biotak/Toolbar_A.mqh` as they are on disk: every mutation that changes a rule
-changes what this sim computes, and the invariant it breaks is printed by name.
+die. That only holds if the numbers below come from `Biotak/FibPen.mqh`,
+`Biotak/DrawKindProfile.mqh` (P-UNIFY-4: the look ids) and `Biotak/Toolbar_A.mqh` as
+they are on disk: every mutation that changes a rule changes what this sim computes,
+and the invariant it breaks is printed by name.
 
   python tools/pen-sim.py            # every scenario
   python tools/pen-sim.py --list     # the scenarios and the rule each one owns
@@ -35,6 +36,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 
 FIB = os.path.join(ROOT, "Biotak", "FibPen.mqh")
+PRF = os.path.join(ROOT, "Biotak", "DrawKindProfile.mqh")
 TBA = os.path.join(ROOT, "Biotak", "Toolbar_A.mqh")
 
 STYLE_SOLID, STYLE_DASH, STYLE_DOT, STYLE_DASHDOT, STYLE_DASHDOTDOT = 0, 1, 2, 3, 4
@@ -59,15 +61,16 @@ def need(text, pattern, what, flags=0):
 
 
 fib = read(FIB)
+prf = read(PRF)
 tba = read(TBA)
 
 DRAW_WIDTH_MIN = int(need(tba, r"#define DRAW_WIDTH_MIN\s+(\d+)", "DRAW_WIDTH_MIN").group(1))
 DRAW_WIDTH_MAX = int(need(tba, r"#define DRAW_WIDTH_MAX\s+(\d+)", "DRAW_WIDTH_MAX").group(1))
 FIBPEN_MAX_LEVELS = int(need(fib, r"#define FIBPEN_MAX_LEVELS\s+(\d+)", "FIBPEN_MAX_LEVELS").group(1))
 LOOK = {
-    "NEON": int(need(fib, r"#define FIBPEN_LOOK_NEON\s+(\d+)", "FIBPEN_LOOK_NEON").group(1)),
-    "CAPS": int(need(fib, r"#define FIBPEN_LOOK_CAPS\s+(\d+)", "FIBPEN_LOOK_CAPS").group(1)),
-    "WASH": int(need(fib, r"#define FIBPEN_LOOK_WASH\s+(\d+)", "FIBPEN_LOOK_WASH").group(1)),
+    "NEON": int(need(prf, r"#define DRAW_LOOK_NEON\s+(\d+)", "DRAW_LOOK_NEON").group(1)),
+    "CAPS": int(need(prf, r"#define DRAW_LOOK_CAPS\s+(\d+)", "DRAW_LOOK_CAPS").group(1)),
+    "WASH": int(need(prf, r"#define DRAW_LOOK_WASH\s+(\d+)", "DRAW_LOOK_WASH").group(1)),
 }
 
 #--- the demotion itself: two expressions, read as written.

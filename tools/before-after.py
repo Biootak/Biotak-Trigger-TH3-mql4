@@ -226,7 +226,7 @@ def kind_table(k):
     rows = []
     if k == "DK_RECT":                              # the frame the design drew
         rows.append(num_row("سلول‌های مقدار", MOCK_CELLS, len(names)))
-        rows.append(num_row("سلول‌های دستور (more/gear/pin/del)",
+        rows.append(num_row("سلول‌های دستور (more/gear/pin/dir/del)",
                             len(MOCK_CHROME), S.ACT_N))
     rows += [r for r in C.STRIP_ROWS if r["label"] in SHARED_LAYOUT_ROWS]
     if k == "DK_RECT":

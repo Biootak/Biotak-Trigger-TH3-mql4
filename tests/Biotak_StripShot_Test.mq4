@@ -117,6 +117,30 @@ void SSSave(const string tag)
    else Print("[STRIPSHOT] shot FAILED ", f, " err=", GetLastError());
 }
 
+//--- P-SHOT-1 (2026-10-19) — THE DONE MARKER IS A FILE, NOT A JOURNAL LINE.
+//--- MEASURED (P-DRAW-126): MT4 buffers the Experts journal in RAM, so the build's
+//--- `-Shot` wait for a `[STRIPSHOT] DONE:` line kept sitting there while all 30 PNGs
+//--- were already on disk — a COMPLETE capture reported `[FAIL] the harness never
+//--- reached DONE`, and the honest verdict ("the pixels are here") was the one verdict
+//--- a reader could not see. Every exit door of this script now leaves a marker written
+//--- through the terminal's OWN file API (write + flush + close): a channel a reader on
+//--- the other side of the process boundary sees the moment it lands. The build deletes
+//--- the marker before the launch, so a previous run can never answer for this one.
+void SSMarker(const string verdict)
+{
+   string f = "StripShot.done";
+   int h = FileOpen(f, FILE_WRITE | FILE_TXT | FILE_ANSI);
+   if(h == INVALID_HANDLE)
+   {
+      Print("[STRIPSHOT] marker open failed err=", GetLastError());
+      return;
+   }
+   FileWrite(h, verdict + " shots=" + IntegerToString(g_shot) + " " + TimeToString(TimeLocal(), TIME_DATE | TIME_SECONDS));
+   FileFlush(h);
+   FileClose(h);
+   Print("[STRIPSHOT] marker: ", verdict, " shots=", g_shot);
+}
+
 //--- the terminal's OWN answer: every object the strip owns, with its real rect
 //--- and the bitmap file it stored. A count of 0 for a state that should paint
 //--- is the one failure no compile can see.
@@ -178,7 +202,7 @@ void SSKind(const string tag, const int type, const int anchors)
 
 //--- P-LOOK — one fibo's look through the REAL write path, strip shut: the
 //--- fibo itself is the subject, so the PNG shows what the hand would see.
-//--- `st` is the STYLE slot value: 0-4 native, 5/6/7 Neon/Caps/Wash.
+//--- `st` is the STYLE slot value: 0-4 native, 5/6/7/8 Neon/Caps/Wash/3D.
 void SSFiboDump(const string tag, const string fibo)
 {
    int nl = (int)ObjectGetInteger(0, fibo, OBJPROP_LEVELS);
@@ -209,6 +233,104 @@ void SSFiboLook(const string tag, const int w, const int st)
    DrawSlotWrite(nm, DRAW_SLOT_STYLE, (double)st);
    SSSave(tag);
    SSFiboDump(tag, nm);
+}
+
+//--- P-PEN-ALL (2026-10-19) — THE SHAPE PEN'S OWN PIXELS, WALKED. MT4 draws STYLE_*
+//--- only at width 1, so «thick AND dashed» is a state the terminal cannot draw as
+//--- one object: the pen demotes the master to the pattern at width 1 and seats
+//--- `logical-1` rows of the MASTER'S OWN TYPE beside it. A mirror can draw that
+//--- promise and a strip census cannot see it, so this state writes a real pair
+//--- through the real slot writer and shoots the chart they land on. The walk below
+//--- is the claim in numbers: every row is the master's type, width 1, the master's
+//--- dash, carries no interior, and sits off the master's own anchors.
+void SSPenDump(const string tag, const string nm)
+{
+   Print("[STRIPSHOT] pen master=", nm,
+         " type=", ObjectGetInteger(0, nm, OBJPROP_TYPE),
+         " w=", ObjectGetInteger(0, nm, OBJPROP_WIDTH),
+         " st=", ObjectGetInteger(0, nm, OBJPROP_STYLE),
+         " log=", PenStackLogicalWidth(nm),
+         " rows=", PenStackChildCount(nm));
+   for(int q = 0; q < DRAW_WIDTH_MAX; q++)
+   {
+      string ch = PenStackName(nm, q);
+      if(ObjectFind(0, ch) < 0) break;
+      Print("[STRIPSHOT] pen row ", ch,
+            " type=", ObjectGetInteger(0, ch, OBJPROP_TYPE),
+            " w=", ObjectGetInteger(0, ch, OBJPROP_WIDTH),
+            " st=", ObjectGetInteger(0, ch, OBJPROP_STYLE),
+            " fill=", ObjectGetInteger(0, ch, OBJPROP_FILL),
+            " back=", ObjectGetInteger(0, ch, OBJPROP_BACK),
+            " t0=", ObjectGetInteger(0, ch, OBJPROP_TIME, 0),
+            " p0=", DoubleToString(ObjectGetDouble(0, ch, OBJPROP_PRICE, 0), _Digits),
+            " t1=", ObjectGetInteger(0, ch, OBJPROP_TIME, 1),
+            " p1=", DoubleToString(ObjectGetDouble(0, ch, OBJPROP_PRICE, 1), _Digits),
+            " t2=", ObjectGetInteger(0, ch, OBJPROP_TIME, 2),
+            " p2=", DoubleToString(ObjectGetDouble(0, ch, OBJPROP_PRICE, 2), _Digits));
+   }
+}
+void SSPen(const string tag)
+{
+   string nm[7];
+   int    ty[7];
+   nm[0] = "StripShotPenRect"; ty[0] = OBJ_RECTANGLE;
+   nm[1] = "StripShotPenEll";  ty[1] = OBJ_ELLIPSE;
+   nm[2] = "StripShotPenTri";  ty[2] = OBJ_TRIANGLE;
+   nm[3] = "StripShotPenChan"; ty[3] = OBJ_CHANNEL;
+   nm[4] = "StripShotPenGann"; ty[4] = OBJ_GANNLINE;
+   nm[5] = "StripShotPenTang"; ty[5] = OBJ_TRENDBYANGLE;   // P-UNIFY-2: the LINE family
+   nm[6] = "StripShotPenCyc";  ty[6] = OBJ_CYCLES;         // P-UNIFY-2: the SHAPE family
+   for(int i = 0; i < 7; i++)
+   {
+      PenStackStraysDrop(nm[i]);
+      if(ObjectFind(0, nm[i]) >= 0) ObjectDelete(0, nm[i]);
+   }
+   bool ok[7];
+   //--- P-PEN-ALL: the seats are computed off the chart's OWN bar count, not hard
+   //--- indices: this state writes SEVEN drawings and a Time[70] past the newest bar
+   //--- would create an object at time 0 (an invisible "shot" that still counts as
+   //--- one). The wait loop in OnStart guarantees >= 40 bars, so iF >= 37 and the
+   //--- oldest index this state touches is iF - 24 > 0.
+   int iF = MathMin(70, Bars - 3);
+   int i1 = iF - 8, i2 = iF - 16, i3 = iF - 24, i4 = iF - 4, i5 = iF - 12;
+   ok[0] = ObjectCreate(0, nm[0], ty[0], 0, Time[iF], High[iF], Time[i1], Low[i1]);
+   ok[1] = ObjectCreate(0, nm[1], ty[1], 0, Time[i1], High[iF], Time[i5], Low[i1]);
+   ok[2] = ObjectCreate(0, nm[2], ty[2], 0, Time[iF], Low[i2], Time[i1], Low[i2], Time[i2], High[i4]);
+   ok[3] = ObjectCreate(0, nm[3], ty[3], 0, Time[i3], High[iF], Time[i5], Low[i1], Time[i3], Low[i1]);
+   ok[4] = ObjectCreate(0, nm[4], ty[4], 0, Time[i4], Low[i2], Time[i5], High[i4]);
+   ok[5] = ObjectCreate(0, nm[5], ty[5], 0, Time[i2], Low[i3], Time[i5], Low[i4]);
+   ok[6] = ObjectCreate(0, nm[6], ty[6], 0, Time[iF], Low[i5], Time[i4], Low[i3]);
+   for(int j = 0; j < 7; j++)
+   {
+      if(!ok[j]) { Print("[STRIPSHOT] pen ", nm[j], ": ObjectCreate failed err=", GetLastError()); continue; }
+      ObjectSetInteger(0, nm[j], OBJPROP_COLOR, clrDodgerBlue);
+      ObjectSetInteger(0, nm[j], OBJPROP_SELECTABLE, true);
+   }
+   //--- the REAL path, in the hand's own order: colour, then the dash, then a width
+   //--- the terminal cannot draw as a dash. The rect is the one the strip stands on,
+   //--- so the same PNG carries its row and the five outlines.
+   if(ok[0] && DrawStripOpenAt(nm[0], 120, 120))
+   {
+      DrawSlotWrite(nm[0], DRAW_SLOT_COLOR, (double)(int)clrRed);
+      DrawSlotWrite(nm[0], DRAW_SLOT_STYLE, (double)STYLE_DASH);
+      DrawSlotWrite(nm[0], DRAW_SLOT_WIDTH, 4.0);
+   }
+   else Print("[STRIPSHOT] pen: the strip would not open on the rect");
+   for(int k = 1; k < 7; k++)
+   {
+      if(!ok[k]) continue;
+      DrawSlotWrite(nm[k], DRAW_SLOT_STYLE, (double)STYLE_DASH);
+      DrawSlotWrite(nm[k], DRAW_SLOT_WIDTH, 4.0);
+   }
+   SSSave(tag);
+   for(int d = 0; d < 7; d++) if(ok[d]) SSPenDump(tag, nm[d]);
+   for(int c = 0; c < 7; c++)
+   {
+      if(!ok[c]) continue;
+      PenStackStraysDrop(nm[c]);
+      ObjectDelete(0, nm[c]);
+   }
+   DrawStripClose();
 }
 
 //--- `folded` is the accordion's second fact (P-DRAW-117): the same open group
@@ -246,6 +368,11 @@ string SSMake(const string name, const int type, const int barA, const int barB)
 //+------------------------------------------------------------------+
 void OnStart()
 {
+   //--- P-SHOT-1: the START door. The bar wait below can hold this script for two
+   //--- minutes before its first PNG, so a reader that only knows "the marker file
+   //--- exists" cannot tell "the harness is early" from "the harness never ran". Every
+   //--- door of this script writes the marker: START, each SKIP, and DONE.
+   SSMarker("START");
    // P-BUILD-12 (2026-10-03) — A STARTUP SCRIPT MUST NOT JUDGE AN EMPTY CHART.
    // At launch the extra chart's history is still downloading: Bars reads short
    // for the first seconds, so an instant SKIP judges the download, not the
@@ -262,6 +389,7 @@ void OnStart()
    if(bars < 40)
    {
       Print("[STRIPSHOT] need ~40 bars, this chart has ", bars, " — SKIP");
+      SSMarker("SKIP chart has " + IntegerToString(bars) + " bars");
       return;
    }
    // the strip's names are chart-global (PnlDrawS_*), so a live strip would be
@@ -270,14 +398,16 @@ void OnStart()
    {
       Print("[STRIPSHOT] a strip is OPEN on this chart (PnlDrawS_B exists) — ",
             "close it (click the chart) and run again. SKIP");
+      SSMarker("SKIP a strip was open on the chart");
       return;
    }
 
    string rect = SSMake("StripShotRect", OBJ_RECTANGLE, 25, 5);
-   if(rect == "") return;
+   if(rect == "") { SSMarker("SKIP the rectangle could not be made"); return; }
    if(!DrawStripOpenAt(rect, 120, 120))
    {
       Print("[STRIPSHOT] DrawStripOpenAt failed on the rectangle — SKIP");
+      SSMarker("SKIP the strip would not open on the rectangle");
       ObjectDelete(0, rect);
       return;
    }
@@ -310,10 +440,13 @@ void OnStart()
    SSKind("DK_EXPANSION", OBJ_EXPANSION,    1);
    SSKind("DK_GANN",      OBJ_GANNLINE,     1);
    SSKind("DK_PITCHFORK", OBJ_PITCHFORK,    1);
+   SSKind("DK_RECT",      OBJ_RECTANGLE,    1);   // the 17th kind - it had no PNG of its own
    SSKind("DK_TRIANGLE",  OBJ_TRIANGLE,     1);
    SSKind("DK_ELLIPSE",   OBJ_ELLIPSE,      1);
    SSKind("DK_ARROW",     OBJ_ARROW,        0);
    SSKind("DK_TEXT",      OBJ_TEXT,         0);
+   SSKind("DK_TANGLE",    OBJ_TRENDBYANGLE, 1);   // P-UNIFY-2: the type the strip had no kind for
+   SSKind("DK_CYCLES",    OBJ_CYCLES,       1);   // P-UNIFY-2
    // DK_RECT's row is the pair in section 1 of the page (shot as "row" above).
 
    // ── a fibo's own two surfaces: the level-membership list and its panel ──
@@ -351,9 +484,16 @@ void OnStart()
        ObjectDelete(0, fl);
     }
 
+    // ── P-PEN-ALL — THE SHAPE PEN'S OWN PIXELS (one PNG, five pen-preserved
+    // ── shapes, and the family walked in numbers beside them).
+    SSPen("pen");
+
     // ── cleanup ──
    DrawStripClose();
    ChartRedraw();
    Print("[STRIPSHOT] DONE: ", g_shot, " screenshot(s) -> <MQL4>\\Files\\StripShot_*.png");
+   //--- P-SHOT-1: the FLUSHED door the build reads. The journal line above stays for
+   //--- the human reading the Experts tab; this file is what answers "did it finish".
+   SSMarker("DONE");
 }
 //+------------------------------------------------------------------+

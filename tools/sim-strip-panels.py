@@ -274,11 +274,11 @@ def plate(c, fam, x, y, w, h, z=0):
 # ══════════════════════════════════════════════════════════════════════════
 # LEVEL 1 — THE QUICK ROW. DrawStripLayout (DrawStrip.mqh:3006) arithmetic,
 # painted the way DrawStripPaint (5365+) paints it: the plate, then grip, name,
-# the two separators, the value cells (the colour seat is a RING), the four
-# chrome cells.
+# the two separators, the value cells (the colour seat is a RING), the five
+# chrome cells (P-BK-111's direction seat holds the row at five).
 # ══════════════════════════════════════════════════════════════════════════
 DEMO_NAME = "Rectangle 1"
-DEMO_ACT = ["bk_more.bmp", "bk_gear.bmp", "gl_pin_m.bmp", "bk_del.bmp"]
+DEMO_ACT = ["bk_more.bmp", "bk_gear.bmp", "gl_pin_m.bmp", "bk_dirflip.bmp", "bk_del.bmp"]
 #--- THE ONE STATE THIS FRAME SHOWS. A cell's rim is state, so a demo that
 #--- leaves it implicit compares two different frames and calls the difference
 #--- a defect. These follow the mock's own state (its `.pick` seat, its
@@ -294,7 +294,7 @@ DEMO_PICK_OPEN = True          # s_dsPicker == DRAW_SLOT_COLOR
 #--- its INTERIOR, deliberately different so the merged colour cell shows both.
 KIND_BORDER = PAGE0[3]         # 76,141,255 — the palette's blue
 KIND_FILL = PAGE0[0]           # 255,171,0 — the palette's amber
-DEMO_ACT_ON = [False, True, False, False]    # MORE, GEAR(open), PIN, DEL
+DEMO_ACT_ON = [False, True, False, False, False]    # MORE, GEAR(open), PIN, DIR, DEL
 DEMO_BDOCK = True              # s_dsBDock: the board's own pin, docked
 
 # ══ THE ROW'S CELLS COME OUT OF THE SOURCE, NOT OUT OF THIS FILE ══════════
@@ -422,6 +422,10 @@ def slot_face(kind, slot, on=None):
     if n == "BACK":   return "bk_back_on.bmp" if on else "bk_back_off.bmp"
     if n == "FONT":   return "gl_textsize_m.bmp"
     if n == "GLYPH":  return "bk_glyph.bmp"
+    #--- P-DRAW-BODY-UI: the handle's width/style reuse the level family's rasters
+    #--- (product: DrawStripIconRes reads the body's OWN slots, same two faces).
+    if n == "BODYWIDTH": return "bk_w%d.bmp" % DEMO_W
+    if n == "BODYSTYLE": return "bk_style%d.bmp" % DEMO_STYLE
     return ""
 
 
@@ -443,13 +447,27 @@ def strip_cells(kind, on=None, border=None, fill=None):
     cells = []
     for s in slots:
         n = SLOT_NAME.get(s, "LEVELS" if s == SLOT_LEVELS else "?")
-        is_color = (s in (SLOT["DRAW_SLOT_COLOR"], SLOT["DRAW_SLOT_FILLCLR"]))
+        #--- P-DRAW-BODY-UI: the handle's colour seat is a colour seat too — the
+        #--- product paints it as the one-role ring (centre stays the plate tone),
+        #--- so it must take the ring branch here, not ask for a face it has none of.
+        is_color = (s in (SLOT["DRAW_SLOT_COLOR"], SLOT["DRAW_SLOT_FILLCLR"],
+                          SLOT["DRAW_SLOT_BODYCOLOR"]))
         cells.append(dict(
             slot=s, name=n, color=is_color,
             ring=border,
             mid=fill if merged else None,
             res="" if is_color else slot_face(kind, s, on),
             on=on.get((kind, n), False)))
+    #--- FAIL AT THE NAME (P-DRAW-BODY): a seat the walk yields with no face would
+    #--- otherwise die deep in the raster reader as `FileNotFoundError ... Icons\` —
+    #--- a path with no file, naming nothing. The page's own build is the gate: a
+    #--- seat added to the product without a face here stops the -Shot run red.
+    for cel in cells:
+        if not cel["color"] and not cel["res"]:
+            raise RuntimeError(
+                "the strip mock has no face for %s slot %d (%s) - answer it in slot_face "
+                "beside the product's DrawStripIconRes, or the page renders a cell the "
+                "chart cannot paint" % (kind, cel["slot"], cel["name"]))
     return cells
 
 

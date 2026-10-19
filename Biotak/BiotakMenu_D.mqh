@@ -617,6 +617,22 @@ void ToggleMenuVisibility()
    }
    CircRefreshOrbSkin();   // ORBSTATE's state edge — one read today
    SaveUIStates();
+   // P-UI-168 (2026-10-19): THE RING'S VISIBILITY EDGE GETS A WITNESS.
+   //
+   // MEASURED in the flushed frame of 09:03 (biotak_diag_USDJPY_134362571361933145.txt):
+   // 4.5 whole-family sweeps — 108 `CircIcon` delete lines, icon+bg together, NO
+   // healing (P-UI-167 held) — and NOTHING could name the writer. This close, the
+   // relayout rebuild and the fan's own open all call ObjectDelete on the SAME
+   // twenty-four names, so «چرا اینطوری شد» had no answer while the defect the
+   // sweep belonged to (the bare-icon column) was being chased: the object list
+   // could not say whether the ring had been closed, rebuilt, or merely covered
+   // by an open fan. The two seat numbers below are the relayout's own compare
+   // operands, so a rebuild is decidable from the frame without a second read.
+   //
+   // Cost: ONE line per user edge (an orb click); a still frame never enters this
+   // function, so the steady state pays nothing. The other three writers carry
+   // their own P-UI-168 line — one rule, four sites, the sweep's every owner.
+   DrawStripDiagEmit(StringFormat("[P-UI-168] ring vis=%d tools=%d placed=%d built=%d", (g_UI.menuVisible ? 1 : 0), (g_ToolsOpen ? 1 : 0), CircPlacedCountLive(), s_circBuiltSeats));
    ChartRedraw();
 }
 

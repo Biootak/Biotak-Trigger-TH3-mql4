@@ -170,29 +170,36 @@ int RingFeature(const int ringIdx)
 }
 
 //| P-UI-161 (2026-10-17) — THE RING GROWS BY SHRINKING, NEVER BY     |
-//| STACKING.                                                         |
+//| STACKING. P-UI-166 (2026-10-17) — THE SHRINKING STOPS AT 35 AND   |
+//| THE SURFACE STOPS AT TWELVE.                                      |
 //|                                                                  |
 //| The button side S(n) holds the shipped 44 through nine seats      |
 //| (byte-identical — a pre-sessions star mask still seats nine at    |
-//| 44), tapers 43→32 entering the teens and floors at 30; P-SESS     |
-//| stars SESSIONS by default, so a fresh catalog seats TEN (9 stars  |
-//| + the door) and the taper's first leg — 43px — is now the fresh   |
-//| default look. The radius follows the chord law (S+CIRC_GAP)/      |
-//| (2·sin(π/n)) — exactly the SubChordRadius invariant applied to a  |
-//| full circle, so the pitch is never lost. The fit cap still rules  |
-//| (a menu near an edge pulls the ring in, exactly as before), and   |
+//| 44), tapers 43→35 entering the teens and floors at 35 (the floor  |
+//| was 30: sixteen 30px discs beside a 28px glyph read as debris,    |
+//| and every star past the ninth shrank the whole circle). The       |
+//| circle seats at most CIRC_SEAT_CAP (12, door included) — in the   |
+//| ring AND on the train, so a drag to an edge never seats a         |
+//| thirteenth tail; the excess stays in the Tools menu with its      |
+//| star ON. P-SESS stars SESSIONS by default, so a fresh catalog     |
+//| seats TEN (9 stars + the door) and the taper's first leg — 43px — |
+//| is now the fresh default look. The radius follows the chord law   |
+//| (S+CIRC_GAP)/(2·sin(π/n)) — exactly the SubChordRadius invariant  |
+//| applied to a full circle, so the pitch is never lost; at the cap  |
+//| it is 79.2px, inside the shipped 80. The fit cap still rules (a   |
+//| menu near an edge pulls the ring in, exactly as before), and      |
 //| when the capped circle cannot seat every starred item, the excess |
 //| stays in the Tools menu with its star ON (P-UI-13: degrade to the |
 //| previous surface, never to a stack).                              |
 //+------------------------------------------------------------------+
+#define CIRC_SEAT_CAP 12             // P-UI-166: twelve seats at most (door included), ring and train alike
+
 int CircBtnSizeForN(const int n)
 {
    if(n <= 9)  return CIRC_BTN_SIZE;   // 44 — the shipped look, byte-identical
    if(n == 10) return 43;
    if(n == 11) return 39;
-   if(n == 12) return 35;
-   if(n == 13) return 32;
-   return CIRC_BTN_MIN;                // 30 — the floor (n >= 14)
+   return CIRC_BTN_MIN;                // 35 — the floor (P-UI-166; twelve seats and beyond)
 }
 
 //--- P-UI-162: the SKIN CANVAS must equal the drawn BOX (s + 2*CIRC_BG_MARGIN).
@@ -286,7 +293,7 @@ double CircFitLimit()
 bool CircRingFits()
 {
    double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
-   int n = RingCount();
+   int n = MathMin(RingCount(), CIRC_SEAT_CAP);   // P-UI-166: the ring draws twelve at most
    if(n <= 9) return CircChordRadiusForN(n) <= fit;
    for(int k = n; k > 9; k--)
       if(CircRadiusForN(k) <= fit) return true;
@@ -344,9 +351,10 @@ int CircRailCapacity(const int n, const bool vertical, const int dir)
 
 //--- How many seats the DRAWN layout really shows. P-UI-164: the shape decides
 //--- first — on the train the walk is CircRailCapacity (the edge's free run),
-//--- on the ring it is the P-UI-161 walk (nine or fewer: all of them; more: the
-//--- largest count whose chord radius still fits; when even nine cannot, nine —
-//--- the excess stays in the Tools menu with its star ON).
+//--- on the ring it is the P-UI-161 walk capped at CIRC_SEAT_CAP (nine or
+//--- fewer: all of them; more: the largest count up to twelve whose chord
+//--- radius still fits; when even nine cannot, nine — the excess stays in the
+//--- Tools menu with its star ON, P-UI-166).
 //--- (CircPlacedCountLive is the unfrozen half; the FROZEN half,
 //--- CircPlacedCount, stays with the built-seat state in BiotakMenu_B.)
 //--- P-PERF-16: cached on (seat count, cw, ch, ox, oy) — the release, the
@@ -379,7 +387,7 @@ int CircPlacedCountLive()
    int  dir;
    if(CircRailShape(vertical, dir))
    {
-      s_liveR = CircRailCapacity(n, vertical, dir);
+      s_liveR = CircRailCapacity(MathMin(n, CIRC_SEAT_CAP), vertical, dir);   // P-UI-166: the train honours the cap too
    }
    else if(n <= 9)
    {
@@ -389,7 +397,8 @@ int CircPlacedCountLive()
    {
       double fit = MathMax(CircFitLimit(), (double)CIRC_MIN_RADIUS);
       s_liveR = 9;                     // the floor; the excess stays in the Tools menu
-      for(int k = n; k > 9; k--)
+      int top = MathMin(n, CIRC_SEAT_CAP);   // P-UI-166: twelve at most
+      for(int k = top; k > 9; k--)
          if(CircRadiusForN(k) <= fit) { s_liveR = k; break; }
    }
    s_liveN = n; s_liveCw = cw; s_liveCh = ch; s_liveOx = ox; s_liveOy = oy;

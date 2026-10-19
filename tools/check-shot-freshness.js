@@ -48,7 +48,9 @@ const HARNESS = path.join(ROOT, 'tests', 'Biotak_StripShot_Test.mq4');
 const SHOTS = path.join(ROOT, 'build-logs', 'shot');
 const strict = process.argv.includes('--strict');
 
-//--- what the harness shoots: the tags it passes to SSState()/SSKind().
+//--- what the harness shoots: the tags it passes to SSState()/SSKind()/SSFiboLook()/
+//--- SSPen(). A state the harness asks for and the gate cannot see is a state that can
+//--- silently lose its column - the exact failure this gate exists for (P-DRAW-119).
 function wanted() {
   let text = '';
   try {
@@ -57,7 +59,7 @@ function wanted() {
     return { tags: [], err: 'tests/Biotak_StripShot_Test.mq4 is missing' };
   }
   const out = [];
-  for (const m of text.matchAll(/SS(?:State|Kind)\s*\(\s*"([A-Za-z0-9_]+)"/g)) {
+  for (const m of text.matchAll(/SS(?:State|Kind|FiboLook|Pen)\s*\(\s*"([A-Za-z0-9_]+)"/g)) {
     if (!out.includes(m[1])) out.push(m[1]);
   }
   return { tags: out, err: out.length ? null : 'the harness names no state at all' };
@@ -93,6 +95,7 @@ function found() {
 //--- (Biotak/**/*.mqh), both entries, and the harness itself.
 function newestSource() {
   let best = { file: '(none)', mtime: 0 };
+  const ignored = [];
   const take = (full) => {
     let st;
     try {
@@ -100,7 +103,29 @@ function newestSource() {
     } catch {
       return;
     }
-    if (st.mtimeMs > best.mtime) best = { file: path.relative(ROOT, full).split(path.sep).join('/'), mtime: st.mtimeMs };
+    if (st.mtimeMs <= best.mtime) return;
+    //--- P-SHOT-2 (2026-10-19) - A FILE THE BUILD REWRITES IS NOT A WITNESS.
+    //--- Biotak/BuildHash.mqh declares itself GENERATED and takes a fresh mtime on EVERY
+    //--- compile, so counting it made every capture stale the moment anyone built again:
+    //--- MEASURED 11:10:37 stamp against 11:08:09 PNGs, `fresh 0 - stale 33 - missing 0`,
+    //--- with no source edit between the shot and the build. A stamp shows no pixels, so
+    //--- it cannot date them. The head is read for the would-be winner only, so a tree
+    //--- whose real sources are older costs no read at all here.
+    let head = '';
+    try {
+      const fd = fs.openSync(full, 'r');
+      const buf = Buffer.alloc(512);
+      const n = fs.readSync(fd, buf, 0, 512, 0);
+      fs.closeSync(fd);
+      head = buf.toString('utf8', 0, n);
+    } catch {
+      head = '';
+    }
+    if (head.indexOf('GENERATED FILE') >= 0) {
+      ignored.push(path.relative(ROOT, full).split(path.sep).join('/'));
+      return;
+    }
+    best = { file: path.relative(ROOT, full).split(path.sep).join('/'), mtime: st.mtimeMs };
   };
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -112,7 +137,7 @@ function newestSource() {
   if (fs.existsSync(BIOTAK)) walk(BIOTAK);
   for (const f of ['Biotak Trigger TH3.mq4', 'Biotak Trigger TH3 Lite.mq4',
                    'tests/Biotak_StripShot_Test.mq4']) take(path.join(ROOT, f));
-  return best;
+  return { file: best.file, mtime: best.mtime, ignored };
 }
 
 function main() {
@@ -142,6 +167,8 @@ function main() {
   console.log(`  harness asks for ${tags.length} state(s) (tests/Biotak_StripShot_Test.mq4)`);
   console.log(`  fresh ${fresh.length} · stale ${stale.length} · missing ${missing.length}`);
   console.log(`  newest source: ${src.file}  ${stamp(src.mtime)}`);
+  if (src.ignored.length)
+    console.log(`  generated, so not a source (P-SHOT-2): ${src.ignored.join(' ')}`);
   for (const s of stale)
     console.log(`  [STALE]   ${s.t} — ${s.file} is ${stamp(s.mtime)}, older than the code it shows`);
   if (missing.length)

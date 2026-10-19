@@ -402,7 +402,8 @@ empty and why a fix was "verified" against a render that had the same bug in it
 
 ```
 compile-th3.ps1 -Shot                    # compile + deploy the harness, write build-logs\th3-shot.ini,
-                                         # print the terminal.exe /config: line. MT4 is NOT touched.
+                                         # print the terminal.exe <th3-shot.ini> line — a BARE argument;
+                                         # MT4 ignores a /config: prefix. MT4 is NOT touched.
 compile-th3.ps1 -Shot -RestartTerminal   # ...and do it: close MT4, launch it on that config, wait for
                                          # `[STRIPSHOT] DONE:`, sweep build-logs\shot\, relaunch your
                                          # own instance, rebuild tools/before-after.html with the shots in it.

@@ -48,6 +48,16 @@ void DrawStripFill50On(const string nm)
    DrawSlotOpacitySet(nm, DSTRIP_FILL50_TONE, DRAW_SLOT_FILLCLR);
 }
 
+//--- P-DRAW-132: the rack's page walk, ONE text for both lists (the more-popover's
+//--- nav row and the Look tab's) — they may never disagree about which page is on.
+string DrawStripTplNavText(const EDrawKind k)
+{
+   int n = DrawTplCount(k);
+   int pages = (n <= 0 ? 1 : (n + DRAW_TPL_PAGE - 1) / DRAW_TPL_PAGE);
+   return "Templates " + IntegerToString(s_dsTplPage[k] + 1) + "/" +
+          IntegerToString(pages) + " ...";
+}
+
 void DrawStripMoreBuild()
 {
    s_dsPN = 0;
@@ -56,12 +66,18 @@ void DrawStripMoreBuild()
    int r = 0;
    // 1. group apply-all (the retired ALL cell's seat, accent-styled, no icon)
    s_dsMoreKind[r] = DSTRIP_MK_APPLYALL; s_dsMoreArg[r] = 0; r++;
-   // 2. templates: every preset + save (the retired TPL/SAVE seats)
-   //--- P-DRAW-76: the arg is the SLOT ID, never a position in the list. A cleared template
-   //--- leaves a hole (the store keeps the user's numbering), and a position would point at
-   //--- that hole and hide the template standing behind it.
-   for(int i = 0; i < DRAW_PRESET_MAX && r < DSTRIP_PICK_MAX; i++)
-   { if(DrawPresetName(k, i) == "") continue; s_dsMoreKind[r] = DSTRIP_MK_PRESET; s_dsMoreArg[r] = i; r++; }
+   // 2. templates: the current PAGE of the named rack + save (the retired TPL/SAVE seats)
+   //--- P-DRAW-132: the rack is COMPACT (a delete moves the rows up), so the index IS
+   //--- the row and a page is a plain window over the list — six rows, then the
+   //--- «Templates n/m ...» row walks the pages when there are more than six.
+   int tn = DrawTplCount(k);
+   int tpages = (tn <= 0 ? 1 : (tn + DRAW_TPL_PAGE - 1) / DRAW_TPL_PAGE);
+   if(s_dsTplPage[k] >= tpages) s_dsTplPage[k] = 0;
+   int tfrom = s_dsTplPage[k] * DRAW_TPL_PAGE;
+   for(int i = tfrom; i < tn && i < tfrom + DRAW_TPL_PAGE && r < DSTRIP_PICK_MAX; i++)
+   { s_dsMoreKind[r] = DSTRIP_MK_PRESET; s_dsMoreArg[r] = i; r++; }
+   if(tpages > 1 && r < DSTRIP_PICK_MAX)
+   { s_dsMoreKind[r] = DSTRIP_MK_TPLNAV; s_dsMoreArg[r] = 0; r++; }
    if(r < DSTRIP_PICK_MAX) { s_dsMoreKind[r] = DSTRIP_MK_SAVE; s_dsMoreArg[r] = 0; r++; }
    // 3. edit: duplicate + undo
    if(r < DSTRIP_PICK_MAX) { s_dsMoreKind[r] = DSTRIP_MK_DUPE; s_dsMoreArg[r] = 0; r++; }
@@ -96,8 +112,9 @@ string DrawStripMoreText(const int r)
       int n = DrawStyleKindCount(s_dsObj);
       return "Apply to all " + DrawKindName(s_dsKind) + (n > 0 ? " (x" + IntegerToString(n) + ")" : "");
    }
-   if(kind == DSTRIP_MK_PRESET) return DrawPresetName(s_dsKind, arg);
-   if(kind == DSTRIP_MK_SAVE) return "Save current look";
+   if(kind == DSTRIP_MK_PRESET) return DrawTplName(s_dsKind, arg);
+   if(kind == DSTRIP_MK_TPLNAV) return DrawStripTplNavText(s_dsKind);
+   if(kind == DSTRIP_MK_SAVE) return "Save as template ...";
    if(kind == DSTRIP_MK_DUPE) return "Duplicate";
    if(kind == DSTRIP_MK_UNDO) return (s_duValid ? "Undo last look" : "Undo (nothing yet)");
    if(kind == DSTRIP_MK_BOX50) return "Mid 50% line";
@@ -127,6 +144,14 @@ string DrawStripMoreRes(const int r)
    if(kind == DSTRIP_MK_SLOT) return DrawStripIconRes(s_dsMoreArg[r], s_dsObj);
    return "";   // APPLYALL: accent-styled, no icon
 }
+//--- P-DRAW-134 (2026-10-18) — THE ROW'S OWN ✕. User order: «شیبف کلکی بردار بجاش
+//--- یک دکمه حذف برای هر کدوم بزار» — delete is a VISIBLE control on every template
+//--- row, and the SHIFT-modifier door is gone from the apply path. The seats ride
+//--- the pick-row family's own letters (P/I/T/C/R/G): "D" the button, "F" its glyph
+//--- face. Named HERE, beside the more-popover's other owners, because the pick-row
+//--- name family's home (Base:700) sits on the P-SIZE-1500 ceiling.
+string DrawStripPickDelName(const int r) { return DrawStripPickName(r) + "D"; }
+string DrawStripPickDelFaceName(const int r) { return DrawStripPickDelName(r) + "F"; }
 string DrawStripMoreTip(const int r)
 {
    if(r < 0 || r >= s_dsPN) return "";
@@ -135,10 +160,10 @@ string DrawStripMoreTip(const int r)
    if(kind == DSTRIP_MK_APPLYALL)
       return "This look on EVERY " + DrawKindName(s_dsKind) + " (MT4's dialog is one at a time)";
    if(kind == DSTRIP_MK_PRESET)
-      return "Template: " + DrawPresetName(s_dsKind, arg) +
-             (DrawPresetIsBuiltin(arg) ? " (built-in)" : " (mine)") +
-             " — click to apply the whole look" + scope +
-             (DrawPresetIsBuiltin(arg) ? "" : " — Shift+click deletes it");
+      return "Template: " + DrawTplName(s_dsKind, arg) +
+             " — click to apply the whole look" + scope + " — the row's ✕ removes it";
+   if(kind == DSTRIP_MK_TPLNAV)
+      return "More templates" + scope + " — one click turns the page; the list repeats at the end";
    if(kind == DSTRIP_MK_SAVE)
       return "Save this look as one of MY templates — the next drawing of this tool wears it";
    if(kind == DSTRIP_MK_DUPE) return "Copy this drawing beside itself (selects the copy)";
@@ -640,9 +665,15 @@ void DrawStripGearContent(int &y, bool &levelEdit)
    }
    else if(gOpen == DSTRIP_GEAR_TPL)
    {
-      //--- P-DRAW-76: slot ids (see the more-popover's builder) — a hole never shifts the list.
-      for(int i = 0; i < DRAW_PRESET_MAX; i++)
-      { if(DrawPresetName(k, i) == "") continue; if(!DrawStripGearRow(2, i, y)) break; }
+      //--- P-DRAW-132: the same window as the more-popover (six rows a page; the nav
+      //--- row walks it). The index IS the row — a delete compacts, nothing renumbers.
+      int tn = DrawTplCount(k);
+      int tpages = (tn <= 0 ? 1 : (tn + DRAW_TPL_PAGE - 1) / DRAW_TPL_PAGE);
+      if(s_dsTplPage[k] >= tpages) s_dsTplPage[k] = 0;
+      int tfrom = s_dsTplPage[k] * DRAW_TPL_PAGE;
+      for(int i = tfrom; i < tn && i < tfrom + DRAW_TPL_PAGE; i++)
+         if(!DrawStripGearRow(2, i, y)) break;
+      if(tpages > 1) DrawStripGearRow(9, 0, y);
       DrawStripGearRow(3, 0, y);
       DrawStripGearRow(7, 0, y);
    }
@@ -858,6 +889,127 @@ int DrawStripGearLayout(int y0)
    return y;
 }
 
+//--- P-DRAW-131 (2026-10-18) — THE SAVE'S TWO HALVES, ONE OWNER API.
+//--- The report read «این نحوه ذخیره تمپلت‌ها به نظر مشکل داره» — put yourself in
+//--- the user's place and walk the two doors ("Save current look" in the more
+//--- popover, the Save row in the Look tab). Both arm `s_dsTplNameArmed`, the panel
+//--- opens on Look, and ONE empty box appears at the content's end — a box that
+//--- (a) was born WITHOUT focus, so the hand that just said "save" had to find it
+//--- and click it before Enter could mean anything, and (b) had exactly ONE commit
+//--- door, `CHARTEVENT_OBJECT_ENDEDIT` (Enter). MEASURED by the code's own call
+//--- graph (the numbers are greps, not a session): the only writer of
+//--- `OBJPROP_STATE` for `PnlDrawS_GE3` was none — while the level-note field
+//--- (`e4`) has shipped that write since P-LVL-TEXT (`DrawStripGearLevelDescTap`)
+//--- — and `DrawTplSaveAs`'s one strip caller stood inside the
+//--- ENDEDIT branch (`DrawStripEditEnd`, e==3). MT4 drops an OBJ_EDIT's focus
+//--- WITHOUT firing ENDEDIT when the user clicks away (the cards' own measured
+//--- law — `BkFlushTextEdit`'s note: «flush before any other panel/strip action
+//--- and on close»), so the ordinary flow — tap Save, type a name, tap the panel
+//--- or the chart, read the click as «done» — wrote NOTHING, and the click the
+//--- user read as confirmation was the exact gesture that threw the save away.
+//--- The rule is one sentence: **a Save that arms a name field is FOCUSED the
+//--- moment it opens, and the save COMMITS when that field goes** — the file
+//--- write is the command, the typed name is a detail (Enter still commits, and
+//--- an empty name still rides the «My N» fallback inside `DrawTplSaveAs`).
+//--- Every door the field can leave by flushes through `DrawStripTplCommit`:
+//--- ENDEDIT ("enter"), the panel's close — which owns every strip close, the
+//--- head X, the gear/more toggles, Esc and the object switch (Router:291) —
+//--- ("close"), and the group-header tap that folds or switches the body away
+//--- ("group"). Both halves witness on the FLUSHED channel (P-LOG-3, never
+//--- `Print`): TPLARM carries the field's own STATE right after the focus write,
+//--- TPLSAVE the door, the name and the file write's answer. Zero cost per
+//--- frame: every line runs on a user action only.
+void DrawStripTplNameFocus()
+{
+   string nm = DrawStripEditName(3);
+   if(ObjectFind(0, nm) < 0) return;
+   ObjectSetInteger(0, nm, OBJPROP_STATE, true);
+   DrawStripDiagEmit("[drawstrip] TPLARM obj=\"" + s_dsObj + "\" field=\"" + nm +
+                     "\" state=" + IntegerToString((int)ObjectGetInteger(0, nm, OBJPROP_STATE)));
+}
+
+bool DrawStripTplCommit(const string why)
+{
+   if(!s_dsTplNameArmed) return false;
+   string nm = DrawStripEditName(3);
+   bool alive = (ObjectFind(0, nm) >= 0);
+   string t = alive ? ObjectGetString(0, nm, OBJPROP_TEXT) : "";
+   StringTrimLeft(t); StringTrimRight(t);
+   s_dsTplNameArmed = false;
+   int res = (s_dsObj == "" ? 0 : DrawTplSaveAs(s_dsObj, t));
+   DrawStripTplSaveSweep();   // P-DRAW-131b: the armed row's Save control dies with the arm
+   bool ok = (res > 0);
+   DrawStripDiagEmit("[drawstrip] TPLSAVE obj=\"" + s_dsObj + "\" why=" + why +
+                     " field=" + IntegerToString(alive ? 1 : 0) + " name=\"" + t +
+                     "\" res=" + IntegerToString(res));
+   return ok;
+}
+//--- P-DRAW-131b (2026-10-18) — THE ARMED NAME ROW CARRIES ITS OWN SAVE. «مینویسم
+//--- ولی چیزی برا سیو نداره که»: the focus half worked and the row still offered
+//--- NOTHING TO PRESS — Enter committed invisibly, the exits looked like exits. The
+//--- button wears the foot's anatomy at the row's control seat (the field's own
+//--- 22px band, PnlDrawS_GE3S beside its field), ONE seat owner (`DrawStripTplSaveW`)
+//--- read by the paint and the hit test alike, and the SAME `DrawStripTplCommit`
+//--- ("save") as every other door. The control is the row's family and dies with
+//--- the arm: `DrawStripTplSaveSweep` runs at the arm's one end (the commit,
+//--- P-DRAW-131) and at the gear purge.
+int DrawStripTplSaveW() { return MathMax(64, 30 + PnlTextW("Save", 8) + 8); }
+string DrawStripTplSaveName() { return DrawStripEditName(3) + "S"; }
+bool DrawStripTplSaveHit(const int e, const int mx, const int ex, const int ew)
+{
+   if(e != 3 || !s_dsTplNameArmed) return false;
+   int sw = DrawStripTplSaveW();
+   if(mx < ex + ew - sw) return false;
+   DrawStripTplCommit("save");
+   DrawStripLayout();
+   DrawStripPaint();
+   ChartRedraw();   // P-UI-131: a user action flushes its own frame
+   return true;
+}
+bool DrawStripTplSaveSweep()
+{
+   bool dirty = false;
+   string sb = DrawStripTplSaveName();
+   if(ObjectFind(0, sb) >= 0)       { ObjectDelete(0, sb);       dirty = true; }
+   if(ObjectFind(0, sb + "B") >= 0) { ObjectDelete(0, sb + "B"); dirty = true; }
+   if(ObjectFind(0, sb + "G") >= 0) { ObjectDelete(0, sb + "G"); dirty = true; }
+   if(ObjectFind(0, sb + "T") >= 0) { ObjectDelete(0, sb + "T"); dirty = true; }
+   return dirty;
+}
+int DrawStripTplSavePaint(const int bx, const int by, const int bw)
+{
+   bool dirty = false;
+   string nb = DrawStripTplSaveName();
+   string tip = "Save this look as a template";
+   string label = "Save";
+   dirty |= DrawStripBtn(nb, bx, by, bw, DSTRIP_GEAR_EDIT_H,
+                         DSTRIP_CLR_FOOT, DSTRIP_CLR_FOOT, DSTRIP_CLR_FOOT, "", tip);
+   dirty |= DrawStripFace(nb + "B", bx - 5, by - 5, bw + 10, DSTRIP_GEAR_EDIT_H + 10,
+                          "::Files\\Icons\\pnl_btn_ghost.bmp", tip);
+   int lx = bx + (bw - DSTRIP_GEAR_FOOT_GLYPH_ADV - PnlTextW(label, 8)) / 2 +
+            DSTRIP_GEAR_FOOT_GLYPH_ADV;
+   dirty |= DrawStripFace(nb + "G", lx - DSTRIP_GEAR_FOOT_GLYPH_ADV,
+                          by + (DSTRIP_GEAR_EDIT_H - 15) / 2, 15, 15,
+                          "::Files\\Icons\\gl_check_gold.bmp", tip);
+   dirty |= DrawStripLblIn(nb + "T", lx, by, DSTRIP_GEAR_EDIT_H,
+                           PnlFit(label, 8, bx + bw - 6 - lx), DSTRIP_CLR_TITLE, tip, 8, true);
+   return dirty;
+}
+//--- the band-centring pair (moved here by the P-SIZE-1500 split; GearB and
+//--- DrawStripLblAt call them): StrapInkY centres one line in a band, StrapInkY2 a
+//--- two-line stack as a block (returns line 0's top).
+int StrapInkY(const int bandTop, const int bandH, const int pt)
+{
+   int y = bandTop + (bandH - PnlLineH(pt)) / 2;
+   return (y < bandTop) ? bandTop : y;
+}
+int StrapInkY2(const int bandTop, const int bandH, const int ptA, const int ptB)
+{
+   int h = PnlLineH(ptA) + DSTRIP_INK_GAP + PnlLineH(ptB);
+   int y = bandTop + (bandH - h) / 2;
+   return (y < bandTop) ? bandTop : y;
+}
+
 //--- P-DRAW-13: the shell's own widths and positions, in ONE pass: the painter,
 //--- the plate's size, the hit test and the grip carry all read these, so
 //--- "where a cell is" has exactly one answer. Single row, never wraps:
@@ -975,8 +1127,8 @@ string DrawStripPopRowRes(const int r)
    {
       // P-LOOK: no baked glyphs for looks — each wears its native icon.
       int rr = r;
-      if(rr == FIBPEN_STYLE_NEON) rr = 1;
-      else if(rr == FIBPEN_STYLE_CAPS || rr == FIBPEN_STYLE_WASH) rr = 0;
+      int lk = DrawLookFromSlot(rr);   // P-UNIFY-4: a look wears its native style's icon
+      if(lk > 0) rr = DrawLookNative(lk);
       if(rr < 0 || rr > 4) return "";
       return "::Files\\Icons\\bk_style" + IntegerToString(rr) + ".bmp";
    }
@@ -1028,9 +1180,11 @@ void DrawStripClosePicker()
       ObjectDelete(0, DrawStripPickIconName(r));
       ObjectDelete(0, DrawStripPickLabelName(r));
       ObjectDelete(0, DrawStripPickChipName(r));
-      ObjectDelete(0, DrawStripPickRailName(r));
-       ObjectDelete(0, DrawStripPickGlassName(r));   // P-DRAW-33: the glass sheen
-    }
+       ObjectDelete(0, DrawStripPickRailName(r));
+        ObjectDelete(0, DrawStripPickGlassName(r));   // P-DRAW-33: the glass sheen
+       ObjectDelete(0, DrawStripPickDelName(r));     // P-DRAW-134: the template row's ✕
+       ObjectDelete(0, DrawStripPickDelFaceName(r)); // ...and its glyph face
+     }
     s_dsPicker = DSTRIP_PICK_NONE;
     s_dsPN = 0;
     s_dsPHexY = -1;
@@ -1140,6 +1294,7 @@ bool DrawStripGearObjectsPurge()
    for(int e = 0; e < 5; e++)
       if(ObjectFind(0, DrawStripEditName(e)) >= 0)
       { ObjectDelete(0, DrawStripEditName(e)); dirty = true; }
+   dirty |= DrawStripTplSaveSweep();   // P-DRAW-131b: the armed row's Save control
    return dirty;
 }
 //--- P-DRAW-85 (2026-09-29) — A FRESH ATTACH OWNS A CLEAN CHART.

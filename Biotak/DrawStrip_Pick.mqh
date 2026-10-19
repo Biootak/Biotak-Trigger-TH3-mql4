@@ -26,9 +26,8 @@ string DrawStripSlotText(const EDrawKind k, const int slot, const string nm)
       case DRAW_SLOT_STYLE:
       {
          int st = (int)DrawSlotRead(nm, DRAW_SLOT_STYLE);
-         if(st == FIBPEN_STYLE_NEON) return "Neon";
-         if(st == FIBPEN_STYLE_CAPS) return "Caps";
-         if(st == FIBPEN_STYLE_WASH) return "Wash";
+         string lkName = DrawLookName(DrawLookFromSlot(st));
+         if(lkName != "") return lkName;
          if(st == STYLE_DASH) return "Dash";
          if(st == STYLE_DOT) return "Dot";
          if(st == STYLE_DASHDOT) return "D-Dash";
@@ -163,6 +162,16 @@ bool DrawStripIsToggle(const int slot)
    return (slot == DRAW_SLOT_FILL || slot == DRAW_SLOT_LOCK || slot == DRAW_SLOT_BACK ||
            slot == DRAW_SLOT_BOXHALF || slot == DRAW_SLOT_EXTEND);
 }
+//--- P-UNIFY-3 (2026-10-19) — THE LOOK ROWS ASK THE OWNER. The pen serves the kinds whose
+//--- level geometry it can state (`FibPenServesName` — the write path's own question), so
+//--- the picker asks the SAME one: the wider cells' test (`DrawKindHasLevels`) still shows
+//--- the level colour/width/style on every level-bearing object, but Neon/Caps/Wash are
+//--- offered only where the pen would draw them (C-04: no row where nothing happens).
+bool DrawStripPenLook(const EDrawKind k)
+{
+   if(!DrawKindHasLevels(k)) return false;
+   return (DrawTypeLookMask(DrawObjectType(s_dsObj)) != 0);   // P-UNIFY-4: the profile's look mask
+}
 //--- how many options this popover shows right now (LEVELS = membership rows).
 int DrawStripPickCount(const EDrawKind k, const int slot)
 {
@@ -170,10 +179,11 @@ int DrawStripPickCount(const EDrawKind k, const int slot)
    //--- one that is left, and a colour seat's editor is the CARDS' popup.
    if(slot == DRAW_SLOT_WIDTH || slot == DRAW_SLOT_BODYWIDTH) return 5;
    // P-LOOK: the fibo's own looks ride the STYLE slot as 5/6/7 — same writer,
-   // same highlight, same undo; other kinds keep the native five.
+   // same highlight, same undo; other kinds keep the native five (seat 8 «3D»
+   // retired 2026-10-18).
    //--- P-DRAW-BODY-UI: the handle's style is the native five only (no looks).
    if(slot == DRAW_SLOT_BODYSTYLE) return 5;
-   if(slot == DRAW_SLOT_STYLE) return ((k == DK_FIBO || k == DK_FIBOFAN) ? 8 : 5);
+   if(slot == DRAW_SLOT_STYLE) return ((int)STYLE_DASHDOTDOT + 1 + (DrawStripPenLook(k) ? DrawLookCount() : 0));   // P-UNIFY-4: native five + the registry's looks
    if(slot == DRAW_SLOT_RAY) return 4;
    if(slot == DRAW_SLOT_FONT) return DrawStripFontCount();
    if(slot == DRAW_SLOT_GLYPH) return DrawStripGlyphCount();
@@ -210,9 +220,8 @@ string DrawStripPickText(const EDrawKind k, const int slot, const int row)
       if(row == 2) return "Dot";
       if(row == 3) return "D-Dash";
       if(row == 4) return "D-Dot";
-      if(row == FIBPEN_STYLE_NEON && (k == DK_FIBO || k == DK_FIBOFAN)) return "Neon";
-      if(row == FIBPEN_STYLE_CAPS && (k == DK_FIBO || k == DK_FIBOFAN)) return "Caps";
-      if(row == FIBPEN_STYLE_WASH && (k == DK_FIBO || k == DK_FIBOFAN)) return "Wash";
+      string lkName = DrawLookName(DrawLookFromSlot(row));
+      if(lkName != "" && DrawStripPenLook(k)) return lkName;
       if(row == 0) return "Solid";
       return "";
    }
@@ -780,6 +789,7 @@ bool BoxMidSync(const string box)
 {
    if(box == "" || ObjectFind(0, box) < 0) return false;
    if(DrawObjectType(box) != OBJ_RECTANGLE) return false;
+   if(BoxPreviewOwns(box)) return false;   // P-DRAGF4: mid-gesture the mid is hidden; the end re-seats it
    bool want = false; int ext = BOXEXT_OFF, extN = 0;
    BoxMarkRead(box, want, ext, extN);
    string ch = BoxMidName(box);
@@ -1119,11 +1129,20 @@ void BoxExtrasPump()
       }
       //--- P-LOOK-RAY2: the pen's children answer for their own parent too (the same
       //--- orphan rule, one family over). A fibo deleted while the indicator was off
-      //--- leaves `_FSD/_FSC/_FSW` bands whose master is gone - a styled line drawn on
+      //--- leaves `_FSD/_FSC/_FSW/_FSH` bands whose master is gone - a styled line drawn on
       //--- nothing is exactly what "strays" means here, and nothing else knew them.
       if(FibPenIsChild(nm) || FibPenFamIsChild(nm))
       {
          string par = FibPenChildParent(nm);
+         if(par == "" || ObjectFind(0, par) < 0) DrawOrphanDrop(nm, par);   // P-ORPHAN-ALL
+         continue;
+      }
+      //--- P-DRAW-74c: and the line pen's rows answer for their master the same way (the
+      //--- orphan rule, one family over). A stacked master deleted from the terminal's own
+      //--- dialog leaves `_PSKq` rows whose master is gone - a styled line on nothing.
+      if(PenStackIsChild(nm))
+      {
+         string par = PenStackChildParent(nm);
          if(par == "" || ObjectFind(0, par) < 0) DrawOrphanDrop(nm, par);   // P-ORPHAN-ALL
          continue;
       }
@@ -1146,7 +1165,21 @@ void BoxExtrasPump()
       //--- against level lines at x=681..1079 - "the styles are not applied on the right
       //--- side"). `FibPenHeal` is one memo compare while the pen matches the master it
       //--- was built from, and the sync only on a mismatch.
-      if(ty == OBJ_FIBO || ty == OBJ_FIBOFAN) FibPenHeal(nm);
+      //--- P-UNIFY-3: the heal is typed, not kinded — `FibPenServesType` refuses the arc
+      //--- and the time zones the kind map folds into DK_FIBO/DK_FIBOFAN, so the net can
+      //--- never re-seat a pen the sync would not build.
+      if(FibPenServesType(ty)) FibPenHeal(nm);
+      //--- P-DRAW-74c (2026-10-17) - THE LINE PEN'S NET RIDES THE SAME PAID TYPE READ.
+      //--- A demoted master the terminal landed after the last event (or a stacked line
+      //--- the user moved by its own dialog) keeps a stale pen forever; `PenStackHeal` is
+      //--- one memo compare while the rows match their master, and the sync only on a
+      //--- mismatch. Rays and paths refuse inside `PenStackServes`, so their fold is
+      //--- untouched (P-DRAW-74c V1 scope).
+      //--- P-PEN-ALL (2026-10-19) — THE SHAPE PEN RIDES THE SAME PAID TYPE READ. The
+      //--- closed/whole-object kinds (rect, ellipse, triangle, channel, gann) are served
+      //--- too, so the question is asked ONCE, in the pen (`PenStackServesType`) — this
+      //--- walk can never hold a second list of them.
+      if(PenStackServesType(ty)) PenStackHeal(nm);
       if(ty != OBJ_RECTANGLE) continue;
       //--- P-UI-134: the marks' CENSUS is the store now, not the description. This
       //--- used to skip every rectangle whose text carried no `[BX` — a test of the

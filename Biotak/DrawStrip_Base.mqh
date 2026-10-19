@@ -968,9 +968,9 @@ bool DrawStripGearHit(const int mx, const int my)
       if(ew <= 0) continue;
       int ex = px + s_dsGearEditCol[e] * DSTRIP_GEAR_COL + s_dsGearEditX[e];
       int ey = gy + s_dsGearEditY[e] + (DSTRIP_GEAR_ROW_H - DSTRIP_GEAR_EDIT_H) / 2;
-      if(mx >= ex && mx < ex + ew &&
-         my >= ey && my < ey + DSTRIP_GEAR_EDIT_H)
+      if(mx >= ex && mx < ex + ew && my >= ey && my < ey + DSTRIP_GEAR_EDIT_H)
       {
+         if(DrawStripTplSaveHit(e, mx, ex, ew)) return true;
          if(ObjectFind(0, DrawStripEditName(e)) >= 0)
             ObjectSetInteger(0, DrawStripEditName(e), OBJPROP_STATE, true);
          //--- P-DRAW-118 (2026-10-01): the panel's two COLOUR fields (e0/e4) are gone

@@ -367,6 +367,9 @@ void DrawStripPaint()
          string pn = DrawStripPickName(r), pi = DrawStripPickIconName(r),
                 pt = DrawStripPickLabelName(r), pc = DrawStripPickChipName(r),
                 pr = DrawStripPickRailName(r);
+         //--- P-DRAW-134: every template row's own ✕ rides the family too — the
+         //--- button and its glyph face, swept with the row they belong to.
+         string pd = DrawStripPickDelName(r), pj = DrawStripPickDelFaceName(r);
          if(r >= s_dsPN)
          {
             if(ObjectFind(0, pn) >= 0) { ObjectDelete(0, pn); dirty = true; }
@@ -374,6 +377,8 @@ void DrawStripPaint()
             if(ObjectFind(0, pt) >= 0) { ObjectDelete(0, pt); dirty = true; }
             if(ObjectFind(0, pc) >= 0) { ObjectDelete(0, pc); dirty = true; }
             if(ObjectFind(0, pr) >= 0) { ObjectDelete(0, pr); dirty = true; }
+            if(ObjectFind(0, pd) >= 0) { ObjectDelete(0, pd); dirty = true; }
+            if(ObjectFind(0, pj) >= 0) { ObjectDelete(0, pj); dirty = true; }
             continue;
          }
          int py = s_dsY + s_dsPY[r];
@@ -398,9 +403,27 @@ void DrawStripPaint()
             dirty |= DrawStripFace(pi, px - 2, py + 8, 26, 26, res, tip);
          }
          int labelX = px + (res == "" ? 12 : 32);
+         //--- P-DRAW-134: a template row reserves the ✕'s seat in its label's fit —
+         //--- text under a button reads as two controls fighting over one word.
+         bool isTpl = (s_dsPicker == DSTRIP_MORE && s_dsMoreKind[r] == DSTRIP_MK_PRESET);
          dirty |= DrawStripLblIn(pt, labelX, py, DSTRIP_PICK_ROW,
-                                 PnlFit(txt, 9, contentW - (labelX - px) - 12),
+                                 PnlFit(txt, 9, contentW - (labelX - px) - 12 -
+                                        (isTpl ? DSTRIP_PICK_DEL_W : 0)),
                                  ink, tip, 9, true);   // P-DRAW-68: the cards' row label
+         if(isTpl)
+         {
+            //--- the delete ITSELF: an OBJ_BUTTON at the row's far end, on the row's
+            //--- own z rung so its native click is its own (Z_STRIP_OVER over the row
+            //--- button's Z_STRIP_ICON), with the gold ✕ glyph above it — one shape in
+            //--- the surface's two inks, exactly like the panel head's close.
+            int dx = px + contentW - DSTRIP_PICK_DEL_W;
+            int dy = py + (DSTRIP_PICK_ROW - DSTRIP_PICK_DEL_W) / 2;
+            string tipd = "Delete \"" + txt + "\" from the list";
+            dirty |= DrawStripBtnZ(pd, dx, dy, DSTRIP_PICK_DEL_W, DSTRIP_PICK_DEL_W,
+                                   popTone, ink, popTone, "", tipd, Z_STRIP_OVER);
+            dirty |= DrawStripFace(pj, dx, dy, DSTRIP_PICK_DEL_W, DSTRIP_PICK_DEL_W,
+                                   "::Files\\Icons\\gl_x_gold.bmp", tipd);
+         }
       }
    }
    else
@@ -425,6 +448,11 @@ void DrawStripPaint()
          { ObjectDelete(0, DrawStripPickRailName(r)); gone = true; }
          if(ObjectFind(0, DrawStripPickGlassName(r)) >= 0)
          { ObjectDelete(0, DrawStripPickGlassName(r)); gone = true; }
+         //--- P-DRAW-134: the template rows' ✕ family dies with the popover it served.
+         if(ObjectFind(0, DrawStripPickDelName(r)) >= 0)
+         { ObjectDelete(0, DrawStripPickDelName(r)); gone = true; }
+         if(ObjectFind(0, DrawStripPickDelFaceName(r)) >= 0)
+         { ObjectDelete(0, DrawStripPickDelFaceName(r)); gone = true; }
          if(gone) dirty = true;
       }
    }
@@ -684,8 +712,9 @@ bool DrawStripOpenAt(const string name, const int mx, const int my)
    //--- first measurement is a new answer like a release is, and P-UI-158 lets nothing else
    //--- through — which is why a later re-open (a derivation) can never move it.
    if(dsFreshHome && dsBox) { DrawStripHomeSet(s_dsX, s_dsY); GVHomeSaveFracHand("STRIP", s_dsX, s_dsY); }
-   if(k == DK_RECT) BoxMidSync(name);   // P-DRAW-21: the drag/zoom ride moves the mid too
-   FibPenSync(name, false);   // P-DRAW-74b: an open re-converges the pair with the drawing
+      if(k == DK_RECT) BoxMidSync(name);   // P-DRAW-21: the drag/zoom ride moves the mid too
+      FibPenSync(name, false);   // P-DRAW-74b: an open re-converges the pair with the drawing
+      PenStackSync(name, false);   // P-DRAW-74c: ...and the line's rows with it
    DrawStripPaint();
    return true;
 }
@@ -865,34 +894,48 @@ bool DrawStripUndoPop()
    return true;
 }
 //--- a whole LOOK onto the group (template rows, more + gear): undoable, learned.
-bool DrawStripPresetApplyGroup(const int row)
+//--- P-DRAW-134 (2026-10-18) — AND THE DELETE IS NO LONGER THIS FUNCTION'S. User
+//--- order: «شیبف کلکی بردار بجاش یک دکمه حذف برای هر کدوم بزار» — the SHIFT+click
+//--- door is retired with the modifier read; every template row now carries its own
+//--- ✕ (`DrawStripPickDelTap`, DrawStrip_Tap.mqh) and both could only ever call the
+//--- ONE body below. `row` IS the list index (the rack is COMPACT, so rows are
+//--- 0..count-1), so the guard is the range plus "is a template standing there".
+bool DrawStripTplRowDelete(const int row)
+{
+   EDrawKind k = s_dsKind;
+   if(k == DK_NONE) return false;
+   if(row < 0 || row >= DRAW_TPL_MAX || DrawTplName(k, row) == "") return false;
+   int n0 = DrawTplCount(k);
+   if(!DrawTplDelete(k, row)) return false;
+   if(s_dsTpl[k] == row) s_dsTpl[k] = -1;   // nothing is applied any more
+   else if(s_dsTpl[k] > row) s_dsTpl[k]--;  // the marked row moved down with the list
+   //--- P-DRAW-132: the witness is the FLUSHED channel (P-LOG-3), and it names both
+   //--- counts so a delete that did not compact is one line away from proof.
+   DrawStripDiagEmit("[drawstrip] TPLDEL obj=\"" + s_dsObj + "\" row=" + IntegerToString(row) +
+                     " was=" + IntegerToString(n0) + " now=" + IntegerToString(DrawTplCount(k)));
+   return true;
+}
+bool DrawStripTplApplyGroup(const int row)
 {
    if(s_dsObj == "" || ObjectFind(0, s_dsObj) < 0) return false;
    EDrawKind k = s_dsKind;
    if(k == DK_NONE) return false;
-   //--- P-DRAW-76: `row` IS the slot id (both list builders pass one), so the guard is the slot
-   //--- range plus "is it filled" — never the count, which a cleared slot turns into a lie.
-   if(row < 0 || row >= DRAW_PRESET_MAX || DrawPresetName(k, row) == "") return false;
-   //--- P-DRAW-76: SHIFT turns the same click into a DELETE of the user's own template
-   //--- (`UIMagnetModifierDown` is the project's ONE Shift reader, P-BK-66). A built-in refuses,
-   //--- and its tooltip says so instead of pretending the click did something.
-   if(UIMagnetModifierDown())
-   {
-      if(DrawPresetIsBuiltin(row) || !DrawPresetClear(k, row)) return false;
-      s_dsTpl[k] = -1;   // nothing is applied any more (no row can match -1)
-      DrawStripPaint();
-      ChartRedraw();
-      return true;
-   }
+   //--- P-DRAW-132: `row` IS the list index (the rack is COMPACT, so rows are
+   //--- 0..count-1), and the guard is that range plus "is a template standing there".
+   //--- P-DRAW-134: this is APPLY alone — the delete door above is reached by the
+   //--- row's ✕, never by a modifier on this path.
+   if(row < 0 || row >= DRAW_TPL_MAX || DrawTplName(k, row) == "") return false;
    DrawStripUndoPush();
    DrawSelPrune();
    int gn = DrawSelCount();
-   if(gn > 0) { for(int j = 0; j < gn; j++) DrawPresetApply(DrawSelAt(j), row); }
-   else DrawPresetApply(s_dsObj, row);
-   //--- P-DRAW-64a: a preset re-inks the border, so a box wearing its level gets the
+   if(gn > 0) { for(int j = 0; j < gn; j++) DrawTplApply(DrawSelAt(j), row); }
+   else DrawTplApply(s_dsObj, row);
+   //--- P-DRAW-64a: a template re-inks the border, so a box wearing its level gets the
    //--- new blend at once — not on the pump's next pass. One guarded call per member.
    BoxMidSyncGroup();
    s_dsTpl[k] = row;
+   DrawStripDiagEmit("[drawstrip] TPLTAP obj=\"" + s_dsObj + "\" row=" + IntegerToString(row) +
+                     " name=\"" + DrawTplName(k, row) + "\" members=" + IntegerToString(gn > 0 ? gn : 1));
    return true;
 }
 //--- "New <kind> wears this look": learn the chart's current look into the

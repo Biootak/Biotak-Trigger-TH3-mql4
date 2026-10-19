@@ -488,7 +488,8 @@ int OnCalculateHandler(const int rates_total, const int prev_calculated, const d
                        " overlay=" + IntegerToString((int)g_p3MsOverlay) +
                        " pre=" + IntegerToString((int)g_p3MsPre) +
                        " post=" + IntegerToString((int)g_p3MsPost) +
-                       " rest=" + IntegerToString((int)restMs) + "]";
+                       " rest=" + IntegerToString((int)restMs) +
+                       " why=" + PerfArmWhy(g_p3ArmMask) + "]";
         if(elapsed > CPU_CRITICAL_MS) {
             _LOG_GATE_E Print("[E][GEN] [CRIT] CRITICAL CPU: OnCalculate took ", elapsed, "ms!", phase, " Reduce inpMaxTHLevels!");
         }

@@ -928,7 +928,7 @@ void RedrawAllObjects(bool force_redraw=false)
     bool basePriceBoundary = boundaryCandidate;
     // P-PERF-06: a staging frame is pending work by definition — the next
     // family must land even when no flag says so.
-    bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary || g_buildStage != 0 || g_heavyFramePending);
+    bool hasPendingWork = (force_redraw || g_labelsRelayoutNeeded || g_redrawTHLevelsNeeded || historicalRefreshDue || basePriceBoundary || g_buildStage != 0 || g_heavyFramePending); g_p3ArmMask = (force_redraw?1:0)|(g_labelsRelayoutNeeded?2:0)|(g_redrawTHLevelsNeeded?4:0)|(historicalRefreshDue?8:0)|(basePriceBoundary?16:0)|(g_buildStage!=0?32:0)|(g_heavyFramePending?64:0)|(g_renderAllNeeded?128:0)|(g_forceClearOnNextDraw?256:0);   // P-PERF-53: the same flags as a mask, ON the line that already reads them
     
     // PERFORMANCE FIX: Hard millisecond gate for ALL redraws (except forced UI events)
     // This prevents price vibrations from hammering the CPU

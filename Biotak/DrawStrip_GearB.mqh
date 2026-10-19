@@ -182,12 +182,12 @@ void DrawStripGearClose()
 {
    DrawStripColorHoverClear();
    if(s_dsGear == 0 && s_dsGRN <= 0 && s_dsGGN <= 0 && s_dsGearHeadY < 0) return;
+   DrawStripTplCommit("close");   // P-DRAW-131: every close flushes a pending save before the purge eats its field
    DrawStripGearObjectsPurge();
    s_dsGear = 0; s_dsGRN = 0; s_dsGGN = 0;
    s_dsGearHeadY = -1; s_dsGearSecN = 0;
    s_dsGearPressSpent = false;   // P-DRAW-84: the purge is where a panel's press ends
    s_dsGearPlaced = false; s_dsGearPlacedObj = "";   // P-DRAW-88: next open scores anew
-   s_dsTplNameArmed = false;
    s_dsLvlDescArmed = false;   // P-LVL-TEXT: a note edit dies with the panel
 }
 
@@ -222,6 +222,8 @@ void DrawStripClose()
       ObjectDelete(0, DrawStripPickChipName(r));
       ObjectDelete(0, DrawStripPickRailName(r));
       ObjectDelete(0, DrawStripPickGlassName(r));   // P-DRAW-33: the glass sheen
+      ObjectDelete(0, DrawStripPickDelName(r));     // P-DRAW-134: the template row's ✕
+      ObjectDelete(0, DrawStripPickDelFaceName(r)); // ...and its glyph face
    }
    DrawStripGearClose();
    ObjectDelete(0, DrawStripBgName());
@@ -397,21 +399,8 @@ bool DrawStripFace(const string nm, const int x, const int y, const int w, const
 //--- added a bare `y + 5` — one constant for every point size and every DPI, and
 //--- right only at 192. Its measured errors at 96 DPI: the quick row's badge 5px
 //--- high, the foot buttons 8px, the version chip 7px, the board header 4px low.
-//--- Three owners now, and a caller names its BAND, never an ink offset:
-//---   StrapInkY  — one line centred in a band
-//---   StrapInkY2 — a two-line stack centred as a block (returns line 0's top)
-//---   DrawStripLblAt — the raw writer, for a y that is already resolved
-int StrapInkY(const int bandTop, const int bandH, const int pt)
-{
-   int y = bandTop + (bandH - PnlLineH(pt)) / 2;
-   return (y < bandTop) ? bandTop : y;
-}
-int StrapInkY2(const int bandTop, const int bandH, const int ptA, const int ptB)
-{
-   int h = PnlLineH(ptA) + DSTRIP_INK_GAP + PnlLineH(ptB);
-   int y = bandTop + (bandH - h) / 2;
-   return (y < bandTop) ? bandTop : y;
-}
+//--- The centring pair (StrapInkY / StrapInkY2) moved to DrawStrip_GearA.mqh with
+//--- the P-SIZE-1500 split; a caller names its BAND, never an ink offset.
 //--- left-aligned ink for list rows (buttons centre their text; rows read left).
 //--- `inkTop` IS the ink's top; a caller with a band asks DrawStripLblIn instead.
 bool DrawStripLblAt(const string nm, const int x, const int inkTop, const string txt,
@@ -511,8 +500,8 @@ string DrawStripGearRowText(const int r)
    if(r < 0 || r >= s_dsGRN) return "";
    int kind = s_dsGRKind[r], arg = s_dsGRArg[r];
    if(kind == 1) return DrawStripSwitchName(s_dsObj, arg);
-   if(kind == 2) return DrawPresetName(s_dsKind, arg);
-   if(kind == 3) return "Save current look";
+   if(kind == 2) return DrawTplName(s_dsKind, arg);
+   if(kind == 3) return "Save as template ...";
    if(kind == 4) return DrawStripGearLevelText(arg);
    if(kind == 5)
    {
@@ -527,6 +516,7 @@ string DrawStripGearRowText(const int r)
    }
    if(kind == 7) return "New " + DrawKindName(s_dsKind) + " wears this look";
    if(kind == 8) return "G" + IntegerToString(DrawStripGlyphAt(arg % 256));
+   if(kind == 9) return DrawStripTplNavText(s_dsKind);
    //--- P-DRAW-117: a GROUP HEADER carries its own name — the row's label IS the
    //--- group's word now, so the panel's nav has no second table to drift from.
    if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupText(arg);
@@ -561,11 +551,9 @@ string DrawStripGearRowTip(const int r)
    string scope = DrawStripTipScope();
    if(kind == 1) return DrawStripSlotTip(s_dsKind, arg, s_dsObj);
    if(kind == 2)
-      return "Template: " + DrawPresetName(s_dsKind, arg) +
-             (DrawPresetIsBuiltin(arg) ? " (built-in)" : " (mine)") +
-             " — click to apply" + scope +
-             (DrawPresetIsBuiltin(arg) ? "" : " — Shift+click deletes it");
-   if(kind == 3) return "Save this look as one of MY templates";
+      return "Template: " + DrawTplName(s_dsKind, arg) +
+             " — click to apply" + scope + " — Shift+click deletes it";
+   if(kind == 3) return "Save this look as a NAMED template of this tool";
    if(kind == 4)
    {
       double v = DrawStripGearLevelAt(arg);
@@ -584,6 +572,7 @@ string DrawStripGearRowTip(const int r)
    if(kind == 7) return "Learn the look on the chart as this tool's default (next drawing wears it)";
    if(kind == 8)
       return "Arrow mark: glyph " + IntegerToString(DrawStripGlyphAt(arg % 256)) + " — click to apply" + scope;
+   if(kind == 9) return "More templates" + scope + " — one click turns the page";
    if(kind == DSTRIP_GRK_GROUP) return DrawStripGearGroupTip(arg);   // P-DRAW-117
    return "";
 }
@@ -651,7 +640,7 @@ string DrawStripGearGroupDigest(const int gid)
    if(gid == DSTRIP_GEAR_TPL)
    {
       if(s_dsKind <= DK_NONE || s_dsKind >= DK_COUNT) return "";
-      string nm = DrawPresetName(s_dsKind, s_dsTpl[s_dsKind]);
+      string nm = DrawTplName(s_dsKind, s_dsTpl[s_dsKind]);
       return (nm == "") ? "none" : nm;
    }
    //--- the Row group: how many cells the quick row really shows, counted by the
@@ -690,7 +679,7 @@ string DrawStripSepName(const int g) { return "PnlDrawS_SEP" + IntegerToString(g
 //--- made the field a LIE: `OBJPROP_TEXT` was written once, inside the create, so
 //--- the Paint tab's `COLOR` box showed the hex the drawing wore the first time the
 //--- tab was opened and nothing ever changed it. Press `Reset` in the foot
-//--- (`DrawPresetApply`, DrawStrip_Tap) or pick a colour on the board and the
+//--- (`DrawTplApply`, DrawStrip_Tap) or pick a colour on the board and the
 //--- drawing changed while the field kept the old hex — the one field whose whole
 //--- job is to state the current value, stating a value the drawing had left. The
 //--- board's own hex field already solved this and its law is copied here verbatim
@@ -882,7 +871,7 @@ string DrawStripGearMarkRes()
    if(s_dsKind == DK_RECT || s_dsKind == DK_TRIANGLE || s_dsKind == DK_ELLIPSE)
       return "::Files\\Icons\\gl_box_i_gold.bmp";
    if(s_dsKind == DK_FIBO || s_dsKind == DK_FIBOFAN || s_dsKind == DK_FIBOCHAN ||
-      s_dsKind == DK_EXPANSION || s_dsKind == DK_GANN)
+      s_dsKind == DK_EXPANSION || s_dsKind == DK_PITCHFORK || s_dsKind == DK_GANN)
       return "::Files\\Icons\\gl_sigma_i_gold.bmp";
    if(s_dsKind == DK_ARROW) return "::Files\\Icons\\gl_target_i_gold.bmp";
    if(s_dsKind == DK_TEXT) return "::Files\\Icons\\gl_type_i_gold.bmp";
@@ -1363,8 +1352,8 @@ bool DrawStripGearPaint()
          state = cur ? "::Files\\Icons\\pnl_sw_on_gold.bmp" : "::Files\\Icons\\pnl_sw_off.bmp";
       else if(cur && (k == 2 || k == 8))
          state = "::Files\\Icons\\gl_check_gold.bmp";
-      else if(k == 3 || k == 5 || k == 7)
-         state = "::Files\\Icons\\gl_nav_m.bmp";   // the level's own stepper
+      else if(k == 3 || k == 5 || k == 7 || k == 9)
+         state = "::Files\\Icons\\gl_nav_m.bmp";   // the level's own stepper / tpl page walk
       //--- P-DRAW-77: the control sits on the cards' own seat — right-aligned
       //--- `px+PNL_SW_X` = contentW-40, at `ry+PNL_SW_Y` = +10, 40x22
       //--- (BiotakPanels 6160). The old `cw-18 / 15` was a narrower pill on a
@@ -1408,8 +1397,14 @@ bool DrawStripGearPaint()
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
                                 "Add a level, e.g. 88.6 — Enter adds it (the held drawing)", false);
       else if(e == 3)
-         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, "",
-                                "Template name — Enter saves this look under your name", false);
+      {
+         //--- P-DRAW-131b: the row carries its own Save — the field gives it the tail.
+         int sw = DrawStripTplSaveW();
+         dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew - sw - DSTRIP_ROW_GAP, "",
+                                "Template name — Enter or the Save button stores this look", false);
+         dirty |= DrawStripTplSavePaint(ex + ew - sw,
+                                        s_dsGEY + s_dsGearEditY[e] + DSTRIP_CARD_CHIP_Y, sw);
+      }
       else if(e == 4)
          dirty |= DrawStripEdit(e, ex, s_dsGearEditY[e], ew, ObjectGetString(0, s_dsObj, OBJPROP_LEVELTEXT, s_dsLvlDescIdx), "Level note — Enter writes it on this level", false);
       else

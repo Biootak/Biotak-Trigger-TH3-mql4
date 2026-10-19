@@ -380,6 +380,24 @@ void AdjustFactorValue(int direction)
 // can.
 #define COOP_BUDGET_MS 12
 
+// P-PERF-45e (2026-10-19): THE WAIT HALF IS THE TIMER'S OWN QUANTUM, NOT A STALL.
+//
+// MEASURED in two days of journal (20261018.log + 20261019.log): 325 coop lines,
+// and 319 of them were ONE shape — `status-text` 200 and `label-expiry` 125, every
+// one `waited=234..282ms ran=0ms stillOwed=0`. The other SIX were the real thing
+// (`heavy-frame ran=125ms`). The timer is 250 ms (`EventSetMillisecondTimer(250)`,
+// EventHandlers_Init.mqh:647) and the arms sit immediately before `CoopPump()` in
+// the same tick (both entries, ~line 442), so the only way a job can wait a whole
+// period is the slice check at this pump's foot breaking on the clock's own
+// granule (`COOP_BUDGET_MS 12` against a ~15.6 ms GetTickCount step): ONE period
+// is this pump's NORMAL deferral, so a 40 ms threshold warned on the design — 319
+// lines that could not be told from a defect buried the six that were one. TWO
+// periods = the job was skipped twice = the stall the line exists to name.
+// `spent` keeps its 40 ms half: that half IS those six lines, untouched.
+// The threshold is OWNED here, beside the slice it is read against, and the
+// regression gate derives it against the timer's own period (P-PERF-45e).
+#define COOP_WAIT_WARN_MS 500
+
 void CoopPump()
 {
    uint sliceStart = GetTickCount();
@@ -495,7 +513,7 @@ void CoopPump()
 
       uint spent  = GetTickCount() - t0;
       uint waited = t0 - s_coopOwedMs[job];
-      if(waited >= COOP_WARN_MS || spent >= COOP_WARN_MS)
+      if(waited >= COOP_WAIT_WARN_MS || spent >= COOP_WARN_MS)
          _LOG_GATE_W Print("[W][PERF] coop job=", CoopJobName(job), " waited=", (int)waited,
                            "ms ran=", (int)spent, "ms stillOwed=", (CoopOwes(job) ? 1 : 0));
 

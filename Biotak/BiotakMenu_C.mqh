@@ -394,6 +394,8 @@ void CreateToolsMenu()
    }
    SubChromeCreate();                           // panel backdrop + header + pager
    for(int t = 0; t < CAT_COUNT; t++) ToolsCreateItem(t);
+   // P-UI-168: the fan's own open is a writer of the same 24-name sweep.
+   DrawStripDiagEmit(StringFormat("[P-UI-168] fan open=1 cells=%d placed=%d", CAT_COUNT, CircPlacedCountLive()));
    ChartRedraw();
 }
 
@@ -422,6 +424,8 @@ void DeleteToolsMenu(const bool restoreRing = true)
       for(int i = 0; i < CircPlacedCount(); i++) CircCreateItem(i);
       CircNoteBuilt();
    }
+   // P-UI-168: restore=0 is the tear-down's own close, restore=1 the ring coming back.
+   DrawStripDiagEmit(StringFormat("[P-UI-168] fan open=0 restore=%d placed=%d built=%d", (restoreRing ? 1 : 0), CircPlacedCountLive(), s_circBuiltSeats));
    ChartRedraw();
 }
 
@@ -494,6 +498,8 @@ void CircRelayoutIfNeeded()
 {
    if(!g_UI.menuVisible || g_ToolsOpen || g_OrbDragging) return;
    if(s_circBuiltSeats == CircPlacedCountLive()) return;   // same set — the move already ran
+   // P-UI-168: the rebuild edge names itself, with the compare's own two numbers.
+   DrawStripDiagEmit(StringFormat("[P-UI-168] ring relayout built=%d live=%d", s_circBuiltSeats, CircPlacedCountLive()));
    DeleteRing();
    CreateMenu();          // rebuilds orb + the new seat set and re-notes the fingerprint
    ChartRedraw();
@@ -1183,7 +1189,16 @@ void UpdateCircularItemStates()
    // carries the guard (CreateMenu C:356, CircRelayoutIfNeeded C:482,
    // ToggleMenuVisibility D:533, CircHealRingStep D:16); this loop was the odd one
    // out. Cost: one bool test.
-   if(!g_ToolsOpen)
+   // P-UI-167 (MEASURED 2026-10-19, the USDJPY frame 134362571361933145): the SAME
+   // resurrection one state over — the MENU IS CLOSED. DeleteRing() took the whole
+   // seat family (glyph AND disc), the drain still ran, and CircUpdateItemState
+   // re-created every glyph ALONE: three bursts of 12 × `[P-UI-163] icon heal seat=`
+   // in one frame, each right after a chart press — «منو بسته هستش» plus a column of
+   // icons with no disc under them. The ring is built only while the menu is OPEN and
+   // the fan SHUT (CreateMenu, ToggleMenuVisibility's show branch, CircRelayoutIfNeeded,
+   // CircHealRingStep, the click tail all assume it), so the loop reads the pair.
+   // Cost: one bool read — it replaces a 12-seat glyph burst per drain while down.
+   if(g_UI.menuVisible && !g_ToolsOpen)
       for(int i = 0; i < CircPlacedCount(); i++)
          CircUpdateItemState(i);
    if(g_ToolsOpen)

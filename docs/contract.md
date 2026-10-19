@@ -119,6 +119,9 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
    `[WARN]` and never caches — a green `[PASS]` there is how a mirror gets read as
    reality; `--strict`, run automatically after `-Shot -RestartTerminal`, exits 1, so
    a capture that left a stale or partial set FAILS the build (P-DRAW-119).
+   MEASURED 2026-10-18: MT4 reads that ini as a BARE argument (`terminal.exe <ini>`);
+   a colon-suffixed `/config` switch is MT5 spelling and is silently ignored — profile
+   opens, no extra chart, no script, 120 s of silence. Gated, with a mutation (P-DRAW-119).
 12. No owner without a caller, and no painted layer without a re-assertion
    (P-DRAW-120). P-DRAW-85's `DrawStripSweepStale()` was written for «no orphan
    survives a reattach» and documented its ONE call as "from the entry's OnInit beside
@@ -500,8 +503,114 @@ when two solutions behave the same, the cheaper one ships and its cost is a numb
    block, the two controls read as one interfering control — the second half of the
    P-UI-132 report, which is why that fix alone did not close it. The rule is one line:
    the block begins at the first `[BX`, whatever precedes it, and the single leading space
-   belongs to the cut. Gate: P-UI-133 (no `" [BX"` cut, both shapes kept), proved by
-   mutation — the old line fails it.
+    belongs to the cut. Gate: P-UI-133 (no `" [BX"` cut, both shapes kept), proved by
+    mutation — the old line fails it.
+28. **A save that arms a name field is focused when it opens, and it commits when the
+    field goes (P-DRAW-131).** *«این نحوه ذخیره تمپلت‌ها به نظر مشکل داره»* — walked from
+    the user's place, the two Save doors (the more popover's «Save current look», the
+    Look tab's Save row) armed a name field that (a) was born UNFOCUSED — no writer of
+    `OBJPROP_STATE` for `PnlDrawS_GE3` existed anywhere, while the level-note field has
+    shipped that write since P-LVL-TEXT (`DrawStripGearLevelDescTap`) — and (b) had
+    exactly ONE commit door, ENDEDIT (Enter): `DrawTplSaveAs`'s only strip
+    caller stood inside `DrawStripEditEnd`'s e==3 branch. MT4 drops an OBJ_EDIT's focus
+    without firing ENDEDIT when the user clicks away (the cards' own measured law,
+    `BkFlushTextEdit`: flush before any other panel/strip action and on close), so the
+    ordinary flow — tap Save, type a name, tap the panel or the chart, read the click as
+    «done» — wrote NOTHING, and the house's most ordinary gesture was the one that threw
+    the save away. The rule is one sentence: **the field is focused the moment either
+    door arms it, and the file write is the command — the typed name is a detail.**
+    Both doors end in `DrawStripTplNameFocus` (STATE written, then read back for the
+    TPLARM line); every exit routes through ONE commit, `DrawStripTplCommit(why)` —
+    "enter" (`DrawStripEditEnd`), "close" (`DrawStripGearClose`, called BEFORE the purge
+    that eats the field: every close funnels there — the strip's, the head's X, the
+    gear/more toggles, Esc, the object switch, the DEL cell) and "group"
+    (`DrawStripGearGroupTap`, whose fold or switch kills the body the field rides). The
+    welded `s_dsTplNameArmed = false;` left `DrawStripGearClose` in the same change —
+    the commit is its one clearer (contract §9), and the fresh-open reset in
+    `DrawStripOpenAt` stays where it was. A close whose drawing is already gone (the DEL
+    cell cascaded first, or a native delete) answers `ok=0` and still spends the flag: a
+    witness, never a zombie. Both witnesses are flushed — `TPLARM` (the STATE the write
+    left) and `TPLSAVE` (`why=`, the typed name, the file write's answer) — so the next
+    «ذخیره شد یا نه» is a log line, not a reproduction round.
+    **P-DRAW-131b, the same day's second report — «مینویسم ولی چیزی برا سیو نداره که»:**
+    the focus half worked and the armed row still offered NOTHING TO PRESS — Enter
+    committed invisibly and the exits looked like exits. The armed name row now carries
+    its own **Save** button (the foot's anatomy — button, ghost face, check glyph, word —
+    at the row's control seat, `PnlDrawS_GE3S` beside `PnlDrawS_GE3`, the field giving it
+    the tail), seated inside the row by the PAINT and hit by the SAME arithmetic
+    (`DrawStripTplSaveW`, in GearA beside the commit — one seat owner, never a second
+    grid). Its press is the fourth door into the same `DrawStripTplCommit("save")`
+    (coordinate walk in Base via `DrawStripTplSaveHit`, native `OBJECT_CLICK` in Router),
+    and its family is swept at the arm's ONE end — `DrawStripTplSaveSweep` runs in the
+    commit and the gear purge — so a control never outlives its arm. Gate: P-DRAW-131
+    (register §59, 14 mutations, `python tools/mutation_gate.py P-DRAW-131` → 14/14
+    KILLED).
+29. **Named templates, one rack per tool, one file (P-DRAW-132).** *«می‌خوام تمپلت‌های
+    مختلف رو سیو کنم و به راحتی هر کدوم خواستم فعال کنم بشه … مثل تریدینگ ویو»* — the
+    P-DRAW-02 rack was three fixed slots a kind, unnamed (a GV holds a double, so every
+    user row came back «My 1»), one packed look per slot. Rebuilt as the named rack:
+    **12 rows a kind, six a page, replace-by-name case-insensitively, a full rack REFUSES
+    (0) instead of eating the oldest, a delete COMPACTS.** One store,
+    `Biotak\DrawTemplates.csv` (`kind;row;name;packA;packB`), with rows 255 (the kind's
+    last look) and 254 (the one shared ink) reserved INSIDE it and answered BEFORE any
+    band guard — a guard read first eats the very rows these features write (P-UI-133's
+    lesson, one file over). **The file is authoritative the moment it exists**: boot seeds
+    only on a first run, migrates P-DRAW-02's `DrawPresets.csv` whole (its 255 row packs
+    across two columns — B in `name`, A in `packed`; user slots 3..5 only, the old
+    built-ins not migrated), writes, THEN retires the old file, so a crash in between
+    loses nothing. An apply is `s_dkTplHold++` … FILLCLR before FILL (P-DRAW-64) …
+    `s_dkTplHold--`, ONE `DrawTplSave()` for the whole apply. The rack's owner is the new
+    `Biotak\Toolbar_Tpl.mqh` (the §7 split, same names at the seam); the strip reaches it
+    through the Tap kind-2/kind-9 branches, the GearA TPL tab (six-row window + a «n/m …»
+    nav row, at most one page tall) and GearB's captions/digest. Gate: P-DRAW-132
+    (register §60, 7 mutations); the file half is exercised live by
+    `tests/Biotak_LookPersist_Test.mq4` (migration fixture + boot authority included).
+30. **Every row a tab paints reaches a live rung (P-DRAW-133).** The gear body's row
+    dispatcher carried a stray `return true;` between the level-set shape (kind 4) and
+    the slot-visibility shape (kind 5), so the slot-visibility, learn-current, favourite
+    and glyph rows — painted, hit-boxed, green-compiled — answered NOTHING when tapped.
+    A control that is painted is not a control that works, one dispatcher over: the fix
+    is the stray return's removal, and the rule is that a row's KIND must reach code,
+    never a silent `return`. Gate: P-DRAW-133 (register §61, 2 mutations — reinserting
+    the return, or bending one kind's number, fails it).
+31. **Delete is a button on its row, never a modifier (P-DRAW-134).** User order, after
+    the diag proved four `TPLDEL` lines only ever fired from Shift+click: *«شیبف کلکی
+    بردار بجاش یک دکمه حذف برای هر کدوم بزار»*. Every template row in the MORE popover
+    now carries its own **✕** — a named `OBJ_BUTTON` (`DrawStripPickDelName`, gear-face
+    pair `…F`, both owned in GearA beside the more-popover's other controls) seated at
+    the row's far end from the ONE width owner (`DSTRIP_PICK_DEL_W`, the label's
+    `PnlFit` reserving the same seat), wearing the gold `gl_x_gold` glyph on the row's
+    own z rung. It answers on its OWN router branch, asked BEFORE the row loop (the
+    foot-glyph lesson, P-DRAW-83), and deletes through the ONE body
+    `DrawStripTplRowDelete` (the `TPLDEL` witness, unchanged and flushed). The delete
+    re-lays-out the open popover in the same frame (rows compact under the hand); the
+    SHIFT read is gone from the apply path and the row tooltip names the ✕. The family
+    is swept at all three pick purge sites. Gate: P-DRAW-134 (register §62, 7 mutations
+    — the modifier's return, an unpainted ✕, a moved seat, an inert branch or call, a
+    forgotten sweep, and a stale tooltip each fail it).
+32. **The template carries the levels — for the level family the LEVELS ARE the drawing
+    (P-DRAW-135).** User order: *«وقتی تمپلت ذخیره میشه باید با همه چیزش ذخیره بشه
+    دیگه ... با سایر ارزها ... باید درست باشه»*. `DrawLook`'s nine values never carried
+    the fibo level set, so a saved fibo stamped a default fibo anywhere; additionally
+    the slot colour/width/style land on ALL levels, so per-level rows were lost even
+    when remembered. Every template now stores its level set on its OWN reserved file
+    row — index `DRAW_TPL_LVL_ROW + slot` (100..111, clear of the template band 0..11
+    and the 255/254 rows; old files read unchanged) — the encoded string in that row's
+    `name` column, `value:colour:width:style:text` records joined by `|`, the note's
+    `;` traded to `,` and `|` to `/` so a typed caption can never split the CSV or eat
+    the walk. `DrawTplSaveAs` captures through the ONE encoder (`DrawTplLevelsOf`,
+    `FibPenLogicalWidth` per P-DRAW-74b), the ONE applier restores LAST — after the
+    slot writes whose colour lands on all levels — through the ONE decoder
+    (`DrawTplLevelsTo`, `OBJPROP_LEVELS` n + per-level rows + the pen pair
+    `FibPenTagDrop`/`FibPenSync`), so EVERY door (ApplyGroup, the gear row, Reset)
+    inherits it with no caller change; the delete compacts the set with its row, the
+    boot wipes it, and the loader answers the reserved rows BEFORE the band guard
+    (P-UI-133's lesson). A template saved before this build carries no set and applies
+    exactly as it did (re-save to capture). And the toggle that IS the user's «کم و
+    زیاد» gesture now witnesses: `[drawstrip] LVLTOG obj= v= act=del|add n= ok=` on the
+    flushed channel (P-LOG-3). Gate: P-DRAW-135 (register §63, 7 mutations — the file
+    write, the load read, the capture, the restore, the compaction, the separator
+    trades and the witness each fail it).
 
 ## 7. Size (one file, one owner)
 

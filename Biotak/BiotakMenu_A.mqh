@@ -130,12 +130,14 @@
 #define CIRC_MIN_RADIUS  40
 //--- P-UI-161 — THE RING GROWS BY SHRINKING, NEVER BY DROPPING THE CIRCLE.
 //--- The button side S(n) holds 44 while the ring fits nine seats (the shipped
-//--- look, byte-identical), tapers to the 30px floor through the teens, and the
-//--- radius follows the chord law (S+CIRC_GAP)/(2·sin(π/n)) — capped by
-//--- CircFitLimit, never below CIRC_MIN_RADIUS. Starred items the capped circle
-//--- cannot seat stay in the Tools menu (their star stays on): excess degrades to
-//--- the previous surface, never to a stack (P-UI-13).
-#define CIRC_BTN_MIN     30
+//--- look, byte-identical), tapers to the 35px floor through the teens (P-UI-166
+//--- raised it from 30), and the radius follows the chord law
+//--- (S+CIRC_GAP)/(2·sin(π/n)) — capped by CircFitLimit, never below
+//--- CIRC_MIN_RADIUS. The surface seats at most CIRC_SEAT_CAP (12) — starred
+//--- items the capped circle cannot seat stay in the Tools menu (their star
+//--- stays on): excess degrades to the previous surface, never to a stack
+//--- (P-UI-13).
+#define CIRC_BTN_MIN     35
 //--- the membership STAR on every Tools cell — same canvas as the badge, so the
 //--- corner seat below is one number (star_off/star_on.bmp, baked by the generator).
 #define CIRC_STAR_SIZE   16
@@ -742,7 +744,7 @@ void ResetUIToDefaults()
    g_UI.menuVisible = true;
    g_UI.showHTF = false;
    g_UI.tipPin = false;   // P-UI-126: the chip's default MODE is hover; its place is not this
-   g_ToolsOpen = false;   // P-UI-142: tools chrome starts shut; the snapshot reopens it
+   g_ToolsOpen = false;   // P-UI-142b: the tools chrome starts shut, at a reset AND at every attach
 }
 
 //--- P-UI-131e — WHERE THE THREE PLACEABLE SURFACES STAND, one owner for both init paths.
@@ -807,8 +809,13 @@ void LoadUIState()
 
    g_UI.menuVisible = GlobalVariableCheck(gvMen)   ? (GlobalVariableGet(gvMen)   > 0.5) : true;
    g_UI.showHTF     = GlobalVariableCheck(gvHtf)   ? (GlobalVariableGet(gvHtf)   > 0.5) : false;
+   // P-UI-142b: the tools chrome does NOT survive an attach — P-UI-142's snapshot re-floated
+   // it with the ring suppressed and the user read the menu as closed; the witness names it.
    string gvTools = GetGVName("TOOLS");
-   g_ToolsOpen = GlobalVariableCheck(gvTools) ? (GlobalVariableGet(gvTools) > 0.5) : false;   // P-UI-142: menu creation rebuilds the chrome from this
+   g_ToolsOpen = GlobalVariableCheck(gvTools) && GlobalVariableGet(gvTools) > 0.5;   // read for the witness only
+   if(g_ToolsOpen)
+      DrawStripDiagEmit("[P-UI-142] tools chrome starts shut (the snapshot said open)");
+   g_ToolsOpen = false;   // P-UI-142b: shut every attach; the MEN snapshot still restores the ring
    if(GlobalVariableCheck(GetGVName("TIPPIN")))
       g_UI.tipPin = (GlobalVariableGet(GetGVName("TIPPIN")) > 0.5);
     // P-UI-161: the membership mask. CircStarLoad answers every case: a missing

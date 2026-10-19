@@ -264,6 +264,7 @@
                                // 48 + 42k law (DSTRIP_SKIN_MID, DrawStripSkinKFor)
 #define DSTRIP_PICK_CELL  32
 #define DSTRIP_PICK_GAP    8
+#define DSTRIP_PICK_DEL_W 26   // P-DRAW-134: the template row's own ✕ seat — delete is a BUTTON, not a modifier
 #define DSTRIP_GRID_MAX  72    // option cells in one gear grid block (the picker's 64 fits)
 #define DSTRIP_GLIST_MAX 24    // list rows in one gear block — P-DRAW-117: the
                                // GROUP HEADERS ride the same array as the open
@@ -535,7 +536,7 @@
 #define DSTRIP_GEAR_GRP_MAX 5  // group ids one kind may show at once (0 = shut)
 //--- more-popover row kinds
 #define DSTRIP_MK_APPLYALL 1
-#define DSTRIP_MK_PRESET 2     // arg = preset index
+#define DSTRIP_MK_PRESET 2     // P-DRAW-132: arg = template row (index IS the row)
 #define DSTRIP_MK_SAVE 3
 #define DSTRIP_MK_DUPE 4
 #define DSTRIP_MK_UNDO 5
@@ -543,6 +544,7 @@
 #define DSTRIP_MK_BOX50 7      // P-DRAW-21: the box 50% line toggle (rect only)
 #define DSTRIP_MK_BOXEXT 8     // P-DRAW-22: the box extend cycle (rect only)
 #define DSTRIP_MK_FILL50 9     // P-DRAW-64: the interior ON at 50% tone, one tap
+#define DSTRIP_MK_TPLNAV 10    // P-DRAW-132: the template rack's page walk (one row)
 #define DSTRIP_FILL50_TONE 50  // ...the tone that row means
 
 //--- P-DRAW-09c: the strip's palette. These are the settings cards' OWN tokens
@@ -626,7 +628,8 @@ static string   dsWitnessSig = "";
 //--- or DSTRIP_MORE for the more-popover. The gear panel is a separate seat
 //--- (s_dsGear) and shuts the popover when it opens.
 static int      s_dsPicker = DSTRIP_PICK_NONE;
-static int      s_dsTpl[DK_COUNT];               // last applied preset per kind
+static int      s_dsTpl[DK_COUNT];               // last applied template row per kind
+static int      s_dsTplPage[DK_COUNT];           // P-DRAW-132: template rack page per kind
 static bool     s_dsTplNameArmed = false;      // P-DRAW-25: save is armed, name edit open
 static int      s_dsGearMem[DK_COUNT];         // P-DRAW-26: last gear tab per kind (templates at hand)
 static int      s_dsPN = 0;                      // popover rows on screen now
@@ -696,10 +699,10 @@ static int      s_dsGear = 0;
 static int      s_dsGRN = 0;                     // gear list rows on screen
 static int      s_dsGRY[DSTRIP_GLIST_MAX];
 static int      s_dsGRCol[DSTRIP_GLIST_MAX];     // P-DRAW-30: its column (0 left · 1 right)
-static int      s_dsGRKind[DSTRIP_GLIST_MAX];    // 1 toggle-slot · 2 preset · 3 save ·
+static int      s_dsGRKind[DSTRIP_GLIST_MAX];    // 1 toggle-slot · 2 template · 3 save ·
                                                  // 4 level-row · 5 levels All/None · 6 vis ·
-                                                 // 7 default-learn · 8 option-row
-static int      s_dsGRArg[DSTRIP_GLIST_MAX];     // slot / preset idx / packed
+                                                 // 7 default-learn · 8 option-row · 9 tpl page-nav
+static int      s_dsGRArg[DSTRIP_GLIST_MAX];     // slot / template row / packed
 static int      s_dsGGN = 0;                     // gear grid cells on screen
 static int      s_dsGGX[DSTRIP_GRID_MAX];
 static int      s_dsGGY[DSTRIP_GRID_MAX];
